@@ -1,5 +1,5 @@
 {
-	"name": "example-worker-echoback",
+	"name": "esi",
 	"version": "0.1.4",
 	"private": true,
 	"sideEffects": false,

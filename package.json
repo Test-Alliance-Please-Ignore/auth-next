@@ -27,5 +27,8 @@
 		"typescript": "5.9.2",
 		"vitest": "3.2.4"
 	},
-	"packageManager": "pnpm@10.14.0"
+	"packageManager": "pnpm@10.14.0",
+	"dependencies": {
+		"wrangler": "4.42.2"
+	}
 }

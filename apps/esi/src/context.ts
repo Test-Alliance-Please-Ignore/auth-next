@@ -2,7 +2,11 @@ import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
 
 export type Env = SharedHonoEnv & {
-	// add additional Bindings here
+	ESI_CACHE: KVNamespace
+	USER_TOKEN_STORE: DurableObjectNamespace
+	ESI_SSO_CLIENT_ID: string
+	ESI_SSO_CLIENT_SECRET: string
+	ESI_SSO_CALLBACK_URL: string
 }
 
 /** Variables can be extended */

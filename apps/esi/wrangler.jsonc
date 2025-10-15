@@ -1,0 +1,42 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "esi",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-04-28",
+	"compatibility_flags": ["nodejs_compat"],
+	"routes": ["randobot.app/esi/*"],
+	"logpush": false,
+	"observability": {
+		"enabled": false
+	},
+	"vars": {},
+	"kv_namespaces": [
+		{
+			"binding": "ESI_CACHE",
+			"id": "1f7447303a3a48c7a04ae3723740018b",
+			"preview_id": "929cda3191214e56bacb1b4217762d8e"
+		}
+	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "USER_TOKEN_STORE",
+				"class_name": "UserTokenStore"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_classes": ["UserTokenStore"]
+		},
+		{
+			"tag": "v2",
+			"deleted_classes": ["UserTokenStore"]
+		},
+		{
+			"tag": "v3",
+			"new_sqlite_classes": ["UserTokenStore"]
+		}
+	]
+}

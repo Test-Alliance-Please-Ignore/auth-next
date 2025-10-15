@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      wrangler:
+        specifier: 4.42.2
+        version: 4.42.2(@cloudflare/workers-types@4.20251011.0)
     devDependencies:
       '@changesets/cli':
         specifier: 2.29.7
@@ -54,7 +58,7 @@ importers:
         specifier: 3.2.4
         version: 3.2.4(@types/node@22.15.27)(jiti@2.6.1)(lightningcss@1.29.2)(tsx@4.20.6)(yaml@2.8.1)
 
-  apps/example-worker-echoback:
+  apps/esi:
     dependencies:
       '@repo/hono-helpers':
         specifier: workspace:*
