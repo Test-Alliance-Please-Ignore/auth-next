@@ -25,7 +25,7 @@ const app = new Hono<App>()
 	// Mount admin router
 	.route('/', adminRouter)
 
-	// OAuth login endpoint
+	// OAuth login endpoint (DEPRECATED: Use /esi/login instead, will be removed soon)
 	.get('/auth/login', (c) => {
 		const state = crypto.randomUUID()
 		const scopes = c.req.query('scopes') || ALL_ESI_SCOPES.join(' ')
@@ -50,7 +50,32 @@ const app = new Hono<App>()
 		return c.redirect(authUrl.toString())
 	})
 
-	// OAuth callback endpoint
+	// OAuth login endpoint (canonical)
+	.get('/esi/login', (c) => {
+		const state = crypto.randomUUID()
+		const scopes = c.req.query('scopes') || ALL_ESI_SCOPES.join(' ')
+
+		const authUrl = new URL('https://login.eveonline.com/v2/oauth/authorize/')
+		authUrl.searchParams.set('response_type', 'code')
+		authUrl.searchParams.set('redirect_uri', c.env.ESI_SSO_CALLBACK_URL)
+		authUrl.searchParams.set('client_id', c.env.ESI_SSO_CLIENT_ID)
+		authUrl.searchParams.set('scope', scopes)
+		authUrl.searchParams.set('state', state)
+
+		logger
+			.withTags({
+				type: 'oauth_login_redirect',
+			})
+			.info('Redirecting to EVE SSO', {
+				scopes,
+				state,
+				request: getRequestLogData(c, Date.now()),
+			})
+
+		return c.redirect(authUrl.toString())
+	})
+
+	// OAuth callback endpoint (DEPRECATED: Use /esi/callback instead, will be removed soon)
 	.get('/auth/callback', async (c) => {
 		const code = c.req.query('code')
 		const state = c.req.query('state')
@@ -224,60 +249,178 @@ const app = new Hono<App>()
 		}
 	})
 
-	// Logout endpoint
-	.post('/auth/logout', async (c) => {
-		const authorization = c.req.header('Authorization')
-		if (!authorization || !authorization.startsWith('Bearer ')) {
-			return c.json({ error: 'Missing or invalid Authorization header' }, 401)
+	// OAuth callback endpoint (canonical)
+	.get('/esi/callback', async (c) => {
+		const code = c.req.query('code')
+		const state = c.req.query('state')
+
+		if (!code) {
+			return c.json({ error: 'Missing authorization code' }, 400)
 		}
-
-		const proxyToken = authorization.substring(7)
-
-		// Find the token in DO (using global instance)
-		const id = c.env.USER_TOKEN_STORE.idFromName('global')
-		const stub = c.env.USER_TOKEN_STORE.get(id)
-
-		const findRequest: TokenStoreRequest = {
-			action: 'findByProxyToken',
-			proxyToken,
-		}
-
-		const findResponse = await stub.fetch('http://do/find', {
-			method: 'POST',
-			body: JSON.stringify(findRequest),
-		})
-
-		const findData = (await findResponse.json()) as TokenStoreResponse
-
-		if (!findData.success || !findData.data) {
-			return c.json({ error: 'Invalid token' }, 401)
-		}
-
-		// Revoke the token (using global instance)
-		const revokeId = c.env.USER_TOKEN_STORE.idFromName('global')
-		const revokeStub = c.env.USER_TOKEN_STORE.get(revokeId)
-
-		const revokeRequest: TokenStoreRequest = {
-			action: 'revokeToken',
-			characterId: findData.data.characterId,
-		}
-
-		await revokeStub.fetch('http://do/revoke', {
-			method: 'POST',
-			body: JSON.stringify(revokeRequest),
-		})
 
 		logger
 			.withTags({
-				type: 'logout',
-				character_id: findData.data.characterId,
+				type: 'oauth_callback',
 			})
-			.info('User logged out', {
-				characterId: findData.data.characterId,
+			.info('OAuth callback received', {
+				state,
 				request: getRequestLogData(c, Date.now()),
 			})
 
-		return c.json({ success: true })
+		try {
+			// Exchange code for tokens
+			const auth = btoa(`${c.env.ESI_SSO_CLIENT_ID}:${c.env.ESI_SSO_CLIENT_SECRET}`)
+			const tokenResponse = await fetch('https://login.eveonline.com/v2/oauth/token', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/x-www-form-urlencoded',
+					Authorization: `Basic ${auth}`,
+				},
+				body: new URLSearchParams({
+					grant_type: 'authorization_code',
+					code,
+				}),
+			})
+
+			if (!tokenResponse.ok) {
+				const error = await tokenResponse.text()
+				logger
+					.withTags({
+						type: 'oauth_token_error',
+					})
+					.error('Failed to exchange code for token', {
+						status: tokenResponse.status,
+						error,
+						request: getRequestLogData(c, Date.now()),
+					})
+				return c.json({ error: 'Failed to exchange code for token' }, 502)
+			}
+
+			const tokenData = (await tokenResponse.json()) as {
+				access_token: string
+				refresh_token: string
+				expires_in: number
+			}
+
+			// Verify the token and get character info
+			const verifyResponse = await fetch('https://login.eveonline.com/oauth/verify', {
+				headers: {
+					Authorization: `Bearer ${tokenData.access_token}`,
+				},
+			})
+
+			if (!verifyResponse.ok) {
+				return c.json({ error: 'Failed to verify token' }, 502)
+			}
+
+			const characterInfo = (await verifyResponse.json()) as {
+				CharacterID: number
+				CharacterName: string
+				Scopes: string
+			}
+
+			// Store tokens in Durable Object (using global instance)
+			const id = c.env.USER_TOKEN_STORE.idFromName('global')
+			const stub = c.env.USER_TOKEN_STORE.get(id)
+
+			const storeRequest: TokenStoreRequest = {
+				action: 'storeTokens',
+				characterId: characterInfo.CharacterID,
+				characterName: characterInfo.CharacterName,
+				accessToken: tokenData.access_token,
+				refreshToken: tokenData.refresh_token,
+				expiresIn: tokenData.expires_in,
+				scopes: characterInfo.Scopes,
+			}
+
+			const storeResponse = await stub.fetch('http://do/store', {
+				method: 'POST',
+				body: JSON.stringify(storeRequest),
+			})
+
+			const storeData = (await storeResponse.json()) as TokenStoreResponse
+
+			if (!storeData.success) {
+				return c.json({ error: 'Failed to store tokens' }, 500)
+			}
+
+			logger
+				.withTags({
+					type: 'oauth_success',
+					character_id: characterInfo.CharacterID,
+				})
+				.info('OAuth flow completed', {
+					characterId: characterInfo.CharacterID,
+					characterName: characterInfo.CharacterName,
+					request: getRequestLogData(c, Date.now()),
+				})
+
+			return c.html(`
+				<!DOCTYPE html>
+				<html>
+					<head>
+						<meta charset="utf-8">
+						<meta name="viewport" content="width=device-width, initial-scale=1">
+						<title>Authentication Successful</title>
+						<style>
+							body {
+								font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+								display: flex;
+								justify-content: center;
+								align-items: center;
+								min-height: 100vh;
+								margin: 0;
+								background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+							}
+							.container {
+								background: white;
+								padding: 3rem;
+								border-radius: 1rem;
+								box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+								text-align: center;
+								max-width: 500px;
+							}
+							h1 {
+								color: #333;
+								margin: 0 0 1rem 0;
+								font-size: 2rem;
+							}
+							p {
+								color: #666;
+								margin: 0.5rem 0;
+								font-size: 1.1rem;
+							}
+							.character-name {
+								color: #667eea;
+								font-weight: bold;
+							}
+							.success-icon {
+								font-size: 4rem;
+								margin-bottom: 1rem;
+							}
+						</style>
+					</head>
+					<body>
+						<div class="container">
+							<div class="success-icon">✓</div>
+							<h1>Authentication Successful</h1>
+							<p>Thank you for logging in, <span class="character-name">${characterInfo.CharacterName}</span>!</p>
+							<p>You can now close this window.</p>
+						</div>
+					</body>
+				</html>
+			`)
+		} catch (error) {
+			logger
+				.withTags({
+					type: 'oauth_exception',
+				})
+				.error('OAuth exception', {
+					error: String(error),
+					request: getRequestLogData(c, Date.now()),
+				})
+			return c.json({ error: String(error) }, 500)
+		}
 	})
 
 // ESI proxy router with /esi basePath
