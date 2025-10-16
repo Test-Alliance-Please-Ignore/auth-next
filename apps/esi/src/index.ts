@@ -3,6 +3,7 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { getRequestLogData, logger, withNotFound, withOnError } from '@repo/hono-helpers'
 
+import { adminRouter } from './admin'
 import { ALL_ESI_SCOPES } from './consts'
 import type { App } from './context'
 import type { TokenStoreRequest, TokenStoreResponse } from './user-token-store'
@@ -21,6 +22,9 @@ const app = new Hono<App>()
 
 	.onError(withOnError())
 	.notFound(withNotFound())
+
+	// Mount admin router (must be before catch-all proxy)
+	.route('/', adminRouter)
 
 	// OAuth login endpoint
 	.get('/auth/login', (c) => {

@@ -7,6 +7,7 @@ export type Env = SharedHonoEnv & {
 	ESI_SSO_CLIENT_ID: string
 	ESI_SSO_CLIENT_SECRET: string
 	ESI_SSO_CALLBACK_URL: string
+	ADMIN_API_TOKENS: string
 }
 
 /** Variables can be extended */

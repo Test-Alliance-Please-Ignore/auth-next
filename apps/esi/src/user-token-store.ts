@@ -17,7 +17,16 @@ export interface TokenData extends Record<string, number | string> {
 }
 
 export interface TokenStoreRequest {
-	action: 'storeTokens' | 'getAccessToken' | 'revokeToken' | 'getTokenInfo' | 'findByProxyToken'
+	action:
+		| 'storeTokens'
+		| 'getAccessToken'
+		| 'revokeToken'
+		| 'getTokenInfo'
+		| 'findByProxyToken'
+		| 'listAllTokens'
+		| 'getProxyToken'
+		| 'deleteByProxyToken'
+		| 'getStats'
 	characterId?: number
 	characterName?: string
 	accessToken?: string
@@ -25,6 +34,8 @@ export interface TokenStoreRequest {
 	expiresIn?: number
 	scopes?: string
 	proxyToken?: string
+	limit?: number
+	offset?: number
 }
 
 export interface TokenStoreResponse {
@@ -37,6 +48,24 @@ export interface TokenStoreResponse {
 		characterName?: string
 		scopes?: string
 		expiresAt?: number
+		createdAt?: number
+		updatedAt?: number
+		total?: number
+		limit?: number
+		offset?: number
+		results?: Array<{
+			characterId: number
+			characterName: string
+			scopes: string
+			expiresAt: number
+			createdAt: number
+			updatedAt: number
+		}>
+		stats?: {
+			totalCount: number
+			expiredCount: number
+			activeCount: number
+		}
 	}
 }
 
@@ -71,6 +100,18 @@ export class UserTokenStore extends DurableObject<Env> {
 
 				case 'getTokenInfo':
 					return await this.getTokenInfo(body.characterId!)
+
+				case 'listAllTokens':
+					return await this.listAllTokens(body.limit, body.offset)
+
+				case 'getProxyToken':
+					return await this.getProxyToken(body.characterId!)
+
+				case 'deleteByProxyToken':
+					return await this.deleteByProxyToken(body.proxyToken!)
+
+				case 'getStats':
+					return await this.getStats()
 
 				default:
 					return Response.json({ success: false, error: 'Unknown action' }, { status: 400 })
@@ -409,6 +450,137 @@ export class UserTokenStore extends DurableObject<Env> {
 				characterName: token.character_name,
 				scopes: token.scopes,
 				expiresAt: token.expires_at,
+			},
+		})
+	}
+
+	private async listAllTokens(limit?: number, offset?: number): Promise<Response> {
+		await this.ensureSchema()
+
+		const parsedLimit = Math.min(limit || 50, 100)
+		const parsedOffset = offset || 0
+
+		// Get total count
+		const countRows = await this.ctx.storage.sql
+			.exec<{ count: number }>('SELECT COUNT(*) as count FROM tokens')
+			.toArray()
+		const total = countRows[0]?.count || 0
+
+		// Get paginated results (exclude sensitive tokens)
+		const rows = await this.ctx.storage.sql
+			.exec<TokenData>(
+				`SELECT character_id, character_name, scopes, expires_at, created_at, updated_at
+				FROM tokens
+				ORDER BY created_at DESC
+				LIMIT ? OFFSET ?`,
+				parsedLimit,
+				parsedOffset
+			)
+			.toArray()
+
+		return Response.json({
+			success: true,
+			data: {
+				total,
+				limit: parsedLimit,
+				offset: parsedOffset,
+				results: rows.map((token) => ({
+					characterId: token.character_id,
+					characterName: token.character_name,
+					scopes: token.scopes,
+					expiresAt: token.expires_at,
+					createdAt: token.created_at,
+					updatedAt: token.updated_at,
+				})),
+			},
+		})
+	}
+
+	private async getProxyToken(characterId: number): Promise<Response> {
+		await this.ensureSchema()
+
+		const rows = await this.ctx.storage.sql
+			.exec<TokenData>(
+				`SELECT character_id, character_name, scopes, expires_at, proxy_token, created_at, updated_at
+				FROM tokens WHERE character_id = ?`,
+				characterId
+			)
+			.toArray()
+
+		if (rows.length === 0) {
+			return Response.json({ success: false, error: 'Token not found' }, { status: 404 })
+		}
+
+		const token = rows[0]
+
+		return Response.json({
+			success: true,
+			data: {
+				characterId: token.character_id,
+				characterName: token.character_name,
+				proxyToken: token.proxy_token,
+				scopes: token.scopes,
+				expiresAt: token.expires_at,
+				createdAt: token.created_at,
+				updatedAt: token.updated_at,
+			},
+		})
+	}
+
+	private async deleteByProxyToken(proxyToken: string): Promise<Response> {
+		await this.ensureSchema()
+
+		// First check if the token exists
+		const rows = await this.ctx.storage.sql
+			.exec<TokenData>(`SELECT character_id FROM tokens WHERE proxy_token = ?`, proxyToken)
+			.toArray()
+
+		if (rows.length === 0) {
+			return Response.json({ success: false, error: 'Token not found' }, { status: 404 })
+		}
+
+		const characterId = rows[0].character_id
+
+		// Delete the entire token set
+		await this.ctx.storage.sql.exec(`DELETE FROM tokens WHERE proxy_token = ?`, proxyToken)
+
+		logger
+			.withTags({
+				type: 'token_deleted_by_proxy',
+				character_id: characterId,
+			})
+			.info('Token deleted by proxy token', { characterId, proxyToken: proxyToken.substring(0, 8) })
+
+		return Response.json({ success: true })
+	}
+
+	private async getStats(): Promise<Response> {
+		await this.ensureSchema()
+
+		const now = Date.now()
+
+		// Get total count
+		const totalRows = await this.ctx.storage.sql
+			.exec<{ count: number }>('SELECT COUNT(*) as count FROM tokens')
+			.toArray()
+		const totalCount = totalRows[0]?.count || 0
+
+		// Get expired count
+		const expiredRows = await this.ctx.storage.sql
+			.exec<{ count: number }>('SELECT COUNT(*) as count FROM tokens WHERE expires_at < ?', now)
+			.toArray()
+		const expiredCount = expiredRows[0]?.count || 0
+
+		const activeCount = totalCount - expiredCount
+
+		return Response.json({
+			success: true,
+			data: {
+				stats: {
+					totalCount,
+					expiredCount,
+					activeCount,
+				},
 			},
 		})
 	}

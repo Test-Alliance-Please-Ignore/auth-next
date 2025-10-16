@@ -9,7 +9,6 @@
 	"observability": {
 		"enabled": false
 	},
-	"vars": {},
 	"kv_namespaces": [
 		{
 			"binding": "ESI_CACHE",

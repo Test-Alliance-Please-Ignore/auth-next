@@ -63,6 +63,9 @@ importers:
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
+      '@repo/static-auth':
+        specifier: workspace:*
+        version: link:../../packages/static-auth
       hono:
         specifier: 4.9.11
         version: 4.9.11
@@ -178,6 +181,34 @@ importers:
       zod:
         specifier: 4.1.12
         version: 4.1.12
+    devDependencies:
+      '@cloudflare/vitest-pool-workers':
+        specifier: 0.9.12
+        version: 0.9.12(@cloudflare/workers-types@4.20251011.0)(@vitest/runner@3.2.4)(@vitest/snapshot@3.2.4)(vitest@3.2.4(@types/node@22.15.27)(jiti@2.6.1)(lightningcss@1.29.2)(tsx@4.20.6)(yaml@2.8.1))
+      '@cloudflare/workers-types':
+        specifier: 4.20251011.0
+        version: 4.20251011.0
+      '@repo/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
+      '@repo/tools':
+        specifier: workspace:*
+        version: link:../tools
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      vitest:
+        specifier: 3.2.4
+        version: 3.2.4(@types/node@22.15.27)(jiti@2.6.1)(lightningcss@1.29.2)(tsx@4.20.6)(yaml@2.8.1)
+
+  packages/static-auth:
+    dependencies:
+      hono:
+        specifier: 4.9.11
+        version: 4.9.11
+      workers-tagged-logger:
+        specifier: 0.13.3
+        version: 0.13.3
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.9.12
