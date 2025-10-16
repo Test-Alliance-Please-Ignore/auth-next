@@ -8,6 +8,7 @@ export default defineWorkersProject({
 				miniflare: {
 					bindings: {
 						ENVIRONMENT: 'VITEST',
+						ADMIN_API_TOKENS: 'test-admin-token',
 					},
 				},
 			},

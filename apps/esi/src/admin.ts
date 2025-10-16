@@ -25,7 +25,7 @@ export const adminRouter = new Hono<App>()
 		const offset = parseInt(c.req.query('offset') || '0', 10)
 
 		// Use a global DO instance for listing all tokens
-		const id = c.env.USER_TOKEN_STORE.idFromName('global_token_list')
+		const id = c.env.USER_TOKEN_STORE.idFromName('global')
 		const stub = c.env.USER_TOKEN_STORE.get(id)
 
 		const request: TokenStoreRequest = {
@@ -63,7 +63,7 @@ export const adminRouter = new Hono<App>()
 			return c.json({ error: 'Invalid character ID' }, 400)
 		}
 
-		const id = c.env.USER_TOKEN_STORE.idFromName(String(characterId))
+		const id = c.env.USER_TOKEN_STORE.idFromName('global')
 		const stub = c.env.USER_TOKEN_STORE.get(id)
 
 		const request: TokenStoreRequest = {
@@ -100,7 +100,7 @@ export const adminRouter = new Hono<App>()
 			return c.json({ error: 'Invalid character ID' }, 400)
 		}
 
-		const id = c.env.USER_TOKEN_STORE.idFromName(String(characterId))
+		const id = c.env.USER_TOKEN_STORE.idFromName('global')
 		const stub = c.env.USER_TOKEN_STORE.get(id)
 
 		const request: TokenStoreRequest = {
@@ -137,8 +137,8 @@ export const adminRouter = new Hono<App>()
 			return c.json({ error: 'Invalid proxy token format' }, 400)
 		}
 
-		// Use a lookup DO instance
-		const id = c.env.USER_TOKEN_STORE.idFromName('proxy_delete')
+		// Use the global DO instance
+		const id = c.env.USER_TOKEN_STORE.idFromName('global')
 		const stub = c.env.USER_TOKEN_STORE.get(id)
 
 		const request: TokenStoreRequest = {
@@ -168,8 +168,8 @@ export const adminRouter = new Hono<App>()
 
 	// Get statistics
 	.get('/stats', async (c) => {
-		// Use a global DO instance for stats
-		const id = c.env.USER_TOKEN_STORE.idFromName('global_stats')
+		// Use the global DO instance for stats
+		const id = c.env.USER_TOKEN_STORE.idFromName('global')
 		const stub = c.env.USER_TOKEN_STORE.get(id)
 
 		const request: TokenStoreRequest = {
@@ -203,7 +203,7 @@ export const adminRouter = new Hono<App>()
 			return c.json({ error: 'Invalid character ID' }, 400)
 		}
 
-		const id = c.env.USER_TOKEN_STORE.idFromName(String(characterId))
+		const id = c.env.USER_TOKEN_STORE.idFromName('global')
 		const stub = c.env.USER_TOKEN_STORE.get(id)
 
 		// Get the access token, which will trigger a refresh if needed

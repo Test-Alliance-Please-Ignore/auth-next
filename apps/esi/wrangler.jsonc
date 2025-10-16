@@ -4,7 +4,7 @@
 	"main": "src/index.ts",
 	"compatibility_date": "2025-04-28",
 	"compatibility_flags": ["nodejs_compat"],
-	"routes": ["randobot.app/esi/*"],
+	"routes": ["pleaseignore.app/admin/*", "pleaseignore.app/auth/*", "pleaseignore.app/esi/*"],
 	"logpush": false,
 	"observability": {
 		"enabled": false

@@ -9,7 +9,6 @@ import type { App } from './context'
 import type { TokenStoreRequest, TokenStoreResponse } from './user-token-store'
 
 const app = new Hono<App>()
-	.basePath('/esi')
 	.use(
 		'*',
 		// middleware
@@ -23,7 +22,7 @@ const app = new Hono<App>()
 	.onError(withOnError())
 	.notFound(withNotFound())
 
-	// Mount admin router (must be before catch-all proxy)
+	// Mount admin router
 	.route('/', adminRouter)
 
 	// OAuth login endpoint
@@ -121,8 +120,8 @@ const app = new Hono<App>()
 				Scopes: string
 			}
 
-			// Store tokens in Durable Object
-			const id = c.env.USER_TOKEN_STORE.idFromName(String(characterInfo.CharacterID))
+			// Store tokens in Durable Object (using global instance)
+			const id = c.env.USER_TOKEN_STORE.idFromName('global')
 			const stub = c.env.USER_TOKEN_STORE.get(id)
 
 			const storeRequest: TokenStoreRequest = {
@@ -234,8 +233,8 @@ const app = new Hono<App>()
 
 		const proxyToken = authorization.substring(7)
 
-		// Find the token in DO
-		const id = c.env.USER_TOKEN_STORE.idFromName('proxy_lookup')
+		// Find the token in DO (using global instance)
+		const id = c.env.USER_TOKEN_STORE.idFromName('global')
 		const stub = c.env.USER_TOKEN_STORE.get(id)
 
 		const findRequest: TokenStoreRequest = {
@@ -254,8 +253,8 @@ const app = new Hono<App>()
 			return c.json({ error: 'Invalid token' }, 401)
 		}
 
-		// Revoke the token
-		const revokeId = c.env.USER_TOKEN_STORE.idFromName(String(findData.data.characterId))
+		// Revoke the token (using global instance)
+		const revokeId = c.env.USER_TOKEN_STORE.idFromName('global')
 		const revokeStub = c.env.USER_TOKEN_STORE.get(revokeId)
 
 		const revokeRequest: TokenStoreRequest = {
@@ -281,8 +280,8 @@ const app = new Hono<App>()
 		return c.json({ success: true })
 	})
 
-	// ESI proxy (catch-all)
-	.all('*', async (c) => {
+// ESI proxy router with /esi basePath
+const esiProxyRouter = new Hono<App>().basePath('/esi').all('*', async (c) => {
 		const url = new URL(c.req.url)
 		const method = c.req.method.toUpperCase()
 		// Strip /esi prefix from path for proxying to ESI
@@ -296,9 +295,96 @@ const app = new Hono<App>()
 		// Only cache GET requests
 		const cacheable = method === 'GET' && !nocache
 
-		// Generate cache key
+		// Extract and validate proxy token - REQUIRED for all requests
+		const authorization = c.req.header('Authorization')
+		if (!authorization || !authorization.startsWith('Bearer ')) {
+			logger
+				.withTags({
+					type: 'missing_authorization',
+				})
+				.warn('Request without authorization header', {
+					path,
+					request: getRequestLogData(c, Date.now()),
+				})
+			return c.json({ error: 'Authorization required' }, 401)
+		}
+
+		const token = authorization.substring(7)
+
+		// Check if this looks like a proxy token (64 hex chars)
+		if (token.length !== 64 || !/^[0-9a-f]+$/i.test(token)) {
+			logger
+				.withTags({
+					type: 'invalid_token_format',
+				})
+				.warn('Invalid proxy token format', {
+					path,
+					request: getRequestLogData(c, Date.now()),
+				})
+			return c.json({ error: 'Invalid proxy token format' }, 401)
+		}
+
+		const proxyToken = token
+
+		// Look up the real access token
+		let accessToken: string
+		let characterId: number
+		let characterName: string
+
+		try {
+			const id = c.env.USER_TOKEN_STORE.idFromName('global')
+			const stub = c.env.USER_TOKEN_STORE.get(id)
+
+			const lookupRequest: TokenStoreRequest = {
+				action: 'findByProxyToken',
+				proxyToken,
+			}
+
+			const lookupResponse = await stub.fetch('http://do/lookup', {
+				method: 'POST',
+				body: JSON.stringify(lookupRequest),
+			})
+
+			const lookupData = (await lookupResponse.json()) as TokenStoreResponse
+
+			if (
+				!lookupData.success ||
+				!lookupData.data ||
+				!lookupData.data.accessToken ||
+				!lookupData.data.characterId ||
+				!lookupData.data.characterName
+			) {
+				// Invalid proxy token
+				logger
+					.withTags({
+						type: 'invalid_proxy_token',
+					})
+					.warn('Invalid proxy token provided', {
+						path,
+						request: getRequestLogData(c, Date.now()),
+					})
+				return c.json({ error: 'Invalid proxy token' }, 401)
+			}
+
+			accessToken = lookupData.data.accessToken
+			characterId = lookupData.data.characterId
+			characterName = lookupData.data.characterName
+		} catch (error) {
+			logger
+				.withTags({
+					type: 'proxy_token_lookup_error',
+				})
+				.error('Error looking up proxy token', {
+					error: String(error),
+					path,
+					request: getRequestLogData(c, Date.now()),
+				})
+			return c.json({ error: 'Error verifying proxy token' }, 500)
+		}
+
+		// Generate cache key - always includes proxy token for security
 		const acceptLanguage = c.req.header('Accept-Language') || 'en'
-		const cacheKey = `esi:${method}:${path}:${querystring}:${acceptLanguage}`
+		const cacheKey = `esi:${method}:${path}:${querystring}:${acceptLanguage}:${proxyToken}`
 
 		// Try cache for cacheable requests
 		if (cacheable) {
@@ -308,9 +394,12 @@ const app = new Hono<App>()
 					.withTags({
 						type: 'esi_cache_hit',
 						path,
+						character_id: characterId,
 					})
 					.info('ESI cache hit', {
-						cacheKey,
+						cacheKey: cacheKey.replace(proxyToken, proxyToken.substring(0, 8) + '...'),
+						characterId,
+						characterName,
 						request: getRequestLogData(c, Date.now()),
 					})
 
@@ -337,9 +426,12 @@ const app = new Hono<App>()
 				.withTags({
 					type: 'esi_cache_miss',
 					path,
+					character_id: characterId,
 				})
 				.info('ESI cache miss', {
-					cacheKey,
+					cacheKey: cacheKey.replace(proxyToken, proxyToken.substring(0, 8) + '...'),
+					characterId,
+					characterName,
 					request: getRequestLogData(c, Date.now()),
 				})
 		}
@@ -367,74 +459,20 @@ const app = new Hono<App>()
 			esiHeaders.set('If-Modified-Since', ifModifiedSince)
 		}
 
-		// Handle authorization - check if it's a proxy token
-		const authorization = c.req.header('Authorization')
-		if (authorization && authorization.startsWith('Bearer ')) {
-			const token = authorization.substring(7)
+		// Use the real access token for ESI
+		esiHeaders.set('Authorization', `Bearer ${accessToken}`)
 
-			// Check if this looks like a proxy token (64 hex chars)
-			if (token.length === 64 && /^[0-9a-f]+$/i.test(token)) {
-				// This is a proxy token, look up the real access token
-				try {
-					const id = c.env.USER_TOKEN_STORE.idFromName('proxy_lookup')
-					const stub = c.env.USER_TOKEN_STORE.get(id)
-
-					const lookupRequest: TokenStoreRequest = {
-						action: 'findByProxyToken',
-						proxyToken: token,
-					}
-
-					const lookupResponse = await stub.fetch('http://do/lookup', {
-						method: 'POST',
-						body: JSON.stringify(lookupRequest),
-					})
-
-					const lookupData = (await lookupResponse.json()) as TokenStoreResponse
-
-					if (lookupData.success && lookupData.data) {
-						// Use the real access token
-						esiHeaders.set('Authorization', `Bearer ${lookupData.data.accessToken}`)
-
-						logger
-							.withTags({
-								type: 'proxy_token_used',
-								character_id: lookupData.data.characterId,
-							})
-							.info('Using proxy token for authenticated request', {
-								characterId: lookupData.data.characterId,
-								characterName: lookupData.data.characterName,
-								path,
-								request: getRequestLogData(c, Date.now()),
-							})
-					} else {
-						// Invalid proxy token
-						logger
-							.withTags({
-								type: 'invalid_proxy_token',
-							})
-							.warn('Invalid proxy token provided', {
-								path,
-								request: getRequestLogData(c, Date.now()),
-							})
-						return c.json({ error: 'Invalid proxy token' }, 401)
-					}
-				} catch (error) {
-					logger
-						.withTags({
-							type: 'proxy_token_lookup_error',
-						})
-						.error('Error looking up proxy token', {
-							error: String(error),
-							path,
-							request: getRequestLogData(c, Date.now()),
-						})
-					return c.json({ error: 'Error verifying proxy token' }, 500)
-				}
-			} else {
-				// This is a regular bearer token, pass it through
-				esiHeaders.set('Authorization', authorization)
-			}
-		}
+		logger
+			.withTags({
+				type: 'proxy_token_used',
+				character_id: characterId,
+			})
+			.info('Using proxy token for authenticated request', {
+				characterId,
+				characterName,
+				path,
+				request: getRequestLogData(c, Date.now()),
+			})
 
 		// Forward User-Agent
 		const userAgent = c.req.header('User-Agent')
@@ -542,7 +580,11 @@ const app = new Hono<App>()
 		})
 		response.headers.set('X-Cache', 'BYPASS')
 		return response
-	})
+	}
+)
+
+// Mount ESI proxy router (must be last to avoid catching other routes)
+app.route('/', esiProxyRouter)
 
 export default app
 

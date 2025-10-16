@@ -4,18 +4,18 @@ import { describe, expect, it } from 'vitest'
 import '../..'
 
 describe('Admin API Integration', () => {
-	const adminToken = env.ADMIN_API_TOKENS || 'test-admin-token'
+	const adminToken = (env as { ADMIN_API_TOKENS?: string }).ADMIN_API_TOKENS || 'test-admin-token'
 
 	describe('Authentication', () => {
 		it('should reject requests without auth token', async () => {
-			const res = await SELF.fetch('https://example.com/esi/admin/stats')
+			const res = await SELF.fetch('https://example.com/admin/stats')
 			expect(res.status).toBe(401)
 			const data = await res.json()
 			expect(data).toEqual({ error: 'Missing or invalid Authorization header' })
 		})
 
 		it('should reject requests with invalid auth token', async () => {
-			const res = await SELF.fetch('https://example.com/esi/admin/stats', {
+			const res = await SELF.fetch('https://example.com/admin/stats', {
 				headers: {
 					Authorization: 'Bearer invalid-token',
 				},
@@ -26,7 +26,7 @@ describe('Admin API Integration', () => {
 		})
 
 		it('should accept requests with valid auth token', async () => {
-			const res = await SELF.fetch('https://example.com/esi/admin/stats', {
+			const res = await SELF.fetch('https://example.com/admin/stats', {
 				headers: {
 					Authorization: `Bearer ${adminToken}`,
 				},
@@ -39,7 +39,7 @@ describe('Admin API Integration', () => {
 
 	describe('GET /admin/stats', () => {
 		it('should return token statistics', async () => {
-			const res = await SELF.fetch('https://example.com/esi/admin/stats', {
+			const res = await SELF.fetch('https://example.com/admin/stats', {
 				headers: {
 					Authorization: `Bearer ${adminToken}`,
 				},
@@ -62,7 +62,7 @@ describe('Admin API Integration', () => {
 
 	describe('GET /admin/tokens', () => {
 		it('should return paginated list of tokens', async () => {
-			const res = await SELF.fetch('https://example.com/esi/admin/tokens', {
+			const res = await SELF.fetch('https://example.com/admin/tokens', {
 				headers: {
 					Authorization: `Bearer ${adminToken}`,
 				},
@@ -82,34 +82,34 @@ describe('Admin API Integration', () => {
 		})
 
 		it('should support pagination parameters', async () => {
-			const res = await SELF.fetch('https://example.com/esi/admin/tokens?limit=10&offset=5', {
+			const res = await SELF.fetch('https://example.com/admin/tokens?limit=10&offset=5', {
 				headers: {
 					Authorization: `Bearer ${adminToken}`,
 				},
 			})
 
 			expect(res.status).toBe(200)
-			const data = await res.json()
+			const data = (await res.json()) as { data?: { limit: number; offset: number } }
 			expect(data.data).toHaveProperty('limit', 10)
 			expect(data.data).toHaveProperty('offset', 5)
 		})
 
 		it('should limit maximum page size to 100', async () => {
-			const res = await SELF.fetch('https://example.com/esi/admin/tokens?limit=500', {
+			const res = await SELF.fetch('https://example.com/admin/tokens?limit=500', {
 				headers: {
 					Authorization: `Bearer ${adminToken}`,
 				},
 			})
 
 			expect(res.status).toBe(200)
-			const data = await res.json()
+			const data = (await res.json()) as { data?: { limit: number } }
 			expect(data.data?.limit).toBeLessThanOrEqual(100)
 		})
 	})
 
 	describe('GET /admin/tokens/:characterId', () => {
 		it('should return 404 for non-existent character', async () => {
-			const res = await SELF.fetch('https://example.com/esi/admin/tokens/999999999', {
+			const res = await SELF.fetch('https://example.com/admin/tokens/999999999', {
 				headers: {
 					Authorization: `Bearer ${adminToken}`,
 				},
@@ -121,7 +121,7 @@ describe('Admin API Integration', () => {
 		})
 
 		it('should validate character ID parameter', async () => {
-			const res = await SELF.fetch('https://example.com/esi/admin/tokens/invalid', {
+			const res = await SELF.fetch('https://example.com/admin/tokens/invalid', {
 				headers: {
 					Authorization: `Bearer ${adminToken}`,
 				},
@@ -135,7 +135,7 @@ describe('Admin API Integration', () => {
 
 	describe('DELETE /admin/tokens/:characterId', () => {
 		it('should validate character ID parameter', async () => {
-			const res = await SELF.fetch('https://example.com/esi/admin/tokens/invalid', {
+			const res = await SELF.fetch('https://example.com/admin/tokens/invalid', {
 				method: 'DELETE',
 				headers: {
 					Authorization: `Bearer ${adminToken}`,
@@ -148,7 +148,7 @@ describe('Admin API Integration', () => {
 		})
 
 		it('should successfully delete tokens for character', async () => {
-			const res = await SELF.fetch('https://example.com/esi/admin/tokens/12345', {
+			const res = await SELF.fetch('https://example.com/admin/tokens/12345', {
 				method: 'DELETE',
 				headers: {
 					Authorization: `Bearer ${adminToken}`,
@@ -163,7 +163,7 @@ describe('Admin API Integration', () => {
 
 	describe('DELETE /admin/tokens/proxy/:proxyToken', () => {
 		it('should validate proxy token format', async () => {
-			const res = await SELF.fetch('https://example.com/esi/admin/tokens/proxy/short', {
+			const res = await SELF.fetch('https://example.com/admin/tokens/proxy/short', {
 				method: 'DELETE',
 				headers: {
 					Authorization: `Bearer ${adminToken}`,
@@ -179,7 +179,7 @@ describe('Admin API Integration', () => {
 			// Generate a valid-format but non-existent proxy token (64 hex chars)
 			const fakeToken = '0'.repeat(64)
 
-			const res = await SELF.fetch(`https://example.com/esi/admin/tokens/proxy/${fakeToken}`, {
+			const res = await SELF.fetch(`https://example.com/admin/tokens/proxy/${fakeToken}`, {
 				method: 'DELETE',
 				headers: {
 					Authorization: `Bearer ${adminToken}`,
@@ -194,7 +194,7 @@ describe('Admin API Integration', () => {
 
 	describe('POST /admin/tokens/:characterId/refresh', () => {
 		it('should validate character ID parameter', async () => {
-			const res = await SELF.fetch('https://example.com/esi/admin/tokens/invalid/refresh', {
+			const res = await SELF.fetch('https://example.com/admin/tokens/invalid/refresh', {
 				method: 'POST',
 				headers: {
 					Authorization: `Bearer ${adminToken}`,
@@ -207,7 +207,7 @@ describe('Admin API Integration', () => {
 		})
 
 		it('should return 404 for non-existent character', async () => {
-			const res = await SELF.fetch('https://example.com/esi/admin/tokens/999999999/refresh', {
+			const res = await SELF.fetch('https://example.com/admin/tokens/999999999/refresh', {
 				method: 'POST',
 				headers: {
 					Authorization: `Bearer ${adminToken}`,
