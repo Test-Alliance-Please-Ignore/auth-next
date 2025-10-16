@@ -5,8 +5,8 @@ import { getRequestLogData, logger, withNotFound, withOnError } from '@repo/hono
 
 import { adminRouter } from './admin'
 import { ALL_ESI_SCOPES } from './consts'
+
 import type { App } from './context'
-import type { TokenStoreRequest, TokenStoreResponse } from './user-token-store'
 
 const app = new Hono<App>()
 	.use(
@@ -149,26 +149,14 @@ const app = new Hono<App>()
 			const id = c.env.USER_TOKEN_STORE.idFromName('global')
 			const stub = c.env.USER_TOKEN_STORE.get(id)
 
-			const storeRequest: TokenStoreRequest = {
-				action: 'storeTokens',
-				characterId: characterInfo.CharacterID,
-				characterName: characterInfo.CharacterName,
-				accessToken: tokenData.access_token,
-				refreshToken: tokenData.refresh_token,
-				expiresIn: tokenData.expires_in,
-				scopes: characterInfo.Scopes,
-			}
-
-			const storeResponse = await stub.fetch('http://do/store', {
-				method: 'POST',
-				body: JSON.stringify(storeRequest),
-			})
-
-			const storeData = (await storeResponse.json()) as TokenStoreResponse
-
-			if (!storeData.success) {
-				return c.json({ error: 'Failed to store tokens' }, 500)
-			}
+			await stub.storeTokens(
+				characterInfo.CharacterID,
+				characterInfo.CharacterName,
+				tokenData.access_token,
+				tokenData.refresh_token,
+				tokenData.expires_in,
+				characterInfo.Scopes
+			)
 
 			logger
 				.withTags({
@@ -323,26 +311,14 @@ const app = new Hono<App>()
 			const id = c.env.USER_TOKEN_STORE.idFromName('global')
 			const stub = c.env.USER_TOKEN_STORE.get(id)
 
-			const storeRequest: TokenStoreRequest = {
-				action: 'storeTokens',
-				characterId: characterInfo.CharacterID,
-				characterName: characterInfo.CharacterName,
-				accessToken: tokenData.access_token,
-				refreshToken: tokenData.refresh_token,
-				expiresIn: tokenData.expires_in,
-				scopes: characterInfo.Scopes,
-			}
-
-			const storeResponse = await stub.fetch('http://do/store', {
-				method: 'POST',
-				body: JSON.stringify(storeRequest),
-			})
-
-			const storeData = (await storeResponse.json()) as TokenStoreResponse
-
-			if (!storeData.success) {
-				return c.json({ error: 'Failed to store tokens' }, 500)
-			}
+			await stub.storeTokens(
+				characterInfo.CharacterID,
+				characterInfo.CharacterName,
+				tokenData.access_token,
+				tokenData.refresh_token,
+				tokenData.expires_in,
+				characterInfo.Scopes
+			)
 
 			logger
 				.withTags({
@@ -425,306 +401,289 @@ const app = new Hono<App>()
 
 // ESI proxy router with /esi basePath
 const esiProxyRouter = new Hono<App>().basePath('/esi').all('*', async (c) => {
-		const url = new URL(c.req.url)
-		const method = c.req.method.toUpperCase()
-		// Strip /esi prefix from path for proxying to ESI
-		const fullPath = url.pathname
-		const path = fullPath.startsWith('/esi') ? fullPath.slice(4) : fullPath
-		const querystring = url.search
+	const url = new URL(c.req.url)
+	const method = c.req.method.toUpperCase()
+	// Strip /esi prefix from path for proxying to ESI
+	const fullPath = url.pathname
+	const path = fullPath.startsWith('/esi') ? fullPath.slice(4) : fullPath
+	const querystring = url.search
 
-		// Check for cache bypass
-		const nocache = url.searchParams.has('nocache')
+	// Check for cache bypass
+	const nocache = url.searchParams.has('nocache')
 
-		// Only cache GET requests
-		const cacheable = method === 'GET' && !nocache
+	// Only cache GET requests
+	const cacheable = method === 'GET' && !nocache
 
-		// Extract and validate proxy token - REQUIRED for all requests
-		const authorization = c.req.header('Authorization')
-		if (!authorization || !authorization.startsWith('Bearer ')) {
-			logger
-				.withTags({
-					type: 'missing_authorization',
-				})
-				.warn('Request without authorization header', {
-					path,
-					request: getRequestLogData(c, Date.now()),
-				})
-			return c.json({ error: 'Authorization required' }, 401)
-		}
-
-		const token = authorization.substring(7)
-
-		// Check if this looks like a proxy token (64 hex chars)
-		if (token.length !== 64 || !/^[0-9a-f]+$/i.test(token)) {
-			logger
-				.withTags({
-					type: 'invalid_token_format',
-				})
-				.warn('Invalid proxy token format', {
-					path,
-					request: getRequestLogData(c, Date.now()),
-				})
-			return c.json({ error: 'Invalid proxy token format' }, 401)
-		}
-
-		const proxyToken = token
-
-		// Look up the real access token
-		let accessToken: string
-		let characterId: number
-		let characterName: string
-
-		try {
-			const id = c.env.USER_TOKEN_STORE.idFromName('global')
-			const stub = c.env.USER_TOKEN_STORE.get(id)
-
-			const lookupRequest: TokenStoreRequest = {
-				action: 'findByProxyToken',
-				proxyToken,
-			}
-
-			const lookupResponse = await stub.fetch('http://do/lookup', {
-				method: 'POST',
-				body: JSON.stringify(lookupRequest),
+	// Extract and validate proxy token - REQUIRED for all requests
+	const authorization = c.req.header('Authorization')
+	if (!authorization || !authorization.startsWith('Bearer ')) {
+		logger
+			.withTags({
+				type: 'missing_authorization',
 			})
+			.warn('Request without authorization header', {
+				path,
+				request: getRequestLogData(c, Date.now()),
+			})
+		return c.json({ error: 'Authorization required' }, 401)
+	}
 
-			const lookupData = (await lookupResponse.json()) as TokenStoreResponse
+	const token = authorization.substring(7)
 
-			if (
-				!lookupData.success ||
-				!lookupData.data ||
-				!lookupData.data.accessToken ||
-				!lookupData.data.characterId ||
-				!lookupData.data.characterName
-			) {
-				// Invalid proxy token
-				logger
-					.withTags({
-						type: 'invalid_proxy_token',
-					})
-					.warn('Invalid proxy token provided', {
-						path,
-						request: getRequestLogData(c, Date.now()),
-					})
-				return c.json({ error: 'Invalid proxy token' }, 401)
-			}
+	// Check if this looks like a proxy token (64 hex chars)
+	if (token.length !== 64 || !/^[0-9a-f]+$/i.test(token)) {
+		logger
+			.withTags({
+				type: 'invalid_token_format',
+			})
+			.warn('Invalid proxy token format', {
+				path,
+				request: getRequestLogData(c, Date.now()),
+			})
+		return c.json({ error: 'Invalid proxy token format' }, 401)
+	}
 
-			accessToken = lookupData.data.accessToken
-			characterId = lookupData.data.characterId
-			characterName = lookupData.data.characterName
-		} catch (error) {
+	const proxyToken = token
+
+	// Look up the real access token
+	let accessToken: string
+	let characterId: number
+	let characterName: string
+
+	try {
+		const id = c.env.USER_TOKEN_STORE.idFromName('global')
+		const stub = c.env.USER_TOKEN_STORE.get(id)
+
+		const lookupData = await stub.findByProxyToken(proxyToken)
+
+		accessToken = lookupData.accessToken
+		characterId = lookupData.characterId
+		characterName = lookupData.characterName
+	} catch (error) {
+		// Check if it's a "Token not found" error
+		if (error instanceof Error && error.message === 'Token not found') {
 			logger
 				.withTags({
-					type: 'proxy_token_lookup_error',
+					type: 'invalid_proxy_token',
 				})
-				.error('Error looking up proxy token', {
-					error: String(error),
+				.warn('Invalid proxy token provided', {
 					path,
 					request: getRequestLogData(c, Date.now()),
 				})
-			return c.json({ error: 'Error verifying proxy token' }, 500)
+			return c.json({ error: 'Invalid proxy token' }, 401)
 		}
 
-		// Generate cache key - always includes proxy token for security
-		const acceptLanguage = c.req.header('Accept-Language') || 'en'
-		const cacheKey = `esi:${method}:${path}:${querystring}:${acceptLanguage}:${proxyToken}`
+		logger
+			.withTags({
+				type: 'proxy_token_lookup_error',
+			})
+			.error('Error looking up proxy token', {
+				error: String(error),
+				path,
+				request: getRequestLogData(c, Date.now()),
+			})
+		return c.json({ error: 'Error verifying proxy token' }, 500)
+	}
 
-		// Try cache for cacheable requests
-		if (cacheable) {
-			const cached = await c.env.ESI_CACHE.get(cacheKey, { type: 'json' })
-			if (cached) {
-				logger
-					.withTags({
-						type: 'esi_cache_hit',
-						path,
-						character_id: characterId,
-					})
-					.info('ESI cache hit', {
-						cacheKey: cacheKey.replace(proxyToken, proxyToken.substring(0, 8) + '...'),
-						characterId,
-						characterName,
-						request: getRequestLogData(c, Date.now()),
-					})
+	// Generate cache key - always includes proxy token for security
+	const acceptLanguage = c.req.header('Accept-Language') || 'en'
+	const cacheKey = `esi:${method}:${path}:${querystring}:${acceptLanguage}:${proxyToken}`
 
-				const {
-					body,
-					headers: cachedHeaders,
-					status,
-				} = cached as {
-					body: string
-					headers: Record<string, string>
-					status: number
-				}
-
-				// Reconstruct response from cache
-				const response = new Response(body, {
-					status,
-					headers: new Headers(cachedHeaders),
-				})
-				response.headers.set('X-Cache', 'HIT')
-				return response
-			}
-
+	// Try cache for cacheable requests
+	if (cacheable) {
+		const cached = await c.env.ESI_CACHE.get(cacheKey, { type: 'json' })
+		if (cached) {
 			logger
 				.withTags({
-					type: 'esi_cache_miss',
+					type: 'esi_cache_hit',
 					path,
 					character_id: characterId,
 				})
-				.info('ESI cache miss', {
+				.info('ESI cache hit', {
 					cacheKey: cacheKey.replace(proxyToken, proxyToken.substring(0, 8) + '...'),
 					characterId,
 					characterName,
 					request: getRequestLogData(c, Date.now()),
 				})
-		}
 
-		// Build ESI request
-		const esiUrl = `https://esi.evetech.net${path}${querystring}`
-		const esiHeaders = new Headers()
-
-		// Add required ESI headers
-		esiHeaders.set('X-Compatibility-Date', '2025-09-30')
-
-		// Forward Accept-Language if present
-		if (acceptLanguage) {
-			esiHeaders.set('Accept-Language', acceptLanguage)
-		}
-
-		// Forward conditional request headers
-		const ifNoneMatch = c.req.header('If-None-Match')
-		if (ifNoneMatch) {
-			esiHeaders.set('If-None-Match', ifNoneMatch)
-		}
-
-		const ifModifiedSince = c.req.header('If-Modified-Since')
-		if (ifModifiedSince) {
-			esiHeaders.set('If-Modified-Since', ifModifiedSince)
-		}
-
-		// Use the real access token for ESI
-		esiHeaders.set('Authorization', `Bearer ${accessToken}`)
-
-		logger
-			.withTags({
-				type: 'proxy_token_used',
-				character_id: characterId,
-			})
-			.info('Using proxy token for authenticated request', {
-				characterId,
-				characterName,
-				path,
-				request: getRequestLogData(c, Date.now()),
-			})
-
-		// Forward User-Agent
-		const userAgent = c.req.header('User-Agent')
-		if (userAgent) {
-			esiHeaders.set('User-Agent', userAgent)
-		}
-
-		// Proxy request to ESI
-		let esiResponse: Response
-		try {
-			esiResponse = await fetch(esiUrl, {
-				method,
-				headers: esiHeaders,
-				body: method !== 'GET' && method !== 'HEAD' ? await c.req.raw.clone().text() : undefined,
-			})
-		} catch (error) {
-			logger
-				.withTags({
-					type: 'esi_proxy_error',
-					path,
-				})
-				.error('ESI proxy error', {
-					error: String(error),
-					esiUrl,
-					request: getRequestLogData(c, Date.now()),
-				})
-			return c.json({ error: 'Failed to proxy request to ESI' }, 502)
-		}
-
-		// Log ESI response
-		logger
-			.withTags({
-				type: 'esi_response',
-				path,
-				status: esiResponse.status,
-			})
-			.info('ESI response', {
-				status: esiResponse.status,
-				esiUrl,
-				request: getRequestLogData(c, Date.now()),
-			})
-
-		// Cache successful GET responses
-		if (cacheable && esiResponse.ok) {
-			const responseBody = await esiResponse.text()
-
-			// Calculate TTL from Cache-Control header
-			let ttl = 300 // Default 5 minutes
-			const cacheControl = esiResponse.headers.get('Cache-Control')
-			if (cacheControl) {
-				const maxAgeMatch = cacheControl.match(/max-age=(\d+)/)
-				if (maxAgeMatch) {
-					ttl = parseInt(maxAgeMatch[1], 10)
-				}
+			const {
+				body,
+				headers: cachedHeaders,
+				status,
+			} = cached as {
+				body: string
+				headers: Record<string, string>
+				status: number
 			}
 
-			// Store in KV with TTL
-			const cacheData = {
-				body: responseBody,
-				headers: Object.fromEntries(esiResponse.headers.entries()),
-				status: esiResponse.status,
-			}
-
-			try {
-				await c.env.ESI_CACHE.put(cacheKey, JSON.stringify(cacheData), {
-					expirationTtl: ttl,
-				})
-
-				logger
-					.withTags({
-						type: 'esi_cache_write',
-						path,
-					})
-					.info('ESI cache write', {
-						cacheKey,
-						ttl,
-						request: getRequestLogData(c, Date.now()),
-					})
-			} catch (error) {
-				logger
-					.withTags({
-						type: 'esi_cache_write_error',
-						path,
-					})
-					.error('ESI cache write error', {
-						error: String(error),
-						cacheKey,
-						request: getRequestLogData(c, Date.now()),
-					})
-			}
-
-			// Return response with cache miss header
-			const response = new Response(responseBody, {
-				status: esiResponse.status,
-				headers: esiResponse.headers,
+			// Reconstruct response from cache
+			const response = new Response(body, {
+				status,
+				headers: new Headers(cachedHeaders),
 			})
-			response.headers.set('X-Cache', 'MISS')
+			response.headers.set('X-Cache', 'HIT')
 			return response
 		}
 
-		// For non-cacheable requests or errors, just return the response
-		const response = new Response(esiResponse.body, {
+		logger
+			.withTags({
+				type: 'esi_cache_miss',
+				path,
+				character_id: characterId,
+			})
+			.info('ESI cache miss', {
+				cacheKey: cacheKey.replace(proxyToken, proxyToken.substring(0, 8) + '...'),
+				characterId,
+				characterName,
+				request: getRequestLogData(c, Date.now()),
+			})
+	}
+
+	// Build ESI request
+	const esiUrl = `https://esi.evetech.net${path}${querystring}`
+	const esiHeaders = new Headers()
+
+	// Add required ESI headers
+	esiHeaders.set('X-Compatibility-Date', '2025-09-30')
+
+	// Forward Accept-Language if present
+	if (acceptLanguage) {
+		esiHeaders.set('Accept-Language', acceptLanguage)
+	}
+
+	// Forward conditional request headers
+	const ifNoneMatch = c.req.header('If-None-Match')
+	if (ifNoneMatch) {
+		esiHeaders.set('If-None-Match', ifNoneMatch)
+	}
+
+	const ifModifiedSince = c.req.header('If-Modified-Since')
+	if (ifModifiedSince) {
+		esiHeaders.set('If-Modified-Since', ifModifiedSince)
+	}
+
+	// Use the real access token for ESI
+	esiHeaders.set('Authorization', `Bearer ${accessToken}`)
+
+	logger
+		.withTags({
+			type: 'proxy_token_used',
+			character_id: characterId,
+		})
+		.info('Using proxy token for authenticated request', {
+			characterId,
+			characterName,
+			path,
+			request: getRequestLogData(c, Date.now()),
+		})
+
+	// Forward User-Agent
+	const userAgent = c.req.header('User-Agent')
+	if (userAgent) {
+		esiHeaders.set('User-Agent', userAgent)
+	}
+
+	// Proxy request to ESI
+	let esiResponse: Response
+	try {
+		esiResponse = await fetch(esiUrl, {
+			method,
+			headers: esiHeaders,
+			body: method !== 'GET' && method !== 'HEAD' ? await c.req.raw.clone().text() : undefined,
+		})
+	} catch (error) {
+		logger
+			.withTags({
+				type: 'esi_proxy_error',
+				path,
+			})
+			.error('ESI proxy error', {
+				error: String(error),
+				esiUrl,
+				request: getRequestLogData(c, Date.now()),
+			})
+		return c.json({ error: 'Failed to proxy request to ESI' }, 502)
+	}
+
+	// Log ESI response
+	logger
+		.withTags({
+			type: 'esi_response',
+			path,
+			status: esiResponse.status,
+		})
+		.info('ESI response', {
+			status: esiResponse.status,
+			esiUrl,
+			request: getRequestLogData(c, Date.now()),
+		})
+
+	// Cache successful GET responses
+	if (cacheable && esiResponse.ok) {
+		const responseBody = await esiResponse.text()
+
+		// Calculate TTL from Cache-Control header
+		let ttl = 300 // Default 5 minutes
+		const cacheControl = esiResponse.headers.get('Cache-Control')
+		if (cacheControl) {
+			const maxAgeMatch = cacheControl.match(/max-age=(\d+)/)
+			if (maxAgeMatch) {
+				ttl = parseInt(maxAgeMatch[1], 10)
+			}
+		}
+
+		// Store in KV with TTL
+		const cacheData = {
+			body: responseBody,
+			headers: Object.fromEntries(esiResponse.headers.entries()),
+			status: esiResponse.status,
+		}
+
+		try {
+			await c.env.ESI_CACHE.put(cacheKey, JSON.stringify(cacheData), {
+				expirationTtl: ttl,
+			})
+
+			logger
+				.withTags({
+					type: 'esi_cache_write',
+					path,
+				})
+				.info('ESI cache write', {
+					cacheKey,
+					ttl,
+					request: getRequestLogData(c, Date.now()),
+				})
+		} catch (error) {
+			logger
+				.withTags({
+					type: 'esi_cache_write_error',
+					path,
+				})
+				.error('ESI cache write error', {
+					error: String(error),
+					cacheKey,
+					request: getRequestLogData(c, Date.now()),
+				})
+		}
+
+		// Return response with cache miss header
+		const response = new Response(responseBody, {
 			status: esiResponse.status,
 			headers: esiResponse.headers,
 		})
-		response.headers.set('X-Cache', 'BYPASS')
+		response.headers.set('X-Cache', 'MISS')
 		return response
 	}
-)
+
+	// For non-cacheable requests or errors, just return the response
+	const response = new Response(esiResponse.body, {
+		status: esiResponse.status,
+		headers: esiResponse.headers,
+	})
+	response.headers.set('X-Cache', 'BYPASS')
+	return response
+})
 
 // Mount ESI proxy router (must be last to avoid catching other routes)
 app.route('/', esiProxyRouter)

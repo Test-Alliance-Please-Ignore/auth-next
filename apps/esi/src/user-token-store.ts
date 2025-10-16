@@ -16,110 +16,47 @@ export interface TokenData extends Record<string, number | string> {
 	updated_at: number
 }
 
-export interface TokenStoreRequest {
-	action:
-		| 'storeTokens'
-		| 'getAccessToken'
-		| 'revokeToken'
-		| 'getTokenInfo'
-		| 'findByProxyToken'
-		| 'listAllTokens'
-		| 'getProxyToken'
-		| 'deleteByProxyToken'
-		| 'getStats'
-	characterId?: number
-	characterName?: string
-	accessToken?: string
-	refreshToken?: string
-	expiresIn?: number
-	scopes?: string
-	proxyToken?: string
-	limit?: number
-	offset?: number
+export interface TokenInfo {
+	proxyToken: string
+	characterId: number
+	characterName: string
+	scopes: string
+	expiresAt: number
+	createdAt?: number
+	updatedAt?: number
 }
 
-export interface TokenStoreResponse {
-	success: boolean
-	error?: string
-	data?: {
-		proxyToken?: string
-		accessToken?: string
-		characterId?: number
-		characterName?: string
-		scopes?: string
-		expiresAt?: number
-		createdAt?: number
-		updatedAt?: number
-		total?: number
-		limit?: number
-		offset?: number
-		results?: Array<{
-			characterId: number
-			characterName: string
-			scopes: string
-			expiresAt: number
-			createdAt: number
-			updatedAt: number
-		}>
-		stats?: {
-			totalCount: number
-			expiredCount: number
-			activeCount: number
-		}
-	}
+export interface AccessTokenInfo {
+	accessToken: string
+	characterId: number
+	characterName: string
+	scopes: string
+	expiresAt: number
+}
+
+export interface TokenListResult {
+	total: number
+	limit: number
+	offset: number
+	results: Array<{
+		characterId: number
+		characterName: string
+		scopes: string
+		expiresAt: number
+		createdAt: number
+		updatedAt: number
+	}>
+}
+
+export interface TokenStats {
+	totalCount: number
+	expiredCount: number
+	activeCount: number
 }
 
 export class UserTokenStore extends DurableObject<Env> {
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env)
-	}
-
-	async fetch(request: Request): Promise<Response> {
-		try {
-			const body = (await request.json()) as TokenStoreRequest
-
-			switch (body.action) {
-				case 'storeTokens':
-					return await this.storeTokens(
-						body.characterId!,
-						body.characterName!,
-						body.accessToken!,
-						body.refreshToken!,
-						body.expiresIn!,
-						body.scopes!
-					)
-
-				case 'getAccessToken':
-					return await this.getAccessToken(body.characterId!)
-
-				case 'findByProxyToken':
-					return await this.findByProxyToken(body.proxyToken!)
-
-				case 'revokeToken':
-					return await this.revokeToken(body.characterId!)
-
-				case 'getTokenInfo':
-					return await this.getTokenInfo(body.characterId!)
-
-				case 'listAllTokens':
-					return await this.listAllTokens(body.limit, body.offset)
-
-				case 'getProxyToken':
-					return await this.getProxyToken(body.characterId!)
-
-				case 'deleteByProxyToken':
-					return await this.deleteByProxyToken(body.proxyToken!)
-
-				case 'getStats':
-					return await this.getStats()
-
-				default:
-					return Response.json({ success: false, error: 'Unknown action' }, { status: 400 })
-			}
-		} catch (error) {
-			logger.error('UserTokenStore fetch error', { error: String(error) })
-			return Response.json({ success: false, error: String(error) }, { status: 500 })
-		}
 	}
 
 	private async ensureSchema() {
@@ -149,14 +86,14 @@ export class UserTokenStore extends DurableObject<Env> {
 		return Array.from(array, (byte) => byte.toString(16).padStart(2, '0')).join('')
 	}
 
-	private async storeTokens(
+	async storeTokens(
 		characterId: number,
 		characterName: string,
 		accessToken: string,
 		refreshToken: string,
 		expiresIn: number,
 		scopes: string
-	): Promise<Response> {
+	): Promise<TokenInfo> {
 		await this.ensureSchema()
 
 		const now = Date.now()
@@ -218,19 +155,16 @@ export class UserTokenStore extends DurableObject<Env> {
 				expiresAt: new Date(expiresAt).toISOString(),
 			})
 
-		return Response.json({
-			success: true,
-			data: {
-				proxyToken,
-				characterId,
-				characterName,
-				scopes,
-				expiresAt,
-			},
-		})
+		return {
+			proxyToken,
+			characterId,
+			characterName,
+			scopes,
+			expiresAt,
+		}
 	}
 
-	private async getAccessToken(characterId: number): Promise<Response> {
+	async getAccessToken(characterId: number): Promise<AccessTokenInfo> {
 		await this.ensureSchema()
 
 		const rows = await this.ctx.storage.sql
@@ -238,7 +172,7 @@ export class UserTokenStore extends DurableObject<Env> {
 			.toArray()
 
 		if (rows.length === 0) {
-			return Response.json({ success: false, error: 'Token not found' }, { status: 404 })
+			throw new Error('Token not found')
 		}
 
 		const token = rows[0]
@@ -248,33 +182,27 @@ export class UserTokenStore extends DurableObject<Env> {
 			// Token is expired or about to expire, refresh it
 			const refreshed = await this.refreshAccessToken(token)
 			if (refreshed.success && refreshed.data) {
-				return Response.json({
-					success: true,
-					data: {
-						accessToken: refreshed.data.accessToken,
-						characterId: token.character_id,
-						characterName: token.character_name,
-						scopes: token.scopes,
-						expiresAt: refreshed.data.expiresAt,
-					},
-				})
+				return {
+					accessToken: refreshed.data.accessToken,
+					characterId: token.character_id,
+					characterName: token.character_name,
+					scopes: token.scopes,
+					expiresAt: refreshed.data.expiresAt,
+				}
 			}
 			// If refresh failed, return the existing token anyway
 		}
 
-		return Response.json({
-			success: true,
-			data: {
-				accessToken: token.access_token,
-				characterId: token.character_id,
-				characterName: token.character_name,
-				scopes: token.scopes,
-				expiresAt: token.expires_at,
-			},
-		})
+		return {
+			accessToken: token.access_token,
+			characterId: token.character_id,
+			characterName: token.character_name,
+			scopes: token.scopes,
+			expiresAt: token.expires_at,
+		}
 	}
 
-	private async findByProxyToken(proxyToken: string): Promise<Response> {
+	async findByProxyToken(proxyToken: string): Promise<AccessTokenInfo> {
 		await this.ensureSchema()
 
 		const rows = await this.ctx.storage.sql
@@ -282,7 +210,7 @@ export class UserTokenStore extends DurableObject<Env> {
 			.toArray()
 
 		if (rows.length === 0) {
-			return Response.json({ success: false, error: 'Token not found' }, { status: 404 })
+			throw new Error('Token not found')
 		}
 
 		const token = rows[0]
@@ -292,29 +220,23 @@ export class UserTokenStore extends DurableObject<Env> {
 			// Token is expired or about to expire, refresh it
 			const refreshed = await this.refreshAccessToken(token)
 			if (refreshed.success && refreshed.data) {
-				return Response.json({
-					success: true,
-					data: {
-						accessToken: refreshed.data.accessToken,
-						characterId: token.character_id,
-						characterName: token.character_name,
-						scopes: token.scopes,
-						expiresAt: refreshed.data.expiresAt,
-					},
-				})
+				return {
+					accessToken: refreshed.data.accessToken,
+					characterId: token.character_id,
+					characterName: token.character_name,
+					scopes: token.scopes,
+					expiresAt: refreshed.data.expiresAt,
+				}
 			}
 		}
 
-		return Response.json({
-			success: true,
-			data: {
-				accessToken: token.access_token,
-				characterId: token.character_id,
-				characterName: token.character_name,
-				scopes: token.scopes,
-				expiresAt: token.expires_at,
-			},
-		})
+		return {
+			accessToken: token.access_token,
+			characterId: token.character_id,
+			characterName: token.character_name,
+			scopes: token.scopes,
+			expiresAt: token.expires_at,
+		}
 	}
 
 	private async refreshAccessToken(
@@ -411,7 +333,7 @@ export class UserTokenStore extends DurableObject<Env> {
 		}
 	}
 
-	private async revokeToken(characterId: number): Promise<Response> {
+	async revokeToken(characterId: number): Promise<void> {
 		await this.ensureSchema()
 
 		await this.ctx.storage.sql.exec(`DELETE FROM tokens WHERE character_id = ?`, characterId)
@@ -422,11 +344,9 @@ export class UserTokenStore extends DurableObject<Env> {
 				character_id: characterId,
 			})
 			.info('Token revoked', { characterId })
-
-		return Response.json({ success: true })
 	}
 
-	private async getTokenInfo(characterId: number): Promise<Response> {
+	async getTokenInfo(characterId: number): Promise<Omit<AccessTokenInfo, 'accessToken'>> {
 		await this.ensureSchema()
 
 		const rows = await this.ctx.storage.sql
@@ -438,23 +358,20 @@ export class UserTokenStore extends DurableObject<Env> {
 			.toArray()
 
 		if (rows.length === 0) {
-			return Response.json({ success: false, error: 'Token not found' }, { status: 404 })
+			throw new Error('Token not found')
 		}
 
 		const token = rows[0]
 
-		return Response.json({
-			success: true,
-			data: {
-				characterId: token.character_id,
-				characterName: token.character_name,
-				scopes: token.scopes,
-				expiresAt: token.expires_at,
-			},
-		})
+		return {
+			characterId: token.character_id,
+			characterName: token.character_name,
+			scopes: token.scopes,
+			expiresAt: token.expires_at,
+		}
 	}
 
-	private async listAllTokens(limit?: number, offset?: number): Promise<Response> {
+	async listAllTokens(limit?: number, offset?: number): Promise<TokenListResult> {
 		await this.ensureSchema()
 
 		const parsedLimit = Math.min(limit || 50, 100)
@@ -478,25 +395,22 @@ export class UserTokenStore extends DurableObject<Env> {
 			)
 			.toArray()
 
-		return Response.json({
-			success: true,
-			data: {
-				total,
-				limit: parsedLimit,
-				offset: parsedOffset,
-				results: rows.map((token) => ({
-					characterId: token.character_id,
-					characterName: token.character_name,
-					scopes: token.scopes,
-					expiresAt: token.expires_at,
-					createdAt: token.created_at,
-					updatedAt: token.updated_at,
-				})),
-			},
-		})
+		return {
+			total,
+			limit: parsedLimit,
+			offset: parsedOffset,
+			results: rows.map((token) => ({
+				characterId: token.character_id,
+				characterName: token.character_name,
+				scopes: token.scopes,
+				expiresAt: token.expires_at,
+				createdAt: token.created_at,
+				updatedAt: token.updated_at,
+			})),
+		}
 	}
 
-	private async getProxyToken(characterId: number): Promise<Response> {
+	async getProxyToken(characterId: number): Promise<TokenInfo> {
 		await this.ensureSchema()
 
 		const rows = await this.ctx.storage.sql
@@ -508,26 +422,23 @@ export class UserTokenStore extends DurableObject<Env> {
 			.toArray()
 
 		if (rows.length === 0) {
-			return Response.json({ success: false, error: 'Token not found' }, { status: 404 })
+			throw new Error('Token not found')
 		}
 
 		const token = rows[0]
 
-		return Response.json({
-			success: true,
-			data: {
-				characterId: token.character_id,
-				characterName: token.character_name,
-				proxyToken: token.proxy_token,
-				scopes: token.scopes,
-				expiresAt: token.expires_at,
-				createdAt: token.created_at,
-				updatedAt: token.updated_at,
-			},
-		})
+		return {
+			characterId: token.character_id,
+			characterName: token.character_name,
+			proxyToken: token.proxy_token,
+			scopes: token.scopes,
+			expiresAt: token.expires_at,
+			createdAt: token.created_at,
+			updatedAt: token.updated_at,
+		}
 	}
 
-	private async deleteByProxyToken(proxyToken: string): Promise<Response> {
+	async deleteByProxyToken(proxyToken: string): Promise<void> {
 		await this.ensureSchema()
 
 		// First check if the token exists
@@ -536,7 +447,7 @@ export class UserTokenStore extends DurableObject<Env> {
 			.toArray()
 
 		if (rows.length === 0) {
-			return Response.json({ success: false, error: 'Token not found' }, { status: 404 })
+			throw new Error('Token not found')
 		}
 
 		const characterId = rows[0].character_id
@@ -550,11 +461,9 @@ export class UserTokenStore extends DurableObject<Env> {
 				character_id: characterId,
 			})
 			.info('Token deleted by proxy token', { characterId, proxyToken: proxyToken.substring(0, 8) })
-
-		return Response.json({ success: true })
 	}
 
-	private async getStats(): Promise<Response> {
+	async getStats(): Promise<TokenStats> {
 		await this.ensureSchema()
 
 		const now = Date.now()
@@ -573,15 +482,10 @@ export class UserTokenStore extends DurableObject<Env> {
 
 		const activeCount = totalCount - expiredCount
 
-		return Response.json({
-			success: true,
-			data: {
-				stats: {
-					totalCount,
-					expiredCount,
-					activeCount,
-				},
-			},
-		})
+		return {
+			totalCount,
+			expiredCount,
+			activeCount,
+		}
 	}
 }

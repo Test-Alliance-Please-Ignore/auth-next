@@ -1,5 +1,6 @@
-import type { Context, MiddlewareHandler } from 'hono'
 import { WorkersLogger } from 'workers-tagged-logger'
+
+import type { Context, MiddlewareHandler } from 'hono'
 
 const logger = new WorkersLogger()
 

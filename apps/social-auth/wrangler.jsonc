@@ -1,0 +1,37 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "social-auth",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-04-28",
+	"compatibility_flags": ["nodejs_compat"],
+	"routes": ["pleaseignore.app/auth/social", "pleaseignore.app/auth/social/*"],
+	"logpush": true,
+	"observability": {
+		"enabled": true
+	},
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "USER_SESSION_STORE",
+				"class_name": "SessionStore"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["SessionStore"]
+		}
+	],
+	"vars": {
+		// "ENVIRONMENT": "development", // overridden during deployment
+		"SENTRY_RELEASE": "unknown" // overridden during deployment
+		// "GOOGLE_CLIENT_ID": "placeholder-set-in-production",
+		// "GOOGLE_CLIENT_SECRET": "placeholder-set-in-production",
+		// "GOOGLE_CALLBACK_URL": "https://pleaseignore.app/auth/social/callback/google",
+		// "TEST_AUTH_OIDC_ISSUER": "placeholder-set-in-production",
+		// "TEST_AUTH_CLIENT_ID": "placeholder-set-in-production",
+		// "TEST_AUTH_CLIENT_SECRET": "placeholder-set-in-production",
+		// "TEST_AUTH_CALLBACK_URL": "https://pleaseignore.app/auth/social/claim/callback"
+	}
+}

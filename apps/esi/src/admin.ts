@@ -4,7 +4,6 @@ import { getRequestLogData, logger } from '@repo/hono-helpers'
 import { withStaticAuth } from '@repo/static-auth'
 
 import type { App } from './context'
-import type { TokenStoreRequest, TokenStoreResponse } from './user-token-store'
 
 /**
  * Admin API router for managing user tokens
@@ -24,35 +23,29 @@ export const adminRouter = new Hono<App>()
 		const limit = parseInt(c.req.query('limit') || '50', 10)
 		const offset = parseInt(c.req.query('offset') || '0', 10)
 
-		// Use a global DO instance for listing all tokens
-		const id = c.env.USER_TOKEN_STORE.idFromName('global')
-		const stub = c.env.USER_TOKEN_STORE.get(id)
+		try {
+			// Use a global DO instance for listing all tokens
+			const id = c.env.USER_TOKEN_STORE.idFromName('global')
+			const stub = c.env.USER_TOKEN_STORE.get(id)
 
-		const request: TokenStoreRequest = {
-			action: 'listAllTokens',
-			limit,
-			offset,
+			const result = await stub.listAllTokens(limit, offset)
+
+			logger
+				.withTags({
+					type: 'admin_list_tokens',
+				})
+				.info('Admin listed tokens', {
+					limit,
+					offset,
+					total: result.total,
+					request: getRequestLogData(c, Date.now()),
+				})
+
+			return c.json({ success: true, data: result })
+		} catch (error) {
+			logger.error('Admin list tokens error', { error: String(error) })
+			return c.json({ success: false, error: String(error) }, 500)
 		}
-
-		const response = await stub.fetch('http://do/admin', {
-			method: 'POST',
-			body: JSON.stringify(request),
-		})
-
-		const data = (await response.json()) as TokenStoreResponse
-
-		logger
-			.withTags({
-				type: 'admin_list_tokens',
-			})
-			.info('Admin listed tokens', {
-				limit,
-				offset,
-				total: data.data?.total,
-				request: getRequestLogData(c, Date.now()),
-			})
-
-		return c.json(data, response.status as 200 | 500)
 	})
 
 	// Get specific character token info with proxy token
@@ -63,33 +56,29 @@ export const adminRouter = new Hono<App>()
 			return c.json({ error: 'Invalid character ID' }, 400)
 		}
 
-		const id = c.env.USER_TOKEN_STORE.idFromName('global')
-		const stub = c.env.USER_TOKEN_STORE.get(id)
+		try {
+			const id = c.env.USER_TOKEN_STORE.idFromName('global')
+			const stub = c.env.USER_TOKEN_STORE.get(id)
 
-		const request: TokenStoreRequest = {
-			action: 'getProxyToken',
-			characterId,
+			const tokenInfo = await stub.getProxyToken(characterId)
+
+			logger
+				.withTags({
+					type: 'admin_get_token',
+					character_id: characterId,
+				})
+				.info('Admin retrieved character token', {
+					characterId,
+					success: true,
+					request: getRequestLogData(c, Date.now()),
+				})
+
+			return c.json({ success: true, data: tokenInfo })
+		} catch (error) {
+			const status = error instanceof Error && error.message === 'Token not found' ? 404 : 500
+			logger.error('Admin get token error', { error: String(error), characterId })
+			return c.json({ success: false, error: String(error) }, status)
 		}
-
-		const response = await stub.fetch('http://do/admin', {
-			method: 'POST',
-			body: JSON.stringify(request),
-		})
-
-		const data = (await response.json()) as TokenStoreResponse
-
-		logger
-			.withTags({
-				type: 'admin_get_token',
-				character_id: characterId,
-			})
-			.info('Admin retrieved character token', {
-				characterId,
-				success: data.success,
-				request: getRequestLogData(c, Date.now()),
-			})
-
-		return c.json(data, response.status as 200 | 404 | 500)
 	})
 
 	// Delete token by character ID
@@ -100,33 +89,28 @@ export const adminRouter = new Hono<App>()
 			return c.json({ error: 'Invalid character ID' }, 400)
 		}
 
-		const id = c.env.USER_TOKEN_STORE.idFromName('global')
-		const stub = c.env.USER_TOKEN_STORE.get(id)
+		try {
+			const id = c.env.USER_TOKEN_STORE.idFromName('global')
+			const stub = c.env.USER_TOKEN_STORE.get(id)
 
-		const request: TokenStoreRequest = {
-			action: 'revokeToken',
-			characterId,
+			await stub.revokeToken(characterId)
+
+			logger
+				.withTags({
+					type: 'admin_delete_token',
+					character_id: characterId,
+				})
+				.info('Admin deleted character token', {
+					characterId,
+					success: true,
+					request: getRequestLogData(c, Date.now()),
+				})
+
+			return c.json({ success: true })
+		} catch (error) {
+			logger.error('Admin delete token error', { error: String(error), characterId })
+			return c.json({ success: false, error: String(error) }, 500)
 		}
-
-		const response = await stub.fetch('http://do/admin', {
-			method: 'POST',
-			body: JSON.stringify(request),
-		})
-
-		const data = (await response.json()) as TokenStoreResponse
-
-		logger
-			.withTags({
-				type: 'admin_delete_token',
-				character_id: characterId,
-			})
-			.info('Admin deleted character token', {
-				characterId,
-				success: data.success,
-				request: getRequestLogData(c, Date.now()),
-			})
-
-		return c.json(data, response.status as 200 | 500)
 	})
 
 	// Delete token by proxy token
@@ -137,62 +121,54 @@ export const adminRouter = new Hono<App>()
 			return c.json({ error: 'Invalid proxy token format' }, 400)
 		}
 
-		// Use the global DO instance
-		const id = c.env.USER_TOKEN_STORE.idFromName('global')
-		const stub = c.env.USER_TOKEN_STORE.get(id)
+		try {
+			// Use the global DO instance
+			const id = c.env.USER_TOKEN_STORE.idFromName('global')
+			const stub = c.env.USER_TOKEN_STORE.get(id)
 
-		const request: TokenStoreRequest = {
-			action: 'deleteByProxyToken',
-			proxyToken,
+			await stub.deleteByProxyToken(proxyToken)
+
+			logger
+				.withTags({
+					type: 'admin_delete_token_by_proxy',
+				})
+				.info('Admin deleted token by proxy token', {
+					proxyToken: proxyToken.substring(0, 8),
+					success: true,
+					request: getRequestLogData(c, Date.now()),
+				})
+
+			return c.json({ success: true })
+		} catch (error) {
+			const status = error instanceof Error && error.message === 'Token not found' ? 404 : 500
+			logger.error('Admin delete token by proxy error', { error: String(error) })
+			return c.json({ success: false, error: String(error) }, status)
 		}
-
-		const response = await stub.fetch('http://do/admin', {
-			method: 'POST',
-			body: JSON.stringify(request),
-		})
-
-		const data = (await response.json()) as TokenStoreResponse
-
-		logger
-			.withTags({
-				type: 'admin_delete_token_by_proxy',
-			})
-			.info('Admin deleted token by proxy token', {
-				proxyToken: proxyToken.substring(0, 8),
-				success: data.success,
-				request: getRequestLogData(c, Date.now()),
-			})
-
-		return c.json(data, response.status as 200 | 404 | 500)
 	})
 
 	// Get statistics
 	.get('/stats', async (c) => {
-		// Use the global DO instance for stats
-		const id = c.env.USER_TOKEN_STORE.idFromName('global')
-		const stub = c.env.USER_TOKEN_STORE.get(id)
+		try {
+			// Use the global DO instance for stats
+			const id = c.env.USER_TOKEN_STORE.idFromName('global')
+			const stub = c.env.USER_TOKEN_STORE.get(id)
 
-		const request: TokenStoreRequest = {
-			action: 'getStats',
+			const stats = await stub.getStats()
+
+			logger
+				.withTags({
+					type: 'admin_get_stats',
+				})
+				.info('Admin retrieved statistics', {
+					stats,
+					request: getRequestLogData(c, Date.now()),
+				})
+
+			return c.json({ success: true, data: { stats } })
+		} catch (error) {
+			logger.error('Admin get stats error', { error: String(error) })
+			return c.json({ success: false, error: String(error) }, 500)
 		}
-
-		const response = await stub.fetch('http://do/admin', {
-			method: 'POST',
-			body: JSON.stringify(request),
-		})
-
-		const data = (await response.json()) as TokenStoreResponse
-
-		logger
-			.withTags({
-				type: 'admin_get_stats',
-			})
-			.info('Admin retrieved statistics', {
-				stats: data.data?.stats,
-				request: getRequestLogData(c, Date.now()),
-			})
-
-		return c.json(data, response.status as 200 | 500)
 	})
 
 	// Manually trigger token refresh
@@ -203,45 +179,37 @@ export const adminRouter = new Hono<App>()
 			return c.json({ error: 'Invalid character ID' }, 400)
 		}
 
-		const id = c.env.USER_TOKEN_STORE.idFromName('global')
-		const stub = c.env.USER_TOKEN_STORE.get(id)
+		try {
+			const id = c.env.USER_TOKEN_STORE.idFromName('global')
+			const stub = c.env.USER_TOKEN_STORE.get(id)
 
-		// Get the access token, which will trigger a refresh if needed
-		const request: TokenStoreRequest = {
-			action: 'getAccessToken',
-			characterId,
-		}
+			// Get the access token, which will trigger a refresh if needed
+			const tokenInfo = await stub.getAccessToken(characterId)
 
-		const response = await stub.fetch('http://do/admin', {
-			method: 'POST',
-			body: JSON.stringify(request),
-		})
+			logger
+				.withTags({
+					type: 'admin_refresh_token',
+					character_id: characterId,
+				})
+				.info('Admin triggered token refresh', {
+					characterId,
+					success: true,
+					request: getRequestLogData(c, Date.now()),
+				})
 
-		const data = (await response.json()) as TokenStoreResponse
-
-		logger
-			.withTags({
-				type: 'admin_refresh_token',
-				character_id: characterId,
-			})
-			.info('Admin triggered token refresh', {
-				characterId,
-				success: data.success,
-				request: getRequestLogData(c, Date.now()),
-			})
-
-		// Don't return the actual access token to admin
-		if (data.success && data.data) {
+			// Don't return the actual access token to admin
 			return c.json({
 				success: true,
 				data: {
-					characterId: data.data.characterId,
-					characterName: data.data.characterName,
-					expiresAt: data.data.expiresAt,
+					characterId: tokenInfo.characterId,
+					characterName: tokenInfo.characterName,
+					expiresAt: tokenInfo.expiresAt,
 					refreshed: true,
 				},
 			})
+		} catch (error) {
+			const status = error instanceof Error && error.message === 'Token not found' ? 404 : 500
+			logger.error('Admin refresh token error', { error: String(error), characterId })
+			return c.json({ success: false, error: String(error) }, status)
 		}
-
-		return c.json(data, response.status as 200 | 404 | 500)
 	})

@@ -1,15 +1,17 @@
 import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
 
-import type { UserTokenStore } from './user-token-store'
+import type { SessionStore } from './session-store'
 
 export type Env = SharedHonoEnv & {
-	ESI_CACHE: KVNamespace
-	USER_TOKEN_STORE: DurableObjectNamespace<UserTokenStore>
-	ESI_SSO_CLIENT_ID: string
-	ESI_SSO_CLIENT_SECRET: string
-	ESI_SSO_CALLBACK_URL: string
-	ADMIN_API_TOKENS: string
+	USER_SESSION_STORE: DurableObjectNamespace<SessionStore>
+	GOOGLE_CLIENT_ID: string
+	GOOGLE_CLIENT_SECRET: string
+	GOOGLE_CALLBACK_URL: string
+	TEST_AUTH_OIDC_ISSUER: string
+	TEST_AUTH_CLIENT_ID: string
+	TEST_AUTH_CLIENT_SECRET: string
+	TEST_AUTH_CALLBACK_URL: string
 }
 
 /** Variables can be extended */
