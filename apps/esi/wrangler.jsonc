@@ -4,7 +4,7 @@
 	"main": "src/index.ts",
 	"compatibility_date": "2025-04-28",
 	"compatibility_flags": ["nodejs_compat"],
-	"routes": ["pleaseignore.app/admin/*", "pleaseignore.app/auth/*", "pleaseignore.app/esi/*"],
+	"routes": ["pleaseignore.app/admin/*", "pleaseignore.app/esi/*"],
 	"logpush": false,
 	"observability": {
 		"enabled": false
@@ -36,6 +36,12 @@
 		{
 			"tag": "v3",
 			"new_sqlite_classes": ["UserTokenStore"]
+		}
+	],
+	"services": [
+		{
+			"binding": "SOCIAL_AUTH",
+			"service": "social-auth"
 		}
 	]
 }

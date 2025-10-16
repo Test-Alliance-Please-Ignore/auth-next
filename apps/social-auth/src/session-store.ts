@@ -109,9 +109,27 @@ export interface OIDCStateData extends Record<string, number | string> {
 	expires_at: number
 }
 
+export interface CharacterLinkData extends Record<string, number | string> {
+	link_id: string
+	social_user_id: string
+	character_id: number
+	character_name: string
+	linked_at: number
+	updated_at: number
+}
+
+export interface CharacterLink {
+	linkId: string
+	socialUserId: string
+	characterId: number
+	characterName: string
+	linkedAt: number
+	updatedAt: number
+}
+
 export class SessionStore extends DurableObject<Env> {
 	private schemaInitialized = false
-	private readonly CURRENT_SCHEMA_VERSION = 1
+	private readonly CURRENT_SCHEMA_VERSION = 2
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env)
@@ -163,11 +181,12 @@ export class SessionStore extends DurableObject<Env> {
 				logger.info('Applied migration 1: Initial schema')
 			}
 
-			// Add future migrations here:
-			// if (currentVersion < 2) {
-			//   await this.runMigration2()
-			//   await this.setSchemaVersion(2)
-			// }
+			// Migration 2: Add character_links table
+			if (currentVersion < 2) {
+				await this.runMigration2()
+				await this.setSchemaVersion(2)
+				logger.info('Applied migration 2: Character links')
+			}
 
 			this.schemaInitialized = true
 		} catch (error) {
@@ -295,6 +314,29 @@ export class SessionStore extends DurableObject<Env> {
 
 		await this.ctx.storage.sql.exec(`
 			CREATE INDEX IF NOT EXISTS idx_oidc_states_expires_at ON oidc_states(expires_at)
+		`)
+	}
+
+	private async runMigration2(): Promise<void> {
+		// Character links table - links social users to EVE characters
+		await this.ctx.storage.sql.exec(`
+			CREATE TABLE IF NOT EXISTS character_links (
+				link_id TEXT PRIMARY KEY,
+				social_user_id TEXT NOT NULL,
+				character_id INTEGER NOT NULL,
+				character_name TEXT NOT NULL,
+				linked_at INTEGER NOT NULL,
+				updated_at INTEGER NOT NULL,
+				UNIQUE(character_id)
+			)
+		`)
+
+		await this.ctx.storage.sql.exec(`
+			CREATE INDEX IF NOT EXISTS idx_character_links_social_user ON character_links(social_user_id)
+		`)
+
+		await this.ctx.storage.sql.exec(`
+			CREATE UNIQUE INDEX IF NOT EXISTS idx_character_links_character ON character_links(character_id)
 		`)
 	}
 
@@ -1104,6 +1146,136 @@ export class SessionStore extends DurableObject<Env> {
 				socialUserId: link.social_user_id.substring(0, 8) + '...',
 				legacySystem: link.legacy_system,
 				legacyUserId: link.legacy_user_id,
+			})
+	}
+
+	// ========== Character Link Management ==========
+
+	async createCharacterLink(
+		socialUserId: string,
+		characterId: number,
+		characterName: string
+	): Promise<CharacterLink> {
+		await this.ensureSchema()
+
+		// Check if this character is already linked to any social user
+		const existingCharacter = await this.ctx.storage.sql
+			.exec<CharacterLinkData>(
+				'SELECT * FROM character_links WHERE character_id = ?',
+				characterId
+			)
+			.toArray()
+
+		if (existingCharacter.length > 0) {
+			throw new Error('This character is already linked to another social account')
+		}
+
+		// Create new link
+		const linkId = this.generateLinkId()
+		const now = Date.now()
+
+		await this.ctx.storage.sql.exec(
+			`INSERT INTO character_links (
+				link_id, social_user_id, character_id, character_name, linked_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?)`,
+			linkId,
+			socialUserId,
+			characterId,
+			characterName,
+			now,
+			now
+		)
+
+		logger
+			.withTags({
+				type: 'character_link_created',
+			})
+			.info('Created character link', {
+				linkId,
+				socialUserId: socialUserId.substring(0, 8) + '...',
+				characterId,
+				characterName,
+			})
+
+		return {
+			linkId,
+			socialUserId,
+			characterId,
+			characterName,
+			linkedAt: now,
+			updatedAt: now,
+		}
+	}
+
+	async getCharacterLinksBySocialUser(socialUserId: string): Promise<CharacterLink[]> {
+		await this.ensureSchema()
+
+		const rows = await this.ctx.storage.sql
+			.exec<CharacterLinkData>(
+				'SELECT * FROM character_links WHERE social_user_id = ? ORDER BY linked_at DESC',
+				socialUserId
+			)
+			.toArray()
+
+		return rows.map((row) => ({
+			linkId: row.link_id,
+			socialUserId: row.social_user_id,
+			characterId: row.character_id,
+			characterName: row.character_name,
+			linkedAt: row.linked_at,
+			updatedAt: row.updated_at,
+		}))
+	}
+
+	async getCharacterLinkByCharacterId(characterId: number): Promise<CharacterLink | null> {
+		await this.ensureSchema()
+
+		const rows = await this.ctx.storage.sql
+			.exec<CharacterLinkData>(
+				'SELECT * FROM character_links WHERE character_id = ?',
+				characterId
+			)
+			.toArray()
+
+		if (rows.length === 0) {
+			return null
+		}
+
+		const row = rows[0]
+		return {
+			linkId: row.link_id,
+			socialUserId: row.social_user_id,
+			characterId: row.character_id,
+			characterName: row.character_name,
+			linkedAt: row.linked_at,
+			updatedAt: row.updated_at,
+		}
+	}
+
+	async deleteCharacterLink(characterId: number): Promise<void> {
+		await this.ensureSchema()
+
+		const rows = await this.ctx.storage.sql
+			.exec<CharacterLinkData>('SELECT * FROM character_links WHERE character_id = ?', characterId)
+			.toArray()
+
+		if (rows.length === 0) {
+			throw new Error('Character link not found')
+		}
+
+		const link = rows[0]
+
+		await this.ctx.storage.sql.exec('DELETE FROM character_links WHERE character_id = ?', characterId)
+
+		logger
+			.withTags({
+				type: 'character_link_deleted',
+			})
+			.info('Deleted character link', {
+				linkId: link.link_id,
+				socialUserId: link.social_user_id.substring(0, 8) + '...',
+				characterId: link.character_id,
+				characterName: link.character_name,
 			})
 	}
 }

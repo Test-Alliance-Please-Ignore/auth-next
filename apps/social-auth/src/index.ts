@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { getRequestLogData, logger, withNotFound, withOnError } from '@repo/hono-helpers'
@@ -9,7 +10,6 @@ import { OIDCClient } from './oidc-client'
 const GOOGLE_OAUTH_SCOPES = ['openid', 'email', 'profile']
 
 const app = new Hono<App>()
-	.basePath('/auth/social')
 	.use(
 		'*',
 		// middleware
@@ -147,7 +147,7 @@ const app = new Hono<App>()
 							</ul>
 						</div>
 
-						<a href="/auth/social/login/google" class="btn-google">
+						<a href="/login/google" class="btn-google">
 							<svg class="google-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
 								<path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
 								<path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -157,29 +157,27 @@ const app = new Hono<App>()
 							Sign in with Google
 						</a>
 
-						<a href="/auth/social/dashboard" class="btn-dashboard">
+						<a href="/dashboard" class="btn-dashboard">
 							Go to Dashboard
 						</a>
 					</div>
 
 					<script>
-						// Check if we have a session and redirect to dashboard
-						const sessionId = localStorage.getItem('sessionId');
-						if (sessionId && window.location.search.indexOf('force_login') === -1) {
-							// Verify session is still valid
-							fetch('/auth/social/session/verify', {
+						// Check if we have a session cookie and redirect to dashboard
+						if (window.location.search.indexOf('force_login') === -1) {
+							// Verify session is still valid (cookie sent automatically)
+							fetch('/api/session/verify', {
 								method: 'POST',
-								headers: { 'Content-Type': 'application/json' },
-								body: JSON.stringify({ sessionId })
+								credentials: 'same-origin'
 							})
 							.then(res => res.json())
 							.then(data => {
 								if (data.success) {
-									window.location.href = '/auth/social/dashboard';
+									window.location.href = '/dashboard';
 								}
 							})
 							.catch(() => {
-								// Invalid session, stay on login page
+								// Invalid session or no cookie, stay on login page
 							});
 						}
 					</script>
@@ -348,7 +346,7 @@ const app = new Hono<App>()
 
 						<div id="error" class="card" style="display: none;">
 							<div class="error"></div>
-							<a href="/auth/social" class="btn btn-primary">Back to Home</a>
+							<a href="/" class="btn btn-primary">Back to Home</a>
 						</div>
 
 						<div id="dashboard" style="display: none;">
@@ -361,7 +359,7 @@ const app = new Hono<App>()
 										<span id="maskIcon">🔒</span> <span id="maskText">Show Real Data</span>
 									</button>
 									<button onclick="logout()" class="btn btn-danger">Logout</button>
-									<a href="/auth/social" class="btn btn-secondary">Back to Home</a>
+									<a href="/" class="btn btn-secondary">Back to Home</a>
 								</div>
 							</div>
 
@@ -400,16 +398,17 @@ const app = new Hono<App>()
 								<h2>Legacy Account Link</h2>
 								<div id="linkStatus"></div>
 							</div>
+
+							<div class="card">
+								<h2>EVE Characters</h2>
+								<p class="subtitle" style="margin-bottom: 1rem;">Manage your linked EVE Online characters</p>
+								<div id="charactersStatus"></div>
+							</div>
 						</div>
 					</div>
 
 					<script>
-						const sessionId = localStorage.getItem('sessionId');
 						let maskingEnabled = localStorage.getItem('maskingEnabled') !== 'false'; // Default to true
-
-						if (!sessionId) {
-							window.location.href = '/auth/social';
-						}
 
 						// Masking utilities
 						function maskEmail(email) {
@@ -451,11 +450,10 @@ const app = new Hono<App>()
 
 						async function loadDashboard() {
 							try {
-								// Verify session
-								const sessionRes = await fetch('/auth/social/session/verify', {
+								// Verify session (cookie sent automatically)
+								const sessionRes = await fetch('/api/session/verify', {
 									method: 'POST',
-									headers: { 'Content-Type': 'application/json' },
-									body: JSON.stringify({ sessionId })
+									credentials: 'same-origin'
 								});
 
 								if (!sessionRes.ok) {
@@ -465,22 +463,33 @@ const app = new Hono<App>()
 								const sessionData = await sessionRes.json();
 								const session = sessionData.session;
 
-								// Get account links
-								const linksRes = await fetch('/auth/social/account/links', {
+								// Get account links (cookie sent automatically)
+								const linksRes = await fetch('/api/account/links', {
 									method: 'POST',
-									headers: { 'Content-Type': 'application/json' },
-									body: JSON.stringify({ sessionId })
+									credentials: 'same-origin'
 								});
 
 								const linksData = await linksRes.json();
 								const links = linksData.links || [];
+
+								// Get character links (cookie sent automatically)
+								const charactersRes = await fetch('/api/characters', {
+									method: 'GET',
+									credentials: 'same-origin'
+								});
+
+								console.log('Characters response status:', charactersRes.status);
+								const charactersData = await charactersRes.json();
+								console.log('Characters data:', charactersData);
+								const characters = charactersData.characters || [];
+								console.log('Characters array:', characters);
 
 								// Update UI with masking
 								document.getElementById('userName').textContent = maskName(session.name);
 								document.getElementById('provider').textContent = session.provider;
 								document.getElementById('email').textContent = maskEmail(session.email);
 								document.getElementById('name').textContent = maskName(session.name);
-								document.getElementById('sessionId').textContent = maskId(sessionId, 16);
+								document.getElementById('sessionId').textContent = 'Session active (HTTP-only cookie)';
 								document.getElementById('expiresAt').textContent = new Date(session.expiresAt).toLocaleString();
 
 								// Display link status
@@ -535,6 +544,37 @@ const app = new Hono<App>()
 									maskText.textContent = 'Hide Sensitive Data';
 								}
 
+								// Display characters
+								const charactersStatusDiv = document.getElementById('charactersStatus');
+								if (characters.length > 0) {
+									let charactersHTML = '';
+									characters.forEach(char => {
+										charactersHTML += \`
+											<div class="info-row">
+												<span class="info-label">\${char.characterName}</span>
+												<span class="info-value">ID: \${char.characterId}</span>
+											</div>
+										\`;
+									});
+									charactersHTML += \`
+										<div style="margin-top: 1.5rem;">
+											<a href="https://pleaseignore.app/esi/login" class="btn btn-primary">
+												Add Another Character
+											</a>
+										</div>
+									\`;
+									charactersStatusDiv.innerHTML = charactersHTML;
+								} else {
+									charactersStatusDiv.innerHTML = \`
+										<div class="empty-state">
+											<p>You haven't linked any EVE characters yet.</p>
+											<a href="https://pleaseignore.app/esi/login" class="btn btn-primary" style="margin-top: 1rem; display: inline-block;">
+												Add Your First Character
+											</a>
+										</div>
+									\`;
+								}
+
 								// Show dashboard
 								document.getElementById('loading').style.display = 'none';
 								document.getElementById('dashboard').style.display = 'block';
@@ -545,16 +585,17 @@ const app = new Hono<App>()
 								const errorDiv = document.getElementById('error');
 								errorDiv.style.display = 'block';
 								errorDiv.querySelector('.error').textContent = error.message || 'Failed to load dashboard';
-								localStorage.removeItem('sessionId');
+								// Session cookie is HTTP-only, so we can't remove it client-side
+								window.location.href = '/';
 							}
 						}
 
 						async function claimAccount() {
 							try {
-								const res = await fetch('/auth/social/claim/initiate', {
+								// Cookie sent automatically
+								const res = await fetch('/claim/initiate', {
 									method: 'POST',
-									headers: { 'Content-Type': 'application/json' },
-									body: JSON.stringify({ sessionId })
+									credentials: 'same-origin'
 								});
 
 								const data = await res.json();
@@ -569,29 +610,23 @@ const app = new Hono<App>()
 						}
 
 						function copySessionId() {
-							navigator.clipboard.writeText(sessionId);
-							const btn = event.target;
-							btn.textContent = 'Copied!';
-							setTimeout(() => {
-								btn.textContent = 'Copy';
-							}, 2000);
+							// Can't copy HTTP-only cookie value
+							alert('Session is stored in a secure HTTP-only cookie and cannot be copied.');
 						}
 
 						function logout() {
 							if (confirm('Are you sure you want to logout?')) {
-								fetch('/auth/social/session', {
+								// Cookie sent automatically and deleted by server
+								fetch('/api/session', {
 									method: 'DELETE',
-									headers: { 'Content-Type': 'application/json' },
-									body: JSON.stringify({ sessionId })
+									credentials: 'same-origin'
 								})
 								.then(() => {
-									localStorage.removeItem('sessionId');
-									window.location.href = '/auth/social';
+									window.location.href = '/';
 								})
 								.catch(error => {
 									console.error('Logout error:', error);
-									localStorage.removeItem('sessionId');
-									window.location.href = '/auth/social';
+									window.location.href = '/';
 								});
 							}
 						}
@@ -745,6 +780,17 @@ const app = new Hono<App>()
 				tokenData.expires_in
 			)
 
+			// Set HTTP-only cookie for session
+			const now = Date.now()
+			const maxAge = Math.floor((sessionInfo.expiresAt - now) / 1000) // Convert to seconds
+			setCookie(c, 'session_id', sessionInfo.sessionId, {
+				httpOnly: true,
+				secure: true,
+				sameSite: 'Lax',
+				path: '/',
+				maxAge,
+			})
+
 			logger
 				.withTags({
 					type: 'oauth_success',
@@ -823,9 +869,9 @@ const app = new Hono<App>()
 							const maskingEnabled = localStorage.getItem('maskingEnabled') !== 'false';
 							document.getElementById('userName').textContent = maskingEnabled ? maskName(userName) : userName;
 
-							localStorage.setItem('sessionId', '${sessionInfo.sessionId}');
+							// Session is now stored in HTTP-only cookie
 							setTimeout(() => {
-								window.location.href = '/auth/social/dashboard';
+								window.location.href = '/dashboard';
 							}, 1500);
 						</script>
 					</body>
@@ -846,23 +892,23 @@ const app = new Hono<App>()
 	})
 
 	// Verify session and get user info
-	.post('/session/verify', async (c) => {
-		const body = await c.req.json<{ sessionId: string }>()
-		const { sessionId } = body
+	.post('/api/session/verify', async (c) => {
+		const sessionId = getCookie(c, 'session_id')
 
 		if (!sessionId) {
-			return c.json({ error: 'Missing sessionId' }, 400)
+			return c.json({ error: 'Not authenticated' }, 401)
 		}
 
 		try {
 			const id = c.env.USER_SESSION_STORE.idFromName('global')
 			const stub = c.env.USER_SESSION_STORE.get(id)
 
-			const sessionInfo = await stub.getSession(sessionId)
+				const sessionInfo = await stub.getSession(sessionId)
 
 			return c.json({
 				success: true,
 				session: {
+					socialUserId: sessionInfo.socialUserId,
 					provider: sessionInfo.provider,
 					email: sessionInfo.email,
 					name: sessionInfo.name,
@@ -876,12 +922,11 @@ const app = new Hono<App>()
 	})
 
 	// Refresh session token
-	.post('/session/refresh', async (c) => {
-		const body = await c.req.json<{ sessionId: string }>()
-		const { sessionId } = body
+	.post('/api/session/refresh', async (c) => {
+		const sessionId = getCookie(c, 'session_id')
 
 		if (!sessionId) {
-			return c.json({ error: 'Missing sessionId' }, 400)
+			return c.json({ error: 'Not authenticated' }, 401)
 		}
 
 		try {
@@ -907,12 +952,11 @@ const app = new Hono<App>()
 	})
 
 	// Delete session (logout)
-	.delete('/session', async (c) => {
-		const body = await c.req.json<{ sessionId: string }>()
-		const { sessionId } = body
+	.delete('/api/session', async (c) => {
+		const sessionId = getCookie(c, 'session_id')
 
 		if (!sessionId) {
-			return c.json({ error: 'Missing sessionId' }, 400)
+			return c.json({ error: 'Not authenticated' }, 401)
 		}
 
 		try {
@@ -920,6 +964,9 @@ const app = new Hono<App>()
 			const stub = c.env.USER_SESSION_STORE.get(id)
 
 			await stub.deleteSession(sessionId)
+
+			// Delete the session cookie
+			deleteCookie(c, 'session_id')
 
 			return c.json({ success: true })
 		} catch (error) {
@@ -932,11 +979,10 @@ const app = new Hono<App>()
 
 	// Initiate account claim flow
 	.post('/claim/initiate', async (c) => {
-		const body = await c.req.json<{ sessionId: string }>()
-		const { sessionId } = body
+		const sessionId = getCookie(c, 'session_id')
 
 		if (!sessionId) {
-			return c.json({ error: 'Missing sessionId' }, 400)
+			return c.json({ error: 'Not authenticated' }, 401)
 		}
 
 		try {
@@ -1157,7 +1203,7 @@ const app = new Hono<App>()
 							document.getElementById('legacyUsername').textContent = maskingEnabled ? maskUsername(username) : username;
 
 							setTimeout(() => {
-								window.location.href = '/auth/social/dashboard';
+								window.location.href = '/dashboard';
 							}, 1500);
 						</script>
 					</body>
@@ -1177,12 +1223,11 @@ const app = new Hono<App>()
 	})
 
 	// Get account links for current session
-	.post('/account/links', async (c) => {
-		const body = await c.req.json<{ sessionId: string }>()
-		const { sessionId } = body
+	.post('/api/account/links', async (c) => {
+		const sessionId = getCookie(c, 'session_id')
 
 		if (!sessionId) {
-			return c.json({ error: 'Missing sessionId' }, 400)
+			return c.json({ error: 'Not authenticated' }, 401)
 		}
 
 		try {
@@ -1218,6 +1263,111 @@ const app = new Hono<App>()
 		}
 	})
 
+	// Check if a specific character is linked (internal API for ESI worker)
+	.get('/api/characters/:characterId/link', async (c) => {
+		const characterId = Number(c.req.param('characterId'))
+
+		if (Number.isNaN(characterId)) {
+			return c.json({ error: 'Invalid character ID' }, 400)
+		}
+
+		try {
+			const id = c.env.USER_SESSION_STORE.idFromName('global')
+			const stub = c.env.USER_SESSION_STORE.get(id)
+
+			const link = await stub.getCharacterLinkByCharacterId(characterId)
+
+			if (!link) {
+				return c.json({ error: 'Character not linked' }, 404)
+			}
+
+			return c.json({
+				socialUserId: link.socialUserId,
+				linkId: link.linkId,
+			})
+		} catch (error) {
+			logger.error('Get character link error', { error: String(error) })
+			return c.json({ error: String(error) }, 500)
+		}
+	})
+
+	// Create character link (internal API for ESI worker)
+	.post('/api/characters/link', async (c) => {
+		const sessionId = getCookie(c, 'session_id')
+
+		if (!sessionId) {
+			return c.json({ error: 'Not authenticated' }, 401)
+		}
+
+		try {
+			const body = await c.req.json() as { characterId: number; characterName: string }
+
+			if (!body.characterId || !body.characterName) {
+				return c.json({ error: 'Missing characterId or characterName' }, 400)
+			}
+
+			const id = c.env.USER_SESSION_STORE.idFromName('global')
+			const stub = c.env.USER_SESSION_STORE.get(id)
+
+			// Get session to get social user ID
+			const session = await stub.getSession(sessionId)
+
+			// Create character link
+			const link = await stub.createCharacterLink(
+				session.socialUserId,
+				body.characterId,
+				body.characterName
+			)
+
+			return c.json({
+				success: true,
+				link: {
+					linkId: link.linkId,
+					characterId: link.characterId,
+					characterName: link.characterName,
+					linkedAt: link.linkedAt,
+				},
+			})
+		} catch (error) {
+			logger.error('Create character link error', { error: String(error) })
+			return c.json({ error: String(error) }, error instanceof Error && error.message.includes('already linked') ? 409 : 500)
+		}
+	})
+
+	// Get character links for current session
+	.get('/api/characters', async (c) => {
+		const sessionId = getCookie(c, 'session_id')
+
+		if (!sessionId) {
+			return c.json({ error: 'Not authenticated' }, 401)
+		}
+
+		try {
+			const id = c.env.USER_SESSION_STORE.idFromName('global')
+			const stub = c.env.USER_SESSION_STORE.get(id)
+
+			// Get session info
+			const session = await stub.getSession(sessionId)
+
+			// Get all character links for this social user
+			const characters = await stub.getCharacterLinksBySocialUser(session.socialUserId)
+
+			return c.json({
+				success: true,
+				characters: characters.map((char) => ({
+					linkId: char.linkId,
+					characterId: char.characterId,
+					characterName: char.characterName,
+					linkedAt: char.linkedAt,
+					updatedAt: char.updatedAt,
+				})),
+			})
+		} catch (error) {
+			logger.error('Get character links error', { error: String(error) })
+			return c.json({ error: String(error) }, error instanceof Error && error.message === 'Session not found' ? 404 : 500)
+		}
+	})
+
 	// Admin endpoint to revoke account link
 	.delete('/admin/account/links/:linkId', async (c) => {
 		const linkId = c.req.param('linkId')
@@ -1244,6 +1394,40 @@ const app = new Hono<App>()
 			return c.json(
 				{ error: String(error) },
 				error instanceof Error && error.message === 'Account link not found' ? 404 : 500
+			)
+		}
+	})
+
+	// Admin endpoint to revoke character link
+	.delete('/admin/characters/:characterId', async (c) => {
+		const characterId = Number(c.req.param('characterId'))
+
+		if (Number.isNaN(characterId)) {
+			return c.json({ error: 'Invalid character ID' }, 400)
+		}
+
+		try {
+			const id = c.env.USER_SESSION_STORE.idFromName('global')
+			const stub = c.env.USER_SESSION_STORE.get(id)
+
+			// Delete the character link
+			await stub.deleteCharacterLink(characterId)
+
+			logger
+				.withTags({
+					type: 'character_link_revoked',
+				})
+				.info('Character link revoked by admin', {
+					characterId,
+					request: getRequestLogData(c, Date.now()),
+				})
+
+			return c.json({ success: true })
+		} catch (error) {
+			logger.error('Delete character link error', { error: String(error) })
+			return c.json(
+				{ error: String(error) },
+				error instanceof Error && error.message === 'Character link not found' ? 404 : 500
 			)
 		}
 	})

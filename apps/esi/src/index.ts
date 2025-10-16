@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { getCookie } from 'hono/cookie'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { getRequestLogData, logger, withNotFound, withOnError } from '@repo/hono-helpers'
@@ -25,225 +26,69 @@ const app = new Hono<App>()
 	// Mount admin router
 	.route('/', adminRouter)
 
-	// OAuth login endpoint (DEPRECATED: Use /esi/login instead, will be removed soon)
-	.get('/auth/login', (c) => {
-		const state = crypto.randomUUID()
-		const scopes = c.req.query('scopes') || ALL_ESI_SCOPES.join(' ')
+	// OAuth login endpoint (canonical) - Requires authentication
+	.get('/esi/login', async (c) => {
+		// Check for session cookie
+		const sessionId = getCookie(c, 'session_id')
 
-		const authUrl = new URL('https://login.eveonline.com/v2/oauth/authorize/')
-		authUrl.searchParams.set('response_type', 'code')
-		authUrl.searchParams.set('redirect_uri', c.env.ESI_SSO_CALLBACK_URL)
-		authUrl.searchParams.set('client_id', c.env.ESI_SSO_CLIENT_ID)
-		authUrl.searchParams.set('scope', scopes)
-		authUrl.searchParams.set('state', state)
-
-		logger
-			.withTags({
-				type: 'oauth_login_redirect',
-			})
-			.info('Redirecting to EVE SSO', {
-				scopes,
-				state,
-				request: getRequestLogData(c, Date.now()),
-			})
-
-		return c.redirect(authUrl.toString())
-	})
-
-	// OAuth login endpoint (canonical)
-	.get('/esi/login', (c) => {
-		const state = crypto.randomUUID()
-		const scopes = c.req.query('scopes') || ALL_ESI_SCOPES.join(' ')
-
-		const authUrl = new URL('https://login.eveonline.com/v2/oauth/authorize/')
-		authUrl.searchParams.set('response_type', 'code')
-		authUrl.searchParams.set('redirect_uri', c.env.ESI_SSO_CALLBACK_URL)
-		authUrl.searchParams.set('client_id', c.env.ESI_SSO_CLIENT_ID)
-		authUrl.searchParams.set('scope', scopes)
-		authUrl.searchParams.set('state', state)
-
-		logger
-			.withTags({
-				type: 'oauth_login_redirect',
-			})
-			.info('Redirecting to EVE SSO', {
-				scopes,
-				state,
-				request: getRequestLogData(c, Date.now()),
-			})
-
-		return c.redirect(authUrl.toString())
-	})
-
-	// OAuth callback endpoint (DEPRECATED: Use /esi/callback instead, will be removed soon)
-	.get('/auth/callback', async (c) => {
-		const code = c.req.query('code')
-		const state = c.req.query('state')
-
-		if (!code) {
-			return c.json({ error: 'Missing authorization code' }, 400)
+		if (!sessionId) {
+			logger
+				.withTags({
+					type: 'esi_login_unauthenticated',
+				})
+				.warn('ESI login attempted without authentication', {
+					request: getRequestLogData(c, Date.now()),
+				})
+			return c.json({ error: 'Authentication required. Please log in with your social account first.' }, 401)
 		}
 
-		logger
-			.withTags({
-				type: 'oauth_callback',
-			})
-			.info('OAuth callback received', {
-				state,
-				request: getRequestLogData(c, Date.now()),
-			})
-
 		try {
-			// Exchange code for tokens
-			const auth = btoa(`${c.env.ESI_SSO_CLIENT_ID}:${c.env.ESI_SSO_CLIENT_SECRET}`)
-			const tokenResponse = await fetch('https://login.eveonline.com/v2/oauth/token', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/x-www-form-urlencoded',
-					Authorization: `Basic ${auth}`,
-				},
-				body: new URLSearchParams({
-					grant_type: 'authorization_code',
-					code,
-				}),
-			})
+			// Create ESI OAuth state linked to the session
+			const tokenStoreId = c.env.USER_TOKEN_STORE.idFromName('global')
+			const tokenStoreStub = c.env.USER_TOKEN_STORE.get(tokenStoreId)
+			const state = await tokenStoreStub.createESIOAuthState(sessionId)
 
-			if (!tokenResponse.ok) {
-				const error = await tokenResponse.text()
-				logger
-					.withTags({
-						type: 'oauth_token_error',
-					})
-					.error('Failed to exchange code for token', {
-						status: tokenResponse.status,
-						error,
-						request: getRequestLogData(c, Date.now()),
-					})
-				return c.json({ error: 'Failed to exchange code for token' }, 502)
-			}
+			const scopes = c.req.query('scopes') || ALL_ESI_SCOPES.join(' ')
 
-			const tokenData = (await tokenResponse.json()) as {
-				access_token: string
-				refresh_token: string
-				expires_in: number
-			}
-
-			// Verify the token and get character info
-			const verifyResponse = await fetch('https://login.eveonline.com/oauth/verify', {
-				headers: {
-					Authorization: `Bearer ${tokenData.access_token}`,
-				},
-			})
-
-			if (!verifyResponse.ok) {
-				return c.json({ error: 'Failed to verify token' }, 502)
-			}
-
-			const characterInfo = (await verifyResponse.json()) as {
-				CharacterID: number
-				CharacterName: string
-				Scopes: string
-			}
-
-			// Store tokens in Durable Object (using global instance)
-			const id = c.env.USER_TOKEN_STORE.idFromName('global')
-			const stub = c.env.USER_TOKEN_STORE.get(id)
-
-			await stub.storeTokens(
-				characterInfo.CharacterID,
-				characterInfo.CharacterName,
-				tokenData.access_token,
-				tokenData.refresh_token,
-				tokenData.expires_in,
-				characterInfo.Scopes
-			)
+			const authUrl = new URL('https://login.eveonline.com/v2/oauth/authorize/')
+			authUrl.searchParams.set('response_type', 'code')
+			authUrl.searchParams.set('redirect_uri', c.env.ESI_SSO_CALLBACK_URL)
+			authUrl.searchParams.set('client_id', c.env.ESI_SSO_CLIENT_ID)
+			authUrl.searchParams.set('scope', scopes)
+			authUrl.searchParams.set('state', state)
 
 			logger
 				.withTags({
-					type: 'oauth_success',
-					character_id: characterInfo.CharacterID,
+					type: 'oauth_login_redirect',
 				})
-				.info('OAuth flow completed', {
-					characterId: characterInfo.CharacterID,
-					characterName: characterInfo.CharacterName,
+				.info('Redirecting to EVE SSO', {
+					scopes,
+					state: state.substring(0, 8) + '...',
+					sessionId: sessionId.substring(0, 8) + '...',
 					request: getRequestLogData(c, Date.now()),
 				})
 
-			return c.html(`
-				<!DOCTYPE html>
-				<html>
-					<head>
-						<meta charset="utf-8">
-						<meta name="viewport" content="width=device-width, initial-scale=1">
-						<title>Authentication Successful</title>
-						<style>
-							body {
-								font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-								display: flex;
-								justify-content: center;
-								align-items: center;
-								min-height: 100vh;
-								margin: 0;
-								background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-							}
-							.container {
-								background: white;
-								padding: 3rem;
-								border-radius: 1rem;
-								box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-								text-align: center;
-								max-width: 500px;
-							}
-							h1 {
-								color: #333;
-								margin: 0 0 1rem 0;
-								font-size: 2rem;
-							}
-							p {
-								color: #666;
-								margin: 0.5rem 0;
-								font-size: 1.1rem;
-							}
-							.character-name {
-								color: #667eea;
-								font-weight: bold;
-							}
-							.success-icon {
-								font-size: 4rem;
-								margin-bottom: 1rem;
-							}
-						</style>
-					</head>
-					<body>
-						<div class="container">
-							<div class="success-icon">✓</div>
-							<h1>Authentication Successful</h1>
-							<p>Thank you for logging in, <span class="character-name">${characterInfo.CharacterName}</span>!</p>
-							<p>You can now close this window.</p>
-						</div>
-					</body>
-				</html>
-			`)
+			return c.redirect(authUrl.toString())
 		} catch (error) {
 			logger
 				.withTags({
-					type: 'oauth_exception',
+					type: 'esi_login_error',
 				})
-				.error('OAuth exception', {
+				.error('Error initiating ESI login', {
 					error: String(error),
 					request: getRequestLogData(c, Date.now()),
 				})
-			return c.json({ error: String(error) }, 500)
+			return c.json({ error: 'Failed to initiate ESI login' }, 500)
 		}
 	})
 
-	// OAuth callback endpoint (canonical)
+	// OAuth callback endpoint (canonical) - Links character to social account
 	.get('/esi/callback', async (c) => {
 		const code = c.req.query('code')
 		const state = c.req.query('state')
 
-		if (!code) {
-			return c.json({ error: 'Missing authorization code' }, 400)
+		if (!code || !state) {
+			return c.json({ error: 'Missing authorization code or state' }, 400)
 		}
 
 		logger
@@ -251,11 +96,31 @@ const app = new Hono<App>()
 				type: 'oauth_callback',
 			})
 			.info('OAuth callback received', {
-				state,
+				state: state.substring(0, 8) + '...',
 				request: getRequestLogData(c, Date.now()),
 			})
 
 		try {
+			// Validate state and get session ID
+			const tokenStoreId = c.env.USER_TOKEN_STORE.idFromName('global')
+			const tokenStoreStub = c.env.USER_TOKEN_STORE.get(tokenStoreId)
+
+			let sessionId: string
+			try {
+				sessionId = await tokenStoreStub.validateESIOAuthState(state)
+			} catch (error) {
+				logger
+					.withTags({
+						type: 'esi_oauth_state_invalid',
+					})
+					.warn('Invalid or expired ESI OAuth state', {
+						state: state.substring(0, 8) + '...',
+						error: String(error),
+						request: getRequestLogData(c, Date.now()),
+					})
+				return c.json({ error: 'Invalid or expired state. Please try again.' }, 400)
+			}
+
 			// Exchange code for tokens
 			const auth = btoa(`${c.env.ESI_SSO_CLIENT_ID}:${c.env.ESI_SSO_CLIENT_SECRET}`)
 			const tokenResponse = await fetch('https://login.eveonline.com/v2/oauth/token', {
@@ -307,11 +172,148 @@ const app = new Hono<App>()
 				Scopes: string
 			}
 
-			// Store tokens in Durable Object (using global instance)
-			const id = c.env.USER_TOKEN_STORE.idFromName('global')
-			const stub = c.env.USER_TOKEN_STORE.get(id)
+			// Get session info via internal API call to social-auth worker
+			// Service bindings with RPC have serialization issues, so we use HTTP fetch instead
+			let socialUserId: string
+			try {
+				logger.info('Fetching session info from social-auth worker', {
+					sessionId: sessionId.substring(0, 8) + '...',
+				})
 
-			await stub.storeTokens(
+				// Create internal request to social-auth worker's session verify endpoint
+				const verifyRequest = new Request('https://pleaseignore.app/api/session/verify', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						'Cookie': `session_id=${sessionId}`,
+					},
+				})
+
+				// Use service binding to call social-auth worker via fetch
+				const verifyResponse = await c.env.SOCIAL_AUTH.fetch(verifyRequest)
+
+				if (!verifyResponse.ok) {
+					throw new Error(`Session verify failed with status ${verifyResponse.status}`)
+				}
+
+				const verifyData = await verifyResponse.json() as { success: boolean; session: { socialUserId: string } }
+				socialUserId = verifyData.session.socialUserId
+
+				logger.info('Got session info from social-auth worker', {
+					socialUserId: socialUserId.substring(0, 8) + '...',
+				})
+			} catch (sessionError) {
+				logger
+					.withTags({
+						type: 'session_lookup_error',
+					})
+					.error('Failed to lookup session', {
+						error: String(sessionError),
+						errorMessage: sessionError instanceof Error ? sessionError.message : 'Unknown',
+						sessionId: sessionId.substring(0, 8) + '...',
+					})
+				return c.json({ error: 'Session not found or expired. Please log in again.' }, 401)
+			}
+
+			// Check if character is already linked via internal API call
+			let existingLink: { socialUserId: string; linkId: string } | null = null
+			try {
+				const checkRequest = new Request(`https://pleaseignore.app/api/characters/${characterInfo.CharacterID}/link`, {
+					method: 'GET',
+				})
+
+				const checkResponse = await c.env.SOCIAL_AUTH.fetch(checkRequest)
+
+				if (checkResponse.ok) {
+					const linkData = await checkResponse.json() as { socialUserId: string; linkId: string }
+					existingLink = linkData
+				}
+			} catch (error) {
+				// Link doesn't exist, that's fine
+				logger.info('No existing character link found', {
+					characterId: characterInfo.CharacterID,
+				})
+			}
+
+			if (existingLink) {
+				if (existingLink.socialUserId !== socialUserId) {
+					logger
+						.withTags({
+							type: 'character_already_linked',
+							character_id: characterInfo.CharacterID,
+						})
+						.warn('Character already linked to different social account', {
+							characterId: characterInfo.CharacterID,
+							characterName: characterInfo.CharacterName,
+							request: getRequestLogData(c, Date.now()),
+						})
+					return c.json(
+						{ error: 'This character is already linked to another social account.' },
+						409
+					)
+				}
+				// Character already linked to this user, that's fine - update tokens
+				logger
+					.withTags({
+						type: 'character_reauth',
+						character_id: characterInfo.CharacterID,
+					})
+					.info('Character re-authenticated', {
+						characterId: characterInfo.CharacterID,
+						characterName: characterInfo.CharacterName,
+						request: getRequestLogData(c, Date.now()),
+					})
+			} else {
+				// Create new character link via HTTP call
+				try {
+					const linkRequest = new Request('https://pleaseignore.app/api/characters/link', {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+							'Cookie': `session_id=${sessionId}`,
+						},
+						body: JSON.stringify({
+							characterId: characterInfo.CharacterID,
+							characterName: characterInfo.CharacterName,
+						}),
+					})
+
+					const linkResponse = await c.env.SOCIAL_AUTH.fetch(linkRequest)
+
+					if (!linkResponse.ok) {
+						throw new Error(`Failed to create character link: ${linkResponse.status}`)
+					}
+
+					logger
+						.withTags({
+							type: 'character_linked',
+							character_id: characterInfo.CharacterID,
+						})
+						.info('Character linked to social account', {
+							characterId: characterInfo.CharacterID,
+							characterName: characterInfo.CharacterName,
+							socialUserId: socialUserId.substring(0, 8) + '...',
+							request: getRequestLogData(c, Date.now()),
+						})
+				} catch (linkError) {
+					logger
+						.withTags({
+							type: 'character_link_error',
+							character_id: characterInfo.CharacterID,
+						})
+						.error('Failed to create character link', {
+							error: String(linkError),
+							characterId: characterInfo.CharacterID,
+							characterName: characterInfo.CharacterName,
+							socialUserId: socialUserId.substring(0, 8) + '...',
+							request: getRequestLogData(c, Date.now()),
+						})
+					// Don't throw - continue with token storage
+				}
+			}
+
+			// Store tokens in Durable Object
+			await tokenStoreStub.storeTokens(
 				characterInfo.CharacterID,
 				characterInfo.CharacterName,
 				tokenData.access_token,
@@ -337,7 +339,7 @@ const app = new Hono<App>()
 					<head>
 						<meta charset="utf-8">
 						<meta name="viewport" content="width=device-width, initial-scale=1">
-						<title>Authentication Successful</title>
+						<title>Character Linked Successfully</title>
 						<style>
 							body {
 								font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -379,10 +381,15 @@ const app = new Hono<App>()
 					<body>
 						<div class="container">
 							<div class="success-icon">✓</div>
-							<h1>Authentication Successful</h1>
-							<p>Thank you for logging in, <span class="character-name">${characterInfo.CharacterName}</span>!</p>
-							<p>You can now close this window.</p>
+							<h1>Character Linked Successfully</h1>
+							<p><span class="character-name">${characterInfo.CharacterName}</span> has been linked to your account!</p>
+							<p>Redirecting to your dashboard...</p>
 						</div>
+						<script>
+							setTimeout(() => {
+								window.location.href = 'https://pleaseignore.app/dashboard';
+							}, 1500);
+						</script>
 					</body>
 				</html>
 			`)

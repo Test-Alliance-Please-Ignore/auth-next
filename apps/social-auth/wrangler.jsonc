@@ -4,7 +4,7 @@
 	"main": "src/index.ts",
 	"compatibility_date": "2025-04-28",
 	"compatibility_flags": ["nodejs_compat"],
-	"routes": ["pleaseignore.app/auth/social", "pleaseignore.app/auth/social/*"],
+	"routes": ["pleaseignore.app/", "pleaseignore.app/*"],
 	"logpush": true,
 	"observability": {
 		"enabled": true
@@ -28,10 +28,10 @@
 		"SENTRY_RELEASE": "unknown" // overridden during deployment
 		// "GOOGLE_CLIENT_ID": "placeholder-set-in-production",
 		// "GOOGLE_CLIENT_SECRET": "placeholder-set-in-production",
-		// "GOOGLE_CALLBACK_URL": "https://pleaseignore.app/auth/social/callback/google",
+		// "GOOGLE_CALLBACK_URL": "https://pleaseignore.app/callback/google",
 		// "TEST_AUTH_OIDC_ISSUER": "placeholder-set-in-production",
 		// "TEST_AUTH_CLIENT_ID": "placeholder-set-in-production",
 		// "TEST_AUTH_CLIENT_SECRET": "placeholder-set-in-production",
-		// "TEST_AUTH_CALLBACK_URL": "https://pleaseignore.app/auth/social/claim/callback"
+		// "TEST_AUTH_CALLBACK_URL": "https://pleaseignore.app/claim/callback"
 	}
 }
