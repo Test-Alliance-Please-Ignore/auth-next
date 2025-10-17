@@ -33,7 +33,8 @@
 	],
 	"vars": {
 		// "ENVIRONMENT": "development", // overridden during deployment
-		"SENTRY_RELEASE": "unknown" // overridden during deployment
+		"SENTRY_RELEASE": "unknown", // overridden during deployment
+		"SENTRY_DSN": "https://68c0a0d3ba7849ea9f7af514744b4277@app.glitchtip.com/13245"
 		// "GOOGLE_CLIENT_ID": "placeholder-set-in-production",
 		// "GOOGLE_CLIENT_SECRET": "placeholder-set-in-production",
 		// "GOOGLE_CALLBACK_URL": "https://pleaseignore.app/callback/google",

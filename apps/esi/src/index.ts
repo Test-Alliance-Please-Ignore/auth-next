@@ -637,7 +637,9 @@ const esiProxyRouter = new Hono<App>().basePath('/esi').all('*', async (c) => {
 // Mount ESI proxy router (must be last to avoid catching other routes)
 app.route('/', esiProxyRouter)
 
-export default app
+// Wrap with Sentry for error tracking
+import { withSentry } from '@repo/hono-helpers'
+export default withSentry(app)
 
 // Export Durable Object
 export { UserTokenStore } from './user-token-store'

@@ -41,6 +41,7 @@
 		}
 	],
 	"vars": {
-		"SENTRY_RELEASE": "unknown"
+		"SENTRY_RELEASE": "unknown",
+		"SENTRY_DSN": "https://68c0a0d3ba7849ea9f7af514744b4277@app.glitchtip.com/13245"
 	}
 }

@@ -20,6 +20,11 @@ export type SharedHonoEnv = {
 	 * Useful for logs, Sentry, etc.
 	 */
 	SENTRY_RELEASE: string
+	/**
+	 * Sentry DSN for error tracking.
+	 * Optional - if not provided, Sentry will not be initialized.
+	 */
+	SENTRY_DSN?: string
 }
 /** Global Hono variables */
 export type SharedHonoVariables = {

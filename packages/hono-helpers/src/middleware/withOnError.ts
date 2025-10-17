@@ -2,6 +2,7 @@ import { HTTPException } from 'hono/http-exception'
 import { httpStatus } from 'http-codex/status'
 
 import { logger } from '../helpers/logger'
+import { captureException } from '../helpers/sentry'
 
 import type { Context } from 'hono'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
@@ -17,8 +18,17 @@ export function withOnError<T extends HonoApp>() {
 			const status = err.getResponse().status as ContentfulStatusCode
 			const body: APIError = { success: false, error: { message: err.message } }
 			if (status >= 500) {
-				// TODO: Capture to Sentry
-				// Log to Sentry
+				// Capture server errors to Sentry
+				captureException(err, {
+					tags: {
+						type: 'http_exception',
+						status: status.toString(),
+					},
+					request: {
+						url: c.req.url,
+						method: c.req.method,
+					},
+				})
 				logger.error(err)
 			} else if (status === httpStatus.Unauthorized) {
 				body.error.message = 'unauthorized'
@@ -27,7 +37,16 @@ export function withOnError<T extends HonoApp>() {
 			return c.json(body, status)
 		}
 
-		// TODO: Capture to Sentry
+		// Capture unexpected errors to Sentry
+		captureException(err, {
+			tags: {
+				type: 'unhandled_exception',
+			},
+			request: {
+				url: c.req.url,
+				method: c.req.method,
+			},
+		})
 		logger.error(err)
 		return c.json(
 			{

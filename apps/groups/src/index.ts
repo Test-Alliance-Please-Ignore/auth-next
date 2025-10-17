@@ -1567,7 +1567,9 @@ app
 		}
 	})
 
-export default app
+// Wrap with Sentry for error tracking
+import { withSentry } from '@repo/hono-helpers'
+export default withSentry(app)
 
 // Export Durable Object
 export { GroupStore } from './group-store'
