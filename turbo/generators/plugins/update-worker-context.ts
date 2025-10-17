@@ -16,9 +16,7 @@ export interface UpdateWorkerContextData {
 /**
  * Custom action to update context.ts with DO namespace binding
  */
-export async function updateWorkerContext(
-	answers: UpdateWorkerContextData
-): Promise<string> {
+export async function updateWorkerContext(answers: UpdateWorkerContextData): Promise<string> {
 	const contextPath = join(
 		answers.turbo.paths.root,
 		'apps',
@@ -72,8 +70,6 @@ export async function updateWorkerContext(
 	}
 }
 
-export const updateWorkerContextAction: PlopTypes.CustomActionFunction = async (
-	answers
-) => {
+export const updateWorkerContextAction: PlopTypes.CustomActionFunction = async (answers) => {
 	return updateWorkerContext(answers as UpdateWorkerContextData)
 }

@@ -1,10 +1,10 @@
 import { Hono } from 'hono'
 
+import { getStub } from '@repo/do-utils'
 import { getRequestLogData, logger } from '@repo/hono-helpers'
 import { withStaticAuth } from '@repo/static-auth'
-import { getStub } from '@repo/do-utils'
-import type { UserTokenStore } from '@repo/user-token-store'
 
+import type { UserTokenStore } from '@repo/user-token-store'
 import type { App } from './context'
 
 /**

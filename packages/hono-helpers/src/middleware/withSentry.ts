@@ -1,4 +1,5 @@
-import { withSentry as sentrySdkWithSentry, honoIntegration } from '@sentry/cloudflare'
+import { honoIntegration, withSentry as sentrySdkWithSentry } from '@sentry/cloudflare'
+
 import type { CloudflareOptions } from '@sentry/cloudflare'
 import type { SharedHonoEnv } from '../types'
 
@@ -32,6 +33,6 @@ export function withSentry<E extends SharedHonoEnv>(app: any) {
 			},
 			integrations: [honoIntegration()],
 		}),
-		app,
+		app
 	)
 }

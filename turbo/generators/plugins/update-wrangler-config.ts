@@ -23,15 +23,8 @@ export interface CrossWorkerBindingData extends UpdateWranglerConfigData {
 /**
  * Custom action to update wrangler.jsonc with DO bindings and migrations
  */
-export async function updateWranglerConfig(
-	answers: UpdateWranglerConfigData
-): Promise<string> {
-	const wranglerPath = join(
-		answers.turbo.paths.root,
-		'apps',
-		answers.workerName,
-		'wrangler.jsonc'
-	)
+export async function updateWranglerConfig(answers: UpdateWranglerConfigData): Promise<string> {
+	const wranglerPath = join(answers.turbo.paths.root, 'apps', answers.workerName, 'wrangler.jsonc')
 
 	try {
 		let content = readFileSync(wranglerPath, 'utf-8')
@@ -108,9 +101,7 @@ export async function updateWranglerConfig(
 /**
  * Custom action to add cross-worker DO bindings to other workers
  */
-export async function addCrossWorkerBindings(
-	answers: CrossWorkerBindingData
-): Promise<string> {
+export async function addCrossWorkerBindings(answers: CrossWorkerBindingData): Promise<string> {
 	const results: string[] = []
 
 	for (const targetWorker of answers.targetWorkers) {
@@ -119,12 +110,7 @@ export async function addCrossWorkerBindings(
 			continue
 		}
 
-		const wranglerPath = join(
-			answers.turbo.paths.root,
-			'apps',
-			targetWorker,
-			'wrangler.jsonc'
-		)
+		const wranglerPath = join(answers.turbo.paths.root, 'apps', targetWorker, 'wrangler.jsonc')
 
 		try {
 			let content = readFileSync(wranglerPath, 'utf-8')
@@ -180,14 +166,10 @@ export async function addCrossWorkerBindings(
 	return results.length > 0 ? results.join(', ') : 'No cross-worker bindings added'
 }
 
-export const updateWranglerConfigAction: PlopTypes.CustomActionFunction = async (
-	answers
-) => {
+export const updateWranglerConfigAction: PlopTypes.CustomActionFunction = async (answers) => {
 	return updateWranglerConfig(answers as UpdateWranglerConfigData)
 }
 
-export const addCrossWorkerBindingsAction: PlopTypes.CustomActionFunction = async (
-	answers
-) => {
+export const addCrossWorkerBindingsAction: PlopTypes.CustomActionFunction = async (answers) => {
 	return addCrossWorkerBindings(answers as CrossWorkerBindingData)
 }

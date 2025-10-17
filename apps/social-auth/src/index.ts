@@ -2,16 +2,25 @@ import { Hono } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
-import { getRequestLogData, logger, withNotFound, withOnError } from '@repo/hono-helpers'
-import { withStaticAuth } from '@repo/static-auth'
 import { getStub } from '@repo/do-utils'
-import type { SessionStore } from '@repo/session-store'
-import type { UserTokenStore } from '@repo/user-token-store'
+// Wrap with Sentry for error tracking
+import {
+	getRequestLogData,
+	logger,
+	withNotFound,
+	withOnError,
+	withSentry,
+} from '@repo/hono-helpers'
+import { withStaticAuth } from '@repo/static-auth'
 
-import type { App } from './context'
 import { OIDCClient } from './oidc-client'
-import landingHtml from './templates/landing.html?raw'
 import dashboardHtml from './templates/dashboard.html?raw'
+import landingHtml from './templates/landing.html?raw'
+
+import type { SessionStore } from '@repo/session-store'
+import type { TagStore } from '@repo/tag-store'
+import type { UserTokenStore } from '@repo/user-token-store'
+import type { App } from './context'
 
 const GOOGLE_OAUTH_SCOPES = ['openid', 'email', 'profile']
 const DISCORD_OAUTH_SCOPES = ['identify', 'email']
@@ -420,9 +429,10 @@ const app = new Hono<App>()
 
 			// Construct name from Discord username
 			// Discord removed discriminators for most users (discriminator is "0" for new users)
-			const name = userInfo.discriminator && userInfo.discriminator !== '0'
-				? `${userInfo.username}#${userInfo.discriminator}`
-				: userInfo.username
+			const name =
+				userInfo.discriminator && userInfo.discriminator !== '0'
+					? `${userInfo.username}#${userInfo.discriminator}`
+					: userInfo.username
 
 			// Email might be null if user didn't grant permission
 			const email = userInfo.email || `${userInfo.id}@discord.user`
@@ -580,7 +590,10 @@ const app = new Hono<App>()
 			})
 		} catch (error) {
 			logger.error('Session verify error', { error: String(error) })
-			return c.json({ error: String(error) }, error instanceof Error && error.message === 'Session not found' ? 404 : 500)
+			return c.json(
+				{ error: String(error) },
+				error instanceof Error && error.message === 'Session not found' ? 404 : 500
+			)
 		}
 	})
 
@@ -632,7 +645,10 @@ const app = new Hono<App>()
 			return c.json({ success: true })
 		} catch (error) {
 			logger.error('Session delete error', { error: String(error) })
-			return c.json({ error: String(error) }, error instanceof Error && error.message === 'Session not found' ? 404 : 500)
+			return c.json(
+				{ error: String(error) },
+				error instanceof Error && error.message === 'Session not found' ? 404 : 500
+			)
 		}
 	})
 
@@ -698,7 +714,10 @@ const app = new Hono<App>()
 			})
 		} catch (error) {
 			logger.error('Claim initiate error', { error: String(error) })
-			return c.json({ error: String(error) }, error instanceof Error && error.message === 'Session not found' ? 404 : 500)
+			return c.json(
+				{ error: String(error) },
+				error instanceof Error && error.message === 'Session not found' ? 404 : 500
+			)
 		}
 	})
 
@@ -764,7 +783,8 @@ const app = new Hono<App>()
 			const userInfo = await oidcClient.getUserInfo(tokens.access_token)
 
 			// Extract legacy account claims
-			const legacyUsername = userInfo.auth_username || userInfo.preferred_username || userInfo.email || userInfo.sub
+			const legacyUsername =
+				userInfo.auth_username || userInfo.preferred_username || userInfo.email || userInfo.sub
 			const superuser = userInfo.superuser ?? false
 			const staff = userInfo.staff ?? false
 			const active = userInfo.active ?? false
@@ -917,7 +937,10 @@ const app = new Hono<App>()
 			})
 		} catch (error) {
 			logger.error('Get account links error', { error: String(error) })
-			return c.json({ error: String(error) }, error instanceof Error && error.message === 'Session not found' ? 404 : 500)
+			return c.json(
+				{ error: String(error) },
+				error instanceof Error && error.message === 'Session not found' ? 404 : 500
+			)
 		}
 	})
 
@@ -957,7 +980,7 @@ const app = new Hono<App>()
 		}
 
 		try {
-			const body = await c.req.json() as {
+			const body = (await c.req.json()) as {
 				characterId: number
 				characterName: string
 				corporationId?: number
@@ -985,20 +1008,42 @@ const app = new Hono<App>()
 			// Notify tags service if corporation/alliance info is provided
 			if (body.corporationId && body.corporationName) {
 				try {
-					await c.env.TAGS.fetch(
-						new Request('http://tags/api/tags/onboard', {
-							method: 'POST',
-							headers: { 'Content-Type': 'application/json' },
-							body: JSON.stringify({
-								socialUserId: session.socialUserId,
-								characterId: body.characterId,
-								corporationId: body.corporationId,
-								corporationName: body.corporationName,
-								allianceId: body.allianceId,
-								allianceName: body.allianceName,
-							}),
-						})
+					const tagStoreStub = getStub<TagStore>(c.env.TAG_STORE, 'global')
+
+					// Create/update corporation tag
+					const corpUrn = `urn:eve:corporation:${body.corporationId}`
+					await tagStoreStub.upsertTag(
+						corpUrn,
+						'corporation',
+						body.corporationName,
+						body.corporationId,
+						{
+							corporationId: body.corporationId,
+						}
 					)
+
+					// Assign corporation tag to user
+					await tagStoreStub.assignTagToUser(session.socialUserId, corpUrn, body.characterId)
+
+					// Create/update alliance tag if applicable
+					if (body.allianceId && body.allianceName) {
+						const allianceUrn = `urn:eve:alliance:${body.allianceId}`
+						await tagStoreStub.upsertTag(
+							allianceUrn,
+							'alliance',
+							body.allianceName,
+							body.allianceId,
+							{
+								allianceId: body.allianceId,
+							}
+						)
+
+						// Assign alliance tag to user
+						await tagStoreStub.assignTagToUser(session.socialUserId, allianceUrn, body.characterId)
+					}
+
+					// Schedule first evaluation in 1 hour
+					await tagStoreStub.scheduleUserEvaluation(session.socialUserId)
 
 					logger.info('Notified tags service of character onboarding', {
 						characterId: body.characterId,
@@ -1024,7 +1069,10 @@ const app = new Hono<App>()
 			})
 		} catch (error) {
 			logger.error('Create character link error', { error: String(error) })
-			return c.json({ error: String(error) }, error instanceof Error && error.message.includes('already linked') ? 409 : 500)
+			return c.json(
+				{ error: String(error) },
+				error instanceof Error && error.message.includes('already linked') ? 409 : 500
+			)
 		}
 	})
 
@@ -1050,72 +1098,77 @@ const app = new Hono<App>()
 
 			// Fetch corporation info for each character
 			const cache = caches.default
-			const enrichedCharacters = await Promise.all(characters.map(async (char: any) => {
-				let corporationId: number | undefined
-				let corporationName: string | undefined
+			const enrichedCharacters = await Promise.all(
+				characters.map(async (char: any) => {
+					let corporationId: number | undefined
+					let corporationName: string | undefined
 
-				try {
-					// Fetch character info with cache
-					const charUrl = `https://esi.evetech.net/latest/characters/${char.characterId}/?datasource=tranquility`
-					const charCacheKey = new Request(charUrl)
+					try {
+						// Fetch character info with cache
+						const charUrl = `https://esi.evetech.net/latest/characters/${char.characterId}/?datasource=tranquility`
+						const charCacheKey = new Request(charUrl)
 
-					let charResponse = await cache.match(charCacheKey)
-					if (!charResponse) {
-						charResponse = await fetch(charUrl)
-						if (charResponse.ok) {
-							const clonedResponse = charResponse.clone()
-							const headers = new Headers(clonedResponse.headers)
-							headers.set('Cache-Control', 'public, max-age=3600')
-							const cachedCharResponse = new Response(clonedResponse.body, {
-								status: clonedResponse.status,
-								statusText: clonedResponse.statusText,
-								headers,
-							})
-							c.executionCtx.waitUntil(cache.put(charCacheKey, cachedCharResponse))
-						}
-					}
-
-					if (charResponse.ok) {
-						const charData = await charResponse.json() as { corporation_id: number }
-						corporationId = charData.corporation_id
-
-						// Fetch corporation name with cache
-						const corpUrl = `https://esi.evetech.net/latest/corporations/${corporationId}/?datasource=tranquility`
-						const corpCacheKey = new Request(corpUrl)
-
-						let corpResponse = await cache.match(corpCacheKey)
-						if (!corpResponse) {
-							corpResponse = await fetch(corpUrl)
-							if (corpResponse.ok) {
-								const clonedResponse = corpResponse.clone()
+						let charResponse = await cache.match(charCacheKey)
+						if (!charResponse) {
+							charResponse = await fetch(charUrl)
+							if (charResponse.ok) {
+								const clonedResponse = charResponse.clone()
 								const headers = new Headers(clonedResponse.headers)
 								headers.set('Cache-Control', 'public, max-age=3600')
-								const cachedCorpResponse = new Response(clonedResponse.body, {
+								const cachedCharResponse = new Response(clonedResponse.body, {
 									status: clonedResponse.status,
 									statusText: clonedResponse.statusText,
 									headers,
 								})
-								c.executionCtx.waitUntil(cache.put(corpCacheKey, cachedCorpResponse))
+								c.executionCtx.waitUntil(cache.put(charCacheKey, cachedCharResponse))
 							}
 						}
 
-						if (corpResponse.ok) {
-							const corpData = await corpResponse.json() as { name: string }
-							corporationName = corpData.name
-						}
-					}
-				} catch (error) {
-					logger.warn('Failed to fetch corporation info for search result', { error: String(error), characterId: char.characterId })
-				}
+						if (charResponse.ok) {
+							const charData = (await charResponse.json()) as { corporation_id: number }
+							corporationId = charData.corporation_id
 
-				return {
-					socialUserId: char.socialUserId,
-					characterId: char.characterId,
-					characterName: char.characterName,
-					corporationId,
-					corporationName,
-				}
-			}))
+							// Fetch corporation name with cache
+							const corpUrl = `https://esi.evetech.net/latest/corporations/${corporationId}/?datasource=tranquility`
+							const corpCacheKey = new Request(corpUrl)
+
+							let corpResponse = await cache.match(corpCacheKey)
+							if (!corpResponse) {
+								corpResponse = await fetch(corpUrl)
+								if (corpResponse.ok) {
+									const clonedResponse = corpResponse.clone()
+									const headers = new Headers(clonedResponse.headers)
+									headers.set('Cache-Control', 'public, max-age=3600')
+									const cachedCorpResponse = new Response(clonedResponse.body, {
+										status: clonedResponse.status,
+										statusText: clonedResponse.statusText,
+										headers,
+									})
+									c.executionCtx.waitUntil(cache.put(corpCacheKey, cachedCorpResponse))
+								}
+							}
+
+							if (corpResponse.ok) {
+								const corpData = (await corpResponse.json()) as { name: string }
+								corporationName = corpData.name
+							}
+						}
+					} catch (error) {
+						logger.warn('Failed to fetch corporation info for search result', {
+							error: String(error),
+							characterId: char.characterId,
+						})
+					}
+
+					return {
+						socialUserId: char.socialUserId,
+						characterId: char.characterId,
+						characterName: char.characterName,
+						corporationId,
+						corporationName,
+					}
+				})
+			)
 
 			return c.json({
 				success: true,
@@ -1157,7 +1210,10 @@ const app = new Hono<App>()
 			})
 		} catch (error) {
 			logger.error('Get character links error', { error: String(error) })
-			return c.json({ error: String(error) }, error instanceof Error && error.message === 'Session not found' ? 404 : 500)
+			return c.json(
+				{ error: String(error) },
+				error instanceof Error && error.message === 'Session not found' ? 404 : 500
+			)
 		}
 	})
 
@@ -1185,7 +1241,10 @@ const app = new Hono<App>()
 			await stub.setPrimaryCharacter(session.socialUserId, characterId)
 
 			// Invalidate cache for this user's primary character
-			const cacheKey = new Request(`http://internal/api/users/${session.socialUserId}/primary-character`, c.req.raw)
+			const cacheKey = new Request(
+				`http://internal/api/users/${session.socialUserId}/primary-character`,
+				c.req.raw
+			)
 			const cache = caches.default
 			c.executionCtx.waitUntil(cache.delete(cacheKey))
 
@@ -1203,7 +1262,10 @@ const app = new Hono<App>()
 			})
 		} catch (error) {
 			logger.error('Set primary character error', { error: String(error) })
-			return c.json({ error: String(error) }, error instanceof Error && error.message === 'Session not found' ? 404 : 500)
+			return c.json(
+				{ error: String(error) },
+				error instanceof Error && error.message === 'Session not found' ? 404 : 500
+			)
 		}
 	})
 
@@ -1273,7 +1335,10 @@ const app = new Hono<App>()
 
 		try {
 			// Check cache first (keyed by socialUserId)
-			const cacheKey = new Request(`http://internal/api/users/${socialUserId}/primary-character`, c.req.raw)
+			const cacheKey = new Request(
+				`http://internal/api/users/${socialUserId}/primary-character`,
+				c.req.raw
+			)
 			const cache = caches.default
 			const cachedResponse = await cache.match(cacheKey)
 
@@ -1321,7 +1386,7 @@ const app = new Hono<App>()
 				}
 
 				if (charResponse.ok) {
-					const charData = await charResponse.json() as { corporation_id: number }
+					const charData = (await charResponse.json()) as { corporation_id: number }
 					corporationId = charData.corporation_id
 
 					// Fetch corporation name with cache
@@ -1346,12 +1411,15 @@ const app = new Hono<App>()
 					}
 
 					if (corpResponse.ok) {
-						const corpData = await corpResponse.json() as { name: string }
+						const corpData = (await corpResponse.json()) as { name: string }
 						corporationName = corpData.name
 					}
 				}
 			} catch (error) {
-				logger.warn('Failed to fetch corporation info', { error: String(error), characterId: primaryCharacter.characterId })
+				logger.warn('Failed to fetch corporation info', {
+					error: String(error),
+					characterId: primaryCharacter.characterId,
+				})
 			}
 
 			// Create response with cache headers
@@ -1464,7 +1532,10 @@ const app = new Hono<App>()
 						sessionId: sessionId.substring(0, 8) + '...',
 						request: getRequestLogData(c, Date.now()),
 					})
-				return c.json({ error: 'Cannot link Discord account when already logged in with Discord' }, 400)
+				return c.json(
+					{ error: 'Cannot link Discord account when already logged in with Discord' },
+					400
+				)
 			}
 
 			// Create OIDC state linked to this session
@@ -1473,7 +1544,10 @@ const app = new Hono<App>()
 			// Build Discord OAuth URL manually
 			const authUrl = new URL('https://discord.com/oauth2/authorize')
 			authUrl.searchParams.set('client_id', c.env.DISCORD_CLIENT_ID)
-			authUrl.searchParams.set('redirect_uri', c.env.DISCORD_CALLBACK_URL.replace('/callback/discord', '/link/discord/callback'))
+			authUrl.searchParams.set(
+				'redirect_uri',
+				c.env.DISCORD_CALLBACK_URL.replace('/callback/discord', '/link/discord/callback')
+			)
 			authUrl.searchParams.set('response_type', 'code')
 			authUrl.searchParams.set('scope', DISCORD_OAUTH_SCOPES.join(' '))
 			authUrl.searchParams.set('state', state)
@@ -1494,7 +1568,10 @@ const app = new Hono<App>()
 			})
 		} catch (error) {
 			logger.error('Provider link initiate error', { error: String(error) })
-			return c.json({ error: String(error) }, error instanceof Error && error.message === 'Session not found' ? 404 : 500)
+			return c.json(
+				{ error: String(error) },
+				error instanceof Error && error.message === 'Session not found' ? 404 : 500
+			)
 		}
 	})
 
@@ -1539,7 +1616,10 @@ const app = new Hono<App>()
 						sessionId: sessionId.substring(0, 8) + '...',
 						request: getRequestLogData(c, Date.now()),
 					})
-				return c.json({ error: 'Cannot link Discord account when already logged in with Discord' }, 400)
+				return c.json(
+					{ error: 'Cannot link Discord account when already logged in with Discord' },
+					400
+				)
 			}
 
 			// Exchange code for tokens
@@ -1552,7 +1632,10 @@ const app = new Hono<App>()
 					code,
 					client_id: c.env.DISCORD_CLIENT_ID,
 					client_secret: c.env.DISCORD_CLIENT_SECRET,
-					redirect_uri: c.env.DISCORD_CALLBACK_URL.replace('/callback/discord', '/link/discord/callback'),
+					redirect_uri: c.env.DISCORD_CALLBACK_URL.replace(
+						'/callback/discord',
+						'/link/discord/callback'
+					),
 					grant_type: 'authorization_code',
 				}),
 			})
@@ -1608,9 +1691,10 @@ const app = new Hono<App>()
 			}
 
 			// Construct username from Discord username
-			const username = userInfo.discriminator && userInfo.discriminator !== '0'
-				? `${userInfo.username}#${userInfo.discriminator}`
-				: userInfo.username
+			const username =
+				userInfo.discriminator && userInfo.discriminator !== '0'
+					? `${userInfo.username}#${userInfo.discriminator}`
+					: userInfo.username
 
 			// Create provider link
 			const link = await stub.createProviderLink(
@@ -1735,7 +1819,10 @@ const app = new Hono<App>()
 			})
 		} catch (error) {
 			logger.error('Get provider links error', { error: String(error) })
-			return c.json({ error: String(error) }, error instanceof Error && error.message === 'Session not found' ? 404 : 500)
+			return c.json(
+				{ error: String(error) },
+				error instanceof Error && error.message === 'Session not found' ? 404 : 500
+			)
 		}
 	})
 
@@ -1890,8 +1977,6 @@ const app = new Hono<App>()
 		}
 	})
 
-// Wrap with Sentry for error tracking
-import { withSentry } from '@repo/hono-helpers'
 export default withSentry(app)
 
 // Export Durable Object

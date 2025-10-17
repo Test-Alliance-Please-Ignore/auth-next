@@ -247,11 +247,13 @@ export interface SessionStore {
 	/**
 	 * Search for characters by name
 	 */
-	searchCharactersByName(query: string): Promise<Array<{
-		socialUserId: string
-		characterId: number
-		characterName: string
-	}>>
+	searchCharactersByName(query: string): Promise<
+		Array<{
+			socialUserId: string
+			characterId: number
+			characterName: string
+		}>
+	>
 
 	/**
 	 * Create a link between a social user and a secondary OAuth provider

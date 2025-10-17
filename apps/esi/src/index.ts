@@ -2,15 +2,23 @@ import { Hono } from 'hono'
 import { getCookie } from 'hono/cookie'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
-import { getRequestLogData, logger, withNotFound, withOnError } from '@repo/hono-helpers'
 import { getStub } from '@repo/do-utils'
-import type { UserTokenStore } from '@repo/user-token-store'
-import type { CharacterDataStore } from '@repo/character-data-store'
+// Wrap with Sentry for error tracking
+import {
+	getRequestLogData,
+	logger,
+	withNotFound,
+	withOnError,
+	withSentry,
+} from '@repo/hono-helpers'
 
 import { adminRouter } from './admin'
 import { ALL_ESI_SCOPES } from './consts'
 import callbackHtml from './templates/callback.html'
 
+import type { CharacterDataStore } from '@repo/character-data-store'
+import type { SessionStore } from '@repo/session-store'
+import type { UserTokenStore } from '@repo/user-token-store'
 import type { App } from './context'
 
 const app = new Hono<App>()
@@ -43,7 +51,10 @@ const app = new Hono<App>()
 				.warn('ESI login attempted without authentication', {
 					request: getRequestLogData(c, Date.now()),
 				})
-			return c.json({ error: 'Authentication required. Please log in with your social account first.' }, 401)
+			return c.json(
+				{ error: 'Authentication required. Please log in with your social account first.' },
+				401
+			)
 		}
 
 		try {
@@ -174,34 +185,19 @@ const app = new Hono<App>()
 				Scopes: string
 			}
 
-			// Get session info via internal API call to social-auth worker
-			// Service bindings with RPC have serialization issues, so we use HTTP fetch instead
+			// Get session info from SessionStore DO
 			let socialUserId: string
 			try {
-				logger.info('Fetching session info from social-auth worker', {
+				logger.info('Fetching session info from SessionStore DO', {
 					sessionId: sessionId.substring(0, 8) + '...',
 				})
 
-				// Create internal request to social-auth worker's session verify endpoint
-				const verifyRequest = new Request('https://pleaseignore.app/api/session/verify', {
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json',
-						'Cookie': `session_id=${sessionId}`,
-					},
-				})
+				const sessionStoreStub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
+				const session = await sessionStoreStub.getSession(sessionId)
 
-				// Use service binding to call social-auth worker via fetch
-				const verifyResponse = await c.env.SOCIAL_AUTH.fetch(verifyRequest)
+				socialUserId = session.socialUserId
 
-				if (!verifyResponse.ok) {
-					throw new Error(`Session verify failed with status ${verifyResponse.status}`)
-				}
-
-				const verifyData = await verifyResponse.json() as { success: boolean; session: { socialUserId: string } }
-				socialUserId = verifyData.session.socialUserId
-
-				logger.info('Got session info from social-auth worker', {
+				logger.info('Got session info from SessionStore DO', {
 					socialUserId: socialUserId.substring(0, 8) + '...',
 				})
 			} catch (sessionError) {
@@ -217,18 +213,19 @@ const app = new Hono<App>()
 				return c.json({ error: 'Session not found or expired. Please log in again.' }, 401)
 			}
 
-			// Check if character is already linked via internal API call
+			// Check if character is already linked via SessionStore DO
 			let existingLink: { socialUserId: string; linkId: string } | null = null
 			try {
-				const checkRequest = new Request(`https://pleaseignore.app/api/characters/${characterInfo.CharacterID}/link`, {
-					method: 'GET',
-				})
+				const sessionStoreStub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
+				const characterLink = await sessionStoreStub.getCharacterLinkByCharacterId(
+					characterInfo.CharacterID
+				)
 
-				const checkResponse = await c.env.SOCIAL_AUTH.fetch(checkRequest)
-
-				if (checkResponse.ok) {
-					const linkData = await checkResponse.json() as { socialUserId: string; linkId: string }
-					existingLink = linkData
+				if (characterLink) {
+					existingLink = {
+						socialUserId: characterLink.socialUserId,
+						linkId: characterLink.linkId,
+					}
 				}
 			} catch (error) {
 				// Link doesn't exist, that's fine
@@ -266,25 +263,14 @@ const app = new Hono<App>()
 						request: getRequestLogData(c, Date.now()),
 					})
 			} else {
-				// Create new character link via HTTP call
+				// Create new character link via SessionStore DO
 				try {
-					const linkRequest = new Request('https://pleaseignore.app/api/characters/link', {
-						method: 'POST',
-						headers: {
-							'Content-Type': 'application/json',
-							'Cookie': `session_id=${sessionId}`,
-						},
-						body: JSON.stringify({
-							characterId: characterInfo.CharacterID,
-							characterName: characterInfo.CharacterName,
-						}),
-					})
-
-					const linkResponse = await c.env.SOCIAL_AUTH.fetch(linkRequest)
-
-					if (!linkResponse.ok) {
-						throw new Error(`Failed to create character link: ${linkResponse.status}`)
-					}
+					const sessionStoreStub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
+					await sessionStoreStub.createCharacterLink(
+						socialUserId,
+						characterInfo.CharacterID,
+						characterInfo.CharacterName
+					)
 
 					logger
 						.withTags({
@@ -332,7 +318,10 @@ const app = new Hono<App>()
 				const { fetchCharacterInfo, fetchCorporationInfo } = await import('./esi-client')
 
 				// Fetch character info from ESI
-				const charResult = await fetchCharacterInfo(characterInfo.CharacterID, tokenData.access_token)
+				const charResult = await fetchCharacterInfo(
+					characterInfo.CharacterID,
+					tokenData.access_token
+				)
 				await dataStoreStub.upsertCharacter(
 					characterInfo.CharacterID,
 					charResult.data,
@@ -826,8 +815,6 @@ const esiProxyRouter = new Hono<App>().basePath('/esi').all('*', async (c) => {
 // Mount ESI proxy router (must be last to avoid catching other routes)
 app.route('/', esiProxyRouter)
 
-// Wrap with Sentry for error tracking
-import { withSentry } from '@repo/hono-helpers'
 export default withSentry(app)
 
 // Export Durable Objects

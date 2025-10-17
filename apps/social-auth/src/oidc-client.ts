@@ -89,7 +89,10 @@ export class OIDCClient {
 	/**
 	 * Generate authorization URL for OIDC flow
 	 */
-	async generateAuthorizationUrl(state: string, scopes = ['openid', 'profile', 'email']): Promise<string> {
+	async generateAuthorizationUrl(
+		state: string,
+		scopes = ['openid', 'profile', 'email']
+	): Promise<string> {
 		const config = await this.getConfiguration()
 
 		const params = new URLSearchParams({

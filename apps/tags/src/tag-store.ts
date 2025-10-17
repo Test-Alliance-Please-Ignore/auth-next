@@ -229,13 +229,11 @@ export class TagStore extends DurableObject<Env> {
 			)
 		}
 
-		logger
-			.withTags({ type: 'tag_upserted' })
-			.info('Tag upserted', {
-				urn,
-				tagType,
-				displayName,
-			})
+		logger.withTags({ type: 'tag_upserted' }).info('Tag upserted', {
+			urn,
+			tagType,
+			displayName,
+		})
 
 		return {
 			tagUrn: urn,
@@ -324,13 +322,11 @@ export class TagStore extends DurableObject<Env> {
 			characterId
 		)
 
-		logger
-			.withTags({ type: 'tag_assigned' })
-			.info('Tag assigned to user', {
-				userId: userId.substring(0, 8) + '...',
-				tagUrn,
-				characterId,
-			})
+		logger.withTags({ type: 'tag_assigned' }).info('Tag assigned to user', {
+			userId: userId.substring(0, 8) + '...',
+			tagUrn,
+			characterId,
+		})
 	}
 
 	async removeTagFromUser(userId: string, tagUrn: string, characterId?: number): Promise<void> {
@@ -353,13 +349,11 @@ export class TagStore extends DurableObject<Env> {
 			)
 		}
 
-		logger
-			.withTags({ type: 'tag_removed' })
-			.info('Tag removed from user', {
-				userId: userId.substring(0, 8) + '...',
-				tagUrn,
-				characterId,
-			})
+		logger.withTags({ type: 'tag_removed' }).info('Tag removed from user', {
+			userId: userId.substring(0, 8) + '...',
+			tagUrn,
+			characterId,
+		})
 	}
 
 	async removeAllTagsForCharacter(characterId: number): Promise<void> {
@@ -370,11 +364,9 @@ export class TagStore extends DurableObject<Env> {
 			characterId
 		)
 
-		logger
-			.withTags({ type: 'character_tags_removed' })
-			.info('Removed all tags for character', {
-				characterId,
-			})
+		logger.withTags({ type: 'character_tags_removed' }).info('Removed all tags for character', {
+			characterId,
+		})
 	}
 
 	async getUserTags(userId: string): Promise<TagWithSources[]> {
@@ -412,10 +404,7 @@ export class TagStore extends DurableObject<Env> {
 		await this.ensureSchema()
 
 		const rows = await this.ctx.storage.sql
-			.exec<UserTagData>(
-				'SELECT * FROM user_tags WHERE social_user_id = ?',
-				userId
-			)
+			.exec<UserTagData>('SELECT * FROM user_tags WHERE social_user_id = ?', userId)
 			.toArray()
 
 		return rows.map((row) => ({
@@ -432,10 +421,9 @@ export class TagStore extends DurableObject<Env> {
 		await this.ensureSchema()
 
 		const rows = await this.ctx.storage.sql
-			.exec<{ social_user_id: string }>(
-				'SELECT DISTINCT social_user_id FROM user_tags WHERE tag_urn = ?',
-				tagUrn
-			)
+			.exec<{
+				social_user_id: string
+			}>('SELECT DISTINCT social_user_id FROM user_tags WHERE tag_urn = ?', tagUrn)
 			.toArray()
 
 		return rows.map((row) => row.social_user_id)
@@ -443,7 +431,10 @@ export class TagStore extends DurableObject<Env> {
 
 	// ========== Evaluation Scheduling ==========
 
-	async scheduleUserEvaluation(userId: string, delayMs: number = this.EVALUATION_INTERVAL_MS): Promise<void> {
+	async scheduleUserEvaluation(
+		userId: string,
+		delayMs: number = this.EVALUATION_INTERVAL_MS
+	): Promise<void> {
 		await this.ensureSchema()
 
 		const now = Date.now()
@@ -468,11 +459,9 @@ export class TagStore extends DurableObject<Env> {
 		const now = Date.now()
 
 		const rows = await this.ctx.storage.sql
-			.exec<{ social_user_id: string }>(
-				'SELECT social_user_id FROM evaluation_schedule WHERE next_evaluation_at <= ? ORDER BY next_evaluation_at ASC LIMIT ?',
-				now,
-				limit
-			)
+			.exec<{
+				social_user_id: string
+			}>('SELECT social_user_id FROM evaluation_schedule WHERE next_evaluation_at <= ? ORDER BY next_evaluation_at ASC LIMIT ?', now, limit)
 			.toArray()
 
 		return rows.map((row) => row.social_user_id)
@@ -481,9 +470,9 @@ export class TagStore extends DurableObject<Env> {
 	async scheduleNextAlarm(): Promise<void> {
 		// Get next evaluation time
 		const rows = await this.ctx.storage.sql
-			.exec<{ next_evaluation_at: number }>(
-				'SELECT MIN(next_evaluation_at) as next_evaluation_at FROM evaluation_schedule'
-			)
+			.exec<{
+				next_evaluation_at: number
+			}>('SELECT MIN(next_evaluation_at) as next_evaluation_at FROM evaluation_schedule')
 			.toArray()
 
 		if (rows.length === 0 || !rows[0].next_evaluation_at) {

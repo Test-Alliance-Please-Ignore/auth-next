@@ -1,7 +1,8 @@
-import { SELF, env } from 'cloudflare:test'
+import { env, SELF } from 'cloudflare:test'
 import { describe, expect, test } from 'vitest'
 
 import { getStub } from '@repo/do-utils'
+
 import type { CharacterDataStore } from '@repo/character-data-store'
 import type { Env } from '../../context'
 
@@ -13,7 +14,10 @@ const testEnv = env as unknown as Env
 describe('Character and Corporation Data Tracking', () => {
 	describe('CharacterDataStore', () => {
 		test('upserts character data and tracks changes', async () => {
-			const dataStore = getStub<CharacterDataStore>(testEnv.CHARACTER_DATA_STORE, 'test-upsert-character')
+			const dataStore = getStub<CharacterDataStore>(
+				testEnv.CHARACTER_DATA_STORE,
+				'test-upsert-character'
+			)
 			const characterId = 123456
 			const now = Date.now()
 			const expiresAt = now + 3600 * 1000
@@ -67,14 +71,19 @@ describe('Character and Corporation Data Tracking', () => {
 			const history = await dataStore.getCharacterHistory(characterId)
 			expect(history.length).toBeGreaterThan(0)
 
-			const corpChange = history.find((h: { field_name: string }) => h.field_name === 'corporation_id')
+			const corpChange = history.find(
+				(h: { field_name: string }) => h.field_name === 'corporation_id'
+			)
 			expect(corpChange).toBeDefined()
 			expect(corpChange?.old_value).toBe('98000001')
 			expect(corpChange?.new_value).toBe('98000002')
 		})
 
 		test('upserts corporation data', async () => {
-			const dataStore = getStub<CharacterDataStore>(testEnv.CHARACTER_DATA_STORE, 'test-upsert-corporation')
+			const dataStore = getStub<CharacterDataStore>(
+				testEnv.CHARACTER_DATA_STORE,
+				'test-upsert-corporation'
+			)
 
 			const corporationId = 98000001
 			const now = Date.now()
@@ -106,7 +115,10 @@ describe('Character and Corporation Data Tracking', () => {
 		})
 
 		test('retrieves character by ID', async () => {
-			const dataStore = getStub<CharacterDataStore>(testEnv.CHARACTER_DATA_STORE, 'test-retrieve-character')
+			const dataStore = getStub<CharacterDataStore>(
+				testEnv.CHARACTER_DATA_STORE,
+				'test-retrieve-character'
+			)
 
 			const characterId = 123456
 			const now = Date.now()
@@ -134,7 +146,10 @@ describe('Character and Corporation Data Tracking', () => {
 		})
 
 		test('retrieves corporation by ID', async () => {
-			const dataStore = getStub<CharacterDataStore>(testEnv.CHARACTER_DATA_STORE, 'test-retrieve-corporation')
+			const dataStore = getStub<CharacterDataStore>(
+				testEnv.CHARACTER_DATA_STORE,
+				'test-retrieve-corporation'
+			)
 
 			const corporationId = 98000001
 			const now = Date.now()
@@ -161,21 +176,30 @@ describe('Character and Corporation Data Tracking', () => {
 		})
 
 		test('returns null for non-existent character', async () => {
-			const dataStore = getStub<CharacterDataStore>(testEnv.CHARACTER_DATA_STORE, 'test-null-character')
+			const dataStore = getStub<CharacterDataStore>(
+				testEnv.CHARACTER_DATA_STORE,
+				'test-null-character'
+			)
 
 			const character = await dataStore.getCharacter(999999999)
 			expect(character).toBeNull()
 		})
 
 		test('returns null for non-existent corporation', async () => {
-			const dataStore = getStub<CharacterDataStore>(testEnv.CHARACTER_DATA_STORE, 'test-null-corporation')
+			const dataStore = getStub<CharacterDataStore>(
+				testEnv.CHARACTER_DATA_STORE,
+				'test-null-corporation'
+			)
 
 			const corporation = await dataStore.getCorporation(999999999)
 			expect(corporation).toBeNull()
 		})
 
 		test('tracks alliance changes in history', async () => {
-			const dataStore = getStub<CharacterDataStore>(testEnv.CHARACTER_DATA_STORE, 'test-alliance-changes')
+			const dataStore = getStub<CharacterDataStore>(
+				testEnv.CHARACTER_DATA_STORE,
+				'test-alliance-changes'
+			)
 
 			const characterId = 234567
 			const now = Date.now()
@@ -218,7 +242,9 @@ describe('Character and Corporation Data Tracking', () => {
 			)
 
 			const history = await dataStore.getCharacterHistory(characterId)
-			const allianceChange = history.find((h: { field_name: string }) => h.field_name === 'alliance_id')
+			const allianceChange = history.find(
+				(h: { field_name: string }) => h.field_name === 'alliance_id'
+			)
 
 			expect(allianceChange).toBeDefined()
 			expect(allianceChange?.old_value).toBe('99000001')

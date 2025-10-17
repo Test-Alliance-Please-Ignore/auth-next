@@ -12,12 +12,12 @@ import { nameValidator } from './helpers/validate'
 import { fixAll } from './plugins/fix-all'
 import { fixDepsAndFormat } from './plugins/fix-deps-and-format'
 import { pnpmInstall } from './plugins/pnpm-install'
+import { updateWorkerContextAction } from './plugins/update-worker-context'
+import { updateWorkerIndexAction } from './plugins/update-worker-index'
 import {
 	addCrossWorkerBindingsAction,
 	updateWranglerConfigAction,
 } from './plugins/update-wrangler-config'
-import { updateWorkerContextAction } from './plugins/update-worker-context'
-import { updateWorkerIndexAction } from './plugins/update-worker-index'
 
 import type { PlopTypes } from '@turbo/gen'
 import type { PnpmInstallData } from './plugins/pnpm-install'
@@ -183,13 +183,18 @@ export default function generator(plop: PlopTypes.NodePlopAPI): void {
 						return true
 					}
 					// Get list of existing workers
-					const existingWorkers = getWorkerApps((answers as { turbo: { paths: { root: string } } }).turbo.paths.root)
+					const existingWorkers = getWorkerApps(
+						(answers as { turbo: { paths: { root: string } } }).turbo.paths.root
+					)
 					if (existingWorkers.length === 0) {
 						throw new Error('No existing workers found. Please create a worker first.')
 					}
 					return true
 				},
-				validate: (input: string, answers?: { createNewWorker: boolean; turbo: { paths: { root: string } } }) => {
+				validate: (
+					input: string,
+					answers?: { createNewWorker: boolean; turbo: { paths: { root: string } } }
+				) => {
 					if (!input || input.trim().length === 0) {
 						return 'Worker name is required'
 					}
@@ -212,8 +217,11 @@ export default function generator(plop: PlopTypes.NodePlopAPI): void {
 				type: 'checkbox',
 				name: 'targetWorkers',
 				message: 'Select workers to add bindings to',
-				when: (answers: { addCrossWorkerBindings: boolean; turbo: { paths: { root: string } }; workerName: string }) =>
-					answers.addCrossWorkerBindings,
+				when: (answers: {
+					addCrossWorkerBindings: boolean
+					turbo: { paths: { root: string } }
+					workerName: string
+				}) => answers.addCrossWorkerBindings,
 				choices: (answers: { turbo: { paths: { root: string } }; workerName: string }) => {
 					const allWorkers = getWorkerApps(answers.turbo.paths.root)
 					// Exclude the source worker
@@ -282,7 +290,11 @@ export default function generator(plop: PlopTypes.NodePlopAPI): void {
 			})
 
 			// 6. Add cross-worker bindings if requested
-			if (answers.addCrossWorkerBindings && answers.targetWorkers && answers.targetWorkers.length > 0) {
+			if (
+				answers.addCrossWorkerBindings &&
+				answers.targetWorkers &&
+				answers.targetWorkers.length > 0
+			) {
 				actions.push({
 					type: 'addCrossWorkerBindings',
 					data: {

@@ -4,10 +4,7 @@
 	"main": "src/index.ts",
 	"compatibility_date": "2025-04-28",
 	"compatibility_flags": ["nodejs_compat"],
-	"routes": [
-		"pleaseignore.app/api/tags",
-		"pleaseignore.app/api/tags/*"
-	],
+	"routes": ["pleaseignore.app/api/tags", "pleaseignore.app/api/tags/*"],
 	"logpush": true,
 	"observability": {
 		"enabled": true
@@ -17,19 +14,19 @@
 			{
 				"name": "TAG_STORE",
 				"class_name": "TagStore"
+			},
+			{
+				"name": "USER_SESSION_STORE",
+				"class_name": "SessionStore",
+				"script_name": "social-auth"
+			},
+			{
+				"name": "CHARACTER_DATA_STORE",
+				"class_name": "CharacterDataStore",
+				"script_name": "esi"
 			}
 		]
 	},
-	"services": [
-		{
-			"binding": "SOCIAL_AUTH",
-			"service": "social-auth"
-		},
-		{
-			"binding": "ESI",
-			"service": "esi"
-		}
-	],
 	"migrations": [
 		{
 			"tag": "v1",

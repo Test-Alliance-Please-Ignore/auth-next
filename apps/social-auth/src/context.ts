@@ -4,8 +4,7 @@ import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/
 export type Env = SharedHonoEnv & {
 	USER_SESSION_STORE: DurableObjectNamespace
 	USER_TOKEN_STORE: DurableObjectNamespace
-	TAGS: Fetcher
-	ESI: Fetcher
+	TAG_STORE: DurableObjectNamespace
 	GOOGLE_CLIENT_ID: string
 	GOOGLE_CLIENT_SECRET: string
 	GOOGLE_CALLBACK_URL: string

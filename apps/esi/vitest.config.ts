@@ -25,7 +25,10 @@ export default defineWorkersProject({
 								})
 							}
 							if (url.pathname.startsWith('/api/characters/') && url.pathname.endsWith('/link')) {
-								return Response.json({ socialUserId: 'test-social-user-id', linkId: 'test-link-id' })
+								return Response.json({
+									socialUserId: 'test-social-user-id',
+									linkId: 'test-link-id',
+								})
 							}
 							if (url.pathname === '/api/characters/link') {
 								return Response.json({ success: true })

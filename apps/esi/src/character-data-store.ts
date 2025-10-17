@@ -1,12 +1,13 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { logger } from '@repo/hono-helpers'
 import { getStub } from '@repo/do-utils'
-import type { UserTokenStore } from '@repo/user-token-store'
+import { logger } from '@repo/hono-helpers'
 
-import type { ESICharacterInfo, ESICorporationInfo } from './esi-client'
 import { fetchCharacterInfo, fetchCorporationInfo } from './esi-client'
+
+import type { UserTokenStore } from '@repo/user-token-store'
 import type { Env } from './context'
+import type { ESICharacterInfo, ESICorporationInfo } from './esi-client'
 
 export interface CharacterData extends Record<string, number | string | null> {
 	character_id: number
@@ -475,17 +476,15 @@ export class CharacterDataStore extends DurableObject<Env> {
 		const now = Date.now()
 
 		const characters = await this.ctx.storage.sql
-			.exec<{ character_id: number }>(
-				'SELECT character_id FROM characters WHERE next_update_at <= ? LIMIT 50',
-				now
-			)
+			.exec<{
+				character_id: number
+			}>('SELECT character_id FROM characters WHERE next_update_at <= ? LIMIT 50', now)
 			.toArray()
 
 		const corporations = await this.ctx.storage.sql
-			.exec<{ corporation_id: number }>(
-				'SELECT corporation_id FROM corporations WHERE next_update_at <= ? LIMIT 50',
-				now
-			)
+			.exec<{
+				corporation_id: number
+			}>('SELECT corporation_id FROM corporations WHERE next_update_at <= ? LIMIT 50', now)
 			.toArray()
 
 		return { characters, corporations }
@@ -503,15 +502,15 @@ export class CharacterDataStore extends DurableObject<Env> {
 
 		// Find the earliest next_update_at from both characters and corporations
 		const characterRows = await this.ctx.storage.sql
-			.exec<{ next_update_at: number }>(
-				'SELECT next_update_at FROM characters ORDER BY next_update_at ASC LIMIT 1'
-			)
+			.exec<{
+				next_update_at: number
+			}>('SELECT next_update_at FROM characters ORDER BY next_update_at ASC LIMIT 1')
 			.toArray()
 
 		const corporationRows = await this.ctx.storage.sql
-			.exec<{ next_update_at: number }>(
-				'SELECT next_update_at FROM corporations ORDER BY next_update_at ASC LIMIT 1'
-			)
+			.exec<{
+				next_update_at: number
+			}>('SELECT next_update_at FROM corporations ORDER BY next_update_at ASC LIMIT 1')
 			.toArray()
 
 		const times: number[] = []
@@ -571,7 +570,10 @@ export class CharacterDataStore extends DurableObject<Env> {
 					const corp = await this.getCorporation(data.corporation_id)
 					if (!corp) {
 						try {
-							const corpData = await fetchCorporationInfo(data.corporation_id, tokenInfo.accessToken)
+							const corpData = await fetchCorporationInfo(
+								data.corporation_id,
+								tokenInfo.accessToken
+							)
 							await this.upsertCorporation(data.corporation_id, corpData.data, corpData.expiresAt)
 						} catch (corpError) {
 							logger.error('Failed to fetch corporation during character update', {

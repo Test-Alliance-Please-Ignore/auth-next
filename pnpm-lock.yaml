@@ -69,6 +69,9 @@ importers:
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
+      '@repo/session-store':
+        specifier: workspace:*
+        version: link:../../packages/session-store
       '@repo/static-auth':
         specifier: workspace:*
         version: link:../../packages/static-auth
@@ -106,9 +109,15 @@ importers:
 
   apps/groups:
     dependencies:
+      '@repo/do-utils':
+        specifier: workspace:*
+        version: link:../../packages/do-utils
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
+      '@repo/session-store':
+        specifier: workspace:*
+        version: link:../../packages/session-store
       '@repo/static-auth':
         specifier: workspace:*
         version: link:../../packages/static-auth
@@ -161,6 +170,9 @@ importers:
       '@repo/static-auth':
         specifier: workspace:*
         version: link:../../packages/static-auth
+      '@repo/tag-store':
+        specifier: workspace:*
+        version: link:../../packages/tag-store
       '@repo/user-token-store':
         specifier: workspace:*
         version: link:../../packages/user-token-store
@@ -201,12 +213,24 @@ importers:
 
   apps/tags:
     dependencies:
+      '@repo/character-data-store':
+        specifier: workspace:*
+        version: link:../../packages/character-data-store
+      '@repo/do-utils':
+        specifier: workspace:*
+        version: link:../../packages/do-utils
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
+      '@repo/session-store':
+        specifier: workspace:*
+        version: link:../../packages/session-store
       '@repo/static-auth':
         specifier: workspace:*
         version: link:../../packages/static-auth
+      '@repo/tag-store':
+        specifier: workspace:*
+        version: link:../../packages/tag-store
       hono:
         specifier: 4.9.11
         version: 4.9.11
@@ -341,7 +365,7 @@ importers:
         specifier: 0.1.5
         version: 0.1.5(@standard-schema/spec@1.0.0)(hono@4.9.11)
       '@sentry/cloudflare':
-        specifier: ^10.20.0
+        specifier: 10.20.0
         version: 10.20.0(@cloudflare/workers-types@4.20251011.0)
       hono:
         specifier: 4.9.11
@@ -417,6 +441,21 @@ importers:
       vitest:
         specifier: 3.2.4
         version: 3.2.4(@types/node@22.15.27)(jiti@2.6.1)(lightningcss@1.29.2)(tsx@4.20.6)(yaml@2.8.1)
+
+  packages/tag-store:
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: 4.20251011.0
+        version: 4.20251011.0
+      '@repo/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
+      '@repo/tools':
+        specifier: workspace:*
+        version: link:../tools
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
 
   packages/tools:
     dependencies:

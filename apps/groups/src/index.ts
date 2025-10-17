@@ -2,12 +2,22 @@ import { Hono } from 'hono'
 import { getCookie } from 'hono/cookie'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
-import { getRequestLogData, logger, withNotFound, withOnError } from '@repo/hono-helpers'
+import { getStub } from '@repo/do-utils'
+// Wrap with Sentry for error tracking
+import {
+	getRequestLogData,
+	logger,
+	withNotFound,
+	withOnError,
+	withSentry,
+} from '@repo/hono-helpers'
 
-import type { App } from './context'
 import dashboardTemplate from './templates/dashboard.html?raw'
 import groupDetailTemplate from './templates/group-detail.html?raw'
 import groupManageTemplate from './templates/group-manage.html?raw'
+
+import type { SessionStore } from '@repo/session-store'
+import type { App } from './context'
 
 const app = new Hono<App>()
 	.use(
@@ -25,7 +35,7 @@ const app = new Hono<App>()
 
 // ========== Authentication Middleware ==========
 
-// Middleware to verify session via social-auth worker
+// Middleware to verify session via SessionStore DO
 const withAuth = async (c: any, next: any) => {
 	const sessionId = getCookie(c, 'session_id')
 
@@ -34,26 +44,13 @@ const withAuth = async (c: any, next: any) => {
 	}
 
 	try {
-		// Call social-auth worker to verify session
-		const response = await c.env.SOCIAL_AUTH.fetch(new Request('http://social-auth/api/session/verify', {
-			method: 'POST',
-			headers: {
-				'Cookie': `session_id=${sessionId}`,
-			},
-		}))
+		// Get SessionStore DO stub
+		const sessionStoreStub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
 
-		if (!response.ok) {
-			return c.json({ error: 'Invalid session' }, 401)
-		}
-
-		const data = await response.json() as { success: boolean; session: { socialUserId: string } }
-
-		if (!data.success || !data.session) {
-			return c.json({ error: 'Invalid session' }, 401)
-		}
+		const sessionInfo = await sessionStoreStub.getSession(sessionId)
 
 		// Store user ID in context for use in routes
-		c.set('sessionUserId', data.session.socialUserId)
+		c.set('sessionUserId', sessionInfo.socialUserId)
 
 		await next()
 	} catch (error) {
@@ -71,77 +68,81 @@ const getGroupStore = (c: any) => {
 // Helper to get owner's primary character name
 const getOwnerCharacterName = async (c: any, ownerId: string): Promise<string | undefined> => {
 	try {
-		const response = await c.env.SOCIAL_AUTH.fetch(new Request(`http://social-auth/api/users/${ownerId}/primary-character`, {
-			method: 'GET',
-		}))
+		const sessionStoreStub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
 
-		if (!response.ok) {
-			return undefined
-		}
+		// Get all character links for this social user
+		const characters = await sessionStoreStub.getCharacterLinksBySocialUser(ownerId)
 
-		const data = await response.json() as {
-			success: boolean
-			characterName?: string
-		}
+		// Find the primary character
+		const primaryCharacter = characters.find((char) => char.isPrimary)
 
-		return data.characterName
+		return primaryCharacter?.characterName
 	} catch (error) {
-		logger.error('Failed to fetch owner character name', { error: String(error), ownerId: ownerId.substring(0, 8) + '...' })
+		logger.error('Failed to fetch owner character name', {
+			error: String(error),
+			ownerId: ownerId.substring(0, 8) + '...',
+		})
 		return undefined
 	}
 }
 
 // Helper to enrich groups with owner names
 const enrichGroupsWithOwnerNames = async (c: any, groups: any[]): Promise<any[]> => {
-	const ownerIds = [...new Set(groups.map(g => g.ownerId))]
+	const ownerIds = [...new Set(groups.map((g) => g.ownerId))]
 	const ownerNames = new Map<string, string>()
 
-	await Promise.all(ownerIds.map(async (ownerId) => {
-		const name = await getOwnerCharacterName(c, ownerId)
-		if (name) {
-			ownerNames.set(ownerId, name)
-		}
-	}))
+	await Promise.all(
+		ownerIds.map(async (ownerId) => {
+			const name = await getOwnerCharacterName(c, ownerId)
+			if (name) {
+				ownerNames.set(ownerId, name)
+			}
+		})
+	)
 
-	return groups.map(group => ({
+	return groups.map((group) => ({
 		...group,
-		ownerName: ownerNames.get(group.ownerId)
+		ownerName: ownerNames.get(group.ownerId),
 	}))
 }
 
 // Helper to enrich members with character names
 const enrichMembersWithCharacterNames = async (c: any, members: any[]): Promise<any[]> => {
-	const userIds = [...new Set(members.map(m => m.socialUserId))]
+	const userIds = [...new Set(members.map((m) => m.socialUserId))]
 	const characterNames = new Map<string, string>()
 
-	await Promise.all(userIds.map(async (userId) => {
-		const name = await getOwnerCharacterName(c, userId)
-		if (name) {
-			characterNames.set(userId, name)
-		}
-	}))
+	await Promise.all(
+		userIds.map(async (userId) => {
+			const name = await getOwnerCharacterName(c, userId)
+			if (name) {
+				characterNames.set(userId, name)
+			}
+		})
+	)
 
-	return members.map(member => ({
+	return members.map((member) => ({
 		...member,
-		characterName: characterNames.get(member.socialUserId)
+		characterName: characterNames.get(member.socialUserId),
 	}))
 }
 
 // Helper to enrich join requests with character names
 const enrichRequestsWithCharacterNames = async (c: any, requests: any[]): Promise<any[]> => {
-	const userIds = [...new Set(requests.map(r => r.socialUserId))]
+	const userIds = [...new Set(requests.map((r) => r.socialUserId))]
 	const characterNames = new Map<string, string>()
 
-	await Promise.all(userIds.map(async (userId) => {
-		const name = await getOwnerCharacterName(c, userId)
-		if (name) {
-			characterNames.set(userId, name)
-		}
-	}))
+	await Promise.all(
+		userIds.map(async (userId) => {
+			const name = await getOwnerCharacterName(c, userId)
+			if (name) {
+				characterNames.set(userId, name)
+			}
+		})
+	)
 
-	return requests.map(request => ({
+	return requests.map((request) => ({
 		...request,
-		characterName: characterNames.get(request.socialUserId)
+		characterName: characterNames.get(request.socialUserId),
 	}))
 }
 
@@ -173,27 +174,17 @@ app
 		}
 
 		try {
-			const response = await c.env.SOCIAL_AUTH.fetch(new Request('http://social-auth/api/session/verify', {
-				method: 'POST',
-				headers: {
-					'Cookie': `session_id=${sessionId}`,
-				},
-			}))
+			const sessionStoreStub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
 
-			if (!response.ok) {
-				return c.json({ authenticated: false })
-			}
+			const sessionInfo = await sessionStoreStub.getSession(sessionId)
 
-			const data = await response.json() as { success: boolean; session: { socialUserId: string; isAdmin: boolean } }
-
-			if (!data.success || !data.session) {
-				return c.json({ authenticated: false })
-			}
+			// Get social user to check admin status
+			const socialUser = await sessionStoreStub.getSocialUser(sessionInfo.socialUserId)
 
 			return c.json({
 				authenticated: true,
-				userId: data.session.socialUserId,
-				isAdmin: data.session.isAdmin ?? false
+				userId: sessionInfo.socialUserId,
+				isAdmin: socialUser?.isAdmin ?? false,
 			})
 		} catch (error) {
 			logger.error('Auth check error', { error: String(error) })
@@ -207,9 +198,8 @@ app
 	.post('/api/groups', withAuth, async (c) => {
 		const userId = c.get('sessionUserId')!
 
-
 		try {
-			const body = await c.req.json() as {
+			const body = (await c.req.json()) as {
 				name: string
 				description?: string
 				groupType?: 'standard' | 'managed' | 'derived'
@@ -227,24 +217,18 @@ app
 			const groupType = body.groupType || 'standard'
 			if (groupType === 'managed' || groupType === 'derived') {
 				try {
-					const response = await c.env.SOCIAL_AUTH.fetch(new Request('http://social-auth/api/session/verify', {
-						method: 'POST',
-						headers: {
-							'Cookie': `session_id=${getCookie(c, 'session_id')}`,
-						},
-					}))
+					const sessionStoreStub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
 
-					if (!response.ok) {
-						return c.json({ error: 'Only administrators can create managed or derived groups' }, 403)
-					}
+					const sessionInfo = await sessionStoreStub.getSession(getCookie(c, 'session_id')!)
 
-					const data = await response.json() as {
-						success: boolean
-						session: { isAdmin: boolean }
-					}
+					// Get social user to check admin status
+					const socialUser = await sessionStoreStub.getSocialUser(sessionInfo.socialUserId)
 
-					if (!data.success || !data.session?.isAdmin) {
-						return c.json({ error: 'Only administrators can create managed or derived groups' }, 403)
+					if (!socialUser?.isAdmin) {
+						return c.json(
+							{ error: 'Only administrators can create managed or derived groups' },
+							403
+						)
 					}
 				} catch (error) {
 					logger.error('Failed to check admin status', { error: String(error) })
@@ -287,8 +271,12 @@ app
 
 	.get('/api/groups', async (c) => {
 		try {
-			const visibility = c.req.query('visibility')?.split(',') as Array<'public' | 'private' | 'hidden'> | undefined
-			const groupType = c.req.query('groupType')?.split(',') as Array<'standard' | 'managed' | 'derived'> | undefined
+			const visibility = c.req.query('visibility')?.split(',') as
+				| Array<'public' | 'private' | 'hidden'>
+				| undefined
+			const groupType = c.req.query('groupType')?.split(',') as
+				| Array<'standard' | 'managed' | 'derived'>
+				| undefined
 			const limit = c.req.query('limit') ? Number(c.req.query('limit')) : undefined
 			const offset = c.req.query('offset') ? Number(c.req.query('offset')) : undefined
 
@@ -359,7 +347,7 @@ app
 				return c.json({ error: 'Permission denied' }, 403)
 			}
 
-			const body = await c.req.json() as {
+			const body = (await c.req.json()) as {
 				name?: string
 				description?: string
 				visibility?: 'public' | 'private' | 'hidden'
@@ -429,7 +417,7 @@ app
 		}
 	})
 
-// ========== Membership Endpoints ==========
+	// ========== Membership Endpoints ==========
 
 	.post('/api/groups/:slug/join', withAuth, async (c) => {
 		const slug = c.req.param('slug')
@@ -443,7 +431,7 @@ app
 				return c.json({ error: 'Group not found' }, 404)
 			}
 
-			const body = await c.req.json() as { message?: string }
+			const body = (await c.req.json()) as { message?: string }
 
 			// Check joinability
 			if (group.joinability === 'closed') {
@@ -617,7 +605,7 @@ app
 				return c.json({ error: 'Permission denied' }, 403)
 			}
 
-			const body = await c.req.json() as { role: 'owner' | 'admin' | 'moderator' | 'member' }
+			const body = (await c.req.json()) as { role: 'owner' | 'admin' | 'moderator' | 'member' }
 
 			if (!body.role) {
 				return c.json({ error: 'Missing required field: role' }, 400)
@@ -659,11 +647,13 @@ app
 					const membership = await groupStore.getMembership(group.groupId, userId)
 					return {
 						...group,
-						membership: membership ? {
-							role: membership.role,
-							canLeave: membership.canLeave,
-							joinedAt: membership.joinedAt
-						} : null
+						membership: membership
+							? {
+									role: membership.role,
+									canLeave: membership.canLeave,
+									joinedAt: membership.joinedAt,
+								}
+							: null,
 					}
 				})
 			)
@@ -681,7 +671,7 @@ app
 		}
 	})
 
-// ========== Join Request Endpoints ==========
+	// ========== Join Request Endpoints ==========
 
 	.get('/api/groups/:slug/requests', withAuth, async (c) => {
 		const slug = c.req.param('slug')
@@ -800,7 +790,7 @@ app
 		}
 	})
 
-// ========== Invitation Endpoints ==========
+	// ========== Invitation Endpoints ==========
 
 	.post('/api/groups/:slug/invites', withAuth, async (c) => {
 		const slug = c.req.param('slug')
@@ -820,7 +810,7 @@ app
 				return c.json({ error: 'Permission denied' }, 403)
 			}
 
-			const body = await c.req.json() as { invitedUserId: string; expiresInDays?: number }
+			const body = (await c.req.json()) as { invitedUserId: string; expiresInDays?: number }
 
 			if (!body.invitedUserId) {
 				return c.json({ error: 'Missing required field: invitedUserId' }, 400)
@@ -865,13 +855,15 @@ app
 			const invites = await groupStore.listUserInvites(userId)
 
 			// Enrich invites with group names
-			const enrichedInvites = await Promise.all(invites.map(async (invite: { groupId: string }) => {
-				const group = await groupStore.getGroupById(invite.groupId)
-				return {
-					...invite,
-					groupName: group?.name || 'Unknown Group',
-				}
-			}))
+			const enrichedInvites = await Promise.all(
+				invites.map(async (invite: { groupId: string }) => {
+					const group = await groupStore.getGroupById(invite.groupId)
+					return {
+						...invite,
+						groupName: group?.name || 'Unknown Group',
+					}
+				})
+			)
 
 			return c.json({
 				success: true,
@@ -954,15 +946,24 @@ app
 			const invites = await groupStore.listGroupInvites(group.groupId)
 
 			// Enrich invites with character names
-			const userIds = [...new Set(invites.map((inv: any) => [inv.invitedUserId, inv.invitedBy]).flat().filter(Boolean) as string[])]
+			const userIds = [
+				...new Set(
+					invites
+						.map((inv: any) => [inv.invitedUserId, inv.invitedBy])
+						.flat()
+						.filter(Boolean) as string[]
+				),
+			]
 			const characterNames = new Map<string, string>()
 
-			await Promise.all(userIds.map(async (uid) => {
-				const name = await getOwnerCharacterName(c, uid)
-				if (name) {
-					characterNames.set(uid, name)
-				}
-			}))
+			await Promise.all(
+				userIds.map(async (uid) => {
+					const name = await getOwnerCharacterName(c, uid)
+					if (name) {
+						characterNames.set(uid, name)
+					}
+				})
+			)
 
 			const enrichedInvites = invites.map((invite: any) => ({
 				...invite,
@@ -1040,7 +1041,7 @@ app
 				return c.json({ error: 'Permission denied' }, 403)
 			}
 
-			const body = await c.req.json() as { userIds: string[]; expiresInDays?: number }
+			const body = (await c.req.json()) as { userIds: string[]; expiresInDays?: number }
 
 			if (!body.userIds || !Array.isArray(body.userIds) || body.userIds.length === 0) {
 				return c.json({ error: 'Missing required field: userIds (must be non-empty array)' }, 400)
@@ -1094,7 +1095,7 @@ app
 				return c.json({ error: 'Permission denied' }, 403)
 			}
 
-			const body = await c.req.json() as { maxUses?: number; expiresInDays?: number }
+			const body = (await c.req.json()) as { maxUses?: number; expiresInDays?: number }
 
 			const inviteCode = await groupStore.createInviteCode(
 				group.groupId,
@@ -1150,7 +1151,11 @@ app
 		} catch (error) {
 			logger.error('Redeem invite code error', { error: String(error) })
 			const message = error instanceof Error ? error.message : String(error)
-			const status = message.includes('already') ? 409 : message.includes('Invalid') || message.includes('expired') || message.includes('limit') ? 400 : 500
+			const status = message.includes('already')
+				? 409
+				: message.includes('Invalid') || message.includes('expired') || message.includes('limit')
+					? 400
+					: 500
 			return c.json({ error: message }, status)
 		}
 	})
@@ -1163,40 +1168,18 @@ app
 		}
 
 		try {
-			// Call social-auth to search for users by character name
-			const response = await c.env.SOCIAL_AUTH.fetch(new Request(`http://social-auth/api/characters/search?q=${encodeURIComponent(query)}`, {
-				method: 'GET',
-				headers: {
-					'Cookie': `session_id=${getCookie(c, 'session_id')}`,
-				},
-			}))
+			const sessionStoreStub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
 
-			if (!response.ok) {
-				logger.error('Failed to search characters', { status: response.status })
-				return c.json({ error: 'Failed to search for users' }, 500)
-			}
-
-			const data = await response.json() as {
-				success: boolean
-				characters?: Array<{
-					socialUserId: string
-					characterId: number
-					characterName: string
-					corporationName?: string
-					allianceName?: string
-				}>
-			}
-
-			if (!data.success || !data.characters) {
-				return c.json({
-					success: true,
-					users: [],
-				})
-			}
+			// Search character links by name (case-insensitive)
+			const characters = await sessionStoreStub.searchCharactersByName(query.trim())
 
 			return c.json({
 				success: true,
-				users: data.characters,
+				users: characters.map((char: any) => ({
+					socialUserId: char.socialUserId,
+					characterId: char.characterId,
+					characterName: char.characterName,
+				})),
 			})
 		} catch (error) {
 			logger.error('User search error', { error: String(error) })
@@ -1204,7 +1187,7 @@ app
 		}
 	})
 
-// ========== Custom Roles Endpoints ==========
+	// ========== Custom Roles Endpoints ==========
 
 	.post('/api/groups/:slug/roles', withAuth, async (c) => {
 		const slug = c.req.param('slug')
@@ -1224,7 +1207,11 @@ app
 				return c.json({ error: 'Only the owner can create custom roles' }, 403)
 			}
 
-			const body = await c.req.json() as { roleName: string; permissions: string[]; priority: number }
+			const body = (await c.req.json()) as {
+				roleName: string
+				permissions: string[]
+				priority: number
+			}
 
 			if (!body.roleName || !body.permissions || body.priority === undefined) {
 				return c.json({ error: 'Missing required fields' }, 400)
@@ -1281,7 +1268,7 @@ app
 		}
 	})
 
-// ========== Derived Groups Endpoints ==========
+	// ========== Derived Groups Endpoints ==========
 
 	.post('/api/groups/:slug/rules', withAuth, async (c) => {
 		const slug = c.req.param('slug')
@@ -1301,7 +1288,7 @@ app
 				return c.json({ error: 'Only the owner can create derivation rules' }, 403)
 			}
 
-			const body = await c.req.json() as {
+			const body = (await c.req.json()) as {
 				ruleType: 'parent_child' | 'role_based' | 'union' | 'conditional'
 				sourceGroupIds?: string[]
 				conditionRules?: Record<string, unknown>
@@ -1418,32 +1405,19 @@ const withAdminAuth = async (c: any, next: any) => {
 	}
 
 	try {
-		const response = await c.env.SOCIAL_AUTH.fetch(new Request('http://social-auth/api/session/verify', {
-			method: 'POST',
-			headers: {
-				'Cookie': `session_id=${sessionId}`,
-			},
-		}))
+		const sessionStoreStub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
 
-		if (!response.ok) {
-			return c.json({ error: 'Not authorized' }, 403)
-		}
+		const sessionInfo = await sessionStoreStub.getSession(sessionId)
 
-		const data = await response.json() as {
-			success: boolean
-			session: { socialUserId: string; isAdmin: boolean }
-		}
+		// Get social user to check admin status
+		const socialUser = await sessionStoreStub.getSocialUser(sessionInfo.socialUserId)
 
-		if (!data.success || !data.session) {
-			return c.json({ error: 'Not authorized' }, 403)
-		}
-
-		if (!data.session.isAdmin) {
+		if (!socialUser?.isAdmin) {
 			return c.json({ error: 'Admin access required' }, 403)
 		}
 
 		// Store user ID in context
-		c.set('sessionUserId', data.session.socialUserId)
+		c.set('sessionUserId', sessionInfo.socialUserId)
 
 		await next()
 	} catch (error) {
@@ -1455,7 +1429,7 @@ const withAdminAuth = async (c: any, next: any) => {
 app
 	.post('/api/categories', withAdminAuth, async (c) => {
 		try {
-			const body = await c.req.json() as {
+			const body = (await c.req.json()) as {
 				name: string
 				description?: string
 				displayOrder: number
@@ -1511,7 +1485,7 @@ app
 		const categoryId = c.req.param('categoryId')
 
 		try {
-			const body = await c.req.json() as {
+			const body = (await c.req.json()) as {
 				name?: string
 				description?: string | null
 				displayOrder?: number
@@ -1567,8 +1541,6 @@ app
 		}
 	})
 
-// Wrap with Sentry for error tracking
-import { withSentry } from '@repo/hono-helpers'
 export default withSentry(app)
 
 // Export Durable Object

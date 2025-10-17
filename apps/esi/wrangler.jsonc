@@ -32,6 +32,11 @@
 			{
 				"name": "CHARACTER_DATA_STORE",
 				"class_name": "CharacterDataStore"
+			},
+			{
+				"name": "USER_SESSION_STORE",
+				"class_name": "SessionStore",
+				"script_name": "social-auth"
 			}
 		]
 	},

@@ -25,15 +25,14 @@
 			{
 				"name": "GROUP_STORE",
 				"class_name": "GroupStore"
+			},
+			{
+				"name": "USER_SESSION_STORE",
+				"class_name": "SessionStore",
+				"script_name": "social-auth"
 			}
 		]
 	},
-	"services": [
-		{
-			"binding": "SOCIAL_AUTH",
-			"service": "social-auth"
-		}
-	],
 	"migrations": [
 		{
 			"tag": "v1",

@@ -1,12 +1,10 @@
 import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
 
-import type { TagStore } from './tag-store'
-
 export type Env = SharedHonoEnv & {
-	TAG_STORE: DurableObjectNamespace<TagStore>
-	SOCIAL_AUTH: Fetcher
-	ESI: Fetcher
+	TAG_STORE: DurableObjectNamespace
+	USER_SESSION_STORE: DurableObjectNamespace
+	CHARACTER_DATA_STORE: DurableObjectNamespace
 	ADMIN_API_TOKENS: string
 }
 

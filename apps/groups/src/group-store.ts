@@ -715,7 +715,10 @@ export class GroupStore extends DurableObject<Env> {
 		await this.ctx.storage.sql.exec('DELETE FROM group_join_requests WHERE group_id = ?', groupId)
 		await this.ctx.storage.sql.exec('DELETE FROM group_invites WHERE group_id = ?', groupId)
 		await this.ctx.storage.sql.exec('DELETE FROM group_roles WHERE group_id = ?', groupId)
-		await this.ctx.storage.sql.exec('DELETE FROM derived_group_rules WHERE derived_group_id = ?', groupId)
+		await this.ctx.storage.sql.exec(
+			'DELETE FROM derived_group_rules WHERE derived_group_id = ?',
+			groupId
+		)
 		await this.ctx.storage.sql.exec('DELETE FROM groups WHERE group_id = ?', groupId)
 
 		logger
@@ -760,7 +763,9 @@ export class GroupStore extends DurableObject<Env> {
 
 		// Get total count
 		const countRows = await this.ctx.storage.sql
-			.exec<{ count: number }>(`SELECT COUNT(*) as count FROM groups ${whereClause}`, ...whereValues)
+			.exec<{
+				count: number
+			}>(`SELECT COUNT(*) as count FROM groups ${whereClause}`, ...whereValues)
 			.toArray()
 		const total = countRows[0]?.count || 0
 
@@ -987,7 +992,9 @@ export class GroupStore extends DurableObject<Env> {
 
 		// Get total count
 		const countRows = await this.ctx.storage.sql
-			.exec<{ count: number }>('SELECT COUNT(*) as count FROM group_members WHERE group_id = ?', groupId)
+			.exec<{
+				count: number
+			}>('SELECT COUNT(*) as count FROM group_members WHERE group_id = ?', groupId)
 			.toArray()
 		const total = countRows[0]?.count || 0
 
@@ -1234,9 +1241,7 @@ export class GroupStore extends DurableObject<Env> {
 
 		const params = status ? [groupId, status] : [groupId]
 
-		const rows = await this.ctx.storage.sql
-			.exec<JoinRequestData>(query, ...params)
-			.toArray()
+		const rows = await this.ctx.storage.sql.exec<JoinRequestData>(query, ...params).toArray()
 
 		return rows.map((row) => ({
 			requestId: row.request_id,
@@ -2049,7 +2054,9 @@ export class GroupStore extends DurableObject<Env> {
 		await this.ensureSchema()
 
 		const rows = await this.ctx.storage.sql
-			.exec<GroupCategoryData>('SELECT * FROM group_categories ORDER BY display_order ASC, name ASC')
+			.exec<GroupCategoryData>(
+				'SELECT * FROM group_categories ORDER BY display_order ASC, name ASC'
+			)
 			.toArray()
 
 		return rows.map((row) => ({
@@ -2140,7 +2147,10 @@ export class GroupStore extends DurableObject<Env> {
 			throw new Error('Cannot delete category that is being used by groups')
 		}
 
-		await this.ctx.storage.sql.exec('DELETE FROM group_categories WHERE category_id = ?', categoryId)
+		await this.ctx.storage.sql.exec(
+			'DELETE FROM group_categories WHERE category_id = ?',
+			categoryId
+		)
 
 		logger
 			.withTags({

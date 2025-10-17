@@ -19,19 +19,14 @@
 				"name": "USER_TOKEN_STORE",
 				"class_name": "UserTokenStore",
 				"script_name": "esi"
+			},
+			{
+				"name": "TAG_STORE",
+				"class_name": "TagStore",
+				"script_name": "tags"
 			}
 		]
 	},
-	"services": [
-		{
-			"binding": "TAGS",
-			"service": "tags"
-		},
-		{
-			"binding": "ESI",
-			"service": "esi"
-		}
-	],
 	"migrations": [
 		{
 			"tag": "v1",

@@ -1,8 +1,8 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
 	<head>
-		<meta charset="utf-8">
-		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<title>Dashboard - Test Auth Next Generation</title>
 		<style>
 			* {
@@ -11,7 +11,8 @@
 				box-sizing: border-box;
 			}
 			body {
-				font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+				font-family:
+					-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 				background: linear-gradient(180deg, #0a0e27 0%, #1a1b3d 50%, #2d1b4e 100%);
 				background-attachment: fixed;
 				min-height: 100vh;
@@ -35,8 +36,15 @@
 				animation: twinkle linear infinite;
 			}
 			@keyframes twinkle {
-				0%, 100% { opacity: 0.3; transform: scale(1); }
-				50% { opacity: 1; transform: scale(1.2); }
+				0%,
+				100% {
+					opacity: 0.3;
+					transform: scale(1);
+				}
+				50% {
+					opacity: 1;
+					transform: scale(1.2);
+				}
 			}
 			.container {
 				max-width: 800px;
@@ -175,7 +183,7 @@
 				justify-content: center;
 				gap: 0.5rem;
 				padding: 0.75rem 1.5rem;
-				background: #5865F2;
+				background: #5865f2;
 				color: white;
 				border: none;
 				border-radius: 0.5rem;
@@ -185,7 +193,7 @@
 				text-decoration: none;
 			}
 			.btn-discord:hover {
-				background: #4752C4;
+				background: #4752c4;
 				transform: translateY(-2px);
 				box-shadow: 0 4px 12px rgba(88, 101, 242, 0.3);
 			}
@@ -235,12 +243,12 @@
 				<p>Loading your dashboard...</p>
 			</div>
 
-			<div id="error" class="card" style="display: none;">
+			<div id="error" class="card" style="display: none">
 				<div class="error"></div>
 				<a href="https://pleaseignore.app/groups" class="btn btn-primary">Groups</a>
 			</div>
 
-			<div id="dashboard" style="display: none;">
+			<div id="dashboard" style="display: none">
 				<div class="card">
 					<h1>Welcome, <span id="userName"></span></h1>
 					<p class="subtitle">Manage your authentication and account links</p>
@@ -272,7 +280,9 @@
 
 				<div class="card">
 					<h2>EVE Characters</h2>
-					<p class="subtitle" style="margin-bottom: 1rem;">Manage your linked EVE Online characters</p>
+					<p class="subtitle" style="margin-bottom: 1rem">
+						Manage your linked EVE Online characters
+					</p>
 					<div id="charactersStatus"></div>
 				</div>
 
@@ -283,51 +293,55 @@
 
 				<div class="card">
 					<h2>Linked Providers</h2>
-					<p class="subtitle" style="margin-bottom: 1rem;">Link additional social accounts to your profile</p>
+					<p class="subtitle" style="margin-bottom: 1rem">
+						Link additional social accounts to your profile
+					</p>
 					<div id="providerLinksStatus"></div>
 				</div>
 			</div>
 		</div>
 
 		<script>
-			let maskingEnabled = localStorage.getItem('maskingEnabled') !== 'false'; // Default to true
+			let maskingEnabled = localStorage.getItem('maskingEnabled') !== 'false' // Default to true
 
 			// Masking utilities
 			function maskEmail(email) {
-				if (!maskingEnabled || !email) return email;
-				const [user, domain] = email.split('@');
-				if (!domain) return '***@***.***';
-				const maskedUser = user.length <= 2 ? '***' : user[0] + '***' + user[user.length - 1];
-				const [domainName, tld] = domain.split('.');
-				const maskedDomain = domainName.length <= 2 ? '***' : domainName[0] + '***';
-				return `${maskedUser}@${maskedDomain}.${tld || '***'}`;
+				if (!maskingEnabled || !email) return email
+				const [user, domain] = email.split('@')
+				if (!domain) return '***@***.***'
+				const maskedUser = user.length <= 2 ? '***' : user[0] + '***' + user[user.length - 1]
+				const [domainName, tld] = domain.split('.')
+				const maskedDomain = domainName.length <= 2 ? '***' : domainName[0] + '***'
+				return `${maskedUser}@${maskedDomain}.${tld || '***'}`
 			}
 
 			function maskName(name) {
-				if (!maskingEnabled || !name) return name;
-				const parts = name.split(' ');
-				return parts.map(part => {
-					if (part.length <= 2) return '***';
-					return part[0] + '***';
-				}).join(' ');
+				if (!maskingEnabled || !name) return name
+				const parts = name.split(' ')
+				return parts
+					.map((part) => {
+						if (part.length <= 2) return '***'
+						return part[0] + '***'
+					})
+					.join(' ')
 			}
 
 			function maskId(id, showLength = 8) {
-				if (!maskingEnabled || !id) return id;
-				if (id.length <= showLength) return '***';
-				return id.substring(0, showLength) + '...';
+				if (!maskingEnabled || !id) return id
+				if (id.length <= showLength) return '***'
+				return id.substring(0, showLength) + '...'
 			}
 
 			function maskUsername(username) {
-				if (!maskingEnabled || !username) return username;
-				if (username.length <= 3) return '***';
-				return username.substring(0, 2) + '***' + username[username.length - 1];
+				if (!maskingEnabled || !username) return username
+				if (username.length <= 3) return '***'
+				return username.substring(0, 2) + '***' + username[username.length - 1]
 			}
 
 			function toggleMasking() {
-				maskingEnabled = !maskingEnabled;
-				localStorage.setItem('maskingEnabled', maskingEnabled);
-				loadDashboard(); // Reload to apply changes
+				maskingEnabled = !maskingEnabled
+				localStorage.setItem('maskingEnabled', maskingEnabled)
+				loadDashboard() // Reload to apply changes
 			}
 
 			async function loadDashboard() {
@@ -335,56 +349,56 @@
 					// Verify session (cookie sent automatically)
 					const sessionRes = await fetch('/api/session/verify', {
 						method: 'POST',
-						credentials: 'same-origin'
-					});
+						credentials: 'same-origin',
+					})
 
 					if (!sessionRes.ok) {
-						throw new Error('Session expired or invalid');
+						throw new Error('Session expired or invalid')
 					}
 
-					const sessionData = await sessionRes.json();
-					const session = sessionData.session;
+					const sessionData = await sessionRes.json()
+					const session = sessionData.session
 
 					// Get account links (cookie sent automatically)
 					const linksRes = await fetch('/api/account/links', {
 						method: 'POST',
-						credentials: 'same-origin'
-					});
+						credentials: 'same-origin',
+					})
 
-					const linksData = await linksRes.json();
-					const links = linksData.links || [];
+					const linksData = await linksRes.json()
+					const links = linksData.links || []
 
 					// Get character links (cookie sent automatically)
 					const charactersRes = await fetch('/api/characters', {
 						method: 'GET',
-						credentials: 'same-origin'
-					});
+						credentials: 'same-origin',
+					})
 
-					console.log('Characters response status:', charactersRes.status);
-					const charactersData = await charactersRes.json();
-					console.log('Characters data:', charactersData);
-					const characters = charactersData.characters || [];
-					console.log('Characters array:', characters);
+					console.log('Characters response status:', charactersRes.status)
+					const charactersData = await charactersRes.json()
+					console.log('Characters data:', charactersData)
+					const characters = charactersData.characters || []
+					console.log('Characters array:', characters)
 
 					// Get provider links (cookie sent automatically)
 					const providerLinksRes = await fetch('/api/provider/links', {
 						method: 'GET',
-						credentials: 'same-origin'
-					});
+						credentials: 'same-origin',
+					})
 
-					const providerLinksData = await providerLinksRes.json();
-					const providerLinks = providerLinksData.providerLinks || [];
+					const providerLinksData = await providerLinksRes.json()
+					const providerLinks = providerLinksData.providerLinks || []
 
 					// Update UI with masking
-					document.getElementById('userName').textContent = maskName(session.name);
-					document.getElementById('provider').textContent = session.provider;
-					document.getElementById('email').textContent = maskEmail(session.email);
-					document.getElementById('name').textContent = maskName(session.name);
+					document.getElementById('userName').textContent = maskName(session.name)
+					document.getElementById('provider').textContent = session.provider
+					document.getElementById('email').textContent = maskEmail(session.email)
+					document.getElementById('name').textContent = maskName(session.name)
 
 					// Display link status
-					const linkStatusDiv = document.getElementById('linkStatus');
+					const linkStatusDiv = document.getElementById('linkStatus')
 					if (links.length > 0) {
-						const link = links[0];
+						const link = links[0]
 						linkStatusDiv.innerHTML = `
 							<div class="info-row">
 								<span class="info-label">Status</span>
@@ -409,7 +423,7 @@
 							<p style="margin-top: 1rem; color: #666; font-size: 0.9rem;">
 								Account links are permanent and cannot be changed by users.
 							</p>
-						`;
+						`
 					} else {
 						linkStatusDiv.innerHTML = `
 							<div class="empty-state">
@@ -419,29 +433,29 @@
 									Link Legacy Account
 								</button>
 							</div>
-						`;
+						`
 					}
 
 					// Update masking toggle button
-					const maskIcon = document.getElementById('maskIcon');
-					const maskText = document.getElementById('maskText');
+					const maskIcon = document.getElementById('maskIcon')
+					const maskText = document.getElementById('maskText')
 					if (maskingEnabled) {
-						maskIcon.textContent = '🔒';
-						maskText.textContent = 'Show Real Data';
+						maskIcon.textContent = '🔒'
+						maskText.textContent = 'Show Real Data'
 					} else {
-						maskIcon.textContent = '👁️';
-						maskText.textContent = 'Hide Sensitive Data';
+						maskIcon.textContent = '👁️'
+						maskText.textContent = 'Hide Sensitive Data'
 					}
 
 					// Display characters
-					const charactersStatusDiv = document.getElementById('charactersStatus');
+					const charactersStatusDiv = document.getElementById('charactersStatus')
 					if (characters.length > 0) {
-						let charactersHTML = '';
-						characters.forEach(char => {
-							const starIcon = char.isPrimary ? '★ ' : '';
+						let charactersHTML = ''
+						characters.forEach((char) => {
+							const starIcon = char.isPrimary ? '★ ' : ''
 							const buttonHtml = char.isPrimary
 								? `<button class="btn btn-secondary" disabled style="font-size: 0.875rem; padding: 0.5rem 1rem; cursor: default;">Primary</button>`
-								: `<button class="btn btn-primary" onclick="setPrimaryCharacter(${char.characterId})" style="font-size: 0.875rem; padding: 0.5rem 1rem;">Set as Primary</button>`;
+								: `<button class="btn btn-primary" onclick="setPrimaryCharacter(${char.characterId})" style="font-size: 0.875rem; padding: 0.5rem 1rem;">Set as Primary</button>`
 
 							charactersHTML += `
 								<div class="info-row" style="align-items: center;">
@@ -457,16 +471,16 @@
 										<button class="btn btn-secondary" onclick="refreshCharacter(${char.characterId})" style="font-size: 0.875rem; padding: 0.5rem 0.75rem;" title="Refresh character data">🔄</button>
 									</div>
 								</div>
-							`;
-						});
+							`
+						})
 						charactersHTML += `
 							<div style="margin-top: 1.5rem;">
 								<a href="https://pleaseignore.app/esi/login" class="btn btn-primary">
 									Add Another Character
 								</a>
 							</div>
-						`;
-						charactersStatusDiv.innerHTML = charactersHTML;
+						`
+						charactersStatusDiv.innerHTML = charactersHTML
 					} else {
 						charactersStatusDiv.innerHTML = `
 							<div class="empty-state">
@@ -475,13 +489,13 @@
 									Add Your First Character
 								</a>
 							</div>
-						`;
+						`
 					}
 
 					// Display provider links
-					const providerLinksStatusDiv = document.getElementById('providerLinksStatus');
-					const discordLink = providerLinks.find(link => link.provider === 'discord');
-					const isPrimaryDiscord = session.provider === 'discord';
+					const providerLinksStatusDiv = document.getElementById('providerLinksStatus')
+					const discordLink = providerLinks.find((link) => link.provider === 'discord')
+					const isPrimaryDiscord = session.provider === 'discord'
 
 					if (isPrimaryDiscord) {
 						// User is logged in with Discord, so they can't link another Discord account
@@ -489,7 +503,7 @@
 							<div style="padding: 1rem; text-align: center; color: #666;">
 								<p>You're logged in with Discord as your primary provider.</p>
 							</div>
-						`;
+						`
 					} else if (discordLink) {
 						providerLinksStatusDiv.innerHTML = `
 							<div class="provider-info-row">
@@ -504,7 +518,7 @@
 							<div style="margin-top: 1rem; color: #666; font-size: 0.9rem;">
 								<p>Linked on ${new Date(discordLink.linkedAt).toLocaleString()}</p>
 							</div>
-						`;
+						`
 					} else {
 						providerLinksStatusDiv.innerHTML = `
 							<div class="empty-state">
@@ -516,21 +530,20 @@
 									Link Discord Account
 								</button>
 							</div>
-						`;
+						`
 					}
 
 					// Show dashboard
-					document.getElementById('loading').style.display = 'none';
-					document.getElementById('dashboard').style.display = 'block';
-
+					document.getElementById('loading').style.display = 'none'
+					document.getElementById('dashboard').style.display = 'block'
 				} catch (error) {
-					console.error('Error loading dashboard:', error);
-					document.getElementById('loading').style.display = 'none';
-					const errorDiv = document.getElementById('error');
-					errorDiv.style.display = 'block';
-					errorDiv.querySelector('.error').textContent = error.message || 'Failed to load dashboard';
+					console.error('Error loading dashboard:', error)
+					document.getElementById('loading').style.display = 'none'
+					const errorDiv = document.getElementById('error')
+					errorDiv.style.display = 'block'
+					errorDiv.querySelector('.error').textContent = error.message || 'Failed to load dashboard'
 					// Session cookie is HTTP-only, so we can't remove it client-side
-					window.location.href = '/';
+					window.location.href = '/'
 				}
 			}
 
@@ -539,17 +552,17 @@
 					// Cookie sent automatically
 					const res = await fetch('/claim/initiate', {
 						method: 'POST',
-						credentials: 'same-origin'
-					});
+						credentials: 'same-origin',
+					})
 
-					const data = await res.json();
+					const data = await res.json()
 					if (data.success) {
-						window.location.href = data.authUrl;
+						window.location.href = data.authUrl
 					} else {
-						alert('Failed to initiate account claim: ' + (data.error || 'Unknown error'));
+						alert('Failed to initiate account claim: ' + (data.error || 'Unknown error'))
 					}
 				} catch (error) {
-					alert('Error: ' + error.message);
+					alert('Error: ' + error.message)
 				}
 			}
 
@@ -558,17 +571,17 @@
 					// Cookie sent automatically
 					const res = await fetch('/link/discord/initiate', {
 						method: 'POST',
-						credentials: 'same-origin'
-					});
+						credentials: 'same-origin',
+					})
 
-					const data = await res.json();
+					const data = await res.json()
 					if (data.success) {
-						window.location.href = data.authUrl;
+						window.location.href = data.authUrl
 					} else {
-						alert('Failed to initiate Discord link: ' + (data.error || 'Unknown error'));
+						alert('Failed to initiate Discord link: ' + (data.error || 'Unknown error'))
 					}
 				} catch (error) {
-					alert('Error: ' + error.message);
+					alert('Error: ' + error.message)
 				}
 			}
 
@@ -577,15 +590,15 @@
 					// Cookie sent automatically and deleted by server
 					fetch('/api/session', {
 						method: 'DELETE',
-						credentials: 'same-origin'
+						credentials: 'same-origin',
 					})
-					.then(() => {
-						window.location.href = '/';
-					})
-					.catch(error => {
-						console.error('Logout error:', error);
-						window.location.href = '/';
-					});
+						.then(() => {
+							window.location.href = '/'
+						})
+						.catch((error) => {
+							console.error('Logout error:', error)
+							window.location.href = '/'
+						})
 				}
 			}
 
@@ -593,18 +606,18 @@
 				try {
 					const res = await fetch(`/api/characters/${characterId}/primary`, {
 						method: 'PUT',
-						credentials: 'same-origin'
-					});
+						credentials: 'same-origin',
+					})
 
-					const data = await res.json();
+					const data = await res.json()
 					if (data.success) {
 						// Reload dashboard to show updated primary status
-						loadDashboard();
+						loadDashboard()
 					} else {
-						alert('Failed to set primary character: ' + (data.error || 'Unknown error'));
+						alert('Failed to set primary character: ' + (data.error || 'Unknown error'))
 					}
 				} catch (error) {
-					alert('Error: ' + error.message);
+					alert('Error: ' + error.message)
 				}
 			}
 
@@ -612,53 +625,51 @@
 				try {
 					const res = await fetch(`/api/characters/${characterId}/refresh`, {
 						method: 'POST',
-						credentials: 'same-origin'
-					});
+						credentials: 'same-origin',
+					})
 
-					const data = await res.json();
+					const data = await res.json()
 					if (data.success) {
-						alert('Character data refresh initiated successfully!');
+						alert('Character data refresh initiated successfully!')
 					} else {
-						alert('Failed to refresh character: ' + (data.error || 'Unknown error'));
+						alert('Failed to refresh character: ' + (data.error || 'Unknown error'))
 					}
 				} catch (error) {
-					alert('Error: ' + error.message);
+					alert('Error: ' + error.message)
 				}
 			}
 
+			// Generate stars for dashboard
+			function createStars() {
+				const starsContainer = document.getElementById('dashboardStars')
+				const numberOfStars = 100
 
-		// Generate stars for dashboard
-		function createStars() {
-			const starsContainer = document.getElementById('dashboardStars');
-			const numberOfStars = 100;
+				for (let i = 0; i < numberOfStars; i++) {
+					const star = document.createElement('div')
+					star.className = 'star'
 
-			for (let i = 0; i < numberOfStars; i++) {
-				const star = document.createElement('div');
-				star.className = 'star';
+					// Random position
+					star.style.left = Math.random() * 100 + '%'
+					star.style.top = Math.random() * 100 + '%'
 
-				// Random position
-				star.style.left = Math.random() * 100 + '%';
-				star.style.top = Math.random() * 100 + '%';
+					// Random size (1-3px)
+					const size = Math.random() * 2 + 1
+					star.style.width = size + 'px'
+					star.style.height = size + 'px'
 
-				// Random size (1-3px)
-				const size = Math.random() * 2 + 1;
-				star.style.width = size + 'px';
-				star.style.height = size + 'px';
+					// Random animation duration (3-8 seconds)
+					star.style.animationDuration = Math.random() * 5 + 3 + 's'
 
-				// Random animation duration (3-8 seconds)
-				star.style.animationDuration = (Math.random() * 5 + 3) + 's';
+					// Random animation delay
+					star.style.animationDelay = Math.random() * 5 + 's'
 
-				// Random animation delay
-				star.style.animationDelay = Math.random() * 5 + 's';
-
-				starsContainer.appendChild(star);
+					starsContainer.appendChild(star)
+				}
 			}
-		}
 
-		createStars();
+			createStars()
 
-
-			loadDashboard();
+			loadDashboard()
 		</script>
 	</body>
 </html>

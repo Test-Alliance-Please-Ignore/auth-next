@@ -14,8 +14,12 @@
 		"test": "run-vitest"
 	},
 	"dependencies": {
+		"@repo/character-data-store": "workspace:*",
+		"@repo/do-utils": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
+		"@repo/session-store": "workspace:*",
 		"@repo/static-auth": "workspace:*",
+		"@repo/tag-store": "workspace:*",
 		"hono": "4.9.11",
 		"workers-tagged-logger": "0.13.3"
 	},

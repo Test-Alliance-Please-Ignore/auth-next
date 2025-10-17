@@ -258,23 +258,33 @@ export class SessionStore extends DurableObject<Env> {
 					// Table exists - verify it has the correct columns by trying to select key columns
 					switch (tableName) {
 						case 'social_users':
-							await this.ctx.storage.sql.exec('SELECT social_user_id, provider, provider_user_id FROM social_users LIMIT 0').toArray()
+							await this.ctx.storage.sql
+								.exec('SELECT social_user_id, provider, provider_user_id FROM social_users LIMIT 0')
+								.toArray()
 							break
 						case 'sessions':
-							await this.ctx.storage.sql.exec('SELECT session_id, social_user_id FROM sessions LIMIT 0').toArray()
+							await this.ctx.storage.sql
+								.exec('SELECT session_id, social_user_id FROM sessions LIMIT 0')
+								.toArray()
 							break
 						case 'account_links':
-							await this.ctx.storage.sql.exec('SELECT link_id, social_user_id, legacy_system, legacy_user_id FROM account_links LIMIT 0').toArray()
+							await this.ctx.storage.sql
+								.exec(
+									'SELECT link_id, social_user_id, legacy_system, legacy_user_id FROM account_links LIMIT 0'
+								)
+								.toArray()
 							break
 						case 'oidc_states':
-							await this.ctx.storage.sql.exec('SELECT state, session_id FROM oidc_states LIMIT 0').toArray()
+							await this.ctx.storage.sql
+								.exec('SELECT state, session_id FROM oidc_states LIMIT 0')
+								.toArray()
 							break
 					}
 				}
 			} catch (error) {
 				// Column doesn't exist or schema is wrong - drop the table
 				logger.warn(`Dropping table ${tableName} due to schema mismatch`, {
-					error: error instanceof Error ? error.message : String(error)
+					error: error instanceof Error ? error.message : String(error),
 				})
 				await this.ctx.storage.sql.exec(`DROP TABLE IF EXISTS ${tableName}`)
 			}
@@ -1135,14 +1145,13 @@ export class SessionStore extends DurableObject<Env> {
 
 		// Check if this social user already has ANY link (1:1 constraint)
 		const existingLink = await this.ctx.storage.sql
-			.exec<AccountLinkData>(
-				'SELECT * FROM account_links WHERE social_user_id = ?',
-				socialUserId
-			)
+			.exec<AccountLinkData>('SELECT * FROM account_links WHERE social_user_id = ?', socialUserId)
 			.toArray()
 
 		if (existingLink.length > 0) {
-			throw new Error('You have already linked a legacy account. Each social account can only be linked to one legacy account permanently.')
+			throw new Error(
+				'You have already linked a legacy account. Each social account can only be linked to one legacy account permanently.'
+			)
 		}
 
 		// Create new link
@@ -1222,10 +1231,7 @@ export class SessionStore extends DurableObject<Env> {
 		await this.ensureSchema()
 
 		const rows = await this.ctx.storage.sql
-			.exec<AccountLinkData>(
-				'SELECT * FROM account_links WHERE social_user_id = ?',
-				socialUserId
-			)
+			.exec<AccountLinkData>('SELECT * FROM account_links WHERE social_user_id = ?', socialUserId)
 			.toArray()
 
 		return rows.map((row) => ({
@@ -1245,7 +1251,10 @@ export class SessionStore extends DurableObject<Env> {
 		}))
 	}
 
-	async getAccountLinkByLegacyId(legacySystem: string, legacyUserId: string): Promise<AccountLink | null> {
+	async getAccountLinkByLegacyId(
+		legacySystem: string,
+		legacyUserId: string
+	): Promise<AccountLink | null> {
 		await this.ensureSchema()
 
 		const rows = await this.ctx.storage.sql
@@ -1316,10 +1325,7 @@ export class SessionStore extends DurableObject<Env> {
 
 		// Check if this character is already linked to any social user
 		const existingCharacter = await this.ctx.storage.sql
-			.exec<CharacterLinkData>(
-				'SELECT * FROM character_links WHERE character_id = ?',
-				characterId
-			)
+			.exec<CharacterLinkData>('SELECT * FROM character_links WHERE character_id = ?', characterId)
 			.toArray()
 
 		if (existingCharacter.length > 0) {
@@ -1390,10 +1396,7 @@ export class SessionStore extends DurableObject<Env> {
 		await this.ensureSchema()
 
 		const rows = await this.ctx.storage.sql
-			.exec<CharacterLinkData>(
-				'SELECT * FROM character_links WHERE character_id = ?',
-				characterId
-			)
+			.exec<CharacterLinkData>('SELECT * FROM character_links WHERE character_id = ?', characterId)
 			.toArray()
 
 		if (rows.length === 0) {
@@ -1467,7 +1470,10 @@ export class SessionStore extends DurableObject<Env> {
 
 		const link = rows[0]
 
-		await this.ctx.storage.sql.exec('DELETE FROM character_links WHERE character_id = ?', characterId)
+		await this.ctx.storage.sql.exec(
+			'DELETE FROM character_links WHERE character_id = ?',
+			characterId
+		)
 
 		logger
 			.withTags({
@@ -1481,11 +1487,13 @@ export class SessionStore extends DurableObject<Env> {
 			})
 	}
 
-	async searchCharactersByName(query: string): Promise<Array<{
-		socialUserId: string
-		characterId: number
-		characterName: string
-	}>> {
+	async searchCharactersByName(query: string): Promise<
+		Array<{
+			socialUserId: string
+			characterId: number
+			characterName: string
+		}>
+	> {
 		await this.ensureSchema()
 
 		const rows = await this.ctx.storage.sql
@@ -1599,7 +1607,10 @@ export class SessionStore extends DurableObject<Env> {
 		}))
 	}
 
-	async getProviderLinkByProvider(provider: string, providerUserId: string): Promise<ProviderLink | null> {
+	async getProviderLinkByProvider(
+		provider: string,
+		providerUserId: string
+	): Promise<ProviderLink | null> {
 		await this.ensureSchema()
 
 		const rows = await this.ctx.storage.sql

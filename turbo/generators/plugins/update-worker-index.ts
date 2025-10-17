@@ -17,16 +17,8 @@ export interface UpdateWorkerIndexData {
 /**
  * Custom action to update index.ts with DO export
  */
-export async function updateWorkerIndex(
-	answers: UpdateWorkerIndexData
-): Promise<string> {
-	const indexPath = join(
-		answers.turbo.paths.root,
-		'apps',
-		answers.workerName,
-		'src',
-		'index.ts'
-	)
+export async function updateWorkerIndex(answers: UpdateWorkerIndexData): Promise<string> {
+	const indexPath = join(answers.turbo.paths.root, 'apps', answers.workerName, 'src', 'index.ts')
 
 	try {
 		let content = readFileSync(indexPath, 'utf-8')
@@ -60,8 +52,6 @@ export async function updateWorkerIndex(
 	}
 }
 
-export const updateWorkerIndexAction: PlopTypes.CustomActionFunction = async (
-	answers
-) => {
+export const updateWorkerIndexAction: PlopTypes.CustomActionFunction = async (answers) => {
 	return updateWorkerIndex(answers as UpdateWorkerIndexData)
 }

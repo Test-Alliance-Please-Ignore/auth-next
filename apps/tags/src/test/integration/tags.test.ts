@@ -1,7 +1,7 @@
-import { SELF, env } from 'cloudflare:test'
+import { env, SELF } from 'cloudflare:test'
 import { describe, expect, test } from 'vitest'
 
-import type { TagStore } from '../../tag-store'
+import type { TagStore, TagWithSources } from '@repo/tag-store'
 import type { Env } from '../../context'
 
 import '../..'
@@ -13,7 +13,7 @@ describe('Tags System', () => {
 	describe('TagStore - Tag Management', () => {
 		test('creates and retrieves corporation tag', async () => {
 			const id = testEnv.TAG_STORE.idFromName('test-corp-tag')
-			const store = testEnv.TAG_STORE.get(id)
+			const store = testEnv.TAG_STORE.get(id) as unknown as TagStore
 
 			const urn = 'urn:eve:corporation:98000001'
 			const tag = await store.upsertTag(urn, 'corporation', 'Test Corporation', 98000001, {
@@ -34,7 +34,7 @@ describe('Tags System', () => {
 
 		test('creates and retrieves alliance tag', async () => {
 			const id = testEnv.TAG_STORE.idFromName('test-alliance-tag')
-			const store = testEnv.TAG_STORE.get(id)
+			const store = testEnv.TAG_STORE.get(id) as unknown as TagStore
 
 			const urn = 'urn:eve:alliance:99000001'
 			const tag = await store.upsertTag(urn, 'alliance', 'Test Alliance', 99000001)
@@ -47,7 +47,7 @@ describe('Tags System', () => {
 
 		test('updates existing tag', async () => {
 			const id = testEnv.TAG_STORE.idFromName('test-update-tag')
-			const store = testEnv.TAG_STORE.get(id)
+			const store = testEnv.TAG_STORE.get(id) as unknown as TagStore
 
 			const urn = 'urn:eve:corporation:98000002'
 			await store.upsertTag(urn, 'corporation', 'Old Name', 98000002)
@@ -65,7 +65,7 @@ describe('Tags System', () => {
 	describe('TagStore - User Tag Assignments', () => {
 		test('assigns tag to user from specific character', async () => {
 			const id = testEnv.TAG_STORE.idFromName('test-assign-tag')
-			const store = testEnv.TAG_STORE.get(id)
+			const store = testEnv.TAG_STORE.get(id) as unknown as TagStore
 
 			const userId = 'test-user-1'
 			const characterId = 93123456
@@ -86,7 +86,7 @@ describe('Tags System', () => {
 
 		test('handles multiple characters providing same tag', async () => {
 			const id = testEnv.TAG_STORE.idFromName('test-multi-char-tag')
-			const store = testEnv.TAG_STORE.get(id)
+			const store = testEnv.TAG_STORE.get(id) as unknown as TagStore
 
 			const userId = 'test-user-2'
 			const char1 = 93123456
@@ -109,7 +109,7 @@ describe('Tags System', () => {
 
 		test('removes tag from specific character', async () => {
 			const id = testEnv.TAG_STORE.idFromName('test-remove-char-tag')
-			const store = testEnv.TAG_STORE.get(id)
+			const store = testEnv.TAG_STORE.get(id) as unknown as TagStore
 
 			const userId = 'test-user-3'
 			const char1 = 93123456
@@ -132,7 +132,7 @@ describe('Tags System', () => {
 
 		test('removes all tags when last character unlinked', async () => {
 			const id = testEnv.TAG_STORE.idFromName('test-remove-all-tag')
-			const store = testEnv.TAG_STORE.get(id)
+			const store = testEnv.TAG_STORE.get(id) as unknown as TagStore
 
 			const userId = 'test-user-4'
 			const characterId = 93123456
@@ -151,7 +151,7 @@ describe('Tags System', () => {
 
 		test('removes all tags for character', async () => {
 			const id = testEnv.TAG_STORE.idFromName('test-remove-char-all')
-			const store = testEnv.TAG_STORE.get(id)
+			const store = testEnv.TAG_STORE.get(id) as unknown as TagStore
 
 			const userId = 'test-user-5'
 			const characterId = 93123456
@@ -175,7 +175,7 @@ describe('Tags System', () => {
 	describe('TagStore - Evaluation Scheduling', () => {
 		test('schedules user for evaluation', async () => {
 			const id = testEnv.TAG_STORE.idFromName('test-schedule')
-			const store = testEnv.TAG_STORE.get(id)
+			const store = testEnv.TAG_STORE.get(id) as unknown as TagStore
 
 			const userId = 'test-user-schedule'
 
@@ -213,7 +213,7 @@ describe('Tags System', () => {
 		test('GET /api/tags/:userId returns user tags', async () => {
 			// Setup: create tags for user
 			const id = testEnv.TAG_STORE.idFromName('global')
-			const store = testEnv.TAG_STORE.get(id)
+			const store = testEnv.TAG_STORE.get(id) as unknown as TagStore
 
 			const userId = 'test-social-user-id'
 			const urn = 'urn:eve:corporation:98000011'
@@ -246,7 +246,7 @@ describe('Tags System', () => {
 
 		test('GET /api/tags/:userId/display returns formatted tags', async () => {
 			const id = testEnv.TAG_STORE.idFromName('global')
-			const store = testEnv.TAG_STORE.get(id)
+			const store = testEnv.TAG_STORE.get(id) as unknown as TagStore
 
 			const userId = 'test-social-user-id'
 			const urn = 'urn:eve:alliance:99000011'
@@ -282,7 +282,7 @@ describe('Tags System', () => {
 	describe('API Endpoints - Character Unlinking', () => {
 		test('POST /api/tags/character-unlinked removes character tags', async () => {
 			const id = testEnv.TAG_STORE.idFromName('global')
-			const store = testEnv.TAG_STORE.get(id)
+			const store = testEnv.TAG_STORE.get(id) as unknown as TagStore
 
 			const userId = 'test-user-unlink'
 			const characterId = 93123460
@@ -308,7 +308,7 @@ describe('Tags System', () => {
 
 			// Verify tags removed
 			const tags = await store.getUserTags(userId)
-			const hasTag = tags.some((t) => t.sourceCharacters.includes(characterId))
+			const hasTag = tags.some((t: TagWithSources) => t.sourceCharacters.includes(characterId))
 			expect(hasTag).toBe(false)
 		})
 	})
@@ -316,7 +316,7 @@ describe('Tags System', () => {
 	describe('Tag Color Coding', () => {
 		test('corporation tags have green color', async () => {
 			const id = testEnv.TAG_STORE.idFromName('test-corp-color')
-			const store = testEnv.TAG_STORE.get(id)
+			const store = testEnv.TAG_STORE.get(id) as unknown as TagStore
 
 			const tag = await store.upsertTag(
 				'urn:eve:corporation:98000020',
@@ -330,7 +330,7 @@ describe('Tags System', () => {
 
 		test('alliance tags have blue color', async () => {
 			const id = testEnv.TAG_STORE.idFromName('test-alliance-color')
-			const store = testEnv.TAG_STORE.get(id)
+			const store = testEnv.TAG_STORE.get(id) as unknown as TagStore
 
 			const tag = await store.upsertTag(
 				'urn:eve:alliance:99000020',
@@ -346,7 +346,7 @@ describe('Tags System', () => {
 	describe('User with Multiple Characters', () => {
 		test('user gets tags from all characters', async () => {
 			const id = testEnv.TAG_STORE.idFromName('test-multi-char-user')
-			const store = testEnv.TAG_STORE.get(id)
+			const store = testEnv.TAG_STORE.get(id) as unknown as TagStore
 
 			const userId = 'test-user-multi'
 			const char1 = 93123461
@@ -378,13 +378,13 @@ describe('Tags System', () => {
 			expect(tags.length).toBe(3)
 
 			// Verify corp1 has 2 sources
-			const corp1Tag = tags.find((t) => t.tagUrn === corp1Urn)
+			const corp1Tag = tags.find((t: TagWithSources) => t.tagUrn === corp1Urn)
 			expect(corp1Tag?.sourceCharacters).toHaveLength(2)
 			expect(corp1Tag?.sourceCharacters).toContain(char1)
 			expect(corp1Tag?.sourceCharacters).toContain(char3)
 
 			// Verify alliance has 2 sources
-			const allianceTag = tags.find((t) => t.tagUrn === allianceUrn)
+			const allianceTag = tags.find((t: TagWithSources) => t.tagUrn === allianceUrn)
 			expect(allianceTag?.sourceCharacters).toHaveLength(2)
 		})
 	})

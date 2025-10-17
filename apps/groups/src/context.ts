@@ -1,11 +1,10 @@
 import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
-
 import type { GroupStore } from './group-store'
 
 export type Env = SharedHonoEnv & {
 	GROUP_STORE: DurableObjectNamespace<GroupStore>
-	SOCIAL_AUTH: Fetcher
+	USER_SESSION_STORE: DurableObjectNamespace
 	ADMIN_API_TOKENS: string
 }
 

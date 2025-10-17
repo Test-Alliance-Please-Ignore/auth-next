@@ -2,9 +2,19 @@ import { Hono } from 'hono'
 import { getCookie } from 'hono/cookie'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
-import { getRequestLogData, logger, withNotFound, withOnError } from '@repo/hono-helpers'
+import { getStub } from '@repo/do-utils'
+// Wrap with Sentry for error tracking
+import {
+	getRequestLogData,
+	logger,
+	withNotFound,
+	withOnError,
+	withSentry,
+} from '@repo/hono-helpers'
 
+import type { SessionStore } from '@repo/session-store'
 import type { App } from './context'
+import type { TagStore } from './tag-store'
 
 const app = new Hono<App>()
 	.use(
@@ -22,7 +32,7 @@ const app = new Hono<App>()
 
 // ========== Authentication Middleware ==========
 
-// Middleware to verify session via social-auth worker
+// Middleware to verify session via SessionStore DO
 const withAuth = async (c: any, next: any) => {
 	const sessionId = getCookie(c, 'session_id')
 
@@ -31,31 +41,13 @@ const withAuth = async (c: any, next: any) => {
 	}
 
 	try {
-		// Call social-auth worker to verify session
-		const response = await c.env.SOCIAL_AUTH.fetch(
-			new Request('http://social-auth/api/session/verify', {
-				method: 'POST',
-				headers: {
-					Cookie: `session_id=${sessionId}`,
-				},
-			})
-		)
+		// Get SessionStore DO stub
+		const sessionStoreStub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
 
-		if (!response.ok) {
-			return c.json({ error: 'Invalid session' }, 401)
-		}
-
-		const data = (await response.json()) as {
-			success: boolean
-			session: { socialUserId: string; isAdmin?: boolean }
-		}
-
-		if (!data.success || !data.session) {
-			return c.json({ error: 'Invalid session' }, 401)
-		}
+		const sessionInfo = await sessionStoreStub.getSession(sessionId)
 
 		// Store user ID in context for use in routes
-		c.set('sessionUserId', data.session.socialUserId)
+		c.set('sessionUserId', sessionInfo.socialUserId)
 
 		await next()
 	} catch (error) {
@@ -73,34 +65,19 @@ const withAdminAuth = async (c: any, next: any) => {
 	}
 
 	try {
-		const response = await c.env.SOCIAL_AUTH.fetch(
-			new Request('http://social-auth/api/session/verify', {
-				method: 'POST',
-				headers: {
-					Cookie: `session_id=${sessionId}`,
-				},
-			})
-		)
+		const sessionStoreStub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
 
-		if (!response.ok) {
-			return c.json({ error: 'Not authorized' }, 403)
-		}
+		const sessionInfo = await sessionStoreStub.getSession(sessionId)
 
-		const data = (await response.json()) as {
-			success: boolean
-			session: { socialUserId: string; isAdmin: boolean }
-		}
+		// Get social user to check admin status
+		const socialUser = await sessionStoreStub.getSocialUser(sessionInfo.socialUserId)
 
-		if (!data.success || !data.session) {
-			return c.json({ error: 'Not authorized' }, 403)
-		}
-
-		if (!data.session.isAdmin) {
+		if (!socialUser?.isAdmin) {
 			return c.json({ error: 'Admin access required' }, 403)
 		}
 
 		// Store user ID in context
-		c.set('sessionUserId', data.session.socialUserId)
+		c.set('sessionUserId', sessionInfo.socialUserId)
 
 		await next()
 	} catch (error) {
@@ -110,9 +87,9 @@ const withAdminAuth = async (c: any, next: any) => {
 }
 
 // Helper to get TagStore instance
-const getTagStore = (c: any) => {
+const getTagStore = (c: any): TagStore => {
 	const id = c.env.TAG_STORE.idFromName('global')
-	return c.env.TAG_STORE.get(id)
+	return c.env.TAG_STORE.get(id) as TagStore
 }
 
 // ========== Public API Endpoints ==========
@@ -235,15 +212,9 @@ app
 			// Create/update alliance tag if applicable
 			if (body.allianceId && body.allianceName) {
 				const allianceUrn = `urn:eve:alliance:${body.allianceId}`
-				await tagStore.upsertTag(
-					allianceUrn,
-					'alliance',
-					body.allianceName,
-					body.allianceId,
-					{
-						allianceId: body.allianceId,
-					}
-				)
+				await tagStore.upsertTag(allianceUrn, 'alliance', body.allianceName, body.allianceId, {
+					allianceId: body.allianceId,
+				})
 
 				// Assign alliance tag to user
 				await tagStore.assignTagToUser(body.socialUserId, allianceUrn, body.characterId)
@@ -252,15 +223,13 @@ app
 			// Schedule first evaluation in 1 hour
 			await tagStore.scheduleUserEvaluation(body.socialUserId)
 
-			logger
-				.withTags({ type: 'character_onboarded' })
-				.info('Character onboarded, tags assigned', {
-					socialUserId: body.socialUserId.substring(0, 8) + '...',
-					characterId: body.characterId,
-					corporationId: body.corporationId,
-					allianceId: body.allianceId,
-					request: getRequestLogData(c, Date.now()),
-				})
+			logger.withTags({ type: 'character_onboarded' }).info('Character onboarded, tags assigned', {
+				socialUserId: body.socialUserId.substring(0, 8) + '...',
+				characterId: body.characterId,
+				corporationId: body.corporationId,
+				allianceId: body.allianceId,
+				request: getRequestLogData(c, Date.now()),
+			})
 
 			return c.json({
 				success: true,
@@ -291,13 +260,11 @@ app
 			// Re-evaluate user to ensure correct tags remain
 			await tagStore.evaluateUserTags(body.socialUserId)
 
-			logger
-				.withTags({ type: 'character_unlinked' })
-				.info('Character unlinked, tags removed', {
-					socialUserId: body.socialUserId.substring(0, 8) + '...',
-					characterId,
-					request: getRequestLogData(c, Date.now()),
-				})
+			logger.withTags({ type: 'character_unlinked' }).info('Character unlinked, tags removed', {
+				socialUserId: body.socialUserId.substring(0, 8) + '...',
+				characterId,
+				request: getRequestLogData(c, Date.now()),
+			})
 
 			return c.json({
 				success: true,
@@ -316,12 +283,10 @@ app
 			const tagStore = getTagStore(c)
 			await tagStore.evaluateUserTags(userId)
 
-			logger
-				.withTags({ type: 'user_evaluated' })
-				.info('User tags forcibly evaluated', {
-					userId: userId.substring(0, 8) + '...',
-					request: getRequestLogData(c, Date.now()),
-				})
+			logger.withTags({ type: 'user_evaluated' }).info('User tags forcibly evaluated', {
+				userId: userId.substring(0, 8) + '...',
+				request: getRequestLogData(c, Date.now()),
+			})
 
 			return c.json({
 				success: true,
@@ -414,8 +379,6 @@ app
 		}
 	})
 
-// Wrap with Sentry for error tracking
-import { withSentry } from '@repo/hono-helpers'
 export default withSentry(app)
 
 // Export Durable Object
