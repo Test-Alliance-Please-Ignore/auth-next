@@ -114,6 +114,7 @@ export interface CharacterLinkData extends Record<string, number | string> {
 	social_user_id: string
 	character_id: number
 	character_name: string
+	is_primary: number
 	linked_at: number
 	updated_at: number
 }
@@ -123,13 +124,34 @@ export interface CharacterLink {
 	socialUserId: string
 	characterId: number
 	characterName: string
+	isPrimary: boolean
+	linkedAt: number
+	updatedAt: number
+}
+
+export interface ProviderLinkData extends Record<string, number | string> {
+	link_id: string
+	social_user_id: string
+	provider: string
+	provider_user_id: string
+	provider_username: string
+	linked_at: number
+	updated_at: number
+}
+
+export interface ProviderLink {
+	linkId: string
+	socialUserId: string
+	provider: string
+	providerUserId: string
+	providerUsername: string
 	linkedAt: number
 	updatedAt: number
 }
 
 export class SessionStore extends DurableObject<Env> {
 	private schemaInitialized = false
-	private readonly CURRENT_SCHEMA_VERSION = 2
+	private readonly CURRENT_SCHEMA_VERSION = 4
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env)
@@ -186,6 +208,20 @@ export class SessionStore extends DurableObject<Env> {
 				await this.runMigration2()
 				await this.setSchemaVersion(2)
 				logger.info('Applied migration 2: Character links')
+			}
+
+			// Migration 3: Add provider_links table
+			if (currentVersion < 3) {
+				await this.runMigration3()
+				await this.setSchemaVersion(3)
+				logger.info('Applied migration 3: Provider links')
+			}
+
+			// Migration 4: Add is_primary column to character_links
+			if (currentVersion < 4) {
+				await this.runMigration4()
+				await this.setSchemaVersion(4)
+				logger.info('Applied migration 4: Character primary flag')
 			}
 
 			this.schemaInitialized = true
@@ -337,6 +373,44 @@ export class SessionStore extends DurableObject<Env> {
 
 		await this.ctx.storage.sql.exec(`
 			CREATE UNIQUE INDEX IF NOT EXISTS idx_character_links_character ON character_links(character_id)
+		`)
+	}
+
+	private async runMigration3(): Promise<void> {
+		// Provider links table - links social users to secondary OAuth providers
+		await this.ctx.storage.sql.exec(`
+			CREATE TABLE IF NOT EXISTS provider_links (
+				link_id TEXT PRIMARY KEY,
+				social_user_id TEXT NOT NULL,
+				provider TEXT NOT NULL,
+				provider_user_id TEXT NOT NULL,
+				provider_username TEXT NOT NULL,
+				linked_at INTEGER NOT NULL,
+				updated_at INTEGER NOT NULL,
+				UNIQUE(social_user_id, provider),
+				UNIQUE(provider, provider_user_id)
+			)
+		`)
+
+		await this.ctx.storage.sql.exec(`
+			CREATE INDEX IF NOT EXISTS idx_provider_links_social_user ON provider_links(social_user_id)
+		`)
+
+		await this.ctx.storage.sql.exec(`
+			CREATE UNIQUE INDEX IF NOT EXISTS idx_provider_links_provider_user ON provider_links(provider, provider_user_id)
+		`)
+	}
+
+	private async runMigration4(): Promise<void> {
+		// Add is_primary column to character_links table
+		await this.ctx.storage.sql.exec(`
+			ALTER TABLE character_links ADD COLUMN is_primary INTEGER NOT NULL DEFAULT 0
+		`)
+
+		// Add constraint to ensure only one primary character per user
+		// Note: SQLite doesn't support CHECK constraints on ALTER TABLE, so we use a partial unique index
+		await this.ctx.storage.sql.exec(`
+			CREATE UNIQUE INDEX IF NOT EXISTS idx_character_links_primary ON character_links(social_user_id) WHERE is_primary = 1
 		`)
 	}
 
@@ -643,20 +717,32 @@ export class SessionStore extends DurableObject<Env> {
 			})
 
 		try {
-			// Only Google is supported for now
-			if (socialUser.provider !== 'google') {
+			let tokenEndpoint: string
+			let clientId: string
+			let clientSecret: string
+
+			// Determine provider-specific endpoints and credentials
+			if (socialUser.provider === 'google') {
+				tokenEndpoint = 'https://oauth2.googleapis.com/token'
+				clientId = this.env.GOOGLE_CLIENT_ID
+				clientSecret = this.env.GOOGLE_CLIENT_SECRET
+			} else if (socialUser.provider === 'discord') {
+				tokenEndpoint = 'https://discord.com/api/oauth2/token'
+				clientId = this.env.DISCORD_CLIENT_ID
+				clientSecret = this.env.DISCORD_CLIENT_SECRET
+			} else {
 				logger.warn('Token refresh not supported for provider', { provider: socialUser.provider })
 				return { success: false }
 			}
 
-			const response = await fetch('https://oauth2.googleapis.com/token', {
+			const response = await fetch(tokenEndpoint, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/x-www-form-urlencoded',
 				},
 				body: new URLSearchParams({
-					client_id: this.env.GOOGLE_CLIENT_ID,
-					client_secret: this.env.GOOGLE_CLIENT_SECRET,
+					client_id: clientId,
+					client_secret: clientSecret,
 					grant_type: 'refresh_token',
 					refresh_token: session.refresh_token,
 				}),
@@ -1176,12 +1262,13 @@ export class SessionStore extends DurableObject<Env> {
 
 		await this.ctx.storage.sql.exec(
 			`INSERT INTO character_links (
-				link_id, social_user_id, character_id, character_name, linked_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?)`,
+				link_id, social_user_id, character_id, character_name, is_primary, linked_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 			linkId,
 			socialUserId,
 			characterId,
 			characterName,
+			0,
 			now,
 			now
 		)
@@ -1202,6 +1289,7 @@ export class SessionStore extends DurableObject<Env> {
 			socialUserId,
 			characterId,
 			characterName,
+			isPrimary: false,
 			linkedAt: now,
 			updatedAt: now,
 		}
@@ -1212,7 +1300,7 @@ export class SessionStore extends DurableObject<Env> {
 
 		const rows = await this.ctx.storage.sql
 			.exec<CharacterLinkData>(
-				'SELECT * FROM character_links WHERE social_user_id = ? ORDER BY linked_at DESC',
+				'SELECT * FROM character_links WHERE social_user_id = ? ORDER BY is_primary DESC, linked_at DESC',
 				socialUserId
 			)
 			.toArray()
@@ -1222,6 +1310,7 @@ export class SessionStore extends DurableObject<Env> {
 			socialUserId: row.social_user_id,
 			characterId: row.character_id,
 			characterName: row.character_name,
+			isPrimary: row.is_primary === 1,
 			linkedAt: row.linked_at,
 			updatedAt: row.updated_at,
 		}))
@@ -1247,9 +1336,52 @@ export class SessionStore extends DurableObject<Env> {
 			socialUserId: row.social_user_id,
 			characterId: row.character_id,
 			characterName: row.character_name,
+			isPrimary: row.is_primary === 1,
 			linkedAt: row.linked_at,
 			updatedAt: row.updated_at,
 		}
+	}
+
+	async setPrimaryCharacter(socialUserId: string, characterId: number): Promise<void> {
+		await this.ensureSchema()
+
+		// Verify the character belongs to this user
+		const rows = await this.ctx.storage.sql
+			.exec<CharacterLinkData>(
+				'SELECT * FROM character_links WHERE character_id = ? AND social_user_id = ?',
+				characterId,
+				socialUserId
+			)
+			.toArray()
+
+		if (rows.length === 0) {
+			throw new Error('Character not found or does not belong to this user')
+		}
+
+		const now = Date.now()
+
+		// Unset any existing primary character for this user
+		await this.ctx.storage.sql.exec(
+			'UPDATE character_links SET is_primary = 0, updated_at = ? WHERE social_user_id = ? AND is_primary = 1',
+			now,
+			socialUserId
+		)
+
+		// Set the new primary character
+		await this.ctx.storage.sql.exec(
+			'UPDATE character_links SET is_primary = 1, updated_at = ? WHERE character_id = ?',
+			now,
+			characterId
+		)
+
+		logger
+			.withTags({
+				type: 'character_primary_set',
+			})
+			.info('Set primary character', {
+				socialUserId: socialUserId.substring(0, 8) + '...',
+				characterId,
+			})
 	}
 
 	async deleteCharacterLink(characterId: number): Promise<void> {
@@ -1276,6 +1408,157 @@ export class SessionStore extends DurableObject<Env> {
 				socialUserId: link.social_user_id.substring(0, 8) + '...',
 				characterId: link.character_id,
 				characterName: link.character_name,
+			})
+	}
+
+	// ========== Provider Link Management ==========
+
+	async createProviderLink(
+		socialUserId: string,
+		provider: string,
+		providerUserId: string,
+		providerUsername: string
+	): Promise<ProviderLink> {
+		await this.ensureSchema()
+
+		// Check if this provider account is already linked to any social user
+		const existingProvider = await this.ctx.storage.sql
+			.exec<ProviderLinkData>(
+				'SELECT * FROM provider_links WHERE provider = ? AND provider_user_id = ?',
+				provider,
+				providerUserId
+			)
+			.toArray()
+
+		if (existingProvider.length > 0) {
+			throw new Error('This Discord account is already linked to another user')
+		}
+
+		// Check if this social user already has this provider linked
+		const existingLink = await this.ctx.storage.sql
+			.exec<ProviderLinkData>(
+				'SELECT * FROM provider_links WHERE social_user_id = ? AND provider = ?',
+				socialUserId,
+				provider
+			)
+			.toArray()
+
+		if (existingLink.length > 0) {
+			throw new Error('You have already linked a Discord account')
+		}
+
+		// Create new link
+		const linkId = this.generateLinkId()
+		const now = Date.now()
+
+		await this.ctx.storage.sql.exec(
+			`INSERT INTO provider_links (
+				link_id, social_user_id, provider, provider_user_id, provider_username, linked_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			linkId,
+			socialUserId,
+			provider,
+			providerUserId,
+			providerUsername,
+			now,
+			now
+		)
+
+		logger
+			.withTags({
+				type: 'provider_link_created',
+			})
+			.info('Created provider link', {
+				linkId,
+				socialUserId: socialUserId.substring(0, 8) + '...',
+				provider,
+				providerUserId,
+				providerUsername,
+			})
+
+		return {
+			linkId,
+			socialUserId,
+			provider,
+			providerUserId,
+			providerUsername,
+			linkedAt: now,
+			updatedAt: now,
+		}
+	}
+
+	async getProviderLinksBySocialUser(socialUserId: string): Promise<ProviderLink[]> {
+		await this.ensureSchema()
+
+		const rows = await this.ctx.storage.sql
+			.exec<ProviderLinkData>(
+				'SELECT * FROM provider_links WHERE social_user_id = ? ORDER BY linked_at DESC',
+				socialUserId
+			)
+			.toArray()
+
+		return rows.map((row) => ({
+			linkId: row.link_id,
+			socialUserId: row.social_user_id,
+			provider: row.provider,
+			providerUserId: row.provider_user_id,
+			providerUsername: row.provider_username,
+			linkedAt: row.linked_at,
+			updatedAt: row.updated_at,
+		}))
+	}
+
+	async getProviderLinkByProvider(provider: string, providerUserId: string): Promise<ProviderLink | null> {
+		await this.ensureSchema()
+
+		const rows = await this.ctx.storage.sql
+			.exec<ProviderLinkData>(
+				'SELECT * FROM provider_links WHERE provider = ? AND provider_user_id = ?',
+				provider,
+				providerUserId
+			)
+			.toArray()
+
+		if (rows.length === 0) {
+			return null
+		}
+
+		const row = rows[0]
+		return {
+			linkId: row.link_id,
+			socialUserId: row.social_user_id,
+			provider: row.provider,
+			providerUserId: row.provider_user_id,
+			providerUsername: row.provider_username,
+			linkedAt: row.linked_at,
+			updatedAt: row.updated_at,
+		}
+	}
+
+	async deleteProviderLink(linkId: string): Promise<void> {
+		await this.ensureSchema()
+
+		const rows = await this.ctx.storage.sql
+			.exec<ProviderLinkData>('SELECT * FROM provider_links WHERE link_id = ?', linkId)
+			.toArray()
+
+		if (rows.length === 0) {
+			throw new Error('Provider link not found')
+		}
+
+		const link = rows[0]
+
+		await this.ctx.storage.sql.exec('DELETE FROM provider_links WHERE link_id = ?', linkId)
+
+		logger
+			.withTags({
+				type: 'provider_link_deleted',
+			})
+			.info('Deleted provider link', {
+				linkId,
+				socialUserId: link.social_user_id.substring(0, 8) + '...',
+				provider: link.provider,
+				providerUserId: link.provider_user_id,
 			})
 	}
 }

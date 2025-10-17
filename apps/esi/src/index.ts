@@ -6,6 +6,7 @@ import { getRequestLogData, logger, withNotFound, withOnError } from '@repo/hono
 
 import { adminRouter } from './admin'
 import { ALL_ESI_SCOPES } from './consts'
+import callbackHtml from './templates/callback.html'
 
 import type { App } from './context'
 
@@ -333,66 +334,7 @@ const app = new Hono<App>()
 					request: getRequestLogData(c, Date.now()),
 				})
 
-			return c.html(`
-				<!DOCTYPE html>
-				<html>
-					<head>
-						<meta charset="utf-8">
-						<meta name="viewport" content="width=device-width, initial-scale=1">
-						<title>Character Linked Successfully</title>
-						<style>
-							body {
-								font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-								display: flex;
-								justify-content: center;
-								align-items: center;
-								min-height: 100vh;
-								margin: 0;
-								background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-							}
-							.container {
-								background: white;
-								padding: 3rem;
-								border-radius: 1rem;
-								box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-								text-align: center;
-								max-width: 500px;
-							}
-							h1 {
-								color: #333;
-								margin: 0 0 1rem 0;
-								font-size: 2rem;
-							}
-							p {
-								color: #666;
-								margin: 0.5rem 0;
-								font-size: 1.1rem;
-							}
-							.character-name {
-								color: #667eea;
-								font-weight: bold;
-							}
-							.success-icon {
-								font-size: 4rem;
-								margin-bottom: 1rem;
-							}
-						</style>
-					</head>
-					<body>
-						<div class="container">
-							<div class="success-icon">✓</div>
-							<h1>Character Linked Successfully</h1>
-							<p><span class="character-name">${characterInfo.CharacterName}</span> has been linked to your account!</p>
-							<p>Redirecting to your dashboard...</p>
-						</div>
-						<script>
-							setTimeout(() => {
-								window.location.href = 'https://pleaseignore.app/dashboard';
-							}, 1500);
-						</script>
-					</body>
-				</html>
-			`)
+			return c.html(callbackHtml.replace('<!-- CHARACTER_NAME -->', characterInfo.CharacterName))
 		} catch (error) {
 			logger
 				.withTags({

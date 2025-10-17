@@ -8,10 +8,14 @@ export type Env = SharedHonoEnv & {
 	GOOGLE_CLIENT_ID: string
 	GOOGLE_CLIENT_SECRET: string
 	GOOGLE_CALLBACK_URL: string
+	DISCORD_CLIENT_ID: string
+	DISCORD_CLIENT_SECRET: string
+	DISCORD_CALLBACK_URL: string
 	TEST_AUTH_OIDC_ISSUER: string
 	TEST_AUTH_CLIENT_ID: string
 	TEST_AUTH_CLIENT_SECRET: string
 	TEST_AUTH_CALLBACK_URL: string
+	ADMIN_API_TOKENS: string
 }
 
 /** Variables can be extended */

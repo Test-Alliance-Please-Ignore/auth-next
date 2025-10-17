@@ -9,6 +9,13 @@
 	"observability": {
 		"enabled": false
 	},
+	"rules": [
+		{
+			"type": "Text",
+			"globs": ["**/*.html"],
+			"fallthrough": true
+		}
+	],
 	"kv_namespaces": [
 		{
 			"binding": "ESI_CACHE",

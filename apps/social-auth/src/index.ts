@@ -3,11 +3,15 @@ import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { getRequestLogData, logger, withNotFound, withOnError } from '@repo/hono-helpers'
+import { withStaticAuth } from '@repo/static-auth'
 
 import type { App } from './context'
 import { OIDCClient } from './oidc-client'
+import landingHtml from './templates/landing.html?raw'
+import dashboardHtml from './templates/dashboard.html?raw'
 
 const GOOGLE_OAUTH_SCOPES = ['openid', 'email', 'profile']
+const DISCORD_OAUTH_SCOPES = ['identify', 'email']
 
 const app = new Hono<App>()
 	.use(
@@ -24,618 +28,12 @@ const app = new Hono<App>()
 	.notFound(withNotFound())
 
 	.get('/', async (c) => {
-		return c.html(`
-			<!DOCTYPE html>
-			<html>
-				<head>
-					<meta charset="utf-8">
-					<meta name="viewport" content="width=device-width, initial-scale=1">
-					<title>Social Authentication</title>
-					<style>
-						* {
-							margin: 0;
-							padding: 0;
-							box-sizing: border-box;
-						}
-						body {
-							font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-							background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-							min-height: 100vh;
-							display: flex;
-							justify-content: center;
-							align-items: center;
-							padding: 2rem;
-						}
-						.container {
-							background: white;
-							padding: 3rem;
-							border-radius: 1rem;
-							box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-							max-width: 500px;
-							width: 100%;
-						}
-						h1 {
-							color: #333;
-							margin-bottom: 0.5rem;
-							font-size: 2rem;
-							text-align: center;
-						}
-						.subtitle {
-							color: #666;
-							text-align: center;
-							margin-bottom: 2rem;
-							font-size: 1rem;
-						}
-						.info-box {
-							background: #f7fafc;
-							border: 1px solid #e2e8f0;
-							border-radius: 0.5rem;
-							padding: 1.5rem;
-							margin-bottom: 2rem;
-						}
-						.info-box h2 {
-							color: #2d3748;
-							font-size: 1.1rem;
-							margin-bottom: 0.75rem;
-						}
-						.info-box ul {
-							color: #4a5568;
-							padding-left: 1.5rem;
-							line-height: 1.8;
-						}
-						.btn-google {
-							display: flex;
-							align-items: center;
-							justify-content: center;
-							gap: 0.75rem;
-							width: 100%;
-							padding: 1rem;
-							background: white;
-							color: #333;
-							border: 2px solid #e2e8f0;
-							border-radius: 0.5rem;
-							font-size: 1rem;
-							font-weight: 600;
-							cursor: pointer;
-							transition: all 0.2s;
-							text-decoration: none;
-						}
-						.btn-google:hover {
-							background: #f7fafc;
-							border-color: #cbd5e0;
-							transform: translateY(-2px);
-							box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-						}
-						.btn-dashboard {
-							display: block;
-							text-align: center;
-							margin-top: 1rem;
-							padding: 0.75rem;
-							background: #667eea;
-							color: white;
-							border: none;
-							border-radius: 0.5rem;
-							font-size: 0.95rem;
-							font-weight: 600;
-							cursor: pointer;
-							transition: all 0.2s;
-							text-decoration: none;
-						}
-						.btn-dashboard:hover {
-							background: #5568d3;
-							transform: translateY(-2px);
-							box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-						}
-						.google-icon {
-							width: 20px;
-							height: 20px;
-						}
-					</style>
-				</head>
-				<body>
-					<div class="container">
-						<h1>Social Authentication</h1>
-						<p class="subtitle">Link your social account to your legacy account</p>
-
-						<div class="info-box">
-							<h2>How it works</h2>
-							<ul>
-								<li>Sign in with your Google account</li>
-								<li>Link it to your legacy system account</li>
-								<li>Each social account can link to only one legacy account</li>
-								<li>Account links are permanent and secure</li>
-							</ul>
-						</div>
-
-						<a href="/login/google" class="btn-google">
-							<svg class="google-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-								<path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-								<path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-								<path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-								<path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-							</svg>
-							Sign in with Google
-						</a>
-
-						<a href="/dashboard" class="btn-dashboard">
-							Go to Dashboard
-						</a>
-					</div>
-
-					<script>
-						// Check if we have a session cookie and redirect to dashboard
-						if (window.location.search.indexOf('force_login') === -1) {
-							// Verify session is still valid (cookie sent automatically)
-							fetch('/api/session/verify', {
-								method: 'POST',
-								credentials: 'same-origin'
-							})
-							.then(res => res.json())
-							.then(data => {
-								if (data.success) {
-									window.location.href = '/dashboard';
-								}
-							})
-							.catch(() => {
-								// Invalid session or no cookie, stay on login page
-							});
-						}
-					</script>
-				</body>
-			</html>
-		`)
+		return c.html(landingHtml)
 	})
 
 	// Dashboard page
 	.get('/dashboard', async (c) => {
-		return c.html(`
-			<!DOCTYPE html>
-			<html>
-				<head>
-					<meta charset="utf-8">
-					<meta name="viewport" content="width=device-width, initial-scale=1">
-					<title>Dashboard - Social Authentication</title>
-					<style>
-						* {
-							margin: 0;
-							padding: 0;
-							box-sizing: border-box;
-						}
-						body {
-							font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-							background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-							min-height: 100vh;
-							padding: 2rem;
-						}
-						.container {
-							max-width: 800px;
-							margin: 0 auto;
-						}
-						.card {
-							background: white;
-							padding: 2rem;
-							border-radius: 1rem;
-							box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-							margin-bottom: 1.5rem;
-						}
-						h1 {
-							color: #333;
-							margin-bottom: 0.5rem;
-							font-size: 1.75rem;
-						}
-						h2 {
-							color: #333;
-							margin-bottom: 1rem;
-							font-size: 1.25rem;
-						}
-						.subtitle {
-							color: #666;
-							margin-bottom: 1.5rem;
-						}
-						.info-row {
-							display: flex;
-							justify-content: space-between;
-							padding: 0.75rem;
-							border-bottom: 1px solid #e2e8f0;
-						}
-						.info-row:last-child {
-							border-bottom: none;
-						}
-						.info-label {
-							font-weight: 600;
-							color: #4a5568;
-						}
-						.info-value {
-							color: #2d3748;
-							font-family: 'Monaco', 'Courier New', monospace;
-							word-break: break-all;
-						}
-						.btn {
-							display: inline-block;
-							padding: 0.75rem 1.5rem;
-							border-radius: 0.5rem;
-							font-weight: 600;
-							cursor: pointer;
-							transition: all 0.2s;
-							border: none;
-							text-decoration: none;
-							text-align: center;
-						}
-						.btn-primary {
-							background: #667eea;
-							color: white;
-						}
-						.btn-primary:hover {
-							background: #5568d3;
-							transform: translateY(-2px);
-							box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-						}
-						.btn-secondary {
-							background: #e2e8f0;
-							color: #4a5568;
-						}
-						.btn-secondary:hover {
-							background: #cbd5e0;
-							transform: translateY(-2px);
-						}
-						.btn-danger {
-							background: #f56565;
-							color: white;
-						}
-						.btn-danger:hover {
-							background: #e53e3e;
-							transform: translateY(-2px);
-							box-shadow: 0 4px 12px rgba(245, 101, 101, 0.3);
-						}
-						.loading {
-							text-align: center;
-							padding: 3rem;
-							color: #666;
-						}
-						.error {
-							background: #fed7d7;
-							color: #c53030;
-							padding: 1rem;
-							border-radius: 0.5rem;
-							margin-bottom: 1rem;
-						}
-						.status-badge {
-							display: inline-block;
-							padding: 0.25rem 0.75rem;
-							border-radius: 0.25rem;
-							font-size: 0.875rem;
-							font-weight: 600;
-						}
-						.status-linked {
-							background: #c6f6d5;
-							color: #22543d;
-						}
-						.status-not-linked {
-							background: #feebc8;
-							color: #7c2d12;
-						}
-						.button-group {
-							display: flex;
-							gap: 1rem;
-							margin-top: 1.5rem;
-						}
-						.empty-state {
-							text-align: center;
-							padding: 2rem;
-							color: #666;
-						}
-						.copy-btn {
-							margin-left: 0.5rem;
-							padding: 0.25rem 0.5rem;
-							font-size: 0.75rem;
-							background: #e2e8f0;
-							border: none;
-							border-radius: 0.25rem;
-							cursor: pointer;
-						}
-						.copy-btn:hover {
-							background: #cbd5e0;
-						}
-					</style>
-				</head>
-				<body>
-					<div class="container">
-						<div id="loading" class="card loading">
-							<p>Loading your dashboard...</p>
-						</div>
-
-						<div id="error" class="card" style="display: none;">
-							<div class="error"></div>
-							<a href="/" class="btn btn-primary">Back to Home</a>
-						</div>
-
-						<div id="dashboard" style="display: none;">
-							<div class="card">
-								<h1>Welcome, <span id="userName"></span></h1>
-								<p class="subtitle">Manage your social authentication and account links</p>
-
-								<div class="button-group">
-									<button onclick="toggleMasking()" class="btn btn-primary" id="maskToggleBtn">
-										<span id="maskIcon">🔒</span> <span id="maskText">Show Real Data</span>
-									</button>
-									<button onclick="logout()" class="btn btn-danger">Logout</button>
-									<a href="/" class="btn btn-secondary">Back to Home</a>
-								</div>
-							</div>
-
-							<div class="card">
-								<h2>Profile Information</h2>
-								<div class="info-row">
-									<span class="info-label">Provider</span>
-									<span class="info-value" id="provider"></span>
-								</div>
-								<div class="info-row">
-									<span class="info-label">Email</span>
-									<span class="info-value" id="email"></span>
-								</div>
-								<div class="info-row">
-									<span class="info-label">Name</span>
-									<span class="info-value" id="name"></span>
-								</div>
-							</div>
-
-							<div class="card">
-								<h2>Session Information</h2>
-								<div class="info-row">
-									<span class="info-label">Session ID</span>
-									<span class="info-value">
-										<span id="sessionId"></span>
-										<button onclick="copySessionId()" class="copy-btn">Copy</button>
-									</span>
-								</div>
-								<div class="info-row">
-									<span class="info-label">Expires</span>
-									<span class="info-value" id="expiresAt"></span>
-								</div>
-							</div>
-
-							<div class="card">
-								<h2>Legacy Account Link</h2>
-								<div id="linkStatus"></div>
-							</div>
-
-							<div class="card">
-								<h2>EVE Characters</h2>
-								<p class="subtitle" style="margin-bottom: 1rem;">Manage your linked EVE Online characters</p>
-								<div id="charactersStatus"></div>
-							</div>
-						</div>
-					</div>
-
-					<script>
-						let maskingEnabled = localStorage.getItem('maskingEnabled') !== 'false'; // Default to true
-
-						// Masking utilities
-						function maskEmail(email) {
-							if (!maskingEnabled || !email) return email;
-							const [user, domain] = email.split('@');
-							if (!domain) return '***@***.***';
-							const maskedUser = user.length <= 2 ? '***' : user[0] + '***' + user[user.length - 1];
-							const [domainName, tld] = domain.split('.');
-							const maskedDomain = domainName.length <= 2 ? '***' : domainName[0] + '***';
-							return \`\${maskedUser}@\${maskedDomain}.\${tld || '***'}\`;
-						}
-
-						function maskName(name) {
-							if (!maskingEnabled || !name) return name;
-							const parts = name.split(' ');
-							return parts.map(part => {
-								if (part.length <= 2) return '***';
-								return part[0] + '***';
-							}).join(' ');
-						}
-
-						function maskId(id, showLength = 8) {
-							if (!maskingEnabled || !id) return id;
-							if (id.length <= showLength) return '***';
-							return id.substring(0, showLength) + '...';
-						}
-
-						function maskUsername(username) {
-							if (!maskingEnabled || !username) return username;
-							if (username.length <= 3) return '***';
-							return username.substring(0, 2) + '***' + username[username.length - 1];
-						}
-
-						function toggleMasking() {
-							maskingEnabled = !maskingEnabled;
-							localStorage.setItem('maskingEnabled', maskingEnabled);
-							loadDashboard(); // Reload to apply changes
-						}
-
-						async function loadDashboard() {
-							try {
-								// Verify session (cookie sent automatically)
-								const sessionRes = await fetch('/api/session/verify', {
-									method: 'POST',
-									credentials: 'same-origin'
-								});
-
-								if (!sessionRes.ok) {
-									throw new Error('Session expired or invalid');
-								}
-
-								const sessionData = await sessionRes.json();
-								const session = sessionData.session;
-
-								// Get account links (cookie sent automatically)
-								const linksRes = await fetch('/api/account/links', {
-									method: 'POST',
-									credentials: 'same-origin'
-								});
-
-								const linksData = await linksRes.json();
-								const links = linksData.links || [];
-
-								// Get character links (cookie sent automatically)
-								const charactersRes = await fetch('/api/characters', {
-									method: 'GET',
-									credentials: 'same-origin'
-								});
-
-								console.log('Characters response status:', charactersRes.status);
-								const charactersData = await charactersRes.json();
-								console.log('Characters data:', charactersData);
-								const characters = charactersData.characters || [];
-								console.log('Characters array:', characters);
-
-								// Update UI with masking
-								document.getElementById('userName').textContent = maskName(session.name);
-								document.getElementById('provider').textContent = session.provider;
-								document.getElementById('email').textContent = maskEmail(session.email);
-								document.getElementById('name').textContent = maskName(session.name);
-								document.getElementById('sessionId').textContent = 'Session active (HTTP-only cookie)';
-								document.getElementById('expiresAt').textContent = new Date(session.expiresAt).toLocaleString();
-
-								// Display link status
-								const linkStatusDiv = document.getElementById('linkStatus');
-								if (links.length > 0) {
-									const link = links[0];
-									linkStatusDiv.innerHTML = \`
-										<div class="info-row">
-											<span class="info-label">Status</span>
-											<span class="status-badge status-linked">Linked</span>
-										</div>
-										<div class="info-row">
-											<span class="info-label">Legacy System</span>
-											<span class="info-value">\${link.legacySystem}</span>
-										</div>
-										<div class="info-row">
-											<span class="info-label">Legacy User ID</span>
-											<span class="info-value">\${maskId(link.legacyUserId, 6)}</span>
-										</div>
-										<div class="info-row">
-											<span class="info-label">Username</span>
-											<span class="info-value">\${maskUsername(link.legacyUsername)}</span>
-										</div>
-										<div class="info-row">
-											<span class="info-label">Linked At</span>
-											<span class="info-value">\${new Date(link.linkedAt).toLocaleString()}</span>
-										</div>
-										<p style="margin-top: 1rem; color: #666; font-size: 0.9rem;">
-											Account links are permanent and cannot be changed by users.
-										</p>
-									\`;
-								} else {
-									linkStatusDiv.innerHTML = \`
-										<div class="empty-state">
-											<span class="status-badge status-not-linked">Not Linked</span>
-											<p style="margin-top: 1rem;">You haven't linked a legacy account yet.</p>
-											<button onclick="claimAccount()" class="btn btn-primary" style="margin-top: 1rem;">
-												Link Legacy Account
-											</button>
-										</div>
-									\`;
-								}
-
-								// Update masking toggle button
-								const maskIcon = document.getElementById('maskIcon');
-								const maskText = document.getElementById('maskText');
-								if (maskingEnabled) {
-									maskIcon.textContent = '🔒';
-									maskText.textContent = 'Show Real Data';
-								} else {
-									maskIcon.textContent = '👁️';
-									maskText.textContent = 'Hide Sensitive Data';
-								}
-
-								// Display characters
-								const charactersStatusDiv = document.getElementById('charactersStatus');
-								if (characters.length > 0) {
-									let charactersHTML = '';
-									characters.forEach(char => {
-										charactersHTML += \`
-											<div class="info-row">
-												<span class="info-label">\${char.characterName}</span>
-												<span class="info-value">ID: \${char.characterId}</span>
-											</div>
-										\`;
-									});
-									charactersHTML += \`
-										<div style="margin-top: 1.5rem;">
-											<a href="https://pleaseignore.app/esi/login" class="btn btn-primary">
-												Add Another Character
-											</a>
-										</div>
-									\`;
-									charactersStatusDiv.innerHTML = charactersHTML;
-								} else {
-									charactersStatusDiv.innerHTML = \`
-										<div class="empty-state">
-											<p>You haven't linked any EVE characters yet.</p>
-											<a href="https://pleaseignore.app/esi/login" class="btn btn-primary" style="margin-top: 1rem; display: inline-block;">
-												Add Your First Character
-											</a>
-										</div>
-									\`;
-								}
-
-								// Show dashboard
-								document.getElementById('loading').style.display = 'none';
-								document.getElementById('dashboard').style.display = 'block';
-
-							} catch (error) {
-								console.error('Error loading dashboard:', error);
-								document.getElementById('loading').style.display = 'none';
-								const errorDiv = document.getElementById('error');
-								errorDiv.style.display = 'block';
-								errorDiv.querySelector('.error').textContent = error.message || 'Failed to load dashboard';
-								// Session cookie is HTTP-only, so we can't remove it client-side
-								window.location.href = '/';
-							}
-						}
-
-						async function claimAccount() {
-							try {
-								// Cookie sent automatically
-								const res = await fetch('/claim/initiate', {
-									method: 'POST',
-									credentials: 'same-origin'
-								});
-
-								const data = await res.json();
-								if (data.success) {
-									window.location.href = data.authUrl;
-								} else {
-									alert('Failed to initiate account claim: ' + (data.error || 'Unknown error'));
-								}
-							} catch (error) {
-								alert('Error: ' + error.message);
-							}
-						}
-
-						function copySessionId() {
-							// Can't copy HTTP-only cookie value
-							alert('Session is stored in a secure HTTP-only cookie and cannot be copied.');
-						}
-
-						function logout() {
-							if (confirm('Are you sure you want to logout?')) {
-								// Cookie sent automatically and deleted by server
-								fetch('/api/session', {
-									method: 'DELETE',
-									credentials: 'same-origin'
-								})
-								.then(() => {
-									window.location.href = '/';
-								})
-								.catch(error => {
-									console.error('Logout error:', error);
-									window.location.href = '/';
-								});
-							}
-						}
-
-						loadDashboard();
-					</script>
-				</body>
-			</html>
-		`)
+		return c.html(dashboardHtml)
 	})
 
 	// Google OAuth login endpoint
@@ -882,6 +280,267 @@ const app = new Hono<App>()
 				.withTags({
 					type: 'oauth_exception',
 					provider: 'google',
+				})
+				.error('OAuth exception', {
+					error: String(error),
+					request: getRequestLogData(c, Date.now()),
+				})
+			return c.json({ error: String(error) }, 500)
+		}
+	})
+
+	// Discord OAuth login endpoint
+	.get('/login/discord', (c) => {
+		const state = crypto.randomUUID()
+		const scopes = DISCORD_OAUTH_SCOPES.join(' ')
+
+		const authUrl = new URL('https://discord.com/oauth2/authorize')
+		authUrl.searchParams.set('client_id', c.env.DISCORD_CLIENT_ID)
+		authUrl.searchParams.set('redirect_uri', c.env.DISCORD_CALLBACK_URL)
+		authUrl.searchParams.set('response_type', 'code')
+		authUrl.searchParams.set('scope', scopes)
+		authUrl.searchParams.set('state', state)
+
+		logger
+			.withTags({
+				type: 'oauth_login_redirect',
+				provider: 'discord',
+			})
+			.info('Redirecting to Discord OAuth', {
+				scopes,
+				state,
+				request: getRequestLogData(c, Date.now()),
+			})
+
+		return c.redirect(authUrl.toString())
+	})
+
+	// Discord OAuth callback endpoint
+	.get('/callback/discord', async (c) => {
+		const code = c.req.query('code')
+		const state = c.req.query('state')
+		const error = c.req.query('error')
+
+		if (error) {
+			logger
+				.withTags({
+					type: 'oauth_callback_error',
+					provider: 'discord',
+				})
+				.error('OAuth callback error', {
+					error,
+					request: getRequestLogData(c, Date.now()),
+				})
+			return c.json({ error: `OAuth error: ${error}` }, 400)
+		}
+
+		if (!code) {
+			return c.json({ error: 'Missing authorization code' }, 400)
+		}
+
+		logger
+			.withTags({
+				type: 'oauth_callback',
+				provider: 'discord',
+			})
+			.info('OAuth callback received', {
+				state,
+				request: getRequestLogData(c, Date.now()),
+			})
+
+		try {
+			// Exchange code for tokens
+			const tokenResponse = await fetch('https://discord.com/api/oauth2/token', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/x-www-form-urlencoded',
+				},
+				body: new URLSearchParams({
+					code,
+					client_id: c.env.DISCORD_CLIENT_ID,
+					client_secret: c.env.DISCORD_CLIENT_SECRET,
+					redirect_uri: c.env.DISCORD_CALLBACK_URL,
+					grant_type: 'authorization_code',
+				}),
+			})
+
+			if (!tokenResponse.ok) {
+				const error = await tokenResponse.text()
+				logger
+					.withTags({
+						type: 'oauth_token_error',
+						provider: 'discord',
+					})
+					.error('Failed to exchange code for token', {
+						status: tokenResponse.status,
+						error,
+						request: getRequestLogData(c, Date.now()),
+					})
+				return c.json({ error: 'Failed to exchange code for token' }, 502)
+			}
+
+			const tokenData = (await tokenResponse.json()) as {
+				access_token: string
+				refresh_token: string
+				expires_in: number
+				token_type: string
+			}
+
+			// Get user info from Discord
+			const userInfoResponse = await fetch('https://discord.com/api/users/@me', {
+				headers: {
+					Authorization: `Bearer ${tokenData.access_token}`,
+				},
+			})
+
+			if (!userInfoResponse.ok) {
+				const error = await userInfoResponse.text()
+				logger
+					.withTags({
+						type: 'oauth_userinfo_error',
+						provider: 'discord',
+					})
+					.error('Failed to get user info', {
+						status: userInfoResponse.status,
+						error,
+						request: getRequestLogData(c, Date.now()),
+					})
+				return c.json({ error: 'Failed to get user info' }, 502)
+			}
+
+			const userInfo = (await userInfoResponse.json()) as {
+				id: string
+				username: string
+				discriminator?: string
+				email?: string
+				avatar?: string
+			}
+
+			// Construct name from Discord username
+			// Discord removed discriminators for most users (discriminator is "0" for new users)
+			const name = userInfo.discriminator && userInfo.discriminator !== '0'
+				? `${userInfo.username}#${userInfo.discriminator}`
+				: userInfo.username
+
+			// Email might be null if user didn't grant permission
+			const email = userInfo.email || `${userInfo.id}@discord.user`
+
+			// Store session in Durable Object (using global instance)
+			const id = c.env.USER_SESSION_STORE.idFromName('global')
+			const stub = c.env.USER_SESSION_STORE.get(id)
+
+			const sessionInfo = await stub.createSession(
+				'discord',
+				userInfo.id,
+				email,
+				name,
+				tokenData.access_token,
+				tokenData.refresh_token,
+				tokenData.expires_in
+			)
+
+			// Set HTTP-only cookie for session
+			const now = Date.now()
+			const maxAge = Math.floor((sessionInfo.expiresAt - now) / 1000) // Convert to seconds
+			setCookie(c, 'session_id', sessionInfo.sessionId, {
+				httpOnly: true,
+				secure: true,
+				sameSite: 'Lax',
+				path: '/',
+				maxAge,
+			})
+
+			logger
+				.withTags({
+					type: 'oauth_success',
+					provider: 'discord',
+				})
+				.info('OAuth flow completed', {
+					email,
+					name,
+					sessionId: sessionInfo.sessionId.substring(0, 8) + '...',
+					request: getRequestLogData(c, Date.now()),
+				})
+
+			return c.html(`
+				<!DOCTYPE html>
+				<html>
+					<head>
+						<meta charset="utf-8">
+						<meta name="viewport" content="width=device-width, initial-scale=1">
+						<title>Authentication Successful</title>
+						<style>
+							body {
+								font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+								display: flex;
+								justify-content: center;
+								align-items: center;
+								min-height: 100vh;
+								margin: 0;
+								background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+							}
+							.container {
+								background: white;
+								padding: 3rem;
+								border-radius: 1rem;
+								box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+								text-align: center;
+								max-width: 600px;
+							}
+							h1 {
+								color: #333;
+								margin: 0 0 1rem 0;
+								font-size: 2rem;
+							}
+							p {
+								color: #666;
+								margin: 0.5rem 0;
+								font-size: 1.1rem;
+							}
+							.user-name {
+								color: #667eea;
+								font-weight: bold;
+							}
+							.success-icon {
+								font-size: 4rem;
+								margin-bottom: 1rem;
+							}
+						</style>
+					</head>
+					<body>
+						<div class="container">
+							<div class="success-icon">✓</div>
+							<h1>Authentication Successful</h1>
+							<p>Welcome, <span class="user-name" id="userName"></span>!</p>
+							<p>Redirecting to your dashboard...</p>
+						</div>
+						<script>
+							// Mask name by default
+							function maskName(name) {
+								const parts = name.split(' ');
+								return parts.map(part => {
+									if (part.length <= 2) return '***';
+									return part[0] + '***';
+								}).join(' ');
+							}
+
+							const userName = '${name}';
+							const maskingEnabled = localStorage.getItem('maskingEnabled') !== 'false';
+							document.getElementById('userName').textContent = maskingEnabled ? maskName(userName) : userName;
+
+							// Session is now stored in HTTP-only cookie
+							setTimeout(() => {
+								window.location.href = '/dashboard';
+							}, 1500);
+						</script>
+					</body>
+				</html>
+			`)
+		} catch (error) {
+			logger
+				.withTags({
+					type: 'oauth_exception',
+					provider: 'discord',
 				})
 				.error('OAuth exception', {
 					error: String(error),
@@ -1358,6 +1017,7 @@ const app = new Hono<App>()
 					linkId: char.linkId,
 					characterId: char.characterId,
 					characterName: char.characterName,
+					isPrimary: char.isPrimary,
 					linkedAt: char.linkedAt,
 					updatedAt: char.updatedAt,
 				})),
@@ -1367,6 +1027,402 @@ const app = new Hono<App>()
 			return c.json({ error: String(error) }, error instanceof Error && error.message === 'Session not found' ? 404 : 500)
 		}
 	})
+
+	// Set primary character
+	.put('/api/characters/:characterId/primary', async (c) => {
+		const sessionId = getCookie(c, 'session_id')
+
+		if (!sessionId) {
+			return c.json({ error: 'Not authenticated' }, 401)
+		}
+
+		const characterId = Number(c.req.param('characterId'))
+
+		if (Number.isNaN(characterId)) {
+			return c.json({ error: 'Invalid character ID' }, 400)
+		}
+
+		try {
+			const id = c.env.USER_SESSION_STORE.idFromName('global')
+			const stub = c.env.USER_SESSION_STORE.get(id)
+
+			// Get session info
+			const session = await stub.getSession(sessionId)
+
+			// Set primary character
+			await stub.setPrimaryCharacter(session.socialUserId, characterId)
+
+			return c.json({
+				success: true,
+			})
+		} catch (error) {
+			logger.error('Set primary character error', { error: String(error) })
+			return c.json({ error: String(error) }, error instanceof Error && error.message === 'Session not found' ? 404 : 500)
+		}
+	})
+
+	// Proxy character portrait images with caching
+	.get('/api/characters/:characterId/portrait', async (c) => {
+		const characterId = c.req.param('characterId')
+
+		if (!characterId || !/^\d+$/.test(characterId)) {
+			return c.json({ error: 'Invalid character ID' }, 400)
+		}
+
+		try {
+			const portraitUrl = `https://images.evetech.net/characters/${characterId}/portrait`
+			const cacheKey = new Request(portraitUrl, c.req.raw)
+
+			// Check Cloudflare cache first
+			const cache = caches.default
+			let response = await cache.match(cacheKey)
+
+			if (!response) {
+				// Fetch from EVE Tech if not in cache
+				response = await fetch(portraitUrl)
+
+				if (response.ok) {
+					// Clone the response to cache it
+					const responseToCache = response.clone()
+
+					// Add cache headers and cache the response
+					const headers = new Headers(responseToCache.headers)
+					headers.set('Cache-Control', 'public, max-age=86400') // Cache for 24 hours
+					headers.set('CDN-Cache-Control', 'public, max-age=2592000') // Cache on CDN for 30 days
+
+					const cachedResponse = new Response(responseToCache.body, {
+						status: responseToCache.status,
+						statusText: responseToCache.statusText,
+						headers,
+					})
+
+					// Put in cache (don't await to avoid blocking the response)
+					c.executionCtx.waitUntil(cache.put(cacheKey, cachedResponse.clone()))
+
+					return cachedResponse
+				}
+
+				return response
+			}
+
+			return response
+		} catch (error) {
+			logger.error('Character portrait proxy error', { error: String(error), characterId })
+			return c.json({ error: 'Failed to fetch portrait' }, 502)
+		}
+	})
+
+	// ========== Provider Linking Endpoints ==========
+
+	// Initiate Discord provider link
+	.post('/link/discord/initiate', async (c) => {
+		const sessionId = getCookie(c, 'session_id')
+
+		if (!sessionId) {
+			return c.json({ error: 'Not authenticated' }, 401)
+		}
+
+		try {
+			const id = c.env.USER_SESSION_STORE.idFromName('global')
+			const stub = c.env.USER_SESSION_STORE.get(id)
+
+			// Verify session exists and get session info
+			const session = await stub.getSession(sessionId)
+
+			// Prevent linking Discord if user is already logged in with Discord
+			if (session.provider === 'discord') {
+				logger
+					.withTags({
+						type: 'provider_link_rejected',
+					})
+					.warn('User attempted to link Discord while logged in with Discord', {
+						sessionId: sessionId.substring(0, 8) + '...',
+						request: getRequestLogData(c, Date.now()),
+					})
+				return c.json({ error: 'Cannot link Discord account when already logged in with Discord' }, 400)
+			}
+
+			// Create OIDC state linked to this session
+			const state = await stub.createOIDCState(sessionId)
+
+			// Build Discord OAuth URL manually
+			const authUrl = new URL('https://discord.com/oauth2/authorize')
+			authUrl.searchParams.set('client_id', c.env.DISCORD_CLIENT_ID)
+			authUrl.searchParams.set('redirect_uri', c.env.DISCORD_CALLBACK_URL.replace('/callback/discord', '/link/discord/callback'))
+			authUrl.searchParams.set('response_type', 'code')
+			authUrl.searchParams.set('scope', DISCORD_OAUTH_SCOPES.join(' '))
+			authUrl.searchParams.set('state', state)
+
+			logger
+				.withTags({
+					type: 'provider_link_initiate',
+				})
+				.info('Initiating Discord provider link', {
+					sessionId: sessionId.substring(0, 8) + '...',
+					state: state.substring(0, 8) + '...',
+					request: getRequestLogData(c, Date.now()),
+				})
+
+			return c.json({
+				success: true,
+				authUrl: authUrl.toString(),
+			})
+		} catch (error) {
+			logger.error('Provider link initiate error', { error: String(error) })
+			return c.json({ error: String(error) }, error instanceof Error && error.message === 'Session not found' ? 404 : 500)
+		}
+	})
+
+	// Handle Discord provider link callback
+	.get('/link/discord/callback', async (c) => {
+		const code = c.req.query('code')
+		const state = c.req.query('state')
+		const error = c.req.query('error')
+
+		if (error) {
+			logger
+				.withTags({
+					type: 'provider_link_callback_error',
+				})
+				.error('Discord link callback error', {
+					error,
+					request: getRequestLogData(c, Date.now()),
+				})
+			return c.json({ error: `Discord OAuth error: ${error}` }, 400)
+		}
+
+		if (!code || !state) {
+			return c.json({ error: 'Missing code or state' }, 400)
+		}
+
+		try {
+			const id = c.env.USER_SESSION_STORE.idFromName('global')
+			const stub = c.env.USER_SESSION_STORE.get(id)
+
+			// Validate state and get session ID
+			const sessionId = await stub.validateOIDCState(state)
+
+			// Get session info
+			const session = await stub.getSession(sessionId)
+
+			// Prevent linking Discord if user is already logged in with Discord
+			if (session.provider === 'discord') {
+				logger
+					.withTags({
+						type: 'provider_link_callback_rejected',
+					})
+					.warn('Discord link callback rejected - user logged in with Discord', {
+						sessionId: sessionId.substring(0, 8) + '...',
+						request: getRequestLogData(c, Date.now()),
+					})
+				return c.json({ error: 'Cannot link Discord account when already logged in with Discord' }, 400)
+			}
+
+			// Exchange code for tokens
+			const tokenResponse = await fetch('https://discord.com/api/oauth2/token', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/x-www-form-urlencoded',
+				},
+				body: new URLSearchParams({
+					code,
+					client_id: c.env.DISCORD_CLIENT_ID,
+					client_secret: c.env.DISCORD_CLIENT_SECRET,
+					redirect_uri: c.env.DISCORD_CALLBACK_URL.replace('/callback/discord', '/link/discord/callback'),
+					grant_type: 'authorization_code',
+				}),
+			})
+
+			if (!tokenResponse.ok) {
+				const error = await tokenResponse.text()
+				logger
+					.withTags({
+						type: 'provider_link_token_error',
+					})
+					.error('Failed to exchange code for token', {
+						status: tokenResponse.status,
+						error,
+						request: getRequestLogData(c, Date.now()),
+					})
+				return c.json({ error: 'Failed to exchange code for token' }, 502)
+			}
+
+			const tokenData = (await tokenResponse.json()) as {
+				access_token: string
+				refresh_token: string
+				expires_in: number
+				token_type: string
+			}
+
+			// Get user info from Discord
+			const userInfoResponse = await fetch('https://discord.com/api/users/@me', {
+				headers: {
+					Authorization: `Bearer ${tokenData.access_token}`,
+				},
+			})
+
+			if (!userInfoResponse.ok) {
+				const error = await userInfoResponse.text()
+				logger
+					.withTags({
+						type: 'provider_link_userinfo_error',
+					})
+					.error('Failed to get Discord user info', {
+						status: userInfoResponse.status,
+						error,
+						request: getRequestLogData(c, Date.now()),
+					})
+				return c.json({ error: 'Failed to get Discord user info' }, 502)
+			}
+
+			const userInfo = (await userInfoResponse.json()) as {
+				id: string
+				username: string
+				discriminator?: string
+				email?: string
+				avatar?: string
+			}
+
+			// Construct username from Discord username
+			const username = userInfo.discriminator && userInfo.discriminator !== '0'
+				? `${userInfo.username}#${userInfo.discriminator}`
+				: userInfo.username
+
+			// Create provider link
+			const link = await stub.createProviderLink(
+				session.socialUserId,
+				'discord',
+				userInfo.id,
+				username
+			)
+
+			logger
+				.withTags({
+					type: 'provider_link_success',
+				})
+				.info('Discord provider link completed', {
+					linkId: link.linkId,
+					socialUserId: link.socialUserId.substring(0, 8) + '...',
+					provider: link.provider,
+					providerUserId: link.providerUserId,
+					request: getRequestLogData(c, Date.now()),
+				})
+
+			return c.html(`
+				<!DOCTYPE html>
+				<html>
+					<head>
+						<meta charset="utf-8">
+						<meta name="viewport" content="width=device-width, initial-scale=1">
+						<title>Discord Linked Successfully</title>
+						<style>
+							body {
+								font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+								display: flex;
+								justify-content: center;
+								align-items: center;
+								min-height: 100vh;
+								margin: 0;
+								background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+							}
+							.container {
+								background: white;
+								padding: 3rem;
+								border-radius: 1rem;
+								box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+								text-align: center;
+								max-width: 600px;
+							}
+							h1 {
+								color: #333;
+								margin: 0 0 1rem 0;
+								font-size: 2rem;
+							}
+							p {
+								color: #666;
+								margin: 0.5rem 0;
+								font-size: 1.1rem;
+							}
+							.discord-username {
+								color: #5865F2;
+								font-weight: bold;
+							}
+							.success-icon {
+								font-size: 4rem;
+								margin-bottom: 1rem;
+							}
+						</style>
+					</head>
+					<body>
+						<div class="container">
+							<div class="success-icon">✓</div>
+							<h1>Discord Account Linked</h1>
+							<p>Your Discord account <span class="discord-username">${username}</span> has been linked!</p>
+							<p>Redirecting to your dashboard...</p>
+						</div>
+						<script>
+							setTimeout(() => {
+								window.location.href = '/dashboard';
+							}, 1500);
+						</script>
+					</body>
+				</html>
+			`)
+		} catch (error) {
+			logger
+				.withTags({
+					type: 'provider_link_exception',
+				})
+				.error('Provider link callback exception', {
+					error: String(error),
+					request: getRequestLogData(c, Date.now()),
+				})
+			return c.json({ error: String(error) }, 500)
+		}
+	})
+
+	// Get provider links for current session
+	.get('/api/provider/links', async (c) => {
+		const sessionId = getCookie(c, 'session_id')
+
+		if (!sessionId) {
+			return c.json({ error: 'Not authenticated' }, 401)
+		}
+
+		try {
+			const id = c.env.USER_SESSION_STORE.idFromName('global')
+			const stub = c.env.USER_SESSION_STORE.get(id)
+
+			// Get session info
+			const session = await stub.getSession(sessionId)
+
+			// Get all provider links for this social user
+			const providerLinks = await stub.getProviderLinksBySocialUser(session.socialUserId)
+
+			return c.json({
+				success: true,
+				providerLinks: providerLinks.map((link) => ({
+					linkId: link.linkId,
+					provider: link.provider,
+					providerUserId: link.providerUserId,
+					providerUsername: link.providerUsername,
+					linkedAt: link.linkedAt,
+					updatedAt: link.updatedAt,
+				})),
+			})
+		} catch (error) {
+			logger.error('Get provider links error', { error: String(error) })
+			return c.json({ error: String(error) }, error instanceof Error && error.message === 'Session not found' ? 404 : 500)
+		}
+	})
+
+	// ========== Admin Endpoints (Protected) ==========
+	.use('/admin/*', (c, next) =>
+		withStaticAuth({
+			tokens: c.env.ADMIN_API_TOKENS,
+			logTag: 'admin_auth',
+		})(c, next)
+	)
 
 	// Admin endpoint to revoke account link
 	.delete('/admin/account/links/:linkId', async (c) => {
@@ -1429,6 +1485,48 @@ const app = new Hono<App>()
 				{ error: String(error) },
 				error instanceof Error && error.message === 'Character link not found' ? 404 : 500
 			)
+		}
+	})
+
+	// Admin endpoint to list all characters for a social user ID
+	.get('/admin/characters', async (c) => {
+		const socialUserId = c.req.query('socialUserId')
+
+		if (!socialUserId) {
+			return c.json({ error: 'socialUserId query parameter is required' }, 400)
+		}
+
+		try {
+			const id = c.env.USER_SESSION_STORE.idFromName('global')
+			const stub = c.env.USER_SESSION_STORE.get(id)
+
+			// Get all character links for this social user
+			const characters = await stub.getCharacterLinksBySocialUser(socialUserId)
+
+			logger
+				.withTags({
+					type: 'admin_characters_list',
+				})
+				.info('Admin listed characters for social user', {
+					socialUserId: socialUserId.substring(0, 8) + '...',
+					characterCount: characters.length,
+					request: getRequestLogData(c, Date.now()),
+				})
+
+			return c.json({
+				success: true,
+				socialUserId,
+				characters: characters.map((char) => ({
+					linkId: char.linkId,
+					characterId: char.characterId,
+					characterName: char.characterName,
+					linkedAt: char.linkedAt,
+					updatedAt: char.updatedAt,
+				})),
+			})
+		} catch (error) {
+			logger.error('List characters for social user error', { error: String(error) })
+			return c.json({ error: String(error) }, 500)
 		}
 	})
 

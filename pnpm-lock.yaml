@@ -100,6 +100,9 @@ importers:
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
+      '@repo/static-auth':
+        specifier: workspace:*
+        version: link:../../packages/static-auth
       hono:
         specifier: 4.9.11
         version: 4.9.11
