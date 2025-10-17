@@ -1,15 +1,16 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "social-auth",
+	"name": "core",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-04-28",
 	"compatibility_flags": ["nodejs_compat"],
-	"routes": [],
+	"routes": ["pleaseignore.app/*"],
 	"durable_objects": {
 		"bindings": [
 			{
 				"name": "USER_SESSION_STORE",
-				"class_name": "SessionStore"
+				"class_name": "SessionStore",
+				"script_name": "social-auth"
 			},
 			{
 				"name": "EVESSO_STORE",
@@ -29,27 +30,10 @@
 			"service": "discord"
 		}
 	],
-	"migrations": [
-		{
-			"tag": "v1",
-			"new_sqlite_classes": ["SessionStore"]
-		},
-		{
-			"tag": "v2",
-			"new_sqlite_classes": []
-		},
-		{
-			"tag": "v3",
-			"new_sqlite_classes": []
-		}
-	],
 	"vars": {
-		// "ENVIRONMENT": "development", // overridden during deployment
+		"ENVIRONMENT": "development", // overridden during deployment
 		"SENTRY_RELEASE": "unknown", // overridden during deployment
 		"SENTRY_DSN": "https://68c0a0d3ba7849ea9f7af514744b4277@app.glitchtip.com/13245"
-		// "GOOGLE_CLIENT_ID": "placeholder-set-in-production",
-		// "GOOGLE_CLIENT_SECRET": "placeholder-set-in-production",
-		// "GOOGLE_CALLBACK_URL": "https://pleaseignore.app/callback/google",
 		// "TEST_AUTH_OIDC_ISSUER": "placeholder-set-in-production",
 		// "TEST_AUTH_CLIENT_ID": "placeholder-set-in-production",
 		// "TEST_AUTH_CLIENT_SECRET": "placeholder-set-in-production",

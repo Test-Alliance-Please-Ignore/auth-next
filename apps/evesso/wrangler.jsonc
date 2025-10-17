@@ -4,27 +4,42 @@
 	"main": "src/index.ts",
 	"compatibility_date": "2025-04-28",
 	"compatibility_flags": ["nodejs_compat"],
-	"routes": [],
+	"routes": ["pleaseignore.app/evesso/*", "pleaseignore.app/link/evesso/*"],
 	"logpush": true,
 	"observability": {
 		"enabled": true
 	},
 	"vars": {
 		"ENVIRONMENT": "development",
-		"SENTRY_RELEASE": "unknown"
+		"SENTRY_RELEASE": "unknown",
+		"ESI_SSO_CALLBACK_URL": "https://pleaseignore.app/evesso/callback"
 	},
 	"durable_objects": {
 		"bindings": [
 			{
 				"name": "EVESSO_STORE",
-				"class_name": "Evesso"
+				"class_name": "EveSSO"
+			},
+			{
+				"name": "USER_SESSION_STORE",
+				"class_name": "SessionStore",
+				"script_name": "social-auth"
+			},
+			{
+				"name": "CHARACTER_DATA_STORE",
+				"class_name": "CharacterDataStore",
+				"script_name": "esi"
 			}
 		]
 	},
 	"migrations": [
 		{
 			"tag": "v1",
-			"new_sqlite_classes": ["Evesso"]
+			"new_sqlite_classes": ["EveSSO"]
+		},
+		{
+			"tag": "v2",
+			"new_sqlite_classes": []
 		}
 	]
 }

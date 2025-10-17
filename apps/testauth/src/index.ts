@@ -19,7 +19,8 @@ const app = new Hono<App>()
 	.onError(withOnError())
 	.notFound(withNotFound())
 
-export default app
+	.get('/', async (c) => {
+		return c.text('hello, world!')
+	})
 
-// Export Durable Object
-export { SessionStore } from './session-store'
+export default app

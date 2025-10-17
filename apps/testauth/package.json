@@ -1,5 +1,5 @@
 {
-	"name": "evesso",
+	"name": "testauth",
 	"version": "0.1.0",
 	"private": true,
 	"sideEffects": false,
@@ -15,11 +15,7 @@
 		"test": "run-vitest"
 	},
 	"dependencies": {
-		"@repo/character-data-store": "workspace:*",
-		"@repo/do-utils": "workspace:*",
-		"@repo/evesso": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
-		"@repo/session-store": "workspace:*",
 		"hono": "4.9.11",
 		"workers-tagged-logger": "0.13.3"
 	},

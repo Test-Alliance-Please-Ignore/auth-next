@@ -1,0 +1,192 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Test Auth Next Generation</title>
+		<style>
+			* {
+				margin: 0;
+				padding: 0;
+				box-sizing: border-box;
+			}
+			body {
+				font-family:
+					-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+				background: linear-gradient(180deg, #0a0e27 0%, #1a1b3d 50%, #2d1b4e 100%);
+				background-attachment: fixed;
+				min-height: 100vh;
+				display: flex;
+				justify-content: center;
+				align-items: center;
+				padding: 2rem;
+				position: relative;
+				overflow: hidden;
+			}
+			.stars {
+				position: fixed;
+				top: 0;
+				left: 0;
+				width: 100%;
+				height: 100%;
+				pointer-events: none;
+				z-index: 0;
+			}
+			.star {
+				position: absolute;
+				background: white;
+				border-radius: 50%;
+				animation: twinkle linear infinite;
+			}
+			@keyframes twinkle {
+				0%,
+				100% {
+					opacity: 0.3;
+					transform: scale(1);
+				}
+				50% {
+					opacity: 1;
+					transform: scale(1.2);
+				}
+			}
+			@keyframes float {
+				0% {
+					transform: translateY(0px);
+				}
+				50% {
+					transform: translateY(-20px);
+				}
+				100% {
+					transform: translateY(0px);
+				}
+			}
+			.container {
+				background: white;
+				padding: 3rem;
+				border-radius: 1rem;
+				box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+				max-width: 500px;
+				width: 100%;
+				position: relative;
+				z-index: 1;
+			}
+			h1 {
+				color: #333;
+				margin-bottom: 0.5rem;
+				font-size: 2rem;
+				text-align: center;
+			}
+			.subtitle {
+				color: #666;
+				text-align: center;
+				margin-bottom: 2rem;
+				font-size: 1rem;
+			}
+			.info-box {
+				background: #f7fafc;
+				border: 1px solid #e2e8f0;
+				border-radius: 0.5rem;
+				padding: 1.5rem;
+				margin-bottom: 2rem;
+			}
+			.info-box h2 {
+				color: #2d3748;
+				font-size: 1.1rem;
+				margin-bottom: 0.75rem;
+			}
+			.info-box ul {
+				color: #4a5568;
+				padding-left: 1.5rem;
+				line-height: 1.8;
+			}
+			.btn-dashboard {
+				display: block;
+				text-align: center;
+				margin-top: 1rem;
+				padding: 0.75rem;
+				background: #667eea;
+				color: white;
+				border: none;
+				border-radius: 0.5rem;
+				font-size: 0.95rem;
+				font-weight: 600;
+				cursor: pointer;
+				transition: all 0.2s;
+				text-decoration: none;
+			}
+			.btn-dashboard:hover {
+				background: #5568d3;
+				transform: translateY(-2px);
+				box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+			}
+			.message {
+				text-align: center;
+				color: #666;
+				margin-top: 1rem;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="stars" id="stars"></div>
+		<div class="container">
+			<h1>Test Auth Next Generation</h1>
+			<p class="subtitle">Authentication System</p>
+
+			<div class="info-box">
+				<p class="message">Please log in via EVE Online SSO to access the dashboard.</p>
+			</div>
+
+			<a href="/dashboard" class="btn-dashboard">Go to Dashboard</a>
+		</div>
+
+		<script>
+			// Generate stars
+			function createStars() {
+				const starsContainer = document.getElementById('stars')
+				const numberOfStars = 100
+
+				for (let i = 0; i < numberOfStars; i++) {
+					const star = document.createElement('div')
+					star.className = 'star'
+
+					// Random position
+					star.style.left = Math.random() * 100 + '%'
+					star.style.top = Math.random() * 100 + '%'
+
+					// Random size (1-3px)
+					const size = Math.random() * 2 + 1
+					star.style.width = size + 'px'
+					star.style.height = size + 'px'
+
+					// Random animation duration (3-8 seconds)
+					star.style.animationDuration = Math.random() * 5 + 3 + 's'
+
+					// Random animation delay
+					star.style.animationDelay = Math.random() * 5 + 's'
+
+					starsContainer.appendChild(star)
+				}
+			}
+
+			createStars()
+
+			// Check if we have a session cookie and redirect to dashboard
+			if (window.location.search.indexOf('force_login') === -1) {
+				// Verify session is still valid (cookie sent automatically)
+				fetch('/api/session/verify', {
+					method: 'POST',
+					credentials: 'same-origin',
+				})
+					.then((res) => res.json())
+					.then((data) => {
+						if (data.success) {
+							window.location.href = '/dashboard'
+						}
+					})
+					.catch(() => {
+						// Invalid session or no cookie, stay on login page
+					})
+			}
+		</script>
+	</body>
+</html>

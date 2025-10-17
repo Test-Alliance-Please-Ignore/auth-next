@@ -4,7 +4,7 @@
 	"main": "src/index.ts",
 	"compatibility_date": "2025-04-28",
 	"compatibility_flags": ["nodejs_compat"],
-	"routes": ["pleaseignore.app/admin/*", "pleaseignore.app/esi/*"],
+	"routes": ["pleaseignore.app/esi/*"],
 	"logpush": false,
 	"observability": {
 		"enabled": false
@@ -26,8 +26,9 @@
 	"durable_objects": {
 		"bindings": [
 			{
-				"name": "USER_TOKEN_STORE",
-				"class_name": "UserTokenStore"
+				"name": "EVESSO_STORE",
+				"class_name": "EveSSO",
+				"script_name": "evesso"
 			},
 			{
 				"name": "CHARACTER_DATA_STORE",
@@ -56,6 +57,10 @@
 		{
 			"tag": "v4",
 			"new_sqlite_classes": ["CharacterDataStore"]
+		},
+		{
+			"tag": "v5",
+			"deleted_classes": ["UserTokenStore"]
 		}
 	],
 	"services": [
