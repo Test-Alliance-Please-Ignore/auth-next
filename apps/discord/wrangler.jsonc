@@ -18,6 +18,11 @@
 			{
 				"name": "DISCORD_STORE",
 				"class_name": "Discord"
+			},
+			{
+				"name": "USER_SESSION_STORE",
+				"class_name": "SessionStore",
+				"script_name": "social-auth"
 			}
 		]
 	},
@@ -25,6 +30,10 @@
 		{
 			"tag": "v1",
 			"new_sqlite_classes": ["Discord"]
+		},
+		{
+			"tag": "v2",
+			"new_sqlite_classes": []
 		}
 	]
 }

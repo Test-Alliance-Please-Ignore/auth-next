@@ -268,11 +268,11 @@ export default function generator(plop: PlopTypes.NodePlopAPI): void {
 				const workerDestination = `apps/${answers.workerName}`
 				actions.push({
 					type: 'addMany',
-					base: 'templates/fetch-worker',
+					base: 'templates/fetch-worker-vite',
 					destination: workerDestination,
 					templateFiles: [
-						'templates/fetch-worker/**/**.hbs',
-						'templates/fetch-worker/.eslintrc.cjs.hbs',
+						'templates/fetch-worker-vite/**/**.hbs',
+						'templates/fetch-worker-vite/.eslintrc.cjs.hbs',
 					],
 					data: { name: answers.workerName },
 				})

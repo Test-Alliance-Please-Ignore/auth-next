@@ -786,10 +786,6 @@ export class SessionStore extends DurableObject<Env> {
 				tokenEndpoint = 'https://oauth2.googleapis.com/token'
 				clientId = this.env.GOOGLE_CLIENT_ID
 				clientSecret = this.env.GOOGLE_CLIENT_SECRET
-			} else if (socialUser.provider === 'discord') {
-				tokenEndpoint = 'https://discord.com/api/oauth2/token'
-				clientId = this.env.DISCORD_CLIENT_ID
-				clientSecret = this.env.DISCORD_CLIENT_SECRET
 			} else {
 				logger.warn('Token refresh not supported for provider', { provider: socialUser.provider })
 				return { success: false }

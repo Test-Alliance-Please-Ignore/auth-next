@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<title>Authentication Successful</title>
+		<style>
+			body {
+				font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+				display: flex;
+				justify-content: center;
+				align-items: center;
+				min-height: 100vh;
+				margin: 0;
+				background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+			}
+			.container {
+				background: white;
+				padding: 3rem;
+				border-radius: 1rem;
+				box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+				text-align: center;
+				max-width: 600px;
+			}
+			h1 {
+				color: #333;
+				margin: 0 0 1rem 0;
+				font-size: 2rem;
+			}
+			p {
+				color: #666;
+				margin: 0.5rem 0;
+				font-size: 1.1rem;
+			}
+			.user-name {
+				color: #5865F2;
+				font-weight: bold;
+			}
+			.success-icon {
+				font-size: 4rem;
+				margin-bottom: 1rem;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="container">
+			<div class="success-icon">✓</div>
+			<h1>Authentication Successful</h1>
+			<p>Welcome, <span class="user-name" id="userName"></span>!</p>
+			<p>Redirecting to your dashboard...</p>
+		</div>
+		<script>
+			// Mask name by default
+			function maskName(name) {
+				const parts = name.split(' ');
+				return parts.map(part => {
+					if (part.length <= 2) return '***';
+					return part[0] + '***';
+				}).join(' ');
+			}
+
+			const userName = '__USER_NAME__';
+			const maskingEnabled = localStorage.getItem('maskingEnabled') !== 'false';
+			document.getElementById('userName').textContent = maskingEnabled ? maskName(userName) : userName;
+
+			// Session is now stored in HTTP-only cookie
+			setTimeout(() => {
+				window.location.href = '/dashboard';
+			}, 1500);
+		</script>
+	</body>
+</html>
