@@ -1,10 +1,11 @@
 import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
 
-import type { SessionStore } from './session-store'
-
 export type Env = SharedHonoEnv & {
-	USER_SESSION_STORE: DurableObjectNamespace<SessionStore>
+	USER_SESSION_STORE: DurableObjectNamespace
+	USER_TOKEN_STORE: DurableObjectNamespace
+	TAGS: Fetcher
+	ESI: Fetcher
 	GOOGLE_CLIENT_ID: string
 	GOOGLE_CLIENT_SECRET: string
 	GOOGLE_CALLBACK_URL: string

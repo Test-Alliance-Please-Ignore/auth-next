@@ -28,6 +28,10 @@
 			{
 				"name": "USER_TOKEN_STORE",
 				"class_name": "UserTokenStore"
+			},
+			{
+				"name": "CHARACTER_DATA_STORE",
+				"class_name": "CharacterDataStore"
 			}
 		]
 	},
@@ -43,6 +47,10 @@
 		{
 			"tag": "v3",
 			"new_sqlite_classes": ["UserTokenStore"]
+		},
+		{
+			"tag": "v4",
+			"new_sqlite_classes": ["CharacterDataStore"]
 		}
 	],
 	"services": [

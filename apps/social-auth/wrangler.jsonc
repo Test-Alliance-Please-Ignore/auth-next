@@ -14,9 +14,24 @@
 			{
 				"name": "USER_SESSION_STORE",
 				"class_name": "SessionStore"
+			},
+			{
+				"name": "USER_TOKEN_STORE",
+				"class_name": "UserTokenStore",
+				"script_name": "esi"
 			}
 		]
 	},
+	"services": [
+		{
+			"binding": "TAGS",
+			"service": "tags"
+		},
+		{
+			"binding": "ESI",
+			"service": "esi"
+		}
+	],
 	"migrations": [
 		{
 			"tag": "v1",

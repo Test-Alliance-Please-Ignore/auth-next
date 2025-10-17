@@ -3,6 +3,9 @@ import { getCookie } from 'hono/cookie'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { getRequestLogData, logger, withNotFound, withOnError } from '@repo/hono-helpers'
+import { getStub } from '@repo/do-utils'
+import type { UserTokenStore } from '@repo/user-token-store'
+import type { CharacterDataStore } from '@repo/character-data-store'
 
 import { adminRouter } from './admin'
 import { ALL_ESI_SCOPES } from './consts'
@@ -45,8 +48,7 @@ const app = new Hono<App>()
 
 		try {
 			// Create ESI OAuth state linked to the session
-			const tokenStoreId = c.env.USER_TOKEN_STORE.idFromName('global')
-			const tokenStoreStub = c.env.USER_TOKEN_STORE.get(tokenStoreId)
+			const tokenStoreStub = getStub<UserTokenStore>(c.env.USER_TOKEN_STORE, 'global')
 			const state = await tokenStoreStub.createESIOAuthState(sessionId)
 
 			const scopes = c.req.query('scopes') || ALL_ESI_SCOPES.join(' ')
@@ -103,8 +105,7 @@ const app = new Hono<App>()
 
 		try {
 			// Validate state and get session ID
-			const tokenStoreId = c.env.USER_TOKEN_STORE.idFromName('global')
-			const tokenStoreStub = c.env.USER_TOKEN_STORE.get(tokenStoreId)
+			const tokenStoreStub = getStub<UserTokenStore>(c.env.USER_TOKEN_STORE, 'global')
 
 			let sessionId: string
 			try {
@@ -323,6 +324,77 @@ const app = new Hono<App>()
 				characterInfo.Scopes
 			)
 
+			// Fetch and store character data
+			try {
+				const dataStoreStub = getStub<CharacterDataStore>(c.env.CHARACTER_DATA_STORE, 'global')
+
+				// Import ESI client functions
+				const { fetchCharacterInfo, fetchCorporationInfo } = await import('./esi-client')
+
+				// Fetch character info from ESI
+				const charResult = await fetchCharacterInfo(characterInfo.CharacterID, tokenData.access_token)
+				await dataStoreStub.upsertCharacter(
+					characterInfo.CharacterID,
+					charResult.data,
+					charResult.expiresAt
+				)
+
+				logger
+					.withTags({
+						type: 'character_data_stored',
+						character_id: characterInfo.CharacterID,
+					})
+					.info('Character data stored during linking', {
+						characterId: characterInfo.CharacterID,
+						characterName: characterInfo.CharacterName,
+						corporationId: charResult.data.corporation_id,
+					})
+
+				// Fetch and store corporation data
+				try {
+					const corpResult = await fetchCorporationInfo(
+						charResult.data.corporation_id,
+						tokenData.access_token
+					)
+					await dataStoreStub.upsertCorporation(
+						charResult.data.corporation_id,
+						corpResult.data,
+						corpResult.expiresAt
+					)
+
+					logger
+						.withTags({
+							type: 'corporation_data_stored',
+							corporation_id: charResult.data.corporation_id,
+						})
+						.info('Corporation data stored during character linking', {
+							corporationId: charResult.data.corporation_id,
+							corporationName: corpResult.data.name,
+						})
+				} catch (corpError) {
+					logger
+						.withTags({
+							type: 'corporation_fetch_error',
+						})
+						.error('Failed to fetch corporation during character linking', {
+							error: String(corpError),
+							corporationId: charResult.data.corporation_id,
+						})
+					// Don't fail the entire flow if corporation fetch fails
+				}
+			} catch (dataError) {
+				logger
+					.withTags({
+						type: 'character_data_error',
+						character_id: characterInfo.CharacterID,
+					})
+					.error('Failed to store character data during linking', {
+						error: String(dataError),
+						characterId: characterInfo.CharacterID,
+					})
+				// Don't fail the entire OAuth flow if data storage fails
+			}
+
 			logger
 				.withTags({
 					type: 'oauth_success',
@@ -345,6 +417,124 @@ const app = new Hono<App>()
 					request: getRequestLogData(c, Date.now()),
 				})
 			return c.json({ error: String(error) }, 500)
+		}
+	})
+
+	// Character lookup endpoint
+	.get('/esi/characters/:characterId', async (c) => {
+		const characterIdParam = c.req.param('characterId')
+		const characterId = parseInt(characterIdParam, 10)
+
+		if (isNaN(characterId)) {
+			return c.json({ error: 'Invalid character ID' }, 400)
+		}
+
+		try {
+			const dataStoreStub = getStub<CharacterDataStore>(c.env.CHARACTER_DATA_STORE, 'global')
+			const character = await dataStoreStub.getCharacter(characterId)
+
+			if (!character) {
+				return c.json({ error: 'Character not found' }, 404)
+			}
+
+			logger
+				.withTags({
+					type: 'character_lookup',
+					character_id: characterId,
+				})
+				.info('Character lookup', {
+					characterId,
+					characterName: character.name,
+					request: getRequestLogData(c, Date.now()),
+				})
+
+			return c.json({
+				characterId: character.character_id,
+				name: character.name,
+				corporationId: character.corporation_id,
+				allianceId: character.alliance_id,
+				securityStatus: character.security_status,
+				birthday: character.birthday,
+				gender: character.gender,
+				raceId: character.race_id,
+				bloodlineId: character.bloodline_id,
+				ancestryId: character.ancestry_id,
+				description: character.description,
+				lastUpdated: new Date(character.last_updated).toISOString(),
+				nextUpdateAt: new Date(character.next_update_at).toISOString(),
+				updateCount: character.update_count,
+			})
+		} catch (error) {
+			logger
+				.withTags({
+					type: 'character_lookup_error',
+					character_id: characterId,
+				})
+				.error('Character lookup error', {
+					error: String(error),
+					characterId,
+					request: getRequestLogData(c, Date.now()),
+				})
+			return c.json({ error: 'Failed to lookup character' }, 500)
+		}
+	})
+
+	// Corporation lookup endpoint
+	.get('/esi/corporations/:corporationId', async (c) => {
+		const corporationIdParam = c.req.param('corporationId')
+		const corporationId = parseInt(corporationIdParam, 10)
+
+		if (isNaN(corporationId)) {
+			return c.json({ error: 'Invalid corporation ID' }, 400)
+		}
+
+		try {
+			const dataStoreStub = getStub<CharacterDataStore>(c.env.CHARACTER_DATA_STORE, 'global')
+			const corporation = await dataStoreStub.getCorporation(corporationId)
+
+			if (!corporation) {
+				return c.json({ error: 'Corporation not found' }, 404)
+			}
+
+			logger
+				.withTags({
+					type: 'corporation_lookup',
+					corporation_id: corporationId,
+				})
+				.info('Corporation lookup', {
+					corporationId,
+					corporationName: corporation.name,
+					request: getRequestLogData(c, Date.now()),
+				})
+
+			return c.json({
+				corporationId: corporation.corporation_id,
+				name: corporation.name,
+				ticker: corporation.ticker,
+				memberCount: corporation.member_count,
+				ceoId: corporation.ceo_id,
+				creatorId: corporation.creator_id,
+				dateFounded: corporation.date_founded,
+				taxRate: corporation.tax_rate,
+				url: corporation.url,
+				description: corporation.description,
+				allianceId: corporation.alliance_id,
+				lastUpdated: new Date(corporation.last_updated).toISOString(),
+				nextUpdateAt: new Date(corporation.next_update_at).toISOString(),
+				updateCount: corporation.update_count,
+			})
+		} catch (error) {
+			logger
+				.withTags({
+					type: 'corporation_lookup_error',
+					corporation_id: corporationId,
+				})
+				.error('Corporation lookup error', {
+					error: String(error),
+					corporationId,
+					request: getRequestLogData(c, Date.now()),
+				})
+			return c.json({ error: 'Failed to lookup corporation' }, 500)
 		}
 	})
 
@@ -400,8 +590,7 @@ const esiProxyRouter = new Hono<App>().basePath('/esi').all('*', async (c) => {
 	let characterName: string
 
 	try {
-		const id = c.env.USER_TOKEN_STORE.idFromName('global')
-		const stub = c.env.USER_TOKEN_STORE.get(id)
+		const stub = getStub<UserTokenStore>(c.env.USER_TOKEN_STORE, 'global')
 
 		const lookupData = await stub.findByProxyToken(proxyToken)
 
@@ -641,5 +830,6 @@ app.route('/', esiProxyRouter)
 import { withSentry } from '@repo/hono-helpers'
 export default withSentry(app)
 
-// Export Durable Object
+// Export Durable Objects
+export { CharacterDataStore } from './character-data-store'
 export { UserTokenStore } from './user-token-store'

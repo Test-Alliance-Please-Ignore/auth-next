@@ -4,6 +4,9 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { getRequestLogData, logger, withNotFound, withOnError } from '@repo/hono-helpers'
 import { withStaticAuth } from '@repo/static-auth'
+import { getStub } from '@repo/do-utils'
+import type { SessionStore } from '@repo/session-store'
+import type { UserTokenStore } from '@repo/user-token-store'
 
 import type { App } from './context'
 import { OIDCClient } from './oidc-client'
@@ -165,8 +168,7 @@ const app = new Hono<App>()
 			}
 
 			// Store session in Durable Object (using global instance)
-			const id = c.env.USER_SESSION_STORE.idFromName('global')
-			const stub = c.env.USER_SESSION_STORE.get(id)
+			const stub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
 
 			const sessionInfo = await stub.createSession(
 				'google',
@@ -426,8 +428,7 @@ const app = new Hono<App>()
 			const email = userInfo.email || `${userInfo.id}@discord.user`
 
 			// Store session in Durable Object (using global instance)
-			const id = c.env.USER_SESSION_STORE.idFromName('global')
-			const stub = c.env.USER_SESSION_STORE.get(id)
+			const stub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
 
 			const sessionInfo = await stub.createSession(
 				'discord',
@@ -559,8 +560,7 @@ const app = new Hono<App>()
 		}
 
 		try {
-			const id = c.env.USER_SESSION_STORE.idFromName('global')
-			const stub = c.env.USER_SESSION_STORE.get(id)
+			const stub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
 
 			const sessionInfo = await stub.getSession(sessionId)
 
@@ -593,8 +593,7 @@ const app = new Hono<App>()
 		}
 
 		try {
-			const id = c.env.USER_SESSION_STORE.idFromName('global')
-			const stub = c.env.USER_SESSION_STORE.get(id)
+			const stub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
 
 			const sessionInfo = await stub.refreshSession(sessionId)
 
@@ -623,8 +622,7 @@ const app = new Hono<App>()
 		}
 
 		try {
-			const id = c.env.USER_SESSION_STORE.idFromName('global')
-			const stub = c.env.USER_SESSION_STORE.get(id)
+			const stub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
 
 			await stub.deleteSession(sessionId)
 
@@ -666,8 +664,7 @@ const app = new Hono<App>()
 			}
 
 			// Verify session exists
-			const id = c.env.USER_SESSION_STORE.idFromName('global')
-			const stub = c.env.USER_SESSION_STORE.get(id)
+			const stub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
 
 			await stub.getSession(sessionId)
 
@@ -744,8 +741,7 @@ const app = new Hono<App>()
 				return c.json({ error: 'OIDC configuration not set. Please contact administrator.' }, 500)
 			}
 
-			const id = c.env.USER_SESSION_STORE.idFromName('global')
-			const stub = c.env.USER_SESSION_STORE.get(id)
+			const stub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
 
 			// Validate state and get session ID
 			const sessionId = await stub.validateOIDCState(state)
@@ -894,8 +890,7 @@ const app = new Hono<App>()
 		}
 
 		try {
-			const id = c.env.USER_SESSION_STORE.idFromName('global')
-			const stub = c.env.USER_SESSION_STORE.get(id)
+			const stub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
 
 			// Get session info
 			const session = await stub.getSession(sessionId)
@@ -935,8 +930,7 @@ const app = new Hono<App>()
 		}
 
 		try {
-			const id = c.env.USER_SESSION_STORE.idFromName('global')
-			const stub = c.env.USER_SESSION_STORE.get(id)
+			const stub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
 
 			const link = await stub.getCharacterLinkByCharacterId(characterId)
 
@@ -963,14 +957,20 @@ const app = new Hono<App>()
 		}
 
 		try {
-			const body = await c.req.json() as { characterId: number; characterName: string }
+			const body = await c.req.json() as {
+				characterId: number
+				characterName: string
+				corporationId?: number
+				corporationName?: string
+				allianceId?: number | null
+				allianceName?: string | null
+			}
 
 			if (!body.characterId || !body.characterName) {
 				return c.json({ error: 'Missing characterId or characterName' }, 400)
 			}
 
-			const id = c.env.USER_SESSION_STORE.idFromName('global')
-			const stub = c.env.USER_SESSION_STORE.get(id)
+			const stub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
 
 			// Get session to get social user ID
 			const session = await stub.getSession(sessionId)
@@ -981,6 +981,37 @@ const app = new Hono<App>()
 				body.characterId,
 				body.characterName
 			)
+
+			// Notify tags service if corporation/alliance info is provided
+			if (body.corporationId && body.corporationName) {
+				try {
+					await c.env.TAGS.fetch(
+						new Request('http://tags/api/tags/onboard', {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({
+								socialUserId: session.socialUserId,
+								characterId: body.characterId,
+								corporationId: body.corporationId,
+								corporationName: body.corporationName,
+								allianceId: body.allianceId,
+								allianceName: body.allianceName,
+							}),
+						})
+					)
+
+					logger.info('Notified tags service of character onboarding', {
+						characterId: body.characterId,
+						socialUserId: session.socialUserId.substring(0, 8) + '...',
+					})
+				} catch (tagsError) {
+					// Don't fail the character link if tags notification fails
+					logger.error('Failed to notify tags service', {
+						error: String(tagsError),
+						characterId: body.characterId,
+					})
+				}
+			}
 
 			return c.json({
 				success: true,
@@ -1012,8 +1043,7 @@ const app = new Hono<App>()
 		}
 
 		try {
-			const id = c.env.USER_SESSION_STORE.idFromName('global')
-			const stub = c.env.USER_SESSION_STORE.get(id)
+			const stub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
 
 			// Search character links by name (case-insensitive)
 			const characters = await stub.searchCharactersByName(query.trim())
@@ -1106,8 +1136,7 @@ const app = new Hono<App>()
 		}
 
 		try {
-			const id = c.env.USER_SESSION_STORE.idFromName('global')
-			const stub = c.env.USER_SESSION_STORE.get(id)
+			const stub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
 
 			// Get session info
 			const session = await stub.getSession(sessionId)
@@ -1147,8 +1176,7 @@ const app = new Hono<App>()
 		}
 
 		try {
-			const id = c.env.USER_SESSION_STORE.idFromName('global')
-			const stub = c.env.USER_SESSION_STORE.get(id)
+			const stub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
 
 			// Get session info
 			const session = await stub.getSession(sessionId)
@@ -1179,6 +1207,62 @@ const app = new Hono<App>()
 		}
 	})
 
+	// Refresh character data
+	.post('/api/characters/:characterId/refresh', async (c) => {
+		const sessionId = getCookie(c, 'session_id')
+
+		if (!sessionId) {
+			return c.json({ error: 'Not authenticated' }, 401)
+		}
+
+		const characterId = Number(c.req.param('characterId'))
+
+		if (Number.isNaN(characterId)) {
+			return c.json({ error: 'Invalid character ID' }, 400)
+		}
+
+		try {
+			const sessionStoreStub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
+
+			// Get session info
+			const session = await sessionStoreStub.getSession(sessionId)
+
+			// Verify the character belongs to this user
+			const characterLink = await sessionStoreStub.getCharacterLinkByCharacterId(characterId)
+
+			if (!characterLink || characterLink.socialUserId !== session.socialUserId) {
+				return c.json({ error: 'Character not found or does not belong to you' }, 403)
+			}
+
+			// Call the UserTokenStore Durable Object directly to refresh the character's access token
+			// This will automatically trigger a refresh if the token is expired
+			const tokenStoreStub = getStub<UserTokenStore>(c.env.USER_TOKEN_STORE, 'global')
+
+			const tokenInfo = await tokenStoreStub.getAccessToken(characterId)
+
+			logger
+				.withTags({
+					type: 'character_refresh_requested',
+				})
+				.info('Character refresh requested', {
+					characterId,
+					characterName: tokenInfo.characterName,
+					socialUserId: session.socialUserId.substring(0, 8) + '...',
+					tokenExpiresAt: new Date(tokenInfo.expiresAt).toISOString(),
+				})
+
+			return c.json({
+				success: true,
+				message: 'Character data refresh initiated',
+				characterName: tokenInfo.characterName,
+				tokenExpiresAt: tokenInfo.expiresAt,
+			})
+		} catch (error) {
+			logger.error('Character refresh error', { error: String(error), characterId })
+			return c.json({ error: String(error) }, 500)
+		}
+	})
+
 	// Get primary character name for a social user ID (privacy-limited endpoint)
 	.get('/api/users/:socialUserId/primary-character', async (c) => {
 		const socialUserId = c.req.param('socialUserId')
@@ -1197,8 +1281,7 @@ const app = new Hono<App>()
 				return cachedResponse
 			}
 
-			const id = c.env.USER_SESSION_STORE.idFromName('global')
-			const stub = c.env.USER_SESSION_STORE.get(id)
+			const stub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
 
 			// Get all character links for this social user
 			const characters = await stub.getCharacterLinksBySocialUser(socialUserId)
@@ -1366,8 +1449,7 @@ const app = new Hono<App>()
 		}
 
 		try {
-			const id = c.env.USER_SESSION_STORE.idFromName('global')
-			const stub = c.env.USER_SESSION_STORE.get(id)
+			const stub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
 
 			// Verify session exists and get session info
 			const session = await stub.getSession(sessionId)
@@ -1439,8 +1521,7 @@ const app = new Hono<App>()
 		}
 
 		try {
-			const id = c.env.USER_SESSION_STORE.idFromName('global')
-			const stub = c.env.USER_SESSION_STORE.get(id)
+			const stub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
 
 			// Validate state and get session ID
 			const sessionId = await stub.validateOIDCState(state)
@@ -1633,8 +1714,7 @@ const app = new Hono<App>()
 		}
 
 		try {
-			const id = c.env.USER_SESSION_STORE.idFromName('global')
-			const stub = c.env.USER_SESSION_STORE.get(id)
+			const stub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
 
 			// Get session info
 			const session = await stub.getSession(sessionId)
@@ -1672,8 +1752,7 @@ const app = new Hono<App>()
 		const linkId = c.req.param('linkId')
 
 		try {
-			const id = c.env.USER_SESSION_STORE.idFromName('global')
-			const stub = c.env.USER_SESSION_STORE.get(id)
+			const stub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
 
 			// Delete the account link
 			await stub.deleteAccountLink(linkId)
@@ -1706,8 +1785,7 @@ const app = new Hono<App>()
 		}
 
 		try {
-			const id = c.env.USER_SESSION_STORE.idFromName('global')
-			const stub = c.env.USER_SESSION_STORE.get(id)
+			const stub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
 
 			// Delete the character link
 			await stub.deleteCharacterLink(characterId)
@@ -1740,8 +1818,7 @@ const app = new Hono<App>()
 		}
 
 		try {
-			const id = c.env.USER_SESSION_STORE.idFromName('global')
-			const stub = c.env.USER_SESSION_STORE.get(id)
+			const stub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
 
 			// Get all character links for this social user
 			const characters = await stub.getCharacterLinksBySocialUser(socialUserId)
@@ -1779,8 +1856,7 @@ const app = new Hono<App>()
 		const offset = Number(c.req.query('offset')) || 0
 
 		try {
-			const id = c.env.USER_SESSION_STORE.idFromName('global')
-			const stub = c.env.USER_SESSION_STORE.get(id)
+			const stub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
 
 			const result = await stub.listSessions(limit, offset)
 
@@ -1800,8 +1876,7 @@ const app = new Hono<App>()
 	// Admin endpoint to get stats
 	.get('/admin/stats', async (c) => {
 		try {
-			const id = c.env.USER_SESSION_STORE.idFromName('global')
-			const stub = c.env.USER_SESSION_STORE.get(id)
+			const stub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
 
 			const stats = await stub.getStats()
 

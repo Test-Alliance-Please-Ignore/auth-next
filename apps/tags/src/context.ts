@@ -1,19 +1,19 @@
 import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
 
+import type { TagStore } from './tag-store'
+
 export type Env = SharedHonoEnv & {
-	ESI_CACHE: KVNamespace
-	USER_TOKEN_STORE: DurableObjectNamespace
-	CHARACTER_DATA_STORE: DurableObjectNamespace
-	ESI_SSO_CLIENT_ID: string
-	ESI_SSO_CLIENT_SECRET: string
-	ESI_SSO_CALLBACK_URL: string
-	ADMIN_API_TOKENS: string
+	TAG_STORE: DurableObjectNamespace<TagStore>
 	SOCIAL_AUTH: Fetcher
+	ESI: Fetcher
+	ADMIN_API_TOKENS: string
 }
 
 /** Variables can be extended */
-export type Variables = SharedHonoVariables
+export type Variables = SharedHonoVariables & {
+	sessionUserId?: string
+}
 
 export interface App extends HonoApp {
 	Bindings: Env

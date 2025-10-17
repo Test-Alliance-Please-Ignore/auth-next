@@ -2,6 +2,8 @@ import { Hono } from 'hono'
 
 import { getRequestLogData, logger } from '@repo/hono-helpers'
 import { withStaticAuth } from '@repo/static-auth'
+import { getStub } from '@repo/do-utils'
+import type { UserTokenStore } from '@repo/user-token-store'
 
 import type { App } from './context'
 
@@ -25,8 +27,7 @@ export const adminRouter = new Hono<App>()
 
 		try {
 			// Use a global DO instance for listing all tokens
-			const id = c.env.USER_TOKEN_STORE.idFromName('global')
-			const stub = c.env.USER_TOKEN_STORE.get(id)
+			const stub = getStub<UserTokenStore>(c.env.USER_TOKEN_STORE, 'global')
 
 			const result = await stub.listAllTokens(limit, offset)
 
@@ -57,8 +58,7 @@ export const adminRouter = new Hono<App>()
 		}
 
 		try {
-			const id = c.env.USER_TOKEN_STORE.idFromName('global')
-			const stub = c.env.USER_TOKEN_STORE.get(id)
+			const stub = getStub<UserTokenStore>(c.env.USER_TOKEN_STORE, 'global')
 
 			const tokenInfo = await stub.getProxyToken(characterId)
 
@@ -90,8 +90,7 @@ export const adminRouter = new Hono<App>()
 		}
 
 		try {
-			const id = c.env.USER_TOKEN_STORE.idFromName('global')
-			const stub = c.env.USER_TOKEN_STORE.get(id)
+			const stub = getStub<UserTokenStore>(c.env.USER_TOKEN_STORE, 'global')
 
 			await stub.revokeToken(characterId)
 
@@ -123,8 +122,7 @@ export const adminRouter = new Hono<App>()
 
 		try {
 			// Use the global DO instance
-			const id = c.env.USER_TOKEN_STORE.idFromName('global')
-			const stub = c.env.USER_TOKEN_STORE.get(id)
+			const stub = getStub<UserTokenStore>(c.env.USER_TOKEN_STORE, 'global')
 
 			await stub.deleteByProxyToken(proxyToken)
 
@@ -150,8 +148,7 @@ export const adminRouter = new Hono<App>()
 	.get('/stats', async (c) => {
 		try {
 			// Use the global DO instance for stats
-			const id = c.env.USER_TOKEN_STORE.idFromName('global')
-			const stub = c.env.USER_TOKEN_STORE.get(id)
+			const stub = getStub<UserTokenStore>(c.env.USER_TOKEN_STORE, 'global')
 
 			const stats = await stub.getStats()
 
@@ -180,8 +177,7 @@ export const adminRouter = new Hono<App>()
 		}
 
 		try {
-			const id = c.env.USER_TOKEN_STORE.idFromName('global')
-			const stub = c.env.USER_TOKEN_STORE.get(id)
+			const stub = getStub<UserTokenStore>(c.env.USER_TOKEN_STORE, 'global')
 
 			// Get the access token, which will trigger a refresh if needed
 			const tokenInfo = await stub.getAccessToken(characterId)

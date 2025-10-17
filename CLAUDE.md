@@ -32,6 +32,10 @@
   - `@repo/typescript-config` - Shared TypeScript configuration
   - `@repo/hono-helpers` - Hono framework utilities
   - `@repo/tools` - Development tools and scripts
+  - `@repo/do-utils` - Durable Object utilities (getStub helper)
+  - `@repo/session-store` - SessionStore DO interface
+  - `@repo/character-data-store` - CharacterDataStore DO interface
+  - `@repo/user-token-store` - UserTokenStore DO interface
 - Worker apps delegate scripts to `@repo/tools` for consistency
 - Hono web framework with helpers in `@repo/hono-helpers`
 - Vitest with `@cloudflare/vitest-pool-workers` for testing
@@ -44,6 +48,77 @@
 - GitHub Actions deploy automatically on merge to main
 - Changesets manage versions and changelogs
 </architecture>
+
+<durable-objects>
+## State Management with Durable Objects
+
+This project uses Cloudflare Durable Objects for stateful operations with SQLite storage. Durable Objects provide strong consistency guarantees and can be accessed across workers.
+
+### Architecture Pattern
+
+1. **Shared Interface Packages**: Each Durable Object type has a dedicated package exporting only TypeScript interfaces:
+   - `@repo/session-store` - User sessions, OAuth, account/character linking
+   - `@repo/character-data-store` - EVE character/corporation data tracking
+   - `@repo/user-token-store` - EVE SSO token management
+
+2. **Implementation**: Durable Object classes are defined in their respective worker apps (e.g., `apps/social-auth/src/session-store.ts`)
+
+3. **Cross-Worker Access**: Workers can access DOs from other workers using bindings with `script_name` in `wrangler.jsonc`
+
+### Usage Pattern
+
+Use the `getStub` helper from `@repo/do-utils` for type-safe DO access:
+
+```typescript
+import { getStub } from '@repo/do-utils'
+import type { SessionStore } from '@repo/session-store'
+
+// In your worker code
+const stub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
+const session = await stub.getSession(sessionId)
+```
+
+### Key Principles
+
+- **Untyped Namespaces**: Environment bindings use `DurableObjectNamespace` (untyped) in `context.ts`
+- **Type at Call Site**: Apply interface type when calling `getStub<T>()`
+- **Shared Interfaces**: Import interface types from `@repo/*` packages, never from implementation files
+- **Single Source of Truth**: DO interfaces are defined once in shared packages and used everywhere
+
+### Example Configuration
+
+In `wrangler.jsonc`:
+```json
+{
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "USER_SESSION_STORE",
+        "class_name": "SessionStore",
+        "script_name": "social-auth"
+      }
+    ]
+  }
+}
+```
+
+In `context.ts`:
+```typescript
+export type Env = {
+  USER_SESSION_STORE: DurableObjectNamespace  // Untyped
+}
+```
+
+### Testing
+
+Use `getStub` in tests with unique DO IDs per test:
+```typescript
+import { getStub } from '@repo/do-utils'
+import type { SessionStore } from '@repo/session-store'
+
+const stub = getStub<SessionStore>(env.USER_SESSION_STORE, 'test-unique-id')
+```
+</durable-objects>
 
 <code-style>
 - Use tabs for indentation, spaces for alignment

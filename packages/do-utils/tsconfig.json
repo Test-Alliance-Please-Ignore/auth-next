@@ -1,0 +1,10 @@
+{
+	"extends": "@repo/typescript-config/base.json",
+	"compilerOptions": {
+		"outDir": "dist",
+		"rootDir": "src",
+		"module": "ESNext",
+		"types": ["@cloudflare/workers-types"]
+	},
+	"include": ["src/**/*"]
+}

@@ -1,14 +1,16 @@
 import { env as testEnv } from 'cloudflare:test'
 import { describe, expect, it } from 'vitest'
 
+import { getStub } from '@repo/do-utils'
+import type { SessionStore } from '@repo/session-store'
+
 import type { Env } from '../../context'
 
 const env = testEnv as Env
 
 describe('SessionStore - Account Linking', () => {
 	it('should create an account link', async () => {
-		const id = env.USER_SESSION_STORE.idFromName('test-global')
-		const stub = env.USER_SESSION_STORE.get(id)
+		const stub = getStub<SessionStore>(env.USER_SESSION_STORE, 'test-global')
 
 		// Create social user first
 		const socialUser = await stub.getOrCreateSocialUser('google', 'google-user-123', 'test@example.com', 'Test User')
@@ -36,8 +38,7 @@ describe('SessionStore - Account Linking', () => {
 	})
 
 	it('should retrieve account links by social user', async () => {
-		const id = env.USER_SESSION_STORE.idFromName('test-global-2')
-		const stub = env.USER_SESSION_STORE.get(id)
+		const stub = getStub<SessionStore>(env.USER_SESSION_STORE, 'test-global-2')
 
 		// Create social user
 		const socialUser = await stub.getOrCreateSocialUser('google', 'google-user-789', 'test2@example.com', 'Test User 2')
@@ -55,8 +56,7 @@ describe('SessionStore - Account Linking', () => {
 	})
 
 	it('should prevent duplicate legacy account claims', async () => {
-		const id = env.USER_SESSION_STORE.idFromName('test-global-3')
-		const stub = env.USER_SESSION_STORE.get(id)
+		const stub = getStub<SessionStore>(env.USER_SESSION_STORE, 'test-global-3')
 
 		// Create first social user and link
 		const socialUser1 = await stub.getOrCreateSocialUser('google', 'google-user-aaa', 'test3a@example.com', 'Test User 3A')
@@ -71,8 +71,7 @@ describe('SessionStore - Account Linking', () => {
 	})
 
 	it('should retrieve account link by legacy user ID', async () => {
-		const id = env.USER_SESSION_STORE.idFromName('test-global-4')
-		const stub = env.USER_SESSION_STORE.get(id)
+		const stub = getStub<SessionStore>(env.USER_SESSION_STORE, 'test-global-4')
 
 		// Create social user and link
 		const socialUser = await stub.getOrCreateSocialUser('google', 'google-user-ccc', 'test4@example.com', 'Test User 4')
@@ -87,8 +86,7 @@ describe('SessionStore - Account Linking', () => {
 	})
 
 	it('should return null for non-existent legacy account link', async () => {
-		const id = env.USER_SESSION_STORE.idFromName('test-global-5')
-		const stub = env.USER_SESSION_STORE.get(id)
+		const stub = getStub<SessionStore>(env.USER_SESSION_STORE, 'test-global-5')
 
 		const link = await stub.getAccountLinkByLegacyId('test-auth', 'non-existent-user')
 
@@ -96,8 +94,7 @@ describe('SessionStore - Account Linking', () => {
 	})
 
 	it('should delete account link', async () => {
-		const id = env.USER_SESSION_STORE.idFromName('test-global-6')
-		const stub = env.USER_SESSION_STORE.get(id)
+		const stub = getStub<SessionStore>(env.USER_SESSION_STORE, 'test-global-6')
 
 		// Create social user and link
 		const socialUser = await stub.getOrCreateSocialUser('google', 'google-user-ddd', 'test6@example.com', 'Test User 6')
@@ -112,8 +109,7 @@ describe('SessionStore - Account Linking', () => {
 	})
 
 	it('should fail to delete non-existent account link', async () => {
-		const id = env.USER_SESSION_STORE.idFromName('test-global-7')
-		const stub = env.USER_SESSION_STORE.get(id)
+		const stub = getStub<SessionStore>(env.USER_SESSION_STORE, 'test-global-7')
 
 		await expect(
 			stub.deleteAccountLink('non-existent-link-id')
@@ -123,8 +119,7 @@ describe('SessionStore - Account Linking', () => {
 
 describe('SessionStore - OIDC State Management', () => {
 	it('should create OIDC state', async () => {
-		const id = env.USER_SESSION_STORE.idFromName('test-oidc-1')
-		const stub = env.USER_SESSION_STORE.get(id)
+		const stub = getStub<SessionStore>(env.USER_SESSION_STORE, 'test-oidc-1')
 
 		const state = await stub.createOIDCState('session-123')
 
@@ -133,8 +128,7 @@ describe('SessionStore - OIDC State Management', () => {
 	})
 
 	it('should validate OIDC state and return session ID', async () => {
-		const id = env.USER_SESSION_STORE.idFromName('test-oidc-2')
-		const stub = env.USER_SESSION_STORE.get(id)
+		const stub = getStub<SessionStore>(env.USER_SESSION_STORE, 'test-oidc-2')
 
 		// Create state
 		const state = await stub.createOIDCState('session-456')
@@ -146,8 +140,7 @@ describe('SessionStore - OIDC State Management', () => {
 	})
 
 	it('should fail to validate invalid OIDC state', async () => {
-		const id = env.USER_SESSION_STORE.idFromName('test-oidc-3')
-		const stub = env.USER_SESSION_STORE.get(id)
+		const stub = getStub<SessionStore>(env.USER_SESSION_STORE, 'test-oidc-3')
 
 		await expect(
 			stub.validateOIDCState('invalid-state')
@@ -155,8 +148,7 @@ describe('SessionStore - OIDC State Management', () => {
 	})
 
 	it('should consume OIDC state after validation (one-time use)', async () => {
-		const id = env.USER_SESSION_STORE.idFromName('test-oidc-4')
-		const stub = env.USER_SESSION_STORE.get(id)
+		const stub = getStub<SessionStore>(env.USER_SESSION_STORE, 'test-oidc-4')
 
 		// Create state
 		const state = await stub.createOIDCState('session-789')
@@ -173,8 +165,7 @@ describe('SessionStore - OIDC State Management', () => {
 
 describe('Account Linking Integration', () => {
 	it('should prevent multiple links for same social account (1:1 constraint)', async () => {
-		const id = env.USER_SESSION_STORE.idFromName('test-integration-1')
-		const stub = env.USER_SESSION_STORE.get(id)
+		const stub = getStub<SessionStore>(env.USER_SESSION_STORE, 'test-integration-1')
 
 		// Create social user
 		const socialUser = await stub.getOrCreateSocialUser('google', 'google-user-eee', 'test-int1@example.com', 'Test User Int 1')

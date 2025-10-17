@@ -452,7 +452,10 @@
 											<div style="margin-top: 0.25rem; font-size: 0.875rem; color: #666;">ID: ${char.characterId}</div>
 										</div>
 									</div>
-									${buttonHtml}
+									<div style="display: flex; gap: 0.5rem;">
+										${buttonHtml}
+										<button class="btn btn-secondary" onclick="refreshCharacter(${char.characterId})" style="font-size: 0.875rem; padding: 0.5rem 0.75rem;" title="Refresh character data">🔄</button>
+									</div>
 								</div>
 							`;
 						});
@@ -599,6 +602,24 @@
 						loadDashboard();
 					} else {
 						alert('Failed to set primary character: ' + (data.error || 'Unknown error'));
+					}
+				} catch (error) {
+					alert('Error: ' + error.message);
+				}
+			}
+
+			async function refreshCharacter(characterId) {
+				try {
+					const res = await fetch(`/api/characters/${characterId}/refresh`, {
+						method: 'POST',
+						credentials: 'same-origin'
+					});
+
+					const data = await res.json();
+					if (data.success) {
+						alert('Character data refresh initiated successfully!');
+					} else {
+						alert('Failed to refresh character: ' + (data.error || 'Unknown error'));
 					}
 				} catch (error) {
 					alert('Error: ' + error.message);

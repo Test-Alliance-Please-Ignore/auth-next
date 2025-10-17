@@ -1,6 +1,6 @@
 {
-	"name": "esi",
-	"version": "0.1.4",
+	"name": "tags",
+	"version": "0.1.0",
 	"private": true,
 	"sideEffects": false,
 	"type": "module",
@@ -14,11 +14,8 @@
 		"test": "run-vitest"
 	},
 	"dependencies": {
-		"@repo/character-data-store": "workspace:*",
-		"@repo/do-utils": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
 		"@repo/static-auth": "workspace:*",
-		"@repo/user-token-store": "workspace:*",
 		"hono": "4.9.11",
 		"workers-tagged-logger": "0.13.3"
 	},
