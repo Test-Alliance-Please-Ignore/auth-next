@@ -9,6 +9,7 @@
 # Aliases
 alias new-pkg := new-package
 alias new-worker := gen
+alias new-do := new-durable-object
 alias up := update
 alias i := install
 
@@ -81,6 +82,10 @@ gen *flags:
 [group('3. generator')]
 new-package *flags:
   bun run-turbo-gen new-package {{flags}}
+
+[group('3. generator')]
+new-durable-object *flags:
+  bun run-turbo-gen new-durable-object {{flags}}
 
 # =============================== #
 #        UTILITY COMMANDS         #

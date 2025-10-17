@@ -1,0 +1,133 @@
+import { DurableObject } from 'cloudflare:workers'
+
+import { logger } from '@repo/hono-helpers'
+
+import type { Env } from './context'
+
+// ========== Internal Types (SQLite data structures - snake_case) ==========
+
+// Add your SQLite row types here (snake_case)
+// Example:
+// export interface ExampleData extends Record<string, number | string> {
+// 	id: string
+// 	created_at: number
+// 	updated_at: number
+// }
+
+// ========== Public Types (External API - camelCase) ==========
+
+// Add your public types here (camelCase)
+// Example:
+// export interface Example {
+// 	id: string
+// 	createdAt: number
+// 	updatedAt: number
+// }
+
+/**
+ * {{ pascal name }} Durable Object Implementation
+ *
+ * {{ description }}
+ */
+export class {{ pascal name }} extends DurableObject<Env> {
+	private schemaInitialized = false
+	private readonly CURRENT_SCHEMA_VERSION = 1
+
+	constructor(ctx: DurableObjectState, env: Env) {
+		super(ctx, env)
+	}
+
+	private async getSchemaVersion(): Promise<number> {
+		// Create schema_version table if it doesn't exist
+		await this.ctx.storage.sql.exec(`
+			CREATE TABLE IF NOT EXISTS schema_version (
+				version INTEGER PRIMARY KEY,
+				applied_at INTEGER NOT NULL
+			)
+		`)
+
+		const rows = await this.ctx.storage.sql
+			.exec<{ version: number }>('SELECT version FROM schema_version ORDER BY version DESC LIMIT 1')
+			.toArray()
+
+		return rows.length > 0 ? rows[0].version : 0
+	}
+
+	private async setSchemaVersion(version: number): Promise<void> {
+		const now = Date.now()
+		await this.ctx.storage.sql.exec(
+			'INSERT OR REPLACE INTO schema_version (version, applied_at) VALUES (?, ?)',
+			version,
+			now
+		)
+	}
+
+	private async ensureSchema() {
+		// Only run migrations once per DO instance
+		if (this.schemaInitialized) {
+			return
+		}
+
+		try {
+			const currentVersion = await this.getSchemaVersion()
+
+			logger.info('Running schema migrations', {
+				currentVersion,
+				targetVersion: this.CURRENT_SCHEMA_VERSION,
+			})
+
+			// Migration 1: Initial schema
+			if (currentVersion < 1) {
+				await this.runMigration1()
+				await this.setSchemaVersion(1)
+				logger.info('Applied migration 1: Initial schema')
+			}
+
+			// Add more migrations here as needed
+			// if (currentVersion < 2) {
+			// 	await this.runMigration2()
+			// 	await this.setSchemaVersion(2)
+			// 	logger.info('Applied migration 2: Description')
+			// }
+
+			this.schemaInitialized = true
+		} catch (error) {
+			// If migration fails, don't mark as initialized so it retries
+			logger.error('Schema migration failed', {
+				error: error instanceof Error ? error.message : String(error),
+			})
+			throw error
+		}
+	}
+
+	private async runMigration1(): Promise<void> {
+		// TODO: Create your initial tables here
+		// Example:
+		// await this.ctx.storage.sql.exec(`
+		// 	CREATE TABLE IF NOT EXISTS examples (
+		// 		id TEXT PRIMARY KEY,
+		// 		created_at INTEGER NOT NULL,
+		// 		updated_at INTEGER NOT NULL
+		// 	)
+		// `)
+		//
+		// await this.ctx.storage.sql.exec(`
+		// 	CREATE INDEX IF NOT EXISTS idx_examples_created_at ON examples(created_at)
+		// `)
+	}
+
+	// ========== Public Methods ==========
+
+	async exampleMethod(): Promise<string> {
+		await this.ensureSchema()
+
+		// TODO: Implement your method
+		logger
+			.withTags({
+				type: 'example_method_called',
+			})
+			.info('Example method called')
+
+		return 'Hello from {{ pascal name }}!'
+	}
+}

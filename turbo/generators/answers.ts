@@ -25,5 +25,16 @@ export const NewPackageAnswers = z.object({
 	usedInWorkers: z.boolean().optional(),
 })
 
+export type NewDurableObjectAnswers = z.infer<typeof NewDurableObjectAnswers>
+export const NewDurableObjectAnswers = z.object({
+	name: z.string(),
+	description: z.string(),
+	createNewWorker: z.boolean(),
+	workerName: z.string(),
+	addCrossWorkerBindings: z.boolean(),
+	targetWorkers: z.array(z.string()).optional(),
+	turbo: Turbo,
+})
+
 export type Answers = z.infer<typeof Answers>
-export const Answers = z.union([NewWorkerAnswers, NewPackageAnswers])
+export const Answers = z.union([NewWorkerAnswers, NewPackageAnswers, NewDurableObjectAnswers])
