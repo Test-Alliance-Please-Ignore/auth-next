@@ -13,6 +13,7 @@
 - `just preview` - Run Workers in preview mode
 - `just new-worker` (alias: `just gen`) - Create a new Cloudflare Worker
 - `just new-package` - Create a new shared package
+- `just new-durable-object` (alias: `just new-do`) - Create a new Durable Object with interface package
 - `just update deps` (alias: `just up deps`) - Update dependencies across the monorepo
 - `just update pnpm` - Update pnpm version
 - `just update turbo` - Update turbo version
@@ -53,6 +54,22 @@
 ## State Management with Durable Objects
 
 This project uses Cloudflare Durable Objects for stateful operations with SQLite storage. Durable Objects provide strong consistency guarantees and can be accessed across workers.
+
+### Creating New Durable Objects
+
+Use the generator to scaffold new Durable Objects:
+
+```bash
+just new-durable-object  # or: just new-do
+```
+
+This creates:
+1. A shared interface package in `packages/` (e.g., `@repo/my-store`)
+2. The DO class implementation in the specified worker app
+3. Proper wrangler.jsonc bindings configuration
+4. Initial test files
+
+The generator ensures the correct architecture pattern is followed automatically.
 
 ### Architecture Pattern
 
