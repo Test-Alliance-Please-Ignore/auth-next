@@ -56,18 +56,18 @@ const app = new Hono<App>()
 
 			const sessionInfo = await stub.getSession(sessionId)
 
-			// Get social user to check admin status
-			const socialUser = await stub.getSocialUser(sessionInfo.socialUserId)
+			// Get root user to check admin status
+			const rootUser = await stub.getRootUser(sessionInfo.rootUserId)
 
 			return c.json({
 				success: true,
 				session: {
-					socialUserId: sessionInfo.socialUserId,
+					rootUserId: sessionInfo.rootUserId,
 					provider: sessionInfo.provider,
 					email: sessionInfo.email,
 					name: sessionInfo.name,
 					expiresAt: sessionInfo.expiresAt,
-					isAdmin: socialUser?.isAdmin ?? false,
+					isAdmin: rootUser?.isAdmin ?? false,
 				},
 			})
 		} catch (error) {
@@ -276,7 +276,7 @@ const app = new Hono<App>()
 
 			// Create account link
 			const link = await stub.createAccountLink(
-				session.socialUserId,
+				session.rootUserId,
 				'test-auth',
 				userInfo.sub,
 				legacyUsername,
@@ -294,7 +294,7 @@ const app = new Hono<App>()
 				})
 				.info('Account claim completed', {
 					linkId: link.linkId,
-					socialUserId: link.socialUserId.substring(0, 8) + '...',
+					rootUserId: link.rootUserId.substring(0, 8) + '...',
 					legacySystem: link.legacySystem,
 					legacyUserId: link.legacyUserId,
 					request: getRequestLogData(c, Date.now()),
@@ -397,8 +397,8 @@ const app = new Hono<App>()
 			// Get session info
 			const session = await stub.getSession(sessionId)
 
-			// Get all account links for this social user
-			const links = await stub.getAccountLinksBySocialUser(session.socialUserId)
+			// Get all account links for this root user
+			const links = await stub.getAccountLinksByRootUser(session.rootUserId)
 
 			return c.json({
 				success: true,
@@ -444,7 +444,7 @@ const app = new Hono<App>()
 			}
 
 			return c.json({
-				socialUserId: link.socialUserId,
+				rootUserId: link.rootUserId,
 				linkId: link.linkId,
 			})
 		} catch (error) {
@@ -477,12 +477,12 @@ const app = new Hono<App>()
 
 			const stub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
 
-			// Get session to get social user ID
+			// Get session to get root user ID
 			const session = await stub.getSession(sessionId)
 
 			// Create character link
 			const link = await stub.createCharacterLink(
-				session.socialUserId,
+				session.rootUserId,
 				body.characterId,
 				body.characterName
 			)
@@ -505,7 +505,7 @@ const app = new Hono<App>()
 					)
 
 					// Assign corporation tag to user
-					await tagStoreStub.assignTagToUser(session.socialUserId, corpUrn, body.characterId)
+					await tagStoreStub.assignTagToUser(session.rootUserId, corpUrn, body.characterId)
 
 					// Create/update alliance tag if applicable
 					if (body.allianceId && body.allianceName) {
@@ -521,15 +521,15 @@ const app = new Hono<App>()
 						)
 
 						// Assign alliance tag to user
-						await tagStoreStub.assignTagToUser(session.socialUserId, allianceUrn, body.characterId)
+						await tagStoreStub.assignTagToUser(session.rootUserId, allianceUrn, body.characterId)
 					}
 
 					// Schedule first evaluation in 1 hour
-					await tagStoreStub.scheduleUserEvaluation(session.socialUserId)
+					await tagStoreStub.scheduleUserEvaluation(session.rootUserId)
 
 					logger.info('Notified tags service of character onboarding', {
 						characterId: body.characterId,
-						socialUserId: session.socialUserId.substring(0, 8) + '...',
+						rootUserId: session.rootUserId.substring(0, 8) + '...',
 					})
 				} catch (tagsError) {
 					// Don't fail the character link if tags notification fails
@@ -643,7 +643,7 @@ const app = new Hono<App>()
 					}
 
 					return {
-						socialUserId: char.socialUserId,
+						rootUserId: char.rootUserId,
 						characterId: char.characterId,
 						characterName: char.characterName,
 						corporationId,
@@ -676,8 +676,8 @@ const app = new Hono<App>()
 			// Get session info
 			const session = await stub.getSession(sessionId)
 
-			// Get all character links for this social user
-			const characters = await stub.getCharacterLinksBySocialUser(session.socialUserId)
+			// Get all character links for this root user
+			const characters = await stub.getCharacterLinksByRootUser(session.rootUserId)
 
 			return c.json({
 				success: true,
@@ -720,11 +720,11 @@ const app = new Hono<App>()
 			const session = await stub.getSession(sessionId)
 
 			// Set primary character
-			await stub.setPrimaryCharacter(session.socialUserId, characterId)
+			await stub.setPrimaryCharacter(session.rootUserId, characterId)
 
 			// Invalidate cache for this user's primary character
 			const cacheKey = new Request(
-				`http://internal/api/users/${session.socialUserId}/primary-character`,
+				`http://internal/api/users/${session.rootUserId}/primary-character`,
 				c.req.raw
 			)
 			const cache = caches.default
@@ -735,7 +735,7 @@ const app = new Hono<App>()
 					type: 'primary_character_cache_invalidated',
 				})
 				.info('Invalidated primary character cache', {
-					socialUserId: session.socialUserId.substring(0, 8) + '...',
+					rootUserId: session.rootUserId.substring(0, 8) + '...',
 					characterId,
 				})
 
@@ -774,7 +774,7 @@ const app = new Hono<App>()
 			// Verify the character belongs to this user
 			const characterLink = await sessionStoreStub.getCharacterLinkByCharacterId(characterId)
 
-			if (!characterLink || characterLink.socialUserId !== session.socialUserId) {
+			if (!characterLink || characterLink.rootUserId !== session.rootUserId) {
 				return c.json({ error: 'Character not found or does not belong to you' }, 403)
 			}
 
@@ -791,7 +791,7 @@ const app = new Hono<App>()
 				.info('Character refresh requested', {
 					characterId,
 					characterName: tokenInfo.characterName,
-					socialUserId: session.socialUserId.substring(0, 8) + '...',
+					rootUserId: session.rootUserId.substring(0, 8) + '...',
 					tokenExpiresAt: new Date(tokenInfo.expiresAt).toISOString(),
 				})
 
@@ -807,18 +807,18 @@ const app = new Hono<App>()
 		}
 	})
 
-	// Get primary character name for a social user ID (privacy-limited endpoint)
-	.get('/api/users/:socialUserId/primary-character', async (c) => {
-		const socialUserId = c.req.param('socialUserId')
+	// Get primary character name for a root user ID (privacy-limited endpoint)
+	.get('/api/users/:rootUserId/primary-character', async (c) => {
+		const rootUserId = c.req.param('rootUserId')
 
-		if (!socialUserId) {
-			return c.json({ error: 'Invalid social user ID' }, 400)
+		if (!rootUserId) {
+			return c.json({ error: 'Invalid root user ID' }, 400)
 		}
 
 		try {
-			// Check cache first (keyed by socialUserId)
+			// Check cache first (keyed by rootUserId)
 			const cacheKey = new Request(
-				`http://internal/api/users/${socialUserId}/primary-character`,
+				`http://internal/api/users/${rootUserId}/primary-character`,
 				c.req.raw
 			)
 			const cache = caches.default
@@ -830,8 +830,8 @@ const app = new Hono<App>()
 
 			const stub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
 
-			// Get all character links for this social user
-			const characters = await stub.getCharacterLinksBySocialUser(socialUserId)
+			// Get all character links for this root user
+			const characters = await stub.getCharacterLinksByRootUser(rootUserId)
 
 			// Find the primary character
 			const primaryCharacter = characters.find((char) => char.isPrimary)
@@ -932,7 +932,7 @@ const app = new Hono<App>()
 
 			return response
 		} catch (error) {
-			logger.error('Get primary character error', { error: String(error), socialUserId })
+			logger.error('Get primary character error', { error: String(error), rootUserId })
 			return c.json({ error: 'Failed to get primary character' }, 500)
 		}
 	})
@@ -1004,8 +1004,8 @@ const app = new Hono<App>()
 			// Get session info
 			const session = await stub.getSession(sessionId)
 
-			// Get all provider links for this social user
-			const providerLinks = await stub.getProviderLinksBySocialUser(session.socialUserId)
+			// Get all provider links for this root user
+			const providerLinks = await stub.getProviderLinksByRootUser(session.rootUserId)
 
 			return c.json({
 				success: true,
@@ -1097,33 +1097,33 @@ const app = new Hono<App>()
 		}
 	})
 
-	// Admin endpoint to list all characters for a social user ID
+	// Admin endpoint to list all characters for a root user ID
 	.get('/admin/characters', async (c) => {
-		const socialUserId = c.req.query('socialUserId')
+		const rootUserId = c.req.query('rootUserId')
 
-		if (!socialUserId) {
-			return c.json({ error: 'socialUserId query parameter is required' }, 400)
+		if (!rootUserId) {
+			return c.json({ error: 'rootUserId query parameter is required' }, 400)
 		}
 
 		try {
 			const stub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
 
-			// Get all character links for this social user
-			const characters = await stub.getCharacterLinksBySocialUser(socialUserId)
+			// Get all character links for this root user
+			const characters = await stub.getCharacterLinksByRootUser(rootUserId)
 
 			logger
 				.withTags({
 					type: 'admin_characters_list',
 				})
-				.info('Admin listed characters for social user', {
-					socialUserId: socialUserId.substring(0, 8) + '...',
+				.info('Admin listed characters for root user', {
+					rootUserId: rootUserId.substring(0, 8) + '...',
 					characterCount: characters.length,
 					request: getRequestLogData(c, Date.now()),
 				})
 
 			return c.json({
 				success: true,
-				socialUserId,
+				rootUserId,
 				characters: characters.map((char) => ({
 					linkId: char.linkId,
 					characterId: char.characterId,
@@ -1133,7 +1133,7 @@ const app = new Hono<App>()
 				})),
 			})
 		} catch (error) {
-			logger.error('List characters for social user error', { error: String(error) })
+			logger.error('List characters for root user error', { error: String(error) })
 			return c.json({ error: String(error) }, 500)
 		}
 	})
@@ -1179,3 +1179,6 @@ const app = new Hono<App>()
 	})
 
 export default app
+
+// Export Durable Object
+export { SessionStore } from './session-store'

@@ -185,8 +185,8 @@ export async function getUserCharacters(userId: string, env: Env): Promise<Chara
 	try {
 		const sessionStoreStub = getStub<SessionStore>(env.USER_SESSION_STORE, 'global')
 
-		// Get all character links for this social user
-		const characterLinks = await sessionStoreStub.getCharacterLinksBySocialUser(userId)
+		// Get all character links for this root user
+		const characterLinks = await sessionStoreStub.getCharacterLinksByRootUser(userId)
 
 		if (!characterLinks || characterLinks.length === 0) {
 			return []

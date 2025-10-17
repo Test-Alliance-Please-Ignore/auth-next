@@ -23,7 +23,7 @@
 			{
 				"name": "USER_SESSION_STORE",
 				"class_name": "SessionStore",
-				"script_name": "social-auth"
+				"script_name": "core"
 			},
 			{
 				"name": "CHARACTER_DATA_STORE",

@@ -6,7 +6,6 @@ export type Env = SharedHonoEnv & {
 	EVESSO_STORE: DurableObjectNamespace
 	CHARACTER_DATA_STORE: DurableObjectNamespace
 	USER_SESSION_STORE: DurableObjectNamespace
-	SOCIAL_AUTH: Fetcher
 }
 
 /** Variables can be extended */

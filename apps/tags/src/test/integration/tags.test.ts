@@ -194,7 +194,7 @@ describe('Tags System', () => {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
-					socialUserId: 'test-user-api-1',
+					rootUserId: 'test-user-api-1',
 					characterId: 93123458,
 					corporationId: 98000010,
 					corporationName: 'API Test Corp',
@@ -215,7 +215,7 @@ describe('Tags System', () => {
 			const id = testEnv.TAG_STORE.idFromName('global')
 			const store = testEnv.TAG_STORE.get(id) as unknown as TagStore
 
-			const userId = 'test-social-user-id'
+			const userId = 'test-root-user-id'
 			const urn = 'urn:eve:corporation:98000011'
 
 			await store.upsertTag(urn, 'corporation', 'API Corp', 98000011)
@@ -248,7 +248,7 @@ describe('Tags System', () => {
 			const id = testEnv.TAG_STORE.idFromName('global')
 			const store = testEnv.TAG_STORE.get(id) as unknown as TagStore
 
-			const userId = 'test-social-user-id'
+			const userId = 'test-root-user-id'
 			const urn = 'urn:eve:alliance:99000011'
 
 			await store.upsertTag(urn, 'alliance', 'API Alliance', 99000011)
@@ -297,7 +297,7 @@ describe('Tags System', () => {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
 					body: JSON.stringify({
-						socialUserId: userId,
+						rootUserId: userId,
 					}),
 				}
 			)

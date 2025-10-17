@@ -22,7 +22,7 @@ export interface Tag {
 
 export interface UserTag {
 	assignmentId: string
-	socialUserId: string
+	rootUserId: string
 	tagUrn: string
 	sourceCharacterId: number
 	assignedAt: number

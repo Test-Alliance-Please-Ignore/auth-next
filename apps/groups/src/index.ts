@@ -50,7 +50,7 @@ const withAuth = async (c: any, next: any) => {
 		const sessionInfo = await sessionStoreStub.getSession(sessionId)
 
 		// Store user ID in context for use in routes
-		c.set('sessionUserId', sessionInfo.socialUserId)
+		c.set('sessionUserId', sessionInfo.rootUserId)
 
 		await next()
 	} catch (error) {
@@ -70,8 +70,8 @@ const getOwnerCharacterName = async (c: any, ownerId: string): Promise<string | 
 	try {
 		const sessionStoreStub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
 
-		// Get all character links for this social user
-		const characters = await sessionStoreStub.getCharacterLinksBySocialUser(ownerId)
+		// Get all character links for this root user
+		const characters = await sessionStoreStub.getCharacterLinksByRootUser(ownerId)
 
 		// Find the primary character
 		const primaryCharacter = characters.find((char) => char.isPrimary)
@@ -108,7 +108,7 @@ const enrichGroupsWithOwnerNames = async (c: any, groups: any[]): Promise<any[]>
 
 // Helper to enrich members with character names
 const enrichMembersWithCharacterNames = async (c: any, members: any[]): Promise<any[]> => {
-	const userIds = [...new Set(members.map((m) => m.socialUserId))]
+	const userIds = [...new Set(members.map((m) => m.rootUserId))]
 	const characterNames = new Map<string, string>()
 
 	await Promise.all(
@@ -122,13 +122,13 @@ const enrichMembersWithCharacterNames = async (c: any, members: any[]): Promise<
 
 	return members.map((member) => ({
 		...member,
-		characterName: characterNames.get(member.socialUserId),
+		characterName: characterNames.get(member.rootUserId),
 	}))
 }
 
 // Helper to enrich join requests with character names
 const enrichRequestsWithCharacterNames = async (c: any, requests: any[]): Promise<any[]> => {
-	const userIds = [...new Set(requests.map((r) => r.socialUserId))]
+	const userIds = [...new Set(requests.map((r) => r.rootUserId))]
 	const characterNames = new Map<string, string>()
 
 	await Promise.all(
@@ -142,7 +142,7 @@ const enrichRequestsWithCharacterNames = async (c: any, requests: any[]): Promis
 
 	return requests.map((request) => ({
 		...request,
-		characterName: characterNames.get(request.socialUserId),
+		characterName: characterNames.get(request.rootUserId),
 	}))
 }
 
@@ -178,13 +178,13 @@ app
 
 			const sessionInfo = await sessionStoreStub.getSession(sessionId)
 
-			// Get social user to check admin status
-			const socialUser = await sessionStoreStub.getSocialUser(sessionInfo.socialUserId)
+			// Get root user to check admin status
+			const rootUser = await sessionStoreStub.getRootUser(sessionInfo.rootUserId)
 
 			return c.json({
 				authenticated: true,
-				userId: sessionInfo.socialUserId,
-				isAdmin: socialUser?.isAdmin ?? false,
+				userId: sessionInfo.rootUserId,
+				isAdmin: rootUser?.isAdmin ?? false,
 			})
 		} catch (error) {
 			logger.error('Auth check error', { error: String(error) })
@@ -221,10 +221,10 @@ app
 
 					const sessionInfo = await sessionStoreStub.getSession(getCookie(c, 'session_id')!)
 
-					// Get social user to check admin status
-					const socialUser = await sessionStoreStub.getSocialUser(sessionInfo.socialUserId)
+					// Get root user to check admin status
+					const rootUser = await sessionStoreStub.getRootUser(sessionInfo.rootUserId)
 
-					if (!socialUser?.isAdmin) {
+					if (!rootUser?.isAdmin) {
 						return c.json(
 							{ error: 'Only administrators can create managed or derived groups' },
 							403
@@ -1176,7 +1176,7 @@ app
 			return c.json({
 				success: true,
 				users: characters.map((char: any) => ({
-					socialUserId: char.socialUserId,
+					rootUserId: char.rootUserId,
 					characterId: char.characterId,
 					characterName: char.characterName,
 				})),
@@ -1409,15 +1409,15 @@ const withAdminAuth = async (c: any, next: any) => {
 
 		const sessionInfo = await sessionStoreStub.getSession(sessionId)
 
-		// Get social user to check admin status
-		const socialUser = await sessionStoreStub.getSocialUser(sessionInfo.socialUserId)
+		// Get root user to check admin status
+		const rootUser = await sessionStoreStub.getRootUser(sessionInfo.rootUserId)
 
-		if (!socialUser?.isAdmin) {
+		if (!rootUser?.isAdmin) {
 			return c.json({ error: 'Admin access required' }, 403)
 		}
 
 		// Store user ID in context
-		c.set('sessionUserId', sessionInfo.socialUserId)
+		c.set('sessionUserId', sessionInfo.rootUserId)
 
 		await next()
 	} catch (error) {

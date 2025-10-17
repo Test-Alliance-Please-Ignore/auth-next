@@ -530,10 +530,10 @@
 					${members
 						.map((member) => {
 							const displayName =
-								member.characterName || member.socialUserId.substring(0, 12) + '...'
+								member.characterName || member.rootUserId.substring(0, 12) + '...'
 							const initials = member.characterName
 								? member.characterName.substring(0, 2).toUpperCase()
-								: member.socialUserId.substring(0, 2).toUpperCase()
+								: member.rootUserId.substring(0, 2).toUpperCase()
 							return `
 							<div class="member-item">
 								<div class="member-info">
@@ -547,7 +547,7 @@
 										(currentUserRole === 'admin' || currentUserRole === 'owner') &&
 										member.role !== 'owner'
 											? `
-										<button onclick="kickMember('${member.socialUserId}')" class="btn btn-danger btn-small">Kick</button>
+										<button onclick="kickMember('${member.rootUserId}')" class="btn btn-danger btn-small">Kick</button>
 									`
 											: ''
 									}
@@ -599,7 +599,7 @@
 				container.innerHTML = requests
 					.map((request) => {
 						const displayName =
-							request.characterName || request.socialUserId.substring(0, 12) + '...'
+							request.characterName || request.rootUserId.substring(0, 12) + '...'
 						return `
 					<div class="request-item">
 						<div class="request-header">

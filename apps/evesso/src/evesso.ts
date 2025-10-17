@@ -52,7 +52,7 @@ export interface AccessTokenInfo {
  */
 export class EveSSO extends DurableObject<Env> {
 	private schemaInitialized = false
-	private readonly CURRENT_SCHEMA_VERSION = 2
+	private readonly CURRENT_SCHEMA_VERSION = 1
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env)
@@ -97,18 +97,10 @@ export class EveSSO extends DurableObject<Env> {
 				targetVersion: this.CURRENT_SCHEMA_VERSION,
 			})
 
-			// Migration 1: Initial schema with tokens table
 			if (currentVersion < 1) {
 				await this.runMigration1()
 				await this.setSchemaVersion(1)
-				logger.info('Applied migration 1: Initial tokens schema')
-			}
-
-			// Migration 2: Add ESI OAuth states table
-			if (currentVersion < 2) {
-				await this.runMigration2()
-				await this.setSchemaVersion(2)
-				logger.info('Applied migration 2: ESI OAuth states')
+				logger.info('Applied migration 1: Initial schema')
 			}
 
 			this.schemaInitialized = true
@@ -122,20 +114,11 @@ export class EveSSO extends DurableObject<Env> {
 	}
 
 	private async runMigration1(): Promise<void> {
-		// Check if table exists with old schema and drop it if needed
-		try {
-			// Try to select key columns to verify schema
-			await this.ctx.storage.sql
-				.exec('SELECT character_id, proxy_token FROM tokens LIMIT 0')
-				.toArray()
-		} catch (error) {
-			// Column doesn't exist or schema is wrong - drop the table
-			logger.warn('Dropping tokens table due to schema mismatch', {
-				error: error instanceof Error ? error.message : String(error),
-			})
-			await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS tokens')
-		}
+		// Drop tables if they exist to ensure clean schema
+		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS esi_oauth_states')
+		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS tokens')
 
+		// Create tokens table
 		await this.ctx.storage.sql.exec(`
 			CREATE TABLE IF NOT EXISTS tokens (
 				character_id INTEGER PRIMARY KEY,
@@ -153,10 +136,8 @@ export class EveSSO extends DurableObject<Env> {
 		await this.ctx.storage.sql.exec(`
 			CREATE INDEX IF NOT EXISTS idx_proxy_token ON tokens(proxy_token)
 		`)
-	}
 
-	private async runMigration2(): Promise<void> {
-		// ESI OAuth states table for CSRF protection
+		// Create ESI OAuth states table for CSRF protection
 		await this.ctx.storage.sql.exec(`
 			CREATE TABLE IF NOT EXISTS esi_oauth_states (
 				state TEXT PRIMARY KEY,

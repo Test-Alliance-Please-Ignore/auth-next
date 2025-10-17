@@ -4,23 +4,25 @@ import { logger } from '@repo/hono-helpers'
 
 import type { Env } from './context'
 
-export interface SocialUserData extends Record<string, number | string> {
-	social_user_id: string
+export interface RootUserData extends Record<string, number | string | null> {
+	root_user_id: string
 	provider: string
 	provider_user_id: string
 	email: string
 	name: string
+	owner_hash: string | null
 	is_admin: number
 	created_at: number
 	updated_at: number
 }
 
-export interface SocialUser {
-	socialUserId: string
+export interface RootUser {
+	rootUserId: string
 	provider: string
 	providerUserId: string
 	email: string
 	name: string
+	ownerHash: string | null
 	isAdmin: boolean
 	createdAt: number
 	updatedAt: number
@@ -28,7 +30,7 @@ export interface SocialUser {
 
 export interface SessionData extends Record<string, number | string> {
 	session_id: string
-	social_user_id: string
+	root_user_id: string
 	access_token: string
 	refresh_token: string
 	expires_at: number
@@ -38,7 +40,7 @@ export interface SessionData extends Record<string, number | string> {
 
 export interface SessionInfo {
 	sessionId: string
-	socialUserId: string
+	rootUserId: string
 	provider: string
 	providerUserId: string
 	email: string
@@ -55,7 +57,7 @@ export interface SessionListResult {
 	offset: number
 	results: Array<{
 		sessionId: string
-		socialUserId: string
+		rootUserId: string
 		provider: string
 		providerUserId: string
 		email: string
@@ -74,7 +76,7 @@ export interface SessionStats {
 
 export interface AccountLinkData extends Record<string, number | string> {
 	link_id: string
-	social_user_id: string
+	root_user_id: string
 	legacy_system: string
 	legacy_user_id: string
 	legacy_username: string
@@ -90,7 +92,7 @@ export interface AccountLinkData extends Record<string, number | string> {
 
 export interface AccountLink {
 	linkId: string
-	socialUserId: string
+	rootUserId: string
 	legacySystem: string
 	legacyUserId: string
 	legacyUsername: string
@@ -113,7 +115,7 @@ export interface OIDCStateData extends Record<string, number | string> {
 
 export interface CharacterLinkData extends Record<string, number | string> {
 	link_id: string
-	social_user_id: string
+	root_user_id: string
 	character_id: number
 	character_name: string
 	is_primary: number
@@ -123,7 +125,7 @@ export interface CharacterLinkData extends Record<string, number | string> {
 
 export interface CharacterLink {
 	linkId: string
-	socialUserId: string
+	rootUserId: string
 	characterId: number
 	characterName: string
 	isPrimary: boolean
@@ -133,7 +135,7 @@ export interface CharacterLink {
 
 export interface ProviderLinkData extends Record<string, number | string> {
 	link_id: string
-	social_user_id: string
+	root_user_id: string
 	provider: string
 	provider_user_id: string
 	provider_username: string
@@ -143,7 +145,7 @@ export interface ProviderLinkData extends Record<string, number | string> {
 
 export interface ProviderLink {
 	linkId: string
-	socialUserId: string
+	rootUserId: string
 	provider: string
 	providerUserId: string
 	providerUsername: string
@@ -153,7 +155,7 @@ export interface ProviderLink {
 
 export class SessionStore extends DurableObject<Env> {
 	private schemaInitialized = false
-	private readonly CURRENT_SCHEMA_VERSION = 5
+	private readonly CURRENT_SCHEMA_VERSION = 1
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env)
@@ -198,39 +200,10 @@ export class SessionStore extends DurableObject<Env> {
 				targetVersion: this.CURRENT_SCHEMA_VERSION,
 			})
 
-			// Migration 1: Initial schema
 			if (currentVersion < 1) {
 				await this.runMigration1()
 				await this.setSchemaVersion(1)
 				logger.info('Applied migration 1: Initial schema')
-			}
-
-			// Migration 2: Add character_links table
-			if (currentVersion < 2) {
-				await this.runMigration2()
-				await this.setSchemaVersion(2)
-				logger.info('Applied migration 2: Character links')
-			}
-
-			// Migration 3: Add provider_links table
-			if (currentVersion < 3) {
-				await this.runMigration3()
-				await this.setSchemaVersion(3)
-				logger.info('Applied migration 3: Provider links')
-			}
-
-			// Migration 4: Add is_primary column to character_links
-			if (currentVersion < 4) {
-				await this.runMigration4()
-				await this.setSchemaVersion(4)
-				logger.info('Applied migration 4: Character primary flag')
-			}
-
-			// Migration 5: Add is_admin column to social_users
-			if (currentVersion < 5) {
-				await this.runMigration5()
-				await this.setSchemaVersion(5)
-				logger.info('Applied migration 5: Admin flag on social users')
 			}
 
 			this.schemaInitialized = true
@@ -244,60 +217,25 @@ export class SessionStore extends DurableObject<Env> {
 	}
 
 	private async runMigration1(): Promise<void> {
-		// Check if tables exist with old schema and drop them if needed
-		const tables = ['social_users', 'sessions', 'account_links', 'oidc_states']
+		// Drop all tables if they exist
+		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS root_users')
+		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS sessions')
+		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS account_links')
+		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS character_links')
+		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS provider_links')
+		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS oidc_states')
 
-		for (const tableName of tables) {
-			try {
-				// Check if table exists
-				const tableCheck = await this.ctx.storage.sql
-					.exec(`SELECT name FROM sqlite_master WHERE type='table' AND name = ?`, tableName)
-					.toArray()
-
-				if (tableCheck.length > 0) {
-					// Table exists - verify it has the correct columns by trying to select key columns
-					switch (tableName) {
-						case 'social_users':
-							await this.ctx.storage.sql
-								.exec('SELECT social_user_id, provider, provider_user_id FROM social_users LIMIT 0')
-								.toArray()
-							break
-						case 'sessions':
-							await this.ctx.storage.sql
-								.exec('SELECT session_id, social_user_id FROM sessions LIMIT 0')
-								.toArray()
-							break
-						case 'account_links':
-							await this.ctx.storage.sql
-								.exec(
-									'SELECT link_id, social_user_id, legacy_system, legacy_user_id FROM account_links LIMIT 0'
-								)
-								.toArray()
-							break
-						case 'oidc_states':
-							await this.ctx.storage.sql
-								.exec('SELECT state, session_id FROM oidc_states LIMIT 0')
-								.toArray()
-							break
-					}
-				}
-			} catch (error) {
-				// Column doesn't exist or schema is wrong - drop the table
-				logger.warn(`Dropping table ${tableName} due to schema mismatch`, {
-					error: error instanceof Error ? error.message : String(error),
-				})
-				await this.ctx.storage.sql.exec(`DROP TABLE IF EXISTS ${tableName}`)
-			}
-		}
-
-		// Social users table - permanent identity for social accounts
+		// Complete schema with root_users (EVE SSO only system)
+		// Root users table - permanent identity for EVE SSO accounts
 		await this.ctx.storage.sql.exec(`
-			CREATE TABLE IF NOT EXISTS social_users (
-				social_user_id TEXT PRIMARY KEY,
+			CREATE TABLE root_users (
+				root_user_id TEXT PRIMARY KEY,
 				provider TEXT NOT NULL,
 				provider_user_id TEXT NOT NULL,
 				email TEXT NOT NULL,
 				name TEXT NOT NULL,
+				owner_hash TEXT NULL,
+				is_admin INTEGER NOT NULL DEFAULT 0,
 				created_at INTEGER NOT NULL,
 				updated_at INTEGER NOT NULL,
 				UNIQUE(provider, provider_user_id)
@@ -305,14 +243,20 @@ export class SessionStore extends DurableObject<Env> {
 		`)
 
 		await this.ctx.storage.sql.exec(`
-			CREATE UNIQUE INDEX IF NOT EXISTS idx_social_users_provider_user ON social_users(provider, provider_user_id)
+			CREATE UNIQUE INDEX idx_root_users_provider_user ON root_users(provider, provider_user_id)
+		`)
+		await this.ctx.storage.sql.exec(`
+			CREATE INDEX idx_root_users_owner_hash ON root_users(owner_hash) WHERE owner_hash IS NOT NULL
+		`)
+		await this.ctx.storage.sql.exec(`
+			CREATE INDEX idx_root_users_admin ON root_users(is_admin) WHERE is_admin = 1
 		`)
 
-		// Sessions table - ephemeral tokens tied to social users
+		// Sessions table - ephemeral tokens tied to root users
 		await this.ctx.storage.sql.exec(`
-			CREATE TABLE IF NOT EXISTS sessions (
+			CREATE TABLE sessions (
 				session_id TEXT PRIMARY KEY,
-				social_user_id TEXT NOT NULL,
+				root_user_id TEXT NOT NULL,
 				access_token TEXT NOT NULL,
 				refresh_token TEXT NOT NULL,
 				expires_at INTEGER NOT NULL,
@@ -322,18 +266,17 @@ export class SessionStore extends DurableObject<Env> {
 		`)
 
 		await this.ctx.storage.sql.exec(`
-			CREATE INDEX IF NOT EXISTS idx_sessions_social_user ON sessions(social_user_id)
+			CREATE INDEX idx_sessions_root_user ON sessions(root_user_id)
+		`)
+		await this.ctx.storage.sql.exec(`
+			CREATE INDEX idx_sessions_expires_at ON sessions(expires_at)
 		`)
 
+		// Account links table - links root users to legacy accounts
 		await this.ctx.storage.sql.exec(`
-			CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)
-		`)
-
-		// Account links table - links social users to legacy accounts
-		await this.ctx.storage.sql.exec(`
-			CREATE TABLE IF NOT EXISTS account_links (
+			CREATE TABLE account_links (
 				link_id TEXT PRIMARY KEY,
-				social_user_id TEXT NOT NULL,
+				root_user_id TEXT NOT NULL,
 				legacy_system TEXT NOT NULL,
 				legacy_user_id TEXT NOT NULL,
 				legacy_username TEXT NOT NULL,
@@ -345,21 +288,66 @@ export class SessionStore extends DurableObject<Env> {
 				groups TEXT NOT NULL DEFAULT '[]',
 				linked_at INTEGER NOT NULL,
 				updated_at INTEGER NOT NULL,
-				UNIQUE(social_user_id, legacy_system)
+				UNIQUE(root_user_id, legacy_system)
 			)
 		`)
 
 		await this.ctx.storage.sql.exec(`
-			CREATE INDEX IF NOT EXISTS idx_account_links_social_user ON account_links(social_user_id)
+			CREATE INDEX idx_account_links_root_user ON account_links(root_user_id)
+		`)
+		await this.ctx.storage.sql.exec(`
+			CREATE UNIQUE INDEX idx_account_links_legacy_user ON account_links(legacy_system, legacy_user_id)
+		`)
+
+		// Character links table - links root users to EVE characters
+		await this.ctx.storage.sql.exec(`
+			CREATE TABLE character_links (
+				link_id TEXT PRIMARY KEY,
+				root_user_id TEXT NOT NULL,
+				character_id INTEGER NOT NULL,
+				character_name TEXT NOT NULL,
+				is_primary INTEGER NOT NULL DEFAULT 0,
+				linked_at INTEGER NOT NULL,
+				updated_at INTEGER NOT NULL,
+				UNIQUE(character_id)
+			)
 		`)
 
 		await this.ctx.storage.sql.exec(`
-			CREATE UNIQUE INDEX IF NOT EXISTS idx_account_links_legacy_user ON account_links(legacy_system, legacy_user_id)
+			CREATE INDEX idx_character_links_root_user ON character_links(root_user_id)
+		`)
+		await this.ctx.storage.sql.exec(`
+			CREATE UNIQUE INDEX idx_character_links_character ON character_links(character_id)
+		`)
+		await this.ctx.storage.sql.exec(`
+			CREATE UNIQUE INDEX idx_character_links_primary ON character_links(root_user_id) WHERE is_primary = 1
+		`)
+
+		// Provider links table - links root users to secondary OAuth providers
+		await this.ctx.storage.sql.exec(`
+			CREATE TABLE provider_links (
+				link_id TEXT PRIMARY KEY,
+				root_user_id TEXT NOT NULL,
+				provider TEXT NOT NULL,
+				provider_user_id TEXT NOT NULL,
+				provider_username TEXT NOT NULL,
+				linked_at INTEGER NOT NULL,
+				updated_at INTEGER NOT NULL,
+				UNIQUE(root_user_id, provider),
+				UNIQUE(provider, provider_user_id)
+			)
+		`)
+
+		await this.ctx.storage.sql.exec(`
+			CREATE INDEX idx_provider_links_root_user ON provider_links(root_user_id)
+		`)
+		await this.ctx.storage.sql.exec(`
+			CREATE UNIQUE INDEX idx_provider_links_provider_user ON provider_links(provider, provider_user_id)
 		`)
 
 		// OIDC states table for CSRF protection
 		await this.ctx.storage.sql.exec(`
-			CREATE TABLE IF NOT EXISTS oidc_states (
+			CREATE TABLE oidc_states (
 				state TEXT PRIMARY KEY,
 				session_id TEXT NOT NULL,
 				created_at INTEGER NOT NULL,
@@ -368,92 +356,7 @@ export class SessionStore extends DurableObject<Env> {
 		`)
 
 		await this.ctx.storage.sql.exec(`
-			CREATE INDEX IF NOT EXISTS idx_oidc_states_expires_at ON oidc_states(expires_at)
-		`)
-	}
-
-	private async runMigration2(): Promise<void> {
-		// Character links table - links social users to EVE characters
-		await this.ctx.storage.sql.exec(`
-			CREATE TABLE IF NOT EXISTS character_links (
-				link_id TEXT PRIMARY KEY,
-				social_user_id TEXT NOT NULL,
-				character_id INTEGER NOT NULL,
-				character_name TEXT NOT NULL,
-				linked_at INTEGER NOT NULL,
-				updated_at INTEGER NOT NULL,
-				UNIQUE(character_id)
-			)
-		`)
-
-		await this.ctx.storage.sql.exec(`
-			CREATE INDEX IF NOT EXISTS idx_character_links_social_user ON character_links(social_user_id)
-		`)
-
-		await this.ctx.storage.sql.exec(`
-			CREATE UNIQUE INDEX IF NOT EXISTS idx_character_links_character ON character_links(character_id)
-		`)
-	}
-
-	private async runMigration3(): Promise<void> {
-		// Provider links table - links social users to secondary OAuth providers
-		await this.ctx.storage.sql.exec(`
-			CREATE TABLE IF NOT EXISTS provider_links (
-				link_id TEXT PRIMARY KEY,
-				social_user_id TEXT NOT NULL,
-				provider TEXT NOT NULL,
-				provider_user_id TEXT NOT NULL,
-				provider_username TEXT NOT NULL,
-				linked_at INTEGER NOT NULL,
-				updated_at INTEGER NOT NULL,
-				UNIQUE(social_user_id, provider),
-				UNIQUE(provider, provider_user_id)
-			)
-		`)
-
-		await this.ctx.storage.sql.exec(`
-			CREATE INDEX IF NOT EXISTS idx_provider_links_social_user ON provider_links(social_user_id)
-		`)
-
-		await this.ctx.storage.sql.exec(`
-			CREATE UNIQUE INDEX IF NOT EXISTS idx_provider_links_provider_user ON provider_links(provider, provider_user_id)
-		`)
-	}
-
-	private async runMigration4(): Promise<void> {
-		// Add is_primary column to character_links table
-		await this.ctx.storage.sql.exec(`
-			ALTER TABLE character_links ADD COLUMN is_primary INTEGER NOT NULL DEFAULT 0
-		`)
-
-		// Add constraint to ensure only one primary character per user
-		// Note: SQLite doesn't support CHECK constraints on ALTER TABLE, so we use a partial unique index
-		await this.ctx.storage.sql.exec(`
-			CREATE UNIQUE INDEX IF NOT EXISTS idx_character_links_primary ON character_links(social_user_id) WHERE is_primary = 1
-		`)
-	}
-
-	private async runMigration5(): Promise<void> {
-		// Add is_admin column to social_users table
-		await this.ctx.storage.sql.exec(`
-			ALTER TABLE social_users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0
-		`)
-
-		// Update is_admin flag for existing users based on account_links
-		// Set is_admin = 1 if user has ANY account link with superuser = 1 OR staff = 1
-		await this.ctx.storage.sql.exec(`
-			UPDATE social_users
-			SET is_admin = 1
-			WHERE social_user_id IN (
-				SELECT DISTINCT social_user_id
-				FROM account_links
-				WHERE superuser = 1 OR staff = 1
-			)
-		`)
-
-		// Create index for faster admin queries
-		await this.ctx.storage.sql.exec(`
-			CREATE INDEX IF NOT EXISTS idx_social_users_admin ON social_users(is_admin) WHERE is_admin = 1
+			CREATE INDEX idx_oidc_states_expires_at ON oidc_states(expires_at)
 		`)
 	}
 
@@ -464,25 +367,26 @@ export class SessionStore extends DurableObject<Env> {
 		return Array.from(array, (byte) => byte.toString(16).padStart(2, '0')).join('')
 	}
 
-	private generateSocialUserId(): string {
-		// Generate a cryptographically secure UUID for social user ID (unguessable identifier)
+	private generateRootUserId(): string {
+		// Generate a cryptographically secure UUID for root user ID (unguessable identifier)
 		return crypto.randomUUID()
 	}
 
-	// ========== Social User Management ==========
+	// ========== Root User Management ==========
 
-	async getOrCreateSocialUser(
+	async getOrCreateRootUser(
 		provider: string,
 		providerUserId: string,
 		email: string,
-		name: string
-	): Promise<SocialUser> {
+		name: string,
+		ownerHash?: string | null
+	): Promise<RootUser> {
 		await this.ensureSchema()
 
-		// Try to find existing social user
+		// Try to find existing root user
 		const existing = await this.ctx.storage.sql
-			.exec<SocialUserData>(
-				'SELECT * FROM social_users WHERE provider = ? AND provider_user_id = ?',
+			.exec<RootUserData>(
+				'SELECT * FROM root_users WHERE provider = ? AND provider_user_id = ?',
 				provider,
 				providerUserId
 			)
@@ -493,51 +397,77 @@ export class SessionStore extends DurableObject<Env> {
 		if (existing.length > 0) {
 			const user = existing[0]
 
-			// Update email and name if they've changed
-			if (user.email !== email || user.name !== name) {
+			// Check for owner hash changes (character ownership transfer detection)
+			if (ownerHash && user.owner_hash && user.owner_hash !== ownerHash) {
+				logger
+					.withTags({
+						type: 'owner_hash_changed',
+						provider,
+					})
+					.warn('Character owner hash changed - possible ownership transfer', {
+						rootUserId: user.root_user_id.substring(0, 8) + '...',
+						provider,
+						characterId: providerUserId,
+						oldOwnerHash: user.owner_hash.substring(0, 8) + '...',
+						newOwnerHash: ownerHash.substring(0, 8) + '...',
+					})
+				// Note: Currently just logging - in production you may want to reject login or unlink character
+			}
+
+			// Update email, name, and owner hash if they've changed
+			const needsUpdate =
+				user.email !== email ||
+				user.name !== name ||
+				(ownerHash && user.owner_hash !== ownerHash)
+
+			if (needsUpdate) {
 				await this.ctx.storage.sql.exec(
-					`UPDATE social_users SET email = ?, name = ?, updated_at = ? WHERE social_user_id = ?`,
+					`UPDATE root_users SET email = ?, name = ?, owner_hash = ?, updated_at = ? WHERE root_user_id = ?`,
 					email,
 					name,
+					ownerHash || user.owner_hash,
 					now,
-					user.social_user_id
+					user.root_user_id
 				)
 
 				logger
 					.withTags({
-						type: 'social_user_updated',
+						type: 'root_user_updated',
 						provider,
 					})
-					.info('Updated social user info', {
-						socialUserId: user.social_user_id.substring(0, 8) + '...',
+					.info('Updated root user info', {
+						rootUserId: user.root_user_id.substring(0, 8) + '...',
 						provider,
 						email,
+						ownerHashUpdated: ownerHash && user.owner_hash !== ownerHash,
 					})
 			}
 
 			return {
-				socialUserId: user.social_user_id,
+				rootUserId: user.root_user_id,
 				provider: user.provider,
 				providerUserId: user.provider_user_id,
 				email,
 				name,
+				ownerHash: ownerHash || user.owner_hash,
 				isAdmin: user.is_admin === 1,
 				createdAt: user.created_at,
 				updatedAt: now,
 			}
 		}
 
-		// Create new social user
-		const socialUserId = this.generateSocialUserId()
+		// Create new root user
+		const rootUserId = this.generateRootUserId()
 
 		await this.ctx.storage.sql.exec(
-			`INSERT INTO social_users (social_user_id, provider, provider_user_id, email, name, is_admin, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-			socialUserId,
+			`INSERT INTO root_users (root_user_id, provider, provider_user_id, email, name, owner_hash, is_admin, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			rootUserId,
 			provider,
 			providerUserId,
 			email,
 			name,
+			ownerHash || null,
 			0, // Default to not admin
 			now,
 			now
@@ -545,33 +475,35 @@ export class SessionStore extends DurableObject<Env> {
 
 		logger
 			.withTags({
-				type: 'social_user_created',
+				type: 'root_user_created',
 				provider,
 			})
-			.info('Created new social user', {
-				socialUserId: socialUserId.substring(0, 8) + '...',
+			.info('Created new root user', {
+				rootUserId: rootUserId.substring(0, 8) + '...',
 				provider,
 				providerUserId: providerUserId.substring(0, 8) + '...',
 				email,
+				hasOwnerHash: !!ownerHash,
 			})
 
 		return {
-			socialUserId,
+			rootUserId,
 			provider,
 			providerUserId,
 			email,
 			name,
+			ownerHash: ownerHash || null,
 			isAdmin: false,
 			createdAt: now,
 			updatedAt: now,
 		}
 	}
 
-	async getSocialUser(socialUserId: string): Promise<SocialUser | null> {
+	async getRootUser(rootUserId: string): Promise<RootUser | null> {
 		await this.ensureSchema()
 
 		const rows = await this.ctx.storage.sql
-			.exec<SocialUserData>('SELECT * FROM social_users WHERE social_user_id = ?', socialUserId)
+			.exec<RootUserData>('SELECT * FROM root_users WHERE root_user_id = ?', rootUserId)
 			.toArray()
 
 		if (rows.length === 0) {
@@ -580,26 +512,27 @@ export class SessionStore extends DurableObject<Env> {
 
 		const user = rows[0]
 		return {
-			socialUserId: user.social_user_id,
+			rootUserId: user.root_user_id,
 			provider: user.provider,
 			providerUserId: user.provider_user_id,
 			email: user.email,
 			name: user.name,
+			ownerHash: user.owner_hash,
 			isAdmin: user.is_admin === 1,
 			createdAt: user.created_at,
 			updatedAt: user.updated_at,
 		}
 	}
 
-	async getSocialUserByProvider(
+	async getRootUserByProvider(
 		provider: string,
 		providerUserId: string
-	): Promise<SocialUser | null> {
+	): Promise<RootUser | null> {
 		await this.ensureSchema()
 
 		const rows = await this.ctx.storage.sql
-			.exec<SocialUserData>(
-				'SELECT * FROM social_users WHERE provider = ? AND provider_user_id = ?',
+			.exec<RootUserData>(
+				'SELECT * FROM root_users WHERE provider = ? AND provider_user_id = ?',
 				provider,
 				providerUserId
 			)
@@ -611,11 +544,12 @@ export class SessionStore extends DurableObject<Env> {
 
 		const user = rows[0]
 		return {
-			socialUserId: user.social_user_id,
+			rootUserId: user.root_user_id,
 			provider: user.provider,
 			providerUserId: user.provider_user_id,
 			email: user.email,
 			name: user.name,
+			ownerHash: user.owner_hash,
 			isAdmin: user.is_admin === 1,
 			createdAt: user.created_at,
 			updatedAt: user.updated_at,
@@ -642,14 +576,14 @@ export class SessionStore extends DurableObject<Env> {
 		// Note: _expiresIn parameter represents OAuth token expiration but we ignore it
 		// since we handle token refresh automatically
 
-		// Get or create social user (permanent identity)
-		const socialUser = await this.getOrCreateSocialUser(provider, providerUserId, email, name)
+		// Get or create root user (permanent identity)
+		const rootUser = await this.getOrCreateRootUser(provider, providerUserId, email, name)
 
-		// Check if a session already exists for this social user
+		// Check if a session already exists for this root user
 		const existing = await this.ctx.storage.sql
 			.exec<SessionData>(
-				'SELECT session_id FROM sessions WHERE social_user_id = ?',
-				socialUser.socialUserId
+				'SELECT session_id FROM sessions WHERE root_user_id = ?',
+				rootUser.rootUserId
 			)
 			.toArray()
 
@@ -674,7 +608,7 @@ export class SessionStore extends DurableObject<Env> {
 				})
 				.info('Updated existing session', {
 					sessionId: existingSessionId.substring(0, 8) + '...',
-					socialUserId: socialUser.socialUserId.substring(0, 8) + '...',
+					rootUserId: rootUser.rootUserId.substring(0, 8) + '...',
 					provider,
 					email,
 					expiresAt: new Date(sessionExpiresAt).toISOString(),
@@ -682,11 +616,11 @@ export class SessionStore extends DurableObject<Env> {
 
 			return {
 				sessionId: existingSessionId,
-				socialUserId: socialUser.socialUserId,
-				provider: socialUser.provider,
-				providerUserId: socialUser.providerUserId,
-				email: socialUser.email,
-				name: socialUser.name,
+				rootUserId: rootUser.rootUserId,
+				provider: rootUser.provider,
+				providerUserId: rootUser.providerUserId,
+				email: rootUser.email,
+				name: rootUser.name,
 				accessToken,
 				expiresAt: sessionExpiresAt,
 			}
@@ -697,10 +631,10 @@ export class SessionStore extends DurableObject<Env> {
 
 		await this.ctx.storage.sql.exec(
 			`INSERT INTO sessions (
-				session_id, social_user_id, access_token, refresh_token, expires_at, created_at, updated_at
+				session_id, root_user_id, access_token, refresh_token, expires_at, created_at, updated_at
 			) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 			sessionId,
-			socialUser.socialUserId,
+			rootUser.rootUserId,
 			accessToken,
 			refreshToken,
 			sessionExpiresAt,
@@ -715,7 +649,7 @@ export class SessionStore extends DurableObject<Env> {
 			})
 			.info('Created new session', {
 				sessionId: sessionId.substring(0, 8) + '...',
-				socialUserId: socialUser.socialUserId.substring(0, 8) + '...',
+				rootUserId: rootUser.rootUserId.substring(0, 8) + '...',
 				provider,
 				email,
 				expiresAt: new Date(sessionExpiresAt).toISOString(),
@@ -723,11 +657,11 @@ export class SessionStore extends DurableObject<Env> {
 
 		return {
 			sessionId,
-			socialUserId: socialUser.socialUserId,
-			provider: socialUser.provider,
-			providerUserId: socialUser.providerUserId,
-			email: socialUser.email,
-			name: socialUser.name,
+			rootUserId: rootUser.rootUserId,
+			provider: rootUser.provider,
+			providerUserId: rootUser.providerUserId,
+			email: rootUser.email,
+			name: rootUser.name,
 			accessToken,
 			expiresAt: sessionExpiresAt,
 		}
@@ -746,10 +680,10 @@ export class SessionStore extends DurableObject<Env> {
 
 		const session = rows[0]
 
-		// Get social user info
-		const socialUser = await this.getSocialUser(session.social_user_id)
-		if (!socialUser) {
-			throw new Error('Social user not found for session')
+		// Get root user info
+		const rootUser = await this.getRootUser(session.root_user_id)
+		if (!rootUser) {
+			throw new Error('Root user not found for session')
 		}
 
 		const now = Date.now()
@@ -764,15 +698,15 @@ export class SessionStore extends DurableObject<Env> {
 		const timeSinceUpdate = now - session.updated_at
 		if (timeSinceUpdate > 50 * 60 * 1000) {
 			// Try to refresh the OAuth token
-			const refreshed = await this.refreshAccessToken(session, socialUser)
+			const refreshed = await this.refreshAccessToken(session, rootUser)
 			if (refreshed.success && refreshed.data) {
 				return {
 					sessionId: session.session_id,
-					socialUserId: socialUser.socialUserId,
-					provider: socialUser.provider,
-					providerUserId: socialUser.providerUserId,
-					email: socialUser.email,
-					name: socialUser.name,
+					rootUserId: rootUser.rootUserId,
+					provider: rootUser.provider,
+					providerUserId: rootUser.providerUserId,
+					email: rootUser.email,
+					name: rootUser.name,
 					accessToken: refreshed.data.accessToken,
 					expiresAt: session.expires_at, // Session expiration, not token expiration
 				}
@@ -782,128 +716,30 @@ export class SessionStore extends DurableObject<Env> {
 
 		return {
 			sessionId: session.session_id,
-			socialUserId: socialUser.socialUserId,
-			provider: socialUser.provider,
-			providerUserId: socialUser.providerUserId,
-			email: socialUser.email,
-			name: socialUser.name,
+			rootUserId: rootUser.rootUserId,
+			provider: rootUser.provider,
+			providerUserId: rootUser.providerUserId,
+			email: rootUser.email,
+			name: rootUser.name,
 			accessToken: session.access_token,
 			expiresAt: session.expires_at,
 		}
 	}
 
 	private async refreshAccessToken(
-		session: SessionData,
-		socialUser: SocialUser
+		_session: SessionData,
+		rootUser: RootUser
 	): Promise<{ success: boolean; data?: { accessToken: string; expiresAt: number } }> {
+		// EVE SSO token refresh is handled by the UserTokenStore DO
+		// This SessionStore only manages session validity (48 hour expiration)
+		// Not provider-specific OAuth token refresh
 		logger
 			.withTags({
-				type: 'token_refresh_attempt',
-				provider: socialUser.provider,
+				type: 'token_refresh_not_supported',
+				provider: rootUser.provider,
 			})
-			.info('Attempting to refresh token', {
-				sessionId: session.session_id.substring(0, 8) + '...',
-				socialUserId: socialUser.socialUserId.substring(0, 8) + '...',
-				provider: socialUser.provider,
-			})
-
-		try {
-			let tokenEndpoint: string
-			let clientId: string
-			let clientSecret: string
-
-			// Determine provider-specific endpoints and credentials
-			if (socialUser.provider === 'google') {
-				tokenEndpoint = 'https://oauth2.googleapis.com/token'
-				clientId = this.env.GOOGLE_CLIENT_ID
-				clientSecret = this.env.GOOGLE_CLIENT_SECRET
-			} else {
-				logger.warn('Token refresh not supported for provider', { provider: socialUser.provider })
-				return { success: false }
-			}
-
-			const response = await fetch(tokenEndpoint, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/x-www-form-urlencoded',
-				},
-				body: new URLSearchParams({
-					client_id: clientId,
-					client_secret: clientSecret,
-					grant_type: 'refresh_token',
-					refresh_token: session.refresh_token,
-				}),
-			})
-
-			if (!response.ok) {
-				const error = await response.text()
-				logger
-					.withTags({
-						type: 'token_refresh_error',
-						provider: socialUser.provider,
-					})
-					.error('Failed to refresh token', {
-						sessionId: session.session_id.substring(0, 8) + '...',
-						status: response.status,
-						error,
-					})
-				return { success: false }
-			}
-
-			const data = (await response.json()) as {
-				access_token: string
-				expires_in: number
-				refresh_token?: string
-			}
-
-			const now = Date.now()
-			const expiresAt = now + data.expires_in * 1000
-
-			// Update the token in storage
-			// Google may or may not return a new refresh token
-			// Note: We don't update expires_at here because it represents session expiration (48 hours),
-			// not OAuth token expiration. The session remains valid as long as we can refresh tokens.
-			const newRefreshToken = data.refresh_token || session.refresh_token
-
-			await this.ctx.storage.sql.exec(
-				`UPDATE sessions
-				SET access_token = ?, refresh_token = ?, updated_at = ?
-				WHERE session_id = ?`,
-				data.access_token,
-				newRefreshToken,
-				now,
-				session.session_id
-			)
-
-			logger
-				.withTags({
-					type: 'token_refreshed',
-					provider: socialUser.provider,
-				})
-				.info('Token refreshed successfully', {
-					sessionId: session.session_id.substring(0, 8) + '...',
-					expiresAt: new Date(expiresAt).toISOString(),
-				})
-
-			return {
-				success: true,
-				data: {
-					accessToken: data.access_token,
-					expiresAt,
-				},
-			}
-		} catch (error) {
-			logger
-				.withTags({
-					type: 'token_refresh_exception',
-					provider: socialUser.provider,
-				})
-				.error('Exception during token refresh', {
-					error: String(error),
-					sessionId: session.session_id.substring(0, 8) + '...',
-				})
-			return { success: false }
-		}
+			.info('Token refresh not implemented - EVE SSO tokens managed separately')
+		return { success: false }
 	}
 
 	async refreshSession(sessionId: string): Promise<SessionInfo> {
@@ -919,13 +755,13 @@ export class SessionStore extends DurableObject<Env> {
 
 		const session = rows[0]
 
-		// Get social user info
-		const socialUser = await this.getSocialUser(session.social_user_id)
-		if (!socialUser) {
-			throw new Error('Social user not found for session')
+		// Get root user info
+		const rootUser = await this.getRootUser(session.root_user_id)
+		if (!rootUser) {
+			throw new Error('Root user not found for session')
 		}
 
-		const refreshed = await this.refreshAccessToken(session, socialUser)
+		const refreshed = await this.refreshAccessToken(session, rootUser)
 
 		if (!refreshed.success || !refreshed.data) {
 			throw new Error('Failed to refresh token')
@@ -933,11 +769,11 @@ export class SessionStore extends DurableObject<Env> {
 
 		return {
 			sessionId: session.session_id,
-			socialUserId: socialUser.socialUserId,
-			provider: socialUser.provider,
-			providerUserId: socialUser.providerUserId,
-			email: socialUser.email,
-			name: socialUser.name,
+			rootUserId: rootUser.rootUserId,
+			provider: rootUser.provider,
+			providerUserId: rootUser.providerUserId,
+			email: rootUser.email,
+			name: rootUser.name,
 			accessToken: refreshed.data.accessToken,
 			expiresAt: refreshed.data.expiresAt,
 		}
@@ -948,7 +784,7 @@ export class SessionStore extends DurableObject<Env> {
 
 		// Check if the session exists
 		const rows = await this.ctx.storage.sql
-			.exec<SessionData>(`SELECT social_user_id FROM sessions WHERE session_id = ?`, sessionId)
+			.exec<SessionData>(`SELECT root_user_id FROM sessions WHERE session_id = ?`, sessionId)
 			.toArray()
 
 		if (rows.length === 0) {
@@ -957,8 +793,8 @@ export class SessionStore extends DurableObject<Env> {
 
 		const session = rows[0]
 
-		// Get social user info for logging
-		const socialUser = await this.getSocialUser(session.social_user_id)
+		// Get root user info for logging
+		const rootUser = await this.getRootUser(session.root_user_id)
 
 		// Delete the session
 		await this.ctx.storage.sql.exec(`DELETE FROM sessions WHERE session_id = ?`, sessionId)
@@ -966,12 +802,12 @@ export class SessionStore extends DurableObject<Env> {
 		logger
 			.withTags({
 				type: 'session_deleted',
-				provider: socialUser?.provider || 'unknown',
+				provider: rootUser?.provider || 'unknown',
 			})
 			.info('Session deleted', {
 				sessionId: sessionId.substring(0, 8) + '...',
-				socialUserId: session.social_user_id.substring(0, 8) + '...',
-				provider: socialUser?.provider || 'unknown',
+				rootUserId: session.root_user_id.substring(0, 8) + '...',
+				provider: rootUser?.provider || 'unknown',
 			})
 	}
 
@@ -987,14 +823,14 @@ export class SessionStore extends DurableObject<Env> {
 			.toArray()
 		const total = countRows[0]?.count || 0
 
-		// Get paginated results joined with social users (exclude sensitive tokens)
+		// Get paginated results joined with root users (exclude sensitive tokens)
 		const rows = await this.ctx.storage.sql
-			.exec<SessionData & SocialUserData>(
+			.exec<SessionData & RootUserData>(
 				`SELECT
-					s.session_id, s.social_user_id, s.expires_at, s.created_at, s.updated_at,
+					s.session_id, s.root_user_id, s.expires_at, s.created_at, s.updated_at,
 					u.provider, u.provider_user_id, u.email, u.name
 				FROM sessions s
-				JOIN social_users u ON s.social_user_id = u.social_user_id
+				JOIN root_users u ON s.root_user_id = u.root_user_id
 				ORDER BY s.created_at DESC
 				LIMIT ? OFFSET ?`,
 				parsedLimit,
@@ -1008,7 +844,7 @@ export class SessionStore extends DurableObject<Env> {
 			offset: parsedOffset,
 			results: rows.map((row) => ({
 				sessionId: row.session_id,
-				socialUserId: row.social_user_id,
+				rootUserId: row.root_user_id,
 				provider: row.provider,
 				providerUserId: row.provider_user_id,
 				email: row.email,
@@ -1144,7 +980,7 @@ export class SessionStore extends DurableObject<Env> {
 	}
 
 	async createAccountLink(
-		socialUserId: string,
+		rootUserId: string,
 		legacySystem: string,
 		legacyUserId: string,
 		legacyUsername: string,
@@ -1170,14 +1006,14 @@ export class SessionStore extends DurableObject<Env> {
 			throw new Error('This legacy account is already claimed by another user')
 		}
 
-		// Check if this social user already has ANY link (1:1 constraint)
+		// Check if this root user already has ANY link (1:1 constraint)
 		const existingLink = await this.ctx.storage.sql
-			.exec<AccountLinkData>('SELECT * FROM account_links WHERE social_user_id = ?', socialUserId)
+			.exec<AccountLinkData>('SELECT * FROM account_links WHERE root_user_id = ?', rootUserId)
 			.toArray()
 
 		if (existingLink.length > 0) {
 			throw new Error(
-				'You have already linked a legacy account. Each social account can only be linked to one legacy account permanently.'
+				'You have already linked a legacy account. Each root account can only be linked to one legacy account permanently.'
 			)
 		}
 
@@ -1187,12 +1023,12 @@ export class SessionStore extends DurableObject<Env> {
 
 		await this.ctx.storage.sql.exec(
 			`INSERT INTO account_links (
-				link_id, social_user_id, legacy_system,
+				link_id, root_user_id, legacy_system,
 				legacy_user_id, legacy_username, superuser, staff, active,
 				primary_character, primary_character_id, groups, linked_at, updated_at
 			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			linkId,
-			socialUserId,
+			rootUserId,
 			legacySystem,
 			legacyUserId,
 			legacyUsername,
@@ -1206,20 +1042,20 @@ export class SessionStore extends DurableObject<Env> {
 			now
 		)
 
-		// Update is_admin flag on social_users table if user is admin
+		// Update is_admin flag on root_users table if user is admin
 		if (superuser || staff) {
 			await this.ctx.storage.sql.exec(
-				`UPDATE social_users SET is_admin = 1, updated_at = ? WHERE social_user_id = ?`,
+				`UPDATE root_users SET is_admin = 1, updated_at = ? WHERE root_user_id = ?`,
 				now,
-				socialUserId
+				rootUserId
 			)
 
 			logger
 				.withTags({
-					type: 'social_user_admin_flag_set',
+					type: 'root_user_admin_flag_set',
 				})
-				.info('Set admin flag on social user', {
-					socialUserId: socialUserId.substring(0, 8) + '...',
+				.info('Set admin flag on root user', {
+					rootUserId: rootUserId.substring(0, 8) + '...',
 					superuser,
 					staff,
 				})
@@ -1231,7 +1067,7 @@ export class SessionStore extends DurableObject<Env> {
 			})
 			.info('Created account link', {
 				linkId,
-				socialUserId: socialUserId.substring(0, 8) + '...',
+				rootUserId: rootUserId.substring(0, 8) + '...',
 				legacySystem,
 				legacyUserId,
 				legacyUsername,
@@ -1239,7 +1075,7 @@ export class SessionStore extends DurableObject<Env> {
 
 		return {
 			linkId,
-			socialUserId,
+			rootUserId,
 			legacySystem,
 			legacyUserId,
 			legacyUsername,
@@ -1254,16 +1090,16 @@ export class SessionStore extends DurableObject<Env> {
 		}
 	}
 
-	async getAccountLinksBySocialUser(socialUserId: string): Promise<AccountLink[]> {
+	async getAccountLinksByRootUser(rootUserId: string): Promise<AccountLink[]> {
 		await this.ensureSchema()
 
 		const rows = await this.ctx.storage.sql
-			.exec<AccountLinkData>('SELECT * FROM account_links WHERE social_user_id = ?', socialUserId)
+			.exec<AccountLinkData>('SELECT * FROM account_links WHERE root_user_id = ?', rootUserId)
 			.toArray()
 
 		return rows.map((row) => ({
 			linkId: row.link_id,
-			socialUserId: row.social_user_id,
+			rootUserId: row.root_user_id,
 			legacySystem: row.legacy_system,
 			legacyUserId: row.legacy_user_id,
 			legacyUsername: row.legacy_username,
@@ -1299,7 +1135,7 @@ export class SessionStore extends DurableObject<Env> {
 		const row = rows[0]
 		return {
 			linkId: row.link_id,
-			socialUserId: row.social_user_id,
+			rootUserId: row.root_user_id,
 			legacySystem: row.legacy_system,
 			legacyUserId: row.legacy_user_id,
 			legacyUsername: row.legacy_username,
@@ -1335,7 +1171,7 @@ export class SessionStore extends DurableObject<Env> {
 			})
 			.info('Deleted account link', {
 				linkId,
-				socialUserId: link.social_user_id.substring(0, 8) + '...',
+				rootUserId: link.root_user_id.substring(0, 8) + '...',
 				legacySystem: link.legacy_system,
 				legacyUserId: link.legacy_user_id,
 			})
@@ -1344,19 +1180,19 @@ export class SessionStore extends DurableObject<Env> {
 	// ========== Character Link Management ==========
 
 	async createCharacterLink(
-		socialUserId: string,
+		rootUserId: string,
 		characterId: number,
 		characterName: string
 	): Promise<CharacterLink> {
 		await this.ensureSchema()
 
-		// Check if this character is already linked to any social user
+		// Check if this character is already linked to any root user
 		const existingCharacter = await this.ctx.storage.sql
 			.exec<CharacterLinkData>('SELECT * FROM character_links WHERE character_id = ?', characterId)
 			.toArray()
 
 		if (existingCharacter.length > 0) {
-			throw new Error('This character is already linked to another social account')
+			throw new Error('This character is already linked to another root account')
 		}
 
 		// Create new link
@@ -1365,10 +1201,10 @@ export class SessionStore extends DurableObject<Env> {
 
 		await this.ctx.storage.sql.exec(
 			`INSERT INTO character_links (
-				link_id, social_user_id, character_id, character_name, is_primary, linked_at, updated_at
+				link_id, root_user_id, character_id, character_name, is_primary, linked_at, updated_at
 			) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 			linkId,
-			socialUserId,
+			rootUserId,
 			characterId,
 			characterName,
 			0,
@@ -1382,14 +1218,14 @@ export class SessionStore extends DurableObject<Env> {
 			})
 			.info('Created character link', {
 				linkId,
-				socialUserId: socialUserId.substring(0, 8) + '...',
+				rootUserId: rootUserId.substring(0, 8) + '...',
 				characterId,
 				characterName,
 			})
 
 		return {
 			linkId,
-			socialUserId,
+			rootUserId,
 			characterId,
 			characterName,
 			isPrimary: false,
@@ -1398,19 +1234,19 @@ export class SessionStore extends DurableObject<Env> {
 		}
 	}
 
-	async getCharacterLinksBySocialUser(socialUserId: string): Promise<CharacterLink[]> {
+	async getCharacterLinksByRootUser(rootUserId: string): Promise<CharacterLink[]> {
 		await this.ensureSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<CharacterLinkData>(
-				'SELECT * FROM character_links WHERE social_user_id = ? ORDER BY is_primary DESC, linked_at DESC',
-				socialUserId
+				'SELECT * FROM character_links WHERE root_user_id = ? ORDER BY is_primary DESC, linked_at DESC',
+				rootUserId
 			)
 			.toArray()
 
 		return rows.map((row) => ({
 			linkId: row.link_id,
-			socialUserId: row.social_user_id,
+			rootUserId: row.root_user_id,
 			characterId: row.character_id,
 			characterName: row.character_name,
 			isPrimary: row.is_primary === 1,
@@ -1433,7 +1269,7 @@ export class SessionStore extends DurableObject<Env> {
 		const row = rows[0]
 		return {
 			linkId: row.link_id,
-			socialUserId: row.social_user_id,
+			rootUserId: row.root_user_id,
 			characterId: row.character_id,
 			characterName: row.character_name,
 			isPrimary: row.is_primary === 1,
@@ -1442,15 +1278,15 @@ export class SessionStore extends DurableObject<Env> {
 		}
 	}
 
-	async setPrimaryCharacter(socialUserId: string, characterId: number): Promise<void> {
+	async setPrimaryCharacter(rootUserId: string, characterId: number): Promise<void> {
 		await this.ensureSchema()
 
 		// Verify the character belongs to this user
 		const rows = await this.ctx.storage.sql
 			.exec<CharacterLinkData>(
-				'SELECT * FROM character_links WHERE character_id = ? AND social_user_id = ?',
+				'SELECT * FROM character_links WHERE character_id = ? AND root_user_id = ?',
 				characterId,
-				socialUserId
+				rootUserId
 			)
 			.toArray()
 
@@ -1462,9 +1298,9 @@ export class SessionStore extends DurableObject<Env> {
 
 		// Unset any existing primary character for this user
 		await this.ctx.storage.sql.exec(
-			'UPDATE character_links SET is_primary = 0, updated_at = ? WHERE social_user_id = ? AND is_primary = 1',
+			'UPDATE character_links SET is_primary = 0, updated_at = ? WHERE root_user_id = ? AND is_primary = 1',
 			now,
-			socialUserId
+			rootUserId
 		)
 
 		// Set the new primary character
@@ -1479,7 +1315,7 @@ export class SessionStore extends DurableObject<Env> {
 				type: 'character_primary_set',
 			})
 			.info('Set primary character', {
-				socialUserId: socialUserId.substring(0, 8) + '...',
+				rootUserId: rootUserId.substring(0, 8) + '...',
 				characterId,
 			})
 	}
@@ -1508,7 +1344,7 @@ export class SessionStore extends DurableObject<Env> {
 			})
 			.info('Deleted character link', {
 				linkId: link.link_id,
-				socialUserId: link.social_user_id.substring(0, 8) + '...',
+				rootUserId: link.root_user_id.substring(0, 8) + '...',
 				characterId: link.character_id,
 				characterName: link.character_name,
 			})
@@ -1516,7 +1352,7 @@ export class SessionStore extends DurableObject<Env> {
 
 	async searchCharactersByName(query: string): Promise<
 		Array<{
-			socialUserId: string
+			rootUserId: string
 			characterId: number
 			characterName: string
 		}>
@@ -1531,7 +1367,7 @@ export class SessionStore extends DurableObject<Env> {
 			.toArray()
 
 		return rows.map((row) => ({
-			socialUserId: row.social_user_id,
+			rootUserId: row.root_user_id,
 			characterId: row.character_id,
 			characterName: row.character_name,
 		}))
@@ -1540,14 +1376,14 @@ export class SessionStore extends DurableObject<Env> {
 	// ========== Provider Link Management ==========
 
 	async createProviderLink(
-		socialUserId: string,
+		rootUserId: string,
 		provider: string,
 		providerUserId: string,
 		providerUsername: string
 	): Promise<ProviderLink> {
 		await this.ensureSchema()
 
-		// Check if this provider account is already linked to any social user
+		// Check if this provider account is already linked to any root user
 		const existingProvider = await this.ctx.storage.sql
 			.exec<ProviderLinkData>(
 				'SELECT * FROM provider_links WHERE provider = ? AND provider_user_id = ?',
@@ -1560,11 +1396,11 @@ export class SessionStore extends DurableObject<Env> {
 			throw new Error('This Discord account is already linked to another user')
 		}
 
-		// Check if this social user already has this provider linked
+		// Check if this root user already has this provider linked
 		const existingLink = await this.ctx.storage.sql
 			.exec<ProviderLinkData>(
-				'SELECT * FROM provider_links WHERE social_user_id = ? AND provider = ?',
-				socialUserId,
+				'SELECT * FROM provider_links WHERE root_user_id = ? AND provider = ?',
+				rootUserId,
 				provider
 			)
 			.toArray()
@@ -1579,10 +1415,10 @@ export class SessionStore extends DurableObject<Env> {
 
 		await this.ctx.storage.sql.exec(
 			`INSERT INTO provider_links (
-				link_id, social_user_id, provider, provider_user_id, provider_username, linked_at, updated_at
+				link_id, root_user_id, provider, provider_user_id, provider_username, linked_at, updated_at
 			) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 			linkId,
-			socialUserId,
+			rootUserId,
 			provider,
 			providerUserId,
 			providerUsername,
@@ -1596,7 +1432,7 @@ export class SessionStore extends DurableObject<Env> {
 			})
 			.info('Created provider link', {
 				linkId,
-				socialUserId: socialUserId.substring(0, 8) + '...',
+				rootUserId: rootUserId.substring(0, 8) + '...',
 				provider,
 				providerUserId,
 				providerUsername,
@@ -1604,7 +1440,7 @@ export class SessionStore extends DurableObject<Env> {
 
 		return {
 			linkId,
-			socialUserId,
+			rootUserId,
 			provider,
 			providerUserId,
 			providerUsername,
@@ -1613,19 +1449,19 @@ export class SessionStore extends DurableObject<Env> {
 		}
 	}
 
-	async getProviderLinksBySocialUser(socialUserId: string): Promise<ProviderLink[]> {
+	async getProviderLinksByRootUser(rootUserId: string): Promise<ProviderLink[]> {
 		await this.ensureSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<ProviderLinkData>(
-				'SELECT * FROM provider_links WHERE social_user_id = ? ORDER BY linked_at DESC',
-				socialUserId
+				'SELECT * FROM provider_links WHERE root_user_id = ? ORDER BY linked_at DESC',
+				rootUserId
 			)
 			.toArray()
 
 		return rows.map((row) => ({
 			linkId: row.link_id,
-			socialUserId: row.social_user_id,
+			rootUserId: row.root_user_id,
 			provider: row.provider,
 			providerUserId: row.provider_user_id,
 			providerUsername: row.provider_username,
@@ -1655,7 +1491,7 @@ export class SessionStore extends DurableObject<Env> {
 		const row = rows[0]
 		return {
 			linkId: row.link_id,
-			socialUserId: row.social_user_id,
+			rootUserId: row.root_user_id,
 			provider: row.provider,
 			providerUserId: row.provider_user_id,
 			providerUsername: row.provider_username,
@@ -1685,7 +1521,7 @@ export class SessionStore extends DurableObject<Env> {
 			})
 			.info('Deleted provider link', {
 				linkId,
-				socialUserId: link.social_user_id.substring(0, 8) + '...',
+				rootUserId: link.root_user_id.substring(0, 8) + '...',
 				provider: link.provider,
 				providerUserId: link.provider_user_id,
 			})

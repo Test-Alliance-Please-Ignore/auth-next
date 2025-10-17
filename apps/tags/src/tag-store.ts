@@ -29,7 +29,7 @@ export interface Tag {
 
 export interface UserTagData extends Record<string, number | string> {
 	assignment_id: string
-	social_user_id: string
+	root_user_id: string
 	tag_urn: string
 	source_character_id: number
 	assigned_at: number
@@ -38,7 +38,7 @@ export interface UserTagData extends Record<string, number | string> {
 
 export interface UserTag {
 	assignmentId: string
-	socialUserId: string
+	rootUserId: string
 	tagUrn: string
 	sourceCharacterId: number
 	assignedAt: number
@@ -116,6 +116,11 @@ export class TagStore extends DurableObject<Env> {
 	}
 
 	private async runMigration1(): Promise<void> {
+		// Drop existing tables to ensure clean state
+		await this.ctx.storage.sql.exec(`DROP TABLE IF EXISTS tags`)
+		await this.ctx.storage.sql.exec(`DROP TABLE IF EXISTS user_tags`)
+		await this.ctx.storage.sql.exec(`DROP TABLE IF EXISTS evaluation_schedule`)
+
 		// Tags table
 		await this.ctx.storage.sql.exec(`
 			CREATE TABLE IF NOT EXISTS tags (
@@ -141,17 +146,17 @@ export class TagStore extends DurableObject<Env> {
 		await this.ctx.storage.sql.exec(`
 			CREATE TABLE IF NOT EXISTS user_tags (
 				assignment_id TEXT PRIMARY KEY,
-				social_user_id TEXT NOT NULL,
+				root_user_id TEXT NOT NULL,
 				tag_urn TEXT NOT NULL,
 				source_character_id INTEGER NOT NULL,
 				assigned_at INTEGER NOT NULL,
 				last_verified_at INTEGER NOT NULL,
-				UNIQUE(social_user_id, tag_urn, source_character_id)
+				UNIQUE(root_user_id, tag_urn, source_character_id)
 			)
 		`)
 
 		await this.ctx.storage.sql.exec(`
-			CREATE INDEX IF NOT EXISTS idx_user_tags_user ON user_tags(social_user_id)
+			CREATE INDEX IF NOT EXISTS idx_user_tags_user ON user_tags(root_user_id)
 		`)
 
 		await this.ctx.storage.sql.exec(`
@@ -165,7 +170,7 @@ export class TagStore extends DurableObject<Env> {
 		// Evaluation schedule
 		await this.ctx.storage.sql.exec(`
 			CREATE TABLE IF NOT EXISTS evaluation_schedule (
-				social_user_id TEXT PRIMARY KEY,
+				root_user_id TEXT PRIMARY KEY,
 				next_evaluation_at INTEGER NOT NULL,
 				last_evaluated_at INTEGER
 			)
@@ -301,7 +306,7 @@ export class TagStore extends DurableObject<Env> {
 		// Use INSERT OR IGNORE to handle existing assignments
 		await this.ctx.storage.sql.exec(
 			`INSERT OR IGNORE INTO user_tags
-			(assignment_id, social_user_id, tag_urn, source_character_id, assigned_at, last_verified_at)
+			(assignment_id, root_user_id, tag_urn, source_character_id, assigned_at, last_verified_at)
 			VALUES (?, ?, ?, ?, ?, ?)`,
 			assignmentId,
 			userId,
@@ -315,7 +320,7 @@ export class TagStore extends DurableObject<Env> {
 		await this.ctx.storage.sql.exec(
 			`UPDATE user_tags
 			SET last_verified_at = ?
-			WHERE social_user_id = ? AND tag_urn = ? AND source_character_id = ?`,
+			WHERE root_user_id = ? AND tag_urn = ? AND source_character_id = ?`,
 			now,
 			userId,
 			tagUrn,
@@ -335,7 +340,7 @@ export class TagStore extends DurableObject<Env> {
 		if (characterId) {
 			// Remove specific character's contribution to this tag
 			await this.ctx.storage.sql.exec(
-				'DELETE FROM user_tags WHERE social_user_id = ? AND tag_urn = ? AND source_character_id = ?',
+				'DELETE FROM user_tags WHERE root_user_id = ? AND tag_urn = ? AND source_character_id = ?',
 				userId,
 				tagUrn,
 				characterId
@@ -343,7 +348,7 @@ export class TagStore extends DurableObject<Env> {
 		} else {
 			// Remove all assignments for this tag
 			await this.ctx.storage.sql.exec(
-				'DELETE FROM user_tags WHERE social_user_id = ? AND tag_urn = ?',
+				'DELETE FROM user_tags WHERE root_user_id = ? AND tag_urn = ?',
 				userId,
 				tagUrn
 			)
@@ -380,7 +385,7 @@ export class TagStore extends DurableObject<Env> {
 					GROUP_CONCAT(ut.source_character_id) as source_character_ids
 				FROM tags t
 				INNER JOIN user_tags ut ON t.tag_urn = ut.tag_urn
-				WHERE ut.social_user_id = ?
+				WHERE ut.root_user_id = ?
 				GROUP BY t.tag_urn
 				ORDER BY t.display_name ASC`,
 				userId
@@ -404,12 +409,12 @@ export class TagStore extends DurableObject<Env> {
 		await this.ensureSchema()
 
 		const rows = await this.ctx.storage.sql
-			.exec<UserTagData>('SELECT * FROM user_tags WHERE social_user_id = ?', userId)
+			.exec<UserTagData>('SELECT * FROM user_tags WHERE root_user_id = ?', userId)
 			.toArray()
 
 		return rows.map((row) => ({
 			assignmentId: row.assignment_id,
-			socialUserId: row.social_user_id,
+			rootUserId: row.root_user_id,
 			tagUrn: row.tag_urn,
 			sourceCharacterId: row.source_character_id,
 			assignedAt: row.assigned_at,
@@ -422,11 +427,11 @@ export class TagStore extends DurableObject<Env> {
 
 		const rows = await this.ctx.storage.sql
 			.exec<{
-				social_user_id: string
-			}>('SELECT DISTINCT social_user_id FROM user_tags WHERE tag_urn = ?', tagUrn)
+				root_user_id: string
+			}>('SELECT DISTINCT root_user_id FROM user_tags WHERE tag_urn = ?', tagUrn)
 			.toArray()
 
-		return rows.map((row) => row.social_user_id)
+		return rows.map((row) => row.root_user_id)
 	}
 
 	// ========== Evaluation Scheduling ==========
@@ -442,7 +447,7 @@ export class TagStore extends DurableObject<Env> {
 
 		await this.ctx.storage.sql.exec(
 			`INSERT OR REPLACE INTO evaluation_schedule
-			(social_user_id, next_evaluation_at, last_evaluated_at)
+			(root_user_id, next_evaluation_at, last_evaluated_at)
 			VALUES (?, ?, ?)`,
 			userId,
 			nextEvaluation,
@@ -460,11 +465,11 @@ export class TagStore extends DurableObject<Env> {
 
 		const rows = await this.ctx.storage.sql
 			.exec<{
-				social_user_id: string
-			}>('SELECT social_user_id FROM evaluation_schedule WHERE next_evaluation_at <= ? ORDER BY next_evaluation_at ASC LIMIT ?', now, limit)
+				root_user_id: string
+			}>('SELECT root_user_id FROM evaluation_schedule WHERE next_evaluation_at <= ? ORDER BY next_evaluation_at ASC LIMIT ?', now, limit)
 			.toArray()
 
-		return rows.map((row) => row.social_user_id)
+		return rows.map((row) => row.root_user_id)
 	}
 
 	async scheduleNextAlarm(): Promise<void> {
@@ -563,7 +568,7 @@ export class TagStore extends DurableObject<Env> {
 		// Update last evaluated time
 		const now = Date.now()
 		await this.ctx.storage.sql.exec(
-			'UPDATE evaluation_schedule SET last_evaluated_at = ? WHERE social_user_id = ?',
+			'UPDATE evaluation_schedule SET last_evaluated_at = ? WHERE root_user_id = ?',
 			now,
 			userId
 		)

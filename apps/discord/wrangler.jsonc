@@ -23,7 +23,7 @@
 			{
 				"name": "USER_SESSION_STORE",
 				"class_name": "SessionStore",
-				"script_name": "social-auth"
+				"script_name": "core"
 			}
 		]
 	},
@@ -34,6 +34,10 @@
 		},
 		{
 			"tag": "v2",
+			"new_sqlite_classes": []
+		},
+		{
+			"tag": "v3",
 			"new_sqlite_classes": []
 		}
 	]

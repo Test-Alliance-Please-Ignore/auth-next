@@ -19,7 +19,7 @@ export default defineWorkersProject({
 							if (url.pathname === '/api/session/verify') {
 								return Response.json({
 									success: true,
-									session: { socialUserId: 'test-social-user-id', isAdmin: false },
+									session: { rootUserId: 'test-root-user-id', isAdmin: false },
 								})
 							}
 

@@ -12,7 +12,7 @@
 export interface DiscordTokenInfo {
 	discordUserId: string
 	discordUsername: string
-	socialUserId: string
+	rootUserId: string
 	accessToken: string
 	expiresAt: number
 }
@@ -37,25 +37,25 @@ export interface Discord {
 	/**
 	 * Store Discord OAuth tokens for a user
 	 * Fetches Discord user info from the API using the access token
-	 * @param socialUserId - Social user ID from SessionStore
+	 * @param rootUserId - Root user ID from SessionStore
 	 * @param tokens - Discord OAuth tokens (access token, refresh token, and expiration)
 	 * @returns Discord user ID and username
 	 */
 	storeDiscordTokens(
-		socialUserId: string,
+		rootUserId: string,
 		tokens: DiscordOAuthTokens
 	): Promise<{ discordUserId: string; discordUsername: string }>
 
 	/**
 	 * Get Discord OAuth tokens for a user, automatically refreshing if needed
-	 * @param params - Lookup parameters (provide either discordUserId or socialUserId)
+	 * @param params - Lookup parameters (provide either discordUserId or rootUserId)
 	 * @param params.discordUserId - Discord user ID
-	 * @param params.socialUserId - Social user ID from SessionStore
+	 * @param params.rootUserId - Root user ID from SessionStore
 	 * @returns Token information including access token
 	 * @throws {Error} If tokens not found or if neither parameter is provided
 	 */
 	getDiscordTokens(params: {
 		discordUserId?: string
-		socialUserId?: string
+		rootUserId?: string
 	}): Promise<DiscordTokenInfo>
 }

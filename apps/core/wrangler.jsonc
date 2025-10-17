@@ -9,8 +9,7 @@
 		"bindings": [
 			{
 				"name": "USER_SESSION_STORE",
-				"class_name": "SessionStore",
-				"script_name": "social-auth"
+				"class_name": "SessionStore"
 			},
 			{
 				"name": "EVESSO_STORE",
@@ -24,6 +23,20 @@
 			}
 		]
 	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["SessionStore"]
+		},
+		{
+			"tag": "v2",
+			"new_sqlite_classes": []
+		},
+		{
+			"tag": "v3",
+			"new_sqlite_classes": []
+		}
+	],
 	"services": [
 		{
 			"binding": "DISCORD_WORKER",

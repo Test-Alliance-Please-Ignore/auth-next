@@ -37,7 +37,7 @@
 			{
 				"name": "USER_SESSION_STORE",
 				"class_name": "SessionStore",
-				"script_name": "social-auth"
+				"script_name": "core"
 			}
 		]
 	},
@@ -60,13 +60,7 @@
 		},
 		{
 			"tag": "v5",
-			"deleted_classes": ["UserTokenStore"]
-		}
-	],
-	"services": [
-		{
-			"binding": "SOCIAL_AUTH",
-			"service": "social-auth"
+			"new_sqlite_classes": []
 		}
 	],
 	"vars": {

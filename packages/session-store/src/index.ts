@@ -2,19 +2,20 @@
  * SessionStore Durable Object Interface
  *
  * This package provides TypeScript interfaces for the SessionStore Durable Object
- * which manages user sessions, social accounts, and various account linkings.
+ * which manages EVE SSO sessions, root user accounts, and various account linkings.
  *
- * The actual implementation lives in apps/social-auth/src/session-store.ts
+ * The actual implementation lives in apps/core/src/session-store.ts
  */
 
 // ========== Types ==========
 
-export interface SocialUser {
-	socialUserId: string
+export interface RootUser {
+	rootUserId: string
 	provider: string
 	providerUserId: string
 	email: string
 	name: string
+	ownerHash: string | null
 	isAdmin: boolean
 	createdAt: number
 	updatedAt: number
@@ -22,7 +23,7 @@ export interface SocialUser {
 
 export interface SessionInfo {
 	sessionId: string
-	socialUserId: string
+	rootUserId: string
 	provider: string
 	providerUserId: string
 	email: string
@@ -39,7 +40,7 @@ export interface SessionListResult {
 	offset: number
 	results: Array<{
 		sessionId: string
-		socialUserId: string
+		rootUserId: string
 		provider: string
 		providerUserId: string
 		email: string
@@ -58,7 +59,7 @@ export interface SessionStats {
 
 export interface AccountLink {
 	linkId: string
-	socialUserId: string
+	rootUserId: string
 	legacySystem: string
 	legacyUserId: string
 	legacyUsername: string
@@ -74,7 +75,7 @@ export interface AccountLink {
 
 export interface CharacterLink {
 	linkId: string
-	socialUserId: string
+	rootUserId: string
 	characterId: number
 	characterName: string
 	isPrimary: boolean
@@ -84,7 +85,7 @@ export interface CharacterLink {
 
 export interface ProviderLink {
 	linkId: string
-	socialUserId: string
+	rootUserId: string
 	provider: string
 	providerUserId: string
 	providerUsername: string
@@ -97,40 +98,41 @@ export interface ProviderLink {
 /**
  * SessionStore Durable Object Interface
  *
- * Manages user sessions, social accounts, and various account linkings including:
- * - Social OAuth sessions (Google, Discord, etc.)
+ * Manages EVE SSO sessions, root user accounts, and various account linkings including:
+ * - EVE SSO OAuth sessions
  * - Legacy account links
  * - EVE character links
  * - Secondary provider links
  *
  * Note: This interface is used for type-safe cross-worker communication.
- * The actual implementation is in apps/social-auth/src/session-store.ts
+ * The actual implementation is in apps/core/src/session-store.ts
  */
 export interface SessionStore {
 	/**
-	 * Get or create a social user by provider credentials
+	 * Get or create a root user by provider credentials
 	 */
-	getOrCreateSocialUser(
+	getOrCreateRootUser(
 		provider: string,
 		providerUserId: string,
 		email: string,
-		name: string
-	): Promise<SocialUser>
+		name: string,
+		ownerHash?: string | null
+	): Promise<RootUser>
 
 	/**
-	 * Get a social user by their ID
-	 * @returns Social user or null if not found
+	 * Get a root user by their ID
+	 * @returns Root user or null if not found
 	 */
-	getSocialUser(socialUserId: string): Promise<SocialUser | null>
+	getRootUser(rootUserId: string): Promise<RootUser | null>
 
 	/**
-	 * Get a social user by provider credentials
-	 * @returns Social user or null if not found
+	 * Get a root user by provider credentials
+	 * @returns Root user or null if not found
 	 */
-	getSocialUserByProvider(provider: string, providerUserId: string): Promise<SocialUser | null>
+	getRootUserByProvider(provider: string, providerUserId: string): Promise<RootUser | null>
 
 	/**
-	 * Create a new session for a social user
+	 * Create a new session for a root user
 	 */
 	createSession(
 		provider: string,
@@ -184,11 +186,11 @@ export interface SessionStore {
 	validateOIDCState(state: string): Promise<string>
 
 	/**
-	 * Create a link between a social user and a legacy account
-	 * @throws {Error} If legacy account already claimed or social user already has a link
+	 * Create a link between a root user and a legacy account
+	 * @throws {Error} If legacy account already claimed or root user already has a link
 	 */
 	createAccountLink(
-		socialUserId: string,
+		rootUserId: string,
 		legacySystem: string,
 		legacyUserId: string,
 		legacyUsername: string,
@@ -201,9 +203,9 @@ export interface SessionStore {
 	): Promise<AccountLink>
 
 	/**
-	 * Get all account links for a social user
+	 * Get all account links for a root user
 	 */
-	getAccountLinksBySocialUser(socialUserId: string): Promise<AccountLink[]>
+	getAccountLinksByRootUser(rootUserId: string): Promise<AccountLink[]>
 
 	/**
 	 * Get account link by legacy account ID
@@ -218,19 +220,19 @@ export interface SessionStore {
 	deleteAccountLink(linkId: string): Promise<void>
 
 	/**
-	 * Create a link between a social user and an EVE character
-	 * @throws {Error} If character already linked to another social user
+	 * Create a link between a root user and an EVE character
+	 * @throws {Error} If character already linked to another root user
 	 */
 	createCharacterLink(
-		socialUserId: string,
+		rootUserId: string,
 		characterId: number,
 		characterName: string
 	): Promise<CharacterLink>
 
 	/**
-	 * Get all character links for a social user
+	 * Get all character links for a root user
 	 */
-	getCharacterLinksBySocialUser(socialUserId: string): Promise<CharacterLink[]>
+	getCharacterLinksByRootUser(rootUserId: string): Promise<CharacterLink[]>
 
 	/**
 	 * Get character link by character ID
@@ -239,10 +241,10 @@ export interface SessionStore {
 	getCharacterLinkByCharacterId(characterId: number): Promise<CharacterLink | null>
 
 	/**
-	 * Set a character as the primary character for a social user
+	 * Set a character as the primary character for a root user
 	 * @throws {Error} If character not found or doesn't belong to user
 	 */
-	setPrimaryCharacter(socialUserId: string, characterId: number): Promise<void>
+	setPrimaryCharacter(rootUserId: string, characterId: number): Promise<void>
 
 	/**
 	 * Delete a character link
@@ -255,27 +257,27 @@ export interface SessionStore {
 	 */
 	searchCharactersByName(query: string): Promise<
 		Array<{
-			socialUserId: string
+			rootUserId: string
 			characterId: number
 			characterName: string
 		}>
 	>
 
 	/**
-	 * Create a link between a social user and a secondary OAuth provider
+	 * Create a link between a root user and a secondary OAuth provider
 	 * @throws {Error} If provider account already linked or user already has this provider
 	 */
 	createProviderLink(
-		socialUserId: string,
+		rootUserId: string,
 		provider: string,
 		providerUserId: string,
 		providerUsername: string
 	): Promise<ProviderLink>
 
 	/**
-	 * Get all provider links for a social user
+	 * Get all provider links for a root user
 	 */
-	getProviderLinksBySocialUser(socialUserId: string): Promise<ProviderLink[]>
+	getProviderLinksByRootUser(rootUserId: string): Promise<ProviderLink[]>
 
 	/**
 	 * Get provider link by provider credentials

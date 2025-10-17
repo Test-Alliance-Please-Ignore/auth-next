@@ -9,7 +9,7 @@ import type { Env } from './context'
 export interface DiscordTokenData extends Record<string, number | string> {
 	discord_user_id: string
 	discord_username: string
-	social_user_id: string
+	root_user_id: string
 	access_token: string
 	refresh_token: string
 	expires_at: number
@@ -22,7 +22,7 @@ export interface DiscordTokenData extends Record<string, number | string> {
 export interface DiscordTokenInfo {
 	discordUserId: string
 	discordUsername: string
-	socialUserId: string
+	rootUserId: string
 	accessToken: string
 	expiresAt: number
 }
@@ -40,7 +40,7 @@ export interface DiscordOAuthTokens {
  */
 export class Discord extends DurableObject<Env> {
 	private schemaInitialized = false
-	private readonly CURRENT_SCHEMA_VERSION = 2
+	private readonly CURRENT_SCHEMA_VERSION = 3
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env)
@@ -85,18 +85,16 @@ export class Discord extends DurableObject<Env> {
 				targetVersion: this.CURRENT_SCHEMA_VERSION,
 			})
 
-			// Migration 1: Initial schema
 			if (currentVersion < 1) {
 				await this.runMigration1()
 				await this.setSchemaVersion(1)
 				logger.info('Applied migration 1: Initial schema')
 			}
 
-			// Migration 2: Discord tokens table
 			if (currentVersion < 2) {
 				await this.runMigration2()
 				await this.setSchemaVersion(2)
-				logger.info('Applied migration 2: Discord tokens table')
+				logger.info('Applied migration 2: Rename social_user_id to root_user_id')
 			}
 
 			this.schemaInitialized = true
@@ -110,11 +108,9 @@ export class Discord extends DurableObject<Env> {
 	}
 
 	private async runMigration1(): Promise<void> {
-		// Migration 1 is intentionally empty - placeholder for initial schema
-		// Discord tokens table is created in migration 2
-	}
+		// Drop table if exists to ensure clean state
+		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS discord_tokens')
 
-	private async runMigration2(): Promise<void> {
 		// Discord tokens table - stores OAuth tokens for Discord users
 		await this.ctx.storage.sql.exec(`
 			CREATE TABLE IF NOT EXISTS discord_tokens (
@@ -135,6 +131,61 @@ export class Discord extends DurableObject<Env> {
 
 		await this.ctx.storage.sql.exec(`
 			CREATE INDEX IF NOT EXISTS idx_discord_tokens_expires_at ON discord_tokens(expires_at)
+		`)
+	}
+
+	private async runMigration2(): Promise<void> {
+		// Drop and recreate table with root_user_id instead of social_user_id
+		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS discord_tokens')
+
+		await this.ctx.storage.sql.exec(`
+			CREATE TABLE discord_tokens (
+				discord_user_id TEXT PRIMARY KEY,
+				discord_username TEXT NOT NULL,
+				root_user_id TEXT NOT NULL,
+				access_token TEXT NOT NULL,
+				refresh_token TEXT NOT NULL,
+				expires_at INTEGER NOT NULL,
+				created_at INTEGER NOT NULL,
+				updated_at INTEGER NOT NULL
+			)
+		`)
+
+		await this.ctx.storage.sql.exec(`
+			CREATE INDEX idx_discord_tokens_root_user ON discord_tokens(root_user_id)
+		`)
+
+		await this.ctx.storage.sql.exec(`
+			CREATE INDEX idx_discord_tokens_expires_at ON discord_tokens(expires_at)
+		`)
+	}
+
+	private async runMigration3(): Promise<void> {
+		// TEMPORARY: Force complete database reset to ensure root_user_id column exists
+		// This migration will be removed after running once
+		logger.warn('Running TEMPORARY migration 3: Forcing database reset')
+
+		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS discord_tokens')
+
+		await this.ctx.storage.sql.exec(`
+			CREATE TABLE discord_tokens (
+				discord_user_id TEXT PRIMARY KEY,
+				discord_username TEXT NOT NULL,
+				root_user_id TEXT NOT NULL,
+				access_token TEXT NOT NULL,
+				refresh_token TEXT NOT NULL,
+				expires_at INTEGER NOT NULL,
+				created_at INTEGER NOT NULL,
+				updated_at INTEGER NOT NULL
+			)
+		`)
+
+		await this.ctx.storage.sql.exec(`
+			CREATE INDEX idx_discord_tokens_root_user ON discord_tokens(root_user_id)
+		`)
+
+		await this.ctx.storage.sql.exec(`
+			CREATE INDEX idx_discord_tokens_expires_at ON discord_tokens(expires_at)
 		`)
 	}
 
@@ -235,7 +286,7 @@ export class Discord extends DurableObject<Env> {
 	// ========== Public Methods ==========
 
 	async storeDiscordTokens(
-		socialUserId: string,
+		rootUserId: string,
 		tokens: DiscordOAuthTokens
 	): Promise<{ discordUserId: string; discordUsername: string }> {
 		await this.ensureSchema()
@@ -286,10 +337,10 @@ export class Discord extends DurableObject<Env> {
 			// Update existing tokens
 			await this.ctx.storage.sql.exec(
 				`UPDATE discord_tokens
-				SET discord_username = ?, social_user_id = ?, access_token = ?, refresh_token = ?, expires_at = ?, updated_at = ?
+				SET discord_username = ?, root_user_id = ?, access_token = ?, refresh_token = ?, expires_at = ?, updated_at = ?
 				WHERE discord_user_id = ?`,
 				discordUsername,
-				socialUserId,
+				rootUserId,
 				accessToken,
 				refreshToken,
 				expiresAt,
@@ -304,18 +355,18 @@ export class Discord extends DurableObject<Env> {
 				.info('Updated Discord tokens', {
 					discordUserId: discordUserId.substring(0, 8) + '...',
 					discordUsername,
-					socialUserId: socialUserId.substring(0, 8) + '...',
+					rootUserId: rootUserId.substring(0, 8) + '...',
 					expiresAt: new Date(expiresAt).toISOString(),
 				})
 		} else {
 			// Insert new tokens
 			await this.ctx.storage.sql.exec(
 				`INSERT INTO discord_tokens (
-					discord_user_id, discord_username, social_user_id, access_token, refresh_token, expires_at, created_at, updated_at
+					discord_user_id, discord_username, root_user_id, access_token, refresh_token, expires_at, created_at, updated_at
 				) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 				discordUserId,
 				discordUsername,
-				socialUserId,
+				rootUserId,
 				accessToken,
 				refreshToken,
 				expiresAt,
@@ -330,7 +381,7 @@ export class Discord extends DurableObject<Env> {
 				.info('Stored new Discord tokens', {
 					discordUserId: discordUserId.substring(0, 8) + '...',
 					discordUsername,
-					socialUserId: socialUserId.substring(0, 8) + '...',
+					rootUserId: rootUserId.substring(0, 8) + '...',
 					expiresAt: new Date(expiresAt).toISOString(),
 				})
 		}
@@ -340,18 +391,18 @@ export class Discord extends DurableObject<Env> {
 
 	async getDiscordTokens(params: {
 		discordUserId?: string
-		socialUserId?: string
+		rootUserId?: string
 	}): Promise<DiscordTokenInfo> {
 		await this.ensureSchema()
 
-		const { discordUserId, socialUserId } = params
+		const { discordUserId, rootUserId } = params
 
 		// Enforce mutual exclusivity
-		if (!discordUserId && !socialUserId) {
-			throw new Error('Either discordUserId or socialUserId must be provided')
+		if (!discordUserId && !rootUserId) {
+			throw new Error('Either discordUserId or rootUserId must be provided')
 		}
-		if (discordUserId && socialUserId) {
-			throw new Error('Cannot provide both discordUserId and socialUserId')
+		if (discordUserId && rootUserId) {
+			throw new Error('Cannot provide both discordUserId and rootUserId')
 		}
 
 		let rows: DiscordTokenData[]
@@ -365,8 +416,8 @@ export class Discord extends DurableObject<Env> {
 		} else {
 			rows = await this.ctx.storage.sql
 				.exec<DiscordTokenData>(
-					'SELECT * FROM discord_tokens WHERE social_user_id = ?',
-					socialUserId
+					'SELECT * FROM discord_tokens WHERE root_user_id = ?',
+					rootUserId
 				)
 				.toArray()
 		}
@@ -389,7 +440,7 @@ export class Discord extends DurableObject<Env> {
 				return {
 					discordUserId: tokenData.discord_user_id,
 					discordUsername: tokenData.discord_username,
-					socialUserId: tokenData.social_user_id,
+					rootUserId: tokenData.root_user_id,
 					accessToken: refreshed.accessToken,
 					expiresAt: refreshed.expiresAt,
 				}
@@ -405,7 +456,7 @@ export class Discord extends DurableObject<Env> {
 		return {
 			discordUserId: tokenData.discord_user_id,
 			discordUsername: tokenData.discord_username,
-			socialUserId: tokenData.social_user_id,
+			rootUserId: tokenData.root_user_id,
 			accessToken: tokenData.access_token,
 			expiresAt: tokenData.expires_at,
 		}

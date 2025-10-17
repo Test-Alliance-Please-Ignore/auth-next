@@ -124,6 +124,33 @@
 				color: #666;
 				margin-top: 1rem;
 			}
+			.login-instruction {
+				text-align: center;
+				color: #2d3748;
+				margin-bottom: 1.5rem;
+				line-height: 1.6;
+			}
+			.login-instruction strong {
+				color: #1a202c;
+				font-weight: 700;
+			}
+			.btn-evesso {
+				display: inline-block;
+				transition: all 0.2s;
+				border-radius: 0.25rem;
+			}
+			.btn-evesso:hover {
+				transform: translateY(-2px);
+				box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+			}
+			.btn-evesso img {
+				display: block;
+				height: auto;
+				max-width: 100%;
+			}
+			.button-container {
+				text-align: center;
+			}
 		</style>
 	</head>
 	<body>
@@ -133,7 +160,17 @@
 			<p class="subtitle">Authentication System</p>
 
 			<div class="info-box">
-				<p class="message">Please log in via EVE Online SSO to access the dashboard.</p>
+				<p class="login-instruction">
+					Please log in with your <strong>main character</strong> to access the dashboard.
+				</p>
+				<div class="button-container">
+					<a href="/evesso/login" class="btn-evesso">
+						<img
+							src="https://web.ccpgamescdn.com/eveonlineassets/developers/eve-sso-login-black-large.png"
+							alt="Log in with EVE Online"
+						/>
+					</a>
+				</div>
 			</div>
 
 			<a href="/dashboard" class="btn-dashboard">Go to Dashboard</a>

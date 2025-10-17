@@ -107,7 +107,7 @@ The generator ensures the correct architecture pattern is followed automatically
    - `@repo/character-data-store` - EVE character/corporation data tracking
    - `@repo/user-token-store` - EVE SSO token management
 
-2. **Implementation**: Durable Object classes are defined in their respective worker apps (e.g., `apps/social-auth/src/session-store.ts`)
+2. **Implementation**: Durable Object classes are defined in their respective worker apps (e.g., `apps/core/src/session-store.ts`)
 
 3. **Cross-Worker Access**: Workers can access DOs from other workers using bindings with `script_name` in `wrangler.jsonc`
 
@@ -126,6 +126,7 @@ const session = await stub.getSession(sessionId)
 
 ### Key Principles
 
+- **SQLite Storage Required**: ALL Durable Objects MUST use SQLite storage. Always use `new_sqlite_classes` in migrations, never `new_classes`. Using `new_classes` creates a non-SQLite DO that cannot be converted without deleting all data.
 - **Untyped Namespaces**: Environment bindings use `DurableObjectNamespace` (untyped) in `context.ts`
 - **Type at Call Site**: Apply interface type when calling `getStub<T>()`
 - **Shared Interfaces**: Import interface types from `@repo/*` packages, never from implementation files
@@ -141,10 +142,16 @@ In `wrangler.jsonc`:
       {
         "name": "USER_SESSION_STORE",
         "class_name": "SessionStore",
-        "script_name": "social-auth"
+        "script_name": "core"
       }
     ]
-  }
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["SessionStore"]
+    }
+  ]
 }
 ```
 

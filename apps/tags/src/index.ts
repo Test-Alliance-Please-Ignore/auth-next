@@ -47,7 +47,7 @@ const withAuth = async (c: any, next: any) => {
 		const sessionInfo = await sessionStoreStub.getSession(sessionId)
 
 		// Store user ID in context for use in routes
-		c.set('sessionUserId', sessionInfo.socialUserId)
+		c.set('sessionUserId', sessionInfo.rootUserId)
 
 		await next()
 	} catch (error) {
@@ -69,15 +69,15 @@ const withAdminAuth = async (c: any, next: any) => {
 
 		const sessionInfo = await sessionStoreStub.getSession(sessionId)
 
-		// Get social user to check admin status
-		const socialUser = await sessionStoreStub.getSocialUser(sessionInfo.socialUserId)
+		// Get root user to check admin status
+		const rootUser = await sessionStoreStub.getRootUser(sessionInfo.rootUserId)
 
-		if (!socialUser?.isAdmin) {
+		if (!rootUser?.isAdmin) {
 			return c.json({ error: 'Admin access required' }, 403)
 		}
 
 		// Store user ID in context
-		c.set('sessionUserId', sessionInfo.socialUserId)
+		c.set('sessionUserId', sessionInfo.rootUserId)
 
 		await next()
 	} catch (error) {
@@ -186,7 +186,7 @@ app
 	.post('/api/tags/onboard', async (c) => {
 		try {
 			const body = (await c.req.json()) as {
-				socialUserId: string
+				rootUserId: string
 				characterId: number
 				corporationId: number
 				corporationName: string
@@ -194,7 +194,7 @@ app
 				allianceName?: string | null
 			}
 
-			if (!body.socialUserId || !body.characterId || !body.corporationId) {
+			if (!body.rootUserId || !body.characterId || !body.corporationId) {
 				return c.json({ error: 'Missing required fields' }, 400)
 			}
 
@@ -207,7 +207,7 @@ app
 			})
 
 			// Assign corporation tag to user
-			await tagStore.assignTagToUser(body.socialUserId, corpUrn, body.characterId)
+			await tagStore.assignTagToUser(body.rootUserId, corpUrn, body.characterId)
 
 			// Create/update alliance tag if applicable
 			if (body.allianceId && body.allianceName) {
@@ -217,14 +217,14 @@ app
 				})
 
 				// Assign alliance tag to user
-				await tagStore.assignTagToUser(body.socialUserId, allianceUrn, body.characterId)
+				await tagStore.assignTagToUser(body.rootUserId, allianceUrn, body.characterId)
 			}
 
 			// Schedule first evaluation in 1 hour
-			await tagStore.scheduleUserEvaluation(body.socialUserId)
+			await tagStore.scheduleUserEvaluation(body.rootUserId)
 
 			logger.withTags({ type: 'character_onboarded' }).info('Character onboarded, tags assigned', {
-				socialUserId: body.socialUserId.substring(0, 8) + '...',
+				rootUserId: body.rootUserId.substring(0, 8) + '...',
 				characterId: body.characterId,
 				corporationId: body.corporationId,
 				allianceId: body.allianceId,
@@ -245,10 +245,10 @@ app
 		try {
 			const characterId = parseInt(c.req.param('characterId'), 10)
 			const body = (await c.req.json()) as {
-				socialUserId: string
+				rootUserId: string
 			}
 
-			if (isNaN(characterId) || !body.socialUserId) {
+			if (isNaN(characterId) || !body.rootUserId) {
 				return c.json({ error: 'Invalid parameters' }, 400)
 			}
 
@@ -258,10 +258,10 @@ app
 			await tagStore.removeAllTagsForCharacter(characterId)
 
 			// Re-evaluate user to ensure correct tags remain
-			await tagStore.evaluateUserTags(body.socialUserId)
+			await tagStore.evaluateUserTags(body.rootUserId)
 
 			logger.withTags({ type: 'character_unlinked' }).info('Character unlinked, tags removed', {
-				socialUserId: body.socialUserId.substring(0, 8) + '...',
+				rootUserId: body.rootUserId.substring(0, 8) + '...',
 				characterId,
 				request: getRequestLogData(c, Date.now()),
 			})

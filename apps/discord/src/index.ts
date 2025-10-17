@@ -180,7 +180,7 @@ const app = new Hono<App>()
 					})
 					.warn('Discord account is already linked as secondary provider', {
 						discordUserId: userInfo.id.substring(0, 8) + '...',
-						linkedToSocialUserId: existingProviderLink.socialUserId.substring(0, 8) + '...',
+						linkedToRootUserId: existingProviderLink.rootUserId.substring(0, 8) + '...',
 						request: getRequestLogData(c, Date.now()),
 					})
 				return c.json(
@@ -205,7 +205,7 @@ const app = new Hono<App>()
 
 			// Store Discord tokens in Discord DO
 			const discordStoreStub = getStub<DiscordDO>(c.env.DISCORD_STORE, 'global')
-			await discordStoreStub.storeDiscordTokens(sessionInfo.socialUserId, {
+			await discordStoreStub.storeDiscordTokens(sessionInfo.rootUserId, {
 				accessToken: tokenData.access_token,
 				refreshToken: tokenData.refresh_token,
 				expiresIn: tokenData.expires_in,
@@ -403,7 +403,7 @@ const app = new Hono<App>()
 			// Store Discord tokens in Discord DO (this will fetch user info internally)
 			const discordStoreStub = getStub<DiscordDO>(c.env.DISCORD_STORE, 'global')
 			const { discordUserId, discordUsername } = await discordStoreStub.storeDiscordTokens(
-				session.socialUserId,
+				session.rootUserId,
 				{
 					accessToken: tokenData.access_token,
 					refreshToken: tokenData.refresh_token,
@@ -412,7 +412,7 @@ const app = new Hono<App>()
 			)
 
 			// Check if Discord account is already used as a primary login
-			const existingPrimaryUser = await sessionStoreStub.getSocialUserByProvider(
+			const existingPrimaryUser = await sessionStoreStub.getRootUserByProvider(
 				'discord',
 				discordUserId
 			)
@@ -424,7 +424,7 @@ const app = new Hono<App>()
 					})
 					.warn('Discord account is already used as primary login', {
 						discordUserId: discordUserId.substring(0, 8) + '...',
-						primarySocialUserId: existingPrimaryUser.socialUserId.substring(0, 8) + '...',
+						primaryRootUserId: existingPrimaryUser.rootUserId.substring(0, 8) + '...',
 						request: getRequestLogData(c, Date.now()),
 					})
 				return c.json(
@@ -438,7 +438,7 @@ const app = new Hono<App>()
 
 			// Create provider link in SessionStore for metadata
 			const link = await sessionStoreStub.createProviderLink(
-				session.socialUserId,
+				session.rootUserId,
 				'discord',
 				discordUserId,
 				discordUsername
@@ -450,7 +450,7 @@ const app = new Hono<App>()
 				})
 				.info('Discord provider link completed', {
 					linkId: link.linkId,
-					socialUserId: link.socialUserId.substring(0, 8) + '...',
+					rootUserId: link.rootUserId.substring(0, 8) + '...',
 					provider: link.provider,
 					providerUserId: link.providerUserId,
 					request: getRequestLogData(c, Date.now()),
