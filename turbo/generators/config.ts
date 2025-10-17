@@ -1,5 +1,5 @@
 import { NewDurableObjectAnswers, NewPackageAnswers, NewWorkerAnswers } from './answers'
-import { getWorkerApps } from './helpers/get-worker-apps'
+import { getAllAppDirectories, getWorkerApps } from './helpers/get-worker-apps'
 import {
 	pascalText,
 	pascalTextPlural,
@@ -187,7 +187,21 @@ export default function generator(plop: PlopTypes.NodePlopAPI): void {
 						(answers as { turbo: { paths: { root: string } } }).turbo.paths.root
 					)
 					if (existingWorkers.length === 0) {
-						throw new Error('No existing workers found. Please create a worker first.')
+						// Check if there are incomplete workers
+						const allDirs = getAllAppDirectories(
+							(answers as { turbo: { paths: { root: string } } }).turbo.paths.root
+						)
+						if (allDirs.length > 0) {
+							const incomplete = allDirs.filter((dir) => !existingWorkers.includes(dir))
+							throw new Error(
+								`No complete workers found. Found incomplete worker directories: ${incomplete.join(', ')}. ` +
+									`These directories are missing required files (wrangler.jsonc, package.json, or src/). ` +
+									`Please delete them or complete the worker setup using 'just new-worker' first.`
+							)
+						}
+						throw new Error(
+							'No existing workers found. Please create a worker first using "just new-worker".'
+						)
 					}
 					return true
 				},
@@ -200,7 +214,16 @@ export default function generator(plop: PlopTypes.NodePlopAPI): void {
 					}
 					if (answers && !answers.createNewWorker) {
 						const existingWorkers = getWorkerApps(answers.turbo.paths.root)
+						const allDirs = getAllAppDirectories(answers.turbo.paths.root)
+
 						if (!existingWorkers.includes(input.trim())) {
+							// Check if it's an incomplete worker
+							if (allDirs.includes(input.trim())) {
+								return (
+									`Worker "${input}" exists but is incomplete (missing wrangler.jsonc, package.json, or src/). ` +
+									`Please delete this directory or complete the worker setup using 'just new-worker' first.`
+								)
+							}
 							return `Worker "${input}" does not exist. Available workers: ${existingWorkers.join(', ')}`
 						}
 					}
@@ -239,6 +262,29 @@ export default function generator(plop: PlopTypes.NodePlopAPI): void {
 			const bindingName = `${className.toUpperCase().replace(/-/g, '_')}_STORE`
 
 			const actions: PlopTypes.Actions = []
+
+			// 0. Create new worker if requested
+			if (answers.createNewWorker) {
+				const workerDestination = `apps/${answers.workerName}`
+				actions.push({
+					type: 'addMany',
+					base: 'templates/fetch-worker',
+					destination: workerDestination,
+					templateFiles: [
+						'templates/fetch-worker/**/**.hbs',
+						'templates/fetch-worker/.eslintrc.cjs.hbs',
+					],
+					data: { name: answers.workerName },
+				})
+				// Install worker dependencies before modifying files
+				actions.push({
+					type: 'pnpmInstall',
+					data: {
+						...answers,
+						destination: workerDestination,
+					} satisfies PnpmInstallData,
+				})
+			}
 
 			// 1. Create interface package
 			actions.push({

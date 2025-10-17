@@ -1,0 +1,30 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "discord",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-04-28",
+	"compatibility_flags": ["nodejs_compat"],
+	"routes": [],
+	"logpush": true,
+	"observability": {
+		"enabled": true
+	},
+	"vars": {
+		"ENVIRONMENT": "development",
+		"SENTRY_RELEASE": "unknown"
+	},
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "DISCORD_STORE",
+				"class_name": "Discord"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["Discord"]
+		}
+	]
+}
