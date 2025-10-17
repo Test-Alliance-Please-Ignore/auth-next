@@ -4,14 +4,15 @@
 	"main": "src/index.ts",
 	"compatibility_date": "2025-04-28",
 	"compatibility_flags": ["nodejs_compat"],
-	"routes": [],
+	"routes": ["pleaseignore.app/discord/*", "pleaseignore.app/link/discord/*"],
 	"logpush": true,
 	"observability": {
 		"enabled": true
 	},
 	"vars": {
 		"ENVIRONMENT": "development",
-		"SENTRY_RELEASE": "unknown"
+		"SENTRY_RELEASE": "unknown",
+		"DISCORD_CALLBACK_URL": "https://pleaseignore.app/discord/callback"
 	},
 	"durable_objects": {
 		"bindings": [

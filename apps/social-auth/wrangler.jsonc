@@ -4,7 +4,7 @@
 	"main": "src/index.ts",
 	"compatibility_date": "2025-04-28",
 	"compatibility_flags": ["nodejs_compat"],
-	"routes": ["pleaseignore.app/", "pleaseignore.app/*"],
+	"routes": ["pleaseignore.app/*"],
 	"logpush": true,
 	"observability": {
 		"enabled": true
@@ -27,6 +27,12 @@
 			}
 		]
 	},
+	"services": [
+		{
+			"binding": "DISCORD_WORKER",
+			"service": "discord"
+		}
+	],
 	"migrations": [
 		{
 			"tag": "v1",

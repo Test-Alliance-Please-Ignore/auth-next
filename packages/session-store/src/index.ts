@@ -124,6 +124,12 @@ export interface SessionStore {
 	getSocialUser(socialUserId: string): Promise<SocialUser | null>
 
 	/**
+	 * Get a social user by provider credentials
+	 * @returns Social user or null if not found
+	 */
+	getSocialUserByProvider(provider: string, providerUserId: string): Promise<SocialUser | null>
+
+	/**
 	 * Create a new session for a social user
 	 */
 	createSession(

@@ -27,6 +27,12 @@ export interface DiscordTokenInfo {
 	expiresAt: number
 }
 
+export interface DiscordOAuthTokens {
+	accessToken: string
+	refreshToken: string
+	expiresIn: number
+}
+
 /**
  * Discord Durable Object Implementation
  *
@@ -134,7 +140,10 @@ export class Discord extends DurableObject<Env> {
 
 	// ========== Token Management ==========
 
-	private async refreshDiscordTokens(discordUserId: string, refreshToken: string): Promise<{
+	private async refreshDiscordTokens(
+		discordUserId: string,
+		refreshToken: string
+	): Promise<{
 		accessToken: string
 		refreshToken: string
 		expiresAt: number
@@ -227,11 +236,11 @@ export class Discord extends DurableObject<Env> {
 
 	async storeDiscordTokens(
 		socialUserId: string,
-		accessToken: string,
-		refreshToken: string,
-		expiresIn: number
+		tokens: DiscordOAuthTokens
 	): Promise<{ discordUserId: string; discordUsername: string }> {
 		await this.ensureSchema()
+
+		const { accessToken, refreshToken, expiresIn } = tokens
 
 		// Fetch Discord user info using the access token
 		const userInfoResponse = await fetch('https://discord.com/api/users/@me', {
@@ -329,15 +338,38 @@ export class Discord extends DurableObject<Env> {
 		return { discordUserId, discordUsername }
 	}
 
-	async getDiscordTokens(discordUserId: string): Promise<DiscordTokenInfo> {
+	async getDiscordTokens(params: {
+		discordUserId?: string
+		socialUserId?: string
+	}): Promise<DiscordTokenInfo> {
 		await this.ensureSchema()
 
-		const rows = await this.ctx.storage.sql
-			.exec<DiscordTokenData>(
-				'SELECT * FROM discord_tokens WHERE discord_user_id = ?',
-				discordUserId
-			)
-			.toArray()
+		const { discordUserId, socialUserId } = params
+
+		// Enforce mutual exclusivity
+		if (!discordUserId && !socialUserId) {
+			throw new Error('Either discordUserId or socialUserId must be provided')
+		}
+		if (discordUserId && socialUserId) {
+			throw new Error('Cannot provide both discordUserId and socialUserId')
+		}
+
+		let rows: DiscordTokenData[]
+		if (discordUserId) {
+			rows = await this.ctx.storage.sql
+				.exec<DiscordTokenData>(
+					'SELECT * FROM discord_tokens WHERE discord_user_id = ?',
+					discordUserId
+				)
+				.toArray()
+		} else {
+			rows = await this.ctx.storage.sql
+				.exec<DiscordTokenData>(
+					'SELECT * FROM discord_tokens WHERE social_user_id = ?',
+					socialUserId
+				)
+				.toArray()
+		}
 
 		if (rows.length === 0) {
 			throw new Error('Discord tokens not found')
@@ -351,7 +383,7 @@ export class Discord extends DurableObject<Env> {
 		if (timeSinceUpdate > 6 * 24 * 60 * 60 * 1000) {
 			try {
 				const refreshed = await this.refreshDiscordTokens(
-					discordUserId,
+					tokenData.discord_user_id,
 					tokenData.refresh_token
 				)
 				return {
@@ -365,7 +397,7 @@ export class Discord extends DurableObject<Env> {
 				// If refresh failed, return the existing token anyway and let it fail naturally
 				logger.warn('Failed to refresh Discord token proactively', {
 					error: String(error),
-					discordUserId: discordUserId.substring(0, 8) + '...',
+					discordUserId: tokenData.discord_user_id.substring(0, 8) + '...',
 				})
 			}
 		}

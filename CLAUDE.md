@@ -2,6 +2,35 @@
 
 <title>Cloudflare Workers Monorepo Guidelines for Claude Code</title>
 
+<setup>
+## Local Development Setup
+
+### Cloudflare Credentials (Required for Deployment)
+
+To deploy workers locally using `just deploy`, you need to configure Cloudflare credentials:
+
+1. **Copy the example environment file:**
+   ```bash
+   cp .env.example .env
+   ```
+
+2. **Get your Cloudflare Account ID:**
+   - Visit https://dash.cloudflare.com/
+   - Copy your Account ID from the sidebar
+   - Add to `.env`: `CLOUDFLARE_ACCOUNT_ID=your_account_id`
+
+3. **Create a Cloudflare API Token:**
+   - Visit https://dash.cloudflare.com/profile/api-tokens
+   - Click "Create Token"
+   - Use "Edit Cloudflare Workers" template or create custom token with Workers permissions
+   - Copy the token
+   - Add to `.env`: `CLOUDFLARE_API_TOKEN=your_api_token`
+
+**Why this is needed:** Wrangler uses these credentials for authentication. Using API tokens instead of interactive OAuth allows parallel deployments to work correctly without port conflicts.
+
+**Security:** The `.env` file is gitignored. Never commit credentials to the repository.
+</setup>
+
 <commands>
 - `just install` - Install dependencies
 - `just dev` - Run development servers (uses `bun runx dev` - context-aware)

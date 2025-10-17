@@ -591,6 +591,37 @@ export class SessionStore extends DurableObject<Env> {
 		}
 	}
 
+	async getSocialUserByProvider(
+		provider: string,
+		providerUserId: string
+	): Promise<SocialUser | null> {
+		await this.ensureSchema()
+
+		const rows = await this.ctx.storage.sql
+			.exec<SocialUserData>(
+				'SELECT * FROM social_users WHERE provider = ? AND provider_user_id = ?',
+				provider,
+				providerUserId
+			)
+			.toArray()
+
+		if (rows.length === 0) {
+			return null
+		}
+
+		const user = rows[0]
+		return {
+			socialUserId: user.social_user_id,
+			provider: user.provider,
+			providerUserId: user.provider_user_id,
+			email: user.email,
+			name: user.name,
+			isAdmin: user.is_admin === 1,
+			createdAt: user.created_at,
+			updatedAt: user.updated_at,
+		}
+	}
+
 	// ========== Session Management ==========
 
 	async createSession(

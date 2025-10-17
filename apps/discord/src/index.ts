@@ -36,7 +36,7 @@ const app = new Hono<App>()
 	})
 
 	// Primary Discord OAuth login endpoint (with email for social auth)
-	.get('/login', (c) => {
+	.get('/discord/login', (c) => {
 		const state = crypto.randomUUID()
 		const scopes = DISCORD_OAUTH_SCOPES_PRIMARY.join(' ')
 
@@ -61,7 +61,7 @@ const app = new Hono<App>()
 	})
 
 	// Primary Discord OAuth callback endpoint
-	.get('/callback', async (c) => {
+	.get('/discord/callback', async (c) => {
 		const code = c.req.query('code')
 		const state = c.req.query('state')
 		const error = c.req.query('error')
@@ -166,9 +166,33 @@ const app = new Hono<App>()
 			// Email might be null if user didn't grant permission
 			const email = userInfo.email || `${userInfo.id}@discord.user`
 
-			// Store session in SessionStore (using global instance)
+			// Check if Discord account is already linked as a secondary provider to another user
 			const sessionStoreStub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
+			const existingProviderLink = await sessionStoreStub.getProviderLinkByProvider(
+				'discord',
+				userInfo.id
+			)
 
+			if (existingProviderLink) {
+				logger
+					.withTags({
+						type: 'discord_oauth_primary_login_rejected',
+					})
+					.warn('Discord account is already linked as secondary provider', {
+						discordUserId: userInfo.id.substring(0, 8) + '...',
+						linkedToSocialUserId: existingProviderLink.socialUserId.substring(0, 8) + '...',
+						request: getRequestLogData(c, Date.now()),
+					})
+				return c.json(
+					{
+						error:
+							'This Discord account is already linked to another user account. Please log in with your original authentication provider (Google, etc.) to access your account.',
+					},
+					400
+				)
+			}
+
+			// Store session in SessionStore (using global instance)
 			const sessionInfo = await sessionStoreStub.createSession(
 				'discord',
 				userInfo.id,
@@ -181,12 +205,11 @@ const app = new Hono<App>()
 
 			// Store Discord tokens in Discord DO
 			const discordStoreStub = getStub<DiscordDO>(c.env.DISCORD_STORE, 'global')
-			await discordStoreStub.storeDiscordTokens(
-				sessionInfo.socialUserId,
-				tokenData.access_token,
-				tokenData.refresh_token,
-				tokenData.expires_in
-			)
+			await discordStoreStub.storeDiscordTokens(sessionInfo.socialUserId, {
+				accessToken: tokenData.access_token,
+				refreshToken: tokenData.refresh_token,
+				expiresIn: tokenData.expires_in,
+			})
 
 			// Set HTTP-only cookie for session
 			const now = Date.now()
@@ -225,7 +248,7 @@ const app = new Hono<App>()
 	})
 
 	// Initiate Discord provider link (secondary, no email)
-	.post('/link/initiate', async (c) => {
+	.post('/link/discord/initiate', async (c) => {
 		const sessionId = getCookie(c, 'session_id')
 
 		if (!sessionId) {
@@ -262,7 +285,7 @@ const app = new Hono<App>()
 			authUrl.searchParams.set('client_id', c.env.DISCORD_CLIENT_ID)
 			authUrl.searchParams.set(
 				'redirect_uri',
-				c.env.DISCORD_CALLBACK_URL.replace('/callback', '/link/callback')
+				c.env.DISCORD_CALLBACK_URL.replace('/discord/callback', '/link/discord/callback')
 			)
 			authUrl.searchParams.set('response_type', 'code')
 			authUrl.searchParams.set('scope', DISCORD_OAUTH_SCOPES_SECONDARY.join(' '))
@@ -292,7 +315,7 @@ const app = new Hono<App>()
 	})
 
 	// Handle Discord provider link callback (secondary, no email)
-	.get('/link/callback', async (c) => {
+	.get('/link/discord/callback', async (c) => {
 		const code = c.req.query('code')
 		const state = c.req.query('state')
 		const error = c.req.query('error')
@@ -348,7 +371,10 @@ const app = new Hono<App>()
 					code,
 					client_id: c.env.DISCORD_CLIENT_ID,
 					client_secret: c.env.DISCORD_CLIENT_SECRET,
-					redirect_uri: c.env.DISCORD_CALLBACK_URL.replace('/callback', '/link/callback'),
+					redirect_uri: c.env.DISCORD_CALLBACK_URL.replace(
+						'/discord/callback',
+						'/link/discord/callback'
+					),
 					grant_type: 'authorization_code',
 				}),
 			})
@@ -378,10 +404,37 @@ const app = new Hono<App>()
 			const discordStoreStub = getStub<DiscordDO>(c.env.DISCORD_STORE, 'global')
 			const { discordUserId, discordUsername } = await discordStoreStub.storeDiscordTokens(
 				session.socialUserId,
-				tokenData.access_token,
-				tokenData.refresh_token,
-				tokenData.expires_in
+				{
+					accessToken: tokenData.access_token,
+					refreshToken: tokenData.refresh_token,
+					expiresIn: tokenData.expires_in,
+				}
 			)
+
+			// Check if Discord account is already used as a primary login
+			const existingPrimaryUser = await sessionStoreStub.getSocialUserByProvider(
+				'discord',
+				discordUserId
+			)
+
+			if (existingPrimaryUser) {
+				logger
+					.withTags({
+						type: 'discord_provider_link_rejected_primary_exists',
+					})
+					.warn('Discord account is already used as primary login', {
+						discordUserId: discordUserId.substring(0, 8) + '...',
+						primarySocialUserId: existingPrimaryUser.socialUserId.substring(0, 8) + '...',
+						request: getRequestLogData(c, Date.now()),
+					})
+				return c.json(
+					{
+						error:
+							'This Discord account is already being used as a primary login method. A Discord account cannot be both a primary login and a linked provider.',
+					},
+					400
+				)
+			}
 
 			// Create provider link in SessionStore for metadata
 			const link = await sessionStoreStub.createProviderLink(
