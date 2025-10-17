@@ -10,6 +10,7 @@ export interface SocialUserData extends Record<string, number | string> {
 	provider_user_id: string
 	email: string
 	name: string
+	is_admin: number
 	created_at: number
 	updated_at: number
 }
@@ -20,6 +21,7 @@ export interface SocialUser {
 	providerUserId: string
 	email: string
 	name: string
+	isAdmin: boolean
 	createdAt: number
 	updatedAt: number
 }
@@ -151,7 +153,7 @@ export interface ProviderLink {
 
 export class SessionStore extends DurableObject<Env> {
 	private schemaInitialized = false
-	private readonly CURRENT_SCHEMA_VERSION = 4
+	private readonly CURRENT_SCHEMA_VERSION = 5
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env)
@@ -222,6 +224,13 @@ export class SessionStore extends DurableObject<Env> {
 				await this.runMigration4()
 				await this.setSchemaVersion(4)
 				logger.info('Applied migration 4: Character primary flag')
+			}
+
+			// Migration 5: Add is_admin column to social_users
+			if (currentVersion < 5) {
+				await this.runMigration5()
+				await this.setSchemaVersion(5)
+				logger.info('Applied migration 5: Admin flag on social users')
 			}
 
 			this.schemaInitialized = true
@@ -414,6 +423,30 @@ export class SessionStore extends DurableObject<Env> {
 		`)
 	}
 
+	private async runMigration5(): Promise<void> {
+		// Add is_admin column to social_users table
+		await this.ctx.storage.sql.exec(`
+			ALTER TABLE social_users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0
+		`)
+
+		// Update is_admin flag for existing users based on account_links
+		// Set is_admin = 1 if user has ANY account link with superuser = 1 OR staff = 1
+		await this.ctx.storage.sql.exec(`
+			UPDATE social_users
+			SET is_admin = 1
+			WHERE social_user_id IN (
+				SELECT DISTINCT social_user_id
+				FROM account_links
+				WHERE superuser = 1 OR staff = 1
+			)
+		`)
+
+		// Create index for faster admin queries
+		await this.ctx.storage.sql.exec(`
+			CREATE INDEX IF NOT EXISTS idx_social_users_admin ON social_users(is_admin) WHERE is_admin = 1
+		`)
+	}
+
 	private generateSessionId(): string {
 		// Generate a random 32-byte session token
 		const array = new Uint8Array(32)
@@ -478,6 +511,7 @@ export class SessionStore extends DurableObject<Env> {
 				providerUserId: user.provider_user_id,
 				email,
 				name,
+				isAdmin: user.is_admin === 1,
 				createdAt: user.created_at,
 				updatedAt: now,
 			}
@@ -487,13 +521,14 @@ export class SessionStore extends DurableObject<Env> {
 		const socialUserId = this.generateSocialUserId()
 
 		await this.ctx.storage.sql.exec(
-			`INSERT INTO social_users (social_user_id, provider, provider_user_id, email, name, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			`INSERT INTO social_users (social_user_id, provider, provider_user_id, email, name, is_admin, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 			socialUserId,
 			provider,
 			providerUserId,
 			email,
 			name,
+			0, // Default to not admin
 			now,
 			now
 		)
@@ -516,6 +551,7 @@ export class SessionStore extends DurableObject<Env> {
 			providerUserId,
 			email,
 			name,
+			isAdmin: false,
 			createdAt: now,
 			updatedAt: now,
 		}
@@ -539,6 +575,7 @@ export class SessionStore extends DurableObject<Env> {
 			providerUserId: user.provider_user_id,
 			email: user.email,
 			name: user.name,
+			isAdmin: user.is_admin === 1,
 			createdAt: user.created_at,
 			updatedAt: user.updated_at,
 		}
@@ -553,12 +590,16 @@ export class SessionStore extends DurableObject<Env> {
 		name: string,
 		accessToken: string,
 		refreshToken: string,
-		expiresIn: number
+		_expiresIn: number
 	): Promise<SessionInfo> {
 		await this.ensureSchema()
 
 		const now = Date.now()
-		const expiresAt = now + expiresIn * 1000
+		// Session expires in 48 hours (independent of OAuth token expiration)
+		// OAuth tokens will be automatically refreshed as needed
+		const sessionExpiresAt = now + 48 * 60 * 60 * 1000 // 48 hours
+		// Note: _expiresIn parameter represents OAuth token expiration but we ignore it
+		// since we handle token refresh automatically
 
 		// Get or create social user (permanent identity)
 		const socialUser = await this.getOrCreateSocialUser(provider, providerUserId, email, name)
@@ -580,7 +621,7 @@ export class SessionStore extends DurableObject<Env> {
 				WHERE session_id = ?`,
 				accessToken,
 				refreshToken,
-				expiresAt,
+				sessionExpiresAt,
 				now,
 				existingSessionId
 			)
@@ -595,7 +636,7 @@ export class SessionStore extends DurableObject<Env> {
 					socialUserId: socialUser.socialUserId.substring(0, 8) + '...',
 					provider,
 					email,
-					expiresAt: new Date(expiresAt).toISOString(),
+					expiresAt: new Date(sessionExpiresAt).toISOString(),
 				})
 
 			return {
@@ -606,7 +647,7 @@ export class SessionStore extends DurableObject<Env> {
 				email: socialUser.email,
 				name: socialUser.name,
 				accessToken,
-				expiresAt,
+				expiresAt: sessionExpiresAt,
 			}
 		}
 
@@ -621,7 +662,7 @@ export class SessionStore extends DurableObject<Env> {
 			socialUser.socialUserId,
 			accessToken,
 			refreshToken,
-			expiresAt,
+			sessionExpiresAt,
 			now,
 			now
 		)
@@ -636,7 +677,7 @@ export class SessionStore extends DurableObject<Env> {
 				socialUserId: socialUser.socialUserId.substring(0, 8) + '...',
 				provider,
 				email,
-				expiresAt: new Date(expiresAt).toISOString(),
+				expiresAt: new Date(sessionExpiresAt).toISOString(),
 			})
 
 		return {
@@ -647,7 +688,7 @@ export class SessionStore extends DurableObject<Env> {
 			email: socialUser.email,
 			name: socialUser.name,
 			accessToken,
-			expiresAt,
+			expiresAt: sessionExpiresAt,
 		}
 	}
 
@@ -670,9 +711,18 @@ export class SessionStore extends DurableObject<Env> {
 			throw new Error('Social user not found for session')
 		}
 
-		// Check if token is expired (with 5 minute buffer)
-		if (session.expires_at - Date.now() < 5 * 60 * 1000) {
-			// Token is expired or about to expire, refresh it
+		const now = Date.now()
+
+		// Check if session has expired
+		if (session.expires_at < now) {
+			throw new Error('Session expired')
+		}
+
+		// Proactively refresh OAuth token if it's been more than 50 minutes since last update
+		// (OAuth tokens typically expire in 1 hour)
+		const timeSinceUpdate = now - session.updated_at
+		if (timeSinceUpdate > 50 * 60 * 1000) {
+			// Try to refresh the OAuth token
 			const refreshed = await this.refreshAccessToken(session, socialUser)
 			if (refreshed.success && refreshed.data) {
 				return {
@@ -683,10 +733,10 @@ export class SessionStore extends DurableObject<Env> {
 					email: socialUser.email,
 					name: socialUser.name,
 					accessToken: refreshed.data.accessToken,
-					expiresAt: refreshed.data.expiresAt,
+					expiresAt: session.expires_at, // Session expiration, not token expiration
 				}
 			}
-			// If refresh failed, return the existing token anyway
+			// If refresh failed, return the existing token anyway and let it fail naturally
 		}
 
 		return {
@@ -774,15 +824,16 @@ export class SessionStore extends DurableObject<Env> {
 
 			// Update the token in storage
 			// Google may or may not return a new refresh token
+			// Note: We don't update expires_at here because it represents session expiration (48 hours),
+			// not OAuth token expiration. The session remains valid as long as we can refresh tokens.
 			const newRefreshToken = data.refresh_token || session.refresh_token
 
 			await this.ctx.storage.sql.exec(
 				`UPDATE sessions
-				SET access_token = ?, refresh_token = ?, expires_at = ?, updated_at = ?
+				SET access_token = ?, refresh_token = ?, updated_at = ?
 				WHERE session_id = ?`,
 				data.access_token,
 				newRefreshToken,
-				expiresAt,
 				now,
 				session.session_id
 			)
@@ -1119,6 +1170,25 @@ export class SessionStore extends DurableObject<Env> {
 			now
 		)
 
+		// Update is_admin flag on social_users table if user is admin
+		if (superuser || staff) {
+			await this.ctx.storage.sql.exec(
+				`UPDATE social_users SET is_admin = 1, updated_at = ? WHERE social_user_id = ?`,
+				now,
+				socialUserId
+			)
+
+			logger
+				.withTags({
+					type: 'social_user_admin_flag_set',
+				})
+				.info('Set admin flag on social user', {
+					socialUserId: socialUserId.substring(0, 8) + '...',
+					superuser,
+					staff,
+				})
+		}
+
 		logger
 			.withTags({
 				type: 'account_link_created',
@@ -1409,6 +1479,27 @@ export class SessionStore extends DurableObject<Env> {
 				characterId: link.character_id,
 				characterName: link.character_name,
 			})
+	}
+
+	async searchCharactersByName(query: string): Promise<Array<{
+		socialUserId: string
+		characterId: number
+		characterName: string
+	}>> {
+		await this.ensureSchema()
+
+		const rows = await this.ctx.storage.sql
+			.exec<CharacterLinkData>(
+				'SELECT * FROM character_links WHERE character_name LIKE ? ORDER BY character_name ASC LIMIT 50',
+				`%${query}%`
+			)
+			.toArray()
+
+		return rows.map((row) => ({
+			socialUserId: row.social_user_id,
+			characterId: row.character_id,
+			characterName: row.character_name,
+		}))
 	}
 
 	// ========== Provider Link Management ==========

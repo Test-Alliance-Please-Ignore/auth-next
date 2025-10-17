@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>{{GROUP_NAME}} - Manage Group</title>
+	<style>
+		* {
+			margin: 0;
+			padding: 0;
+			box-sizing: border-box;
+		}
+
+		html {
+			height: 100%;
+			background: linear-gradient(180deg, #0a0e27 0%, #1a1b3d 50%, #2d1b4e 100%) fixed;
+		}
+
+		body {
+			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+			min-height: 100%;
+			color: white;
+			padding: 1.5rem;
+		}
+
+		.container {
+			max-width: 1200px;
+			margin: 0 auto;
+		}
+
+		.nav {
+			margin-bottom: 1.25rem;
+		}
+
+		.nav a {
+			color: #a0aec0;
+			text-decoration: none;
+			transition: color 0.2s;
+		}
+
+		.nav a:hover {
+			color: white;
+		}
+
+		.card {
+			background: rgba(255, 255, 255, 0.05);
+			backdrop-filter: blur(10px);
+			border: 1px solid rgba(255, 255, 255, 0.1);
+			border-radius: 1rem;
+			padding: 1.25rem;
+			margin-bottom: 1.5rem;
+			box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+		}
+
+		.header h1 {
+			font-size: 1.75rem;
+			margin-bottom: 0.5rem;
+			background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+			-webkit-background-clip: text;
+			-webkit-text-fill-color: transparent;
+			background-clip: text;
+		}
+
+		.header p {
+			color: #a0aec0;
+		}
+
+		.section-title {
+			font-size: 1.25rem;
+			margin-bottom: 1rem;
+			color: white;
+		}
+
+		.form-group {
+			margin-bottom: 1rem;
+		}
+
+		.form-group label {
+			display: block;
+			margin-bottom: 0.5rem;
+			color: #e2e8f0;
+			font-weight: 600;
+		}
+
+		.form-group input,
+		.form-group textarea,
+		.form-group select {
+			width: 100%;
+			padding: 0.75rem;
+			border: 1px solid rgba(255, 255, 255, 0.2);
+			border-radius: 0.5rem;
+			background: rgba(255, 255, 255, 0.05);
+			color: white;
+			font-size: 1rem;
+		}
+
+		.form-group select option {
+			background: #1a202c;
+			color: white;
+		}
+
+		.form-group textarea {
+			resize: vertical;
+			min-height: 100px;
+		}
+
+		.btn {
+			display: inline-block;
+			padding: 0.5rem 1rem;
+			border-radius: 0.5rem;
+			font-weight: 600;
+			text-decoration: none;
+			transition: all 0.2s;
+			border: none;
+			cursor: pointer;
+			font-size: 0.875rem;
+		}
+
+		.btn-primary {
+			background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+			color: white;
+		}
+
+		.btn-primary:hover {
+			transform: translateY(-2px);
+			box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+		}
+
+		.btn-secondary {
+			background: rgba(255, 255, 255, 0.1);
+			color: white;
+			border: 1px solid rgba(255, 255, 255, 0.2);
+		}
+
+		.btn-secondary:hover {
+			background: rgba(255, 255, 255, 0.15);
+		}
+
+		.btn-danger {
+			background: #f56565;
+			color: white;
+		}
+
+		.btn-danger:hover {
+			background: #e53e3e;
+		}
+
+		.actions {
+			display: flex;
+			gap: 0.75rem;
+			margin-top: 1rem;
+		}
+
+		.loading {
+			text-align: center;
+			padding: 3rem;
+			color: #a0aec0;
+		}
+
+		.info-text {
+			color: #a0aec0;
+			font-size: 0.875rem;
+			margin-top: 0.5rem;
+		}
+
+		.danger-zone {
+			border-top: 1px solid rgba(255, 255, 255, 0.1);
+			padding-top: 1.5rem;
+			margin-top: 1.5rem;
+		}
+
+		.danger-zone h3 {
+			color: #f56565;
+			margin-bottom: 0.75rem;
+		}
+
+		.search-result-item {
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			padding: 0.75rem;
+			background: rgba(255, 255, 255, 0.05);
+			border: 1px solid rgba(255, 255, 255, 0.1);
+			border-radius: 0.5rem;
+			margin-bottom: 0.5rem;
+		}
+
+		.search-result-info {
+			flex: 1;
+		}
+
+		.search-result-name {
+			font-weight: 600;
+			color: white;
+			margin-bottom: 0.25rem;
+		}
+
+		.search-result-meta {
+			font-size: 0.875rem;
+			color: #a0aec0;
+		}
+
+		.invite-item {
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			padding: 0.75rem;
+			background: rgba(255, 255, 255, 0.05);
+			border: 1px solid rgba(255, 255, 255, 0.1);
+			border-radius: 0.5rem;
+			margin-bottom: 0.5rem;
+		}
+
+		.invite-info {
+			flex: 1;
+		}
+
+		.invite-code {
+			font-family: 'Courier New', monospace;
+			font-size: 1.5rem;
+			font-weight: bold;
+			color: #667eea;
+			padding: 1rem;
+			background: rgba(102, 126, 234, 0.1);
+			border: 2px dashed rgba(102, 126, 234, 0.3);
+			border-radius: 0.5rem;
+			text-align: center;
+			cursor: pointer;
+			user-select: all;
+		}
+
+		.invite-code:hover {
+			background: rgba(102, 126, 234, 0.15);
+		}
+
+		.status-badge {
+			display: inline-block;
+			padding: 0.25rem 0.75rem;
+			border-radius: 1rem;
+			font-size: 0.75rem;
+			font-weight: 600;
+			text-transform: uppercase;
+		}
+
+		.status-pending {
+			background: rgba(237, 137, 54, 0.2);
+			color: #ed8936;
+		}
+
+		.status-accepted {
+			background: rgba(72, 187, 120, 0.2);
+			color: #48bb78;
+		}
+
+		.status-revoked {
+			background: rgba(245, 101, 101, 0.2);
+			color: #f56565;
+		}
+
+		.btn-small {
+			padding: 0.375rem 0.75rem;
+			font-size: 0.8125rem;
+		}
+
+		.empty-state {
+			text-align: center;
+			padding: 2rem;
+			color: #a0aec0;
+		}
+	</style>
+</head>
+<body>
+	<div class="container">
+		<div class="nav">
+			<a href="#" onclick="history.back(); return false;">← Back to Group</a>
+		</div>
+
+		<div id="loading" class="loading">Loading group settings...</div>
+
+		<div id="content" style="display: none;">
+			<div class="card">
+				<div class="header">
+					<h1 id="group-name">Manage Group</h1>
+					<p>Update group settings and configuration</p>
+				</div>
+			</div>
+
+			<div class="card">
+				<h2 class="section-title">Basic Settings</h2>
+				<form id="settings-form">
+					<div class="form-group">
+						<label for="group-name-input">Group Name</label>
+						<input type="text" id="group-name-input" required>
+					</div>
+
+					<div class="form-group">
+						<label for="group-description">Description</label>
+						<textarea id="group-description"></textarea>
+					</div>
+
+					<div class="form-group">
+						<label for="group-visibility">Visibility</label>
+						<select id="group-visibility">
+							<option value="public">Public - Anyone can see this group</option>
+							<option value="private">Private - Only members can see this group</option>
+							<option value="hidden">Hidden - Completely hidden from listings</option>
+						</select>
+					</div>
+
+					<div class="form-group">
+						<label for="group-joinability">Joinability</label>
+						<select id="group-joinability">
+							<option value="open">Open - Anyone can join immediately</option>
+							<option value="approval_required">Approval Required - Join requests must be approved</option>
+							<option value="invite_only">Invite Only - Only invited users can join</option>
+							<option value="closed">Closed - No new members allowed</option>
+						</select>
+					</div>
+
+					<div class="actions">
+						<button type="submit" class="btn btn-primary">Save Changes</button>
+						<button type="button" onclick="location.reload()" class="btn btn-secondary">Reset</button>
+					</div>
+				</form>
+			</div>
+
+			<div class="card" id="invite-management" style="display: none;">
+				<h2 class="section-title">Invite Members</h2>
+
+				<div style="margin-bottom: 1.5rem;">
+					<h3 style="font-size: 1.1rem; margin-bottom: 0.75rem; color: white;">Search & Invite Users</h3>
+					<div class="form-group">
+						<label for="user-search">Search by Character Name</label>
+						<input type="text" id="user-search" placeholder="Enter character name...">
+					</div>
+					<div id="search-results" style="margin-top: 0.75rem;"></div>
+				</div>
+
+				<div style="margin-bottom: 1.5rem; border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 1.5rem;">
+					<h3 style="font-size: 1.1rem; margin-bottom: 0.75rem; color: white;">Bulk Invite</h3>
+					<div class="form-group">
+						<label for="bulk-user-ids">Paste User IDs (one per line)</label>
+						<textarea id="bulk-user-ids" placeholder="user-id-1&#10;user-id-2&#10;user-id-3" style="min-height: 100px;"></textarea>
+						<p class="info-text">Enter one user ID per line</p>
+					</div>
+					<button onclick="bulkInviteUsers()" class="btn btn-primary">Send Bulk Invites</button>
+				</div>
+
+				<div style="margin-bottom: 1.5rem; border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 1.5rem;">
+					<h3 style="font-size: 1.1rem; margin-bottom: 0.75rem; color: white;">Create Invite Code</h3>
+					<p class="info-text" style="margin-bottom: 0.75rem;">Generate a shareable invite code that anyone can use to join the group</p>
+
+					<div style="display: flex; gap: 0.75rem; align-items: flex-end; flex-wrap: wrap;">
+						<div class="form-group" style="flex: 1; min-width: 200px; margin-bottom: 0;">
+							<label for="code-max-uses">Max Uses (0 = unlimited)</label>
+							<input type="number" id="code-max-uses" value="0" min="0">
+						</div>
+						<div class="form-group" style="flex: 1; min-width: 200px; margin-bottom: 0;">
+							<label for="code-expires-days">Expires in Days</label>
+							<input type="number" id="code-expires-days" value="7" min="1" max="365">
+						</div>
+						<button onclick="createInviteCode()" class="btn btn-primary">Generate Code</button>
+					</div>
+
+					<div id="invite-code-result" style="margin-top: 0.75rem;"></div>
+				</div>
+
+				<div style="border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 1.5rem;">
+					<h3 style="font-size: 1.1rem; margin-bottom: 0.75rem; color: white;">Active Invites & Codes</h3>
+					<button onclick="loadInvites()" class="btn btn-secondary" style="margin-bottom: 0.75rem;">Refresh Invites</button>
+					<div id="invites-list"></div>
+				</div>
+			</div>
+
+			<div class="card danger-zone" id="danger-zone" style="display: none;">
+				<h3>Danger Zone</h3>
+				<p class="info-text">Once you delete a group, there is no going back. Please be certain.</p>
+				<div class="actions">
+					<button onclick="deleteGroup()" class="btn btn-danger">Delete This Group</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<script>
+		const slug = window.location.pathname.split('/')[2];
+		let currentGroup = null;
+		let currentUserRole = null;
+
+		async function loadGroupSettings() {
+			try {
+				const response = await fetch(`/api/groups/${slug}`, {
+					credentials: 'same-origin'
+				});
+
+				if (!response.ok) {
+					throw new Error('Failed to load group');
+				}
+
+				const data = await response.json();
+				currentGroup = data.group;
+
+				// Check user permission
+				await checkUserPermission();
+
+				// Populate form
+				document.getElementById('group-name-input').value = currentGroup.name;
+				document.getElementById('group-description').value = currentGroup.description || '';
+				document.getElementById('group-visibility').value = currentGroup.visibility;
+				document.getElementById('group-joinability').value = currentGroup.joinability;
+
+				document.getElementById('group-name').textContent = `Manage ${currentGroup.name}`;
+				document.title = `Manage ${currentGroup.name}`;
+
+				document.getElementById('loading').style.display = 'none';
+				document.getElementById('content').style.display = 'block';
+			} catch (error) {
+				console.error('Failed to load group:', error);
+				document.getElementById('loading').innerHTML = `
+					<h3 style="color: #f56565;">Error Loading Group</h3>
+					<p>You may not have permission to manage this group.</p>
+					<a href="/groups/${slug}" class="btn btn-secondary" style="margin-top: 1rem;">Back to Group</a>
+				`;
+			}
+		}
+
+		async function checkUserPermission() {
+			try {
+				const response = await fetch('/api/users/me/groups', {
+					credentials: 'same-origin'
+				});
+
+				if (!response.ok) {
+					throw new Error('Not authenticated');
+				}
+
+				const data = await response.json();
+				const membership = data.groups.find(g => g.slug === slug);
+
+				if (!membership) {
+					throw new Error('Not a member');
+				}
+
+				currentUserRole = membership.membership?.role || 'member';
+
+				if (currentUserRole !== 'admin' && currentUserRole !== 'owner') {
+					throw new Error('Insufficient permissions');
+				}
+
+				// Only owner can delete
+				if (currentUserRole === 'owner') {
+					document.getElementById('danger-zone').style.display = 'block';
+				}
+
+				// Show invite management for admins and owners
+				if (currentUserRole === 'admin' || currentUserRole === 'owner') {
+					document.getElementById('invite-management').style.display = 'block';
+					loadInvites();
+				}
+			} catch (error) {
+				throw new Error('Permission denied');
+			}
+		}
+
+		document.getElementById('settings-form').addEventListener('submit', async (e) => {
+			e.preventDefault();
+
+			const formData = {
+				name: document.getElementById('group-name-input').value,
+				description: document.getElementById('group-description').value,
+				visibility: document.getElementById('group-visibility').value,
+				joinability: document.getElementById('group-joinability').value
+			};
+
+			try {
+				const response = await fetch(`/api/groups/${slug}`, {
+					method: 'PATCH',
+					headers: {
+						'Content-Type': 'application/json'
+					},
+					credentials: 'same-origin',
+					body: JSON.stringify(formData)
+				});
+
+				if (!response.ok) {
+					const error = await response.json();
+					throw new Error(error.error || 'Failed to update group');
+				}
+
+				alert('Group updated successfully!');
+				window.location.href = `/groups/${slug}`;
+			} catch (error) {
+				alert('Error updating group: ' + error.message);
+			}
+		});
+
+		async function deleteGroup() {
+			if (!confirm(`Are you sure you want to delete "${currentGroup.name}"? This action cannot be undone.`)) {
+				return;
+			}
+
+			if (!confirm('This will permanently delete the group and all its data. Are you absolutely sure?')) {
+				return;
+			}
+
+			try {
+				const response = await fetch(`/api/groups/${slug}`, {
+					method: 'DELETE',
+					credentials: 'same-origin'
+				});
+
+				if (!response.ok) {
+					const error = await response.json();
+					throw new Error(error.error || 'Failed to delete group');
+				}
+
+				alert('Group deleted successfully');
+				window.location.href = '/groups';
+			} catch (error) {
+				alert('Error deleting group: ' + error.message);
+			}
+		}
+
+		// User search with debounce
+		let searchTimeout;
+		document.getElementById('user-search').addEventListener('input', (e) => {
+			clearTimeout(searchTimeout);
+			const query = e.target.value.trim();
+
+			if (query.length < 2) {
+				document.getElementById('search-results').innerHTML = '';
+				return;
+			}
+
+			searchTimeout = setTimeout(async () => {
+				try {
+					const response = await fetch(`/api/groups/characters/search?q=${encodeURIComponent(query)}`, {
+						credentials: 'same-origin'
+					});
+
+					if (!response.ok) {
+						throw new Error('Search failed');
+					}
+
+					const data = await response.json();
+					displaySearchResults(data.users || []);
+				} catch (error) {
+					console.error('Search error:', error);
+					document.getElementById('search-results').innerHTML = '<p class="info-text" style="color: #f56565;">Search failed. Please try again.</p>';
+				}
+			}, 300);
+		});
+
+		function displaySearchResults(users) {
+			const container = document.getElementById('search-results');
+
+			if (users.length === 0) {
+				container.innerHTML = '<p class="info-text">No users found</p>';
+				return;
+			}
+
+			container.innerHTML = users.map(user => `
+				<div class="search-result-item">
+					<div class="search-result-info">
+						<div class="search-result-name">${escapeHtml(user.characterName)}</div>
+						<div class="search-result-meta">
+							${user.corporationName ? escapeHtml(user.corporationName) : 'Unknown Corp'}
+							${user.allianceName ? ` • ${escapeHtml(user.allianceName)}` : ''}
+						</div>
+					</div>
+					<button onclick="inviteUser('${user.socialUserId}', '${escapeHtml(user.characterName)}')" class="btn btn-primary btn-small">
+						Invite
+					</button>
+				</div>
+			`).join('');
+		}
+
+		async function inviteUser(userId, userName) {
+			try {
+				const response = await fetch(`/api/groups/${slug}/invites`, {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json'
+					},
+					credentials: 'same-origin',
+					body: JSON.stringify({ invitedUserId: userId })
+				});
+
+				if (!response.ok) {
+					const error = await response.json();
+					throw new Error(error.error || 'Failed to send invite');
+				}
+
+				alert(`Invite sent to ${userName}!`);
+				loadInvites();
+				document.getElementById('user-search').value = '';
+				document.getElementById('search-results').innerHTML = '';
+			} catch (error) {
+				alert('Error sending invite: ' + error.message);
+			}
+		}
+
+		async function bulkInviteUsers() {
+			const textarea = document.getElementById('bulk-user-ids');
+			const userIds = textarea.value
+				.split('\n')
+				.map(id => id.trim())
+				.filter(id => id.length > 0);
+
+			if (userIds.length === 0) {
+				alert('Please enter at least one user ID');
+				return;
+			}
+
+			if (!confirm(`Send invites to ${userIds.length} users?`)) {
+				return;
+			}
+
+			try {
+				const response = await fetch(`/api/groups/${slug}/invites/bulk`, {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json'
+					},
+					credentials: 'same-origin',
+					body: JSON.stringify({ userIds })
+				});
+
+				if (!response.ok) {
+					const error = await response.json();
+					throw new Error(error.error || 'Failed to send bulk invites');
+				}
+
+				const data = await response.json();
+				alert(`Successfully sent ${data.created} invites (${data.requested} requested)`);
+				textarea.value = '';
+				loadInvites();
+			} catch (error) {
+				alert('Error sending bulk invites: ' + error.message);
+			}
+		}
+
+		async function createInviteCode() {
+			const maxUses = parseInt(document.getElementById('code-max-uses').value) || 0;
+			const expiresInDays = parseInt(document.getElementById('code-expires-days').value) || 7;
+
+			try {
+				const response = await fetch(`/api/groups/${slug}/invite-codes`, {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json'
+					},
+					credentials: 'same-origin',
+					body: JSON.stringify({
+						maxUses: maxUses > 0 ? maxUses : null,
+						expiresInDays
+					})
+				});
+
+				if (!response.ok) {
+					const error = await response.json();
+					throw new Error(error.error || 'Failed to create invite code');
+				}
+
+				const data = await response.json();
+				const invite = data.invite;
+
+				document.getElementById('invite-code-result').innerHTML = `
+					<div style="padding: 1.5rem; background: rgba(72, 187, 120, 0.1); border: 1px solid rgba(72, 187, 120, 0.3); border-radius: 0.5rem;">
+						<h4 style="color: #48bb78; margin-bottom: 1rem;">Invite Code Created!</h4>
+						<div class="invite-code" onclick="copyToClipboard('${invite.inviteCode}')" title="Click to copy">
+							${invite.inviteCode}
+						</div>
+						<p class="info-text" style="margin-top: 1rem; color: white;">
+							${invite.maxUses ? `Max uses: ${invite.maxUses}` : 'Unlimited uses'} •
+							Expires: ${new Date(invite.expiresAt).toLocaleDateString()}
+						</p>
+						<p class="info-text" style="margin-top: 0.5rem;">
+							Share this code with people you want to invite. They can redeem it at:<br>
+							<code style="background: rgba(255,255,255,0.1); padding: 0.25rem 0.5rem; border-radius: 0.25rem;">
+								${window.location.origin}/groups/${slug}
+							</code>
+						</p>
+					</div>
+				`;
+
+				loadInvites();
+			} catch (error) {
+				alert('Error creating invite code: ' + error.message);
+			}
+		}
+
+		async function loadInvites() {
+			try {
+				const response = await fetch(`/api/groups/${slug}/invites`, {
+					credentials: 'same-origin'
+				});
+
+				if (!response.ok) {
+					throw new Error('Failed to load invites');
+				}
+
+				const data = await response.json();
+				displayInvites(data.invites || []);
+			} catch (error) {
+				console.error('Error loading invites:', error);
+				document.getElementById('invites-list').innerHTML = '<p class="info-text" style="color: #f56565;">Failed to load invites</p>';
+			}
+		}
+
+		function displayInvites(invites) {
+			const container = document.getElementById('invites-list');
+
+			if (invites.length === 0) {
+				container.innerHTML = '<div class="empty-state">No active invites</div>';
+				return;
+			}
+
+			const inviteCodes = invites.filter(inv => inv.inviteCode);
+			const userInvites = invites.filter(inv => !inv.inviteCode);
+
+			let html = '';
+
+			if (inviteCodes.length > 0) {
+				html += '<h4 style="color: white; margin-bottom: 0.75rem; font-size: 0.95rem;">Invite Codes</h4>';
+				html += inviteCodes.map(invite => {
+					const expiresAt = new Date(invite.expiresAt);
+					const isExpired = expiresAt < new Date();
+					const statusClass = invite.status === 'pending' ? 'status-pending' : invite.status === 'revoked' ? 'status-revoked' : 'status-accepted';
+
+					return `
+						<div class="invite-item">
+							<div class="invite-info">
+								<div style="font-family: 'Courier New', monospace; font-weight: bold; color: #667eea; margin-bottom: 0.5rem;">
+									${invite.inviteCode}
+									<button onclick="copyToClipboard('${invite.inviteCode}')" class="btn btn-secondary btn-small" style="margin-left: 0.5rem;">Copy</button>
+								</div>
+								<div class="info-text">
+									Created by: ${invite.invitedByName || 'Unknown'} •
+									${invite.maxUses ? `${invite.currentUses}/${invite.maxUses} uses` : `${invite.currentUses} uses`} •
+									Expires: ${expiresAt.toLocaleDateString()}
+									${isExpired ? ' (EXPIRED)' : ''}
+								</div>
+								<span class="status-badge ${statusClass}">${invite.status}</span>
+							</div>
+							${invite.status === 'pending' ? `
+								<button onclick="revokeInvite('${invite.inviteId}')" class="btn btn-danger btn-small">
+									Revoke
+								</button>
+							` : ''}
+						</div>
+					`;
+				}).join('');
+			}
+
+			if (userInvites.length > 0) {
+				html += '<h4 style="color: white; margin: 1.5rem 0 0.75rem; font-size: 0.95rem;">User Invites</h4>';
+				html += userInvites.map(invite => {
+					const expiresAt = new Date(invite.expiresAt);
+					const isExpired = expiresAt < new Date();
+					const statusClass = invite.status === 'pending' ? 'status-pending' : invite.status === 'revoked' ? 'status-revoked' : 'status-accepted';
+
+					return `
+						<div class="invite-item">
+							<div class="invite-info">
+								<div style="font-weight: 600; color: white; margin-bottom: 0.25rem;">
+									${invite.invitedUserName || 'Unknown User'}
+								</div>
+								<div class="info-text">
+									Invited by: ${invite.invitedByName || 'Unknown'} •
+									Expires: ${expiresAt.toLocaleDateString()}
+									${isExpired ? ' (EXPIRED)' : ''}
+								</div>
+								<span class="status-badge ${statusClass}">${invite.status}</span>
+							</div>
+							${invite.status === 'pending' ? `
+								<button onclick="revokeInvite('${invite.inviteId}')" class="btn btn-danger btn-small">
+									Revoke
+								</button>
+							` : ''}
+						</div>
+					`;
+				}).join('');
+			}
+
+			container.innerHTML = html;
+		}
+
+		async function revokeInvite(inviteId) {
+			if (!confirm('Are you sure you want to revoke this invite?')) {
+				return;
+			}
+
+			try {
+				const response = await fetch(`/api/invites/${inviteId}`, {
+					method: 'DELETE',
+					credentials: 'same-origin'
+				});
+
+				if (!response.ok) {
+					const error = await response.json();
+					throw new Error(error.error || 'Failed to revoke invite');
+				}
+
+				alert('Invite revoked successfully');
+				loadInvites();
+			} catch (error) {
+				alert('Error revoking invite: ' + error.message);
+			}
+		}
+
+		function copyToClipboard(text) {
+			navigator.clipboard.writeText(text).then(() => {
+				alert('Copied to clipboard!');
+			}).catch(err => {
+				console.error('Failed to copy:', err);
+				alert('Failed to copy to clipboard');
+			});
+		}
+
+		function escapeHtml(text) {
+			const map = {
+				'&': '&amp;',
+				'<': '&lt;',
+				'>': '&gt;',
+				'"': '&quot;',
+				"'": '&#039;'
+			};
+			return text.replace(/[&<>"']/g, m => map[m]);
+		}
+
+		// Initialize
+		loadGroupSettings();
+	</script>
+</body>
+</html>

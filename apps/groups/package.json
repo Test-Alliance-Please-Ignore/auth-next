@@ -1,0 +1,34 @@
+{
+	"name": "groups",
+	"version": "0.1.0",
+	"private": true,
+	"sideEffects": false,
+	"type": "module",
+	"scripts": {
+		"build": "run-vite-build",
+		"check:lint": "run-eslint",
+		"check:types": "run-tsc",
+		"deploy": "run-wrangler-deploy",
+		"dev": "run-vite-dev",
+		"fix:workers-types": "run-wrangler-types",
+		"preview": "run-vite-preview",
+		"test": "run-vitest"
+	},
+	"dependencies": {
+		"@repo/hono-helpers": "workspace:*",
+		"@repo/static-auth": "workspace:*",
+		"hono": "4.9.11",
+		"workers-tagged-logger": "0.13.3"
+	},
+	"devDependencies": {
+		"@cloudflare/vite-plugin": "1.1.0",
+		"@cloudflare/vitest-pool-workers": "0.9.12",
+		"@repo/eslint-config": "workspace:*",
+		"@repo/tools": "workspace:*",
+		"@repo/typescript-config": "workspace:*",
+		"@types/node": "22.15.27",
+		"vite": "6.3.4",
+		"vitest": "3.2.4",
+		"wrangler": "4.42.2"
+	}
+}

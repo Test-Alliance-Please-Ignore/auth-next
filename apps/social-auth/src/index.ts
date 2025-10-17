@@ -562,7 +562,10 @@ const app = new Hono<App>()
 			const id = c.env.USER_SESSION_STORE.idFromName('global')
 			const stub = c.env.USER_SESSION_STORE.get(id)
 
-				const sessionInfo = await stub.getSession(sessionId)
+			const sessionInfo = await stub.getSession(sessionId)
+
+			// Get social user to check admin status
+			const socialUser = await stub.getSocialUser(sessionInfo.socialUserId)
 
 			return c.json({
 				success: true,
@@ -572,6 +575,7 @@ const app = new Hono<App>()
 					email: sessionInfo.email,
 					name: sessionInfo.name,
 					expiresAt: sessionInfo.expiresAt,
+					isAdmin: socialUser?.isAdmin ?? false,
 				},
 			})
 		} catch (error) {
@@ -993,6 +997,106 @@ const app = new Hono<App>()
 		}
 	})
 
+	// Search characters by name
+	.get('/api/characters/search', async (c) => {
+		const sessionId = getCookie(c, 'session_id')
+
+		if (!sessionId) {
+			return c.json({ error: 'Not authenticated' }, 401)
+		}
+
+		const query = c.req.query('q')
+
+		if (!query || query.trim().length < 2) {
+			return c.json({ error: 'Search query must be at least 2 characters' }, 400)
+		}
+
+		try {
+			const id = c.env.USER_SESSION_STORE.idFromName('global')
+			const stub = c.env.USER_SESSION_STORE.get(id)
+
+			// Search character links by name (case-insensitive)
+			const characters = await stub.searchCharactersByName(query.trim())
+
+			// Fetch corporation info for each character
+			const cache = caches.default
+			const enrichedCharacters = await Promise.all(characters.map(async (char: any) => {
+				let corporationId: number | undefined
+				let corporationName: string | undefined
+
+				try {
+					// Fetch character info with cache
+					const charUrl = `https://esi.evetech.net/latest/characters/${char.characterId}/?datasource=tranquility`
+					const charCacheKey = new Request(charUrl)
+
+					let charResponse = await cache.match(charCacheKey)
+					if (!charResponse) {
+						charResponse = await fetch(charUrl)
+						if (charResponse.ok) {
+							const clonedResponse = charResponse.clone()
+							const headers = new Headers(clonedResponse.headers)
+							headers.set('Cache-Control', 'public, max-age=3600')
+							const cachedCharResponse = new Response(clonedResponse.body, {
+								status: clonedResponse.status,
+								statusText: clonedResponse.statusText,
+								headers,
+							})
+							c.executionCtx.waitUntil(cache.put(charCacheKey, cachedCharResponse))
+						}
+					}
+
+					if (charResponse.ok) {
+						const charData = await charResponse.json() as { corporation_id: number }
+						corporationId = charData.corporation_id
+
+						// Fetch corporation name with cache
+						const corpUrl = `https://esi.evetech.net/latest/corporations/${corporationId}/?datasource=tranquility`
+						const corpCacheKey = new Request(corpUrl)
+
+						let corpResponse = await cache.match(corpCacheKey)
+						if (!corpResponse) {
+							corpResponse = await fetch(corpUrl)
+							if (corpResponse.ok) {
+								const clonedResponse = corpResponse.clone()
+								const headers = new Headers(clonedResponse.headers)
+								headers.set('Cache-Control', 'public, max-age=3600')
+								const cachedCorpResponse = new Response(clonedResponse.body, {
+									status: clonedResponse.status,
+									statusText: clonedResponse.statusText,
+									headers,
+								})
+								c.executionCtx.waitUntil(cache.put(corpCacheKey, cachedCorpResponse))
+							}
+						}
+
+						if (corpResponse.ok) {
+							const corpData = await corpResponse.json() as { name: string }
+							corporationName = corpData.name
+						}
+					}
+				} catch (error) {
+					logger.warn('Failed to fetch corporation info for search result', { error: String(error), characterId: char.characterId })
+				}
+
+				return {
+					socialUserId: char.socialUserId,
+					characterId: char.characterId,
+					characterName: char.characterName,
+					corporationId,
+					corporationName,
+				}
+			}))
+
+			return c.json({
+				success: true,
+				characters: enrichedCharacters,
+			})
+		} catch (error) {
+			logger.error('Character search error', { error: String(error) })
+			return c.json({ error: String(error) }, 500)
+		}
+	})
+
 	// Get character links for current session
 	.get('/api/characters', async (c) => {
 		const sessionId = getCookie(c, 'session_id')
@@ -1052,12 +1156,151 @@ const app = new Hono<App>()
 			// Set primary character
 			await stub.setPrimaryCharacter(session.socialUserId, characterId)
 
+			// Invalidate cache for this user's primary character
+			const cacheKey = new Request(`http://internal/api/users/${session.socialUserId}/primary-character`, c.req.raw)
+			const cache = caches.default
+			c.executionCtx.waitUntil(cache.delete(cacheKey))
+
+			logger
+				.withTags({
+					type: 'primary_character_cache_invalidated',
+				})
+				.info('Invalidated primary character cache', {
+					socialUserId: session.socialUserId.substring(0, 8) + '...',
+					characterId,
+				})
+
 			return c.json({
 				success: true,
 			})
 		} catch (error) {
 			logger.error('Set primary character error', { error: String(error) })
 			return c.json({ error: String(error) }, error instanceof Error && error.message === 'Session not found' ? 404 : 500)
+		}
+	})
+
+	// Get primary character name for a social user ID (privacy-limited endpoint)
+	.get('/api/users/:socialUserId/primary-character', async (c) => {
+		const socialUserId = c.req.param('socialUserId')
+
+		if (!socialUserId) {
+			return c.json({ error: 'Invalid social user ID' }, 400)
+		}
+
+		try {
+			// Check cache first (keyed by socialUserId)
+			const cacheKey = new Request(`http://internal/api/users/${socialUserId}/primary-character`, c.req.raw)
+			const cache = caches.default
+			const cachedResponse = await cache.match(cacheKey)
+
+			if (cachedResponse) {
+				return cachedResponse
+			}
+
+			const id = c.env.USER_SESSION_STORE.idFromName('global')
+			const stub = c.env.USER_SESSION_STORE.get(id)
+
+			// Get all character links for this social user
+			const characters = await stub.getCharacterLinksBySocialUser(socialUserId)
+
+			// Find the primary character
+			const primaryCharacter = characters.find((char) => char.isPrimary)
+
+			if (!primaryCharacter) {
+				return c.json({ error: 'No primary character found' }, 404)
+			}
+
+			// Fetch corporation information from ESI (with caching)
+			let corporationId: number | undefined
+			let corporationName: string | undefined
+
+			try {
+				// Fetch character info with cache
+				const charUrl = `https://esi.evetech.net/latest/characters/${primaryCharacter.characterId}/?datasource=tranquility`
+				const charCacheKey = new Request(charUrl)
+				const cache = caches.default
+
+				let charResponse = await cache.match(charCacheKey)
+				if (!charResponse) {
+					charResponse = await fetch(charUrl)
+					if (charResponse.ok) {
+						// Cache for 1 hour
+						const clonedResponse = charResponse.clone()
+						const headers = new Headers(clonedResponse.headers)
+						headers.set('Cache-Control', 'public, max-age=3600')
+						const cachedCharResponse = new Response(clonedResponse.body, {
+							status: clonedResponse.status,
+							statusText: clonedResponse.statusText,
+							headers,
+						})
+						c.executionCtx.waitUntil(cache.put(charCacheKey, cachedCharResponse))
+					}
+				}
+
+				if (charResponse.ok) {
+					const charData = await charResponse.json() as { corporation_id: number }
+					corporationId = charData.corporation_id
+
+					// Fetch corporation name with cache
+					const corpUrl = `https://esi.evetech.net/latest/corporations/${corporationId}/?datasource=tranquility`
+					const corpCacheKey = new Request(corpUrl)
+
+					let corpResponse = await cache.match(corpCacheKey)
+					if (!corpResponse) {
+						corpResponse = await fetch(corpUrl)
+						if (corpResponse.ok) {
+							// Cache for 1 hour
+							const clonedResponse = corpResponse.clone()
+							const headers = new Headers(clonedResponse.headers)
+							headers.set('Cache-Control', 'public, max-age=3600')
+							const cachedCorpResponse = new Response(clonedResponse.body, {
+								status: clonedResponse.status,
+								statusText: clonedResponse.statusText,
+								headers,
+							})
+							c.executionCtx.waitUntil(cache.put(corpCacheKey, cachedCorpResponse))
+						}
+					}
+
+					if (corpResponse.ok) {
+						const corpData = await corpResponse.json() as { name: string }
+						corporationName = corpData.name
+					}
+				}
+			} catch (error) {
+				logger.warn('Failed to fetch corporation info', { error: String(error), characterId: primaryCharacter.characterId })
+			}
+
+			// Create response with cache headers
+			const response = c.json({
+				success: true,
+				characterName: primaryCharacter.characterName,
+				characterId: primaryCharacter.characterId,
+				corporationId,
+				corporationName,
+			})
+
+			// Clone response for caching
+			const responseToCache = response.clone()
+
+			// Add cache headers
+			const headers = new Headers(responseToCache.headers)
+			headers.set('Cache-Control', 'public, max-age=3600') // Cache for 1 hour
+			headers.set('CDN-Cache-Control', 'public, max-age=86400') // Cache on CDN for 24 hours
+
+			const cachedResponseToStore = new Response(responseToCache.body, {
+				status: responseToCache.status,
+				statusText: responseToCache.statusText,
+				headers,
+			})
+
+			// Put in cache (don't await to avoid blocking the response)
+			c.executionCtx.waitUntil(cache.put(cacheKey, cachedResponseToStore))
+
+			return response
+		} catch (error) {
+			logger.error('Get primary character error', { error: String(error), socialUserId })
+			return c.json({ error: 'Failed to get primary character' }, 500)
 		}
 	})
 

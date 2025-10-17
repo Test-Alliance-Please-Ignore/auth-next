@@ -1,0 +1,46 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "groups",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-04-28",
+	"compatibility_flags": ["nodejs_compat"],
+	"routes": [
+		"pleaseignore.app/groups",
+		"pleaseignore.app/groups/*",
+		"pleaseignore.app/api/groups",
+		"pleaseignore.app/api/groups/*",
+		"pleaseignore.app/api/users/me/groups",
+		"pleaseignore.app/api/users/me/invites",
+		"pleaseignore.app/api/invites/*",
+		"pleaseignore.app/api/auth/check",
+		"pleaseignore.app/api/categories",
+		"pleaseignore.app/api/categories/*"
+	],
+	"logpush": true,
+	"observability": {
+		"enabled": true
+	},
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "GROUP_STORE",
+				"class_name": "GroupStore"
+			}
+		]
+	},
+	"services": [
+		{
+			"binding": "SOCIAL_AUTH",
+			"service": "social-auth"
+		}
+	],
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["GroupStore"]
+		}
+	],
+	"vars": {
+		"SENTRY_RELEASE": "unknown"
+	}
+}
