@@ -16,6 +16,7 @@
 	"dependencies": {
 		"@repo/character-data-store": "workspace:*",
 		"@repo/do-utils": "workspace:*",
+		"@repo/evesso": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
 		"@repo/session-store": "workspace:*",
 		"@repo/static-auth": "workspace:*",

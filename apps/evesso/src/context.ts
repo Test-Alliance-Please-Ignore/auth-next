@@ -6,6 +6,7 @@ export type Env = SharedHonoEnv & {
 	EVESSO_STORE: DurableObjectNamespace
 	USER_SESSION_STORE: DurableObjectNamespace
 	CHARACTER_DATA_STORE: DurableObjectNamespace
+	TAG_STORE: DurableObjectNamespace
 
 	// EVE SSO OAuth Configuration
 	ESI_SSO_CLIENT_ID: string

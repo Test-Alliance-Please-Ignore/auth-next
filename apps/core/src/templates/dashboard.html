@@ -254,11 +254,8 @@
 					<p class="subtitle">Manage your authentication and account links</p>
 
 					<div class="button-group">
-						<button onclick="toggleMasking()" class="btn btn-primary" id="maskToggleBtn">
-							<span id="maskIcon">🔒</span> <span id="maskText">Show Real Data</span>
-						</button>
-						<button onclick="logout()" class="btn btn-danger">Logout</button>
 						<a href="https://pleaseignore.app/groups" class="btn btn-secondary">Groups</a>
+						<button onclick="logout()" class="btn btn-danger">Logout</button>
 					</div>
 				</div>
 
@@ -302,47 +299,6 @@
 		</div>
 
 		<script>
-			let maskingEnabled = localStorage.getItem('maskingEnabled') !== 'false' // Default to true
-
-			// Masking utilities
-			function maskEmail(email) {
-				if (!maskingEnabled || !email) return email
-				const [user, domain] = email.split('@')
-				if (!domain) return '***@***.***'
-				const maskedUser = user.length <= 2 ? '***' : user[0] + '***' + user[user.length - 1]
-				const [domainName, tld] = domain.split('.')
-				const maskedDomain = domainName.length <= 2 ? '***' : domainName[0] + '***'
-				return `${maskedUser}@${maskedDomain}.${tld || '***'}`
-			}
-
-			function maskName(name) {
-				if (!maskingEnabled || !name) return name
-				const parts = name.split(' ')
-				return parts
-					.map((part) => {
-						if (part.length <= 2) return '***'
-						return part[0] + '***'
-					})
-					.join(' ')
-			}
-
-			function maskId(id, showLength = 8) {
-				if (!maskingEnabled || !id) return id
-				if (id.length <= showLength) return '***'
-				return id.substring(0, showLength) + '...'
-			}
-
-			function maskUsername(username) {
-				if (!maskingEnabled || !username) return username
-				if (username.length <= 3) return '***'
-				return username.substring(0, 2) + '***' + username[username.length - 1]
-			}
-
-			function toggleMasking() {
-				maskingEnabled = !maskingEnabled
-				localStorage.setItem('maskingEnabled', maskingEnabled)
-				loadDashboard() // Reload to apply changes
-			}
 
 			async function loadDashboard() {
 				try {
@@ -389,11 +345,11 @@
 					const providerLinksData = await providerLinksRes.json()
 					const providerLinks = providerLinksData.providerLinks || []
 
-					// Update UI with masking
-					document.getElementById('userName').textContent = maskName(session.name)
+					// Update UI
+					document.getElementById('userName').textContent = session.name
 					document.getElementById('provider').textContent = session.provider
-					document.getElementById('email').textContent = maskEmail(session.email)
-					document.getElementById('name').textContent = maskName(session.name)
+					document.getElementById('email').textContent = session.email
+					document.getElementById('name').textContent = session.name
 
 					// Display link status
 					const linkStatusDiv = document.getElementById('linkStatus')
@@ -410,11 +366,11 @@
 							</div>
 							<div class="info-row">
 								<span class="info-label">Legacy User ID</span>
-								<span class="info-value">${maskId(link.legacyUserId, 6)}</span>
+								<span class="info-value">${link.legacyUserId}</span>
 							</div>
 							<div class="info-row">
 								<span class="info-label">Username</span>
-								<span class="info-value">${maskUsername(link.legacyUsername)}</span>
+								<span class="info-value">${link.legacyUsername}</span>
 							</div>
 							<div class="info-row">
 								<span class="info-label">Linked At</span>
@@ -434,17 +390,6 @@
 								</button>
 							</div>
 						`
-					}
-
-					// Update masking toggle button
-					const maskIcon = document.getElementById('maskIcon')
-					const maskText = document.getElementById('maskText')
-					if (maskingEnabled) {
-						maskIcon.textContent = '🔒'
-						maskText.textContent = 'Show Real Data'
-					} else {
-						maskIcon.textContent = '👁️'
-						maskText.textContent = 'Hide Sensitive Data'
 					}
 
 					// Display characters
@@ -513,7 +458,7 @@
 									</svg>
 									Discord
 								</div>
-								<span class="provider-username">${maskUsername(discordLink.providerUsername)}</span>
+								<span class="provider-username">${discordLink.providerUsername}</span>
 							</div>
 							<div style="margin-top: 1rem; color: #666; font-size: 0.9rem;">
 								<p>Linked on ${new Date(discordLink.linkedAt).toLocaleString()}</p>

@@ -353,15 +353,8 @@ const app = new Hono<App>()
 							<p>Redirecting to your dashboard...</p>
 						</div>
 						<script>
-							// Mask username by default
-							function maskUsername(username) {
-								if (username.length <= 3) return '***';
-								return username.substring(0, 2) + '***' + username[username.length - 1];
-							}
-
 							const username = '${link.legacyUsername}';
-							const maskingEnabled = localStorage.getItem('maskingEnabled') !== 'false';
-							document.getElementById('legacyUsername').textContent = maskingEnabled ? maskUsername(username) : username;
+							document.getElementById('legacyUsername').textContent = username;
 
 							setTimeout(() => {
 								window.location.href = '/dashboard';

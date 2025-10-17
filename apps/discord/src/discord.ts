@@ -39,134 +39,19 @@ export interface DiscordOAuthTokens {
  * Auth to Discord bridge
  */
 export class Discord extends DurableObject<Env> {
-	private schemaInitialized = false
-	private readonly CURRENT_SCHEMA_VERSION = 3
-
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env)
 	}
 
-	private async getSchemaVersion(): Promise<number> {
-		// Create schema_version table if it doesn't exist
-		await this.ctx.storage.sql.exec(`
-			CREATE TABLE IF NOT EXISTS schema_version (
-				version INTEGER PRIMARY KEY,
-				applied_at INTEGER NOT NULL
-			)
-		`)
-
-		const rows = await this.ctx.storage.sql
-			.exec<{ version: number }>('SELECT version FROM schema_version ORDER BY version DESC LIMIT 1')
-			.toArray()
-
-		return rows.length > 0 ? rows[0].version : 0
+	private async initializeSchema() {
+		// await this.createSchema()
 	}
 
-	private async setSchemaVersion(version: number): Promise<void> {
-		const now = Date.now()
-		await this.ctx.storage.sql.exec(
-			'INSERT OR REPLACE INTO schema_version (version, applied_at) VALUES (?, ?)',
-			version,
-			now
-		)
-	}
-
-	private async ensureSchema() {
-		// Only run migrations once per DO instance
-		if (this.schemaInitialized) {
-			return
-		}
-
-		try {
-			const currentVersion = await this.getSchemaVersion()
-
-			logger.info('Running schema migrations', {
-				currentVersion,
-				targetVersion: this.CURRENT_SCHEMA_VERSION,
-			})
-
-			if (currentVersion < 1) {
-				await this.runMigration1()
-				await this.setSchemaVersion(1)
-				logger.info('Applied migration 1: Initial schema')
-			}
-
-			if (currentVersion < 2) {
-				await this.runMigration2()
-				await this.setSchemaVersion(2)
-				logger.info('Applied migration 2: Rename social_user_id to root_user_id')
-			}
-
-			this.schemaInitialized = true
-		} catch (error) {
-			// If migration fails, don't mark as initialized so it retries
-			logger.error('Schema migration failed', {
-				error: error instanceof Error ? error.message : String(error),
-			})
-			throw error
-		}
-	}
-
-	private async runMigration1(): Promise<void> {
+	private async createSchema(): Promise<void> {
 		// Drop table if exists to ensure clean state
 		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS discord_tokens')
 
 		// Discord tokens table - stores OAuth tokens for Discord users
-		await this.ctx.storage.sql.exec(`
-			CREATE TABLE IF NOT EXISTS discord_tokens (
-				discord_user_id TEXT PRIMARY KEY,
-				discord_username TEXT NOT NULL,
-				social_user_id TEXT NOT NULL,
-				access_token TEXT NOT NULL,
-				refresh_token TEXT NOT NULL,
-				expires_at INTEGER NOT NULL,
-				created_at INTEGER NOT NULL,
-				updated_at INTEGER NOT NULL
-			)
-		`)
-
-		await this.ctx.storage.sql.exec(`
-			CREATE INDEX IF NOT EXISTS idx_discord_tokens_social_user ON discord_tokens(social_user_id)
-		`)
-
-		await this.ctx.storage.sql.exec(`
-			CREATE INDEX IF NOT EXISTS idx_discord_tokens_expires_at ON discord_tokens(expires_at)
-		`)
-	}
-
-	private async runMigration2(): Promise<void> {
-		// Drop and recreate table with root_user_id instead of social_user_id
-		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS discord_tokens')
-
-		await this.ctx.storage.sql.exec(`
-			CREATE TABLE discord_tokens (
-				discord_user_id TEXT PRIMARY KEY,
-				discord_username TEXT NOT NULL,
-				root_user_id TEXT NOT NULL,
-				access_token TEXT NOT NULL,
-				refresh_token TEXT NOT NULL,
-				expires_at INTEGER NOT NULL,
-				created_at INTEGER NOT NULL,
-				updated_at INTEGER NOT NULL
-			)
-		`)
-
-		await this.ctx.storage.sql.exec(`
-			CREATE INDEX idx_discord_tokens_root_user ON discord_tokens(root_user_id)
-		`)
-
-		await this.ctx.storage.sql.exec(`
-			CREATE INDEX idx_discord_tokens_expires_at ON discord_tokens(expires_at)
-		`)
-	}
-
-	private async runMigration3(): Promise<void> {
-		// TEMPORARY: Force complete database reset to ensure root_user_id column exists
-		// This migration will be removed after running once
-		logger.warn('Running TEMPORARY migration 3: Forcing database reset')
-
-		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS discord_tokens')
-
 		await this.ctx.storage.sql.exec(`
 			CREATE TABLE discord_tokens (
 				discord_user_id TEXT PRIMARY KEY,
@@ -289,7 +174,7 @@ export class Discord extends DurableObject<Env> {
 		rootUserId: string,
 		tokens: DiscordOAuthTokens
 	): Promise<{ discordUserId: string; discordUsername: string }> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const { accessToken, refreshToken, expiresIn } = tokens
 
@@ -393,7 +278,7 @@ export class Discord extends DurableObject<Env> {
 		discordUserId?: string
 		rootUserId?: string
 	}): Promise<DiscordTokenInfo> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const { discordUserId, rootUserId } = params
 
@@ -415,10 +300,7 @@ export class Discord extends DurableObject<Env> {
 				.toArray()
 		} else {
 			rows = await this.ctx.storage.sql
-				.exec<DiscordTokenData>(
-					'SELECT * FROM discord_tokens WHERE root_user_id = ?',
-					rootUserId
-				)
+				.exec<DiscordTokenData>('SELECT * FROM discord_tokens WHERE root_user_id = ?', rootUserId)
 				.toArray()
 		}
 

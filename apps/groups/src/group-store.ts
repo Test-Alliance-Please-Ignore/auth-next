@@ -180,75 +180,23 @@ export interface GroupCategory {
 }
 
 export class GroupStore extends DurableObject<Env> {
-	private schemaInitialized = false
-	private readonly CURRENT_SCHEMA_VERSION = 1
-
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env)
 	}
 
-	private async getSchemaVersion(): Promise<number> {
-		// Create schema_version table if it doesn't exist
-		await this.ctx.storage.sql.exec(`
-			CREATE TABLE IF NOT EXISTS schema_version (
-				version INTEGER PRIMARY KEY,
-				applied_at INTEGER NOT NULL
-			)
-		`)
-
-		const rows = await this.ctx.storage.sql
-			.exec<{ version: number }>('SELECT version FROM schema_version ORDER BY version DESC LIMIT 1')
-			.toArray()
-
-		return rows.length > 0 ? rows[0].version : 0
+	private async initializeSchema() {
+		// await this.createSchema()
 	}
 
-	private async setSchemaVersion(version: number): Promise<void> {
-		const now = Date.now()
-		await this.ctx.storage.sql.exec(
-			'INSERT OR REPLACE INTO schema_version (version, applied_at) VALUES (?, ?)',
-			version,
-			now
-		)
-	}
-
-	private async ensureSchema() {
-		// Only run migrations once per DO instance
-		if (this.schemaInitialized) {
-			return
-		}
-
-		try {
-			const currentVersion = await this.getSchemaVersion()
-
-			logger.info('Running group store schema migrations', {
-				currentVersion,
-				targetVersion: this.CURRENT_SCHEMA_VERSION,
-			})
-
-			if (currentVersion < 1) {
-				await this.runMigration1()
-				await this.setSchemaVersion(1)
-				logger.info('Applied migration 1: Initial schema')
-			}
-
-			this.schemaInitialized = true
-		} catch (error) {
-			// If migration fails, don't mark as initialized so it retries
-			logger.error('Group store schema migration failed', {
-				error: error instanceof Error ? error.message : String(error),
-			})
-			throw error
-		}
-	}
-
-	private async runMigration1(): Promise<void> {
+	private async createSchema(): Promise<void> {
 		// Drop all tables first to ensure clean schema
 		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS groups')
 		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS group_members')
 		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS group_join_requests')
 		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS group_invites')
 		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS group_categories')
+		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS group_roles')
+		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS derived_group_rules')
 
 		// Groups table
 		await this.ctx.storage.sql.exec(`
@@ -270,20 +218,20 @@ export class GroupStore extends DurableObject<Env> {
 		`)
 
 		await this.ctx.storage.sql.exec(`
-			CREATE INDEX IF NOT EXISTS idx_groups_slug ON groups(slug)
+			CREATE INDEX idx_groups_slug ON groups(slug)
 		`)
 
 		await this.ctx.storage.sql.exec(`
-			CREATE INDEX IF NOT EXISTS idx_groups_owner ON groups(owner_id)
+			CREATE INDEX idx_groups_owner ON groups(owner_id)
 		`)
 
 		await this.ctx.storage.sql.exec(`
-			CREATE INDEX IF NOT EXISTS idx_groups_type ON groups(group_type)
+			CREATE INDEX idx_groups_type ON groups(group_type)
 		`)
 
 		// Group members table
 		await this.ctx.storage.sql.exec(`
-			CREATE TABLE IF NOT EXISTS group_members (
+			CREATE TABLE group_members (
 				membership_id TEXT PRIMARY KEY,
 				group_id TEXT NOT NULL,
 				root_user_id TEXT NOT NULL,
@@ -298,20 +246,20 @@ export class GroupStore extends DurableObject<Env> {
 		`)
 
 		await this.ctx.storage.sql.exec(`
-			CREATE INDEX IF NOT EXISTS idx_group_members_group ON group_members(group_id)
+			CREATE INDEX idx_group_members_group ON group_members(group_id)
 		`)
 
 		await this.ctx.storage.sql.exec(`
-			CREATE INDEX IF NOT EXISTS idx_group_members_user ON group_members(root_user_id)
+			CREATE INDEX idx_group_members_user ON group_members(root_user_id)
 		`)
 
 		await this.ctx.storage.sql.exec(`
-			CREATE INDEX IF NOT EXISTS idx_group_members_status ON group_members(status)
+			CREATE INDEX idx_group_members_status ON group_members(status)
 		`)
 
 		// Group join requests table
 		await this.ctx.storage.sql.exec(`
-			CREATE TABLE IF NOT EXISTS group_join_requests (
+			CREATE TABLE group_join_requests (
 				request_id TEXT PRIMARY KEY,
 				group_id TEXT NOT NULL,
 				root_user_id TEXT NOT NULL,
@@ -325,20 +273,20 @@ export class GroupStore extends DurableObject<Env> {
 		`)
 
 		await this.ctx.storage.sql.exec(`
-			CREATE INDEX IF NOT EXISTS idx_join_requests_group ON group_join_requests(group_id)
+			CREATE INDEX idx_join_requests_group ON group_join_requests(group_id)
 		`)
 
 		await this.ctx.storage.sql.exec(`
-			CREATE INDEX IF NOT EXISTS idx_join_requests_user ON group_join_requests(root_user_id)
+			CREATE INDEX idx_join_requests_user ON group_join_requests(root_user_id)
 		`)
 
 		await this.ctx.storage.sql.exec(`
-			CREATE INDEX IF NOT EXISTS idx_join_requests_status ON group_join_requests(status)
+			CREATE INDEX idx_join_requests_status ON group_join_requests(status)
 		`)
 
 		// Group invites table
 		await this.ctx.storage.sql.exec(`
-			CREATE TABLE IF NOT EXISTS group_invites (
+			CREATE TABLE group_invites (
 				invite_id TEXT PRIMARY KEY,
 				group_id TEXT NOT NULL,
 				invited_user_id TEXT NOT NULL,
@@ -355,15 +303,15 @@ export class GroupStore extends DurableObject<Env> {
 		`)
 
 		await this.ctx.storage.sql.exec(`
-			CREATE INDEX IF NOT EXISTS idx_invites_group ON group_invites(group_id)
+			CREATE INDEX idx_invites_group ON group_invites(group_id)
 		`)
 
 		await this.ctx.storage.sql.exec(`
-			CREATE INDEX IF NOT EXISTS idx_invites_user ON group_invites(invited_user_id)
+			CREATE INDEX idx_invites_user ON group_invites(invited_user_id)
 		`)
 
 		await this.ctx.storage.sql.exec(`
-			CREATE INDEX IF NOT EXISTS idx_invites_status ON group_invites(status)
+			CREATE INDEX idx_invites_status ON group_invites(status)
 		`)
 
 		await this.ctx.storage.sql.exec(`
@@ -372,7 +320,7 @@ export class GroupStore extends DurableObject<Env> {
 
 		// Group categories table
 		await this.ctx.storage.sql.exec(`
-			CREATE TABLE IF NOT EXISTS group_categories (
+			CREATE TABLE group_categories (
 				category_id TEXT PRIMARY KEY,
 				name TEXT NOT NULL UNIQUE,
 				description TEXT,
@@ -383,16 +331,16 @@ export class GroupStore extends DurableObject<Env> {
 		`)
 
 		await this.ctx.storage.sql.exec(`
-			CREATE INDEX IF NOT EXISTS idx_categories_order ON group_categories(display_order)
+			CREATE INDEX idx_categories_order ON group_categories(display_order)
 		`)
 
 		await this.ctx.storage.sql.exec(`
-			CREATE INDEX IF NOT EXISTS idx_groups_category ON groups(category_id)
+			CREATE INDEX idx_groups_category ON groups(category_id)
 		`)
 
 		// Group roles table
 		await this.ctx.storage.sql.exec(`
-			CREATE TABLE IF NOT EXISTS group_roles (
+			CREATE TABLE group_roles (
 				role_id TEXT PRIMARY KEY,
 				group_id TEXT NOT NULL,
 				role_name TEXT NOT NULL,
@@ -405,12 +353,12 @@ export class GroupStore extends DurableObject<Env> {
 		`)
 
 		await this.ctx.storage.sql.exec(`
-			CREATE INDEX IF NOT EXISTS idx_group_roles_group ON group_roles(group_id)
+			CREATE INDEX idx_group_roles_group ON group_roles(group_id)
 		`)
 
 		// Derived group rules table
 		await this.ctx.storage.sql.exec(`
-			CREATE TABLE IF NOT EXISTS derived_group_rules (
+			CREATE TABLE derived_group_rules (
 				rule_id TEXT PRIMARY KEY,
 				derived_group_id TEXT NOT NULL,
 				rule_type TEXT NOT NULL,
@@ -424,11 +372,11 @@ export class GroupStore extends DurableObject<Env> {
 		`)
 
 		await this.ctx.storage.sql.exec(`
-			CREATE INDEX IF NOT EXISTS idx_derived_rules_group ON derived_group_rules(derived_group_id)
+			CREATE INDEX idx_derived_rules_group ON derived_group_rules(derived_group_id)
 		`)
 
 		await this.ctx.storage.sql.exec(`
-			CREATE INDEX IF NOT EXISTS idx_derived_rules_active ON derived_group_rules(is_active)
+			CREATE INDEX idx_derived_rules_active ON derived_group_rules(is_active)
 		`)
 	}
 
@@ -469,7 +417,7 @@ export class GroupStore extends DurableObject<Env> {
 		autoApproveRules?: Record<string, unknown>,
 		categoryId?: string | null
 	): Promise<Group> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const groupId = this.generateId()
 		const slug = this.generateSlug(name)
@@ -531,7 +479,7 @@ export class GroupStore extends DurableObject<Env> {
 	}
 
 	async getGroupBySlug(slug: string): Promise<Group | null> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<GroupData>('SELECT * FROM groups WHERE slug = ?', slug)
@@ -560,7 +508,7 @@ export class GroupStore extends DurableObject<Env> {
 	}
 
 	async getGroupById(groupId: string): Promise<Group | null> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<GroupData>('SELECT * FROM groups WHERE group_id = ?', groupId)
@@ -599,7 +547,7 @@ export class GroupStore extends DurableObject<Env> {
 			categoryId?: string | null
 		}
 	): Promise<Group> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const now = Date.now()
 		const group = await this.getGroupById(groupId)
@@ -673,7 +621,7 @@ export class GroupStore extends DurableObject<Env> {
 	}
 
 	async deleteGroup(groupId: string): Promise<void> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const group = await this.getGroupById(groupId)
 		if (!group) {
@@ -710,7 +658,7 @@ export class GroupStore extends DurableObject<Env> {
 		limit?: number,
 		offset?: number
 	): Promise<{ total: number; groups: Group[] }> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const parsedLimit = Math.min(limit || 50, 100)
 		const parsedOffset = offset || 0
@@ -777,7 +725,7 @@ export class GroupStore extends DurableObject<Env> {
 		assignmentType: 'manual' | 'auto_assigned' | 'derived' | 'invited',
 		status: 'active' | 'pending' | 'suspended' = 'active'
 	): Promise<GroupMember> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const group = await this.getGroupById(groupId)
 		if (!group) {
@@ -836,7 +784,7 @@ export class GroupStore extends DurableObject<Env> {
 	}
 
 	async getMembership(groupId: string, rootUserId: string): Promise<GroupMember | null> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<GroupMemberData>(
@@ -894,7 +842,7 @@ export class GroupStore extends DurableObject<Env> {
 	}
 
 	async removeMember(groupId: string, rootUserId: string): Promise<void> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const membership = await this.getMembership(groupId, rootUserId)
 		if (!membership) {
@@ -922,7 +870,7 @@ export class GroupStore extends DurableObject<Env> {
 		rootUserId: string,
 		role: 'owner' | 'admin' | 'moderator' | 'member'
 	): Promise<void> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const membership = await this.getMembership(groupId, rootUserId)
 		if (!membership) {
@@ -955,7 +903,7 @@ export class GroupStore extends DurableObject<Env> {
 		limit?: number,
 		offset?: number
 	): Promise<{ total: number; members: GroupMember[] }> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const parsedLimit = Math.min(limit || 50, 100)
 		const parsedOffset = offset || 0
@@ -994,7 +942,7 @@ export class GroupStore extends DurableObject<Env> {
 	}
 
 	async getUserGroups(rootUserId: string): Promise<Group[]> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<GroupData>(
@@ -1053,7 +1001,7 @@ export class GroupStore extends DurableObject<Env> {
 		rootUserId: string,
 		message: string | null
 	): Promise<JoinRequest> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const group = await this.getGroupById(groupId)
 		if (!group) {
@@ -1120,7 +1068,7 @@ export class GroupStore extends DurableObject<Env> {
 	}
 
 	async approveJoinRequest(requestId: string, reviewerId: string): Promise<void> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<JoinRequestData>('SELECT * FROM group_join_requests WHERE request_id = ?', requestId)
@@ -1162,7 +1110,7 @@ export class GroupStore extends DurableObject<Env> {
 	}
 
 	async rejectJoinRequest(requestId: string, reviewerId: string): Promise<void> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<JoinRequestData>('SELECT * FROM group_join_requests WHERE request_id = ?', requestId)
@@ -1203,7 +1151,7 @@ export class GroupStore extends DurableObject<Env> {
 		groupId: string,
 		status?: 'pending' | 'approved' | 'rejected'
 	): Promise<JoinRequest[]> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const query = status
 			? 'SELECT * FROM group_join_requests WHERE group_id = ? AND status = ? ORDER BY created_at DESC'
@@ -1234,7 +1182,7 @@ export class GroupStore extends DurableObject<Env> {
 		invitedBy: string,
 		expiresInDays: number = 7
 	): Promise<GroupInvite> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const group = await this.getGroupById(groupId)
 		if (!group) {
@@ -1303,7 +1251,7 @@ export class GroupStore extends DurableObject<Env> {
 	}
 
 	async acceptInvite(inviteId: string): Promise<void> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<GroupInviteData>('SELECT * FROM group_invites WHERE invite_id = ?', inviteId)
@@ -1353,7 +1301,7 @@ export class GroupStore extends DurableObject<Env> {
 	}
 
 	async declineInvite(inviteId: string): Promise<void> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<GroupInviteData>('SELECT * FROM group_invites WHERE invite_id = ?', inviteId)
@@ -1388,7 +1336,7 @@ export class GroupStore extends DurableObject<Env> {
 	}
 
 	async listUserInvites(rootUserId: string): Promise<GroupInvite[]> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const now = Date.now()
 
@@ -1432,7 +1380,7 @@ export class GroupStore extends DurableObject<Env> {
 		maxUses: number | null = null,
 		expiresInDays: number = 7
 	): Promise<GroupInvite> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const group = await this.getGroupById(groupId)
 		if (!group) {
@@ -1489,7 +1437,7 @@ export class GroupStore extends DurableObject<Env> {
 	}
 
 	async redeemInviteCode(code: string, rootUserId: string): Promise<void> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<GroupInviteData>('SELECT * FROM group_invites WHERE invite_code = ?', code)
@@ -1561,7 +1509,7 @@ export class GroupStore extends DurableObject<Env> {
 	}
 
 	async listGroupInvites(groupId: string): Promise<GroupInvite[]> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const now = Date.now()
 
@@ -1598,8 +1546,36 @@ export class GroupStore extends DurableObject<Env> {
 		}))
 	}
 
+	async getInviteById(inviteId: string): Promise<GroupInvite | null> {
+		await this.initializeSchema()
+
+		const rows = await this.ctx.storage.sql
+			.exec<GroupInviteData>('SELECT * FROM group_invites WHERE invite_id = ?', inviteId)
+			.toArray()
+
+		if (rows.length === 0) {
+			return null
+		}
+
+		const row = rows[0]
+		return {
+			inviteId: row.invite_id,
+			groupId: row.group_id,
+			invitedUserId: row.invited_user_id || null,
+			invitedBy: row.invited_by,
+			status: row.status as 'pending' | 'accepted' | 'declined' | 'expired' | 'revoked',
+			expiresAt: row.expires_at,
+			createdAt: row.created_at,
+			updatedAt: row.updated_at,
+			inviteCode: row.invite_code || null,
+			maxUses: row.max_uses || null,
+			currentUses: row.current_uses || 0,
+			revokedAt: row.revoked_at || null,
+		}
+	}
+
 	async revokeInvite(inviteId: string): Promise<void> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<GroupInviteData>('SELECT * FROM group_invites WHERE invite_id = ?', inviteId)
@@ -1640,7 +1616,7 @@ export class GroupStore extends DurableObject<Env> {
 		invitedBy: string,
 		expiresInDays: number = 7
 	): Promise<GroupInvite[]> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const group = await this.getGroupById(groupId)
 		if (!group) {
@@ -1737,7 +1713,7 @@ export class GroupStore extends DurableObject<Env> {
 		permissions: string[],
 		priority: number
 	): Promise<GroupRole> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const group = await this.getGroupById(groupId)
 		if (!group) {
@@ -1782,7 +1758,7 @@ export class GroupStore extends DurableObject<Env> {
 	}
 
 	async listGroupRoles(groupId: string): Promise<GroupRole[]> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<GroupRoleData>(
@@ -1811,7 +1787,7 @@ export class GroupStore extends DurableObject<Env> {
 		conditionRules: Record<string, unknown> | null,
 		priority: number
 	): Promise<DerivedGroupRule> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const group = await this.getGroupById(derivedGroupId)
 		if (!group) {
@@ -1864,7 +1840,7 @@ export class GroupStore extends DurableObject<Env> {
 	}
 
 	async listDerivedGroupRules(derivedGroupId: string): Promise<DerivedGroupRule[]> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<DerivedGroupRuleData>(
@@ -1888,7 +1864,7 @@ export class GroupStore extends DurableObject<Env> {
 
 	// This would be called by a scheduled alarm or manually
 	async syncDerivedGroupMemberships(derivedGroupId: string): Promise<void> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rules = await this.listDerivedGroupRules(derivedGroupId)
 		const activeRules = rules.filter((r) => r.isActive)
@@ -1962,7 +1938,7 @@ export class GroupStore extends DurableObject<Env> {
 		description: string | null,
 		displayOrder: number
 	): Promise<GroupCategory> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const categoryId = this.generateId()
 		const now = Date.now()
@@ -1999,7 +1975,7 @@ export class GroupStore extends DurableObject<Env> {
 	}
 
 	async getCategory(categoryId: string): Promise<GroupCategory | null> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<GroupCategoryData>('SELECT * FROM group_categories WHERE category_id = ?', categoryId)
@@ -2021,7 +1997,7 @@ export class GroupStore extends DurableObject<Env> {
 	}
 
 	async listCategories(): Promise<GroupCategory[]> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<GroupCategoryData>(
@@ -2047,7 +2023,7 @@ export class GroupStore extends DurableObject<Env> {
 			displayOrder?: number
 		}
 	): Promise<GroupCategory> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const category = await this.getCategory(categoryId)
 		if (!category) {
@@ -2101,7 +2077,7 @@ export class GroupStore extends DurableObject<Env> {
 	}
 
 	async deleteCategory(categoryId: string): Promise<void> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const category = await this.getCategory(categoryId)
 		if (!category) {

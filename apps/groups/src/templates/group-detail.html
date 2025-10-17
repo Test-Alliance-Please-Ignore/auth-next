@@ -756,15 +756,31 @@
 					})
 
 					if (!response.ok) {
-						const error = await response.json()
-						throw new Error(error.error || 'Failed to redeem invite code')
+						let errorMessage = 'Failed to redeem invite code'
+						try {
+							const error = await response.json()
+							// Handle different error formats
+							if (typeof error.error === 'string') {
+								errorMessage = error.error
+							} else if (error.error && typeof error.error === 'object') {
+								errorMessage = error.error.message || JSON.stringify(error.error)
+							} else if (typeof error === 'string') {
+								errorMessage = error
+							}
+						} catch (parseError) {
+							// If JSON parsing fails, use status text
+							errorMessage = response.statusText || errorMessage
+						}
+						throw new Error(errorMessage)
 					}
 
 					const data = await response.json()
 					alert(data.message || 'Successfully joined the group!')
 					location.reload()
 				} catch (error) {
-					alert('Error: ' + error.message)
+					const errorMessage = error instanceof Error ? error.message : String(error)
+					console.error('Redeem error:', error)
+					alert('Error: ' + errorMessage)
 				}
 			}
 

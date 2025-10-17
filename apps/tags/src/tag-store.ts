@@ -50,8 +50,6 @@ export interface TagWithSources extends Tag {
 }
 
 export class TagStore extends DurableObject<Env> {
-	private schemaInitialized = false
-	private readonly CURRENT_SCHEMA_VERSION = 1
 	private readonly EVALUATION_INTERVAL_MS = 60 * 60 * 1000 // 1 hour
 	private readonly BATCH_SIZE = 100 // Process 100 users per alarm
 
@@ -59,67 +57,26 @@ export class TagStore extends DurableObject<Env> {
 		super(ctx, env)
 	}
 
-	private async getSchemaVersion(): Promise<number> {
-		// Create schema_version table if it doesn't exist
-		await this.ctx.storage.sql.exec(`
-			CREATE TABLE IF NOT EXISTS schema_version (
-				version INTEGER PRIMARY KEY,
-				applied_at INTEGER NOT NULL
-			)
-		`)
-
-		const rows = await this.ctx.storage.sql
-			.exec<{ version: number }>('SELECT version FROM schema_version ORDER BY version DESC LIMIT 1')
-			.toArray()
-
-		return rows.length > 0 ? rows[0].version : 0
-	}
-
-	private async setSchemaVersion(version: number): Promise<void> {
-		const now = Date.now()
-		await this.ctx.storage.sql.exec(
-			'INSERT OR REPLACE INTO schema_version (version, applied_at) VALUES (?, ?)',
-			version,
-			now
-		)
-	}
-
-	private async ensureSchema() {
-		// Only run migrations once per DO instance
-		if (this.schemaInitialized) {
-			return
-		}
-
-		try {
-			const currentVersion = await this.getSchemaVersion()
-
-			logger.info('Running tag store schema migrations', {
-				currentVersion,
-				targetVersion: this.CURRENT_SCHEMA_VERSION,
+	private async initializeSchema() {
+		logger
+			.withTags({
+				type: 'tagstore_init_schema_start',
 			})
-
-			// Migration 1: Initial schema
-			if (currentVersion < 1) {
-				await this.runMigration1()
-				await this.setSchemaVersion(1)
-				logger.info('Applied migration 1: Initial tag schema')
-			}
-
-			this.schemaInitialized = true
-		} catch (error) {
-			// If migration fails, don't mark as initialized so it retries
-			logger.error('Tag store schema migration failed', {
-				error: error instanceof Error ? error.message : String(error),
+			.info('Initializing TagStore schema')
+		await this.createSchema()
+		logger
+			.withTags({
+				type: 'tagstore_init_schema_complete',
 			})
-			throw error
-		}
+			.info('TagStore schema initialization complete')
 	}
 
-	private async runMigration1(): Promise<void> {
-		// Drop existing tables to ensure clean state
-		await this.ctx.storage.sql.exec(`DROP TABLE IF EXISTS tags`)
-		await this.ctx.storage.sql.exec(`DROP TABLE IF EXISTS user_tags`)
-		await this.ctx.storage.sql.exec(`DROP TABLE IF EXISTS evaluation_schedule`)
+	private async createSchema(): Promise<void> {
+		logger
+			.withTags({
+				type: 'tagstore_create_schema_start',
+			})
+			.info('Creating TagStore schema tables')
 
 		// Tags table
 		await this.ctx.storage.sql.exec(`
@@ -133,6 +90,12 @@ export class TagStore extends DurableObject<Env> {
 				updated_at INTEGER NOT NULL
 			)
 		`)
+
+		logger
+			.withTags({
+				type: 'tagstore_table_created',
+			})
+			.info('TagStore table created: tags')
 
 		await this.ctx.storage.sql.exec(`
 			CREATE INDEX IF NOT EXISTS idx_tags_type ON tags(tag_type)
@@ -155,6 +118,12 @@ export class TagStore extends DurableObject<Env> {
 			)
 		`)
 
+		logger
+			.withTags({
+				type: 'tagstore_table_created',
+			})
+			.info('TagStore table created: user_tags')
+
 		await this.ctx.storage.sql.exec(`
 			CREATE INDEX IF NOT EXISTS idx_user_tags_user ON user_tags(root_user_id)
 		`)
@@ -176,9 +145,21 @@ export class TagStore extends DurableObject<Env> {
 			)
 		`)
 
+		logger
+			.withTags({
+				type: 'tagstore_table_created',
+			})
+			.info('TagStore table created: evaluation_schedule')
+
 		await this.ctx.storage.sql.exec(`
 			CREATE INDEX IF NOT EXISTS idx_evaluation_schedule_next ON evaluation_schedule(next_evaluation_at)
 		`)
+
+		logger
+			.withTags({
+				type: 'tagstore_create_schema_complete',
+			})
+			.info('TagStore schema tables and indexes created successfully')
 	}
 
 	private generateId(): string {
@@ -205,7 +186,7 @@ export class TagStore extends DurableObject<Env> {
 		eveId: number,
 		metadata?: Record<string, unknown>
 	): Promise<Tag> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const now = Date.now()
 		const existing = await this.getTag(urn)
@@ -253,7 +234,7 @@ export class TagStore extends DurableObject<Env> {
 	}
 
 	async getTag(urn: string): Promise<Tag | null> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<TagData>('SELECT * FROM tags WHERE tag_urn = ?', urn)
@@ -277,7 +258,7 @@ export class TagStore extends DurableObject<Env> {
 	}
 
 	async listAllTags(): Promise<Tag[]> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<TagData>('SELECT * FROM tags ORDER BY display_name ASC')
@@ -298,7 +279,7 @@ export class TagStore extends DurableObject<Env> {
 	// ========== User Tag Assignment ==========
 
 	async assignTagToUser(userId: string, tagUrn: string, characterId: number): Promise<void> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const assignmentId = this.generateId()
 		const now = Date.now()
@@ -335,7 +316,7 @@ export class TagStore extends DurableObject<Env> {
 	}
 
 	async removeTagFromUser(userId: string, tagUrn: string, characterId?: number): Promise<void> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		if (characterId) {
 			// Remove specific character's contribution to this tag
@@ -362,7 +343,7 @@ export class TagStore extends DurableObject<Env> {
 	}
 
 	async removeAllTagsForCharacter(characterId: number): Promise<void> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		await this.ctx.storage.sql.exec(
 			'DELETE FROM user_tags WHERE source_character_id = ?',
@@ -375,7 +356,7 @@ export class TagStore extends DurableObject<Env> {
 	}
 
 	async getUserTags(userId: string): Promise<TagWithSources[]> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		// Get all unique tags for this user with their source characters
 		const rows = await this.ctx.storage.sql
@@ -406,7 +387,7 @@ export class TagStore extends DurableObject<Env> {
 	}
 
 	async getUserTagAssignments(userId: string): Promise<UserTag[]> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<UserTagData>('SELECT * FROM user_tags WHERE root_user_id = ?', userId)
@@ -423,7 +404,7 @@ export class TagStore extends DurableObject<Env> {
 	}
 
 	async getUsersWithTag(tagUrn: string): Promise<string[]> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<{
@@ -440,7 +421,7 @@ export class TagStore extends DurableObject<Env> {
 		userId: string,
 		delayMs: number = this.EVALUATION_INTERVAL_MS
 	): Promise<void> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const now = Date.now()
 		const nextEvaluation = now + delayMs
@@ -459,14 +440,18 @@ export class TagStore extends DurableObject<Env> {
 	}
 
 	async getUsersNeedingEvaluation(limit: number = this.BATCH_SIZE): Promise<string[]> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const now = Date.now()
 
 		const rows = await this.ctx.storage.sql
 			.exec<{
 				root_user_id: string
-			}>('SELECT root_user_id FROM evaluation_schedule WHERE next_evaluation_at <= ? ORDER BY next_evaluation_at ASC LIMIT ?', now, limit)
+			}>(
+				'SELECT root_user_id FROM evaluation_schedule WHERE next_evaluation_at <= ? ORDER BY next_evaluation_at ASC LIMIT ?',
+				now,
+				limit
+			)
 			.toArray()
 
 		return rows.map((row) => row.root_user_id)
@@ -501,7 +486,7 @@ export class TagStore extends DurableObject<Env> {
 	// ========== Tag Evaluation ==========
 
 	async evaluateUserTags(userId: string): Promise<void> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const { TagRuleEngine, getUserCharacters } = await import('./tag-rules')
 
@@ -584,7 +569,7 @@ export class TagStore extends DurableObject<Env> {
 	// ========== Alarm Handler ==========
 
 	async alarm(): Promise<void> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		logger.info('Tag evaluation alarm triggered')
 

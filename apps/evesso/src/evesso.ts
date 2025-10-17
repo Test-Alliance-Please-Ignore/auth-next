@@ -51,76 +51,22 @@ export interface AccessTokenInfo {
  * Handles EVE SSO OAuth tokens, proxy tokens, and OAuth state management
  */
 export class EveSSO extends DurableObject<Env> {
-	private schemaInitialized = false
-	private readonly CURRENT_SCHEMA_VERSION = 1
-
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env)
 	}
 
-	private async getSchemaVersion(): Promise<number> {
-		// Create schema_version table if it doesn't exist
-		await this.ctx.storage.sql.exec(`
-			CREATE TABLE IF NOT EXISTS schema_version (
-				version INTEGER PRIMARY KEY,
-				applied_at INTEGER NOT NULL
-			)
-		`)
-
-		const rows = await this.ctx.storage.sql
-			.exec<{ version: number }>('SELECT version FROM schema_version ORDER BY version DESC LIMIT 1')
-			.toArray()
-
-		return rows.length > 0 ? rows[0].version : 0
+	private async initializeSchema() {
+		// await this.createSchema()
 	}
 
-	private async setSchemaVersion(version: number): Promise<void> {
-		const now = Date.now()
-		await this.ctx.storage.sql.exec(
-			'INSERT OR REPLACE INTO schema_version (version, applied_at) VALUES (?, ?)',
-			version,
-			now
-		)
-	}
-
-	private async ensureSchema() {
-		// Only run migrations once per DO instance
-		if (this.schemaInitialized) {
-			return
-		}
-
-		try {
-			const currentVersion = await this.getSchemaVersion()
-
-			logger.info('Running schema migrations', {
-				currentVersion,
-				targetVersion: this.CURRENT_SCHEMA_VERSION,
-			})
-
-			if (currentVersion < 1) {
-				await this.runMigration1()
-				await this.setSchemaVersion(1)
-				logger.info('Applied migration 1: Initial schema')
-			}
-
-			this.schemaInitialized = true
-		} catch (error) {
-			// If migration fails, don't mark as initialized so it retries
-			logger.error('Schema migration failed', {
-				error: error instanceof Error ? error.message : String(error),
-			})
-			throw error
-		}
-	}
-
-	private async runMigration1(): Promise<void> {
+	private async createSchema(): Promise<void> {
 		// Drop tables if they exist to ensure clean schema
 		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS esi_oauth_states')
 		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS tokens')
 
 		// Create tokens table
 		await this.ctx.storage.sql.exec(`
-			CREATE TABLE IF NOT EXISTS tokens (
+			CREATE TABLE tokens (
 				character_id INTEGER PRIMARY KEY,
 				character_name TEXT NOT NULL,
 				access_token TEXT NOT NULL,
@@ -134,12 +80,12 @@ export class EveSSO extends DurableObject<Env> {
 		`)
 
 		await this.ctx.storage.sql.exec(`
-			CREATE INDEX IF NOT EXISTS idx_proxy_token ON tokens(proxy_token)
+			CREATE INDEX idx_proxy_token ON tokens(proxy_token)
 		`)
 
 		// Create ESI OAuth states table for CSRF protection
 		await this.ctx.storage.sql.exec(`
-			CREATE TABLE IF NOT EXISTS esi_oauth_states (
+			CREATE TABLE esi_oauth_states (
 				state TEXT PRIMARY KEY,
 				session_id TEXT NOT NULL,
 				created_at INTEGER NOT NULL,
@@ -148,7 +94,7 @@ export class EveSSO extends DurableObject<Env> {
 		`)
 
 		await this.ctx.storage.sql.exec(`
-			CREATE INDEX IF NOT EXISTS idx_esi_oauth_states_expires_at ON esi_oauth_states(expires_at)
+			CREATE INDEX idx_esi_oauth_states_expires_at ON esi_oauth_states(expires_at)
 		`)
 	}
 
@@ -169,7 +115,7 @@ export class EveSSO extends DurableObject<Env> {
 		expiresIn: number,
 		scopes: string
 	): Promise<TokenInfo> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const now = Date.now()
 		const expiresAt = now + expiresIn * 1000
@@ -240,7 +186,7 @@ export class EveSSO extends DurableObject<Env> {
 	}
 
 	async getAccessToken(characterId: number): Promise<AccessTokenInfo> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<TokenData>(`SELECT * FROM tokens WHERE character_id = ?`, characterId)
@@ -278,7 +224,7 @@ export class EveSSO extends DurableObject<Env> {
 	}
 
 	async findByProxyToken(proxyToken: string): Promise<AccessTokenInfo> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<TokenData>(`SELECT * FROM tokens WHERE proxy_token = ?`, proxyToken)
@@ -409,7 +355,7 @@ export class EveSSO extends DurableObject<Env> {
 	}
 
 	async revokeToken(characterId: number): Promise<void> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		await this.ctx.storage.sql.exec(`DELETE FROM tokens WHERE character_id = ?`, characterId)
 
@@ -422,7 +368,7 @@ export class EveSSO extends DurableObject<Env> {
 	}
 
 	async getProxyToken(characterId: number): Promise<TokenInfo> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<TokenData>(
@@ -450,7 +396,7 @@ export class EveSSO extends DurableObject<Env> {
 	}
 
 	async deleteByProxyToken(proxyToken: string): Promise<void> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		// First check if the token exists
 		const rows = await this.ctx.storage.sql
@@ -484,7 +430,7 @@ export class EveSSO extends DurableObject<Env> {
 	}
 
 	async createESIOAuthState(sessionId: string): Promise<string> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const state = this.generateState()
 		const now = Date.now()
@@ -512,7 +458,7 @@ export class EveSSO extends DurableObject<Env> {
 	}
 
 	async validateESIOAuthState(state: string): Promise<string> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const now = Date.now()
 

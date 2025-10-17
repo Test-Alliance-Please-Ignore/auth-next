@@ -39,6 +39,20 @@ export interface ESICorporationInfo {
 }
 
 /**
+ * ESI Alliance information response
+ * From: GET /alliances/{alliance_id}/
+ */
+export interface ESIAllianceInfo {
+	creator_corporation_id: number
+	creator_id: number
+	date_founded: string
+	executor_corporation_id?: number
+	faction_id?: number
+	name: string
+	ticker: string
+}
+
+/**
  * Parse cache control header and calculate expiration timestamp
  */
 export function parseCacheControl(cacheControlHeader: string | null): number | null {
@@ -156,6 +170,59 @@ export async function fetchCorporationInfo(
 			ticker: data.ticker,
 			allianceId: data.alliance_id,
 			memberCount: data.member_count,
+			expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
+		})
+
+	return { data, expiresAt }
+}
+
+/**
+ * Fetch alliance information from ESI
+ */
+export async function fetchAllianceInfo(
+	allianceId: number,
+	accessToken?: string
+): Promise<{ data: ESIAllianceInfo; expiresAt: number | null }> {
+	const url = `https://esi.evetech.net/latest/alliances/${allianceId}/`
+
+	const headers: HeadersInit = {
+		'X-Compatibility-Date': '2025-09-30',
+	}
+
+	// Alliance endpoint is public, but we'll use auth if available
+	if (accessToken) {
+		headers.Authorization = `Bearer ${accessToken}`
+	}
+
+	const response = await fetch(url, { headers })
+
+	if (!response.ok) {
+		logger
+			.withTags({
+				type: 'esi_alliance_fetch_error',
+				alliance_id: allianceId,
+			})
+			.error('Failed to fetch alliance info from ESI', {
+				allianceId,
+				status: response.status,
+				statusText: response.statusText,
+			})
+		throw new Error(`Failed to fetch alliance info: ${response.status} ${response.statusText}`)
+	}
+
+	const data = (await response.json()) as ESIAllianceInfo
+	const cacheControl = response.headers.get('Cache-Control')
+	const expiresAt = parseCacheControl(cacheControl)
+
+	logger
+		.withTags({
+			type: 'esi_alliance_fetched',
+			alliance_id: allianceId,
+		})
+		.info('Alliance info fetched from ESI', {
+			allianceId,
+			allianceName: data.name,
+			ticker: data.ticker,
 			expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
 		})
 

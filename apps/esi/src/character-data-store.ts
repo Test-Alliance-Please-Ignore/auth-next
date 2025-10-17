@@ -5,7 +5,7 @@ import { logger } from '@repo/hono-helpers'
 
 import { fetchCharacterInfo, fetchCorporationInfo } from './esi-client'
 
-import type { UserTokenStore } from '@repo/user-token-store'
+import type { EveSSO } from '@repo/evesso'
 import type { Env } from './context'
 import type { ESICharacterInfo, ESICorporationInfo } from './esi-client'
 
@@ -53,74 +53,25 @@ export interface ChangeHistoryEntry extends Record<string, number | string | nul
 }
 
 export class CharacterDataStore extends DurableObject<Env> {
-	private schemaInitialized = false
-	private readonly CURRENT_SCHEMA_VERSION = 1
 	private alarmScheduled = false
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env)
 	}
 
-	private async getSchemaVersion(): Promise<number> {
-		// Create schema_version table if it doesn't exist
-		await this.ctx.storage.sql.exec(`
-			CREATE TABLE IF NOT EXISTS schema_version (
-				version INTEGER PRIMARY KEY,
-				applied_at INTEGER NOT NULL
-			)
-		`)
-
-		const rows = await this.ctx.storage.sql
-			.exec<{ version: number }>('SELECT version FROM schema_version ORDER BY version DESC LIMIT 1')
-			.toArray()
-
-		return rows.length > 0 ? rows[0].version : 0
+	private async initializeSchema() {
+		// await this.createSchema()
 	}
 
-	private async setSchemaVersion(version: number): Promise<void> {
-		const now = Date.now()
-		await this.ctx.storage.sql.exec(
-			'INSERT OR REPLACE INTO schema_version (version, applied_at) VALUES (?, ?)',
-			version,
-			now
-		)
-	}
+	private async createSchema(): Promise<void> {
+		// Drop all tables if they exist
+		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS characters')
+		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS corporations')
+		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS character_history')
 
-	private async ensureSchema() {
-		// Only run migrations once per DO instance
-		if (this.schemaInitialized) {
-			return
-		}
-
-		try {
-			const currentVersion = await this.getSchemaVersion()
-
-			logger.info('Running character data schema migrations', {
-				currentVersion,
-				targetVersion: this.CURRENT_SCHEMA_VERSION,
-			})
-
-			// Migration 1: Initial schema with characters, corporations, and history tables
-			if (currentVersion < 1) {
-				await this.runMigration1()
-				await this.setSchemaVersion(1)
-				logger.info('Applied migration 1: Initial character data schema')
-			}
-
-			this.schemaInitialized = true
-		} catch (error) {
-			// If migration fails, don't mark as initialized so it retries
-			logger.error('Character data schema migration failed', {
-				error: error instanceof Error ? error.message : String(error),
-			})
-			throw error
-		}
-	}
-
-	private async runMigration1(): Promise<void> {
 		// Characters table
 		await this.ctx.storage.sql.exec(`
-			CREATE TABLE IF NOT EXISTS characters (
+			CREATE TABLE characters (
 				character_id INTEGER PRIMARY KEY,
 				name TEXT NOT NULL,
 				corporation_id INTEGER NOT NULL,
@@ -139,16 +90,16 @@ export class CharacterDataStore extends DurableObject<Env> {
 		`)
 
 		await this.ctx.storage.sql.exec(`
-			CREATE INDEX IF NOT EXISTS idx_characters_next_update ON characters(next_update_at)
+			CREATE INDEX idx_characters_next_update ON characters(next_update_at)
 		`)
 
 		await this.ctx.storage.sql.exec(`
-			CREATE INDEX IF NOT EXISTS idx_characters_corporation ON characters(corporation_id)
+			CREATE INDEX idx_characters_corporation ON characters(corporation_id)
 		`)
 
 		// Corporations table
 		await this.ctx.storage.sql.exec(`
-			CREATE TABLE IF NOT EXISTS corporations (
+			CREATE TABLE corporations (
 				corporation_id INTEGER PRIMARY KEY,
 				name TEXT NOT NULL,
 				ticker TEXT NOT NULL,
@@ -167,12 +118,12 @@ export class CharacterDataStore extends DurableObject<Env> {
 		`)
 
 		await this.ctx.storage.sql.exec(`
-			CREATE INDEX IF NOT EXISTS idx_corporations_next_update ON corporations(next_update_at)
+			CREATE INDEX idx_corporations_next_update ON corporations(next_update_at)
 		`)
 
 		// Character history table for tracking changes
 		await this.ctx.storage.sql.exec(`
-			CREATE TABLE IF NOT EXISTS character_history (
+			CREATE TABLE character_history (
 				id INTEGER PRIMARY KEY AUTOINCREMENT,
 				character_id INTEGER NOT NULL,
 				changed_at INTEGER NOT NULL,
@@ -184,7 +135,7 @@ export class CharacterDataStore extends DurableObject<Env> {
 		`)
 
 		await this.ctx.storage.sql.exec(`
-			CREATE INDEX IF NOT EXISTS idx_history_character ON character_history(character_id, changed_at)
+			CREATE INDEX idx_history_character ON character_history(character_id, changed_at)
 		`)
 	}
 
@@ -193,7 +144,7 @@ export class CharacterDataStore extends DurableObject<Env> {
 		data: ESICharacterInfo,
 		expiresAt: number | null
 	): Promise<CharacterData> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const now = Date.now()
 		const nextUpdateAt = expiresAt || now + 3600 * 1000 // Default 1 hour if no cache header
@@ -340,7 +291,7 @@ export class CharacterDataStore extends DurableObject<Env> {
 		data: ESICorporationInfo,
 		expiresAt: number | null
 	): Promise<CorporationData> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const now = Date.now()
 		const nextUpdateAt = expiresAt || now + 3600 * 1000 // Default 1 hour if no cache header
@@ -435,7 +386,7 @@ export class CharacterDataStore extends DurableObject<Env> {
 	}
 
 	async getCharacter(characterId: number): Promise<CharacterData | null> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<CharacterData>('SELECT * FROM characters WHERE character_id = ?', characterId)
@@ -445,7 +396,7 @@ export class CharacterDataStore extends DurableObject<Env> {
 	}
 
 	async getCorporation(corporationId: number): Promise<CorporationData | null> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<CorporationData>('SELECT * FROM corporations WHERE corporation_id = ?', corporationId)
@@ -455,7 +406,7 @@ export class CharacterDataStore extends DurableObject<Env> {
 	}
 
 	async getCharacterHistory(characterId: number): Promise<ChangeHistoryEntry[]> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<ChangeHistoryEntry>(
@@ -471,7 +422,7 @@ export class CharacterDataStore extends DurableObject<Env> {
 		characters: Array<{ character_id: number }>
 		corporations: Array<{ corporation_id: number }>
 	}> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const now = Date.now()
 
@@ -496,7 +447,7 @@ export class CharacterDataStore extends DurableObject<Env> {
 			return
 		}
 
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const now = Date.now()
 
@@ -546,7 +497,7 @@ export class CharacterDataStore extends DurableObject<Env> {
 			.info('Character data update alarm triggered')
 
 		try {
-			await this.ensureSchema()
+			await this.initializeSchema()
 
 			const { characters, corporations } = await this.getEntitiesNeedingUpdate()
 
@@ -555,8 +506,8 @@ export class CharacterDataStore extends DurableObject<Env> {
 				corporationCount: corporations.length,
 			})
 
-			// Get UserTokenStore for accessing tokens
-			const tokenStore = getStub<UserTokenStore>(this.env.USER_TOKEN_STORE, 'global')
+			// Get EveSSO store for accessing tokens
+			const tokenStore = getStub<EveSSO>(this.env.EVESSO_STORE, 'global')
 
 			// Update characters
 			for (const { character_id } of characters) {

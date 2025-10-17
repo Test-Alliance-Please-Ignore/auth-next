@@ -11,6 +11,7 @@ import linkSuccessHtml from './templates/link-success.html'
 import type { CharacterDataStore } from '@repo/character-data-store'
 import type { EveSSO } from '@repo/evesso'
 import type { SessionStore } from '@repo/session-store'
+import type { TagStore } from '@repo/tag-store'
 import type { App } from './context'
 
 // Default ESI scopes - can be overridden via query param
@@ -430,6 +431,50 @@ async function handlePrimaryLoginCallback(
 				characterInfo.Scopes
 			)
 
+			// Check if character is already linked, if not, link it automatically
+			try {
+				const existingCharLink = await sessionStoreStub.getCharacterLinkByCharacterId(
+					characterInfo.CharacterID
+				)
+
+				if (!existingCharLink) {
+					await sessionStoreStub.createCharacterLink(
+						existingPrimaryUser.rootUserId,
+						characterInfo.CharacterID,
+						characterInfo.CharacterName
+					)
+
+					// Set as primary character since it's their login character
+					await sessionStoreStub.setPrimaryCharacter(
+						existingPrimaryUser.rootUserId,
+						characterInfo.CharacterID
+					)
+
+					logger
+						.withTags({
+							type: 'character_auto_linked',
+							character_id: characterInfo.CharacterID,
+						})
+						.info('Automatically linked existing user login character', {
+							characterId: characterInfo.CharacterID,
+							characterName: characterInfo.CharacterName,
+							rootUserId: existingPrimaryUser.rootUserId.substring(0, 8) + '...',
+							isPrimary: true,
+						})
+				}
+			} catch (linkError) {
+				// Log but don't fail the login if character linking fails
+				logger
+					.withTags({
+						type: 'character_auto_link_error',
+						character_id: characterInfo.CharacterID,
+					})
+					.error('Failed to automatically link existing user character', {
+						error: String(linkError),
+						characterId: characterInfo.CharacterID,
+					})
+			}
+
 			// Set HTTP-only cookie for session
 			const now = Date.now()
 			const maxAge = Math.floor((sessionInfo.expiresAt - now) / 1000)
@@ -550,6 +595,159 @@ async function handlePrimaryLoginCallback(
 						corporationId: charResult.data.corporation_id,
 						corporationName: corpResult.data.name,
 					})
+
+				// Fetch alliance data if character is in an alliance
+				let allianceResult: { data: { name: string; ticker: string } } | null = null
+				const allianceId = corpResult.data.alliance_id || charResult.data.alliance_id
+				if (allianceId) {
+					try {
+						const { fetchAllianceInfo } = await import('../../esi/src/esi-client')
+						allianceResult = await fetchAllianceInfo(allianceId, tokenData.access_token)
+
+						logger
+							.withTags({
+								type: 'alliance_data_fetched',
+								alliance_id: allianceId,
+							})
+							.info('Alliance data fetched during primary login', {
+								allianceId,
+								allianceName: allianceResult.data.name,
+							})
+					} catch (allianceError) {
+						logger
+							.withTags({
+								type: 'alliance_fetch_error',
+								alliance_id: allianceId,
+							})
+							.error('Failed to fetch alliance during primary login', {
+								error: String(allianceError),
+								allianceId,
+							})
+					}
+				}
+
+				// Notify tags service
+				try {
+					const tagStoreStub = getStub<TagStore>(c.env.TAG_STORE, 'global')
+
+					logger
+						.withTags({
+							type: 'tags_onboarding_start',
+							character_id: characterInfo.CharacterID,
+						})
+						.info('Starting tag onboarding for primary login', {
+							characterId: characterInfo.CharacterID,
+							corporationId: charResult.data.corporation_id,
+							allianceId,
+						})
+
+					// Create/update corporation tag
+					const corpUrn = `urn:eve:corporation:${charResult.data.corporation_id}`
+					await tagStoreStub.upsertTag(
+						corpUrn,
+						'corporation',
+						corpResult.data.name,
+						charResult.data.corporation_id,
+						{
+							corporationId: charResult.data.corporation_id,
+						}
+					)
+
+					logger
+						.withTags({
+							type: 'tag_upserted',
+							corporation_id: charResult.data.corporation_id,
+						})
+						.info('Corporation tag created', {
+							tagUrn: corpUrn,
+							corporationName: corpResult.data.name,
+						})
+
+					// Assign corporation tag to user
+					await tagStoreStub.assignTagToUser(
+						sessionInfo.rootUserId,
+						corpUrn,
+						characterInfo.CharacterID
+					)
+
+					logger
+						.withTags({
+							type: 'tag_assigned',
+							character_id: characterInfo.CharacterID,
+						})
+						.info('Corporation tag assigned to user', {
+							tagUrn: corpUrn,
+							rootUserId: sessionInfo.rootUserId.substring(0, 8) + '...',
+							characterId: characterInfo.CharacterID,
+						})
+
+					// Create/update alliance tag if applicable
+					if (allianceId && allianceResult) {
+						const allianceUrn = `urn:eve:alliance:${allianceId}`
+						await tagStoreStub.upsertTag(
+							allianceUrn,
+							'alliance',
+							allianceResult.data.name,
+							allianceId,
+							{
+								allianceId,
+							}
+						)
+
+						logger
+							.withTags({
+								type: 'tag_upserted',
+								alliance_id: allianceId,
+							})
+							.info('Alliance tag created', {
+								tagUrn: allianceUrn,
+								allianceName: allianceResult.data.name,
+							})
+
+						// Assign alliance tag to user
+						await tagStoreStub.assignTagToUser(
+							sessionInfo.rootUserId,
+							allianceUrn,
+							characterInfo.CharacterID
+						)
+
+						logger
+							.withTags({
+								type: 'tag_assigned',
+								character_id: characterInfo.CharacterID,
+							})
+							.info('Alliance tag assigned to user', {
+								tagUrn: allianceUrn,
+								rootUserId: sessionInfo.rootUserId.substring(0, 8) + '...',
+								characterId: characterInfo.CharacterID,
+							})
+					}
+
+					// Schedule first evaluation
+					await tagStoreStub.scheduleUserEvaluation(sessionInfo.rootUserId)
+
+					logger
+						.withTags({
+							type: 'tags_onboarding_complete',
+							character_id: characterInfo.CharacterID,
+						})
+						.info('Tag onboarding completed for primary login', {
+							characterId: characterInfo.CharacterID,
+							corporationTag: corpUrn,
+							allianceTag: allianceId ? `urn:eve:alliance:${allianceId}` : null,
+						})
+				} catch (tagsError) {
+					// Don't fail the login if tags notification fails
+					logger
+						.withTags({
+							type: 'tags_onboarding_error',
+							character_id: characterInfo.CharacterID,
+						})
+						.error('Failed to onboard tags during primary login', {
+							error: String(tagsError),
+							characterId: characterInfo.CharacterID,
+						})
+				}
 			} catch (corpError) {
 				logger
 					.withTags({
@@ -568,6 +766,44 @@ async function handlePrimaryLoginCallback(
 				})
 				.error('Failed to store character data during primary login', {
 					error: String(dataError),
+					characterId: characterInfo.CharacterID,
+				})
+		}
+
+		// Link the character they logged in with to their account
+		try {
+			await sessionStoreStub.createCharacterLink(
+				sessionInfo.rootUserId,
+				characterInfo.CharacterID,
+				characterInfo.CharacterName
+			)
+
+			// Set as primary character since it's the first one
+			await sessionStoreStub.setPrimaryCharacter(
+				sessionInfo.rootUserId,
+				characterInfo.CharacterID
+			)
+
+			logger
+				.withTags({
+					type: 'character_auto_linked',
+					character_id: characterInfo.CharacterID,
+				})
+				.info('Automatically linked login character to account', {
+					characterId: characterInfo.CharacterID,
+					characterName: characterInfo.CharacterName,
+					rootUserId: sessionInfo.rootUserId.substring(0, 8) + '...',
+					isPrimary: true,
+				})
+		} catch (linkError) {
+			// Log but don't fail the login if character linking fails
+			logger
+				.withTags({
+					type: 'character_auto_link_error',
+					character_id: characterInfo.CharacterID,
+				})
+				.error('Failed to automatically link character during primary login', {
+					error: String(linkError),
 					characterId: characterInfo.CharacterID,
 				})
 		}
@@ -814,6 +1050,159 @@ async function handleCharacterLinkCallback(
 						corporationId: charResult.data.corporation_id,
 						corporationName: corpResult.data.name,
 					})
+
+				// Fetch alliance data if character is in an alliance
+				let allianceResult: { data: { name: string; ticker: string } } | null = null
+				const allianceId = corpResult.data.alliance_id || charResult.data.alliance_id
+				if (allianceId) {
+					try {
+						const { fetchAllianceInfo } = await import('../../esi/src/esi-client')
+						allianceResult = await fetchAllianceInfo(allianceId, tokenData.access_token)
+
+						logger
+							.withTags({
+								type: 'alliance_data_fetched',
+								alliance_id: allianceId,
+							})
+							.info('Alliance data fetched during character linking', {
+								allianceId,
+								allianceName: allianceResult.data.name,
+							})
+					} catch (allianceError) {
+						logger
+							.withTags({
+								type: 'alliance_fetch_error',
+								alliance_id: allianceId,
+							})
+							.error('Failed to fetch alliance during character linking', {
+								error: String(allianceError),
+								allianceId,
+							})
+					}
+				}
+
+				// Notify tags service
+				try {
+					const tagStoreStub = getStub<TagStore>(c.env.TAG_STORE, 'global')
+
+					logger
+						.withTags({
+							type: 'tags_onboarding_start',
+							character_id: characterInfo.CharacterID,
+						})
+						.info('Starting tag onboarding for character linking', {
+							characterId: characterInfo.CharacterID,
+							corporationId: charResult.data.corporation_id,
+							allianceId,
+						})
+
+					// Create/update corporation tag
+					const corpUrn = `urn:eve:corporation:${charResult.data.corporation_id}`
+					await tagStoreStub.upsertTag(
+						corpUrn,
+						'corporation',
+						corpResult.data.name,
+						charResult.data.corporation_id,
+						{
+							corporationId: charResult.data.corporation_id,
+						}
+					)
+
+					logger
+						.withTags({
+							type: 'tag_upserted',
+							corporation_id: charResult.data.corporation_id,
+						})
+						.info('Corporation tag created', {
+							tagUrn: corpUrn,
+							corporationName: corpResult.data.name,
+						})
+
+					// Assign corporation tag to user
+					await tagStoreStub.assignTagToUser(
+						session.rootUserId,
+						corpUrn,
+						characterInfo.CharacterID
+					)
+
+					logger
+						.withTags({
+							type: 'tag_assigned',
+							character_id: characterInfo.CharacterID,
+						})
+						.info('Corporation tag assigned to user', {
+							tagUrn: corpUrn,
+							rootUserId: session.rootUserId.substring(0, 8) + '...',
+							characterId: characterInfo.CharacterID,
+						})
+
+					// Create/update alliance tag if applicable
+					if (allianceId && allianceResult) {
+						const allianceUrn = `urn:eve:alliance:${allianceId}`
+						await tagStoreStub.upsertTag(
+							allianceUrn,
+							'alliance',
+							allianceResult.data.name,
+							allianceId,
+							{
+								allianceId,
+							}
+						)
+
+						logger
+							.withTags({
+								type: 'tag_upserted',
+								alliance_id: allianceId,
+							})
+							.info('Alliance tag created', {
+								tagUrn: allianceUrn,
+								allianceName: allianceResult.data.name,
+							})
+
+						// Assign alliance tag to user
+						await tagStoreStub.assignTagToUser(
+							session.rootUserId,
+							allianceUrn,
+							characterInfo.CharacterID
+						)
+
+						logger
+							.withTags({
+								type: 'tag_assigned',
+								character_id: characterInfo.CharacterID,
+							})
+							.info('Alliance tag assigned to user', {
+								tagUrn: allianceUrn,
+								rootUserId: session.rootUserId.substring(0, 8) + '...',
+								characterId: characterInfo.CharacterID,
+							})
+					}
+
+					// Schedule first evaluation
+					await tagStoreStub.scheduleUserEvaluation(session.rootUserId)
+
+					logger
+						.withTags({
+							type: 'tags_onboarding_complete',
+							character_id: characterInfo.CharacterID,
+						})
+						.info('Tag onboarding completed for character linking', {
+							characterId: characterInfo.CharacterID,
+							corporationTag: corpUrn,
+							allianceTag: allianceId ? `urn:eve:alliance:${allianceId}` : null,
+						})
+				} catch (tagsError) {
+					// Don't fail the character link if tags notification fails
+					logger
+						.withTags({
+							type: 'tags_onboarding_error',
+							character_id: characterInfo.CharacterID,
+						})
+						.error('Failed to onboard tags during character linking', {
+							error: String(tagsError),
+							characterId: characterInfo.CharacterID,
+						})
+				}
 			} catch (corpError) {
 				logger
 					.withTags({

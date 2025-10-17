@@ -154,69 +154,15 @@ export interface ProviderLink {
 }
 
 export class SessionStore extends DurableObject<Env> {
-	private schemaInitialized = false
-	private readonly CURRENT_SCHEMA_VERSION = 1
-
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env)
 	}
 
-	private async getSchemaVersion(): Promise<number> {
-		// Create schema_version table if it doesn't exist
-		await this.ctx.storage.sql.exec(`
-			CREATE TABLE IF NOT EXISTS schema_version (
-				version INTEGER PRIMARY KEY,
-				applied_at INTEGER NOT NULL
-			)
-		`)
-
-		const rows = await this.ctx.storage.sql
-			.exec<{ version: number }>('SELECT version FROM schema_version ORDER BY version DESC LIMIT 1')
-			.toArray()
-
-		return rows.length > 0 ? rows[0].version : 0
+	private async initializeSchema() {
+		// await this.createSchema()
 	}
 
-	private async setSchemaVersion(version: number): Promise<void> {
-		const now = Date.now()
-		await this.ctx.storage.sql.exec(
-			'INSERT OR REPLACE INTO schema_version (version, applied_at) VALUES (?, ?)',
-			version,
-			now
-		)
-	}
-
-	private async ensureSchema() {
-		// Only run migrations once per DO instance
-		if (this.schemaInitialized) {
-			return
-		}
-
-		try {
-			const currentVersion = await this.getSchemaVersion()
-
-			logger.info('Running schema migrations', {
-				currentVersion,
-				targetVersion: this.CURRENT_SCHEMA_VERSION,
-			})
-
-			if (currentVersion < 1) {
-				await this.runMigration1()
-				await this.setSchemaVersion(1)
-				logger.info('Applied migration 1: Initial schema')
-			}
-
-			this.schemaInitialized = true
-		} catch (error) {
-			// If migration fails, don't mark as initialized so it retries
-			logger.error('Schema migration failed', {
-				error: error instanceof Error ? error.message : String(error),
-			})
-			throw error
-		}
-	}
-
-	private async runMigration1(): Promise<void> {
+	private async createSchema(): Promise<void> {
 		// Drop all tables if they exist
 		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS root_users')
 		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS sessions')
@@ -381,7 +327,7 @@ export class SessionStore extends DurableObject<Env> {
 		name: string,
 		ownerHash?: string | null
 	): Promise<RootUser> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		// Try to find existing root user
 		const existing = await this.ctx.storage.sql
@@ -416,9 +362,7 @@ export class SessionStore extends DurableObject<Env> {
 
 			// Update email, name, and owner hash if they've changed
 			const needsUpdate =
-				user.email !== email ||
-				user.name !== name ||
-				(ownerHash && user.owner_hash !== ownerHash)
+				user.email !== email || user.name !== name || (ownerHash && user.owner_hash !== ownerHash)
 
 			if (needsUpdate) {
 				await this.ctx.storage.sql.exec(
@@ -500,7 +444,7 @@ export class SessionStore extends DurableObject<Env> {
 	}
 
 	async getRootUser(rootUserId: string): Promise<RootUser | null> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<RootUserData>('SELECT * FROM root_users WHERE root_user_id = ?', rootUserId)
@@ -524,11 +468,8 @@ export class SessionStore extends DurableObject<Env> {
 		}
 	}
 
-	async getRootUserByProvider(
-		provider: string,
-		providerUserId: string
-	): Promise<RootUser | null> {
-		await this.ensureSchema()
+	async getRootUserByProvider(provider: string, providerUserId: string): Promise<RootUser | null> {
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<RootUserData>(
@@ -567,7 +508,7 @@ export class SessionStore extends DurableObject<Env> {
 		refreshToken: string,
 		_expiresIn: number
 	): Promise<SessionInfo> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const now = Date.now()
 		// Session expires in 48 hours (independent of OAuth token expiration)
@@ -668,7 +609,7 @@ export class SessionStore extends DurableObject<Env> {
 	}
 
 	async getSession(sessionId: string): Promise<SessionInfo> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<SessionData>(`SELECT * FROM sessions WHERE session_id = ?`, sessionId)
@@ -743,7 +684,7 @@ export class SessionStore extends DurableObject<Env> {
 	}
 
 	async refreshSession(sessionId: string): Promise<SessionInfo> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<SessionData>(`SELECT * FROM sessions WHERE session_id = ?`, sessionId)
@@ -780,7 +721,7 @@ export class SessionStore extends DurableObject<Env> {
 	}
 
 	async deleteSession(sessionId: string): Promise<void> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		// Check if the session exists
 		const rows = await this.ctx.storage.sql
@@ -812,7 +753,7 @@ export class SessionStore extends DurableObject<Env> {
 	}
 
 	async listSessions(limit?: number, offset?: number): Promise<SessionListResult> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const parsedLimit = Math.min(limit || 50, 100)
 		const parsedOffset = offset || 0
@@ -857,7 +798,7 @@ export class SessionStore extends DurableObject<Env> {
 	}
 
 	async getStats(): Promise<SessionStats> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const now = Date.now()
 
@@ -892,7 +833,7 @@ export class SessionStore extends DurableObject<Env> {
 	}
 
 	async createOIDCState(sessionId: string): Promise<string> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const state = this.generateState()
 		const now = Date.now()
@@ -920,7 +861,7 @@ export class SessionStore extends DurableObject<Env> {
 	}
 
 	async validateOIDCState(state: string): Promise<string> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const now = Date.now()
 
@@ -991,7 +932,7 @@ export class SessionStore extends DurableObject<Env> {
 		primaryCharacterId: string,
 		groups: string[]
 	): Promise<AccountLink> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		// Check if this legacy account is already claimed
 		const existingLegacy = await this.ctx.storage.sql
@@ -1091,7 +1032,7 @@ export class SessionStore extends DurableObject<Env> {
 	}
 
 	async getAccountLinksByRootUser(rootUserId: string): Promise<AccountLink[]> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<AccountLinkData>('SELECT * FROM account_links WHERE root_user_id = ?', rootUserId)
@@ -1118,7 +1059,7 @@ export class SessionStore extends DurableObject<Env> {
 		legacySystem: string,
 		legacyUserId: string
 	): Promise<AccountLink | null> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<AccountLinkData>(
@@ -1151,7 +1092,7 @@ export class SessionStore extends DurableObject<Env> {
 	}
 
 	async deleteAccountLink(linkId: string): Promise<void> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<AccountLinkData>('SELECT * FROM account_links WHERE link_id = ?', linkId)
@@ -1184,7 +1125,7 @@ export class SessionStore extends DurableObject<Env> {
 		characterId: number,
 		characterName: string
 	): Promise<CharacterLink> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		// Check if this character is already linked to any root user
 		const existingCharacter = await this.ctx.storage.sql
@@ -1235,7 +1176,7 @@ export class SessionStore extends DurableObject<Env> {
 	}
 
 	async getCharacterLinksByRootUser(rootUserId: string): Promise<CharacterLink[]> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<CharacterLinkData>(
@@ -1256,7 +1197,7 @@ export class SessionStore extends DurableObject<Env> {
 	}
 
 	async getCharacterLinkByCharacterId(characterId: number): Promise<CharacterLink | null> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<CharacterLinkData>('SELECT * FROM character_links WHERE character_id = ?', characterId)
@@ -1279,7 +1220,7 @@ export class SessionStore extends DurableObject<Env> {
 	}
 
 	async setPrimaryCharacter(rootUserId: string, characterId: number): Promise<void> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		// Verify the character belongs to this user
 		const rows = await this.ctx.storage.sql
@@ -1321,7 +1262,7 @@ export class SessionStore extends DurableObject<Env> {
 	}
 
 	async deleteCharacterLink(characterId: number): Promise<void> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<CharacterLinkData>('SELECT * FROM character_links WHERE character_id = ?', characterId)
@@ -1357,7 +1298,7 @@ export class SessionStore extends DurableObject<Env> {
 			characterName: string
 		}>
 	> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<CharacterLinkData>(
@@ -1381,7 +1322,7 @@ export class SessionStore extends DurableObject<Env> {
 		providerUserId: string,
 		providerUsername: string
 	): Promise<ProviderLink> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		// Check if this provider account is already linked to any root user
 		const existingProvider = await this.ctx.storage.sql
@@ -1450,7 +1391,7 @@ export class SessionStore extends DurableObject<Env> {
 	}
 
 	async getProviderLinksByRootUser(rootUserId: string): Promise<ProviderLink[]> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<ProviderLinkData>(
@@ -1474,7 +1415,7 @@ export class SessionStore extends DurableObject<Env> {
 		provider: string,
 		providerUserId: string
 	): Promise<ProviderLink | null> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<ProviderLinkData>(
@@ -1501,7 +1442,7 @@ export class SessionStore extends DurableObject<Env> {
 	}
 
 	async deleteProviderLink(linkId: string): Promise<void> {
-		await this.ensureSchema()
+		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<ProviderLinkData>('SELECT * FROM provider_links WHERE link_id = ?', linkId)

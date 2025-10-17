@@ -51,22 +51,8 @@
 			<p>Redirecting to your dashboard...</p>
 		</div>
 		<script>
-			// Mask name by default
-			function maskName(name) {
-				const parts = name.split(' ')
-				return parts
-					.map((part) => {
-						if (part.length <= 2) return '***'
-						return part[0] + '***'
-					})
-					.join(' ')
-			}
-
 			const userName = '__USER_NAME__'
-			const maskingEnabled = localStorage.getItem('maskingEnabled') !== 'false'
-			document.getElementById('userName').textContent = maskingEnabled
-				? maskName(userName)
-				: userName
+			document.getElementById('userName').textContent = userName
 
 			// Session is now stored in HTTP-only cookie
 			setTimeout(() => {

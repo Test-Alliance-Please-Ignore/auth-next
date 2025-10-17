@@ -20,6 +20,7 @@
 		"@repo/evesso": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
 		"@repo/session-store": "workspace:*",
+		"@repo/tag-store": "workspace:*",
 		"hono": "4.9.11",
 		"workers-tagged-logger": "0.13.3"
 	},

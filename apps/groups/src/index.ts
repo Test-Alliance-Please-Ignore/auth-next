@@ -59,10 +59,79 @@ const withAuth = async (c: any, next: any) => {
 	}
 }
 
+// Middleware to verify session AND require a primary character
+const withAuthAndPrimaryCharacter = async (c: any, next: any) => {
+	const sessionId = getCookie(c, 'session_id')
+
+	if (!sessionId) {
+		return c.json({ error: 'Not authenticated' }, 401)
+	}
+
+	try {
+		// Get SessionStore DO stub
+		const sessionStoreStub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
+
+		const sessionInfo = await sessionStoreStub.getSession(sessionId)
+
+		// Check if user has a primary character
+		const characters = await sessionStoreStub.getCharacterLinksByRootUser(sessionInfo.rootUserId)
+		const primaryCharacter = characters.find((char) => char.isPrimary)
+
+		if (!primaryCharacter) {
+			logger
+				.withTags({
+					type: 'primary_character_required',
+				})
+				.warn('User attempted to access groups without primary character', {
+					userId: sessionInfo.rootUserId.substring(0, 8) + '...',
+					characterCount: characters.length,
+				})
+			return c.json(
+				{
+					error:
+						'You must have a primary EVE character linked to your account to use groups. Please link a character first.',
+				},
+				403
+			)
+		}
+
+		// Store user ID in context for use in routes
+		c.set('sessionUserId', sessionInfo.rootUserId)
+
+		await next()
+	} catch (error) {
+		logger.error('Session verification error', { error: String(error) })
+		return c.json({ error: 'Failed to verify session' }, 500)
+	}
+}
+
 // Helper to get GroupStore instance
 const getGroupStore = (c: any) => {
 	const id = c.env.GROUP_STORE.idFromName('global')
 	return c.env.GROUP_STORE.get(id)
+}
+
+// Helper to extract error message from any error type
+const getErrorMessage = (error: unknown): string => {
+	if (error instanceof Error) {
+		return error.message
+	}
+	if (typeof error === 'string') {
+		return error
+	}
+	if (error && typeof error === 'object') {
+		// Try to extract message from error object
+		if ('message' in error && typeof error.message === 'string') {
+			return error.message
+		}
+		// Fallback to JSON stringify for objects
+		try {
+			return JSON.stringify(error)
+		} catch {
+			return 'An unknown error occurred'
+		}
+	}
+	return 'An unknown error occurred'
 }
 
 // Helper to get owner's primary character name
@@ -195,7 +264,7 @@ app
 // ========== Group CRUD Endpoints ==========
 
 app
-	.post('/api/groups', withAuth, async (c) => {
+	.post('/api/groups', withAuthAndPrimaryCharacter, async (c) => {
 		const userId = c.get('sessionUserId')!
 
 		try {
@@ -329,7 +398,7 @@ app
 		}
 	})
 
-	.patch('/api/groups/:slug', withAuth, async (c) => {
+	.patch('/api/groups/:slug', withAuthAndPrimaryCharacter, async (c) => {
 		const slug = c.req.param('slug')
 		const userId = c.get('sessionUserId')!
 
@@ -378,7 +447,7 @@ app
 		}
 	})
 
-	.delete('/api/groups/:slug', withAuth, async (c) => {
+	.delete('/api/groups/:slug', withAuthAndPrimaryCharacter, async (c) => {
 		const slug = c.req.param('slug')
 		const userId = c.get('sessionUserId')!
 
@@ -419,7 +488,7 @@ app
 
 	// ========== Membership Endpoints ==========
 
-	.post('/api/groups/:slug/join', withAuth, async (c) => {
+	.post('/api/groups/:slug/join', withAuthAndPrimaryCharacter, async (c) => {
 		const slug = c.req.param('slug')
 		const userId = c.get('sessionUserId')!
 
@@ -476,7 +545,7 @@ app
 		}
 	})
 
-	.delete('/api/groups/:slug/leave', withAuth, async (c) => {
+	.delete('/api/groups/:slug/leave', withAuthAndPrimaryCharacter, async (c) => {
 		const slug = c.req.param('slug')
 		const userId = c.get('sessionUserId')!
 
@@ -545,7 +614,7 @@ app
 		}
 	})
 
-	.delete('/api/groups/:slug/members/:memberId', withAuth, async (c) => {
+	.delete('/api/groups/:slug/members/:memberId', withAuthAndPrimaryCharacter, async (c) => {
 		const slug = c.req.param('slug')
 		const memberId = c.req.param('memberId')
 		const userId = c.get('sessionUserId')!
@@ -586,7 +655,7 @@ app
 		}
 	})
 
-	.patch('/api/groups/:slug/members/:memberId/role', withAuth, async (c) => {
+	.patch('/api/groups/:slug/members/:memberId/role', withAuthAndPrimaryCharacter, async (c) => {
 		const slug = c.req.param('slug')
 		const memberId = c.req.param('memberId')
 		const userId = c.get('sessionUserId')!
@@ -634,7 +703,7 @@ app
 		}
 	})
 
-	.get('/api/users/me/groups', withAuth, async (c) => {
+	.get('/api/users/me/groups', withAuthAndPrimaryCharacter, async (c) => {
 		const userId = c.get('sessionUserId')!
 
 		try {
@@ -673,7 +742,7 @@ app
 
 	// ========== Join Request Endpoints ==========
 
-	.get('/api/groups/:slug/requests', withAuth, async (c) => {
+	.get('/api/groups/:slug/requests', withAuthAndPrimaryCharacter, async (c) => {
 		const slug = c.req.param('slug')
 		const userId = c.get('sessionUserId')!
 
@@ -708,7 +777,7 @@ app
 		}
 	})
 
-	.post('/api/groups/:slug/requests/:requestId/approve', withAuth, async (c) => {
+	.post('/api/groups/:slug/requests/:requestId/approve', withAuthAndPrimaryCharacter, async (c) => {
 		const slug = c.req.param('slug')
 		const requestId = c.req.param('requestId')
 		const userId = c.get('sessionUserId')!
@@ -749,7 +818,7 @@ app
 		}
 	})
 
-	.post('/api/groups/:slug/requests/:requestId/reject', withAuth, async (c) => {
+	.post('/api/groups/:slug/requests/:requestId/reject', withAuthAndPrimaryCharacter, async (c) => {
 		const slug = c.req.param('slug')
 		const requestId = c.req.param('requestId')
 		const userId = c.get('sessionUserId')!
@@ -792,7 +861,7 @@ app
 
 	// ========== Invitation Endpoints ==========
 
-	.post('/api/groups/:slug/invites', withAuth, async (c) => {
+	.post('/api/groups/:slug/invites', withAuthAndPrimaryCharacter, async (c) => {
 		const slug = c.req.param('slug')
 		const userId = c.get('sessionUserId')!
 
@@ -847,7 +916,7 @@ app
 		}
 	})
 
-	.get('/api/users/me/invites', withAuth, async (c) => {
+	.get('/api/users/me/invites', withAuthAndPrimaryCharacter, async (c) => {
 		const userId = c.get('sessionUserId')!
 
 		try {
@@ -875,7 +944,7 @@ app
 		}
 	})
 
-	.post('/api/invites/:inviteId/accept', withAuth, async (c) => {
+	.post('/api/invites/:inviteId/accept', withAuthAndPrimaryCharacter, async (c) => {
 		const inviteId = c.req.param('inviteId')
 
 		try {
@@ -900,7 +969,7 @@ app
 		}
 	})
 
-	.post('/api/invites/:inviteId/decline', withAuth, async (c) => {
+	.post('/api/invites/:inviteId/decline', withAuthAndPrimaryCharacter, async (c) => {
 		const inviteId = c.req.param('inviteId')
 
 		try {
@@ -925,7 +994,7 @@ app
 		}
 	})
 
-	.get('/api/groups/:slug/invites', withAuth, async (c) => {
+	.get('/api/groups/:slug/invites', withAuthAndPrimaryCharacter, async (c) => {
 		const slug = c.req.param('slug')
 		const userId = c.get('sessionUserId')!
 
@@ -981,16 +1050,15 @@ app
 		}
 	})
 
-	.delete('/api/invites/:inviteId', withAuth, async (c) => {
+	.delete('/api/invites/:inviteId', withAuthAndPrimaryCharacter, async (c) => {
 		const inviteId = c.req.param('inviteId')
 		const userId = c.get('sessionUserId')!
 
 		try {
 			const groupStore = getGroupStore(c)
 
-			// Get the invite to check permissions
-			const invites = await groupStore.listGroupInvites('')
-			const invite = invites.find((inv: any) => inv.inviteId === inviteId)
+			// Get the invite by ID
+			const invite = await groupStore.getInviteById(inviteId)
 
 			if (!invite) {
 				return c.json({ error: 'Invite not found' }, 404)
@@ -1018,12 +1086,13 @@ app
 				success: true,
 			})
 		} catch (error) {
-			logger.error('Revoke invite error', { error: String(error) })
-			return c.json({ error: String(error) }, 500)
+			const message = getErrorMessage(error)
+			logger.error('Revoke invite error', { error: message })
+			return c.json({ error: message }, 500)
 		}
 	})
 
-	.post('/api/groups/:slug/invites/bulk', withAuth, async (c) => {
+	.post('/api/groups/:slug/invites/bulk', withAuthAndPrimaryCharacter, async (c) => {
 		const slug = c.req.param('slug')
 		const userId = c.get('sessionUserId')!
 
@@ -1077,7 +1146,7 @@ app
 		}
 	})
 
-	.post('/api/groups/:slug/invite-codes', withAuth, async (c) => {
+	.post('/api/groups/:slug/invite-codes', withAuthAndPrimaryCharacter, async (c) => {
 		const slug = c.req.param('slug')
 		const userId = c.get('sessionUserId')!
 
@@ -1126,7 +1195,7 @@ app
 		}
 	})
 
-	.post('/api/invite-codes/:code/redeem', withAuth, async (c) => {
+	.post('/api/invite-codes/:code/redeem', withAuthAndPrimaryCharacter, async (c) => {
 		const code = c.req.param('code')
 		const userId = c.get('sessionUserId')!
 
@@ -1149,8 +1218,8 @@ app
 				message: 'Successfully joined group',
 			})
 		} catch (error) {
-			logger.error('Redeem invite code error', { error: String(error) })
-			const message = error instanceof Error ? error.message : String(error)
+			const message = getErrorMessage(error)
+			logger.error('Redeem invite code error', { error: message })
 			const status = message.includes('already')
 				? 409
 				: message.includes('Invalid') || message.includes('expired') || message.includes('limit')
@@ -1160,7 +1229,7 @@ app
 		}
 	})
 
-	.get('/api/groups/characters/search', withAuth, async (c) => {
+	.get('/api/groups/characters/search', withAuthAndPrimaryCharacter, async (c) => {
 		const query = c.req.query('q')
 
 		if (!query || query.trim().length < 2) {
@@ -1189,7 +1258,7 @@ app
 
 	// ========== Custom Roles Endpoints ==========
 
-	.post('/api/groups/:slug/roles', withAuth, async (c) => {
+	.post('/api/groups/:slug/roles', withAuthAndPrimaryCharacter, async (c) => {
 		const slug = c.req.param('slug')
 		const userId = c.get('sessionUserId')!
 
@@ -1270,7 +1339,7 @@ app
 
 	// ========== Derived Groups Endpoints ==========
 
-	.post('/api/groups/:slug/rules', withAuth, async (c) => {
+	.post('/api/groups/:slug/rules', withAuthAndPrimaryCharacter, async (c) => {
 		const slug = c.req.param('slug')
 		const userId = c.get('sessionUserId')!
 
@@ -1351,7 +1420,7 @@ app
 		}
 	})
 
-	.post('/api/groups/:slug/sync', withAuth, async (c) => {
+	.post('/api/groups/:slug/sync', withAuthAndPrimaryCharacter, async (c) => {
 		const slug = c.req.param('slug')
 		const userId = c.get('sessionUserId')!
 

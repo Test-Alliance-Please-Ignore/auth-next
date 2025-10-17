@@ -170,6 +170,9 @@ importers:
       '@repo/do-utils':
         specifier: workspace:*
         version: link:../../packages/do-utils
+      '@repo/evesso':
+        specifier: workspace:*
+        version: link:../../packages/evesso
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
@@ -228,6 +231,9 @@ importers:
       '@repo/session-store':
         specifier: workspace:*
         version: link:../../packages/session-store
+      '@repo/tag-store':
+        specifier: workspace:*
+        version: link:../../packages/tag-store
       hono:
         specifier: 4.9.11
         version: 4.9.11
