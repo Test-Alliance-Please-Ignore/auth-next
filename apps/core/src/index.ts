@@ -1079,15 +1079,19 @@ const app = new Hono<App>()
 			// Get skill queue
 			const skillQueue = await dataStoreStub.getSkillQueue(characterId)
 
-			// Get skill names from EveUniverse
-			const universeStub = getStub<EveUniverse>(c.env.EVE_UNIVERSE, 'global')
-			const allSkillIds = [
-				...skills.map(s => s.skill_id),
-				...skillQueue.map(q => q.skill_id)
-			]
-			const uniqueSkillIds = [...new Set(allSkillIds)]
-			const skillNames = await universeStub.getNames(uniqueSkillIds)
-			const skillNameMap = new Map(skillNames.map(n => [n.id, n.name]))
+			// Get skill names from EveUniverse - temporarily disabled until EVE_UNIVERSE is deployed
+			// TODO: Re-enable this once EVE_UNIVERSE Durable Object is properly deployed
+			const skillNameMap = new Map<number, string>()
+
+			// Temporarily skip name resolution to avoid the binding error
+			// const universeStub = getStub<EveUniverse>(c.env.EVE_UNIVERSE, 'global')
+			// const allSkillIds = [
+			// 	...skills.map(s => s.skill_id),
+			// 	...skillQueue.map(q => q.skill_id)
+			// ]
+			// const uniqueSkillIds = [...new Set(allSkillIds)]
+			// const skillNames = await universeStub.getNames(uniqueSkillIds)
+			// const skillNameMap = new Map(skillNames.map(n => [n.id, n.name]))
 
 			return c.json({
 				success: true,

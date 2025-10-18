@@ -43,6 +43,10 @@
 				"name": "TAG_STORE",
 				"class_name": "TagStore",
 				"script_name": "tags"
+			},
+			{
+				"name": "EVE_UNIVERSE",
+				"class_name": "EveUniverse"
 			}
 		]
 	},
@@ -66,6 +70,10 @@
 		{
 			"tag": "v5",
 			"new_sqlite_classes": ["EveUniverse"]
+		},
+		{
+			"tag": "v6",
+			"new_sqlite_classes": []
 		}
 	],
 	"vars": {
