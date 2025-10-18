@@ -717,6 +717,20 @@
 				}
 			}
 
+			function toggleCategory(categoryId) {
+				const categorySkills = document.getElementById(categoryId)
+				const arrow = document.getElementById(`arrow-${categoryId}`)
+				const header = categorySkills.previousElementSibling
+
+				if (categorySkills.classList.contains('collapsed')) {
+					categorySkills.classList.remove('collapsed')
+					header.classList.remove('collapsed')
+				} else {
+					categorySkills.classList.add('collapsed')
+					header.classList.add('collapsed')
+				}
+			}
+
 			async function loadSkills() {
 				try {
 					const response = await fetch(`/api/characters/${characterId}/skills`)
@@ -760,27 +774,73 @@
 						queueContainer.innerHTML = 'No skills in training queue'
 					}
 
-					// Update skills list
+					// Group skills by category
+					const skillsByCategory = {}
+					skills.skills.forEach(skill => {
+						const categoryName = skill.categoryName || 'Uncategorized'
+						if (!skillsByCategory[categoryName]) {
+							skillsByCategory[categoryName] = {
+								categoryId: skill.categoryId,
+								categoryName: categoryName,
+								skills: [],
+								totalSP: 0,
+								skillCount: 0
+							}
+						}
+						skillsByCategory[categoryName].skills.push(skill)
+						skillsByCategory[categoryName].totalSP += skill.skillpoints
+						skillsByCategory[categoryName].skillCount++
+					})
+
+					// Sort categories alphabetically
+					const sortedCategories = Object.keys(skillsByCategory).sort()
+
+					// Update skills list with categorized view
 					const skillsContainer = document.getElementById('skillsList')
-					skillsContainer.innerHTML = skills.skills
-						.map(
-							(skill) => `
-						<div class="skill-item">
-							<div>
-								<div class="skill-name">${skill.skillName || `Skill ID: ${skill.skillId}`}</div>
-								<div class="skill-sp">${skill.skillpoints.toLocaleString()} SP</div>
-							</div>
-							<div class="skill-level">
-								${[1, 2, 3, 4, 5]
-									.map(
-										(level) =>
-											`<div class="skill-pip ${level <= skill.trainedLevel ? 'filled' : ''}"></div>`
-									)
-									.join('')}
-							</div>
-						</div>
-					`
-						)
+					skillsContainer.innerHTML = sortedCategories
+						.map(categoryName => {
+							const category = skillsByCategory[categoryName]
+							const categoryId = `category-${category.categoryId || 'uncategorized'}`
+
+							// Sort skills within category alphabetically
+							category.skills.sort((a, b) => a.skillName.localeCompare(b.skillName))
+
+							return `
+								<div class="skill-category">
+									<div class="category-header" onclick="toggleCategory('${categoryId}')">
+										<div class="category-name">
+											<svg class="category-arrow" id="arrow-${categoryId}" viewBox="0 0 20 20" fill="currentColor">
+												<path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+											</svg>
+											<span>${categoryName}</span>
+											<span class="category-skill-count">${category.skillCount}</span>
+										</div>
+										<div class="category-stats">
+											<span class="category-sp-total">${category.totalSP.toLocaleString()} SP</span>
+										</div>
+									</div>
+									<div class="category-skills" id="${categoryId}">
+										${category.skills
+											.map(skill => `
+												<div class="skill-item">
+													<div>
+														<div class="skill-name">${skill.skillName || `Skill ID: ${skill.skillId}`}</div>
+														<div class="skill-sp">${skill.skillpoints.toLocaleString()} SP</div>
+													</div>
+													<div class="skill-level">
+														${[1, 2, 3, 4, 5]
+															.map(level =>
+																`<div class="skill-pip ${level <= skill.trainedLevel ? 'filled' : ''}"></div>`
+															)
+															.join('')}
+													</div>
+												</div>
+											`)
+											.join('')}
+									</div>
+								</div>
+							`
+						})
 						.join('')
 				} catch (error) {
 					console.error('Error loading skills:', error)

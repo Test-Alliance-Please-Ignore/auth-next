@@ -1153,12 +1153,19 @@ const app = new Hono<App>()
 			// Get skill queue
 			const skillQueue = await dataStoreStub.getSkillQueue(characterId)
 
-			// Get skill names from EveUniverse
+			// Get skill names and hierarchy from EveUniverse
 			const universeStub = getStub<EveUniverse>(c.env.EVE_UNIVERSE, 'global')
 			const allSkillIds = [...skills.map((s) => s.skill_id), ...skillQueue.map((q) => q.skill_id)]
 			const uniqueSkillIds = [...new Set(allSkillIds)]
-			const skillNames = await universeStub.getNames(uniqueSkillIds)
+
+			// Get both names and hierarchy information
+			const [skillNames, skillHierarchy] = await Promise.all([
+				universeStub.getNames(uniqueSkillIds),
+				universeStub.getSkillHierarchy(uniqueSkillIds)
+			])
+
 			const skillNameMap = new Map(skillNames.map((n) => [n.id, n.name]))
+			const skillHierarchyMap = new Map(skillHierarchy.map((h) => [h.skill_id, h]))
 
 			return c.json({
 				success: true,
@@ -1166,24 +1173,36 @@ const app = new Hono<App>()
 					totalSP: skillsData.total_sp,
 					unallocatedSP: skillsData.unallocated_sp,
 					lastUpdated: skillsData.last_updated,
-					skills: skills.map((s) => ({
-						skillId: s.skill_id,
-						skillName: skillNameMap.get(s.skill_id) || `Unknown Skill (${s.skill_id})`,
-						skillpoints: s.skillpoints_in_skill,
-						trainedLevel: s.trained_skill_level,
-						activeLevel: s.active_skill_level,
-					})),
-					skillQueue: skillQueue.map((q) => ({
-						skillId: q.skill_id,
-						skillName: skillNameMap.get(q.skill_id) || `Unknown Skill (${q.skill_id})`,
-						finishedLevel: q.finished_level,
-						queuePosition: q.queue_position,
-						startDate: q.start_date,
-						finishDate: q.finish_date,
-						trainingStartSP: q.training_start_sp,
-						levelStartSP: q.level_start_sp,
-						levelEndSP: q.level_end_sp,
-					})),
+					skills: skills.map((s) => {
+						const hierarchy = skillHierarchyMap.get(s.skill_id)
+						return {
+							skillId: s.skill_id,
+							skillName: hierarchy?.skill_name || skillNameMap.get(s.skill_id) || `Unknown Skill (${s.skill_id})`,
+							skillpoints: s.skillpoints_in_skill,
+							trainedLevel: s.trained_skill_level,
+							activeLevel: s.active_skill_level,
+							groupId: hierarchy?.group_id,
+							groupName: hierarchy?.group_name,
+							categoryId: hierarchy?.category_id,
+							categoryName: hierarchy?.category_name,
+						}
+					}),
+					skillQueue: skillQueue.map((q) => {
+						const hierarchy = skillHierarchyMap.get(q.skill_id)
+						return {
+							skillId: q.skill_id,
+							skillName: hierarchy?.skill_name || skillNameMap.get(q.skill_id) || `Unknown Skill (${q.skill_id})`,
+							finishedLevel: q.finished_level,
+							queuePosition: q.queue_position,
+							startDate: q.start_date,
+							finishDate: q.finish_date,
+							trainingStartSP: q.training_start_sp,
+							levelStartSP: q.level_start_sp,
+							levelEndSP: q.level_end_sp,
+							groupName: hierarchy?.group_name,
+							categoryName: hierarchy?.category_name,
+						}
+					}),
 				},
 			})
 		} catch (error) {

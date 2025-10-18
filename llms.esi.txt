@@ -1,0 +1,617 @@
+# EVE Online ESI API Documentation for LLMs
+
+## Overview
+The EVE Swagger Interface (ESI) provides programmatic access to EVE Online game data. This document provides structured information for Large Language Models to understand and generate API calls to ESI.
+
+## Base Configuration
+
+- **Base URL**: `https://esi.evetech.net`
+- **Compatibility Date**: Required header `X-Compatibility-Date: 2025-09-30`
+- **Server**: Tranquility (production server)
+- **API Version**: Latest compatible version is 2025-09-30
+- **Documentation**: https://developers.eveonline.com/docs/
+- **Data Format**: JSON responses
+
+## Authentication
+
+ESI uses OAuth2 Authorization Code Flow for authenticated endpoints.
+
+### OAuth2 Configuration
+- **Authorization URL**: `https://login.eveonline.com/v2/oauth/authorize`
+- **Token URL**: `https://login.eveonline.com/v2/oauth/token`
+- **Scopes**: Granular permissions following pattern `esi-{category}.{action}_{resource}.v1`
+
+### Common OAuth2 Scopes
+
+**Character Management:**
+- `esi-characters.read_blueprints.v1` - Read blueprints
+- `esi-characters.read_contacts.v1` - Read contacts
+- `esi-characters.write_contacts.v1` - Modify contacts
+- `esi-characters.read_corporation_roles.v1` - Read corp roles
+- `esi-characters.read_fatigue.v1` - Read jump fatigue
+- `esi-characters.read_fw_stats.v1` - Read faction warfare stats
+- `esi-characters.read_loyalty.v1` - Read loyalty points
+- `esi-characters.read_notifications.v1` - Read notifications
+- `esi-characters.read_standings.v1` - Read standings
+
+**Assets & Inventory:**
+- `esi-assets.read_assets.v1` - Read character assets
+- `esi-assets.read_corporation_assets.v1` - Read corp assets
+
+**Wallet:**
+- `esi-wallet.read_character_wallet.v1` - Read character wallet
+- `esi-wallet.read_corporation_wallets.v1` - Read corp wallets
+
+**Skills:**
+- `esi-skills.read_skills.v1` - Read trained skills
+- `esi-skills.read_skillqueue.v1` - Read skill training queue
+- `esi-clones.read_clones.v1` - Read clone information
+- `esi-clones.read_implants.v1` - Read active implants
+
+**Location:**
+- `esi-location.read_location.v1` - Read current location
+- `esi-location.read_online.v1` - Read online status
+- `esi-location.read_ship_type.v1` - Read current ship
+
+**Market:**
+- `esi-markets.read_character_orders.v1` - Read character orders
+- `esi-markets.read_corporation_orders.v1` - Read corp orders
+- `esi-markets.structure_markets.v1` - Access structure markets
+
+**Mail:**
+- `esi-mail.read_mail.v1` - Read mail
+- `esi-mail.send_mail.v1` - Send mail
+- `esi-mail.organize_mail.v1` - Organize mail
+
+**Industry:**
+- `esi-industry.read_character_jobs.v1` - Read industry jobs
+- `esi-industry.read_character_mining.v1` - Read mining ledger
+
+**Fleets:**
+- `esi-fleets.read_fleet.v1` - Read fleet info
+- `esi-fleets.write_fleet.v1` - Manage fleet
+
+**Killmails:**
+- `esi-killmails.read_killmails.v1` - Read character killmails
+- `esi-killmails.read_corporation_killmails.v1` - Read corp killmails
+
+## Common Request Headers
+
+```http
+X-Compatibility-Date: 2025-09-30  # Required
+Accept-Language: en                # Optional: en, de, fr, ja, ru, zh, ko, es
+Authorization: Bearer {token}       # For authenticated endpoints
+If-None-Match: {etag}              # For conditional requests (caching)
+If-Modified-Since: {timestamp}     # For conditional requests (caching)
+```
+
+## Response Headers
+
+- `Cache-Control`: Caching directives
+- `ETag`: Resource version for caching
+- `Last-Modified`: Last modification timestamp
+- `X-Pages`: Total pages (for paginated responses)
+- `Content-Language`: Response language
+
+## Error Responses
+
+```json
+{
+  "error": "Error message string"
+}
+```
+
+### Common Status Codes
+- `200` - Success
+- `304` - Not Modified (cached response valid)
+- `400` - Bad Request
+- `401` - Unauthorized (invalid/expired token)
+- `403` - Forbidden (missing required scope)
+- `404` - Resource not found
+- `420` - Error Limited (rate limit exceeded)
+- `500` - Internal Server Error
+- `503` - Service Unavailable
+
+## Rate Limiting
+
+- Typical limit: ~150 requests/second per IP
+- When rate limited, returns status 420
+- Implement exponential backoff on 420 responses
+- Use ETag/If-None-Match to reduce unnecessary requests
+
+## Key Endpoints
+
+### Character Information
+
+#### Get Character Public Info
+```http
+GET /characters/{character_id}
+```
+No authentication required. Returns name, corporation_id, birthday, race, bloodline, security status.
+
+#### Get Character Portrait
+```http
+GET /characters/{character_id}/portrait
+```
+Returns URLs for character portraits in various sizes.
+
+#### Get Character Corporation History
+```http
+GET /characters/{character_id}/corporationhistory
+```
+Returns list of all corporations the character has been in.
+
+#### Bulk Character Affiliation
+```http
+POST /characters/affiliation
+Content-Type: application/json
+
+[90000001, 90000002, 90000003]
+```
+Returns corporation, alliance, and faction for multiple characters.
+
+### Skills & Attributes
+
+#### Get Character Skills
+```http
+GET /characters/{character_id}/skills
+Authorization: Bearer {token}
+```
+Requires scope: `esi-skills.read_skills.v1`
+Returns all trained skills with levels and skill points.
+
+#### Get Skill Queue
+```http
+GET /characters/{character_id}/skillqueue
+Authorization: Bearer {token}
+```
+Requires scope: `esi-skills.read_skillqueue.v1`
+Returns the character's skill training queue.
+
+#### Get Character Attributes
+```http
+GET /characters/{character_id}/attributes
+Authorization: Bearer {token}
+```
+Requires scope: `esi-skills.read_skills.v1`
+Returns intelligence, perception, memory, willpower, charisma.
+
+### Assets
+
+#### Get Character Assets
+```http
+GET /characters/{character_id}/assets?page={page}
+Authorization: Bearer {token}
+```
+Requires scope: `esi-assets.read_assets.v1`
+Returns paginated list of all character assets.
+
+#### Get Asset Locations
+```http
+POST /characters/{character_id}/assets/locations
+Authorization: Bearer {token}
+Content-Type: application/json
+
+[{item_id}, {item_id}, ...]
+```
+Returns coordinates for items in space.
+
+#### Get Asset Names
+```http
+POST /characters/{character_id}/assets/names
+Authorization: Bearer {token}
+Content-Type: application/json
+
+[{item_id}, {item_id}, ...]
+```
+Returns custom names for containers, ships, etc.
+
+### Wallet
+
+#### Get Wallet Balance
+```http
+GET /characters/{character_id}/wallet
+Authorization: Bearer {token}
+```
+Requires scope: `esi-wallet.read_character_wallet.v1`
+Returns current ISK balance.
+
+#### Get Wallet Journal
+```http
+GET /characters/{character_id}/wallet/journal?page={page}
+Authorization: Bearer {token}
+```
+Returns 30 days of wallet journal entries.
+
+#### Get Wallet Transactions
+```http
+GET /characters/{character_id}/wallet/transactions?from_id={id}
+Authorization: Bearer {token}
+```
+Returns market buy/sell transactions.
+
+### Corporation
+
+#### Get Corporation Info
+```http
+GET /corporations/{corporation_id}
+```
+No authentication required. Returns name, ticker, CEO, member count, etc.
+
+#### Get Corporation Members
+```http
+GET /corporations/{corporation_id}/members
+Authorization: Bearer {token}
+```
+Requires scope: `esi-corporations.read_corporation_membership.v1`
+Returns list of member character IDs.
+
+#### Get Corporation Assets
+```http
+GET /corporations/{corporation_id}/assets?page={page}
+Authorization: Bearer {token}
+```
+Requires scope: `esi-assets.read_corporation_assets.v1`
+
+### Alliance
+
+#### List All Alliances
+```http
+GET /alliances
+```
+Returns list of all active alliance IDs.
+
+#### Get Alliance Info
+```http
+GET /alliances/{alliance_id}
+```
+Returns name, ticker, executor corp, member count.
+
+#### Get Alliance Corporations
+```http
+GET /alliances/{alliance_id}/corporations
+```
+Returns list of member corporation IDs.
+
+### Market
+
+#### Get Market Prices
+```http
+GET /markets/prices
+```
+Returns average and adjusted prices for all tradeable items.
+
+#### Get Regional Market Orders
+```http
+GET /markets/{region_id}/orders?type_id={type_id}&order_type={buy|sell|all}&page={page}
+```
+Returns market orders in a region. Can filter by type_id and order type.
+
+#### Get Market History
+```http
+GET /markets/{region_id}/history?type_id={type_id}
+```
+Returns daily price history (volume, avg, high, low, orders).
+
+#### Get Character Orders
+```http
+GET /characters/{character_id}/orders
+Authorization: Bearer {token}
+```
+Requires scope: `esi-markets.read_character_orders.v1`
+Returns character's active market orders.
+
+### Contracts
+
+#### Get Character Contracts
+```http
+GET /characters/{character_id}/contracts?page={page}
+Authorization: Bearer {token}
+```
+Requires scope: `esi-contracts.read_character_contracts.v1`
+Returns contracts (max 30 days old).
+
+#### Get Contract Items
+```http
+GET /characters/{character_id}/contracts/{contract_id}/items
+Authorization: Bearer {token}
+```
+Returns items in the contract.
+
+#### Get Public Contracts
+```http
+GET /contracts/public/{region_id}?page={page}
+```
+Returns public contracts in a region.
+
+### Killmails
+
+#### Get Recent Killmails
+```http
+GET /characters/{character_id}/killmails/recent?page={page}
+Authorization: Bearer {token}
+```
+Requires scope: `esi-killmails.read_killmails.v1`
+Returns kills and losses (90 days).
+
+#### Get Killmail Details
+```http
+GET /killmails/{killmail_id}/{killmail_hash}
+```
+No authentication required. Returns full killmail details.
+
+### Industry
+
+#### Get Industry Jobs
+```http
+GET /characters/{character_id}/industry/jobs?include_completed={boolean}
+Authorization: Bearer {token}
+```
+Requires scope: `esi-industry.read_character_jobs.v1`
+
+#### Get Mining Ledger
+```http
+GET /characters/{character_id}/mining?page={page}
+Authorization: Bearer {token}
+```
+Requires scope: `esi-industry.read_character_mining.v1`
+Returns 30 days of mining history.
+
+### Mail
+
+#### Get Mail Headers
+```http
+GET /characters/{character_id}/mail?labels={label_ids}&last_mail_id={id}
+Authorization: Bearer {token}
+```
+Requires scope: `esi-mail.read_mail.v1`
+Returns 50 most recent mail headers.
+
+#### Get Mail Body
+```http
+GET /characters/{character_id}/mail/{mail_id}
+Authorization: Bearer {token}
+```
+Returns full mail content.
+
+#### Send Mail
+```http
+POST /characters/{character_id}/mail
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "recipients": [
+    {"recipient_id": 90000001, "recipient_type": "character"}
+  ],
+  "subject": "Subject line",
+  "body": "Mail body text",
+  "approved_cost": 0
+}
+```
+Requires scope: `esi-mail.send_mail.v1`
+
+### Fleets
+
+#### Get Character Fleet
+```http
+GET /characters/{character_id}/fleet
+Authorization: Bearer {token}
+```
+Requires scope: `esi-fleets.read_fleet.v1`
+Returns fleet_id if character is in a fleet.
+
+#### Get Fleet Members
+```http
+GET /fleets/{fleet_id}/members
+Authorization: Bearer {token}
+```
+Returns all fleet members with positions and ships.
+
+#### Invite to Fleet
+```http
+POST /fleets/{fleet_id}/members
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "character_id": 90000001,
+  "role": "squad_member",
+  "squad_id": -1,
+  "wing_id": -1
+}
+```
+Requires scope: `esi-fleets.write_fleet.v1`
+
+### Location
+
+#### Get Current Location
+```http
+GET /characters/{character_id}/location
+Authorization: Bearer {token}
+```
+Requires scope: `esi-location.read_location.v1`
+Returns solar_system_id, station_id or structure_id.
+
+#### Get Online Status
+```http
+GET /characters/{character_id}/online
+Authorization: Bearer {token}
+```
+Requires scope: `esi-location.read_online.v1`
+Returns online status and login times.
+
+#### Get Current Ship
+```http
+GET /characters/{character_id}/ship
+Authorization: Bearer {token}
+```
+Requires scope: `esi-location.read_ship_type.v1`
+Returns ship_type_id and ship_name.
+
+### Search
+
+#### Search for Entities
+```http
+GET /characters/{character_id}/search?categories={categories}&search={query}&strict={boolean}
+Authorization: Bearer {token}
+```
+Categories: agent, alliance, character, constellation, corporation, faction, inventory_type, region, solar_system, station, structure
+Returns matching IDs grouped by category.
+
+### Universe
+
+#### Get Type Information
+```http
+GET /universe/types/{type_id}
+```
+Returns detailed information about an item type.
+
+#### Get System Information
+```http
+GET /universe/systems/{system_id}
+```
+Returns system name, constellation, security status, etc.
+
+#### Get Station Information
+```http
+GET /universe/stations/{station_id}
+```
+Returns station details including services.
+
+#### Bulk ID to Name Resolution
+```http
+POST /universe/names
+Content-Type: application/json
+
+[90000001, 500001, 30000142]
+```
+Resolves multiple IDs to names.
+
+#### Bulk Name to ID Resolution
+```http
+POST /universe/ids
+Content-Type: application/json
+
+{
+  "characters": ["CCP Bartender"],
+  "systems": ["Jita"],
+  "alliances": ["Test Alliance Please Ignore"]
+}
+```
+Resolves names to IDs.
+
+## Pagination Patterns
+
+### Page-based Pagination
+Most endpoints use page-based pagination:
+```http
+GET /endpoint?page=1
+GET /endpoint?page=2
+```
+Check `X-Pages` header for total pages.
+
+### Cursor-based Pagination
+Some endpoints use cursor pagination:
+- Wallet transactions: `from_id` parameter
+- Mail: `last_mail_id` parameter
+
+## Caching Best Practices
+
+1. **Use ETags**: Store ETag from response headers, send with `If-None-Match`
+2. **Respect Cache Times**: Don't poll faster than cache duration
+3. **Cache Durations by Type**:
+   - Location/Online: 5-60 seconds
+   - Wallet/Skills: 2 minutes
+   - Assets: 1 hour
+   - Market orders: 5 minutes
+   - Character info: 7 days
+   - Daily refresh at 11:05 UTC: Market history, universe data
+
+## Common ID Types
+
+- **character_id**: Player character (e.g., 90000001)
+- **corporation_id**: Corporation (e.g., 1000001)
+- **alliance_id**: Alliance (e.g., 99000001)
+- **type_id**: Item type (e.g., 587 for Rifter)
+- **system_id**: Solar system (e.g., 30000142 for Jita)
+- **region_id**: Region (e.g., 10000002 for The Forge)
+- **station_id**: NPC station (e.g., 60003760)
+- **structure_id**: Player structure (large integers)
+
+## Example Workflows
+
+### Get Character Overview
+1. Get public info: `GET /characters/{character_id}`
+2. Get portrait: `GET /characters/{character_id}/portrait`
+3. Get corporation: `GET /corporations/{corporation_id}` (using corp_id from step 1)
+4. Get alliance: `GET /alliances/{alliance_id}` (if applicable)
+
+### Monitor Market Prices
+1. Get type_id: `POST /universe/ids` with item name
+2. Get current orders: `GET /markets/{region_id}/orders?type_id={type_id}`
+3. Get price history: `GET /markets/{region_id}/history?type_id={type_id}`
+4. Get average prices: `GET /markets/prices` and filter by type_id
+
+### Track Character Activity (Authenticated)
+1. Check online: `GET /characters/{character_id}/online`
+2. Get location: `GET /characters/{character_id}/location`
+3. Get current ship: `GET /characters/{character_id}/ship`
+4. Get recent kills: `GET /characters/{character_id}/killmails/recent`
+
+### Manage Fleet Operations (Authenticated)
+1. Get fleet ID: `GET /characters/{character_id}/fleet`
+2. Get fleet members: `GET /fleets/{fleet_id}/members`
+3. Get fleet structure: `GET /fleets/{fleet_id}/wings`
+4. Invite members: `POST /fleets/{fleet_id}/members`
+
+## Important Notes
+
+1. **Always include** `X-Compatibility-Date: 2025-09-30` header
+2. **Public endpoints** don't require authentication
+3. **Authenticated endpoints** need valid OAuth2 token with appropriate scopes
+4. **Rate limiting** returns status 420 - implement exponential backoff
+5. **Null values** in responses indicate the field is not applicable or unknown
+6. **IDs are stable** - character, corporation, and alliance IDs never change
+7. **Cache appropriately** - use ETags and respect cache durations
+8. **Paginate large results** - check X-Pages header for total pages
+9. **Batch operations** when possible (affiliation, names, IDs)
+10. **Handle errors gracefully** - check for 403 (missing scope), 404 (not found)
+
+## Quick Reference: No-Auth Endpoints
+
+These endpoints work without authentication:
+- Character public info, portrait, corp history
+- Corporation public info, icons, alliance history
+- Alliance info, members, icons
+- Market prices, orders, history, groups
+- Public contracts
+- Killmail details (with hash)
+- Universe data (types, systems, regions, stations)
+- Faction warfare leaderboards and stats
+- Industry facilities and system indices
+- NPC corporations list
+- Search (limited categories without auth)
+
+## Quick Reference: Common Scopes Needed
+
+For most character tracking applications:
+- `esi-location.read_location.v1` - Current location
+- `esi-location.read_online.v1` - Online status
+- `esi-location.read_ship_type.v1` - Current ship
+- `esi-skills.read_skills.v1` - Skills and attributes
+- `esi-skills.read_skillqueue.v1` - Training queue
+- `esi-wallet.read_character_wallet.v1` - ISK balance and transactions
+- `esi-assets.read_assets.v1` - Asset list
+- `esi-markets.read_character_orders.v1` - Market orders
+- `esi-contracts.read_character_contracts.v1` - Contracts
+- `esi-killmails.read_killmails.v1` - Kills and losses
+
+For corporation management:
+- `esi-corporations.read_corporation_membership.v1` - Member list
+- `esi-corporations.track_members.v1` - Member tracking
+- `esi-assets.read_corporation_assets.v1` - Corp assets
+- `esi-wallet.read_corporation_wallets.v1` - Corp wallets
+- `esi-corporations.read_structures.v1` - Structures
+- `esi-industry.read_corporation_jobs.v1` - Industry jobs
+- `esi-contracts.read_corporation_contracts.v1` - Corp contracts

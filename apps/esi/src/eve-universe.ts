@@ -1,57 +1,39 @@
-import { DurableObject } from 'cloudflare:workers'
-
+import { MigratableDurableObject, loadMigrationsFromBuild } from '@repo/do-migrations'
 import { logger } from '@repo/hono-helpers'
 
-import type { NameCacheEntry, UniverseName } from '@repo/eve-universe'
+import type {
+	CategoryInfo,
+	GroupInfo,
+	NameCacheEntry,
+	TypeInfo,
+	UniverseName,
+} from '@repo/eve-universe'
 import type { Env } from './context'
+import {
+	fetchCategoryInfo,
+	fetchGroupInfo,
+	fetchTypeInfo,
+	type ESICategoryInfo,
+	type ESIGroupInfo,
+	type ESITypeInfo,
+} from './esi-client'
+import { eveUniverseMigrations } from './migrations'
 
-export class EveUniverse extends DurableObject<Env> {
+export class EveUniverse extends MigratableDurableObject<Env> {
 	constructor(ctx: DurableObjectState, env: Env) {
-		super(ctx, env)
+		super(ctx, env, {
+			migrationDir: 'EveUniverse',
+			autoMigrate: true,
+			verbose: env.ENVIRONMENT === 'development',
+		})
 	}
 
-	private async initializeSchema() {
-		// Check if names table exists, if not create it
-		await this.ensureNamesTable()
+	protected async loadMigrations() {
+		return loadMigrationsFromBuild(eveUniverseMigrations)
 	}
 
-	private async ensureNamesTable(): Promise<void> {
-		try {
-			// Check if names table exists
-			const result = await this.ctx.storage.sql
-				.exec(`SELECT name FROM sqlite_master WHERE type='table' AND name='names'`)
-				.toArray()
-
-			if (result.length === 0) {
-				logger.info('Names table not found, creating it...')
-
-				// Names cache table
-				await this.ctx.storage.sql.exec(`
-					CREATE TABLE IF NOT EXISTS names (
-						id INTEGER PRIMARY KEY,
-						name TEXT NOT NULL,
-						category TEXT NOT NULL,
-						cached_at INTEGER NOT NULL
-					)
-				`)
-
-				await this.ctx.storage.sql.exec(`
-					CREATE INDEX IF NOT EXISTS idx_names_category ON names(category)
-				`)
-
-				await this.ctx.storage.sql.exec(`
-					CREATE INDEX IF NOT EXISTS idx_names_cached_at ON names(cached_at)
-				`)
-
-				logger.info('Names table created successfully')
-			}
-		} catch (error) {
-			logger.error('Error checking/creating names table', { error: String(error) })
-		}
-	}
 
 	async getNames(ids: number[]): Promise<UniverseName[]> {
-		await this.initializeSchema()
 
 		if (ids.length === 0) {
 			return []
@@ -166,7 +148,6 @@ export class EveUniverse extends DurableObject<Env> {
 	}
 
 	async cacheNames(names: UniverseName[]): Promise<void> {
-		await this.initializeSchema()
 
 		if (names.length === 0) {
 			return
@@ -220,7 +201,6 @@ export class EveUniverse extends DurableObject<Env> {
 	}
 
 	async clearOldCache(olderThan?: number): Promise<void> {
-		await this.initializeSchema()
 
 		// Default to 30 days ago
 		const cutoff = olderThan || Date.now() - 30 * 24 * 60 * 60 * 1000
@@ -286,5 +266,406 @@ export class EveUniverse extends DurableObject<Env> {
 		}
 
 		return allResults
+	}
+
+	async getTypes(typeIds: number[]): Promise<TypeInfo[]> {
+		if (typeIds.length === 0) {
+			return []
+		}
+
+		// Deduplicate IDs
+		const uniqueIds = [...new Set(typeIds)]
+		const BATCH_SIZE = 200
+		const cached: TypeInfo[] = []
+
+		// Query cache in batches
+		for (let i = 0; i < uniqueIds.length; i += BATCH_SIZE) {
+			const batch = uniqueIds.slice(i, i + BATCH_SIZE)
+			if (batch.length === 0) continue
+
+			const placeholders = batch.map(() => '?').join(',')
+
+			try {
+				const batchResults = await this.ctx.storage.sql
+					.exec<TypeInfo>(
+						`SELECT type_id, name, group_id, description, published, cached_at
+						 FROM types WHERE type_id IN (${placeholders})`,
+						...batch
+					)
+					.toArray()
+				cached.push(...batchResults)
+			} catch (error) {
+				logger.error('Error querying types batch from cache', {
+					error: String(error),
+					batchSize: batch.length,
+				})
+			}
+		}
+
+		// Find missing type IDs
+		const cachedIds = new Set(cached.map((t) => t.type_id))
+		const missingIds = uniqueIds.filter((id) => !cachedIds.has(id))
+
+		if (missingIds.length > 0) {
+			// Fetch missing types from ESI
+			const fetched = await this.fetchTypesFromESI(missingIds)
+
+			// Cache the fetched types
+			if (fetched.length > 0) {
+				await this.cacheTypes(fetched)
+				cached.push(...fetched)
+			}
+		}
+
+		// Return in the original order
+		const typeMap = new Map(cached.map((t) => [t.type_id, t]))
+		return typeIds.map((id) => typeMap.get(id)).filter((t): t is TypeInfo => t !== undefined)
+	}
+
+	async getGroups(groupIds: number[]): Promise<GroupInfo[]> {
+		if (groupIds.length === 0) {
+			return []
+		}
+
+		// Deduplicate IDs
+		const uniqueIds = [...new Set(groupIds)]
+		const BATCH_SIZE = 200
+		const cached: GroupInfo[] = []
+
+		// Query cache in batches
+		for (let i = 0; i < uniqueIds.length; i += BATCH_SIZE) {
+			const batch = uniqueIds.slice(i, i + BATCH_SIZE)
+			if (batch.length === 0) continue
+
+			const placeholders = batch.map(() => '?').join(',')
+
+			try {
+				const batchResults = await this.ctx.storage.sql
+					.exec<GroupInfo>(
+						`SELECT group_id, name, category_id, published, cached_at
+						 FROM groups WHERE group_id IN (${placeholders})`,
+						...batch
+					)
+					.toArray()
+				cached.push(...batchResults)
+			} catch (error) {
+				logger.error('Error querying groups batch from cache', {
+					error: String(error),
+					batchSize: batch.length,
+				})
+			}
+		}
+
+		// Find missing group IDs
+		const cachedIds = new Set(cached.map((g) => g.group_id))
+		const missingIds = uniqueIds.filter((id) => !cachedIds.has(id))
+
+		if (missingIds.length > 0) {
+			// Fetch missing groups from ESI
+			const fetched = await this.fetchGroupsFromESI(missingIds)
+
+			// Cache the fetched groups
+			if (fetched.length > 0) {
+				await this.cacheGroups(fetched)
+				cached.push(...fetched)
+			}
+		}
+
+		// Return in the original order
+		const groupMap = new Map(cached.map((g) => [g.group_id, g]))
+		return groupIds.map((id) => groupMap.get(id)).filter((g): g is GroupInfo => g !== undefined)
+	}
+
+	async getCategories(categoryIds: number[]): Promise<CategoryInfo[]> {
+		if (categoryIds.length === 0) {
+			return []
+		}
+
+		// Deduplicate IDs
+		const uniqueIds = [...new Set(categoryIds)]
+		const BATCH_SIZE = 200
+		const cached: CategoryInfo[] = []
+
+		// Query cache in batches
+		for (let i = 0; i < uniqueIds.length; i += BATCH_SIZE) {
+			const batch = uniqueIds.slice(i, i + BATCH_SIZE)
+			if (batch.length === 0) continue
+
+			const placeholders = batch.map(() => '?').join(',')
+
+			try {
+				const batchResults = await this.ctx.storage.sql
+					.exec<CategoryInfo>(
+						`SELECT category_id, name, published, cached_at
+						 FROM categories WHERE category_id IN (${placeholders})`,
+						...batch
+					)
+					.toArray()
+				cached.push(...batchResults)
+			} catch (error) {
+				logger.error('Error querying categories batch from cache', {
+					error: String(error),
+					batchSize: batch.length,
+				})
+			}
+		}
+
+		// Find missing category IDs
+		const cachedIds = new Set(cached.map((c) => c.category_id))
+		const missingIds = uniqueIds.filter((id) => !cachedIds.has(id))
+
+		if (missingIds.length > 0) {
+			// Fetch missing categories from ESI
+			const fetched = await this.fetchCategoriesFromESI(missingIds)
+
+			// Cache the fetched categories
+			if (fetched.length > 0) {
+				await this.cacheCategories(fetched)
+				cached.push(...fetched)
+			}
+		}
+
+		// Return in the original order
+		const categoryMap = new Map(cached.map((c) => [c.category_id, c]))
+		return categoryIds.map((id) => categoryMap.get(id)).filter((c): c is CategoryInfo => c !== undefined)
+	}
+
+	async getSkillHierarchy(skillIds: number[]): Promise<Array<{
+		skill_id: number
+		skill_name: string
+		group_id: number
+		group_name: string
+		category_id: number
+		category_name: string
+	}>> {
+		if (skillIds.length === 0) {
+			return []
+		}
+
+		// Get type information for all skills
+		const types = await this.getTypes(skillIds)
+
+		// Extract unique group IDs
+		const groupIds = [...new Set(types.map((t) => t.group_id))]
+
+		// Get group information
+		const groups = await this.getGroups(groupIds)
+
+		// Extract unique category IDs
+		const categoryIds = [...new Set(groups.map((g) => g.category_id))]
+
+		// Get category information
+		const categories = await this.getCategories(categoryIds)
+
+		// Create maps for quick lookup
+		const typeMap = new Map(types.map((t) => [t.type_id, t]))
+		const groupMap = new Map(groups.map((g) => [g.group_id, g]))
+		const categoryMap = new Map(categories.map((c) => [c.category_id, c]))
+
+		// Build the hierarchy
+		return skillIds
+			.map((skillId) => {
+				const type = typeMap.get(skillId)
+				if (!type) return null
+
+				const group = groupMap.get(type.group_id)
+				if (!group) return null
+
+				const category = categoryMap.get(group.category_id)
+				if (!category) return null
+
+				return {
+					skill_id: skillId,
+					skill_name: type.name,
+					group_id: type.group_id,
+					group_name: group.name,
+					category_id: group.category_id,
+					category_name: category.name,
+				}
+			})
+			.filter((h): h is NonNullable<typeof h> => h !== null)
+	}
+
+	private async cacheTypes(types: TypeInfo[]): Promise<void> {
+		if (types.length === 0) {
+			return
+		}
+
+		const now = Date.now()
+		const BATCH_SIZE = 50
+
+		for (let i = 0; i < types.length; i += BATCH_SIZE) {
+			const batch = types.slice(i, i + BATCH_SIZE)
+
+			try {
+				const placeholders = batch.map(() => '(?, ?, ?, ?, ?, ?)').join(',')
+				const values = batch.flatMap((t) => [
+					t.type_id,
+					t.name,
+					t.group_id,
+					t.description || '',
+					t.published ? 1 : 0,
+					now,
+				])
+
+				await this.ctx.storage.sql.exec(
+					`INSERT OR REPLACE INTO types (type_id, name, group_id, description, published, cached_at)
+					 VALUES ${placeholders}`,
+					...values
+				)
+			} catch (error) {
+				logger.error('Error caching types batch', {
+					error: String(error),
+					batchSize: batch.length,
+				})
+			}
+		}
+
+		logger.info('Types cached', { count: types.length })
+	}
+
+	private async cacheGroups(groups: GroupInfo[]): Promise<void> {
+		if (groups.length === 0) {
+			return
+		}
+
+		const now = Date.now()
+		const BATCH_SIZE = 50
+
+		for (let i = 0; i < groups.length; i += BATCH_SIZE) {
+			const batch = groups.slice(i, i + BATCH_SIZE)
+
+			try {
+				const placeholders = batch.map(() => '(?, ?, ?, ?, ?)').join(',')
+				const values = batch.flatMap((g) => [
+					g.group_id,
+					g.name,
+					g.category_id,
+					g.published ? 1 : 0,
+					now,
+				])
+
+				await this.ctx.storage.sql.exec(
+					`INSERT OR REPLACE INTO groups (group_id, name, category_id, published, cached_at)
+					 VALUES ${placeholders}`,
+					...values
+				)
+			} catch (error) {
+				logger.error('Error caching groups batch', {
+					error: String(error),
+					batchSize: batch.length,
+				})
+			}
+		}
+
+		logger.info('Groups cached', { count: groups.length })
+	}
+
+	private async cacheCategories(categories: CategoryInfo[]): Promise<void> {
+		if (categories.length === 0) {
+			return
+		}
+
+		const now = Date.now()
+		const BATCH_SIZE = 50
+
+		for (let i = 0; i < categories.length; i += BATCH_SIZE) {
+			const batch = categories.slice(i, i + BATCH_SIZE)
+
+			try {
+				const placeholders = batch.map(() => '(?, ?, ?, ?)').join(',')
+				const values = batch.flatMap((c) => [
+					c.category_id,
+					c.name,
+					c.published ? 1 : 0,
+					now,
+				])
+
+				await this.ctx.storage.sql.exec(
+					`INSERT OR REPLACE INTO categories (category_id, name, published, cached_at)
+					 VALUES ${placeholders}`,
+					...values
+				)
+			} catch (error) {
+				logger.error('Error caching categories batch', {
+					error: String(error),
+					batchSize: batch.length,
+				})
+			}
+		}
+
+		logger.info('Categories cached', { count: categories.length })
+	}
+
+	private async fetchTypesFromESI(typeIds: number[]): Promise<TypeInfo[]> {
+		const results: TypeInfo[] = []
+
+		for (const typeId of typeIds) {
+			try {
+				const { data } = await fetchTypeInfo(typeId)
+				results.push({
+					type_id: data.type_id,
+					name: data.name,
+					group_id: data.group_id,
+					description: data.description,
+					published: data.published,
+					cached_at: Date.now(),
+				})
+			} catch (error) {
+				logger.error('Error fetching type info from ESI', {
+					error: String(error),
+					typeId,
+				})
+			}
+		}
+
+		return results
+	}
+
+	private async fetchGroupsFromESI(groupIds: number[]): Promise<GroupInfo[]> {
+		const results: GroupInfo[] = []
+
+		for (const groupId of groupIds) {
+			try {
+				const { data } = await fetchGroupInfo(groupId)
+				results.push({
+					group_id: data.group_id,
+					name: data.name,
+					category_id: data.category_id,
+					published: data.published,
+					cached_at: Date.now(),
+				})
+			} catch (error) {
+				logger.error('Error fetching group info from ESI', {
+					error: String(error),
+					groupId,
+				})
+			}
+		}
+
+		return results
+	}
+
+	private async fetchCategoriesFromESI(categoryIds: number[]): Promise<CategoryInfo[]> {
+		const results: CategoryInfo[] = []
+
+		for (const categoryId of categoryIds) {
+			try {
+				const { data } = await fetchCategoryInfo(categoryId)
+				results.push({
+					category_id: data.category_id,
+					name: data.name,
+					published: data.published,
+					cached_at: Date.now(),
+				})
+			} catch (error) {
+				logger.error('Error fetching category info from ESI', {
+					error: String(error),
+					categoryId,
+				})
+			}
+		}
+
+		return results
 	}
 }

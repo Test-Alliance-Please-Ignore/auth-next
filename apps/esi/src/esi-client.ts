@@ -424,3 +424,199 @@ export async function fetchCharacterCorporationHistory(
 
 	return { data, expiresAt }
 }
+
+/**
+ * ESI Type information response
+ * From: GET /universe/types/{type_id}/
+ */
+export interface ESITypeInfo {
+	capacity?: number
+	description: string
+	dogma_attributes?: Array<{
+		attribute_id: number
+		value: number
+	}>
+	dogma_effects?: Array<{
+		effect_id: number
+		is_default: boolean
+	}>
+	graphic_id?: number
+	group_id: number
+	icon_id?: number
+	market_group_id?: number
+	mass?: number
+	name: string
+	packaged_volume?: number
+	portion_size?: number
+	published: boolean
+	radius?: number
+	type_id: number
+	volume?: number
+}
+
+/**
+ * ESI Group information response
+ * From: GET /universe/groups/{group_id}/
+ */
+export interface ESIGroupInfo {
+	category_id: number
+	group_id: number
+	name: string
+	published: boolean
+	types: number[]
+}
+
+/**
+ * ESI Category information response
+ * From: GET /universe/categories/{category_id}/
+ */
+export interface ESICategoryInfo {
+	category_id: number
+	groups: number[]
+	name: string
+	published: boolean
+}
+
+/**
+ * Fetch type information from ESI
+ * This is a public endpoint that doesn't require authentication
+ */
+export async function fetchTypeInfo(
+	typeId: number
+): Promise<{ data: ESITypeInfo; expiresAt: number | null }> {
+	const url = `https://esi.evetech.net/latest/universe/types/${typeId}/`
+
+	const response = await fetch(url, {
+		headers: {
+			'X-Compatibility-Date': '2025-09-30',
+		},
+	})
+
+	if (!response.ok) {
+		logger
+			.withTags({
+				type: 'esi_type_fetch_error',
+				type_id: typeId,
+			})
+			.error('Failed to fetch type info from ESI', {
+				typeId,
+				status: response.status,
+				statusText: response.statusText,
+			})
+		throw new Error(`Failed to fetch type info: ${response.status} ${response.statusText}`)
+	}
+
+	const data = (await response.json()) as ESITypeInfo
+	const cacheControl = response.headers.get('Cache-Control')
+	const expiresAt = parseCacheControl(cacheControl)
+
+	logger
+		.withTags({
+			type: 'esi_type_fetched',
+			type_id: typeId,
+		})
+		.info('Type info fetched from ESI', {
+			typeId,
+			typeName: data.name,
+			groupId: data.group_id,
+			expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
+		})
+
+	return { data, expiresAt }
+}
+
+/**
+ * Fetch group information from ESI
+ * This is a public endpoint that doesn't require authentication
+ */
+export async function fetchGroupInfo(
+	groupId: number
+): Promise<{ data: ESIGroupInfo; expiresAt: number | null }> {
+	const url = `https://esi.evetech.net/latest/universe/groups/${groupId}/`
+
+	const response = await fetch(url, {
+		headers: {
+			'X-Compatibility-Date': '2025-09-30',
+		},
+	})
+
+	if (!response.ok) {
+		logger
+			.withTags({
+				type: 'esi_group_fetch_error',
+				group_id: groupId,
+			})
+			.error('Failed to fetch group info from ESI', {
+				groupId,
+				status: response.status,
+				statusText: response.statusText,
+			})
+		throw new Error(`Failed to fetch group info: ${response.status} ${response.statusText}`)
+	}
+
+	const data = (await response.json()) as ESIGroupInfo
+	const cacheControl = response.headers.get('Cache-Control')
+	const expiresAt = parseCacheControl(cacheControl)
+
+	logger
+		.withTags({
+			type: 'esi_group_fetched',
+			group_id: groupId,
+		})
+		.info('Group info fetched from ESI', {
+			groupId,
+			groupName: data.name,
+			categoryId: data.category_id,
+			expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
+		})
+
+	return { data, expiresAt }
+}
+
+/**
+ * Fetch category information from ESI
+ * This is a public endpoint that doesn't require authentication
+ */
+export async function fetchCategoryInfo(
+	categoryId: number
+): Promise<{ data: ESICategoryInfo; expiresAt: number | null }> {
+	const url = `https://esi.evetech.net/latest/universe/categories/${categoryId}/`
+
+	const response = await fetch(url, {
+		headers: {
+			'X-Compatibility-Date': '2025-09-30',
+		},
+	})
+
+	if (!response.ok) {
+		logger
+			.withTags({
+				type: 'esi_category_fetch_error',
+				category_id: categoryId,
+			})
+			.error('Failed to fetch category info from ESI', {
+				categoryId,
+				status: response.status,
+				statusText: response.statusText,
+			})
+		throw new Error(`Failed to fetch category info: ${response.status} ${response.statusText}`)
+	}
+
+	const data = (await response.json()) as ESICategoryInfo
+	const cacheControl = response.headers.get('Cache-Control')
+	const expiresAt = parseCacheControl(cacheControl)
+
+	logger
+		.withTags({
+			type: 'esi_category_fetched',
+			category_id: categoryId,
+		})
+		.info('Category info fetched from ESI', {
+			categoryId,
+			categoryName: data.name,
+			groupCount: data.groups.length,
+			expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
+		})
+
+	return { data, expiresAt }
+}

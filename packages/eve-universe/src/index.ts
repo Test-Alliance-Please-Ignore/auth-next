@@ -22,6 +22,30 @@ export interface NameCacheEntry {
 	cached_at: number
 }
 
+export interface TypeInfo {
+	type_id: number
+	name: string
+	group_id: number
+	description: string
+	published: boolean
+	cached_at: number
+}
+
+export interface GroupInfo {
+	group_id: number
+	name: string
+	category_id: number
+	published: boolean
+	cached_at: number
+}
+
+export interface CategoryInfo {
+	category_id: number
+	name: string
+	published: boolean
+	cached_at: number
+}
+
 // ========== Durable Object Interface ==========
 
 /**
@@ -60,4 +84,40 @@ export interface EveUniverse {
 	 * @param olderThan - Timestamp to clear entries older than (default: 30 days ago)
 	 */
 	clearOldCache(olderThan?: number): Promise<void>
+
+	/**
+	 * Get type information for multiple type IDs (includes group_id)
+	 * @param typeIds - Array of type IDs to look up
+	 * @returns Array of type information
+	 */
+	getTypes(typeIds: number[]): Promise<TypeInfo[]>
+
+	/**
+	 * Get group information for multiple group IDs (includes category_id)
+	 * @param groupIds - Array of group IDs to look up
+	 * @returns Array of group information
+	 */
+	getGroups(groupIds: number[]): Promise<GroupInfo[]>
+
+	/**
+	 * Get category information for multiple category IDs
+	 * @param categoryIds - Array of category IDs to look up
+	 * @returns Array of category information
+	 */
+	getCategories(categoryIds: number[]): Promise<CategoryInfo[]>
+
+	/**
+	 * Get complete skill hierarchy information for multiple skill IDs
+	 * Returns skill name, group name, and category name for each skill
+	 * @param skillIds - Array of skill IDs to look up
+	 * @returns Array of skill hierarchy information
+	 */
+	getSkillHierarchy(skillIds: number[]): Promise<Array<{
+		skill_id: number
+		skill_name: string
+		group_id: number
+		group_name: string
+		category_id: number
+		category_name: string
+	}>>
 }

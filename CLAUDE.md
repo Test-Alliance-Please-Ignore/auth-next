@@ -321,4 +321,70 @@ The generator (`just new-durable-object`) automatically:
 - NEVER proactively create documentation files unless explicitly requested
 </critical-notes>
 
+<esi-api-reference>
+## EVE Online ESI API Reference
+
+When you need to interact with the EVE Online ESI (EVE Swagger Interface) API, refer to the `llms.esi.txt` file in the project root. This file contains comprehensive, LLM-optimized documentation for the ESI API.
+
+### Using the ESI API Documentation
+
+The `llms.esi.txt` file provides:
+- Complete endpoint documentation with examples
+- OAuth2 authentication flows and scopes
+- Request/response formats
+- Rate limiting guidelines
+- Common workflows and patterns
+- ID type references
+
+### Key Points When Using ESI
+
+1. **Always include the compatibility date header**:
+   ```http
+   X-Compatibility-Date: 2025-09-30
+   ```
+
+2. **Base URL for all requests**:
+   ```
+   https://esi.evetech.net
+   ```
+
+3. **Authentication**:
+   - Public endpoints work without authentication
+   - Private endpoints require OAuth2 tokens with specific scopes
+   - Scopes follow pattern: `esi-{category}.{action}_{resource}.v1`
+
+4. **Common Patterns**:
+   - Use ETags for caching (`If-None-Match` header)
+   - Implement exponential backoff on 420 (rate limit) responses
+   - Paginate large result sets using `?page=` parameter
+   - Batch ID lookups using `/universe/names` and `/universe/ids`
+
+5. **When implementing ESI features**:
+   - Check `llms.esi.txt` for the exact endpoint syntax
+   - Verify required OAuth scopes for authenticated endpoints
+   - Follow the caching guidelines to avoid unnecessary requests
+   - Use the example workflows as implementation templates
+
+### Example: Fetching Character Information
+
+```typescript
+// Public endpoint - no auth needed
+const response = await fetch('https://esi.evetech.net/characters/90000001', {
+  headers: {
+    'X-Compatibility-Date': '2025-09-30'
+  }
+})
+
+// Private endpoint - requires OAuth token and scope
+const skillsResponse = await fetch('https://esi.evetech.net/characters/90000001/skills', {
+  headers: {
+    'X-Compatibility-Date': '2025-09-30',
+    'Authorization': `Bearer ${accessToken}` // Requires esi-skills.read_skills.v1 scope
+  }
+})
+```
+
+For complete endpoint documentation, request/response formats, and implementation examples, always consult `llms.esi.txt`.
+</esi-api-reference>
+
 </cloudflare-workers-monorepo>
