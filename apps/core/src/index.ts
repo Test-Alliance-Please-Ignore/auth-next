@@ -16,6 +16,7 @@ import { withStaticAuth } from '@repo/static-auth'
 import type { TagStore } from '@repo/tag-store'
 
 import { OIDCClient } from './oidc-client'
+import characterProfileHtml from './templates/character-profile.html?raw'
 import dashboardHtml from './templates/dashboard.html?raw'
 import landingHtml from './templates/landing.html?raw'
 
@@ -42,6 +43,11 @@ const app = new Hono<App>()
 	// Dashboard page
 	.get('/dashboard', async (c) => {
 		return c.html(dashboardHtml)
+	})
+
+	// Character profile page
+	.get('/character', async (c) => {
+		return c.html(characterProfileHtml)
 	})
 
 	// Verify session and get user info
@@ -972,6 +978,324 @@ const app = new Hono<App>()
 		} catch (error) {
 			logger.error('Get primary character error', { error: String(error), rootUserId })
 			return c.json({ error: 'Failed to get primary character' }, 500)
+		}
+	})
+
+	// Get detailed character information
+	.get('/api/characters/:characterId', async (c) => {
+		const sessionId = getCookie(c, 'session_id')
+		if (!sessionId) {
+			return c.json({ error: 'Not authenticated' }, 401)
+		}
+
+		const characterId = Number(c.req.param('characterId'))
+		if (Number.isNaN(characterId)) {
+			return c.json({ error: 'Invalid character ID' }, 400)
+		}
+
+		try {
+			const sessionStub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
+			const session = await sessionStub.getSession(sessionId)
+
+			// Check if user owns this character
+			const characterLink = await sessionStub.getCharacterLinkByCharacterId(characterId)
+			const isOwner = characterLink && characterLink.rootUserId === session.rootUserId
+
+			// Get character data from CharacterDataStore
+			const dataStoreStub = getStub<CharacterDataStore>(c.env.CHARACTER_DATA_STORE, 'global')
+			const characterData = await dataStoreStub.getCharacter(characterId)
+
+			if (!characterData) {
+				return c.json({ error: 'Character not found' }, 404)
+			}
+
+			// Get corporation data
+			const corporationData = await dataStoreStub.getCorporation(characterData.corporation_id)
+
+			// Build response based on ownership
+			const response: any = {
+				success: true,
+				isOwner,
+				character: {
+					characterId: characterData.character_id,
+					name: characterData.name,
+					birthday: characterData.birthday,
+					gender: characterData.gender,
+					raceId: characterData.race_id,
+					bloodlineId: characterData.bloodline_id,
+					ancestryId: characterData.ancestry_id,
+					description: characterData.description,
+					securityStatus: characterData.security_status,
+					corporation: corporationData ? {
+						corporationId: corporationData.corporation_id,
+						name: corporationData.name,
+						ticker: corporationData.ticker,
+						memberCount: corporationData.member_count,
+						allianceId: corporationData.alliance_id
+					} : null,
+					allianceId: characterData.alliance_id,
+					lastUpdated: characterData.last_updated,
+				}
+			}
+
+			// Add sensitive info if owner
+			if (isOwner && characterLink) {
+				response.character.isPrimary = characterLink.isPrimary
+				response.character.linkedAt = characterLink.linkedAt
+			}
+
+			return c.json(response)
+		} catch (error) {
+			logger.error('Get character info error', { error: String(error), characterId })
+			return c.json({ error: String(error) }, 500)
+		}
+	})
+
+	// Get character skills
+	.get('/api/characters/:characterId/skills', async (c) => {
+		const sessionId = getCookie(c, 'session_id')
+		if (!sessionId) {
+			return c.json({ error: 'Not authenticated' }, 401)
+		}
+
+		const characterId = Number(c.req.param('characterId'))
+		if (Number.isNaN(characterId)) {
+			return c.json({ error: 'Invalid character ID' }, 400)
+		}
+
+		try {
+			// Get character skills from CharacterDataStore
+			const dataStoreStub = getStub<CharacterDataStore>(c.env.CHARACTER_DATA_STORE, 'global')
+			const skillsData = await dataStoreStub.getCharacterSkills(characterId)
+
+			if (!skillsData) {
+				return c.json({ error: 'Skills data not found' }, 404)
+			}
+
+			// Get individual skills
+			const skills = await dataStoreStub.getSkills(characterId)
+
+			// Get skill queue
+			const skillQueue = await dataStoreStub.getSkillQueue(characterId)
+
+			return c.json({
+				success: true,
+				skills: {
+					totalSP: skillsData.total_sp,
+					unallocatedSP: skillsData.unallocated_sp,
+					lastUpdated: skillsData.last_updated,
+					skills: skills.map(s => ({
+						skillId: s.skill_id,
+						skillpoints: s.skillpoints_in_skill,
+						trainedLevel: s.trained_skill_level,
+						activeLevel: s.active_skill_level
+					})),
+					skillQueue: skillQueue.map(q => ({
+						skillId: q.skill_id,
+						finishedLevel: q.finished_level,
+						queuePosition: q.queue_position,
+						startDate: q.start_date,
+						finishDate: q.finish_date,
+						trainingStartSP: q.training_start_sp,
+						levelStartSP: q.level_start_sp,
+						levelEndSP: q.level_end_sp
+					}))
+				}
+			})
+		} catch (error) {
+			logger.error('Get character skills error', { error: String(error), characterId })
+			return c.json({ error: String(error) }, 500)
+		}
+	})
+
+	// Get character history
+	.get('/api/characters/:characterId/history', async (c) => {
+		const sessionId = getCookie(c, 'session_id')
+		if (!sessionId) {
+			return c.json({ error: 'Not authenticated' }, 401)
+		}
+
+		const characterId = Number(c.req.param('characterId'))
+		if (Number.isNaN(characterId)) {
+			return c.json({ error: 'Invalid character ID' }, 400)
+		}
+
+		try {
+			// Get character history from CharacterDataStore
+			const dataStoreStub = getStub<CharacterDataStore>(c.env.CHARACTER_DATA_STORE, 'global')
+			const history = await dataStoreStub.getCharacterHistory(characterId)
+
+			return c.json({
+				success: true,
+				history: history.map(h => ({
+					id: h.id,
+					changedAt: h.changed_at,
+					fieldName: h.field_name,
+					oldValue: h.old_value,
+					newValue: h.new_value
+				}))
+			})
+		} catch (error) {
+			logger.error('Get character history error', { error: String(error), characterId })
+			return c.json({ error: String(error) }, 500)
+		}
+	})
+
+	// Get character wallet (owner only)
+	.get('/api/characters/:characterId/wallet', async (c) => {
+		const sessionId = getCookie(c, 'session_id')
+		if (!sessionId) {
+			return c.json({ error: 'Not authenticated' }, 401)
+		}
+
+		const characterId = Number(c.req.param('characterId'))
+		if (Number.isNaN(characterId)) {
+			return c.json({ error: 'Invalid character ID' }, 400)
+		}
+
+		try {
+			const sessionStub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
+			const session = await sessionStub.getSession(sessionId)
+
+			// Check if user owns this character
+			const characterLink = await sessionStub.getCharacterLinkByCharacterId(characterId)
+			if (!characterLink || characterLink.rootUserId !== session.rootUserId) {
+				return c.json({ error: 'Access denied: You do not own this character' }, 403)
+			}
+
+			// Get access token for ESI
+			const tokenStoreStub = getStub<EveSSO>(c.env.EVESSO_STORE, 'global')
+			const tokenInfo = await tokenStoreStub.getAccessToken(characterId)
+
+			// Fetch wallet from ESI
+			const walletUrl = `https://esi.evetech.net/latest/characters/${characterId}/wallet/`
+			const response = await fetch(walletUrl, {
+				headers: {
+					Authorization: `Bearer ${tokenInfo.accessToken}`,
+					'X-Compatibility-Date': '2025-09-30',
+				},
+			})
+
+			if (!response.ok) {
+				throw new Error(`ESI returned ${response.status}: ${response.statusText}`)
+			}
+
+			const balance = await response.json() as number
+
+			return c.json({
+				success: true,
+				wallet: {
+					balance,
+					currency: 'ISK'
+				}
+			})
+		} catch (error) {
+			logger.error('Get character wallet error', { error: String(error), characterId })
+			return c.json({ error: String(error) }, 500)
+		}
+	})
+
+	// Get character location (owner only)
+	.get('/api/characters/:characterId/location', async (c) => {
+		const sessionId = getCookie(c, 'session_id')
+		if (!sessionId) {
+			return c.json({ error: 'Not authenticated' }, 401)
+		}
+
+		const characterId = Number(c.req.param('characterId'))
+		if (Number.isNaN(characterId)) {
+			return c.json({ error: 'Invalid character ID' }, 400)
+		}
+
+		try {
+			const sessionStub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
+			const session = await sessionStub.getSession(sessionId)
+
+			// Check if user owns this character
+			const characterLink = await sessionStub.getCharacterLinkByCharacterId(characterId)
+			if (!characterLink || characterLink.rootUserId !== session.rootUserId) {
+				return c.json({ error: 'Access denied: You do not own this character' }, 403)
+			}
+
+			// Get access token for ESI
+			const tokenStoreStub = getStub<EveSSO>(c.env.EVESSO_STORE, 'global')
+			const tokenInfo = await tokenStoreStub.getAccessToken(characterId)
+
+			// Fetch location from ESI
+			const locationUrl = `https://esi.evetech.net/latest/characters/${characterId}/location/`
+			const response = await fetch(locationUrl, {
+				headers: {
+					Authorization: `Bearer ${tokenInfo.accessToken}`,
+					'X-Compatibility-Date': '2025-09-30',
+				},
+			})
+
+			if (!response.ok) {
+				throw new Error(`ESI returned ${response.status}: ${response.statusText}`)
+			}
+
+			const location = await response.json() as {
+				solar_system_id: number
+				station_id?: number
+				structure_id?: number
+			}
+
+			// Fetch online status
+			const onlineUrl = `https://esi.evetech.net/latest/characters/${characterId}/online/`
+			const onlineResponse = await fetch(onlineUrl, {
+				headers: {
+					Authorization: `Bearer ${tokenInfo.accessToken}`,
+					'X-Compatibility-Date': '2025-09-30',
+				},
+			})
+
+			let online = null
+			if (onlineResponse.ok) {
+				online = await onlineResponse.json() as {
+					online: boolean
+					last_login?: string
+					last_logout?: string
+					logins?: number
+				}
+			}
+
+			// Fetch ship type
+			const shipUrl = `https://esi.evetech.net/latest/characters/${characterId}/ship/`
+			const shipResponse = await fetch(shipUrl, {
+				headers: {
+					Authorization: `Bearer ${tokenInfo.accessToken}`,
+					'X-Compatibility-Date': '2025-09-30',
+				},
+			})
+
+			let ship = null
+			if (shipResponse.ok) {
+				ship = await shipResponse.json() as {
+					ship_type_id: number
+					ship_item_id: number
+					ship_name: string
+				}
+			}
+
+			return c.json({
+				success: true,
+				location: {
+					solarSystemId: location.solar_system_id,
+					stationId: location.station_id,
+					structureId: location.structure_id,
+					online: online?.online,
+					lastLogin: online?.last_login,
+					lastLogout: online?.last_logout,
+					ship: ship ? {
+						typeId: ship.ship_type_id,
+						itemId: ship.ship_item_id,
+						name: ship.ship_name
+					} : null
+				}
+			})
+		} catch (error) {
+			logger.error('Get character location error', { error: String(error), characterId })
+			return c.json({ error: String(error) }, 500)
 		}
 	})
 
