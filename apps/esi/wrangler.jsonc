@@ -46,7 +46,8 @@
 			},
 			{
 				"name": "EVE_UNIVERSE",
-				"class_name": "EveUniverse"
+				"class_name": "EveUniverse",
+				"script_name": "esi"
 			}
 		]
 	},
@@ -73,7 +74,7 @@
 		},
 		{
 			"tag": "v6",
-			"new_sqlite_classes": []
+			"new_sqlite_classes": ["EveUniverse"]
 		}
 	],
 	"vars": {

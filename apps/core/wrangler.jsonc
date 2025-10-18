@@ -25,6 +25,11 @@
 				"name": "CHARACTER_DATA_STORE",
 				"class_name": "CharacterDataStore",
 				"script_name": "esi"
+			},
+			{
+				"name": "EVE_UNIVERSE",
+				"class_name": "EveUniverse",
+				"script_name": "esi"
 			}
 		]
 	},
