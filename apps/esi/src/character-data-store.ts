@@ -405,7 +405,6 @@ export class CharacterDataStore extends MigratableDurableObject {
 		data: ESICharacterInfo,
 		expiresAt: number | null
 	): Promise<CharacterData> {
-		await this.initializeSchema()
 
 		const now = Date.now()
 		const nextUpdateAt = expiresAt || now + 3600 * 1000 // Default 1 hour if no cache header
@@ -659,7 +658,6 @@ export class CharacterDataStore extends MigratableDurableObject {
 		data: ESICorporationInfo,
 		expiresAt: number | null
 	): Promise<CorporationData> {
-		await this.initializeSchema()
 
 		const now = Date.now()
 		const nextUpdateAt = expiresAt || now + 3600 * 1000 // Default 1 hour if no cache header
@@ -754,7 +752,6 @@ export class CharacterDataStore extends MigratableDurableObject {
 	}
 
 	async getCharacter(characterId: number): Promise<CharacterData | null> {
-		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<CharacterData>('SELECT * FROM characters WHERE character_id = ?', characterId)
@@ -764,7 +761,6 @@ export class CharacterDataStore extends MigratableDurableObject {
 	}
 
 	async getCorporation(corporationId: number): Promise<CorporationData | null> {
-		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<CorporationData>('SELECT * FROM corporations WHERE corporation_id = ?', corporationId)
@@ -774,7 +770,6 @@ export class CharacterDataStore extends MigratableDurableObject {
 	}
 
 	async getCharacterHistory(characterId: number): Promise<ChangeHistoryEntry[]> {
-		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<ChangeHistoryEntry>(
@@ -791,7 +786,6 @@ export class CharacterDataStore extends MigratableDurableObject {
 		data: ESICharacterSkills,
 		expiresAt: number | null
 	): Promise<CharacterSkillsData> {
-		await this.initializeSchema()
 
 		const now = Date.now()
 		const nextUpdateAt = expiresAt || now + 3600 * 1000 // Default 1 hour if no cache header
@@ -879,7 +873,6 @@ export class CharacterDataStore extends MigratableDurableObject {
 		characterId: number,
 		data: ESICharacterSkillQueue
 	): Promise<void> {
-		await this.initializeSchema()
 
 		// Delete existing skillqueue and insert new ones
 		await this.ctx.storage.sql.exec('DELETE FROM skillqueue WHERE character_id = ?', characterId)
@@ -914,7 +907,6 @@ export class CharacterDataStore extends MigratableDurableObject {
 	}
 
 	async getCharacterSkills(characterId: number): Promise<CharacterSkillsData | null> {
-		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<CharacterSkillsData>(
@@ -927,7 +919,6 @@ export class CharacterDataStore extends MigratableDurableObject {
 	}
 
 	async getSkills(characterId: number): Promise<SkillData[]> {
-		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<SkillData>('SELECT * FROM skills WHERE character_id = ? ORDER BY skill_id', characterId)
@@ -937,7 +928,6 @@ export class CharacterDataStore extends MigratableDurableObject {
 	}
 
 	async getSkillQueue(characterId: number): Promise<SkillQueueData[]> {
-		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<SkillQueueData>(
@@ -953,7 +943,6 @@ export class CharacterDataStore extends MigratableDurableObject {
 		characterId: number,
 		history: ESICorporationHistory
 	): Promise<void> {
-		await this.initializeSchema()
 
 		const now = Date.now()
 
@@ -1024,7 +1013,6 @@ export class CharacterDataStore extends MigratableDurableObject {
 	}
 
 	async getCorporationHistory(characterId: number): Promise<CorporationHistoryData[]> {
-		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<CorporationHistoryData>(
@@ -1043,7 +1031,6 @@ export class CharacterDataStore extends MigratableDurableObject {
 	}
 
 	async fetchAndStoreCorporationHistory(characterId: number): Promise<CorporationHistoryData[]> {
-		await this.initializeSchema()
 
 		const now = Date.now()
 		const cacheTime = 24 * 60 * 60 * 1000 // Cache for 24 hours
@@ -1107,7 +1094,6 @@ export class CharacterDataStore extends MigratableDurableObject {
 		characters: Array<{ character_id: number }>
 		corporations: Array<{ corporation_id: number }>
 	}> {
-		await this.initializeSchema()
 
 		const now = Date.now()
 
@@ -1132,7 +1118,6 @@ export class CharacterDataStore extends MigratableDurableObject {
 			return
 		}
 
-		await this.initializeSchema()
 
 		const now = Date.now()
 
@@ -1182,8 +1167,7 @@ export class CharacterDataStore extends MigratableDurableObject {
 			.info('Character data update alarm triggered')
 
 		try {
-			await this.initializeSchema()
-
+	
 			const { characters, corporations } = await this.getEntitiesNeedingUpdate()
 
 			logger.info('Processing character/corporation updates', {

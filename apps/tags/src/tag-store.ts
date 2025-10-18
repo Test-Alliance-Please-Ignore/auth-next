@@ -186,7 +186,6 @@ export class TagStore extends MigratableDurableObject {
 		eveId: number,
 		metadata?: Record<string, unknown>
 	): Promise<Tag> {
-		await this.initializeSchema()
 
 		const now = Date.now()
 		const existing = await this.getTag(urn)
@@ -234,7 +233,6 @@ export class TagStore extends MigratableDurableObject {
 	}
 
 	async getTag(urn: string): Promise<Tag | null> {
-		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<TagData>('SELECT * FROM tags WHERE tag_urn = ?', urn)
@@ -258,7 +256,6 @@ export class TagStore extends MigratableDurableObject {
 	}
 
 	async listAllTags(): Promise<Tag[]> {
-		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<TagData>('SELECT * FROM tags ORDER BY display_name ASC')
@@ -279,7 +276,6 @@ export class TagStore extends MigratableDurableObject {
 	// ========== User Tag Assignment ==========
 
 	async assignTagToUser(userId: string, tagUrn: string, characterId: number): Promise<void> {
-		await this.initializeSchema()
 
 		const assignmentId = this.generateId()
 		const now = Date.now()
@@ -316,7 +312,6 @@ export class TagStore extends MigratableDurableObject {
 	}
 
 	async removeTagFromUser(userId: string, tagUrn: string, characterId?: number): Promise<void> {
-		await this.initializeSchema()
 
 		if (characterId) {
 			// Remove specific character's contribution to this tag
@@ -343,7 +338,6 @@ export class TagStore extends MigratableDurableObject {
 	}
 
 	async removeAllTagsForCharacter(characterId: number): Promise<void> {
-		await this.initializeSchema()
 
 		await this.ctx.storage.sql.exec(
 			'DELETE FROM user_tags WHERE source_character_id = ?',
@@ -356,7 +350,6 @@ export class TagStore extends MigratableDurableObject {
 	}
 
 	async getUserTags(userId: string): Promise<TagWithSources[]> {
-		await this.initializeSchema()
 
 		// Get all unique tags for this user with their source characters
 		const rows = await this.ctx.storage.sql
@@ -387,7 +380,6 @@ export class TagStore extends MigratableDurableObject {
 	}
 
 	async getUserTagAssignments(userId: string): Promise<UserTag[]> {
-		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<UserTagData>('SELECT * FROM user_tags WHERE root_user_id = ?', userId)
@@ -404,7 +396,6 @@ export class TagStore extends MigratableDurableObject {
 	}
 
 	async getUsersWithTag(tagUrn: string): Promise<string[]> {
-		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<{
@@ -421,7 +412,6 @@ export class TagStore extends MigratableDurableObject {
 		userId: string,
 		delayMs: number = this.EVALUATION_INTERVAL_MS
 	): Promise<void> {
-		await this.initializeSchema()
 
 		const now = Date.now()
 		const nextEvaluation = now + delayMs
@@ -440,7 +430,6 @@ export class TagStore extends MigratableDurableObject {
 	}
 
 	async getUsersNeedingEvaluation(limit: number = this.BATCH_SIZE): Promise<string[]> {
-		await this.initializeSchema()
 
 		const now = Date.now()
 
@@ -486,7 +475,6 @@ export class TagStore extends MigratableDurableObject {
 	// ========== Tag Evaluation ==========
 
 	async evaluateUserTags(userId: string): Promise<void> {
-		await this.initializeSchema()
 
 		const { TagRuleEngine, getUserCharacters } = await import('./tag-rules')
 
@@ -569,7 +557,6 @@ export class TagStore extends MigratableDurableObject {
 	// ========== Alarm Handler ==========
 
 	async alarm(): Promise<void> {
-		await this.initializeSchema()
 
 		logger.info('Tag evaluation alarm triggered')
 

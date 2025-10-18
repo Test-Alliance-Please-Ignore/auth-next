@@ -427,7 +427,6 @@ export class GroupStore extends MigratableDurableObject {
 		autoApproveRules?: Record<string, unknown>,
 		categoryId?: string | null
 	): Promise<Group> {
-		await this.initializeSchema()
 
 		const groupId = this.generateId()
 		const slug = this.generateSlug(name)
@@ -489,7 +488,6 @@ export class GroupStore extends MigratableDurableObject {
 	}
 
 	async getGroupBySlug(slug: string): Promise<Group | null> {
-		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<GroupData>('SELECT * FROM groups WHERE slug = ?', slug)
@@ -518,7 +516,6 @@ export class GroupStore extends MigratableDurableObject {
 	}
 
 	async getGroupById(groupId: string): Promise<Group | null> {
-		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<GroupData>('SELECT * FROM groups WHERE group_id = ?', groupId)
@@ -557,7 +554,6 @@ export class GroupStore extends MigratableDurableObject {
 			categoryId?: string | null
 		}
 	): Promise<Group> {
-		await this.initializeSchema()
 
 		const now = Date.now()
 		const group = await this.getGroupById(groupId)
@@ -631,7 +627,6 @@ export class GroupStore extends MigratableDurableObject {
 	}
 
 	async deleteGroup(groupId: string): Promise<void> {
-		await this.initializeSchema()
 
 		const group = await this.getGroupById(groupId)
 		if (!group) {
@@ -668,7 +663,6 @@ export class GroupStore extends MigratableDurableObject {
 		limit?: number,
 		offset?: number
 	): Promise<{ total: number; groups: Group[] }> {
-		await this.initializeSchema()
 
 		const parsedLimit = Math.min(limit || 50, 100)
 		const parsedOffset = offset || 0
@@ -735,7 +729,6 @@ export class GroupStore extends MigratableDurableObject {
 		assignmentType: 'manual' | 'auto_assigned' | 'derived' | 'invited',
 		status: 'active' | 'pending' | 'suspended' = 'active'
 	): Promise<GroupMember> {
-		await this.initializeSchema()
 
 		const group = await this.getGroupById(groupId)
 		if (!group) {
@@ -794,7 +787,6 @@ export class GroupStore extends MigratableDurableObject {
 	}
 
 	async getMembership(groupId: string, rootUserId: string): Promise<GroupMember | null> {
-		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<GroupMemberData>(
@@ -852,7 +844,6 @@ export class GroupStore extends MigratableDurableObject {
 	}
 
 	async removeMember(groupId: string, rootUserId: string): Promise<void> {
-		await this.initializeSchema()
 
 		const membership = await this.getMembership(groupId, rootUserId)
 		if (!membership) {
@@ -880,7 +871,6 @@ export class GroupStore extends MigratableDurableObject {
 		rootUserId: string,
 		role: 'owner' | 'admin' | 'moderator' | 'member'
 	): Promise<void> {
-		await this.initializeSchema()
 
 		const membership = await this.getMembership(groupId, rootUserId)
 		if (!membership) {
@@ -913,7 +903,6 @@ export class GroupStore extends MigratableDurableObject {
 		limit?: number,
 		offset?: number
 	): Promise<{ total: number; members: GroupMember[] }> {
-		await this.initializeSchema()
 
 		const parsedLimit = Math.min(limit || 50, 100)
 		const parsedOffset = offset || 0
@@ -952,7 +941,6 @@ export class GroupStore extends MigratableDurableObject {
 	}
 
 	async getUserGroups(rootUserId: string): Promise<Group[]> {
-		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<GroupData>(
@@ -1011,7 +999,6 @@ export class GroupStore extends MigratableDurableObject {
 		rootUserId: string,
 		message: string | null
 	): Promise<JoinRequest> {
-		await this.initializeSchema()
 
 		const group = await this.getGroupById(groupId)
 		if (!group) {
@@ -1078,7 +1065,6 @@ export class GroupStore extends MigratableDurableObject {
 	}
 
 	async approveJoinRequest(requestId: string, reviewerId: string): Promise<void> {
-		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<JoinRequestData>('SELECT * FROM group_join_requests WHERE request_id = ?', requestId)
@@ -1120,7 +1106,6 @@ export class GroupStore extends MigratableDurableObject {
 	}
 
 	async rejectJoinRequest(requestId: string, reviewerId: string): Promise<void> {
-		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<JoinRequestData>('SELECT * FROM group_join_requests WHERE request_id = ?', requestId)
@@ -1161,7 +1146,6 @@ export class GroupStore extends MigratableDurableObject {
 		groupId: string,
 		status?: 'pending' | 'approved' | 'rejected'
 	): Promise<JoinRequest[]> {
-		await this.initializeSchema()
 
 		const query = status
 			? 'SELECT * FROM group_join_requests WHERE group_id = ? AND status = ? ORDER BY created_at DESC'
@@ -1192,7 +1176,6 @@ export class GroupStore extends MigratableDurableObject {
 		invitedBy: string,
 		expiresInDays: number = 7
 	): Promise<GroupInvite> {
-		await this.initializeSchema()
 
 		const group = await this.getGroupById(groupId)
 		if (!group) {
@@ -1261,7 +1244,6 @@ export class GroupStore extends MigratableDurableObject {
 	}
 
 	async acceptInvite(inviteId: string): Promise<void> {
-		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<GroupInviteData>('SELECT * FROM group_invites WHERE invite_id = ?', inviteId)
@@ -1311,7 +1293,6 @@ export class GroupStore extends MigratableDurableObject {
 	}
 
 	async declineInvite(inviteId: string): Promise<void> {
-		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<GroupInviteData>('SELECT * FROM group_invites WHERE invite_id = ?', inviteId)
@@ -1346,7 +1327,6 @@ export class GroupStore extends MigratableDurableObject {
 	}
 
 	async listUserInvites(rootUserId: string): Promise<GroupInvite[]> {
-		await this.initializeSchema()
 
 		const now = Date.now()
 
@@ -1390,7 +1370,6 @@ export class GroupStore extends MigratableDurableObject {
 		maxUses: number | null = null,
 		expiresInDays: number = 7
 	): Promise<GroupInvite> {
-		await this.initializeSchema()
 
 		const group = await this.getGroupById(groupId)
 		if (!group) {
@@ -1447,7 +1426,6 @@ export class GroupStore extends MigratableDurableObject {
 	}
 
 	async redeemInviteCode(code: string, rootUserId: string): Promise<void> {
-		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<GroupInviteData>('SELECT * FROM group_invites WHERE invite_code = ?', code)
@@ -1519,7 +1497,6 @@ export class GroupStore extends MigratableDurableObject {
 	}
 
 	async listGroupInvites(groupId: string): Promise<GroupInvite[]> {
-		await this.initializeSchema()
 
 		const now = Date.now()
 
@@ -1557,7 +1534,6 @@ export class GroupStore extends MigratableDurableObject {
 	}
 
 	async getInviteById(inviteId: string): Promise<GroupInvite | null> {
-		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<GroupInviteData>('SELECT * FROM group_invites WHERE invite_id = ?', inviteId)
@@ -1585,7 +1561,6 @@ export class GroupStore extends MigratableDurableObject {
 	}
 
 	async revokeInvite(inviteId: string): Promise<void> {
-		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<GroupInviteData>('SELECT * FROM group_invites WHERE invite_id = ?', inviteId)
@@ -1626,7 +1601,6 @@ export class GroupStore extends MigratableDurableObject {
 		invitedBy: string,
 		expiresInDays: number = 7
 	): Promise<GroupInvite[]> {
-		await this.initializeSchema()
 
 		const group = await this.getGroupById(groupId)
 		if (!group) {
@@ -1723,7 +1697,6 @@ export class GroupStore extends MigratableDurableObject {
 		permissions: string[],
 		priority: number
 	): Promise<GroupRole> {
-		await this.initializeSchema()
 
 		const group = await this.getGroupById(groupId)
 		if (!group) {
@@ -1768,7 +1741,6 @@ export class GroupStore extends MigratableDurableObject {
 	}
 
 	async listGroupRoles(groupId: string): Promise<GroupRole[]> {
-		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<GroupRoleData>(
@@ -1797,7 +1769,6 @@ export class GroupStore extends MigratableDurableObject {
 		conditionRules: Record<string, unknown> | null,
 		priority: number
 	): Promise<DerivedGroupRule> {
-		await this.initializeSchema()
 
 		const group = await this.getGroupById(derivedGroupId)
 		if (!group) {
@@ -1850,7 +1821,6 @@ export class GroupStore extends MigratableDurableObject {
 	}
 
 	async listDerivedGroupRules(derivedGroupId: string): Promise<DerivedGroupRule[]> {
-		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<DerivedGroupRuleData>(
@@ -1874,7 +1844,6 @@ export class GroupStore extends MigratableDurableObject {
 
 	// This would be called by a scheduled alarm or manually
 	async syncDerivedGroupMemberships(derivedGroupId: string): Promise<void> {
-		await this.initializeSchema()
 
 		const rules = await this.listDerivedGroupRules(derivedGroupId)
 		const activeRules = rules.filter((r) => r.isActive)
@@ -1948,7 +1917,6 @@ export class GroupStore extends MigratableDurableObject {
 		description: string | null,
 		displayOrder: number
 	): Promise<GroupCategory> {
-		await this.initializeSchema()
 
 		const categoryId = this.generateId()
 		const now = Date.now()
@@ -1985,7 +1953,6 @@ export class GroupStore extends MigratableDurableObject {
 	}
 
 	async getCategory(categoryId: string): Promise<GroupCategory | null> {
-		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<GroupCategoryData>('SELECT * FROM group_categories WHERE category_id = ?', categoryId)
@@ -2007,7 +1974,6 @@ export class GroupStore extends MigratableDurableObject {
 	}
 
 	async listCategories(): Promise<GroupCategory[]> {
-		await this.initializeSchema()
 
 		const rows = await this.ctx.storage.sql
 			.exec<GroupCategoryData>(
@@ -2033,7 +1999,6 @@ export class GroupStore extends MigratableDurableObject {
 			displayOrder?: number
 		}
 	): Promise<GroupCategory> {
-		await this.initializeSchema()
 
 		const category = await this.getCategory(categoryId)
 		if (!category) {
@@ -2087,7 +2052,6 @@ export class GroupStore extends MigratableDurableObject {
 	}
 
 	async deleteCategory(categoryId: string): Promise<void> {
-		await this.initializeSchema()
 
 		const category = await this.getCategory(categoryId)
 		if (!category) {
