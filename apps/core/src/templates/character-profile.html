@@ -242,9 +242,10 @@
 			}
 
 			.skills-grid {
-				display: grid;
-				grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+				display: flex;
+				flex-direction: column;
 				gap: 15px;
+				max-width: 100%;
 			}
 
 			.skill-item {
@@ -285,6 +286,7 @@
 
 			.skill-category {
 				margin-bottom: 20px;
+				width: 100%;
 			}
 
 			.category-header {
@@ -332,7 +334,8 @@
 			}
 
 			.category-skills {
-				display: grid;
+				display: flex;
+				flex-direction: column;
 				gap: 10px;
 				margin-top: 10px;
 				padding: 0 10px;
