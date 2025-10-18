@@ -60,6 +60,9 @@ importers:
 
   apps/core:
     dependencies:
+      '@repo/character-data-store':
+        specifier: workspace:*
+        version: link:../../packages/character-data-store
       '@repo/do-utils':
         specifier: workspace:*
         version: link:../../packages/do-utils
@@ -182,6 +185,9 @@ importers:
       '@repo/static-auth':
         specifier: workspace:*
         version: link:../../packages/static-auth
+      '@repo/tag-store':
+        specifier: workspace:*
+        version: link:../../packages/tag-store
       '@repo/user-token-store':
         specifier: workspace:*
         version: link:../../packages/user-token-store

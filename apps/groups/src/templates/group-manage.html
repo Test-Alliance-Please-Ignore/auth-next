@@ -4,6 +4,7 @@
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<title>{{GROUP_NAME}} - Manage Group</title>
+		<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/notyf@3/notyf.min.css" />
 		<style>
 			* {
 				margin: 0;
@@ -268,6 +269,14 @@
 				padding: 2rem;
 				color: #a0aec0;
 			}
+
+			/* Notyf toast positioning - top-center */
+			.notyf {
+				justify-content: center;
+			}
+			.notyf__toast {
+				max-width: 500px;
+			}
 		</style>
 	</head>
 	<body>
@@ -419,7 +428,22 @@
 			</div>
 		</div>
 
+		<script src="https://cdn.jsdelivr.net/npm/notyf@3/notyf.min.js"></script>
 		<script>
+			// Initialize Notyf for toast notifications
+			const notyf = new Notyf({
+				duration: 3000, // Default duration for success messages
+				position: { x: 'center', y: 'top' },
+				dismissible: false,
+				types: [
+					{
+						type: 'error',
+						duration: 5000, // Longer duration for errors
+						dismissible: false,
+					},
+				],
+			})
+
 			const slug = window.location.pathname.split('/')[2]
 			let currentGroup = null
 			let currentUserRole = null
@@ -524,10 +548,10 @@
 						throw new Error(error.error || 'Failed to update group')
 					}
 
-					alert('Group updated successfully!')
+					notyf.success('Group updated successfully!')
 					window.location.href = `/groups/${slug}`
 				} catch (error) {
-					alert('Error updating group: ' + error.message)
+					notyf.error('Error updating group: ' + error.message)
 				}
 			})
 
@@ -559,10 +583,10 @@
 						throw new Error(error.error || 'Failed to delete group')
 					}
 
-					alert('Group deleted successfully')
+					notyf.success('Group deleted successfully')
 					window.location.href = '/groups'
 				} catch (error) {
-					alert('Error deleting group: ' + error.message)
+					notyf.error('Error deleting group: ' + error.message)
 				}
 			}
 
@@ -644,12 +668,12 @@
 						throw new Error(error.error || 'Failed to send invite')
 					}
 
-					alert(`Invite sent to ${userName}!`)
+					notyf.success(`Invite sent to ${userName}!`)
 					loadInvites()
 					document.getElementById('user-search').value = ''
 					document.getElementById('search-results').innerHTML = ''
 				} catch (error) {
-					alert('Error sending invite: ' + error.message)
+					notyf.error('Error sending invite: ' + error.message)
 				}
 			}
 
@@ -661,7 +685,7 @@
 					.filter((id) => id.length > 0)
 
 				if (userIds.length === 0) {
-					alert('Please enter at least one user ID')
+					notyf.open({ type: 'warning', message: 'Please enter at least one user ID', background: '#f59e0b' })
 					return
 				}
 
@@ -685,11 +709,11 @@
 					}
 
 					const data = await response.json()
-					alert(`Successfully sent ${data.created} invites (${data.requested} requested)`)
+					notyf.success(`Successfully sent ${data.created} invites (${data.requested} requested)`)
 					textarea.value = ''
 					loadInvites()
 				} catch (error) {
-					alert('Error sending bulk invites: ' + error.message)
+					notyf.error('Error sending bulk invites: ' + error.message)
 				}
 			}
 
@@ -739,7 +763,7 @@
 
 					loadInvites()
 				} catch (error) {
-					alert('Error creating invite code: ' + error.message)
+					notyf.error('Error creating invite code: ' + error.message)
 				}
 			}
 
@@ -880,10 +904,10 @@
 						throw new Error(error.error || 'Failed to revoke invite')
 					}
 
-					alert('Invite revoked successfully')
+					notyf.success('Invite revoked successfully')
 					loadInvites()
 				} catch (error) {
-					alert('Error revoking invite: ' + error.message)
+					notyf.error('Error revoking invite: ' + error.message)
 				}
 			}
 
@@ -891,11 +915,11 @@
 				navigator.clipboard
 					.writeText(text)
 					.then(() => {
-						alert('Copied to clipboard!')
+						notyf.success('Copied to clipboard!')
 					})
 					.catch((err) => {
 						console.error('Failed to copy:', err)
-						alert('Failed to copy to clipboard')
+						notyf.error('Failed to copy to clipboard')
 					})
 			}
 

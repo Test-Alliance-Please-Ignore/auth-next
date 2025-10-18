@@ -20,6 +20,11 @@
 				"name": "TAG_STORE",
 				"class_name": "TagStore",
 				"script_name": "tags"
+			},
+			{
+				"name": "CHARACTER_DATA_STORE",
+				"class_name": "CharacterDataStore",
+				"script_name": "esi"
 			}
 		]
 	},

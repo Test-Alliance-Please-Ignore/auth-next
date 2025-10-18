@@ -6,6 +6,7 @@ export type Env = SharedHonoEnv & {
 	EVESSO_STORE: DurableObjectNamespace
 	CHARACTER_DATA_STORE: DurableObjectNamespace
 	USER_SESSION_STORE: DurableObjectNamespace
+	TAG_STORE: DurableObjectNamespace
 }
 
 /** Variables can be extended */

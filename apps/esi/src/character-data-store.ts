@@ -3,9 +3,11 @@ import { DurableObject } from 'cloudflare:workers'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
-import { fetchCharacterInfo, fetchCorporationInfo } from './esi-client'
+import { fetchAllianceInfo, fetchCharacterInfo, fetchCorporationInfo } from './esi-client'
 
 import type { EveSSO } from '@repo/evesso'
+import type { SessionStore } from '@repo/session-store'
+import type { TagStore } from '@repo/tag-store'
 import type { Env } from './context'
 import type { ESICharacterInfo, ESICorporationInfo } from './esi-client'
 
@@ -283,7 +285,114 @@ export class CharacterDataStore extends DurableObject<Env> {
 			.exec<CharacterData>('SELECT * FROM characters WHERE character_id = ?', characterId)
 			.toArray()
 
+		// Upsert tags for this character (corporation and alliance)
+		await this.upsertCharacterTags(characterId, data.corporation_id, data.alliance_id || null)
+
 		return stored[0]
+	}
+
+	/**
+	 * Upsert corporation and alliance tags when character data is refreshed
+	 */
+	private async upsertCharacterTags(
+		characterId: number,
+		corporationId: number,
+		allianceId: number | null
+	): Promise<void> {
+		try {
+			// Find the root user who owns this character
+			const sessionStoreStub = getStub<SessionStore>(this.env.USER_SESSION_STORE, 'global')
+			const characterLink = await sessionStoreStub.getCharacterLinkByCharacterId(characterId)
+
+			if (!characterLink) {
+				// Character not linked to any user, skip tag upserting
+				logger.debug('Character not linked to any user, skipping tag upsert', {
+					characterId,
+				})
+				return
+			}
+
+			const rootUserId = characterLink.rootUserId
+
+			// Get TagStore stub
+			const tagStoreStub = getStub<TagStore>(this.env.TAG_STORE, 'global')
+
+			// Fetch corporation data to get name and alliance info
+			const corpData = await this.getCorporation(corporationId)
+			if (!corpData) {
+				logger.warn('Corporation data not found for tag upsert', {
+					characterId,
+					corporationId,
+				})
+				return
+			}
+
+			// Upsert corporation tag
+			const corpUrn = `urn:eve:corporation:${corporationId}`
+			await tagStoreStub.upsertTag(corpUrn, 'corporation', corpData.name, corporationId, {
+				corporationId,
+				ticker: corpData.ticker,
+			})
+
+			// Assign corporation tag to user
+			await tagStoreStub.assignTagToUser(rootUserId, corpUrn, characterId)
+
+			logger.info('Upserted corporation tag on character refresh', {
+				characterId,
+				corporationId,
+				corporationName: corpData.name,
+				corporationTicker: corpData.ticker,
+				rootUserId: rootUserId.substring(0, 8) + '...',
+			})
+
+			// Upsert alliance tag if applicable
+			if (allianceId && corpData.alliance_id) {
+				try {
+					// Fetch alliance info from ESI
+					const { data: allianceData } = await fetchAllianceInfo(allianceId)
+
+					const allianceUrn = `urn:eve:alliance:${allianceId}`
+
+					await tagStoreStub.upsertTag(allianceUrn, 'alliance', allianceData.name, allianceId, {
+						allianceId,
+						ticker: allianceData.ticker,
+					})
+
+					// Assign alliance tag to user
+					await tagStoreStub.assignTagToUser(rootUserId, allianceUrn, characterId)
+
+					logger.info('Upserted alliance tag on character refresh', {
+						characterId,
+						allianceId,
+						allianceName: allianceData.name,
+						rootUserId: rootUserId.substring(0, 8) + '...',
+					})
+				} catch (allianceError) {
+					logger.error('Failed to fetch alliance info for tag upsert', {
+						characterId,
+						allianceId,
+						error: String(allianceError),
+					})
+					// Fallback to placeholder if ESI fetch fails
+					const allianceUrn = `urn:eve:alliance:${allianceId}`
+					const allianceName = `Alliance ${allianceId}`
+
+					await tagStoreStub.upsertTag(allianceUrn, 'alliance', allianceName, allianceId, {
+						allianceId,
+					})
+
+					await tagStoreStub.assignTagToUser(rootUserId, allianceUrn, characterId)
+				}
+			}
+		} catch (error) {
+			// Don't fail the character update if tag upserting fails
+			logger.error('Failed to upsert tags on character refresh', {
+				characterId,
+				corporationId,
+				allianceId,
+				error: String(error),
+			})
+		}
 	}
 
 	async upsertCorporation(

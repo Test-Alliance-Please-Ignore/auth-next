@@ -3,6 +3,7 @@ import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { getStub } from '@repo/do-utils'
+import type { CharacterDataStore } from '@repo/character-data-store'
 import type { EveSSO } from '@repo/evesso'
 import {
 	getRequestLogData,
@@ -460,8 +461,10 @@ const app = new Hono<App>()
 				characterName: string
 				corporationId?: number
 				corporationName?: string
+				corporationTicker?: string
 				allianceId?: number | null
 				allianceName?: string | null
+				allianceTicker?: string | null
 			}
 
 			if (!body.characterId || !body.characterName) {
@@ -494,6 +497,7 @@ const app = new Hono<App>()
 						body.corporationId,
 						{
 							corporationId: body.corporationId,
+							...(body.corporationTicker && { ticker: body.corporationTicker }),
 						}
 					)
 
@@ -510,6 +514,7 @@ const app = new Hono<App>()
 							body.allianceId,
 							{
 								allianceId: body.allianceId,
+								...(body.allianceTicker && { ticker: body.allianceTicker }),
 							}
 						)
 
@@ -771,26 +776,67 @@ const app = new Hono<App>()
 				return c.json({ error: 'Character not found or does not belong to you' }, 403)
 			}
 
-			// Call the UserTokenStore Durable Object directly to refresh the character's access token
-			// This will automatically trigger a refresh if the token is expired
+			// Get the access token (this will refresh it if needed)
 			const tokenStoreStub = getStub<EveSSO>(c.env.EVESSO_STORE, 'global')
-
 			const tokenInfo = await tokenStoreStub.getAccessToken(characterId)
+
+			// Fetch character data from ESI
+			const esiUrl = `https://esi.evetech.net/latest/characters/${characterId}/`
+			const esiResponse = await fetch(esiUrl, {
+				headers: {
+					Authorization: `Bearer ${tokenInfo.accessToken}`,
+					'X-Compatibility-Date': '2025-09-30',
+				},
+			})
+
+			if (!esiResponse.ok) {
+				throw new Error(`ESI returned ${esiResponse.status}: ${esiResponse.statusText}`)
+			}
+
+			const characterData = (await esiResponse.json()) as {
+				alliance_id?: number
+				ancestry_id?: number
+				birthday: string
+				bloodline_id: number
+				corporation_id: number
+				description?: string
+				gender: 'male' | 'female'
+				name: string
+				race_id: number
+				security_status?: number
+				title?: string
+			}
+
+			// Parse cache expiration
+			const cacheControl = esiResponse.headers.get('Cache-Control')
+			let expiresAt: number | null = null
+			if (cacheControl) {
+				const maxAgeMatch = cacheControl.match(/max-age=(\d+)/)
+				if (maxAgeMatch) {
+					const maxAgeSeconds = parseInt(maxAgeMatch[1], 10)
+					expiresAt = Date.now() + maxAgeSeconds * 1000
+				}
+			}
+
+			// Update CharacterDataStore with the fetched data (this will trigger tag upserts)
+			const dataStoreStub = getStub<CharacterDataStore>(c.env.CHARACTER_DATA_STORE, 'global')
+			await dataStoreStub.upsertCharacter(characterId, characterData, expiresAt)
 
 			logger
 				.withTags({
 					type: 'character_refresh_requested',
 				})
-				.info('Character refresh requested', {
+				.info('Character refresh completed', {
 					characterId,
 					characterName: tokenInfo.characterName,
 					rootUserId: session.rootUserId.substring(0, 8) + '...',
-					tokenExpiresAt: new Date(tokenInfo.expiresAt).toISOString(),
+					corporationId: characterData.corporation_id,
+					allianceId: characterData.alliance_id,
 				})
 
 			return c.json({
 				success: true,
-				message: 'Character data refresh initiated',
+				message: 'Character data refreshed successfully',
 				characterName: tokenInfo.characterName,
 				tokenExpiresAt: tokenInfo.expiresAt,
 			})

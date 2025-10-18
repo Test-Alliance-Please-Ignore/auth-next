@@ -4,6 +4,7 @@
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<title>{{GROUP_NAME}} - Group Details</title>
+		<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/notyf@3/notyf.min.css" />
 		<style>
 			* {
 				margin: 0;
@@ -309,6 +310,14 @@
 				display: flex;
 				gap: 0.5rem;
 			}
+
+			/* Notyf toast positioning - top-center */
+			.notyf {
+				justify-content: center;
+			}
+			.notyf__toast {
+				max-width: 500px;
+			}
 		</style>
 	</head>
 	<body>
@@ -354,7 +363,22 @@
 			</div>
 		</div>
 
+		<script src="https://cdn.jsdelivr.net/npm/notyf@3/notyf.min.js"></script>
 		<script>
+			// Initialize Notyf for toast notifications
+			const notyf = new Notyf({
+				duration: 3000, // Default duration for success messages
+				position: { x: 'center', y: 'top' },
+				dismissible: false,
+				types: [
+					{
+						type: 'error',
+						duration: 5000, // Longer duration for errors
+						dismissible: false,
+					},
+				],
+			})
+
 			const slug = window.location.pathname.split('/').pop()
 			let currentGroup = null
 			let currentUserRole = null
@@ -652,10 +676,10 @@
 					}
 
 					const data = await response.json()
-					alert(data.message)
+					notyf.success(data.message)
 					location.reload()
 				} catch (error) {
-					alert('Error: ' + error.message)
+					notyf.error('Error: ' + error.message)
 				}
 			}
 
@@ -677,7 +701,7 @@
 
 					window.location.href = '/groups/dashboard'
 				} catch (error) {
-					alert('Error: ' + error.message)
+					notyf.error('Error: ' + error.message)
 				}
 			}
 
@@ -699,7 +723,7 @@
 
 					loadMembers()
 				} catch (error) {
-					alert('Error: ' + error.message)
+					notyf.error('Error: ' + error.message)
 				}
 			}
 
@@ -718,7 +742,7 @@
 					loadJoinRequests()
 					loadMembers()
 				} catch (error) {
-					alert('Error: ' + error.message)
+					notyf.error('Error: ' + error.message)
 				}
 			}
 
@@ -736,7 +760,7 @@
 
 					loadJoinRequests()
 				} catch (error) {
-					alert('Error: ' + error.message)
+					notyf.error('Error: ' + error.message)
 				}
 			}
 
@@ -745,7 +769,7 @@
 				const code = codeInput.value.trim()
 
 				if (!code) {
-					alert('Please enter an invite code')
+					notyf.open({ type: 'warning', message: 'Please enter an invite code', background: '#f59e0b' })
 					return
 				}
 
@@ -775,12 +799,12 @@
 					}
 
 					const data = await response.json()
-					alert(data.message || 'Successfully joined the group!')
+					notyf.success(data.message || 'Successfully joined the group!')
 					location.reload()
 				} catch (error) {
 					const errorMessage = error instanceof Error ? error.message : String(error)
 					console.error('Redeem error:', error)
-					alert('Error: ' + errorMessage)
+					notyf.error('Error: ' + errorMessage)
 				}
 			}
 

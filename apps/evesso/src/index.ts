@@ -650,6 +650,7 @@ async function handlePrimaryLoginCallback(
 						charResult.data.corporation_id,
 						{
 							corporationId: charResult.data.corporation_id,
+							ticker: corpResult.data.ticker,
 						}
 					)
 
@@ -661,6 +662,7 @@ async function handlePrimaryLoginCallback(
 						.info('Corporation tag created', {
 							tagUrn: corpUrn,
 							corporationName: corpResult.data.name,
+							corporationTicker: corpResult.data.ticker,
 						})
 
 					// Assign corporation tag to user
@@ -1105,6 +1107,7 @@ async function handleCharacterLinkCallback(
 						charResult.data.corporation_id,
 						{
 							corporationId: charResult.data.corporation_id,
+							ticker: corpResult.data.ticker,
 						}
 					)
 
@@ -1116,6 +1119,7 @@ async function handleCharacterLinkCallback(
 						.info('Corporation tag created', {
 							tagUrn: corpUrn,
 							corporationName: corpResult.data.name,
+							corporationTicker: corpResult.data.ticker,
 						})
 
 					// Assign corporation tag to user

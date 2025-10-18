@@ -4,6 +4,7 @@
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<title>My Groups Dashboard</title>
+		<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/notyf@3/notyf.min.css" />
 		<style>
 			* {
 				margin: 0;
@@ -514,6 +515,14 @@
 				display: flex;
 				gap: 0.5rem;
 			}
+
+			/* Notyf toast positioning - top-center */
+			.notyf {
+				justify-content: center;
+			}
+			.notyf__toast {
+				max-width: 500px;
+			}
 		</style>
 	</head>
 	<body>
@@ -666,7 +675,22 @@
 			</div>
 		</div>
 
+		<script src="https://cdn.jsdelivr.net/npm/notyf@3/notyf.min.js"></script>
 		<script>
+			// Initialize Notyf for toast notifications
+			const notyf = new Notyf({
+				duration: 3000, // Default duration for success messages
+				position: { x: 'center', y: 'top' },
+				dismissible: false,
+				types: [
+					{
+						type: 'error',
+						duration: 5000, // Longer duration for errors
+						dismissible: false,
+					},
+				],
+			})
+
 			// Global state
 			let isAdmin = false
 			let categoriesData = []
@@ -1027,7 +1051,7 @@
 					closeCreateGroupModal()
 					window.location.href = `/groups/${data.group.slug}`
 				} catch (error) {
-					alert('Error creating group: ' + error.message)
+					notyf.error('Error creating group: ' + error.message)
 				}
 			})
 
@@ -1049,7 +1073,7 @@
 
 					loadMyGroups()
 				} catch (error) {
-					alert('Error leaving group: ' + error.message)
+					notyf.error('Error leaving group: ' + error.message)
 				}
 			}
 
@@ -1068,7 +1092,7 @@
 					loadInvites()
 					loadMyGroups()
 				} catch (error) {
-					alert('Error accepting invite: ' + error.message)
+					notyf.error('Error accepting invite: ' + error.message)
 				}
 			}
 
@@ -1086,7 +1110,7 @@
 
 					loadInvites()
 				} catch (error) {
-					alert('Error declining invite: ' + error.message)
+					notyf.error('Error declining invite: ' + error.message)
 				}
 			}
 
@@ -1221,7 +1245,7 @@
 					closeCategoryForm()
 					await loadCategories()
 				} catch (error) {
-					alert('Error saving category: ' + error.message)
+					notyf.error('Error saving category: ' + error.message)
 				}
 			})
 
@@ -1247,7 +1271,7 @@
 
 					await loadCategories()
 				} catch (error) {
-					alert('Error deleting category: ' + error.message)
+					notyf.error('Error deleting category: ' + error.message)
 				}
 			}
 

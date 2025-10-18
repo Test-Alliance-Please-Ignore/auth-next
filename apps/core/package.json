@@ -15,6 +15,7 @@
 		"test": "run-vitest"
 	},
 	"dependencies": {
+		"@repo/character-data-store": "workspace:*",
 		"@repo/do-utils": "workspace:*",
 		"@repo/evesso": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",

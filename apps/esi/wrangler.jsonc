@@ -38,6 +38,11 @@
 				"name": "USER_SESSION_STORE",
 				"class_name": "SessionStore",
 				"script_name": "core"
+			},
+			{
+				"name": "TAG_STORE",
+				"class_name": "TagStore",
+				"script_name": "tags"
 			}
 		]
 	},

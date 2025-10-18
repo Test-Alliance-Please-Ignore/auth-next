@@ -5,6 +5,7 @@ export type Env = SharedHonoEnv & {
 	USER_SESSION_STORE: DurableObjectNamespace
 	EVESSO_STORE: DurableObjectNamespace
 	TAG_STORE: DurableObjectNamespace
+	CHARACTER_DATA_STORE: DurableObjectNamespace
 	DISCORD_WORKER: Fetcher
 	TEST_AUTH_OIDC_ISSUER: string
 	TEST_AUTH_CLIENT_ID: string
