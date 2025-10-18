@@ -60,14 +60,23 @@ export class EveUniverse extends DurableObject<Env> {
 		// Deduplicate IDs
 		const uniqueIds = [...new Set(ids)]
 
-		// Check cache first
-		const placeholders = uniqueIds.map(() => '?').join(',')
-		const cached = await this.ctx.storage.sql
-			.exec<NameCacheEntry>(
-				`SELECT id, name, category FROM names WHERE id IN (${placeholders})`,
-				...uniqueIds
-			)
-			.toArray()
+		// SQLite has a limit on the number of variables in a query (usually 999)
+		// So we need to batch the query if we have too many IDs
+		const BATCH_SIZE = 500 // Conservative limit to avoid hitting SQLite's variable limit
+		const cached: NameCacheEntry[] = []
+
+		// Query cache in batches
+		for (let i = 0; i < uniqueIds.length; i += BATCH_SIZE) {
+			const batch = uniqueIds.slice(i, i + BATCH_SIZE)
+			const placeholders = batch.map(() => '?').join(',')
+			const batchResults = await this.ctx.storage.sql
+				.exec<NameCacheEntry>(
+					`SELECT id, name, category FROM names WHERE id IN (${placeholders})`,
+					...batch
+				)
+				.toArray()
+			cached.push(...batchResults)
+		}
 
 		const cachedMap = new Map(cached.map(c => [c.id, c]))
 		const missingIds = uniqueIds.filter(id => !cachedMap.has(id))
@@ -113,18 +122,46 @@ export class EveUniverse extends DurableObject<Env> {
 		}
 
 		const now = Date.now()
+		const BATCH_SIZE = 100 // Smaller batch size for inserts (4 values per row)
 
-		for (const name of names) {
+		// Process in batches to avoid too many SQL variables
+		for (let i = 0; i < names.length; i += BATCH_SIZE) {
+			const batch = names.slice(i, i + BATCH_SIZE)
+
+			// Build multi-row insert statement
+			const placeholders = batch.map(() => '(?, ?, ?, ?)').join(',')
+			const values: any[] = []
+
+			for (const name of batch) {
+				values.push(name.id, name.name, name.category, now)
+			}
+
 			try {
 				await this.ctx.storage.sql.exec(
-					`INSERT OR REPLACE INTO names (id, name, category, cached_at) VALUES (?, ?, ?, ?)`,
-					name.id,
-					name.name,
-					name.category,
-					now
+					`INSERT OR REPLACE INTO names (id, name, category, cached_at) VALUES ${placeholders}`,
+					...values
 				)
 			} catch (error) {
-				logger.error('Error caching name', { error: String(error), name })
+				logger.error('Error caching batch of names', {
+					error: String(error),
+					batchSize: batch.length,
+					firstId: batch[0]?.id
+				})
+
+				// Fall back to individual inserts for this batch
+				for (const name of batch) {
+					try {
+						await this.ctx.storage.sql.exec(
+							`INSERT OR REPLACE INTO names (id, name, category, cached_at) VALUES (?, ?, ?, ?)`,
+							name.id,
+							name.name,
+							name.category,
+							now
+						)
+					} catch (innerError) {
+						logger.error('Error caching individual name', { error: String(innerError), name })
+					}
+				}
 			}
 		}
 

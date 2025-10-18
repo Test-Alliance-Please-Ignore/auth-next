@@ -66,6 +66,9 @@ importers:
       '@repo/do-utils':
         specifier: workspace:*
         version: link:../../packages/do-utils
+      '@repo/eve-universe':
+        specifier: workspace:*
+        version: link:../../packages/eve-universe
       '@repo/evesso':
         specifier: workspace:*
         version: link:../../packages/evesso
