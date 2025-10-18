@@ -5,12 +5,13 @@
 	"sideEffects": false,
 	"type": "module",
 	"scripts": {
-		"build:wrangler": "run-wrangler-build",
+		"build": "run-vite-build",
 		"check:lint": "run-eslint",
 		"check:types": "run-tsc",
 		"deploy": "run-wrangler-deploy",
-		"dev": "run-wrangler-dev",
+		"dev": "run-vite-dev",
 		"fix:workers-types": "run-wrangler-types",
+		"preview": "run-vite-preview",
 		"test": "run-vitest"
 	},
 	"dependencies": {
@@ -27,11 +28,13 @@
 		"workers-tagged-logger": "0.13.3"
 	},
 	"devDependencies": {
+		"@cloudflare/vite-plugin": "1.1.0",
 		"@cloudflare/vitest-pool-workers": "0.9.12",
 		"@repo/eslint-config": "workspace:*",
 		"@repo/tools": "workspace:*",
 		"@repo/typescript-config": "workspace:*",
 		"@types/node": "22.15.27",
+		"vite": "6.3.4",
 		"vitest": "3.2.4",
 		"wrangler": "4.42.2"
 	}
