@@ -71,6 +71,9 @@
 		{
 			"tag": "v5",
 			"new_sqlite_classes": ["EveUniverse"]
+		},
+		{
+			"tag": "v6"
 		}
 	],
 	"vars": {
