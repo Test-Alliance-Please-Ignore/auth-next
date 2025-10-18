@@ -223,6 +223,15 @@ export class CharacterDataStore extends DurableObject<Env> {
 					)
 				`)
 
+				// Add metadata table for tracking when history was last fetched
+				await this.ctx.storage.sql.exec(`
+					CREATE TABLE IF NOT EXISTS corporation_history_metadata (
+						character_id INTEGER PRIMARY KEY,
+						last_fetched INTEGER NOT NULL,
+						next_fetch_at INTEGER NOT NULL
+					)
+				`)
+
 				await this.ctx.storage.sql.exec(`
 					CREATE INDEX IF NOT EXISTS idx_corp_history_character ON corporation_history(character_id)
 				`)
@@ -1016,12 +1025,52 @@ export class CharacterDataStore extends DurableObject<Env> {
 	}
 
 	async fetchAndStoreCorporationHistory(characterId: number): Promise<CorporationHistoryData[]> {
+		await this.initializeSchema()
+
+		const now = Date.now()
+		const cacheTime = 24 * 60 * 60 * 1000 // Cache for 24 hours
+
+		// Check if we have cached data and if it's still fresh
+		const metadataRows = await this.ctx.storage.sql
+			.exec<{ last_fetched: number; next_fetch_at: number }>(
+				'SELECT last_fetched, next_fetch_at FROM corporation_history_metadata WHERE character_id = ?',
+				characterId
+			)
+			.toArray()
+
+		// If we have fresh cached data, return it
+		if (metadataRows.length > 0 && metadataRows[0].next_fetch_at > now) {
+			logger.info('Returning cached corporation history', {
+				characterId,
+				lastFetched: new Date(metadataRows[0].last_fetched).toISOString(),
+				nextFetchAt: new Date(metadataRows[0].next_fetch_at).toISOString()
+			})
+			return this.getCorporationHistory(characterId)
+		}
+
 		try {
 			// Fetch from ESI
-			const { data } = await fetchCharacterCorporationHistory(characterId)
+			const { data, expiresAt } = await fetchCharacterCorporationHistory(characterId)
 
 			// Store in database
 			await this.upsertCorporationHistory(characterId, data)
+
+			// Update metadata
+			const nextFetchAt = expiresAt || now + cacheTime
+			await this.ctx.storage.sql.exec(
+				`INSERT OR REPLACE INTO corporation_history_metadata
+				(character_id, last_fetched, next_fetch_at)
+				VALUES (?, ?, ?)`,
+				characterId,
+				now,
+				nextFetchAt
+			)
+
+			logger.info('Corporation history fetched and cached', {
+				characterId,
+				historyCount: data.length,
+				nextFetchAt: new Date(nextFetchAt).toISOString()
+			})
 
 			// Return the stored data
 			return this.getCorporationHistory(characterId)

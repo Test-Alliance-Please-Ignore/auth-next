@@ -1018,37 +1018,64 @@ const app = new Hono<App>()
 			let allianceTicker: string | null = null
 
 			if (characterData.alliance_id) {
-				// Try to fetch alliance data directly from ESI
-				try {
-					const allianceUrl = `https://esi.evetech.net/latest/alliances/${characterData.alliance_id}/`
-					const allianceResponse = await fetch(allianceUrl, {
-						headers: {
-							'X-Compatibility-Date': '2025-09-30',
-						},
-					})
-
-					if (allianceResponse.ok) {
-						const allianceData = await allianceResponse.json() as { name: string; ticker: string }
-						allianceName = allianceData.name
-						allianceTicker = allianceData.ticker
+				// First try to get from EveUniverse cache (which might have the name already)
+				const eveUniverseStub = c.env.EVE_UNIVERSE ? getStub<EveUniverse>(c.env.EVE_UNIVERSE, 'global') : null
+				if (eveUniverseStub) {
+					try {
+						const names = await eveUniverseStub.getNames([characterData.alliance_id])
+						const allianceNameEntry = names.find(n => n.id === characterData.alliance_id)
+						if (allianceNameEntry) {
+							allianceName = allianceNameEntry.name
+						}
+					} catch (error) {
+						logger.error('Failed to fetch alliance name from cache', { error: String(error), allianceId: characterData.alliance_id })
 					}
-				} catch (error) {
-					logger.error('Failed to fetch alliance info', { error: String(error), allianceId: characterData.alliance_id })
 				}
 
-				// Fallback to EveUniverse for just the name if direct fetch failed
-				if (!allianceName) {
-					const eveUniverseStub = c.env.EVE_UNIVERSE ? getStub<EveUniverse>(c.env.EVE_UNIVERSE, 'global') : null
-					if (eveUniverseStub) {
-						try {
-							const names = await eveUniverseStub.getNames([characterData.alliance_id])
-							const allianceNameEntry = names.find(n => n.id === characterData.alliance_id)
-							if (allianceNameEntry) {
-								allianceName = allianceNameEntry.name
+				// If we don't have the full data (ticker), fetch from ESI
+				if (!allianceTicker) {
+					try {
+						// Use edge cache for alliance data
+						const cacheKey = new Request(`https://cache.internal/alliance/${characterData.alliance_id}`, {
+							method: 'GET'
+						})
+						const cache = caches.default
+
+						// Check cache first
+						let cachedResponse = await cache.match(cacheKey)
+						let allianceData: { name: string; ticker: string } | null = null
+
+						if (cachedResponse && cachedResponse.ok) {
+							allianceData = await cachedResponse.json()
+						} else {
+							// Fetch from ESI
+							const allianceUrl = `https://esi.evetech.net/latest/alliances/${characterData.alliance_id}/`
+							const allianceResponse = await fetch(allianceUrl, {
+								headers: {
+									'X-Compatibility-Date': '2025-09-30',
+								},
+							})
+
+							if (allianceResponse.ok) {
+								allianceData = await allianceResponse.json() as { name: string; ticker: string }
+
+								// Cache for 24 hours
+								const cacheResponse = new Response(JSON.stringify(allianceData), {
+									headers: {
+										'Content-Type': 'application/json',
+										'Cache-Control': 'public, max-age=86400',
+									}
+								})
+								c.executionCtx.waitUntil(cache.put(cacheKey, cacheResponse))
 							}
-						} catch (error) {
-							logger.error('Failed to fetch alliance name from cache', { error: String(error), allianceId: characterData.alliance_id })
 						}
+
+						if (allianceData) {
+							allianceName = allianceData.name
+							allianceTicker = allianceData.ticker
+						}
+					} catch (error) {
+						logger.error('Failed to fetch alliance info', { error: String(error), allianceId: characterData.alliance_id })
 					}
 				}
 			}
