@@ -1,9 +1,0 @@
-{
-	"extends": "@repo/typescript-config/base.json",
-	"compilerOptions": {
-		"target": "es2022",
-		"lib": ["es2022", "dom"]
-	},
-	"include": ["src", "worker-configuration.d.ts"],
-	"exclude": ["node_modules", "dist"]
-}

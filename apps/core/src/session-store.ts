@@ -1,9 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { loadMigrationsFromBuild, MigratableDurableObject } from '@repo/do-migrations'
 import { logger } from '@repo/hono-helpers'
-
-import { sessionStoreMigrations } from './migrations'
 
 import type {
 	AccountLink,
@@ -83,20 +80,9 @@ interface ProviderLinkData extends Record<string, number | string> {
 	updated_at: number
 }
 
-export class SessionStore extends MigratableDurableObject {
+export class SessionStore extends DurableObject<Env> {
 	constructor(ctx: DurableObjectState, env: Env) {
-		super(ctx, env, {
-			migrationDir: 'SessionStore',
-			autoMigrate: true,
-			verbose: env.ENVIRONMENT === 'development',
-		})
-	}
-
-	/**
-	 * Override loadMigrations to provide the embedded SQL files
-	 */
-	protected async loadMigrations() {
-		return loadMigrationsFromBuild(sessionStoreMigrations)
+		super(ctx, env)
 	}
 
 	private generateSessionId(): string {

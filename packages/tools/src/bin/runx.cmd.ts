@@ -9,7 +9,6 @@ import { checkCmd } from '../cmd/check.cmd'
 import { ciCmd } from '../cmd/ci.cmd'
 import { devCmd } from '../cmd/dev.cmd'
 import { fixCmd } from '../cmd/fix.cmd'
-import { migrationCmd } from '../cmd/migration.cmd'
 import { shfmtCmd } from '../cmd/shfmt.cmd'
 import { updateCmd } from '../cmd/update.cmd'
 
@@ -26,7 +25,6 @@ program
 	.addCommand(checkCmd)
 	.addCommand(devCmd)
 	.addCommand(ciCmd)
-	.addCommand(migrationCmd)
 	.addCommand(updateCmd)
 	.addCommand(shfmtCmd)
 

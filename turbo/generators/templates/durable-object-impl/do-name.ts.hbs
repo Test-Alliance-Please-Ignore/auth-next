@@ -1,10 +1,8 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { MigratableDurableObject, loadMigrationsFromBuild } from '@repo/do-migrations'
 import { logger } from '@repo/hono-helpers'
 
 import type { Env } from './context'
-import { {{ camelCase name }}Migrations } from './migrations'
 
 // ========== Internal Types (SQLite data structures - snake_case) ==========
 
@@ -31,20 +29,9 @@ import { {{ camelCase name }}Migrations } from './migrations'
  *
  * {{ description }}
  */
-export class {{ pascal name }} extends MigratableDurableObject {
+export class {{ pascal name }} extends DurableObject<Env> {
 	constructor(ctx: DurableObjectState, env: Env) {
-		super(ctx, env, {
-			migrationDir: '{{ pascal name }}',
-			autoMigrate: true,
-			verbose: env.ENVIRONMENT === 'development',
-		})
-	}
-
-	/**
-	 * Override loadMigrations to provide the embedded SQL files
-	 */
-	protected async loadMigrations() {
-		return loadMigrationsFromBuild({{ camelCase name }}Migrations)
+		super(ctx, env)
 	}
 
 	// ========== Public Methods ==========

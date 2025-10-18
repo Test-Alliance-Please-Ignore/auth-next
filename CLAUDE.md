@@ -43,9 +43,6 @@ To deploy workers locally using `just deploy`, you need to configure Cloudflare 
 - `just new-worker` (alias: `just gen`) - Create a new Cloudflare Worker
 - `just new-package` - Create a new shared package
 - `just new-durable-object` (alias: `just new-do`) - Create a new Durable Object with interface package
-- `just migration-create <worker> <do-name> <description>` - Create a new migration file for a DO
-- `just migration-status <worker> <do-name>` - Show migration status for a specific DO
-- `just migration-validate` - Validate all migration files for syntax and sequence
 - `just update deps` (alias: `just up deps`) - Update dependencies across the monorepo
 - `just update pnpm` - Update pnpm version
 - `just update turbo` - Update turbo version
@@ -66,7 +63,6 @@ To deploy workers locally using `just deploy`, you need to configure Cloudflare 
   - `@repo/hono-helpers` - Hono framework utilities
   - `@repo/tools` - Development tools and scripts
   - `@repo/do-utils` - Durable Object utilities (getStub helper)
-  - `@repo/do-migrations` - Migration system for Durable Objects
   - `@repo/session-store` - SessionStore DO interface
   - `@repo/character-data-store` - CharacterDataStore DO interface
   - `@repo/user-token-store` - UserTokenStore DO interface
@@ -81,7 +77,6 @@ To deploy workers locally using `just deploy`, you need to configure Cloudflare 
 - Workers use `nodejs_compat` compatibility flag
 - GitHub Actions deploy automatically on merge to main
 - Changesets manage versions and changelogs
-- Migration system manages DO SQLite schema evolution
 </architecture>
 
 <durable-objects>
@@ -131,8 +126,8 @@ const session = await stub.getSession(sessionId)
 
 ### Key Principles
 
-- **SQLite Storage Required**: ALL Durable Objects MUST use SQLite storage. Always use `new_sqlite_classes` in migrations, never `new_classes`. Using `new_classes` creates a non-SQLite DO that cannot be converted without deleting all data.
-- **Wrangler Migrations**: DO NOT modify `migrations` in `wrangler.jsonc` unless specifically asked. These tags only control Durable Object creation/deletion, NOT SQL migrations. SQL migrations are handled by the DO migration system.
+- **SQLite Storage**: Durable Objects use SQLite storage for persistence
+- **Wrangler Migrations**: The `migrations` section in `wrangler.jsonc` controls Durable Object creation/deletion. Always use `new_sqlite_classes`, never `new_classes`
 - **Untyped Namespaces**: Environment bindings use `DurableObjectNamespace` (untyped) in `context.ts`
 - **Type at Call Site**: Apply interface type when calling `getStub<T>()`
 - **Shared Interfaces**: Import interface types from `@repo/*` packages, never from implementation files
@@ -178,124 +173,6 @@ import type { SessionStore } from '@repo/session-store'
 const stub = getStub<SessionStore>(env.USER_SESSION_STORE, 'test-unique-id')
 ```
 </durable-objects>
-
-<do-migrations>
-## Durable Object Migration System
-
-This project uses a SQL migration system for managing Durable Object SQLite schemas. Migrations are automatically applied when DOs initialize.
-
-### Migration Files
-
-Migrations are stored as SQL files in each worker:
-- Location: `apps/[worker]/migrations/[DOClassName]/`
-- Naming: `001_description.sql`, `002_description.sql`, etc.
-- Format: Plain SQL statements
-
-### Creating Migrations
-
-When you need to modify a DO's schema (add tables, columns, indexes, etc.):
-
-```bash
-# Create a new migration file
-just migration-create <worker> <DOClassName> <description>
-
-# Example: Add OAuth fields to SessionStore
-just migration-create core SessionStore add_oauth_fields
-# Creates: apps/core/migrations/SessionStore/002_add_oauth_fields.sql
-```
-
-Then edit the created SQL file with your schema changes:
-```sql
--- Migration: add_oauth_fields
--- Version: 2
--- Created: 2024-01-18
-
-ALTER TABLE sessions ADD COLUMN oauth_provider TEXT;
-ALTER TABLE sessions ADD COLUMN oauth_expires_at INTEGER;
-CREATE INDEX idx_sessions_oauth ON sessions(oauth_provider, oauth_expires_at);
-```
-
-### Migration Commands
-
-- `just migration-create <worker> <do-name> <description>` - Create new migration file
-- `just migration-status <worker> <do-name>` - Check which migrations are pending
-- `just migration-validate` - Validate all migrations for syntax and sequence
-
-### How Migrations Work
-
-1. **Automatic Execution**: Migrations run automatically when a DO initializes
-2. **Tracking**: Applied migrations are tracked in a `_migrations` table with checksums
-3. **Ordering**: Migrations run in numerical order (001, 002, 003, etc.)
-4. **Safety**: Checksums prevent tampering with applied migrations
-5. **Locking**: Concurrent migration attempts are prevented via locks
-
-### DO Implementation Pattern
-
-All DOs extend `MigratableDurableObject` and load migrations:
-
-```typescript
-import { MigratableDurableObject, loadMigrationsFromBuild } from '@repo/do-migrations'
-import { sessionStoreMigrations } from './migrations'
-
-export class SessionStore extends MigratableDurableObject {
-  constructor(ctx: DurableObjectState, env: Env) {
-    super(ctx, env, {
-      migrationDir: 'SessionStore',
-      autoMigrate: true,
-      verbose: env.ENVIRONMENT === 'development',
-    })
-  }
-
-  protected async loadMigrations() {
-    return loadMigrationsFromBuild(sessionStoreMigrations)
-  }
-}
-```
-
-The `migrations.ts` file imports SQL files:
-```typescript
-// @ts-expect-error - Build tools handle ?raw imports
-import migration001 from '../migrations/SessionStore/001_initial_schema.sql?raw'
-import migration002 from '../migrations/SessionStore/002_add_oauth_fields.sql?raw'
-
-export const sessionStoreMigrations: Record<string, string> = {
-  '001_initial_schema.sql': migration001,
-  '002_add_oauth_fields.sql': migration002,
-}
-```
-
-### Important Migration Rules
-
-1. **Sequential Numbering**: Never skip numbers (001, 002, 003...)
-2. **No Modifications**: Never modify a migration after it's been deployed
-3. **Forward Only**: No rollback support currently - migrations only go forward
-4. **Test First**: Test migrations locally before deploying to production
-5. **Small Changes**: Keep migrations focused on single changes when possible
-
-### Adding Migrations to Existing DOs
-
-When adding a new feature that requires schema changes:
-
-1. Create the migration: `just migration-create worker DOName feature_name`
-2. Write the SQL changes in the created file
-3. Update the `migrations.ts` file to import the new SQL file
-4. The migration will run automatically on next deployment
-
-### New Durable Objects
-
-The generator (`just new-durable-object`) automatically:
-- Creates initial migration file (`001_initial_schema.sql`)
-- Sets up `migrations.ts` file
-- Extends `MigratableDurableObject`
-- Creates migration directory structure
-
-### Troubleshooting
-
-- **Migration fails**: Check logs - the DO won't mark failed migrations as complete
-- **Checksum errors**: Never modify applied migrations - create new ones instead
-- **Missing migrations**: Ensure sequential numbering with no gaps
-- **Type errors**: Run `pnpm install` after adding @repo/do-migrations dependency
-</do-migrations>
 
 <code-style>
 - Use tabs for indentation, spaces for alignment

@@ -1,4 +1,5 @@
-import { MigratableDurableObject, loadMigrationsFromBuild } from '@repo/do-migrations'
+import { DurableObject } from 'cloudflare:workers'
+
 import { logger } from '@repo/hono-helpers'
 
 import type {
@@ -17,19 +18,10 @@ import {
 	type ESIGroupInfo,
 	type ESITypeInfo,
 } from './esi-client'
-import { eveUniverseMigrations } from './migrations'
 
-export class EveUniverse extends MigratableDurableObject<Env> {
+export class EveUniverse extends DurableObject<Env> {
 	constructor(ctx: DurableObjectState, env: Env) {
-		super(ctx, env, {
-			migrationDir: 'EveUniverse',
-			autoMigrate: true,
-			verbose: env.ENVIRONMENT === 'development',
-		})
-	}
-
-	protected async loadMigrations() {
-		return loadMigrationsFromBuild(eveUniverseMigrations)
+		super(ctx, env)
 	}
 
 

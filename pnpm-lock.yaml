@@ -63,9 +63,6 @@ importers:
       '@repo/character-data-store':
         specifier: workspace:*
         version: link:../../packages/character-data-store
-      '@repo/do-migrations':
-        specifier: workspace:*
-        version: link:../../packages/do-migrations
       '@repo/do-utils':
         specifier: workspace:*
         version: link:../../packages/do-utils
@@ -176,9 +173,6 @@ importers:
       '@repo/character-data-store':
         specifier: workspace:*
         version: link:../../packages/character-data-store
-      '@repo/do-migrations':
-        specifier: workspace:*
-        version: link:../../packages/do-migrations
       '@repo/do-utils':
         specifier: workspace:*
         version: link:../../packages/do-utils
@@ -292,9 +286,6 @@ importers:
 
   apps/groups:
     dependencies:
-      '@repo/do-migrations':
-        specifier: workspace:*
-        version: link:../../packages/do-migrations
       '@repo/do-utils':
         specifier: workspace:*
         version: link:../../packages/do-utils
@@ -347,9 +338,6 @@ importers:
       '@repo/character-data-store':
         specifier: workspace:*
         version: link:../../packages/character-data-store
-      '@repo/do-migrations':
-        specifier: workspace:*
-        version: link:../../packages/do-migrations
       '@repo/do-utils':
         specifier: workspace:*
         version: link:../../packages/do-utils
@@ -460,15 +448,6 @@ importers:
       '@repo/tools':
         specifier: workspace:*
         version: link:../tools
-      '@repo/typescript-config':
-        specifier: workspace:*
-        version: link:../typescript-config
-
-  packages/do-migrations:
-    devDependencies:
-      '@repo/eslint-config':
-        specifier: workspace:*
-        version: link:../eslint-config
       '@repo/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config

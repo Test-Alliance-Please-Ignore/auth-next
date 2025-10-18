@@ -1,9 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { loadMigrationsFromBuild, MigratableDurableObject } from '@repo/do-migrations'
 import { logger } from '@repo/hono-helpers'
-
-import { groupStoreMigrations } from './migrations'
 
 import type { Env } from './context'
 
@@ -182,20 +179,9 @@ export interface GroupCategory {
 	updatedAt: number
 }
 
-export class GroupStore extends MigratableDurableObject {
+export class GroupStore extends DurableObject<Env> {
 	constructor(ctx: DurableObjectState, env: Env) {
-		super(ctx, env, {
-			migrationDir: 'GroupStore',
-			autoMigrate: true,
-			verbose: env.ENVIRONMENT === 'development',
-		})
-	}
-
-	/**
-	 * Override loadMigrations to provide the embedded SQL files
-	 */
-	protected async loadMigrations() {
-		return loadMigrationsFromBuild(groupStoreMigrations)
+		super(ctx, env)
 	}
 
 	private async createSchema(): Promise<void> {

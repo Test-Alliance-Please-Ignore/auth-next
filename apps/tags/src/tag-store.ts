@@ -1,9 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { loadMigrationsFromBuild, MigratableDurableObject } from '@repo/do-migrations'
 import { logger } from '@repo/hono-helpers'
-
-import { tagStoreMigrations } from './migrations'
 
 import type { Env } from './context'
 
@@ -52,23 +49,12 @@ export interface TagWithSources extends Tag {
 	sourceCharacters: number[]
 }
 
-export class TagStore extends MigratableDurableObject {
+export class TagStore extends DurableObject<Env> {
 	private readonly EVALUATION_INTERVAL_MS = 60 * 60 * 1000 // 1 hour
 	private readonly BATCH_SIZE = 100 // Process 100 users per alarm
 
 	constructor(ctx: DurableObjectState, env: Env) {
-		super(ctx, env, {
-			migrationDir: 'TagStore',
-			autoMigrate: true,
-			verbose: env.ENVIRONMENT === 'development',
-		})
-	}
-
-	/**
-	 * Override loadMigrations to provide the embedded SQL files
-	 */
-	protected async loadMigrations() {
-		return loadMigrationsFromBuild(tagStoreMigrations)
+		super(ctx, env)
 	}
 
 	private async createSchema(): Promise<void> {

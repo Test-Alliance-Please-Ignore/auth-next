@@ -1,6 +1,5 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { loadMigrationsFromBuild, MigratableDurableObject } from '@repo/do-migrations'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
@@ -13,7 +12,6 @@ import {
 	fetchCharacterWallet,
 	fetchCorporationInfo,
 } from './esi-client'
-import { characterDataStoreMigrations } from './migrations'
 
 import type {
 	ESICharacterInfo,
@@ -115,22 +113,11 @@ interface CorporationHistoryData extends Record<string, number | string | null> 
 	is_deleted: number // SQLite stores booleans as 0/1
 }
 
-export class CharacterDataStore extends MigratableDurableObject {
+export class CharacterDataStore extends DurableObject<Env> {
 	private alarmScheduled = false
 
 	constructor(ctx: DurableObjectState, env: Env) {
-		super(ctx, env, {
-			migrationDir: 'CharacterDataStore',
-			autoMigrate: true,
-			verbose: env.ENVIRONMENT === 'development',
-		})
-	}
-
-	/**
-	 * Override loadMigrations to provide the embedded SQL files
-	 */
-	protected async loadMigrations() {
-		return loadMigrationsFromBuild(characterDataStoreMigrations)
+		super(ctx, env)
 	}
 
 	private async ensureSkillTables(): Promise<void> {
