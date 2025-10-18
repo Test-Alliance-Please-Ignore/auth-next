@@ -53,6 +53,40 @@ export interface ESIAllianceInfo {
 }
 
 /**
+ * ESI Character skills response
+ * From: GET /characters/{character_id}/skills/
+ */
+export interface ESISkill {
+	skill_id: number
+	skillpoints_in_skill: number
+	trained_skill_level: number
+	active_skill_level: number
+}
+
+export interface ESICharacterSkills {
+	skills: ESISkill[]
+	total_sp: number
+	unallocated_sp?: number
+}
+
+/**
+ * ESI Character skillqueue response
+ * From: GET /characters/{character_id}/skillqueue/
+ */
+export interface ESISkillQueueItem {
+	skill_id: number
+	finished_level: number
+	queue_position: number
+	start_date?: string
+	finish_date?: string
+	training_start_sp?: number
+	level_start_sp?: number
+	level_end_sp?: number
+}
+
+export type ESICharacterSkillQueue = ESISkillQueueItem[]
+
+/**
  * Parse cache control header and calculate expiration timestamp
  */
 export function parseCacheControl(cacheControlHeader: string | null): number | null {
@@ -223,6 +257,104 @@ export async function fetchAllianceInfo(
 			allianceId,
 			allianceName: data.name,
 			ticker: data.ticker,
+			expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
+		})
+
+	return { data, expiresAt }
+}
+
+/**
+ * Fetch character skills from ESI
+ */
+export async function fetchCharacterSkills(
+	characterId: number,
+	accessToken: string
+): Promise<{ data: ESICharacterSkills; expiresAt: number | null }> {
+	const url = `https://esi.evetech.net/v4/characters/${characterId}/skills/`
+
+	const response = await fetch(url, {
+		headers: {
+			Authorization: `Bearer ${accessToken}`,
+			'X-Compatibility-Date': '2025-09-30',
+		},
+	})
+
+	if (!response.ok) {
+		logger
+			.withTags({
+				type: 'esi_skills_fetch_error',
+				character_id: characterId,
+			})
+			.error('Failed to fetch character skills from ESI', {
+				characterId,
+				status: response.status,
+				statusText: response.statusText,
+			})
+		throw new Error(`Failed to fetch character skills: ${response.status} ${response.statusText}`)
+	}
+
+	const data = (await response.json()) as ESICharacterSkills
+	const cacheControl = response.headers.get('Cache-Control')
+	const expiresAt = parseCacheControl(cacheControl)
+
+	logger
+		.withTags({
+			type: 'esi_skills_fetched',
+			character_id: characterId,
+		})
+		.info('Character skills fetched from ESI', {
+			characterId,
+			totalSP: data.total_sp,
+			unallocatedSP: data.unallocated_sp,
+			skillCount: data.skills.length,
+			expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
+		})
+
+	return { data, expiresAt }
+}
+
+/**
+ * Fetch character skillqueue from ESI
+ */
+export async function fetchCharacterSkillQueue(
+	characterId: number,
+	accessToken: string
+): Promise<{ data: ESICharacterSkillQueue; expiresAt: number | null }> {
+	const url = `https://esi.evetech.net/v2/characters/${characterId}/skillqueue/`
+
+	const response = await fetch(url, {
+		headers: {
+			Authorization: `Bearer ${accessToken}`,
+			'X-Compatibility-Date': '2025-09-30',
+		},
+	})
+
+	if (!response.ok) {
+		logger
+			.withTags({
+				type: 'esi_skillqueue_fetch_error',
+				character_id: characterId,
+			})
+			.error('Failed to fetch character skillqueue from ESI', {
+				characterId,
+				status: response.status,
+				statusText: response.statusText,
+			})
+		throw new Error(`Failed to fetch character skillqueue: ${response.status} ${response.statusText}`)
+	}
+
+	const data = (await response.json()) as ESICharacterSkillQueue
+	const cacheControl = response.headers.get('Cache-Control')
+	const expiresAt = parseCacheControl(cacheControl)
+
+	logger
+		.withTags({
+			type: 'esi_skillqueue_fetched',
+			character_id: characterId,
+		})
+		.info('Character skillqueue fetched from ESI', {
+			characterId,
+			queueLength: data.length,
 			expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
 		})
 

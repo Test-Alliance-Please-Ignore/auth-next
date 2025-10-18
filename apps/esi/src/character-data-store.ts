@@ -3,13 +3,24 @@ import { DurableObject } from 'cloudflare:workers'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
-import { fetchAllianceInfo, fetchCharacterInfo, fetchCorporationInfo } from './esi-client'
+import {
+	fetchAllianceInfo,
+	fetchCharacterInfo,
+	fetchCharacterSkillQueue,
+	fetchCharacterSkills,
+	fetchCorporationInfo,
+} from './esi-client'
 
 import type { EveSSO } from '@repo/evesso'
 import type { SessionStore } from '@repo/session-store'
 import type { TagStore } from '@repo/tag-store'
 import type { Env } from './context'
-import type { ESICharacterInfo, ESICorporationInfo } from './esi-client'
+import type {
+	ESICharacterInfo,
+	ESICharacterSkillQueue,
+	ESICharacterSkills,
+	ESICorporationInfo,
+} from './esi-client'
 
 export interface CharacterData extends Record<string, number | string | null> {
 	character_id: number
@@ -54,6 +65,35 @@ export interface ChangeHistoryEntry extends Record<string, number | string | nul
 	new_value: string | null
 }
 
+export interface CharacterSkillsData extends Record<string, number | string | null> {
+	character_id: number
+	total_sp: number
+	unallocated_sp: number
+	last_updated: number
+	next_update_at: number
+	update_count: number
+}
+
+export interface SkillData extends Record<string, number | string | null> {
+	character_id: number
+	skill_id: number
+	skillpoints_in_skill: number
+	trained_skill_level: number
+	active_skill_level: number
+}
+
+export interface SkillQueueData extends Record<string, number | string | null> {
+	character_id: number
+	skill_id: number
+	finished_level: number
+	queue_position: number
+	start_date: string | null
+	finish_date: string | null
+	training_start_sp: number | null
+	level_start_sp: number | null
+	level_end_sp: number | null
+}
+
 export class CharacterDataStore extends DurableObject<Env> {
 	private alarmScheduled = false
 
@@ -67,9 +107,12 @@ export class CharacterDataStore extends DurableObject<Env> {
 
 	private async createSchema(): Promise<void> {
 		// Drop all tables if they exist
+		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS skillqueue')
+		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS skills')
+		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS character_skills')
+		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS character_history')
 		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS characters')
 		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS corporations')
-		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS character_history')
 
 		// Characters table
 		await this.ctx.storage.sql.exec(`
@@ -138,6 +181,61 @@ export class CharacterDataStore extends DurableObject<Env> {
 
 		await this.ctx.storage.sql.exec(`
 			CREATE INDEX idx_history_character ON character_history(character_id, changed_at)
+		`)
+
+		// Character skills aggregate table
+		await this.ctx.storage.sql.exec(`
+			CREATE TABLE character_skills (
+				character_id INTEGER PRIMARY KEY,
+				total_sp INTEGER NOT NULL,
+				unallocated_sp INTEGER NOT NULL DEFAULT 0,
+				last_updated INTEGER NOT NULL,
+				next_update_at INTEGER NOT NULL,
+				update_count INTEGER NOT NULL DEFAULT 0,
+				FOREIGN KEY (character_id) REFERENCES characters(character_id) ON DELETE CASCADE
+			)
+		`)
+
+		await this.ctx.storage.sql.exec(`
+			CREATE INDEX idx_character_skills_next_update ON character_skills(next_update_at)
+		`)
+
+		// Individual skills table
+		await this.ctx.storage.sql.exec(`
+			CREATE TABLE skills (
+				character_id INTEGER NOT NULL,
+				skill_id INTEGER NOT NULL,
+				skillpoints_in_skill INTEGER NOT NULL,
+				trained_skill_level INTEGER NOT NULL,
+				active_skill_level INTEGER NOT NULL,
+				PRIMARY KEY (character_id, skill_id),
+				FOREIGN KEY (character_id) REFERENCES characters(character_id) ON DELETE CASCADE
+			)
+		`)
+
+		await this.ctx.storage.sql.exec(`
+			CREATE INDEX idx_skills_character ON skills(character_id)
+		`)
+
+		// Skill queue table
+		await this.ctx.storage.sql.exec(`
+			CREATE TABLE skillqueue (
+				character_id INTEGER NOT NULL,
+				skill_id INTEGER NOT NULL,
+				finished_level INTEGER NOT NULL,
+				queue_position INTEGER NOT NULL,
+				start_date TEXT,
+				finish_date TEXT,
+				training_start_sp INTEGER,
+				level_start_sp INTEGER,
+				level_end_sp INTEGER,
+				PRIMARY KEY (character_id, queue_position),
+				FOREIGN KEY (character_id) REFERENCES characters(character_id) ON DELETE CASCADE
+			)
+		`)
+
+		await this.ctx.storage.sql.exec(`
+			CREATE INDEX idx_skillqueue_character ON skillqueue(character_id)
 		`)
 	}
 
@@ -527,6 +625,169 @@ export class CharacterDataStore extends DurableObject<Env> {
 		return rows
 	}
 
+	async upsertCharacterSkills(
+		characterId: number,
+		data: ESICharacterSkills,
+		expiresAt: number | null
+	): Promise<CharacterSkillsData> {
+		await this.initializeSchema()
+
+		const now = Date.now()
+		const nextUpdateAt = expiresAt || now + 3600 * 1000 // Default 1 hour if no cache header
+
+		// Check for existing character skills
+		const existing = await this.ctx.storage.sql
+			.exec<CharacterSkillsData>(
+				'SELECT * FROM character_skills WHERE character_id = ?',
+				characterId
+			)
+			.toArray()
+
+		const isUpdate = existing.length > 0
+
+		if (isUpdate) {
+			// Update existing character skills
+			await this.ctx.storage.sql.exec(
+				`UPDATE character_skills
+				SET total_sp = ?, unallocated_sp = ?, last_updated = ?,
+					next_update_at = ?, update_count = update_count + 1
+				WHERE character_id = ?`,
+				data.total_sp,
+				data.unallocated_sp || 0,
+				now,
+				nextUpdateAt,
+				characterId
+			)
+		} else {
+			// Insert new character skills
+			await this.ctx.storage.sql.exec(
+				`INSERT INTO character_skills (
+					character_id, total_sp, unallocated_sp, last_updated,
+					next_update_at, update_count
+				) VALUES (?, ?, ?, ?, ?, 1)`,
+				characterId,
+				data.total_sp,
+				data.unallocated_sp || 0,
+				now,
+				nextUpdateAt
+			)
+		}
+
+		// Delete existing skills and insert new ones
+		await this.ctx.storage.sql.exec('DELETE FROM skills WHERE character_id = ?', characterId)
+
+		for (const skill of data.skills) {
+			await this.ctx.storage.sql.exec(
+				`INSERT INTO skills (
+					character_id, skill_id, skillpoints_in_skill,
+					trained_skill_level, active_skill_level
+				) VALUES (?, ?, ?, ?, ?)`,
+				characterId,
+				skill.skill_id,
+				skill.skillpoints_in_skill,
+				skill.trained_skill_level,
+				skill.active_skill_level
+			)
+		}
+
+		logger
+			.withTags({
+				type: isUpdate ? 'character_skills_updated' : 'character_skills_created',
+				character_id: characterId,
+			})
+			.info(`Character skills ${isUpdate ? 'updated' : 'created'}`, {
+				characterId,
+				totalSP: data.total_sp,
+				unallocatedSP: data.unallocated_sp,
+				skillCount: data.skills.length,
+				nextUpdateAt: new Date(nextUpdateAt).toISOString(),
+			})
+
+		// Return the stored character skills data
+		const stored = await this.ctx.storage.sql
+			.exec<CharacterSkillsData>(
+				'SELECT * FROM character_skills WHERE character_id = ?',
+				characterId
+			)
+			.toArray()
+
+		return stored[0]
+	}
+
+	async upsertCharacterSkillQueue(
+		characterId: number,
+		data: ESICharacterSkillQueue
+	): Promise<void> {
+		await this.initializeSchema()
+
+		// Delete existing skillqueue and insert new ones
+		await this.ctx.storage.sql.exec('DELETE FROM skillqueue WHERE character_id = ?', characterId)
+
+		for (const item of data) {
+			await this.ctx.storage.sql.exec(
+				`INSERT INTO skillqueue (
+					character_id, skill_id, finished_level, queue_position,
+					start_date, finish_date, training_start_sp, level_start_sp, level_end_sp
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				characterId,
+				item.skill_id,
+				item.finished_level,
+				item.queue_position,
+				item.start_date || null,
+				item.finish_date || null,
+				item.training_start_sp || null,
+				item.level_start_sp || null,
+				item.level_end_sp || null
+			)
+		}
+
+		logger
+			.withTags({
+				type: 'character_skillqueue_updated',
+				character_id: characterId,
+			})
+			.info('Character skillqueue updated', {
+				characterId,
+				queueLength: data.length,
+			})
+	}
+
+	async getCharacterSkills(characterId: number): Promise<CharacterSkillsData | null> {
+		await this.initializeSchema()
+
+		const rows = await this.ctx.storage.sql
+			.exec<CharacterSkillsData>(
+				'SELECT * FROM character_skills WHERE character_id = ?',
+				characterId
+			)
+			.toArray()
+
+		return rows.length > 0 ? rows[0] : null
+	}
+
+	async getSkills(characterId: number): Promise<SkillData[]> {
+		await this.initializeSchema()
+
+		const rows = await this.ctx.storage.sql
+			.exec<SkillData>('SELECT * FROM skills WHERE character_id = ? ORDER BY skill_id', characterId)
+			.toArray()
+
+		return rows
+	}
+
+	async getSkillQueue(characterId: number): Promise<SkillQueueData[]> {
+		await this.initializeSchema()
+
+		const rows = await this.ctx.storage.sql
+			.exec<SkillQueueData>(
+				'SELECT * FROM skillqueue WHERE character_id = ? ORDER BY queue_position',
+				characterId
+			)
+			.toArray()
+
+		return rows
+	}
+
 	private async getEntitiesNeedingUpdate(): Promise<{
 		characters: Array<{ character_id: number }>
 		corporations: Array<{ corporation_id: number }>
@@ -625,6 +886,28 @@ export class CharacterDataStore extends DurableObject<Env> {
 					const tokenInfo = await tokenStore.getAccessToken(character_id)
 					const { data, expiresAt } = await fetchCharacterInfo(character_id, tokenInfo.accessToken)
 					await this.upsertCharacter(character_id, data, expiresAt)
+
+					// Fetch and store character skills
+					try {
+						const skillsData = await fetchCharacterSkills(character_id, tokenInfo.accessToken)
+						await this.upsertCharacterSkills(character_id, skillsData.data, skillsData.expiresAt)
+					} catch (skillsError) {
+						logger.error('Failed to fetch skills during character update', {
+							characterId: character_id,
+							error: String(skillsError),
+						})
+					}
+
+					// Fetch and store character skillqueue
+					try {
+						const skillqueueData = await fetchCharacterSkillQueue(character_id, tokenInfo.accessToken)
+						await this.upsertCharacterSkillQueue(character_id, skillqueueData.data)
+					} catch (skillqueueError) {
+						logger.error('Failed to fetch skillqueue during character update', {
+							characterId: character_id,
+							error: String(skillqueueError),
+						})
+					}
 
 					// Also update their corporation if we haven't seen it before
 					const corp = await this.getCorporation(data.corporation_id)

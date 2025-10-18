@@ -780,47 +780,46 @@ const app = new Hono<App>()
 			const tokenStoreStub = getStub<EveSSO>(c.env.EVESSO_STORE, 'global')
 			const tokenInfo = await tokenStoreStub.getAccessToken(characterId)
 
+			// Import ESI client functions
+			const { fetchCharacterInfo, fetchCharacterSkills, fetchCharacterSkillQueue } = await import(
+				'../../esi/src/esi-client'
+			)
+
 			// Fetch character data from ESI
-			const esiUrl = `https://esi.evetech.net/latest/characters/${characterId}/`
-			const esiResponse = await fetch(esiUrl, {
-				headers: {
-					Authorization: `Bearer ${tokenInfo.accessToken}`,
-					'X-Compatibility-Date': '2025-09-30',
-				},
-			})
-
-			if (!esiResponse.ok) {
-				throw new Error(`ESI returned ${esiResponse.status}: ${esiResponse.statusText}`)
-			}
-
-			const characterData = (await esiResponse.json()) as {
-				alliance_id?: number
-				ancestry_id?: number
-				birthday: string
-				bloodline_id: number
-				corporation_id: number
-				description?: string
-				gender: 'male' | 'female'
-				name: string
-				race_id: number
-				security_status?: number
-				title?: string
-			}
-
-			// Parse cache expiration
-			const cacheControl = esiResponse.headers.get('Cache-Control')
-			let expiresAt: number | null = null
-			if (cacheControl) {
-				const maxAgeMatch = cacheControl.match(/max-age=(\d+)/)
-				if (maxAgeMatch) {
-					const maxAgeSeconds = parseInt(maxAgeMatch[1], 10)
-					expiresAt = Date.now() + maxAgeSeconds * 1000
-				}
-			}
+			const charResult = await fetchCharacterInfo(characterId, tokenInfo.accessToken)
 
 			// Update CharacterDataStore with the fetched data (this will trigger tag upserts)
 			const dataStoreStub = getStub<CharacterDataStore>(c.env.CHARACTER_DATA_STORE, 'global')
-			await dataStoreStub.upsertCharacter(characterId, characterData, expiresAt)
+			await dataStoreStub.upsertCharacter(characterId, charResult.data, charResult.expiresAt)
+
+			// Fetch and store character skills
+			try {
+				const skillsResult = await fetchCharacterSkills(characterId, tokenInfo.accessToken)
+				await dataStoreStub.upsertCharacterSkills(
+					characterId,
+					skillsResult.data,
+					skillsResult.expiresAt
+				)
+			} catch (skillsError) {
+				logger.error('Failed to fetch skills during refresh', {
+					characterId,
+					error: String(skillsError),
+				})
+			}
+
+			// Fetch and store character skillqueue
+			try {
+				const skillqueueResult = await fetchCharacterSkillQueue(
+					characterId,
+					tokenInfo.accessToken
+				)
+				await dataStoreStub.upsertCharacterSkillQueue(characterId, skillqueueResult.data)
+			} catch (skillqueueError) {
+				logger.error('Failed to fetch skillqueue during refresh', {
+					characterId,
+					error: String(skillqueueError),
+				})
+			}
 
 			logger
 				.withTags({
@@ -830,8 +829,8 @@ const app = new Hono<App>()
 					characterId,
 					characterName: tokenInfo.characterName,
 					rootUserId: session.rootUserId.substring(0, 8) + '...',
-					corporationId: characterData.corporation_id,
-					allianceId: characterData.alliance_id,
+					corporationId: charResult.data.corporation_id,
+					allianceId: charResult.data.alliance_id,
 				})
 
 			return c.json({

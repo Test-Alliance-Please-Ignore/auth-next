@@ -548,7 +548,7 @@ async function handlePrimaryLoginCallback(
 			const dataStoreStub = getStub<CharacterDataStore>(c.env.CHARACTER_DATA_STORE, 'global')
 
 			// Import ESI client functions
-			const { fetchCharacterInfo, fetchCorporationInfo } = await import(
+			const { fetchCharacterInfo, fetchCharacterSkills, fetchCharacterSkillQueue, fetchCorporationInfo } = await import(
 				'../../esi/src/esi-client'
 			)
 
@@ -562,6 +562,41 @@ async function handlePrimaryLoginCallback(
 				charResult.data,
 				charResult.expiresAt
 			)
+
+			// Fetch and store character skills
+			try {
+				const skillsResult = await fetchCharacterSkills(
+					characterInfo.CharacterID,
+					tokenData.access_token
+				)
+				await dataStoreStub.upsertCharacterSkills(
+					characterInfo.CharacterID,
+					skillsResult.data,
+					skillsResult.expiresAt
+				)
+			} catch (skillsError) {
+				logger.error('Failed to fetch skills during primary login', {
+					characterId: characterInfo.CharacterID,
+					error: String(skillsError),
+				})
+			}
+
+			// Fetch and store character skillqueue
+			try {
+				const skillqueueResult = await fetchCharacterSkillQueue(
+					characterInfo.CharacterID,
+					tokenData.access_token
+				)
+				await dataStoreStub.upsertCharacterSkillQueue(
+					characterInfo.CharacterID,
+					skillqueueResult.data
+				)
+			} catch (skillqueueError) {
+				logger.error('Failed to fetch skillqueue during primary login', {
+					characterId: characterInfo.CharacterID,
+					error: String(skillqueueError),
+				})
+			}
 
 			logger
 				.withTags({
@@ -1005,7 +1040,7 @@ async function handleCharacterLinkCallback(
 			const dataStoreStub = getStub<CharacterDataStore>(c.env.CHARACTER_DATA_STORE, 'global')
 
 			// Import ESI client functions
-			const { fetchCharacterInfo, fetchCorporationInfo } = await import(
+			const { fetchCharacterInfo, fetchCharacterSkills, fetchCharacterSkillQueue, fetchCorporationInfo } = await import(
 				'../../esi/src/esi-client'
 			)
 
@@ -1019,6 +1054,41 @@ async function handleCharacterLinkCallback(
 				charResult.data,
 				charResult.expiresAt
 			)
+
+			// Fetch and store character skills
+			try {
+				const skillsResult = await fetchCharacterSkills(
+					characterInfo.CharacterID,
+					tokenData.access_token
+				)
+				await dataStoreStub.upsertCharacterSkills(
+					characterInfo.CharacterID,
+					skillsResult.data,
+					skillsResult.expiresAt
+				)
+			} catch (skillsError) {
+				logger.error('Failed to fetch skills during linking', {
+					characterId: characterInfo.CharacterID,
+					error: String(skillsError),
+				})
+			}
+
+			// Fetch and store character skillqueue
+			try {
+				const skillqueueResult = await fetchCharacterSkillQueue(
+					characterInfo.CharacterID,
+					tokenData.access_token
+				)
+				await dataStoreStub.upsertCharacterSkillQueue(
+					characterInfo.CharacterID,
+					skillqueueResult.data
+				)
+			} catch (skillqueueError) {
+				logger.error('Failed to fetch skillqueue during linking', {
+					characterId: characterInfo.CharacterID,
+					error: String(skillqueueError),
+				})
+			}
 
 			logger
 				.withTags({
