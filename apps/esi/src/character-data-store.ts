@@ -197,11 +197,11 @@ export class CharacterDataStore extends DurableObject<Env> {
 	private async ensureCorporationHistoryTable(): Promise<void> {
 		try {
 			// Check if corporation_history table exists
-			const result = await this.ctx.storage.sql.exec(
+			const historyTableResult = await this.ctx.storage.sql.exec(
 				`SELECT name FROM sqlite_master WHERE type='table' AND name='corporation_history'`
 			).toArray()
 
-			if (result.length === 0) {
+			if (historyTableResult.length === 0) {
 				logger.info('Corporation history table not found, creating it...')
 
 				// Corporation history table
@@ -223,15 +223,6 @@ export class CharacterDataStore extends DurableObject<Env> {
 					)
 				`)
 
-				// Add metadata table for tracking when history was last fetched
-				await this.ctx.storage.sql.exec(`
-					CREATE TABLE IF NOT EXISTS corporation_history_metadata (
-						character_id INTEGER PRIMARY KEY,
-						last_fetched INTEGER NOT NULL,
-						next_fetch_at INTEGER NOT NULL
-					)
-				`)
-
 				await this.ctx.storage.sql.exec(`
 					CREATE INDEX IF NOT EXISTS idx_corp_history_character ON corporation_history(character_id)
 				`)
@@ -241,6 +232,25 @@ export class CharacterDataStore extends DurableObject<Env> {
 				`)
 
 				logger.info('Corporation history table created successfully')
+			}
+
+			// Always check and create metadata table separately (for existing instances)
+			const metadataTableResult = await this.ctx.storage.sql.exec(
+				`SELECT name FROM sqlite_master WHERE type='table' AND name='corporation_history_metadata'`
+			).toArray()
+
+			if (metadataTableResult.length === 0) {
+				logger.info('Corporation history metadata table not found, creating it...')
+
+				await this.ctx.storage.sql.exec(`
+					CREATE TABLE IF NOT EXISTS corporation_history_metadata (
+						character_id INTEGER PRIMARY KEY,
+						last_fetched INTEGER NOT NULL,
+						next_fetch_at INTEGER NOT NULL
+					)
+				`)
+
+				logger.info('Corporation history metadata table created successfully')
 			}
 		} catch (error) {
 			logger.error('Error checking/creating corporation history table', { error: String(error) })
