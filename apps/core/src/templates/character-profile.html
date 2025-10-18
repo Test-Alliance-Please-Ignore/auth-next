@@ -315,20 +315,76 @@
 				margin-bottom: 15px;
 				background: var(--bg-tertiary);
 				border-radius: 0 8px 8px 0;
+				transition: all 0.2s;
 			}
 
-			.history-item.corporation {
-				border-left-color: var(--accent-info);
-			}
-
-			.history-item.alliance {
+			.history-item.current {
 				border-left-color: var(--accent-success);
+				background: linear-gradient(90deg, rgba(76, 175, 80, 0.1), transparent);
 			}
 
-			.history-date {
+			.history-item.deleted {
+				opacity: 0.6;
+				border-left-color: var(--accent-danger);
+			}
+
+			.history-item:hover {
+				transform: translateX(2px);
+			}
+
+			.history-header {
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+				margin-bottom: 10px;
+			}
+
+			.history-dates {
+				color: var(--text-secondary);
+				font-size: 14px;
+			}
+
+			.date-range {
+				font-weight: 500;
+			}
+
+			.duration {
 				color: var(--text-tertiary);
 				font-size: 12px;
-				margin-bottom: 5px;
+				margin-left: 8px;
+			}
+
+			.current-badge {
+				background: var(--accent-success);
+				color: white;
+				padding: 2px 8px;
+				border-radius: 12px;
+				font-size: 12px;
+				font-weight: 500;
+			}
+
+			.history-details {
+				display: flex;
+				flex-direction: column;
+				gap: 8px;
+			}
+
+			.corp-info,
+			.alliance-info {
+				font-size: 14px;
+			}
+
+			.corp-info strong,
+			.alliance-info strong {
+				color: var(--text-secondary);
+				margin-right: 8px;
+			}
+
+			.no-data {
+				padding: 30px;
+				text-align: center;
+				color: var(--text-tertiary);
+				font-style: italic;
 			}
 
 			.wallet-balance {
@@ -632,19 +688,51 @@
 					}
 
 					const historyContainer = document.getElementById('historyList')
-					if (data.history.length > 0) {
-						historyContainer.innerHTML = data.history
-							.map(
-								(item) => `
-							<div class="history-item ${item.fieldName}">
-								<div class="history-date">${new Date(item.changedAt).toLocaleString()}</div>
-								<div><strong>${item.fieldName}:</strong> ${item.oldValue || 'None'} → ${item.newValue || 'None'}</div>
-							</div>
-						`
-							)
+					if (data.history && data.history.length > 0) {
+						// Sort history by start date (newest first)
+						const sortedHistory = data.history.sort((a, b) =>
+							new Date(b.startDate).getTime() - new Date(a.startDate).getTime()
+						)
+
+						historyContainer.innerHTML = sortedHistory
+							.map((item) => {
+								const startDate = new Date(item.startDate).toLocaleDateString()
+								const endDate = item.endDate ? new Date(item.endDate).toLocaleDateString() : 'Present'
+								const duration = item.endDate
+									? Math.floor((new Date(item.endDate) - new Date(item.startDate)) / (1000 * 60 * 60 * 24))
+									: Math.floor((new Date() - new Date(item.startDate)) / (1000 * 60 * 60 * 24))
+
+								const corpDisplay = item.corporationTicker
+									? `[${item.corporationTicker}] ${item.corporationName}`
+									: item.corporationName
+
+								const allianceDisplay = item.allianceName
+									? (item.allianceTicker ? `[${item.allianceTicker}] ${item.allianceName}` : item.allianceName)
+									: 'No Alliance'
+
+								return `
+									<div class="history-item ${item.isDeleted ? 'deleted' : ''} ${item.endDate ? '' : 'current'}">
+										<div class="history-header">
+											<div class="history-dates">
+												<span class="date-range">${startDate} - ${endDate}</span>
+												<span class="duration">(${duration} days)</span>
+											</div>
+											${item.endDate ? '' : '<span class="current-badge">Current</span>'}
+										</div>
+										<div class="history-details">
+											<div class="corp-info">
+												<strong>Corporation:</strong> ${corpDisplay}
+											</div>
+											<div class="alliance-info">
+												<strong>Alliance:</strong> ${allianceDisplay}
+											</div>
+										</div>
+									</div>
+								`
+							})
 							.join('')
 					} else {
-						historyContainer.innerHTML = 'No history available'
+						historyContainer.innerHTML = '<div class="no-data">No corporation history available</div>'
 					}
 				} catch (error) {
 					console.error('Error loading history:', error)

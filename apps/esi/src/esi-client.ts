@@ -87,6 +87,19 @@ export interface ESISkillQueueItem {
 export type ESICharacterSkillQueue = ESISkillQueueItem[]
 
 /**
+ * ESI Corporation history entry
+ * From: GET /characters/{character_id}/corporationhistory/
+ */
+export interface ESICorporationHistoryEntry {
+	corporation_id: number
+	is_deleted?: boolean
+	record_id: number
+	start_date: string
+}
+
+export type ESICorporationHistory = ESICorporationHistoryEntry[]
+
+/**
  * Parse cache control header and calculate expiration timestamp
  */
 export function parseCacheControl(cacheControlHeader: string | null): number | null {
@@ -355,6 +368,53 @@ export async function fetchCharacterSkillQueue(
 		.info('Character skillqueue fetched from ESI', {
 			characterId,
 			queueLength: data.length,
+			expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
+		})
+
+	return { data, expiresAt }
+}
+
+/**
+ * Fetch character corporation history from ESI
+ * This is a public endpoint that doesn't require authentication
+ */
+export async function fetchCharacterCorporationHistory(
+	characterId: number
+): Promise<{ data: ESICorporationHistory; expiresAt: number | null }> {
+	const url = `https://esi.evetech.net/latest/characters/${characterId}/corporationhistory/`
+
+	const response = await fetch(url, {
+		headers: {
+			'X-Compatibility-Date': '2025-09-30',
+		},
+	})
+
+	if (!response.ok) {
+		logger
+			.withTags({
+				type: 'esi_corporation_history_fetch_error',
+				character_id: characterId,
+			})
+			.error('Failed to fetch character corporation history from ESI', {
+				characterId,
+				status: response.status,
+				statusText: response.statusText,
+			})
+		throw new Error(`Failed to fetch corporation history: ${response.status} ${response.statusText}`)
+	}
+
+	const data = (await response.json()) as ESICorporationHistory
+	const cacheControl = response.headers.get('Cache-Control')
+	const expiresAt = parseCacheControl(cacheControl)
+
+	logger
+		.withTags({
+			type: 'esi_corporation_history_fetched',
+			character_id: characterId,
+		})
+		.info('Corporation history fetched from ESI', {
+			characterId,
+			historyCount: data.length,
 			expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
 		})
 

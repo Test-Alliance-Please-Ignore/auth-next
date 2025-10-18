@@ -6,6 +6,7 @@ import { logger } from '@repo/hono-helpers'
 import {
 	fetchAllianceInfo,
 	fetchCharacterInfo,
+	fetchCharacterCorporationHistory,
 	fetchCharacterSkillQueue,
 	fetchCharacterSkills,
 	fetchCorporationInfo,
@@ -19,6 +20,7 @@ import type {
 	ESICharacterInfo,
 	ESICharacterSkillQueue,
 	ESICharacterSkills,
+	ESICorporationHistory,
 	ESICorporationInfo,
 } from './esi-client'
 
@@ -94,6 +96,20 @@ export interface SkillQueueData extends Record<string, number | string | null> {
 	level_end_sp: number | null
 }
 
+export interface CorporationHistoryData extends Record<string, number | string | null> {
+	character_id: number
+	record_id: number
+	corporation_id: number
+	corporation_name: string | null
+	corporation_ticker: string | null
+	alliance_id: number | null
+	alliance_name: string | null
+	alliance_ticker: string | null
+	start_date: string
+	end_date: string | null
+	is_deleted: boolean
+}
+
 export class CharacterDataStore extends DurableObject<Env> {
 	private alarmScheduled = false
 
@@ -104,6 +120,8 @@ export class CharacterDataStore extends DurableObject<Env> {
 	private async initializeSchema() {
 		// Check if skill tables exist, if not create them
 		await this.ensureSkillTables()
+		// Check if corporation history table exists, if not create it
+		await this.ensureCorporationHistoryTable()
 	}
 
 	private async ensureSkillTables(): Promise<void> {
@@ -172,6 +190,51 @@ export class CharacterDataStore extends DurableObject<Env> {
 			}
 		} catch (error) {
 			logger.error('Error checking/creating skill tables', { error: String(error) })
+			// Continue anyway - the tables might exist in a different format
+		}
+	}
+
+	private async ensureCorporationHistoryTable(): Promise<void> {
+		try {
+			// Check if corporation_history table exists
+			const result = await this.ctx.storage.sql.exec(
+				`SELECT name FROM sqlite_master WHERE type='table' AND name='corporation_history'`
+			).toArray()
+
+			if (result.length === 0) {
+				logger.info('Corporation history table not found, creating it...')
+
+				// Corporation history table
+				await this.ctx.storage.sql.exec(`
+					CREATE TABLE IF NOT EXISTS corporation_history (
+						character_id INTEGER NOT NULL,
+						record_id INTEGER NOT NULL,
+						corporation_id INTEGER NOT NULL,
+						corporation_name TEXT,
+						corporation_ticker TEXT,
+						alliance_id INTEGER,
+						alliance_name TEXT,
+						alliance_ticker TEXT,
+						start_date TEXT NOT NULL,
+						end_date TEXT,
+						is_deleted INTEGER NOT NULL DEFAULT 0,
+						last_updated INTEGER NOT NULL DEFAULT 0,
+						PRIMARY KEY (character_id, record_id)
+					)
+				`)
+
+				await this.ctx.storage.sql.exec(`
+					CREATE INDEX IF NOT EXISTS idx_corp_history_character ON corporation_history(character_id)
+				`)
+
+				await this.ctx.storage.sql.exec(`
+					CREATE INDEX IF NOT EXISTS idx_corp_history_dates ON corporation_history(start_date, end_date)
+				`)
+
+				logger.info('Corporation history table created successfully')
+			}
+		} catch (error) {
+			logger.error('Error checking/creating corporation history table', { error: String(error) })
 			// Continue anyway - the tables might exist in a different format
 		}
 	}
@@ -857,6 +920,120 @@ export class CharacterDataStore extends DurableObject<Env> {
 			.toArray()
 
 		return rows
+	}
+
+	async upsertCorporationHistory(
+		characterId: number,
+		history: ESICorporationHistory
+	): Promise<void> {
+		await this.initializeSchema()
+
+		const now = Date.now()
+
+		// Process history entries
+		const sortedHistory = [...history].sort((a, b) =>
+			new Date(a.start_date).getTime() - new Date(b.start_date).getTime()
+		)
+
+		for (let i = 0; i < sortedHistory.length; i++) {
+			const entry = sortedHistory[i]
+			const nextEntry = sortedHistory[i + 1]
+
+			// Try to get corporation info if we don't have the name
+			let corpName: string | null = null
+			let corpTicker: string | null = null
+			let allianceId: number | null = null
+			let allianceName: string | null = null
+			let allianceTicker: string | null = null
+
+			// Get corporation info if not deleted
+			if (!entry.is_deleted) {
+				const corpData = await this.getCorporation(entry.corporation_id)
+				if (corpData) {
+					corpName = corpData.name
+					corpTicker = corpData.ticker
+					allianceId = corpData.alliance_id
+
+					// Get alliance info if exists
+					if (allianceId) {
+						try {
+							const allianceData = await fetchAllianceInfo(allianceId)
+							allianceName = allianceData.data.name
+							allianceTicker = allianceData.data.ticker
+						} catch (error) {
+							logger.error('Failed to fetch alliance info for history', {
+								allianceId,
+								error: String(error)
+							})
+						}
+					}
+				}
+			}
+
+			await this.ctx.storage.sql.exec(
+				`INSERT OR REPLACE INTO corporation_history
+				(character_id, record_id, corporation_id, corporation_name, corporation_ticker,
+				 alliance_id, alliance_name, alliance_ticker, start_date, end_date, is_deleted, last_updated)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				characterId,
+				entry.record_id,
+				entry.corporation_id,
+				corpName,
+				corpTicker,
+				allianceId,
+				allianceName,
+				allianceTicker,
+				entry.start_date,
+				nextEntry ? nextEntry.start_date : null, // End date is start of next entry
+				entry.is_deleted ? 1 : 0,
+				now
+			)
+		}
+
+		logger.info('Corporation history updated', {
+			characterId,
+			historyCount: history.length
+		})
+	}
+
+	async getCorporationHistory(characterId: number): Promise<CorporationHistoryData[]> {
+		await this.initializeSchema()
+
+		const rows = await this.ctx.storage.sql
+			.exec<CorporationHistoryData>(
+				`SELECT * FROM corporation_history
+				WHERE character_id = ?
+				ORDER BY start_date DESC`,
+				characterId
+			)
+			.toArray()
+
+		// Convert is_deleted from number to boolean
+		return rows.map(row => ({
+			...row,
+			is_deleted: row.is_deleted === 1
+		}))
+	}
+
+	async fetchAndStoreCorporationHistory(characterId: number): Promise<CorporationHistoryData[]> {
+		try {
+			// Fetch from ESI
+			const { data } = await fetchCharacterCorporationHistory(characterId)
+
+			// Store in database
+			await this.upsertCorporationHistory(characterId, data)
+
+			// Return the stored data
+			return this.getCorporationHistory(characterId)
+		} catch (error) {
+			logger.error('Failed to fetch and store corporation history', {
+				characterId,
+				error: String(error)
+			})
+
+			// Return whatever we have cached
+			return this.getCorporationHistory(characterId)
+		}
 	}
 
 	private async getEntitiesNeedingUpdate(): Promise<{

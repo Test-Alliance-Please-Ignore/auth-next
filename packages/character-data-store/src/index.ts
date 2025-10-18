@@ -124,6 +124,19 @@ export interface ESISkillQueueItem {
 
 export type ESICharacterSkillQueue = ESISkillQueueItem[]
 
+/**
+ * ESI Corporation history entry
+ * From: GET /characters/{character_id}/corporationhistory/
+ */
+export interface ESICorporationHistoryEntry {
+	corporation_id: number
+	is_deleted?: boolean
+	record_id: number
+	start_date: string
+}
+
+export type ESICorporationHistory = ESICorporationHistoryEntry[]
+
 export interface CharacterSkillsData {
 	character_id: number
 	total_sp: number
@@ -151,6 +164,20 @@ export interface SkillQueueData {
 	training_start_sp: number | null
 	level_start_sp: number | null
 	level_end_sp: number | null
+}
+
+export interface CorporationHistoryData {
+	character_id: number
+	record_id: number
+	corporation_id: number
+	corporation_name: string | null
+	corporation_ticker: string | null
+	alliance_id: number | null
+	alliance_name: string | null
+	alliance_ticker: string | null
+	start_date: string
+	end_date: string | null
+	is_deleted: boolean
 }
 
 // ========== Durable Object Interface ==========
@@ -246,4 +273,24 @@ export interface CharacterDataStore {
 	 * @returns Array of skillqueue items
 	 */
 	getSkillQueue(characterId: number): Promise<SkillQueueData[]>
+
+	/**
+	 * Insert or update character corporation history
+	 * @param characterId - EVE character ID
+	 * @param history - Corporation history from ESI
+	 */
+	upsertCorporationHistory(characterId: number, history: ESICorporationHistory): Promise<void>
+
+	/**
+	 * Get corporation history for a character
+	 * @returns Array of corporation history entries with corp/alliance names
+	 */
+	getCorporationHistory(characterId: number): Promise<CorporationHistoryData[]>
+
+	/**
+	 * Fetch corporation history from ESI and store it
+	 * @param characterId - EVE character ID
+	 * @returns Array of corporation history entries
+	 */
+	fetchAndStoreCorporationHistory(characterId: number): Promise<CorporationHistoryData[]>
 }

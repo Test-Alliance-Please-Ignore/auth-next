@@ -1134,19 +1134,63 @@ const app = new Hono<App>()
 		}
 
 		try {
-			// Get character history from CharacterDataStore
+			// Get character corporation history from CharacterDataStore
 			const dataStoreStub = getStub<CharacterDataStore>(c.env.CHARACTER_DATA_STORE, 'global')
-			const history = await dataStoreStub.getCharacterHistory(characterId)
+
+			// Fetch and store the latest corporation history from ESI
+			const corporationHistory = await dataStoreStub.fetchAndStoreCorporationHistory(characterId)
+
+			// Get the universe names for corporations and alliances if available
+			const eveUniverseStub = c.env.EVE_UNIVERSE ? getStub<EveUniverse>(c.env.EVE_UNIVERSE, 'global') : null
+
+			// Collect unique IDs that need names
+			const corpIds = new Set<number>()
+			const allianceIds = new Set<number>()
+			corporationHistory.forEach(entry => {
+				if (!entry.is_deleted) {
+					corpIds.add(entry.corporation_id)
+					if (entry.alliance_id) {
+						allianceIds.add(entry.alliance_id)
+					}
+				}
+			})
+
+			// Get names if universe service is available
+			let corpNames: Map<number, string> = new Map()
+			let allianceNames: Map<number, string> = new Map()
+			if (eveUniverseStub && (corpIds.size > 0 || allianceIds.size > 0)) {
+				try {
+					const allIds = [...corpIds, ...allianceIds]
+					const names = await eveUniverseStub.getNames(allIds)
+					names.forEach(name => {
+						if (name.category === 'corporation') {
+							corpNames.set(name.id, name.name)
+						} else if (name.category === 'alliance') {
+							allianceNames.set(name.id, name.name)
+						}
+					})
+				} catch (error) {
+					logger.error('Failed to fetch names for history', { error: String(error) })
+				}
+			}
+
+			// Format the history for the UI
+			const formattedHistory = corporationHistory.map(entry => ({
+				recordId: entry.record_id,
+				corporationId: entry.corporation_id,
+				corporationName: entry.corporation_name || corpNames.get(entry.corporation_id) || `Corporation ${entry.corporation_id}`,
+				corporationTicker: entry.corporation_ticker,
+				allianceId: entry.alliance_id,
+				allianceName: entry.alliance_name || (entry.alliance_id ? allianceNames.get(entry.alliance_id) || `Alliance ${entry.alliance_id}` : null),
+				allianceTicker: entry.alliance_ticker,
+				startDate: entry.start_date,
+				endDate: entry.end_date,
+				isDeleted: entry.is_deleted
+			}))
 
 			return c.json({
 				success: true,
-				history: history.map(h => ({
-					id: h.id,
-					changedAt: h.changed_at,
-					fieldName: h.field_name,
-					oldValue: h.old_value,
-					newValue: h.new_value
-				}))
+				history: formattedHistory
 			})
 		} catch (error) {
 			logger.error('Get character history error', { error: String(error), characterId })
