@@ -1,6 +1,9 @@
 import { DurableObject } from 'cloudflare:workers'
 
+import { loadMigrationsFromBuild, MigratableDurableObject } from '@repo/do-migrations'
 import { logger } from '@repo/hono-helpers'
+
+import { sessionStoreMigrations } from './migrations'
 
 import type { Env } from './context'
 
@@ -153,157 +156,20 @@ export interface ProviderLink {
 	updatedAt: number
 }
 
-export class SessionStore extends DurableObject<Env> {
+export class SessionStore extends MigratableDurableObject {
 	constructor(ctx: DurableObjectState, env: Env) {
-		super(ctx, env)
+		super(ctx, env, {
+			migrationDir: 'SessionStore',
+			autoMigrate: true,
+			verbose: env.ENVIRONMENT === 'development',
+		})
 	}
 
-	private async initializeSchema() {
-		// await this.createSchema()
-	}
-
-	private async createSchema(): Promise<void> {
-		// Drop all tables if they exist
-		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS root_users')
-		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS sessions')
-		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS account_links')
-		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS character_links')
-		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS provider_links')
-		await this.ctx.storage.sql.exec('DROP TABLE IF EXISTS oidc_states')
-
-		// Complete schema with root_users (EVE SSO only system)
-		// Root users table - permanent identity for EVE SSO accounts
-		await this.ctx.storage.sql.exec(`
-			CREATE TABLE root_users (
-				root_user_id TEXT PRIMARY KEY,
-				provider TEXT NOT NULL,
-				provider_user_id TEXT NOT NULL,
-				email TEXT NOT NULL,
-				name TEXT NOT NULL,
-				owner_hash TEXT NULL,
-				is_admin INTEGER NOT NULL DEFAULT 0,
-				created_at INTEGER NOT NULL,
-				updated_at INTEGER NOT NULL,
-				UNIQUE(provider, provider_user_id)
-			)
-		`)
-
-		await this.ctx.storage.sql.exec(`
-			CREATE UNIQUE INDEX idx_root_users_provider_user ON root_users(provider, provider_user_id)
-		`)
-		await this.ctx.storage.sql.exec(`
-			CREATE INDEX idx_root_users_owner_hash ON root_users(owner_hash) WHERE owner_hash IS NOT NULL
-		`)
-		await this.ctx.storage.sql.exec(`
-			CREATE INDEX idx_root_users_admin ON root_users(is_admin) WHERE is_admin = 1
-		`)
-
-		// Sessions table - ephemeral tokens tied to root users
-		await this.ctx.storage.sql.exec(`
-			CREATE TABLE sessions (
-				session_id TEXT PRIMARY KEY,
-				root_user_id TEXT NOT NULL,
-				access_token TEXT NOT NULL,
-				refresh_token TEXT NOT NULL,
-				expires_at INTEGER NOT NULL,
-				created_at INTEGER NOT NULL,
-				updated_at INTEGER NOT NULL
-			)
-		`)
-
-		await this.ctx.storage.sql.exec(`
-			CREATE INDEX idx_sessions_root_user ON sessions(root_user_id)
-		`)
-		await this.ctx.storage.sql.exec(`
-			CREATE INDEX idx_sessions_expires_at ON sessions(expires_at)
-		`)
-
-		// Account links table - links root users to legacy accounts
-		await this.ctx.storage.sql.exec(`
-			CREATE TABLE account_links (
-				link_id TEXT PRIMARY KEY,
-				root_user_id TEXT NOT NULL,
-				legacy_system TEXT NOT NULL,
-				legacy_user_id TEXT NOT NULL,
-				legacy_username TEXT NOT NULL,
-				superuser INTEGER NOT NULL DEFAULT 0,
-				staff INTEGER NOT NULL DEFAULT 0,
-				active INTEGER NOT NULL DEFAULT 0,
-				primary_character TEXT NOT NULL DEFAULT '',
-				primary_character_id TEXT NOT NULL DEFAULT '',
-				groups TEXT NOT NULL DEFAULT '[]',
-				linked_at INTEGER NOT NULL,
-				updated_at INTEGER NOT NULL,
-				UNIQUE(root_user_id, legacy_system)
-			)
-		`)
-
-		await this.ctx.storage.sql.exec(`
-			CREATE INDEX idx_account_links_root_user ON account_links(root_user_id)
-		`)
-		await this.ctx.storage.sql.exec(`
-			CREATE UNIQUE INDEX idx_account_links_legacy_user ON account_links(legacy_system, legacy_user_id)
-		`)
-
-		// Character links table - links root users to EVE characters
-		await this.ctx.storage.sql.exec(`
-			CREATE TABLE character_links (
-				link_id TEXT PRIMARY KEY,
-				root_user_id TEXT NOT NULL,
-				character_id INTEGER NOT NULL,
-				character_name TEXT NOT NULL,
-				is_primary INTEGER NOT NULL DEFAULT 0,
-				linked_at INTEGER NOT NULL,
-				updated_at INTEGER NOT NULL,
-				UNIQUE(character_id)
-			)
-		`)
-
-		await this.ctx.storage.sql.exec(`
-			CREATE INDEX idx_character_links_root_user ON character_links(root_user_id)
-		`)
-		await this.ctx.storage.sql.exec(`
-			CREATE UNIQUE INDEX idx_character_links_character ON character_links(character_id)
-		`)
-		await this.ctx.storage.sql.exec(`
-			CREATE UNIQUE INDEX idx_character_links_primary ON character_links(root_user_id) WHERE is_primary = 1
-		`)
-
-		// Provider links table - links root users to secondary OAuth providers
-		await this.ctx.storage.sql.exec(`
-			CREATE TABLE provider_links (
-				link_id TEXT PRIMARY KEY,
-				root_user_id TEXT NOT NULL,
-				provider TEXT NOT NULL,
-				provider_user_id TEXT NOT NULL,
-				provider_username TEXT NOT NULL,
-				linked_at INTEGER NOT NULL,
-				updated_at INTEGER NOT NULL,
-				UNIQUE(root_user_id, provider),
-				UNIQUE(provider, provider_user_id)
-			)
-		`)
-
-		await this.ctx.storage.sql.exec(`
-			CREATE INDEX idx_provider_links_root_user ON provider_links(root_user_id)
-		`)
-		await this.ctx.storage.sql.exec(`
-			CREATE UNIQUE INDEX idx_provider_links_provider_user ON provider_links(provider, provider_user_id)
-		`)
-
-		// OIDC states table for CSRF protection
-		await this.ctx.storage.sql.exec(`
-			CREATE TABLE oidc_states (
-				state TEXT PRIMARY KEY,
-				session_id TEXT NOT NULL,
-				created_at INTEGER NOT NULL,
-				expires_at INTEGER NOT NULL
-			)
-		`)
-
-		await this.ctx.storage.sql.exec(`
-			CREATE INDEX idx_oidc_states_expires_at ON oidc_states(expires_at)
-		`)
+	/**
+	 * Override loadMigrations to provide the embedded SQL files
+	 */
+	protected async loadMigrations() {
+		return loadMigrationsFromBuild(sessionStoreMigrations)
 	}
 
 	private generateSessionId(): string {
@@ -327,8 +193,6 @@ export class SessionStore extends DurableObject<Env> {
 		name: string,
 		ownerHash?: string | null
 	): Promise<RootUser> {
-		await this.initializeSchema()
-
 		// Try to find existing root user
 		const existing = await this.ctx.storage.sql
 			.exec<RootUserData>(
@@ -444,8 +308,6 @@ export class SessionStore extends DurableObject<Env> {
 	}
 
 	async getRootUser(rootUserId: string): Promise<RootUser | null> {
-		await this.initializeSchema()
-
 		const rows = await this.ctx.storage.sql
 			.exec<RootUserData>('SELECT * FROM root_users WHERE root_user_id = ?', rootUserId)
 			.toArray()
@@ -469,8 +331,6 @@ export class SessionStore extends DurableObject<Env> {
 	}
 
 	async getRootUserByProvider(provider: string, providerUserId: string): Promise<RootUser | null> {
-		await this.initializeSchema()
-
 		const rows = await this.ctx.storage.sql
 			.exec<RootUserData>(
 				'SELECT * FROM root_users WHERE provider = ? AND provider_user_id = ?',
@@ -508,8 +368,6 @@ export class SessionStore extends DurableObject<Env> {
 		refreshToken: string,
 		_expiresIn: number
 	): Promise<SessionInfo> {
-		await this.initializeSchema()
-
 		const now = Date.now()
 		// Session expires in 48 hours (independent of OAuth token expiration)
 		// OAuth tokens will be automatically refreshed as needed
@@ -609,8 +467,6 @@ export class SessionStore extends DurableObject<Env> {
 	}
 
 	async getSession(sessionId: string): Promise<SessionInfo> {
-		await this.initializeSchema()
-
 		const rows = await this.ctx.storage.sql
 			.exec<SessionData>(`SELECT * FROM sessions WHERE session_id = ?`, sessionId)
 			.toArray()
@@ -684,8 +540,6 @@ export class SessionStore extends DurableObject<Env> {
 	}
 
 	async refreshSession(sessionId: string): Promise<SessionInfo> {
-		await this.initializeSchema()
-
 		const rows = await this.ctx.storage.sql
 			.exec<SessionData>(`SELECT * FROM sessions WHERE session_id = ?`, sessionId)
 			.toArray()
@@ -721,8 +575,6 @@ export class SessionStore extends DurableObject<Env> {
 	}
 
 	async deleteSession(sessionId: string): Promise<void> {
-		await this.initializeSchema()
-
 		// Check if the session exists
 		const rows = await this.ctx.storage.sql
 			.exec<SessionData>(`SELECT root_user_id FROM sessions WHERE session_id = ?`, sessionId)
@@ -753,8 +605,6 @@ export class SessionStore extends DurableObject<Env> {
 	}
 
 	async listSessions(limit?: number, offset?: number): Promise<SessionListResult> {
-		await this.initializeSchema()
-
 		const parsedLimit = Math.min(limit || 50, 100)
 		const parsedOffset = offset || 0
 
@@ -798,8 +648,6 @@ export class SessionStore extends DurableObject<Env> {
 	}
 
 	async getStats(): Promise<SessionStats> {
-		await this.initializeSchema()
-
 		const now = Date.now()
 
 		// Get total count
@@ -833,8 +681,6 @@ export class SessionStore extends DurableObject<Env> {
 	}
 
 	async createOIDCState(sessionId: string): Promise<string> {
-		await this.initializeSchema()
-
 		const state = this.generateState()
 		const now = Date.now()
 		const expiresAt = now + 5 * 60 * 1000 // 5 minutes
@@ -861,8 +707,6 @@ export class SessionStore extends DurableObject<Env> {
 	}
 
 	async validateOIDCState(state: string): Promise<string> {
-		await this.initializeSchema()
-
 		const now = Date.now()
 
 		// Clean up expired states
@@ -932,8 +776,6 @@ export class SessionStore extends DurableObject<Env> {
 		primaryCharacterId: string,
 		groups: string[]
 	): Promise<AccountLink> {
-		await this.initializeSchema()
-
 		// Check if this legacy account is already claimed
 		const existingLegacy = await this.ctx.storage.sql
 			.exec<AccountLinkData>(
@@ -1032,8 +874,6 @@ export class SessionStore extends DurableObject<Env> {
 	}
 
 	async getAccountLinksByRootUser(rootUserId: string): Promise<AccountLink[]> {
-		await this.initializeSchema()
-
 		const rows = await this.ctx.storage.sql
 			.exec<AccountLinkData>('SELECT * FROM account_links WHERE root_user_id = ?', rootUserId)
 			.toArray()
@@ -1059,8 +899,6 @@ export class SessionStore extends DurableObject<Env> {
 		legacySystem: string,
 		legacyUserId: string
 	): Promise<AccountLink | null> {
-		await this.initializeSchema()
-
 		const rows = await this.ctx.storage.sql
 			.exec<AccountLinkData>(
 				'SELECT * FROM account_links WHERE legacy_system = ? AND legacy_user_id = ?',
@@ -1092,8 +930,6 @@ export class SessionStore extends DurableObject<Env> {
 	}
 
 	async deleteAccountLink(linkId: string): Promise<void> {
-		await this.initializeSchema()
-
 		const rows = await this.ctx.storage.sql
 			.exec<AccountLinkData>('SELECT * FROM account_links WHERE link_id = ?', linkId)
 			.toArray()
@@ -1125,8 +961,6 @@ export class SessionStore extends DurableObject<Env> {
 		characterId: number,
 		characterName: string
 	): Promise<CharacterLink> {
-		await this.initializeSchema()
-
 		// Check if this character is already linked to any root user
 		const existingCharacter = await this.ctx.storage.sql
 			.exec<CharacterLinkData>('SELECT * FROM character_links WHERE character_id = ?', characterId)
@@ -1176,8 +1010,6 @@ export class SessionStore extends DurableObject<Env> {
 	}
 
 	async getCharacterLinksByRootUser(rootUserId: string): Promise<CharacterLink[]> {
-		await this.initializeSchema()
-
 		const rows = await this.ctx.storage.sql
 			.exec<CharacterLinkData>(
 				'SELECT * FROM character_links WHERE root_user_id = ? ORDER BY is_primary DESC, linked_at DESC',
@@ -1197,8 +1029,6 @@ export class SessionStore extends DurableObject<Env> {
 	}
 
 	async getCharacterLinkByCharacterId(characterId: number): Promise<CharacterLink | null> {
-		await this.initializeSchema()
-
 		const rows = await this.ctx.storage.sql
 			.exec<CharacterLinkData>('SELECT * FROM character_links WHERE character_id = ?', characterId)
 			.toArray()
@@ -1220,8 +1050,6 @@ export class SessionStore extends DurableObject<Env> {
 	}
 
 	async setPrimaryCharacter(rootUserId: string, characterId: number): Promise<void> {
-		await this.initializeSchema()
-
 		// Verify the character belongs to this user
 		const rows = await this.ctx.storage.sql
 			.exec<CharacterLinkData>(
@@ -1262,8 +1090,6 @@ export class SessionStore extends DurableObject<Env> {
 	}
 
 	async deleteCharacterLink(characterId: number): Promise<void> {
-		await this.initializeSchema()
-
 		const rows = await this.ctx.storage.sql
 			.exec<CharacterLinkData>('SELECT * FROM character_links WHERE character_id = ?', characterId)
 			.toArray()
@@ -1298,8 +1124,6 @@ export class SessionStore extends DurableObject<Env> {
 			characterName: string
 		}>
 	> {
-		await this.initializeSchema()
-
 		const rows = await this.ctx.storage.sql
 			.exec<CharacterLinkData>(
 				'SELECT * FROM character_links WHERE character_name LIKE ? ORDER BY character_name ASC LIMIT 50',
@@ -1322,8 +1146,6 @@ export class SessionStore extends DurableObject<Env> {
 		providerUserId: string,
 		providerUsername: string
 	): Promise<ProviderLink> {
-		await this.initializeSchema()
-
 		// Check if this provider account is already linked to any root user
 		const existingProvider = await this.ctx.storage.sql
 			.exec<ProviderLinkData>(
@@ -1391,8 +1213,6 @@ export class SessionStore extends DurableObject<Env> {
 	}
 
 	async getProviderLinksByRootUser(rootUserId: string): Promise<ProviderLink[]> {
-		await this.initializeSchema()
-
 		const rows = await this.ctx.storage.sql
 			.exec<ProviderLinkData>(
 				'SELECT * FROM provider_links WHERE root_user_id = ? ORDER BY linked_at DESC',
@@ -1415,8 +1235,6 @@ export class SessionStore extends DurableObject<Env> {
 		provider: string,
 		providerUserId: string
 	): Promise<ProviderLink | null> {
-		await this.initializeSchema()
-
 		const rows = await this.ctx.storage.sql
 			.exec<ProviderLinkData>(
 				'SELECT * FROM provider_links WHERE provider = ? AND provider_user_id = ?',
@@ -1442,8 +1260,6 @@ export class SessionStore extends DurableObject<Env> {
 	}
 
 	async deleteProviderLink(linkId: string): Promise<void> {
-		await this.initializeSchema()
-
 		const rows = await this.ctx.storage.sql
 			.exec<ProviderLinkData>('SELECT * FROM provider_links WHERE link_id = ?', linkId)
 			.toArray()

@@ -88,15 +88,34 @@ new-durable-object *flags:
   bun run-turbo-gen new-durable-object {{flags}}
 
 # =============================== #
+#        MIGRATION COMMANDS       #
+# =============================== #
+
+# Create a new migration file
+[group('4. migration')]
+migration-create worker do_name description:
+  bun runx migration create {{worker}} {{do_name}} {{description}}
+
+# Show migration status for a Durable Object
+[group('4. migration')]
+migration-status worker do_name:
+  bun runx migration status {{worker}} {{do_name}}
+
+# Validate all migration files
+[group('4. migration')]
+migration-validate:
+  bun runx migration validate
+
+# =============================== #
 #        UTILITY COMMANDS         #
 # =============================== #
 
 # CLI in packages/tools for updating deps, pnpm, etc.
-[group('4. utility')]
+[group('5. utility')]
 update *flags:
   bun runx update {{flags}}
 
 # CLI in packages/tools for running commands in the repo.
-[group('4. utility')]
+[group('5. utility')]
 runx *flags:
   bun runx {{flags}}

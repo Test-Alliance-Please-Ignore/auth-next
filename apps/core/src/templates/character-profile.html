@@ -448,7 +448,9 @@
 					<div class="character-info">
 						<div class="character-name">
 							<span id="characterName"></span>
-							<span id="ownershipBadge" class="ownership-badge" style="display: none">Your Character</span>
+							<span id="ownershipBadge" class="ownership-badge" style="display: none"
+								>Your Character</span
+							>
 						</div>
 						<div class="character-meta">
 							<div class="meta-item">
@@ -562,11 +564,22 @@
 					// Load tab-specific data
 					if (targetTab === 'skills' && !document.getElementById('skillsList').children.length) {
 						loadSkills()
-					} else if (targetTab === 'history' && document.getElementById('historyList').textContent === 'Loading history...') {
+					} else if (
+						targetTab === 'history' &&
+						document.getElementById('historyList').textContent === 'Loading history...'
+					) {
 						loadHistory()
-					} else if (targetTab === 'wallet' && isOwner && document.getElementById('walletBalance').textContent === 'Loading...') {
+					} else if (
+						targetTab === 'wallet' &&
+						isOwner &&
+						document.getElementById('walletBalance').textContent === 'Loading...'
+					) {
 						loadWallet()
-					} else if (targetTab === 'location' && isOwner && document.getElementById('locationInfo').textContent === 'Loading...') {
+					} else if (
+						targetTab === 'location' &&
+						isOwner &&
+						document.getElementById('locationInfo').textContent === 'Loading...'
+					) {
 						loadLocation()
 					}
 				})
@@ -603,9 +616,14 @@
 					}
 					document.getElementById('alliance').textContent = allianceDisplay
 					document.getElementById('secStatus').textContent =
-						characterData.securityStatus !== null ? characterData.securityStatus.toFixed(2) : 'Unknown'
-					document.getElementById('birthday').textContent = new Date(characterData.birthday).toLocaleDateString()
-					document.getElementById('description').textContent = characterData.description || 'No description available.'
+						characterData.securityStatus !== null
+							? characterData.securityStatus.toFixed(2)
+							: 'Unknown'
+					document.getElementById('birthday').textContent = new Date(
+						characterData.birthday
+					).toLocaleDateString()
+					document.getElementById('description').textContent =
+						characterData.description || 'No description available.'
 
 					if (isOwner) {
 						document.getElementById('ownershipBadge').style.display = 'inline-block'
@@ -635,7 +653,8 @@
 
 					// Update summary
 					document.getElementById('totalSP').textContent = skills.totalSP.toLocaleString()
-					document.getElementById('unallocatedSP').textContent = skills.unallocatedSP.toLocaleString()
+					document.getElementById('unallocatedSP').textContent =
+						skills.unallocatedSP.toLocaleString()
 					document.getElementById('skillCount').textContent = skills.skills.length
 
 					// Update skill queue
@@ -676,7 +695,10 @@
 							</div>
 							<div class="skill-level">
 								${[1, 2, 3, 4, 5]
-									.map((level) => `<div class="skill-pip ${level <= skill.trainedLevel ? 'filled' : ''}"></div>`)
+									.map(
+										(level) =>
+											`<div class="skill-pip ${level <= skill.trainedLevel ? 'filled' : ''}"></div>`
+									)
 									.join('')}
 							</div>
 						</div>
@@ -685,7 +707,8 @@
 						.join('')
 				} catch (error) {
 					console.error('Error loading skills:', error)
-					document.getElementById('skillsList').innerHTML = `<div class="error">Failed to load skills: ${error.message}</div>`
+					document.getElementById('skillsList').innerHTML =
+						`<div class="error">Failed to load skills: ${error.message}</div>`
 				}
 			}
 
@@ -701,16 +724,20 @@
 					const historyContainer = document.getElementById('historyList')
 					if (data.history && data.history.length > 0) {
 						// Sort history by start date (newest first)
-						const sortedHistory = data.history.sort((a, b) =>
-							new Date(b.startDate).getTime() - new Date(a.startDate).getTime()
+						const sortedHistory = data.history.sort(
+							(a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()
 						)
 
 						historyContainer.innerHTML = sortedHistory
 							.map((item) => {
 								const startDate = new Date(item.startDate).toLocaleDateString()
-								const endDate = item.endDate ? new Date(item.endDate).toLocaleDateString() : 'Present'
+								const endDate = item.endDate
+									? new Date(item.endDate).toLocaleDateString()
+									: 'Present'
 								const duration = item.endDate
-									? Math.floor((new Date(item.endDate) - new Date(item.startDate)) / (1000 * 60 * 60 * 24))
+									? Math.floor(
+											(new Date(item.endDate) - new Date(item.startDate)) / (1000 * 60 * 60 * 24)
+										)
 									: Math.floor((new Date() - new Date(item.startDate)) / (1000 * 60 * 60 * 24))
 
 								const corpDisplay = item.corporationTicker
@@ -718,7 +745,9 @@
 									: item.corporationName
 
 								const allianceDisplay = item.allianceName
-									? (item.allianceTicker ? `[${item.allianceTicker}] ${item.allianceName}` : item.allianceName)
+									? item.allianceTicker
+										? `[${item.allianceTicker}] ${item.allianceName}`
+										: item.allianceName
 									: 'No Alliance'
 
 								return `
@@ -743,11 +772,13 @@
 							})
 							.join('')
 					} else {
-						historyContainer.innerHTML = '<div class="no-data">No corporation history available</div>'
+						historyContainer.innerHTML =
+							'<div class="no-data">No corporation history available</div>'
 					}
 				} catch (error) {
 					console.error('Error loading history:', error)
-					document.getElementById('historyList').innerHTML = `<div class="error">Failed to load history: ${error.message}</div>`
+					document.getElementById('historyList').innerHTML =
+						`<div class="error">Failed to load history: ${error.message}</div>`
 				}
 			}
 
@@ -760,10 +791,12 @@
 						throw new Error(data.error || 'Failed to load wallet')
 					}
 
-					document.getElementById('walletBalance').textContent = `${data.wallet.balance.toLocaleString()} ISK`
+					document.getElementById('walletBalance').textContent =
+						`${data.wallet.balance.toLocaleString()} ISK`
 				} catch (error) {
 					console.error('Error loading wallet:', error)
-					document.getElementById('walletBalance').innerHTML = `<div class="error">Failed to load wallet: ${error.message}</div>`
+					document.getElementById('walletBalance').innerHTML =
+						`<div class="error">Failed to load wallet: ${error.message}</div>`
 				}
 			}
 
@@ -830,7 +863,8 @@
 				`
 				} catch (error) {
 					console.error('Error loading location:', error)
-					document.getElementById('locationInfo').innerHTML = `<div class="error">Failed to load location: ${error.message}</div>`
+					document.getElementById('locationInfo').innerHTML =
+						`<div class="error">Failed to load location: ${error.message}</div>`
 				}
 			}
 

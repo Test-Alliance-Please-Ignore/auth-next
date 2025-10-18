@@ -3,24 +3,19 @@ import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { getStub } from '@repo/do-utils'
-import type { CharacterDataStore } from '@repo/character-data-store'
-import type { EveSSO } from '@repo/evesso'
-import type { EveUniverse } from '@repo/eve-universe'
-import {
-	getRequestLogData,
-	logger,
-	withNotFound,
-	withOnError,
-} from '@repo/hono-helpers'
-import type { SessionStore } from '@repo/session-store'
+import { getRequestLogData, logger, withNotFound, withOnError } from '@repo/hono-helpers'
 import { withStaticAuth } from '@repo/static-auth'
-import type { TagStore } from '@repo/tag-store'
 
 import { OIDCClient } from './oidc-client'
 import characterProfileHtml from './templates/character-profile.html?raw'
 import dashboardHtml from './templates/dashboard.html?raw'
 import landingHtml from './templates/landing.html?raw'
 
+import type { CharacterDataStore } from '@repo/character-data-store'
+import type { EveUniverse } from '@repo/eve-universe'
+import type { EveSSO } from '@repo/evesso'
+import type { SessionStore } from '@repo/session-store'
+import type { TagStore } from '@repo/tag-store'
 import type { App } from './context'
 
 const app = new Hono<App>()
@@ -816,10 +811,7 @@ const app = new Hono<App>()
 
 			// Fetch and store character skillqueue
 			try {
-				const skillqueueResult = await fetchCharacterSkillQueue(
-					characterId,
-					tokenInfo.accessToken
-				)
+				const skillqueueResult = await fetchCharacterSkillQueue(characterId, tokenInfo.accessToken)
 				await dataStoreStub.upsertCharacterSkillQueue(characterId, skillqueueResult.data)
 			} catch (skillqueueError) {
 				logger.error('Failed to fetch skillqueue during refresh', {
@@ -1019,16 +1011,21 @@ const app = new Hono<App>()
 
 			if (characterData.alliance_id) {
 				// First try to get from EveUniverse cache (which might have the name already)
-				const eveUniverseStub = c.env.EVE_UNIVERSE ? getStub<EveUniverse>(c.env.EVE_UNIVERSE, 'global') : null
+				const eveUniverseStub = c.env.EVE_UNIVERSE
+					? getStub<EveUniverse>(c.env.EVE_UNIVERSE, 'global')
+					: null
 				if (eveUniverseStub) {
 					try {
 						const names = await eveUniverseStub.getNames([characterData.alliance_id])
-						const allianceNameEntry = names.find(n => n.id === characterData.alliance_id)
+						const allianceNameEntry = names.find((n) => n.id === characterData.alliance_id)
 						if (allianceNameEntry) {
 							allianceName = allianceNameEntry.name
 						}
 					} catch (error) {
-						logger.error('Failed to fetch alliance name from cache', { error: String(error), allianceId: characterData.alliance_id })
+						logger.error('Failed to fetch alliance name from cache', {
+							error: String(error),
+							allianceId: characterData.alliance_id,
+						})
 					}
 				}
 
@@ -1036,9 +1033,12 @@ const app = new Hono<App>()
 				if (!allianceTicker) {
 					try {
 						// Use edge cache for alliance data
-						const cacheKey = new Request(`https://cache.internal/alliance/${characterData.alliance_id}`, {
-							method: 'GET'
-						})
+						const cacheKey = new Request(
+							`https://cache.internal/alliance/${characterData.alliance_id}`,
+							{
+								method: 'GET',
+							}
+						)
 						const cache = caches.default
 
 						// Check cache first
@@ -1057,14 +1057,14 @@ const app = new Hono<App>()
 							})
 
 							if (allianceResponse.ok) {
-								allianceData = await allianceResponse.json() as { name: string; ticker: string }
+								allianceData = (await allianceResponse.json()) as { name: string; ticker: string }
 
 								// Cache for 24 hours
 								const cacheResponse = new Response(JSON.stringify(allianceData), {
 									headers: {
 										'Content-Type': 'application/json',
 										'Cache-Control': 'public, max-age=86400',
-									}
+									},
 								})
 								c.executionCtx.waitUntil(cache.put(cacheKey, cacheResponse))
 							}
@@ -1075,7 +1075,10 @@ const app = new Hono<App>()
 							allianceTicker = allianceData.ticker
 						}
 					} catch (error) {
-						logger.error('Failed to fetch alliance info', { error: String(error), allianceId: characterData.alliance_id })
+						logger.error('Failed to fetch alliance info', {
+							error: String(error),
+							allianceId: characterData.alliance_id,
+						})
 					}
 				}
 			}
@@ -1094,18 +1097,20 @@ const app = new Hono<App>()
 					ancestryId: characterData.ancestry_id,
 					description: characterData.description,
 					securityStatus: characterData.security_status,
-					corporation: corporationData ? {
-						corporationId: corporationData.corporation_id,
-						name: corporationData.name,
-						ticker: corporationData.ticker,
-						memberCount: corporationData.member_count,
-						allianceId: corporationData.alliance_id
-					} : null,
+					corporation: corporationData
+						? {
+								corporationId: corporationData.corporation_id,
+								name: corporationData.name,
+								ticker: corporationData.ticker,
+								memberCount: corporationData.member_count,
+								allianceId: corporationData.alliance_id,
+							}
+						: null,
 					allianceId: characterData.alliance_id,
 					allianceName: allianceName,
 					allianceTicker: allianceTicker,
 					lastUpdated: characterData.last_updated,
-				}
+				},
 			}
 
 			// Add sensitive info if owner
@@ -1150,13 +1155,10 @@ const app = new Hono<App>()
 
 			// Get skill names from EveUniverse
 			const universeStub = getStub<EveUniverse>(c.env.EVE_UNIVERSE, 'global')
-			const allSkillIds = [
-				...skills.map(s => s.skill_id),
-				...skillQueue.map(q => q.skill_id)
-			]
+			const allSkillIds = [...skills.map((s) => s.skill_id), ...skillQueue.map((q) => q.skill_id)]
 			const uniqueSkillIds = [...new Set(allSkillIds)]
 			const skillNames = await universeStub.getNames(uniqueSkillIds)
-			const skillNameMap = new Map(skillNames.map(n => [n.id, n.name]))
+			const skillNameMap = new Map(skillNames.map((n) => [n.id, n.name]))
 
 			return c.json({
 				success: true,
@@ -1164,14 +1166,14 @@ const app = new Hono<App>()
 					totalSP: skillsData.total_sp,
 					unallocatedSP: skillsData.unallocated_sp,
 					lastUpdated: skillsData.last_updated,
-					skills: skills.map(s => ({
+					skills: skills.map((s) => ({
 						skillId: s.skill_id,
 						skillName: skillNameMap.get(s.skill_id) || `Unknown Skill (${s.skill_id})`,
 						skillpoints: s.skillpoints_in_skill,
 						trainedLevel: s.trained_skill_level,
-						activeLevel: s.active_skill_level
+						activeLevel: s.active_skill_level,
 					})),
-					skillQueue: skillQueue.map(q => ({
+					skillQueue: skillQueue.map((q) => ({
 						skillId: q.skill_id,
 						skillName: skillNameMap.get(q.skill_id) || `Unknown Skill (${q.skill_id})`,
 						finishedLevel: q.finished_level,
@@ -1180,9 +1182,9 @@ const app = new Hono<App>()
 						finishDate: q.finish_date,
 						trainingStartSP: q.training_start_sp,
 						levelStartSP: q.level_start_sp,
-						levelEndSP: q.level_end_sp
-					}))
-				}
+						levelEndSP: q.level_end_sp,
+					})),
+				},
 			})
 		} catch (error) {
 			logger.error('Get character skills error', { error: String(error), characterId })
@@ -1210,12 +1212,14 @@ const app = new Hono<App>()
 			const corporationHistory = await dataStoreStub.fetchAndStoreCorporationHistory(characterId)
 
 			// Get the universe names for corporations and alliances if available
-			const eveUniverseStub = c.env.EVE_UNIVERSE ? getStub<EveUniverse>(c.env.EVE_UNIVERSE, 'global') : null
+			const eveUniverseStub = c.env.EVE_UNIVERSE
+				? getStub<EveUniverse>(c.env.EVE_UNIVERSE, 'global')
+				: null
 
 			// Collect unique IDs that need names
 			const corpIds = new Set<number>()
 			const allianceIds = new Set<number>()
-			corporationHistory.forEach(entry => {
+			corporationHistory.forEach((entry) => {
 				if (!entry.is_deleted) {
 					corpIds.add(entry.corporation_id)
 					if (entry.alliance_id) {
@@ -1231,7 +1235,7 @@ const app = new Hono<App>()
 				try {
 					const allIds = [...corpIds, ...allianceIds]
 					const names = await eveUniverseStub.getNames(allIds)
-					names.forEach(name => {
+					names.forEach((name) => {
 						if (name.category === 'corporation') {
 							corpNames.set(name.id, name.name)
 						} else if (name.category === 'alliance') {
@@ -1244,22 +1248,29 @@ const app = new Hono<App>()
 			}
 
 			// Format the history for the UI
-			const formattedHistory = corporationHistory.map(entry => ({
+			const formattedHistory = corporationHistory.map((entry) => ({
 				recordId: entry.record_id,
 				corporationId: entry.corporation_id,
-				corporationName: entry.corporation_name || corpNames.get(entry.corporation_id) || `Corporation ${entry.corporation_id}`,
+				corporationName:
+					entry.corporation_name ||
+					corpNames.get(entry.corporation_id) ||
+					`Corporation ${entry.corporation_id}`,
 				corporationTicker: entry.corporation_ticker,
 				allianceId: entry.alliance_id,
-				allianceName: entry.alliance_name || (entry.alliance_id ? allianceNames.get(entry.alliance_id) || `Alliance ${entry.alliance_id}` : null),
+				allianceName:
+					entry.alliance_name ||
+					(entry.alliance_id
+						? allianceNames.get(entry.alliance_id) || `Alliance ${entry.alliance_id}`
+						: null),
 				allianceTicker: entry.alliance_ticker,
 				startDate: entry.start_date,
 				endDate: entry.end_date,
-				isDeleted: entry.is_deleted
+				isDeleted: entry.is_deleted,
 			}))
 
 			return c.json({
 				success: true,
-				history: formattedHistory
+				history: formattedHistory,
 			})
 		} catch (error) {
 			logger.error('Get character history error', { error: String(error), characterId })
@@ -1306,14 +1317,14 @@ const app = new Hono<App>()
 				throw new Error(`ESI returned ${response.status}: ${response.statusText}`)
 			}
 
-			const balance = await response.json() as number
+			const balance = (await response.json()) as number
 
 			return c.json({
 				success: true,
 				wallet: {
 					balance,
-					currency: 'ISK'
-				}
+					currency: 'ISK',
+				},
 			})
 		} catch (error) {
 			logger.error('Get character wallet error', { error: String(error), characterId })
@@ -1360,7 +1371,7 @@ const app = new Hono<App>()
 				throw new Error(`ESI returned ${response.status}: ${response.statusText}`)
 			}
 
-			const location = await response.json() as {
+			const location = (await response.json()) as {
 				solar_system_id: number
 				station_id?: number
 				structure_id?: number
@@ -1377,7 +1388,7 @@ const app = new Hono<App>()
 
 			let online = null
 			if (onlineResponse.ok) {
-				online = await onlineResponse.json() as {
+				online = (await onlineResponse.json()) as {
 					online: boolean
 					last_login?: string
 					last_logout?: string
@@ -1396,7 +1407,7 @@ const app = new Hono<App>()
 
 			let ship = null
 			if (shipResponse.ok) {
-				ship = await shipResponse.json() as {
+				ship = (await shipResponse.json()) as {
 					ship_type_id: number
 					ship_item_id: number
 					ship_name: string
@@ -1411,27 +1422,34 @@ const app = new Hono<App>()
 			if (ship?.ship_type_id) idsToResolve.push(ship.ship_type_id)
 
 			const names = await universeStub.getNames(idsToResolve)
-			const nameMap = new Map(names.map(n => [n.id, n.name]))
+			const nameMap = new Map(names.map((n) => [n.id, n.name]))
 
 			return c.json({
 				success: true,
 				location: {
 					solarSystemId: location.solar_system_id,
-					solarSystemName: nameMap.get(location.solar_system_id) || `Unknown System (${location.solar_system_id})`,
+					solarSystemName:
+						nameMap.get(location.solar_system_id) || `Unknown System (${location.solar_system_id})`,
 					stationId: location.station_id,
-					stationName: location.station_id ? (nameMap.get(location.station_id) || `Unknown Station (${location.station_id})`) : null,
+					stationName: location.station_id
+						? nameMap.get(location.station_id) || `Unknown Station (${location.station_id})`
+						: null,
 					structureId: location.structure_id,
-					structureName: location.structure_id ? (nameMap.get(location.structure_id) || `Unknown Structure (${location.structure_id})`) : null,
+					structureName: location.structure_id
+						? nameMap.get(location.structure_id) || `Unknown Structure (${location.structure_id})`
+						: null,
 					online: online?.online,
 					lastLogin: online?.last_login,
 					lastLogout: online?.last_logout,
-					ship: ship ? {
-						typeId: ship.ship_type_id,
-						typeName: nameMap.get(ship.ship_type_id) || `Unknown Ship (${ship.ship_type_id})`,
-						itemId: ship.ship_item_id,
-						name: ship.ship_name
-					} : null
-				}
+					ship: ship
+						? {
+								typeId: ship.ship_type_id,
+								typeName: nameMap.get(ship.ship_type_id) || `Unknown Ship (${ship.ship_type_id})`,
+								itemId: ship.ship_item_id,
+								name: ship.ship_name,
+							}
+						: null,
+				},
 			})
 		} catch (error) {
 			logger.error('Get character location error', { error: String(error), characterId })

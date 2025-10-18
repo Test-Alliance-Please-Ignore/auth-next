@@ -553,8 +553,7 @@
 				<div class="members-list">
 					${members
 						.map((member) => {
-							const displayName =
-								member.characterName || member.rootUserId.substring(0, 12) + '...'
+							const displayName = member.characterName || member.rootUserId.substring(0, 12) + '...'
 							const initials = member.characterName
 								? member.characterName.substring(0, 2).toUpperCase()
 								: member.rootUserId.substring(0, 2).toUpperCase()
@@ -622,8 +621,7 @@
 
 				container.innerHTML = requests
 					.map((request) => {
-						const displayName =
-							request.characterName || request.rootUserId.substring(0, 12) + '...'
+						const displayName = request.characterName || request.rootUserId.substring(0, 12) + '...'
 						return `
 					<div class="request-item">
 						<div class="request-header">
@@ -769,7 +767,11 @@
 				const code = codeInput.value.trim()
 
 				if (!code) {
-					notyf.open({ type: 'warning', message: 'Please enter an invite code', background: '#f59e0b' })
+					notyf.open({
+						type: 'warning',
+						message: 'Please enter an invite code',
+						background: '#f59e0b',
+					})
 					return
 				}
 

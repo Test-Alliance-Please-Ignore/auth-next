@@ -3,8 +3,7 @@
 	"compilerOptions": {
 		"outDir": "dist",
 		"rootDir": "src",
-		"module": "ESNext",
-		"types": ["@cloudflare/workers-types"]
+		"module": "ESNext"
 	},
 	"include": ["src/**/*"]
 }

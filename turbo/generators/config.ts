@@ -303,6 +303,20 @@ export default function generator(plop: PlopTypes.NodePlopAPI): void {
 				data: answers,
 			})
 
+			// 2.5. Create migrations directory and files
+			actions.push({
+				type: 'add',
+				path: `apps/${answers.workerName}/migrations/${className}/001_initial_schema.sql`,
+				templateFile: 'templates/durable-object-migrations/001_initial_schema.sql.hbs',
+				data: { ...answers, Date: new Date().toISOString().split('T')[0] },
+			})
+			actions.push({
+				type: 'add',
+				path: `apps/${answers.workerName}/src/migrations.ts`,
+				templateFile: 'templates/durable-object-migrations/migrations.ts.hbs',
+				data: answers,
+			})
+
 			// 3. Update wrangler.jsonc with DO binding and migration
 			actions.push({
 				type: 'updateWranglerConfig',

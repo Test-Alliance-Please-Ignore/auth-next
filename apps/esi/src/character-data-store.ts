@@ -1,16 +1,18 @@
 import { DurableObject } from 'cloudflare:workers'
 
+import { loadMigrationsFromBuild, MigratableDurableObject } from '@repo/do-migrations'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import {
 	fetchAllianceInfo,
-	fetchCharacterInfo,
 	fetchCharacterCorporationHistory,
+	fetchCharacterInfo,
 	fetchCharacterSkillQueue,
 	fetchCharacterSkills,
 	fetchCorporationInfo,
 } from './esi-client'
+import { characterDataStoreMigrations } from './migrations'
 
 import type { EveSSO } from '@repo/evesso'
 import type { SessionStore } from '@repo/session-store'
@@ -110,26 +112,30 @@ export interface CorporationHistoryData extends Record<string, number | string |
 	is_deleted: boolean
 }
 
-export class CharacterDataStore extends DurableObject<Env> {
+export class CharacterDataStore extends MigratableDurableObject {
 	private alarmScheduled = false
 
 	constructor(ctx: DurableObjectState, env: Env) {
-		super(ctx, env)
+		super(ctx, env, {
+			migrationDir: 'CharacterDataStore',
+			autoMigrate: true,
+			verbose: env.ENVIRONMENT === 'development',
+		})
 	}
 
-	private async initializeSchema() {
-		// Check if skill tables exist, if not create them
-		await this.ensureSkillTables()
-		// Check if corporation history table exists, if not create it
-		await this.ensureCorporationHistoryTable()
+	/**
+	 * Override loadMigrations to provide the embedded SQL files
+	 */
+	protected async loadMigrations() {
+		return loadMigrationsFromBuild(characterDataStoreMigrations)
 	}
 
 	private async ensureSkillTables(): Promise<void> {
 		try {
 			// Check if character_skills table exists
-			const result = await this.ctx.storage.sql.exec(
-				`SELECT name FROM sqlite_master WHERE type='table' AND name='character_skills'`
-			).toArray()
+			const result = await this.ctx.storage.sql
+				.exec(`SELECT name FROM sqlite_master WHERE type='table' AND name='character_skills'`)
+				.toArray()
 
 			if (result.length === 0) {
 				logger.info('Skill tables not found, creating them...')
@@ -197,9 +203,9 @@ export class CharacterDataStore extends DurableObject<Env> {
 	private async ensureCorporationHistoryTable(): Promise<void> {
 		try {
 			// Check if corporation_history table exists
-			const historyTableResult = await this.ctx.storage.sql.exec(
-				`SELECT name FROM sqlite_master WHERE type='table' AND name='corporation_history'`
-			).toArray()
+			const historyTableResult = await this.ctx.storage.sql
+				.exec(`SELECT name FROM sqlite_master WHERE type='table' AND name='corporation_history'`)
+				.toArray()
 
 			if (historyTableResult.length === 0) {
 				logger.info('Corporation history table not found, creating it...')
@@ -235,9 +241,11 @@ export class CharacterDataStore extends DurableObject<Env> {
 			}
 
 			// Always check and create metadata table separately (for existing instances)
-			const metadataTableResult = await this.ctx.storage.sql.exec(
-				`SELECT name FROM sqlite_master WHERE type='table' AND name='corporation_history_metadata'`
-			).toArray()
+			const metadataTableResult = await this.ctx.storage.sql
+				.exec(
+					`SELECT name FROM sqlite_master WHERE type='table' AND name='corporation_history_metadata'`
+				)
+				.toArray()
 
 			if (metadataTableResult.length === 0) {
 				logger.info('Corporation history metadata table not found, creating it...')
@@ -950,8 +958,8 @@ export class CharacterDataStore extends DurableObject<Env> {
 		const now = Date.now()
 
 		// Process history entries
-		const sortedHistory = [...history].sort((a, b) =>
-			new Date(a.start_date).getTime() - new Date(b.start_date).getTime()
+		const sortedHistory = [...history].sort(
+			(a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime()
 		)
 
 		for (let i = 0; i < sortedHistory.length; i++) {
@@ -982,7 +990,7 @@ export class CharacterDataStore extends DurableObject<Env> {
 						} catch (error) {
 							logger.error('Failed to fetch alliance info for history', {
 								allianceId,
-								error: String(error)
+								error: String(error),
 							})
 						}
 					}
@@ -1011,7 +1019,7 @@ export class CharacterDataStore extends DurableObject<Env> {
 
 		logger.info('Corporation history updated', {
 			characterId,
-			historyCount: history.length
+			historyCount: history.length,
 		})
 	}
 
@@ -1028,9 +1036,9 @@ export class CharacterDataStore extends DurableObject<Env> {
 			.toArray()
 
 		// Convert is_deleted from number to boolean
-		return rows.map(row => ({
+		return rows.map((row) => ({
 			...row,
-			is_deleted: row.is_deleted === 1
+			is_deleted: row.is_deleted === 1,
 		}))
 	}
 
@@ -1042,10 +1050,10 @@ export class CharacterDataStore extends DurableObject<Env> {
 
 		// Check if we have cached data and if it's still fresh
 		const metadataRows = await this.ctx.storage.sql
-			.exec<{ last_fetched: number; next_fetch_at: number }>(
-				'SELECT last_fetched, next_fetch_at FROM corporation_history_metadata WHERE character_id = ?',
-				characterId
-			)
+			.exec<{
+				last_fetched: number
+				next_fetch_at: number
+			}>('SELECT last_fetched, next_fetch_at FROM corporation_history_metadata WHERE character_id = ?', characterId)
 			.toArray()
 
 		// If we have fresh cached data, return it
@@ -1053,7 +1061,7 @@ export class CharacterDataStore extends DurableObject<Env> {
 			logger.info('Returning cached corporation history', {
 				characterId,
 				lastFetched: new Date(metadataRows[0].last_fetched).toISOString(),
-				nextFetchAt: new Date(metadataRows[0].next_fetch_at).toISOString()
+				nextFetchAt: new Date(metadataRows[0].next_fetch_at).toISOString(),
 			})
 			return this.getCorporationHistory(characterId)
 		}
@@ -1079,7 +1087,7 @@ export class CharacterDataStore extends DurableObject<Env> {
 			logger.info('Corporation history fetched and cached', {
 				characterId,
 				historyCount: data.length,
-				nextFetchAt: new Date(nextFetchAt).toISOString()
+				nextFetchAt: new Date(nextFetchAt).toISOString(),
 			})
 
 			// Return the stored data
@@ -1087,7 +1095,7 @@ export class CharacterDataStore extends DurableObject<Env> {
 		} catch (error) {
 			logger.error('Failed to fetch and store corporation history', {
 				characterId,
-				error: String(error)
+				error: String(error),
 			})
 
 			// Return whatever we have cached
@@ -1207,7 +1215,10 @@ export class CharacterDataStore extends DurableObject<Env> {
 
 					// Fetch and store character skillqueue
 					try {
-						const skillqueueData = await fetchCharacterSkillQueue(character_id, tokenInfo.accessToken)
+						const skillqueueData = await fetchCharacterSkillQueue(
+							character_id,
+							tokenInfo.accessToken
+						)
 						await this.upsertCharacterSkillQueue(character_id, skillqueueData.data)
 					} catch (skillqueueError) {
 						logger.error('Failed to fetch skillqueue during character update', {

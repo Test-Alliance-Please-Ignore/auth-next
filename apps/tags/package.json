@@ -15,6 +15,7 @@
 	},
 	"dependencies": {
 		"@repo/character-data-store": "workspace:*",
+		"@repo/do-migrations": "workspace:*",
 		"@repo/do-utils": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
 		"@repo/session-store": "workspace:*",

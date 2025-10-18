@@ -299,7 +299,6 @@ const app = new Hono<App>()
 		}
 	})
 
-
 export default app
 
 // Export Durable Object
@@ -548,15 +547,15 @@ async function handlePrimaryLoginCallback(
 			const dataStoreStub = getStub<CharacterDataStore>(c.env.CHARACTER_DATA_STORE, 'global')
 
 			// Import ESI client functions
-			const { fetchCharacterInfo, fetchCharacterSkills, fetchCharacterSkillQueue, fetchCorporationInfo } = await import(
-				'../../esi/src/esi-client'
-			)
+			const {
+				fetchCharacterInfo,
+				fetchCharacterSkills,
+				fetchCharacterSkillQueue,
+				fetchCorporationInfo,
+			} = await import('../../esi/src/esi-client')
 
 			// Fetch character info from ESI
-			const charResult = await fetchCharacterInfo(
-				characterInfo.CharacterID,
-				tokenData.access_token
-			)
+			const charResult = await fetchCharacterInfo(characterInfo.CharacterID, tokenData.access_token)
 			await dataStoreStub.upsertCharacter(
 				characterInfo.CharacterID,
 				charResult.data,
@@ -816,10 +815,7 @@ async function handlePrimaryLoginCallback(
 			)
 
 			// Set as primary character since it's the first one
-			await sessionStoreStub.setPrimaryCharacter(
-				sessionInfo.rootUserId,
-				characterInfo.CharacterID
-			)
+			await sessionStoreStub.setPrimaryCharacter(sessionInfo.rootUserId, characterInfo.CharacterID)
 
 			logger
 				.withTags({
@@ -1040,15 +1036,15 @@ async function handleCharacterLinkCallback(
 			const dataStoreStub = getStub<CharacterDataStore>(c.env.CHARACTER_DATA_STORE, 'global')
 
 			// Import ESI client functions
-			const { fetchCharacterInfo, fetchCharacterSkills, fetchCharacterSkillQueue, fetchCorporationInfo } = await import(
-				'../../esi/src/esi-client'
-			)
+			const {
+				fetchCharacterInfo,
+				fetchCharacterSkills,
+				fetchCharacterSkillQueue,
+				fetchCorporationInfo,
+			} = await import('../../esi/src/esi-client')
 
 			// Fetch character info from ESI
-			const charResult = await fetchCharacterInfo(
-				characterInfo.CharacterID,
-				tokenData.access_token
-			)
+			const charResult = await fetchCharacterInfo(characterInfo.CharacterID, tokenData.access_token)
 			await dataStoreStub.upsertCharacter(
 				characterInfo.CharacterID,
 				charResult.data,
@@ -1193,11 +1189,7 @@ async function handleCharacterLinkCallback(
 						})
 
 					// Assign corporation tag to user
-					await tagStoreStub.assignTagToUser(
-						session.rootUserId,
-						corpUrn,
-						characterInfo.CharacterID
-					)
+					await tagStoreStub.assignTagToUser(session.rootUserId, corpUrn, characterInfo.CharacterID)
 
 					logger
 						.withTags({

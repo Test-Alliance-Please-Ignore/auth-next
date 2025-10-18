@@ -353,7 +353,9 @@ export async function fetchCharacterSkillQueue(
 				status: response.status,
 				statusText: response.statusText,
 			})
-		throw new Error(`Failed to fetch character skillqueue: ${response.status} ${response.statusText}`)
+		throw new Error(
+			`Failed to fetch character skillqueue: ${response.status} ${response.statusText}`
+		)
 	}
 
 	const data = (await response.json()) as ESICharacterSkillQueue
@@ -400,7 +402,9 @@ export async function fetchCharacterCorporationHistory(
 				status: response.status,
 				statusText: response.statusText,
 			})
-		throw new Error(`Failed to fetch corporation history: ${response.status} ${response.statusText}`)
+		throw new Error(
+			`Failed to fetch corporation history: ${response.status} ${response.statusText}`
+		)
 	}
 
 	const data = (await response.json()) as ESICorporationHistory

@@ -2,8 +2,8 @@ import { DurableObject } from 'cloudflare:workers'
 
 import { logger } from '@repo/hono-helpers'
 
-import type { Env } from './context'
 import type { NameCacheEntry, UniverseName } from '@repo/eve-universe'
+import type { Env } from './context'
 
 export class EveUniverse extends DurableObject<Env> {
 	constructor(ctx: DurableObjectState, env: Env) {
@@ -80,7 +80,7 @@ export class EveUniverse extends DurableObject<Env> {
 				logger.info('Querying names batch', {
 					batchSize: batch.length,
 					batchIndex: Math.floor(i / BATCH_SIZE),
-					totalBatches: Math.ceil(uniqueIds.length / BATCH_SIZE)
+					totalBatches: Math.ceil(uniqueIds.length / BATCH_SIZE),
 				})
 
 				const batchResults = await this.ctx.storage.sql
@@ -97,7 +97,7 @@ export class EveUniverse extends DurableObject<Env> {
 					totalIds: uniqueIds.length,
 					batchStart: i,
 					firstIds: batch.slice(0, 5),
-					queryLength: placeholders.length
+					queryLength: placeholders.length,
 				})
 
 				// If this is a "too many variables" error, try with smaller batch
@@ -117,7 +117,7 @@ export class EveUniverse extends DurableObject<Env> {
 						} catch (innerError) {
 							logger.error('Error with smaller batch', {
 								error: String(innerError),
-								batchSize: smallBatch.length
+								batchSize: smallBatch.length,
 							})
 						}
 					}
@@ -127,12 +127,12 @@ export class EveUniverse extends DurableObject<Env> {
 			}
 		}
 
-		const cachedMap = new Map(cached.map(c => [c.id, c]))
-		const missingIds = uniqueIds.filter(id => !cachedMap.has(id))
+		const cachedMap = new Map(cached.map((c) => [c.id, c]))
+		const missingIds = uniqueIds.filter((id) => !cachedMap.has(id))
 
 		// If all found in cache, return them
 		if (missingIds.length === 0) {
-			return cached.map(c => ({ id: c.id, name: c.name, category: c.category }))
+			return cached.map((c) => ({ id: c.id, name: c.name, category: c.category }))
 		}
 
 		// Fetch missing from ESI
@@ -148,13 +148,15 @@ export class EveUniverse extends DurableObject<Env> {
 			const allNames = [...cached, ...fetchedNames]
 
 			// Return in the same order as requested
-			const nameMap = new Map(allNames.map(n => [n.id, n]))
-			return uniqueIds.map(id => nameMap.get(id)).filter((n): n is UniverseName => n !== undefined)
+			const nameMap = new Map(allNames.map((n) => [n.id, n]))
+			return uniqueIds
+				.map((id) => nameMap.get(id))
+				.filter((n): n is UniverseName => n !== undefined)
 		} catch (error) {
 			logger.error('Error fetching names from ESI', { error: String(error), ids: missingIds })
 
 			// Return what we have from cache
-			return cached.map(c => ({ id: c.id, name: c.name, category: c.category }))
+			return cached.map((c) => ({ id: c.id, name: c.name, category: c.category }))
 		}
 	}
 
@@ -194,7 +196,7 @@ export class EveUniverse extends DurableObject<Env> {
 				logger.error('Error caching batch of names', {
 					error: String(error),
 					batchSize: batch.length,
-					firstId: batch[0]?.id
+					firstId: batch[0]?.id,
 				})
 
 				// Fall back to individual inserts for this batch
@@ -223,13 +225,10 @@ export class EveUniverse extends DurableObject<Env> {
 		// Default to 30 days ago
 		const cutoff = olderThan || Date.now() - 30 * 24 * 60 * 60 * 1000
 
-		await this.ctx.storage.sql.exec(
-			`DELETE FROM names WHERE cached_at < ?`,
-			cutoff
-		)
+		await this.ctx.storage.sql.exec(`DELETE FROM names WHERE cached_at < ?`, cutoff)
 
 		logger.info('Old cache entries cleared', {
-			cutoffDate: new Date(cutoff).toISOString()
+			cutoffDate: new Date(cutoff).toISOString(),
 		})
 	}
 
@@ -266,7 +265,7 @@ export class EveUniverse extends DurableObject<Env> {
 					continue
 				}
 
-				const data = await response.json() as Array<{
+				const data = (await response.json()) as Array<{
 					id: number
 					name: string
 					category: string

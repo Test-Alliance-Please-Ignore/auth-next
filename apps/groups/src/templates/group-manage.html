@@ -685,7 +685,11 @@
 					.filter((id) => id.length > 0)
 
 				if (userIds.length === 0) {
-					notyf.open({ type: 'warning', message: 'Please enter at least one user ID', background: '#f59e0b' })
+					notyf.open({
+						type: 'warning',
+						message: 'Please enter at least one user ID',
+						background: '#f59e0b',
+					})
 					return
 				}
 

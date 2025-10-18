@@ -16,6 +16,7 @@
 	},
 	"dependencies": {
 		"@repo/character-data-store": "workspace:*",
+		"@repo/do-migrations": "workspace:*",
 		"@repo/do-utils": "workspace:*",
 		"@repo/eve-universe": "workspace:*",
 		"@repo/evesso": "workspace:*",
