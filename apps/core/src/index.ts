@@ -1117,6 +1117,13 @@ const app = new Hono<App>()
 			if (isOwner && characterLink) {
 				response.character.isPrimary = characterLink.isPrimary
 				response.character.linkedAt = characterLink.linkedAt
+
+				// Include wallet balance if available and owner
+				const walletData = await dataStoreStub.getWalletBalance(characterId)
+				if (walletData) {
+					response.character.walletBalance = walletData.balance
+					response.character.walletUpdatedAt = walletData.updated_at
+				}
 			}
 
 			return c.json(response)
@@ -1319,7 +1326,27 @@ const app = new Hono<App>()
 				return c.json({ error: 'Access denied: You do not own this character' }, 403)
 			}
 
-			// Get access token for ESI
+			// First try to get wallet from cache in CharacterDataStore
+			const dataStoreStub = getStub<CharacterDataStore>(c.env.CHARACTER_DATA_STORE, 'global')
+			const cachedWallet = await dataStoreStub.getWalletBalance(characterId)
+
+			if (cachedWallet && cachedWallet.updated_at) {
+				// Check if cached data is fresh (less than 5 minutes old)
+				const fiveMinutesAgo = Date.now() - (5 * 60 * 1000)
+				if (cachedWallet.updated_at > fiveMinutesAgo) {
+					return c.json({
+						success: true,
+						wallet: {
+							balance: cachedWallet.balance,
+							currency: 'ISK',
+							cached: true,
+							updated_at: cachedWallet.updated_at,
+						},
+					})
+				}
+			}
+
+			// If no cache or stale, fetch fresh from ESI
 			const tokenStoreStub = getStub<EveSSO>(c.env.EVESSO_STORE, 'global')
 			const tokenInfo = await tokenStoreStub.getAccessToken(characterId)
 
@@ -1338,11 +1365,16 @@ const app = new Hono<App>()
 
 			const balance = (await response.json()) as number
 
+			// Update the cache
+			await dataStoreStub.updateWalletBalance(characterId, balance)
+
 			return c.json({
 				success: true,
 				wallet: {
 					balance,
 					currency: 'ISK',
+					cached: false,
+					updated_at: Date.now(),
 				},
 			})
 		} catch (error) {

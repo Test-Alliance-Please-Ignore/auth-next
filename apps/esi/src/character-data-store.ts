@@ -10,6 +10,7 @@ import {
 	fetchCharacterInfo,
 	fetchCharacterSkillQueue,
 	fetchCharacterSkills,
+	fetchCharacterWallet,
 	fetchCorporationInfo,
 } from './esi-client'
 import { characterDataStoreMigrations } from './migrations'
@@ -1211,6 +1212,17 @@ export class CharacterDataStore extends MigratableDurableObject {
 						})
 					}
 
+					// Fetch and store wallet balance
+					try {
+						const walletData = await fetchCharacterWallet(character_id, tokenInfo.accessToken)
+						await this.updateWalletBalance(character_id, walletData.data)
+					} catch (walletError) {
+						logger.error('Failed to fetch wallet during character update', {
+							characterId: character_id,
+							error: String(walletError),
+						})
+					}
+
 					// Also update their corporation if we haven't seen it before
 					const corp = await this.getCorporation(data.corporation_id)
 					if (!corp) {
@@ -1263,6 +1275,51 @@ export class CharacterDataStore extends MigratableDurableObject {
 			logger.info('Rescheduled alarm after error', {
 				retryTime: new Date(retryTime).toISOString(),
 			})
+		}
+	}
+
+	async updateWalletBalance(characterId: number, balance: number): Promise<void> {
+		const now = Date.now()
+
+		// Update wallet balance and timestamp
+		await this.ctx.storage.sql.exec(
+			`UPDATE characters
+			 SET wallet_balance = ?, wallet_updated_at = ?
+			 WHERE character_id = ?`,
+			balance,
+			now,
+			characterId
+		)
+
+		logger
+			.withTags({
+				type: 'wallet_updated',
+				character_id: characterId,
+			})
+			.info('Character wallet balance updated', {
+				characterId,
+				balance,
+				updatedAt: new Date(now).toISOString(),
+			})
+	}
+
+	async getWalletBalance(characterId: number): Promise<{ balance: number; updated_at: number | null } | null> {
+		const result = await this.ctx.storage.sql
+			.exec<{ wallet_balance: number; wallet_updated_at: number | null }>(
+				`SELECT wallet_balance, wallet_updated_at
+				 FROM characters
+				 WHERE character_id = ?`,
+				characterId
+			)
+			.toArray()
+
+		if (result.length === 0) {
+			return null
+		}
+
+		return {
+			balance: result[0].wallet_balance || 0,
+			updated_at: result[0].wallet_updated_at,
 		}
 	}
 }

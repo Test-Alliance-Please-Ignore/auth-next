@@ -708,6 +708,15 @@
 					if (isOwner) {
 						document.getElementById('ownershipBadge').style.display = 'inline-block'
 						document.querySelectorAll('.owner-only').forEach((el) => (el.style.display = 'block'))
+
+						// Display wallet balance if available
+						if (characterData.walletBalance !== undefined) {
+							const balance = characterData.walletBalance.toLocaleString('en-US', {
+								minimumFractionDigits: 2,
+								maximumFractionDigits: 2
+							})
+							document.getElementById('walletBalance').innerHTML = `${balance} ISK`
+						}
 					}
 
 					document.getElementById('loading').style.display = 'none'

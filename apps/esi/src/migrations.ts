@@ -6,9 +6,12 @@
 // CharacterDataStore migrations
 // @ts-expect-error - Wrangler handles ?raw imports
 import characterDataStore001 from '../migrations/CharacterDataStore/001_initial_schema.sql?raw'
+// @ts-expect-error - Wrangler handles ?raw imports
+import characterDataStore002 from '../migrations/CharacterDataStore/002_add_wallet_balance.sql?raw'
 
 export const characterDataStoreMigrations: Record<string, string> = {
 	'001_initial_schema.sql': characterDataStore001,
+	'002_add_wallet_balance.sql': characterDataStore002,
 }
 
 // EveUniverse migrations

@@ -426,6 +426,56 @@ export async function fetchCharacterCorporationHistory(
 }
 
 /**
+ * Fetch character wallet balance from ESI
+ * Requires authentication with scope: esi-wallet.read_character_wallet.v1
+ */
+export async function fetchCharacterWallet(
+	characterId: number,
+	accessToken: string
+): Promise<{ data: number; expiresAt: number | null }> {
+	const url = `https://esi.evetech.net/latest/characters/${characterId}/wallet/`
+
+	const response = await fetch(url, {
+		headers: {
+			Authorization: `Bearer ${accessToken}`,
+			'X-Compatibility-Date': '2025-09-30',
+		},
+	})
+
+	if (!response.ok) {
+		logger
+			.withTags({
+				type: 'esi_wallet_fetch_error',
+				character_id: characterId,
+			})
+			.error('Failed to fetch character wallet from ESI', {
+				characterId,
+				status: response.status,
+				statusText: response.statusText,
+			})
+		throw new Error(`Failed to fetch wallet: ${response.status} ${response.statusText}`)
+	}
+
+	// ESI returns a plain number for wallet balance
+	const data = await response.json() as number
+	const cacheControl = response.headers.get('Cache-Control')
+	const expiresAt = parseCacheControl(cacheControl)
+
+	logger
+		.withTags({
+			type: 'esi_wallet_fetched',
+			character_id: characterId,
+		})
+		.info('Character wallet fetched from ESI', {
+			characterId,
+			balance: data,
+			expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
+		})
+
+	return { data, expiresAt }
+}
+
+/**
  * ESI Type information response
  * From: GET /universe/types/{type_id}/
  */

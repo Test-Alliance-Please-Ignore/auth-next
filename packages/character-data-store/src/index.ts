@@ -59,6 +59,8 @@ export interface CharacterData {
 	bloodline_id: number
 	ancestry_id: number | null
 	description: string | null
+	wallet_balance: number
+	wallet_updated_at: number | null
 	last_updated: number
 	next_update_at: number
 	update_count: number
@@ -293,4 +295,19 @@ export interface CharacterDataStore {
 	 * @returns Array of corporation history entries
 	 */
 	fetchAndStoreCorporationHistory(characterId: number): Promise<CorporationHistoryData[]>
+
+	/**
+	 * Update character wallet balance
+	 * @param characterId - EVE character ID
+	 * @param balance - Wallet balance in ISK
+	 * @returns Updated character data
+	 */
+	updateWalletBalance(characterId: number, balance: number): Promise<void>
+
+	/**
+	 * Get character wallet balance
+	 * @param characterId - EVE character ID
+	 * @returns Wallet balance or null if not found
+	 */
+	getWalletBalance(characterId: number): Promise<{ balance: number; updated_at: number | null } | null>
 }
