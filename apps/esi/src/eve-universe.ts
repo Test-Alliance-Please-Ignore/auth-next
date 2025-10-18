@@ -61,21 +61,70 @@ export class EveUniverse extends DurableObject<Env> {
 		const uniqueIds = [...new Set(ids)]
 
 		// SQLite has a limit on the number of variables in a query (usually 999)
-		// So we need to batch the query if we have too many IDs
-		const BATCH_SIZE = 500 // Conservative limit to avoid hitting SQLite's variable limit
+		// But Cloudflare's SQLite might have a lower limit, so we'll be more conservative
+		const BATCH_SIZE = 200 // More conservative limit for Cloudflare's SQLite
 		const cached: NameCacheEntry[] = []
 
 		// Query cache in batches
 		for (let i = 0; i < uniqueIds.length; i += BATCH_SIZE) {
 			const batch = uniqueIds.slice(i, i + BATCH_SIZE)
+
+			// Skip empty batches (shouldn't happen but just in case)
+			if (batch.length === 0) {
+				continue
+			}
+
 			const placeholders = batch.map(() => '?').join(',')
-			const batchResults = await this.ctx.storage.sql
-				.exec<NameCacheEntry>(
-					`SELECT id, name, category FROM names WHERE id IN (${placeholders})`,
-					...batch
-				)
-				.toArray()
-			cached.push(...batchResults)
+
+			try {
+				logger.info('Querying names batch', {
+					batchSize: batch.length,
+					batchIndex: Math.floor(i / BATCH_SIZE),
+					totalBatches: Math.ceil(uniqueIds.length / BATCH_SIZE)
+				})
+
+				const batchResults = await this.ctx.storage.sql
+					.exec<NameCacheEntry>(
+						`SELECT id, name, category FROM names WHERE id IN (${placeholders})`,
+						...batch
+					)
+					.toArray()
+				cached.push(...batchResults)
+			} catch (error) {
+				logger.error('Error querying names batch from cache', {
+					error: String(error),
+					batchSize: batch.length,
+					totalIds: uniqueIds.length,
+					batchStart: i,
+					firstIds: batch.slice(0, 5),
+					queryLength: placeholders.length
+				})
+
+				// If this is a "too many variables" error, try with smaller batch
+				if (String(error).includes('too many SQL variables')) {
+					const FALLBACK_BATCH_SIZE = 100
+					for (let j = 0; j < batch.length; j += FALLBACK_BATCH_SIZE) {
+						const smallBatch = batch.slice(j, j + FALLBACK_BATCH_SIZE)
+						const smallPlaceholders = smallBatch.map(() => '?').join(',')
+						try {
+							const smallResults = await this.ctx.storage.sql
+								.exec<NameCacheEntry>(
+									`SELECT id, name, category FROM names WHERE id IN (${smallPlaceholders})`,
+									...smallBatch
+								)
+								.toArray()
+							cached.push(...smallResults)
+						} catch (innerError) {
+							logger.error('Error with smaller batch', {
+								error: String(innerError),
+								batchSize: smallBatch.length
+							})
+						}
+					}
+				} else {
+					throw error
+				}
+			}
 		}
 
 		const cachedMap = new Map(cached.map(c => [c.id, c]))
@@ -122,7 +171,7 @@ export class EveUniverse extends DurableObject<Env> {
 		}
 
 		const now = Date.now()
-		const BATCH_SIZE = 100 // Smaller batch size for inserts (4 values per row)
+		const BATCH_SIZE = 50 // Even smaller batch size for inserts (4 values per row = 200 variables)
 
 		// Process in batches to avoid too many SQL variables
 		for (let i = 0; i < names.length; i += BATCH_SIZE) {
