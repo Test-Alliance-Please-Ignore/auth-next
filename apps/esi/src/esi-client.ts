@@ -1,42 +1,11 @@
+import type {
+	ESICharacterInfo,
+	ESICharacterSkillQueue,
+	ESICharacterSkills,
+	ESICorporationHistory,
+	ESICorporationInfo,
+} from '@repo/character-data-store'
 import { logger } from '@repo/hono-helpers'
-
-/**
- * ESI Character information response
- * From: GET /characters/{character_id}/
- */
-export interface ESICharacterInfo {
-	alliance_id?: number
-	ancestry_id?: number
-	birthday: string
-	bloodline_id: number
-	corporation_id: number
-	description?: string
-	gender: 'male' | 'female'
-	name: string
-	race_id: number
-	security_status?: number
-	title?: string
-}
-
-/**
- * ESI Corporation information response
- * From: GET /corporations/{corporation_id}/
- */
-export interface ESICorporationInfo {
-	alliance_id?: number
-	ceo_id: number
-	creator_id: number
-	date_founded?: string
-	description?: string
-	home_station_id?: number
-	member_count: number
-	name: string
-	shares?: number
-	tax_rate: number
-	ticker: string
-	url?: string
-	war_eligible?: boolean
-}
 
 /**
  * ESI Alliance information response
@@ -51,53 +20,6 @@ export interface ESIAllianceInfo {
 	name: string
 	ticker: string
 }
-
-/**
- * ESI Character skills response
- * From: GET /characters/{character_id}/skills/
- */
-export interface ESISkill {
-	skill_id: number
-	skillpoints_in_skill: number
-	trained_skill_level: number
-	active_skill_level: number
-}
-
-export interface ESICharacterSkills {
-	skills: ESISkill[]
-	total_sp: number
-	unallocated_sp?: number
-}
-
-/**
- * ESI Character skillqueue response
- * From: GET /characters/{character_id}/skillqueue/
- */
-export interface ESISkillQueueItem {
-	skill_id: number
-	finished_level: number
-	queue_position: number
-	start_date?: string
-	finish_date?: string
-	training_start_sp?: number
-	level_start_sp?: number
-	level_end_sp?: number
-}
-
-export type ESICharacterSkillQueue = ESISkillQueueItem[]
-
-/**
- * ESI Corporation history entry
- * From: GET /characters/{character_id}/corporationhistory/
- */
-export interface ESICorporationHistoryEntry {
-	corporation_id: number
-	is_deleted?: boolean
-	record_id: number
-	start_date: string
-}
-
-export type ESICorporationHistory = ESICorporationHistoryEntry[]
 
 /**
  * Parse cache control header and calculate expiration timestamp

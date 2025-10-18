@@ -15,19 +15,21 @@ import {
 } from './esi-client'
 import { characterDataStoreMigrations } from './migrations'
 
-import type { EveSSO } from '@repo/evesso'
-import type { SessionStore } from '@repo/session-store'
-import type { TagStore } from '@repo/tag-store'
-import type { Env } from './context'
 import type {
 	ESICharacterInfo,
 	ESICharacterSkillQueue,
 	ESICharacterSkills,
 	ESICorporationHistory,
 	ESICorporationInfo,
-} from './esi-client'
+} from '@repo/character-data-store'
+import type { EveSSO } from '@repo/evesso'
+import type { SessionStore } from '@repo/session-store'
+import type { TagStore } from '@repo/tag-store'
+import type { Env } from './context'
 
-export interface CharacterData extends Record<string, number | string | null> {
+// ========== Internal SQLite Types (snake_case, extends Record for SQL storage) ==========
+
+interface CharacterData extends Record<string, number | string | null> {
 	character_id: number
 	name: string
 	corporation_id: number
@@ -44,7 +46,7 @@ export interface CharacterData extends Record<string, number | string | null> {
 	update_count: number
 }
 
-export interface CorporationData extends Record<string, number | string | null> {
+interface CorporationData extends Record<string, number | string | null> {
 	corporation_id: number
 	name: string
 	ticker: string
@@ -61,7 +63,7 @@ export interface CorporationData extends Record<string, number | string | null> 
 	update_count: number
 }
 
-export interface ChangeHistoryEntry extends Record<string, number | string | null> {
+interface ChangeHistoryEntry extends Record<string, number | string | null> {
 	id: number
 	character_id: number
 	changed_at: number
@@ -70,7 +72,7 @@ export interface ChangeHistoryEntry extends Record<string, number | string | nul
 	new_value: string | null
 }
 
-export interface CharacterSkillsData extends Record<string, number | string | null> {
+interface CharacterSkillsData extends Record<string, number | string | null> {
 	character_id: number
 	total_sp: number
 	unallocated_sp: number
@@ -79,7 +81,7 @@ export interface CharacterSkillsData extends Record<string, number | string | nu
 	update_count: number
 }
 
-export interface SkillData extends Record<string, number | string | null> {
+interface SkillData extends Record<string, number | string | null> {
 	character_id: number
 	skill_id: number
 	skillpoints_in_skill: number
@@ -87,7 +89,7 @@ export interface SkillData extends Record<string, number | string | null> {
 	active_skill_level: number
 }
 
-export interface SkillQueueData extends Record<string, number | string | null> {
+interface SkillQueueData extends Record<string, number | string | null> {
 	character_id: number
 	skill_id: number
 	finished_level: number
@@ -99,7 +101,7 @@ export interface SkillQueueData extends Record<string, number | string | null> {
 	level_end_sp: number | null
 }
 
-export interface CorporationHistoryData extends Record<string, number | string | null> {
+interface CorporationHistoryData extends Record<string, number | string | null> {
 	character_id: number
 	record_id: number
 	corporation_id: number
@@ -110,7 +112,7 @@ export interface CorporationHistoryData extends Record<string, number | string |
 	alliance_ticker: string | null
 	start_date: string
 	end_date: string | null
-	is_deleted: boolean
+	is_deleted: number // SQLite stores booleans as 0/1
 }
 
 export class CharacterDataStore extends MigratableDurableObject {
@@ -1024,11 +1026,8 @@ export class CharacterDataStore extends MigratableDurableObject {
 			)
 			.toArray()
 
-		// Convert is_deleted from number to boolean
-		return rows.map((row) => ({
-			...row,
-			is_deleted: row.is_deleted === 1,
-		}))
+		// Return rows as-is (is_deleted is stored as 0/1 in SQLite)
+		return rows
 	}
 
 	async fetchAndStoreCorporationHistory(characterId: number): Promise<CorporationHistoryData[]> {

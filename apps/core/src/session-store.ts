@@ -5,9 +5,20 @@ import { logger } from '@repo/hono-helpers'
 
 import { sessionStoreMigrations } from './migrations'
 
+import type {
+	AccountLink,
+	CharacterLink,
+	ProviderLink,
+	RootUser,
+	SessionInfo,
+	SessionListResult,
+	SessionStats,
+} from '@repo/session-store'
 import type { Env } from './context'
 
-export interface RootUserData extends Record<string, number | string | null> {
+// ========== Internal SQLite Types (snake_case, extends Record for SQL storage) ==========
+
+interface RootUserData extends Record<string, number | string | null> {
 	root_user_id: string
 	provider: string
 	provider_user_id: string
@@ -19,19 +30,7 @@ export interface RootUserData extends Record<string, number | string | null> {
 	updated_at: number
 }
 
-export interface RootUser {
-	rootUserId: string
-	provider: string
-	providerUserId: string
-	email: string
-	name: string
-	ownerHash: string | null
-	isAdmin: boolean
-	createdAt: number
-	updatedAt: number
-}
-
-export interface SessionData extends Record<string, number | string> {
+interface SessionData extends Record<string, number | string> {
 	session_id: string
 	root_user_id: string
 	access_token: string
@@ -41,43 +40,7 @@ export interface SessionData extends Record<string, number | string> {
 	updated_at: number
 }
 
-export interface SessionInfo {
-	sessionId: string
-	rootUserId: string
-	provider: string
-	providerUserId: string
-	email: string
-	name: string
-	accessToken: string
-	expiresAt: number
-	createdAt?: number
-	updatedAt?: number
-}
-
-export interface SessionListResult {
-	total: number
-	limit: number
-	offset: number
-	results: Array<{
-		sessionId: string
-		rootUserId: string
-		provider: string
-		providerUserId: string
-		email: string
-		name: string
-		expiresAt: number
-		createdAt: number
-		updatedAt: number
-	}>
-}
-
-export interface SessionStats {
-	totalCount: number
-	expiredCount: number
-	activeCount: number
-}
-
-export interface AccountLinkData extends Record<string, number | string> {
+interface AccountLinkData extends Record<string, number | string> {
 	link_id: string
 	root_user_id: string
 	legacy_system: string
@@ -93,30 +56,14 @@ export interface AccountLinkData extends Record<string, number | string> {
 	updated_at: number
 }
 
-export interface AccountLink {
-	linkId: string
-	rootUserId: string
-	legacySystem: string
-	legacyUserId: string
-	legacyUsername: string
-	superuser: boolean
-	staff: boolean
-	active: boolean
-	primaryCharacter: string
-	primaryCharacterId: string
-	groups: string[]
-	linkedAt: number
-	updatedAt: number
-}
-
-export interface OIDCStateData extends Record<string, number | string> {
+interface OIDCStateData extends Record<string, number | string> {
 	state: string
 	session_id: string
 	created_at: number
 	expires_at: number
 }
 
-export interface CharacterLinkData extends Record<string, number | string> {
+interface CharacterLinkData extends Record<string, number | string> {
 	link_id: string
 	root_user_id: string
 	character_id: number
@@ -126,17 +73,7 @@ export interface CharacterLinkData extends Record<string, number | string> {
 	updated_at: number
 }
 
-export interface CharacterLink {
-	linkId: string
-	rootUserId: string
-	characterId: number
-	characterName: string
-	isPrimary: boolean
-	linkedAt: number
-	updatedAt: number
-}
-
-export interface ProviderLinkData extends Record<string, number | string> {
+interface ProviderLinkData extends Record<string, number | string> {
 	link_id: string
 	root_user_id: string
 	provider: string
@@ -144,16 +81,6 @@ export interface ProviderLinkData extends Record<string, number | string> {
 	provider_username: string
 	linked_at: number
 	updated_at: number
-}
-
-export interface ProviderLink {
-	linkId: string
-	rootUserId: string
-	provider: string
-	providerUserId: string
-	providerUsername: string
-	linkedAt: number
-	updatedAt: number
 }
 
 export class SessionStore extends MigratableDurableObject {

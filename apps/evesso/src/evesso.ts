@@ -2,11 +2,12 @@ import { DurableObject } from 'cloudflare:workers'
 
 import { logger } from '@repo/hono-helpers'
 
+import type { AccessTokenInfo, TokenInfo } from '@repo/evesso'
 import type { Env } from './context'
 
 // ========== Internal Types (SQLite data structures - snake_case) ==========
 
-export interface TokenData extends Record<string, number | string> {
+interface TokenData extends Record<string, number | string> {
 	character_id: number
 	character_name: string
 	access_token: string
@@ -18,31 +19,11 @@ export interface TokenData extends Record<string, number | string> {
 	updated_at: number
 }
 
-export interface ESIOAuthStateData extends Record<string, number | string> {
+interface ESIOAuthStateData extends Record<string, number | string> {
 	state: string
 	session_id: string
 	created_at: number
 	expires_at: number
-}
-
-// ========== Public Types (External API - camelCase) ==========
-
-export interface TokenInfo {
-	proxyToken: string
-	characterId: number
-	characterName: string
-	scopes: string
-	expiresAt: number
-	createdAt?: number
-	updatedAt?: number
-}
-
-export interface AccessTokenInfo {
-	accessToken: string
-	characterId: number
-	characterName: string
-	scopes: string
-	expiresAt: number
 }
 
 /**
