@@ -132,6 +132,7 @@ const session = await stub.getSession(sessionId)
 ### Key Principles
 
 - **SQLite Storage Required**: ALL Durable Objects MUST use SQLite storage. Always use `new_sqlite_classes` in migrations, never `new_classes`. Using `new_classes` creates a non-SQLite DO that cannot be converted without deleting all data.
+- **Wrangler Migrations**: DO NOT modify `migrations` in `wrangler.jsonc` unless specifically asked. These tags only control Durable Object creation/deletion, NOT SQL migrations. SQL migrations are handled by the DO migration system.
 - **Untyped Namespaces**: Environment bindings use `DurableObjectNamespace` (untyped) in `context.ts`
 - **Type at Call Site**: Apply interface type when calling `getStub<T>()`
 - **Shared Interfaces**: Import interface types from `@repo/*` packages, never from implementation files
