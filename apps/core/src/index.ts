@@ -5,6 +5,7 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 import { getStub } from '@repo/do-utils'
 import type { CharacterDataStore } from '@repo/character-data-store'
 import type { EveSSO } from '@repo/evesso'
+import type { EveUniverse } from '@repo/eve-universe'
 import {
 	getRequestLogData,
 	logger,
@@ -1078,6 +1079,16 @@ const app = new Hono<App>()
 			// Get skill queue
 			const skillQueue = await dataStoreStub.getSkillQueue(characterId)
 
+			// Get skill names from EveUniverse
+			const universeStub = getStub<EveUniverse>(c.env.EVE_UNIVERSE, 'global')
+			const allSkillIds = [
+				...skills.map(s => s.skill_id),
+				...skillQueue.map(q => q.skill_id)
+			]
+			const uniqueSkillIds = [...new Set(allSkillIds)]
+			const skillNames = await universeStub.getNames(uniqueSkillIds)
+			const skillNameMap = new Map(skillNames.map(n => [n.id, n.name]))
+
 			return c.json({
 				success: true,
 				skills: {
@@ -1086,12 +1097,14 @@ const app = new Hono<App>()
 					lastUpdated: skillsData.last_updated,
 					skills: skills.map(s => ({
 						skillId: s.skill_id,
+						skillName: skillNameMap.get(s.skill_id) || `Unknown Skill (${s.skill_id})`,
 						skillpoints: s.skillpoints_in_skill,
 						trainedLevel: s.trained_skill_level,
 						activeLevel: s.active_skill_level
 					})),
 					skillQueue: skillQueue.map(q => ({
 						skillId: q.skill_id,
+						skillName: skillNameMap.get(q.skill_id) || `Unknown Skill (${q.skill_id})`,
 						finishedLevel: q.finished_level,
 						queuePosition: q.queue_position,
 						startDate: q.start_date,
@@ -1277,17 +1290,31 @@ const app = new Hono<App>()
 				}
 			}
 
+			// Get names for locations and ship
+			const universeStub = getStub<EveUniverse>(c.env.EVE_UNIVERSE, 'global')
+			const idsToResolve: number[] = [location.solar_system_id]
+			if (location.station_id) idsToResolve.push(location.station_id)
+			if (location.structure_id) idsToResolve.push(location.structure_id)
+			if (ship?.ship_type_id) idsToResolve.push(ship.ship_type_id)
+
+			const names = await universeStub.getNames(idsToResolve)
+			const nameMap = new Map(names.map(n => [n.id, n.name]))
+
 			return c.json({
 				success: true,
 				location: {
 					solarSystemId: location.solar_system_id,
+					solarSystemName: nameMap.get(location.solar_system_id) || `Unknown System (${location.solar_system_id})`,
 					stationId: location.station_id,
+					stationName: location.station_id ? (nameMap.get(location.station_id) || `Unknown Station (${location.station_id})`) : null,
 					structureId: location.structure_id,
+					structureName: location.structure_id ? (nameMap.get(location.structure_id) || `Unknown Structure (${location.structure_id})`) : null,
 					online: online?.online,
 					lastLogin: online?.last_login,
 					lastLogout: online?.last_logout,
 					ship: ship ? {
 						typeId: ship.ship_type_id,
+						typeName: nameMap.get(ship.ship_type_id) || `Unknown Ship (${ship.ship_type_id})`,
 						itemId: ship.ship_item_id,
 						name: ship.ship_name
 					} : null

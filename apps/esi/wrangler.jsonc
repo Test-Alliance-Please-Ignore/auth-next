@@ -65,7 +65,7 @@
 		},
 		{
 			"tag": "v5",
-			"new_sqlite_classes": []
+			"new_sqlite_classes": ["EveUniverse"]
 		}
 	],
 	"vars": {

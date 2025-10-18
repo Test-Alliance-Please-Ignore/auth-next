@@ -439,3 +439,4 @@ export default withSentry(app)
 
 // Export Durable Objects
 export { CharacterDataStore } from './character-data-store'
+export { EveUniverse } from './eve-universe'

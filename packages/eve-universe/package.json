@@ -1,0 +1,19 @@
+{
+	"name": "@repo/eve-universe",
+	"version": "0.1.0",
+	"description": "Interface for EveUniverse Durable Object that caches EVE universe names",
+	"private": true,
+	"type": "module",
+	"main": "src/index.ts",
+	"module": "src/index.ts",
+	"types": "src/index.ts",
+	"scripts": {
+		"check:types": "run-tsc",
+		"check:lint": "run-eslint"
+	},
+	"dependencies": {},
+	"devDependencies": {
+		"@repo/eslint-config": "workspace:*",
+		"@repo/typescript-config": "workspace:*"
+	}
+}

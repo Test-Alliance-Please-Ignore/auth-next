@@ -579,7 +579,7 @@
 								(item) => `
 							<div class="skill-queue-item">
 								<div class="queue-header">
-									<span>Skill ID: ${item.skillId} - Level ${item.finishedLevel}</span>
+									<span>${item.skillName || `Skill ID: ${item.skillId}`} - Level ${item.finishedLevel}</span>
 									<span>${item.finishDate ? new Date(item.finishDate).toLocaleString() : 'Paused'}</span>
 								</div>
 								${
@@ -604,7 +604,7 @@
 							(skill) => `
 						<div class="skill-item">
 							<div>
-								<div class="skill-name">Skill ID: ${skill.skillId}</div>
+								<div class="skill-name">${skill.skillName || `Skill ID: ${skill.skillId}`}</div>
 								<div class="skill-sp">${skill.skillpoints.toLocaleString()} SP</div>
 							</div>
 							<div class="skill-level">
@@ -686,13 +686,13 @@
 					</div>
 					<div class="location-item">
 						<span class="meta-label">Solar System:</span>
-						<span>System ID: ${location.solarSystemId}</span>
+						<span>${location.solarSystemName || `System ID: ${location.solarSystemId}`}</span>
 					</div>
 					${
 						location.stationId
 							? `<div class="location-item">
 						<span class="meta-label">Station:</span>
-						<span>Station ID: ${location.stationId}</span>
+						<span>${location.stationName || `Station ID: ${location.stationId}`}</span>
 					</div>`
 							: ''
 					}
@@ -700,7 +700,7 @@
 						location.structureId
 							? `<div class="location-item">
 						<span class="meta-label">Structure:</span>
-						<span>Structure ID: ${location.structureId}</span>
+						<span>${location.structureName || `Structure ID: ${location.structureId}`}</span>
 					</div>`
 							: ''
 					}
@@ -708,7 +708,7 @@
 						location.ship
 							? `<div class="location-item">
 						<span class="meta-label">Ship:</span>
-						<span>${location.ship.name} (Type ID: ${location.ship.typeId})</span>
+						<span>${location.ship.name} (${location.ship.typeName || `Type ID: ${location.ship.typeId}`})</span>
 					</div>`
 							: ''
 					}
