@@ -590,7 +590,18 @@
 					document.getElementById('corporation').textContent = characterData.corporation
 						? `[${characterData.corporation.ticker}] ${characterData.corporation.name}`
 						: 'None'
-					document.getElementById('alliance').textContent = characterData.allianceId ? `Alliance ID: ${characterData.allianceId}` : 'None'
+					// Display alliance name or fallback to ID if name is not available
+					let allianceDisplay = 'None'
+					if (characterData.allianceId) {
+						if (characterData.allianceName) {
+							allianceDisplay = characterData.allianceTicker
+								? `[${characterData.allianceTicker}] ${characterData.allianceName}`
+								: characterData.allianceName
+						} else {
+							allianceDisplay = `Alliance ID: ${characterData.allianceId}`
+						}
+					}
+					document.getElementById('alliance').textContent = allianceDisplay
 					document.getElementById('secStatus').textContent =
 						characterData.securityStatus !== null ? characterData.securityStatus.toFixed(2) : 'Unknown'
 					document.getElementById('birthday').textContent = new Date(characterData.birthday).toLocaleDateString()

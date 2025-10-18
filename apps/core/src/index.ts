@@ -1013,6 +1013,46 @@ const app = new Hono<App>()
 			// Get corporation data
 			const corporationData = await dataStoreStub.getCorporation(characterData.corporation_id)
 
+			// Get alliance name if character is in an alliance
+			let allianceName: string | null = null
+			let allianceTicker: string | null = null
+
+			if (characterData.alliance_id) {
+				// Try to fetch alliance data directly from ESI
+				try {
+					const allianceUrl = `https://esi.evetech.net/latest/alliances/${characterData.alliance_id}/`
+					const allianceResponse = await fetch(allianceUrl, {
+						headers: {
+							'X-Compatibility-Date': '2025-09-30',
+						},
+					})
+
+					if (allianceResponse.ok) {
+						const allianceData = await allianceResponse.json() as { name: string; ticker: string }
+						allianceName = allianceData.name
+						allianceTicker = allianceData.ticker
+					}
+				} catch (error) {
+					logger.error('Failed to fetch alliance info', { error: String(error), allianceId: characterData.alliance_id })
+				}
+
+				// Fallback to EveUniverse for just the name if direct fetch failed
+				if (!allianceName) {
+					const eveUniverseStub = c.env.EVE_UNIVERSE ? getStub<EveUniverse>(c.env.EVE_UNIVERSE, 'global') : null
+					if (eveUniverseStub) {
+						try {
+							const names = await eveUniverseStub.getNames([characterData.alliance_id])
+							const allianceNameEntry = names.find(n => n.id === characterData.alliance_id)
+							if (allianceNameEntry) {
+								allianceName = allianceNameEntry.name
+							}
+						} catch (error) {
+							logger.error('Failed to fetch alliance name from cache', { error: String(error), allianceId: characterData.alliance_id })
+						}
+					}
+				}
+			}
+
 			// Build response based on ownership
 			const response: any = {
 				success: true,
@@ -1035,6 +1075,8 @@ const app = new Hono<App>()
 						allianceId: corporationData.alliance_id
 					} : null,
 					allianceId: characterData.alliance_id,
+					allianceName: allianceName,
+					allianceTicker: allianceTicker,
 					lastUpdated: characterData.last_updated,
 				}
 			}
