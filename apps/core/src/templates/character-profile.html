@@ -590,7 +590,7 @@
 					</div>
 
 					<div class="section">
-						<h2 class="section-title">All Skills</h2>
+						<h2 class="section-title">Skills by Category</h2>
 						<div id="skillsList" class="skills-grid"></div>
 					</div>
 				</div>
@@ -774,53 +774,53 @@
 						queueContainer.innerHTML = 'No skills in training queue'
 					}
 
-					// Group skills by category
-					const skillsByCategory = {}
+					// Group skills by their group (not category - all skills have same category)
+					const skillsByGroup = {}
 					skills.skills.forEach(skill => {
-						const categoryName = skill.categoryName || 'Uncategorized'
-						if (!skillsByCategory[categoryName]) {
-							skillsByCategory[categoryName] = {
-								categoryId: skill.categoryId,
-								categoryName: categoryName,
+						const groupName = skill.groupName || 'Uncategorized'
+						if (!skillsByGroup[groupName]) {
+							skillsByGroup[groupName] = {
+								groupId: skill.groupId,
+								groupName: groupName,
 								skills: [],
 								totalSP: 0,
 								skillCount: 0
 							}
 						}
-						skillsByCategory[categoryName].skills.push(skill)
-						skillsByCategory[categoryName].totalSP += skill.skillpoints
-						skillsByCategory[categoryName].skillCount++
+						skillsByGroup[groupName].skills.push(skill)
+						skillsByGroup[groupName].totalSP += skill.skillpoints
+						skillsByGroup[groupName].skillCount++
 					})
 
-					// Sort categories alphabetically
-					const sortedCategories = Object.keys(skillsByCategory).sort()
+					// Sort groups alphabetically
+					const sortedGroups = Object.keys(skillsByGroup).sort()
 
-					// Update skills list with categorized view
+					// Update skills list with grouped view
 					const skillsContainer = document.getElementById('skillsList')
-					skillsContainer.innerHTML = sortedCategories
-						.map(categoryName => {
-							const category = skillsByCategory[categoryName]
-							const categoryId = `category-${category.categoryId || 'uncategorized'}`
+					skillsContainer.innerHTML = sortedGroups
+						.map(groupName => {
+							const group = skillsByGroup[groupName]
+							const groupId = `group-${group.groupId || 'uncategorized'}`
 
-							// Sort skills within category alphabetically
-							category.skills.sort((a, b) => a.skillName.localeCompare(b.skillName))
+							// Sort skills within group alphabetically
+							group.skills.sort((a, b) => a.skillName.localeCompare(b.skillName))
 
 							return `
 								<div class="skill-category">
-									<div class="category-header" onclick="toggleCategory('${categoryId}')">
+									<div class="category-header" onclick="toggleCategory('${groupId}')">
 										<div class="category-name">
-											<svg class="category-arrow" id="arrow-${categoryId}" viewBox="0 0 20 20" fill="currentColor">
+											<svg class="category-arrow" id="arrow-${groupId}" viewBox="0 0 20 20" fill="currentColor">
 												<path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
 											</svg>
-											<span>${categoryName}</span>
-											<span class="category-skill-count">${category.skillCount}</span>
+											<span>${groupName}</span>
+											<span class="category-skill-count">${group.skillCount}</span>
 										</div>
 										<div class="category-stats">
-											<span class="category-sp-total">${category.totalSP.toLocaleString()} SP</span>
+											<span class="category-sp-total">${group.totalSP.toLocaleString()} SP</span>
 										</div>
 									</div>
-									<div class="category-skills" id="${categoryId}">
-										${category.skills
+									<div class="category-skills" id="${groupId}">
+										${group.skills
 											.map(skill => `
 												<div class="skill-item">
 													<div>

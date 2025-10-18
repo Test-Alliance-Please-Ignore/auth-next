@@ -442,19 +442,28 @@ export class EveUniverse extends MigratableDurableObject<Env> {
 			return []
 		}
 
+		logger.info('Getting skill hierarchy', { skillCount: skillIds.length })
+
 		// Get type information for all skills
 		const types = await this.getTypes(skillIds)
 
 		// Extract unique group IDs
-		const groupIds = [...new Set(types.map((t) => t.group_id))]
+		const groupIds = [...new Set(types.map((t) => t.group_id).filter(id => id > 0))]
+
+		if (groupIds.length === 0) {
+			logger.warn('No valid group IDs found for skills', {
+				skillIds: skillIds.slice(0, 10),
+				types: types.slice(0, 5)
+			})
+		}
 
 		// Get group information
 		const groups = await this.getGroups(groupIds)
 
 		// Extract unique category IDs
-		const categoryIds = [...new Set(groups.map((g) => g.category_id))]
+		const categoryIds = [...new Set(groups.map((g) => g.category_id).filter(id => id > 0))]
 
-		// Get category information
+		// Get category information (this should typically just be category 16 "Skill")
 		const categories = await this.getCategories(categoryIds)
 
 		// Create maps for quick lookup
@@ -462,17 +471,40 @@ export class EveUniverse extends MigratableDurableObject<Env> {
 		const groupMap = new Map(groups.map((g) => [g.group_id, g]))
 		const categoryMap = new Map(categories.map((c) => [c.category_id, c]))
 
+		logger.info('Skill hierarchy data loaded', {
+			typesCount: types.length,
+			groupsCount: groups.length,
+			categoriesCount: categories.length,
+			sampleGroups: [...groupMap.values()].slice(0, 5).map(g => g.name)
+		})
+
 		// Build the hierarchy
-		return skillIds
+		const hierarchy = skillIds
 			.map((skillId) => {
 				const type = typeMap.get(skillId)
-				if (!type) return null
+				if (!type) {
+					logger.warn('Type not found for skill', { skillId })
+					return null
+				}
 
 				const group = groupMap.get(type.group_id)
-				if (!group) return null
+				if (!group) {
+					logger.warn('Group not found for skill', {
+						skillId,
+						groupId: type.group_id,
+						skillName: type.name
+					})
+					return null
+				}
 
 				const category = categoryMap.get(group.category_id)
-				if (!category) return null
+				if (!category) {
+					logger.warn('Category not found for group', {
+						groupId: type.group_id,
+						categoryId: group.category_id
+					})
+					return null
+				}
 
 				return {
 					skill_id: skillId,
@@ -484,6 +516,14 @@ export class EveUniverse extends MigratableDurableObject<Env> {
 				}
 			})
 			.filter((h): h is NonNullable<typeof h> => h !== null)
+
+		logger.info('Skill hierarchy built', {
+			requestedCount: skillIds.length,
+			returnedCount: hierarchy.length,
+			missingCount: skillIds.length - hierarchy.length
+		})
+
+		return hierarchy
 	}
 
 	private async cacheTypes(types: TypeInfo[]): Promise<void> {
@@ -598,73 +638,133 @@ export class EveUniverse extends MigratableDurableObject<Env> {
 	}
 
 	private async fetchTypesFromESI(typeIds: number[]): Promise<TypeInfo[]> {
+		// Batch fetch all types in parallel for better performance
+		const BATCH_SIZE = 10 // Process 10 at a time to avoid overwhelming ESI
 		const results: TypeInfo[] = []
 
-		for (const typeId of typeIds) {
-			try {
-				const { data } = await fetchTypeInfo(typeId)
-				results.push({
-					type_id: data.type_id,
-					name: data.name,
-					group_id: data.group_id,
-					description: data.description,
-					published: data.published,
-					cached_at: Date.now(),
-				})
-			} catch (error) {
-				logger.error('Error fetching type info from ESI', {
-					error: String(error),
-					typeId,
-				})
+		for (let i = 0; i < typeIds.length; i += BATCH_SIZE) {
+			const batch = typeIds.slice(i, i + BATCH_SIZE)
+
+			const batchPromises = batch.map(async (typeId) => {
+				try {
+					const { data } = await fetchTypeInfo(typeId)
+					return {
+						type_id: data.type_id,
+						name: data.name,
+						group_id: data.group_id,
+						description: data.description,
+						published: data.published,
+						cached_at: Date.now(),
+					}
+				} catch (error) {
+					logger.error('Error fetching type info from ESI', {
+						error: String(error),
+						typeId,
+					})
+					return null
+				}
+			})
+
+			const batchResults = await Promise.all(batchPromises)
+			results.push(...batchResults.filter((r): r is TypeInfo => r !== null))
+
+			// Small delay between batches to be nice to ESI
+			if (i + BATCH_SIZE < typeIds.length) {
+				await new Promise(resolve => setTimeout(resolve, 100))
 			}
 		}
+
+		logger.info('Fetched types from ESI', {
+			requested: typeIds.length,
+			fetched: results.length,
+		})
 
 		return results
 	}
 
 	private async fetchGroupsFromESI(groupIds: number[]): Promise<GroupInfo[]> {
+		// Batch fetch all groups in parallel for better performance
+		const BATCH_SIZE = 10
 		const results: GroupInfo[] = []
 
-		for (const groupId of groupIds) {
-			try {
-				const { data } = await fetchGroupInfo(groupId)
-				results.push({
-					group_id: data.group_id,
-					name: data.name,
-					category_id: data.category_id,
-					published: data.published,
-					cached_at: Date.now(),
-				})
-			} catch (error) {
-				logger.error('Error fetching group info from ESI', {
-					error: String(error),
-					groupId,
-				})
+		for (let i = 0; i < groupIds.length; i += BATCH_SIZE) {
+			const batch = groupIds.slice(i, i + BATCH_SIZE)
+
+			const batchPromises = batch.map(async (groupId) => {
+				try {
+					const { data } = await fetchGroupInfo(groupId)
+					return {
+						group_id: data.group_id,
+						name: data.name,
+						category_id: data.category_id,
+						published: data.published,
+						cached_at: Date.now(),
+					}
+				} catch (error) {
+					logger.error('Error fetching group info from ESI', {
+						error: String(error),
+						groupId,
+					})
+					return null
+				}
+			})
+
+			const batchResults = await Promise.all(batchPromises)
+			results.push(...batchResults.filter((r): r is GroupInfo => r !== null))
+
+			// Small delay between batches
+			if (i + BATCH_SIZE < groupIds.length) {
+				await new Promise(resolve => setTimeout(resolve, 100))
 			}
 		}
+
+		logger.info('Fetched groups from ESI', {
+			requested: groupIds.length,
+			fetched: results.length,
+		})
 
 		return results
 	}
 
 	private async fetchCategoriesFromESI(categoryIds: number[]): Promise<CategoryInfo[]> {
+		// Batch fetch all categories in parallel
+		const BATCH_SIZE = 10
 		const results: CategoryInfo[] = []
 
-		for (const categoryId of categoryIds) {
-			try {
-				const { data } = await fetchCategoryInfo(categoryId)
-				results.push({
-					category_id: data.category_id,
-					name: data.name,
-					published: data.published,
-					cached_at: Date.now(),
-				})
-			} catch (error) {
-				logger.error('Error fetching category info from ESI', {
-					error: String(error),
-					categoryId,
-				})
+		for (let i = 0; i < categoryIds.length; i += BATCH_SIZE) {
+			const batch = categoryIds.slice(i, i + BATCH_SIZE)
+
+			const batchPromises = batch.map(async (categoryId) => {
+				try {
+					const { data } = await fetchCategoryInfo(categoryId)
+					return {
+						category_id: data.category_id,
+						name: data.name,
+						published: data.published,
+						cached_at: Date.now(),
+					}
+				} catch (error) {
+					logger.error('Error fetching category info from ESI', {
+						error: String(error),
+						categoryId,
+					})
+					return null
+				}
+			})
+
+			const batchResults = await Promise.all(batchPromises)
+			results.push(...batchResults.filter((r): r is CategoryInfo => r !== null))
+
+			// Small delay between batches
+			if (i + BATCH_SIZE < categoryIds.length) {
+				await new Promise(resolve => setTimeout(resolve, 100))
 			}
 		}
+
+		logger.info('Fetched categories from ESI', {
+			requested: categoryIds.length,
+			fetched: results.length,
+		})
 
 		return results
 	}
