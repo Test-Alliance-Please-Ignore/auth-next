@@ -102,7 +102,78 @@ export class CharacterDataStore extends DurableObject<Env> {
 	}
 
 	private async initializeSchema() {
-		// await this.createSchema()
+		// Check if skill tables exist, if not create them
+		await this.ensureSkillTables()
+	}
+
+	private async ensureSkillTables(): Promise<void> {
+		try {
+			// Check if character_skills table exists
+			const result = await this.ctx.storage.sql.exec(
+				`SELECT name FROM sqlite_master WHERE type='table' AND name='character_skills'`
+			).toArray()
+
+			if (result.length === 0) {
+				logger.info('Skill tables not found, creating them...')
+
+				// Character skills aggregate table
+				await this.ctx.storage.sql.exec(`
+					CREATE TABLE IF NOT EXISTS character_skills (
+						character_id INTEGER PRIMARY KEY,
+						total_sp INTEGER NOT NULL,
+						unallocated_sp INTEGER NOT NULL DEFAULT 0,
+						last_updated INTEGER NOT NULL,
+						next_update_at INTEGER NOT NULL,
+						update_count INTEGER NOT NULL DEFAULT 0
+					)
+				`)
+
+				await this.ctx.storage.sql.exec(`
+					CREATE INDEX IF NOT EXISTS idx_character_skills_next_update ON character_skills(next_update_at)
+				`)
+
+				// Individual skills table
+				await this.ctx.storage.sql.exec(`
+					CREATE TABLE IF NOT EXISTS skills (
+						character_id INTEGER NOT NULL,
+						skill_id INTEGER NOT NULL,
+						skillpoints_in_skill INTEGER NOT NULL,
+						trained_skill_level INTEGER NOT NULL,
+						active_skill_level INTEGER NOT NULL,
+						PRIMARY KEY (character_id, skill_id)
+					)
+				`)
+
+				await this.ctx.storage.sql.exec(`
+					CREATE INDEX IF NOT EXISTS idx_skills_character ON skills(character_id)
+				`)
+
+				// Skill queue table
+				await this.ctx.storage.sql.exec(`
+					CREATE TABLE IF NOT EXISTS skillqueue (
+						character_id INTEGER NOT NULL,
+						skill_id INTEGER NOT NULL,
+						finished_level INTEGER NOT NULL,
+						queue_position INTEGER NOT NULL,
+						start_date TEXT,
+						finish_date TEXT,
+						training_start_sp INTEGER,
+						level_start_sp INTEGER,
+						level_end_sp INTEGER,
+						PRIMARY KEY (character_id, queue_position)
+					)
+				`)
+
+				await this.ctx.storage.sql.exec(`
+					CREATE INDEX IF NOT EXISTS idx_skillqueue_character ON skillqueue(character_id)
+				`)
+
+				logger.info('Skill tables created successfully')
+			}
+		} catch (error) {
+			logger.error('Error checking/creating skill tables', { error: String(error) })
+			// Continue anyway - the tables might exist in a different format
+		}
 	}
 
 	private async createSchema(): Promise<void> {
