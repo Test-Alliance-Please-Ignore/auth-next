@@ -48,6 +48,57 @@ build *flags:
 #       LOCAL DEV COMMANDS        #
 # =============================== #
 
+# =============================== #
+#       DATABASE COMMANDS         #
+# =============================== #
+
+# Generate migrations for all apps
+[group('2. database')]
+db-generate-all:
+  cd apps/core && bun run db:generate
+  cd apps/esi && bun run db:generate
+  cd apps/evesso && bun run db:generate
+  cd apps/tags && bun run db:generate
+  cd apps/groups && bun run db:generate
+
+# Push schema changes to database (for development)
+[group('2. database')]
+db-push-all:
+  cd apps/core && bun run db:push
+  cd apps/esi && bun run db:push
+  cd apps/evesso && bun run db:push
+  cd apps/tags && bun run db:push
+  cd apps/groups && bun run db:push
+
+# Run migrations for all apps
+[group('2. database')]
+db-migrate-all:
+  cd apps/core && bun run db:migrate
+  cd apps/esi && bun run db:migrate
+  cd apps/evesso && bun run db:migrate
+  cd apps/tags && bun run db:migrate
+  cd apps/groups && bun run db:migrate
+
+# Open Drizzle Studio for a specific app
+[group('2. database')]
+db-studio app:
+  cd apps/{{app}} && bun run db:studio
+
+# Generate migrations for a specific app
+[group('2. database')]
+db-generate app:
+  cd apps/{{app}} && bun run db:generate
+
+# Push schema for a specific app
+[group('2. database')]
+db-push app:
+  cd apps/{{app}} && bun run db:push
+
+# Run migrations for a specific app
+[group('2. database')]
+db-migrate app:
+  cd apps/{{app}} && bun run db:migrate
+
 # Run dev script. Runs turbo dev if not in a specific project directory.
 [group('2. local dev')]
 [no-cd]
