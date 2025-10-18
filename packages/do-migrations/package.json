@@ -1,0 +1,19 @@
+{
+	"name": "@repo/do-migrations",
+	"version": "0.0.0",
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./src/index.ts",
+			"default": "./src/index.ts"
+		}
+	},
+	"scripts": {
+		"check:lint": "eslint .",
+		"check:types": "tsc --noEmit"
+	},
+	"devDependencies": {
+		"@repo/eslint-config": "workspace:*",
+		"@repo/typescript-config": "workspace:*"
+	}
+}
