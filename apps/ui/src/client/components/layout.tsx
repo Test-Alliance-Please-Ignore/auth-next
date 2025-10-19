@@ -8,7 +8,7 @@ export default function Layout() {
 
 	// Find main character
 	const mainCharacter = user?.characters.find(
-		(c) => c.characterOwnerHash === user.mainCharacterOwnerHash
+		(c) => c.characterId === user.mainCharacterId
 	)
 
 	return (

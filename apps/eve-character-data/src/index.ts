@@ -2,8 +2,10 @@ import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { withNotFound, withOnError } from '@repo/hono-helpers'
+import { getStub } from '@repo/do-utils'
 
 import type { App } from './context'
+import type { EveCharacterData } from '@repo/eve-character-data'
 import { EveCharacterDataDO } from './durable-object'
 
 const app = new Hono<App>()
@@ -26,13 +28,16 @@ const app = new Hono<App>()
 
 	.get('/example', async (c) => {
 		// Example: Access the Durable Object
-		const id = c.req.query('id') ?? 'default'
-		const stub = c.env.EVE_CHARACTER_DATA.idFromName(id)
-		const durableObject = c.env.EVE_CHARACTER_DATA.get(stub)
+		const characterId = Number(c.req.query('characterId'))
 
-		const result = await durableObject.exampleMethod('Hello from worker!')
+		if (!characterId || isNaN(characterId)) {
+			return c.json({ error: 'Invalid characterId parameter' }, 400)
+		}
 
-		return c.json({ id, result })
+		const durableObject = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+		const characterInfo = await durableObject.getCharacterInfo(characterId)
+
+		return c.json({ characterId, characterInfo })
 	})
 
 export default app

@@ -5,9 +5,9 @@ import type { App, SessionUser } from '../context'
 import { createDb } from '../db'
 import { AuthService } from '../services/auth.service'
 import { UserService } from '../services/user.service'
+import { getStub } from '@repo/do-utils'
 
 import type { EveTokenStore } from '@repo/eve-token-store'
-import type { DurableObjectStub } from 'cloudflare:workers'
 
 /**
  * Session middleware
@@ -39,10 +39,7 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 			const db = createDb(c.env.DATABASE_URL)
 
 			// Create EVE Token Store stub
-			const eveTokenStoreId = c.env.EVE_TOKEN_STORE.idFromName('default')
-			const eveTokenStoreStub = c.env.EVE_TOKEN_STORE.get(
-				eveTokenStoreId
-			) as DurableObjectStub<EveTokenStore>
+			const eveTokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
 
 			// Create services
 			const authService = new AuthService(db, eveTokenStoreStub, c.env.SESSION_SECRET)
@@ -73,11 +70,11 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 			// Build session user object
 			const sessionUser: SessionUser = {
 				id: userProfile.id,
-				mainCharacterOwnerHash: userProfile.mainCharacterOwnerHash,
+				mainCharacterId: userProfile.mainCharacterId,
 				sessionId: session.id,
 				characters: userProfile.characters.map((char) => ({
 					id: char.id,
-					characterOwnerHash: char.characterOwnerHash,
+				characterOwnerHash: char.characterOwnerHash,
 					characterId: char.characterId,
 					characterName: char.characterName,
 					is_primary: char.is_primary,

@@ -20,7 +20,18 @@
 				"name": "EVE_TOKEN_STORE",
 				"class_name": "EveTokenStore",
 				"script_name": "eve-token-store"
+			},
+			{
+				"name": "EVE_CHARACTER_DATA",
+				"class_name": "EveCharacterData",
+				"script_name": "eve-character-data"
 			}
 		]
-	}
+	},
+	"services": [
+		{
+			"binding": "EVE_STATIC_DATA",
+			"service": "eve-static-data"
+		}
+	]
 }

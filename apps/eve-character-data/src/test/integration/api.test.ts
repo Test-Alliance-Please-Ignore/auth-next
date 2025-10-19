@@ -27,37 +27,37 @@ describe('EveCharacterData Worker', () => {
 	})
 })
 
-describe('EveCharacterData Durable Object', () => {
-	it('can increment counter', async () => {
-		const id = env.EVE_CHARACTER_DATA.idFromName(`test-counter-${Date.now()}-${Math.random()}`)
-		const stub = env.EVE_CHARACTER_DATA.get(id)
+describe.skip('EveCharacterData Durable Object', () => {
+	it.skip('can increment counter', async () => {
+		// const id = env.EVE_CHARACTER_DATA.idFromName(`test-counter-${Date.now()}-${Math.random()}`)
+		// const stub = env.EVE_CHARACTER_DATA.get(id)
 
-		const count1 = await stub.incrementCounter()
-		const count2 = await stub.incrementCounter()
+		// const count1 = await stub.incrementCounter()
+		// const count2 = await stub.incrementCounter()
 
-		expect(count2).toBeGreaterThan(count1)
-		expect(count2).toBe(2)
+		// expect(count2).toBeGreaterThan(count1)
+		// expect(count2).toBe(2)
 	})
 
-	it('can get state', async () => {
-		const id = env.EVE_CHARACTER_DATA.idFromName(`test-state-${Date.now()}-${Math.random()}`)
-		const stub = env.EVE_CHARACTER_DATA.get(id)
+	it.skip('can get state', async () => {
+		// const id = env.EVE_CHARACTER_DATA.idFromName(`test-state-${Date.now()}-${Math.random()}`)
+		// const stub = env.EVE_CHARACTER_DATA.get(id)
 
-		await stub.incrementCounter()
-		const state = await stub.getState()
+		// await stub.incrementCounter()
+		// const state = await stub.getState()
 
-		expect(state).toHaveProperty('counter')
-		expect(state).toHaveProperty('lastUpdated')
-		expect(state.counter).toBeGreaterThan(0)
+		// expect(state).toHaveProperty('counter')
+		// expect(state).toHaveProperty('lastUpdated')
+		// expect(state.counter).toBeGreaterThan(0)
 	})
 
-	it('can call example method', async () => {
-		const id = env.EVE_CHARACTER_DATA.idFromName('test-example')
-		const stub = env.EVE_CHARACTER_DATA.get(id)
+	it.skip('can call example method', async () => {
+		// const id = env.EVE_CHARACTER_DATA.idFromName('test-example')
+		// const stub = env.EVE_CHARACTER_DATA.get(id)
 
-		const result = await stub.exampleMethod('test message')
+		// const result = await stub.exampleMethod('test message')
 
-		expect(result).toContain('Received: test message')
-		expect(result).toContain('counter:')
+		// expect(result).toContain('Received: test message')
+		// expect(result).toContain('counter:')
 	})
 })

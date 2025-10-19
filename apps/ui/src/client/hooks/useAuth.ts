@@ -3,9 +3,8 @@ import { apiClient } from '@/lib/api'
 
 interface User {
 	id: string
-	mainCharacterOwnerHash: string
+	mainCharacterId: number
 	characters: Array<{
-		characterOwnerHash: string
 		characterId: number
 		characterName: string
 	}>
@@ -21,7 +20,7 @@ interface SessionResponse {
  * Hook to check authentication status and get current user
  */
 export function useAuth() {
-	const { data, isLoading, error } = useQuery<SessionResponse>({
+	const { data, isLoading, error, refetch } = useQuery<SessionResponse>({
 		queryKey: ['auth', 'session'],
 		queryFn: () => apiClient.get<SessionResponse>('/auth/session'),
 		retry: false,
@@ -33,6 +32,7 @@ export function useAuth() {
 		isAuthenticated: data?.authenticated ?? false,
 		isLoading,
 		error,
+		refetch,
 	}
 }
 

@@ -14,6 +14,8 @@ export type ActivityAction =
 	| 'preferences_updated'
 	| 'session_created'
 	| 'session_expired'
+	| 'role_granted'
+	| 'role_revoked'
 
 /**
  * User character DTO
@@ -37,7 +39,7 @@ export interface UserSessionDTO {
 	metadata?: {
 		ip?: string
 		userAgent?: string
-		characterOwnerHash?: string
+		characterId?: number
 	}
 	lastActivityAt: Date
 	createdAt: Date
@@ -60,7 +62,7 @@ export interface UserPreferencesDTO {
  */
 export interface UserProfileDTO {
 	id: string
-	mainCharacterOwnerHash: string
+	mainCharacterId: number
 	characters: UserCharacterDTO[]
 	is_admin: boolean
 	preferences: UserPreferencesDTO
@@ -78,7 +80,7 @@ export interface ActivityLogEntryDTO {
 	metadata?: {
 		ip?: string
 		userAgent?: string
-		characterOwnerHash?: string
+		characterId?: number
 		success?: boolean
 		error?: string
 		[key: string]: unknown
@@ -99,7 +101,7 @@ export interface RequestMetadata {
  */
 export interface CreateSessionOptions {
 	userId: string
-	characterOwnerHash: string
+	characterId: number
 	metadata?: RequestMetadata
 	/** Session duration in seconds (default: 30 days) */
 	durationSeconds?: number

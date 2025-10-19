@@ -1,14 +1,45 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
+import { RefreshCw, ExternalLink } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { apiClient } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
 export default function DashboardPage() {
-	const { user, isLoading } = useAuth()
+	const { user, isLoading, refetch } = useAuth()
 	const navigate = useNavigate()
 	const [isLinkingCharacter, setIsLinkingCharacter] = useState(false)
+	const [refreshingCharacters, setRefreshingCharacters] = useState<Set<string>>(new Set())
+
+	const handleRefreshCharacter = async (characterId: number) => {
+		// Prevent multiple refreshes for the same character
+		const characterIdStr = characterId.toString()
+		if (refreshingCharacters.has(characterIdStr)) return
+
+		// Add character to refreshing set
+		setRefreshingCharacters(prev => new Set(prev).add(characterIdStr))
+
+		try {
+			const result = await apiClient.refreshCharacterById(characterId)
+
+			if (result.success) {
+				// Refresh user data to get updated character info
+				await refetch()
+				console.log('Character refreshed successfully')
+			}
+		} catch (error) {
+			console.error('Failed to refresh character:', error)
+			// TODO: Show error toast
+		} finally {
+			// Remove character from refreshing set
+			setRefreshingCharacters(prev => {
+				const next = new Set(prev)
+				next.delete(characterIdStr)
+				return next
+			})
+		}
+	}
 
 	const handleLinkCharacter = async () => {
 		setIsLinkingCharacter(true)
@@ -48,7 +79,7 @@ export default function DashboardPage() {
 
 	// Find main character
 	const mainCharacter = user.characters.find(
-		(c) => c.characterOwnerHash === user.mainCharacterOwnerHash
+		(c) => c.characterId === user.mainCharacterId
 	)
 
 	return (
@@ -64,28 +95,52 @@ export default function DashboardPage() {
 
 				{/* Main Character Card */}
 				<div className="mb-8">
-					<Card className="card-gradient border-border/50 shadow-[0_8px_30px_rgb(0,0,0,0.4)]">
+					<Card className="card-gradient border-border/50 shadow-[0_8px_30px_rgb(0,0,0,0.4)] relative">
 						<CardHeader>
 							<CardTitle className="text-2xl">Main Character</CardTitle>
 							<CardDescription>Your primary EVE Online character</CardDescription>
 						</CardHeader>
 						<CardContent>
 							{mainCharacter ? (
-								<div className="flex items-center gap-4">
-									<img
-										src={`https://images.evetech.net/characters/${mainCharacter.characterId}/portrait?size=128`}
-										alt={mainCharacter.characterName}
-										className="w-20 h-20 rounded-full border-2 border-primary/30 glow shadow-lg"
-									/>
-									<div>
-										<h3 className="text-xl font-semibold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
-											{mainCharacter.characterName}
-										</h3>
-										<p className="text-sm text-muted-foreground">
-											Character ID: {mainCharacter.characterId}
-										</p>
+								<>
+									<div className="flex items-center gap-4">
+										<img
+											src={`https://images.evetech.net/characters/${mainCharacter.characterId}/portrait?size=128`}
+											alt={mainCharacter.characterName}
+											className="w-20 h-20 rounded-full border-2 border-primary/30 glow shadow-lg"
+										/>
+										<div className="flex-1">
+											<h3 className="text-xl font-semibold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+												{mainCharacter.characterName}
+											</h3>
+											<p className="text-sm text-muted-foreground">
+												Character ID: {mainCharacter.characterId}
+											</p>
+										</div>
+										<Link to={`/character/${mainCharacter.characterId}`}>
+											<Button size="sm" variant="outline" className="gap-2">
+												View Details
+												<ExternalLink className="h-3 w-3" />
+											</Button>
+										</Link>
 									</div>
-								</div>
+									<Button
+										size="icon"
+										variant="ghost"
+										className="absolute top-4 right-4 hover:bg-primary/10"
+										onClick={() => handleRefreshCharacter(mainCharacter.characterId)}
+										disabled={refreshingCharacters.has(mainCharacter.characterId.toString())}
+										title="Refresh character data"
+									>
+										<RefreshCw
+											className={`h-4 w-4 ${
+												refreshingCharacters.has(mainCharacter.characterId.toString())
+													? 'animate-spin'
+													: ''
+											}`}
+										/>
+									</Button>
+								</>
 							) : (
 								<p className="text-muted-foreground">No main character found</p>
 							)}
@@ -110,23 +165,41 @@ export default function DashboardPage() {
 					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
 						{user.characters.map((character) => (
 							<Card
-								key={character.characterOwnerHash}
-								className="card-gradient border-border/30 hover:border-primary/30 transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.3)] group"
+								key={character.characterId}
+								className="card-gradient border-border/30 hover:border-primary/30 transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.3)] group relative"
 							>
 								<CardContent className="p-4">
-									<div className="flex items-center gap-3">
-										<img
-											src={`https://images.evetech.net/characters/${character.characterId}/portrait?size=64`}
-											alt={character.characterName}
-											className="w-12 h-12 rounded-full border border-border/50 group-hover:border-primary/30 transition-colors shadow-md"
-										/>
-										<div className="flex-1 min-w-0">
-											<h3 className="font-semibold truncate">{character.characterName}</h3>
-											{character.characterOwnerHash === user.mainCharacterOwnerHash && (
-												<span className="text-xs text-primary bg-primary/10 px-2 py-0.5 rounded">Main</span>
-											)}
+									<Link to={`/character/${character.characterId}`} className="block">
+										<div className="flex items-center gap-3">
+											<img
+												src={`https://images.evetech.net/characters/${character.characterId}/portrait?size=64`}
+												alt={character.characterName}
+												className="w-12 h-12 rounded-full border border-border/50 group-hover:border-primary/30 transition-colors shadow-md"
+											/>
+											<div className="flex-1 min-w-0">
+												<h3 className="font-semibold truncate group-hover:text-primary transition-colors">{character.characterName}</h3>
+												{character.characterId === user.mainCharacterId && (
+													<span className="text-xs text-primary bg-primary/10 px-2 py-0.5 rounded">Main</span>
+												)}
+											</div>
 										</div>
-									</div>
+									</Link>
+									<Button
+										size="icon"
+										variant="ghost"
+										className="absolute top-2 right-2 h-8 w-8 hover:bg-primary/10"
+										onClick={() => handleRefreshCharacter(character.characterId)}
+										disabled={refreshingCharacters.has(character.characterId.toString())}
+										title="Refresh character data"
+									>
+										<RefreshCw
+											className={`h-3.5 w-3.5 ${
+												refreshingCharacters.has(character.characterId.toString())
+													? 'animate-spin'
+													: ''
+											}`}
+										/>
+									</Button>
 								</CardContent>
 							</Card>
 						))}

@@ -222,4 +222,46 @@ export interface EveCharacterData extends DurableObject {
 	 * @returns Last updated timestamp or null if not found
 	 */
 	getLastUpdated(characterId: number): Promise<Date | null>
+
+	/**
+	 * Get sensitive character data (location, wallet, assets, status, skill queue)
+	 * @param characterId - EVE character ID
+	 * @returns Sensitive character data or null if not found
+	 */
+	getSensitiveData(characterId: number): Promise<CharacterSensitiveData | null>
+}
+
+/**
+ * Sensitive character data (owner only)
+ */
+export interface CharacterSensitiveData {
+	location?: {
+		solarSystemId: number
+		stationId?: number
+		structureId?: string
+	}
+	wallet?: {
+		balance: string
+	}
+	assets?: {
+		totalValue?: string
+		assetCount?: number
+		lastUpdated?: Date
+	}
+	status?: {
+		online: boolean
+		lastLogin?: Date
+		lastLogout?: Date
+		loginsCount?: number
+	}
+	skillQueue?: Array<{
+		queue_position: number
+		skill_id: number
+		finished_level: number
+		start_date?: string
+		finish_date?: string
+		training_start_sp?: number
+		level_start_sp?: number
+		level_end_sp?: number
+	}>
 }

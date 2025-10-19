@@ -105,12 +105,13 @@ export interface TokenInfo {
 export interface CallbackResult {
 	/** Whether the callback was successful */
 	success: boolean
-	/** Character owner hash if successful */
-	characterOwnerHash?: string
+	/** Character ID if successful */
+	characterId?: number
 	/** Character info if successful */
 	characterInfo?: {
 		characterId: number
 		characterName: string
+		characterOwnerHash: string
 		scopes: string[]
 	}
 	/** Error message if failed */
@@ -175,31 +176,31 @@ export interface EveTokenStore {
 
 	/**
 	 * Manually refresh a token
-	 * @param characterOwnerHash - Unique hash identifying the character+owner
+	 * @param characterId - EVE character ID
 	 * @returns Whether refresh was successful
 	 */
-	refreshToken(characterOwnerHash: string): Promise<boolean>
+	refreshToken(characterId: number): Promise<boolean>
 
 	/**
 	 * Get token information (without actual token values)
-	 * @param characterOwnerHash - Unique hash identifying the character+owner
+	 * @param characterId - EVE character ID
 	 * @returns Token info or null if not found
 	 */
-	getTokenInfo(characterOwnerHash: string): Promise<TokenInfo | null>
+	getTokenInfo(characterId: number): Promise<TokenInfo | null>
 
 	/**
 	 * Get access token for use (decrypted)
-	 * @param characterOwnerHash - Unique hash identifying the character+owner
+	 * @param characterId - EVE character ID
 	 * @returns Access token or null if not found/expired
 	 */
-	getAccessToken(characterOwnerHash: string): Promise<string | null>
+	getAccessToken(characterId: number): Promise<string | null>
 
 	/**
 	 * Revoke and delete a token
-	 * @param characterOwnerHash - Unique hash identifying the character+owner
+	 * @param characterId - EVE character ID
 	 * @returns Whether revocation was successful
 	 */
-	revokeToken(characterOwnerHash: string): Promise<boolean>
+	revokeToken(characterId: number): Promise<boolean>
 
 	/**
 	 * List all tokens stored in the system

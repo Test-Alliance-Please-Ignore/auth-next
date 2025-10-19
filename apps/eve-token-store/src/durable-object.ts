@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { and, eq } from '@repo/db-utils'
+import { and, eq, gt, lte } from '@repo/db-utils'
 
 import { createDb } from './db'
 import { eveCharacters, eveTokens } from './db/schema'
@@ -26,7 +26,6 @@ const EVE_SSO_VERIFY_URL = 'https://login.eveonline.com/oauth/verify'
 /**
  * EVE SSO Scopes
  */
-const EVE_SCOPES_LOGIN = ['publicData']
 const EVE_SCOPES_ALL = [
 	'publicData',
 	'esi-calendar.respond_calendar_events.v1',
@@ -142,10 +141,10 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	}
 
 	/**
-	 * Start OAuth flow for login (publicData scope only)
+	 * Start OAuth flow for login (all scopes)
 	 */
 	async startLoginFlow(state?: string): Promise<AuthorizationUrlResponse> {
-		return this.generateAuthUrl(EVE_SCOPES_LOGIN, state)
+		return this.generateAuthUrl(EVE_SCOPES_ALL, state)
 	}
 
 	/**
@@ -185,10 +184,11 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 			return {
 				success: true,
-				characterOwnerHash: verifyResponse.CharacterOwnerHash,
+				characterId: verifyResponse.CharacterID,
 				characterInfo: {
 					characterId: verifyResponse.CharacterID,
 					characterName: verifyResponse.CharacterName,
+					characterOwnerHash: verifyResponse.CharacterOwnerHash,
 					scopes,
 				},
 			}
@@ -204,18 +204,18 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	/**
 	 * Manually refresh a token
 	 */
-	async refreshToken(characterOwnerHash: string): Promise<boolean> {
+	async refreshToken(characterId: number): Promise<boolean> {
 		try {
 			// Get character from database
 			const character = await this.db.query.eveCharacters.findFirst({
-				where: eq(eveCharacters.characterOwnerHash, characterOwnerHash),
+				where: eq(eveCharacters.characterId, characterId),
 				with: {
 					tokens: true,
 				},
 			})
 
 			if (!character) {
-				console.error('Character not found:', characterOwnerHash)
+				console.error('Character not found:', characterId)
 				return false
 			}
 
@@ -265,9 +265,9 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	/**
 	 * Get token information (without actual token values)
 	 */
-	async getTokenInfo(characterOwnerHash: string): Promise<TokenInfo | null> {
+	async getTokenInfo(characterId: number): Promise<TokenInfo | null> {
 		const character = await this.db.query.eveCharacters.findFirst({
-			where: eq(eveCharacters.characterOwnerHash, characterOwnerHash),
+			where: eq(eveCharacters.characterId, characterId),
 		})
 
 		if (!character) {
@@ -298,9 +298,9 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	/**
 	 * Get access token for use (decrypted)
 	 */
-	async getAccessToken(characterOwnerHash: string): Promise<string | null> {
+	async getAccessToken(characterId: number): Promise<string | null> {
 		const character = await this.db.query.eveCharacters.findFirst({
-			where: eq(eveCharacters.characterOwnerHash, characterOwnerHash),
+			where: eq(eveCharacters.characterId, characterId),
 		})
 
 		if (!character) {
@@ -318,7 +318,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		// Check if token is expired
 		if (tokenRecord.expiresAt < new Date()) {
 			// Try to refresh
-			const refreshed = await this.refreshToken(characterOwnerHash)
+			const refreshed = await this.refreshToken(characterId)
 			if (!refreshed) {
 				return null
 			}
@@ -341,10 +341,10 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	/**
 	 * Revoke and delete a token
 	 */
-	async revokeToken(characterOwnerHash: string): Promise<boolean> {
+	async revokeToken(characterId: number): Promise<boolean> {
 		try {
 			const character = await this.db.query.eveCharacters.findFirst({
-				where: eq(eveCharacters.characterOwnerHash, characterOwnerHash),
+				where: eq(eveCharacters.characterId, characterId),
 			})
 
 			if (!character) {
@@ -401,11 +401,13 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		const cacheKey = `${characterId}:${path}`
 
 		// 1. Check SQLite cache
-		const cached = await this.state.storage.sql.exec<{
+		const cachedCursor = await this.state.storage.sql.exec<{
 			response_data: string
 			expires_at: number
 			etag: string | null
 		}>(`SELECT response_data, expires_at, etag FROM esi_cache WHERE cache_key = ?`, cacheKey)
+
+		const cached = [...cachedCursor]
 
 		if (cached.length > 0) {
 			const now = Date.now()
@@ -428,7 +430,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 		let token: string | undefined
 		if (character) {
-			const accessToken = await this.getAccessToken(character.characterOwnerHash)
+			const accessToken = await this.getAccessToken(character.characterId)
 			token = accessToken || undefined
 		}
 
@@ -496,12 +498,15 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		console.log('EveTokenStoreDO alarm triggered at:', new Date().toISOString())
 
 		try {
-			// Find tokens expiring within 5 minutes
+			const now = new Date()
+			const fiveMinutesFromNow = new Date(Date.now() + 5 * 60 * 1000)
+
+			// Find tokens expiring within the next 5 minutes
 			const expiringTokens = await this.db.query.eveTokens.findMany({
-				where:
-					and(),
-					// Token expires in the future (not already expired)
-					// but within the next 5 minutes
+				where: and(
+					gt(eveTokens.expiresAt, now), // Not already expired
+					lte(eveTokens.expiresAt, fiveMinutesFromNow) // Expires within 5 minutes
+				),
 			})
 
 			console.log(`Found ${expiringTokens.length} tokens to refresh`)
@@ -514,7 +519,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 				if (character) {
 					console.log(`Refreshing token for character: ${character.characterName}`)
-					await this.refreshToken(character.characterOwnerHash)
+					await this.refreshToken(character.characterId)
 				}
 			}
 		} catch (error) {
@@ -635,15 +640,16 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 		// Check if character exists
 		let character = await this.db.query.eveCharacters.findFirst({
-			where: eq(eveCharacters.characterOwnerHash, characterOwnerHash),
+			where: eq(eveCharacters.characterId, characterId),
 		})
 
 		if (character) {
-			// Update existing character
+			// Update existing character (including hash for transfer detection)
 			await this.db
 				.update(eveCharacters)
 				.set({
 					characterName,
+					characterOwnerHash,
 					scopes: JSON.stringify(scopes),
 					updatedAt: new Date(),
 				})

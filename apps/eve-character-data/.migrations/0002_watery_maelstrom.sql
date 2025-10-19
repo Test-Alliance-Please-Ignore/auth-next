@@ -1,0 +1,1 @@
+ALTER TABLE "character_public_info" ALTER COLUMN "security_status" SET DATA TYPE real;

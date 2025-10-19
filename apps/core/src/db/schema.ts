@@ -22,8 +22,8 @@ export const users = pgTable(
 	'users',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
-		/** Character owner hash of the main character */
-		mainCharacterOwnerHash: varchar('main_character_owner_hash', { length: 255 })
+		/** EVE character ID of the main character */
+		mainCharacterId: bigint('main_character_id', { mode: 'number' })
 			.notNull()
 			.unique(),
 		/** Whether this user is an admin */
@@ -32,7 +32,7 @@ export const users = pgTable(
 		updatedAt: timestamp('updated_at').defaultNow().notNull(),
 	},
 	(table) => [
-		index('users_main_character_owner_hash_idx').on(table.mainCharacterOwnerHash),
+		index('users_main_character_id_idx').on(table.mainCharacterId),
 	]
 )
 
@@ -49,23 +49,22 @@ export const userCharacters = pgTable(
 		userId: uuid('user_id')
 			.notNull()
 			.references(() => users.id, { onDelete: 'cascade' }),
-		/** Character owner hash from eve-token-store */
+		/** Character owner hash (stored for transfer detection only) */
 		characterOwnerHash: varchar('character_owner_hash', { length: 255 }).notNull(),
-		/** EVE character ID (cached from eve-token-store for convenience) */
-		characterId: bigint('character_id', { mode: 'number' }).notNull(),
+		/** EVE character ID (primary identifier) */
+		characterId: bigint('character_id', { mode: 'number' }).notNull().unique(),
 		/** EVE character name (cached from eve-token-store for convenience) */
 		characterName: varchar('character_name', { length: 255 }).notNull(),
 		/** Whether this is the user's primary character */
 		is_primary: boolean('is_primary').default(false).notNull(),
 		linkedAt: timestamp('linked_at').defaultNow().notNull(),
+		updatedAt: timestamp('updated_at').defaultNow().notNull(),
 	},
 	(table) => [
-		// Ensure character owner hash is unique across all users
-		unique('user_characters_character_owner_hash_unique').on(table.characterOwnerHash),
 		// Index for finding characters by user
 		index('user_characters_user_id_idx').on(table.userId),
-		// Index for finding user by character
-		index('user_characters_character_owner_hash_idx').on(table.characterOwnerHash),
+		// Index for finding user by characterId
+		index('user_characters_character_id_idx').on(table.characterId),
 		// Index for finding primary character (enforced in application logic: only one primary per user)
 		index('user_characters_is_primary_idx').on(table.userId, table.is_primary),
 	]
@@ -92,7 +91,7 @@ export const userSessions = pgTable(
 		metadata: jsonb('metadata').$type<{
 			ip?: string
 			userAgent?: string
-			characterOwnerHash?: string
+			characterId?: number
 		}>(),
 		/** Last activity timestamp */
 		lastActivityAt: timestamp('last_activity_at').defaultNow().notNull(),
@@ -146,7 +145,7 @@ export const userActivityLog = pgTable(
 		metadata: jsonb('metadata').$type<{
 			ip?: string
 			userAgent?: string
-			characterOwnerHash?: string
+			characterId?: number
 			success?: boolean
 			error?: string
 			[key: string]: unknown

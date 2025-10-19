@@ -2,7 +2,6 @@ import { and, eq } from '@repo/db-utils'
 
 import { userSessions } from '../db/schema'
 
-import type { DurableObjectStub } from 'cloudflare:workers'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { createDb } from '../db'
 import type { CreateSessionOptions, RequestMetadata, UserSessionDTO } from '../types/user'
@@ -16,7 +15,7 @@ import type { CreateSessionOptions, RequestMetadata, UserSessionDTO } from '../t
 export class AuthService {
 	constructor(
 		private db: ReturnType<typeof createDb>,
-		private eveTokenStoreStub: DurableObjectStub<EveTokenStore>,
+		private eveTokenStoreStub: EveTokenStore,
 		private sessionSecret: string
 	) {}
 
@@ -26,7 +25,7 @@ export class AuthService {
 	async createSession(options: CreateSessionOptions): Promise<UserSessionDTO> {
 		const {
 			userId,
-			characterOwnerHash,
+			characterId,
 			metadata,
 			durationSeconds = 30 * 24 * 60 * 60, // 30 days default
 		} = options
@@ -46,7 +45,7 @@ export class AuthService {
 				expiresAt,
 				metadata: {
 					...metadata,
-					characterOwnerHash,
+					characterId,
 				},
 			})
 			.returning()
@@ -155,7 +154,7 @@ export class AuthService {
 	/**
 	 * Get EVE Token Store stub for direct RPC calls
 	 */
-	getEveTokenStore(): DurableObjectStub<EveTokenStore> {
+	getEveTokenStore(): EveTokenStore {
 		return this.eveTokenStoreStub
 	}
 }

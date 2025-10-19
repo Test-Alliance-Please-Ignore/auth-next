@@ -5,7 +5,7 @@ import type { EveTokenStore } from '@repo/eve-token-store'
 export type Env = SharedHonoEnv & {
 	DATABASE_URL: string
 	EVE_CHARACTER_DATA: DurableObjectNamespace
-	EVE_TOKEN_STORE: DurableObjectNamespace<EveTokenStore>
+	EVE_TOKEN_STORE: DurableObjectNamespace
 }
 
 /** Variables can be extended */

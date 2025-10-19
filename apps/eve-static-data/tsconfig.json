@@ -1,0 +1,15 @@
+{
+	"extends": "@repo/typescript-config/base.json",
+	"compilerOptions": {
+		"types": ["node", "vite/client", "vitest/importMeta"]
+	},
+	"include": [
+		"src/**/*.ts",
+		"src/**/*.tsx",
+		"test/**/*.ts",
+		"*.ts",
+		"*.tsx",
+		"worker-configuration.d.ts"
+	],
+	"exclude": ["node_modules", "dist", ".turbo"]
+}

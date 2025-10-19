@@ -1,4 +1,4 @@
-import { boolean, integer, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
+import { boolean, integer, jsonb, pgTable, real, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
 
 /**
  * Database schema for the eve-character-data worker
@@ -15,7 +15,7 @@ export const characterPublicInfo = pgTable('character_public_info', {
 	birthday: text('birthday').notNull(),
 	raceId: integer('race_id').notNull(),
 	bloodlineId: integer('bloodline_id').notNull(),
-	securityStatus: integer('security_status'),
+	securityStatus: real('security_status'),
 	description: text('description'),
 	gender: text('gender').notNull().$type<'male' | 'female'>(),
 	factionId: integer('faction_id'),
@@ -96,6 +96,77 @@ export const characterAttributes = pgTable('character_attributes', {
 })
 
 /**
+ * Character location - Sensitive data (owner only)
+ */
+export const characterLocation = pgTable('character_location', {
+	characterId: integer('character_id').primaryKey().references(() => characterPublicInfo.characterId),
+	solarSystemId: integer('solar_system_id').notNull(),
+	stationId: integer('station_id'),
+	structureId: text('structure_id'), // Can be a long ID for player structures
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
+/**
+ * Character wallet - Sensitive data (owner only)
+ */
+export const characterWallet = pgTable('character_wallet', {
+	characterId: integer('character_id').primaryKey().references(() => characterPublicInfo.characterId),
+	balance: text('balance').notNull(), // Using text to handle large ISK values
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
+/**
+ * Character assets summary - Sensitive data (owner only)
+ * Full asset details would be too large, so we store a summary
+ */
+export const characterAssets = pgTable('character_assets', {
+	characterId: integer('character_id').primaryKey().references(() => characterPublicInfo.characterId),
+	totalValue: text('total_value'), // Estimated total value in ISK
+	assetCount: integer('asset_count'),
+	lastUpdated: timestamp('last_updated', { withTimezone: true }),
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
+/**
+ * Character online status - Sensitive data (owner only)
+ */
+export const characterStatus = pgTable('character_status', {
+	characterId: integer('character_id').primaryKey().references(() => characterPublicInfo.characterId),
+	online: boolean('online').notNull().default(false),
+	lastLogin: timestamp('last_login', { withTimezone: true }),
+	lastLogout: timestamp('last_logout', { withTimezone: true }),
+	loginsCount: integer('logins_count').default(0),
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
+/**
+ * Character skill queue - Sensitive data (owner only)
+ */
+export const characterSkillQueue = pgTable('character_skill_queue', {
+	characterId: integer('character_id').primaryKey().references(() => characterPublicInfo.characterId),
+	queue: jsonb('queue')
+		.notNull()
+		.$type<
+			Array<{
+				queue_position: number
+				skill_id: number
+				finished_level: number
+				start_date?: string
+				finish_date?: string
+				training_start_sp?: number
+				level_start_sp?: number
+				level_end_sp?: number
+			}>
+		>(),
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
+/**
  * Schema export for Drizzle relations
  */
 export const schema = {
@@ -104,4 +175,9 @@ export const schema = {
 	characterCorporationHistory,
 	characterSkills,
 	characterAttributes,
+	characterLocation,
+	characterWallet,
+	characterAssets,
+	characterStatus,
+	characterSkillQueue,
 }

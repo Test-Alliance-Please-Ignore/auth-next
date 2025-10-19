@@ -1,5 +1,9 @@
 import { Hono } from 'hono'
 
+import { getStub } from '@repo/do-utils'
+import type { EveCharacterData } from '@repo/eve-character-data'
+import type { EveTokenStore } from '@repo/eve-token-store'
+
 import { createDb } from '../db'
 import { requireAuth } from '../middleware/session'
 import { ActivityService } from '../services/activity.service'
@@ -45,9 +49,9 @@ users.get('/me', async (c) => {
 
 	return c.json({
 		id: profile.id,
-		mainCharacterOwnerHash: profile.mainCharacterOwnerHash,
+		mainCharacterId: profile.mainCharacterId,
 		characters: profile.characters,
-		roles: profile.roles,
+		is_admin: profile.is_admin,
 		preferences: profile.preferences,
 		createdAt: profile.createdAt,
 		updatedAt: profile.updatedAt,
@@ -99,17 +103,17 @@ users.get('/me/characters', async (c) => {
 })
 
 /**
- * DELETE /users/me/characters/:characterOwnerHash
+ * DELETE /users/me/characters/:characterId
  *
  * Unlink a character from the current user.
  * Cannot unlink primary character.
  */
-users.delete('/me/characters/:characterOwnerHash', async (c) => {
+users.delete('/me/characters/:characterId', async (c) => {
 	const user = c.get('user')!
-	const characterOwnerHash = c.req.param('characterOwnerHash')
+	const characterId = c.req.param('characterId')
 
-	if (!characterOwnerHash) {
-		return c.json({ error: 'Missing character owner hash' }, 400)
+	if (!characterId) {
+		return c.json({ error: 'Missing character ID' }, 400)
 	}
 
 	const db = c.get('db') || createDb(c.env.DATABASE_URL)
@@ -118,13 +122,13 @@ users.delete('/me/characters/:characterOwnerHash', async (c) => {
 
 	try {
 		// Unlink character
-		const success = await userService.unlinkCharacter(user.id, characterOwnerHash)
+		const success = await userService.unlinkCharacter(user.id, Number(characterId))
 
 		if (!success) {
 			return c.json({ error: 'Character not found or already unlinked' }, 404)
 		}
 
-		await activityService.logCharacterUnlinked(user.id, characterOwnerHash, getRequestMetadata(c))
+		await activityService.logCharacterUnlinked(user.id, Number(characterId), getRequestMetadata(c))
 
 		return c.json({
 			success: true,
@@ -138,16 +142,16 @@ users.delete('/me/characters/:characterOwnerHash', async (c) => {
 })
 
 /**
- * POST /users/me/characters/:characterOwnerHash/set-primary
+ * POST /users/me/characters/:characterId/set-primary
  *
  * Set a character as the primary character for the user.
  */
-users.post('/me/characters/:characterOwnerHash/set-primary', async (c) => {
+users.post('/me/characters/:characterId/set-primary', async (c) => {
 	const user = c.get('user')!
-	const characterOwnerHash = c.req.param('characterOwnerHash')
+	const characterId = c.req.param('characterId')
 
-	if (!characterOwnerHash) {
-		return c.json({ error: 'Missing character owner hash' }, 400)
+	if (!characterId) {
+		return c.json({ error: 'Missing character ID' }, 400)
 	}
 
 	const db = c.get('db') || createDb(c.env.DATABASE_URL)
@@ -156,7 +160,7 @@ users.post('/me/characters/:characterOwnerHash/set-primary', async (c) => {
 
 	try {
 		// Set primary character
-		const success = await userService.setPrimaryCharacter(user.id, characterOwnerHash)
+		const success = await userService.setPrimaryCharacter(user.id, Number(characterId))
 
 		if (!success) {
 			return c.json({ error: 'Failed to set primary character' }, 500)
@@ -164,8 +168,8 @@ users.post('/me/characters/:characterOwnerHash/set-primary', async (c) => {
 
 		await activityService.logPrimaryCharacterChanged(
 			user.id,
-			user.mainCharacterOwnerHash,
-			characterOwnerHash,
+			user.mainCharacterId,
+			Number(characterId),
 			getRequestMetadata(c)
 		)
 
@@ -179,5 +183,6 @@ users.post('/me/characters/:characterOwnerHash/set-primary', async (c) => {
 		throw error
 	}
 })
+
 
 export default users

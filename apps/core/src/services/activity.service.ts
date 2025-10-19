@@ -18,7 +18,7 @@ export class ActivityService {
 		action: ActivityAction,
 		userId: string | null,
 		metadata?: RequestMetadata & {
-			characterOwnerHash?: string
+			characterId?: number
 			success?: boolean
 			error?: string
 			[key: string]: unknown
@@ -36,12 +36,12 @@ export class ActivityService {
 	 */
 	async logLogin(
 		userId: string,
-		characterOwnerHash: string,
+		characterId: number,
 		metadata: RequestMetadata
 	): Promise<void> {
 		await this.logActivity('login', userId, {
 			...metadata,
-			characterOwnerHash,
+			characterId,
 			success: true,
 		})
 	}
@@ -49,10 +49,10 @@ export class ActivityService {
 	/**
 	 * Log failed login activity
 	 */
-	async logLoginFailed(characterOwnerHash: string, error: string, metadata: RequestMetadata) {
+	async logLoginFailed(characterId: number, error: string, metadata: RequestMetadata) {
 		await this.logActivity('login', null, {
 			...metadata,
-			characterOwnerHash,
+			characterId,
 			success: false,
 			error,
 		})
@@ -73,12 +73,12 @@ export class ActivityService {
 	 */
 	async logCharacterLinked(
 		userId: string,
-		characterOwnerHash: string,
+		characterId: number,
 		metadata: RequestMetadata
 	): Promise<void> {
 		await this.logActivity('character_linked', userId, {
 			...metadata,
-			characterOwnerHash,
+			characterId,
 			success: true,
 		})
 	}
@@ -88,12 +88,12 @@ export class ActivityService {
 	 */
 	async logCharacterUnlinked(
 		userId: string,
-		characterOwnerHash: string,
+		characterId: number,
 		metadata: RequestMetadata
 	): Promise<void> {
 		await this.logActivity('character_unlinked', userId, {
 			...metadata,
-			characterOwnerHash,
+			characterId,
 			success: true,
 		})
 	}
@@ -103,14 +103,14 @@ export class ActivityService {
 	 */
 	async logPrimaryCharacterChanged(
 		userId: string,
-		oldCharacterOwnerHash: string,
-		newCharacterOwnerHash: string,
+		oldCharacterId: number,
+		newCharacterId: number,
 		metadata: RequestMetadata
 	): Promise<void> {
 		await this.logActivity('character_primary_changed', userId, {
 			...metadata,
-			oldCharacterOwnerHash,
-			newCharacterOwnerHash,
+			oldCharacterId,
+			newCharacterId,
 			success: true,
 		})
 	}

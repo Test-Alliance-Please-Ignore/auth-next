@@ -1,6 +1,7 @@
 import { DurableObject } from 'cloudflare:workers'
 
 import { eq } from '@repo/db-utils'
+import { getStub } from '@repo/do-utils'
 
 import { createDb } from './db'
 import {
@@ -115,9 +116,8 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	/**
 	 * Get token store stub for this character
 	 */
-	private getTokenStoreStub(): DurableObjectStub<EveTokenStore> {
-		const tokenStoreId = this.env.EVE_TOKEN_STORE.idFromName('default')
-		return this.env.EVE_TOKEN_STORE.get(tokenStoreId)
+	private getTokenStoreStub(): EveTokenStore {
+		return getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 	}
 
 	/**
@@ -391,6 +391,90 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			createdAt: result!.createdAt,
 			updatedAt: result!.updatedAt,
 		}
+	}
+
+	/**
+	 * Get character portrait data
+	 */
+	async getPortrait(characterId: number) {
+		const result = await this.db.query.characterPortraits.findFirst({
+			where: eq(characterPortraits.characterId, characterId),
+		})
+
+		if (!result) return null
+
+		return {
+			characterId: result.characterId,
+			px64x64: result.px64x64 ?? undefined,
+			px128x128: result.px128x128 ?? undefined,
+			px256x256: result.px256x256 ?? undefined,
+			px512x512: result.px512x512 ?? undefined,
+		}
+	}
+
+	/**
+	 * Get character corporation history
+	 */
+	async getCorporationHistory(characterId: number) {
+		const results = await this.db.query.characterCorporationHistory.findMany({
+			where: eq(characterCorporationHistory.characterId, characterId),
+		})
+
+		return results.map(r => ({
+			recordId: r.recordId,
+			corporationId: r.corporationId,
+			startDate: r.startDate,
+			isDeleted: r.isDeleted ?? undefined,
+		}))
+	}
+
+	/**
+	 * Get character skills
+	 */
+	async getSkills(characterId: number) {
+		const result = await this.db.query.characterSkills.findFirst({
+			where: eq(characterSkills.characterId, characterId),
+		})
+
+		if (!result) return null
+
+		return {
+			skills: result.skills,
+			total_sp: result.totalSp,
+			unallocated_sp: result.unallocatedSp ?? undefined,
+		}
+	}
+
+	/**
+	 * Get character attributes
+	 */
+	async getAttributes(characterId: number) {
+		const result = await this.db.query.characterAttributes.findFirst({
+			where: eq(characterAttributes.characterId, characterId),
+		})
+
+		if (!result) return null
+
+		return {
+			intelligence: result.intelligence,
+			perception: result.perception,
+			memory: result.memory,
+			willpower: result.willpower,
+			charisma: result.charisma,
+			accruedRemapCooldownDate: result.accruedRemapCooldownDate ?? undefined,
+			bonusRemaps: result.bonusRemaps ?? undefined,
+			lastRemapDate: result.lastRemapDate ?? undefined,
+		}
+	}
+
+	/**
+	 * Get sensitive character data (location, wallet, assets, status, skill queue)
+	 * Returns null if no data is available
+	 */
+	async getSensitiveData(characterId: number) {
+		// For now, return null since we haven't implemented fetching sensitive data yet
+		// TODO: Implement fetching and storing of location, wallet, assets, status, and skill queue
+		return null
 	}
 
 	/**

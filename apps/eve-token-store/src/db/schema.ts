@@ -1,3 +1,4 @@
+import { relations } from 'drizzle-orm'
 import { bigint, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core'
 
 /**
@@ -70,9 +71,25 @@ export const eveTokens = pgTable('eve_tokens', {
 })
 
 /**
+ * Relations
+ */
+export const eveCharactersRelations = relations(eveCharacters, ({ many }) => ({
+	tokens: many(eveTokens),
+}))
+
+export const eveTokensRelations = relations(eveTokens, ({ one }) => ({
+	character: one(eveCharacters, {
+		fields: [eveTokens.characterId],
+		references: [eveCharacters.id],
+	}),
+}))
+
+/**
  * Export schema object for Drizzle
  */
 export const schema = {
 	eveCharacters,
 	eveTokens,
+	eveCharactersRelations,
+	eveTokensRelations,
 }

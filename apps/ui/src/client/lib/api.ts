@@ -67,6 +67,50 @@ export class ApiClient {
 	async delete<T>(endpoint: string): Promise<T> {
 		return this.request<T>(endpoint, { method: 'DELETE' })
 	}
+
+
+	async getCharacterDetail(characterId: number): Promise<{
+		characterId: number
+		isOwner: boolean
+		public: {
+			info: any
+			portrait: any
+			corporationHistory: any[]
+			skills: any
+			attributes: any
+		}
+		private?: {
+			location?: any
+			wallet?: any
+			assets?: any
+			status?: any
+			skillQueue?: any[]
+		}
+		lastUpdated: string | null
+	}> {
+		return this.get(`/characters/${characterId}`)
+	}
+
+	async refreshCharacterById(characterId: number): Promise<{
+		success: boolean
+		message: string
+		lastUpdated: string | null
+		hasValidToken: boolean
+	}> {
+		return this.post(`/characters/${characterId}/refresh`)
+	}
+
+	async getSkillMetadata(skillIds: string): Promise<any[]> {
+		// Call through core API which proxies to eve-static-data service
+		return this.get(`/skills?ids=${skillIds}`)
+	}
 }
 
 export const apiClient = new ApiClient()
+
+// Export convenience methods
+export const api = {
+	getCharacterDetail: (characterId: number) => apiClient.getCharacterDetail(characterId),
+	refreshCharacterById: (characterId: number) => apiClient.refreshCharacterById(characterId),
+	getSkillMetadata: (skillIds: string) => apiClient.getSkillMetadata(skillIds),
+}

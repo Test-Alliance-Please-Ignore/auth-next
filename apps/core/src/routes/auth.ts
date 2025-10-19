@@ -8,10 +8,10 @@ import { requireAuth } from '../middleware/session'
 import { ActivityService } from '../services/activity.service'
 import { AuthService } from '../services/auth.service'
 import { UserService } from '../services/user.service'
+import { getStub } from '@repo/do-utils'
 
 import type { App } from '../context'
 import type { RequestMetadata } from '../types/user'
-import type { DurableObjectStub } from 'cloudflare:workers'
 import type { EveTokenStore } from '@repo/eve-token-store'
 
 /**
@@ -34,15 +34,12 @@ function getRequestMetadata(c: any): RequestMetadata {
 /**
  * POST /auth/login/start
  *
- * Start EVE SSO login flow (publicData scope only).
+ * Start EVE SSO login flow (all scopes).
  * Returns authorization URL to redirect user to.
  */
 auth.post('/login/start', async (c) => {
 	const db = createDb(c.env.DATABASE_URL)
-	const eveTokenStoreId = c.env.EVE_TOKEN_STORE.idFromName('default')
-	const eveTokenStoreStub = c.env.EVE_TOKEN_STORE.get(
-		eveTokenStoreId
-	) as DurableObjectStub<EveTokenStore>
+	const eveTokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
 
 	// Start login flow
 	const authUrl = await eveTokenStoreStub.startLoginFlow()
@@ -72,10 +69,7 @@ auth.post('/login/start', async (c) => {
 auth.post('/character/start', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const db = c.get('db') || createDb(c.env.DATABASE_URL)
-	const eveTokenStoreId = c.env.EVE_TOKEN_STORE.idFromName('default')
-	const eveTokenStoreStub = c.env.EVE_TOKEN_STORE.get(
-		eveTokenStoreId
-	) as DurableObjectStub<EveTokenStore>
+	const eveTokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
 
 	// Start character flow
 	const authUrl = await eveTokenStoreStub.startCharacterFlow()
@@ -110,10 +104,7 @@ auth.get('/callback', async (c) => {
 	}
 
 	const db = createDb(c.env.DATABASE_URL)
-	const eveTokenStoreId = c.env.EVE_TOKEN_STORE.idFromName('default')
-	const eveTokenStoreStub = c.env.EVE_TOKEN_STORE.get(
-		eveTokenStoreId
-	) as DurableObjectStub<EveTokenStore>
+	const eveTokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
 
 	const authService = new AuthService(db, eveTokenStoreStub, c.env.SESSION_SECRET)
 	const userService = new UserService(db)
@@ -145,12 +136,12 @@ auth.get('/callback', async (c) => {
 	// Handle callback with eve-token-store
 	const result = await eveTokenStoreStub.handleCallback(code, state)
 
-	if (!result.success || !result.characterOwnerHash || !result.characterInfo) {
-		await activityService.logLoginFailed('unknown', result.error || 'Unknown error', getRequestMetadata(c))
+	if (!result.success || !result.characterId || !result.characterInfo) {
+		await activityService.logLoginFailed(0, result.error || 'Unknown error', getRequestMetadata(c))
 		return c.json({ error: result.error || 'Authentication failed' }, 400)
 	}
 
-	const { characterOwnerHash, characterInfo } = result
+	const { characterId, characterInfo } = result
 
 	// Handle character linking flow
 	if (flowType === 'character') {
@@ -165,10 +156,16 @@ auth.get('/callback', async (c) => {
 		}
 
 		// Check if character is already linked
-		const existingUser = await userService.getUserByCharacterOwnerHash(characterOwnerHash)
+		const existingUser = await userService.getUserByCharacterId(characterId)
 		if (existingUser) {
 			if (existingUser.id === stateUserId) {
-				return c.json({ error: 'Character is already linked to your account' }, 400)
+				// Character already linked to this user - token has been updated, just return success
+				const existingCharacter = user.characters.find(char => char.characterId === characterId)
+				return c.json({
+					characterLinked: true,
+					tokenUpdated: true,
+					character: existingCharacter,
+				})
 			} else {
 				return c.json({ error: 'Character is already linked to another account' }, 400)
 			}
@@ -177,12 +174,12 @@ auth.get('/callback', async (c) => {
 		// Link the character
 		const linkedCharacter = await userService.linkCharacter({
 			userId: stateUserId,
-			characterOwnerHash,
+			characterOwnerHash: characterInfo.characterOwnerHash,
 			characterId: characterInfo.characterId,
 			characterName: characterInfo.characterName,
 		})
 
-		await activityService.logCharacterLinked(stateUserId, characterOwnerHash, getRequestMetadata(c))
+		await activityService.logCharacterLinked(stateUserId, characterId, getRequestMetadata(c))
 
 		return c.json({
 			characterLinked: true,
@@ -192,17 +189,17 @@ auth.get('/callback', async (c) => {
 
 	// Handle login flow
 	// Check if user already exists with this character
-	const user = await userService.getUserByCharacterOwnerHash(characterOwnerHash)
+	const user = await userService.getUserByCharacterId(characterId)
 
 	if (user) {
 		// Existing user - create session
 		const session = await authService.createSession({
 			userId: user.id,
-			characterOwnerHash,
+			characterId,
 			metadata: getRequestMetadata(c),
 		})
 
-		await activityService.logLogin(user.id, characterOwnerHash, getRequestMetadata(c))
+		await activityService.logLogin(user.id, characterId, getRequestMetadata(c))
 
 		return c.json({
 			sessionToken: session.sessionToken,
@@ -218,7 +215,7 @@ auth.get('/callback', async (c) => {
 	return c.json({
 		requiresClaimMain: true,
 		characterInfo: {
-			characterOwnerHash,
+			characterOwnerHash: characterInfo.characterOwnerHash,
 			characterId: characterInfo.characterId,
 			characterName: characterInfo.characterName,
 		},
@@ -240,17 +237,14 @@ auth.post('/claim-main', async (c) => {
 	}
 
 	const db = createDb(c.env.DATABASE_URL)
-	const eveTokenStoreId = c.env.EVE_TOKEN_STORE.idFromName('default')
-	const eveTokenStoreStub = c.env.EVE_TOKEN_STORE.get(
-		eveTokenStoreId
-	) as DurableObjectStub<EveTokenStore>
+	const eveTokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
 
 	const authService = new AuthService(db, eveTokenStoreStub, c.env.SESSION_SECRET)
 	const userService = new UserService(db)
 	const activityService = new ActivityService(db)
 
 	// Verify character exists in eve-token-store
-	const tokenInfo = await eveTokenStoreStub.getTokenInfo(characterOwnerHash)
+	const tokenInfo = await eveTokenStoreStub.getTokenInfo(characterId)
 
 	if (!tokenInfo) {
 		return c.json({ error: 'Character not authenticated. Please login first.' }, 400)
@@ -266,18 +260,18 @@ auth.post('/claim-main', async (c) => {
 	// Create session
 	const session = await authService.createSession({
 		userId: user.id,
-		characterOwnerHash,
+		characterId,
 		metadata: getRequestMetadata(c),
 	})
 
-	await activityService.logLogin(user.id, characterOwnerHash, getRequestMetadata(c))
+	await activityService.logLogin(user.id, characterId, getRequestMetadata(c))
 
 	return c.json({
 		sessionToken: session.sessionToken,
 		expiresAt: session.expiresAt,
 		user: {
 			id: user.id,
-			mainCharacterOwnerHash: user.mainCharacterOwnerHash,
+			mainCharacterId: user.mainCharacterId,
 		},
 	})
 })
@@ -298,16 +292,13 @@ auth.post('/link-character', requireAuth(), async (c) => {
 	}
 
 	const db = c.get('db') || createDb(c.env.DATABASE_URL)
-	const eveTokenStoreStub = c.get('eveTokenStore') || (() => {
-		const id = c.env.EVE_TOKEN_STORE.idFromName('default')
-		return c.env.EVE_TOKEN_STORE.get(id) as DurableObjectStub<EveTokenStore>
-	})()
+	const eveTokenStoreStub = c.get('eveTokenStore') || getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
 
 	const userService = new UserService(db)
 	const activityService = new ActivityService(db)
 
 	// Verify character exists in eve-token-store
-	const tokenInfo = await eveTokenStoreStub.getTokenInfo(characterOwnerHash)
+	const tokenInfo = await eveTokenStoreStub.getTokenInfo(characterId)
 
 	if (!tokenInfo) {
 		return c.json({ error: 'Character not authenticated. Please complete character flow first.' }, 400)
@@ -321,7 +312,7 @@ auth.post('/link-character', requireAuth(), async (c) => {
 		characterName,
 	})
 
-	await activityService.logCharacterLinked(user.id, characterOwnerHash, getRequestMetadata(c))
+	await activityService.logCharacterLinked(user.id, characterId, getRequestMetadata(c))
 
 	return c.json({
 		character: linkedCharacter,
@@ -354,10 +345,7 @@ auth.post('/logout', requireAuth(), async (c) => {
 	}
 
 	const db = c.get('db') || createDb(c.env.DATABASE_URL)
-	const eveTokenStoreId = c.env.EVE_TOKEN_STORE.idFromName('default')
-	const eveTokenStoreStub = c.env.EVE_TOKEN_STORE.get(
-		eveTokenStoreId
-	) as DurableObjectStub<EveTokenStore>
+	const eveTokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
 
 	const authService = new AuthService(db, eveTokenStoreStub, c.env.SESSION_SECRET)
 	const activityService = new ActivityService(db)
@@ -389,7 +377,7 @@ auth.get('/session', async (c) => {
 		authenticated: true,
 		user: {
 			id: user.id,
-			mainCharacterOwnerHash: user.mainCharacterOwnerHash,
+			mainCharacterId: user.mainCharacterId,
 			characters: user.characters,
 			is_admin: user.is_admin,
 		},

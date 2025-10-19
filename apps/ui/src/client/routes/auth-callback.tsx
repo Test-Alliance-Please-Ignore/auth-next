@@ -19,7 +19,6 @@ interface CallbackResponse {
 	characterLinked?: boolean
 	character?: {
 		id: string
-		characterOwnerHash: string
 		characterId: number
 		characterName: string
 		is_primary: boolean

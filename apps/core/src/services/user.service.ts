@@ -31,7 +31,7 @@ export class UserService {
 
 		// Check if user already exists
 		const existingUser = await this.db.query.users.findFirst({
-			where: eq(users.mainCharacterOwnerHash, characterOwnerHash),
+			where: eq(users.mainCharacterId, characterId),
 		})
 
 		if (existingUser) {
@@ -40,7 +40,7 @@ export class UserService {
 
 		// Check if character is already linked to another user
 		const existingCharacter = await this.db.query.userCharacters.findFirst({
-			where: eq(userCharacters.characterOwnerHash, characterOwnerHash),
+			where: eq(userCharacters.characterId, characterId),
 		})
 
 		if (existingCharacter) {
@@ -51,7 +51,7 @@ export class UserService {
 		const [user] = await this.db
 			.insert(users)
 			.values({
-				mainCharacterOwnerHash: characterOwnerHash,
+				mainCharacterId: characterId,
 			})
 			.returning()
 
@@ -94,13 +94,13 @@ export class UserService {
 	}
 
 	/**
-	 * Get user by character owner hash
+	 * Get user by character ID
 	 */
-	async getUserByCharacterOwnerHash(
-		characterOwnerHash: string
+	async getUserByCharacterId(
+		characterId: number
 	): Promise<UserProfileDTO | null> {
 		const character = await this.db.query.userCharacters.findFirst({
-			where: eq(userCharacters.characterOwnerHash, characterOwnerHash),
+			where: eq(userCharacters.characterId, characterId),
 		})
 
 		if (!character) {
@@ -117,7 +117,17 @@ export class UserService {
 		const user = await this.db.query.users.findFirst({
 			where: eq(users.id, userId),
 			with: {
-				characters: true,
+				characters: {
+					columns: {
+						id: true,
+						userId: true,
+						characterOwnerHash: true,
+						characterId: true,
+						characterName: true,
+						is_primary: true,
+						linkedAt: true,
+					},
+				},
 				preferences: true,
 			},
 		})
@@ -139,7 +149,7 @@ export class UserService {
 
 		return {
 			id: user.id,
-			mainCharacterOwnerHash: user.mainCharacterOwnerHash,
+			mainCharacterId: user.mainCharacterId,
 			characters: charactersDTO,
 			is_admin: user.is_admin,
 			preferences: preferencesDTO,
@@ -165,11 +175,34 @@ export class UserService {
 
 		// Check if character is already linked to any user
 		const existingCharacter = await this.db.query.userCharacters.findFirst({
-			where: eq(userCharacters.characterOwnerHash, characterOwnerHash),
+			where: eq(userCharacters.characterId, characterId),
 		})
 
 		if (existingCharacter) {
-			throw new Error('Character is already linked to a user')
+			// If already linked to the same user, update and return existing record
+			if (existingCharacter.userId === userId) {
+				const [updatedCharacter] = await this.db
+					.update(userCharacters)
+					.set({
+						characterOwnerHash,
+						characterName,
+						updatedAt: new Date(),
+					})
+					.where(eq(userCharacters.id, existingCharacter.id))
+					.returning()
+
+				return {
+					id: updatedCharacter.id,
+				characterOwnerHash: updatedCharacter.characterOwnerHash,
+					characterId: updatedCharacter.characterId,
+					characterName: updatedCharacter.characterName,
+					is_primary: updatedCharacter.is_primary,
+					linkedAt: updatedCharacter.linkedAt,
+				}
+			}
+
+			// Character linked to different user
+			throw new Error('Character is already linked to a different user')
 		}
 
 		// Link character (not as primary)
@@ -201,12 +234,12 @@ export class UserService {
 	/**
 	 * Unlink a character from a user (cannot unlink primary character)
 	 */
-	async unlinkCharacter(userId: string, characterOwnerHash: string): Promise<boolean> {
+	async unlinkCharacter(userId: string, characterId: number): Promise<boolean> {
 		// Find the character
 		const character = await this.db.query.userCharacters.findFirst({
 			where: and(
 				eq(userCharacters.userId, userId),
-				eq(userCharacters.characterOwnerHash, characterOwnerHash)
+				eq(userCharacters.characterId, characterId)
 			),
 		})
 
@@ -231,12 +264,12 @@ export class UserService {
 	/**
 	 * Set a character as primary (and unset the current primary)
 	 */
-	async setPrimaryCharacter(userId: string, characterOwnerHash: string): Promise<boolean> {
+	async setPrimaryCharacter(userId: string, characterId: number): Promise<boolean> {
 		// Find the character to set as primary
 		const newPrimaryChar = await this.db.query.userCharacters.findFirst({
 			where: and(
 				eq(userCharacters.userId, userId),
-				eq(userCharacters.characterOwnerHash, characterOwnerHash)
+				eq(userCharacters.characterId, characterId)
 			),
 		})
 
@@ -256,11 +289,11 @@ export class UserService {
 			.set({ is_primary: true })
 			.where(eq(userCharacters.id, newPrimaryChar.id))
 
-		// Update user's mainCharacterOwnerHash
+		// Update user's mainCharacterId
 		await this.db
 			.update(users)
 			.set({
-				mainCharacterOwnerHash: characterOwnerHash,
+				mainCharacterId: characterId,
 				updatedAt: new Date(),
 			})
 			.where(eq(users.id, userId))

@@ -16,7 +16,7 @@ interface ClaimMainResponse {
 	expiresAt: string
 	user: {
 		id: string
-		mainCharacterOwnerHash: string
+		mainCharacterId: number
 	}
 }
 

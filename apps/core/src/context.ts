@@ -1,5 +1,4 @@
-import type { DurableObjectStub } from 'cloudflare:workers'
-
+import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
@@ -8,6 +7,10 @@ export type Env = SharedHonoEnv & {
 	DATABASE_URL: string
 	/** EVE Token Store Durable Object binding */
 	EVE_TOKEN_STORE: DurableObjectNamespace
+	/** EVE Character Data Durable Object binding */
+	EVE_CHARACTER_DATA: DurableObjectNamespace
+	/** EVE Static Data service binding */
+	EVE_STATIC_DATA: Fetcher
 	/** Secret for session token generation and signing */
 	SESSION_SECRET: string
 }
@@ -15,7 +18,7 @@ export type Env = SharedHonoEnv & {
 /** Session user data attached to request context */
 export interface SessionUser {
 	id: string
-	mainCharacterOwnerHash: string
+	mainCharacterId: number
 	sessionId: string
 	characters: {
 		id: string
@@ -33,7 +36,9 @@ export type Variables = SharedHonoVariables & {
 	/** Current authenticated user (set by session middleware) */
 	user?: SessionUser
 	/** EVE Token Store Durable Object stub */
-	eveTokenStore?: DurableObjectStub<EveTokenStore>
+	eveTokenStore?: EveTokenStore
+	/** EVE Character Data Durable Object stub */
+	eveCharacterData?: EveCharacterData
 }
 
 export interface App extends HonoApp {

@@ -5,6 +5,7 @@ import LandingPage from './routes/landing'
 import AuthCallbackPage from './routes/auth-callback'
 import ClaimMainPage from './routes/claim-main'
 import DashboardPage from './routes/dashboard'
+import CharacterDetailPage from './routes/character-detail'
 
 // Create a client
 const queryClient = new QueryClient({
@@ -30,6 +31,7 @@ export default function App() {
 					{/* Protected routes with layout */}
 					<Route element={<Layout />}>
 						<Route path="/dashboard" element={<DashboardPage />} />
+						<Route path="/character/:characterId" element={<CharacterDetailPage />} />
 					</Route>
 				</Routes>
 			</BrowserRouter>

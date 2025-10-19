@@ -1,0 +1,1 @@
+ALTER TABLE "user_characters" ADD COLUMN "updated_at" timestamp DEFAULT now() NOT NULL;
