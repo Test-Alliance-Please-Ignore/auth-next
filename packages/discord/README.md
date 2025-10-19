@@ -7,8 +7,9 @@ Shared types and interfaces for the Discord Durable Object.
 Import this package in any worker that needs to interact with the Discord Durable Object:
 
 ```typescript
-import type { Discord } from '@repo/discord'
 import { getStub } from '@repo/do-utils'
+
+import type { Discord } from '@repo/discord'
 
 // Get a typed stub to the Durable Object
 const stub = getStub<Discord>(env.DISCORD, 'unique-id')

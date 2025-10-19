@@ -60,11 +60,7 @@ describe('Hazmat', () => {
 		})
 
 		it('should handle multiple concurrent fetches', async () => {
-			const results = await Promise.all([
-				fetchData('id-1'),
-				fetchData('id-2'),
-				fetchData('id-3'),
-			])
+			const results = await Promise.all([fetchData('id-1'), fetchData('id-2'), fetchData('id-3')])
 
 			expect(results).toHaveLength(3)
 			expect(results[0].id).toBe('id-1')

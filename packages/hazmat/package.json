@@ -10,14 +10,14 @@
 		"check:types": "run-tsc",
 		"test": "run-vitest"
 	},
+	"dependencies": {
+		"libsodium-wrappers-sumo": "0.7.15"
+	},
 	"devDependencies": {
 		"@cloudflare/vitest-pool-workers": "0.9.12",
 		"@repo/eslint-config": "workspace:*",
 		"@repo/tools": "workspace:*",
 		"@repo/typescript-config": "workspace:*",
 		"vitest": "3.2.4"
-	},
-	"dependencies": {
-		"libsodium-wrappers-sumo": "^0.7.15"
 	}
 }

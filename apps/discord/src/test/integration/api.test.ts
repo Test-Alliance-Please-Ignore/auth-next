@@ -1,5 +1,6 @@
 import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:test'
 import { describe, expect, it } from 'vitest'
+
 import worker from '../../index'
 
 describe('Discord Worker', () => {

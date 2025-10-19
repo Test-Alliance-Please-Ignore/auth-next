@@ -20,8 +20,8 @@
 	},
 	"dependencies": {
 		"@neondatabase/serverless": "0.10.4",
-		"@repo/discord": "workspace:*",
 		"@repo/db-utils": "workspace:*",
+		"@repo/discord": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
 		"drizzle-orm": "0.44.6",
 		"hono": "4.9.11",

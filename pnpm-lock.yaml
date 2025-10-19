@@ -611,7 +611,7 @@ importers:
   packages/hazmat:
     dependencies:
       libsodium-wrappers-sumo:
-        specifier: ^0.7.15
+        specifier: 0.7.15
         version: 0.7.15
     devDependencies:
       '@cloudflare/vitest-pool-workers':

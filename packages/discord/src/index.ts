@@ -99,7 +99,7 @@ export interface Discord {
 	 */
 	revokeToken(userId: string): Promise<boolean>
 
-	inviteUserToGuild(userId: string, guildId: string): Promise<boolean>
+	// inviteUserToGuild(userId: string, guildId: string): Promise<boolean>
 
-	kickUserFromGuild(guildId: string, userId: string): Promise<boolean>
+	// kickUserFromGuild(guildId: string, userId: string): Promise<boolean>
 }

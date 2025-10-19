@@ -185,9 +185,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 				const accessToken = await this.decrypt(tokenRecord.accessToken)
 
 				// Revoke token with Discord
-				const credentials = btoa(
-					`${this.env.DISCORD_CLIENT_ID}:${this.env.DISCORD_CLIENT_SECRET}`
-				)
+				const credentials = btoa(`${this.env.DISCORD_CLIENT_ID}:${this.env.DISCORD_CLIENT_SECRET}`)
 
 				await fetch(this.env.DISCORD_TOKEN_REVOKE_URL, {
 					method: 'POST',

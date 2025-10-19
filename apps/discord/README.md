@@ -46,8 +46,9 @@ The Discord Durable Object is available to this worker via the `DISCORD` binding
 ### From within this worker:
 
 ```typescript
-import type { Discord } from '@repo/discord'
 import { getStub } from '@repo/do-utils'
+
+import type { Discord } from '@repo/discord'
 
 // Get a stub to the Durable Object
 const stub = getStub<Discord>(c.env.DISCORD, 'unique-id')
