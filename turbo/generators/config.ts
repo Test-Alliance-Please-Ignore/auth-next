@@ -189,6 +189,68 @@ Happy coding! 🚀
 		],
 	})
 
+	// Generator for creating a new shared package
+	plop.setGenerator('new-package', {
+		description: 'Create a new shared utility package',
+		prompts: [
+			{
+				type: 'input',
+				name: 'name',
+				message: 'What is the name of the package?',
+				validate: (input: string) => {
+					if (!input) {
+						return 'Package name is required'
+					}
+					if (!/^[a-z0-9-]+$/.test(input)) {
+						return 'Package name must be lowercase and can only contain letters, numbers, and hyphens'
+					}
+					return true
+				},
+			},
+		],
+		actions: [
+			// Copy all template files
+			{
+				type: 'addMany',
+				destination: '{{ turbo.paths.root }}/packages/{{ name }}',
+				templateFiles: 'templates/package/**/*',
+				base: 'templates/package',
+				globOptions: {
+					dot: true,
+				},
+			},
+			// Install dependencies
+			{
+				type: 'custom-exec',
+				command: 'pnpm install',
+			},
+			// Success message
+			(answers) => {
+				return `
+✅ Package "@repo/${answers.name}" created successfully!
+
+Created:
+  📦 Package: packages/${answers.name}
+
+The package includes:
+  - TypeScript configuration
+  - ESLint configuration
+  - Vitest test setup
+  - Example function and tests
+  - README with usage instructions
+
+Next steps:
+  1. Implement your utilities in packages/${answers.name}/src/index.ts
+  2. Add tests in packages/${answers.name}/src/test/
+  3. Run tests: pnpm -F @repo/${answers.name} test
+  4. Add to other packages: pnpm -F your-worker add '@repo/${answers.name}@workspace:*'
+
+Happy coding! 🚀
+				`.trim()
+			},
+		],
+	})
+
 	// Register custom action for running shell commands
 	plop.setActionType('custom-exec', (answers, config) => {
 		const { execSync } = require('child_process')
