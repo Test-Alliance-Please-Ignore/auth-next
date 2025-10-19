@@ -1,5 +1,7 @@
 import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:test'
 import { describe, expect, it } from 'vitest'
+import { getStub } from '@repo/do-utils'
+import type { EveCharacterData } from '@repo/eve-character-data'
 import worker from '../../index'
 
 describe('EveCharacterData Worker', () => {
@@ -29,8 +31,7 @@ describe('EveCharacterData Worker', () => {
 
 describe.skip('EveCharacterData Durable Object', () => {
 	it.skip('can increment counter', async () => {
-		// const id = env.EVE_CHARACTER_DATA.idFromName(`test-counter-${Date.now()}-${Math.random()}`)
-		// const stub = env.EVE_CHARACTER_DATA.get(id)
+		// const stub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, `test-counter-${Date.now()}-${Math.random()}`)
 
 		// const count1 = await stub.incrementCounter()
 		// const count2 = await stub.incrementCounter()
@@ -40,8 +41,7 @@ describe.skip('EveCharacterData Durable Object', () => {
 	})
 
 	it.skip('can get state', async () => {
-		// const id = env.EVE_CHARACTER_DATA.idFromName(`test-state-${Date.now()}-${Math.random()}`)
-		// const stub = env.EVE_CHARACTER_DATA.get(id)
+		// const stub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, `test-state-${Date.now()}-${Math.random()}`)
 
 		// await stub.incrementCounter()
 		// const state = await stub.getState()
@@ -52,8 +52,7 @@ describe.skip('EveCharacterData Durable Object', () => {
 	})
 
 	it.skip('can call example method', async () => {
-		// const id = env.EVE_CHARACTER_DATA.idFromName('test-example')
-		// const stub = env.EVE_CHARACTER_DATA.get(id)
+		// const stub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, 'test-example')
 
 		// const result = await stub.exampleMethod('test message')
 

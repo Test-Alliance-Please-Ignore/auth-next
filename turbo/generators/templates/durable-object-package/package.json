@@ -9,9 +9,6 @@
 		"check:lint": "run-eslint",
 		"check:types": "run-tsc"
 	},
-	"dependencies": {
-		"@cloudflare/workers-types": "4.20250514.0"
-	},
 	"devDependencies": {
 		"@repo/eslint-config": "workspace:*",
 		"@repo/tools": "workspace:*",
