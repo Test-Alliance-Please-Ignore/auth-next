@@ -1,0 +1,92 @@
+import { DurableObject } from 'cloudflare:workers'
+
+import type { Env } from './context'
+
+/**
+ * {{ pascal name }} Durable Object
+ *
+ * This Durable Object uses SQLite for persistent storage.
+ * SQLite is automatically initialized and available via this.ctx.storage.sql
+ */
+export class {{ pascal name }} extends DurableObject<Env> {
+	constructor(ctx: DurableObjectState, env: Env) {
+		super(ctx, env)
+	}
+
+	/**
+	 * Initialize the Durable Object
+	 * This is called automatically on the first request
+	 */
+	async initialize() {
+		// Initialize your SQLite schema here
+		await this.ctx.storage.sql.exec(`
+			CREATE TABLE IF NOT EXISTS example (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				data TEXT NOT NULL,
+				created_at INTEGER NOT NULL DEFAULT (unixepoch())
+			)
+		`)
+	}
+
+	/**
+	 * Fetch handler for HTTP requests to this Durable Object
+	 */
+	async fetch(request: Request): Promise<Response> {
+		// Ensure initialization has run
+		await this.initialize()
+
+		const url = new URL(request.url)
+
+		// Example: GET /data - List all records
+		if (request.method === 'GET' && url.pathname === '/data') {
+			const results = await this.ctx.storage.sql.exec('SELECT * FROM example')
+			return Response.json(results.toArray())
+		}
+
+		// Example: POST /data - Create a new record
+		if (request.method === 'POST' && url.pathname === '/data') {
+			const body = await request.json<{ data: string }>()
+
+			const result = await this.ctx.storage.sql.exec(
+				'INSERT INTO example (data) VALUES (?) RETURNING *',
+				body.data
+			)
+
+			return Response.json(result.toArray()[0])
+		}
+
+		return new Response('Not Found', { status: 404 })
+	}
+
+	/**
+	 * Alarm handler - called when an alarm is triggered
+	 * Uncomment to use alarms
+	 */
+	// async alarm(): Promise<void> {
+	// 	// Handle alarm
+	// }
+
+	/**
+	 * WebSocket message handler
+	 * Uncomment to use WebSocket Hibernation API
+	 */
+	// async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
+	// 	// Handle WebSocket message
+	// }
+
+	/**
+	 * WebSocket close handler
+	 * Uncomment to use WebSocket Hibernation API
+	 */
+	// async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean): Promise<void> {
+	// 	// Handle WebSocket close
+	// }
+
+	/**
+	 * WebSocket error handler
+	 * Uncomment to use WebSocket Hibernation API
+	 */
+	// async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
+	// 	// Handle WebSocket error
+	// }
+}
