@@ -121,13 +121,7 @@ export default function generator(plop: PlopTypes.NodePlopAPI): void {
 			{
 				type: 'input',
 				name: 'name',
-				message: 'Name of Durable Object (e.g., "chat-room", "user-session")',
-				validate: nameValidator,
-			},
-			{
-				type: 'input',
-				name: 'workerName',
-				message: 'Name of new worker',
+				message: 'Name (used for both worker and Durable Object)',
 				validate: nameValidator,
 			},
 		],
@@ -137,7 +131,7 @@ export default function generator(plop: PlopTypes.NodePlopAPI): void {
 
 			const className = pascalText(answers.name)
 			const fileName = slugifyText(answers.name)
-			const workerName = slugifyText(answers.workerName)
+			const workerName = slugifyText(answers.name)
 			const destination = `apps/${workerName}`
 			const bindingName = className.toUpperCase().replace(/-/g, '_') + '_STORE'
 
@@ -151,12 +145,12 @@ export default function generator(plop: PlopTypes.NodePlopAPI): void {
 						'templates/fetch-worker-vite/**/**.hbs',
 						'templates/fetch-worker-vite/.eslintrc.cjs.hbs',
 					],
-					data: { name: answers.workerName, turbo: answers.turbo },
+					data: { name: answers.name, turbo: answers.turbo },
 				},
 				{
 					type: 'pnpmInstall',
 					data: {
-						name: answers.workerName,
+						name: answers.name,
 						destination,
 						turbo: answers.turbo,
 					} satisfies PnpmInstallData,

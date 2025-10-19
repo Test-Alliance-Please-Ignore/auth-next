@@ -28,7 +28,6 @@ export const NewPackageAnswers = z.object({
 export type NewDurableObjectAnswers = z.infer<typeof NewDurableObjectAnswers>
 export const NewDurableObjectAnswers = z.object({
 	name: z.string(),
-	workerName: z.string(),
 	turbo: Turbo,
 })
 
