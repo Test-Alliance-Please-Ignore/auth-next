@@ -1,5 +1,5 @@
 {
-	"name": "core",
+	"name": "{{ name }}",
 	"version": "0.1.0",
 	"private": true,
 	"sideEffects": false,
@@ -19,6 +19,7 @@
 		"test": "run-vitest"
 	},
 	"dependencies": {
+		"@repo/{{ name }}": "workspace:*",
 		"@repo/db-utils": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
 		"hono": "4.9.11",
@@ -31,7 +32,7 @@
 		"@repo/tools": "workspace:*",
 		"@repo/typescript-config": "workspace:*",
 		"@types/node": "22.15.27",
-		"dotenv": "^17.2.3",
+		"dotenv": "17.2.3",
 		"drizzle-kit": "0.31.5",
 		"tsx": "4.20.6",
 		"vite": "6.3.4",

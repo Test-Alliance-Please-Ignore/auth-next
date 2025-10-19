@@ -1,199 +1,204 @@
-import { NewDurableObjectAnswers, NewPackageAnswers, NewWorkerAnswers } from './answers'
-import {
-	pascalText,
-	pascalTextPlural,
-	pascalTextSingular,
-	slugifyText,
-	slugifyTextPlural,
-	slugifyTextSingular,
-} from './helpers/slugify'
-import { nameValidator } from './helpers/validate'
-import { fixAll } from './plugins/fix-all'
-import { fixDepsAndFormat } from './plugins/fix-deps-and-format'
-import { pnpmInstall } from './plugins/pnpm-install'
-import { updateWorkerContextAction } from './plugins/update-worker-context'
-import { updateWorkerIndexAction } from './plugins/update-worker-index'
-import {
-	addCrossWorkerBindingsAction,
-	updateWranglerConfigAction,
-} from './plugins/update-wrangler-config'
-
 import type { PlopTypes } from '@turbo/gen'
-import type { PnpmInstallData } from './plugins/pnpm-install'
 
 export default function generator(plop: PlopTypes.NodePlopAPI): void {
-	plop.setActionType('pnpmInstall', pnpmInstall as PlopTypes.CustomActionFunction)
-	plop.setActionType('fixAll', fixAll as PlopTypes.CustomActionFunction)
-	plop.setActionType('fixDepsAndFormat', fixDepsAndFormat as PlopTypes.CustomActionFunction)
-	plop.setActionType('updateWranglerConfig', updateWranglerConfigAction)
-	plop.setActionType('updateWorkerContext', updateWorkerContextAction)
-	plop.setActionType('updateWorkerIndex', updateWorkerIndexAction)
-	plop.setActionType('addCrossWorkerBindings', addCrossWorkerBindingsAction)
-
-	plop.setHelper('slug', slugifyText)
-	plop.setHelper('slug-s', slugifyTextSingular)
-	plop.setHelper('slug-p', slugifyTextPlural)
-
-	plop.setHelper('pascal', pascalText)
-	plop.setHelper('pascal-s', pascalTextSingular)
-	plop.setHelper('pascal-p', pascalTextPlural)
-
-	plop.setGenerator('new-worker-vite', {
-		description: 'Create a new Cloudflare Worker using Hono and Vite',
-		// gather information from the user
+	// Generator for creating a new worker based on the core worker template
+	plop.setGenerator('new-worker', {
+		description: 'Create a new Cloudflare Worker with database support',
 		prompts: [
 			{
 				type: 'input',
 				name: 'name',
-				message: 'name of worker',
-				validate: nameValidator,
+				message: 'What is the name of the worker?',
+				validate: (input: string) => {
+					if (!input) {
+						return 'Worker name is required'
+					}
+					if (!/^[a-z0-9-]+$/.test(input)) {
+						return 'Worker name must be lowercase and can only contain letters, numbers, and hyphens'
+					}
+					return true
+				},
 			},
 		],
-		// perform actions based on the prompts
-		actions: (data: unknown) => {
-			const answers = NewWorkerAnswers.parse(data)
-			process.chdir(answers.turbo.paths.root)
-			const destination = `apps/${slugifyText(answers.name)}`
-
-			const actions: PlopTypes.Actions = [
-				{
-					type: 'addMany',
-					base: 'templates/fetch-worker-vite',
-					destination,
-					templateFiles: [
-						'templates/fetch-worker-vite/**/**.hbs',
-						'templates/fetch-worker-vite/.eslintrc.cjs.hbs',
-					],
-					data: answers,
-				},
-				{ type: 'pnpmInstall', data: { ...answers, destination } satisfies PnpmInstallData },
-				{ type: 'fixAll' },
-				{ type: 'pnpmInstall', data: { ...answers, destination } satisfies PnpmInstallData },
-			]
-
-			return actions
-		},
-	})
-
-	plop.setGenerator('new-package', {
-		description: 'Create a new shared package',
-		prompts: [
+		actions: [
+			// Copy all template files
 			{
-				type: 'input',
-				name: 'name',
-				message: 'name of package',
-				validate: nameValidator,
+				type: 'addMany',
+				destination: '{{ turbo.paths.root }}/apps/{{ name }}',
+				templateFiles: 'templates/worker/**/*',
+				base: 'templates/worker',
+				globOptions: {
+					dot: true,
+				},
+			},
+			// Update Justfile to include new worker in database commands
+			{
+				type: 'modify',
+				path: '{{ turbo.paths.root }}/Justfile',
+				pattern: /(db-generate-all:\n(?:\s+cd apps\/\w+ && bun run db:generate\n)+)/,
+				template: '$1  cd apps/{{ name }} && bun run db:generate\n',
 			},
 			{
-				type: 'confirm',
-				name: 'usedInWorkers',
-				message: 'Will this package be used within Cloudflare Workers?',
-				default: true,
+				type: 'modify',
+				path: '{{ turbo.paths.root }}/Justfile',
+				pattern: /(db-push-all:\n(?:\s+cd apps\/\w+ && bun run db:push\n)+)/,
+				template: '$1  cd apps/{{ name }} && bun run db:push\n',
+			},
+			{
+				type: 'modify',
+				path: '{{ turbo.paths.root }}/Justfile',
+				pattern: /(db-migrate-all:\n(?:\s+cd apps\/\w+ && bun run db:migrate\n)+)/,
+				template: '$1  cd apps/{{ name }} && bun run db:migrate\n',
+			},
+			// Install dependencies
+			{
+				type: 'custom-exec',
+				command: 'pnpm install',
+			},
+			// Generate wrangler types
+			{
+				type: 'custom-exec',
+				command: 'pnpm turbo -F {{ name }} fix:workers-types',
+			},
+			// Success message
+			(answers) => {
+				return `
+✅ Worker "${answers.name}" created successfully!
+
+Next steps:
+  1. Configure your DATABASE_URL in the root .env file
+  2. Define your database schema in apps/${answers.name}/src/db/schema.ts
+  3. Generate migrations: just db-generate ${answers.name}
+  4. Run migrations: just db-migrate ${answers.name}
+  5. Start development: just dev -F ${answers.name}
+
+Happy coding! 🚀
+				`.trim()
 			},
 		],
-		actions: (data: unknown) => {
-			const answers = NewPackageAnswers.parse(data)
-			process.chdir(answers.turbo.paths.root)
-			const destination = `packages/${slugifyText(answers.name)}`
-
-			const actions: PlopTypes.Actions = [
-				{
-					type: 'addMany',
-					base: 'templates/package',
-					destination,
-					templateFiles: ['templates/package/**/**.hbs', 'templates/package/.eslintrc.cjs.hbs'],
-					data: {
-						...answers,
-						tsconfigType: answers.usedInWorkers ? 'workers-lib.json' : 'lib.json',
-					},
-				},
-				{ type: 'fixDepsAndFormat' },
-				{ type: 'pnpmInstall', data: { ...answers, destination } satisfies PnpmInstallData },
-			]
-
-			return actions
-		},
 	})
 
+	// Generator for creating a new Durable Object with its own worker and shared package
 	plop.setGenerator('new-durable-object', {
-		description: 'Create a new SQLite-backed Durable Object in a new worker',
+		description: 'Create a new Cloudflare Worker with Durable Object and shared package',
 		prompts: [
 			{
 				type: 'input',
 				name: 'name',
-				message: 'Name (used for both worker and Durable Object)',
-				validate: nameValidator,
+				message: 'What is the name of the Durable Object?',
+				validate: (input: string) => {
+					if (!input) {
+						return 'Durable Object name is required'
+					}
+					if (!/^[a-z0-9-]+$/.test(input)) {
+						return 'Name must be lowercase and can only contain letters, numbers, and hyphens'
+					}
+					return true
+				},
 			},
 		],
-		actions: (data: unknown) => {
-			const answers = NewDurableObjectAnswers.parse(data)
-			process.chdir(answers.turbo.paths.root)
+		actions: [
+			// Copy worker template files
+			{
+				type: 'addMany',
+				destination: '{{ turbo.paths.root }}/apps/{{ name }}',
+				templateFiles: 'templates/durable-object-worker/**/*',
+				base: 'templates/durable-object-worker',
+				globOptions: {
+					dot: true,
+				},
+			},
+			// Copy package template files
+			{
+				type: 'addMany',
+				destination: '{{ turbo.paths.root }}/packages/{{ name }}',
+				templateFiles: 'templates/durable-object-package/**/*',
+				base: 'templates/durable-object-package',
+				globOptions: {
+					dot: true,
+				},
+			},
+			// Update Justfile to include new worker in database commands
+			{
+				type: 'modify',
+				path: '{{ turbo.paths.root }}/Justfile',
+				pattern: /(db-generate-all:\n(?:\s+cd apps\/\w+ && bun run db:generate\n)+)/,
+				template: '$1  cd apps/{{ name }} && bun run db:generate\n',
+			},
+			{
+				type: 'modify',
+				path: '{{ turbo.paths.root }}/Justfile',
+				pattern: /(db-push-all:\n(?:\s+cd apps\/\w+ && bun run db:push\n)+)/,
+				template: '$1  cd apps/{{ name }} && bun run db:push\n',
+			},
+			{
+				type: 'modify',
+				path: '{{ turbo.paths.root }}/Justfile',
+				pattern: /(db-migrate-all:\n(?:\s+cd apps\/\w+ && bun run db:migrate\n)+)/,
+				template: '$1  cd apps/{{ name }} && bun run db:migrate\n',
+			},
+			// Install dependencies
+			{
+				type: 'custom-exec',
+				command: 'pnpm install',
+			},
+			// Generate wrangler types for the worker
+			{
+				type: 'custom-exec',
+				command: 'pnpm turbo -F {{ name }} fix:workers-types',
+			},
+			// Success message
+			(answers) => {
+				return `
+✅ Durable Object "${answers.name}" created successfully!
 
-			const className = pascalText(answers.name)
-			const fileName = slugifyText(answers.name)
-			const workerName = slugifyText(answers.name)
-			const destination = `apps/${workerName}`
-			const bindingName = className.toUpperCase().replace(/-/g, '_') + '_STORE'
+Created:
+  📦 Worker: apps/${answers.name}
+  📦 Package: packages/${answers.name} (@repo/${answers.name})
 
-			const actions: PlopTypes.Actions = [
-				// Create new worker using the fetch-worker-vite template
-				{
-					type: 'addMany',
-					base: 'templates/fetch-worker-vite',
-					destination,
-					templateFiles: [
-						'templates/fetch-worker-vite/**/**.hbs',
-						'templates/fetch-worker-vite/.eslintrc.cjs.hbs',
-					],
-					data: { name: answers.name, turbo: answers.turbo },
-				},
-				{
-					type: 'pnpmInstall',
-					data: {
-						name: answers.name,
-						destination,
-						turbo: answers.turbo,
-					} satisfies PnpmInstallData,
-				},
-				// Add the Durable Object class file
-				{
-					type: 'add',
-					path: `${destination}/src/${fileName}.ts`,
-					templateFile: 'templates/durable-object/durable-object.ts.hbs',
-					data: { name: answers.name },
-				},
-				// Update worker files
-				{
-					type: 'updateWorkerIndex',
-					data: {
-						workerName,
-						className,
-						fileName,
-						turbo: answers.turbo,
-					},
-				},
-				{
-					type: 'updateWorkerContext',
-					data: {
-						workerName,
-						bindingName,
-						turbo: answers.turbo,
-					},
-				},
-				{
-					type: 'updateWranglerConfig',
-					data: {
-						workerName,
-						className,
-						turbo: answers.turbo,
-					},
-				},
-				// Fix and install
-				{ type: 'fixAll' },
-				{ type: 'pnpmInstall', data: { destination } satisfies PnpmInstallData },
-			]
+The worker includes:
+  - Durable Object class with SQLite storage
+  - WebSocket hibernation API handlers
+  - RPC method examples
+  - Alarm handler
+  - PostgreSQL database support (Drizzle ORM)
+  - Example integration tests
 
-			return actions
-		},
+The package provides:
+  - TypeScript interfaces for RPC methods
+  - Type definitions for state and messages
+  - Exports for use in other workers
+
+Next steps:
+  1. Configure your DATABASE_URL in the root .env file
+  2. Define your database schema in apps/${answers.name}/src/db/schema.ts
+  3. Customize the Durable Object in apps/${answers.name}/src/durable-object.ts
+  4. Update RPC interface in packages/${answers.name}/src/index.ts
+  5. Generate migrations: just db-generate ${answers.name}
+  6. Run migrations: just db-migrate ${answers.name}
+  7. Start development: just dev -F ${answers.name}
+
+To use this Durable Object in other workers:
+  1. Add dependency: pnpm -F other-worker add '@repo/${answers.name}@workspace:*'
+  2. Add binding in wrangler.jsonc (see apps/${answers.name}/README.md)
+  3. Import types: import type { ${answers.name} } from '@repo/${answers.name}'
+
+Happy coding! 🚀
+				`.trim()
+			},
+		],
+	})
+
+	// Register custom action for running shell commands
+	plop.setActionType('custom-exec', (answers, config) => {
+		const { execSync } = require('child_process')
+		const command = plop.renderString(config.command, answers)
+
+		try {
+			execSync(command, { stdio: 'inherit' })
+			return `Executed: ${command}`
+		} catch (error) {
+			throw new Error(`Failed to execute: ${command}`)
+		}
 	})
 }

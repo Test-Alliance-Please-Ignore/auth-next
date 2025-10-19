@@ -1,4 +1,4 @@
-# evesso
+# {{ name }}
 
 A Cloudflare Workers application using Hono and Vite
 
@@ -7,13 +7,13 @@ A Cloudflare Workers application using Hono and Vite
 ### Run in dev mode
 
 ```sh
-pnpm turbo dev -F evesso
+pnpm turbo dev -F {{ name }}
 ```
 
 ### Run in preview mode
 
 ```sh
-pnpm turbo preview -F evesso
+pnpm turbo preview -F {{ name }}
 ```
 
 ### Run tests
@@ -25,7 +25,7 @@ pnpm test
 ### Deploy
 
 ```sh
-pnpm turbo deploy -F evesso
+pnpm turbo deploy -F {{ name }}
 ```
 
 ## Database
@@ -33,17 +33,17 @@ pnpm turbo deploy -F evesso
 ### Generate migrations
 
 ```sh
-just db-generate evesso
+just db-generate {{ name }}
 ```
 
 ### Run migrations
 
 ```sh
-just db-migrate evesso
+just db-migrate {{ name }}
 ```
 
 ### Open Drizzle Studio
 
 ```sh
-just db-studio evesso
+just db-studio {{ name }}
 ```

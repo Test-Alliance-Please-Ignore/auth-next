@@ -3,6 +3,7 @@ import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/
 
 export type Env = SharedHonoEnv & {
 	DATABASE_URL: string
+	{{ constantCase name }}: DurableObjectNamespace
 }
 
 /** Variables can be extended */

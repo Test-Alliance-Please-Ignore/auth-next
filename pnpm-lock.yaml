@@ -60,6 +60,9 @@ importers:
 
   apps/core:
     dependencies:
+      '@repo/db-utils':
+        specifier: workspace:*
+        version: link:../../packages/db-utils
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
@@ -88,6 +91,15 @@ importers:
       '@types/node':
         specifier: 22.15.27
         version: 22.15.27
+      dotenv:
+        specifier: ^17.2.3
+        version: 17.2.3
+      drizzle-kit:
+        specifier: 0.31.5
+        version: 0.31.5
+      tsx:
+        specifier: 4.20.6
+        version: 4.20.6
       vite:
         specifier: 6.3.4
         version: 6.3.4(@types/node@22.15.27)(jiti@2.6.1)(tsx@4.20.6)(yaml@2.8.1)
@@ -100,6 +112,9 @@ importers:
 
   apps/evesso:
     dependencies:
+      '@repo/db-utils':
+        specifier: workspace:*
+        version: link:../../packages/db-utils
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
@@ -128,6 +143,70 @@ importers:
       '@types/node':
         specifier: 22.15.27
         version: 22.15.27
+      dotenv:
+        specifier: ^17.2.3
+        version: 17.2.3
+      drizzle-kit:
+        specifier: 0.31.5
+        version: 0.31.5
+      tsx:
+        specifier: 4.20.6
+        version: 4.20.6
+      vite:
+        specifier: 6.3.4
+        version: 6.3.4(@types/node@22.15.27)(jiti@2.6.1)(tsx@4.20.6)(yaml@2.8.1)
+      vitest:
+        specifier: 3.2.4
+        version: 3.2.4(@types/node@22.15.27)(jiti@2.6.1)(tsx@4.20.6)(yaml@2.8.1)
+      wrangler:
+        specifier: 4.42.2
+        version: 4.42.2
+
+  apps/test-do:
+    dependencies:
+      '@repo/db-utils':
+        specifier: workspace:*
+        version: link:../../packages/db-utils
+      '@repo/hono-helpers':
+        specifier: workspace:*
+        version: link:../../packages/hono-helpers
+      '@repo/test-do':
+        specifier: workspace:*
+        version: link:../../packages/test-do
+      hono:
+        specifier: 4.9.11
+        version: 4.9.11
+      workers-tagged-logger:
+        specifier: 0.13.3
+        version: 0.13.3
+    devDependencies:
+      '@cloudflare/vite-plugin':
+        specifier: 1.1.0
+        version: 1.1.0(rollup@4.52.5)(vite@6.3.4(@types/node@22.15.27)(jiti@2.6.1)(tsx@4.20.6)(yaml@2.8.1))(workerd@1.20251008.0)(wrangler@4.42.2)
+      '@cloudflare/vitest-pool-workers':
+        specifier: 0.9.12
+        version: 0.9.12(@vitest/runner@3.2.4)(@vitest/snapshot@3.2.4)(vitest@3.2.4(@types/node@22.15.27)(jiti@2.6.1)(tsx@4.20.6)(yaml@2.8.1))
+      '@repo/eslint-config':
+        specifier: workspace:*
+        version: link:../../packages/eslint-config
+      '@repo/tools':
+        specifier: workspace:*
+        version: link:../../packages/tools
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../../packages/typescript-config
+      '@types/node':
+        specifier: 22.15.27
+        version: 22.15.27
+      dotenv:
+        specifier: 17.2.3
+        version: 17.2.3
+      drizzle-kit:
+        specifier: 0.31.5
+        version: 0.31.5
+      tsx:
+        specifier: 4.20.6
+        version: 4.20.6
       vite:
         specifier: 6.3.4
         version: 6.3.4(@types/node@22.15.27)(jiti@2.6.1)(tsx@4.20.6)(yaml@2.8.1)
@@ -345,6 +424,22 @@ importers:
       vitest:
         specifier: 3.2.4
         version: 3.2.4(@types/node@22.15.27)(jiti@2.6.1)(tsx@4.20.6)(yaml@2.8.1)
+
+  packages/test-do:
+    dependencies:
+      '@cloudflare/workers-types':
+        specifier: 4.20250514.0
+        version: 4.20250514.0
+    devDependencies:
+      '@repo/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
+      '@repo/tools':
+        specifier: workspace:*
+        version: link:../tools
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
 
   packages/tools:
     dependencies:
@@ -636,6 +731,9 @@ packages:
 
   '@cloudflare/workers-types@4.20241127.0':
     resolution: {integrity: sha512-UqlvtqV8eI0CdPR7nxlbVlE52+lcjHvGdbYXEPwisy23+39RsFV7OOy0da0moJAhqnL2OhDmWTOaKdsVcPHiJQ==}
+
+  '@cloudflare/workers-types@4.20250514.0':
+    resolution: {integrity: sha512-zjyqRjoFnAzg7n+mxMxJAbIeOggUXLJTXA8WyT+xGDE+6MF9bSf1ypEULu4DXQQYLf6nDM6NwzLex/8ABTH+Lw==}
 
   '@colors/colors@1.5.0':
     resolution: {integrity: sha512-ooWCrlZP11i8GImSjTHYHLkvFDP48nS4+204nGb1RiX/WXYHmJA2III9/e2DWVabCESdW7hBAEzHRqUn9OUVvQ==}
@@ -2321,6 +2419,10 @@ packages:
 
   dotenv@16.0.3:
     resolution: {integrity: sha512-7GO6HghkA5fYG9TYnNxi14/7K9f5occMlp3zXAuSxn7CKCxt9xbNWG7yF8hTCSUchlfWSe3uLmlPfigevRItzQ==}
+    engines: {node: '>=12'}
+
+  dotenv@17.2.3:
+    resolution: {integrity: sha512-JVUnt+DUIzu87TABbhPmNfVdBDt18BLOWjMUFJMSi/Qqg7NTYtabbvSNJGOJ7afbRuv9D/lngizHtP7QyLQ+9w==}
     engines: {node: '>=12'}
 
   drizzle-kit@0.31.5:
@@ -4851,6 +4953,8 @@ snapshots:
 
   '@cloudflare/workers-types@4.20241127.0': {}
 
+  '@cloudflare/workers-types@4.20250514.0': {}
+
   '@colors/colors@1.5.0':
     optional: true
 
@@ -6310,6 +6414,8 @@ snapshots:
       no-case: 2.3.2
 
   dotenv@16.0.3: {}
+
+  dotenv@17.2.3: {}
 
   drizzle-kit@0.31.5:
     dependencies:

@@ -1,5 +1,5 @@
 {
-	"name": "core",
+	"name": "{{ name }}",
 	"version": "0.1.0",
 	"private": true,
 	"sideEffects": false,

@@ -60,6 +60,8 @@ db-generate-all:
   cd apps/evesso && bun run db:generate
   cd apps/tags && bun run db:generate
   cd apps/groups && bun run db:generate
+  cd apps/evesso && bun run db:generate
+  cd apps/test-do && bun run db:generate
 
 # Push schema changes to database (for development)
 [group('2. database')]
@@ -69,6 +71,8 @@ db-push-all:
   cd apps/evesso && bun run db:push
   cd apps/tags && bun run db:push
   cd apps/groups && bun run db:push
+  cd apps/evesso && bun run db:push
+  cd apps/test-do && bun run db:push
 
 # Run migrations for all apps
 [group('2. database')]
@@ -78,6 +82,8 @@ db-migrate-all:
   cd apps/evesso && bun run db:migrate
   cd apps/tags && bun run db:migrate
   cd apps/groups && bun run db:migrate
+  cd apps/evesso && bun run db:migrate
+  cd apps/test-do && bun run db:migrate
 
 # Open Drizzle Studio for a specific app
 [group('2. database')]
