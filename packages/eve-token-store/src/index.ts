@@ -118,6 +118,20 @@ export interface CallbackResult {
 }
 
 /**
+ * Response from ESI with cache metadata
+ */
+export interface EsiResponse<T> {
+	/** The response data from ESI */
+	data: T
+	/** Whether this response came from cache */
+	cached: boolean
+	/** When the cached response expires */
+	expiresAt: Date
+	/** ETag header from ESI for conditional requests */
+	etag?: string
+}
+
+/**
  * Public RPC interface for EveTokenStore Durable Object
  *
  * All public methods defined here will be available to call via RPC
@@ -192,4 +206,25 @@ export interface EveTokenStore {
 	 * @returns Array of token information
 	 */
 	listTokens(): Promise<TokenInfo[]>
+
+	/**
+	 * Fetch data from ESI for this character (ESI Gateway)
+	 * Automatically handles authentication if token is available for the character
+	 * Caches responses according to ESI cache headers
+	 *
+	 * @param path - ESI path (e.g., '/characters/{character_id}/skills')
+	 * @param characterId - Character ID (used for authentication and path interpolation)
+	 * @returns ESI response with cache metadata
+	 *
+	 * @example
+	 * ```ts
+	 * const tokenStoreId = env.EVE_TOKEN_STORE.idFromString(characterId.toString())
+	 * const stub = env.EVE_TOKEN_STORE.get(tokenStoreId)
+	 * const response = await stub.fetchEsi<EsiCharacterSkills>(
+	 *   `/characters/${characterId}/skills`,
+	 *   characterId
+	 * )
+	 * ```
+	 */
+	fetchEsi<T>(path: string, characterId: number): Promise<EsiResponse<T>>
 }

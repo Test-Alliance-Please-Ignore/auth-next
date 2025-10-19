@@ -8,6 +8,7 @@ import { eveCharacters, eveTokens } from './db/schema'
 import type {
 	AuthorizationUrlResponse,
 	CallbackResult,
+	EsiResponse,
 	EveTokenResponse,
 	EveTokenStore,
 	EveVerifyResponse,
@@ -118,8 +119,26 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		super(state, env)
 		this.db = createDb(env.DATABASE_URL)
 
+		// Initialize SQLite cache table for ESI responses
+		void this.initializeEsiCache()
+
 		// Schedule alarm for token refresh (check every 5 minutes)
 		void this.state.storage.setAlarm(Date.now() + 5 * 60 * 1000)
+	}
+
+	/**
+	 * Initialize SQLite cache table for ESI responses
+	 */
+	private async initializeEsiCache(): Promise<void> {
+		await this.state.storage.sql.exec(`
+			CREATE TABLE IF NOT EXISTS esi_cache (
+				cache_key TEXT PRIMARY KEY,
+				response_data TEXT NOT NULL,
+				expires_at INTEGER NOT NULL,
+				etag TEXT,
+				last_modified TEXT
+			)
+		`)
 	}
 
 	/**
@@ -371,6 +390,103 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		}
 
 		return tokens
+	}
+
+	/**
+	 * Fetch data from ESI (ESI Gateway)
+	 * Automatically handles authentication if token is available for the character
+	 * Caches responses according to ESI cache headers
+	 */
+	async fetchEsi<T>(path: string, characterId: number): Promise<EsiResponse<T>> {
+		const cacheKey = `${characterId}:${path}`
+
+		// 1. Check SQLite cache
+		const cached = await this.state.storage.sql.exec<{
+			response_data: string
+			expires_at: number
+			etag: string | null
+		}>(`SELECT response_data, expires_at, etag FROM esi_cache WHERE cache_key = ?`, cacheKey)
+
+		if (cached.length > 0) {
+			const now = Date.now()
+			if (cached[0].expires_at > now) {
+				// Cache hit
+				return {
+					data: JSON.parse(cached[0].response_data) as T,
+					cached: true,
+					expiresAt: new Date(cached[0].expires_at),
+					etag: cached[0].etag || undefined,
+				}
+			}
+		}
+
+		// 2. Cache miss - fetch from ESI
+		// Try to get token for authenticated request
+		const character = await this.db.query.eveCharacters.findFirst({
+			where: eq(eveCharacters.characterId, characterId),
+		})
+
+		let token: string | undefined
+		if (character) {
+			const accessToken = await this.getAccessToken(character.characterOwnerHash)
+			token = accessToken || undefined
+		}
+
+		// 3. Make ESI request
+		const headers: Record<string, string> = {
+			'X-Compatibility-Date': '2025-09-30',
+			'Accept': 'application/json',
+		}
+		if (token) {
+			headers['Authorization'] = `Bearer ${token}`
+		}
+		if (cached.length > 0 && cached[0].etag) {
+			headers['If-None-Match'] = cached[0].etag
+		}
+
+		const response = await fetch(`https://esi.evetech.net${path}`, { headers })
+
+		// Handle 304 Not Modified
+		if (response.status === 304 && cached.length > 0) {
+			const newExpiresAt = this.parseEsiCacheExpiry(response.headers)
+			await this.state.storage.sql.exec(
+				`UPDATE esi_cache SET expires_at = ? WHERE cache_key = ?`,
+				newExpiresAt.getTime(),
+				cacheKey
+			)
+			return {
+				data: JSON.parse(cached[0].response_data) as T,
+				cached: true,
+				expiresAt: newExpiresAt,
+				etag: cached[0].etag || undefined,
+			}
+		}
+
+		if (!response.ok) {
+			const errorText = await response.text()
+			throw new Error(`ESI request failed: ${response.status} ${response.statusText} - ${errorText}`)
+		}
+
+		// 4. Parse and cache response
+		const data = (await response.json()) as T
+		const expiresAt = this.parseEsiCacheExpiry(response.headers)
+		const etag = response.headers.get('ETag')
+
+		await this.state.storage.sql.exec(
+			`INSERT OR REPLACE INTO esi_cache (cache_key, response_data, expires_at, etag)
+			 VALUES (?, ?, ?, ?)`,
+			cacheKey,
+			JSON.stringify(data),
+			expiresAt.getTime(),
+			etag
+		)
+
+		return {
+			data,
+			cached: false,
+			expiresAt,
+			etag: etag || undefined,
+		}
 	}
 
 	/**
@@ -642,5 +758,28 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			'encrypt',
 			'decrypt',
 		])
+	}
+
+	/**
+	 * Parse ESI cache expiry from response headers
+	 */
+	private parseEsiCacheExpiry(headers: Headers): Date {
+		// Check Expires header first
+		const expires = headers.get('Expires')
+		if (expires) {
+			return new Date(expires)
+		}
+
+		// Check Cache-Control header
+		const cacheControl = headers.get('Cache-Control')
+		if (cacheControl) {
+			const maxAgeMatch = cacheControl.match(/max-age=(\d+)/)
+			if (maxAgeMatch) {
+				return new Date(Date.now() + parseInt(maxAgeMatch[1], 10) * 1000)
+			}
+		}
+
+		// Default: 5 minutes
+		return new Date(Date.now() + 5 * 60 * 1000)
 	}
 }

@@ -1,5 +1,5 @@
 {
-	"name": "{{ name }}",
+	"name": "eve-character-data",
 	"version": "0.1.0",
 	"private": true,
 	"sideEffects": false,
@@ -21,6 +21,7 @@
 	"dependencies": {
 		"@neondatabase/serverless": "0.10.4",
 		"@repo/db-utils": "workspace:*",
+		"@repo/eve-character-data": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
 		"drizzle-orm": "0.44.6",
 		"hono": "4.9.11",
