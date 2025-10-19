@@ -19,8 +19,11 @@
 		"test": "run-vitest"
 	},
 	"dependencies": {
+		"@neondatabase/serverless": "0.10.4",
 		"@repo/db-utils": "workspace:*",
+		"@repo/eve-token-store": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
+		"drizzle-orm": "0.44.6",
 		"hono": "4.9.11",
 		"workers-tagged-logger": "0.13.3"
 	},

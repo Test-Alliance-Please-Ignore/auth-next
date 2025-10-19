@@ -4,10 +4,23 @@
 	"main": "src/index.ts",
 	"compatibility_date": "2025-04-28",
 	"compatibility_flags": ["nodejs_compat"],
-	"routes": [],
+	"routes": ["pleaseignore.app/api/*"],
 	"logpush": true,
 	"observability": {
 		"enabled": true
 	},
-	"vars": {}
+	"vars": {
+		"NAME": "core",
+		"ENVIRONMENT": "production",
+		"SENTRY_RELEASE": "unknown"
+	},
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "EVE_TOKEN_STORE",
+				"class_name": "EveTokenStore",
+				"script_name": "eve-token-store"
+			}
+		]
+	}
 }

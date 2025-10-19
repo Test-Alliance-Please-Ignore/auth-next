@@ -1,26 +1,11 @@
-import { Hono } from 'hono'
-import { useWorkersLogger } from 'workers-tagged-logger'
+/**
+ * UI Worker - Serves React SPA via Cloudflare Workers Static Assets
+ */
 
-import { withNotFound, withOnError } from '@repo/hono-helpers'
-
-import type { App } from './context'
-
-const app = new Hono<App>()
-	.use(
-		'*',
-		// middleware
-		(c, next) =>
-			useWorkersLogger(c.env.NAME, {
-				environment: c.env.ENVIRONMENT,
-				release: c.env.SENTRY_RELEASE,
-			})(c, next)
-	)
-
-	.onError(withOnError())
-	.notFound(withNotFound())
-
-	.get('/', async (c) => {
-		return c.text('hello, world!')
-	})
-
-export default app
+export default {
+	async fetch(request: Request, env: any): Promise<Response> {
+		// Serve static assets using the ASSETS binding
+		// The ASSETS binding is configured in wrangler.jsonc
+		return env.ASSETS.fetch(request)
+	},
+}

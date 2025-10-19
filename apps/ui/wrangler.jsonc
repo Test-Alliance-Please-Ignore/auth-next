@@ -4,12 +4,17 @@
 	"main": "src/index.ts",
 	"compatibility_date": "2025-04-28",
 	"compatibility_flags": ["nodejs_compat"],
-	"routes": [],
+	"routes": ["pleaseignore.app/*"],
 	"logpush": true,
 	"observability": {
 		"enabled": true
 	},
+	"assets": {
+		"binding": "ASSETS",
+		"not_found_handling": "single-page-application"
+	},
 	"vars": {
+		"NAME": "ui",
 		"ENVIRONMENT": "development", // overridden during deployment
 		"SENTRY_RELEASE": "unknown" // overridden during deployment
 	}

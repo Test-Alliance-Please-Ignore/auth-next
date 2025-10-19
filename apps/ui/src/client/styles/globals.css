@@ -1,0 +1,126 @@
+@import 'tailwindcss';
+
+/* Dark Space Theme - Monochrome with Grays */
+:root {
+	/* Deep space backgrounds with gradient support */
+	--background: 0 0% 8%;            /* #141414 - Softer black */
+	--foreground: 0 0% 95%;           /* #f2f2f2 - Slightly softer white */
+
+	/* Card colors - layered grays */
+	--card: 0 0% 12%;                 /* #1f1f1f - Card background */
+	--card-foreground: 0 0% 95%;
+
+	/* Popover */
+	--popover: 0 0% 14%;
+	--popover-foreground: 0 0% 95%;
+
+	/* Primary - Lighter gray with subtle warmth */
+	--primary: 0 0% 85%;              /* #d9d9d9 - Soft light gray */
+	--primary-foreground: 0 0% 12%;
+
+	/* Secondary - Medium gray */
+	--secondary: 0 0% 25%;            /* #404040 - Medium-dark gray */
+	--secondary-foreground: 0 0% 95%;
+
+	/* Muted backgrounds - more variation */
+	--muted: 0 0% 18%;                /* #2e2e2e - Muted dark */
+	--muted-foreground: 0 0% 65%;     /* #a6a6a6 - Muted text */
+
+	/* Accent - Light gray */
+	--accent: 0 0% 22%;               /* #383838 - Accent gray */
+	--accent-foreground: 0 0% 95%;
+
+	/* Destructive - Red warning */
+	--destructive: 0 84% 60%;
+	--destructive-foreground: 0 0% 98%;
+
+	/* Borders - Layered grays */
+	--border: 0 0% 22%;               /* #383838 - Visible borders */
+	--input: 0 0% 18%;
+	--ring: 0 0% 75%;                 /* Medium-light gray ring for focus */
+
+	--radius: 0.5rem;
+
+	/* Chart colors - Grayscale spectrum */
+	--chart-1: 0 0% 75%;              /* Light gray */
+	--chart-2: 0 0% 60%;              /* Medium-light gray */
+	--chart-3: 0 0% 45%;              /* Medium gray */
+	--chart-4: 0 0% 65%;              /* Gray */
+	--chart-5: 0 0% 50%;              /* Mid gray */
+}
+
+* {
+	border-color: hsl(var(--border));
+}
+
+body {
+	background: hsl(var(--background));
+	color: hsl(var(--foreground));
+	font-feature-settings: 'rlig' 1, 'calt' 1;
+}
+
+/* Starfield background effect */
+@keyframes twinkle {
+	0%, 100% { opacity: 0.3; }
+	50% { opacity: 1; }
+}
+
+.starfield {
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	pointer-events: none;
+	z-index: 0;
+}
+
+.star {
+	position: absolute;
+	width: 2px;
+	height: 2px;
+	background: white;
+	border-radius: 50%;
+	animation: twinkle 3s infinite;
+}
+
+/* Glow effect for interactive elements */
+.glow {
+	box-shadow: 0 0 15px hsl(0 0% 50% / 0.2),
+	            0 0 30px hsl(0 0% 40% / 0.1),
+	            inset 0 0 20px hsl(0 0% 100% / 0.05);
+}
+
+.glow-hover:hover {
+	box-shadow: 0 0 20px hsl(0 0% 60% / 0.3),
+	            0 0 40px hsl(0 0% 50% / 0.15),
+	            inset 0 0 25px hsl(0 0% 100% / 0.08);
+	transition: box-shadow 0.3s ease;
+}
+
+/* Gradient text effect - monochrome with depth */
+.gradient-text {
+	background: linear-gradient(135deg,
+		hsl(0 0% 100%) 0%,
+		hsl(0 0% 85%) 25%,
+		hsl(0 0% 75%) 50%,
+		hsl(0 0% 65%) 100%);
+	-webkit-background-clip: text;
+	-webkit-text-fill-color: transparent;
+	background-clip: text;
+}
+
+/* Card gradient backgrounds */
+.card-gradient {
+	background: linear-gradient(145deg,
+		hsl(0 0% 14%) 0%,
+		hsl(0 0% 10%) 100%);
+}
+
+/* Subtle gradient overlays */
+.gradient-overlay {
+	background: linear-gradient(180deg,
+		hsl(0 0% 8% / 0) 0%,
+		hsl(0 0% 8% / 0.8) 50%,
+		hsl(0 0% 8%) 100%);
+}
