@@ -21,6 +21,7 @@ node_modules
 .env.production.local
 .secret
 *.env
+env.secrets.json
 
 # Testing
 coverage
