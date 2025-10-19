@@ -21,11 +21,13 @@ const state = await stub.getState()
 ## Adding to Your Worker
 
 1. Add the dependency to your worker's `package.json`:
+
    ```bash
    pnpm -F your-worker add '@repo/{{ name }}@workspace:*'
    ```
 
 2. Add the Durable Object binding to your worker's `wrangler.jsonc`:
+
    ```jsonc
    {
      "durable_objects": {
@@ -33,10 +35,10 @@ const state = await stub.getState()
          {
            "name": "{{ constantCase name }}",
            "class_name": "{{ pascalCase name }}",
-           "script_name": "{{ name }}"
-         }
-       ]
-     }
+           "script_name": "{{ name }}",
+         },
+       ],
+     },
    }
    ```
 

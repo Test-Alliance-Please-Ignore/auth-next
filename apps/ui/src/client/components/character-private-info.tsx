@@ -1,5 +1,6 @@
+import { Activity, Lock, MapPin, Package, Wallet } from 'lucide-react'
+
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
-import { MapPin, Wallet, Package, Activity, Lock } from 'lucide-react'
 
 interface CharacterPrivateInfoProps {
 	location?: {
@@ -23,13 +24,20 @@ interface CharacterPrivateInfoProps {
 	}
 }
 
-export function CharacterPrivateInfo({ location, wallet, assets, status }: CharacterPrivateInfoProps) {
+export function CharacterPrivateInfo({
+	location,
+	wallet,
+	assets,
+	status,
+}: CharacterPrivateInfoProps) {
 	const formatISK = (value: string) => {
 		const num = parseFloat(value)
-		return new Intl.NumberFormat('en-US', {
-			minimumFractionDigits: 2,
-			maximumFractionDigits: 2,
-		}).format(num) + ' ISK'
+		return (
+			new Intl.NumberFormat('en-US', {
+				minimumFractionDigits: 2,
+				maximumFractionDigits: 2,
+			}).format(num) + ' ISK'
+		)
 	}
 
 	return (
@@ -49,9 +57,7 @@ export function CharacterPrivateInfo({ location, wallet, assets, status }: Chara
 							<p className="text-xs text-muted-foreground">System ID</p>
 							<p className="text-lg font-bold">{location.solarSystemId}</p>
 							{location.stationId && (
-								<p className="text-xs text-muted-foreground mt-1">
-									Station: {location.stationId}
-								</p>
+								<p className="text-xs text-muted-foreground mt-1">Station: {location.stationId}</p>
 							)}
 						</div>
 					) : (

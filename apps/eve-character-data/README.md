@@ -46,8 +46,9 @@ The EveCharacterData Durable Object is available to this worker via the `EVE_CHA
 ### From within this worker:
 
 ```typescript
-import type { EveCharacterData } from '@repo/eve-character-data'
 import { getStub } from '@repo/do-utils'
+
+import type { EveCharacterData } from '@repo/eve-character-data'
 
 // Get a stub to the Durable Object
 const stub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'unique-id')
@@ -59,6 +60,7 @@ const result = await stub.exampleMethod('hello')
 ### From other workers:
 
 1. Add the binding to `wrangler.jsonc`:
+
    ```jsonc
    {
      "durable_objects": {
@@ -66,14 +68,15 @@ const result = await stub.exampleMethod('hello')
          {
            "name": "EVE_CHARACTER_DATA",
            "class_name": "EveCharacterData",
-           "script_name": "eve-character-data"
-         }
-       ]
-     }
+           "script_name": "eve-character-data",
+         },
+       ],
+     },
    }
    ```
 
 2. Add the dependency:
+
    ```bash
    pnpm -F your-worker add '@repo/eve-character-data@workspace:*'
    ```

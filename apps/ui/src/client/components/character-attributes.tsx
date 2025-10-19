@@ -1,5 +1,6 @@
+import { Brain, Eye, HardDrive, Heart, Zap } from 'lucide-react'
+
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
-import { Brain, Eye, HardDrive, Zap, Heart } from 'lucide-react'
 
 interface CharacterAttributesProps {
 	attributes: {

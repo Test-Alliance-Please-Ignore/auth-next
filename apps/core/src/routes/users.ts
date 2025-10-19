@@ -1,14 +1,14 @@
 import { Hono } from 'hono'
 
 import { getStub } from '@repo/do-utils'
-import type { EveCharacterData } from '@repo/eve-character-data'
-import type { EveTokenStore } from '@repo/eve-token-store'
 
 import { createDb } from '../db'
 import { requireAuth } from '../middleware/session'
 import { ActivityService } from '../services/activity.service'
 import { UserService } from '../services/user.service'
 
+import type { EveCharacterData } from '@repo/eve-character-data'
+import type { EveTokenStore } from '@repo/eve-token-store'
 import type { App } from '../context'
 import type { RequestMetadata, UserPreferencesDTO } from '../types/user'
 
@@ -183,6 +183,5 @@ users.post('/me/characters/:characterId/set-primary', async (c) => {
 		throw error
 	}
 })
-
 
 export default users

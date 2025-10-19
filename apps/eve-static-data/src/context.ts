@@ -1,5 +1,5 @@
-import type { schema } from './db/schema'
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js'
+import type { schema } from './db/schema'
 
 export interface Env {
 	DATABASE_URL: string

@@ -7,8 +7,9 @@ Shared types and interfaces for the EveCharacterData Durable Object.
 Import this package in any worker that needs to interact with the EveCharacterData Durable Object:
 
 ```typescript
-import type { EveCharacterData } from '@repo/eve-character-data'
 import { getStub } from '@repo/do-utils'
+
+import type { EveCharacterData } from '@repo/eve-character-data'
 
 // Get a typed stub to the Durable Object
 const stub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, 'unique-id')
@@ -21,11 +22,13 @@ const state = await stub.getState()
 ## Adding to Your Worker
 
 1. Add the dependency to your worker's `package.json`:
+
    ```bash
    pnpm -F your-worker add '@repo/eve-character-data@workspace:*'
    ```
 
 2. Add the Durable Object binding to your worker's `wrangler.jsonc`:
+
    ```jsonc
    {
      "durable_objects": {
@@ -33,10 +36,10 @@ const state = await stub.getState()
          {
            "name": "EVE_CHARACTER_DATA",
            "class_name": "EveCharacterData",
-           "script_name": "eve-character-data"
-         }
-       ]
-     }
+           "script_name": "eve-character-data",
+         },
+       ],
+     },
    }
    ```
 

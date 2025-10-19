@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+
 import type { App } from '../context'
 
 /**
@@ -18,9 +19,7 @@ skills.get('/', async (c) => {
 	const queryParams = c.req.url.split('?')[1] || ''
 	const url = `/skills${queryParams ? `?${queryParams}` : ''}`
 
-	const response = await c.env.EVE_STATIC_DATA.fetch(
-		new Request(`http://internal${url}`)
-	)
+	const response = await c.env.EVE_STATIC_DATA.fetch(new Request(`http://internal${url}`))
 
 	return new Response(response.body, {
 		status: response.status,

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+
 import { EveSSOButton } from '@/components/eve-sso-button'
 import { apiClient } from '@/lib/api'
 
@@ -9,7 +10,9 @@ export default function LandingPage() {
 		setIsLoading(true)
 		try {
 			// Call the auth/login/start endpoint
-			const response = await apiClient.post<{ authorizationUrl: string; state: string }>('/auth/login/start')
+			const response = await apiClient.post<{ authorizationUrl: string; state: string }>(
+				'/auth/login/start'
+			)
 
 			// Redirect to EVE SSO
 			window.location.href = response.authorizationUrl

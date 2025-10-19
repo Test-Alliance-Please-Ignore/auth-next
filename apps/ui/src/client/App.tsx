@@ -1,11 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
+
 import Layout from './components/layout'
-import LandingPage from './routes/landing'
 import AuthCallbackPage from './routes/auth-callback'
+import CharacterDetailPage from './routes/character-detail'
 import ClaimMainPage from './routes/claim-main'
 import DashboardPage from './routes/dashboard'
-import CharacterDetailPage from './routes/character-detail'
+import LandingPage from './routes/landing'
 
 // Create a client
 const queryClient = new QueryClient({

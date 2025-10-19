@@ -152,3 +152,6 @@ export function getConfig(importMetaUrl: string): Array<Linter.Config<Linter.Rul
 		{ rules: eslintConfigPrettier.rules },
 	])
 }
+
+// Default export for ESLint to load the module
+export default getConfig

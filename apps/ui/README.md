@@ -104,6 +104,7 @@ The API client in `src/client/lib/api.ts` is pre-configured to work with the cor
 
 ```tsx
 import { useQuery } from '@tanstack/react-query'
+
 import { apiClient } from '@/lib/api'
 
 function MyComponent() {
@@ -144,8 +145,8 @@ Add environment variables to `wrangler.jsonc`:
 {
   "vars": {
     "ENVIRONMENT": "development",
-    "CUSTOM_VAR": "value"
-  }
+    "CUSTOM_VAR": "value",
+  },
 }
 ```
 

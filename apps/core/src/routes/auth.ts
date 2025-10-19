@@ -1,6 +1,8 @@
-import { getCookie } from 'hono/cookie'
 import { Hono } from 'hono'
+import { getCookie } from 'hono/cookie'
+
 import { eq } from '@repo/db-utils'
+import { getStub } from '@repo/do-utils'
 
 import { createDb } from '../db'
 import { oauthStates } from '../db/schema'
@@ -8,11 +10,10 @@ import { requireAuth } from '../middleware/session'
 import { ActivityService } from '../services/activity.service'
 import { AuthService } from '../services/auth.service'
 import { UserService } from '../services/user.service'
-import { getStub } from '@repo/do-utils'
 
+import type { EveTokenStore } from '@repo/eve-token-store'
 import type { App } from '../context'
 import type { RequestMetadata } from '../types/user'
-import type { EveTokenStore } from '@repo/eve-token-store'
 
 /**
  * Authentication routes
@@ -160,7 +161,7 @@ auth.get('/callback', async (c) => {
 		if (existingUser) {
 			if (existingUser.id === stateUserId) {
 				// Character already linked to this user - token has been updated, just return success
-				const existingCharacter = user.characters.find(char => char.characterId === characterId)
+				const existingCharacter = user.characters.find((char) => char.characterId === characterId)
 				return c.json({
 					characterLinked: true,
 					tokenUpdated: true,
@@ -292,7 +293,8 @@ auth.post('/link-character', requireAuth(), async (c) => {
 	}
 
 	const db = c.get('db') || createDb(c.env.DATABASE_URL)
-	const eveTokenStoreStub = c.get('eveTokenStore') || getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+	const eveTokenStoreStub =
+		c.get('eveTokenStore') || getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
 
 	const userService = new UserService(db)
 	const activityService = new ActivityService(db)
@@ -301,7 +303,10 @@ auth.post('/link-character', requireAuth(), async (c) => {
 	const tokenInfo = await eveTokenStoreStub.getTokenInfo(characterId)
 
 	if (!tokenInfo) {
-		return c.json({ error: 'Character not authenticated. Please complete character flow first.' }, 400)
+		return c.json(
+			{ error: 'Character not authenticated. Please complete character flow first.' },
+			400
+		)
 	}
 
 	// Link character

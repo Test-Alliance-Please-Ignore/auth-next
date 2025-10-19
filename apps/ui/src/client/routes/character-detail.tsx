@@ -1,15 +1,16 @@
-import { useParams, Navigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { api } from '../lib/api'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
-import { Button } from '../components/ui/button'
-import { RefreshCw, User, MapPin, Wallet, Package, Activity } from 'lucide-react'
-import { CharacterSkills } from '../components/character-skills'
+import { formatDistanceToNow } from 'date-fns'
+import { Activity, MapPin, Package, RefreshCw, User, Wallet } from 'lucide-react'
+import { Navigate, useParams } from 'react-router-dom'
+
 import { CharacterAttributes } from '../components/character-attributes'
 import { CharacterCorporationHistory } from '../components/character-corporation-history'
-import { CharacterSkillQueue } from '../components/character-skill-queue'
 import { CharacterPrivateInfo } from '../components/character-private-info'
-import { formatDistanceToNow } from 'date-fns'
+import { CharacterSkillQueue } from '../components/character-skill-queue'
+import { CharacterSkills } from '../components/character-skills'
+import { Button } from '../components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
+import { api } from '../lib/api'
 
 export default function CharacterDetailPage() {
 	const { characterId } = useParams<{ characterId: string }>()
@@ -167,7 +168,8 @@ export default function CharacterDetailPage() {
 					<CardContent>
 						<div className="text-center py-8">
 							<p className="text-muted-foreground mb-4">
-								Skills data hasn't been fetched yet. Click the Refresh button above to load your character's skills.
+								Skills data hasn't been fetched yet. Click the Refresh button above to load your
+								character's skills.
 							</p>
 							<Button onClick={handleRefresh} variant="default">
 								<RefreshCw className="h-4 w-4 mr-2" />

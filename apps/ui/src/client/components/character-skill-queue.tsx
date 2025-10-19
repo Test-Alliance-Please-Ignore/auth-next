@@ -1,6 +1,7 @@
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
-import { Clock, GraduationCap } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
+import { Clock, GraduationCap } from 'lucide-react'
+
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 
 interface SkillQueueEntry {
 	queue_position: number
@@ -20,7 +21,7 @@ interface CharacterSkillQueueProps {
 export function CharacterSkillQueue({ queue }: CharacterSkillQueueProps) {
 	const sortedQueue = [...queue].sort((a, b) => a.queue_position - b.queue_position)
 	const currentlyTraining = sortedQueue.find(
-		entry => entry.start_date && new Date(entry.start_date) <= new Date()
+		(entry) => entry.start_date && new Date(entry.start_date) <= new Date()
 	)
 
 	return (
@@ -43,7 +44,7 @@ export function CharacterSkillQueue({ queue }: CharacterSkillQueueProps) {
 								entry.level_start_sp && entry.level_end_sp && entry.training_start_sp
 									? ((entry.training_start_sp - entry.level_start_sp) /
 											(entry.level_end_sp - entry.level_start_sp)) *
-									  100
+										100
 									: 0
 
 							return (
@@ -56,9 +57,7 @@ export function CharacterSkillQueue({ queue }: CharacterSkillQueueProps) {
 									<div className="flex items-start justify-between">
 										<div className="flex-1">
 											<div className="flex items-center gap-2">
-												<span className="text-sm font-medium">
-													Skill #{entry.skill_id}
-												</span>
+												<span className="text-sm font-medium">Skill #{entry.skill_id}</span>
 												<span className="text-xs px-2 py-0.5 bg-gray-100 rounded">
 													Level {entry.finished_level}
 												</span>

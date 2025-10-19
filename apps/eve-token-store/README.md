@@ -46,8 +46,9 @@ The EveTokenStore Durable Object is available to this worker via the `EVE_TOKEN_
 ### From within this worker:
 
 ```typescript
-import type { EveTokenStore } from '@repo/eve-token-store'
 import { getStub } from '@repo/do-utils'
+
+import type { EveTokenStore } from '@repo/eve-token-store'
 
 // Get a stub to the Durable Object
 const stub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'unique-id')
@@ -59,6 +60,7 @@ const result = await stub.exampleMethod('hello')
 ### From other workers:
 
 1. Add the binding to `wrangler.jsonc`:
+
    ```jsonc
    {
      "durable_objects": {
@@ -66,14 +68,15 @@ const result = await stub.exampleMethod('hello')
          {
            "name": "EVE_TOKEN_STORE",
            "class_name": "EveTokenStore",
-           "script_name": "eve-token-store"
-         }
-       ]
-     }
+           "script_name": "eve-token-store",
+         },
+       ],
+     },
    }
    ```
 
 2. Add the dependency:
+
    ```bash
    pnpm -F your-worker add '@repo/eve-token-store@workspace:*'
    ```

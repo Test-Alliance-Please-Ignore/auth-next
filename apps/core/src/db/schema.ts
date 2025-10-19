@@ -23,17 +23,13 @@ export const users = pgTable(
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
 		/** EVE character ID of the main character */
-		mainCharacterId: bigint('main_character_id', { mode: 'number' })
-			.notNull()
-			.unique(),
+		mainCharacterId: bigint('main_character_id', { mode: 'number' }).notNull().unique(),
 		/** Whether this user is an admin */
 		is_admin: boolean('is_admin').default(false).notNull(),
 		createdAt: timestamp('created_at').defaultNow().notNull(),
 		updatedAt: timestamp('updated_at').defaultNow().notNull(),
 	},
-	(table) => [
-		index('users_main_character_id_idx').on(table.mainCharacterId),
-	]
+	(table) => [index('users_main_character_id_idx').on(table.mainCharacterId)]
 )
 
 /**
@@ -128,7 +124,6 @@ export const userPreferences = pgTable('user_preferences', {
 	updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })
 
-
 /**
  * User activity log table - Audit trail
  *
@@ -179,9 +174,7 @@ export const oauthStates = pgTable(
 		/** When this state expires (15 minutes from creation) */
 		expiresAt: timestamp('expires_at').notNull(),
 	},
-	(table) => [
-		index('oauth_states_expires_at_idx').on(table.expiresAt),
-	]
+	(table) => [index('oauth_states_expires_at_idx').on(table.expiresAt)]
 )
 
 /**
@@ -214,7 +207,6 @@ export const userPreferencesRelations = relations(userPreferences, ({ one }) => 
 		references: [users.id],
 	}),
 }))
-
 
 export const userActivityLogRelations = relations(userActivityLog, ({ one }) => ({
 	user: one(users, {

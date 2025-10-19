@@ -1,5 +1,7 @@
 import { Link, Outlet } from 'react-router-dom'
+
 import { useAuth, useLogout } from '@/hooks/useAuth'
+
 import { Button } from './ui/button'
 
 export default function Layout() {
@@ -7,9 +9,7 @@ export default function Layout() {
 	const logout = useLogout()
 
 	// Find main character
-	const mainCharacter = user?.characters.find(
-		(c) => c.characterId === user.mainCharacterId
-	)
+	const mainCharacter = user?.characters.find((c) => c.characterId === user.mainCharacterId)
 
 	return (
 		<div className="min-h-screen flex flex-col">
@@ -20,7 +20,10 @@ export default function Layout() {
 			<header className="border-b border-border/30 backdrop-blur-md bg-gradient-to-r from-background/90 via-background/80 to-background/90 sticky top-0 z-50 shadow-[0_4px_20px_rgba(0,0,0,0.3)]">
 				<div className="container mx-auto px-4 py-4">
 					<nav className="flex items-center justify-between">
-						<Link to={isAuthenticated ? "/dashboard" : "/"} className="text-xl md:text-2xl font-bold gradient-text drop-shadow-[0_2px_8px_rgba(255,255,255,0.1)]">
+						<Link
+							to={isAuthenticated ? '/dashboard' : '/'}
+							className="text-xl md:text-2xl font-bold gradient-text drop-shadow-[0_2px_8px_rgba(255,255,255,0.1)]"
+						>
 							Test Auth Next Generation
 						</Link>
 
@@ -43,10 +46,7 @@ export default function Layout() {
 								</div>
 
 								{/* Navigation */}
-								<Link
-									to="/dashboard"
-									className="text-sm hover:text-primary transition-colors"
-								>
+								<Link to="/dashboard" className="text-sm hover:text-primary transition-colors">
 									Dashboard
 								</Link>
 

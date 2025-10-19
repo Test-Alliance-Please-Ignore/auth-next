@@ -16,10 +16,7 @@ export class ApiClient {
 		this.baseUrl = baseUrl
 	}
 
-	private async request<T>(
-		endpoint: string,
-		options?: RequestInit
-	): Promise<T> {
+	private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
 		const url = `${this.baseUrl}${endpoint}`
 
 		// Get session token from localStorage
@@ -29,7 +26,7 @@ export class ApiClient {
 			...options,
 			headers: {
 				'Content-Type': 'application/json',
-				...(sessionToken && { 'Authorization': `Bearer ${sessionToken}` }),
+				...(sessionToken && { Authorization: `Bearer ${sessionToken}` }),
 				...options?.headers,
 			},
 			credentials: 'include', // Include cookies for session management
@@ -67,7 +64,6 @@ export class ApiClient {
 	async delete<T>(endpoint: string): Promise<T> {
 		return this.request<T>(endpoint, { method: 'DELETE' })
 	}
-
 
 	async getCharacterDetail(characterId: number): Promise<{
 		characterId: number

@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion'
-import { Progress } from './ui/progress'
-import { GraduationCap, ChevronRight } from 'lucide-react'
+import { ChevronRight, GraduationCap } from 'lucide-react'
+import { useEffect, useState } from 'react'
+
 import { api } from '../lib/api'
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion'
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
+import { Progress } from './ui/progress'
 
 interface Skill {
 	active_skill_level: number
@@ -59,40 +60,52 @@ function calculateSkillProgress(skill: Skill, skillRank: number = 1): number {
 	return Math.min(100, Math.max(0, (spProgress / spNeeded) * 100))
 }
 
-export function CharacterSkills({ skills, characterId, showProgress = false }: CharacterSkillsProps) {
+export function CharacterSkills({
+	skills,
+	characterId,
+	showProgress = false,
+}: CharacterSkillsProps) {
 	const [expandedCategories, setExpandedCategories] = useState<string[]>([])
 
 	// Fetch skill metadata from eve-static-data
 	const { data: skillMetadata, isLoading: isLoadingMetadata } = useQuery({
-		queryKey: ['skill-metadata', skills.skills.map(s => s.skill_id)],
+		queryKey: ['skill-metadata', skills.skills.map((s) => s.skill_id)],
 		queryFn: async () => {
-			const skillIds = skills.skills.map(s => s.skill_id).join(',')
+			const skillIds = skills.skills.map((s) => s.skill_id).join(',')
 			return api.getSkillMetadata(skillIds)
 		},
 		enabled: skills.skills.length > 0,
 	})
 
 	// Group skills by category
-	const categorizedSkills = skillMetadata?.reduce((acc, category) => {
-		const categorySkills = category.groups.flatMap(group =>
-			group.skills.map(skill => ({
-				...skill,
-				groupName: group.groupName,
-				characterSkill: skills.skills.find(s => s.skill_id === skill.id)
-			}))
-		).filter(skill => skill.characterSkill)
+	const categorizedSkills =
+		skillMetadata?.reduce((acc, category) => {
+			const categorySkills = category.groups
+				.flatMap((group) =>
+					group.skills.map((skill) => ({
+						...skill,
+						groupName: group.groupName,
+						characterSkill: skills.skills.find((s) => s.skill_id === skill.id),
+					}))
+				)
+				.filter((skill) => skill.characterSkill)
 
-		if (categorySkills.length > 0) {
-			acc.push({
-				...category,
-				totalSP: categorySkills.reduce((sum, s) => sum + (s.characterSkill?.skillpoints_in_skill || 0), 0),
-				trainedSkills: categorySkills.filter(s => s.characterSkill && s.characterSkill.trained_skill_level > 0).length,
-				totalSkills: categorySkills.length,
-				skills: categorySkills
-			})
-		}
-		return acc
-	}, [] as any[]) || []
+			if (categorySkills.length > 0) {
+				acc.push({
+					...category,
+					totalSP: categorySkills.reduce(
+						(sum, s) => sum + (s.characterSkill?.skillpoints_in_skill || 0),
+						0
+					),
+					trainedSkills: categorySkills.filter(
+						(s) => s.characterSkill && s.characterSkill.trained_skill_level > 0
+					).length,
+					totalSkills: categorySkills.length,
+					skills: categorySkills,
+				})
+			}
+			return acc
+		}, [] as any[]) || []
 
 	// Sort categories by total SP (highest first)
 	categorizedSkills.sort((a, b) => b.totalSP - a.totalSP)
@@ -125,7 +138,7 @@ export function CharacterSkills({ skills, characterId, showProgress = false }: C
 			<CardContent>
 				{isLoadingMetadata ? (
 					<div className="space-y-4">
-						{[1, 2, 3].map(i => (
+						{[1, 2, 3].map((i) => (
 							<div key={i} className="h-12 bg-gray-100 rounded animate-pulse" />
 						))}
 					</div>
@@ -156,9 +169,15 @@ export function CharacterSkills({ skills, characterId, showProgress = false }: C
 								<AccordionContent>
 									<div className="space-y-3 pt-2">
 										{category.skills
-											.sort((a: any, b: any) => b.characterSkill.skillpoints_in_skill - a.characterSkill.skillpoints_in_skill)
+											.sort(
+												(a: any, b: any) =>
+													b.characterSkill.skillpoints_in_skill -
+													a.characterSkill.skillpoints_in_skill
+											)
 											.map((skill: any) => {
-												const progress = showProgress ? calculateSkillProgress(skill.characterSkill, skill.rank) : 0
+												const progress = showProgress
+													? calculateSkillProgress(skill.characterSkill, skill.rank)
+													: 0
 
 												return (
 													<div key={skill.id} className="space-y-1">
@@ -171,7 +190,8 @@ export function CharacterSkills({ skills, characterId, showProgress = false }: C
 																	</span>
 																</div>
 																<p className="text-xs text-muted-foreground">
-																	{skill.groupName} • Level {skill.characterSkill.trained_skill_level}
+																	{skill.groupName} • Level{' '}
+																	{skill.characterSkill.trained_skill_level}
 																</p>
 															</div>
 															<div className="text-right">

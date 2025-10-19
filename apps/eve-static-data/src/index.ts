@@ -1,11 +1,14 @@
+import { and, eq, inArray } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { useWorkersLogger } from 'workers-tagged-logger'
+
 import { withNotFound, withOnError } from '@repo/hono-helpers'
-import { eq, and, inArray } from 'drizzle-orm'
-import type { App } from './context'
+
 import { createDb } from './db'
 import { schema } from './db/schema'
+
+import type { App } from './context'
 
 const app = new Hono<App>()
 	.use('*', useWorkersLogger())
@@ -27,7 +30,10 @@ app.get('/health', (c) => {
 // Get all skill categories
 app.get('/skills/categories', async (c) => {
 	const db = c.get('db')
-	const categories = await db.select().from(schema.skillCategories).orderBy(schema.skillCategories.name)
+	const categories = await db
+		.select()
+		.from(schema.skillCategories)
+		.orderBy(schema.skillCategories.name)
 	return c.json(categories)
 })
 
@@ -114,7 +120,12 @@ app.get('/skills', async (c) => {
 	const skillIdsParam = c.req.query('ids')
 	const publishedOnly = c.req.query('published') !== 'false'
 
-	const skillIds = skillIdsParam ? skillIdsParam.split(',').map(Number).filter(id => !isNaN(id)) : []
+	const skillIds = skillIdsParam
+		? skillIdsParam
+				.split(',')
+				.map(Number)
+				.filter((id) => !isNaN(id))
+		: []
 
 	let skills = []
 
@@ -192,35 +203,40 @@ app.get('/skills', async (c) => {
 
 	// Group by skill group (what players think of as "categories")
 	// Since all skills have the same item category "Skill", we use groups as top-level
-	const grouped = skills.reduce((acc, skill) => {
-		const groupId = skill.groupId || 0
-		const groupName = skill.groupName || 'Unknown'
+	const grouped = skills.reduce(
+		(acc, skill) => {
+			const groupId = skill.groupId || 0
+			const groupName = skill.groupName || 'Unknown'
 
-		if (!acc[groupId]) {
-			acc[groupId] = {
-				categoryId: groupId, // Using groupId as categoryId for UI compatibility
-				categoryName: groupName,
-				groups: [{
-					groupId: groupId,
-					groupName: groupName,
-					skills: [],
-				}],
+			if (!acc[groupId]) {
+				acc[groupId] = {
+					categoryId: groupId, // Using groupId as categoryId for UI compatibility
+					categoryName: groupName,
+					groups: [
+						{
+							groupId: groupId,
+							groupName: groupName,
+							skills: [],
+						},
+					],
+				}
 			}
-		}
 
-		acc[groupId].groups[0].skills.push({
-			id: skill.id,
-			name: skill.name,
-			description: skill.description,
-			rank: skill.rank,
-			primaryAttribute: skill.primaryAttribute,
-			secondaryAttribute: skill.secondaryAttribute,
-			published: skill.published,
-			canNotBeTrained: skill.canNotBeTrained,
-		})
+			acc[groupId].groups[0].skills.push({
+				id: skill.id,
+				name: skill.name,
+				description: skill.description,
+				rank: skill.rank,
+				primaryAttribute: skill.primaryAttribute,
+				secondaryAttribute: skill.secondaryAttribute,
+				published: skill.published,
+				canNotBeTrained: skill.canNotBeTrained,
+			})
 
-		return acc
-	}, {} as Record<number, any>)
+			return acc
+		},
+		{} as Record<number, any>
+	)
 
 	// Convert to array format
 	const result = Object.values(grouped)
@@ -237,7 +253,7 @@ app.post('/skills/requirements', async (c) => {
 		return c.json({ error: 'Invalid request body' }, 400)
 	}
 
-	const validSkillIds = skillIds.filter(id => !isNaN(id))
+	const validSkillIds = skillIds.filter((id) => !isNaN(id))
 	if (validSkillIds.length === 0) {
 		return c.json([])
 	}
@@ -254,17 +270,20 @@ app.post('/skills/requirements', async (c) => {
 		.where(inArray(schema.skillRequirements.skillId, validSkillIds))
 
 	// Group by skill ID
-	const grouped = requirements.reduce((acc, req) => {
-		if (!acc[req.skillId]) {
-			acc[req.skillId] = []
-		}
-		acc[req.skillId].push({
-			requiredSkillId: req.requiredSkillId,
-			requiredLevel: req.requiredLevel,
-			requiredSkillName: req.requiredSkillName,
-		})
-		return acc
-	}, {} as Record<number, any[]>)
+	const grouped = requirements.reduce(
+		(acc, req) => {
+			if (!acc[req.skillId]) {
+				acc[req.skillId] = []
+			}
+			acc[req.skillId].push({
+				requiredSkillId: req.requiredSkillId,
+				requiredLevel: req.requiredLevel,
+				requiredSkillName: req.requiredSkillName,
+			})
+			return acc
+		},
+		{} as Record<number, any[]>
+	)
 
 	return c.json(grouped)
 })
@@ -272,7 +291,11 @@ app.post('/skills/requirements', async (c) => {
 // Get SDE version info
 app.get('/sde/version', async (c) => {
 	const db = c.get('db')
-	const [version] = await db.select().from(schema.sdeVersion).orderBy(schema.sdeVersion.importedAt).limit(1)
+	const [version] = await db
+		.select()
+		.from(schema.sdeVersion)
+		.orderBy(schema.sdeVersion.importedAt)
+		.limit(1)
 
 	if (!version) {
 		return c.json({ error: 'No SDE data imported' }, 404)

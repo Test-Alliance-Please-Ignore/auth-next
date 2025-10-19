@@ -1,12 +1,13 @@
 import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
-import { withNotFound, withOnError } from '@repo/hono-helpers'
 import { getStub } from '@repo/do-utils'
+import { withNotFound, withOnError } from '@repo/hono-helpers'
 
-import type { App } from './context'
-import type { EveCharacterData } from '@repo/eve-character-data'
 import { EveCharacterDataDO } from './durable-object'
+
+import type { EveCharacterData } from '@repo/eve-character-data'
+import type { App } from './context'
 
 const app = new Hono<App>()
 	.use(

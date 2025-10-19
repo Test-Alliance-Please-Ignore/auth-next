@@ -2,10 +2,11 @@ import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:
 import { describe, expect, it } from 'vitest'
 
 import { getStub } from '@repo/do-utils'
-import type { EveTokenStore } from '@repo/eve-token-store'
 
-import type { Env } from '../../context'
 import worker from '../../index'
+
+import type { EveTokenStore } from '@repo/eve-token-store'
+import type { Env } from '../../context'
 
 // Cast env to have correct types
 const testEnv = env as unknown as Env

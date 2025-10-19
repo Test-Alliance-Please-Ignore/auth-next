@@ -5,6 +5,8 @@
  * This package allows other workers to interact with the Durable Object via RPC.
  */
 
+import type { DurableObject } from 'cloudflare:workers'
+
 /**
  * ESI Response Types
  */

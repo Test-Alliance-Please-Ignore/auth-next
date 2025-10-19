@@ -1,10 +1,11 @@
+import { ExternalLink, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
-import { RefreshCw, ExternalLink } from 'lucide-react'
-import { useAuth } from '@/hooks/useAuth'
-import { apiClient } from '@/lib/api'
+import { Link, useNavigate } from 'react-router-dom'
+
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { useAuth } from '@/hooks/useAuth'
+import { apiClient } from '@/lib/api'
 
 export default function DashboardPage() {
 	const { user, isLoading, refetch } = useAuth()
@@ -18,7 +19,7 @@ export default function DashboardPage() {
 		if (refreshingCharacters.has(characterIdStr)) return
 
 		// Add character to refreshing set
-		setRefreshingCharacters(prev => new Set(prev).add(characterIdStr))
+		setRefreshingCharacters((prev) => new Set(prev).add(characterIdStr))
 
 		try {
 			const result = await apiClient.refreshCharacterById(characterId)
@@ -33,7 +34,7 @@ export default function DashboardPage() {
 			// TODO: Show error toast
 		} finally {
 			// Remove character from refreshing set
-			setRefreshingCharacters(prev => {
+			setRefreshingCharacters((prev) => {
 				const next = new Set(prev)
 				next.delete(characterIdStr)
 				return next
@@ -45,7 +46,9 @@ export default function DashboardPage() {
 		setIsLinkingCharacter(true)
 		try {
 			// Start character linking flow
-			const response = await apiClient.post<{ authorizationUrl: string; state: string }>('/auth/character/start')
+			const response = await apiClient.post<{ authorizationUrl: string; state: string }>(
+				'/auth/character/start'
+			)
 
 			// Redirect to EVE SSO for character authorization
 			window.location.href = response.authorizationUrl
@@ -61,9 +64,25 @@ export default function DashboardPage() {
 			<div className="min-h-screen flex items-center justify-center">
 				<div className="text-center">
 					<div className="mb-4">
-						<svg className="animate-spin h-12 w-12 mx-auto text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-							<circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-							<path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+						<svg
+							className="animate-spin h-12 w-12 mx-auto text-primary"
+							xmlns="http://www.w3.org/2000/svg"
+							fill="none"
+							viewBox="0 0 24 24"
+						>
+							<circle
+								className="opacity-25"
+								cx="12"
+								cy="12"
+								r="10"
+								stroke="currentColor"
+								strokeWidth="4"
+							></circle>
+							<path
+								className="opacity-75"
+								fill="currentColor"
+								d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+							></path>
 						</svg>
 					</div>
 					<p className="text-muted-foreground">Loading...</p>
@@ -78,9 +97,7 @@ export default function DashboardPage() {
 	}
 
 	// Find main character
-	const mainCharacter = user.characters.find(
-		(c) => c.characterId === user.mainCharacterId
-	)
+	const mainCharacter = user.characters.find((c) => c.characterId === user.mainCharacterId)
 
 	return (
 		<div className="min-h-screen">
@@ -177,9 +194,13 @@ export default function DashboardPage() {
 												className="w-12 h-12 rounded-full border border-border/50 group-hover:border-primary/30 transition-colors shadow-md"
 											/>
 											<div className="flex-1 min-w-0">
-												<h3 className="font-semibold truncate group-hover:text-primary transition-colors">{character.characterName}</h3>
+												<h3 className="font-semibold truncate group-hover:text-primary transition-colors">
+													{character.characterName}
+												</h3>
 												{character.characterId === user.mainCharacterId && (
-													<span className="text-xs text-primary bg-primary/10 px-2 py-0.5 rounded">Main</span>
+													<span className="text-xs text-primary bg-primary/10 px-2 py-0.5 rounded">
+														Main
+													</span>
 												)}
 											</div>
 										</div>

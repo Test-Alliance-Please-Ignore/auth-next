@@ -1,7 +1,7 @@
 import { userActivityLog } from '../db/schema'
 
-import type { ActivityAction, RequestMetadata } from '../types/user'
 import type { createDb } from '../db'
+import type { ActivityAction, RequestMetadata } from '../types/user'
 
 /**
  * Activity Service
@@ -34,11 +34,7 @@ export class ActivityService {
 	/**
 	 * Log login activity
 	 */
-	async logLogin(
-		userId: string,
-		characterId: number,
-		metadata: RequestMetadata
-	): Promise<void> {
+	async logLogin(userId: string, characterId: number, metadata: RequestMetadata): Promise<void> {
 		await this.logActivity('login', userId, {
 			...metadata,
 			characterId,

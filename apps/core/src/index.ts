@@ -5,9 +5,9 @@ import { withNotFound, withOnError } from '@repo/hono-helpers'
 
 import { sessionMiddleware } from './middleware/session'
 import authRoutes from './routes/auth'
-import usersRoutes from './routes/users'
 import charactersRoutes from './routes/characters'
 import skillsRoutes from './routes/skills'
+import usersRoutes from './routes/users'
 
 import type { App } from './context'
 

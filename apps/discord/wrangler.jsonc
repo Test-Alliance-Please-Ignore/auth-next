@@ -1,0 +1,31 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "discord",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-04-28",
+	"compatibility_flags": ["nodejs_compat"],
+	"routes": [],
+	"logpush": true,
+	"observability": {
+		"enabled": true
+	},
+	"vars": {
+		"DISCORD_AUTHORIZE_URL": "https://discord.com/oauth2/authorize",
+		"DISCORD_TOKEN_URL": "https://discord.com/api/oauth2/token",
+		"DISCORD_TOKEN_REVOKE_URL": "https://discord.com/api/oauth2/token/revoke"
+	},
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "DISCORD",
+				"class_name": "Discord"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["Discord"]
+		}
+	]
+}

@@ -1,9 +1,12 @@
-import { Hono } from 'hono'
 import { eq } from 'drizzle-orm'
-import { requireAuth } from '../middleware/session'
+import { Hono } from 'hono'
+
 import { getStub } from '@repo/do-utils'
-import type { App } from '../context'
+
+import { requireAuth } from '../middleware/session'
+
 import type { EveCharacterData } from '@repo/eve-character-data'
+import type { App } from '../context'
 
 const app = new Hono<App>()
 
@@ -25,21 +28,23 @@ app.get('/:characterId', requireAuth(), async (c) => {
 	}
 
 	// Check if user owns this character
-	const isOwner = user.characters.some(char => char.characterId === characterId)
+	const isOwner = user.characters.some((char) => char.characterId === characterId)
 
 	// Get EVE Character Data DO stub
 	const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
 
 	try {
 		// Fetch all public character data pieces
-		const [info, portrait, corporationHistory, skills, attributes, lastUpdated] = await Promise.all([
-			eveCharacterDataStub.getCharacterInfo(characterId),
-			eveCharacterDataStub.getPortrait(characterId),
-			eveCharacterDataStub.getCorporationHistory(characterId),
-			eveCharacterDataStub.getSkills(characterId),
-			eveCharacterDataStub.getAttributes(characterId),
-			eveCharacterDataStub.getLastUpdated(characterId),
-		])
+		const [info, portrait, corporationHistory, skills, attributes, lastUpdated] = await Promise.all(
+			[
+				eveCharacterDataStub.getCharacterInfo(characterId),
+				eveCharacterDataStub.getPortrait(characterId),
+				eveCharacterDataStub.getCorporationHistory(characterId),
+				eveCharacterDataStub.getSkills(characterId),
+				eveCharacterDataStub.getAttributes(characterId),
+				eveCharacterDataStub.getLastUpdated(characterId),
+			]
+		)
 
 		if (!info) {
 			return c.json({ error: 'Character not found' }, 404)
@@ -97,7 +102,7 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 	}
 
 	// Check if user owns this character
-	const character = user.characters.find(char => char.characterId === characterId)
+	const character = user.characters.find((char) => char.characterId === characterId)
 	if (!character) {
 		return c.json({ error: 'Character not found or not owned by user' }, 403)
 	}
@@ -139,12 +144,14 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 				: 'Public character data refreshed (no valid token for private data)',
 			lastUpdated,
 			hasValidToken,
-			tokenInfo: tokenInfo ? {
-				hasToken: true,
-				scopes: tokenInfo.scopes,
-				isExpired: tokenInfo.isExpired,
-				expiresAt: tokenInfo.expiresAt,
-			} : { hasToken: false },
+			tokenInfo: tokenInfo
+				? {
+						hasToken: true,
+						scopes: tokenInfo.scopes,
+						isExpired: tokenInfo.isExpired,
+						expiresAt: tokenInfo.expiresAt,
+					}
+				: { hasToken: false },
 			authError: hasValidToken ? undefined : authError,
 		})
 	} catch (error) {

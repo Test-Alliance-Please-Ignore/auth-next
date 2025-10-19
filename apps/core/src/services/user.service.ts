@@ -1,10 +1,6 @@
 import { and, eq } from '@repo/db-utils'
 
-import {
-	userCharacters,
-	userPreferences,
-	users,
-} from '../db/schema'
+import { userCharacters, userPreferences, users } from '../db/schema'
 
 import type { createDb } from '../db'
 import type {
@@ -96,9 +92,7 @@ export class UserService {
 	/**
 	 * Get user by character ID
 	 */
-	async getUserByCharacterId(
-		characterId: number
-	): Promise<UserProfileDTO | null> {
+	async getUserByCharacterId(characterId: number): Promise<UserProfileDTO | null> {
 		const character = await this.db.query.userCharacters.findFirst({
 			where: eq(userCharacters.characterId, characterId),
 		})
@@ -193,7 +187,7 @@ export class UserService {
 
 				return {
 					id: updatedCharacter.id,
-				characterOwnerHash: updatedCharacter.characterOwnerHash,
+					characterOwnerHash: updatedCharacter.characterOwnerHash,
 					characterId: updatedCharacter.characterId,
 					characterName: updatedCharacter.characterName,
 					is_primary: updatedCharacter.is_primary,
@@ -237,10 +231,7 @@ export class UserService {
 	async unlinkCharacter(userId: string, characterId: number): Promise<boolean> {
 		// Find the character
 		const character = await this.db.query.userCharacters.findFirst({
-			where: and(
-				eq(userCharacters.userId, userId),
-				eq(userCharacters.characterId, characterId)
-			),
+			where: and(eq(userCharacters.userId, userId), eq(userCharacters.characterId, characterId)),
 		})
 
 		if (!character) {
@@ -267,10 +258,7 @@ export class UserService {
 	async setPrimaryCharacter(userId: string, characterId: number): Promise<boolean> {
 		// Find the character to set as primary
 		const newPrimaryChar = await this.db.query.userCharacters.findFirst({
-			where: and(
-				eq(userCharacters.userId, userId),
-				eq(userCharacters.characterId, characterId)
-			),
+			where: and(eq(userCharacters.userId, userId), eq(userCharacters.characterId, characterId)),
 		})
 
 		if (!newPrimaryChar) {
@@ -332,5 +320,4 @@ export class UserService {
 
 		return preferences
 	}
-
 }

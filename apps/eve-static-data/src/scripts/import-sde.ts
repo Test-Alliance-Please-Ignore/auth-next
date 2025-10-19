@@ -1,7 +1,8 @@
-import { config } from 'dotenv'
+import { createHash } from 'node:crypto'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createHash } from 'node:crypto'
+import { config } from 'dotenv'
+
 import { createDb } from '../db'
 import { schema } from '../db/schema'
 
@@ -94,7 +95,9 @@ async function fetchSDEData(url: string) {
 			signal: AbortSignal.timeout(300000), // 5 minute timeout for large files
 		})
 		if (!response.ok) {
-			throw new Error(`Failed to fetch SDE data from ${url}: ${response.status} ${response.statusText}`)
+			throw new Error(
+				`Failed to fetch SDE data from ${url}: ${response.status} ${response.statusText}`
+			)
 		}
 		const contentLength = response.headers.get('content-length')
 		if (contentLength) {
@@ -127,7 +130,7 @@ async function main() {
 
 		// Fetch categories (we only care about category 16 - Skills)
 		const categories: SDESkillCategory[] = await fetchSDEData(`${baseUrl}/invCategories.json`)
-		const skillCategory = categories.find(cat => cat.categoryID === 16)
+		const skillCategory = categories.find((cat) => cat.categoryID === 16)
 
 		if (!skillCategory) {
 			throw new Error('Skill category not found in SDE data')
@@ -153,9 +156,7 @@ async function main() {
 
 		// Fetch groups and filter for skill groups
 		const groups: SDESkillGroup[] = await fetchSDEData(`${baseUrl}/invGroups.json`)
-		const skillGroups = groups.filter(
-			group => group.categoryID === 16 && group.published === 1
-		)
+		const skillGroups = groups.filter((group) => group.categoryID === 16 && group.published === 1)
 
 		// Insert skill groups
 		for (const group of skillGroups) {
@@ -181,13 +182,13 @@ async function main() {
 
 		// Fetch types (skills are types in certain groups)
 		const types: SDESkill[] = await fetchSDEData(`${baseUrl}/invTypes.json`)
-		const skillGroupIds = new Set(skillGroups.map(g => g.groupID))
-		const skills = types.filter(
-			type => skillGroupIds.has(type.groupID) && type.published === 1
-		)
+		const skillGroupIds = new Set(skillGroups.map((g) => g.groupID))
+		const skills = types.filter((type) => skillGroupIds.has(type.groupID) && type.published === 1)
 
 		// Fetch dogma attributes for skills
-		const dogmaAttributes: SDEDogmaAttribute[] = await fetchSDEData(`${baseUrl}/dgmTypeAttributes.json`)
+		const dogmaAttributes: SDEDogmaAttribute[] = await fetchSDEData(
+			`${baseUrl}/dgmTypeAttributes.json`
+		)
 
 		// Create a map of typeID -> attributes for faster lookup
 		const attributesByType = new Map<number, Map<number, number>>()
@@ -276,10 +277,7 @@ async function main() {
 
 		// Insert skill requirements
 		for (const req of skillRequirements) {
-			await db
-				.insert(schema.skillRequirements)
-				.values(req)
-				.onConflictDoNothing()
+			await db.insert(schema.skillRequirements).values(req).onConflictDoNothing()
 		}
 
 		console.log(`✓ Imported ${skillRequirements.length} skill requirements`)

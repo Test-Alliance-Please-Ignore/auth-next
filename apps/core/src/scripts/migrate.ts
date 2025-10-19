@@ -7,9 +7,10 @@
  * Ensure DATABASE_URL_MIGRATIONS is set in the root .env file
  */
 
-import { config } from 'dotenv'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { config } from 'dotenv'
+
 import { createDbClientRaw, migrate } from '@repo/db-utils'
 
 // Load .env from monorepo root

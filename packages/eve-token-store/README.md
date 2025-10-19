@@ -7,8 +7,9 @@ Shared types and interfaces for the EveTokenStore Durable Object.
 Import this package in any worker that needs to interact with the EveTokenStore Durable Object:
 
 ```typescript
-import type { EveTokenStore } from '@repo/eve-token-store'
 import { getStub } from '@repo/do-utils'
+
+import type { EveTokenStore } from '@repo/eve-token-store'
 
 // Get a typed stub to the Durable Object
 const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'unique-id')
@@ -21,11 +22,13 @@ const state = await stub.getState()
 ## Adding to Your Worker
 
 1. Add the dependency to your worker's `package.json`:
+
    ```bash
    pnpm -F your-worker add '@repo/eve-token-store@workspace:*'
    ```
 
 2. Add the Durable Object binding to your worker's `wrangler.jsonc`:
+
    ```jsonc
    {
      "durable_objects": {
@@ -33,10 +36,10 @@ const state = await stub.getState()
          {
            "name": "EVE_TOKEN_STORE",
            "class_name": "EveTokenStore",
-           "script_name": "eve-token-store"
-         }
-       ]
-     }
+           "script_name": "eve-token-store",
+         },
+       ],
+     },
    }
    ```
 

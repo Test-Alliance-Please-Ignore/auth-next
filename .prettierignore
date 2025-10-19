@@ -11,6 +11,7 @@ CLAUDE.md
 **/dist/**
 *.lock
 /turbo/generators/**/*.hbs
+/turbo/generators/templates/**
 pnpm-lock.yaml
 vite.config.ts.timestamp*
 vitest.config.ts.timestamp*

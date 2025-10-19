@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
-import { apiClient } from '@/lib/api'
-import { useStoreSession } from '@/hooks/useAuth'
+import { useLocation, useNavigate } from 'react-router-dom'
+
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { useStoreSession } from '@/hooks/useAuth'
+import { apiClient } from '@/lib/api'
 
 interface CharacterInfo {
 	characterOwnerHash: string
@@ -33,13 +34,13 @@ export default function ClaimMainPage() {
 		return (
 			<div className="min-h-screen flex items-center justify-center">
 				<div className="text-center">
-					<h1 className="text-2xl font-bold text-destructive mb-4">Missing Character Information</h1>
+					<h1 className="text-2xl font-bold text-destructive mb-4">
+						Missing Character Information
+					</h1>
 					<p className="text-muted-foreground mb-6">
 						No character information found. Please start the login process again.
 					</p>
-					<Button onClick={() => navigate('/')}>
-						Return to Home
-					</Button>
+					<Button onClick={() => navigate('/')}>Return to Home</Button>
 				</div>
 			</div>
 		)
@@ -73,9 +74,7 @@ export default function ClaimMainPage() {
 			<Card className="max-w-md w-full">
 				<CardHeader>
 					<CardTitle className="text-2xl">Claim Your Main Character</CardTitle>
-					<CardDescription>
-						This will be your primary character for this account
-					</CardDescription>
+					<CardDescription>This will be your primary character for this account</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-6">
 					{/* Character Display */}
@@ -94,11 +93,10 @@ export default function ClaimMainPage() {
 					{/* Info */}
 					<div className="text-sm text-muted-foreground space-y-2">
 						<p>
-							By claiming this character as your main, you'll create a new account on Test Auth Next Generation.
+							By claiming this character as your main, you'll create a new account on Test Auth Next
+							Generation.
 						</p>
-						<p>
-							You can link additional characters to your account later.
-						</p>
+						<p>You can link additional characters to your account later.</p>
 					</div>
 
 					{/* Error */}

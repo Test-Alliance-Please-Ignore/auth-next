@@ -437,7 +437,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		// 3. Make ESI request
 		const headers: Record<string, string> = {
 			'X-Compatibility-Date': '2025-09-30',
-			'Accept': 'application/json',
+			Accept: 'application/json',
 		}
 		if (token) {
 			headers['Authorization'] = `Bearer ${token}`
@@ -466,7 +466,9 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 		if (!response.ok) {
 			const errorText = await response.text()
-			throw new Error(`ESI request failed: ${response.status} ${response.statusText} - ${errorText}`)
+			throw new Error(
+				`ESI request failed: ${response.status} ${response.statusText} - ${errorText}`
+			)
 		}
 
 		// 4. Parse and cache response

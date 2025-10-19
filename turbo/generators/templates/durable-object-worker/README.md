@@ -59,6 +59,7 @@ const result = await stub.exampleMethod('hello')
 ### From other workers:
 
 1. Add the binding to `wrangler.jsonc`:
+
    ```jsonc
    {
      "durable_objects": {
@@ -66,14 +67,15 @@ const result = await stub.exampleMethod('hello')
          {
            "name": "{{ constantCase name }}",
            "class_name": "{{ pascalCase name }}",
-           "script_name": "{{ name }}"
-         }
-       ]
-     }
+           "script_name": "{{ name }}",
+         },
+       ],
+     },
    }
    ```
 
 2. Add the dependency:
+
    ```bash
    pnpm -F your-worker add '@repo/{{ name }}@workspace:*'
    ```

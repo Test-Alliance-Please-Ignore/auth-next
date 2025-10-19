@@ -1,8 +1,11 @@
 import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:test'
 import { describe, expect, it } from 'vitest'
+
 import { getStub } from '@repo/do-utils'
-import type { EveCharacterData } from '@repo/eve-character-data'
+
 import worker from '../../index'
+
+import type { EveCharacterData } from '@repo/eve-character-data'
 
 describe('EveCharacterData Worker', () => {
 	it('responds to root endpoint', async () => {
@@ -32,20 +35,16 @@ describe('EveCharacterData Worker', () => {
 describe.skip('EveCharacterData Durable Object', () => {
 	it.skip('can increment counter', async () => {
 		// const stub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, `test-counter-${Date.now()}-${Math.random()}`)
-
 		// const count1 = await stub.incrementCounter()
 		// const count2 = await stub.incrementCounter()
-
 		// expect(count2).toBeGreaterThan(count1)
 		// expect(count2).toBe(2)
 	})
 
 	it.skip('can get state', async () => {
 		// const stub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, `test-state-${Date.now()}-${Math.random()}`)
-
 		// await stub.incrementCounter()
 		// const state = await stub.getState()
-
 		// expect(state).toHaveProperty('counter')
 		// expect(state).toHaveProperty('lastUpdated')
 		// expect(state.counter).toBeGreaterThan(0)
@@ -53,9 +52,7 @@ describe.skip('EveCharacterData Durable Object', () => {
 
 	it.skip('can call example method', async () => {
 		// const stub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, 'test-example')
-
 		// const result = await stub.exampleMethod('test message')
-
 		// expect(result).toContain('Received: test message')
 		// expect(result).toContain('counter:')
 	})

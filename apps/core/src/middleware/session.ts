@@ -1,13 +1,14 @@
 import { getCookie } from 'hono/cookie'
-import type { MiddlewareHandler } from 'hono'
-import type { App, SessionUser } from '../context'
+
+import { getStub } from '@repo/do-utils'
 
 import { createDb } from '../db'
 import { AuthService } from '../services/auth.service'
 import { UserService } from '../services/user.service'
-import { getStub } from '@repo/do-utils'
 
+import type { MiddlewareHandler } from 'hono'
 import type { EveTokenStore } from '@repo/eve-token-store'
+import type { App, SessionUser } from '../context'
 
 /**
  * Session middleware
@@ -74,7 +75,7 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 				sessionId: session.id,
 				characters: userProfile.characters.map((char) => ({
 					id: char.id,
-				characterOwnerHash: char.characterOwnerHash,
+					characterOwnerHash: char.characterOwnerHash,
 					characterId: char.characterId,
 					characterName: char.characterName,
 					is_primary: char.is_primary,

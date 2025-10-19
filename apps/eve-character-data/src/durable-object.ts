@@ -420,7 +420,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			where: eq(characterCorporationHistory.characterId, characterId),
 		})
 
-		return results.map(r => ({
+		return results.map((r) => ({
 			recordId: r.recordId,
 			corporationId: r.corporationId,
 			startDate: r.startDate,
