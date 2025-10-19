@@ -26,7 +26,7 @@ async function main() {
 	console.log('Running migrations for {{ name }} worker...')
 
 	const db = createDb(databaseUrl)
-	await migrate(db, drizzleConfig)
+	await migrate(db, { migrationsFolder: drizzleConfig.out! })
 
 	console.log('Migrations completed successfully!')
 	process.exit(0)

@@ -8,8 +8,11 @@ export type Env = SharedHonoEnv & {
 	DISCORD_TOKEN_URL: string
 	DISCORD_TOKEN_REVOKE_URL: string
 	DISCORD_CALLBACK_URL: string
+	DISCORD_USER_INFO_URL: string
 
 	DISCORD_CLIENT_ID: string
+	DISCORD_CLIENT_SECRET: string
+	ENCRYPTION_KEY: string
 }
 
 /** Variables can be extended */
