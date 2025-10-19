@@ -52,3 +52,4 @@ yarn-error.log*
 # Git worktrees (Crystal)
 /worktrees/
 /worktree-*/
+secrets/

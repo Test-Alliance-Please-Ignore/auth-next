@@ -1,5 +1,5 @@
 {
-	"name": "evesso",
+	"name": "eve-token-store",
 	"version": "0.1.0",
 	"private": true,
 	"sideEffects": false,
@@ -19,8 +19,12 @@
 		"test": "run-vitest"
 	},
 	"dependencies": {
+		"@neondatabase/serverless": "0.10.4",
 		"@repo/db-utils": "workspace:*",
+		"@repo/do-utils": "workspace:*",
+		"@repo/eve-token-store": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
+		"drizzle-orm": "0.44.6",
 		"hono": "4.9.11",
 		"workers-tagged-logger": "0.13.3"
 	},
@@ -31,7 +35,7 @@
 		"@repo/tools": "workspace:*",
 		"@repo/typescript-config": "workspace:*",
 		"@types/node": "22.15.27",
-		"dotenv": "^17.2.3",
+		"dotenv": "17.2.3",
 		"drizzle-kit": "0.31.5",
 		"tsx": "4.20.6",
 		"vite": "6.3.4",

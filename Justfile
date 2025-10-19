@@ -61,6 +61,8 @@ db-generate-all:
   cd apps/tags && bun run db:generate
   cd apps/groups && bun run db:generate
   cd apps/evesso && bun run db:generate
+  cd apps/evesso && bun run db:generate
+  cd apps/eve-token-store && bun run db:generate
   cd apps/test-do && bun run db:generate
 
 # Push schema changes to database (for development)
@@ -72,6 +74,8 @@ db-push-all:
   cd apps/tags && bun run db:push
   cd apps/groups && bun run db:push
   cd apps/evesso && bun run db:push
+  cd apps/evesso && bun run db:push
+  cd apps/eve-token-store && bun run db:push
   cd apps/test-do && bun run db:push
 
 # Run migrations for all apps
@@ -83,6 +87,8 @@ db-migrate-all:
   cd apps/tags && bun run db:migrate
   cd apps/groups && bun run db:migrate
   cd apps/evesso && bun run db:migrate
+  cd apps/evesso && bun run db:migrate
+  cd apps/eve-token-store && bun run db:migrate
   cd apps/test-do && bun run db:migrate
 
 # Open Drizzle Studio for a specific app
