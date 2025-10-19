@@ -1,5 +1,9 @@
 import { DurableObject } from 'cloudflare:workers'
+
 import { and, eq } from '@repo/db-utils'
+
+import { createDb } from './db'
+import { eveCharacters, eveTokens } from './db/schema'
 
 import type {
 	AuthorizationUrlResponse,
@@ -10,8 +14,6 @@ import type {
 	TokenInfo,
 } from '@repo/eve-token-store'
 import type { Env } from './context'
-import { createDb } from './db'
-import { eveCharacters, eveTokens } from './db/schema'
 
 /**
  * EVE SSO OAuth Endpoints
@@ -41,7 +43,6 @@ const EVE_SCOPES_ALL = [
 	'esi-clones.read_clones.v1',
 	'esi-characters.read_contacts.v1',
 	'esi-universe.read_structures.v1',
-	'esi-bookmarks.read_character_bookmarks.v1',
 	'esi-killmails.read_killmails.v1',
 	'esi-corporations.read_corporation_membership.v1',
 	'esi-assets.read_assets.v1',
@@ -56,7 +57,6 @@ const EVE_SCOPES_ALL = [
 	'esi-markets.structure_markets.v1',
 	'esi-corporations.read_structures.v1',
 	'esi-characters.read_loyalty.v1',
-	'esi-characters.read_opportunities.v1',
 	'esi-characters.read_chat_channels.v1',
 	'esi-characters.read_medals.v1',
 	'esi-characters.read_standings.v1',
@@ -78,7 +78,6 @@ const EVE_SCOPES_ALL = [
 	'esi-assets.read_corporation_assets.v1',
 	'esi-corporations.read_titles.v1',
 	'esi-corporations.read_blueprints.v1',
-	'esi-bookmarks.read_corporation_bookmarks.v1',
 	'esi-contracts.read_corporation_contracts.v1',
 	'esi-corporations.read_standings.v1',
 	'esi-corporations.read_starbases.v1',
@@ -94,7 +93,7 @@ const EVE_SCOPES_ALL = [
 	'esi-alliances.read_contacts.v1',
 	'esi-characters.read_fw_stats.v1',
 	'esi-corporations.read_fw_stats.v1',
-	'esi-characterstats.read.v1',
+	'esi-corporations.read_projects.v1',
 ]
 
 /**
@@ -383,10 +382,10 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		try {
 			// Find tokens expiring within 5 minutes
 			const expiringTokens = await this.db.query.eveTokens.findMany({
-				where: and(
+				where:
+					and(),
 					// Token expires in the future (not already expired)
 					// but within the next 5 minutes
-				),
 			})
 
 			console.log(`Found ${expiringTokens.length} tokens to refresh`)
@@ -439,9 +438,9 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		const response = await fetch(EVE_SSO_TOKEN_URL, {
 			method: 'POST',
 			headers: {
-				'Authorization': `Basic ${credentials}`,
+				Authorization: `Basic ${credentials}`,
 				'Content-Type': 'application/x-www-form-urlencoded',
-				'Host': 'login.eveonline.com',
+				Host: 'login.eveonline.com',
 			},
 			body: new URLSearchParams({
 				grant_type: 'authorization_code',
@@ -466,9 +465,9 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		const response = await fetch(EVE_SSO_TOKEN_URL, {
 			method: 'POST',
 			headers: {
-				'Authorization': `Basic ${credentials}`,
+				Authorization: `Basic ${credentials}`,
 				'Content-Type': 'application/x-www-form-urlencoded',
-				'Host': 'login.eveonline.com',
+				Host: 'login.eveonline.com',
 			},
 			body: new URLSearchParams({
 				grant_type: 'refresh_token',
@@ -490,7 +489,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	private async verifyToken(accessToken: string): Promise<EveVerifyResponse> {
 		const response = await fetch(EVE_SSO_VERIFY_URL, {
 			headers: {
-				'Authorization': `Bearer ${accessToken}`,
+				Authorization: `Bearer ${accessToken}`,
 			},
 		})
 
@@ -639,6 +638,9 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			this.env.ENCRYPTION_KEY.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16))
 		)
 
-		return crypto.subtle.importKey('raw', keyData, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt'])
+		return crypto.subtle.importKey('raw', keyData, { name: 'AES-GCM' }, false, [
+			'encrypt',
+			'decrypt',
+		])
 	}
 }

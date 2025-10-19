@@ -4,16 +4,23 @@
  * Run this script to apply pending migrations to your database:
  * pnpm db:migrate
  *
- * Ensure DATABASE_URL is set in your .dev.vars file
+ * Ensure DATABASE_URL_MIGRATIONS is set in the root .env file
  */
 
+import { config } from 'dotenv'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { createDbClientRaw, migrate } from '@repo/db-utils'
 
+// Load .env from monorepo root
+const __dirname = dirname(fileURLToPath(import.meta.url))
+config({ path: resolve(__dirname, '../../../../.env') })
+
 async function main() {
-	const databaseUrl = process.env.DATABASE_URL
+	const databaseUrl = process.env.DATABASE_URL_MIGRATIONS
 
 	if (!databaseUrl) {
-		throw new Error('DATABASE_URL environment variable is required')
+		throw new Error('DATABASE_URL_MIGRATIONS environment variable is required')
 	}
 
 	console.log('Connecting to database...')
