@@ -6,7 +6,6 @@ import type { PlopTypes } from '@turbo/gen'
 export interface UpdateWranglerConfigData {
 	workerName: string
 	className: string
-	createNewWorker: boolean
 	turbo: {
 		paths: {
 			root: string
@@ -65,26 +64,13 @@ export async function updateWranglerConfig(answers: UpdateWranglerConfigData): P
 			})
 		}
 
-		// Initialize migrations if not exists
-		if (!config.migrations) {
-			config.migrations = []
-		}
-
-		// Find the highest migration tag number
-		let maxTag = 0
-		for (const migration of config.migrations) {
-			const match = migration.tag.match(/v(\d+)/)
-			if (match) {
-				maxTag = Math.max(maxTag, Number.parseInt(match[1], 10))
-			}
-		}
-
-		// Add new migration
-		const newTag = `v${maxTag + 1}`
-		config.migrations.push({
-			tag: newTag,
-			new_sqlite_classes: [answers.className],
-		})
+		// Always create v1 migration for new workers with SQLite-backed Durable Objects
+		config.migrations = [
+			{
+				tag: 'v1',
+				new_sqlite_classes: [answers.className],
+			},
+		]
 
 		// Write back with formatting
 		const newContent = JSON.stringify(config, null, '\t')

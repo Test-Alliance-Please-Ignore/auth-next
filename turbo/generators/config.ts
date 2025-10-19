@@ -7,7 +7,6 @@ import {
 	slugifyTextPlural,
 	slugifyTextSingular,
 } from './helpers/slugify'
-import { getWorkerApps } from './helpers/get-worker-apps'
 import { nameValidator } from './helpers/validate'
 import { fixAll } from './plugins/fix-all'
 import { fixDepsAndFormat } from './plugins/fix-deps-and-format'
@@ -117,7 +116,7 @@ export default function generator(plop: PlopTypes.NodePlopAPI): void {
 	})
 
 	plop.setGenerator('new-durable-object', {
-		description: 'Create a new SQLite-backed Durable Object',
+		description: 'Create a new SQLite-backed Durable Object in a new worker',
 		prompts: [
 			{
 				type: 'input',
@@ -126,31 +125,10 @@ export default function generator(plop: PlopTypes.NodePlopAPI): void {
 				validate: nameValidator,
 			},
 			{
-				type: 'list',
-				name: 'createNewWorker',
-				message: 'Create a new worker or add to existing worker?',
-				choices: [
-					{ name: 'Create new worker', value: true },
-					{ name: 'Add to existing worker', value: false },
-				],
-				default: true,
-			},
-			{
-				type: 'list',
-				name: 'workerName',
-				message: 'Which worker?',
-				choices: (answers: { turbo: { paths: { root: string } } }) => {
-					const workers = getWorkerApps(answers.turbo.paths.root)
-					return workers.map((w) => ({ name: w, value: w }))
-				},
-				when: (answers: { createNewWorker: boolean }) => !answers.createNewWorker,
-			},
-			{
 				type: 'input',
 				name: 'workerName',
 				message: 'Name of new worker',
 				validate: nameValidator,
-				when: (answers: { createNewWorker: boolean }) => answers.createNewWorker,
 			},
 		],
 		actions: (data: unknown) => {
@@ -163,38 +141,34 @@ export default function generator(plop: PlopTypes.NodePlopAPI): void {
 			const destination = `apps/${workerName}`
 			const bindingName = className.toUpperCase().replace(/-/g, '_') + '_STORE'
 
-			const actions: PlopTypes.Actions = []
-
-			// If creating new worker, use the new-worker-vite generator
-			if ((data as { createNewWorker: boolean }).createNewWorker) {
-				actions.push(
-					{
-						type: 'addMany',
-						base: 'templates/fetch-worker-vite',
+			const actions: PlopTypes.Actions = [
+				// Create new worker using the fetch-worker-vite template
+				{
+					type: 'addMany',
+					base: 'templates/fetch-worker-vite',
+					destination,
+					templateFiles: [
+						'templates/fetch-worker-vite/**/**.hbs',
+						'templates/fetch-worker-vite/.eslintrc.cjs.hbs',
+					],
+					data: { name: answers.workerName, turbo: answers.turbo },
+				},
+				{
+					type: 'pnpmInstall',
+					data: {
+						name: answers.workerName,
 						destination,
-						templateFiles: [
-							'templates/fetch-worker-vite/**/**.hbs',
-							'templates/fetch-worker-vite/.eslintrc.cjs.hbs',
-						],
-						data: { name: answers.workerName, turbo: answers.turbo },
-					},
-					{
-						type: 'pnpmInstall',
-						data: { name: answers.workerName, destination, turbo: answers.turbo } satisfies PnpmInstallData,
-					}
-				)
-			}
-
-			// Add the Durable Object class file
-			actions.push({
-				type: 'add',
-				path: `${destination}/src/${fileName}.ts`,
-				templateFile: 'templates/durable-object/durable-object.ts.hbs',
-				data: { name: answers.name },
-			})
-
-			// Update worker files
-			actions.push(
+						turbo: answers.turbo,
+					} satisfies PnpmInstallData,
+				},
+				// Add the Durable Object class file
+				{
+					type: 'add',
+					path: `${destination}/src/${fileName}.ts`,
+					templateFile: 'templates/durable-object/durable-object.ts.hbs',
+					data: { name: answers.name },
+				},
+				// Update worker files
 				{
 					type: 'updateWorkerIndex',
 					data: {
@@ -217,14 +191,13 @@ export default function generator(plop: PlopTypes.NodePlopAPI): void {
 					data: {
 						workerName,
 						className,
-						createNewWorker: (data as { createNewWorker: boolean }).createNewWorker,
 						turbo: answers.turbo,
 					},
-				}
-			)
-
-			// Fix and install
-			actions.push({ type: 'fixAll' }, { type: 'pnpmInstall', data: { destination } satisfies PnpmInstallData })
+				},
+				// Fix and install
+				{ type: 'fixAll' },
+				{ type: 'pnpmInstall', data: { destination } satisfies PnpmInstallData },
+			]
 
 			return actions
 		},
