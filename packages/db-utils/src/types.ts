@@ -3,7 +3,8 @@ import type { NeonHttpDatabase } from 'drizzle-orm/neon-http'
 /**
  * Generic database client type
  */
-export type DbClient<T extends Record<string, unknown> = Record<string, never>> = NeonHttpDatabase<T>
+export type DbClient<T extends Record<string, unknown> = Record<string, never>> =
+	NeonHttpDatabase<T>
 
 /**
  * Common timestamp fields for database tables

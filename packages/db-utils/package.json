@@ -11,13 +11,13 @@
 	},
 	"dependencies": {
 		"@neondatabase/serverless": "0.10.4",
-		"drizzle-orm": "0.44.6",
-		"drizzle-kit": "0.31.5"
+		"drizzle-kit": "0.31.5",
+		"drizzle-orm": "0.44.6"
 	},
 	"devDependencies": {
+		"@cloudflare/workers-types": "4.20241127.0",
 		"@repo/eslint-config": "workspace:*",
 		"@repo/tools": "workspace:*",
-		"@repo/typescript-config": "workspace:*",
-		"@cloudflare/workers-types": "4.20241127.0"
+		"@repo/typescript-config": "workspace:*"
 	}
 }

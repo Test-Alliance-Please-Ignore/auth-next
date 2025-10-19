@@ -1,268 +1,436 @@
-<cloudflare-workers-monorepo>
+# CLAUDE.md
 
-<title>Cloudflare Workers Monorepo Guidelines for Claude Code</title>
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-<setup>
-## Local Development Setup
+## Project Overview
 
-### Cloudflare Credentials (Required for Deployment)
+This is a Cloudflare Workers monorepo built with:
+- **pnpm workspaces** for package management
+- **Turborepo** for build orchestration and caching
+- **Hono** as the web framework for workers
+- **Drizzle ORM** with Neon serverless PostgreSQL
+- **Vitest** with `@cloudflare/vitest-pool-workers` for testing
+- **Vite** for bundling worker applications
 
-To deploy workers locally using `just deploy`, you need to configure Cloudflare credentials:
+---
 
-1. **Copy the example environment file:**
-   ```bash
-   cp .env.example .env
-   ```
+## Cloudflare Workers Guidelines
 
-2. **Get your Cloudflare Account ID:**
-   - Visit https://dash.cloudflare.com/
-   - Copy your Account ID from the sidebar
-   - Add to `.env`: `CLOUDFLARE_ACCOUNT_ID=your_account_id`
+When working with Cloudflare Workers in this repository, follow these principles:
 
-3. **Create a Cloudflare API Token:**
-   - Visit https://dash.cloudflare.com/profile/api-tokens
-   - Click "Create Token"
-   - Use "Edit Cloudflare Workers" template or create custom token with Workers permissions
-   - Copy the token
-   - Add to `.env`: `CLOUDFLARE_API_TOKEN=your_api_token`
+### Code Standards
+- **TypeScript by default** - Generate code in TypeScript unless JavaScript is specifically requested
+- **ES modules format exclusively** - NEVER use Service Worker format
+- **Import everything** - You MUST import all methods, classes and types used in the code
+- **Use official SDKs** - If there is an official SDK or library for a service, use it to simplify implementation
+- **Minimize external dependencies** - Avoid libraries with FFI/native/C bindings
+- **Include error handling and logging** - Add proper error boundaries and meaningful error messages
+- **Comment complex logic** - Include comments explaining non-trivial code
 
-**Why this is needed:** Wrangler uses these credentials for authentication. Using API tokens instead of interactive OAuth allows parallel deployments to work correctly without port conflicts.
+### Configuration Requirements
+- **Always use wrangler.jsonc** (not wrangler.toml)
+- **Set compatibility_date** = "2025-03-07" or later
+- **Set compatibility_flags** = ["nodejs_compat"]
 
-**Security:** The `.env` file is gitignored. Never commit credentials to the repository.
-</setup>
+- **Only include used bindings** - Don't include bindings that aren't referenced in code
+- **Do NOT include dependencies** in wrangler.jsonc
 
-<commands>
-- `just install` - Install dependencies
-- `just dev` - Run development servers (uses `bun runx dev` - context-aware)
-- `just test` - Run tests with vitest (uses `bun vitest`)
-- `just build` - Build all workers (uses `bun turbo build`)
-- `just check` - Check code quality - deps, lint, types, format (uses `bun runx check`)
-- `just fix` - Fix code issues - deps, lint, format, workers-types (uses `bun runx fix`)
-- `just deploy` - Deploy all workers (uses `bun turbo deploy`)
-- `just preview` - Run Workers in preview mode
-- `just new-worker` (alias: `just gen`) - Create a new Cloudflare Worker
-- `just new-package` - Create a new shared package
-- `just new-durable-object` (alias: `just new-do`) - Create a new Durable Object with interface package
-- `just update deps` (alias: `just up deps`) - Update dependencies across the monorepo
-- `just update pnpm` - Update pnpm version
-- `just update turbo` - Update turbo version
-- `just cs` - Create a changeset for versioning
-- `bun turbo -F worker-name dev` - Start specific worker
-- `bun turbo -F worker-name test` - Test specific worker
-- `bun turbo -F worker-name deploy` - Deploy specific worker
-- `bun vitest path/to/test.test.ts` - Run a single test file
-- `pnpm -F @repo/package-name add dependency` - Add dependency to specific package
-</commands>
+### Security Guidelines
+- **Never bake secrets into code** - Use environment variables
+- **Implement proper request validation**
+- **Use appropriate security headers**
+- **Handle CORS correctly** when needed
+- **Implement rate limiting** where appropriate
+- **Sanitize user inputs**
+- **Follow least privilege principle** for bindings
 
-<architecture>
-- Cloudflare Workers monorepo using pnpm workspaces and Turborepo
-- `apps/` - Individual Cloudflare Worker applications
-- `packages/` - Shared libraries and configurations
-  - `@repo/eslint-config` - Shared ESLint configuration
-  - `@repo/typescript-config` - Shared TypeScript configuration
-  - `@repo/hono-helpers` - Hono framework utilities
-  - `@repo/tools` - Development tools and scripts
-  - `@repo/do-utils` - Durable Object utilities (getStub helper)
-  - `@repo/session-store` - SessionStore DO interface
-  - `@repo/character-data-store` - CharacterDataStore DO interface
-  - `@repo/user-token-store` - UserTokenStore DO interface
-- Worker apps delegate scripts to `@repo/tools` for consistency
-- Hono web framework with helpers in `@repo/hono-helpers`
-- Vitest with `@cloudflare/vitest-pool-workers` for testing
-- Syncpack ensures dependency version consistency
-- Turborepo enables parallel task execution and caching
-- Workers configured via `wrangler.jsonc` with environment variables
-- Each worker has `context.ts` for typed environment bindings
-- Integration tests in `src/test/integration/`
-- Workers use `nodejs_compat` compatibility flag
-- GitHub Actions deploy automatically on merge to main
-- Changesets manage versions and changelogs
-</architecture>
+### WebSocket Guidelines
+- **Use Durable Objects WebSocket Hibernation API** when providing WebSocket handling code within a Durable Object
+- **Use `this.ctx.acceptWebSocket(server)`** to accept the WebSocket connection (NOT `server.accept()`)
+- **Define `async webSocketMessage()` handler** that is invoked when a message is received from the client
+- **Define `async webSocketClose()` handler** that is invoked when the WebSocket connection is closed
+- **Do NOT use `addEventListener` pattern** inside a Durable Object - use the handler methods instead
+- **Handle WebSocket upgrade requests explicitly**, including validating the Upgrade header
 
-<durable-objects>
-## State Management with Durable Objects
+### Cloudflare Service Integrations
 
-This project uses Cloudflare Durable Objects for stateful operations with SQLite storage. Durable Objects provide strong consistency guarantees and can be accessed across workers.
+When data storage or specific capabilities are needed, integrate with appropriate Cloudflare services:
 
-### Creating New Durable Objects
+- **Workers KV** - Key-value storage for configuration data, user profiles, A/B testing
+- **Durable Objects** - Strongly consistent state management, multiplayer coordination, agent use-cases, WebSocket handling
+- **R2** - Object storage for structured data, AI assets, image assets, user-facing uploads
+- **Queues** - Asynchronous processing and background tasks
+- **Vectorize** - Store embeddings and support vector search (often with Workers AI)
+- **Workers Analytics Engine** - Track user events, billing, metrics, high-cardinality analytics
+- **Workers AI** - Default AI API for inference requests (use official SDKs for Claude or OpenAI if requested)
+- **Browser Rendering** - Remote browser capabilities, web searching, Puppeteer APIs
+- **Workers Static Assets** - Host frontend applications and static files
+- **Workflows** - Durable execution, async tasks, human-in-the-loop workflows
+- **Agents** - Build AI agents with state management and syncing APIs
 
-Use the generator to scaffold new Durable Objects:
+---
 
+## Repository-Specific Commands
+
+### Development
 ```bash
-just new-durable-object  # or: just new-do
+# Install dependencies
+just install
+# or: pnpm install --child-concurrency=10
+
+# Start dev servers (context-aware)
+just dev
+# or: bun runx dev
+
+# Build all projects
+just build
+# or: bun turbo build
+
+# Run tests
+just test
+# or: bun vitest
 ```
 
-This creates:
-1. A shared interface package in `packages/` (e.g., `@repo/my-store`)
-2. The DO class implementation in the specified worker app
-3. Proper wrangler.jsonc bindings configuration
-4. Initial test files
+### Code Quality
+```bash
+# Check deps, lint, types, format
+just check
 
-The generator ensures the correct architecture pattern is followed automatically.
+# Auto-fix issues
+just fix
 
-### Architecture Pattern
-
-1. **Shared Interface Packages**: Each Durable Object type has a dedicated package exporting only TypeScript interfaces:
-   - `@repo/session-store` - User sessions, OAuth, account/character linking
-   - `@repo/character-data-store` - EVE character/corporation data tracking
-   - `@repo/user-token-store` - EVE SSO token management
-
-2. **Implementation**: Durable Object classes are defined in their respective worker apps (e.g., `apps/core/src/session-store.ts`)
-
-3. **Cross-Worker Access**: Workers can access DOs from other workers using bindings with `script_name` in `wrangler.jsonc`
-
-### Usage Pattern
-
-Use the `getStub` helper from `@repo/do-utils` for type-safe DO access:
-
-```typescript
-import { getStub } from '@repo/do-utils'
-import type { SessionStore } from '@repo/session-store'
-
-// In your worker code
-const stub = getStub<SessionStore>(c.env.USER_SESSION_STORE, 'global')
-const session = await stub.getSession(sessionId)
+# Check/fix specific aspects
+just check -d    # deps only
+just fix -d      # fix deps only
 ```
 
-### Key Principles
+### Database Operations
+```bash
+# Generate migrations for all apps
+just db-generate-all
 
-- **SQLite Storage**: Durable Objects use SQLite storage for persistence
-- **Wrangler Migrations**: The `migrations` section in `wrangler.jsonc` controls Durable Object creation/deletion. Always use `new_sqlite_classes`, never `new_classes`
-- **Untyped Namespaces**: Environment bindings use `DurableObjectNamespace` (untyped) in `context.ts`
-- **Type at Call Site**: Apply interface type when calling `getStub<T>()`
-- **Shared Interfaces**: Import interface types from `@repo/*` packages, never from implementation files
-- **Single Source of Truth**: DO interfaces are defined once in shared packages and used everywhere
+# Generate for specific app
+just db-generate <app-name>
 
-### Example Configuration
+# Push schema changes (development)
+just db-push <app-name>
 
-In `wrangler.jsonc`:
+# Run migrations
+just db-migrate <app-name>
+
+# Open Drizzle Studio
+just db-studio <app-name>
+```
+
+### Generators
+```bash
+# Create new worker
+just gen
+# or: just new-worker
+
+# Create new package
+just new-package
+
+# Create new durable object
+just new-durable-object
+```
+
+### Deployment
+```bash
+# Deploy all workers
+just deploy
+# or: bun turbo deploy
+```
+
+---
+
+## Repository Architecture
+
+### Workers (apps/)
+Each worker application follows this structure:
+- `src/index.ts` - Main Hono app export (default entry point)
+- `src/context.ts` - TypeScript types for Hono app context (environment bindings)
+- `src/test/integration/` - Integration tests using Vitest workers pool
+- `wrangler.jsonc` - Cloudflare Workers configuration (JSON with comments)
+- `vite.config.ts` - Vite bundler configuration
+- `vitest.config.ts` - Test configuration with workers pool
+
+### Shared Packages (packages/)
+
+**Database & ORM (`@repo/db-utils`)**
+- Drizzle ORM utilities for Neon serverless PostgreSQL
+- `createDbClient(url, schema)` - Create typed database client
+- `createDbClientRaw(url)` - Create client for raw SQL
+- `migrate(db, config)` - Run Drizzle migrations
+- Re-exports common Drizzle operators: `eq`, `and`, `or`, `like`, `inArray`, etc.
+
+**Authentication (`@repo/static-auth`)**
+- Static authentication middleware for Hono
+- Shared authentication patterns for workers
+
+**Durable Objects (`@repo/do-utils`)**
+- Utilities and helpers for Cloudflare Durable Objects
+
+**Web Framework (`@repo/hono-helpers`)**
+- Common Hono middleware and utilities
+- `withOnError()` - Error handler middleware
+- `withNotFound()` - 404 handler middleware
+
+**Development Tools (`@repo/tools`)**
+- CLI tools and development scripts
+- Scripts in `bin/` directory referenced by worker package.json files
+- Provides commands like `run-vite-dev`, `run-wrangler-deploy`, `run-eslint`, etc.
+
+**Configuration Packages**
+- `@repo/eslint-config` - Shared ESLint configuration
+- `@repo/typescript-config` - Shared TypeScript configurations (base.json, tools.json, vite.json, nextjs.json)
+- `@repo/workspace-dependencies` - Dependency management
+
+---
+
+## Important Patterns & Conventions
+
+### TypeScript Configuration
+**CRITICAL:** Always use fully-qualified package names when extending TypeScript configs:
+
+Correct:
 ```json
 {
-  "durable_objects": {
-    "bindings": [
-      {
-        "name": "USER_SESSION_STORE",
-        "class_name": "SessionStore",
-        "script_name": "core"
-      }
-    ]
+  "extends": "@repo/typescript-config/base.json"
+}
+```
+
+Incorrect:
+```json
+{
+  "extends": "./base.json"
+}
+```
+
+Relative paths fail to resolve across the monorepo structure.
+
+### Database Pattern
+Each worker app that uses a database:
+1. Defines its schema using Drizzle ORM
+2. Uses `@repo/db-utils` for client creation and migrations
+3. Stores migrations in app-specific directories
+4. Uses Neon serverless PostgreSQL via `@neondatabase/serverless`
+
+Database commands in apps should have these scripts:
+- `db:generate` - Generate migrations from schema
+- `db:push` - Push schema changes (dev only)
+- `db:migrate` - Run migrations
+- `db:studio` - Open Drizzle Studio
+
+### Worker Development Pattern
+Workers follow this structure:
+```typescript
+// src/index.ts
+import { Hono } from 'hono'
+import { useWorkersLogger } from 'workers-tagged-logger'
+import { withNotFound, withOnError } from '@repo/hono-helpers'
+import type { App } from './context'
+
+const app = new Hono<App>()
+  .use('*', middleware)
+  .onError(withOnError())
+  .notFound(withNotFound())
+  .get('/', handler)
+
+export default app
+```
+
+### Environment Variables
+- **Never commit secrets to the repository**
+
+### Package Scripts Convention
+Workers and packages use standardized script names that reference `@repo/tools`:
+- `dev` - Start development server (`run-vite-dev` or `run-wrangler-dev`)
+- `build` - Build for production (`run-vite-build` or `run-wrangler-build`)
+- `deploy` - Deploy to Cloudflare (`run-wrangler-deploy`)
+- `check:types` - Type checking (`run-tsc`)
+- `check:lint` - Linting (`run-eslint`)
+- `fix:workers-types` - Generate Cloudflare Worker types (`run-wrangler-types`)
+- `test` - Run tests (`run-vitest`)
+
+### Workspace Dependencies
+- All internal packages use `@repo/` namespace
+- Use `workspace:*` protocol for cross-package dependencies
+- Use `pnpm -F <package-name>` for dependency management
+- Use `pnpm turbo -F <package-name>` for build/test/deploy tasks
+
+### Testing Pattern
+Integration tests for workers:
+```typescript
+import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:test'
+import { describe, expect, it } from 'vitest'
+import worker from '../../index'
+
+describe('Worker', () => {
+  it('handles request', async () => {
+    const request = new Request('http://example.com/')
+    const ctx = createExecutionContext()
+    const response = await worker.fetch(request, env, ctx)
+    await waitOnExecutionContext(ctx)
+
+    expect(response.status).toBe(200)
+  })
+})
+```
+
+---
+
+## Code Style
+
+- **Indentation:** Tabs for indentation, spaces for alignment
+- **Imports:** Type imports use `import type`, workspace packages via `@repo/`
+- **Import order:** Built-ins, Third-party, `@repo/`, Relative (enforced by Prettier)
+- **Variables:** Prefix unused with `_`, prefer `const` over `let`
+- **Worker Types:** Don't add 'WebWorker' lib to tsconfig - types come from `@cloudflare/workers-types`
+
+---
+
+## Dependency Management
+
+### Syncpack
+This project uses syncpack to ensure version consistency:
+- All external dependencies are pinned (no semver ranges)
+- Versions must be consistent across all packages
+- Run `just check -d` to check for mismatches
+- Run `just fix -d` to fix version issues
+
+### Adding Dependencies
+```bash
+# To specific package (use pnpm -F for deps)
+pnpm -F project-name add -D dev-dependency
+
+# To root workspace
+pnpm add -D tool-name
+```
+
+### Cross-Package Dependencies
+```bash
+# Add workspace package as dependency
+pnpm -F worker-name add '@repo/package-name@workspace:*'
+```
+
+---
+
+## Build Pipeline
+
+Turborepo handles the build order defined in `turbo.json`:
+1. Builds shared packages first (`^build` dependency)
+2. Builds workers that depend on those packages
+3. Uses topological sorting (`topo`) for correct order
+4. Caches builds for speed
+
+---
+
+## Running Specific Workspaces
+
+```bash
+# Build specific package
+pnpm turbo -F @repo/package-name build
+
+# Run specific worker in dev mode
+pnpm turbo -F worker-name dev
+
+# Run command in all apps
+pnpm turbo -F "./apps/*" dev
+```
+
+---
+
+## CI/CD
+
+GitHub Actions workflows:
+- **branches.yml** - Runs on PRs: installs deps, runs checks/tests
+- **release.yml** - Runs on main: tests, deploys all workers, creates release PRs with Changesets
+
+Required secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`
+
+---
+
+## Wrangler Configuration
+
+Workers use `wrangler.jsonc` (JSON with comments). Standard configuration:
+
+```jsonc
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "worker-name",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-03-07",
+  "compatibility_flags": ["nodejs_compat"],
+  "routes": [],
+  "logpush": true,
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
   },
-  "migrations": [
-    {
-      "tag": "v1",
-      "new_sqlite_classes": ["SessionStore"]
-    }
-  ]
+  "vars": {}
 }
 ```
 
-In `context.ts`:
-```typescript
-export type Env = {
-  USER_SESSION_STORE: DurableObjectNamespace  // Untyped
-}
-```
+**Important:**
+- Use `wrangler.jsonc` (not `wrangler.toml`)
+- Set `compatibility_date` to "2025-03-07" or later
+- Always include `compatibility_flags: ["nodejs_compat"]`
+- Enable observability by default
+- Do NOT include `dependencies` in wrangler.jsonc
+- Only include bindings that are actually used in the code
 
-### Testing
+---
 
-Use `getStub` in tests with unique DO IDs per test:
-```typescript
-import { getStub } from '@repo/do-utils'
-import type { SessionStore } from '@repo/session-store'
+## Context-Aware CLI
 
-const stub = getStub<SessionStore>(env.USER_SESSION_STORE, 'test-unique-id')
-```
-</durable-objects>
+The `bun runx` command is context-aware:
+- When run in a worker directory: executes worker-specific commands
+- When run at root: executes workspace-wide commands
+- Use `just dev` or `bun runx dev` to take advantage of this
 
-<code-style>
-- Use tabs for indentation, spaces for alignment
-- Type imports use `import type`
-- Workspace imports use `@repo/` prefix
-- Import order: Built-ins → Third-party → `@repo/` → Relative
-- Prefix unused variables with `_`
-- Prefer `const` over `let`
-- Use `array-simple` notation
-- Explicit function return types are optional
-</code-style>
+---
 
-<critical-notes>
-- TypeScript configs MUST use fully qualified paths: `@repo/typescript-config/base.json` not `./base.json`
-- Do NOT add 'WebWorker' to TypeScript config - types are in worker-configuration.d.ts or @cloudflare/workers-types
-- For lint checking: First `cd` to the package directory, then run `bun turbo check:types check:lint`
-- Use `workspace:*` protocol for internal dependencies
-- Use `bun turbo -F` for build/test/deploy tasks
-- Use `pnpm -F` for dependency management (pnpm is still used for package management)
-- Commands delegate to `bun runx` which provides context-aware behavior
-- Test commands use `bun vitest` directly, not through turbo
-- NEVER create files unless absolutely necessary
-- ALWAYS prefer editing existing files over creating new ones
-- NEVER proactively create documentation files unless explicitly requested
-</critical-notes>
+## Generator Templates
 
-<esi-api-reference>
-## EVE Online ESI API Reference
+Located in `turbo/generators/templates/`:
+- `fetch-worker/` - Basic worker with Wrangler
+- `fetch-worker-vite/` - Worker with Vite bundling
+- `package/` - Shared package template
 
-When you need to interact with the EVE Online ESI (EVE Swagger Interface) API, refer to the `llms.esi.txt` file in the project root. This file contains comprehensive, LLM-optimized documentation for the ESI API.
+Use `just gen` to interactively create new workers or packages.
 
-### Using the ESI API Documentation
+---
 
-The `llms.esi.txt` file provides:
-- Complete endpoint documentation with examples
-- OAuth2 authentication flows and scopes
-- Request/response formats
-- Rate limiting guidelines
-- Common workflows and patterns
-- ID type references
+## Output Format for Code Generation
 
-### Key Points When Using ESI
+When generating new code:
 
-1. **Always include the compatibility date header**:
-   ```http
-   X-Compatibility-Date: 2025-09-30
-   ```
+1. **Use Markdown code blocks** to separate code from explanations
+2. **Provide separate blocks for:**
+   - Main worker code (index.ts/index.js)
+   - Configuration (wrangler.jsonc)
+   - Type definitions (if applicable)
+   - Example usage/tests
+3. **Always output complete files**, never partial updates or diffs
+4. **Format code consistently** using standard TypeScript/JavaScript conventions
 
-2. **Base URL for all requests**:
-   ```
-   https://esi.evetech.net
-   ```
+---
 
-3. **Authentication**:
-   - Public endpoints work without authentication
-   - Private endpoints require OAuth2 tokens with specific scopes
-   - Scopes follow pattern: `esi-{category}.{action}_{resource}.v1`
+## Performance Guidelines
 
-4. **Common Patterns**:
-   - Use ETags for caching (`If-None-Match` header)
-   - Implement exponential backoff on 420 (rate limit) responses
-   - Paginate large result sets using `?page=` parameter
-   - Batch ID lookups using `/universe/names` and `/universe/ids`
+- **Optimize for cold starts** - Keep initialization lightweight
+- **Minimize unnecessary computation**
+- **Use appropriate caching strategies**
+- **Consider Workers limits and quotas**
+- **Implement streaming** where beneficial
 
-5. **When implementing ESI features**:
-   - Check `llms.esi.txt` for the exact endpoint syntax
-   - Verify required OAuth scopes for authenticated endpoints
-   - Follow the caching guidelines to avoid unnecessary requests
-   - Use the example workflows as implementation templates
+---
 
-### Example: Fetching Character Information
+## Error Handling
 
-```typescript
-// Public endpoint - no auth needed
-const response = await fetch('https://esi.evetech.net/characters/90000001', {
-  headers: {
-    'X-Compatibility-Date': '2025-09-30'
-  }
-})
-
-// Private endpoint - requires OAuth token and scope
-const skillsResponse = await fetch('https://esi.evetech.net/characters/90000001/skills', {
-  headers: {
-    'X-Compatibility-Date': '2025-09-30',
-    'Authorization': `Bearer ${accessToken}` // Requires esi-skills.read_skills.v1 scope
-  }
-})
-```
-
-For complete endpoint documentation, request/response formats, and implementation examples, always consult `llms.esi.txt`.
-</esi-api-reference>
-
-</cloudflare-workers-monorepo>
+- **Implement proper error boundaries**
+- **Return appropriate HTTP status codes**
+- **Provide meaningful error messages**
+- **Log errors appropriately**
+- **Handle edge cases gracefully**
