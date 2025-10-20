@@ -100,6 +100,10 @@ export class ApiClient {
 		// Call through core API which proxies to eve-static-data service
 		return this.get(`/skills?ids=${skillIds}`)
 	}
+
+	async startDiscordLinking(): Promise<{ url: string }> {
+		return this.post('/discord/link/start')
+	}
 }
 
 export const apiClient = new ApiClient()

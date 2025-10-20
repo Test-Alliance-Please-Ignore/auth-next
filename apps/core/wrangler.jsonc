@@ -32,6 +32,10 @@
 		{
 			"binding": "EVE_STATIC_DATA",
 			"service": "eve-static-data"
+		},
+		{
+			"binding": "DISCORD",
+			"service": "discord"
 		}
 	]
 }

@@ -6,6 +6,7 @@ import AuthCallbackPage from './routes/auth-callback'
 import CharacterDetailPage from './routes/character-detail'
 import ClaimMainPage from './routes/claim-main'
 import DashboardPage from './routes/dashboard'
+import DiscordCallbackPage from './routes/discord-callback'
 import LandingPage from './routes/landing'
 
 // Create a client
@@ -27,6 +28,7 @@ export default function App() {
 					{/* Public routes */}
 					<Route path="/" element={<LandingPage />} />
 					<Route path="/auth/callback" element={<AuthCallbackPage />} />
+					<Route path="/discord/callback" element={<DiscordCallbackPage />} />
 					<Route path="/claim-main" element={<ClaimMainPage />} />
 
 					{/* Protected routes with layout */}

@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      drizzle-kit:
+        specifier: 0.31.5
+        version: 0.31.5
       wrangler:
         specifier: 4.42.2
         version: 4.42.2(@cloudflare/workers-types@4.20251011.0)
@@ -127,6 +130,9 @@ importers:
 
   apps/discord:
     dependencies:
+      '@hono/zod-validator':
+        specifier: ^0.7.4
+        version: 0.7.4(hono@4.9.11)(zod@4.1.12)
       '@neondatabase/serverless':
         specifier: 0.10.4
         version: 0.10.4
@@ -136,6 +142,9 @@ importers:
       '@repo/discord':
         specifier: workspace:*
         version: link:../../packages/discord
+      '@repo/do-utils':
+        specifier: workspace:*
+        version: link:../../packages/do-utils
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
@@ -148,6 +157,9 @@ importers:
       workers-tagged-logger:
         specifier: 0.13.3
         version: 0.13.3
+      zod:
+        specifier: 4.1.12
+        version: 4.1.12
     devDependencies:
       '@cloudflare/vite-plugin':
         specifier: 1.1.0
@@ -1576,6 +1588,12 @@ packages:
     peerDependencies:
       '@standard-schema/spec': 1.0.0
       hono: '>=3.9.0'
+
+  '@hono/zod-validator@0.7.4':
+    resolution: {integrity: sha512-biKGn3BRJVaftZlIPMyK+HCe/UHAjJ6sH0UyXe3+v0OcgVr9xfImDROTJFLtn9e3XEEAHGZIM9U6evu85abm8Q==}
+    peerDependencies:
+      hono: '>=3.9.0'
+      zod: ^3.25.0 || ^4.0.0
 
   '@humanfs/core@0.19.1':
     resolution: {integrity: sha512-5DyQ4+1JEUzejeK1JGICcideyfUbGixgS9jNgex5nqkW+cY7WZhxBigmieN5Qnw9ZosSNVC9KQKyb+GUaGyKUA==}
@@ -6146,6 +6164,11 @@ snapshots:
     dependencies:
       '@standard-schema/spec': 1.0.0
       hono: 4.9.11
+
+  '@hono/zod-validator@0.7.4(hono@4.9.11)(zod@4.1.12)':
+    dependencies:
+      hono: 4.9.11
+      zod: 4.1.12
 
   '@humanfs/core@0.19.1': {}
 

@@ -4,6 +4,7 @@ import { getStub } from '@repo/do-utils'
 
 import { createDb } from '../db'
 import { AuthService } from '../services/auth.service'
+import * as discordService from '../services/discord.service'
 import { UserService } from '../services/user.service'
 
 import type { MiddlewareHandler } from 'hono'
@@ -68,6 +69,24 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 			// Find primary character
 			const primaryChar = userProfile.characters.find((c) => c.is_primary)
 
+			// Load Discord profile if linked
+			let discordProfile
+			if (userProfile.discordUserId) {
+				try {
+					const profile = await discordService.getProfile(c.env, userId)
+					if (profile) {
+						discordProfile = {
+							userId: profile.userId,
+							username: profile.username,
+							discriminator: profile.discriminator,
+						}
+					}
+				} catch (error) {
+					console.error('Error loading Discord profile:', error)
+					// Continue without Discord profile if error occurs
+				}
+			}
+
 			// Build session user object
 			const sessionUser: SessionUser = {
 				id: userProfile.id,
@@ -81,6 +100,7 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 					is_primary: char.is_primary,
 				})),
 				is_admin: userProfile.is_admin,
+				discord: discordProfile,
 			}
 
 			// Attach to context

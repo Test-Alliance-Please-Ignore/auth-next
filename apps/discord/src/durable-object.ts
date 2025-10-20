@@ -62,9 +62,26 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 
 	/**
 	 * Handle OAuth callback - exchange code for tokens and store them
+	 * @param code - OAuth authorization code
+	 * @param state - OAuth state parameter
+	 * @param coreUserId - Optional core user ID to link this Discord account to
 	 */
-	async handleCallback(code: string, state?: string): Promise<CallbackResult> {
+	async handleCallback(code: string, state?: string, coreUserId?: string): Promise<CallbackResult> {
 		try {
+			// If coreUserId is provided, check if this Discord account is already linked
+			if (coreUserId) {
+				const existingLink = await this.db.query.discordUsers.findFirst({
+					where: eq(discordUsers.coreUserId, coreUserId),
+				})
+
+				if (existingLink) {
+					return {
+						success: false,
+						error: 'A Discord account is already linked to this user',
+					}
+				}
+			}
+
 			// Exchange authorization code for tokens
 			const tokenResponse = await this.exchangeCodeForToken(code)
 
@@ -85,12 +102,15 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 				scopes,
 				tokenResponse.access_token,
 				tokenResponse.refresh_token || null,
-				expiresAt
+				expiresAt,
+				coreUserId
 			)
 
 			return {
 				success: true,
 				userId: userInfo.id,
+				username: userInfo.username,
+				discriminator: userInfo.discriminator,
 			}
 		} catch (error) {
 			console.error('Error handling OAuth callback:', error)
@@ -99,6 +119,50 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 				error: error instanceof Error ? error.message : 'Unknown error',
 			}
 		}
+	}
+
+	/**
+	 * Get Discord profile by core user ID
+	 * @param coreUserId - Core user ID to look up
+	 * @returns Discord user info or null if not found
+	 */
+	async getProfileByCoreUserId(coreUserId: string): Promise<{
+		userId: string
+		username: string
+		discriminator: string
+		scopes: string[]
+	} | null> {
+		const user = await this.db.query.discordUsers.findFirst({
+			where: eq(discordUsers.coreUserId, coreUserId),
+		})
+
+		if (!user) {
+			return null
+		}
+
+		return {
+			userId: user.userId,
+			username: user.username,
+			discriminator: user.discriminator,
+			scopes: JSON.parse(user.scopes),
+		}
+	}
+
+	/**
+	 * Refresh token by core user ID
+	 * @param coreUserId - Core user ID
+	 * @returns Success status
+	 */
+	async refreshTokenByCoreUserId(coreUserId: string): Promise<boolean> {
+		const user = await this.db.query.discordUsers.findFirst({
+			where: eq(discordUsers.coreUserId, coreUserId),
+		})
+
+		if (!user) {
+			return false
+		}
+
+		return this.refreshToken(user.userId)
 	}
 
 	/**
@@ -212,10 +276,17 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 	/**
 	 * Invite user to guild (not implemented yet)
 	 */
-	// async inviteUserToGuild(userId: string, guildId: string): Promise<boolean> {
-	// 	// TODO: Implement guild invitation logic
-	// 	throw new Error('Not implemented')
-	// }
+	async inviteUserToGuild(userId: string, guildId: string): Promise<boolean> {
+		try {
+			await this.fetchDiscordApi(userId, `/guilds/${guildId}/members/${userId}`, {
+				method: 'PUT',
+				body: JSON.stringify({ access_token: await this.getAccessToken(userId) }),
+			})
+			return true
+		} catch (error) {
+			return false
+		}
+	}
 
 	/**
 	 * Kick user from guild (not implemented yet)
@@ -224,6 +295,112 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 	// 	// TODO: Implement guild kick logic
 	// 	throw new Error('Not implemented')
 	// }
+
+	/**
+	 * Get access token for a user (decrypted and auto-refreshed if needed)
+	 * @param userId - Discord user ID
+	 * @returns Access token or null if not found
+	 */
+	private async getAccessToken(userId: string): Promise<string | null> {
+		const user = await this.db.query.discordUsers.findFirst({
+			where: eq(discordUsers.userId, userId),
+		})
+
+		if (!user) {
+			return null
+		}
+
+		const tokenRecord = await this.db.query.discordTokens.findFirst({
+			where: eq(discordTokens.userId, user.id),
+		})
+
+		if (!tokenRecord) {
+			return null
+		}
+
+		// Check if token is expired
+		if (tokenRecord.expiresAt < new Date()) {
+			// Try to refresh
+			const refreshed = await this.refreshToken(userId)
+			if (!refreshed) {
+				return null
+			}
+
+			// Fetch updated token
+			const updatedToken = await this.db.query.discordTokens.findFirst({
+				where: eq(discordTokens.userId, user.id),
+			})
+
+			if (!updatedToken) {
+				return null
+			}
+
+			return this.decrypt(updatedToken.accessToken)
+		}
+
+		return this.decrypt(tokenRecord.accessToken)
+	}
+
+	/**
+	 * Make an authenticated Discord API request
+	 * @param userId - Discord user ID for authentication
+	 * @param path - Discord API path (e.g., '/users/@me/guilds')
+	 * @param options - Optional fetch options (method, body, headers, etc.)
+	 * @returns Response from Discord API
+	 * @throws Error if user has no valid token or API request fails
+	 *
+	 * @example
+	 * ```ts
+	 * // Get user's guilds
+	 * const guilds = await this.fetchDiscordApi<Guild[]>(userId, '/users/@me/guilds')
+	 *
+	 * // Add user to guild
+	 * await this.fetchDiscordApi(userId, `/guilds/${guildId}/members/${userId}`, {
+	 *   method: 'PUT',
+	 *   body: JSON.stringify({ access_token: token })
+	 * })
+	 * ```
+	 */
+	private async fetchDiscordApi<T = unknown>(
+		userId: string,
+		path: string,
+		options?: RequestInit
+	): Promise<T> {
+		// Get access token for the user
+		const accessToken = await this.getAccessToken(userId)
+
+		if (!accessToken) {
+			throw new Error(`No valid access token for user ${userId}`)
+		}
+
+		// Build full URL
+		const url = `https://discord.com/api/v10${path}`
+
+		// Merge headers with authorization
+		const headers = new Headers(options?.headers)
+		headers.set('Authorization', `Bearer ${accessToken}`)
+		headers.set('Content-Type', 'application/json')
+
+		// Make the request
+		const response = await fetch(url, {
+			...options,
+			headers,
+		})
+
+		if (!response.ok) {
+			const errorText = await response.text()
+			throw new Error(
+				`Discord API request failed: ${response.status} ${response.statusText} - ${errorText}`
+			)
+		}
+
+		// Handle 204 No Content responses
+		if (response.status === 204) {
+			return undefined as T
+		}
+
+		return response.json<T>()
+	}
 
 	/**
 	 * Generate authorization URL for Discord OAuth
@@ -324,7 +501,8 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 		scopes: string[],
 		accessToken: string,
 		refreshToken: string | null,
-		expiresAt: Date
+		expiresAt: Date,
+		coreUserId?: string
 	): Promise<void> {
 		// Encrypt tokens
 		const encryptedAccessToken = await this.encrypt(accessToken)
@@ -343,6 +521,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 					username,
 					discriminator,
 					scopes: JSON.stringify(scopes),
+					coreUserId: coreUserId ?? user.coreUserId,
 					updatedAt: new Date(),
 				})
 				.where(eq(discordUsers.id, user.id))
@@ -355,6 +534,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 					username,
 					discriminator,
 					scopes: JSON.stringify(scopes),
+					coreUserId,
 				})
 				.returning()
 

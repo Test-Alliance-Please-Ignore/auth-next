@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { apiClient } from '@/lib/api'
 
-interface User {
+export interface User {
 	id: string
 	mainCharacterId: number
 	characters: Array<{
@@ -10,6 +10,11 @@ interface User {
 		characterName: string
 	}>
 	is_admin: boolean
+	discord?: {
+		userId: string
+		username: string
+		discriminator: string
+	}
 }
 
 interface SessionResponse {

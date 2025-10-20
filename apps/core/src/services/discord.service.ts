@@ -1,0 +1,194 @@
+import { eq } from '@repo/db-utils'
+
+import { createDb } from '../db'
+import { oauthStates, users } from '../db/schema'
+
+import type { DiscordProfile } from '@repo/discord'
+import type { Env } from '../context'
+
+/**
+ * Discord linking service
+ *
+ * Handles Discord account linking via service binding to Discord worker.
+ */
+
+/**
+ * Start Discord linking flow
+ * @param env - Worker environment
+ * @param userId - Core user ID
+ * @returns Authorization URL to redirect user to
+ */
+export async function startLinkFlow(env: Env, userId: string): Promise<string> {
+	const db = createDb(env.DATABASE_URL)
+
+	// Generate OAuth state
+	const state = crypto.randomUUID()
+	const expiresAt = new Date(Date.now() + 15 * 60 * 1000) // 15 minutes
+
+	// Store OAuth state in database
+	await db.insert(oauthStates).values({
+		state,
+		flowType: 'discord',
+		userId,
+		expiresAt,
+	})
+
+	// Call Discord worker to generate OAuth URL
+	const response = await env.DISCORD.fetch('http://discord/discord/auth/start', {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json',
+		},
+		body: JSON.stringify({ state }),
+	})
+
+	if (!response.ok) {
+		throw new Error(`Failed to start Discord OAuth flow: ${response.statusText}`)
+	}
+
+	const data = (await response.json()) as { url: string; state: string }
+	return data.url
+}
+
+/**
+ * Handle Discord OAuth callback
+ * @param env - Worker environment
+ * @param code - OAuth authorization code
+ * @param state - OAuth state parameter
+ * @returns Result with success status and Discord user info
+ */
+export async function handleCallback(
+	env: Env,
+	code: string,
+	state: string
+): Promise<{
+	success: boolean
+	userId?: string
+	username?: string
+	discriminator?: string
+	error?: string
+}> {
+	const db = createDb(env.DATABASE_URL)
+
+	// Validate OAuth state
+	const oauthState = await db.query.oauthStates.findFirst({
+		where: eq(oauthStates.state, state),
+	})
+
+	if (!oauthState) {
+		return {
+			success: false,
+			error: 'Invalid OAuth state',
+		}
+	}
+
+	// Check if state is expired
+	if (oauthState.expiresAt < new Date()) {
+		// Clean up expired state
+		await db.delete(oauthStates).where(eq(oauthStates.state, state))
+		return {
+			success: false,
+			error: 'OAuth state expired',
+		}
+	}
+
+	// Check if this is a Discord flow
+	if (oauthState.flowType !== 'discord') {
+		return {
+			success: false,
+			error: 'Invalid flow type',
+		}
+	}
+
+	// Get user ID from state
+	const coreUserId = oauthState.userId
+	if (!coreUserId) {
+		return {
+			success: false,
+			error: 'No user ID in OAuth state',
+		}
+	}
+
+	// Call Discord worker to exchange code for tokens
+	const response = await env.DISCORD.fetch('http://discord/discord/auth/callback', {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json',
+		},
+		body: JSON.stringify({ code, state, coreUserId }),
+	})
+
+	if (!response.ok) {
+		const error = await response.text()
+		return {
+			success: false,
+			error: `Discord OAuth failed: ${error}`,
+		}
+	}
+
+	const result = (await response.json()) as {
+		success: boolean
+		userId?: string
+		username?: string
+		discriminator?: string
+		error?: string
+	}
+
+	if (!result.success || !result.userId) {
+		return result
+	}
+
+	// Update user record with Discord user ID
+	await db
+		.update(users)
+		.set({
+			discordUserId: result.userId,
+			updatedAt: new Date(),
+		})
+		.where(eq(users.id, coreUserId))
+
+	// Clean up OAuth state
+	await db.delete(oauthStates).where(eq(oauthStates.state, state))
+
+	return result
+}
+
+/**
+ * Get Discord profile for a user
+ * @param env - Worker environment
+ * @param userId - Core user ID
+ * @returns Discord profile or null
+ */
+export async function getProfile(env: Env, userId: string): Promise<DiscordProfile | null> {
+	const response = await env.DISCORD.fetch(`http://discord/discord/profile/${userId}`, {
+		method: 'GET',
+	})
+
+	if (!response.ok) {
+		if (response.status === 404) {
+			return null
+		}
+		throw new Error(`Failed to get Discord profile: ${response.statusText}`)
+	}
+
+	return response.json() as Promise<DiscordProfile>
+}
+
+/**
+ * Refresh Discord OAuth token for a user
+ * @param env - Worker environment
+ * @param userId - Core user ID
+ * @returns Success status
+ */
+export async function refreshToken(env: Env, userId: string): Promise<boolean> {
+	const response = await env.DISCORD.fetch(`http://discord/discord/refresh/${userId}`, {
+		method: 'POST',
+	})
+
+	if (!response.ok) {
+		return false
+	}
+
+	const result = (await response.json()) as { success: boolean }
+	return result.success
+}

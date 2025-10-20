@@ -1,48 +1,55 @@
 {
-	"version": "7",
-	"dialect": "postgresql",
-	"entries": [
-		{
-			"idx": 0,
-			"version": "7",
-			"when": 1760843963695,
-			"tag": "0000_tiny_venus",
-			"breakpoints": true
-		},
-		{
-			"idx": 1,
-			"version": "7",
-			"when": 1760849349810,
-			"tag": "0001_wet_glorian",
-			"breakpoints": true
-		},
-		{
-			"idx": 2,
-			"version": "7",
-			"when": 1760850542298,
-			"tag": "0002_empty_morgan_stark",
-			"breakpoints": true
-		},
-		{
-			"idx": 3,
-			"version": "7",
-			"when": 1760851552959,
-			"tag": "0003_violet_annihilus",
-			"breakpoints": true
-		},
-		{
-			"idx": 4,
-			"version": "7",
-			"when": 1760860163727,
-			"tag": "0004_fair_fenris",
-			"breakpoints": true
-		},
-		{
-			"idx": 5,
-			"version": "7",
-			"when": 1760860910383,
-			"tag": "0005_demonic_black_knight",
-			"breakpoints": true
-		}
-	]
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1760843963695,
+      "tag": "0000_tiny_venus",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1760849349810,
+      "tag": "0001_wet_glorian",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1760850542298,
+      "tag": "0002_empty_morgan_stark",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1760851552959,
+      "tag": "0003_violet_annihilus",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1760860163727,
+      "tag": "0004_fair_fenris",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1760860910383,
+      "tag": "0005_demonic_black_knight",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1760913485564,
+      "tag": "0006_many_giant_man",
+      "breakpoints": true
+    }
+  ]
 }

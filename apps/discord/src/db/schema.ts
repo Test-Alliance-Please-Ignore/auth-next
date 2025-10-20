@@ -28,6 +28,9 @@ export const discordUsers = pgTable('discord_users', {
 	/** Granted OAuth scopes as JSON array */
 	scopes: text('scopes').notNull(),
 
+	/** Core worker user ID (links to users.id in core database) */
+	coreUserId: varchar('core_user_id', { length: 255 }).unique(),
+
 	/** When the user was first added */
 	createdAt: timestamp('created_at').defaultNow().notNull(),
 

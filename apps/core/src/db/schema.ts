@@ -24,12 +24,17 @@ export const users = pgTable(
 		id: uuid('id').defaultRandom().primaryKey(),
 		/** EVE character ID of the main character */
 		mainCharacterId: bigint('main_character_id', { mode: 'number' }).notNull().unique(),
+		/** Discord user ID (links to Discord worker's discordUsers table) */
+		discordUserId: varchar('discord_user_id', { length: 255 }).unique(),
 		/** Whether this user is an admin */
 		is_admin: boolean('is_admin').default(false).notNull(),
 		createdAt: timestamp('created_at').defaultNow().notNull(),
 		updatedAt: timestamp('updated_at').defaultNow().notNull(),
 	},
-	(table) => [index('users_main_character_id_idx').on(table.mainCharacterId)]
+	(table) => [
+		index('users_main_character_id_idx').on(table.mainCharacterId),
+		index('users_discord_user_id_idx').on(table.discordUserId),
+	]
 )
 
 /**
@@ -157,7 +162,7 @@ export const userActivityLog = pgTable(
 /**
  * OAuth states table - Track OAuth flow types
  *
- * Tracks OAuth state parameters to distinguish between login and character linking flows.
+ * Tracks OAuth state parameters to distinguish between login, character linking, and Discord linking flows.
  * States are short-lived and cleaned up after use or expiration.
  */
 export const oauthStates = pgTable(
@@ -165,9 +170,9 @@ export const oauthStates = pgTable(
 	{
 		/** OAuth state parameter (UUID) */
 		state: varchar('state', { length: 255 }).primaryKey(),
-		/** Flow type: 'login' or 'character' */
+		/** Flow type: 'login', 'character', or 'discord' */
 		flowType: varchar('flow_type', { length: 50 }).notNull(),
-		/** Optional user ID for character linking (must be authenticated) */
+		/** Optional user ID for character/discord linking (must be authenticated) */
 		userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
 		/** When this state was created */
 		createdAt: timestamp('created_at').defaultNow().notNull(),

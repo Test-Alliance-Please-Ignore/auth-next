@@ -1,21 +1,22 @@
+/**
+ * Database migration script
+ *
+ * Run this script to apply pending migrations to your database:
+ * pnpm db:migrate
+ *
+ * Ensure DATABASE_URL_MIGRATIONS is set in the root .env file
+ */
+
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { config } from 'dotenv'
 
-import { migrate } from '@repo/db-utils'
-
-import drizzleConfig from '../../drizzle.config'
-import { createDb } from '../db'
+import { createDbClientRaw, migrate } from '@repo/db-utils'
 
 // Load .env from monorepo root
 const __dirname = dirname(fileURLToPath(import.meta.url))
 config({ path: resolve(__dirname, '../../../../.env') })
 
-/**
- * Run database migrations
- *
- * This script loads DATABASE_URL_MIGRATIONS from the root .env file
- */
 async function main() {
 	const databaseUrl = process.env.DATABASE_URL_MIGRATIONS
 
@@ -23,12 +24,14 @@ async function main() {
 		throw new Error('DATABASE_URL_MIGRATIONS environment variable is required')
 	}
 
-	console.log('Running migrations for discord worker...')
+	console.log('Connecting to database...')
+	const db = createDbClientRaw(databaseUrl)
 
-	const db = createDb(databaseUrl)
-	await migrate(db, { migrationsFolder: drizzleConfig.out! })
+	await migrate(db, {
+		migrationsFolder: './.migrations',
+	})
 
-	console.log('Migrations completed successfully!')
+	console.log('Migration complete!')
 	process.exit(0)
 }
 

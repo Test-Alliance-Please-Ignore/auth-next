@@ -63,6 +63,7 @@ export interface UserPreferencesDTO {
 export interface UserProfileDTO {
 	id: string
 	mainCharacterId: number
+	discordUserId: string | null
 	characters: UserCharacterDTO[]
 	is_admin: boolean
 	preferences: UserPreferencesDTO

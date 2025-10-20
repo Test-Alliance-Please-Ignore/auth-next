@@ -1,0 +1,61 @@
+import { getStub } from '@repo/do-utils'
+
+import type { Discord } from '@repo/discord'
+import type { Env } from '../context'
+
+/**
+ * Discord service
+ *
+ * Wraps Durable Object calls for Discord OAuth operations.
+ */
+
+/**
+ * Start Discord OAuth flow
+ * @param env - Worker environment
+ * @param state - Optional OAuth state parameter
+ * @returns Authorization URL and state
+ */
+export async function startOAuthFlow(env: Env, state?: string) {
+	const stub = getStub<Discord>(env.DISCORD, 'default')
+	return stub.startLoginFlow(state)
+}
+
+/**
+ * Handle OAuth callback and link Discord account to core user
+ * @param env - Worker environment
+ * @param code - OAuth authorization code
+ * @param state - OAuth state parameter
+ * @param coreUserId - Core user ID to link to
+ * @returns Callback result with Discord user info
+ */
+export async function handleOAuthCallback(
+	env: Env,
+	code: string,
+	state: string | undefined,
+	coreUserId: string
+) {
+	const stub = getStub<Discord>(env.DISCORD, 'default')
+	return stub.handleCallback(code, state, coreUserId)
+}
+
+/**
+ * Get Discord profile for a core user
+ * @param env - Worker environment
+ * @param coreUserId - Core user ID
+ * @returns Discord profile or null
+ */
+export async function getProfile(env: Env, coreUserId: string) {
+	const stub = getStub<Discord>(env.DISCORD, 'default')
+	return stub.getProfileByCoreUserId(coreUserId)
+}
+
+/**
+ * Refresh Discord OAuth token for a core user
+ * @param env - Worker environment
+ * @param coreUserId - Core user ID
+ * @returns Success status
+ */
+export async function refreshToken(env: Env, coreUserId: string) {
+	const stub = getStub<Discord>(env.DISCORD, 'default')
+	return stub.refreshTokenByCoreUserId(coreUserId)
+}

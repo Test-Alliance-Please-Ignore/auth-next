@@ -8,7 +8,7 @@
 /**
  * List of required scopes to request from Discord.
  */
-export const DISCORD_REQUIRED_SCOPES = ['bot', 'guilds', 'guilds.join', 'identify']
+export const DISCORD_REQUIRED_SCOPES = ['guilds', 'guilds.join', 'identify']
 
 export type GuildId = string
 export type UserId = string
@@ -65,8 +65,28 @@ export interface CallbackResult {
 	/** Discord user ID if successful */
 	userId?: string
 
+	/** Discord username if successful */
+	username?: string
+
+	/** Discord discriminator if successful */
+	discriminator?: string
+
 	/** Error message if failed */
 	error?: string
+}
+
+/**
+ * Discord profile information
+ */
+export interface DiscordProfile {
+	/** Discord user ID */
+	userId: string
+	/** Discord username */
+	username: string
+	/** Discord discriminator */
+	discriminator: string
+	/** Granted scopes */
+	scopes: string[]
 }
 
 export interface Discord {
@@ -79,11 +99,26 @@ export interface Discord {
 
 	/**
 	 * Handle OAuth callback - exchange code for tokens and store them
-	 * @param code - Authorization code from EVE SSO
+	 * @param code - Authorization code from Discord OAuth
 	 * @param state - State parameter for CSRF validation
+	 * @param coreUserId - Optional core user ID to link this Discord account to
 	 * @returns Result with discord information or error
 	 */
-	handleCallback(code: string, state?: string): Promise<CallbackResult>
+	handleCallback(code: string, state?: string, coreUserId?: string): Promise<CallbackResult>
+
+	/**
+	 * Get Discord profile by core user ID
+	 * @param coreUserId - Core user ID
+	 * @returns Discord profile or null if not found
+	 */
+	getProfileByCoreUserId(coreUserId: string): Promise<DiscordProfile | null>
+
+	/**
+	 * Refresh token by core user ID
+	 * @param coreUserId - Core user ID
+	 * @returns Whether refresh was successful
+	 */
+	refreshTokenByCoreUserId(coreUserId: string): Promise<boolean>
 
 	/**
 	 * Manually refresh a token
@@ -99,7 +134,7 @@ export interface Discord {
 	 */
 	revokeToken(userId: string): Promise<boolean>
 
-	// inviteUserToGuild(userId: string, guildId: string): Promise<boolean>
+	inviteUserToGuild(userId: string, guildId: string): Promise<boolean>
 
 	// kickUserFromGuild(guildId: string, userId: string): Promise<boolean>
 }

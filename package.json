@@ -11,6 +11,7 @@
 		"test:ci": "run-vitest-ci"
 	},
 	"dependencies": {
+		"drizzle-kit": "0.31.5",
 		"wrangler": "4.42.2"
 	},
 	"devDependencies": {

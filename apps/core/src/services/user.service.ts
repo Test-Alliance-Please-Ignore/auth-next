@@ -144,6 +144,7 @@ export class UserService {
 		return {
 			id: user.id,
 			mainCharacterId: user.mainCharacterId,
+			discordUserId: user.discordUserId || null,
 			characters: charactersDTO,
 			is_admin: user.is_admin,
 			preferences: preferencesDTO,

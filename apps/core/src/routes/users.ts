@@ -53,6 +53,7 @@ users.get('/me', async (c) => {
 		characters: profile.characters,
 		is_admin: profile.is_admin,
 		preferences: profile.preferences,
+		discord: user.discord || null,
 		createdAt: profile.createdAt,
 		updatedAt: profile.updatedAt,
 	})

@@ -11,6 +11,8 @@ export type Env = SharedHonoEnv & {
 	EVE_CHARACTER_DATA: DurableObjectNamespace
 	/** EVE Static Data service binding */
 	EVE_STATIC_DATA: Fetcher
+	/** Discord worker service binding */
+	DISCORD: Fetcher
 	/** Secret for session token generation and signing */
 	SESSION_SECRET: string
 }
@@ -28,6 +30,12 @@ export interface SessionUser {
 		is_primary: boolean
 	}[]
 	is_admin: boolean
+	/** Discord profile (if linked) */
+	discord?: {
+		userId: string
+		username: string
+		discriminator: string
+	}
 }
 
 /** Variables can be extended */

@@ -2,6 +2,7 @@ import { ExternalLink, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
+import { DiscordCard } from '@/components/discord-card'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/hooks/useAuth'
@@ -105,64 +106,69 @@ export default function DashboardPage() {
 				{/* Header */}
 				<div className="mb-8">
 					<h1 className="text-4xl font-bold mb-2">Dashboard</h1>
-					<p className="text-muted-foreground">
-						Welcome back, Commander {mainCharacter?.characterName}
-					</p>
 				</div>
 
-				{/* Main Character Card */}
-				<div className="mb-8">
-					<Card className="card-gradient border-border/50 shadow-[0_8px_30px_rgb(0,0,0,0.4)] relative">
-						<CardHeader>
-							<CardTitle className="text-2xl">Main Character</CardTitle>
-							<CardDescription>Your primary EVE Online character</CardDescription>
-						</CardHeader>
-						<CardContent>
-							{mainCharacter ? (
-								<>
-									<div className="flex items-center gap-4">
-										<img
-											src={`https://images.evetech.net/characters/${mainCharacter.characterId}/portrait?size=128`}
-											alt={mainCharacter.characterName}
-											className="w-20 h-20 rounded-full border-2 border-primary/30 glow shadow-lg"
-										/>
-										<div className="flex-1">
-											<h3 className="text-xl font-semibold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
-												{mainCharacter.characterName}
-											</h3>
-											<p className="text-sm text-muted-foreground">
-												Character ID: {mainCharacter.characterId}
-											</p>
+				{/* Main Character and Discord Cards Row */}
+				<div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
+					{/* Main Character Card - 75% width on desktop */}
+					<div className="lg:col-span-3">
+						<Card className="card-gradient border-border/50 shadow-[0_8px_30px_rgb(0,0,0,0.4)] relative h-full">
+							<CardHeader>
+								<CardTitle className="text-2xl">Main Character</CardTitle>
+								<CardDescription>Your primary EVE Online character</CardDescription>
+							</CardHeader>
+							<CardContent>
+								{mainCharacter ? (
+									<>
+										<div className="flex items-center gap-4">
+											<img
+												src={`https://images.evetech.net/characters/${mainCharacter.characterId}/portrait?size=128`}
+												alt={mainCharacter.characterName}
+												className="w-20 h-20 rounded-full border-2 border-primary/30 glow shadow-lg"
+											/>
+											<div className="flex-1">
+												<h3 className="text-xl font-semibold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+													{mainCharacter.characterName}
+												</h3>
+												<p className="text-sm text-muted-foreground">
+													Character ID: {mainCharacter.characterId}
+												</p>
+											</div>
+											<Link to={`/character/${mainCharacter.characterId}`}>
+												<Button size="sm" variant="outline" className="gap-2">
+													View Details
+													<ExternalLink className="h-3 w-3" />
+												</Button>
+											</Link>
 										</div>
-										<Link to={`/character/${mainCharacter.characterId}`}>
-											<Button size="sm" variant="outline" className="gap-2">
-												View Details
-												<ExternalLink className="h-3 w-3" />
-											</Button>
-										</Link>
-									</div>
-									<Button
-										size="icon"
-										variant="ghost"
-										className="absolute top-4 right-4 hover:bg-primary/10"
-										onClick={() => handleRefreshCharacter(mainCharacter.characterId)}
-										disabled={refreshingCharacters.has(mainCharacter.characterId.toString())}
-										title="Refresh character data"
-									>
-										<RefreshCw
-											className={`h-4 w-4 ${
-												refreshingCharacters.has(mainCharacter.characterId.toString())
-													? 'animate-spin'
-													: ''
-											}`}
-										/>
-									</Button>
-								</>
-							) : (
-								<p className="text-muted-foreground">No main character found</p>
-							)}
-						</CardContent>
-					</Card>
+										<Button
+											size="icon"
+											variant="ghost"
+											className="absolute top-4 right-4 hover:bg-primary/10"
+											onClick={() => handleRefreshCharacter(mainCharacter.characterId)}
+											disabled={refreshingCharacters.has(mainCharacter.characterId.toString())}
+											title="Refresh character data"
+										>
+											<RefreshCw
+												className={`h-4 w-4 ${
+													refreshingCharacters.has(mainCharacter.characterId.toString())
+														? 'animate-spin'
+														: ''
+												}`}
+											/>
+										</Button>
+									</>
+								) : (
+									<p className="text-muted-foreground">No main character found</p>
+								)}
+							</CardContent>
+						</Card>
+					</div>
+
+					{/* Discord Card - 25% width on desktop */}
+					<div className="lg:col-span-1">
+						<DiscordCard user={user} />
+					</div>
 				</div>
 
 				{/* Linked Characters */}

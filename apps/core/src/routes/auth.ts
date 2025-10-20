@@ -385,6 +385,7 @@ auth.get('/session', async (c) => {
 			mainCharacterId: user.mainCharacterId,
 			characters: user.characters,
 			is_admin: user.is_admin,
+			discord: user.discord || null,
 		},
 	})
 })
