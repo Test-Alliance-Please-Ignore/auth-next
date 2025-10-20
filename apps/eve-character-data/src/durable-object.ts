@@ -5,24 +5,38 @@ import { getStub } from '@repo/do-utils'
 
 import { createDb } from './db'
 import {
+	characterAssets,
 	characterAttributes,
 	characterCorporationHistory,
+	characterLocation,
+	characterMarketOrders,
+	characterMarketTransactions,
 	characterPortraits,
 	characterPublicInfo,
+	characterSkillQueue,
 	characterSkills,
+	characterStatus,
+	characterWallet,
+	characterWalletJournal,
 } from './db/schema'
 
 import type {
 	CharacterAttributesData,
 	CharacterCorporationHistoryData,
+	CharacterMarketOrderData,
+	CharacterMarketTransactionData,
 	CharacterPortraitData,
 	CharacterPublicData,
 	CharacterSkillsData,
+	CharacterWalletJournalData,
 	EsiCharacterAttributes,
 	EsiCharacterPortrait,
 	EsiCharacterPublicInfo,
 	EsiCharacterSkills,
 	EsiCorporationHistoryEntry,
+	EsiMarketOrder,
+	EsiMarketTransaction,
+	EsiWalletJournalEntry,
 	EveCharacterData,
 } from '@repo/eve-character-data'
 import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
@@ -67,6 +81,27 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			this.fetchAndStoreSkills(characterId, forceRefresh),
 			this.fetchAndStoreAttributes(characterId, forceRefresh),
 		])
+	}
+
+	/**
+	 * Fetch and store wallet journal entries
+	 */
+	async fetchWalletJournal(characterId: number, forceRefresh = false): Promise<void> {
+		await this.fetchAndStoreWalletJournal(characterId, forceRefresh)
+	}
+
+	/**
+	 * Fetch and store market transactions
+	 */
+	async fetchMarketTransactions(characterId: number, forceRefresh = false): Promise<void> {
+		await this.fetchAndStoreMarketTransactions(characterId, forceRefresh)
+	}
+
+	/**
+	 * Fetch and store market orders
+	 */
+	async fetchMarketOrders(characterId: number, forceRefresh = false): Promise<void> {
+		await this.fetchAndStoreMarketOrders(characterId, forceRefresh)
 	}
 
 	/**
@@ -394,6 +429,243 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	}
 
 	/**
+	 * Fetch and store wallet journal entries
+	 */
+	private async fetchAndStoreWalletJournal(
+		characterId: number,
+		_forceRefresh = false
+	): Promise<CharacterWalletJournalData[]> {
+		const tokenStoreStub = this.getTokenStoreStub()
+		const response: EsiResponse<EsiWalletJournalEntry[]> = await tokenStoreStub.fetchEsi(
+			`/characters/${characterId}/wallet/journal`,
+			characterId
+		)
+
+		const entries = response.data
+
+		// Upsert each entry
+		for (const entry of entries) {
+			await this.db
+				.insert(characterWalletJournal)
+				.values({
+					characterId,
+					journalId: BigInt(entry.id),
+					date: new Date(entry.date),
+					refType: entry.ref_type,
+					amount: entry.amount.toString(),
+					balance: entry.balance?.toString() ?? '0',
+					description: entry.description,
+					firstPartyId: entry.first_party_id,
+					secondPartyId: entry.second_party_id,
+					reason: entry.reason,
+					tax: entry.tax?.toString(),
+					taxReceiverId: entry.tax_receiver_id,
+					contextId: entry.context_id ? BigInt(entry.context_id) : undefined,
+					contextIdType: entry.context_id_type,
+					updatedAt: new Date(),
+				})
+				.onConflictDoUpdate({
+					target: [characterWalletJournal.characterId, characterWalletJournal.journalId],
+					set: {
+						date: new Date(entry.date),
+						refType: entry.ref_type,
+						amount: entry.amount.toString(),
+						balance: entry.balance?.toString() ?? '0',
+						description: entry.description,
+						firstPartyId: entry.first_party_id,
+						secondPartyId: entry.second_party_id,
+						reason: entry.reason,
+						tax: entry.tax?.toString(),
+						taxReceiverId: entry.tax_receiver_id,
+						contextId: entry.context_id ? BigInt(entry.context_id) : undefined,
+						contextIdType: entry.context_id_type,
+						updatedAt: new Date(),
+					},
+				})
+		}
+
+		const results = await this.db.query.characterWalletJournal.findMany({
+			where: eq(characterWalletJournal.characterId, characterId),
+		})
+
+		return results.map((r) => ({
+			id: r.id,
+			characterId: r.characterId,
+			journalId: r.journalId,
+			date: r.date,
+			refType: r.refType,
+			amount: r.amount,
+			balance: r.balance,
+			description: r.description,
+			firstPartyId: r.firstPartyId ?? undefined,
+			secondPartyId: r.secondPartyId ?? undefined,
+			reason: r.reason ?? undefined,
+			tax: r.tax ?? undefined,
+			taxReceiverId: r.taxReceiverId ?? undefined,
+			contextId: r.contextId ?? undefined,
+			contextIdType: r.contextIdType ?? undefined,
+			createdAt: r.createdAt,
+			updatedAt: r.updatedAt,
+		}))
+	}
+
+	/**
+	 * Fetch and store market transactions
+	 */
+	private async fetchAndStoreMarketTransactions(
+		characterId: number,
+		_forceRefresh = false
+	): Promise<CharacterMarketTransactionData[]> {
+		const tokenStoreStub = this.getTokenStoreStub()
+		const response: EsiResponse<EsiMarketTransaction[]> = await tokenStoreStub.fetchEsi(
+			`/characters/${characterId}/wallet/transactions`,
+			characterId
+		)
+
+		const transactions = response.data
+
+		// Upsert each transaction
+		for (const txn of transactions) {
+			await this.db
+				.insert(characterMarketTransactions)
+				.values({
+					characterId,
+					transactionId: BigInt(txn.transaction_id),
+					date: new Date(txn.date),
+					typeId: txn.type_id,
+					quantity: txn.quantity,
+					unitPrice: txn.unit_price.toString(),
+					clientId: txn.client_id,
+					locationId: BigInt(txn.location_id),
+					isBuy: txn.is_buy,
+					isPersonal: txn.is_personal,
+					journalRefId: BigInt(txn.journal_ref_id),
+					updatedAt: new Date(),
+				})
+				.onConflictDoUpdate({
+					target: [characterMarketTransactions.characterId, characterMarketTransactions.transactionId],
+					set: {
+						date: new Date(txn.date),
+						typeId: txn.type_id,
+						quantity: txn.quantity,
+						unitPrice: txn.unit_price.toString(),
+						clientId: txn.client_id,
+						locationId: BigInt(txn.location_id),
+						isBuy: txn.is_buy,
+						isPersonal: txn.is_personal,
+						journalRefId: BigInt(txn.journal_ref_id),
+						updatedAt: new Date(),
+					},
+				})
+		}
+
+		const results = await this.db.query.characterMarketTransactions.findMany({
+			where: eq(characterMarketTransactions.characterId, characterId),
+		})
+
+		return results.map((r) => ({
+			id: r.id,
+			characterId: r.characterId,
+			transactionId: r.transactionId,
+			date: r.date,
+			typeId: r.typeId,
+			quantity: r.quantity,
+			unitPrice: r.unitPrice,
+			clientId: r.clientId,
+			locationId: r.locationId,
+			isBuy: r.isBuy,
+			isPersonal: r.isPersonal,
+			journalRefId: r.journalRefId,
+			createdAt: r.createdAt,
+			updatedAt: r.updatedAt,
+		}))
+	}
+
+	/**
+	 * Fetch and store market orders
+	 */
+	private async fetchAndStoreMarketOrders(
+		characterId: number,
+		_forceRefresh = false
+	): Promise<CharacterMarketOrderData[]> {
+		const tokenStoreStub = this.getTokenStoreStub()
+		const response: EsiResponse<EsiMarketOrder[]> = await tokenStoreStub.fetchEsi(
+			`/characters/${characterId}/orders`,
+			characterId
+		)
+
+		const orders = response.data
+
+		// Upsert each order
+		for (const order of orders) {
+			await this.db
+				.insert(characterMarketOrders)
+				.values({
+					characterId,
+					orderId: BigInt(order.order_id),
+					typeId: order.type_id,
+					locationId: BigInt(order.location_id),
+					isBuyOrder: order.is_buy_order ?? false,
+					price: order.price.toString(),
+					volumeTotal: order.volume_total,
+					volumeRemain: order.volume_remain,
+					issued: new Date(order.issued),
+					state: order.state,
+					minVolume: order.min_volume ?? 1,
+					range: order.range,
+					duration: order.duration,
+					escrow: order.escrow?.toString(),
+					regionId: order.region_id,
+					updatedAt: new Date(),
+				})
+				.onConflictDoUpdate({
+					target: [characterMarketOrders.characterId, characterMarketOrders.orderId],
+					set: {
+						typeId: order.type_id,
+						locationId: BigInt(order.location_id),
+						isBuyOrder: order.is_buy_order ?? false,
+						price: order.price.toString(),
+						volumeTotal: order.volume_total,
+						volumeRemain: order.volume_remain,
+						issued: new Date(order.issued),
+						state: order.state,
+						minVolume: order.min_volume ?? 1,
+						range: order.range,
+						duration: order.duration,
+						escrow: order.escrow?.toString(),
+						regionId: order.region_id,
+						updatedAt: new Date(),
+					},
+				})
+		}
+
+		const results = await this.db.query.characterMarketOrders.findMany({
+			where: eq(characterMarketOrders.characterId, characterId),
+		})
+
+		return results.map((r) => ({
+			id: r.id,
+			characterId: r.characterId,
+			orderId: r.orderId,
+			typeId: r.typeId,
+			locationId: r.locationId,
+			isBuyOrder: r.isBuyOrder,
+			price: r.price,
+			volumeTotal: r.volumeTotal,
+			volumeRemain: r.volumeRemain,
+			issued: r.issued,
+			state: r.state,
+			minVolume: r.minVolume,
+			range: r.range,
+			duration: r.duration,
+			escrow: r.escrow ?? undefined,
+			regionId: r.regionId,
+			createdAt: r.createdAt,
+			updatedAt: r.updatedAt,
+		}))
+	}
+
+	/**
 	 * Get character portrait data
 	 */
 	async getPortrait(characterId: number) {
@@ -468,13 +740,232 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	}
 
 	/**
-	 * Get sensitive character data (location, wallet, assets, status, skill queue)
+	 * Get sensitive character data (location, wallet, assets, status, skill queue, and financial data)
 	 * Returns null if no data is available
 	 */
 	async getSensitiveData(characterId: number) {
-		// For now, return null since we haven't implemented fetching sensitive data yet
-		// TODO: Implement fetching and storing of location, wallet, assets, status, and skill queue
-		return null
+		// Query all sensitive data tables
+		const [location, wallet, assets, status, skillQueue, walletJournal, marketTransactions, marketOrders] =
+			await Promise.all([
+				this.db.query.characterLocation.findFirst({
+					where: eq(characterLocation.characterId, characterId),
+				}),
+				this.db.query.characterWallet.findFirst({
+					where: eq(characterWallet.characterId, characterId),
+				}),
+				this.db.query.characterAssets.findFirst({
+					where: eq(characterAssets.characterId, characterId),
+				}),
+				this.db.query.characterStatus.findFirst({
+					where: eq(characterStatus.characterId, characterId),
+				}),
+				this.db.query.characterSkillQueue.findFirst({
+					where: eq(characterSkillQueue.characterId, characterId),
+				}),
+				this.db.query.characterWalletJournal.findMany({
+					where: eq(characterWalletJournal.characterId, characterId),
+				}),
+				this.db.query.characterMarketTransactions.findMany({
+					where: eq(characterMarketTransactions.characterId, characterId),
+				}),
+				this.db.query.characterMarketOrders.findMany({
+					where: eq(characterMarketOrders.characterId, characterId),
+				}),
+			])
+
+		// Return null if no sensitive data exists at all
+		if (
+			!location &&
+			!wallet &&
+			!assets &&
+			!status &&
+			!skillQueue &&
+			walletJournal.length === 0 &&
+			marketTransactions.length === 0 &&
+			marketOrders.length === 0
+		) {
+			return null
+		}
+
+		return {
+			location: location
+				? {
+						solarSystemId: location.solarSystemId,
+						stationId: location.stationId ?? undefined,
+						structureId: location.structureId ?? undefined,
+					}
+				: undefined,
+			wallet: wallet
+				? {
+						balance: wallet.balance,
+					}
+				: undefined,
+			assets: assets
+				? {
+						totalValue: assets.totalValue ?? undefined,
+						assetCount: assets.assetCount ?? undefined,
+						lastUpdated: assets.lastUpdated ?? undefined,
+					}
+				: undefined,
+			status: status
+				? {
+						online: status.online,
+						lastLogin: status.lastLogin ?? undefined,
+						lastLogout: status.lastLogout ?? undefined,
+						loginsCount: status.loginsCount ?? undefined,
+					}
+				: undefined,
+			skillQueue: skillQueue?.queue ?? undefined,
+			walletJournal:
+				walletJournal.length > 0
+					? walletJournal.map((r) => ({
+							id: r.id,
+							characterId: r.characterId,
+							journalId: r.journalId,
+							date: r.date,
+							refType: r.refType,
+							amount: r.amount,
+							balance: r.balance,
+							description: r.description,
+							firstPartyId: r.firstPartyId ?? undefined,
+							secondPartyId: r.secondPartyId ?? undefined,
+							reason: r.reason ?? undefined,
+							tax: r.tax ?? undefined,
+							taxReceiverId: r.taxReceiverId ?? undefined,
+							contextId: r.contextId ?? undefined,
+							contextIdType: r.contextIdType ?? undefined,
+							createdAt: r.createdAt,
+							updatedAt: r.updatedAt,
+						}))
+					: undefined,
+			marketTransactions:
+				marketTransactions.length > 0
+					? marketTransactions.map((r) => ({
+							id: r.id,
+							characterId: r.characterId,
+							transactionId: r.transactionId,
+							date: r.date,
+							typeId: r.typeId,
+							quantity: r.quantity,
+							unitPrice: r.unitPrice,
+							clientId: r.clientId,
+							locationId: r.locationId,
+							isBuy: r.isBuy,
+							isPersonal: r.isPersonal,
+							journalRefId: r.journalRefId,
+							createdAt: r.createdAt,
+							updatedAt: r.updatedAt,
+						}))
+					: undefined,
+			marketOrders:
+				marketOrders.length > 0
+					? marketOrders.map((r) => ({
+							id: r.id,
+							characterId: r.characterId,
+							orderId: r.orderId,
+							typeId: r.typeId,
+							locationId: r.locationId,
+							isBuyOrder: r.isBuyOrder,
+							price: r.price,
+							volumeTotal: r.volumeTotal,
+							volumeRemain: r.volumeRemain,
+							issued: r.issued,
+							state: r.state,
+							minVolume: r.minVolume,
+							range: r.range,
+							duration: r.duration,
+							escrow: r.escrow ?? undefined,
+							regionId: r.regionId,
+							createdAt: r.createdAt,
+							updatedAt: r.updatedAt,
+						}))
+					: undefined,
+		}
+	}
+
+	/**
+	 * Get wallet journal entries for a character
+	 */
+	async getWalletJournal(characterId: number): Promise<CharacterWalletJournalData[]> {
+		const results = await this.db.query.characterWalletJournal.findMany({
+			where: eq(characterWalletJournal.characterId, characterId),
+		})
+
+		return results.map((r) => ({
+			id: r.id,
+			characterId: r.characterId,
+			journalId: r.journalId,
+			date: r.date,
+			refType: r.refType,
+			amount: r.amount,
+			balance: r.balance,
+			description: r.description,
+			firstPartyId: r.firstPartyId ?? undefined,
+			secondPartyId: r.secondPartyId ?? undefined,
+			reason: r.reason ?? undefined,
+			tax: r.tax ?? undefined,
+			taxReceiverId: r.taxReceiverId ?? undefined,
+			contextId: r.contextId ?? undefined,
+			contextIdType: r.contextIdType ?? undefined,
+			createdAt: r.createdAt,
+			updatedAt: r.updatedAt,
+		}))
+	}
+
+	/**
+	 * Get market transactions for a character
+	 */
+	async getMarketTransactions(characterId: number): Promise<CharacterMarketTransactionData[]> {
+		const results = await this.db.query.characterMarketTransactions.findMany({
+			where: eq(characterMarketTransactions.characterId, characterId),
+		})
+
+		return results.map((r) => ({
+			id: r.id,
+			characterId: r.characterId,
+			transactionId: r.transactionId,
+			date: r.date,
+			typeId: r.typeId,
+			quantity: r.quantity,
+			unitPrice: r.unitPrice,
+			clientId: r.clientId,
+			locationId: r.locationId,
+			isBuy: r.isBuy,
+			isPersonal: r.isPersonal,
+			journalRefId: r.journalRefId,
+			createdAt: r.createdAt,
+			updatedAt: r.updatedAt,
+		}))
+	}
+
+	/**
+	 * Get market orders for a character
+	 */
+	async getMarketOrders(characterId: number): Promise<CharacterMarketOrderData[]> {
+		const results = await this.db.query.characterMarketOrders.findMany({
+			where: eq(characterMarketOrders.characterId, characterId),
+		})
+
+		return results.map((r) => ({
+			id: r.id,
+			characterId: r.characterId,
+			orderId: r.orderId,
+			typeId: r.typeId,
+			locationId: r.locationId,
+			isBuyOrder: r.isBuyOrder,
+			price: r.price,
+			volumeTotal: r.volumeTotal,
+			volumeRemain: r.volumeRemain,
+			issued: r.issued,
+			state: r.state,
+			minVolume: r.minVolume,
+			range: r.range,
+			duration: r.duration,
+			escrow: r.escrow ?? undefined,
+			regionId: r.regionId,
+			createdAt: r.createdAt,
+			updatedAt: r.updatedAt,
+		}))
 	}
 
 	/**

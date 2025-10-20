@@ -1,4 +1,5 @@
 import {
+	bigint,
 	boolean,
 	integer,
 	jsonb,
@@ -189,6 +190,94 @@ export const characterSkillQueue = pgTable('character_skill_queue', {
 })
 
 /**
+ * Character wallet journal - Sensitive data (owner only)
+ * Stores wallet transaction history (bounties, missions, market, etc.)
+ */
+export const characterWalletJournal = pgTable(
+	'character_wallet_journal',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		characterId: integer('character_id')
+			.notNull()
+			.references(() => characterPublicInfo.characterId),
+		journalId: bigint('journal_id', { mode: 'bigint' }).notNull(),
+		date: timestamp('date', { withTimezone: true }).notNull(),
+		refType: text('ref_type').notNull(),
+		amount: text('amount').notNull(), // Using text to handle large ISK values
+		balance: text('balance').notNull(), // Balance after transaction
+		description: text('description').notNull(),
+		firstPartyId: integer('first_party_id'),
+		secondPartyId: integer('second_party_id'),
+		reason: text('reason'),
+		tax: text('tax'), // Tax amount in ISK
+		taxReceiverId: integer('tax_receiver_id'),
+		contextId: bigint('context_id', { mode: 'bigint' }),
+		contextIdType: text('context_id_type'),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [unique().on(table.characterId, table.journalId)]
+)
+
+/**
+ * Character market transactions - Sensitive data (owner only)
+ * Stores market buy/sell transaction history
+ */
+export const characterMarketTransactions = pgTable(
+	'character_market_transactions',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		characterId: integer('character_id')
+			.notNull()
+			.references(() => characterPublicInfo.characterId),
+		transactionId: bigint('transaction_id', { mode: 'bigint' }).notNull(),
+		date: timestamp('date', { withTimezone: true }).notNull(),
+		typeId: integer('type_id').notNull(),
+		quantity: integer('quantity').notNull(),
+		unitPrice: text('unit_price').notNull(), // Price per unit in ISK
+		clientId: integer('client_id').notNull(),
+		locationId: bigint('location_id', { mode: 'bigint' }).notNull(),
+		isBuy: boolean('is_buy').notNull(),
+		isPersonal: boolean('is_personal').notNull(),
+		journalRefId: bigint('journal_ref_id', { mode: 'bigint' }).notNull(),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [unique().on(table.characterId, table.transactionId)]
+)
+
+/**
+ * Character market orders - Sensitive data (owner only)
+ * Stores active and historical market orders
+ */
+export const characterMarketOrders = pgTable(
+	'character_market_orders',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		characterId: integer('character_id')
+			.notNull()
+			.references(() => characterPublicInfo.characterId),
+		orderId: bigint('order_id', { mode: 'bigint' }).notNull(),
+		typeId: integer('type_id').notNull(),
+		locationId: bigint('location_id', { mode: 'bigint' }).notNull(),
+		isBuyOrder: boolean('is_buy_order').notNull(),
+		price: text('price').notNull(), // Price per unit in ISK
+		volumeTotal: integer('volume_total').notNull(),
+		volumeRemain: integer('volume_remain').notNull(),
+		issued: timestamp('issued', { withTimezone: true }).notNull(),
+		state: text('state').notNull().$type<'open' | 'closed' | 'expired' | 'cancelled'>(),
+		minVolume: integer('min_volume').notNull(),
+		range: text('range').notNull(),
+		duration: integer('duration').notNull(),
+		escrow: text('escrow'), // ISK in escrow
+		regionId: integer('region_id').notNull(),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [unique().on(table.characterId, table.orderId)]
+)
+
+/**
  * Schema export for Drizzle relations
  */
 export const schema = {
@@ -202,4 +291,7 @@ export const schema = {
 	characterAssets,
 	characterStatus,
 	characterSkillQueue,
+	characterWalletJournal,
+	characterMarketTransactions,
+	characterMarketOrders,
 }

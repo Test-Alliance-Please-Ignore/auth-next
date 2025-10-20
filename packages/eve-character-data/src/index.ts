@@ -97,6 +97,64 @@ export interface EsiCharacterSkillQueue {
 }
 
 /**
+ * Wallet journal entry from ESI
+ * GET /characters/{character_id}/wallet/journal
+ */
+export interface EsiWalletJournalEntry {
+	id: number
+	date: string
+	ref_type: string
+	amount: number
+	balance?: number
+	description: string
+	first_party_id?: number
+	second_party_id?: number
+	reason?: string
+	tax?: number
+	tax_receiver_id?: number
+	context_id?: number
+	context_id_type?: string
+}
+
+/**
+ * Market transaction from ESI
+ * GET /characters/{character_id}/wallet/transactions
+ */
+export interface EsiMarketTransaction {
+	transaction_id: number
+	date: string
+	type_id: number
+	quantity: number
+	unit_price: number
+	client_id: number
+	location_id: number
+	is_buy: boolean
+	is_personal: boolean
+	journal_ref_id: number
+}
+
+/**
+ * Market order from ESI
+ * GET /characters/{character_id}/orders
+ */
+export interface EsiMarketOrder {
+	order_id: number
+	type_id: number
+	location_id: number
+	is_buy_order?: boolean
+	price: number
+	volume_total: number
+	volume_remain: number
+	issued: string
+	state: 'open' | 'closed' | 'expired' | 'cancelled'
+	min_volume?: number
+	range: string
+	duration: number
+	escrow?: number
+	region_id: number
+}
+
+/**
  * Database Schema Types
  */
 
@@ -185,6 +243,73 @@ export interface CharacterAttributesData {
 }
 
 /**
+ * Wallet journal entry stored in database
+ */
+export interface CharacterWalletJournalData {
+	id: string
+	characterId: number
+	journalId: bigint
+	date: Date
+	refType: string
+	amount: string
+	balance: string
+	description: string
+	firstPartyId?: number
+	secondPartyId?: number
+	reason?: string
+	tax?: string
+	taxReceiverId?: number
+	contextId?: bigint
+	contextIdType?: string
+	createdAt: Date
+	updatedAt: Date
+}
+
+/**
+ * Market transaction stored in database
+ */
+export interface CharacterMarketTransactionData {
+	id: string
+	characterId: number
+	transactionId: bigint
+	date: Date
+	typeId: number
+	quantity: number
+	unitPrice: string
+	clientId: number
+	locationId: bigint
+	isBuy: boolean
+	isPersonal: boolean
+	journalRefId: bigint
+	createdAt: Date
+	updatedAt: Date
+}
+
+/**
+ * Market order stored in database
+ */
+export interface CharacterMarketOrderData {
+	id: string
+	characterId: number
+	orderId: bigint
+	typeId: number
+	locationId: bigint
+	isBuyOrder: boolean
+	price: string
+	volumeTotal: number
+	volumeRemain: number
+	issued: Date
+	state: 'open' | 'closed' | 'expired' | 'cancelled'
+	minVolume: number
+	range: string
+	duration: number
+	escrow?: string
+	regionId: number
+	createdAt: Date
+	updatedAt: Date
+}
+
+/**
  * Public RPC interface for EveCharacterData Durable Object
  *
  * All public methods defined here will be available to call via RPC
@@ -215,6 +340,27 @@ export interface EveCharacterData extends DurableObject {
 	fetchAuthenticatedData(characterId: number, forceRefresh?: boolean): Promise<void>
 
 	/**
+	 * Fetch and store wallet journal entries (requires token)
+	 * @param characterId - EVE character ID
+	 * @param forceRefresh - Force refresh even if cached
+	 */
+	fetchWalletJournal(characterId: number, forceRefresh?: boolean): Promise<void>
+
+	/**
+	 * Fetch and store market transactions (requires token)
+	 * @param characterId - EVE character ID
+	 * @param forceRefresh - Force refresh even if cached
+	 */
+	fetchMarketTransactions(characterId: number, forceRefresh?: boolean): Promise<void>
+
+	/**
+	 * Fetch and store market orders (requires token)
+	 * @param characterId - EVE character ID
+	 * @param forceRefresh - Force refresh even if cached
+	 */
+	fetchMarketOrders(characterId: number, forceRefresh?: boolean): Promise<void>
+
+	/**
 	 * Get character public info from database
 	 * @param characterId - EVE character ID
 	 * @returns Character public data or null if not found
@@ -234,6 +380,27 @@ export interface EveCharacterData extends DurableObject {
 	 * @returns Sensitive character data or null if not found
 	 */
 	getSensitiveData(characterId: number): Promise<CharacterSensitiveData | null>
+
+	/**
+	 * Get wallet journal entries for a character
+	 * @param characterId - EVE character ID
+	 * @returns Array of wallet journal entries
+	 */
+	getWalletJournal(characterId: number): Promise<CharacterWalletJournalData[]>
+
+	/**
+	 * Get market transactions for a character
+	 * @param characterId - EVE character ID
+	 * @returns Array of market transactions
+	 */
+	getMarketTransactions(characterId: number): Promise<CharacterMarketTransactionData[]>
+
+	/**
+	 * Get market orders for a character
+	 * @param characterId - EVE character ID
+	 * @returns Array of market orders
+	 */
+	getMarketOrders(characterId: number): Promise<CharacterMarketOrderData[]>
 }
 
 /**
@@ -271,4 +438,7 @@ export interface CharacterSensitiveData {
 		level_start_sp?: number
 		level_end_sp?: number
 	}>
+	walletJournal?: CharacterWalletJournalData[]
+	marketTransactions?: CharacterMarketTransactionData[]
+	marketOrders?: CharacterMarketOrderData[]
 }
