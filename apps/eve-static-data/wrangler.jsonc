@@ -3,12 +3,21 @@
 	"name": "eve-static-data",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-03-07",
-	"compatibility_flags": ["nodejs_compat"],
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
 	"routes": [],
 	"logpush": true,
 	"observability": {
 		"enabled": true,
 		"head_sampling_rate": 1
 	},
-	"vars": {}
+	"vars": {},
+	"kv_namespaces": [
+		{
+			"binding": "EVE_SDE_CACHE",
+			"id": "93b4bab9594d453a8ae2b0e6af4c96fb",
+			"remote": true
+		}
+	]
 }

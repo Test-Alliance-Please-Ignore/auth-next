@@ -8,6 +8,8 @@ import { eveCharacters, eveTokens } from './db/schema'
 import type {
 	AuthorizationUrlResponse,
 	CallbackResult,
+	EsiAlliance,
+	EsiCorporation,
 	EsiResponse,
 	EveTokenResponse,
 	EveTokenStore,
@@ -126,9 +128,10 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	}
 
 	/**
-	 * Initialize SQLite cache table for ESI responses
+	 * Initialize SQLite cache tables for ESI responses and entity data
 	 */
 	private async initializeEsiCache(): Promise<void> {
+		// ESI response cache (for raw API responses)
 		await this.state.storage.sql.exec(`
 			CREATE TABLE IF NOT EXISTS esi_cache (
 				cache_key TEXT PRIMARY KEY,
@@ -137,6 +140,24 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				etag TEXT,
 				last_modified TEXT
 			)
+		`)
+
+		// Entity cache (for corporations, alliances, etc.)
+		await this.state.storage.sql.exec(`
+			CREATE TABLE IF NOT EXISTS entity_cache (
+				entity_type TEXT NOT NULL,
+				entity_id INTEGER NOT NULL,
+				entity_name TEXT NOT NULL,
+				entity_data TEXT NOT NULL,
+				expires_at INTEGER NOT NULL,
+				PRIMARY KEY (entity_type, entity_id)
+			)
+		`)
+
+		// Index for name lookups
+		await this.state.storage.sql.exec(`
+			CREATE INDEX IF NOT EXISTS idx_entity_name
+			ON entity_cache(entity_type, entity_name)
 		`)
 	}
 
@@ -490,6 +511,414 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			cached: false,
 			expiresAt,
 			etag: etag || undefined,
+		}
+	}
+
+	/**
+	 * Fetch public data from ESI (unauthenticated ESI Gateway)
+	 * For public endpoints that don't require authentication
+	 * Caches responses according to ESI cache headers
+	 */
+	async fetchPublicEsi<T>(path: string): Promise<EsiResponse<T>> {
+		const cacheKey = `public:${path}`
+
+		// 1. Check SQLite cache
+		const cachedCursor = await this.state.storage.sql.exec<{
+			response_data: string
+			expires_at: number
+			etag: string | null
+		}>(`SELECT response_data, expires_at, etag FROM esi_cache WHERE cache_key = ?`, cacheKey)
+
+		const cached = [...cachedCursor]
+
+		if (cached.length > 0) {
+			const now = Date.now()
+			if (cached[0].expires_at > now) {
+				// Cache hit
+				return {
+					data: JSON.parse(cached[0].response_data) as T,
+					cached: true,
+					expiresAt: new Date(cached[0].expires_at),
+					etag: cached[0].etag || undefined,
+				}
+			}
+		}
+
+		// 2. Cache miss - fetch from ESI (no authentication)
+		const headers: Record<string, string> = {
+			'X-Compatibility-Date': '2025-09-30',
+			Accept: 'application/json',
+		}
+		if (cached.length > 0 && cached[0].etag) {
+			headers['If-None-Match'] = cached[0].etag
+		}
+
+		const response = await fetch(`https://esi.evetech.net${path}`, { headers })
+
+		// Handle 304 Not Modified
+		if (response.status === 304 && cached.length > 0) {
+			const newExpiresAt = this.parseEsiCacheExpiry(response.headers)
+			await this.state.storage.sql.exec(
+				`UPDATE esi_cache SET expires_at = ? WHERE cache_key = ?`,
+				newExpiresAt.getTime(),
+				cacheKey
+			)
+			return {
+				data: JSON.parse(cached[0].response_data) as T,
+				cached: true,
+				expiresAt: newExpiresAt,
+				etag: cached[0].etag || undefined,
+			}
+		}
+
+		if (!response.ok) {
+			const errorText = await response.text()
+			throw new Error(
+				`ESI request failed: ${response.status} ${response.statusText} - ${errorText}`
+			)
+		}
+
+		// 3. Parse and cache response
+		const data = (await response.json()) as T
+		const expiresAt = this.parseEsiCacheExpiry(response.headers)
+		const etag = response.headers.get('ETag')
+
+		await this.state.storage.sql.exec(
+			`INSERT OR REPLACE INTO esi_cache (cache_key, response_data, expires_at, etag)
+			 VALUES (?, ?, ?, ?)`,
+			cacheKey,
+			JSON.stringify(data),
+			expiresAt.getTime(),
+			etag
+		)
+
+		return {
+			data,
+			cached: false,
+			expiresAt,
+			etag: etag || undefined,
+		}
+	}
+
+	/**
+	 * Get corporation information by ID
+	 * Checks entity cache first, then fetches from ESI if needed
+	 */
+	async getCorporationById(corporationId: number): Promise<EsiCorporation | null> {
+		const cacheKey = 'corporation'
+		const now = Date.now()
+
+		// 1. Check entity cache
+		const cachedCursor = await this.state.storage.sql.exec<{
+			entity_data: string
+			expires_at: number
+		}>(`SELECT entity_data, expires_at FROM entity_cache WHERE entity_type = ? AND entity_id = ?`, cacheKey, corporationId)
+
+		const cached = [...cachedCursor]
+
+		if (cached.length > 0 && cached[0].expires_at > now) {
+			// Cache hit
+			return JSON.parse(cached[0].entity_data) as EsiCorporation
+		}
+
+		// 2. Fetch from ESI
+		try {
+			const response = await this.fetchPublicEsi<EsiCorporation>(`/corporations/${corporationId}/`)
+			const corp = response.data
+
+			// 3. Store in entity cache (cache for 1 hour)
+			const expiresAt = Date.now() + 60 * 60 * 1000
+			await this.state.storage.sql.exec(
+				`INSERT OR REPLACE INTO entity_cache (entity_type, entity_id, entity_name, entity_data, expires_at)
+				 VALUES (?, ?, ?, ?, ?)`,
+				cacheKey,
+				corp.corporation_id,
+				corp.name,
+				JSON.stringify(corp),
+				expiresAt
+			)
+
+			return corp
+		} catch (error) {
+			console.error(`Error fetching corporation ${corporationId}:`, error)
+			return null
+		}
+	}
+
+	/**
+	 * Get alliance information by ID
+	 * Checks entity cache first, then fetches from ESI if needed
+	 */
+	async getAllianceById(allianceId: number): Promise<EsiAlliance | null> {
+		const cacheKey = 'alliance'
+		const now = Date.now()
+
+		// 1. Check entity cache
+		const cachedCursor = await this.state.storage.sql.exec<{
+			entity_data: string
+			expires_at: number
+		}>(`SELECT entity_data, expires_at FROM entity_cache WHERE entity_type = ? AND entity_id = ?`, cacheKey, allianceId)
+
+		const cached = [...cachedCursor]
+
+		if (cached.length > 0 && cached[0].expires_at > now) {
+			// Cache hit
+			return JSON.parse(cached[0].entity_data) as EsiAlliance
+		}
+
+		// 2. Fetch from ESI
+		try {
+			const response = await this.fetchPublicEsi<EsiAlliance>(`/alliances/${allianceId}/`)
+			const alliance = response.data
+
+			// 3. Store in entity cache (cache for 1 hour)
+			const expiresAt = Date.now() + 60 * 60 * 1000
+			await this.state.storage.sql.exec(
+				`INSERT OR REPLACE INTO entity_cache (entity_type, entity_id, entity_name, entity_data, expires_at)
+				 VALUES (?, ?, ?, ?, ?)`,
+				cacheKey,
+				alliance.alliance_id,
+				alliance.name,
+				JSON.stringify(alliance),
+				expiresAt
+			)
+
+			return alliance
+		} catch (error) {
+			console.error(`Error fetching alliance ${allianceId}:`, error)
+			return null
+		}
+	}
+
+	/**
+	 * Get corporation information by name
+	 * Uses name resolution and then fetches by ID
+	 */
+	async getCorporationByName(name: string): Promise<EsiCorporation | null> {
+		// First check entity cache by name
+		const now = Date.now()
+		const cachedCursor = await this.state.storage.sql.exec<{
+			entity_id: number
+			entity_data: string
+			expires_at: number
+		}>(`SELECT entity_id, entity_data, expires_at FROM entity_cache WHERE entity_type = ? AND entity_name = ?`, 'corporation', name)
+
+		const cached = [...cachedCursor]
+
+		if (cached.length > 0 && cached[0].expires_at > now) {
+			// Cache hit
+			return JSON.parse(cached[0].entity_data) as EsiCorporation
+		}
+
+		// Resolve name to ID
+		const nameMap = await this.resolveNames([name])
+		const corporationId = nameMap[name]
+
+		if (!corporationId) {
+			return null
+		}
+
+		// Fetch by ID (which will cache it)
+		return this.getCorporationById(corporationId)
+	}
+
+	/**
+	 * Get alliance information by name
+	 * Uses name resolution and then fetches by ID
+	 */
+	async getAllianceByName(name: string): Promise<EsiAlliance | null> {
+		// First check entity cache by name
+		const now = Date.now()
+		const cachedCursor = await this.state.storage.sql.exec<{
+			entity_id: number
+			entity_data: string
+			expires_at: number
+		}>(`SELECT entity_id, entity_data, expires_at FROM entity_cache WHERE entity_type = ? AND entity_name = ?`, 'alliance', name)
+
+		const cached = [...cachedCursor]
+
+		if (cached.length > 0 && cached[0].expires_at > now) {
+			// Cache hit
+			return JSON.parse(cached[0].entity_data) as EsiAlliance
+		}
+
+		// Resolve name to ID
+		const nameMap = await this.resolveNames([name])
+		const allianceId = nameMap[name]
+
+		if (!allianceId) {
+			return null
+		}
+
+		// Fetch by ID (which will cache it)
+		return this.getAllianceById(allianceId)
+	}
+
+	/**
+	 * Resolve multiple entity names to IDs using ESI bulk endpoint
+	 */
+	async resolveNames(names: string[]): Promise<Record<string, number>> {
+		if (names.length === 0) {
+			return {}
+		}
+
+		const result: Record<string, number> = {}
+		const namesToResolve: string[] = []
+
+		// Check cache for each name
+		for (const name of names) {
+			const cachedCursor = await this.state.storage.sql.exec<{
+				entity_id: number
+			}>(`SELECT entity_id FROM entity_cache WHERE entity_name = ? AND expires_at > ?`, name, Date.now())
+
+			const cached = [...cachedCursor]
+
+			if (cached.length > 0) {
+				result[name] = cached[0].entity_id
+			} else {
+				namesToResolve.push(name)
+			}
+		}
+
+		// If all names are cached, return early
+		if (namesToResolve.length === 0) {
+			return result
+		}
+
+		// Fetch from ESI for uncached names
+		try {
+			const response = await fetch('https://esi.evetech.net/latest/universe/ids/', {
+				method: 'POST',
+				headers: {
+					'X-Compatibility-Date': '2025-09-30',
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify(namesToResolve),
+			})
+
+			if (!response.ok) {
+				console.error('ESI name resolution failed:', response.status, await response.text())
+				return result
+			}
+
+			const data = await response.json<{
+				alliances?: Array<{ id: number; name: string }>
+				characters?: Array<{ id: number; name: string }>
+				corporations?: Array<{ id: number; name: string }>
+				systems?: Array<{ id: number; name: string }>
+				[key: string]: Array<{ id: number; name: string }> | undefined
+			}>()
+
+			// Process all entity types and cache them
+			const expiresAt = Date.now() + 60 * 60 * 1000 // 1 hour cache
+
+			for (const [entityType, entities] of Object.entries(data)) {
+				if (!entities) continue
+
+				for (const entity of entities) {
+					result[entity.name] = entity.id
+
+					// Cache the name→id mapping (without full entity data)
+					await this.state.storage.sql.exec(
+						`INSERT OR REPLACE INTO entity_cache (entity_type, entity_id, entity_name, entity_data, expires_at)
+						 VALUES (?, ?, ?, ?, ?)`,
+						entityType === 'systems' ? 'solar_system' : entityType.slice(0, -1), // 'alliances' → 'alliance'
+						entity.id,
+						entity.name,
+						JSON.stringify({ id: entity.id, name: entity.name }), // Minimal data for name lookups
+						expiresAt
+					)
+				}
+			}
+
+			return result
+		} catch (error) {
+			console.error('Error resolving names:', error)
+			return result
+		}
+	}
+
+	/**
+	 * Resolve multiple entity IDs to names using ESI bulk endpoint
+	 */
+	async resolveIds(ids: number[]): Promise<Record<number, string>> {
+		console.log('[resolveIds] Called with', ids.length, 'IDs')
+
+		if (ids.length === 0) {
+			return {}
+		}
+
+		const result: Record<number, string> = {}
+		const idsToResolve: number[] = []
+
+		// Check cache for each ID
+		for (const id of ids) {
+			const cachedCursor = await this.state.storage.sql.exec<{
+				entity_name: string
+			}>(`SELECT entity_name FROM entity_cache WHERE entity_id = ? AND expires_at > ?`, id, Date.now())
+
+			const cached = [...cachedCursor]
+
+			if (cached.length > 0) {
+				result[id] = cached[0].entity_name
+			} else {
+				idsToResolve.push(id)
+			}
+		}
+
+		console.log('[resolveIds] Found', Object.keys(result).length, 'cached,', idsToResolve.length, 'need to fetch')
+
+		// If all IDs are cached, return early
+		if (idsToResolve.length === 0) {
+			return result
+		}
+
+		// Fetch from ESI for uncached IDs
+		try {
+			console.log('[resolveIds] Fetching from ESI:', idsToResolve)
+			const response = await fetch('https://esi.evetech.net/latest/universe/names/', {
+				method: 'POST',
+				headers: {
+					'X-Compatibility-Date': '2025-09-30',
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify(idsToResolve),
+			})
+
+			console.log('[resolveIds] ESI response status:', response.status)
+
+			if (!response.ok) {
+				const errorText = await response.text()
+				console.error('[resolveIds] ESI ID resolution failed:', response.status, errorText)
+				return result
+			}
+
+			const data = await response.json<Array<{ id: number; name: string; category: string }>>()
+			console.log('[resolveIds] ESI returned', data.length, 'entities')
+
+			// Cache the results
+			const expiresAt = Date.now() + 60 * 60 * 1000 // 1 hour cache
+
+			for (const entity of data) {
+				result[entity.id] = entity.name
+
+				// Cache the id→name mapping
+				await this.state.storage.sql.exec(
+					`INSERT OR REPLACE INTO entity_cache (entity_type, entity_id, entity_name, entity_data, expires_at)
+					 VALUES (?, ?, ?, ?, ?)`,
+					entity.category,
+					entity.id,
+					entity.name,
+					JSON.stringify(entity), // Minimal data for ID lookups
+					expiresAt
+				)
+			}
+
+			console.log('[resolveIds] Returning', Object.keys(result).length, 'total entities')
+			return result
+		} catch (error) {
+			console.error('[resolveIds] Error resolving IDs:', error)
+			return result
 		}
 	}
 

@@ -87,6 +87,26 @@ export const skillAttributes = pgTable(
 	(table) => [unique().on(table.skillId, table.attributeName)]
 )
 
+export const corporations = pgTable(
+	'corporations',
+	{
+		corporationId: integer('corporation_id'),
+		corporationName: text('corporation_name').notNull(),
+		ticker: text('ticker').notNull(),
+	},
+	(table) => [unique().on(table.corporationId, table.corporationName, table.ticker)]
+)
+
+export const alliances = pgTable(
+	'alliances',
+	{
+		allianceId: integer('alliance_id'),
+		allianceName: text('alliance_name').notNull(),
+		ticker: text('ticker').notNull(),
+	},
+	(table) => [unique().on(table.allianceId, table.allianceName, table.ticker)]
+)
+
 /**
  * SDE version tracking - Track which version of the SDE we've imported
  */
@@ -100,6 +120,8 @@ export const sdeVersion = pgTable('sde_version', {
  * Schema export for Drizzle relations
  */
 export const schema = {
+	alliances,
+	corporations,
 	skillCategories,
 	skillGroups,
 	skills,

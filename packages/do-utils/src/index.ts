@@ -24,3 +24,19 @@ export function getStub<T>(
 	const durableObjectId = typeof id === 'string' ? namespace.idFromName(id) : id
 	return namespace.get(durableObjectId) as any & T
 }
+
+export class KVCache<K, T> {
+	constructor(private namespace: any) {}
+
+	async get(key: K): Promise<T | null> {
+		return this.namespace.get(key) as T | null
+	}
+
+	async set(key: K, value: T) {
+		return this.namespace.put(key, value)
+	}
+}
+
+export function getCache<K, T>(namespace: unknown): KVCache<K, T> {
+	return new KVCache(namespace)
+}

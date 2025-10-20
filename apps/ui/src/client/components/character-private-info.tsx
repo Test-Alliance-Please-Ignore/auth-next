@@ -5,7 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 interface CharacterPrivateInfoProps {
 	location?: {
 		solarSystemId: number
+		solarSystemName?: string
 		stationId?: number
+		stationName?: string
 		structureId?: string
 	}
 	wallet?: {
@@ -54,10 +56,22 @@ export function CharacterPrivateInfo({
 				<CardContent>
 					{location ? (
 						<div>
-							<p className="text-xs text-muted-foreground">System ID</p>
-							<p className="text-lg font-bold">{location.solarSystemId}</p>
+							<p className="text-xs text-muted-foreground">
+								{location.solarSystemName ? 'Solar System' : 'System ID'}
+							</p>
+							<p className="text-lg font-bold" title={`System ID: ${location.solarSystemId}`}>
+								{location.solarSystemName || location.solarSystemId}
+							</p>
 							{location.stationId && (
-								<p className="text-xs text-muted-foreground mt-1">Station: {location.stationId}</p>
+								<p className="text-xs text-muted-foreground mt-1">
+									{location.stationName ? (
+										<span title={`Station ID: ${location.stationId}`}>
+											Station: {location.stationName}
+										</span>
+									) : (
+										`Station: ${location.stationId}`
+									)}
+								</p>
 							)}
 						</div>
 					) : (

@@ -98,11 +98,24 @@ export default function CharacterDetailPage() {
 						<div>
 							<CardTitle className="text-2xl">{character.public.info?.name}</CardTitle>
 							<CardDescription>
-								{character.public.info?.corporationId && (
-									<span>Corporation ID: {character.public.info.corporationId}</span>
+								{character.public.info?.corporationName ? (
+									<span title={`Corporation ID: ${character.public.info.corporationId}`}>
+										{character.public.info.corporationName}
+									</span>
+								) : (
+									character.public.info?.corporationId && (
+										<span>Corporation ID: {character.public.info.corporationId}</span>
+									)
 								)}
-								{character.public.info?.allianceId && (
-									<span> • Alliance ID: {character.public.info.allianceId}</span>
+								{character.public.info?.allianceName ? (
+									<span title={`Alliance ID: ${character.public.info.allianceId}`}>
+										{' '}
+										• {character.public.info.allianceName}
+									</span>
+								) : (
+									character.public.info?.allianceId && (
+										<span> • Alliance ID: {character.public.info.allianceId}</span>
+									)
 								)}
 							</CardDescription>
 							<p className="text-sm text-muted-foreground mt-1">{lastUpdatedText}</p>

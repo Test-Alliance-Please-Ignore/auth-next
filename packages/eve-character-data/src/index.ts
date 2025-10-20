@@ -107,7 +107,9 @@ export interface CharacterPublicData {
 	characterId: number
 	name: string
 	corporationId: number
+	corporationName?: string // Resolved corporation name
 	allianceId?: number
+	allianceName?: string // Resolved alliance name
 	birthday: string
 	raceId: number
 	bloodlineId: number
@@ -141,6 +143,7 @@ export interface CharacterCorporationHistoryData {
 	characterId: number
 	recordId: number
 	corporationId: number
+	corporationName?: string // Resolved corporation name
 	startDate: string
 	isDeleted?: boolean
 	createdAt: Date
@@ -239,7 +242,9 @@ export interface EveCharacterData extends DurableObject {
 export interface CharacterSensitiveData {
 	location?: {
 		solarSystemId: number
+		solarSystemName?: string // Resolved system name
 		stationId?: number
+		stationName?: string // Resolved station name
 		structureId?: string
 	}
 	wallet?: {

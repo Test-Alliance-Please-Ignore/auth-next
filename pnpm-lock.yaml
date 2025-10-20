@@ -273,6 +273,9 @@ importers:
       '@repo/db-utils':
         specifier: workspace:*
         version: link:../../packages/db-utils
+      '@repo/do-utils':
+        specifier: workspace:*
+        version: link:../../packages/do-utils
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers

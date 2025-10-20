@@ -3,6 +3,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
+import { getCache } from '@repo/do-utils'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
 import { createDb } from './db'
@@ -16,7 +17,13 @@ const app = new Hono<App>()
 	.use('*', async (c, next) => {
 		// Initialize database connection using Neon serverless
 		const db = createDb(c.env.DATABASE_URL)
+		const idCache = getCache<number, string>(c.env.EVE_SDE_CACHE)
+		const nameCache = getCache<string, number>(c.env.EVE_SDE_CACHE)
+
 		c.set('db', db)
+		c.set('idCache', idCache)
+		c.set('nameCache', nameCache)
+
 		await next()
 	})
 	.onError(withOnError())
@@ -35,6 +42,56 @@ app.get('/skills/categories', async (c) => {
 		.from(schema.skillCategories)
 		.orderBy(schema.skillCategories.name)
 	return c.json(categories)
+})
+
+app.get('alliances/:allianceId', async (c) => {
+	const db = c.get('db')
+	const allianceId = Number.parseInt(c.req.param('allianceId'))
+
+	if (isNaN(allianceId)) {
+		return c.json({ error: 'Invalid category ID' }, 400)
+	}
+
+	const cached = await c.get('idCache').get(allianceId)
+	if (cached) {
+		return c.json(JSON.parse(cached))
+	}
+
+	const alliance = await db
+		.select()
+		.from(schema.alliances)
+		.where(eq(schema.alliances.allianceId, allianceId))
+
+	if (alliance && alliance[0] && alliance[0].allianceId) {
+		await c.get('idCache').set(alliance[0].allianceId, JSON.stringify(alliance))
+	}
+
+	return c.json(alliance)
+})
+
+app.get('corporations/:corporationId', async (c) => {
+	const db = c.get('db')
+	const corporationId = Number.parseInt(c.req.param('corporationId'))
+
+	if (isNaN(corporationId)) {
+		return c.json({ error: 'Invalid category ID' }, 400)
+	}
+
+	const cached = await c.get('idCache').get(corporationId)
+	if (cached) {
+		return c.json(JSON.parse(cached))
+	}
+
+	const corporation = await db
+		.select()
+		.from(schema.corporations)
+		.where(eq(schema.corporations.corporationId, corporationId))
+
+	if (corporation && corporation[0] && corporation[0].corporationId) {
+		await c.get('idCache').set(corporation[0].corporationId, JSON.stringify(corporation))
+	}
+
+	return c.json(corporation)
 })
 
 // Get skill groups in a category

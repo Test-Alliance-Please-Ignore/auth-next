@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 interface CorporationHistoryEntry {
 	recordId: number
 	corporationId: number
+	corporationName?: string
 	startDate: string
 	isDeleted?: boolean
 }
@@ -39,7 +40,13 @@ export function CharacterCorporationHistory({ history }: CharacterCorporationHis
 									<Building2 className="h-4 w-4 text-muted-foreground mt-0.5" />
 									<div>
 										<p className="text-sm font-medium">
-											Corporation #{entry.corporationId}
+											{entry.corporationName ? (
+												<span title={`Corporation ID: ${entry.corporationId}`}>
+													{entry.corporationName}
+												</span>
+											) : (
+												`Corporation #${entry.corporationId}`
+											)}
 											{entry.isDeleted && (
 												<span className="text-xs text-red-500 ml-2">(Closed)</span>
 											)}

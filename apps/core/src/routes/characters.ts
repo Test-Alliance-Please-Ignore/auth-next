@@ -4,6 +4,7 @@ import { Hono } from 'hono'
 import { getStub } from '@repo/do-utils'
 
 import { requireAuth } from '../middleware/session'
+import { EntityResolverService } from '../services/entity-resolver.service'
 
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { App } from '../context'
@@ -50,14 +51,61 @@ app.get('/:characterId', requireAuth(), async (c) => {
 			return c.json({ error: 'Character not found' }, 404)
 		}
 
+		// Initialize entity resolver service
+		const eveTokenStore = c.get('eveTokenStore')
+
+		if (!eveTokenStore) {
+			console.error('eveTokenStore not found in context!')
+			return c.json({ error: 'Token store not initialized' }, 500)
+		}
+
+		const resolver = new EntityResolverService(eveTokenStore)
+
+		// Collect all entity IDs that need resolution
+		const idsToResolve: number[] = [info.corporationId]
+		if (info.allianceId) {
+			idsToResolve.push(info.allianceId)
+		}
+
+		// Add corporation history IDs
+		if (corporationHistory && corporationHistory.length > 0) {
+			const historyCorpIds = [...new Set(corporationHistory.map((entry) => entry.corporationId))]
+			idsToResolve.push(...historyCorpIds)
+		}
+
+		// Deduplicate all IDs (alliance might be same as a corp in history)
+		const uniqueIds = [...new Set(idsToResolve)]
+
+		console.log('Resolving entity IDs:', uniqueIds)
+
+		// Resolve all entity names in bulk
+		const entityNames = await resolver.resolveEntityNames(uniqueIds)
+
+		console.log('Resolved entity names:', Object.fromEntries(entityNames))
+
+		// Enrich character info with resolved names
+		const enrichedInfo = {
+			...info,
+			corporationName: entityNames.get(info.corporationId) || undefined,
+			allianceName: info.allianceId ? entityNames.get(info.allianceId) || undefined : undefined,
+		}
+
+		// Enrich corporation history with resolved names
+		const enrichedCorporationHistory = corporationHistory
+			? corporationHistory.map((entry) => ({
+					...entry,
+					corporationName: entityNames.get(entry.corporationId) || `Corporation #${entry.corporationId}`,
+				}))
+			: []
+
 		// Build response with public data
 		const response: any = {
 			characterId,
 			isOwner,
 			public: {
-				info,
+				info: enrichedInfo,
 				portrait,
-				corporationHistory,
+				corporationHistory: enrichedCorporationHistory,
 				skills,
 				attributes,
 			},
@@ -71,12 +119,51 @@ app.get('/:characterId', requireAuth(), async (c) => {
 			const sensitiveData = await eveCharacterDataStub.getSensitiveData(characterId)
 
 			if (sensitiveData) {
-				response.private = {
-					location: sensitiveData.location,
-					wallet: sensitiveData.wallet,
-					assets: sensitiveData.assets,
-					status: sensitiveData.status,
-					skillQueue: sensitiveData.skillQueue,
+				// Resolve location names if available
+				if (sensitiveData.location) {
+					const locationIds: number[] = []
+
+					if (sensitiveData.location.solarSystemId) {
+						locationIds.push(sensitiveData.location.solarSystemId)
+					}
+					if (sensitiveData.location.stationId) {
+						locationIds.push(sensitiveData.location.stationId)
+					}
+
+					if (locationIds.length > 0) {
+						const locationNames = await resolver.resolveEntityNames(locationIds)
+
+						response.private = {
+							location: {
+								...sensitiveData.location,
+								solarSystemName: sensitiveData.location.solarSystemId
+									? locationNames.get(sensitiveData.location.solarSystemId) || undefined
+									: undefined,
+								stationName: sensitiveData.location.stationId
+									? locationNames.get(sensitiveData.location.stationId) || undefined
+									: undefined,
+							},
+							wallet: sensitiveData.wallet,
+							assets: sensitiveData.assets,
+							status: sensitiveData.status,
+							skillQueue: sensitiveData.skillQueue,
+						}
+					} else {
+						response.private = {
+							location: sensitiveData.location,
+							wallet: sensitiveData.wallet,
+							assets: sensitiveData.assets,
+							status: sensitiveData.status,
+							skillQueue: sensitiveData.skillQueue,
+						}
+					}
+				} else {
+					response.private = {
+						wallet: sensitiveData.wallet,
+						assets: sensitiveData.assets,
+						status: sensitiveData.status,
+						skillQueue: sensitiveData.skillQueue,
+					}
 				}
 			}
 		}

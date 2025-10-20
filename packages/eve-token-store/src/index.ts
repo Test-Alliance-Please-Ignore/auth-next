@@ -133,6 +133,76 @@ export interface EsiResponse<T> {
 }
 
 /**
+ * ESI Corporation Response
+ * https://esi.evetech.net/ui/#/Corporation/get_corporations_corporation_id
+ */
+export interface EsiCorporation {
+	/** Corporation ID */
+	corporation_id: number
+	/** Corporation name */
+	name: string
+	/** Corporation ticker */
+	ticker: string
+	/** CEO character ID */
+	ceo_id: number
+	/** Alliance ID (if in alliance) */
+	alliance_id?: number
+	/** Corporation description */
+	description?: string
+	/** Member count */
+	member_count: number
+	/** Tax rate */
+	tax_rate: number
+	/** Creation date */
+	date_founded?: string
+	/** Creator character ID */
+	creator_id: number
+	/** Home station ID */
+	home_station_id?: number
+	/** Shares */
+	shares?: number
+	/** URL */
+	url?: string
+	/** War eligible */
+	war_eligible?: boolean
+}
+
+/**
+ * ESI Alliance Response
+ * https://esi.evetech.net/ui/#/Alliance/get_alliances_alliance_id
+ */
+export interface EsiAlliance {
+	/** Alliance ID */
+	alliance_id: number
+	/** Alliance name */
+	name: string
+	/** Alliance ticker */
+	ticker: string
+	/** Executor corporation ID */
+	executor_corporation_id: number
+	/** Creator corporation ID */
+	creator_corporation_id: number
+	/** Creator character ID */
+	creator_id: number
+	/** Date founded */
+	date_founded: string
+	/** Faction ID (if factional warfare alliance) */
+	faction_id?: number
+}
+
+/**
+ * Entity name/ID pair for bulk resolution
+ */
+export interface EntityNameInfo {
+	/** Entity ID */
+	id: number
+	/** Entity name */
+	name: string
+	/** Entity category (alliance, character, corporation, etc.) */
+	category: string
+}
+
+/**
  * Public RPC interface for EveTokenStore Durable Object
  *
  * All public methods defined here will be available to call via RPC
@@ -228,4 +298,117 @@ export interface EveTokenStore {
 	 * ```
 	 */
 	fetchEsi<T>(path: string, characterId: number): Promise<EsiResponse<T>>
+
+	/**
+	 * Fetch public data from ESI (unauthenticated ESI Gateway)
+	 * For public endpoints that don't require authentication
+	 * Caches responses according to ESI cache headers
+	 *
+	 * @param path - ESI path (e.g., '/universe/types/587' or '/markets/prices')
+	 * @returns ESI response with cache metadata
+	 *
+	 * @example
+	 * ```ts
+	 * const tokenStoreId = env.EVE_TOKEN_STORE.idFromName('default')
+	 * const stub = env.EVE_TOKEN_STORE.get(tokenStoreId)
+	 * const response = await stub.fetchPublicEsi<EsiMarketPrices>(
+	 *   '/markets/prices'
+	 * )
+	 * ```
+	 */
+	fetchPublicEsi<T>(path: string): Promise<EsiResponse<T>>
+
+	/**
+	 * Get corporation information by ID
+	 * Automatically caches results in SQLite storage
+	 *
+	 * @param corporationId - EVE corporation ID
+	 * @returns Corporation information or null if not found
+	 *
+	 * @example
+	 * ```ts
+	 * const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
+	 * const corp = await stub.getCorporationById(98012345)
+	 * ```
+	 */
+	getCorporationById(corporationId: number): Promise<EsiCorporation | null>
+
+	/**
+	 * Get alliance information by ID
+	 * Automatically caches results in SQLite storage
+	 *
+	 * @param allianceId - EVE alliance ID
+	 * @returns Alliance information or null if not found
+	 *
+	 * @example
+	 * ```ts
+	 * const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
+	 * const alliance = await stub.getAllianceById(99000001)
+	 * ```
+	 */
+	getAllianceById(allianceId: number): Promise<EsiAlliance | null>
+
+	/**
+	 * Get corporation information by name
+	 * Uses bulk name resolution and caches results
+	 *
+	 * @param name - Corporation name (case-sensitive)
+	 * @returns Corporation information or null if not found
+	 *
+	 * @example
+	 * ```ts
+	 * const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
+	 * const corp = await stub.getCorporationByName('Jita Holding Corporation')
+	 * ```
+	 */
+	getCorporationByName(name: string): Promise<EsiCorporation | null>
+
+	/**
+	 * Get alliance information by name
+	 * Uses bulk name resolution and caches results
+	 *
+	 * @param name - Alliance name (case-sensitive)
+	 * @returns Alliance information or null if not found
+	 *
+	 * @example
+	 * ```ts
+	 * const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
+	 * const alliance = await stub.getAllianceByName('Goonswarm Federation')
+	 * ```
+	 */
+	getAllianceByName(name: string): Promise<EsiAlliance | null>
+
+	/**
+	 * Resolve multiple entity names to IDs
+	 * Supports alliances, characters, corporations, systems, etc.
+	 * Caches results for future lookups
+	 *
+	 * @param names - Array of entity names to resolve
+	 * @returns Map of name to ID for found entities
+	 *
+	 * @example
+	 * ```ts
+	 * const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
+	 * const nameMap = await stub.resolveNames(['Jita', 'Goonswarm Federation'])
+	 * // Returns: { 'Jita': 30000142, 'Goonswarm Federation': 1354830081 }
+	 * ```
+	 */
+	resolveNames(names: string[]): Promise<Record<string, number>>
+
+	/**
+	 * Resolve multiple entity IDs to names
+	 * Supports alliances, characters, corporations, systems, etc.
+	 * Caches results for future lookups
+	 *
+	 * @param ids - Array of entity IDs to resolve
+	 * @returns Map of ID to name for found entities
+	 *
+	 * @example
+	 * ```ts
+	 * const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
+	 * const idMap = await stub.resolveIds([30000142, 1354830081])
+	 * // Returns: { 30000142: 'Jita', 1354830081: 'Goonswarm Federation' }
+	 * ```
+	 */
+	resolveIds(ids: number[]): Promise<Record<number, string>>
 }
