@@ -94,11 +94,12 @@ body {
 		'calt' 1;
 }
 
-/* Ensure all main layout containers have solid backgrounds */
-main,
-aside,
-header,
-footer {
+/* Ensure all main layout containers have solid backgrounds
+   Note: Not using !important to allow component-level overrides */
+main:not([class*="bg-"]),
+aside:not([class*="bg-"]),
+header:not([class*="bg-"]),
+footer:not([class*="bg-"]) {
 	background-color: hsl(var(--background));
 }
 

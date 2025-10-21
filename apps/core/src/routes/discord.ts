@@ -51,26 +51,27 @@ discord.post('/link/start', requireAuth(), async (c) => {
 /**
  * Handle Discord OAuth callback
  * GET /api/discord/callback?code=XXX&state=YYY
- * Requires authentication to prevent account takeover
- * Returns: { success: boolean, userId?: string, username?: string, discriminator?: string, error?: string }
+ * Does NOT require authentication - state parameter provides security
+ * The state is validated against the database and contains the user ID,
+ * making this secure without requiring a session cookie in the popup window.
+ * Returns: Redirects to /discord/callback with success or error parameter
  */
-discord.get('/callback', requireAuth(), async (c) => {
-	const user = c.get('user')!
+discord.get('/callback', async (c) => {
 	const code = c.req.query('code')
 	const state = c.req.query('state')
 
 	if (!code || !state) {
-		return c.json(
-			{
-				error: 'Missing code or state parameter',
-			},
-			400
-		)
+		return c.redirect('/discord/callback?error=' + encodeURIComponent('Missing code or state parameter'))
 	}
 
 	try {
-		// Pass session user ID for validation (prevents account takeover)
-		const result = await discordService.handleCallback(c.env, code, state, user.id)
+		logger.info('Discord callback received', { code: code.substring(0, 10) + '...', state })
+
+		// State validation in handleCallback provides security
+		// It verifies: state exists in DB, not expired, correct flow type, and extracts user ID
+		const result = await discordService.handleCallback(c.env, code, state)
+
+		logger.info('Discord callback result', { success: result.success, userId: result.userId, error: result.error })
 
 		if (!result.success) {
 			// Redirect to frontend callback page with error

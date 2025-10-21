@@ -1,6 +1,6 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "groups",
+	"name": "notifications",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-04-28",
 	"compatibility_flags": ["nodejs_compat"],
@@ -14,20 +14,15 @@
 	"durable_objects": {
 		"bindings": [
 			{
-				"name": "GROUPS",
-				"class_name": "Groups"
-			},
-			{
 				"name": "NOTIFICATIONS",
-				"class_name": "Notifications",
-				"script_name": "notifications"
+				"class_name": "Notifications"
 			}
 		]
 	},
 	"migrations": [
 		{
 			"tag": "v1",
-			"new_sqlite_classes": ["Groups"]
+			"new_sqlite_classes": ["Notifications"]
 		}
 	]
 }

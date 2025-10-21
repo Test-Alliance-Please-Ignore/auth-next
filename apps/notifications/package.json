@@ -1,5 +1,5 @@
 {
-	"name": "groups",
+	"name": "notifications",
 	"version": "0.1.0",
 	"private": true,
 	"sideEffects": false,
@@ -22,9 +22,8 @@
 		"@neondatabase/serverless": "0.10.4",
 		"@repo/db-utils": "workspace:*",
 		"@repo/do-utils": "workspace:*",
-		"@repo/groups": "workspace:*",
-		"@repo/hono-helpers": "workspace:*",
 		"@repo/notifications": "workspace:*",
+		"@repo/hono-helpers": "workspace:*",
 		"drizzle-orm": "0.44.6",
 		"hono": "4.9.11",
 		"workers-tagged-logger": "0.13.3"

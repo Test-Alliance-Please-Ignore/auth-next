@@ -1,0 +1,17 @@
+{
+	"name": "@repo/notifications",
+	"version": "0.1.0",
+	"private": true,
+	"sideEffects": false,
+	"type": "module",
+	"main": "src/index.ts",
+	"scripts": {
+		"check:lint": "run-eslint",
+		"check:types": "run-tsc"
+	},
+	"devDependencies": {
+		"@repo/eslint-config": "workspace:*",
+		"@repo/tools": "workspace:*",
+		"@repo/typescript-config": "workspace:*"
+	}
+}

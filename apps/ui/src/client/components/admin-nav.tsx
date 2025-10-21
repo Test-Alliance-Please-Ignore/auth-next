@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { FolderKanban, Users } from 'lucide-react'
+import { FolderKanban, Users, ArrowLeft } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 
@@ -47,6 +47,21 @@ export function AdminNav() {
 					</Link>
 				)
 			})}
+
+			{/* Exit Admin Panel Link */}
+			<div className="mt-4 pt-4 border-t border-border">
+				<Link
+					to="/dashboard"
+					className={cn(
+						'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+						'hover:bg-accent/50 hover:text-accent-foreground',
+						'text-muted-foreground border border-border'
+					)}
+				>
+					<ArrowLeft className="h-4 w-4" />
+					Back to Dashboard
+				</Link>
+			</div>
 		</nav>
 	)
 }

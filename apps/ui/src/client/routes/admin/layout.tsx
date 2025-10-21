@@ -54,8 +54,8 @@ function AdminLayoutContent() {
 			{/* Starfield Background */}
 			<Starfield />
 
-			{/* Solid background overlay to hide stars */}
-			<div className="fixed inset-0 bg-background z-0" />
+			{/* Solid background overlay to hide stars - with pointer-events: none */}
+			<div className="fixed inset-0 bg-background z-0 pointer-events-none" />
 
 			{/* Header with Breadcrumbs */}
 			<header className="border-b border-border/30 backdrop-blur-md bg-background sticky top-0 z-50 shadow-[0_4px_20px_rgba(0,0,0,0.3)]">

@@ -29,8 +29,8 @@ export default function LandingPage() {
 			<Starfield />
 
 			{/* Solid background with gradient vignette effect - stars only show through center */}
-			<div className="absolute inset-0 bg-background z-0" />
-			<div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_0%,transparent_30%,hsl(220_18%_8%)_100%)] z-0" />
+			<div className="absolute inset-0 bg-background z-0 pointer-events-none" />
+			<div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_0%,transparent_30%,hsl(220_18%_8%)_100%)] z-0 pointer-events-none" />
 
 			{/* Content */}
 			<div className="relative z-10 max-w-4xl mx-auto px-4 text-center">
