@@ -1,5 +1,7 @@
 import { Hono } from 'hono'
 
+import { requireAuth } from '../middleware/session'
+
 import type { App } from '../context'
 
 /**
@@ -8,6 +10,9 @@ import type { App } from '../context'
  * Proxies requests to the eve-static-data service
  */
 const skills = new Hono<App>()
+
+// Require authentication for all skills endpoints
+skills.use('*', requireAuth())
 
 /**
  * GET /skills

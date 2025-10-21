@@ -21,8 +21,10 @@ export function EveSSOButton({ onClick, loading = false, className = '' }: EveSS
 					px-8 py-4
 					rounded-md
 					opacity-50 cursor-not-allowed
+					focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring
 					${className}
 				`}
+				aria-label="Loading EVE Online login..."
 			>
 				<span className="flex items-center gap-2">
 					<svg
@@ -57,7 +59,9 @@ export function EveSSOButton({ onClick, loading = false, className = '' }: EveSS
 			className={`
 				transition-all duration-200
 				hover:opacity-90 hover:scale-105
+				focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring
 				glow-hover
+				rounded-md
 				${className}
 			`}
 			aria-label="Log in with EVE Online"

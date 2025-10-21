@@ -228,13 +228,15 @@ auth.get('/callback', async (c) => {
  *
  * Claim a character as main and create root user account.
  * This should be called after a successful callback for a new user.
+ *
+ * Security: Character data comes from the token store, not from client input.
  */
 auth.post('/claim-main', async (c) => {
 	const body = await c.req.json()
-	const { characterOwnerHash, characterId, characterName } = body
+	const { characterId } = body
 
-	if (!characterOwnerHash || !characterId || !characterName) {
-		return c.json({ error: 'Missing required fields' }, 400)
+	if (!characterId) {
+		return c.json({ error: 'Missing characterId' }, 400)
 	}
 
 	const db = createDb(c.env.DATABASE_URL)
@@ -244,28 +246,28 @@ auth.post('/claim-main', async (c) => {
 	const userService = new UserService(db)
 	const activityService = new ActivityService(db)
 
-	// Verify character exists in eve-token-store
+	// Fetch verified character data from token store
 	const tokenInfo = await eveTokenStoreStub.getTokenInfo(characterId)
 
 	if (!tokenInfo) {
 		return c.json({ error: 'Character not authenticated. Please login first.' }, 400)
 	}
 
-	// Create user
+	// Create user with verified data from token store (not from client)
 	const user = await userService.createUser({
-		characterOwnerHash,
-		characterId,
-		characterName,
+		characterOwnerHash: tokenInfo.characterOwnerHash,
+		characterId: tokenInfo.characterId,
+		characterName: tokenInfo.characterName,
 	})
 
 	// Create session
 	const session = await authService.createSession({
 		userId: user.id,
-		characterId,
+		characterId: tokenInfo.characterId,
 		metadata: getRequestMetadata(c),
 	})
 
-	await activityService.logLogin(user.id, characterId, getRequestMetadata(c))
+	await activityService.logLogin(user.id, tokenInfo.characterId, getRequestMetadata(c))
 
 	return c.json({
 		sessionToken: session.sessionToken,
@@ -282,14 +284,16 @@ auth.post('/claim-main', async (c) => {
  *
  * Link an additional character to the authenticated user.
  * Requires authentication.
+ *
+ * Security: Character data comes from the token store, not from client input.
  */
 auth.post('/link-character', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const body = await c.req.json()
-	const { characterOwnerHash, characterId, characterName } = body
+	const { characterId } = body
 
-	if (!characterOwnerHash || !characterId || !characterName) {
-		return c.json({ error: 'Missing required fields' }, 400)
+	if (!characterId) {
+		return c.json({ error: 'Missing characterId' }, 400)
 	}
 
 	const db = c.get('db') || createDb(c.env.DATABASE_URL)
@@ -299,7 +303,7 @@ auth.post('/link-character', requireAuth(), async (c) => {
 	const userService = new UserService(db)
 	const activityService = new ActivityService(db)
 
-	// Verify character exists in eve-token-store
+	// Fetch verified character data from token store
 	const tokenInfo = await eveTokenStoreStub.getTokenInfo(characterId)
 
 	if (!tokenInfo) {
@@ -309,15 +313,15 @@ auth.post('/link-character', requireAuth(), async (c) => {
 		)
 	}
 
-	// Link character
+	// Link character with verified data from token store (not from client)
 	const linkedCharacter = await userService.linkCharacter({
 		userId: user.id,
-		characterOwnerHash,
-		characterId,
-		characterName,
+		characterOwnerHash: tokenInfo.characterOwnerHash,
+		characterId: tokenInfo.characterId,
+		characterName: tokenInfo.characterName,
 	})
 
-	await activityService.logCharacterLinked(user.id, characterId, getRequestMetadata(c))
+	await activityService.logCharacterLinked(user.id, tokenInfo.characterId, getRequestMetadata(c))
 
 	return c.json({
 		character: linkedCharacter,

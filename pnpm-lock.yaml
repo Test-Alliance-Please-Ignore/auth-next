@@ -69,6 +69,9 @@ importers:
       '@repo/db-utils':
         specifier: workspace:*
         version: link:../../packages/db-utils
+      '@repo/discord':
+        specifier: workspace:*
+        version: link:../../packages/discord
       '@repo/do-utils':
         specifier: workspace:*
         version: link:../../packages/do-utils

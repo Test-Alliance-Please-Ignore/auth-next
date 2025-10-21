@@ -1,4 +1,4 @@
-import { logger } from '@repo/hono-helpers'
+import { eq, ilike, inArray, sql } from '@repo/db-utils'
 
 import type { createDb } from '../db'
 
@@ -8,70 +8,166 @@ import type { createDb } from '../db'
  * Searches for users by their main character name.
  * Used when creating invitations by character name.
  *
- * NOTE: This service requires integration with the core worker to access
- * the users and userCharacters tables. For now, these are placeholder implementations.
+ * ⚠️ TEMPORARY IMPLEMENTATION (MVP):
+ * This service currently queries the core database tables directly.
+ * This works because both apps share the same DATABASE_URL.
+ *
+ * 🔄 FUTURE MIGRATION:
+ * Replace these direct database queries with RPC calls to the core worker:
+ * - Create methods in core worker: lookupUserByCharacter(), lookupCharactersByUser(), searchCharacters()
+ * - Add CORE service binding to groups worker
+ * - Update these functions to call the service binding instead of DB
+ * - Remove the core table definitions below
  */
+
+/**
+ * Core database table definitions (for direct access - TEMPORARY)
+ * These match the schema in apps/core/src/db/schema.ts
+ *
+ * TODO: Remove when migrating to RPC
+ */
+import { bigint, boolean, pgTable, timestamp, uuid, varchar } from 'drizzle-orm/pg-core'
+
+const users = pgTable('users', {
+	id: uuid('id').defaultRandom().primaryKey(),
+	mainCharacterId: bigint('main_character_id', { mode: 'number' }).notNull().unique(),
+	discordUserId: varchar('discord_user_id', { length: 255 }).unique(),
+	is_admin: boolean('is_admin').default(false).notNull(),
+	createdAt: timestamp('created_at').defaultNow().notNull(),
+	updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+const userCharacters = pgTable('user_characters', {
+	id: uuid('id').defaultRandom().primaryKey(),
+	userId: uuid('user_id')
+		.notNull()
+		.references(() => users.id, { onDelete: 'cascade' }),
+	characterOwnerHash: varchar('character_owner_hash', { length: 255 }).notNull(),
+	characterId: bigint('character_id', { mode: 'number' }).notNull().unique(),
+	characterName: varchar('character_name', { length: 255 }).notNull(),
+	is_primary: boolean('is_primary').default(false).notNull(),
+	linkedAt: timestamp('linked_at').defaultNow().notNull(),
+	updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
 
 /**
  * Find a user by their main character name
  *
- * TODO: Implement by calling the core worker or accessing a shared database
+ * MVP: Queries core database directly
+ * Future: Replace with RPC call to core worker
  *
- * @param characterName - The main character name to search for
- * @param db - Database client (currently unused - would need core DB access)
+ * @param characterName - The main character name to search for (exact match, case-sensitive)
+ * @param db - Database client
  * @returns User ID and character ID if found, null otherwise
  */
 export async function findUserByMainCharacterName(
 	characterName: string,
 	db: ReturnType<typeof createDb>
 ): Promise<{ userId: string; characterId: number } | null> {
-	// TODO: Implement character lookup via core worker or shared database
-	// This would require either:
-	// 1. RPC call to core worker
-	// 2. Shared database access
-	// 3. Separate lookup service
+	// Query for a primary character with matching name
+	const result = await db
+		.select({
+			userId: userCharacters.userId,
+			characterId: userCharacters.characterId,
+		})
+		.from(userCharacters)
+		.where(
+			sql`${userCharacters.is_primary} = true AND ${userCharacters.characterName} = ${characterName}`
+		)
+		.limit(1)
 
-	logger.warn('findUserByMainCharacterName not yet implemented - requires core worker integration')
-	return null
+	return result[0] || null
 }
 
 /**
  * Find a user by their main character ID
  *
- * TODO: Implement by calling the core worker or accessing a shared database
+ * MVP: Queries core database directly
+ * Future: Replace with RPC call to core worker
  *
  * @param mainCharacterId - The main character ID
- * @param db - Database client (currently unused - would need core DB access)
+ * @param db - Database client
  * @returns User ID and character name if found, null otherwise
  */
 export async function findUserByMainCharacterId(
 	mainCharacterId: number,
 	db: ReturnType<typeof createDb>
 ): Promise<{ userId: string; characterName: string } | null> {
-	// TODO: Implement via core worker integration
+	const result = await db
+		.select({
+			userId: userCharacters.userId,
+			characterName: userCharacters.characterName,
+		})
+		.from(userCharacters)
+		.where(
+			sql`${userCharacters.is_primary} = true AND ${userCharacters.characterId} = ${mainCharacterId}`
+		)
+		.limit(1)
 
-	logger.warn('findUserByMainCharacterId not yet implemented - requires core worker integration')
-	return null
+	return result[0] || null
+}
+
+/**
+ * Bulk lookup user IDs by main character IDs
+ *
+ * MVP: Queries core database directly
+ * Future: Replace with RPC call to core worker
+ *
+ * @param userIds - Array of user IDs to look up
+ * @param db - Database client
+ * @returns Map of userId -> character name
+ */
+export async function bulkFindMainCharactersByUserIds(
+	userIds: string[],
+	db: ReturnType<typeof createDb>
+): Promise<Map<string, string>> {
+	if (userIds.length === 0) {
+		return new Map()
+	}
+
+	const results = await db
+		.select({
+			userId: userCharacters.userId,
+			characterName: userCharacters.characterName,
+		})
+		.from(userCharacters)
+		.where(sql`${userCharacters.is_primary} = true AND ${userCharacters.userId} = ANY(${userIds})`)
+
+	const map = new Map<string, string>()
+	for (const row of results) {
+		map.set(row.userId, row.characterName)
+	}
+
+	return map
 }
 
 /**
  * Search for users by character name (case-insensitive)
  *
- * TODO: Implement by calling the core worker or accessing a shared database
+ * MVP: Queries core database directly
+ * Future: Replace with RPC call to core worker
  *
  * This searches across all characters (not just main characters) and returns
  * the user IDs of accounts that have a character matching the search term.
  *
- * @param searchTerm - The character name to search for
- * @param db - Database client (currently unused - would need core DB access)
+ * @param searchTerm - The character name to search for (partial match, case-insensitive)
+ * @param db - Database client
  * @returns Array of matching users with their character info
  */
 export async function searchUsersByCharacterName(
 	searchTerm: string,
 	db: ReturnType<typeof createDb>
 ): Promise<Array<{ userId: string; characterId: number; characterName: string; isMain: boolean }>> {
-	// TODO: Implement via core worker integration
+	const results = await db
+		.select({
+			userId: userCharacters.userId,
+			characterId: userCharacters.characterId,
+			characterName: userCharacters.characterName,
+			isMain: userCharacters.is_primary,
+		})
+		.from(userCharacters)
+		.where(ilike(userCharacters.characterName, `%${searchTerm}%`))
+		.limit(50) // Limit results to prevent overwhelming responses
 
-	logger.warn('searchUsersByCharacterName not yet implemented - requires core worker integration')
-	return []
+	return results
 }

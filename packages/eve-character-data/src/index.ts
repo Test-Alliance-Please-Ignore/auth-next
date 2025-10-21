@@ -368,6 +368,65 @@ export interface EveCharacterData extends DurableObject {
 	getCharacterInfo(characterId: number): Promise<CharacterPublicData | null>
 
 	/**
+	 * Get character portrait data
+	 * @param characterId - EVE character ID
+	 * @returns Character portrait URLs or null if not found
+	 */
+	getPortrait(characterId: number): Promise<{
+		characterId: number
+		px64x64?: string
+		px128x128?: string
+		px256x256?: string
+		px512x512?: string
+	} | null>
+
+	/**
+	 * Get character corporation history
+	 * @param characterId - EVE character ID
+	 * @returns Array of corporation history entries
+	 */
+	getCorporationHistory(characterId: number): Promise<
+		Array<{
+			recordId: number
+			corporationId: number
+			startDate: string
+			isDeleted?: boolean
+		}>
+	>
+
+	/**
+	 * Get character skills
+	 * @param characterId - EVE character ID
+	 * @returns Character skills data or null if not found
+	 */
+	getSkills(characterId: number): Promise<{
+		skills: Array<{
+			active_skill_level: number
+			skill_id: number
+			skillpoints_in_skill: number
+			trained_skill_level: number
+		}>
+		total_sp: number
+		unallocated_sp?: number
+	} | null>
+
+	/**
+	 * Get character attributes
+	 * @param characterId - EVE character ID
+	 * @returns Character attributes data or null if not found
+	 */
+	getAttributes(characterId: number): Promise<{
+		intelligence: number
+		perception: number
+		memory: number
+		willpower: number
+		charisma: number
+		accruedRemapCooldownDate?: string
+		bonusRemaps?: number
+		lastRemapDate?: string
+	} | null>
+
+	/**
 	 * Get when character data was last updated
 	 * @param characterId - EVE character ID
 	 * @returns Last updated timestamp or null if not found

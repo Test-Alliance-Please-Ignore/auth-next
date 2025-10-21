@@ -117,6 +117,12 @@ users.delete('/me/characters/:characterId', async (c) => {
 		return c.json({ error: 'Missing character ID' }, 400)
 	}
 
+	// Validate user owns this character (defense in depth)
+	const character = user.characters.find((char) => char.characterId === Number(characterId))
+	if (!character) {
+		return c.json({ error: 'Character not found or not owned by user' }, 404)
+	}
+
 	const db = c.get('db') || createDb(c.env.DATABASE_URL)
 	const userService = new UserService(db)
 	const activityService = new ActivityService(db)
@@ -153,6 +159,12 @@ users.post('/me/characters/:characterId/set-primary', async (c) => {
 
 	if (!characterId) {
 		return c.json({ error: 'Missing character ID' }, 400)
+	}
+
+	// Validate user owns this character (defense in depth)
+	const character = user.characters.find((char) => char.characterId === Number(characterId))
+	if (!character) {
+		return c.json({ error: 'Character not found or not owned by user' }, 404)
 	}
 
 	const db = c.get('db') || createDb(c.env.DATABASE_URL)

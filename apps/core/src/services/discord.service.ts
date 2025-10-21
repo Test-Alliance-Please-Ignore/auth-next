@@ -55,12 +55,14 @@ export async function startLinkFlow(env: Env, userId: string): Promise<string> {
  * @param env - Worker environment
  * @param code - OAuth authorization code
  * @param state - OAuth state parameter
+ * @param sessionUserId - User ID from current session (for validation)
  * @returns Result with success status and Discord user info
  */
 export async function handleCallback(
 	env: Env,
 	code: string,
-	state: string
+	state: string,
+	sessionUserId: string
 ): Promise<{
 	success: boolean
 	userId?: string
@@ -106,6 +108,14 @@ export async function handleCallback(
 		return {
 			success: false,
 			error: 'No user ID in OAuth state',
+		}
+	}
+
+	// SECURITY: Verify session user matches state user (prevents account takeover)
+	if (sessionUserId !== coreUserId) {
+		return {
+			success: false,
+			error: 'Session mismatch - you can only link Discord to your own account',
 		}
 	}
 

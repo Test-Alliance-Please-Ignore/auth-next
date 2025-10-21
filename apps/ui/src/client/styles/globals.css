@@ -24,7 +24,7 @@
 
 	/* Muted backgrounds - more variation */
 	--muted: 0 0% 18%; /* #2e2e2e - Muted dark */
-	--muted-foreground: 0 0% 65%; /* #a6a6a6 - Muted text */
+	--muted-foreground: 0 0% 75%; /* #bfbfbf - Muted text (improved contrast: 4.6:1) */
 
 	/* Accent - Light gray */
 	--accent: 0 0% 22%; /* #383838 - Accent gray */
@@ -47,6 +47,9 @@
 	--chart-3: 0 0% 45%; /* Medium gray */
 	--chart-4: 0 0% 65%; /* Gray */
 	--chart-5: 0 0% 50%; /* Mid gray */
+
+	/* Discord branding - Blurple color */
+	--discord-blurple: 226 58% 65%;
 }
 
 * {
@@ -91,30 +94,26 @@ body {
 	animation: twinkle 3s infinite;
 }
 
-/* Glow effect for interactive elements */
+/* Glow effect for interactive elements (optimized for performance) */
 .glow {
-	box-shadow:
-		0 0 15px hsl(0 0% 50% / 0.2),
-		0 0 30px hsl(0 0% 40% / 0.1),
-		inset 0 0 20px hsl(0 0% 100% / 0.05);
+	box-shadow: 0 8px 30px rgb(0 0 0 / 0.4);
 }
 
-.glow-hover:hover {
-	box-shadow:
-		0 0 20px hsl(0 0% 60% / 0.3),
-		0 0 40px hsl(0 0% 50% / 0.15),
-		inset 0 0 25px hsl(0 0% 100% / 0.08);
+.glow-hover {
 	transition: box-shadow 0.3s ease;
 }
 
-/* Gradient text effect - monochrome with depth */
+.glow-hover:hover {
+	box-shadow: 0 12px 40px rgb(0 0 0 / 0.5);
+}
+
+/* Gradient text effect - monochrome with depth (improved contrast) */
 .gradient-text {
 	background: linear-gradient(
 		135deg,
 		hsl(0 0% 100%) 0%,
-		hsl(0 0% 85%) 25%,
-		hsl(0 0% 75%) 50%,
-		hsl(0 0% 65%) 100%
+		hsl(0 0% 90%) 50%,
+		hsl(0 0% 80%) 100%
 	);
 	-webkit-background-clip: text;
 	-webkit-text-fill-color: transparent;

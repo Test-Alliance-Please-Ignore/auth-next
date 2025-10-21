@@ -1,7 +1,9 @@
 import { useNavigate } from 'react-router-dom'
 import { Mail } from 'lucide-react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+
 import { InvitationCard } from '@/components/invitation-card'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { usePendingInvitations } from '@/hooks/useGroups'
 
 export default function InvitationsPage() {
@@ -20,8 +22,8 @@ export default function InvitationsPage() {
 		<div className="space-y-6">
 			{/* Page Header */}
 			<div>
-				<h1 className="text-3xl font-bold gradient-text">Group Invitations</h1>
-				<p className="text-muted-foreground mt-1">View and respond to pending group invitations</p>
+				<h1 className="text-4xl md:text-5xl font-bold gradient-text">Group Invitations</h1>
+				<p className="text-muted-foreground mt-2">View and respond to pending group invitations</p>
 			</div>
 
 			{/* Invitations List */}
@@ -40,18 +42,18 @@ export default function InvitationsPage() {
 			) : (
 				/* Empty State */
 				<Card className="glow">
-					<CardContent className="py-12 text-center">
-						<Mail className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-						<h3 className="text-lg font-semibold mb-2">No Pending Invitations</h3>
-						<p className="text-muted-foreground mb-4">
-							You don't have any pending group invitations at the moment.
+					<CardContent className="py-16 text-center">
+						<div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-muted mb-6">
+							<Mail className="h-10 w-10 text-muted-foreground" />
+						</div>
+						<h3 className="text-xl font-semibold mb-2">No Pending Invitations</h3>
+						<p className="text-muted-foreground mb-6 max-w-md mx-auto">
+							You don't have any pending group invitations at the moment. Browse available groups to
+							find communities to join.
 						</p>
-						<button
-							onClick={() => navigate('/groups')}
-							className="text-primary hover:underline font-medium"
-						>
-							Browse Groups
-						</button>
+						<Button onClick={() => navigate('/groups')} size="lg">
+							Browse Available Groups
+						</Button>
 					</CardContent>
 				</Card>
 			)}

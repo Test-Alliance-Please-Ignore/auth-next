@@ -67,7 +67,9 @@ export function MemberList({
 
 						return (
 							<TableRow key={member.id}>
-								<TableCell className="font-medium">{member.userId}</TableCell>
+								<TableCell className="font-medium">
+									{member.mainCharacterName || 'Unknown User'}
+								</TableCell>
 								<TableCell>
 									<div className="flex gap-2">
 										{isOwner && <Badge>Owner</Badge>}

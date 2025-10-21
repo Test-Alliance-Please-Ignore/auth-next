@@ -60,7 +60,7 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 				<Link
 					to="/dashboard"
 					onClick={onNavigate}
-					className="text-xl font-bold gradient-text block"
+					className="text-xl font-bold gradient-text block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm"
 				>
 					TANG
 				</Link>
@@ -83,6 +83,7 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 							className={cn(
 								'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all',
 								'hover:bg-accent/50 hover:text-accent-foreground relative group',
+								'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
 								isActive
 									? 'bg-accent text-accent-foreground border-l-4 border-primary shadow-sm'
 									: 'text-muted-foreground border-l-4 border-transparent'
@@ -109,7 +110,11 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 					<div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-accent/30">
 						<img
 							src={`https://images.evetech.net/characters/${mainCharacter.characterId}/portrait?size=64`}
-							alt={mainCharacter.characterName}
+							alt={`${mainCharacter.characterName}'s portrait`}
+							loading="lazy"
+							onError={(e) => {
+								e.currentTarget.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"%3E%3Crect fill="%23404040" width="64" height="64"/%3E%3Ctext x="50%25" y="50%25" font-family="Arial" font-size="24" fill="%23bfbfbf" text-anchor="middle" dominant-baseline="middle"%3E?%3C/text%3E%3C/svg%3E'
+							}}
 							className="w-10 h-10 rounded-full border-2 border-primary/50"
 						/>
 						<div className="flex-1 min-w-0">

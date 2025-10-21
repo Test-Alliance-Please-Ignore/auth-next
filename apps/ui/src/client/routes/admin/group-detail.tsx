@@ -35,6 +35,10 @@ export default function GroupDetailPage() {
 	// Get admin user IDs from group data
 	const adminUserIds = new Set(group?.adminUserIds || [])
 
+	// Get selected member's character name
+	const selectedMember = members?.find((m) => m.userId === selectedUserId)
+	const selectedMemberName = selectedMember?.mainCharacterName || 'this user'
+
 	// Handlers
 	const handleRemoveMemberClick = (userId: string) => {
 		setSelectedUserId(userId)
@@ -192,7 +196,7 @@ export default function GroupDetailPage() {
 					<DialogHeader>
 						<DialogTitle>Remove Member</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to remove this member from the group? They will need to be re-invited or request to join again.
+							Are you sure you want to remove {selectedMemberName} from the group? They will need to be re-invited or request to join again.
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
@@ -225,8 +229,8 @@ export default function GroupDetailPage() {
 						<DialogTitle>{selectedUserIsAdmin ? 'Remove Admin Role' : 'Make Admin'}</DialogTitle>
 						<DialogDescription>
 							{selectedUserIsAdmin
-								? 'Are you sure you want to remove admin privileges from this user? They will no longer be able to approve join requests or remove members.'
-								: 'Are you sure you want to give admin privileges to this user? They will be able to approve join requests and remove members.'}
+								? `Are you sure you want to remove admin privileges from ${selectedMemberName}? They will no longer be able to approve join requests or remove members.`
+								: `Are you sure you want to give admin privileges to ${selectedMemberName}? They will be able to approve join requests and remove members.`}
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>

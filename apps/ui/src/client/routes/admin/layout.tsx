@@ -1,7 +1,10 @@
-import { Navigate, Outlet, useLocation } from 'react-router-dom'
-import { useAuth } from '@/hooks/useAuth'
-import { AdminNav } from '@/components/admin-nav'
+import { Fragment } from 'react'
+import { Link, Navigate, Outlet, useLocation } from 'react-router-dom'
 import { ChevronRight } from 'lucide-react'
+
+import { AdminNav } from '@/components/admin-nav'
+import { LoadingSpinner } from '@/components/ui/loading'
+import { useAuth } from '@/hooks/useAuth'
 
 export default function AdminLayout() {
 	const { user, isAuthenticated, isLoading } = useAuth()
@@ -11,10 +14,7 @@ export default function AdminLayout() {
 	if (isLoading) {
 		return (
 			<div className="min-h-screen flex items-center justify-center">
-				<div className="text-center space-y-4">
-					<div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto" />
-					<p className="text-sm text-muted-foreground">Loading...</p>
-				</div>
+				<LoadingSpinner label="Loading admin panel..." />
 			</div>
 		)
 	}
@@ -49,20 +49,23 @@ export default function AdminLayout() {
 						<h1 className="text-2xl font-bold gradient-text">Admin Panel</h1>
 
 						{/* Breadcrumb Navigation */}
-						<nav className="flex items-center gap-2 text-sm">
+						<nav className="flex items-center gap-2 text-sm" aria-label="Breadcrumb">
 							{breadcrumbs.map((crumb, index) => (
-								<div key={crumb.path} className="flex items-center gap-2">
+								<Fragment key={crumb.path}>
 									{index > 0 && <ChevronRight className="h-4 w-4 text-muted-foreground" />}
-									<span
-										className={
-											index === breadcrumbs.length - 1
-												? 'text-foreground font-medium'
-												: 'text-muted-foreground'
-										}
-									>
-										{crumb.label}
-									</span>
-								</div>
+									{index === breadcrumbs.length - 1 ? (
+										<span className="text-foreground font-medium" aria-current="page">
+											{crumb.label}
+										</span>
+									) : (
+										<Link
+											to={crumb.path}
+											className="text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm"
+										>
+											{crumb.label}
+										</Link>
+									)}
+								</Fragment>
 							))}
 						</nav>
 					</div>

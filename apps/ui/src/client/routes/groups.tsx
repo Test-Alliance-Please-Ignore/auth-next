@@ -61,8 +61,8 @@ export default function GroupsPage() {
 		<div className="space-y-6">
 			{/* Page Header */}
 			<div>
-				<h1 className="text-3xl font-bold gradient-text">Discover Groups</h1>
-				<p className="text-muted-foreground mt-1">Find and join groups that match your interests</p>
+				<h1 className="text-4xl md:text-5xl font-bold gradient-text">Discover Groups</h1>
+				<p className="text-muted-foreground mt-2">Find and join groups that match your interests</p>
 			</div>
 
 			{/* Invite Code Redemption */}

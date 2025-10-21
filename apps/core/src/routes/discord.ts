@@ -51,10 +51,11 @@ discord.post('/link/start', requireAuth(), async (c) => {
 /**
  * Handle Discord OAuth callback
  * GET /api/discord/callback?code=XXX&state=YYY
- * Public endpoint (validates state internally)
+ * Requires authentication to prevent account takeover
  * Returns: { success: boolean, userId?: string, username?: string, discriminator?: string, error?: string }
  */
-discord.get('/callback', async (c) => {
+discord.get('/callback', requireAuth(), async (c) => {
+	const user = c.get('user')!
 	const code = c.req.query('code')
 	const state = c.req.query('state')
 
@@ -68,7 +69,8 @@ discord.get('/callback', async (c) => {
 	}
 
 	try {
-		const result = await discordService.handleCallback(c.env, code, state)
+		// Pass session user ID for validation (prevents account takeover)
+		const result = await discordService.handleCallback(c.env, code, state, user.id)
 
 		if (!result.success) {
 			// Redirect to frontend callback page with error

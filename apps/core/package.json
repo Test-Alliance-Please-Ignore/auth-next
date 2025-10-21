@@ -21,6 +21,7 @@
 	"dependencies": {
 		"@neondatabase/serverless": "0.10.4",
 		"@repo/db-utils": "workspace:*",
+		"@repo/discord": "workspace:*",
 		"@repo/do-utils": "workspace:*",
 		"@repo/eve-character-data": "workspace:*",
 		"@repo/eve-token-store": "workspace:*",

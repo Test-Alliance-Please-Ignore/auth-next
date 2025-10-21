@@ -31,10 +31,7 @@ export function DiscordCard({ user }: DiscordCardProps) {
 		<Card className="card-gradient border-border/50 shadow-[0_8px_30px_rgb(0,0,0,0.4)] h-full flex flex-col">
 			<CardHeader>
 				<div className="flex items-center gap-3">
-					<div
-						className="flex items-center justify-center w-12 h-12 rounded-full"
-						style={{ backgroundColor: '#5865F2' }}
-					>
+					<div className="flex items-center justify-center w-12 h-12 rounded-full bg-[hsl(var(--discord-blurple))]">
 						<MessageSquare className="h-6 w-6 text-white" />
 					</div>
 					<div>
@@ -67,8 +64,7 @@ export function DiscordCard({ user }: DiscordCardProps) {
 						<Button
 							onClick={handleLinkClick}
 							disabled={isPending}
-							className="w-full sm:w-auto"
-							style={{ backgroundColor: '#5865F2' }}
+							className="w-full sm:w-auto bg-[hsl(var(--discord-blurple))] text-white hover:bg-[hsl(var(--discord-blurple))]/90"
 						>
 							{isPending ? 'Opening Discord...' : 'Link Discord Account'}
 						</Button>

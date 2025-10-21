@@ -36,7 +36,7 @@ export default function LandingPage() {
 			{/* Content */}
 			<div className="relative z-10 max-w-4xl mx-auto px-4 text-center">
 				{/* Logo/Title with enhanced gradient */}
-				<h1 className="text-6xl md:text-8xl font-bold mb-6 gradient-text drop-shadow-[0_0_30px_rgba(255,255,255,0.1)]">
+				<h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-bold mb-6 gradient-text drop-shadow-[0_0_30px_rgba(255,255,255,0.1)]">
 					Test Auth
 					<br />
 					Next Generation

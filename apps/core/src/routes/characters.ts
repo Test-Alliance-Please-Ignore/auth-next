@@ -70,7 +70,14 @@ app.get('/:characterId', requireAuth(), async (c) => {
 
 		// Add corporation history IDs
 		if (corporationHistory && corporationHistory.length > 0) {
-			const historyCorpIds = [...new Set(corporationHistory.map((entry) => entry.corporationId))]
+			const historyCorpIds = [
+				...new Set(
+					corporationHistory.map(
+						(entry: { corporationId: number; recordId: number; startDate: string; isDeleted?: boolean }) =>
+							entry.corporationId
+					)
+				),
+			]
 			idsToResolve.push(...historyCorpIds)
 		}
 
@@ -89,10 +96,12 @@ app.get('/:characterId', requireAuth(), async (c) => {
 
 		// Enrich corporation history with resolved names
 		const enrichedCorporationHistory = corporationHistory
-			? corporationHistory.map((entry) => ({
-					...entry,
-					corporationName: entityNames.get(entry.corporationId) || `Corporation #${entry.corporationId}`,
-				}))
+			? corporationHistory.map(
+					(entry: { corporationId: number; recordId: number; startDate: string; isDeleted?: boolean }) => ({
+						...entry,
+						corporationName: entityNames.get(entry.corporationId) || `Corporation #${entry.corporationId}`,
+					})
+				)
 			: []
 
 		// Build response with public data

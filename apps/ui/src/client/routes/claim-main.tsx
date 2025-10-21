@@ -51,10 +51,9 @@ export default function ClaimMainPage() {
 		setError(null)
 
 		try {
+			// Only send characterId - server will fetch verified data from token store
 			const response = await apiClient.post<ClaimMainResponse>('/auth/claim-main', {
-				characterOwnerHash: characterInfo.characterOwnerHash,
 				characterId: characterInfo.characterId,
-				characterName: characterInfo.characterName,
 			})
 
 			// Store session token

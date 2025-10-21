@@ -196,6 +196,38 @@ groups.get('/invitations', requireAuth(), async (c) => {
 })
 
 /**
+ * POST /:groupId/invitations
+ *
+ * Create a direct invitation by character name (admin only)
+ */
+groups.post('/:groupId/invitations', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const groupId = c.req.param('groupId')
+	const body = await c.req.json()
+	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+
+	if (!body.characterName) {
+		return c.json({ error: 'characterName is required' }, 400)
+	}
+
+	try {
+		const invitation = await groupsDO.createInvitation(
+			{
+				groupId,
+				characterName: body.characterName,
+			},
+			user.id
+		)
+		return c.json(invitation, 201)
+	} catch (error) {
+		if (error instanceof Error) {
+			return c.json({ error: error.message }, 400)
+		}
+		throw error
+	}
+})
+
+/**
  * POST /invitations/:id/accept
  *
  * Accept a group invitation
@@ -228,6 +260,77 @@ groups.post('/invitations/:id/decline', requireAuth(), async (c) => {
 
 	try {
 		await groupsDO.declineInvitation(invitationId, user.id)
+		return c.json({ success: true }, 200)
+	} catch (error) {
+		if (error instanceof Error) {
+			return c.json({ error: error.message }, 400)
+		}
+		throw error
+	}
+})
+
+/**
+ * POST /:groupId/invite-codes
+ *
+ * Create an invite code for a group (owner only)
+ */
+groups.post('/:groupId/invite-codes', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const groupId = c.req.param('groupId')
+	const body = await c.req.json()
+	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+
+	try {
+		const result = await groupsDO.createInviteCode(
+			{
+				groupId,
+				maxUses: body.maxUses ?? null,
+				expiresInDays: body.expiresInDays ?? 7,
+			},
+			user.id
+		)
+		return c.json(result, 201)
+	} catch (error) {
+		if (error instanceof Error) {
+			return c.json({ error: error.message }, 400)
+		}
+		throw error
+	}
+})
+
+/**
+ * GET /:groupId/invite-codes
+ *
+ * List invite codes for a group (owner/admin only)
+ */
+groups.get('/:groupId/invite-codes', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const groupId = c.req.param('groupId')
+	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+
+	try {
+		const codes = await groupsDO.listInviteCodes(groupId, user.id)
+		return c.json(codes)
+	} catch (error) {
+		if (error instanceof Error) {
+			return c.json({ error: error.message }, 403)
+		}
+		throw error
+	}
+})
+
+/**
+ * DELETE /invite-codes/:codeId
+ *
+ * Revoke an invite code (owner only)
+ */
+groups.delete('/invite-codes/:codeId', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const codeId = c.req.param('codeId')
+	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+
+	try {
+		await groupsDO.revokeInviteCode(codeId, user.id)
 		return c.json({ success: true }, 200)
 	} catch (error) {
 		if (error instanceof Error) {
@@ -339,7 +442,7 @@ groups.patch('/:id', requireAuth(), requireAdmin(), async (c) => {
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
-		const group = await groupsDO.updateGroup(groupId, body, user.id, user.is_admin)
+		const group = await groupsDO.updateGroup(groupId, body, user.id)
 		return c.json(group)
 	} catch (error) {
 		if (error instanceof Error) {
@@ -363,7 +466,7 @@ groups.delete('/:id', requireAuth(), requireAdmin(), async (c) => {
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
-		await groupsDO.deleteGroup(groupId, user.id, user.is_admin)
+		await groupsDO.deleteGroup(groupId, user.id)
 		return c.json({ success: true }, 200)
 	} catch (error) {
 		if (error instanceof Error) {
@@ -389,7 +492,7 @@ groups.get('/:groupId/members', requireAuth(), requireAdmin(), async (c) => {
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
-		const members = await groupsDO.listGroupMembers(groupId, user.id, user.is_admin)
+		const members = await groupsDO.getGroupMembers(groupId, user.id, user.is_admin)
 		return c.json(members)
 	} catch (error) {
 		if (error instanceof Error && error.message.includes('not found')) {
@@ -411,7 +514,7 @@ groups.delete('/:groupId/members/:userId', requireAuth(), requireAdmin(), async 
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
-		await groupsDO.removeGroupMember(groupId, memberUserId, user.id, user.is_admin)
+		await groupsDO.removeMember(groupId, user.id, memberUserId)
 		return c.json({ success: true }, 200)
 	} catch (error) {
 		if (error instanceof Error) {
@@ -442,7 +545,7 @@ groups.post('/:groupId/admins', requireAuth(), requireAdmin(), async (c) => {
 	}
 
 	try {
-		await groupsDO.addGroupAdmin(groupId, body.userId, user.id, user.is_admin)
+		await groupsDO.addAdmin(groupId, user.id, body.userId)
 		return c.json({ success: true }, 200)
 	} catch (error) {
 		if (error instanceof Error) {
@@ -467,7 +570,7 @@ groups.delete('/:groupId/admins/:userId', requireAuth(), requireAdmin(), async (
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
-		await groupsDO.removeGroupAdmin(groupId, targetUserId, user.id, user.is_admin)
+		await groupsDO.removeAdmin(groupId, user.id, targetUserId)
 		return c.json({ success: true }, 200)
 	} catch (error) {
 		if (error instanceof Error) {
@@ -513,6 +616,32 @@ groups.post('/:id/leave', requireAuth(), async (c) => {
 
 	try {
 		await groupsDO.leaveGroup(groupId, user.id)
+		return c.json({ success: true }, 200)
+	} catch (error) {
+		if (error instanceof Error) {
+			return c.json({ error: error.message }, 400)
+		}
+		throw error
+	}
+})
+
+/**
+ * POST /:id/transfer
+ *
+ * Transfer group ownership (owner only)
+ */
+groups.post('/:id/transfer', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const groupId = c.req.param('id')
+	const body = await c.req.json()
+	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+
+	if (!body.newOwnerId) {
+		return c.json({ error: 'newOwnerId is required' }, 400)
+	}
+
+	try {
+		await groupsDO.transferOwnership(groupId, user.id, body.newOwnerId)
 		return c.json({ success: true }, 200)
 	} catch (error) {
 		if (error instanceof Error) {

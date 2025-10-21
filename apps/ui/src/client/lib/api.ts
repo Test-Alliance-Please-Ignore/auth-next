@@ -57,6 +57,7 @@ export interface GroupMember {
 	groupId: string
 	userId: string
 	joinedAt: string
+	mainCharacterName?: string
 }
 
 export interface CreateCategoryRequest {

@@ -8,6 +8,7 @@ export default defineWorkersProject({
 				miniflare: {
 					bindings: {
 						ENVIRONMENT: 'VITEST',
+						DATABASE_URL: process.env.DATABASE_URL || '',
 					},
 				},
 			},

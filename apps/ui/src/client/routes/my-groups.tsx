@@ -1,7 +1,9 @@
 import { useNavigate } from 'react-router-dom'
 import { Users, Crown, Shield } from 'lucide-react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+
 import { MyGroupsCard } from '@/components/my-groups-card'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useUserMemberships } from '@/hooks/useGroups'
 
 export default function MyGroupsPage() {
@@ -24,8 +26,8 @@ export default function MyGroupsPage() {
 		<div className="space-y-6">
 			{/* Page Header */}
 			<div>
-				<h1 className="text-3xl font-bold gradient-text">My Groups</h1>
-				<p className="text-muted-foreground mt-1">Manage your group memberships</p>
+				<h1 className="text-4xl md:text-5xl font-bold gradient-text">My Groups</h1>
+				<p className="text-muted-foreground mt-2">Manage your group memberships</p>
 			</div>
 
 			{/* Stats */}
@@ -121,18 +123,18 @@ export default function MyGroupsPage() {
 			{/* Empty State */}
 			{memberships?.length === 0 && (
 				<Card className="glow">
-					<CardContent className="py-12 text-center">
-						<Users className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-						<h3 className="text-lg font-semibold mb-2">No Groups Yet</h3>
-						<p className="text-muted-foreground mb-4">
-							You haven't joined any groups yet. Browse available groups to get started!
+					<CardContent className="py-16 text-center">
+						<div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-muted mb-6">
+							<Users className="h-10 w-10 text-muted-foreground" />
+						</div>
+						<h3 className="text-xl font-semibold mb-2">No Groups Yet</h3>
+						<p className="text-muted-foreground mb-6 max-w-md mx-auto">
+							You haven't joined any groups yet. Browse available groups to connect with other EVE
+							Online players and participate in activities.
 						</p>
-						<button
-							onClick={() => navigate('/groups')}
-							className="text-primary hover:underline font-medium"
-						>
-							Browse Groups
-						</button>
+						<Button onClick={() => navigate('/groups')} size="lg">
+							Browse Available Groups
+						</Button>
 					</CardContent>
 				</Card>
 			)}

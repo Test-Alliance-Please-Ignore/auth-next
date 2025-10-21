@@ -46,6 +46,7 @@ export interface GroupMember {
 	groupId: string
 	userId: string
 	joinedAt: Date
+	mainCharacterName?: string
 }
 
 export interface GroupAdmin {

@@ -529,7 +529,16 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			orderBy: (groupMembers, { asc }) => [asc(groupMembers.joinedAt)],
 		})
 
-		return members.map(this.mapGroupMember)
+		// Fetch main character names for all members
+		const { bulkFindMainCharactersByUserIds } = await import('./services/character-lookup')
+		const userIds = members.map((member) => member.userId)
+		const characterNames = await bulkFindMainCharactersByUserIds(userIds, this.db)
+
+		// Enrich members with character names
+		return members.map((member) => ({
+			...this.mapGroupMember(member),
+			mainCharacterName: characterNames.get(member.userId),
+		}))
 	}
 
 	async getUserMemberships(userId: string): Promise<GroupMembershipSummary[]> {
@@ -701,8 +710,20 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			orderBy: (groupJoinRequests, { desc }) => [desc(groupJoinRequests.createdAt)],
 		})
 
-		// TODO: Fetch user names from core database if needed
-		return requests.map((req) => this.mapGroupJoinRequest(req))
+		if (requests.length === 0) {
+			return []
+		}
+
+		// Fetch main character names for all requesting users
+		const { bulkFindMainCharactersByUserIds } = await import('./services/character-lookup')
+		const userIds = requests.map((req) => req.userId)
+		const characterNames = await bulkFindMainCharactersByUserIds(userIds, this.db)
+
+		// Enrich requests with user character names
+		return requests.map((req) => ({
+			...this.mapGroupJoinRequest(req),
+			userMainCharacterName: characterNames.get(req.userId) || undefined,
+		}))
 	}
 
 	async approveJoinRequest(requestId: string, adminUserId: string): Promise<void> {
@@ -811,9 +832,32 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Only group owner or admins can invite users')
 		}
 
-		// TODO: Look up user by character name using core database
-		// For now, we'll create the invitation without resolving the user ID
-		// The inviteeUserId will be set when we query the core database
+		// Look up user by their main character name
+		const { findUserByMainCharacterName } = await import('./services/character-lookup')
+		const userLookup = await findUserByMainCharacterName(data.characterName, this.db)
+
+		if (!userLookup) {
+			throw new Error(`Character '${data.characterName}' not found or is not a main character`)
+		}
+
+		// Check if the user is already a member
+		const isMember = await this.isUserMember(data.groupId, userLookup.userId)
+		if (isMember) {
+			throw new Error(`User '${data.characterName}' is already a member of this group`)
+		}
+
+		// Check for existing pending invitation
+		const existingInvitation = await this.db.query.groupInvitations.findFirst({
+			where: and(
+				eq(groupInvitations.groupId, data.groupId),
+				eq(groupInvitations.inviteeUserId, userLookup.userId),
+				eq(groupInvitations.status, 'pending')
+			),
+		})
+
+		if (existingInvitation) {
+			throw new Error(`User '${data.characterName}' already has a pending invitation`)
+		}
 
 		const expiresAt = new Date()
 		expiresAt.setDate(expiresAt.getDate() + 7) // 7 days from now
@@ -823,8 +867,8 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			.values({
 				groupId: data.groupId,
 				inviterId,
-				inviteeMainCharacterId: 0, // TODO: resolve from character name
-				inviteeUserId: null, // TODO: resolve from character name
+				inviteeMainCharacterId: userLookup.characterId,
+				inviteeUserId: userLookup.userId,
 				status: 'pending',
 				expiresAt,
 			})
