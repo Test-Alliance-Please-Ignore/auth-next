@@ -115,7 +115,7 @@ export function InviteMemberForm({ groupId, onSuccess }: InviteMemberFormProps) 
 							/>
 							{searchQuery.length >= 2 && (isSearching || searchQuery !== debouncedSearchQuery) && (
 								<div className="absolute right-3 top-1/2 -translate-y-1/2">
-									<div className="animate-spin h-4 w-4 border-2 border-gray-300 border-t-blue-600 rounded-full"></div>
+									<div className="animate-spin h-4 w-4 border-2 border-border border-t-primary rounded-full"></div>
 								</div>
 							)}
 						</div>
@@ -126,12 +126,18 @@ export function InviteMemberForm({ groupId, onSuccess }: InviteMemberFormProps) 
 
 					{/* Autocomplete dropdown */}
 					{showDropdown && searchResults && searchResults.length > 0 && (
-						<div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto">
+						<div
+						className="absolute z-50 w-full mt-1 border border-border rounded-md shadow-lg max-h-60 overflow-auto backdrop-blur-sm"
+						style={{
+							backgroundColor: 'hsl(0 0% 16%)',
+							boxShadow: '0 0 20px rgba(0, 0, 0, 0.8), 0 4px 12px rgba(0, 0, 0, 0.5)',
+						}}
+					>
 							{searchResults.map((character) => (
 								<button
 									key={character.characterId}
 									type="button"
-									className="w-full text-left px-4 py-2 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none transition-colors"
+									className="w-full text-left px-4 py-2 text-popover-foreground hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground focus:outline-none transition-colors rounded-sm"
 									onClick={() => handleSelectCharacter(character)}
 								>
 									<div className="font-medium">{character.characterName}</div>
@@ -142,18 +148,18 @@ export function InviteMemberForm({ groupId, onSuccess }: InviteMemberFormProps) 
 				</div>
 
 				{errorMessage && (
-					<div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
+					<div className="text-sm text-destructive-foreground bg-destructive/10 border border-destructive/30 rounded px-3 py-2">
 						{errorMessage}
 					</div>
 				)}
 
 				{successMessage && (
-					<div className="text-sm text-green-600 bg-green-50 border border-green-200 rounded px-3 py-2">
+					<div className="text-sm text-foreground bg-primary/10 border border-primary/30 rounded px-3 py-2">
 						{successMessage}
 					</div>
 				)}
 
-				<p className="text-xs text-gray-500">
+				<p className="text-xs text-muted-foreground">
 					Start typing to search for characters. Only main characters can be invited.
 				</p>
 			</form>

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 
 import { EveSSOButton } from '@/components/eve-sso-button'
 import { apiClient } from '@/lib/api'
@@ -28,10 +28,9 @@ export default function LandingPage() {
 			{/* Starfield Background */}
 			<Starfield />
 
-			{/* Gradient Overlays - Multiple layers for depth */}
-			<div className="absolute inset-0 bg-gradient-to-b from-transparent via-background/30 to-background z-0" />
-			<div className="absolute inset-0 bg-gradient-to-r from-background/50 via-transparent to-background/50 z-0" />
-			<div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_0%,hsl(0_0%_8%)_100%)] z-0" />
+			{/* Solid background with gradient vignette effect - stars only show through center */}
+			<div className="absolute inset-0 bg-background z-0" />
+			<div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_0%,transparent_30%,hsl(220_18%_8%)_100%)] z-0" />
 
 			{/* Content */}
 			<div className="relative z-10 max-w-4xl mx-auto px-4 text-center">
@@ -57,14 +56,18 @@ export default function LandingPage() {
 }
 
 function Starfield() {
-	// Generate random stars
-	const stars = Array.from({ length: 100 }, (_, i) => ({
-		id: i,
-		top: `${Math.random() * 100}%`,
-		left: `${Math.random() * 100}%`,
-		animationDelay: `${Math.random() * 3}s`,
-		opacity: Math.random() * 0.7 + 0.3,
-	}))
+	// Memoize star generation to prevent drift on re-renders
+	const stars = useMemo(
+		() =>
+			Array.from({ length: 100 }, (_, i) => ({
+				id: i,
+				top: `${Math.random() * 100}%`,
+				left: `${Math.random() * 100}%`,
+				animationDelay: `${Math.random() * 3}s`,
+				opacity: Math.random() * 0.7 + 0.3,
+			})),
+		[] // Empty dependency array ensures stars are only generated once
+	)
 
 	return (
 		<div className="starfield">

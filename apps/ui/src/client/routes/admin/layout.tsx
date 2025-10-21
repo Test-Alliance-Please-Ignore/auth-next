@@ -1,4 +1,4 @@
-import { Fragment } from 'react'
+import { Fragment, useMemo } from 'react'
 import { Link, Navigate, Outlet, useLocation } from 'react-router-dom'
 import { ChevronRight } from 'lucide-react'
 
@@ -54,8 +54,11 @@ function AdminLayoutContent() {
 			{/* Starfield Background */}
 			<Starfield />
 
+			{/* Solid background overlay to hide stars */}
+			<div className="fixed inset-0 bg-background z-0" />
+
 			{/* Header with Breadcrumbs */}
-			<header className="border-b border-border/30 backdrop-blur-md bg-gradient-to-r from-background/90 via-background/80 to-background/90 sticky top-0 z-50 shadow-[0_4px_20px_rgba(0,0,0,0.3)]">
+			<header className="border-b border-border/30 backdrop-blur-md bg-background sticky top-0 z-50 shadow-[0_4px_20px_rgba(0,0,0,0.3)]">
 				<div className="container mx-auto px-4 py-4">
 					<div className="flex items-center justify-between">
 						<h1 className="text-2xl font-bold gradient-text">Admin Panel</h1>
@@ -85,7 +88,7 @@ function AdminLayoutContent() {
 			</header>
 
 			{/* Main Layout with Sidebar */}
-			<div className="flex-1 container mx-auto px-4 py-8 relative z-10">
+			<div className="flex-1 container mx-auto px-4 py-8 relative z-10 bg-background">
 				<div className="flex gap-8">
 					{/* Sidebar Navigation */}
 					<aside className="w-64 flex-shrink-0">
@@ -100,7 +103,7 @@ function AdminLayoutContent() {
 			</div>
 
 			{/* Footer */}
-			<footer className="border-t border-border/50 py-6 relative z-10 backdrop-blur-sm bg-background/80">
+			<footer className="border-t border-border/50 py-6 relative z-10 bg-background">
 				<div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
 					<p>Admin Panel • Manage Categories and Groups</p>
 				</div>
@@ -110,14 +113,18 @@ function AdminLayoutContent() {
 }
 
 function Starfield() {
-	// Generate random stars
-	const stars = Array.from({ length: 50 }, (_, i) => ({
-		id: i,
-		top: `${Math.random() * 100}%`,
-		left: `${Math.random() * 100}%`,
-		animationDelay: `${Math.random() * 3}s`,
-		opacity: Math.random() * 0.5 + 0.2,
-	}))
+	// Memoize star generation to prevent drift on re-renders
+	const stars = useMemo(
+		() =>
+			Array.from({ length: 50 }, (_, i) => ({
+				id: i,
+				top: `${Math.random() * 100}%`,
+				left: `${Math.random() * 100}%`,
+				animationDelay: `${Math.random() * 3}s`,
+				opacity: Math.random() * 0.5 + 0.2,
+			})),
+		[] // Empty dependency array ensures stars are only generated once
+	)
 
 	return (
 		<div className="starfield">
