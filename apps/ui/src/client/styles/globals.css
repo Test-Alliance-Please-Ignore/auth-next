@@ -11,7 +11,7 @@
 	--card-foreground: 0 0% 95%;
 
 	/* Popover */
-	--popover: 0 0% 14%;
+	--popover: 0 0% 16%; /* #292929 - Darker but opaque dropdown background */
 	--popover-foreground: 0 0% 95%;
 
 	/* Primary - Lighter gray with subtle warmth */

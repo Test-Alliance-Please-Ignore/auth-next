@@ -1,0 +1,135 @@
+import { Link, useLocation } from 'react-router-dom'
+import { LayoutDashboard, Users, FolderHeart, Mail, Shield, LogOut } from 'lucide-react'
+
+import { useAuth, useLogout } from '@/hooks/useAuth'
+import { usePendingInvitations } from '@/hooks/useGroups'
+import { Button } from './ui/button'
+import { Badge } from './ui/badge'
+import { cn } from '@/lib/utils'
+
+interface SidebarNavProps {
+	onNavigate?: () => void
+}
+
+export function SidebarNav({ onNavigate }: SidebarNavProps) {
+	const location = useLocation()
+	const { user } = useAuth()
+	const logout = useLogout()
+	const { data: invitations } = usePendingInvitations()
+
+	const pendingCount = invitations?.length || 0
+	const mainCharacter = user?.characters.find((c) => c.characterId === user.mainCharacterId)
+
+	const navItems = [
+		{
+			label: 'Dashboard',
+			href: '/dashboard',
+			icon: LayoutDashboard,
+		},
+		{
+			label: 'Groups',
+			href: '/groups',
+			icon: Users,
+		},
+		{
+			label: 'My Groups',
+			href: '/my-groups',
+			icon: FolderHeart,
+		},
+		{
+			label: 'Invitations',
+			href: '/invitations',
+			icon: Mail,
+			badge: pendingCount > 0 ? pendingCount : undefined,
+		},
+	]
+
+	// Add admin nav item if user is admin
+	if (user?.is_admin) {
+		navItems.push({
+			label: 'Admin',
+			href: '/admin',
+			icon: Shield,
+		})
+	}
+
+	return (
+		<div className="flex flex-col h-full">
+			{/* Logo/Brand */}
+			<div className="p-6 border-b border-border/50">
+				<Link
+					to="/dashboard"
+					onClick={onNavigate}
+					className="text-xl font-bold gradient-text block"
+				>
+					TANG
+				</Link>
+				<p className="text-xs text-muted-foreground mt-1">
+					Test Auth Next Gen
+				</p>
+			</div>
+
+			{/* Navigation Items */}
+			<nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+				{navItems.map((item) => {
+					const isActive = location.pathname === item.href || location.pathname.startsWith(item.href + '/')
+					const Icon = item.icon
+
+					return (
+						<Link
+							key={item.href}
+							to={item.href}
+							onClick={onNavigate}
+							className={cn(
+								'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all',
+								'hover:bg-accent/50 hover:text-accent-foreground relative group',
+								isActive
+									? 'bg-accent text-accent-foreground border-l-4 border-primary shadow-sm'
+									: 'text-muted-foreground border-l-4 border-transparent'
+							)}
+						>
+							<Icon className={cn('h-5 w-5 flex-shrink-0', isActive && 'text-primary')} />
+							<span className="flex-1">{item.label}</span>
+							{item.badge && (
+								<Badge
+									variant="destructive"
+									className="h-5 min-w-[20px] px-1 text-[10px] flex items-center justify-center"
+								>
+									{item.badge}
+								</Badge>
+							)}
+						</Link>
+					)
+				})}
+			</nav>
+
+			{/* User Section */}
+			<div className="p-4 border-t border-border/50 space-y-3">
+				{mainCharacter && (
+					<div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-accent/30">
+						<img
+							src={`https://images.evetech.net/characters/${mainCharacter.characterId}/portrait?size=64`}
+							alt={mainCharacter.characterName}
+							className="w-10 h-10 rounded-full border-2 border-primary/50"
+						/>
+						<div className="flex-1 min-w-0">
+							<p className="text-sm font-medium truncate">{mainCharacter.characterName}</p>
+							<p className="text-xs text-muted-foreground">Online</p>
+						</div>
+					</div>
+				)}
+
+				<Button
+					variant="outline"
+					size="sm"
+					onClick={() => logout.mutate()}
+					disabled={logout.isPending}
+					className="w-full justify-start gap-2"
+				>
+					<LogOut className="h-4 w-4" />
+					{logout.isPending ? 'Logging out...' : 'Logout'}
+				</Button>
+			</div>
+		</div>
+	)
+}

@@ -1,5 +1,6 @@
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
+import type { Groups } from '@repo/groups'
 import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
 
@@ -9,6 +10,8 @@ export type Env = SharedHonoEnv & {
 	EVE_TOKEN_STORE: DurableObjectNamespace
 	/** EVE Character Data Durable Object binding */
 	EVE_CHARACTER_DATA: DurableObjectNamespace
+	/** Groups Durable Object binding */
+	GROUPS: DurableObjectNamespace
 	/** EVE Static Data service binding */
 	EVE_STATIC_DATA: Fetcher
 	/** Discord worker service binding */
@@ -47,6 +50,8 @@ export type Variables = SharedHonoVariables & {
 	eveTokenStore?: EveTokenStore
 	/** EVE Character Data Durable Object stub */
 	eveCharacterData?: EveCharacterData
+	/** Groups Durable Object stub */
+	groupsDO?: Groups
 }
 
 export interface App extends HonoApp {

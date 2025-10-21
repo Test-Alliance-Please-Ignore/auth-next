@@ -1,5 +1,5 @@
 {
-	"name": "core",
+	"name": "groups",
 	"version": "0.1.0",
 	"private": true,
 	"sideEffects": false,
@@ -22,8 +22,6 @@
 		"@neondatabase/serverless": "0.10.4",
 		"@repo/db-utils": "workspace:*",
 		"@repo/do-utils": "workspace:*",
-		"@repo/eve-character-data": "workspace:*",
-		"@repo/eve-token-store": "workspace:*",
 		"@repo/groups": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
 		"drizzle-orm": "0.44.6",

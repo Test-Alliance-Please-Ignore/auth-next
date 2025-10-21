@@ -28,7 +28,7 @@ export function DiscordCard({ user }: DiscordCardProps) {
 	}
 
 	return (
-		<Card className="card-gradient border-border/50 shadow-[0_8px_30px_rgb(0,0,0,0.4)]">
+		<Card className="card-gradient border-border/50 shadow-[0_8px_30px_rgb(0,0,0,0.4)] h-full flex flex-col">
 			<CardHeader>
 				<div className="flex items-center gap-3">
 					<div
@@ -45,7 +45,7 @@ export function DiscordCard({ user }: DiscordCardProps) {
 					</div>
 				</div>
 			</CardHeader>
-			<CardContent>
+			<CardContent className="flex-1 flex items-center">
 				{user.discord ? (
 					// Linked state - show Discord username
 					<div className="flex items-center gap-3">

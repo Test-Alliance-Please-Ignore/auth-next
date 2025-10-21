@@ -7,6 +7,7 @@ import { sessionMiddleware } from './middleware/session'
 import authRoutes from './routes/auth'
 import charactersRoutes from './routes/characters'
 import discordRoutes from './routes/discord'
+import groupsRoutes from './routes/groups'
 import skillsRoutes from './routes/skills'
 import usersRoutes from './routes/users'
 
@@ -40,5 +41,6 @@ const app = new Hono<App>()
 	.route('/api/characters', charactersRoutes)
 	.route('/api/skills', skillsRoutes)
 	.route('/api/discord', discordRoutes)
+	.route('/api/groups', groupsRoutes)
 
 export default app

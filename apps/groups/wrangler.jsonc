@@ -1,0 +1,27 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "groups",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-04-28",
+	"compatibility_flags": ["nodejs_compat"],
+	"routes": [],
+	"logpush": true,
+	"observability": {
+		"enabled": true
+	},
+	"vars": {},
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "GROUPS",
+				"class_name": "Groups"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["Groups"]
+		}
+	]
+}

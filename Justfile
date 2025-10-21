@@ -57,6 +57,7 @@ build *flags:
 db-generate-all:
   cd apps/core && bun run db:generate
   cd apps/discord && bun run db:generate
+  cd apps/groups && bun run db:generate
   cd apps/eve-character-data && bun run db:generate
   cd apps/eve-static-data && bun run db:generate
   cd apps/eve-token-store && bun run db:generate
@@ -66,6 +67,7 @@ db-generate-all:
 db-push-all:
   cd apps/core && bun run db:push
   cd apps/discord && bun run db:push
+  cd apps/groups && bun run db:push
   cd apps/eve-character-data && bun run db:push
   cd apps/eve-static-data && bun run db:push
   cd apps/eve-token-store && bun run db:push
@@ -75,6 +77,7 @@ db-push-all:
 db-migrate-all:
   cd apps/core && bun run db:migrate
   cd apps/discord && bun run db:migrate
+  cd apps/groups && bun run db:migrate
   cd apps/eve-character-data && bun run db:migrate
   cd apps/eve-static-data && bun run db:migrate
   cd apps/eve-token-store && bun run db:migrate
