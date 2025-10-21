@@ -7,7 +7,8 @@
 	"routes": ["pleaseignore.app/api/*"],
 	"logpush": true,
 	"observability": {
-		"enabled": true
+		"enabled": true,
+		"head_sampling_rate": 1
 	},
 	"vars": {
 		"NAME": "core",
