@@ -108,8 +108,8 @@ app.get('/:characterId', requireAuth(), async (c) => {
 
 		// Add corporation history IDs
 		if (corporationHistory && corporationHistory.length > 0) {
-			const historyCorpIds = [
-				...new Set(
+			const historyCorpIds: number[] = [
+				...new Set<number>(
 					corporationHistory.map(
 						(entry: { corporationId: number; recordId: number; startDate: string; isDeleted?: boolean }) =>
 							entry.corporationId

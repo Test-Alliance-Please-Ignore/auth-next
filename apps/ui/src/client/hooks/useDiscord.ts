@@ -9,7 +9,31 @@ interface DiscordOAuthMessage {
 }
 
 /**
- * Hook to handle Discord account linking via popup OAuth flow
+ * Generate PKCE code verifier and challenge
+ */
+async function generatePKCE() {
+	// Generate random code verifier (43-128 characters)
+	const array = new Uint8Array(32)
+	crypto.getRandomValues(array)
+	const codeVerifier = btoa(String.fromCharCode(...array))
+		.replace(/\+/g, '-')
+		.replace(/\//g, '_')
+		.replace(/=/g, '')
+
+	// Generate code challenge from verifier
+	const encoder = new TextEncoder()
+	const data = encoder.encode(codeVerifier)
+	const hash = await crypto.subtle.digest('SHA-256', data)
+	const codeChallenge = btoa(String.fromCharCode(...new Uint8Array(hash)))
+		.replace(/\+/g, '-')
+		.replace(/\//g, '_')
+		.replace(/=/g, '')
+
+	return { codeVerifier, codeChallenge }
+}
+
+/**
+ * Hook to handle Discord account linking via popup OAuth flow with PKCE
  */
 export function useDiscordLink() {
 	const queryClient = useQueryClient()
@@ -37,9 +61,28 @@ export function useDiscordLink() {
 
 	const mutation = useMutation({
 		mutationFn: async () => {
-			// Get Discord OAuth URL from API
+			// Generate PKCE parameters
+			const { codeVerifier, codeChallenge } = await generatePKCE()
+
+			// Get state from backend (still need this for CSRF protection)
 			const response = await apiClient.startDiscordLinking()
-			return response.url
+			const state = response.state
+
+			// Store code verifier in sessionStorage (will be read by callback page)
+			sessionStorage.setItem(`discord_code_verifier_${state}`, codeVerifier)
+
+			// Build OAuth URL with PKCE parameters
+			const params = new URLSearchParams({
+				client_id: import.meta.env.VITE_DISCORD_CLIENT_ID,
+				redirect_uri: window.location.origin + '/discord/callback',
+				response_type: 'code',
+				scope: 'identify email guilds.join',
+				state: state,
+				code_challenge: codeChallenge,
+				code_challenge_method: 'S256',
+			})
+
+			return `https://discord.com/oauth2/authorize?${params.toString()}`
 		},
 		onSuccess: (oauthUrl) => {
 			// Calculate centered popup position

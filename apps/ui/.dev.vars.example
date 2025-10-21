@@ -1,0 +1,3 @@
+# Discord OAuth Configuration
+# Get your Discord application credentials from https://discord.com/developers/applications
+VITE_DISCORD_CLIENT_ID=your_discord_client_id_here

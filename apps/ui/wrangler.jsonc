@@ -17,6 +17,7 @@
 	"vars": {
 		"NAME": "ui",
 		"ENVIRONMENT": "development", // overridden during deployment
-		"SENTRY_RELEASE": "unknown" // overridden during deployment
+		"SENTRY_RELEASE": "unknown", // overridden during deployment
+		"VITE_DISCORD_CLIENT_ID": "1428533721585418350"
 	}
 }

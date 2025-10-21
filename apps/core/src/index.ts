@@ -10,6 +10,7 @@ import discordRoutes from './routes/discord'
 import groupsRoutes from './routes/groups'
 import skillsRoutes from './routes/skills'
 import usersRoutes from './routes/users'
+import wsRoutes from './routes/ws'
 
 import type { App } from './context'
 
@@ -42,5 +43,6 @@ const app = new Hono<App>()
 	.route('/api/skills', skillsRoutes)
 	.route('/api/discord', discordRoutes)
 	.route('/api/groups', groupsRoutes)
+	.route('/api/ws', wsRoutes)
 
 export default app

@@ -27,6 +27,7 @@
 		"@repo/eve-token-store": "workspace:*",
 		"@repo/groups": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
+		"@repo/notifications": "workspace:*",
 		"drizzle-orm": "0.44.6",
 		"hono": "4.9.11",
 		"workers-tagged-logger": "0.13.3"

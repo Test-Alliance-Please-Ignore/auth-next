@@ -6,7 +6,7 @@ import { useAuth } from './useAuth'
 interface UseNotificationsOptions {
 	/**
 	 * WebSocket URL for notifications
-	 * Defaults to /ws/notifications (relative to current host)
+	 * Defaults to /api/ws/notifications (relative to current host)
 	 */
 	url?: string
 
@@ -73,7 +73,7 @@ interface UseNotificationsReturn {
  * ```
  */
 export function useNotifications(options: UseNotificationsOptions = {}): UseNotificationsReturn {
-	const { url = '/ws/notifications', autoConnect = true, onNotification, onConnectionChange, onError } = options
+	const { url = '/api/ws/notifications', autoConnect = true, onNotification, onConnectionChange, onError } = options
 
 	const { user, isAuthenticated } = useAuth()
 	const [isConnected, setIsConnected] = useState(false)

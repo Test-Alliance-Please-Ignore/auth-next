@@ -167,6 +167,37 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 	}
 
 	/**
+	 * Store tokens directly (for PKCE flow)
+	 */
+	async storeTokensDirect(
+		userId: string,
+		username: string,
+		discriminator: string,
+		scopes: string[],
+		accessToken: string,
+		refreshToken: string,
+		expiresAt: Date,
+		coreUserId: string
+	): Promise<boolean> {
+		try {
+			await this.storeToken(
+				userId,
+				username,
+				discriminator,
+				scopes,
+				accessToken,
+				refreshToken,
+				expiresAt,
+				coreUserId
+			)
+			return true
+		} catch (error) {
+			logger.error('Error storing tokens:', error)
+			return false
+		}
+	}
+
+	/**
 	 * Manually refresh a token
 	 */
 	async refreshToken(userId: string): Promise<boolean> {
@@ -431,6 +462,8 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/x-www-form-urlencoded',
+				'User-Agent': 'DiscordBot (https://pleaseignore.app, 1.0.0)',
+				'Accept': 'application/json',
 			},
 			body: new URLSearchParams({
 				grant_type: 'authorization_code',
@@ -442,8 +475,14 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 		})
 
 		if (!response.ok) {
-			const error = await response.text()
-			throw new Error(`Token exchange failed: ${error}`)
+			const errorText = await response.text()
+			logger.error('Token exchange failed', {
+				status: response.status,
+				statusText: response.statusText,
+				error: errorText,
+				headers: Object.fromEntries(response.headers.entries())
+			})
+			throw new Error(`Token exchange failed: error code: ${response.status}`)
 		}
 
 		return response.json<DiscordTokenResponse>()
@@ -457,6 +496,8 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/x-www-form-urlencoded',
+				'User-Agent': 'DiscordBot (https://pleaseignore.app, 1.0.0)',
+				'Accept': 'application/json',
 			},
 			body: new URLSearchParams({
 				grant_type: 'refresh_token',
@@ -480,7 +521,9 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 	private async getUserInfo(accessToken: string): Promise<DiscordUserInfo> {
 		const response = await fetch(this.env.DISCORD_USER_INFO_URL, {
 			headers: {
-				Authorization: `Bearer ${accessToken}`,
+				'Authorization': `Bearer ${accessToken}`,
+				'User-Agent': 'DiscordBot (https://pleaseignore.app, 1.0.0)',
+				'Accept': 'application/json',
 			},
 		})
 

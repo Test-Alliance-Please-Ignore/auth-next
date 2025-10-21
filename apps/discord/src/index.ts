@@ -75,6 +75,45 @@ const app = new Hono<App>()
 	)
 
 	/**
+	 * Store Discord tokens (PKCE flow)
+	 * POST /discord/auth/store-tokens
+	 * Body: { userId, username, discriminator, scopes, accessToken, refreshToken, expiresAt, coreUserId }
+	 * Returns: { success: boolean }
+	 */
+	.post(
+		'/discord/auth/store-tokens',
+		zValidator(
+			'json',
+			z.object({
+				userId: z.string(),
+				username: z.string(),
+				discriminator: z.string(),
+				scopes: z.array(z.string()),
+				accessToken: z.string(),
+				refreshToken: z.string(),
+				expiresAt: z.string(),
+				coreUserId: z.string().uuid(),
+			})
+		),
+		async (c) => {
+			const { userId, username, discriminator, scopes, accessToken, refreshToken, expiresAt, coreUserId } =
+				c.req.valid('json')
+			const result = await discordService.storeTokens(
+				c.env,
+				userId,
+				username,
+				discriminator,
+				scopes,
+				accessToken,
+				refreshToken,
+				new Date(expiresAt),
+				coreUserId
+			)
+			return c.json({ success: result })
+		}
+	)
+
+	/**
 	 * Get Discord profile by core user ID
 	 * GET /discord/profile/:coreUserId
 	 * Returns: { userId: string, username: string, discriminator: string, scopes: string[] } | null

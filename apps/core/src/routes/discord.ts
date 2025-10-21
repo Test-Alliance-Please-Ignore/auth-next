@@ -15,10 +15,10 @@ import type { App } from '../context'
 const discord = new Hono<App>()
 
 /**
- * Start Discord linking flow
+ * Start Discord linking flow (PKCE)
  * POST /api/discord/link/start
  * Requires authentication
- * Returns: { url: string }
+ * Returns: { state: string } - state parameter for CSRF protection
  */
 discord.post('/link/start', requireAuth(), async (c) => {
 	const user = c.get('user')!
@@ -34,9 +34,9 @@ discord.post('/link/start', requireAuth(), async (c) => {
 	}
 
 	try {
-		const url = await discordService.startLinkFlow(c.env, user.id)
+		const state = await discordService.startLinkFlow(c.env, user.id)
 
-		return c.json({ url })
+		return c.json({ state })
 	} catch (error) {
 		logger.error('Error starting Discord link flow:', error)
 		return c.json(
@@ -49,41 +49,59 @@ discord.post('/link/start', requireAuth(), async (c) => {
 })
 
 /**
- * Handle Discord OAuth callback
- * GET /api/discord/callback?code=XXX&state=YYY
- * Does NOT require authentication - state parameter provides security
- * The state is validated against the database and contains the user ID,
- * making this secure without requiring a session cookie in the popup window.
- * Returns: Redirects to /discord/callback with success or error parameter
+ * Handle Discord OAuth tokens from client (PKCE flow)
+ * POST /api/discord/callback/tokens
+ * Requires authentication
+ * Body: { accessToken, refreshToken, expiresIn, scope, state }
+ * The client exchanges the code for tokens directly with Discord,
+ * then sends the tokens here for validation and storage.
  */
-discord.get('/callback', async (c) => {
-	const code = c.req.query('code')
-	const state = c.req.query('state')
-
-	if (!code || !state) {
-		return c.redirect('/discord/callback?error=' + encodeURIComponent('Missing code or state parameter'))
-	}
+discord.post('/callback/tokens', requireAuth(), async (c) => {
+	const user = c.get('user')!
 
 	try {
-		logger.info('Discord callback received', { code: code.substring(0, 10) + '...', state })
+		const body = await c.req.json<{
+			accessToken: string
+			refreshToken: string
+			expiresIn: number
+			scope: string
+			state: string
+		}>()
 
-		// State validation in handleCallback provides security
-		// It verifies: state exists in DB, not expired, correct flow type, and extracts user ID
-		const result = await discordService.handleCallback(c.env, code, state)
+		const { accessToken, refreshToken, expiresIn, scope, state } = body
 
-		logger.info('Discord callback result', { success: result.success, userId: result.userId, error: result.error })
-
-		if (!result.success) {
-			// Redirect to frontend callback page with error
-			return c.redirect(`/discord/callback?error=${encodeURIComponent(result.error || 'Unknown error')}`)
+		if (!accessToken || !state) {
+			return c.json({ error: 'Missing required parameters' }, 400)
 		}
 
-		// Redirect to frontend callback page (success)
-		return c.redirect('/discord/callback')
+		logger.info('Received tokens from client', { userId: user.id, state, scope })
+
+		// Handle the tokens (validate state and store)
+		const result = await discordService.handleTokens(
+			c.env,
+			user.id,
+			accessToken,
+			refreshToken,
+			expiresIn,
+			scope,
+			state
+		)
+
+		logger.info('Token handling result', { success: result.success, error: result.error })
+
+		if (!result.success) {
+			return c.json({ error: result.error || 'Failed to link Discord' }, 400)
+		}
+
+		return c.json({ success: true })
 	} catch (error) {
-		logger.error('Error handling Discord callback:', error)
-		// Redirect to frontend callback page with error
-		return c.redirect(`/discord/callback?error=${encodeURIComponent(error instanceof Error ? error.message : 'Failed to handle Discord callback')}`)
+		logger.error('Error handling Discord tokens:', error)
+		return c.json(
+			{
+				error: error instanceof Error ? error.message : 'Failed to handle Discord tokens',
+			},
+			500
+		)
 	}
 })
 

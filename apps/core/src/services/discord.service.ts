@@ -14,10 +14,10 @@ import type { Env } from '../context'
  */
 
 /**
- * Start Discord linking flow
+ * Start Discord linking flow (PKCE)
  * @param env - Worker environment
  * @param userId - Core user ID
- * @returns Authorization URL to redirect user to
+ * @returns OAuth state for CSRF protection
  */
 export async function startLinkFlow(env: Env, userId: string): Promise<string> {
 	const db = createDb(env.DATABASE_URL)
@@ -34,25 +34,162 @@ export async function startLinkFlow(env: Env, userId: string): Promise<string> {
 		expiresAt,
 	})
 
-	// Call Discord worker to generate OAuth URL
-	const response = await env.DISCORD.fetch('http://discord/discord/auth/start', {
-		method: 'POST',
-		headers: {
-			'Content-Type': 'application/json',
-		},
-		body: JSON.stringify({ state }),
-	})
-
-	if (!response.ok) {
-		throw new Error(`Failed to start Discord OAuth flow: ${response.statusText}`)
-	}
-
-	const data = (await response.json()) as { url: string; state: string }
-	return data.url
+	return state
 }
 
 /**
- * Handle Discord OAuth callback
+ * Handle Discord tokens from client (PKCE flow)
+ * @param env - Worker environment
+ * @param sessionUserId - User ID from session (authenticated request)
+ * @param accessToken - Discord access token from client
+ * @param refreshToken - Discord refresh token from client
+ * @param expiresIn - Token expiration in seconds
+ * @param scope - OAuth scopes granted
+ * @param state - OAuth state parameter
+ * @returns Result with success status
+ */
+export async function handleTokens(
+	env: Env,
+	sessionUserId: string,
+	accessToken: string,
+	refreshToken: string,
+	expiresIn: number,
+	scope: string,
+	state: string
+): Promise<{
+	success: boolean
+	error?: string
+}> {
+	const db = createDb(env.DATABASE_URL)
+
+	// Validate OAuth state
+	const oauthState = await db.query.oauthStates.findFirst({
+		where: eq(oauthStates.state, state),
+	})
+
+	if (!oauthState) {
+		return {
+			success: false,
+			error: 'Invalid OAuth state',
+		}
+	}
+
+	// Check if state is expired
+	if (oauthState.expiresAt < new Date()) {
+		await db.delete(oauthStates).where(eq(oauthStates.state, state))
+		return {
+			success: false,
+			error: 'OAuth state expired',
+		}
+	}
+
+	// Check if this is a Discord flow
+	if (oauthState.flowType !== 'discord') {
+		return {
+			success: false,
+			error: 'Invalid flow type',
+		}
+	}
+
+	// Get user ID from state
+	const coreUserId = oauthState.userId
+	if (!coreUserId) {
+		return {
+			success: false,
+			error: 'No user ID in OAuth state',
+		}
+	}
+
+	// SECURITY: Verify session user matches state user (prevents account takeover)
+	if (sessionUserId !== coreUserId) {
+		return {
+			success: false,
+			error: 'Session mismatch - you can only link Discord to your own account',
+		}
+	}
+
+	try {
+		// Get user info from Discord using the access token
+		const userInfoResponse = await fetch('https://discord.com/api/users/@me', {
+			headers: {
+				'Authorization': `Bearer ${accessToken}`,
+				'User-Agent': 'DiscordBot (https://pleaseignore.app, 1.0.0)',
+			},
+		})
+
+		if (!userInfoResponse.ok) {
+			throw new Error(`Failed to get user info: ${await userInfoResponse.text()}`)
+		}
+
+		const userInfo = await userInfoResponse.json<{
+			id: string
+			username: string
+			discriminator: string
+		}>()
+
+		logger.info('Got Discord user info', { discordUserId: userInfo.id, username: userInfo.username })
+
+		// Call Discord worker to store tokens
+		const scopes = scope ? scope.split(' ') : []
+		const expiresAt = new Date(Date.now() + expiresIn * 1000)
+
+		const response = await env.DISCORD.fetch('http://discord/discord/auth/store-tokens', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+			},
+			body: JSON.stringify({
+				userId: userInfo.id,
+				username: userInfo.username,
+				discriminator: userInfo.discriminator,
+				scopes,
+				accessToken,
+				refreshToken,
+				expiresAt: expiresAt.toISOString(),
+				coreUserId,
+			}),
+		})
+
+		if (!response.ok) {
+			const error = await response.text()
+			return {
+				success: false,
+				error: `Failed to store tokens: ${error}`,
+			}
+		}
+
+		// Update user record with Discord user ID
+		logger.info('Updating user with Discord ID', { coreUserId, discordUserId: userInfo.id })
+
+		const updateResult = await db
+			.update(users)
+			.set({
+				discordUserId: userInfo.id,
+				updatedAt: new Date(),
+			})
+			.where(eq(users.id, coreUserId))
+			.returning()
+
+		logger.info('User update complete', {
+			updated: updateResult.length > 0,
+			discordUserId: updateResult[0]?.discordUserId,
+		})
+
+		// Clean up OAuth state
+		await db.delete(oauthStates).where(eq(oauthStates.state, state))
+
+		return { success: true }
+	} catch (error) {
+		logger.error('Error handling tokens:', error)
+		return {
+			success: false,
+			error: error instanceof Error ? error.message : 'Unknown error',
+		}
+	}
+}
+
+/**
+ * Handle Discord OAuth callback (OLD - kept for backwards compatibility)
  * @param env - Worker environment
  * @param code - OAuth authorization code
  * @param state - OAuth state parameter
