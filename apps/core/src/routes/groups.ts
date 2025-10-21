@@ -196,6 +196,27 @@ groups.get('/invitations', requireAuth(), async (c) => {
 })
 
 /**
+ * GET /:groupId/invitations
+ *
+ * List pending invitations for a group (owner/admin only)
+ */
+groups.get('/:groupId/invitations', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')!
+	const groupId = c.req.param('groupId')
+	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+
+	try {
+		const invitations = await groupsDO.getGroupInvitations(groupId, user.id, user.is_admin)
+		return c.json(invitations)
+	} catch (error) {
+		if (error instanceof Error) {
+			return c.json({ error: error.message }, 403)
+		}
+		throw error
+	}
+})
+
+/**
  * POST /:groupId/invitations
  *
  * Create a direct invitation by character name (admin only)

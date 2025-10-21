@@ -56,7 +56,7 @@ export function InviteCodeRedemption({ onSuccess }: InviteCodeRedemptionProps) {
 						<Input
 							id="invite-code"
 							value={code}
-							onChange={(e) => setCode(e.target.value)}
+							onChange={(e) => setCode((e.target as HTMLInputElement).value)}
 							placeholder="Enter invite code"
 							disabled={redeemCode.isPending}
 						/>

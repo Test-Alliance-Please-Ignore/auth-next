@@ -980,6 +980,54 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			.where(eq(groupInvitations.id, invitationId))
 	}
 
+	async getGroupInvitations(
+		groupId: string,
+		userId: string,
+		isAdmin: boolean
+	): Promise<GroupInvitationWithDetails[]> {
+		const group = await this.db.query.groups.findFirst({
+			where: eq(groups.id, groupId),
+		})
+
+		if (!group) {
+			throw new Error('Group not found')
+		}
+
+		const isGroupAdmin = await this.isUserGroupAdmin(groupId, userId)
+
+		if (!canModerateGroup(group, userId, isGroupAdmin) && !isAdmin) {
+			throw new Error('Only group owner, admins, or system admins can view invitations')
+		}
+
+		// Fetch all pending invitations for this group
+		const invitations = await this.db.query.groupInvitations.findMany({
+			where: and(eq(groupInvitations.groupId, groupId), eq(groupInvitations.status, 'pending')),
+			orderBy: (groupInvitations, { desc }) => [desc(groupInvitations.createdAt)],
+		})
+
+		// Enrich with character names
+		const { bulkFindMainCharactersByUserIds } = await import('./services/character-lookup')
+		const userIds = [
+			...new Set([
+				...invitations.map((inv) => inv.inviterId),
+				...invitations.map((inv) => inv.inviteeUserId).filter((id): id is string => id !== null),
+			]),
+		]
+		const characterNames = await bulkFindMainCharactersByUserIds(userIds, this.db)
+
+		return invitations.map((inv) => ({
+			...this.mapGroupInvitation(inv),
+			inviterCharacterName: characterNames.get(inv.inviterId),
+			inviteeCharacterName: inv.inviteeUserId ? characterNames.get(inv.inviteeUserId) : undefined,
+			group: {
+				id: group.id,
+				name: group.name,
+				description: group.description,
+				visibility: group.visibility,
+			},
+		}))
+	}
+
 	/**
 	 * ============================================
 	 * INVITE CODE OPERATIONS

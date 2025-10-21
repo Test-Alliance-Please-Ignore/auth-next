@@ -22,7 +22,9 @@ export const groupKeys = {
 	detail: (id: string) => [...groupKeys.details(), id] as const,
 	userMemberships: () => ['user', 'groups', 'memberships'] as const,
 	invitations: () => ['user', 'groups', 'invitations'] as const,
+	groupInvitations: (groupId: string) => ['groups', groupId, 'invitations'] as const,
 	joinRequests: (groupId: string) => ['groups', groupId, 'join-requests'] as const,
+	characterSearch: (query: string) => ['characters', 'search', query] as const,
 }
 
 // Queries
@@ -278,6 +280,47 @@ export function useRedeemInviteCode() {
 			// Invalidate user memberships and group lists
 			queryClient.invalidateQueries({ queryKey: groupKeys.userMemberships() })
 			queryClient.invalidateQueries({ queryKey: groupKeys.lists() })
+		},
+	})
+}
+
+/**
+ * Search for characters by name (for autocomplete)
+ */
+export function useSearchCharacters(query: string, enabled = true) {
+	return useQuery({
+		queryKey: groupKeys.characterSearch(query),
+		queryFn: () => api.searchCharacters(query),
+		enabled: enabled && query.length >= 2,
+		staleTime: 1000 * 60 * 5, // 5 minutes
+	})
+}
+
+/**
+ * Get all pending invitations for a group (admin only)
+ */
+export function useGroupInvitations(groupId: string) {
+	return useQuery({
+		queryKey: groupKeys.groupInvitations(groupId),
+		queryFn: () => api.getGroupInvitations(groupId),
+		enabled: !!groupId,
+	})
+}
+
+/**
+ * Create a direct invitation by character name (admin only)
+ */
+export function useCreateInvitation() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: ({ groupId, characterName }: { groupId: string; characterName: string }) =>
+			api.createInvitation(groupId, characterName),
+		onSuccess: (_, { groupId }) => {
+			// Invalidate group invitations list
+			queryClient.invalidateQueries({ queryKey: groupKeys.groupInvitations(groupId) })
+			// Also invalidate member list in case they accept immediately
+			queryClient.invalidateQueries({ queryKey: groupKeys.detail(groupId) })
 		},
 	})
 }

@@ -69,7 +69,7 @@ export function CategoryForm({ category, onSubmit, onCancel, isSubmitting }: Cat
 				<Input
 					id="name"
 					value={formData.name}
-					onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+					onChange={(e) => setFormData({ ...formData, name: (e.target as HTMLInputElement).value })}
 					placeholder="Enter category name"
 					disabled={isSubmitting}
 				/>
@@ -81,7 +81,7 @@ export function CategoryForm({ category, onSubmit, onCancel, isSubmitting }: Cat
 				<textarea
 					id="description"
 					value={formData.description || ''}
-					onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+					onChange={(e) => setFormData({ ...formData, description: (e.target as HTMLTextAreaElement).value })}
 					placeholder="Enter category description (optional)"
 					disabled={isSubmitting}
 					className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"

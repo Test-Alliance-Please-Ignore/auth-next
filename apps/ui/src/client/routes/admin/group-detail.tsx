@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useParams, useLocation } from 'react-router-dom'
 import { ArrowLeft, Shield, ShieldOff, UserMinus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,11 +13,16 @@ import {
 } from '@/components/ui/dialog'
 import { GroupCard } from '@/components/group-card'
 import { MemberList } from '@/components/member-list'
+import { InviteMemberForm } from '@/components/invite-member-form'
+import { PendingInvitationsList } from '@/components/pending-invitations-list'
 import { useGroup } from '@/hooks/useGroups'
 import { useGroupMembers, useRemoveMember, useToggleAdmin } from '@/hooks/useGroupMembers'
+import { useBreadcrumb } from '@/hooks/useBreadcrumb'
 
 export default function GroupDetailPage() {
 	const { groupId } = useParams<{ groupId: string }>()
+	const location = useLocation()
+	const { setCustomLabel, clearCustomLabel } = useBreadcrumb()
 	const { data: group, isLoading: groupLoading } = useGroup(groupId!)
 	const { data: members, isLoading: membersLoading } = useGroupMembers(groupId!)
 	const removeMember = useRemoveMember()
@@ -38,6 +43,16 @@ export default function GroupDetailPage() {
 	// Get selected member's character name
 	const selectedMember = members?.find((m) => m.userId === selectedUserId)
 	const selectedMemberName = selectedMember?.mainCharacterName || 'this user'
+
+	// Set custom breadcrumb label when group loads
+	useEffect(() => {
+		if (group) {
+			setCustomLabel(location.pathname, group.name)
+		}
+		return () => {
+			clearCustomLabel(location.pathname)
+		}
+	}, [group, location.pathname, setCustomLabel, clearCustomLabel])
 
 	// Handlers
 	const handleRemoveMemberClick = (userId: string) => {
@@ -171,6 +186,12 @@ export default function GroupDetailPage() {
 					</CardContent>
 				</Card>
 			</div>
+
+			{/* Invite Member Form */}
+			<InviteMemberForm groupId={groupId!} />
+
+			{/* Pending Invitations */}
+			<PendingInvitationsList groupId={groupId!} />
 
 			{/* Members List */}
 			<Card className="glow">

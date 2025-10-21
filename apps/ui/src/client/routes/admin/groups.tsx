@@ -192,7 +192,7 @@ export default function GroupsPage() {
 									type="text"
 									placeholder="Search by name..."
 									value={searchInput}
-									onChange={(e) => setSearchInput(e.target.value)}
+									onChange={(e) => setSearchInput((e.target as HTMLInputElement).value)}
 									onKeyPress={handleSearchKeyPress}
 								/>
 								<Button onClick={handleSearch} size="icon">

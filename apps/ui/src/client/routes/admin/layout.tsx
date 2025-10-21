@@ -5,10 +5,10 @@ import { ChevronRight } from 'lucide-react'
 import { AdminNav } from '@/components/admin-nav'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { useAuth } from '@/hooks/useAuth'
+import { BreadcrumbProvider, useBreadcrumb } from '@/hooks/useBreadcrumb'
 
 export default function AdminLayout() {
 	const { user, isAuthenticated, isLoading } = useAuth()
-	const location = useLocation()
 
 	// Show loading state while checking auth
 	if (isLoading) {
@@ -29,11 +29,23 @@ export default function AdminLayout() {
 		return <Navigate to="/dashboard" replace />
 	}
 
+	return (
+		<BreadcrumbProvider>
+			<AdminLayoutContent />
+		</BreadcrumbProvider>
+	)
+}
+
+function AdminLayoutContent() {
+	const location = useLocation()
+	const { customLabels } = useBreadcrumb()
+
 	// Generate breadcrumbs from current path
 	const pathSegments = location.pathname.split('/').filter(Boolean)
 	const breadcrumbs = pathSegments.map((segment, index) => {
 		const path = `/${pathSegments.slice(0, index + 1).join('/')}`
-		const label = segment.charAt(0).toUpperCase() + segment.slice(1).replace(/-/g, ' ')
+		const defaultLabel = segment.charAt(0).toUpperCase() + segment.slice(1).replace(/-/g, ' ')
+		const label = customLabels.get(path) || defaultLabel
 		return { label, path }
 	})
 

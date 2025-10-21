@@ -1,7 +1,6 @@
 {
-	"extends": "@repo/typescript-config/workers.json",
+	"extends": "@repo/typescript-config/vite.json",
 	"compilerOptions": {
-		"jsx": "react-jsx",
 		"baseUrl": ".",
 		"paths": {
 			"@/*": ["./src/client/*"]

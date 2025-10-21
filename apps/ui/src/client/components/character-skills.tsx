@@ -78,37 +78,49 @@ export function CharacterSkills({
 	})
 
 	// Group skills by category
+	type EnrichedSkill = SkillMetadata & {
+		groupName: string
+		characterSkill?: Skill
+	}
+
+	type CategorizedSkillGroup = SkillCategory & {
+		totalSP: number
+		trainedSkills: number
+		totalSkills: number
+		skills: EnrichedSkill[]
+	}
+
 	const categorizedSkills =
 		skillMetadata?.reduce((acc, category) => {
 			const categorySkills = category.groups
-				.flatMap((group) =>
-					group.skills.map((skill) => ({
+				.flatMap((group: { groupId: number; groupName: string; skills: SkillMetadata[] }) =>
+					group.skills.map((skill: SkillMetadata) => ({
 						...skill,
 						groupName: group.groupName,
-						characterSkill: skills.skills.find((s) => s.skill_id === skill.id),
+						characterSkill: skills.skills.find((s: Skill) => s.skill_id === skill.id),
 					}))
 				)
-				.filter((skill) => skill.characterSkill)
+				.filter((skill: EnrichedSkill) => skill.characterSkill)
 
 			if (categorySkills.length > 0) {
 				acc.push({
 					...category,
 					totalSP: categorySkills.reduce(
-						(sum, s) => sum + (s.characterSkill?.skillpoints_in_skill || 0),
+						(sum: number, s: EnrichedSkill) => sum + (s.characterSkill?.skillpoints_in_skill || 0),
 						0
 					),
 					trainedSkills: categorySkills.filter(
-						(s) => s.characterSkill && s.characterSkill.trained_skill_level > 0
+						(s: EnrichedSkill) => s.characterSkill && s.characterSkill.trained_skill_level > 0
 					).length,
 					totalSkills: categorySkills.length,
 					skills: categorySkills,
 				})
 			}
 			return acc
-		}, [] as any[]) || []
+		}, [] as CategorizedSkillGroup[]) || []
 
 	// Sort categories by total SP (highest first)
-	categorizedSkills.sort((a, b) => b.totalSP - a.totalSP)
+	categorizedSkills.sort((a: CategorizedSkillGroup, b: CategorizedSkillGroup) => b.totalSP - a.totalSP)
 
 	const formatSP = (sp: number) => {
 		if (sp >= 1000000) {
@@ -151,7 +163,7 @@ export function CharacterSkills({
 						onValueChange={setExpandedCategories}
 						className="space-y-2"
 					>
-						{categorizedSkills.map((category) => (
+						{categorizedSkills.map((category: CategorizedSkillGroup) => (
 							<AccordionItem key={category.categoryId} value={`category-${category.categoryId}`}>
 								<AccordionTrigger className="hover:no-underline">
 									<div className="flex items-center justify-between w-full pr-2">

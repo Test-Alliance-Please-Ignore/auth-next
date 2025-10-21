@@ -1,9 +1,10 @@
-import { eq } from 'drizzle-orm'
+import { eq, ilike } from 'drizzle-orm'
 import { Hono } from 'hono'
 
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
+import { userCharacters } from '../db/schema'
 import { requireAuth } from '../middleware/session'
 import { EntityResolverService } from '../services/entity-resolver.service'
 
@@ -11,6 +12,43 @@ import type { EveCharacterData } from '@repo/eve-character-data'
 import type { App } from '../context'
 
 const app = new Hono<App>()
+
+/**
+ * GET /characters/search?q=:query
+ * Search for users by main character name (for autocomplete)
+ *
+ * Returns array of matching main characters with userId
+ */
+app.get('/search', requireAuth(), async (c) => {
+	const query = c.req.query('q')
+	const db = c.get('db')
+
+	if (!db) {
+		return c.json({ error: 'Database not available' }, 500)
+	}
+
+	if (!query || query.length < 2) {
+		return c.json({ error: 'Query must be at least 2 characters' }, 400)
+	}
+
+	try {
+		// Search for main characters matching the query
+		const results = await db
+			.select({
+				userId: userCharacters.userId,
+				characterId: userCharacters.characterId,
+				characterName: userCharacters.characterName,
+			})
+			.from(userCharacters)
+			.where(ilike(userCharacters.characterName, `%${query}%`))
+			.limit(20) // Limit for autocomplete performance
+
+		return c.json(results)
+	} catch (error) {
+		logger.error('Error searching characters:', error)
+		return c.json({ error: 'Failed to search characters' }, 500)
+	}
+})
 
 /**
  * GET /characters/:characterId

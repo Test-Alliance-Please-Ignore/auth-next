@@ -31,7 +31,7 @@ export default function CharacterDetailPage() {
 	const handleRefresh = async () => {
 		if (!characterId) return
 		try {
-			await api.refreshCharacter(Number(characterId))
+			await api.refreshCharacterById(Number(characterId))
 			await refetch()
 		} catch (error) {
 			console.error('Failed to refresh character:', error)

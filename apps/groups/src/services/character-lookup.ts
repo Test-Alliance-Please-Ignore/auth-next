@@ -1,4 +1,4 @@
-import { eq, ilike, inArray, sql } from '@repo/db-utils'
+import { and, eq, ilike, inArray, sql } from '@repo/db-utils'
 
 import type { createDb } from '../db'
 
@@ -131,7 +131,7 @@ export async function bulkFindMainCharactersByUserIds(
 			characterName: userCharacters.characterName,
 		})
 		.from(userCharacters)
-		.where(sql`${userCharacters.is_primary} = true AND ${userCharacters.userId} = ANY(${userIds})`)
+		.where(and(eq(userCharacters.is_primary, true), inArray(userCharacters.userId, userIds)))
 
 	const map = new Map<string, string>()
 	for (const row of results) {

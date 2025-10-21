@@ -50,6 +50,7 @@ export interface GroupWithDetails extends Group {
 	isOwner?: boolean
 	isAdmin?: boolean
 	isMember?: boolean
+	adminUserIds?: string[]
 }
 
 export interface GroupMember {
@@ -132,12 +133,20 @@ export interface GroupInvitationWithDetails {
 	expiresAt: string
 	createdAt: string
 	respondedAt: string | null
+	inviterCharacterName?: string
+	inviteeCharacterName?: string
 	group: {
 		id: string
 		name: string
 		description: string | null
 		visibility: Visibility
 	}
+}
+
+export interface CharacterSearchResult {
+	userId: string
+	characterId: number
+	characterName: string
 }
 
 export interface RedeemInviteCodeRequest {
@@ -170,7 +179,6 @@ export class ApiClient {
 				...(sessionToken && { Authorization: `Bearer ${sessionToken}` }),
 				...options?.headers,
 			},
-			credentials: 'include', // Include cookies for session management
 		})
 
 		if (!response.ok) {
@@ -247,6 +255,10 @@ export class ApiClient {
 	async getSkillMetadata(skillIds: string): Promise<any[]> {
 		// Call through core API which proxies to eve-static-data service
 		return this.get(`/skills?ids=${skillIds}`)
+	}
+
+	async searchCharacters(query: string): Promise<CharacterSearchResult[]> {
+		return this.get(`/characters/search?q=${encodeURIComponent(query)}`)
 	}
 
 	async startDiscordLinking(): Promise<{ url: string }> {
@@ -338,6 +350,14 @@ export class ApiClient {
 	// Invitations
 	async getPendingInvitations(): Promise<GroupInvitationWithDetails[]> {
 		return this.get('/groups/invitations')
+	}
+
+	async getGroupInvitations(groupId: string): Promise<GroupInvitationWithDetails[]> {
+		return this.get(`/groups/${groupId}/invitations`)
+	}
+
+	async createInvitation(groupId: string, characterName: string): Promise<void> {
+		return this.post(`/groups/${groupId}/invitations`, { characterName })
 	}
 
 	async acceptInvitation(id: string): Promise<void> {

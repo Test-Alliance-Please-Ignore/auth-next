@@ -118,6 +118,8 @@ export interface GroupWithDetails extends Group {
 export interface GroupInvitationWithDetails extends GroupInvitation {
 	group: Pick<Group, 'id' | 'name' | 'description' | 'visibility'>
 	inviterName?: string
+	inviterCharacterName?: string
+	inviteeCharacterName?: string
 }
 
 export interface GroupJoinRequestWithDetails extends GroupJoinRequest {
@@ -339,6 +341,13 @@ export interface Groups {
 
 	/** List pending invitations for a user */
 	listPendingInvitations(userId: string): Promise<GroupInvitationWithDetails[]>
+
+	/** Get all pending invitations for a group (admin only) */
+	getGroupInvitations(
+		groupId: string,
+		userId: string,
+		isAdmin: boolean
+	): Promise<GroupInvitationWithDetails[]>
 
 	/** Accept an invitation */
 	acceptInvitation(invitationId: string, userId: string): Promise<void>
