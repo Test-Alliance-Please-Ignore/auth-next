@@ -1,7 +1,8 @@
 import { Link } from 'react-router-dom'
-import { Eye, Users } from 'lucide-react'
+import { Eye, Users, UserPlus } from 'lucide-react'
 
 import { useMediaQuery } from '@/hooks/useMediaQuery'
+import { useJoinGroup } from '@/hooks/useGroups'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -25,6 +26,7 @@ interface GroupListProps {
 
 export function GroupList({ groups, isLoading }: GroupListProps) {
 	const isMobile = useMediaQuery('(max-width: 768px)')
+	const joinGroup = useJoinGroup()
 
 	if (isLoading) {
 		return (
@@ -38,10 +40,10 @@ export function GroupList({ groups, isLoading }: GroupListProps) {
 
 	if (groups.length === 0) {
 		return (
-			<Card className="glow">
-				<CardContent className="py-16 text-center">
-					<div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-muted mb-6">
-						<Users className="h-10 w-10 text-muted-foreground" />
+			<Card variant="interactive">
+				<CardContent className="py-12 text-center">
+					<div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-muted mb-4">
+						<Users className="h-8 w-8 text-muted-foreground" />
 					</div>
 					<h3 className="text-xl font-semibold mb-2">No Groups Found</h3>
 					<p className="text-muted-foreground max-w-md mx-auto">
@@ -56,7 +58,7 @@ export function GroupList({ groups, isLoading }: GroupListProps) {
 	// Mobile card view
 	if (isMobile) {
 		return (
-			<div className="space-y-4">
+			<div className="space-y-3">
 				{groups.map((group) => (
 					<Card
 						key={group.id}
@@ -65,8 +67,8 @@ export function GroupList({ groups, isLoading }: GroupListProps) {
 							group.visibility === 'system' && 'border-destructive/30 bg-destructive/5'
 						)}
 					>
-						<CardContent className="p-4">
-							<div className="space-y-3">
+						<CardContent className="p-3">
+							<div className="space-y-2">
 								<div className="flex items-start justify-between gap-2">
 									<div className="flex-1 min-w-0">
 										<h4 className="font-semibold text-lg truncate flex items-center gap-2">
@@ -90,12 +92,34 @@ export function GroupList({ groups, isLoading }: GroupListProps) {
 									<span className="text-sm text-muted-foreground">
 										{group.memberCount || 0} members
 									</span>
-									<Button variant="outline" size="sm" asChild>
-										<Link to={`/admin/groups/${group.id}`}>
-											<Eye className="mr-2 h-4 w-4" />
-											View Details
-										</Link>
-									</Button>
+									{group.joinMode === 'open' && !group.isMember ? (
+										<Button
+											variant="default"
+											size="sm"
+											disabled={joinGroup.isPending}
+											onClick={(e) => {
+												e.stopPropagation()
+												joinGroup.mutate(group.id, {
+													onSuccess: () => {
+														alert(`Successfully joined ${group.name}!`)
+													},
+													onError: (error: Error) => {
+														alert(`Failed to join: ${error.message}`)
+													},
+												})
+											}}
+										>
+											<UserPlus className="mr-2 h-4 w-4" />
+											{joinGroup.isPending ? 'Joining...' : 'Quick Join'}
+										</Button>
+									) : (
+										<Button variant="outline" size="sm" asChild>
+											<Link to={`/groups/${group.id}`}>
+												<Eye className="mr-2 h-4 w-4" />
+												View Details
+											</Link>
+										</Button>
+									)}
 								</div>
 							</div>
 						</CardContent>
@@ -148,12 +172,35 @@ export function GroupList({ groups, isLoading }: GroupListProps) {
 								<span className="text-sm">{group.memberCount || 0}</span>
 							</TableCell>
 							<TableCell className="text-right">
-								<Button variant="ghost" size="sm" asChild>
-									<Link to={`/admin/groups/${group.id}`}>
-										<Eye className="mr-2 h-4 w-4" />
-										View Details
-									</Link>
-								</Button>
+								<div className="flex items-center justify-end gap-2">
+									{group.joinMode === 'open' && !group.isMember && (
+										<Button
+											variant="default"
+											size="sm"
+											disabled={joinGroup.isPending}
+											onClick={(e) => {
+												e.stopPropagation()
+												joinGroup.mutate(group.id, {
+													onSuccess: () => {
+														alert(`Successfully joined ${group.name}!`)
+													},
+													onError: (error: Error) => {
+														alert(`Failed to join: ${error.message}`)
+													},
+												})
+											}}
+										>
+											<UserPlus className="mr-2 h-4 w-4" />
+											{joinGroup.isPending ? 'Joining...' : 'Quick Join'}
+										</Button>
+									)}
+									<Button variant="ghost" size="sm" asChild>
+										<Link to={`/groups/${group.id}`}>
+											<Eye className="mr-2 h-4 w-4" />
+											View Details
+										</Link>
+									</Button>
+								</div>
 							</TableCell>
 						</TableRow>
 					))}

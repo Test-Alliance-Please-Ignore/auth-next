@@ -58,7 +58,7 @@ function AdminLayoutContent() {
 			<div className="fixed inset-0 bg-background z-0 pointer-events-none" />
 
 			{/* Header with Breadcrumbs */}
-			<header className="border-b border-border/30 backdrop-blur-md bg-background sticky top-0 z-50 shadow-[0_4px_20px_rgba(0,0,0,0.3)]">
+			<header className="border-b border-border/30 bg-background sticky top-0 z-50 shadow-[0_4px_20px_rgba(0,0,0,0.3)]">
 				<div className="container mx-auto px-4 py-4">
 					<div className="flex items-center justify-between">
 						<h1 className="text-2xl font-bold gradient-text">Admin Panel</h1>

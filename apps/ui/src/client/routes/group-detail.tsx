@@ -1,16 +1,26 @@
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Users } from 'lucide-react'
+import { ArrowLeft, Users, UserCog } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Container } from '@/components/ui/container'
+import { Section } from '@/components/ui/section'
 import { GroupCard } from '@/components/group-card'
 import { JoinButton } from '@/components/join-button'
 import { LeaveButton } from '@/components/leave-button'
+import { MemberListReadonly } from '@/components/member-list-readonly'
+import { TransferOwnershipDialog } from '@/components/transfer-ownership-dialog'
+import { useAuth } from '@/hooks/useAuth'
 import { useGroup } from '@/hooks/useGroups'
+import { useGroupMembers } from '@/hooks/useGroupMembers'
 
 export default function GroupDetailPage() {
 	const { groupId } = useParams<{ groupId: string }>()
 	const navigate = useNavigate()
+	const { user } = useAuth()
 	const { data: group, isLoading } = useGroup(groupId!)
+	const { data: members, isLoading: membersLoading } = useGroupMembers(groupId!)
+	const [transferDialogOpen, setTransferDialogOpen] = useState(false)
 
 	if (isLoading) {
 		return (
@@ -33,18 +43,19 @@ export default function GroupDetailPage() {
 	}
 
 	return (
-		<div className="space-y-6">
-			{/* Back Button */}
-			<Button variant="ghost" onClick={() => navigate('/groups')}>
-				<ArrowLeft className="mr-2 h-4 w-4" />
-				Back to Groups
-			</Button>
+		<Container>
+			<Section>
+				{/* Back Button */}
+				<Button variant="ghost" onClick={() => navigate('/groups')}>
+					<ArrowLeft className="mr-2 h-4 w-4" />
+					Back to Groups
+				</Button>
 
-			{/* Group Info */}
-			<GroupCard group={group} />
+				{/* Group Info */}
+				<GroupCard group={group} />
 
-			{/* Actions */}
-			<Card className="glow">
+				{/* Actions */}
+				<Card variant="interactive">
 				<CardHeader>
 					<CardTitle>Actions</CardTitle>
 					<CardDescription>Manage your membership in this group</CardDescription>
@@ -67,19 +78,61 @@ export default function GroupDetailPage() {
 				</CardContent>
 			</Card>
 
-			{/* Member Count */}
-			<Card className="glow">
+			{/* Members List */}
+				<Card variant="interactive">
 				<CardHeader>
 					<CardTitle className="flex items-center gap-2">
 						<Users className="h-5 w-5" />
-						Members
+						Members ({group.memberCount || 0})
 					</CardTitle>
+					<CardDescription>All members of this group</CardDescription>
 				</CardHeader>
 				<CardContent>
-					<p className="text-2xl font-bold">{group.memberCount || 0}</p>
-					<p className="text-sm text-muted-foreground">Active members</p>
+					<MemberListReadonly
+						members={members || []}
+						group={group}
+						currentUserId={user?.id}
+						isLoading={membersLoading}
+					/>
 				</CardContent>
 			</Card>
-		</div>
+
+			{/* Transfer Ownership - Owner Only */}
+			{group.isOwner && (
+				<Card variant="interactive" className="border-amber-500/50">
+					<CardHeader>
+						<CardTitle className="flex items-center gap-2">
+							<UserCog className="h-5 w-5" />
+							Transfer Ownership
+						</CardTitle>
+						<CardDescription>
+							Transfer ownership of this group to another member. You will become a group admin after the
+							transfer.
+						</CardDescription>
+					</CardHeader>
+					<CardContent>
+						<Button variant="outline" onClick={() => setTransferDialogOpen(true)}>
+							<UserCog className="mr-2 h-4 w-4" />
+							Transfer Ownership
+						</Button>
+					</CardContent>
+				</Card>
+			)}
+
+			{/* Transfer Ownership Dialog */}
+				{group && members && (
+					<TransferOwnershipDialog
+						group={group}
+						members={members}
+						open={transferDialogOpen}
+						onOpenChange={setTransferDialogOpen}
+						onSuccess={() => {
+							alert('Ownership transferred successfully!')
+							navigate('/my-groups')
+						}}
+					/>
+				)}
+			</Section>
+		</Container>
 	)
 }

@@ -138,7 +138,7 @@ export default function DiscordCallbackPage() {
 
 	return (
 		<div className="min-h-screen flex items-center justify-center p-4 bg-background">
-			<Card className="w-full max-w-md card-gradient border-border/50 shadow-[0_8px_30px_rgb(0,0,0,0.4)]">
+			<Card variant="elevated" className="w-full max-w-md">
 				<CardHeader>
 					<div className="flex flex-col items-center gap-4">
 						{error ? (

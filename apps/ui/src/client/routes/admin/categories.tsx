@@ -118,7 +118,7 @@ export default function CategoriesPage() {
 			)}
 
 			{/* Categories List */}
-			<Card className="glow">
+			<Card variant="interactive">
 				<CardHeader>
 					<CardTitle>Categories</CardTitle>
 					<CardDescription>Manage category settings and permissions</CardDescription>

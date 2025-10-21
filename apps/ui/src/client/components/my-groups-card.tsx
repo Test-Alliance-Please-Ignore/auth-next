@@ -13,10 +13,7 @@ export function MyGroupsCard({ membership, onClick }: MyGroupsCardProps) {
 	const joinedDate = new Date(membership.joinedAt).toLocaleDateString()
 
 	return (
-		<Card
-			className="glow cursor-pointer hover:border-primary transition-colors"
-			onClick={onClick}
-		>
+		<Card variant="interactive" onClick={onClick}>
 			<CardHeader>
 				<div className="flex items-start justify-between">
 					<div className="space-y-1 flex-1">

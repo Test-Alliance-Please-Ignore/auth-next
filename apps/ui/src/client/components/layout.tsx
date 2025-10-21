@@ -22,7 +22,7 @@ export default function Layout() {
 			{/* Mobile Overlay */}
 			{sidebarOpen && (
 				<div
-					className="fixed inset-0 bg-background/80 backdrop-blur-sm z-40 lg:hidden"
+					className="fixed inset-0 bg-background backdrop-blur-sm z-40 lg:hidden"
 					onClick={() => setSidebarOpen(false)}
 				/>
 			)}
@@ -33,7 +33,6 @@ export default function Layout() {
 					fixed lg:sticky top-0 left-0 h-screen w-64 z-50
 					border-r border-border/50
 					bg-background
-					backdrop-blur-xl
 					transition-transform duration-300 ease-in-out
 					${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
 				`}
@@ -44,7 +43,7 @@ export default function Layout() {
 			{/* Main Content Area */}
 			<div className="flex-1 flex flex-col min-w-0">
 				{/* Top Bar (Mobile) */}
-				<header className="sticky top-0 z-30 lg:hidden border-b border-border/30 backdrop-blur-md bg-background shadow-sm">
+				<header className="sticky top-0 z-30 lg:hidden border-b border-border/30 bg-background shadow-sm">
 					<div className="flex items-center justify-between px-4 py-3">
 						<Button
 							variant="ghost"

@@ -324,3 +324,23 @@ export function useCreateInvitation() {
 		},
 	})
 }
+
+/**
+ * Transfer group ownership (owner or admin only)
+ */
+export function useTransferOwnership() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: ({ groupId, newOwnerId }: { groupId: string; newOwnerId: string }) =>
+			api.transferGroupOwnership(groupId, newOwnerId),
+		onSuccess: (_, { groupId }) => {
+			// Invalidate group details (ownership changed)
+			queryClient.invalidateQueries({ queryKey: groupKeys.detail(groupId) })
+			// Invalidate all group lists (ownership affects display)
+			queryClient.invalidateQueries({ queryKey: groupKeys.lists() })
+			// Invalidate user memberships (old owner now has different role)
+			queryClient.invalidateQueries({ queryKey: groupKeys.userMemberships() })
+		},
+	})
+}

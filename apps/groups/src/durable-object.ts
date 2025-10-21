@@ -311,6 +311,11 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		const isAdminOfGroup = await this.isUserGroupAdmin(id, userId)
 		const memberCount = await this.getGroupMemberCount(id)
 
+		// Lookup owner's character name
+		const { bulkFindMainCharactersByUserIds } = await import('./services/character-lookup')
+		const characterNames = await bulkFindMainCharactersByUserIds([group.ownerId], this.db)
+		const ownerName = characterNames.get(group.ownerId)
+
 		return {
 			...this.mapGroup(group),
 			category: this.mapCategory(group.category),
@@ -318,6 +323,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			isOwner,
 			isAdmin: isAdminOfGroup,
 			isMember,
+			ownerName,
 		}
 	}
 
@@ -375,8 +381,9 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 	async transferOwnership(
 		groupId: string,
-		currentOwnerId: string,
-		newOwnerId: string
+		requestingUserId: string,
+		newOwnerId: string,
+		isAdmin: boolean = false
 	): Promise<void> {
 		const group = await this.db.query.groups.findFirst({
 			where: eq(groups.id, groupId),
@@ -386,8 +393,15 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Group not found')
 		}
 
-		if (group.ownerId !== currentOwnerId) {
-			throw new Error('Only the current owner can transfer ownership')
+		// Allow transfer if: requesting user is current owner OR requesting user is app admin
+		const isCurrentOwner = group.ownerId === requestingUserId
+		if (!isCurrentOwner && !isAdmin) {
+			throw new Error('Only the current owner or app admins can transfer ownership')
+		}
+
+		// Prevent transferring to the same owner
+		if (group.ownerId === newOwnerId) {
+			throw new Error('Cannot transfer ownership to the current owner')
 		}
 
 		// Check if new owner is a member
@@ -396,15 +410,17 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('New owner must be a group member')
 		}
 
+		const oldOwnerId = group.ownerId
+
 		// Update group ownership
 		await this.db.update(groups).set({ ownerId: newOwnerId }).where(eq(groups.id, groupId))
 
 		// Add old owner as admin (if not already)
-		const isAlreadyAdmin = await this.isUserGroupAdmin(groupId, currentOwnerId)
+		const isAlreadyAdmin = await this.isUserGroupAdmin(groupId, oldOwnerId)
 		if (!isAlreadyAdmin) {
 			await this.db.insert(groupAdmins).values({
 				groupId,
-				userId: currentOwnerId,
+				userId: oldOwnerId,
 			})
 		}
 
@@ -459,6 +475,12 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		// Owner cannot leave (must transfer ownership first)
 		if (group.ownerId === userId) {
 			throw new Error('Group owner cannot leave. Transfer ownership first.')
+		}
+
+		// Verify user is actually a member before attempting to remove
+		const isMember = await this.isUserMember(groupId, userId)
+		if (!isMember) {
+			throw new Error('You are not a member of this group')
 		}
 
 		// Remove from admins if they are one
@@ -529,16 +551,20 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			orderBy: (groupMembers, { asc }) => [asc(groupMembers.joinedAt)],
 		})
 
-		// Fetch main character names for all members
-		const { bulkFindMainCharactersByUserIds } = await import('./services/character-lookup')
+		// Fetch main character names and IDs for all members
+		const { bulkFindMainCharactersWithIdsByUserIds } = await import('./services/character-lookup')
 		const userIds = members.map((member) => member.userId)
-		const characterNames = await bulkFindMainCharactersByUserIds(userIds, this.db)
+		const characterData = await bulkFindMainCharactersWithIdsByUserIds(userIds, this.db)
 
-		// Enrich members with character names
-		return members.map((member) => ({
-			...this.mapGroupMember(member),
-			mainCharacterName: characterNames.get(member.userId),
-		}))
+		// Enrich members with character names and IDs
+		return members.map((member) => {
+			const charData = characterData.get(member.userId)
+			return {
+				...this.mapGroupMember(member),
+				mainCharacterName: charData?.name,
+				mainCharacterId: charData?.characterId,
+			}
+		})
 	}
 
 	async getUserMemberships(userId: string): Promise<GroupMembershipSummary[]> {

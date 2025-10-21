@@ -3,7 +3,10 @@ import { Mail } from 'lucide-react'
 
 import { InvitationCard } from '@/components/invitation-card'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
+import { Container } from '@/components/ui/container'
+import { PageHeader } from '@/components/ui/page-header'
+import { Section } from '@/components/ui/section'
 import { usePendingInvitations } from '@/hooks/useGroups'
 
 export default function InvitationsPage() {
@@ -19,16 +22,16 @@ export default function InvitationsPage() {
 	}
 
 	return (
-		<div className="space-y-6">
-			{/* Page Header */}
-			<div>
-				<h1 className="text-4xl md:text-5xl font-bold gradient-text">Group Invitations</h1>
-				<p className="text-muted-foreground mt-2">View and respond to pending group invitations</p>
-			</div>
+		<Container>
+			<PageHeader
+				title="Group Invitations"
+				description="View and respond to pending group invitations"
+			/>
 
-			{/* Invitations List */}
-			{invitations && invitations.length > 0 ? (
-				<div className="space-y-4">
+			<Section>
+				{/* Invitations List */}
+				{invitations && invitations.length > 0 ? (
+					<div className="space-y-4">
 					{invitations.map((invitation) => (
 						<InvitationCard
 							key={invitation.id}
@@ -39,9 +42,9 @@ export default function InvitationsPage() {
 						/>
 					))}
 				</div>
-			) : (
-				/* Empty State */
-				<Card className="glow">
+				) : (
+					/* Empty State */
+					<Card variant="interactive">
 					<CardContent className="py-16 text-center">
 						<div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-muted mb-6">
 							<Mail className="h-10 w-10 text-muted-foreground" />
@@ -56,7 +59,8 @@ export default function InvitationsPage() {
 						</Button>
 					</CardContent>
 				</Card>
-			)}
-		</div>
+				)}
+			</Section>
+		</Container>
 	)
 }

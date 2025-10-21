@@ -41,7 +41,7 @@ export function InviteCodeRedemption({ onSuccess }: InviteCodeRedemptionProps) {
 	}
 
 	return (
-		<Card className="glow">
+		<Card variant="interactive">
 			<CardHeader>
 				<CardTitle className="flex items-center gap-2">
 					<Ticket className="h-5 w-5" />

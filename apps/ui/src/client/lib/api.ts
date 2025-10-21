@@ -51,6 +51,7 @@ export interface GroupWithDetails extends Group {
 	isAdmin?: boolean
 	isMember?: boolean
 	adminUserIds?: string[]
+	ownerName?: string
 }
 
 export interface GroupMember {
@@ -59,6 +60,7 @@ export interface GroupMember {
 	userId: string
 	joinedAt: string
 	mainCharacterName?: string
+	mainCharacterId?: number
 }
 
 export interface CreateCategoryRequest {
@@ -389,6 +391,11 @@ export class ApiClient {
 
 	async removeGroupAdmin(groupId: string, userId: string): Promise<void> {
 		return this.delete(`/groups/${groupId}/admins/${userId}`)
+	}
+
+	// Transfer Ownership
+	async transferGroupOwnership(groupId: string, newOwnerId: string): Promise<void> {
+		return this.post(`/groups/${groupId}/transfer`, { newOwnerId })
 	}
 }
 

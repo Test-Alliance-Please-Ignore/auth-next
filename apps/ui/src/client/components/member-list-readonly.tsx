@@ -1,6 +1,4 @@
 import { format } from 'date-fns'
-import { UserMinus, Shield, ShieldOff, UserCog } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
 	Table,
@@ -14,27 +12,19 @@ import { cn } from '@/lib/utils'
 
 import type { GroupMember, GroupWithDetails } from '@/lib/api'
 
-interface MemberListProps {
+interface MemberListReadonlyProps {
 	members: GroupMember[]
 	group: GroupWithDetails
-	adminUserIds?: Set<string>
 	currentUserId?: string
-	onRemoveMember: (userId: string) => void
-	onToggleAdmin: (userId: string, isCurrentlyAdmin: boolean) => void
-	onTransferOwnership?: (userId: string) => void
 	isLoading?: boolean
 }
 
-export function MemberList({
+export function MemberListReadonly({
 	members,
 	group,
-	adminUserIds = new Set(),
 	currentUserId,
-	onRemoveMember,
-	onToggleAdmin,
-	onTransferOwnership,
 	isLoading,
-}: MemberListProps) {
+}: MemberListReadonlyProps) {
 	if (isLoading) {
 		return (
 			<div className="space-y-4">
@@ -53,23 +43,24 @@ export function MemberList({
 		)
 	}
 
+	// Get admin user IDs from group data
+	const adminUserIds = new Set(group.adminUserIds || [])
+
 	return (
 		<div className="rounded-md border bg-card">
 			<Table>
 				<TableHeader>
 					<TableRow>
 						<TableHead className="w-12"></TableHead>
-						<TableHead>User</TableHead>
+						<TableHead>Member</TableHead>
 						<TableHead>Role</TableHead>
 						<TableHead>Joined</TableHead>
-						<TableHead className="text-right">Actions</TableHead>
 					</TableRow>
 				</TableHeader>
 				<TableBody>
 					{members.map((member) => {
 						const isOwner = member.userId === group.ownerId
 						const isAdmin = adminUserIds.has(member.userId)
-						const cannotRemove = isOwner
 						const isCurrentUser = currentUserId === member.userId
 
 						return (
@@ -95,61 +86,11 @@ export function MemberList({
 									<div className="flex gap-2">
 										{isOwner && <Badge>Owner</Badge>}
 										{isAdmin && !isOwner && <Badge variant="secondary">Admin</Badge>}
-										{!isOwner && !isAdmin && (
-											<Badge variant="outline">Member</Badge>
-										)}
+										{!isOwner && !isAdmin && <Badge variant="outline">Member</Badge>}
 									</div>
 								</TableCell>
 								<TableCell className="text-sm text-muted-foreground">
 									{format(new Date(member.joinedAt), 'MMM d, yyyy')}
-								</TableCell>
-								<TableCell className="text-right">
-									<div className="flex justify-end gap-2">
-										{!isOwner && (
-											<>
-												{onTransferOwnership && (
-													<Button
-														variant="ghost"
-														size="sm"
-														onClick={() => onTransferOwnership(member.userId)}
-														title="Transfer ownership to this member"
-													>
-														<UserCog className="mr-2 h-4 w-4" />
-														Make Owner
-													</Button>
-												)}
-												<Button
-													variant="ghost"
-													size="sm"
-													onClick={() => onToggleAdmin(member.userId, isAdmin)}
-													title={isAdmin ? 'Remove admin role' : 'Make admin'}
-												>
-													{isAdmin ? (
-														<>
-															<ShieldOff className="mr-2 h-4 w-4" />
-															Remove Admin
-														</>
-													) : (
-														<>
-															<Shield className="mr-2 h-4 w-4" />
-															Make Admin
-														</>
-													)}
-												</Button>
-												<Button
-													variant="ghost"
-													size="sm"
-													onClick={() => onRemoveMember(member.userId)}
-													disabled={cannotRemove}
-													title={cannotRemove ? 'Cannot remove owner' : 'Remove member'}
-													className="text-destructive hover:text-destructive disabled:text-muted-foreground"
-												>
-													<UserMinus className="mr-2 h-4 w-4" />
-													Remove
-												</Button>
-											</>
-										)}
-									</div>
 								</TableCell>
 							</TableRow>
 						)

@@ -15,14 +15,17 @@ import { GroupCard } from '@/components/group-card'
 import { MemberList } from '@/components/member-list'
 import { InviteMemberForm } from '@/components/invite-member-form'
 import { PendingInvitationsList } from '@/components/pending-invitations-list'
+import { TransferOwnershipDialog } from '@/components/transfer-ownership-dialog'
 import { useGroup } from '@/hooks/useGroups'
 import { useGroupMembers, useRemoveMember, useToggleAdmin } from '@/hooks/useGroupMembers'
 import { useBreadcrumb } from '@/hooks/useBreadcrumb'
+import { useAuth } from '@/hooks/useAuth'
 
 export default function GroupDetailPage() {
 	const { groupId } = useParams<{ groupId: string }>()
 	const location = useLocation()
 	const { setCustomLabel, clearCustomLabel } = useBreadcrumb()
+	const { user } = useAuth()
 	const { data: group, isLoading: groupLoading } = useGroup(groupId!)
 	const { data: members, isLoading: membersLoading } = useGroupMembers(groupId!)
 	const removeMember = useRemoveMember()
@@ -31,6 +34,7 @@ export default function GroupDetailPage() {
 	// Dialog state
 	const [removeDialogOpen, setRemoveDialogOpen] = useState(false)
 	const [adminDialogOpen, setAdminDialogOpen] = useState(false)
+	const [transferDialogOpen, setTransferDialogOpen] = useState(false)
 	const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
 	const [selectedUserIsAdmin, setSelectedUserIsAdmin] = useState(false)
 
@@ -82,6 +86,11 @@ export default function GroupDetailPage() {
 		setSelectedUserId(userId)
 		setSelectedUserIsAdmin(isCurrentlyAdmin)
 		setAdminDialogOpen(true)
+	}
+
+	const handleTransferOwnershipClick = (userId: string) => {
+		setSelectedUserId(userId)
+		setTransferDialogOpen(true)
 	}
 
 	const handleToggleAdminConfirm = async () => {
@@ -166,7 +175,7 @@ export default function GroupDetailPage() {
 
 			{/* Stats Section */}
 			<div className="grid gap-4 md:grid-cols-2">
-				<Card className="glow">
+				<Card variant="interactive">
 					<CardHeader>
 						<CardTitle>Members</CardTitle>
 						<CardDescription>Total group members</CardDescription>
@@ -176,7 +185,7 @@ export default function GroupDetailPage() {
 					</CardContent>
 				</Card>
 
-				<Card className="glow">
+				<Card variant="interactive">
 					<CardHeader>
 						<CardTitle>Admins</CardTitle>
 						<CardDescription>Users with admin privileges</CardDescription>
@@ -194,7 +203,7 @@ export default function GroupDetailPage() {
 			<PendingInvitationsList groupId={groupId!} />
 
 			{/* Members List */}
-			<Card className="glow">
+			<Card variant="interactive">
 				<CardHeader>
 					<CardTitle>Member Management</CardTitle>
 					<CardDescription>View and manage group members</CardDescription>
@@ -204,8 +213,10 @@ export default function GroupDetailPage() {
 						members={members || []}
 						group={group}
 						adminUserIds={adminUserIds}
+						currentUserId={user?.id}
 						onRemoveMember={handleRemoveMemberClick}
 						onToggleAdmin={handleToggleAdminClick}
+						onTransferOwnership={handleTransferOwnershipClick}
 						isLoading={membersLoading}
 					/>
 				</CardContent>
@@ -281,6 +292,21 @@ export default function GroupDetailPage() {
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
+
+			{/* Transfer Ownership Dialog */}
+			{group && members && (
+				<TransferOwnershipDialog
+					group={group}
+					members={members}
+					open={transferDialogOpen}
+					onOpenChange={setTransferDialogOpen}
+					initialSelectedUserId={selectedUserId || undefined}
+					onSuccess={() => {
+						setMessage({ type: 'success', text: 'Ownership transferred successfully!' })
+						setTimeout(() => setMessage(null), 3000)
+					}}
+				/>
+			)}
 		</div>
 	)
 }

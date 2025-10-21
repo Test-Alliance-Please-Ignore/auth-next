@@ -47,6 +47,7 @@ export interface GroupMember {
 	userId: string
 	joinedAt: Date
 	mainCharacterName?: string
+	mainCharacterId?: number
 }
 
 export interface GroupAdmin {
@@ -113,6 +114,7 @@ export interface GroupWithDetails extends Group {
 	isOwner?: boolean
 	isAdmin?: boolean
 	isMember?: boolean
+	ownerName?: string
 }
 
 export interface GroupInvitationWithDetails extends GroupInvitation {
@@ -274,8 +276,13 @@ export interface Groups {
 	/** Delete a group (owner only) */
 	deleteGroup(id: string, userId: string): Promise<void>
 
-	/** Transfer group ownership */
-	transferOwnership(groupId: string, currentOwnerId: string, newOwnerId: string): Promise<void>
+	/** Transfer group ownership (owner or admin) */
+	transferOwnership(
+		groupId: string,
+		requestingUserId: string,
+		newOwnerId: string,
+		isAdmin?: boolean
+	): Promise<void>
 
 	/**
 	 * Membership Operations

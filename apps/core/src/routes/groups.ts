@@ -505,9 +505,10 @@ groups.delete('/:id', requireAuth(), requireAdmin(), async (c) => {
 /**
  * GET /:groupId/members
  *
- * List all members of a group (admin only)
+ * List all members of a group
+ * Authorization is handled by the Groups DO based on group visibility and user role
  */
-groups.get('/:groupId/members', requireAuth(), requireAdmin(), async (c) => {
+groups.get('/:groupId/members', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const groupId = c.req.param('groupId')
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
@@ -516,8 +517,13 @@ groups.get('/:groupId/members', requireAuth(), requireAdmin(), async (c) => {
 		const members = await groupsDO.getGroupMembers(groupId, user.id, user.is_admin)
 		return c.json(members)
 	} catch (error) {
-		if (error instanceof Error && error.message.includes('not found')) {
-			return c.json({ error: 'Group not found' }, 404)
+		if (error instanceof Error) {
+			if (error.message.includes('not found')) {
+				return c.json({ error: 'Group not found' }, 404)
+			}
+			if (error.message.includes('Not authorized')) {
+				return c.json({ error: 'Not authorized to view group members' }, 403)
+			}
 		}
 		throw error
 	}
@@ -649,7 +655,7 @@ groups.post('/:id/leave', requireAuth(), async (c) => {
 /**
  * POST /:id/transfer
  *
- * Transfer group ownership (owner only)
+ * Transfer group ownership (owner or admin)
  */
 groups.post('/:id/transfer', requireAuth(), async (c) => {
 	const user = c.get('user')!
@@ -662,7 +668,7 @@ groups.post('/:id/transfer', requireAuth(), async (c) => {
 	}
 
 	try {
-		await groupsDO.transferOwnership(groupId, user.id, body.newOwnerId)
+		await groupsDO.transferOwnership(groupId, user.id, body.newOwnerId, user.is_admin)
 		return c.json({ success: true }, 200)
 	} catch (error) {
 		if (error instanceof Error) {

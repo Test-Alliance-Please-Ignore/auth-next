@@ -52,6 +52,16 @@ const config: Config = {
 					'5': 'hsl(var(--chart-5))',
 				},
 			},
+			boxShadow: {
+				elevated: 'var(--elevation-high)',
+				interactive: 'var(--elevation-medium)',
+				flat: 'var(--elevation-flat)',
+			},
+			spacing: {
+				section: 'var(--space-section)',
+				page: 'var(--space-page)',
+				card: 'var(--space-card)',
+			},
 		},
 	},
 	plugins: [],

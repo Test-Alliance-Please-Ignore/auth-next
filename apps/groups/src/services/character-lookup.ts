@@ -142,6 +142,41 @@ export async function bulkFindMainCharactersByUserIds(
 }
 
 /**
+ * Bulk lookup user IDs by main character IDs with character IDs included
+ *
+ * MVP: Queries core database directly
+ * Future: Replace with RPC call to core worker
+ *
+ * @param userIds - Array of user IDs to look up
+ * @param db - Database client
+ * @returns Map of userId -> {name, characterId}
+ */
+export async function bulkFindMainCharactersWithIdsByUserIds(
+	userIds: string[],
+	db: ReturnType<typeof createDb>
+): Promise<Map<string, { name: string; characterId: number }>> {
+	if (userIds.length === 0) {
+		return new Map()
+	}
+
+	const results = await db
+		.select({
+			userId: userCharacters.userId,
+			characterName: userCharacters.characterName,
+			characterId: userCharacters.characterId,
+		})
+		.from(userCharacters)
+		.where(and(eq(userCharacters.is_primary, true), inArray(userCharacters.userId, userIds)))
+
+	const map = new Map<string, { name: string; characterId: number }>()
+	for (const row of results) {
+		map.set(row.userId, { name: row.characterName, characterId: row.characterId })
+	}
+
+	return map
+}
+
+/**
  * Search for users by character name (case-insensitive)
  *
  * MVP: Queries core database directly

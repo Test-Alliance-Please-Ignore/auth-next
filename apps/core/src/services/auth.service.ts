@@ -27,7 +27,7 @@ export class AuthService {
 			userId,
 			characterId,
 			metadata,
-			durationSeconds = 30 * 24 * 60 * 60, // 30 days default
+			durationSeconds = 5 * 24 * 60 * 60, // 5 days default
 		} = options
 
 		// Generate session token (UUID v4)

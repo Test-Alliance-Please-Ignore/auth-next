@@ -4,6 +4,9 @@ import { Users, Crown, Shield } from 'lucide-react'
 import { MyGroupsCard } from '@/components/my-groups-card'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Container } from '@/components/ui/container'
+import { PageHeader } from '@/components/ui/page-header'
+import { Section } from '@/components/ui/section'
 import { useUserMemberships } from '@/hooks/useGroups'
 
 export default function MyGroupsPage() {
@@ -23,16 +26,13 @@ export default function MyGroupsPage() {
 	const memberGroups = memberships?.filter((m) => !m.isOwner && !m.isAdmin) || []
 
 	return (
-		<div className="space-y-6">
-			{/* Page Header */}
-			<div>
-				<h1 className="text-4xl md:text-5xl font-bold gradient-text">My Groups</h1>
-				<p className="text-muted-foreground mt-2">Manage your group memberships</p>
-			</div>
+		<Container>
+			<PageHeader title="My Groups" description="Manage your group memberships" />
 
-			{/* Stats */}
-			<div className="grid gap-4 md:grid-cols-3">
-				<Card className="glow">
+			<Section>
+				{/* Stats */}
+				<div className="grid gap-4 md:grid-cols-3">
+				<Card variant="interactive">
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
 						<CardTitle className="text-sm font-medium">Total Groups</CardTitle>
 						<Users className="h-4 w-4 text-muted-foreground" />
@@ -42,7 +42,7 @@ export default function MyGroupsPage() {
 					</CardContent>
 				</Card>
 
-				<Card className="glow">
+				<Card variant="interactive">
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
 						<CardTitle className="text-sm font-medium">Owned</CardTitle>
 						<Crown className="h-4 w-4 text-muted-foreground" />
@@ -52,7 +52,7 @@ export default function MyGroupsPage() {
 					</CardContent>
 				</Card>
 
-				<Card className="glow">
+				<Card variant="interactive">
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
 						<CardTitle className="text-sm font-medium">Admin Roles</CardTitle>
 						<Shield className="h-4 w-4 text-muted-foreground" />
@@ -65,7 +65,7 @@ export default function MyGroupsPage() {
 
 			{/* Owned Groups */}
 			{ownedGroups.length > 0 && (
-				<Card className="glow">
+				<Card variant="interactive">
 					<CardHeader>
 						<CardTitle>Owned Groups</CardTitle>
 						<CardDescription>Groups you created and manage</CardDescription>
@@ -84,7 +84,7 @@ export default function MyGroupsPage() {
 
 			{/* Admin Groups */}
 			{adminGroups.length > 0 && (
-				<Card className="glow">
+				<Card variant="interactive">
 					<CardHeader>
 						<CardTitle>Admin Roles</CardTitle>
 						<CardDescription>Groups where you are an administrator</CardDescription>
@@ -103,7 +103,7 @@ export default function MyGroupsPage() {
 
 			{/* Member Groups */}
 			{memberGroups.length > 0 && (
-				<Card className="glow">
+				<Card variant="interactive">
 					<CardHeader>
 						<CardTitle>Member Groups</CardTitle>
 						<CardDescription>Groups you are a member of</CardDescription>
@@ -122,7 +122,7 @@ export default function MyGroupsPage() {
 
 			{/* Empty State */}
 			{memberships?.length === 0 && (
-				<Card className="glow">
+				<Card variant="interactive">
 					<CardContent className="py-16 text-center">
 						<div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-muted mb-6">
 							<Users className="h-10 w-10 text-muted-foreground" />
@@ -138,6 +138,7 @@ export default function MyGroupsPage() {
 					</CardContent>
 				</Card>
 			)}
-		</div>
+			</Section>
+		</Container>
 	)
 }

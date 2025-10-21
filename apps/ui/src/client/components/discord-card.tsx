@@ -28,7 +28,7 @@ export function DiscordCard({ user }: DiscordCardProps) {
 	}
 
 	return (
-		<Card className="card-gradient border-border/50 shadow-[0_8px_30px_rgb(0,0,0,0.4)] h-full flex flex-col">
+		<Card variant="elevated" className="h-full flex flex-col">
 			<CardHeader>
 				<div className="flex items-center gap-3">
 					<div className="flex items-center justify-center w-12 h-12 rounded-full bg-[hsl(var(--discord-blurple))]">

@@ -109,8 +109,8 @@ export function canViewGroupMembers(
 		return isGroupOwnerOrAdmin
 	}
 
-	// For public and hidden groups, members can see member lists
-	return isMember
+	// For public and hidden groups, members and group owner/admins can see member lists
+	return isMember || isGroupOwnerOrAdmin
 }
 
 /**

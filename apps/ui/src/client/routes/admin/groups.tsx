@@ -111,7 +111,7 @@ export default function GroupsPage() {
 			)}
 
 			{/* Filters */}
-			<Card className="glow">
+			<Card variant="interactive">
 				<CardHeader>
 					<div className="flex items-center justify-between">
 						<div>
@@ -205,7 +205,7 @@ export default function GroupsPage() {
 			</Card>
 
 			{/* Groups List */}
-			<Card className="glow">
+			<Card variant="interactive">
 				<CardHeader>
 					<CardTitle>
 						Groups {groups && <span className="text-muted-foreground font-normal">({groups.length})</span>}

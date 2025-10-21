@@ -3,8 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import { Search, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Container } from '@/components/ui/container'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { PageHeader } from '@/components/ui/page-header'
+import { Section } from '@/components/ui/section'
 import {
 	Select,
 	SelectContent,
@@ -58,23 +61,23 @@ export default function GroupsPage() {
 	const hasActiveFilters = Object.keys(filters).length > 0
 
 	return (
-		<div className="space-y-6">
-			{/* Page Header */}
-			<div>
-				<h1 className="text-4xl md:text-5xl font-bold gradient-text">Discover Groups</h1>
-				<p className="text-muted-foreground mt-2">Find and join groups that match your interests</p>
-			</div>
+		<Container>
+			<PageHeader
+				title="Discover Groups"
+				description="Find and join groups that match your interests"
+			/>
 
-			{/* Invite Code Redemption */}
-			<InviteCodeRedemption
+			<Section>
+				{/* Invite Code Redemption */}
+				<InviteCodeRedemption
 				onSuccess={(groupName) => {
 					alert(`Successfully joined ${groupName}!`)
 					navigate('/my-groups')
 				}}
 			/>
 
-			{/* Filters */}
-			<Card className="glow">
+				{/* Filters */}
+				<Card variant="interactive">
 				<CardHeader>
 					<div className="flex items-center justify-between">
 						<div>
@@ -150,7 +153,7 @@ export default function GroupsPage() {
 			</Card>
 
 			{/* Groups List */}
-			<Card className="glow">
+				<Card variant="interactive">
 				<CardHeader>
 					<CardTitle>
 						Available Groups{' '}
@@ -166,6 +169,7 @@ export default function GroupsPage() {
 					<GroupList groups={groups || []} isLoading={groupsLoading} />
 				</CardContent>
 			</Card>
-		</div>
+			</Section>
+		</Container>
 	)
 }

@@ -11,7 +11,7 @@ interface GroupCardProps {
 
 export function GroupCard({ group }: GroupCardProps) {
 	return (
-		<Card className="glow">
+		<Card variant="interactive">
 			<CardHeader>
 				<div className="flex items-start justify-between">
 					<div className="space-y-1">
@@ -38,7 +38,7 @@ export function GroupCard({ group }: GroupCardProps) {
 					</div>
 					<div className="flex items-center gap-2">
 						<UserCog className="h-4 w-4 text-muted-foreground" />
-						<span className="text-muted-foreground">Owner: {group.ownerId}</span>
+						<span className="text-muted-foreground">Owner: {group.ownerName || group.ownerId}</span>
 					</div>
 				</div>
 

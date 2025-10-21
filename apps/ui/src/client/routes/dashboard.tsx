@@ -1,11 +1,14 @@
 import { ExternalLink, RefreshCw } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import { DiscordCard } from '@/components/discord-card'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Container } from '@/components/ui/container'
 import { LoadingPage } from '@/components/ui/loading'
+import { PageHeader } from '@/components/ui/page-header'
+import { Section } from '@/components/ui/section'
 import { useAuth } from '@/hooks/useAuth'
 import { apiClient } from '@/lib/api'
 
@@ -14,6 +17,22 @@ export default function DashboardPage() {
 	const navigate = useNavigate()
 	const [isLinkingCharacter, setIsLinkingCharacter] = useState(false)
 	const [refreshingCharacters, setRefreshingCharacters] = useState<Set<string>>(new Set())
+	const [mainCharacterDetails, setMainCharacterDetails] = useState<any>(null)
+
+	// Fetch main character details when user loads
+	useEffect(() => {
+		const fetchMainCharacterDetails = async () => {
+			if (user?.mainCharacterId) {
+				try {
+					const details = await apiClient.getCharacterDetail(user.mainCharacterId)
+					setMainCharacterDetails(details)
+				} catch (error) {
+					console.error('Failed to fetch main character details:', error)
+				}
+			}
+		}
+		fetchMainCharacterDetails()
+	}, [user?.mainCharacterId])
 
 	const handleRefreshCharacter = async (characterId: number) => {
 		// Prevent multiple refreshes for the same character
@@ -74,19 +93,15 @@ export default function DashboardPage() {
 	const mainCharacter = user.characters.find((c) => c.characterId === user.mainCharacterId)
 
 	return (
-		<div className="min-h-screen">
-			<div className="container mx-auto px-4 py-8 max-w-6xl">
-				{/* Header */}
-				<div className="mb-8">
-					<h1 className="text-4xl md:text-5xl font-bold mb-2">Dashboard</h1>
-					<p className="text-muted-foreground">Manage your characters and connections</p>
-				</div>
+		<Container>
+			<PageHeader title="Dashboard" description="Manage your characters and connections" />
 
+			<Section>
 				{/* Main Character and Discord Cards Row */}
-				<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+				<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
 					{/* Main Character Card - 75% width on desktop */}
 					<div className="md:col-span-2 lg:col-span-3">
-						<Card className="card-gradient border-border/50 shadow-[0_8px_30px_rgb(0,0,0,0.4)] relative h-full">
+						<Card variant="elevated" className="h-full">
 							<CardHeader>
 								<CardTitle className="text-xl md:text-2xl">Main Character</CardTitle>
 								<CardDescription>Your primary EVE Online character</CardDescription>
@@ -108,9 +123,20 @@ export default function DashboardPage() {
 												<h3 className="text-xl font-semibold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
 													{mainCharacter.characterName}
 												</h3>
-												<p className="text-sm text-muted-foreground">
-													Character ID: {mainCharacter.characterId}
-												</p>
+												{mainCharacterDetails?.public?.info ? (
+													<div className="space-y-1">
+														<p className="text-sm text-muted-foreground">
+															{mainCharacterDetails.public.info.corporation_name}
+														</p>
+														{mainCharacterDetails.public.info.alliance_name && (
+															<p className="text-xs text-muted-foreground">
+																{mainCharacterDetails.public.info.alliance_name}
+															</p>
+														)}
+													</div>
+												) : (
+													<p className="text-sm text-muted-foreground">Loading...</p>
+												)}
 											</div>
 											<Link to={`/character/${mainCharacter.characterId}`}>
 												<Button size="sm" variant="outline" className="gap-2">
@@ -148,73 +174,80 @@ export default function DashboardPage() {
 						<DiscordCard user={user} />
 					</div>
 				</div>
+			</Section>
 
+			<div className="my-8" />
+
+			<Section>
 				{/* Linked Characters */}
-				<div className="mb-8">
-					<div className="flex justify-between items-center mb-4">
-						<h2 className="text-2xl md:text-3xl font-bold gradient-text">Linked Characters</h2>
-						<Button
-							variant="outline"
-							className="glow-hover border-border/50 bg-muted/50 hover:bg-muted"
-							onClick={handleLinkCharacter}
-							disabled={isLinkingCharacter}
-						>
-							{isLinkingCharacter ? 'Redirecting...' : 'Link New Character'}
-						</Button>
-					</div>
-
-					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-						{user.characters.map((character) => (
-							<Card
-								key={character.characterId}
-								className="card-gradient border-border/30 hover:border-primary/30 transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.3)] group relative"
+				<Card variant="elevated">
+					<CardHeader>
+						<div className="flex justify-between items-center">
+							<div>
+								<CardTitle className="text-xl md:text-2xl">Linked Characters</CardTitle>
+								<CardDescription>All your authenticated EVE Online characters</CardDescription>
+							</div>
+							<Button
+								variant="outline"
+								className="glow-hover border-border/50 bg-muted/50 hover:bg-muted"
+								onClick={handleLinkCharacter}
+								disabled={isLinkingCharacter}
 							>
-								<CardContent className="p-4">
-									<Link to={`/character/${character.characterId}`} className="block">
-										<div className="flex items-center gap-3">
-											<img
-												src={`https://images.evetech.net/characters/${character.characterId}/portrait?size=64`}
-												alt={`${character.characterName}'s portrait`}
-												loading="lazy"
-												onError={(e) => {
-													;(e.currentTarget as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"%3E%3Crect fill="%23404040" width="64" height="64"/%3E%3Ctext x="50%25" y="50%25" font-family="Arial" font-size="24" fill="%23bfbfbf" text-anchor="middle" dominant-baseline="middle"%3E?%3C/text%3E%3C/svg%3E'
-												}}
-												className="w-12 h-12 rounded-full border border-border/50 group-hover:border-primary/30 transition-colors shadow-md"
-											/>
-											<div className="flex-1 min-w-0">
-												<h3 className="font-semibold truncate group-hover:text-primary transition-colors">
-													{character.characterName}
-												</h3>
-												{character.characterId === user.mainCharacterId && (
-													<span className="text-xs text-primary bg-primary/10 px-2 py-0.5 rounded">
-														Main
-													</span>
-												)}
+								{isLinkingCharacter ? 'Redirecting...' : 'Link New Character'}
+							</Button>
+						</div>
+					</CardHeader>
+					<CardContent>
+						<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+							{user.characters.map((character) => (
+								<Card key={character.characterId} variant="interactive" className="group relative">
+									<CardContent className="p-4">
+										<Link to={`/character/${character.characterId}`} className="block">
+											<div className="flex items-center gap-3">
+												<img
+													src={`https://images.evetech.net/characters/${character.characterId}/portrait?size=64`}
+													alt={`${character.characterName}'s portrait`}
+													loading="lazy"
+													onError={(e) => {
+														;(e.currentTarget as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"%3E%3Crect fill="%23404040" width="64" height="64"/%3E%3Ctext x="50%25" y="50%25" font-family="Arial" font-size="24" fill="%23bfbfbf" text-anchor="middle" dominant-baseline="middle"%3E?%3C/text%3E%3C/svg%3E'
+													}}
+													className="w-12 h-12 rounded-full border border-border/50 group-hover:border-primary/30 transition-colors shadow-md"
+												/>
+												<div className="flex-1 min-w-0">
+													<h3 className="font-semibold truncate group-hover:text-primary transition-colors">
+														{character.characterName}
+													</h3>
+													{character.characterId === user.mainCharacterId && (
+														<span className="text-xs text-primary bg-primary/10 px-2 py-0.5 rounded">
+															Main
+														</span>
+													)}
+												</div>
 											</div>
-										</div>
-									</Link>
-									<Button
-										size="icon"
-										variant="ghost"
-										className="absolute top-2 right-2 h-11 w-11 hover:bg-primary/10"
-										onClick={() => handleRefreshCharacter(character.characterId)}
-										disabled={refreshingCharacters.has(character.characterId.toString())}
-										aria-label={`Refresh ${character.characterName} character data`}
-									>
-										<RefreshCw
-											className={`h-4 w-4 ${
-												refreshingCharacters.has(character.characterId.toString())
-													? 'animate-spin'
-													: ''
-											}`}
-										/>
-									</Button>
-								</CardContent>
-							</Card>
-						))}
-					</div>
-				</div>
-			</div>
-		</div>
+										</Link>
+										<Button
+											size="icon"
+											variant="ghost"
+											className="absolute top-2 right-2 h-11 w-11 hover:bg-primary/10"
+											onClick={() => handleRefreshCharacter(character.characterId)}
+											disabled={refreshingCharacters.has(character.characterId.toString())}
+											aria-label={`Refresh ${character.characterName} character data`}
+										>
+											<RefreshCw
+												className={`h-4 w-4 ${
+													refreshingCharacters.has(character.characterId.toString())
+														? 'animate-spin'
+														: ''
+												}`}
+											/>
+										</Button>
+									</CardContent>
+								</Card>
+							))}
+						</div>
+					</CardContent>
+				</Card>
+			</Section>
+		</Container>
 	)
 }
