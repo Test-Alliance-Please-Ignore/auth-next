@@ -1,7 +1,11 @@
 import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:test'
 import { describe, expect, it } from 'vitest'
 
+import { getStub } from '@repo/do-utils'
+
 import worker from '../../index'
+
+import type { Discord } from '@repo/discord'
 
 describe('Discord Worker', () => {
 	it('responds to root endpoint', async () => {
@@ -30,8 +34,7 @@ describe('Discord Worker', () => {
 
 describe('Discord Durable Object', () => {
 	it('can increment counter', async () => {
-		const id = env.DISCORD.idFromName(`test-counter-${Date.now()}-${Math.random()}`)
-		const stub = env.DISCORD.get(id)
+		const stub = getStub<Discord>(env.DISCORD, `test-counter-${Date.now()}-${Math.random()}`)
 
 		const count1 = await stub.incrementCounter()
 		const count2 = await stub.incrementCounter()
@@ -41,8 +44,7 @@ describe('Discord Durable Object', () => {
 	})
 
 	it('can get state', async () => {
-		const id = env.DISCORD.idFromName(`test-state-${Date.now()}-${Math.random()}`)
-		const stub = env.DISCORD.get(id)
+		const stub = getStub<Discord>(env.DISCORD, `test-state-${Date.now()}-${Math.random()}`)
 
 		await stub.incrementCounter()
 		const state = await stub.getState()
@@ -53,8 +55,7 @@ describe('Discord Durable Object', () => {
 	})
 
 	it('can call example method', async () => {
-		const id = env.DISCORD.idFromName('test-example')
-		const stub = env.DISCORD.get(id)
+		const stub = getStub<Discord>(env.DISCORD, 'test-example')
 
 		const result = await stub.exampleMethod('test message')
 

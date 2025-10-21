@@ -1,6 +1,7 @@
 import { getCookie } from 'hono/cookie'
 
 import { getStub } from '@repo/do-utils'
+import { logger } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
 import { AuthService } from '../services/auth.service'
@@ -82,7 +83,7 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 						}
 					}
 				} catch (error) {
-					console.error('Error loading Discord profile:', error)
+					logger.error('Error loading Discord profile:', error)
 					// Continue without Discord profile if error occurs
 				}
 			}
@@ -108,7 +109,7 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 			c.set('db', db)
 			c.set('eveTokenStore', eveTokenStoreStub)
 		} catch (error) {
-			console.error('Error in session middleware:', error)
+			logger.error('Error in session middleware:', error)
 			// Continue without user if error occurs
 		}
 

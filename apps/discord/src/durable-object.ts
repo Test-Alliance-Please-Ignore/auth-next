@@ -1,6 +1,7 @@
 import { DurableObject } from 'cloudflare:workers'
 
 import { eq } from '@repo/db-utils'
+import { logger } from '@repo/hono-helpers'
 import {
 	AuthorizationUrlResponse,
 	CallbackResult,
@@ -113,7 +114,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 				discriminator: userInfo.discriminator,
 			}
 		} catch (error) {
-			console.error('Error handling OAuth callback:', error)
+			logger.error('Error handling OAuth callback:', error)
 			return {
 				success: false,
 				error: error instanceof Error ? error.message : 'Unknown error',
@@ -179,7 +180,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 			})
 
 			if (!user) {
-				console.error('User not found:', userId)
+				logger.error('User not found:', userId)
 				return false
 			}
 
@@ -189,7 +190,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 			})
 
 			if (!tokenRecord || !tokenRecord.refreshToken) {
-				console.error('Token or refresh token not found')
+				logger.error('Token or refresh token not found')
 				return false
 			}
 
@@ -221,7 +222,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 
 			return true
 		} catch (error) {
-			console.error('Error refreshing token:', error)
+			logger.error('Error refreshing token:', error)
 			return false
 		}
 	}
@@ -268,7 +269,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 
 			return true
 		} catch (error) {
-			console.error('Error revoking token:', error)
+			logger.error('Error revoking token:', error)
 			return false
 		}
 	}

@@ -1,3 +1,5 @@
+import { logger } from '@repo/hono-helpers'
+
 import type { createDb } from '../db'
 
 /**
@@ -29,7 +31,7 @@ export async function findUserByMainCharacterName(
 	// 2. Shared database access
 	// 3. Separate lookup service
 
-	console.warn('findUserByMainCharacterName not yet implemented - requires core worker integration')
+	logger.warn('findUserByMainCharacterName not yet implemented - requires core worker integration')
 	return null
 }
 
@@ -48,7 +50,7 @@ export async function findUserByMainCharacterId(
 ): Promise<{ userId: string; characterName: string } | null> {
 	// TODO: Implement via core worker integration
 
-	console.warn('findUserByMainCharacterId not yet implemented - requires core worker integration')
+	logger.warn('findUserByMainCharacterId not yet implemented - requires core worker integration')
 	return null
 }
 
@@ -70,6 +72,6 @@ export async function searchUsersByCharacterName(
 ): Promise<Array<{ userId: string; characterId: number; characterName: string; isMain: boolean }>> {
 	// TODO: Implement via core worker integration
 
-	console.warn('searchUsersByCharacterName not yet implemented - requires core worker integration')
+	logger.warn('searchUsersByCharacterName not yet implemented - requires core worker integration')
 	return []
 }

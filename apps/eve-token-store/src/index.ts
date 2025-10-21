@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { getStub } from '@repo/do-utils'
-import { withNotFound, withOnError } from '@repo/hono-helpers'
+import { logger, withNotFound, withOnError } from '@repo/hono-helpers'
 
 import { EveTokenStoreDO } from './durable-object'
 
@@ -45,7 +45,7 @@ const app = new Hono<App>()
 			// Redirect to EVE SSO
 			return c.redirect(result.url)
 		} catch (error) {
-			console.error('Error starting login flow:', error)
+			logger.error(error)
 			return c.json(
 				{
 					error: 'Failed to start login flow',
@@ -74,7 +74,7 @@ const app = new Hono<App>()
 			// Redirect to EVE SSO
 			return c.redirect(result.url)
 		} catch (error) {
-			console.error('Error starting character flow:', error)
+			logger.error(error)
 			return c.json(
 				{
 					error: 'Failed to start character flow',
@@ -99,7 +99,7 @@ const app = new Hono<App>()
 
 			// Check for OAuth errors
 			if (error) {
-				console.error('OAuth error:', error, errorDescription)
+				logger.withTags({ error, errorDescription }).error('OAuth error')
 				return c.json(
 					{
 						error: 'OAuth failed',
@@ -144,7 +144,7 @@ const app = new Hono<App>()
 				message: 'Successfully authenticated with EVE Online',
 			})
 		} catch (error) {
-			console.error('Error handling callback:', error)
+			logger.error(error)
 			return c.json(
 				{
 					error: 'Failed to process callback',

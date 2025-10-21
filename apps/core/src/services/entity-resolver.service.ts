@@ -1,3 +1,5 @@
+import { logger } from '@repo/hono-helpers'
+
 import type { EveTokenStore } from '@repo/eve-token-store'
 
 /**
@@ -38,7 +40,7 @@ export class EntityResolverService {
 					this.nameCache.set(Number(id), name)
 				}
 			} catch (error) {
-				console.error('Error resolving entity names:', error)
+				logger.error('Error resolving entity names:', error)
 			}
 		}
 

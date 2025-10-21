@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 
 import { getStub } from '@repo/do-utils'
+import { logger } from '@repo/hono-helpers'
 
 import { requireAuth } from '../middleware/session'
 import { EntityResolverService } from '../services/entity-resolver.service'
@@ -55,7 +56,7 @@ app.get('/:characterId', requireAuth(), async (c) => {
 		const eveTokenStore = c.get('eveTokenStore')
 
 		if (!eveTokenStore) {
-			console.error('eveTokenStore not found in context!')
+			logger.error('eveTokenStore not found in context!')
 			return c.json({ error: 'Token store not initialized' }, 500)
 		}
 
@@ -76,12 +77,8 @@ app.get('/:characterId', requireAuth(), async (c) => {
 		// Deduplicate all IDs (alliance might be same as a corp in history)
 		const uniqueIds = [...new Set(idsToResolve)]
 
-		console.log('Resolving entity IDs:', uniqueIds)
-
 		// Resolve all entity names in bulk
 		const entityNames = await resolver.resolveEntityNames(uniqueIds)
-
-		console.log('Resolved entity names:', Object.fromEntries(entityNames))
 
 		// Enrich character info with resolved names
 		const enrichedInfo = {
@@ -170,7 +167,7 @@ app.get('/:characterId', requireAuth(), async (c) => {
 
 		return c.json(response)
 	} catch (error) {
-		console.error('Error fetching character data:', error)
+		logger.error('Error fetching character data:', error)
 		return c.json({ error: 'Failed to fetch character data' }, 500)
 	}
 })
@@ -203,7 +200,6 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 	try {
 		// Check token info first to verify scopes
 		const tokenInfo = await eveTokenStoreStub.getTokenInfo(characterId)
-		console.log('Token info for character', characterId, ':', tokenInfo)
 
 		// Always fetch public data (doesn't require auth)
 		await eveCharacterDataStub.fetchCharacterData(characterId, true)
@@ -217,8 +213,8 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 		} catch (error) {
 			// If authenticated data fetch fails, token is likely missing or invalid
 			authError = error instanceof Error ? error.message : String(error)
-			console.error('Could not fetch authenticated data:', authError)
-			console.error('Full error:', error)
+			logger.error('Could not fetch authenticated data:', authError)
+			logger.error('Full error:', error)
 		}
 
 		// Get the updated data
@@ -242,7 +238,7 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 			authError: hasValidToken ? undefined : authError,
 		})
 	} catch (error) {
-		console.error('Error refreshing character data:', error)
+		logger.error('Error refreshing character data:', error)
 		return c.json({ error: 'Failed to refresh character data' }, 500)
 	}
 })

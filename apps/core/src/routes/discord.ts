@@ -1,5 +1,7 @@
 import { Hono } from 'hono'
 
+import { logger } from '@repo/hono-helpers'
+
 import { requireAuth } from '../middleware/session'
 import * as discordService from '../services/discord.service'
 
@@ -36,7 +38,7 @@ discord.post('/link/start', requireAuth(), async (c) => {
 
 		return c.json({ url })
 	} catch (error) {
-		console.error('Error starting Discord link flow:', error)
+		logger.error('Error starting Discord link flow:', error)
 		return c.json(
 			{
 				error: error instanceof Error ? error.message : 'Failed to start Discord linking',
@@ -76,7 +78,7 @@ discord.get('/callback', async (c) => {
 		// Redirect to frontend callback page (success)
 		return c.redirect('/discord/callback')
 	} catch (error) {
-		console.error('Error handling Discord callback:', error)
+		logger.error('Error handling Discord callback:', error)
 		// Redirect to frontend callback page with error
 		return c.redirect(`/discord/callback?error=${encodeURIComponent(error instanceof Error ? error.message : 'Failed to handle Discord callback')}`)
 	}
@@ -100,7 +102,7 @@ discord.get('/profile', requireAuth(), async (c) => {
 
 		return c.json(profile)
 	} catch (error) {
-		console.error('Error getting Discord profile:', error)
+		logger.error('Error getting Discord profile:', error)
 		return c.json(
 			{
 				error: error instanceof Error ? error.message : 'Failed to get Discord profile',
@@ -124,7 +126,7 @@ discord.post('/refresh', requireAuth(), async (c) => {
 
 		return c.json({ success })
 	} catch (error) {
-		console.error('Error refreshing Discord token:', error)
+		logger.error('Error refreshing Discord token:', error)
 		return c.json(
 			{
 				error: error instanceof Error ? error.message : 'Failed to refresh Discord token',

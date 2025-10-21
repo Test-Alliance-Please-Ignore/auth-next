@@ -1,6 +1,7 @@
 import { DurableObject } from 'cloudflare:workers'
 
 import { and, eq, gt, lte } from '@repo/db-utils'
+import { logger } from '@repo/hono-helpers'
 
 import { createDb } from './db'
 import { eveCharacters, eveTokens } from './db/schema'
@@ -214,7 +215,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				},
 			}
 		} catch (error) {
-			console.error('Error handling OAuth callback:', error)
+			logger.error(error)
 			return {
 				success: false,
 				error: error instanceof Error ? error.message : 'Unknown error',
@@ -236,7 +237,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			})
 
 			if (!character) {
-				console.error('Character not found:', characterId)
+				logger.withTags({ characterId }).error('Character not found')
 				return false
 			}
 
@@ -246,7 +247,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			})
 
 			if (!tokenRecord || !tokenRecord.refreshToken) {
-				console.error('Token or refresh token not found')
+				logger.error('Token or refresh token not found')
 				return false
 			}
 
@@ -278,7 +279,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 			return true
 		} catch (error) {
-			console.error('Error refreshing token:', error)
+			logger.error(error)
 			return false
 		}
 	}
@@ -377,7 +378,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 			return true
 		} catch (error) {
-			console.error('Error revoking token:', error)
+			logger.error(error)
 			return false
 		}
 	}
@@ -640,7 +641,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 			return corp
 		} catch (error) {
-			console.error(`Error fetching corporation ${corporationId}:`, error)
+			logger.withTags({ corporationId }).error(error)
 			return null
 		}
 	}
@@ -685,7 +686,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 			return alliance
 		} catch (error) {
-			console.error(`Error fetching alliance ${allianceId}:`, error)
+			logger.withTags({ allianceId }).error(error)
 			return null
 		}
 	}
@@ -797,7 +798,8 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			})
 
 			if (!response.ok) {
-				console.error('ESI name resolution failed:', response.status, await response.text())
+				const errorText = await response.text()
+				logger.withTags({ status: response.status, errorText }).error('ESI name resolution failed')
 				return result
 			}
 
@@ -833,7 +835,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 			return result
 		} catch (error) {
-			console.error('Error resolving names:', error)
+			logger.error(error)
 			return result
 		}
 	}
@@ -842,8 +844,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 * Resolve multiple entity IDs to names using ESI bulk endpoint
 	 */
 	async resolveIds(ids: number[]): Promise<Record<number, string>> {
-		console.log('[resolveIds] Called with', ids.length, 'IDs')
-
 		if (ids.length === 0) {
 			return {}
 		}
@@ -866,8 +866,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			}
 		}
 
-		console.log('[resolveIds] Found', Object.keys(result).length, 'cached,', idsToResolve.length, 'need to fetch')
-
 		// If all IDs are cached, return early
 		if (idsToResolve.length === 0) {
 			return result
@@ -875,7 +873,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 		// Fetch from ESI for uncached IDs
 		try {
-			console.log('[resolveIds] Fetching from ESI:', idsToResolve)
 			const response = await fetch('https://esi.evetech.net/latest/universe/names/', {
 				method: 'POST',
 				headers: {
@@ -885,16 +882,13 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				body: JSON.stringify(idsToResolve),
 			})
 
-			console.log('[resolveIds] ESI response status:', response.status)
-
 			if (!response.ok) {
 				const errorText = await response.text()
-				console.error('[resolveIds] ESI ID resolution failed:', response.status, errorText)
+				logger.withTags({ status: response.status, errorText }).error('ESI ID resolution failed')
 				return result
 			}
 
 			const data = await response.json<Array<{ id: number; name: string; category: string }>>()
-			console.log('[resolveIds] ESI returned', data.length, 'entities')
 
 			// Cache the results
 			const expiresAt = Date.now() + 60 * 60 * 1000 // 1 hour cache
@@ -914,10 +908,9 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				)
 			}
 
-			console.log('[resolveIds] Returning', Object.keys(result).length, 'total entities')
 			return result
 		} catch (error) {
-			console.error('[resolveIds] Error resolving IDs:', error)
+			logger.error(error)
 			return result
 		}
 	}
@@ -926,8 +919,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 * Alarm handler - automatically refresh tokens that are expiring soon
 	 */
 	async alarm(): Promise<void> {
-		console.log('EveTokenStoreDO alarm triggered at:', new Date().toISOString())
-
 		try {
 			const now = new Date()
 			const fiveMinutesFromNow = new Date(Date.now() + 5 * 60 * 1000)
@@ -940,8 +931,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				),
 			})
 
-			console.log(`Found ${expiringTokens.length} tokens to refresh`)
-
 			// Refresh each token
 			for (const token of expiringTokens) {
 				const character = await this.db.query.eveCharacters.findFirst({
@@ -949,12 +938,11 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				})
 
 				if (character) {
-					console.log(`Refreshing token for character: ${character.characterName}`)
 					await this.refreshToken(character.characterId)
 				}
 			}
 		} catch (error) {
-			console.error('Error in alarm handler:', error)
+			logger.error(error)
 		}
 
 		// Schedule next alarm (5 minutes)
