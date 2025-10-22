@@ -247,6 +247,16 @@ Each worker app that uses a database:
 3. Stores migrations in app-specific directories
 4. Uses Neon serverless PostgreSQL via `@neondatabase/serverless`
 
+**IMPORTANT: BigInt Handling**
+- **Avoid using `bigint` column types unless absolutely necessary**
+- The Neon serverless driver with Drizzle ORM has issues with JavaScript BigInt serialization
+- Prefer `text` for storing large numbers as strings (e.g., ISK amounts, large IDs)
+- Prefer `integer` for numeric IDs that fit within JavaScript's safe integer range (±2^53)
+- If you must use `bigint`:
+  - **NEVER wrap values with `BigInt()` when inserting** - pass the number directly
+  - Values from the database will be returned as BigInt objects
+  - Values must be converted to strings before JSON serialization
+
 Database commands in apps should have these scripts:
 - `db:generate` - Generate migrations from schema
 - `db:push` - Push schema changes (dev only)

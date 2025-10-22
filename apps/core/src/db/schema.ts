@@ -183,6 +183,47 @@ export const oauthStates = pgTable(
 )
 
 /**
+ * Managed Corporations table - Global corporation registry for admin management
+ *
+ * Tracks EVE Online corporations configured for data collection.
+ * Each corporation has an assigned director character for ESI API access.
+ * This is separate from the static 'corporations' table in eve-static-data.
+ */
+export const managedCorporations = pgTable(
+	'managed_corporations',
+	{
+		/** EVE corporation ID */
+		corporationId: bigint('corporation_id', { mode: 'number' }).primaryKey(),
+		/** Corporation name (cached from ESI) */
+		name: varchar('name', { length: 255 }).notNull(),
+		/** Corporation ticker (cached from ESI) */
+		ticker: varchar('ticker', { length: 10 }).notNull(),
+		/** Assigned director character ID for ESI access */
+		assignedCharacterId: bigint('assigned_character_id', { mode: 'number' }),
+		/** Assigned director character name (cached) */
+		assignedCharacterName: varchar('assigned_character_name', { length: 255 }),
+		/** Whether this corporation is active for data collection */
+		isActive: boolean('is_active').default(true).notNull(),
+		/** Last successful data sync timestamp */
+		lastSync: timestamp('last_sync', { withTimezone: true }),
+		/** Last verification timestamp (roles/access check) */
+		lastVerified: timestamp('last_verified', { withTimezone: true }),
+		/** Whether the director character has verified access */
+		isVerified: boolean('is_verified').default(false).notNull(),
+		/** Admin user who configured this corporation */
+		configuredBy: uuid('configured_by').references(() => users.id, { onDelete: 'set null' }),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		index('managed_corporations_name_idx').on(table.name),
+		index('managed_corporations_ticker_idx').on(table.ticker),
+		index('managed_corporations_assigned_character_id_idx').on(table.assignedCharacterId),
+		index('managed_corporations_is_active_idx').on(table.isActive),
+	]
+)
+
+/**
  * Relations
  */
 export const usersRelations = relations(users, ({ many, one }) => ({
@@ -220,6 +261,13 @@ export const userActivityLogRelations = relations(userActivityLog, ({ one }) => 
 	}),
 }))
 
+export const managedCorporationsRelations = relations(managedCorporations, ({ one }) => ({
+	configuredByUser: one(users, {
+		fields: [managedCorporations.configuredBy],
+		references: [users.id],
+	}),
+}))
+
 /**
  * Export schema for db client
  */
@@ -230,9 +278,11 @@ export const schema = {
 	userPreferences,
 	userActivityLog,
 	oauthStates,
+	managedCorporations,
 	usersRelations,
 	userCharactersRelations,
 	userSessionsRelations,
 	userPreferencesRelations,
 	userActivityLogRelations,
+	managedCorporationsRelations,
 }

@@ -151,6 +151,88 @@ export interface CharacterSearchResult {
 	characterName: string
 }
 
+/**
+ * Corporations API Types
+ */
+
+export interface ManagedCorporation {
+	corporationId: number
+	name: string
+	ticker: string
+	assignedCharacterId: number | null
+	assignedCharacterName: string | null
+	isActive: boolean
+	lastSync: string | null
+	lastVerified: string | null
+	isVerified: boolean
+	configuredBy: string | null
+	createdAt: string
+	updatedAt: string
+}
+
+export interface CorporationWithConfig extends ManagedCorporation {
+	doConfig: {
+		corporationId: number
+		characterId: number
+		characterName: string
+		lastVerified: Date | null
+		isVerified: boolean
+		createdAt: Date
+		updatedAt: Date
+	} | null
+}
+
+export interface CreateCorporationRequest {
+	corporationId: number
+	name: string
+	ticker: string
+	assignedCharacterId?: number
+	assignedCharacterName?: string
+}
+
+export interface UpdateCorporationRequest {
+	assignedCharacterId?: number
+	assignedCharacterName?: string
+	isActive?: boolean
+}
+
+export interface CorporationAccessVerification {
+	hasAccess: boolean
+	characterId: number | null
+	characterName: string | null
+	verifiedRoles: string[]
+	missingRoles?: string[]
+	lastVerified: Date | null
+}
+
+export interface CorporationDataSummary {
+	publicInfo: any
+	coreData: {
+		memberCount: number
+		trackingCount: number
+	} | null
+	financialData: {
+		walletCount: number
+		journalCount: number
+		transactionCount: number
+	} | null
+	assetsData: {
+		assetCount: number
+		structureCount: number
+	} | null
+	marketData: {
+		orderCount: number
+		contractCount: number
+		industryJobCount: number
+	} | null
+	killmailCount: number
+}
+
+export interface FetchCorporationDataRequest {
+	category?: 'all' | 'public' | 'core' | 'financial' | 'assets' | 'market' | 'killmails'
+	forceRefresh?: boolean
+}
+
 export interface RedeemInviteCodeRequest {
 	code: string
 }
@@ -396,6 +478,52 @@ export class ApiClient {
 	// Transfer Ownership
 	async transferGroupOwnership(groupId: string, newOwnerId: string): Promise<void> {
 		return this.post(`/groups/${groupId}/transfer`, { newOwnerId })
+	}
+
+	// ===== Corporations API Methods =====
+
+	async getCorporations(): Promise<ManagedCorporation[]> {
+		return this.get('/corporations')
+	}
+
+	async getCorporation(corporationId: number): Promise<CorporationWithConfig> {
+		return this.get(`/corporations/${corporationId}`)
+	}
+
+	async searchCorporations(query: string): Promise<ManagedCorporation[]> {
+		return this.get(`/corporations/search?q=${encodeURIComponent(query)}`)
+	}
+
+	async createCorporation(data: CreateCorporationRequest): Promise<ManagedCorporation> {
+		return this.post('/corporations', data)
+	}
+
+	async updateCorporation(
+		corporationId: number,
+		data: UpdateCorporationRequest
+	): Promise<ManagedCorporation> {
+		return this.put(`/corporations/${corporationId}`, data)
+	}
+
+	async deleteCorporation(corporationId: number): Promise<{ success: boolean }> {
+		return this.delete(`/corporations/${corporationId}`)
+	}
+
+	async verifyCorporationAccess(
+		corporationId: number
+	): Promise<CorporationAccessVerification> {
+		return this.post(`/corporations/${corporationId}/verify`)
+	}
+
+	async fetchCorporationData(
+		corporationId: number,
+		data?: FetchCorporationDataRequest
+	): Promise<{ success: boolean; category: string }> {
+		return this.post(`/corporations/${corporationId}/fetch`, data)
+	}
+
+	async getCorporationDataSummary(corporationId: number): Promise<CorporationDataSummary> {
+		return this.get(`/corporations/${corporationId}/data`)
 	}
 }
 

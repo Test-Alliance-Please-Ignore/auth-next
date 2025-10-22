@@ -1,5 +1,5 @@
 {
-	"name": "core",
+	"name": "eve-corporation-data",
 	"version": "0.1.0",
 	"private": true,
 	"sideEffects": false,
@@ -21,14 +21,10 @@
 	"dependencies": {
 		"@neondatabase/serverless": "0.10.4",
 		"@repo/db-utils": "workspace:*",
-		"@repo/discord": "workspace:*",
 		"@repo/do-utils": "workspace:*",
-		"@repo/eve-character-data": "workspace:*",
 		"@repo/eve-corporation-data": "workspace:*",
 		"@repo/eve-token-store": "workspace:*",
-		"@repo/groups": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
-		"@repo/notifications": "workspace:*",
 		"drizzle-orm": "0.44.6",
 		"hono": "4.9.11",
 		"workers-tagged-logger": "0.13.3"

@@ -1,4 +1,5 @@
 import type { EveCharacterData } from '@repo/eve-character-data'
+import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Groups } from '@repo/groups'
 import type { Notifications } from '@repo/notifications'
@@ -11,6 +12,8 @@ export type Env = SharedHonoEnv & {
 	EVE_TOKEN_STORE: DurableObjectNamespace
 	/** EVE Character Data Durable Object binding */
 	EVE_CHARACTER_DATA: DurableObjectNamespace
+	/** EVE Corporation Data Durable Object binding */
+	EVE_CORPORATION_DATA: DurableObjectNamespace
 	/** Groups Durable Object binding */
 	GROUPS: DurableObjectNamespace
 	/** Notifications Durable Object binding */

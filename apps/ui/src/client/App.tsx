@@ -21,6 +21,8 @@ import AdminLayout from './routes/admin/layout'
 import AdminCategoriesPage from './routes/admin/categories'
 import AdminGroupsPage from './routes/admin/groups'
 import AdminGroupDetailPage from './routes/admin/group-detail'
+import AdminCorporationsPage from './routes/admin/corporations'
+import AdminCorporationDetailPage from './routes/admin/corporation-detail'
 
 // Create a client
 const queryClient = new QueryClient({
@@ -61,6 +63,8 @@ export default function App() {
 						<Route path="categories" element={<AdminCategoriesPage />} />
 						<Route path="groups" element={<AdminGroupsPage />} />
 						<Route path="groups/:groupId" element={<AdminGroupDetailPage />} />
+						<Route path="corporations" element={<AdminCorporationsPage />} />
+						<Route path="corporations/:corporationId" element={<AdminCorporationDetailPage />} />
 					</Route>
 				</Routes>
 			</BrowserRouter>

@@ -28,6 +28,11 @@
 				"script_name": "eve-character-data"
 			},
 			{
+				"name": "EVE_CORPORATION_DATA",
+				"class_name": "EveCorporationData",
+				"script_name": "eve-corporation-data"
+			},
+			{
 				"name": "GROUPS",
 				"class_name": "Groups",
 				"script_name": "groups"

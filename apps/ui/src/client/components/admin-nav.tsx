@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { FolderKanban, Users, ArrowLeft } from 'lucide-react'
+import { FolderKanban, Users, Building2, ArrowLeft } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 
@@ -17,13 +17,18 @@ export function AdminNav() {
 			href: '/admin/groups',
 			icon: Users,
 		},
+		{
+			label: 'Corporations',
+			href: '/admin/corporations',
+			icon: Building2,
+		},
 	]
 
 	return (
 		<nav className="flex flex-col gap-2 p-4">
 			<div className="mb-4">
 				<h2 className="text-lg font-semibold gradient-text">Admin</h2>
-				<p className="text-sm text-muted-foreground">Groups Management</p>
+				<p className="text-sm text-muted-foreground">System Management</p>
 			</div>
 
 			{navItems.map((item) => {

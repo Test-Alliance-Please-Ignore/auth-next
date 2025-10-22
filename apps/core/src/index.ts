@@ -6,6 +6,7 @@ import { withNotFound, withOnError } from '@repo/hono-helpers'
 import { sessionMiddleware } from './middleware/session'
 import authRoutes from './routes/auth'
 import charactersRoutes from './routes/characters'
+import corporationsRoutes from './routes/corporations'
 import discordRoutes from './routes/discord'
 import groupsRoutes from './routes/groups'
 import skillsRoutes from './routes/skills'
@@ -40,6 +41,7 @@ const app = new Hono<App>()
 	.route('/api/auth', authRoutes)
 	.route('/api/users', usersRoutes)
 	.route('/api/characters', charactersRoutes)
+	.route('/api/corporations', corporationsRoutes)
 	.route('/api/skills', skillsRoutes)
 	.route('/api/discord', discordRoutes)
 	.route('/api/groups', groupsRoutes)

@@ -1,0 +1,19 @@
+ALTER TABLE "corporation_assets" ALTER COLUMN "item_id" SET DATA TYPE text;--> statement-breakpoint
+ALTER TABLE "corporation_assets" ALTER COLUMN "location_id" SET DATA TYPE text;--> statement-breakpoint
+ALTER TABLE "corporation_contracts" ALTER COLUMN "end_location_id" SET DATA TYPE text;--> statement-breakpoint
+ALTER TABLE "corporation_contracts" ALTER COLUMN "start_location_id" SET DATA TYPE text;--> statement-breakpoint
+ALTER TABLE "corporation_industry_jobs" ALTER COLUMN "facility_id" SET DATA TYPE text;--> statement-breakpoint
+ALTER TABLE "corporation_industry_jobs" ALTER COLUMN "location_id" SET DATA TYPE text;--> statement-breakpoint
+ALTER TABLE "corporation_industry_jobs" ALTER COLUMN "blueprint_id" SET DATA TYPE text;--> statement-breakpoint
+ALTER TABLE "corporation_industry_jobs" ALTER COLUMN "blueprint_location_id" SET DATA TYPE text;--> statement-breakpoint
+ALTER TABLE "corporation_industry_jobs" ALTER COLUMN "output_location_id" SET DATA TYPE text;--> statement-breakpoint
+ALTER TABLE "corporation_member_tracking" ALTER COLUMN "location_id" SET DATA TYPE text;--> statement-breakpoint
+ALTER TABLE "corporation_orders" ALTER COLUMN "order_id" SET DATA TYPE text;--> statement-breakpoint
+ALTER TABLE "corporation_orders" ALTER COLUMN "location_id" SET DATA TYPE text;--> statement-breakpoint
+ALTER TABLE "corporation_public_info" ALTER COLUMN "shares" SET DATA TYPE text;--> statement-breakpoint
+ALTER TABLE "corporation_structures" ALTER COLUMN "structure_id" SET DATA TYPE text;--> statement-breakpoint
+ALTER TABLE "corporation_wallet_journal" ALTER COLUMN "journal_id" SET DATA TYPE text;--> statement-breakpoint
+ALTER TABLE "corporation_wallet_journal" ALTER COLUMN "context_id" SET DATA TYPE text;--> statement-breakpoint
+ALTER TABLE "corporation_wallet_transactions" ALTER COLUMN "transaction_id" SET DATA TYPE text;--> statement-breakpoint
+ALTER TABLE "corporation_wallet_transactions" ALTER COLUMN "journal_ref_id" SET DATA TYPE text;--> statement-breakpoint
+ALTER TABLE "corporation_wallet_transactions" ALTER COLUMN "location_id" SET DATA TYPE text;
