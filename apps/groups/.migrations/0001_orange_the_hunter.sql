@@ -1,0 +1,2 @@
+CREATE INDEX "group_admins_user_group_idx" ON "group_admins" USING btree ("user_id","group_id");--> statement-breakpoint
+CREATE INDEX "group_members_user_group_idx" ON "group_members" USING btree ("user_id","group_id");

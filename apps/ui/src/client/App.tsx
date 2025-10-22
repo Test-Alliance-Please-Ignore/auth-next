@@ -11,6 +11,7 @@ import LandingPage from './routes/landing'
 
 // User-facing group routes
 import GroupsPage from './routes/groups'
+import CreateGroupPage from './routes/create-group'
 import GroupDetailPage from './routes/group-detail'
 import MyGroupsPage from './routes/my-groups'
 import InvitationsPage from './routes/invitations'
@@ -48,6 +49,7 @@ export default function App() {
 						<Route path="/dashboard" element={<DashboardPage />} />
 						<Route path="/character/:characterId" element={<CharacterDetailPage />} />
 						<Route path="/groups" element={<GroupsPage />} />
+						<Route path="/groups/create" element={<CreateGroupPage />} />
 						<Route path="/groups/:groupId" element={<GroupDetailPage />} />
 						<Route path="/my-groups" element={<MyGroupsPage />} />
 						<Route path="/invitations" element={<InvitationsPage />} />

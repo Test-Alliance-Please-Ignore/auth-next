@@ -7,6 +7,7 @@ export type Env = SharedHonoEnv & {
 	DATABASE_URL: string
 	GROUPS: DurableObjectNamespace
 	NOTIFICATIONS: DurableObjectNamespace
+	GROUPS_KV: KVNamespace
 }
 
 /** Variables can be extended */

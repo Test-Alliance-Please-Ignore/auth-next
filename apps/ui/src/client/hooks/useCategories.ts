@@ -20,6 +20,8 @@ export function useCategories() {
 	return useQuery({
 		queryKey: categoryKeys.list(),
 		queryFn: () => api.getCategories(),
+		staleTime: 1000 * 60 * 5, // 5 minutes - categories rarely change
+		gcTime: 1000 * 60 * 30, // Keep in cache for 30 minutes
 	})
 }
 

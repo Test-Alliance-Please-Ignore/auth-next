@@ -75,7 +75,7 @@ export default function MyGroupsPage() {
 							<MyGroupsCard
 								key={membership.groupId}
 								membership={membership}
-								onClick={() => navigate(`/admin/groups/${membership.groupId}`)}
+								onClick={() => navigate(`/groups/${membership.groupId}`)}
 							/>
 						))}
 					</CardContent>

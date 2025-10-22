@@ -12,6 +12,12 @@
 		"head_sampling_rate": 1
 	},
 	"vars": {},
+	"kv_namespaces": [
+		{
+			"binding": "GROUPS_KV",
+			"id": "9e1ea7a8ec8c4df2add5da1e524c8c00"
+		}
+	],
 	"durable_objects": {
 		"bindings": [
 			{

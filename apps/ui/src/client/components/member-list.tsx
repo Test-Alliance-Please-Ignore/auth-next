@@ -1,16 +1,13 @@
-import { format } from 'date-fns'
 import { UserMinus, Shield, ShieldOff, UserCog } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import {
 	Table,
 	TableBody,
-	TableCell,
 	TableHead,
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
-import { cn } from '@/lib/utils'
+import { MemberRow } from '@/components/member-row'
 
 import type { GroupMember, GroupWithDetails } from '@/lib/api'
 
@@ -58,7 +55,7 @@ export function MemberList({
 			<Table>
 				<TableHeader>
 					<TableRow>
-						<TableHead className="w-12"></TableHead>
+						<TableHead className="w-20 px-2"></TableHead>
 						<TableHead>User</TableHead>
 						<TableHead>Role</TableHead>
 						<TableHead>Joined</TableHead>
@@ -70,88 +67,61 @@ export function MemberList({
 						const isOwner = member.userId === group.ownerId
 						const isAdmin = adminUserIds.has(member.userId)
 						const cannotRemove = isOwner
-						const isCurrentUser = currentUserId === member.userId
 
 						return (
-							<TableRow key={member.id} className={cn(isCurrentUser && 'bg-primary/5')}>
-								<TableCell>
-									{member.mainCharacterId ? (
-										<img
-											src={`https://images.evetech.net/characters/${member.mainCharacterId}/portrait?size=64`}
-											alt={member.mainCharacterName || 'Character portrait'}
-											className="h-12 w-12 rounded"
-											loading="lazy"
-										/>
-									) : (
-										<div className="h-12 w-12 rounded bg-muted flex items-center justify-center text-muted-foreground text-xs">
-											?
-										</div>
-									)}
-								</TableCell>
-								<TableCell className="font-medium">
-									{member.mainCharacterName || 'Unknown User'}
-								</TableCell>
-								<TableCell>
-									<div className="flex gap-2">
-										{isOwner && <Badge>Owner</Badge>}
-										{isAdmin && !isOwner && <Badge variant="secondary">Admin</Badge>}
-										{!isOwner && !isAdmin && (
-											<Badge variant="outline">Member</Badge>
-										)}
-									</div>
-								</TableCell>
-								<TableCell className="text-sm text-muted-foreground">
-									{format(new Date(member.joinedAt), 'MMM d, yyyy')}
-								</TableCell>
-								<TableCell className="text-right">
-									<div className="flex justify-end gap-2">
-										{!isOwner && (
-											<>
-												{onTransferOwnership && (
-													<Button
-														variant="ghost"
-														size="sm"
-														onClick={() => onTransferOwnership(member.userId)}
-														title="Transfer ownership to this member"
-													>
-														<UserCog className="mr-2 h-4 w-4" />
-														Make Owner
-													</Button>
+							<MemberRow
+								key={member.id}
+								member={member}
+								group={group}
+								adminUserIds={adminUserIds}
+								currentUserId={currentUserId}
+								actions={
+									!isOwner && (
+										<div className="flex justify-end gap-2">
+											{onTransferOwnership && (
+												<Button
+													variant="ghost"
+													size="sm"
+													onClick={() => onTransferOwnership(member.userId)}
+													title="Transfer ownership to this member"
+												>
+													<UserCog className="mr-2 h-4 w-4" />
+													Make Owner
+												</Button>
+											)}
+											<Button
+												variant="ghost"
+												size="sm"
+												onClick={() => onToggleAdmin(member.userId, isAdmin)}
+												title={isAdmin ? 'Remove admin role' : 'Make admin'}
+											>
+												{isAdmin ? (
+													<>
+														<ShieldOff className="mr-2 h-4 w-4" />
+														Remove Admin
+													</>
+												) : (
+													<>
+														<Shield className="mr-2 h-4 w-4" />
+														Make Admin
+													</>
 												)}
-												<Button
-													variant="ghost"
-													size="sm"
-													onClick={() => onToggleAdmin(member.userId, isAdmin)}
-													title={isAdmin ? 'Remove admin role' : 'Make admin'}
-												>
-													{isAdmin ? (
-														<>
-															<ShieldOff className="mr-2 h-4 w-4" />
-															Remove Admin
-														</>
-													) : (
-														<>
-															<Shield className="mr-2 h-4 w-4" />
-															Make Admin
-														</>
-													)}
-												</Button>
-												<Button
-													variant="ghost"
-													size="sm"
-													onClick={() => onRemoveMember(member.userId)}
-													disabled={cannotRemove}
-													title={cannotRemove ? 'Cannot remove owner' : 'Remove member'}
-													className="text-destructive hover:text-destructive disabled:text-muted-foreground"
-												>
-													<UserMinus className="mr-2 h-4 w-4" />
-													Remove
-												</Button>
-											</>
-										)}
-									</div>
-								</TableCell>
-							</TableRow>
+											</Button>
+											<Button
+												variant="ghost"
+												size="sm"
+												onClick={() => onRemoveMember(member.userId)}
+												disabled={cannotRemove}
+												title={cannotRemove ? 'Cannot remove owner' : 'Remove member'}
+												className="text-destructive hover:text-destructive disabled:text-muted-foreground"
+											>
+												<UserMinus className="mr-2 h-4 w-4" />
+												Remove
+											</Button>
+										</div>
+									)
+								}
+							/>
 						)
 					})}
 				</TableBody>

@@ -1,3 +1,4 @@
+import { memo, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { Eye, Users, UserPlus } from 'lucide-react'
 
@@ -24,9 +25,90 @@ interface GroupListProps {
 	isLoading?: boolean
 }
 
-export function GroupList({ groups, isLoading }: GroupListProps) {
+// Memoized row component to prevent unnecessary re-renders
+const GroupRow = memo(
+	({
+		group,
+		onJoin,
+		isJoining,
+	}: {
+		group: GroupWithDetails
+		onJoin: (groupId: string, groupName: string) => void
+		isJoining: boolean
+	}) => {
+		const handleJoinClick = useCallback(
+			(e: React.MouseEvent) => {
+				e.stopPropagation()
+				onJoin(group.id, group.name)
+			},
+			[group.id, group.name, onJoin]
+		)
+
+		return (
+			<TableRow key={group.id} className={cn(group.visibility === 'system' && 'bg-destructive/5')}>
+				<TableCell className="font-medium">
+					<div className="flex items-center gap-2">
+						{group.name}
+						{group.visibility === 'system' && (
+							<span className="text-xs text-destructive" title="System visibility group">
+								⚠️
+							</span>
+						)}
+					</div>
+				</TableCell>
+				<TableCell>
+					<span className="text-sm text-muted-foreground">{group.category.name}</span>
+				</TableCell>
+				<TableCell>
+					<VisibilityBadge visibility={group.visibility} />
+				</TableCell>
+				<TableCell>
+					<JoinModeBadge joinMode={group.joinMode} />
+				</TableCell>
+				<TableCell>
+					<span className="text-sm">{group.memberCount || 0}</span>
+				</TableCell>
+				<TableCell className="text-right">
+					<div className="flex items-center justify-end gap-2">
+						{group.joinMode === 'open' && !group.isMember && (
+							<Button variant="default" size="sm" disabled={isJoining} onClick={handleJoinClick}>
+								<UserPlus className="mr-2 h-4 w-4" />
+								{isJoining ? 'Joining...' : 'Quick Join'}
+							</Button>
+						)}
+						<Button variant="ghost" size="sm" asChild>
+							<Link to={`/groups/${group.id}`}>
+								<Eye className="mr-2 h-4 w-4" />
+								View Details
+							</Link>
+						</Button>
+					</div>
+				</TableCell>
+			</TableRow>
+		)
+	}
+)
+
+GroupRow.displayName = 'GroupRow'
+
+export const GroupList = memo(function GroupList({ groups, isLoading }: GroupListProps) {
 	const isMobile = useMediaQuery('(max-width: 768px)')
 	const joinGroup = useJoinGroup()
+
+	// Memoize the join handler to prevent recreating on every render
+	const handleJoinGroup = useCallback(
+		(groupId: string, groupName: string) => {
+			joinGroup.mutate(groupId, {
+				onSuccess: () => {
+					alert(`Successfully joined ${groupName}!`)
+				},
+				onError: (error: Error) => {
+					alert(`Failed to join: ${error.message}`)
+				},
+			})
+		},
+		[joinGroup]
+	)
 
 	if (isLoading) {
 		return (
@@ -145,67 +227,15 @@ export function GroupList({ groups, isLoading }: GroupListProps) {
 				</TableHeader>
 				<TableBody>
 					{groups.map((group) => (
-						<TableRow
+						<GroupRow
 							key={group.id}
-							className={cn(group.visibility === 'system' && 'bg-destructive/5')}
-						>
-							<TableCell className="font-medium">
-								<div className="flex items-center gap-2">
-									{group.name}
-									{group.visibility === 'system' && (
-										<span className="text-xs text-destructive" title="System visibility group">
-											⚠️
-										</span>
-									)}
-								</div>
-							</TableCell>
-							<TableCell>
-								<span className="text-sm text-muted-foreground">{group.category.name}</span>
-							</TableCell>
-							<TableCell>
-								<VisibilityBadge visibility={group.visibility} />
-							</TableCell>
-							<TableCell>
-								<JoinModeBadge joinMode={group.joinMode} />
-							</TableCell>
-							<TableCell>
-								<span className="text-sm">{group.memberCount || 0}</span>
-							</TableCell>
-							<TableCell className="text-right">
-								<div className="flex items-center justify-end gap-2">
-									{group.joinMode === 'open' && !group.isMember && (
-										<Button
-											variant="default"
-											size="sm"
-											disabled={joinGroup.isPending}
-											onClick={(e) => {
-												e.stopPropagation()
-												joinGroup.mutate(group.id, {
-													onSuccess: () => {
-														alert(`Successfully joined ${group.name}!`)
-													},
-													onError: (error: Error) => {
-														alert(`Failed to join: ${error.message}`)
-													},
-												})
-											}}
-										>
-											<UserPlus className="mr-2 h-4 w-4" />
-											{joinGroup.isPending ? 'Joining...' : 'Quick Join'}
-										</Button>
-									)}
-									<Button variant="ghost" size="sm" asChild>
-										<Link to={`/groups/${group.id}`}>
-											<Eye className="mr-2 h-4 w-4" />
-											View Details
-										</Link>
-									</Button>
-								</div>
-							</TableCell>
-						</TableRow>
+							group={group}
+							onJoin={handleJoinGroup}
+							isJoining={joinGroup.isPending}
+						/>
 					))}
 				</TableBody>
 			</Table>
 		</div>
 	)
-}
+})

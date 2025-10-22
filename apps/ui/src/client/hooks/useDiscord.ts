@@ -66,7 +66,7 @@ export function useDiscordLink() {
 
 			// Get state from backend (still need this for CSRF protection)
 			const response = await apiClient.startDiscordLinking()
-			const state = response.state
+			const state = (response as { url: string; state: string }).state
 
 			// Store code verifier in sessionStorage (will be read by callback page)
 			sessionStorage.setItem(`discord_code_verifier_${state}`, codeVerifier)

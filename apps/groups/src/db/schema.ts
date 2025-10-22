@@ -120,6 +120,8 @@ export const groupMembers = pgTable(
 	(table) => [
 		index('group_members_group_id_idx').on(table.groupId),
 		index('group_members_user_id_idx').on(table.userId),
+		// Composite index for batched membership queries (used in listGroups)
+		index('group_members_user_group_idx').on(table.userId, table.groupId),
 		// One membership per user per group
 		unique('unique_group_member').on(table.groupId, table.userId),
 	]
@@ -144,6 +146,8 @@ export const groupAdmins = pgTable(
 	(table) => [
 		index('group_admins_group_id_idx').on(table.groupId),
 		index('group_admins_user_id_idx').on(table.userId),
+		// Composite index for batched admin queries (used in listGroups)
+		index('group_admins_user_group_idx').on(table.userId, table.groupId),
 		// One admin designation per user per group
 		unique('unique_group_admin').on(table.groupId, table.userId),
 	]

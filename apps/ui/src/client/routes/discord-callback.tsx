@@ -77,7 +77,12 @@ export default function DiscordCallbackPage() {
 					throw new Error(`Token exchange failed (${tokenResponse.status}): ${errorText}`)
 				}
 
-				const tokens = await tokenResponse.json()
+				const tokens = (await tokenResponse.json()) as {
+					access_token: string
+					refresh_token: string
+					expires_in: number
+					scope: string
+				}
 
 				// Send tokens to backend for validation and storage
 				await apiClient.post('/discord/callback/tokens', {

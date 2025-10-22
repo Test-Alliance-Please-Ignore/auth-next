@@ -1,5 +1,5 @@
 import { DurableObject } from 'cloudflare:workers'
-import { and, eq, inArray, isNull, like, or } from '@repo/db-utils'
+import { and, eq, inArray, isNull, like, or, sql } from '@repo/db-utils'
 import type {
 	Category,
 	CategoryWithGroups,
@@ -90,16 +90,34 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			})
 			.returning()
 
+		// Invalidate categories cache
+		await this.invalidateCategoriesCache()
+
 		return this.mapCategory(category)
 	}
 
 	async listCategories(userId: string, isAdmin: boolean): Promise<Category[]> {
-		// Get all categories
-		const allCategories = await this.db.query.categories.findMany({
-			orderBy: (categories, { asc }) => [asc(categories.name)],
-		})
+		// Try to get from KV cache first
+		const cacheKey = 'categories:all:v1'
+		const cached = await this.env.GROUPS_KV?.get(cacheKey, { type: 'json' })
 
-		// Filter based on permissions
+		let allCategories: (typeof categories.$inferSelect)[]
+
+		if (cached) {
+			allCategories = cached as (typeof categories.$inferSelect)[]
+		} else {
+			// Cache miss - fetch from database
+			allCategories = await this.db.query.categories.findMany({
+				orderBy: (categories, { asc }) => [asc(categories.name)],
+			})
+
+			// Store in KV with 1 hour TTL
+			await this.env.GROUPS_KV?.put(cacheKey, JSON.stringify(allCategories), {
+				expirationTtl: 3600,
+			})
+		}
+
+		// Filter based on permissions (user-specific, so always done after caching)
 		const visible = allCategories.filter((cat) => canViewCategory(cat, userId, isAdmin))
 
 		return visible.map(this.mapCategory)
@@ -169,6 +187,9 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Category not found')
 		}
 
+		// Invalidate categories cache
+		await this.invalidateCategoriesCache()
+
 		return this.mapCategory(updated)
 	}
 
@@ -176,6 +197,9 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		// Admin-only operation
 		// CASCADE will delete all groups in this category and their relations
 		await this.db.delete(categories).where(eq(categories.id, id))
+
+		// Invalidate categories cache
+		await this.invalidateCategoriesCache()
 	}
 
 	/**
@@ -266,16 +290,48 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			groupsToCheck = allGroups.filter((g) => memberGroupIds.has(g.id))
 		}
 
-		// Filter based on permissions and add details
+		// Early return if no groups to check
+		if (groupsToCheck.length === 0) {
+			return []
+		}
+
+		// === BATCH ALL QUERIES TO ELIMINATE N+1 PROBLEM ===
+		const groupIds = groupsToCheck.map((g) => g.id)
+
+		// Batch query 1: Get all memberships for this user across all groups
+		const userMemberships = await this.db.query.groupMembers.findMany({
+			where: and(inArray(groupMembers.groupId, groupIds), eq(groupMembers.userId, userId)),
+		})
+		const memberGroupIds = new Set(userMemberships.map((m) => m.groupId))
+
+		// Batch query 2: Get all admin designations for this user
+		const userAdminRoles = await this.db.query.groupAdmins.findMany({
+			where: and(inArray(groupAdmins.groupId, groupIds), eq(groupAdmins.userId, userId)),
+		})
+		const adminGroupIds = new Set(userAdminRoles.map((a) => a.groupId))
+
+		// Batch query 3: Get member counts for all groups in one query
+		const memberCounts = await this.db
+			.select({
+				groupId: groupMembers.groupId,
+				count: sql<number>`count(*)::int`,
+			})
+			.from(groupMembers)
+			.where(inArray(groupMembers.groupId, groupIds))
+			.groupBy(groupMembers.groupId)
+
+		const memberCountMap = new Map(memberCounts.map((m) => [m.groupId, m.count]))
+
+		// === NOW BUILD RESULTS WITHOUT ADDITIONAL QUERIES ===
 		const result: GroupWithDetails[] = []
 
 		for (const group of groupsToCheck) {
-			const isMember = await this.isUserMember(group.id, userId)
+			const isMember = memberGroupIds.has(group.id)
 
 			if (canViewGroup(group, userId, isAdmin, isMember)) {
 				const isOwner = group.ownerId === userId
-				const isAdminOfGroup = await this.isUserGroupAdmin(group.id, userId)
-				const memberCount = await this.getGroupMemberCount(group.id)
+				const isAdminOfGroup = adminGroupIds.has(group.id)
+				const memberCount = memberCountMap.get(group.id) || 0
 
 				result.push({
 					...this.mapGroup(group),
@@ -1237,6 +1293,14 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	 * HELPER METHODS
 	 * ============================================
 	 */
+
+	/**
+	 * Invalidate the categories cache in Workers KV
+	 */
+	private async invalidateCategoriesCache(): Promise<void> {
+		const cacheKey = 'categories:all:v1'
+		await this.env.GROUPS_KV?.delete(cacheKey)
+	}
 
 	private async isUserMember(groupId: string, userId: string): Promise<boolean> {
 		const membership = await this.db.query.groupMembers.findFirst({

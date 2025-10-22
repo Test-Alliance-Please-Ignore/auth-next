@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, X } from 'lucide-react'
+import { Search, X, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
@@ -65,6 +65,12 @@ export default function GroupsPage() {
 			<PageHeader
 				title="Discover Groups"
 				description="Find and join groups that match your interests"
+				action={
+					<Button onClick={() => navigate('/groups/create')}>
+						<Plus className="mr-2 h-4 w-4" />
+						Create Group
+					</Button>
+				}
 			/>
 
 			<Section>

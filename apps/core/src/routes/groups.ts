@@ -27,6 +27,10 @@ groups.get('/categories', requireAuth(), async (c) => {
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	const categories = await groupsDO.listCategories(user.id, user.is_admin)
+
+	// Cache categories for 5 minutes at edge (with 10 minute stale-while-revalidate)
+	c.header('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600')
+
 	return c.json(categories)
 })
 
@@ -143,6 +147,15 @@ groups.get('/', requireAuth(), async (c) => {
 	}
 
 	const groupsList = await groupsDO.listGroups(filters, user.id, user.is_admin)
+
+	// Cache unfiltered/non-search groups list for 60 seconds at edge
+	if (!filters.search && !filters.myGroups) {
+		c.header('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120')
+	} else {
+		// User-specific or search results - no cache
+		c.header('Cache-Control', 'private, no-cache')
+	}
+
 	return c.json(groupsList)
 })
 

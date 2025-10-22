@@ -33,9 +33,15 @@ export const groupKeys = {
  * Fetch groups with optional filters
  */
 export function useGroups(filters?: GroupsFilters) {
+	// Determine cache time based on filters
+	const isUserSpecific = filters?.myGroups || filters?.search
+
 	return useQuery({
 		queryKey: groupKeys.list(filters),
 		queryFn: () => api.getGroups(filters),
+		// Unfiltered lists can be cached longer since they're edge-cached
+		staleTime: isUserSpecific ? 1000 * 30 : 1000 * 60, // 30s for user-specific, 60s for general
+		gcTime: 1000 * 60 * 5, // Keep in cache for 5 minutes
 	})
 }
 
