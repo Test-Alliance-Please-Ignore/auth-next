@@ -29,6 +29,13 @@
       "when": 1761111737470,
       "tag": "0003_natural_rage",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1761160474761,
+      "tag": "0004_clean_tinkerer",
+      "breakpoints": true
     }
   ]
 }

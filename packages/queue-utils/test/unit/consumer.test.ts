@@ -5,7 +5,7 @@ import type { MessageBatch, Message, MessageMetadata } from '../../src/types'
 import { RetryableError, FatalError } from '../../src/errors'
 
 const testSchema = z.object({
-	id: z.number(),
+	id: z.string(),
 	type: z.enum(['update', 'delete']),
 })
 
@@ -271,7 +271,7 @@ describe('QueueConsumer', () => {
 	})
 
 	it('should process multiple messages concurrently', async () => {
-		const processedIds: number[] = []
+		const processedIds: string[] = []
 
 		class TestConsumer extends QueueConsumer<typeof testSchema> {
 			constructor() {

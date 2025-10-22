@@ -5,7 +5,7 @@ import { z } from 'zod'
  */
 const baseMessageSchema = z.object({
 	/** Corporation ID to refresh */
-	corporationId: z.number().int().positive(),
+	corporationId: z.string(),
 	/** Unix timestamp (milliseconds) when the refresh was requested */
 	timestamp: z.number().int().positive(),
 	/** Optional ID of the system/user that requested the refresh */

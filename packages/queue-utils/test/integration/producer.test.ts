@@ -4,7 +4,7 @@ import { QueueProducer, createQueueProducer, type Queue } from '../../src/produc
 import { MessageValidationError } from '../../src/errors'
 
 const notificationSchema = z.object({
-	userId: z.number(),
+	userId: z.string(),
 	type: z.enum(['email', 'push', 'sms']),
 	message: z.string(),
 	metadata: z
@@ -41,7 +41,7 @@ describe('QueueProducer Integration', () => {
 		const producer = new QueueProducer(mockQueue, { schema: notificationSchema })
 
 		await producer.send({
-			userId: 12345,
+			userId: '12345',
 			type: 'email',
 			message: 'Hello, World!',
 		})
@@ -57,7 +57,7 @@ describe('QueueProducer Integration', () => {
 
 		await producer.send(
 			{
-				userId: 12345,
+				userId: '12345',
 				type: 'email',
 				message: 'Delayed message',
 			},
@@ -88,9 +88,9 @@ describe('QueueProducer Integration', () => {
 		const producer = new QueueProducer(mockQueue, { schema: notificationSchema })
 
 		await producer.sendBatch([
-			{ userId: 1, type: 'email', message: 'Message 1' },
-			{ userId: 2, type: 'push', message: 'Message 2' },
-			{ userId: 3, type: 'sms', message: 'Message 3' },
+			{ userId: '1', type: 'email', message: 'Message 1' },
+			{ userId: '2', type: 'push', message: 'Message 2' },
+			{ userId: '3', type: 'sms', message: 'Message 3' },
 		])
 
 		expect(mockQueue.sentBatches).toHaveLength(1)
@@ -106,8 +106,8 @@ describe('QueueProducer Integration', () => {
 
 		await producer.sendBatch(
 			[
-				{ userId: 1, type: 'email', message: 'Message 1' },
-				{ userId: 2, type: 'push', message: 'Message 2' },
+				{ userId: '1', type: 'email', message: 'Message 1' },
+				{ userId: '2', type: 'push', message: 'Message 2' },
 			],
 			{ delaySeconds: 60 }
 		)
@@ -123,9 +123,9 @@ describe('QueueProducer Integration', () => {
 
 		await expect(
 			producer.sendBatch([
-				{ userId: 1, type: 'email', message: 'Valid' },
+				{ userId: '1', type: 'email', message: 'Valid' },
 				{ userId: 'invalid' as any, type: 'email', message: 'Invalid' },
-				{ userId: 3, type: 'email', message: 'Valid' },
+				{ userId: '3', type: 'email', message: 'Valid' },
 			])
 		).rejects.toThrow(MessageValidationError)
 
@@ -137,9 +137,9 @@ describe('QueueProducer Integration', () => {
 		const producer = new QueueProducer(mockQueue, { schema: notificationSchema })
 
 		await producer.sendBatchWithOptions([
-			{ body: { userId: 1, type: 'email', message: 'Urgent' }, delaySeconds: 0 },
-			{ body: { userId: 2, type: 'push', message: 'Normal' }, delaySeconds: 60 },
-			{ body: { userId: 3, type: 'sms', message: 'Low Priority' }, delaySeconds: 300 },
+			{ body: { userId: '1', type: 'email', message: 'Urgent' }, delaySeconds: 0 },
+			{ body: { userId: '2', type: 'push', message: 'Normal' }, delaySeconds: 60 },
+			{ body: { userId: '3', type: 'sms', message: 'Low Priority' }, delaySeconds: 300 },
 		])
 
 		expect(mockQueue.sentBatches).toHaveLength(1)
@@ -153,7 +153,7 @@ describe('QueueProducer Integration', () => {
 		const producer = new QueueProducer(mockQueue, { schema: notificationSchema })
 
 		await producer.send({
-			userId: 12345,
+			userId: '12345',
 			type: 'email',
 			message: 'Important notification',
 			metadata: {
@@ -172,7 +172,7 @@ describe('QueueProducer Integration', () => {
 		const producer = new QueueProducer(mockQueue, { schema: notificationSchema })
 
 		await producer.send({
-			userId: 12345,
+			userId: '12345',
 			type: 'email',
 			message: 'Test',
 			metadata: {
@@ -189,7 +189,7 @@ describe('QueueProducer Integration', () => {
 		const producer = new QueueProducer(mockQueue, { schema: notificationSchema })
 
 		const largeBatch = Array.from({ length: 100 }, (_, i) => ({
-			userId: i + 1,
+			userId: (i + 1).toString(),
 			type: 'email' as const,
 			message: `Message ${i + 1}`,
 		}))
@@ -207,7 +207,7 @@ describe('createQueueProducer Integration', () => {
 		const producer = createQueueProducer(mockQueue, notificationSchema)
 
 		await producer.send({
-			userId: 12345,
+			userId: '12345',
 			type: 'email',
 			message: 'Test message',
 		})
@@ -220,7 +220,7 @@ describe('createQueueProducer Integration', () => {
 		const producer = createQueueProducer(mockQueue, notificationSchema, true)
 
 		await producer.send({
-			userId: 12345,
+			userId: '12345',
 			type: 'email',
 			message: 'Debug test',
 		})
@@ -236,7 +236,7 @@ describe('createQueueProducer Integration', () => {
 		// Send individual high-priority message
 		await producer.send(
 			{
-				userId: 1,
+				userId: '1',
 				type: 'push',
 				message: 'Critical alert!',
 				metadata: { priority: 10, category: 'security' },
@@ -247,7 +247,7 @@ describe('createQueueProducer Integration', () => {
 		// Send batch of normal messages
 		await producer.sendBatch(
 			Array.from({ length: 5 }, (_, i) => ({
-				userId: i + 2,
+				userId: (i + 2).toString(),
 				type: 'email' as const,
 				message: `Daily digest ${i + 1}`,
 			})),
@@ -257,11 +257,11 @@ describe('createQueueProducer Integration', () => {
 		// Send batch with varied delays
 		await producer.sendBatchWithOptions([
 			{
-				body: { userId: 10, type: 'sms', message: 'Immediate SMS' },
+				body: { userId: '10', type: 'sms', message: 'Immediate SMS' },
 				delaySeconds: 0,
 			},
 			{
-				body: { userId: 11, type: 'email', message: 'Delayed email' },
+				body: { userId: '11', type: 'email', message: 'Delayed email' },
 				delaySeconds: 1800,
 			},
 		])
@@ -278,7 +278,7 @@ describe('createQueueProducer Integration', () => {
 
 		// Valid message should succeed
 		await producer.send({
-			userId: 12345,
+			userId: '12345',
 			type: 'email',
 			message: 'Test message',
 		})

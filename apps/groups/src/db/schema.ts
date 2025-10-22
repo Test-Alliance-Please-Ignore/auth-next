@@ -169,7 +169,7 @@ export const groupInvitations = pgTable(
 		/** User ID of the inviter (references core.users.id) */
 		inviterId: varchar('inviter_id', { length: 255 }).notNull(),
 		/** Main character ID being invited */
-		inviteeMainCharacterId: bigint('invitee_main_character_id', { mode: 'number' }).notNull(),
+		inviteeMainCharacterId: text('invitee_main_character_id').notNull(),
 		/** Resolved user ID of the invitee (references core.users.id) */
 		inviteeUserId: varchar('invitee_user_id', { length: 255 }),
 		/** Invitation status */

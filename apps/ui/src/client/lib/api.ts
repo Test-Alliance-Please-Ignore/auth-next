@@ -60,7 +60,7 @@ export interface GroupMember {
 	userId: string
 	joinedAt: string
 	mainCharacterName?: string
-	mainCharacterId?: number
+	mainCharacterId?: string
 }
 
 export interface CreateCategoryRequest {
@@ -129,7 +129,7 @@ export interface GroupInvitationWithDetails {
 	id: string
 	groupId: string
 	inviterId: string
-	inviteeMainCharacterId: number
+	inviteeMainCharacterId: string
 	inviteeUserId: string | null
 	status: 'pending' | 'accepted' | 'declined' | 'expired'
 	expiresAt: string
@@ -147,7 +147,7 @@ export interface GroupInvitationWithDetails {
 
 export interface CharacterSearchResult {
 	userId: string
-	characterId: number
+	characterId: string
 	characterName: string
 }
 
@@ -156,10 +156,10 @@ export interface CharacterSearchResult {
  */
 
 export interface ManagedCorporation {
-	corporationId: number
+	corporationId: string
 	name: string
 	ticker: string
-	assignedCharacterId: number | null
+	assignedCharacterId: string | null
 	assignedCharacterName: string | null
 	isActive: boolean
 	lastSync: string | null
@@ -173,8 +173,8 @@ export interface ManagedCorporation {
 
 export interface CorporationWithConfig extends ManagedCorporation {
 	doConfig: {
-		corporationId: number
-		characterId: number
+		corporationId: string
+		characterId: string
 		characterName: string
 		lastVerified: Date | null
 		isVerified: boolean
@@ -184,22 +184,22 @@ export interface CorporationWithConfig extends ManagedCorporation {
 }
 
 export interface CreateCorporationRequest {
-	corporationId: number
+	corporationId: string
 	name: string
 	ticker: string
-	assignedCharacterId?: number
+	assignedCharacterId?: string
 	assignedCharacterName?: string
 }
 
 export interface UpdateCorporationRequest {
-	assignedCharacterId?: number
+	assignedCharacterId?: string
 	assignedCharacterName?: string
 	isActive?: boolean
 }
 
 export interface CorporationAccessVerification {
 	hasAccess: boolean
-	characterId: number | null
+	characterId: string | null
 	characterName: string | null
 	verifiedRoles: string[]
 	missingRoles?: string[]
@@ -240,7 +240,7 @@ export interface FetchCorporationDataRequest {
 
 export interface DirectorHealth {
 	directorId: string
-	characterId: number
+	characterId: string
 	characterName: string
 	isHealthy: boolean
 	lastHealthCheck: string | null
@@ -251,7 +251,7 @@ export interface DirectorHealth {
 }
 
 export interface AddDirectorRequest {
-	characterId: number
+	characterId: string
 	characterName: string
 	priority?: number
 }
@@ -345,8 +345,8 @@ export class ApiClient {
 		})
 	}
 
-	async getCharacterDetail(characterId: number): Promise<{
-		characterId: number
+	async getCharacterDetail(characterId: string): Promise<{
+		characterId: string
 		isOwner: boolean
 		public: {
 			info: any
@@ -367,7 +367,7 @@ export class ApiClient {
 		return this.get(`/characters/${characterId}`)
 	}
 
-	async refreshCharacterById(characterId: number): Promise<{
+	async refreshCharacterById(characterId: string): Promise<{
 		success: boolean
 		message: string
 		lastUpdated: string | null
@@ -526,7 +526,7 @@ export class ApiClient {
 		return this.get('/corporations')
 	}
 
-	async getCorporation(corporationId: number): Promise<CorporationWithConfig> {
+	async getCorporation(corporationId: string): Promise<CorporationWithConfig> {
 		return this.get(`/corporations/${corporationId}`)
 	}
 
@@ -539,60 +539,60 @@ export class ApiClient {
 	}
 
 	async updateCorporation(
-		corporationId: number,
+		corporationId: string,
 		data: UpdateCorporationRequest
 	): Promise<ManagedCorporation> {
 		return this.put(`/corporations/${corporationId}`, data)
 	}
 
-	async deleteCorporation(corporationId: number): Promise<{ success: boolean }> {
+	async deleteCorporation(corporationId: string): Promise<{ success: boolean }> {
 		return this.delete(`/corporations/${corporationId}`)
 	}
 
 	async verifyCorporationAccess(
-		corporationId: number
+		corporationId: string
 	): Promise<CorporationAccessVerification> {
 		return this.post(`/corporations/${corporationId}/verify`)
 	}
 
 	async fetchCorporationData(
-		corporationId: number,
+		corporationId: string,
 		data?: FetchCorporationDataRequest
 	): Promise<{ success: boolean; category: string }> {
 		return this.post(`/corporations/${corporationId}/fetch`, data)
 	}
 
-	async getCorporationDataSummary(corporationId: number): Promise<CorporationDataSummary> {
+	async getCorporationDataSummary(corporationId: string): Promise<CorporationDataSummary> {
 		return this.get(`/corporations/${corporationId}/data`)
 	}
 
 	// ===== Directors API Methods =====
 
-	async getDirectors(corporationId: number): Promise<DirectorHealth[]> {
+	async getDirectors(corporationId: string): Promise<DirectorHealth[]> {
 		return this.get(`/corporations/${corporationId}/directors`)
 	}
 
-	async addDirector(corporationId: number, data: AddDirectorRequest): Promise<{ success: boolean; characterId: number; characterName: string; priority: number }> {
+	async addDirector(corporationId: string, data: AddDirectorRequest): Promise<{ success: boolean; characterId: string; characterName: string; priority: number }> {
 		return this.post(`/corporations/${corporationId}/directors`, data)
 	}
 
-	async removeDirector(corporationId: number, characterId: number): Promise<{ success: boolean }> {
+	async removeDirector(corporationId: string, characterId: string): Promise<{ success: boolean }> {
 		return this.delete(`/corporations/${corporationId}/directors/${characterId}`)
 	}
 
 	async updateDirectorPriority(
-		corporationId: number,
-		characterId: number,
+		corporationId: string,
+		characterId: string,
 		data: UpdateDirectorPriorityRequest
-	): Promise<{ success: boolean; characterId: number; priority: number }> {
+	): Promise<{ success: boolean; characterId: string; priority: number }> {
 		return this.put(`/corporations/${corporationId}/directors/${characterId}`, data)
 	}
 
-	async verifyDirector(corporationId: number, directorId: string): Promise<VerifyDirectorResponse> {
+	async verifyDirector(corporationId: string, directorId: string): Promise<VerifyDirectorResponse> {
 		return this.post(`/corporations/${corporationId}/directors/${directorId}/verify`)
 	}
 
-	async verifyAllDirectors(corporationId: number): Promise<VerifyAllDirectorsResponse> {
+	async verifyAllDirectors(corporationId: string): Promise<VerifyAllDirectorsResponse> {
 		return this.post(`/corporations/${corporationId}/directors/verify-all`)
 	}
 }

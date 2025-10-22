@@ -59,13 +59,9 @@ app.get('/search', requireAuth(), async (c) => {
  * - Sensitive data only for character owner
  */
 app.get('/:characterId', requireAuth(), async (c) => {
-	const characterId = Number.parseInt(c.req.param('characterId'))
+	const characterId = c.req.param('characterId')
 	const user = c.get('user')!
 	const db = c.get('db')
-
-	if (isNaN(characterId)) {
-		return c.json({ error: 'Invalid character ID' }, 400)
-	}
 
 	// Check if user owns this character
 	const isOwner = user.characters.some((char) => char.characterId === characterId)
@@ -101,17 +97,17 @@ app.get('/:characterId', requireAuth(), async (c) => {
 		const resolver = new EntityResolverService(eveTokenStore)
 
 		// Collect all entity IDs that need resolution
-		const idsToResolve: number[] = [info.corporationId]
+		const idsToResolve: string[] = [info.corporationId]
 		if (info.allianceId) {
 			idsToResolve.push(info.allianceId)
 		}
 
 		// Add corporation history IDs
 		if (corporationHistory && corporationHistory.length > 0) {
-			const historyCorpIds: number[] = [
-				...new Set<number>(
+			const historyCorpIds: string[] = [
+				...new Set<string>(
 					corporationHistory.map(
-						(entry: { corporationId: number; recordId: number; startDate: string; isDeleted?: boolean }) =>
+						(entry: { corporationId: string; recordId: string; startDate: string; isDeleted?: boolean }) =>
 							entry.corporationId
 					)
 				),
@@ -135,7 +131,7 @@ app.get('/:characterId', requireAuth(), async (c) => {
 		// Enrich corporation history with resolved names
 		const enrichedCorporationHistory = corporationHistory
 			? corporationHistory.map(
-					(entry: { corporationId: number; recordId: number; startDate: string; isDeleted?: boolean }) => ({
+					(entry: { corporationId: string; recordId: string; startDate: string; isDeleted?: boolean }) => ({
 						...entry,
 						corporationName: entityNames.get(entry.corporationId) || `Corporation #${entry.corporationId}`,
 					})
@@ -165,7 +161,7 @@ app.get('/:characterId', requireAuth(), async (c) => {
 			if (sensitiveData) {
 				// Resolve location names if available
 				if (sensitiveData.location) {
-					const locationIds: number[] = []
+					const locationIds: string[] = []
 
 					if (sensitiveData.location.solarSystemId) {
 						locationIds.push(sensitiveData.location.solarSystemId)
@@ -225,12 +221,8 @@ app.get('/:characterId', requireAuth(), async (c) => {
  * Only available to character owner
  */
 app.post('/:characterId/refresh', requireAuth(), async (c) => {
-	const characterId = Number.parseInt(c.req.param('characterId'))
+	const characterId = c.req.param('characterId')
 	const user = c.get('user')!
-
-	if (isNaN(characterId)) {
-		return c.json({ error: 'Invalid character ID' }, 400)
-	}
 
 	// Check if user owns this character
 	const character = user.characters.find((char) => char.characterId === characterId)

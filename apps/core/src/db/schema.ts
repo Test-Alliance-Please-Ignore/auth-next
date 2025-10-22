@@ -24,7 +24,7 @@ export const users = pgTable(
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
 		/** EVE character ID of the main character */
-		mainCharacterId: bigint('main_character_id', { mode: 'number' }).notNull().unique(),
+		mainCharacterId: text('main_character_id').notNull().unique(),
 		/** Discord user ID (links to Discord worker's discordUsers table) */
 		discordUserId: varchar('discord_user_id', { length: 255 }).unique(),
 		/** Whether this user is an admin */
@@ -54,7 +54,7 @@ export const userCharacters = pgTable(
 		/** Character owner hash (stored for transfer detection only) */
 		characterOwnerHash: varchar('character_owner_hash', { length: 255 }).notNull(),
 		/** EVE character ID (primary identifier) */
-		characterId: bigint('character_id', { mode: 'number' }).notNull().unique(),
+		characterId: text('character_id').notNull().unique(),
 		/** EVE character name (cached from eve-token-store for convenience) */
 		characterName: varchar('character_name', { length: 255 }).notNull(),
 		/** Whether this is the user's primary character */
@@ -195,13 +195,13 @@ export const managedCorporations = pgTable(
 	'managed_corporations',
 	{
 		/** EVE corporation ID */
-		corporationId: bigint('corporation_id', { mode: 'number' }).primaryKey(),
+		corporationId: text('corporation_id').primaryKey(),
 		/** Corporation name (cached from ESI) */
 		name: varchar('name', { length: 255 }).notNull(),
 		/** Corporation ticker (cached from ESI) */
 		ticker: varchar('ticker', { length: 10 }).notNull(),
 		/** Primary director character ID (for backwards compatibility, can be null) */
-		assignedCharacterId: bigint('assigned_character_id', { mode: 'number' }),
+		assignedCharacterId: text('assigned_character_id'),
 		/** Primary director character name (cached) */
 		assignedCharacterName: varchar('assigned_character_name', { length: 255 }),
 		/** Whether this corporation is active for data collection */

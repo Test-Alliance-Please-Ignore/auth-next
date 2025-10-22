@@ -68,8 +68,8 @@ import type { Env } from './context'
  * Each corporation gets its own Durable Object instance for data isolation.
  * Uses PostgreSQL for persistent storage and eve-token-store for ESI access.
  *
- * Instance ID pattern: `corp-{corporationId}`
- * Example: `corp-98000001`
+ * Instance ID pattern: `{corporationId}`
+ * Example: `98000001`
  */
 export class EveCorporationDataDO extends DurableObject<Env> implements EveCorporationData {
 	private db: ReturnType<typeof createDb>
@@ -98,7 +98,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 * @deprecated Use DirectorManager.selectDirector() instead for multi-director support
 	 * @throws Error if corporation not configured
 	 */
-	private async getConfiguredCharacter(): Promise<{ characterId: number; corporationId: number }> {
+	private async getConfiguredCharacter(): Promise<{ characterId: string; corporationId: string }> {
 		// Try to get a healthy director first
 		const config = await this.db.query.corporationConfig.findFirst()
 
@@ -135,7 +135,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Check if character has a required role
 	 */
-	private async hasRequiredRole(characterId: number, requiredRole: CorporationRole): Promise<boolean> {
+	private async hasRequiredRole(characterId: string, requiredRole: CorporationRole): Promise<boolean> {
 		const rolesData = await this.db.query.characterCorporationRoles.findFirst({
 			where: eq(characterCorporationRoles.characterId, characterId),
 		})
@@ -158,7 +158,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Verify character has one of the required roles
 	 */
-	private async verifyRole(characterId: number, roles: CorporationRole[]): Promise<void> {
+	private async verifyRole(characterId: string, roles: CorporationRole[]): Promise<void> {
 		for (const role of roles) {
 			if (await this.hasRequiredRole(characterId, role)) {
 				return // Has at least one required role
@@ -176,7 +176,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 * Configure which character to use for API access (legacy method for backwards compatibility)
 	 * @deprecated Use addDirector() instead
 	 */
-	async setCharacter(corporationId: number, characterId: number, characterName: string): Promise<void> {
+	async setCharacter(corporationId: string, characterId: string, characterName: string): Promise<void> {
 		// Ensure corporation config exists
 		const config = await this.db.query.corporationConfig.findFirst({
 			where: eq(corporationConfig.corporationId, corporationId),
@@ -302,13 +302,19 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Add a new director character for this corporation
 	 */
-	async addDirector(characterId: number, characterName: string, priority = 100): Promise<void> {
+	async addDirector(characterId: string, characterName: string, priority = 100): Promise<void> {
 		const config = await this.db.query.corporationConfig.findFirst()
 
 		if (!config) {
 			// Create config if it doesn't exist
+			// Use the DO state ID name as corporation ID (e.g., '98692422')
+			// Note: .name returns the original string passed to idFromName() in getStub()
+			const corporationId = this.state.id.name
+			if (!corporationId) {
+				throw new Error('Durable Object ID must be created with idFromName() using corporation ID')
+			}
 			await this.db.insert(corporationConfig).values({
-				corporationId: this.state.id.toString() as unknown as number, // Extract corp ID from DO ID
+				corporationId,
 				isVerified: false,
 				lastVerified: null,
 				updatedAt: new Date(),
@@ -322,7 +328,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Remove a director character from this corporation
 	 */
-	async removeDirector(characterId: number): Promise<void> {
+	async removeDirector(characterId: string): Promise<void> {
 		const directorManager = await this.getDirectorManager()
 		await directorManager.removeDirector(characterId)
 	}
@@ -330,7 +336,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Update a director's priority
 	 */
-	async updateDirectorPriority(characterId: number, priority: number): Promise<void> {
+	async updateDirectorPriority(characterId: string, priority: number): Promise<void> {
 		const directorManager = await this.getDirectorManager()
 		await directorManager.updateDirectorPriority(characterId, priority)
 	}
@@ -374,7 +380,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Fetch and store public corporation information
 	 */
-	private async fetchAndStorePublicInfo(corporationId: number, _forceRefresh = false): Promise<void> {
+	private async fetchAndStorePublicInfo(corporationId: string, _forceRefresh = false): Promise<void> {
 		const tokenStore = this.getTokenStoreStub()
 		const response: EsiResponse<EsiCorporationPublicInfo> = await tokenStore.fetchPublicEsi(
 			`/corporations/${corporationId}`
@@ -388,17 +394,17 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				corporationId,
 				name: data.name,
 				ticker: data.ticker,
-				ceoId: data.ceo_id,
-				creatorId: data.creator_id,
+				ceoId: String(data.ceo_id),
+				creatorId: String(data.creator_id),
 				dateFounded: data.date_founded ? new Date(data.date_founded) : null,
 				description: data.description || null,
-				homeStationId: data.home_station_id || null,
+				homeStationId: data.home_station_id ? String(data.home_station_id) : null,
 				memberCount: data.member_count,
 				shares: data.shares ? data.shares.toString() : null,
 				taxRate: data.tax_rate.toString(),
 				url: data.url || null,
-				allianceId: data.alliance_id || null,
-				factionId: data.faction_id || null,
+				allianceId: data.alliance_id ? String(data.alliance_id) : null,
+				factionId: data.faction_id ? String(data.faction_id) : null,
 				warEligible: data.war_eligible || null,
 				updatedAt: new Date(),
 			})
@@ -407,13 +413,13 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				set: {
 					name: data.name,
 					ticker: data.ticker,
-					ceoId: data.ceo_id,
+					ceoId: String(data.ceo_id),
 					memberCount: data.member_count,
 					shares: data.shares ? data.shares.toString() : null,
 					taxRate: data.tax_rate.toString(),
 					url: data.url || null,
-					allianceId: data.alliance_id || null,
-					factionId: data.faction_id || null,
+					allianceId: data.alliance_id ? String(data.alliance_id) : null,
+					factionId: data.faction_id ? String(data.faction_id) : null,
 					warEligible: data.war_eligible || null,
 					updatedAt: new Date(),
 				},
@@ -427,12 +433,14 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const { characterId, corporationId } = await this.getConfiguredCharacter()
 		const tokenStore = this.getTokenStoreStub()
 
-		const response: EsiResponse<EsiCorporationMembers> = await tokenStore.fetchEsi(
+		// ESI returns numbers for character IDs, but we need strings
+		const response = await tokenStore.fetchEsi<number[]>(
 			`/corporations/${corporationId}/members`,
 			characterId
 		)
 
-		const memberIds = response.data
+		// Convert numeric IDs to strings
+		const memberIds: EsiCorporationMembers = response.data.map(String)
 
 		// Store each member
 		for (const memberId of memberIds) {
@@ -460,12 +468,31 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		await this.verifyRole(characterId, ['Director'])
 
 		const tokenStore = this.getTokenStoreStub()
-		const response: EsiResponse<EsiCorporationMemberTracking[]> = await tokenStore.fetchEsi(
-			`/corporations/${corporationId}/membertracking`,
-			characterId
-		)
+		// ESI returns numbers for IDs, but we need strings
+		const response = await tokenStore.fetchEsi<
+			Array<{
+				character_id: number
+				base_id?: number
+				location_id?: number
+				logoff_date?: string
+				logon_date?: string
+				ship_type_id?: number
+				start_date?: string
+			}>
+		>(`/corporations/${corporationId}/membertracking`, characterId)
 
-		const trackingData = response.data
+		const rawData = response.data
+
+		// Convert numeric IDs to strings
+		const trackingData: EsiCorporationMemberTracking[] = rawData.map((member) => ({
+			character_id: String(member.character_id),
+			base_id: member.base_id ? String(member.base_id) : undefined,
+			location_id: member.location_id ? String(member.location_id) : undefined,
+			logoff_date: member.logoff_date,
+			logon_date: member.logon_date,
+			ship_type_id: member.ship_type_id ? String(member.ship_type_id) : undefined,
+			start_date: member.start_date,
+		}))
 
 		for (const member of trackingData) {
 			await this.db
@@ -474,7 +501,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					corporationId,
 					characterId: member.character_id,
 					baseId: member.base_id || null,
-					locationId: member.location_id ? member.location_id.toString() : null,
+					locationId: member.location_id || null,
 					logoffDate: member.logoff_date ? new Date(member.logoff_date) : null,
 					logonDate: member.logon_date ? new Date(member.logon_date) : null,
 					shipTypeId: member.ship_type_id || null,
@@ -485,7 +512,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					target: [corporationMemberTracking.corporationId, corporationMemberTracking.characterId],
 					set: {
 						baseId: member.base_id || null,
-						locationId: member.location_id ? member.location_id.toString() : null,
+						locationId: member.location_id || null,
 						logoffDate: member.logoff_date ? new Date(member.logoff_date) : null,
 						logonDate: member.logon_date ? new Date(member.logon_date) : null,
 						shipTypeId: member.ship_type_id || null,
@@ -538,12 +565,43 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		await this.verifyRole(characterId, ['Accountant', 'Junior_Accountant'])
 
 		const tokenStore = this.getTokenStoreStub()
-		const response: EsiResponse<EsiCorporationWalletJournalEntry[]> = await tokenStore.fetchEsi(
-			`/corporations/${corporationId}/wallets/${division}/journal`,
-			characterId
-		)
+		// ESI returns numbers for IDs, but we need strings
+		const response = await tokenStore.fetchEsi<
+			Array<{
+				id: number
+				amount?: number
+				balance?: number
+				context_id?: number
+				context_id_type?: string
+				date: string
+				description: string
+				first_party_id?: number
+				reason?: string
+				ref_type: string
+				second_party_id?: number
+				tax?: number
+				tax_receiver_id?: number
+			}>
+		>(`/corporations/${corporationId}/wallets/${division}/journal`, characterId)
 
-		const entries = response.data
+		const rawEntries = response.data
+
+		// Convert numeric IDs to strings
+		const entries: EsiCorporationWalletJournalEntry[] = rawEntries.map((entry) => ({
+			id: String(entry.id),
+			amount: entry.amount,
+			balance: entry.balance,
+			context_id: entry.context_id ? String(entry.context_id) : undefined,
+			context_id_type: entry.context_id_type,
+			date: entry.date,
+			description: entry.description,
+			first_party_id: entry.first_party_id ? String(entry.first_party_id) : undefined,
+			reason: entry.reason,
+			ref_type: entry.ref_type,
+			second_party_id: entry.second_party_id ? String(entry.second_party_id) : undefined,
+			tax: entry.tax,
+			tax_receiver_id: entry.tax_receiver_id ? String(entry.tax_receiver_id) : undefined,
+		}))
 
 		for (const entry of entries) {
 			await this.db
@@ -551,10 +609,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				.values({
 					corporationId,
 					division,
-					journalId: entry.id.toString(),
+					journalId: entry.id,
 					amount: entry.amount?.toString() || null,
 					balance: entry.balance?.toString() || null,
-					contextId: entry.context_id ? entry.context_id.toString() : null,
+					contextId: entry.context_id || null,
 					contextIdType: entry.context_id_type || null,
 					date: new Date(entry.date),
 					description: entry.description,
@@ -575,7 +633,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					set: {
 						amount: entry.amount?.toString() || null,
 						balance: entry.balance?.toString() || null,
-						contextId: entry.context_id ? entry.context_id.toString() : null,
+						contextId: entry.context_id || null,
 						contextIdType: entry.context_id_type || null,
 						description: entry.description,
 						reason: entry.reason || null,
@@ -594,12 +652,37 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		await this.verifyRole(characterId, ['Accountant', 'Junior_Accountant'])
 
 		const tokenStore = this.getTokenStoreStub()
-		const response: EsiResponse<EsiCorporationWalletTransaction[]> = await tokenStore.fetchEsi(
-			`/corporations/${corporationId}/wallets/${division}/transactions`,
-			characterId
-		)
+		// ESI returns numbers for IDs, but we need strings
+		const response = await tokenStore.fetchEsi<
+			Array<{
+				transaction_id: number
+				client_id: number
+				date: string
+				is_buy: boolean
+				is_personal: boolean
+				journal_ref_id: number
+				location_id: number
+				quantity: number
+				type_id: number
+				unit_price: number
+			}>
+		>(`/corporations/${corporationId}/wallets/${division}/transactions`, characterId)
 
-		const transactions = response.data
+		const rawTransactions = response.data
+
+		// Convert numeric IDs to strings
+		const transactions: EsiCorporationWalletTransaction[] = rawTransactions.map((tx) => ({
+			transaction_id: String(tx.transaction_id),
+			client_id: String(tx.client_id),
+			date: tx.date,
+			is_buy: tx.is_buy,
+			is_personal: tx.is_personal,
+			journal_ref_id: String(tx.journal_ref_id),
+			location_id: String(tx.location_id),
+			quantity: tx.quantity,
+			type_id: String(tx.type_id),
+			unit_price: tx.unit_price,
+		}))
 
 		for (const tx of transactions) {
 			await this.db
@@ -607,13 +690,13 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				.values({
 					corporationId,
 					division,
-					transactionId: tx.transaction_id.toString(),
+					transactionId: tx.transaction_id,
 					clientId: tx.client_id,
 					date: new Date(tx.date),
 					isBuy: tx.is_buy,
 					isPersonal: tx.is_personal,
-					journalRefId: tx.journal_ref_id.toString(),
-					locationId: tx.location_id.toString(),
+					journalRefId: tx.journal_ref_id,
+					locationId: tx.location_id,
 					quantity: tx.quantity,
 					typeId: tx.type_id,
 					unitPrice: tx.unit_price.toString(),
@@ -646,27 +729,48 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		let hasMorePages = true
 
 		while (hasMorePages) {
-			const response: EsiResponse<EsiCorporationAsset[]> = await tokenStore.fetchEsi(
-				`/corporations/${corporationId}/assets?page=${page}`,
-				characterId
-			)
+			// ESI returns numbers for IDs, but we need strings
+			const response = await tokenStore.fetchEsi<
+				Array<{
+					item_id: number
+					is_singleton: boolean
+					location_flag: string
+					location_id: number
+					location_type: string
+					quantity: number
+					type_id: number
+					is_blueprint_copy?: boolean
+				}>
+			>(`/corporations/${corporationId}/assets?page=${page}`, characterId)
 
-			const assets = response.data
+			const rawAssets = response.data
 
-			if (!assets || assets.length === 0) {
+			if (!rawAssets || rawAssets.length === 0) {
 				hasMorePages = false
 				break
 			}
+
+			// Convert numeric IDs to strings
+			const assets: EsiCorporationAsset[] = rawAssets.map((asset) => ({
+				item_id: String(asset.item_id),
+				is_singleton: asset.is_singleton,
+				location_flag: asset.location_flag,
+				location_id: String(asset.location_id),
+				location_type: asset.location_type,
+				quantity: asset.quantity,
+				type_id: String(asset.type_id),
+				is_blueprint_copy: asset.is_blueprint_copy,
+			}))
 
 			for (const asset of assets) {
 				await this.db
 					.insert(corporationAssets)
 					.values({
 						corporationId,
-						itemId: asset.item_id.toString(),
+						itemId: asset.item_id,
 						isSingleton: asset.is_singleton,
 						locationFlag: asset.location_flag,
-						locationId: asset.location_id.toString(),
+						locationId: asset.location_id,
 						locationType: asset.location_type,
 						quantity: asset.quantity,
 						typeId: asset.type_id,
@@ -678,7 +782,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						set: {
 							isSingleton: asset.is_singleton,
 							locationFlag: asset.location_flag,
-							locationId: asset.location_id.toString(),
+							locationId: asset.location_id,
 							locationType: asset.location_type,
 							quantity: asset.quantity,
 							typeId: asset.type_id,
@@ -700,19 +804,50 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		await this.verifyRole(characterId, ['Station_Manager'])
 
 		const tokenStore = this.getTokenStoreStub()
-		const response: EsiResponse<EsiCorporationStructure[]> = await tokenStore.fetchEsi(
-			`/corporations/${corporationId}/structures`,
-			characterId
-		)
+		// ESI returns numbers for IDs, but we need strings
+		const response = await tokenStore.fetchEsi<
+			Array<{
+				structure_id: number
+				type_id: number
+				system_id: number
+				profile_id: number
+				fuel_expires?: string
+				next_reinforce_apply?: string
+				next_reinforce_hour?: number
+				reinforce_hour?: number
+				state: string
+				state_timer_end?: string
+				state_timer_start?: string
+				unanchors_at?: string
+				services?: Array<{ name: string; state: string }>
+			}>
+		>(`/corporations/${corporationId}/structures`, characterId)
 
-		const structures = response.data
+		const rawStructures = response.data
+
+		// Convert numeric IDs to strings
+		const structures: EsiCorporationStructure[] = rawStructures.map((structure) => ({
+			structure_id: String(structure.structure_id),
+			type_id: String(structure.type_id),
+			system_id: String(structure.system_id),
+			profile_id: String(structure.profile_id),
+			fuel_expires: structure.fuel_expires,
+			next_reinforce_apply: structure.next_reinforce_apply,
+			next_reinforce_hour: structure.next_reinforce_hour,
+			reinforce_hour: structure.reinforce_hour,
+			state: structure.state,
+			state_timer_end: structure.state_timer_end,
+			state_timer_start: structure.state_timer_start,
+			unanchors_at: structure.unanchors_at,
+			services: structure.services,
+		}))
 
 		for (const structure of structures) {
 			await this.db
 				.insert(corporationStructures)
 				.values({
 					corporationId,
-					structureId: structure.structure_id.toString(),
+					structureId: structure.structure_id,
 					typeId: structure.type_id,
 					systemId: structure.system_id,
 					profileId: structure.profile_id,
@@ -753,25 +888,60 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		await this.verifyRole(characterId, ['Accountant', 'Junior_Accountant', 'Trader'])
 
 		const tokenStore = this.getTokenStoreStub()
-		const response: EsiResponse<EsiCorporationOrder[]> = await tokenStore.fetchEsi(
-			`/corporations/${corporationId}/orders`,
-			characterId
-		)
+		// ESI returns numbers for IDs, but we need strings
+		const response = await tokenStore.fetchEsi<
+			Array<{
+				order_id: number
+				duration: number
+				escrow?: number
+				is_buy_order: boolean
+				issued: string
+				issued_by: number
+				location_id: number
+				min_volume?: number
+				price: number
+				range: string
+				region_id: number
+				type_id: number
+				volume_remain: number
+				volume_total: number
+				wallet_division: number
+			}>
+		>(`/corporations/${corporationId}/orders`, characterId)
 
-		const orders = response.data
+		const rawOrders = response.data
+
+		// Convert numeric IDs to strings
+		const orders: EsiCorporationOrder[] = rawOrders.map((order) => ({
+			order_id: String(order.order_id),
+			duration: order.duration,
+			escrow: order.escrow,
+			is_buy_order: order.is_buy_order,
+			issued: order.issued,
+			issued_by: String(order.issued_by),
+			location_id: String(order.location_id),
+			min_volume: order.min_volume,
+			price: order.price,
+			range: order.range,
+			region_id: String(order.region_id),
+			type_id: String(order.type_id),
+			volume_remain: order.volume_remain,
+			volume_total: order.volume_total,
+			wallet_division: order.wallet_division,
+		}))
 
 		for (const order of orders) {
 			await this.db
 				.insert(corporationOrders)
 				.values({
 					corporationId,
-					orderId: order.order_id.toString(),
+					orderId: order.order_id,
 					duration: order.duration,
 					escrow: order.escrow?.toString() || null,
 					isBuyOrder: order.is_buy_order,
 					issued: new Date(order.issued),
 					issuedBy: order.issued_by,
-					locationId: order.location_id.toString(),
+					locationId: order.location_id,
 					minVolume: order.min_volume || null,
 					price: order.price.toString(),
 					range: order.range,
@@ -801,12 +971,61 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		await this.verifyRole(characterId, ['Director'])
 
 		const tokenStore = this.getTokenStoreStub()
-		const response: EsiResponse<EsiCorporationContract[]> = await tokenStore.fetchEsi(
-			`/corporations/${corporationId}/contracts`,
-			characterId
-		)
+		// ESI returns numbers for IDs, but we need strings
+		const response = await tokenStore.fetchEsi<
+			Array<{
+				contract_id: number
+				acceptor_id?: number
+				assignee_id: number
+				availability: string
+				buyout?: number
+				collateral?: number
+				date_accepted?: string
+				date_completed?: string
+				date_expired: string
+				date_issued: string
+				days_to_complete?: number
+				end_location_id?: number
+				for_corporation: boolean
+				issuer_corporation_id: number
+				issuer_id: number
+				price?: number
+				reward?: number
+				start_location_id?: number
+				status: string
+				title?: string
+				type: string
+				volume?: number
+			}>
+		>(`/corporations/${corporationId}/contracts`, characterId)
 
-		const contracts = response.data
+		const rawContracts = response.data
+
+		// Convert numeric IDs to strings
+		const contracts: EsiCorporationContract[] = rawContracts.map((contract) => ({
+			contract_id: String(contract.contract_id),
+			acceptor_id: contract.acceptor_id ? String(contract.acceptor_id) : undefined,
+			assignee_id: String(contract.assignee_id),
+			availability: contract.availability,
+			buyout: contract.buyout,
+			collateral: contract.collateral,
+			date_accepted: contract.date_accepted,
+			date_completed: contract.date_completed,
+			date_expired: contract.date_expired,
+			date_issued: contract.date_issued,
+			days_to_complete: contract.days_to_complete,
+			end_location_id: contract.end_location_id ? String(contract.end_location_id) : undefined,
+			for_corporation: contract.for_corporation,
+			issuer_corporation_id: String(contract.issuer_corporation_id),
+			issuer_id: String(contract.issuer_id),
+			price: contract.price,
+			reward: contract.reward,
+			start_location_id: contract.start_location_id ? String(contract.start_location_id) : undefined,
+			status: contract.status,
+			title: contract.title,
+			type: contract.type,
+			volume: contract.volume,
+		}))
 
 		for (const contract of contracts) {
 			await this.db
@@ -824,13 +1043,13 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					dateExpired: new Date(contract.date_expired),
 					dateIssued: new Date(contract.date_issued),
 					daysToComplete: contract.days_to_complete || null,
-					endLocationId: contract.end_location_id ? contract.end_location_id.toString() : null,
+					endLocationId: contract.end_location_id || null,
 					forCorporation: contract.for_corporation,
 					issuerCorporationId: contract.issuer_corporation_id,
 					issuerId: contract.issuer_id,
 					price: contract.price?.toString() || null,
 					reward: contract.reward?.toString() || null,
-					startLocationId: contract.start_location_id ? contract.start_location_id.toString() : null,
+					startLocationId: contract.start_location_id || null,
 					status: contract.status,
 					title: contract.title || null,
 					type: contract.type,
@@ -857,12 +1076,61 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		await this.verifyRole(characterId, ['Factory_Manager'])
 
 		const tokenStore = this.getTokenStoreStub()
-		const response: EsiResponse<EsiCorporationIndustryJob[]> = await tokenStore.fetchEsi(
-			`/corporations/${corporationId}/industry/jobs`,
-			characterId
-		)
+		// ESI returns numbers for IDs, but we need strings
+		const response = await tokenStore.fetchEsi<
+			Array<{
+				job_id: number
+				installer_id: number
+				facility_id: number
+				location_id: number
+				activity_id: number
+				blueprint_id: number
+				blueprint_type_id: number
+				blueprint_location_id: number
+				output_location_id: number
+				runs: number
+				cost?: number
+				licensed_runs?: number
+				probability?: number
+				product_type_id?: number
+				status: string
+				duration: number
+				start_date: string
+				end_date: string
+				pause_date?: string
+				completed_date?: string
+				completed_character_id?: number
+				successful_runs?: number
+			}>
+		>(`/corporations/${corporationId}/industry/jobs`, characterId)
 
-		const jobs = response.data
+		const rawJobs = response.data
+
+		// Convert numeric IDs to strings
+		const jobs: EsiCorporationIndustryJob[] = rawJobs.map((job) => ({
+			job_id: String(job.job_id),
+			installer_id: String(job.installer_id),
+			facility_id: String(job.facility_id),
+			location_id: String(job.location_id),
+			activity_id: String(job.activity_id),
+			blueprint_id: String(job.blueprint_id),
+			blueprint_type_id: String(job.blueprint_type_id),
+			blueprint_location_id: String(job.blueprint_location_id),
+			output_location_id: String(job.output_location_id),
+			runs: job.runs,
+			cost: job.cost,
+			licensed_runs: job.licensed_runs,
+			probability: job.probability,
+			product_type_id: job.product_type_id ? String(job.product_type_id) : undefined,
+			status: job.status,
+			duration: job.duration,
+			start_date: job.start_date,
+			end_date: job.end_date,
+			pause_date: job.pause_date,
+			completed_date: job.completed_date,
+			completed_character_id: job.completed_character_id ? String(job.completed_character_id) : undefined,
+			successful_runs: job.successful_runs,
+		}))
 
 		for (const job of jobs) {
 			await this.db
@@ -871,13 +1139,13 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					corporationId,
 					jobId: job.job_id,
 					installerId: job.installer_id,
-					facilityId: job.facility_id.toString(),
-					locationId: job.location_id.toString(),
+					facilityId: job.facility_id,
+					locationId: job.location_id,
 					activityId: job.activity_id,
-					blueprintId: job.blueprint_id.toString(),
+					blueprintId: job.blueprint_id,
 					blueprintTypeId: job.blueprint_type_id,
-					blueprintLocationId: job.blueprint_location_id.toString(),
-					outputLocationId: job.output_location_id.toString(),
+					blueprintLocationId: job.blueprint_location_id,
+					outputLocationId: job.output_location_id,
 					runs: job.runs,
 					cost: job.cost?.toString() || null,
 					licensedRuns: job.licensed_runs || null,
@@ -915,12 +1183,21 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		await this.verifyRole(characterId, ['Director'])
 
 		const tokenStore = this.getTokenStoreStub()
-		const response: EsiResponse<EsiCorporationKillmail[]> = await tokenStore.fetchEsi(
-			`/corporations/${corporationId}/killmails/recent`,
-			characterId
-		)
+		// ESI returns numbers for IDs, but we need strings
+		const response = await tokenStore.fetchEsi<
+			Array<{
+				killmail_id: number
+				killmail_hash: string
+			}>
+		>(`/corporations/${corporationId}/killmails/recent`, characterId)
 
-		const killmails = response.data
+		const rawKillmails = response.data
+
+		// Convert numeric IDs to strings
+		const killmails: EsiCorporationKillmail[] = rawKillmails.map((km) => ({
+			killmail_id: String(km.killmail_id),
+			killmail_hash: km.killmail_hash,
+		}))
 
 		for (const km of killmails) {
 			// Note: killmail_time is not in the ESI response, we'll use updatedAt
@@ -983,7 +1260,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Fetch public corporation data
 	 */
-	async fetchPublicData(corporationId: number, forceRefresh = false): Promise<void> {
+	async fetchPublicData(corporationId: string, forceRefresh = false): Promise<void> {
 		await this.fetchAndStorePublicInfo(corporationId, forceRefresh)
 	}
 
@@ -1459,7 +1736,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Get character's corporation roles
 	 */
-	async getCharacterRoles(characterId: number): Promise<CharacterCorporationRolesData | null> {
+	async getCharacterRoles(characterId: string): Promise<CharacterCorporationRolesData | null> {
 		const result = await this.db.query.characterCorporationRoles.findFirst({
 			where: eq(characterCorporationRoles.characterId, characterId),
 		})

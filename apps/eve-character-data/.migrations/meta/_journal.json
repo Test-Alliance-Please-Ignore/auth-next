@@ -29,6 +29,13 @@
       "when": 1760985570734,
       "tag": "0003_eager_spectrum",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1761160474348,
+      "tag": "0004_large_gauntlet",
+      "breakpoints": true
     }
   ]
 }

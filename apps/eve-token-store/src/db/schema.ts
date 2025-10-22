@@ -1,5 +1,5 @@
 import { relations } from 'drizzle-orm'
-import { bigint, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core'
+import { pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core'
 
 /**
  * Database schema for the eve-token-store worker
@@ -18,7 +18,7 @@ export const eveCharacters = pgTable('eve_characters', {
 	id: uuid('id').defaultRandom().primaryKey(),
 
 	/** EVE Online character ID */
-	characterId: bigint('character_id', { mode: 'number' }).notNull().unique(),
+	characterId: text('character_id').notNull().unique(),
 
 	/** EVE Online character name */
 	characterName: varchar('character_name', { length: 255 }).notNull(),

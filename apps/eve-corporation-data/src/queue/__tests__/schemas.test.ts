@@ -5,7 +5,7 @@ describe('Queue Message Schemas', () => {
 	describe('publicRefreshMessageSchema', () => {
 		it('should validate a valid message', () => {
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 				requesterId: 'test-system',
 			}
@@ -16,7 +16,7 @@ describe('Queue Message Schemas', () => {
 
 		it('should validate without requesterId', () => {
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 			}
 
@@ -26,7 +26,7 @@ describe('Queue Message Schemas', () => {
 
 		it('should reject invalid corporationId', () => {
 			const message = {
-				corporationId: -1,
+				corporationId: 123, // number instead of string
 				timestamp: Date.now(),
 			}
 
@@ -38,7 +38,7 @@ describe('Queue Message Schemas', () => {
 	describe('walletJournalRefreshMessageSchema', () => {
 		it('should validate with division', () => {
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 				division: 1,
 			}
@@ -49,7 +49,7 @@ describe('Queue Message Schemas', () => {
 
 		it('should validate without division', () => {
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 			}
 
@@ -59,7 +59,7 @@ describe('Queue Message Schemas', () => {
 
 		it('should reject invalid division', () => {
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 				division: 8, // Only 1-7 are valid
 			}
@@ -70,7 +70,7 @@ describe('Queue Message Schemas', () => {
 
 		it('should reject division 0', () => {
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 				division: 0,
 			}
@@ -83,7 +83,7 @@ describe('Queue Message Schemas', () => {
 	describe('walletTransactionsRefreshMessageSchema', () => {
 		it('should validate with division', () => {
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 				division: 7,
 			}
@@ -94,7 +94,7 @@ describe('Queue Message Schemas', () => {
 
 		it('should validate without division', () => {
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 			}
 
@@ -125,7 +125,7 @@ describe('Queue Message Schemas', () => {
 		allSchemas.forEach(({ name, schema }) => {
 			it(`${name} schema should validate valid message`, () => {
 				const message = {
-					corporationId: 98000001,
+					corporationId: '98000001',
 					timestamp: Date.now(),
 					requesterId: 'test-system',
 				}
@@ -145,7 +145,7 @@ describe('Queue Message Schemas', () => {
 
 			it(`${name} schema should reject missing timestamp`, () => {
 				const message = {
-					corporationId: 98000001,
+					corporationId: '98000001',
 				}
 
 				const result = schema.safeParse(message)

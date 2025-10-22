@@ -23,7 +23,7 @@ export type ActivityAction =
 export interface UserCharacterDTO {
 	id: string
 	characterOwnerHash: string
-	characterId: number
+	characterId: string
 	characterName: string
 	is_primary: boolean
 	linkedAt: Date
@@ -39,7 +39,7 @@ export interface UserSessionDTO {
 	metadata?: {
 		ip?: string
 		userAgent?: string
-		characterId?: number
+		characterId?: string
 	}
 	lastActivityAt: Date
 	createdAt: Date
@@ -62,7 +62,7 @@ export interface UserPreferencesDTO {
  */
 export interface UserProfileDTO {
 	id: string
-	mainCharacterId: number
+	mainCharacterId: string
 	discordUserId: string | null
 	characters: UserCharacterDTO[]
 	is_admin: boolean
@@ -81,7 +81,7 @@ export interface ActivityLogEntryDTO {
 	metadata?: {
 		ip?: string
 		userAgent?: string
-		characterId?: number
+		characterId?: string
 		success?: boolean
 		error?: string
 		[key: string]: unknown
@@ -102,7 +102,7 @@ export interface RequestMetadata {
  */
 export interface CreateSessionOptions {
 	userId: string
-	characterId: number
+	characterId: string
 	metadata?: RequestMetadata
 	/** Session duration in seconds (default: 30 days) */
 	durationSeconds?: number
@@ -113,7 +113,7 @@ export interface CreateSessionOptions {
  */
 export interface CreateUserOptions {
 	characterOwnerHash: string
-	characterId: number
+	characterId: string
 	characterName: string
 }
 
@@ -123,6 +123,6 @@ export interface CreateUserOptions {
 export interface LinkCharacterOptions {
 	userId: string
 	characterOwnerHash: string
-	characterId: number
+	characterId: string
 	characterName: string
 }

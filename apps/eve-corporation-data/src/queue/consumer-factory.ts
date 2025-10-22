@@ -23,10 +23,7 @@ export function createCorporationQueueConsumer<T extends z.ZodType>(
 			const env = metadata.env as Env
 
 			// Get the Durable Object stub for this corporation
-			const stub = getStub<EveCorporationData>(
-				env.EVE_CORPORATION_DATA,
-				`corp-${message.corporationId}`
-			)
+			const stub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, message.corporationId)
 
 			// Execute the handler
 			await handler(stub, message)

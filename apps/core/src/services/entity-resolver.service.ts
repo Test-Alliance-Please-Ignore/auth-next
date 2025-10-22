@@ -9,7 +9,7 @@ import type { EveTokenStore } from '@repo/eve-token-store'
  * Uses the EVE Token Store Durable Object's bulk resolution capabilities.
  */
 export class EntityResolverService {
-	private nameCache: Map<number, string>
+	private nameCache: Map<string, string>
 
 	constructor(private eveTokenStore: EveTokenStore) {
 		this.nameCache = new Map()
@@ -22,7 +22,7 @@ export class EntityResolverService {
 	 * @param ids - Array of entity IDs to resolve
 	 * @returns Map of ID to name
 	 */
-	async resolveEntityNames(ids: number[]): Promise<Map<number, string>> {
+	async resolveEntityNames(ids: string[]): Promise<Map<string, string>> {
 		if (ids.length === 0) {
 			return new Map()
 		}
@@ -37,7 +37,7 @@ export class EntityResolverService {
 
 				// Store in cache
 				for (const [id, name] of Object.entries(resolved)) {
-					this.nameCache.set(Number(id), name)
+					this.nameCache.set(id, name)
 				}
 			} catch (error) {
 				logger.error('Error resolving entity names:', error)
@@ -45,7 +45,7 @@ export class EntityResolverService {
 		}
 
 		// Build result map from cache
-		const result = new Map<number, string>()
+		const result = new Map<string, string>()
 		for (const id of ids) {
 			const name = this.nameCache.get(id)
 			if (name) {
@@ -59,7 +59,7 @@ export class EntityResolverService {
 	/**
 	 * Resolve a single character ID to name
 	 */
-	async resolveCharacterName(characterId: number): Promise<string | null> {
+	async resolveCharacterName(characterId: string): Promise<string | null> {
 		const names = await this.resolveEntityNames([characterId])
 		return names.get(characterId) || null
 	}
@@ -67,7 +67,7 @@ export class EntityResolverService {
 	/**
 	 * Resolve a single corporation ID to name
 	 */
-	async resolveCorporationName(corporationId: number): Promise<string | null> {
+	async resolveCorporationName(corporationId: string): Promise<string | null> {
 		const names = await this.resolveEntityNames([corporationId])
 		return names.get(corporationId) || null
 	}
@@ -75,7 +75,7 @@ export class EntityResolverService {
 	/**
 	 * Resolve a single alliance ID to name
 	 */
-	async resolveAllianceName(allianceId: number): Promise<string | null> {
+	async resolveAllianceName(allianceId: string): Promise<string | null> {
 		const names = await this.resolveEntityNames([allianceId])
 		return names.get(allianceId) || null
 	}
@@ -83,7 +83,7 @@ export class EntityResolverService {
 	/**
 	 * Resolve a single solar system ID to name
 	 */
-	async resolveSystemName(systemId: number): Promise<string | null> {
+	async resolveSystemName(systemId: string): Promise<string | null> {
 		const names = await this.resolveEntityNames([systemId])
 		return names.get(systemId) || null
 	}
@@ -94,7 +94,7 @@ export class EntityResolverService {
 	 * @param history - Array of corporation history entries
 	 * @returns Enriched history with corporationName added to each entry
 	 */
-	async enrichCorporationHistory<T extends { corporationId: number }>(
+	async enrichCorporationHistory<T extends { corporationId: string }>(
 		history: T[]
 	): Promise<Array<T & { corporationName: string }>> {
 		if (history.length === 0) {

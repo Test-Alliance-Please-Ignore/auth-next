@@ -15,6 +15,13 @@
       "when": 1760979616985,
       "tag": "0001_heavy_master_chief",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1761160473917,
+      "tag": "0002_empty_apocalypse",
+      "breakpoints": true
     }
   ]
 }

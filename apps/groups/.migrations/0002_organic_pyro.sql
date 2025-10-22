@@ -1,0 +1,1 @@
+ALTER TABLE "group_invitations" ALTER COLUMN "invitee_main_character_id" SET DATA TYPE text;

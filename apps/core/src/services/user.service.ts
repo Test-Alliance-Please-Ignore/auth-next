@@ -92,7 +92,7 @@ export class UserService {
 	/**
 	 * Get user by character ID
 	 */
-	async getUserByCharacterId(characterId: number): Promise<UserProfileDTO | null> {
+	async getUserByCharacterId(characterId: string): Promise<UserProfileDTO | null> {
 		const character = await this.db.query.userCharacters.findFirst({
 			where: eq(userCharacters.characterId, characterId),
 		})
@@ -229,7 +229,7 @@ export class UserService {
 	/**
 	 * Unlink a character from a user (cannot unlink primary character)
 	 */
-	async unlinkCharacter(userId: string, characterId: number): Promise<boolean> {
+	async unlinkCharacter(userId: string, characterId: string): Promise<boolean> {
 		// Find the character
 		const character = await this.db.query.userCharacters.findFirst({
 			where: and(eq(userCharacters.userId, userId), eq(userCharacters.characterId, characterId)),
@@ -256,7 +256,7 @@ export class UserService {
 	/**
 	 * Set a character as primary (and unset the current primary)
 	 */
-	async setPrimaryCharacter(userId: string, characterId: number): Promise<boolean> {
+	async setPrimaryCharacter(userId: string, characterId: string): Promise<boolean> {
 		// Find the character to set as primary
 		const newPrimaryChar = await this.db.query.userCharacters.findFirst({
 			where: and(eq(userCharacters.userId, userId), eq(userCharacters.characterId, characterId)),

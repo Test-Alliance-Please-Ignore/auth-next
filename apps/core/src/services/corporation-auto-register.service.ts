@@ -9,13 +9,13 @@ import { managedCorporations } from '../db/schema'
 interface AutoRegistrationResult {
 	success: boolean
 	corporationRegistered?: {
-		corporationId: number
+		corporationId: string
 		corporationName: string
 		ticker: string
 		wasNew: boolean
 	}
 	directorAdded?: {
-		characterId: number
+		characterId: string
 		characterName: string
 		priority: number
 	}
@@ -27,7 +27,7 @@ interface AutoRegistrationResult {
  * if the character has Director role in their corporation
  */
 export async function autoRegisterDirectorCorporation(
-	characterId: number,
+	characterId: string,
 	characterName: string,
 	userId: string,
 	db: ReturnType<typeof createDb>,
@@ -98,14 +98,15 @@ export async function autoRegisterDirectorCorporation(
 		})
 
 		// Step 4: Get character's corporation ID
-		let corporationId: number
+		let corporationId: string
 		try {
 			const characterInfo = await tokenStore.fetchPublicEsi<{
 				corporation_id: number
 				name: string
 			}>(`/characters/${characterId}/`)
 
-			corporationId = characterInfo.data.corporation_id
+			// ESI returns numbers, convert to string
+			corporationId = String(characterInfo.data.corporation_id)
 
 			logger.info('[AutoReg] Got character corporation', {
 				characterId,
@@ -210,7 +211,7 @@ export async function autoRegisterDirectorCorporation(
 		try {
 			const stub = getStub<EveCorporationData>(
 				eveCorporationDataNamespace,
-				`corp-${corporationId}`
+				corporationId
 			)
 
 			await stub.addDirector(characterId, characterName, 100)

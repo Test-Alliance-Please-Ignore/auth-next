@@ -145,7 +145,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		await this.state.storage.sql.exec(`
 			CREATE TABLE IF NOT EXISTS entity_cache (
 				entity_type TEXT NOT NULL,
-				entity_id INTEGER NOT NULL,
+				entity_id TEXT NOT NULL,
 				entity_name TEXT NOT NULL,
 				entity_data TEXT NOT NULL,
 				expires_at INTEGER NOT NULL,
@@ -224,7 +224,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	/**
 	 * Manually refresh a token
 	 */
-	async refreshToken(characterId: number): Promise<boolean> {
+	async refreshToken(characterId: string): Promise<boolean> {
 		try {
 			// Get character from database
 			const character = await this.db.query.eveCharacters.findFirst({
@@ -285,7 +285,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	/**
 	 * Get token information (without actual token values)
 	 */
-	async getTokenInfo(characterId: number): Promise<TokenInfo | null> {
+	async getTokenInfo(characterId: string): Promise<TokenInfo | null> {
 		const character = await this.db.query.eveCharacters.findFirst({
 			where: eq(eveCharacters.characterId, characterId),
 		})
@@ -318,7 +318,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	/**
 	 * Get access token for use (decrypted)
 	 */
-	async getAccessToken(characterId: number): Promise<string | null> {
+	async getAccessToken(characterId: string): Promise<string | null> {
 		const character = await this.db.query.eveCharacters.findFirst({
 			where: eq(eveCharacters.characterId, characterId),
 		})
@@ -361,7 +361,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	/**
 	 * Revoke and delete a token
 	 */
-	async revokeToken(characterId: number): Promise<boolean> {
+	async revokeToken(characterId: string): Promise<boolean> {
 		try {
 			const character = await this.db.query.eveCharacters.findFirst({
 				where: eq(eveCharacters.characterId, characterId),
@@ -417,7 +417,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 * Automatically handles authentication if token is available for the character
 	 * Caches responses according to ESI cache headers
 	 */
-	async fetchEsi<T>(path: string, characterId: number): Promise<EsiResponse<T>> {
+	async fetchEsi<T>(path: string, characterId: string): Promise<EsiResponse<T>> {
 		const cacheKey = `${characterId}:${path}`
 
 		// 1. Check SQLite cache
@@ -603,7 +603,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 * Get corporation information by ID
 	 * Checks entity cache first, then fetches from ESI if needed
 	 */
-	async getCorporationById(corporationId: number): Promise<EsiCorporation | null> {
+	async getCorporationById(corporationId: string): Promise<EsiCorporation | null> {
 		const cacheKey = 'corporation'
 		const now = Date.now()
 
@@ -627,8 +627,33 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 		// 2. Fetch from ESI
 		try {
-			const response = await this.fetchPublicEsi<EsiCorporation>(`/latest/corporations/${corporationId}/`)
-			const corp = response.data
+			// ESI returns numbers for IDs, but we need strings
+			const response = await this.fetchPublicEsi<{
+				corporation_id: number
+				name: string
+				ticker: string
+				ceo_id: number
+				alliance_id?: number
+				description?: string
+				member_count: number
+				tax_rate: number
+				date_founded?: string
+				creator_id: number
+				home_station_id?: number
+				shares?: number
+				url?: string
+				war_eligible?: boolean
+			}>(`/latest/corporations/${corporationId}/`)
+
+			// Convert all numeric IDs to strings
+			const corp: EsiCorporation = {
+				...response.data,
+				corporation_id: String(response.data.corporation_id),
+				ceo_id: String(response.data.ceo_id),
+				alliance_id: response.data.alliance_id ? String(response.data.alliance_id) : undefined,
+				creator_id: String(response.data.creator_id),
+				home_station_id: response.data.home_station_id ? String(response.data.home_station_id) : undefined,
+			}
 
 			// 3. Store in entity cache (non-critical, failures should not prevent returning data)
 			try {
@@ -658,7 +683,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 * Get alliance information by ID
 	 * Checks entity cache first, then fetches from ESI if needed
 	 */
-	async getAllianceById(allianceId: number): Promise<EsiAlliance | null> {
+	async getAllianceById(allianceId: string): Promise<EsiAlliance | null> {
 		const cacheKey = 'alliance'
 		const now = Date.now()
 
@@ -682,8 +707,27 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 		// 2. Fetch from ESI
 		try {
-			const response = await this.fetchPublicEsi<EsiAlliance>(`/latest/alliances/${allianceId}/`)
-			const alliance = response.data
+			// ESI returns numbers for IDs, but we need strings
+			const response = await this.fetchPublicEsi<{
+				alliance_id: number
+				name: string
+				ticker: string
+				executor_corporation_id: number
+				creator_corporation_id: number
+				creator_id: number
+				date_founded: string
+				faction_id?: number
+			}>(`/latest/alliances/${allianceId}/`)
+
+			// Convert all numeric IDs to strings
+			const alliance: EsiAlliance = {
+				...response.data,
+				alliance_id: String(response.data.alliance_id),
+				executor_corporation_id: String(response.data.executor_corporation_id),
+				creator_corporation_id: String(response.data.creator_corporation_id),
+				creator_id: String(response.data.creator_id),
+				faction_id: response.data.faction_id ? String(response.data.faction_id) : undefined,
+			}
 
 			// 3. Store in entity cache (non-critical, failures should not prevent returning data)
 			try {
@@ -718,7 +762,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		const now = Date.now()
 		try {
 			const cachedCursor = await this.state.storage.sql.exec<{
-				entity_id: number
+				entity_id: string
 				entity_data: string
 				expires_at: number
 			}>(`SELECT entity_id, entity_data, expires_at FROM entity_cache WHERE entity_type = ? AND entity_name = ?`, 'corporation', name)
@@ -755,7 +799,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		const now = Date.now()
 		try {
 			const cachedCursor = await this.state.storage.sql.exec<{
-				entity_id: number
+				entity_id: string
 				entity_data: string
 				expires_at: number
 			}>(`SELECT entity_id, entity_data, expires_at FROM entity_cache WHERE entity_type = ? AND entity_name = ?`, 'alliance', name)
@@ -786,19 +830,19 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	/**
 	 * Resolve multiple entity names to IDs using ESI bulk endpoint
 	 */
-	async resolveNames(names: string[]): Promise<Record<string, number>> {
+	async resolveNames(names: string[]): Promise<Record<string, string>> {
 		if (names.length === 0) {
 			return {}
 		}
 
-		const result: Record<string, number> = {}
+		const result: Record<string, string> = {}
 		const namesToResolve: string[] = []
 
 		// Check cache for each name (non-critical, failures treated as cache miss)
 		for (const name of names) {
 			try {
 				const cachedCursor = await this.state.storage.sql.exec<{
-					entity_id: number
+					entity_id: string
 				}>(`SELECT entity_id FROM entity_cache WHERE entity_name = ? AND expires_at > ?`, name, Date.now())
 
 				const cached = [...cachedCursor]
@@ -837,6 +881,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				return result
 			}
 
+			// ESI returns numbers for IDs, but we need strings
 			const data = await response.json<{
 				alliances?: Array<{ id: number; name: string }>
 				characters?: Array<{ id: number; name: string }>
@@ -852,7 +897,8 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				if (!entities) continue
 
 				for (const entity of entities) {
-					result[entity.name] = entity.id
+					const entityId = String(entity.id)
+					result[entity.name] = entityId
 
 					// Cache the name→id mapping (non-critical, failures should not prevent returning data)
 					try {
@@ -860,14 +906,14 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 							`INSERT OR REPLACE INTO entity_cache (entity_type, entity_id, entity_name, entity_data, expires_at)
 							 VALUES (?, ?, ?, ?, ?)`,
 							entityType === 'systems' ? 'solar_system' : entityType.slice(0, -1), // 'alliances' → 'alliance'
-							entity.id,
+							entityId,
 							entity.name,
-							JSON.stringify({ id: entity.id, name: entity.name }), // Minimal data for name lookups
+							JSON.stringify({ id: entityId, name: entity.name }), // Minimal data for name lookups
 							expiresAt
 						)
 					} catch (error) {
 						// Cache write failure - log but don't fail the request
-						logger.withTags({ entityName: entity.name, entityId: entity.id, operation: 'cache_write' }).warn('Entity cache write failed', error)
+						logger.withTags({ entityName: entity.name, entityId, operation: 'cache_write' }).warn('Entity cache write failed', error)
 					}
 				}
 			}
@@ -882,13 +928,13 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	/**
 	 * Resolve multiple entity IDs to names using ESI bulk endpoint
 	 */
-	async resolveIds(ids: number[]): Promise<Record<number, string>> {
+	async resolveIds(ids: string[]): Promise<Record<string, string>> {
 		if (ids.length === 0) {
 			return {}
 		}
 
-		const result: Record<number, string> = {}
-		const idsToResolve: number[] = []
+		const result: Record<string, string> = {}
+		const idsToResolve: string[] = []
 
 		// Check cache for each ID (non-critical, failures treated as cache miss)
 		for (const id of ids) {
@@ -933,13 +979,15 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				return result
 			}
 
+			// ESI returns numbers for IDs, but we need strings
 			const data = await response.json<Array<{ id: number; name: string; category: string }>>()
 
 			// Cache the results
 			const expiresAt = Date.now() + 60 * 60 * 1000 // 1 hour cache
 
 			for (const entity of data) {
-				result[entity.id] = entity.name
+				const entityId = String(entity.id)
+				result[entityId] = entity.name
 
 				// Cache the id→name mapping (non-critical, failures should not prevent returning data)
 				try {
@@ -947,14 +995,14 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 						`INSERT OR REPLACE INTO entity_cache (entity_type, entity_id, entity_name, entity_data, expires_at)
 						 VALUES (?, ?, ?, ?, ?)`,
 						entity.category,
-						entity.id,
+						entityId,
 						entity.name,
-						JSON.stringify(entity), // Minimal data for ID lookups
+						JSON.stringify({ id: entityId, name: entity.name, category: entity.category }), // Minimal data for ID lookups
 						expiresAt
 					)
 				} catch (error) {
 					// Cache write failure - log but don't fail the request
-					logger.withTags({ entityName: entity.name, entityId: entity.id, operation: 'cache_write' }).warn('Entity cache write failed', error)
+					logger.withTags({ entityName: entity.name, entityId, operation: 'cache_write' }).warn('Entity cache write failed', error)
 				}
 			}
 
@@ -1095,7 +1143,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 * Store token in database (upsert)
 	 */
 	private async storeToken(
-		characterId: number,
+		characterId: string,
 		characterName: string,
 		characterOwnerHash: string,
 		scopes: string[],

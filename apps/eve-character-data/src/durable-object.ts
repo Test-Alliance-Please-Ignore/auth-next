@@ -65,7 +65,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	/**
 	 * Fetch and store all public character data
 	 */
-	async fetchCharacterData(characterId: number, forceRefresh = false): Promise<void> {
+	async fetchCharacterData(characterId: string, forceRefresh = false): Promise<void> {
 		await Promise.all([
 			this.fetchAndStorePublicInfo(characterId, forceRefresh),
 			this.fetchAndStorePortrait(characterId, forceRefresh),
@@ -76,7 +76,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	/**
 	 * Fetch and store authenticated character data
 	 */
-	async fetchAuthenticatedData(characterId: number, forceRefresh = false): Promise<void> {
+	async fetchAuthenticatedData(characterId: string, forceRefresh = false): Promise<void> {
 		await Promise.all([
 			this.fetchAndStoreSkills(characterId, forceRefresh),
 			this.fetchAndStoreAttributes(characterId, forceRefresh),
@@ -86,28 +86,28 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	/**
 	 * Fetch and store wallet journal entries
 	 */
-	async fetchWalletJournal(characterId: number, forceRefresh = false): Promise<void> {
+	async fetchWalletJournal(characterId: string, forceRefresh = false): Promise<void> {
 		await this.fetchAndStoreWalletJournal(characterId, forceRefresh)
 	}
 
 	/**
 	 * Fetch and store market transactions
 	 */
-	async fetchMarketTransactions(characterId: number, forceRefresh = false): Promise<void> {
+	async fetchMarketTransactions(characterId: string, forceRefresh = false): Promise<void> {
 		await this.fetchAndStoreMarketTransactions(characterId, forceRefresh)
 	}
 
 	/**
 	 * Fetch and store market orders
 	 */
-	async fetchMarketOrders(characterId: number, forceRefresh = false): Promise<void> {
+	async fetchMarketOrders(characterId: string, forceRefresh = false): Promise<void> {
 		await this.fetchAndStoreMarketOrders(characterId, forceRefresh)
 	}
 
 	/**
 	 * Get character public info from database
 	 */
-	async getCharacterInfo(characterId: number): Promise<CharacterPublicData | null> {
+	async getCharacterInfo(characterId: string): Promise<CharacterPublicData | null> {
 		const result = await this.db.query.characterPublicInfo.findFirst({
 			where: eq(characterPublicInfo.characterId, characterId),
 		})
@@ -137,7 +137,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	/**
 	 * Get when character data was last updated
 	 */
-	async getLastUpdated(characterId: number): Promise<Date | null> {
+	async getLastUpdated(characterId: string): Promise<Date | null> {
 		const result = await this.db.query.characterPublicInfo.findFirst({
 			where: eq(characterPublicInfo.characterId, characterId),
 			columns: {
@@ -159,16 +159,36 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	 * Fetch and store public character info
 	 */
 	private async fetchAndStorePublicInfo(
-		characterId: number,
+		characterId: string,
 		_forceRefresh = false
 	): Promise<CharacterPublicData> {
 		const tokenStoreStub = this.getTokenStoreStub()
-		const response: EsiResponse<EsiCharacterPublicInfo> = await tokenStoreStub.fetchEsi(
-			`/characters/${characterId}`,
-			characterId
-		)
+		// ESI returns numbers for IDs, but we need strings
+		const response = await tokenStoreStub.fetchEsi<{
+			alliance_id?: number
+			birthday: string
+			bloodline_id: number
+			corporation_id: number
+			description?: string
+			faction_id?: number
+			gender: 'male' | 'female'
+			name: string
+			race_id: number
+			security_status?: number
+			title?: string
+		}>(`/characters/${characterId}`, characterId)
 
-		const data = response.data
+		const rawData = response.data
+
+		// Convert numeric IDs to strings
+		const data: EsiCharacterPublicInfo = {
+			...rawData,
+			alliance_id: rawData.alliance_id ? String(rawData.alliance_id) : undefined,
+			bloodline_id: String(rawData.bloodline_id),
+			corporation_id: String(rawData.corporation_id),
+			faction_id: rawData.faction_id ? String(rawData.faction_id) : undefined,
+			race_id: String(rawData.race_id),
+		}
 
 		// Upsert to database
 		await this.db
@@ -213,7 +233,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	 * Fetch and store character portrait
 	 */
 	private async fetchAndStorePortrait(
-		characterId: number,
+		characterId: string,
 		_forceRefresh = false
 	): Promise<CharacterPortraitData> {
 		const tokenStoreStub = this.getTokenStoreStub()
@@ -265,16 +285,29 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	 * Fetch and store corporation history
 	 */
 	private async fetchAndStoreCorporationHistory(
-		characterId: number,
+		characterId: string,
 		_forceRefresh = false
 	): Promise<CharacterCorporationHistoryData[]> {
 		const tokenStoreStub = this.getTokenStoreStub()
-		const response: EsiResponse<EsiCorporationHistoryEntry[]> = await tokenStoreStub.fetchEsi(
-			`/characters/${characterId}/corporationhistory`,
-			characterId
-		)
+		// ESI returns numbers for IDs, but we need strings
+		const response = await tokenStoreStub.fetchEsi<
+			Array<{
+				corporation_id: number
+				is_deleted?: boolean
+				record_id: number
+				start_date: string
+			}>
+		>(`/characters/${characterId}/corporationhistory`, characterId)
 
-		const entries = response.data
+		const rawEntries = response.data
+
+		// Convert numeric IDs to strings
+		const entries: EsiCorporationHistoryEntry[] = rawEntries.map((entry) => ({
+			corporation_id: String(entry.corporation_id),
+			is_deleted: entry.is_deleted,
+			record_id: String(entry.record_id),
+			start_date: entry.start_date,
+		}))
 
 		// Upsert each entry
 		for (const entry of entries) {
@@ -319,16 +352,32 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	 * Fetch and store character skills
 	 */
 	private async fetchAndStoreSkills(
-		characterId: number,
+		characterId: string,
 		_forceRefresh = false
 	): Promise<CharacterSkillsData> {
 		const tokenStoreStub = this.getTokenStoreStub()
-		const response: EsiResponse<EsiCharacterSkills> = await tokenStoreStub.fetchEsi(
-			`/characters/${characterId}/skills`,
-			characterId
-		)
+		// ESI returns numbers for skill_id, but we need strings
+		const response = await tokenStoreStub.fetchEsi<{
+			skills: Array<{
+				active_skill_level: number
+				skill_id: number
+				skillpoints_in_skill: number
+				trained_skill_level: number
+			}>
+			total_sp: number
+			unallocated_sp?: number
+		}>(`/characters/${characterId}/skills`, characterId)
 
-		const data = response.data
+		const rawData = response.data
+
+		// Convert numeric IDs to strings
+		const data: EsiCharacterSkills = {
+			...rawData,
+			skills: rawData.skills.map((skill) => ({
+				...skill,
+				skill_id: String(skill.skill_id),
+			})),
+		}
 
 		// Upsert to database
 		await this.db
@@ -368,7 +417,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	 * Fetch and store character attributes
 	 */
 	private async fetchAndStoreAttributes(
-		characterId: number,
+		characterId: string,
 		_forceRefresh = false
 	): Promise<CharacterAttributesData> {
 		const tokenStoreStub = this.getTokenStoreStub()
@@ -432,16 +481,47 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	 * Fetch and store wallet journal entries
 	 */
 	private async fetchAndStoreWalletJournal(
-		characterId: number,
+		characterId: string,
 		_forceRefresh = false
 	): Promise<CharacterWalletJournalData[]> {
 		const tokenStoreStub = this.getTokenStoreStub()
-		const response: EsiResponse<EsiWalletJournalEntry[]> = await tokenStoreStub.fetchEsi(
-			`/characters/${characterId}/wallet/journal`,
-			characterId
-		)
+		// ESI returns numbers for IDs, but we need strings
+		const response = await tokenStoreStub.fetchEsi<
+			Array<{
+				id: number
+				date: string
+				ref_type: string
+				amount: number
+				balance?: number
+				description: string
+				first_party_id?: number
+				second_party_id?: number
+				reason?: string
+				tax?: number
+				tax_receiver_id?: number
+				context_id?: number
+				context_id_type?: string
+			}>
+		>(`/characters/${characterId}/wallet/journal`, characterId)
 
-		const entries = response.data
+		const rawEntries = response.data
+
+		// Convert numeric IDs to strings
+		const entries: EsiWalletJournalEntry[] = rawEntries.map((entry) => ({
+			id: String(entry.id),
+			date: entry.date,
+			ref_type: entry.ref_type,
+			amount: entry.amount,
+			balance: entry.balance,
+			description: entry.description,
+			first_party_id: entry.first_party_id ? String(entry.first_party_id) : undefined,
+			second_party_id: entry.second_party_id ? String(entry.second_party_id) : undefined,
+			reason: entry.reason,
+			tax: entry.tax,
+			tax_receiver_id: entry.tax_receiver_id ? String(entry.tax_receiver_id) : undefined,
+			context_id: entry.context_id ? String(entry.context_id) : undefined,
+			context_id_type: entry.context_id_type,
+		}))
 
 		// Upsert each entry
 		for (const entry of entries) {
@@ -513,16 +593,41 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	 * Fetch and store market transactions
 	 */
 	private async fetchAndStoreMarketTransactions(
-		characterId: number,
+		characterId: string,
 		_forceRefresh = false
 	): Promise<CharacterMarketTransactionData[]> {
 		const tokenStoreStub = this.getTokenStoreStub()
-		const response: EsiResponse<EsiMarketTransaction[]> = await tokenStoreStub.fetchEsi(
-			`/characters/${characterId}/wallet/transactions`,
-			characterId
-		)
+		// ESI returns numbers for IDs, but we need strings
+		const response = await tokenStoreStub.fetchEsi<
+			Array<{
+				transaction_id: number
+				date: string
+				type_id: number
+				quantity: number
+				unit_price: number
+				client_id: number
+				location_id: number
+				is_buy: boolean
+				is_personal: boolean
+				journal_ref_id: number
+			}>
+		>(`/characters/${characterId}/wallet/transactions`, characterId)
 
-		const transactions = response.data
+		const rawTransactions = response.data
+
+		// Convert numeric IDs to strings
+		const transactions: EsiMarketTransaction[] = rawTransactions.map((txn) => ({
+			transaction_id: String(txn.transaction_id),
+			date: txn.date,
+			type_id: String(txn.type_id),
+			quantity: txn.quantity,
+			unit_price: txn.unit_price,
+			client_id: String(txn.client_id),
+			location_id: String(txn.location_id),
+			is_buy: txn.is_buy,
+			is_personal: txn.is_personal,
+			journal_ref_id: String(txn.journal_ref_id),
+		}))
 
 		// Upsert each transaction
 		for (const txn of transactions) {
@@ -585,16 +690,49 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	 * Fetch and store market orders
 	 */
 	private async fetchAndStoreMarketOrders(
-		characterId: number,
+		characterId: string,
 		_forceRefresh = false
 	): Promise<CharacterMarketOrderData[]> {
 		const tokenStoreStub = this.getTokenStoreStub()
-		const response: EsiResponse<EsiMarketOrder[]> = await tokenStoreStub.fetchEsi(
-			`/characters/${characterId}/orders`,
-			characterId
-		)
+		// ESI returns numbers for IDs, but we need strings
+		const response = await tokenStoreStub.fetchEsi<
+			Array<{
+				order_id: number
+				type_id: number
+				location_id: number
+				is_buy_order?: boolean
+				price: number
+				volume_total: number
+				volume_remain: number
+				issued: string
+				state: 'open' | 'closed' | 'expired' | 'cancelled'
+				min_volume?: number
+				range?: string
+				duration?: number
+				escrow?: number
+				region_id?: number
+			}>
+		>(`/characters/${characterId}/orders`, characterId)
 
-		const orders = response.data
+		const rawOrders = response.data
+
+		// Convert numeric IDs to strings
+		const orders: EsiMarketOrder[] = rawOrders.map((order) => ({
+			order_id: String(order.order_id),
+			type_id: String(order.type_id),
+			location_id: String(order.location_id),
+			is_buy_order: order.is_buy_order,
+			price: order.price,
+			volume_total: order.volume_total,
+			volume_remain: order.volume_remain,
+			issued: order.issued,
+			state: order.state,
+			min_volume: order.min_volume,
+			range: order.range,
+			duration: order.duration,
+			escrow: order.escrow,
+			region_id: order.region_id ? String(order.region_id) : undefined,
+		}))
 
 		// Upsert each order
 		for (const order of orders) {
@@ -668,7 +806,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	/**
 	 * Get character portrait data
 	 */
-	async getPortrait(characterId: number) {
+	async getPortrait(characterId: string) {
 		const result = await this.db.query.characterPortraits.findFirst({
 			where: eq(characterPortraits.characterId, characterId),
 		})
@@ -687,7 +825,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	/**
 	 * Get character corporation history
 	 */
-	async getCorporationHistory(characterId: number) {
+	async getCorporationHistory(characterId: string) {
 		const results = await this.db.query.characterCorporationHistory.findMany({
 			where: eq(characterCorporationHistory.characterId, characterId),
 		})
@@ -703,7 +841,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	/**
 	 * Get character skills
 	 */
-	async getSkills(characterId: number) {
+	async getSkills(characterId: string) {
 		const result = await this.db.query.characterSkills.findFirst({
 			where: eq(characterSkills.characterId, characterId),
 		})
@@ -720,7 +858,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	/**
 	 * Get character attributes
 	 */
-	async getAttributes(characterId: number) {
+	async getAttributes(characterId: string) {
 		const result = await this.db.query.characterAttributes.findFirst({
 			where: eq(characterAttributes.characterId, characterId),
 		})
@@ -743,7 +881,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	 * Get sensitive character data (location, wallet, assets, status, skill queue, and financial data)
 	 * Returns null if no data is available
 	 */
-	async getSensitiveData(characterId: number) {
+	async getSensitiveData(characterId: string) {
 		// Query all sensitive data tables
 		const [location, wallet, assets, status, skillQueue, walletJournal, marketTransactions, marketOrders] =
 			await Promise.all([
@@ -886,7 +1024,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	/**
 	 * Get wallet journal entries for a character
 	 */
-	async getWalletJournal(characterId: number): Promise<CharacterWalletJournalData[]> {
+	async getWalletJournal(characterId: string): Promise<CharacterWalletJournalData[]> {
 		const results = await this.db.query.characterWalletJournal.findMany({
 			where: eq(characterWalletJournal.characterId, characterId),
 		})
@@ -915,7 +1053,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	/**
 	 * Get market transactions for a character
 	 */
-	async getMarketTransactions(characterId: number): Promise<CharacterMarketTransactionData[]> {
+	async getMarketTransactions(characterId: string): Promise<CharacterMarketTransactionData[]> {
 		const results = await this.db.query.characterMarketTransactions.findMany({
 			where: eq(characterMarketTransactions.characterId, characterId),
 		})
@@ -941,7 +1079,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	/**
 	 * Get market orders for a character
 	 */
-	async getMarketOrders(characterId: number): Promise<CharacterMarketOrderData[]> {
+	async getMarketOrders(characterId: string): Promise<CharacterMarketOrderData[]> {
 		const results = await this.db.query.characterMarketOrders.findMany({
 			where: eq(characterMarketOrders.characterId, characterId),
 		})

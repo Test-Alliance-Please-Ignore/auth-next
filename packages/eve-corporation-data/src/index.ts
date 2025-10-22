@@ -14,20 +14,20 @@
  * GET /corporations/{corporation_id}
  */
 export interface EsiCorporationPublicInfo {
-	corporation_id: number
+	corporation_id: string
 	name: string
 	ticker: string
-	ceo_id: number
-	creator_id: number
+	ceo_id: string
+	creator_id: string
 	date_founded?: string // ISO 8601 date
 	description?: string
-	home_station_id?: number
+	home_station_id?: string
 	member_count: number
 	shares?: number
 	tax_rate: number
 	url?: string
-	alliance_id?: number
-	faction_id?: number
+	alliance_id?: string
+	faction_id?: string
 	war_eligible?: boolean
 }
 
@@ -46,19 +46,19 @@ export interface EsiCharacterRoles {
  * ESI Corporation Members Response
  * GET /corporations/{corporation_id}/members
  */
-export type EsiCorporationMembers = number[]
+export type EsiCorporationMembers = string[]
 
 /**
  * ESI Corporation Member Tracking Response
  * GET /corporations/{corporation_id}/membertracking
  */
 export interface EsiCorporationMemberTracking {
-	character_id: number
-	base_id?: number
-	location_id?: number
+	character_id: string
+	base_id?: string
+	location_id?: string
 	logoff_date?: string
 	logon_date?: string
-	ship_type_id?: number
+	ship_type_id?: string
 	start_date?: string
 }
 
@@ -76,19 +76,19 @@ export interface EsiCorporationWallet {
  * GET /corporations/{corporation_id}/wallets/{division}/journal
  */
 export interface EsiCorporationWalletJournalEntry {
-	id: number
+	id: string
 	amount?: number
 	balance?: number
-	context_id?: number
+	context_id?: string
 	context_id_type?: string
 	date: string
 	description: string
-	first_party_id?: number
+	first_party_id?: string
 	reason?: string
 	ref_type: string
-	second_party_id?: number
+	second_party_id?: string
 	tax?: number
-	tax_receiver_id?: number
+	tax_receiver_id?: string
 }
 
 /**
@@ -96,15 +96,15 @@ export interface EsiCorporationWalletJournalEntry {
  * GET /corporations/{corporation_id}/wallets/{division}/transactions
  */
 export interface EsiCorporationWalletTransaction {
-	transaction_id: number
-	client_id: number
+	transaction_id: string
+	client_id: string
 	date: string
 	is_buy: boolean
 	is_personal: boolean
-	journal_ref_id: number
-	location_id: number
+	journal_ref_id: string
+	location_id: string
 	quantity: number
-	type_id: number
+	type_id: string
 	unit_price: number
 }
 
@@ -113,13 +113,13 @@ export interface EsiCorporationWalletTransaction {
  * GET /corporations/{corporation_id}/assets
  */
 export interface EsiCorporationAsset {
-	item_id: number
+	item_id: string
 	is_singleton: boolean
 	location_flag: string
-	location_id: number
+	location_id: string
 	location_type: string
 	quantity: number
-	type_id: number
+	type_id: string
 	is_blueprint_copy?: boolean
 }
 
@@ -128,10 +128,10 @@ export interface EsiCorporationAsset {
  * GET /corporations/{corporation_id}/structures
  */
 export interface EsiCorporationStructure {
-	structure_id: number
-	type_id: number
-	system_id: number
-	profile_id: number
+	structure_id: string
+	type_id: string
+	system_id: string
+	profile_id: string
 	fuel_expires?: string
 	next_reinforce_apply?: string
 	next_reinforce_hour?: number
@@ -151,18 +151,18 @@ export interface EsiCorporationStructure {
  * GET /corporations/{corporation_id}/orders
  */
 export interface EsiCorporationOrder {
-	order_id: number
+	order_id: string
 	duration: number
 	escrow?: number
 	is_buy_order: boolean
 	issued: string
-	issued_by: number
-	location_id: number
+	issued_by: string
+	location_id: string
 	min_volume?: number
 	price: number
 	range: string
-	region_id: number
-	type_id: number
+	region_id: string
+	type_id: string
 	volume_remain: number
 	volume_total: number
 	wallet_division: number
@@ -173,9 +173,9 @@ export interface EsiCorporationOrder {
  * GET /corporations/{corporation_id}/contracts
  */
 export interface EsiCorporationContract {
-	contract_id: number
-	acceptor_id?: number
-	assignee_id: number
+	contract_id: string
+	acceptor_id?: string
+	assignee_id: string
 	availability: string
 	buyout?: number
 	collateral?: number
@@ -184,13 +184,13 @@ export interface EsiCorporationContract {
 	date_expired: string
 	date_issued: string
 	days_to_complete?: number
-	end_location_id?: number
+	end_location_id?: string
 	for_corporation: boolean
-	issuer_corporation_id: number
-	issuer_id: number
+	issuer_corporation_id: string
+	issuer_id: string
 	price?: number
 	reward?: number
-	start_location_id?: number
+	start_location_id?: string
 	status: string
 	title?: string
 	type: string
@@ -202,27 +202,27 @@ export interface EsiCorporationContract {
  * GET /corporations/{corporation_id}/industry/jobs
  */
 export interface EsiCorporationIndustryJob {
-	job_id: number
-	installer_id: number
-	facility_id: number
-	location_id: number
-	activity_id: number
-	blueprint_id: number
-	blueprint_type_id: number
-	blueprint_location_id: number
-	output_location_id: number
+	job_id: string
+	installer_id: string
+	facility_id: string
+	location_id: string
+	activity_id: string
+	blueprint_id: string
+	blueprint_type_id: string
+	blueprint_location_id: string
+	output_location_id: string
 	runs: number
 	cost?: number
 	licensed_runs?: number
 	probability?: number
-	product_type_id?: number
+	product_type_id?: string
 	status: string
 	duration: number
 	start_date: string
 	end_date: string
 	pause_date?: string
 	completed_date?: string
-	completed_character_id?: number
+	completed_character_id?: string
 	successful_runs?: number
 }
 
@@ -231,7 +231,7 @@ export interface EsiCorporationIndustryJob {
  * GET /corporations/{corporation_id}/killmails/recent
  */
 export interface EsiCorporationKillmail {
-	killmail_id: number
+	killmail_id: string
 	killmail_hash: string
 }
 
@@ -243,8 +243,8 @@ export interface EsiCorporationKillmail {
  * Corporation configuration data
  */
 export interface CorporationConfigData {
-	corporationId: number
-	characterId: number
+	corporationId: string
+	characterId: string
 	characterName: string
 	lastVerified: Date | null
 	isVerified: boolean
@@ -257,8 +257,8 @@ export interface CorporationConfigData {
  */
 export interface CharacterCorporationRolesData {
 	id: string
-	corporationId: number
-	characterId: number
+	corporationId: string
+	characterId: string
 	roles: string[]
 	rolesAtHq?: string[]
 	rolesAtBase?: string[]
@@ -270,20 +270,20 @@ export interface CharacterCorporationRolesData {
  * Corporation public information data
  */
 export interface CorporationPublicData {
-	corporationId: number
+	corporationId: string
 	name: string
 	ticker: string
-	ceoId: number
-	creatorId: number
+	ceoId: string
+	creatorId: string
 	dateFounded: Date | null
 	description: string | null
-	homeStationId: number | null
+	homeStationId: string | null
 	memberCount: number
 	shares: string | null
 	taxRate: string
 	url: string | null
-	allianceId: number | null
-	factionId: number | null
+	allianceId: string | null
+	factionId: string | null
 	warEligible: boolean | null
 	updatedAt: Date
 }
@@ -293,8 +293,8 @@ export interface CorporationPublicData {
  */
 export interface CorporationMemberData {
 	id: string
-	corporationId: number
-	characterId: number
+	corporationId: string
+	characterId: string
 	updatedAt: Date
 }
 
@@ -303,13 +303,13 @@ export interface CorporationMemberData {
  */
 export interface CorporationMemberTrackingData {
 	id: string
-	corporationId: number
-	characterId: number
-	baseId: number | null
+	corporationId: string
+	characterId: string
+	baseId: string | null
 	locationId: string | null
 	logoffDate: Date | null
 	logonDate: Date | null
-	shipTypeId: number | null
+	shipTypeId: string | null
 	startDate: Date | null
 	updatedAt: Date
 }
@@ -319,7 +319,7 @@ export interface CorporationMemberTrackingData {
  */
 export interface CorporationWalletData {
 	id: string
-	corporationId: number
+	corporationId: string
 	division: number
 	balance: string
 	updatedAt: Date
@@ -330,7 +330,7 @@ export interface CorporationWalletData {
  */
 export interface CorporationWalletJournalData {
 	id: string
-	corporationId: number
+	corporationId: string
 	division: number
 	journalId: string
 	amount: string | null
@@ -339,12 +339,12 @@ export interface CorporationWalletJournalData {
 	contextIdType: string | null
 	date: Date
 	description: string
-	firstPartyId: number | null
+	firstPartyId: string | null
 	reason: string | null
 	refType: string
-	secondPartyId: number | null
+	secondPartyId: string | null
 	tax: string | null
-	taxReceiverId: number | null
+	taxReceiverId: string | null
 	updatedAt: Date
 }
 
@@ -353,17 +353,17 @@ export interface CorporationWalletJournalData {
  */
 export interface CorporationWalletTransactionData {
 	id: string
-	corporationId: number
+	corporationId: string
 	division: number
 	transactionId: string
-	clientId: number
+	clientId: string
 	date: Date
 	isBuy: boolean
 	isPersonal: boolean
 	journalRefId: string
 	locationId: string
 	quantity: number
-	typeId: number
+	typeId: string
 	unitPrice: string
 	updatedAt: Date
 }
@@ -373,14 +373,14 @@ export interface CorporationWalletTransactionData {
  */
 export interface CorporationAssetData {
 	id: string
-	corporationId: number
+	corporationId: string
 	itemId: string
 	isSingleton: boolean
 	locationFlag: string
 	locationId: string
 	locationType: string
 	quantity: number
-	typeId: number
+	typeId: string
 	isBlueprintCopy: boolean | null
 	updatedAt: Date
 }
@@ -390,11 +390,11 @@ export interface CorporationAssetData {
  */
 export interface CorporationStructureData {
 	id: string
-	corporationId: number
+	corporationId: string
 	structureId: string
-	typeId: number
-	systemId: number
-	profileId: number
+	typeId: string
+	systemId: string
+	profileId: string
 	fuelExpires: Date | null
 	nextReinforceApply: Date | null
 	nextReinforceHour: number | null
@@ -412,19 +412,19 @@ export interface CorporationStructureData {
  */
 export interface CorporationOrderData {
 	id: string
-	corporationId: number
+	corporationId: string
 	orderId: string
 	duration: number
 	escrow: string | null
 	isBuyOrder: boolean
 	issued: Date
-	issuedBy: number
+	issuedBy: string
 	locationId: string
 	minVolume: number | null
 	price: string
 	range: string
-	regionId: number
-	typeId: number
+	regionId: string
+	typeId: string
 	volumeRemain: number
 	volumeTotal: number
 	walletDivision: number
@@ -436,10 +436,10 @@ export interface CorporationOrderData {
  */
 export interface CorporationContractData {
 	id: string
-	corporationId: number
-	contractId: number
-	acceptorId: number | null
-	assigneeId: number
+	corporationId: string
+	contractId: string
+	acceptorId: string | null
+	assigneeId: string
 	availability: string
 	buyout: string | null
 	collateral: string | null
@@ -450,8 +450,8 @@ export interface CorporationContractData {
 	daysToComplete: number | null
 	endLocationId: string | null
 	forCorporation: boolean
-	issuerCorporationId: number
-	issuerId: number
+	issuerCorporationId: string
+	issuerId: string
 	price: string | null
 	reward: string | null
 	startLocationId: string | null
@@ -467,28 +467,28 @@ export interface CorporationContractData {
  */
 export interface CorporationIndustryJobData {
 	id: string
-	corporationId: number
-	jobId: number
-	installerId: number
+	corporationId: string
+	jobId: string
+	installerId: string
 	facilityId: string
 	locationId: string
-	activityId: number
+	activityId: string
 	blueprintId: string
-	blueprintTypeId: number
+	blueprintTypeId: string
 	blueprintLocationId: string
 	outputLocationId: string
 	runs: number
 	cost: string | null
 	licensedRuns: number | null
 	probability: string | null
-	productTypeId: number | null
+	productTypeId: string | null
 	status: string
 	duration: number
 	startDate: Date
 	endDate: Date
 	pauseDate: Date | null
 	completedDate: Date | null
-	completedCharacterId: number | null
+	completedCharacterId: string | null
 	successfulRuns: number | null
 	updatedAt: Date
 }
@@ -498,8 +498,8 @@ export interface CorporationIndustryJobData {
  */
 export interface CorporationKillmailData {
 	id: string
-	corporationId: number
-	killmailId: number
+	corporationId: string
+	killmailId: string
 	killmailHash: string
 	killmailTime: Date
 	updatedAt: Date
@@ -553,7 +553,7 @@ export interface CorporationCoreData {
  */
 export interface CorporationAccessVerification {
 	hasAccess: boolean
-	characterId: number | null
+	characterId: string | null
 	characterName: string | null
 	verifiedRoles: string[]
 	missingRoles?: string[]
@@ -588,11 +588,11 @@ export type CorporationRole =
  * // Access corporation 98000001's data
  * const stub = getStub<EveCorporationData>(
  *   env.EVE_CORPORATION_DATA,
- *   'corp-98000001'
+ *   '98000001'
  * )
  *
  * // Configure which character to use for API access
- * await stub.setCharacter(98000001, 2119123456, 'Character Name')
+ * await stub.setCharacter('98000001', '2119123456', 'Character Name')
  *
  * // Verify access and fetch data
  * const verification = await stub.verifyAccess()
@@ -612,7 +612,7 @@ export interface EveCorporationData extends DurableObject {
 	 * @param characterId - The character ID with corporation permissions
 	 * @param characterName - The character's name
 	 */
-	setCharacter(corporationId: number, characterId: number, characterName: string): Promise<void>
+	setCharacter(corporationId: string, characterId: string, characterName: string): Promise<void>
 
 	/**
 	 * Get the configured character for this corporation
@@ -642,7 +642,7 @@ export interface EveCorporationData extends DurableObject {
 	 * @param corporationId - The corporation ID
 	 * @param forceRefresh - Skip cache and fetch fresh data
 	 */
-	fetchPublicData(corporationId: number, forceRefresh?: boolean): Promise<void>
+	fetchPublicData(corporationId: string, forceRefresh?: boolean): Promise<void>
 
 	/**
 	 * Fetch core corporation data (members, tracking)
@@ -798,5 +798,5 @@ export interface EveCorporationData extends DurableObject {
 	 * @param characterId - The character ID
 	 * @returns Roles data or null if not found
 	 */
-	getCharacterRoles(characterId: number): Promise<CharacterCorporationRolesData | null>
+	getCharacterRoles(characterId: string): Promise<CharacterCorporationRolesData | null>
 }

@@ -20,7 +20,7 @@ import { boolean, index, integer, jsonb, pgTable, text, timestamp, unique, uuid 
  * Director characters are now stored in corporationDirectors table
  */
 export const corporationConfig = pgTable('corporation_config', {
-	corporationId: integer('corporation_id').primaryKey(),
+	corporationId: text('corporation_id').primaryKey(),
 	lastVerified: timestamp('last_verified', { withTimezone: true }),
 	isVerified: boolean('is_verified').default(false).notNull(),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -35,10 +35,10 @@ export const corporationDirectors = pgTable(
 	'corporation_directors',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
-		corporationId: integer('corporation_id')
+		corporationId: text('corporation_id')
 			.notNull()
 			.references(() => corporationConfig.corporationId, { onDelete: 'cascade' }),
-		characterId: integer('character_id').notNull(),
+		characterId: text('character_id').notNull(),
 		characterName: text('character_name').notNull(),
 		/** Priority for director selection (lower = higher priority, used for tie-breaking) */
 		priority: integer('priority').default(100).notNull(),
@@ -76,10 +76,10 @@ export const characterCorporationRoles = pgTable(
 	'character_corporation_roles',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
-		corporationId: integer('corporation_id')
+		corporationId: text('corporation_id')
 			.notNull()
 			.references(() => corporationConfig.corporationId),
-		characterId: integer('character_id').notNull(),
+		characterId: text('character_id').notNull(),
 		roles: jsonb('roles').notNull().$type<string[]>(),
 		rolesAtHq: jsonb('roles_at_hq').$type<string[]>(),
 		rolesAtBase: jsonb('roles_at_base').$type<string[]>(),
@@ -98,20 +98,20 @@ export const characterCorporationRoles = pgTable(
  * Accessible without authentication
  */
 export const corporationPublicInfo = pgTable('corporation_public_info', {
-	corporationId: integer('corporation_id').primaryKey(),
+	corporationId: text('corporation_id').primaryKey(),
 	name: text('name').notNull(),
 	ticker: text('ticker').notNull(),
-	ceoId: integer('ceo_id').notNull(),
-	creatorId: integer('creator_id').notNull(),
+	ceoId: text('ceo_id').notNull(),
+	creatorId: text('creator_id').notNull(),
 	dateFounded: timestamp('date_founded', { withTimezone: true }),
 	description: text('description'),
-	homeStationId: integer('home_station_id'),
+	homeStationId: text('home_station_id'),
 	memberCount: integer('member_count').notNull(),
 	shares: text('shares'),
 	taxRate: text('tax_rate').notNull(), // Stored as string to avoid floating point issues
 	url: text('url'),
-	allianceId: integer('alliance_id'),
-	factionId: integer('faction_id'),
+	allianceId: text('alliance_id'),
+	factionId: text('faction_id'),
 	warEligible: boolean('war_eligible'),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 })
@@ -128,10 +128,10 @@ export const corporationMembers = pgTable(
 	'corporation_members',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
-		corporationId: integer('corporation_id')
+		corporationId: text('corporation_id')
 			.notNull()
 			.references(() => corporationConfig.corporationId),
-		characterId: integer('character_id').notNull(),
+		characterId: text('character_id').notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
 	(table) => [unique().on(table.corporationId, table.characterId)],
@@ -145,15 +145,15 @@ export const corporationMemberTracking = pgTable(
 	'corporation_member_tracking',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
-		corporationId: integer('corporation_id')
+		corporationId: text('corporation_id')
 			.notNull()
 			.references(() => corporationConfig.corporationId),
-		characterId: integer('character_id').notNull(),
-		baseId: integer('base_id'),
+		characterId: text('character_id').notNull(),
+		baseId: text('base_id'),
 		locationId: text('location_id'),
 		logoffDate: timestamp('logoff_date', { withTimezone: true }),
 		logonDate: timestamp('logon_date', { withTimezone: true }),
-		shipTypeId: integer('ship_type_id'),
+		shipTypeId: text('ship_type_id'),
 		startDate: timestamp('start_date', { withTimezone: true }),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
@@ -173,7 +173,7 @@ export const corporationWallets = pgTable(
 	'corporation_wallets',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
-		corporationId: integer('corporation_id')
+		corporationId: text('corporation_id')
 			.notNull()
 			.references(() => corporationConfig.corporationId),
 		division: integer('division').notNull(), // 1-7
@@ -192,7 +192,7 @@ export const corporationWalletJournal = pgTable(
 	'corporation_wallet_journal',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
-		corporationId: integer('corporation_id')
+		corporationId: text('corporation_id')
 			.notNull()
 			.references(() => corporationConfig.corporationId),
 		division: integer('division').notNull(),
@@ -203,12 +203,12 @@ export const corporationWalletJournal = pgTable(
 		contextIdType: text('context_id_type'),
 		date: timestamp('date', { withTimezone: true }).notNull(),
 		description: text('description').notNull(),
-		firstPartyId: integer('first_party_id'),
+		firstPartyId: text('first_party_id'),
 		reason: text('reason'),
 		refType: text('ref_type').notNull(),
-		secondPartyId: integer('second_party_id'),
+		secondPartyId: text('second_party_id'),
 		tax: text('tax'),
-		taxReceiverId: integer('tax_receiver_id'),
+		taxReceiverId: text('tax_receiver_id'),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
 	(table) => [unique().on(table.corporationId, table.division, table.journalId)],
@@ -223,19 +223,19 @@ export const corporationWalletTransactions = pgTable(
 	'corporation_wallet_transactions',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
-		corporationId: integer('corporation_id')
+		corporationId: text('corporation_id')
 			.notNull()
 			.references(() => corporationConfig.corporationId),
 		division: integer('division').notNull(),
 		transactionId: text('transaction_id').notNull(),
-		clientId: integer('client_id').notNull(),
+		clientId: text('client_id').notNull(),
 		date: timestamp('date', { withTimezone: true }).notNull(),
 		isBuy: boolean('is_buy').notNull(),
 		isPersonal: boolean('is_personal').notNull(),
 		journalRefId: text('journal_ref_id').notNull(),
 		locationId: text('location_id').notNull(),
 		quantity: integer('quantity').notNull(),
-		typeId: integer('type_id').notNull(),
+		typeId: text('type_id').notNull(),
 		unitPrice: text('unit_price').notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
@@ -255,7 +255,7 @@ export const corporationAssets = pgTable(
 	'corporation_assets',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
-		corporationId: integer('corporation_id')
+		corporationId: text('corporation_id')
 			.notNull()
 			.references(() => corporationConfig.corporationId),
 		itemId: text('item_id').notNull(),
@@ -264,7 +264,7 @@ export const corporationAssets = pgTable(
 		locationId: text('location_id').notNull(),
 		locationType: text('location_type').notNull(),
 		quantity: integer('quantity').notNull(),
-		typeId: integer('type_id').notNull(),
+		typeId: text('type_id').notNull(),
 		isBlueprintCopy: boolean('is_blueprint_copy'),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
@@ -280,13 +280,13 @@ export const corporationStructures = pgTable(
 	'corporation_structures',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
-		corporationId: integer('corporation_id')
+		corporationId: text('corporation_id')
 			.notNull()
 			.references(() => corporationConfig.corporationId),
 		structureId: text('structure_id').notNull(),
-		typeId: integer('type_id').notNull(),
-		systemId: integer('system_id').notNull(),
-		profileId: integer('profile_id').notNull(),
+		typeId: text('type_id').notNull(),
+		systemId: text('system_id').notNull(),
+		profileId: text('profile_id').notNull(),
 		fuelExpires: timestamp('fuel_expires', { withTimezone: true }),
 		nextReinforceApply: timestamp('next_reinforce_apply', { withTimezone: true }),
 		nextReinforceHour: integer('next_reinforce_hour'),
@@ -319,7 +319,7 @@ export const corporationOrders = pgTable(
 	'corporation_orders',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
-		corporationId: integer('corporation_id')
+		corporationId: text('corporation_id')
 			.notNull()
 			.references(() => corporationConfig.corporationId),
 		orderId: text('order_id').notNull(),
@@ -327,13 +327,13 @@ export const corporationOrders = pgTable(
 		escrow: text('escrow'),
 		isBuyOrder: boolean('is_buy_order').notNull(),
 		issued: timestamp('issued', { withTimezone: true }).notNull(),
-		issuedBy: integer('issued_by').notNull(),
+		issuedBy: text('issued_by').notNull(),
 		locationId: text('location_id').notNull(),
 		minVolume: integer('min_volume'),
 		price: text('price').notNull(),
 		range: text('range').notNull(),
-		regionId: integer('region_id').notNull(),
-		typeId: integer('type_id').notNull(),
+		regionId: text('region_id').notNull(),
+		typeId: text('type_id').notNull(),
 		volumeRemain: integer('volume_remain').notNull(),
 		volumeTotal: integer('volume_total').notNull(),
 		walletDivision: integer('wallet_division').notNull(),
@@ -351,12 +351,12 @@ export const corporationContracts = pgTable(
 	'corporation_contracts',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
-		corporationId: integer('corporation_id')
+		corporationId: text('corporation_id')
 			.notNull()
 			.references(() => corporationConfig.corporationId),
-		contractId: integer('contract_id').notNull(),
-		acceptorId: integer('acceptor_id'),
-		assigneeId: integer('assignee_id').notNull(),
+		contractId: text('contract_id').notNull(),
+		acceptorId: text('acceptor_id'),
+		assigneeId: text('assignee_id').notNull(),
 		availability: text('availability').notNull(),
 		buyout: text('buyout'),
 		collateral: text('collateral'),
@@ -367,8 +367,8 @@ export const corporationContracts = pgTable(
 		daysToComplete: integer('days_to_complete'),
 		endLocationId: text('end_location_id'),
 		forCorporation: boolean('for_corporation').notNull(),
-		issuerCorporationId: integer('issuer_corporation_id').notNull(),
-		issuerId: integer('issuer_id').notNull(),
+		issuerCorporationId: text('issuer_corporation_id').notNull(),
+		issuerId: text('issuer_id').notNull(),
 		price: text('price'),
 		reward: text('reward'),
 		startLocationId: text('start_location_id'),
@@ -390,30 +390,30 @@ export const corporationIndustryJobs = pgTable(
 	'corporation_industry_jobs',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
-		corporationId: integer('corporation_id')
+		corporationId: text('corporation_id')
 			.notNull()
 			.references(() => corporationConfig.corporationId),
-		jobId: integer('job_id').notNull(),
-		installerId: integer('installer_id').notNull(),
+		jobId: text('job_id').notNull(),
+		installerId: text('installer_id').notNull(),
 		facilityId: text('facility_id').notNull(),
 		locationId: text('location_id').notNull(),
-		activityId: integer('activity_id').notNull(),
+		activityId: text('activity_id').notNull(),
 		blueprintId: text('blueprint_id').notNull(),
-		blueprintTypeId: integer('blueprint_type_id').notNull(),
+		blueprintTypeId: text('blueprint_type_id').notNull(),
 		blueprintLocationId: text('blueprint_location_id').notNull(),
 		outputLocationId: text('output_location_id').notNull(),
 		runs: integer('runs').notNull(),
 		cost: text('cost'),
 		licensedRuns: integer('licensed_runs'),
 		probability: text('probability'),
-		productTypeId: integer('product_type_id'),
+		productTypeId: text('product_type_id'),
 		status: text('status').notNull(),
 		duration: integer('duration').notNull(),
 		startDate: timestamp('start_date', { withTimezone: true }).notNull(),
 		endDate: timestamp('end_date', { withTimezone: true }).notNull(),
 		pauseDate: timestamp('pause_date', { withTimezone: true }),
 		completedDate: timestamp('completed_date', { withTimezone: true }),
-		completedCharacterId: integer('completed_character_id'),
+		completedCharacterId: text('completed_character_id'),
 		successfulRuns: integer('successful_runs'),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
@@ -433,10 +433,10 @@ export const corporationKillmails = pgTable(
 	'corporation_killmails',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
-		corporationId: integer('corporation_id')
+		corporationId: text('corporation_id')
 			.notNull()
 			.references(() => corporationConfig.corporationId),
-		killmailId: integer('killmail_id').notNull(),
+		killmailId: text('killmail_id').notNull(),
 		killmailHash: text('killmail_hash').notNull(),
 		killmailTime: timestamp('killmail_time', { withTimezone: true }).notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

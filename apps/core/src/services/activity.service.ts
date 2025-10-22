@@ -18,7 +18,7 @@ export class ActivityService {
 		action: ActivityAction,
 		userId: string | null,
 		metadata?: RequestMetadata & {
-			characterId?: number
+			characterId?: string
 			success?: boolean
 			error?: string
 			[key: string]: unknown
@@ -34,7 +34,7 @@ export class ActivityService {
 	/**
 	 * Log login activity
 	 */
-	async logLogin(userId: string, characterId: number, metadata: RequestMetadata): Promise<void> {
+	async logLogin(userId: string, characterId: string, metadata: RequestMetadata): Promise<void> {
 		await this.logActivity('login', userId, {
 			...metadata,
 			characterId,
@@ -45,7 +45,7 @@ export class ActivityService {
 	/**
 	 * Log failed login activity
 	 */
-	async logLoginFailed(characterId: number, error: string, metadata: RequestMetadata) {
+	async logLoginFailed(characterId: string, error: string, metadata: RequestMetadata) {
 		await this.logActivity('login', null, {
 			...metadata,
 			characterId,
@@ -69,7 +69,7 @@ export class ActivityService {
 	 */
 	async logCharacterLinked(
 		userId: string,
-		characterId: number,
+		characterId: string,
 		metadata: RequestMetadata
 	): Promise<void> {
 		await this.logActivity('character_linked', userId, {
@@ -84,7 +84,7 @@ export class ActivityService {
 	 */
 	async logCharacterUnlinked(
 		userId: string,
-		characterId: number,
+		characterId: string,
 		metadata: RequestMetadata
 	): Promise<void> {
 		await this.logActivity('character_unlinked', userId, {
@@ -99,8 +99,8 @@ export class ActivityService {
 	 */
 	async logPrimaryCharacterChanged(
 		userId: string,
-		oldCharacterId: number,
-		newCharacterId: number,
+		oldCharacterId: string,
+		newCharacterId: string,
 		metadata: RequestMetadata
 	): Promise<void> {
 		await this.logActivity('character_primary_changed', userId, {

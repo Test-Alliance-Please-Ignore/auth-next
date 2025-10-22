@@ -31,7 +31,7 @@ describe('Consumer Factory', () => {
 	describe('createCorporationQueueConsumer', () => {
 		it('should create consumer with correct schema', () => {
 			const schema = z.object({
-				corporationId: z.number(),
+				corporationId: z.string(),
 				timestamp: z.number(),
 			})
 			const handler = vi.fn()
@@ -44,7 +44,7 @@ describe('Consumer Factory', () => {
 		it('should configure exponential backoff retry strategy', async () => {
 			const { exponentialBackoff } = await import('@repo/queue-utils')
 			const schema = z.object({
-				corporationId: z.number(),
+				corporationId: z.string(),
 				timestamp: z.number(),
 			})
 			const handler = vi.fn()
@@ -56,7 +56,7 @@ describe('Consumer Factory', () => {
 
 		it('should configure batch options with concurrency 10', () => {
 			const schema = z.object({
-				corporationId: z.number(),
+				corporationId: z.string(),
 				timestamp: z.number(),
 			})
 			const handler = vi.fn()
@@ -68,7 +68,7 @@ describe('Consumer Factory', () => {
 
 		it('should enable debug logging', () => {
 			const schema = z.object({
-				corporationId: z.number(),
+				corporationId: z.string(),
 				timestamp: z.number(),
 			})
 			const handler = vi.fn()
@@ -81,7 +81,7 @@ describe('Consumer Factory', () => {
 		it('should extract corporationId and create stub with correct ID', async () => {
 			const { getStub } = await import('@repo/do-utils')
 			const schema = z.object({
-				corporationId: z.number(),
+				corporationId: z.string(),
 				timestamp: z.number(),
 			})
 			const handler = vi.fn()
@@ -89,7 +89,7 @@ describe('Consumer Factory', () => {
 			const consumer = createCorporationQueueConsumer('test-queue', schema, handler)
 
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 			}
 
@@ -105,13 +105,13 @@ describe('Consumer Factory', () => {
 			// Call the message handler
 			await consumer.messageHandler(message, metadata)
 
-			expect(getStub).toHaveBeenCalledWith(mockEnv.EVE_CORPORATION_DATA, 'corp-98000001')
+			expect(getStub).toHaveBeenCalledWith(mockEnv.EVE_CORPORATION_DATA, '98000001')
 		})
 
 		it('should call handler with stub and message', async () => {
 			const { getStub } = await import('@repo/do-utils')
 			const schema = z.object({
-				corporationId: z.number(),
+				corporationId: z.string(),
 				timestamp: z.number(),
 			})
 			const handler = vi.fn()
@@ -119,7 +119,7 @@ describe('Consumer Factory', () => {
 			const consumer = createCorporationQueueConsumer('test-queue', schema, handler)
 
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 			}
 
@@ -132,7 +132,7 @@ describe('Consumer Factory', () => {
 				attempt: 1,
 			}
 
-			const mockStub = { _namespace: {}, _id: 'corp-98000001' }
+			const mockStub = { _namespace: {}, _id: '98000001' }
 			vi.mocked(getStub).mockReturnValue(mockStub as any)
 
 			// Call the message handler
@@ -143,7 +143,7 @@ describe('Consumer Factory', () => {
 
 		it('should configure lifecycle hooks', () => {
 			const schema = z.object({
-				corporationId: z.number(),
+				corporationId: z.string(),
 				timestamp: z.number(),
 			})
 			const handler = vi.fn()
@@ -160,7 +160,7 @@ describe('Consumer Factory', () => {
 		it('should log success with requesterId when provided', () => {
 			const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 			const schema = z.object({
-				corporationId: z.number(),
+				corporationId: z.string(),
 				timestamp: z.number(),
 				requesterId: z.string().optional(),
 			})
@@ -169,7 +169,7 @@ describe('Consumer Factory', () => {
 			const consumer = createCorporationQueueConsumer('test-queue', schema, handler)
 
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 				requesterId: 'test-user',
 			}
@@ -187,7 +187,7 @@ describe('Consumer Factory', () => {
 		it('should log success without requesterId when not provided', () => {
 			const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 			const schema = z.object({
-				corporationId: z.number(),
+				corporationId: z.string(),
 				timestamp: z.number(),
 			})
 			const handler = vi.fn()
@@ -195,7 +195,7 @@ describe('Consumer Factory', () => {
 			const consumer = createCorporationQueueConsumer('test-queue', schema, handler)
 
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 			}
 
@@ -212,7 +212,7 @@ describe('Consumer Factory', () => {
 		it('should log errors with attempt count', () => {
 			const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 			const schema = z.object({
-				corporationId: z.number(),
+				corporationId: z.string(),
 				timestamp: z.number(),
 			})
 			const handler = vi.fn()
@@ -220,7 +220,7 @@ describe('Consumer Factory', () => {
 			const consumer = createCorporationQueueConsumer('test-queue', schema, handler)
 
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 			}
 
@@ -240,7 +240,7 @@ describe('Consumer Factory', () => {
 		it('should log batch start with message count', () => {
 			const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 			const schema = z.object({
-				corporationId: z.number(),
+				corporationId: z.string(),
 				timestamp: z.number(),
 			})
 			const handler = vi.fn()
@@ -249,8 +249,8 @@ describe('Consumer Factory', () => {
 
 			const batch = {
 				messages: [
-					{ corporationId: 1, timestamp: 1 },
-					{ corporationId: 2, timestamp: 2 },
+					{ corporationId: '1', timestamp: 1 },
+					{ corporationId: '2', timestamp: 2 },
 				],
 			}
 
@@ -264,7 +264,7 @@ describe('Consumer Factory', () => {
 		it('should log batch completion with statistics', () => {
 			const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 			const schema = z.object({
-				corporationId: z.number(),
+				corporationId: z.string(),
 				timestamp: z.number(),
 			})
 			const handler = vi.fn()

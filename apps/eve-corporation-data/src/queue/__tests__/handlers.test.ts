@@ -18,7 +18,7 @@ describe('Queue Handlers', () => {
 		it('should call fetchPublicData', async () => {
 			const stub = createMockStub()
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 			}
 
@@ -37,7 +37,7 @@ describe('Queue Handlers', () => {
 			})
 
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 			}
 
@@ -54,7 +54,7 @@ describe('Queue Handlers', () => {
 			})
 
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 			}
 
@@ -73,7 +73,7 @@ describe('Queue Handlers', () => {
 			})
 
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 			}
 
@@ -90,7 +90,7 @@ describe('Queue Handlers', () => {
 			})
 
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 			}
 
@@ -110,7 +110,7 @@ describe('Queue Handlers', () => {
 			})
 
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 			}
 
@@ -141,7 +141,7 @@ describe('Queue Handlers', () => {
 			})
 
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 			}
 
@@ -153,7 +153,7 @@ describe('Queue Handlers', () => {
 			vi.mocked(stub.fetchFinancialData).mockRejectedValue(new Error('Failed'))
 
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 			}
 
@@ -173,7 +173,7 @@ describe('Queue Handlers', () => {
 			})
 
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 				division: 3,
 			}
@@ -193,7 +193,7 @@ describe('Queue Handlers', () => {
 			})
 
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 				division: 3,
 			}
@@ -212,7 +212,7 @@ describe('Queue Handlers', () => {
 			})
 
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 			}
 
@@ -226,7 +226,7 @@ describe('Queue Handlers', () => {
 			vi.mocked(stub.fetchFinancialData).mockRejectedValue(new Error('Failed'))
 
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 			}
 
@@ -246,7 +246,7 @@ describe('Queue Handlers', () => {
 			})
 
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 				division: 5,
 			}
@@ -266,7 +266,7 @@ describe('Queue Handlers', () => {
 			})
 
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 				division: 5,
 			}
@@ -285,7 +285,7 @@ describe('Queue Handlers', () => {
 			})
 
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 			}
 
@@ -299,7 +299,7 @@ describe('Queue Handlers', () => {
 			vi.mocked(stub.fetchFinancialData).mockRejectedValue(new Error('Failed'))
 
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 			}
 
@@ -318,7 +318,7 @@ describe('Queue Handlers', () => {
 			})
 
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 			}
 
@@ -335,7 +335,7 @@ describe('Queue Handlers', () => {
 			})
 
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 			}
 
@@ -354,7 +354,7 @@ describe('Queue Handlers', () => {
 			})
 
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 			}
 
@@ -371,7 +371,7 @@ describe('Queue Handlers', () => {
 			})
 
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 			}
 
@@ -391,7 +391,7 @@ describe('Queue Handlers', () => {
 			})
 
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 			}
 
@@ -409,7 +409,7 @@ describe('Queue Handlers', () => {
 			})
 
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 			}
 
@@ -429,7 +429,7 @@ describe('Queue Handlers', () => {
 			})
 
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 			}
 
@@ -447,7 +447,7 @@ describe('Queue Handlers', () => {
 			})
 
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 			}
 
@@ -467,7 +467,7 @@ describe('Queue Handlers', () => {
 			})
 
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 			}
 
@@ -485,7 +485,7 @@ describe('Queue Handlers', () => {
 			})
 
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 			}
 
@@ -501,7 +501,7 @@ describe('Queue Handlers', () => {
 			vi.mocked(stub.fetchKillmails).mockResolvedValue({ data: [] })
 
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 			}
 
@@ -515,7 +515,7 @@ describe('Queue Handlers', () => {
 			vi.mocked(stub.fetchKillmails).mockResolvedValue(null)
 
 			const message = {
-				corporationId: 98000001,
+				corporationId: '98000001',
 				timestamp: Date.now(),
 			}
 

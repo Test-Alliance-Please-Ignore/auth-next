@@ -4,9 +4,9 @@ import { apiClient } from '@/lib/api'
 
 export interface User {
 	id: string
-	mainCharacterId: number
+	mainCharacterId: string
 	characters: Array<{
-		characterId: number
+		characterId: string
 		characterName: string
 	}>
 	is_admin: boolean

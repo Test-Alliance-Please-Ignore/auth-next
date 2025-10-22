@@ -14,10 +14,10 @@ export const corporationKeys = {
 	lists: () => [...corporationKeys.all, 'list'] as const,
 	list: () => [...corporationKeys.lists()] as const,
 	details: () => [...corporationKeys.all, 'detail'] as const,
-	detail: (corporationId: number) => [...corporationKeys.details(), corporationId] as const,
-	dataSummary: (corporationId: number) => [...corporationKeys.detail(corporationId), 'data'] as const,
+	detail: (corporationId: string) => [...corporationKeys.details(), corporationId] as const,
+	dataSummary: (corporationId: string) => [...corporationKeys.detail(corporationId), 'data'] as const,
 	search: (query: string) => [...corporationKeys.all, 'search', query] as const,
-	directors: (corporationId: number) => [...corporationKeys.detail(corporationId), 'directors'] as const,
+	directors: (corporationId: string) => [...corporationKeys.detail(corporationId), 'directors'] as const,
 }
 
 // Queries
@@ -36,7 +36,7 @@ export function useCorporations() {
 /**
  * Fetch a single corporation by ID with full details
  */
-export function useCorporation(corporationId: number) {
+export function useCorporation(corporationId: string) {
 	return useQuery({
 		queryKey: corporationKeys.detail(corporationId),
 		queryFn: () => api.getCorporation(corporationId),
@@ -59,7 +59,7 @@ export function useSearchCorporations(query: string, enabled = true) {
 /**
  * Get corporation data summary
  */
-export function useCorporationDataSummary(corporationId: number) {
+export function useCorporationDataSummary(corporationId: string) {
 	return useQuery({
 		queryKey: corporationKeys.dataSummary(corporationId),
 		queryFn: () => api.getCorporationDataSummary(corporationId),
@@ -95,7 +95,7 @@ export function useUpdateCorporation() {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: ({ corporationId, data }: { corporationId: number; data: UpdateCorporationRequest }) =>
+		mutationFn: ({ corporationId, data }: { corporationId: string; data: UpdateCorporationRequest }) =>
 			api.updateCorporation(corporationId, data),
 		onSuccess: (updatedCorporation) => {
 			// Invalidate corporation list
@@ -117,7 +117,7 @@ export function useDeleteCorporation() {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: (corporationId: number) => api.deleteCorporation(corporationId),
+		mutationFn: (corporationId: string) => api.deleteCorporation(corporationId),
 		onSuccess: (_, deletedId) => {
 			// Invalidate corporation list
 			queryClient.invalidateQueries({ queryKey: corporationKeys.lists() })
@@ -138,7 +138,7 @@ export function useVerifyCorporationAccess() {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: (corporationId: number) => api.verifyCorporationAccess(corporationId),
+		mutationFn: (corporationId: string) => api.verifyCorporationAccess(corporationId),
 		onSuccess: (_, corporationId) => {
 			// Invalidate corporation detail to refresh verification status
 			queryClient.invalidateQueries({ queryKey: corporationKeys.detail(corporationId) })
@@ -160,7 +160,7 @@ export function useFetchCorporationData() {
 			corporationId,
 			data,
 		}: {
-			corporationId: number
+			corporationId: string
 			data?: FetchCorporationDataRequest
 		}) => api.fetchCorporationData(corporationId, data),
 		onSuccess: (_, { corporationId }) => {
@@ -181,7 +181,7 @@ export function useFetchCorporationData() {
 /**
  * Fetch all directors for a corporation
  */
-export function useDirectors(corporationId: number) {
+export function useDirectors(corporationId: string) {
 	return useQuery({
 		queryKey: corporationKeys.directors(corporationId),
 		queryFn: () => api.getDirectors(corporationId),
@@ -197,7 +197,7 @@ export function useAddDirector() {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: ({ corporationId, data }: { corporationId: number; data: AddDirectorRequest }) =>
+		mutationFn: ({ corporationId, data }: { corporationId: string; data: AddDirectorRequest }) =>
 			api.addDirector(corporationId, data),
 		onSuccess: (_, { corporationId }) => {
 			// Invalidate directors list
@@ -219,7 +219,7 @@ export function useRemoveDirector() {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: ({ corporationId, characterId }: { corporationId: number; characterId: number }) =>
+		mutationFn: ({ corporationId, characterId }: { corporationId: string; characterId: string }) =>
 			api.removeDirector(corporationId, characterId),
 		onSuccess: (_, { corporationId }) => {
 			// Invalidate directors list
@@ -246,8 +246,8 @@ export function useUpdateDirectorPriority() {
 			characterId,
 			data,
 		}: {
-			corporationId: number
-			characterId: number
+			corporationId: string
+			characterId: string
 			data: UpdateDirectorPriorityRequest
 		}) => api.updateDirectorPriority(corporationId, characterId, data),
 		onSuccess: (_, { corporationId }) => {
@@ -264,7 +264,7 @@ export function useVerifyDirector() {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: ({ corporationId, directorId }: { corporationId: number; directorId: string }) =>
+		mutationFn: ({ corporationId, directorId }: { corporationId: string; directorId: string }) =>
 			api.verifyDirector(corporationId, directorId),
 		onSuccess: (_, { corporationId }) => {
 			// Invalidate directors list to show updated health status
@@ -286,7 +286,7 @@ export function useVerifyAllDirectors() {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: (corporationId: number) => api.verifyAllDirectors(corporationId),
+		mutationFn: (corporationId: string) => api.verifyAllDirectors(corporationId),
 		onSuccess: (_, corporationId) => {
 			// Invalidate directors list to show updated health statuses
 			queryClient.invalidateQueries({ queryKey: corporationKeys.directors(corporationId) })

@@ -1,5 +1,4 @@
 import {
-	bigint,
 	boolean,
 	integer,
 	jsonb,
@@ -19,17 +18,17 @@ import {
  * Character public information
  */
 export const characterPublicInfo = pgTable('character_public_info', {
-	characterId: integer('character_id').primaryKey(),
+	characterId: text('character_id').primaryKey(),
 	name: text('name').notNull(),
-	corporationId: integer('corporation_id').notNull(),
-	allianceId: integer('alliance_id'),
+	corporationId: text('corporation_id').notNull(),
+	allianceId: text('alliance_id'),
 	birthday: text('birthday').notNull(),
-	raceId: integer('race_id').notNull(),
-	bloodlineId: integer('bloodline_id').notNull(),
+	raceId: text('race_id').notNull(),
+	bloodlineId: text('bloodline_id').notNull(),
 	securityStatus: real('security_status'),
 	description: text('description'),
 	gender: text('gender').notNull().$type<'male' | 'female'>(),
-	factionId: integer('faction_id'),
+	factionId: text('faction_id'),
 	title: text('title'),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -39,7 +38,7 @@ export const characterPublicInfo = pgTable('character_public_info', {
  * Character portrait URLs
  */
 export const characterPortraits = pgTable('character_portraits', {
-	characterId: integer('character_id')
+	characterId: text('character_id')
 		.primaryKey()
 		.references(() => characterPublicInfo.characterId),
 	px64x64: text('px64x64'),
@@ -57,11 +56,11 @@ export const characterCorporationHistory = pgTable(
 	'character_corporation_history',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
-		characterId: integer('character_id')
+		characterId: text('character_id')
 			.notNull()
 			.references(() => characterPublicInfo.characterId),
-		recordId: integer('record_id').notNull(),
-		corporationId: integer('corporation_id').notNull(),
+		recordId: text('record_id').notNull(),
+		corporationId: text('corporation_id').notNull(),
 		startDate: text('start_date').notNull(),
 		isDeleted: boolean('is_deleted'),
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -74,7 +73,7 @@ export const characterCorporationHistory = pgTable(
  * Character skills
  */
 export const characterSkills = pgTable('character_skills', {
-	characterId: integer('character_id')
+	characterId: text('character_id')
 		.primaryKey()
 		.references(() => characterPublicInfo.characterId),
 	totalSp: integer('total_sp').notNull(),
@@ -82,7 +81,7 @@ export const characterSkills = pgTable('character_skills', {
 	skills: jsonb('skills').notNull().$type<
 		Array<{
 			active_skill_level: number
-			skill_id: number
+			skill_id: string
 			skillpoints_in_skill: number
 			trained_skill_level: number
 		}>
@@ -95,7 +94,7 @@ export const characterSkills = pgTable('character_skills', {
  * Character attributes
  */
 export const characterAttributes = pgTable('character_attributes', {
-	characterId: integer('character_id')
+	characterId: text('character_id')
 		.primaryKey()
 		.references(() => characterPublicInfo.characterId),
 	intelligence: integer('intelligence').notNull(),
@@ -114,11 +113,11 @@ export const characterAttributes = pgTable('character_attributes', {
  * Character location - Sensitive data (owner only)
  */
 export const characterLocation = pgTable('character_location', {
-	characterId: integer('character_id')
+	characterId: text('character_id')
 		.primaryKey()
 		.references(() => characterPublicInfo.characterId),
-	solarSystemId: integer('solar_system_id').notNull(),
-	stationId: integer('station_id'),
+	solarSystemId: text('solar_system_id').notNull(),
+	stationId: text('station_id'),
 	structureId: text('structure_id'), // Can be a long ID for player structures
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -128,7 +127,7 @@ export const characterLocation = pgTable('character_location', {
  * Character wallet - Sensitive data (owner only)
  */
 export const characterWallet = pgTable('character_wallet', {
-	characterId: integer('character_id')
+	characterId: text('character_id')
 		.primaryKey()
 		.references(() => characterPublicInfo.characterId),
 	balance: text('balance').notNull(), // Using text to handle large ISK values
@@ -141,7 +140,7 @@ export const characterWallet = pgTable('character_wallet', {
  * Full asset details would be too large, so we store a summary
  */
 export const characterAssets = pgTable('character_assets', {
-	characterId: integer('character_id')
+	characterId: text('character_id')
 		.primaryKey()
 		.references(() => characterPublicInfo.characterId),
 	totalValue: text('total_value'), // Estimated total value in ISK
@@ -155,7 +154,7 @@ export const characterAssets = pgTable('character_assets', {
  * Character online status - Sensitive data (owner only)
  */
 export const characterStatus = pgTable('character_status', {
-	characterId: integer('character_id')
+	characterId: text('character_id')
 		.primaryKey()
 		.references(() => characterPublicInfo.characterId),
 	online: boolean('online').notNull().default(false),
@@ -170,13 +169,13 @@ export const characterStatus = pgTable('character_status', {
  * Character skill queue - Sensitive data (owner only)
  */
 export const characterSkillQueue = pgTable('character_skill_queue', {
-	characterId: integer('character_id')
+	characterId: text('character_id')
 		.primaryKey()
 		.references(() => characterPublicInfo.characterId),
 	queue: jsonb('queue').notNull().$type<
 		Array<{
 			queue_position: number
-			skill_id: number
+			skill_id: string
 			finished_level: number
 			start_date?: string
 			finish_date?: string
@@ -197,21 +196,21 @@ export const characterWalletJournal = pgTable(
 	'character_wallet_journal',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
-		characterId: integer('character_id')
+		characterId: text('character_id')
 			.notNull()
 			.references(() => characterPublicInfo.characterId),
-		journalId: bigint('journal_id', { mode: 'bigint' }).notNull(),
+		journalId: text('journal_id').notNull(),
 		date: timestamp('date', { withTimezone: true }).notNull(),
 		refType: text('ref_type').notNull(),
 		amount: text('amount').notNull(), // Using text to handle large ISK values
 		balance: text('balance').notNull(), // Balance after transaction
 		description: text('description').notNull(),
-		firstPartyId: integer('first_party_id'),
-		secondPartyId: integer('second_party_id'),
+		firstPartyId: text('first_party_id'),
+		secondPartyId: text('second_party_id'),
 		reason: text('reason'),
 		tax: text('tax'), // Tax amount in ISK
-		taxReceiverId: integer('tax_receiver_id'),
-		contextId: bigint('context_id', { mode: 'bigint' }),
+		taxReceiverId: text('tax_receiver_id'),
+		contextId: text('context_id'),
 		contextIdType: text('context_id_type'),
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -227,19 +226,19 @@ export const characterMarketTransactions = pgTable(
 	'character_market_transactions',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
-		characterId: integer('character_id')
+		characterId: text('character_id')
 			.notNull()
 			.references(() => characterPublicInfo.characterId),
-		transactionId: bigint('transaction_id', { mode: 'bigint' }).notNull(),
+		transactionId: text('transaction_id').notNull(),
 		date: timestamp('date', { withTimezone: true }).notNull(),
-		typeId: integer('type_id').notNull(),
+		typeId: text('type_id').notNull(),
 		quantity: integer('quantity').notNull(),
 		unitPrice: text('unit_price').notNull(), // Price per unit in ISK
-		clientId: integer('client_id').notNull(),
-		locationId: bigint('location_id', { mode: 'bigint' }).notNull(),
+		clientId: text('client_id').notNull(),
+		locationId: text('location_id').notNull(),
 		isBuy: boolean('is_buy').notNull(),
 		isPersonal: boolean('is_personal').notNull(),
-		journalRefId: bigint('journal_ref_id', { mode: 'bigint' }).notNull(),
+		journalRefId: text('journal_ref_id').notNull(),
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
@@ -254,12 +253,12 @@ export const characterMarketOrders = pgTable(
 	'character_market_orders',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
-		characterId: integer('character_id')
+		characterId: text('character_id')
 			.notNull()
 			.references(() => characterPublicInfo.characterId),
-		orderId: bigint('order_id', { mode: 'bigint' }).notNull(),
-		typeId: integer('type_id').notNull(),
-		locationId: bigint('location_id', { mode: 'bigint' }).notNull(),
+		orderId: text('order_id').notNull(),
+		typeId: text('type_id').notNull(),
+		locationId: text('location_id').notNull(),
 		isBuyOrder: boolean('is_buy_order').notNull(),
 		price: text('price').notNull(), // Price per unit in ISK
 		volumeTotal: integer('volume_total').notNull(),
@@ -270,7 +269,7 @@ export const characterMarketOrders = pgTable(
 		range: text('range').notNull(),
 		duration: integer('duration').notNull(),
 		escrow: text('escrow'), // ISK in escrow
-		regionId: integer('region_id').notNull(),
+		regionId: text('region_id').notNull(),
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},

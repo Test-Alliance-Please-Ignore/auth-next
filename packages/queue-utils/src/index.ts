@@ -21,7 +21,7 @@
  * import { z } from 'zod'
  *
  * const messageSchema = z.object({
- *   characterId: z.number(),
+ *   characterId: z.string(),
  *   type: z.enum(['update', 'delete'])
  * })
  *
@@ -42,7 +42,7 @@
  * import { z } from 'zod'
  *
  * const messageSchema = z.object({
- *   characterId: z.number(),
+ *   characterId: z.string(),
  *   type: z.enum(['update', 'delete'])
  * })
  *

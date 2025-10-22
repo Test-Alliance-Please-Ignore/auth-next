@@ -37,7 +37,7 @@ import type { UpdateCorporationRequest } from '@/lib/api'
 
 export default function CorporationDetailPage() {
 	const { corporationId } = useParams<{ corporationId: string }>()
-	const corpId = Number.parseInt(corporationId || '0')
+	const corpId = corporationId || ''
 
 	const { data: corporation, isLoading } = useCorporation(corpId)
 	const { data: dataSummary, isLoading: summaryLoading } = useCorporationDataSummary(corpId)

@@ -1,0 +1,1 @@
+ALTER TABLE "eve_characters" ALTER COLUMN "character_id" SET DATA TYPE text;

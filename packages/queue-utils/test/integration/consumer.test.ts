@@ -6,7 +6,7 @@ import { FatalError } from '../../src/errors'
 import { exponentialBackoff } from '../../src/retry'
 
 const testSchema = z.object({
-	characterId: z.number(),
+	characterId: z.string(),
 	action: z.enum(['update', 'delete', 'refresh']),
 	timestamp: z.number().optional(),
 })
@@ -150,10 +150,10 @@ describe('QueueConsumer Integration', () => {
 			}
 
 			async handleMessage(message: TestMessage): Promise<void> {
-				if (message.characterId === 12345) {
+				if (message.characterId === '12345') {
 					throw new Error('transient error')
 				}
-				if (message.characterId === 67890) {
+				if (message.characterId === '67890') {
 					throw new Error('permanent error')
 				}
 			}
@@ -192,7 +192,7 @@ describe('QueueConsumer Integration', () => {
 	})
 
 	it('should process messages concurrently', async () => {
-		const processOrder: number[] = []
+		const processOrder: string[] = []
 		const startTimes: number[] = []
 
 		class CharacterUpdateConsumer extends QueueConsumer<typeof testSchema> {
@@ -296,7 +296,7 @@ describe('QueueConsumer Integration', () => {
 			}
 
 			async handleMessage(message: TestMessage): Promise<void> {
-				if (message.characterId === 2 || message.characterId === 4) {
+				if (message.characterId === '2' || message.characterId === '4') {
 					throw new FatalError('Processing failed')
 				}
 			}

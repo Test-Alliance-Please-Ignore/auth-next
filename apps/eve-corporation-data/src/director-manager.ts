@@ -10,7 +10,7 @@ import { characterCorporationRoles, corporationConfig, corporationDirectors } fr
  */
 export interface DirectorHealth {
 	directorId: string
-	characterId: number
+	characterId: string
 	characterName: string
 	isHealthy: boolean
 	lastHealthCheck: Date | null
@@ -25,7 +25,7 @@ export interface DirectorHealth {
  */
 export interface SelectedDirector {
 	directorId: string
-	characterId: number
+	characterId: string
 	characterName: string
 }
 
@@ -45,14 +45,14 @@ const RECOVERY_THRESHOLD = 3
 export class DirectorManager {
 	constructor(
 		private readonly db: ReturnType<typeof createDb>,
-		private readonly corporationId: number,
+		private readonly corporationId: string,
 		private readonly tokenStore: EveTokenStore
 	) {}
 
 	/**
 	 * Add a new director for this corporation
 	 */
-	async addDirector(characterId: number, characterName: string, priority = 100): Promise<void> {
+	async addDirector(characterId: string, characterName: string, priority = 100): Promise<void> {
 		await this.db.insert(corporationDirectors).values({
 			corporationId: this.corporationId,
 			characterId,
@@ -69,7 +69,7 @@ export class DirectorManager {
 	/**
 	 * Remove a director from this corporation
 	 */
-	async removeDirector(characterId: number): Promise<void> {
+	async removeDirector(characterId: string): Promise<void> {
 		await this.db
 			.delete(corporationDirectors)
 			.where(
@@ -83,7 +83,7 @@ export class DirectorManager {
 	/**
 	 * Update director priority
 	 */
-	async updateDirectorPriority(characterId: number, priority: number): Promise<void> {
+	async updateDirectorPriority(characterId: string, priority: number): Promise<void> {
 		await this.db
 			.update(corporationDirectors)
 			.set({
@@ -388,7 +388,7 @@ export class DirectorManager {
 	 * Execute an ESI request with automatic director failover
 	 */
 	async executeWithFailover<T>(
-		operation: (characterId: number) => Promise<EsiResponse<T>>
+		operation: (characterId: string) => Promise<EsiResponse<T>>
 	): Promise<EsiResponse<T>> {
 		const healthyDirectors = await this.getHealthyDirectors()
 

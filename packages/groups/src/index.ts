@@ -47,7 +47,7 @@ export interface GroupMember {
 	userId: string
 	joinedAt: Date
 	mainCharacterName?: string
-	mainCharacterId?: number
+	mainCharacterId?: string
 }
 
 export interface GroupAdmin {
@@ -61,7 +61,7 @@ export interface GroupInvitation {
 	id: string
 	groupId: string
 	inviterId: string
-	inviteeMainCharacterId: number
+	inviteeMainCharacterId: string
 	inviteeUserId: string | null
 	status: InvitationStatus
 	expiresAt: Date

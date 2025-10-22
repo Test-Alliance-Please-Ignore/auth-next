@@ -28,7 +28,7 @@ const app = new Hono<App>()
 
 	.get('/example', async (c) => {
 		// Example: Access the Durable Object using getStub()
-		const id = c.req.query('id') ?? 'corp-98000001'
+		const id = c.req.query('id') ?? '98000001'
 		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, id)
 
 		// Get configuration as an example

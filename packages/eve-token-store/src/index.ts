@@ -15,7 +15,7 @@
  */
 export interface EveVerifyResponse {
 	/** EVE character ID */
-	CharacterID: number
+	CharacterID: string
 	/** EVE character name */
 	CharacterName: string
 	/** Token expiration time (ISO 8601) */
@@ -62,7 +62,7 @@ export interface StoredToken {
 	/** Database ID */
 	id: string
 	/** EVE character ID */
-	characterId: number
+	characterId: string
 	/** EVE character name */
 	characterName: string
 	/** Character owner hash (unique per character+account) */
@@ -86,7 +86,7 @@ export interface StoredToken {
  */
 export interface TokenInfo {
 	/** EVE character ID */
-	characterId: number
+	characterId: string
 	/** EVE character name */
 	characterName: string
 	/** Character owner hash */
@@ -106,10 +106,10 @@ export interface CallbackResult {
 	/** Whether the callback was successful */
 	success: boolean
 	/** Character ID if successful */
-	characterId?: number
+	characterId?: string
 	/** Character info if successful */
 	characterInfo?: {
-		characterId: number
+		characterId: string
 		characterName: string
 		characterOwnerHash: string
 		scopes: string[]
@@ -138,15 +138,15 @@ export interface EsiResponse<T> {
  */
 export interface EsiCorporation {
 	/** Corporation ID */
-	corporation_id: number
+	corporation_id: string
 	/** Corporation name */
 	name: string
 	/** Corporation ticker */
 	ticker: string
 	/** CEO character ID */
-	ceo_id: number
+	ceo_id: string
 	/** Alliance ID (if in alliance) */
-	alliance_id?: number
+	alliance_id?: string
 	/** Corporation description */
 	description?: string
 	/** Member count */
@@ -156,9 +156,9 @@ export interface EsiCorporation {
 	/** Creation date */
 	date_founded?: string
 	/** Creator character ID */
-	creator_id: number
+	creator_id: string
 	/** Home station ID */
-	home_station_id?: number
+	home_station_id?: string
 	/** Shares */
 	shares?: number
 	/** URL */
@@ -173,21 +173,21 @@ export interface EsiCorporation {
  */
 export interface EsiAlliance {
 	/** Alliance ID */
-	alliance_id: number
+	alliance_id: string
 	/** Alliance name */
 	name: string
 	/** Alliance ticker */
 	ticker: string
 	/** Executor corporation ID */
-	executor_corporation_id: number
+	executor_corporation_id: string
 	/** Creator corporation ID */
-	creator_corporation_id: number
+	creator_corporation_id: string
 	/** Creator character ID */
-	creator_id: number
+	creator_id: string
 	/** Date founded */
 	date_founded: string
 	/** Faction ID (if factional warfare alliance) */
-	faction_id?: number
+	faction_id?: string
 }
 
 /**
@@ -195,7 +195,7 @@ export interface EsiAlliance {
  */
 export interface EntityNameInfo {
 	/** Entity ID */
-	id: number
+	id: string
 	/** Entity name */
 	name: string
 	/** Entity category (alliance, character, corporation, etc.) */
@@ -249,28 +249,28 @@ export interface EveTokenStore {
 	 * @param characterId - EVE character ID
 	 * @returns Whether refresh was successful
 	 */
-	refreshToken(characterId: number): Promise<boolean>
+	refreshToken(characterId: string): Promise<boolean>
 
 	/**
 	 * Get token information (without actual token values)
 	 * @param characterId - EVE character ID
 	 * @returns Token info or null if not found
 	 */
-	getTokenInfo(characterId: number): Promise<TokenInfo | null>
+	getTokenInfo(characterId: string): Promise<TokenInfo | null>
 
 	/**
 	 * Get access token for use (decrypted)
 	 * @param characterId - EVE character ID
 	 * @returns Access token or null if not found/expired
 	 */
-	getAccessToken(characterId: number): Promise<string | null>
+	getAccessToken(characterId: string): Promise<string | null>
 
 	/**
 	 * Revoke and delete a token
 	 * @param characterId - EVE character ID
 	 * @returns Whether revocation was successful
 	 */
-	revokeToken(characterId: number): Promise<boolean>
+	revokeToken(characterId: string): Promise<boolean>
 
 	/**
 	 * List all tokens stored in the system
@@ -297,7 +297,7 @@ export interface EveTokenStore {
 	 * )
 	 * ```
 	 */
-	fetchEsi<T>(path: string, characterId: number): Promise<EsiResponse<T>>
+	fetchEsi<T>(path: string, characterId: string): Promise<EsiResponse<T>>
 
 	/**
 	 * Fetch public data from ESI (unauthenticated ESI Gateway)
@@ -328,10 +328,10 @@ export interface EveTokenStore {
 	 * @example
 	 * ```ts
 	 * const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
-	 * const corp = await stub.getCorporationById(98012345)
+	 * const corp = await stub.getCorporationById('98012345')
 	 * ```
 	 */
-	getCorporationById(corporationId: number): Promise<EsiCorporation | null>
+	getCorporationById(corporationId: string): Promise<EsiCorporation | null>
 
 	/**
 	 * Get alliance information by ID
@@ -343,10 +343,10 @@ export interface EveTokenStore {
 	 * @example
 	 * ```ts
 	 * const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
-	 * const alliance = await stub.getAllianceById(99000001)
+	 * const alliance = await stub.getAllianceById('99000001')
 	 * ```
 	 */
-	getAllianceById(allianceId: number): Promise<EsiAlliance | null>
+	getAllianceById(allianceId: string): Promise<EsiAlliance | null>
 
 	/**
 	 * Get corporation information by name
@@ -390,10 +390,10 @@ export interface EveTokenStore {
 	 * ```ts
 	 * const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
 	 * const nameMap = await stub.resolveNames(['Jita', 'Goonswarm Federation'])
-	 * // Returns: { 'Jita': 30000142, 'Goonswarm Federation': 1354830081 }
+	 * // Returns: { 'Jita': '30000142', 'Goonswarm Federation': '1354830081' }
 	 * ```
 	 */
-	resolveNames(names: string[]): Promise<Record<string, number>>
+	resolveNames(names: string[]): Promise<Record<string, string>>
 
 	/**
 	 * Resolve multiple entity IDs to names
@@ -406,9 +406,9 @@ export interface EveTokenStore {
 	 * @example
 	 * ```ts
 	 * const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
-	 * const idMap = await stub.resolveIds([30000142, 1354830081])
-	 * // Returns: { 30000142: 'Jita', 1354830081: 'Goonswarm Federation' }
+	 * const idMap = await stub.resolveIds(['30000142', '1354830081'])
+	 * // Returns: { '30000142': 'Jita', '1354830081': 'Goonswarm Federation' }
 	 * ```
 	 */
-	resolveIds(ids: number[]): Promise<Record<number, string>>
+	resolveIds(ids: string[]): Promise<Record<string, string>>
 }
