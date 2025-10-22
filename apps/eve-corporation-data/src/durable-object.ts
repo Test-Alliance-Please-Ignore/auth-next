@@ -221,7 +221,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 		return {
 			corporationId: config.corporationId,
-			characterId: primaryDirector?.characterId || 0,
+			characterId: primaryDirector?.characterId || '',
 			characterName: primaryDirector?.characterName || '',
 			lastVerified: config.lastVerified,
 			isVerified: config.isVerified,
@@ -382,11 +382,18 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 */
 	private async fetchAndStorePublicInfo(corporationId: string, _forceRefresh = false): Promise<void> {
 		const tokenStore = this.getTokenStoreStub()
-		const response: EsiResponse<EsiCorporationPublicInfo> = await tokenStore.fetchPublicEsi(
-			`/corporations/${corporationId}`
-		)
+		const response = await tokenStore.fetchPublicEsi<any>(`/corporations/${corporationId}`)
 
-		const data = response.data
+		// ESI returns numeric IDs at runtime despite our type definitions
+		// Cast to any to force proper conversion
+		const data = response.data as any
+
+		// Convert all numeric IDs to strings explicitly
+		const ceoIdStr: string = String(data.ceo_id)
+		const creatorIdStr: string = String(data.creator_id)
+		const homeStationIdStr: string | null = data.home_station_id ? String(data.home_station_id) : null
+		const allianceIdStr: string | null = data.alliance_id ? String(data.alliance_id) : null
+		const factionIdStr: string | null = data.faction_id ? String(data.faction_id) : null
 
 		await this.db
 			.insert(corporationPublicInfo)
@@ -394,17 +401,17 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				corporationId,
 				name: data.name,
 				ticker: data.ticker,
-				ceoId: String(data.ceo_id),
-				creatorId: String(data.creator_id),
+				ceoId: ceoIdStr,
+				creatorId: creatorIdStr,
 				dateFounded: data.date_founded ? new Date(data.date_founded) : null,
 				description: data.description || null,
-				homeStationId: data.home_station_id ? String(data.home_station_id) : null,
+				homeStationId: homeStationIdStr,
 				memberCount: data.member_count,
 				shares: data.shares ? data.shares.toString() : null,
 				taxRate: data.tax_rate.toString(),
 				url: data.url || null,
-				allianceId: data.alliance_id ? String(data.alliance_id) : null,
-				factionId: data.faction_id ? String(data.faction_id) : null,
+				allianceId: allianceIdStr,
+				factionId: factionIdStr,
 				warEligible: data.war_eligible || null,
 				updatedAt: new Date(),
 			})
@@ -413,13 +420,13 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				set: {
 					name: data.name,
 					ticker: data.ticker,
-					ceoId: String(data.ceo_id),
+					ceoId: ceoIdStr,
 					memberCount: data.member_count,
 					shares: data.shares ? data.shares.toString() : null,
 					taxRate: data.tax_rate.toString(),
 					url: data.url || null,
-					allianceId: data.alliance_id ? String(data.alliance_id) : null,
-					factionId: data.faction_id ? String(data.faction_id) : null,
+					allianceId: allianceIdStr,
+					factionId: factionIdStr,
 					warEligible: data.war_eligible || null,
 					updatedAt: new Date(),
 				},
