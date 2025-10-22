@@ -4,8 +4,9 @@ import { withNotFound, withOnError } from '@repo/hono-helpers'
 import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
-import type { App } from './context'
+import type { App, Env } from './context'
 import { EveCorporationDataDO } from './durable-object'
+import * as queueConsumers from './queue/consumers'
 
 const app = new Hono<App>()
 	.use(
@@ -36,7 +37,41 @@ const app = new Hono<App>()
 		return c.json({ id, config })
 	})
 
-export default app
+// Map queue names to their handlers
+const queueHandlers = {
+	'corp-public-refresh': queueConsumers.publicRefreshQueue,
+	'corp-members-refresh': queueConsumers.membersRefreshQueue,
+	'corp-member-tracking-refresh': queueConsumers.memberTrackingRefreshQueue,
+	'corp-wallets-refresh': queueConsumers.walletsRefreshQueue,
+	'corp-wallet-journal-refresh': queueConsumers.walletJournalRefreshQueue,
+	'corp-wallet-transactions-refresh': queueConsumers.walletTransactionsRefreshQueue,
+	'corp-assets-refresh': queueConsumers.assetsRefreshQueue,
+	'corp-structures-refresh': queueConsumers.structuresRefreshQueue,
+	'corp-orders-refresh': queueConsumers.ordersRefreshQueue,
+	'corp-contracts-refresh': queueConsumers.contractsRefreshQueue,
+	'corp-industry-jobs-refresh': queueConsumers.industryJobsRefreshQueue,
+	'corp-killmails-refresh': queueConsumers.killmailsRefreshQueue,
+} as const
+
+// Export default worker with both fetch and queue handlers
+export default {
+	fetch: app.fetch.bind(app),
+	async queue(
+		batch: MessageBatch,
+		env: Env,
+		ctx: ExecutionContext
+	): Promise<void> {
+		const queueName = batch.queue as keyof typeof queueHandlers
+		const handler = queueHandlers[queueName]
+
+		if (!handler) {
+			console.error(`No handler found for queue: ${batch.queue}`)
+			return
+		}
+
+		await handler(batch, env, ctx)
+	},
+}
 
 // Export the Durable Object class
 export { EveCorporationDataDO as EveCorporationData }

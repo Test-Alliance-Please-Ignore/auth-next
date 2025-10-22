@@ -258,7 +258,7 @@ export default function CorporationDetailPage() {
 							</CardDescription>
 						</CardHeader>
 						<CardContent>
-							<DirectorList corporationId={corporationId} />
+							<DirectorList corporationId={corpId} />
 						</CardContent>
 					</Card>
 				</TabsContent>

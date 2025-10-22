@@ -4,7 +4,7 @@ import { createExecutionContext, env as testEnv, waitOnExecutionContext } from '
 import { describe, expect, it } from 'vitest'
 
 import type { Env } from '../../context'
-import worker from '../../index'
+import workerExports from '../../index'
 
 // Cast test env to our Env type
 const env = testEnv as unknown as Env
@@ -13,7 +13,7 @@ describe('EveCorporationData Worker', () => {
 	it('responds to root endpoint', async () => {
 		const request = new Request('http://example.com/')
 		const ctx = createExecutionContext()
-		const response = await worker.fetch(request, env, ctx)
+		const response = await workerExports.fetch(request, env, ctx)
 		await waitOnExecutionContext(ctx)
 
 		expect(response.status).toBe(200)
@@ -24,7 +24,7 @@ describe('EveCorporationData Worker', () => {
 	it('can call Durable Object via example endpoint', async () => {
 		const request = new Request('http://example.com/example?id=corp-98000001')
 		const ctx = createExecutionContext()
-		const response = await worker.fetch(request, env, ctx)
+		const response = await workerExports.fetch(request, env, ctx)
 		await waitOnExecutionContext(ctx)
 
 		expect(response.status).toBe(200)

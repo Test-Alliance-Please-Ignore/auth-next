@@ -10,6 +10,55 @@
 		"enabled": true
 	},
 	"vars": {},
+	"queues": {
+		"producers": [
+			{ "queue": "corp-public-refresh", "binding": "corp-public-refresh" },
+			{ "queue": "corp-members-refresh", "binding": "corp-members-refresh" },
+			{ "queue": "corp-member-tracking-refresh", "binding": "corp-member-tracking-refresh" },
+			{ "queue": "corp-wallets-refresh", "binding": "corp-wallets-refresh" },
+			{ "queue": "corp-wallet-journal-refresh", "binding": "corp-wallet-journal-refresh" },
+			{
+				"queue": "corp-wallet-transactions-refresh",
+				"binding": "corp-wallet-transactions-refresh"
+			},
+			{ "queue": "corp-assets-refresh", "binding": "corp-assets-refresh" },
+			{ "queue": "corp-structures-refresh", "binding": "corp-structures-refresh" },
+			{ "queue": "corp-orders-refresh", "binding": "corp-orders-refresh" },
+			{ "queue": "corp-contracts-refresh", "binding": "corp-contracts-refresh" },
+			{ "queue": "corp-industry-jobs-refresh", "binding": "corp-industry-jobs-refresh" },
+			{ "queue": "corp-killmails-refresh", "binding": "corp-killmails-refresh" }
+		],
+		"consumers": [
+			{ "queue": "corp-public-refresh", "max_batch_size": 10, "max_batch_timeout": 30 },
+			{ "queue": "corp-members-refresh", "max_batch_size": 10, "max_batch_timeout": 30 },
+			{
+				"queue": "corp-member-tracking-refresh",
+				"max_batch_size": 10,
+				"max_batch_timeout": 30
+			},
+			{ "queue": "corp-wallets-refresh", "max_batch_size": 10, "max_batch_timeout": 30 },
+			{
+				"queue": "corp-wallet-journal-refresh",
+				"max_batch_size": 10,
+				"max_batch_timeout": 30
+			},
+			{
+				"queue": "corp-wallet-transactions-refresh",
+				"max_batch_size": 10,
+				"max_batch_timeout": 30
+			},
+			{ "queue": "corp-assets-refresh", "max_batch_size": 5, "max_batch_timeout": 60 },
+			{ "queue": "corp-structures-refresh", "max_batch_size": 10, "max_batch_timeout": 30 },
+			{ "queue": "corp-orders-refresh", "max_batch_size": 10, "max_batch_timeout": 30 },
+			{ "queue": "corp-contracts-refresh", "max_batch_size": 10, "max_batch_timeout": 30 },
+			{
+				"queue": "corp-industry-jobs-refresh",
+				"max_batch_size": 10,
+				"max_batch_timeout": 30
+			},
+			{ "queue": "corp-killmails-refresh", "max_batch_size": 10, "max_batch_timeout": 30 }
+		]
+	},
 	"durable_objects": {
 		"bindings": [
 			{
