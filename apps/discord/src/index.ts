@@ -3,13 +3,11 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
 
-import { getStub } from '@repo/do-utils'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
 import { DiscordDO } from './durable-object'
 import * as discordService from './services/discord.service'
 
-import type { Discord } from '@repo/discord'
 import type { App } from './context'
 
 const app = new Hono<App>()

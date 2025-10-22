@@ -159,5 +159,9 @@ runx *flags:
   bun runx {{flags}}
 
 [group('5. utility')]
-tail *flags:
-  bun wrangler --cwd apps/{{flags}} tail
+tail worker:
+  bun turbo -F {{worker}} tail
+
+[group('5. utility')]
+tail-all:
+  bun turbo -F "./apps/*" tail

@@ -33,6 +33,13 @@
 			"persistent": true,
 			"outputLogs": "new-only"
 		},
+		// tail is used to stream worker logs with auto-reconnect
+		"tail": {
+			"cache": false,
+			"interactive": true,
+			"persistent": true,
+			"outputLogs": "new-only"
+		},
 		"deploy": {
 			"cache": false,
 			"dependsOn": ["build", "topo"],

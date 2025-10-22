@@ -173,6 +173,16 @@ just deploy
 # or: bun turbo deploy
 ```
 
+### Monitoring & Logs
+```bash
+# Tail logs for all workers (with auto-reconnect)
+just tail-all
+
+# Tail logs for specific worker
+just tail <worker-name>
+# or: pnpm -F <worker-name> tail
+```
+
 ---
 
 ## Repository Architecture
@@ -210,7 +220,14 @@ Each worker application follows this structure:
 **Development Tools (`@repo/tools`)**
 - CLI tools and development scripts
 - Scripts in `bin/` directory referenced by worker package.json files
-- Provides commands like `run-vite-dev`, `run-wrangler-deploy`, `run-eslint`, etc.
+- Provides commands like `run-vite-dev`, `run-wrangler-deploy`, `run-eslint`, `run-wrangler-tail`, etc.
+- **Pattern for creating new utility scripts:**
+  1. Create executable shell script in `packages/tools/bin/`
+  2. Follow naming convention: `run-<tool>-<action>` (e.g., `run-wrangler-tail`)
+  3. Use `#!/bin/sh` shebang and `set -eu` for error handling
+  4. Make script executable: `chmod +x packages/tools/bin/run-<script-name>`
+  5. Reference in worker package.json scripts section
+  6. Add to generator templates for consistency across new projects
 
 **Configuration Packages**
 - `@repo/eslint-config` - Shared ESLint configuration
@@ -289,6 +306,7 @@ Workers and packages use standardized script names that reference `@repo/tools`:
 - `dev` - Start development server (`run-vite-dev` or `run-wrangler-dev`)
 - `build` - Build for production (`run-vite-build` or `run-wrangler-build`)
 - `deploy` - Deploy to Cloudflare (`run-wrangler-deploy`)
+- `tail` - Stream worker logs with auto-reconnect (`run-wrangler-tail`)
 - `check:types` - Type checking (`run-tsc`)
 - `check:lint` - Linting (`run-eslint`)
 - `fix:workers-types` - Generate Cloudflare Worker types (`run-wrangler-types`)

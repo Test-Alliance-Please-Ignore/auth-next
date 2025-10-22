@@ -17,6 +17,7 @@
 		"fix:workers-types": "run-wrangler-types",
 		"migrate:directors": "bun run scripts/migrate-directors.ts",
 		"preview": "run-vite-preview",
+		"tail": "run-wrangler-tail",
 		"test": "run-vitest"
 	},
 	"dependencies": {

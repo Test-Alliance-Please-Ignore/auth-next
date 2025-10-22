@@ -48,12 +48,13 @@ export class NotificationService {
 			groupName: string
 			userId: string
 			userName: string
-		}
+		},
+		env: Env
 	): Promise<void> {
 		try {
 			// Send to all group admins
 			for (const adminId of adminUserIds) {
-				const stub = getStub<Notifications>(this.notificationsStub as unknown as DurableObjectNamespace, adminId)
+				const stub = getStub<Notifications>(env.NOTIFICATIONS, adminId)
 				await stub.publishNotification(adminId, {
 					type: 'group.invitation.accepted',
 					requiresAck: false,

@@ -449,7 +449,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 				.insert(characterWalletJournal)
 				.values({
 					characterId,
-					journalId: BigInt(entry.id),
+					journalId: entry.id,
 					date: new Date(entry.date),
 					refType: entry.ref_type,
 					amount: entry.amount.toString(),
@@ -460,7 +460,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 					reason: entry.reason,
 					tax: entry.tax?.toString(),
 					taxReceiverId: entry.tax_receiver_id,
-					contextId: entry.context_id ? BigInt(entry.context_id) : undefined,
+					contextId: entry.context_id,
 					contextIdType: entry.context_id_type,
 					updatedAt: new Date(),
 				})
@@ -477,7 +477,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 						reason: entry.reason,
 						tax: entry.tax?.toString(),
 						taxReceiverId: entry.tax_receiver_id,
-						contextId: entry.context_id ? BigInt(entry.context_id) : undefined,
+						contextId: entry.context_id,
 						contextIdType: entry.context_id_type,
 						updatedAt: new Date(),
 					},
@@ -530,16 +530,16 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 				.insert(characterMarketTransactions)
 				.values({
 					characterId,
-					transactionId: BigInt(txn.transaction_id),
+					transactionId: txn.transaction_id,
 					date: new Date(txn.date),
 					typeId: txn.type_id,
 					quantity: txn.quantity,
 					unitPrice: txn.unit_price.toString(),
 					clientId: txn.client_id,
-					locationId: BigInt(txn.location_id),
+					locationId: txn.location_id,
 					isBuy: txn.is_buy,
 					isPersonal: txn.is_personal,
-					journalRefId: BigInt(txn.journal_ref_id),
+					journalRefId: txn.journal_ref_id,
 					updatedAt: new Date(),
 				})
 				.onConflictDoUpdate({
@@ -550,10 +550,10 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 						quantity: txn.quantity,
 						unitPrice: txn.unit_price.toString(),
 						clientId: txn.client_id,
-						locationId: BigInt(txn.location_id),
+						locationId: txn.location_id,
 						isBuy: txn.is_buy,
 						isPersonal: txn.is_personal,
-						journalRefId: BigInt(txn.journal_ref_id),
+						journalRefId: txn.journal_ref_id,
 						updatedAt: new Date(),
 					},
 				})
@@ -602,9 +602,9 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 				.insert(characterMarketOrders)
 				.values({
 					characterId,
-					orderId: BigInt(order.order_id),
+					orderId: order.order_id,
 					typeId: order.type_id,
-					locationId: BigInt(order.location_id),
+					locationId: order.location_id,
 					isBuyOrder: order.is_buy_order ?? false,
 					price: order.price.toString(),
 					volumeTotal: order.volume_total,
@@ -622,7 +622,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 					target: [characterMarketOrders.characterId, characterMarketOrders.orderId],
 					set: {
 						typeId: order.type_id,
-						locationId: BigInt(order.location_id),
+						locationId: order.location_id,
 						isBuyOrder: order.is_buy_order ?? false,
 						price: order.price.toString(),
 						volumeTotal: order.volume_total,

@@ -16,6 +16,7 @@
 		"dev": "run-vite-dev",
 		"fix:workers-types": "run-wrangler-types",
 		"preview": "run-vite-preview",
+		"tail": "run-wrangler-tail",
 		"test": "run-vitest"
 	},
 	"dependencies": {

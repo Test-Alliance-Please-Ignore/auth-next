@@ -7,12 +7,29 @@
  * - Other assets: Cached with revalidation - balance between performance and freshness
  */
 
-export default {
-	async fetch(request: Request, env: any): Promise<Response> {
-		const url = new URL(request.url)
+import { Hono } from 'hono'
+import { useWorkersLogger } from 'workers-tagged-logger'
+import { withNotFound, withOnError } from '@repo/hono-helpers'
+
+import type { App } from './context'
+
+const app = new Hono<App>()
+	.use(
+		'*',
+		(c, next) =>
+			useWorkersLogger(c.env.NAME, {
+				environment: c.env.ENVIRONMENT,
+				release: c.env.SENTRY_RELEASE,
+			})(c, next)
+	)
+	.onError(withOnError())
+	.notFound(withNotFound())
+
+	.get('*', async (c) => {
+		const url = new URL(c.req.url)
 
 		// Fetch the asset from the ASSETS binding
-		const response = await env.ASSETS.fetch(request)
+		const response = await c.env.ASSETS.fetch(c.req.raw)
 
 		// Clone the response so we can modify headers
 		const newResponse = new Response(response.body, response)
@@ -37,5 +54,6 @@ export default {
 		}
 
 		return newResponse
-	},
-}
+	})
+
+export default app

@@ -87,25 +87,17 @@ export const skillAttributes = pgTable(
 	(table) => [unique().on(table.skillId, table.attributeName)]
 )
 
-export const corporations = pgTable(
-	'corporations',
-	{
-		corporationId: integer('corporation_id'),
-		corporationName: text('corporation_name').notNull(),
-		ticker: text('ticker').notNull(),
-	},
-	(table) => [unique().on(table.corporationId, table.corporationName, table.ticker)]
-)
+export const corporations = pgTable('corporations', {
+	corporationId: integer('corporation_id').primaryKey(),
+	corporationName: text('corporation_name').notNull(),
+	ticker: text('ticker').notNull(),
+})
 
-export const alliances = pgTable(
-	'alliances',
-	{
-		allianceId: integer('alliance_id'),
-		allianceName: text('alliance_name').notNull(),
-		ticker: text('ticker').notNull(),
-	},
-	(table) => [unique().on(table.allianceId, table.allianceName, table.ticker)]
-)
+export const alliances = pgTable('alliances', {
+	allianceId: integer('alliance_id').primaryKey(),
+	allianceName: text('alliance_name').notNull(),
+	ticker: text('ticker').notNull(),
+})
 
 /**
  * SDE version tracking - Track which version of the SDE we've imported

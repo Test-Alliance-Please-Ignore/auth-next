@@ -44,7 +44,7 @@ app.get('/skills/categories', async (c) => {
 	return c.json(categories)
 })
 
-app.get('alliances/:allianceId', async (c) => {
+app.get('/alliances/:allianceId', async (c) => {
 	const db = c.get('db')
 	const allianceId = Number.parseInt(c.req.param('allianceId'))
 
@@ -69,7 +69,7 @@ app.get('alliances/:allianceId', async (c) => {
 	return c.json(alliance)
 })
 
-app.get('corporations/:corporationId', async (c) => {
+app.get('/corporations/:corporationId', async (c) => {
 	const db = c.get('db')
 	const corporationId = Number.parseInt(c.req.param('corporationId'))
 
