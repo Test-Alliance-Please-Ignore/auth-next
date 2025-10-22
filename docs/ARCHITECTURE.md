@@ -1,6 +1,6 @@
 # Architecture Documentation
 
-This document describes the major architectural decisions, patterns, and design principles used throughout the TAPI Workers monorepo.
+This document describes the major architectural decisions, patterns, and design principles used throughout the Next Auth monorepo.
 
 ---
 
@@ -82,6 +82,7 @@ This document describes the major architectural decisions, patterns, and design 
 ### 1. **Edge-First Architecture**
 
 All computation happens at Cloudflare's edge, as close to users as possible:
+
 - **Zero cold starts** for most requests (Workers are pre-warmed)
 - **Global distribution** across 300+ locations
 - **Sub-10ms latency** for static content and cached data
@@ -92,6 +93,7 @@ All computation happens at Cloudflare's edge, as close to users as possible:
 ### 2. **Service-Oriented Design**
 
 Each worker is a microservice with a single responsibility:
+
 - **core**: Authentication, user management, orchestration
 - **discord**: Discord OAuth and guild management
 - **groups**: Group/category/membership management
@@ -103,6 +105,7 @@ Each worker is a microservice with a single responsibility:
 - **ui**: React SPA static asset server
 
 **Benefits:**
+
 - Independent deployment
 - Clear boundaries
 - Type-safe RPC via shared packages (`@repo/*`)
@@ -110,14 +113,17 @@ Each worker is a microservice with a single responsibility:
 ### 3. **Type Safety Everywhere**
 
 TypeScript is used throughout with strict configuration:
+
 - **No `any` types** (except during migrations)
 - **Shared type packages** for Durable Object interfaces
 - **Database schema** generates TypeScript types
 - **API contracts** defined in shared packages
 
 **Example:**
+
 ```typescript
 import { getStub } from '@repo/do-utils'
+
 import type { EveTokenStore } from '@repo/eve-token-store'
 
 const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
@@ -127,6 +133,7 @@ const token = await stub.getAccessToken(characterId) // Fully typed!
 ### 4. **Security by Design**
 
 Security is built into the architecture, not added later:
+
 - **No hardcoded secrets** - all via environment variables
 - **Encryption at rest** - sensitive data encrypted in database
 - **Least privilege** - Durable Objects have minimal permissions
@@ -142,14 +149,17 @@ Security is built into the architecture, not added later:
 **Decision:** All Durable Object access MUST use the `getStub()` helper from `@repo/do-utils`.
 
 **Why:**
+
 - **Type safety:** Generic parameter provides full TypeScript typing
 - **Consistency:** Single pattern across entire codebase
 - **Simplicity:** Handles both string IDs and DurableObjectId instances
 - **Maintainability:** Easy to update if Cloudflare changes DO APIs
 
 **Correct Pattern:**
+
 ```typescript
 import { getStub } from '@repo/do-utils'
+
 import type { EveTokenStore } from '@repo/eve-token-store'
 
 // Using a named ID
@@ -163,6 +173,7 @@ const token = await stub.getAccessToken(characterId)
 ```
 
 **Anti-Pattern (NEVER DO THIS):**
+
 ```typescript
 // ❌ WRONG - No type safety, violates standards
 const id = env.EVE_TOKEN_STORE.idFromName('default')
@@ -183,39 +194,42 @@ const stub = getStub<Notifications>(
 
 **Why:**
 The Neon serverless driver with Drizzle ORM has serialization issues with JavaScript `BigInt`:
+
 - BigInt values cannot be directly serialized to JSON
 - Must be converted to strings before API responses
 - Inserting with `BigInt()` wrapper causes driver errors
 
 **Correct Pattern:**
+
 ```typescript
 // Schema - use text for large numbers
 export const characterWalletJournal = pgTable('character_wallet_journal', {
   journalId: text('journal_id').notNull(), // Large EVE ID as string
-  amount: text('amount').notNull(),        // ISK amount as string
-  balance: text('balance').notNull(),      // ISK balance as string
+  amount: text('amount').notNull(), // ISK amount as string
+  balance: text('balance').notNull(), // ISK balance as string
 })
 
 // Insert - pass values directly, no BigInt() wrapper
 await db.insert(characterWalletJournal).values({
-  journalId: entry.id,           // ✅ Direct assignment
+  journalId: entry.id, // ✅ Direct assignment
   amount: entry.amount.toString(), // ✅ Convert to string
   balance: entry.balance.toString(),
 })
 
 // Query - values come back as strings
 const results = await db.query.characterWalletJournal.findMany()
-return results.map(r => ({
-  journalId: r.journalId,  // Already a string
-  amount: r.amount,        // Already a string
+return results.map((r) => ({
+  journalId: r.journalId, // Already a string
+  amount: r.amount, // Already a string
 }))
 ```
 
 **Anti-Pattern (NEVER DO THIS):**
+
 ```typescript
 // ❌ WRONG - Wrapping with BigInt() causes errors
 await db.insert(characterWalletJournal).values({
-  journalId: BigInt(entry.id),  // ❌ WRONG!
+  journalId: BigInt(entry.id), // ❌ WRONG!
 })
 ```
 
@@ -228,16 +242,20 @@ await db.insert(characterWalletJournal).values({
 **Decision:** All workers use Hono framework with standard middleware chain.
 
 **Why:**
+
 - **Performance:** Hono is one of the fastest web frameworks
 - **Type safety:** First-class TypeScript support
 - **Composability:** Middleware chain is clean and extensible
 - **Developer experience:** Consistent patterns across all workers
 
 **Standard Pattern:**
+
 ```typescript
 import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
+
 import { withNotFound, withOnError } from '@repo/hono-helpers'
+
 import type { App } from './context'
 
 const app = new Hono<App>()
@@ -247,15 +265,16 @@ const app = new Hono<App>()
       release: c.env.SENTRY_RELEASE,
     })(c, next)
   )
-  .onError(withOnError())       // ✅ Required
-  .notFound(withNotFound())     // ✅ Required
+  .onError(withOnError()) // ✅ Required
+  .notFound(withNotFound()) // ✅ Required
   .get('/', handler)
   .post('/api/endpoint', handler)
 
-export default app               // ✅ Export Hono app, not { fetch }
+export default app // ✅ Export Hono app, not { fetch }
 ```
 
 **Context Pattern:**
+
 ```typescript
 // context.ts
 import type { HonoApp, SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers'
@@ -280,6 +299,7 @@ export interface App extends HonoApp {
 ```
 
 **Benefits:**
+
 - Error handling is consistent
 - Logging is automatic
 - Type safety for environment and variables
@@ -292,11 +312,13 @@ export interface App extends HonoApp {
 **Decision:** All WebSocket handling uses Durable Objects with the Hibernation API.
 
 **Why:**
+
 - **Scale to millions:** Hibernation API allows DOs to handle many connections
 - **Automatic state management:** Cloudflare manages connection state
 - **Reliable delivery:** Built-in message queuing and retry
 
 **Correct Pattern:**
+
 ```typescript
 // Durable Object class
 export class NotificationsDO implements DurableObject {
@@ -316,7 +338,7 @@ export class NotificationsDO implements DurableObject {
     // Store metadata with the connection
     server.serializeAttachment({
       userId,
-      metadata: { connectedAt: new Date() }
+      metadata: { connectedAt: new Date() },
     })
 
     return new Response(null, { status: 101, webSocket: client })
@@ -339,6 +361,7 @@ export class NotificationsDO implements DurableObject {
 ```
 
 **Anti-Pattern (NEVER DO THIS):**
+
 ```typescript
 // ❌ WRONG - Don't call server.accept()
 server.accept()
@@ -354,13 +377,21 @@ ws.addEventListener('message', handler)
 **Decision:** Workers communicate via Durable Object RPC, not HTTP.
 
 **Why:**
+
 - **Type safety:** Shared TypeScript interfaces
 - **Performance:** Direct RPC is faster than HTTP
 - **Reliability:** Built-in retry and error handling
 - **Developer experience:** Feels like local function calls
 
 **Pattern:**
+
 ```typescript
+// Step 3: Use from another worker
+// apps/core/src/services/auth.ts
+import { getStub } from '@repo/do-utils'
+
+import type { EveTokenStore } from '@repo/eve-token-store'
+
 // Step 1: Define interface in shared package
 // packages/eve-token-store/src/index.ts
 export interface EveTokenStore {
@@ -376,16 +407,12 @@ export class EveTokenStoreDO implements DurableObject, EveTokenStore {
   }
 }
 
-// Step 3: Use from another worker
-// apps/core/src/services/auth.ts
-import { getStub } from '@repo/do-utils'
-import type { EveTokenStore } from '@repo/eve-token-store'
-
 const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
 const token = await stub.getAccessToken(characterId)
 ```
 
 **Benefits:**
+
 - No manual HTTP request construction
 - No manual response parsing
 - Compile-time type checking
@@ -455,6 +482,7 @@ const session = await authService.createSession(userId)
 ```
 
 **Benefits:**
+
 - Testable business logic
 - Reusable across routes
 - Clear dependency injection
@@ -464,6 +492,7 @@ const session = await authService.createSession(userId)
 **Decision:** UI worker serves React SPA with intelligent cache control.
 
 **Implementation:**
+
 ```typescript
 .get('*', async (c) => {
   const url = new URL(c.req.url)
@@ -488,6 +517,7 @@ const session = await authService.createSession(userId)
 ```
 
 **Why this works:**
+
 - HTML always fresh → users see new deployments immediately
 - Hashed assets cached forever → safe because hash changes with content
 - Balance performance and freshness
@@ -499,17 +529,20 @@ const session = await authService.createSession(userId)
 ### Database Strategy
 
 **Primary Database:** PostgreSQL (Neon Serverless)
+
 - **Type safety:** Drizzle ORM generates TypeScript types from schema
 - **Performance:** Connection pooling, prepared statements
 - **Serverless:** Auto-scaling, zero maintenance
 - **Location:** Centralized (not edge) for strong consistency
 
 **Caching Strategy:** Workers KV
+
 - **Use case:** Frequently accessed, rarely changing data
 - **Pattern:** Cache-aside with TTL
 - **Invalidation:** Manual on mutations
 
 **Example:**
+
 ```typescript
 // Try cache first
 const cached = await env.CACHE.get(key, { type: 'json' })
@@ -527,6 +560,7 @@ return data
 ### Schema Design Principles
 
 1. **Explicit types over inference**
+
    ```typescript
    // ✅ Good
    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull()
@@ -536,14 +570,16 @@ return data
    ```
 
 2. **Always include timestamps**
+
    ```typescript
    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull()
    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull()
    ```
 
 3. **Indexes for foreign keys and queries**
+
    ```typescript
-   (table) => [
+   ;(table) => [
      index().on(table.userId),
      index().on(table.groupId),
      unique().on(table.userId, table.groupId),
@@ -577,6 +613,7 @@ just db-push <app-name>
 ```typescript
 // db/index.ts
 import { createDbClient } from '@repo/db-utils'
+
 import * as schema from './schema'
 
 export function createDb(databaseUrl: string) {
@@ -608,12 +645,14 @@ User ← Session Cookie
 ### Token Management
 
 **EVE Online Tokens:**
+
 - Stored in `eve-token-store` Durable Object
 - Encrypted at rest using AES-GCM
 - Automatic refresh via Durable Object alarms
 - Character owner hash tracked to detect transfers
 
 **Discord Tokens:**
+
 - Stored in `discord` Durable Object
 - Encrypted at rest using AES-GCM
 - Linked to core user ID
@@ -622,12 +661,14 @@ User ← Session Cookie
 ### Session Management
 
 **Implementation:**
+
 - Cookie-based sessions
 - Stored in core database
 - Session expiration tracked
 - CSRF protection via state parameter
 
 **Middleware:**
+
 ```typescript
 // Optional authentication
 .use('*', sessionMiddleware())
@@ -647,11 +688,7 @@ async function encrypt(plaintext: string, key: CryptoKey): Promise<string> {
   const iv = crypto.getRandomValues(new Uint8Array(12))
   const encoded = new TextEncoder().encode(plaintext)
 
-  const ciphertext = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv },
-    key,
-    encoded
-  )
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoded)
 
   // Combine IV + ciphertext
   const combined = new Uint8Array(iv.length + ciphertext.byteLength)
@@ -674,6 +711,7 @@ wrangler secret put ENCRYPTION_KEY
 ```
 
 **Access in code:**
+
 ```typescript
 const clientSecret = env.EVE_SSO_CLIENT_SECRET
 ```
@@ -692,9 +730,7 @@ const clientSecret = env.EVE_SSO_CLIENT_SECRET
 class DirectorManager {
   private directors: Map<number, DirectorHealth>
 
-  async executeWithFailover<T>(
-    operation: (characterId: number) => Promise<T>
-  ): Promise<T> {
+  async executeWithFailover<T>(operation: (characterId: number) => Promise<T>): Promise<T> {
     const healthyDirectors = this.getHealthyDirectors()
 
     for (const director of healthyDirectors) {
@@ -714,6 +750,7 @@ class DirectorManager {
 ```
 
 **Features:**
+
 - Health tracking (3 failures = unhealthy)
 - Automatic recovery after success
 - Round-robin with priority support
@@ -769,12 +806,14 @@ async listGroups(categoryId: string, userId: string) {
 **Solution:** Per-user Durable Objects with WebSocket Hibernation API.
 
 **Features:**
+
 - Multi-connection support (web + mobile)
 - Acknowledgment tracking with retry
 - Alarm-based retry for offline users
 - Automatic cleanup on disconnect
 
 **Message Flow:**
+
 ```
 Action (e.g., invite) → NotificationService.send()
   ↓
@@ -825,6 +864,7 @@ async fetchEsi<T>(path: string, characterId: number): Promise<EsiResponse<T>> {
 ```
 
 **Benefits:**
+
 - Reduced API calls
 - Faster responses
 - Respects ESI caching directives
@@ -840,17 +880,22 @@ async fetchEsi<T>(path: string, characterId: number): Promise<EsiResponse<T>> {
 **Framework:** Vitest with `@cloudflare/vitest-pool-workers`
 
 **Benefits:**
+
 - Real Workers environment
 - Real Durable Objects
 - Real bindings
 - Fast execution
 
 **Pattern:**
+
 ```typescript
 import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:test'
 import { describe, expect, it } from 'vitest'
+
 import { getStub } from '@repo/do-utils'
+
 import worker from '../../index'
+
 import type { Groups } from '@repo/groups'
 
 describe('Groups Worker', () => {
@@ -858,7 +903,7 @@ describe('Groups Worker', () => {
     const request = new Request('http://example.com/categories', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: 'Test Category' })
+      body: JSON.stringify({ name: 'Test Category' }),
     })
 
     const ctx = createExecutionContext()
@@ -877,7 +922,7 @@ describe('Groups Durable Object', () => {
 
     const category = await stub.createCategory(userId, {
       name: 'Test Category',
-      description: 'Test Description'
+      description: 'Test Description',
     })
 
     expect(category).toHaveProperty('id')
@@ -900,6 +945,7 @@ const stub = getStub<Groups>(env.GROUPS, testId)
 **Generally avoid mocks.** Use real Workers environment when possible.
 
 **When to mock:**
+
 - External APIs (EVE ESI, Discord API)
 - Long-running operations
 - Paid services
@@ -911,6 +957,7 @@ const stub = getStub<Groups>(env.GROUPS, testId)
 ### Edge Performance
 
 **Workers are fast:**
+
 - ~0.5ms CPU time for simple requests
 - ~5-50ms for database queries (depends on location)
 - ~100-500ms for ESI API calls (depends on endpoint)
@@ -918,12 +965,14 @@ const stub = getStub<Groups>(env.GROUPS, testId)
 **Optimization strategies:**
 
 1. **Cache at the edge (KV)**
+
    ```typescript
    const cached = await env.CACHE.get(key)
    if (cached) return cached // <10ms
    ```
 
 2. **Batch database queries**
+
    ```typescript
    // ❌ Bad - N queries
    for (const id of ids) {
@@ -935,33 +984,32 @@ const stub = getStub<Groups>(env.GROUPS, testId)
    ```
 
 3. **Parallel operations**
+
    ```typescript
    // ✅ Good - parallel
-   const [characters, corporations] = await Promise.all([
-     fetchCharacters(),
-     fetchCorporations()
-   ])
+   const [characters, corporations] = await Promise.all([fetchCharacters(), fetchCorporations()])
    ```
 
 4. **Pagination for large datasets**
    ```typescript
    const PAGE_SIZE = 100
-   const results = await db.query.items
-     .findMany({ limit: PAGE_SIZE, offset: page * PAGE_SIZE })
+   const results = await db.query.items.findMany({ limit: PAGE_SIZE, offset: page * PAGE_SIZE })
    ```
 
 ### Database Performance
 
 **Indexes are critical:**
+
 ```typescript
-(table) => [
-  index().on(table.userId),      // For WHERE clauses
-  index().on(table.createdAt),   // For ORDER BY
+;(table) => [
+  index().on(table.userId), // For WHERE clauses
+  index().on(table.createdAt), // For ORDER BY
   unique().on(table.userId, table.groupId), // Composite unique
 ]
 ```
 
 **Query optimization:**
+
 - Use `findFirst()` when you only need one row
 - Use `inArray()` for batch lookups
 - Avoid `count()` on large tables (cache counts)
@@ -969,6 +1017,7 @@ const stub = getStub<Groups>(env.GROUPS, testId)
 ### Durable Objects Performance
 
 **Singleton pattern for stateless operations:**
+
 ```typescript
 // ✅ Good - single instance
 const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
@@ -978,6 +1027,7 @@ const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, userId)
 ```
 
 **Per-user pattern for stateful operations:**
+
 ```typescript
 // ✅ Good - isolated state
 const stub = getStub<Notifications>(env.NOTIFICATIONS, userId)
@@ -992,12 +1042,14 @@ const stub = getStub<Notifications>(env.NOTIFICATIONS, userId)
 #### 1. Cross-Service Database Access
 
 **Current (Temporary):**
+
 ```typescript
 // groups worker directly queries core database
 const users = await db.query.users.findMany()
 ```
 
 **Future (Planned):**
+
 ```typescript
 // Add RPC methods to core worker
 export interface Core {
@@ -1010,6 +1062,7 @@ const user = await coreStub.lookupUserByCharacter(characterId)
 ```
 
 **Migration steps:**
+
 1. Add methods to `packages/core/src/index.ts`
 2. Implement in `apps/core/src/durable-object.ts`
 3. Add CORE service binding to groups worker
@@ -1021,11 +1074,13 @@ const user = await coreStub.lookupUserByCharacter(characterId)
 **Current:** Most inter-service communication via Durable Objects
 
 **Future:** Consider Workers-to-Workers service bindings for:
+
 - Synchronous request/response
 - High throughput
 - No state needed
 
 **Example:**
+
 ```typescript
 // wrangler.jsonc
 {
@@ -1039,11 +1094,13 @@ const response = await env.CORE.fetch(request)
 ```
 
 **When to use Service Bindings:**
+
 - No state needed
 - High request rate
 - Synchronous only
 
 **When to use Durable Objects:**
+
 - Need state management
 - Need coordination
 - Need WebSocket support
@@ -1053,6 +1110,7 @@ const response = await env.CORE.fetch(request)
 **Current:** Basic logging with `workers-tagged-logger`
 
 **Future:** Add structured observability:
+
 - Sentry for error tracking
 - Workers Analytics Engine for metrics
 - Tail workers for log aggregation
@@ -1069,6 +1127,7 @@ const response = await env.CORE.fetch(request)
 **Decision:** Cloudflare Workers
 
 **Reasons:**
+
 1. **Global edge network** - 300+ locations
 2. **Zero cold starts** - always warm
 3. **Durable Objects** - unique strong consistency primitive
@@ -1083,6 +1142,7 @@ const response = await env.CORE.fetch(request)
 **Decision:** Hono
 
 **Reasons:**
+
 1. **Performance** - fastest web framework for Workers
 2. **TypeScript** - first-class TS support with excellent inference
 3. **Middleware** - clean, composable middleware system
@@ -1097,6 +1157,7 @@ const response = await env.CORE.fetch(request)
 **Decision:** Drizzle ORM
 
 **Reasons:**
+
 1. **Type safety** - generates types from schema
 2. **Performance** - minimal overhead, uses prepared statements
 3. **Serverless-first** - designed for edge/serverless
@@ -1111,6 +1172,7 @@ const response = await env.CORE.fetch(request)
 **Decision:** Neon PostgreSQL
 
 **Reasons:**
+
 1. **PostgreSQL** - industry standard, proven reliability
 2. **Serverless** - auto-scaling, zero maintenance
 3. **Cost** - competitive pricing with generous free tier
@@ -1125,6 +1187,7 @@ const response = await env.CORE.fetch(request)
 **Decision:** pnpm + Turborepo
 
 **Reasons:**
+
 1. **Disk efficiency** - pnpm saves massive disk space
 2. **Speed** - fastest package manager
 3. **Strict** - enforces proper dependency declaration
