@@ -607,35 +607,45 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		const cacheKey = 'corporation'
 		const now = Date.now()
 
-		// 1. Check entity cache
-		const cachedCursor = await this.state.storage.sql.exec<{
-			entity_data: string
-			expires_at: number
-		}>(`SELECT entity_data, expires_at FROM entity_cache WHERE entity_type = ? AND entity_id = ?`, cacheKey, corporationId)
+		// 1. Check entity cache (non-critical, failures should be treated as cache miss)
+		try {
+			const cachedCursor = await this.state.storage.sql.exec<{
+				entity_data: string
+				expires_at: number
+			}>(`SELECT entity_data, expires_at FROM entity_cache WHERE entity_type = ? AND entity_id = ?`, cacheKey, corporationId)
 
-		const cached = [...cachedCursor]
+			const cached = [...cachedCursor]
 
-		if (cached.length > 0 && cached[0].expires_at > now) {
-			// Cache hit
-			return JSON.parse(cached[0].entity_data) as EsiCorporation
+			if (cached.length > 0 && cached[0].expires_at > now) {
+				// Cache hit
+				return JSON.parse(cached[0].entity_data) as EsiCorporation
+			}
+		} catch (error) {
+			// Cache read failure - log and continue (treat as cache miss)
+			logger.withTags({ corporationId, operation: 'cache_read' }).warn('Entity cache read failed', error)
 		}
 
 		// 2. Fetch from ESI
 		try {
-			const response = await this.fetchPublicEsi<EsiCorporation>(`/corporations/${corporationId}/`)
+			const response = await this.fetchPublicEsi<EsiCorporation>(`/latest/corporations/${corporationId}/`)
 			const corp = response.data
 
-			// 3. Store in entity cache (cache for 1 hour)
-			const expiresAt = Date.now() + 60 * 60 * 1000
-			await this.state.storage.sql.exec(
-				`INSERT OR REPLACE INTO entity_cache (entity_type, entity_id, entity_name, entity_data, expires_at)
-				 VALUES (?, ?, ?, ?, ?)`,
-				cacheKey,
-				corp.corporation_id,
-				corp.name,
-				JSON.stringify(corp),
-				expiresAt
-			)
+			// 3. Store in entity cache (non-critical, failures should not prevent returning data)
+			try {
+				const expiresAt = Date.now() + 60 * 60 * 1000
+				await this.state.storage.sql.exec(
+					`INSERT OR REPLACE INTO entity_cache (entity_type, entity_id, entity_name, entity_data, expires_at)
+					 VALUES (?, ?, ?, ?, ?)`,
+					cacheKey,
+					corp.corporation_id,
+					corp.name,
+					JSON.stringify(corp),
+					expiresAt
+				)
+			} catch (error) {
+				// Cache write failure - log but don't fail the request
+				logger.withTags({ corporationId, operation: 'cache_write' }).warn('Entity cache write failed', error)
+			}
 
 			return corp
 		} catch (error) {
@@ -652,35 +662,45 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		const cacheKey = 'alliance'
 		const now = Date.now()
 
-		// 1. Check entity cache
-		const cachedCursor = await this.state.storage.sql.exec<{
-			entity_data: string
-			expires_at: number
-		}>(`SELECT entity_data, expires_at FROM entity_cache WHERE entity_type = ? AND entity_id = ?`, cacheKey, allianceId)
+		// 1. Check entity cache (non-critical, failures should be treated as cache miss)
+		try {
+			const cachedCursor = await this.state.storage.sql.exec<{
+				entity_data: string
+				expires_at: number
+			}>(`SELECT entity_data, expires_at FROM entity_cache WHERE entity_type = ? AND entity_id = ?`, cacheKey, allianceId)
 
-		const cached = [...cachedCursor]
+			const cached = [...cachedCursor]
 
-		if (cached.length > 0 && cached[0].expires_at > now) {
-			// Cache hit
-			return JSON.parse(cached[0].entity_data) as EsiAlliance
+			if (cached.length > 0 && cached[0].expires_at > now) {
+				// Cache hit
+				return JSON.parse(cached[0].entity_data) as EsiAlliance
+			}
+		} catch (error) {
+			// Cache read failure - log and continue (treat as cache miss)
+			logger.withTags({ allianceId, operation: 'cache_read' }).warn('Entity cache read failed', error)
 		}
 
 		// 2. Fetch from ESI
 		try {
-			const response = await this.fetchPublicEsi<EsiAlliance>(`/alliances/${allianceId}/`)
+			const response = await this.fetchPublicEsi<EsiAlliance>(`/latest/alliances/${allianceId}/`)
 			const alliance = response.data
 
-			// 3. Store in entity cache (cache for 1 hour)
-			const expiresAt = Date.now() + 60 * 60 * 1000
-			await this.state.storage.sql.exec(
-				`INSERT OR REPLACE INTO entity_cache (entity_type, entity_id, entity_name, entity_data, expires_at)
-				 VALUES (?, ?, ?, ?, ?)`,
-				cacheKey,
-				alliance.alliance_id,
-				alliance.name,
-				JSON.stringify(alliance),
-				expiresAt
-			)
+			// 3. Store in entity cache (non-critical, failures should not prevent returning data)
+			try {
+				const expiresAt = Date.now() + 60 * 60 * 1000
+				await this.state.storage.sql.exec(
+					`INSERT OR REPLACE INTO entity_cache (entity_type, entity_id, entity_name, entity_data, expires_at)
+					 VALUES (?, ?, ?, ?, ?)`,
+					cacheKey,
+					alliance.alliance_id,
+					alliance.name,
+					JSON.stringify(alliance),
+					expiresAt
+				)
+			} catch (error) {
+				// Cache write failure - log but don't fail the request
+				logger.withTags({ allianceId, operation: 'cache_write' }).warn('Entity cache write failed', error)
+			}
 
 			return alliance
 		} catch (error) {
@@ -694,19 +714,24 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 * Uses name resolution and then fetches by ID
 	 */
 	async getCorporationByName(name: string): Promise<EsiCorporation | null> {
-		// First check entity cache by name
+		// First check entity cache by name (non-critical, failures treated as cache miss)
 		const now = Date.now()
-		const cachedCursor = await this.state.storage.sql.exec<{
-			entity_id: number
-			entity_data: string
-			expires_at: number
-		}>(`SELECT entity_id, entity_data, expires_at FROM entity_cache WHERE entity_type = ? AND entity_name = ?`, 'corporation', name)
+		try {
+			const cachedCursor = await this.state.storage.sql.exec<{
+				entity_id: number
+				entity_data: string
+				expires_at: number
+			}>(`SELECT entity_id, entity_data, expires_at FROM entity_cache WHERE entity_type = ? AND entity_name = ?`, 'corporation', name)
 
-		const cached = [...cachedCursor]
+			const cached = [...cachedCursor]
 
-		if (cached.length > 0 && cached[0].expires_at > now) {
-			// Cache hit
-			return JSON.parse(cached[0].entity_data) as EsiCorporation
+			if (cached.length > 0 && cached[0].expires_at > now) {
+				// Cache hit
+				return JSON.parse(cached[0].entity_data) as EsiCorporation
+			}
+		} catch (error) {
+			// Cache read failure - treat as cache miss
+			logger.withTags({ name, operation: 'cache_read' }).warn('Entity cache read failed', error)
 		}
 
 		// Resolve name to ID
@@ -726,19 +751,24 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 * Uses name resolution and then fetches by ID
 	 */
 	async getAllianceByName(name: string): Promise<EsiAlliance | null> {
-		// First check entity cache by name
+		// First check entity cache by name (non-critical, failures treated as cache miss)
 		const now = Date.now()
-		const cachedCursor = await this.state.storage.sql.exec<{
-			entity_id: number
-			entity_data: string
-			expires_at: number
-		}>(`SELECT entity_id, entity_data, expires_at FROM entity_cache WHERE entity_type = ? AND entity_name = ?`, 'alliance', name)
+		try {
+			const cachedCursor = await this.state.storage.sql.exec<{
+				entity_id: number
+				entity_data: string
+				expires_at: number
+			}>(`SELECT entity_id, entity_data, expires_at FROM entity_cache WHERE entity_type = ? AND entity_name = ?`, 'alliance', name)
 
-		const cached = [...cachedCursor]
+			const cached = [...cachedCursor]
 
-		if (cached.length > 0 && cached[0].expires_at > now) {
-			// Cache hit
-			return JSON.parse(cached[0].entity_data) as EsiAlliance
+			if (cached.length > 0 && cached[0].expires_at > now) {
+				// Cache hit
+				return JSON.parse(cached[0].entity_data) as EsiAlliance
+			}
+		} catch (error) {
+			// Cache read failure - treat as cache miss
+			logger.withTags({ name, operation: 'cache_read' }).warn('Entity cache read failed', error)
 		}
 
 		// Resolve name to ID
@@ -764,17 +794,23 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		const result: Record<string, number> = {}
 		const namesToResolve: string[] = []
 
-		// Check cache for each name
+		// Check cache for each name (non-critical, failures treated as cache miss)
 		for (const name of names) {
-			const cachedCursor = await this.state.storage.sql.exec<{
-				entity_id: number
-			}>(`SELECT entity_id FROM entity_cache WHERE entity_name = ? AND expires_at > ?`, name, Date.now())
+			try {
+				const cachedCursor = await this.state.storage.sql.exec<{
+					entity_id: number
+				}>(`SELECT entity_id FROM entity_cache WHERE entity_name = ? AND expires_at > ?`, name, Date.now())
 
-			const cached = [...cachedCursor]
+				const cached = [...cachedCursor]
 
-			if (cached.length > 0) {
-				result[name] = cached[0].entity_id
-			} else {
+				if (cached.length > 0) {
+					result[name] = cached[0].entity_id
+				} else {
+					namesToResolve.push(name)
+				}
+			} catch (error) {
+				// Cache read failure - treat as cache miss
+				logger.withTags({ name, operation: 'cache_read' }).warn('Entity cache read failed', error)
 				namesToResolve.push(name)
 			}
 		}
@@ -818,16 +854,21 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				for (const entity of entities) {
 					result[entity.name] = entity.id
 
-					// Cache the name→id mapping (without full entity data)
-					await this.state.storage.sql.exec(
-						`INSERT OR REPLACE INTO entity_cache (entity_type, entity_id, entity_name, entity_data, expires_at)
-						 VALUES (?, ?, ?, ?, ?)`,
-						entityType === 'systems' ? 'solar_system' : entityType.slice(0, -1), // 'alliances' → 'alliance'
-						entity.id,
-						entity.name,
-						JSON.stringify({ id: entity.id, name: entity.name }), // Minimal data for name lookups
-						expiresAt
-					)
+					// Cache the name→id mapping (non-critical, failures should not prevent returning data)
+					try {
+						await this.state.storage.sql.exec(
+							`INSERT OR REPLACE INTO entity_cache (entity_type, entity_id, entity_name, entity_data, expires_at)
+							 VALUES (?, ?, ?, ?, ?)`,
+							entityType === 'systems' ? 'solar_system' : entityType.slice(0, -1), // 'alliances' → 'alliance'
+							entity.id,
+							entity.name,
+							JSON.stringify({ id: entity.id, name: entity.name }), // Minimal data for name lookups
+							expiresAt
+						)
+					} catch (error) {
+						// Cache write failure - log but don't fail the request
+						logger.withTags({ entityName: entity.name, entityId: entity.id, operation: 'cache_write' }).warn('Entity cache write failed', error)
+					}
 				}
 			}
 
@@ -849,17 +890,23 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		const result: Record<number, string> = {}
 		const idsToResolve: number[] = []
 
-		// Check cache for each ID
+		// Check cache for each ID (non-critical, failures treated as cache miss)
 		for (const id of ids) {
-			const cachedCursor = await this.state.storage.sql.exec<{
-				entity_name: string
-			}>(`SELECT entity_name FROM entity_cache WHERE entity_id = ? AND expires_at > ?`, id, Date.now())
+			try {
+				const cachedCursor = await this.state.storage.sql.exec<{
+					entity_name: string
+				}>(`SELECT entity_name FROM entity_cache WHERE entity_id = ? AND expires_at > ?`, id, Date.now())
 
-			const cached = [...cachedCursor]
+				const cached = [...cachedCursor]
 
-			if (cached.length > 0) {
-				result[id] = cached[0].entity_name
-			} else {
+				if (cached.length > 0) {
+					result[id] = cached[0].entity_name
+				} else {
+					idsToResolve.push(id)
+				}
+			} catch (error) {
+				// Cache read failure - treat as cache miss
+				logger.withTags({ id, operation: 'cache_read' }).warn('Entity cache read failed', error)
 				idsToResolve.push(id)
 			}
 		}
@@ -894,16 +941,21 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			for (const entity of data) {
 				result[entity.id] = entity.name
 
-				// Cache the id→name mapping
-				await this.state.storage.sql.exec(
-					`INSERT OR REPLACE INTO entity_cache (entity_type, entity_id, entity_name, entity_data, expires_at)
-					 VALUES (?, ?, ?, ?, ?)`,
-					entity.category,
-					entity.id,
-					entity.name,
-					JSON.stringify(entity), // Minimal data for ID lookups
-					expiresAt
-				)
+				// Cache the id→name mapping (non-critical, failures should not prevent returning data)
+				try {
+					await this.state.storage.sql.exec(
+						`INSERT OR REPLACE INTO entity_cache (entity_type, entity_id, entity_name, entity_data, expires_at)
+						 VALUES (?, ?, ?, ?, ?)`,
+						entity.category,
+						entity.id,
+						entity.name,
+						JSON.stringify(entity), // Minimal data for ID lookups
+						expiresAt
+					)
+				} catch (error) {
+					// Cache write failure - log but don't fail the request
+					logger.withTags({ entityName: entity.name, entityId: entity.id, operation: 'cache_write' }).warn('Entity cache write failed', error)
+				}
 			}
 
 			return result

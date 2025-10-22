@@ -212,6 +212,15 @@ Each worker application follows this structure:
 **Durable Objects (`@repo/do-utils`)**
 - Utilities and helpers for Cloudflare Durable Objects
 
+**HTTP Request Optimization (`@repo/fetch-utils`)**
+- Request deduplication to prevent duplicate concurrent HTTP requests
+- Authorization-aware cache key generation using BLAKE3 hashing
+- `DedupedFetch` class - Main deduplication implementation
+- `defaultAuthAwareKeyGenerator()` - Secure key generation with hashed auth headers
+- `bodyAndAuthAwareKeyGenerator()` - Includes request body in cache key
+- Statistics tracking for monitoring deduplication effectiveness
+- **Use case:** Optimize API calls in Durable Objects and Workers by preventing redundant concurrent requests to the same endpoint
+
 **Web Framework (`@repo/hono-helpers`)**
 - Common Hono middleware and utilities
 - `withOnError()` - Error handler middleware
@@ -279,6 +288,61 @@ Database commands in apps should have these scripts:
 - `db:push` - Push schema changes (dev only)
 - `db:migrate` - Run migrations
 - `db:studio` - Open Drizzle Studio
+
+### HTTP Request Deduplication Pattern
+
+When making external HTTP requests (especially in Durable Objects), use `@repo/fetch-utils` to prevent duplicate concurrent requests and improve performance.
+
+**Key Benefits:**
+- Prevents redundant API calls when multiple concurrent requests are made to the same endpoint
+- Authorization-aware to prevent data leakage between users
+- Reduces load on external APIs and improves response times
+- Provides statistics for monitoring deduplication effectiveness
+
+**Usage in Durable Objects:**
+
+```typescript
+import { DedupedFetch } from '@repo/fetch-utils'
+
+export class MyDurableObject extends DurableObject {
+  private dedupedFetch: DedupedFetch
+
+  constructor(state: DurableObjectState, env: Env) {
+    super(state, env)
+
+    // Initialize with default configuration
+    this.dedupedFetch = new DedupedFetch()
+    // Default uses auth-aware key generation with BLAKE3 hashing
+  }
+
+  async fetchData(url: string, token: string) {
+    // Multiple concurrent calls with same URL and token = 1 fetch
+    return this.dedupedFetch.fetch(url, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+  }
+}
+```
+
+**Custom Configuration:**
+
+```typescript
+// For authenticated POST requests with body awareness
+this.dedupedFetch = new DedupedFetch({
+  keyGenerator: bodyAndAuthAwareKeyGenerator,
+  shouldDedupe: (input, init) => {
+    const method = init?.method?.toUpperCase() || 'GET'
+    return ['GET', 'POST'].includes(method)
+  },
+  debug: false // Enable for debugging deduplication
+})
+```
+
+**Important Notes:**
+- By default, only GET requests are deduplicated (safest for idempotent operations)
+- Authorization headers are hashed using BLAKE3 to prevent storing sensitive credentials in cache keys
+- Response bodies are cloned so each caller can consume them independently
+- Use `getStats()` to monitor hits/misses for optimization insights
 
 ### Worker Development Pattern
 Workers follow this structure:

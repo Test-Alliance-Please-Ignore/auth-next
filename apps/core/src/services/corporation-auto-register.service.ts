@@ -128,6 +128,14 @@ export async function autoRegisterDirectorCorporation(
 		try {
 			const corpInfo = await tokenStore.getCorporationById(corporationId)
 
+			if (!corpInfo) {
+				logger.error('[AutoReg] Corporation not found', { corporationId })
+				return {
+					success: false,
+					reason: 'failed_to_fetch_corporation_info',
+				}
+			}
+
 			corpName = corpInfo.name
 			corpTicker = corpInfo.ticker
 
