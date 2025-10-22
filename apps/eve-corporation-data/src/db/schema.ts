@@ -1,4 +1,4 @@
-import { boolean, integer, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
+import { boolean, index, integer, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
 
 /**
  * Database schema for the eve-corporation-data worker
@@ -16,18 +16,53 @@ import { boolean, integer, jsonb, pgTable, text, timestamp, unique, uuid } from 
 // ============================================================================
 
 /**
- * Configuration table - maps corporation to authorized character
- * Each corporation has one configured character for API access
+ * Configuration table - tracks corporation metadata
+ * Director characters are now stored in corporationDirectors table
  */
 export const corporationConfig = pgTable('corporation_config', {
 	corporationId: integer('corporation_id').primaryKey(),
-	characterId: integer('character_id').notNull(),
-	characterName: text('character_name').notNull(),
 	lastVerified: timestamp('last_verified', { withTimezone: true }),
 	isVerified: boolean('is_verified').default(false).notNull(),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 })
+
+/**
+ * Corporation directors table - manages multiple director characters per corporation
+ * Supports automatic failover and load balancing across healthy directors
+ */
+export const corporationDirectors = pgTable(
+	'corporation_directors',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		corporationId: integer('corporation_id')
+			.notNull()
+			.references(() => corporationConfig.corporationId, { onDelete: 'cascade' }),
+		characterId: integer('character_id').notNull(),
+		characterName: text('character_name').notNull(),
+		/** Priority for director selection (lower = higher priority, used for tie-breaking) */
+		priority: integer('priority').default(100).notNull(),
+		/** Whether this director is currently healthy (has valid token and roles) */
+		isHealthy: boolean('is_healthy').default(true).notNull(),
+		/** Last time health was checked */
+		lastHealthCheck: timestamp('last_health_check', { withTimezone: true }),
+		/** Last time this director was used for an ESI request */
+		lastUsed: timestamp('last_used', { withTimezone: true }),
+		/** Consecutive failure count (reset to 0 on success) */
+		failureCount: integer('failure_count').default(0).notNull(),
+		/** Last failure reason (for debugging) */
+		lastFailureReason: text('last_failure_reason'),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		unique().on(table.corporationId, table.characterId),
+		// Index for finding healthy directors efficiently
+		index('corporation_directors_corp_healthy_idx').on(table.corporationId, table.isHealthy),
+		// Index for selecting least-recently-used director
+		index('corporation_directors_last_used_idx').on(table.corporationId, table.lastUsed),
+	],
+)
 
 // ============================================================================
 // CHARACTER ROLES (for verification)
@@ -415,6 +450,7 @@ export const corporationKillmails = pgTable(
 
 export const schema = {
 	corporationConfig,
+	corporationDirectors,
 	characterCorporationRoles,
 	corporationPublicInfo,
 	corporationMembers,

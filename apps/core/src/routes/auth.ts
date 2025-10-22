@@ -3,15 +3,17 @@ import { getCookie } from 'hono/cookie'
 
 import { eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
+import type { EveCorporationData } from '@repo/eve-corporation-data'
+import type { EveTokenStore } from '@repo/eve-token-store'
 
 import { createDb } from '../db'
 import { oauthStates } from '../db/schema'
 import { requireAuth } from '../middleware/session'
 import { ActivityService } from '../services/activity.service'
 import { AuthService } from '../services/auth.service'
+import { autoRegisterDirectorCorporation } from '../services/corporation-auto-register.service'
 import { UserService } from '../services/user.service'
 
-import type { EveTokenStore } from '@repo/eve-token-store'
 import type { App } from '../context'
 import type { RequestMetadata } from '../types/user'
 
@@ -182,9 +184,26 @@ auth.get('/callback', async (c) => {
 
 		await activityService.logCharacterLinked(stateUserId, characterId, getRequestMetadata(c))
 
+		// Auto-register corporation if character is a director
+		let autoRegResult
+		try {
+			autoRegResult = await autoRegisterDirectorCorporation(
+				characterId,
+				characterInfo.characterName,
+				stateUserId,
+				db,
+				eveTokenStoreStub,
+				c.env.EVE_CORPORATION_DATA
+			)
+		} catch (error) {
+			// Don't fail character linking if auto-registration fails
+			console.error('[Auth] Auto-registration failed:', error)
+		}
+
 		return c.json({
 			characterLinked: true,
 			character: linkedCharacter,
+			autoRegistration: autoRegResult,
 		})
 	}
 
@@ -202,6 +221,22 @@ auth.get('/callback', async (c) => {
 
 		await activityService.logLogin(user.id, characterId, getRequestMetadata(c))
 
+		// Auto-register corporation if character is a director
+		let autoRegResult
+		try {
+			autoRegResult = await autoRegisterDirectorCorporation(
+				characterId,
+				characterInfo.characterName,
+				user.id,
+				db,
+				eveTokenStoreStub,
+				c.env.EVE_CORPORATION_DATA
+			)
+		} catch (error) {
+			// Don't fail login if auto-registration fails
+			console.error('[Auth] Auto-registration failed:', error)
+		}
+
 		return c.json({
 			sessionToken: session.sessionToken,
 			expiresAt: session.expiresAt,
@@ -209,6 +244,7 @@ auth.get('/callback', async (c) => {
 				id: user.id,
 				requiresClaimMain: false,
 			},
+			autoRegistration: autoRegResult,
 		})
 	}
 
@@ -269,6 +305,22 @@ auth.post('/claim-main', async (c) => {
 
 	await activityService.logLogin(user.id, tokenInfo.characterId, getRequestMetadata(c))
 
+	// Auto-register corporation if character is a director
+	let autoRegResult
+	try {
+		autoRegResult = await autoRegisterDirectorCorporation(
+			tokenInfo.characterId,
+			tokenInfo.characterName,
+			user.id,
+			db,
+			eveTokenStoreStub,
+			c.env.EVE_CORPORATION_DATA
+		)
+	} catch (error) {
+		// Don't fail user creation if auto-registration fails
+		console.error('[Auth] Auto-registration failed:', error)
+	}
+
 	return c.json({
 		sessionToken: session.sessionToken,
 		expiresAt: session.expiresAt,
@@ -276,6 +328,7 @@ auth.post('/claim-main', async (c) => {
 			id: user.id,
 			mainCharacterId: user.mainCharacterId,
 		},
+		autoRegistration: autoRegResult,
 	})
 })
 

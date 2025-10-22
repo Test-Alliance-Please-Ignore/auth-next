@@ -15,6 +15,7 @@
 		"deploy": "run-wrangler-deploy",
 		"dev": "run-vite-dev",
 		"fix:workers-types": "run-wrangler-types",
+		"migrate:directors": "bun run scripts/migrate-directors.ts",
 		"preview": "run-vite-preview",
 		"test": "run-vitest"
 	},

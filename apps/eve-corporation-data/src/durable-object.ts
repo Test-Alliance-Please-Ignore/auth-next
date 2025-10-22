@@ -46,6 +46,7 @@ import {
 	corporationAssets,
 	corporationConfig,
 	corporationContracts,
+	corporationDirectors,
 	corporationIndustryJobs,
 	corporationKillmails,
 	corporationMembers,
@@ -57,6 +58,7 @@ import {
 	corporationWalletJournal,
 	corporationWalletTransactions,
 } from './db/schema'
+import { DirectorManager, type DirectorHealth, type SelectedDirector } from './director-manager'
 
 import type { Env } from './context'
 
@@ -93,19 +95,41 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 	/**
 	 * Get the configured character ID for this corporation
+	 * @deprecated Use DirectorManager.selectDirector() instead for multi-director support
 	 * @throws Error if corporation not configured
 	 */
 	private async getConfiguredCharacter(): Promise<{ characterId: number; corporationId: number }> {
+		// Try to get a healthy director first
 		const config = await this.db.query.corporationConfig.findFirst()
 
 		if (!config) {
-			throw new Error('Corporation not configured. Call setCharacter() first.')
+			throw new Error('Corporation not configured.')
+		}
+
+		const directorManager = new DirectorManager(this.db, config.corporationId, this.getTokenStoreStub())
+		const director = await directorManager.selectDirector()
+
+		if (!director) {
+			throw new Error('No healthy directors available. Please add or verify directors.')
 		}
 
 		return {
-			characterId: config.characterId,
+			characterId: director.characterId,
 			corporationId: config.corporationId,
 		}
+	}
+
+	/**
+	 * Get DirectorManager instance for this corporation
+	 */
+	private async getDirectorManager(): Promise<DirectorManager> {
+		const config = await this.db.query.corporationConfig.findFirst()
+
+		if (!config) {
+			throw new Error('Corporation not configured.')
+		}
+
+		return new DirectorManager(this.db, config.corporationId, this.getTokenStoreStub())
 	}
 
 	/**
@@ -149,33 +173,39 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	// ========================================================================
 
 	/**
-	 * Configure which character to use for API access
+	 * Configure which character to use for API access (legacy method for backwards compatibility)
+	 * @deprecated Use addDirector() instead
 	 */
 	async setCharacter(corporationId: number, characterId: number, characterName: string): Promise<void> {
-		await this.db
-			.insert(corporationConfig)
-			.values({
+		// Ensure corporation config exists
+		const config = await this.db.query.corporationConfig.findFirst({
+			where: eq(corporationConfig.corporationId, corporationId),
+		})
+
+		if (!config) {
+			await this.db.insert(corporationConfig).values({
 				corporationId,
-				characterId,
-				characterName,
 				isVerified: false,
 				lastVerified: null,
 				updatedAt: new Date(),
 			})
-			.onConflictDoUpdate({
-				target: corporationConfig.corporationId,
-				set: {
-					characterId,
-					characterName,
-					isVerified: false,
-					lastVerified: null,
-					updatedAt: new Date(),
-				},
-			})
+		}
+
+		// Add as a director instead
+		const directorManager = new DirectorManager(this.db, corporationId, this.getTokenStoreStub())
+
+		// Check if director already exists
+		const directors = await directorManager.getAllDirectors()
+		const existingDirector = directors.find(d => d.characterId === characterId)
+
+		if (!existingDirector) {
+			await directorManager.addDirector(characterId, characterName, 100)
+		}
 	}
 
 	/**
 	 * Get the configured character for this corporation
+	 * @deprecated Use getDirectors() instead for multi-director support
 	 */
 	async getConfiguration(): Promise<CorporationConfigData | null> {
 		const config = await this.db.query.corporationConfig.findFirst()
@@ -184,10 +214,15 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			return null
 		}
 
+		// Get the first director (primary) for backwards compatibility
+		const directorManager = new DirectorManager(this.db, config.corporationId, this.getTokenStoreStub())
+		const directors = await directorManager.getAllDirectors()
+		const primaryDirector = directors[0] // First director by priority
+
 		return {
 			corporationId: config.corporationId,
-			characterId: config.characterId,
-			characterName: config.characterName,
+			characterId: primaryDirector?.characterId || 0,
+			characterName: primaryDirector?.characterName || '',
 			lastVerified: config.lastVerified,
 			isVerified: config.isVerified,
 			createdAt: config.createdAt,
@@ -197,10 +232,11 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 	/**
 	 * Verify that the configured character has access to corporation data
+	 * @deprecated Use verifyAllDirectorsHealth() instead for multi-director support
 	 */
 	async verifyAccess(): Promise<CorporationAccessVerification> {
 		console.log('[EveCorporationData] verifyAccess: Starting verification')
-		const config = await this.getConfiguration()
+		const config = await this.db.query.corporationConfig.findFirst()
 
 		if (!config) {
 			console.log('[EveCorporationData] verifyAccess: No configuration found')
@@ -213,103 +249,122 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			}
 		}
 
-		console.log('[EveCorporationData] verifyAccess: Configuration found', {
-			corporationId: config.corporationId,
-			characterId: config.characterId,
-			characterName: config.characterName,
+		// Use the new director verification system
+		const directorManager = new DirectorManager(this.db, config.corporationId, this.getTokenStoreStub())
+		const result = await directorManager.verifyAllDirectorsHealth()
+
+		console.log('[EveCorporationData] verifyAccess: Verification complete', {
+			verified: result.verified,
+			failed: result.failed,
 		})
 
-		try {
-			// Fetch character roles from ESI
-			console.log('[EveCorporationData] verifyAccess: Fetching character roles from ESI')
-			const tokenStore = this.getTokenStoreStub()
-			const response: EsiResponse<EsiCharacterRoles> = await tokenStore.fetchEsi(
-				`/characters/${config.characterId}/roles`,
-				config.characterId
-			)
+		// Get the first healthy director for backwards compatibility
+		const healthyDirectors = await directorManager.getHealthyDirectors()
+		const primaryDirector = healthyDirectors[0]
 
-			console.log('[EveCorporationData] verifyAccess: ESI response received', {
-				status: response.status,
-				hasData: !!response.data,
-			})
-
-			const roles = response.data
-
-			console.log('[EveCorporationData] verifyAccess: Character roles', {
-				roles: roles.roles || [],
-				rolesAtHq: roles.roles_at_hq || [],
-				rolesAtBase: roles.roles_at_base || [],
-				rolesAtOther: roles.roles_at_other || [],
-			})
-
-			// Store roles in database
-			console.log('[EveCorporationData] verifyAccess: Storing roles in database')
-			await this.db
-				.insert(characterCorporationRoles)
-				.values({
-					corporationId: config.corporationId,
-					characterId: config.characterId,
-					roles: roles.roles || [],
-					rolesAtHq: roles.roles_at_hq,
-					rolesAtBase: roles.roles_at_base,
-					rolesAtOther: roles.roles_at_other,
-					updatedAt: new Date(),
-				})
-				.onConflictDoUpdate({
-					target: [characterCorporationRoles.corporationId, characterCorporationRoles.characterId],
-					set: {
-						roles: roles.roles || [],
-						rolesAtHq: roles.roles_at_hq,
-						rolesAtBase: roles.roles_at_base,
-						rolesAtOther: roles.roles_at_other,
-						updatedAt: new Date(),
-					},
-				})
-
-			// Update configuration
-			const lastVerified = new Date()
-			console.log('[EveCorporationData] verifyAccess: Updating configuration with verification status')
-			await this.db
-				.update(corporationConfig)
-				.set({
-					isVerified: true,
-					lastVerified,
-					updatedAt: new Date(),
-				})
-				.where(eq(corporationConfig.corporationId, config.corporationId))
-
-			const verifiedRoles = [
-				...(roles.roles || []),
-				...(roles.roles_at_hq || []),
-				...(roles.roles_at_base || []),
-				...(roles.roles_at_other || []),
-			]
-
-			console.log('[EveCorporationData] verifyAccess: Verification successful', {
-				verifiedRolesCount: verifiedRoles.length,
-				verifiedRoles,
-			})
-
-			return {
-				hasAccess: true,
-				characterId: config.characterId,
-				characterName: config.characterName,
-				verifiedRoles,
-				lastVerified,
-			}
-		} catch (error) {
-			console.error('[EveCorporationData] verifyAccess: Failed to verify access', {
-				error: error instanceof Error ? error.message : String(error),
-				stack: error instanceof Error ? error.stack : undefined,
-			})
+		if (!primaryDirector) {
 			return {
 				hasAccess: false,
-				characterId: config.characterId,
-				characterName: config.characterName,
+				characterId: null,
+				characterName: null,
 				verifiedRoles: [],
 				lastVerified: config.lastVerified,
 			}
 		}
+
+		// Get roles for the primary director
+		const rolesData = await this.db.query.characterCorporationRoles.findFirst({
+			where: eq(characterCorporationRoles.characterId, primaryDirector.characterId),
+		})
+
+		const verifiedRoles = rolesData
+			? [
+					...(rolesData.roles || []),
+					...(rolesData.rolesAtHq || []),
+					...(rolesData.rolesAtBase || []),
+					...(rolesData.rolesAtOther || []),
+				]
+			: []
+
+		return {
+			hasAccess: result.verified > 0,
+			characterId: primaryDirector.characterId,
+			characterName: primaryDirector.characterName,
+			verifiedRoles,
+			lastVerified: config.lastVerified,
+		}
+	}
+
+	// ========================================================================
+	// DIRECTOR MANAGEMENT METHODS
+	// ========================================================================
+
+	/**
+	 * Add a new director character for this corporation
+	 */
+	async addDirector(characterId: number, characterName: string, priority = 100): Promise<void> {
+		const config = await this.db.query.corporationConfig.findFirst()
+
+		if (!config) {
+			// Create config if it doesn't exist
+			await this.db.insert(corporationConfig).values({
+				corporationId: this.state.id.toString() as unknown as number, // Extract corp ID from DO ID
+				isVerified: false,
+				lastVerified: null,
+				updatedAt: new Date(),
+			})
+		}
+
+		const directorManager = await this.getDirectorManager()
+		await directorManager.addDirector(characterId, characterName, priority)
+	}
+
+	/**
+	 * Remove a director character from this corporation
+	 */
+	async removeDirector(characterId: number): Promise<void> {
+		const directorManager = await this.getDirectorManager()
+		await directorManager.removeDirector(characterId)
+	}
+
+	/**
+	 * Update a director's priority
+	 */
+	async updateDirectorPriority(characterId: number, priority: number): Promise<void> {
+		const directorManager = await this.getDirectorManager()
+		await directorManager.updateDirectorPriority(characterId, priority)
+	}
+
+	/**
+	 * Get all directors for this corporation
+	 */
+	async getDirectors(): Promise<DirectorHealth[]> {
+		const directorManager = await this.getDirectorManager()
+		return await directorManager.getAllDirectors()
+	}
+
+	/**
+	 * Get healthy directors for this corporation
+	 */
+	async getHealthyDirectors(): Promise<DirectorHealth[]> {
+		const directorManager = await this.getDirectorManager()
+		return await directorManager.getHealthyDirectors()
+	}
+
+	/**
+	 * Verify health of a specific director
+	 */
+	async verifyDirectorHealth(directorId: string): Promise<boolean> {
+		const directorManager = await this.getDirectorManager()
+		return await directorManager.verifyDirectorHealth(directorId)
+	}
+
+	/**
+	 * Verify health of all directors
+	 */
+	async verifyAllDirectorsHealth(): Promise<{ verified: number; failed: number }> {
+		const directorManager = await this.getDirectorManager()
+		return await directorManager.verifyAllDirectorsHealth()
 	}
 
 	// ========================================================================

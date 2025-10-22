@@ -504,7 +504,7 @@ app.get('/:corporationId/data', requireAuth(), requireAdmin(), async (c) => {
 		logger.info('[Corporations] Fetching all data from DO', { corporationId })
 		const [publicInfo, coreData, financialData, assetsData, marketData, killmails] =
 			await Promise.all([
-				stub.getCorporationInfo().catch(e => {
+				stub.getCorporationInfo().catch((e: unknown) => {
 					logger.error('[Corporations] getCorporationInfo failed', {
 						corporationId,
 						error: e instanceof Error ? e.message : String(e),
@@ -512,7 +512,7 @@ app.get('/:corporationId/data', requireAuth(), requireAdmin(), async (c) => {
 					});
 					return null;
 				}),
-				stub.getCoreData().catch(e => {
+				stub.getCoreData().catch((e: unknown) => {
 					logger.error('[Corporations] getCoreData failed', {
 						corporationId,
 						error: e instanceof Error ? e.message : String(e),
@@ -520,7 +520,7 @@ app.get('/:corporationId/data', requireAuth(), requireAdmin(), async (c) => {
 					});
 					return null;
 				}),
-				stub.getFinancialData().catch(e => {
+				stub.getFinancialData().catch((e: unknown) => {
 					logger.error('[Corporations] getFinancialData failed', {
 						corporationId,
 						error: e instanceof Error ? e.message : String(e),
@@ -528,7 +528,7 @@ app.get('/:corporationId/data', requireAuth(), requireAdmin(), async (c) => {
 					});
 					return null;
 				}),
-				stub.getAssetsData().catch(e => {
+				stub.getAssetsData().catch((e: unknown) => {
 					logger.error('[Corporations] getAssetsData failed', {
 						corporationId,
 						error: e instanceof Error ? e.message : String(e),
@@ -536,7 +536,7 @@ app.get('/:corporationId/data', requireAuth(), requireAdmin(), async (c) => {
 					});
 					return null;
 				}),
-				stub.getMarketData().catch(e => {
+				stub.getMarketData().catch((e: unknown) => {
 					logger.error('[Corporations] getMarketData failed', {
 						corporationId,
 						error: e instanceof Error ? e.message : String(e),
@@ -544,7 +544,7 @@ app.get('/:corporationId/data', requireAuth(), requireAdmin(), async (c) => {
 					});
 					return null;
 				}),
-				stub.getKillmails(10).catch(e => {
+				stub.getKillmails(10).catch((e: unknown) => {
 					logger.error('[Corporations] getKillmails failed', {
 						corporationId,
 						error: e instanceof Error ? e.message : String(e),
@@ -604,6 +604,209 @@ app.get('/:corporationId/data', requireAuth(), requireAdmin(), async (c) => {
 			stack: error instanceof Error ? error.stack : undefined,
 		})
 		return c.json({ error: 'Failed to fetch data summary' }, 500)
+	}
+})
+
+// ============================================================================
+// DIRECTOR MANAGEMENT ENDPOINTS
+// ============================================================================
+
+/**
+ * GET /corporations/:corporationId/directors
+ * Get all directors for a corporation
+ */
+app.get('/:corporationId/directors', requireAuth(), requireAdmin(), async (c) => {
+	const corporationId = Number.parseInt(c.req.param('corporationId'))
+
+	if (isNaN(corporationId)) {
+		return c.json({ error: 'Invalid corporation ID' }, 400)
+	}
+
+	try {
+		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, `corp-${corporationId}`)
+		const directors = await stub.getDirectors()
+
+		return c.json(directors)
+	} catch (error) {
+		logger.error('Error fetching directors:', error)
+		return c.json({ error: 'Failed to fetch directors' }, 500)
+	}
+})
+
+/**
+ * POST /corporations/:corporationId/directors
+ * Add a director to the corporation
+ *
+ * Body: {
+ *   characterId: number
+ *   characterName: string
+ *   priority?: number
+ * }
+ */
+app.post('/:corporationId/directors', requireAuth(), requireAdmin(), async (c) => {
+	const corporationId = Number.parseInt(c.req.param('corporationId'))
+	const db = c.get('db')
+
+	if (isNaN(corporationId)) {
+		return c.json({ error: 'Invalid corporation ID' }, 400)
+	}
+
+	if (!db) {
+		return c.json({ error: 'Database not available' }, 500)
+	}
+
+	try {
+		const body = await c.req.json()
+		const { characterId, characterName, priority = 100 } = body
+
+		if (!characterId || !characterName) {
+			return c.json({ error: 'characterId and characterName are required' }, 400)
+		}
+
+		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, `corp-${corporationId}`)
+		await stub.addDirector(characterId, characterName, priority)
+
+		// Update managedCorporations to set primary director if this is the first one
+		const directors = await stub.getDirectors()
+		if (directors.length === 1) {
+			await db
+				.update(managedCorporations)
+				.set({
+					assignedCharacterId: characterId,
+					assignedCharacterName: characterName,
+					updatedAt: new Date(),
+				})
+				.where(eq(managedCorporations.corporationId, corporationId))
+		}
+
+		return c.json({ success: true, characterId, characterName, priority })
+	} catch (error) {
+		logger.error('Error adding director:', error)
+		return c.json({ error: 'Failed to add director' }, 500)
+	}
+})
+
+/**
+ * DELETE /corporations/:corporationId/directors/:characterId
+ * Remove a director from the corporation
+ */
+app.delete('/:corporationId/directors/:characterId', requireAuth(), requireAdmin(), async (c) => {
+	const corporationId = Number.parseInt(c.req.param('corporationId'))
+	const characterId = Number.parseInt(c.req.param('characterId'))
+
+	if (isNaN(corporationId) || isNaN(characterId)) {
+		return c.json({ error: 'Invalid corporation or character ID' }, 400)
+	}
+
+	try {
+		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, `corp-${corporationId}`)
+		await stub.removeDirector(characterId)
+
+		return c.json({ success: true })
+	} catch (error) {
+		logger.error('Error removing director:', error)
+		return c.json({ error: 'Failed to remove director' }, 500)
+	}
+})
+
+/**
+ * PUT /corporations/:corporationId/directors/:characterId
+ * Update director priority
+ *
+ * Body: {
+ *   priority: number
+ * }
+ */
+app.put('/:corporationId/directors/:characterId', requireAuth(), requireAdmin(), async (c) => {
+	const corporationId = Number.parseInt(c.req.param('corporationId'))
+	const characterId = Number.parseInt(c.req.param('characterId'))
+
+	if (isNaN(corporationId) || isNaN(characterId)) {
+		return c.json({ error: 'Invalid corporation or character ID' }, 400)
+	}
+
+	try {
+		const body = await c.req.json()
+		const { priority } = body
+
+		if (priority === undefined || typeof priority !== 'number') {
+			return c.json({ error: 'priority is required and must be a number' }, 400)
+		}
+
+		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, `corp-${corporationId}`)
+		await stub.updateDirectorPriority(characterId, priority)
+
+		return c.json({ success: true, characterId, priority })
+	} catch (error) {
+		logger.error('Error updating director priority:', error)
+		return c.json({ error: 'Failed to update director priority' }, 500)
+	}
+})
+
+/**
+ * POST /corporations/:corporationId/directors/:directorId/verify
+ * Verify a specific director's health
+ */
+app.post('/:corporationId/directors/:directorId/verify', requireAuth(), requireAdmin(), async (c) => {
+	const corporationId = Number.parseInt(c.req.param('corporationId'))
+	const directorId = c.req.param('directorId')
+
+	if (isNaN(corporationId)) {
+		return c.json({ error: 'Invalid corporation ID' }, 400)
+	}
+
+	try {
+		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, `corp-${corporationId}`)
+		const isHealthy = await stub.verifyDirectorHealth(directorId)
+
+		return c.json({ success: true, directorId, isHealthy })
+	} catch (error) {
+		logger.error('Error verifying director health:', error)
+		return c.json({ error: 'Failed to verify director health' }, 500)
+	}
+})
+
+/**
+ * POST /corporations/:corporationId/directors/verify-all
+ * Verify health of all directors
+ */
+app.post('/:corporationId/directors/verify-all', requireAuth(), requireAdmin(), async (c) => {
+	const corporationId = Number.parseInt(c.req.param('corporationId'))
+	const db = c.get('db')
+
+	if (isNaN(corporationId)) {
+		return c.json({ error: 'Invalid corporation ID' }, 400)
+	}
+
+	if (!db) {
+		return c.json({ error: 'Database not available' }, 500)
+	}
+
+	try {
+		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, `corp-${corporationId}`)
+		const result = await stub.verifyAllDirectorsHealth()
+
+		// Update managedCorporations with healthy director count
+		const healthyDirectors = await stub.getHealthyDirectors()
+		await db
+			.update(managedCorporations)
+			.set({
+				healthyDirectorCount: healthyDirectors.length,
+				isVerified: healthyDirectors.length > 0,
+				lastVerified: new Date(),
+				updatedAt: new Date(),
+			})
+			.where(eq(managedCorporations.corporationId, corporationId))
+
+		return c.json({
+			success: true,
+			verified: result.verified,
+			failed: result.failed,
+			healthyCount: healthyDirectors.length,
+		})
+	} catch (error) {
+		logger.error('Error verifying all directors:', error)
+		return c.json({ error: 'Failed to verify all directors' }, 500)
 	}
 })
 

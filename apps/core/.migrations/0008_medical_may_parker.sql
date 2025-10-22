@@ -1,0 +1,1 @@
+ALTER TABLE "managed_corporations" ADD COLUMN "healthy_director_count" integer DEFAULT 0 NOT NULL;

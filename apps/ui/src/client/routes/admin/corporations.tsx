@@ -238,7 +238,7 @@ export default function CorporationsPage() {
 								<TableHeader>
 									<TableRow>
 										<TableHead>Corporation</TableHead>
-										<TableHead>Director</TableHead>
+										<TableHead>Directors</TableHead>
 										<TableHead>Status</TableHead>
 										<TableHead>Last Sync</TableHead>
 										<TableHead>Last Verified</TableHead>
@@ -260,13 +260,19 @@ export default function CorporationsPage() {
 												</div>
 											</TableCell>
 											<TableCell>
-												{corp.assignedCharacterName ? (
+												{corp.healthyDirectorCount > 0 || corp.assignedCharacterId ? (
 													<div className="text-sm">
-														<div>{corp.assignedCharacterName}</div>
-														<div className="text-muted-foreground">ID: {corp.assignedCharacterId}</div>
+														<div>
+															{corp.healthyDirectorCount > 0
+																? `${corp.healthyDirectorCount} healthy`
+																: corp.assignedCharacterName || '1 director'}
+														</div>
+														{corp.healthyDirectorCount === 0 && corp.assignedCharacterId && (
+															<div className="text-amber-600 text-xs">Needs verification</div>
+														)}
 													</div>
 												) : (
-													<span className="text-muted-foreground text-sm">Not assigned</span>
+													<span className="text-muted-foreground text-sm">No directors</span>
 												)}
 											</TableCell>
 											<TableCell>{getVerificationBadge(corp)}</TableCell>

@@ -3,6 +3,7 @@ import {
 	bigint,
 	boolean,
 	index,
+	integer,
 	jsonb,
 	pgTable,
 	text,
@@ -186,8 +187,9 @@ export const oauthStates = pgTable(
  * Managed Corporations table - Global corporation registry for admin management
  *
  * Tracks EVE Online corporations configured for data collection.
- * Each corporation has an assigned director character for ESI API access.
- * This is separate from the static 'corporations' table in eve-static-data.
+ * Director characters are managed in the eve-corporation-data worker.
+ * This table caches metadata and overall verification status.
+ * assignedCharacterId represents the "primary" director for backwards compatibility.
  */
 export const managedCorporations = pgTable(
 	'managed_corporations',
@@ -198,18 +200,20 @@ export const managedCorporations = pgTable(
 		name: varchar('name', { length: 255 }).notNull(),
 		/** Corporation ticker (cached from ESI) */
 		ticker: varchar('ticker', { length: 10 }).notNull(),
-		/** Assigned director character ID for ESI access */
+		/** Primary director character ID (for backwards compatibility, can be null) */
 		assignedCharacterId: bigint('assigned_character_id', { mode: 'number' }),
-		/** Assigned director character name (cached) */
+		/** Primary director character name (cached) */
 		assignedCharacterName: varchar('assigned_character_name', { length: 255 }),
 		/** Whether this corporation is active for data collection */
 		isActive: boolean('is_active').default(true).notNull(),
 		/** Last successful data sync timestamp */
 		lastSync: timestamp('last_sync', { withTimezone: true }),
-		/** Last verification timestamp (roles/access check) */
+		/** Last verification timestamp (any director verified) */
 		lastVerified: timestamp('last_verified', { withTimezone: true }),
-		/** Whether the director character has verified access */
+		/** Whether at least one director has verified access */
 		isVerified: boolean('is_verified').default(false).notNull(),
+		/** Number of healthy directors currently available */
+		healthyDirectorCount: integer('healthy_director_count').default(0).notNull(),
 		/** Admin user who configured this corporation */
 		configuredBy: uuid('configured_by').references(() => users.id, { onDelete: 'set null' }),
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),

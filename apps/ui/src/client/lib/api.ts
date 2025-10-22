@@ -165,6 +165,7 @@ export interface ManagedCorporation {
 	lastSync: string | null
 	lastVerified: string | null
 	isVerified: boolean
+	healthyDirectorCount: number
 	configuredBy: string | null
 	createdAt: string
 	updatedAt: string
@@ -231,6 +232,45 @@ export interface CorporationDataSummary {
 export interface FetchCorporationDataRequest {
 	category?: 'all' | 'public' | 'core' | 'financial' | 'assets' | 'market' | 'killmails'
 	forceRefresh?: boolean
+}
+
+/**
+ * Directors API Types
+ */
+
+export interface DirectorHealth {
+	directorId: string
+	characterId: number
+	characterName: string
+	isHealthy: boolean
+	lastHealthCheck: string | null
+	lastUsed: string | null
+	failureCount: number
+	lastFailureReason: string | null
+	priority: number
+}
+
+export interface AddDirectorRequest {
+	characterId: number
+	characterName: string
+	priority?: number
+}
+
+export interface UpdateDirectorPriorityRequest {
+	priority: number
+}
+
+export interface VerifyDirectorResponse {
+	success: boolean
+	directorId: string
+	isHealthy: boolean
+}
+
+export interface VerifyAllDirectorsResponse {
+	success: boolean
+	verified: number
+	failed: number
+	healthyCount: number
 }
 
 export interface RedeemInviteCodeRequest {
@@ -524,6 +564,36 @@ export class ApiClient {
 
 	async getCorporationDataSummary(corporationId: number): Promise<CorporationDataSummary> {
 		return this.get(`/corporations/${corporationId}/data`)
+	}
+
+	// ===== Directors API Methods =====
+
+	async getDirectors(corporationId: number): Promise<DirectorHealth[]> {
+		return this.get(`/corporations/${corporationId}/directors`)
+	}
+
+	async addDirector(corporationId: number, data: AddDirectorRequest): Promise<{ success: boolean; characterId: number; characterName: string; priority: number }> {
+		return this.post(`/corporations/${corporationId}/directors`, data)
+	}
+
+	async removeDirector(corporationId: number, characterId: number): Promise<{ success: boolean }> {
+		return this.delete(`/corporations/${corporationId}/directors/${characterId}`)
+	}
+
+	async updateDirectorPriority(
+		corporationId: number,
+		characterId: number,
+		data: UpdateDirectorPriorityRequest
+	): Promise<{ success: boolean; characterId: number; priority: number }> {
+		return this.put(`/corporations/${corporationId}/directors/${characterId}`, data)
+	}
+
+	async verifyDirector(corporationId: number, directorId: string): Promise<VerifyDirectorResponse> {
+		return this.post(`/corporations/${corporationId}/directors/${directorId}/verify`)
+	}
+
+	async verifyAllDirectors(corporationId: number): Promise<VerifyAllDirectorsResponse> {
+		return this.post(`/corporations/${corporationId}/directors/verify-all`)
 	}
 }
 

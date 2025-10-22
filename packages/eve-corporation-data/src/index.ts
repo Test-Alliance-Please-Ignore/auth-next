@@ -279,7 +279,7 @@ export interface CorporationPublicData {
 	description: string | null
 	homeStationId: number | null
 	memberCount: number
-	shares: bigint | null
+	shares: string | null
 	taxRate: string
 	url: string | null
 	allianceId: number | null
@@ -306,7 +306,7 @@ export interface CorporationMemberTrackingData {
 	corporationId: number
 	characterId: number
 	baseId: number | null
-	locationId: bigint | null
+	locationId: string | null
 	logoffDate: Date | null
 	logonDate: Date | null
 	shipTypeId: number | null
@@ -332,10 +332,10 @@ export interface CorporationWalletJournalData {
 	id: string
 	corporationId: number
 	division: number
-	journalId: bigint
+	journalId: string
 	amount: string | null
 	balance: string | null
-	contextId: bigint | null
+	contextId: string | null
 	contextIdType: string | null
 	date: Date
 	description: string
@@ -355,13 +355,13 @@ export interface CorporationWalletTransactionData {
 	id: string
 	corporationId: number
 	division: number
-	transactionId: bigint
+	transactionId: string
 	clientId: number
 	date: Date
 	isBuy: boolean
 	isPersonal: boolean
-	journalRefId: bigint
-	locationId: bigint
+	journalRefId: string
+	locationId: string
 	quantity: number
 	typeId: number
 	unitPrice: string
@@ -374,10 +374,10 @@ export interface CorporationWalletTransactionData {
 export interface CorporationAssetData {
 	id: string
 	corporationId: number
-	itemId: bigint
+	itemId: string
 	isSingleton: boolean
 	locationFlag: string
-	locationId: bigint
+	locationId: string
 	locationType: string
 	quantity: number
 	typeId: number
@@ -391,7 +391,7 @@ export interface CorporationAssetData {
 export interface CorporationStructureData {
 	id: string
 	corporationId: number
-	structureId: bigint
+	structureId: string
 	typeId: number
 	systemId: number
 	profileId: number
@@ -413,13 +413,13 @@ export interface CorporationStructureData {
 export interface CorporationOrderData {
 	id: string
 	corporationId: number
-	orderId: bigint
+	orderId: string
 	duration: number
 	escrow: string | null
 	isBuyOrder: boolean
 	issued: Date
 	issuedBy: number
-	locationId: bigint
+	locationId: string
 	minVolume: number | null
 	price: string
 	range: string
@@ -448,13 +448,13 @@ export interface CorporationContractData {
 	dateExpired: Date
 	dateIssued: Date
 	daysToComplete: number | null
-	endLocationId: bigint | null
+	endLocationId: string | null
 	forCorporation: boolean
 	issuerCorporationId: number
 	issuerId: number
 	price: string | null
 	reward: string | null
-	startLocationId: bigint | null
+	startLocationId: string | null
 	status: string
 	title: string | null
 	type: string
@@ -470,13 +470,13 @@ export interface CorporationIndustryJobData {
 	corporationId: number
 	jobId: number
 	installerId: number
-	facilityId: bigint
-	locationId: bigint
+	facilityId: string
+	locationId: string
 	activityId: number
-	blueprintId: bigint
+	blueprintId: string
 	blueprintTypeId: number
-	blueprintLocationId: bigint
-	outputLocationId: bigint
+	blueprintLocationId: string
+	outputLocationId: string
 	runs: number
 	cost: string | null
 	licensedRuns: number | null

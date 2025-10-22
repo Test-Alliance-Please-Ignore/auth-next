@@ -23,6 +23,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { DirectorList } from '@/components/DirectorList'
 import {
 	useCorporation,
 	useUpdateCorporation,
@@ -251,73 +252,13 @@ export default function CorporationDetailPage() {
 				<TabsContent value="config" className="space-y-4">
 					<Card>
 						<CardHeader>
-							<CardTitle>Director Assignment</CardTitle>
+							<CardTitle>Directors</CardTitle>
 							<CardDescription>
-								Assign a character with Director role to access corporation data via ESI
+								Manage director characters with access to corporation data via ESI. Multiple directors provide automatic failover and load balancing.
 							</CardDescription>
 						</CardHeader>
 						<CardContent>
-							{!isEditing ? (
-								<div className="space-y-4">
-									<div>
-										<Label>Character ID</Label>
-										<p className="text-sm text-muted-foreground mt-1">
-											{corporation.assignedCharacterId || 'Not assigned'}
-										</p>
-									</div>
-									<div>
-										<Label>Character Name</Label>
-										<p className="text-sm text-muted-foreground mt-1">
-											{corporation.assignedCharacterName || 'Not assigned'}
-										</p>
-									</div>
-									<Button onClick={() => setIsEditing(true)}>Edit Director</Button>
-								</div>
-							) : (
-								<form onSubmit={handleUpdate} className="space-y-4">
-									<div className="space-y-2">
-										<Label htmlFor="characterId">Character ID</Label>
-										<Input
-											id="characterId"
-											type="number"
-											value={formData.assignedCharacterId || ''}
-											onChange={(e) =>
-												setFormData({
-													...formData,
-													assignedCharacterId: Number.parseInt(e.target.value) || undefined,
-												})
-											}
-											placeholder="e.g., 2119123456"
-										/>
-									</div>
-									<div className="space-y-2">
-										<Label htmlFor="characterName">Character Name</Label>
-										<Input
-											id="characterName"
-											value={formData.assignedCharacterName || ''}
-											onChange={(e) =>
-												setFormData({ ...formData, assignedCharacterName: e.target.value || undefined })
-											}
-											placeholder="e.g., Character Name"
-										/>
-									</div>
-									<div className="flex gap-2">
-										<Button type="submit" disabled={updateCorporation.isPending}>
-											{updateCorporation.isPending ? 'Saving...' : 'Save'}
-										</Button>
-										<Button
-											type="button"
-											variant="ghost"
-											onClick={() => {
-												setIsEditing(false)
-												setFormData({})
-											}}
-										>
-											Cancel
-										</Button>
-									</div>
-								</form>
-							)}
+							<DirectorList corporationId={corporationId} />
 						</CardContent>
 					</Card>
 				</TabsContent>
