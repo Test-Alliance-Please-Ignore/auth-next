@@ -160,8 +160,14 @@ runx *flags:
 
 [group('5. utility')]
 tail worker:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  [ -f .env ] && set -a && source .env && set +a
   bun turbo -F {{worker}} tail
 
 [group('5. utility')]
 tail-all:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  [ -f .env ] && set -a && source .env && set +a
   bun turbo -F "./apps/*" tail

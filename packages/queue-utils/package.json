@@ -1,0 +1,24 @@
+{
+	"name": "@repo/queue-utils",
+	"version": "0.1.0",
+	"private": true,
+	"sideEffects": false,
+	"type": "module",
+	"main": "src/index.ts",
+	"scripts": {
+		"check:lint": "run-eslint",
+		"check:types": "run-tsc",
+		"test": "run-vitest"
+	},
+	"dependencies": {
+		"zod": "4.1.12"
+	},
+	"devDependencies": {
+		"@cloudflare/vitest-pool-workers": "0.9.12",
+		"@cloudflare/workers-types": "4.20251014.0",
+		"@repo/eslint-config": "workspace:*",
+		"@repo/tools": "workspace:*",
+		"@repo/typescript-config": "workspace:*",
+		"vitest": "3.2.4"
+	}
+}

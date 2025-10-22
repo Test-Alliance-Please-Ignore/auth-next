@@ -49,6 +49,7 @@
 		"zx": "8.8.4"
 	},
 	"devDependencies": {
+		"@cloudflare/workers-types": "4.20251014.0",
 		"@repo/tools": "workspace:*",
 		"vitest": "3.2.4"
 	}
