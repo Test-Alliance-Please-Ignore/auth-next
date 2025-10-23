@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { CheckCircle, AlertCircle, Clock } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import type { DirectorHealth } from '@/lib/api'
@@ -7,7 +8,10 @@ interface DirectorStatusBadgeProps {
 	showFailureCount?: boolean
 }
 
-export function DirectorStatusBadge({ director, showFailureCount = true }: DirectorStatusBadgeProps) {
+export const DirectorStatusBadge = memo(function DirectorStatusBadge({
+	director,
+	showFailureCount = true
+}: DirectorStatusBadgeProps) {
 	const { isHealthy, failureCount, lastHealthCheck } = director
 
 	// Never checked - needs verification
@@ -40,4 +44,4 @@ export function DirectorStatusBadge({ director, showFailureCount = true }: Direc
 			)}
 		</Badge>
 	)
-}
+})

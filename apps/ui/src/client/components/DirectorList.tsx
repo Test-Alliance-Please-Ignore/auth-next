@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { AlertCircle, CheckCircle2, Plus, Trash2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -50,6 +50,15 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 	const updatePriority = useUpdateDirectorPriority()
 	const verifyDirector = useVerifyDirector()
 	const verifyAllDirectors = useVerifyAllDirectors()
+
+	// CRITICAL FIX: Move useMemo BEFORE early returns to ensure consistent hook count
+	const { healthyCount, totalCount } = useMemo(() => {
+		if (!directors) return { healthyCount: 0, totalCount: 0 }
+		return {
+			healthyCount: directors.filter((d) => d.isHealthy).length,
+			totalCount: directors.length
+		}
+	}, [directors])
 
 	const handleRemove = async () => {
 		if (!selectedDirector) return
@@ -114,9 +123,6 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 			</div>
 		)
 	}
-
-	const healthyCount = directors?.filter((d) => d.isHealthy).length || 0
-	const totalCount = directors?.length || 0
 
 	return (
 		<div className="space-y-4">

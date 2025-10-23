@@ -79,8 +79,11 @@ export function useCreateCorporation() {
 	return useMutation({
 		mutationFn: (data: CreateCorporationRequest) => api.createCorporation(data),
 		onSuccess: (newCorporation) => {
-			// Invalidate corporation list
-			queryClient.invalidateQueries({ queryKey: corporationKeys.lists() })
+			// Batch invalidations using a single call with broader pattern
+			queryClient.invalidateQueries({
+				queryKey: corporationKeys.all,
+				refetchType: 'active' // Only refetch active queries
+			})
 
 			// Add to cache optimistically
 			queryClient.setQueryData(corporationKeys.detail(newCorporation.corporationId), newCorporation)
@@ -98,14 +101,17 @@ export function useUpdateCorporation() {
 		mutationFn: ({ corporationId, data }: { corporationId: string; data: UpdateCorporationRequest }) =>
 			api.updateCorporation(corporationId, data),
 		onSuccess: (updatedCorporation) => {
-			// Invalidate corporation list
-			queryClient.invalidateQueries({ queryKey: corporationKeys.lists() })
-
-			// Update detail cache
+			// Update detail cache first (immediate update)
 			queryClient.setQueryData(
 				corporationKeys.detail(updatedCorporation.corporationId),
 				updatedCorporation
 			)
+
+			// Then invalidate list to show updated data
+			queryClient.invalidateQueries({
+				queryKey: corporationKeys.lists(),
+				refetchType: 'active'
+			})
 		},
 	})
 }
@@ -119,14 +125,16 @@ export function useDeleteCorporation() {
 	return useMutation({
 		mutationFn: (corporationId: string) => api.deleteCorporation(corporationId),
 		onSuccess: (_, deletedId) => {
-			// Invalidate corporation list
-			queryClient.invalidateQueries({ queryKey: corporationKeys.lists() })
-
-			// Remove from detail cache
+			// Remove related cache entries first (immediate cleanup)
 			queryClient.removeQueries({ queryKey: corporationKeys.detail(deletedId) })
-
-			// Remove data summary
 			queryClient.removeQueries({ queryKey: corporationKeys.dataSummary(deletedId) })
+			queryClient.removeQueries({ queryKey: corporationKeys.directors(deletedId) })
+
+			// Then invalidate list to remove from UI
+			queryClient.invalidateQueries({
+				queryKey: corporationKeys.lists(),
+				refetchType: 'active'
+			})
 		},
 	})
 }
@@ -140,11 +148,17 @@ export function useVerifyCorporationAccess() {
 	return useMutation({
 		mutationFn: (corporationId: string) => api.verifyCorporationAccess(corporationId),
 		onSuccess: (_, corporationId) => {
-			// Invalidate corporation detail to refresh verification status
-			queryClient.invalidateQueries({ queryKey: corporationKeys.detail(corporationId) })
+			// Batch invalidations for this specific corporation
+			queryClient.invalidateQueries({
+				queryKey: corporationKeys.detail(corporationId),
+				refetchType: 'active'
+			})
 
-			// Invalidate list to show updated status
-			queryClient.invalidateQueries({ queryKey: corporationKeys.lists() })
+			// Also invalidate list, but less aggressively
+			queryClient.invalidateQueries({
+				queryKey: corporationKeys.lists(),
+				refetchType: 'active'
+			})
 		},
 	})
 }
@@ -164,14 +178,21 @@ export function useFetchCorporationData() {
 			data?: FetchCorporationDataRequest
 		}) => api.fetchCorporationData(corporationId, data),
 		onSuccess: (_, { corporationId }) => {
-			// Invalidate corporation detail to refresh last sync time
-			queryClient.invalidateQueries({ queryKey: corporationKeys.detail(corporationId) })
-
-			// Invalidate data summary to show new data
-			queryClient.invalidateQueries({ queryKey: corporationKeys.dataSummary(corporationId) })
-
-			// Invalidate list to show updated sync time
-			queryClient.invalidateQueries({ queryKey: corporationKeys.lists() })
+			// Use Promise.all to batch invalidations for better performance
+			Promise.all([
+				queryClient.invalidateQueries({
+					queryKey: corporationKeys.detail(corporationId),
+					refetchType: 'active'
+				}),
+				queryClient.invalidateQueries({
+					queryKey: corporationKeys.dataSummary(corporationId),
+					refetchType: 'active'
+				}),
+				queryClient.invalidateQueries({
+					queryKey: corporationKeys.lists(),
+					refetchType: 'active'
+				})
+			])
 		},
 	})
 }
@@ -200,14 +221,21 @@ export function useAddDirector() {
 		mutationFn: ({ corporationId, data }: { corporationId: string; data: AddDirectorRequest }) =>
 			api.addDirector(corporationId, data),
 		onSuccess: (_, { corporationId }) => {
-			// Invalidate directors list
-			queryClient.invalidateQueries({ queryKey: corporationKeys.directors(corporationId) })
-
-			// Invalidate corporation detail to update healthy director count
-			queryClient.invalidateQueries({ queryKey: corporationKeys.detail(corporationId) })
-
-			// Invalidate lists to show updated director count
-			queryClient.invalidateQueries({ queryKey: corporationKeys.lists() })
+			// Batch invalidations for director-related data
+			Promise.all([
+				queryClient.invalidateQueries({
+					queryKey: corporationKeys.directors(corporationId),
+					refetchType: 'active'
+				}),
+				queryClient.invalidateQueries({
+					queryKey: corporationKeys.detail(corporationId),
+					refetchType: 'active'
+				}),
+				queryClient.invalidateQueries({
+					queryKey: corporationKeys.lists(),
+					refetchType: 'active'
+				})
+			])
 		},
 	})
 }
@@ -222,14 +250,21 @@ export function useRemoveDirector() {
 		mutationFn: ({ corporationId, characterId }: { corporationId: string; characterId: string }) =>
 			api.removeDirector(corporationId, characterId),
 		onSuccess: (_, { corporationId }) => {
-			// Invalidate directors list
-			queryClient.invalidateQueries({ queryKey: corporationKeys.directors(corporationId) })
-
-			// Invalidate corporation detail to update healthy director count
-			queryClient.invalidateQueries({ queryKey: corporationKeys.detail(corporationId) })
-
-			// Invalidate lists to show updated director count
-			queryClient.invalidateQueries({ queryKey: corporationKeys.lists() })
+			// Batch invalidations for director-related data
+			Promise.all([
+				queryClient.invalidateQueries({
+					queryKey: corporationKeys.directors(corporationId),
+					refetchType: 'active'
+				}),
+				queryClient.invalidateQueries({
+					queryKey: corporationKeys.detail(corporationId),
+					refetchType: 'active'
+				}),
+				queryClient.invalidateQueries({
+					queryKey: corporationKeys.lists(),
+					refetchType: 'active'
+				})
+			])
 		},
 	})
 }
@@ -251,8 +286,11 @@ export function useUpdateDirectorPriority() {
 			data: UpdateDirectorPriorityRequest
 		}) => api.updateDirectorPriority(corporationId, characterId, data),
 		onSuccess: (_, { corporationId }) => {
-			// Invalidate directors list to show updated priority
-			queryClient.invalidateQueries({ queryKey: corporationKeys.directors(corporationId) })
+			// Only invalidate directors list since priority doesn't affect other data
+			queryClient.invalidateQueries({
+				queryKey: corporationKeys.directors(corporationId),
+				refetchType: 'active'
+			})
 		},
 	})
 }
@@ -267,14 +305,21 @@ export function useVerifyDirector() {
 		mutationFn: ({ corporationId, directorId }: { corporationId: string; directorId: string }) =>
 			api.verifyDirector(corporationId, directorId),
 		onSuccess: (_, { corporationId }) => {
-			// Invalidate directors list to show updated health status
-			queryClient.invalidateQueries({ queryKey: corporationKeys.directors(corporationId) })
-
-			// Invalidate corporation detail to update healthy director count
-			queryClient.invalidateQueries({ queryKey: corporationKeys.detail(corporationId) })
-
-			// Invalidate lists to show updated health status
-			queryClient.invalidateQueries({ queryKey: corporationKeys.lists() })
+			// Batch invalidations for verification-related data
+			Promise.all([
+				queryClient.invalidateQueries({
+					queryKey: corporationKeys.directors(corporationId),
+					refetchType: 'active'
+				}),
+				queryClient.invalidateQueries({
+					queryKey: corporationKeys.detail(corporationId),
+					refetchType: 'active'
+				}),
+				queryClient.invalidateQueries({
+					queryKey: corporationKeys.lists(),
+					refetchType: 'active'
+				})
+			])
 		},
 	})
 }
@@ -288,14 +333,21 @@ export function useVerifyAllDirectors() {
 	return useMutation({
 		mutationFn: (corporationId: string) => api.verifyAllDirectors(corporationId),
 		onSuccess: (_, corporationId) => {
-			// Invalidate directors list to show updated health statuses
-			queryClient.invalidateQueries({ queryKey: corporationKeys.directors(corporationId) })
-
-			// Invalidate corporation detail to update verification status and healthy count
-			queryClient.invalidateQueries({ queryKey: corporationKeys.detail(corporationId) })
-
-			// Invalidate lists to show updated verification status
-			queryClient.invalidateQueries({ queryKey: corporationKeys.lists() })
+			// Batch invalidations for all verification-related data
+			Promise.all([
+				queryClient.invalidateQueries({
+					queryKey: corporationKeys.directors(corporationId),
+					refetchType: 'active'
+				}),
+				queryClient.invalidateQueries({
+					queryKey: corporationKeys.detail(corporationId),
+					refetchType: 'active'
+				}),
+				queryClient.invalidateQueries({
+					queryKey: corporationKeys.lists(),
+					refetchType: 'active'
+				})
+			])
 		},
 	})
 }

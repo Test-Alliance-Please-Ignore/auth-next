@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
 
 interface BreadcrumbContextType {
 	customLabels: Map<string, string>
@@ -11,21 +11,21 @@ const BreadcrumbContext = createContext<BreadcrumbContextType | undefined>(undef
 export function BreadcrumbProvider({ children }: { children: ReactNode }) {
 	const [customLabels, setCustomLabels] = useState<Map<string, string>>(new Map())
 
-	const setCustomLabel = (path: string, label: string) => {
+	const setCustomLabel = useCallback((path: string, label: string) => {
 		setCustomLabels((prev) => {
 			const next = new Map(prev)
 			next.set(path, label)
 			return next
 		})
-	}
+	}, [])
 
-	const clearCustomLabel = (path: string) => {
+	const clearCustomLabel = useCallback((path: string) => {
 		setCustomLabels((prev) => {
 			const next = new Map(prev)
 			next.delete(path)
 			return next
 		})
-	}
+	}, [])
 
 	return (
 		<BreadcrumbContext.Provider value={{ customLabels, setCustomLabel, clearCustomLabel }}>

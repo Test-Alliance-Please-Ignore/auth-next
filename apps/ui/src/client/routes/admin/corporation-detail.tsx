@@ -32,6 +32,7 @@ import {
 	useCorporationDataSummary,
 } from '@/hooks/useCorporations'
 import { useBreadcrumb } from '@/hooks/useBreadcrumb'
+import { useMessage } from '@/hooks/useMessage'
 import { formatDistanceToNow } from 'date-fns'
 import type { UpdateCorporationRequest } from '@/lib/api'
 
@@ -46,19 +47,24 @@ export default function CorporationDetailPage() {
 	const fetchData = useFetchCorporationData()
 
 	// Set breadcrumb
-	const { setCustomLabel } = useBreadcrumb()
+	const { setCustomLabel, clearCustomLabel } = useBreadcrumb()
 	useEffect(() => {
 		if (corporation) {
 			setCustomLabel(`/admin/corporations/${corpId}`, corporation.name)
 		}
-	}, [corporation, corpId, setCustomLabel])
+
+		// Cleanup function to clear the breadcrumb label when component unmounts or corpId changes
+		return () => {
+			clearCustomLabel(`/admin/corporations/${corpId}`)
+		}
+	}, [corporation, corpId, setCustomLabel, clearCustomLabel])
+
+	// Message handling with automatic cleanup
+	const { message, showSuccess, showError } = useMessage()
 
 	// Form state
 	const [isEditing, setIsEditing] = useState(false)
 	const [formData, setFormData] = useState<UpdateCorporationRequest>({})
-
-	// Messages
-	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
 	// Initialize form when editing starts
 	useEffect(() => {
@@ -80,14 +86,9 @@ export default function CorporationDetailPage() {
 		try {
 			await updateCorporation.mutateAsync({ corporationId: corpId, data: formData })
 			setIsEditing(false)
-			setMessage({ type: 'success', text: 'Corporation updated successfully!' })
-			setTimeout(() => setMessage(null), 3000)
+			showSuccess('Corporation updated successfully!')
 		} catch (error) {
-			setMessage({
-				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to update corporation',
-			})
-			setTimeout(() => setMessage(null), 5000)
+			showError(error instanceof Error ? error.message : 'Failed to update corporation')
 		}
 	}
 
@@ -95,37 +96,21 @@ export default function CorporationDetailPage() {
 		try {
 			const result = await verifyAccess.mutateAsync(corpId)
 			if (result.hasAccess) {
-				setMessage({
-					type: 'success',
-					text: `Access verified! Roles: ${result.verifiedRoles.join(', ')}`,
-				})
+				showSuccess(`Access verified! Roles: ${result.verifiedRoles.join(', ')}`)
 			} else {
-				setMessage({
-					type: 'error',
-					text: `Verification failed. Missing roles: ${result.missingRoles?.join(', ') || 'Unknown'}`,
-				})
+				showError(`Verification failed. Missing roles: ${result.missingRoles?.join(', ') || 'Unknown'}`)
 			}
-			setTimeout(() => setMessage(null), 5000)
 		} catch (error) {
-			setMessage({
-				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to verify access',
-			})
-			setTimeout(() => setMessage(null), 5000)
+			showError(error instanceof Error ? error.message : 'Failed to verify access')
 		}
 	}
 
 	const handleFetch = async (category: string) => {
 		try {
 			await fetchData.mutateAsync({ corporationId: corpId, data: { category: category as any } })
-			setMessage({ type: 'success', text: `Started fetching ${category} data...` })
-			setTimeout(() => setMessage(null), 3000)
+			showSuccess(`Started fetching ${category} data...`)
 		} catch (error) {
-			setMessage({
-				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to fetch data',
-			})
-			setTimeout(() => setMessage(null), 5000)
+			showError(error instanceof Error ? error.message : 'Failed to fetch data')
 		}
 	}
 

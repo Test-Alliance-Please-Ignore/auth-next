@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { Plus, Search, Shield, ShieldAlert, ShieldCheck, RefreshCw, Building2, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -29,6 +29,7 @@ import {
 	useDeleteCorporation,
 	useVerifyCorporationAccess,
 } from '@/hooks/useCorporations'
+import { useMessage } from '@/hooks/useMessage'
 import { formatDistanceToNow } from 'date-fns'
 import type { CreateCorporationRequest } from '@/lib/api'
 
@@ -37,6 +38,9 @@ export default function CorporationsPage() {
 	const createCorporation = useCreateCorporation()
 	const deleteCorporation = useDeleteCorporation()
 	const verifyAccess = useVerifyCorporationAccess()
+
+	// Message handling with automatic cleanup
+	const { message, showSuccess, showError } = useMessage()
 
 	// Dialog state
 	const [createDialogOpen, setCreateDialogOpen] = useState(false)
@@ -55,15 +59,17 @@ export default function CorporationsPage() {
 	// Search state
 	const [searchQuery, setSearchQuery] = useState('')
 
-	// Error/success messages
-	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+	// Memoize filtered corporations to prevent unnecessary filtering on every render
+	const filteredCorporations = useMemo(() => {
+		if (!corporations) return undefined
+		if (!searchQuery.trim()) return corporations
 
-	// Filter corporations by search
-	const filteredCorporations = corporations?.filter(
-		(corp) =>
-			corp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-			corp.ticker.toLowerCase().includes(searchQuery.toLowerCase())
-	)
+		const query = searchQuery.toLowerCase()
+		return corporations.filter((corp) =>
+			corp.name.toLowerCase().includes(query) ||
+			corp.ticker.toLowerCase().includes(query)
+		)
+	}, [corporations, searchQuery])
 
 	// Handlers
 	const handleCreate = async (e: React.FormEvent) => {
@@ -71,8 +77,7 @@ export default function CorporationsPage() {
 
 		// Validate corporation ID is a valid number
 		if (!formData.corporationId ) {
-			setMessage({ type: 'error', text: 'Please enter a valid corporation ID' })
-			setTimeout(() => setMessage(null), 5000)
+			showError('Please enter a valid corporation ID')
 			return
 		}
 
@@ -86,14 +91,9 @@ export default function CorporationsPage() {
 				assignedCharacterId: undefined,
 				assignedCharacterName: undefined,
 			})
-			setMessage({ type: 'success', text: 'Corporation added successfully!' })
-			setTimeout(() => setMessage(null), 3000)
+			showSuccess('Corporation added successfully!')
 		} catch (error) {
-			setMessage({
-				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to add corporation',
-			})
-			setTimeout(() => setMessage(null), 5000)
+			showError(error instanceof Error ? error.message : 'Failed to add corporation')
 		}
 	}
 
@@ -103,14 +103,9 @@ export default function CorporationsPage() {
 			await deleteCorporation.mutateAsync(selectedCorpId)
 			setDeleteDialogOpen(false)
 			setSelectedCorpId(null)
-			setMessage({ type: 'success', text: 'Corporation removed successfully!' })
-			setTimeout(() => setMessage(null), 3000)
+			showSuccess('Corporation removed successfully!')
 		} catch (error) {
-			setMessage({
-				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to remove corporation',
-			})
-			setTimeout(() => setMessage(null), 5000)
+			showError(error instanceof Error ? error.message : 'Failed to remove corporation')
 		}
 	}
 
@@ -118,27 +113,22 @@ export default function CorporationsPage() {
 		try {
 			const result = await verifyAccess.mutateAsync(corporationId)
 			if (result.hasAccess) {
-				setMessage({ type: 'success', text: 'Access verified successfully!' })
+				showSuccess('Access verified successfully!')
 			} else {
-				setMessage({ type: 'error', text: 'Verification failed: Missing required roles' })
+				showError('Verification failed: Missing required roles')
 			}
-			setTimeout(() => setMessage(null), 5000)
 		} catch (error) {
-			setMessage({
-				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to verify access',
-			})
-			setTimeout(() => setMessage(null), 5000)
+			showError(error instanceof Error ? error.message : 'Failed to verify access')
 		}
 	}
 
-	const openDeleteDialog = (corporationId: string) => {
+	const openDeleteDialog = useCallback((corporationId: string) => {
 		setSelectedCorpId(corporationId)
 		setDeleteDialogOpen(true)
-	}
+	}, [])
 
-	// Get verification status badge
-	const getVerificationBadge = (corp: any) => {
+	// Get verification status badge (memoized for performance)
+	const getVerificationBadge = useCallback((corp: any) => {
 		if (!corp.assignedCharacterId) {
 			return (
 				<Badge variant="outline" className="gap-1">
@@ -161,13 +151,13 @@ export default function CorporationsPage() {
 				Unverified
 			</Badge>
 		)
-	}
+	}, [])
 
-	// Format date
-	const formatDate = (date: string | null) => {
+	// Format date (memoized for performance)
+	const formatDate = useCallback((date: string | null) => {
 		if (!date) return 'Never'
 		return formatDistanceToNow(new Date(date), { addSuffix: true })
-	}
+	}, [])
 
 	return (
 		<div className="space-y-6">
