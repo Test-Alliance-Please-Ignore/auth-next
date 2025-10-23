@@ -13,6 +13,11 @@ const baseMessageSchema = z.object({
 })
 
 /**
+ * Base message type for all queue messages
+ */
+export type BaseMessage = z.infer<typeof baseMessageSchema>
+
+/**
  * Public corporation info refresh message
  */
 export const publicRefreshMessageSchema = baseMessageSchema

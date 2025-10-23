@@ -31,7 +31,7 @@ import {
 } from '@/hooks/useCorporations'
 
 interface DirectorListProps {
-	corporationId: number
+	corporationId: string
 }
 
 export function DirectorList({ corporationId }: DirectorListProps) {
@@ -39,7 +39,7 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 	const [removeDialogOpen, setRemoveDialogOpen] = useState(false)
 	const [priorityDialogOpen, setPriorityDialogOpen] = useState(false)
 	const [selectedDirector, setSelectedDirector] = useState<{
-		characterId: number
+		characterId: string
 		characterName: string
 		currentPriority: number
 	} | null>(null)
@@ -86,12 +86,12 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 		await verifyAllDirectors.mutateAsync(corporationId)
 	}
 
-	const openRemoveDialog = (characterId: number, characterName: string) => {
+	const openRemoveDialog = (characterId: string, characterName: string) => {
 		setSelectedDirector({ characterId, characterName, currentPriority: 0 })
 		setRemoveDialogOpen(true)
 	}
 
-	const openPriorityDialog = (characterId: number, characterName: string, currentPriority: number) => {
+	const openPriorityDialog = (characterId: string, characterName: string, currentPriority: number) => {
 		setSelectedDirector({ characterId, characterName, currentPriority })
 		setNewPriority(currentPriority)
 		setPriorityDialogOpen(true)

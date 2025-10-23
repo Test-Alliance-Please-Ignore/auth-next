@@ -6,12 +6,16 @@ import { getStub } from '@repo/do-utils'
 import worker from '../../index'
 
 import type { Discord } from '@repo/discord'
+import type { Env } from '../../context'
+
+// Cast env to have correct types
+const testEnv = env as unknown as Env
 
 describe('Discord Worker', () => {
 	it('responds to root endpoint', async () => {
 		const request = new Request('http://example.com/')
 		const ctx = createExecutionContext()
-		const response = await worker.fetch(request, env, ctx)
+		const response = await worker.fetch(request, testEnv, ctx)
 		await waitOnExecutionContext(ctx)
 
 		expect(response.status).toBe(200)
@@ -26,7 +30,7 @@ describe('Discord Worker', () => {
 			body: JSON.stringify({ state: 'test-state' }),
 		})
 		const ctx = createExecutionContext()
-		const response = await worker.fetch(request, env, ctx)
+		const response = await worker.fetch(request, testEnv, ctx)
 		await waitOnExecutionContext(ctx)
 
 		expect(response.status).toBe(200)
@@ -47,7 +51,7 @@ describe('Discord Worker', () => {
 			}),
 		})
 		const ctx = createExecutionContext()
-		const response = await worker.fetch(request, env, ctx)
+		const response = await worker.fetch(request, testEnv, ctx)
 		await waitOnExecutionContext(ctx)
 
 		// Should return 200 even on error (error is in response body)
@@ -59,7 +63,7 @@ describe('Discord Worker', () => {
 	it('returns 404 for non-existent profile', async () => {
 		const request = new Request('http://example.com/discord/profile/550e8400-e29b-41d4-a716-446655440000')
 		const ctx = createExecutionContext()
-		const response = await worker.fetch(request, env, ctx)
+		const response = await worker.fetch(request, testEnv, ctx)
 		await waitOnExecutionContext(ctx)
 
 		expect(response.status).toBe(404)
@@ -70,7 +74,7 @@ describe('Discord Worker', () => {
 
 describe('Discord Durable Object', () => {
 	it('can start OAuth flow via RPC', async () => {
-		const stub = getStub<Discord>(env.DISCORD, 'default')
+		const stub = getStub<Discord>(testEnv.DISCORD, 'default')
 
 		const result = await stub.startLoginFlow('test-state')
 
@@ -81,7 +85,7 @@ describe('Discord Durable Object', () => {
 	})
 
 	it('handles OAuth callback with valid structure', async () => {
-		const stub = getStub<Discord>(env.DISCORD, 'default')
+		const stub = getStub<Discord>(testEnv.DISCORD, 'default')
 
 		const result = await stub.handleCallback(
 			'test-code',
@@ -98,7 +102,7 @@ describe('Discord Durable Object', () => {
 	})
 
 	it('returns null for non-existent profile', async () => {
-		const stub = getStub<Discord>(env.DISCORD, 'default')
+		const stub = getStub<Discord>(testEnv.DISCORD, 'default')
 
 		const profile = await stub.getProfileByCoreUserId('550e8400-e29b-41d4-a716-446655440000')
 
@@ -106,7 +110,7 @@ describe('Discord Durable Object', () => {
 	})
 
 	it('can call refreshTokenByCoreUserId', async () => {
-		const stub = getStub<Discord>(env.DISCORD, 'default')
+		const stub = getStub<Discord>(testEnv.DISCORD, 'default')
 
 		const result = await stub.refreshTokenByCoreUserId('550e8400-e29b-41d4-a716-446655440000')
 

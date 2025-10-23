@@ -101,10 +101,10 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		const cacheKey = 'categories:all:v1'
 		const cached = await this.env.GROUPS_KV?.get(cacheKey, { type: 'json' })
 
-		let allCategories: (typeof categories.$inferSelect)[]
+		let allCategories: Array<typeof categories.$inferSelect>
 
 		if (cached) {
-			allCategories = cached as (typeof categories.$inferSelect)[]
+			allCategories = cached as Array<typeof categories.$inferSelect>
 		} else {
 			// Cache miss - fetch from database
 			allCategories = await this.db.query.categories.findMany({

@@ -20,6 +20,9 @@
 		"noImplicitOverride": true,
 		"strict": true,
 		"noEmit": true,
-		"resolveJsonModule": true
+		"resolveJsonModule": true,
+		"target": "ES2022",
+		"lib": ["ES2022"],
+		"downlevelIteration": true
 	}
 }

@@ -7,10 +7,12 @@
 	"main": "src/index.ts",
 	"scripts": {
 		"check:lint": "run-eslint",
+		
 		"check:types": "run-tsc"
 	},
 	"devDependencies": {
 		"@repo/eslint-config": "workspace:*",
+		"@repo/eve-types": "workspace:*",
 		"@repo/tools": "workspace:*",
 		"@repo/typescript-config": "workspace:*"
 	}

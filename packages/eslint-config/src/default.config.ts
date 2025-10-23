@@ -33,15 +33,16 @@ export function getConfig(importMetaUrl: string): Array<Linter.Config<Linter.Rul
 				'eslint.config.ts',
 				'**/eslint.config.ts',
 				'**/worker-configuration.d.ts',
+			'**/turbo/generators/templates/**',
 			],
 		},
 
-		getGitIgnoreFiles(importMetaUrl),
+		...getGitIgnoreFiles(importMetaUrl),
 
 		eslint.configs.recommended,
-		tseslint.configs.recommended,
+		...tseslint.configs.recommended,
 		importPlugin.flatConfigs.recommended,
-		turboConfig,
+		...turboConfig,
 
 		// TypeScript Configuration
 		{
@@ -103,7 +104,7 @@ export function getConfig(importMetaUrl: string): Array<Linter.Config<Linter.Rul
 		// Import plugin's TypeScript specific rules using FlatCompat
 		// This should apply to the same files as the TypeScript configuration above.
 		// We apply it as a separate configuration object to ensure `files` matches.
-		compat.extends('plugin:import/typescript').map((config) => ({
+		...compat.extends('plugin:import/typescript').map((config) => ({
 			...config,
 			files: ['**/*.{ts,tsx,mts,mjs}'], // Ensure it targets the same TypeScript files
 		})),

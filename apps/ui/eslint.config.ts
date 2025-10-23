@@ -1,7 +1,14 @@
-import { defineConfig, getConfig } from '@repo/eslint-config'
-
-import type { Config } from '@repo/eslint-config'
+import { getConfig } from '@repo/eslint-config'
 
 const config = getConfig(import.meta.url)
 
-export default defineConfig([config]) as Config
+export default [
+	...config,
+	{
+		files: ['**/*.{ts,tsx}'],
+		rules: {
+			// Ignore path alias resolution issues (@/ aliases)
+			'import/no-unresolved': 'off',
+		},
+	},
+]

@@ -36,11 +36,11 @@ interface SkillMetadata {
 interface SkillCategory {
 	categoryId: number
 	categoryName: string
-	groups: {
+	groups: Array<{
 		groupId: number
 		groupName: string
 		skills: SkillMetadata[]
-	}[]
+	}>
 }
 
 // Skill points required per level

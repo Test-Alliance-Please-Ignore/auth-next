@@ -5,7 +5,7 @@
  * This package allows other workers to interact with the Durable Object via RPC.
  */
 
-import type { DurableObject } from 'cloudflare:workers'
+import type { EveAllianceId, EveCharacterId, EveCorporationId } from '@repo/eve-types'
 
 /**
  * ESI Response Types
@@ -16,15 +16,15 @@ import type { DurableObject } from 'cloudflare:workers'
  * GET /characters/{character_id}
  */
 export interface EsiCharacterPublicInfo {
-	alliance_id?: string
+	alliance_id?: number
 	birthday: string
-	bloodline_id: string
-	corporation_id: string
+	bloodline_id: number
+	corporation_id: number
 	description?: string
-	faction_id?: string
+	faction_id?: number
 	gender: 'male' | 'female'
 	name: string
-	race_id: string
+	race_id: number
 	security_status?: number
 	title?: string
 }
@@ -45,9 +45,9 @@ export interface EsiCharacterPortrait {
  * GET /characters/{character_id}/corporationhistory
  */
 export interface EsiCorporationHistoryEntry {
-	corporation_id: string
+	corporation_id: number
 	is_deleted?: boolean
-	record_id: string
+	record_id: number
 	start_date: string
 }
 
@@ -58,7 +58,7 @@ export interface EsiCorporationHistoryEntry {
 export interface EsiCharacterSkills {
 	skills: Array<{
 		active_skill_level: number
-		skill_id: string
+		skill_id: number
 		skillpoints_in_skill: number
 		trained_skill_level: number
 	}>
@@ -91,7 +91,7 @@ export interface EsiCharacterSkillQueue {
 	level_end_sp?: number
 	level_start_sp?: number
 	queue_position: number
-	skill_id: string
+	skill_id: number
 	start_date?: string
 	training_start_sp?: number
 }
@@ -101,18 +101,18 @@ export interface EsiCharacterSkillQueue {
  * GET /characters/{character_id}/wallet/journal
  */
 export interface EsiWalletJournalEntry {
-	id: string
+	id: number
 	date: string
 	ref_type: string
 	amount: number
 	balance?: number
 	description: string
-	first_party_id?: string
-	second_party_id?: string
+	first_party_id?: number
+	second_party_id?: number
 	reason?: string
 	tax?: number
-	tax_receiver_id?: string
-	context_id?: string
+	tax_receiver_id?: number
+	context_id?: number
 	context_id_type?: string
 }
 
@@ -121,16 +121,16 @@ export interface EsiWalletJournalEntry {
  * GET /characters/{character_id}/wallet/transactions
  */
 export interface EsiMarketTransaction {
-	transaction_id: string
+	transaction_id: number
 	date: string
-	type_id: string
+	type_id: number
 	quantity: number
 	unit_price: number
-	client_id: string
-	location_id: string
+	client_id: number
+	location_id: number
 	is_buy: boolean
 	is_personal: boolean
-	journal_ref_id: string
+	journal_ref_id: number
 }
 
 /**
@@ -138,9 +138,9 @@ export interface EsiMarketTransaction {
  * GET /characters/{character_id}/orders
  */
 export interface EsiMarketOrder {
-	order_id: string
-	type_id: string
-	location_id: string
+	order_id: number
+	type_id: number
+	location_id: number
 	is_buy_order?: boolean
 	price: number
 	volume_total: number
@@ -151,7 +151,7 @@ export interface EsiMarketOrder {
 	range: string
 	duration: number
 	escrow?: number
-	region_id: string
+	region_id: number
 }
 
 /**
@@ -162,11 +162,11 @@ export interface EsiMarketOrder {
  * Character public data stored in database
  */
 export interface CharacterPublicData {
-	characterId: string
+	characterId: EveCharacterId
 	name: string
-	corporationId: string
+	corporationId: EveCorporationId
 	corporationName?: string // Resolved corporation name
-	allianceId?: string
+	allianceId?: EveAllianceId
 	allianceName?: string // Resolved alliance name
 	birthday: string
 	raceId: string
@@ -184,7 +184,7 @@ export interface CharacterPublicData {
  * Character portrait data stored in database
  */
 export interface CharacterPortraitData {
-	characterId: string
+	characterId: EveCharacterId
 	px64x64?: string
 	px128x128?: string
 	px256x256?: string
@@ -198,9 +198,9 @@ export interface CharacterPortraitData {
  */
 export interface CharacterCorporationHistoryData {
 	id: string
-	characterId: string
+	characterId: EveCharacterId
 	recordId: string
-	corporationId: string
+	corporationId: EveCorporationId
 	corporationName?: string // Resolved corporation name
 	startDate: string
 	isDeleted?: boolean
@@ -212,7 +212,7 @@ export interface CharacterCorporationHistoryData {
  * Character skills data stored in database
  */
 export interface CharacterSkillsData {
-	characterId: string
+	characterId: EveCharacterId
 	totalSp: number
 	unallocatedSp?: number
 	skills: Array<{
@@ -229,7 +229,7 @@ export interface CharacterSkillsData {
  * Character attributes data stored in database
  */
 export interface CharacterAttributesData {
-	characterId: string
+	characterId: EveCharacterId
 	intelligence: number
 	perception: number
 	memory: number
@@ -244,10 +244,11 @@ export interface CharacterAttributesData {
 
 /**
  * Wallet journal entry stored in database
+ * TODO figure out types of first and second party ids
  */
 export interface CharacterWalletJournalData {
 	id: string
-	characterId: string
+	characterId: EveCharacterId
 	journalId: string
 	date: Date
 	refType: string
@@ -270,7 +271,7 @@ export interface CharacterWalletJournalData {
  */
 export interface CharacterMarketTransactionData {
 	id: string
-	characterId: string
+	characterId: EveCharacterId
 	transactionId: string
 	date: Date
 	typeId: string
@@ -290,7 +291,7 @@ export interface CharacterMarketTransactionData {
  */
 export interface CharacterMarketOrderData {
 	id: string
-	characterId: string
+	characterId: EveCharacterId
 	orderId: string
 	typeId: string
 	locationId: string
@@ -324,56 +325,56 @@ export interface CharacterMarketOrderData {
  * await stub.fetchCharacterData(characterId)
  * ```
  */
-export interface EveCharacterData extends DurableObject {
+export interface EveCharacterData {
 	/**
 	 * Fetch and store all public character data (no auth required)
 	 * @param characterId - EVE character ID
 	 * @param forceRefresh - Force refresh even if cached
 	 */
-	fetchCharacterData(characterId: string, forceRefresh?: boolean): Promise<void>
+	fetchCharacterData(characterId: EveCharacterId, forceRefresh?: boolean): Promise<void>
 
 	/**
 	 * Fetch and store authenticated character data (requires token)
 	 * @param characterId - EVE character ID
 	 * @param forceRefresh - Force refresh even if cached
 	 */
-	fetchAuthenticatedData(characterId: string, forceRefresh?: boolean): Promise<void>
+	fetchAuthenticatedData(characterId: EveCharacterId, forceRefresh?: boolean): Promise<void>
 
 	/**
 	 * Fetch and store wallet journal entries (requires token)
 	 * @param characterId - EVE character ID
 	 * @param forceRefresh - Force refresh even if cached
 	 */
-	fetchWalletJournal(characterId: string, forceRefresh?: boolean): Promise<void>
+	fetchWalletJournal(characterId: EveCharacterId, forceRefresh?: boolean): Promise<void>
 
 	/**
 	 * Fetch and store market transactions (requires token)
 	 * @param characterId - EVE character ID
 	 * @param forceRefresh - Force refresh even if cached
 	 */
-	fetchMarketTransactions(characterId: string, forceRefresh?: boolean): Promise<void>
+	fetchMarketTransactions(characterId: EveCharacterId, forceRefresh?: boolean): Promise<void>
 
 	/**
 	 * Fetch and store market orders (requires token)
 	 * @param characterId - EVE character ID
 	 * @param forceRefresh - Force refresh even if cached
 	 */
-	fetchMarketOrders(characterId: string, forceRefresh?: boolean): Promise<void>
+	fetchMarketOrders(characterId: EveCharacterId, forceRefresh?: boolean): Promise<void>
 
 	/**
 	 * Get character public info from database
 	 * @param characterId - EVE character ID
 	 * @returns Character public data or null if not found
 	 */
-	getCharacterInfo(characterId: string): Promise<CharacterPublicData | null>
+	getCharacterInfo(characterId: EveCharacterId): Promise<CharacterPublicData | null>
 
 	/**
 	 * Get character portrait data
 	 * @param characterId - EVE character ID
 	 * @returns Character portrait URLs or null if not found
 	 */
-	getPortrait(characterId: string): Promise<{
-		characterId: string
+	getPortrait(characterId: EveCharacterId): Promise<{
+		characterId: EveCharacterId
 		px64x64?: string
 		px128x128?: string
 		px256x256?: string
@@ -385,10 +386,10 @@ export interface EveCharacterData extends DurableObject {
 	 * @param characterId - EVE character ID
 	 * @returns Array of corporation history entries
 	 */
-	getCorporationHistory(characterId: string): Promise<
+	getCorporationHistory(characterId: EveCharacterId): Promise<
 		Array<{
 			recordId: string
-			corporationId: string
+			corporationId: EveCorporationId
 			startDate: string
 			isDeleted?: boolean
 		}>
@@ -399,10 +400,10 @@ export interface EveCharacterData extends DurableObject {
 	 * @param characterId - EVE character ID
 	 * @returns Character skills data or null if not found
 	 */
-	getSkills(characterId: string): Promise<{
+	getSkills(characterId: EveCharacterId): Promise<{
 		skills: Array<{
 			active_skill_level: number
-			skill_id: string
+			skill_id: number
 			skillpoints_in_skill: number
 			trained_skill_level: number
 		}>
@@ -415,7 +416,7 @@ export interface EveCharacterData extends DurableObject {
 	 * @param characterId - EVE character ID
 	 * @returns Character attributes data or null if not found
 	 */
-	getAttributes(characterId: string): Promise<{
+	getAttributes(characterId: EveCharacterId): Promise<{
 		intelligence: number
 		perception: number
 		memory: number
@@ -431,28 +432,28 @@ export interface EveCharacterData extends DurableObject {
 	 * @param characterId - EVE character ID
 	 * @returns Last updated timestamp or null if not found
 	 */
-	getLastUpdated(characterId: string): Promise<Date | null>
+	getLastUpdated(characterId: EveCharacterId): Promise<Date | null>
 
 	/**
 	 * Get sensitive character data (location, wallet, assets, status, skill queue)
 	 * @param characterId - EVE character ID
 	 * @returns Sensitive character data or null if not found
 	 */
-	getSensitiveData(characterId: string): Promise<CharacterSensitiveData | null>
+	getSensitiveData(characterId: EveCharacterId): Promise<CharacterSensitiveData | null>
 
 	/**
 	 * Get wallet journal entries for a character
 	 * @param characterId - EVE character ID
 	 * @returns Array of wallet journal entries
 	 */
-	getWalletJournal(characterId: string): Promise<CharacterWalletJournalData[]>
+	getWalletJournal(characterId: EveCharacterId): Promise<CharacterWalletJournalData[]>
 
 	/**
 	 * Get market transactions for a character
 	 * @param characterId - EVE character ID
 	 * @returns Array of market transactions
 	 */
-	getMarketTransactions(characterId: string): Promise<CharacterMarketTransactionData[]>
+	getMarketTransactions(characterId: EveCharacterId): Promise<CharacterMarketTransactionData[]>
 
 	/**
 	 * Get market orders for a character
@@ -489,7 +490,7 @@ export interface CharacterSensitiveData {
 	}
 	skillQueue?: Array<{
 		queue_position: number
-		skill_id: string
+		skill_id: number
 		finished_level: number
 		start_date?: string
 		finish_date?: string

@@ -1,7 +1,6 @@
-import { and, desc, eq, ilike, or } from '@repo/db-utils'
+import { desc, eq, ilike, or } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
-import type { EveTokenStore } from '@repo/eve-token-store'
 import { logger } from '@repo/hono-helpers'
 import { Hono } from 'hono'
 
@@ -563,7 +562,7 @@ app.get('/:corporationId/directors', requireAuth(), requireAdmin(), async (c) =>
 
 	try {
 		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
-		const directors = await stub.getDirectors()
+		const directors = await stub.getDirectors(corporationId)
 
 		return c.json(directors)
 	} catch (error) {
@@ -599,10 +598,10 @@ app.post('/:corporationId/directors', requireAuth(), requireAdmin(), async (c) =
 		}
 
 		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
-		await stub.addDirector(characterId, characterName, priority)
+		await stub.addDirector(corporationId, characterId, characterName, priority)
 
 		// Update managedCorporations to set primary director if this is the first one
-		const directors = await stub.getDirectors()
+		const directors = await stub.getDirectors(corporationId)
 		if (directors.length === 1) {
 			await db
 				.update(managedCorporations)
@@ -631,7 +630,7 @@ app.delete('/:corporationId/directors/:characterId', requireAuth(), requireAdmin
 
 	try {
 		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
-		await stub.removeDirector(characterId)
+		await stub.removeDirector(corporationId, characterId)
 
 		return c.json({ success: true })
 	} catch (error) {
@@ -661,7 +660,7 @@ app.put('/:corporationId/directors/:characterId', requireAuth(), requireAdmin(),
 		}
 
 		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
-		await stub.updateDirectorPriority(characterId, priority)
+		await stub.updateDirectorPriority(corporationId, characterId, priority)
 
 		return c.json({ success: true, characterId, priority })
 	} catch (error) {
@@ -680,7 +679,7 @@ app.post('/:corporationId/directors/:directorId/verify', requireAuth(), requireA
 
 	try {
 		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
-		const isHealthy = await stub.verifyDirectorHealth(directorId)
+		const isHealthy = await stub.verifyDirectorHealth(corporationId, directorId)
 
 		return c.json({ success: true, directorId, isHealthy })
 	} catch (error) {
@@ -703,10 +702,10 @@ app.post('/:corporationId/directors/verify-all', requireAuth(), requireAdmin(), 
 
 	try {
 		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
-		const result = await stub.verifyAllDirectorsHealth()
+		const result = await stub.verifyAllDirectorsHealth(corporationId)
 
 		// Update managedCorporations with healthy director count
-		const healthyDirectors = await stub.getHealthyDirectors()
+		const healthyDirectors = await stub.getHealthyDirectors(corporationId)
 		await db
 			.update(managedCorporations)
 			.set({

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { createCorporationQueueConsumer } from '../consumer-factory'
@@ -38,7 +39,7 @@ describe('Consumer Factory', () => {
 
 			const consumer = createCorporationQueueConsumer('test-queue', schema, handler)
 
-			expect(consumer.schema).toBe(schema)
+			expect((consumer as any).schema).toBe(schema)
 		})
 
 		it('should configure exponential backoff retry strategy', async () => {
@@ -63,7 +64,7 @@ describe('Consumer Factory', () => {
 
 			const consumer = createCorporationQueueConsumer('test-queue', schema, handler)
 
-			expect(consumer.options.batchOptions).toEqual({ concurrency: 10 })
+			expect((consumer as any).options.batchOptions).toEqual({ concurrency: 10 })
 		})
 
 		it('should enable debug logging', () => {
@@ -75,7 +76,7 @@ describe('Consumer Factory', () => {
 
 			const consumer = createCorporationQueueConsumer('test-queue', schema, handler)
 
-			expect(consumer.options.debug).toBe(true)
+			expect((consumer as any).options.debug).toBe(true)
 		})
 
 		it('should extract corporationId and create stub with correct ID', async () => {
@@ -150,11 +151,11 @@ describe('Consumer Factory', () => {
 
 			const consumer = createCorporationQueueConsumer('test-queue', schema, handler)
 
-			expect(consumer.options.hooks).toBeDefined()
-			expect(consumer.options.hooks.onMessageSuccess).toBeDefined()
-			expect(consumer.options.hooks.onMessageError).toBeDefined()
-			expect(consumer.options.hooks.onBatchStart).toBeDefined()
-			expect(consumer.options.hooks.onBatchComplete).toBeDefined()
+			expect((consumer as any).options.hooks).toBeDefined()
+			expect((consumer as any).options.hooks.onMessageSuccess).toBeDefined()
+			expect((consumer as any).options.hooks.onMessageError).toBeDefined()
+			expect((consumer as any).options.hooks.onBatchStart).toBeDefined()
+			expect((consumer as any).options.hooks.onBatchComplete).toBeDefined()
 		})
 
 		it('should log success with requesterId when provided', () => {

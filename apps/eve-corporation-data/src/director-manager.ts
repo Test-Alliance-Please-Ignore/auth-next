@@ -37,7 +37,7 @@ const FAILURE_THRESHOLD = 3
 /**
  * Success count needed to recover from unhealthy state
  */
-const RECOVERY_THRESHOLD = 3
+const _RECOVERY_THRESHOLD = 3
 
 /**
  * DirectorManager handles director selection, health tracking, and failover logic
@@ -53,17 +53,22 @@ export class DirectorManager {
 	 * Add a new director for this corporation
 	 */
 	async addDirector(characterId: string, characterName: string, priority = 100): Promise<void> {
-		await this.db.insert(corporationDirectors).values({
-			corporationId: this.corporationId,
-			characterId,
-			characterName,
-			priority,
-			isHealthy: true,
-			failureCount: 0,
-			lastHealthCheck: null,
-			lastUsed: null,
-			updatedAt: new Date(),
-		})
+		await this.db
+			.insert(corporationDirectors)
+			.values({
+				corporationId: this.corporationId,
+				characterId,
+				characterName,
+				priority,
+				isHealthy: true,
+				failureCount: 0,
+				lastHealthCheck: null,
+				lastUsed: null,
+				updatedAt: new Date(),
+			})
+			.onConflictDoNothing({
+				target: [corporationDirectors.corporationId, corporationDirectors.characterId],
+			})
 	}
 
 	/**

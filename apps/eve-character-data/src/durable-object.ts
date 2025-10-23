@@ -2,6 +2,8 @@ import { DurableObject } from 'cloudflare:workers'
 
 import { eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
+import type { EveCharacterId } from '@repo/eve-types'
+import { createEveCharacterId, createEveCorporationId, createEveAllianceId } from '@repo/eve-types'
 
 import { createDb } from './db'
 import {
@@ -65,7 +67,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	/**
 	 * Fetch and store all public character data
 	 */
-	async fetchCharacterData(characterId: string, forceRefresh = false): Promise<void> {
+	async fetchCharacterData(characterId: EveCharacterId, forceRefresh = false): Promise<void> {
 		await Promise.all([
 			this.fetchAndStorePublicInfo(characterId, forceRefresh),
 			this.fetchAndStorePortrait(characterId, forceRefresh),
@@ -76,7 +78,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	/**
 	 * Fetch and store authenticated character data
 	 */
-	async fetchAuthenticatedData(characterId: string, forceRefresh = false): Promise<void> {
+	async fetchAuthenticatedData(characterId: EveCharacterId, forceRefresh = false): Promise<void> {
 		await Promise.all([
 			this.fetchAndStoreSkills(characterId, forceRefresh),
 			this.fetchAndStoreAttributes(characterId, forceRefresh),
@@ -86,28 +88,28 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	/**
 	 * Fetch and store wallet journal entries
 	 */
-	async fetchWalletJournal(characterId: string, forceRefresh = false): Promise<void> {
+	async fetchWalletJournal(characterId: EveCharacterId, forceRefresh = false): Promise<void> {
 		await this.fetchAndStoreWalletJournal(characterId, forceRefresh)
 	}
 
 	/**
 	 * Fetch and store market transactions
 	 */
-	async fetchMarketTransactions(characterId: string, forceRefresh = false): Promise<void> {
+	async fetchMarketTransactions(characterId: EveCharacterId, forceRefresh = false): Promise<void> {
 		await this.fetchAndStoreMarketTransactions(characterId, forceRefresh)
 	}
 
 	/**
 	 * Fetch and store market orders
 	 */
-	async fetchMarketOrders(characterId: string, forceRefresh = false): Promise<void> {
+	async fetchMarketOrders(characterId: EveCharacterId, forceRefresh = false): Promise<void> {
 		await this.fetchAndStoreMarketOrders(characterId, forceRefresh)
 	}
 
 	/**
 	 * Get character public info from database
 	 */
-	async getCharacterInfo(characterId: string): Promise<CharacterPublicData | null> {
+	async getCharacterInfo(characterId: EveCharacterId): Promise<CharacterPublicData | null> {
 		const result = await this.db.query.characterPublicInfo.findFirst({
 			where: eq(characterPublicInfo.characterId, characterId),
 		})
@@ -117,10 +119,10 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		}
 
 		return {
-			characterId: result.characterId,
+			characterId: createEveCharacterId(result.characterId),
 			name: result.name,
-			corporationId: result.corporationId,
-			allianceId: result.allianceId ?? undefined,
+			corporationId: createEveCorporationId(result.corporationId),
+			allianceId: createEveAllianceId(result.allianceId ?? ''),
 			birthday: result.birthday,
 			raceId: result.raceId,
 			bloodlineId: result.bloodlineId,
@@ -159,7 +161,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	 * Fetch and store public character info
 	 */
 	private async fetchAndStorePublicInfo(
-		characterId: string,
+		characterId: EveCharacterId,
 		_forceRefresh = false
 	): Promise<CharacterPublicData> {
 		const tokenStoreStub = this.getTokenStoreStub()
@@ -183,11 +185,11 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		// Convert numeric IDs to strings
 		const data: EsiCharacterPublicInfo = {
 			...rawData,
-			alliance_id: rawData.alliance_id ? String(rawData.alliance_id) : undefined,
-			bloodline_id: String(rawData.bloodline_id),
-			corporation_id: String(rawData.corporation_id),
-			faction_id: rawData.faction_id ? String(rawData.faction_id) : undefined,
-			race_id: String(rawData.race_id),
+			alliance_id: rawData.alliance_id ?? undefined,
+			bloodline_id: rawData.bloodline_id,
+			corporation_id: rawData.corporation_id,
+			faction_id: rawData.faction_id ?? undefined,
+			race_id: rawData.race_id,
 		}
 
 		// Upsert to database
@@ -196,15 +198,15 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			.values({
 				characterId,
 				name: data.name,
-				corporationId: data.corporation_id,
-				allianceId: data.alliance_id,
+				corporationId: String(data.corporation_id),
+				allianceId: data.alliance_id ? String(data.alliance_id) : undefined,
 				birthday: data.birthday,
-				raceId: data.race_id,
-				bloodlineId: data.bloodline_id,
+				raceId: String(data.race_id),
+				bloodlineId: String(data.bloodline_id),
 				securityStatus: data.security_status,
 				description: data.description,
 				gender: data.gender,
-				factionId: data.faction_id,
+				factionId: String(data.faction_id),
 				title: data.title,
 				updatedAt: new Date(),
 			})
@@ -212,15 +214,15 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 				target: characterPublicInfo.characterId,
 				set: {
 					name: data.name,
-					corporationId: data.corporation_id,
-					allianceId: data.alliance_id,
+					corporationId: String(data.corporation_id),
+					allianceId: data.alliance_id ? String(data.alliance_id) : undefined,
 					birthday: data.birthday,
-					raceId: data.race_id,
-					bloodlineId: data.bloodline_id,
+					raceId: String(data.race_id),
+					bloodlineId: String(data.bloodline_id),
 					securityStatus: data.security_status,
 					description: data.description,
 					gender: data.gender,
-					factionId: data.faction_id,
+					factionId: data.faction_id ? String(data.faction_id) : undefined,
 					title: data.title,
 					updatedAt: new Date(),
 				},
@@ -271,7 +273,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		})
 
 		return {
-			characterId: result!.characterId,
+			characterId: createEveCharacterId(result!.characterId),
 			px64x64: result!.px64x64 ?? undefined,
 			px128x128: result!.px128x128 ?? undefined,
 			px256x256: result!.px256x256 ?? undefined,
@@ -285,7 +287,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	 * Fetch and store corporation history
 	 */
 	private async fetchAndStoreCorporationHistory(
-		characterId: string,
+		characterId: EveCharacterId,
 		_forceRefresh = false
 	): Promise<CharacterCorporationHistoryData[]> {
 		const tokenStoreStub = this.getTokenStoreStub()
@@ -303,9 +305,9 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 
 		// Convert numeric IDs to strings
 		const entries: EsiCorporationHistoryEntry[] = rawEntries.map((entry) => ({
-			corporation_id: String(entry.corporation_id),
+			corporation_id: entry.corporation_id,
 			is_deleted: entry.is_deleted,
-			record_id: String(entry.record_id),
+			record_id: entry.record_id,
 			start_date: entry.start_date,
 		}))
 
@@ -315,8 +317,8 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 				.insert(characterCorporationHistory)
 				.values({
 					characterId,
-					recordId: entry.record_id,
-					corporationId: entry.corporation_id,
+					recordId: String(entry.record_id),
+					corporationId: String(entry.corporation_id),
 					startDate: entry.start_date,
 					isDeleted: entry.is_deleted,
 					updatedAt: new Date(),
@@ -324,7 +326,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 				.onConflictDoUpdate({
 					target: [characterCorporationHistory.characterId, characterCorporationHistory.recordId],
 					set: {
-						corporationId: entry.corporation_id,
+						corporationId: String(entry.corporation_id),
 						startDate: entry.start_date,
 						isDeleted: entry.is_deleted,
 						updatedAt: new Date(),
@@ -338,9 +340,9 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 
 		return results.map((r) => ({
 			id: r.id,
-			characterId: r.characterId,
+			characterId: createEveCharacterId(r.characterId),
 			recordId: r.recordId,
-			corporationId: r.corporationId,
+			corporationId: createEveCorporationId(r.corporationId),
 			startDate: r.startDate,
 			isDeleted: r.isDeleted ?? undefined,
 			createdAt: r.createdAt,
@@ -370,23 +372,20 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 
 		const rawData = response.data
 
-		// Convert numeric IDs to strings
-		const data: EsiCharacterSkills = {
-			...rawData,
-			skills: rawData.skills.map((skill) => ({
-				...skill,
-				skill_id: String(skill.skill_id),
-			})),
-		}
+		// ESI returns numeric skill_id
+		const data: EsiCharacterSkills = rawData
 
-		// Upsert to database
+		// Upsert to database (convert skill_id to string for storage)
 		await this.db
 			.insert(characterSkills)
 			.values({
 				characterId,
 				totalSp: data.total_sp,
 				unallocatedSp: data.unallocated_sp,
-				skills: data.skills,
+				skills: data.skills.map((skill) => ({
+					...skill,
+					skill_id: String(skill.skill_id),
+				})),
 				updatedAt: new Date(),
 			})
 			.onConflictDoUpdate({
@@ -394,7 +393,10 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 				set: {
 					totalSp: data.total_sp,
 					unallocatedSp: data.unallocated_sp,
-					skills: data.skills,
+					skills: data.skills.map((skill) => ({
+						...skill,
+						skill_id: String(skill.skill_id),
+					})),
 					updatedAt: new Date(),
 				},
 			})
@@ -404,7 +406,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		})
 
 		return {
-			characterId: result!.characterId,
+			characterId: createEveCharacterId(result!.characterId),
 			totalSp: result!.totalSp,
 			unallocatedSp: result!.unallocatedSp ?? undefined,
 			skills: result!.skills,
@@ -463,7 +465,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		})
 
 		return {
-			characterId: result!.characterId,
+			characterId: createEveCharacterId(result!.characterId),
 			intelligence: result!.intelligence,
 			perception: result!.perception,
 			memory: result!.memory,
@@ -508,18 +510,18 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 
 		// Convert numeric IDs to strings
 		const entries: EsiWalletJournalEntry[] = rawEntries.map((entry) => ({
-			id: String(entry.id),
+			id: entry.id,
 			date: entry.date,
 			ref_type: entry.ref_type,
 			amount: entry.amount,
 			balance: entry.balance,
 			description: entry.description,
-			first_party_id: entry.first_party_id ? String(entry.first_party_id) : undefined,
-			second_party_id: entry.second_party_id ? String(entry.second_party_id) : undefined,
+			first_party_id: entry.first_party_id ?? undefined,
+			second_party_id: entry.second_party_id ?? undefined,
 			reason: entry.reason,
 			tax: entry.tax,
-			tax_receiver_id: entry.tax_receiver_id ? String(entry.tax_receiver_id) : undefined,
-			context_id: entry.context_id ? String(entry.context_id) : undefined,
+			tax_receiver_id: entry.tax_receiver_id ?? undefined,
+			context_id: entry.context_id ?? undefined,
 			context_id_type: entry.context_id_type,
 		}))
 
@@ -529,18 +531,18 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 				.insert(characterWalletJournal)
 				.values({
 					characterId,
-					journalId: entry.id,
+					journalId: String(entry.id),
 					date: new Date(entry.date),
 					refType: entry.ref_type,
 					amount: entry.amount.toString(),
 					balance: entry.balance?.toString() ?? '0',
 					description: entry.description,
-					firstPartyId: entry.first_party_id,
-					secondPartyId: entry.second_party_id,
+					firstPartyId: entry.first_party_id !== undefined ? String(entry.first_party_id) : undefined,
+					secondPartyId: entry.second_party_id !== undefined ? String(entry.second_party_id) : undefined,
 					reason: entry.reason,
 					tax: entry.tax?.toString(),
-					taxReceiverId: entry.tax_receiver_id,
-					contextId: entry.context_id,
+					taxReceiverId: entry.tax_receiver_id !== undefined ? String(entry.tax_receiver_id) : undefined,
+					contextId: entry.context_id !== undefined ? String(entry.context_id) : undefined,
 					contextIdType: entry.context_id_type,
 					updatedAt: new Date(),
 				})
@@ -552,12 +554,12 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 						amount: entry.amount.toString(),
 						balance: entry.balance?.toString() ?? '0',
 						description: entry.description,
-						firstPartyId: entry.first_party_id,
-						secondPartyId: entry.second_party_id,
+						firstPartyId: entry.first_party_id !== undefined ? String(entry.first_party_id) : undefined,
+						secondPartyId: entry.second_party_id !== undefined ? String(entry.second_party_id) : undefined,
 						reason: entry.reason,
 						tax: entry.tax?.toString(),
-						taxReceiverId: entry.tax_receiver_id,
-						contextId: entry.context_id,
+						taxReceiverId: entry.tax_receiver_id !== undefined ? String(entry.tax_receiver_id) : undefined,
+						contextId: entry.context_id !== undefined ? String(entry.context_id) : undefined,
 						contextIdType: entry.context_id_type,
 						updatedAt: new Date(),
 					},
@@ -570,12 +572,12 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 
 		return results.map((r) => ({
 			id: r.id,
-			characterId: r.characterId,
-			journalId: r.journalId,
-			date: r.date,
+			characterId: createEveCharacterId(r.characterId),
+			journalId: String(r.journalId),
+			date: new Date(r.date),
 			refType: r.refType,
 			amount: r.amount,
-			balance: r.balance,
+			balance: String(r.balance),
 			description: r.description,
 			firstPartyId: r.firstPartyId ?? undefined,
 			secondPartyId: r.secondPartyId ?? undefined,
@@ -615,19 +617,8 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 
 		const rawTransactions = response.data
 
-		// Convert numeric IDs to strings
-		const transactions: EsiMarketTransaction[] = rawTransactions.map((txn) => ({
-			transaction_id: String(txn.transaction_id),
-			date: txn.date,
-			type_id: String(txn.type_id),
-			quantity: txn.quantity,
-			unit_price: txn.unit_price,
-			client_id: String(txn.client_id),
-			location_id: String(txn.location_id),
-			is_buy: txn.is_buy,
-			is_personal: txn.is_personal,
-			journal_ref_id: String(txn.journal_ref_id),
-		}))
+		// ESI returns numeric IDs
+		const transactions: EsiMarketTransaction[] = rawTransactions
 
 		// Upsert each transaction
 		for (const txn of transactions) {
@@ -635,30 +626,30 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 				.insert(characterMarketTransactions)
 				.values({
 					characterId,
-					transactionId: txn.transaction_id,
+					transactionId: String(txn.transaction_id),
 					date: new Date(txn.date),
-					typeId: txn.type_id,
+					typeId: String(txn.type_id),
 					quantity: txn.quantity,
 					unitPrice: txn.unit_price.toString(),
-					clientId: txn.client_id,
-					locationId: txn.location_id,
+					clientId: String(txn.client_id),
+					locationId: String(txn.location_id),
 					isBuy: txn.is_buy,
 					isPersonal: txn.is_personal,
-					journalRefId: txn.journal_ref_id,
+					journalRefId: String(txn.journal_ref_id),
 					updatedAt: new Date(),
 				})
 				.onConflictDoUpdate({
 					target: [characterMarketTransactions.characterId, characterMarketTransactions.transactionId],
 					set: {
 						date: new Date(txn.date),
-						typeId: txn.type_id,
+						typeId: String(txn.type_id),
 						quantity: txn.quantity,
 						unitPrice: txn.unit_price.toString(),
-						clientId: txn.client_id,
-						locationId: txn.location_id,
+						clientId: String(txn.client_id),
+						locationId: String(txn.location_id),
 						isBuy: txn.is_buy,
 						isPersonal: txn.is_personal,
-						journalRefId: txn.journal_ref_id,
+						journalRefId: String(txn.journal_ref_id),
 						updatedAt: new Date(),
 					},
 				})
@@ -670,14 +661,14 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 
 		return results.map((r) => ({
 			id: r.id,
-			characterId: r.characterId,
-			transactionId: r.transactionId,
-			date: r.date,
+			characterId: createEveCharacterId(r.characterId),
+			transactionId: String(r.transactionId),
+			date: new Date(r.date),
 			typeId: r.typeId,
 			quantity: r.quantity,
 			unitPrice: r.unitPrice,
-			clientId: r.clientId,
-			locationId: r.locationId,
+			clientId: String(r.clientId),
+			locationId: String(r.locationId),
 			isBuy: r.isBuy,
 			isPersonal: r.isPersonal,
 			journalRefId: r.journalRefId,
@@ -716,22 +707,12 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 
 		const rawOrders = response.data
 
-		// Convert numeric IDs to strings
+		// ESI returns numeric IDs, normalize optional fields to required
 		const orders: EsiMarketOrder[] = rawOrders.map((order) => ({
-			order_id: String(order.order_id),
-			type_id: String(order.type_id),
-			location_id: String(order.location_id),
-			is_buy_order: order.is_buy_order,
-			price: order.price,
-			volume_total: order.volume_total,
-			volume_remain: order.volume_remain,
-			issued: order.issued,
-			state: order.state,
-			min_volume: order.min_volume,
-			range: order.range,
-			duration: order.duration,
-			escrow: order.escrow,
-			region_id: order.region_id ? String(order.region_id) : undefined,
+			...order,
+			range: order.range ?? 'station',
+			duration: order.duration ?? 0,
+			region_id: order.region_id ?? 0,
 		}))
 
 		// Upsert each order
@@ -740,9 +721,9 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 				.insert(characterMarketOrders)
 				.values({
 					characterId,
-					orderId: order.order_id,
-					typeId: order.type_id,
-					locationId: order.location_id,
+					orderId: String(order.order_id),
+					typeId: String(order.type_id),
+					locationId: String(order.location_id),
 					isBuyOrder: order.is_buy_order ?? false,
 					price: order.price.toString(),
 					volumeTotal: order.volume_total,
@@ -750,17 +731,17 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 					issued: new Date(order.issued),
 					state: order.state,
 					minVolume: order.min_volume ?? 1,
-					range: order.range,
-					duration: order.duration,
+					range: order.range ?? 'station',
+					duration: order.duration ?? 0,
 					escrow: order.escrow?.toString(),
-					regionId: order.region_id,
+					regionId: String(order.region_id),
 					updatedAt: new Date(),
 				})
 				.onConflictDoUpdate({
 					target: [characterMarketOrders.characterId, characterMarketOrders.orderId],
 					set: {
-						typeId: order.type_id,
-						locationId: order.location_id,
+						typeId: String(order.type_id),
+						locationId: String(order.location_id),
 						isBuyOrder: order.is_buy_order ?? false,
 						price: order.price.toString(),
 						volumeTotal: order.volume_total,
@@ -768,10 +749,10 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 						issued: new Date(order.issued),
 						state: order.state,
 						minVolume: order.min_volume ?? 1,
-						range: order.range,
-						duration: order.duration,
+						range: order.range ?? 'station',
+						duration: order.duration ?? 0,
 						escrow: order.escrow?.toString(),
-						regionId: order.region_id,
+						regionId: String(order.region_id),
 						updatedAt: new Date(),
 					},
 				})
@@ -783,23 +764,23 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 
 		return results.map((r) => ({
 			id: r.id,
-			characterId: r.characterId,
+			characterId: createEveCharacterId(r.characterId),
 			orderId: r.orderId,
 			typeId: r.typeId,
-			locationId: r.locationId,
+			locationId: String(r.locationId),
 			isBuyOrder: r.isBuyOrder,
 			price: r.price,
 			volumeTotal: r.volumeTotal,
 			volumeRemain: r.volumeRemain,
-			issued: r.issued,
+			issued: new Date(r.issued),
 			state: r.state,
 			minVolume: r.minVolume,
 			range: r.range,
 			duration: r.duration,
 			escrow: r.escrow ?? undefined,
-			regionId: r.regionId,
-			createdAt: r.createdAt,
-			updatedAt: r.updatedAt,
+			regionId: String(r.regionId),
+			createdAt: new Date(r.createdAt),
+			updatedAt: new Date(r.updatedAt),
 		}))
 	}
 
@@ -814,7 +795,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		if (!result) return null
 
 		return {
-			characterId: result.characterId,
+			characterId: createEveCharacterId(result.characterId),
 			px64x64: result.px64x64 ?? undefined,
 			px128x128: result.px128x128 ?? undefined,
 			px256x256: result.px256x256 ?? undefined,
@@ -832,7 +813,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 
 		return results.map((r) => ({
 			recordId: r.recordId,
-			corporationId: r.corporationId,
+			corporationId: createEveCorporationId(r.corporationId),
 			startDate: r.startDate,
 			isDeleted: r.isDeleted ?? undefined,
 		}))
@@ -841,7 +822,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	/**
 	 * Get character skills
 	 */
-	async getSkills(characterId: string) {
+	async getSkills(characterId: EveCharacterId) {
 		const result = await this.db.query.characterSkills.findFirst({
 			where: eq(characterSkills.characterId, characterId),
 		})
@@ -849,7 +830,10 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		if (!result) return null
 
 		return {
-			skills: result.skills,
+			skills: result.skills.map((skill) => ({
+				...skill,
+				skill_id: Number(skill.skill_id),
+			})),
 			total_sp: result.totalSp,
 			unallocated_sp: result.unallocatedSp ?? undefined,
 		}
@@ -858,7 +842,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	/**
 	 * Get character attributes
 	 */
-	async getAttributes(characterId: string) {
+	async getAttributes(characterId: EveCharacterId) {
 		const result = await this.db.query.characterAttributes.findFirst({
 			where: eq(characterAttributes.characterId, characterId),
 		})
@@ -881,7 +865,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	 * Get sensitive character data (location, wallet, assets, status, skill queue, and financial data)
 	 * Returns null if no data is available
 	 */
-	async getSensitiveData(characterId: string) {
+	async getSensitiveData(characterId: EveCharacterId) {
 		// Query all sensitive data tables
 		const [location, wallet, assets, status, skillQueue, walletJournal, marketTransactions, marketOrders] =
 			await Promise.all([
@@ -953,12 +937,17 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 						loginsCount: status.loginsCount ?? undefined,
 					}
 				: undefined,
-			skillQueue: skillQueue?.queue ?? undefined,
+			skillQueue: skillQueue?.queue
+				? skillQueue.queue.map((item) => ({
+						...item,
+						skill_id: Number(item.skill_id),
+					}))
+				: undefined,
 			walletJournal:
 				walletJournal.length > 0
 					? walletJournal.map((r) => ({
 							id: r.id,
-							characterId: r.characterId,
+							characterId: createEveCharacterId(r.characterId),
 							journalId: r.journalId,
 							date: r.date,
 							refType: r.refType,
@@ -980,7 +969,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 				marketTransactions.length > 0
 					? marketTransactions.map((r) => ({
 							id: r.id,
-							characterId: r.characterId,
+							characterId: createEveCharacterId(r.characterId),
 							transactionId: r.transactionId,
 							date: r.date,
 							typeId: r.typeId,
@@ -999,7 +988,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 				marketOrders.length > 0
 					? marketOrders.map((r) => ({
 							id: r.id,
-							characterId: r.characterId,
+							characterId: createEveCharacterId(r.characterId),
 							orderId: r.orderId,
 							typeId: r.typeId,
 							locationId: r.locationId,
@@ -1024,16 +1013,16 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	/**
 	 * Get wallet journal entries for a character
 	 */
-	async getWalletJournal(characterId: string): Promise<CharacterWalletJournalData[]> {
+	async getWalletJournal(characterId: EveCharacterId): Promise<CharacterWalletJournalData[]> {
 		const results = await this.db.query.characterWalletJournal.findMany({
 			where: eq(characterWalletJournal.characterId, characterId),
 		})
 
 		return results.map((r) => ({
 			id: r.id,
-			characterId: r.characterId,
-			journalId: r.journalId,
-			date: r.date,
+			characterId: createEveCharacterId(r.characterId),
+			journalId: String(r.journalId),
+			date: new Date(r.date),
 			refType: r.refType,
 			amount: r.amount,
 			balance: r.balance,
@@ -1053,16 +1042,16 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	/**
 	 * Get market transactions for a character
 	 */
-	async getMarketTransactions(characterId: string): Promise<CharacterMarketTransactionData[]> {
+	async getMarketTransactions(characterId: EveCharacterId): Promise<CharacterMarketTransactionData[]> {
 		const results = await this.db.query.characterMarketTransactions.findMany({
 			where: eq(characterMarketTransactions.characterId, characterId),
 		})
 
 		return results.map((r) => ({
 			id: r.id,
-			characterId: r.characterId,
-			transactionId: r.transactionId,
-			date: r.date,
+			characterId: createEveCharacterId(r.characterId),
+			transactionId: String(r.transactionId),
+			date: new Date(r.date),
 			typeId: r.typeId,
 			quantity: r.quantity,
 			unitPrice: r.unitPrice,
@@ -1079,30 +1068,30 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	/**
 	 * Get market orders for a character
 	 */
-	async getMarketOrders(characterId: string): Promise<CharacterMarketOrderData[]> {
+	async getMarketOrders(characterId: EveCharacterId): Promise<CharacterMarketOrderData[]> {
 		const results = await this.db.query.characterMarketOrders.findMany({
 			where: eq(characterMarketOrders.characterId, characterId),
 		})
 
 		return results.map((r) => ({
 			id: r.id,
-			characterId: r.characterId,
+			characterId: createEveCharacterId(r.characterId),
 			orderId: r.orderId,
 			typeId: r.typeId,
-			locationId: r.locationId,
+			locationId: String(r.locationId),
 			isBuyOrder: r.isBuyOrder,
 			price: r.price,
 			volumeTotal: r.volumeTotal,
 			volumeRemain: r.volumeRemain,
-			issued: r.issued,
+			issued: new Date(r.issued),
 			state: r.state,
 			minVolume: r.minVolume,
 			range: r.range,
 			duration: r.duration,
 			escrow: r.escrow ?? undefined,
-			regionId: r.regionId,
-			createdAt: r.createdAt,
-			updatedAt: r.updatedAt,
+			regionId: String(r.regionId),
+			createdAt: new Date(r.createdAt),
+			updatedAt: new Date(r.updatedAt),
 		}))
 	}
 

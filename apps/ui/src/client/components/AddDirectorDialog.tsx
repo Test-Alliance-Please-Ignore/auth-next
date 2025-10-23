@@ -13,7 +13,7 @@ import { Label } from '@/components/ui/label'
 import { useAddDirector } from '@/hooks/useCorporations'
 
 interface AddDirectorDialogProps {
-	corporationId: number
+	corporationId: string
 	open: boolean
 	onOpenChange: (open: boolean) => void
 }

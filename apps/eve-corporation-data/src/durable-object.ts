@@ -1,4 +1,4 @@
-import { and, desc, eq } from '@repo/db-utils'
+import { desc, eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import type { EveTokenStore, EsiResponse } from '@repo/eve-token-store'
 import { DurableObject } from 'cloudflare:workers'
@@ -24,7 +24,7 @@ import type {
 	CorporationWalletData,
 	CorporationWalletJournalData,
 	CorporationWalletTransactionData,
-	EsiCharacterRoles,
+	DirectorHealth,
 	EsiCorporationAsset,
 	EsiCorporationContract,
 	EsiCorporationIndustryJob,
@@ -32,7 +32,6 @@ import type {
 	EsiCorporationMembers,
 	EsiCorporationMemberTracking,
 	EsiCorporationOrder,
-	EsiCorporationPublicInfo,
 	EsiCorporationStructure,
 	EsiCorporationWallet,
 	EsiCorporationWalletJournalEntry,
@@ -46,7 +45,6 @@ import {
 	corporationAssets,
 	corporationConfig,
 	corporationContracts,
-	corporationDirectors,
 	corporationIndustryJobs,
 	corporationKillmails,
 	corporationMembers,
@@ -58,7 +56,7 @@ import {
 	corporationWalletJournal,
 	corporationWalletTransactions,
 } from './db/schema'
-import { DirectorManager, type DirectorHealth, type SelectedDirector } from './director-manager'
+import { DirectorManager } from './director-manager'
 
 import type { Env } from './context'
 
@@ -302,17 +300,11 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Add a new director character for this corporation
 	 */
-	async addDirector(characterId: string, characterName: string, priority = 100): Promise<void> {
+	async addDirector(corporationId: string, characterId: string, characterName: string, priority = 100): Promise<void> {
 		const config = await this.db.query.corporationConfig.findFirst()
 
 		if (!config) {
 			// Create config if it doesn't exist
-			// Use the DO state ID name as corporation ID (e.g., '98692422')
-			// Note: .name returns the original string passed to idFromName() in getStub()
-			const corporationId = this.state.id.name
-			if (!corporationId) {
-				throw new Error('Durable Object ID must be created with idFromName() using corporation ID')
-			}
 			await this.db.insert(corporationConfig).values({
 				corporationId,
 				isVerified: false,
@@ -321,55 +313,55 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			})
 		}
 
-		const directorManager = await this.getDirectorManager()
+		const directorManager = new DirectorManager(this.db, corporationId, this.getTokenStoreStub())
 		await directorManager.addDirector(characterId, characterName, priority)
 	}
 
 	/**
 	 * Remove a director character from this corporation
 	 */
-	async removeDirector(characterId: string): Promise<void> {
-		const directorManager = await this.getDirectorManager()
+	async removeDirector(corporationId: string, characterId: string): Promise<void> {
+		const directorManager = new DirectorManager(this.db, corporationId, this.getTokenStoreStub())
 		await directorManager.removeDirector(characterId)
 	}
 
 	/**
 	 * Update a director's priority
 	 */
-	async updateDirectorPriority(characterId: string, priority: number): Promise<void> {
-		const directorManager = await this.getDirectorManager()
+	async updateDirectorPriority(corporationId: string, characterId: string, priority: number): Promise<void> {
+		const directorManager = new DirectorManager(this.db, corporationId, this.getTokenStoreStub())
 		await directorManager.updateDirectorPriority(characterId, priority)
 	}
 
 	/**
 	 * Get all directors for this corporation
 	 */
-	async getDirectors(): Promise<DirectorHealth[]> {
-		const directorManager = await this.getDirectorManager()
+	async getDirectors(corporationId: string): Promise<DirectorHealth[]> {
+		const directorManager = new DirectorManager(this.db, corporationId, this.getTokenStoreStub())
 		return await directorManager.getAllDirectors()
 	}
 
 	/**
 	 * Get healthy directors for this corporation
 	 */
-	async getHealthyDirectors(): Promise<DirectorHealth[]> {
-		const directorManager = await this.getDirectorManager()
+	async getHealthyDirectors(corporationId: string): Promise<DirectorHealth[]> {
+		const directorManager = new DirectorManager(this.db, corporationId, this.getTokenStoreStub())
 		return await directorManager.getHealthyDirectors()
 	}
 
 	/**
 	 * Verify health of a specific director
 	 */
-	async verifyDirectorHealth(directorId: string): Promise<boolean> {
-		const directorManager = await this.getDirectorManager()
+	async verifyDirectorHealth(corporationId: string, directorId: string): Promise<boolean> {
+		const directorManager = new DirectorManager(this.db, corporationId, this.getTokenStoreStub())
 		return await directorManager.verifyDirectorHealth(directorId)
 	}
 
 	/**
 	 * Verify health of all directors
 	 */
-	async verifyAllDirectorsHealth(): Promise<{ verified: number; failed: number }> {
-		const directorManager = await this.getDirectorManager()
+	async verifyAllDirectorsHealth(corporationId: string): Promise<{ verified: number; failed: number }> {
+		const directorManager = new DirectorManager(this.db, corporationId, this.getTokenStoreStub())
 		return await directorManager.verifyAllDirectorsHealth()
 	}
 

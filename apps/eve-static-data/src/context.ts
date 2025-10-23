@@ -11,7 +11,7 @@ export interface App {
 	Bindings: Env
 	Variables: {
 		db: PostgresJsDatabase<typeof schema>
-		idCache: KVCache<number, string>
-		nameCache: KVCache<string, number>
+		idCache: KVCache<string, string>
+		nameCache: KVCache<string, string>
 	}
 }

@@ -31,13 +31,13 @@ export interface SessionUser {
 	id: string
 	mainCharacterId: number
 	sessionId: string
-	characters: {
+	characters: Array<{
 		id: string
 		characterOwnerHash: string
 		characterId: number
 		characterName: string
 		is_primary: boolean
-	}[]
+	}>
 	is_admin: boolean
 	/** Discord profile (if linked) */
 	discord?: {

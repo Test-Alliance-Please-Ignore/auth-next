@@ -17,8 +17,8 @@ const app = new Hono<App>()
 	.use('*', async (c, next) => {
 		// Initialize database connection using Neon serverless
 		const db = createDb(c.env.DATABASE_URL)
-		const idCache = getCache<number, string>(c.env.EVE_SDE_CACHE)
-		const nameCache = getCache<string, number>(c.env.EVE_SDE_CACHE)
+		const idCache = getCache<string, string>(c.env.EVE_SDE_CACHE)
+		const nameCache = getCache<string, string>(c.env.EVE_SDE_CACHE)
 
 		c.set('db', db)
 		c.set('idCache', idCache)
@@ -46,10 +46,10 @@ app.get('/skills/categories', async (c) => {
 
 app.get('/alliances/:allianceId', async (c) => {
 	const db = c.get('db')
-	const allianceId = Number.parseInt(c.req.param('allianceId'))
+	const allianceId = c.req.param('allianceId')
 
-	if (isNaN(allianceId)) {
-		return c.json({ error: 'Invalid category ID' }, 400)
+	if (!allianceId) {
+		return c.json({ error: 'Invalid alliance ID' }, 400)
 	}
 
 	const cached = await c.get('idCache').get(allianceId)
@@ -71,10 +71,10 @@ app.get('/alliances/:allianceId', async (c) => {
 
 app.get('/corporations/:corporationId', async (c) => {
 	const db = c.get('db')
-	const corporationId = Number.parseInt(c.req.param('corporationId'))
+	const corporationId = c.req.param('corporationId')
 
-	if (isNaN(corporationId)) {
-		return c.json({ error: 'Invalid category ID' }, 400)
+	if (!corporationId) {
+		return c.json({ error: 'Invalid corporation ID' }, 400)
 	}
 
 	const cached = await c.get('idCache').get(corporationId)
@@ -97,9 +97,9 @@ app.get('/corporations/:corporationId', async (c) => {
 // Get skill groups in a category
 app.get('/skills/categories/:categoryId/groups', async (c) => {
 	const db = c.get('db')
-	const categoryId = Number.parseInt(c.req.param('categoryId'))
+	const categoryId = c.req.param('categoryId')
 
-	if (isNaN(categoryId)) {
+	if (!categoryId) {
 		return c.json({ error: 'Invalid category ID' }, 400)
 	}
 
@@ -122,9 +122,9 @@ app.get('/skills/groups', async (c) => {
 // Get skills in a group
 app.get('/skills/groups/:groupId/skills', async (c) => {
 	const db = c.get('db')
-	const groupId = Number.parseInt(c.req.param('groupId'))
+	const groupId = c.req.param('groupId')
 
-	if (isNaN(groupId)) {
+	if (!groupId) {
 		return c.json({ error: 'Invalid group ID' }, 400)
 	}
 
@@ -140,9 +140,9 @@ app.get('/skills/groups/:groupId/skills', async (c) => {
 // Get a specific skill by ID
 app.get('/skills/:skillId', async (c) => {
 	const db = c.get('db')
-	const skillId = Number.parseInt(c.req.param('skillId'))
+	const skillId = c.req.param('skillId')
 
-	if (isNaN(skillId)) {
+	if (!skillId) {
 		return c.json({ error: 'Invalid skill ID' }, 400)
 	}
 
@@ -180,8 +180,8 @@ app.get('/skills', async (c) => {
 	const skillIds = skillIdsParam
 		? skillIdsParam
 				.split(',')
-				.map(Number)
-				.filter((id) => !isNaN(id))
+				.map((id) => id.trim())
+				.filter((id) => id.length > 0)
 		: []
 
 	let skills = []
@@ -262,7 +262,7 @@ app.get('/skills', async (c) => {
 	// Since all skills have the same item category "Skill", we use groups as top-level
 	const grouped = skills.reduce(
 		(acc, skill) => {
-			const groupId = skill.groupId || 0
+			const groupId = skill.groupId || '0'
 			const groupName = skill.groupName || 'Unknown'
 
 			if (!acc[groupId]) {
@@ -292,7 +292,7 @@ app.get('/skills', async (c) => {
 
 			return acc
 		},
-		{} as Record<number, any>
+		{} as Record<string, any>
 	)
 
 	// Convert to array format
@@ -304,13 +304,13 @@ app.get('/skills', async (c) => {
 // Get skill requirements for multiple skills
 app.post('/skills/requirements', async (c) => {
 	const db = c.get('db')
-	const { skillIds } = await c.req.json<{ skillIds: number[] }>()
+	const { skillIds } = await c.req.json<{ skillIds: string[] }>()
 
 	if (!skillIds || !Array.isArray(skillIds)) {
 		return c.json({ error: 'Invalid request body' }, 400)
 	}
 
-	const validSkillIds = skillIds.filter((id) => !isNaN(id))
+	const validSkillIds = skillIds.filter((id) => typeof id === 'string' && id.length > 0)
 	if (validSkillIds.length === 0) {
 		return c.json([])
 	}
@@ -339,7 +339,7 @@ app.post('/skills/requirements', async (c) => {
 			})
 			return acc
 		},
-		{} as Record<number, any[]>
+		{} as Record<string, any[]>
 	)
 
 	return c.json(grouped)

@@ -4,7 +4,8 @@
 		"outDir": "dist",
 		"rootDir": "src",
 		"module": "ESNext",
-		"lib": ["ESNext"]
+		"lib": ["ESNext"],
+		"types": []
 	},
-	"include": ["src/**/*"]
+	"include": ["src/**/*", "worker-configuration.d.ts"]
 }

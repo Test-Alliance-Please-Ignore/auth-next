@@ -21,7 +21,7 @@ export async function handlePublicRefresh(
 	stub: EveCorporationData,
 	message: PublicRefreshMessage
 ): Promise<void> {
-	await stub.fetchPublicData()
+	await stub.fetchPublicData(message.corporationId)
 }
 
 /**
@@ -29,12 +29,9 @@ export async function handlePublicRefresh(
  */
 export async function handleMembersRefresh(
 	stub: EveCorporationData,
-	message: MembersRefreshMessage
+	_message: MembersRefreshMessage
 ): Promise<void> {
-	const result = await stub.fetchCoreData()
-	if (!result.members) {
-		throw new Error('Failed to fetch members data')
-	}
+	await stub.fetchCoreData()
 }
 
 /**
@@ -42,12 +39,9 @@ export async function handleMembersRefresh(
  */
 export async function handleMemberTrackingRefresh(
 	stub: EveCorporationData,
-	message: MemberTrackingRefreshMessage
+	_message: MemberTrackingRefreshMessage
 ): Promise<void> {
-	const result = await stub.fetchCoreData()
-	if (!result.memberTracking) {
-		throw new Error('Failed to fetch member tracking data')
-	}
+	await stub.fetchCoreData()
 }
 
 /**
@@ -55,7 +49,7 @@ export async function handleMemberTrackingRefresh(
  */
 export async function handleWalletsRefresh(
 	stub: EveCorporationData,
-	message: WalletsRefreshMessage
+	_message: WalletsRefreshMessage
 ): Promise<void> {
 	// Fetch wallet balances for all 7 divisions in parallel
 	const results = await Promise.allSettled([1, 2, 3, 4, 5, 6, 7].map((div) => stub.fetchFinancialData(div)))
@@ -77,10 +71,7 @@ export async function handleWalletJournalRefresh(
 	message: WalletJournalRefreshMessage
 ): Promise<void> {
 	if (message.division) {
-		const result = await stub.fetchFinancialData(message.division)
-		if (!result.journal) {
-			throw new Error(`Failed to fetch wallet journal for division ${message.division}`)
-		}
+		await stub.fetchFinancialData(message.division)
 	} else {
 		// Fetch all 7 divisions in parallel
 		const results = await Promise.allSettled([1, 2, 3, 4, 5, 6, 7].map((div) => stub.fetchFinancialData(div)))
@@ -102,10 +93,7 @@ export async function handleWalletTransactionsRefresh(
 	message: WalletTransactionsRefreshMessage
 ): Promise<void> {
 	if (message.division) {
-		const result = await stub.fetchFinancialData(message.division)
-		if (!result.transactions) {
-			throw new Error(`Failed to fetch wallet transactions for division ${message.division}`)
-		}
+		await stub.fetchFinancialData(message.division)
 	} else {
 		// Fetch all 7 divisions in parallel
 		const results = await Promise.allSettled([1, 2, 3, 4, 5, 6, 7].map((div) => stub.fetchFinancialData(div)))
@@ -122,12 +110,9 @@ export async function handleWalletTransactionsRefresh(
  */
 export async function handleAssetsRefresh(
 	stub: EveCorporationData,
-	message: AssetsRefreshMessage
+	_message: AssetsRefreshMessage
 ): Promise<void> {
-	const result = await stub.fetchAssetsData()
-	if (!result.assets) {
-		throw new Error('Failed to fetch assets data')
-	}
+	await stub.fetchAssetsData()
 }
 
 /**
@@ -135,12 +120,9 @@ export async function handleAssetsRefresh(
  */
 export async function handleStructuresRefresh(
 	stub: EveCorporationData,
-	message: StructuresRefreshMessage
+	_message: StructuresRefreshMessage
 ): Promise<void> {
-	const result = await stub.fetchAssetsData()
-	if (!result.structures) {
-		throw new Error('Failed to fetch structures data')
-	}
+	await stub.fetchAssetsData()
 }
 
 /**
@@ -148,12 +130,9 @@ export async function handleStructuresRefresh(
  */
 export async function handleOrdersRefresh(
 	stub: EveCorporationData,
-	message: OrdersRefreshMessage
+	_message: OrdersRefreshMessage
 ): Promise<void> {
-	const result = await stub.fetchMarketData()
-	if (!result.orders) {
-		throw new Error('Failed to fetch orders data')
-	}
+	await stub.fetchMarketData()
 }
 
 /**
@@ -161,12 +140,9 @@ export async function handleOrdersRefresh(
  */
 export async function handleContractsRefresh(
 	stub: EveCorporationData,
-	message: ContractsRefreshMessage
+	_message: ContractsRefreshMessage
 ): Promise<void> {
-	const result = await stub.fetchMarketData()
-	if (!result.contracts) {
-		throw new Error('Failed to fetch contracts data')
-	}
+	await stub.fetchMarketData()
 }
 
 /**
@@ -174,12 +150,9 @@ export async function handleContractsRefresh(
  */
 export async function handleIndustryJobsRefresh(
 	stub: EveCorporationData,
-	message: IndustryJobsRefreshMessage
+	_message: IndustryJobsRefreshMessage
 ): Promise<void> {
-	const result = await stub.fetchMarketData()
-	if (!result.industryJobs) {
-		throw new Error('Failed to fetch industry jobs data')
-	}
+	await stub.fetchMarketData()
 }
 
 /**
@@ -187,10 +160,7 @@ export async function handleIndustryJobsRefresh(
  */
 export async function handleKillmailsRefresh(
 	stub: EveCorporationData,
-	message: KillmailsRefreshMessage
+	_message: KillmailsRefreshMessage
 ): Promise<void> {
-	const result = await stub.fetchKillmails()
-	if (!result) {
-		throw new Error('Failed to fetch killmails data')
-	}
+	await stub.fetchKillmails()
 }

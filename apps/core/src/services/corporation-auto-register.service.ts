@@ -214,7 +214,8 @@ export async function autoRegisterDirectorCorporation(
 				corporationId
 			)
 
-			await stub.addDirector(characterId, characterName, 100)
+			// This will silently succeed if director already exists (uses ON CONFLICT DO NOTHING)
+			await stub.addDirector(corporationId, characterId, characterName, 100)
 
 			logger.info('[AutoReg] Added character as director', {
 				corporationId,
@@ -223,7 +224,7 @@ export async function autoRegisterDirectorCorporation(
 			})
 
 			// Step 9: Trigger director verification (fire and forget)
-			stub.verifyAllDirectorsHealth().catch((error) => {
+			stub.verifyAllDirectorsHealth(corporationId).catch((error) => {
 				logger.error('[AutoReg] Failed to verify director health (async)', {
 					corporationId,
 					characterId,
@@ -246,10 +247,10 @@ export async function autoRegisterDirectorCorporation(
 				},
 			}
 		} catch (error) {
-			// If director already exists, this will fail - that's okay
+			// If there's an unexpected error, log it
 			const errorMessage = error instanceof Error ? error.message : String(error)
 
-			logger.info('[AutoReg] Failed to add director (may already exist)', {
+			logger.error('[AutoReg] Failed to add director', {
 				corporationId,
 				characterId,
 				error: errorMessage,
@@ -266,7 +267,7 @@ export async function autoRegisterDirectorCorporation(
 							wasNew,
 						}
 					: undefined,
-				reason: 'director_already_added',
+				reason: 'director_add_failed',
 			}
 		}
 	} catch (error) {

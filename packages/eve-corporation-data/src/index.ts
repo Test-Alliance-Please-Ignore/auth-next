@@ -571,6 +571,21 @@ export type CorporationRole =
 	| 'Trader'
 	| 'Factory_Manager'
 
+/**
+ * Director health status
+ */
+export interface DirectorHealth {
+	directorId: string
+	characterId: string
+	characterName: string
+	isHealthy: boolean
+	lastHealthCheck: Date | null
+	lastUsed: Date | null
+	failureCount: number
+	lastFailureReason: string | null
+	priority: number
+}
+
 // ============================================================================
 // PUBLIC RPC INTERFACE
 // ============================================================================
@@ -601,7 +616,7 @@ export type CorporationRole =
  * }
  * ```
  */
-export interface EveCorporationData extends DurableObject {
+export interface EveCorporationData {
 	// ========================================================================
 	// CONFIGURATION METHODS
 	// ========================================================================
@@ -626,6 +641,63 @@ export interface EveCorporationData extends DurableObject {
 	 * @returns Verification result with roles and access status
 	 */
 	verifyAccess(): Promise<CorporationAccessVerification>
+
+	// ========================================================================
+	// DIRECTOR MANAGEMENT METHODS
+	// ========================================================================
+
+	/**
+	 * Add a new director character for this corporation
+	 * @param corporationId - The corporation ID
+	 * @param characterId - The character ID with Director role
+	 * @param characterName - The character's name
+	 * @param priority - Priority for failover (higher = preferred), default 100
+	 */
+	addDirector(corporationId: string, characterId: string, characterName: string, priority?: number): Promise<void>
+
+	/**
+	 * Remove a director character from this corporation
+	 * @param corporationId - The corporation ID
+	 * @param characterId - The character ID to remove
+	 */
+	removeDirector(corporationId: string, characterId: string): Promise<void>
+
+	/**
+	 * Update a director's priority
+	 * @param corporationId - The corporation ID
+	 * @param characterId - The character ID
+	 * @param priority - New priority value (higher = preferred)
+	 */
+	updateDirectorPriority(corporationId: string, characterId: string, priority: number): Promise<void>
+
+	/**
+	 * Get all directors for this corporation
+	 * @param corporationId - The corporation ID
+	 * @returns Array of directors with health status
+	 */
+	getDirectors(corporationId: string): Promise<DirectorHealth[]>
+
+	/**
+	 * Get healthy directors for this corporation
+	 * @param corporationId - The corporation ID
+	 * @returns Array of healthy directors
+	 */
+	getHealthyDirectors(corporationId: string): Promise<DirectorHealth[]>
+
+	/**
+	 * Verify health of a specific director
+	 * @param corporationId - The corporation ID
+	 * @param directorId - The director's character ID
+	 * @returns True if healthy, false otherwise
+	 */
+	verifyDirectorHealth(corporationId: string, directorId: string): Promise<boolean>
+
+	/**
+	 * Verify health of all directors
+	 * @param corporationId - The corporation ID
+	 * @returns Count of verified and failed directors
+	 */
+	verifyAllDirectorsHealth(corporationId: string): Promise<{ verified: number; failed: number }>
 
 	// ========================================================================
 	// FETCH ORCHESTRATION METHODS (fetch and store data from ESI)

@@ -3,6 +3,7 @@ import type { EveCorporationData } from '@repo/eve-corporation-data'
 import { createQueueConsumer, exponentialBackoff } from '@repo/queue-utils'
 import { getStub } from '@repo/do-utils'
 import type { Env } from '../context'
+import type { BaseMessage } from './schemas'
 
 /**
  * Factory function to create corporation queue consumers with consistent configuration
@@ -12,10 +13,10 @@ import type { Env } from '../context'
  * @param handler - Handler function that processes the message
  * @returns Configured queue consumer
  */
-export function createCorporationQueueConsumer<T extends z.ZodType>(
+export function createCorporationQueueConsumer<T extends z.ZodType<BaseMessage>>(
 	queueName: string,
 	schema: T,
-	handler: (stub: EveCorporationData, message: z.infer<T>) => Promise<void>
+	handler: (stub: EveCorporationData, message: z.output<T>) => Promise<void>
 ) {
 	return createQueueConsumer(
 		schema,
@@ -43,14 +44,14 @@ export function createCorporationQueueConsumer<T extends z.ZodType>(
 			// Lifecycle hooks for logging
 			hooks: {
 				onMessageSuccess: (message: unknown) => {
-					const msg = message as z.infer<T>
+					const msg = message as z.output<T>
 					console.log(
 						`[${queueName}] Successfully refreshed corp ${msg.corporationId}`,
 						msg.requesterId ? `(requested by ${msg.requesterId})` : ''
 					)
 				},
 				onMessageError: (error, message: unknown, metadata) => {
-					const msg = message as z.infer<T> | undefined
+					const msg = message as z.output<T> | undefined
 					console.error(
 						`[${queueName}] Failed for corp ${msg?.corporationId || 'unknown'} (attempt ${metadata.attempt}):`,
 						error.message

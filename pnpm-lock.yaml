@@ -227,6 +227,9 @@ importers:
       '@repo/eve-token-store':
         specifier: workspace:*
         version: link:../../packages/eve-token-store
+      '@repo/eve-types':
+        specifier: workspace:*
+        version: link:../../packages/eve-types
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
@@ -835,6 +838,9 @@ importers:
       '@repo/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config
+      '@repo/eve-types':
+        specifier: workspace:*
+        version: link:../eve-types
       '@repo/tools':
         specifier: workspace:*
         version: link:../tools

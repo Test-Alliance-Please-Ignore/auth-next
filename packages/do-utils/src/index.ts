@@ -1,3 +1,5 @@
+import { DurableObject } from "cloudflare:workers";
+
 /**
  * Get a typed Durable Object stub
  *
@@ -23,6 +25,19 @@ export function getStub<T>(
 	// Will return DurableObjectStub & T in the worker environment
 	const durableObjectId = typeof id === 'string' ? namespace.idFromName(id) : id
 	return namespace.get(durableObjectId) as any & T
+}
+
+export class ResettableDurableObjectStub extends DurableObject {
+	constructor(
+		ctx: DurableObjectState,
+		env: any
+	) {
+		super(ctx, env)
+	}
+
+	reset() {
+		return this.ctx.storage.deleteAll();
+	}
 }
 
 export class KVCache<K, T> {
