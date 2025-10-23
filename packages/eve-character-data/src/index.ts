@@ -331,49 +331,49 @@ export interface EveCharacterData {
 	 * @param characterId - EVE character ID
 	 * @param forceRefresh - Force refresh even if cached
 	 */
-	fetchCharacterData(characterId: EveCharacterId, forceRefresh?: boolean): Promise<void>
+	fetchCharacterData(characterId: string, forceRefresh?: boolean): Promise<void>
 
 	/**
 	 * Fetch and store authenticated character data (requires token)
 	 * @param characterId - EVE character ID
 	 * @param forceRefresh - Force refresh even if cached
 	 */
-	fetchAuthenticatedData(characterId: EveCharacterId, forceRefresh?: boolean): Promise<void>
+	fetchAuthenticatedData(characterId: string, forceRefresh?: boolean): Promise<void>
 
 	/**
 	 * Fetch and store wallet journal entries (requires token)
 	 * @param characterId - EVE character ID
 	 * @param forceRefresh - Force refresh even if cached
 	 */
-	fetchWalletJournal(characterId: EveCharacterId, forceRefresh?: boolean): Promise<void>
+	fetchWalletJournal(characterId: string, forceRefresh?: boolean): Promise<void>
 
 	/**
 	 * Fetch and store market transactions (requires token)
 	 * @param characterId - EVE character ID
 	 * @param forceRefresh - Force refresh even if cached
 	 */
-	fetchMarketTransactions(characterId: EveCharacterId, forceRefresh?: boolean): Promise<void>
+	fetchMarketTransactions(characterId: string, forceRefresh?: boolean): Promise<void>
 
 	/**
 	 * Fetch and store market orders (requires token)
 	 * @param characterId - EVE character ID
 	 * @param forceRefresh - Force refresh even if cached
 	 */
-	fetchMarketOrders(characterId: EveCharacterId, forceRefresh?: boolean): Promise<void>
+	fetchMarketOrders(characterId: string, forceRefresh?: boolean): Promise<void>
 
 	/**
 	 * Get character public info from database
 	 * @param characterId - EVE character ID
 	 * @returns Character public data or null if not found
 	 */
-	getCharacterInfo(characterId: EveCharacterId): Promise<CharacterPublicData | null>
+	getCharacterInfo(characterId: string): Promise<CharacterPublicData | null>
 
 	/**
 	 * Get character portrait data
 	 * @param characterId - EVE character ID
 	 * @returns Character portrait URLs or null if not found
 	 */
-	getPortrait(characterId: EveCharacterId): Promise<{
+	getPortrait(characterId: string): Promise<{
 		characterId: EveCharacterId
 		px64x64?: string
 		px128x128?: string
@@ -386,7 +386,7 @@ export interface EveCharacterData {
 	 * @param characterId - EVE character ID
 	 * @returns Array of corporation history entries
 	 */
-	getCorporationHistory(characterId: EveCharacterId): Promise<
+	getCorporationHistory(characterId: string): Promise<
 		Array<{
 			recordId: string
 			corporationId: EveCorporationId
@@ -400,7 +400,7 @@ export interface EveCharacterData {
 	 * @param characterId - EVE character ID
 	 * @returns Character skills data or null if not found
 	 */
-	getSkills(characterId: EveCharacterId): Promise<{
+	getSkills(characterId: string): Promise<{
 		skills: Array<{
 			active_skill_level: number
 			skill_id: number
@@ -416,7 +416,7 @@ export interface EveCharacterData {
 	 * @param characterId - EVE character ID
 	 * @returns Character attributes data or null if not found
 	 */
-	getAttributes(characterId: EveCharacterId): Promise<{
+	getAttributes(characterId: string): Promise<{
 		intelligence: number
 		perception: number
 		memory: number
@@ -432,28 +432,28 @@ export interface EveCharacterData {
 	 * @param characterId - EVE character ID
 	 * @returns Last updated timestamp or null if not found
 	 */
-	getLastUpdated(characterId: EveCharacterId): Promise<Date | null>
+	getLastUpdated(characterId: string): Promise<Date | null>
 
 	/**
 	 * Get sensitive character data (location, wallet, assets, status, skill queue)
 	 * @param characterId - EVE character ID
 	 * @returns Sensitive character data or null if not found
 	 */
-	getSensitiveData(characterId: EveCharacterId): Promise<CharacterSensitiveData | null>
+	getSensitiveData(characterId: string): Promise<CharacterSensitiveData | null>
 
 	/**
 	 * Get wallet journal entries for a character
 	 * @param characterId - EVE character ID
 	 * @returns Array of wallet journal entries
 	 */
-	getWalletJournal(characterId: EveCharacterId): Promise<CharacterWalletJournalData[]>
+	getWalletJournal(characterId: string): Promise<CharacterWalletJournalData[]>
 
 	/**
 	 * Get market transactions for a character
 	 * @param characterId - EVE character ID
 	 * @returns Array of market transactions
 	 */
-	getMarketTransactions(characterId: EveCharacterId): Promise<CharacterMarketTransactionData[]>
+	getMarketTransactions(characterId: string): Promise<CharacterMarketTransactionData[]>
 
 	/**
 	 * Get market orders for a character

@@ -26,11 +26,11 @@ import type { createDb } from '../db'
  *
  * TODO: Remove when migrating to RPC
  */
-import { bigint, boolean, pgTable, timestamp, uuid, varchar } from 'drizzle-orm/pg-core'
+import { bigint, boolean, pgTable, timestamp, uuid, varchar, text } from 'drizzle-orm/pg-core'
 
 const users = pgTable('users', {
 	id: uuid('id').defaultRandom().primaryKey(),
-	mainCharacterId: bigint('main_character_id', { mode: 'number' }).notNull().unique(),
+	mainCharacterId: text('main_character_id').notNull().unique(),
 	discordUserId: varchar('discord_user_id', { length: 255 }).unique(),
 	is_admin: boolean('is_admin').default(false).notNull(),
 	createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -43,7 +43,7 @@ const userCharacters = pgTable('user_characters', {
 		.notNull()
 		.references(() => users.id, { onDelete: 'cascade' }),
 	characterOwnerHash: varchar('character_owner_hash', { length: 255 }).notNull(),
-	characterId: bigint('character_id', { mode: 'number' }).notNull().unique(),
+	characterId: text('main_character_id').notNull().unique(),
 	characterName: varchar('character_name', { length: 255 }).notNull(),
 	is_primary: boolean('is_primary').default(false).notNull(),
 	linkedAt: timestamp('linked_at').defaultNow().notNull(),
@@ -63,7 +63,7 @@ const userCharacters = pgTable('user_characters', {
 export async function findUserByMainCharacterName(
 	characterName: string,
 	db: ReturnType<typeof createDb>
-): Promise<{ userId: string; characterId: number } | null> {
+): Promise<{ userId: string; characterId: string } | null> {
 	// Query for a primary character with matching name
 	const result = await db
 		.select({
@@ -154,7 +154,7 @@ export async function bulkFindMainCharactersByUserIds(
 export async function bulkFindMainCharactersWithIdsByUserIds(
 	userIds: string[],
 	db: ReturnType<typeof createDb>
-): Promise<Map<string, { name: string; characterId: number }>> {
+): Promise<Map<string, { name: string; characterId: string }>> {
 	if (userIds.length === 0) {
 		return new Map()
 	}
@@ -168,7 +168,7 @@ export async function bulkFindMainCharactersWithIdsByUserIds(
 		.from(userCharacters)
 		.where(and(eq(userCharacters.is_primary, true), inArray(userCharacters.userId, userIds)))
 
-	const map = new Map<string, { name: string; characterId: number }>()
+	const map = new Map<string, { name: string; characterId: string }>()
 	for (const row of results) {
 		map.set(row.userId, { name: row.characterName, characterId: row.characterId })
 	}
@@ -192,7 +192,7 @@ export async function bulkFindMainCharactersWithIdsByUserIds(
 export async function searchUsersByCharacterName(
 	searchTerm: string,
 	db: ReturnType<typeof createDb>
-): Promise<Array<{ userId: string; characterId: number; characterName: string; isMain: boolean }>> {
+): Promise<Array<{ userId: string; characterId: string; characterName: string; isMain: boolean }>> {
 	const results = await db
 		.select({
 			userId: userCharacters.userId,

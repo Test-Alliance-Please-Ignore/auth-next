@@ -60,14 +60,19 @@ export default function CorporationDetailPage() {
 	// Messages
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
-	// Initialize form when corporation loads
-	if (corporation && !formData.assignedCharacterId && isEditing) {
-		setFormData({
-			assignedCharacterId: corporation.assignedCharacterId || undefined,
-			assignedCharacterName: corporation.assignedCharacterName || undefined,
-			isActive: corporation.isActive,
-		})
-	}
+	// Initialize form when editing starts
+	useEffect(() => {
+		if (corporation && isEditing) {
+			setFormData({
+				assignedCharacterId: corporation.assignedCharacterId || undefined,
+				assignedCharacterName: corporation.assignedCharacterName || undefined,
+				isActive: corporation.isActive,
+			})
+		} else if (!isEditing) {
+			// Reset form when not editing
+			setFormData({})
+		}
+	}, [corporation, isEditing])
 
 	// Handlers
 	const handleUpdate = async (e: React.FormEvent) => {

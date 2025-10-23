@@ -28,6 +28,7 @@
 		"@repo/eve-character-data": "workspace:*",
 		"@repo/eve-corporation-data": "workspace:*",
 		"@repo/eve-token-store": "workspace:*",
+		"@repo/eve-types": "workspace:*",
 		"@repo/groups": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
 		"@repo/notifications": "workspace:*",

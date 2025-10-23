@@ -1378,7 +1378,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			id: inv.id,
 			groupId: inv.groupId,
 			inviterId: inv.inviterId,
-			inviteeMainCharacterId: Number(inv.inviteeMainCharacterId),
+			inviteeMainCharacterId: inv.inviteeMainCharacterId,
 			inviteeUserId: inv.inviteeUserId,
 			status: inv.status,
 			expiresAt: inv.expiresAt,

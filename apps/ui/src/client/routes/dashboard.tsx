@@ -34,13 +34,12 @@ export default function DashboardPage() {
 		fetchMainCharacterDetails()
 	}, [user?.mainCharacterId])
 
-	const handleRefreshCharacter = async (characterId: number) => {
+	const handleRefreshCharacter = async (characterId: string) => {
 		// Prevent multiple refreshes for the same character
-		const characterIdStr = characterId.toString()
-		if (refreshingCharacters.has(characterIdStr)) return
+		if (refreshingCharacters.has(characterId)) return
 
 		// Add character to refreshing set
-		setRefreshingCharacters((prev) => new Set(prev).add(characterIdStr))
+		setRefreshingCharacters((prev) => new Set(prev).add(characterId))
 
 		try {
 			const result = await apiClient.refreshCharacterById(characterId)
@@ -57,7 +56,7 @@ export default function DashboardPage() {
 			// Remove character from refreshing set
 			setRefreshingCharacters((prev) => {
 				const next = new Set(prev)
-				next.delete(characterIdStr)
+				next.delete(characterId)
 				return next
 			})
 		}
@@ -150,12 +149,12 @@ export default function DashboardPage() {
 											variant="ghost"
 											className="absolute top-4 right-4 hover:bg-primary/10 h-11 w-11"
 											onClick={() => handleRefreshCharacter(mainCharacter.characterId)}
-											disabled={refreshingCharacters.has(mainCharacter.characterId.toString())}
+											disabled={refreshingCharacters.has(mainCharacter.characterId)}
 											aria-label={`Refresh ${mainCharacter.characterName} character data`}
 										>
 											<RefreshCw
 												className={`h-4 w-4 ${
-													refreshingCharacters.has(mainCharacter.characterId.toString())
+													refreshingCharacters.has(mainCharacter.characterId)
 														? 'animate-spin'
 														: ''
 												}`}
@@ -230,12 +229,12 @@ export default function DashboardPage() {
 											variant="ghost"
 											className="absolute top-2 right-2 h-11 w-11 hover:bg-primary/10"
 											onClick={() => handleRefreshCharacter(character.characterId)}
-											disabled={refreshingCharacters.has(character.characterId.toString())}
+											disabled={refreshingCharacters.has(character.characterId)}
 											aria-label={`Refresh ${character.characterName} character data`}
 										>
 											<RefreshCw
 												className={`h-4 w-4 ${
-													refreshingCharacters.has(character.characterId.toString())
+													refreshingCharacters.has(character.characterId)
 														? 'animate-spin'
 														: ''
 												}`}

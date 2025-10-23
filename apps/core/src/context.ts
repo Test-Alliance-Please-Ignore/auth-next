@@ -29,12 +29,12 @@ export type Env = SharedHonoEnv & {
 /** Session user data attached to request context */
 export interface SessionUser {
 	id: string
-	mainCharacterId: number
+	mainCharacterId: string
 	sessionId: string
 	characters: Array<{
 		id: string
 		characterOwnerHash: string
-		characterId: number
+		characterId: string
 		characterName: string
 		is_primary: boolean
 	}>

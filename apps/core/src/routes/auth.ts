@@ -3,8 +3,8 @@ import { getCookie } from 'hono/cookie'
 
 import { eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
-import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
+import type { EveCorporationData } from '@repo/eve-corporation-data'
 
 import { createDb } from '../db'
 import { oauthStates } from '../db/schema'
@@ -140,7 +140,7 @@ auth.get('/callback', async (c) => {
 	const result = await eveTokenStoreStub.handleCallback(code, state)
 
 	if (!result.success || !result.characterId || !result.characterInfo) {
-		await activityService.logLoginFailed(0, result.error || 'Unknown error', getRequestMetadata(c))
+		await activityService.logLoginFailed('unknown', result.error || 'Unknown error', getRequestMetadata(c))
 		return c.json({ error: result.error || 'Authentication failed' }, 400)
 	}
 
@@ -193,7 +193,7 @@ auth.get('/callback', async (c) => {
 				stateUserId,
 				db,
 				eveTokenStoreStub,
-				c.env.EVE_CORPORATION_DATA
+				getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, 'default')
 			)
 		} catch (error) {
 			// Don't fail character linking if auto-registration fails
@@ -230,7 +230,7 @@ auth.get('/callback', async (c) => {
 				user.id,
 				db,
 				eveTokenStoreStub,
-				c.env.EVE_CORPORATION_DATA
+				getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, 'default')
 			)
 		} catch (error) {
 			// Don't fail login if auto-registration fails
@@ -314,7 +314,7 @@ auth.post('/claim-main', async (c) => {
 			user.id,
 			db,
 			eveTokenStoreStub,
-			c.env.EVE_CORPORATION_DATA
+			getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, 'default')
 		)
 	} catch (error) {
 		// Don't fail user creation if auto-registration fails

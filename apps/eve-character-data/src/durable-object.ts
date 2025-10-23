@@ -67,18 +67,25 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	/**
 	 * Fetch and store all public character data
 	 */
-	async fetchCharacterData(characterId: EveCharacterId, forceRefresh = false): Promise<void> {
-		await Promise.all([
-			this.fetchAndStorePublicInfo(characterId, forceRefresh),
-			this.fetchAndStorePortrait(characterId, forceRefresh),
-			this.fetchAndStoreCorporationHistory(characterId, forceRefresh),
-		])
+	async fetchCharacterData(characterId: string, forceRefresh = false): Promise<void> {
+		console.log('EveCharacterData.fetchCharacterData called with:', characterId, 'type:', typeof characterId, 'forceRefresh:', forceRefresh)
+		try {
+			await Promise.all([
+				this.fetchAndStorePublicInfo(characterId, forceRefresh),
+				this.fetchAndStorePortrait(characterId, forceRefresh),
+				this.fetchAndStoreCorporationHistory(characterId, forceRefresh),
+			])
+			console.log('EveCharacterData.fetchCharacterData completed successfully')
+		} catch (error) {
+			console.error('EveCharacterData.fetchCharacterData failed:', error)
+			throw error
+		}
 	}
 
 	/**
 	 * Fetch and store authenticated character data
 	 */
-	async fetchAuthenticatedData(characterId: EveCharacterId, forceRefresh = false): Promise<void> {
+	async fetchAuthenticatedData(characterId: string, forceRefresh = false): Promise<void> {
 		await Promise.all([
 			this.fetchAndStoreSkills(characterId, forceRefresh),
 			this.fetchAndStoreAttributes(characterId, forceRefresh),
@@ -88,28 +95,28 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	/**
 	 * Fetch and store wallet journal entries
 	 */
-	async fetchWalletJournal(characterId: EveCharacterId, forceRefresh = false): Promise<void> {
+	async fetchWalletJournal(characterId: string, forceRefresh = false): Promise<void> {
 		await this.fetchAndStoreWalletJournal(characterId, forceRefresh)
 	}
 
 	/**
 	 * Fetch and store market transactions
 	 */
-	async fetchMarketTransactions(characterId: EveCharacterId, forceRefresh = false): Promise<void> {
+	async fetchMarketTransactions(characterId: string, forceRefresh = false): Promise<void> {
 		await this.fetchAndStoreMarketTransactions(characterId, forceRefresh)
 	}
 
 	/**
 	 * Fetch and store market orders
 	 */
-	async fetchMarketOrders(characterId: EveCharacterId, forceRefresh = false): Promise<void> {
+	async fetchMarketOrders(characterId: string, forceRefresh = false): Promise<void> {
 		await this.fetchAndStoreMarketOrders(characterId, forceRefresh)
 	}
 
 	/**
 	 * Get character public info from database
 	 */
-	async getCharacterInfo(characterId: EveCharacterId): Promise<CharacterPublicData | null> {
+	async getCharacterInfo(characterId: string): Promise<CharacterPublicData | null> {
 		const result = await this.db.query.characterPublicInfo.findFirst({
 			where: eq(characterPublicInfo.characterId, characterId),
 		})
@@ -161,7 +168,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	 * Fetch and store public character info
 	 */
 	private async fetchAndStorePublicInfo(
-		characterId: EveCharacterId,
+		characterId: string,
 		_forceRefresh = false
 	): Promise<CharacterPublicData> {
 		const tokenStoreStub = this.getTokenStoreStub()
@@ -178,7 +185,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			race_id: number
 			security_status?: number
 			title?: string
-		}>(`/characters/${characterId}`, characterId)
+		}>(`/characters/${String(characterId)}`, String(characterId))
 
 		const rawData = response.data
 
@@ -199,14 +206,14 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 				characterId,
 				name: data.name,
 				corporationId: String(data.corporation_id),
-				allianceId: data.alliance_id ? String(data.alliance_id) : undefined,
+				allianceId: data.alliance_id ? String(data.alliance_id) : null,
 				birthday: data.birthday,
 				raceId: String(data.race_id),
 				bloodlineId: String(data.bloodline_id),
 				securityStatus: data.security_status,
 				description: data.description,
 				gender: data.gender,
-				factionId: String(data.faction_id),
+				factionId: data.faction_id ? String(data.faction_id) : null,
 				title: data.title,
 				updatedAt: new Date(),
 			})
@@ -215,14 +222,14 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 				set: {
 					name: data.name,
 					corporationId: String(data.corporation_id),
-					allianceId: data.alliance_id ? String(data.alliance_id) : undefined,
+					allianceId: data.alliance_id ? String(data.alliance_id) : null,
 					birthday: data.birthday,
 					raceId: String(data.race_id),
 					bloodlineId: String(data.bloodline_id),
 					securityStatus: data.security_status,
 					description: data.description,
 					gender: data.gender,
-					factionId: data.faction_id ? String(data.faction_id) : undefined,
+					factionId: data.faction_id ? String(data.faction_id) : null,
 					title: data.title,
 					updatedAt: new Date(),
 				},
@@ -240,8 +247,8 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	): Promise<CharacterPortraitData> {
 		const tokenStoreStub = this.getTokenStoreStub()
 		const response: EsiResponse<EsiCharacterPortrait> = await tokenStoreStub.fetchEsi(
-			`/characters/${characterId}/portrait`,
-			characterId
+			`/characters/${String(characterId)}/portrait`,
+			String(characterId)
 		)
 
 		const data = response.data
@@ -287,7 +294,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	 * Fetch and store corporation history
 	 */
 	private async fetchAndStoreCorporationHistory(
-		characterId: EveCharacterId,
+		characterId: string,
 		_forceRefresh = false
 	): Promise<CharacterCorporationHistoryData[]> {
 		const tokenStoreStub = this.getTokenStoreStub()
@@ -299,7 +306,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 				record_id: number
 				start_date: string
 			}>
-		>(`/characters/${characterId}/corporationhistory`, characterId)
+		>(`/characters/${String(characterId)}/corporationhistory`, String(characterId))
 
 		const rawEntries = response.data
 
@@ -368,7 +375,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			}>
 			total_sp: number
 			unallocated_sp?: number
-		}>(`/characters/${characterId}/skills`, characterId)
+		}>(`/characters/${String(characterId)}/skills`, String(characterId))
 
 		const rawData = response.data
 
@@ -424,8 +431,8 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	): Promise<CharacterAttributesData> {
 		const tokenStoreStub = this.getTokenStoreStub()
 		const response: EsiResponse<EsiCharacterAttributes> = await tokenStoreStub.fetchEsi(
-			`/characters/${characterId}/attributes`,
-			characterId
+			`/characters/${String(characterId)}/attributes`,
+			String(characterId)
 		)
 
 		const data = response.data
@@ -504,7 +511,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 				context_id?: number
 				context_id_type?: string
 			}>
-		>(`/characters/${characterId}/wallet/journal`, characterId)
+		>(`/characters/${String(characterId)}/wallet/journal`, String(characterId))
 
 		const rawEntries = response.data
 
@@ -613,7 +620,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 				is_personal: boolean
 				journal_ref_id: number
 			}>
-		>(`/characters/${characterId}/wallet/transactions`, characterId)
+		>(`/characters/${String(characterId)}/wallet/transactions`, String(characterId))
 
 		const rawTransactions = response.data
 
@@ -703,7 +710,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 				escrow?: number
 				region_id?: number
 			}>
-		>(`/characters/${characterId}/orders`, characterId)
+		>(`/characters/${String(characterId)}/orders`, String(characterId))
 
 		const rawOrders = response.data
 
@@ -822,7 +829,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	/**
 	 * Get character skills
 	 */
-	async getSkills(characterId: EveCharacterId) {
+	async getSkills(characterId: string) {
 		const result = await this.db.query.characterSkills.findFirst({
 			where: eq(characterSkills.characterId, characterId),
 		})
@@ -842,7 +849,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	/**
 	 * Get character attributes
 	 */
-	async getAttributes(characterId: EveCharacterId) {
+	async getAttributes(characterId: string) {
 		const result = await this.db.query.characterAttributes.findFirst({
 			where: eq(characterAttributes.characterId, characterId),
 		})
@@ -865,7 +872,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	 * Get sensitive character data (location, wallet, assets, status, skill queue, and financial data)
 	 * Returns null if no data is available
 	 */
-	async getSensitiveData(characterId: EveCharacterId) {
+	async getSensitiveData(characterId: string) {
 		// Query all sensitive data tables
 		const [location, wallet, assets, status, skillQueue, walletJournal, marketTransactions, marketOrders] =
 			await Promise.all([
@@ -1013,7 +1020,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	/**
 	 * Get wallet journal entries for a character
 	 */
-	async getWalletJournal(characterId: EveCharacterId): Promise<CharacterWalletJournalData[]> {
+	async getWalletJournal(characterId: string): Promise<CharacterWalletJournalData[]> {
 		const results = await this.db.query.characterWalletJournal.findMany({
 			where: eq(characterWalletJournal.characterId, characterId),
 		})
@@ -1042,7 +1049,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	/**
 	 * Get market transactions for a character
 	 */
-	async getMarketTransactions(characterId: EveCharacterId): Promise<CharacterMarketTransactionData[]> {
+	async getMarketTransactions(characterId: string): Promise<CharacterMarketTransactionData[]> {
 		const results = await this.db.query.characterMarketTransactions.findMany({
 			where: eq(characterMarketTransactions.characterId, characterId),
 		})
@@ -1068,7 +1075,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	/**
 	 * Get market orders for a character
 	 */
-	async getMarketOrders(characterId: EveCharacterId): Promise<CharacterMarketOrderData[]> {
+	async getMarketOrders(characterId: string): Promise<CharacterMarketOrderData[]> {
 		const results = await this.db.query.characterMarketOrders.findMany({
 			where: eq(characterMarketOrders.characterId, characterId),
 		})

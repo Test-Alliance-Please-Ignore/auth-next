@@ -1,6 +1,5 @@
 import { relations } from 'drizzle-orm'
 import {
-	bigint,
 	boolean,
 	index,
 	integer,
@@ -8,7 +7,6 @@ import {
 	pgTable,
 	text,
 	timestamp,
-	unique,
 	uuid,
 	varchar,
 } from 'drizzle-orm/pg-core'
@@ -93,7 +91,7 @@ export const userSessions = pgTable(
 		metadata: jsonb('metadata').$type<{
 			ip?: string
 			userAgent?: string
-			characterId?: number
+			characterId?: string
 		}>(),
 		/** Last activity timestamp */
 		lastActivityAt: timestamp('last_activity_at').defaultNow().notNull(),
@@ -146,7 +144,7 @@ export const userActivityLog = pgTable(
 		metadata: jsonb('metadata').$type<{
 			ip?: string
 			userAgent?: string
-			characterId?: number
+			characterId?: string
 			success?: boolean
 			error?: string
 			[key: string]: unknown

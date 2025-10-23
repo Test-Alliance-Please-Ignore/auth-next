@@ -281,7 +281,10 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 									id="priority"
 									type="number"
 									value={newPriority}
-									onChange={(e) => setNewPriority(Number.parseInt(e.target.value) || 100)}
+									onChange={(e) => {
+										const value = Number.parseInt(e.target.value)
+										setNewPriority(Number.isNaN(value) ? 100 : value)
+									}}
 									placeholder="e.g., 100"
 								/>
 								<p className="text-xs text-muted-foreground">

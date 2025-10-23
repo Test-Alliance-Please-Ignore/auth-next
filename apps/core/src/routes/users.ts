@@ -1,14 +1,10 @@
 import { Hono } from 'hono'
 
-import { getStub } from '@repo/do-utils'
-
 import { createDb } from '../db'
 import { requireAuth } from '../middleware/session'
 import { ActivityService } from '../services/activity.service'
 import { UserService } from '../services/user.service'
 
-import type { EveCharacterData } from '@repo/eve-character-data'
-import type { EveTokenStore } from '@repo/eve-token-store'
 import type { App } from '../context'
 import type { RequestMetadata, UserPreferencesDTO } from '../types/user'
 
@@ -118,7 +114,7 @@ users.delete('/me/characters/:characterId', async (c) => {
 	}
 
 	// Validate user owns this character (defense in depth)
-	const character = user.characters.find((char) => char.characterId === Number(characterId))
+	const character = user.characters.find((char) => char.characterId === characterId)
 	if (!character) {
 		return c.json({ error: 'Character not found or not owned by user' }, 404)
 	}
@@ -129,13 +125,13 @@ users.delete('/me/characters/:characterId', async (c) => {
 
 	try {
 		// Unlink character
-		const success = await userService.unlinkCharacter(user.id, Number(characterId))
+		const success = await userService.unlinkCharacter(user.id, characterId)
 
 		if (!success) {
 			return c.json({ error: 'Character not found or already unlinked' }, 404)
 		}
 
-		await activityService.logCharacterUnlinked(user.id, Number(characterId), getRequestMetadata(c))
+		await activityService.logCharacterUnlinked(user.id, characterId, getRequestMetadata(c))
 
 		return c.json({
 			success: true,
@@ -162,7 +158,7 @@ users.post('/me/characters/:characterId/set-primary', async (c) => {
 	}
 
 	// Validate user owns this character (defense in depth)
-	const character = user.characters.find((char) => char.characterId === Number(characterId))
+	const character = user.characters.find((char) => char.characterId === characterId)
 	if (!character) {
 		return c.json({ error: 'Character not found or not owned by user' }, 404)
 	}
@@ -173,7 +169,7 @@ users.post('/me/characters/:characterId/set-primary', async (c) => {
 
 	try {
 		// Set primary character
-		const success = await userService.setPrimaryCharacter(user.id, Number(characterId))
+		const success = await userService.setPrimaryCharacter(user.id, characterId)
 
 		if (!success) {
 			return c.json({ error: 'Failed to set primary character' }, 500)
@@ -182,7 +178,7 @@ users.post('/me/characters/:characterId/set-primary', async (c) => {
 		await activityService.logPrimaryCharacterChanged(
 			user.id,
 			user.mainCharacterId,
-			Number(characterId),
+			characterId,
 			getRequestMetadata(c)
 		)
 

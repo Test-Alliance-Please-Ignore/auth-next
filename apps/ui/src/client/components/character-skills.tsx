@@ -20,7 +20,7 @@ interface CharacterSkillsProps {
 		total_sp: number
 		unallocated_sp?: number
 	}
-	characterId: number
+	characterId: string
 	showProgress?: boolean
 }
 
@@ -62,7 +62,6 @@ function calculateSkillProgress(skill: Skill, skillRank: number = 1): number {
 
 export function CharacterSkills({
 	skills,
-	characterId,
 	showProgress = false,
 }: CharacterSkillsProps) {
 	const [expandedCategories, setExpandedCategories] = useState<string[]>([])

@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import { Activity, MapPin, Package, RefreshCw, User, Wallet } from 'lucide-react'
+import { createEveCharacterId } from '@repo/eve-types'
 import { Navigate, useParams } from 'react-router-dom'
 
 import { CharacterAttributes } from '../components/character-attributes'
@@ -15,6 +16,11 @@ import { api } from '../lib/api'
 export default function CharacterDetailPage() {
 	const { characterId } = useParams<{ characterId: string }>()
 
+
+	if (!characterId) {
+		return <Navigate to="/dashboard" replace />
+	}
+
 	// Fetch character details
 	const {
 		data: character,
@@ -23,7 +29,7 @@ export default function CharacterDetailPage() {
 		refetch,
 	} = useQuery({
 		queryKey: ['character', characterId],
-		queryFn: () => api.getCharacterDetail(Number(characterId)),
+		queryFn: () => api.getCharacterDetail(characterId),
 		enabled: !!characterId,
 	})
 
@@ -31,7 +37,7 @@ export default function CharacterDetailPage() {
 	const handleRefresh = async () => {
 		if (!characterId) return
 		try {
-			await api.refreshCharacterById(Number(characterId))
+			await api.refreshCharacterById(characterId)
 			await refetch()
 		} catch (error) {
 			console.error('Failed to refresh character:', error)
@@ -168,8 +174,8 @@ export default function CharacterDetailPage() {
 			{/* Character Skills */}
 			{character.public.skills ? (
 				<CharacterSkills
+					characterId={characterId || ''}
 					skills={character.public.skills}
-					characterId={character.characterId}
 					showProgress={character.isOwner}
 				/>
 			) : character.isOwner ? (

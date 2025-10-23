@@ -19,8 +19,12 @@ interface AddDirectorDialogProps {
 }
 
 export function AddDirectorDialog({ corporationId, open, onOpenChange }: AddDirectorDialogProps) {
-	const [formData, setFormData] = useState({
-		characterId: 0,
+	const [formData, setFormData] = useState<{
+		characterId: string
+		characterName: string
+		priority: number
+	}>({
+		characterId: '',
 		characterName: '',
 		priority: 100,
 	})
@@ -30,27 +34,28 @@ export function AddDirectorDialog({ corporationId, open, onOpenChange }: AddDire
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault()
 
-		if (!formData.characterId || !formData.characterName) {
+		const characterId = formData.characterId
+		if (!characterId || !formData.characterName) {
 			return
 		}
 
 		await addDirector.mutateAsync({
 			corporationId,
 			data: {
-				characterId: formData.characterId,
+				characterId,
 				characterName: formData.characterName,
 				priority: formData.priority,
 			},
 		})
 
 		// Reset form and close dialog
-		setFormData({ characterId: 0, characterName: '', priority: 100 })
+		setFormData({ characterId: '', characterName: '', priority: 100 })
 		onOpenChange(false)
 	}
 
 	const handleClose = () => {
 		// Reset form when closing
-		setFormData({ characterId: 0, characterName: '', priority: 100 })
+		setFormData({ characterId: '', characterName: '', priority: 100 })
 		onOpenChange(false)
 	}
 
@@ -70,10 +75,12 @@ export function AddDirectorDialog({ corporationId, open, onOpenChange }: AddDire
 							<Label htmlFor="characterId">Character ID *</Label>
 							<Input
 								id="characterId"
-								type="number"
-								value={formData.characterId || ''}
+								type="text"
+								inputMode="numeric"
+								pattern="[0-9]*"
+								value={formData.characterId}
 								onChange={(e) =>
-									setFormData({ ...formData, characterId: Number.parseInt(e.target.value) || 0 })
+									setFormData({ ...formData, characterId: e.target.value })
 								}
 								required
 								placeholder="e.g., 2119123456"
@@ -95,9 +102,10 @@ export function AddDirectorDialog({ corporationId, open, onOpenChange }: AddDire
 								id="priority"
 								type="number"
 								value={formData.priority}
-								onChange={(e) =>
-									setFormData({ ...formData, priority: Number.parseInt(e.target.value) || 100 })
-								}
+								onChange={(e) => {
+									const value = Number.parseInt(e.target.value)
+									setFormData({ ...formData, priority: Number.isNaN(value) ? 100 : value })
+								}}
 								placeholder="Lower number = higher priority"
 							/>
 							<p className="text-xs text-muted-foreground">

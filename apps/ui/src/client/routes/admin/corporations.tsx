@@ -41,11 +41,11 @@ export default function CorporationsPage() {
 	// Dialog state
 	const [createDialogOpen, setCreateDialogOpen] = useState(false)
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-	const [selectedCorpId, setSelectedCorpId] = useState<number | null>(null)
+	const [selectedCorpId, setSelectedCorpId] = useState<string | null>(null)
 
 	// Form state
 	const [formData, setFormData] = useState<CreateCorporationRequest>({
-		corporationId: 0,
+		corporationId: '',
 		name: '',
 		ticker: '',
 		assignedCharacterId: undefined,
@@ -68,11 +68,19 @@ export default function CorporationsPage() {
 	// Handlers
 	const handleCreate = async (e: React.FormEvent) => {
 		e.preventDefault()
+
+		// Validate corporation ID is a valid number
+		if (!formData.corporationId ) {
+			setMessage({ type: 'error', text: 'Please enter a valid corporation ID' })
+			setTimeout(() => setMessage(null), 5000)
+			return
+		}
+
 		try {
 			await createCorporation.mutateAsync(formData)
 			setCreateDialogOpen(false)
 			setFormData({
-				corporationId: 0,
+				corporationId: '',
 				name: '',
 				ticker: '',
 				assignedCharacterId: undefined,
@@ -106,7 +114,7 @@ export default function CorporationsPage() {
 		}
 	}
 
-	const handleVerify = async (corporationId: number) => {
+	const handleVerify = async (corporationId: string) => {
 		try {
 			const result = await verifyAccess.mutateAsync(corporationId)
 			if (result.hasAccess) {
@@ -124,7 +132,7 @@ export default function CorporationsPage() {
 		}
 	}
 
-	const openDeleteDialog = (corporationId: number) => {
+	const openDeleteDialog = (corporationId: string) => {
 		setSelectedCorpId(corporationId)
 		setDeleteDialogOpen(true)
 	}
@@ -327,10 +335,12 @@ export default function CorporationsPage() {
 								<Label htmlFor="corporationId">Corporation ID *</Label>
 								<Input
 									id="corporationId"
-									type="number"
-									value={formData.corporationId || ''}
+									type="text"
+									inputMode="numeric"
+									pattern="[0-9]*"
+									value={formData.corporationId}
 									onChange={(e) =>
-										setFormData({ ...formData, corporationId: Number.parseInt(e.target.value) || 0 })
+										setFormData({ ...formData, corporationId: e.target.value })
 									}
 									required
 									placeholder="e.g., 98000001"
@@ -360,12 +370,14 @@ export default function CorporationsPage() {
 								<Label htmlFor="characterId">Director Character ID (Optional)</Label>
 								<Input
 									id="characterId"
-									type="number"
+									type="text"
+									inputMode="numeric"
+									pattern="[0-9]*"
 									value={formData.assignedCharacterId || ''}
 									onChange={(e) =>
 										setFormData({
 											...formData,
-											assignedCharacterId: Number.parseInt(e.target.value) || undefined,
+											assignedCharacterId: e.target.value || undefined,
 										})
 									}
 									placeholder="e.g., 2119123456"

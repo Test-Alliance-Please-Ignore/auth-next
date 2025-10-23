@@ -466,7 +466,13 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			headers['If-None-Match'] = cached[0].etag
 		}
 
-		const response = await fetch(`https://esi.evetech.net${path}`, { headers })
+		let response: Response
+		try {
+			response = await fetch(`https://esi.evetech.net${path}`, { headers })
+		} catch (error) {
+			logger.withTags({ characterId, path, operation: 'esi_fetch' }).error('ESI fetch failed', error)
+			throw new Error(`ESI fetch failed for ${path}: ${error instanceof Error ? error.message : String(error)}`)
+		}
 
 		// Handle 304 Not Modified
 		if (response.status === 304 && cached.length > 0) {

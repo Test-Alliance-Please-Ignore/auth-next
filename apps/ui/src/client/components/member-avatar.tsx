@@ -1,5 +1,5 @@
 interface MemberAvatarProps {
-	characterId?: number
+	characterId?: string | number
 	characterName?: string | null
 	size?: 'sm' | 'md' | 'lg'
 }

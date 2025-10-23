@@ -84,6 +84,9 @@ importers:
       '@repo/eve-token-store':
         specifier: workspace:*
         version: link:../../packages/eve-token-store
+      '@repo/eve-types':
+        specifier: workspace:*
+        version: link:../../packages/eve-types
       '@repo/groups':
         specifier: workspace:*
         version: link:../../packages/groups
@@ -623,6 +626,9 @@ importers:
       '@radix-ui/react-select':
         specifier: 2.2.6
         version: 2.2.6(@types/react-dom@19.2.2(@types/react@19.2.2))(@types/react@19.2.2)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
+      '@repo/eve-types':
+        specifier: workspace:*
+        version: link:../../packages/eve-types
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
