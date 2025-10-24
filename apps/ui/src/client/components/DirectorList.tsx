@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { AlertCircle, CheckCircle2, Plus, Trash2, RefreshCw } from 'lucide-react'
+import { AlertCircle, Plus, Trash2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
 	Table,

@@ -1,11 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
-import { ChevronRight, GraduationCap } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { GraduationCap } from 'lucide-react'
+import { useState } from 'react'
 
 import { api } from '../lib/api'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
-import { Progress } from './ui/progress'
 
 interface Skill {
 	active_skill_level: number

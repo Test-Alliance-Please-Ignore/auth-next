@@ -78,7 +78,7 @@ export default function GroupsPage() {
 				<InviteCodeRedemption
 				onSuccess={(groupName) => {
 					alert(`Successfully joined ${groupName}!`)
-					navigate('/my-groups')
+					void navigate('/my-groups')
 				}}
 			/>
 

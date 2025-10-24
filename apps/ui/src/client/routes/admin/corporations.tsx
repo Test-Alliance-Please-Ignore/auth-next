@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, Search, Shield, ShieldAlert, ShieldCheck, RefreshCw, Building2, Trash2 } from 'lucide-react'
+import { Plus, Search, ShieldAlert, ShieldCheck, RefreshCw, Building2, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {

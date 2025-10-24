@@ -1,6 +1,5 @@
 import type { AdminWorker } from '@repo/admin'
 import type { EveCharacterData } from '@repo/eve-character-data'
-import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Groups } from '@repo/groups'
 import type { Notifications } from '@repo/notifications'

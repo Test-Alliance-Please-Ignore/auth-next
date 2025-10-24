@@ -65,14 +65,14 @@ export default function GroupDetailPage() {
 						group={group}
 						onSuccess={() => {
 							alert('Successfully joined the group!')
-							navigate('/my-groups')
+							void navigate('/my-groups')
 						}}
 					/>
 					<LeaveButton
 						group={group}
 						onSuccess={() => {
 							alert('You have left the group')
-							navigate('/groups')
+							void navigate('/groups')
 						}}
 					/>
 				</CardContent>
@@ -128,7 +128,7 @@ export default function GroupDetailPage() {
 						onOpenChange={setTransferDialogOpen}
 						onSuccess={() => {
 							alert('Ownership transferred successfully!')
-							navigate('/my-groups')
+							void navigate('/my-groups')
 						}}
 					/>
 				)}

@@ -281,7 +281,6 @@ export function useNotifications(options: UseNotificationsOptions = {}): UseNoti
 		return () => {
 			disconnect()
 		}
-		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [autoConnect, isAuthenticated, user?.id])
 
 	// Cleanup on unmount

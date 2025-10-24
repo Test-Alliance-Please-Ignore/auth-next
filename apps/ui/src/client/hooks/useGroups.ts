@@ -3,13 +3,8 @@ import { api } from '@/lib/api'
 import type {
 	CreateGroupRequest,
 	CreateJoinRequestRequest,
-	Group,
-	GroupJoinRequest,
-	GroupInvitationWithDetails,
-	GroupMembershipSummary,
 	GroupWithDetails,
 	GroupsFilters,
-	RedeemInviteCodeResponse,
 	UpdateGroupRequest,
 } from '@/lib/api'
 
@@ -66,9 +61,9 @@ export function useCreateGroup() {
 
 	return useMutation({
 		mutationFn: (data: CreateGroupRequest) => api.createGroup(data),
-		onSuccess: (newGroup) => {
+		onSuccess: (_newGroup) => {
 			// Invalidate all group lists (they may have different filters)
-			queryClient.invalidateQueries({ queryKey: groupKeys.lists() })
+			void queryClient.invalidateQueries({ queryKey: groupKeys.lists() })
 
 			// Optimistically add to cache (for unfiltered lists)
 			queryClient.setQueriesData<GroupWithDetails[]>({ queryKey: groupKeys.lists() }, (old) => {
@@ -91,7 +86,7 @@ export function useUpdateGroup() {
 		mutationFn: ({ id, data }: { id: string; data: UpdateGroupRequest }) => api.updateGroup(id, data),
 		onSuccess: (updatedGroup) => {
 			// Invalidate all group lists (they may have different filters)
-			queryClient.invalidateQueries({ queryKey: groupKeys.lists() })
+			void queryClient.invalidateQueries({ queryKey: groupKeys.lists() })
 
 			// Update group detail cache
 			queryClient.setQueryData(groupKeys.detail(updatedGroup.id), (old: GroupWithDetails | undefined) => {
@@ -118,7 +113,7 @@ export function useDeleteGroup() {
 		mutationFn: (id: string) => api.deleteGroup(id),
 		onSuccess: (_, deletedId) => {
 			// Invalidate all group lists
-			queryClient.invalidateQueries({ queryKey: groupKeys.lists() })
+			void queryClient.invalidateQueries({ queryKey: groupKeys.lists() })
 
 			// Remove from detail cache
 			queryClient.removeQueries({ queryKey: groupKeys.detail(deletedId) })
@@ -154,8 +149,8 @@ export function useJoinGroup() {
 		mutationFn: (groupId: string) => api.joinGroup(groupId),
 		onSuccess: () => {
 			// Invalidate group lists and user memberships
-			queryClient.invalidateQueries({ queryKey: groupKeys.lists() })
-			queryClient.invalidateQueries({ queryKey: groupKeys.userMemberships() })
+			void queryClient.invalidateQueries({ queryKey: groupKeys.lists() })
+			void queryClient.invalidateQueries({ queryKey: groupKeys.userMemberships() })
 		},
 	})
 }
@@ -170,8 +165,8 @@ export function useLeaveGroup() {
 		mutationFn: (groupId: string) => api.leaveGroup(groupId),
 		onSuccess: () => {
 			// Invalidate group lists and user memberships
-			queryClient.invalidateQueries({ queryKey: groupKeys.lists() })
-			queryClient.invalidateQueries({ queryKey: groupKeys.userMemberships() })
+			void queryClient.invalidateQueries({ queryKey: groupKeys.lists() })
+			void queryClient.invalidateQueries({ queryKey: groupKeys.userMemberships() })
 		},
 	})
 }
@@ -186,7 +181,7 @@ export function useCreateJoinRequest() {
 		mutationFn: (data: CreateJoinRequestRequest) => api.createJoinRequest(data),
 		onSuccess: () => {
 			// Invalidate group details to show pending request status
-			queryClient.invalidateQueries({ queryKey: groupKeys.details() })
+			void queryClient.invalidateQueries({ queryKey: groupKeys.details() })
 		},
 	})
 }
@@ -212,7 +207,7 @@ export function useApproveJoinRequest() {
 		mutationFn: (requestId: string) => api.approveJoinRequest(requestId),
 		onSuccess: () => {
 			// Invalidate join requests and group details
-			queryClient.invalidateQueries({ queryKey: ['groups'] })
+			void queryClient.invalidateQueries({ queryKey: ['groups'] })
 		},
 	})
 }
@@ -227,7 +222,7 @@ export function useRejectJoinRequest() {
 		mutationFn: (requestId: string) => api.rejectJoinRequest(requestId),
 		onSuccess: () => {
 			// Invalidate join requests
-			queryClient.invalidateQueries({ queryKey: ['groups'] })
+			void queryClient.invalidateQueries({ queryKey: ['groups'] })
 		},
 	})
 }
@@ -252,9 +247,9 @@ export function useAcceptInvitation() {
 		mutationFn: (invitationId: string) => api.acceptInvitation(invitationId),
 		onSuccess: () => {
 			// Invalidate invitations and user memberships
-			queryClient.invalidateQueries({ queryKey: groupKeys.invitations() })
-			queryClient.invalidateQueries({ queryKey: groupKeys.userMemberships() })
-			queryClient.invalidateQueries({ queryKey: groupKeys.lists() })
+			void queryClient.invalidateQueries({ queryKey: groupKeys.invitations() })
+			void queryClient.invalidateQueries({ queryKey: groupKeys.userMemberships() })
+			void queryClient.invalidateQueries({ queryKey: groupKeys.lists() })
 		},
 	})
 }
@@ -269,7 +264,7 @@ export function useDeclineInvitation() {
 		mutationFn: (invitationId: string) => api.declineInvitation(invitationId),
 		onSuccess: () => {
 			// Invalidate invitations
-			queryClient.invalidateQueries({ queryKey: groupKeys.invitations() })
+			void queryClient.invalidateQueries({ queryKey: groupKeys.invitations() })
 		},
 	})
 }
@@ -284,8 +279,8 @@ export function useRedeemInviteCode() {
 		mutationFn: (code: string) => api.redeemInviteCode(code),
 		onSuccess: () => {
 			// Invalidate user memberships and group lists
-			queryClient.invalidateQueries({ queryKey: groupKeys.userMemberships() })
-			queryClient.invalidateQueries({ queryKey: groupKeys.lists() })
+			void queryClient.invalidateQueries({ queryKey: groupKeys.userMemberships() })
+			void queryClient.invalidateQueries({ queryKey: groupKeys.lists() })
 		},
 	})
 }
@@ -324,9 +319,9 @@ export function useCreateInvitation() {
 			api.createInvitation(groupId, characterName),
 		onSuccess: (_, { groupId }) => {
 			// Invalidate group invitations list
-			queryClient.invalidateQueries({ queryKey: groupKeys.groupInvitations(groupId) })
+			void queryClient.invalidateQueries({ queryKey: groupKeys.groupInvitations(groupId) })
 			// Also invalidate member list in case they accept immediately
-			queryClient.invalidateQueries({ queryKey: groupKeys.detail(groupId) })
+			void queryClient.invalidateQueries({ queryKey: groupKeys.detail(groupId) })
 		},
 	})
 }
@@ -342,11 +337,11 @@ export function useTransferOwnership() {
 			api.transferGroupOwnership(groupId, newOwnerId),
 		onSuccess: (_, { groupId }) => {
 			// Invalidate group details (ownership changed)
-			queryClient.invalidateQueries({ queryKey: groupKeys.detail(groupId) })
+			void queryClient.invalidateQueries({ queryKey: groupKeys.detail(groupId) })
 			// Invalidate all group lists (ownership affects display)
-			queryClient.invalidateQueries({ queryKey: groupKeys.lists() })
+			void queryClient.invalidateQueries({ queryKey: groupKeys.lists() })
 			// Invalidate user memberships (old owner now has different role)
-			queryClient.invalidateQueries({ queryKey: groupKeys.userMemberships() })
+			void queryClient.invalidateQueries({ queryKey: groupKeys.userMemberships() })
 		},
 	})
 }

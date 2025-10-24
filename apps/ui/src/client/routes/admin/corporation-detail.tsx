@@ -18,9 +18,6 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Label } from '@/components/ui/label'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DirectorList } from '@/components/DirectorList'
@@ -81,7 +78,7 @@ export default function CorporationDetailPage() {
 	}, [corporation, isEditing])
 
 	// Handlers
-	const handleUpdate = async (e: React.FormEvent) => {
+	const _handleUpdate = async (e: React.FormEvent) => {
 		e.preventDefault()
 		try {
 			await updateCorporation.mutateAsync({ corporationId: corpId, data: formData })

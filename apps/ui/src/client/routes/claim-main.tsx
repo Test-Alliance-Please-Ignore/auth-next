@@ -60,7 +60,7 @@ export default function ClaimMainPage() {
 			storeSession(response.sessionToken)
 
 			// Redirect to dashboard
-			navigate('/dashboard')
+			void navigate('/dashboard')
 		} catch (err) {
 			console.error('Failed to claim main:', err)
 			setError('Failed to create account. Please try again.')

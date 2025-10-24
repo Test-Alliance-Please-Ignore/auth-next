@@ -6,5 +6,12 @@
 			"@/*": ["./src/client/*"]
 		}
 	},
-	"include": ["src/**/*", "index.html"]
+	"include": [
+		"src/**/*",
+		"index.html",
+		"env.d.ts",
+		"tailwind.config.ts",
+		"vite.config.ts",
+		"vitest.config.ts"
+	]
 }

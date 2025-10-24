@@ -2,7 +2,8 @@ import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
 
 export type Env = SharedHonoEnv & {
-	// add additional Bindings here
+	// Cloudflare Workers Static Assets binding
+	ASSETS: Fetcher
 }
 
 /** Variables can be extended */

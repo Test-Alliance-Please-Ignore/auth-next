@@ -80,7 +80,7 @@ export function useCreateCorporation() {
 		mutationFn: (data: CreateCorporationRequest) => api.createCorporation(data),
 		onSuccess: (newCorporation) => {
 			// Batch invalidations using a single call with broader pattern
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: corporationKeys.all,
 				refetchType: 'active' // Only refetch active queries
 			})
@@ -108,7 +108,7 @@ export function useUpdateCorporation() {
 			)
 
 			// Then invalidate list to show updated data
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: corporationKeys.lists(),
 				refetchType: 'active'
 			})
@@ -131,7 +131,7 @@ export function useDeleteCorporation() {
 			queryClient.removeQueries({ queryKey: corporationKeys.directors(deletedId) })
 
 			// Then invalidate list to remove from UI
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: corporationKeys.lists(),
 				refetchType: 'active'
 			})
@@ -149,13 +149,13 @@ export function useVerifyCorporationAccess() {
 		mutationFn: (corporationId: string) => api.verifyCorporationAccess(corporationId),
 		onSuccess: (_, corporationId) => {
 			// Batch invalidations for this specific corporation
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: corporationKeys.detail(corporationId),
 				refetchType: 'active'
 			})
 
 			// Also invalidate list, but less aggressively
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: corporationKeys.lists(),
 				refetchType: 'active'
 			})
@@ -179,7 +179,7 @@ export function useFetchCorporationData() {
 		}) => api.fetchCorporationData(corporationId, data),
 		onSuccess: (_, { corporationId }) => {
 			// Use Promise.all to batch invalidations for better performance
-			Promise.all([
+			void Promise.all([
 				queryClient.invalidateQueries({
 					queryKey: corporationKeys.detail(corporationId),
 					refetchType: 'active'
@@ -222,7 +222,7 @@ export function useAddDirector() {
 			api.addDirector(corporationId, data),
 		onSuccess: (_, { corporationId }) => {
 			// Batch invalidations for director-related data
-			Promise.all([
+			void Promise.all([
 				queryClient.invalidateQueries({
 					queryKey: corporationKeys.directors(corporationId),
 					refetchType: 'active'
@@ -251,7 +251,7 @@ export function useRemoveDirector() {
 			api.removeDirector(corporationId, characterId),
 		onSuccess: (_, { corporationId }) => {
 			// Batch invalidations for director-related data
-			Promise.all([
+			void Promise.all([
 				queryClient.invalidateQueries({
 					queryKey: corporationKeys.directors(corporationId),
 					refetchType: 'active'
@@ -287,7 +287,7 @@ export function useUpdateDirectorPriority() {
 		}) => api.updateDirectorPriority(corporationId, characterId, data),
 		onSuccess: (_, { corporationId }) => {
 			// Only invalidate directors list since priority doesn't affect other data
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: corporationKeys.directors(corporationId),
 				refetchType: 'active'
 			})
@@ -306,7 +306,7 @@ export function useVerifyDirector() {
 			api.verifyDirector(corporationId, directorId),
 		onSuccess: (_, { corporationId }) => {
 			// Batch invalidations for verification-related data
-			Promise.all([
+			void Promise.all([
 				queryClient.invalidateQueries({
 					queryKey: corporationKeys.directors(corporationId),
 					refetchType: 'active'
@@ -334,7 +334,7 @@ export function useVerifyAllDirectors() {
 		mutationFn: (corporationId: string) => api.verifyAllDirectors(corporationId),
 		onSuccess: (_, corporationId) => {
 			// Batch invalidations for all verification-related data
-			Promise.all([
+			void Promise.all([
 				queryClient.invalidateQueries({
 					queryKey: corporationKeys.directors(corporationId),
 					refetchType: 'active'

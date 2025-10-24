@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
-import { Activity, MapPin, Package, RefreshCw, User, Wallet } from 'lucide-react'
-import { createEveCharacterId } from '@repo/eve-types'
+import { RefreshCw, User } from 'lucide-react'
 import { Navigate, useParams } from 'react-router-dom'
 
 import { CharacterAttributes } from '../components/character-attributes'

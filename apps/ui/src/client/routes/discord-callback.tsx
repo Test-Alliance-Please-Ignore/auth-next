@@ -138,7 +138,7 @@ export default function DiscordCallbackPage() {
 			return () => clearTimeout(timer)
 		}
 
-		handleCallback()
+		void handleCallback()
 	}, [code, state, error])
 
 	return (

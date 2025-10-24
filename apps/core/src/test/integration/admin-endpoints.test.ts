@@ -12,9 +12,7 @@ import worker from '../../index'
 import type { Env } from '../../context'
 
 // Import core schema for test helpers
-import { eq } from '@repo/db-utils'
-import { createDbClient } from '@repo/db-utils'
-import type { DbClient } from '@repo/db-utils'
+import { createDbClient, eq, type DbClient } from '@repo/db-utils'
 import * as schema from '../../db/schema'
 
 // Cast env to have correct types
@@ -24,7 +22,7 @@ const testEnv = env as unknown as Env
 async function createTestSession(
 	db: DbClient<typeof schema>,
 	userId: string,
-	isAdmin = false
+	_isAdmin = false
 ): Promise<string> {
 	const sessionToken = `test-session-${Date.now()}-${Math.random()}`
 
@@ -447,7 +445,8 @@ describe('Admin HTTP Endpoints', () => {
 			const chars = await db.query.userCharacters.findMany({
 				where: eq(schema.userCharacters.userId, sourceUser.userId),
 			})
-			const mainCharId = chars[0]?.characterId!
+			const mainCharId = chars[0]?.characterId
+			if (!mainCharId) throw new Error('No characters found for test user')
 
 			const targetUser = await createTestUser(db, false)
 
@@ -527,7 +526,8 @@ describe('Admin HTTP Endpoints', () => {
 			const chars = await db.query.userCharacters.findMany({
 				where: eq(schema.userCharacters.userId, user.userId),
 			})
-			const mainCharId = chars[0]?.characterId!
+			const mainCharId = chars[0]?.characterId
+			if (!mainCharId) throw new Error('No characters found for test user')
 
 			const request = new Request(`http://example.com/api/admin/characters/${mainCharId}`, {
 				method: 'DELETE',

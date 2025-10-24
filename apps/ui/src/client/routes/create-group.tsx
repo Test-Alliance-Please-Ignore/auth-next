@@ -24,7 +24,7 @@ export default function CreateGroupPage() {
 
 			// Navigate to the newly created group after a short delay
 			setTimeout(() => {
-				navigate(`/groups/${newGroup.id}`)
+				void navigate(`/groups/${newGroup.id}`)
 			}, 1500)
 		} catch (error) {
 			setMessage({

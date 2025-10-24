@@ -48,7 +48,7 @@ export function useCreateCategory() {
 		mutationFn: (data: CreateCategoryRequest) => api.createCategory(data),
 		onSuccess: (newCategory) => {
 			// Invalidate categories list to refetch
-			queryClient.invalidateQueries({ queryKey: categoryKeys.lists() })
+			void queryClient.invalidateQueries({ queryKey: categoryKeys.lists() })
 
 			// Optimistically add to cache
 			queryClient.setQueryData<Category[]>(categoryKeys.list(), (old) => {
@@ -69,7 +69,7 @@ export function useUpdateCategory() {
 		mutationFn: ({ id, data }: { id: string; data: UpdateCategoryRequest }) => api.updateCategory(id, data),
 		onSuccess: (updatedCategory) => {
 			// Invalidate categories list
-			queryClient.invalidateQueries({ queryKey: categoryKeys.lists() })
+			void queryClient.invalidateQueries({ queryKey: categoryKeys.lists() })
 
 			// Update category detail cache
 			queryClient.setQueryData(categoryKeys.detail(updatedCategory.id), (old: CategoryWithGroups | undefined) => {
@@ -96,7 +96,7 @@ export function useDeleteCategory() {
 		mutationFn: (id: string) => api.deleteCategory(id),
 		onSuccess: (_, deletedId) => {
 			// Invalidate categories list
-			queryClient.invalidateQueries({ queryKey: categoryKeys.lists() })
+			void queryClient.invalidateQueries({ queryKey: categoryKeys.lists() })
 
 			// Remove from cache
 			queryClient.removeQueries({ queryKey: categoryKeys.detail(deletedId) })

@@ -31,7 +31,7 @@ export default function DashboardPage() {
 				}
 			}
 		}
-		fetchMainCharacterDetails()
+		void fetchMainCharacterDetails()
 	}, [user?.mainCharacterId])
 
 	const handleRefreshCharacter = async (characterId: string) => {
@@ -84,7 +84,7 @@ export default function DashboardPage() {
 	}
 
 	if (!user) {
-		navigate('/')
+		void navigate('/')
 		return null
 	}
 

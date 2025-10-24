@@ -32,7 +32,7 @@ export async function autoRegisterDirectorCorporation(
 	userId: string,
 	db: ReturnType<typeof createDb>,
 	tokenStore: EveTokenStore,
-	eveCorporationDataNamespace: DurableObjectNamespace<EveCorporationData>
+	eveCorporationDataNamespace: DurableObjectNamespace
 ): Promise<AutoRegistrationResult> {
 	try {
 		logger.info('[AutoReg] Checking if character is a director', {
@@ -42,6 +42,17 @@ export async function autoRegisterDirectorCorporation(
 
 		// Step 1: Check if token has the required scope
 		const tokenInfo = await tokenStore.getTokenInfo(characterId)
+
+		if (!tokenInfo) {
+			logger.error('[AutoReg] Failed to fetch token info', {
+				characterId,
+			})
+			return {
+				success: false,
+				reason: 'failed_to_fetch_token_info',
+			}
+		}
+
 		if (!tokenInfo.scopes.includes('esi-characters.read_corporation_roles.v1')) {
 			logger.info('[AutoReg] Character missing corporation roles scope, skipping', {
 				characterId,
@@ -224,7 +235,7 @@ export async function autoRegisterDirectorCorporation(
 			})
 
 			// Step 9: Trigger director verification (fire and forget)
-			stub.verifyAllDirectorsHealth(corporationId).catch((error) => {
+			stub.verifyAllDirectorsHealth(corporationId).catch((error: unknown) => {
 				logger.error('[AutoReg] Failed to verify director health (async)', {
 					corporationId,
 					characterId,

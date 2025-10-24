@@ -84,6 +84,6 @@ export function useStoreSession() {
 		localStorage.setItem('sessionToken', sessionToken)
 
 		// Invalidate session query to refetch
-		queryClient.invalidateQueries({ queryKey: ['auth', 'session'] })
+		void queryClient.invalidateQueries({ queryKey: ['auth', 'session'] })
 	}
 }

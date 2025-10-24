@@ -60,10 +60,10 @@ export default function AuthCallbackPage() {
 
 				if (response.characterLinked) {
 					// Character was successfully linked - redirect to dashboard
-					navigate('/dashboard')
+					void navigate('/dashboard')
 				} else if (response.requiresClaimMain && response.characterInfo) {
 					// New user - redirect to claim-main page
-					navigate('/claim-main', {
+					void navigate('/claim-main', {
 						state: {
 							characterInfo: response.characterInfo,
 						},
@@ -71,7 +71,7 @@ export default function AuthCallbackPage() {
 				} else if (response.sessionToken) {
 					// Existing user logging in - store session and redirect to dashboard
 					storeSession(response.sessionToken)
-					navigate('/dashboard')
+					void navigate('/dashboard')
 				} else {
 					setError('Unexpected response from server')
 				}
@@ -81,7 +81,7 @@ export default function AuthCallbackPage() {
 			}
 		}
 
-		handleCallback()
+		void handleCallback()
 	}, [searchParams, navigate, storeSession])
 
 	if (error) {

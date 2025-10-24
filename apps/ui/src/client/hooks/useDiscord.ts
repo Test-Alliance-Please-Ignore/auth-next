@@ -115,7 +115,7 @@ export function useDiscordLink() {
 
 				if (data.type === 'discord-oauth-success') {
 					// Success - force immediate refetch of user data to get updated Discord info
-					queryClient.refetchQueries({ queryKey: ['auth', 'session'] })
+					void queryClient.refetchQueries({ queryKey: ['auth', 'session'] })
 					cleanup()
 				} else if (data.type === 'discord-oauth-error') {
 					console.error('Discord OAuth error:', data.error)

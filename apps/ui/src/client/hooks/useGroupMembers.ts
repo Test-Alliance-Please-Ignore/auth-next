@@ -36,10 +36,10 @@ export function useRemoveMember() {
 			api.removeGroupMember(groupId, userId),
 		onSuccess: (_, { groupId, userId }) => {
 			// Invalidate members list
-			queryClient.invalidateQueries({ queryKey: groupMemberKeys.list(groupId) })
+			void queryClient.invalidateQueries({ queryKey: groupMemberKeys.list(groupId) })
 
 			// Invalidate group detail (member count may have changed)
-			queryClient.invalidateQueries({ queryKey: groupKeys.detail(groupId) })
+			void queryClient.invalidateQueries({ queryKey: groupKeys.detail(groupId) })
 
 			// Optimistically remove from cache
 			queryClient.setQueryData<GroupMember[]>(groupMemberKeys.list(groupId), (old) => {
@@ -74,10 +74,10 @@ export function useToggleAdmin() {
 		},
 		onSuccess: (_, { groupId }) => {
 			// Invalidate members list to refetch with updated admin status
-			queryClient.invalidateQueries({ queryKey: groupMemberKeys.list(groupId) })
+			void queryClient.invalidateQueries({ queryKey: groupMemberKeys.list(groupId) })
 
 			// Invalidate group detail (admin list may have changed)
-			queryClient.invalidateQueries({ queryKey: groupKeys.detail(groupId) })
+			void queryClient.invalidateQueries({ queryKey: groupKeys.detail(groupId) })
 		},
 	})
 }

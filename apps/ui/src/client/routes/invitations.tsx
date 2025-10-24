@@ -37,7 +37,7 @@ export default function InvitationsPage() {
 							key={invitation.id}
 							invitation={invitation}
 							onActionComplete={() => {
-								navigate('/my-groups')
+								void navigate('/my-groups')
 							}}
 						/>
 					))}
