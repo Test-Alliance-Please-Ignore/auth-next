@@ -17,6 +17,7 @@ import type { EveTokenStore } from '@repo/eve-token-store'
 import type { schema } from '../db'
 
 import type { DbClient } from '@repo/db-utils'
+import { RpcTarget } from 'cloudflare:workers'
 
 /**
  * Admin service - Business logic for administrative operations
@@ -28,12 +29,14 @@ import type { DbClient } from '@repo/db-utils'
  * - User/character search and lookup
  * - Activity log queries
  */
-export class AdminService {
+export class AdminService extends RpcTarget {
 	constructor(
 		private db: DbClient<typeof schema>,
 		private eveTokenStore: EveTokenStore,
 		private eveCharacterData: EveCharacterData
-	) {}
+	) {
+		super()
+	}
 
 	/**
 	 * Delete a user and all associated data
