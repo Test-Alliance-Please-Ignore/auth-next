@@ -1,0 +1,31 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "admin",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-03-07",
+	"compatibility_flags": ["nodejs_compat"],
+	"logpush": true,
+	"observability": {
+		"enabled": true,
+		"head_sampling_rate": 1
+	},
+	"vars": {
+		"NAME": "admin",
+		"ENVIRONMENT": "production",
+		"SENTRY_RELEASE": "unknown"
+	},
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "EVE_TOKEN_STORE",
+				"class_name": "EveTokenStore",
+				"script_name": "eve-token-store"
+			},
+			{
+				"name": "EVE_CHARACTER_DATA",
+				"class_name": "EveCharacterData",
+				"script_name": "eve-character-data"
+			}
+		]
+	}
+}

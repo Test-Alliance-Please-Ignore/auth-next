@@ -4,6 +4,7 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
 import { sessionMiddleware } from './middleware/session'
+import adminRoutes from './routes/admin'
 import authRoutes from './routes/auth'
 import charactersRoutes from './routes/characters'
 import corporationsRoutes from './routes/corporations'
@@ -38,6 +39,7 @@ const app = new Hono<App>()
 	})
 
 	// API routes - mounted under /api prefix
+	.route('/api/admin', adminRoutes)
 	.route('/api/auth', authRoutes)
 	.route('/api/users', usersRoutes)
 	.route('/api/characters', charactersRoutes)

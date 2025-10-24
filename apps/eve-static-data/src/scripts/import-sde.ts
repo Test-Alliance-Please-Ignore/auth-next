@@ -140,7 +140,7 @@ async function main() {
 		await db
 			.insert(schema.skillCategories)
 			.values({
-				id: skillCategory.categoryID,
+				id: skillCategory.categoryID.toString(),
 				name: skillCategory.categoryName || 'Skills',
 				description: 'Character Skills',
 			})
@@ -163,8 +163,8 @@ async function main() {
 			await db
 				.insert(schema.skillGroups)
 				.values({
-					id: group.groupID,
-					categoryId: group.categoryID,
+					id: group.groupID.toString(),
+					categoryId: group.categoryID.toString(),
 					name: group.groupName,
 					published: group.published === 1,
 				})
@@ -201,9 +201,9 @@ async function main() {
 
 		// Process and insert skills
 		const skillRequirements: Array<{
-			skillId: number
-			requiredSkillId: number
-			requiredLevel: number
+			skillId: string
+			requiredSkillId: string
+			requiredLevel: string
 		}> = []
 
 		for (const skill of skills) {
@@ -225,11 +225,11 @@ async function main() {
 			await db
 				.insert(schema.skills)
 				.values({
-					id: skill.typeID,
-					groupId: skill.groupID,
+					id: skill.typeID.toString(),
+					groupId: skill.groupID.toString(),
 					name: skill.typeName,
 					description: skill.description || '',
-					rank: Math.round(rank),
+					rank: Math.round(rank).toString(),
 					primaryAttribute,
 					secondaryAttribute,
 					published: skill.published === 1,
@@ -240,7 +240,7 @@ async function main() {
 					set: {
 						name: skill.typeName,
 						description: skill.description || '',
-						rank: Math.round(rank),
+						rank: Math.round(rank).toString(),
 						primaryAttribute,
 						secondaryAttribute,
 						published: skill.published === 1,
@@ -265,9 +265,9 @@ async function main() {
 
 				if (requiredSkillId && requiredLevel) {
 					skillRequirements.push({
-						skillId: skill.typeID,
-						requiredSkillId: Math.round(requiredSkillId),
-						requiredLevel: Math.round(requiredLevel),
+						skillId: skill.typeID.toString(),
+						requiredSkillId: Math.round(requiredSkillId).toString(),
+						requiredLevel: Math.round(requiredLevel).toString(),
 					})
 				}
 			}

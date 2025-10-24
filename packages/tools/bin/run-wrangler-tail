@@ -1,15 +1,21 @@
 #!/bin/sh
 set -eu
 
-# Find monorepo root and source .env if it exists
-SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
-if [ -f "$REPO_ROOT/.env" ]; then
-	set -a
-	# shellcheck disable=SC1091
-	. "$REPO_ROOT/.env"
-	set +a
-fi
+# Find monorepo root by looking for pnpm-workspace.yaml
+find_repo_root() {
+	local dir="$PWD"
+	while [ "$dir" != "/" ]; do
+		if [ -f "$dir/pnpm-workspace.yaml" ]; then
+			echo "$dir"
+			return 0
+		fi
+		dir=$(dirname "$dir")
+	done
+	echo "Error: Could not find monorepo root (pnpm-workspace.yaml not found)" >&2
+	exit 1
+}
+
+REPO_ROOT=$(find_repo_root)
 
 NAME=$(jq -r '.name' package.json)
 
@@ -25,8 +31,8 @@ echo "Starting tail for $NAME (auto-reconnect enabled)..."
 while true; do
 	echo "Connecting to $NAME logs..."
 
-	# Run wrangler tail - will exit when disconnected
-	if wrangler tail "$NAME" "$@"; then
+	# Run wrangler tail with env file - will exit when disconnected
+	if wrangler tail "$NAME" --env-file "$REPO_ROOT/.env" "$@"; then
 		# Clean exit (user pressed Ctrl+C)
 		exit 0
 	else

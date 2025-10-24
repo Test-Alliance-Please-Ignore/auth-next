@@ -12,7 +12,12 @@ import { schema } from './db/schema'
 import type { App } from './context'
 
 const app = new Hono<App>()
-	.use('*', useWorkersLogger())
+	.use('*', (c, next) =>
+		useWorkersLogger(c.env.NAME, {
+			environment: c.env.ENVIRONMENT,
+			release: c.env.SENTRY_RELEASE,
+		})(c, next)
+	)
 	.use('*', cors())
 	.use('*', async (c, next) => {
 		// Initialize database connection using Neon serverless
@@ -225,7 +230,17 @@ app.get('/skills', async (c) => {
 		})
 	} else {
 		// For smaller queries, use the original approach
-		let query = db
+		// Apply filters
+		const conditions = []
+		if (publishedOnly) {
+			conditions.push(eq(schema.skills.published, true))
+		}
+
+		if (skillIds.length > 0) {
+			conditions.push(inArray(schema.skills.id, skillIds))
+		}
+
+		const query = db
 			.select({
 				id: schema.skills.id,
 				name: schema.skills.name,
@@ -240,22 +255,11 @@ app.get('/skills', async (c) => {
 			})
 			.from(schema.skills)
 			.leftJoin(schema.skillGroups, eq(schema.skills.groupId, schema.skillGroups.id))
+			.$dynamic()
 
-		// Apply filters
-		const conditions = []
-		if (publishedOnly) {
-			conditions.push(eq(schema.skills.published, true))
-		}
-
-		if (skillIds.length > 0) {
-			conditions.push(inArray(schema.skills.id, skillIds))
-		}
-
-		if (conditions.length > 0) {
-			query = query.where(and(...conditions))
-		}
-
-		skills = await query.orderBy(schema.skillGroups.name, schema.skills.name)
+		skills = await (conditions.length > 0
+			? query.where(and(...conditions)).orderBy(schema.skillGroups.name, schema.skills.name)
+			: query.orderBy(schema.skillGroups.name, schema.skills.name))
 	}
 
 	// Group by skill group (what players think of as "categories")

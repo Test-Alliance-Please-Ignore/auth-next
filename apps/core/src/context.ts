@@ -1,3 +1,4 @@
+import type { AdminWorker } from '@repo/admin'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
@@ -8,6 +9,8 @@ import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/
 
 export type Env = SharedHonoEnv & {
 	DATABASE_URL: string
+	/** Admin worker service binding (RPC) */
+	ADMIN: Service<AdminWorker> & AdminWorker
 	/** EVE Token Store Durable Object binding */
 	EVE_TOKEN_STORE: DurableObjectNamespace
 	/** EVE Character Data Durable Object binding */

@@ -46,6 +46,10 @@
 	},
 	"services": [
 		{
+			"binding": "ADMIN",
+			"service": "admin"
+		},
+		{
 			"binding": "EVE_STATIC_DATA",
 			"service": "eve-static-data"
 		},

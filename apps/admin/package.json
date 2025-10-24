@@ -1,5 +1,5 @@
 {
-	"name": "core",
+	"name": "admin",
 	"version": "0.1.0",
 	"private": true,
 	"sideEffects": false,
@@ -15,7 +15,6 @@
 		"deploy": "run-wrangler-deploy",
 		"dev": "run-vite-dev",
 		"fix:workers-types": "run-wrangler-types",
-		"migrate:directors": "bun run scripts/migrate-directors.ts",
 		"preview": "run-vite-preview",
 		"tail": "run-wrangler-tail",
 		"test": "run-vitest"
@@ -24,19 +23,13 @@
 		"@neondatabase/serverless": "0.10.4",
 		"@repo/admin": "workspace:*",
 		"@repo/db-utils": "workspace:*",
-		"@repo/discord": "workspace:*",
 		"@repo/do-utils": "workspace:*",
-		"@repo/eve-character-data": "workspace:*",
-		"@repo/eve-corporation-data": "workspace:*",
 		"@repo/eve-token-store": "workspace:*",
-		"@repo/eve-types": "workspace:*",
-		"@repo/groups": "workspace:*",
+		"@repo/eve-character-data": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
-		"@repo/notifications": "workspace:*",
 		"drizzle-orm": "0.44.6",
 		"hono": "4.9.11",
-		"workers-tagged-logger": "0.13.3",
-		"zod": "4.1.12"
+		"workers-tagged-logger": "0.13.3"
 	},
 	"devDependencies": {
 		"@cloudflare/vite-plugin": "1.1.0",

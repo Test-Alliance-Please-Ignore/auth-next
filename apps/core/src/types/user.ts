@@ -16,6 +16,11 @@ export type ActivityAction =
 	| 'session_expired'
 	| 'role_granted'
 	| 'role_revoked'
+	| 'admin_user_deleted'
+	| 'admin_character_deleted'
+	| 'admin_character_transferred'
+	| 'admin_user_viewed'
+	| 'admin_character_viewed'
 
 /**
  * User character DTO

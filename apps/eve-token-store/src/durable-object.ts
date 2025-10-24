@@ -970,13 +970,21 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 		// Fetch from ESI for uncached IDs
 		try {
+			// Convert string IDs to integers for ESI API
+			const integerIds = idsToResolve.map(id => parseInt(id, 10)).filter(id => !isNaN(id))
+
+			// If no valid IDs after conversion, return early
+			if (integerIds.length === 0) {
+				return result
+			}
+
 			const response = await fetch('https://esi.evetech.net/latest/universe/names/', {
 				method: 'POST',
 				headers: {
 					'X-Compatibility-Date': '2025-09-30',
 					'Content-Type': 'application/json',
 				},
-				body: JSON.stringify(idsToResolve),
+				body: JSON.stringify(integerIds),
 			})
 
 			if (!response.ok) {

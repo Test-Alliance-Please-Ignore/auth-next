@@ -1,17 +1,20 @@
-import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import type { KVCache } from '@repo/do-utils'
+import type { DbClient } from '@repo/db-utils'
+import type { HonoApp, SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers'
 import type { schema } from './db/schema'
 
-export interface Env {
+export type Env = SharedHonoEnv & {
 	DATABASE_URL: string
 	EVE_SDE_CACHE: KVNamespace
 }
 
-export interface App {
+export type Variables = SharedHonoVariables & {
+	db: DbClient<typeof schema>
+	idCache: KVCache<string, string>
+	nameCache: KVCache<string, string>
+}
+
+export interface App extends HonoApp {
 	Bindings: Env
-	Variables: {
-		db: PostgresJsDatabase<typeof schema>
-		idCache: KVCache<string, string>
-		nameCache: KVCache<string, string>
-	}
+	Variables: Variables
 }
