@@ -283,6 +283,79 @@ export interface RedeemInviteCodeResponse {
 	message: string
 }
 
+/**
+ * Admin User Management API Types
+ */
+
+export interface AdminUser {
+	id: string
+	mainCharacterId: string
+	mainCharacterName: string | null
+	characterCount: number
+	is_admin: boolean
+	createdAt: string
+	updatedAt: string
+}
+
+export interface AdminUserCharacter {
+	characterId: string
+	characterName: string
+	characterOwnerHash: string
+	is_primary: boolean
+	linkedAt: string
+	hasValidToken: boolean
+}
+
+export interface AdminUserDetail {
+	id: string
+	mainCharacterId: string
+	is_admin: boolean
+	discordUserId: string | null
+	characters: AdminUserCharacter[]
+	createdAt: string
+	updatedAt: string
+}
+
+export interface AdminActivityLog {
+	id: string
+	userId: string
+	characterId: string | null
+	action: string
+	metadata: Record<string, unknown> | null
+	ipAddress: string | null
+	userAgent: string | null
+	createdAt: string
+	characterName?: string | null
+	userName?: string | null
+}
+
+export interface AdminUsersFilters {
+	search?: string
+	isAdmin?: boolean
+	page?: number
+	pageSize?: number
+}
+
+export interface AdminActivityLogFilters {
+	userId?: string
+	characterId?: string
+	action?: string
+	startDate?: string
+	endDate?: string
+	page?: number
+	pageSize?: number
+}
+
+export interface PaginatedResponse<T> {
+	data: T[]
+	pagination: {
+		page: number
+		pageSize: number
+		totalCount: number
+		totalPages: number
+	}
+}
+
 export class ApiClient {
 	private baseUrl: string
 
@@ -594,6 +667,64 @@ export class ApiClient {
 
 	async verifyAllDirectors(corporationId: string): Promise<VerifyAllDirectorsResponse> {
 		return this.post(`/corporations/${corporationId}/directors/verify-all`)
+	}
+
+	// ===== Admin User Management API Methods =====
+
+	async getAdminUsers(filters?: AdminUsersFilters): Promise<PaginatedResponse<AdminUser>> {
+		const params = new URLSearchParams()
+		if (filters?.search) params.set('search', filters.search)
+		if (filters?.page !== undefined) params.set('offset', String((filters.page - 1) * (filters.pageSize || 25)))
+		if (filters?.pageSize !== undefined) params.set('limit', String(filters.pageSize))
+
+		const query = params.toString()
+		const response = await this.get<{
+			users: AdminUser[]
+			total: number
+			limit: number
+			offset: number
+		}>(`/admin/users${query ? `?${query}` : ''}`)
+
+		// Transform backend response to frontend pagination format
+		const pageSize = response.limit
+		const currentPage = Math.floor(response.offset / pageSize) + 1
+		const totalPages = Math.ceil(response.total / pageSize)
+
+		return {
+			data: response.users,
+			pagination: {
+				page: currentPage,
+				pageSize: pageSize,
+				totalCount: response.total,
+				totalPages: totalPages,
+			},
+		}
+	}
+
+	async getAdminUser(userId: string): Promise<AdminUserDetail> {
+		return this.get(`/admin/users/${userId}`)
+	}
+
+	async setUserAdmin(userId: string, isAdmin: boolean): Promise<{ success: boolean }> {
+		return this.post(`/admin/users/${userId}/admin`, { isAdmin })
+	}
+
+	async deleteUserCharacter(userId: string, characterId: string): Promise<{ success: boolean }> {
+		return this.delete(`/admin/users/${userId}/characters/${characterId}`)
+	}
+
+	async getActivityLogs(filters?: AdminActivityLogFilters): Promise<PaginatedResponse<AdminActivityLog>> {
+		const params = new URLSearchParams()
+		if (filters?.userId) params.set('userId', filters.userId)
+		if (filters?.characterId) params.set('characterId', filters.characterId)
+		if (filters?.action) params.set('action', filters.action)
+		if (filters?.startDate) params.set('startDate', filters.startDate)
+		if (filters?.endDate) params.set('endDate', filters.endDate)
+		if (filters?.page !== undefined) params.set('page', String(filters.page))
+		if (filters?.pageSize !== undefined) params.set('pageSize', String(filters.pageSize))
+
+		const query = params.toString()
+		return this.get(`/admin/activity-logs${query ? `?${query}` : ''}`)
 	}
 }
 

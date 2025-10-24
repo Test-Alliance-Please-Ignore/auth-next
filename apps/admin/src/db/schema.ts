@@ -1,28 +1,28 @@
 import { index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 
 /**
- * Import core database tables that admin worker needs to access
- * Admin operations need to query and modify user/character data
+ * NOTE: Core database tables (users, userCharacters, etc.) are imported directly
+ * in the service files where needed. They are NOT exported from this schema file
+ * to prevent Drizzle-kit from including them in migrations.
+ *
+ * The core worker owns those tables and manages their migrations.
  */
-import {
-	users,
-	userCharacters,
-	userSessions,
-	userPreferences,
-	userActivityLog,
-} from '../../../core/src/db/schema'
 
 /**
- * Admin audit log table - Tracks all administrative actions
+ * Admin operations audit log table - Tracks all administrative actions
  *
  * Stores comprehensive audit trail of all admin operations including:
  * - User deletions
  * - Character transfers
  * - Character deletions
  * - Admin viewing of sensitive data
+ *
+ * IMPORTANT: This is named differently from user_activity_log to avoid conflicts.
+ * The core worker has user_activity_log for regular user actions.
+ * This table is specifically for admin operations.
  */
-export const adminAuditLog = pgTable(
-	'admin_audit_log',
+export const adminOperationsLog = pgTable(
+	'admin_operations_log',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
 		/** ID of the admin user who performed the action */
@@ -44,31 +44,14 @@ export const adminAuditLog = pgTable(
 	},
 	(table) => [
 		// Index for finding all actions by admin user
-		index('admin_audit_log_admin_user_id_idx').on(table.adminUserId),
+		index('admin_operations_log_admin_user_id_idx').on(table.adminUserId),
 		// Index for chronological queries
-		index('admin_audit_log_timestamp_idx').on(table.timestamp),
+		index('admin_operations_log_timestamp_idx').on(table.timestamp),
 		// Index for filtering by action type and time
-		index('admin_audit_log_action_timestamp_idx').on(table.action, table.timestamp),
+		index('admin_operations_log_action_timestamp_idx').on(table.action, table.timestamp),
 		// Index for finding actions on specific users
-		index('admin_audit_log_target_user_id_idx').on(table.targetUserId),
+		index('admin_operations_log_target_user_id_idx').on(table.targetUserId),
 		// Index for finding actions on specific characters
-		index('admin_audit_log_target_character_id_idx').on(table.targetCharacterId),
+		index('admin_operations_log_target_character_id_idx').on(table.targetCharacterId),
 	]
 )
-
-/**
- * Re-export core tables for use in admin operations
- */
-export { users, userCharacters, userSessions, userPreferences, userActivityLog }
-
-/**
- * Export all tables for Drizzle migrations and queries
- */
-export const schema = {
-	adminAuditLog,
-	users,
-	userCharacters,
-	userSessions,
-	userPreferences,
-	userActivityLog,
-}

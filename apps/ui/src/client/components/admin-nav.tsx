@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { FolderKanban, Users, Building2, ArrowLeft } from 'lucide-react'
+import { FolderKanban, Users, Building2, ArrowLeft, UserCircle, ScrollText } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 
@@ -21,6 +21,16 @@ export function AdminNav() {
 			label: 'Corporations',
 			href: '/admin/corporations',
 			icon: Building2,
+		},
+		{
+			label: 'Users',
+			href: '/admin/users',
+			icon: UserCircle,
+		},
+		{
+			label: 'Activity Log',
+			href: '/admin/activity-log',
+			icon: ScrollText,
 		},
 	]
 

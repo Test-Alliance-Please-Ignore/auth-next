@@ -1,3 +1,5 @@
+import type { CoreWorker as ICoreWorker } from '@repo/admin'
+
 /**
  * Admin worker context types
  */
@@ -14,6 +16,9 @@ export type Env = {
 
 	/** EVE Character Data Durable Object namespace */
 	EVE_CHARACTER_DATA: DurableObjectNamespace
+
+	/** Core worker service binding (RPC) */
+	CORE: ICoreWorker
 
 	/** Worker name (from wrangler vars) */
 	NAME: string

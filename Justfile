@@ -169,8 +169,8 @@ tail worker:
   bun turbo -F {{worker}} tail
 
 [group('5. utility')]
-tail-all:
+tail-all *flags:
   #!/usr/bin/env bash
   set -euo pipefail
   [ -f .env ] && set -a && source .env && set +a
-  bun turbo -F "./apps/*" tail
+  bun turbo {{flags}} -F "./apps/*" tail

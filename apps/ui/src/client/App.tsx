@@ -23,6 +23,9 @@ import AdminGroupsPage from './routes/admin/groups'
 import AdminGroupDetailPage from './routes/admin/group-detail'
 import AdminCorporationsPage from './routes/admin/corporations'
 import AdminCorporationDetailPage from './routes/admin/corporation-detail'
+import AdminUsersPage from './routes/admin/users'
+import AdminUserDetailPage from './routes/admin/user-detail'
+import AdminActivityLogPage from './routes/admin/activity-log'
 
 // Create a client
 const queryClient = new QueryClient({
@@ -65,6 +68,9 @@ export default function App() {
 						<Route path="groups/:groupId" element={<AdminGroupDetailPage />} />
 						<Route path="corporations" element={<AdminCorporationsPage />} />
 						<Route path="corporations/:corporationId" element={<AdminCorporationDetailPage />} />
+						<Route path="users" element={<AdminUsersPage />} />
+						<Route path="users/:userId" element={<AdminUserDetailPage />} />
+						<Route path="activity-log" element={<AdminActivityLogPage />} />
 					</Route>
 				</Routes>
 			</BrowserRouter>

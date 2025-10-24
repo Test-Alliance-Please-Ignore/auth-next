@@ -6,6 +6,8 @@ import type { DbClient } from '@repo/db-utils'
 
 /**
  * Create a database client instance
+ * Admin worker only manages its own adminOperationsLog table
+ *
  * @param databaseUrl - The Neon database connection URL
  * @returns A configured Drizzle database client
  */

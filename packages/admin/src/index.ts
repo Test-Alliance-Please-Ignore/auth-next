@@ -165,6 +165,43 @@ export interface ActivityLogResult {
 }
 
 /**
+ * Core Worker RPC Interface
+ * This interface defines all RPC methods exposed by the core worker
+ * These methods provide direct access to user/character data without audit logging
+ */
+export interface CoreWorker {
+	/**
+	 * Search users with pagination
+	 */
+	searchUsers(params: SearchUsersParams): Promise<SearchUsersResult>
+
+	/**
+	 * Get detailed user information
+	 */
+	getUserDetails(userId: string): Promise<UserDetails | null>
+
+	/**
+	 * Delete a user and all associated data
+	 */
+	deleteUser(userId: string): Promise<DeleteUserResult>
+
+	/**
+	 * Transfer character ownership from one user to another
+	 */
+	transferCharacterOwnership(characterId: string, newUserId: string): Promise<TransferCharacterResult>
+
+	/**
+	 * Delete/unlink a character from its owner
+	 */
+	deleteCharacter(characterId: string): Promise<DeleteCharacterResult>
+
+	/**
+	 * Get character ownership information
+	 */
+	getCharacterOwnership(characterId: string): Promise<CharacterOwnerInfo | null>
+}
+
+/**
  * Admin Worker RPC Interface
  * This interface defines all RPC methods exposed by the admin worker
  */

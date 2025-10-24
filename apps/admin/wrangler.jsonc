@@ -9,6 +9,13 @@
 		"enabled": true,
 		"head_sampling_rate": 1
 	},
+	"workers_dev": false,
+	"exports": {
+		"handlers": ["fetch"],
+		"rpc": {
+			"class_name": "AdminWorkerEntrypoint"
+		}
+	},
 	"vars": {
 		"NAME": "admin",
 		"ENVIRONMENT": "production",
@@ -27,5 +34,12 @@
 				"script_name": "eve-character-data"
 			}
 		]
-	}
+	},
+	"services": [
+		{
+			"binding": "CORE",
+			"service": "core",
+			"entrypoint": "CoreWorker"
+		}
+	]
 }
