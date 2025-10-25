@@ -214,6 +214,12 @@ export const managedCorporations = pgTable(
 		isVerified: boolean('is_verified').default(false).notNull(),
 		/** Number of healthy directors currently available */
 		healthyDirectorCount: integer('healthy_director_count').default(0).notNull(),
+		/** Discord server/guild ID linked to this corporation */
+		discordGuildId: varchar('discord_guild_id', { length: 255 }),
+		/** Discord server name (cached) */
+		discordGuildName: varchar('discord_guild_name', { length: 255 }),
+		/** Whether to automatically invite corporation members to Discord server */
+		discordAutoInvite: boolean('discord_auto_invite').default(false).notNull(),
 		/** Admin user who configured this corporation */
 		configuredBy: uuid('configured_by').references(() => users.id, { onDelete: 'set null' }),
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -224,6 +230,41 @@ export const managedCorporations = pgTable(
 		index('managed_corporations_ticker_idx').on(table.ticker),
 		index('managed_corporations_assigned_character_id_idx').on(table.assignedCharacterId),
 		index('managed_corporations_is_active_idx').on(table.isActive),
+		index('managed_corporations_discord_guild_id_idx').on(table.discordGuildId),
+	]
+)
+
+/**
+ * Corporation Discord Invites audit table
+ *
+ * Tracks Discord server join attempts for corporation members.
+ * Used for debugging and auditing auto-invite functionality.
+ */
+export const corporationDiscordInvites = pgTable(
+	'corporation_discord_invites',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		/** Corporation ID */
+		corporationId: text('corporation_id')
+			.notNull()
+			.references(() => managedCorporations.corporationId, { onDelete: 'cascade' }),
+		/** User ID from core users table */
+		userId: uuid('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		/** Discord user ID */
+		discordUserId: varchar('discord_user_id', { length: 255 }).notNull(),
+		/** Whether the invite/join was successful */
+		success: boolean('success').notNull(),
+		/** Error message if invite failed */
+		errorMessage: text('error_message'),
+		/** When the invite attempt was made */
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		index('corporation_discord_invites_corp_id_idx').on(table.corporationId),
+		index('corporation_discord_invites_user_id_idx').on(table.userId),
+		index('corporation_discord_invites_created_at_idx').on(table.createdAt),
 	]
 )
 
@@ -283,6 +324,7 @@ export const schema = {
 	userActivityLog,
 	oauthStates,
 	managedCorporations,
+	corporationDiscordInvites,
 	usersRelations,
 	userCharactersRelations,
 	userSessionsRelations,

@@ -78,6 +78,13 @@
       "when": 1761404935285,
       "tag": "0010_living_red_ghost",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1761412290346,
+      "tag": "0011_wandering_callisto",
+      "breakpoints": true
     }
   ]
 }

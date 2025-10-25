@@ -157,4 +157,43 @@ discord.post('/refresh', requireAuth(), async (c) => {
 	}
 })
 
+/**
+ * Join user to corporation Discord servers
+ * POST /api/discord/join-servers
+ * Requires authentication
+ *
+ * Automatically joins the authenticated user to Discord servers for all
+ * managed corporations they are a member of (if auto-invite is enabled).
+ *
+ * Returns: {
+ *   results: Array<{
+ *     guildId: string,
+ *     guildName: string,
+ *     corporationName: string,
+ *     success: boolean,
+ *     errorMessage?: string,
+ *     alreadyMember?: boolean
+ *   }>,
+ *   totalInvited: number,
+ *   totalFailed: number
+ * }
+ */
+discord.post('/join-servers', requireAuth(), async (c) => {
+	const user = c.get('user')!
+
+	try {
+		const result = await discordService.joinUserToCorporationServers(c.env, user.id)
+
+		return c.json(result)
+	} catch (error) {
+		logger.error('Error joining Discord servers:', error)
+		return c.json(
+			{
+				error: error instanceof Error ? error.message : 'Failed to join Discord servers',
+			},
+			500
+		)
+	}
+})
+
 export default discord

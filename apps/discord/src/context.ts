@@ -12,6 +12,15 @@ export type Env = SharedHonoEnv & {
 
 	DISCORD_CLIENT_ID: string
 	DISCORD_CLIENT_SECRET: string
+	DISCORD_BOT_TOKEN: string
+
+	// Proxy configuration for Discord API rate limit handling
+	DISCORD_PROXY_HOST: string
+	DISCORD_PROXY_PORT_START: string
+	DISCORD_PROXY_PORT_COUNT: string
+	DISCORD_PROXY_USERNAME: string
+	DISCORD_PROXY_PASSWORD: string
+
 	ENCRYPTION_KEY: string
 }
 

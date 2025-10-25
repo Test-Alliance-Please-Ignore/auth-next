@@ -166,6 +166,9 @@ export interface ManagedCorporation {
 	lastVerified: string | null
 	isVerified: boolean
 	healthyDirectorCount: number
+	discordGuildId: string | null
+	discordGuildName: string | null
+	discordAutoInvite: boolean
 	configuredBy: string | null
 	createdAt: string
 	updatedAt: string
@@ -195,6 +198,9 @@ export interface UpdateCorporationRequest {
 	assignedCharacterId?: string
 	assignedCharacterName?: string
 	isActive?: boolean
+	discordGuildId?: string | null
+	discordGuildName?: string | null
+	discordAutoInvite?: boolean
 }
 
 export interface CorporationAccessVerification {
@@ -460,6 +466,21 @@ export class ApiClient {
 
 	async startDiscordLinking(): Promise<{ url: string }> {
 		return this.post('/discord/link/start')
+	}
+
+	async joinDiscordServers(): Promise<{
+		results: Array<{
+			guildId: string
+			guildName: string
+			corporationName: string
+			success: boolean
+			errorMessage?: string
+			alreadyMember?: boolean
+		}>
+		totalInvited: number
+		totalFailed: number
+	}> {
+		return this.post('/discord/join-servers')
 	}
 
 	// ===== Groups API Methods =====

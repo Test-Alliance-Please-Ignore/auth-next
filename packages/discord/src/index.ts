@@ -54,6 +54,22 @@ export interface DiscordProfile {
 	scopes: string[]
 }
 
+/**
+ * Result of attempting to join a user to a Discord server
+ */
+export interface JoinServerResult {
+	/** Discord guild/server ID */
+	guildId: string
+	/** Discord guild/server name (if available) */
+	guildName?: string
+	/** Whether the join was successful */
+	success: boolean
+	/** Error message if join failed */
+	errorMessage?: string
+	/** Whether the user was already a member */
+	alreadyMember?: boolean
+}
+
 export interface Discord {
 	/**
 	 * Get Discord profile by core user ID
@@ -91,4 +107,13 @@ export interface Discord {
 		expiresAt: Date,
 		coreUserId: string
 	): Promise<boolean>
+
+	/**
+	 * Join a user to one or more Discord servers
+	 * Uses the user's OAuth token and bot token to add them directly to servers
+	 * @param coreUserId - Core user ID
+	 * @param guildIds - Array of Discord guild/server IDs to join
+	 * @returns Array of results for each guild
+	 */
+	joinUserToServers(coreUserId: string, guildIds: string[]): Promise<JoinServerResult[]>
 }

@@ -20,12 +20,15 @@
 		"test": "run-vitest"
 	},
 	"dependencies": {
+		"@discordjs/rest": "2.5.1",
 		"@hono/zod-validator": "^0.7.4",
 		"@neondatabase/serverless": "0.10.4",
 		"@repo/db-utils": "workspace:*",
 		"@repo/discord": "workspace:*",
 		"@repo/do-utils": "workspace:*",
+		"@repo/hazmat": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
+		"discord-api-types": "0.37.102",
 		"drizzle-orm": "0.44.6",
 		"hono": "4.9.11",
 		"workers-tagged-logger": "0.13.3",

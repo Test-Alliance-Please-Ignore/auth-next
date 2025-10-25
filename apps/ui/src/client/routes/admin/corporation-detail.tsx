@@ -15,10 +15,16 @@ import {
 	Building2,
 	CheckCircle2,
 	XCircle,
+	MessageSquare,
+	Save,
+	X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
+import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DirectorList } from '@/components/DirectorList'
 import {
@@ -70,6 +76,9 @@ export default function CorporationDetailPage() {
 				assignedCharacterId: corporation.assignedCharacterId || undefined,
 				assignedCharacterName: corporation.assignedCharacterName || undefined,
 				isActive: corporation.isActive,
+				discordGuildId: corporation.discordGuildId || undefined,
+				discordGuildName: corporation.discordGuildName || undefined,
+				discordAutoInvite: corporation.discordAutoInvite,
 			})
 		} else if (!isEditing) {
 			// Reset form when not editing
@@ -78,7 +87,7 @@ export default function CorporationDetailPage() {
 	}, [corporation, isEditing])
 
 	// Handlers
-	const _handleUpdate = async (e: React.FormEvent) => {
+	const handleUpdate = async (e: React.FormEvent) => {
 		e.preventDefault()
 		try {
 			await updateCorporation.mutateAsync({ corporationId: corpId, data: formData })
@@ -246,6 +255,139 @@ export default function CorporationDetailPage() {
 						</CardHeader>
 						<CardContent>
 							<DirectorList corporationId={corpId} />
+						</CardContent>
+					</Card>
+
+					{/* Discord Integration Card */}
+					<Card>
+						<CardHeader>
+							<div className="flex items-center justify-between">
+								<div>
+									<div className="flex items-center gap-2">
+										<MessageSquare className="h-5 w-5 text-[hsl(var(--discord-blurple))]" />
+										<CardTitle>Discord Integration</CardTitle>
+									</div>
+									<CardDescription>
+										Configure Discord server auto-invite for corporation members. When enabled, users with linked Discord accounts will automatically be invited to join the corporation's Discord server.
+									</CardDescription>
+								</div>
+								{!isEditing && (
+									<Button onClick={() => setIsEditing(true)} variant="outline" size="sm">
+										Edit
+									</Button>
+								)}
+							</div>
+						</CardHeader>
+						<CardContent>
+							{isEditing ? (
+								<form onSubmit={handleUpdate} className="space-y-4">
+									<div className="space-y-2">
+										<Label htmlFor="discordGuildId">Discord Server/Guild ID</Label>
+										<Input
+											id="discordGuildId"
+											type="text"
+											placeholder="e.g., 1234567890123456789"
+											value={formData.discordGuildId || ''}
+											onChange={(e) =>
+												setFormData({ ...formData, discordGuildId: e.target.value || null })
+											}
+										/>
+										<p className="text-xs text-muted-foreground">
+											Right-click the server in Discord → Copy Server ID (requires Developer Mode enabled)
+										</p>
+									</div>
+
+									<div className="space-y-2">
+										<Label htmlFor="discordGuildName">Discord Server Name (Optional)</Label>
+										<Input
+											id="discordGuildName"
+											type="text"
+											placeholder="e.g., My Corporation Server"
+											value={formData.discordGuildName || ''}
+											onChange={(e) =>
+												setFormData({ ...formData, discordGuildName: e.target.value || null })
+											}
+										/>
+										<p className="text-xs text-muted-foreground">
+											Display name for the Discord server (shown to users)
+										</p>
+									</div>
+
+									<div className="flex items-center space-x-2">
+										<Switch
+											id="discordAutoInvite"
+											checked={formData.discordAutoInvite || false}
+											onCheckedChange={(checked: boolean) =>
+												setFormData({ ...formData, discordAutoInvite: checked })
+											}
+										/>
+										<Label htmlFor="discordAutoInvite" className="cursor-pointer">
+											Enable Auto-Invite
+										</Label>
+									</div>
+									<p className="text-xs text-muted-foreground">
+										When enabled, corporation members with linked Discord accounts can automatically join the server
+									</p>
+
+									<div className="flex gap-2 pt-2">
+										<Button type="submit" disabled={updateCorporation.isPending}>
+											<Save className="mr-2 h-4 w-4" />
+											{updateCorporation.isPending ? 'Saving...' : 'Save Changes'}
+										</Button>
+										<Button
+											type="button"
+											variant="outline"
+											onClick={() => setIsEditing(false)}
+											disabled={updateCorporation.isPending}
+										>
+											<X className="mr-2 h-4 w-4" />
+											Cancel
+										</Button>
+									</div>
+								</form>
+							) : (
+								<div className="space-y-4">
+									<div className="grid gap-4 md:grid-cols-2">
+										<div>
+											<p className="text-sm font-medium text-muted-foreground">Discord Server ID</p>
+											<p className="text-sm">
+												{corporation.discordGuildId || (
+													<span className="text-muted-foreground italic">Not configured</span>
+												)}
+											</p>
+										</div>
+										<div>
+											<p className="text-sm font-medium text-muted-foreground">Server Name</p>
+											<p className="text-sm">
+												{corporation.discordGuildName || (
+													<span className="text-muted-foreground italic">Not set</span>
+												)}
+											</p>
+										</div>
+									</div>
+									<div className="flex items-center gap-2">
+										<p className="text-sm font-medium text-muted-foreground">Auto-Invite:</p>
+										{corporation.discordAutoInvite ? (
+											<span className="inline-flex items-center gap-1 text-sm text-green-600 dark:text-green-400">
+												<CheckCircle2 className="h-4 w-4" />
+												Enabled
+											</span>
+										) : (
+											<span className="inline-flex items-center gap-1 text-sm text-muted-foreground">
+												<XCircle className="h-4 w-4" />
+												Disabled
+											</span>
+										)}
+									</div>
+									{corporation.discordGuildId && corporation.discordAutoInvite && (
+										<div className="rounded-lg bg-muted/50 p-3">
+											<p className="text-sm text-muted-foreground">
+												<strong>Note:</strong> The Discord bot must be added to this server with the "guilds.join" scope and "Create Instant Invite" permission for auto-invite to work.
+											</p>
+										</div>
+									)}
+								</div>
+							)}
 						</CardContent>
 					</Card>
 				</TabsContent>

@@ -108,6 +108,122 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 	}
 
 	/**
+	 * Join a user to one or more Discord servers
+	 * Uses the user's OAuth token and bot token to add them directly to servers
+	 *
+	 * @param coreUserId - Core user ID
+	 * @param guildIds - Array of Discord guild/server IDs to join
+	 * @returns Array of results for each guild
+	 */
+	async joinUserToServers(
+		coreUserId: string,
+		guildIds: string[]
+	): Promise<
+		Array<{
+			guildId: string
+			guildName?: string
+			success: boolean
+			errorMessage?: string
+			alreadyMember?: boolean
+		}>
+	> {
+		const { DiscordBotService } = await import('./services/discord-bot.service')
+
+		// Get user from database
+		const user = await this.db.query.discordUsers.findFirst({
+			where: eq(discordUsers.coreUserId, coreUserId),
+		})
+
+		if (!user) {
+			logger.error('[DiscordDO] User not found by core user ID', { coreUserId })
+			// Return failure for all guilds
+			return guildIds.map((guildId) => ({
+				guildId,
+				success: false,
+				errorMessage: 'Discord account not linked',
+			}))
+		}
+
+		// Get user's token
+		const tokenRecord = await this.db.query.discordTokens.findFirst({
+			where: eq(discordTokens.userId, user.id),
+		})
+
+		if (!tokenRecord) {
+			logger.error('[DiscordDO] Token not found for user', { userId: user.userId })
+			return guildIds.map((guildId) => ({
+				guildId,
+				success: false,
+				errorMessage: 'Discord token not found',
+			}))
+		}
+
+		// Check if token is expired
+		if (tokenRecord.expiresAt < new Date()) {
+			logger.info('[DiscordDO] Token expired, attempting refresh', { userId: user.userId })
+
+			// Try to refresh the token
+			const refreshSuccess = await this.refreshToken(user.userId)
+
+			if (!refreshSuccess) {
+				logger.error('[DiscordDO] Failed to refresh expired token', { userId: user.userId })
+				return guildIds.map((guildId) => ({
+					guildId,
+					success: false,
+					errorMessage: 'Discord token expired and refresh failed. Please re-link your Discord account.',
+				}))
+			}
+
+			// Get the refreshed token
+			const refreshedToken = await this.db.query.discordTokens.findFirst({
+				where: eq(discordTokens.userId, user.id),
+			})
+
+			if (!refreshedToken) {
+				return guildIds.map((guildId) => ({
+					guildId,
+					success: false,
+					errorMessage: 'Failed to retrieve refreshed token',
+				}))
+			}
+
+			// Use refreshed token
+			const decryptedAccessToken = await this.decrypt(refreshedToken.accessToken)
+			const botService = new DiscordBotService(this.env)
+
+			// Process each guild
+			const results = await Promise.all(
+				guildIds.map(async (guildId) => {
+					const result = await botService.addGuildMember(guildId, user.userId, decryptedAccessToken)
+					return {
+						guildId,
+						...result,
+					}
+				})
+			)
+
+			return results
+		}
+
+		// Token is valid, decrypt and use it
+		const decryptedAccessToken = await this.decrypt(tokenRecord.accessToken)
+		const botService = new DiscordBotService(this.env)
+
+		// Process each guild
+		const results = await Promise.all(
+			guildIds.map(async (guildId) => {
+				const result = await botService.addGuildMember(guildId, user.userId, decryptedAccessToken)
+				return {
+					guildId,
+					...result,
+				}
+			})
+		)
+
+		return results
+	}
+
+	/**
 	 * Manually refresh a token (private - used internally)
 	 */
 	private async refreshToken(userId: string): Promise<boolean> {
