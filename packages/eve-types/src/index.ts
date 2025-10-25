@@ -7,8 +7,10 @@
  * @packageDocumentation
  */
 
-import { brand } from './types';
+import { brand, unbrand } from './types';
 import type { EveBrandedType } from './types';
+
+export { unbrand };
 
 
 /**

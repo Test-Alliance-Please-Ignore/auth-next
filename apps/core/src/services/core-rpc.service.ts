@@ -110,6 +110,7 @@ export class CoreRpcService {
 	async getUserDetails(userId: string): Promise<UserDetails | null> {
 		const { users, userCharacters } = await import('../db/schema')
 		const { eq } = await import('@repo/db-utils')
+		const { getStub } = await import('@repo/do-utils')
 
 		// 1. Query user
 		const user = await this.db.query.users.findFirst({
@@ -125,17 +126,33 @@ export class CoreRpcService {
 			where: eq(userCharacters.userId, userId),
 		})
 
-		// 3. Build character summaries
-		const characterSummaries = chars.map((char) => ({
-			characterId: char.characterId,
-			characterName: char.characterName,
-			characterOwnerHash: char.characterOwnerHash,
-			is_primary: char.is_primary,
-			linkedAt: char.linkedAt,
-			hasValidToken: false, // TODO: Could implement token validation if needed
-		}))
+		// 3. Get EVE Token Store stub for token validation
+		const eveTokenStore = getStub<EveTokenStore>(this.eveTokenStoreNamespace, 'default')
 
-		// 4. Return user details
+		// 4. Build character summaries with token validation
+		const characterSummaries = await Promise.all(
+			chars.map(async (char) => {
+				// Check token validity
+				let hasValidToken = false
+				try {
+					const tokenInfo = await eveTokenStore.getTokenInfo(char.characterId)
+					hasValidToken = !!tokenInfo && !tokenInfo.isExpired
+				} catch (error) {
+					console.error(`Failed to check token for character ${char.characterId}:`, error)
+				}
+
+				return {
+					characterId: char.characterId,
+					characterName: char.characterName,
+					characterOwnerHash: char.characterOwnerHash,
+					is_primary: char.is_primary,
+					linkedAt: char.linkedAt,
+					hasValidToken,
+				}
+			})
+		)
+
+		// 5. Return user details
 		return {
 			id: user.id,
 			mainCharacterId: user.mainCharacterId,

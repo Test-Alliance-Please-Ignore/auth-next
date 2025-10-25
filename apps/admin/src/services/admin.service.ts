@@ -154,12 +154,21 @@ export class AdminService {
 			return null
 		}
 
-		// 4. Log admin view action
+		// 4. Check token validity
+		let hasValidToken = false
+		try {
+			const tokenInfo = await this.eveTokenStore.getTokenInfo(characterId)
+			hasValidToken = !!tokenInfo && !tokenInfo.isExpired
+		} catch (error) {
+			console.error(`Failed to check token for character ${characterId}:`, error)
+		}
+
+		// 5. Log admin view action
 		await this.logAdminAction(adminUserId, 'admin_character_viewed', {
 			targetCharacterId: characterId,
 		})
 
-		// 5. Return character details
+		// 6. Return character details
 		return {
 			characterId,
 			characterName: publicInfo?.name ?? 'Unknown',
@@ -174,7 +183,7 @@ export class AdminService {
 						birthday: publicInfo.birthday ? new Date(publicInfo.birthday) : undefined,
 					}
 				: {},
-			hasValidToken: false, // TODO: Could implement token validation if needed
+			hasValidToken,
 			lastUpdated: publicInfo?.updatedAt ?? null,
 		}
 	}

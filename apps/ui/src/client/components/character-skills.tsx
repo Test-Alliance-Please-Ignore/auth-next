@@ -95,7 +95,7 @@ export function CharacterSkills({
 					group.skills.map((skill: SkillMetadata) => ({
 						...skill,
 						groupName: group.groupName,
-						characterSkill: skills.skills.find((s: Skill) => s.skill_id === skill.id),
+						characterSkill: skills.skills.find((s: Skill) => s.skill_id === Number(skill.id)),
 					}))
 				)
 				.filter((skill: EnrichedSkill) => skill.characterSkill)
