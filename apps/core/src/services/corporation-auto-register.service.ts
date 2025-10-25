@@ -259,12 +259,15 @@ export async function autoRegisterDirectorCorporation(
 			}
 		} catch (error) {
 			// If there's an unexpected error, log it
-			const errorMessage = error instanceof Error ? error.message : String(error)
+			// Extract only serializable properties from error
+			const errorInfo = error instanceof Error
+				? { message: error.message, name: error.name }
+				: { message: String(error) }
 
 			logger.error('[AutoReg] Failed to add director', {
 				corporationId,
 				characterId,
-				error: errorMessage,
+				error: errorInfo,
 			})
 
 			// Still return success if corporation was registered
@@ -282,10 +285,14 @@ export async function autoRegisterDirectorCorporation(
 			}
 		}
 	} catch (error) {
+		// Extract only serializable properties from error
+		const errorInfo = error instanceof Error
+			? { message: error.message, name: error.name, stack: error.stack }
+			: { message: String(error) }
+
 		logger.error('[AutoReg] Unexpected error during auto-registration', {
 			characterId,
-			error: error instanceof Error ? error.message : String(error),
-			stack: error instanceof Error ? error.stack : undefined,
+			error: errorInfo,
 		})
 
 		return {

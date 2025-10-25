@@ -2,34 +2,12 @@ import { DurableObject } from 'cloudflare:workers'
 
 import { eq } from '@repo/db-utils'
 import { logger } from '@repo/hono-helpers'
-import {
-	DISCORD_REQUIRED_SCOPES,
-} from '@repo/discord'
 
 import { createDb } from './db'
 import { discordTokens, discordUsers } from './db/schema'
 
-import type { DiscordTokenResponse ,
-	AuthorizationUrlResponse,
-	CallbackResult,
-	Discord} from '@repo/discord'
+import type { DiscordTokenResponse, Discord } from '@repo/discord'
 import type { Env } from './context'
-
-/**
- * Discord user info response from /users/@me
- */
-interface DiscordUserInfo {
-	/** Discord user ID */
-	id: string
-	/** Discord username */
-	username: string
-	/** Discord discriminator (legacy, "0" for new usernames) */
-	discriminator: string
-	/** Global display name (if set) */
-	global_name?: string | null
-	/** User's avatar hash */
-	avatar?: string | null
-}
 
 /**
  * Discord Durable Object
@@ -52,74 +30,6 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 	) {
 		super(state, env)
 		this.db = createDb(env.DATABASE_URL)
-	}
-
-	/**
-	 * Start OAuth flow for login
-	 */
-	async startLoginFlow(state?: string): Promise<AuthorizationUrlResponse> {
-		return this.generateAuthUrl(state)
-	}
-
-	/**
-	 * Handle OAuth callback - exchange code for tokens and store them
-	 * @param code - OAuth authorization code
-	 * @param state - OAuth state parameter
-	 * @param coreUserId - Optional core user ID to link this Discord account to
-	 */
-	async handleCallback(code: string, state?: string, coreUserId?: string): Promise<CallbackResult> {
-		try {
-			// If coreUserId is provided, check if this Discord account is already linked
-			if (coreUserId) {
-				const existingLink = await this.db.query.discordUsers.findFirst({
-					where: eq(discordUsers.coreUserId, coreUserId),
-				})
-
-				if (existingLink) {
-					return {
-						success: false,
-						error: 'A Discord account is already linked to this user',
-					}
-				}
-			}
-
-			// Exchange authorization code for tokens
-			const tokenResponse = await this.exchangeCodeForToken(code)
-
-			// Get user information from Discord
-			const userInfo = await this.getUserInfo(tokenResponse.access_token)
-
-			// Parse scopes
-			const scopes = tokenResponse.scope ? tokenResponse.scope.split(' ') : []
-
-			// Calculate token expiration
-			const expiresAt = new Date(Date.now() + tokenResponse.expires_in * 1000)
-
-			// Store user and token in database
-			await this.storeToken(
-				userInfo.id,
-				userInfo.username,
-				userInfo.discriminator,
-				scopes,
-				tokenResponse.access_token,
-				tokenResponse.refresh_token || null,
-				expiresAt,
-				coreUserId
-			)
-
-			return {
-				success: true,
-				userId: userInfo.id,
-				username: userInfo.username,
-				discriminator: userInfo.discriminator,
-			}
-		} catch (error) {
-			logger.error('Error handling OAuth callback:', error)
-			return {
-				success: false,
-				error: error instanceof Error ? error.message : 'Unknown error',
-			}
-		}
 	}
 
 	/**
@@ -198,9 +108,9 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 	}
 
 	/**
-	 * Manually refresh a token
+	 * Manually refresh a token (private - used internally)
 	 */
-	async refreshToken(userId: string): Promise<boolean> {
+	private async refreshToken(userId: string): Promise<boolean> {
 		try {
 			// Get user from database
 			const user = await this.db.query.discordUsers.findFirst({
@@ -257,76 +167,6 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 			return false
 		}
 	}
-
-	/**
-	 * Revoke and delete a token
-	 */
-	async revokeToken(userId: string): Promise<boolean> {
-		try {
-			const user = await this.db.query.discordUsers.findFirst({
-				where: eq(discordUsers.userId, userId),
-			})
-
-			if (!user) {
-				return false
-			}
-
-			// Get token to revoke it with Discord
-			const tokenRecord = await this.db.query.discordTokens.findFirst({
-				where: eq(discordTokens.userId, user.id),
-			})
-
-			if (tokenRecord) {
-				// Decrypt access token for revocation
-				const accessToken = await this.decrypt(tokenRecord.accessToken)
-
-				// Revoke token with Discord
-				const credentials = btoa(`${this.env.DISCORD_CLIENT_ID}:${this.env.DISCORD_CLIENT_SECRET}`)
-
-				await fetch(this.env.DISCORD_TOKEN_REVOKE_URL, {
-					method: 'POST',
-					headers: {
-						Authorization: `Basic ${credentials}`,
-						'Content-Type': 'application/x-www-form-urlencoded',
-					},
-					body: new URLSearchParams({
-						token: accessToken,
-					}),
-				})
-			}
-
-			// Delete the user (cascade will delete tokens)
-			await this.db.delete(discordUsers).where(eq(discordUsers.id, user.id))
-
-			return true
-		} catch (error) {
-			logger.error('Error revoking token:', error)
-			return false
-		}
-	}
-
-	/**
-	 * Invite user to guild (not implemented yet)
-	 */
-	async inviteUserToGuild(userId: string, guildId: string): Promise<boolean> {
-		try {
-			await this.fetchDiscordApi(userId, `/guilds/${guildId}/members/${userId}`, {
-				method: 'PUT',
-				body: JSON.stringify({ access_token: await this.getAccessToken(userId) }),
-			})
-			return true
-		} catch (error) {
-			return false
-		}
-	}
-
-	/**
-	 * Kick user from guild (not implemented yet)
-	 */
-	// async kickUserFromGuild(guildId: string, userId: string): Promise<boolean> {
-	// 	// TODO: Implement guild kick logic
-	// 	throw new Error('Not implemented')
-	// }
 
 	/**
 	 * Get access token for a user (decrypted and auto-refreshed if needed)
@@ -435,60 +275,6 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 	}
 
 	/**
-	 * Generate authorization URL for Discord OAuth
-	 */
-	private generateAuthUrl(state?: string): AuthorizationUrlResponse {
-		const generatedState = state ?? crypto.randomUUID()
-
-		const params = new URLSearchParams({
-			response_type: 'code',
-			redirect_uri: this.env.DISCORD_CALLBACK_URL,
-			client_id: this.env.DISCORD_CLIENT_ID,
-			scope: DISCORD_REQUIRED_SCOPES.join(' '),
-			state: generatedState,
-		})
-
-		return {
-			url: `${this.env.DISCORD_AUTHORIZE_URL}?${params.toString()}`,
-			state: generatedState,
-		}
-	}
-
-	/**
-	 * Exchange authorization code for access token
-	 */
-	private async exchangeCodeForToken(code: string): Promise<DiscordTokenResponse> {
-		const response = await fetch(this.env.DISCORD_TOKEN_URL, {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/x-www-form-urlencoded',
-				'User-Agent': 'DiscordBot (https://pleaseignore.app, 1.0.0)',
-				'Accept': 'application/json',
-			},
-			body: new URLSearchParams({
-				grant_type: 'authorization_code',
-				code,
-				redirect_uri: this.env.DISCORD_CALLBACK_URL,
-				client_id: this.env.DISCORD_CLIENT_ID,
-				client_secret: this.env.DISCORD_CLIENT_SECRET,
-			}),
-		})
-
-		if (!response.ok) {
-			const errorText = await response.text()
-			logger.error('Token exchange failed', {
-				status: response.status,
-				statusText: response.statusText,
-				error: errorText,
-				headers: Object.fromEntries(response.headers.entries())
-			})
-			throw new Error(`Token exchange failed: error code: ${response.status}`)
-		}
-
-		return response.json<DiscordTokenResponse>()
-	}
-
-	/**
 	 * Refresh access token using refresh token
 	 */
 	private async refreshAccessToken(refreshToken: string): Promise<DiscordTokenResponse> {
@@ -513,26 +299,6 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 		}
 
 		return response.json<DiscordTokenResponse>()
-	}
-
-	/**
-	 * Get user information from Discord
-	 */
-	private async getUserInfo(accessToken: string): Promise<DiscordUserInfo> {
-		const response = await fetch(this.env.DISCORD_USER_INFO_URL, {
-			headers: {
-				'Authorization': `Bearer ${accessToken}`,
-				'User-Agent': 'DiscordBot (https://pleaseignore.app, 1.0.0)',
-				'Accept': 'application/json',
-			},
-		})
-
-		if (!response.ok) {
-			const error = await response.text()
-			throw new Error(`Failed to get user info: ${error}`)
-		}
-
-		return response.json<DiscordUserInfo>()
 	}
 
 	/**

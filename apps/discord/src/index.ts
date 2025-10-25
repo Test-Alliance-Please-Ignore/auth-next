@@ -29,50 +29,6 @@ const app = new Hono<App>()
 	})
 
 	/**
-	 * Start Discord OAuth flow
-	 * POST /discord/auth/start
-	 * Body: { state?: string }
-	 * Returns: { url: string, state: string }
-	 */
-	.post(
-		'/discord/auth/start',
-		zValidator(
-			'json',
-			z.object({
-				state: z.string().optional(),
-			})
-		),
-		async (c) => {
-			const { state } = c.req.valid('json')
-			const result = await discordService.startOAuthFlow(c.env, state)
-			return c.json(result)
-		}
-	)
-
-	/**
-	 * Handle Discord OAuth callback
-	 * POST /discord/auth/callback
-	 * Body: { code: string, state?: string, coreUserId: string }
-	 * Returns: { success: boolean, userId?: string, username?: string, discriminator?: string, error?: string }
-	 */
-	.post(
-		'/discord/auth/callback',
-		zValidator(
-			'json',
-			z.object({
-				code: z.string(),
-				state: z.string().optional(),
-				coreUserId: z.string().uuid(),
-			})
-		),
-		async (c) => {
-			const { code, state, coreUserId } = c.req.valid('json')
-			const result = await discordService.handleOAuthCallback(c.env, code, state, coreUserId)
-			return c.json(result)
-		}
-	)
-
-	/**
 	 * Store Discord tokens (PKCE flow)
 	 * POST /discord/auth/store-tokens
 	 * Body: { userId, username, discriminator, scopes, accessToken, refreshToken, expiresAt, coreUserId }

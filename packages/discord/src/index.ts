@@ -5,24 +5,6 @@
  * This package allows other workers to interact with the Durable Object via RPC.
  */
 
-/**
- * List of required scopes to request from Discord.
- */
-export const DISCORD_REQUIRED_SCOPES = ['guilds', 'guilds.join', 'identify']
-
-export type GuildId = string
-export type UserId = string
-
-/**
- * Authorization URL response for starting OAuth flow
- */
-export interface AuthorizationUrlResponse {
-	/** Full authorization URL to redirect user to */
-	url: string
-	/** State parameter for CSRF protection */
-	state: string
-}
-
 export interface DiscordTokenResponse {
 	/** OAuth access token */
 	access_token: string
@@ -58,23 +40,6 @@ export interface StoredToken {
 	updatedAt: Date
 }
 
-export interface CallbackResult {
-	/** Whether the callback was successful */
-	success: boolean
-
-	/** Discord user ID if successful */
-	userId?: string
-
-	/** Discord username if successful */
-	username?: string
-
-	/** Discord discriminator if successful */
-	discriminator?: string
-
-	/** Error message if failed */
-	error?: string
-}
-
 /**
  * Discord profile information
  */
@@ -91,22 +56,6 @@ export interface DiscordProfile {
 
 export interface Discord {
 	/**
-	 * Start OAuth flow for login (publicData scope only)
-	 * @param state - Optional state parameter for CSRF protection
-	 * @returns Authorization URL and state
-	 */
-	startLoginFlow(state?: string): Promise<AuthorizationUrlResponse>
-
-	/**
-	 * Handle OAuth callback - exchange code for tokens and store them
-	 * @param code - Authorization code from Discord OAuth
-	 * @param state - State parameter for CSRF validation
-	 * @param coreUserId - Optional core user ID to link this Discord account to
-	 * @returns Result with discord information or error
-	 */
-	handleCallback(code: string, state?: string, coreUserId?: string): Promise<CallbackResult>
-
-	/**
 	 * Get Discord profile by core user ID
 	 * @param coreUserId - Core user ID
 	 * @returns Discord profile or null if not found
@@ -121,20 +70,25 @@ export interface Discord {
 	refreshTokenByCoreUserId(coreUserId: string): Promise<boolean>
 
 	/**
-	 * Manually refresh a token
-	 * @param userId - Discord User ID
-	 * @returns Whether refresh was successful
+	 * Store Discord tokens directly (for PKCE flow)
+	 * @param userId - Discord user ID
+	 * @param username - Discord username
+	 * @param discriminator - Discord discriminator
+	 * @param scopes - OAuth scopes
+	 * @param accessToken - Access token
+	 * @param refreshToken - Refresh token
+	 * @param expiresAt - Expiration date
+	 * @param coreUserId - Core user ID to link to
+	 * @returns Whether storage was successful
 	 */
-	refreshToken(userId: string): Promise<boolean>
-
-	/**
-	 * Revoke and delete a token
-	 * @param userId - Discord User ID
-	 * @returns Whether revocation was successful
-	 */
-	revokeToken(userId: string): Promise<boolean>
-
-	inviteUserToGuild(userId: string, guildId: string): Promise<boolean>
-
-	// kickUserFromGuild(guildId: string, userId: string): Promise<boolean>
+	storeTokensDirect(
+		userId: string,
+		username: string,
+		discriminator: string,
+		scopes: string[],
+		accessToken: string,
+		refreshToken: string,
+		expiresAt: Date,
+		coreUserId: string
+	): Promise<boolean>
 }

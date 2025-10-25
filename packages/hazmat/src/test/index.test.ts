@@ -1,115 +1,173 @@
 import { describe, expect, it } from 'vitest'
 
-import { example, fetchData, processAsync, validateEmail } from '../index'
+import { generateShardKey, getSodium, generateRandomBytes } from '../index'
 
 describe('Hazmat', () => {
-	describe('example', () => {
-		it('should format input with prefix', () => {
-			const result = example('hello')
-			expect(result).toBe('Example: hello')
+	describe('generateShardKey', () => {
+		it('should return a number within valid range for maxShardCount = 1', async () => {
+			const result = await generateShardKey(1)
+			expect(typeof result).toBe('number')
+			expect(result).toBeGreaterThanOrEqual(0)
+			expect(result).toBeLessThan(1)
+			expect(Number.isInteger(result)).toBe(true)
 		})
 
-		it('should handle empty string', () => {
-			const result = example('')
-			expect(result).toBe('Example: ')
-		})
-	})
-
-	describe('validateEmail', () => {
-		it('should validate and normalize correct email', () => {
-			const result = validateEmail('Test@Example.COM')
-			expect(result).toBe('test@example.com')
+		it('should return a number within valid range for maxShardCount = 2', async () => {
+			const result = await generateShardKey(2)
+			expect(typeof result).toBe('number')
+			expect(result).toBeGreaterThanOrEqual(0)
+			expect(result).toBeLessThan(2)
+			expect(Number.isInteger(result)).toBe(true)
 		})
 
-		it('should throw error for empty email', () => {
-			expect(() => validateEmail('')).toThrow('Email is required')
+		it('should return a number within valid range for maxShardCount = 10', async () => {
+			const result = await generateShardKey(10)
+			expect(typeof result).toBe('number')
+			expect(result).toBeGreaterThanOrEqual(0)
+			expect(result).toBeLessThan(10)
+			expect(Number.isInteger(result)).toBe(true)
 		})
 
-		it('should throw error for whitespace-only email', () => {
-			expect(() => validateEmail('   ')).toThrow('Email is required')
+		it('should return a number within valid range for maxShardCount = 100', async () => {
+			const result = await generateShardKey(100)
+			expect(typeof result).toBe('number')
+			expect(result).toBeGreaterThanOrEqual(0)
+			expect(result).toBeLessThan(100)
+			expect(Number.isInteger(result)).toBe(true)
 		})
 
-		it('should throw error for invalid email format', () => {
-			expect(() => validateEmail('notanemail')).toThrow('Invalid email format')
+		it('should return a number within valid range for maxShardCount = 1000', async () => {
+			const result = await generateShardKey(1000)
+			expect(typeof result).toBe('number')
+			expect(result).toBeGreaterThanOrEqual(0)
+			expect(result).toBeLessThan(1000)
+			expect(Number.isInteger(result)).toBe(true)
 		})
 
-		it('should throw error for email without domain', () => {
-			expect(() => validateEmail('user@')).toThrow('Invalid email format')
+		it('should produce different results on multiple calls (randomness)', async () => {
+			const results = new Set()
+			const maxShardCount = 100
+			
+			// Generate 50 shard keys and check they're not all the same
+			for (let i = 0; i < 50; i++) {
+				const result = await generateShardKey(maxShardCount)
+				results.add(result)
+			}
+			
+			// With 50 calls and 100 possible values, we should get some variety
+			// (though it's theoretically possible to get all the same, it's very unlikely)
+			expect(results.size).toBeGreaterThan(1)
 		})
 
-		it('should throw error for email without @', () => {
-			expect(() => validateEmail('user.example.com')).toThrow('Invalid email format')
+		it('should have reasonable distribution across the range', async () => {
+			const maxShardCount = 10
+			const iterations = 1000
+			const distribution = new Array(maxShardCount).fill(0)
+			
+			// Generate many shard keys and count distribution
+			for (let i = 0; i < iterations; i++) {
+				const result = await generateShardKey(maxShardCount)
+				distribution[result]++
+			}
+			
+			// Check that each shard gets some hits (with some tolerance for randomness)
+			// Each shard should get at least 1% of the total (10 out of 1000)
+			const minExpected = Math.floor(iterations / maxShardCount * 0.1)
+			for (let i = 0; i < maxShardCount; i++) {
+				expect(distribution[i]).toBeGreaterThan(minExpected)
+			}
 		})
-	})
 
-	describe('fetchData', () => {
-		it('should fetch data successfully', async () => {
-			const result = await fetchData('user-123')
-			expect(result).toEqual({
-				id: 'user-123',
-				data: 'Data for user-123',
+		it('should handle edge case of maxShardCount = 1', async () => {
+			// When maxShardCount is 1, the only valid result is 0
+			const result = await generateShardKey(1)
+			expect(result).toBe(0)
+		})
+
+		it('should handle large maxShardCount values', async () => {
+			const largeCount = 1000000
+			const result = await generateShardKey(largeCount)
+			expect(typeof result).toBe('number')
+			expect(result).toBeGreaterThanOrEqual(0)
+			expect(result).toBeLessThan(largeCount)
+			expect(Number.isInteger(result)).toBe(true)
+		})
+
+		it('should be deterministic with same input (if we could control randomness)', async () => {
+			// This test verifies the function structure, though we can't control the randomness
+			// We can at least verify it doesn't throw and returns a valid number
+			const result1 = await generateShardKey(5)
+			const result2 = await generateShardKey(5)
+			
+			expect(typeof result1).toBe('number')
+			expect(typeof result2).toBe('number')
+			expect(result1).toBeGreaterThanOrEqual(0)
+			expect(result1).toBeLessThan(5)
+			expect(result2).toBeGreaterThanOrEqual(0)
+			expect(result2).toBeLessThan(5)
+		})
+
+		it('should work with concurrent calls', async () => {
+			const maxShardCount = 20
+			const promises = Array.from({ length: 10 }, () => generateShardKey(maxShardCount))
+			const results = await Promise.all(promises)
+			
+			expect(results).toHaveLength(10)
+			results.forEach(result => {
+				expect(typeof result).toBe('number')
+				expect(result).toBeGreaterThanOrEqual(0)
+				expect(result).toBeLessThan(maxShardCount)
+				expect(Number.isInteger(result)).toBe(true)
 			})
 		})
+	})
 
-		it('should throw error for empty ID', async () => {
-			await expect(fetchData('')).rejects.toThrow('ID is required')
+	describe('getSodium', () => {
+		it('should return a sodium object', async () => {
+			const sodium = await getSodium()
+			expect(sodium).toBeDefined()
+			expect(typeof sodium).toBe('object')
+			expect(sodium.randombytes_buf).toBeDefined()
+			expect(sodium.crypto_generichash).toBeDefined()
+			expect(sodium.crypto_generichash_BYTES).toBeDefined()
 		})
 
-		it('should throw error for whitespace-only ID', async () => {
-			await expect(fetchData('   ')).rejects.toThrow('ID is required')
-		})
-
-		it('should handle multiple concurrent fetches', async () => {
-			const results = await Promise.all([fetchData('id-1'), fetchData('id-2'), fetchData('id-3')])
-
-			expect(results).toHaveLength(3)
-			expect(results[0].id).toBe('id-1')
-			expect(results[1].id).toBe('id-2')
-			expect(results[2].id).toBe('id-3')
+		it('should return the same instance on multiple calls', async () => {
+			const sodium1 = await getSodium()
+			const sodium2 = await getSodium()
+			expect(sodium1).toBe(sodium2)
 		})
 	})
 
-	describe('processAsync', () => {
-		it('should process value successfully', async () => {
-			const result = await processAsync('test')
-			expect(result).toBe('Processed: test')
+	describe('generateRandomBytes', () => {
+		it('should generate random bytes of specified length', async () => {
+			const length = 32
+			const bytes = await generateRandomBytes(length)
+			expect(bytes).toBeInstanceOf(Uint8Array)
+			expect(bytes.length).toBe(length)
 		})
 
-		it('should throw error when shouldFail is true', async () => {
-			await expect(processAsync('test', true)).rejects.toThrow('Processing failed')
+		it('should generate different bytes on multiple calls', async () => {
+			const length = 16
+			const bytes1 = await generateRandomBytes(length)
+			const bytes2 = await generateRandomBytes(length)
+			
+			expect(bytes1).toBeInstanceOf(Uint8Array)
+			expect(bytes2).toBeInstanceOf(Uint8Array)
+			expect(bytes1.length).toBe(length)
+			expect(bytes2.length).toBe(length)
+			
+			// Very unlikely to be identical
+			expect(bytes1).not.toEqual(bytes2)
 		})
 
-		it('should handle empty string', async () => {
-			const result = await processAsync('')
-			expect(result).toBe('Processed: ')
-		})
-
-		it('should process multiple values in sequence', async () => {
-			const value1 = await processAsync('first')
-			const value2 = await processAsync('second')
-			const value3 = await processAsync('third')
-
-			expect(value1).toBe('Processed: first')
-			expect(value2).toBe('Processed: second')
-			expect(value3).toBe('Processed: third')
-		})
-
-		it('should handle mixed success and failure cases', async () => {
-			const results = await Promise.allSettled([
-				processAsync('success'),
-				processAsync('fail', true),
-				processAsync('another-success'),
-			])
-
-			expect(results[0].status).toBe('fulfilled')
-			expect(results[1].status).toBe('rejected')
-			expect(results[2].status).toBe('fulfilled')
-
-			if (results[0].status === 'fulfilled') {
-				expect(results[0].value).toBe('Processed: success')
-			}
-			if (results[2].status === 'fulfilled') {
-				expect(results[2].value).toBe('Processed: another-success')
+		it('should work with different lengths', async () => {
+			const lengths = [1, 16, 32, 64, 128]
+			
+			for (const length of lengths) {
+				const bytes = await generateRandomBytes(length)
+				expect(bytes).toBeInstanceOf(Uint8Array)
+				expect(bytes.length).toBe(length)
 			}
 		})
 	})
