@@ -3,9 +3,12 @@
  */
 
 import { eq } from '@repo/db-utils'
-import type { DbClient } from '@repo/db-utils'
 
-import { adminAuditLog, userCharacters, users } from '../db/schema'
+// Import core schema tables (admin connects to same DB as core)
+import { userCharacters, users } from '../../../core/src/db/schema'
+import { adminOperationsLog } from '../db/schema'
+
+import type { DbClient } from '@repo/db-utils'
 import type { schema } from '../db'
 
 /**
@@ -90,8 +93,8 @@ export async function getAuditLogs(
 	db: DbClient<typeof schema>,
 	adminUserId: string
 ): Promise<any[]> {
-	return db.query.adminAuditLog.findMany({
-		where: eq(adminAuditLog.adminUserId, adminUserId),
+	return db.query.adminOperationsLog.findMany({
+		where: eq(adminOperationsLog.adminUserId, adminUserId),
 	})
 }
 
@@ -107,7 +110,7 @@ export async function cleanupTestUser(db: DbClient<typeof schema>, userId: strin
  * Clean up all audit logs
  */
 export async function cleanupAuditLogs(db: DbClient<typeof schema>): Promise<void> {
-	await db.delete(adminAuditLog)
+	await db.delete(adminOperationsLog)
 }
 
 /**
@@ -117,9 +120,7 @@ export async function getUserCharacterCount(
 	db: DbClient<typeof schema>,
 	userId: string
 ): Promise<number> {
-	const chars = await db.query.userCharacters.findMany({
-		where: eq(userCharacters.userId, userId),
-	})
+	const chars = await db.select().from(userCharacters).where(eq(userCharacters.userId, userId))
 	return chars.length
 }
 
@@ -130,18 +131,18 @@ export async function characterExists(
 	db: DbClient<typeof schema>,
 	characterId: string
 ): Promise<boolean> {
-	const char = await db.query.userCharacters.findFirst({
-		where: eq(userCharacters.characterId, characterId),
-	})
-	return char !== undefined
+	const chars = await db
+		.select()
+		.from(userCharacters)
+		.where(eq(userCharacters.characterId, characterId))
+		.limit(1)
+	return chars.length > 0
 }
 
 /**
  * Check if user exists
  */
 export async function userExists(db: DbClient<typeof schema>, userId: string): Promise<boolean> {
-	const user = await db.query.users.findFirst({
-		where: eq(users.id, userId),
-	})
-	return user !== undefined
+	const usersList = await db.select().from(users).where(eq(users.id, userId)).limit(1)
+	return usersList.length > 0
 }

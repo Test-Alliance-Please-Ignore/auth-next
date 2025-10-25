@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
-import type { Notification, ServerMessage, ClientMessage } from '@repo/notifications'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { useAuth } from './useAuth'
+
+import type { ClientMessage, Notification, ServerMessage } from '@repo/notifications'
 
 interface UseNotificationsOptions {
 	/**
@@ -73,7 +74,13 @@ interface UseNotificationsReturn {
  * ```
  */
 export function useNotifications(options: UseNotificationsOptions = {}): UseNotificationsReturn {
-	const { url = '/api/ws/notifications', autoConnect = true, onNotification, onConnectionChange, onError } = options
+	const {
+		url = '/api/ws/notifications',
+		autoConnect = true,
+		onNotification,
+		onConnectionChange,
+		onError,
+	} = options
 
 	const { user, isAuthenticated } = useAuth()
 	const [isConnected, setIsConnected] = useState(false)
@@ -176,7 +183,10 @@ export function useNotifications(options: UseNotificationsOptions = {}): UseNoti
 	 */
 	const connect = useCallback(() => {
 		// Don't connect if already connected or connecting
-		if (wsRef.current?.readyState === WebSocket.OPEN || wsRef.current?.readyState === WebSocket.CONNECTING) {
+		if (
+			wsRef.current?.readyState === WebSocket.OPEN ||
+			wsRef.current?.readyState === WebSocket.CONNECTING
+		) {
 			return
 		}
 
@@ -233,7 +243,16 @@ export function useNotifications(options: UseNotificationsOptions = {}): UseNoti
 			console.error('Failed to create WebSocket:', error)
 			onError?.(error instanceof Error ? error : new Error('Failed to create WebSocket'))
 		}
-	}, [isAuthenticated, user, url, handleMessage, onConnectionChange, onError, startPingInterval, stopPingInterval])
+	}, [
+		isAuthenticated,
+		user,
+		url,
+		handleMessage,
+		onConnectionChange,
+		onError,
+		startPingInterval,
+		stopPingInterval,
+	])
 
 	/**
 	 * Disconnect from WebSocket

@@ -2,8 +2,7 @@ import { DurableObject } from 'cloudflare:workers'
 
 import { eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
-import type { EveCharacterId } from '@repo/eve-types'
-import { createEveCharacterId, createEveCorporationId, createEveAllianceId } from '@repo/eve-types'
+import { createEveAllianceId, createEveCharacterId, createEveCorporationId } from '@repo/eve-types'
 
 import { createDb } from './db'
 import {
@@ -42,6 +41,7 @@ import type {
 	EveCharacterData,
 } from '@repo/eve-character-data'
 import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
+import type { EveCharacterId } from '@repo/eve-types'
 import type { Env } from './context'
 
 /**
@@ -68,7 +68,14 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	 * Fetch and store all public character data
 	 */
 	async fetchCharacterData(characterId: string, forceRefresh = false): Promise<void> {
-		console.log('EveCharacterData.fetchCharacterData called with:', characterId, 'type:', typeof characterId, 'forceRefresh:', forceRefresh)
+		console.log(
+			'EveCharacterData.fetchCharacterData called with:',
+			characterId,
+			'type:',
+			typeof characterId,
+			'forceRefresh:',
+			forceRefresh
+		)
 		try {
 			await Promise.all([
 				this.fetchAndStorePublicInfo(characterId, forceRefresh),
@@ -544,11 +551,14 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 					amount: entry.amount.toString(),
 					balance: entry.balance?.toString() ?? '0',
 					description: entry.description,
-					firstPartyId: entry.first_party_id !== undefined ? String(entry.first_party_id) : undefined,
-					secondPartyId: entry.second_party_id !== undefined ? String(entry.second_party_id) : undefined,
+					firstPartyId:
+						entry.first_party_id !== undefined ? String(entry.first_party_id) : undefined,
+					secondPartyId:
+						entry.second_party_id !== undefined ? String(entry.second_party_id) : undefined,
 					reason: entry.reason,
 					tax: entry.tax?.toString(),
-					taxReceiverId: entry.tax_receiver_id !== undefined ? String(entry.tax_receiver_id) : undefined,
+					taxReceiverId:
+						entry.tax_receiver_id !== undefined ? String(entry.tax_receiver_id) : undefined,
 					contextId: entry.context_id !== undefined ? String(entry.context_id) : undefined,
 					contextIdType: entry.context_id_type,
 					updatedAt: new Date(),
@@ -561,11 +571,14 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 						amount: entry.amount.toString(),
 						balance: entry.balance?.toString() ?? '0',
 						description: entry.description,
-						firstPartyId: entry.first_party_id !== undefined ? String(entry.first_party_id) : undefined,
-						secondPartyId: entry.second_party_id !== undefined ? String(entry.second_party_id) : undefined,
+						firstPartyId:
+							entry.first_party_id !== undefined ? String(entry.first_party_id) : undefined,
+						secondPartyId:
+							entry.second_party_id !== undefined ? String(entry.second_party_id) : undefined,
 						reason: entry.reason,
 						tax: entry.tax?.toString(),
-						taxReceiverId: entry.tax_receiver_id !== undefined ? String(entry.tax_receiver_id) : undefined,
+						taxReceiverId:
+							entry.tax_receiver_id !== undefined ? String(entry.tax_receiver_id) : undefined,
 						contextId: entry.context_id !== undefined ? String(entry.context_id) : undefined,
 						contextIdType: entry.context_id_type,
 						updatedAt: new Date(),
@@ -646,7 +659,10 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 					updatedAt: new Date(),
 				})
 				.onConflictDoUpdate({
-					target: [characterMarketTransactions.characterId, characterMarketTransactions.transactionId],
+					target: [
+						characterMarketTransactions.characterId,
+						characterMarketTransactions.transactionId,
+					],
 					set: {
 						date: new Date(txn.date),
 						typeId: String(txn.type_id),
@@ -874,33 +890,41 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	 */
 	async getSensitiveData(characterId: string) {
 		// Query all sensitive data tables
-		const [location, wallet, assets, status, skillQueue, walletJournal, marketTransactions, marketOrders] =
-			await Promise.all([
-				this.db.query.characterLocation.findFirst({
-					where: eq(characterLocation.characterId, characterId),
-				}),
-				this.db.query.characterWallet.findFirst({
-					where: eq(characterWallet.characterId, characterId),
-				}),
-				this.db.query.characterAssets.findFirst({
-					where: eq(characterAssets.characterId, characterId),
-				}),
-				this.db.query.characterStatus.findFirst({
-					where: eq(characterStatus.characterId, characterId),
-				}),
-				this.db.query.characterSkillQueue.findFirst({
-					where: eq(characterSkillQueue.characterId, characterId),
-				}),
-				this.db.query.characterWalletJournal.findMany({
-					where: eq(characterWalletJournal.characterId, characterId),
-				}),
-				this.db.query.characterMarketTransactions.findMany({
-					where: eq(characterMarketTransactions.characterId, characterId),
-				}),
-				this.db.query.characterMarketOrders.findMany({
-					where: eq(characterMarketOrders.characterId, characterId),
-				}),
-			])
+		const [
+			location,
+			wallet,
+			assets,
+			status,
+			skillQueue,
+			walletJournal,
+			marketTransactions,
+			marketOrders,
+		] = await Promise.all([
+			this.db.query.characterLocation.findFirst({
+				where: eq(characterLocation.characterId, characterId),
+			}),
+			this.db.query.characterWallet.findFirst({
+				where: eq(characterWallet.characterId, characterId),
+			}),
+			this.db.query.characterAssets.findFirst({
+				where: eq(characterAssets.characterId, characterId),
+			}),
+			this.db.query.characterStatus.findFirst({
+				where: eq(characterStatus.characterId, characterId),
+			}),
+			this.db.query.characterSkillQueue.findFirst({
+				where: eq(characterSkillQueue.characterId, characterId),
+			}),
+			this.db.query.characterWalletJournal.findMany({
+				where: eq(characterWalletJournal.characterId, characterId),
+			}),
+			this.db.query.characterMarketTransactions.findMany({
+				where: eq(characterMarketTransactions.characterId, characterId),
+			}),
+			this.db.query.characterMarketOrders.findMany({
+				where: eq(characterMarketOrders.characterId, characterId),
+			}),
+		])
 
 		// Return null if no sensitive data exists at all
 		if (

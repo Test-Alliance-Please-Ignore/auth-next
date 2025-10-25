@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { DedupedFetch, bodyAndAuthAwareKeyGenerator, defaultAuthAwareKeyGenerator } from '../src'
+import { bodyAndAuthAwareKeyGenerator, DedupedFetch, defaultAuthAwareKeyGenerator } from '../src'
 
 describe('DedupedFetch', () => {
 	describe('Basic Deduplication', () => {

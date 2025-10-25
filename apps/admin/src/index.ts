@@ -12,25 +12,26 @@
 
 import { WorkerEntrypoint } from 'cloudflare:workers'
 
+import { getStub } from '@repo/do-utils'
+
+import { createDb } from './db'
+import { AdminService } from './services/admin.service'
+
 import type {
 	ActivityLogFilters,
 	ActivityLogResult,
-	AdminWorker as IAdminWorker,
 	CharacterDetails,
 	DeleteCharacterResult,
 	DeleteUserResult,
+	AdminWorker as IAdminWorker,
 	SearchUsersParams,
 	SearchUsersResult,
 	TransferCharacterResult,
 	UserDetails,
 } from '@repo/admin'
-import { getStub } from '@repo/do-utils'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
-
 import type { Env } from './context'
-import { createDb } from './db'
-import { AdminService } from './services/admin.service'
 
 /**
  * Admin Worker Entry Point
@@ -96,7 +97,10 @@ export class AdminWorkerEntrypoint extends WorkerEntrypoint<Env> implements IAdm
 	/**
 	 * Get detailed character information with ownership
 	 */
-	async getCharacterDetails(characterId: string, adminUserId: string): Promise<CharacterDetails | null> {
+	async getCharacterDetails(
+		characterId: string,
+		adminUserId: string
+	): Promise<CharacterDetails | null> {
 		const service = this.getAdminService()
 		return await service.getCharacterDetails(characterId, adminUserId)
 	}
@@ -104,7 +108,10 @@ export class AdminWorkerEntrypoint extends WorkerEntrypoint<Env> implements IAdm
 	/**
 	 * Get admin activity log with filters
 	 */
-	async getActivityLog(filters: ActivityLogFilters, adminUserId: string): Promise<ActivityLogResult> {
+	async getActivityLog(
+		filters: ActivityLogFilters,
+		adminUserId: string
+	): Promise<ActivityLogResult> {
 		const service = this.getAdminService()
 		return await service.getActivityLog(filters, adminUserId)
 	}

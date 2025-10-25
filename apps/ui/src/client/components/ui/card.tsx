@@ -1,13 +1,14 @@
+import { cva } from 'class-variance-authority'
 import * as React from 'react'
-import { cva, type VariantProps } from 'class-variance-authority'
 
 import { cn } from '@/lib/utils'
+
+import type { VariantProps } from 'class-variance-authority'
 
 const cardVariants = cva('rounded-lg relative z-10', {
 	variants: {
 		variant: {
-			default:
-				'card-gradient bg-card text-card-foreground border border-border/50 shadow-elevated',
+			default: 'card-gradient bg-card text-card-foreground border border-border/50 shadow-elevated',
 			elevated:
 				'card-gradient bg-card text-card-foreground border border-border/50 shadow-elevated',
 			interactive:

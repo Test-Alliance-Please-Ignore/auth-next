@@ -1,12 +1,20 @@
-import { desc, eq, ilike, or } from '@repo/db-utils'
-import { getStub } from '@repo/do-utils'
-import type { EveCorporationData } from '@repo/eve-corporation-data'
-import { logger } from '@repo/hono-helpers'
 import { Hono } from 'hono'
 
-import type { App } from '../context'
-import { managedCorporations } from '../db/schema'
+import { and, desc, eq, ilike, or } from '@repo/db-utils'
+import { getStub } from '@repo/do-utils'
+import { logger } from '@repo/hono-helpers'
+
+import {
+	corporationDiscordServerRoles,
+	corporationDiscordServers,
+	discordRoles,
+	discordServers,
+	managedCorporations,
+} from '../db/schema'
 import { requireAdmin, requireAuth } from '../middleware/session'
+
+import type { EveCorporationData } from '@repo/eve-corporation-data'
+import type { App } from '../context'
 
 const app = new Hono<App>()
 
@@ -129,10 +137,7 @@ app.post('/', requireAuth(), requireAdmin(), async (c) => {
 					assignedCharacterId,
 					assignedCharacterName,
 				})
-				const stub = getStub<EveCorporationData>(
-					c.env.EVE_CORPORATION_DATA,
-					corporationId
-				)
+				const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 
 				await stub.setCharacter(corporationId, assignedCharacterId, assignedCharacterName)
 				logger.info('[Corporations] Character set in DO successfully', { corporationId })
@@ -201,6 +206,9 @@ app.get('/:corporationId', requireAuth(), requireAdmin(), async (c) => {
  *   assignedCharacterId?: string
  *   assignedCharacterName?: string
  *   isActive?: boolean
+ *   discordGuildId?: string | null
+ *   discordGuildName?: string | null
+ *   discordAutoInvite?: boolean
  * }
  */
 app.put('/:corporationId', requireAuth(), requireAdmin(), async (c) => {
@@ -213,7 +221,14 @@ app.put('/:corporationId', requireAuth(), requireAdmin(), async (c) => {
 
 	try {
 		const body = await c.req.json()
-		const { assignedCharacterId, assignedCharacterName, isActive } = body
+		const {
+			assignedCharacterId,
+			assignedCharacterName,
+			isActive,
+			discordGuildId,
+			discordGuildName,
+			discordAutoInvite,
+		} = body
 
 		// Check if corporation exists
 		const existing = await db.query.managedCorporations.findFirst({
@@ -231,6 +246,9 @@ app.put('/:corporationId', requireAuth(), requireAdmin(), async (c) => {
 				...(assignedCharacterId !== undefined && { assignedCharacterId }),
 				...(assignedCharacterName !== undefined && { assignedCharacterName }),
 				...(isActive !== undefined && { isActive }),
+				...(discordGuildId !== undefined && { discordGuildId }),
+				...(discordGuildName !== undefined && { discordGuildName }),
+				...(discordAutoInvite !== undefined && { discordAutoInvite }),
 				updatedAt: new Date(),
 			})
 			.where(eq(managedCorporations.corporationId, corporationId))
@@ -371,7 +389,10 @@ app.post('/:corporationId/fetch', requireAuth(), requireAdmin(), async (c) => {
 		logger.info('[Corporations] Fetch parameters', { corporationId, category, forceRefresh })
 
 		// Fetch data via Durable Object
-		logger.info('[Corporations] Getting DO stub for fetch', { corporationId, stubId: corporationId })
+		logger.info('[Corporations] Getting DO stub for fetch', {
+			corporationId,
+			stubId: corporationId,
+		})
 		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 
 		logger.info('[Corporations] Calling fetch method on DO', { corporationId, category })
@@ -408,7 +429,9 @@ app.post('/:corporationId/fetch', requireAuth(), requireAdmin(), async (c) => {
 				break
 		}
 
-		logger.info('[Corporations] Data fetch completed, updating last sync timestamp', { corporationId })
+		logger.info('[Corporations] Data fetch completed, updating last sync timestamp', {
+			corporationId,
+		})
 
 		// Update last sync timestamp
 		await db
@@ -441,7 +464,10 @@ app.get('/:corporationId/data', requireAuth(), requireAdmin(), async (c) => {
 	logger.info('[Corporations] Get data summary request', { corporationId })
 
 	try {
-		logger.info('[Corporations] Getting DO stub for data summary', { corporationId, stubId: corporationId })
+		logger.info('[Corporations] Getting DO stub for data summary', {
+			corporationId,
+			stubId: corporationId,
+		})
 		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 
 		logger.info('[Corporations] Fetching all data from DO', { corporationId })
@@ -452,48 +478,48 @@ app.get('/:corporationId/data', requireAuth(), requireAdmin(), async (c) => {
 						corporationId,
 						error: e instanceof Error ? e.message : String(e),
 						stack: e instanceof Error ? e.stack : undefined,
-					});
-					return null;
+					})
+					return null
 				}),
 				stub.getCoreData().catch((e: unknown) => {
 					logger.error('[Corporations] getCoreData failed', {
 						corporationId,
 						error: e instanceof Error ? e.message : String(e),
 						stack: e instanceof Error ? e.stack : undefined,
-					});
-					return null;
+					})
+					return null
 				}),
 				stub.getFinancialData().catch((e: unknown) => {
 					logger.error('[Corporations] getFinancialData failed', {
 						corporationId,
 						error: e instanceof Error ? e.message : String(e),
 						stack: e instanceof Error ? e.stack : undefined,
-					});
-					return null;
+					})
+					return null
 				}),
 				stub.getAssetsData().catch((e: unknown) => {
 					logger.error('[Corporations] getAssetsData failed', {
 						corporationId,
 						error: e instanceof Error ? e.message : String(e),
 						stack: e instanceof Error ? e.stack : undefined,
-					});
-					return null;
+					})
+					return null
 				}),
 				stub.getMarketData().catch((e: unknown) => {
 					logger.error('[Corporations] getMarketData failed', {
 						corporationId,
 						error: e instanceof Error ? e.message : String(e),
 						stack: e instanceof Error ? e.stack : undefined,
-					});
-					return null;
+					})
+					return null
 				}),
 				stub.getKillmails(10).catch((e: unknown) => {
 					logger.error('[Corporations] getKillmails failed', {
 						corporationId,
 						error: e instanceof Error ? e.message : String(e),
 						stack: e instanceof Error ? e.stack : undefined,
-					});
-					return [];
+					})
+					return []
 				}),
 			])
 
@@ -673,20 +699,25 @@ app.put('/:corporationId/directors/:characterId', requireAuth(), requireAdmin(),
  * POST /corporations/:corporationId/directors/:directorId/verify
  * Verify a specific director's health
  */
-app.post('/:corporationId/directors/:directorId/verify', requireAuth(), requireAdmin(), async (c) => {
-	const corporationId = c.req.param('corporationId')
-	const directorId = c.req.param('directorId')
+app.post(
+	'/:corporationId/directors/:directorId/verify',
+	requireAuth(),
+	requireAdmin(),
+	async (c) => {
+		const corporationId = c.req.param('corporationId')
+		const directorId = c.req.param('directorId')
 
-	try {
-		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
-		const isHealthy = await stub.verifyDirectorHealth(corporationId, directorId)
+		try {
+			const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+			const isHealthy = await stub.verifyDirectorHealth(corporationId, directorId)
 
-		return c.json({ success: true, directorId, isHealthy })
-	} catch (error) {
-		logger.error('Error verifying director health:', error)
-		return c.json({ error: 'Failed to verify director health' }, 500)
+			return c.json({ success: true, directorId, isHealthy })
+		} catch (error) {
+			logger.error('Error verifying director health:', error)
+			return c.json({ error: 'Failed to verify director health' }, 500)
+		}
 	}
-})
+)
 
 /**
  * POST /corporations/:corporationId/directors/verify-all
@@ -727,5 +758,376 @@ app.post('/:corporationId/directors/verify-all', requireAuth(), requireAdmin(), 
 		return c.json({ error: 'Failed to verify all directors' }, 500)
 	}
 })
+
+// ============================================================================
+// DISCORD SERVER MANAGEMENT ENDPOINTS
+// ============================================================================
+
+/**
+ * GET /corporations/:corporationId/discord-servers
+ * Get all Discord server attachments for a corporation
+ */
+app.get('/:corporationId/discord-servers', requireAuth(), requireAdmin(), async (c) => {
+	const corporationId = c.req.param('corporationId')
+	const db = c.get('db')
+
+	if (!db) {
+		return c.json({ error: 'Database not available' }, 500)
+	}
+
+	try {
+		const attachments = await db.query.corporationDiscordServers.findMany({
+			where: eq(corporationDiscordServers.corporationId, corporationId),
+			with: {
+				discordServer: {
+					with: {
+						roles: true,
+					},
+				},
+				roles: {
+					with: {
+						discordRole: true,
+					},
+				},
+			},
+			orderBy: desc(corporationDiscordServers.createdAt),
+		})
+
+		return c.json(attachments)
+	} catch (error) {
+		logger.error('Error fetching corporation Discord servers:', error)
+		return c.json({ error: 'Failed to fetch Discord servers' }, 500)
+	}
+})
+
+/**
+ * POST /corporations/:corporationId/discord-servers
+ * Attach a Discord server to the corporation
+ *
+ * Body: {
+ *   discordServerId: string (UUID from registry)
+ *   autoInvite?: boolean
+ *   autoAssignRoles?: boolean
+ * }
+ */
+app.post('/:corporationId/discord-servers', requireAuth(), requireAdmin(), async (c) => {
+	const corporationId = c.req.param('corporationId')
+	const db = c.get('db')
+
+	if (!db) {
+		return c.json({ error: 'Database not available' }, 500)
+	}
+
+	try {
+		const body = await c.req.json()
+		const { discordServerId, autoInvite = false, autoAssignRoles = false } = body
+
+		if (!discordServerId) {
+			return c.json({ error: 'discordServerId is required' }, 400)
+		}
+
+		// Check if Discord server exists in registry
+		const server = await db.query.discordServers.findFirst({
+			where: eq(discordServers.id, discordServerId),
+		})
+
+		if (!server) {
+			return c.json({ error: 'Discord server not found in registry' }, 404)
+		}
+
+		// Check if already attached
+		const existing = await db.query.corporationDiscordServers.findFirst({
+			where: and(
+				eq(corporationDiscordServers.corporationId, corporationId),
+				eq(corporationDiscordServers.discordServerId, discordServerId)
+			),
+		})
+
+		if (existing) {
+			return c.json({ error: 'Discord server already attached to this corporation' }, 409)
+		}
+
+		// Create attachment
+		const [attachment] = await db
+			.insert(corporationDiscordServers)
+			.values({
+				corporationId,
+				discordServerId,
+				autoInvite,
+				autoAssignRoles,
+			})
+			.returning()
+
+		logger.info(`Discord server ${server.guildName} attached to corporation ${corporationId}`)
+
+		return c.json(attachment, 201)
+	} catch (error) {
+		logger.error('Error attaching Discord server to corporation:', error)
+		return c.json({ error: 'Failed to attach Discord server' }, 500)
+	}
+})
+
+/**
+ * GET /corporations/:corporationId/discord-servers/:attachmentId
+ * Get a specific Discord server attachment with roles
+ */
+app.get(
+	'/:corporationId/discord-servers/:attachmentId',
+	requireAuth(),
+	requireAdmin(),
+	async (c) => {
+		const attachmentId = c.req.param('attachmentId')
+		const db = c.get('db')
+
+		if (!db) {
+			return c.json({ error: 'Database not available' }, 500)
+		}
+
+		try {
+			const attachment = await db.query.corporationDiscordServers.findFirst({
+				where: eq(corporationDiscordServers.id, attachmentId),
+				with: {
+					discordServer: {
+						with: {
+							roles: true,
+						},
+					},
+					roles: {
+						with: {
+							discordRole: true,
+						},
+					},
+				},
+			})
+
+			if (!attachment) {
+				return c.json({ error: 'Discord server attachment not found' }, 404)
+			}
+
+			return c.json(attachment)
+		} catch (error) {
+			logger.error('Error fetching Discord server attachment:', error)
+			return c.json({ error: 'Failed to fetch Discord server attachment' }, 500)
+		}
+	}
+)
+
+/**
+ * PUT /corporations/:corporationId/discord-servers/:attachmentId
+ * Update Discord server attachment settings
+ *
+ * Body: {
+ *   autoInvite?: boolean
+ *   autoAssignRoles?: boolean
+ * }
+ */
+app.put(
+	'/:corporationId/discord-servers/:attachmentId',
+	requireAuth(),
+	requireAdmin(),
+	async (c) => {
+		const attachmentId = c.req.param('attachmentId')
+		const db = c.get('db')
+
+		if (!db) {
+			return c.json({ error: 'Database not available' }, 500)
+		}
+
+		try {
+			const body = await c.req.json()
+			const { autoInvite, autoAssignRoles } = body
+
+			// Check if attachment exists
+			const existing = await db.query.corporationDiscordServers.findFirst({
+				where: eq(corporationDiscordServers.id, attachmentId),
+			})
+
+			if (!existing) {
+				return c.json({ error: 'Discord server attachment not found' }, 404)
+			}
+
+			// Update attachment
+			const [updated] = await db
+				.update(corporationDiscordServers)
+				.set({
+					...(autoInvite !== undefined && { autoInvite }),
+					...(autoAssignRoles !== undefined && { autoAssignRoles }),
+					updatedAt: new Date(),
+				})
+				.where(eq(corporationDiscordServers.id, attachmentId))
+				.returning()
+
+			return c.json(updated)
+		} catch (error) {
+			logger.error('Error updating Discord server attachment:', error)
+			return c.json({ error: 'Failed to update Discord server attachment' }, 500)
+		}
+	}
+)
+
+/**
+ * DELETE /corporations/:corporationId/discord-servers/:attachmentId
+ * Remove Discord server attachment from corporation
+ */
+app.delete(
+	'/:corporationId/discord-servers/:attachmentId',
+	requireAuth(),
+	requireAdmin(),
+	async (c) => {
+		const attachmentId = c.req.param('attachmentId')
+		const db = c.get('db')
+
+		if (!db) {
+			return c.json({ error: 'Database not available' }, 500)
+		}
+
+		try {
+			// Check if attachment exists
+			const existing = await db.query.corporationDiscordServers.findFirst({
+				where: eq(corporationDiscordServers.id, attachmentId),
+			})
+
+			if (!existing) {
+				return c.json({ error: 'Discord server attachment not found' }, 404)
+			}
+
+			// Delete attachment (cascade will handle role assignments)
+			await db
+				.delete(corporationDiscordServers)
+				.where(eq(corporationDiscordServers.id, attachmentId))
+
+			logger.info(`Discord server attachment ${attachmentId} removed`)
+
+			return c.json({ success: true })
+		} catch (error) {
+			logger.error('Error removing Discord server attachment:', error)
+			return c.json({ error: 'Failed to remove Discord server attachment' }, 500)
+		}
+	}
+)
+
+/**
+ * POST /corporations/:corporationId/discord-servers/:attachmentId/roles
+ * Assign a role to the Discord server attachment
+ *
+ * Body: {
+ *   discordRoleId: string (UUID from discord_roles table)
+ * }
+ */
+app.post(
+	'/:corporationId/discord-servers/:attachmentId/roles',
+	requireAuth(),
+	requireAdmin(),
+	async (c) => {
+		const attachmentId = c.req.param('attachmentId')
+		const db = c.get('db')
+
+		if (!db) {
+			return c.json({ error: 'Database not available' }, 500)
+		}
+
+		try {
+			const body = await c.req.json()
+			const { discordRoleId } = body
+
+			if (!discordRoleId) {
+				return c.json({ error: 'discordRoleId is required' }, 400)
+			}
+
+			// Check if attachment exists
+			const attachment = await db.query.corporationDiscordServers.findFirst({
+				where: eq(corporationDiscordServers.id, attachmentId),
+			})
+
+			if (!attachment) {
+				return c.json({ error: 'Discord server attachment not found' }, 404)
+			}
+
+			// Check if role exists and belongs to this Discord server
+			const role = await db.query.discordRoles.findFirst({
+				where: eq(discordRoles.id, discordRoleId),
+			})
+
+			if (!role) {
+				return c.json({ error: 'Discord role not found' }, 404)
+			}
+
+			if (role.discordServerId !== attachment.discordServerId) {
+				return c.json({ error: 'Role does not belong to this Discord server' }, 400)
+			}
+
+			// Check if role already assigned
+			const existingAssignment = await db.query.corporationDiscordServerRoles.findFirst({
+				where: and(
+					eq(corporationDiscordServerRoles.corporationDiscordServerId, attachmentId),
+					eq(corporationDiscordServerRoles.discordRoleId, discordRoleId)
+				),
+			})
+
+			if (existingAssignment) {
+				return c.json({ error: 'Role already assigned to this attachment' }, 409)
+			}
+
+			// Create role assignment
+			const [roleAssignment] = await db
+				.insert(corporationDiscordServerRoles)
+				.values({
+					corporationDiscordServerId: attachmentId,
+					discordRoleId,
+				})
+				.returning()
+
+			logger.info(
+				`Role ${role.roleName} assigned to corporation Discord attachment ${attachmentId}`
+			)
+
+			return c.json(roleAssignment, 201)
+		} catch (error) {
+			logger.error('Error assigning role to Discord server attachment:', error)
+			return c.json({ error: 'Failed to assign role' }, 500)
+		}
+	}
+)
+
+/**
+ * DELETE /corporations/:corporationId/discord-servers/:attachmentId/roles/:roleAssignmentId
+ * Remove a role assignment from the Discord server attachment
+ */
+app.delete(
+	'/:corporationId/discord-servers/:attachmentId/roles/:roleAssignmentId',
+	requireAuth(),
+	requireAdmin(),
+	async (c) => {
+		const roleAssignmentId = c.req.param('roleAssignmentId')
+		const db = c.get('db')
+
+		if (!db) {
+			return c.json({ error: 'Database not available' }, 500)
+		}
+
+		try {
+			// Check if role assignment exists
+			const existing = await db.query.corporationDiscordServerRoles.findFirst({
+				where: eq(corporationDiscordServerRoles.id, roleAssignmentId),
+			})
+
+			if (!existing) {
+				return c.json({ error: 'Role assignment not found' }, 404)
+			}
+
+			// Delete role assignment
+			await db
+				.delete(corporationDiscordServerRoles)
+				.where(eq(corporationDiscordServerRoles.id, roleAssignmentId))
+
+			logger.info(`Role assignment ${roleAssignmentId} removed`)
+
+			return c.json({ success: true })
+		} catch (error) {
+			logger.error('Error removing role assignment:', error)
+			return c.json({ error: 'Failed to remove role assignment' }, 500)
+		}
+	}
+)
 
 export default app

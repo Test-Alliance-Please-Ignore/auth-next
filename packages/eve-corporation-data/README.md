@@ -7,8 +7,9 @@ Shared types and interfaces for the EveCorporationData Durable Object.
 Import this package in any worker that needs to interact with the EveCorporationData Durable Object:
 
 ```typescript
-import type { EveCorporationData } from '@repo/eve-corporation-data'
 import { getStub } from '@repo/do-utils'
+
+import type { EveCorporationData } from '@repo/eve-corporation-data'
 
 // Get a typed stub to the Durable Object
 const stub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, 'unique-id')

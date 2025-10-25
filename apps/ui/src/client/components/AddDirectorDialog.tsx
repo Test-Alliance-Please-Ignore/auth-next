@@ -1,4 +1,5 @@
 import { useState } from 'react'
+
 import { Button } from '@/components/ui/button'
 import {
 	Dialog,
@@ -79,9 +80,7 @@ export function AddDirectorDialog({ corporationId, open, onOpenChange }: AddDire
 								inputMode="numeric"
 								pattern="[0-9]*"
 								value={formData.characterId}
-								onChange={(e) =>
-									setFormData({ ...formData, characterId: e.target.value })
-								}
+								onChange={(e) => setFormData({ ...formData, characterId: e.target.value })}
 								required
 								placeholder="e.g., 2119123456"
 							/>

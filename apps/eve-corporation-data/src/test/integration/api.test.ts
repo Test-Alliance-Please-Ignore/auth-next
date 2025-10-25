@@ -1,10 +1,12 @@
-import { getStub } from '@repo/do-utils'
-import type { EveCorporationData } from '@repo/eve-corporation-data'
 import { createExecutionContext, env as testEnv, waitOnExecutionContext } from 'cloudflare:test'
 import { describe, expect, it } from 'vitest'
 
-import type { Env } from '../../context'
+import { getStub } from '@repo/do-utils'
+
 import workerExports from '../../index'
+
+import type { EveCorporationData } from '@repo/eve-corporation-data'
+import type { Env } from '../../context'
 
 // Cast test env to our Env type
 const env = testEnv as unknown as Env

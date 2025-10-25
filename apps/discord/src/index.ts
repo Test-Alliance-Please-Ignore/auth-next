@@ -1,6 +1,6 @@
+import { zValidator } from '@hono/zod-validator'
 import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
-import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
 
 import { withNotFound, withOnError } from '@repo/hono-helpers'
@@ -50,8 +50,16 @@ const app = new Hono<App>()
 			})
 		),
 		async (c) => {
-			const { userId, username, discriminator, scopes, accessToken, refreshToken, expiresAt, coreUserId } =
-				c.req.valid('json')
+			const {
+				userId,
+				username,
+				discriminator,
+				scopes,
+				accessToken,
+				refreshToken,
+				expiresAt,
+				coreUserId,
+			} = c.req.valid('json')
 			const result = await discordService.storeTokens(
 				c.env,
 				userId,

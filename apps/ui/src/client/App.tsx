@@ -2,30 +2,29 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 
 import Layout from './components/layout'
+import AdminActivityLogPage from './routes/admin/activity-log'
+import AdminCategoriesPage from './routes/admin/categories'
+import AdminCorporationDetailPage from './routes/admin/corporation-detail'
+import AdminCorporationsPage from './routes/admin/corporations'
+import AdminDiscordServersPage from './routes/admin/discord-servers'
+import AdminGroupDetailPage from './routes/admin/group-detail'
+import AdminGroupsPage from './routes/admin/groups'
+// Admin routes
+import AdminLayout from './routes/admin/layout'
+import AdminUserDetailPage from './routes/admin/user-detail'
+import AdminUsersPage from './routes/admin/users'
 import AuthCallbackPage from './routes/auth-callback'
 import CharacterDetailPage from './routes/character-detail'
 import ClaimMainPage from './routes/claim-main'
+import CreateGroupPage from './routes/create-group'
 import DashboardPage from './routes/dashboard'
 import DiscordCallbackPage from './routes/discord-callback'
-import LandingPage from './routes/landing'
-
+import GroupDetailPage from './routes/group-detail'
 // User-facing group routes
 import GroupsPage from './routes/groups'
-import CreateGroupPage from './routes/create-group'
-import GroupDetailPage from './routes/group-detail'
-import MyGroupsPage from './routes/my-groups'
 import InvitationsPage from './routes/invitations'
-
-// Admin routes
-import AdminLayout from './routes/admin/layout'
-import AdminCategoriesPage from './routes/admin/categories'
-import AdminGroupsPage from './routes/admin/groups'
-import AdminGroupDetailPage from './routes/admin/group-detail'
-import AdminCorporationsPage from './routes/admin/corporations'
-import AdminCorporationDetailPage from './routes/admin/corporation-detail'
-import AdminUsersPage from './routes/admin/users'
-import AdminUserDetailPage from './routes/admin/user-detail'
-import AdminActivityLogPage from './routes/admin/activity-log'
+import LandingPage from './routes/landing'
+import MyGroupsPage from './routes/my-groups'
 
 // Create a client
 const queryClient = new QueryClient({
@@ -68,6 +67,7 @@ export default function App() {
 						<Route path="groups/:groupId" element={<AdminGroupDetailPage />} />
 						<Route path="corporations" element={<AdminCorporationsPage />} />
 						<Route path="corporations/:corporationId" element={<AdminCorporationDetailPage />} />
+						<Route path="discord-servers" element={<AdminDiscordServersPage />} />
 						<Route path="users" element={<AdminUsersPage />} />
 						<Route path="users/:userId" element={<AdminUserDetailPage />} />
 						<Route path="activity-log" element={<AdminActivityLogPage />} />

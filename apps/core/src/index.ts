@@ -1,33 +1,33 @@
-import { Hono } from 'hono'
 import { WorkerEntrypoint } from 'cloudflare:workers'
+import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
+import { createDb } from './db'
 import { sessionMiddleware } from './middleware/session'
 import adminRoutes from './routes/admin'
 import authRoutes from './routes/auth'
 import charactersRoutes from './routes/characters'
 import corporationsRoutes from './routes/corporations'
 import discordRoutes from './routes/discord'
+import discordServersRoutes from './routes/discord-servers'
 import groupsRoutes from './routes/groups'
 import skillsRoutes from './routes/skills'
 import usersRoutes from './routes/users'
 import wsRoutes from './routes/ws'
-
 import { CoreRpcService } from './services/core-rpc.service'
-import { createDb } from './db'
 
-import type { App, Env } from './context'
 import type {
 	CharacterOwnerInfo,
+	DeleteCharacterResult,
+	DeleteUserResult,
 	SearchUsersParams,
 	SearchUsersResult,
-	UserDetails,
-	DeleteUserResult,
 	TransferCharacterResult,
-	DeleteCharacterResult,
+	UserDetails,
 } from '@repo/admin'
+import type { App, Env } from './context'
 
 const app = new Hono<App>()
 	.use(
@@ -57,6 +57,7 @@ const app = new Hono<App>()
 	.route('/api/users', usersRoutes)
 	.route('/api/characters', charactersRoutes)
 	.route('/api/corporations', corporationsRoutes)
+	.route('/api/discord-servers', discordServersRoutes)
 	.route('/api/skills', skillsRoutes)
 	.route('/api/discord', discordRoutes)
 	.route('/api/groups', groupsRoutes)
@@ -107,7 +108,10 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	/**
 	 * Transfer character ownership from one user to another
 	 */
-	async transferCharacterOwnership(characterId: string, newUserId: string): Promise<TransferCharacterResult> {
+	async transferCharacterOwnership(
+		characterId: string,
+		newUserId: string
+	): Promise<TransferCharacterResult> {
 		return this.getService().transferCharacterOwnership(characterId, newUserId)
 	}
 

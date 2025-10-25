@@ -38,10 +38,7 @@ export type QueueHandler<Body = unknown> = (
  * Message handler function type
  * This is the function that processes individual messages
  */
-export type MessageHandler<T> = (
-	message: T,
-	metadata: MessageMetadata
-) => Promise<void> | void
+export type MessageHandler<T> = (message: T, metadata: MessageMetadata) => Promise<void> | void
 
 /**
  * Message metadata provided to handlers

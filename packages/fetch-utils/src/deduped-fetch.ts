@@ -1,4 +1,5 @@
 import { defaultAuthAwareKeyGenerator } from './key-generator'
+
 import type { DedupConfig, DedupStats } from './types'
 
 /**
@@ -108,9 +109,7 @@ export class DedupedFetch {
 			this.inFlight.delete(key)
 			this.stats.inFlight = this.inFlight.size
 			if (this.config.debug) {
-				console.log(
-					`[DedupedFetch] Completed: ${key} (${this.stats.inFlight} in-flight remaining)`
-				)
+				console.log(`[DedupedFetch] Completed: ${key} (${this.stats.inFlight} in-flight remaining)`)
 			}
 		})
 

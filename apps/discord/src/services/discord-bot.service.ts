@@ -1,9 +1,14 @@
 import { REST } from '@discordjs/rest'
 import { Routes } from 'discord-api-types/v10'
+
 import { generateShardKey } from '@repo/hazmat'
 import { logger } from '@repo/hono-helpers'
 
-import type { RESTError, RESTGetAPIGuildMemberResult, RESTPutAPIGuildMemberJSONBody } from 'discord-api-types/v10'
+import type {
+	RESTError,
+	RESTGetAPIGuildMemberResult,
+	RESTPutAPIGuildMemberJSONBody,
+} from 'discord-api-types/v10'
 import type { Env } from '../context'
 
 /**
@@ -38,12 +43,14 @@ export class DiscordBotService {
 	 * @param guildId - Discord guild/server ID
 	 * @param userId - Discord user ID
 	 * @param accessToken - User's OAuth access token
+	 * @param roleIds - Optional array of role IDs to assign to the user
 	 * @returns Success status and details
 	 */
 	async addGuildMember(
 		guildId: string,
 		userId: string,
-		accessToken: string
+		accessToken: string,
+		roleIds?: string[]
 	): Promise<{
 		success: boolean
 		errorMessage?: string
@@ -72,13 +79,14 @@ export class DiscordBotService {
 				// Prepare request body
 				const body: RESTPutAPIGuildMemberJSONBody = {
 					access_token: accessToken,
+					...(roleIds && roleIds.length > 0 && { roles: roleIds }),
 				}
 
 				// Make API call to add user to guild
 				// PUT /guilds/{guild.id}/members/{user.id}
-				const result = await this.rest.put(Routes.guildMember(guildId, userId), {
+				const result = (await this.rest.put(Routes.guildMember(guildId, userId), {
 					body,
-				}) as RESTGetAPIGuildMemberResult | null
+				})) as RESTGetAPIGuildMemberResult | null
 
 				// If result is null/undefined, user was already a member (204 response)
 				if (!result) {
@@ -109,7 +117,10 @@ export class DiscordBotService {
 		} catch (error) {
 			// Handle Discord API errors
 			if (this.isRESTError(error)) {
-				const discordError = error as RESTError & { status?: number; rawError?: { httpStatus?: number } }
+				const discordError = error as RESTError & {
+					status?: number
+					rawError?: { httpStatus?: number }
+				}
 
 				// Try to get HTTP status from various possible locations
 				const httpStatus =

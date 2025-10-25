@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+
 import { api } from '@/lib/api'
+
 import type {
 	CreateGroupRequest,
 	CreateJoinRequestRequest,
-	GroupWithDetails,
 	GroupsFilters,
+	GroupWithDetails,
 	UpdateGroupRequest,
 } from '@/lib/api'
 
@@ -83,21 +85,27 @@ export function useUpdateGroup() {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: ({ id, data }: { id: string; data: UpdateGroupRequest }) => api.updateGroup(id, data),
+		mutationFn: ({ id, data }: { id: string; data: UpdateGroupRequest }) =>
+			api.updateGroup(id, data),
 		onSuccess: (updatedGroup) => {
 			// Invalidate all group lists (they may have different filters)
 			void queryClient.invalidateQueries({ queryKey: groupKeys.lists() })
 
 			// Update group detail cache
-			queryClient.setQueryData(groupKeys.detail(updatedGroup.id), (old: GroupWithDetails | undefined) => {
-				if (!old) return updatedGroup
-				return { ...old, ...updatedGroup }
-			})
+			queryClient.setQueryData(
+				groupKeys.detail(updatedGroup.id),
+				(old: GroupWithDetails | undefined) => {
+					if (!old) return updatedGroup
+					return { ...old, ...updatedGroup }
+				}
+			)
 
 			// Update in any list caches
 			queryClient.setQueriesData<GroupWithDetails[]>({ queryKey: groupKeys.lists() }, (old) => {
 				if (!old) return old
-				return old.map((group) => (group.id === updatedGroup.id ? { ...group, ...updatedGroup } : group))
+				return old.map((group) =>
+					group.id === updatedGroup.id ? { ...group, ...updatedGroup } : group
+				)
 			})
 		},
 	})

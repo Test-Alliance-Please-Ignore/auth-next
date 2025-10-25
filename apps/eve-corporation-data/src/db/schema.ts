@@ -1,4 +1,14 @@
-import { boolean, index, integer, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
+import {
+	boolean,
+	index,
+	integer,
+	jsonb,
+	pgTable,
+	text,
+	timestamp,
+	unique,
+	uuid,
+} from 'drizzle-orm/pg-core'
 
 /**
  * Database schema for the eve-corporation-data worker
@@ -61,7 +71,7 @@ export const corporationDirectors = pgTable(
 		index('corporation_directors_corp_healthy_idx').on(table.corporationId, table.isHealthy),
 		// Index for selecting least-recently-used director
 		index('corporation_directors_last_used_idx').on(table.corporationId, table.lastUsed),
-	],
+	]
 )
 
 // ============================================================================
@@ -86,7 +96,7 @@ export const characterCorporationRoles = pgTable(
 		rolesAtOther: jsonb('roles_at_other').$type<string[]>(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
-	(table) => [unique().on(table.corporationId, table.characterId)],
+	(table) => [unique().on(table.corporationId, table.characterId)]
 )
 
 // ============================================================================
@@ -134,7 +144,7 @@ export const corporationMembers = pgTable(
 		characterId: text('character_id').notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
-	(table) => [unique().on(table.corporationId, table.characterId)],
+	(table) => [unique().on(table.corporationId, table.characterId)]
 )
 
 /**
@@ -157,7 +167,7 @@ export const corporationMemberTracking = pgTable(
 		startDate: timestamp('start_date', { withTimezone: true }),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
-	(table) => [unique().on(table.corporationId, table.characterId)],
+	(table) => [unique().on(table.corporationId, table.characterId)]
 )
 
 // ============================================================================
@@ -180,7 +190,7 @@ export const corporationWallets = pgTable(
 		balance: text('balance').notNull(), // Stored as string to avoid precision loss
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
-	(table) => [unique().on(table.corporationId, table.division)],
+	(table) => [unique().on(table.corporationId, table.division)]
 )
 
 /**
@@ -211,7 +221,7 @@ export const corporationWalletJournal = pgTable(
 		taxReceiverId: text('tax_receiver_id'),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
-	(table) => [unique().on(table.corporationId, table.division, table.journalId)],
+	(table) => [unique().on(table.corporationId, table.division, table.journalId)]
 )
 
 /**
@@ -239,7 +249,7 @@ export const corporationWalletTransactions = pgTable(
 		unitPrice: text('unit_price').notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
-	(table) => [unique().on(table.corporationId, table.division, table.transactionId)],
+	(table) => [unique().on(table.corporationId, table.division, table.transactionId)]
 )
 
 // ============================================================================
@@ -268,7 +278,7 @@ export const corporationAssets = pgTable(
 		isBlueprintCopy: boolean('is_blueprint_copy'),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
-	(table) => [unique().on(table.corporationId, table.itemId)],
+	(table) => [unique().on(table.corporationId, table.itemId)]
 )
 
 /**
@@ -303,7 +313,7 @@ export const corporationStructures = pgTable(
 		>(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
-	(table) => [unique().on(table.corporationId, table.structureId)],
+	(table) => [unique().on(table.corporationId, table.structureId)]
 )
 
 // ============================================================================
@@ -337,9 +347,9 @@ export const corporationOrders = pgTable(
 		volumeRemain: integer('volume_remain').notNull(),
 		volumeTotal: integer('volume_total').notNull(),
 		walletDivision: integer('wallet_division').notNull(),
-	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
-	(table) => [unique().on(table.corporationId, table.orderId)],
+	(table) => [unique().on(table.corporationId, table.orderId)]
 )
 
 /**
@@ -378,7 +388,7 @@ export const corporationContracts = pgTable(
 		volume: text('volume'),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
-	(table) => [unique().on(table.corporationId, table.contractId)],
+	(table) => [unique().on(table.corporationId, table.contractId)]
 )
 
 /**
@@ -417,7 +427,7 @@ export const corporationIndustryJobs = pgTable(
 		successfulRuns: integer('successful_runs'),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
-	(table) => [unique().on(table.corporationId, table.jobId)],
+	(table) => [unique().on(table.corporationId, table.jobId)]
 )
 
 // ============================================================================
@@ -441,7 +451,7 @@ export const corporationKillmails = pgTable(
 		killmailTime: timestamp('killmail_time', { withTimezone: true }).notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
-	(table) => [unique().on(table.corporationId, table.killmailId)],
+	(table) => [unique().on(table.corporationId, table.killmailId)]
 )
 
 // ============================================================================

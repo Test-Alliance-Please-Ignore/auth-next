@@ -2,22 +2,22 @@
  * A generic branded type that adds a readonly brand property to any type T.
  * This pattern helps prevent accidental mixing of different ID types by making
  * them structurally different at the type level while maintaining the same runtime value.
- * 
+ *
  * @template T - The underlying type to brand
  * @template Brand - The string literal type used as the brand identifier
- * 
+ *
  * @example
  * ```typescript
  * type UserId = EveBrandedType<string, 'UserId'>;
  * type ProductId = EveBrandedType<string, 'ProductId'>;
- * 
+ *
  * // These are incompatible even though both are strings:
  * const userId: UserId = '123' as UserId;
  * const productId: ProductId = '123' as ProductId;
  * // userId = productId; // TypeScript error: Type 'ProductId' is not assignable to type 'UserId'
  * ```
  */
-export type EveBrandedType<T, Brand extends string> = T & { readonly __brand: Brand };
+export type EveBrandedType<T, Brand extends string> = T & { readonly __brand: Brand }
 
 /**
  * Utility function for creating branded types.
@@ -33,11 +33,14 @@ export type EveBrandedType<T, Brand extends string> = T & { readonly __brand: Br
  *
  * @returns The value cast to the branded type (no runtime transformation for primitives)
  */
-export const brand = <T, Brand extends string>(value: T, _brand: Brand): EveBrandedType<T, Brand> => {
-    // For primitives like strings and numbers, we just cast at compile time
-    // The __brand property is a type-level construct only
-    return value as EveBrandedType<T, Brand>;
-};
+export const brand = <T, Brand extends string>(
+	value: T,
+	_brand: Brand
+): EveBrandedType<T, Brand> => {
+	// For primitives like strings and numbers, we just cast at compile time
+	// The __brand property is a type-level construct only
+	return value as EveBrandedType<T, Brand>
+}
 
 /**
  * Utility function for extracting the underlying value from a branded type.
@@ -59,5 +62,5 @@ export const brand = <T, Brand extends string>(value: T, _brand: Brand): EveBran
  * ```
  */
 export const unbrand = <T, Brand extends string>(value: EveBrandedType<T, Brand>): T => {
-    return value as T;
-};
+	return value as T
+}

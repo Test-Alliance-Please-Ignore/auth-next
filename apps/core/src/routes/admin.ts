@@ -5,12 +5,14 @@
  * These endpoints call the admin worker via RPC for actual operations.
  */
 
-import { logger } from '@repo/hono-helpers'
 import { Hono } from 'hono'
 import { z } from 'zod'
 
-import type { App } from '../context'
+import { logger } from '@repo/hono-helpers'
+
 import { requireAdmin, requireAuth } from '../middleware/session'
+
+import type { App } from '../context'
 
 const app = new Hono<App>()
 
@@ -193,10 +195,7 @@ app.post('/characters/:characterId/transfer', requireAuth(), requireAdmin(), asy
 			if (error.message === 'Target user not found') {
 				return c.json({ error: 'Target user not found' }, 404)
 			}
-			if (
-				error.message.includes('only character') ||
-				error.message.includes('already owned')
-			) {
+			if (error.message.includes('only character') || error.message.includes('already owned')) {
 				return c.json({ error: error.message }, 400)
 			}
 			logger.error('Error transferring character:', error)

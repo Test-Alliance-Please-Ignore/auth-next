@@ -1,9 +1,10 @@
 import { and, asc, eq } from '@repo/db-utils'
-import type { EveTokenStore, EsiResponse } from '@repo/eve-token-store'
+
+import { characterCorporationRoles, corporationConfig, corporationDirectors } from './db/schema'
 
 import type { EsiCharacterRoles } from '@repo/eve-corporation-data'
+import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
 import type { createDb } from './db'
-import { characterCorporationRoles, corporationConfig, corporationDirectors } from './db/schema'
 
 /**
  * Director health status

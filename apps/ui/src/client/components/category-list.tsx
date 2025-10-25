@@ -1,4 +1,5 @@
 import { Edit2, Trash2 } from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
 import {
 	Table,
@@ -8,6 +9,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+
 import { VisibilityBadge } from './visibility-badge'
 
 import type { Category } from '@/lib/api'

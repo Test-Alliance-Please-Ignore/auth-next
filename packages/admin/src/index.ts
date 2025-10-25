@@ -188,7 +188,10 @@ export interface CoreWorker {
 	/**
 	 * Transfer character ownership from one user to another
 	 */
-	transferCharacterOwnership(characterId: string, newUserId: string): Promise<TransferCharacterResult>
+	transferCharacterOwnership(
+		characterId: string,
+		newUserId: string
+	): Promise<TransferCharacterResult>
 
 	/**
 	 * Delete/unlink a character from its owner

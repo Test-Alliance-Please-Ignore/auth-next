@@ -1,6 +1,7 @@
 import { relations } from 'drizzle-orm'
 import {
 	bigint,
+	boolean,
 	index,
 	integer,
 	pgEnum,
@@ -57,9 +58,7 @@ export const categories = pgTable(
 		/** Visibility level */
 		visibility: visibilityEnum('visibility').notNull().default('public'),
 		/** Who can create groups in this category */
-		allowGroupCreation: categoryPermissionEnum('allow_group_creation')
-			.notNull()
-			.default('anyone'),
+		allowGroupCreation: categoryPermissionEnum('allow_group_creation').notNull().default('anyone'),
 		createdAt: timestamp('created_at').defaultNow().notNull(),
 		updatedAt: timestamp('updated_at').defaultNow().notNull(),
 	},
@@ -281,6 +280,102 @@ export const groupJoinRequests = pgTable(
 )
 
 /**
+ * Group Discord servers table - Discord servers linked to groups
+ *
+ * Groups can have multiple Discord servers configured for auto-invite.
+ * References Discord servers from the registry in core database.
+ */
+export const groupDiscordServers = pgTable(
+	'group_discord_servers',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		groupId: uuid('group_id')
+			.notNull()
+			.references(() => groups.id, { onDelete: 'cascade' }),
+		/** Discord server ID from registry (references core.discord_servers.id) */
+		discordServerId: uuid('discord_server_id').notNull(),
+		/** Whether to automatically invite group members to this server */
+		autoInvite: boolean('auto_invite').notNull().default(false),
+		/** Whether to automatically assign roles on invite */
+		autoAssignRoles: boolean('auto_assign_roles').notNull().default(false),
+		createdAt: timestamp('created_at').defaultNow().notNull(),
+		updatedAt: timestamp('updated_at').defaultNow().notNull(),
+	},
+	(table) => [
+		index('group_discord_servers_group_id_idx').on(table.groupId),
+		index('group_discord_servers_server_id_idx').on(table.discordServerId),
+		index('group_discord_servers_auto_invite_idx').on(table.autoInvite),
+		// One Discord server per group (unique server ID per group)
+		unique('unique_group_discord_server').on(table.groupId, table.discordServerId),
+	]
+)
+
+/**
+ * Group Discord Server Roles
+ *
+ * Roles to assign to users when they join a group's Discord server.
+ * Links group_discord_servers to specific roles from the core Discord registry.
+ */
+export const groupDiscordServerRoles = pgTable(
+	'group_discord_server_roles',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		/** Which group-server attachment */
+		groupDiscordServerId: uuid('group_discord_server_id')
+			.notNull()
+			.references(() => groupDiscordServers.id, { onDelete: 'cascade' }),
+		/** Which role from the Discord server (references core.discord_roles.id) */
+		discordRoleId: uuid('discord_role_id').notNull(),
+		/** Role name cached for display */
+		roleName: text('role_name').notNull(),
+		createdAt: timestamp('created_at').defaultNow().notNull(),
+	},
+	(table) => [
+		index('group_discord_server_roles_attachment_idx').on(table.groupDiscordServerId),
+		unique('unique_group_discord_server_role').on(table.groupDiscordServerId, table.discordRoleId),
+	]
+)
+
+/**
+ * Group Discord invites table - Audit log for Discord invite attempts
+ *
+ * Tracks Discord server join attempts for group members.
+ * Used for debugging and auditing auto-invite functionality.
+ */
+export const groupDiscordInvites = pgTable(
+	'group_discord_invites',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		/** Group ID */
+		groupId: uuid('group_id')
+			.notNull()
+			.references(() => groups.id, { onDelete: 'cascade' }),
+		/** Group Discord Server attachment that triggered this invite */
+		groupDiscordServerId: uuid('group_discord_server_id')
+			.notNull()
+			.references(() => groupDiscordServers.id, { onDelete: 'cascade' }),
+		/** User ID from core users table (references core.users.id) */
+		userId: varchar('user_id', { length: 255 }).notNull(),
+		/** Discord user ID */
+		discordUserId: varchar('discord_user_id', { length: 255 }).notNull(),
+		/** Whether the invite/join was successful */
+		success: boolean('success').notNull(),
+		/** Error message if invite failed */
+		errorMessage: text('error_message'),
+		/** Array of Discord role IDs that were assigned (if any) */
+		assignedRoleIds: text('assigned_role_ids').array(),
+		/** When the invite attempt was made */
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		index('group_discord_invites_group_id_idx').on(table.groupId),
+		index('group_discord_invites_server_id_idx').on(table.groupDiscordServerId),
+		index('group_discord_invites_user_id_idx').on(table.userId),
+		index('group_discord_invites_created_at_idx').on(table.createdAt),
+	]
+)
+
+/**
  * Relations
  */
 
@@ -298,6 +393,8 @@ export const groupsRelations = relations(groups, ({ one, many }) => ({
 	invitations: many(groupInvitations),
 	inviteCodes: many(groupInviteCodes),
 	joinRequests: many(groupJoinRequests),
+	discordServers: many(groupDiscordServers),
+	discordInvites: many(groupDiscordInvites),
 }))
 
 export const groupMembersRelations = relations(groupMembers, ({ one }) => ({
@@ -346,6 +443,33 @@ export const groupJoinRequestsRelations = relations(groupJoinRequests, ({ one })
 	}),
 }))
 
+export const groupDiscordServersRelations = relations(groupDiscordServers, ({ one, many }) => ({
+	group: one(groups, {
+		fields: [groupDiscordServers.groupId],
+		references: [groups.id],
+	}),
+	roles: many(groupDiscordServerRoles),
+	invites: many(groupDiscordInvites),
+}))
+
+export const groupDiscordServerRolesRelations = relations(groupDiscordServerRoles, ({ one }) => ({
+	groupDiscordServer: one(groupDiscordServers, {
+		fields: [groupDiscordServerRoles.groupDiscordServerId],
+		references: [groupDiscordServers.id],
+	}),
+}))
+
+export const groupDiscordInvitesRelations = relations(groupDiscordInvites, ({ one }) => ({
+	group: one(groups, {
+		fields: [groupDiscordInvites.groupId],
+		references: [groups.id],
+	}),
+	groupDiscordServer: one(groupDiscordServers, {
+		fields: [groupDiscordInvites.groupDiscordServerId],
+		references: [groupDiscordServers.id],
+	}),
+}))
+
 /**
  * Export schema for db client
  */
@@ -365,6 +489,9 @@ export const schema = {
 	groupInviteCodes,
 	groupInviteCodeRedemptions,
 	groupJoinRequests,
+	groupDiscordServers,
+	groupDiscordServerRoles,
+	groupDiscordInvites,
 	// Relations
 	categoriesRelations,
 	groupsRelations,
@@ -374,4 +501,7 @@ export const schema = {
 	groupInviteCodesRelations,
 	groupInviteCodeRedemptionsRelations,
 	groupJoinRequestsRelations,
+	groupDiscordServersRelations,
+	groupDiscordServerRolesRelations,
+	groupDiscordInvitesRelations,
 }

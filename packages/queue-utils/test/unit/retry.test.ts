@@ -1,15 +1,16 @@
 import { describe, expect, it } from 'vitest'
+
+import { FatalError, RetryableError } from '../../src/errors'
 import {
+	calculateMaxRetryTime,
 	defaultRetryStrategy,
 	exponentialBackoff,
 	fixedDelay,
+	getRetryDelay,
 	linearBackoff,
 	noRetry,
 	shouldRetry,
-	getRetryDelay,
-	calculateMaxRetryTime,
 } from '../../src/retry'
-import { RetryableError, FatalError } from '../../src/errors'
 
 describe('defaultRetryStrategy', () => {
 	it('should have maxAttempts of 3', () => {

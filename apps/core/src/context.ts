@@ -2,9 +2,9 @@ import type { AdminWorker as IAdminWorker } from '@repo/admin'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Groups } from '@repo/groups'
-import type { Notifications } from '@repo/notifications'
 import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
+import type { Notifications } from '@repo/notifications'
 
 export type Env = SharedHonoEnv & {
 	DATABASE_URL: string

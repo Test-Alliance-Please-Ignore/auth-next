@@ -7,6 +7,7 @@ import {
 	pgTable,
 	text,
 	timestamp,
+	unique,
 	uuid,
 	varchar,
 } from 'drizzle-orm/pg-core'
@@ -214,12 +215,6 @@ export const managedCorporations = pgTable(
 		isVerified: boolean('is_verified').default(false).notNull(),
 		/** Number of healthy directors currently available */
 		healthyDirectorCount: integer('healthy_director_count').default(0).notNull(),
-		/** Discord server/guild ID linked to this corporation */
-		discordGuildId: varchar('discord_guild_id', { length: 255 }),
-		/** Discord server name (cached) */
-		discordGuildName: varchar('discord_guild_name', { length: 255 }),
-		/** Whether to automatically invite corporation members to Discord server */
-		discordAutoInvite: boolean('discord_auto_invite').default(false).notNull(),
 		/** Admin user who configured this corporation */
 		configuredBy: uuid('configured_by').references(() => users.id, { onDelete: 'set null' }),
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -230,7 +225,126 @@ export const managedCorporations = pgTable(
 		index('managed_corporations_ticker_idx').on(table.ticker),
 		index('managed_corporations_assigned_character_id_idx').on(table.assignedCharacterId),
 		index('managed_corporations_is_active_idx').on(table.isActive),
-		index('managed_corporations_discord_guild_id_idx').on(table.discordGuildId),
+	]
+)
+
+/**
+ * Discord Servers Registry
+ *
+ * Centralized registry of Discord servers that can be linked to corporations and groups.
+ * Admins add servers here once and reuse across multiple entities.
+ */
+export const discordServers = pgTable(
+	'discord_servers',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		/** Discord guild/server ID */
+		guildId: text('guild_id').unique().notNull(),
+		/** Discord guild/server name */
+		guildName: text('guild_name').notNull(),
+		/** Description/notes about this server */
+		description: text('description'),
+		/** Whether this server is active */
+		isActive: boolean('is_active').default(true).notNull(),
+		/** Admin user who added this server */
+		createdBy: uuid('created_by')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [index('discord_servers_guild_id_idx').on(table.guildId)]
+)
+
+/**
+ * Discord Roles
+ *
+ * Roles that exist within a Discord server in the registry.
+ * These can be assigned to users when they join via auto-invite.
+ */
+export const discordRoles = pgTable(
+	'discord_roles',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		/** Which Discord server this role belongs to */
+		discordServerId: uuid('discord_server_id')
+			.notNull()
+			.references(() => discordServers.id, { onDelete: 'cascade' }),
+		/** Discord role ID */
+		roleId: text('role_id').notNull(),
+		/** Discord role name */
+		roleName: text('role_name').notNull(),
+		/** Description/notes about this role */
+		description: text('description'),
+		/** Whether this role is active */
+		isActive: boolean('is_active').default(true).notNull(),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		index('discord_roles_server_id_idx').on(table.discordServerId),
+		unique('unique_discord_server_role').on(table.discordServerId, table.roleId),
+	]
+)
+
+/**
+ * Corporation Discord Servers
+ *
+ * Links corporations to Discord servers from the registry.
+ * One corporation can have multiple Discord servers.
+ */
+export const corporationDiscordServers = pgTable(
+	'corporation_discord_servers',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		/** Which corporation this attachment belongs to */
+		corporationId: text('corporation_id')
+			.notNull()
+			.references(() => managedCorporations.corporationId, { onDelete: 'cascade' }),
+		/** Which Discord server from the registry */
+		discordServerId: uuid('discord_server_id')
+			.notNull()
+			.references(() => discordServers.id, { onDelete: 'cascade' }),
+		/** Whether to automatically invite corporation members */
+		autoInvite: boolean('auto_invite').default(false).notNull(),
+		/** Whether to automatically assign roles on invite */
+		autoAssignRoles: boolean('auto_assign_roles').default(false).notNull(),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		index('corp_discord_servers_corp_id_idx').on(table.corporationId),
+		index('corp_discord_servers_server_id_idx').on(table.discordServerId),
+		unique('unique_corp_discord_server').on(table.corporationId, table.discordServerId),
+	]
+)
+
+/**
+ * Corporation Discord Server Roles
+ *
+ * Roles to assign to users when they join a corporation's Discord server.
+ * Links corporation_discord_servers to specific discord_roles.
+ */
+export const corporationDiscordServerRoles = pgTable(
+	'corporation_discord_server_roles',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		/** Which corporation-server attachment */
+		corporationDiscordServerId: uuid('corporation_discord_server_id')
+			.notNull()
+			.references(() => corporationDiscordServers.id, { onDelete: 'cascade' }),
+		/** Which role from the Discord server */
+		discordRoleId: uuid('discord_role_id')
+			.notNull()
+			.references(() => discordRoles.id, { onDelete: 'cascade' }),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		index('corp_discord_server_roles_attachment_idx').on(table.corporationDiscordServerId),
+		unique('unique_corp_discord_server_role').on(
+			table.corporationDiscordServerId,
+			table.discordRoleId
+		),
 	]
 )
 
@@ -248,6 +362,11 @@ export const corporationDiscordInvites = pgTable(
 		corporationId: text('corporation_id')
 			.notNull()
 			.references(() => managedCorporations.corporationId, { onDelete: 'cascade' }),
+		/** Corporation Discord Server attachment ID */
+		corporationDiscordServerId: uuid('corporation_discord_server_id').references(
+			() => corporationDiscordServers.id,
+			{ onDelete: 'set null' }
+		),
 		/** User ID from core users table */
 		userId: uuid('user_id')
 			.notNull()
@@ -258,12 +377,15 @@ export const corporationDiscordInvites = pgTable(
 		success: boolean('success').notNull(),
 		/** Error message if invite failed */
 		errorMessage: text('error_message'),
+		/** Array of Discord role IDs that were assigned (if any) */
+		assignedRoleIds: text('assigned_role_ids').array(),
 		/** When the invite attempt was made */
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 	},
 	(table) => [
 		index('corporation_discord_invites_corp_id_idx').on(table.corporationId),
 		index('corporation_discord_invites_user_id_idx').on(table.userId),
+		index('corporation_discord_invites_server_id_idx').on(table.corporationDiscordServerId),
 		index('corporation_discord_invites_created_at_idx').on(table.createdAt),
 	]
 )
@@ -306,12 +428,78 @@ export const userActivityLogRelations = relations(userActivityLog, ({ one }) => 
 	}),
 }))
 
-export const managedCorporationsRelations = relations(managedCorporations, ({ one }) => ({
+export const managedCorporationsRelations = relations(managedCorporations, ({ one, many }) => ({
 	configuredByUser: one(users, {
 		fields: [managedCorporations.configuredBy],
 		references: [users.id],
 	}),
+	discordServers: many(corporationDiscordServers),
+	discordInvites: many(corporationDiscordInvites),
 }))
+
+export const discordServersRelations = relations(discordServers, ({ one, many }) => ({
+	createdByUser: one(users, {
+		fields: [discordServers.createdBy],
+		references: [users.id],
+	}),
+	roles: many(discordRoles),
+	corporationAttachments: many(corporationDiscordServers),
+}))
+
+export const discordRolesRelations = relations(discordRoles, ({ one }) => ({
+	discordServer: one(discordServers, {
+		fields: [discordRoles.discordServerId],
+		references: [discordServers.id],
+	}),
+}))
+
+export const corporationDiscordServersRelations = relations(
+	corporationDiscordServers,
+	({ one, many }) => ({
+		corporation: one(managedCorporations, {
+			fields: [corporationDiscordServers.corporationId],
+			references: [managedCorporations.corporationId],
+		}),
+		discordServer: one(discordServers, {
+			fields: [corporationDiscordServers.discordServerId],
+			references: [discordServers.id],
+		}),
+		roles: many(corporationDiscordServerRoles),
+		invites: many(corporationDiscordInvites),
+	})
+)
+
+export const corporationDiscordServerRolesRelations = relations(
+	corporationDiscordServerRoles,
+	({ one }) => ({
+		corporationDiscordServer: one(corporationDiscordServers, {
+			fields: [corporationDiscordServerRoles.corporationDiscordServerId],
+			references: [corporationDiscordServers.id],
+		}),
+		discordRole: one(discordRoles, {
+			fields: [corporationDiscordServerRoles.discordRoleId],
+			references: [discordRoles.id],
+		}),
+	})
+)
+
+export const corporationDiscordInvitesRelations = relations(
+	corporationDiscordInvites,
+	({ one }) => ({
+		corporation: one(managedCorporations, {
+			fields: [corporationDiscordInvites.corporationId],
+			references: [managedCorporations.corporationId],
+		}),
+		corporationDiscordServer: one(corporationDiscordServers, {
+			fields: [corporationDiscordInvites.corporationDiscordServerId],
+			references: [corporationDiscordServers.id],
+		}),
+		user: one(users, {
+			fields: [corporationDiscordInvites.userId],
+			references: [users.id],
+		}),
+	})
+)
 
 /**
  * Export schema for db client
@@ -324,6 +512,10 @@ export const schema = {
 	userActivityLog,
 	oauthStates,
 	managedCorporations,
+	discordServers,
+	discordRoles,
+	corporationDiscordServers,
+	corporationDiscordServerRoles,
 	corporationDiscordInvites,
 	usersRelations,
 	userCharactersRelations,
@@ -331,4 +523,9 @@ export const schema = {
 	userPreferencesRelations,
 	userActivityLogRelations,
 	managedCorporationsRelations,
+	discordServersRelations,
+	discordRolesRelations,
+	corporationDiscordServersRelations,
+	corporationDiscordServerRolesRelations,
+	corporationDiscordInvitesRelations,
 }

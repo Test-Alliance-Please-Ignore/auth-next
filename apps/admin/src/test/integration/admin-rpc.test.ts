@@ -9,28 +9,27 @@
  * - Activity log queries
  */
 
-import { beforeEach, describe, expect, it } from 'vitest'
 import { env } from 'cloudflare:test'
+import { beforeEach, describe, expect, it } from 'vitest'
 
 import { createDb } from '../../db'
-import type { schema } from '../../db'
-import type { DbClient } from '@repo/db-utils'
-import type { Env } from '../../context'
-
+// Import the worker class
+import AdminWorker from '../../index'
 import {
+	characterExists,
 	cleanupAuditLogs,
 	cleanupTestUser,
 	createAdminUser,
 	createTestCharacter,
 	createTestUser,
-	characterExists,
 	getAuditLogs,
 	getUserCharacterCount,
 	userExists,
 } from '../helpers'
 
-// Import the worker class
-import AdminWorker from '../../index'
+import type { DbClient } from '@repo/db-utils'
+import type { Env } from '../../context'
+import type { schema } from '../../db'
 
 // Cast env to have correct types
 const testEnv = env as unknown as Env
@@ -118,7 +117,11 @@ describe('Admin Worker RPC', () => {
 			expect(await getUserCharacterCount(db, targetUserId)).toBe(1) // main only
 
 			// Transfer character via RPC
-			const result = await worker.transferCharacterOwnership(charToTransfer, targetUserId, adminUserId)
+			const result = await worker.transferCharacterOwnership(
+				charToTransfer,
+				targetUserId,
+				adminUserId
+			)
 
 			// Verify result
 			expect(result.success).toBe(true)
@@ -181,11 +184,9 @@ describe('Admin Worker RPC', () => {
 			const targetUserId = await createTestUser(db)
 
 			// Get the main character ID from user
-			const { userCharacters } = await import('../../db/schema')
+			const { userCharacters } = await import('../../../../core/src/db/schema')
 			const { eq } = await import('@repo/db-utils')
-			const chars = await db.query.userCharacters.findMany({
-				where: eq(userCharacters.userId, userId),
-			})
+			const chars = await db.select().from(userCharacters).where(eq(userCharacters.userId, userId))
 			const mainCharId = chars[0]?.characterId!
 
 			await expect(
@@ -243,11 +244,9 @@ describe('Admin Worker RPC', () => {
 			const userId = await createTestUser(db)
 
 			// Get the main character ID
-			const { userCharacters } = await import('../../db/schema')
+			const { userCharacters } = await import('../../../../core/src/db/schema')
 			const { eq } = await import('@repo/db-utils')
-			const chars = await db.query.userCharacters.findMany({
-				where: eq(userCharacters.userId, userId),
-			})
+			const chars = await db.select().from(userCharacters).where(eq(userCharacters.userId, userId))
 			const mainCharId = chars[0]?.characterId!
 
 			await expect(worker.deleteCharacter(mainCharId, adminUserId)).rejects.toThrow(
@@ -297,11 +296,9 @@ describe('Admin Worker RPC', () => {
 			const userId = await createTestUser(db)
 
 			// Get character name
-			const { userCharacters } = await import('../../db/schema')
+			const { userCharacters } = await import('../../../../core/src/db/schema')
 			const { eq } = await import('@repo/db-utils')
-			const chars = await db.query.userCharacters.findMany({
-				where: eq(userCharacters.userId, userId),
-			})
+			const chars = await db.select().from(userCharacters).where(eq(userCharacters.userId, userId))
 			const charName = chars[0]?.characterName!
 
 			// Extract unique part of name for search

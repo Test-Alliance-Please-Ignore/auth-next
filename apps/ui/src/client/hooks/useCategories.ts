@@ -1,6 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+
 import { api } from '@/lib/api'
-import type { Category, CategoryWithGroups, CreateCategoryRequest, UpdateCategoryRequest } from '@/lib/api'
+
+import type {
+	Category,
+	CategoryWithGroups,
+	CreateCategoryRequest,
+	UpdateCategoryRequest,
+} from '@/lib/api'
 
 // Query keys
 export const categoryKeys = {
@@ -66,16 +73,20 @@ export function useUpdateCategory() {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: ({ id, data }: { id: string; data: UpdateCategoryRequest }) => api.updateCategory(id, data),
+		mutationFn: ({ id, data }: { id: string; data: UpdateCategoryRequest }) =>
+			api.updateCategory(id, data),
 		onSuccess: (updatedCategory) => {
 			// Invalidate categories list
 			void queryClient.invalidateQueries({ queryKey: categoryKeys.lists() })
 
 			// Update category detail cache
-			queryClient.setQueryData(categoryKeys.detail(updatedCategory.id), (old: CategoryWithGroups | undefined) => {
-				if (!old) return updatedCategory
-				return { ...old, ...updatedCategory }
-			})
+			queryClient.setQueryData(
+				categoryKeys.detail(updatedCategory.id),
+				(old: CategoryWithGroups | undefined) => {
+					if (!old) return updatedCategory
+					return { ...old, ...updatedCategory }
+				}
+			)
 
 			// Update in list cache
 			queryClient.setQueryData<Category[]>(categoryKeys.list(), (old) => {

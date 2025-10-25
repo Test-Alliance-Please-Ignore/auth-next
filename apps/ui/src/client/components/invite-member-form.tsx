@@ -1,8 +1,11 @@
-import { useState, useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+
 import { useCreateInvitation, useSearchCharacters } from '@/hooks/useGroups'
+
 import { Button } from './ui/button'
-import { Input } from './ui/input'
 import { Card } from './ui/card'
+import { Input } from './ui/input'
+
 import type { CharacterSearchResult } from '@/lib/api'
 
 interface InviteMemberFormProps {
@@ -127,12 +130,12 @@ export function InviteMemberForm({ groupId, onSuccess }: InviteMemberFormProps) 
 					{/* Autocomplete dropdown */}
 					{showDropdown && searchResults && searchResults.length > 0 && (
 						<div
-						className="absolute z-50 w-full mt-1 border border-border rounded-md shadow-lg max-h-60 overflow-auto backdrop-blur-sm"
-						style={{
-							backgroundColor: 'hsl(0 0% 16%)',
-							boxShadow: '0 0 20px rgba(0, 0, 0, 0.8), 0 4px 12px rgba(0, 0, 0, 0.5)',
-						}}
-					>
+							className="absolute z-50 w-full mt-1 border border-border rounded-md shadow-lg max-h-60 overflow-auto backdrop-blur-sm"
+							style={{
+								backgroundColor: 'hsl(0 0% 16%)',
+								boxShadow: '0 0 20px rgba(0, 0, 0, 0.8), 0 4px 12px rgba(0, 0, 0, 0.5)',
+							}}
+						>
 							{searchResults.map((character) => (
 								<button
 									key={character.characterId}

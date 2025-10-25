@@ -1,7 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+
 import { api } from '@/lib/api'
-import type { GroupMember } from '@/lib/api'
+
 import { groupKeys } from './useGroups'
+
+import type { GroupMember } from '@/lib/api'
 
 // Query keys
 export const groupMemberKeys = {

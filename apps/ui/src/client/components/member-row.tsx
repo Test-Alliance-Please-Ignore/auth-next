@@ -1,8 +1,9 @@
 import { format } from 'date-fns'
+
+import { MemberAvatar } from '@/components/member-avatar'
 import { Badge } from '@/components/ui/badge'
 import { TableCell, TableRow } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
-import { MemberAvatar } from '@/components/member-avatar'
 
 import type { GroupMember, GroupWithDetails } from '@/lib/api'
 
@@ -34,7 +35,10 @@ export function MemberRow({
 		<TableRow className={cn(isCurrentUser && 'bg-primary/5')}>
 			{/* Avatar */}
 			<TableCell className="py-2 px-2">
-				<MemberAvatar characterId={member.mainCharacterId} characterName={member.mainCharacterName} />
+				<MemberAvatar
+					characterId={member.mainCharacterId}
+					characterName={member.mainCharacterName}
+				/>
 			</TableCell>
 
 			{/* Member Name */}

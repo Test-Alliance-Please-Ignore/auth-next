@@ -1,4 +1,4 @@
-import { DurableObject } from "cloudflare:workers";
+import { DurableObject } from 'cloudflare:workers'
 
 /**
  * Get a typed Durable Object stub
@@ -28,15 +28,12 @@ export function getStub<T>(
 }
 
 export class ResettableDurableObjectStub extends DurableObject {
-	constructor(
-		ctx: DurableObjectState,
-		env: any
-	) {
+	constructor(ctx: DurableObjectState, env: any) {
 		super(ctx, env)
 	}
 
 	reset() {
-		return this.ctx.storage.deleteAll();
+		return this.ctx.storage.deleteAll()
 	}
 }
 

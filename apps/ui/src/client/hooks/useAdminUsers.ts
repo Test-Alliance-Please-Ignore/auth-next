@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+
 import { api } from '@/lib/api'
+
 import type {
 	AdminActivityLogFilters,
 	AdminUser,
@@ -16,7 +18,8 @@ export const adminUserKeys = {
 	details: () => [...adminUserKeys.all, 'detail'] as const,
 	detail: (userId: string) => [...adminUserKeys.details(), userId] as const,
 	activityLogs: () => ['admin', 'activity-logs'] as const,
-	activityLog: (filters?: AdminActivityLogFilters) => [...adminUserKeys.activityLogs(), filters] as const,
+	activityLog: (filters?: AdminActivityLogFilters) =>
+		[...adminUserKeys.activityLogs(), filters] as const,
 }
 
 // Queries
@@ -85,7 +88,9 @@ export function useSetUserAdmin() {
 					if (!old) return old
 					return {
 						...old,
-						data: old.data.map((user) => (user.id === userId ? { ...user, is_admin: isAdmin } : user)),
+						data: old.data.map((user) =>
+							user.id === userId ? { ...user, is_admin: isAdmin } : user
+						),
 					}
 				}
 			)

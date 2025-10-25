@@ -3,7 +3,15 @@ import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
-import { corporationDiscordInvites, managedCorporations, oauthStates, userCharacters, users } from '../db/schema'
+import {
+	corporationDiscordInvites,
+	corporationDiscordServers,
+	discordServers,
+	managedCorporations,
+	oauthStates,
+	userCharacters,
+	users,
+} from '../db/schema'
 
 import type { Discord, DiscordProfile, JoinServerResult } from '@repo/discord'
 import type { CorporationMemberData, EveCorporationData } from '@repo/eve-corporation-data'
@@ -114,7 +122,7 @@ export async function handleTokens(
 		// Get user info from Discord using the access token
 		const userInfoResponse = await fetch('https://discord.com/api/users/@me', {
 			headers: {
-				'Authorization': `Bearer ${accessToken}`,
+				Authorization: `Bearer ${accessToken}`,
 				'User-Agent': 'DiscordBot (https://pleaseignore.app, 1.0.0)',
 			},
 		})
@@ -129,7 +137,10 @@ export async function handleTokens(
 			discriminator: string
 		}>()
 
-		logger.info('Got Discord user info', { discordUserId: userInfo.id, username: userInfo.username })
+		logger.info('Got Discord user info', {
+			discordUserId: userInfo.id,
+			username: userInfo.username,
+		})
 
 		// Call Discord worker to store tokens
 		const scopes = scope ? scope.split(' ') : []
@@ -231,7 +242,7 @@ export async function refreshToken(env: Env, userId: string): Promise<boolean> {
 }
 
 /**
- * Join user to corporation Discord servers
+ * Join user to corporation and group Discord servers
  * @param env - Worker environment
  * @param userId - Core user ID
  * @returns Join results with statistics
@@ -247,6 +258,8 @@ export async function joinUserToCorporationServers(
 		success: boolean
 		errorMessage?: string
 		alreadyMember?: boolean
+		type?: 'corporation' | 'group'
+		groupName?: string
 	}>
 	totalInvited: number
 	totalFailed: number
@@ -283,76 +296,157 @@ export async function joinUserToCorporationServers(
 		}
 	}
 
-	logger.info('[Discord] Checking corporations for user', {
+	logger.info('[Discord] Checking corporations and groups for user', {
 		userId,
 		characterCount: characterIds.length,
 		characterIds,
 	})
 
-	// Get all managed corporations with Discord auto-invite enabled
-	const corps = await db.query.managedCorporations.findMany({
-		where: and(eq(managedCorporations.discordAutoInvite, true), isNotNull(managedCorporations.discordGuildId)),
+	// === CHECK CORPORATIONS ===
+
+	// Get all corporation Discord server attachments with auto-invite enabled
+	const corpAttachments = await db.query.corporationDiscordServers.findMany({
+		where: eq(corporationDiscordServers.autoInvite, true),
+		with: {
+			corporation: true,
+			discordServer: true,
+			roles: {
+				with: {
+					discordRole: true,
+				},
+			},
+		},
 	})
 
-	logger.info('[Discord] Found managed corporations with Discord', {
-		corporationCount: corps.length,
+	logger.info('[Discord] Found corporation Discord attachments with auto-invite', {
+		attachmentCount: corpAttachments.length,
 	})
-
-	if (corps.length === 0) {
-		return {
-			results: [],
-			totalInvited: 0,
-			totalFailed: 0,
-		}
-	}
 
 	// Check which corporations the user's characters are members of
 	const guildsToJoin: Array<{
 		guildId: string
 		guildName: string
-		corporationId: string
-		corporationName: string
+		type: 'corporation' | 'group'
+		corporationId?: string
+		corporationName?: string
+		groupId?: string
+		groupName?: string
+		discordServerId?: string
+		roleIds?: string[]
 	}> = []
 
-	for (const corp of corps) {
+	for (const attachment of corpAttachments) {
 		try {
 			// Get corporation members via RPC
-			const corpStub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, corp.corporationId)
+			const corpStub = getStub<EveCorporationData>(
+				env.EVE_CORPORATION_DATA,
+				attachment.corporationId
+			)
 			const members = await corpStub.getMembers()
 			const memberCharacterIds = members.map((m: CorporationMemberData) => m.characterId)
 
 			logger.info('[Discord] Corporation member check', {
-				corporationId: corp.corporationId,
-				corporationName: corp.name,
+				corporationId: attachment.corporationId,
+				corporationName: attachment.corporation.name,
 				memberCount: members.length,
 			})
 
 			// Check if any of the user's characters are in this corp
 			const isMember = characterIds.some((charId) => memberCharacterIds.includes(charId))
 
-			if (isMember && corp.discordGuildId) {
+			if (isMember) {
+				// Collect role IDs if auto-assign is enabled
+				const roleIds = attachment.autoAssignRoles
+					? attachment.roles.map((r) => r.discordRole.roleId)
+					: []
+
 				guildsToJoin.push({
-					guildId: corp.discordGuildId,
-					guildName: corp.discordGuildName ?? corp.discordGuildId,
-					corporationId: corp.corporationId,
-					corporationName: corp.name,
+					type: 'corporation',
+					guildId: attachment.discordServer.guildId,
+					guildName: attachment.discordServer.guildName,
+					corporationId: attachment.corporationId,
+					corporationName: attachment.corporation.name,
+					discordServerId: attachment.id,
+					roleIds,
 				})
 				logger.info('[Discord] User is member of corporation with Discord', {
-					corporationId: corp.corporationId,
-					corporationName: corp.name,
-					guildId: corp.discordGuildId,
+					corporationId: attachment.corporationId,
+					corporationName: attachment.corporation.name,
+					guildId: attachment.discordServer.guildId,
+					roleCount: roleIds.length,
 				})
 			}
 		} catch (error) {
 			logger.error('[Discord] Error checking corporation members', {
-				corporationId: corp.corporationId,
+				corporationId: attachment.corporationId,
 				error: String(error),
 			})
 		}
 	}
 
+	// === CHECK GROUPS ===
+
+	try {
+		// Get all groups with Discord auto-invite enabled via Groups DO RPC
+		const groupsStub = getStub<import('@repo/groups').Groups>(env.GROUPS, 'default')
+		const groupsWithDiscord = await groupsStub.getGroupsWithDiscordAutoInvite()
+
+		logger.info('[Discord] Found groups with Discord auto-invite', {
+			groupCount: groupsWithDiscord.length,
+		})
+
+		// Check which groups the user is a member of
+		for (const group of groupsWithDiscord) {
+			try {
+				// Get group member user IDs via RPC
+				const memberUserIds = await groupsStub.getGroupMemberUserIds(group.groupId)
+
+				// Check if the user is a member of this group
+				const isMember = memberUserIds.includes(userId)
+
+				if (isMember) {
+					// Add all Discord servers for this group
+					// Need to look up Discord server info from registry
+					for (const discordServer of group.discordServers) {
+						// Fetch Discord server details from Core registry
+						const serverInfo = await db.query.discordServers.findFirst({
+							where: eq(discordServers.id, discordServer.discordServerId),
+						})
+
+						if (serverInfo) {
+							guildsToJoin.push({
+								type: 'group',
+								guildId: serverInfo.guildId,
+								guildName: serverInfo.guildName,
+								groupId: group.groupId,
+								groupName: group.groupName,
+								discordServerId: discordServer.id,
+								roleIds: discordServer.roleIds || [],
+							})
+							logger.info('[Discord] User is member of group with Discord', {
+								groupId: group.groupId,
+								groupName: group.groupName,
+								guildId: serverInfo.guildId,
+								roleCount: discordServer.roleIds?.length || 0,
+							})
+						}
+					}
+				}
+			} catch (error) {
+				logger.error('[Discord] Error checking group members', {
+					groupId: group.groupId,
+					error: String(error),
+				})
+			}
+		}
+	} catch (error) {
+		logger.error('[Discord] Error fetching groups with Discord', {
+			error: String(error),
+		})
+	}
+
 	if (guildsToJoin.length === 0) {
-		logger.info('[Discord] User is not a member of any corporations with Discord')
+		logger.info('[Discord] User is not a member of any corporations or groups with Discord')
 		return {
 			results: [],
 			totalInvited: 0,
@@ -366,49 +460,85 @@ export async function joinUserToCorporationServers(
 		guildCount: guildsToJoin.length,
 	})
 
-	// Call Discord DO via RPC to join the servers
+	// Call Discord DO via RPC to join the servers with role assignments
 	const discordStub = getStub<Discord>(env.DISCORD, 'default')
-	const guildIds = guildsToJoin.map((g) => g.guildId)
-	const joinResults = await discordStub.joinUserToServers(userId, guildIds)
+	const joinRequests = guildsToJoin.map((g) => ({
+		guildId: g.guildId,
+		roleIds: g.roleIds || [],
+	}))
+	const joinResults = await discordStub.joinUserToServersWithRoles(userId, joinRequests)
 
-	// Merge results with corporation info
+	// Merge results with corporation and group info
 	const results = joinResults.map((result: JoinServerResult) => {
 		const guild = guildsToJoin.find((g) => g.guildId === result.guildId)
 		return {
 			guildId: result.guildId,
 			guildName: guild?.guildName ?? result.guildName ?? result.guildId,
-			corporationName: guild?.corporationName ?? 'Unknown',
+			corporationName:
+				guild?.corporationName ?? (guild?.type === 'group' ? guild.groupName : 'Unknown'),
 			success: result.success,
 			errorMessage: result.errorMessage,
 			alreadyMember: result.alreadyMember,
+			type: guild?.type,
+			groupName: guild?.groupName,
 		}
 	})
 
-	// Log results in audit table
-	const auditRecords = results.map((result: {
-		guildId: string
-		guildName: string
-		corporationName: string
-		success: boolean
-		errorMessage?: string
-		alreadyMember?: boolean
-	}) => {
+	// Log results in audit tables (separate tables for corporations and groups)
+	const corporationAuditRecords = []
+	const groupAuditRecords = []
+
+	for (const result of results) {
 		const guild = guildsToJoin.find((g) => g.guildId === result.guildId)
-		return {
-			corporationId: guild?.corporationId ?? '',
-			userId,
-			discordUserId,
-			success: result.success,
-			errorMessage: result.errorMessage,
-		}
-	})
+		const assignedRoleIds = result.success && guild?.roleIds ? guild.roleIds : null
 
-	try {
-		await db.insert(corporationDiscordInvites).values(auditRecords)
-	} catch (error) {
-		logger.error('[Discord] Failed to log audit records', {
-			error: String(error),
-		})
+		if (guild?.type === 'corporation' && guild.corporationId && guild.discordServerId) {
+			corporationAuditRecords.push({
+				corporationId: guild.corporationId,
+				corporationDiscordServerId: guild.discordServerId,
+				userId,
+				discordUserId,
+				success: result.success,
+				errorMessage: result.errorMessage,
+				assignedRoleIds,
+			})
+		} else if (guild?.type === 'group' && guild.groupId && guild.discordServerId) {
+			groupAuditRecords.push({
+				groupId: guild.groupId,
+				groupDiscordServerId: guild.discordServerId,
+				userId,
+				discordUserId,
+				success: result.success,
+				errorMessage: result.errorMessage,
+				assignedRoleIds,
+			})
+		}
+	}
+
+	// Insert corporation audit records
+	if (corporationAuditRecords.length > 0) {
+		try {
+			await db.insert(corporationDiscordInvites).values(corporationAuditRecords)
+		} catch (error) {
+			logger.error('[Discord] Failed to log corporation audit records', {
+				error: String(error),
+			})
+		}
+	}
+
+	// Insert group audit records via Groups DO RPC
+	if (groupAuditRecords.length > 0) {
+		try {
+			const groupsStub = getStub<import('@repo/groups').Groups>(env.GROUPS, 'default')
+			await groupsStub.insertDiscordInviteAuditRecords(groupAuditRecords)
+			logger.info('[Discord] Inserted group audit records', {
+				recordCount: groupAuditRecords.length,
+			})
+		} catch (error) {
+			logger.error('[Discord] Failed to log group audit records', {
+				error: String(error),
+			})
+		}
 	}
 
 	// Calculate statistics

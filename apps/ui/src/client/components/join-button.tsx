@@ -1,5 +1,6 @@
+import { Send, UserPlus } from 'lucide-react'
 import { useState } from 'react'
-import { UserPlus, Send } from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
 import {
 	Dialog,
@@ -9,7 +10,7 @@ import {
 	DialogTitle,
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
-import { useJoinGroup, useCreateJoinRequest } from '@/hooks/useGroups'
+import { useCreateJoinRequest, useJoinGroup } from '@/hooks/useGroups'
 
 import type { GroupWithDetails } from '@/lib/api'
 
@@ -99,11 +100,7 @@ export function JoinButton({ group, onSuccess }: JoinButtonProps) {
 							/>
 						</div>
 						<div className="flex justify-end gap-2">
-							<Button
-								variant="outline"
-								onClick={() => setDialogOpen(false)}
-								disabled={isLoading}
-							>
+							<Button variant="outline" onClick={() => setDialogOpen(false)} disabled={isLoading}>
 								Cancel
 							</Button>
 							<Button onClick={handleSubmitRequest} disabled={isLoading}>

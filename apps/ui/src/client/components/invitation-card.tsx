@@ -1,8 +1,10 @@
-import { Check, X, Calendar } from 'lucide-react'
+import { Calendar, Check, X } from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { VisibilityBadge } from './visibility-badge'
 import { useAcceptInvitation, useDeclineInvitation } from '@/hooks/useGroups'
+
+import { VisibilityBadge } from './visibility-badge'
 
 import type { GroupInvitationWithDetails } from '@/lib/api'
 

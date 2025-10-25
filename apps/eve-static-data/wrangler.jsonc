@@ -3,9 +3,7 @@
 	"name": "eve-static-data",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-04-28",
-	"compatibility_flags": [
-		"nodejs_compat"
-	],
+	"compatibility_flags": ["nodejs_compat"],
 	"workers_dev": false,
 	"routes": [],
 	"logpush": true,

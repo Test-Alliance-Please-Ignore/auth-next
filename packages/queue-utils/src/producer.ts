@@ -1,6 +1,7 @@
-import type { z } from 'zod'
-import type { QueueProducerConfig, SendMessageOptions, SendBatchOptions } from './types'
 import { MessageValidationError } from './errors'
+
+import type { z } from 'zod'
+import type { QueueProducerConfig, SendBatchOptions, SendMessageOptions } from './types'
 
 /**
  * Cloudflare Queue binding interface
@@ -74,10 +75,7 @@ export class QueueProducer<T extends z.ZodType> {
 	 * @param messages - Array of message bodies (will be validated against schema)
 	 * @param options - Optional batch options
 	 */
-	async sendBatch(
-		messages: Array<z.infer<T>>,
-		options?: SendBatchOptions
-	): Promise<void> {
+	async sendBatch(messages: Array<z.infer<T>>, options?: SendBatchOptions): Promise<void> {
 		// Validate all messages
 		const validated: Array<z.infer<T>> = []
 		for (let i = 0; i < messages.length; i++) {

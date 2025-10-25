@@ -109,8 +109,12 @@ app.get('/:characterId', requireAuth(), async (c) => {
 			const historyCorpIds: string[] = [
 				...new Set<string>(
 					corporationHistory.map(
-						(entry: { corporationId: string; recordId: string; startDate: string; isDeleted?: boolean }) =>
-							String(entry.corporationId)
+						(entry: {
+							corporationId: string
+							recordId: string
+							startDate: string
+							isDeleted?: boolean
+						}) => String(entry.corporationId)
 					)
 				),
 			]
@@ -127,15 +131,23 @@ app.get('/:characterId', requireAuth(), async (c) => {
 		const enrichedInfo = {
 			...info,
 			corporationName: entityNames.get(String(info.corporationId)) || undefined,
-			allianceName: info.allianceId ? entityNames.get(String(info.allianceId)) || undefined : undefined,
+			allianceName: info.allianceId
+				? entityNames.get(String(info.allianceId)) || undefined
+				: undefined,
 		}
 
 		// Enrich corporation history with resolved names
 		const enrichedCorporationHistory = corporationHistory
 			? corporationHistory.map(
-					(entry: { corporationId: string; recordId: string; startDate: string; isDeleted?: boolean }) => ({
+					(entry: {
+						corporationId: string
+						recordId: string
+						startDate: string
+						isDeleted?: boolean
+					}) => ({
 						...entry,
-						corporationName: entityNames.get(String(entry.corporationId)) || `Corporation #${entry.corporationId}`,
+						corporationName:
+							entityNames.get(String(entry.corporationId)) || `Corporation #${entry.corporationId}`,
 					})
 				)
 			: []
@@ -250,13 +262,27 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 
 		// Always fetch public data (doesn't require auth)
 		try {
-			logger.info('Calling fetchCharacterData with characterId:', characterIdStr, 'type:', typeof characterIdStr)
+			logger.info(
+				'Calling fetchCharacterData with characterId:',
+				characterIdStr,
+				'type:',
+				typeof characterIdStr
+			)
 			await eveCharacterDataStub.fetchCharacterData(characterIdStr, true)
 			logger.info('fetchCharacterData completed successfully')
 		} catch (error) {
 			logger.error('Failed to fetch public character data:', error)
-			logger.error('Error details - characterId:', characterId, 'characterIdStr:', characterIdStr, 'error type:', typeof error)
-			throw new Error(`Failed to fetch public character data: ${error && typeof error === 'object' && 'remote' in error ? 'Durable Object connection failed' : error instanceof Error ? error.message : String(error)}`)
+			logger.error(
+				'Error details - characterId:',
+				characterId,
+				'characterIdStr:',
+				characterIdStr,
+				'error type:',
+				typeof error
+			)
+			throw new Error(
+				`Failed to fetch public character data: ${error && typeof error === 'object' && 'remote' in error ? 'Durable Object connection failed' : error instanceof Error ? error.message : String(error)}`
+			)
 		}
 
 		// Try to fetch authenticated data - the token store will handle checking if a valid token exists
@@ -267,8 +293,12 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 			hasValidToken = true
 		} catch (error) {
 			// If authenticated data fetch fails, token is likely missing or invalid
-			authError = error instanceof Error ? error.message :
-				(error && typeof error === 'object' && 'remote' in error ? 'Durable Object connection failed' : String(error))
+			authError =
+				error instanceof Error
+					? error.message
+					: error && typeof error === 'object' && 'remote' in error
+						? 'Durable Object connection failed'
+						: String(error)
 			logger.error('Could not fetch authenticated data:', authError)
 			logger.error('Full error:', error)
 		}
@@ -326,11 +356,14 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 			logger.error('Unknown error refreshing character data:', error)
 		}
 
-		return c.json({
-			error: 'Failed to refresh character data',
-			details: errorMessage,
-			success: false
-		}, 500)
+		return c.json(
+			{
+				error: 'Failed to refresh character data',
+				details: errorMessage,
+				success: false,
+			},
+			500
+		)
 	}
 })
 

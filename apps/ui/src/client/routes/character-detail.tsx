@@ -15,7 +15,6 @@ import { api } from '../lib/api'
 export default function CharacterDetailPage() {
 	const { characterId } = useParams<{ characterId: string }>()
 
-
 	if (!characterId) {
 		return <Navigate to="/dashboard" replace />
 	}

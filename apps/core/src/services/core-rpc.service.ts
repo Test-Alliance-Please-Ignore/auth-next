@@ -8,9 +8,8 @@ import type {
 	TransferCharacterResult,
 	UserDetails,
 } from '@repo/admin'
-import type { EveTokenStore } from '@repo/eve-token-store'
 import type { DbClient, eq, ilike, sql } from '@repo/db-utils'
-
+import type { EveTokenStore } from '@repo/eve-token-store'
 import type { schema } from '../db'
 
 /**
@@ -85,7 +84,9 @@ export class CoreRpcService {
 		)
 
 		// Get total count for pagination
-		const totalQuery = this.db.select({ count: sql<number>`count(distinct ${users.id})` }).from(users)
+		const totalQuery = this.db
+			.select({ count: sql<number>`count(distinct ${users.id})` })
+			.from(users)
 
 		if (whereCondition) {
 			totalQuery
@@ -219,7 +220,10 @@ export class CoreRpcService {
 	/**
 	 * Transfer character ownership from one user to another
 	 */
-	async transferCharacterOwnership(characterId: string, newUserId: string): Promise<TransferCharacterResult> {
+	async transferCharacterOwnership(
+		characterId: string,
+		newUserId: string
+	): Promise<TransferCharacterResult> {
 		const { users, userCharacters } = await import('../db/schema')
 		const { eq } = await import('@repo/db-utils')
 		const { getStub } = await import('@repo/do-utils')

@@ -47,6 +47,7 @@ graph LR
 ### Authentication & Authorization
 
 **Current Implementation:**
+
 - Session-based authentication via `sessionMiddleware`
 - User model includes `is_admin` boolean flag
 - Existing middleware: `requireAuth()` and `requireAdmin()`
@@ -57,6 +58,7 @@ graph LR
 ### Character Data Architecture
 
 **Two-Tier Storage:**
+
 1. **Core Database** (`users`, `userCharacters` tables)
    - User-character associations
    - Character ownership metadata
@@ -72,6 +74,7 @@ graph LR
 ### EVE Token Management
 
 **Critical Security Consideration:**
+
 - OAuth tokens stored in EVE Token Store Durable Object
 - Tokens must be **deleted** when transferring/deleting characters
 - Token cleanup prevents unauthorized access to ESI data
@@ -83,6 +86,7 @@ graph LR
 **Choice: Worker RPC via Service Bindings**
 
 **Rationale:**
+
 - Better performance (no HTTP overhead)
 - Type-safe method calls across worker boundaries
 - Admin worker not exposed to public internet
@@ -94,6 +98,7 @@ graph LR
 **Choice: Continue Using `is_admin` Boolean**
 
 **Rationale:**
+
 - Already implemented and tested
 - Simple to understand and maintain
 - Sufficient for current requirements
@@ -104,6 +109,7 @@ graph LR
 **Choice: Extend Existing ActivityService**
 
 New activity types:
+
 - `admin_user_deleted`
 - `admin_character_deleted`
 - `admin_character_ownership_transferred`
@@ -111,6 +117,7 @@ New activity types:
 - `admin_character_viewed`
 
 **Rationale:**
+
 - Leverages existing infrastructure
 - Consistent with application patterns
 - No new tables required
@@ -120,11 +127,13 @@ New activity types:
 **Choice: Hard Delete with Cascade**
 
 **User Deletion Flow:**
+
 1. Delete all user's ESI tokens
 2. Delete user record (CASCADE handles related records)
 3. Log the action with affected resources
 
 **Character Deletion Flow:**
+
 1. Validate not user's only character
 2. Delete ESI tokens for character
 3. Remove from `userCharacters` table
@@ -169,11 +178,7 @@ export default class AdminWorker extends WorkerEntrypoint<Env> {
   }>
 
   // User Search
-  async searchUsers(params: {
-    search?: string
-    limit?: number
-    offset?: number
-  }): Promise<{
+  async searchUsers(params: { search?: string; limit?: number; offset?: number }): Promise<{
     users: UserSummary[]
     total: number
   }>
@@ -182,9 +187,7 @@ export default class AdminWorker extends WorkerEntrypoint<Env> {
   async getUserDetails(userId: string): Promise<UserDetails | null>
 
   // Character Details
-  async getCharacterDetails(
-    characterId: string
-  ): Promise<CharacterDetails | null>
+  async getCharacterDetails(characterId: string): Promise<CharacterDetails | null>
 
   // Activity Log
   async getActivityLog(filters?: {
@@ -208,6 +211,7 @@ All endpoints require authentication and `is_admin = true`.
 #### User Management
 
 **DELETE /api/admin/users/:userId**
+
 ```typescript
 // Delete a user and all associated data
 Response (200):
@@ -220,6 +224,7 @@ Response (200):
 ```
 
 **GET /api/admin/users**
+
 ```typescript
 // List/search all users
 Query params: ?search=PlayerName&limit=50&offset=0
@@ -243,6 +248,7 @@ Response (200):
 ```
 
 **GET /api/admin/users/:userId**
+
 ```typescript
 // Get detailed user profile
 Response (200):
@@ -265,6 +271,7 @@ Response (200):
 #### Character Management
 
 **POST /api/admin/characters/:characterId/transfer**
+
 ```typescript
 // Transfer character ownership
 Body: {
@@ -282,6 +289,7 @@ Response (200):
 ```
 
 **DELETE /api/admin/characters/:characterId**
+
 ```typescript
 // Unlink a character from its owner
 Response (200):
@@ -294,6 +302,7 @@ Response (200):
 ```
 
 **GET /api/admin/characters/:characterId**
+
 ```typescript
 // Get character details with ownership
 Response (200):
@@ -318,6 +327,7 @@ Response (200):
 #### Audit Log
 
 **GET /api/admin/activity-log**
+
 ```typescript
 // View admin activity log
 Query params: ?limit=50&offset=0&action=admin_character_ownership_transferred
@@ -357,7 +367,7 @@ export class AdminService {
   async deleteUser(userId: string): Promise<DeleteUserResult> {
     // 1. Get user's characters
     const userChars = await this.db.query.userCharacters.findMany({
-      where: eq(userCharacters.userId, userId)
+      where: eq(userCharacters.userId, userId),
     })
 
     // 2. Revoke all ESI tokens
@@ -376,8 +386,8 @@ export class AdminService {
 
     return {
       success: true,
-      deletedCharacterIds: userChars.map(c => c.characterId),
-      tokensRevoked
+      deletedCharacterIds: userChars.map((c) => c.characterId),
+      tokensRevoked,
     }
   }
 
@@ -387,18 +397,18 @@ export class AdminService {
   ): Promise<TransferResult> {
     // 1. Find current owner
     const character = await this.db.query.userCharacters.findFirst({
-      where: eq(userCharacters.characterId, characterId)
+      where: eq(userCharacters.characterId, characterId),
     })
 
     if (!character) throw new Error('Character not found')
 
     // 2. Validate not user's only character
     const userCharCount = await this.db.query.userCharacters.findMany({
-      where: eq(userCharacters.userId, character.userId)
+      where: eq(userCharacters.userId, character.userId),
     })
 
     if (userCharCount.length === 1) {
-      throw new Error('Cannot transfer user\'s only character')
+      throw new Error("Cannot transfer user's only character")
     }
 
     // 3. Revoke ESI tokens (security critical)
@@ -411,11 +421,12 @@ export class AdminService {
     }
 
     // 4. Transfer ownership
-    await this.db.update(userCharacters)
+    await this.db
+      .update(userCharacters)
       .set({
         userId: newUserId,
         is_primary: false,
-        updatedAt: new Date()
+        updatedAt: new Date(),
       })
       .where(eq(userCharacters.characterId, characterId))
 
@@ -423,7 +434,7 @@ export class AdminService {
       success: true,
       oldUserId: character.userId,
       newUserId,
-      tokensRevoked
+      tokensRevoked,
     }
   }
 }
@@ -434,8 +445,9 @@ export class AdminService {
 ```typescript
 // apps/core/src/routes/admin.ts
 import { Hono } from 'hono'
-import { requireAuth, requireAdmin } from '../middleware/auth'
 import { z } from 'zod'
+
+import { requireAdmin, requireAuth } from '../middleware/auth'
 
 const admin = new Hono<App>()
 
@@ -456,25 +468,21 @@ admin.delete('/users/:userId', requireAuth(), requireAdmin(), async (c) => {
 })
 
 // Character transfer via RPC
-admin.post('/characters/:characterId/transfer',
-  requireAuth(),
-  requireAdmin(),
-  async (c) => {
-    const characterId = c.req.param('characterId')
-    const body = await c.req.json()
+admin.post('/characters/:characterId/transfer', requireAuth(), requireAdmin(), async (c) => {
+  const characterId = c.req.param('characterId')
+  const body = await c.req.json()
 
-    const schema = z.object({ newUserId: z.string().uuid() })
-    const { newUserId } = schema.parse(body)
+  const schema = z.object({ newUserId: z.string().uuid() })
+  const { newUserId } = schema.parse(body)
 
-    const result = await c.env.ADMIN.transferCharacterOwnership(
-      characterId,
-      newUserId,
-      c.get('user').id
-    )
+  const result = await c.env.ADMIN.transferCharacterOwnership(
+    characterId,
+    newUserId,
+    c.get('user').id
+  )
 
-    return c.json(result)
-  }
-)
+  return c.json(result)
+})
 
 export default admin
 ```
@@ -482,6 +490,7 @@ export default admin
 ### Configuration
 
 #### Admin Worker (wrangler.jsonc)
+
 ```jsonc
 {
   "$schema": "node_modules/wrangler/config-schema.json",
@@ -495,14 +504,15 @@ export default admin
       {
         "name": "EVE_TOKEN_STORE",
         "class_name": "EveTokenStore",
-        "script_name": "eve-token-store"
-      }
-    ]
-  }
+        "script_name": "eve-token-store",
+      },
+    ],
+  },
 }
 ```
 
 #### Core Worker Service Binding
+
 ```jsonc
 // apps/core/wrangler.jsonc
 {
@@ -510,48 +520,54 @@ export default admin
   "services": [
     {
       "binding": "ADMIN",
-      "service": "admin"
-    }
+      "service": "admin",
+    },
     // ... existing services
-  ]
+  ],
 }
 ```
 
 ## Security Considerations
 
 ### Authentication & Authorization
+
 - All admin endpoints protected by `requireAuth()` + `requireAdmin()`
 - Session validation on every request
 - Admin flag checked server-side only
 
 ### Rate Limiting
+
 ```typescript
 const adminRateLimit = rateLimiter({
   windowMs: 60 * 1000, // 1 minute
   max: 30, // 30 requests for read operations
-  keyGenerator: (c) => c.get('user').id // Per admin user
+  keyGenerator: (c) => c.get('user').id, // Per admin user
 })
 
 const destructiveRateLimit = rateLimiter({
   windowMs: 60 * 1000, // 1 minute
   max: 10, // 10 destructive operations per minute
-  keyGenerator: (c) => c.get('user').id
+  keyGenerator: (c) => c.get('user').id,
 })
 ```
 
 ### Input Validation
+
 - All inputs validated with Zod schemas
 - UUIDs verified for correct format
 - Character IDs validated as numeric strings
 - SQL injection prevented by Drizzle ORM
 
 ### Token Cleanup (Critical)
+
 - ESI tokens **must** be revoked on character transfer/deletion
 - Failures logged but don't block operation
 - Consider background cleanup job for orphaned tokens
 
 ### Audit Trail
+
 All destructive operations logged with:
+
 - Admin user ID
 - Target resource(s)
 - Timestamp
@@ -562,6 +578,7 @@ All destructive operations logged with:
 ## Error Handling
 
 ### Standard Error Responses
+
 ```typescript
 interface ErrorResponse {
   error: string
@@ -571,17 +588,19 @@ interface ErrorResponse {
 ```
 
 ### HTTP Status Codes
-| Scenario | Status | Response |
-|----------|--------|----------|
-| User not found | 404 | `{ "error": "User not found" }` |
-| Cannot delete only character | 400 | `{ "error": "Cannot delete user's only character" }` |
-| Unauthorized (not admin) | 403 | `{ "error": "Forbidden" }` |
-| Invalid input | 400 | `{ "error": "Invalid UUID format" }` |
-| Internal error | 500 | `{ "error": "Internal server error" }` |
+
+| Scenario                     | Status | Response                                             |
+| ---------------------------- | ------ | ---------------------------------------------------- |
+| User not found               | 404    | `{ "error": "User not found" }`                      |
+| Cannot delete only character | 400    | `{ "error": "Cannot delete user's only character" }` |
+| Unauthorized (not admin)     | 403    | `{ "error": "Forbidden" }`                           |
+| Invalid input                | 400    | `{ "error": "Invalid UUID format" }`                 |
+| Internal error               | 500    | `{ "error": "Internal server error" }`               |
 
 ## Testing Strategy
 
 ### Unit Tests
+
 ```typescript
 describe('AdminService', () => {
   it('should delete user and revoke tokens')
@@ -592,6 +611,7 @@ describe('AdminService', () => {
 ```
 
 ### Integration Tests
+
 ```typescript
 describe('Admin RPC Methods', () => {
   it('should complete full user deletion flow')
@@ -602,6 +622,7 @@ describe('Admin RPC Methods', () => {
 ```
 
 ### Manual Testing Checklist
+
 - [ ] Admin can view all users
 - [ ] Admin can search users by character name
 - [ ] Admin can delete user with multiple characters
@@ -635,6 +656,7 @@ describe('Admin RPC Methods', () => {
    - Index on timestamp and action type
 
 ### Database Indexes
+
 ```sql
 -- For user search
 CREATE INDEX users_created_at_idx ON users(created_at);
@@ -650,6 +672,7 @@ CREATE INDEX activity_log_action_idx ON user_activity_log(action, timestamp);
 ## Monitoring & Observability
 
 ### Key Metrics
+
 - User deletions per day
 - Character transfers per day
 - Failed token revocations
@@ -658,19 +681,21 @@ CREATE INDEX activity_log_action_idx ON user_activity_log(action, timestamp);
 - RPC call latencies
 
 ### Logging
+
 ```typescript
 logger.info('Admin action', {
   adminUserId: user.id,
   action: 'user_deleted',
   targetUserId: userId,
   success: true,
-  duration: Date.now() - startTime
+  duration: Date.now() - startTime,
 })
 ```
 
 ## File Structure
 
 ### Admin Worker
+
 ```
 apps/admin/
 ├── src/
@@ -692,6 +717,7 @@ apps/admin/
 ```
 
 ### Core Worker Extensions
+
 ```
 apps/core/src/
 ├── routes/
@@ -703,12 +729,14 @@ apps/core/src/
 ## Implementation Timeline
 
 ### Week 1: Foundation
+
 - [ ] Generate admin worker using scaffolding tool
 - [ ] Set up RPC interface structure
 - [ ] Add admin activity types to core
 - [ ] Create AdminService class skeleton
 
 ### Week 1-2: Core Development
+
 - [ ] Implement RPC methods in admin worker
 - [ ] Add service binding to core worker
 - [ ] Create HTTP-to-RPC bridge routes
@@ -716,6 +744,7 @@ apps/core/src/
 - [ ] Implement character operations
 
 ### Week 2-3: Testing & Polish
+
 - [ ] Unit tests for AdminService
 - [ ] Integration tests for RPC methods
 - [ ] Manual testing of all flows
@@ -723,6 +752,7 @@ apps/core/src/
 - [ ] Security audit
 
 ### Week 3: Deployment
+
 - [ ] Deploy admin worker
 - [ ] Update core worker with service binding
 - [ ] Monitor initial usage
@@ -731,21 +761,25 @@ apps/core/src/
 ## Benefits of This Architecture
 
 ### Performance
+
 - RPC calls are faster than HTTP
 - No serialization overhead between workers
 - Direct method invocation
 
 ### Type Safety
+
 - Full TypeScript support across boundaries
 - Compile-time checking of method signatures
 - IDE autocomplete for RPC methods
 
 ### Security
+
 - Admin worker not exposed to internet
 - Only callable from authorized workers
 - Clear security boundary
 
 ### Maintainability
+
 - Clean separation of concerns
 - Business logic isolated in admin worker
 - HTTP handling separate from admin logic
@@ -756,6 +790,7 @@ apps/core/src/
 ### Phase 1: Foundation ✅ COMPLETED
 
 **Completed Items:**
+
 - ✅ Created `@repo/admin` shared package with TypeScript interface definitions
 - ✅ Generated admin worker with WorkerEntrypoint structure
 - ✅ Created database schema importing core tables
@@ -765,6 +800,7 @@ apps/core/src/
 - ✅ Configured wrangler.jsonc for admin worker (RPC-only, no HTTP routes)
 
 **Files Created:**
+
 - `packages/admin/src/index.ts` - RPC interface types and DTOs
 - `apps/admin/src/index.ts` - AdminWorker class extending WorkerEntrypoint
 - `apps/admin/src/context.ts` - Environment bindings types
@@ -772,6 +808,7 @@ apps/core/src/
 - `apps/admin/src/db/index.ts` - Database client factory
 
 **Configuration Changes:**
+
 - Updated `apps/core/src/context.ts` with ADMIN service binding
 - Updated `apps/core/wrangler.jsonc` with admin service binding
 - Updated `apps/core/src/types/user.ts` with admin activity types
@@ -790,9 +827,11 @@ All 9 RPC methods fully implemented with business logic, validation, and audit l
 7. ✅ `getActivityLog(filters, adminUserId)` - Audit log queries with filters
 
 **Files Created:**
+
 - `apps/admin/src/services/admin.service.ts` (~510 lines) - Complete business logic
 
 **Key Features:**
+
 - Token revocation on character transfer/deletion (via EVE Token Store DO)
 - "Only character" validation prevents orphaned accounts
 - Audit logging for all operations
@@ -813,12 +852,15 @@ All 7 REST endpoints implemented at `/api/admin/*`:
 7. ✅ `GET /api/admin/activity-log` - Activity log
 
 **Files Created:**
+
 - `apps/core/src/routes/admin.ts` (~285 lines) - HTTP-to-RPC bridge
 
 **Files Modified:**
+
 - `apps/core/src/index.ts` - Mounted admin routes
 
 **Features:**
+
 - Authentication via `requireAuth()` middleware
 - Authorization via `requireAdmin()` middleware
 - Request validation with Zod schemas
@@ -828,6 +870,7 @@ All 7 REST endpoints implemented at `/api/admin/*`:
 ### Phase 4: Testing & Database Migration ⏳ IN PROGRESS
 
 **Completed:**
+
 - ✅ Database migration generated (`apps/admin/.migrations/0000_old_nextwave.sql`)
 - ✅ Migration SQL reviewed and validated
 - ✅ Test helper functions created (`apps/admin/src/test/helpers.ts`)
@@ -835,6 +878,7 @@ All 7 REST endpoints implemented at `/api/admin/*`:
 - ✅ HTTP endpoint tests written (`apps/core/src/test/integration/admin-endpoints.test.ts`)
 
 **Pending:**
+
 - ⏳ Run database migration in development (requires `DATABASE_URL_MIGRATIONS` env var)
 - ⏳ Configure test environment for Durable Object bindings (EVE_TOKEN_STORE, EVE_CHARACTER_DATA)
 - ⏳ Run and validate test suite
@@ -842,6 +886,7 @@ All 7 REST endpoints implemented at `/api/admin/*`:
 
 **Test Coverage:**
 The test files provide comprehensive coverage:
+
 - **Admin RPC Tests** (15 test cases):
   - User deletion (success, not found, multiple characters)
   - Character transfer (success, validation errors, only character prevention)
@@ -861,6 +906,7 @@ The test files provide comprehensive coverage:
 Tests currently fail due to missing Durable Object service configuration in Vitest environment. The test runner cannot start the admin worker because EVE_TOKEN_STORE and EVE_CHARACTER_DATA bindings reference services that aren't configured in the test environment.
 
 **Resolution Options:**
+
 1. Mock Durable Object stubs in tests
 2. Configure miniflare to start dependent services
 3. Create test-specific wrangler configuration
@@ -869,11 +915,13 @@ Tests currently fail due to missing Durable Object service configuration in Vite
 ### Deployment Status
 
 **Not Yet Deployed:**
+
 - Admin worker requires production database migration
 - Service bindings need to be configured in production
 - Tests must pass before deployment
 
 **Deployment Prerequisites:**
+
 1. Run database migration: `just db-migrate admin`
 2. Ensure all service bindings are configured in production wrangler.jsonc
 3. Deploy admin worker: `pnpm -F admin deploy`
@@ -882,6 +930,7 @@ Tests currently fail due to missing Durable Object service configuration in Vite
 6. Test admin endpoints with admin account
 
 **Environment Variables Required:**
+
 - `DATABASE_URL` - Neon PostgreSQL connection string (same for both workers)
 - `SESSION_SECRET` - For session validation in core worker
 - All existing environment variables for core worker
@@ -935,6 +984,7 @@ Tests currently fail due to missing Durable Object service configuration in Vite
 This RPC-based architecture provides a secure, performant, and maintainable solution for implementing admin functionality. By leveraging Cloudflare's Worker RPC capabilities, we achieve type-safe communication between workers while maintaining clear separation of concerns and security boundaries.
 
 **Implementation Progress: ~95% Complete**
+
 - ✅ All core functionality implemented
 - ✅ Comprehensive test coverage written
 - ⏳ Test environment configuration pending
@@ -943,6 +993,7 @@ This RPC-based architecture provides a secure, performant, and maintainable solu
 The implementation follows all existing patterns in the codebase, uses a separate admin_audit_log table for audit trails, and can be deployed without affecting existing functionality. The phased implementation approach allowed for incremental development while maintaining system stability.
 
 **Key Achievements:**
+
 - 9 RPC methods fully implemented with business logic
 - 7 HTTP endpoints with authentication/authorization
 - Complete audit logging system

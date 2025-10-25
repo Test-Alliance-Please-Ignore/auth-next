@@ -1,5 +1,8 @@
-import { useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
+import { useState } from 'react'
+
+import { CategoryForm } from '@/components/category-form'
+import { CategoryList } from '@/components/category-list'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -10,9 +13,13 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
-import { CategoryList } from '@/components/category-list'
-import { CategoryForm } from '@/components/category-form'
-import { useCategories, useCreateCategory, useUpdateCategory, useDeleteCategory } from '@/hooks/useCategories'
+import {
+	useCategories,
+	useCreateCategory,
+	useDeleteCategory,
+	useUpdateCategory,
+} from '@/hooks/useCategories'
+
 import type { Category, CreateCategoryRequest } from '@/lib/api'
 
 export default function CategoriesPage() {
@@ -109,10 +116,16 @@ export default function CategoriesPage() {
 			{/* Success/Error Message */}
 			{message && (
 				<Card
-					className={message.type === 'error' ? 'border-destructive bg-destructive/10' : 'border-primary bg-primary/10'}
+					className={
+						message.type === 'error'
+							? 'border-destructive bg-destructive/10'
+							: 'border-primary bg-primary/10'
+					}
 				>
 					<CardContent className="py-3">
-						<p className={message.type === 'error' ? 'text-destructive' : 'text-primary'}>{message.text}</p>
+						<p className={message.type === 'error' ? 'text-destructive' : 'text-primary'}>
+							{message.text}
+						</p>
 					</CardContent>
 				</Card>
 			)}
@@ -173,7 +186,8 @@ export default function CategoriesPage() {
 					<DialogHeader>
 						<DialogTitle>Delete Category</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to delete "{selectedCategory?.name}"? This action cannot be undone.
+							Are you sure you want to delete "{selectedCategory?.name}"? This action cannot be
+							undone.
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>

@@ -1,8 +1,9 @@
-import { useState, useMemo } from 'react'
-import { Outlet } from 'react-router-dom'
 import { Menu, X } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Outlet } from 'react-router-dom'
 
 import { useAuth } from '@/hooks/useAuth'
+
 import { SidebarNav } from './sidebar-nav'
 import { Button } from './ui/button'
 
@@ -51,11 +52,7 @@ export default function Layout() {
 							onClick={() => setSidebarOpen(!sidebarOpen)}
 							className="gap-2"
 						>
-							{sidebarOpen ? (
-								<X className="h-5 w-5" />
-							) : (
-								<Menu className="h-5 w-5" />
-							)}
+							{sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
 							<span className="font-semibold">Menu</span>
 						</Button>
 						<span className="text-sm font-bold gradient-text">TANG</span>

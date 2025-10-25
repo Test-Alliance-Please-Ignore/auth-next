@@ -1,7 +1,9 @@
 // @ts-nocheck
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
+
 import { createCorporationQueueConsumer } from '../consumer-factory'
+
 import type { Env } from '../../context'
 
 // Mock the dependencies

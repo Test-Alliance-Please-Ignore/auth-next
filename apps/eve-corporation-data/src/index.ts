@@ -1,12 +1,14 @@
-import { getStub } from '@repo/do-utils'
-import type { EveCorporationData } from '@repo/eve-corporation-data'
-import { withNotFound, withOnError } from '@repo/hono-helpers'
 import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
-import type { App, Env } from './context'
+import { getStub } from '@repo/do-utils'
+import { withNotFound, withOnError } from '@repo/hono-helpers'
+
 import { EveCorporationDataDO } from './durable-object'
 import * as queueConsumers from './queue/consumers'
+
+import type { EveCorporationData } from '@repo/eve-corporation-data'
+import type { App, Env } from './context'
 
 const app = new Hono<App>()
 	.use(
@@ -56,11 +58,7 @@ const queueHandlers = {
 // Export default worker with both fetch and queue handlers
 export default {
 	fetch: app.fetch.bind(app),
-	async queue(
-		batch: MessageBatch,
-		env: Env,
-		ctx: ExecutionContext
-	): Promise<void> {
+	async queue(batch: MessageBatch, env: Env, ctx: ExecutionContext): Promise<void> {
 		const queueName = batch.queue as keyof typeof queueHandlers
 		const handler = queueHandlers[queueName]
 

@@ -1,20 +1,21 @@
+import { defaultBatchOptions, processConcurrently } from './batch'
+import {
+	classifyError,
+	getRetryDelay as getErrorRetryDelay,
+	MessageValidationError,
+	wrapError,
+} from './errors'
+import { defaultRetryStrategy, getRetryDelay } from './retry'
+
 import type { z } from 'zod'
 import type {
+	BatchProcessingResult,
 	MessageBatch,
 	MessageHandler,
 	MessageMetadata,
 	QueueConsumerConfig,
 	QueueHandler,
-	BatchProcessingResult,
 } from './types'
-import {
-	MessageValidationError,
-	wrapError,
-	getRetryDelay as getErrorRetryDelay,
-	classifyError,
-} from './errors'
-import { defaultRetryStrategy, getRetryDelay } from './retry'
-import { processConcurrently, defaultBatchOptions } from './batch'
 
 /**
  * Create a type-safe queue consumer using a functional approach

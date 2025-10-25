@@ -1,15 +1,8 @@
-import { useState, useMemo } from 'react'
-import { AlertCircle, Plus, Trash2, RefreshCw } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from '@/components/ui/table'
+import { AlertCircle, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { useMemo, useState } from 'react'
+
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
 	Dialog,
 	DialogContent,
@@ -18,17 +11,26 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
-import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
-import { AddDirectorDialog } from './AddDirectorDialog'
-import { DirectorStatusBadge } from './DirectorStatusBadge'
+import { Label } from '@/components/ui/label'
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from '@/components/ui/table'
 import {
 	useDirectors,
 	useRemoveDirector,
 	useUpdateDirectorPriority,
-	useVerifyDirector,
 	useVerifyAllDirectors,
+	useVerifyDirector,
 } from '@/hooks/useCorporations'
+
+import { AddDirectorDialog } from './AddDirectorDialog'
+import { DirectorStatusBadge } from './DirectorStatusBadge'
 
 interface DirectorListProps {
 	corporationId: string
@@ -56,7 +58,7 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 		if (!directors) return { healthyCount: 0, totalCount: 0 }
 		return {
 			healthyCount: directors.filter((d) => d.isHealthy).length,
-			totalCount: directors.length
+			totalCount: directors.length,
 		}
 	}, [directors])
 
@@ -100,7 +102,11 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 		setRemoveDialogOpen(true)
 	}
 
-	const openPriorityDialog = (characterId: string, characterName: string, currentPriority: number) => {
+	const openPriorityDialog = (
+		characterId: string,
+		characterName: string,
+		currentPriority: number
+	) => {
 		setSelectedDirector({ characterId, characterName, currentPriority })
 		setNewPriority(currentPriority)
 		setPriorityDialogOpen(true)
@@ -147,7 +153,9 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 							onClick={handleVerifyAll}
 							disabled={verifyAllDirectors.isPending}
 						>
-							<RefreshCw className={`mr-2 h-4 w-4 ${verifyAllDirectors.isPending ? 'animate-spin' : ''}`} />
+							<RefreshCw
+								className={`mr-2 h-4 w-4 ${verifyAllDirectors.isPending ? 'animate-spin' : ''}`}
+							/>
 							Verify All
 						</Button>
 					)}
@@ -188,7 +196,9 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 									<TableCell>
 										<div>
 											<div className="font-medium">{director.characterName}</div>
-											<div className="text-xs text-muted-foreground">ID: {director.characterId}</div>
+											<div className="text-xs text-muted-foreground">
+												ID: {director.characterId}
+											</div>
 										</div>
 									</TableCell>
 									<TableCell>
@@ -197,7 +207,11 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 											size="sm"
 											className="h-7 px-2"
 											onClick={() =>
-												openPriorityDialog(director.characterId, director.characterName, director.priority)
+												openPriorityDialog(
+													director.characterId,
+													director.characterName,
+													director.priority
+												)
 											}
 										>
 											{director.priority}
@@ -226,7 +240,9 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 											<Button
 												variant="ghost"
 												size="sm"
-												onClick={() => openRemoveDialog(director.characterId, director.characterName)}
+												onClick={() =>
+													openRemoveDialog(director.characterId, director.characterName)
+												}
 												disabled={removeDirector.isPending}
 												title="Remove director"
 											>
@@ -254,15 +270,19 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 					<DialogHeader>
 						<DialogTitle>Remove Director</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to remove <strong>{selectedDirector?.characterName}</strong> as a
-							director? This action cannot be undone.
+							Are you sure you want to remove <strong>{selectedDirector?.characterName}</strong> as
+							a director? This action cannot be undone.
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
 						<Button variant="ghost" onClick={() => setRemoveDialogOpen(false)}>
 							Cancel
 						</Button>
-						<Button variant="destructive" onClick={handleRemove} disabled={removeDirector.isPending}>
+						<Button
+							variant="destructive"
+							onClick={handleRemove}
+							disabled={removeDirector.isPending}
+						>
 							{removeDirector.isPending ? 'Removing...' : 'Remove Director'}
 						</Button>
 					</DialogFooter>
@@ -275,8 +295,8 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 					<DialogHeader>
 						<DialogTitle>Update Priority</DialogTitle>
 						<DialogDescription>
-							Change the priority for <strong>{selectedDirector?.characterName}</strong>. Lower values
-							have higher priority.
+							Change the priority for <strong>{selectedDirector?.characterName}</strong>. Lower
+							values have higher priority.
 						</DialogDescription>
 					</DialogHeader>
 					<form onSubmit={handleUpdatePriority}>

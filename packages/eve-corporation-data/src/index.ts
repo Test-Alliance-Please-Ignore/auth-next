@@ -653,7 +653,12 @@ export interface EveCorporationData {
 	 * @param characterName - The character's name
 	 * @param priority - Priority for failover (higher = preferred), default 100
 	 */
-	addDirector(corporationId: string, characterId: string, characterName: string, priority?: number): Promise<void>
+	addDirector(
+		corporationId: string,
+		characterId: string,
+		characterName: string,
+		priority?: number
+	): Promise<void>
 
 	/**
 	 * Remove a director character from this corporation
@@ -668,7 +673,11 @@ export interface EveCorporationData {
 	 * @param characterId - The character ID
 	 * @param priority - New priority value (higher = preferred)
 	 */
-	updateDirectorPriority(corporationId: string, characterId: string, priority: number): Promise<void>
+	updateDirectorPriority(
+		corporationId: string,
+		characterId: string,
+		priority: number
+	): Promise<void>
 
 	/**
 	 * Get all directors for this corporation
@@ -804,7 +813,10 @@ export interface EveCorporationData {
 	 * @param limit - Maximum number of transactions to return
 	 * @returns Array of transaction data
 	 */
-	getWalletTransactions(division?: number, limit?: number): Promise<CorporationWalletTransactionData[]>
+	getWalletTransactions(
+		division?: number,
+		limit?: number
+	): Promise<CorporationWalletTransactionData[]>
 
 	/**
 	 * Get complete financial data

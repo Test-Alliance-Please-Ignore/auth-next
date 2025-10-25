@@ -12,12 +12,10 @@ import type {
 	TransferCharacterResult,
 	UserDetails,
 } from '@repo/admin'
+import type { DbClient } from '@repo/db-utils'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
-
 import type { schema } from '../db'
-
-import type { DbClient } from '@repo/db-utils'
 
 /**
  * Admin service - Business logic for administrative operations
@@ -142,7 +140,10 @@ export class AdminService {
 	/**
 	 * Get detailed character information with ownership
 	 */
-	async getCharacterDetails(characterId: string, adminUserId: string): Promise<CharacterDetails | null> {
+	async getCharacterDetails(
+		characterId: string,
+		adminUserId: string
+	): Promise<CharacterDetails | null> {
 		// 1. Get character ownership from core worker
 		const owner = await this.coreWorker.getCharacterOwnership(characterId)
 
@@ -191,7 +192,10 @@ export class AdminService {
 	/**
 	 * Get admin activity log with filters
 	 */
-	async getActivityLog(filters: ActivityLogFilters, adminUserId: string): Promise<ActivityLogResult> {
+	async getActivityLog(
+		filters: ActivityLogFilters,
+		adminUserId: string
+	): Promise<ActivityLogResult> {
 		const { adminOperationsLog } = await import('../db/schema')
 		const { eq, and, desc, sql } = await import('@repo/db-utils')
 

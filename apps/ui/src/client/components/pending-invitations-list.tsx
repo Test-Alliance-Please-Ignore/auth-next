@@ -1,6 +1,7 @@
 import { useGroupInvitations } from '@/hooks/useGroups'
-import { Card } from './ui/card'
+
 import { Badge } from './ui/badge'
+import { Card } from './ui/card'
 
 interface PendingInvitationsListProps {
 	groupId: string

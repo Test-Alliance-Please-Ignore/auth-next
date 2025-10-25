@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+
 import { api } from '@/lib/api'
+
 import type {
 	AddDirectorRequest,
 	CreateCorporationRequest,
@@ -15,9 +17,11 @@ export const corporationKeys = {
 	list: () => [...corporationKeys.lists()] as const,
 	details: () => [...corporationKeys.all, 'detail'] as const,
 	detail: (corporationId: string) => [...corporationKeys.details(), corporationId] as const,
-	dataSummary: (corporationId: string) => [...corporationKeys.detail(corporationId), 'data'] as const,
+	dataSummary: (corporationId: string) =>
+		[...corporationKeys.detail(corporationId), 'data'] as const,
 	search: (query: string) => [...corporationKeys.all, 'search', query] as const,
-	directors: (corporationId: string) => [...corporationKeys.detail(corporationId), 'directors'] as const,
+	directors: (corporationId: string) =>
+		[...corporationKeys.detail(corporationId), 'directors'] as const,
 }
 
 // Queries
@@ -82,7 +86,7 @@ export function useCreateCorporation() {
 			// Batch invalidations using a single call with broader pattern
 			void queryClient.invalidateQueries({
 				queryKey: corporationKeys.all,
-				refetchType: 'active' // Only refetch active queries
+				refetchType: 'active', // Only refetch active queries
 			})
 
 			// Add to cache optimistically
@@ -98,8 +102,13 @@ export function useUpdateCorporation() {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: ({ corporationId, data }: { corporationId: string; data: UpdateCorporationRequest }) =>
-			api.updateCorporation(corporationId, data),
+		mutationFn: ({
+			corporationId,
+			data,
+		}: {
+			corporationId: string
+			data: UpdateCorporationRequest
+		}) => api.updateCorporation(corporationId, data),
 		onSuccess: (updatedCorporation) => {
 			// Update detail cache first (immediate update)
 			queryClient.setQueryData(
@@ -110,7 +119,7 @@ export function useUpdateCorporation() {
 			// Then invalidate list to show updated data
 			void queryClient.invalidateQueries({
 				queryKey: corporationKeys.lists(),
-				refetchType: 'active'
+				refetchType: 'active',
 			})
 		},
 	})
@@ -133,7 +142,7 @@ export function useDeleteCorporation() {
 			// Then invalidate list to remove from UI
 			void queryClient.invalidateQueries({
 				queryKey: corporationKeys.lists(),
-				refetchType: 'active'
+				refetchType: 'active',
 			})
 		},
 	})
@@ -151,13 +160,13 @@ export function useVerifyCorporationAccess() {
 			// Batch invalidations for this specific corporation
 			void queryClient.invalidateQueries({
 				queryKey: corporationKeys.detail(corporationId),
-				refetchType: 'active'
+				refetchType: 'active',
 			})
 
 			// Also invalidate list, but less aggressively
 			void queryClient.invalidateQueries({
 				queryKey: corporationKeys.lists(),
-				refetchType: 'active'
+				refetchType: 'active',
 			})
 		},
 	})
@@ -182,16 +191,16 @@ export function useFetchCorporationData() {
 			void Promise.all([
 				queryClient.invalidateQueries({
 					queryKey: corporationKeys.detail(corporationId),
-					refetchType: 'active'
+					refetchType: 'active',
 				}),
 				queryClient.invalidateQueries({
 					queryKey: corporationKeys.dataSummary(corporationId),
-					refetchType: 'active'
+					refetchType: 'active',
 				}),
 				queryClient.invalidateQueries({
 					queryKey: corporationKeys.lists(),
-					refetchType: 'active'
-				})
+					refetchType: 'active',
+				}),
 			])
 		},
 	})
@@ -225,16 +234,16 @@ export function useAddDirector() {
 			void Promise.all([
 				queryClient.invalidateQueries({
 					queryKey: corporationKeys.directors(corporationId),
-					refetchType: 'active'
+					refetchType: 'active',
 				}),
 				queryClient.invalidateQueries({
 					queryKey: corporationKeys.detail(corporationId),
-					refetchType: 'active'
+					refetchType: 'active',
 				}),
 				queryClient.invalidateQueries({
 					queryKey: corporationKeys.lists(),
-					refetchType: 'active'
-				})
+					refetchType: 'active',
+				}),
 			])
 		},
 	})
@@ -254,16 +263,16 @@ export function useRemoveDirector() {
 			void Promise.all([
 				queryClient.invalidateQueries({
 					queryKey: corporationKeys.directors(corporationId),
-					refetchType: 'active'
+					refetchType: 'active',
 				}),
 				queryClient.invalidateQueries({
 					queryKey: corporationKeys.detail(corporationId),
-					refetchType: 'active'
+					refetchType: 'active',
 				}),
 				queryClient.invalidateQueries({
 					queryKey: corporationKeys.lists(),
-					refetchType: 'active'
-				})
+					refetchType: 'active',
+				}),
 			])
 		},
 	})
@@ -289,7 +298,7 @@ export function useUpdateDirectorPriority() {
 			// Only invalidate directors list since priority doesn't affect other data
 			void queryClient.invalidateQueries({
 				queryKey: corporationKeys.directors(corporationId),
-				refetchType: 'active'
+				refetchType: 'active',
 			})
 		},
 	})
@@ -309,16 +318,16 @@ export function useVerifyDirector() {
 			void Promise.all([
 				queryClient.invalidateQueries({
 					queryKey: corporationKeys.directors(corporationId),
-					refetchType: 'active'
+					refetchType: 'active',
 				}),
 				queryClient.invalidateQueries({
 					queryKey: corporationKeys.detail(corporationId),
-					refetchType: 'active'
+					refetchType: 'active',
 				}),
 				queryClient.invalidateQueries({
 					queryKey: corporationKeys.lists(),
-					refetchType: 'active'
-				})
+					refetchType: 'active',
+				}),
 			])
 		},
 	})
@@ -337,16 +346,16 @@ export function useVerifyAllDirectors() {
 			void Promise.all([
 				queryClient.invalidateQueries({
 					queryKey: corporationKeys.directors(corporationId),
-					refetchType: 'active'
+					refetchType: 'active',
 				}),
 				queryClient.invalidateQueries({
 					queryKey: corporationKeys.detail(corporationId),
-					refetchType: 'active'
+					refetchType: 'active',
 				}),
 				queryClient.invalidateQueries({
 					queryKey: corporationKeys.lists(),
-					refetchType: 'active'
-				})
+					refetchType: 'active',
+				}),
 			])
 		},
 	})

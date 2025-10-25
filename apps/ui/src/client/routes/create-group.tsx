@@ -1,14 +1,16 @@
+import { ArrowLeft } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
+
+import { GroupForm } from '@/components/group-form'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
-import { GroupForm } from '@/components/group-form'
-import { useCreateGroup } from '@/hooks/useGroups'
 import { useCategories } from '@/hooks/useCategories'
+import { useCreateGroup } from '@/hooks/useGroups'
+
 import type { CreateGroupRequest } from '@/lib/api'
 
 export default function CreateGroupPage() {
@@ -71,8 +73,8 @@ export default function CreateGroupPage() {
 					<CardHeader>
 						<CardTitle>Group Details</CardTitle>
 						<CardDescription>
-							Fill in the information below to create your group. You will become the owner and can manage
-							members, settings, and permissions.
+							Fill in the information below to create your group. You will become the owner and can
+							manage members, settings, and permissions.
 						</CardDescription>
 					</CardHeader>
 					<CardContent>

@@ -1,5 +1,31 @@
 import { DurableObject } from 'cloudflare:workers'
+
 import { and, eq, inArray, isNull, like, or, sql } from '@repo/db-utils'
+
+import { createDb } from './db'
+import {
+	categories,
+	groupAdmins,
+	groupDiscordInvites,
+	groupDiscordServers,
+	groupInvitations,
+	groupInviteCodeRedemptions,
+	groupInviteCodes,
+	groupJoinRequests,
+	groupMembers,
+	groups,
+} from './db/schema'
+import { generateShortInviteCode } from './services/code-generator'
+import {
+	canCreateGroupInCategory,
+	canManageGroup,
+	canModerateGroup,
+	canViewCategory,
+	canViewGroup,
+	canViewGroupMembers,
+	isGroupOwner,
+} from './services/permissions'
+
 import type {
 	Category,
 	CategoryWithGroups,
@@ -25,29 +51,6 @@ import type {
 	UpdateCategoryRequest,
 	UpdateGroupRequest,
 } from '@repo/groups'
-
-import { createDb } from './db'
-import {
-	categories,
-	groupAdmins,
-	groupInviteCodeRedemptions,
-	groupInviteCodes,
-	groupInvitations,
-	groupJoinRequests,
-	groupMembers,
-	groups,
-} from './db/schema'
-import { generateShortInviteCode } from './services/code-generator'
-import {
-	canCreateGroupInCategory,
-	canManageGroup,
-	canModerateGroup,
-	canViewCategory,
-	canViewGroup,
-	canViewGroupMembers,
-	isGroupOwner,
-} from './services/permissions'
-
 import type { Env } from './context'
 
 /**
@@ -62,6 +65,11 @@ import type { Env } from './context'
  */
 export class GroupsDO extends DurableObject<Env> implements Groups {
 	private db: ReturnType<typeof createDb>
+
+	// In-memory caches with TTL
+	private discordServersCache = new Map<string, { data: any[]; expires: number }>()
+	private groupMembersCache = new Map<string, { data: string[]; expires: number }>()
+	private readonly CACHE_TTL = 5 * 60 * 1000 // 5 minutes
 
 	constructor(
 		public state: DurableObjectState,
@@ -172,8 +180,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		if (data.name !== undefined) updates.name = data.name
 		if (data.description !== undefined) updates.description = data.description
 		if (data.visibility !== undefined) updates.visibility = data.visibility
-		if (data.allowGroupCreation !== undefined)
-			updates.allowGroupCreation = data.allowGroupCreation
+		if (data.allowGroupCreation !== undefined) updates.allowGroupCreation = data.allowGroupCreation
 
 		updates.updatedAt = new Date()
 
@@ -405,11 +412,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 		updates.updatedAt = new Date()
 
-		const [updated] = await this.db
-			.update(groups)
-			.set(updates)
-			.where(eq(groups.id, id))
-			.returning()
+		const [updated] = await this.db.update(groups).set(updates).where(eq(groups.id, id)).returning()
 
 		if (!updated) {
 			throw new Error('Failed to update group')
@@ -581,11 +584,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			.where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, targetUserId)))
 	}
 
-	async getGroupMembers(
-		groupId: string,
-		userId: string,
-		isAdmin: boolean
-	): Promise<GroupMember[]> {
+	async getGroupMembers(groupId: string, userId: string, isAdmin: boolean): Promise<GroupMember[]> {
 		const group = await this.db.query.groups.findFirst({
 			where: eq(groups.id, groupId),
 		})
@@ -1290,6 +1289,275 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 	/**
 	 * ============================================
+	 * DISCORD INTEGRATION OPERATIONS
+	 * ============================================
+	 */
+
+	/**
+	 * Get all Discord servers for a group
+	 * Cached in-memory for 5 minutes
+	 */
+	async getDiscordServers(
+		groupId: string
+	): Promise<Array<typeof groupDiscordServers.$inferSelect>> {
+		// Check cache first
+		const cached = this.discordServersCache.get(groupId)
+		if (cached && cached.expires > Date.now()) {
+			return cached.data
+		}
+
+		// Cache miss - fetch from database
+		const servers = await this.db.query.groupDiscordServers.findMany({
+			where: eq(groupDiscordServers.groupId, groupId),
+			orderBy: (groupDiscordServers, { asc }) => [asc(groupDiscordServers.createdAt)],
+		})
+
+		// Cache the result
+		this.discordServersCache.set(groupId, {
+			data: servers,
+			expires: Date.now() + this.CACHE_TTL,
+		})
+
+		return servers
+	}
+
+	/**
+	 * DEPRECATED: Discord server management now happens through Core registry
+	 *
+	 * Add a Discord server to a group
+	 * Invalidates cache on write
+	 */
+	/*
+	async addDiscordServer(
+		groupId: string,
+		guildId: string,
+		guildName: string | null,
+		autoInvite: boolean
+	): Promise<typeof groupDiscordServers.$inferSelect> {
+		const [server] = await this.db
+			.insert(groupDiscordServers)
+			.values({
+				groupId,
+				discordGuildId: guildId,
+				discordGuildName: guildName,
+				autoInvite,
+			})
+			.returning()
+
+		// Invalidate cache
+		this.discordServersCache.delete(groupId)
+		await this.invalidateGroupsWithDiscordCache()
+
+		return server
+	}
+	*/
+
+	/**
+	 * DEPRECATED: Discord server management now happens through Core registry
+	 *
+	 * Update a Discord server configuration
+	 * Invalidates cache on write
+	 */
+	/*
+	async updateDiscordServer(
+		serverId: string,
+		updates: {
+			discordGuildName?: string | null
+			autoInvite?: boolean
+		}
+	): Promise<typeof groupDiscordServers.$inferSelect> {
+		const server = await this.db.query.groupDiscordServers.findFirst({
+			where: eq(groupDiscordServers.id, serverId),
+		})
+
+		if (!server) {
+			throw new Error('Discord server not found')
+		}
+
+		const updateData: Partial<typeof groupDiscordServers.$inferInsert> = {
+			updatedAt: new Date(),
+		}
+
+		if (updates.discordGuildName !== undefined) {
+			updateData.discordGuildName = updates.discordGuildName
+		}
+		if (updates.autoInvite !== undefined) {
+			updateData.autoInvite = updates.autoInvite
+		}
+
+		const [updated] = await this.db
+			.update(groupDiscordServers)
+			.set(updateData)
+			.where(eq(groupDiscordServers.id, serverId))
+			.returning()
+
+		if (!updated) {
+			throw new Error('Failed to update Discord server')
+		}
+
+		// Invalidate cache
+		this.discordServersCache.delete(server.groupId)
+		await this.invalidateGroupsWithDiscordCache()
+
+		return updated
+	}
+	*/
+
+	/**
+	 * DEPRECATED: Discord server management now happens through Core registry
+	 *
+	 * Delete a Discord server from a group
+	 * Invalidates cache on write
+	 */
+	/*
+	async deleteDiscordServer(serverId: string): Promise<void> {
+		const server = await this.db.query.groupDiscordServers.findFirst({
+			where: eq(groupDiscordServers.id, serverId),
+		})
+
+		if (!server) {
+			throw new Error('Discord server not found')
+		}
+
+		await this.db.delete(groupDiscordServers).where(eq(groupDiscordServers.id, serverId))
+
+		// Invalidate cache
+		this.discordServersCache.delete(server.groupId)
+		await this.invalidateGroupsWithDiscordCache()
+	}
+	*/
+
+	/**
+	 * Get all groups with Discord auto-invite enabled
+	 * Cached in DO storage with 5-minute refresh
+	 */
+	async getGroupsWithDiscordAutoInvite(): Promise<
+		Array<{
+			groupId: string
+			groupName: string
+			discordServers: Array<{
+				id: string
+				discordServerId: string
+				roleIds?: string[]
+			}>
+		}>
+	> {
+		// Try to get from DO storage cache
+		const cacheKey = 'groups-with-discord-auto-invite'
+		const cached = await this.state.storage.get<{
+			data: any[]
+			expires: number
+		}>(cacheKey)
+
+		if (cached && cached.expires > Date.now()) {
+			return cached.data
+		}
+
+		// Cache miss - fetch from database with Discord server registry info
+		const servers = await this.db.query.groupDiscordServers.findMany({
+			where: eq(groupDiscordServers.autoInvite, true),
+			with: {
+				group: true,
+				roles: true,
+			},
+		})
+
+		// Group by groupId
+		const groupsMap = new Map<
+			string,
+			{
+				groupId: string
+				groupName: string
+				discordServers: Array<{
+					id: string
+					discordServerId: string
+					roleIds?: string[]
+				}>
+			}
+		>()
+
+		for (const server of servers) {
+			const groupId = server.groupId
+			if (!groupsMap.has(groupId)) {
+				groupsMap.set(groupId, {
+					groupId,
+					groupName: server.group.name,
+					discordServers: [],
+				})
+			}
+
+			// Collect role IDs if auto-assign is enabled
+			const roleIds = server.autoAssignRoles ? server.roles.map((r) => r.discordRoleId) : []
+
+			groupsMap.get(groupId)!.discordServers.push({
+				id: server.id,
+				discordServerId: server.discordServerId,
+				roleIds,
+			})
+		}
+
+		const result = Array.from(groupsMap.values())
+
+		// Store in DO storage with 5-minute TTL
+		await this.state.storage.put(cacheKey, {
+			data: result,
+			expires: Date.now() + this.CACHE_TTL,
+		})
+
+		return result
+	}
+
+	/**
+	 * Get cached group members (user IDs only)
+	 * Cached in-memory for 5 minutes
+	 */
+	async getGroupMemberUserIds(groupId: string): Promise<string[]> {
+		// Check cache first
+		const cached = this.groupMembersCache.get(groupId)
+		if (cached && cached.expires > Date.now()) {
+			return cached.data
+		}
+
+		// Cache miss - fetch from database
+		const members = await this.db.query.groupMembers.findMany({
+			where: eq(groupMembers.groupId, groupId),
+		})
+
+		const userIds = members.map((m) => m.userId)
+
+		// Cache the result
+		this.groupMembersCache.set(groupId, {
+			data: userIds,
+			expires: Date.now() + this.CACHE_TTL,
+		})
+
+		return userIds
+	}
+
+	/**
+	 * Insert Discord invite audit records
+	 * Called by Core service after attempting to join users to Discord servers
+	 */
+	async insertDiscordInviteAuditRecords(
+		records: Array<{
+			groupId: string
+			groupDiscordServerId: string
+			userId: string
+			discordUserId: string
+			success: boolean
+			errorMessage?: string | null
+			assignedRoleIds?: string[] | null
+		}>
+	): Promise<void> {
+		if (records.length === 0) {
+			return
+		}
+
+		await this.db.insert(groupDiscordInvites).values(records)
+	}
+
+	/**
+	 * ============================================
 	 * HELPER METHODS
 	 * ============================================
 	 */
@@ -1300,6 +1568,14 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	private async invalidateCategoriesCache(): Promise<void> {
 		const cacheKey = 'categories:all:v1'
 		await this.env.GROUPS_KV?.delete(cacheKey)
+	}
+
+	/**
+	 * Invalidate the groups with Discord auto-invite cache in DO storage
+	 */
+	private async invalidateGroupsWithDiscordCache(): Promise<void> {
+		const cacheKey = 'groups-with-discord-auto-invite'
+		await this.state.storage.delete(cacheKey)
 	}
 
 	private async isUserMember(groupId: string, userId: string): Promise<boolean> {

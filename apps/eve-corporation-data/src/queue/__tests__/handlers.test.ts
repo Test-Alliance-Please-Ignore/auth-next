@@ -1,7 +1,9 @@
 // @ts-nocheck
 import { describe, expect, it, vi } from 'vitest'
-import type { EveCorporationData } from '@repo/eve-corporation-data'
+
 import * as handlers from '../handlers'
+
+import type { EveCorporationData } from '@repo/eve-corporation-data'
 
 describe('Queue Handlers', () => {
 	const createMockStub = () => {

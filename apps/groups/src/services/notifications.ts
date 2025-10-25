@@ -1,6 +1,6 @@
 import { getStub } from '@repo/do-utils'
-import type { Notifications } from '@repo/notifications'
 
+import type { Notifications } from '@repo/notifications'
 import type { Env } from '../context'
 
 /**

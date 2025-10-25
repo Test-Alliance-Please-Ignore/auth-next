@@ -1,41 +1,41 @@
 {
-  "version": "7",
-  "dialect": "postgresql",
-  "entries": [
-    {
-      "idx": 0,
-      "version": "7",
-      "when": 1761099619236,
-      "tag": "0000_dazzling_natasha_romanoff",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1761110912747,
-      "tag": "0001_mature_legion",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1761111712115,
-      "tag": "0002_amused_starbolt",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1761111737470,
-      "tag": "0003_natural_rage",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1761160474761,
-      "tag": "0004_clean_tinkerer",
-      "breakpoints": true
-    }
-  ]
+	"version": "7",
+	"dialect": "postgresql",
+	"entries": [
+		{
+			"idx": 0,
+			"version": "7",
+			"when": 1761099619236,
+			"tag": "0000_dazzling_natasha_romanoff",
+			"breakpoints": true
+		},
+		{
+			"idx": 1,
+			"version": "7",
+			"when": 1761110912747,
+			"tag": "0001_mature_legion",
+			"breakpoints": true
+		},
+		{
+			"idx": 2,
+			"version": "7",
+			"when": 1761111712115,
+			"tag": "0002_amused_starbolt",
+			"breakpoints": true
+		},
+		{
+			"idx": 3,
+			"version": "7",
+			"when": 1761111737470,
+			"tag": "0003_natural_rage",
+			"breakpoints": true
+		},
+		{
+			"idx": 4,
+			"version": "7",
+			"when": 1761160474761,
+			"tag": "0004_clean_tinkerer",
+			"breakpoints": true
+		}
+	]
 }

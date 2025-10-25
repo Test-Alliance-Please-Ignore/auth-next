@@ -225,7 +225,7 @@ importers:
         specifier: 2.5.1
         version: 2.5.1
       '@hono/zod-validator':
-        specifier: ^0.7.4
+        specifier: 0.7.4
         version: 0.7.4(hono@4.9.11)(zod@4.1.12)
       '@neondatabase/serverless':
         specifier: 0.10.4
@@ -712,7 +712,7 @@ importers:
         specifier: 2.2.6
         version: 2.2.6(@types/react-dom@19.2.2(@types/react@19.2.2))(@types/react@19.2.2)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
       '@radix-ui/react-switch':
-        specifier: ^1.2.6
+        specifier: 1.2.6
         version: 1.2.6(@types/react-dom@19.2.2(@types/react@19.2.2))(@types/react@19.2.2)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
       '@repo/eve-types':
         specifier: workspace:*
@@ -1033,7 +1033,7 @@ importers:
   packages/hazmat:
     dependencies:
       bigint-conversion:
-        specifier: ^2.4.3
+        specifier: 2.4.3
         version: 2.4.3
       libsodium-wrappers-sumo:
         specifier: 0.7.15
@@ -1052,7 +1052,7 @@ importers:
         specifier: workspace:*
         version: link:../typescript-config
       '@types/libsodium-wrappers-sumo':
-        specifier: ^0.7.8
+        specifier: 0.7.8
         version: 0.7.8
       vitest:
         specifier: 3.2.4

@@ -1,11 +1,12 @@
+import { FolderHeart, LayoutDashboard, LogOut, Mail, Shield, Users } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Users, FolderHeart, Mail, Shield, LogOut } from 'lucide-react'
 
 import { useAuth, useLogout } from '@/hooks/useAuth'
 import { usePendingInvitations } from '@/hooks/useGroups'
-import { Button } from './ui/button'
-import { Badge } from './ui/badge'
 import { cn } from '@/lib/utils'
+
+import { Badge } from './ui/badge'
+import { Button } from './ui/button'
 
 interface SidebarNavProps {
 	onNavigate?: () => void
@@ -64,15 +65,14 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 				>
 					TANG
 				</Link>
-				<p className="text-xs text-muted-foreground mt-1">
-					Test Auth Next Gen
-				</p>
+				<p className="text-xs text-muted-foreground mt-1">Test Auth Next Gen</p>
 			</div>
 
 			{/* Navigation Items */}
 			<nav className="flex-1 p-4 space-y-1 overflow-y-auto">
 				{navItems.map((item) => {
-					const isActive = location.pathname === item.href || location.pathname.startsWith(item.href + '/')
+					const isActive =
+						location.pathname === item.href || location.pathname.startsWith(item.href + '/')
 					const Icon = item.icon
 
 					return (
@@ -113,7 +113,8 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 							alt={`${mainCharacter.characterName}'s portrait`}
 							loading="lazy"
 							onError={(e) => {
-								;(e.currentTarget as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"%3E%3Crect fill="%23404040" width="64" height="64"/%3E%3Ctext x="50%25" y="50%25" font-family="Arial" font-size="24" fill="%23bfbfbf" text-anchor="middle" dominant-baseline="middle"%3E?%3C/text%3E%3C/svg%3E'
+								;(e.currentTarget as HTMLImageElement).src =
+									'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"%3E%3Crect fill="%23404040" width="64" height="64"/%3E%3Ctext x="50%25" y="50%25" font-family="Arial" font-size="24" fill="%23bfbfbf" text-anchor="middle" dominant-baseline="middle"%3E?%3C/text%3E%3C/svg%3E'
 							}}
 							className="w-10 h-10 rounded-full border-2 border-primary/50"
 						/>

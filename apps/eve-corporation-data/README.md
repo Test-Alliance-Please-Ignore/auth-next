@@ -46,8 +46,9 @@ The EveCorporationData Durable Object is available to this worker via the `EVE_C
 ### From within this worker:
 
 ```typescript
-import type { EveCorporationData } from '@repo/eve-corporation-data'
 import { getStub } from '@repo/do-utils'
+
+import type { EveCorporationData } from '@repo/eve-corporation-data'
 
 // Get a stub to the Durable Object
 const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, 'unique-id')

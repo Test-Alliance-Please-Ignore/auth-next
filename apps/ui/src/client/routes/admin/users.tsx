@@ -1,14 +1,22 @@
-import { useState, useEffect } from 'react'
-import { Search, Filter, UserCircle, ExternalLink } from 'lucide-react'
+import { ExternalLink, Filter, Search, UserCircle } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
-import { Badge } from '@/components/ui/badge'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { useAdminUsers } from '@/hooks/useAdminUsers'
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from '@/components/ui/table'
 import { UserSearchDialog } from '@/components/user-search-dialog'
+import { useAdminUsers } from '@/hooks/useAdminUsers'
 import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
@@ -156,7 +164,9 @@ export default function UsersPage() {
 														className="h-10 w-10 rounded-full"
 													/>
 													<div>
-														<div className="font-medium">{user.mainCharacterName || 'Unknown Character'}</div>
+														<div className="font-medium">
+															{user.mainCharacterName || 'Unknown Character'}
+														</div>
 														<div className="text-xs text-muted-foreground">
 															ID: {user.id.slice(0, 8)}...
 														</div>

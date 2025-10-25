@@ -11,7 +11,7 @@
 		"test": "run-vitest"
 	},
 	"dependencies": {
-		"bigint-conversion": "^2.4.3",
+		"bigint-conversion": "2.4.3",
 		"libsodium-wrappers-sumo": "0.7.15"
 	},
 	"devDependencies": {
@@ -19,7 +19,7 @@
 		"@repo/eslint-config": "workspace:*",
 		"@repo/tools": "workspace:*",
 		"@repo/typescript-config": "workspace:*",
-		"@types/libsodium-wrappers-sumo": "^0.7.8",
+		"@types/libsodium-wrappers-sumo": "0.7.8",
 		"vitest": "3.2.4"
 	}
 }

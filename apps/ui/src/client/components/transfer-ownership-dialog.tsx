@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
-import { UserCog, AlertTriangle } from 'lucide-react'
+import { AlertTriangle, UserCog } from 'lucide-react'
+import { useEffect, useState } from 'react'
+
 import { Button } from '@/components/ui/button'
 import {
 	Dialog,
@@ -84,8 +85,8 @@ export function TransferOwnershipDialog({
 						Transfer Ownership
 					</DialogTitle>
 					<DialogDescription>
-						Transfer ownership of <strong>{group.name}</strong> to another member. This action cannot be
-						undone.
+						Transfer ownership of <strong>{group.name}</strong> to another member. This action
+						cannot be undone.
 					</DialogDescription>
 				</DialogHeader>
 
@@ -113,7 +114,9 @@ export function TransferOwnershipDialog({
 							<div className="flex gap-2">
 								<AlertTriangle className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
 								<div className="text-sm space-y-1">
-									<p className="font-medium text-amber-700 dark:text-amber-400">What will happen:</p>
+									<p className="font-medium text-amber-700 dark:text-amber-400">
+										What will happen:
+									</p>
 									<ul className="list-disc list-inside text-muted-foreground space-y-1">
 										<li>
 											<strong>{selectedMember.mainCharacterName}</strong> will become the new owner

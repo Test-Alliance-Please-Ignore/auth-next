@@ -24,7 +24,9 @@ describe('Discord Worker', () => {
 	})
 
 	it('returns 404 for non-existent profile', async () => {
-		const request = new Request('http://example.com/discord/profile/550e8400-e29b-41d4-a716-446655440000')
+		const request = new Request(
+			'http://example.com/discord/profile/550e8400-e29b-41d4-a716-446655440000'
+		)
 		const ctx = createExecutionContext()
 		const response = await worker.fetch(request, testEnv, ctx)
 		await waitOnExecutionContext(ctx)

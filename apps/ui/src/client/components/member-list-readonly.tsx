@@ -1,11 +1,5 @@
-import {
-	Table,
-	TableBody,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from '@/components/ui/table'
 import { MemberRow } from '@/components/member-row'
+import { Table, TableBody, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
 import type { GroupMember, GroupWithDetails } from '@/lib/api'
 

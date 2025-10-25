@@ -10,7 +10,11 @@ interface LoadingSpinnerProps {
  * Centralized loading spinner component
  * Provides consistent loading UI across the application
  */
-export function LoadingSpinner({ size = 'md', label = 'Loading...', className }: LoadingSpinnerProps) {
+export function LoadingSpinner({
+	size = 'md',
+	label = 'Loading...',
+	className,
+}: LoadingSpinnerProps) {
 	const sizeClasses = {
 		sm: 'h-8 w-8',
 		md: 'h-12 w-12',

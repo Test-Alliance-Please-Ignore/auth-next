@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
+
 import { QueueConsumer } from '../../src/consumer'
-import type { MessageBatch, Message, MessageMetadata } from '../../src/types'
 import { FatalError } from '../../src/errors'
 import { exponentialBackoff } from '../../src/retry'
+
+import type { Message, MessageBatch, MessageMetadata } from '../../src/types'
 
 const testSchema = z.object({
 	characterId: z.string(),

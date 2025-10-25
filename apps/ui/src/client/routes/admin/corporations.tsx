@@ -1,18 +1,22 @@
-import { useState, useMemo, useCallback } from 'react'
+import { formatDistanceToNow } from 'date-fns'
+import { Building2, Plus, RefreshCw, Search, ShieldAlert, ShieldCheck, Trash2 } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, Search, ShieldAlert, ShieldCheck, RefreshCw, Building2, Trash2 } from 'lucide-react'
+
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
 	Dialog,
 	DialogContent,
 	DialogDescription,
+	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-	DialogFooter,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { LoadingSpinner } from '@/components/ui/loading'
 import {
 	Table,
 	TableBody,
@@ -21,8 +25,6 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
-import { Badge } from '@/components/ui/badge'
-import { LoadingSpinner } from '@/components/ui/loading'
 import {
 	useCorporations,
 	useCreateCorporation,
@@ -30,7 +32,7 @@ import {
 	useVerifyCorporationAccess,
 } from '@/hooks/useCorporations'
 import { useMessage } from '@/hooks/useMessage'
-import { formatDistanceToNow } from 'date-fns'
+
 import type { CreateCorporationRequest } from '@/lib/api'
 
 export default function CorporationsPage() {
@@ -65,9 +67,8 @@ export default function CorporationsPage() {
 		if (!searchQuery.trim()) return corporations
 
 		const query = searchQuery.toLowerCase()
-		return corporations.filter((corp) =>
-			corp.name.toLowerCase().includes(query) ||
-			corp.ticker.toLowerCase().includes(query)
+		return corporations.filter(
+			(corp) => corp.name.toLowerCase().includes(query) || corp.ticker.toLowerCase().includes(query)
 		)
 	}, [corporations, searchQuery])
 
@@ -76,7 +77,7 @@ export default function CorporationsPage() {
 		e.preventDefault()
 
 		// Validate corporation ID is a valid number
-		if (!formData.corporationId ) {
+		if (!formData.corporationId) {
 			showError('Please enter a valid corporation ID')
 			return
 		}
@@ -179,7 +180,9 @@ export default function CorporationsPage() {
 			{message && (
 				<Card
 					className={
-						message.type === 'error' ? 'border-destructive bg-destructive/10' : 'border-primary bg-primary/10'
+						message.type === 'error'
+							? 'border-destructive bg-destructive/10'
+							: 'border-primary bg-primary/10'
 					}
 				>
 					<CardContent className="py-3">
@@ -227,7 +230,9 @@ export default function CorporationsPage() {
 							<Building2 className="mx-auto h-12 w-12 text-muted-foreground" />
 							<h3 className="mt-4 text-lg font-medium">No corporations found</h3>
 							<p className="text-muted-foreground mt-2">
-								{searchQuery ? 'Try adjusting your search' : 'Add your first corporation to get started'}
+								{searchQuery
+									? 'Try adjusting your search'
+									: 'Add your first corporation to get started'}
 							</p>
 						</div>
 					) : (
@@ -329,9 +334,7 @@ export default function CorporationsPage() {
 									inputMode="numeric"
 									pattern="[0-9]*"
 									value={formData.corporationId}
-									onChange={(e) =>
-										setFormData({ ...formData, corporationId: e.target.value })
-									}
+									onChange={(e) => setFormData({ ...formData, corporationId: e.target.value })}
 									required
 									placeholder="e.g., 98000001"
 								/>

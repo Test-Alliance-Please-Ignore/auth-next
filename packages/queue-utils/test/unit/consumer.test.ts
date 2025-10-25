@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
+
 import { QueueConsumer } from '../../src/consumer'
-import type { MessageBatch, Message, MessageMetadata } from '../../src/types'
-import { RetryableError, FatalError } from '../../src/errors'
+import { FatalError, RetryableError } from '../../src/errors'
+
+import type { Message, MessageBatch, MessageMetadata } from '../../src/types'
 
 const testSchema = z.object({
 	id: z.string(),

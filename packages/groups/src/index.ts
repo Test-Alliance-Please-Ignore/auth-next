@@ -237,18 +237,10 @@ export interface Groups {
 	listCategories(userId: string, isAdmin: boolean): Promise<Category[]>
 
 	/** Get a specific category */
-	getCategory(
-		id: string,
-		userId: string,
-		isAdmin: boolean
-	): Promise<CategoryWithGroups | null>
+	getCategory(id: string, userId: string, isAdmin: boolean): Promise<CategoryWithGroups | null>
 
 	/** Update a category (admin only) */
-	updateCategory(
-		id: string,
-		data: UpdateCategoryRequest,
-		adminUserId: string
-	): Promise<Category>
+	updateCategory(id: string, data: UpdateCategoryRequest, adminUserId: string): Promise<Category>
 
 	/** Delete a category (admin only) */
 	deleteCategory(id: string, adminUserId: string): Promise<void>
@@ -298,11 +290,7 @@ export interface Groups {
 	removeMember(groupId: string, adminUserId: string, targetUserId: string): Promise<void>
 
 	/** Get group members */
-	getGroupMembers(
-		groupId: string,
-		userId: string,
-		isAdmin: boolean
-	): Promise<GroupMember[]>
+	getGroupMembers(groupId: string, userId: string, isAdmin: boolean): Promise<GroupMember[]>
 
 	/** Get user's group memberships */
 	getUserMemberships(userId: string): Promise<GroupMembershipSummary[]>
@@ -328,10 +316,7 @@ export interface Groups {
 	createJoinRequest(data: CreateJoinRequestRequest, userId: string): Promise<GroupJoinRequest>
 
 	/** List join requests for a group (admin only) */
-	listJoinRequests(
-		groupId: string,
-		adminUserId: string
-	): Promise<GroupJoinRequestWithDetails[]>
+	listJoinRequests(groupId: string, adminUserId: string): Promise<GroupJoinRequestWithDetails[]>
 
 	/** Approve a join request (admin only) */
 	approveJoinRequest(requestId: string, adminUserId: string): Promise<void>

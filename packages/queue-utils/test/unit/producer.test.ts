@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import { QueueProducer, createQueueProducer, type Queue } from '../../src/producer'
+
 import { MessageValidationError } from '../../src/errors'
+import { createQueueProducer, QueueProducer } from '../../src/producer'
+
+import type { Queue } from '../../src/producer'
 
 const testSchema = z.object({
 	id: z.number(),
@@ -55,9 +58,7 @@ describe('QueueProducer', () => {
 
 		const producer = new QueueProducer(mockQueue, { schema: testSchema })
 
-		await expect(producer.send({ id: 'invalid' } as any)).rejects.toThrow(
-			MessageValidationError
-		)
+		await expect(producer.send({ id: 'invalid' } as any)).rejects.toThrow(MessageValidationError)
 		expect(mockQueue.send).not.toHaveBeenCalled()
 	})
 
@@ -111,10 +112,7 @@ describe('QueueProducer', () => {
 
 		const producer = new QueueProducer(mockQueue, { schema: testSchema })
 
-		const messages = [
-			{ id: 1, name: 'first' },
-			{ id: 'invalid' } as any,
-		]
+		const messages = [{ id: 1, name: 'first' }, { id: 'invalid' } as any]
 
 		await expect(producer.sendBatch(messages)).rejects.toThrow(MessageValidationError)
 		await expect(producer.sendBatch(messages)).rejects.toThrow('index 1')
@@ -155,9 +153,7 @@ describe('QueueProducer', () => {
 			{ body: { id: 'invalid' } as any, delaySeconds: 20 },
 		]
 
-		await expect(producer.sendBatchWithOptions(messages)).rejects.toThrow(
-			MessageValidationError
-		)
+		await expect(producer.sendBatchWithOptions(messages)).rejects.toThrow(MessageValidationError)
 		expect(mockQueue.sendBatch).not.toHaveBeenCalled()
 	})
 })

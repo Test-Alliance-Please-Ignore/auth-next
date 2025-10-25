@@ -1,5 +1,8 @@
-import { useState } from 'react'
 import { Plus, Search, X } from 'lucide-react'
+import { useState } from 'react'
+
+import { GroupForm } from '@/components/group-form'
+import { GroupList } from '@/components/group-list'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -18,10 +21,9 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from '@/components/ui/select'
-import { GroupList } from '@/components/group-list'
-import { GroupForm } from '@/components/group-form'
-import { useGroups, useCreateGroup } from '@/hooks/useGroups'
 import { useCategories } from '@/hooks/useCategories'
+import { useCreateGroup, useGroups } from '@/hooks/useGroups'
+
 import type { CreateGroupRequest, GroupsFilters } from '@/lib/api'
 
 export default function GroupsPage() {
@@ -102,10 +104,16 @@ export default function GroupsPage() {
 			{/* Success/Error Message */}
 			{message && (
 				<Card
-					className={message.type === 'error' ? 'border-destructive bg-destructive/10' : 'border-primary bg-primary/10'}
+					className={
+						message.type === 'error'
+							? 'border-destructive bg-destructive/10'
+							: 'border-primary bg-primary/10'
+					}
 				>
 					<CardContent className="py-3">
-						<p className={message.type === 'error' ? 'text-destructive' : 'text-primary'}>{message.text}</p>
+						<p className={message.type === 'error' ? 'text-destructive' : 'text-primary'}>
+							{message.text}
+						</p>
 					</CardContent>
 				</Card>
 			)}
@@ -116,7 +124,9 @@ export default function GroupsPage() {
 					<div className="flex items-center justify-between">
 						<div>
 							<CardTitle>Filters</CardTitle>
-							<CardDescription>Filter groups by category, visibility, join mode, or search</CardDescription>
+							<CardDescription>
+								Filter groups by category, visibility, join mode, or search
+							</CardDescription>
 						</div>
 						{hasActiveFilters && (
 							<Button variant="ghost" size="sm" onClick={clearFilters}>
@@ -208,7 +218,8 @@ export default function GroupsPage() {
 			<Card variant="interactive">
 				<CardHeader>
 					<CardTitle>
-						Groups {groups && <span className="text-muted-foreground font-normal">({groups.length})</span>}
+						Groups{' '}
+						{groups && <span className="text-muted-foreground font-normal">({groups.length})</span>}
 					</CardTitle>
 					<CardDescription>
 						{hasActiveFilters

@@ -33,7 +33,7 @@ export function getConfig(importMetaUrl: string): Array<Linter.Config<Linter.Rul
 				'eslint.config.ts',
 				'**/eslint.config.ts',
 				'**/worker-configuration.d.ts',
-			'**/turbo/generators/templates/**',
+				'**/turbo/generators/templates/**',
 			],
 		},
 

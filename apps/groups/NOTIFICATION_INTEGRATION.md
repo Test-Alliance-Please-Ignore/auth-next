@@ -7,8 +7,10 @@ This document describes where to add notification publishing calls in the Groups
 1. Import the NotificationService at the top of `durable-object.ts`:
 
 ```typescript
-import { NotificationService } from './services/notifications'
 import { getStub } from '@repo/do-utils'
+
+import { NotificationService } from './services/notifications'
+
 import type { Notifications } from '@repo/notifications'
 ```
 
@@ -21,31 +23,31 @@ import type { Notifications } from '@repo/notifications'
 ```typescript
 // Send notification to invited user
 try {
-	const group = await this.db.query.groups.findFirst({
-		where: eq(groups.id, data.groupId),
-		with: { category: true },
-	})
+  const group = await this.db.query.groups.findFirst({
+    where: eq(groups.id, data.groupId),
+    with: { category: true },
+  })
 
-	const inviter = await this.getUserInfo(inviterId)
+  const inviter = await this.getUserInfo(inviterId)
 
-	if (group) {
-		const stub = getStub<Notifications>(this.env.NOTIFICATIONS, userLookup.userId)
-		await stub.publishNotification(userLookup.userId, {
-			type: 'group.invitation.received',
-			requiresAck: true,
-			data: {
-				invitationId: invitation.id,
-				groupId: group.id,
-				groupName: group.name,
-				categoryId: group.categoryId,
-				categoryName: group.category.name,
-				inviterId,
-				inviterName: inviter.mainCharacterName || 'Unknown',
-			},
-		})
-	}
+  if (group) {
+    const stub = getStub<Notifications>(this.env.NOTIFICATIONS, userLookup.userId)
+    await stub.publishNotification(userLookup.userId, {
+      type: 'group.invitation.received',
+      requiresAck: true,
+      data: {
+        invitationId: invitation.id,
+        groupId: group.id,
+        groupName: group.name,
+        categoryId: group.categoryId,
+        categoryName: group.category.name,
+        inviterId,
+        inviterName: inviter.mainCharacterName || 'Unknown',
+      },
+    })
+  }
 } catch (error) {
-	console.error('Failed to send invitation notification:', error)
+  console.error('Failed to send invitation notification:', error)
 }
 ```
 
@@ -56,31 +58,31 @@ try {
 ```typescript
 // Send notification to group admins
 try {
-	const group = await this.db.query.groups.findFirst({
-		where: eq(groups.id, invitation.groupId),
-	})
+  const group = await this.db.query.groups.findFirst({
+    where: eq(groups.id, invitation.groupId),
+  })
 
-	const user = await this.getUserInfo(userId)
-	const adminIds = await this.getGroupAdminUserIds(invitation.groupId)
+  const user = await this.getUserInfo(userId)
+  const adminIds = await this.getGroupAdminUserIds(invitation.groupId)
 
-	if (group && adminIds.length > 0) {
-		for (const adminId of adminIds) {
-			const stub = getStub<Notifications>(this.env.NOTIFICATIONS, adminId)
-			await stub.publishNotification(adminId, {
-				type: 'group.invitation.accepted',
-				requiresAck: false,
-				data: {
-					invitationId: invitation.id,
-					groupId: group.id,
-					groupName: group.name,
-					userId,
-					userName: user.mainCharacterName || 'Unknown',
-				},
-			})
-		}
-	}
+  if (group && adminIds.length > 0) {
+    for (const adminId of adminIds) {
+      const stub = getStub<Notifications>(this.env.NOTIFICATIONS, adminId)
+      await stub.publishNotification(adminId, {
+        type: 'group.invitation.accepted',
+        requiresAck: false,
+        data: {
+          invitationId: invitation.id,
+          groupId: group.id,
+          groupName: group.name,
+          userId,
+          userName: user.mainCharacterName || 'Unknown',
+        },
+      })
+    }
+  }
 } catch (error) {
-	console.error('Failed to send invitation accepted notification:', error)
+  console.error('Failed to send invitation accepted notification:', error)
 }
 ```
 
@@ -91,31 +93,31 @@ try {
 ```typescript
 // Send notification to group admins
 try {
-	const group = await this.db.query.groups.findFirst({
-		where: eq(groups.id, groupId),
-	})
+  const group = await this.db.query.groups.findFirst({
+    where: eq(groups.id, groupId),
+  })
 
-	const user = await this.getUserInfo(userId)
-	const adminIds = await this.getGroupAdminUserIds(groupId)
+  const user = await this.getUserInfo(userId)
+  const adminIds = await this.getGroupAdminUserIds(groupId)
 
-	if (group && adminIds.length > 0) {
-		for (const adminId of adminIds) {
-			const stub = getStub<Notifications>(this.env.NOTIFICATIONS, adminId)
-			await stub.publishNotification(adminId, {
-				type: 'group.member.joined',
-				requiresAck: false,
-				data: {
-					groupId: group.id,
-					groupName: group.name,
-					userId,
-					userName: user.mainCharacterName || 'Unknown',
-					joinMethod: group.joinMode === 'open' ? 'open' : 'invitation',
-				},
-			})
-		}
-	}
+  if (group && adminIds.length > 0) {
+    for (const adminId of adminIds) {
+      const stub = getStub<Notifications>(this.env.NOTIFICATIONS, adminId)
+      await stub.publishNotification(adminId, {
+        type: 'group.member.joined',
+        requiresAck: false,
+        data: {
+          groupId: group.id,
+          groupName: group.name,
+          userId,
+          userName: user.mainCharacterName || 'Unknown',
+          joinMethod: group.joinMode === 'open' ? 'open' : 'invitation',
+        },
+      })
+    }
+  }
 } catch (error) {
-	console.error('Failed to send member joined notification:', error)
+  console.error('Failed to send member joined notification:', error)
 }
 ```
 
@@ -126,27 +128,27 @@ try {
 ```typescript
 // Send notification to new admin
 try {
-	const group = await this.db.query.groups.findFirst({
-		where: eq(groups.id, groupId),
-	})
+  const group = await this.db.query.groups.findFirst({
+    where: eq(groups.id, groupId),
+  })
 
-	const granter = await this.getUserInfo(granterUserId)
+  const granter = await this.getUserInfo(granterUserId)
 
-	if (group) {
-		const stub = getStub<Notifications>(this.env.NOTIFICATIONS, userId)
-		await stub.publishNotification(userId, {
-			type: 'group.admin.granted',
-			requiresAck: true,
-			data: {
-				groupId: group.id,
-				groupName: group.name,
-				grantedById: granterUserId,
-				grantedByName: granter.mainCharacterName || 'Unknown',
-			},
-		})
-	}
+  if (group) {
+    const stub = getStub<Notifications>(this.env.NOTIFICATIONS, userId)
+    await stub.publishNotification(userId, {
+      type: 'group.admin.granted',
+      requiresAck: true,
+      data: {
+        groupId: group.id,
+        groupName: group.name,
+        grantedById: granterUserId,
+        grantedByName: granter.mainCharacterName || 'Unknown',
+      },
+    })
+  }
 } catch (error) {
-	console.error('Failed to send admin granted notification:', error)
+  console.error('Failed to send admin granted notification:', error)
 }
 ```
 
@@ -157,32 +159,32 @@ try {
 ```typescript
 // Send notification to group admins
 try {
-	const group = await this.db.query.groups.findFirst({
-		where: eq(groups.id, data.groupId),
-	})
+  const group = await this.db.query.groups.findFirst({
+    where: eq(groups.id, data.groupId),
+  })
 
-	const user = await this.getUserInfo(userId)
-	const adminIds = await this.getGroupAdminUserIds(data.groupId)
+  const user = await this.getUserInfo(userId)
+  const adminIds = await this.getGroupAdminUserIds(data.groupId)
 
-	if (group && adminIds.length > 0) {
-		for (const adminId of adminIds) {
-			const stub = getStub<Notifications>(this.env.NOTIFICATIONS, adminId)
-			await stub.publishNotification(adminId, {
-				type: 'group.join_request.created',
-				requiresAck: true,
-				data: {
-					requestId: request.id,
-					groupId: group.id,
-					groupName: group.name,
-					userId,
-					userName: user.mainCharacterName || 'Unknown',
-					message: data.message,
-				},
-			})
-		}
-	}
+  if (group && adminIds.length > 0) {
+    for (const adminId of adminIds) {
+      const stub = getStub<Notifications>(this.env.NOTIFICATIONS, adminId)
+      await stub.publishNotification(adminId, {
+        type: 'group.join_request.created',
+        requiresAck: true,
+        data: {
+          requestId: request.id,
+          groupId: group.id,
+          groupName: group.name,
+          userId,
+          userName: user.mainCharacterName || 'Unknown',
+          message: data.message,
+        },
+      })
+    }
+  }
 } catch (error) {
-	console.error('Failed to send join request created notification:', error)
+  console.error('Failed to send join request created notification:', error)
 }
 ```
 
@@ -193,28 +195,28 @@ try {
 ```typescript
 // Send notification to requester
 try {
-	const group = await this.db.query.groups.findFirst({
-		where: eq(groups.id, request.groupId),
-	})
+  const group = await this.db.query.groups.findFirst({
+    where: eq(groups.id, request.groupId),
+  })
 
-	const approver = await this.getUserInfo(adminUserId)
+  const approver = await this.getUserInfo(adminUserId)
 
-	if (group) {
-		const stub = getStub<Notifications>(this.env.NOTIFICATIONS, request.userId)
-		await stub.publishNotification(request.userId, {
-			type: 'group.join_request.approved',
-			requiresAck: true,
-			data: {
-				requestId: request.id,
-				groupId: group.id,
-				groupName: group.name,
-				approvedById: adminUserId,
-				approvedByName: approver.mainCharacterName || 'Unknown',
-			},
-		})
-	}
+  if (group) {
+    const stub = getStub<Notifications>(this.env.NOTIFICATIONS, request.userId)
+    await stub.publishNotification(request.userId, {
+      type: 'group.join_request.approved',
+      requiresAck: true,
+      data: {
+        requestId: request.id,
+        groupId: group.id,
+        groupName: group.name,
+        approvedById: adminUserId,
+        approvedByName: approver.mainCharacterName || 'Unknown',
+      },
+    })
+  }
 } catch (error) {
-	console.error('Failed to send join request approved notification:', error)
+  console.error('Failed to send join request approved notification:', error)
 }
 ```
 

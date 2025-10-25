@@ -1,6 +1,6 @@
+import { ChevronRight } from 'lucide-react'
 import { Fragment, useMemo } from 'react'
 import { Link, Navigate, Outlet, useLocation } from 'react-router-dom'
-import { ChevronRight } from 'lucide-react'
 
 import { AdminNav } from '@/components/admin-nav'
 import { LoadingSpinner } from '@/components/ui/loading'

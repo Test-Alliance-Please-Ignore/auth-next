@@ -145,6 +145,22 @@ export interface GroupInvitationWithDetails {
 	}
 }
 
+export interface GroupDiscordServer {
+	id: string
+	groupId: string
+	discordServerId: string
+	autoInvite: boolean
+	autoAssignRoles: boolean
+	createdAt: string
+	updatedAt: string
+	discordServer?: DiscordServerWithRoles
+	roles?: Array<{
+		id: string
+		discordRoleId: string
+		discordRole: DiscordRole
+	}>
+}
+
 export interface CharacterSearchResult {
 	userId: string
 	characterId: string
@@ -166,9 +182,6 @@ export interface ManagedCorporation {
 	lastVerified: string | null
 	isVerified: boolean
 	healthyDirectorCount: number
-	discordGuildId: string | null
-	discordGuildName: string | null
-	discordAutoInvite: boolean
 	configuredBy: string | null
 	createdAt: string
 	updatedAt: string
@@ -198,9 +211,6 @@ export interface UpdateCorporationRequest {
 	assignedCharacterId?: string
 	assignedCharacterName?: string
 	isActive?: boolean
-	discordGuildId?: string | null
-	discordGuildName?: string | null
-	discordAutoInvite?: boolean
 }
 
 export interface CorporationAccessVerification {
@@ -238,6 +248,91 @@ export interface CorporationDataSummary {
 export interface FetchCorporationDataRequest {
 	category?: 'all' | 'public' | 'core' | 'financial' | 'assets' | 'market' | 'killmails'
 	forceRefresh?: boolean
+}
+
+/**
+ * Discord Registry API Types
+ */
+
+export interface DiscordServer {
+	id: string
+	guildId: string
+	guildName: string
+	description: string | null
+	isActive: boolean
+	createdBy: string
+	createdAt: string
+	updatedAt: string
+}
+
+export interface DiscordRole {
+	id: string
+	discordServerId: string
+	roleId: string
+	roleName: string
+	description: string | null
+	isActive: boolean
+	createdAt: string
+	updatedAt: string
+}
+
+export interface DiscordServerWithRoles extends DiscordServer {
+	roles: DiscordRole[]
+}
+
+export interface CorporationDiscordServer {
+	id: string
+	corporationId: string
+	discordServerId: string
+	autoInvite: boolean
+	autoAssignRoles: boolean
+	createdAt: string
+	updatedAt: string
+	discordServer?: DiscordServerWithRoles
+	roles?: Array<{
+		id: string
+		discordRoleId: string
+		discordRole: DiscordRole
+	}>
+}
+
+export interface CreateDiscordServerRequest {
+	guildId: string
+	guildName: string
+	description?: string
+}
+
+export interface UpdateDiscordServerRequest {
+	guildName?: string
+	description?: string
+	isActive?: boolean
+}
+
+export interface CreateDiscordRoleRequest {
+	roleId: string
+	roleName: string
+	description?: string
+}
+
+export interface UpdateDiscordRoleRequest {
+	roleName?: string
+	description?: string
+	isActive?: boolean
+}
+
+export interface AttachDiscordServerRequest {
+	discordServerId: string
+	autoInvite?: boolean
+	autoAssignRoles?: boolean
+}
+
+export interface UpdateDiscordServerAttachmentRequest {
+	autoInvite?: boolean
+	autoAssignRoles?: boolean
+}
+
+export interface AssignRoleRequest {
+	discordRoleId: string
 }
 
 /**
@@ -614,6 +709,51 @@ export class ApiClient {
 		return this.post(`/groups/${groupId}/transfer`, { newOwnerId })
 	}
 
+	// Group Discord Servers (Registry-Based)
+	async getGroupDiscordServers(groupId: string): Promise<GroupDiscordServer[]> {
+		return this.get(`/groups/${groupId}/discord-servers`)
+	}
+
+	async attachDiscordServerToGroup(
+		groupId: string,
+		data: AttachDiscordServerRequest
+	): Promise<GroupDiscordServer> {
+		return this.post(`/groups/${groupId}/discord-servers`, data)
+	}
+
+	async updateGroupDiscordServer(
+		groupId: string,
+		attachmentId: string,
+		data: UpdateDiscordServerAttachmentRequest
+	): Promise<GroupDiscordServer> {
+		return this.put(`/groups/${groupId}/discord-servers/${attachmentId}`, data)
+	}
+
+	async detachDiscordServerFromGroup(
+		groupId: string,
+		attachmentId: string
+	): Promise<{ success: boolean }> {
+		return this.delete(`/groups/${groupId}/discord-servers/${attachmentId}`)
+	}
+
+	async assignRoleToGroupDiscordServer(
+		groupId: string,
+		attachmentId: string,
+		data: AssignRoleRequest
+	): Promise<{ id: string; discordRoleId: string }> {
+		return this.post(`/groups/${groupId}/discord-servers/${attachmentId}/roles`, data)
+	}
+
+	async unassignRoleFromGroupDiscordServer(
+		groupId: string,
+		attachmentId: string,
+		roleAssignmentId: string
+	): Promise<{ success: boolean }> {
+		return this.delete(
+			`/groups/${groupId}/discord-servers/${attachmentId}/roles/${roleAssignmentId}`
+		)
+	}
+
 	// ===== Corporations API Methods =====
 
 	async getCorporations(): Promise<ManagedCorporation[]> {
@@ -643,9 +783,7 @@ export class ApiClient {
 		return this.delete(`/corporations/${corporationId}`)
 	}
 
-	async verifyCorporationAccess(
-		corporationId: string
-	): Promise<CorporationAccessVerification> {
+	async verifyCorporationAccess(corporationId: string): Promise<CorporationAccessVerification> {
 		return this.post(`/corporations/${corporationId}/verify`)
 	}
 
@@ -666,7 +804,10 @@ export class ApiClient {
 		return this.get(`/corporations/${corporationId}/directors`)
 	}
 
-	async addDirector(corporationId: string, data: AddDirectorRequest): Promise<{ success: boolean; characterId: string; characterName: string; priority: number }> {
+	async addDirector(
+		corporationId: string,
+		data: AddDirectorRequest
+	): Promise<{ success: boolean; characterId: string; characterName: string; priority: number }> {
 		return this.post(`/corporations/${corporationId}/directors`, data)
 	}
 
@@ -690,12 +831,107 @@ export class ApiClient {
 		return this.post(`/corporations/${corporationId}/directors/verify-all`)
 	}
 
+	// ===== Discord Registry API Methods =====
+
+	async getDiscordServers(): Promise<DiscordServerWithRoles[]> {
+		return this.get('/discord-servers')
+	}
+
+	async getDiscordServer(serverId: string): Promise<DiscordServerWithRoles> {
+		return this.get(`/discord-servers/${serverId}`)
+	}
+
+	async createDiscordServer(data: CreateDiscordServerRequest): Promise<DiscordServer> {
+		return this.post('/discord-servers', data)
+	}
+
+	async updateDiscordServer(
+		serverId: string,
+		data: UpdateDiscordServerRequest
+	): Promise<DiscordServer> {
+		return this.put(`/discord-servers/${serverId}`, data)
+	}
+
+	async deleteDiscordServer(serverId: string): Promise<{ success: boolean }> {
+		return this.delete(`/discord-servers/${serverId}`)
+	}
+
+	async createDiscordRole(serverId: string, data: CreateDiscordRoleRequest): Promise<DiscordRole> {
+		return this.post(`/discord-servers/${serverId}/roles`, data)
+	}
+
+	async updateDiscordRole(
+		serverId: string,
+		roleId: string,
+		data: UpdateDiscordRoleRequest
+	): Promise<DiscordRole> {
+		return this.put(`/discord-servers/${serverId}/roles/${roleId}`, data)
+	}
+
+	async deleteDiscordRole(serverId: string, roleId: string): Promise<{ success: boolean }> {
+		return this.delete(`/discord-servers/${serverId}/roles/${roleId}`)
+	}
+
+	// ===== Corporation Discord Server Attachments API Methods =====
+
+	async getCorporationDiscordServers(corporationId: string): Promise<CorporationDiscordServer[]> {
+		return this.get(`/corporations/${corporationId}/discord-servers`)
+	}
+
+	async getCorporationDiscordServer(
+		corporationId: string,
+		attachmentId: string
+	): Promise<CorporationDiscordServer> {
+		return this.get(`/corporations/${corporationId}/discord-servers/${attachmentId}`)
+	}
+
+	async attachDiscordServerToCorporation(
+		corporationId: string,
+		data: AttachDiscordServerRequest
+	): Promise<CorporationDiscordServer> {
+		return this.post(`/corporations/${corporationId}/discord-servers`, data)
+	}
+
+	async updateCorporationDiscordServer(
+		corporationId: string,
+		attachmentId: string,
+		data: UpdateDiscordServerAttachmentRequest
+	): Promise<CorporationDiscordServer> {
+		return this.put(`/corporations/${corporationId}/discord-servers/${attachmentId}`, data)
+	}
+
+	async detachDiscordServerFromCorporation(
+		corporationId: string,
+		attachmentId: string
+	): Promise<{ success: boolean }> {
+		return this.delete(`/corporations/${corporationId}/discord-servers/${attachmentId}`)
+	}
+
+	async assignRoleToCorporationDiscordServer(
+		corporationId: string,
+		attachmentId: string,
+		data: AssignRoleRequest
+	): Promise<{ id: string; discordRoleId: string }> {
+		return this.post(`/corporations/${corporationId}/discord-servers/${attachmentId}/roles`, data)
+	}
+
+	async unassignRoleFromCorporationDiscordServer(
+		corporationId: string,
+		attachmentId: string,
+		roleAssignmentId: string
+	): Promise<{ success: boolean }> {
+		return this.delete(
+			`/corporations/${corporationId}/discord-servers/${attachmentId}/roles/${roleAssignmentId}`
+		)
+	}
+
 	// ===== Admin User Management API Methods =====
 
 	async getAdminUsers(filters?: AdminUsersFilters): Promise<PaginatedResponse<AdminUser>> {
 		const params = new URLSearchParams()
 		if (filters?.search) params.set('search', filters.search)
-		if (filters?.page !== undefined) params.set('offset', String((filters.page - 1) * (filters.pageSize || 25)))
+		if (filters?.page !== undefined)
+			params.set('offset', String((filters.page - 1) * (filters.pageSize || 25)))
 		if (filters?.pageSize !== undefined) params.set('limit', String(filters.pageSize))
 
 		const query = params.toString()
@@ -734,7 +970,9 @@ export class ApiClient {
 		return this.delete(`/admin/users/${userId}/characters/${characterId}`)
 	}
 
-	async getActivityLogs(filters?: AdminActivityLogFilters): Promise<PaginatedResponse<AdminActivityLog>> {
+	async getActivityLogs(
+		filters?: AdminActivityLogFilters
+	): Promise<PaginatedResponse<AdminActivityLog>> {
 		const params = new URLSearchParams()
 		if (filters?.userId) params.set('userId', filters.userId)
 		if (filters?.characterId) params.set('characterId', filters.characterId)

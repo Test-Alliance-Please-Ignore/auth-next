@@ -7,8 +7,9 @@ Shared types and interfaces for the Groups Durable Object.
 Import this package in any worker that needs to interact with the Groups Durable Object:
 
 ```typescript
-import type { Groups } from '@repo/groups'
 import { getStub } from '@repo/do-utils'
+
+import type { Groups } from '@repo/groups'
 
 // Get a typed stub to the Durable Object
 const stub = getStub<Groups>(env.GROUPS, 'unique-id')

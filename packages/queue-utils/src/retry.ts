@@ -1,5 +1,6 @@
-import type { RetryStrategy } from './types'
 import { isRetryable } from './errors'
+
+import type { RetryStrategy } from './types'
 
 /**
  * Default retry strategy with exponential backoff

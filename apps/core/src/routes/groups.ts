@@ -742,4 +742,106 @@ groups.get('/:id/join-requests', requireAuth(), async (c) => {
 	}
 })
 
+// ===== Discord Server Management =====
+
+/**
+ * GET /:groupId/discord-servers
+ *
+ * List all Discord servers for a group (admin only)
+ */
+groups.get('/:groupId/discord-servers', requireAuth(), requireAdmin(), async (c) => {
+	const groupId = c.req.param('groupId')
+	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+
+	try {
+		const servers = await groupsDO.getDiscordServers(groupId)
+		return c.json(servers)
+	} catch (error) {
+		if (error instanceof Error) {
+			return c.json({ error: error.message }, 400)
+		}
+		throw error
+	}
+})
+
+/**
+ * POST /:groupId/discord-servers
+ *
+ * Add a Discord server to a group (admin only)
+ */
+groups.post('/:groupId/discord-servers', requireAuth(), requireAdmin(), async (c) => {
+	const groupId = c.req.param('groupId')
+	const body = await c.req.json()
+	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+
+	if (!body.guildId) {
+		return c.json({ error: 'guildId is required' }, 400)
+	}
+
+	try {
+		const server = await groupsDO.addDiscordServer(
+			groupId,
+			body.guildId,
+			body.guildName ?? null,
+			body.autoInvite ?? false
+		)
+		return c.json(server, 201)
+	} catch (error) {
+		if (error instanceof Error) {
+			return c.json({ error: error.message }, 400)
+		}
+		throw error
+	}
+})
+
+/**
+ * PATCH /:groupId/discord-servers/:serverId
+ *
+ * Update a Discord server configuration (admin only)
+ */
+groups.patch('/:groupId/discord-servers/:serverId', requireAuth(), requireAdmin(), async (c) => {
+	const serverId = c.req.param('serverId')
+	const body = await c.req.json()
+	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+
+	try {
+		const server = await groupsDO.updateDiscordServer(serverId, {
+			discordGuildName: body.guildName,
+			autoInvite: body.autoInvite,
+		})
+		return c.json(server)
+	} catch (error) {
+		if (error instanceof Error) {
+			if (error.message.includes('not found')) {
+				return c.json({ error: 'Discord server not found' }, 404)
+			}
+			return c.json({ error: error.message }, 400)
+		}
+		throw error
+	}
+})
+
+/**
+ * DELETE /:groupId/discord-servers/:serverId
+ *
+ * Delete a Discord server from a group (admin only)
+ */
+groups.delete('/:groupId/discord-servers/:serverId', requireAuth(), requireAdmin(), async (c) => {
+	const serverId = c.req.param('serverId')
+	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+
+	try {
+		await groupsDO.deleteDiscordServer(serverId)
+		return c.json({ success: true }, 200)
+	} catch (error) {
+		if (error instanceof Error) {
+			if (error.message.includes('not found')) {
+				return c.json({ error: 'Discord server not found' }, 404)
+			}
+			return c.json({ error: error.message }, 400)
+		}
+		throw error
+	}
+})
+
 export default groups

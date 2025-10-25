@@ -1,9 +1,7 @@
+import { Eye, UserPlus, Users } from 'lucide-react'
 import { memo, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { Eye, Users, UserPlus } from 'lucide-react'
 
-import { useMediaQuery } from '@/hooks/useMediaQuery'
-import { useJoinGroup } from '@/hooks/useGroups'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -14,9 +12,12 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
-import { VisibilityBadge } from './visibility-badge'
-import { JoinModeBadge } from './join-mode-badge'
+import { useJoinGroup } from '@/hooks/useGroups'
+import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { cn } from '@/lib/utils'
+
+import { JoinModeBadge } from './join-mode-badge'
+import { VisibilityBadge } from './visibility-badge'
 
 import type { GroupWithDetails } from '@/lib/api'
 

@@ -56,5 +56,14 @@ export async function storeTokens(
 	coreUserId: string
 ): Promise<boolean> {
 	const stub = getStub<Discord>(env.DISCORD, 'default')
-	return stub.storeTokensDirect(userId, username, discriminator, scopes, accessToken, refreshToken, expiresAt, coreUserId)
+	return stub.storeTokensDirect(
+		userId,
+		username,
+		discriminator,
+		scopes,
+		accessToken,
+		refreshToken,
+		expiresAt,
+		coreUserId
+	)
 }

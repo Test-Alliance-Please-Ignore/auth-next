@@ -1,7 +1,26 @@
+import { DurableObject } from 'cloudflare:workers'
+
 import { desc, eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
-import type { EveTokenStore, EsiResponse } from '@repo/eve-token-store'
-import { DurableObject } from 'cloudflare:workers'
+
+import { createDb } from './db'
+import {
+	characterCorporationRoles,
+	corporationAssets,
+	corporationConfig,
+	corporationContracts,
+	corporationIndustryJobs,
+	corporationKillmails,
+	corporationMembers,
+	corporationMemberTracking,
+	corporationOrders,
+	corporationPublicInfo,
+	corporationStructures,
+	corporationWalletJournal,
+	corporationWallets,
+	corporationWalletTransactions,
+} from './db/schema'
+import { DirectorManager } from './director-manager'
 
 import type {
 	CharacterCorporationRolesData,
@@ -38,26 +57,7 @@ import type {
 	EsiCorporationWalletTransaction,
 	EveCorporationData,
 } from '@repo/eve-corporation-data'
-
-import { createDb } from './db'
-import {
-	characterCorporationRoles,
-	corporationAssets,
-	corporationConfig,
-	corporationContracts,
-	corporationIndustryJobs,
-	corporationKillmails,
-	corporationMembers,
-	corporationMemberTracking,
-	corporationOrders,
-	corporationPublicInfo,
-	corporationStructures,
-	corporationWallets,
-	corporationWalletJournal,
-	corporationWalletTransactions,
-} from './db/schema'
-import { DirectorManager } from './director-manager'
-
+import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
 import type { Env } from './context'
 
 /**
@@ -75,7 +75,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Initialize the Durable Object with database connection
 	 */
-	constructor(public state: DurableObjectState, public env: Env) {
+	constructor(
+		public state: DurableObjectState,
+		public env: Env
+	) {
 		super(state, env)
 		this.db = createDb(env.DATABASE_URL)
 	}
@@ -104,7 +107,11 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			throw new Error('Corporation not configured.')
 		}
 
-		const directorManager = new DirectorManager(this.db, config.corporationId, this.getTokenStoreStub())
+		const directorManager = new DirectorManager(
+			this.db,
+			config.corporationId,
+			this.getTokenStoreStub()
+		)
 		const director = await directorManager.selectDirector()
 
 		if (!director) {
@@ -133,7 +140,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Check if character has a required role
 	 */
-	private async hasRequiredRole(characterId: string, requiredRole: CorporationRole): Promise<boolean> {
+	private async hasRequiredRole(
+		characterId: string,
+		requiredRole: CorporationRole
+	): Promise<boolean> {
 		const rolesData = await this.db.query.characterCorporationRoles.findFirst({
 			where: eq(characterCorporationRoles.characterId, characterId),
 		})
@@ -174,7 +184,11 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 * Configure which character to use for API access (legacy method for backwards compatibility)
 	 * @deprecated Use addDirector() instead
 	 */
-	async setCharacter(corporationId: string, characterId: string, characterName: string): Promise<void> {
+	async setCharacter(
+		corporationId: string,
+		characterId: string,
+		characterName: string
+	): Promise<void> {
 		// Ensure corporation config exists
 		const config = await this.db.query.corporationConfig.findFirst({
 			where: eq(corporationConfig.corporationId, corporationId),
@@ -194,7 +208,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 		// Check if director already exists
 		const directors = await directorManager.getAllDirectors()
-		const existingDirector = directors.find(d => d.characterId === characterId)
+		const existingDirector = directors.find((d) => d.characterId === characterId)
 
 		if (!existingDirector) {
 			await directorManager.addDirector(characterId, characterName, 100)
@@ -213,7 +227,11 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		}
 
 		// Get the first director (primary) for backwards compatibility
-		const directorManager = new DirectorManager(this.db, config.corporationId, this.getTokenStoreStub())
+		const directorManager = new DirectorManager(
+			this.db,
+			config.corporationId,
+			this.getTokenStoreStub()
+		)
 		const directors = await directorManager.getAllDirectors()
 		const primaryDirector = directors[0] // First director by priority
 
@@ -248,7 +266,11 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		}
 
 		// Use the new director verification system
-		const directorManager = new DirectorManager(this.db, config.corporationId, this.getTokenStoreStub())
+		const directorManager = new DirectorManager(
+			this.db,
+			config.corporationId,
+			this.getTokenStoreStub()
+		)
 		const result = await directorManager.verifyAllDirectorsHealth()
 
 		console.log('[EveCorporationData] verifyAccess: Verification complete', {
@@ -300,7 +322,12 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Add a new director character for this corporation
 	 */
-	async addDirector(corporationId: string, characterId: string, characterName: string, priority = 100): Promise<void> {
+	async addDirector(
+		corporationId: string,
+		characterId: string,
+		characterName: string,
+		priority = 100
+	): Promise<void> {
 		const config = await this.db.query.corporationConfig.findFirst({
 			where: eq(corporationConfig.corporationId, corporationId),
 		})
@@ -330,7 +357,11 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Update a director's priority
 	 */
-	async updateDirectorPriority(corporationId: string, characterId: string, priority: number): Promise<void> {
+	async updateDirectorPriority(
+		corporationId: string,
+		characterId: string,
+		priority: number
+	): Promise<void> {
 		const directorManager = new DirectorManager(this.db, corporationId, this.getTokenStoreStub())
 		await directorManager.updateDirectorPriority(characterId, priority)
 	}
@@ -362,7 +393,9 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Verify health of all directors
 	 */
-	async verifyAllDirectorsHealth(corporationId: string): Promise<{ verified: number; failed: number }> {
+	async verifyAllDirectorsHealth(
+		corporationId: string
+	): Promise<{ verified: number; failed: number }> {
 		const directorManager = new DirectorManager(this.db, corporationId, this.getTokenStoreStub())
 		return await directorManager.verifyAllDirectorsHealth()
 	}
@@ -374,7 +407,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Fetch and store public corporation information
 	 */
-	private async fetchAndStorePublicInfo(corporationId: string, _forceRefresh = false): Promise<void> {
+	private async fetchAndStorePublicInfo(
+		corporationId: string,
+		_forceRefresh = false
+	): Promise<void> {
 		const tokenStore = this.getTokenStoreStub()
 		const response = await tokenStore.fetchPublicEsi<any>(`/corporations/${corporationId}`)
 
@@ -385,7 +421,9 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		// Convert all numeric IDs to strings explicitly
 		const ceoIdStr: string = String(data.ceo_id)
 		const creatorIdStr: string = String(data.creator_id)
-		const homeStationIdStr: string | null = data.home_station_id ? String(data.home_station_id) : null
+		const homeStationIdStr: string | null = data.home_station_id
+			? String(data.home_station_id)
+			: null
 		const allianceIdStr: string | null = data.alliance_id ? String(data.alliance_id) : null
 		const factionIdStr: string | null = data.faction_id ? String(data.faction_id) : null
 
@@ -648,7 +686,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Fetch and store wallet transactions for a division
 	 */
-	private async fetchAndStoreWalletTransactions(division: number, _forceRefresh = false): Promise<void> {
+	private async fetchAndStoreWalletTransactions(
+		division: number,
+		_forceRefresh = false
+	): Promise<void> {
 		const { characterId, corporationId } = await this.getConfiguredCharacter()
 		await this.verifyRole(characterId, ['Accountant', 'Junior_Accountant'])
 
@@ -853,12 +894,16 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					systemId: structure.system_id,
 					profileId: structure.profile_id,
 					fuelExpires: structure.fuel_expires ? new Date(structure.fuel_expires) : null,
-					nextReinforceApply: structure.next_reinforce_apply ? new Date(structure.next_reinforce_apply) : null,
+					nextReinforceApply: structure.next_reinforce_apply
+						? new Date(structure.next_reinforce_apply)
+						: null,
 					nextReinforceHour: structure.next_reinforce_hour || null,
 					reinforceHour: structure.reinforce_hour || null,
 					state: structure.state,
 					stateTimerEnd: structure.state_timer_end ? new Date(structure.state_timer_end) : null,
-					stateTimerStart: structure.state_timer_start ? new Date(structure.state_timer_start) : null,
+					stateTimerStart: structure.state_timer_start
+						? new Date(structure.state_timer_start)
+						: null,
 					unanchorsAt: structure.unanchors_at ? new Date(structure.unanchors_at) : null,
 					services: structure.services || null,
 					updatedAt: new Date(),
@@ -868,11 +913,15 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					set: {
 						state: structure.state,
 						fuelExpires: structure.fuel_expires ? new Date(structure.fuel_expires) : null,
-						nextReinforceApply: structure.next_reinforce_apply ? new Date(structure.next_reinforce_apply) : null,
+						nextReinforceApply: structure.next_reinforce_apply
+							? new Date(structure.next_reinforce_apply)
+							: null,
 						nextReinforceHour: structure.next_reinforce_hour || null,
 						reinforceHour: structure.reinforce_hour || null,
 						stateTimerEnd: structure.state_timer_end ? new Date(structure.state_timer_end) : null,
-						stateTimerStart: structure.state_timer_start ? new Date(structure.state_timer_start) : null,
+						stateTimerStart: structure.state_timer_start
+							? new Date(structure.state_timer_start)
+							: null,
 						unanchorsAt: structure.unanchors_at ? new Date(structure.unanchors_at) : null,
 						services: structure.services || null,
 						updatedAt: new Date(),
@@ -1021,7 +1070,9 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			issuer_id: String(contract.issuer_id),
 			price: contract.price,
 			reward: contract.reward,
-			start_location_id: contract.start_location_id ? String(contract.start_location_id) : undefined,
+			start_location_id: contract.start_location_id
+				? String(contract.start_location_id)
+				: undefined,
 			status: contract.status,
 			title: contract.title,
 			type: contract.type,
@@ -1129,7 +1180,9 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			end_date: job.end_date,
 			pause_date: job.pause_date,
 			completed_date: job.completed_date,
-			completed_character_id: job.completed_character_id ? String(job.completed_character_id) : undefined,
+			completed_character_id: job.completed_character_id
+				? String(job.completed_character_id)
+				: undefined,
 			successful_runs: job.successful_runs,
 		}))
 
@@ -1232,7 +1285,9 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		console.log('[EveCorporationData] fetchAllCorporationData: Starting', { forceRefresh })
 
 		const { corporationId } = await this.getConfiguredCharacter()
-		console.log('[EveCorporationData] fetchAllCorporationData: Got corporationId', { corporationId })
+		console.log('[EveCorporationData] fetchAllCorporationData: Got corporationId', {
+			corporationId,
+		})
 
 		// Public data
 		console.log('[EveCorporationData] fetchAllCorporationData: Fetching public data')
@@ -1242,19 +1297,27 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		// Try to fetch all other data, but don't fail if role verification fails
 		console.log('[EveCorporationData] fetchAllCorporationData: Starting parallel fetches')
 		const fetchPromises = [
-			this.fetchCoreData(forceRefresh).catch((e) => console.error('[EveCorporationData] Failed to fetch core data:', e)),
+			this.fetchCoreData(forceRefresh).catch((e) =>
+				console.error('[EveCorporationData] Failed to fetch core data:', e)
+			),
 			this.fetchFinancialData(undefined, forceRefresh).catch((e) =>
 				console.error('[EveCorporationData] Failed to fetch financial data:', e)
 			),
-			this.fetchAssetsData(forceRefresh).catch((e) => console.error('[EveCorporationData] Failed to fetch assets data:', e)),
-			this.fetchMarketData(forceRefresh).catch((e) => console.error('[EveCorporationData] Failed to fetch market data:', e)),
-			this.fetchKillmails(forceRefresh).catch((e) => console.error('[EveCorporationData] Failed to fetch killmails:', e)),
+			this.fetchAssetsData(forceRefresh).catch((e) =>
+				console.error('[EveCorporationData] Failed to fetch assets data:', e)
+			),
+			this.fetchMarketData(forceRefresh).catch((e) =>
+				console.error('[EveCorporationData] Failed to fetch market data:', e)
+			),
+			this.fetchKillmails(forceRefresh).catch((e) =>
+				console.error('[EveCorporationData] Failed to fetch killmails:', e)
+			),
 		]
 
 		const results = await Promise.allSettled(fetchPromises)
 		console.log('[EveCorporationData] fetchAllCorporationData: All fetches completed', {
-			fulfilled: results.filter(r => r.status === 'fulfilled').length,
-			rejected: results.filter(r => r.status === 'rejected').length,
+			fulfilled: results.filter((r) => r.status === 'fulfilled').length,
+			rejected: results.filter((r) => r.status === 'rejected').length,
 		})
 	}
 
@@ -1271,7 +1334,9 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	async fetchCoreData(forceRefresh = false): Promise<void> {
 		await Promise.all([
 			this.fetchAndStoreMembers(forceRefresh),
-			this.fetchAndStoreMemberTracking(forceRefresh).catch((e) => console.error('Member tracking failed:', e)),
+			this.fetchAndStoreMemberTracking(forceRefresh).catch((e) =>
+				console.error('Member tracking failed:', e)
+			),
 		])
 	}
 
@@ -1303,7 +1368,9 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	async fetchAssetsData(forceRefresh = false): Promise<void> {
 		await Promise.all([
 			this.fetchAndStoreAssets(forceRefresh),
-			this.fetchAndStoreStructures(forceRefresh).catch((e) => console.error('Structures fetch failed:', e)),
+			this.fetchAndStoreStructures(forceRefresh).catch((e) =>
+				console.error('Structures fetch failed:', e)
+			),
 		])
 	}
 
@@ -1313,8 +1380,12 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	async fetchMarketData(forceRefresh = false): Promise<void> {
 		await Promise.all([
 			this.fetchAndStoreOrders(forceRefresh).catch((e) => console.error('Orders fetch failed:', e)),
-			this.fetchAndStoreContracts(forceRefresh).catch((e) => console.error('Contracts fetch failed:', e)),
-			this.fetchAndStoreIndustryJobs(forceRefresh).catch((e) => console.error('Industry jobs fetch failed:', e)),
+			this.fetchAndStoreContracts(forceRefresh).catch((e) =>
+				console.error('Contracts fetch failed:', e)
+			),
+			this.fetchAndStoreIndustryJobs(forceRefresh).catch((e) =>
+				console.error('Industry jobs fetch failed:', e)
+			),
 		])
 	}
 
@@ -1472,7 +1543,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Get wallet transactions
 	 */
-	async getWalletTransactions(division?: number, limit = 1000): Promise<CorporationWalletTransactionData[]> {
+	async getWalletTransactions(
+		division?: number,
+		limit = 1000
+	): Promise<CorporationWalletTransactionData[]> {
 		const results = division
 			? await this.db.query.corporationWalletTransactions.findMany({
 					where: eq(corporationWalletTransactions.division, division),

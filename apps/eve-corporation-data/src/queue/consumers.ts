@@ -1,6 +1,6 @@
 import { createCorporationQueueConsumer } from './consumer-factory'
-import * as schemas from './schemas'
 import * as handlers from './handlers'
+import * as schemas from './schemas'
 
 /**
  * Queue consumer for public corporation info refreshes

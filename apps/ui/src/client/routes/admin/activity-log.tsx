@@ -1,13 +1,21 @@
-import { useState, useEffect } from 'react'
-import { useSearchParams, Link } from 'react-router-dom'
-import { Filter, ExternalLink, ChevronDown } from 'lucide-react'
+import { ChevronDown, ExternalLink, Filter } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+
+import { JsonViewer } from '@/components/json-viewer'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from '@/components/ui/table'
 import { useActivityLogs } from '@/hooks/useAdminUsers'
-import { JsonViewer } from '@/components/json-viewer'
 import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
@@ -111,7 +119,9 @@ export default function ActivityLogPage() {
 					<div className="flex items-center justify-between">
 						<div>
 							<CardTitle>Filters</CardTitle>
-							<CardDescription>Filter activity logs by user, character, action, or date range</CardDescription>
+							<CardDescription>
+								Filter activity logs by user, character, action, or date range
+							</CardDescription>
 						</div>
 						{hasActiveFilters && (
 							<Button variant="outline" size="sm" onClick={handleClearFilters}>
@@ -145,7 +155,11 @@ export default function ActivityLogPage() {
 						{/* Action */}
 						<div>
 							<label className="text-sm font-medium mb-1 block">Action</label>
-							<Input placeholder="Filter by action..." value={action} onChange={(e) => setAction(e.target.value)} />
+							<Input
+								placeholder="Filter by action..."
+								value={action}
+								onChange={(e) => setAction(e.target.value)}
+							/>
 						</div>
 
 						{/* Start Date */}
@@ -215,10 +229,16 @@ export default function ActivityLogPage() {
 												<div className="flex items-start justify-between gap-4">
 													<div className="flex-1 min-w-0">
 														<div className="flex items-center gap-2 mb-2">
-															<Badge variant="outline" className={cn(getActionBadgeClass(log.action))}>
+															<Badge
+																variant="outline"
+																className={cn(getActionBadgeClass(log.action))}
+															>
 																{log.action}
 															</Badge>
-															<span className="text-sm text-muted-foreground" title={formatDateTime(log.createdAt)}>
+															<span
+																className="text-sm text-muted-foreground"
+																title={formatDateTime(log.createdAt)}
+															>
 																{formatRelativeTime(log.createdAt)}
 															</span>
 														</div>
@@ -283,7 +303,11 @@ export default function ActivityLogPage() {
 											{isExpanded && log.metadata && (
 												<div className="p-4 border-t border-border bg-background">
 													<div className="text-sm font-medium mb-2">Metadata:</div>
-													<JsonViewer data={log.metadata} defaultExpanded={false} maxHeight="300px" />
+													<JsonViewer
+														data={log.metadata}
+														defaultExpanded={false}
+														maxHeight="300px"
+													/>
 												</div>
 											)}
 										</div>

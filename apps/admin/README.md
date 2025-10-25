@@ -5,6 +5,7 @@ Admin worker providing RPC methods for administrative operations.
 ## Overview
 
 This worker extends `WorkerEntrypoint` and exposes RPC methods for:
+
 - User management (deletion)
 - Character management (ownership transfer, deletion)
 - User/character search and lookup

@@ -86,9 +86,7 @@ export const killmailsRefreshMessageSchema = baseMessageSchema
 // Type exports for use in handlers and tests
 export type PublicRefreshMessage = z.infer<typeof publicRefreshMessageSchema>
 export type MembersRefreshMessage = z.infer<typeof membersRefreshMessageSchema>
-export type MemberTrackingRefreshMessage = z.infer<
-	typeof memberTrackingRefreshMessageSchema
->
+export type MemberTrackingRefreshMessage = z.infer<typeof memberTrackingRefreshMessageSchema>
 export type WalletsRefreshMessage = z.infer<typeof walletsRefreshMessageSchema>
 export type WalletJournalRefreshMessage = z.infer<typeof walletJournalRefreshMessageSchema>
 export type WalletTransactionsRefreshMessage = z.infer<

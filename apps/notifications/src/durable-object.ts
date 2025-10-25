@@ -1,5 +1,10 @@
 import { DurableObject } from 'cloudflare:workers'
+
 import { eq } from '@repo/db-utils'
+
+import { createDb } from './db'
+import { notificationLog } from './db/schema'
+
 import type {
 	ClientMessage,
 	ConnectionMetadata,
@@ -7,10 +12,6 @@ import type {
 	Notifications,
 	ServerMessage,
 } from '@repo/notifications'
-
-import { createDb } from './db'
-import { notificationLog } from './db/schema'
-
 import type { Env } from './context'
 
 /**
@@ -79,7 +80,10 @@ export class NotificationsDO extends DurableObject<Env> implements Notifications
 	/**
 	 * Publish a notification to a specific user
 	 */
-	async publishNotification(userId: string, notification: Omit<Notification, 'id' | 'timestamp'>): Promise<void> {
+	async publishNotification(
+		userId: string,
+		notification: Omit<Notification, 'id' | 'timestamp'>
+	): Promise<void> {
 		// Generate unique notification ID
 		const id = crypto.randomUUID()
 		const timestamp = Date.now()
@@ -182,7 +186,12 @@ export class NotificationsDO extends DurableObject<Env> implements Notifications
 	 * WebSocket close handler (Hibernation API)
 	 * Called when a WebSocket connection is closed
 	 */
-	async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean): Promise<void> {
+	async webSocketClose(
+		ws: WebSocket,
+		code: number,
+		reason: string,
+		wasClean: boolean
+	): Promise<void> {
 		const attachment = ws.deserializeAttachment()
 		console.log(`WebSocket closed for user ${attachment?.userId}:`, { code, reason, wasClean })
 
@@ -223,9 +232,8 @@ export class NotificationsDO extends DurableObject<Env> implements Notifications
 	 * Track pending acknowledgment
 	 */
 	private async trackPendingAck(userId: string, notificationId: string): Promise<void> {
-		const pendingAcks = (await this.state.storage.get<Record<string, number>>(
-			NotificationsDO.PENDING_ACKS_KEY
-		)) || {}
+		const pendingAcks =
+			(await this.state.storage.get<Record<string, number>>(NotificationsDO.PENDING_ACKS_KEY)) || {}
 
 		pendingAcks[notificationId] = Date.now()
 		await this.state.storage.put(NotificationsDO.PENDING_ACKS_KEY, pendingAcks)
@@ -239,9 +247,8 @@ export class NotificationsDO extends DurableObject<Env> implements Notifications
 	 */
 	private async handleAcknowledgment(userId: string, notificationId: string): Promise<void> {
 		// Remove from pending acks
-		const pendingAcks = (await this.state.storage.get<Record<string, number>>(
-			NotificationsDO.PENDING_ACKS_KEY
-		)) || {}
+		const pendingAcks =
+			(await this.state.storage.get<Record<string, number>>(NotificationsDO.PENDING_ACKS_KEY)) || {}
 
 		if (pendingAcks[notificationId]) {
 			delete pendingAcks[notificationId]
@@ -266,9 +273,8 @@ export class NotificationsDO extends DurableObject<Env> implements Notifications
 	 * Alarm handler for retry logic
 	 */
 	async alarm(): Promise<void> {
-		const pendingAcks = (await this.state.storage.get<Record<string, number>>(
-			NotificationsDO.PENDING_ACKS_KEY
-		)) || {}
+		const pendingAcks =
+			(await this.state.storage.get<Record<string, number>>(NotificationsDO.PENDING_ACKS_KEY)) || {}
 
 		const now = Date.now()
 		const retryThreshold = 5000 // 5 seconds

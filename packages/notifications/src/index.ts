@@ -228,12 +228,18 @@ export interface Notifications {
 	/**
 	 * Publish a notification to a specific user
 	 */
-	publishNotification(userId: string, notification: Omit<Notification, 'id' | 'timestamp'>): Promise<void>
+	publishNotification(
+		userId: string,
+		notification: Omit<Notification, 'id' | 'timestamp'>
+	): Promise<void>
 
 	/**
 	 * Broadcast a notification to multiple users
 	 */
-	broadcastNotification(userIds: string[], notification: Omit<Notification, 'id' | 'timestamp'>): Promise<void>
+	broadcastNotification(
+		userIds: string[],
+		notification: Omit<Notification, 'id' | 'timestamp'>
+	): Promise<void>
 
 	/**
 	 * Get connection count for a user (useful for testing/monitoring)

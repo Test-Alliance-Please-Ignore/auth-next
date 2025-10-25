@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
+
 import {
+	chunk,
 	defaultBatchOptions,
+	processBatch,
 	processConcurrently,
 	processSequentially,
-	processBatch,
-	chunk,
 } from '../../src/batch'
 
 describe('defaultBatchOptions', () => {
@@ -180,7 +181,11 @@ describe('chunk', () => {
 		const items = [1, 2, 3, 4, 5, 6]
 		const chunks = chunk(items, 2)
 
-		expect(chunks).toEqual([[1, 2], [3, 4], [5, 6]])
+		expect(chunks).toEqual([
+			[1, 2],
+			[3, 4],
+			[5, 6],
+		])
 	})
 
 	it('should handle empty array', () => {

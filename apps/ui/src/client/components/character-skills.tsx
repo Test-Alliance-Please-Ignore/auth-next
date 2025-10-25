@@ -59,10 +59,7 @@ function calculateSkillProgress(skill: Skill, skillRank: number = 1): number {
 	return Math.min(100, Math.max(0, (spProgress / spNeeded) * 100))
 }
 
-export function CharacterSkills({
-	skills,
-	showProgress = false,
-}: CharacterSkillsProps) {
+export function CharacterSkills({ skills, showProgress = false }: CharacterSkillsProps) {
 	const [expandedCategories, setExpandedCategories] = useState<string[]>([])
 
 	// Fetch skill metadata from eve-static-data
@@ -118,7 +115,9 @@ export function CharacterSkills({
 		}, [] as CategorizedSkillGroup[]) || []
 
 	// Sort categories by total SP (highest first)
-	categorizedSkills.sort((a: CategorizedSkillGroup, b: CategorizedSkillGroup) => b.totalSP - a.totalSP)
+	categorizedSkills.sort(
+		(a: CategorizedSkillGroup, b: CategorizedSkillGroup) => b.totalSP - a.totalSP
+	)
 
 	const formatSP = (sp: number) => {
 		if (sp >= 1000000) {

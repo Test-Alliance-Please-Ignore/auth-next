@@ -1,13 +1,8 @@
-import { UserMinus, Shield, ShieldOff, UserCog } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import {
-	Table,
-	TableBody,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from '@/components/ui/table'
+import { Shield, ShieldOff, UserCog, UserMinus } from 'lucide-react'
+
 import { MemberRow } from '@/components/member-row'
+import { Button } from '@/components/ui/button'
+import { Table, TableBody, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
 import type { GroupMember, GroupWithDetails } from '@/lib/api'
 

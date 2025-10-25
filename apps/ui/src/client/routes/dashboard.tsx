@@ -115,7 +115,8 @@ export default function DashboardPage() {
 												alt={`${mainCharacter.characterName}'s portrait`}
 												loading="lazy"
 												onError={(e) => {
-													;(e.currentTarget as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128"%3E%3Crect fill="%23404040" width="128" height="128"/%3E%3Ctext x="50%25" y="50%25" font-family="Arial" font-size="48" fill="%23bfbfbf" text-anchor="middle" dominant-baseline="middle"%3E?%3C/text%3E%3C/svg%3E'
+													;(e.currentTarget as HTMLImageElement).src =
+														'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128"%3E%3Crect fill="%23404040" width="128" height="128"/%3E%3Ctext x="50%25" y="50%25" font-family="Arial" font-size="48" fill="%23bfbfbf" text-anchor="middle" dominant-baseline="middle"%3E?%3C/text%3E%3C/svg%3E'
 												}}
 												className="w-20 h-20 rounded-full border-2 border-primary/30 glow shadow-lg"
 											/>
@@ -155,9 +156,7 @@ export default function DashboardPage() {
 										>
 											<RefreshCw
 												className={`h-4 w-4 ${
-													refreshingCharacters.has(mainCharacter.characterId)
-														? 'animate-spin'
-														: ''
+													refreshingCharacters.has(mainCharacter.characterId) ? 'animate-spin' : ''
 												}`}
 											/>
 										</Button>
@@ -209,7 +208,8 @@ export default function DashboardPage() {
 													alt={`${character.characterName}'s portrait`}
 													loading="lazy"
 													onError={(e) => {
-														;(e.currentTarget as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"%3E%3Crect fill="%23404040" width="64" height="64"/%3E%3Ctext x="50%25" y="50%25" font-family="Arial" font-size="24" fill="%23bfbfbf" text-anchor="middle" dominant-baseline="middle"%3E?%3C/text%3E%3C/svg%3E'
+														;(e.currentTarget as HTMLImageElement).src =
+															'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"%3E%3Crect fill="%23404040" width="64" height="64"/%3E%3Ctext x="50%25" y="50%25" font-family="Arial" font-size="24" fill="%23bfbfbf" text-anchor="middle" dominant-baseline="middle"%3E?%3C/text%3E%3C/svg%3E'
 													}}
 													className="w-12 h-12 rounded-full border border-border/50 group-hover:border-primary/30 transition-colors shadow-md"
 												/>
@@ -219,16 +219,25 @@ export default function DashboardPage() {
 													</h3>
 													<div className="flex items-center gap-2 mt-1">
 														{character.characterId === user.mainCharacterId && (
-															<Badge variant="default" className="text-xs bg-primary/20 text-primary">
+															<Badge
+																variant="default"
+																className="text-xs bg-primary/20 text-primary"
+															>
 																Main
 															</Badge>
 														)}
 														{character.hasValidToken ? (
-															<Badge variant="default" className="text-xs bg-green-500/20 text-green-500">
+															<Badge
+																variant="default"
+																className="text-xs bg-green-500/20 text-green-500"
+															>
 																Valid
 															</Badge>
 														) : (
-															<Badge variant="default" className="text-xs bg-red-500/20 text-red-500">
+															<Badge
+																variant="default"
+																className="text-xs bg-red-500/20 text-red-500"
+															>
 																Please refresh
 															</Badge>
 														)}
@@ -246,9 +255,7 @@ export default function DashboardPage() {
 										>
 											<RefreshCw
 												className={`h-4 w-4 ${
-													refreshingCharacters.has(character.characterId)
-														? 'animate-spin'
-														: ''
+													refreshingCharacters.has(character.characterId) ? 'animate-spin' : ''
 												}`}
 											/>
 										</Button>

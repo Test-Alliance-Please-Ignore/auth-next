@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { createQueueConsumer } from '../../src/factory'
-import type { MessageBatch, Message } from '../../src/types'
-import { exponentialBackoff } from '../../src/retry'
+
 import { FatalError } from '../../src/errors'
+import { createQueueConsumer } from '../../src/factory'
+import { exponentialBackoff } from '../../src/retry'
+
+import type { Message, MessageBatch } from '../../src/types'
 
 const testSchema = z.object({
 	corporationId: z.number(),
@@ -101,9 +103,7 @@ describe('createQueueConsumer Integration', () => {
 						processingLog.push(`batch-start-${batch.messages.length}`)
 					},
 					onBatchComplete: (batch, result) => {
-						processingLog.push(
-							`batch-complete-${result.successful}/${result.total}`
-						)
+						processingLog.push(`batch-complete-${result.successful}/${result.total}`)
 					},
 				},
 			}

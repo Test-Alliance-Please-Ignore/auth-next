@@ -1,5 +1,5 @@
-import { useNavigate } from 'react-router-dom'
 import { Mail } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 
 import { InvitationCard } from '@/components/invitation-card'
 import { Button } from '@/components/ui/button'
@@ -32,33 +32,33 @@ export default function InvitationsPage() {
 				{/* Invitations List */}
 				{invitations && invitations.length > 0 ? (
 					<div className="space-y-4">
-					{invitations.map((invitation) => (
-						<InvitationCard
-							key={invitation.id}
-							invitation={invitation}
-							onActionComplete={() => {
-								void navigate('/my-groups')
-							}}
-						/>
-					))}
-				</div>
+						{invitations.map((invitation) => (
+							<InvitationCard
+								key={invitation.id}
+								invitation={invitation}
+								onActionComplete={() => {
+									void navigate('/my-groups')
+								}}
+							/>
+						))}
+					</div>
 				) : (
 					/* Empty State */
 					<Card variant="interactive">
-					<CardContent className="py-16 text-center">
-						<div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-muted mb-6">
-							<Mail className="h-10 w-10 text-muted-foreground" />
-						</div>
-						<h3 className="text-xl font-semibold mb-2">No Pending Invitations</h3>
-						<p className="text-muted-foreground mb-6 max-w-md mx-auto">
-							You don't have any pending group invitations at the moment. Browse available groups to
-							find communities to join.
-						</p>
-						<Button onClick={() => navigate('/groups')} size="lg">
-							Browse Available Groups
-						</Button>
-					</CardContent>
-				</Card>
+						<CardContent className="py-16 text-center">
+							<div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-muted mb-6">
+								<Mail className="h-10 w-10 text-muted-foreground" />
+							</div>
+							<h3 className="text-xl font-semibold mb-2">No Pending Invitations</h3>
+							<p className="text-muted-foreground mb-6 max-w-md mx-auto">
+								You don't have any pending group invitations at the moment. Browse available groups
+								to find communities to join.
+							</p>
+							<Button onClick={() => navigate('/groups')} size="lg">
+								Browse Available Groups
+							</Button>
+						</CardContent>
+					</Card>
 				)}
 			</Section>
 		</Container>

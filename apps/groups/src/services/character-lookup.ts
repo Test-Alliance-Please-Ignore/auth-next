@@ -1,7 +1,3 @@
-import { and, eq, ilike, inArray, sql } from '@repo/db-utils'
-
-import type { createDb } from '../db'
-
 /**
  * Character lookup service
  *
@@ -26,7 +22,11 @@ import type { createDb } from '../db'
  *
  * TODO: Remove when migrating to RPC
  */
-import { bigint, boolean, pgTable, timestamp, uuid, varchar, text } from 'drizzle-orm/pg-core'
+import { bigint, boolean, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core'
+
+import { and, eq, ilike, inArray, sql } from '@repo/db-utils'
+
+import type { createDb } from '../db'
 
 const users = pgTable('users', {
 	id: uuid('id').defaultRandom().primaryKey(),

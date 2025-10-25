@@ -1,10 +1,12 @@
 import { eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
+import { logger } from '@repo/hono-helpers'
+
+import { managedCorporations } from '../db/schema'
+
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
-import { logger } from '@repo/hono-helpers'
 import type { createDb } from '../db'
-import { managedCorporations } from '../db/schema'
 
 interface AutoRegistrationResult {
 	success: boolean
@@ -231,10 +233,7 @@ export async function autoRegisterDirectorCorporation(
 				characterId,
 			})
 
-			const stub = getStub<EveCorporationData>(
-				eveCorporationDataNamespace,
-				corporationId
-			)
+			const stub = getStub<EveCorporationData>(eveCorporationDataNamespace, corporationId)
 
 			logger.info('[AutoReg] Calling addDirector on DO stub', {
 				corporationId,

@@ -3,8 +3,6 @@ import { getCookie } from 'hono/cookie'
 
 import { eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
-import type { EveTokenStore } from '@repo/eve-token-store'
-import type { EveCorporationData } from '@repo/eve-corporation-data'
 
 import { createDb } from '../db'
 import { oauthStates, userCharacters } from '../db/schema'
@@ -14,6 +12,8 @@ import { AuthService } from '../services/auth.service'
 import { autoRegisterDirectorCorporation } from '../services/corporation-auto-register.service'
 import { UserService } from '../services/user.service'
 
+import type { EveCorporationData } from '@repo/eve-corporation-data'
+import type { EveTokenStore } from '@repo/eve-token-store'
 import type { App } from '../context'
 import type { RequestMetadata } from '../types/user'
 
@@ -140,7 +140,11 @@ auth.get('/callback', async (c) => {
 	const result = await eveTokenStoreStub.handleCallback(code, state)
 
 	if (!result.success || !result.characterId || !result.characterInfo) {
-		await activityService.logLoginFailed('unknown', result.error || 'Unknown error', getRequestMetadata(c))
+		await activityService.logLoginFailed(
+			'unknown',
+			result.error || 'Unknown error',
+			getRequestMetadata(c)
+		)
 		return c.json({ error: result.error || 'Authentication failed' }, 400)
 	}
 

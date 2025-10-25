@@ -1,4 +1,5 @@
 import { useState } from 'react'
+
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -81,7 +82,9 @@ export function CategoryForm({ category, onSubmit, onCancel, isSubmitting }: Cat
 				<textarea
 					id="description"
 					value={formData.description || ''}
-					onChange={(e) => setFormData({ ...formData, description: (e.target as HTMLTextAreaElement).value })}
+					onChange={(e) =>
+						setFormData({ ...formData, description: (e.target as HTMLTextAreaElement).value })
+					}
 					placeholder="Enter category description (optional)"
 					disabled={isSubmitting}
 					className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
@@ -94,9 +97,7 @@ export function CategoryForm({ category, onSubmit, onCancel, isSubmitting }: Cat
 				<Label htmlFor="visibility">Visibility</Label>
 				<Select
 					value={formData.visibility}
-					onValueChange={(value: Visibility) =>
-						setFormData({ ...formData, visibility: value })
-					}
+					onValueChange={(value: Visibility) => setFormData({ ...formData, visibility: value })}
 					disabled={isSubmitting}
 				>
 					<SelectTrigger id="visibility">
@@ -124,9 +125,7 @@ export function CategoryForm({ category, onSubmit, onCancel, isSubmitting }: Cat
 					</SelectTrigger>
 					<SelectContent>
 						<SelectItem value="anyone">Anyone - All users can create groups</SelectItem>
-						<SelectItem value="admin_only">
-							Admin Only - Only admins can create groups
-						</SelectItem>
+						<SelectItem value="admin_only">Admin Only - Only admins can create groups</SelectItem>
 					</SelectContent>
 				</Select>
 			</div>

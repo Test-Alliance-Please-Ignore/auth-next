@@ -1,3 +1,8 @@
+// Local imports for use in this file
+import { DedupedFetch } from './deduped-fetch'
+
+import type { DedupConfig } from './types'
+
 /**
  * @repo/fetch-utils
  *
@@ -51,10 +56,6 @@ export { DedupedFetch } from './deduped-fetch'
 
 // Types
 export type { DedupConfig, DedupStats } from './types'
-
-// Local imports for use in this file
-import type { DedupConfig } from './types'
-import { DedupedFetch } from './deduped-fetch'
 
 // Key generators
 export {

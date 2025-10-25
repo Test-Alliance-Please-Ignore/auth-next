@@ -470,8 +470,12 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		try {
 			response = await fetch(`https://esi.evetech.net${path}`, { headers })
 		} catch (error) {
-			logger.withTags({ characterId, path, operation: 'esi_fetch' }).error('ESI fetch failed', error)
-			throw new Error(`ESI fetch failed for ${path}: ${error instanceof Error ? error.message : String(error)}`)
+			logger
+				.withTags({ characterId, path, operation: 'esi_fetch' })
+				.error('ESI fetch failed', error)
+			throw new Error(
+				`ESI fetch failed for ${path}: ${error instanceof Error ? error.message : String(error)}`
+			)
 		}
 
 		// Handle 304 Not Modified
@@ -618,7 +622,11 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			const cachedCursor = await this.state.storage.sql.exec<{
 				entity_data: string
 				expires_at: number
-			}>(`SELECT entity_data, expires_at FROM entity_cache WHERE entity_type = ? AND entity_id = ?`, cacheKey, corporationId)
+			}>(
+				`SELECT entity_data, expires_at FROM entity_cache WHERE entity_type = ? AND entity_id = ?`,
+				cacheKey,
+				corporationId
+			)
 
 			const cached = [...cachedCursor]
 
@@ -628,7 +636,9 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			}
 		} catch (error) {
 			// Cache read failure - log and continue (treat as cache miss)
-			logger.withTags({ corporationId, operation: 'cache_read' }).warn('Entity cache read failed', error)
+			logger
+				.withTags({ corporationId, operation: 'cache_read' })
+				.warn('Entity cache read failed', error)
 		}
 
 		// 2. Fetch from ESI
@@ -658,7 +668,9 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				ceo_id: String(response.data.ceo_id),
 				alliance_id: response.data.alliance_id ? String(response.data.alliance_id) : undefined,
 				creator_id: String(response.data.creator_id),
-				home_station_id: response.data.home_station_id ? String(response.data.home_station_id) : undefined,
+				home_station_id: response.data.home_station_id
+					? String(response.data.home_station_id)
+					: undefined,
 			}
 
 			// 3. Store in entity cache (non-critical, failures should not prevent returning data)
@@ -675,7 +687,9 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				)
 			} catch (error) {
 				// Cache write failure - log but don't fail the request
-				logger.withTags({ corporationId, operation: 'cache_write' }).warn('Entity cache write failed', error)
+				logger
+					.withTags({ corporationId, operation: 'cache_write' })
+					.warn('Entity cache write failed', error)
 			}
 
 			return corp
@@ -698,7 +712,11 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			const cachedCursor = await this.state.storage.sql.exec<{
 				entity_data: string
 				expires_at: number
-			}>(`SELECT entity_data, expires_at FROM entity_cache WHERE entity_type = ? AND entity_id = ?`, cacheKey, allianceId)
+			}>(
+				`SELECT entity_data, expires_at FROM entity_cache WHERE entity_type = ? AND entity_id = ?`,
+				cacheKey,
+				allianceId
+			)
 
 			const cached = [...cachedCursor]
 
@@ -708,7 +726,9 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			}
 		} catch (error) {
 			// Cache read failure - log and continue (treat as cache miss)
-			logger.withTags({ allianceId, operation: 'cache_read' }).warn('Entity cache read failed', error)
+			logger
+				.withTags({ allianceId, operation: 'cache_read' })
+				.warn('Entity cache read failed', error)
 		}
 
 		// 2. Fetch from ESI
@@ -749,7 +769,9 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				)
 			} catch (error) {
 				// Cache write failure - log but don't fail the request
-				logger.withTags({ allianceId, operation: 'cache_write' }).warn('Entity cache write failed', error)
+				logger
+					.withTags({ allianceId, operation: 'cache_write' })
+					.warn('Entity cache write failed', error)
 			}
 
 			return alliance
@@ -771,7 +793,11 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				entity_id: string
 				entity_data: string
 				expires_at: number
-			}>(`SELECT entity_id, entity_data, expires_at FROM entity_cache WHERE entity_type = ? AND entity_name = ?`, 'corporation', name)
+			}>(
+				`SELECT entity_id, entity_data, expires_at FROM entity_cache WHERE entity_type = ? AND entity_name = ?`,
+				'corporation',
+				name
+			)
 
 			const cached = [...cachedCursor]
 
@@ -808,7 +834,11 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				entity_id: string
 				entity_data: string
 				expires_at: number
-			}>(`SELECT entity_id, entity_data, expires_at FROM entity_cache WHERE entity_type = ? AND entity_name = ?`, 'alliance', name)
+			}>(
+				`SELECT entity_id, entity_data, expires_at FROM entity_cache WHERE entity_type = ? AND entity_name = ?`,
+				'alliance',
+				name
+			)
 
 			const cached = [...cachedCursor]
 
@@ -849,7 +879,11 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			try {
 				const cachedCursor = await this.state.storage.sql.exec<{
 					entity_id: string
-				}>(`SELECT entity_id FROM entity_cache WHERE entity_name = ? AND expires_at > ?`, name, Date.now())
+				}>(
+					`SELECT entity_id FROM entity_cache WHERE entity_name = ? AND expires_at > ?`,
+					name,
+					Date.now()
+				)
 
 				const cached = [...cachedCursor]
 
@@ -919,7 +953,9 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 						)
 					} catch (error) {
 						// Cache write failure - log but don't fail the request
-						logger.withTags({ entityName: entity.name, entityId, operation: 'cache_write' }).warn('Entity cache write failed', error)
+						logger
+							.withTags({ entityName: entity.name, entityId, operation: 'cache_write' })
+							.warn('Entity cache write failed', error)
 					}
 				}
 			}
@@ -947,7 +983,11 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			try {
 				const cachedCursor = await this.state.storage.sql.exec<{
 					entity_name: string
-				}>(`SELECT entity_name FROM entity_cache WHERE entity_id = ? AND expires_at > ?`, id, Date.now())
+				}>(
+					`SELECT entity_name FROM entity_cache WHERE entity_id = ? AND expires_at > ?`,
+					id,
+					Date.now()
+				)
 
 				const cached = [...cachedCursor]
 
@@ -971,7 +1011,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		// Fetch from ESI for uncached IDs
 		try {
 			// Convert string IDs to integers for ESI API
-			const integerIds = idsToResolve.map(id => parseInt(id, 10)).filter(id => !isNaN(id))
+			const integerIds = idsToResolve.map((id) => parseInt(id, 10)).filter((id) => !isNaN(id))
 
 			// If no valid IDs after conversion, return early
 			if (integerIds.length === 0) {
@@ -1016,7 +1056,9 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 					)
 				} catch (error) {
 					// Cache write failure - log but don't fail the request
-					logger.withTags({ entityName: entity.name, entityId, operation: 'cache_write' }).warn('Entity cache write failed', error)
+					logger
+						.withTags({ entityName: entity.name, entityId, operation: 'cache_write' })
+						.warn('Entity cache write failed', error)
 				}
 			}
 

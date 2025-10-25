@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { QueueProducer, createQueueProducer, type Queue } from '../../src/producer'
+
 import { MessageValidationError } from '../../src/errors'
+import { createQueueProducer, QueueProducer } from '../../src/producer'
+
+import type { Queue } from '../../src/producer'
 
 const notificationSchema = z.object({
 	userId: z.string(),

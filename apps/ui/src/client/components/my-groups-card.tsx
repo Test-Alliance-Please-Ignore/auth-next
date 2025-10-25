@@ -1,6 +1,7 @@
-import { Crown, Shield, Calendar } from 'lucide-react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Calendar, Crown, Shield } from 'lucide-react'
+
 import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
 import type { GroupMembershipSummary } from '@/lib/api'
 

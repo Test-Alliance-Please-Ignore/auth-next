@@ -1,6 +1,6 @@
-import type { Notifications } from '@repo/notifications'
 import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
+import type { Notifications } from '@repo/notifications'
 
 export type Env = SharedHonoEnv & {
 	DATABASE_URL: string

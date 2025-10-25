@@ -46,8 +46,9 @@ The Groups Durable Object is available to this worker via the `GROUPS` binding.
 ### From within this worker:
 
 ```typescript
-import type { Groups } from '@repo/groups'
 import { getStub } from '@repo/do-utils'
+
+import type { Groups } from '@repo/groups'
 
 // Get a stub to the Durable Object
 const stub = getStub<Groups>(c.env.GROUPS, 'unique-id')

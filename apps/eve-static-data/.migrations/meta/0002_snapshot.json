@@ -1,462 +1,436 @@
 {
-  "id": "c8400555-76c9-4434-a999-25530e8fe7b1",
-  "prevId": "664277a3-f756-4700-bdcc-7cba88e8d4be",
-  "version": "7",
-  "dialect": "postgresql",
-  "tables": {
-    "public.alliances": {
-      "name": "alliances",
-      "schema": "",
-      "columns": {
-        "alliance_id": {
-          "name": "alliance_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "alliance_name": {
-          "name": "alliance_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "ticker": {
-          "name": "ticker",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.corporations": {
-      "name": "corporations",
-      "schema": "",
-      "columns": {
-        "corporation_id": {
-          "name": "corporation_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "corporation_name": {
-          "name": "corporation_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "ticker": {
-          "name": "ticker",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.sde_version": {
-      "name": "sde_version",
-      "schema": "",
-      "columns": {
-        "version": {
-          "name": "version",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "imported_at": {
-          "name": "imported_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "checksum": {
-          "name": "checksum",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.skill_attributes": {
-      "name": "skill_attributes",
-      "schema": "",
-      "columns": {
-        "skill_id": {
-          "name": "skill_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "attribute_name": {
-          "name": "attribute_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "attribute_value": {
-          "name": "attribute_value",
-          "type": "numeric",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "skill_attributes_skill_id_skills_id_fk": {
-          "name": "skill_attributes_skill_id_skills_id_fk",
-          "tableFrom": "skill_attributes",
-          "tableTo": "skills",
-          "columnsFrom": [
-            "skill_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "skill_attributes_skill_id_attribute_name_unique": {
-          "name": "skill_attributes_skill_id_attribute_name_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "skill_id",
-            "attribute_name"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.skill_categories": {
-      "name": "skill_categories",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "description": {
-          "name": "description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.skill_groups": {
-      "name": "skill_groups",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "category_id": {
-          "name": "category_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "description": {
-          "name": "description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "published": {
-          "name": "published",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "skill_groups_category_id_skill_categories_id_fk": {
-          "name": "skill_groups_category_id_skill_categories_id_fk",
-          "tableFrom": "skill_groups",
-          "tableTo": "skill_categories",
-          "columnsFrom": [
-            "category_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.skill_requirements": {
-      "name": "skill_requirements",
-      "schema": "",
-      "columns": {
-        "skill_id": {
-          "name": "skill_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "required_skill_id": {
-          "name": "required_skill_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "required_level": {
-          "name": "required_level",
-          "type": "numeric",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "skill_requirements_skill_id_skills_id_fk": {
-          "name": "skill_requirements_skill_id_skills_id_fk",
-          "tableFrom": "skill_requirements",
-          "tableTo": "skills",
-          "columnsFrom": [
-            "skill_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "skill_requirements_required_skill_id_skills_id_fk": {
-          "name": "skill_requirements_required_skill_id_skills_id_fk",
-          "tableFrom": "skill_requirements",
-          "tableTo": "skills",
-          "columnsFrom": [
-            "required_skill_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "skill_requirements_skill_id_required_skill_id_unique": {
-          "name": "skill_requirements_skill_id_required_skill_id_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "skill_id",
-            "required_skill_id"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.skills": {
-      "name": "skills",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "group_id": {
-          "name": "group_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "description": {
-          "name": "description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "rank": {
-          "name": "rank",
-          "type": "numeric",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "primary_attribute": {
-          "name": "primary_attribute",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "secondary_attribute": {
-          "name": "secondary_attribute",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "published": {
-          "name": "published",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "can_not_be_trained": {
-          "name": "can_not_be_trained",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "skills_group_id_skill_groups_id_fk": {
-          "name": "skills_group_id_skill_groups_id_fk",
-          "tableFrom": "skills",
-          "tableTo": "skill_groups",
-          "columnsFrom": [
-            "group_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    }
-  },
-  "enums": {},
-  "schemas": {},
-  "sequences": {},
-  "roles": {},
-  "policies": {},
-  "views": {},
-  "_meta": {
-    "columns": {},
-    "schemas": {},
-    "tables": {}
-  }
+	"id": "c8400555-76c9-4434-a999-25530e8fe7b1",
+	"prevId": "664277a3-f756-4700-bdcc-7cba88e8d4be",
+	"version": "7",
+	"dialect": "postgresql",
+	"tables": {
+		"public.alliances": {
+			"name": "alliances",
+			"schema": "",
+			"columns": {
+				"alliance_id": {
+					"name": "alliance_id",
+					"type": "text",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"alliance_name": {
+					"name": "alliance_name",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"ticker": {
+					"name": "ticker",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.corporations": {
+			"name": "corporations",
+			"schema": "",
+			"columns": {
+				"corporation_id": {
+					"name": "corporation_id",
+					"type": "text",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"corporation_name": {
+					"name": "corporation_name",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"ticker": {
+					"name": "ticker",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.sde_version": {
+			"name": "sde_version",
+			"schema": "",
+			"columns": {
+				"version": {
+					"name": "version",
+					"type": "text",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"imported_at": {
+					"name": "imported_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
+				},
+				"checksum": {
+					"name": "checksum",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.skill_attributes": {
+			"name": "skill_attributes",
+			"schema": "",
+			"columns": {
+				"skill_id": {
+					"name": "skill_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"attribute_name": {
+					"name": "attribute_name",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"attribute_value": {
+					"name": "attribute_value",
+					"type": "numeric",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"created_at": {
+					"name": "created_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {
+				"skill_attributes_skill_id_skills_id_fk": {
+					"name": "skill_attributes_skill_id_skills_id_fk",
+					"tableFrom": "skill_attributes",
+					"tableTo": "skills",
+					"columnsFrom": ["skill_id"],
+					"columnsTo": ["id"],
+					"onDelete": "no action",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {
+				"skill_attributes_skill_id_attribute_name_unique": {
+					"name": "skill_attributes_skill_id_attribute_name_unique",
+					"nullsNotDistinct": false,
+					"columns": ["skill_id", "attribute_name"]
+				}
+			},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.skill_categories": {
+			"name": "skill_categories",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "text",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"name": {
+					"name": "name",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"description": {
+					"name": "description",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"created_at": {
+					"name": "created_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
+				},
+				"updated_at": {
+					"name": "updated_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.skill_groups": {
+			"name": "skill_groups",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "text",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"category_id": {
+					"name": "category_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"name": {
+					"name": "name",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"description": {
+					"name": "description",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"published": {
+					"name": "published",
+					"type": "boolean",
+					"primaryKey": false,
+					"notNull": true,
+					"default": true
+				},
+				"created_at": {
+					"name": "created_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
+				},
+				"updated_at": {
+					"name": "updated_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {
+				"skill_groups_category_id_skill_categories_id_fk": {
+					"name": "skill_groups_category_id_skill_categories_id_fk",
+					"tableFrom": "skill_groups",
+					"tableTo": "skill_categories",
+					"columnsFrom": ["category_id"],
+					"columnsTo": ["id"],
+					"onDelete": "no action",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.skill_requirements": {
+			"name": "skill_requirements",
+			"schema": "",
+			"columns": {
+				"skill_id": {
+					"name": "skill_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"required_skill_id": {
+					"name": "required_skill_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"required_level": {
+					"name": "required_level",
+					"type": "numeric",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"created_at": {
+					"name": "created_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {
+				"skill_requirements_skill_id_skills_id_fk": {
+					"name": "skill_requirements_skill_id_skills_id_fk",
+					"tableFrom": "skill_requirements",
+					"tableTo": "skills",
+					"columnsFrom": ["skill_id"],
+					"columnsTo": ["id"],
+					"onDelete": "no action",
+					"onUpdate": "no action"
+				},
+				"skill_requirements_required_skill_id_skills_id_fk": {
+					"name": "skill_requirements_required_skill_id_skills_id_fk",
+					"tableFrom": "skill_requirements",
+					"tableTo": "skills",
+					"columnsFrom": ["required_skill_id"],
+					"columnsTo": ["id"],
+					"onDelete": "no action",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {
+				"skill_requirements_skill_id_required_skill_id_unique": {
+					"name": "skill_requirements_skill_id_required_skill_id_unique",
+					"nullsNotDistinct": false,
+					"columns": ["skill_id", "required_skill_id"]
+				}
+			},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.skills": {
+			"name": "skills",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "text",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"group_id": {
+					"name": "group_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"name": {
+					"name": "name",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"description": {
+					"name": "description",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"rank": {
+					"name": "rank",
+					"type": "numeric",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"primary_attribute": {
+					"name": "primary_attribute",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"secondary_attribute": {
+					"name": "secondary_attribute",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"published": {
+					"name": "published",
+					"type": "boolean",
+					"primaryKey": false,
+					"notNull": true,
+					"default": true
+				},
+				"can_not_be_trained": {
+					"name": "can_not_be_trained",
+					"type": "boolean",
+					"primaryKey": false,
+					"notNull": true,
+					"default": false
+				},
+				"created_at": {
+					"name": "created_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
+				},
+				"updated_at": {
+					"name": "updated_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {
+				"skills_group_id_skill_groups_id_fk": {
+					"name": "skills_group_id_skill_groups_id_fk",
+					"tableFrom": "skills",
+					"tableTo": "skill_groups",
+					"columnsFrom": ["group_id"],
+					"columnsTo": ["id"],
+					"onDelete": "no action",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		}
+	},
+	"enums": {},
+	"schemas": {},
+	"sequences": {},
+	"roles": {},
+	"policies": {},
+	"views": {},
+	"_meta": {
+		"columns": {},
+		"schemas": {},
+		"tables": {}
+	}
 }

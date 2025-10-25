@@ -1,10 +1,10 @@
+import { ArrowLeft, ExternalLink, RefreshCw, Shield, ShieldOff, Trash2 } from 'lucide-react'
 import { useState } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, Shield, ShieldOff, Trash2, ExternalLink, RefreshCw } from 'lucide-react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import {
 	Dialog,
 	DialogContent,
@@ -13,7 +13,20 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
-import { useAdminUser, useSetUserAdmin, useDeleteUserCharacter, useActivityLogs } from '@/hooks/useAdminUsers'
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from '@/components/ui/table'
+import {
+	useActivityLogs,
+	useAdminUser,
+	useDeleteUserCharacter,
+	useSetUserAdmin,
+} from '@/hooks/useAdminUsers'
 import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
@@ -75,7 +88,9 @@ export default function UserDetailPage() {
 			setAdminDialogOpen(false)
 			setMessage({
 				type: 'success',
-				text: user.is_admin ? 'Admin privileges revoked successfully' : 'Admin privileges granted successfully',
+				text: user.is_admin
+					? 'Admin privileges revoked successfully'
+					: 'Admin privileges granted successfully',
 			})
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
@@ -145,10 +160,16 @@ export default function UserDetailPage() {
 			{/* Success/Error Message */}
 			{message && (
 				<Card
-					className={message.type === 'error' ? 'border-destructive bg-destructive/10' : 'border-primary bg-primary/10'}
+					className={
+						message.type === 'error'
+							? 'border-destructive bg-destructive/10'
+							: 'border-primary bg-primary/10'
+					}
 				>
 					<CardContent className="py-3">
-						<p className={message.type === 'error' ? 'text-destructive' : 'text-primary'}>{message.text}</p>
+						<p className={message.type === 'error' ? 'text-destructive' : 'text-primary'}>
+							{message.text}
+						</p>
 					</CardContent>
 				</Card>
 			)}
@@ -382,7 +403,9 @@ export default function UserDetailPage() {
 			<Dialog open={adminDialogOpen} onOpenChange={setAdminDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>{user.is_admin ? 'Revoke Admin Privileges' : 'Grant Admin Privileges'}</DialogTitle>
+						<DialogTitle>
+							{user.is_admin ? 'Revoke Admin Privileges' : 'Grant Admin Privileges'}
+						</DialogTitle>
 						<DialogDescription>
 							{user.is_admin
 								? `Are you sure you want to revoke admin privileges for ${user.characters.find((c) => c.is_primary)?.characterName || 'this user'}? They will lose access to all admin features.`
@@ -424,8 +447,8 @@ export default function UserDetailPage() {
 					<DialogHeader>
 						<DialogTitle>Delete Character</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to delete "{selectedCharacterData?.characterName}"? This action cannot be
-							undone. The character will be removed from the user's account.
+							Are you sure you want to delete "{selectedCharacterData?.characterName}"? This action
+							cannot be undone. The character will be removed from the user's account.
 							{selectedCharacterData?.is_primary && (
 								<div className="mt-2 text-destructive font-semibold">
 									Warning: This is the user's primary character. A new primary will be automatically

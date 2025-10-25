@@ -1,17 +1,17 @@
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type {
-	PublicRefreshMessage,
-	MembersRefreshMessage,
-	MemberTrackingRefreshMessage,
-	WalletsRefreshMessage,
-	WalletJournalRefreshMessage,
-	WalletTransactionsRefreshMessage,
 	AssetsRefreshMessage,
-	StructuresRefreshMessage,
-	OrdersRefreshMessage,
 	ContractsRefreshMessage,
 	IndustryJobsRefreshMessage,
 	KillmailsRefreshMessage,
+	MembersRefreshMessage,
+	MemberTrackingRefreshMessage,
+	OrdersRefreshMessage,
+	PublicRefreshMessage,
+	StructuresRefreshMessage,
+	WalletJournalRefreshMessage,
+	WalletsRefreshMessage,
+	WalletTransactionsRefreshMessage,
 } from './schemas'
 
 /**
@@ -52,7 +52,9 @@ export async function handleWalletsRefresh(
 	_message: WalletsRefreshMessage
 ): Promise<void> {
 	// Fetch wallet balances for all 7 divisions in parallel
-	const results = await Promise.allSettled([1, 2, 3, 4, 5, 6, 7].map((div) => stub.fetchFinancialData(div)))
+	const results = await Promise.allSettled(
+		[1, 2, 3, 4, 5, 6, 7].map((div) => stub.fetchFinancialData(div))
+	)
 
 	// Check if any succeeded
 	const succeeded = results.filter((r) => r.status === 'fulfilled')
@@ -74,7 +76,9 @@ export async function handleWalletJournalRefresh(
 		await stub.fetchFinancialData(message.division)
 	} else {
 		// Fetch all 7 divisions in parallel
-		const results = await Promise.allSettled([1, 2, 3, 4, 5, 6, 7].map((div) => stub.fetchFinancialData(div)))
+		const results = await Promise.allSettled(
+			[1, 2, 3, 4, 5, 6, 7].map((div) => stub.fetchFinancialData(div))
+		)
 
 		const succeeded = results.filter((r) => r.status === 'fulfilled')
 		if (succeeded.length === 0) {
@@ -96,7 +100,9 @@ export async function handleWalletTransactionsRefresh(
 		await stub.fetchFinancialData(message.division)
 	} else {
 		// Fetch all 7 divisions in parallel
-		const results = await Promise.allSettled([1, 2, 3, 4, 5, 6, 7].map((div) => stub.fetchFinancialData(div)))
+		const results = await Promise.allSettled(
+			[1, 2, 3, 4, 5, 6, 7].map((div) => stub.fetchFinancialData(div))
+		)
 
 		const succeeded = results.filter((r) => r.status === 'fulfilled')
 		if (succeeded.length === 0) {

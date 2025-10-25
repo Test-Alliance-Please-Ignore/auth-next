@@ -1,24 +1,30 @@
-import { useState, useEffect } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { formatDistanceToNow } from 'date-fns'
 import {
 	ArrowLeft,
-	RefreshCw,
-	Shield,
-	ShieldCheck,
-	ShieldAlert,
-	Database,
-	Users,
-	Wallet,
-	Package,
-	TrendingUp,
-	Skull,
 	Building2,
 	CheckCircle2,
-	XCircle,
+	Database,
 	MessageSquare,
+	Package,
+	Plus,
+	RefreshCw,
 	Save,
+	Settings,
+	Shield,
+	ShieldAlert,
+	ShieldCheck,
+	Skull,
+	Trash2,
+	TrendingUp,
+	Users,
+	Wallet,
 	X,
+	XCircle,
 } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
+
+import { DirectorList } from '@/components/DirectorList'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -26,17 +32,25 @@ import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { DirectorList } from '@/components/DirectorList'
+import { useBreadcrumb } from '@/hooks/useBreadcrumb'
 import {
 	useCorporation,
+	useCorporationDataSummary,
+	useFetchCorporationData,
 	useUpdateCorporation,
 	useVerifyCorporationAccess,
-	useFetchCorporationData,
-	useCorporationDataSummary,
 } from '@/hooks/useCorporations'
-import { useBreadcrumb } from '@/hooks/useBreadcrumb'
+import {
+	useAssignRoleToCorporationServer,
+	useAttachDiscordServer,
+	useCorporationDiscordServers,
+	useDetachDiscordServer,
+	useDiscordServers,
+	useUnassignRoleFromCorporationServer,
+	useUpdateCorporationDiscordServer,
+} from '@/hooks/useDiscord'
 import { useMessage } from '@/hooks/useMessage'
-import { formatDistanceToNow } from 'date-fns'
+
 import type { UpdateCorporationRequest } from '@/lib/api'
 
 export default function CorporationDetailPage() {
@@ -48,6 +62,15 @@ export default function CorporationDetailPage() {
 	const updateCorporation = useUpdateCorporation()
 	const verifyAccess = useVerifyCorporationAccess()
 	const fetchData = useFetchCorporationData()
+
+	// Discord hooks
+	const { data: discordServers = [] } = useDiscordServers()
+	const { data: corporationDiscordServers = [] } = useCorporationDiscordServers(corpId)
+	const attachServer = useAttachDiscordServer()
+	const detachServer = useDetachDiscordServer()
+	const updateAttachment = useUpdateCorporationDiscordServer()
+	const assignRole = useAssignRoleToCorporationServer()
+	const unassignRole = useUnassignRoleFromCorporationServer()
 
 	// Set breadcrumb
 	const { setCustomLabel, clearCustomLabel } = useBreadcrumb()
@@ -65,36 +88,96 @@ export default function CorporationDetailPage() {
 	// Message handling with automatic cleanup
 	const { message, showSuccess, showError } = useMessage()
 
-	// Form state
-	const [isEditing, setIsEditing] = useState(false)
-	const [formData, setFormData] = useState<UpdateCorporationRequest>({})
+	// Discord UI state
+	const [showAddServerDialog, setShowAddServerDialog] = useState(false)
+	const [selectedServerId, setSelectedServerId] = useState('')
+	const [attachmentSettings, setAttachmentSettings] = useState({
+		autoInvite: false,
+		autoAssignRoles: false,
+	})
 
-	// Initialize form when editing starts
-	useEffect(() => {
-		if (corporation && isEditing) {
-			setFormData({
-				assignedCharacterId: corporation.assignedCharacterId || undefined,
-				assignedCharacterName: corporation.assignedCharacterName || undefined,
-				isActive: corporation.isActive,
-				discordGuildId: corporation.discordGuildId || undefined,
-				discordGuildName: corporation.discordGuildName || undefined,
-				discordAutoInvite: corporation.discordAutoInvite,
-			})
-		} else if (!isEditing) {
-			// Reset form when not editing
-			setFormData({})
-		}
-	}, [corporation, isEditing])
+	// Handlers for Discord servers
+	const handleAttachServer = async () => {
+		if (!selectedServerId) return
 
-	// Handlers
-	const handleUpdate = async (e: React.FormEvent) => {
-		e.preventDefault()
 		try {
-			await updateCorporation.mutateAsync({ corporationId: corpId, data: formData })
-			setIsEditing(false)
-			showSuccess('Corporation updated successfully!')
+			await attachServer.mutateAsync({
+				corporationId: corpId,
+				data: {
+					discordServerId: selectedServerId,
+					autoInvite: attachmentSettings.autoInvite,
+					autoAssignRoles: attachmentSettings.autoAssignRoles,
+				},
+			})
+			setShowAddServerDialog(false)
+			setSelectedServerId('')
+			setAttachmentSettings({ autoInvite: false, autoAssignRoles: false })
+			showSuccess('Discord server attached successfully!')
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to update corporation')
+			showError(error instanceof Error ? error.message : 'Failed to attach Discord server')
+		}
+	}
+
+	const handleDetachServer = async (attachmentId: string) => {
+		try {
+			await detachServer.mutateAsync({ corporationId: corpId, attachmentId })
+			showSuccess('Discord server detached successfully!')
+		} catch (error) {
+			showError(error instanceof Error ? error.message : 'Failed to detach Discord server')
+		}
+	}
+
+	const handleToggleAutoInvite = async (attachmentId: string, currentValue: boolean) => {
+		try {
+			await updateAttachment.mutateAsync({
+				corporationId: corpId,
+				attachmentId,
+				data: { autoInvite: !currentValue },
+			})
+			showSuccess('Auto-invite setting updated!')
+		} catch (error) {
+			showError(error instanceof Error ? error.message : 'Failed to update auto-invite setting')
+		}
+	}
+
+	const handleToggleAutoAssignRoles = async (attachmentId: string, currentValue: boolean) => {
+		try {
+			await updateAttachment.mutateAsync({
+				corporationId: corpId,
+				attachmentId,
+				data: { autoAssignRoles: !currentValue },
+			})
+			showSuccess('Auto-assign roles setting updated!')
+		} catch (error) {
+			showError(
+				error instanceof Error ? error.message : 'Failed to update auto-assign roles setting'
+			)
+		}
+	}
+
+	const handleAssignRole = async (attachmentId: string, discordRoleId: string) => {
+		try {
+			await assignRole.mutateAsync({
+				corporationId: corpId,
+				attachmentId,
+				data: { discordRoleId },
+			})
+			showSuccess('Role assigned successfully!')
+		} catch (error) {
+			showError(error instanceof Error ? error.message : 'Failed to assign role')
+		}
+	}
+
+	const handleUnassignRole = async (attachmentId: string, roleAssignmentId: string) => {
+		try {
+			await unassignRole.mutateAsync({
+				corporationId: corpId,
+				attachmentId,
+				roleAssignmentId,
+			})
+			showSuccess('Role unassigned successfully!')
+		} catch (error) {
+			showError(error instanceof Error ? error.message : 'Failed to unassign role')
 		}
 	}
 
@@ -104,7 +187,9 @@ export default function CorporationDetailPage() {
 			if (result.hasAccess) {
 				showSuccess(`Access verified! Roles: ${result.verifiedRoles.join(', ')}`)
 			} else {
-				showError(`Verification failed. Missing roles: ${result.missingRoles?.join(', ') || 'Unknown'}`)
+				showError(
+					`Verification failed. Missing roles: ${result.missingRoles?.join(', ') || 'Unknown'}`
+				)
 			}
 		} catch (error) {
 			showError(error instanceof Error ? error.message : 'Failed to verify access')
@@ -179,7 +264,9 @@ export default function CorporationDetailPage() {
 			{message && (
 				<Card
 					className={
-						message.type === 'error' ? 'border-destructive bg-destructive/10' : 'border-primary bg-primary/10'
+						message.type === 'error'
+							? 'border-destructive bg-destructive/10'
+							: 'border-primary bg-primary/10'
 					}
 				>
 					<CardContent className="py-3">
@@ -250,7 +337,8 @@ export default function CorporationDetailPage() {
 						<CardHeader>
 							<CardTitle>Directors</CardTitle>
 							<CardDescription>
-								Manage director characters with access to corporation data via ESI. Multiple directors provide automatic failover and load balancing.
+								Manage director characters with access to corporation data via ESI. Multiple
+								directors provide automatic failover and load balancing.
 							</CardDescription>
 						</CardHeader>
 						<CardContent>
@@ -258,134 +346,242 @@ export default function CorporationDetailPage() {
 						</CardContent>
 					</Card>
 
-					{/* Discord Integration Card */}
+					{/* Discord Servers Card */}
 					<Card>
 						<CardHeader>
 							<div className="flex items-center justify-between">
 								<div>
 									<div className="flex items-center gap-2">
 										<MessageSquare className="h-5 w-5 text-[hsl(var(--discord-blurple))]" />
-										<CardTitle>Discord Integration</CardTitle>
+										<CardTitle>Discord Servers</CardTitle>
 									</div>
 									<CardDescription>
-										Configure Discord server auto-invite for corporation members. When enabled, users with linked Discord accounts will automatically be invited to join the corporation's Discord server.
+										Attach Discord servers from the registry to enable auto-invite for corporation
+										members. Each server can be configured independently with role assignments.
 									</CardDescription>
 								</div>
-								{!isEditing && (
-									<Button onClick={() => setIsEditing(true)} variant="outline" size="sm">
-										Edit
-									</Button>
-								)}
+								<Button
+									onClick={() => setShowAddServerDialog(true)}
+									disabled={discordServers.length === 0}
+									size="sm"
+								>
+									<Plus className="mr-2 h-4 w-4" />
+									Attach Server
+								</Button>
 							</div>
 						</CardHeader>
 						<CardContent>
-							{isEditing ? (
-								<form onSubmit={handleUpdate} className="space-y-4">
-									<div className="space-y-2">
-										<Label htmlFor="discordGuildId">Discord Server/Guild ID</Label>
-										<Input
-											id="discordGuildId"
-											type="text"
-											placeholder="e.g., 1234567890123456789"
-											value={formData.discordGuildId || ''}
-											onChange={(e) =>
-												setFormData({ ...formData, discordGuildId: e.target.value || null })
-											}
-										/>
-										<p className="text-xs text-muted-foreground">
-											Right-click the server in Discord → Copy Server ID (requires Developer Mode enabled)
-										</p>
-									</div>
-
-									<div className="space-y-2">
-										<Label htmlFor="discordGuildName">Discord Server Name (Optional)</Label>
-										<Input
-											id="discordGuildName"
-											type="text"
-											placeholder="e.g., My Corporation Server"
-											value={formData.discordGuildName || ''}
-											onChange={(e) =>
-												setFormData({ ...formData, discordGuildName: e.target.value || null })
-											}
-										/>
-										<p className="text-xs text-muted-foreground">
-											Display name for the Discord server (shown to users)
-										</p>
-									</div>
-
-									<div className="flex items-center space-x-2">
-										<Switch
-											id="discordAutoInvite"
-											checked={formData.discordAutoInvite || false}
-											onCheckedChange={(checked: boolean) =>
-												setFormData({ ...formData, discordAutoInvite: checked })
-											}
-										/>
-										<Label htmlFor="discordAutoInvite" className="cursor-pointer">
-											Enable Auto-Invite
-										</Label>
-									</div>
-									<p className="text-xs text-muted-foreground">
-										When enabled, corporation members with linked Discord accounts can automatically join the server
+							{corporationDiscordServers.length === 0 ? (
+								<div className="text-center py-8">
+									<MessageSquare className="mx-auto h-12 w-12 text-muted-foreground" />
+									<h3 className="mt-4 text-sm font-medium">No Discord servers attached</h3>
+									<p className="text-sm text-muted-foreground mt-2">
+										Attach a Discord server from the registry to enable auto-invite
 									</p>
-
-									<div className="flex gap-2 pt-2">
-										<Button type="submit" disabled={updateCorporation.isPending}>
-											<Save className="mr-2 h-4 w-4" />
-											{updateCorporation.isPending ? 'Saving...' : 'Save Changes'}
-										</Button>
-										<Button
-											type="button"
-											variant="outline"
-											onClick={() => setIsEditing(false)}
-											disabled={updateCorporation.isPending}
-										>
-											<X className="mr-2 h-4 w-4" />
-											Cancel
-										</Button>
-									</div>
-								</form>
+									{discordServers.length === 0 && (
+										<p className="text-xs text-muted-foreground mt-2">
+											<Link to="/admin/discord-servers" className="text-primary hover:underline">
+												Add servers to the registry first
+											</Link>
+										</p>
+									)}
+								</div>
 							) : (
 								<div className="space-y-4">
-									<div className="grid gap-4 md:grid-cols-2">
-										<div>
-											<p className="text-sm font-medium text-muted-foreground">Discord Server ID</p>
-											<p className="text-sm">
-												{corporation.discordGuildId || (
-													<span className="text-muted-foreground italic">Not configured</span>
+									{corporationDiscordServers.map((attachment) => (
+										<div key={attachment.id} className="rounded-lg border p-4 space-y-3">
+											<div className="flex items-start justify-between">
+												<div>
+													<h4 className="font-medium">{attachment.discordServer?.guildName}</h4>
+													<p className="text-xs text-muted-foreground">
+														ID: {attachment.discordServer?.guildId}
+													</p>
+													{attachment.discordServer?.description && (
+														<p className="text-sm text-muted-foreground mt-1">
+															{attachment.discordServer.description}
+														</p>
+													)}
+												</div>
+												<Button
+													variant="ghost"
+													size="sm"
+													onClick={() => handleDetachServer(attachment.id)}
+												>
+													<Trash2 className="h-4 w-4 text-destructive" />
+												</Button>
+											</div>
+
+											<div className="flex gap-4">
+												<div className="flex items-center space-x-2">
+													<Switch
+														id={`auto-invite-${attachment.id}`}
+														checked={attachment.autoInvite}
+														onCheckedChange={() =>
+															handleToggleAutoInvite(attachment.id, attachment.autoInvite)
+														}
+													/>
+													<Label
+														htmlFor={`auto-invite-${attachment.id}`}
+														className="cursor-pointer"
+													>
+														Auto-Invite
+													</Label>
+												</div>
+
+												<div className="flex items-center space-x-2">
+													<Switch
+														id={`auto-assign-${attachment.id}`}
+														checked={attachment.autoAssignRoles}
+														onCheckedChange={() =>
+															handleToggleAutoAssignRoles(attachment.id, attachment.autoAssignRoles)
+														}
+													/>
+													<Label
+														htmlFor={`auto-assign-${attachment.id}`}
+														className="cursor-pointer"
+													>
+														Auto-Assign Roles
+													</Label>
+												</div>
+											</div>
+
+											{/* Role Management */}
+											{attachment.discordServer?.roles &&
+												attachment.discordServer.roles.length > 0 && (
+													<div className="space-y-2">
+														<p className="text-sm font-medium">Assigned Roles</p>
+														<div className="flex flex-wrap gap-2">
+															{attachment.roles?.map((roleAssignment) => (
+																<div
+																	key={roleAssignment.id}
+																	className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-primary/10 text-sm"
+																>
+																	<span>{roleAssignment.discordRole.roleName}</span>
+																	<button
+																		onClick={() =>
+																			handleUnassignRole(attachment.id, roleAssignment.id)
+																		}
+																		className="ml-1 hover:text-destructive"
+																	>
+																		<X className="h-3 w-3" />
+																	</button>
+																</div>
+															))}
+														</div>
+
+														{/* Role Selection */}
+														{attachment.discordServer.roles.filter(
+															(role) =>
+																!attachment.roles?.some(
+																	(ra) => ra.discordRole.roleId === role.roleId
+																)
+														).length > 0 && (
+															<div className="flex gap-2 items-center">
+																<select
+																	className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors"
+																	onChange={(e) => {
+																		if (e.target.value) {
+																			handleAssignRole(attachment.id, e.target.value)
+																			e.target.value = ''
+																		}
+																	}}
+																	defaultValue=""
+																>
+																	<option value="" disabled>
+																		Add role...
+																	</option>
+																	{attachment.discordServer.roles
+																		.filter(
+																			(role) =>
+																				!attachment.roles?.some(
+																					(ra) => ra.discordRole.roleId === role.roleId
+																				)
+																		)
+																		.map((role) => (
+																			<option key={role.id} value={role.id}>
+																				{role.roleName}
+																			</option>
+																		))}
+																</select>
+															</div>
+														)}
+													</div>
 												)}
-											</p>
 										</div>
-										<div>
-											<p className="text-sm font-medium text-muted-foreground">Server Name</p>
-											<p className="text-sm">
-												{corporation.discordGuildName || (
-													<span className="text-muted-foreground italic">Not set</span>
-												)}
-											</p>
+									))}
+								</div>
+							)}
+
+							{/* Add Server Dialog */}
+							{showAddServerDialog && (
+								<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+									<div className="bg-background rounded-lg p-6 max-w-md w-full space-y-4">
+										<h3 className="text-lg font-medium">Attach Discord Server</h3>
+										<div className="space-y-2">
+											<Label htmlFor="discord-server">Select Server</Label>
+											<select
+												id="discord-server"
+												className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors"
+												value={selectedServerId}
+												onChange={(e) => setSelectedServerId(e.target.value)}
+											>
+												<option value="">Choose a server...</option>
+												{discordServers
+													.filter(
+														(server) =>
+															!corporationDiscordServers.some(
+																(att) => att.discordServerId === server.id
+															)
+													)
+													.map((server) => (
+														<option key={server.id} value={server.id}>
+															{server.guildName}
+														</option>
+													))}
+											</select>
+										</div>
+
+										<div className="space-y-3">
+											<div className="flex items-center space-x-2">
+												<Switch
+													id="attach-auto-invite"
+													checked={attachmentSettings.autoInvite}
+													onCheckedChange={(checked) =>
+														setAttachmentSettings({ ...attachmentSettings, autoInvite: checked })
+													}
+												/>
+												<Label htmlFor="attach-auto-invite" className="cursor-pointer">
+													Enable Auto-Invite
+												</Label>
+											</div>
+
+											<div className="flex items-center space-x-2">
+												<Switch
+													id="attach-auto-assign"
+													checked={attachmentSettings.autoAssignRoles}
+													onCheckedChange={(checked) =>
+														setAttachmentSettings({
+															...attachmentSettings,
+															autoAssignRoles: checked,
+														})
+													}
+												/>
+												<Label htmlFor="attach-auto-assign" className="cursor-pointer">
+													Auto-Assign Roles
+												</Label>
+											</div>
+										</div>
+
+										<div className="flex gap-2 pt-2">
+											<Button onClick={handleAttachServer} disabled={!selectedServerId}>
+												<Plus className="mr-2 h-4 w-4" />
+												Attach
+											</Button>
+											<Button variant="outline" onClick={() => setShowAddServerDialog(false)}>
+												Cancel
+											</Button>
 										</div>
 									</div>
-									<div className="flex items-center gap-2">
-										<p className="text-sm font-medium text-muted-foreground">Auto-Invite:</p>
-										{corporation.discordAutoInvite ? (
-											<span className="inline-flex items-center gap-1 text-sm text-green-600 dark:text-green-400">
-												<CheckCircle2 className="h-4 w-4" />
-												Enabled
-											</span>
-										) : (
-											<span className="inline-flex items-center gap-1 text-sm text-muted-foreground">
-												<XCircle className="h-4 w-4" />
-												Disabled
-											</span>
-										)}
-									</div>
-									{corporation.discordGuildId && corporation.discordAutoInvite && (
-										<div className="rounded-lg bg-muted/50 p-3">
-											<p className="text-sm text-muted-foreground">
-												<strong>Note:</strong> The Discord bot must be added to this server with the "guilds.join" scope and "Create Instant Invite" permission for auto-invite to work.
-											</p>
-										</div>
-									)}
 								</div>
 							)}
 						</CardContent>

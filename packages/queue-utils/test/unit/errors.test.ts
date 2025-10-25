@@ -1,15 +1,16 @@
 import { describe, expect, it } from 'vitest'
+
 import {
-	QueueError,
-	MessageValidationError,
-	RetryableError,
-	FatalError,
-	isRetryable,
-	isFatal,
 	classifyError,
-	getRetryDelay,
-	createRetryableError,
 	createFatalError,
+	createRetryableError,
+	FatalError,
+	getRetryDelay,
+	isFatal,
+	isRetryable,
+	MessageValidationError,
+	QueueError,
+	RetryableError,
 	wrapError,
 } from '../../src/errors'
 

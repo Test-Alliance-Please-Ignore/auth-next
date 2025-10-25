@@ -57,7 +57,8 @@ function getAuthHeader(input: RequestInfo | URL, init?: RequestInit): string | n
  * // Returns: "GET:https://api.example.com/users"
  */
 export function defaultKeyGenerator(input: RequestInfo | URL, init?: RequestInit): string {
-	const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+	const url =
+		typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
 	const method = init?.method?.toUpperCase() || 'GET'
 	return `${method}:${url}`
 }
@@ -82,10 +83,7 @@ export function defaultKeyGenerator(input: RequestInfo | URL, init?: RequestInit
  * })
  * // Returns: "GET:https://api.example.com/profile:a1b2c3d4..."
  */
-export function defaultAuthAwareKeyGenerator(
-	input: RequestInfo | URL,
-	init?: RequestInit
-): string {
+export function defaultAuthAwareKeyGenerator(input: RequestInfo | URL, init?: RequestInit): string {
 	const baseKey = defaultKeyGenerator(input, init)
 	const authHeader = getAuthHeader(input, init)
 
@@ -176,10 +174,7 @@ export function bodyAwareKeyGenerator(input: RequestInfo | URL, init?: RequestIn
  * })
  * // Returns: "POST:https://api.example.com/search:a1b2c3d4...:{"query":"test"}"
  */
-export function bodyAndAuthAwareKeyGenerator(
-	input: RequestInfo | URL,
-	init?: RequestInit
-): string {
+export function bodyAndAuthAwareKeyGenerator(input: RequestInfo | URL, init?: RequestInit): string {
 	const baseKey = defaultKeyGenerator(input, init)
 	const authHeader = getAuthHeader(input, init)
 	const method = init?.method?.toUpperCase() || 'GET'

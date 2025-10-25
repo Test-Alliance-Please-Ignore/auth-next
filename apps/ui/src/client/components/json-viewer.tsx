@@ -1,5 +1,6 @@
-import { useState } from 'react'
 import { ChevronDown, ChevronRight, Copy } from 'lucide-react'
+import { useState } from 'react'
+
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -9,7 +10,11 @@ interface JsonViewerProps {
 	maxHeight?: string
 }
 
-export function JsonViewer({ data, defaultExpanded = false, maxHeight = '400px' }: JsonViewerProps) {
+export function JsonViewer({
+	data,
+	defaultExpanded = false,
+	maxHeight = '400px',
+}: JsonViewerProps) {
 	const [copied, setCopied] = useState(false)
 
 	const handleCopy = () => {

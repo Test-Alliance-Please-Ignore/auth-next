@@ -1,7 +1,9 @@
-import { Users, UserCog } from 'lucide-react'
+import { UserCog, Users } from 'lucide-react'
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { VisibilityBadge } from './visibility-badge'
+
 import { JoinModeBadge } from './join-mode-badge'
+import { VisibilityBadge } from './visibility-badge'
 
 import type { GroupWithDetails } from '@/lib/api'
 
@@ -25,9 +27,7 @@ export function GroupCard({ group }: GroupCardProps) {
 				</div>
 			</CardHeader>
 			<CardContent className="space-y-4">
-				{group.description && (
-					<p className="text-sm text-muted-foreground">{group.description}</p>
-				)}
+				{group.description && <p className="text-sm text-muted-foreground">{group.description}</p>}
 
 				<div className="flex gap-6 text-sm">
 					<div className="flex items-center gap-2">

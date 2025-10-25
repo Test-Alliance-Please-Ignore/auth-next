@@ -8,12 +8,15 @@
 import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
 
+import { createDbClient, eq } from '@repo/db-utils'
+
+import * as schema from '../../db/schema'
 import worker from '../../index'
+
+import type { DbClient } from '@repo/db-utils'
 import type { Env } from '../../context'
 
 // Import core schema for test helpers
-import { createDbClient, eq, type DbClient } from '@repo/db-utils'
-import * as schema from '../../db/schema'
 
 // Cast env to have correct types
 const testEnv = env as unknown as Env

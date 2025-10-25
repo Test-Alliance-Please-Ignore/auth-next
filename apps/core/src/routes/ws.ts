@@ -1,7 +1,8 @@
 import { Hono } from 'hono'
-import { getStub } from '@repo/do-utils'
-import type { Notifications } from '@repo/notifications'
 
+import { getStub } from '@repo/do-utils'
+
+import type { Notifications } from '@repo/notifications'
 import type { App } from '../context'
 
 const ws = new Hono<App>()

@@ -1,6 +1,8 @@
+import { AlertCircle, CheckCircle, Clock } from 'lucide-react'
 import { memo } from 'react'
-import { CheckCircle, AlertCircle, Clock } from 'lucide-react'
+
 import { Badge } from '@/components/ui/badge'
+
 import type { DirectorHealth } from '@/lib/api'
 
 interface DirectorStatusBadgeProps {
@@ -10,7 +12,7 @@ interface DirectorStatusBadgeProps {
 
 export const DirectorStatusBadge = memo(function DirectorStatusBadge({
 	director,
-	showFailureCount = true
+	showFailureCount = true,
 }: DirectorStatusBadgeProps) {
 	const { isHealthy, failureCount, lastHealthCheck } = director
 
