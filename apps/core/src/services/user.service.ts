@@ -55,13 +55,14 @@ export class UserService {
 			throw new Error('Failed to create user')
 		}
 
-		// Link character as primary
+		// Link character as primary (token is valid since this is called from auth flow)
 		await this.db.insert(userCharacters).values({
 			userId: user.id,
 			characterOwnerHash,
 			characterId,
 			characterName,
 			is_primary: true,
+			hasValidToken: true,
 		})
 
 		// Create default preferences
@@ -119,6 +120,7 @@ export class UserService {
 						characterId: true,
 						characterName: true,
 						is_primary: true,
+						hasValidToken: true,
 						linkedAt: true,
 					},
 				},
@@ -136,6 +138,7 @@ export class UserService {
 			characterId: char.characterId,
 			characterName: char.characterName,
 			is_primary: char.is_primary,
+			hasValidToken: char.hasValidToken ?? false,
 			linkedAt: char.linkedAt,
 		}))
 
@@ -181,6 +184,7 @@ export class UserService {
 					.set({
 						characterOwnerHash,
 						characterName,
+						hasValidToken: true,
 						updatedAt: new Date(),
 					})
 					.where(eq(userCharacters.id, existingCharacter.id))
@@ -192,6 +196,7 @@ export class UserService {
 					characterId: updatedCharacter.characterId,
 					characterName: updatedCharacter.characterName,
 					is_primary: updatedCharacter.is_primary,
+					hasValidToken: updatedCharacter.hasValidToken ?? false,
 					linkedAt: updatedCharacter.linkedAt,
 				}
 			}
@@ -200,7 +205,7 @@ export class UserService {
 			throw new Error('Character is already linked to a different user')
 		}
 
-		// Link character (not as primary)
+		// Link character (not as primary, but token is valid since this is from auth flow)
 		const [linkedCharacter] = await this.db
 			.insert(userCharacters)
 			.values({
@@ -209,6 +214,7 @@ export class UserService {
 				characterId,
 				characterName,
 				is_primary: false,
+				hasValidToken: true,
 			})
 			.returning()
 
@@ -222,6 +228,7 @@ export class UserService {
 			characterId: linkedCharacter.characterId,
 			characterName: linkedCharacter.characterName,
 			is_primary: linkedCharacter.is_primary,
+			hasValidToken: linkedCharacter.hasValidToken ?? false,
 			linkedAt: linkedCharacter.linkedAt,
 		}
 	}

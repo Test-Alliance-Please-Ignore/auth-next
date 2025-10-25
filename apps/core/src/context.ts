@@ -39,6 +39,7 @@ export interface SessionUser {
 		characterId: string
 		characterName: string
 		is_primary: boolean
+		hasValidToken: boolean
 	}>
 	is_admin: boolean
 	/** Discord profile (if linked) */

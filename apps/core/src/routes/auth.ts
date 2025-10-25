@@ -7,7 +7,7 @@ import type { EveTokenStore } from '@repo/eve-token-store'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 
 import { createDb } from '../db'
-import { oauthStates } from '../db/schema'
+import { oauthStates, userCharacters } from '../db/schema'
 import { requireAuth } from '../middleware/session'
 import { ActivityService } from '../services/activity.service'
 import { AuthService } from '../services/auth.service'
@@ -182,6 +182,12 @@ auth.get('/callback', async (c) => {
 			characterName: characterInfo.characterName,
 		})
 
+		// Update token validity cache (token was just received from SSO)
+		await db
+			.update(userCharacters)
+			.set({ hasValidToken: true })
+			.where(eq(userCharacters.characterId, characterId))
+
 		await activityService.logCharacterLinked(stateUserId, characterId, getRequestMetadata(c))
 
 		// Auto-register corporation if character is a director
@@ -218,6 +224,12 @@ auth.get('/callback', async (c) => {
 			characterId,
 			metadata: getRequestMetadata(c),
 		})
+
+		// Update token validity cache (token was just refreshed from SSO)
+		await db
+			.update(userCharacters)
+			.set({ hasValidToken: true })
+			.where(eq(userCharacters.characterId, characterId))
 
 		await activityService.logLogin(user.id, characterId, getRequestMetadata(c))
 
@@ -295,6 +307,12 @@ auth.post('/claim-main', async (c) => {
 		characterId: tokenInfo.characterId,
 		characterName: tokenInfo.characterName,
 	})
+
+	// Update token validity cache (token was just received from SSO)
+	await db
+		.update(userCharacters)
+		.set({ hasValidToken: true })
+		.where(eq(userCharacters.characterId, tokenInfo.characterId))
 
 	// Create session
 	const session = await authService.createSession({

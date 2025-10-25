@@ -8,6 +8,7 @@ export interface User {
 	characters: Array<{
 		characterId: string
 		characterName: string
+		hasValidToken: boolean
 	}>
 	is_admin: boolean
 	discord?: {

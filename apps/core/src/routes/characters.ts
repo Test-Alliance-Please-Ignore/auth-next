@@ -273,6 +273,20 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 			logger.error('Full error:', error)
 		}
 
+		// Cache the token validity status in the database
+		const db = c.get('db')
+		if (db) {
+			try {
+				await db
+					.update(userCharacters)
+					.set({ hasValidToken })
+					.where(eq(userCharacters.characterId, characterIdStr))
+			} catch (error) {
+				logger.error('Failed to update token validity cache:', error)
+				// Don't fail the request if cache update fails
+			}
+		}
+
 		// Get the updated data
 		let lastUpdated: string | null = null
 		try {

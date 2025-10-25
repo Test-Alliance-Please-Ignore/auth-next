@@ -43,7 +43,7 @@ const userCharacters = pgTable('user_characters', {
 		.notNull()
 		.references(() => users.id, { onDelete: 'cascade' }),
 	characterOwnerHash: varchar('character_owner_hash', { length: 255 }).notNull(),
-	characterId: text('main_character_id').notNull().unique(),
+	characterId: text('character_id').notNull().unique(),
 	characterName: varchar('character_name', { length: 255 }).notNull(),
 	is_primary: boolean('is_primary').default(false).notNull(),
 	linkedAt: timestamp('linked_at').defaultNow().notNull(),

@@ -57,6 +57,8 @@ export const userCharacters = pgTable(
 		characterName: varchar('character_name', { length: 255 }).notNull(),
 		/** Whether this is the user's primary character */
 		is_primary: boolean('is_primary').default(false).notNull(),
+		/** Cached token validity status (NULL = unknown, true = valid, false = invalid/expired) */
+		hasValidToken: boolean('has_valid_token'),
 		linkedAt: timestamp('linked_at').defaultNow().notNull(),
 		updatedAt: timestamp('updated_at').defaultNow().notNull(),
 	},

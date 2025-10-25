@@ -99,6 +99,7 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 					characterId: char.characterId,
 					characterName: char.characterName,
 					is_primary: char.is_primary,
+					hasValidToken: char.hasValidToken,
 				})),
 				is_admin: userProfile.is_admin,
 				discord: discordProfile,

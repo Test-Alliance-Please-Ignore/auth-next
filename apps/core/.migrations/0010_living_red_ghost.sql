@@ -1,0 +1,1 @@
+ALTER TABLE "user_characters" ADD COLUMN "has_valid_token" boolean;

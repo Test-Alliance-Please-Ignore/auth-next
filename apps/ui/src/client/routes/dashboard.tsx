@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import { DiscordCard } from '@/components/discord-card'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
@@ -216,11 +217,22 @@ export default function DashboardPage() {
 													<h3 className="font-semibold truncate group-hover:text-primary transition-colors">
 														{character.characterName}
 													</h3>
-													{character.characterId === user.mainCharacterId && (
-														<span className="text-xs text-primary bg-primary/10 px-2 py-0.5 rounded">
-															Main
-														</span>
-													)}
+													<div className="flex items-center gap-2 mt-1">
+														{character.characterId === user.mainCharacterId && (
+															<Badge variant="default" className="text-xs bg-primary/20 text-primary">
+																Main
+															</Badge>
+														)}
+														{character.hasValidToken ? (
+															<Badge variant="default" className="text-xs bg-green-500/20 text-green-500">
+																Valid
+															</Badge>
+														) : (
+															<Badge variant="default" className="text-xs bg-red-500/20 text-red-500">
+																Please refresh
+															</Badge>
+														)}
+													</div>
 												</div>
 											</div>
 										</Link>

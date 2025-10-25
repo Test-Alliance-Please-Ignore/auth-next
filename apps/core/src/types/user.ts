@@ -31,6 +31,7 @@ export interface UserCharacterDTO {
 	characterId: string
 	characterName: string
 	is_primary: boolean
+	hasValidToken: boolean
 	linkedAt: Date
 }
 
