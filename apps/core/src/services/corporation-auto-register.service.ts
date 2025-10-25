@@ -31,9 +31,15 @@ export async function autoRegisterDirectorCorporation(
 	characterName: string,
 	userId: string,
 	db: ReturnType<typeof createDb>,
-	tokenStore: EveTokenStore,
+	eveTokenStoreNamespace: DurableObjectNamespace,
 	eveCorporationDataNamespace: DurableObjectNamespace
 ): Promise<AutoRegistrationResult> {
+	// Ensure characterId is a string (it might be passed as a number from some call sites)
+	characterId = String(characterId)
+
+	// Create token store stub inside the function to avoid serialization issues
+	const tokenStore: EveTokenStore = getStub<EveTokenStore>(eveTokenStoreNamespace, 'default')
+
 	try {
 		logger.info('[AutoReg] Checking if character is a director', {
 			characterId,
@@ -116,7 +122,7 @@ export async function autoRegisterDirectorCorporation(
 				name: string
 			}>(`/characters/${characterId}/`)
 
-			// ESI returns numbers, convert to string
+			// ESI returns numbers, convert to string (and ensure it stays a string)
 			corporationId = String(characterInfo.data.corporation_id)
 
 			logger.info('[AutoReg] Got character corporation', {
@@ -220,26 +226,46 @@ export async function autoRegisterDirectorCorporation(
 
 		// Step 8: Add character as director via eve-corporation-data DO
 		try {
+			logger.info('[AutoReg] Getting DO stub for corporation', {
+				corporationId,
+				characterId,
+			})
+
 			const stub = getStub<EveCorporationData>(
 				eveCorporationDataNamespace,
 				corporationId
 			)
 
-			// This will silently succeed if director already exists (uses ON CONFLICT DO NOTHING)
-			await stub.addDirector(corporationId, characterId, characterName, 100)
-
-			logger.info('[AutoReg] Added character as director', {
+			logger.info('[AutoReg] Calling addDirector on DO stub', {
 				corporationId,
 				characterId,
 				characterName,
+				priority: 100,
+			})
+
+			// This will silently succeed if director already exists (uses ON CONFLICT DO NOTHING)
+			// Ensure all parameters are primitive types to avoid serialization issues
+			const result = await stub.addDirector(
+				String(corporationId),
+				String(characterId),
+				String(characterName),
+				100
+			)
+
+			logger.info('[AutoReg] Successfully called addDirector', {
+				corporationId,
+				characterId,
+				characterName,
+				result: result ? 'success' : 'no result',
 			})
 
 			// Step 9: Trigger director verification (fire and forget)
 			stub.verifyAllDirectorsHealth(corporationId).catch((error: unknown) => {
+				const errMsg = error instanceof Error ? error.message : String(error)
 				logger.error('[AutoReg] Failed to verify director health (async)', {
 					corporationId,
 					characterId,
-					error: error instanceof Error ? error.message : String(error),
+					errorMessage: errMsg,
 				})
 			})
 
@@ -258,16 +284,19 @@ export async function autoRegisterDirectorCorporation(
 				},
 			}
 		} catch (error) {
-			// If there's an unexpected error, log it
-			// Extract only serializable properties from error
-			const errorInfo = error instanceof Error
-				? { message: error.message, name: error.name }
-				: { message: String(error) }
+			// If there's an unexpected error, log it with full details
+			// Convert to strings to avoid serialization issues with RpcPromise
+			const errorMessage = error instanceof Error ? error.message : String(error)
+			const errorName = error instanceof Error ? error.name : 'Unknown'
+			const errorStack = error instanceof Error ? error.stack?.substring(0, 500) : undefined
 
 			logger.error('[AutoReg] Failed to add director', {
-				corporationId,
-				characterId,
-				error: errorInfo,
+				corporationId: String(corporationId),
+				characterId: String(characterId),
+				characterName: String(characterName),
+				errorMessage: String(errorMessage),
+				errorName: String(errorName),
+				errorStack: errorStack ? String(errorStack) : undefined,
 			})
 
 			// Still return success if corporation was registered
@@ -285,14 +314,16 @@ export async function autoRegisterDirectorCorporation(
 			}
 		}
 	} catch (error) {
-		// Extract only serializable properties from error
-		const errorInfo = error instanceof Error
-			? { message: error.message, name: error.name, stack: error.stack }
-			: { message: String(error) }
+		// Convert to string to avoid serialization issues with RpcPromise
+		const errorMessage = error instanceof Error ? error.message : String(error)
+		const errorName = error instanceof Error ? error.name : 'Unknown'
+		const errorStack = error instanceof Error ? error.stack : undefined
 
 		logger.error('[AutoReg] Unexpected error during auto-registration', {
 			characterId,
-			error: errorInfo,
+			errorMessage,
+			errorName,
+			errorStack,
 		})
 
 		return {

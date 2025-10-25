@@ -198,8 +198,8 @@ auth.get('/callback', async (c) => {
 				characterInfo.characterName,
 				stateUserId,
 				db,
-				eveTokenStoreStub,
-				getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, 'default')
+				c.env.EVE_TOKEN_STORE,
+				c.env.EVE_CORPORATION_DATA
 			)
 		} catch (error) {
 			// Don't fail character linking if auto-registration fails
@@ -241,8 +241,8 @@ auth.get('/callback', async (c) => {
 				characterInfo.characterName,
 				user.id,
 				db,
-				eveTokenStoreStub,
-				getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, 'default')
+				c.env.EVE_TOKEN_STORE,
+				c.env.EVE_CORPORATION_DATA
 			)
 		} catch (error) {
 			// Don't fail login if auto-registration fails
@@ -331,8 +331,8 @@ auth.post('/claim-main', async (c) => {
 			tokenInfo.characterName,
 			user.id,
 			db,
-			eveTokenStoreStub,
-			getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, 'default')
+			c.env.EVE_TOKEN_STORE,
+			c.env.EVE_CORPORATION_DATA
 		)
 	} catch (error) {
 		// Don't fail user creation if auto-registration fails

@@ -301,7 +301,9 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 * Add a new director character for this corporation
 	 */
 	async addDirector(corporationId: string, characterId: string, characterName: string, priority = 100): Promise<void> {
-		const config = await this.db.query.corporationConfig.findFirst()
+		const config = await this.db.query.corporationConfig.findFirst({
+			where: eq(corporationConfig.corporationId, corporationId),
+		})
 
 		if (!config) {
 			// Create config if it doesn't exist
