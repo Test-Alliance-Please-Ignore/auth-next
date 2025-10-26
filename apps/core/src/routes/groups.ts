@@ -586,7 +586,7 @@ groups.post('/:groupId/admins', requireAuth(), requireAdmin(), async (c) => {
 	}
 
 	try {
-		await groupsDO.addAdmin(groupId, user.id, body.userId)
+		await groupsDO.addAdmin(groupId, user.id, body.userId, user.is_admin)
 		return c.json({ success: true }, 200)
 	} catch (error) {
 		if (error instanceof Error) {
@@ -611,7 +611,7 @@ groups.delete('/:groupId/admins/:userId', requireAuth(), requireAdmin(), async (
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
-		await groupsDO.removeAdmin(groupId, user.id, targetUserId)
+		await groupsDO.removeAdmin(groupId, user.id, targetUserId, user.is_admin)
 		return c.json({ success: true }, 200)
 	} catch (error) {
 		if (error instanceof Error) {

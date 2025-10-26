@@ -478,10 +478,16 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 		const oldOwnerId = group.ownerId
 
+		// Remove new owner from admins list (owners don't need to be in admins table)
+		await this.db
+			.delete(groupAdmins)
+			.where(and(eq(groupAdmins.groupId, groupId), eq(groupAdmins.userId, newOwnerId)))
+
 		// Update group ownership
 		await this.db.update(groups).set({ ownerId: newOwnerId }).where(eq(groups.id, groupId))
 
-		// Add old owner as admin (if not already)
+		// Always add old owner as admin after ownership transfer
+		// Check if they're already in the admins table (edge case: they might have been added manually before transfer)
 		const isAlreadyAdmin = await this.isUserGroupAdmin(groupId, oldOwnerId)
 		if (!isAlreadyAdmin) {
 			await this.db.insert(groupAdmins).values({
@@ -489,11 +495,6 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 				userId: oldOwnerId,
 			})
 		}
-
-		// Remove new owner from admins list (owners don't need to be in admins table)
-		await this.db
-			.delete(groupAdmins)
-			.where(and(eq(groupAdmins.groupId, groupId), eq(groupAdmins.userId, newOwnerId)))
 	}
 
 	/**
@@ -675,7 +676,12 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	 * ============================================
 	 */
 
-	async addAdmin(groupId: string, ownerId: string, targetUserId: string): Promise<void> {
+	async addAdmin(
+		groupId: string,
+		ownerId: string,
+		targetUserId: string,
+		isGlobalAdmin: boolean = false
+	): Promise<void> {
 		const group = await this.db.query.groups.findFirst({
 			where: eq(groups.id, groupId),
 		})
@@ -684,8 +690,8 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Group not found')
 		}
 
-		if (!canManageGroup(group, ownerId)) {
-			throw new Error('Only the group owner can add admins')
+		if (!canManageGroup(group, ownerId, isGlobalAdmin)) {
+			throw new Error('Only the group owner or site admins can add admins')
 		}
 
 		// Target must be a member
@@ -694,10 +700,10 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('User must be a group member to become an admin')
 		}
 
-		// Check if already an admin
+		// Check if already an admin - if so, operation is idempotent (just return success)
 		const isAlreadyAdmin = await this.isUserGroupAdmin(groupId, targetUserId)
 		if (isAlreadyAdmin) {
-			throw new Error('User is already an admin')
+			return // Already an admin, nothing to do
 		}
 
 		// Add as admin
@@ -707,7 +713,12 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		})
 	}
 
-	async removeAdmin(groupId: string, ownerId: string, targetUserId: string): Promise<void> {
+	async removeAdmin(
+		groupId: string,
+		ownerId: string,
+		targetUserId: string,
+		isGlobalAdmin: boolean = false
+	): Promise<void> {
 		const group = await this.db.query.groups.findFirst({
 			where: eq(groups.id, groupId),
 		})
@@ -716,8 +727,8 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Group not found')
 		}
 
-		if (!canManageGroup(group, ownerId)) {
-			throw new Error('Only the group owner can remove admins')
+		if (!canManageGroup(group, ownerId, isGlobalAdmin)) {
+			throw new Error('Only the group owner or site admins can remove admins')
 		}
 
 		await this.db
