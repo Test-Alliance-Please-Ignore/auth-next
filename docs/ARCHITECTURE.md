@@ -1,6 +1,6 @@
 # Architecture Documentation
 
-This document describes the major architectural decisions, patterns, and design principles used throughout the Next Auth monorepo.
+This document describes the major architectural decisions, patterns, and design principles used throughout the TAPI Workers monorepo.
 
 ---
 
@@ -12,10 +12,12 @@ This document describes the major architectural decisions, patterns, and design 
 4. [Worker Architecture](#worker-architecture)
 5. [Database Architecture](#database-architecture)
 6. [Security Architecture](#security-architecture)
-7. [Notable Implementations](#notable-implementations)
-8. [Testing Strategy](#testing-strategy)
-9. [Performance Considerations](#performance-considerations)
-10. [Migration Paths](#migration-paths)
+7. [Queue-Based Processing](#queue-based-processing)
+8. [RPC Worker Pattern](#rpc-worker-pattern)
+9. [Notable Implementations](#notable-implementations)
+10. [Testing Strategy](#testing-strategy)
+11. [Performance Considerations](#performance-considerations)
+12. [Migration Paths](#migration-paths)
 
 ---
 
@@ -24,42 +26,75 @@ This document describes the major architectural decisions, patterns, and design 
 ### System Design
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        User Requests                         │
-└──────────────────────────┬──────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    Cloudflare Edge                           │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐   │
-│  │   Core   │  │ Discord  │  │  Groups  │  │    UI    │   │
-│  │  Worker  │  │  Worker  │  │  Worker  │  │  Worker  │   │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘   │
-│       │             │              │              │          │
-└───────┼─────────────┼──────────────┼──────────────┼─────────┘
-        │             │              │              │
-        ▼             ▼              ▼              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   Durable Objects Layer                      │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │ EveTokenStore│  │   Discord    │  │    Groups    │      │
-│  │      DO      │  │      DO      │  │      DO      │      │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘      │
-│         │                  │                  │               │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │EveCharacter  │  │EveCorporation│  │Notifications │      │
-│  │   Data DO    │  │   Data DO    │  │      DO      │      │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘      │
-└─────────┼──────────────────┼──────────────────┼──────────────┘
-          │                  │                  │
-          ▼                  ▼                  ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    Storage Layer                             │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │  PostgreSQL  │  │  Workers KV  │  │      R2      │      │
-│  │    (Neon)    │  │   (Cache)    │  │   (Future)   │      │
-│  └──────────────┘  └──────────────┘  └──────────────┘      │
-└─────────────────────────────────────────────────────────────┘
+                           User Requests
+                                 │
+                                 ▼
+┌────────────────────────────────────────────────────────────────────┐
+│                        Cloudflare Edge Network                      │
+│                                                                     │
+│  HTTP Workers (Public-Facing)                                      │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐          │
+│  │   Core   │  │EveToken  │  │    UI    │  │EveStatic │          │
+│  │  Worker  │  │  Store   │  │  Worker  │  │   Data   │          │
+│  │  (RPC)   │  │  Worker  │  │  (SPA)   │  │  Worker  │          │
+│  └────┬─────┘  └────┬─────┘  └──────────┘  └──────────┘          │
+│       │             │                                               │
+│       │             │    RPC Workers (Service Bindings Only)       │
+│       │             │    ┌──────────┐                              │
+│       │             │    │  Admin   │                              │
+│       │             │    │  Worker  │                              │
+│       │             │    │  (RPC)   │                              │
+│       │             │    └──────────┘                              │
+└───────┼─────────────┼───────────────────────────────────────────────┘
+        │             │
+        │             └──────────────┐
+        │                            │
+        ▼                            ▼
+┌────────────────────────────────────────────────────────────────────┐
+│                      Durable Objects Layer                          │
+│                                                                     │
+│  Singleton DOs (Shared State)                                      │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐            │
+│  │ EveTokenStore│  │EveCharacter  │  │EveCorporation│            │
+│  │      DO      │  │   Data DO    │  │   Data DO    │            │
+│  │  (default)   │  │  (default)   │  │  (per corp)  │            │
+│  │              │  │              │  │              │            │
+│  │ SQLite Cache │  │ SQLite Cache │  │ PostgreSQL   │            │
+│  └──────────────┘  └──────────────┘  └──────┬───────┘            │
+│                                              │                     │
+│  Per-User DOs (Isolated State)              │ Queue Producers     │
+│  ┌──────────────┐  ┌──────────────┐         ▼                     │
+│  │    Groups    │  │Notifications │  ┌──────────────┐            │
+│  │      DO      │  │      DO      │  │   Queues     │            │
+│  │  (per user)  │  │  (per user)  │  │ (Corp Data   │            │
+│  │              │  │              │  │  Refresh)    │            │
+│  │  PostgreSQL  │  │  PostgreSQL  │  └──────────────┘            │
+│  └──────────────┘  └──────────────┘                               │
+│                                                                     │
+│  Service DOs (Isolated Services)                                   │
+│  ┌──────────────┐                                                  │
+│  │   Discord    │                                                  │
+│  │      DO      │                                                  │
+│  │  (per user)  │                                                  │
+│  │              │                                                  │
+│  │  PostgreSQL  │                                                  │
+│  └──────────────┘                                                  │
+└────────────────────────────────────────────────────────────────────┘
+          │                            │
+          ▼                            ▼
+┌────────────────────────────────────────────────────────────────────┐
+│                         Storage Layer                               │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐            │
+│  │  PostgreSQL  │  │  Workers KV  │  │ DO SQLite    │            │
+│  │    (Neon)    │  │  (Cache)     │  │ (Durable)    │            │
+│  │              │  │              │  │              │            │
+│  │ • Core DB    │  │ • Groups KV  │  │ • EVE tokens │            │
+│  │ • Groups DB  │  │ • ESI cache  │  │ • ESI cache  │            │
+│  │ • Discord DB │  │              │  │ • Discord    │            │
+│  │ • Admin DB   │  │              │  │              │            │
+│  │ • Notif DB   │  │              │  │              │            │
+│  └──────────────┘  └──────────────┘  └──────────────┘            │
+└────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Technology Stack
@@ -94,21 +129,29 @@ All computation happens at Cloudflare's edge, as close to users as possible:
 
 Each worker is a microservice with a single responsibility:
 
-- **core**: Authentication, user management, orchestration
-- **discord**: Discord OAuth and guild management
-- **groups**: Group/category/membership management
-- **notifications**: Real-time WebSocket notifications
-- **eve-token-store**: EVE Online OAuth token lifecycle
-- **eve-character-data**: EVE character wallet/assets/orders
-- **eve-corporation-data**: EVE corporation data aggregation
-- **eve-static-data**: EVE static database (SDE) API
-- **ui**: React SPA static asset server
+**HTTP Workers (Public Routes):**
+- **core**: Authentication, user management, API orchestration, HTTP + RPC endpoints
+- **eve-token-store**: EVE Online OAuth token lifecycle, callback handling
+- **eve-static-data**: EVE static database (SDE) API, KV-cached lookups
+- **ui**: React SPA static asset server with intelligent caching
+
+**RPC Workers (Service Bindings Only):**
+- **admin**: Administrative operations (user deletion, character transfers, audit logging)
+
+**Durable Object Workers (Both DO Implementations + Optional HTTP):**
+- **discord**: Discord OAuth and guild management (per-user DO, PostgreSQL)
+- **groups**: Group/category/membership management (per-user DO, PostgreSQL + KV cache)
+- **notifications**: Real-time WebSocket notifications (per-user DO, PostgreSQL)
+- **eve-character-data**: EVE character wallet/assets/orders (singleton DO, SQLite cache)
+- **eve-corporation-data**: EVE corporation data aggregation (per-corp DO, PostgreSQL + Queues)
 
 **Benefits:**
 
-- Independent deployment
-- Clear boundaries
+- Independent deployment and scaling
+- Clear service boundaries and responsibilities
 - Type-safe RPC via shared packages (`@repo/*`)
+- Hybrid HTTP + RPC workers for flexibility
+- RPC-only workers for sensitive operations
 
 ### 3. **Type Safety Everywhere**
 
@@ -188,7 +231,74 @@ const stub = getStub<Notifications>(
 
 **Implementation:** See `packages/do-utils/src/index.ts`
 
-### Pattern 2: Database Patterns - Avoiding BigInt Issues
+### Pattern 2: Durable Object Method Pattern - Always Pass Entity IDs
+
+**Decision:** NEVER rely on `state.id` for entity ID resolution. ALWAYS pass entity IDs explicitly as parameters to RPC methods.
+
+**Why:**
+
+While Durable Objects are scoped by ID (via `getStub`), extracting IDs from `state.id.name` is unreliable and leads to critical bugs:
+
+- Database queries without WHERE clauses will return data from ALL entities
+- This causes data leakage where one entity sees another entity's data
+- Entity ID must be passed both to `getStub()` AND to every method call
+- This is a common source of bugs in DO-based architectures
+
+**Correct Pattern:**
+
+```typescript
+// ✅ ALWAYS pass entity IDs as parameters to all RPC methods
+export class EveCorporationDataDO extends DurableObject implements EveCorporationData {
+  // DO NOT store corporationId as instance property from state.id
+
+  async getMembers(corporationId: string): Promise<Member[]> {
+    // Always filter by the entity ID parameter
+    return await this.db.query.members.findMany({
+      where: eq(members.corporationId, corporationId)
+    })
+  }
+
+  async fetchData(corporationId: string): Promise<void> {
+    // Pass entity ID to all internal methods
+    await this.fetchAndStoreMembers(corporationId)
+  }
+}
+
+// ✅ Caller provides the ID to both stub creation AND method calls
+const stub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, corpId)
+const members = await stub.getMembers(corpId) // Pass ID again!
+```
+
+**Anti-Pattern (NEVER DO THIS):**
+
+```typescript
+// ❌ NEVER extract entity ID from state
+export class EveCorporationDataDO extends DurableObject {
+  private corporationId: string
+
+  constructor(state: DurableObjectState, env: Env) {
+    super(state, env)
+    this.corporationId = state.id.name // ❌ DON'T DO THIS!
+  }
+
+  // ❌ Methods without entity ID parameters
+  async getMembers(): Promise<Member[]> {
+    // ❌ Missing WHERE clause - returns ALL corporations' data!
+    return await this.db.query.members.findMany()
+  }
+}
+```
+
+**Key Rules:**
+
+1. Every RPC method must accept entity ID as first parameter (after `this`)
+2. Every database query must include WHERE clause filtering by that entity ID
+3. Never trust `state.id` for entity identification in queries
+4. Callers must pass entity ID even though it was used in `getStub()`
+
+**Implementation:** See CLAUDE.md for full pattern documentation.
+
+### Pattern 3: Database Patterns - Avoiding BigInt Issues
 
 **Decision:** Avoid `bigint` column types; use `text` for large numbers or `integer` when safe.
 
@@ -237,7 +347,76 @@ await db.insert(characterWalletJournal).values({
 
 **Implementation:** See `apps/eve-corporation-data/src/db/schema.ts` for examples of text-based large numbers.
 
-### Pattern 3: Worker Structure - Hono Framework
+### Pattern 4: HTTP Request Deduplication
+
+**Decision:** Use `@repo/fetch-utils` for HTTP request deduplication in Durable Objects to prevent duplicate concurrent requests.
+
+**Why:**
+
+- Prevents redundant API calls when multiple concurrent requests hit the same endpoint
+- Authorization-aware to prevent data leakage between users (BLAKE3 hash of auth headers)
+- Reduces load on external APIs (EVE ESI, Discord API)
+- Improves response times and reduces costs
+
+**Correct Pattern:**
+
+```typescript
+import { DedupedFetch } from '@repo/fetch-utils'
+
+export class MyDurableObject extends DurableObject {
+  private dedupedFetch: DedupedFetch
+
+  constructor(state: DurableObjectState, env: Env) {
+    super(state, env)
+    // Initialize with default auth-aware configuration
+    this.dedupedFetch = new DedupedFetch()
+  }
+
+  async fetchData(url: string, token: string) {
+    // Multiple concurrent calls with same URL and token = 1 fetch
+    return this.dedupedFetch.fetch(url, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+  }
+}
+```
+
+**Custom Configuration:**
+
+```typescript
+// For authenticated POST requests with body awareness
+this.dedupedFetch = new DedupedFetch({
+  keyGenerator: bodyAndAuthAwareKeyGenerator,
+  shouldDedupe: (input, init) => {
+    const method = init?.method?.toUpperCase() || 'GET'
+    return ['GET', 'POST'].includes(method)
+  },
+  debug: false // Enable for debugging deduplication
+})
+
+// Monitor deduplication effectiveness
+const stats = this.dedupedFetch.getStats()
+console.log(`Cache hits: ${stats.hits}, misses: ${stats.misses}`)
+```
+
+**Key Features:**
+
+- By default, only GET requests are deduplicated (safest for idempotent operations)
+- Authorization headers are hashed using BLAKE3 to prevent storing sensitive credentials
+- Response bodies are cloned so each caller can consume them independently
+- Configurable key generation strategies (default, body-aware, custom)
+- Statistics tracking for monitoring
+
+**Benefits:**
+
+- Reduces API call volume by 50-90% in typical scenarios
+- Improves response times (cache hits are instant)
+- Prevents rate limit exhaustion
+- Authorization-aware prevents security issues
+
+**Implementation:** See `packages/fetch-utils/src/index.ts` for full implementation.
+
+### Pattern 5: Worker Structure - Hono Framework
 
 **Decision:** All workers use Hono framework with standard middleware chain.
 
@@ -307,7 +486,7 @@ export interface App extends HonoApp {
 
 **Implementation:** See `apps/core/src/index.ts` for reference implementation.
 
-### Pattern 4: WebSocket Hibernation API
+### Pattern 6: WebSocket Hibernation API
 
 **Decision:** All WebSocket handling uses Durable Objects with the Hibernation API.
 
@@ -372,7 +551,7 @@ ws.addEventListener('message', handler)
 
 **Implementation:** See `apps/notifications/src/durable-object.ts` for full implementation.
 
-### Pattern 5: Service Boundaries and RPC
+### Pattern 7: Service Boundaries and RPC
 
 **Decision:** Workers communicate via Durable Object RPC, not HTTP.
 
@@ -528,33 +707,114 @@ const session = await authService.createSession(userId)
 
 ### Database Strategy
 
-**Primary Database:** PostgreSQL (Neon Serverless)
+The system uses a **multi-tier storage architecture** optimized for different access patterns and data durability requirements:
+
+**1. PostgreSQL (Neon Serverless) - Durable Shared State**
 
 - **Type safety:** Drizzle ORM generates TypeScript types from schema
 - **Performance:** Connection pooling, prepared statements
 - **Serverless:** Auto-scaling, zero maintenance
 - **Location:** Centralized (not edge) for strong consistency
+- **Used by:** core, groups, discord, notifications, admin, eve-corporation-data
 
-**Caching Strategy:** Workers KV
+**Database per Worker:**
+- `core`: users, userCharacters, userSessions, managedCorporations, discordServers, etc.
+- `groups`: categories, groups, groupMembers, groupAdmins, groupInvitations, permissions
+- `discord`: discordUsers, guildMembers (per-user isolation)
+- `notifications`: notifications, notificationAcknowledgements (per-user isolation)
+- `admin`: adminOperationsLog (audit trail)
+- `eve-corporation-data`: corporation public data, members, wallets, assets, etc. (per-corp isolation)
+
+**2. Durable Object SQLite - Transient Cache**
+
+- **Use case:** ESI API response caching with ETags
+- **Durability:** Durable Object storage (persistent across restarts)
+- **Isolation:** Per-DO instance (singleton or per-entity)
+- **Used by:** eve-token-store, eve-character-data
+
+**SQLite Schema Example:**
+
+```typescript
+// EVE Token Store DO - SQLite for encrypted tokens
+await this.sql.exec(`
+  CREATE TABLE IF NOT EXISTS tokens (
+    characterId INTEGER PRIMARY KEY,
+    accessToken TEXT NOT NULL,
+    refreshToken TEXT NOT NULL,
+    expiresAt INTEGER NOT NULL,
+    characterOwnerHash TEXT NOT NULL
+  )
+`)
+
+// EVE Character Data DO - SQLite for ESI cache
+await this.sql.exec(`
+  CREATE TABLE IF NOT EXISTS esi_cache (
+    path TEXT PRIMARY KEY,
+    etag TEXT,
+    data TEXT,
+    expiresAt INTEGER
+  )
+`)
+```
+
+**3. Workers KV - Global Edge Cache**
 
 - **Use case:** Frequently accessed, rarely changing data
 - **Pattern:** Cache-aside with TTL
 - **Invalidation:** Manual on mutations
+- **Used by:** eve-static-data (EVE SDE lookups), groups (category cache)
 
 **Example:**
 
 ```typescript
-// Try cache first
-const cached = await env.CACHE.get(key, { type: 'json' })
+// Try KV cache first
+const cached = await env.EVE_SDE_CACHE.get(key, { type: 'json' })
 if (cached) return cached
 
-// Fallback to database
-const data = await db.query.categories.findMany()
+// Fallback to external API
+const data = await fetch(`https://esi.evetech.net${path}`)
 
-// Update cache
-await env.CACHE.put(key, JSON.stringify(data), { expirationTtl: 300 })
+// Update cache with long TTL
+await env.EVE_SDE_CACHE.put(key, JSON.stringify(data), { expirationTtl: 86400 })
 
 return data
+```
+
+### Storage Decision Matrix
+
+| Data Type | Storage | Reason |
+|-----------|---------|--------|
+| User accounts, characters | PostgreSQL | Durable, relational, needs joins |
+| Groups, memberships | PostgreSQL | Complex relationships, ACLs |
+| Discord state (per user) | PostgreSQL | Per-user isolation, relational |
+| EVE OAuth tokens | DO SQLite | Encrypted, low-latency, singleton access |
+| ESI API cache | DO SQLite | Transient, ETag-based, per-DO instance |
+| EVE Static Data (SDE) | Workers KV | Globally cacheable, rarely changes |
+| Group category cache | Workers KV | Frequently read, rarely written |
+| Notifications (real-time) | PostgreSQL | Durable, needs ordering, per-user |
+| Corp data (ESI) | PostgreSQL | Large datasets, complex queries, per-corp |
+
+### Database Isolation Patterns
+
+**Singleton Pattern (Shared State):**
+```typescript
+// One instance for all users - use for shared resources
+const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
+const stub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, 'default')
+```
+
+**Per-User Pattern (Isolated State):**
+```typescript
+// One instance per user - use for user-specific data
+const stub = getStub<Notifications>(env.NOTIFICATIONS, userId)
+const stub = getStub<Discord>(env.DISCORD, userId)
+const stub = getStub<Groups>(env.GROUPS, userId)
+```
+
+**Per-Entity Pattern (Isolated Resources):**
+```typescript
+// One instance per entity - use for entity-specific data
+const stub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, corporationId)
 ```
 
 ### Schema Design Principles
@@ -715,6 +975,338 @@ wrangler secret put ENCRYPTION_KEY
 ```typescript
 const clientSecret = env.EVE_SSO_CLIENT_SECRET
 ```
+
+---
+
+## Queue-Based Processing
+
+### Overview
+
+The `eve-corporation-data` worker uses Cloudflare Queues for background data refresh operations. This pattern decouples data fetching from API requests and enables reliable, retryable background processing.
+
+### Architecture
+
+```
+API Request → DO Method → Queue Producer → Queue Message
+                                 ↓
+                          Queue Consumer (batch)
+                                 ↓
+                          DO Method (actual work)
+                                 ↓
+                          PostgreSQL Storage
+```
+
+### Queue Configuration
+
+The worker defines **12 specialized queues** for different ESI endpoints:
+
+```jsonc
+// wrangler.jsonc
+{
+  "queues": {
+    "producers": [
+      { "queue": "corp-public-refresh", "binding": "corp-public-refresh" },
+      { "queue": "corp-members-refresh", "binding": "corp-members-refresh" },
+      { "queue": "corp-wallet-journal-refresh", "binding": "corp-wallet-journal-refresh" },
+      // ... 9 more queues
+    ],
+    "consumers": [
+      { "queue": "corp-public-refresh", "max_batch_size": 10, "max_batch_timeout": 30 },
+      { "queue": "corp-members-refresh", "max_batch_size": 10, "max_batch_timeout": 30 },
+      // ... with varying batch sizes and timeouts
+    ]
+  }
+}
+```
+
+### Implementation Pattern
+
+**Producer (from DO method):**
+
+```typescript
+// In Durable Object method
+async queueRefreshPublicData(corporationId: string): Promise<void> {
+  await this.env['corp-public-refresh'].send({
+    corporationId,
+    timestamp: Date.now()
+  })
+}
+```
+
+**Consumer (in worker index.ts):**
+
+```typescript
+// apps/eve-corporation-data/src/index.ts
+import * as queueConsumers from './queue/consumers'
+
+const queueHandlers = {
+  'corp-public-refresh': queueConsumers.publicRefreshQueue,
+  'corp-members-refresh': queueConsumers.membersRefreshQueue,
+  // ... map all queues to handlers
+}
+
+export default {
+  fetch: app.fetch.bind(app),
+  async queue(batch: MessageBatch, env: Env, ctx: ExecutionContext): Promise<void> {
+    const queueName = batch.queue as keyof typeof queueHandlers
+    const handler = queueHandlers[queueName]
+
+    if (!handler) {
+      console.error(`No handler found for queue: ${batch.queue}`)
+      return
+    }
+
+    await handler(batch, env, ctx)
+  }
+}
+```
+
+**Queue Consumer Handler:**
+
+```typescript
+// apps/eve-corporation-data/src/queue/consumers/public-refresh.ts
+import { createQueueConsumer } from '@repo/queue-utils'
+import { z } from 'zod'
+
+const messageSchema = z.object({
+  corporationId: z.string(),
+  timestamp: z.number()
+})
+
+export const publicRefreshQueue = createQueueConsumer(
+  messageSchema,
+  async (message, metadata) => {
+    const stub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, message.corporationId)
+    await stub.refreshPublicData(message.corporationId)
+  }
+)
+```
+
+### Type-Safe Queue Utils
+
+The `@repo/queue-utils` package provides:
+
+- **Zod v4 Schema Validation**: Type-safe message schemas
+- **Multiple Consumer Patterns**: Class-based and functional
+- **Built-in Error Handling**: Automatic retry logic with configurable strategies
+- **Batch Processing**: Concurrent message processing with configurable limits
+- **Producer Utilities**: Type-safe message sending with validation
+- **Lifecycle Hooks**: Hooks for batch start/complete and message success/error
+
+**Example with Queue Utils:**
+
+```typescript
+// Type-safe producer
+const producer = createQueueProducer(env.CHARACTER_UPDATE_QUEUE, messageSchema)
+await producer.send({ characterId: '123', type: 'update' })
+
+// Class-based consumer with hooks
+class CharacterUpdateConsumer extends QueueConsumer {
+  constructor() {
+    super({
+      schema: messageSchema,
+      onBatchStart: (batch) => console.log(`Processing ${batch.messages.length} messages`),
+      onMessageSuccess: (message) => console.log(`Processed ${message.characterId}`)
+    })
+  }
+
+  async handleMessage(message, metadata) {
+    // Process message
+  }
+}
+```
+
+### Benefits
+
+- **Decoupled Processing**: API responds immediately, work happens in background
+- **Automatic Retries**: Failed messages automatically retried with exponential backoff
+- **Rate Limiting**: Batch size and timeout prevent overwhelming ESI API
+- **Scalability**: Queues automatically scale with load
+- **Observability**: Built-in statistics and logging
+- **Type Safety**: Zod schemas ensure message validity
+
+### Queue Strategy
+
+Different queues have different batch configurations based on data characteristics:
+
+- **High-frequency, small data** (public info, members): `max_batch_size: 10, max_batch_timeout: 30`
+- **Low-frequency, large data** (assets): `max_batch_size: 5, max_batch_timeout: 60`
+- **Medium frequency** (wallet journal, orders): `max_batch_size: 10, max_batch_timeout: 30`
+
+**Implementation:** See `apps/eve-corporation-data/src/queue/` and `packages/queue-utils/`
+
+---
+
+## RPC Worker Pattern
+
+### Overview
+
+The system uses **WorkerEntrypoint** with **service bindings** to create RPC-only workers that expose methods callable from other workers. This pattern is used for sensitive operations that should not be exposed via HTTP.
+
+### Pattern Components
+
+1. **WorkerEntrypoint Class**: Extends Cloudflare's `WorkerEntrypoint` to define RPC methods
+2. **Service Bindings**: Configure in `wrangler.jsonc` to allow worker-to-worker calls
+3. **Shared Interface Package**: Define TypeScript interfaces in `@repo/*` packages
+4. **RPC Service Layer**: Business logic separated into service classes
+
+### Architecture
+
+```
+Core Worker (HTTP) → Service Binding → Admin Worker (RPC) → Core Database
+                                              ↓
+                                        AdminService
+                                              ↓
+                                        Durable Objects
+```
+
+### Implementation Pattern
+
+**Step 1: Define Interface in Shared Package**
+
+```typescript
+// packages/admin/src/index.ts
+export interface AdminWorker {
+  deleteUser(userId: string, adminUserId: string): Promise<DeleteUserResult>
+  transferCharacterOwnership(
+    characterId: string,
+    newUserId: string,
+    adminUserId: string
+  ): Promise<TransferCharacterResult>
+  searchUsers(params: SearchUsersParams, adminUserId: string): Promise<SearchUsersResult>
+}
+```
+
+**Step 2: Implement WorkerEntrypoint**
+
+```typescript
+// apps/admin/src/index.ts
+import { WorkerEntrypoint } from 'cloudflare:workers'
+import type { AdminWorker as IAdminWorker } from '@repo/admin'
+
+export class AdminWorkerEntrypoint extends WorkerEntrypoint<Env> implements IAdminWorker {
+  private getAdminService(): AdminService {
+    const db = createDb(this.env.DATABASE_URL)
+    const eveTokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+    return new AdminService(db, eveTokenStore, this.env.CORE)
+  }
+
+  async deleteUser(userId: string, adminUserId: string): Promise<DeleteUserResult> {
+    const service = this.getAdminService()
+    return await service.deleteUser(userId, adminUserId)
+  }
+
+  // Implement other methods...
+
+  // Fetch handler - Required for deployment but not used
+  override async fetch(): Promise<Response> {
+    return new Response('Admin Worker - RPC only, not accessible via HTTP', {
+      status: 404
+    })
+  }
+}
+
+export default AdminWorkerEntrypoint
+```
+
+**Step 3: Configure Service Binding**
+
+```jsonc
+// apps/core/wrangler.jsonc
+{
+  "services": [
+    {
+      "binding": "ADMIN",
+      "service": "admin",
+      "entrypoint": "AdminWorkerEntrypoint" // Optional if worker exports single entrypoint
+    }
+  ]
+}
+```
+
+**Step 4: Call from Another Worker**
+
+```typescript
+// apps/core/src/routes/admin.ts
+import type { AdminWorker } from '@repo/admin'
+
+app.delete('/api/admin/users/:userId', requireAdmin(), async (c) => {
+  const userId = c.req.param('userId')
+  const adminUserId = c.get('user').id
+
+  // Call admin worker via RPC
+  const result = await (c.env.ADMIN as AdminWorker).deleteUser(userId, adminUserId)
+
+  return c.json(result)
+})
+```
+
+### Hybrid Pattern: HTTP + RPC
+
+The `core` worker demonstrates a hybrid approach - it exposes both HTTP endpoints AND RPC methods:
+
+```typescript
+// apps/core/src/index.ts
+const app = new Hono<App>()
+  .get('/', handler)
+  .post('/api/auth', handler)
+  // ... HTTP routes
+
+export default app // HTTP handler
+
+// RPC entrypoint
+export class CoreWorker extends WorkerEntrypoint<Env> {
+  private service: CoreRpcService | null = null
+
+  async searchUsers(params: SearchUsersParams): Promise<SearchUsersResult> {
+    return this.getService().searchUsers(params)
+  }
+
+  async getUserDetails(userId: string): Promise<UserDetails | null> {
+    return this.getService().getUserDetails(userId)
+  }
+  // ... RPC methods
+}
+```
+
+**Configuration for Hybrid:**
+
+```jsonc
+// apps/core/wrangler.jsonc
+{
+  "exports": {
+    "handlers": ["fetch"],  // Enable HTTP
+    "rpc": {
+      "class_name": "CoreWorker"  // Enable RPC
+    }
+  }
+}
+```
+
+### Benefits
+
+- **Security**: Sensitive operations not exposed via HTTP
+- **Type Safety**: Full TypeScript typing across service boundaries
+- **Performance**: Direct RPC faster than HTTP (no serialization overhead)
+- **Clean Separation**: Business logic isolated in service classes
+- **Testability**: RPC methods easy to unit test
+- **Audit Trail**: All admin operations logged with actor information
+
+### When to Use RPC Pattern
+
+**Use RPC Workers when:**
+- Operations should not be publicly accessible
+- Need type-safe cross-worker communication
+- Implementing admin/privileged operations
+- Service-to-service communication (no public API)
+
+**Use HTTP Workers when:**
+- Need public API endpoints
+- Serving static assets
+- OAuth callbacks
+- User-facing routes
+
+**Implementation:** See `apps/admin/` and `apps/core/src/services/core-rpc.service.ts`
 
 ---
 
@@ -1232,32 +1824,53 @@ just tail <app-name>        # Tail specific worker logs
 
 ```
 tapi-workers/
-├── apps/                   # Worker applications
-│   ├── core/              # Main orchestration worker
-│   ├── discord/           # Discord OAuth worker
-│   ├── groups/            # Groups management worker
-│   ├── notifications/     # WebSocket notifications worker
-│   ├── eve-token-store/   # EVE token management worker
-│   ├── eve-character-data/# EVE character data worker
-│   ├── eve-corporation-data/ # EVE corp data worker
-│   ├── eve-static-data/   # EVE SDE API worker
-│   └── ui/                # React SPA worker
-├── packages/              # Shared packages
-│   ├── db-utils/         # Database utilities
-│   ├── do-utils/         # Durable Object utilities
-│   ├── hono-helpers/     # Hono middleware
-│   ├── tools/            # CLI tools
-│   ├── core/             # Core RPC types
-│   ├── discord/          # Discord RPC types
-│   ├── groups/           # Groups RPC types
-│   ├── notifications/    # Notifications RPC types
-│   ├── eve-token-store/  # EVE token store RPC types
-│   ├── eve-character-data/ # EVE character data RPC types
-│   └── eve-corporation-data/ # EVE corp data RPC types
-├── turbo/                # Turborepo generators
-├── CLAUDE.md            # Development guidelines
-├── ARCHITECTURE.md      # This file
-└── README.md            # Getting started
+├── apps/                      # Worker applications
+│   ├── admin/                 # Admin RPC worker (user/character management)
+│   ├── core/                  # Main HTTP + RPC worker (auth, orchestration)
+│   ├── discord/               # Discord OAuth DO worker (per-user)
+│   ├── eve-character-data/    # EVE character data DO worker (singleton)
+│   ├── eve-corporation-data/  # EVE corp data DO worker (per-corp, queues)
+│   ├── eve-static-data/       # EVE SDE API worker (KV cache)
+│   ├── eve-token-store/       # EVE token DO worker (singleton, SQLite)
+│   ├── groups/                # Groups DO worker (per-user, PostgreSQL)
+│   ├── notifications/         # WebSocket notifications DO worker (per-user)
+│   └── ui/                    # React SPA static assets worker
+├── packages/                  # Shared packages
+│   ├── admin/                 # Admin RPC interface types
+│   ├── db-utils/              # Database utilities (Drizzle ORM helpers)
+│   ├── discord/               # Discord RPC interface types
+│   ├── do-utils/              # Durable Object utilities (getStub helper)
+│   ├── eslint-config/         # Shared ESLint configuration
+│   ├── eve-character-data/    # EVE character data RPC types
+│   ├── eve-corporation-data/  # EVE corporation data RPC types
+│   ├── eve-token-store/       # EVE token store RPC types
+│   ├── eve-types/             # Shared EVE Online type definitions
+│   ├── fetch-utils/           # HTTP request deduplication utilities
+│   ├── groups/                # Groups RPC interface types
+│   ├── hazmat/                # Low-level utilities (encryption, etc.)
+│   ├── hono-helpers/          # Hono middleware and utilities
+│   ├── notifications/         # Notifications RPC interface types
+│   ├── queue-utils/           # Type-safe Cloudflare Queues utilities
+│   ├── static-auth/           # Static authentication middleware
+│   ├── tools/                 # CLI development tools
+│   ├── typescript-config/     # Shared TypeScript configurations
+│   ├── worker-utils/          # Worker-specific utilities
+│   └── workspace-dependencies/# Dependency management
+├── turbo/                     # Turborepo configuration and generators
+│   └── generators/
+│       └── templates/
+│           ├── durable-object-package/    # DO interface package template
+│           ├── durable-object-worker/     # DO worker template
+│           ├── package/                   # Generic package template
+│           └── worker/                    # Generic worker template
+├── docs/                      # Documentation
+│   └── ARCHITECTURE.md        # This file
+├── CLAUDE.md                  # Development guidelines for Claude Code
+├── justfile                   # Just task runner commands
+├── package.json               # Root workspace configuration
+├── pnpm-workspace.yaml        # pnpm workspace definition
+├── turbo.json                 # Turborepo pipeline configuration
+└── README.md                  # Project overview and getting started
 ```
 
 ### Additional Resources
@@ -1270,6 +1883,6 @@ tapi-workers/
 
 ---
 
-**Last Updated:** 2025-10-22
+**Last Updated:** 2025-10-26
 **Maintained By:** Development Team
 **Questions?** Check CLAUDE.md or ask in team chat
