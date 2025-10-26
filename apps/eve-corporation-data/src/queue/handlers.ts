@@ -29,9 +29,9 @@ export async function handlePublicRefresh(
  */
 export async function handleMembersRefresh(
 	stub: EveCorporationData,
-	_message: MembersRefreshMessage
+	message: MembersRefreshMessage
 ): Promise<void> {
-	await stub.fetchCoreData()
+	await stub.fetchCoreData(message.corporationId)
 }
 
 /**
@@ -39,9 +39,9 @@ export async function handleMembersRefresh(
  */
 export async function handleMemberTrackingRefresh(
 	stub: EveCorporationData,
-	_message: MemberTrackingRefreshMessage
+	message: MemberTrackingRefreshMessage
 ): Promise<void> {
-	await stub.fetchCoreData()
+	await stub.fetchCoreData(message.corporationId)
 }
 
 /**
@@ -49,11 +49,11 @@ export async function handleMemberTrackingRefresh(
  */
 export async function handleWalletsRefresh(
 	stub: EveCorporationData,
-	_message: WalletsRefreshMessage
+	message: WalletsRefreshMessage
 ): Promise<void> {
 	// Fetch wallet balances for all 7 divisions in parallel
 	const results = await Promise.allSettled(
-		[1, 2, 3, 4, 5, 6, 7].map((div) => stub.fetchFinancialData(div))
+		[1, 2, 3, 4, 5, 6, 7].map((div) => stub.fetchFinancialData(message.corporationId, div))
 	)
 
 	// Check if any succeeded
@@ -73,11 +73,11 @@ export async function handleWalletJournalRefresh(
 	message: WalletJournalRefreshMessage
 ): Promise<void> {
 	if (message.division) {
-		await stub.fetchFinancialData(message.division)
+		await stub.fetchFinancialData(message.corporationId, message.division)
 	} else {
 		// Fetch all 7 divisions in parallel
 		const results = await Promise.allSettled(
-			[1, 2, 3, 4, 5, 6, 7].map((div) => stub.fetchFinancialData(div))
+			[1, 2, 3, 4, 5, 6, 7].map((div) => stub.fetchFinancialData(message.corporationId, div))
 		)
 
 		const succeeded = results.filter((r) => r.status === 'fulfilled')
@@ -97,11 +97,11 @@ export async function handleWalletTransactionsRefresh(
 	message: WalletTransactionsRefreshMessage
 ): Promise<void> {
 	if (message.division) {
-		await stub.fetchFinancialData(message.division)
+		await stub.fetchFinancialData(message.corporationId, message.division)
 	} else {
 		// Fetch all 7 divisions in parallel
 		const results = await Promise.allSettled(
-			[1, 2, 3, 4, 5, 6, 7].map((div) => stub.fetchFinancialData(div))
+			[1, 2, 3, 4, 5, 6, 7].map((div) => stub.fetchFinancialData(message.corporationId, div))
 		)
 
 		const succeeded = results.filter((r) => r.status === 'fulfilled')
@@ -116,9 +116,9 @@ export async function handleWalletTransactionsRefresh(
  */
 export async function handleAssetsRefresh(
 	stub: EveCorporationData,
-	_message: AssetsRefreshMessage
+	message: AssetsRefreshMessage
 ): Promise<void> {
-	await stub.fetchAssetsData()
+	await stub.fetchAssetsData(message.corporationId)
 }
 
 /**
@@ -126,9 +126,9 @@ export async function handleAssetsRefresh(
  */
 export async function handleStructuresRefresh(
 	stub: EveCorporationData,
-	_message: StructuresRefreshMessage
+	message: StructuresRefreshMessage
 ): Promise<void> {
-	await stub.fetchAssetsData()
+	await stub.fetchAssetsData(message.corporationId)
 }
 
 /**
@@ -136,9 +136,9 @@ export async function handleStructuresRefresh(
  */
 export async function handleOrdersRefresh(
 	stub: EveCorporationData,
-	_message: OrdersRefreshMessage
+	message: OrdersRefreshMessage
 ): Promise<void> {
-	await stub.fetchMarketData()
+	await stub.fetchMarketData(message.corporationId)
 }
 
 /**
@@ -146,9 +146,9 @@ export async function handleOrdersRefresh(
  */
 export async function handleContractsRefresh(
 	stub: EveCorporationData,
-	_message: ContractsRefreshMessage
+	message: ContractsRefreshMessage
 ): Promise<void> {
-	await stub.fetchMarketData()
+	await stub.fetchMarketData(message.corporationId)
 }
 
 /**
@@ -156,9 +156,9 @@ export async function handleContractsRefresh(
  */
 export async function handleIndustryJobsRefresh(
 	stub: EveCorporationData,
-	_message: IndustryJobsRefreshMessage
+	message: IndustryJobsRefreshMessage
 ): Promise<void> {
-	await stub.fetchMarketData()
+	await stub.fetchMarketData(message.corporationId)
 }
 
 /**
@@ -166,7 +166,7 @@ export async function handleIndustryJobsRefresh(
  */
 export async function handleKillmailsRefresh(
 	stub: EveCorporationData,
-	_message: KillmailsRefreshMessage
+	message: KillmailsRefreshMessage
 ): Promise<void> {
-	await stub.fetchKillmails()
+	await stub.fetchKillmails(message.corporationId)
 }

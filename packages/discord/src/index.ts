@@ -116,4 +116,15 @@ export interface Discord {
 	 * @returns Array of results for each guild
 	 */
 	joinUserToServers(coreUserId: string, guildIds: string[]): Promise<JoinServerResult[]>
+
+	/**
+	 * Join a user to multiple Discord servers with role assignments
+	 * @param coreUserId - Core user ID
+	 * @param joinRequests - Array of guild join requests with role IDs
+	 * @returns Results for each guild join attempt
+	 */
+	joinUserToServersWithRoles(
+		coreUserId: string,
+		joinRequests: Array<{ guildId: string; roleIds: string[] }>
+	): Promise<JoinServerResult[]>
 }

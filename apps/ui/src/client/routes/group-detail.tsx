@@ -6,6 +6,7 @@ import { GroupCard } from '@/components/group-card'
 import { JoinButton } from '@/components/join-button'
 import { LeaveButton } from '@/components/leave-button'
 import { MemberListReadonly } from '@/components/member-list-readonly'
+import { PendingJoinRequestsList } from '@/components/pending-join-requests-list'
 import { TransferOwnershipDialog } from '@/components/transfer-ownership-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -97,6 +98,9 @@ export default function GroupDetailPage() {
 						/>
 					</CardContent>
 				</Card>
+
+				{/* Pending Join Requests - Owner/Admin Only */}
+				{(group.isOwner || group.isAdmin) && <PendingJoinRequestsList groupId={groupId!} />}
 
 				{/* Transfer Ownership - Owner Only */}
 				{group.isOwner && (

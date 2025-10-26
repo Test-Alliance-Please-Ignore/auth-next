@@ -601,18 +601,19 @@ export interface DirectorHealth {
  * import { getStub } from '@repo/do-utils'
  *
  * // Access corporation 98000001's data
+ * const corporationId = '98000001'
  * const stub = getStub<EveCorporationData>(
  *   env.EVE_CORPORATION_DATA,
- *   '98000001'
+ *   corporationId
  * )
  *
  * // Configure which character to use for API access
- * await stub.setCharacter('98000001', '2119123456', 'Character Name')
+ * await stub.setCharacter(corporationId, '2119123456', 'Character Name')
  *
  * // Verify access and fetch data
  * const verification = await stub.verifyAccess()
  * if (verification.hasAccess) {
- *   await stub.fetchAllCorporationData()
+ *   await stub.fetchAllCorporationData(corporationId)
  * }
  * ```
  */
@@ -714,9 +715,10 @@ export interface EveCorporationData {
 
 	/**
 	 * Fetch all accessible corporation data in parallel
+	 * @param corporationId - The corporation ID
 	 * @param forceRefresh - Skip cache and fetch fresh data
 	 */
-	fetchAllCorporationData(forceRefresh?: boolean): Promise<void>
+	fetchAllCorporationData(corporationId: string, forceRefresh?: boolean): Promise<void>
 
 	/**
 	 * Fetch public corporation data (no authentication required)
@@ -728,41 +730,46 @@ export interface EveCorporationData {
 	/**
 	 * Fetch core corporation data (members, tracking)
 	 * Requires: esi-corporations.read_corporation_membership.v1
+	 * @param corporationId - The corporation ID
 	 * @param forceRefresh - Skip cache and fetch fresh data
 	 */
-	fetchCoreData(forceRefresh?: boolean): Promise<void>
+	fetchCoreData(corporationId: string, forceRefresh?: boolean): Promise<void>
 
 	/**
 	 * Fetch financial data (wallets, journal, transactions)
 	 * Requires: esi-wallet.read_corporation_wallets.v1
 	 * Requires role: Accountant or Junior_Accountant
+	 * @param corporationId - The corporation ID
 	 * @param division - Wallet division (1-7), or fetch all if not specified
 	 * @param forceRefresh - Skip cache and fetch fresh data
 	 */
-	fetchFinancialData(division?: number, forceRefresh?: boolean): Promise<void>
+	fetchFinancialData(corporationId: string, division?: number, forceRefresh?: boolean): Promise<void>
 
 	/**
 	 * Fetch assets and structures
 	 * Requires: esi-assets.read_corporation_assets.v1, esi-corporations.read_structures.v1
 	 * Requires role: Director (assets), Station_Manager (structures)
+	 * @param corporationId - The corporation ID
 	 * @param forceRefresh - Skip cache and fetch fresh data
 	 */
-	fetchAssetsData(forceRefresh?: boolean): Promise<void>
+	fetchAssetsData(corporationId: string, forceRefresh?: boolean): Promise<void>
 
 	/**
 	 * Fetch market and industry data (orders, contracts, jobs)
 	 * Requires various scopes and roles
+	 * @param corporationId - The corporation ID
 	 * @param forceRefresh - Skip cache and fetch fresh data
 	 */
-	fetchMarketData(forceRefresh?: boolean): Promise<void>
+	fetchMarketData(corporationId: string, forceRefresh?: boolean): Promise<void>
 
 	/**
 	 * Fetch killmails
 	 * Requires: esi-killmails.read_corporation_killmails.v1
 	 * Requires role: Director
+	 * @param corporationId - The corporation ID
 	 * @param forceRefresh - Skip cache and fetch fresh data
 	 */
-	fetchKillmails(forceRefresh?: boolean): Promise<void>
+	fetchKillmails(corporationId: string, forceRefresh?: boolean): Promise<void>
 
 	// ========================================================================
 	// GETTER METHODS (query database for stored data)
@@ -776,106 +783,126 @@ export interface EveCorporationData {
 
 	/**
 	 * Get corporation members list
+	 * @param corporationId - The corporation ID
 	 * @returns Array of member data
 	 */
-	getMembers(): Promise<CorporationMemberData[]>
+	getMembers(corporationId: string): Promise<CorporationMemberData[]>
 
 	/**
 	 * Get corporation member tracking data
+	 * @param corporationId - The corporation ID
 	 * @returns Array of member tracking data
 	 */
-	getMemberTracking(): Promise<CorporationMemberTrackingData[]>
+	getMemberTracking(corporationId: string): Promise<CorporationMemberTrackingData[]>
 
 	/**
 	 * Get corporation core data (public info + members)
+	 * @param corporationId - The corporation ID
 	 * @returns Core data or null if not found
 	 */
-	getCoreData(): Promise<CorporationCoreData | null>
+	getCoreData(corporationId: string): Promise<CorporationCoreData | null>
 
 	/**
 	 * Get corporation wallets
+	 * @param corporationId - The corporation ID
 	 * @param division - Specific division (1-7) or all if not specified
 	 * @returns Array of wallet data
 	 */
-	getWallets(division?: number): Promise<CorporationWalletData[]>
+	getWallets(corporationId: string, division?: number): Promise<CorporationWalletData[]>
 
 	/**
 	 * Get wallet journal entries
+	 * @param corporationId - The corporation ID
 	 * @param division - Specific division or all if not specified
 	 * @param limit - Maximum number of entries to return
 	 * @returns Array of journal entries
 	 */
-	getWalletJournal(division?: number, limit?: number): Promise<CorporationWalletJournalData[]>
+	getWalletJournal(
+		corporationId: string,
+		division?: number,
+		limit?: number
+	): Promise<CorporationWalletJournalData[]>
 
 	/**
 	 * Get wallet transactions
+	 * @param corporationId - The corporation ID
 	 * @param division - Specific division or all if not specified
 	 * @param limit - Maximum number of transactions to return
 	 * @returns Array of transaction data
 	 */
 	getWalletTransactions(
+		corporationId: string,
 		division?: number,
 		limit?: number
 	): Promise<CorporationWalletTransactionData[]>
 
 	/**
 	 * Get complete financial data
+	 * @param corporationId - The corporation ID
 	 * @param division - Specific division or all if not specified
 	 * @returns Financial data or null if not found
 	 */
-	getFinancialData(division?: number): Promise<CorporationFinancialData | null>
+	getFinancialData(corporationId: string, division?: number): Promise<CorporationFinancialData | null>
 
 	/**
 	 * Get corporation assets
+	 * @param corporationId - The corporation ID
 	 * @param limit - Maximum number of assets to return
 	 * @returns Array of asset data
 	 */
-	getAssets(limit?: number): Promise<CorporationAssetData[]>
+	getAssets(corporationId: string, limit?: number): Promise<CorporationAssetData[]>
 
 	/**
 	 * Get corporation structures
+	 * @param corporationId - The corporation ID
 	 * @returns Array of structure data
 	 */
-	getStructures(): Promise<CorporationStructureData[]>
+	getStructures(corporationId: string): Promise<CorporationStructureData[]>
 
 	/**
 	 * Get complete assets data
+	 * @param corporationId - The corporation ID
 	 * @returns Assets data or null if not found
 	 */
-	getAssetsData(): Promise<CorporationAssetsData | null>
+	getAssetsData(corporationId: string): Promise<CorporationAssetsData | null>
 
 	/**
 	 * Get corporation market orders
+	 * @param corporationId - The corporation ID
 	 * @returns Array of order data
 	 */
-	getOrders(): Promise<CorporationOrderData[]>
+	getOrders(corporationId: string): Promise<CorporationOrderData[]>
 
 	/**
 	 * Get corporation contracts
+	 * @param corporationId - The corporation ID
 	 * @param status - Filter by contract status
 	 * @returns Array of contract data
 	 */
-	getContracts(status?: string): Promise<CorporationContractData[]>
+	getContracts(corporationId: string, status?: string): Promise<CorporationContractData[]>
 
 	/**
 	 * Get corporation industry jobs
+	 * @param corporationId - The corporation ID
 	 * @param status - Filter by job status
 	 * @returns Array of industry job data
 	 */
-	getIndustryJobs(status?: string): Promise<CorporationIndustryJobData[]>
+	getIndustryJobs(corporationId: string, status?: string): Promise<CorporationIndustryJobData[]>
 
 	/**
 	 * Get complete market data
+	 * @param corporationId - The corporation ID
 	 * @returns Market data or null if not found
 	 */
-	getMarketData(): Promise<CorporationMarketData | null>
+	getMarketData(corporationId: string): Promise<CorporationMarketData | null>
 
 	/**
 	 * Get corporation killmails
+	 * @param corporationId - The corporation ID
 	 * @param limit - Maximum number of killmails to return
 	 * @returns Array of killmail data
 	 */
-	getKillmails(limit?: number): Promise<CorporationKillmailData[]>
+	getKillmails(corporationId: string, limit?: number): Promise<CorporationKillmailData[]>
 
 	/**
 	 * Get character's corporation roles

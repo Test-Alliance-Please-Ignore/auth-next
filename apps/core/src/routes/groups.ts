@@ -767,23 +767,29 @@ groups.get('/:groupId/discord-servers', requireAuth(), requireAdmin(), async (c)
 /**
  * POST /:groupId/discord-servers
  *
- * Add a Discord server to a group (admin only)
+ * Attach a Discord server to a group (admin only)
+ *
+ * Body: {
+ *   discordServerId: string (UUID from registry)
+ *   autoInvite?: boolean
+ *   autoAssignRoles?: boolean
+ * }
  */
 groups.post('/:groupId/discord-servers', requireAuth(), requireAdmin(), async (c) => {
 	const groupId = c.req.param('groupId')
 	const body = await c.req.json()
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	if (!body.guildId) {
-		return c.json({ error: 'guildId is required' }, 400)
+	if (!body.discordServerId) {
+		return c.json({ error: 'discordServerId is required' }, 400)
 	}
 
 	try {
-		const server = await groupsDO.addDiscordServer(
+		const server = await groupsDO.attachDiscordServer(
 			groupId,
-			body.guildId,
-			body.guildName ?? null,
-			body.autoInvite ?? false
+			body.discordServerId,
+			body.autoInvite ?? false,
+			body.autoAssignRoles ?? false
 		)
 		return c.json(server, 201)
 	} catch (error) {
@@ -795,25 +801,25 @@ groups.post('/:groupId/discord-servers', requireAuth(), requireAdmin(), async (c
 })
 
 /**
- * PATCH /:groupId/discord-servers/:serverId
+ * PUT /:groupId/discord-servers/:attachmentId
  *
- * Update a Discord server configuration (admin only)
+ * Update a Discord server attachment's settings (admin only)
  */
-groups.patch('/:groupId/discord-servers/:serverId', requireAuth(), requireAdmin(), async (c) => {
-	const serverId = c.req.param('serverId')
+groups.put('/:groupId/discord-servers/:attachmentId', requireAuth(), requireAdmin(), async (c) => {
+	const attachmentId = c.req.param('attachmentId')
 	const body = await c.req.json()
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
-		const server = await groupsDO.updateDiscordServer(serverId, {
-			discordGuildName: body.guildName,
+		const server = await groupsDO.updateDiscordServerAttachment(attachmentId, {
 			autoInvite: body.autoInvite,
+			autoAssignRoles: body.autoAssignRoles,
 		})
 		return c.json(server)
 	} catch (error) {
 		if (error instanceof Error) {
 			if (error.message.includes('not found')) {
-				return c.json({ error: 'Discord server not found' }, 404)
+				return c.json({ error: 'Discord server attachment not found' }, 404)
 			}
 			return c.json({ error: error.message }, 400)
 		}
@@ -822,26 +828,90 @@ groups.patch('/:groupId/discord-servers/:serverId', requireAuth(), requireAdmin(
 })
 
 /**
- * DELETE /:groupId/discord-servers/:serverId
+ * DELETE /:groupId/discord-servers/:attachmentId
  *
- * Delete a Discord server from a group (admin only)
+ * Detach a Discord server from a group (admin only)
  */
-groups.delete('/:groupId/discord-servers/:serverId', requireAuth(), requireAdmin(), async (c) => {
-	const serverId = c.req.param('serverId')
+groups.delete('/:groupId/discord-servers/:attachmentId', requireAuth(), requireAdmin(), async (c) => {
+	const attachmentId = c.req.param('attachmentId')
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
-		await groupsDO.deleteDiscordServer(serverId)
+		await groupsDO.detachDiscordServer(attachmentId)
 		return c.json({ success: true }, 200)
 	} catch (error) {
 		if (error instanceof Error) {
 			if (error.message.includes('not found')) {
-				return c.json({ error: 'Discord server not found' }, 404)
+				return c.json({ error: 'Discord server attachment not found' }, 404)
 			}
 			return c.json({ error: error.message }, 400)
 		}
 		throw error
 	}
 })
+
+/**
+ * POST /:groupId/discord-servers/:attachmentId/roles
+ *
+ * Assign a Discord role to a group Discord server attachment (admin only)
+ */
+groups.post(
+	'/:groupId/discord-servers/:attachmentId/roles',
+	requireAuth(),
+	requireAdmin(),
+	async (c) => {
+		const attachmentId = c.req.param('attachmentId')
+		const body = await c.req.json()
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+
+		if (!body.discordRoleId) {
+			return c.json({ error: 'discordRoleId is required' }, 400)
+		}
+
+		try {
+			const result = await groupsDO.assignRoleToDiscordServer(attachmentId, body.discordRoleId)
+			return c.json(result, 201)
+		} catch (error) {
+			if (error instanceof Error) {
+				if (error.message.includes('not found')) {
+					return c.json({ error: error.message }, 404)
+				}
+				if (error.message.includes('already assigned')) {
+					return c.json({ error: error.message }, 409)
+				}
+				return c.json({ error: error.message }, 400)
+			}
+			throw error
+		}
+	}
+)
+
+/**
+ * DELETE /:groupId/discord-servers/:attachmentId/roles/:roleAssignmentId
+ *
+ * Unassign a Discord role from a group Discord server attachment (admin only)
+ */
+groups.delete(
+	'/:groupId/discord-servers/:attachmentId/roles/:roleAssignmentId',
+	requireAuth(),
+	requireAdmin(),
+	async (c) => {
+		const roleAssignmentId = c.req.param('roleAssignmentId')
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+
+		try {
+			await groupsDO.unassignRoleFromDiscordServer(roleAssignmentId)
+			return c.json({ success: true }, 200)
+		} catch (error) {
+			if (error instanceof Error) {
+				if (error.message.includes('not found')) {
+					return c.json({ error: 'Role assignment not found' }, 404)
+				}
+				return c.json({ error: error.message }, 400)
+			}
+			throw error
+		}
+	}
+)
 
 export default groups

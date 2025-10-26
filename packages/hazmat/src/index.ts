@@ -1,28 +1,49 @@
-import * as bigintConversion from 'bigint-conversion'
-import _sodium from 'libsodium-wrappers-sumo'
-
-let _sodiumObject: typeof _sodium | null = null
+/**
+ * Generate cryptographically secure random bytes using Web Crypto API
+ * @param length - The number of random bytes to generate
+ * @returns A Uint8Array of random bytes
+ */
+export function generateRandomBytes(length: number): Uint8Array {
+	const bytes = new Uint8Array(length)
+	crypto.getRandomValues(bytes)
+	return bytes
+}
 
 /**
- * Get the LibSodium object
- * @returns The LibSodium object
+ * Generate a random shard key in the range [min, max] (inclusive)
+ * Uses Web Crypto API for cryptographically secure randomness
+ * @param min - The minimum value (inclusive)
+ * @param max - The maximum value (inclusive)
+ * @returns A random integer in the range [min, max]
  */
-export async function getSodium(): Promise<typeof _sodium> {
-	if (!_sodiumObject) {
-		await _sodium.ready
-		_sodiumObject = _sodium
+export function generateShardKey(min: number, max: number): number {
+	if (!Number.isInteger(min) || !Number.isInteger(max)) {
+		throw new Error('min and max must be integers')
 	}
-	return _sodiumObject
-}
 
-export async function generateRandomBytes(length: number): Promise<Uint8Array> {
-	const sodium = await getSodium()
-	return sodium.randombytes_buf(length)
-}
+	if (min > max) {
+		throw new Error('min must be less than or equal to max')
+	}
 
-export async function generateShardKey(maxShardCount: number): Promise<number> {
-	const sodium = await getSodium()
-	const randomBytes = await generateRandomBytes(sodium.crypto_generichash_BYTES)
-	const hash = await sodium.crypto_generichash(sodium.crypto_generichash_BYTES, randomBytes)
-	return Number(bigintConversion.bufToBigint(hash) % BigInt(maxShardCount))
+	if (min === max) {
+		return min
+	}
+
+	// Calculate the range (inclusive)
+	const range = max - min + 1
+
+	// Use 4 bytes (32 bits) for the random number
+	// This gives us a range of 0 to 4,294,967,295
+	const randomBytes = new Uint8Array(4)
+	crypto.getRandomValues(randomBytes)
+
+	// Convert bytes to a number
+	const randomValue =
+		(randomBytes[0] << 24) | (randomBytes[1] << 16) | (randomBytes[2] << 8) | randomBytes[3]
+
+	// Use modulo to get value in range [0, range)
+	// Using unsigned right shift to ensure positive number
+	const offset = (randomValue >>> 0) % range
+
+	return min + offset
 }

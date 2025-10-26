@@ -365,4 +365,49 @@ export interface Groups {
 
 	/** Redeem an invite code */
 	redeemInviteCode(code: string, userId: string): Promise<RedeemInviteCodeResponse>
+
+	/**
+	 * Discord Server Operations
+	 */
+
+	/** Attach a Discord server from the registry to a group */
+	attachDiscordServer(
+		groupId: string,
+		discordServerId: string,
+		autoInvite: boolean,
+		autoAssignRoles: boolean
+	): Promise<any>
+
+	/** Get Discord servers attached to a group */
+	getDiscordServers(groupId: string): Promise<any[]>
+
+	/** Update a Discord server attachment's settings */
+	updateDiscordServerAttachment(
+		attachmentId: string,
+		updates: {
+			autoInvite?: boolean
+			autoAssignRoles?: boolean
+		}
+	): Promise<any>
+
+	/** Detach a Discord server from a group */
+	detachDiscordServer(attachmentId: string): Promise<void>
+
+	/** Assign a Discord role to a group Discord server attachment */
+	assignRoleToDiscordServer(
+		attachmentId: string,
+		discordRoleId: string
+	): Promise<{ id: string; discordRoleId: string }>
+
+	/** Unassign a Discord role from a group Discord server attachment */
+	unassignRoleFromDiscordServer(roleAssignmentId: string): Promise<void>
+
+	/** Get group member user IDs (for Discord auto-invite) */
+	getGroupMemberUserIds(groupId: string): Promise<string[]>
+
+	/** Get groups with Discord auto-invite enabled */
+	getGroupsWithDiscordAutoInvite(): Promise<any[]>
+
+	/** Insert Discord invite audit records */
+	insertDiscordInviteAuditRecords(records: any[]): Promise<void>
 }

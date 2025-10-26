@@ -48,6 +48,11 @@
 				"name": "NOTIFICATIONS",
 				"class_name": "Notifications",
 				"script_name": "notifications"
+			},
+			{
+				"name": "DISCORD",
+				"class_name": "Discord",
+				"script_name": "discord"
 			}
 		]
 	},
@@ -59,10 +64,6 @@
 		{
 			"binding": "EVE_STATIC_DATA",
 			"service": "eve-static-data"
-		},
-		{
-			"binding": "DISCORD",
-			"service": "discord"
 		}
 	]
 }

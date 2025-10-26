@@ -246,6 +246,7 @@ app.delete('/:id', requireAuth(), requireAdmin(), async (c) => {
  *   roleId: string
  *   roleName: string
  *   description?: string
+ *   autoApply?: boolean
  * }
  */
 app.post('/:id/roles', requireAuth(), requireAdmin(), async (c) => {
@@ -258,7 +259,7 @@ app.post('/:id/roles', requireAuth(), requireAdmin(), async (c) => {
 
 	try {
 		const body = await c.req.json()
-		const { roleId, roleName, description } = body
+		const { roleId, roleName, description, autoApply } = body
 
 		if (!roleId || !roleName) {
 			return c.json({ error: 'roleId and roleName are required' }, 400)
@@ -290,10 +291,14 @@ app.post('/:id/roles', requireAuth(), requireAdmin(), async (c) => {
 				roleId,
 				roleName,
 				description: description || null,
+				...(autoApply !== undefined && { autoApply }),
 			})
 			.returning()
 
-		logger.info(`Role ${roleName} (${roleId}) added to Discord server ${server.guildName}`)
+		logger.info(
+			`Role ${roleName} (${roleId}) added to Discord server ${server.guildName}` +
+				(autoApply ? ' with auto-apply enabled' : '')
+		)
 
 		return c.json(role, 201)
 	} catch (error) {
@@ -310,6 +315,7 @@ app.post('/:id/roles', requireAuth(), requireAdmin(), async (c) => {
  *   roleName?: string
  *   description?: string
  *   isActive?: boolean
+ *   autoApply?: boolean
  * }
  */
 app.put('/:id/roles/:roleId', requireAuth(), requireAdmin(), async (c) => {
@@ -323,7 +329,7 @@ app.put('/:id/roles/:roleId', requireAuth(), requireAdmin(), async (c) => {
 
 	try {
 		const body = await c.req.json()
-		const { roleName, description, isActive } = body
+		const { roleName, description, isActive, autoApply } = body
 
 		// Check if role exists
 		const existing = await db.query.discordRoles.findFirst({
@@ -341,6 +347,7 @@ app.put('/:id/roles/:roleId', requireAuth(), requireAdmin(), async (c) => {
 				...(roleName !== undefined && { roleName }),
 				...(description !== undefined && { description }),
 				...(isActive !== undefined && { isActive }),
+				...(autoApply !== undefined && { autoApply }),
 				updatedAt: new Date(),
 			})
 			.where(eq(discordRoles.id, roleId))

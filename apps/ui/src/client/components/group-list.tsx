@@ -24,6 +24,7 @@ import type { GroupWithDetails } from '@/lib/api'
 interface GroupListProps {
 	groups: GroupWithDetails[]
 	isLoading?: boolean
+	isAdminContext?: boolean
 }
 
 // Memoized row component to prevent unnecessary re-renders
@@ -32,10 +33,12 @@ const GroupRow = memo(
 		group,
 		onJoin,
 		isJoining,
+		isAdminContext,
 	}: {
 		group: GroupWithDetails
 		onJoin: (groupId: string, groupName: string) => void
 		isJoining: boolean
+		isAdminContext?: boolean
 	}) => {
 		const handleJoinClick = useCallback(
 			(e: React.MouseEvent) => {
@@ -45,11 +48,15 @@ const GroupRow = memo(
 			[group.id, group.name, onJoin]
 		)
 
+		const groupDetailUrl = isAdminContext ? `/admin/groups/${group.id}` : `/groups/${group.id}`
+
 		return (
 			<TableRow key={group.id} className={cn(group.visibility === 'system' && 'bg-destructive/5')}>
 				<TableCell className="font-medium">
 					<div className="flex items-center gap-2">
-						{group.name}
+						<Link to={groupDetailUrl} className="hover:underline">
+							{group.name}
+						</Link>
 						{group.visibility === 'system' && (
 							<span className="text-xs text-destructive" title="System visibility group">
 								⚠️
@@ -78,7 +85,7 @@ const GroupRow = memo(
 							</Button>
 						)}
 						<Button variant="ghost" size="sm" asChild>
-							<Link to={`/groups/${group.id}`}>
+							<Link to={groupDetailUrl}>
 								<Eye className="mr-2 h-4 w-4" />
 								View Details
 							</Link>
@@ -92,7 +99,7 @@ const GroupRow = memo(
 
 GroupRow.displayName = 'GroupRow'
 
-export const GroupList = memo(function GroupList({ groups, isLoading }: GroupListProps) {
+export const GroupList = memo(function GroupList({ groups, isLoading, isAdminContext }: GroupListProps) {
 	const isMobile = useMediaQuery('(max-width: 768px)')
 	const joinGroup = useJoinGroup()
 
@@ -142,7 +149,9 @@ export const GroupList = memo(function GroupList({ groups, isLoading }: GroupLis
 	if (isMobile) {
 		return (
 			<div className="space-y-3">
-				{groups.map((group) => (
+				{groups.map((group) => {
+					const groupDetailUrl = isAdminContext ? `/admin/groups/${group.id}` : `/groups/${group.id}`
+					return (
 					<Card
 						key={group.id}
 						className={cn(
@@ -155,7 +164,9 @@ export const GroupList = memo(function GroupList({ groups, isLoading }: GroupLis
 								<div className="flex items-start justify-between gap-2">
 									<div className="flex-1 min-w-0">
 										<h4 className="font-semibold text-lg truncate flex items-center gap-2">
-											{group.name}
+											<Link to={groupDetailUrl} className="hover:underline">
+												{group.name}
+											</Link>
 											{group.visibility === 'system' && (
 												<span className="text-xs text-destructive" title="System visibility group">
 													⚠️
@@ -197,7 +208,7 @@ export const GroupList = memo(function GroupList({ groups, isLoading }: GroupLis
 										</Button>
 									) : (
 										<Button variant="outline" size="sm" asChild>
-											<Link to={`/groups/${group.id}`}>
+											<Link to={groupDetailUrl}>
 												<Eye className="mr-2 h-4 w-4" />
 												View Details
 											</Link>
@@ -207,7 +218,8 @@ export const GroupList = memo(function GroupList({ groups, isLoading }: GroupLis
 							</div>
 						</CardContent>
 					</Card>
-				))}
+					)
+				})}
 			</div>
 		)
 	}
@@ -233,6 +245,7 @@ export const GroupList = memo(function GroupList({ groups, isLoading }: GroupLis
 							group={group}
 							onJoin={handleJoinGroup}
 							isJoining={joinGroup.isPending}
+							isAdminContext={isAdminContext}
 						/>
 					))}
 				</TableBody>

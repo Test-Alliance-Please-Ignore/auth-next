@@ -278,6 +278,8 @@ export const discordRoles = pgTable(
 		description: text('description'),
 		/** Whether this role is active */
 		isActive: boolean('is_active').default(true).notNull(),
+		/** Whether this role should be auto-applied to all users joining through the system */
+		autoApply: boolean('auto_apply').default(false).notNull(),
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},

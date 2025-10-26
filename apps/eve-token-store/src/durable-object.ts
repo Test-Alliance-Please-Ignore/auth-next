@@ -665,6 +665,8 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			const corp: EsiCorporation = {
 				...response.data,
 				corporation_id: String(response.data.corporation_id),
+				name: response.data.name,
+				ticker: response.data.ticker,
 				ceo_id: String(response.data.ceo_id),
 				alliance_id: response.data.alliance_id ? String(response.data.alliance_id) : undefined,
 				creator_id: String(response.data.creator_id),

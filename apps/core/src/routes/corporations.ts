@@ -404,28 +404,28 @@ app.post('/:corporationId/fetch', requireAuth(), requireAdmin(), async (c) => {
 				break
 			case 'core':
 				logger.info('[Corporations] Fetching core data', { corporationId })
-				await stub.fetchCoreData(forceRefresh)
+				await stub.fetchCoreData(corporationId, forceRefresh)
 				break
 			case 'financial':
 				logger.info('[Corporations] Fetching financial data', { corporationId })
-				await stub.fetchFinancialData(undefined, forceRefresh)
+				await stub.fetchFinancialData(corporationId, undefined, forceRefresh)
 				break
 			case 'assets':
 				logger.info('[Corporations] Fetching assets data', { corporationId })
-				await stub.fetchAssetsData(forceRefresh)
+				await stub.fetchAssetsData(corporationId, forceRefresh)
 				break
 			case 'market':
 				logger.info('[Corporations] Fetching market data', { corporationId })
-				await stub.fetchMarketData(forceRefresh)
+				await stub.fetchMarketData(corporationId, forceRefresh)
 				break
 			case 'killmails':
 				logger.info('[Corporations] Fetching killmails', { corporationId })
-				await stub.fetchKillmails(forceRefresh)
+				await stub.fetchKillmails(corporationId, forceRefresh)
 				break
 			case 'all':
 			default:
 				logger.info('[Corporations] Fetching all corporation data', { corporationId })
-				await stub.fetchAllCorporationData(forceRefresh)
+				await stub.fetchAllCorporationData(corporationId, forceRefresh)
 				break
 		}
 
@@ -481,7 +481,7 @@ app.get('/:corporationId/data', requireAuth(), requireAdmin(), async (c) => {
 					})
 					return null
 				}),
-				stub.getCoreData().catch((e: unknown) => {
+				stub.getCoreData(corporationId).catch((e: unknown) => {
 					logger.error('[Corporations] getCoreData failed', {
 						corporationId,
 						error: e instanceof Error ? e.message : String(e),
@@ -489,7 +489,7 @@ app.get('/:corporationId/data', requireAuth(), requireAdmin(), async (c) => {
 					})
 					return null
 				}),
-				stub.getFinancialData().catch((e: unknown) => {
+				stub.getFinancialData(corporationId).catch((e: unknown) => {
 					logger.error('[Corporations] getFinancialData failed', {
 						corporationId,
 						error: e instanceof Error ? e.message : String(e),
@@ -497,7 +497,7 @@ app.get('/:corporationId/data', requireAuth(), requireAdmin(), async (c) => {
 					})
 					return null
 				}),
-				stub.getAssetsData().catch((e: unknown) => {
+				stub.getAssetsData(corporationId).catch((e: unknown) => {
 					logger.error('[Corporations] getAssetsData failed', {
 						corporationId,
 						error: e instanceof Error ? e.message : String(e),
@@ -505,7 +505,7 @@ app.get('/:corporationId/data', requireAuth(), requireAdmin(), async (c) => {
 					})
 					return null
 				}),
-				stub.getMarketData().catch((e: unknown) => {
+				stub.getMarketData(corporationId).catch((e: unknown) => {
 					logger.error('[Corporations] getMarketData failed', {
 						corporationId,
 						error: e instanceof Error ? e.message : String(e),
@@ -513,7 +513,7 @@ app.get('/:corporationId/data', requireAuth(), requireAdmin(), async (c) => {
 					})
 					return null
 				}),
-				stub.getKillmails(10).catch((e: unknown) => {
+				stub.getKillmails(corporationId, 10).catch((e: unknown) => {
 					logger.error('[Corporations] getKillmails failed', {
 						corporationId,
 						error: e instanceof Error ? e.message : String(e),

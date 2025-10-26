@@ -18,6 +18,7 @@ import { GroupCard } from '@/components/group-card'
 import { InviteMemberForm } from '@/components/invite-member-form'
 import { MemberList } from '@/components/member-list'
 import { PendingInvitationsList } from '@/components/pending-invitations-list'
+import { PendingJoinRequestsList } from '@/components/pending-join-requests-list'
 import { TransferOwnershipDialog } from '@/components/transfer-ownership-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -377,6 +378,9 @@ export default function GroupDetailPage() {
 
 			{/* Pending Invitations */}
 			<PendingInvitationsList groupId={groupId!} />
+
+			{/* Pending Join Requests */}
+			<PendingJoinRequestsList groupId={groupId!} />
 
 			{/* Discord Servers */}
 			<Card variant="interactive">

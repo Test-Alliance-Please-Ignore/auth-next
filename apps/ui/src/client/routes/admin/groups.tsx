@@ -228,7 +228,7 @@ export default function GroupsPage() {
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
-					<GroupList groups={groups || []} isLoading={groupsLoading} />
+					<GroupList groups={groups || []} isLoading={groupsLoading} isAdminContext={true} />
 				</CardContent>
 			</Card>
 

@@ -68,24 +68,26 @@ describe('EveCorporationData Durable Object', () => {
 
 	it('throws error when fetching data without configuration', async () => {
 		const testCorp = Math.floor(Math.random() * 1000000) + 98000000
-		const stub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, String(testCorp))
+		const testCorpId = String(testCorp)
+		const stub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, testCorpId)
 
 		// Should throw error when trying to fetch without configuration
-		await expect(stub.fetchCoreData()).rejects.toThrow('Corporation not configured')
+		await expect(stub.fetchCoreData(testCorpId)).rejects.toThrow('Corporation not configured')
 	})
 
 	it('can get empty arrays for uninitialized data', async () => {
 		const testCorp = Math.floor(Math.random() * 1000000) + 98000000
-		const stub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, String(testCorp))
+		const testCorpId = String(testCorp)
+		const stub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, testCorpId)
 
 		// Should return empty arrays for uninitialized data
-		const members = await stub.getMembers()
+		const members = await stub.getMembers(testCorpId)
 		expect(members).toEqual([])
 
-		const wallets = await stub.getWallets()
+		const wallets = await stub.getWallets(testCorpId)
 		expect(wallets).toEqual([])
 
-		const orders = await stub.getOrders()
+		const orders = await stub.getOrders(testCorpId)
 		expect(orders).toEqual([])
 	})
 

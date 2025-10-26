@@ -125,6 +125,11 @@ export interface GroupJoinRequest {
 	respondedBy: string | null
 }
 
+export interface GroupJoinRequestWithDetails extends GroupJoinRequest {
+	userName?: string
+	userMainCharacterName?: string
+}
+
 export interface GroupInvitationWithDetails {
 	id: string
 	groupId: string
@@ -272,6 +277,7 @@ export interface DiscordRole {
 	roleName: string
 	description: string | null
 	isActive: boolean
+	autoApply: boolean
 	createdAt: string
 	updatedAt: string
 }
@@ -312,12 +318,14 @@ export interface CreateDiscordRoleRequest {
 	roleId: string
 	roleName: string
 	description?: string
+	autoApply?: boolean
 }
 
 export interface UpdateDiscordRoleRequest {
 	roleName?: string
 	description?: string
 	isActive?: boolean
+	autoApply?: boolean
 }
 
 export interface AttachDiscordServerRequest {
@@ -648,7 +656,7 @@ export class ApiClient {
 		return this.post(`/groups/${data.groupId}/join-requests`, { reason: data.reason })
 	}
 
-	async getJoinRequests(groupId: string): Promise<GroupJoinRequest[]> {
+	async getJoinRequests(groupId: string): Promise<GroupJoinRequestWithDetails[]> {
 		return this.get(`/groups/${groupId}/join-requests`)
 	}
 

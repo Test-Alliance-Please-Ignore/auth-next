@@ -20,10 +20,10 @@ export type Env = SharedHonoEnv & {
 	GROUPS: DurableObjectNamespace
 	/** Notifications Durable Object binding */
 	NOTIFICATIONS: DurableObjectNamespace
+	/** Discord Durable Object binding */
+	DISCORD: DurableObjectNamespace
 	/** EVE Static Data service binding */
 	EVE_STATIC_DATA: Fetcher
-	/** Discord worker service binding */
-	DISCORD: Fetcher
 	/** Secret for session token generation and signing */
 	SESSION_SECRET: string
 }

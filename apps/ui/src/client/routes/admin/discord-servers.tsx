@@ -61,6 +61,7 @@ export default function DiscordServersPage() {
 		roleName: string
 		description: string | null
 		isActive: boolean
+		autoApply: boolean
 	} | null>(null)
 
 	// Form state
@@ -80,12 +81,14 @@ export default function DiscordServersPage() {
 		roleId: '',
 		roleName: '',
 		description: '',
+		autoApply: false,
 	})
 
 	const [roleEditFormData, setRoleEditFormData] = useState<UpdateDiscordRoleRequest>({
 		roleName: '',
 		description: '',
 		isActive: true,
+		autoApply: false,
 	})
 
 	// Server handlers
@@ -176,6 +179,7 @@ export default function DiscordServersPage() {
 				roleId: '',
 				roleName: '',
 				description: '',
+				autoApply: false,
 			})
 			showSuccess('Role added successfully!')
 		} catch (error) {
@@ -224,6 +228,7 @@ export default function DiscordServersPage() {
 			roleId: '',
 			roleName: '',
 			description: '',
+			autoApply: false,
 		})
 		setCreateRoleDialogOpen(true)
 	}
@@ -233,19 +238,28 @@ export default function DiscordServersPage() {
 		roleId: string,
 		roleName: string,
 		description: string | null,
-		isActive: boolean
+		isActive: boolean,
+		autoApply: boolean
 	) => {
-		setSelectedRole({ serverId, roleId, roleName, description, isActive })
+		setSelectedRole({ serverId, roleId, roleName, description, isActive, autoApply })
 		setRoleEditFormData({
 			roleName,
 			description: description || '',
 			isActive,
+			autoApply,
 		})
 		setEditRoleDialogOpen(true)
 	}
 
 	const openDeleteRoleDialog = (serverId: string, roleId: string, roleName: string) => {
-		setSelectedRole({ serverId, roleId, roleName, description: null, isActive: true })
+		setSelectedRole({
+			serverId,
+			roleId,
+			roleName,
+			description: null,
+			isActive: true,
+			autoApply: false,
+		})
 		setDeleteRoleDialogOpen(true)
 	}
 
@@ -373,6 +387,11 @@ export default function DiscordServersPage() {
 															{!role.isActive && (
 																<span className="text-xs text-muted-foreground">(Inactive)</span>
 															)}
+															{role.autoApply && (
+																<span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded">
+																	Auto-apply
+																</span>
+															)}
 														</div>
 														<p className="text-xs text-muted-foreground">Role ID: {role.roleId}</p>
 														{role.description && (
@@ -391,7 +410,8 @@ export default function DiscordServersPage() {
 																	role.id,
 																	role.roleName,
 																	role.description,
-																	role.isActive
+																	role.isActive,
+																	role.autoApply
 																)
 															}
 														>
@@ -621,6 +641,23 @@ export default function DiscordServersPage() {
 							/>
 						</div>
 
+						<div className="flex items-center space-x-2">
+							<Switch
+								id="autoApply"
+								checked={roleFormData.autoApply ?? false}
+								onCheckedChange={(checked) =>
+									setRoleFormData({ ...roleFormData, autoApply: checked })
+								}
+							/>
+							<Label htmlFor="autoApply" className="cursor-pointer">
+								Auto-apply to all users
+							</Label>
+						</div>
+						<p className="text-xs text-muted-foreground">
+							When enabled, this role will be automatically assigned to all users joining through
+							the system, regardless of their corporation or group memberships.
+						</p>
+
 						<DialogFooter>
 							<Button
 								type="button"
@@ -682,6 +719,23 @@ export default function DiscordServersPage() {
 								Active
 							</Label>
 						</div>
+
+						<div className="flex items-center space-x-2">
+							<Switch
+								id="edit-autoApply"
+								checked={roleEditFormData.autoApply ?? false}
+								onCheckedChange={(checked) =>
+									setRoleEditFormData({ ...roleEditFormData, autoApply: checked })
+								}
+							/>
+							<Label htmlFor="edit-autoApply" className="cursor-pointer">
+								Auto-apply to all users
+							</Label>
+						</div>
+						<p className="text-xs text-muted-foreground">
+							When enabled, this role will be automatically assigned to all users joining through
+							the system, regardless of their corporation or group memberships.
+						</p>
 
 						<DialogFooter>
 							<Button type="button" variant="outline" onClick={() => setEditRoleDialogOpen(false)}>

@@ -1,0 +1,1 @@
+ALTER TABLE "discord_roles" ADD COLUMN "auto_apply" boolean DEFAULT false NOT NULL;

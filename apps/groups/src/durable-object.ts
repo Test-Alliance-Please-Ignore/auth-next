@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { and, eq, inArray, isNull, like, or, sql } from '@repo/db-utils'
+import { and, createDbClient, eq, inArray, isNull, like, or, sql } from '@repo/db-utils'
 
 import { createDb } from './db'
 import {
@@ -8,6 +8,7 @@ import {
 	groupAdmins,
 	groupDiscordInvites,
 	groupDiscordServers,
+	groupDiscordServerRoles,
 	groupInvitations,
 	groupInviteCodeRedemptions,
 	groupInviteCodes,
@@ -15,6 +16,10 @@ import {
 	groupMembers,
 	groups,
 } from './db/schema'
+
+// Import Core database schema for Discord server and role lookups
+import { discordRoles, discordServers } from '../../core/src/db/schema'
+import * as coreSchema from '../../core/src/db/schema'
 import { generateShortInviteCode } from './services/code-generator'
 import {
 	canCreateGroupInCategory,
@@ -65,6 +70,7 @@ import type { Env } from './context'
  */
 export class GroupsDO extends DurableObject<Env> implements Groups {
 	private db: ReturnType<typeof createDb>
+	private coreDb: ReturnType<typeof createDbClient<typeof coreSchema>>
 
 	// In-memory caches with TTL
 	private discordServersCache = new Map<string, { data: any[]; expires: number }>()
@@ -77,6 +83,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	) {
 		super(state, env)
 		this.db = createDb(env.DATABASE_URL)
+		this.coreDb = createDbClient(env.DATABASE_URL, coreSchema)
 	}
 
 	/**
@@ -520,6 +527,9 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			groupId,
 			userId,
 		})
+
+		// Invalidate group members cache
+		this.invalidateGroupMembersCache(groupId)
 	}
 
 	async leaveGroup(groupId: string, userId: string): Promise<void> {
@@ -551,6 +561,9 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		await this.db
 			.delete(groupMembers)
 			.where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)))
+
+		// Invalidate group members cache
+		this.invalidateGroupMembersCache(groupId)
 	}
 
 	async removeMember(groupId: string, adminUserId: string, targetUserId: string): Promise<void> {
@@ -582,6 +595,9 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		await this.db
 			.delete(groupMembers)
 			.where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, targetUserId)))
+
+		// Invalidate group members cache
+		this.invalidateGroupMembersCache(groupId)
 	}
 
 	async getGroupMembers(groupId: string, userId: string, isAdmin: boolean): Promise<GroupMember[]> {
@@ -849,6 +865,9 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 				respondedBy: adminUserId,
 			})
 			.where(eq(groupJoinRequests.id, requestId))
+
+		// Invalidate group members cache
+		this.invalidateGroupMembersCache(request.groupId)
 	}
 
 	async rejectJoinRequest(requestId: string, adminUserId: string): Promise<void> {
@@ -1032,6 +1051,9 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 				respondedAt: new Date(),
 			})
 			.where(eq(groupInvitations.id, invitationId))
+
+		// Invalidate group members cache
+		this.invalidateGroupMembersCache(invitation.groupId)
 	}
 
 	async declineInvitation(invitationId: string, userId: string): Promise<void> {
@@ -1280,6 +1302,9 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			.set({ currentUses: inviteCode.currentUses + 1 })
 			.where(eq(groupInviteCodes.id, inviteCode.id))
 
+		// Invalidate group members cache
+		this.invalidateGroupMembersCache(inviteCode.groupId)
+
 		return {
 			success: true,
 			group: this.mapGroup(inviteCode.group),
@@ -1297,28 +1322,249 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	 * Get all Discord servers for a group
 	 * Cached in-memory for 5 minutes
 	 */
-	async getDiscordServers(
-		groupId: string
-	): Promise<Array<typeof groupDiscordServers.$inferSelect>> {
+	async getDiscordServers(groupId: string): Promise<any[]> {
 		// Check cache first
 		const cached = this.discordServersCache.get(groupId)
 		if (cached && cached.expires > Date.now()) {
 			return cached.data
 		}
 
-		// Cache miss - fetch from database
-		const servers = await this.db.query.groupDiscordServers.findMany({
+		// Fetch group Discord server attachments with role assignments
+		const attachments = await this.db.query.groupDiscordServers.findMany({
 			where: eq(groupDiscordServers.groupId, groupId),
+			with: {
+				roles: true,
+			},
 			orderBy: (groupDiscordServers, { asc }) => [asc(groupDiscordServers.createdAt)],
 		})
 
+		// Fetch Discord server details from Core database for each attachment
+		const results = await Promise.all(
+			attachments.map(async (attachment) => {
+				// Fetch Discord server from Core
+				const discordServer = await this.coreDb.query.discordServers.findFirst({
+					where: eq(discordServers.id, attachment.discordServerId),
+					with: {
+						roles: true,
+					},
+				})
+
+				// Fetch role details from Core for each role assignment
+				const rolesWithDetails = await Promise.all(
+					(attachment.roles || []).map(async (roleAssignment) => {
+						const roleDetails = await this.coreDb.query.discordRoles.findFirst({
+							where: eq(discordRoles.id, roleAssignment.discordRoleId),
+						})
+						return {
+							id: roleAssignment.id,
+							discordRoleId: roleAssignment.discordRoleId,
+							discordRole: roleDetails || {
+								id: roleAssignment.discordRoleId,
+								roleName: roleAssignment.roleName,
+								roleId: '',
+								discordServerId: attachment.discordServerId,
+								createdAt: new Date(),
+							},
+						}
+					})
+				)
+
+				return {
+					...attachment,
+					discordServer: discordServer || null,
+					roles: rolesWithDetails,
+				}
+			})
+		)
+
 		// Cache the result
 		this.discordServersCache.set(groupId, {
-			data: servers,
+			data: results,
 			expires: Date.now() + this.CACHE_TTL,
 		})
 
-		return servers
+		return results
+	}
+
+	/**
+	 * Attach a Discord server from the Core registry to a group
+	 */
+	async attachDiscordServer(
+		groupId: string,
+		discordServerId: string,
+		autoInvite: boolean,
+		autoAssignRoles: boolean
+	): Promise<typeof groupDiscordServers.$inferSelect> {
+		// Check if already attached
+		const existing = await this.db.query.groupDiscordServers.findFirst({
+			where: and(
+				eq(groupDiscordServers.groupId, groupId),
+				eq(groupDiscordServers.discordServerId, discordServerId)
+			),
+		})
+
+		if (existing) {
+			throw new Error('Discord server already attached to this group')
+		}
+
+		// Create attachment
+		const [server] = await this.db
+			.insert(groupDiscordServers)
+			.values({
+				groupId,
+				discordServerId,
+				autoInvite,
+				autoAssignRoles,
+			})
+			.returning()
+
+		this.discordServersCache.delete(groupId)
+		await this.invalidateGroupsWithDiscordCache()
+
+		return server
+	}
+
+	/**
+	 * Update a Discord server attachment's settings
+	 */
+	async updateDiscordServerAttachment(
+		attachmentId: string,
+		updates: {
+			autoInvite?: boolean
+			autoAssignRoles?: boolean
+		}
+	): Promise<typeof groupDiscordServers.$inferSelect> {
+		const attachment = await this.db.query.groupDiscordServers.findFirst({
+			where: eq(groupDiscordServers.id, attachmentId),
+		})
+
+		if (!attachment) {
+			throw new Error('Discord server attachment not found')
+		}
+
+		const updateData: Partial<typeof groupDiscordServers.$inferInsert> = {
+			updatedAt: new Date(),
+		}
+
+		if (updates.autoInvite !== undefined) {
+			updateData.autoInvite = updates.autoInvite
+		}
+		if (updates.autoAssignRoles !== undefined) {
+			updateData.autoAssignRoles = updates.autoAssignRoles
+		}
+
+		const [updated] = await this.db
+			.update(groupDiscordServers)
+			.set(updateData)
+			.where(eq(groupDiscordServers.id, attachmentId))
+			.returning()
+
+		// Invalidate caches
+		this.discordServersCache.delete(attachment.groupId)
+		await this.invalidateGroupsWithDiscordCache()
+
+		return updated
+	}
+
+	/**
+	 * Detach a Discord server from a group
+	 */
+	async detachDiscordServer(attachmentId: string): Promise<void> {
+		const attachment = await this.db.query.groupDiscordServers.findFirst({
+			where: eq(groupDiscordServers.id, attachmentId),
+		})
+
+		if (!attachment) {
+			throw new Error('Discord server attachment not found')
+		}
+
+		// Delete will cascade to role assignments and invite audit records
+		await this.db.delete(groupDiscordServers).where(eq(groupDiscordServers.id, attachmentId))
+
+		// Invalidate caches
+		this.discordServersCache.delete(attachment.groupId)
+		await this.invalidateGroupsWithDiscordCache()
+	}
+
+	/**
+	 * Assign a Discord role to a group Discord server attachment
+	 */
+	async assignRoleToDiscordServer(
+		attachmentId: string,
+		discordRoleId: string
+	): Promise<{ id: string; discordRoleId: string }> {
+		// Verify attachment exists
+		const attachment = await this.db.query.groupDiscordServers.findFirst({
+			where: eq(groupDiscordServers.id, attachmentId),
+		})
+
+		if (!attachment) {
+			throw new Error('Discord server attachment not found')
+		}
+
+		// Fetch role details from Core to get role name
+		const roleDetails = await this.coreDb.query.discordRoles.findFirst({
+			where: eq(discordRoles.id, discordRoleId),
+		})
+
+		if (!roleDetails) {
+			throw new Error('Discord role not found in registry')
+		}
+
+		// Check if role is already assigned
+		const existing = await this.db.query.groupDiscordServerRoles.findFirst({
+			where: and(
+				eq(groupDiscordServerRoles.groupDiscordServerId, attachmentId),
+				eq(groupDiscordServerRoles.discordRoleId, discordRoleId)
+			),
+		})
+
+		if (existing) {
+			throw new Error('Role already assigned to this Discord server')
+		}
+
+		// Create role assignment
+		const [roleAssignment] = await this.db
+			.insert(groupDiscordServerRoles)
+			.values({
+				groupDiscordServerId: attachmentId,
+				discordRoleId,
+				roleName: roleDetails.roleName,
+			})
+			.returning()
+
+		// Invalidate cache
+		this.discordServersCache.delete(attachment.groupId)
+
+		return {
+			id: roleAssignment.id,
+			discordRoleId: roleAssignment.discordRoleId,
+		}
+	}
+
+	/**
+	 * Unassign a Discord role from a group Discord server attachment
+	 */
+	async unassignRoleFromDiscordServer(roleAssignmentId: string): Promise<void> {
+		// Get the role assignment to find the group ID for cache invalidation
+		const roleAssignment = await this.db.query.groupDiscordServerRoles.findFirst({
+			where: eq(groupDiscordServerRoles.id, roleAssignmentId),
+			with: {
+				groupDiscordServer: true,
+			},
+		})
+
+		if (!roleAssignment) {
+			throw new Error('Role assignment not found')
+		}
+
+		// Delete the role assignment
+		await this.db
+			.delete(groupDiscordServerRoles)
+			.where(eq(groupDiscordServerRoles.id, roleAssignmentId))
+
+		// Invalidate cache
+		this.discordServersCache.delete(roleAssignment.groupDiscordServer.groupId)
 	}
 
 	/**
@@ -1576,6 +1822,13 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	private async invalidateGroupsWithDiscordCache(): Promise<void> {
 		const cacheKey = 'groups-with-discord-auto-invite'
 		await this.state.storage.delete(cacheKey)
+	}
+
+	/**
+	 * Invalidate the group members cache for a specific group
+	 */
+	private invalidateGroupMembersCache(groupId: string): void {
+		this.groupMembersCache.delete(groupId)
 	}
 
 	private async isUserMember(groupId: string, userId: string): Promise<boolean> {

@@ -5,6 +5,7 @@ import { logger } from '@repo/hono-helpers'
 
 import { createDb } from './db'
 import { discordTokens, discordUsers } from './db/schema'
+import { DiscordBotService } from './services/discord-bot.service'
 
 import type { Discord, DiscordTokenResponse } from '@repo/discord'
 import type { Env } from './context'
@@ -127,8 +128,6 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 			alreadyMember?: boolean
 		}>
 	> {
-		const { DiscordBotService } = await import('./services/discord-bot.service')
-
 		// Get user from database
 		const user = await this.db.query.discordUsers.findFirst({
 			where: eq(discordUsers.coreUserId, coreUserId),
@@ -243,69 +242,91 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 			alreadyMember?: boolean
 		}>
 	> {
-		const { DiscordBotService } = await import('./services/discord-bot.service')
+		try {
+			// Get user from database
+			const user = await this.db.query.discordUsers.findFirst({
+				where: eq(discordUsers.coreUserId, coreUserId),
+			})
 
-		// Get user from database
-		const user = await this.db.query.discordUsers.findFirst({
-			where: eq(discordUsers.coreUserId, coreUserId),
-		})
-
-		if (!user) {
-			logger.error('[DiscordDO] User not found by core user ID', { coreUserId })
-			// Return failure for all guilds
-			return joinRequests.map((req) => ({
-				guildId: req.guildId,
-				success: false,
-				errorMessage: 'Discord account not linked',
-			}))
-		}
-
-		// Get user's token
-		const tokenRecord = await this.db.query.discordTokens.findFirst({
-			where: eq(discordTokens.userId, user.id),
-		})
-
-		if (!tokenRecord) {
-			logger.error('[DiscordDO] Token not found for user', { userId: user.userId })
-			return joinRequests.map((req) => ({
-				guildId: req.guildId,
-				success: false,
-				errorMessage: 'Discord token not found',
-			}))
-		}
-
-		// Check if token is expired
-		if (tokenRecord.expiresAt < new Date()) {
-			logger.info('[DiscordDO] Token expired, attempting refresh', { userId: user.userId })
-
-			// Try to refresh the token
-			const refreshSuccess = await this.refreshToken(user.userId)
-
-			if (!refreshSuccess) {
-				logger.error('[DiscordDO] Failed to refresh expired token', { userId: user.userId })
+			if (!user) {
+				logger.error('[DiscordDO] User not found by core user ID', { coreUserId })
+				// Return failure for all guilds
 				return joinRequests.map((req) => ({
 					guildId: req.guildId,
 					success: false,
-					errorMessage:
-						'Discord token expired and refresh failed. Please re-link your Discord account.',
+					errorMessage: 'Discord account not linked',
 				}))
 			}
 
-			// Get the refreshed token
-			const refreshedToken = await this.db.query.discordTokens.findFirst({
+			// Get user's token
+			const tokenRecord = await this.db.query.discordTokens.findFirst({
 				where: eq(discordTokens.userId, user.id),
 			})
 
-			if (!refreshedToken) {
+			if (!tokenRecord) {
+				logger.error('[DiscordDO] Token not found for user', { userId: user.userId })
 				return joinRequests.map((req) => ({
 					guildId: req.guildId,
 					success: false,
-					errorMessage: 'Failed to retrieve refreshed token',
+					errorMessage: 'Discord token not found',
 				}))
 			}
 
-			// Use refreshed token
-			const decryptedAccessToken = await this.decrypt(refreshedToken.accessToken)
+			// Check if token is expired
+			if (tokenRecord.expiresAt < new Date()) {
+				logger.info('[DiscordDO] Token expired, attempting refresh', { userId: user.userId })
+
+				// Try to refresh the token
+				const refreshSuccess = await this.refreshToken(user.userId)
+
+				if (!refreshSuccess) {
+					logger.error('[DiscordDO] Failed to refresh expired token', { userId: user.userId })
+					return joinRequests.map((req) => ({
+						guildId: req.guildId,
+						success: false,
+						errorMessage:
+							'Discord token expired and refresh failed. Please re-link your Discord account.',
+					}))
+				}
+
+				// Get the refreshed token
+				const refreshedToken = await this.db.query.discordTokens.findFirst({
+					where: eq(discordTokens.userId, user.id),
+				})
+
+				if (!refreshedToken) {
+					return joinRequests.map((req) => ({
+						guildId: req.guildId,
+						success: false,
+						errorMessage: 'Failed to retrieve refreshed token',
+					}))
+				}
+
+				// Use refreshed token
+				const decryptedAccessToken = await this.decrypt(refreshedToken.accessToken)
+				const botService = new DiscordBotService(this.env)
+
+				// Process each guild with role assignments
+				const results = await Promise.all(
+					joinRequests.map(async (req) => {
+						const result = await botService.addGuildMember(
+							req.guildId,
+							user.userId,
+							decryptedAccessToken,
+							req.roleIds
+						)
+						return {
+							guildId: req.guildId,
+							...result,
+						}
+					})
+				)
+
+				return results
+			}
+
+			// Token is valid, decrypt and use it
+			const decryptedAccessToken = await this.decrypt(tokenRecord.accessToken)
 			const botService = new DiscordBotService(this.env)
 
 			// Process each guild with role assignments
@@ -325,29 +346,19 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 			)
 
 			return results
-		}
-
-		// Token is valid, decrypt and use it
-		const decryptedAccessToken = await this.decrypt(tokenRecord.accessToken)
-		const botService = new DiscordBotService(this.env)
-
-		// Process each guild with role assignments
-		const results = await Promise.all(
-			joinRequests.map(async (req) => {
-				const result = await botService.addGuildMember(
-					req.guildId,
-					user.userId,
-					decryptedAccessToken,
-					req.roleIds
-				)
-				return {
-					guildId: req.guildId,
-					...result,
-				}
+		} catch (error) {
+			logger.error('[DiscordDO] Error in joinUserToServersWithRoles', {
+				error: String(error),
+				errorMessage: error instanceof Error ? error.message : 'Unknown error',
+				coreUserId,
 			})
-		)
-
-		return results
+			// Return failure for all guilds
+			return joinRequests.map((req) => ({
+				guildId: req.guildId,
+				success: false,
+				errorMessage: error instanceof Error ? error.message : 'Unknown error occurred',
+			}))
+		}
 	}
 
 	/**

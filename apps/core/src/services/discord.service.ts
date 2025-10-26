@@ -6,6 +6,7 @@ import { createDb } from '../db'
 import {
 	corporationDiscordInvites,
 	corporationDiscordServers,
+	discordRoles,
 	discordServers,
 	managedCorporations,
 	oauthStates,
@@ -142,32 +143,26 @@ export async function handleTokens(
 			username: userInfo.username,
 		})
 
-		// Call Discord worker to store tokens
+		// Call Discord DO to store tokens via RPC
 		const scopes = scope ? scope.split(' ') : []
 		const expiresAt = new Date(Date.now() + expiresIn * 1000)
 
-		const response = await env.DISCORD.fetch('http://discord/discord/auth/store-tokens', {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-			},
-			body: JSON.stringify({
-				userId: userInfo.id,
-				username: userInfo.username,
-				discriminator: userInfo.discriminator,
-				scopes,
-				accessToken,
-				refreshToken,
-				expiresAt: expiresAt.toISOString(),
-				coreUserId,
-			}),
-		})
+		const discordStub = getStub<Discord>(env.DISCORD, 'default')
+		const success = await discordStub.storeTokensDirect(
+			userInfo.id,
+			userInfo.username,
+			userInfo.discriminator,
+			scopes,
+			accessToken,
+			refreshToken,
+			expiresAt,
+			coreUserId
+		)
 
-		if (!response.ok) {
-			const error = await response.text()
+		if (!success) {
 			return {
 				success: false,
-				error: `Failed to store tokens: ${error}`,
+				error: 'Failed to store tokens',
 			}
 		}
 
@@ -208,18 +203,8 @@ export async function handleTokens(
  * @returns Discord profile or null
  */
 export async function getProfile(env: Env, userId: string): Promise<DiscordProfile | null> {
-	const response = await env.DISCORD.fetch(`http://discord/discord/profile/${userId}`, {
-		method: 'GET',
-	})
-
-	if (!response.ok) {
-		if (response.status === 404) {
-			return null
-		}
-		throw new Error(`Failed to get Discord profile: ${response.statusText}`)
-	}
-
-	return response.json() as Promise<DiscordProfile>
+	const discordStub = getStub<Discord>(env.DISCORD, 'default')
+	return discordStub.getProfileByCoreUserId(userId)
 }
 
 /**
@@ -229,16 +214,8 @@ export async function getProfile(env: Env, userId: string): Promise<DiscordProfi
  * @returns Success status
  */
 export async function refreshToken(env: Env, userId: string): Promise<boolean> {
-	const response = await env.DISCORD.fetch(`http://discord/discord/refresh/${userId}`, {
-		method: 'POST',
-	})
-
-	if (!response.ok) {
-		return false
-	}
-
-	const result = (await response.json()) as { success: boolean }
-	return result.success
+	const discordStub = getStub<Discord>(env.DISCORD, 'default')
+	return discordStub.refreshTokenByCoreUserId(userId)
 }
 
 /**
@@ -342,7 +319,7 @@ export async function joinUserToCorporationServers(
 				env.EVE_CORPORATION_DATA,
 				attachment.corporationId
 			)
-			const members = await corpStub.getMembers()
+			const members = await corpStub.getMembers(attachment.corporationId)
 			const memberCharacterIds = members.map((m: CorporationMemberData) => m.characterId)
 
 			logger.info('[Discord] Corporation member check', {
@@ -454,18 +431,92 @@ export async function joinUserToCorporationServers(
 		}
 	}
 
+	// === FETCH AUTO-APPLY ROLES ===
+
+	// Query all auto-apply roles from the database
+	// These roles will be automatically assigned to all users regardless of corp/group
+	const autoApplyRoles = await db.query.discordRoles.findMany({
+		where: and(eq(discordRoles.autoApply, true), eq(discordRoles.isActive, true)),
+		with: {
+			discordServer: true,
+		},
+	})
+
+	logger.info('[Discord] Found auto-apply roles', {
+		autoApplyRoleCount: autoApplyRoles.length,
+	})
+
+	// Build a map of guildId -> auto-apply role IDs
+	const autoApplyRolesByGuild = new Map<string, string[]>()
+	for (const role of autoApplyRoles) {
+		const guildId = role.discordServer.guildId
+		const existing = autoApplyRolesByGuild.get(guildId)
+		if (existing) {
+			existing.push(role.roleId)
+		} else {
+			autoApplyRolesByGuild.set(guildId, [role.roleId])
+		}
+	}
+
 	logger.info('[Discord] Joining user to Discord servers', {
 		userId,
 		discordUserId,
 		guildCount: guildsToJoin.length,
 	})
 
+	// Deduplicate guild IDs (same server might be attached to multiple corps/groups)
+	// Keep track of all role IDs that should be assigned
+	const guildMap = new Map<
+		string,
+		{
+			guildId: string
+			roleIds: string[]
+		}
+	>()
+
+	for (const guild of guildsToJoin) {
+		const existing = guildMap.get(guild.guildId)
+		if (existing) {
+			// Merge role IDs from multiple corporations/groups
+			const combinedRoles = [...new Set([...existing.roleIds, ...(guild.roleIds || [])])]
+			guildMap.set(guild.guildId, {
+				guildId: guild.guildId,
+				roleIds: combinedRoles,
+			})
+		} else {
+			guildMap.set(guild.guildId, {
+				guildId: guild.guildId,
+				roleIds: guild.roleIds || [],
+			})
+		}
+	}
+
+	// Merge auto-apply roles into each guild
+	for (const [guildId, guildData] of guildMap.entries()) {
+		const autoRoles = autoApplyRolesByGuild.get(guildId)
+		if (autoRoles && autoRoles.length > 0) {
+			const mergedRoles = [...new Set([...guildData.roleIds, ...autoRoles])]
+			guildMap.set(guildId, {
+				guildId,
+				roleIds: mergedRoles,
+			})
+			logger.info('[Discord] Merged auto-apply roles for guild', {
+				guildId,
+				autoApplyRoleCount: autoRoles.length,
+				totalRoleCount: mergedRoles.length,
+			})
+		}
+	}
+
+	const joinRequests = Array.from(guildMap.values())
+
+	logger.info('[Discord] Deduplicated guild join requests', {
+		originalCount: guildsToJoin.length,
+		deduplicatedCount: joinRequests.length,
+	})
+
 	// Call Discord DO via RPC to join the servers with role assignments
 	const discordStub = getStub<Discord>(env.DISCORD, 'default')
-	const joinRequests = guildsToJoin.map((g) => ({
-		guildId: g.guildId,
-		roleIds: g.roleIds || [],
-	}))
 	const joinResults = await discordStub.joinUserToServersWithRoles(userId, joinRequests)
 
 	// Merge results with corporation and group info
@@ -475,7 +526,8 @@ export async function joinUserToCorporationServers(
 			guildId: result.guildId,
 			guildName: guild?.guildName ?? result.guildName ?? result.guildId,
 			corporationName:
-				guild?.corporationName ?? (guild?.type === 'group' ? guild.groupName : 'Unknown'),
+				guild?.corporationName ??
+				(guild?.type === 'group' ? guild.groupName ?? 'Unknown' : 'Unknown'),
 			success: result.success,
 			errorMessage: result.errorMessage,
 			alreadyMember: result.alreadyMember,
@@ -485,33 +537,40 @@ export async function joinUserToCorporationServers(
 	})
 
 	// Log results in audit tables (separate tables for corporations and groups)
+	// Note: Same guild might be attached to multiple corps/groups, so we create
+	// audit records for ALL attachments even though we only made one API call
 	const corporationAuditRecords = []
 	const groupAuditRecords = []
 
 	for (const result of results) {
-		const guild = guildsToJoin.find((g) => g.guildId === result.guildId)
-		const assignedRoleIds = result.success && guild?.roleIds ? guild.roleIds : null
+		// Find ALL guilds (corps/groups) that have this Discord server attached
+		const matchingGuilds = guildsToJoin.filter((g) => g.guildId === result.guildId)
 
-		if (guild?.type === 'corporation' && guild.corporationId && guild.discordServerId) {
-			corporationAuditRecords.push({
-				corporationId: guild.corporationId,
-				corporationDiscordServerId: guild.discordServerId,
-				userId,
-				discordUserId,
-				success: result.success,
-				errorMessage: result.errorMessage,
-				assignedRoleIds,
-			})
-		} else if (guild?.type === 'group' && guild.groupId && guild.discordServerId) {
-			groupAuditRecords.push({
-				groupId: guild.groupId,
-				groupDiscordServerId: guild.discordServerId,
-				userId,
-				discordUserId,
-				success: result.success,
-				errorMessage: result.errorMessage,
-				assignedRoleIds,
-			})
+		for (const guild of matchingGuilds) {
+			// Determine which roles were actually assigned (from the merged set)
+			const assignedRoleIds = result.success && guild.roleIds ? guild.roleIds : null
+
+			if (guild.type === 'corporation' && guild.corporationId && guild.discordServerId) {
+				corporationAuditRecords.push({
+					corporationId: guild.corporationId,
+					corporationDiscordServerId: guild.discordServerId,
+					userId,
+					discordUserId,
+					success: result.success,
+					errorMessage: result.errorMessage,
+					assignedRoleIds,
+				})
+			} else if (guild.type === 'group' && guild.groupId && guild.discordServerId) {
+				groupAuditRecords.push({
+					groupId: guild.groupId,
+					groupDiscordServerId: guild.discordServerId,
+					userId,
+					discordUserId,
+					success: result.success,
+					errorMessage: result.errorMessage,
+					assignedRoleIds,
+				})
+			}
 		}
 	}
 

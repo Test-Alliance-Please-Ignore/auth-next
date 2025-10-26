@@ -83,6 +83,63 @@ const stub = c.env.EVE_TOKEN_STORE.get(id)
 - **Simplicity:** Handles both string IDs and DurableObjectId instances automatically
 - **Maintainability:** Easier to update if Durable Object access patterns change
 
+### Durable Objects Method Pattern
+**CRITICAL:** NEVER rely on `state.id` for entity ID resolution. ALWAYS pass entity IDs explicitly as parameters to RPC methods.
+
+**Why This Matters:**
+- While Durable Objects are scoped by ID (via `getStub`), extracting IDs from `state.id.name` is unreliable
+- Database queries without WHERE clauses will return data from ALL entities, causing data leakage
+- This is a common source of bugs where one entity sees another entity's data
+
+**Correct Pattern:**
+```typescript
+// ✅ ALWAYS pass entity IDs as parameters to all RPC methods
+export class EveCorporationDataDO extends DurableObject implements EveCorporationData {
+  // DO NOT store corporationId as instance property from state.id
+
+  async getMembers(corporationId: string): Promise<Member[]> {
+    // Always filter by the entity ID parameter
+    return await this.db.query.members.findMany({
+      where: eq(members.corporationId, corporationId)
+    })
+  }
+
+  async fetchData(corporationId: string): Promise<void> {
+    // Pass entity ID to all internal methods
+    await this.fetchAndStoreMembers(corporationId)
+  }
+}
+
+// ✅ Caller provides the ID to both stub creation AND method calls
+const stub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, corpId)
+const members = await stub.getMembers(corpId) // Pass ID again!
+```
+
+**Incorrect Pattern (DO NOT USE):**
+```typescript
+// ❌ NEVER extract entity ID from state
+export class EveCorporationDataDO extends DurableObject {
+  private corporationId: string
+
+  constructor(state: DurableObjectState, env: Env) {
+    super(state, env)
+    this.corporationId = state.id.name // ❌ DON'T DO THIS!
+  }
+
+  // ❌ Methods without entity ID parameters
+  async getMembers(): Promise<Member[]> {
+    // ❌ Missing WHERE clause - returns ALL corporations' data!
+    return await this.db.query.members.findMany()
+  }
+}
+```
+
+**Key Rules:**
+1. **Every RPC method must accept entity ID as first parameter** (after `this`)
+2. **Every database query must include WHERE clause** filtering by that entity ID
+3. **Never trust `state.id`** for entity identification in queries
+4. **Callers must pass entity ID** even though it was used in `getStub()`
+
 ### Cloudflare Service Integrations
 
 When data storage or specific capabilities are needed, integrate with appropriate Cloudflare services:

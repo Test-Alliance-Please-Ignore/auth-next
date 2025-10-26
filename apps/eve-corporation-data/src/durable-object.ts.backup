@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { and, desc, eq, sql } from '@repo/db-utils'
+import { desc, eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
 import { createDb } from './db'
@@ -464,7 +464,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					allianceId: allianceIdStr,
 					factionId: factionIdStr,
 					warEligible: data.war_eligible || null,
-					updatedAt: sql`excluded.updated_at`,
+					updatedAt: new Date(),
 				},
 			})
 	}
@@ -485,33 +485,22 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		// Convert numeric IDs to strings
 		const memberIds: EsiCorporationMembers = response.data.map(String)
 
-		// Upsert members in batch to improve performance
-		if (memberIds.length > 0) {
-			const values = memberIds.map((memberId) => ({
-				corporationId,
-				characterId: memberId,
-			}))
-
-			try {
-				await this.db
-					.insert(corporationMembers)
-					.values(values)
-					.onConflictDoNothing({
-						target: [corporationMembers.corporationId, corporationMembers.characterId],
-					})
-			} catch (error) {
-				console.error('[fetchAndStoreMembers] Database insert failed:', {
-					error,
-					errorMessage: error instanceof Error ? error.message : String(error),
-					errorStack: error instanceof Error ? error.stack : undefined,
-					errorName: error instanceof Error ? error.name : undefined,
-					errorCause: error instanceof Error ? error.cause : undefined,
+		// Store each member
+		for (const memberId of memberIds) {
+			const now = new Date()
+			await this.db
+				.insert(corporationMembers)
+				.values({
 					corporationId,
-					memberCount: memberIds.length,
-					firstMember: memberIds[0],
+					characterId: memberId,
+					updatedAt: now,
 				})
-				throw error
-			}
+				.onConflictDoUpdate({
+					target: [corporationMembers.corporationId, corporationMembers.characterId],
+					set: {
+						updatedAt: now,
+					},
+				})
 		}
 	}
 
@@ -550,6 +539,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		}))
 
 		for (const member of trackingData) {
+			const now = new Date()
 			await this.db
 				.insert(corporationMemberTracking)
 				.values({
@@ -561,7 +551,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					logonDate: member.logon_date ? new Date(member.logon_date) : null,
 					shipTypeId: member.ship_type_id || null,
 					startDate: member.start_date ? new Date(member.start_date) : null,
-					updatedAt: new Date(),
+					updatedAt: now,
 				})
 				.onConflictDoUpdate({
 					target: [corporationMemberTracking.corporationId, corporationMemberTracking.characterId],
@@ -572,7 +562,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						logonDate: member.logon_date ? new Date(member.logon_date) : null,
 						shipTypeId: member.ship_type_id || null,
 						startDate: member.start_date ? new Date(member.start_date) : null,
-						updatedAt: sql`excluded.updated_at`,
+						updatedAt: now,
 					},
 				})
 		}
@@ -606,7 +596,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					target: [corporationWallets.corporationId, corporationWallets.division],
 					set: {
 						balance: wallet.balance.toString(),
-						updatedAt: sql`excluded.updated_at`,
+						updatedAt: new Date(),
 					},
 				})
 		}
@@ -693,7 +683,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						description: entry.description,
 						reason: entry.reason || null,
 						tax: entry.tax?.toString() || null,
-						updatedAt: sql`excluded.updated_at`,
+						updatedAt: new Date(),
 					},
 				})
 		}
@@ -768,7 +758,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						corporationWalletTransactions.transactionId,
 					],
 					set: {
-						updatedAt: sql`excluded.updated_at`,
+						updatedAt: new Date(),
 					},
 				})
 		}
@@ -846,7 +836,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 							quantity: asset.quantity,
 							typeId: asset.type_id,
 							isBlueprintCopy: asset.is_blueprint_copy || null,
-							updatedAt: sql`excluded.updated_at`,
+							updatedAt: new Date(),
 						},
 					})
 			}
@@ -941,7 +931,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 							: null,
 						unanchorsAt: structure.unanchors_at ? new Date(structure.unanchors_at) : null,
 						services: structure.services || null,
-						updatedAt: sql`excluded.updated_at`,
+						updatedAt: new Date(),
 					},
 				})
 		}
@@ -1024,7 +1014,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					set: {
 						volumeRemain: order.volume_remain,
 						price: order.price.toString(),
-						updatedAt: sql`excluded.updated_at`,
+						updatedAt: new Date(),
 					},
 				})
 		}
@@ -1131,7 +1121,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						status: contract.status,
 						dateAccepted: contract.date_accepted ? new Date(contract.date_accepted) : null,
 						dateCompleted: contract.date_completed ? new Date(contract.date_completed) : null,
-						updatedAt: sql`excluded.updated_at`,
+						updatedAt: new Date(),
 					},
 				})
 		}
@@ -1240,7 +1230,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						completedDate: job.completed_date ? new Date(job.completed_date) : null,
 						completedCharacterId: job.completed_character_id || null,
 						successfulRuns: job.successful_runs || null,
-						updatedAt: sql`excluded.updated_at`,
+						updatedAt: new Date(),
 					},
 				})
 		}
@@ -1285,7 +1275,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					target: [corporationKillmails.corporationId, corporationKillmails.killmailId],
 					set: {
 						killmailHash: km.killmail_hash,
-						updatedAt: sql`excluded.updated_at`,
+						updatedAt: new Date(),
 					},
 				})
 		}
@@ -1450,10 +1440,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Get corporation members list
 	 */
-	async getMembers(corporationId: string): Promise<CorporationMemberData[]> {
-		const results = await this.db.query.corporationMembers.findMany({
-			where: eq(corporationMembers.corporationId, corporationId),
-		})
+	async getMembers(): Promise<CorporationMemberData[]> {
+		const results = await this.db.query.corporationMembers.findMany()
 
 		return results.map((r) => ({
 			id: r.id,
@@ -1466,10 +1454,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Get corporation member tracking data
 	 */
-	async getMemberTracking(corporationId: string): Promise<CorporationMemberTrackingData[]> {
-		const results = await this.db.query.corporationMemberTracking.findMany({
-			where: eq(corporationMemberTracking.corporationId, corporationId),
-		})
+	async getMemberTracking(): Promise<CorporationMemberTrackingData[]> {
+		const results = await this.db.query.corporationMemberTracking.findMany()
 
 		return results.map((r) => ({
 			id: r.id,
@@ -1488,11 +1474,11 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Get corporation core data
 	 */
-	async getCoreData(corporationId: string): Promise<CorporationCoreData | null> {
+	async getCoreData(): Promise<CorporationCoreData | null> {
 		const [publicInfo, members, memberTracking] = await Promise.all([
 			this.getCorporationInfo(),
-			this.getMembers(corporationId),
-			this.getMemberTracking(corporationId),
+			this.getMembers(),
+			this.getMemberTracking(),
 		])
 
 		if (!publicInfo) {
@@ -1509,17 +1495,12 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Get corporation wallets
 	 */
-	async getWallets(corporationId: string, division?: number): Promise<CorporationWalletData[]> {
+	async getWallets(division?: number): Promise<CorporationWalletData[]> {
 		const results = division
 			? await this.db.query.corporationWallets.findMany({
-					where: and(
-						eq(corporationWallets.corporationId, corporationId),
-						eq(corporationWallets.division, division)
-					),
+					where: eq(corporationWallets.division, division),
 				})
-			: await this.db.query.corporationWallets.findMany({
-					where: eq(corporationWallets.corporationId, corporationId),
-				})
+			: await this.db.query.corporationWallets.findMany()
 
 		return results.map((r) => ({
 			id: r.id,
@@ -1533,22 +1514,14 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Get wallet journal entries
 	 */
-	async getWalletJournal(
-		corporationId: string,
-		division?: number,
-		limit = 1000
-	): Promise<CorporationWalletJournalData[]> {
+	async getWalletJournal(division?: number, limit = 1000): Promise<CorporationWalletJournalData[]> {
 		const results = division
 			? await this.db.query.corporationWalletJournal.findMany({
-					where: and(
-						eq(corporationWalletJournal.corporationId, corporationId),
-						eq(corporationWalletJournal.division, division)
-					),
+					where: eq(corporationWalletJournal.division, division),
 					orderBy: desc(corporationWalletJournal.date),
 					limit,
 				})
 			: await this.db.query.corporationWalletJournal.findMany({
-					where: eq(corporationWalletJournal.corporationId, corporationId),
 					orderBy: desc(corporationWalletJournal.date),
 					limit,
 				})
@@ -1578,21 +1551,16 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 * Get wallet transactions
 	 */
 	async getWalletTransactions(
-		corporationId: string,
 		division?: number,
 		limit = 1000
 	): Promise<CorporationWalletTransactionData[]> {
 		const results = division
 			? await this.db.query.corporationWalletTransactions.findMany({
-					where: and(
-						eq(corporationWalletTransactions.corporationId, corporationId),
-						eq(corporationWalletTransactions.division, division)
-					),
+					where: eq(corporationWalletTransactions.division, division),
 					orderBy: desc(corporationWalletTransactions.date),
 					limit,
 				})
 			: await this.db.query.corporationWalletTransactions.findMany({
-					where: eq(corporationWalletTransactions.corporationId, corporationId),
 					orderBy: desc(corporationWalletTransactions.date),
 					limit,
 				})
@@ -1618,14 +1586,11 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Get complete financial data
 	 */
-	async getFinancialData(
-		corporationId: string,
-		division?: number
-	): Promise<CorporationFinancialData | null> {
+	async getFinancialData(division?: number): Promise<CorporationFinancialData | null> {
 		const [wallets, journalEntries, transactions] = await Promise.all([
-			this.getWallets(corporationId, division),
-			this.getWalletJournal(corporationId, division),
-			this.getWalletTransactions(corporationId, division),
+			this.getWallets(division),
+			this.getWalletJournal(division),
+			this.getWalletTransactions(division),
 		])
 
 		if (wallets.length === 0 && journalEntries.length === 0 && transactions.length === 0) {
@@ -1642,9 +1607,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Get corporation assets
 	 */
-	async getAssets(corporationId: string, limit = 10000): Promise<CorporationAssetData[]> {
+	async getAssets(limit = 10000): Promise<CorporationAssetData[]> {
 		const results = await this.db.query.corporationAssets.findMany({
-			where: eq(corporationAssets.corporationId, corporationId),
 			limit,
 		})
 
@@ -1666,10 +1630,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Get corporation structures
 	 */
-	async getStructures(corporationId: string): Promise<CorporationStructureData[]> {
-		const results = await this.db.query.corporationStructures.findMany({
-			where: eq(corporationStructures.corporationId, corporationId),
-		})
+	async getStructures(): Promise<CorporationStructureData[]> {
+		const results = await this.db.query.corporationStructures.findMany()
 
 		return results.map((r) => ({
 			id: r.id,
@@ -1694,11 +1656,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Get complete assets data
 	 */
-	async getAssetsData(corporationId: string): Promise<CorporationAssetsData | null> {
-		const [assets, structures] = await Promise.all([
-			this.getAssets(corporationId),
-			this.getStructures(corporationId),
-		])
+	async getAssetsData(): Promise<CorporationAssetsData | null> {
+		const [assets, structures] = await Promise.all([this.getAssets(), this.getStructures()])
 
 		if (assets.length === 0 && structures.length === 0) {
 			return null
@@ -1713,10 +1672,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Get corporation market orders
 	 */
-	async getOrders(corporationId: string): Promise<CorporationOrderData[]> {
-		const results = await this.db.query.corporationOrders.findMany({
-			where: eq(corporationOrders.corporationId, corporationId),
-		})
+	async getOrders(): Promise<CorporationOrderData[]> {
+		const results = await this.db.query.corporationOrders.findMany()
 
 		return results.map((r) => ({
 			id: r.id,
@@ -1743,17 +1700,12 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Get corporation contracts
 	 */
-	async getContracts(corporationId: string, status?: string): Promise<CorporationContractData[]> {
+	async getContracts(status?: string): Promise<CorporationContractData[]> {
 		const results = status
 			? await this.db.query.corporationContracts.findMany({
-					where: and(
-						eq(corporationContracts.corporationId, corporationId),
-						eq(corporationContracts.status, status)
-					),
+					where: eq(corporationContracts.status, status),
 				})
-			: await this.db.query.corporationContracts.findMany({
-					where: eq(corporationContracts.corporationId, corporationId),
-				})
+			: await this.db.query.corporationContracts.findMany()
 
 		return results.map((r) => ({
 			id: r.id,
@@ -1787,17 +1739,12 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Get corporation industry jobs
 	 */
-	async getIndustryJobs(corporationId: string, status?: string): Promise<CorporationIndustryJobData[]> {
+	async getIndustryJobs(status?: string): Promise<CorporationIndustryJobData[]> {
 		const results = status
 			? await this.db.query.corporationIndustryJobs.findMany({
-					where: and(
-						eq(corporationIndustryJobs.corporationId, corporationId),
-						eq(corporationIndustryJobs.status, status)
-					),
+					where: eq(corporationIndustryJobs.status, status),
 				})
-			: await this.db.query.corporationIndustryJobs.findMany({
-					where: eq(corporationIndustryJobs.corporationId, corporationId),
-				})
+			: await this.db.query.corporationIndustryJobs.findMany()
 
 		return results.map((r) => ({
 			id: r.id,
@@ -1831,11 +1778,11 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Get complete market data
 	 */
-	async getMarketData(corporationId: string): Promise<CorporationMarketData | null> {
+	async getMarketData(): Promise<CorporationMarketData | null> {
 		const [orders, contracts, industryJobs] = await Promise.all([
-			this.getOrders(corporationId),
-			this.getContracts(corporationId),
-			this.getIndustryJobs(corporationId),
+			this.getOrders(),
+			this.getContracts(),
+			this.getIndustryJobs(),
 		])
 
 		if (orders.length === 0 && contracts.length === 0 && industryJobs.length === 0) {
@@ -1852,9 +1799,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Get corporation killmails
 	 */
-	async getKillmails(corporationId: string, limit = 100): Promise<CorporationKillmailData[]> {
+	async getKillmails(limit = 100): Promise<CorporationKillmailData[]> {
 		const results = await this.db.query.corporationKillmails.findMany({
-			where: eq(corporationKillmails.corporationId, corporationId),
 			orderBy: desc(corporationKillmails.killmailTime),
 			limit,
 		})

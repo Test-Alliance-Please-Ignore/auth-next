@@ -159,6 +159,18 @@ export async function autoRegisterDirectorCorporation(
 			corpName = corpInfo.name
 			corpTicker = corpInfo.ticker
 
+			// Validate that we have a ticker (should always be present, but check anyway)
+			if (!corpTicker || corpTicker.trim() === '') {
+				logger.error('[AutoReg] Corporation missing ticker', {
+					corporationId,
+					corpInfo: JSON.stringify(corpInfo),
+				})
+				return {
+					success: false,
+					reason: 'missing_ticker',
+				}
+			}
+
 			logger.info('[AutoReg] Fetched corporation details', {
 				corporationId,
 				name: corpName,
@@ -210,10 +222,26 @@ export async function autoRegisterDirectorCorporation(
 					name: corpName,
 				})
 			} catch (error) {
-				logger.error('[AutoReg] Failed to create managed corporation', {
+				const errorDetails: Record<string, unknown> = {
 					corporationId,
-					error: error instanceof Error ? error.message : String(error),
-				})
+					name: corpName,
+					ticker: corpTicker,
+				}
+
+				if (error instanceof Error) {
+					errorDetails.errorMessage = error.message
+					errorDetails.errorName = error.name
+					errorDetails.errorStack = error.stack?.substring(0, 500)
+					// Include any additional error properties (like Drizzle errors)
+					if ('cause' in error && error.cause) {
+						errorDetails.errorCause = String(error.cause)
+					}
+				} else {
+					errorDetails.error = String(error)
+				}
+
+				logger.error('[AutoReg] Failed to create managed corporation', errorDetails)
+
 				return {
 					success: false,
 					reason: 'failed_to_create_corporation',
