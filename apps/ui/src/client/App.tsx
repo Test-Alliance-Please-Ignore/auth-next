@@ -66,7 +66,7 @@ export default function App() {
 						<Route index element={<Navigate to="/admin/categories" replace />} />
 						<Route path="categories" element={<AdminCategoriesPage />} />
 						<Route path="groups" element={<AdminGroupsPage />} />
-						<Route path="group-detail/:groupId" element={<AdminGroupDetailPage />} />
+						<Route path="groups/:groupId" element={<AdminGroupDetailPage />} />
 						<Route path="corporations" element={<AdminCorporationsPage />} />
 						<Route path="corporations/:corporationId" element={<AdminCorporationDetailPage />} />
 						<Route path="discord-servers" element={<AdminDiscordServersPage />} />

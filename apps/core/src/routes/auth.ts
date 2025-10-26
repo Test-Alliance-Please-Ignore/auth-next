@@ -13,6 +13,7 @@ import { AuthService } from '../services/auth.service'
 import { autoRegisterDirectorCorporation } from '../services/corporation-auto-register.service'
 import { UserService } from '../services/user.service'
 
+import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { App } from '../context'
@@ -227,6 +228,23 @@ auth.get('/callback', async (c) => {
 
 		await activityService.logCharacterLinked(stateUserId, characterId, getRequestMetadata(c))
 
+		// Fetch character data in background (non-blocking)
+		const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+		c.executionCtx.waitUntil(
+			(async () => {
+				try {
+					// Fetch public character data
+					await eveCharacterDataStub.fetchCharacterData(String(characterId), false)
+
+					// Fetch authenticated data (skills, attributes, etc.)
+					await eveCharacterDataStub.fetchAuthenticatedData(String(characterId), false)
+				} catch (error) {
+					// Log but don't fail the auth flow if character data fetch fails
+					console.error('[Auth] Failed to fetch character data after linking:', error)
+				}
+			})()
+		)
+
 		// Auto-register corporation if character is a director
 		let autoRegResult
 		try {
@@ -269,6 +287,23 @@ auth.get('/callback', async (c) => {
 			.where(eq(userCharacters.characterId, characterId))
 
 		await activityService.logLogin(user.id, characterId, getRequestMetadata(c))
+
+		// Fetch character data in background (non-blocking)
+		const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+		c.executionCtx.waitUntil(
+			(async () => {
+				try {
+					// Fetch public character data
+					await eveCharacterDataStub.fetchCharacterData(String(characterId), false)
+
+					// Fetch authenticated data (skills, attributes, etc.)
+					await eveCharacterDataStub.fetchAuthenticatedData(String(characterId), false)
+				} catch (error) {
+					// Log but don't fail the auth flow if character data fetch fails
+					console.error('[Auth] Failed to fetch character data after login:', error)
+				}
+			})()
+		)
 
 		// Auto-register corporation if character is a director
 		let autoRegResult
@@ -369,6 +404,23 @@ auth.post('/claim-main', async (c) => {
 	})
 
 	await activityService.logLogin(user.id, tokenInfo.characterId, getRequestMetadata(c))
+
+	// Fetch character data in background (non-blocking)
+	const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+	c.executionCtx.waitUntil(
+		(async () => {
+			try {
+				// Fetch public character data
+				await eveCharacterDataStub.fetchCharacterData(String(tokenInfo.characterId), false)
+
+				// Fetch authenticated data (skills, attributes, etc.)
+				await eveCharacterDataStub.fetchAuthenticatedData(String(tokenInfo.characterId), false)
+			} catch (error) {
+				// Log but don't fail the auth flow if character data fetch fails
+				console.error('[Auth] Failed to fetch character data after claim-main:', error)
+			}
+		})()
+	)
 
 	// Auto-register corporation if character is a director
 	let autoRegResult

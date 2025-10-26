@@ -90,6 +90,7 @@ export interface UpdateGroupRequest {
 	description?: string
 	visibility?: Visibility
 	joinMode?: JoinMode
+	categoryId?: string
 }
 
 export interface GroupsFilters {
@@ -314,6 +315,7 @@ export interface ManagedCorporation {
 	assignedCharacterId: string | null
 	assignedCharacterName: string | null
 	isActive: boolean
+	includeInBackgroundRefresh: boolean
 	lastSync: string | null
 	lastVerified: string | null
 	isVerified: boolean
@@ -341,12 +343,14 @@ export interface CreateCorporationRequest {
 	ticker: string
 	assignedCharacterId?: string
 	assignedCharacterName?: string
+	includeInBackgroundRefresh?: boolean
 }
 
 export interface UpdateCorporationRequest {
 	assignedCharacterId?: string
 	assignedCharacterName?: string
 	isActive?: boolean
+	includeInBackgroundRefresh?: boolean
 }
 
 export interface CorporationAccessVerification {
@@ -474,6 +478,18 @@ export interface AssignRoleRequest {
 	discordRoleId: string
 }
 
+export interface RefreshDiscordServerMembersResponse {
+	totalProcessed: number
+	successfulInvites: number
+	failedInvites: number
+	results: Array<{
+		userId: string
+		userName?: string
+		success: boolean
+		errorMessage?: string
+	}>
+}
+
 /**
  * Directors API Types
  */
@@ -547,11 +563,21 @@ export interface AdminUserCharacter {
 	hasValidToken: boolean
 }
 
+export interface AdminDiscordStatus {
+	userId: string
+	username: string
+	discriminator: string
+	authRevoked: boolean
+	authRevokedAt: string | null
+	lastSuccessfulAuth: string | null
+}
+
 export interface AdminUserDetail {
 	id: string
 	mainCharacterId: string
 	is_admin: boolean
 	discordUserId: string | null
+	discord: AdminDiscordStatus | null
 	characters: AdminUserCharacter[]
 	createdAt: string
 	updatedAt: string
@@ -696,7 +722,7 @@ export class ApiClient {
 		return this.get(`/characters/search?q=${encodeURIComponent(query)}`)
 	}
 
-	async startDiscordLinking(): Promise<{ url: string }> {
+	async startDiscordLinking(): Promise<{ state: string }> {
 		return this.post('/discord/link/start')
 	}
 
@@ -915,7 +941,9 @@ export class ApiClient {
 		return this.get('/groups/permissions/categories')
 	}
 
-	async createPermissionCategory(data: CreatePermissionCategoryRequest): Promise<PermissionCategory> {
+	async createPermissionCategory(
+		data: CreatePermissionCategoryRequest
+	): Promise<PermissionCategory> {
 		return this.post('/groups/permissions/categories', data)
 	}
 
@@ -957,7 +985,9 @@ export class ApiClient {
 		return this.get(`/groups/${groupId}/permissions`)
 	}
 
-	async attachPermissionToGroup(data: AttachPermissionRequest): Promise<GroupPermissionWithDetails> {
+	async attachPermissionToGroup(
+		data: AttachPermissionRequest
+	): Promise<GroupPermissionWithDetails> {
 		return this.post(`/groups/${data.groupId}/permissions/attach`, {
 			permissionId: data.permissionId,
 			targetType: data.targetType,
@@ -1121,6 +1151,12 @@ export class ApiClient {
 		return this.delete(`/discord-servers/${serverId}/roles/${roleId}`)
 	}
 
+	async refreshDiscordServerMembers(
+		serverId: string
+	): Promise<RefreshDiscordServerMembersResponse> {
+		return this.post(`/discord-servers/${serverId}/refresh-members`)
+	}
+
 	// ===== Corporation Discord Server Attachments API Methods =====
 
 	async getCorporationDiscordServers(corporationId: string): Promise<CorporationDiscordServer[]> {
@@ -1213,6 +1249,10 @@ export class ApiClient {
 
 	async setUserAdmin(userId: string, isAdmin: boolean): Promise<{ success: boolean }> {
 		return this.post(`/admin/users/${userId}/admin`, { isAdmin })
+	}
+
+	async revokeDiscordLink(userId: string): Promise<{ success: boolean }> {
+		return this.post(`/admin/users/${userId}/discord/revoke`, {})
 	}
 
 	async deleteUserCharacter(userId: string, characterId: string): Promise<{ success: boolean }> {

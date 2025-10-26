@@ -1,0 +1,1 @@
+ALTER TABLE "discord_tokens" ADD COLUMN "last_successful_auth" timestamp;

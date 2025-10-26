@@ -399,6 +399,12 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		const isAdminOfGroup = await this.isUserGroupAdmin(id, userId)
 		const memberCount = await this.getGroupMemberCount(id)
 
+		// Fetch all group admins
+		const admins = await this.db.query.groupAdmins.findMany({
+			where: eq(groupAdmins.groupId, id),
+		})
+		const adminUserIds = admins.map((admin) => admin.userId)
+
 		// Lookup owner's character name
 		const { bulkFindMainCharactersByUserIds } = await import('./services/character-lookup')
 		const characterNames = await bulkFindMainCharactersByUserIds([group.ownerId], this.db)
@@ -411,6 +417,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			isOwner,
 			isAdmin: isAdminOfGroup,
 			isMember,
+			adminUserIds,
 			ownerName,
 		}
 	}
@@ -428,12 +435,24 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Only the group owner can update the group')
 		}
 
+		// Validate category exists if categoryId is being updated
+		if (data.categoryId !== undefined) {
+			const category = await this.db.query.categories.findFirst({
+				where: eq(categories.id, data.categoryId),
+			})
+
+			if (!category) {
+				throw new Error('Category not found')
+			}
+		}
+
 		const updates: Partial<typeof groups.$inferInsert> = {}
 
 		if (data.name !== undefined) updates.name = data.name
 		if (data.description !== undefined) updates.description = data.description
 		if (data.visibility !== undefined) updates.visibility = data.visibility
 		if (data.joinMode !== undefined) updates.joinMode = data.joinMode
+		if (data.categoryId !== undefined) updates.categoryId = data.categoryId
 
 		updates.updatedAt = new Date()
 
@@ -550,6 +569,9 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			groupId,
 			userId,
 		})
+
+		// Cancel any pending join requests from this user for this group
+		await this.cancelPendingJoinRequests(groupId, userId)
 
 		// Invalidate group members cache
 		this.invalidateGroupMembersCache(groupId)
@@ -901,7 +923,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			userId: request.userId,
 		})
 
-		// Update request status
+		// Update this request status to approved
 		await this.db
 			.update(groupJoinRequests)
 			.set({
@@ -910,6 +932,10 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 				respondedBy: adminUserId,
 			})
 			.where(eq(groupJoinRequests.id, requestId))
+
+		// Cancel any OTHER pending join requests from this user for this group
+		// (The approved one has already been updated above)
+		await this.cancelPendingJoinRequests(request.groupId, request.userId)
 
 		// Invalidate group members cache
 		this.invalidateGroupMembersCache(request.groupId)
@@ -1089,6 +1115,9 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			groupId: invitation.groupId,
 			userId,
 		})
+
+		// Cancel any pending join requests from this user for this group
+		await this.cancelPendingJoinRequests(invitation.groupId, userId)
 
 		// Update invitation status
 		await this.db
@@ -1916,6 +1945,25 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	}
 
 	/**
+	 * Get groups that have a specific Discord server attached
+	 */
+	async getGroupsByDiscordServer(
+		discordServerId: string
+	): Promise<Array<{ groupId: string; groupName: string }>> {
+		const servers = await this.db.query.groupDiscordServers.findMany({
+			where: eq(groupDiscordServers.discordServerId, discordServerId),
+			with: {
+				group: true,
+			},
+		})
+
+		return servers.map((server) => ({
+			groupId: server.groupId,
+			groupName: server.group.name,
+		}))
+	}
+
+	/**
 	 * Get cached group members (user IDs only)
 	 * Cached in-memory for 5 minutes
 	 */
@@ -2630,6 +2678,29 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			where: eq(groupMembers.groupId, groupId),
 		})
 		return members.length
+	}
+
+	/**
+	 * Cancel all pending join requests for a user in a specific group.
+	 * This should be called whenever a user joins a group through any method
+	 * (direct join, invitation acceptance, or request approval) to prevent
+	 * showing stale join requests to group admins.
+	 */
+	private async cancelPendingJoinRequests(groupId: string, userId: string): Promise<void> {
+		await this.db
+			.update(groupJoinRequests)
+			.set({
+				status: 'cancelled',
+				respondedAt: new Date(),
+				respondedBy: null,
+			})
+			.where(
+				and(
+					eq(groupJoinRequests.groupId, groupId),
+					eq(groupJoinRequests.userId, userId),
+					eq(groupJoinRequests.status, 'pending')
+				)
+			)
 	}
 
 	/**

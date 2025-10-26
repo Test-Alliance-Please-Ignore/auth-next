@@ -232,7 +232,9 @@ export function CreateCustomPermissionDialog({
 						</Label>
 						<Select
 							value={formData.targetType}
-							onValueChange={(value) => setFormData({ ...formData, targetType: value as PermissionTarget })}
+							onValueChange={(value) =>
+								setFormData({ ...formData, targetType: value as PermissionTarget })
+							}
 							disabled={isSubmitting}
 						>
 							<SelectTrigger id="custom-target-type">
@@ -267,9 +269,7 @@ export function CreateCustomPermissionDialog({
 							className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
 							rows={3}
 						/>
-						{errors.description && (
-							<p className="text-sm text-destructive">{errors.description}</p>
-						)}
+						{errors.description && <p className="text-sm text-destructive">{errors.description}</p>}
 					</div>
 
 					{/* Action Buttons */}

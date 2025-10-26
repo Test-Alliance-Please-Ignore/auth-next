@@ -194,6 +194,7 @@ export class DiscordBotService {
 		success: boolean
 		errorMessage?: string
 		alreadyMember?: boolean
+		authRevoked?: boolean
 	}> {
 		try {
 			// Generate dynamic proxy URL for this request
@@ -329,6 +330,20 @@ export class DiscordBotService {
 					return {
 						success: false,
 						errorMessage: 'Guild has reached maximum member limit',
+					}
+				}
+
+				// Error code 50025 = Missing Access (user revoked authorization)
+				if (error.code === 50025) {
+					logger.warn('[DiscordBot] User has revoked Discord app authorization', {
+						guildId,
+						userId,
+						code: error.code,
+					})
+					return {
+						success: false,
+						errorMessage: 'Discord authorization revoked. Please re-link your Discord account.',
+						authRevoked: true,
 					}
 				}
 

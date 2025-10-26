@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { apiClient } from '@/lib/api'
 
 /**
@@ -11,9 +12,11 @@ import { apiClient } from '@/lib/api'
  * It exchanges the code for tokens client-side, then sends them to the backend
  */
 export default function DiscordCallbackPage() {
+	usePageTitle('Linking Discord')
 	const [searchParams] = useSearchParams()
 	const [isClosing, setIsClosing] = useState(false)
 	const [isProcessing, setIsProcessing] = useState(false)
+	const [waitingForConfirmation, setWaitingForConfirmation] = useState(false)
 	const [error, setError] = useState<string | null>(searchParams.get('error'))
 	const code = searchParams.get('code')
 	const state = searchParams.get('state')
@@ -22,7 +25,7 @@ export default function DiscordCallbackPage() {
 		async function handleCallback() {
 			// If there's an error parameter, show it immediately
 			if (error) {
-				notifyParentAndClose(false, error)
+				notifyParentWithRetry(false, error)
 				return
 			}
 
@@ -30,15 +33,16 @@ export default function DiscordCallbackPage() {
 			if (!code || !state) {
 				const errorMsg = 'Missing code or state parameter'
 				setError(errorMsg)
-				notifyParentAndClose(false, errorMsg)
+				notifyParentWithRetry(false, errorMsg)
 				return
 			}
 
 			setIsProcessing(true)
 
 			try {
-				// Get code verifier from sessionStorage (set by parent window)
-				const codeVerifier = sessionStorage.getItem(`discord_code_verifier_${state}`)
+				// Get code verifier from localStorage (set by parent window)
+				// Note: localStorage is shared across windows/tabs, sessionStorage is not
+				const codeVerifier = localStorage.getItem(`discord_code_verifier_${state}`)
 
 				if (!codeVerifier) {
 					throw new Error('Code verifier not found - please try again')
@@ -94,48 +98,81 @@ export default function DiscordCallbackPage() {
 				})
 
 				// Clean up code verifier
-				sessionStorage.removeItem(`discord_code_verifier_${state}`)
+				localStorage.removeItem(`discord_code_verifier_${state}`)
 
-				// Success!
-				notifyParentAndClose(true)
+				setIsProcessing(false)
+				setWaitingForConfirmation(true)
+
+				// Success! Wait for parent acknowledgment before closing
+				await notifyParentWithRetry(true)
 			} catch (err) {
 				const errorMsg = err instanceof Error ? err.message : 'Unknown error occurred'
 				console.error('Discord callback error:', err)
 				setError(errorMsg)
-				notifyParentAndClose(false, errorMsg)
+				setIsProcessing(false)
+				notifyParentWithRetry(false, errorMsg)
 			}
 		}
 
-		function notifyParentAndClose(success: boolean, errorMessage?: string) {
-			// Send message to parent window
-			if (window.opener) {
-				if (success) {
-					window.opener.postMessage(
-						{
-							type: 'discord-oauth-success',
-						},
-						window.location.origin
-					)
-				} else {
-					window.opener.postMessage(
-						{
-							type: 'discord-oauth-error',
-							error: errorMessage || 'Unknown error',
-						},
-						window.location.origin
-					)
-				}
+		/**
+		 * Send message to parent with exponential backoff retry
+		 * Ensures message delivery even if parent isn't ready yet
+		 */
+		async function notifyParentWithRetry(success: boolean, errorMessage?: string): Promise<void> {
+			if (!window.opener) {
+				console.error('No opener window available')
+				return
 			}
 
-			// Auto-close window after 2 seconds
-			const timer = setTimeout(() => {
-				setIsClosing(true)
-				setTimeout(() => {
-					window.close()
-				}, 500)
-			}, 2000)
+			const message = success
+				? { type: 'discord-oauth-success' }
+				: { type: 'discord-oauth-error', error: errorMessage || 'Unknown error' }
 
-			return () => clearTimeout(timer)
+			// Retry configuration: 100ms, 300ms, 900ms (total ~1.3s)
+			const retryDelays = [100, 300, 900]
+			let ackReceived = false
+
+			// Listen for acknowledgment from parent
+			const ackListener = (event: MessageEvent) => {
+				if (event.origin !== window.location.origin) return
+				if (event.data?.type === 'discord-oauth-ack') {
+					ackReceived = true
+				}
+			}
+			window.addEventListener('message', ackListener)
+
+			try {
+				// Send initial message
+				window.opener.postMessage(message, window.location.origin)
+
+				// Retry with exponential backoff
+				for (const delay of retryDelays) {
+					await new Promise((resolve) => setTimeout(resolve, delay))
+
+					if (ackReceived) {
+						console.log('Parent acknowledged message')
+						break
+					}
+
+					console.log(`Retrying message delivery after ${delay}ms...`)
+					window.opener.postMessage(message, window.location.origin)
+				}
+
+				// Wait a bit longer for final ack
+				if (!ackReceived) {
+					await new Promise((resolve) => setTimeout(resolve, 500))
+				}
+
+				if (ackReceived && success) {
+					// Close window only after successful acknowledgment
+					setIsClosing(true)
+					setTimeout(() => {
+						window.close()
+					}, 500)
+				}
+			} finally {
+				window.removeEventListener('message', ackListener)
+			}
 		}
 
 		void handleCallback()
@@ -150,7 +187,7 @@ export default function DiscordCallbackPage() {
 							<div className="flex items-center justify-center w-16 h-16 rounded-full bg-destructive/20">
 								<XCircle className="h-10 w-10 text-destructive" />
 							</div>
-						) : isProcessing ? (
+						) : isProcessing || waitingForConfirmation ? (
 							<div className="flex items-center justify-center w-16 h-16 rounded-full bg-primary/20">
 								<Loader2 className="h-10 w-10 text-primary animate-spin" />
 							</div>
@@ -165,16 +202,20 @@ export default function DiscordCallbackPage() {
 									? 'Discord Linking Failed'
 									: isProcessing
 										? 'Linking Discord Account...'
-										: 'Discord Linked Successfully'}
+										: waitingForConfirmation
+											? 'Confirming...'
+											: 'Discord Linked Successfully'}
 							</CardTitle>
 							<CardDescription>
 								{error
 									? 'There was an error linking your Discord account.'
 									: isProcessing
-										? 'Please wait while we complete the linking process.'
-										: isClosing
-											? 'Closing window...'
-											: 'You can close this window now.'}
+										? 'Exchanging authorization code for access tokens...'
+										: waitingForConfirmation
+											? 'Waiting for confirmation from parent window...'
+											: isClosing
+												? 'Closing window...'
+												: 'You can close this window now.'}
 							</CardDescription>
 						</div>
 					</div>

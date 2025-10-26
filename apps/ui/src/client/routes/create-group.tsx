@@ -10,10 +10,12 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
 import { useCategories } from '@/hooks/useCategories'
 import { useCreateGroup } from '@/hooks/useGroups'
+import { usePageTitle } from '@/hooks/usePageTitle'
 
 import type { CreateGroupRequest } from '@/lib/api'
 
 export default function CreateGroupPage() {
+	usePageTitle('Create New Group')
 	const navigate = useNavigate()
 	const createGroup = useCreateGroup()
 	const { data: categories } = useCategories()

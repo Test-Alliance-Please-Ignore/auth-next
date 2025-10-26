@@ -99,6 +99,21 @@ export function useSetUserAdmin() {
 }
 
 /**
+ * Revoke a user's Discord authorization
+ */
+export function useRevokeDiscordLink() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: (userId: string) => api.revokeDiscordLink(userId),
+		onSuccess: (_, userId) => {
+			// Invalidate user detail to refetch Discord status
+			void queryClient.invalidateQueries({ queryKey: adminUserKeys.detail(userId) })
+		},
+	})
+}
+
+/**
  * Delete a character from a user account
  */
 export function useDeleteUserCharacter() {

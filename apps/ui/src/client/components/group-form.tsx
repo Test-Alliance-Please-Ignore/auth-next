@@ -11,6 +11,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 
 import type { Category, CreateGroupRequest } from '@/lib/api'
 
@@ -104,7 +105,7 @@ export function GroupForm({ categories, onSubmit, onCancel, isSubmitting }: Grou
 			{/* Description Textarea */}
 			<div className="space-y-2">
 				<Label htmlFor="description">Description</Label>
-				<textarea
+				<Textarea
 					id="description"
 					value={formData.description || ''}
 					onChange={(e) =>
@@ -112,7 +113,6 @@ export function GroupForm({ categories, onSubmit, onCancel, isSubmitting }: Grou
 					}
 					placeholder="Enter group description (optional)"
 					disabled={isSubmitting}
-					className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
 					rows={3}
 				/>
 				{errors.description && <p className="text-sm text-destructive">{errors.description}</p>}

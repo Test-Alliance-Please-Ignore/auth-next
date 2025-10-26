@@ -1,3 +1,9 @@
+import { and, eq, ilike, sql } from '@repo/db-utils'
+import { getStub } from '@repo/do-utils'
+
+import { userCharacters, users } from '../db/schema'
+import * as discordService from '../services/discord.service'
+
 import type {
 	CharacterDetails,
 	CharacterOwnerInfo,
@@ -8,8 +14,9 @@ import type {
 	TransferCharacterResult,
 	UserDetails,
 } from '@repo/admin'
-import type { DbClient, eq, ilike, sql } from '@repo/db-utils'
+import type { DbClient } from '@repo/db-utils'
 import type { EveTokenStore } from '@repo/eve-token-store'
+import type { Env } from '../context'
 import type { schema } from '../db'
 
 /**
@@ -21,16 +28,14 @@ import type { schema } from '../db'
 export class CoreRpcService {
 	constructor(
 		private db: DbClient<typeof schema>,
-		private eveTokenStoreNamespace: DurableObjectNamespace
+		private eveTokenStoreNamespace: DurableObjectNamespace,
+		private discordNamespace: DurableObjectNamespace
 	) {}
 
 	/**
 	 * Search users with pagination
 	 */
 	async searchUsers(params: SearchUsersParams): Promise<SearchUsersResult> {
-		const { users, userCharacters } = await import('../db/schema')
-		const { eq, ilike, sql } = await import('@repo/db-utils')
-
 		const limit = params.limit ?? 50
 		const offset = params.offset ?? 0
 
@@ -111,10 +116,6 @@ export class CoreRpcService {
 	 * Get detailed user information
 	 */
 	async getUserDetails(userId: string): Promise<UserDetails | null> {
-		const { users, userCharacters } = await import('../db/schema')
-		const { eq } = await import('@repo/db-utils')
-		const { getStub } = await import('@repo/do-utils')
-
 		// 1. Query user
 		const user = await this.db.query.users.findFirst({
 			where: eq(users.id, userId),
@@ -155,12 +156,37 @@ export class CoreRpcService {
 			})
 		)
 
-		// 5. Return user details
+		// 5. Get Discord status if linked
+		let discordStatus = null
+		if (user.discordUserId) {
+			try {
+				const discordStub = getStub<import('@repo/discord').Discord>(
+					this.discordNamespace,
+					'default'
+				)
+				const status = await discordStub.getDiscordUserStatus(userId)
+				if (status) {
+					discordStatus = {
+						userId: status.userId,
+						username: status.username,
+						discriminator: status.discriminator,
+						authRevoked: status.authRevoked,
+						authRevokedAt: status.authRevokedAt,
+						lastSuccessfulAuth: status.lastSuccessfulAuth,
+					}
+				}
+			} catch (error) {
+				console.error('Failed to load Discord status:', error)
+			}
+		}
+
+		// 6. Return user details
 		return {
 			id: user.id,
 			mainCharacterId: user.mainCharacterId,
 			is_admin: user.is_admin,
 			discordUserId: user.discordUserId,
+			discord: discordStatus,
 			characters: characterSummaries,
 			createdAt: user.createdAt,
 			updatedAt: user.updatedAt,
@@ -171,10 +197,6 @@ export class CoreRpcService {
 	 * Delete a user and all associated data
 	 */
 	async deleteUser(userId: string): Promise<DeleteUserResult> {
-		const { users, userCharacters } = await import('../db/schema')
-		const { eq } = await import('@repo/db-utils')
-		const { getStub } = await import('@repo/do-utils')
-
 		// 1. Verify user exists
 		const user = await this.db.query.users.findFirst({
 			where: eq(users.id, userId),
@@ -226,10 +248,6 @@ export class CoreRpcService {
 		characterId: string,
 		newUserId: string
 	): Promise<TransferCharacterResult> {
-		const { users, userCharacters } = await import('../db/schema')
-		const { eq } = await import('@repo/db-utils')
-		const { getStub } = await import('@repo/do-utils')
-
 		// 1. Find current character owner
 		const character = await this.db.query.userCharacters.findFirst({
 			where: eq(userCharacters.characterId, characterId),
@@ -298,10 +316,6 @@ export class CoreRpcService {
 	 * Delete/unlink a character from its owner
 	 */
 	async deleteCharacter(characterId: string): Promise<DeleteCharacterResult> {
-		const { userCharacters } = await import('../db/schema')
-		const { eq } = await import('@repo/db-utils')
-		const { getStub } = await import('@repo/do-utils')
-
 		// 1. Find character
 		const character = await this.db.query.userCharacters.findFirst({
 			where: eq(userCharacters.characterId, characterId),
@@ -348,9 +362,6 @@ export class CoreRpcService {
 	 * Get character ownership information
 	 */
 	async getCharacterOwnership(characterId: string): Promise<CharacterOwnerInfo | null> {
-		const { userCharacters } = await import('../db/schema')
-		const { eq } = await import('@repo/db-utils')
-
 		// Query character ownership info
 		const character = await this.db.query.userCharacters.findFirst({
 			where: eq(userCharacters.characterId, characterId),

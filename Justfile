@@ -59,7 +59,6 @@ db-generate-all:
   cd apps/discord && bun run db:generate
   cd apps/groups && bun run db:generate
   cd apps/admin && bun run db:generate
-  cd apps/hr && bun run db:generate
   cd apps/eve-corporation-data && bun run db:generate
   cd apps/eve-character-data && bun run db:generate
   cd apps/eve-static-data && bun run db:generate
@@ -72,7 +71,6 @@ db-push-all:
   cd apps/discord && bun run db:push
   cd apps/groups && bun run db:push
   cd apps/admin && bun run db:push
-  cd apps/hr && bun run db:push
   cd apps/eve-corporation-data && bun run db:push
   cd apps/eve-character-data && bun run db:push
   cd apps/eve-static-data && bun run db:push
@@ -85,7 +83,6 @@ db-migrate-all:
   cd apps/discord && bun run db:migrate
   cd apps/groups && bun run db:migrate
   cd apps/admin && bun run db:migrate
-  cd apps/hr && bun run db:migrate
   cd apps/eve-corporation-data && bun run db:migrate
   cd apps/eve-character-data && bun run db:migrate
   cd apps/eve-static-data && bun run db:migrate

@@ -10,6 +10,7 @@ import { CharacterSkillQueue } from '../components/character-skill-queue'
 import { CharacterSkills } from '../components/character-skills'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
+import { usePageTitle } from '../hooks/usePageTitle'
 import { api } from '../lib/api'
 
 export default function CharacterDetailPage() {
@@ -30,6 +31,9 @@ export default function CharacterDetailPage() {
 		queryFn: () => api.getCharacterDetail(characterId),
 		enabled: !!characterId,
 	})
+
+	// Set page title based on character name
+	usePageTitle(character?.public?.info?.name ? `${character.public.info.name}` : 'Character')
 
 	// Handle refresh
 	const handleRefresh = async () => {
@@ -52,13 +56,13 @@ export default function CharacterDetailPage() {
 				<div className="space-y-4">
 					<Card>
 						<CardHeader>
-							<div className="h-8 bg-gray-200 rounded animate-pulse w-1/3" />
+							<div className="h-8 bg-muted rounded animate-pulse w-1/3" />
 						</CardHeader>
 						<CardContent>
 							<div className="space-y-2">
-								<div className="h-4 bg-gray-200 rounded animate-pulse" />
-								<div className="h-4 bg-gray-200 rounded animate-pulse w-5/6" />
-								<div className="h-4 bg-gray-200 rounded animate-pulse w-2/3" />
+								<div className="h-4 bg-muted rounded animate-pulse" />
+								<div className="h-4 bg-muted rounded animate-pulse w-5/6" />
+								<div className="h-4 bg-muted rounded animate-pulse w-2/3" />
 							</div>
 						</CardContent>
 					</Card>
@@ -75,7 +79,7 @@ export default function CharacterDetailPage() {
 						<CardTitle>Error</CardTitle>
 					</CardHeader>
 					<CardContent>
-						<p className="text-red-500">
+						<p className="text-destructive">
 							{error ? 'Failed to load character details' : 'Character not found'}
 						</p>
 					</CardContent>
@@ -133,7 +137,7 @@ export default function CharacterDetailPage() {
 							</Button>
 						)}
 						{character.isOwner && (
-							<span className="text-sm text-green-600 font-medium flex items-center">
+							<span className="text-sm text-success font-medium flex items-center">
 								<User className="h-4 w-4 mr-1" />
 								Owner
 							</span>

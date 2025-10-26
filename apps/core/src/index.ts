@@ -79,13 +79,17 @@ export default app
 export class CoreWorker extends WorkerEntrypoint<Env> {
 	private service: CoreRpcService | null = null
 
+	constructor(ctx: ExecutionContext, env: Env) {
+		super(ctx, env)
+	}
+
 	/**
 	 * Get or create the RPC service instance
 	 */
 	private getService(): CoreRpcService {
 		if (!this.service) {
 			const db = createDb(this.env.DATABASE_URL)
-			this.service = new CoreRpcService(db, this.env.EVE_TOKEN_STORE)
+			this.service = new CoreRpcService(db, this.env.EVE_TOKEN_STORE, this.env.DISCORD)
 		}
 		return this.service
 	}

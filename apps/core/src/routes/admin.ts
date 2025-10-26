@@ -8,10 +8,16 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 
+import { and, eq } from '@repo/db-utils'
+import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
+import { createDb } from '../db'
+import { userCharacters, users } from '../db/schema'
 import { requireAdmin, requireAuth } from '../middleware/session'
+import * as discordService from '../services/discord.service'
 
+import type { Discord } from '@repo/discord'
 import type { App } from '../context'
 
 const app = new Hono<App>()
@@ -302,10 +308,6 @@ app.post('/users/:userId/admin', requireAuth(), requireAdmin(), async (c) => {
 			return c.json({ error: 'isAdmin must be a boolean' }, 400)
 		}
 
-		const { users } = await import('../db/schema')
-		const { eq } = await import('@repo/db-utils')
-		const { createDb } = await import('../db')
-
 		const db = createDb(c.env.DATABASE_URL)
 
 		// Update user admin status
@@ -332,11 +334,6 @@ app.delete('/users/:userId/characters/:characterId', requireAuth(), requireAdmin
 	}
 
 	try {
-		const { userCharacters } = await import('../db/schema')
-		const { eq, and } = await import('@repo/db-utils')
-		const { createDb } = await import('../db')
-		const { getStub } = await import('@repo/do-utils')
-
 		const db = createDb(c.env.DATABASE_URL)
 
 		// Verify character belongs to user
@@ -389,7 +386,6 @@ app.post('/users/:userId/discord/join-servers', requireAuth(), requireAdmin(), a
 	}
 
 	try {
-		const discordService = await import('../services/discord.service')
 		const result = await discordService.joinUserToCorporationServers(c.env, userId)
 
 		return c.json(result)
@@ -398,6 +394,59 @@ app.post('/users/:userId/discord/join-servers', requireAuth(), requireAdmin(), a
 		return c.json(
 			{
 				error: error instanceof Error ? error.message : 'Failed to join Discord servers',
+			},
+			500
+		)
+	}
+})
+
+/**
+ * POST /admin/users/:userId/discord/revoke
+ * Manually revoke a user's Discord authorization (admin action)
+ *
+ * Marks the user's Discord authorization as revoked without actually unlinking
+ */
+app.post('/users/:userId/discord/revoke', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	const userId = c.req.param('userId')
+
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		// Get Discord DO stub
+		const discordStub = getStub<Discord>(c.env.DISCORD, 'default')
+
+		// Get current Discord status
+		const status = await discordStub.getDiscordUserStatus(userId)
+
+		if (!status) {
+			return c.json({ error: 'User does not have a Discord account linked' }, 404)
+		}
+
+		if (status.authRevoked) {
+			return c.json({ error: 'Discord authorization already revoked' }, 400)
+		}
+
+		// Revoke authorization via Discord DO
+		const success = await discordStub.revokeAuthorization(userId)
+
+		if (!success) {
+			return c.json({ error: 'Failed to revoke Discord authorization' }, 500)
+		}
+
+		logger.info('[Admin] Discord authorization revoked by admin', {
+			adminUserId: user.id,
+			targetUserId: userId,
+		})
+
+		return c.json({ success: true })
+	} catch (error) {
+		logger.error('Error revoking Discord authorization:', error)
+		return c.json(
+			{
+				error: error instanceof Error ? error.message : 'Failed to revoke Discord authorization',
 			},
 			500
 		)

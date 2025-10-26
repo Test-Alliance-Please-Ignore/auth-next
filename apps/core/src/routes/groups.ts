@@ -788,55 +788,65 @@ groups.post('/:groupId/permissions/custom', requireAuth(), requireAdmin(), async
  *
  * Update a group permission (change target type)
  */
-groups.patch('/:groupId/permissions/:groupPermissionId', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')!
-	const groupPermissionId = c.req.param('groupPermissionId')
-	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.patch(
+	'/:groupId/permissions/:groupPermissionId',
+	requireAuth(),
+	requireAdmin(),
+	async (c) => {
+		const user = c.get('user')!
+		const groupPermissionId = c.req.param('groupPermissionId')
+		const body = await c.req.json()
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	try {
-		const groupPermission = await groupsDO.updateGroupPermission(
-			groupPermissionId,
-			{
-				targetType: body.targetType,
-			},
-			user.id
-		)
-		return c.json(groupPermission)
-	} catch (error) {
-		if (error instanceof Error) {
-			if (error.message.includes('not found')) {
-				return c.json({ error: 'Group permission not found' }, 404)
+		try {
+			const groupPermission = await groupsDO.updateGroupPermission(
+				groupPermissionId,
+				{
+					targetType: body.targetType,
+				},
+				user.id
+			)
+			return c.json(groupPermission)
+		} catch (error) {
+			if (error instanceof Error) {
+				if (error.message.includes('not found')) {
+					return c.json({ error: 'Group permission not found' }, 404)
+				}
+				return c.json({ error: error.message }, 400)
 			}
-			return c.json({ error: error.message }, 400)
+			throw error
 		}
-		throw error
 	}
-})
+)
 
 /**
  * DELETE /:groupId/permissions/:groupPermissionId
  *
  * Remove a permission from a group
  */
-groups.delete('/:groupId/permissions/:groupPermissionId', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')!
-	const groupPermissionId = c.req.param('groupPermissionId')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.delete(
+	'/:groupId/permissions/:groupPermissionId',
+	requireAuth(),
+	requireAdmin(),
+	async (c) => {
+		const user = c.get('user')!
+		const groupPermissionId = c.req.param('groupPermissionId')
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	try {
-		await groupsDO.removePermissionFromGroup(groupPermissionId, user.id)
-		return c.json({ success: true }, 200)
-	} catch (error) {
-		if (error instanceof Error) {
-			if (error.message.includes('not found')) {
-				return c.json({ error: 'Group permission not found' }, 404)
+		try {
+			await groupsDO.removePermissionFromGroup(groupPermissionId, user.id)
+			return c.json({ success: true }, 200)
+		} catch (error) {
+			if (error instanceof Error) {
+				if (error.message.includes('not found')) {
+					return c.json({ error: 'Group permission not found' }, 404)
+				}
+				return c.json({ error: error.message }, 400)
 			}
-			return c.json({ error: error.message }, 400)
+			throw error
 		}
-		throw error
 	}
-})
+)
 
 /**
  * GET /:groupId/permissions/members
@@ -1371,6 +1381,5 @@ groups.delete(
 		}
 	}
 )
-
 
 export default groups

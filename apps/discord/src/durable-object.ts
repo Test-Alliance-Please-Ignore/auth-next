@@ -61,6 +61,81 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 	}
 
 	/**
+	 * Get Discord user status including auth revocation info
+	 * @param coreUserId - Core user ID
+	 * @returns Discord user status or null if not found
+	 */
+	async getDiscordUserStatus(coreUserId: string): Promise<{
+		userId: string
+		username: string
+		discriminator: string
+		coreUserId: string | null
+		authRevoked: boolean
+		authRevokedAt: Date | null
+		lastSuccessfulAuth: Date | null
+		createdAt: Date
+		updatedAt: Date
+	} | null> {
+		const user = await this.db.query.discordUsers.findFirst({
+			where: eq(discordUsers.coreUserId, coreUserId),
+		})
+
+		if (!user) {
+			return null
+		}
+
+		return {
+			userId: user.userId,
+			username: user.username,
+			discriminator: user.discriminator,
+			coreUserId: user.coreUserId,
+			authRevoked: user.authRevoked,
+			authRevokedAt: user.authRevokedAt,
+			lastSuccessfulAuth: user.lastSuccessfulAuth,
+			createdAt: user.createdAt,
+			updatedAt: user.updatedAt,
+		}
+	}
+
+	/**
+	 * Manually revoke Discord authorization for a user (admin action)
+	 * @param coreUserId - Core user ID
+	 * @returns Success status
+	 */
+	async revokeAuthorization(coreUserId: string): Promise<boolean> {
+		const user = await this.db.query.discordUsers.findFirst({
+			where: eq(discordUsers.coreUserId, coreUserId),
+		})
+
+		if (!user) {
+			logger.error('[DiscordDO] User not found for manual revocation', { coreUserId })
+			return false
+		}
+
+		if (user.authRevoked) {
+			logger.warn('[DiscordDO] Authorization already revoked', { coreUserId })
+			return true // Already revoked, so technically successful
+		}
+
+		// Mark as revoked
+		await this.db
+			.update(discordUsers)
+			.set({
+				authRevoked: true,
+				authRevokedAt: new Date(),
+				updatedAt: new Date(),
+			})
+			.where(eq(discordUsers.id, user.id))
+
+		logger.info('[DiscordDO] Manually revoked Discord authorization', {
+			coreUserId,
+			userId: user.userId,
+		})
+
+		return true
+	}
+
+	/**
 	 * Refresh token by core user ID
 	 * @param coreUserId - Core user ID
 	 * @returns Success status
@@ -322,6 +397,36 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 					})
 				)
 
+				// Check if any result indicates revoked authorization
+				const hasRevokedAuth = results.some((result) => result.authRevoked === true)
+				const hasSuccessfulAuth = results.some((result) => result.success === true)
+
+				if (hasRevokedAuth) {
+					// Mark user as having revoked authorization
+					await this.db
+						.update(discordUsers)
+						.set({
+							authRevoked: true,
+							authRevokedAt: new Date(),
+							updatedAt: new Date(),
+						})
+						.where(eq(discordUsers.id, user.id))
+
+					logger.warn('[DiscordDO] Marked user as having revoked Discord authorization', {
+						userId: user.userId,
+						coreUserId,
+					})
+				} else if (hasSuccessfulAuth) {
+					// Update last successful auth timestamp
+					await this.db
+						.update(discordUsers)
+						.set({
+							lastSuccessfulAuth: new Date(),
+							updatedAt: new Date(),
+						})
+						.where(eq(discordUsers.id, user.id))
+				}
+
 				return results
 			}
 
@@ -344,6 +449,36 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 					}
 				})
 			)
+
+			// Check if any result indicates revoked authorization
+			const hasRevokedAuth = results.some((result) => result.authRevoked === true)
+			const hasSuccessfulAuth = results.some((result) => result.success === true)
+
+			if (hasRevokedAuth) {
+				// Mark user as having revoked authorization
+				await this.db
+					.update(discordUsers)
+					.set({
+						authRevoked: true,
+						authRevokedAt: new Date(),
+						updatedAt: new Date(),
+					})
+					.where(eq(discordUsers.id, user.id))
+
+				logger.warn('[DiscordDO] Marked user as having revoked Discord authorization', {
+					userId: user.userId,
+					coreUserId,
+				})
+			} else if (hasSuccessfulAuth) {
+				// Update last successful auth timestamp
+				await this.db
+					.update(discordUsers)
+					.set({
+						lastSuccessfulAuth: new Date(),
+						updatedAt: new Date(),
+					})
+					.where(eq(discordUsers.id, user.id))
+			}
 
 			return results
 		} catch (error) {
@@ -578,7 +713,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 		})
 
 		if (user) {
-			// Update existing user
+			// Update existing user (clear authRevoked and set lastSuccessfulAuth when re-linking)
 			await this.db
 				.update(discordUsers)
 				.set({
@@ -586,6 +721,9 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 					discriminator,
 					scopes: JSON.stringify(scopes),
 					coreUserId: coreUserId ?? user.coreUserId,
+					authRevoked: false,
+					authRevokedAt: null,
+					lastSuccessfulAuth: new Date(),
 					updatedAt: new Date(),
 				})
 				.where(eq(discordUsers.id, user.id))
@@ -615,13 +753,14 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 		})
 
 		if (existingToken) {
-			// Update existing token
+			// Update existing token (set lastSuccessfulAuth when re-linking)
 			await this.db
 				.update(discordTokens)
 				.set({
 					accessToken: encryptedAccessToken,
 					refreshToken: encryptedRefreshToken,
 					expiresAt,
+					lastSuccessfulAuth: new Date(),
 					updatedAt: new Date(),
 				})
 				.where(eq(discordTokens.id, existingToken.id))
@@ -632,6 +771,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 				accessToken: encryptedAccessToken,
 				refreshToken: encryptedRefreshToken,
 				expiresAt,
+				lastSuccessfulAuth: new Date(),
 			})
 		}
 	}

@@ -31,6 +31,7 @@ import {
 	useGlobalPermissions,
 	useUpdatePermission,
 } from '@/hooks/usePermissions'
+import { usePageTitle } from '@/hooks/usePageTitle'
 
 import type {
 	CreatePermissionRequest,
@@ -39,6 +40,7 @@ import type {
 } from '@/lib/api'
 
 export default function GlobalPermissionsPage() {
+	usePageTitle('Admin - Global Permissions')
 	const [selectedCategoryId, setSelectedCategoryId] = useState<string | undefined>(undefined)
 	const [searchQuery, setSearchQuery] = useState('')
 
@@ -137,7 +139,9 @@ export default function GlobalPermissionsPage() {
 				<div className="flex items-center justify-between">
 					<div>
 						<h1 className="text-3xl font-bold gradient-text">Permissions</h1>
-						<p className="text-muted-foreground mt-1">Manage permission categories and global permissions</p>
+						<p className="text-muted-foreground mt-1">
+							Manage permission categories and global permissions
+						</p>
 					</div>
 					<Button onClick={() => setCreateDialogOpen(true)}>
 						<Plus className="mr-2 h-4 w-4" />
@@ -201,7 +205,12 @@ export default function GlobalPermissionsPage() {
 						{/* Category Filter */}
 						<div className="space-y-2">
 							<Label htmlFor="category-filter">Filter by Category</Label>
-							<Select value={selectedCategoryId || 'all'} onValueChange={(value) => setSelectedCategoryId(value === 'all' ? undefined : value)}>
+							<Select
+								value={selectedCategoryId || 'all'}
+								onValueChange={(value) =>
+									setSelectedCategoryId(value === 'all' ? undefined : value)
+								}
+							>
 								<SelectTrigger id="category-filter">
 									<SelectValue placeholder="All categories" />
 								</SelectTrigger>
@@ -232,7 +241,9 @@ export default function GlobalPermissionsPage() {
 							</span>
 						)}
 					</CardTitle>
-					<CardDescription>Manage global permissions that can be attached to groups</CardDescription>
+					<CardDescription>
+						Manage global permissions that can be attached to groups
+					</CardDescription>
 				</CardHeader>
 				<CardContent>
 					{isLoading && (
@@ -247,38 +258,43 @@ export default function GlobalPermissionsPage() {
 						</div>
 					)}
 
-					{!isLoading && filteredPermissions.length === 0 && !searchQuery && !selectedCategoryId && (
-						<Card className="p-8 text-center">
-							<FileKey className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-							<h3 className="text-lg font-medium mb-2">No permissions yet</h3>
-							<p className="text-muted-foreground mb-4">
-								Create your first global permission to get started
-							</p>
-							<Button onClick={() => setCreateDialogOpen(true)}>
-								<Plus className="w-4 h-4 mr-2" />
-								Create Permission
-							</Button>
-						</Card>
-					)}
+					{!isLoading &&
+						filteredPermissions.length === 0 &&
+						!searchQuery &&
+						!selectedCategoryId && (
+							<Card className="p-8 text-center">
+								<FileKey className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+								<h3 className="text-lg font-medium mb-2">No permissions yet</h3>
+								<p className="text-muted-foreground mb-4">
+									Create your first global permission to get started
+								</p>
+								<Button onClick={() => setCreateDialogOpen(true)}>
+									<Plus className="w-4 h-4 mr-2" />
+									Create Permission
+								</Button>
+							</Card>
+						)}
 
-					{!isLoading && filteredPermissions.length === 0 && (searchQuery || selectedCategoryId) && (
-						<Card className="p-8 text-center">
-							<Search className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-							<h3 className="text-lg font-medium mb-2">No permissions found</h3>
-							<p className="text-muted-foreground mb-4">
-								Try adjusting your search or filter criteria
-							</p>
-							<Button
-								variant="outline"
-								onClick={() => {
-									setSearchQuery('')
-									setSelectedCategoryId(undefined)
-								}}
-							>
-								Clear filters
-							</Button>
-						</Card>
-					)}
+					{!isLoading &&
+						filteredPermissions.length === 0 &&
+						(searchQuery || selectedCategoryId) && (
+							<Card className="p-8 text-center">
+								<Search className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+								<h3 className="text-lg font-medium mb-2">No permissions found</h3>
+								<p className="text-muted-foreground mb-4">
+									Try adjusting your search or filter criteria
+								</p>
+								<Button
+									variant="outline"
+									onClick={() => {
+										setSearchQuery('')
+										setSelectedCategoryId(undefined)
+									}}
+								>
+									Clear filters
+								</Button>
+							</Card>
+						)}
 
 					{!isLoading && filteredPermissions.length > 0 && (
 						<div className="space-y-3">
@@ -303,10 +319,7 @@ export default function GlobalPermissionsPage() {
 											<Button variant="ghost" size="sm" onClick={() => openEditDialog(permission)}>
 												Edit
 											</Button>
-											<DestructiveButton
-												size="sm"
-												onClick={() => openDeleteDialog(permission)}
-											>
+											<DestructiveButton size="sm" onClick={() => openDeleteDialog(permission)}>
 												<Trash2 className="h-4 w-4" />
 											</DestructiveButton>
 										</div>
@@ -362,8 +375,8 @@ export default function GlobalPermissionsPage() {
 					<DialogHeader>
 						<DialogTitle>Delete Permission</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to delete "{selectedPermission?.name}"? This will remove it from all
-							groups that use this permission.
+							Are you sure you want to delete "{selectedPermission?.name}"? This will remove it from
+							all groups that use this permission.
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>

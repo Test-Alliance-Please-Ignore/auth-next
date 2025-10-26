@@ -20,10 +20,12 @@ import {
 } from '@/components/ui/select'
 import { useCategories } from '@/hooks/useCategories'
 import { useGroups } from '@/hooks/useGroups'
+import { usePageTitle } from '@/hooks/usePageTitle'
 
 import type { GroupsFilters } from '@/lib/api'
 
 export default function GroupsPage() {
+	usePageTitle('Discover Groups')
 	const navigate = useNavigate()
 	const [filters, setFilters] = useState<GroupsFilters>({})
 	const { data: groups, isLoading: groupsLoading } = useGroups(filters)
@@ -78,8 +80,7 @@ export default function GroupsPage() {
 			<Section>
 				{/* Invite Code Redemption */}
 				<InviteCodeRedemption
-					onSuccess={(groupName) => {
-						alert(`Successfully joined ${groupName}!`)
+					onSuccess={() => {
 						void navigate('/my-groups')
 					}}
 				/>

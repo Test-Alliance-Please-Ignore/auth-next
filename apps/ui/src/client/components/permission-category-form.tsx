@@ -13,7 +13,9 @@ import type {
 
 interface PermissionCategoryFormProps {
 	category?: PermissionCategory
-	onSubmit: (data: CreatePermissionCategoryRequest | UpdatePermissionCategoryRequest) => Promise<void>
+	onSubmit: (
+		data: CreatePermissionCategoryRequest | UpdatePermissionCategoryRequest
+	) => Promise<void>
 	onCancel: () => void
 	isSubmitting?: boolean
 }

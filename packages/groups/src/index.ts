@@ -18,7 +18,7 @@ export type Visibility = 'public' | 'hidden' | 'system'
 export type CategoryPermission = 'anyone' | 'admin_only'
 export type JoinMode = 'open' | 'approval' | 'invitation_only'
 export type InvitationStatus = 'pending' | 'accepted' | 'declined' | 'expired'
-export type JoinRequestStatus = 'pending' | 'approved' | 'rejected'
+export type JoinRequestStatus = 'pending' | 'approved' | 'rejected' | 'cancelled'
 
 /**
  * Data types matching database tables
@@ -119,6 +119,7 @@ export interface GroupWithDetails extends Group {
 	isOwner?: boolean
 	isAdmin?: boolean
 	isMember?: boolean
+	adminUserIds?: string[]
 	ownerName?: string
 }
 
@@ -165,6 +166,7 @@ export interface UpdateGroupRequest {
 	description?: string
 	visibility?: Visibility
 	joinMode?: JoinMode
+	categoryId?: string
 }
 
 export interface CreateInvitationRequest {
@@ -433,6 +435,11 @@ export interface Groups {
 
 	/** Get groups with Discord auto-invite enabled */
 	getGroupsWithDiscordAutoInvite(): Promise<any[]>
+
+	/** Get groups that have a specific Discord server attached */
+	getGroupsByDiscordServer(
+		discordServerId: string
+	): Promise<Array<{ groupId: string; groupName: string }>>
 
 	/** Insert Discord invite audit records */
 	insertDiscordInviteAuditRecords(records: any[]): Promise<void>

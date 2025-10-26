@@ -209,6 +209,8 @@ export const managedCorporations = pgTable(
 		assignedCharacterName: varchar('assigned_character_name', { length: 255 }),
 		/** Whether this corporation is active for data collection */
 		isActive: boolean('is_active').default(true).notNull(),
+		/** Whether this corporation should be included in background data refresh */
+		includeInBackgroundRefresh: boolean('include_in_background_refresh').default(false).notNull(),
 		/** Last successful data sync timestamp */
 		lastSync: timestamp('last_sync', { withTimezone: true }),
 		/** Last verification timestamp (any director verified) */
@@ -227,6 +229,9 @@ export const managedCorporations = pgTable(
 		index('managed_corporations_ticker_idx').on(table.ticker),
 		index('managed_corporations_assigned_character_id_idx').on(table.assignedCharacterId),
 		index('managed_corporations_is_active_idx').on(table.isActive),
+		index('managed_corporations_include_in_background_refresh_idx').on(
+			table.includeInBackgroundRefresh
+		),
 	]
 )
 

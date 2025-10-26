@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { apiClient } from '@/lib/api'
 
 interface CallbackResponse {
@@ -27,6 +28,7 @@ interface CallbackResponse {
 }
 
 export default function AuthCallbackPage() {
+	usePageTitle('Authenticating')
 	const [searchParams] = useSearchParams()
 	const navigate = useNavigate()
 	const [error, setError] = useState<string | null>(null)

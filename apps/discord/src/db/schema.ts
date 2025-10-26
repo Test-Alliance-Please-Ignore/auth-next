@@ -1,5 +1,5 @@
 import { relations } from 'drizzle-orm'
-import { pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core'
+import { boolean, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core'
 
 /**
  * Database schema for the discord worker
@@ -31,6 +31,15 @@ export const discordUsers = pgTable('discord_users', {
 	/** Core worker user ID (links to users.id in core database) */
 	coreUserId: varchar('core_user_id', { length: 255 }).unique(),
 
+	/** Whether the user has revoked Discord app authorization */
+	authRevoked: boolean('auth_revoked').default(false).notNull(),
+
+	/** When the authorization was revoked (null if never revoked) */
+	authRevokedAt: timestamp('auth_revoked_at'),
+
+	/** Last time we successfully used this user's credentials (null if never successful) */
+	lastSuccessfulAuth: timestamp('last_successful_auth'),
+
 	/** When the user was first added */
 	createdAt: timestamp('created_at').defaultNow().notNull(),
 
@@ -61,6 +70,9 @@ export const discordTokens = pgTable('discord_tokens', {
 
 	/** When the access token expires */
 	expiresAt: timestamp('expires_at').notNull(),
+
+	/** Last time we successfully used this token (null if never successful) */
+	lastSuccessfulAuth: timestamp('last_successful_auth'),
 
 	/** When the token was created */
 	createdAt: timestamp('created_at').defaultNow().notNull(),

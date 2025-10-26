@@ -16,10 +16,12 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { useActivityLogs } from '@/hooks/useAdminUsers'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
 export default function ActivityLogPage() {
+	usePageTitle('Admin - Activity Log')
 	const [searchParams, setSearchParams] = useSearchParams()
 
 	// State from URL params

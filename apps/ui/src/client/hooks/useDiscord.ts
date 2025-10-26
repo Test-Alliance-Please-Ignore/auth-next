@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { apiClient } from '@/lib/api'
 
@@ -14,7 +14,7 @@ import type {
 } from '@/lib/api'
 
 interface DiscordOAuthMessage {
-	type: 'discord-oauth-success' | 'discord-oauth-error'
+	type: 'discord-oauth-success' | 'discord-oauth-error' | 'discord-oauth-ack'
 	error?: string
 }
 
@@ -49,8 +49,11 @@ export function useDiscordLink() {
 	const queryClient = useQueryClient()
 	const popupRef = useRef<Window | null>(null)
 	const messageHandlerRef = useRef<((event: MessageEvent) => void) | null>(null)
+	const intervalRef = useRef<number | null>(null)
+	const timeoutRef = useRef<number | null>(null)
+	const [linkError, setLinkError] = useState<string | null>(null)
 
-	// Cleanup function to remove event listener and close popup
+	// Cleanup function to remove event listener, close popup, and clear timers
 	const cleanup = useCallback(() => {
 		if (messageHandlerRef.current) {
 			window.removeEventListener('message', messageHandlerRef.current)
@@ -59,6 +62,14 @@ export function useDiscordLink() {
 		if (popupRef.current && !popupRef.current.closed) {
 			popupRef.current.close()
 			popupRef.current = null
+		}
+		if (intervalRef.current !== null) {
+			clearInterval(intervalRef.current)
+			intervalRef.current = null
+		}
+		if (timeoutRef.current !== null) {
+			clearTimeout(timeoutRef.current)
+			timeoutRef.current = null
 		}
 	}, [])
 
@@ -71,22 +82,26 @@ export function useDiscordLink() {
 
 	const mutation = useMutation({
 		mutationFn: async () => {
+			// Clear previous error state
+			setLinkError(null)
+
 			// Generate PKCE parameters
 			const { codeVerifier, codeChallenge } = await generatePKCE()
 
 			// Get state from backend (still need this for CSRF protection)
 			const response = await apiClient.startDiscordLinking()
-			const state = (response as { url: string; state: string }).state
+			const state = response.state
 
-			// Store code verifier in sessionStorage (will be read by callback page)
-			sessionStorage.setItem(`discord_code_verifier_${state}`, codeVerifier)
+			// Store code verifier in localStorage (will be read by callback page)
+			// Note: localStorage is shared across windows/tabs, sessionStorage is not
+			localStorage.setItem(`discord_code_verifier_${state}`, codeVerifier)
 
 			// Build OAuth URL with PKCE parameters
 			const params = new URLSearchParams({
 				client_id: import.meta.env.VITE_DISCORD_CLIENT_ID,
 				redirect_uri: window.location.origin + '/discord/callback',
 				response_type: 'code',
-				scope: 'identify email guilds.join',
+				scope: 'identify guilds.join',
 				state: state,
 				code_challenge: codeChallenge,
 				code_challenge_method: 'S256',
@@ -109,7 +124,9 @@ export function useDiscordLink() {
 			)
 
 			if (!popup) {
-				throw new Error('Popup blocked. Please allow popups for this site.')
+				const errorMsg = 'Popup blocked. Please allow popups for this site.'
+				setLinkError(errorMsg)
+				throw new Error(errorMsg)
 			}
 
 			popupRef.current = popup
@@ -124,11 +141,20 @@ export function useDiscordLink() {
 				const data = event.data
 
 				if (data.type === 'discord-oauth-success') {
+					// Send acknowledgment back to popup
+					popup.postMessage({ type: 'discord-oauth-ack' }, window.location.origin)
+
 					// Success - force immediate refetch of user data to get updated Discord info
 					void queryClient.refetchQueries({ queryKey: ['auth', 'session'] })
 					cleanup()
 				} else if (data.type === 'discord-oauth-error') {
-					console.error('Discord OAuth error:', data.error)
+					// Send acknowledgment back to popup
+					popup.postMessage({ type: 'discord-oauth-ack' }, window.location.origin)
+
+					// Set error state for UI display
+					const errorMsg = data.error || 'Unknown error occurred during Discord linking'
+					setLinkError(errorMsg)
+					console.error('Discord OAuth error:', errorMsg)
 					cleanup()
 				}
 			}
@@ -137,20 +163,36 @@ export function useDiscordLink() {
 			window.addEventListener('message', messageHandler)
 
 			// Monitor popup closure (user manually closed it)
-			const checkPopupClosed = setInterval(() => {
+			intervalRef.current = window.setInterval(() => {
 				if (popup.closed) {
-					clearInterval(checkPopupClosed)
 					cleanup()
 				}
 			}, 500)
+
+			// 2-minute timeout for OAuth flow
+			timeoutRef.current = window.setTimeout(
+				() => {
+					const errorMsg = 'Discord linking timed out after 2 minutes. Please try again.'
+					setLinkError(errorMsg)
+					console.warn(errorMsg)
+					cleanup()
+				},
+				2 * 60 * 1000
+			) // 2 minutes
 		},
 		onError: (error) => {
+			const errorMsg = error instanceof Error ? error.message : 'Failed to start Discord linking'
+			setLinkError(errorMsg)
 			console.error('Failed to start Discord linking:', error)
 			cleanup()
 		},
 	})
 
-	return mutation
+	return {
+		...mutation,
+		linkError,
+		clearError: () => setLinkError(null),
+	}
 }
 
 // ===== Discord Registry Hooks =====
@@ -546,6 +588,23 @@ export function useUnassignRoleFromGroupServer() {
 		onSuccess: (_, { groupId }) => {
 			void queryClient.invalidateQueries({
 				queryKey: ['admin', 'groups', groupId, 'discord-servers'],
+				refetchType: 'active',
+			})
+		},
+	})
+}
+
+/**
+ * Refresh all members for a Discord server
+ */
+export function useRefreshDiscordServerMembers() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: (serverId: string) => apiClient.refreshDiscordServerMembers(serverId),
+		onSuccess: () => {
+			void queryClient.invalidateQueries({
+				queryKey: discordKeys.servers(),
 				refetchType: 'active',
 			})
 		},

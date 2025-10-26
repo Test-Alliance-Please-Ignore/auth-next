@@ -39,6 +39,7 @@ export const joinRequestStatusEnum = pgEnum('join_request_status', [
 	'pending',
 	'approved',
 	'rejected',
+	'cancelled',
 ])
 
 /** Permission target - defines who receives the permission */

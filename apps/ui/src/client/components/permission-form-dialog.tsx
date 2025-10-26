@@ -137,7 +137,9 @@ export function PermissionFormDialog({
 					<Input
 						id="urn"
 						value={formData.urn}
-						onChange={(e) => setFormData({ ...formData, urn: (e.target as HTMLInputElement).value })}
+						onChange={(e) =>
+							setFormData({ ...formData, urn: (e.target as HTMLInputElement).value })
+						}
 						onBlur={handleUrnBlur}
 						placeholder="urn:namespace:resource:identifier"
 						disabled={isSubmitting || isEditing}

@@ -2,19 +2,19 @@
 
 /* EVE Online-Inspired Dark Space Theme */
 :root {
-	/* Deep space backgrounds - layered depth with blue tint (explicit alpha for opacity) */
-	--background: 220 18% 8% / 1; /* #0d0f14 - Deep blue-black space */
-	--background-elevated: 220 16% 11% / 1; /* #15171e - Elevated panels */
+	/* Deep space backgrounds - layered depth with blue tint */
+	--background: 220 18% 8%; /* #0d0f14 - Deep blue-black space */
+	--background-elevated: 220 16% 11%; /* #15171e - Elevated panels */
 	--foreground: 210 12% 95%; /* #f0f1f3 - Cool white text */
 
-	/* Card system - layered interface depth (explicit alpha for opacity) */
-	--card: 220 16% 12% / 1; /* #191c24 - Card background with blue tint */
-	--card-elevated: 220 15% 18% / 1; /* #252935 - Elevated cards (more visible gradient) */
+	/* Card system - layered interface depth */
+	--card: 220 16% 12%; /* #191c24 - Card background with blue tint */
+	--card-elevated: 220 15% 18%; /* #252935 - Elevated cards (more visible gradient) */
 	--card-foreground: 210 12% 95%;
 
-	/* Popover/Dropdown system (explicit alpha for opacity) */
-	--popover: 220 18% 16% / 1; /* #1f2430 - Dropdown background */
-	--popover-elevated: 220 16% 18% / 1; /* #252935 - Elevated dropdown state */
+	/* Popover/Dropdown system */
+	--popover: 220 18% 16%; /* #1f2430 - Dropdown background */
+	--popover-elevated: 220 16% 18%; /* #252935 - Elevated dropdown state */
 	--popover-foreground: 210 12% 95%;
 
 	/* Primary - Caldari Blue (EVE's tech faction) */
@@ -31,11 +31,11 @@
 	/* Accent - Orange/Amber warnings (Caldari UI) */
 	--accent: 32 95% 55%; /* #f59e0b - Caldari orange */
 	--accent-hover: 32 95% 48%; /* #d98806 - Darker orange */
-	--accent-muted: 220 16% 22% / 1; /* #2f3440 - Muted gray accent */
+	--accent-muted: 220 16% 22%; /* #2f3440 - Muted gray accent */
 	--accent-foreground: 210 12% 95%;
 
-	/* Muted backgrounds - subtle variations (explicit alpha for opacity) */
-	--muted: 220 14% 18% / 1; /* #272a34 - Muted dark background */
+	/* Muted backgrounds - subtle variations */
+	--muted: 220 14% 18%; /* #272a34 - Muted dark background */
 	--muted-foreground: 210 10% 70%; /* #afb3bb - Muted text (WCAG AA: 5.2:1) */
 
 	/* Cancel button - neutral with warning hover */
@@ -70,8 +70,8 @@
 	--border-strong: 220 14% 28%; /* #3d4250 - Stronger border */
 	--border-accent: 205 85% 58%; /* Primary blue border */
 
-	/* Input fields (explicit alpha for opacity) */
-	--input: 220 16% 16% / 1; /* #1f2430 - Input background */
+	/* Input fields */
+	--input: 220 16% 16%; /* #1f2430 - Input background */
 	--input-border: 220 12% 24%; /* #35394a - Input border */
 
 	/* Focus ring - Caldari blue */
@@ -347,4 +347,21 @@ footer:not([class*='bg-']) {
 .bg-input,
 .bg-muted {
 	opacity: 1 !important;
+}
+
+/* Switch component - ensure data-state colors work correctly */
+button[data-state='unchecked'][role='switch'] {
+	background-color: hsl(var(--muted));
+}
+
+button[data-state='checked'][role='switch'] {
+	background-color: hsl(var(--primary));
+}
+
+button[data-state='unchecked'][role='switch']:hover:not(:disabled) {
+	background-color: hsl(var(--muted) / 0.8);
+}
+
+button[data-state='checked'][role='switch']:hover:not(:disabled) {
+	background-color: hsl(var(--primary) / 0.9);
 }

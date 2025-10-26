@@ -17,11 +17,13 @@ import {
 } from '@/components/ui/table'
 import { UserSearchDialog } from '@/components/user-search-dialog'
 import { useAdminUsers } from '@/hooks/useAdminUsers'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { api } from '@/lib/api'
 import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
 export default function UsersPage() {
+	usePageTitle('Admin - Users')
 	const [searchDialogOpen, setSearchDialogOpen] = useState(false)
 	const [searchQuery, setSearchQuery] = useState('')
 	const [debouncedQuery, setDebouncedQuery] = useState('')
@@ -246,7 +248,7 @@ export default function UsersPage() {
 															size="sm"
 															onClick={() => handleDiscordJoin(user.id)}
 															disabled={joiningUserId === user.id}
-															title="Join Discord servers"
+															title="Refresh Discord roles"
 														>
 															<Users className="h-4 w-4" />
 														</Button>

@@ -22,8 +22,8 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from '@/components/ui/select'
-import { useGlobalPermissions } from '@/hooks/usePermissions'
 import { usePermissionCategories } from '@/hooks/usePermissionCategories'
+import { useGlobalPermissions } from '@/hooks/usePermissions'
 
 import type { AttachPermissionRequest, PermissionTarget } from '@/lib/api'
 
@@ -127,7 +127,10 @@ export function AttachPermissionDialog({
 
 						<div className="space-y-2">
 							<Label htmlFor="category-filter-attach">Filter by Category</Label>
-							<Select value={categoryFilter || 'all'} onValueChange={(value) => setCategoryFilter(value === 'all' ? undefined : value)}>
+							<Select
+								value={categoryFilter || 'all'}
+								onValueChange={(value) => setCategoryFilter(value === 'all' ? undefined : value)}
+							>
 								<SelectTrigger id="category-filter-attach">
 									<SelectValue placeholder="All categories" />
 								</SelectTrigger>
@@ -201,7 +204,10 @@ export function AttachPermissionDialog({
 							<Label htmlFor="target-type">
 								Target Type <span className="text-destructive">*</span>
 							</Label>
-							<Select value={targetType} onValueChange={(value) => setTargetType(value as PermissionTarget)}>
+							<Select
+								value={targetType}
+								onValueChange={(value) => setTargetType(value as PermissionTarget)}
+							>
 								<SelectTrigger id="target-type">
 									<SelectValue />
 								</SelectTrigger>

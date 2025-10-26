@@ -1,10 +1,18 @@
 import { Hono } from 'hono'
 
-import { and, desc, eq, ilike } from '@repo/db-utils'
+import { and, desc, eq, ilike, inArray, isNotNull } from '@repo/db-utils'
+import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
-import { discordRoles, discordServers } from '../db/schema'
+import {
+	corporationDiscordServers,
+	discordRoles,
+	discordServers,
+	userCharacters,
+	users,
+} from '../db/schema'
 import { requireAdmin, requireAuth } from '../middleware/session'
+import * as discordService from '../services/discord.service'
 
 import type { App } from '../context'
 
@@ -391,6 +399,247 @@ app.delete('/:id/roles/:roleId', requireAuth(), requireAdmin(), async (c) => {
 	} catch (error) {
 		logger.error('Error deleting Discord role:', error)
 		return c.json({ error: 'Failed to delete Discord role' }, 500)
+	}
+})
+
+/**
+ * POST /discord-servers/:id/refresh-members
+ * Refresh all members for a Discord server
+ *
+ * Finds all users who should have access to this server based on
+ * corporation and group memberships, then invites them or updates
+ * their roles. Only processes users who have Discord linked.
+ */
+app.post('/:id/refresh-members', requireAuth(), requireAdmin(), async (c) => {
+	const serverId = c.req.param('id')
+	const db = c.get('db')
+
+	if (!db) {
+		return c.json({ error: 'Database not available' }, 500)
+	}
+
+	try {
+		// Check if Discord server exists
+		const server = await db.query.discordServers.findFirst({
+			where: eq(discordServers.id, serverId),
+		})
+
+		if (!server) {
+			return c.json({ error: 'Discord server not found' }, 404)
+		}
+
+		logger.info('[Discord] Starting member refresh for Discord server', {
+			serverId,
+			guildId: server.guildId,
+			guildName: server.guildName,
+		})
+
+		// === FIND ALL CORPORATIONS WITH THIS DISCORD SERVER ===
+
+		const corpAttachments = await db.query.corporationDiscordServers.findMany({
+			where: eq(corporationDiscordServers.discordServerId, serverId),
+			with: {
+				corporation: true,
+			},
+		})
+
+		logger.info('[Discord] Found corporation attachments', {
+			count: corpAttachments.length,
+		})
+
+		// Collect all user IDs from corporations
+		const userIdsFromCorps = new Set<string>()
+
+		for (const attachment of corpAttachments) {
+			try {
+				// Get corporation members via RPC
+				const corpStub = getStub<import('@repo/eve-corporation-data').EveCorporationData>(
+					c.env.EVE_CORPORATION_DATA,
+					attachment.corporationId
+				)
+				const members = await corpStub.getMembers(attachment.corporationId)
+				const memberCharacterIds = members.map((m: any) => m.characterId)
+
+				logger.info('[Discord] Corporation members fetched', {
+					corporationId: attachment.corporationId,
+					corporationName: attachment.corporation.name,
+					memberCount: members.length,
+				})
+
+				// Find users who have these characters
+				const usersWithChars = await db.query.userCharacters.findMany({
+					where: inArray(userCharacters.characterId, memberCharacterIds),
+					with: {
+						user: true,
+					},
+				})
+
+				// Collect user IDs who have Discord linked
+				for (const userChar of usersWithChars) {
+					if (userChar.user.discordUserId) {
+						userIdsFromCorps.add(userChar.user.id)
+					}
+				}
+			} catch (error) {
+				logger.error('[Discord] Error fetching corporation members', {
+					corporationId: attachment.corporationId,
+					error: String(error),
+				})
+			}
+		}
+
+		logger.info('[Discord] Collected users from corporations', {
+			userCount: userIdsFromCorps.size,
+		})
+
+		// === FIND ALL GROUPS WITH THIS DISCORD SERVER ===
+
+		const userIdsFromGroups = new Set<string>()
+
+		try {
+			const groupsStub = getStub<import('@repo/groups').Groups>(c.env.GROUPS, 'default')
+
+			// Get all groups that have this Discord server attached
+			const groupsWithServer = await groupsStub.getGroupsByDiscordServer(serverId)
+
+			logger.info('[Discord] Found groups with this Discord server', {
+				groupCount: groupsWithServer.length,
+			})
+
+			// For each group, get member user IDs
+			for (const group of groupsWithServer) {
+				try {
+					const memberUserIds = await groupsStub.getGroupMemberUserIds(group.groupId)
+
+					logger.info('[Discord] Group members fetched', {
+						groupId: group.groupId,
+						groupName: group.groupName,
+						memberCount: memberUserIds.length,
+					})
+
+					// Check which users have Discord linked
+					if (memberUserIds.length > 0) {
+						const usersWithDiscord = await db.query.users.findMany({
+							where: and(inArray(users.id, memberUserIds), isNotNull(users.discordUserId)),
+						})
+
+						for (const user of usersWithDiscord) {
+							userIdsFromGroups.add(user.id)
+						}
+					}
+				} catch (error) {
+					logger.error('[Discord] Error fetching group members', {
+						groupId: group.groupId,
+						error: String(error),
+					})
+				}
+			}
+		} catch (error) {
+			logger.error('[Discord] Error fetching groups', {
+				error: String(error),
+			})
+		}
+
+		logger.info('[Discord] Collected users from groups', {
+			userCount: userIdsFromGroups.size,
+		})
+
+		// === COMBINE AND DEDUPLICATE USER IDs ===
+
+		const allUserIds = new Set([...userIdsFromCorps, ...userIdsFromGroups])
+
+		logger.info('[Discord] Total unique users to process', {
+			totalUsers: allUserIds.size,
+			fromCorps: userIdsFromCorps.size,
+			fromGroups: userIdsFromGroups.size,
+		})
+
+		if (allUserIds.size === 0) {
+			return c.json({
+				totalProcessed: 0,
+				successfulInvites: 0,
+				failedInvites: 0,
+				results: [],
+			})
+		}
+
+		// === PROCESS EACH USER ===
+
+		const results = []
+		let successfulInvites = 0
+		let failedInvites = 0
+
+		for (const userId of allUserIds) {
+			try {
+				const result = await discordService.joinUserToCorporationServers(c.env, userId)
+
+				// Find results specific to this guild
+				const guildResults = result.results.filter((r) => r.guildId === server.guildId)
+
+				const success = guildResults.some((r) => r.success)
+				const errorMessage = guildResults.find((r) => r.errorMessage)?.errorMessage
+
+				if (success) {
+					successfulInvites++
+				} else {
+					failedInvites++
+				}
+
+				// Get user info for logging
+				const user = await db.query.users.findFirst({
+					where: eq(users.id, userId),
+					with: {
+						characters: {
+							where: eq(userCharacters.is_primary, true),
+						},
+					},
+				})
+
+				results.push({
+					userId,
+					userName: user?.characters[0]?.characterName || 'Unknown',
+					success,
+					errorMessage,
+				})
+
+				logger.info('[Discord] Processed user', {
+					userId,
+					userName: user?.characters[0]?.characterName,
+					success,
+				})
+			} catch (error) {
+				failedInvites++
+				logger.error('[Discord] Error processing user', {
+					userId,
+					error: String(error),
+				})
+
+				results.push({
+					userId,
+					userName: 'Unknown',
+					success: false,
+					errorMessage: error instanceof Error ? error.message : 'Unknown error',
+				})
+			}
+		}
+
+		logger.info('[Discord] Member refresh complete', {
+			serverId,
+			guildName: server.guildName,
+			totalProcessed: allUserIds.size,
+			successfulInvites,
+			failedInvites,
+		})
+
+		return c.json({
+			totalProcessed: allUserIds.size,
+			successfulInvites,
+			failedInvites,
+			results,
+		})
+	} catch (error) {
+		logger.error('Error refreshing Discord server members:', error)
+		return c.json({ error: 'Failed to refresh Discord server members' }, 500)
 	}
 })
 

@@ -327,6 +327,77 @@ Incorrect:
 
 Relative paths fail to resolve across the monorepo structure.
 
+### CSS Custom Properties for Colors
+**CRITICAL:** Always use space-separated HSL format without explicit alpha for CSS custom properties.
+
+**Correct Format:**
+```css
+:root {
+  --primary: 205 85% 58%; /* ✅ Space-separated H S% L% */
+  --muted: 220 14% 18%; /* ✅ Works with Tailwind filters */
+  --background: 220 18% 8%; /* ✅ Default opacity is 1.0 */
+}
+```
+
+**Incorrect Format (DO NOT USE):**
+```css
+:root {
+  --primary: 205 85% 58% / 1; /* ❌ Explicit alpha breaks filters */
+  --muted: hsl(220 14% 18%); /* ❌ Don't wrap in hsl() */
+}
+```
+
+**Why This Matters:**
+- Explicit alpha suffix (`/ 1`) breaks Tailwind filter utilities like `brightness-110`, `contrast-125`, etc.
+- Tailwind's color system wraps custom properties with `hsl()` automatically
+- Format: `hsl(var(--color))` becomes `hsl(205 85% 58%)` ✅
+- Opacity modifiers still work: `bg-primary/50` applies 50% opacity correctly
+- Filter utilities only work with the space-separated format without alpha
+
+**Benefits:**
+- Full compatibility with Tailwind's filter utilities (`brightness`, `contrast`, `saturate`, etc.)
+- Opacity modifiers work as expected (`/50`, `/75`, etc.)
+- Cleaner, more modern CSS syntax
+- Consistent with CSS Color Module Level 4 specification
+
+### Tailwind 4 Data-Attribute Variants
+**IMPORTANT:** Tailwind CSS v4 supports data-attribute variants natively using bracket notation.
+
+**Correct Syntax:**
+```tsx
+// Data-attribute variants work automatically in Tailwind v4
+<button className="data-[state=checked]:bg-primary" />
+<div className="data-[disabled]:opacity-50" />
+<span className="data-[state=open]:rotate-180" />
+
+// Can be combined with other modifiers
+<button className="data-[state=checked]:hover:bg-primary/90" />
+```
+
+**Content Scanning Configuration:**
+```typescript
+// tailwind.config.ts
+content: ['./index.html', './src/**/*.{html,js,jsx,ts,tsx}']
+// Use broad patterns to ensure Tailwind discovers all variant usage
+```
+
+**How It Works:**
+- Tailwind v4 automatically generates CSS for data-attribute variants
+- No plugins or special configuration needed
+- Bracket notation `data-[attribute=value]:utility` is converted to `[data-attribute=value] { ... }`
+- Works seamlessly with Radix UI components that set data-state attributes
+
+**Common Mistakes:**
+- ❌ Content glob too narrow: `./src/client/**/*.{ts,tsx}` might miss files
+- ❌ Using v3 syntax: `data-checked:bg-primary` (missing brackets)
+- ❌ Adding custom variants manually (not needed in v4)
+
+**If Variants Don't Work:**
+1. Check content pattern in `tailwind.config.ts` is broad enough
+2. Verify Tailwind is scanning the correct directories
+3. Clear build cache and rebuild
+4. Inspect compiled CSS for `[data-*]` selectors
+
 ### Database Pattern
 Each worker app that uses a database:
 1. Defines its schema using Drizzle ORM

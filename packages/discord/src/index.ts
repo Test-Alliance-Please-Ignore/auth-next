@@ -55,6 +55,30 @@ export interface DiscordProfile {
 }
 
 /**
+ * Discord user status information
+ */
+export interface DiscordUserStatus {
+	/** Discord user ID */
+	userId: string
+	/** Discord username */
+	username: string
+	/** Discord discriminator */
+	discriminator: string
+	/** Core user ID */
+	coreUserId: string | null
+	/** Whether the user has revoked authorization */
+	authRevoked: boolean
+	/** When authorization was revoked */
+	authRevokedAt: Date | null
+	/** Last time credentials were successfully used */
+	lastSuccessfulAuth: Date | null
+	/** When the user was created */
+	createdAt: Date
+	/** When the user was last updated */
+	updatedAt: Date
+}
+
+/**
  * Result of attempting to join a user to a Discord server
  */
 export interface JoinServerResult {
@@ -77,6 +101,20 @@ export interface Discord {
 	 * @returns Discord profile or null if not found
 	 */
 	getProfileByCoreUserId(coreUserId: string): Promise<DiscordProfile | null>
+
+	/**
+	 * Get Discord user status including auth revocation info
+	 * @param coreUserId - Core user ID
+	 * @returns Discord user status or null if not found
+	 */
+	getDiscordUserStatus(coreUserId: string): Promise<DiscordUserStatus | null>
+
+	/**
+	 * Manually revoke Discord authorization for a user (admin action)
+	 * @param coreUserId - Core user ID
+	 * @returns Whether revocation was successful
+	 */
+	revokeAuthorization(coreUserId: string): Promise<boolean>
 
 	/**
 	 * Refresh token by core user ID

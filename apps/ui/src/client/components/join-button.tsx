@@ -3,14 +3,17 @@ import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { CancelButton } from '@/components/ui/cancel-button'
+import { ConfirmButton } from '@/components/ui/confirm-button'
 import {
 	Dialog,
 	DialogContent,
 	DialogDescription,
+	DialogFooter,
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { useCreateJoinRequest, useJoinGroup } from '@/hooks/useGroups'
 
 import type { GroupWithDetails } from '@/lib/api'
@@ -39,8 +42,8 @@ export function JoinButton({ group, onSuccess }: JoinButtonProps) {
 			// Open dialog for join request
 			setDialogOpen(true)
 		} else if (group.joinMode === 'invitation_only') {
-			// Cannot join - show message
-			alert('This group is invitation-only. You need an invitation to join.')
+			// Cannot join - this should not happen as button is disabled
+			return
 		}
 	}
 
@@ -91,25 +94,30 @@ export function JoinButton({ group, onSuccess }: JoinButtonProps) {
 					<div className="space-y-4">
 						<div className="space-y-2">
 							<Label htmlFor="reason">Reason (optional)</Label>
-							<textarea
+							<Textarea
 								id="reason"
 								value={reason}
 								onChange={(e) => setReason((e.target as HTMLTextAreaElement).value)}
 								placeholder="Why do you want to join this group?"
-								className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
 								rows={3}
 							/>
 						</div>
-						<div className="flex justify-end gap-2">
-							<CancelButton onClick={() => setDialogOpen(false)} disabled={isLoading}>
-								Cancel
-							</CancelButton>
-							<Button onClick={handleSubmitRequest} disabled={isLoading}>
-								<Send className="mr-2 h-4 w-4" />
-								{isLoading ? 'Sending...' : 'Send Request'}
-							</Button>
-						</div>
 					</div>
+					<DialogFooter>
+						<CancelButton onClick={() => setDialogOpen(false)} disabled={isLoading}>
+							Cancel
+						</CancelButton>
+						<ConfirmButton
+							onClick={handleSubmitRequest}
+							disabled={isLoading}
+							loading={isLoading}
+							loadingText="Sending..."
+							showIcon={false}
+						>
+							<Send className="mr-2 h-4 w-4" />
+							Send Request
+						</ConfirmButton>
+					</DialogFooter>
 				</DialogContent>
 			</Dialog>
 		</>

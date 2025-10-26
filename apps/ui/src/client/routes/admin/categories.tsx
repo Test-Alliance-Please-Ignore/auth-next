@@ -21,10 +21,12 @@ import {
 	useDeleteCategory,
 	useUpdateCategory,
 } from '@/hooks/useCategories'
+import { usePageTitle } from '@/hooks/usePageTitle'
 
 import type { Category, CreateCategoryRequest } from '@/lib/api'
 
 export default function CategoriesPage() {
+	usePageTitle('Admin - Categories')
 	const { data: categories, isLoading } = useCategories()
 	const createCategory = useCreateCategory()
 	const updateCategory = useUpdateCategory()

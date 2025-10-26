@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { apiClient } from '@/lib/api'
 
 interface CharacterInfo {
@@ -21,6 +22,7 @@ interface ClaimMainResponse {
 }
 
 export default function ClaimMainPage() {
+	usePageTitle('Claim Main Character')
 	const location = useLocation()
 	const navigate = useNavigate()
 	const [isLoading, setIsLoading] = useState(false)

@@ -1,4 +1,14 @@
-import { ArrowLeft, ExternalLink, RefreshCw, Shield, ShieldOff, Trash2 } from 'lucide-react'
+import {
+	AlertTriangle,
+	ArrowLeft,
+	ExternalLink,
+	MessageSquare,
+	RefreshCw,
+	Shield,
+	ShieldOff,
+	Trash2,
+	XCircle,
+} from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
@@ -28,22 +38,27 @@ import {
 	useActivityLogs,
 	useAdminUser,
 	useDeleteUserCharacter,
+	useRevokeDiscordLink,
 	useSetUserAdmin,
 } from '@/hooks/useAdminUsers'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
 export default function UserDetailPage() {
+	usePageTitle('Admin - User Details')
 	const { userId } = useParams<{ userId: string }>()
 	const navigate = useNavigate()
 
 	const { data: user, isLoading, refetch } = useAdminUser(userId!)
 	const setUserAdmin = useSetUserAdmin()
 	const deleteCharacter = useDeleteUserCharacter()
+	const revokeDiscord = useRevokeDiscordLink()
 
 	// Dialog state
 	const [adminDialogOpen, setAdminDialogOpen] = useState(false)
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+	const [revokeDiscordDialogOpen, setRevokeDiscordDialogOpen] = useState(false)
 	const [selectedCharacter, setSelectedCharacter] = useState<string | null>(null)
 
 	// Message state
@@ -140,6 +155,24 @@ export default function UserDetailPage() {
 			setMessage({
 				type: 'error',
 				text: error instanceof Error ? error.message : 'Failed to delete character',
+			})
+			setTimeout(() => setMessage(null), 5000)
+		}
+	}
+
+	const handleRevokeDiscordConfirm = async () => {
+		try {
+			await revokeDiscord.mutateAsync(user.id)
+			setRevokeDiscordDialogOpen(false)
+			setMessage({
+				type: 'success',
+				text: 'Discord authorization revoked successfully',
+			})
+			setTimeout(() => setMessage(null), 3000)
+		} catch (error) {
+			setMessage({
+				type: 'error',
+				text: error instanceof Error ? error.message : 'Failed to revoke Discord authorization',
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -246,17 +279,82 @@ export default function UserDetailPage() {
 			</Card>
 
 			{/* Discord Information */}
-			{user.discordUserId && (
+			{user.discord && (
 				<Card variant="interactive">
 					<CardHeader>
-						<CardTitle>Discord Account</CardTitle>
-						<CardDescription>Linked Discord account information</CardDescription>
+						<div className="flex items-center justify-between">
+							<div>
+								<CardTitle>Discord Account</CardTitle>
+								<CardDescription>Linked Discord account information</CardDescription>
+							</div>
+							{!user.discord.authRevoked && (
+								<DestructiveButton
+									onClick={() => setRevokeDiscordDialogOpen(true)}
+									disabled={revokeDiscord.isPending}
+									size="sm"
+									showIcon={false}
+								>
+									<XCircle className="h-4 w-4 mr-2" />
+									Revoke Authorization
+								</DestructiveButton>
+							)}
+						</div>
 					</CardHeader>
 					<CardContent>
-						<div className="space-y-2">
-							<div className="flex justify-between">
-								<span className="text-sm text-muted-foreground">User ID</span>
-								<span className="text-sm font-mono">{user.discordUserId}</span>
+						<div className="space-y-4">
+							<div className="flex items-center gap-3">
+								<div className="flex items-center justify-center w-12 h-12 rounded-full bg-[hsl(var(--discord-blurple))]">
+									<MessageSquare className="h-6 w-6 text-white" />
+								</div>
+								<div>
+									<p className="font-semibold text-lg">
+										{user.discord.username}
+										{user.discord.discriminator !== '0' && `#${user.discord.discriminator}`}
+									</p>
+									<p className="text-sm text-muted-foreground">Discord ID: {user.discord.userId}</p>
+								</div>
+							</div>
+
+							{user.discord.authRevoked && (
+								<div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3">
+									<div className="flex items-start gap-2">
+										<AlertTriangle className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
+										<div>
+											<p className="text-sm text-destructive font-medium">Authorization Revoked</p>
+											<p className="text-sm text-destructive/90 mt-1">
+												User's Discord authorization was revoked on{' '}
+												{user.discord.authRevokedAt
+													? formatDateTime(user.discord.authRevokedAt)
+													: 'unknown date'}
+											</p>
+										</div>
+									</div>
+								</div>
+							)}
+
+							<div className="grid grid-cols-2 gap-4 pt-2">
+								<div>
+									<div className="text-sm text-muted-foreground">Authorization Status</div>
+									<div className="text-sm font-medium">
+										{user.discord.authRevoked ? (
+											<Badge variant="default" className="bg-red-500/20 text-red-500">
+												Revoked
+											</Badge>
+										) : (
+											<Badge variant="default" className="bg-green-500/20 text-green-500">
+												Active
+											</Badge>
+										)}
+									</div>
+								</div>
+								<div>
+									<div className="text-sm text-muted-foreground">Last Successful Auth</div>
+									<div className="text-sm font-medium">
+										{user.discord.lastSuccessfulAuth
+											? formatRelativeTime(user.discord.lastSuccessfulAuth)
+											: 'Never'}
+									</div>
+								</div>
 							</div>
 						</div>
 					</CardContent>
@@ -443,6 +541,37 @@ export default function UserDetailPage() {
 								Grant Admin
 							</ConfirmButton>
 						)}
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
+			{/* Revoke Discord Authorization Confirmation Dialog */}
+			<Dialog open={revokeDiscordDialogOpen} onOpenChange={setRevokeDiscordDialogOpen}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Revoke Discord Authorization</DialogTitle>
+						<DialogDescription>
+							Are you sure you want to revoke Discord authorization for{' '}
+							{user.characters.find((c) => c.is_primary)?.characterName || 'this user'}? This will
+							mark their Discord account as unauthorized and they will need to re-link it.
+						</DialogDescription>
+					</DialogHeader>
+					<DialogFooter>
+						<CancelButton
+							onClick={() => setRevokeDiscordDialogOpen(false)}
+							disabled={revokeDiscord.isPending}
+						>
+							Cancel
+						</CancelButton>
+						<DestructiveButton
+							onClick={handleRevokeDiscordConfirm}
+							loading={revokeDiscord.isPending}
+							loadingText="Revoking..."
+							showIcon={false}
+						>
+							<XCircle className="mr-2 h-4 w-4" />
+							Revoke Authorization
+						</DestructiveButton>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>

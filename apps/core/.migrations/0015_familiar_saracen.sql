@@ -1,0 +1,2 @@
+ALTER TABLE "managed_corporations" ADD COLUMN "include_in_background_refresh" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+CREATE INDEX "managed_corporations_include_in_background_refresh_idx" ON "managed_corporations" USING btree ("include_in_background_refresh");

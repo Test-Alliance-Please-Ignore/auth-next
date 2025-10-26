@@ -74,12 +74,15 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 			let discordProfile
 			if (userProfile.discordUserId) {
 				try {
-					const profile = await discordService.getProfile(c.env, userId)
-					if (profile) {
+					const status = await discordService.getUserStatus(c.env, userId)
+					if (status) {
 						discordProfile = {
-							userId: profile.userId,
-							username: profile.username,
-							discriminator: profile.discriminator,
+							userId: status.userId,
+							username: status.username,
+							discriminator: status.discriminator,
+							authRevoked: status.authRevoked,
+							authRevokedAt: status.authRevokedAt,
+							lastSuccessfulAuth: status.lastSuccessfulAuth,
 						}
 					}
 				} catch (error) {

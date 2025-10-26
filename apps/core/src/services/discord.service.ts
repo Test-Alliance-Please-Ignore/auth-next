@@ -209,6 +209,17 @@ export async function getProfile(env: Env, userId: string): Promise<DiscordProfi
 }
 
 /**
+ * Get Discord user status including authorization revocation info
+ * @param env - Worker environment
+ * @param userId - Core user ID
+ * @returns Discord user status or null if not found
+ */
+export async function getUserStatus(env: Env, userId: string) {
+	const discordStub = getStub<Discord>(env.DISCORD, 'default')
+	return discordStub.getDiscordUserStatus(userId)
+}
+
+/**
  * Refresh Discord OAuth token for a user
  * @param env - Worker environment
  * @param userId - Core user ID

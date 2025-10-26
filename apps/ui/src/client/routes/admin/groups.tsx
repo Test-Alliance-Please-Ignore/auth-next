@@ -23,10 +23,12 @@ import {
 } from '@/components/ui/select'
 import { useCategories } from '@/hooks/useCategories'
 import { useCreateGroup, useGroups } from '@/hooks/useGroups'
+import { usePageTitle } from '@/hooks/usePageTitle'
 
 import type { CreateGroupRequest, GroupsFilters } from '@/lib/api'
 
 export default function GroupsPage() {
+	usePageTitle('Admin - Groups')
 	const [filters, setFilters] = useState<GroupsFilters>({})
 	const { data: groups, isLoading: groupsLoading } = useGroups(filters)
 	const { data: categories } = useCategories()

@@ -3,6 +3,7 @@ import {
 	ArrowLeft,
 	Check,
 	Copy,
+	FolderEdit,
 	Key,
 	MessageSquare,
 	Pencil,
@@ -20,12 +21,15 @@ import { Link, useLocation, useParams } from 'react-router-dom'
 
 import { AttachPermissionDialog } from '@/components/attach-permission-dialog'
 import { CreateCustomPermissionDialog } from '@/components/create-custom-permission-dialog'
+import { EditGroupDescriptionDialog } from '@/components/edit-group-description-dialog'
+import { EditGroupNameDialog } from '@/components/edit-group-name-dialog'
 import { GroupCard } from '@/components/group-card'
 import { GroupPermissionCard } from '@/components/group-permission-card'
 import { InviteMemberForm } from '@/components/invite-member-form'
 import { MemberList } from '@/components/member-list'
 import { PendingInvitationsList } from '@/components/pending-invitations-list'
 import { PendingJoinRequestsList } from '@/components/pending-join-requests-list'
+import { ReassignCategoryDialog } from '@/components/reassign-category-dialog'
 import { TransferOwnershipDialog } from '@/components/transfer-ownership-dialog'
 import { Button } from '@/components/ui/button'
 import { CancelButton } from '@/components/ui/cancel-button'
@@ -54,6 +58,7 @@ import {
 	useUnassignRoleFromGroupServer,
 	useUpdateGroupDiscordServer,
 } from '@/hooks/useDiscord'
+import { useGroupMembers, useRemoveMember, useToggleAdmin } from '@/hooks/useGroupMembers'
 import {
 	useAttachPermission,
 	useCreateGroupScopedPermission,
@@ -61,13 +66,13 @@ import {
 	useRemoveGroupPermission,
 	useUpdateGroupPermission,
 } from '@/hooks/useGroupPermissions'
-import { useGroupMembers, useRemoveMember, useToggleAdmin } from '@/hooks/useGroupMembers'
 import { useGroup } from '@/hooks/useGroups'
 import {
 	useCreateInviteCode,
 	useGroupInviteCodes,
 	useRevokeInviteCode,
 } from '@/hooks/useInviteCodes'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { apiClient } from '@/lib/api'
 
 import type { GroupDiscordServer, GroupPermissionWithDetails } from '@/lib/api'
@@ -78,6 +83,9 @@ export default function GroupDetailPage() {
 	const { setCustomLabel, clearCustomLabel } = useBreadcrumb()
 	const { user } = useAuth()
 	const { data: group, isLoading: groupLoading } = useGroup(groupId!)
+
+	// Set dynamic page title based on group name
+	usePageTitle(group?.name ? `Admin - ${group.name}` : 'Admin - Group Details')
 	const { data: members, isLoading: membersLoading } = useGroupMembers(groupId!)
 	const removeMember = useRemoveMember()
 	const toggleAdmin = useToggleAdmin()
@@ -107,6 +115,9 @@ export default function GroupDetailPage() {
 	const [removeDialogOpen, setRemoveDialogOpen] = useState(false)
 	const [adminDialogOpen, setAdminDialogOpen] = useState(false)
 	const [transferDialogOpen, setTransferDialogOpen] = useState(false)
+	const [reassignCategoryDialogOpen, setReassignCategoryDialogOpen] = useState(false)
+	const [editNameDialogOpen, setEditNameDialogOpen] = useState(false)
+	const [editDescriptionDialogOpen, setEditDescriptionDialogOpen] = useState(false)
 	const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
 	const [selectedUserIsAdmin, setSelectedUserIsAdmin] = useState(false)
 
@@ -506,6 +517,38 @@ export default function GroupDetailPage() {
 
 			{/* Group Info Card */}
 			<GroupCard group={group} />
+
+			{/* Group Management Actions */}
+			<Card variant="interactive">
+				<CardHeader>
+					<CardTitle>Group Management</CardTitle>
+					<CardDescription>Administrative actions for this group</CardDescription>
+				</CardHeader>
+				<CardContent>
+					<div className="flex flex-wrap gap-2">
+						<Button variant="outline" size="sm" onClick={() => setEditNameDialogOpen(true)}>
+							<Pencil className="mr-2 h-4 w-4" />
+							Edit Name
+						</Button>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={() => setEditDescriptionDialogOpen(true)}
+						>
+							<Pencil className="mr-2 h-4 w-4" />
+							Edit Description
+						</Button>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={() => setReassignCategoryDialogOpen(true)}
+						>
+							<FolderEdit className="mr-2 h-4 w-4" />
+							Reassign Category
+						</Button>
+					</div>
+				</CardContent>
+			</Card>
 
 			{/* Stats Section */}
 			<div className="grid gap-4 md:grid-cols-2">
@@ -966,7 +1009,11 @@ export default function GroupDetailPage() {
 							</CardDescription>
 						</div>
 						<div className="flex gap-2">
-							<Button onClick={() => setShowCreateCustomPermissionDialog(true)} size="sm" variant="outline">
+							<Button
+								onClick={() => setShowCreateCustomPermissionDialog(true)}
+								size="sm"
+								variant="outline"
+							>
 								<Plus className="mr-2 h-4 w-4" />
 								Custom
 							</Button>
@@ -1023,7 +1070,9 @@ export default function GroupDetailPage() {
 							<DialogHeader>
 								<DialogTitle>Remove Permission</DialogTitle>
 								<DialogDescription>
-									Are you sure you want to remove "{selectedPermission?.permission?.name || selectedPermission?.customName}" from this group?
+									Are you sure you want to remove "
+									{selectedPermission?.permission?.name || selectedPermission?.customName}" from
+									this group?
 								</DialogDescription>
 							</DialogHeader>
 							<DialogFooter>
@@ -1158,6 +1207,45 @@ export default function GroupDetailPage() {
 					initialSelectedUserId={selectedUserId || undefined}
 					onSuccess={() => {
 						setMessage({ type: 'success', text: 'Ownership transferred successfully!' })
+						setTimeout(() => setMessage(null), 3000)
+					}}
+				/>
+			)}
+
+			{/* Reassign Category Dialog */}
+			{group && (
+				<ReassignCategoryDialog
+					group={group}
+					open={reassignCategoryDialogOpen}
+					onOpenChange={setReassignCategoryDialogOpen}
+					onSuccess={() => {
+						setMessage({ type: 'success', text: 'Category reassigned successfully!' })
+						setTimeout(() => setMessage(null), 3000)
+					}}
+				/>
+			)}
+
+			{/* Edit Group Name Dialog */}
+			{group && (
+				<EditGroupNameDialog
+					group={group}
+					open={editNameDialogOpen}
+					onOpenChange={setEditNameDialogOpen}
+					onSuccess={() => {
+						setMessage({ type: 'success', text: 'Group name updated successfully!' })
+						setTimeout(() => setMessage(null), 3000)
+					}}
+				/>
+			)}
+
+			{/* Edit Group Description Dialog */}
+			{group && (
+				<EditGroupDescriptionDialog
+					group={group}
+					open={editDescriptionDialogOpen}
+					onOpenChange={setEditDescriptionDialogOpen}
+					onSuccess={() => {
+						setMessage({ type: 'success', text: 'Group description updated successfully!' })
 						setTimeout(() => setMessage(null), 3000)
 					}}
 				/>

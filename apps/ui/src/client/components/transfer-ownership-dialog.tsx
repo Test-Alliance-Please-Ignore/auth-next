@@ -40,6 +40,7 @@ export function TransferOwnershipDialog({
 	initialSelectedUserId,
 }: TransferOwnershipDialogProps) {
 	const [selectedUserId, setSelectedUserId] = useState<string>('')
+	const [errorMessage, setErrorMessage] = useState<string | null>(null)
 	const transferOwnership = useTransferOwnership()
 
 	// Sync internal state when dialog opens with a pre-selected user
@@ -57,6 +58,7 @@ export function TransferOwnershipDialog({
 	const handleTransfer = async () => {
 		if (!selectedUserId) return
 
+		setErrorMessage(null)
 		try {
 			await transferOwnership.mutateAsync({ groupId: group.id, newOwnerId: selectedUserId })
 			setSelectedUserId('')
@@ -65,7 +67,9 @@ export function TransferOwnershipDialog({
 		} catch (error) {
 			console.error('Failed to transfer ownership:', error)
 			if (error instanceof Error) {
-				alert(error.message)
+				setErrorMessage(error.message)
+			} else {
+				setErrorMessage('Failed to transfer ownership. Please try again.')
 			}
 		}
 	}
@@ -73,6 +77,7 @@ export function TransferOwnershipDialog({
 	const handleOpenChange = (newOpen: boolean) => {
 		if (!newOpen) {
 			setSelectedUserId('')
+			setErrorMessage(null)
 		}
 		onOpenChange(newOpen)
 	}
@@ -108,6 +113,13 @@ export function TransferOwnershipDialog({
 							</SelectContent>
 						</Select>
 					</div>
+
+					{/* Error Message */}
+					{errorMessage && (
+						<div className="rounded-md border border-destructive bg-destructive/10 p-3">
+							<p className="text-sm text-destructive">{errorMessage}</p>
+						</div>
+					)}
 
 					{/* Warning Message */}
 					{selectedMember && (

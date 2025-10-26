@@ -1,0 +1,1 @@
+ALTER TYPE "public"."join_request_status" ADD VALUE 'cancelled';

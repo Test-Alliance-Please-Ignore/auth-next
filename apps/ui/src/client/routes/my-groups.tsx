@@ -8,8 +8,10 @@ import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
 import { useUserMemberships } from '@/hooks/useGroups'
+import { usePageTitle } from '@/hooks/usePageTitle'
 
 export default function MyGroupsPage() {
+	usePageTitle('My Groups')
 	const navigate = useNavigate()
 	const { data: memberships, isLoading } = useUserMemberships()
 

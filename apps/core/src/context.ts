@@ -47,6 +47,9 @@ export interface SessionUser {
 		userId: string
 		username: string
 		discriminator: string
+		authRevoked: boolean
+		authRevokedAt: Date | null
+		lastSuccessfulAuth: Date | null
 	}
 }
 

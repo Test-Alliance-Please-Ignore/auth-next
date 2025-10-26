@@ -23,8 +23,8 @@ const discord = new Hono<App>()
 discord.post('/link/start', requireAuth(), async (c) => {
 	const user = c.get('user')!
 
-	// Check if user already has Discord linked
-	if (user.discord) {
+	// Check if user already has Discord linked and authorization is still valid
+	if (user.discord && !user.discord.authRevoked) {
 		return c.json(
 			{
 				error: 'Discord account already linked',

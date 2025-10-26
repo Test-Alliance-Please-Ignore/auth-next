@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import { useRedeemInviteCode } from '@/hooks/useGroups'
 
 interface InviteCodeRedemptionProps {
-	onSuccess?: (groupName: string) => void
+	onSuccess?: () => void
 }
 
 export function InviteCodeRedemption({ onSuccess }: InviteCodeRedemptionProps) {
@@ -29,7 +29,7 @@ export function InviteCodeRedemption({ onSuccess }: InviteCodeRedemptionProps) {
 			const result = await redeemCode.mutateAsync(code.trim())
 			setMessage({ type: 'success', text: result.message })
 			setCode('')
-			onSuccess?.(result.group.name)
+			onSuccess?.()
 			setTimeout(() => setMessage(null), 5000)
 		} catch (error) {
 			if (error instanceof Error) {

@@ -20,6 +20,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
+import { Switch } from '@/components/ui/switch'
 import {
 	Table,
 	TableBody,
@@ -32,16 +33,20 @@ import {
 	useCorporations,
 	useCreateCorporation,
 	useDeleteCorporation,
+	useUpdateCorporation,
 	useVerifyCorporationAccess,
 } from '@/hooks/useCorporations'
 import { useMessage } from '@/hooks/useMessage'
+import { usePageTitle } from '@/hooks/usePageTitle'
 
 import type { CreateCorporationRequest } from '@/lib/api'
 
 export default function CorporationsPage() {
+	usePageTitle('Admin - Corporations')
 	const { data: corporations, isLoading } = useCorporations()
 	const createCorporation = useCreateCorporation()
 	const deleteCorporation = useDeleteCorporation()
+	const updateCorporation = useUpdateCorporation()
 	const verifyAccess = useVerifyCorporationAccess()
 
 	// Message handling with automatic cleanup
@@ -59,6 +64,7 @@ export default function CorporationsPage() {
 		ticker: '',
 		assignedCharacterId: undefined,
 		assignedCharacterName: undefined,
+		includeInBackgroundRefresh: false,
 	})
 
 	// Search state
@@ -94,6 +100,7 @@ export default function CorporationsPage() {
 				ticker: '',
 				assignedCharacterId: undefined,
 				assignedCharacterName: undefined,
+				includeInBackgroundRefresh: false,
 			})
 			showSuccess('Corporation added successfully!')
 		} catch (error) {
@@ -123,6 +130,18 @@ export default function CorporationsPage() {
 			}
 		} catch (error) {
 			showError(error instanceof Error ? error.message : 'Failed to verify access')
+		}
+	}
+
+	const handleToggleBackgroundRefresh = async (corporationId: string, enabled: boolean) => {
+		try {
+			await updateCorporation.mutateAsync({
+				corporationId,
+				data: { includeInBackgroundRefresh: enabled },
+			})
+			showSuccess(`Background refresh ${enabled ? 'enabled' : 'disabled'}`)
+		} catch (error) {
+			showError(error instanceof Error ? error.message : 'Failed to update setting')
 		}
 	}
 
@@ -246,6 +265,7 @@ export default function CorporationsPage() {
 										<TableHead>Corporation</TableHead>
 										<TableHead>Directors</TableHead>
 										<TableHead>Status</TableHead>
+										<TableHead>Auto-Sync</TableHead>
 										<TableHead>Last Sync</TableHead>
 										<TableHead>Last Verified</TableHead>
 										<TableHead className="text-right">Actions</TableHead>
@@ -282,6 +302,15 @@ export default function CorporationsPage() {
 												)}
 											</TableCell>
 											<TableCell>{getVerificationBadge(corp)}</TableCell>
+											<TableCell>
+												<Switch
+													checked={corp.includeInBackgroundRefresh}
+													onCheckedChange={(checked) =>
+														handleToggleBackgroundRefresh(corp.corporationId, checked)
+													}
+													disabled={updateCorporation.isPending}
+												/>
+											</TableCell>
 											<TableCell>
 												<span className="text-sm">{formatDate(corp.lastSync)}</span>
 											</TableCell>
@@ -389,6 +418,23 @@ export default function CorporationsPage() {
 									}
 									placeholder="e.g., Character Name"
 								/>
+							</div>
+							<div className="space-y-2">
+								<div className="flex items-center space-x-2">
+									<Switch
+										id="includeInBackgroundRefresh"
+										checked={formData.includeInBackgroundRefresh ?? false}
+										onCheckedChange={(checked) =>
+											setFormData({ ...formData, includeInBackgroundRefresh: checked })
+										}
+									/>
+									<Label htmlFor="includeInBackgroundRefresh" className="cursor-pointer">
+										Include in Background Refresh
+									</Label>
+								</div>
+								<p className="text-sm text-muted-foreground">
+									Automatically fetch and sync corporation data on a regular schedule
+								</p>
 							</div>
 						</div>
 						<DialogFooter className="mt-6">

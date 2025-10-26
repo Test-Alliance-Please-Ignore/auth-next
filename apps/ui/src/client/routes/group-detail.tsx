@@ -15,6 +15,7 @@ import { Section } from '@/components/ui/section'
 import { useAuth } from '@/hooks/useAuth'
 import { useGroupMembers } from '@/hooks/useGroupMembers'
 import { useGroup } from '@/hooks/useGroups'
+import { usePageTitle } from '@/hooks/usePageTitle'
 
 export default function GroupDetailPage() {
 	const { groupId } = useParams<{ groupId: string }>()
@@ -22,6 +23,9 @@ export default function GroupDetailPage() {
 	const { user } = useAuth()
 	const { data: group, isLoading } = useGroup(groupId!)
 	const { data: members, isLoading: membersLoading } = useGroupMembers(groupId!)
+
+	// Set dynamic page title based on group name
+	usePageTitle(group?.name || 'Group Details')
 	const [transferDialogOpen, setTransferDialogOpen] = useState(false)
 
 	if (isLoading) {
@@ -66,14 +70,12 @@ export default function GroupDetailPage() {
 						<JoinButton
 							group={group}
 							onSuccess={() => {
-								alert('Successfully joined the group!')
 								void navigate('/my-groups')
 							}}
 						/>
 						<LeaveButton
 							group={group}
 							onSuccess={() => {
-								alert('You have left the group')
 								void navigate('/groups')
 							}}
 						/>
@@ -134,7 +136,6 @@ export default function GroupDetailPage() {
 						open={transferDialogOpen}
 						onOpenChange={setTransferDialogOpen}
 						onSuccess={() => {
-							alert('Ownership transferred successfully!')
 							void navigate('/my-groups')
 						}}
 					/>

@@ -14,17 +14,10 @@ export const groupPermissionKeys = {
 	all: ['admin', 'groups', 'permissions'] as const,
 	lists: () => [...groupPermissionKeys.all, 'list'] as const,
 	list: (groupId: string) => [...groupPermissionKeys.lists(), groupId] as const,
-	memberPermissions: (groupId: string) => [
-		...groupPermissionKeys.all,
-		'members',
-		groupId,
-	] as const,
+	memberPermissions: (groupId: string) => [...groupPermissionKeys.all, 'members', groupId] as const,
 	userPermissions: (userId: string) => [...groupPermissionKeys.all, 'user', userId] as const,
-	multiGroupPermissions: (groupIds: string[]) => [
-		...groupPermissionKeys.all,
-		'multi',
-		{ groupIds },
-	] as const,
+	multiGroupPermissions: (groupIds: string[]) =>
+		[...groupPermissionKeys.all, 'multi', { groupIds }] as const,
 }
 
 // Queries
@@ -182,8 +175,7 @@ export function useRemoveGroupPermission() {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: ({ id }: { id: string; groupId: string }) =>
-			api.removePermissionFromGroup(id),
+		mutationFn: ({ id }: { id: string; groupId: string }) => api.removePermissionFromGroup(id),
 		onSuccess: (_, variables) => {
 			// Invalidate the group's permissions list
 			void queryClient.invalidateQueries({

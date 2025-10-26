@@ -8,6 +8,7 @@ import {
 	Dialog,
 	DialogContent,
 	DialogDescription,
+	DialogFooter,
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
@@ -22,9 +23,11 @@ interface LeaveButtonProps {
 
 export function LeaveButton({ group, onSuccess }: LeaveButtonProps) {
 	const [confirmOpen, setConfirmOpen] = useState(false)
+	const [errorMessage, setErrorMessage] = useState<string | null>(null)
 	const leaveGroup = useLeaveGroup()
 
 	const handleLeave = async () => {
+		setErrorMessage(null)
 		try {
 			await leaveGroup.mutateAsync(group.id)
 			setConfirmOpen(false)
@@ -32,7 +35,9 @@ export function LeaveButton({ group, onSuccess }: LeaveButtonProps) {
 		} catch (error) {
 			console.error('Failed to leave group:', error)
 			if (error instanceof Error) {
-				alert(error.message)
+				setErrorMessage(error.message)
+			} else {
+				setErrorMessage('Failed to leave group. Please try again.')
 			}
 		}
 	}
@@ -65,7 +70,12 @@ export function LeaveButton({ group, onSuccess }: LeaveButtonProps) {
 							access group content again.
 						</DialogDescription>
 					</DialogHeader>
-					<div className="flex justify-end gap-2">
+					{errorMessage && (
+						<div className="rounded-md border border-destructive bg-destructive/10 p-3">
+							<p className="text-sm text-destructive">{errorMessage}</p>
+						</div>
+					)}
+					<DialogFooter>
 						<CancelButton onClick={() => setConfirmOpen(false)} disabled={leaveGroup.isPending}>
 							Cancel
 						</CancelButton>
@@ -76,7 +86,7 @@ export function LeaveButton({ group, onSuccess }: LeaveButtonProps) {
 						>
 							Leave Group
 						</DestructiveButton>
-					</div>
+					</DialogFooter>
 				</DialogContent>
 			</Dialog>
 		</>

@@ -8,8 +8,10 @@ import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
 import { usePendingInvitations } from '@/hooks/useGroups'
+import { usePageTitle } from '@/hooks/usePageTitle'
 
 export default function InvitationsPage() {
+	usePageTitle('Group Invitations')
 	const navigate = useNavigate()
 	const { data: invitations, isLoading } = usePendingInvitations()
 

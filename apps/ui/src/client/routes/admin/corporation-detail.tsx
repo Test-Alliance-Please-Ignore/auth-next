@@ -60,6 +60,7 @@ import {
 	useUpdateCorporationDiscordServer,
 } from '@/hooks/useDiscord'
 import { useMessage } from '@/hooks/useMessage'
+import { usePageTitle } from '@/hooks/usePageTitle'
 
 import type { UpdateCorporationRequest } from '@/lib/api'
 
@@ -68,6 +69,9 @@ export default function CorporationDetailPage() {
 	const corpId = corporationId || ''
 
 	const { data: corporation, isLoading } = useCorporation(corpId)
+
+	// Set dynamic page title based on corporation name
+	usePageTitle(corporation?.name ? `Admin - ${corporation.name}` : 'Admin - Corporation Details')
 	const { data: dataSummary, isLoading: summaryLoading } = useCorporationDataSummary(corpId)
 	const updateCorporation = useUpdateCorporation()
 	const verifyAccess = useVerifyCorporationAccess()
@@ -215,6 +219,18 @@ export default function CorporationDetailPage() {
 		}
 	}
 
+	const handleUpdateBackgroundRefresh = async (enabled: boolean) => {
+		try {
+			await updateCorporation.mutateAsync({
+				corporationId: corpId,
+				data: { includeInBackgroundRefresh: enabled },
+			})
+			showSuccess(`Background refresh ${enabled ? 'enabled' : 'disabled'}`)
+		} catch (error) {
+			showError(error instanceof Error ? error.message : 'Failed to update setting')
+		}
+	}
+
 	const formatDate = (date: string | null) => {
 		if (!date) return 'Never'
 		return formatDistanceToNow(new Date(date), { addSuffix: true })
@@ -353,6 +369,40 @@ export default function CorporationDetailPage() {
 						</CardHeader>
 						<CardContent>
 							<DirectorList corporationId={corpId} />
+						</CardContent>
+					</Card>
+
+					{/* Data Collection Settings Card */}
+					<Card>
+						<CardHeader>
+							<div className="flex items-center gap-2">
+								<RefreshCw className="h-5 w-5 text-muted-foreground" />
+								<CardTitle>Data Collection Settings</CardTitle>
+							</div>
+							<CardDescription>
+								Configure automatic data fetching and synchronization behavior
+							</CardDescription>
+						</CardHeader>
+						<CardContent className="space-y-4">
+							<div className="flex items-center justify-between">
+								<div className="space-y-1">
+									<div className="flex items-center space-x-2">
+										<Switch
+											id="background-refresh"
+											checked={corporation.includeInBackgroundRefresh}
+											onCheckedChange={(checked) => handleUpdateBackgroundRefresh(checked)}
+											disabled={updateCorporation.isPending}
+										/>
+										<Label htmlFor="background-refresh" className="cursor-pointer font-medium">
+											Include in Background Refresh
+										</Label>
+									</div>
+									<p className="text-sm text-muted-foreground ml-11">
+										When enabled, corporation data will be automatically fetched and updated on a
+										regular schedule
+									</p>
+								</div>
+							</div>
 						</CardContent>
 					</Card>
 

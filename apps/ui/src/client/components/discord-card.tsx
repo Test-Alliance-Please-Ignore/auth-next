@@ -1,4 +1,4 @@
-import { CheckCircle2, MessageSquare, Users } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, MessageSquare, Shield, XCircle } from 'lucide-react'
 import { useState } from 'react'
 
 import { useDiscordLink } from '@/hooks/useDiscord'
@@ -18,12 +18,14 @@ interface DiscordCardProps {
  * Shows link button when not linked, or Discord username when linked
  */
 export function DiscordCard({ user }: DiscordCardProps) {
-	const { mutate: linkDiscord, isPending, isError, error } = useDiscordLink()
+	const { mutate: linkDiscord, isPending, linkError, clearError } = useDiscordLink()
 	const [isJoiningServers, setIsJoiningServers] = useState(false)
 	const [joinMessage, setJoinMessage] = useState<string | null>(null)
 	const [joinError, setJoinError] = useState<string | null>(null)
 
 	const handleLinkClick = () => {
+		// Clear any previous errors before starting new link attempt
+		clearError()
 		linkDiscord()
 	}
 
@@ -54,11 +56,6 @@ export function DiscordCard({ user }: DiscordCardProps) {
 		}
 	}
 
-	// Log the error for debugging
-	if (error) {
-		console.error('Discord linking error:', error)
-	}
-
 	return (
 		<Card variant="elevated" className="h-full flex flex-col">
 			<CardHeader>
@@ -79,7 +76,11 @@ export function DiscordCard({ user }: DiscordCardProps) {
 					// Linked state - show Discord username and join button
 					<div className="space-y-4">
 						<div className="flex items-center gap-3">
-							<CheckCircle2 className="h-5 w-5 text-green-500" />
+							{user.discord.authRevoked ? (
+								<XCircle className="h-5 w-5 text-destructive" />
+							) : (
+								<CheckCircle2 className="h-5 w-5 text-green-500" />
+							)}
 							<div>
 								<p className="font-semibold text-lg">
 									{user.discord.username}
@@ -89,18 +90,46 @@ export function DiscordCard({ user }: DiscordCardProps) {
 							</div>
 						</div>
 
-						{/* Join servers button */}
+						{/* Authorization revoked warning */}
+						{user.discord.authRevoked && (
+							<div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3">
+								<div className="flex items-start gap-2">
+									<AlertTriangle className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
+									<div>
+										<p className="text-sm text-destructive font-medium">Authorization Revoked</p>
+										<p className="text-sm text-destructive/90 mt-1">
+											You've removed this app from your Discord authorized apps. Please re-link your
+											account to restore access.
+										</p>
+									</div>
+								</div>
+							</div>
+						)}
+
+						{/* Join servers button or Re-link button */}
 						<div className="space-y-2">
-							<Button
-								onClick={handleJoinServers}
-								disabled={isJoiningServers}
-								size="sm"
-								variant="outline"
-								className="w-full gap-2"
-							>
-								<Users className="h-4 w-4" />
-								{isJoiningServers ? 'Joining...' : 'Join Corporation Servers'}
-							</Button>
+							{user.discord.authRevoked ? (
+								<Button
+									onClick={handleLinkClick}
+									disabled={isPending}
+									size="sm"
+									className="w-full gap-2 bg-[hsl(var(--discord-blurple))] text-white hover:bg-[hsl(var(--discord-blurple))]/90"
+								>
+									<MessageSquare className="h-4 w-4" />
+									{isPending ? 'Opening Discord...' : 'Re-link Discord Account'}
+								</Button>
+							) : (
+								<Button
+									onClick={handleJoinServers}
+									disabled={isJoiningServers}
+									size="sm"
+									variant="outline"
+									className="w-full gap-2"
+								>
+									<Shield className="h-4 w-4" />
+									{isJoiningServers ? 'Refreshing...' : 'Refresh Discord Access'}
+								</Button>
+							)}
 
 							{/* Success message */}
 							{joinMessage && (
@@ -124,10 +153,11 @@ export function DiscordCard({ user }: DiscordCardProps) {
 						>
 							{isPending ? 'Opening Discord...' : 'Link Discord Account'}
 						</Button>
-						{isError && (
-							<p className="text-sm text-destructive">
-								Failed to open Discord OAuth. Please allow popups and try again.
-							</p>
+						{linkError && (
+							<div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3">
+								<p className="text-sm text-destructive font-medium">Linking Failed</p>
+								<p className="text-sm text-destructive/90 mt-1">{linkError}</p>
+							</div>
 						)}
 					</div>
 				)}

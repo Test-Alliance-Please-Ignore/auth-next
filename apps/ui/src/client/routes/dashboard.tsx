@@ -11,9 +11,11 @@ import { LoadingPage } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
 import { useAuth } from '@/hooks/useAuth'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { apiClient } from '@/lib/api'
 
 export default function DashboardPage() {
+	usePageTitle('Dashboard')
 	const { user, isLoading, refetch } = useAuth()
 	const navigate = useNavigate()
 	const [isLinkingCharacter, setIsLinkingCharacter] = useState(false)

@@ -20,6 +20,7 @@ import {
 	usePermissionCategories,
 	useUpdatePermissionCategory,
 } from '@/hooks/usePermissionCategories'
+import { usePageTitle } from '@/hooks/usePageTitle'
 
 import type {
 	CreatePermissionCategoryRequest,
@@ -28,6 +29,7 @@ import type {
 } from '@/lib/api'
 
 export default function PermissionCategoriesPage() {
+	usePageTitle('Admin - Permission Categories')
 	const { data: categories, isLoading } = usePermissionCategories()
 	const createCategory = useCreatePermissionCategory()
 	const updateCategory = useUpdatePermissionCategory()
@@ -111,7 +113,9 @@ export default function PermissionCategoriesPage() {
 				<div className="flex items-center justify-between">
 					<div>
 						<h1 className="text-3xl font-bold gradient-text">Permissions</h1>
-						<p className="text-muted-foreground mt-1">Manage permission categories and global permissions</p>
+						<p className="text-muted-foreground mt-1">
+							Manage permission categories and global permissions
+						</p>
 					</div>
 					<Button onClick={() => setCreateDialogOpen(true)}>
 						<Plus className="mr-2 h-4 w-4" />
@@ -205,10 +209,7 @@ export default function PermissionCategoriesPage() {
 											<Button variant="ghost" size="sm" onClick={() => openEditDialog(category)}>
 												Edit
 											</Button>
-											<DestructiveButton
-												size="sm"
-												onClick={() => openDeleteDialog(category)}
-											>
+											<DestructiveButton size="sm" onClick={() => openDeleteDialog(category)}>
 												<Trash2 className="h-4 w-4" />
 											</DestructiveButton>
 										</div>
@@ -262,8 +263,8 @@ export default function PermissionCategoriesPage() {
 					<DialogHeader>
 						<DialogTitle>Delete Category</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to delete "{selectedCategory?.name}"? Permissions in this category
-							will not be deleted, but they will no longer be organized.
+							Are you sure you want to delete "{selectedCategory?.name}"? Permissions in this
+							category will not be deleted, but they will no longer be organized.
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>

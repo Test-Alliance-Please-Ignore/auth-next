@@ -15,6 +15,9 @@ export interface User {
 		userId: string
 		username: string
 		discriminator: string
+		authRevoked: boolean
+		authRevokedAt: string | null
+		lastSuccessfulAuth: string | null
 	}
 }
 

@@ -1,9 +1,15 @@
-import { Edit, MessageSquare, Plus, Save, Trash2, X } from 'lucide-react'
+import { Edit, MessageSquare, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
+import {
+	Accordion,
+	AccordionContent,
+	AccordionItem,
+	AccordionTrigger,
+} from '@/components/ui/accordion'
 import { Button } from '@/components/ui/button'
 import { CancelButton } from '@/components/ui/cancel-button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { ConfirmButton } from '@/components/ui/confirm-button'
 import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
@@ -24,10 +30,12 @@ import {
 	useDeleteDiscordRole,
 	useDeleteDiscordServer,
 	useDiscordServers,
+	useRefreshDiscordServerMembers,
 	useUpdateDiscordRole,
 	useUpdateDiscordServer,
 } from '@/hooks/useDiscord'
 import { useMessage } from '@/hooks/useMessage'
+import { usePageTitle } from '@/hooks/usePageTitle'
 
 import type {
 	CreateDiscordRoleRequest,
@@ -38,6 +46,7 @@ import type {
 } from '@/lib/api'
 
 export default function DiscordServersPage() {
+	usePageTitle('Admin - Discord Servers')
 	const { data: discordServers, isLoading } = useDiscordServers()
 	const createServer = useCreateDiscordServer()
 	const updateServer = useUpdateDiscordServer()
@@ -45,6 +54,7 @@ export default function DiscordServersPage() {
 	const createRole = useCreateDiscordRole()
 	const updateRole = useUpdateDiscordRole()
 	const deleteRole = useDeleteDiscordRole()
+	const refreshMembers = useRefreshDiscordServerMembers()
 
 	const { message, showSuccess, showError } = useMessage()
 
@@ -66,6 +76,9 @@ export default function DiscordServersPage() {
 		isActive: boolean
 		autoApply: boolean
 	} | null>(null)
+
+	// Refresh state
+	const [refreshingServerId, setRefreshingServerId] = useState<string | null>(null)
 
 	// Form state
 	const [serverFormData, setServerFormData] = useState<CreateDiscordServerRequest>({
@@ -266,6 +279,23 @@ export default function DiscordServersPage() {
 		setDeleteRoleDialogOpen(true)
 	}
 
+	// Refresh members handler
+	const handleRefreshMembers = async (serverId: string) => {
+		setRefreshingServerId(serverId)
+
+		try {
+			const result = await refreshMembers.mutateAsync(serverId)
+
+			showSuccess(
+				`Refresh complete! Processed ${result.totalProcessed} users: ${result.successfulInvites} successful, ${result.failedInvites} failed`
+			)
+		} catch (error) {
+			showError(error instanceof Error ? error.message : 'Failed to refresh members')
+		} finally {
+			setRefreshingServerId(null)
+		}
+	}
+
 	if (isLoading) {
 		return (
 			<div className="flex justify-center py-12">
@@ -326,123 +356,150 @@ export default function DiscordServersPage() {
 					</CardContent>
 				</Card>
 			) : (
-				<div className="grid gap-6">
-					{discordServers.map((server) => (
-						<Card key={server.id}>
-							<CardHeader>
-								<div className="flex items-start justify-between">
-									<div>
-										<CardTitle className="flex items-center gap-2">
-											{server.guildName}
-											{!server.isActive && (
-												<span className="text-xs font-normal text-muted-foreground">
-													(Inactive)
-												</span>
-											)}
-										</CardTitle>
-										<CardDescription>
-											Guild ID: {server.guildId}
-											{server.description && ` • ${server.description}`}
-										</CardDescription>
+				<Card>
+					<Accordion type="multiple" className="w-full">
+						{discordServers.map((server) => (
+							<AccordionItem key={server.id} value={server.id}>
+								<AccordionTrigger className="px-6 hover:no-underline">
+									<div className="flex items-center justify-between w-full pr-4">
+										<div className="flex items-center gap-3 text-left">
+											<MessageSquare className="h-5 w-5 text-[hsl(var(--discord-blurple))]" />
+											<div>
+												<div className="flex items-center gap-2">
+													<span className="font-semibold">{server.guildName}</span>
+													{!server.isActive && (
+														<span className="text-xs font-normal text-muted-foreground">
+															(Inactive)
+														</span>
+													)}
+												</div>
+												<p className="text-xs text-muted-foreground">
+													Guild ID: {server.guildId}
+													{server.description && ` • ${server.description}`}
+												</p>
+											</div>
+										</div>
+										<div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+											<Button
+												variant="outline"
+												size="sm"
+												onClick={() => openEditServerDialog(server)}
+											>
+												<Edit className="h-4 w-4" />
+											</Button>
+											<Button
+												variant="ghost"
+												size="sm"
+												onClick={() => openDeleteServerDialog(server)}
+											>
+												<Trash2 className="h-4 w-4 text-destructive" />
+											</Button>
+										</div>
 									</div>
-									<div className="flex gap-2">
-										<Button
-											variant="outline"
-											size="sm"
-											onClick={() => openEditServerDialog(server)}
-										>
-											<Edit className="h-4 w-4" />
-										</Button>
-										<Button
-											variant="ghost"
-											size="sm"
-											onClick={() => openDeleteServerDialog(server)}
-										>
-											<Trash2 className="h-4 w-4 text-destructive" />
-										</Button>
-									</div>
-								</div>
-							</CardHeader>
-							<CardContent>
-								<div className="space-y-3">
-									<div className="flex items-center justify-between">
-										<h4 className="text-sm font-medium">Roles</h4>
-										<Button
-											size="sm"
-											variant="outline"
-											onClick={() => openCreateRoleDialog(server)}
-										>
-											<Plus className="mr-2 h-3 w-3" />
-											Add Role
-										</Button>
-									</div>
-
-									{server.roles && server.roles.length > 0 ? (
-										<div className="space-y-2">
-											{server.roles.map((role) => (
-												<div
-													key={role.id}
-													className="flex items-center justify-between rounded-lg border p-3"
+								</AccordionTrigger>
+								<AccordionContent className="px-6 pb-4">
+									<div className="space-y-3 pt-2">
+										<div className="flex items-center justify-between">
+											<h4 className="text-sm font-medium">Roles</h4>
+											<div className="flex gap-2">
+												<Button
+													size="sm"
+													variant="outline"
+													onClick={() => handleRefreshMembers(server.id)}
+													disabled={refreshingServerId === server.id}
 												>
-													<div className="flex-1">
-														<div className="flex items-center gap-2">
-															<p className="font-medium">{role.roleName}</p>
-															{!role.isActive && (
-																<span className="text-xs text-muted-foreground">(Inactive)</span>
-															)}
-															{role.autoApply && (
-																<span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded">
-																	Auto-apply
-																</span>
+													{refreshingServerId === server.id ? (
+														<>
+															<LoadingSpinner className="mr-2 h-3 w-3" />
+															Refreshing...
+														</>
+													) : (
+														<>
+															<RefreshCw className="mr-2 h-3 w-3" />
+															Refresh All Members
+														</>
+													)}
+												</Button>
+												<Button
+													size="sm"
+													variant="outline"
+													onClick={() => openCreateRoleDialog(server)}
+												>
+													<Plus className="mr-2 h-3 w-3" />
+													Add Role
+												</Button>
+											</div>
+										</div>
+
+										{server.roles && server.roles.length > 0 ? (
+											<div className="space-y-2">
+												{server.roles.map((role) => (
+													<div
+														key={role.id}
+														className="flex items-center justify-between rounded-lg border p-3"
+													>
+														<div className="flex-1">
+															<div className="flex items-center gap-2">
+																<p className="font-medium">{role.roleName}</p>
+																{!role.isActive && (
+																	<span className="text-xs text-muted-foreground">(Inactive)</span>
+																)}
+																{role.autoApply && (
+																	<span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded">
+																		Auto-apply
+																	</span>
+																)}
+															</div>
+															<p className="text-xs text-muted-foreground">
+																Role ID: {role.roleId}
+															</p>
+															{role.description && (
+																<p className="text-sm text-muted-foreground mt-1">
+																	{role.description}
+																</p>
 															)}
 														</div>
-														<p className="text-xs text-muted-foreground">Role ID: {role.roleId}</p>
-														{role.description && (
-															<p className="text-sm text-muted-foreground mt-1">
-																{role.description}
-															</p>
-														)}
+														<div className="flex gap-2">
+															<Button
+																variant="ghost"
+																size="sm"
+																onClick={() =>
+																	openEditRoleDialog(
+																		server.id,
+																		role.id,
+																		role.roleName,
+																		role.description,
+																		role.isActive,
+																		role.autoApply
+																	)
+																}
+															>
+																<Edit className="h-4 w-4" />
+															</Button>
+															<Button
+																variant="ghost"
+																size="sm"
+																onClick={() =>
+																	openDeleteRoleDialog(server.id, role.id, role.roleName)
+																}
+															>
+																<Trash2 className="h-4 w-4 text-destructive" />
+															</Button>
+														</div>
 													</div>
-													<div className="flex gap-2">
-														<Button
-															variant="ghost"
-															size="sm"
-															onClick={() =>
-																openEditRoleDialog(
-																	server.id,
-																	role.id,
-																	role.roleName,
-																	role.description,
-																	role.isActive,
-																	role.autoApply
-																)
-															}
-														>
-															<Edit className="h-4 w-4" />
-														</Button>
-														<Button
-															variant="ghost"
-															size="sm"
-															onClick={() =>
-																openDeleteRoleDialog(server.id, role.id, role.roleName)
-															}
-														>
-															<Trash2 className="h-4 w-4 text-destructive" />
-														</Button>
-													</div>
-												</div>
-											))}
-										</div>
-									) : (
-										<p className="text-sm text-muted-foreground text-center py-4">
-											No roles configured. Add roles to assign them during auto-invite.
-										</p>
-									)}
-								</div>
-							</CardContent>
-						</Card>
-					))}
-				</div>
+												))}
+											</div>
+										) : (
+											<p className="text-sm text-muted-foreground text-center py-4">
+												No roles configured. Add roles to assign them during auto-invite.
+											</p>
+										)}
+									</div>
+								</AccordionContent>
+							</AccordionItem>
+						))}
+					</Accordion>
+				</Card>
 			)}
 
 			{/* Create Server Dialog */}

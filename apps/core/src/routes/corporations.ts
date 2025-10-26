@@ -99,7 +99,14 @@ app.post('/', requireAuth(), requireAdmin(), async (c) => {
 
 	try {
 		const body = await c.req.json()
-		const { corporationId, name, ticker, assignedCharacterId, assignedCharacterName } = body
+		const {
+			corporationId,
+			name,
+			ticker,
+			assignedCharacterId,
+			assignedCharacterName,
+			includeInBackgroundRefresh,
+		} = body
 
 		if (!corporationId || !name || !ticker) {
 			return c.json({ error: 'corporationId, name, and ticker are required' }, 400)
@@ -124,6 +131,7 @@ app.post('/', requireAuth(), requireAdmin(), async (c) => {
 				assignedCharacterId: assignedCharacterId || null,
 				assignedCharacterName: assignedCharacterName || null,
 				isActive: true,
+				includeInBackgroundRefresh: includeInBackgroundRefresh ?? false,
 				isVerified: false,
 				configuredBy: user.id,
 			})
@@ -225,6 +233,7 @@ app.put('/:corporationId', requireAuth(), requireAdmin(), async (c) => {
 			assignedCharacterId,
 			assignedCharacterName,
 			isActive,
+			includeInBackgroundRefresh,
 			discordGuildId,
 			discordGuildName,
 			discordAutoInvite,
@@ -246,6 +255,7 @@ app.put('/:corporationId', requireAuth(), requireAdmin(), async (c) => {
 				...(assignedCharacterId !== undefined && { assignedCharacterId }),
 				...(assignedCharacterName !== undefined && { assignedCharacterName }),
 				...(isActive !== undefined && { isActive }),
+				...(includeInBackgroundRefresh !== undefined && { includeInBackgroundRefresh }),
 				...(discordGuildId !== undefined && { discordGuildId }),
 				...(discordGuildName !== undefined && { discordGuildName }),
 				...(discordAutoInvite !== undefined && { discordAutoInvite }),

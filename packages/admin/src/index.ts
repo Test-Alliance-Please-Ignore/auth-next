@@ -84,6 +84,18 @@ export interface CharacterSummary {
 }
 
 /**
+ * Discord status info for user details
+ */
+export interface DiscordStatus {
+	userId: string
+	username: string
+	discriminator: string
+	authRevoked: boolean
+	authRevokedAt: Date | null
+	lastSuccessfulAuth: Date | null
+}
+
+/**
  * User details with all characters
  */
 export interface UserDetails {
@@ -91,6 +103,7 @@ export interface UserDetails {
 	mainCharacterId: string
 	is_admin: boolean
 	discordUserId: string | null
+	discord: DiscordStatus | null
 	characters: CharacterSummary[]
 	createdAt: Date
 	updatedAt: Date
