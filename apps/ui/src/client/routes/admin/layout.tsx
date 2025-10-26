@@ -1,5 +1,5 @@
 import { ChevronRight } from 'lucide-react'
-import { Fragment, useMemo } from 'react'
+import { Fragment, useEffect, useMemo } from 'react'
 import { Link, Navigate, Outlet, useLocation } from 'react-router-dom'
 
 import { AdminNav } from '@/components/admin-nav'
@@ -9,8 +9,18 @@ import { BreadcrumbProvider, useBreadcrumb } from '@/hooks/useBreadcrumb'
 
 export default function AdminLayout() {
 	const { user, isAuthenticated, isLoading } = useAuth()
+	const location = useLocation()
 
-	// Show loading state while checking auth
+	// Redirect to login if not authenticated, preserving the intended destination
+	useEffect(() => {
+		if (!isLoading && (!isAuthenticated || !user)) {
+			const currentPath = location.pathname + location.search
+			// Use window.location to do a full page redirect to the server-side login page
+			window.location.href = `/login?redirect=${encodeURIComponent(currentPath)}`
+		}
+	}, [isAuthenticated, isLoading, user, location.pathname, location.search])
+
+	// Show loading state while checking auth or redirecting
 	if (isLoading) {
 		return (
 			<div className="min-h-screen flex items-center justify-center">
@@ -19,9 +29,13 @@ export default function AdminLayout() {
 		)
 	}
 
-	// Redirect to dashboard if not authenticated
+	// If not authenticated or no user, show loading (redirect will happen via useEffect)
 	if (!isAuthenticated || !user) {
-		return <Navigate to="/dashboard" replace />
+		return (
+			<div className="min-h-screen flex items-center justify-center">
+				<LoadingSpinner label="Redirecting to login..." />
+			</div>
+		)
 	}
 
 	// Redirect to dashboard if not admin

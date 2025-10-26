@@ -14,6 +14,7 @@ import discordRoutes from './routes/discord'
 import discordServersRoutes from './routes/discord-servers'
 import groupsRoutes from './routes/groups'
 import inviteRoutes from './routes/invite'
+import loginRoutes from './routes/login'
 import skillsRoutes from './routes/skills'
 import usersRoutes from './routes/users'
 import wsRoutes from './routes/ws'
@@ -52,7 +53,8 @@ const app = new Hono<App>()
 		return c.json({ status: 'ok', service: 'core' })
 	})
 
-	// Public invite route (for Discord embeds and direct access)
+	// Public routes (for direct access and Discord embeds)
+	.route('/login', loginRoutes)
 	.route('/invite', inviteRoutes)
 
 	// API routes - mounted under /api prefix

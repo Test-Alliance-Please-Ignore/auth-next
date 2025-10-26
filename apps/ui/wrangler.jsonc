@@ -14,6 +14,7 @@
 		"binding": "ASSETS",
 		"not_found_handling": "single-page-application"
 	},
+	"services": [{ "binding": "CORE", "service": "core" }],
 	"vars": {
 		"NAME": "ui",
 		"ENVIRONMENT": "development", // overridden during deployment

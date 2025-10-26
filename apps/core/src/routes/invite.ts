@@ -371,7 +371,7 @@ invite.get('/:code', async (c) => {
 												</button>
 											`
 										: html`
-												<a href="/api/auth/login?redirect=${encodeURIComponent(`/invite/${code}`)}" class="button button-primary">
+												<a href="/login?redirect=${encodeURIComponent(`/invite/${code}`)}" class="button button-primary">
 													Log In to Join
 												</a>
 											`}

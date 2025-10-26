@@ -1,18 +1,34 @@
 import { Menu, X } from 'lucide-react'
-import { useMemo, useState } from 'react'
-import { Outlet } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { Outlet, useLocation } from 'react-router-dom'
 
 import { useAuth } from '@/hooks/useAuth'
 
 import { SidebarNav } from './sidebar-nav'
 import { Button } from './ui/button'
+import { LoadingSpinner } from './ui/loading'
 
 export default function Layout() {
-	const { isAuthenticated } = useAuth()
+	const { isAuthenticated, isLoading } = useAuth()
 	const [sidebarOpen, setSidebarOpen] = useState(false)
+	const location = useLocation()
 
-	if (!isAuthenticated) {
-		return null
+	// Redirect to login if not authenticated, preserving the intended destination
+	useEffect(() => {
+		if (!isLoading && !isAuthenticated) {
+			const currentPath = location.pathname + location.search
+			// Use window.location to do a full page redirect to the server-side login page
+			window.location.href = `/login?redirect=${encodeURIComponent(currentPath)}`
+		}
+	}, [isAuthenticated, isLoading, location.pathname, location.search])
+
+	// Show loading state while checking auth or redirecting
+	if (isLoading || !isAuthenticated) {
+		return (
+			<div className="min-h-screen flex items-center justify-center">
+				<LoadingSpinner label="Loading..." />
+			</div>
+		)
 	}
 
 	return (

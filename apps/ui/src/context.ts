@@ -4,6 +4,8 @@ import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/
 export type Env = SharedHonoEnv & {
 	// Cloudflare Workers Static Assets binding
 	ASSETS: Fetcher
+	// Core API service binding (for proxying server-rendered routes)
+	CORE: Fetcher
 }
 
 /** Variables can be extended */

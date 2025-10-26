@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
+import { html } from 'hono/html'
 
 import { eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
@@ -294,18 +295,14 @@ auth.get('/callback', async (c) => {
 			path: '/',
 		})
 
-		// If there's a redirect URL, redirect to it (for direct login links)
-		if (redirectUrl) {
-			return c.redirect(redirectUrl)
-		}
-
-		// Otherwise return JSON for API usage
+		// Return JSON response with redirect URL if present
 		return c.json({
 			success: true,
 			user: {
 				id: user.id,
 				requiresClaimMain: false,
 			},
+			redirectUrl: redirectUrl || undefined,
 			autoRegistration: autoRegResult,
 		})
 	}

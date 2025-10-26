@@ -4,7 +4,7 @@
 	"main": "src/index.ts",
 	"compatibility_date": "2025-04-28",
 	"compatibility_flags": ["nodejs_compat"],
-	"routes": ["pleaseignore.app/api/*", "pleaseignore.app/invite/*"],
+	"routes": ["pleaseignore.app/api/*", "pleaseignore.app/invite/*", "pleaseignore.app/login*"],
 	"logpush": true,
 	"observability": {
 		"enabled": true,

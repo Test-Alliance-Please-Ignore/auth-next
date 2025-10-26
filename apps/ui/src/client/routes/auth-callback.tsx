@@ -23,6 +23,7 @@ interface CallbackResponse {
 		is_primary: boolean
 		linkedAt: Date
 	}
+	redirectUrl?: string
 }
 
 export default function AuthCallbackPage() {
@@ -66,8 +67,17 @@ export default function AuthCallbackPage() {
 						},
 					})
 				} else if (response.success) {
-					// Existing user logging in - session cookie set by server, redirect to dashboard
-					void navigate('/dashboard')
+					// Existing user logging in - session cookie set by server
+					// Use redirect URL if present, otherwise go to dashboard
+					const destination = response.redirectUrl || '/dashboard'
+
+					// If redirect URL starts with /invite/, /login, or other server routes,
+					// do a full page reload instead of SPA navigation
+					if (destination.startsWith('/invite/') || destination.startsWith('/login')) {
+						window.location.href = destination
+					} else {
+						void navigate(destination)
+					}
 				} else {
 					setError('Unexpected response from server')
 				}

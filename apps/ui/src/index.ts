@@ -27,6 +27,11 @@ const app = new Hono<App>()
 	.get('*', async (c) => {
 		const url = new URL(c.req.url)
 
+		// Proxy server-rendered routes to the core API worker
+		if (url.pathname.startsWith('/invite/') || url.pathname === '/login') {
+			return c.env.CORE.fetch(c.req.raw)
+		}
+
 		// Fetch the asset from the ASSETS binding
 		const response = await c.env.ASSETS.fetch(c.req.raw)
 
