@@ -130,15 +130,18 @@ All computation happens at Cloudflare's edge, as close to users as possible:
 Each worker is a microservice with a single responsibility:
 
 **HTTP Workers (Public Routes):**
+
 - **core**: Authentication, user management, API orchestration, HTTP + RPC endpoints
 - **eve-token-store**: EVE Online OAuth token lifecycle, callback handling
 - **eve-static-data**: EVE static database (SDE) API, KV-cached lookups
 - **ui**: React SPA static asset server with intelligent caching
 
 **RPC Workers (Service Bindings Only):**
+
 - **admin**: Administrative operations (user deletion, character transfers, audit logging)
 
 **Durable Object Workers (Both DO Implementations + Optional HTTP):**
+
 - **discord**: Discord OAuth and guild management (per-user DO, PostgreSQL)
 - **groups**: Group/category/membership management (per-user DO, PostgreSQL + KV cache)
 - **notifications**: Real-time WebSocket notifications (per-user DO, PostgreSQL)
@@ -254,7 +257,7 @@ export class EveCorporationDataDO extends DurableObject implements EveCorporatio
   async getMembers(corporationId: string): Promise<Member[]> {
     // Always filter by the entity ID parameter
     return await this.db.query.members.findMany({
-      where: eq(members.corporationId, corporationId)
+      where: eq(members.corporationId, corporationId),
     })
   }
 
@@ -375,7 +378,7 @@ export class MyDurableObject extends DurableObject {
   async fetchData(url: string, token: string) {
     // Multiple concurrent calls with same URL and token = 1 fetch
     return this.dedupedFetch.fetch(url, {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: { Authorization: `Bearer ${token}` },
     })
   }
 }
@@ -391,7 +394,7 @@ this.dedupedFetch = new DedupedFetch({
     const method = init?.method?.toUpperCase() || 'GET'
     return ['GET', 'POST'].includes(method)
   },
-  debug: false // Enable for debugging deduplication
+  debug: false, // Enable for debugging deduplication
 })
 
 // Monitor deduplication effectiveness
@@ -718,6 +721,7 @@ The system uses a **multi-tier storage architecture** optimized for different ac
 - **Used by:** core, groups, discord, notifications, admin, eve-corporation-data
 
 **Database per Worker:**
+
 - `core`: users, userCharacters, userSessions, managedCorporations, discordServers, etc.
 - `groups`: categories, groups, groupMembers, groupAdmins, groupInvitations, permissions
 - `discord`: discordUsers, guildMembers (per-user isolation)
@@ -782,21 +786,22 @@ return data
 
 ### Storage Decision Matrix
 
-| Data Type | Storage | Reason |
-|-----------|---------|--------|
-| User accounts, characters | PostgreSQL | Durable, relational, needs joins |
-| Groups, memberships | PostgreSQL | Complex relationships, ACLs |
-| Discord state (per user) | PostgreSQL | Per-user isolation, relational |
-| EVE OAuth tokens | DO SQLite | Encrypted, low-latency, singleton access |
-| ESI API cache | DO SQLite | Transient, ETag-based, per-DO instance |
-| EVE Static Data (SDE) | Workers KV | Globally cacheable, rarely changes |
-| Group category cache | Workers KV | Frequently read, rarely written |
-| Notifications (real-time) | PostgreSQL | Durable, needs ordering, per-user |
-| Corp data (ESI) | PostgreSQL | Large datasets, complex queries, per-corp |
+| Data Type                 | Storage    | Reason                                    |
+| ------------------------- | ---------- | ----------------------------------------- |
+| User accounts, characters | PostgreSQL | Durable, relational, needs joins          |
+| Groups, memberships       | PostgreSQL | Complex relationships, ACLs               |
+| Discord state (per user)  | PostgreSQL | Per-user isolation, relational            |
+| EVE OAuth tokens          | DO SQLite  | Encrypted, low-latency, singleton access  |
+| ESI API cache             | DO SQLite  | Transient, ETag-based, per-DO instance    |
+| EVE Static Data (SDE)     | Workers KV | Globally cacheable, rarely changes        |
+| Group category cache      | Workers KV | Frequently read, rarely written           |
+| Notifications (real-time) | PostgreSQL | Durable, needs ordering, per-user         |
+| Corp data (ESI)           | PostgreSQL | Large datasets, complex queries, per-corp |
 
 ### Database Isolation Patterns
 
 **Singleton Pattern (Shared State):**
+
 ```typescript
 // One instance for all users - use for shared resources
 const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
@@ -804,6 +809,7 @@ const stub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, 'default')
 ```
 
 **Per-User Pattern (Isolated State):**
+
 ```typescript
 // One instance per user - use for user-specific data
 const stub = getStub<Notifications>(env.NOTIFICATIONS, userId)
@@ -812,6 +818,7 @@ const stub = getStub<Groups>(env.GROUPS, userId)
 ```
 
 **Per-Entity Pattern (Isolated Resources):**
+
 ```typescript
 // One instance per entity - use for entity-specific data
 const stub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, corporationId)
@@ -1014,8 +1021,8 @@ The worker defines **12 specialized queues** for different ESI endpoints:
       { "queue": "corp-public-refresh", "max_batch_size": 10, "max_batch_timeout": 30 },
       { "queue": "corp-members-refresh", "max_batch_size": 10, "max_batch_timeout": 30 },
       // ... with varying batch sizes and timeouts
-    ]
-  }
+    ],
+  },
 }
 ```
 
@@ -1057,7 +1064,7 @@ export default {
     }
 
     await handler(batch, env, ctx)
-  }
+  },
 }
 ```
 
@@ -1065,21 +1072,19 @@ export default {
 
 ```typescript
 // apps/eve-corporation-data/src/queue/consumers/public-refresh.ts
-import { createQueueConsumer } from '@repo/queue-utils'
 import { z } from 'zod'
+
+import { createQueueConsumer } from '@repo/queue-utils'
 
 const messageSchema = z.object({
   corporationId: z.string(),
-  timestamp: z.number()
+  timestamp: z.number(),
 })
 
-export const publicRefreshQueue = createQueueConsumer(
-  messageSchema,
-  async (message, metadata) => {
-    const stub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, message.corporationId)
-    await stub.refreshPublicData(message.corporationId)
-  }
-)
+export const publicRefreshQueue = createQueueConsumer(messageSchema, async (message, metadata) => {
+  const stub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, message.corporationId)
+  await stub.refreshPublicData(message.corporationId)
+})
 ```
 
 ### Type-Safe Queue Utils
@@ -1106,7 +1111,7 @@ class CharacterUpdateConsumer extends QueueConsumer {
     super({
       schema: messageSchema,
       onBatchStart: (batch) => console.log(`Processing ${batch.messages.length} messages`),
-      onMessageSuccess: (message) => console.log(`Processed ${message.characterId}`)
+      onMessageSuccess: (message) => console.log(`Processed ${message.characterId}`),
     })
   }
 
@@ -1182,6 +1187,7 @@ export interface AdminWorker {
 ```typescript
 // apps/admin/src/index.ts
 import { WorkerEntrypoint } from 'cloudflare:workers'
+
 import type { AdminWorker as IAdminWorker } from '@repo/admin'
 
 export class AdminWorkerEntrypoint extends WorkerEntrypoint<Env> implements IAdminWorker {
@@ -1201,7 +1207,7 @@ export class AdminWorkerEntrypoint extends WorkerEntrypoint<Env> implements IAdm
   // Fetch handler - Required for deployment but not used
   override async fetch(): Promise<Response> {
     return new Response('Admin Worker - RPC only, not accessible via HTTP', {
-      status: 404
+      status: 404,
     })
   }
 }
@@ -1218,9 +1224,9 @@ export default AdminWorkerEntrypoint
     {
       "binding": "ADMIN",
       "service": "admin",
-      "entrypoint": "AdminWorkerEntrypoint" // Optional if worker exports single entrypoint
-    }
-  ]
+      "entrypoint": "AdminWorkerEntrypoint", // Optional if worker exports single entrypoint
+    },
+  ],
 }
 ```
 
@@ -1247,10 +1253,8 @@ The `core` worker demonstrates a hybrid approach - it exposes both HTTP endpoint
 
 ```typescript
 // apps/core/src/index.ts
-const app = new Hono<App>()
-  .get('/', handler)
-  .post('/api/auth', handler)
-  // ... HTTP routes
+const app = new Hono<App>().get('/', handler).post('/api/auth', handler)
+// ... HTTP routes
 
 export default app // HTTP handler
 
@@ -1269,20 +1273,6 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 }
 ```
 
-**Configuration for Hybrid:**
-
-```jsonc
-// apps/core/wrangler.jsonc
-{
-  "exports": {
-    "handlers": ["fetch"],  // Enable HTTP
-    "rpc": {
-      "class_name": "CoreWorker"  // Enable RPC
-    }
-  }
-}
-```
-
 ### Benefits
 
 - **Security**: Sensitive operations not exposed via HTTP
@@ -1295,12 +1285,14 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 ### When to Use RPC Pattern
 
 **Use RPC Workers when:**
+
 - Operations should not be publicly accessible
 - Need type-safe cross-worker communication
 - Implementing admin/privileged operations
 - Service-to-service communication (no public API)
 
 **Use HTTP Workers when:**
+
 - Need public API endpoints
 - Serving static assets
 - OAuth callbacks
@@ -1885,4 +1877,3 @@ tapi-workers/
 
 **Last Updated:** 2025-10-26
 **Maintained By:** Development Team
-**Questions?** Check CLAUDE.md or ask in team chat
