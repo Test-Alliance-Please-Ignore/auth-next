@@ -557,7 +557,11 @@ export default function DiscordServersPage() {
 							<CancelButton type="button" onClick={() => setEditServerDialogOpen(false)}>
 								Cancel
 							</CancelButton>
-							<ConfirmButton type="submit" loading={updateServer.isPending} loadingText="Updating...">
+							<ConfirmButton
+								type="submit"
+								loading={updateServer.isPending}
+								loadingText="Updating..."
+							>
 								Update Server
 							</ConfirmButton>
 						</DialogFooter>
@@ -576,9 +580,7 @@ export default function DiscordServersPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<CancelButton onClick={() => setDeleteServerDialogOpen(false)}>
-							Cancel
-						</CancelButton>
+						<CancelButton onClick={() => setDeleteServerDialogOpen(false)}>Cancel</CancelButton>
 						<DestructiveButton
 							onClick={handleDeleteServer}
 							loading={deleteServer.isPending}
@@ -751,9 +753,7 @@ export default function DiscordServersPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<CancelButton onClick={() => setDeleteRoleDialogOpen(false)}>
-							Cancel
-						</CancelButton>
+						<CancelButton onClick={() => setDeleteRoleDialogOpen(false)}>Cancel</CancelButton>
 						<DestructiveButton
 							onClick={handleDeleteRole}
 							loading={deleteRole.isPending}

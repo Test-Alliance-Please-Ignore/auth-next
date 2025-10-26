@@ -278,9 +278,7 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<CancelButton onClick={() => setRemoveDialogOpen(false)}>
-							Cancel
-						</CancelButton>
+						<CancelButton onClick={() => setRemoveDialogOpen(false)}>Cancel</CancelButton>
 						<DestructiveButton
 							onClick={handleRemove}
 							loading={removeDirector.isPending}
@@ -325,7 +323,11 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 							<CancelButton type="button" onClick={() => setPriorityDialogOpen(false)}>
 								Cancel
 							</CancelButton>
-							<ConfirmButton type="submit" loading={updatePriority.isPending} loadingText="Updating...">
+							<ConfirmButton
+								type="submit"
+								loading={updatePriority.isPending}
+								loadingText="Updating..."
+							>
 								Update Priority
 							</ConfirmButton>
 						</DialogFooter>

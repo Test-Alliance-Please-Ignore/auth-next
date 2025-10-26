@@ -133,7 +133,10 @@ export function TransferOwnershipDialog({
 				</div>
 
 				<DialogFooter>
-					<CancelButton onClick={() => handleOpenChange(false)} disabled={transferOwnership.isPending}>
+					<CancelButton
+						onClick={() => handleOpenChange(false)}
+						disabled={transferOwnership.isPending}
+					>
 						Cancel
 					</CancelButton>
 					<ConfirmButton

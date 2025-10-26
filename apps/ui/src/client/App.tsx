@@ -11,6 +11,8 @@ import AdminGroupDetailPage from './routes/admin/group-detail'
 import AdminGroupsPage from './routes/admin/groups'
 // Admin routes
 import AdminLayout from './routes/admin/layout'
+import AdminPermissionCategoriesPage from './routes/admin/permissions/categories'
+import AdminGlobalPermissionsPage from './routes/admin/permissions/global'
 import AdminUserDetailPage from './routes/admin/user-detail'
 import AdminUsersPage from './routes/admin/users'
 import AuthCallbackPage from './routes/auth-callback'
@@ -64,10 +66,12 @@ export default function App() {
 						<Route index element={<Navigate to="/admin/categories" replace />} />
 						<Route path="categories" element={<AdminCategoriesPage />} />
 						<Route path="groups" element={<AdminGroupsPage />} />
-						<Route path="groups/:groupId" element={<AdminGroupDetailPage />} />
+						<Route path="group-detail/:groupId" element={<AdminGroupDetailPage />} />
 						<Route path="corporations" element={<AdminCorporationsPage />} />
 						<Route path="corporations/:corporationId" element={<AdminCorporationDetailPage />} />
 						<Route path="discord-servers" element={<AdminDiscordServersPage />} />
+						<Route path="permissions/categories" element={<AdminPermissionCategoriesPage />} />
+						<Route path="permissions/global" element={<AdminGlobalPermissionsPage />} />
 						<Route path="users" element={<AdminUsersPage />} />
 						<Route path="users/:userId" element={<AdminUserDetailPage />} />
 						<Route path="activity-log" element={<AdminActivityLogPage />} />

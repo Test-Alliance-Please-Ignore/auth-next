@@ -3,6 +3,7 @@ import {
 	ArrowLeft,
 	Check,
 	Copy,
+	Key,
 	MessageSquare,
 	Pencil,
 	Plus,
@@ -17,7 +18,10 @@ import {
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 
+import { AttachPermissionDialog } from '@/components/attach-permission-dialog'
+import { CreateCustomPermissionDialog } from '@/components/create-custom-permission-dialog'
 import { GroupCard } from '@/components/group-card'
+import { GroupPermissionCard } from '@/components/group-permission-card'
 import { InviteMemberForm } from '@/components/invite-member-form'
 import { MemberList } from '@/components/member-list'
 import { PendingInvitationsList } from '@/components/pending-invitations-list'
@@ -50,6 +54,13 @@ import {
 	useUnassignRoleFromGroupServer,
 	useUpdateGroupDiscordServer,
 } from '@/hooks/useDiscord'
+import {
+	useAttachPermission,
+	useCreateGroupScopedPermission,
+	useGroupPermissions,
+	useRemoveGroupPermission,
+	useUpdateGroupPermission,
+} from '@/hooks/useGroupPermissions'
 import { useGroupMembers, useRemoveMember, useToggleAdmin } from '@/hooks/useGroupMembers'
 import { useGroup } from '@/hooks/useGroups'
 import {
@@ -59,7 +70,7 @@ import {
 } from '@/hooks/useInviteCodes'
 import { apiClient } from '@/lib/api'
 
-import type { GroupDiscordServer } from '@/lib/api'
+import type { GroupDiscordServer, GroupPermissionWithDetails } from '@/lib/api'
 
 export default function GroupDetailPage() {
 	const { groupId } = useParams<{ groupId: string }>()
@@ -85,6 +96,13 @@ export default function GroupDetailPage() {
 	const createInviteCode = useCreateInviteCode()
 	const revokeInviteCode = useRevokeInviteCode()
 
+	// Permission hooks
+	const { data: groupPermissions = [] } = useGroupPermissions(groupId!)
+	const attachPermission = useAttachPermission()
+	const createCustomPermission = useCreateGroupScopedPermission()
+	const removePermission = useRemoveGroupPermission()
+	const updatePermission = useUpdateGroupPermission()
+
 	// Dialog state
 	const [removeDialogOpen, setRemoveDialogOpen] = useState(false)
 	const [adminDialogOpen, setAdminDialogOpen] = useState(false)
@@ -107,6 +125,14 @@ export default function GroupDetailPage() {
 		expiresInDays: 7,
 	})
 	const [copiedCode, setCopiedCode] = useState<string | null>(null)
+
+	// Permission UI state
+	const [showAttachPermissionDialog, setShowAttachPermissionDialog] = useState(false)
+	const [showCreateCustomPermissionDialog, setShowCreateCustomPermissionDialog] = useState(false)
+	const [removePermissionDialogOpen, setRemovePermissionDialogOpen] = useState(false)
+	const [selectedPermission, setSelectedPermission] = useState<GroupPermissionWithDetails | null>(
+		null
+	)
 
 	// Error/success messages
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -366,6 +392,60 @@ export default function GroupDetailPage() {
 		}
 	}
 
+	// Permission handlers
+	const handleAttachPermission = async (data: any) => {
+		try {
+			await attachPermission.mutateAsync(data)
+			setShowAttachPermissionDialog(false)
+			setMessage({ type: 'success', text: 'Permission attached successfully!' })
+			setTimeout(() => setMessage(null), 3000)
+		} catch (error) {
+			setMessage({
+				type: 'error',
+				text: error instanceof Error ? error.message : 'Failed to attach permission',
+			})
+			setTimeout(() => setMessage(null), 5000)
+		}
+	}
+
+	const handleCreateCustomPermission = async (data: any) => {
+		try {
+			await createCustomPermission.mutateAsync(data)
+			setShowCreateCustomPermissionDialog(false)
+			setMessage({ type: 'success', text: 'Custom permission created successfully!' })
+			setTimeout(() => setMessage(null), 3000)
+		} catch (error) {
+			setMessage({
+				type: 'error',
+				text: error instanceof Error ? error.message : 'Failed to create custom permission',
+			})
+			setTimeout(() => setMessage(null), 5000)
+		}
+	}
+
+	const handleRemovePermission = async () => {
+		if (!selectedPermission || !groupId) return
+
+		try {
+			await removePermission.mutateAsync({ id: selectedPermission.id, groupId })
+			setRemovePermissionDialogOpen(false)
+			setSelectedPermission(null)
+			setMessage({ type: 'success', text: 'Permission removed successfully!' })
+			setTimeout(() => setMessage(null), 3000)
+		} catch (error) {
+			setMessage({
+				type: 'error',
+				text: error instanceof Error ? error.message : 'Failed to remove permission',
+			})
+			setTimeout(() => setMessage(null), 5000)
+		}
+	}
+
+	const openRemovePermissionDialog = (permission: GroupPermissionWithDetails) => {
+		setSelectedPermission(permission)
+		setRemovePermissionDialogOpen(true)
+	}
+
 	// Loading state
 	if (groupLoading) {
 		return (
@@ -577,9 +657,7 @@ export default function GroupDetailPage() {
 						<DialogContent>
 							<DialogHeader>
 								<DialogTitle>Create Invite Code</DialogTitle>
-								<DialogDescription>
-									Configure settings for the new invite code
-								</DialogDescription>
+								<DialogDescription>Configure settings for the new invite code</DialogDescription>
 							</DialogHeader>
 
 							<div className="space-y-4">
@@ -859,13 +937,112 @@ export default function GroupDetailPage() {
 							</div>
 
 							<DialogFooter>
-								<CancelButton onClick={() => setShowAddServerDialog(false)}>
-									Cancel
-								</CancelButton>
-								<ConfirmButton onClick={handleAttachServer} disabled={!selectedServerId} showIcon={false}>
+								<CancelButton onClick={() => setShowAddServerDialog(false)}>Cancel</CancelButton>
+								<ConfirmButton
+									onClick={handleAttachServer}
+									disabled={!selectedServerId}
+									showIcon={false}
+								>
 									<Plus className="mr-2 h-4 w-4" />
 									Attach
 								</ConfirmButton>
+							</DialogFooter>
+						</DialogContent>
+					</Dialog>
+				</CardContent>
+			</Card>
+
+			{/* Permissions */}
+			<Card variant="interactive">
+				<CardHeader>
+					<div className="flex items-center justify-between">
+						<div>
+							<div className="flex items-center gap-2">
+								<Key className="h-5 w-5 text-primary" />
+								<CardTitle>Permissions</CardTitle>
+							</div>
+							<CardDescription>
+								Manage permissions for this group. Attach global permissions or create custom ones.
+							</CardDescription>
+						</div>
+						<div className="flex gap-2">
+							<Button onClick={() => setShowCreateCustomPermissionDialog(true)} size="sm" variant="outline">
+								<Plus className="mr-2 h-4 w-4" />
+								Custom
+							</Button>
+							<Button onClick={() => setShowAttachPermissionDialog(true)} size="sm">
+								<Plus className="mr-2 h-4 w-4" />
+								Attach Global
+							</Button>
+						</div>
+					</div>
+				</CardHeader>
+				<CardContent>
+					{groupPermissions.length === 0 ? (
+						<div className="text-center py-8">
+							<Key className="mx-auto h-12 w-12 text-muted-foreground" />
+							<h3 className="mt-4 text-sm font-medium">No permissions assigned</h3>
+							<p className="text-sm text-muted-foreground mt-2">
+								Attach a global permission or create a custom one for this group
+							</p>
+						</div>
+					) : (
+						<div className="space-y-3">
+							{groupPermissions.map((permission) => (
+								<GroupPermissionCard
+									key={permission.id}
+									permission={permission}
+									onRemove={openRemovePermissionDialog}
+									showActions={true}
+								/>
+							))}
+						</div>
+					)}
+
+					{/* Attach Permission Dialog */}
+					<AttachPermissionDialog
+						groupId={groupId!}
+						open={showAttachPermissionDialog}
+						onOpenChange={setShowAttachPermissionDialog}
+						onSubmit={handleAttachPermission}
+						isSubmitting={attachPermission.isPending}
+					/>
+
+					{/* Create Custom Permission Dialog */}
+					<CreateCustomPermissionDialog
+						groupId={groupId!}
+						open={showCreateCustomPermissionDialog}
+						onOpenChange={setShowCreateCustomPermissionDialog}
+						onSubmit={handleCreateCustomPermission}
+						isSubmitting={createCustomPermission.isPending}
+					/>
+
+					{/* Remove Permission Confirmation Dialog */}
+					<Dialog open={removePermissionDialogOpen} onOpenChange={setRemovePermissionDialogOpen}>
+						<DialogContent>
+							<DialogHeader>
+								<DialogTitle>Remove Permission</DialogTitle>
+								<DialogDescription>
+									Are you sure you want to remove "{selectedPermission?.permission?.name || selectedPermission?.customName}" from this group?
+								</DialogDescription>
+							</DialogHeader>
+							<DialogFooter>
+								<CancelButton
+									onClick={() => {
+										setRemovePermissionDialogOpen(false)
+										setSelectedPermission(null)
+									}}
+									disabled={removePermission.isPending}
+								>
+									Cancel
+								</CancelButton>
+								<DestructiveButton
+									onClick={handleRemovePermission}
+									loading={removePermission.isPending}
+									loadingText="Removing..."
+								>
+									Remove Permission
+								</DestructiveButton>
 							</DialogFooter>
 						</DialogContent>
 					</Dialog>

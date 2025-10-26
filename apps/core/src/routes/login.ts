@@ -41,7 +41,10 @@ login.get('/', async (c) => {
 					content="Secure authentication for EVE Online alliances and corporations"
 				/>
 				<meta property="og:site_name" content="TEST Auth" />
-				<meta property="og:image" content="https://images.evetech.net/corporations/1000274/logo?size=512" />
+				<meta
+					property="og:image"
+					content="https://images.evetech.net/corporations/1000274/logo?size=512"
+				/>
 				<meta property="og:image:width" content="512" />
 				<meta property="og:image:height" content="512" />
 
@@ -59,8 +62,9 @@ login.get('/', async (c) => {
 					}
 
 					body {
-						font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
-							Arial, sans-serif;
+						font-family:
+							-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+							sans-serif;
 						background: hsl(220 18% 8%);
 						min-height: 100vh;
 						display: flex;
@@ -276,7 +280,8 @@ login.get('/', async (c) => {
 							<div class="warning-title">Important: Select Your Main Character</div>
 							<p class="warning-text">
 								When you reach the EVE SSO page, please select your <strong>main character</strong>.
-								This character will be associated with your account and cannot be easily changed later.
+								This character will be associated with your account and cannot be easily changed
+								later.
 							</p>
 						</div>
 
@@ -294,8 +299,8 @@ login.get('/', async (c) => {
 						<div class="info-section">
 							<div class="info-title">Your data is secure</div>
 							<p class="info-text">
-								We only request the necessary permissions to verify your identity and manage your group
-								memberships. Your EVE Online password is never shared with us.
+								We only request the necessary permissions to verify your identity and manage your
+								group memberships. Your EVE Online password is never shared with us.
 							</p>
 						</div>
 

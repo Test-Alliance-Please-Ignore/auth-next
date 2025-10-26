@@ -185,6 +185,125 @@ export interface CharacterSearchResult {
 }
 
 /**
+ * Permissions API Types
+ */
+
+export type PermissionTarget = 'all_members' | 'all_admins' | 'owner_only' | 'owner_and_admins'
+
+export interface PermissionCategory {
+	id: string
+	name: string
+	description: string | null
+	createdAt: string
+	updatedAt: string
+}
+
+export interface Permission {
+	id: string
+	urn: string
+	name: string
+	description: string | null
+	categoryId: string | null
+	createdBy: string
+	createdAt: string
+	updatedAt: string
+}
+
+export interface PermissionWithDetails extends Permission {
+	category: PermissionCategory | null
+}
+
+export interface GroupPermission {
+	id: string
+	groupId: string
+	permissionId: string | null
+	customUrn: string | null
+	customName: string | null
+	customDescription: string | null
+	targetType: PermissionTarget
+	createdBy: string
+	createdAt: string
+}
+
+export interface GroupPermissionWithDetails extends GroupPermission {
+	permission: PermissionWithDetails | null
+	group: {
+		id: string
+		name: string
+	}
+}
+
+export interface UserPermission {
+	urn: string
+	name: string
+	description: string | null
+	category: PermissionCategory | null
+	groupId: string
+	groupName: string
+	targetType: PermissionTarget
+	source: 'global' | 'group_scoped'
+}
+
+export interface CreatePermissionCategoryRequest {
+	name: string
+	description?: string
+}
+
+export interface UpdatePermissionCategoryRequest {
+	name?: string
+	description?: string
+}
+
+export interface CreatePermissionRequest {
+	urn: string
+	name: string
+	description?: string
+	categoryId?: string
+}
+
+export interface UpdatePermissionRequest {
+	urn?: string
+	name?: string
+	description?: string
+	categoryId?: string | null
+}
+
+export interface AttachPermissionRequest {
+	groupId: string
+	permissionId: string
+	targetType: PermissionTarget
+}
+
+export interface CreateGroupScopedPermissionRequest {
+	groupId: string
+	urn: string
+	name: string
+	description?: string
+	targetType: PermissionTarget
+}
+
+export interface UpdateGroupPermissionRequest {
+	targetType?: PermissionTarget
+	customUrn?: string
+	customName?: string
+	customDescription?: string
+}
+
+export interface GetGroupMemberPermissionsResponse {
+	userPermissions: Record<string, UserPermission[]>
+}
+
+export interface GetMultiGroupMemberPermissionsResponse {
+	userPermissions: Record<string, UserPermission[]>
+}
+
+export interface PermissionUsageGroup {
+	groupId: string
+	groupName: string
+	targetType: PermissionTarget
+}
+
+/**
  * Corporations API Types
  */
 
@@ -787,6 +906,101 @@ export class ApiClient {
 
 	async revokeGroupInviteCode(codeId: string): Promise<{ success: boolean }> {
 		return this.delete(`/groups/invite-codes/${codeId}`)
+	}
+
+	// ===== Permissions API Methods =====
+
+	// Permission Categories
+	async getPermissionCategories(): Promise<PermissionCategory[]> {
+		return this.get('/groups/permissions/categories')
+	}
+
+	async createPermissionCategory(data: CreatePermissionCategoryRequest): Promise<PermissionCategory> {
+		return this.post('/groups/permissions/categories', data)
+	}
+
+	async updatePermissionCategory(
+		id: string,
+		data: UpdatePermissionCategoryRequest
+	): Promise<PermissionCategory> {
+		return this.patch(`/groups/permissions/categories/${id}`, data)
+	}
+
+	async deletePermissionCategory(id: string): Promise<void> {
+		return this.delete(`/groups/permissions/categories/${id}`)
+	}
+
+	// Global Permissions
+	async getGlobalPermissions(categoryId?: string): Promise<PermissionWithDetails[]> {
+		const params = categoryId ? `?categoryId=${encodeURIComponent(categoryId)}` : ''
+		return this.get(`/groups/permissions${params}`)
+	}
+
+	async getPermission(id: string): Promise<PermissionWithDetails | null> {
+		return this.get(`/groups/permissions/${id}`)
+	}
+
+	async createPermission(data: CreatePermissionRequest): Promise<Permission> {
+		return this.post('/groups/permissions', data)
+	}
+
+	async updatePermission(id: string, data: UpdatePermissionRequest): Promise<Permission> {
+		return this.patch(`/groups/permissions/${id}`, data)
+	}
+
+	async deletePermission(id: string): Promise<void> {
+		return this.delete(`/groups/permissions/${id}`)
+	}
+
+	// Group Permissions
+	async getGroupPermissions(groupId: string): Promise<GroupPermissionWithDetails[]> {
+		return this.get(`/groups/${groupId}/permissions`)
+	}
+
+	async attachPermissionToGroup(data: AttachPermissionRequest): Promise<GroupPermissionWithDetails> {
+		return this.post(`/groups/${data.groupId}/permissions/attach`, {
+			permissionId: data.permissionId,
+			targetType: data.targetType,
+		})
+	}
+
+	async createGroupScopedPermission(
+		data: CreateGroupScopedPermissionRequest
+	): Promise<GroupPermissionWithDetails> {
+		return this.post(`/groups/${data.groupId}/permissions/custom`, {
+			urn: data.urn,
+			name: data.name,
+			description: data.description,
+			targetType: data.targetType,
+		})
+	}
+
+	async updateGroupPermission(
+		groupPermissionId: string,
+		data: UpdateGroupPermissionRequest
+	): Promise<GroupPermissionWithDetails> {
+		return this.patch(`/groups/permissions/attachments/${groupPermissionId}`, data)
+	}
+
+	async removePermissionFromGroup(groupPermissionId: string): Promise<void> {
+		return this.delete(`/groups/permissions/attachments/${groupPermissionId}`)
+	}
+
+	// Permission Queries
+	async getUserPermissions(userId: string): Promise<UserPermission[]> {
+		return this.get(`/groups/permissions/users/${userId}`)
+	}
+
+	async getGroupMemberPermissions(groupId: string): Promise<GetGroupMemberPermissionsResponse> {
+		return this.get(`/groups/${groupId}/permissions/members`)
+	}
+
+	async getMultiGroupMemberPermissions(
+		groupIds: string[]
+	): Promise<GetMultiGroupMemberPermissionsResponse> {
+		const params = new URLSearchParams()
+		groupIds.forEach((id) => params.append('groupId', id))
+		return this.get(`/groups/permissions/members?${params.toString()}`)
 	}
 
 	// ===== Corporations API Methods =====

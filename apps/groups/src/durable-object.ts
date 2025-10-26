@@ -2,24 +2,26 @@ import { DurableObject } from 'cloudflare:workers'
 
 import { and, createDbClient, eq, inArray, isNull, like, or, sql } from '@repo/db-utils'
 
+// Import Core database schema for Discord server and role lookups
+import { discordRoles, discordServers } from '../../core/src/db/schema'
+import * as coreSchema from '../../core/src/db/schema'
 import { createDb } from './db'
 import {
 	categories,
 	groupAdmins,
 	groupDiscordInvites,
-	groupDiscordServers,
 	groupDiscordServerRoles,
+	groupDiscordServers,
 	groupInvitations,
 	groupInviteCodeRedemptions,
 	groupInviteCodes,
 	groupJoinRequests,
 	groupMembers,
+	groupPermissions,
 	groups,
+	permissionCategories,
+	permissions,
 } from './db/schema'
-
-// Import Core database schema for Discord server and role lookups
-import { discordRoles, discordServers } from '../../core/src/db/schema'
-import * as coreSchema from '../../core/src/db/schema'
 import { generateInviteCode } from './services/code-generator'
 import {
 	canCreateGroupInCategory,
@@ -32,14 +34,20 @@ import {
 } from './services/permissions'
 
 import type {
+	AttachPermissionRequest,
 	Category,
 	CategoryWithGroups,
 	CreateCategoryRequest,
 	CreateGroupRequest,
+	CreateGroupScopedPermissionRequest,
 	CreateInvitationRequest,
 	CreateInviteCodeRequest,
 	CreateInviteCodeResponse,
 	CreateJoinRequestRequest,
+	CreatePermissionCategoryRequest,
+	CreatePermissionRequest,
+	GetGroupMemberPermissionsResponse,
+	GetMultiGroupMemberPermissionsResponse,
 	Group,
 	GroupAdmin,
 	GroupInvitation,
@@ -49,12 +57,21 @@ import type {
 	GroupJoinRequestWithDetails,
 	GroupMember,
 	GroupMembershipSummary,
+	GroupPermissionWithDetails,
 	Groups,
 	GroupWithDetails,
 	ListGroupsFilters,
+	Permission,
+	PermissionCategory,
+	PermissionTarget,
+	PermissionWithDetails,
 	RedeemInviteCodeResponse,
 	UpdateCategoryRequest,
+	UpdateGroupPermissionRequest,
 	UpdateGroupRequest,
+	UpdatePermissionCategoryRequest,
+	UpdatePermissionRequest,
+	UserPermission,
 } from '@repo/groups'
 import type { Env } from './context'
 
@@ -75,6 +92,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	// In-memory caches with TTL
 	private discordServersCache = new Map<string, { data: any[]; expires: number }>()
 	private groupMembersCache = new Map<string, { data: string[]; expires: number }>()
+	private permissionsCache = new Map<string, { data: UserPermission[]; expires: number }>()
 	private readonly CACHE_TTL = 5 * 60 * 1000 // 5 minutes
 
 	constructor(
@@ -495,6 +513,10 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 				userId: oldOwnerId,
 			})
 		}
+
+		// Invalidate permissions cache for both old and new owners (their permissions may change)
+		this.invalidateUserPermissionsCache(oldOwnerId)
+		this.invalidateUserPermissionsCache(newOwnerId)
 	}
 
 	/**
@@ -531,6 +553,8 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 		// Invalidate group members cache
 		this.invalidateGroupMembersCache(groupId)
+		// Invalidate user's permissions cache (they now have new permissions from this group)
+		this.invalidateUserPermissionsCache(userId)
 	}
 
 	async leaveGroup(groupId: string, userId: string): Promise<void> {
@@ -565,6 +589,8 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 		// Invalidate group members cache
 		this.invalidateGroupMembersCache(groupId)
+		// Invalidate user's permissions cache (they lost permissions from this group)
+		this.invalidateUserPermissionsCache(userId)
 	}
 
 	async removeMember(groupId: string, adminUserId: string, targetUserId: string): Promise<void> {
@@ -599,6 +625,8 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 		// Invalidate group members cache
 		this.invalidateGroupMembersCache(groupId)
+		// Invalidate target user's permissions cache
+		this.invalidateUserPermissionsCache(targetUserId)
 	}
 
 	async getGroupMembers(groupId: string, userId: string, isAdmin: boolean): Promise<GroupMember[]> {
@@ -711,6 +739,9 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			groupId,
 			userId: targetUserId,
 		})
+
+		// Invalidate target user's permissions cache (admin status may grant new permissions)
+		this.invalidateUserPermissionsCache(targetUserId)
 	}
 
 	async removeAdmin(
@@ -734,6 +765,9 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		await this.db
 			.delete(groupAdmins)
 			.where(and(eq(groupAdmins.groupId, groupId), eq(groupAdmins.userId, targetUserId)))
+
+		// Invalidate target user's permissions cache (they may lose admin-only permissions)
+		this.invalidateUserPermissionsCache(targetUserId)
 	}
 
 	async isGroupAdmin(groupId: string, userId: string): Promise<boolean> {
@@ -879,6 +913,8 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 		// Invalidate group members cache
 		this.invalidateGroupMembersCache(request.groupId)
+		// Invalidate user's permissions cache (they now have permissions from this group)
+		this.invalidateUserPermissionsCache(request.userId)
 	}
 
 	async rejectJoinRequest(requestId: string, adminUserId: string): Promise<void> {
@@ -1065,6 +1101,8 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 		// Invalidate group members cache
 		this.invalidateGroupMembersCache(invitation.groupId)
+		// Invalidate user's permissions cache (they now have permissions from this group)
+		this.invalidateUserPermissionsCache(userId)
 	}
 
 	async declineInvitation(invitationId: string, userId: string): Promise<void> {
@@ -1426,6 +1464,8 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 		// Invalidate group members cache
 		this.invalidateGroupMembersCache(inviteCode.groupId)
+		// Invalidate user's permissions cache (they now have permissions from this group)
+		this.invalidateUserPermissionsCache(userId)
 
 		return {
 			success: true,
@@ -1926,6 +1966,595 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 	/**
 	 * ============================================
+	 * PERMISSION CATEGORY OPERATIONS
+	 * ============================================
+	 */
+
+	async createPermissionCategory(
+		data: CreatePermissionCategoryRequest,
+		adminUserId: string
+	): Promise<PermissionCategory> {
+		// Admin-only operation - validation should happen before calling this
+
+		const [category] = await this.db
+			.insert(permissionCategories)
+			.values({
+				name: data.name,
+				description: data.description || null,
+			})
+			.returning()
+
+		return this.mapPermissionCategory(category)
+	}
+
+	async listPermissionCategories(): Promise<PermissionCategory[]> {
+		console.log('[DO] listPermissionCategories - Start')
+
+		try {
+			console.log('[DO] listPermissionCategories - About to query database')
+			const cats = await this.db.query.permissionCategories.findMany({
+				orderBy: (permissionCategories, { asc }) => [asc(permissionCategories.name)],
+			})
+
+			console.log('[DO] listPermissionCategories - Query complete, count:', cats?.length)
+
+			const result = cats.map((cat) => this.mapPermissionCategory(cat))
+			console.log('[DO] listPermissionCategories - Mapped results, count:', result?.length)
+
+			return result
+		} catch (error) {
+			console.error('[DO] listPermissionCategories - Error:', error)
+			if (error instanceof Error) {
+				console.error('[DO] listPermissionCategories - Error message:', error.message)
+				console.error('[DO] listPermissionCategories - Error stack:', error.stack)
+			}
+			throw error
+		}
+	}
+
+	async updatePermissionCategory(
+		id: string,
+		data: UpdatePermissionCategoryRequest,
+		adminUserId: string
+	): Promise<PermissionCategory> {
+		// Admin-only operation
+
+		const updates: Partial<typeof permissionCategories.$inferInsert> = {}
+
+		if (data.name !== undefined) updates.name = data.name
+		if (data.description !== undefined) updates.description = data.description
+
+		updates.updatedAt = new Date()
+
+		const [updated] = await this.db
+			.update(permissionCategories)
+			.set(updates)
+			.where(eq(permissionCategories.id, id))
+			.returning()
+
+		if (!updated) {
+			throw new Error('Permission category not found')
+		}
+
+		return this.mapPermissionCategory(updated)
+	}
+
+	async deletePermissionCategory(id: string, adminUserId: string): Promise<void> {
+		// Admin-only operation
+		// SET NULL will update permissions that reference this category
+		await this.db.delete(permissionCategories).where(eq(permissionCategories.id, id))
+	}
+
+	/**
+	 * ============================================
+	 * GLOBAL PERMISSION OPERATIONS
+	 * ============================================
+	 */
+
+	async createPermission(data: CreatePermissionRequest, adminUserId: string): Promise<Permission> {
+		// Admin-only operation
+
+		const [permission] = await this.db
+			.insert(permissions)
+			.values({
+				urn: data.urn,
+				name: data.name,
+				description: data.description || null,
+				categoryId: data.categoryId || null,
+				createdBy: adminUserId,
+			})
+			.returning()
+
+		return this.mapPermission(permission)
+	}
+
+	async listPermissions(categoryId?: string): Promise<PermissionWithDetails[]> {
+		console.log('[DO] listPermissions - Start, categoryId:', categoryId)
+
+		try {
+			const whereClause = categoryId ? eq(permissions.categoryId, categoryId) : undefined
+			console.log('[DO] listPermissions - whereClause:', whereClause)
+
+			console.log('[DO] listPermissions - About to query database')
+			const perms = await this.db.query.permissions.findMany({
+				where: whereClause,
+				with: {
+					category: true,
+				},
+				orderBy: (permissions, { asc }) => [asc(permissions.name)],
+			})
+
+			console.log('[DO] listPermissions - Query complete, count:', perms?.length)
+
+			const result = perms.map((perm) => ({
+				...this.mapPermission(perm),
+				category: perm.category ? this.mapPermissionCategory(perm.category) : null,
+			}))
+
+			console.log('[DO] listPermissions - Mapped results, count:', result?.length)
+			return result
+		} catch (error) {
+			console.error('[DO] listPermissions - Error:', error)
+			if (error instanceof Error) {
+				console.error('[DO] listPermissions - Error message:', error.message)
+				console.error('[DO] listPermissions - Error stack:', error.stack)
+			}
+			throw error
+		}
+	}
+
+	async getPermission(id: string): Promise<PermissionWithDetails | null> {
+		const perm = await this.db.query.permissions.findFirst({
+			where: eq(permissions.id, id),
+			with: {
+				category: true,
+			},
+		})
+
+		if (!perm) return null
+
+		return {
+			...this.mapPermission(perm),
+			category: perm.category ? this.mapPermissionCategory(perm.category) : null,
+		}
+	}
+
+	async updatePermission(
+		id: string,
+		data: UpdatePermissionRequest,
+		adminUserId: string
+	): Promise<Permission> {
+		// Admin-only operation
+
+		const updates: Partial<typeof permissions.$inferInsert> = {}
+
+		if (data.urn !== undefined) updates.urn = data.urn
+		if (data.name !== undefined) updates.name = data.name
+		if (data.description !== undefined) updates.description = data.description
+		if (data.categoryId !== undefined) updates.categoryId = data.categoryId
+
+		updates.updatedAt = new Date()
+
+		const [updated] = await this.db
+			.update(permissions)
+			.set(updates)
+			.where(eq(permissions.id, id))
+			.returning()
+
+		if (!updated) {
+			throw new Error('Permission not found')
+		}
+
+		// Invalidate all permissions caches since this global permission may affect many users
+		this.invalidateAllPermissionsCache()
+
+		return this.mapPermission(updated)
+	}
+
+	async deletePermission(id: string, adminUserId: string): Promise<void> {
+		// Admin-only operation
+		// CASCADE will delete all group_permissions that reference this
+		await this.db.delete(permissions).where(eq(permissions.id, id))
+
+		// Invalidate all permissions caches
+		this.invalidateAllPermissionsCache()
+	}
+
+	/**
+	 * ============================================
+	 * GROUP PERMISSION OPERATIONS
+	 * ============================================
+	 */
+
+	async attachPermissionToGroup(
+		data: AttachPermissionRequest,
+		adminUserId: string
+	): Promise<GroupPermissionWithDetails> {
+		// Admin-only operation
+
+		// Verify the permission exists
+		const permission = await this.db.query.permissions.findFirst({
+			where: eq(permissions.id, data.permissionId),
+			with: {
+				category: true,
+			},
+		})
+
+		if (!permission) {
+			throw new Error('Permission not found')
+		}
+
+		// Verify the group exists
+		const group = await this.db.query.groups.findFirst({
+			where: eq(groups.id, data.groupId),
+		})
+
+		if (!group) {
+			throw new Error('Group not found')
+		}
+
+		// Check for duplicate
+		const existing = await this.db.query.groupPermissions.findFirst({
+			where: and(
+				eq(groupPermissions.groupId, data.groupId),
+				eq(groupPermissions.permissionId, data.permissionId)
+			),
+		})
+
+		if (existing) {
+			throw new Error('Permission already attached to this group')
+		}
+
+		const [groupPerm] = await this.db
+			.insert(groupPermissions)
+			.values({
+				groupId: data.groupId,
+				permissionId: data.permissionId,
+				targetType: data.targetType,
+				createdBy: adminUserId,
+			})
+			.returning()
+
+		// Invalidate permissions cache for all members of this group
+		this.invalidateGroupMemberPermissionsCache(data.groupId)
+
+		return {
+			...this.mapGroupPermission(groupPerm),
+			permission: {
+				...this.mapPermission(permission),
+				category: permission.category ? this.mapPermissionCategory(permission.category) : null,
+			},
+			group: {
+				id: group.id,
+				name: group.name,
+			},
+		}
+	}
+
+	async createGroupScopedPermission(
+		data: CreateGroupScopedPermissionRequest,
+		adminUserId: string
+	): Promise<GroupPermissionWithDetails> {
+		// Admin-only operation
+
+		// Verify the group exists
+		const group = await this.db.query.groups.findFirst({
+			where: eq(groups.id, data.groupId),
+		})
+
+		if (!group) {
+			throw new Error('Group not found')
+		}
+
+		// Check for duplicate custom URN in this group
+		const existing = await this.db.query.groupPermissions.findFirst({
+			where: and(
+				eq(groupPermissions.groupId, data.groupId),
+				eq(groupPermissions.customUrn, data.urn)
+			),
+		})
+
+		if (existing) {
+			throw new Error('Permission with this URN already exists in this group')
+		}
+
+		const [groupPerm] = await this.db
+			.insert(groupPermissions)
+			.values({
+				groupId: data.groupId,
+				permissionId: null,
+				customUrn: data.urn,
+				customName: data.name,
+				customDescription: data.description || null,
+				targetType: data.targetType,
+				createdBy: adminUserId,
+			})
+			.returning()
+
+		// Invalidate permissions cache for all members of this group
+		this.invalidateGroupMemberPermissionsCache(data.groupId)
+
+		return {
+			...this.mapGroupPermission(groupPerm),
+			permission: null,
+			group: {
+				id: group.id,
+				name: group.name,
+			},
+		}
+	}
+
+	async listGroupPermissions(
+		groupId: string,
+		adminUserId: string
+	): Promise<GroupPermissionWithDetails[]> {
+		// Admin-only operation
+
+		const groupPerms = await this.db.query.groupPermissions.findMany({
+			where: eq(groupPermissions.groupId, groupId),
+			with: {
+				permission: {
+					with: {
+						category: true,
+					},
+				},
+				group: true,
+			},
+			orderBy: (groupPermissions, { desc }) => [desc(groupPermissions.createdAt)],
+		})
+
+		return groupPerms.map((gp) => ({
+			...this.mapGroupPermission(gp),
+			permission: gp.permission
+				? {
+						...this.mapPermission(gp.permission),
+						category: gp.permission.category
+							? this.mapPermissionCategory(gp.permission.category)
+							: null,
+					}
+				: null,
+			group: {
+				id: gp.group.id,
+				name: gp.group.name,
+			},
+		}))
+	}
+
+	async updateGroupPermission(
+		groupPermissionId: string,
+		data: UpdateGroupPermissionRequest,
+		adminUserId: string
+	): Promise<GroupPermissionWithDetails> {
+		// Admin-only operation
+
+		const groupPerm = await this.db.query.groupPermissions.findFirst({
+			where: eq(groupPermissions.id, groupPermissionId),
+			with: {
+				permission: {
+					with: {
+						category: true,
+					},
+				},
+				group: true,
+			},
+		})
+
+		if (!groupPerm) {
+			throw new Error('Group permission not found')
+		}
+
+		const updates: Partial<typeof groupPermissions.$inferInsert> = {}
+
+		if (data.targetType !== undefined) updates.targetType = data.targetType
+
+		// Only allow updating custom fields for group-scoped permissions
+		if (!groupPerm.permissionId) {
+			if (data.customUrn !== undefined) updates.customUrn = data.customUrn
+			if (data.customName !== undefined) updates.customName = data.customName
+			if (data.customDescription !== undefined) updates.customDescription = data.customDescription
+		}
+
+		const [updated] = await this.db
+			.update(groupPermissions)
+			.set(updates)
+			.where(eq(groupPermissions.id, groupPermissionId))
+			.returning()
+
+		if (!updated) {
+			throw new Error('Failed to update group permission')
+		}
+
+		// Invalidate permissions cache for all members of this group
+		this.invalidateGroupMemberPermissionsCache(groupPerm.groupId)
+
+		return {
+			...this.mapGroupPermission(updated),
+			permission: groupPerm.permission
+				? {
+						...this.mapPermission(groupPerm.permission),
+						category: groupPerm.permission.category
+							? this.mapPermissionCategory(groupPerm.permission.category)
+							: null,
+					}
+				: null,
+			group: {
+				id: groupPerm.group.id,
+				name: groupPerm.group.name,
+			},
+		}
+	}
+
+	async removePermissionFromGroup(groupPermissionId: string, adminUserId: string): Promise<void> {
+		// Admin-only operation
+
+		const groupPerm = await this.db.query.groupPermissions.findFirst({
+			where: eq(groupPermissions.id, groupPermissionId),
+		})
+
+		if (!groupPerm) {
+			throw new Error('Group permission not found')
+		}
+
+		await this.db.delete(groupPermissions).where(eq(groupPermissions.id, groupPermissionId))
+
+		// Invalidate permissions cache for all members of this group
+		this.invalidateGroupMemberPermissionsCache(groupPerm.groupId)
+	}
+
+	/**
+	 * ============================================
+	 * PERMISSION QUERY OPERATIONS
+	 * ============================================
+	 */
+
+	async getUserPermissions(userId: string): Promise<UserPermission[]> {
+		// Check cache first
+		const cached = this.permissionsCache.get(userId)
+		if (cached && cached.expires > Date.now()) {
+			return cached.data
+		}
+
+		// Get all groups the user is a member of
+		const memberships = await this.db.query.groupMembers.findMany({
+			where: eq(groupMembers.userId, userId),
+			with: {
+				group: true,
+			},
+		})
+
+		if (memberships.length === 0) {
+			return []
+		}
+
+		const groupIds = memberships.map((m) => m.groupId)
+
+		// Get user's admin roles
+		const adminRoles = await this.db.query.groupAdmins.findMany({
+			where: and(inArray(groupAdmins.groupId, groupIds), eq(groupAdmins.userId, userId)),
+		})
+		const adminGroupIds = new Set(adminRoles.map((a) => a.groupId))
+
+		// Get all group permissions for these groups
+		const groupPerms = await this.db.query.groupPermissions.findMany({
+			where: inArray(groupPermissions.groupId, groupIds),
+			with: {
+				permission: {
+					with: {
+						category: true,
+					},
+				},
+				group: true,
+			},
+		})
+
+		// Resolve permissions based on user's role in each group
+		const resolvedPermissions: UserPermission[] = []
+
+		for (const gp of groupPerms) {
+			const isOwner = gp.group.ownerId === userId
+			const isAdmin = adminGroupIds.has(gp.groupId)
+
+			// Determine if user gets this permission based on target type
+			let hasPermission = false
+			if (gp.targetType === 'all_members') {
+				hasPermission = true
+			} else if (gp.targetType === 'all_admins') {
+				hasPermission = isAdmin
+			} else if (gp.targetType === 'owner_only') {
+				hasPermission = isOwner
+			} else if (gp.targetType === 'owner_and_admins') {
+				hasPermission = isOwner || isAdmin
+			}
+
+			if (!hasPermission) continue
+
+			// Determine URN and name based on whether this is global or group-scoped
+			const urn = gp.permissionId ? gp.permission!.urn : gp.customUrn!
+			const name = gp.permissionId ? gp.permission!.name : gp.customName!
+			const description = gp.permissionId ? gp.permission!.description : gp.customDescription
+			const category = gp.permissionId && gp.permission!.category ? gp.permission!.category : null
+
+			resolvedPermissions.push({
+				urn,
+				name,
+				description,
+				category: category ? this.mapPermissionCategory(category) : null,
+				groupId: gp.groupId,
+				groupName: gp.group.name,
+				targetType: gp.targetType,
+				source: gp.permissionId ? 'global' : 'group_scoped',
+			})
+		}
+
+		// Deduplicate by URN (in case user has same permission from multiple groups)
+		const deduped = Array.from(new Map(resolvedPermissions.map((p) => [p.urn, p])).values())
+
+		// Cache the result
+		this.permissionsCache.set(userId, {
+			data: deduped,
+			expires: Date.now() + this.CACHE_TTL,
+		})
+
+		return deduped
+	}
+
+	async getGroupMemberPermissions(groupId: string): Promise<GetGroupMemberPermissionsResponse> {
+		// Get all members of the group
+		const members = await this.db.query.groupMembers.findMany({
+			where: eq(groupMembers.groupId, groupId),
+		})
+
+		const userIds = members.map((m) => m.userId)
+
+		if (userIds.length === 0) {
+			return { userPermissions: {} }
+		}
+
+		// Get permissions for each user
+		const userPermissionsMap: Record<string, UserPermission[]> = {}
+
+		await Promise.all(
+			userIds.map(async (userId) => {
+				const perms = await this.getUserPermissions(userId)
+				// Filter to only permissions from this group
+				userPermissionsMap[userId] = perms.filter((p) => p.groupId === groupId)
+			})
+		)
+
+		return { userPermissions: userPermissionsMap }
+	}
+
+	async getMultiGroupMemberPermissions(
+		groupIds: string[]
+	): Promise<GetMultiGroupMemberPermissionsResponse> {
+		// Get all members across all groups
+		const allMembers = await this.db.query.groupMembers.findMany({
+			where: inArray(groupMembers.groupId, groupIds),
+		})
+
+		// Get unique user IDs
+		const uniqueUserIds = Array.from(new Set(allMembers.map((m) => m.userId)))
+
+		if (uniqueUserIds.length === 0) {
+			return { userPermissions: {} }
+		}
+
+		// Get permissions for each user
+		const userPermissionsMap: Record<string, UserPermission[]> = {}
+
+		await Promise.all(
+			uniqueUserIds.map(async (userId) => {
+				const perms = await this.getUserPermissions(userId)
+				// Filter to only permissions from the specified groups
+				userPermissionsMap[userId] = perms.filter((p) => groupIds.includes(p.groupId))
+			})
+		)
+
+		return { userPermissions: userPermissionsMap }
+	}
+
+	/**
+	 * ============================================
 	 * HELPER METHODS
 	 * ============================================
 	 */
@@ -1951,6 +2580,35 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	 */
 	private invalidateGroupMembersCache(groupId: string): void {
 		this.groupMembersCache.delete(groupId)
+	}
+
+	/**
+	 * Invalidate permissions cache for a specific user
+	 */
+	private invalidateUserPermissionsCache(userId: string): void {
+		this.permissionsCache.delete(userId)
+	}
+
+	/**
+	 * Invalidate permissions cache for all members of a group
+	 */
+	private async invalidateGroupMemberPermissionsCache(groupId: string): Promise<void> {
+		// Get all members of the group
+		const members = await this.db.query.groupMembers.findMany({
+			where: eq(groupMembers.groupId, groupId),
+		})
+
+		// Invalidate cache for each member
+		for (const member of members) {
+			this.invalidateUserPermissionsCache(member.userId)
+		}
+	}
+
+	/**
+	 * Invalidate all permissions caches (for global permission changes)
+	 */
+	private invalidateAllPermissionsCache(): void {
+		this.permissionsCache.clear()
 	}
 
 	private async isUserMember(groupId: string, userId: string): Promise<boolean> {
@@ -2062,6 +2720,43 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			createdAt: req.createdAt,
 			respondedAt: req.respondedAt,
 			respondedBy: req.respondedBy,
+		}
+	}
+
+	private mapPermissionCategory(cat: typeof permissionCategories.$inferSelect): PermissionCategory {
+		return {
+			id: cat.id,
+			name: cat.name,
+			description: cat.description,
+			createdAt: cat.createdAt,
+			updatedAt: cat.updatedAt,
+		}
+	}
+
+	private mapPermission(perm: typeof permissions.$inferSelect): Permission {
+		return {
+			id: perm.id,
+			urn: perm.urn,
+			name: perm.name,
+			description: perm.description,
+			categoryId: perm.categoryId,
+			createdBy: perm.createdBy,
+			createdAt: perm.createdAt,
+			updatedAt: perm.updatedAt,
+		}
+	}
+
+	private mapGroupPermission(gp: typeof groupPermissions.$inferSelect) {
+		return {
+			id: gp.id,
+			groupId: gp.groupId,
+			permissionId: gp.permissionId,
+			customUrn: gp.customUrn,
+			customName: gp.customName,
+			customDescription: gp.customDescription,
+			targetType: gp.targetType as PermissionTarget,
+			createdBy: gp.createdBy,
+			createdAt: gp.createdAt,
 		}
 	}
 }

@@ -563,7 +563,7 @@ export async function joinUserToCorporationServers(
 			guildName: guild?.guildName ?? result.guildName ?? result.guildId,
 			corporationName:
 				guild?.corporationName ??
-				(guild?.type === 'group' ? guild.groupName ?? 'Unknown' : 'Unknown'),
+				(guild?.type === 'group' ? (guild.groupName ?? 'Unknown') : 'Unknown'),
 			success: result.success,
 			errorMessage: result.errorMessage,
 			alreadyMember: result.alreadyMember,

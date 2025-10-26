@@ -395,7 +395,11 @@ export default function CorporationsPage() {
 							<CancelButton type="button" onClick={() => setCreateDialogOpen(false)}>
 								Cancel
 							</CancelButton>
-							<ConfirmButton type="submit" loading={createCorporation.isPending} loadingText="Adding...">
+							<ConfirmButton
+								type="submit"
+								loading={createCorporation.isPending}
+								loadingText="Adding..."
+							>
 								Add Corporation
 							</ConfirmButton>
 						</DialogFooter>
@@ -413,9 +417,7 @@ export default function CorporationsPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<CancelButton onClick={() => setDeleteDialogOpen(false)}>
-							Cancel
-						</CancelButton>
+						<CancelButton onClick={() => setDeleteDialogOpen(false)}>Cancel</CancelButton>
 						<DestructiveButton
 							onClick={handleDelete}
 							loading={deleteCorporation.isPending}

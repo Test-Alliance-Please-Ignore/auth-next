@@ -442,458 +442,6 @@ groups.post('/join-requests/:requestId/reject', requireAuth(), async (c) => {
 	}
 })
 
-// ===== Permission Categories =====
-
-/**
- * GET /permissions/categories
- *
- * List all permission categories
- */
-groups.get('/permissions/categories', requireAuth(), requireAdmin(), async (c) => {
-	console.log('[API] GET /permissions/categories - Start')
-
-	try {
-		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
-		console.log('[API] GET /permissions/categories - Got DO stub')
-
-		const categories = await groupsDO.listPermissionCategories()
-		console.log('[API] GET /permissions/categories - Got categories, count:', categories?.length)
-
-		return c.json(categories)
-	} catch (error) {
-		console.error('[API] GET /permissions/categories - Error:', error)
-		if (error instanceof Error) {
-			console.error('[API] GET /permissions/categories - Error message:', error.message)
-			console.error('[API] GET /permissions/categories - Error stack:', error.stack)
-			return c.json({ error: error.message }, 500)
-		}
-		throw error
-	}
-})
-
-/**
- * POST /permissions/categories
- *
- * Create a new permission category
- */
-groups.post('/permissions/categories', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')!
-	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
-
-	try {
-		const category = await groupsDO.createPermissionCategory(
-			{
-				name: body.name,
-				description: body.description,
-			},
-			user.id
-		)
-		return c.json(category, 201)
-	} catch (error) {
-		if (error instanceof Error) {
-			return c.json({ error: error.message }, 400)
-		}
-		throw error
-	}
-})
-
-/**
- * PATCH /permissions/categories/:id
- *
- * Update a permission category
- */
-groups.patch('/permissions/categories/:id', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')!
-	const categoryId = c.req.param('id')
-	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
-
-	try {
-		const category = await groupsDO.updatePermissionCategory(
-			categoryId,
-			{
-				name: body.name,
-				description: body.description,
-			},
-			user.id
-		)
-		return c.json(category)
-	} catch (error) {
-		if (error instanceof Error) {
-			if (error.message.includes('not found')) {
-				return c.json({ error: 'Category not found' }, 404)
-			}
-			return c.json({ error: error.message }, 400)
-		}
-		throw error
-	}
-})
-
-/**
- * DELETE /permissions/categories/:id
- *
- * Delete a permission category
- */
-groups.delete('/permissions/categories/:id', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')!
-	const categoryId = c.req.param('id')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
-
-	try {
-		await groupsDO.deletePermissionCategory(categoryId, user.id)
-		return c.json({ success: true }, 200)
-	} catch (error) {
-		if (error instanceof Error) {
-			if (error.message.includes('not found')) {
-				return c.json({ error: 'Category not found' }, 404)
-			}
-			return c.json({ error: error.message }, 400)
-		}
-		throw error
-	}
-})
-
-// ===== Global Permissions =====
-
-/**
- * GET /permissions
- *
- * List all global permissions, optionally filtered by category
- */
-groups.get('/permissions', requireAuth(), requireAdmin(), async (c) => {
-	console.log('[API] GET /permissions - Start')
-	const categoryId = c.req.query('categoryId')
-	console.log('[API] GET /permissions - categoryId:', categoryId)
-
-	try {
-		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
-		console.log('[API] GET /permissions - Got DO stub')
-
-		const permissions = await groupsDO.listPermissions(categoryId)
-		console.log('[API] GET /permissions - Got permissions, count:', permissions?.length)
-
-		return c.json(permissions)
-	} catch (error) {
-		console.error('[API] GET /permissions - Error:', error)
-		if (error instanceof Error) {
-			console.error('[API] GET /permissions - Error message:', error.message)
-			console.error('[API] GET /permissions - Error stack:', error.stack)
-			return c.json({ error: error.message }, 500)
-		}
-		throw error
-	}
-})
-
-/**
- * GET /permissions/:id
- *
- * Get a single permission by ID
- */
-groups.get('/permissions/:id', requireAuth(), requireAdmin(), async (c) => {
-	const permissionId = c.req.param('id')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
-
-	try {
-		const permission = await groupsDO.getPermission(permissionId)
-		return c.json(permission)
-	} catch (error) {
-		if (error instanceof Error) {
-			if (error.message.includes('not found')) {
-				return c.json({ error: 'Permission not found' }, 404)
-			}
-			return c.json({ error: error.message }, 400)
-		}
-		throw error
-	}
-})
-
-/**
- * POST /permissions
- *
- * Create a new global permission
- */
-groups.post('/permissions', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')!
-	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
-
-	try {
-		const permission = await groupsDO.createPermission(
-			{
-				urn: body.urn,
-				name: body.name,
-				description: body.description,
-				categoryId: body.categoryId,
-				createdBy: user.id,
-			},
-			user.id
-		)
-		return c.json(permission, 201)
-	} catch (error) {
-		if (error instanceof Error) {
-			return c.json({ error: error.message }, 400)
-		}
-		throw error
-	}
-})
-
-/**
- * PATCH /permissions/:id
- *
- * Update a global permission
- */
-groups.patch('/permissions/:id', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')!
-	const permissionId = c.req.param('id')
-	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
-
-	try {
-		const permission = await groupsDO.updatePermission(
-			permissionId,
-			{
-				name: body.name,
-				description: body.description,
-				categoryId: body.categoryId,
-			},
-			user.id
-		)
-		return c.json(permission)
-	} catch (error) {
-		if (error instanceof Error) {
-			if (error.message.includes('not found')) {
-				return c.json({ error: 'Permission not found' }, 404)
-			}
-			return c.json({ error: error.message }, 400)
-		}
-		throw error
-	}
-})
-
-/**
- * DELETE /permissions/:id
- *
- * Delete a global permission
- */
-groups.delete('/permissions/:id', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')!
-	const permissionId = c.req.param('id')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
-
-	try {
-		await groupsDO.deletePermission(permissionId, user.id)
-		return c.json({ success: true }, 200)
-	} catch (error) {
-		if (error instanceof Error) {
-			if (error.message.includes('not found')) {
-				return c.json({ error: 'Permission not found' }, 404)
-			}
-			return c.json({ error: error.message }, 400)
-		}
-		throw error
-	}
-})
-
-// ===== Group Permissions =====
-
-/**
- * GET /:groupId/permissions
- *
- * List all permissions for a group (admin only)
- */
-groups.get('/:groupId/permissions', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')!
-	const groupId = c.req.param('groupId')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
-
-	try {
-		const permissions = await groupsDO.listGroupPermissions(groupId, user.id)
-		return c.json(permissions)
-	} catch (error) {
-		if (error instanceof Error) {
-			if (error.message.includes('not found')) {
-				return c.json({ error: 'Group not found' }, 404)
-			}
-			return c.json({ error: error.message }, 400)
-		}
-		throw error
-	}
-})
-
-/**
- * POST /:groupId/permissions/attach
- *
- * Attach a global permission to a group
- */
-groups.post('/:groupId/permissions/attach', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')!
-	const groupId = c.req.param('groupId')
-	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
-
-	try {
-		const groupPermission = await groupsDO.attachPermissionToGroup(
-			{
-				groupId,
-				permissionId: body.permissionId,
-				targetType: body.targetType,
-				createdBy: user.id,
-			},
-			user.id
-		)
-		return c.json(groupPermission, 201)
-	} catch (error) {
-		if (error instanceof Error) {
-			return c.json({ error: error.message }, 400)
-		}
-		throw error
-	}
-})
-
-/**
- * POST /:groupId/permissions/custom
- *
- * Create a custom group-scoped permission
- */
-groups.post('/:groupId/permissions/custom', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')!
-	const groupId = c.req.param('groupId')
-	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
-
-	try {
-		const groupPermission = await groupsDO.createGroupScopedPermission(
-			{
-				groupId,
-				urn: body.urn,
-				name: body.name,
-				description: body.description,
-				targetType: body.targetType,
-				createdBy: user.id,
-			},
-			user.id
-		)
-		return c.json(groupPermission, 201)
-	} catch (error) {
-		if (error instanceof Error) {
-			return c.json({ error: error.message }, 400)
-		}
-		throw error
-	}
-})
-
-/**
- * PATCH /:groupId/permissions/:groupPermissionId
- *
- * Update a group permission (change target type)
- */
-groups.patch('/:groupId/permissions/:groupPermissionId', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')!
-	const groupPermissionId = c.req.param('groupPermissionId')
-	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
-
-	try {
-		const groupPermission = await groupsDO.updateGroupPermission(
-			groupPermissionId,
-			{
-				targetType: body.targetType,
-			},
-			user.id
-		)
-		return c.json(groupPermission)
-	} catch (error) {
-		if (error instanceof Error) {
-			if (error.message.includes('not found')) {
-				return c.json({ error: 'Group permission not found' }, 404)
-			}
-			return c.json({ error: error.message }, 400)
-		}
-		throw error
-	}
-})
-
-/**
- * DELETE /:groupId/permissions/:groupPermissionId
- *
- * Remove a permission from a group
- */
-groups.delete('/:groupId/permissions/:groupPermissionId', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')!
-	const groupPermissionId = c.req.param('groupPermissionId')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
-
-	try {
-		await groupsDO.removePermissionFromGroup(groupPermissionId, user.id)
-		return c.json({ success: true }, 200)
-	} catch (error) {
-		if (error instanceof Error) {
-			if (error.message.includes('not found')) {
-				return c.json({ error: 'Group permission not found' }, 404)
-			}
-			return c.json({ error: error.message }, 400)
-		}
-		throw error
-	}
-})
-
-/**
- * GET /:groupId/permissions/members
- *
- * Get permissions for all members of a group (admin only)
- */
-groups.get('/:groupId/permissions/members', requireAuth(), requireAdmin(), async (c) => {
-	const groupId = c.req.param('groupId')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
-
-	try {
-		const memberPermissions = await groupsDO.getGroupMemberPermissions(groupId)
-		return c.json(memberPermissions)
-	} catch (error) {
-		if (error instanceof Error) {
-			if (error.message.includes('not found')) {
-				return c.json({ error: 'Group not found' }, 404)
-			}
-			return c.json({ error: error.message }, 400)
-		}
-		throw error
-	}
-})
-
-/**
- * GET /users/:userId/permissions
- *
- * Get all permissions for a specific user across all groups (admin only)
- */
-groups.get('/users/:userId/permissions', requireAuth(), requireAdmin(), async (c) => {
-	const userId = c.req.param('userId')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
-
-	const permissions = await groupsDO.getUserPermissions(userId)
-	return c.json(permissions)
-})
-
-/**
- * POST /permissions/members/multi-group
- *
- * Get permissions for members across multiple groups (admin only)
- */
-groups.post('/permissions/members/multi-group', requireAuth(), requireAdmin(), async (c) => {
-	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
-
-	try {
-		const memberPermissions = await groupsDO.getMultiGroupMemberPermissions(body.groupIds)
-		return c.json(memberPermissions)
-	} catch (error) {
-		if (error instanceof Error) {
-			return c.json({ error: error.message }, 400)
-		}
-		throw error
-	}
-})
-
 // ===== Parameterized Routes =====
 
 /**
@@ -1372,5 +920,456 @@ groups.delete(
 	}
 )
 
+// ===== Permission Categories =====
+
+/**
+ * GET /permissions/categories
+ *
+ * List all permission categories
+ */
+groups.get('/permissions/categories', requireAuth(), requireAdmin(), async (c) => {
+	console.log('[API] GET /permissions/categories - Start')
+
+	try {
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+		console.log('[API] GET /permissions/categories - Got DO stub')
+
+		const categories = await groupsDO.listPermissionCategories()
+		console.log('[API] GET /permissions/categories - Got categories, count:', categories?.length)
+
+		return c.json(categories)
+	} catch (error) {
+		console.error('[API] GET /permissions/categories - Error:', error)
+		if (error instanceof Error) {
+			console.error('[API] GET /permissions/categories - Error message:', error.message)
+			console.error('[API] GET /permissions/categories - Error stack:', error.stack)
+			return c.json({ error: error.message }, 500)
+		}
+		throw error
+	}
+})
+
+/**
+ * POST /permissions/categories
+ *
+ * Create a new permission category
+ */
+groups.post('/permissions/categories', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')!
+	const body = await c.req.json()
+	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+
+	try {
+		const category = await groupsDO.createPermissionCategory(
+			{
+				name: body.name,
+				description: body.description,
+			},
+			user.id
+		)
+		return c.json(category, 201)
+	} catch (error) {
+		if (error instanceof Error) {
+			return c.json({ error: error.message }, 400)
+		}
+		throw error
+	}
+})
+
+/**
+ * PATCH /permissions/categories/:id
+ *
+ * Update a permission category
+ */
+groups.patch('/permissions/categories/:id', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')!
+	const categoryId = c.req.param('id')
+	const body = await c.req.json()
+	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+
+	try {
+		const category = await groupsDO.updatePermissionCategory(
+			categoryId,
+			{
+				name: body.name,
+				description: body.description,
+			},
+			user.id
+		)
+		return c.json(category)
+	} catch (error) {
+		if (error instanceof Error) {
+			if (error.message.includes('not found')) {
+				return c.json({ error: 'Category not found' }, 404)
+			}
+			return c.json({ error: error.message }, 400)
+		}
+		throw error
+	}
+})
+
+/**
+ * DELETE /permissions/categories/:id
+ *
+ * Delete a permission category
+ */
+groups.delete('/permissions/categories/:id', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')!
+	const categoryId = c.req.param('id')
+	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+
+	try {
+		await groupsDO.deletePermissionCategory(categoryId, user.id)
+		return c.json({ success: true }, 200)
+	} catch (error) {
+		if (error instanceof Error) {
+			if (error.message.includes('not found')) {
+				return c.json({ error: 'Category not found' }, 404)
+			}
+			return c.json({ error: error.message }, 400)
+		}
+		throw error
+	}
+})
+
+// ===== Global Permissions =====
+
+/**
+ * GET /permissions
+ *
+ * List all global permissions, optionally filtered by category
+ */
+groups.get('/permissions', requireAuth(), requireAdmin(), async (c) => {
+	console.log('[API] GET /permissions - Start')
+	const categoryId = c.req.query('categoryId')
+	console.log('[API] GET /permissions - categoryId:', categoryId)
+
+	try {
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+		console.log('[API] GET /permissions - Got DO stub')
+
+		const permissions = await groupsDO.listPermissions(categoryId)
+		console.log('[API] GET /permissions - Got permissions, count:', permissions?.length)
+
+		return c.json(permissions)
+	} catch (error) {
+		console.error('[API] GET /permissions - Error:', error)
+		if (error instanceof Error) {
+			console.error('[API] GET /permissions - Error message:', error.message)
+			console.error('[API] GET /permissions - Error stack:', error.stack)
+			return c.json({ error: error.message }, 500)
+		}
+		throw error
+	}
+})
+
+/**
+ * GET /permissions/:id
+ *
+ * Get a single permission by ID
+ */
+groups.get('/permissions/:id', requireAuth(), requireAdmin(), async (c) => {
+	const permissionId = c.req.param('id')
+	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+
+	try {
+		const permission = await groupsDO.getPermission(permissionId)
+		return c.json(permission)
+	} catch (error) {
+		if (error instanceof Error) {
+			if (error.message.includes('not found')) {
+				return c.json({ error: 'Permission not found' }, 404)
+			}
+			return c.json({ error: error.message }, 400)
+		}
+		throw error
+	}
+})
+
+/**
+ * POST /permissions
+ *
+ * Create a new global permission
+ */
+groups.post('/permissions', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')!
+	const body = await c.req.json()
+	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+
+	try {
+		const permission = await groupsDO.createPermission(
+			{
+				urn: body.urn,
+				name: body.name,
+				description: body.description,
+				categoryId: body.categoryId,
+				createdBy: user.id,
+			},
+			user.id
+		)
+		return c.json(permission, 201)
+	} catch (error) {
+		if (error instanceof Error) {
+			return c.json({ error: error.message }, 400)
+		}
+		throw error
+	}
+})
+
+/**
+ * PATCH /permissions/:id
+ *
+ * Update a global permission
+ */
+groups.patch('/permissions/:id', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')!
+	const permissionId = c.req.param('id')
+	const body = await c.req.json()
+	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+
+	try {
+		const permission = await groupsDO.updatePermission(
+			permissionId,
+			{
+				name: body.name,
+				description: body.description,
+				categoryId: body.categoryId,
+			},
+			user.id
+		)
+		return c.json(permission)
+	} catch (error) {
+		if (error instanceof Error) {
+			if (error.message.includes('not found')) {
+				return c.json({ error: 'Permission not found' }, 404)
+			}
+			return c.json({ error: error.message }, 400)
+		}
+		throw error
+	}
+})
+
+/**
+ * DELETE /permissions/:id
+ *
+ * Delete a global permission
+ */
+groups.delete('/permissions/:id', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')!
+	const permissionId = c.req.param('id')
+	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+
+	try {
+		await groupsDO.deletePermission(permissionId, user.id)
+		return c.json({ success: true }, 200)
+	} catch (error) {
+		if (error instanceof Error) {
+			if (error.message.includes('not found')) {
+				return c.json({ error: 'Permission not found' }, 404)
+			}
+			return c.json({ error: error.message }, 400)
+		}
+		throw error
+	}
+})
+
+// ===== Group Permissions =====
+
+/**
+ * GET /:groupId/permissions
+ *
+ * List all permissions for a group (admin only)
+ */
+groups.get('/:groupId/permissions', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')!
+	const groupId = c.req.param('groupId')
+	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+
+	try {
+		const permissions = await groupsDO.listGroupPermissions(groupId, user.id)
+		return c.json(permissions)
+	} catch (error) {
+		if (error instanceof Error) {
+			if (error.message.includes('not found')) {
+				return c.json({ error: 'Group not found' }, 404)
+			}
+			return c.json({ error: error.message }, 400)
+		}
+		throw error
+	}
+})
+
+/**
+ * POST /:groupId/permissions/attach
+ *
+ * Attach a global permission to a group
+ */
+groups.post('/:groupId/permissions/attach', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')!
+	const groupId = c.req.param('groupId')
+	const body = await c.req.json()
+	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+
+	try {
+		const groupPermission = await groupsDO.attachPermissionToGroup(
+			{
+				groupId,
+				permissionId: body.permissionId,
+				targetType: body.targetType,
+				createdBy: user.id,
+			},
+			user.id
+		)
+		return c.json(groupPermission, 201)
+	} catch (error) {
+		if (error instanceof Error) {
+			return c.json({ error: error.message }, 400)
+		}
+		throw error
+	}
+})
+
+/**
+ * POST /:groupId/permissions/custom
+ *
+ * Create a custom group-scoped permission
+ */
+groups.post('/:groupId/permissions/custom', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')!
+	const groupId = c.req.param('groupId')
+	const body = await c.req.json()
+	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+
+	try {
+		const groupPermission = await groupsDO.createGroupScopedPermission(
+			{
+				groupId,
+				urn: body.urn,
+				name: body.name,
+				description: body.description,
+				targetType: body.targetType,
+				createdBy: user.id,
+			},
+			user.id
+		)
+		return c.json(groupPermission, 201)
+	} catch (error) {
+		if (error instanceof Error) {
+			return c.json({ error: error.message }, 400)
+		}
+		throw error
+	}
+})
+
+/**
+ * PATCH /:groupId/permissions/:groupPermissionId
+ *
+ * Update a group permission (change target type)
+ */
+groups.patch('/:groupId/permissions/:groupPermissionId', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')!
+	const groupPermissionId = c.req.param('groupPermissionId')
+	const body = await c.req.json()
+	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+
+	try {
+		const groupPermission = await groupsDO.updateGroupPermission(
+			groupPermissionId,
+			{
+				targetType: body.targetType,
+			},
+			user.id
+		)
+		return c.json(groupPermission)
+	} catch (error) {
+		if (error instanceof Error) {
+			if (error.message.includes('not found')) {
+				return c.json({ error: 'Group permission not found' }, 404)
+			}
+			return c.json({ error: error.message }, 400)
+		}
+		throw error
+	}
+})
+
+/**
+ * DELETE /:groupId/permissions/:groupPermissionId
+ *
+ * Remove a permission from a group
+ */
+groups.delete('/:groupId/permissions/:groupPermissionId', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')!
+	const groupPermissionId = c.req.param('groupPermissionId')
+	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+
+	try {
+		await groupsDO.removePermissionFromGroup(groupPermissionId, user.id)
+		return c.json({ success: true }, 200)
+	} catch (error) {
+		if (error instanceof Error) {
+			if (error.message.includes('not found')) {
+				return c.json({ error: 'Group permission not found' }, 404)
+			}
+			return c.json({ error: error.message }, 400)
+		}
+		throw error
+	}
+})
+
+/**
+ * GET /:groupId/permissions/members
+ *
+ * Get permissions for all members of a group (admin only)
+ */
+groups.get('/:groupId/permissions/members', requireAuth(), requireAdmin(), async (c) => {
+	const groupId = c.req.param('groupId')
+	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+
+	try {
+		const memberPermissions = await groupsDO.getGroupMemberPermissions(groupId)
+		return c.json(memberPermissions)
+	} catch (error) {
+		if (error instanceof Error) {
+			if (error.message.includes('not found')) {
+				return c.json({ error: 'Group not found' }, 404)
+			}
+			return c.json({ error: error.message }, 400)
+		}
+		throw error
+	}
+})
+
+/**
+ * GET /users/:userId/permissions
+ *
+ * Get all permissions for a specific user across all groups (admin only)
+ */
+groups.get('/users/:userId/permissions', requireAuth(), requireAdmin(), async (c) => {
+	const userId = c.req.param('userId')
+	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+
+	const permissions = await groupsDO.getUserPermissions(userId)
+	return c.json(permissions)
+})
+
+/**
+ * POST /permissions/members/multi-group
+ *
+ * Get permissions for members across multiple groups (admin only)
+ */
+groups.post('/permissions/members/multi-group', requireAuth(), requireAdmin(), async (c) => {
+	const body = await c.req.json()
+	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+
+	try {
+		const memberPermissions = await groupsDO.getMultiGroupMemberPermissions(body.groupIds)
+		return c.json(memberPermissions)
+	} catch (error) {
+		if (error instanceof Error) {
+			return c.json({ error: error.message }, 400)
+		}
+		throw error
+	}
+})
 
 export default groups

@@ -41,6 +41,14 @@ export const joinRequestStatusEnum = pgEnum('join_request_status', [
 	'rejected',
 ])
 
+/** Permission target - defines who receives the permission */
+export const permissionTargetEnum = pgEnum('permission_target', [
+	'all_members',
+	'all_admins',
+	'owner_only',
+	'owner_and_admins',
+])
+
 /**
  * Categories table - Organizational containers for groups
  *
@@ -376,6 +384,95 @@ export const groupDiscordInvites = pgTable(
 )
 
 /**
+ * Permission Categories table - Organize permissions into categories
+ *
+ * Categories help admins organize permissions logically (e.g., 'Fleet', 'HR', 'Finance')
+ */
+export const permissionCategories = pgTable(
+	'permission_categories',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		/** Category name (must be unique) */
+		name: varchar('name', { length: 255 }).notNull().unique(),
+		/** Category description */
+		description: text('description'),
+		createdAt: timestamp('created_at').defaultNow().notNull(),
+		updatedAt: timestamp('updated_at').defaultNow().notNull(),
+	},
+	(table) => [index('permission_categories_name_idx').on(table.name)]
+)
+
+/**
+ * Permissions table - Global reusable permission definitions
+ *
+ * These are permission templates that can be attached to multiple groups.
+ * Site admins can create global permissions with URN identifiers.
+ */
+export const permissions = pgTable(
+	'permissions',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		/** URN identifier (e.g., "urn:corporations:dreddit:member") */
+		urn: text('urn').notNull().unique(),
+		/** Human-readable display name */
+		name: varchar('name', { length: 255 }).notNull(),
+		/** Permission description */
+		description: text('description'),
+		/** Optional category for organization */
+		categoryId: uuid('category_id').references(() => permissionCategories.id, {
+			onDelete: 'set null',
+		}),
+		/** User ID of the admin who created this permission */
+		createdBy: varchar('created_by', { length: 255 }).notNull(),
+		createdAt: timestamp('created_at').defaultNow().notNull(),
+		updatedAt: timestamp('updated_at').defaultNow().notNull(),
+	},
+	(table) => [
+		index('permissions_urn_idx').on(table.urn),
+		index('permissions_category_id_idx').on(table.categoryId),
+	]
+)
+
+/**
+ * Group Permissions table - Permissions attached to groups
+ *
+ * Links permissions to groups with a specific target type.
+ * Supports both global permissions (via permissionId) and group-scoped custom permissions.
+ */
+export const groupPermissions = pgTable(
+	'group_permissions',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		/** Group this permission is attached to */
+		groupId: uuid('group_id')
+			.notNull()
+			.references(() => groups.id, { onDelete: 'cascade' }),
+		/** Reference to global permission (null for group-scoped) */
+		permissionId: uuid('permission_id').references(() => permissions.id, { onDelete: 'cascade' }),
+		/** Custom URN for group-scoped permissions */
+		customUrn: text('custom_urn'),
+		/** Custom name for group-scoped permissions */
+		customName: varchar('custom_name', { length: 255 }),
+		/** Custom description for group-scoped permissions */
+		customDescription: text('custom_description'),
+		/** Who receives this permission */
+		targetType: permissionTargetEnum('target_type').notNull(),
+		/** User ID of the admin who created this attachment */
+		createdBy: varchar('created_by', { length: 255 }).notNull(),
+		createdAt: timestamp('created_at').defaultNow().notNull(),
+	},
+	(table) => [
+		index('group_permissions_group_id_idx').on(table.groupId),
+		index('group_permissions_permission_id_idx').on(table.permissionId),
+		index('group_permissions_custom_urn_idx').on(table.customUrn),
+		// Ensure either permissionId OR custom fields are set, not both
+		// (enforced at application layer)
+		// Prevent duplicate permission attachments (same permission on same group)
+		unique('unique_group_permission').on(table.groupId, table.permissionId),
+	]
+)
+
+/**
  * Relations
  */
 
@@ -470,6 +567,29 @@ export const groupDiscordInvitesRelations = relations(groupDiscordInvites, ({ on
 	}),
 }))
 
+export const permissionCategoriesRelations = relations(permissionCategories, ({ many }) => ({
+	permissions: many(permissions),
+}))
+
+export const permissionsRelations = relations(permissions, ({ one, many }) => ({
+	category: one(permissionCategories, {
+		fields: [permissions.categoryId],
+		references: [permissionCategories.id],
+	}),
+	groupPermissions: many(groupPermissions),
+}))
+
+export const groupPermissionsRelations = relations(groupPermissions, ({ one }) => ({
+	group: one(groups, {
+		fields: [groupPermissions.groupId],
+		references: [groups.id],
+	}),
+	permission: one(permissions, {
+		fields: [groupPermissions.permissionId],
+		references: [permissions.id],
+	}),
+}))
+
 /**
  * Export schema for db client
  */
@@ -480,6 +600,7 @@ export const schema = {
 	joinModeEnum,
 	invitationStatusEnum,
 	joinRequestStatusEnum,
+	permissionTargetEnum,
 	// Tables
 	categories,
 	groups,
@@ -492,6 +613,9 @@ export const schema = {
 	groupDiscordServers,
 	groupDiscordServerRoles,
 	groupDiscordInvites,
+	permissionCategories,
+	permissions,
+	groupPermissions,
 	// Relations
 	categoriesRelations,
 	groupsRelations,
@@ -504,4 +628,7 @@ export const schema = {
 	groupDiscordServersRelations,
 	groupDiscordServerRolesRelations,
 	groupDiscordInvitesRelations,
+	permissionCategoriesRelations,
+	permissionsRelations,
+	groupPermissionsRelations,
 }

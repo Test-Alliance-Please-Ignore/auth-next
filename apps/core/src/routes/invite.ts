@@ -63,7 +63,10 @@ invite.get('/:code', async (c) => {
 					<meta property="og:title" content="Join ${group.name}" />
 					<meta property="og:description" content="${metaDescription}" />
 					<meta property="og:site_name" content="EVE Alliance Management" />
-					<meta property="og:image" content="https://images.evetech.net/corporations/1000274/logo?size=512" />
+					<meta
+						property="og:image"
+						content="https://images.evetech.net/corporations/1000274/logo?size=512"
+					/>
 					<meta property="og:image:width" content="512" />
 					<meta property="og:image:height" content="512" />
 
@@ -71,7 +74,10 @@ invite.get('/:code', async (c) => {
 					<meta name="twitter:card" content="summary_large_image" />
 					<meta name="twitter:title" content="Join ${group.name}" />
 					<meta name="twitter:description" content="${metaDescription}" />
-					<meta name="twitter:image" content="https://images.evetech.net/corporations/1000274/logo?size=512" />
+					<meta
+						name="twitter:image"
+						content="https://images.evetech.net/corporations/1000274/logo?size=512"
+					/>
 
 					<!-- Standard Meta Tags -->
 					<meta name="description" content="${metaDescription}" />
@@ -84,8 +90,9 @@ invite.get('/:code', async (c) => {
 						}
 
 						body {
-							font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
-								Arial, sans-serif;
+							font-family:
+								-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+								sans-serif;
 							background: hsl(220 18% 8%);
 							min-height: 100vh;
 							display: flex;
@@ -325,13 +332,19 @@ invite.get('/:code', async (c) => {
 							<div class="group-info">
 								<div class="category-badge">${group.category.name}</div>
 								<h2 class="group-name">${group.name}</h2>
-								${group.description ? html`<p class="group-description">${group.description}</p>` : ''}
+								${group.description
+									? html`<p class="group-description">${group.description}</p>`
+									: ''}
 
 								<div class="group-stats">
 									<div class="stat">
 										<div class="stat-label">Join Mode</div>
 										<div class="stat-value">
-											${group.joinMode === 'open' ? 'Open' : group.joinMode === 'approval' ? 'Approval' : 'Invite Only'}
+											${group.joinMode === 'open'
+												? 'Open'
+												: group.joinMode === 'approval'
+													? 'Approval'
+													: 'Invite Only'}
 										</div>
 									</div>
 									${group.memberCount !== undefined
@@ -360,12 +373,16 @@ invite.get('/:code', async (c) => {
 								</div>
 							</div>
 
-							${statusMessage ? html`<div class="status-message ${statusClass}">${statusMessage}</div>` : ''}
+							${statusMessage
+								? html`<div class="status-message ${statusClass}">${statusMessage}</div>`
+								: ''}
 
 							<div id="action-area">
 								${user && canJoin
 									? html`
-											<button class="button button-primary" onclick="joinGroup()">Join Group</button>
+											<button class="button button-primary" onclick="joinGroup()">
+												Join Group
+											</button>
 											<div id="loading" class="loading">Joining group...</div>
 										`
 									: user && !canJoin
@@ -375,7 +392,10 @@ invite.get('/:code', async (c) => {
 												</button>
 											`
 										: html`
-												<a href="/login?redirect=${encodeURIComponent(`/invite/${code}`)}" class="button button-primary">
+												<a
+													href="/login?redirect=${encodeURIComponent(`/invite/${code}`)}"
+													class="button button-primary"
+												>
 													Log In to Join
 												</a>
 											`}
@@ -384,7 +404,8 @@ invite.get('/:code', async (c) => {
 
 						<div class="footer">
 							${user
-								? html`Logged in as ${user.characters.find((c) => c.is_primary)?.characterName || 'User'}`
+								? html`Logged in as
+									${user.characters.find((c) => c.is_primary)?.characterName || 'User'}`
 								: 'Not logged in'}
 						</div>
 					</div>
@@ -502,8 +523,8 @@ invite.get('/:code', async (c) => {
 							<div class="container">
 								<h1>Invalid Invite Code</h1>
 								<p>
-									The invite code you're trying to use doesn't exist or has been removed. Please check
-									the link and try again.
+									The invite code you're trying to use doesn't exist or has been removed. Please
+									check the link and try again.
 								</p>
 								<a href="/" class="button">Go to Home</a>
 							</div>

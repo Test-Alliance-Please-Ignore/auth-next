@@ -99,7 +99,11 @@ const GroupRow = memo(
 
 GroupRow.displayName = 'GroupRow'
 
-export const GroupList = memo(function GroupList({ groups, isLoading, isAdminContext }: GroupListProps) {
+export const GroupList = memo(function GroupList({
+	groups,
+	isLoading,
+	isAdminContext,
+}: GroupListProps) {
 	const isMobile = useMediaQuery('(max-width: 768px)')
 	const joinGroup = useJoinGroup()
 
@@ -150,74 +154,79 @@ export const GroupList = memo(function GroupList({ groups, isLoading, isAdminCon
 		return (
 			<div className="space-y-3">
 				{groups.map((group) => {
-					const groupDetailUrl = isAdminContext ? `/admin/groups/${group.id}` : `/groups/${group.id}`
+					const groupDetailUrl = isAdminContext
+						? `/admin/groups/${group.id}`
+						: `/groups/${group.id}`
 					return (
-					<Card
-						key={group.id}
-						className={cn(
-							'hover:border-primary/30 transition-colors',
-							group.visibility === 'system' && 'border-destructive/30 bg-destructive/5'
-						)}
-					>
-						<CardContent className="p-3">
-							<div className="space-y-2">
-								<div className="flex items-start justify-between gap-2">
-									<div className="flex-1 min-w-0">
-										<h4 className="font-semibold text-lg truncate flex items-center gap-2">
-											<Link to={groupDetailUrl} className="hover:underline">
-												{group.name}
-											</Link>
-											{group.visibility === 'system' && (
-												<span className="text-xs text-destructive" title="System visibility group">
-													⚠️
-												</span>
-											)}
-										</h4>
-										<p className="text-sm text-muted-foreground">{group.category.name}</p>
+						<Card
+							key={group.id}
+							className={cn(
+								'hover:border-primary/30 transition-colors',
+								group.visibility === 'system' && 'border-destructive/30 bg-destructive/5'
+							)}
+						>
+							<CardContent className="p-3">
+								<div className="space-y-2">
+									<div className="flex items-start justify-between gap-2">
+										<div className="flex-1 min-w-0">
+											<h4 className="font-semibold text-lg truncate flex items-center gap-2">
+												<Link to={groupDetailUrl} className="hover:underline">
+													{group.name}
+												</Link>
+												{group.visibility === 'system' && (
+													<span
+														className="text-xs text-destructive"
+														title="System visibility group"
+													>
+														⚠️
+													</span>
+												)}
+											</h4>
+											<p className="text-sm text-muted-foreground">{group.category.name}</p>
+										</div>
+									</div>
+
+									<div className="flex flex-wrap gap-2">
+										<VisibilityBadge visibility={group.visibility} />
+										<JoinModeBadge joinMode={group.joinMode} />
+									</div>
+
+									<div className="flex items-center justify-between pt-2 border-t border-border/50">
+										<span className="text-sm text-muted-foreground">
+											{group.memberCount || 0} members
+										</span>
+										{group.joinMode === 'open' && !group.isMember ? (
+											<Button
+												variant="default"
+												size="sm"
+												disabled={joinGroup.isPending}
+												onClick={(e) => {
+													e.stopPropagation()
+													joinGroup.mutate(group.id, {
+														onSuccess: () => {
+															alert(`Successfully joined ${group.name}!`)
+														},
+														onError: (error: Error) => {
+															alert(`Failed to join: ${error.message}`)
+														},
+													})
+												}}
+											>
+												<UserPlus className="mr-2 h-4 w-4" />
+												{joinGroup.isPending ? 'Joining...' : 'Quick Join'}
+											</Button>
+										) : (
+											<Button variant="outline" size="sm" asChild>
+												<Link to={groupDetailUrl}>
+													<Eye className="mr-2 h-4 w-4" />
+													View Details
+												</Link>
+											</Button>
+										)}
 									</div>
 								</div>
-
-								<div className="flex flex-wrap gap-2">
-									<VisibilityBadge visibility={group.visibility} />
-									<JoinModeBadge joinMode={group.joinMode} />
-								</div>
-
-								<div className="flex items-center justify-between pt-2 border-t border-border/50">
-									<span className="text-sm text-muted-foreground">
-										{group.memberCount || 0} members
-									</span>
-									{group.joinMode === 'open' && !group.isMember ? (
-										<Button
-											variant="default"
-											size="sm"
-											disabled={joinGroup.isPending}
-											onClick={(e) => {
-												e.stopPropagation()
-												joinGroup.mutate(group.id, {
-													onSuccess: () => {
-														alert(`Successfully joined ${group.name}!`)
-													},
-													onError: (error: Error) => {
-														alert(`Failed to join: ${error.message}`)
-													},
-												})
-											}}
-										>
-											<UserPlus className="mr-2 h-4 w-4" />
-											{joinGroup.isPending ? 'Joining...' : 'Quick Join'}
-										</Button>
-									) : (
-										<Button variant="outline" size="sm" asChild>
-											<Link to={groupDetailUrl}>
-												<Eye className="mr-2 h-4 w-4" />
-												View Details
-											</Link>
-										</Button>
-									)}
-								</div>
-							</div>
-						</CardContent>
-					</Card>
+							</CardContent>
+						</Card>
 					)
 				})}
 			</div>

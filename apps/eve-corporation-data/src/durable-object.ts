@@ -518,7 +518,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Fetch and store member tracking data
 	 */
-	private async fetchAndStoreMemberTracking(corporationId: string, _forceRefresh = false): Promise<void> {
+	private async fetchAndStoreMemberTracking(
+		corporationId: string,
+		_forceRefresh = false
+	): Promise<void> {
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
 		await this.verifyRole(characterId, ['Director'])
 
@@ -615,7 +618,11 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Fetch and store wallet journal for a division
 	 */
-	private async fetchAndStoreWalletJournal(corporationId: string, division: number, _forceRefresh = false): Promise<void> {
+	private async fetchAndStoreWalletJournal(
+		corporationId: string,
+		division: number,
+		_forceRefresh = false
+	): Promise<void> {
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
 		await this.verifyRole(characterId, ['Accountant', 'Junior_Accountant'])
 
@@ -858,7 +865,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Fetch and store corporation structures
 	 */
-	private async fetchAndStoreStructures(corporationId: string, _forceRefresh = false): Promise<void> {
+	private async fetchAndStoreStructures(
+		corporationId: string,
+		_forceRefresh = false
+	): Promise<void> {
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
 		await this.verifyRole(characterId, ['Station_Manager'])
 
@@ -1033,7 +1043,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Fetch and store corporation contracts
 	 */
-	private async fetchAndStoreContracts(corporationId: string, _forceRefresh = false): Promise<void> {
+	private async fetchAndStoreContracts(
+		corporationId: string,
+		_forceRefresh = false
+	): Promise<void> {
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
 		await this.verifyRole(characterId, ['Director'])
 
@@ -1140,7 +1153,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Fetch and store corporation industry jobs
 	 */
-	private async fetchAndStoreIndustryJobs(corporationId: string, _forceRefresh = false): Promise<void> {
+	private async fetchAndStoreIndustryJobs(
+		corporationId: string,
+		_forceRefresh = false
+	): Promise<void> {
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
 		await this.verifyRole(characterId, ['Factory_Manager'])
 
@@ -1249,7 +1265,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Fetch and store corporation killmails
 	 */
-	private async fetchAndStoreKillmails(corporationId: string, _forceRefresh = false): Promise<void> {
+	private async fetchAndStoreKillmails(
+		corporationId: string,
+		_forceRefresh = false
+	): Promise<void> {
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
 		await this.verifyRole(characterId, ['Director'])
 
@@ -1358,7 +1377,11 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Fetch financial data (wallets, journal, transactions)
 	 */
-	async fetchFinancialData(corporationId: string, division?: number, forceRefresh = false): Promise<void> {
+	async fetchFinancialData(
+		corporationId: string,
+		division?: number,
+		forceRefresh = false
+	): Promise<void> {
 		// Fetch wallets first
 		await this.fetchAndStoreWallets(corporationId, forceRefresh)
 
@@ -1787,7 +1810,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Get corporation industry jobs
 	 */
-	async getIndustryJobs(corporationId: string, status?: string): Promise<CorporationIndustryJobData[]> {
+	async getIndustryJobs(
+		corporationId: string,
+		status?: string
+	): Promise<CorporationIndustryJobData[]> {
 		const results = status
 			? await this.db.query.corporationIndustryJobs.findMany({
 					where: and(

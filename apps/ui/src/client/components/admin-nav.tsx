@@ -2,6 +2,7 @@ import {
 	ArrowLeft,
 	Building2,
 	FolderKanban,
+	Key,
 	MessageSquare,
 	ScrollText,
 	UserCircle,
@@ -24,6 +25,11 @@ export function AdminNav() {
 			label: 'Groups',
 			href: '/admin/groups',
 			icon: Users,
+		},
+		{
+			label: 'Permissions',
+			href: '/admin/permissions/categories',
+			icon: Key,
 		},
 		{
 			label: 'Corporations',

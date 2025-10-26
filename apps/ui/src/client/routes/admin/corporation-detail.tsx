@@ -593,7 +593,11 @@ export default function CorporationDetailPage() {
 										<CancelButton onClick={() => setShowAddServerDialog(false)}>
 											Cancel
 										</CancelButton>
-										<ConfirmButton onClick={handleAttachServer} disabled={!selectedServerId} showIcon={false}>
+										<ConfirmButton
+											onClick={handleAttachServer}
+											disabled={!selectedServerId}
+											showIcon={false}
+										>
 											<Plus className="mr-2 h-4 w-4" />
 											Attach
 										</ConfirmButton>

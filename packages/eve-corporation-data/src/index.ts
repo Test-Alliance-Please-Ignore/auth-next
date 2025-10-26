@@ -743,7 +743,11 @@ export interface EveCorporationData {
 	 * @param division - Wallet division (1-7), or fetch all if not specified
 	 * @param forceRefresh - Skip cache and fetch fresh data
 	 */
-	fetchFinancialData(corporationId: string, division?: number, forceRefresh?: boolean): Promise<void>
+	fetchFinancialData(
+		corporationId: string,
+		division?: number,
+		forceRefresh?: boolean
+	): Promise<void>
 
 	/**
 	 * Fetch assets and structures
@@ -842,7 +846,10 @@ export interface EveCorporationData {
 	 * @param division - Specific division or all if not specified
 	 * @returns Financial data or null if not found
 	 */
-	getFinancialData(corporationId: string, division?: number): Promise<CorporationFinancialData | null>
+	getFinancialData(
+		corporationId: string,
+		division?: number
+	): Promise<CorporationFinancialData | null>
 
 	/**
 	 * Get corporation assets

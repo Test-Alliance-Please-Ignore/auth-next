@@ -416,7 +416,10 @@ export default function UserDetailPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<CancelButton onClick={() => setAdminDialogOpen(false)} disabled={setUserAdmin.isPending}>
+						<CancelButton
+							onClick={() => setAdminDialogOpen(false)}
+							disabled={setUserAdmin.isPending}
+						>
 							Cancel
 						</CancelButton>
 						{user.is_admin ? (

@@ -1,7 +1,10 @@
 import { generateShardKey } from '@repo/hazmat'
 import { logger } from '@repo/hono-helpers'
 
-import type { RESTGetAPIGuildMemberResult, RESTPutAPIGuildMemberJSONBody } from 'discord-api-types/v10'
+import type {
+	RESTGetAPIGuildMemberResult,
+	RESTPutAPIGuildMemberJSONBody,
+} from 'discord-api-types/v10'
 import type { Env } from '../context'
 
 /**
@@ -255,11 +258,7 @@ export class DiscordBotService {
 							mergedRoles: mergedRoleIds.length,
 						})
 
-						const updateResult = await this.updateGuildMemberRoles(
-							guildId,
-							userId,
-							mergedRoleIds
-						)
+						const updateResult = await this.updateGuildMemberRoles(guildId, userId, mergedRoleIds)
 
 						if (!updateResult.success) {
 							logger.warn('[DiscordBot] Failed to update roles for existing member', {
