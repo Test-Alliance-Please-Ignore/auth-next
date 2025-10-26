@@ -2,6 +2,8 @@ import { LogOut } from 'lucide-react'
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { CancelButton } from '@/components/ui/cancel-button'
+import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
 	Dialog,
 	DialogContent,
@@ -64,16 +66,16 @@ export function LeaveButton({ group, onSuccess }: LeaveButtonProps) {
 						</DialogDescription>
 					</DialogHeader>
 					<div className="flex justify-end gap-2">
-						<Button
-							variant="outline"
-							onClick={() => setConfirmOpen(false)}
-							disabled={leaveGroup.isPending}
-						>
+						<CancelButton onClick={() => setConfirmOpen(false)} disabled={leaveGroup.isPending}>
 							Cancel
-						</Button>
-						<Button variant="destructive" onClick={handleLeave} disabled={leaveGroup.isPending}>
-							{leaveGroup.isPending ? 'Leaving...' : 'Leave Group'}
-						</Button>
+						</CancelButton>
+						<DestructiveButton
+							onClick={handleLeave}
+							loading={leaveGroup.isPending}
+							loadingText="Leaving..."
+						>
+							Leave Group
+						</DestructiveButton>
 					</div>
 				</DialogContent>
 			</Dialog>

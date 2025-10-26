@@ -41,6 +41,9 @@ login.get('/', async (c) => {
 					content="Secure authentication for EVE Online alliances and corporations"
 				/>
 				<meta property="og:site_name" content="TEST Auth" />
+				<meta property="og:image" content="https://images.evetech.net/corporations/1000274/logo?size=512" />
+				<meta property="og:image:width" content="512" />
+				<meta property="og:image:height" content="512" />
 
 				<!-- Standard Meta Tags -->
 				<meta

@@ -3,6 +3,9 @@ import { useMemo, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { CancelButton } from '@/components/ui/cancel-button'
+import { ConfirmButton } from '@/components/ui/confirm-button'
+import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
 	Dialog,
 	DialogContent,
@@ -275,16 +278,16 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<Button variant="ghost" onClick={() => setRemoveDialogOpen(false)}>
+						<CancelButton onClick={() => setRemoveDialogOpen(false)}>
 							Cancel
-						</Button>
-						<Button
-							variant="destructive"
+						</CancelButton>
+						<DestructiveButton
 							onClick={handleRemove}
-							disabled={removeDirector.isPending}
+							loading={removeDirector.isPending}
+							loadingText="Removing..."
 						>
-							{removeDirector.isPending ? 'Removing...' : 'Remove Director'}
-						</Button>
+							Remove Director
+						</DestructiveButton>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
@@ -319,12 +322,12 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 							</div>
 						</div>
 						<DialogFooter className="mt-6">
-							<Button type="button" variant="ghost" onClick={() => setPriorityDialogOpen(false)}>
+							<CancelButton type="button" onClick={() => setPriorityDialogOpen(false)}>
 								Cancel
-							</Button>
-							<Button type="submit" disabled={updatePriority.isPending}>
-								{updatePriority.isPending ? 'Updating...' : 'Update Priority'}
-							</Button>
+							</CancelButton>
+							<ConfirmButton type="submit" loading={updatePriority.isPending} loadingText="Updating...">
+								Update Priority
+							</ConfirmButton>
 						</DialogFooter>
 					</form>
 				</DialogContent>

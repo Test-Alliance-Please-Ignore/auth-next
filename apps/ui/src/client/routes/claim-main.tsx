@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
+import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { apiClient } from '@/lib/api'
 
@@ -110,14 +111,9 @@ export default function ClaimMainPage() {
 					</Button>
 
 					{/* Cancel */}
-					<Button
-						variant="ghost"
-						onClick={() => navigate('/')}
-						disabled={isLoading}
-						className="w-full"
-					>
+					<CancelButton onClick={() => navigate('/')} disabled={isLoading} className="w-full">
 						Cancel
-					</Button>
+					</CancelButton>
 				</CardContent>
 			</Card>
 		</div>

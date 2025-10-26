@@ -38,6 +38,21 @@
 	--muted: 220 14% 18% / 1; /* #272a34 - Muted dark background */
 	--muted-foreground: 210 10% 70%; /* #afb3bb - Muted text (WCAG AA: 5.2:1) */
 
+	/* Cancel button - neutral with warning hover */
+	--cancel: 220 12% 30%; /* #434854 - Neutral gray */
+	--cancel-hover: 0 65% 55%; /* #d94350 - Reddish warning on hover */
+	--cancel-foreground: 210 12% 95%; /* Light text */
+
+	/* Confirm button - greenish success color */
+	--confirm: 145 60% 45%; /* #27995a - Green for confirmation */
+	--confirm-hover: 145 65% 38%; /* #1f7d49 - Darker green on hover */
+	--confirm-foreground: 0 0% 100%; /* White text */
+
+	/* Destructive button - sickly greenish-orange warning */
+	--destructive-alt: 35 85% 50%; /* #e89614 - Sickly orange-green */
+	--destructive-alt-hover: 35 90% 42%; /* #c27a0a - Darker on hover */
+	--destructive-alt-foreground: 220 18% 8%; /* Dark text */
+
 	/* Success - Green (Gallente inspired) */
 	--success: 145 65% 48%; /* #2ba35d - Tech green */
 	--success-foreground: 220 18% 8%;

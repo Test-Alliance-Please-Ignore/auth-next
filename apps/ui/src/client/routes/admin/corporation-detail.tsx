@@ -26,7 +26,17 @@ import { Link, useParams } from 'react-router-dom'
 
 import { DirectorList } from '@/components/DirectorList'
 import { Button } from '@/components/ui/button'
+import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { ConfirmButton } from '@/components/ui/confirm-button'
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
@@ -513,10 +523,16 @@ export default function CorporationDetailPage() {
 							)}
 
 							{/* Add Server Dialog */}
-							{showAddServerDialog && (
-								<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-									<div className="bg-background rounded-lg p-6 max-w-md w-full space-y-4">
-										<h3 className="text-lg font-medium">Attach Discord Server</h3>
+							<Dialog open={showAddServerDialog} onOpenChange={setShowAddServerDialog}>
+								<DialogContent>
+									<DialogHeader>
+										<DialogTitle>Attach Discord Server</DialogTitle>
+										<DialogDescription>
+											Select a Discord server from the registry to attach to this corporation
+										</DialogDescription>
+									</DialogHeader>
+
+									<div className="space-y-4">
 										<div className="space-y-2">
 											<Label htmlFor="discord-server">Select Server</Label>
 											<select
@@ -571,19 +587,19 @@ export default function CorporationDetailPage() {
 												</Label>
 											</div>
 										</div>
-
-										<div className="flex gap-2 pt-2">
-											<Button onClick={handleAttachServer} disabled={!selectedServerId}>
-												<Plus className="mr-2 h-4 w-4" />
-												Attach
-											</Button>
-											<Button variant="outline" onClick={() => setShowAddServerDialog(false)}>
-												Cancel
-											</Button>
-										</div>
 									</div>
-								</div>
-							)}
+
+									<DialogFooter>
+										<CancelButton onClick={() => setShowAddServerDialog(false)}>
+											Cancel
+										</CancelButton>
+										<ConfirmButton onClick={handleAttachServer} disabled={!selectedServerId} showIcon={false}>
+											<Plus className="mr-2 h-4 w-4" />
+											Attach
+										</ConfirmButton>
+									</DialogFooter>
+								</DialogContent>
+							</Dialog>
 						</CardContent>
 					</Card>
 				</TabsContent>

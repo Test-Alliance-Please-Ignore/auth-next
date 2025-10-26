@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
-import { Button } from '@/components/ui/button'
+import { CancelButton } from '@/components/ui/cancel-button'
+import { ConfirmButton } from '@/components/ui/confirm-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -131,12 +132,12 @@ export function CategoryForm({ category, onSubmit, onCancel, isSubmitting }: Cat
 			</div>
 
 			<div className="flex justify-end gap-2 pt-4">
-				<Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting}>
+				<CancelButton type="button" onClick={onCancel} disabled={isSubmitting}>
 					Cancel
-				</Button>
-				<Button type="submit" disabled={isSubmitting}>
-					{isSubmitting ? 'Saving...' : category ? 'Update Category' : 'Create Category'}
-				</Button>
+				</CancelButton>
+				<ConfirmButton type="submit" loading={isSubmitting} loadingText="Saving...">
+					{category ? 'Update Category' : 'Create Category'}
+				</ConfirmButton>
 			</div>
 		</form>
 	)

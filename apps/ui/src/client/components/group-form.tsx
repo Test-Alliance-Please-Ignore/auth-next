@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { CancelButton } from '@/components/ui/cancel-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -161,9 +162,9 @@ export function GroupForm({ categories, onSubmit, onCancel, isSubmitting }: Grou
 
 			{/* Form Actions */}
 			<div className="flex justify-end gap-3 pt-4">
-				<Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting}>
+				<CancelButton type="button" onClick={onCancel} disabled={isSubmitting}>
 					Cancel
-				</Button>
+				</CancelButton>
 				<Button type="submit" disabled={isSubmitting}>
 					{isSubmitting ? 'Creating...' : 'Create Group'}
 				</Button>

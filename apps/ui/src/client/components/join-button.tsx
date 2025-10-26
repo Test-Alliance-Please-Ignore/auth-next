@@ -2,6 +2,7 @@ import { Send, UserPlus } from 'lucide-react'
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { CancelButton } from '@/components/ui/cancel-button'
 import {
 	Dialog,
 	DialogContent,
@@ -100,9 +101,9 @@ export function JoinButton({ group, onSuccess }: JoinButtonProps) {
 							/>
 						</div>
 						<div className="flex justify-end gap-2">
-							<Button variant="outline" onClick={() => setDialogOpen(false)} disabled={isLoading}>
+							<CancelButton onClick={() => setDialogOpen(false)} disabled={isLoading}>
 								Cancel
-							</Button>
+							</CancelButton>
 							<Button onClick={handleSubmitRequest} disabled={isLoading}>
 								<Send className="mr-2 h-4 w-4" />
 								{isLoading ? 'Sending...' : 'Send Request'}

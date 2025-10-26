@@ -1,7 +1,8 @@
 import { AlertTriangle, UserCog } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
-import { Button } from '@/components/ui/button'
+import { CancelButton } from '@/components/ui/cancel-button'
+import { ConfirmButton } from '@/components/ui/confirm-button'
 import {
 	Dialog,
 	DialogContent,
@@ -132,21 +133,19 @@ export function TransferOwnershipDialog({
 				</div>
 
 				<DialogFooter>
-					<Button
-						variant="outline"
-						onClick={() => handleOpenChange(false)}
-						disabled={transferOwnership.isPending}
-					>
+					<CancelButton onClick={() => handleOpenChange(false)} disabled={transferOwnership.isPending}>
 						Cancel
-					</Button>
-					<Button
-						variant="default"
+					</CancelButton>
+					<ConfirmButton
 						onClick={handleTransfer}
-						disabled={!selectedUserId || transferOwnership.isPending}
+						disabled={!selectedUserId}
+						loading={transferOwnership.isPending}
+						loadingText="Transferring..."
+						showIcon={false}
 					>
 						<UserCog className="mr-2 h-4 w-4" />
-						{transferOwnership.isPending ? 'Transferring...' : 'Transfer Ownership'}
-					</Button>
+						Transfer Ownership
+					</ConfirmButton>
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>

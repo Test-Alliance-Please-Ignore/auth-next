@@ -4,7 +4,10 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { ConfirmButton } from '@/components/ui/confirm-button'
+import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
 	Dialog,
 	DialogContent,
@@ -413,30 +416,30 @@ export default function UserDetailPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<Button
-							variant="outline"
-							onClick={() => setAdminDialogOpen(false)}
-							disabled={setUserAdmin.isPending}
-						>
+						<CancelButton onClick={() => setAdminDialogOpen(false)} disabled={setUserAdmin.isPending}>
 							Cancel
-						</Button>
-						<Button
-							variant={user.is_admin ? 'destructive' : 'default'}
-							onClick={handleToggleAdmin}
-							disabled={setUserAdmin.isPending}
-						>
-							{user.is_admin ? (
-								<>
-									<ShieldOff className="mr-2 h-4 w-4" />
-									{setUserAdmin.isPending ? 'Revoking...' : 'Revoke Admin'}
-								</>
-							) : (
-								<>
-									<Shield className="mr-2 h-4 w-4" />
-									{setUserAdmin.isPending ? 'Granting...' : 'Grant Admin'}
-								</>
-							)}
-						</Button>
+						</CancelButton>
+						{user.is_admin ? (
+							<DestructiveButton
+								onClick={handleToggleAdmin}
+								loading={setUserAdmin.isPending}
+								showIcon={false}
+								loadingText="Revoking..."
+							>
+								<ShieldOff className="mr-2 h-4 w-4" />
+								Revoke Admin
+							</DestructiveButton>
+						) : (
+							<ConfirmButton
+								onClick={handleToggleAdmin}
+								loading={setUserAdmin.isPending}
+								loadingText="Granting..."
+								showIcon={false}
+							>
+								<Shield className="mr-2 h-4 w-4" />
+								Grant Admin
+							</ConfirmButton>
+						)}
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
@@ -458,8 +461,7 @@ export default function UserDetailPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<Button
-							variant="outline"
+						<CancelButton
 							onClick={() => {
 								setDeleteDialogOpen(false)
 								setSelectedCharacter(null)
@@ -467,15 +469,16 @@ export default function UserDetailPage() {
 							disabled={deleteCharacter.isPending}
 						>
 							Cancel
-						</Button>
-						<Button
-							variant="destructive"
+						</CancelButton>
+						<DestructiveButton
 							onClick={handleDeleteCharacterConfirm}
-							disabled={deleteCharacter.isPending}
+							loading={deleteCharacter.isPending}
+							loadingText="Deleting..."
+							showIcon={false}
 						>
 							<Trash2 className="mr-2 h-4 w-4" />
-							{deleteCharacter.isPending ? 'Deleting...' : 'Delete Character'}
-						</Button>
+							Delete Character
+						</DestructiveButton>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>

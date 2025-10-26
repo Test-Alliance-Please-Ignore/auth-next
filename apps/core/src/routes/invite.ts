@@ -31,7 +31,7 @@ invite.get('/:code', async (c) => {
 		const fullInviteUrl = `${baseUrl}/invite/${code}`
 
 		// Prepare meta description
-		const metaDescription = group.description || `Join ${group.name} on TEST Auth`
+		const metaDescription = group.description || `Join the ${group.name} group on TEST Auth`
 
 		// Prepare status message
 		let statusMessage = ''
@@ -63,11 +63,15 @@ invite.get('/:code', async (c) => {
 					<meta property="og:title" content="Join ${group.name}" />
 					<meta property="og:description" content="${metaDescription}" />
 					<meta property="og:site_name" content="EVE Alliance Management" />
+					<meta property="og:image" content="https://images.evetech.net/corporations/1000274/logo?size=512" />
+					<meta property="og:image:width" content="512" />
+					<meta property="og:image:height" content="512" />
 
 					<!-- Twitter Card Meta Tags -->
 					<meta name="twitter:card" content="summary_large_image" />
 					<meta name="twitter:title" content="Join ${group.name}" />
 					<meta name="twitter:description" content="${metaDescription}" />
+					<meta name="twitter:image" content="https://images.evetech.net/corporations/1000274/logo?size=512" />
 
 					<!-- Standard Meta Tags -->
 					<meta name="description" content="${metaDescription}" />

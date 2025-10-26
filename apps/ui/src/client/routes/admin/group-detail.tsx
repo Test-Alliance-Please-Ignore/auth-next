@@ -24,7 +24,10 @@ import { PendingInvitationsList } from '@/components/pending-invitations-list'
 import { PendingJoinRequestsList } from '@/components/pending-join-requests-list'
 import { TransferOwnershipDialog } from '@/components/transfer-ownership-dialog'
 import { Button } from '@/components/ui/button'
+import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { ConfirmButton } from '@/components/ui/confirm-button'
+import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
 	Dialog,
 	DialogContent,
@@ -570,70 +573,72 @@ export default function GroupDetailPage() {
 					)}
 
 					{/* Create Invite Code Dialog */}
-					{showCreateInviteCodeDialog && (
-						<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-							<div className="bg-background rounded-lg p-6 max-w-md w-full space-y-4">
-								<h3 className="text-lg font-medium">Create Invite Code</h3>
-								<div className="space-y-4">
-									<div className="space-y-2">
-										<Label htmlFor="max-uses">Max Uses (optional)</Label>
-										<Input
-											id="max-uses"
-											type="number"
-											min="1"
-											placeholder="Unlimited"
-											value={inviteCodeSettings.maxUses ?? ''}
-											onChange={(e) =>
-												setInviteCodeSettings({
-													...inviteCodeSettings,
-													maxUses: e.target.value ? parseInt(e.target.value) : null,
-												})
-											}
-										/>
-										<p className="text-xs text-muted-foreground">
-											Leave empty for unlimited uses
-										</p>
-									</div>
+					<Dialog open={showCreateInviteCodeDialog} onOpenChange={setShowCreateInviteCodeDialog}>
+						<DialogContent>
+							<DialogHeader>
+								<DialogTitle>Create Invite Code</DialogTitle>
+								<DialogDescription>
+									Configure settings for the new invite code
+								</DialogDescription>
+							</DialogHeader>
 
-									<div className="space-y-2">
-										<Label htmlFor="expires-in-days">Expires In (days)</Label>
-										<Input
-											id="expires-in-days"
-											type="number"
-											min="1"
-											max="30"
-											value={inviteCodeSettings.expiresInDays}
-											onChange={(e) =>
-												setInviteCodeSettings({
-													...inviteCodeSettings,
-													expiresInDays: parseInt(e.target.value) || 7,
-												})
-											}
-										/>
-										<p className="text-xs text-muted-foreground">Between 1 and 30 days</p>
-									</div>
+							<div className="space-y-4">
+								<div className="space-y-2">
+									<Label htmlFor="max-uses">Max Uses (optional)</Label>
+									<Input
+										id="max-uses"
+										type="number"
+										min="1"
+										placeholder="Unlimited"
+										value={inviteCodeSettings.maxUses ?? ''}
+										onChange={(e) =>
+											setInviteCodeSettings({
+												...inviteCodeSettings,
+												maxUses: e.target.value ? parseInt(e.target.value) : null,
+											})
+										}
+									/>
+									<p className="text-xs text-muted-foreground">Leave empty for unlimited uses</p>
 								</div>
 
-								<div className="flex gap-2 pt-2">
-									<Button
-										onClick={handleCreateInviteCode}
-										disabled={createInviteCode.isPending}
-									>
-										{createInviteCode.isPending ? 'Creating...' : 'Create Code'}
-									</Button>
-									<Button
-										variant="outline"
-										onClick={() => {
-											setShowCreateInviteCodeDialog(false)
-											setInviteCodeSettings({ maxUses: null, expiresInDays: 7 })
-										}}
-									>
-										Cancel
-									</Button>
+								<div className="space-y-2">
+									<Label htmlFor="expires-in-days">Expires In (days)</Label>
+									<Input
+										id="expires-in-days"
+										type="number"
+										min="1"
+										max="30"
+										value={inviteCodeSettings.expiresInDays}
+										onChange={(e) =>
+											setInviteCodeSettings({
+												...inviteCodeSettings,
+												expiresInDays: parseInt(e.target.value) || 7,
+											})
+										}
+									/>
+									<p className="text-xs text-muted-foreground">Between 1 and 30 days</p>
 								</div>
 							</div>
-						</div>
-					)}
+
+							<DialogFooter>
+								<CancelButton
+									onClick={() => {
+										setShowCreateInviteCodeDialog(false)
+										setInviteCodeSettings({ maxUses: null, expiresInDays: 7 })
+									}}
+								>
+									Cancel
+								</CancelButton>
+								<ConfirmButton
+									onClick={handleCreateInviteCode}
+									loading={createInviteCode.isPending}
+									loadingText="Creating..."
+								>
+									Create Code
+								</ConfirmButton>
+							</DialogFooter>
+						</DialogContent>
+					</Dialog>
 				</CardContent>
 			</Card>
 
@@ -792,10 +797,16 @@ export default function GroupDetailPage() {
 					)}
 
 					{/* Add Server Dialog */}
-					{showAddServerDialog && (
-						<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-							<div className="bg-background rounded-lg p-6 max-w-md w-full space-y-4">
-								<h3 className="text-lg font-medium">Attach Discord Server</h3>
+					<Dialog open={showAddServerDialog} onOpenChange={setShowAddServerDialog}>
+						<DialogContent>
+							<DialogHeader>
+								<DialogTitle>Attach Discord Server</DialogTitle>
+								<DialogDescription>
+									Select a Discord server from the registry to attach to this group
+								</DialogDescription>
+							</DialogHeader>
+
+							<div className="space-y-4">
 								<div className="space-y-2">
 									<Label htmlFor="discord-server">Select Server</Label>
 									<select
@@ -845,19 +856,19 @@ export default function GroupDetailPage() {
 										</Label>
 									</div>
 								</div>
-
-								<div className="flex gap-2 pt-2">
-									<Button onClick={handleAttachServer} disabled={!selectedServerId}>
-										<Plus className="mr-2 h-4 w-4" />
-										Attach
-									</Button>
-									<Button variant="outline" onClick={() => setShowAddServerDialog(false)}>
-										Cancel
-									</Button>
-								</div>
 							</div>
-						</div>
-					)}
+
+							<DialogFooter>
+								<CancelButton onClick={() => setShowAddServerDialog(false)}>
+									Cancel
+								</CancelButton>
+								<ConfirmButton onClick={handleAttachServer} disabled={!selectedServerId} showIcon={false}>
+									<Plus className="mr-2 h-4 w-4" />
+									Attach
+								</ConfirmButton>
+							</DialogFooter>
+						</DialogContent>
+					</Dialog>
 				</CardContent>
 			</Card>
 
@@ -892,8 +903,7 @@ export default function GroupDetailPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<Button
-							variant="outline"
+						<CancelButton
 							onClick={() => {
 								setRemoveDialogOpen(false)
 								setSelectedUserId(null)
@@ -901,15 +911,16 @@ export default function GroupDetailPage() {
 							disabled={removeMember.isPending}
 						>
 							Cancel
-						</Button>
-						<Button
-							variant="destructive"
+						</CancelButton>
+						<DestructiveButton
 							onClick={handleRemoveMemberConfirm}
-							disabled={removeMember.isPending}
+							loading={removeMember.isPending}
+							loadingText="Removing..."
+							showIcon={false}
 						>
 							<UserMinus className="mr-2 h-4 w-4" />
-							{removeMember.isPending ? 'Removing...' : 'Remove Member'}
-						</Button>
+							Remove Member
+						</DestructiveButton>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
@@ -926,8 +937,7 @@ export default function GroupDetailPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<Button
-							variant="outline"
+						<CancelButton
 							onClick={() => {
 								setAdminDialogOpen(false)
 								setSelectedUserId(null)
@@ -935,20 +945,28 @@ export default function GroupDetailPage() {
 							disabled={toggleAdmin.isPending}
 						>
 							Cancel
-						</Button>
-						<Button onClick={handleToggleAdminConfirm} disabled={toggleAdmin.isPending}>
-							{selectedUserIsAdmin ? (
-								<>
-									<ShieldOff className="mr-2 h-4 w-4" />
-									{toggleAdmin.isPending ? 'Removing...' : 'Remove Admin'}
-								</>
-							) : (
-								<>
-									<Shield className="mr-2 h-4 w-4" />
-									{toggleAdmin.isPending ? 'Promoting...' : 'Make Admin'}
-								</>
-							)}
-						</Button>
+						</CancelButton>
+						{selectedUserIsAdmin ? (
+							<DestructiveButton
+								onClick={handleToggleAdminConfirm}
+								loading={toggleAdmin.isPending}
+								loadingText="Removing..."
+								showIcon={false}
+							>
+								<ShieldOff className="mr-2 h-4 w-4" />
+								Remove Admin
+							</DestructiveButton>
+						) : (
+							<ConfirmButton
+								onClick={handleToggleAdminConfirm}
+								loading={toggleAdmin.isPending}
+								loadingText="Promoting..."
+								showIcon={false}
+							>
+								<Shield className="mr-2 h-4 w-4" />
+								Make Admin
+							</ConfirmButton>
+						)}
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
