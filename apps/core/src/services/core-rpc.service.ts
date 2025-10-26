@@ -48,6 +48,7 @@ export class CoreRpcService {
 				id: users.id,
 				mainCharacterId: users.mainCharacterId,
 				is_admin: users.is_admin,
+				discordUserId: users.discordUserId,
 				createdAt: users.createdAt,
 				updatedAt: users.updatedAt,
 				mainCharacterName: userCharacters.characterName,
@@ -77,6 +78,7 @@ export class CoreRpcService {
 					mainCharacterName: user.mainCharacterName,
 					characterCount: Number(charCount[0]?.count ?? 0),
 					is_admin: user.is_admin,
+					discordUserId: user.discordUserId,
 					createdAt: user.createdAt,
 					updatedAt: user.updatedAt,
 				}

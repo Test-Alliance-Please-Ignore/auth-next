@@ -3,7 +3,6 @@ import { useLocation, useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { useStoreSession } from '@/hooks/useAuth'
 import { apiClient } from '@/lib/api'
 
 interface CharacterInfo {
@@ -13,8 +12,7 @@ interface CharacterInfo {
 }
 
 interface ClaimMainResponse {
-	sessionToken: string
-	expiresAt: string
+	success: boolean
 	user: {
 		id: string
 		mainCharacterId: number
@@ -24,7 +22,6 @@ interface ClaimMainResponse {
 export default function ClaimMainPage() {
 	const location = useLocation()
 	const navigate = useNavigate()
-	const storeSession = useStoreSession()
 	const [isLoading, setIsLoading] = useState(false)
 	const [error, setError] = useState<string | null>(null)
 
@@ -52,14 +49,11 @@ export default function ClaimMainPage() {
 
 		try {
 			// Only send characterId - server will fetch verified data from token store
-			const response = await apiClient.post<ClaimMainResponse>('/auth/claim-main', {
+			await apiClient.post<ClaimMainResponse>('/auth/claim-main', {
 				characterId: characterInfo.characterId,
 			})
 
-			// Store session token
-			storeSession(response.sessionToken)
-
-			// Redirect to dashboard
+			// Session cookie set by server, redirect to dashboard
 			void navigate('/dashboard')
 		} catch (err) {
 			console.error('Failed to claim main:', err)

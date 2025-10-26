@@ -1,12 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
 	ArrowLeft,
+	Check,
+	Copy,
 	MessageSquare,
 	Pencil,
 	Plus,
 	Settings,
 	Shield,
 	ShieldOff,
+	Ticket,
 	Trash2,
 	UserMinus,
 	X,
@@ -46,6 +49,11 @@ import {
 } from '@/hooks/useDiscord'
 import { useGroupMembers, useRemoveMember, useToggleAdmin } from '@/hooks/useGroupMembers'
 import { useGroup } from '@/hooks/useGroups'
+import {
+	useCreateInviteCode,
+	useGroupInviteCodes,
+	useRevokeInviteCode,
+} from '@/hooks/useInviteCodes'
 import { apiClient } from '@/lib/api'
 
 import type { GroupDiscordServer } from '@/lib/api'
@@ -69,6 +77,11 @@ export default function GroupDetailPage() {
 	const assignRole = useAssignRoleToGroupServer()
 	const unassignRole = useUnassignRoleFromGroupServer()
 
+	// Invite code hooks
+	const { data: inviteCodes = [] } = useGroupInviteCodes(groupId!)
+	const createInviteCode = useCreateInviteCode()
+	const revokeInviteCode = useRevokeInviteCode()
+
 	// Dialog state
 	const [removeDialogOpen, setRemoveDialogOpen] = useState(false)
 	const [adminDialogOpen, setAdminDialogOpen] = useState(false)
@@ -83,6 +96,14 @@ export default function GroupDetailPage() {
 		autoInvite: false,
 		autoAssignRoles: false,
 	})
+
+	// Invite code UI state
+	const [showCreateInviteCodeDialog, setShowCreateInviteCodeDialog] = useState(false)
+	const [inviteCodeSettings, setInviteCodeSettings] = useState({
+		maxUses: null as number | null,
+		expiresInDays: 7,
+	})
+	const [copiedCode, setCopiedCode] = useState<string | null>(null)
 
 	// Error/success messages
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -289,6 +310,59 @@ export default function GroupDetailPage() {
 		}
 	}
 
+	// Invite code handlers
+	const handleCreateInviteCode = async () => {
+		if (!groupId) return
+
+		try {
+			await createInviteCode.mutateAsync({
+				groupId,
+				maxUses: inviteCodeSettings.maxUses,
+				expiresInDays: inviteCodeSettings.expiresInDays,
+			})
+			setShowCreateInviteCodeDialog(false)
+			setInviteCodeSettings({ maxUses: null, expiresInDays: 7 })
+			setMessage({ type: 'success', text: 'Invite code created successfully!' })
+			setTimeout(() => setMessage(null), 3000)
+		} catch (error) {
+			setMessage({
+				type: 'error',
+				text: error instanceof Error ? error.message : 'Failed to create invite code',
+			})
+			setTimeout(() => setMessage(null), 5000)
+		}
+	}
+
+	const handleRevokeInviteCode = async (codeId: string) => {
+		if (!groupId) return
+
+		try {
+			await revokeInviteCode.mutateAsync({ codeId, groupId })
+			setMessage({ type: 'success', text: 'Invite code revoked successfully!' })
+			setTimeout(() => setMessage(null), 3000)
+		} catch (error) {
+			setMessage({
+				type: 'error',
+				text: error instanceof Error ? error.message : 'Failed to revoke invite code',
+			})
+			setTimeout(() => setMessage(null), 5000)
+		}
+	}
+
+	const handleCopyCode = async (code: string) => {
+		try {
+			await navigator.clipboard.writeText(code)
+			setCopiedCode(code)
+			setTimeout(() => setCopiedCode(null), 2000)
+		} catch (error) {
+			setMessage({
+				type: 'error',
+				text: 'Failed to copy code to clipboard',
+			})
+			setTimeout(() => setMessage(null), 3000)
+		}
+	}
+
 	// Loading state
 	if (groupLoading) {
 		return (
@@ -381,6 +455,187 @@ export default function GroupDetailPage() {
 
 			{/* Pending Join Requests */}
 			<PendingJoinRequestsList groupId={groupId!} />
+
+			{/* Invite Codes */}
+			<Card variant="interactive">
+				<CardHeader>
+					<div className="flex items-center justify-between">
+						<div>
+							<div className="flex items-center gap-2">
+								<Ticket className="h-5 w-5 text-primary" />
+								<CardTitle>Invite Codes</CardTitle>
+							</div>
+							<CardDescription>
+								Create reusable invite codes for this group. Codes can be shared to allow users to
+								join without approval.
+							</CardDescription>
+						</div>
+						<Button onClick={() => setShowCreateInviteCodeDialog(true)} size="sm">
+							<Plus className="mr-2 h-4 w-4" />
+							Create Code
+						</Button>
+					</div>
+				</CardHeader>
+				<CardContent>
+					{inviteCodes.length === 0 ? (
+						<div className="text-center py-8">
+							<Ticket className="mx-auto h-12 w-12 text-muted-foreground" />
+							<h3 className="mt-4 text-sm font-medium">No active invite codes</h3>
+							<p className="text-sm text-muted-foreground mt-2">
+								Create an invite code to allow users to join this group
+							</p>
+						</div>
+					) : (
+						<div className="space-y-3">
+							{inviteCodes.map((inviteCode) => {
+								const isExpired = new Date(inviteCode.expiresAt) < new Date()
+								const isMaxedOut =
+									inviteCode.maxUses !== null && inviteCode.currentUses >= inviteCode.maxUses
+								const inviteUrl = `${window.location.origin}/invite/${inviteCode.code}`
+
+								return (
+									<div
+										key={inviteCode.id}
+										className={`rounded-lg border p-4 ${isExpired || isMaxedOut ? 'opacity-50' : ''}`}
+									>
+										<div className="flex items-start justify-between">
+											<div className="flex-1 space-y-2">
+												<div className="flex items-center gap-2">
+													<code className="text-sm font-mono bg-muted px-2 py-1 rounded">
+														{inviteCode.code}
+													</code>
+													<Button
+														variant="ghost"
+														size="sm"
+														onClick={() => handleCopyCode(inviteCode.code)}
+														className="h-7 px-2"
+														title="Copy code"
+													>
+														{copiedCode === inviteCode.code ? (
+															<Check className="h-4 w-4 text-green-500" />
+														) : (
+															<Copy className="h-4 w-4" />
+														)}
+													</Button>
+													{(isExpired || isMaxedOut) && (
+														<span className="text-xs text-destructive font-medium">
+															{isExpired ? 'Expired' : 'Max uses reached'}
+														</span>
+													)}
+												</div>
+												<div className="flex items-center gap-2 text-xs">
+													<code className="bg-muted/50 px-2 py-1 rounded text-muted-foreground truncate max-w-md">
+														{inviteUrl}
+													</code>
+													<Button
+														variant="ghost"
+														size="sm"
+														onClick={() => handleCopyCode(inviteUrl)}
+														className="h-7 px-2 shrink-0"
+														title="Copy invite URL"
+													>
+														{copiedCode === inviteUrl ? (
+															<Check className="h-4 w-4 text-green-500" />
+														) : (
+															<Copy className="h-4 w-4" />
+														)}
+													</Button>
+												</div>
+												<div className="flex gap-4 text-xs text-muted-foreground">
+													<span>
+														Uses: {inviteCode.currentUses}
+														{inviteCode.maxUses ? ` / ${inviteCode.maxUses}` : ' (unlimited)'}
+													</span>
+													<span>
+														Expires: {new Date(inviteCode.expiresAt).toLocaleDateString()}
+													</span>
+													<span>
+														Created: {new Date(inviteCode.createdAt).toLocaleDateString()}
+													</span>
+												</div>
+											</div>
+											<Button
+												variant="ghost"
+												size="sm"
+												onClick={() => handleRevokeInviteCode(inviteCode.id)}
+												disabled={revokeInviteCode.isPending}
+											>
+												<Trash2 className="h-4 w-4 text-destructive" />
+											</Button>
+										</div>
+									</div>
+								)
+							})}
+						</div>
+					)}
+
+					{/* Create Invite Code Dialog */}
+					{showCreateInviteCodeDialog && (
+						<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+							<div className="bg-background rounded-lg p-6 max-w-md w-full space-y-4">
+								<h3 className="text-lg font-medium">Create Invite Code</h3>
+								<div className="space-y-4">
+									<div className="space-y-2">
+										<Label htmlFor="max-uses">Max Uses (optional)</Label>
+										<Input
+											id="max-uses"
+											type="number"
+											min="1"
+											placeholder="Unlimited"
+											value={inviteCodeSettings.maxUses ?? ''}
+											onChange={(e) =>
+												setInviteCodeSettings({
+													...inviteCodeSettings,
+													maxUses: e.target.value ? parseInt(e.target.value) : null,
+												})
+											}
+										/>
+										<p className="text-xs text-muted-foreground">
+											Leave empty for unlimited uses
+										</p>
+									</div>
+
+									<div className="space-y-2">
+										<Label htmlFor="expires-in-days">Expires In (days)</Label>
+										<Input
+											id="expires-in-days"
+											type="number"
+											min="1"
+											max="30"
+											value={inviteCodeSettings.expiresInDays}
+											onChange={(e) =>
+												setInviteCodeSettings({
+													...inviteCodeSettings,
+													expiresInDays: parseInt(e.target.value) || 7,
+												})
+											}
+										/>
+										<p className="text-xs text-muted-foreground">Between 1 and 30 days</p>
+									</div>
+								</div>
+
+								<div className="flex gap-2 pt-2">
+									<Button
+										onClick={handleCreateInviteCode}
+										disabled={createInviteCode.isPending}
+									>
+										{createInviteCode.isPending ? 'Creating...' : 'Create Code'}
+									</Button>
+									<Button
+										variant="outline"
+										onClick={() => {
+											setShowCreateInviteCodeDialog(false)
+											setInviteCodeSettings({ maxUses: null, expiresInDays: 7 })
+										}}
+									>
+										Cancel
+									</Button>
+								</div>
+							</div>
+						</div>
+					)}
+				</CardContent>
+			</Card>
 
 			{/* Discord Servers */}
 			<Card variant="interactive">

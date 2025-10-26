@@ -306,7 +306,7 @@ groups.post('/invitations/:id/decline', requireAuth(), async (c) => {
 /**
  * POST /:groupId/invite-codes
  *
- * Create an invite code for a group (owner only)
+ * Create an invite code for a group (owner or global admin)
  */
 groups.post('/:groupId/invite-codes', requireAuth(), async (c) => {
 	const user = c.get('user')!
@@ -321,7 +321,8 @@ groups.post('/:groupId/invite-codes', requireAuth(), async (c) => {
 				maxUses: body.maxUses ?? null,
 				expiresInDays: body.expiresInDays ?? 7,
 			},
-			user.id
+			user.id,
+			user.is_admin
 		)
 		return c.json(result, 201)
 	} catch (error) {
@@ -335,7 +336,7 @@ groups.post('/:groupId/invite-codes', requireAuth(), async (c) => {
 /**
  * GET /:groupId/invite-codes
  *
- * List invite codes for a group (owner/admin only)
+ * List invite codes for a group (owner/admin/global admin)
  */
 groups.get('/:groupId/invite-codes', requireAuth(), async (c) => {
 	const user = c.get('user')!
@@ -343,7 +344,7 @@ groups.get('/:groupId/invite-codes', requireAuth(), async (c) => {
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
-		const codes = await groupsDO.listInviteCodes(groupId, user.id)
+		const codes = await groupsDO.listInviteCodes(groupId, user.id, user.is_admin)
 		return c.json(codes)
 	} catch (error) {
 		if (error instanceof Error) {
@@ -356,7 +357,7 @@ groups.get('/:groupId/invite-codes', requireAuth(), async (c) => {
 /**
  * DELETE /invite-codes/:codeId
  *
- * Revoke an invite code (owner only)
+ * Revoke an invite code (owner or global admin)
  */
 groups.delete('/invite-codes/:codeId', requireAuth(), async (c) => {
 	const user = c.get('user')!
@@ -364,7 +365,7 @@ groups.delete('/invite-codes/:codeId', requireAuth(), async (c) => {
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
-		await groupsDO.revokeInviteCode(codeId, user.id)
+		await groupsDO.revokeInviteCode(codeId, user.id, user.is_admin)
 		return c.json({ success: true }, 200)
 	} catch (error) {
 		if (error instanceof Error) {

@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { getCookie } from 'hono/cookie'
+import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 
 import { eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
@@ -35,6 +35,34 @@ function getRequestMetadata(c: any): RequestMetadata {
 }
 
 /**
+ * GET /auth/login
+ *
+ * Initiate EVE SSO login flow and redirect user to EVE SSO.
+ * Supports optional redirect parameter for post-login navigation.
+ */
+auth.get('/login', async (c) => {
+	const redirectUrl = c.req.query('redirect')
+	const db = createDb(c.env.DATABASE_URL)
+	const eveTokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+
+	// Start login flow
+	const authUrl = await eveTokenStoreStub.startLoginFlow()
+
+	// Store state in database to track flow type and redirect URL
+	const expiresAt = new Date(Date.now() + 15 * 60 * 1000) // 15 minutes
+	await db.insert(oauthStates).values({
+		state: authUrl.state,
+		flowType: 'login',
+		userId: null,
+		redirectUrl: redirectUrl || null,
+		expiresAt,
+	})
+
+	// Redirect user to EVE SSO
+	return c.redirect(authUrl.url)
+})
+
+/**
  * POST /auth/login/start
  *
  * Start EVE SSO login flow (all scopes).
@@ -53,6 +81,7 @@ auth.post('/login/start', async (c) => {
 		state: authUrl.state,
 		flowType: 'login',
 		userId: null,
+		redirectUrl: null,
 		expiresAt,
 	})
 
@@ -83,6 +112,7 @@ auth.post('/character/start', requireAuth(), async (c) => {
 		state: authUrl.state,
 		flowType: 'character',
 		userId: user.id,
+		redirectUrl: null,
 		expiresAt,
 	})
 
@@ -116,6 +146,7 @@ auth.get('/callback', async (c) => {
 	// Look up the flow type from the state parameter
 	let flowType: string | null = null
 	let stateUserId: string | null = null
+	let redirectUrl: string | null = null
 
 	if (state) {
 		const oauthState = await db.query.oauthStates.findFirst({
@@ -130,6 +161,7 @@ auth.get('/callback', async (c) => {
 
 			flowType = oauthState.flowType
 			stateUserId = oauthState.userId
+			redirectUrl = oauthState.redirectUrl
 
 			// Delete the state after use (one-time use)
 			await db.delete(oauthStates).where(eq(oauthStates.state, state))
@@ -253,9 +285,23 @@ auth.get('/callback', async (c) => {
 			console.error('[Auth] Auto-registration failed:', error)
 		}
 
+		// Set session cookie
+		setCookie(c, 'session', session.sessionToken, {
+			httpOnly: true,
+			secure: true,
+			sameSite: 'Lax',
+			maxAge: 60 * 60 * 24 * 30, // 30 days
+			path: '/',
+		})
+
+		// If there's a redirect URL, redirect to it (for direct login links)
+		if (redirectUrl) {
+			return c.redirect(redirectUrl)
+		}
+
+		// Otherwise return JSON for API usage
 		return c.json({
-			sessionToken: session.sessionToken,
-			expiresAt: session.expiresAt,
+			success: true,
 			user: {
 				id: user.id,
 				requiresClaimMain: false,
@@ -343,9 +389,17 @@ auth.post('/claim-main', async (c) => {
 		console.error('[Auth] Auto-registration failed:', error)
 	}
 
+	// Set session cookie
+	setCookie(c, 'session', session.sessionToken, {
+		httpOnly: true,
+		secure: true,
+		sameSite: 'Lax',
+		maxAge: 60 * 60 * 24 * 30, // 30 days
+		path: '/',
+	})
+
 	return c.json({
-		sessionToken: session.sessionToken,
-		expiresAt: session.expiresAt,
+		success: true,
 		user: {
 			id: user.id,
 			mainCharacterId: user.mainCharacterId,
@@ -438,6 +492,11 @@ auth.post('/logout', requireAuth(), async (c) => {
 	await authService.revokeSession(sessionToken)
 
 	await activityService.logLogout(user.id, getRequestMetadata(c))
+
+	// Delete session cookie
+	deleteCookie(c, 'session', {
+		path: '/',
+	})
 
 	return c.json({
 		success: true,

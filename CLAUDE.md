@@ -200,15 +200,19 @@ just db-generate-all
 # Generate for specific app
 just db-generate <app-name>
 
-# Push schema changes (development)
-just db-push <app-name>
-
 # Run migrations
 just db-migrate <app-name>
 
 # Open Drizzle Studio
 just db-studio <app-name>
 ```
+
+**CRITICAL: NEVER USE `db-push` OR `drizzle-kit push`**
+- **NEVER** run `just db-push` or `pnpm db:push` - not even in development
+- **NEVER** run `drizzle-kit push` directly
+- **ALWAYS** use migrations via `db:generate` and `db:migrate`
+- Schema changes must be tracked in version control as migration files
+- Using push bypasses migration history and can cause data loss
 
 ### Generators
 ```bash
@@ -342,9 +346,10 @@ Each worker app that uses a database:
 
 Database commands in apps should have these scripts:
 - `db:generate` - Generate migrations from schema
-- `db:push` - Push schema changes (dev only)
 - `db:migrate` - Run migrations
 - `db:studio` - Open Drizzle Studio
+
+**CRITICAL:** Never use `db:push` or `drizzle-kit push` even in development. Always use the migration workflow.
 
 ### HTTP Request Deduplication Pattern
 

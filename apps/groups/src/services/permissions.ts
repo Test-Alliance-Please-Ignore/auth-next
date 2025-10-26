@@ -114,10 +114,17 @@ export function canViewGroupMembers(
 }
 
 /**
- * Check if a user can manage a group (owner only)
+ * Check if a user can manage a group (owner or global admin)
  */
-export function canManageGroup(group: Group, userId: string | undefined): boolean {
+export function canManageGroup(
+	group: Group,
+	userId: string | undefined,
+	isGlobalAdmin = false
+): boolean {
 	if (!userId) return false
+	// Global admins can manage any group
+	if (isGlobalAdmin) return true
+	// Group owner can manage their group
 	return group.ownerId === userId
 }
 
@@ -130,10 +137,14 @@ export function isGroupOwner(group: Group, userId: string | undefined): boolean 
 }
 
 /**
- * Check if a user can manage group admins (owner only)
+ * Check if a user can manage group admins (owner or global admin)
  */
-export function canManageAdmins(group: Group, userId: string | undefined): boolean {
-	return canManageGroup(group, userId)
+export function canManageAdmins(
+	group: Group,
+	userId: string | undefined,
+	isGlobalAdmin = false
+): boolean {
+	return canManageGroup(group, userId, isGlobalAdmin)
 }
 
 /**
@@ -161,10 +172,14 @@ export function canInviteToGroup(
 }
 
 /**
- * Check if a user can create invite codes (owner only)
+ * Check if a user can create invite codes (owner or global admin)
  */
-export function canCreateInviteCode(group: Group, userId: string | undefined): boolean {
-	return canManageGroup(group, userId)
+export function canCreateInviteCode(
+	group: Group,
+	userId: string | undefined,
+	isGlobalAdmin = false
+): boolean {
+	return canManageGroup(group, userId, isGlobalAdmin)
 }
 
 /**
@@ -179,10 +194,14 @@ export function canViewInviteCodes(
 }
 
 /**
- * Check if a user can revoke invite codes (owner only)
+ * Check if a user can revoke invite codes (owner or global admin)
  */
-export function canRevokeInviteCode(group: Group, userId: string | undefined): boolean {
-	return canManageGroup(group, userId)
+export function canRevokeInviteCode(
+	group: Group,
+	userId: string | undefined,
+	isGlobalAdmin = false
+): boolean {
+	return canManageGroup(group, userId, isGlobalAdmin)
 }
 
 /**

@@ -80,24 +80,26 @@ export default function GroupDetailPage() {
 					</CardContent>
 				</Card>
 
-				{/* Members List */}
-				<Card variant="interactive">
-					<CardHeader>
-						<CardTitle className="flex items-center gap-2">
-							<Users className="h-5 w-5" />
-							Members ({group.memberCount || 0})
-						</CardTitle>
-						<CardDescription>All members of this group</CardDescription>
-					</CardHeader>
-					<CardContent>
-						<MemberListReadonly
-							members={members || []}
-							group={group}
-							currentUserId={user?.id}
-							isLoading={membersLoading}
-						/>
-					</CardContent>
-				</Card>
+				{/* Members List - Only show to members */}
+				{group.isMember && (
+					<Card variant="interactive">
+						<CardHeader>
+							<CardTitle className="flex items-center gap-2">
+								<Users className="h-5 w-5" />
+								Members ({group.memberCount || 0})
+							</CardTitle>
+							<CardDescription>All members of this group</CardDescription>
+						</CardHeader>
+						<CardContent>
+							<MemberListReadonly
+								members={members || []}
+								group={group}
+								currentUserId={user?.id}
+								isLoading={membersLoading}
+							/>
+						</CardContent>
+					</Card>
+				)}
 
 				{/* Pending Join Requests - Owner/Admin Only */}
 				{(group.isOwner || group.isAdmin) && <PendingJoinRequestsList groupId={groupId!} />}

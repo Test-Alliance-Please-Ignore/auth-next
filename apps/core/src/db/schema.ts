@@ -176,6 +176,8 @@ export const oauthStates = pgTable(
 		flowType: varchar('flow_type', { length: 50 }).notNull(),
 		/** Optional user ID for character/discord linking (must be authenticated) */
 		userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+		/** Optional redirect URL after successful authentication */
+		redirectUrl: varchar('redirect_url', { length: 500 }),
 		/** When this state was created */
 		createdAt: timestamp('created_at').defaultNow().notNull(),
 		/** When this state expires (15 minutes from creation) */

@@ -150,6 +150,18 @@ export interface GroupInvitationWithDetails {
 	}
 }
 
+export interface GroupInviteCode {
+	id: string
+	groupId: string
+	code: string
+	createdBy: string
+	maxUses: number | null
+	currentUses: number
+	expiresAt: string
+	createdAt: string
+	revokedAt: string | null
+}
+
 export interface GroupDiscordServer {
 	id: string
 	groupId: string
@@ -402,6 +414,7 @@ export interface AdminUser {
 	mainCharacterName: string | null
 	characterCount: number
 	is_admin: boolean
+	discordUserId: string | null
 	createdAt: string
 	updatedAt: string
 }
@@ -475,14 +488,11 @@ export class ApiClient {
 	private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
 		const url = `${this.baseUrl}${endpoint}`
 
-		// Get session token from localStorage
-		const sessionToken = typeof window !== 'undefined' ? localStorage.getItem('sessionToken') : null
-
 		const response = await fetch(url, {
 			...options,
+			credentials: 'include', // Send cookies with requests
 			headers: {
 				'Content-Type': 'application/json',
-				...(sessionToken && { Authorization: `Bearer ${sessionToken}` }),
 				...options?.headers,
 			},
 		})
@@ -762,6 +772,23 @@ export class ApiClient {
 		)
 	}
 
+	// Group Invite Codes
+
+	async getGroupInviteCodes(groupId: string): Promise<GroupInviteCode[]> {
+		return this.get(`/groups/${groupId}/invite-codes`)
+	}
+
+	async createGroupInviteCode(
+		groupId: string,
+		data: { maxUses?: number | null; expiresInDays?: number }
+	): Promise<{ code: GroupInviteCode }> {
+		return this.post(`/groups/${groupId}/invite-codes`, data)
+	}
+
+	async revokeGroupInviteCode(codeId: string): Promise<{ success: boolean }> {
+		return this.delete(`/groups/invite-codes/${codeId}`)
+	}
+
 	// ===== Corporations API Methods =====
 
 	async getCorporations(): Promise<ManagedCorporation[]> {
@@ -992,6 +1019,21 @@ export class ApiClient {
 
 		const query = params.toString()
 		return this.get(`/admin/activity-logs${query ? `?${query}` : ''}`)
+	}
+
+	async triggerDiscordJoin(userId: string): Promise<{
+		results: Array<{
+			guildId: string
+			guildName: string
+			corporationName: string
+			success: boolean
+			errorMessage?: string
+			alreadyMember?: boolean
+		}>
+		totalInvited: number
+		totalFailed: number
+	}> {
+		return this.post(`/admin/users/${userId}/discord/join-servers`)
 	}
 }
 

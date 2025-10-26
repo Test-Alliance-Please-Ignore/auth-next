@@ -47,6 +47,7 @@ export interface UserSummary {
 	mainCharacterName: string | null
 	characterCount: number
 	is_admin: boolean
+	discordUserId: string | null
 	createdAt: Date
 	updatedAt: Date
 }

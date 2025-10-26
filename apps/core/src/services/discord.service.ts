@@ -1,4 +1,4 @@
-import { and, eq, isNotNull } from '@repo/db-utils'
+import { and, eq, inArray, isNotNull } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
@@ -42,6 +42,7 @@ export async function startLinkFlow(env: Env, userId: string): Promise<string> {
 		state,
 		flowType: 'discord',
 		userId,
+		redirectUrl: null,
 		expiresAt,
 	})
 
@@ -391,6 +392,41 @@ export async function joinUserToCorporationServers(
 						})
 
 						if (serverInfo) {
+							// Fetch actual Discord role IDs from Core registry
+							// discordServer.roleIds contains UUIDs that reference core.discord_roles.id
+							// We need to fetch the actual Discord snowflake IDs
+							let actualRoleIds: string[] = []
+							if (discordServer.roleIds && discordServer.roleIds.length > 0) {
+								logger.info('[Discord] Fetching group role details', {
+									groupId: group.groupId,
+									discordServerId: discordServer.id,
+									roleUUIDs: discordServer.roleIds,
+								})
+
+								const roleRecords = await db.query.discordRoles.findMany({
+									where: and(
+										inArray(discordRoles.id, discordServer.roleIds),
+										eq(discordRoles.isActive, true)
+									),
+								})
+								actualRoleIds = roleRecords.map((r) => r.roleId)
+
+								logger.info('[Discord] Resolved group Discord role IDs', {
+									groupId: group.groupId,
+									uuidCount: discordServer.roleIds.length,
+									resolvedCount: actualRoleIds.length,
+									roleIds: actualRoleIds,
+								})
+
+								if (discordServer.roleIds.length > 0 && actualRoleIds.length === 0) {
+									logger.warn('[Discord] No active roles found for group Discord server', {
+										groupId: group.groupId,
+										discordServerId: discordServer.id,
+										expectedCount: discordServer.roleIds.length,
+									})
+								}
+							}
+
 							guildsToJoin.push({
 								type: 'group',
 								guildId: serverInfo.guildId,
@@ -398,13 +434,13 @@ export async function joinUserToCorporationServers(
 								groupId: group.groupId,
 								groupName: group.groupName,
 								discordServerId: discordServer.id,
-								roleIds: discordServer.roleIds || [],
+								roleIds: actualRoleIds,
 							})
 							logger.info('[Discord] User is member of group with Discord', {
 								groupId: group.groupId,
 								groupName: group.groupName,
 								guildId: serverInfo.guildId,
-								roleCount: discordServer.roleIds?.length || 0,
+								roleCount: actualRoleIds.length,
 							})
 						}
 					}

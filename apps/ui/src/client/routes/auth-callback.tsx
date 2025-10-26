@@ -1,12 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
-import { useStoreSession } from '@/hooks/useAuth'
 import { apiClient } from '@/lib/api'
 
 interface CallbackResponse {
-	sessionToken?: string
-	expiresAt?: string
+	success?: boolean
 	user?: {
 		id: string
 		requiresClaimMain?: boolean
@@ -30,7 +28,6 @@ interface CallbackResponse {
 export default function AuthCallbackPage() {
 	const [searchParams] = useSearchParams()
 	const navigate = useNavigate()
-	const storeSession = useStoreSession()
 	const [error, setError] = useState<string | null>(null)
 	const hasCalledCallback = useRef(false)
 
@@ -68,9 +65,8 @@ export default function AuthCallbackPage() {
 							characterInfo: response.characterInfo,
 						},
 					})
-				} else if (response.sessionToken) {
-					// Existing user logging in - store session and redirect to dashboard
-					storeSession(response.sessionToken)
+				} else if (response.success) {
+					// Existing user logging in - session cookie set by server, redirect to dashboard
 					void navigate('/dashboard')
 				} else {
 					setError('Unexpected response from server')
@@ -82,7 +78,7 @@ export default function AuthCallbackPage() {
 		}
 
 		void handleCallback()
-	}, [searchParams, navigate, storeSession])
+	}, [searchParams, navigate])
 
 	if (error) {
 		return (

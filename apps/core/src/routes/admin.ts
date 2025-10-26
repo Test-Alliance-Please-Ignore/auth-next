@@ -280,4 +280,128 @@ app.get('/activity-log', requireAuth(), requireAdmin(), async (c) => {
 	}
 })
 
+/**
+ * POST /admin/users/:userId/admin
+ * Set or revoke admin status for a user
+ *
+ * Body: { isAdmin: boolean }
+ */
+app.post('/users/:userId/admin', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	const userId = c.req.param('userId')
+
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		const body = await c.req.json<{ isAdmin: boolean }>()
+		const { isAdmin } = body
+
+		if (typeof isAdmin !== 'boolean') {
+			return c.json({ error: 'isAdmin must be a boolean' }, 400)
+		}
+
+		const { users } = await import('../db/schema')
+		const { eq } = await import('@repo/db-utils')
+		const { createDb } = await import('../db')
+
+		const db = createDb(c.env.DATABASE_URL)
+
+		// Update user admin status
+		await db.update(users).set({ is_admin: isAdmin }).where(eq(users.id, userId))
+
+		return c.json({ success: true })
+	} catch (error) {
+		logger.error('Error setting user admin status:', error)
+		return c.json({ error: 'Failed to set admin status' }, 500)
+	}
+})
+
+/**
+ * DELETE /admin/users/:userId/characters/:characterId
+ * Delete a character from a user account
+ */
+app.delete('/users/:userId/characters/:characterId', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	const userId = c.req.param('userId')
+	const characterId = c.req.param('characterId')
+
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		const { userCharacters } = await import('../db/schema')
+		const { eq, and } = await import('@repo/db-utils')
+		const { createDb } = await import('../db')
+		const { getStub } = await import('@repo/do-utils')
+
+		const db = createDb(c.env.DATABASE_URL)
+
+		// Verify character belongs to user
+		const char = await db.query.userCharacters.findFirst({
+			where: and(eq(userCharacters.userId, userId), eq(userCharacters.characterId, characterId)),
+		})
+
+		if (!char) {
+			return c.json({ error: 'Character not found' }, 404)
+		}
+
+		// Check if this is the user's only character
+		const userChars = await db.query.userCharacters.findMany({
+			where: eq(userCharacters.userId, userId),
+		})
+
+		if (userChars.length === 1) {
+			return c.json({ error: 'Cannot delete the only character on an account' }, 400)
+		}
+
+		// Revoke ESI token
+		const eveTokenStore = getStub<import('@repo/eve-token-store').EveTokenStore>(
+			c.env.EVE_TOKEN_STORE,
+			'default'
+		)
+		await eveTokenStore.revokeToken(characterId)
+
+		// Delete character
+		await db.delete(userCharacters).where(eq(userCharacters.characterId, characterId))
+
+		return c.json({ success: true })
+	} catch (error) {
+		logger.error('Error deleting character:', error)
+		return c.json({ error: 'Failed to delete character' }, 500)
+	}
+})
+
+/**
+ * POST /admin/users/:userId/discord/join-servers
+ * Trigger Discord server joining for a specific user (admin action)
+ *
+ * Joins the user to all corporation and group Discord servers they're eligible for
+ */
+app.post('/users/:userId/discord/join-servers', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	const userId = c.req.param('userId')
+
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		const discordService = await import('../services/discord.service')
+		const result = await discordService.joinUserToCorporationServers(c.env, userId)
+
+		return c.json(result)
+	} catch (error) {
+		logger.error('Error joining user to Discord servers:', error)
+		return c.json(
+			{
+				error: error instanceof Error ? error.message : 'Failed to join Discord servers',
+			},
+			500
+		)
+	}
+})
+
 export default app

@@ -1,0 +1,1 @@
+ALTER TABLE "oauth_states" ADD COLUMN "redirect_url" varchar(500);

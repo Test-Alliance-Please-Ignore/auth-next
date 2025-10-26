@@ -201,6 +201,19 @@ export interface RedeemInviteCodeResponse {
 	message?: string
 }
 
+export interface GroupByInviteCodeResponse {
+	group: GroupWithDetails
+	inviteCode: {
+		isValid: boolean
+		isExpired: boolean
+		isRevoked: boolean
+		hasRemainingUses: boolean
+		expiresAt: Date
+	}
+	canJoin: boolean
+	errorMessage?: string
+}
+
 export interface GroupMembershipSummary {
 	groupId: string
 	groupName: string
@@ -354,17 +367,21 @@ export interface Groups {
 	/** Create an invite code (owner only) */
 	createInviteCode(
 		data: CreateInviteCodeRequest,
-		ownerId: string
+		userId: string,
+		isAdmin?: boolean
 	): Promise<CreateInviteCodeResponse>
 
-	/** List invite codes for a group (owner/admin only) */
-	listInviteCodes(groupId: string, userId: string): Promise<GroupInviteCode[]>
+	/** List invite codes for a group (owner/admin/global admin only) */
+	listInviteCodes(groupId: string, userId: string, isGlobalAdmin?: boolean): Promise<GroupInviteCode[]>
 
-	/** Revoke an invite code (owner only) */
-	revokeInviteCode(codeId: string, ownerId: string): Promise<void>
+	/** Revoke an invite code (owner/global admin only) */
+	revokeInviteCode(codeId: string, userId: string, isAdmin?: boolean): Promise<void>
 
 	/** Redeem an invite code */
 	redeemInviteCode(code: string, userId: string): Promise<RedeemInviteCodeResponse>
+
+	/** Get group information by invite code (for preview/landing page) */
+	getGroupByInviteCode(code: string, userId?: string): Promise<GroupByInviteCodeResponse>
 
 	/**
 	 * Discord Server Operations

@@ -20,7 +20,7 @@ import {
 // Import Core database schema for Discord server and role lookups
 import { discordRoles, discordServers } from '../../core/src/db/schema'
 import * as coreSchema from '../../core/src/db/schema'
-import { generateShortInviteCode } from './services/code-generator'
+import { generateInviteCode } from './services/code-generator'
 import {
 	canCreateGroupInCategory,
 	canManageGroup,
@@ -1139,7 +1139,8 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 	async createInviteCode(
 		data: CreateInviteCodeRequest,
-		ownerId: string
+		userId: string,
+		isAdmin = false
 	): Promise<CreateInviteCodeResponse> {
 		const group = await this.db.query.groups.findFirst({
 			where: eq(groups.id, data.groupId),
@@ -1149,8 +1150,8 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Group not found')
 		}
 
-		if (!canManageGroup(group, ownerId)) {
-			throw new Error('Only the group owner can create invite codes')
+		if (!canManageGroup(group, userId, isAdmin)) {
+			throw new Error('Only the group owner or global admin can create invite codes')
 		}
 
 		// Validate expiration
@@ -1159,14 +1160,14 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		}
 
 		// Generate unique code
-		let code = generateShortInviteCode()
+		let code = generateInviteCode()
 		let attempts = 0
 		while (attempts < 10) {
 			const existing = await this.db.query.groupInviteCodes.findFirst({
 				where: eq(groupInviteCodes.code, code),
 			})
 			if (!existing) break
-			code = generateShortInviteCode()
+			code = generateInviteCode()
 			attempts++
 		}
 
@@ -1182,7 +1183,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			.values({
 				groupId: data.groupId,
 				code,
-				createdBy: ownerId,
+				createdBy: userId,
 				maxUses: data.maxUses || null,
 				currentUses: 0,
 				expiresAt,
@@ -1194,7 +1195,11 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		}
 	}
 
-	async listInviteCodes(groupId: string, userId: string): Promise<GroupInviteCode[]> {
+	async listInviteCodes(
+		groupId: string,
+		userId: string,
+		isGlobalAdmin = false
+	): Promise<GroupInviteCode[]> {
 		const group = await this.db.query.groups.findFirst({
 			where: eq(groups.id, groupId),
 		})
@@ -1203,10 +1208,11 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Group not found')
 		}
 
-		const isAdmin = await this.isUserGroupAdmin(groupId, userId)
+		const isGroupAdmin = await this.isUserGroupAdmin(groupId, userId)
 
-		if (!canModerateGroup(group, userId, isAdmin)) {
-			throw new Error('Only group owner or admins can view invite codes')
+		// Global admins, group owner, or group admins can view invite codes
+		if (!isGlobalAdmin && !canModerateGroup(group, userId, isGroupAdmin)) {
+			throw new Error('Only group owner, group admins, or global admins can view invite codes')
 		}
 
 		const codes = await this.db.query.groupInviteCodes.findMany({
@@ -1217,7 +1223,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		return codes.map(this.mapGroupInviteCode)
 	}
 
-	async revokeInviteCode(codeId: string, ownerId: string): Promise<void> {
+	async revokeInviteCode(codeId: string, userId: string, isAdmin = false): Promise<void> {
 		const inviteCode = await this.db.query.groupInviteCodes.findFirst({
 			where: eq(groupInviteCodes.id, codeId),
 			with: {
@@ -1229,14 +1235,119 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Invite code not found')
 		}
 
-		if (!canManageGroup(inviteCode.group, ownerId)) {
-			throw new Error('Only the group owner can revoke invite codes')
+		if (!canManageGroup(inviteCode.group, userId, isAdmin)) {
+			throw new Error('Only the group owner or global admin can revoke invite codes')
 		}
 
 		await this.db
 			.update(groupInviteCodes)
 			.set({ revokedAt: new Date() })
 			.where(eq(groupInviteCodes.id, codeId))
+	}
+
+	async getGroupByInviteCode(
+		code: string,
+		userId?: string
+	): Promise<import('@repo/groups').GroupByInviteCodeResponse> {
+		const inviteCode = await this.db.query.groupInviteCodes.findFirst({
+			where: eq(groupInviteCodes.code, code),
+			with: {
+				group: {
+					with: {
+						category: true,
+					},
+				},
+			},
+		})
+
+		if (!inviteCode) {
+			throw new Error('Invalid invite code')
+		}
+
+		const now = new Date()
+		const isExpired = inviteCode.expiresAt < now
+		const isRevoked = inviteCode.revokedAt !== null
+		const hasRemainingUses =
+			inviteCode.maxUses === null || inviteCode.currentUses < inviteCode.maxUses
+		const isValid = !isExpired && !isRevoked && hasRemainingUses
+
+		// Build group details directly (bypass permission checks since invite code is the authorization)
+		const group = inviteCode.group
+		const category = inviteCode.group.category
+
+		// Get member count
+		const memberCount = await this.db
+			.select({ count: sql<number>`count(*)::int` })
+			.from(groupMembers)
+			.where(eq(groupMembers.groupId, group.id))
+			.then((rows) => rows[0]?.count || 0)
+
+		// Check user's relationship to the group
+		let isOwner = false
+		let isAdmin = false
+		let isMember = false
+
+		if (userId) {
+			isOwner = group.ownerId === userId
+			isAdmin = await this.isUserGroupAdmin(group.id, userId)
+			isMember = await this.isUserMember(group.id, userId)
+		}
+
+		const groupDetails: import('@repo/groups').GroupWithDetails = {
+			...this.mapGroup(group),
+			category: this.mapCategory(category),
+			memberCount,
+			isOwner,
+			isAdmin,
+			isMember,
+		}
+
+		// Check if user can join
+		let canJoin = isValid
+		let errorMessage: string | undefined
+
+		if (userId) {
+			if (isMember) {
+				canJoin = false
+				errorMessage = 'You are already a member of this group'
+			}
+
+			// Check if already redeemed this code
+			const existingRedemption = await this.db.query.groupInviteCodeRedemptions.findFirst({
+				where: and(
+					eq(groupInviteCodeRedemptions.inviteCodeId, inviteCode.id),
+					eq(groupInviteCodeRedemptions.userId, userId)
+				),
+			})
+
+			if (existingRedemption) {
+				canJoin = false
+				errorMessage = 'You have already redeemed this invite code'
+			}
+		}
+
+		if (!isValid) {
+			if (isRevoked) {
+				errorMessage = 'This invite code has been revoked'
+			} else if (isExpired) {
+				errorMessage = 'This invite code has expired'
+			} else if (!hasRemainingUses) {
+				errorMessage = 'This invite code has reached its usage limit'
+			}
+		}
+
+		return {
+			group: groupDetails,
+			inviteCode: {
+				isValid,
+				isExpired,
+				isRevoked,
+				hasRemainingUses,
+				expiresAt: inviteCode.expiresAt,
+			},
+			canJoin,
+			errorMessage,
+		}
 	}
 
 	async redeemInviteCode(code: string, userId: string): Promise<RedeemInviteCodeResponse> {

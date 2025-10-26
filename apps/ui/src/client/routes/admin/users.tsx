@@ -1,4 +1,4 @@
-import { ExternalLink, Filter, Search, UserCircle } from 'lucide-react'
+import { ExternalLink, Filter, Search, UserCircle, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/table'
 import { UserSearchDialog } from '@/components/user-search-dialog'
 import { useAdminUsers } from '@/hooks/useAdminUsers'
+import { api } from '@/lib/api'
 import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
@@ -27,6 +28,11 @@ export default function UsersPage() {
 	const [adminFilter, setAdminFilter] = useState<string>('all')
 	const [page, setPage] = useState(1)
 	const [pageSize, setPageSize] = useState(25)
+	const [joiningUserId, setJoiningUserId] = useState<string | null>(null)
+	const [joinMessage, setJoinMessage] = useState<{
+		type: 'success' | 'error'
+		text: string
+	} | null>(null)
 
 	// Debounce search query
 	useEffect(() => {
@@ -56,6 +62,42 @@ export default function UsersPage() {
 		setPage(1) // Reset to first page
 	}
 
+	const handleDiscordJoin = async (userId: string) => {
+		setJoiningUserId(userId)
+		setJoinMessage(null)
+
+		try {
+			const result = await api.triggerDiscordJoin(userId)
+
+			if (result.totalInvited > 0) {
+				setJoinMessage({
+					type: 'success',
+					text: `Successfully joined ${result.totalInvited} Discord server${result.totalInvited !== 1 ? 's' : ''}${result.totalFailed > 0 ? ` (${result.totalFailed} failed)` : ''}`,
+				})
+			} else if (result.totalFailed > 0) {
+				setJoinMessage({
+					type: 'error',
+					text: `Failed to join ${result.totalFailed} Discord server${result.totalFailed !== 1 ? 's' : ''}`,
+				})
+			} else {
+				setJoinMessage({
+					type: 'success',
+					text: 'No eligible Discord servers found for this user',
+				})
+			}
+
+			setTimeout(() => setJoinMessage(null), 5000)
+		} catch (error) {
+			setJoinMessage({
+				type: 'error',
+				text: error instanceof Error ? error.message : 'Failed to join Discord servers',
+			})
+			setTimeout(() => setJoinMessage(null), 5000)
+		} finally {
+			setJoiningUserId(null)
+		}
+	}
+
 	return (
 		<div className="space-y-6">
 			{/* Page Header */}
@@ -69,6 +111,23 @@ export default function UsersPage() {
 					Quick Search
 				</Button>
 			</div>
+
+			{/* Success/Error Message */}
+			{joinMessage && (
+				<Card
+					className={
+						joinMessage.type === 'error'
+							? 'border-destructive bg-destructive/10'
+							: 'border-primary bg-primary/10'
+					}
+				>
+					<CardContent className="py-3">
+						<p className={joinMessage.type === 'error' ? 'text-destructive' : 'text-primary'}>
+							{joinMessage.text}
+						</p>
+					</CardContent>
+				</Card>
+			)}
 
 			{/* Filters */}
 			<Card variant="interactive">
@@ -179,7 +238,22 @@ export default function UsersPage() {
 												</div>
 											</TableCell>
 											<TableCell>
-												<span className="text-sm text-muted-foreground">Not available</span>
+												{user.discordUserId ? (
+													<div className="flex items-center gap-2">
+														<span className="font-mono text-xs">{user.discordUserId}</span>
+														<Button
+															variant="ghost"
+															size="sm"
+															onClick={() => handleDiscordJoin(user.id)}
+															disabled={joiningUserId === user.id}
+															title="Join Discord servers"
+														>
+															<Users className="h-4 w-4" />
+														</Button>
+													</div>
+												) : (
+													<span className="text-sm text-muted-foreground">Not linked</span>
+												)}
 											</TableCell>
 											<TableCell>
 												{user.is_admin && (
