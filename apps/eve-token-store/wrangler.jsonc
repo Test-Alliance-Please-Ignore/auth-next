@@ -5,7 +5,7 @@
 	"compatibility_date": "2025-04-28",
 	"compatibility_flags": ["nodejs_compat"],
 	"routes": ["pleaseignore.app/evesso/*"],
-	"logpush": true,
+	"logpush": false,
 	"observability": {
 		"enabled": true,
 		"head_sampling_rate": 1

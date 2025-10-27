@@ -6,7 +6,7 @@
 	"compatibility_flags": ["nodejs_compat"],
 	"workers_dev": false,
 	"routes": [],
-	"logpush": true,
+	"logpush": false,
 	"observability": {
 		"enabled": true,
 		"head_sampling_rate": 1

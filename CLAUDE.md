@@ -619,7 +619,7 @@ Workers use `wrangler.jsonc` (JSON with comments). Standard configuration:
   "compatibility_date": "2025-03-07",
   "compatibility_flags": ["nodejs_compat"],
   "routes": [],
-  "logpush": true,
+  "logpush": false,
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1

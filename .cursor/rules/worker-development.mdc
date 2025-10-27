@@ -84,7 +84,7 @@ app.use('*', cors(), logger())
 	"compatibility_date": "2025-04-28",
 	"compatibility_flags": ["nodejs_compat"],
 	"routes": [],
-	"logpush": true,
+	"logpush": false,
 	"observability": {
 		"enabled": true,
 	},

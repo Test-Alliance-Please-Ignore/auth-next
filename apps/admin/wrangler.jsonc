@@ -4,7 +4,7 @@
 	"main": "src/index.ts",
 	"compatibility_date": "2025-03-07",
 	"compatibility_flags": ["nodejs_compat"],
-	"logpush": true,
+	"logpush": false,
 	"observability": {
 		"enabled": true,
 		"head_sampling_rate": 1
