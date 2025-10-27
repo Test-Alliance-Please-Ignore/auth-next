@@ -3,6 +3,15 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 
 import Layout from './components/layout'
 import AdminActivityLogPage from './routes/admin/activity-log'
+import AdminBillsDashboardPage from './routes/admin/bills-dashboard'
+import AdminBillsNewPage from './routes/admin/bills-new'
+import AdminBillsPage from './routes/admin/bills'
+import AdminBillsSchedulesEditPage from './routes/admin/bills-schedules-edit'
+import AdminBillsSchedulesNewPage from './routes/admin/bills-schedules-new'
+import AdminBillsSchedulesPage from './routes/admin/bills-schedules'
+import AdminBillsTemplatesEditPage from './routes/admin/bills-templates-edit'
+import AdminBillsTemplatesNewPage from './routes/admin/bills-templates-new'
+import AdminBillsTemplatesPage from './routes/admin/bills-templates'
 import AdminCategoriesPage from './routes/admin/categories'
 import AdminCorporationDetailPage from './routes/admin/corporation-detail'
 import AdminCorporationsPage from './routes/admin/corporations'
@@ -75,6 +84,17 @@ export default function App() {
 						<Route path="users" element={<AdminUsersPage />} />
 						<Route path="users/:userId" element={<AdminUserDetailPage />} />
 						<Route path="activity-log" element={<AdminActivityLogPage />} />
+
+						{/* Bills routes */}
+						<Route path="bills" element={<AdminBillsPage />} />
+						<Route path="bills/new" element={<AdminBillsNewPage />} />
+						<Route path="bills/dashboard" element={<AdminBillsDashboardPage />} />
+						<Route path="bills/templates" element={<AdminBillsTemplatesPage />} />
+						<Route path="bills/templates/new" element={<AdminBillsTemplatesNewPage />} />
+						<Route path="bills/templates/:id" element={<AdminBillsTemplatesEditPage />} />
+						<Route path="bills/schedules" element={<AdminBillsSchedulesPage />} />
+						<Route path="bills/schedules/new" element={<AdminBillsSchedulesNewPage />} />
+						<Route path="bills/schedules/:id" element={<AdminBillsSchedulesEditPage />} />
 					</Route>
 				</Routes>
 			</BrowserRouter>

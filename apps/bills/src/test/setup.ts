@@ -1,7 +1,11 @@
 import { env } from 'cloudflare:test'
-import { makeNeonTesting } from 'neon-testing'
+import { afterAll, beforeAll } from 'vitest'
 
-import { createDbClientRaw, migrate } from '@repo/db-utils'
+import { TestBranchManager } from '@repo/db-utils'
+
+if (!env.NEON_API_KEY || !env.NEON_PROJECT_ID) {
+	throw new Error('NEON_API_KEY and NEON_PROJECT_ID must be set')
+}
 
 /**
  * Test setup for bills integration tests
@@ -11,13 +15,21 @@ import { createDbClientRaw, migrate } from '@repo/db-utils'
  *
  * Requires NEON_API_KEY and NEON_PROJECT_ID environment variables.
  */
-if (!env.NEON_API_KEY || !env.NEON_PROJECT_ID) {
-	throw new Error('NEON_API_KEY and NEON_PROJECT_ID must be set')
-}
 
-export const withNeonTestBranch = makeNeonTesting({
-	apiKey: env.NEON_API_KEY!,
-	projectId: env.NEON_PROJECT_ID!,
-	// Recommended for Neon WebSocket drivers to automatically close connections:
-	autoCloseWebSockets: true,
+export const testBranchManager = new TestBranchManager({
+	NEON_API_KEY: env.NEON_API_KEY!,
+	NEON_PROJECT_ID: env.NEON_PROJECT_ID!,
+})
+
+beforeAll(async () => {
+	// Get the actual Bills Durable Object stub from the test environment
+	const databaseUrl = await testBranchManager.beforeAll()
+	console.log('databaseUrl', databaseUrl)
+	Object.assign(env, { DATABASE_URL: databaseUrl })
+	Object.assign(process.env, { DATABASE_URL: databaseUrl })
+})
+
+afterAll(async () => {
+	await testBranchManager.afterAll()
+	env.DATABASE_URL = ''
 })

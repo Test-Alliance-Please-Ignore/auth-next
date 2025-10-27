@@ -53,3 +53,4 @@ yarn-error.log*
 /worktrees/
 /worktree-*/
 secrets/
+.env.*

@@ -11,12 +11,6 @@
 		"head_sampling_rate": 1
 	},
 	"workers_dev": false,
-	"exports": {
-		"handlers": ["fetch"],
-		"rpc": {
-			"class_name": "CoreWorker"
-		}
-	},
 	"vars": {
 		"NAME": "core",
 		"ENVIRONMENT": "production",
@@ -53,6 +47,11 @@
 				"name": "DISCORD",
 				"class_name": "Discord",
 				"script_name": "discord"
+			},
+			{
+				"name": "BILLS",
+				"class_name": "Bills",
+				"script_name": "bills"
 			}
 		]
 	},
@@ -65,5 +64,27 @@
 			"binding": "EVE_STATIC_DATA",
 			"service": "eve-static-data"
 		}
-	]
+	],
+	"queues": {
+		"producers": [
+			{ "queue": "corp-public-refresh", "binding": "CORP_PUBLIC_REFRESH_QUEUE" },
+			{ "queue": "corp-members-refresh", "binding": "CORP_MEMBERS_REFRESH_QUEUE" },
+			{ "queue": "corp-member-tracking-refresh", "binding": "CORP_MEMBER_TRACKING_REFRESH_QUEUE" },
+			{ "queue": "corp-wallets-refresh", "binding": "CORP_WALLETS_REFRESH_QUEUE" },
+			{ "queue": "corp-wallet-journal-refresh", "binding": "CORP_WALLET_JOURNAL_REFRESH_QUEUE" },
+			{
+				"queue": "corp-wallet-transactions-refresh",
+				"binding": "CORP_WALLET_TRANSACTIONS_REFRESH_QUEUE"
+			},
+			{ "queue": "corp-assets-refresh", "binding": "CORP_ASSETS_REFRESH_QUEUE" },
+			{ "queue": "corp-structures-refresh", "binding": "CORP_STRUCTURES_REFRESH_QUEUE" },
+			{ "queue": "corp-orders-refresh", "binding": "CORP_ORDERS_REFRESH_QUEUE" },
+			{ "queue": "corp-contracts-refresh", "binding": "CORP_CONTRACTS_REFRESH_QUEUE" },
+			{ "queue": "corp-industry-jobs-refresh", "binding": "CORP_INDUSTRY_JOBS_REFRESH_QUEUE" },
+			{ "queue": "corp-killmails-refresh", "binding": "CORP_KILLMAILS_REFRESH_QUEUE" }
+		]
+	},
+	"triggers": {
+		"crons": ["45 * * * *"]
+	}
 }

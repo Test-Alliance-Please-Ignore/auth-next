@@ -53,7 +53,9 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 		public env: Env
 	) {
 		super(state, env)
-		this.db = createDb(env.DATABASE_URL)
+		console.log('DATABASE_URL', process.env.DATABASE_URL)
+		this.db = createDb(process.env.DATABASE_URL!)
+
 		this.billService = new BillService(this.db)
 		this.templateService = new TemplateService(this.db)
 		this.scheduleService = new ScheduleService(this.db)

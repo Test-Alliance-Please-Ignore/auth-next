@@ -1,16 +1,11 @@
-import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:test'
-import { beforeAll, describe, expect, it } from 'vitest'
+import { createExecutionContext, env, SELF, waitOnExecutionContext } from 'cloudflare:test'
+import { describe, expect, it } from 'vitest'
 
 import { getStub } from '@repo/do-utils'
 
 import worker from '../../index'
-import { withNeonTestBranch } from '../setup'
 
 import type { Bills } from '@repo/bills'
-
-beforeAll(() => {
-	withNeonTestBranch()
-})
 
 describe('Bills Worker', () => {
 	it('responds to root endpoint', async () => {

@@ -1,4 +1,5 @@
 import type { AdminWorker as IAdminWorker } from '@repo/admin'
+import type { Bills } from '@repo/bills'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Groups } from '@repo/groups'
@@ -22,10 +23,25 @@ export type Env = SharedHonoEnv & {
 	NOTIFICATIONS: DurableObjectNamespace
 	/** Discord Durable Object binding */
 	DISCORD: DurableObjectNamespace
+	/** Bills Durable Object binding */
+	BILLS: DurableObjectNamespace
 	/** EVE Static Data service binding */
 	EVE_STATIC_DATA: Fetcher
 	/** Secret for session token generation and signing */
 	SESSION_SECRET: string
+	/** Corporation data refresh queue bindings */
+	CORP_PUBLIC_REFRESH_QUEUE: Queue<{ corporationId: string }>
+	CORP_MEMBERS_REFRESH_QUEUE: Queue<{ corporationId: string }>
+	CORP_MEMBER_TRACKING_REFRESH_QUEUE: Queue<{ corporationId: string }>
+	CORP_WALLETS_REFRESH_QUEUE: Queue<{ corporationId: string }>
+	CORP_WALLET_JOURNAL_REFRESH_QUEUE: Queue<{ corporationId: string; division?: number }>
+	CORP_WALLET_TRANSACTIONS_REFRESH_QUEUE: Queue<{ corporationId: string; division?: number }>
+	CORP_ASSETS_REFRESH_QUEUE: Queue<{ corporationId: string }>
+	CORP_STRUCTURES_REFRESH_QUEUE: Queue<{ corporationId: string }>
+	CORP_ORDERS_REFRESH_QUEUE: Queue<{ corporationId: string }>
+	CORP_CONTRACTS_REFRESH_QUEUE: Queue<{ corporationId: string }>
+	CORP_INDUSTRY_JOBS_REFRESH_QUEUE: Queue<{ corporationId: string }>
+	CORP_KILLMAILS_REFRESH_QUEUE: Queue<{ corporationId: string }>
 }
 
 /** Session user data attached to request context */

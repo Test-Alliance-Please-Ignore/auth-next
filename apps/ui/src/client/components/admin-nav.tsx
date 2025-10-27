@@ -4,6 +4,7 @@ import {
 	FolderKanban,
 	Key,
 	MessageSquare,
+	Receipt,
 	ScrollText,
 	UserCircle,
 	Users,
@@ -40,6 +41,11 @@ export function AdminNav() {
 			label: 'Discord Servers',
 			href: '/admin/discord-servers',
 			icon: MessageSquare,
+		},
+		{
+			label: 'Bills',
+			href: '/admin/bills',
+			icon: Receipt,
 		},
 		{
 			label: 'Users',

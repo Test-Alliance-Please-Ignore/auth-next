@@ -25,3 +25,4 @@ export {
 } from 'drizzle-orm'
 export { desc, asc } from 'drizzle-orm'
 export type { InferSelectModel, InferInsertModel } from 'drizzle-orm'
+export { TestBranchManager } from './test-client'

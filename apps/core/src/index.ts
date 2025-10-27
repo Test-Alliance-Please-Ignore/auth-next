@@ -8,6 +8,7 @@ import { createDb } from './db'
 import { sessionMiddleware } from './middleware/session'
 import adminRoutes from './routes/admin'
 import authRoutes from './routes/auth'
+import billsAdminRoutes from './routes/bills-admin'
 import charactersRoutes from './routes/characters'
 import corporationsRoutes from './routes/corporations'
 import discordRoutes from './routes/discord'
@@ -18,6 +19,7 @@ import loginRoutes from './routes/login'
 import skillsRoutes from './routes/skills'
 import usersRoutes from './routes/users'
 import wsRoutes from './routes/ws'
+import { scheduledHandler } from './scheduled'
 import { CoreRpcService } from './services/core-rpc.service'
 
 import type {
@@ -59,6 +61,7 @@ const app = new Hono<App>()
 
 	// API routes - mounted under /api prefix
 	.route('/api/admin', adminRoutes)
+	.route('/api/admin/bills', billsAdminRoutes) // Admin bills API
 	.route('/api/auth', authRoutes)
 	.route('/api/users', usersRoutes)
 	.route('/api/characters', charactersRoutes)
@@ -68,9 +71,16 @@ const app = new Hono<App>()
 	.route('/api/discord', discordRoutes)
 	.route('/api/groups', groupsRoutes)
 	.route('/api/ws', wsRoutes)
+	// .route('/api/bills', userBillsRoutes) // User bills API (TODO: implement later)
 
 // Export Hono app as default export (HTTP handler)
 export default app
+
+/**
+ * Scheduled handler for cron triggers
+ * Handles automatic background corporation data refresh
+ */
+export const scheduled = scheduledHandler
 
 /**
  * Core Worker RPC Service

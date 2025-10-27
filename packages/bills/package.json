@@ -1,5 +1,5 @@
 {
-	"name": "@repo/db-utils",
+	"name": "@repo/bills",
 	"version": "0.1.0",
 	"private": true,
 	"sideEffects": false,
@@ -8,12 +8,6 @@
 	"scripts": {
 		"check:lint": "run-eslint",
 		"check:types": "run-tsc"
-	},
-	"dependencies": {
-		"@neondatabase/api-client": "^2.2.0",
-		"@neondatabase/serverless": "0.10.4",
-		"drizzle-kit": "0.31.5",
-		"drizzle-orm": "0.44.6"
 	},
 	"devDependencies": {
 		"@repo/eslint-config": "workspace:*",
