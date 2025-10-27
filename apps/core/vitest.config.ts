@@ -4,12 +4,7 @@ export default defineWorkersProject({
 	test: {
 		poolOptions: {
 			workers: {
-				wrangler: { configPath: `${__dirname}/wrangler.jsonc` },
-				miniflare: {
-					bindings: {
-						ENVIRONMENT: 'VITEST',
-					},
-				},
+				wrangler: { configPath: `./wrangler.jsonc` },
 			},
 		},
 	},

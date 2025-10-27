@@ -1,0 +1,28 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "bills",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-04-28",
+	"compatibility_flags": ["nodejs_compat"],
+	"routes": [],
+	"logpush": true,
+	"observability": {
+		"enabled": true
+	},
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "BILLS",
+				"class_name": "Bills"
+			}
+		]
+	},
+	"workflows": [
+		{
+			"name": "bill-schedule-executor",
+			"binding": "BILLS_SCHEDULE_EXECUTOR",
+			"class_name": "BillScheduleExecutorWorkflow"
+		}
+	],
+	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["Bills"] }]
+}
