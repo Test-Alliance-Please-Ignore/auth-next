@@ -83,7 +83,7 @@ export class FeaturesDO extends DurableObject implements Features {
 	 * Fetch handler for HTTP requests to the Durable Object
 	 * (Optional - for direct HTTP access if needed)
 	 */
-	async fetch(request: Request): Promise<Response> {
+	async fetch(_request: Request): Promise<Response> {
 		return new Response('Features Durable Object - Use RPC methods for feature flag management', {
 			status: 200,
 		})
