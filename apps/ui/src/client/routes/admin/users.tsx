@@ -225,9 +225,12 @@ export default function UsersPage() {
 														className="h-10 w-10 rounded-full"
 													/>
 													<div>
-														<div className="font-medium">
+														<Link
+															to={`/admin/users/${user.id}`}
+															className="font-medium hover:text-primary transition-colors"
+														>
 															{user.mainCharacterName || 'Unknown Character'}
-														</div>
+														</Link>
 														<div className="text-xs text-muted-foreground">
 															ID: {user.id.slice(0, 8)}...
 														</div>
