@@ -94,6 +94,57 @@ export interface JoinServerResult {
 	alreadyMember?: boolean
 }
 
+/**
+ * Discord message embed
+ */
+export interface DiscordEmbed {
+	/** Embed title */
+	title?: string
+	/** Embed description */
+	description?: string
+	/** Embed color (decimal) */
+	color?: number
+	/** Embed fields */
+	fields?: Array<{
+		name: string
+		value: string
+		inline?: boolean
+	}>
+	/** Embed footer */
+	footer?: {
+		text: string
+		icon_url?: string
+	}
+	/** Embed timestamp (ISO 8601) */
+	timestamp?: string
+}
+
+/**
+ * Message content to send
+ */
+export interface MessageContent {
+	/** Message text content */
+	content: string
+	/** Message embeds */
+	embeds?: DiscordEmbed[]
+	/** Whether to allow @everyone and @here mentions */
+	allowEveryone?: boolean
+}
+
+/**
+ * Result of sending a message
+ */
+export interface SendMessageResult {
+	/** Whether the message was sent successfully */
+	success: boolean
+	/** Discord message ID if successful */
+	messageId?: string
+	/** Error message if failed */
+	error?: string
+	/** Retry after seconds if rate limited */
+	retryAfter?: number
+}
+
 export interface Discord {
 	/**
 	 * Get Discord profile by core user ID
@@ -165,4 +216,17 @@ export interface Discord {
 		coreUserId: string,
 		joinRequests: Array<{ guildId: string; roleIds: string[] }>
 	): Promise<JoinServerResult[]>
+
+	/**
+	 * Send a message to a Discord channel using the bot token
+	 * @param guildId - Discord guild/server ID
+	 * @param channelId - Discord channel ID
+	 * @param message - Message content to send
+	 * @returns Result indicating success or failure
+	 */
+	sendMessage(
+		guildId: string,
+		channelId: string,
+		message: MessageContent
+	): Promise<SendMessageResult>
 }

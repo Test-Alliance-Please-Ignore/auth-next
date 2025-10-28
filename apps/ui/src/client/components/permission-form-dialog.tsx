@@ -29,8 +29,8 @@ interface PermissionFormDialogProps {
 	isSubmitting?: boolean
 }
 
-// URN validation regex
-const URN_REGEX = /^urn:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_-]+$/
+// URN validation regex - minimum 3 parts (urn:namespace:action)
+const URN_REGEX = /^urn:[a-z0-9_-]+(:[a-z0-9_-]+)+$/
 
 export function PermissionFormDialog({
 	permission,
@@ -61,8 +61,8 @@ export function PermissionFormDialog({
 		}
 
 		const parts = urn.split(':')
-		if (parts.length !== 4) {
-			return 'URN must have 3 parts separated by colons (urn:namespace:resource:identifier)'
+		if (parts.length < 3) {
+			return 'URN must have at least 2 parts after "urn:" (e.g., urn:namespace:action)'
 		}
 
 		if (!URN_REGEX.test(urn)) {
@@ -141,7 +141,7 @@ export function PermissionFormDialog({
 							setFormData({ ...formData, urn: (e.target as HTMLInputElement).value })
 						}
 						onBlur={handleUrnBlur}
-						placeholder="urn:namespace:resource:identifier"
+						placeholder="urn:namespace:action"
 						disabled={isSubmitting || isEditing}
 						className={cn(
 							'font-mono text-sm pr-10',
@@ -165,7 +165,7 @@ export function PermissionFormDialog({
 				)}
 				{!urnError && (
 					<p id="urn-help" className="text-sm text-muted-foreground">
-						Format: urn:namespace:resource:identifier (lowercase, hyphens, underscores)
+						Format: urn:namespace:action (or more parts as needed, lowercase, hyphens, underscores)
 						{isEditing && <span className="ml-2 text-xs">(URN cannot be changed)</span>}
 					</p>
 				)}
@@ -188,15 +188,15 @@ export function PermissionFormDialog({
 			<div className="space-y-2">
 				<Label htmlFor="category">Category (optional)</Label>
 				<Select
-					value={formData.categoryId || ''}
-					onValueChange={(value) => setFormData({ ...formData, categoryId: value || undefined })}
+					value={formData.categoryId || 'none'}
+					onValueChange={(value) => setFormData({ ...formData, categoryId: value === 'none' ? undefined : value })}
 					disabled={isSubmitting}
 				>
 					<SelectTrigger id="category">
 						<SelectValue placeholder="Select a category" />
 					</SelectTrigger>
 					<SelectContent>
-						<SelectItem value="">No category</SelectItem>
+						<SelectItem value="none">No category</SelectItem>
 						{categories.map((category) => (
 							<SelectItem key={category.id} value={category.id}>
 								{category.name}

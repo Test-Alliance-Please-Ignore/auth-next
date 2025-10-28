@@ -9,6 +9,7 @@ import { sessionMiddleware } from './middleware/session'
 import adminRoutes from './routes/admin'
 import authRoutes from './routes/auth'
 import billsAdminRoutes from './routes/bills-admin'
+import broadcastsRoutes from './routes/broadcasts'
 import charactersRoutes from './routes/characters'
 import corporationsRoutes from './routes/corporations'
 import discordRoutes from './routes/discord'
@@ -69,6 +70,7 @@ const app = new Hono<App>()
 	.route('/api/skills', skillsRoutes)
 	.route('/api/discord', discordRoutes)
 	.route('/api/groups', groupsRoutes)
+	.route('/api/broadcasts', broadcastsRoutes)
 	.route('/api/ws', wsRoutes)
 	// .route('/api/bills', userBillsRoutes) // User bills API (TODO: implement later)
 

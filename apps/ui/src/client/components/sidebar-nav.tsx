@@ -1,4 +1,4 @@
-import { FolderHeart, LayoutDashboard, LogOut, Mail, Shield, Users } from 'lucide-react'
+import { FolderHeart, LayoutDashboard, LogOut, Mail, Radio, Shield, Users } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
 
 import { useAuth, useLogout } from '@/hooks/useAuth'
@@ -42,6 +42,11 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 			href: '/invitations',
 			icon: Mail,
 			badge: pendingCount > 0 ? pendingCount : undefined,
+		},
+		{
+			label: 'Broadcasts',
+			href: '/broadcasts',
+			icon: Radio,
 		},
 	]
 

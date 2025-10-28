@@ -52,6 +52,11 @@
 				"name": "BILLS",
 				"class_name": "Bills",
 				"script_name": "bills"
+			},
+			{
+				"name": "BROADCASTS",
+				"class_name": "Broadcasts",
+				"script_name": "broadcasts"
 			}
 		]
 	},

@@ -24,7 +24,12 @@ import AdminPermissionCategoriesPage from './routes/admin/permissions/categories
 import AdminGlobalPermissionsPage from './routes/admin/permissions/global'
 import AdminUserDetailPage from './routes/admin/user-detail'
 import AdminUsersPage from './routes/admin/users'
+import AdminBroadcastsPage from './routes/admin/broadcasts'
+import AdminBroadcastTargetsPage from './routes/admin/broadcasts-targets'
+import AdminBroadcastTemplatesPage from './routes/admin/broadcasts-templates'
 import AuthCallbackPage from './routes/auth-callback'
+import BroadcastsPage from './routes/broadcasts'
+import BroadcastsNewPage from './routes/broadcasts-new'
 import CharacterDetailPage from './routes/character-detail'
 import ClaimMainPage from './routes/claim-main'
 import CreateGroupPage from './routes/create-group'
@@ -68,6 +73,8 @@ export default function App() {
 						<Route path="/groups/:groupId" element={<GroupDetailPage />} />
 						<Route path="/my-groups" element={<MyGroupsPage />} />
 						<Route path="/invitations" element={<InvitationsPage />} />
+						<Route path="/broadcasts" element={<BroadcastsPage />} />
+						<Route path="/broadcasts/new" element={<BroadcastsNewPage />} />
 					</Route>
 
 					{/* Admin routes */}
@@ -95,6 +102,11 @@ export default function App() {
 						<Route path="bills/schedules" element={<AdminBillsSchedulesPage />} />
 						<Route path="bills/schedules/new" element={<AdminBillsSchedulesNewPage />} />
 						<Route path="bills/schedules/:id" element={<AdminBillsSchedulesEditPage />} />
+
+						{/* Broadcast routes */}
+						<Route path="broadcasts" element={<AdminBroadcastsPage />} />
+						<Route path="broadcasts-targets" element={<AdminBroadcastTargetsPage />} />
+						<Route path="broadcasts-templates" element={<AdminBroadcastTemplatesPage />} />
 					</Route>
 				</Routes>
 			</BrowserRouter>

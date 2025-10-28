@@ -1,5 +1,6 @@
 import type { AdminWorker as IAdminWorker } from '@repo/admin'
 import type { Bills } from '@repo/bills'
+import type { Broadcasts } from '@repo/broadcasts'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Groups } from '@repo/groups'
@@ -25,6 +26,8 @@ export type Env = SharedHonoEnv & {
 	DISCORD: DurableObjectNamespace
 	/** Bills Durable Object binding */
 	BILLS: DurableObjectNamespace
+	/** Broadcasts Durable Object binding */
+	BROADCASTS: DurableObjectNamespace
 	/** EVE Static Data service binding */
 	EVE_STATIC_DATA: Fetcher
 	/** Secret for session token generation and signing */

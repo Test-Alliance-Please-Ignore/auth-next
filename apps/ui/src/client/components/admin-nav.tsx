@@ -4,8 +4,10 @@ import {
 	FolderKanban,
 	Key,
 	MessageSquare,
+	Radio,
 	Receipt,
 	ScrollText,
+	Target,
 	UserCircle,
 	Users,
 } from 'lucide-react'
@@ -41,6 +43,21 @@ export function AdminNav() {
 			label: 'Discord Servers',
 			href: '/admin/discord-servers',
 			icon: MessageSquare,
+		},
+		{
+			label: 'Broadcasts',
+			href: '/admin/broadcasts',
+			icon: Radio,
+		},
+		{
+			label: 'Broadcast Targets',
+			href: '/admin/broadcasts-targets',
+			icon: Target,
+		},
+		{
+			label: 'Broadcast Templates',
+			href: '/admin/broadcasts-templates',
+			icon: ScrollText,
 		},
 		{
 			label: 'Bills',

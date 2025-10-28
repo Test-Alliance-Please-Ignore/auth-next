@@ -7,8 +7,9 @@ import { createDb } from './db'
 import { discordTokens, discordUsers } from './db/schema'
 import { DiscordBotService } from './services/discord-bot.service'
 
-import type { Discord, DiscordTokenResponse } from '@repo/discord'
+import type { Discord, DiscordTokenResponse, MessageContent, SendMessageResult } from '@repo/discord'
 import type { Env } from './context'
+import { generateShardKey } from '@repo/hazmat'
 
 /**
  * Discord Durable Object
@@ -840,5 +841,150 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 			'encrypt',
 			'decrypt',
 		])
+	}
+
+	/**
+	 * Send a message to a Discord channel using the bot token
+	 * @param guildId - Discord guild/server ID (used for logging)
+	 * @param channelId - Discord channel ID
+	 * @param message - Message content to send
+	 * @returns Result indicating success or failure
+	 */
+	async sendMessage(
+		guildId: string,
+		channelId: string,
+		message: MessageContent
+	): Promise<SendMessageResult> {
+		try {
+			// Generate dynamic proxy URL for rate limit handling
+			const proxyUrl = this.getDiscordProxyUrl()
+
+			// Build allowed_mentions based on allowEveryone flag
+			const allowedMentions: any = {
+				parse: message.allowEveryone ? ['everyone', 'roles', 'users'] : ['users', 'roles'],
+			}
+
+			// Build request body
+			const body: any = {
+				content: message.content,
+				allowed_mentions: allowedMentions,
+			}
+
+			// Add embeds if provided
+			if (message.embeds && message.embeds.length > 0) {
+				body.embeds = message.embeds
+			}
+
+			// Make API call to send message
+			const url = `https://discord.com/api/v10/channels/${channelId}/messages`
+			const response = await fetch(url, {
+				method: 'POST',
+				headers: {
+					Authorization: `Bot ${this.env.DISCORD_BOT_TOKEN}`,
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify(body),
+				// @ts-expect-error - Cloudflare Workers supports proxy in fetch
+				proxy: proxyUrl,
+			})
+
+			// Handle success
+			if (response.ok) {
+				const result = await response.json<{ id: string }>()
+				logger.info('[DiscordDO] Successfully sent message', {
+					guildId,
+					channelId,
+					messageId: result.id,
+				})
+
+				return {
+					success: true,
+					messageId: result.id,
+				}
+			}
+
+			// Handle rate limiting (429)
+			if (response.status === 429) {
+				const rateLimitData = await response.json<{ retry_after: number }>()
+				logger.warn('[DiscordDO] Rate limited sending message', {
+					guildId,
+					channelId,
+					retryAfter: rateLimitData.retry_after,
+				})
+
+				return {
+					success: false,
+					error: 'Rate limited',
+					retryAfter: rateLimitData.retry_after,
+				}
+			}
+
+			// Handle permission errors (403)
+			if (response.status === 403) {
+				const errorData = await response.json().catch(() => ({}))
+				logger.error('[DiscordDO] Permission denied sending message', {
+					guildId,
+					channelId,
+					error: errorData,
+				})
+
+				return {
+					success: false,
+					error: 'Bot lacks permission to send messages in this channel',
+				}
+			}
+
+			// Handle invalid channel (404)
+			if (response.status === 404) {
+				logger.error('[DiscordDO] Channel not found', {
+					guildId,
+					channelId,
+				})
+
+				return {
+					success: false,
+					error: 'Channel not found',
+				}
+			}
+
+			// Handle other errors
+			const errorData = await response.json().catch(() => ({}))
+			logger.error('[DiscordDO] Discord API error sending message', {
+				guildId,
+				channelId,
+				status: response.status,
+				error: errorData,
+			})
+
+			return {
+				success: false,
+				error: `Discord API error: ${response.status} ${response.statusText}`,
+			}
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : String(error)
+			logger.error('[DiscordDO] Unexpected error sending message', {
+				guildId,
+				channelId,
+				error: errorMessage,
+			})
+
+			return {
+				success: false,
+				error: `Failed to send message: ${errorMessage}`,
+			}
+		}
+	}
+
+	/**
+	 * Generate a dynamic HTTPS proxy URL using rotating ports
+	 * Uses generateShardKey for cryptographically secure random port selection
+	 */
+	private getDiscordProxyUrl(): string {
+		const portStart = Number(this.env.DISCORD_PROXY_PORT_START)
+		const portCount = Number(this.env.DISCORD_PROXY_PORT_COUNT)
+		const portEnd = portStart + portCount - 1
+		const port = generateShardKey(portStart, portEnd)
+
+		return `https://${this.env.DISCORD_PROXY_USERNAME}:${this.env.DISCORD_PROXY_PASSWORD}@${this.env.DISCORD_PROXY_HOST}:${port}`
 	}
 }

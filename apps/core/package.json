@@ -24,6 +24,7 @@
 		"@neondatabase/serverless": "0.10.4",
 		"@repo/admin": "workspace:*",
 		"@repo/bills": "workspace:*",
+		"@repo/broadcasts": "workspace:*",
 		"@repo/db-utils": "workspace:*",
 		"@repo/discord": "workspace:*",
 		"@repo/do-utils": "workspace:*",

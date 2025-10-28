@@ -162,9 +162,9 @@ groups.get('/', requireAuth(), async (c) => {
 /**
  * POST /
  *
- * Create a new group
+ * Create a new group (admin only)
  */
-groups.post('/', requireAuth(), async (c) => {
+groups.post('/', requireAuth(), requireAdmin(), async (c) => {
 	const user = c.get('user')!
 	const body = await c.req.json()
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')

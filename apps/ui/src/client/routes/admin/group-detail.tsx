@@ -20,7 +20,7 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 
 import { AttachPermissionDialog } from '@/components/attach-permission-dialog'
-import { CreateCustomPermissionDialog } from '@/components/create-custom-permission-dialog'
+import { GroupPermissionForm } from '@/components/group-permission-form'
 import { EditGroupDescriptionDialog } from '@/components/edit-group-description-dialog'
 import { EditGroupNameDialog } from '@/components/edit-group-name-dialog'
 import { GroupCard } from '@/components/group-card'
@@ -420,12 +420,14 @@ export default function GroupDetailPage() {
 	}
 
 	const handleCreateCustomPermission = async (data: any) => {
+		console.log('handleCreateCustomPermission called with data:', data)
 		try {
 			await createCustomPermission.mutateAsync(data)
 			setShowCreateCustomPermissionDialog(false)
 			setMessage({ type: 'success', text: 'Custom permission created successfully!' })
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
+			console.error('Failed to create custom permission:', error)
 			setMessage({
 				type: 'error',
 				text: error instanceof Error ? error.message : 'Failed to create custom permission',
@@ -1056,13 +1058,22 @@ export default function GroupDetailPage() {
 					/>
 
 					{/* Create Custom Permission Dialog */}
-					<CreateCustomPermissionDialog
-						groupId={groupId!}
-						open={showCreateCustomPermissionDialog}
-						onOpenChange={setShowCreateCustomPermissionDialog}
-						onSubmit={handleCreateCustomPermission}
-						isSubmitting={createCustomPermission.isPending}
-					/>
+					<Dialog open={showCreateCustomPermissionDialog} onOpenChange={setShowCreateCustomPermissionDialog}>
+						<DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+							<DialogHeader>
+								<DialogTitle>Create Custom Permission</DialogTitle>
+								<DialogDescription>
+									Create a group-scoped custom permission that is unique to this group
+								</DialogDescription>
+							</DialogHeader>
+							<GroupPermissionForm
+								groupId={groupId!}
+								onSubmit={handleCreateCustomPermission}
+								onCancel={() => setShowCreateCustomPermissionDialog(false)}
+								isSubmitting={createCustomPermission.isPending}
+							/>
+						</DialogContent>
+					</Dialog>
 
 					{/* Remove Permission Confirmation Dialog */}
 					<Dialog open={removePermissionDialogOpen} onOpenChange={setRemovePermissionDialogOpen}>

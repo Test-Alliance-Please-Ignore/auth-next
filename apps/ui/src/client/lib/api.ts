@@ -623,6 +623,147 @@ export interface PaginatedResponse<T> {
 	}
 }
 
+/**
+ * Broadcasts API Types
+ */
+
+export type TargetType = 'discord_channel'
+export type BroadcastStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed'
+export type DeliveryStatus = 'pending' | 'sent' | 'failed'
+
+export interface BroadcastTarget {
+	id: string
+	name: string
+	description: string | null
+	type: TargetType
+	groupId: string
+	config: Record<string, unknown> // { guildId, channelId } for Discord
+	createdBy: string
+	createdAt: string
+	updatedAt: string
+}
+
+export interface BroadcastTemplate {
+	id: string
+	name: string
+	description: string | null
+	targetType: string
+	groupId: string
+	fieldSchema: Array<{
+		name: string
+		label: string
+		type: string
+		required?: boolean
+		placeholder?: string
+	}>
+	messageTemplate: string
+	createdBy: string
+	createdAt: string
+	updatedAt: string
+}
+
+export interface Broadcast {
+	id: string
+	templateId: string | null
+	targetId: string
+	title: string
+	content: Record<string, unknown>
+	status: BroadcastStatus
+	scheduledFor: string | null
+	sentAt: string | null
+	errorMessage: string | null
+	groupId: string
+	createdBy: string
+	createdByCharacterName: string
+	createdAt: string
+	updatedAt: string
+}
+
+export interface BroadcastWithDetails extends Broadcast {
+	target: BroadcastTarget
+	template?: BroadcastTemplate
+	deliveries?: BroadcastDelivery[]
+}
+
+export interface BroadcastDelivery {
+	id: string
+	broadcastId: string
+	targetId: string
+	status: DeliveryStatus
+	discordMessageId: string | null
+	errorMessage: string | null
+	sentAt: string | null
+	createdAt: string
+	target?: BroadcastTarget
+}
+
+export interface CreateBroadcastTargetRequest {
+	name: string
+	description?: string
+	type: TargetType
+	groupId: string
+	config: {
+		guildId: string
+		channelId: string
+	}
+}
+
+export interface UpdateBroadcastTargetRequest {
+	name?: string
+	description?: string
+	config?: {
+		guildId?: string
+		channelId?: string
+	}
+}
+
+export interface CreateBroadcastTemplateRequest {
+	name: string
+	description?: string
+	targetType: string
+	groupId: string
+	fieldSchema: Array<{
+		name: string
+		label: string
+		type: string
+		required?: boolean
+		placeholder?: string
+	}>
+	messageTemplate: string
+}
+
+export interface UpdateBroadcastTemplateRequest {
+	name?: string
+	description?: string
+	fieldSchema?: Array<{
+		name: string
+		label: string
+		type: string
+		required?: boolean
+		placeholder?: string
+	}>
+	messageTemplate?: string
+}
+
+export interface CreateBroadcastRequest {
+	templateId?: string
+	targetId: string
+	title: string
+	content: Record<string, unknown>
+	groupId: string
+	scheduledFor?: string
+}
+
+export interface SendBroadcastResponse {
+	broadcast: Broadcast
+	delivery: {
+		success: boolean
+		messageId?: string
+		error?: string
+		retryAfter?: number
+	}
+}
+
 export class ApiClient {
 	private baseUrl: string
 
@@ -1288,6 +1429,90 @@ export class ApiClient {
 		totalFailed: number
 	}> {
 		return this.post(`/admin/users/${userId}/discord/join-servers`)
+	}
+
+	// ===== Broadcasts API =====
+
+	// Broadcast Targets
+	async getBroadcastTargets(groupId?: string): Promise<BroadcastTarget[]> {
+		const params = groupId ? `?groupId=${groupId}` : ''
+		return this.get(`/broadcasts/targets${params}`)
+	}
+
+	async getBroadcastTarget(id: string): Promise<BroadcastTarget> {
+		return this.get(`/broadcasts/targets/${id}`)
+	}
+
+	async createBroadcastTarget(data: CreateBroadcastTargetRequest): Promise<BroadcastTarget> {
+		return this.post('/broadcasts/targets', data)
+	}
+
+	async updateBroadcastTarget(
+		id: string,
+		data: UpdateBroadcastTargetRequest
+	): Promise<BroadcastTarget> {
+		return this.patch(`/broadcasts/targets/${id}`, data)
+	}
+
+	async deleteBroadcastTarget(id: string): Promise<{ success: boolean }> {
+		return this.delete(`/broadcasts/targets/${id}`)
+	}
+
+	// Broadcast Templates
+	async getBroadcastTemplates(targetType?: string, groupId?: string): Promise<BroadcastTemplate[]> {
+		const params = new URLSearchParams()
+		if (targetType) params.set('targetType', targetType)
+		if (groupId) params.set('groupId', groupId)
+		const query = params.toString()
+		return this.get(`/broadcasts/templates${query ? `?${query}` : ''}`)
+	}
+
+	async getBroadcastTemplate(id: string): Promise<BroadcastTemplate> {
+		return this.get(`/broadcasts/templates/${id}`)
+	}
+
+	async createBroadcastTemplate(data: CreateBroadcastTemplateRequest): Promise<BroadcastTemplate> {
+		return this.post('/broadcasts/templates', data)
+	}
+
+	async updateBroadcastTemplate(
+		id: string,
+		data: UpdateBroadcastTemplateRequest
+	): Promise<BroadcastTemplate> {
+		return this.patch(`/broadcasts/templates/${id}`, data)
+	}
+
+	async deleteBroadcastTemplate(id: string): Promise<{ success: boolean }> {
+		return this.delete(`/broadcasts/templates/${id}`)
+	}
+
+	// Broadcasts
+	async getBroadcasts(groupId?: string, status?: BroadcastStatus): Promise<BroadcastWithDetails[]> {
+		const params = new URLSearchParams()
+		if (groupId) params.set('groupId', groupId)
+		if (status) params.set('status', status)
+		const query = params.toString()
+		return this.get(`/broadcasts${query ? `?${query}` : ''}`)
+	}
+
+	async getBroadcast(id: string): Promise<BroadcastWithDetails> {
+		return this.get(`/broadcasts/${id}`)
+	}
+
+	async createBroadcast(data: CreateBroadcastRequest): Promise<Broadcast> {
+		return this.post('/broadcasts', data)
+	}
+
+	async sendBroadcast(id: string): Promise<SendBroadcastResponse> {
+		return this.post(`/broadcasts/${id}/send`)
+	}
+
+	async deleteBroadcast(id: string): Promise<{ success: boolean }> {
+		return this.delete(`/broadcasts/${id}`)
+	}
+
+	async getBroadcastDeliveries(broadcastId: string): Promise<BroadcastDelivery[]> {
+		return this.get(`/broadcasts/${broadcastId}/deliveries`)
 	}
 }
 
