@@ -840,7 +840,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						locationType: asset.location_type,
 						quantity: asset.quantity,
 						typeId: asset.type_id,
-						isBlueprintCopy: asset.is_blueprint_copy || null,
+						isBlueprintCopy: asset.is_blueprint_copy ?? null,
 						updatedAt: new Date(),
 					})
 					.onConflictDoUpdate({
@@ -852,7 +852,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 							locationType: asset.location_type,
 							quantity: asset.quantity,
 							typeId: asset.type_id,
-							isBlueprintCopy: asset.is_blueprint_copy || null,
+							isBlueprintCopy: asset.is_blueprint_copy ?? null,
 							updatedAt: sql`excluded.updated_at`,
 						},
 					})

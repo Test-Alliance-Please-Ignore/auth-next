@@ -157,4 +157,32 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	async updateCorporationLastSync(corporationId: string): Promise<void> {
 		return this.getService().updateCorporationLastSync(corporationId)
 	}
+
+	/**
+	 * Get users that have Discord linked and need refresh
+	 */
+	async getUsersForDiscordRefresh(
+		limit = 50,
+		refreshIntervalMinutes = 30
+	): Promise<Array<{ userId: string; discordUserId: string; lastDiscordRefresh: Date | null }>> {
+		return this.getService().getUsersForDiscordRefresh(limit, refreshIntervalMinutes)
+	}
+
+	/**
+	 * Log user activity for audit trail
+	 */
+	async logUserActivity(
+		userId: string,
+		action: string,
+		metadata?: Record<string, any>
+	): Promise<void> {
+		return this.getService().logUserActivity(userId, action, metadata)
+	}
+
+	/**
+	 * Update the last Discord refresh timestamp for a user
+	 */
+	async updateUserDiscordRefreshTimestamp(userId: string): Promise<void> {
+		return this.getService().updateUserDiscordRefreshTimestamp(userId)
+	}
 }

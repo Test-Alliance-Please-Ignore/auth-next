@@ -1,0 +1,23 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "orchestrator",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-04-28",
+	"compatibility_flags": ["nodejs_compat"],
+	"routes": [],
+	"logpush": false,
+	"observability": {
+		"enabled": true
+	},
+	"triggers": {
+		"crons": ["*/5 * * * *"]
+	},
+	"workflows": [
+		{
+			"name": "user-discord-refresh",
+			"binding": "USER_DISCORD_REFRESH",
+			"class_name": "UserDiscordRefreshWorkflow"
+		}
+	],
+	"vars": {}
+}

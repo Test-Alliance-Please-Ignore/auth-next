@@ -60,6 +60,7 @@ db-generate-all:
   cd apps/groups && bun run db:generate
   cd apps/admin && bun run db:generate
   cd apps/bills && bun run db:generate
+  cd apps/orchestrator && bun run db:generate
   cd apps/eve-corporation-data && bun run db:generate
   cd apps/eve-character-data && bun run db:generate
   cd apps/eve-static-data && bun run db:generate
@@ -73,6 +74,7 @@ db-push-all:
   cd apps/groups && bun run db:push
   cd apps/admin && bun run db:push
   cd apps/bills && bun run db:push
+  cd apps/orchestrator && bun run db:push
   cd apps/eve-corporation-data && bun run db:push
   cd apps/eve-character-data && bun run db:push
   cd apps/eve-static-data && bun run db:push
@@ -86,6 +88,7 @@ db-migrate-all:
   cd apps/groups && bun run db:migrate
   cd apps/admin && bun run db:migrate
   cd apps/bills && bun run db:migrate
+  cd apps/orchestrator && bun run db:migrate
   cd apps/eve-corporation-data && bun run db:migrate
   cd apps/eve-character-data && bun run db:migrate
   cd apps/eve-static-data && bun run db:migrate

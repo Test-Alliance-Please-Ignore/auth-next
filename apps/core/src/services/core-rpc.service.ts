@@ -419,4 +419,83 @@ export class CoreRpcService {
 			})
 			.where(eq(managedCorporations.corporationId, corporationId))
 	}
+
+	/**
+	 * Get users that have Discord linked and need refresh
+	 * Used by the orchestrator worker to refresh Discord access
+	 *
+	 * Returns users where:
+	 * - Discord is linked (discordUserId is not null)
+	 * - Never been refreshed (lastDiscordRefresh is null) OR
+	 * - Last refresh was more than 30 minutes ago
+	 *
+	 * @param limit - Maximum number of users to return (default: 50)
+	 * @param refreshIntervalMinutes - Minimum minutes between refreshes (default: 30)
+	 * @returns Array of users with Discord linked that need refresh
+	 */
+	async getUsersForDiscordRefresh(
+		limit = 50,
+		refreshIntervalMinutes = 30
+	): Promise<
+		Array<{
+			userId: string
+			discordUserId: string
+			lastDiscordRefresh: Date | null
+		}>
+	> {
+		const usersWithDiscord = await this.db
+			.select({
+				userId: users.id,
+				discordUserId: users.discordUserId,
+				lastDiscordRefresh: users.lastDiscordRefresh,
+			})
+			.from(users)
+			.where(
+				and(
+					sql`${users.discordUserId} IS NOT NULL`,
+					sql`(${users.lastDiscordRefresh} IS NULL OR ${users.lastDiscordRefresh} < NOW() - INTERVAL '${sql.raw(refreshIntervalMinutes.toString())} minutes')`
+				)
+			)
+			.orderBy(sql`${users.lastDiscordRefresh} ASC NULLS FIRST`)
+			.limit(limit)
+
+		return usersWithDiscord.map((u) => ({
+			userId: u.userId,
+			discordUserId: u.discordUserId!,
+			lastDiscordRefresh: u.lastDiscordRefresh,
+		}))
+	}
+
+	/**
+	 * Log user activity for audit trail
+	 *
+	 * @param userId - User ID
+	 * @param action - Action description
+	 * @param metadata - Additional metadata (stored as JSONB)
+	 */
+	async logUserActivity(userId: string, action: string, metadata?: Record<string, any>): Promise<void> {
+		const { userActivityLog } = await import('../db/schema')
+
+		await this.db.insert(userActivityLog).values({
+			userId,
+			action,
+			metadata: metadata ?? undefined,
+		})
+	}
+
+	/**
+	 * Update the last Discord refresh timestamp for a user
+	 *
+	 * @param userId - User ID
+	 */
+	async updateUserDiscordRefreshTimestamp(userId: string): Promise<void> {
+		const now = new Date()
+		await this.db
+			.update(users)
+			.set({
+				lastDiscordRefresh: now,
+				updatedAt: now,
+			})
+			.where(eq(users.id, userId))
+	}
 }
