@@ -1,8 +1,4 @@
-import { and, eq } from '@repo/db-utils'
 import { logger } from '@repo/hono-helpers'
-
-import { createDb } from './db'
-import { managedCorporations } from './db/schema'
 
 import type { Env } from './context'
 
@@ -10,9 +6,9 @@ import type { Env } from './context'
  * Background Corporation Data Refresh Handler
  *
  * This handler runs on a scheduled cron trigger (hourly) and:
- * 1. Queries for corporations with includeInBackgroundRefresh = true
+ * 1. Queries the core worker for corporations with includeInBackgroundRefresh = true
  * 2. Sends refresh messages to ALL queues for each corporation
- * 3. Updates lastSync timestamps
+ * 3. Updates lastSync timestamps via core worker RPC
  * 4. Handles errors gracefully
  */
 export async function scheduledHandler(event: ScheduledEvent, env: Env, _ctx: ExecutionContext) {
@@ -22,17 +18,9 @@ export async function scheduledHandler(event: ScheduledEvent, env: Env, _ctx: Ex
 		cron: event.cron,
 	})
 
-	const db = createDb(env.DATABASE_URL)
-
 	try {
-		// Get all corporations that should be refreshed
-		const corporations = await db.query.managedCorporations.findMany({
-			where: and(
-				eq(managedCorporations.includeInBackgroundRefresh, true),
-				eq(managedCorporations.isActive, true),
-				eq(managedCorporations.isVerified, true)
-			),
-		})
+		// Get corporations that should be refreshed via Core RPC
+		const corporations = await env.CORE.getCorporationsForBackgroundRefresh()
 
 		logger.info('[BackgroundRefresh] Found corporations to refresh', {
 			count: corporations.length,
@@ -53,23 +41,14 @@ export async function scheduledHandler(event: ScheduledEvent, env: Env, _ctx: Ex
 		const succeeded = results.filter((r) => r.status === 'fulfilled').length
 		const failed = results.filter((r) => r.status === 'rejected').length
 
-		// Update lastSync for successful corporations
+		// Update lastSync for successful corporations via Core RPC
 		const successfulCorporations = results
 			.map((result, index) => (result.status === 'fulfilled' ? corporations[index] : null))
 			.filter((c) => c !== null)
 
 		if (successfulCorporations.length > 0) {
-			const now = new Date()
 			await Promise.allSettled(
-				successfulCorporations.map((corp) =>
-					db
-						.update(managedCorporations)
-						.set({
-							lastSync: now,
-							updatedAt: now,
-						})
-						.where(eq(managedCorporations.corporationId, corp.corporationId))
-				)
+				successfulCorporations.map((corp) => env.CORE.updateCorporationLastSync(corp.corporationId))
 			)
 		}
 
@@ -115,66 +94,74 @@ async function refreshCorporation(env: Env, corporationId: string): Promise<void
 	const messagesToSend: Array<{ queue: Queue; message: Record<string, unknown>; type: string }> =
 		[]
 
+	// Base message with required fields
+	const timestamp = Date.now()
+	const baseMessage = {
+		corporationId,
+		timestamp,
+		requesterId: 'scheduled-refresh',
+	}
+
 	// Refresh all data types
 	messagesToSend.push(
 		{
-			queue: env.CORP_PUBLIC_REFRESH_QUEUE,
-			message: { corporationId },
+			queue: env['corp-public-refresh'],
+			message: baseMessage,
 			type: 'public',
 		},
 		{
-			queue: env.CORP_MEMBERS_REFRESH_QUEUE,
-			message: { corporationId },
+			queue: env['corp-members-refresh'],
+			message: baseMessage,
 			type: 'members',
 		},
 		{
-			queue: env.CORP_MEMBER_TRACKING_REFRESH_QUEUE,
-			message: { corporationId },
+			queue: env['corp-member-tracking-refresh'],
+			message: baseMessage,
 			type: 'memberTracking',
 		},
 		{
-			queue: env.CORP_WALLETS_REFRESH_QUEUE,
-			message: { corporationId },
+			queue: env['corp-wallets-refresh'],
+			message: baseMessage,
 			type: 'wallets',
 		},
 		{
-			queue: env.CORP_WALLET_JOURNAL_REFRESH_QUEUE,
-			message: { corporationId },
+			queue: env['corp-wallet-journal-refresh'],
+			message: baseMessage,
 			type: 'walletJournal',
 		},
 		{
-			queue: env.CORP_WALLET_TRANSACTIONS_REFRESH_QUEUE,
-			message: { corporationId },
+			queue: env['corp-wallet-transactions-refresh'],
+			message: baseMessage,
 			type: 'walletTransactions',
 		},
 		{
-			queue: env.CORP_ASSETS_REFRESH_QUEUE,
-			message: { corporationId },
+			queue: env['corp-assets-refresh'],
+			message: baseMessage,
 			type: 'assets',
 		},
 		{
-			queue: env.CORP_STRUCTURES_REFRESH_QUEUE,
-			message: { corporationId },
+			queue: env['corp-structures-refresh'],
+			message: baseMessage,
 			type: 'structures',
 		},
 		{
-			queue: env.CORP_ORDERS_REFRESH_QUEUE,
-			message: { corporationId },
+			queue: env['corp-orders-refresh'],
+			message: baseMessage,
 			type: 'orders',
 		},
 		{
-			queue: env.CORP_CONTRACTS_REFRESH_QUEUE,
-			message: { corporationId },
+			queue: env['corp-contracts-refresh'],
+			message: baseMessage,
 			type: 'contracts',
 		},
 		{
-			queue: env.CORP_INDUSTRY_JOBS_REFRESH_QUEUE,
-			message: { corporationId },
+			queue: env['corp-industry-jobs-refresh'],
+			message: baseMessage,
 			type: 'industryJobs',
 		},
 		{
-			queue: env.CORP_KILLMAILS_REFRESH_QUEUE,
-			message: { corporationId },
+			queue: env['corp-killmails-refresh'],
+			message: baseMessage,
 			type: 'killmails',
 		}
 	)

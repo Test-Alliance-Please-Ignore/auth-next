@@ -6,6 +6,7 @@ import { withNotFound, withOnError } from '@repo/hono-helpers'
 
 import { EveCorporationDataDO } from './durable-object'
 import * as queueConsumers from './queue/consumers'
+import { scheduledHandler } from './scheduled'
 
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { App, Env } from './context'
@@ -55,7 +56,7 @@ const queueHandlers = {
 	'corp-killmails-refresh': queueConsumers.killmailsRefreshQueue,
 } as const
 
-// Export default worker with both fetch and queue handlers
+// Export default worker with fetch, queue, and scheduled handlers
 export default {
 	fetch: app.fetch.bind(app),
 	async queue(batch: MessageBatch, env: Env, ctx: ExecutionContext): Promise<void> {
@@ -68,6 +69,9 @@ export default {
 		}
 
 		await handler(batch, env, ctx)
+	},
+	async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+		await scheduledHandler(event, env, ctx)
 	},
 }
 

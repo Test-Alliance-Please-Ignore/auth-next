@@ -105,7 +105,7 @@ export interface EsiCorporationWalletTransaction {
 	location_id: string
 	quantity: number
 	type_id: string
-	unit_price: number
+	unit_price: string
 }
 
 /**

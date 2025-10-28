@@ -1,8 +1,16 @@
 import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
 
+// Define CoreWorker RPC interface
+export interface CoreWorker {
+	getCorporationsForBackgroundRefresh(): Promise<Array<{ corporationId: string; name: string }>>
+	updateCorporationLastSync(corporationId: string): Promise<void>
+}
+
 export type Env = SharedHonoEnv & {
 	DATABASE_URL: string
+	/** Core worker service binding for RPC calls */
+	CORE: CoreWorker
 	EVE_CORPORATION_DATA: DurableObjectNamespace
 	EVE_TOKEN_STORE: DurableObjectNamespace
 

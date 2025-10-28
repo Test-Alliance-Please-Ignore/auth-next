@@ -19,7 +19,6 @@ import loginRoutes from './routes/login'
 import skillsRoutes from './routes/skills'
 import usersRoutes from './routes/users'
 import wsRoutes from './routes/ws'
-import { scheduledHandler } from './scheduled'
 import { CoreRpcService } from './services/core-rpc.service'
 
 import type {
@@ -75,12 +74,6 @@ const app = new Hono<App>()
 
 // Export Hono app as default export (HTTP handler)
 export default app
-
-/**
- * Scheduled handler for cron triggers
- * Handles automatic background corporation data refresh
- */
-export const scheduled = scheduledHandler
 
 /**
  * Core Worker RPC Service
@@ -147,5 +140,21 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	 */
 	async getCharacterOwnership(characterId: string): Promise<CharacterOwnerInfo | null> {
 		return this.getService().getCharacterOwnership(characterId)
+	}
+
+	/**
+	 * Get corporations that should be included in background refresh
+	 */
+	async getCorporationsForBackgroundRefresh(): Promise<
+		Array<{ corporationId: string; name: string }>
+	> {
+		return this.getService().getCorporationsForBackgroundRefresh()
+	}
+
+	/**
+	 * Update the last sync timestamp for a corporation
+	 */
+	async updateCorporationLastSync(corporationId: string): Promise<void> {
+		return this.getService().updateCorporationLastSync(corporationId)
 	}
 }

@@ -29,19 +29,6 @@ export type Env = SharedHonoEnv & {
 	EVE_STATIC_DATA: Fetcher
 	/** Secret for session token generation and signing */
 	SESSION_SECRET: string
-	/** Corporation data refresh queue bindings */
-	CORP_PUBLIC_REFRESH_QUEUE: Queue<{ corporationId: string }>
-	CORP_MEMBERS_REFRESH_QUEUE: Queue<{ corporationId: string }>
-	CORP_MEMBER_TRACKING_REFRESH_QUEUE: Queue<{ corporationId: string }>
-	CORP_WALLETS_REFRESH_QUEUE: Queue<{ corporationId: string }>
-	CORP_WALLET_JOURNAL_REFRESH_QUEUE: Queue<{ corporationId: string; division?: number }>
-	CORP_WALLET_TRANSACTIONS_REFRESH_QUEUE: Queue<{ corporationId: string; division?: number }>
-	CORP_ASSETS_REFRESH_QUEUE: Queue<{ corporationId: string }>
-	CORP_STRUCTURES_REFRESH_QUEUE: Queue<{ corporationId: string }>
-	CORP_ORDERS_REFRESH_QUEUE: Queue<{ corporationId: string }>
-	CORP_CONTRACTS_REFRESH_QUEUE: Queue<{ corporationId: string }>
-	CORP_INDUSTRY_JOBS_REFRESH_QUEUE: Queue<{ corporationId: string }>
-	CORP_KILLMAILS_REFRESH_QUEUE: Queue<{ corporationId: string }>
 }
 
 /** Session user data attached to request context */

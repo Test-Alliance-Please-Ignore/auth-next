@@ -200,7 +200,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 		if (!config) {
 			await this.db.insert(corporationConfig).values({
-				corporationId,
+				corporationId: String(corporationId),
 				isVerified: false,
 				lastVerified: null,
 				updatedAt: new Date(),
@@ -339,7 +339,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		if (!config) {
 			// Create config if it doesn't exist
 			await this.db.insert(corporationConfig).values({
-				corporationId,
+				corporationId: String(corporationId),
 				isVerified: false,
 				lastVerified: null,
 				updatedAt: new Date(),
@@ -434,7 +434,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		await this.db
 			.insert(corporationPublicInfo)
 			.values({
-				corporationId,
+				corporationId: String(corporationId),
 				name: data.name,
 				ticker: data.ticker,
 				ceoId: ceoIdStr,
@@ -488,7 +488,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		// Upsert members in batch to improve performance
 		if (memberIds.length > 0) {
 			const values = memberIds.map((memberId) => ({
-				corporationId,
+				corporationId: String(corporationId),
 				characterId: memberId,
 			}))
 
@@ -506,7 +506,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					errorStack: error instanceof Error ? error.stack : undefined,
 					errorName: error instanceof Error ? error.name : undefined,
 					errorCause: error instanceof Error ? error.cause : undefined,
-					corporationId,
+					corporationId: String(corporationId),
 					memberCount: memberIds.length,
 					firstMember: memberIds[0],
 				})
@@ -556,7 +556,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			await this.db
 				.insert(corporationMemberTracking)
 				.values({
-					corporationId,
+					corporationId: String(corporationId),
 					characterId: member.character_id,
 					baseId: member.base_id || null,
 					locationId: member.location_id || null,
@@ -600,7 +600,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			await this.db
 				.insert(corporationWallets)
 				.values({
-					corporationId,
+					corporationId: String(corporationId),
 					division: wallet.division,
 					balance: wallet.balance.toString(),
 					updatedAt: new Date(),
@@ -669,7 +669,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			await this.db
 				.insert(corporationWalletJournal)
 				.values({
-					corporationId,
+					corporationId: String(corporationId),
 					division,
 					journalId: entry.id,
 					amount: entry.amount?.toString() || null,
@@ -747,14 +747,14 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			location_id: String(tx.location_id),
 			quantity: tx.quantity,
 			type_id: String(tx.type_id),
-			unit_price: tx.unit_price,
+			unit_price: String(tx.unit_price),
 		}))
 
 		for (const tx of transactions) {
 			await this.db
 				.insert(corporationWalletTransactions)
 				.values({
-					corporationId,
+					corporationId: String(corporationId),
 					division,
 					transactionId: tx.transaction_id,
 					clientId: tx.client_id,
@@ -765,7 +765,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					locationId: tx.location_id,
 					quantity: tx.quantity,
 					typeId: tx.type_id,
-					unitPrice: tx.unit_price.toString(),
+					unitPrice: tx.unit_price,
 					updatedAt: new Date(),
 				})
 				.onConflictDoUpdate({
@@ -832,7 +832,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				await this.db
 					.insert(corporationAssets)
 					.values({
-						corporationId,
+						corporationId: String(corporationId),
 						itemId: asset.item_id,
 						isSingleton: asset.is_singleton,
 						locationFlag: asset.location_flag,
@@ -915,7 +915,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			await this.db
 				.insert(corporationStructures)
 				.values({
-					corporationId,
+					corporationId: String(corporationId),
 					structureId: structure.structure_id,
 					typeId: structure.type_id,
 					systemId: structure.system_id,
@@ -1011,7 +1011,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			await this.db
 				.insert(corporationOrders)
 				.values({
-					corporationId,
+					corporationId: String(corporationId),
 					orderId: order.order_id,
 					duration: order.duration,
 					escrow: order.escrow?.toString() || null,
@@ -1113,7 +1113,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			await this.db
 				.insert(corporationContracts)
 				.values({
-					corporationId,
+					corporationId: String(corporationId),
 					contractId: contract.contract_id,
 					acceptorId: contract.acceptor_id || null,
 					assigneeId: contract.assignee_id,
@@ -1223,7 +1223,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			await this.db
 				.insert(corporationIndustryJobs)
 				.values({
-					corporationId,
+					corporationId: String(corporationId),
 					jobId: job.job_id,
 					installerId: job.installer_id,
 					facilityId: job.facility_id,
@@ -1294,7 +1294,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			await this.db
 				.insert(corporationKillmails)
 				.values({
-					corporationId,
+					corporationId: String(corporationId),
 					killmailId: km.killmail_id,
 					killmailHash: km.killmail_hash,
 					killmailTime: new Date(), // ESI doesn't provide time in this endpoint

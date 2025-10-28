@@ -59,6 +59,13 @@
 			{ "queue": "corp-killmails-refresh", "max_batch_size": 10, "max_batch_timeout": 30 }
 		]
 	},
+	"services": [
+		{
+			"binding": "CORE",
+			"service": "core",
+			"entrypoint": "CoreWorker"
+		}
+	],
 	"durable_objects": {
 		"bindings": [
 			{
@@ -77,5 +84,8 @@
 			"tag": "v1",
 			"new_sqlite_classes": ["EveCorporationData"]
 		}
-	]
+	],
+	"triggers": {
+		"crons": ["0 * * * *"]
+	}
 }

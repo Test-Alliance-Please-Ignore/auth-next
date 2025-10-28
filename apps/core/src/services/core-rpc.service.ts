@@ -377,4 +377,46 @@ export class CoreRpcService {
 			linkedAt: character.linkedAt,
 		}
 	}
+
+	/**
+	 * Get corporations that should be included in background refresh
+	 */
+	async getCorporationsForBackgroundRefresh(): Promise<
+		Array<{ corporationId: string; name: string }>
+	> {
+		const { managedCorporations } = await import('../db/schema')
+
+		const corporations = await this.db.query.managedCorporations.findMany({
+			where: and(
+				eq(managedCorporations.includeInBackgroundRefresh, true),
+				eq(managedCorporations.isActive, true),
+				eq(managedCorporations.isVerified, true)
+			),
+			columns: {
+				corporationId: true,
+				name: true,
+			},
+		})
+
+		return corporations.map((c) => ({
+			corporationId: c.corporationId,
+			name: c.name,
+		}))
+	}
+
+	/**
+	 * Update the last sync timestamp for a corporation
+	 */
+	async updateCorporationLastSync(corporationId: string): Promise<void> {
+		const { managedCorporations } = await import('../db/schema')
+
+		const now = new Date()
+		await this.db
+			.update(managedCorporations)
+			.set({
+				lastSync: now,
+				updatedAt: now,
+			})
+			.where(eq(managedCorporations.corporationId, corporationId))
+	}
 }
