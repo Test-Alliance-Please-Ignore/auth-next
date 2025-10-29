@@ -9,6 +9,7 @@ import {
 	broadcastTargets,
 	broadcastTemplates,
 } from './db/schema'
+import { convertUnixTimestamps } from './utils/timestamp-converter'
 
 import type {
 	Broadcast,
@@ -408,6 +409,9 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 					// If no template, use content as-is (expect a 'message' field)
 					message = (broadcastDetails.content.message as string) || broadcastDetails.title
 				}
+
+				// Convert any UNIX timestamps in the message to Discord format
+				message = convertUnixTimestamps(message)
 
 				// Add mention prefix if specified
 				const mentionLevel = (broadcastDetails.content.mentionLevel as string) || 'none'
