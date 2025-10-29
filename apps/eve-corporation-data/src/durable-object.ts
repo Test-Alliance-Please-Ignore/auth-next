@@ -448,7 +448,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				url: data.url || null,
 				allianceId: allianceIdStr,
 				factionId: factionIdStr,
-				warEligible: data.war_eligible || null,
+				warEligible: data.war_eligible,
 				updatedAt: new Date(),
 			})
 			.onConflictDoUpdate({
@@ -463,7 +463,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					url: data.url || null,
 					allianceId: allianceIdStr,
 					factionId: factionIdStr,
-					warEligible: data.war_eligible || null,
+					warEligible: data.war_eligible,
 					updatedAt: sql`excluded.updated_at`,
 				},
 			})
@@ -840,7 +840,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						locationType: asset.location_type,
 						quantity: asset.quantity,
 						typeId: asset.type_id,
-						isBlueprintCopy: asset.is_blueprint_copy ?? null,
+						isBlueprintCopy: asset.is_blueprint_copy,
 						updatedAt: new Date(),
 					})
 					.onConflictDoUpdate({
@@ -852,7 +852,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 							locationType: asset.location_type,
 							quantity: asset.quantity,
 							typeId: asset.type_id,
-							isBlueprintCopy: asset.is_blueprint_copy ?? null,
+							isBlueprintCopy: asset.is_blueprint_copy,
 							updatedAt: sql`excluded.updated_at`,
 						},
 					})
@@ -924,8 +924,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					nextReinforceApply: structure.next_reinforce_apply
 						? new Date(structure.next_reinforce_apply)
 						: null,
-					nextReinforceHour: structure.next_reinforce_hour || null,
-					reinforceHour: structure.reinforce_hour || null,
+					nextReinforceHour: structure.next_reinforce_hour ?? null,
+					reinforceHour: structure.reinforce_hour ?? null,
 					state: structure.state,
 					stateTimerEnd: structure.state_timer_end ? new Date(structure.state_timer_end) : null,
 					stateTimerStart: structure.state_timer_start
@@ -943,8 +943,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						nextReinforceApply: structure.next_reinforce_apply
 							? new Date(structure.next_reinforce_apply)
 							: null,
-						nextReinforceHour: structure.next_reinforce_hour || null,
-						reinforceHour: structure.reinforce_hour || null,
+						nextReinforceHour: structure.next_reinforce_hour ?? null,
+						reinforceHour: structure.reinforce_hour ?? null,
 						stateTimerEnd: structure.state_timer_end ? new Date(structure.state_timer_end) : null,
 						stateTimerStart: structure.state_timer_start
 							? new Date(structure.state_timer_start)
@@ -1019,7 +1019,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					issued: new Date(order.issued),
 					issuedBy: order.issued_by,
 					locationId: order.location_id,
-					minVolume: order.min_volume || null,
+					minVolume: order.min_volume ?? null,
 					price: order.price.toString(),
 					range: order.range,
 					regionId: order.region_id,
@@ -1124,7 +1124,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					dateCompleted: contract.date_completed ? new Date(contract.date_completed) : null,
 					dateExpired: new Date(contract.date_expired),
 					dateIssued: new Date(contract.date_issued),
-					daysToComplete: contract.days_to_complete || null,
+					daysToComplete: contract.days_to_complete ?? null,
 					endLocationId: contract.end_location_id || null,
 					forCorporation: contract.for_corporation,
 					issuerCorporationId: contract.issuer_corporation_id,
@@ -1235,7 +1235,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					outputLocationId: job.output_location_id,
 					runs: job.runs,
 					cost: job.cost?.toString() || null,
-					licensedRuns: job.licensed_runs || null,
+					licensedRuns: job.licensed_runs ?? null,
 					probability: job.probability?.toString() || null,
 					productTypeId: job.product_type_id || null,
 					status: job.status,
@@ -1245,7 +1245,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					pauseDate: job.pause_date ? new Date(job.pause_date) : null,
 					completedDate: job.completed_date ? new Date(job.completed_date) : null,
 					completedCharacterId: job.completed_character_id || null,
-					successfulRuns: job.successful_runs || null,
+					successfulRuns: job.successful_runs ?? null,
 					updatedAt: new Date(),
 				})
 				.onConflictDoUpdate({
@@ -1255,7 +1255,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						pauseDate: job.pause_date ? new Date(job.pause_date) : null,
 						completedDate: job.completed_date ? new Date(job.completed_date) : null,
 						completedCharacterId: job.completed_character_id || null,
-						successfulRuns: job.successful_runs || null,
+						successfulRuns: job.successful_runs ?? null,
 						updatedAt: sql`excluded.updated_at`,
 					},
 				})

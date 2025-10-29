@@ -1,5 +1,7 @@
-import { UserCog, Users } from 'lucide-react'
+import { useState } from 'react'
+import { Check, Copy, UserCog, Users } from 'lucide-react'
 
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
 import { JoinModeBadge } from './join-mode-badge'
@@ -12,6 +14,18 @@ interface GroupCardProps {
 }
 
 export function GroupCard({ group }: GroupCardProps) {
+	const [copiedId, setCopiedId] = useState(false)
+
+	const handleCopyId = async () => {
+		try {
+			await navigator.clipboard.writeText(group.id)
+			setCopiedId(true)
+			setTimeout(() => setCopiedId(false), 2000)
+		} catch (error) {
+			console.error('Failed to copy group ID:', error)
+		}
+	}
+
 	return (
 		<Card variant="interactive">
 			<CardHeader>
@@ -20,9 +34,18 @@ export function GroupCard({ group }: GroupCardProps) {
 						<CardTitle className="text-2xl gradient-text">{group.name}</CardTitle>
 						<CardDescription>{group.category.name}</CardDescription>
 					</div>
-					<div className="flex gap-2">
+					<div className="flex gap-2 items-center">
 						<VisibilityBadge visibility={group.visibility} />
 						<JoinModeBadge joinMode={group.joinMode} />
+						<Button
+							variant="ghost"
+							size="icon"
+							className="h-8 w-8 text-muted-foreground hover:text-foreground"
+							onClick={handleCopyId}
+							title={copiedId ? 'Copied!' : 'Copy Group ID'}
+						>
+							{copiedId ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+						</Button>
 					</div>
 				</div>
 			</CardHeader>
