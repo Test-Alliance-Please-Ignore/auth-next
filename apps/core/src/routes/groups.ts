@@ -1,9 +1,11 @@
 import { Hono } from 'hono'
 
+import { and, createDbClient } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
 import { requireAdmin, requireAuth } from '../middleware/session'
 
+import type { Discord } from '@repo/discord'
 import type { Groups } from '@repo/groups'
 import type { App } from '../context'
 
@@ -1346,6 +1348,123 @@ groups.post(
 				}
 				if (error.message.includes('already assigned')) {
 					return c.json({ error: error.message }, 409)
+				}
+				return c.json({ error: error.message }, 400)
+			}
+			throw error
+		}
+	}
+)
+
+/**
+ * POST /:groupId/discord-servers/:attachmentId/refresh-roles
+ *
+ * Refresh Discord role assignments for all group members on this server (admin only)
+ */
+groups.post(
+	'/:groupId/discord-servers/:attachmentId/refresh-roles',
+	requireAuth(),
+	requireAdmin(),
+	async (c) => {
+		const groupId = c.req.param('groupId')
+		const attachmentId = c.req.param('attachmentId')
+
+		try {
+			// Get Discord server configuration (guild ID + role IDs)
+			const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+			const config = await groupsDO.getDiscordServerAttachmentConfig(attachmentId)
+
+			// Verify attachment belongs to this group
+			if (config.groupId !== groupId) {
+				return c.json({ error: 'Discord server attachment not found for this group' }, 404)
+			}
+
+			// Get all group member user IDs
+			const memberUserIds = await groupsDO.getGroupMemberUserIds(groupId)
+
+			if (memberUserIds.length === 0) {
+				return c.json({
+					success: 0,
+					failed: 0,
+					skipped: 0,
+					totalMembers: 0,
+					message: 'No members in this group',
+				})
+			}
+
+			// Query Core database to get Discord user IDs for these members
+			const db = createDbClient(c.env.DATABASE_URL, await import('../db/schema.js'))
+			const { users } = await import('../db/schema.js')
+			const { inArray, isNotNull } = await import('@repo/db-utils')
+
+			const usersWithDiscord = await db.query.users.findMany({
+				where: and(inArray(users.id, memberUserIds), isNotNull(users.discordUserId)),
+				columns: {
+					id: true,
+					discordUserId: true,
+				},
+			})
+
+			const skippedCount = memberUserIds.length - usersWithDiscord.length
+
+			if (usersWithDiscord.length === 0) {
+				return c.json({
+					success: 0,
+					failed: 0,
+					skipped: skippedCount,
+					totalMembers: memberUserIds.length,
+					message: 'No members have Discord linked',
+				})
+			}
+
+			// Only refresh if there are roles configured
+			if (config.roleIds.length === 0) {
+				return c.json({
+					success: 0,
+					failed: 0,
+					skipped: memberUserIds.length,
+					totalMembers: memberUserIds.length,
+					message: 'No roles configured for this server',
+				})
+			}
+
+			// Call Discord DO to refresh roles for each member
+			const discordDO = getStub<Discord>(c.env.DISCORD, 'default')
+
+			let successCount = 0
+			let failedCount = 0
+
+			// Process members sequentially to avoid rate limiting
+			for (const user of usersWithDiscord) {
+				try {
+					const results = await discordDO.joinUserToServersWithRoles(user.id, [
+						{
+							guildId: config.guildId,
+							roleIds: config.roleIds,
+						},
+					])
+
+					if (results[0]?.success) {
+						successCount++
+					} else {
+						failedCount++
+					}
+				} catch (error) {
+					console.error(`Failed to refresh roles for user ${user.id}:`, error)
+					failedCount++
+				}
+			}
+
+			return c.json({
+				success: successCount,
+				failed: failedCount,
+				skipped: skippedCount,
+				totalMembers: memberUserIds.length,
+			})
+		} catch (error) {
+			if (error instanceof Error) {
+				if (error.message.includes('not found')) {
+					return c.json({ error: error.message }, 404)
 				}
 				return c.json({ error: error.message }, 400)
 			}

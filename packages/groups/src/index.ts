@@ -433,6 +433,13 @@ export interface Groups {
 	/** Get group member user IDs (for Discord auto-invite) */
 	getGroupMemberUserIds(groupId: string): Promise<string[]>
 
+	/** Get Discord server configuration for a specific attachment (for role refresh) */
+	getDiscordServerAttachmentConfig(attachmentId: string): Promise<{
+		groupId: string
+		guildId: string
+		roleIds: string[]
+	}>
+
 	/** Get groups with Discord auto-invite enabled */
 	getGroupsWithDiscordAutoInvite(): Promise<any[]>
 

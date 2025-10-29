@@ -1058,6 +1058,19 @@ export class ApiClient {
 		)
 	}
 
+	async refreshGroupDiscordServerRoles(
+		groupId: string,
+		attachmentId: string
+	): Promise<{
+		success: number
+		failed: number
+		skipped: number
+		totalMembers: number
+		message?: string
+	}> {
+		return this.post(`/groups/${groupId}/discord-servers/${attachmentId}/refresh-roles`)
+	}
+
 	// Group Invite Codes
 
 	async getGroupInviteCodes(groupId: string): Promise<GroupInviteCode[]> {

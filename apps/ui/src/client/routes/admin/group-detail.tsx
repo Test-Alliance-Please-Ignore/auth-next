@@ -8,6 +8,7 @@ import {
 	MessageSquare,
 	Pencil,
 	Plus,
+	RefreshCw,
 	Settings,
 	Shield,
 	ShieldOff,
@@ -55,6 +56,7 @@ import {
 	useDetachDiscordServerFromGroup,
 	useDiscordServers,
 	useGroupDiscordServers,
+	useRefreshGroupDiscordServerRoles,
 	useUnassignRoleFromGroupServer,
 	useUpdateGroupDiscordServer,
 } from '@/hooks/useDiscord'
@@ -98,6 +100,7 @@ export default function GroupDetailPage() {
 	const updateAttachment = useUpdateGroupDiscordServer()
 	const assignRole = useAssignRoleToGroupServer()
 	const unassignRole = useUnassignRoleFromGroupServer()
+	const refreshServerRoles = useRefreshGroupDiscordServerRoles()
 
 	// Invite code hooks
 	const { data: inviteCodes = [] } = useGroupInviteCodes(groupId!)
@@ -265,6 +268,32 @@ export default function GroupDetailPage() {
 			setMessage({
 				type: 'error',
 				text: error instanceof Error ? error.message : 'Failed to detach Discord server',
+			})
+			setTimeout(() => setMessage(null), 5000)
+		}
+	}
+
+	const handleRefreshServerRoles = async (attachmentId: string) => {
+		if (!groupId) return
+
+		try {
+			const result = await refreshServerRoles.mutateAsync({ groupId, attachmentId })
+
+			// Show detailed summary
+			const successMsg = result.message ||
+				`Refreshed ${result.success}/${result.totalMembers} members successfully` +
+				(result.skipped > 0 ? ` (${result.skipped} skipped)` : '') +
+				(result.failed > 0 ? ` (${result.failed} failed)` : '')
+
+			setMessage({
+				type: result.failed > 0 && result.success === 0 ? 'error' : 'success',
+				text: successMsg
+			})
+			setTimeout(() => setMessage(null), 5000)
+		} catch (error) {
+			setMessage({
+				type: 'error',
+				text: error instanceof Error ? error.message : 'Failed to refresh Discord roles',
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -820,13 +849,30 @@ export default function GroupDetailPage() {
 												</p>
 											)}
 										</div>
-										<Button
-											variant="ghost"
-											size="sm"
-											onClick={() => handleDetachServer(attachment.id)}
-										>
-											<Trash2 className="h-4 w-4 text-destructive" />
-										</Button>
+										<div className="flex gap-1">
+											<Button
+												variant="ghost"
+												size="sm"
+												onClick={() => handleRefreshServerRoles(attachment.id)}
+												disabled={refreshServerRoles.isPending || (attachment.roles?.length ?? 0) === 0}
+												title={
+													(attachment.roles?.length ?? 0) === 0
+														? 'No roles configured'
+														: 'Refresh role assignments for all group members'
+												}
+											>
+												<RefreshCw
+													className={`h-4 w-4 ${refreshServerRoles.isPending ? 'animate-spin' : ''}`}
+												/>
+											</Button>
+											<Button
+												variant="ghost"
+												size="sm"
+												onClick={() => handleDetachServer(attachment.id)}
+											>
+												<Trash2 className="h-4 w-4 text-destructive" />
+											</Button>
+										</div>
 									</div>
 
 									<div className="flex gap-4">

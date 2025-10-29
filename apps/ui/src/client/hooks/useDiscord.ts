@@ -595,6 +595,24 @@ export function useUnassignRoleFromGroupServer() {
 }
 
 /**
+ * Refresh Discord role assignments for all group members on a specific server
+ */
+export function useRefreshGroupDiscordServerRoles() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: ({ groupId, attachmentId }: { groupId: string; attachmentId: string }) =>
+			apiClient.refreshGroupDiscordServerRoles(groupId, attachmentId),
+		onSuccess: (_, { groupId }) => {
+			void queryClient.invalidateQueries({
+				queryKey: ['admin', 'groups', groupId, 'discord-servers'],
+				refetchType: 'active',
+			})
+		},
+	})
+}
+
+/**
  * Refresh all members for a Discord server
  */
 export function useRefreshDiscordServerMembers() {

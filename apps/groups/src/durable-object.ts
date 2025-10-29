@@ -1991,6 +1991,56 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	}
 
 	/**
+	 * Get Discord server configuration for a specific attachment
+	 * Used for role refresh operations
+	 */
+	async getDiscordServerAttachmentConfig(attachmentId: string): Promise<{
+		groupId: string
+		guildId: string
+		roleIds: string[]
+	}> {
+		// Fetch the attachment with its role assignments
+		const attachment = await this.db.query.groupDiscordServers.findFirst({
+			where: eq(groupDiscordServers.id, attachmentId),
+			with: {
+				roles: true,
+			},
+		})
+
+		if (!attachment) {
+			throw new Error('Discord server attachment not found')
+		}
+
+		// Fetch the Discord server from Core to get the guild ID
+		const discordServer = await this.coreDb.query.discordServers.findFirst({
+			where: eq(discordServers.id, attachment.discordServerId),
+		})
+
+		if (!discordServer) {
+			throw new Error('Discord server not found in registry')
+		}
+
+		// Extract role IDs from the Discord role details
+		const roleIds = await Promise.all(
+			(attachment.roles || []).map(async (roleAssignment) => {
+				const roleDetails = await this.coreDb.query.discordRoles.findFirst({
+					where: eq(discordRoles.id, roleAssignment.discordRoleId),
+				})
+				return roleDetails?.roleId || null
+			})
+		)
+
+		// Filter out null values (in case some roles weren't found)
+		const validRoleIds = roleIds.filter((id): id is string => id !== null)
+
+		return {
+			groupId: attachment.groupId,
+			guildId: discordServer.guildId,
+			roleIds: validRoleIds,
+		}
+	}
+
+	/**
 	 * Insert Discord invite audit records
 	 * Called by Core service after attempting to join users to Discord servers
 	 */
