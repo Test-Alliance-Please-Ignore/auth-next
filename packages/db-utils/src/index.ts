@@ -1,7 +1,7 @@
-export { createDbClient, createDbClientRaw } from './client'
+export { createDbClient, createDbClientRaw, createDbClientWs, createDbClientRawWs } from './client'
 export { migrate } from './migrate'
 export type { MigrationConfig } from './migrate'
-export type { DbClient, TimestampFields, NewEntity, UpdateEntity } from './types'
+export type { DbClient, DbClientWs, TimestampFields, NewEntity, UpdateEntity } from './types'
 
 // Re-export commonly used Drizzle functions and types
 export {

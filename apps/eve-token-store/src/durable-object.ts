@@ -137,9 +137,26 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				response_data TEXT NOT NULL,
 				expires_at INTEGER NOT NULL,
 				etag TEXT,
-				last_modified TEXT
+				last_modified TEXT,
+				pages INTEGER,
+				page INTEGER
 			)
 		`)
+
+		// Migrate existing tables to add pagination fields if they don't exist
+		// SQLite doesn't support "IF NOT EXISTS" for ALTER TABLE, so we check first
+		const columns = [
+			...this.state.storage.sql.exec(`PRAGMA table_info(esi_cache)`)
+		]
+		const hasPages = columns.some((col: any) => col.name === 'pages')
+		const hasPage = columns.some((col: any) => col.name === 'page')
+
+		if (!hasPages) {
+			await this.state.storage.sql.exec(`ALTER TABLE esi_cache ADD COLUMN pages INTEGER`)
+		}
+		if (!hasPage) {
+			await this.state.storage.sql.exec(`ALTER TABLE esi_cache ADD COLUMN page INTEGER`)
+		}
 
 		// Entity cache (for corporations, alliances, etc.)
 		await this.state.storage.sql.exec(`
@@ -413,6 +430,22 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	}
 
 	/**
+	 * Extract page number from URL path
+	 */
+	private extractPageFromPath(path: string): number | undefined {
+		const pageMatch = path.match(/[?&]page=(\d+)/)
+		return pageMatch ? parseInt(pageMatch[1], 10) : undefined
+	}
+
+	/**
+	 * Parse X-Pages header from ESI response
+	 */
+	private parseXPages(headers: Headers): number | undefined {
+		const xPages = headers.get('X-Pages')
+		return xPages ? parseInt(xPages, 10) : undefined
+	}
+
+	/**
 	 * Fetch data from ESI (ESI Gateway)
 	 * Automatically handles authentication if token is available for the character
 	 * Caches responses according to ESI cache headers
@@ -425,7 +458,9 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			response_data: string
 			expires_at: number
 			etag: string | null
-		}>(`SELECT response_data, expires_at, etag FROM esi_cache WHERE cache_key = ?`, cacheKey)
+			pages: number | null
+			page: number | null
+		}>(`SELECT response_data, expires_at, etag, pages, page FROM esi_cache WHERE cache_key = ?`, cacheKey)
 
 		const cached = [...cachedCursor]
 
@@ -438,6 +473,8 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 					cached: true,
 					expiresAt: new Date(cached[0].expires_at),
 					etag: cached[0].etag || undefined,
+					pages: cached[0].pages ?? undefined,
+					page: cached[0].page ?? undefined,
 				}
 			}
 		}
@@ -491,6 +528,8 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				cached: true,
 				expiresAt: newExpiresAt,
 				etag: cached[0].etag || undefined,
+				pages: cached[0].pages ?? undefined,
+				page: cached[0].page ?? undefined,
 			}
 		}
 
@@ -505,14 +544,25 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		const data = (await response.json()) as T
 		const expiresAt = this.parseEsiCacheExpiry(response.headers)
 		const etag = response.headers.get('ETag')
+		const pages = this.parseXPages(response.headers)
+		const page = this.extractPageFromPath(path)
+
+		// Log pagination info if present
+		if (pages !== undefined || page !== undefined) {
+			logger
+				.withTags({ path, characterId, page, pages, operation: 'esi_fetch_paginated' })
+				.debug('ESI response with pagination metadata', { page, totalPages: pages })
+		}
 
 		await this.state.storage.sql.exec(
-			`INSERT OR REPLACE INTO esi_cache (cache_key, response_data, expires_at, etag)
-			 VALUES (?, ?, ?, ?)`,
+			`INSERT OR REPLACE INTO esi_cache (cache_key, response_data, expires_at, etag, pages, page)
+			 VALUES (?, ?, ?, ?, ?, ?)`,
 			cacheKey,
 			JSON.stringify(data),
 			expiresAt.getTime(),
-			etag
+			etag,
+			pages ?? null,
+			page ?? null
 		)
 
 		return {
@@ -520,6 +570,8 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			cached: false,
 			expiresAt,
 			etag: etag || undefined,
+			pages,
+			page,
 		}
 	}
 
@@ -536,7 +588,9 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			response_data: string
 			expires_at: number
 			etag: string | null
-		}>(`SELECT response_data, expires_at, etag FROM esi_cache WHERE cache_key = ?`, cacheKey)
+			pages: number | null
+			page: number | null
+		}>(`SELECT response_data, expires_at, etag, pages, page FROM esi_cache WHERE cache_key = ?`, cacheKey)
 
 		const cached = [...cachedCursor]
 
@@ -549,6 +603,8 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 					cached: true,
 					expiresAt: new Date(cached[0].expires_at),
 					etag: cached[0].etag || undefined,
+					pages: cached[0].pages ?? undefined,
+					page: cached[0].page ?? undefined,
 				}
 			}
 		}
@@ -577,6 +633,8 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				cached: true,
 				expiresAt: newExpiresAt,
 				etag: cached[0].etag || undefined,
+				pages: cached[0].pages ?? undefined,
+				page: cached[0].page ?? undefined,
 			}
 		}
 
@@ -591,14 +649,25 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		const data = (await response.json()) as T
 		const expiresAt = this.parseEsiCacheExpiry(response.headers)
 		const etag = response.headers.get('ETag')
+		const pages = this.parseXPages(response.headers)
+		const page = this.extractPageFromPath(path)
+
+		// Log pagination info if present
+		if (pages !== undefined || page !== undefined) {
+			logger
+				.withTags({ path, page, pages, operation: 'esi_fetch_public_paginated' })
+				.debug('Public ESI response with pagination metadata', { page, totalPages: pages })
+		}
 
 		await this.state.storage.sql.exec(
-			`INSERT OR REPLACE INTO esi_cache (cache_key, response_data, expires_at, etag)
-			 VALUES (?, ?, ?, ?)`,
+			`INSERT OR REPLACE INTO esi_cache (cache_key, response_data, expires_at, etag, pages, page)
+			 VALUES (?, ?, ?, ?, ?, ?)`,
 			cacheKey,
 			JSON.stringify(data),
 			expiresAt.getTime(),
-			etag
+			etag,
+			pages ?? null,
+			page ?? null
 		)
 
 		return {
@@ -606,6 +675,218 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			cached: false,
 			expiresAt,
 			etag: etag || undefined,
+			pages,
+			page,
+		}
+	}
+
+	/**
+	 * Clear ESI cache for a specific path
+	 * Useful for forcing fresh data on next request or after errors
+	 */
+	async clearEsiCache(path: string, characterId?: string): Promise<number> {
+		// Build cache key based on whether it's authenticated or public
+		const cacheKey = characterId ? `${characterId}:${path}` : `public:${path}`
+
+		logger
+			.withTags({ path, characterId, cacheKey, operation: 'clear_esi_cache' })
+			.debug('Clearing ESI cache', { cacheKey })
+
+		// Delete all cache entries matching this key (including all pages if paginated)
+		// Use LIKE to match all pages: /path?page=1, /path?page=2, etc.
+		const baseKey = cacheKey.split('?')[0]
+		const result = await this.state.storage.sql.exec(
+			`DELETE FROM esi_cache WHERE cache_key LIKE ? OR cache_key = ?`,
+			`${baseKey}%`,
+			cacheKey
+		)
+
+		const deletedCount = result.rowsWritten || 0
+
+		logger
+			.withTags({ path, characterId, operation: 'clear_esi_cache' })
+			.debug('Cleared ESI cache', { deletedCount, cacheKey })
+
+		return deletedCount
+	}
+
+	/**
+	 * Fetch all pages from a paginated ESI endpoint (authenticated)
+	 * Automatically fetches all pages in parallel and returns combined results
+	 */
+	async fetchEsiAllPages<T>(
+		basePath: string,
+		characterId: string,
+		options?: { maxConcurrent?: number }
+	): Promise<{
+		data: T[]
+		pages: number
+		responses: EsiResponse<T[]>[]
+	}> {
+		const maxConcurrent = options?.maxConcurrent ?? 5
+
+		// Remove any existing page parameter from basePath
+		const cleanPath = basePath.replace(/[?&]page=\d+/, '')
+		const separator = cleanPath.includes('?') ? '&' : '?'
+
+		logger
+			.withTags({ basePath: cleanPath, characterId, operation: 'esi_fetch_all_pages' })
+			.debug('Starting fetchEsiAllPages', { maxConcurrent })
+
+		// Fetch first page to get total page count
+		const firstPagePath = `${cleanPath}${separator}page=1`
+		const firstResponse = await this.fetchEsi<T[]>(firstPagePath, characterId)
+
+		const totalPages = firstResponse.pages ?? 1
+		const responses: EsiResponse<T[]>[] = [firstResponse]
+
+		logger
+			.withTags({ basePath: cleanPath, characterId, totalPages, operation: 'esi_fetch_all_pages' })
+			.debug('Fetched first page', { totalPages, hasMorePages: totalPages > 1 })
+
+		// If there's only one page, return early
+		if (totalPages === 1) {
+			return {
+				data: firstResponse.data,
+				pages: totalPages,
+				responses,
+			}
+		}
+
+		// Fetch remaining pages with concurrency limit
+		const remainingPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
+		const fetchPage = async (pageNum: number): Promise<EsiResponse<T[]>> => {
+			const pagePath = `${cleanPath}${separator}page=${pageNum}`
+			return this.fetchEsi<T[]>(pagePath, characterId)
+		}
+
+		// Fetch with concurrency control
+		const remainingResponses: EsiResponse<T[]>[] = []
+		for (let i = 0; i < remainingPages.length; i += maxConcurrent) {
+			const batch = remainingPages.slice(i, i + maxConcurrent)
+			logger
+				.withTags({
+					basePath: cleanPath,
+					characterId,
+					operation: 'esi_fetch_all_pages',
+				})
+				.debug('Fetching batch of pages', {
+					batchPages: batch,
+					progress: `${i + batch.length}/${remainingPages.length}`,
+				})
+			const batchResponses = await Promise.all(batch.map(fetchPage))
+			remainingResponses.push(...batchResponses)
+		}
+
+		responses.push(...remainingResponses)
+
+		// Combine all data from all pages
+		const allData: T[] = []
+		for (const response of responses) {
+			allData.push(...response.data)
+		}
+
+		logger
+			.withTags({ basePath: cleanPath, characterId, operation: 'esi_fetch_all_pages' })
+			.debug('Completed fetchEsiAllPages', {
+				totalPages,
+				totalItems: allData.length,
+				cached: responses.filter((r) => r.cached).length,
+			})
+
+		return {
+			data: allData,
+			pages: totalPages,
+			responses,
+		}
+	}
+
+	/**
+	 * Fetch all pages from a paginated public ESI endpoint (unauthenticated)
+	 * Automatically fetches all pages in parallel and returns combined results
+	 */
+	async fetchPublicEsiAllPages<T>(
+		basePath: string,
+		options?: { maxConcurrent?: number }
+	): Promise<{
+		data: T[]
+		pages: number
+		responses: EsiResponse<T[]>[]
+	}> {
+		const maxConcurrent = options?.maxConcurrent ?? 5
+
+		// Remove any existing page parameter from basePath
+		const cleanPath = basePath.replace(/[?&]page=\d+/, '')
+		const separator = cleanPath.includes('?') ? '&' : '?'
+
+		logger
+			.withTags({ basePath: cleanPath, operation: 'esi_fetch_all_pages_public' })
+			.debug('Starting fetchPublicEsiAllPages', { maxConcurrent })
+
+		// Fetch first page to get total page count
+		const firstPagePath = `${cleanPath}${separator}page=1`
+		const firstResponse = await this.fetchPublicEsi<T[]>(firstPagePath)
+
+		const totalPages = firstResponse.pages ?? 1
+		const responses: EsiResponse<T[]>[] = [firstResponse]
+
+		logger
+			.withTags({ basePath: cleanPath, totalPages, operation: 'esi_fetch_all_pages_public' })
+			.debug('Fetched first page', { totalPages, hasMorePages: totalPages > 1 })
+
+		// If there's only one page, return early
+		if (totalPages === 1) {
+			return {
+				data: firstResponse.data,
+				pages: totalPages,
+				responses,
+			}
+		}
+
+		// Fetch remaining pages with concurrency limit
+		const remainingPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
+		const fetchPage = async (pageNum: number): Promise<EsiResponse<T[]>> => {
+			const pagePath = `${cleanPath}${separator}page=${pageNum}`
+			return this.fetchPublicEsi<T[]>(pagePath)
+		}
+
+		// Fetch with concurrency control
+		const remainingResponses: EsiResponse<T[]>[] = []
+		for (let i = 0; i < remainingPages.length; i += maxConcurrent) {
+			const batch = remainingPages.slice(i, i + maxConcurrent)
+			logger
+				.withTags({
+					basePath: cleanPath,
+					operation: 'esi_fetch_all_pages_public',
+				})
+				.debug('Fetching batch of pages', {
+					batchPages: batch,
+					progress: `${i + batch.length}/${remainingPages.length}`,
+				})
+			const batchResponses = await Promise.all(batch.map(fetchPage))
+			remainingResponses.push(...batchResponses)
+		}
+
+		responses.push(...remainingResponses)
+
+		// Combine all data from all pages
+		const allData: T[] = []
+		for (const response of responses) {
+			allData.push(...response.data)
+		}
+
+		logger
+			.withTags({ basePath: cleanPath, operation: 'esi_fetch_all_pages_public' })
+			.debug('Completed fetchPublicEsiAllPages', {
+				totalPages,
+				totalItems: allData.length,
+				cached: responses.filter((r) => r.cached).length,
+			})
+
+		return {
+			data: allData,
+			pages: totalPages,
+			responses,
 		}
 	}
 

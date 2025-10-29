@@ -531,6 +531,9 @@ importers:
       '@repo/eve-token-store':
         specifier: workspace:*
         version: link:../../packages/eve-token-store
+      '@repo/hazmat':
+        specifier: workspace:*
+        version: link:../../packages/hazmat
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers

@@ -130,6 +130,10 @@ export interface EsiResponse<T> {
 	expiresAt: Date
 	/** ETag header from ESI for conditional requests */
 	etag?: string
+	/** Total number of pages (from X-Pages header) */
+	pages?: number
+	/** Current page number (from URL parameter) */
+	page?: number
 }
 
 /**
@@ -317,6 +321,84 @@ export interface EveTokenStore {
 	 * ```
 	 */
 	fetchPublicEsi<T>(path: string): Promise<EsiResponse<T>>
+
+	/**
+	 * Clear ESI cache for a specific path
+	 * Use this when you need to force a fresh fetch on the next request
+	 *
+	 * @param path - ESI path to clear from cache
+	 * @param characterId - Character ID for authenticated cache (optional for public cache)
+	 * @returns Number of cache entries cleared
+	 *
+	 * @example
+	 * ```ts
+	 * const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
+	 * // Clear authenticated cache
+	 * await stub.clearEsiCache('/corporations/123/wallets/1/journal', '2119123456')
+	 * // Clear public cache
+	 * await stub.clearEsiCache('/markets/prices')
+	 * ```
+	 */
+	clearEsiCache(path: string, characterId?: string): Promise<number>
+
+	/**
+	 * Fetch all pages from a paginated ESI endpoint (authenticated)
+	 * Automatically fetches all pages in parallel and returns combined results
+	 *
+	 * @param basePath - ESI path without page parameter (e.g., '/corporations/{corporation_id}/assets')
+	 * @param characterId - Character ID for authentication
+	 * @param options - Optional configuration
+	 * @param options.maxConcurrent - Maximum concurrent requests (default: 5)
+	 * @returns Combined data array, total pages, and individual page responses
+	 *
+	 * @example
+	 * ```ts
+	 * const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
+	 * const result = await stub.fetchEsiAllPages<Asset[]>(
+	 *   `/corporations/${corporationId}/assets`,
+	 *   characterId,
+	 *   { maxConcurrent: 10 }
+	 * )
+	 * console.log(`Fetched ${result.data.length} items across ${result.pages} pages`)
+	 * ```
+	 */
+	fetchEsiAllPages<T>(
+		basePath: string,
+		characterId: string,
+		options?: { maxConcurrent?: number }
+	): Promise<{
+		data: T[]
+		pages: number
+		responses: EsiResponse<T[]>[]
+	}>
+
+	/**
+	 * Fetch all pages from a paginated public ESI endpoint (unauthenticated)
+	 * Automatically fetches all pages in parallel and returns combined results
+	 *
+	 * @param basePath - ESI path without page parameter (e.g., '/markets/prices')
+	 * @param options - Optional configuration
+	 * @param options.maxConcurrent - Maximum concurrent requests (default: 5)
+	 * @returns Combined data array, total pages, and individual page responses
+	 *
+	 * @example
+	 * ```ts
+	 * const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
+	 * const result = await stub.fetchPublicEsiAllPages<MarketOrder[]>(
+	 *   `/markets/10000002/orders`,
+	 *   { maxConcurrent: 10 }
+	 * )
+	 * console.log(`Fetched ${result.data.length} orders across ${result.pages} pages`)
+	 * ```
+	 */
+	fetchPublicEsiAllPages<T>(
+		basePath: string,
+		options?: { maxConcurrent?: number }
+	): Promise<{
+		data: T[]
+		pages: number
+		responses: EsiResponse<T[]>[]
+	}>
 
 	/**
 	 * Get corporation information by ID

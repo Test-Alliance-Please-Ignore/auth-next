@@ -25,6 +25,7 @@
 		"@repo/do-utils": "workspace:*",
 		"@repo/eve-corporation-data": "workspace:*",
 		"@repo/eve-token-store": "workspace:*",
+		"@repo/hazmat": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
 		"@repo/queue-utils": "workspace:*",
 		"drizzle-orm": "0.44.6",

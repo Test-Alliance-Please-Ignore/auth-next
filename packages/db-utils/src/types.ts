@@ -1,10 +1,17 @@
 import type { NeonHttpDatabase } from 'drizzle-orm/neon-http'
+import type { NeonDatabase } from 'drizzle-orm/neon-serverless'
 
 /**
- * Generic database client type
+ * Generic database client type (HTTP driver)
  */
 export type DbClient<T extends Record<string, unknown> = Record<string, never>> =
 	NeonHttpDatabase<T>
+
+/**
+ * Database client type using WebSocket driver
+ */
+export type DbClientWs<T extends Record<string, unknown> = Record<string, never>> =
+	NeonDatabase<T>
 
 export type NeonTestEnv = {
 	NEON_API_KEY: string

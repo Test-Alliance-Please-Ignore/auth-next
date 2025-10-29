@@ -32,7 +32,6 @@ import BroadcastsPage from './routes/broadcasts'
 import BroadcastsNewPage from './routes/broadcasts-new'
 import CharacterDetailPage from './routes/character-detail'
 import ClaimMainPage from './routes/claim-main'
-import CreateGroupPage from './routes/create-group'
 import DashboardPage from './routes/dashboard'
 import DiscordCallbackPage from './routes/discord-callback'
 import GroupDetailPage from './routes/group-detail'
@@ -69,7 +68,6 @@ export default function App() {
 						<Route path="/dashboard" element={<DashboardPage />} />
 						<Route path="/character/:characterId" element={<CharacterDetailPage />} />
 						<Route path="/groups" element={<GroupsPage />} />
-						<Route path="/groups/create" element={<CreateGroupPage />} />
 						<Route path="/groups/:groupId" element={<GroupDetailPage />} />
 						<Route path="/my-groups" element={<MyGroupsPage />} />
 						<Route path="/invitations" element={<InvitationsPage />} />

@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers'
 
 import { and, desc, eq, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
+import { logger } from '@repo/hono-helpers'
 
 import { createDb } from './db'
 import {
@@ -623,87 +624,208 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		division: number,
 		_forceRefresh = false
 	): Promise<void> {
+		logger
+			.withTags({
+				corporationId,
+				division,
+				operation: 'fetch_wallet_journal',
+			})
+			.debug('Starting wallet journal fetch')
+
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
 		await this.verifyRole(characterId, ['Accountant', 'Junior_Accountant'])
 
 		const tokenStore = this.getTokenStoreStub()
-		// ESI returns numbers for IDs, but we need strings
-		const response = await tokenStore.fetchEsi<
-			Array<{
-				id: number
-				amount?: number
-				balance?: number
-				context_id?: number
-				context_id_type?: string
-				date: string
-				description: string
-				first_party_id?: number
-				reason?: string
-				ref_type: string
-				second_party_id?: number
-				tax?: number
-				tax_receiver_id?: number
-			}>
-		>(`/corporations/${corporationId}/wallets/${division}/journal`, characterId)
 
-		const rawEntries = response.data
+		// Wallet journal is paginated, fetch all pages using helper
+		type RawJournalEntry = {
+			id: number
+			amount?: number
+			balance?: number
+			context_id?: number
+			context_id_type?: string
+			date: string
+			description: string
+			first_party_id?: number
+			reason?: string
+			ref_type: string
+			second_party_id?: number
+			tax?: number
+			tax_receiver_id?: number
+		}
 
-		// Convert numeric IDs to strings
-		const entries: EsiCorporationWalletJournalEntry[] = rawEntries.map((entry) => ({
+		const result = await tokenStore.fetchEsiAllPages<RawJournalEntry>(
+			`/corporations/${corporationId}/wallets/${division}/journal`,
+			characterId
+		)
+
+		logger
+			.withTags({
+				corporationId,
+				division,
+				operation: 'fetch_wallet_journal',
+			})
+			.debug('Fetched wallet journal from ESI', {
+				totalPages: result.pages,
+				totalEntries: result.data.length,
+				cached: result.responses.filter((r) => r.cached).length,
+			})
+
+		// Log sample of first entry for debugging
+		if (result.data.length > 0) {
+			logger
+				.withTags({
+					corporationId,
+					division,
+					operation: 'fetch_wallet_journal',
+				})
+				.debug('Sample journal entry (raw)', {
+					sampleEntry: result.data[0],
+				})
+		}
+
+		// Convert numeric IDs and amounts to strings
+		const entries = result.data.map((entry) => ({
 			id: String(entry.id),
-			amount: entry.amount,
-			balance: entry.balance,
-			context_id: entry.context_id ? String(entry.context_id) : undefined,
-			context_id_type: entry.context_id_type,
+			amount: entry.amount !== undefined ? String(entry.amount) : null,
+			balance: entry.balance !== undefined ? String(entry.balance) : null,
+			context_id: entry.context_id ? String(entry.context_id) : null,
+			context_id_type: entry.context_id_type || null,
 			date: entry.date,
 			description: entry.description,
-			first_party_id: entry.first_party_id ? String(entry.first_party_id) : undefined,
-			reason: entry.reason,
+			first_party_id: entry.first_party_id ? String(entry.first_party_id) : null,
+			reason: entry.reason || null,
 			ref_type: entry.ref_type,
-			second_party_id: entry.second_party_id ? String(entry.second_party_id) : undefined,
-			tax: entry.tax,
-			tax_receiver_id: entry.tax_receiver_id ? String(entry.tax_receiver_id) : undefined,
+			second_party_id: entry.second_party_id ? String(entry.second_party_id) : null,
+			tax: entry.tax !== undefined ? String(entry.tax) : null,
+			tax_receiver_id: entry.tax_receiver_id ? String(entry.tax_receiver_id) : null,
 		}))
 
-		for (const entry of entries) {
-			await this.db
-				.insert(corporationWalletJournal)
-				.values({
+		logger
+			.withTags({
+				corporationId,
+				division,
+				operation: 'fetch_wallet_journal',
+			})
+			.debug('Starting database insertion', {
+				entriesToInsert: entries.length,
+			})
+
+		// Batch insert to avoid hitting Cloudflare's 50 subrequest limit
+		// Insert 25 entries at a time to be safe
+		const BATCH_SIZE = 25
+		let insertedCount = 0
+
+		try {
+			for (let i = 0; i < entries.length; i += BATCH_SIZE) {
+				const batch = entries.slice(i, i + BATCH_SIZE)
+				const valuesToInsert = batch.map((entry) => ({
 					corporationId: String(corporationId),
 					division,
 					journalId: entry.id,
-					amount: entry.amount?.toString() || null,
-					balance: entry.balance?.toString() || null,
-					contextId: entry.context_id || null,
-					contextIdType: entry.context_id_type || null,
+					amount: entry.amount,
+					balance: entry.balance,
+					contextId: entry.context_id,
+					contextIdType: entry.context_id_type,
 					date: new Date(entry.date),
 					description: entry.description,
-					firstPartyId: entry.first_party_id || null,
-					reason: entry.reason || null,
+					firstPartyId: entry.first_party_id,
+					reason: entry.reason,
 					refType: entry.ref_type,
-					secondPartyId: entry.second_party_id || null,
-					tax: entry.tax?.toString() || null,
-					taxReceiverId: entry.tax_receiver_id || null,
+					secondPartyId: entry.second_party_id,
+					tax: entry.tax,
+					taxReceiverId: entry.tax_receiver_id,
 					updatedAt: new Date(),
+				}))
+
+				await this.db
+					.insert(corporationWalletJournal)
+					.values(valuesToInsert)
+					.onConflictDoUpdate({
+						target: [
+							corporationWalletJournal.corporationId,
+							corporationWalletJournal.division,
+							corporationWalletJournal.journalId,
+						],
+						set: {
+							amount: sql`excluded.amount`,
+							balance: sql`excluded.balance`,
+							contextId: sql`excluded.context_id`,
+							contextIdType: sql`excluded.context_id_type`,
+							description: sql`excluded.description`,
+							reason: sql`excluded.reason`,
+							tax: sql`excluded.tax`,
+							updatedAt: sql`excluded.updated_at`,
+						},
+					})
+
+				insertedCount += batch.length
+
+				// Log progress
+				logger
+					.withTags({
+						corporationId,
+						division,
+						operation: 'fetch_wallet_journal',
+					})
+					.debug('Database insertion progress', {
+						inserted: insertedCount,
+						total: entries.length,
+						batchNumber: Math.floor(i / BATCH_SIZE) + 1,
+						totalBatches: Math.ceil(entries.length / BATCH_SIZE),
+						progress: `${((insertedCount / entries.length) * 100).toFixed(1)}%`,
+					})
+			}
+		} catch (error) {
+			logger
+				.withTags({
+					corporationId,
+					division,
+					operation: 'fetch_wallet_journal',
 				})
-				.onConflictDoUpdate({
-					target: [
-						corporationWalletJournal.corporationId,
-						corporationWalletJournal.division,
-						corporationWalletJournal.journalId,
-					],
-					set: {
-						amount: entry.amount?.toString() || null,
-						balance: entry.balance?.toString() || null,
-						contextId: entry.context_id || null,
-						contextIdType: entry.context_id_type || null,
-						description: entry.description,
-						reason: entry.reason || null,
-						tax: entry.tax?.toString() || null,
-						updatedAt: sql`excluded.updated_at`,
-					},
+				.error('Failed to insert journal entries', {
+					insertedSoFar: insertedCount,
+					totalEntries: entries.length,
+					error: error instanceof Error ? error.message : String(error),
+					errorStack: error instanceof Error ? error.stack : undefined,
 				})
+
+			// Clear cache for this division so next attempt fetches fresh data
+			const path = `/corporations/${corporationId}/wallets/${division}/journal`
+			try {
+				await tokenStore.clearEsiCache(path, characterId)
+				logger
+					.withTags({
+						corporationId,
+						division,
+						operation: 'fetch_wallet_journal',
+					})
+					.debug('Cleared ESI cache after error', { path })
+			} catch (clearError) {
+				logger
+					.withTags({
+						corporationId,
+						division,
+						operation: 'fetch_wallet_journal',
+					})
+					.error('Failed to clear cache', {
+						error: clearError instanceof Error ? clearError.message : String(clearError),
+					})
+			}
+
+			throw error
 		}
+
+		logger
+			.withTags({
+				corporationId,
+				division,
+				operation: 'fetch_wallet_journal',
+			})
+			.debug('Completed wallet journal fetch and store', {
+				totalInserted: insertedCount,
+				totalEntries: entries.length,
+			})
 	}
 
 	/**
@@ -714,6 +836,14 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		division: number,
 		_forceRefresh = false
 	): Promise<void> {
+		logger
+			.withTags({
+				corporationId,
+				division,
+				operation: 'fetch_wallet_transactions',
+			})
+			.debug('Starting wallet transactions fetch')
+
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
 		await this.verifyRole(characterId, ['Accountant', 'Junior_Accountant'])
 
@@ -736,6 +866,17 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 		const rawTransactions = response.data
 
+		logger
+			.withTags({
+				corporationId,
+				division,
+				operation: 'fetch_wallet_transactions',
+			})
+			.debug('Fetched wallet transactions from ESI', {
+				totalTransactions: rawTransactions.length,
+				cached: response.cached,
+			})
+
 		// Convert numeric IDs to strings
 		const transactions: EsiCorporationWalletTransaction[] = rawTransactions.map((tx) => ({
 			transaction_id: String(tx.transaction_id),
@@ -750,10 +891,14 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			unit_price: String(tx.unit_price),
 		}))
 
-		for (const tx of transactions) {
-			await this.db
-				.insert(corporationWalletTransactions)
-				.values({
+		// Batch insert to avoid hitting Cloudflare's 50 subrequest limit
+		const BATCH_SIZE = 25
+		let insertedCount = 0
+
+		try {
+			for (let i = 0; i < transactions.length; i += BATCH_SIZE) {
+				const batch = transactions.slice(i, i + BATCH_SIZE)
+				const valuesToInsert = batch.map((tx) => ({
 					corporationId: String(corporationId),
 					division,
 					transactionId: tx.transaction_id,
@@ -767,18 +912,89 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					typeId: tx.type_id,
 					unitPrice: tx.unit_price,
 					updatedAt: new Date(),
+				}))
+
+				await this.db
+					.insert(corporationWalletTransactions)
+					.values(valuesToInsert)
+					.onConflictDoUpdate({
+						target: [
+							corporationWalletTransactions.corporationId,
+							corporationWalletTransactions.division,
+							corporationWalletTransactions.transactionId,
+						],
+						set: {
+							updatedAt: sql`excluded.updated_at`,
+						},
+					})
+
+				insertedCount += batch.length
+
+				// Log progress
+				logger
+					.withTags({
+						corporationId,
+						division,
+						operation: 'fetch_wallet_transactions',
+					})
+					.debug('Database insertion progress', {
+						inserted: insertedCount,
+						total: transactions.length,
+						batchNumber: Math.floor(i / BATCH_SIZE) + 1,
+						totalBatches: Math.ceil(transactions.length / BATCH_SIZE),
+						progress: `${((insertedCount / transactions.length) * 100).toFixed(1)}%`,
+					})
+			}
+		} catch (error) {
+			logger
+				.withTags({
+					corporationId,
+					division,
+					operation: 'fetch_wallet_transactions',
 				})
-				.onConflictDoUpdate({
-					target: [
-						corporationWalletTransactions.corporationId,
-						corporationWalletTransactions.division,
-						corporationWalletTransactions.transactionId,
-					],
-					set: {
-						updatedAt: sql`excluded.updated_at`,
-					},
+				.error('Failed to insert transactions', {
+					insertedSoFar: insertedCount,
+					totalTransactions: transactions.length,
+					error: error instanceof Error ? error.message : String(error),
+					errorStack: error instanceof Error ? error.stack : undefined,
 				})
+
+			// Clear cache for this division so next attempt fetches fresh data
+			const path = `/corporations/${corporationId}/wallets/${division}/transactions`
+			try {
+				await tokenStore.clearEsiCache(path, characterId)
+				logger
+					.withTags({
+						corporationId,
+						division,
+						operation: 'fetch_wallet_transactions',
+					})
+					.debug('Cleared ESI cache after error', { path })
+			} catch (clearError) {
+				logger
+					.withTags({
+						corporationId,
+						division,
+						operation: 'fetch_wallet_transactions',
+					})
+					.error('Failed to clear cache', {
+						error: clearError instanceof Error ? clearError.message : String(clearError),
+					})
+			}
+
+			throw error
 		}
+
+		logger
+			.withTags({
+				corporationId,
+				division,
+				operation: 'fetch_wallet_transactions',
+			})
+			.debug('Completed wallet transactions fetch and store', {
+				totalInserted: insertedCount,
+				totalTransactions: transactions.length,
+			})
 	}
 
 	/**
@@ -790,50 +1006,53 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 		const tokenStore = this.getTokenStoreStub()
 
-		// Assets are paginated, fetch all pages
-		let page = 1
-		let hasMorePages = true
+		// Assets are paginated, fetch all pages using helper
+		type RawAsset = {
+			item_id: number
+			is_singleton: boolean
+			location_flag: string
+			location_id: number
+			location_type: string
+			quantity: number
+			type_id: number
+			is_blueprint_copy?: boolean
+		}
 
-		while (hasMorePages) {
-			// ESI returns numbers for IDs, but we need strings
-			const response = await tokenStore.fetchEsi<
-				Array<{
-					item_id: number
-					is_singleton: boolean
-					location_flag: string
-					location_id: number
-					location_type: string
-					quantity: number
-					type_id: number
-					is_blueprint_copy?: boolean
-				}>
-			>(`/corporations/${corporationId}/assets?page=${page}`, characterId)
+		const result = await tokenStore.fetchEsiAllPages<RawAsset>(
+			`/corporations/${corporationId}/assets`,
+			characterId
+		)
 
-			const rawAssets = response.data
+		// Convert numeric IDs to strings
+		const assets: EsiCorporationAsset[] = result.data.map((asset) => ({
+			item_id: String(asset.item_id),
+			is_singleton: asset.is_singleton,
+			location_flag: asset.location_flag,
+			location_id: String(asset.location_id),
+			location_type: asset.location_type,
+			quantity: asset.quantity,
+			type_id: String(asset.type_id),
+			is_blueprint_copy: asset.is_blueprint_copy,
+		}))
 
-			if (!rawAssets || rawAssets.length === 0) {
-				hasMorePages = false
-				break
-			}
-
-			// Convert numeric IDs to strings
-			const assets: EsiCorporationAsset[] = rawAssets.map((asset) => ({
-				item_id: String(asset.item_id),
-				is_singleton: asset.is_singleton,
-				location_flag: asset.location_flag,
-				location_id: String(asset.location_id),
-				location_type: asset.location_type,
-				quantity: asset.quantity,
-				type_id: String(asset.type_id),
-				is_blueprint_copy: asset.is_blueprint_copy,
-			}))
-
-			for (const asset of assets) {
-				await this.db
-					.insert(corporationAssets)
-					.values({
-						corporationId: String(corporationId),
-						itemId: asset.item_id,
+		for (const asset of assets) {
+			await this.db
+				.insert(corporationAssets)
+				.values({
+					corporationId: String(corporationId),
+					itemId: asset.item_id,
+					isSingleton: asset.is_singleton,
+					locationFlag: asset.location_flag,
+					locationId: asset.location_id,
+					locationType: asset.location_type,
+					quantity: asset.quantity,
+					typeId: asset.type_id,
+					isBlueprintCopy: asset.is_blueprint_copy,
+					updatedAt: new Date(),
+				})
+				.onConflictDoUpdate({
+					target: [corporationAssets.corporationId, corporationAssets.itemId],
+					set: {
 						isSingleton: asset.is_singleton,
 						locationFlag: asset.location_flag,
 						locationId: asset.location_id,
@@ -841,24 +1060,9 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						quantity: asset.quantity,
 						typeId: asset.type_id,
 						isBlueprintCopy: asset.is_blueprint_copy,
-						updatedAt: new Date(),
-					})
-					.onConflictDoUpdate({
-						target: [corporationAssets.corporationId, corporationAssets.itemId],
-						set: {
-							isSingleton: asset.is_singleton,
-							locationFlag: asset.location_flag,
-							locationId: asset.location_id,
-							locationType: asset.location_type,
-							quantity: asset.quantity,
-							typeId: asset.type_id,
-							isBlueprintCopy: asset.is_blueprint_copy,
-							updatedAt: sql`excluded.updated_at`,
-						},
-					})
-			}
-
-			page++
+						updatedAt: sql`excluded.updated_at`,
+					},
+				})
 		}
 	}
 
@@ -1388,16 +1592,60 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		// Fetch journal and transactions for specified division(s)
 		const divisions = division ? [division] : [1, 2, 3, 4, 5, 6, 7]
 
+		logger
+			.withTags({
+				corporationId,
+				operation: 'fetch_financial_data',
+			})
+			.debug('Fetching wallet journal and transactions for divisions', {
+				divisions,
+				totalDivisions: divisions.length,
+			})
+
 		const promises = divisions.flatMap((div) => [
-			this.fetchAndStoreWalletJournal(corporationId, div, forceRefresh).catch((e) =>
-				console.error(`Failed to fetch journal for division ${div}:`, e)
-			),
-			this.fetchAndStoreWalletTransactions(corporationId, div, forceRefresh).catch((e) =>
-				console.error(`Failed to fetch transactions for division ${div}:`, e)
-			),
+			this.fetchAndStoreWalletJournal(corporationId, div, forceRefresh).catch((e) => {
+				logger
+					.withTags({
+						corporationId,
+						division: div,
+						operation: 'fetch_financial_data',
+					})
+					.error('Failed to fetch journal for division', {
+						division: div,
+						error: e instanceof Error ? e.message : String(e),
+					})
+			}),
+			this.fetchAndStoreWalletTransactions(corporationId, div, forceRefresh).catch((e) => {
+				logger
+					.withTags({
+						corporationId,
+						division: div,
+						operation: 'fetch_financial_data',
+					})
+					.error('Failed to fetch transactions for division', {
+						division: div,
+						error: e instanceof Error ? e.message : String(e),
+					})
+			}),
 		])
 
-		await Promise.allSettled(promises)
+		const results = await Promise.allSettled(promises)
+
+		// Count successes and failures
+		const successful = results.filter((r) => r.status === 'fulfilled').length
+		const failed = results.filter((r) => r.status === 'rejected').length
+
+		logger
+			.withTags({
+				corporationId,
+				operation: 'fetch_financial_data',
+			})
+			.debug('Completed financial data fetch', {
+				divisions,
+				totalOperations: results.length,
+				successful,
+				failed,
+			})
 	}
 
 	/**

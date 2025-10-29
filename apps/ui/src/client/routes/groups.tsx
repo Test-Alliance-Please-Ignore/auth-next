@@ -1,4 +1,4 @@
-import { Plus, Search, X } from 'lucide-react'
+import { Search, X } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -69,12 +69,6 @@ export default function GroupsPage() {
 			<PageHeader
 				title="Discover Groups"
 				description="Find and join groups that match your interests"
-				action={
-					<Button onClick={() => navigate('/groups/create')}>
-						<Plus className="mr-2 h-4 w-4" />
-						Create Group
-					</Button>
-				}
 			/>
 
 			<Section>

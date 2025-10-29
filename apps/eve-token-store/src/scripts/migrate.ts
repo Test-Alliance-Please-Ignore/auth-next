@@ -2,10 +2,10 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { config } from 'dotenv'
 
-import { migrate } from '@repo/db-utils'
+import { migrate, createDbClient } from '@repo/db-utils'
 
 import drizzleConfig from '../../drizzle.config'
-import { createDb } from '../db'
+import { schema } from '../db'
 
 // Load .env from monorepo root
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -15,6 +15,7 @@ config({ path: resolve(__dirname, '../../../../.env') })
  * Run database migrations
  *
  * This script loads DATABASE_URL_MIGRATIONS from the root .env file
+ * Uses HTTP driver for migrations (external operation)
  */
 async function main() {
 	const databaseUrl = process.env.DATABASE_URL_MIGRATIONS
@@ -25,7 +26,8 @@ async function main() {
 
 	console.log('Running migrations for eve-token-store worker...')
 
-	const db = createDb(databaseUrl)
+	// Use HTTP driver for migrations (external operation)
+	const db = createDbClient(databaseUrl, schema)
 	await migrate(db, { migrationsFolder: drizzleConfig.out! })
 
 	console.log('Migrations completed successfully!')
