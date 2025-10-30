@@ -7,6 +7,7 @@ import { logger } from '@repo/hono-helpers'
 
 import { userCharacters } from '../db/schema'
 import { requireAuth } from '../middleware/session'
+import { checkAndUpdateDirectorStatus } from '../services/corporation-auto-register.service'
 import { EntityResolverService } from '../services/entity-resolver.service'
 
 import type { EveCharacterData } from '@repo/eve-character-data'
@@ -325,6 +326,36 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 			logger.error('Failed to get last updated timestamp:', error)
 			// Don't throw here, just set to null and continue
 		}
+
+		// Check and update director status (fire and forget)
+		c.executionCtx.waitUntil(
+			(async () => {
+				try {
+					logger.info('[CharacterRefresh] Checking director status for character', {
+						characterId: characterIdStr,
+					})
+
+					await checkAndUpdateDirectorStatus(
+						characterIdStr,
+						character.characterName,
+						user.id,
+						db!,
+						c.env.EVE_CHARACTER_DATA,
+						c.env.EVE_TOKEN_STORE,
+						c.env.EVE_CORPORATION_DATA,
+					)
+
+					logger.info('[CharacterRefresh] Director status check completed', {
+						characterId: characterIdStr,
+					})
+				} catch (error) {
+					logger.error('[CharacterRefresh] Failed to check director status', {
+						characterId: characterIdStr,
+						error: error instanceof Error ? error.message : String(error),
+					})
+				}
+			})(),
+		)
 
 		return c.json({
 			success: true,

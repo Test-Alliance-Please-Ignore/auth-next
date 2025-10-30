@@ -231,6 +231,30 @@ export default function CorporationDetailPage() {
 		}
 	}
 
+	const handleUpdateMemberCorporation = async (enabled: boolean) => {
+		try {
+			await updateCorporation.mutateAsync({
+				corporationId: corpId,
+				data: { isMemberCorporation: enabled },
+			})
+			showSuccess(`Member corporation status ${enabled ? 'enabled' : 'disabled'}`)
+		} catch (error) {
+			showError(error instanceof Error ? error.message : 'Failed to update setting')
+		}
+	}
+
+	const handleUpdateAltCorp = async (enabled: boolean) => {
+		try {
+			await updateCorporation.mutateAsync({
+				corporationId: corpId,
+				data: { isAltCorp: enabled },
+			})
+			showSuccess(`Alt corporation status ${enabled ? 'enabled' : 'disabled'}`)
+		} catch (error) {
+			showError(error instanceof Error ? error.message : 'Failed to update setting')
+		}
+	}
+
 	const formatDate = (date: string | null) => {
 		if (!date) return 'Never'
 		return formatDistanceToNow(new Date(date), { addSuffix: true })
@@ -400,6 +424,58 @@ export default function CorporationDetailPage() {
 									<p className="text-sm text-muted-foreground ml-11">
 										When enabled, corporation data will be automatically fetched and updated on a
 										regular schedule
+									</p>
+								</div>
+							</div>
+						</CardContent>
+					</Card>
+
+					{/* Corporation Classification Settings Card */}
+					<Card>
+						<CardHeader>
+							<div className="flex items-center gap-2">
+								<Settings className="h-5 w-5 text-muted-foreground" />
+								<CardTitle>Corporation Classification</CardTitle>
+							</div>
+							<CardDescription>
+								Categorize this corporation for filtering and organizational purposes
+							</CardDescription>
+						</CardHeader>
+						<CardContent className="space-y-4">
+							<div className="flex items-center justify-between">
+								<div className="space-y-1">
+									<div className="flex items-center space-x-2">
+										<Switch
+											id="member-corporation"
+											checked={corporation.isMemberCorporation}
+											onCheckedChange={(checked) => handleUpdateMemberCorporation(checked)}
+											disabled={updateCorporation.isPending}
+										/>
+										<Label htmlFor="member-corporation" className="cursor-pointer font-medium">
+											Member Corporation
+										</Label>
+									</div>
+									<p className="text-sm text-muted-foreground ml-11">
+										Mark this corporation as a member of the alliance
+									</p>
+								</div>
+							</div>
+
+							<div className="flex items-center justify-between">
+								<div className="space-y-1">
+									<div className="flex items-center space-x-2">
+										<Switch
+											id="alt-corp"
+											checked={corporation.isAltCorp}
+											onCheckedChange={(checked) => handleUpdateAltCorp(checked)}
+											disabled={updateCorporation.isPending}
+										/>
+										<Label htmlFor="alt-corp" className="cursor-pointer font-medium">
+											Alt Corporation
+										</Label>
+									</div>
+									<p className="text-sm text-muted-foreground ml-11">
+										Mark this corporation as an alt corp
 									</p>
 								</div>
 							</div>

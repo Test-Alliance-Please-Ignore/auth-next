@@ -1,5 +1,5 @@
 import { formatDistanceToNow } from 'date-fns'
-import { Building2, Plus, RefreshCw, Search, ShieldAlert, ShieldCheck, Trash2 } from 'lucide-react'
+import { Building2, Plus, RefreshCw, Search, ShieldAlert, ShieldCheck, Trash2, X } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
@@ -20,6 +20,13 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import {
 	Table,
@@ -39,11 +46,15 @@ import {
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
-import type { CreateCorporationRequest } from '@/lib/api'
+import type { CreateCorporationRequest, CorporationsFilters } from '@/lib/api'
 
 export default function CorporationsPage() {
 	usePageTitle('Admin - Corporations')
-	const { data: corporations, isLoading } = useCorporations()
+
+	// Filter state
+	const [filters, setFilters] = useState<CorporationsFilters>({})
+
+	const { data: corporations, isLoading } = useCorporations(filters)
 	const createCorporation = useCreateCorporation()
 	const deleteCorporation = useDeleteCorporation()
 	const updateCorporation = useUpdateCorporation()
@@ -80,6 +91,14 @@ export default function CorporationsPage() {
 			(corp) => corp.name.toLowerCase().includes(query) || corp.ticker.toLowerCase().includes(query)
 		)
 	}, [corporations, searchQuery])
+
+	// Check if any filters are active
+	const hasActiveFilters = filters.isMember !== undefined || filters.isAlt !== undefined
+
+	// Clear all filters
+	const clearFilters = () => {
+		setFilters({})
+	}
 
 	// Handlers
 	const handleCreate = async (e: React.FormEvent) => {
@@ -215,14 +234,27 @@ export default function CorporationsPage() {
 				</Card>
 			)}
 
-			{/* Search */}
+			{/* Search and Filters */}
 			<Card variant="interactive">
 				<CardHeader>
-					<CardTitle>Search</CardTitle>
-					<CardDescription>Search by corporation name or ticker</CardDescription>
+					<div className="flex items-center justify-between">
+						<div>
+							<CardTitle>Search & Filters</CardTitle>
+							<CardDescription>
+								Search by corporation name or ticker, and filter by classification
+							</CardDescription>
+						</div>
+						{hasActiveFilters && (
+							<Button variant="ghost" size="sm" onClick={clearFilters}>
+								<X className="mr-2 h-4 w-4" />
+								Clear Filters
+							</Button>
+						)}
+					</div>
 				</CardHeader>
 				<CardContent>
-					<div className="flex gap-2">
+					<div className="flex flex-col gap-4">
+						{/* Search Input */}
 						<div className="relative flex-1">
 							<Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
 							<Input
@@ -231,6 +263,62 @@ export default function CorporationsPage() {
 								onChange={(e) => setSearchQuery(e.target.value)}
 								className="pl-9"
 							/>
+						</div>
+
+						{/* Filters */}
+						<div className="flex gap-4">
+							<div className="flex-1 space-y-2">
+								<Label htmlFor="member-status-filter">Member Status</Label>
+								<Select
+									value={
+										filters.isMember === undefined
+											? 'all'
+											: filters.isMember
+												? 'members'
+												: 'non-members'
+									}
+									onValueChange={(value) => {
+										setFilters((prev) => ({
+											...prev,
+											isMember:
+												value === 'all' ? undefined : value === 'members' ? true : false,
+										}))
+									}}
+								>
+									<SelectTrigger id="member-status-filter">
+										<SelectValue placeholder="All Corporations" />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value="all">All Corporations</SelectItem>
+										<SelectItem value="members">Member Corps Only</SelectItem>
+										<SelectItem value="non-members">Non-Member Corps Only</SelectItem>
+									</SelectContent>
+								</Select>
+							</div>
+
+							<div className="flex-1 space-y-2">
+								<Label htmlFor="alt-status-filter">Alt Corp Status</Label>
+								<Select
+									value={
+										filters.isAlt === undefined ? 'all' : filters.isAlt ? 'alt-corps' : 'non-alt-corps'
+									}
+									onValueChange={(value) => {
+										setFilters((prev) => ({
+											...prev,
+											isAlt: value === 'all' ? undefined : value === 'alt-corps' ? true : false,
+										}))
+									}}
+								>
+									<SelectTrigger id="alt-status-filter">
+										<SelectValue placeholder="All Corporations" />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value="all">All Corporations</SelectItem>
+										<SelectItem value="alt-corps">Alt Corps Only</SelectItem>
+										<SelectItem value="non-alt-corps">Non-Alt Corps Only</SelectItem>
+									</SelectContent>
+								</Select>
+							</div>
 						</div>
 					</div>
 				</CardContent>

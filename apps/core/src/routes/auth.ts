@@ -4,6 +4,7 @@ import { html } from 'hono/html'
 
 import { eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
+import { assertEveCharacterId } from '@repo/eve-types'
 
 import { createDb } from '../db'
 import { oauthStates, userCharacters } from '../db/schema'
@@ -182,7 +183,8 @@ auth.get('/callback', async (c) => {
 		return c.json({ error: result.error || 'Authentication failed' }, 400)
 	}
 
-	const { characterId, characterInfo } = result
+	const { characterId: _characterId, characterInfo } = result
+	const characterId = assertEveCharacterId(_characterId)
 
 	// Handle character linking flow
 	if (flowType === 'character') {
@@ -229,7 +231,10 @@ auth.get('/callback', async (c) => {
 		await activityService.logCharacterLinked(stateUserId, characterId, getRequestMetadata(c))
 
 		// Fetch character data in background (non-blocking)
-		const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+		const eveCharacterDataStub = getStub<EveCharacterData>(
+			c.env.EVE_CHARACTER_DATA,
+			typeof characterId === 'string' ? characterId : String(characterId)
+		)
 		c.executionCtx.waitUntil(
 			(async () => {
 				try {
@@ -289,7 +294,10 @@ auth.get('/callback', async (c) => {
 		await activityService.logLogin(user.id, characterId, getRequestMetadata(c))
 
 		// Fetch character data in background (non-blocking)
-		const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+		const eveCharacterDataStub = getStub<EveCharacterData>(
+			c.env.EVE_CHARACTER_DATA,
+			typeof characterId === 'string' ? characterId : String(characterId)
+		)
 		c.executionCtx.waitUntil(
 			(async () => {
 				try {
@@ -406,7 +414,10 @@ auth.post('/claim-main', async (c) => {
 	await activityService.logLogin(user.id, tokenInfo.characterId, getRequestMetadata(c))
 
 	// Fetch character data in background (non-blocking)
-	const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+	const eveCharacterDataStub = getStub<EveCharacterData>(
+		c.env.EVE_CHARACTER_DATA,
+		typeof characterId === 'string' ? characterId : String(characterId)
+	)
 	c.executionCtx.waitUntil(
 		(async () => {
 			try {

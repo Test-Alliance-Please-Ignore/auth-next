@@ -155,6 +155,17 @@ export interface EsiMarketOrder {
 }
 
 /**
+ * Character corporation roles from ESI
+ * GET /characters/{character_id}/roles
+ */
+export interface EsiCharacterRoles {
+	roles?: string[]
+	roles_at_hq?: string[]
+	roles_at_base?: string[]
+	roles_at_other?: string[]
+}
+
+/**
  * Database Schema Types
  */
 
@@ -362,6 +373,17 @@ export interface EveCharacterData {
 	fetchMarketOrders(characterId: string, forceRefresh?: boolean): Promise<void>
 
 	/**
+	 * Fetch character corporation roles (requires token)
+	 * @param characterId - EVE character ID
+	 * @param forceRefresh - Force refresh even if cached
+	 * @returns Character roles or null if not available
+	 */
+	fetchCorporationRoles(
+		characterId: string,
+		forceRefresh?: boolean
+	): Promise<EsiCharacterRoles | null>
+
+	/**
 	 * Get character public info from database
 	 * @param characterId - EVE character ID
 	 * @returns Character public data or null if not found
@@ -490,7 +512,7 @@ export interface CharacterSensitiveData {
 	}
 	skillQueue?: Array<{
 		queue_position: number
-		skill_id: number
+		skill_id: string
 		finished_level: number
 		start_date?: string
 		finish_date?: string

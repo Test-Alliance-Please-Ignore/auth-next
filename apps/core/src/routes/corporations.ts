@@ -10,9 +10,11 @@ import {
 	discordRoles,
 	discordServers,
 	managedCorporations,
+	userCharacters,
 } from '../db/schema'
 import { requireAdmin, requireAuth } from '../middleware/session'
 
+import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { App } from '../context'
 
@@ -21,6 +23,10 @@ const app = new Hono<App>()
 /**
  * GET /corporations
  * List all configured corporations (admin only)
+ *
+ * Query parameters:
+ *   isMember: boolean - filter by member corporation status
+ *   isAlt: boolean - filter by alt corporation status
  */
 app.get('/', requireAuth(), requireAdmin(), async (c) => {
 	const db = c.get('db')
@@ -30,7 +36,22 @@ app.get('/', requireAuth(), requireAdmin(), async (c) => {
 	}
 
 	try {
+		const isMemberParam = c.req.query('isMember')
+		const isAltParam = c.req.query('isAlt')
+
+		// Build where conditions
+		const conditions = []
+		if (isMemberParam !== undefined) {
+			const isMember = isMemberParam === 'true'
+			conditions.push(eq(managedCorporations.isMemberCorporation, isMember))
+		}
+		if (isAltParam !== undefined) {
+			const isAlt = isAltParam === 'true'
+			conditions.push(eq(managedCorporations.isAltCorp, isAlt))
+		}
+
 		const corporations = await db.query.managedCorporations.findMany({
+			where: conditions.length > 0 ? and(...conditions) : undefined,
 			orderBy: desc(managedCorporations.updatedAt),
 		})
 
@@ -214,6 +235,8 @@ app.get('/:corporationId', requireAuth(), requireAdmin(), async (c) => {
  *   assignedCharacterId?: string
  *   assignedCharacterName?: string
  *   isActive?: boolean
+ *   isMemberCorporation?: boolean
+ *   isAltCorp?: boolean
  *   discordGuildId?: string | null
  *   discordGuildName?: string | null
  *   discordAutoInvite?: boolean
@@ -234,6 +257,8 @@ app.put('/:corporationId', requireAuth(), requireAdmin(), async (c) => {
 			assignedCharacterName,
 			isActive,
 			includeInBackgroundRefresh,
+			isMemberCorporation,
+			isAltCorp,
 			discordGuildId,
 			discordGuildName,
 			discordAutoInvite,
@@ -256,6 +281,8 @@ app.put('/:corporationId', requireAuth(), requireAdmin(), async (c) => {
 				...(assignedCharacterName !== undefined && { assignedCharacterName }),
 				...(isActive !== undefined && { isActive }),
 				...(includeInBackgroundRefresh !== undefined && { includeInBackgroundRefresh }),
+				...(isMemberCorporation !== undefined && { isMemberCorporation }),
+				...(isAltCorp !== undefined && { isAltCorp }),
 				...(discordGuildId !== undefined && { discordGuildId }),
 				...(discordGuildName !== undefined && { discordGuildName }),
 				...(discordAutoInvite !== undefined && { discordAutoInvite }),
@@ -582,6 +609,202 @@ app.get('/:corporationId/data', requireAuth(), requireAdmin(), async (c) => {
 			stack: error instanceof Error ? error.stack : undefined,
 		})
 		return c.json({ error: 'Failed to fetch data summary' }, 500)
+	}
+})
+
+/**
+ * GET /corporations/:corporationId/members
+ * Get all members of a corporation (requires CEO/director access)
+ *
+ * Returns comprehensive member data including auth link status
+ */
+app.get('/:corporationId/members', requireAuth(), async (c) => {
+	const corporationId = c.req.param('corporationId')
+	const user = c.get('user')!
+	const db = c.get('db')
+
+	if (!db) {
+		return c.json({ error: 'Database not available' }, 500)
+	}
+
+	logger.info('[Corporations] Get members request', { corporationId, userId: user.id })
+
+	try {
+		// Check if corporation is managed
+		const managedCorp = await db.query.managedCorporations.findFirst({
+			where: and(
+				eq(managedCorporations.corporationId, corporationId),
+				eq(managedCorporations.isActive, true)
+			),
+		})
+
+		if (!managedCorp) {
+			return c.json({ error: 'Corporation not found or not managed' }, 404)
+		}
+
+		// Check if user has CEO/director access
+		const userChars = await db.query.userCharacters.findMany({
+			where: eq(userCharacters.userId, user.id),
+		})
+
+		let hasAccess = false
+		let userRole: 'CEO' | 'Director' | null = null
+
+		for (const character of userChars) {
+			try {
+				// Check if character is in this corporation
+				const charStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, character.characterId)
+				const charData = await charStub.getCharacterInfo()
+
+				// Convert corporation_id to string for comparison
+				if (!charData || String(charData.corporation_id) !== corporationId) {
+					continue
+				}
+
+				// Get corporation data to check CEO
+				const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+				const corpInfo = await corpStub.getCorporationInfo()
+
+				// Check if character is CEO (convert ceo_id to string for comparison)
+				if (corpInfo && String(corpInfo.ceo_id) === character.characterId) {
+					hasAccess = true
+					userRole = 'CEO'
+					break
+				}
+
+				// Check if character is a director
+				const directors = await corpStub.getDirectors(corporationId)
+				const isDirector = directors.some((d) => d.characterId === character.characterId)
+				if (isDirector) {
+					hasAccess = true
+					userRole = 'Director'
+					// Continue checking in case another character is CEO
+				}
+			} catch (error) {
+				logger.warn('Error checking character access:', {
+					characterId: character.characterId,
+					corporationId,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
+		}
+
+		if (!hasAccess) {
+			return c.json({ error: 'Access denied. CEO or director role required.' }, 403)
+		}
+
+		logger.info('[Corporations] User has access', { corporationId, userId: user.id, userRole })
+
+		// Get corporation members from DO
+		const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+		const [corpInfo, coreData] = await Promise.all([
+			corpStub.getCorporationInfo(),
+			corpStub.getCoreData(corporationId),
+		])
+
+		if (!coreData || !coreData.members) {
+			return c.json([])
+		}
+
+		// Get all linked characters for auth status check
+		const allLinkedCharacters = await db.query.userCharacters.findMany()
+		const linkedCharacterIds = new Set(allLinkedCharacters.map((c) => c.characterId))
+
+		// Process members with comprehensive data
+		const membersWithDetails = await Promise.all(
+			coreData.members.map(async (member) => {
+				const characterId = String(member.character_id)
+
+				// Check auth link status
+				const linkedChar = allLinkedCharacters.find((c) => c.characterId === characterId)
+				const hasAuthAccount = !!linkedChar
+
+				// Determine role
+				let role: 'CEO' | 'Director' | 'Member' = 'Member'
+				// Convert ceo_id to string for comparison
+				if (corpInfo && String(corpInfo.ceo_id) === characterId) {
+					role = 'CEO'
+				} else {
+					// Check if director
+					const directors = await corpStub.getDirectors(corporationId)
+					const isDirector = directors.some((d) => d.characterId === characterId)
+					if (isDirector) {
+						role = 'Director'
+					}
+				}
+
+				// Find member tracking data if available
+				const tracking = coreData.memberTracking?.find((t) => t.character_id === member.character_id)
+
+				// Get character public info for location data
+				let locationSystem: string | undefined
+				let locationRegion: string | undefined
+				let lastLogin: Date | undefined
+
+				try {
+					const charStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, characterId)
+					const charInfo = await charStub.getCharacterInfo()
+
+					if (charInfo) {
+						// Note: Location data would need to be fetched from ESI with proper scopes
+						// This is a placeholder for the structure
+						locationSystem = tracking?.location_name || undefined
+						locationRegion = undefined // Would need to be resolved from system ID
+					}
+
+					if (tracking?.logon_date) {
+						lastLogin = new Date(tracking.logon_date)
+					}
+				} catch (error) {
+					logger.debug('Could not fetch character details:', { characterId })
+				}
+
+				return {
+					characterId,
+					characterName: member.name || 'Unknown',
+					corporationId,
+					corporationName: managedCorp.name,
+					role,
+					hasAuthAccount,
+					authUserId: linkedChar?.userId,
+					authUserName: linkedChar?.characterName,
+					joinDate: member.start_date || new Date().toISOString(),
+					lastEsiUpdate: coreData.lastFetched || new Date().toISOString(),
+					lastLogin: lastLogin?.toISOString(),
+					allianceId: corpInfo?.alliance_id ? String(corpInfo.alliance_id) : undefined,
+					allianceName: corpInfo?.alliance_name,
+					locationSystem,
+					locationRegion,
+					activityStatus: tracking?.logon_date
+						? (new Date().getTime() - new Date(tracking.logon_date).getTime() < 7 * 24 * 60 * 60 * 1000
+							? 'active'
+							: 'inactive')
+						: 'unknown',
+				}
+			})
+		)
+
+		// Sort by role (CEO first, then Directors, then Members), then by name
+		membersWithDetails.sort((a, b) => {
+			const roleOrder = { CEO: 0, Director: 1, Member: 2 }
+			const roleDiff = roleOrder[a.role] - roleOrder[b.role]
+			if (roleDiff !== 0) return roleDiff
+			return a.characterName.localeCompare(b.characterName)
+		})
+
+		logger.info('[Corporations] Members fetched successfully', {
+			corporationId,
+			memberCount: membersWithDetails.length,
+		})
+
+		return c.json(membersWithDetails)
+	} catch (error) {
+		logger.error('[Corporations] Error fetching corporation members', {
+			corporationId,
+			error: error instanceof Error ? error.message : String(error),
+			stack: error instanceof Error ? error.stack : undefined,
+		})
+		return c.json({ error: 'Failed to fetch corporation members' }, 500)
 	}
 })
 

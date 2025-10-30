@@ -224,6 +224,10 @@ export const managedCorporations = pgTable(
 		healthyDirectorCount: integer('healthy_director_count').default(0).notNull(),
 		/** Admin user who configured this corporation */
 		configuredBy: uuid('configured_by').references(() => users.id, { onDelete: 'set null' }),
+		/** Whether this corporation is a member corporation of the alliance */
+		isMemberCorporation: boolean('is_member_corporation').default(false).notNull(),
+		/** Whether this corporation is an alt corporation */
+		isAltCorp: boolean('is_alt_corp').default(false).notNull(),
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
@@ -234,6 +238,14 @@ export const managedCorporations = pgTable(
 		index('managed_corporations_is_active_idx').on(table.isActive),
 		index('managed_corporations_include_in_background_refresh_idx').on(
 			table.includeInBackgroundRefresh
+		),
+		index('managed_corporations_corporation_id_is_member_idx').on(
+			table.corporationId,
+			table.isMemberCorporation
+		),
+		index('managed_corporations_corporation_id_is_alt_idx').on(
+			table.corporationId,
+			table.isAltCorp
 		),
 	]
 )

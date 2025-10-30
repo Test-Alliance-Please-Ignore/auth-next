@@ -1,7 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 
 import Layout from './components/layout'
+import { LoadingPage } from './components/ui/loading'
 import AdminActivityLogPage from './routes/admin/activity-log'
 import AdminBillsDashboardPage from './routes/admin/bills-dashboard'
 import AdminBillsNewPage from './routes/admin/bills-new'
@@ -41,6 +43,10 @@ import InvitationsPage from './routes/invitations'
 import LandingPage from './routes/landing'
 import MyGroupsPage from './routes/my-groups'
 
+// Lazy load the My Corporations feature for code splitting
+const MyCorporationsList = lazy(() => import('./features/my-corporations/routes/my-corporations-list'))
+const CorporationMembers = lazy(() => import('./features/my-corporations/routes/corporation-members'))
+
 // Create a client
 const queryClient = new QueryClient({
 	defaultOptions: {
@@ -70,6 +76,25 @@ export default function App() {
 						<Route path="/groups" element={<GroupsPage />} />
 						<Route path="/groups/:groupId" element={<GroupDetailPage />} />
 						<Route path="/my-groups" element={<MyGroupsPage />} />
+
+						{/* My Corporations routes (lazy loaded) */}
+						<Route
+							path="/my-corporations"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<MyCorporationsList />
+								</Suspense>
+							}
+						/>
+						<Route
+							path="/my-corporations/:corporationId/members"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<CorporationMembers />
+								</Suspense>
+							}
+						/>
+
 						<Route path="/invitations" element={<InvitationsPage />} />
 						<Route path="/broadcasts" element={<BroadcastsPage />} />
 						<Route path="/broadcasts/new" element={<BroadcastsNewPage />} />

@@ -77,8 +77,11 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			forceRefresh
 		)
 		try {
+			// Fetch public info first (required for foreign key constraint on portraits)
+			await this.fetchAndStorePublicInfo(characterId, forceRefresh)
+
+			// Then fetch portrait and corporation history in parallel
 			await Promise.all([
-				this.fetchAndStorePublicInfo(characterId, forceRefresh),
 				this.fetchAndStorePortrait(characterId, forceRefresh),
 				this.fetchAndStoreCorporationHistory(characterId, forceRefresh),
 			])

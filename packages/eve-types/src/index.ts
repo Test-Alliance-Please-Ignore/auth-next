@@ -72,3 +72,10 @@ export const createEveCorporationId = (id: string): EveCorporationId =>
 export const createEveCharacterId = (id: string): EveCharacterId => brand(id, 'EveCharacterId')
 
 export const createEveAllianceId = (id: string): EveAllianceId => brand(id, 'EveAllianceId')
+
+export const assertEveCharacterId = (id: string | number): string => {
+	if (typeof id !== 'string' && typeof id !== 'number') {
+		throw new Error(`Invalid character ID: ${id} type: ${typeof id}`)
+	}
+	return typeof id === 'string' ? id : id.toString()
+}

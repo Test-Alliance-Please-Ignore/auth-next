@@ -4,6 +4,7 @@ import { api } from '@/lib/api'
 
 import type {
 	AddDirectorRequest,
+	CorporationsFilters,
 	CreateCorporationRequest,
 	FetchCorporationDataRequest,
 	UpdateCorporationRequest,
@@ -14,7 +15,7 @@ import type {
 export const corporationKeys = {
 	all: ['admin', 'corporations'] as const,
 	lists: () => [...corporationKeys.all, 'list'] as const,
-	list: () => [...corporationKeys.lists()] as const,
+	list: (filters?: CorporationsFilters) => [...corporationKeys.lists(), filters] as const,
 	details: () => [...corporationKeys.all, 'detail'] as const,
 	detail: (corporationId: string) => [...corporationKeys.details(), corporationId] as const,
 	dataSummary: (corporationId: string) =>
@@ -29,10 +30,10 @@ export const corporationKeys = {
 /**
  * Fetch all managed corporations (admin only)
  */
-export function useCorporations() {
+export function useCorporations(filters?: CorporationsFilters) {
 	return useQuery({
-		queryKey: corporationKeys.list(),
-		queryFn: () => api.getCorporations(),
+		queryKey: corporationKeys.list(filters),
+		queryFn: () => api.getCorporations(filters),
 		staleTime: 1000 * 60, // 1 minute
 	})
 }

@@ -1,6 +1,16 @@
-import { FolderHeart, LayoutDashboard, LogOut, Mail, Radio, Shield, Users } from 'lucide-react'
+import {
+	Building2,
+	FolderHeart,
+	LayoutDashboard,
+	LogOut,
+	Mail,
+	Radio,
+	Shield,
+	Users,
+} from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
 
+import { useHasCorporationAccess } from '@/features/my-corporations'
 import { useAuth, useLogout } from '@/hooks/useAuth'
 import { usePendingInvitations } from '@/hooks/useGroups'
 import { cn } from '@/lib/utils'
@@ -17,11 +27,17 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 	const { user } = useAuth()
 	const logout = useLogout()
 	const { data: invitations } = usePendingInvitations()
+	const { data: corporationAccess } = useHasCorporationAccess()
 
 	const pendingCount = invitations?.length || 0
 	const mainCharacter = user?.characters.find((c) => c.characterId === user.mainCharacterId)
 
-	const navItems = [
+	const navItems: Array<{
+		label: string
+		href: string
+		icon: any
+		badge?: number
+	}> = [
 		{
 			label: 'Dashboard',
 			href: '/dashboard',
@@ -37,6 +53,19 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 			href: '/my-groups',
 			icon: FolderHeart,
 		},
+	]
+
+	// Add My Corporations nav item if user has CEO/director access
+	if (corporationAccess?.hasAccess) {
+		navItems.push({
+			label: 'My Corporations',
+			href: '/my-corporations',
+			icon: Building2,
+		})
+	}
+
+	// Continue with other nav items
+	navItems.push(
 		{
 			label: 'Invitations',
 			href: '/invitations',
@@ -47,8 +76,8 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 			label: 'Broadcasts',
 			href: '/broadcasts',
 			icon: Radio,
-		},
-	]
+		}
+	)
 
 	// Add admin nav item if user is admin
 	if (user?.is_admin) {

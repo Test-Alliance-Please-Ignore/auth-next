@@ -4,6 +4,7 @@ import { logger } from '@repo/hono-helpers'
 
 import { managedCorporations } from '../db/schema'
 
+import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { createDb } from '../db'
@@ -43,11 +44,6 @@ export async function autoRegisterDirectorCorporation(
 	const tokenStore: EveTokenStore = getStub<EveTokenStore>(eveTokenStoreNamespace, 'default')
 
 	try {
-		logger.info('[AutoReg] Checking if character is a director', {
-			characterId,
-			characterName,
-		})
-
 		// Step 1: Check if token has the required scope
 		const tokenInfo = await tokenStore.getTokenInfo(characterId)
 
@@ -62,10 +58,6 @@ export async function autoRegisterDirectorCorporation(
 		}
 
 		if (!tokenInfo.scopes.includes('esi-characters.read_corporation_roles.v1')) {
-			logger.info('[AutoReg] Character missing corporation roles scope, skipping', {
-				characterId,
-				scopes: tokenInfo.scopes,
-			})
 			return {
 				success: false,
 				reason: 'missing_scope',
@@ -83,11 +75,6 @@ export async function autoRegisterDirectorCorporation(
 			}>(`/characters/${characterId}/roles`, characterId)
 
 			roles = rolesResponse.data.roles || []
-
-			logger.info('[AutoReg] Fetched character roles', {
-				characterId,
-				roles,
-			})
 		} catch (error) {
 			logger.error('[AutoReg] Failed to fetch character roles', {
 				characterId,
@@ -101,20 +88,11 @@ export async function autoRegisterDirectorCorporation(
 
 		// Step 3: Check if character has Director role
 		if (!roles.includes('Director')) {
-			logger.info('[AutoReg] Character does not have Director role, skipping', {
-				characterId,
-				roles,
-			})
 			return {
 				success: false,
 				reason: 'not_a_director',
 			}
 		}
-
-		logger.info('[AutoReg] Director role detected!', {
-			characterId,
-			characterName,
-		})
 
 		// Step 4: Get character's corporation ID
 		let corporationId: string
@@ -126,11 +104,6 @@ export async function autoRegisterDirectorCorporation(
 
 			// ESI returns numbers, convert to string (and ensure it stays a string)
 			corporationId = String(characterInfo.data.corporation_id)
-
-			logger.info('[AutoReg] Got character corporation', {
-				characterId,
-				corporationId,
-			})
 		} catch (error) {
 			logger.error('[AutoReg] Failed to fetch character info', {
 				characterId,
@@ -170,12 +143,6 @@ export async function autoRegisterDirectorCorporation(
 					reason: 'missing_ticker',
 				}
 			}
-
-			logger.info('[AutoReg] Fetched corporation details', {
-				corporationId,
-				name: corpName,
-				ticker: corpTicker,
-			})
 		} catch (error) {
 			logger.error('[AutoReg] Failed to fetch corporation info', {
 				corporationId,
@@ -196,12 +163,6 @@ export async function autoRegisterDirectorCorporation(
 
 		// Step 7: Create managed corporation if it doesn't exist
 		if (!existingCorp) {
-			logger.info('[AutoReg] Creating new managed corporation', {
-				corporationId,
-				name: corpName,
-				ticker: corpTicker,
-			})
-
 			try {
 				await db.insert(managedCorporations).values({
 					corporationId,
@@ -216,11 +177,6 @@ export async function autoRegisterDirectorCorporation(
 				})
 
 				wasNew = true
-
-				logger.info('[AutoReg] Created managed corporation', {
-					corporationId,
-					name: corpName,
-				})
 			} catch (error) {
 				const errorDetails: Record<string, unknown> = {
 					corporationId,
@@ -247,44 +203,20 @@ export async function autoRegisterDirectorCorporation(
 					reason: 'failed_to_create_corporation',
 				}
 			}
-		} else {
-			logger.info('[AutoReg] Corporation already managed', {
-				corporationId,
-				name: corpName,
-			})
 		}
 
 		// Step 8: Add character as director via eve-corporation-data DO
 		try {
-			logger.info('[AutoReg] Getting DO stub for corporation', {
-				corporationId,
-				characterId,
-			})
-
 			const stub = getStub<EveCorporationData>(eveCorporationDataNamespace, corporationId)
-
-			logger.info('[AutoReg] Calling addDirector on DO stub', {
-				corporationId,
-				characterId,
-				characterName,
-				priority: 100,
-			})
 
 			// This will silently succeed if director already exists (uses ON CONFLICT DO NOTHING)
 			// Ensure all parameters are primitive types to avoid serialization issues
-			const result = await stub.addDirector(
+			await stub.addDirector(
 				String(corporationId),
 				String(characterId),
 				String(characterName),
 				100
 			)
-
-			logger.info('[AutoReg] Successfully called addDirector', {
-				corporationId,
-				characterId,
-				characterName,
-				result: result ? 'success' : 'no result',
-			})
 
 			// Step 9: Trigger director verification (fire and forget)
 			stub.verifyAllDirectorsHealth(corporationId).catch((error: unknown) => {
@@ -357,5 +289,92 @@ export async function autoRegisterDirectorCorporation(
 			success: false,
 			reason: 'unexpected_error',
 		}
+	}
+}
+
+/**
+ * Check and update director status for a character during refresh
+ * This function is called whenever a character is refreshed to ensure
+ * their director status is up-to-date
+ */
+export async function checkAndUpdateDirectorStatus(
+	characterId: string,
+	characterName: string,
+	userId: string,
+	db: ReturnType<typeof createDb>,
+	eveCharacterDataNamespace: DurableObjectNamespace,
+	eveTokenStoreNamespace: DurableObjectNamespace,
+	eveCorporationDataNamespace: DurableObjectNamespace,
+): Promise<{ updated: boolean; reason?: string }> {
+	try {
+		// Get the character data stub
+		const characterDataStub = getStub<EveCharacterData>(eveCharacterDataNamespace, characterId)
+
+		// Fetch corporation roles
+		const roles = await characterDataStub.fetchCorporationRoles(characterId, false)
+
+		// If roles is null, the character doesn't have the required scope or an error occurred
+		if (!roles) {
+			return { updated: false, reason: 'no_roles_scope_or_error' }
+		}
+
+		const isDirector = roles.roles?.includes('Director') ?? false
+
+		if (isDirector) {
+			// Character is a director, register corporation and add director
+			const result = await autoRegisterDirectorCorporation(
+				characterId,
+				characterName,
+				userId,
+				db,
+				eveTokenStoreNamespace,
+				eveCorporationDataNamespace,
+			)
+
+			return {
+				updated: result.success,
+				reason: result.success ? 'director_registered' : result.reason,
+			}
+		} else {
+			// Character is NOT a director
+			// Check if they were previously a director and remove them
+			// Get character's current corporation to check if they're registered as a director
+			const characterInfo = await characterDataStub.getCharacterInfo(characterId)
+			if (!characterInfo) {
+				return { updated: false, reason: 'no_character_info' }
+			}
+
+			const corporationId = String(characterInfo.corporationId)
+
+			// Check if this corporation is managed
+			const managedCorp = await db.query.managedCorporations.findFirst({
+				where: eq(managedCorporations.corporationId, corporationId),
+			})
+
+			if (managedCorp) {
+				// Corporation is managed, remove character as director
+				try {
+					const stub = getStub<EveCorporationData>(eveCorporationDataNamespace, corporationId)
+					await stub.removeDirector(corporationId, characterId)
+
+					return { updated: true, reason: 'director_removed' }
+				} catch (error) {
+					logger.error('[DirectorCheck] Failed to remove director', {
+						characterId,
+						corporationId,
+						error: error instanceof Error ? error.message : String(error),
+					})
+					return { updated: false, reason: 'failed_to_remove_director' }
+				}
+			}
+
+			return { updated: false, reason: 'not_a_director_and_not_managed' }
+		}
+	} catch (error) {
+		logger.error('[DirectorCheck] Unexpected error checking director status', {
+			characterId,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return { updated: false, reason: 'unexpected_error' }
 	}
 }

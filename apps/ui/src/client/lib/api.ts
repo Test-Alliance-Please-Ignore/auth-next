@@ -316,6 +316,8 @@ export interface ManagedCorporation {
 	assignedCharacterName: string | null
 	isActive: boolean
 	includeInBackgroundRefresh: boolean
+	isMemberCorporation: boolean
+	isAltCorp: boolean
 	lastSync: string | null
 	lastVerified: string | null
 	isVerified: boolean
@@ -351,6 +353,13 @@ export interface UpdateCorporationRequest {
 	assignedCharacterName?: string
 	isActive?: boolean
 	includeInBackgroundRefresh?: boolean
+	isMemberCorporation?: boolean
+	isAltCorp?: boolean
+}
+
+export interface CorporationsFilters {
+	isMember?: boolean
+	isAlt?: boolean
 }
 
 export interface CorporationAccessVerification {
@@ -1192,8 +1201,13 @@ export class ApiClient {
 
 	// ===== Corporations API Methods =====
 
-	async getCorporations(): Promise<ManagedCorporation[]> {
-		return this.get('/corporations')
+	async getCorporations(filters?: CorporationsFilters): Promise<ManagedCorporation[]> {
+		const params = new URLSearchParams()
+		if (filters?.isMember !== undefined) params.set('isMember', String(filters.isMember))
+		if (filters?.isAlt !== undefined) params.set('isAlt', String(filters.isAlt))
+
+		const query = params.toString()
+		return this.get(`/corporations${query ? `?${query}` : ''}`)
 	}
 
 	async getCorporation(corporationId: string): Promise<CorporationWithConfig> {
@@ -1429,7 +1443,7 @@ export class ApiClient {
 		if (filters?.pageSize !== undefined) params.set('pageSize', String(filters.pageSize))
 
 		const query = params.toString()
-		return this.get(`/admin/activity-logs${query ? `?${query}` : ''}`)
+		return this.get(`/admin/activity-log${query ? `?${query}` : ''}`)
 	}
 
 	async triggerDiscordJoin(userId: string): Promise<{

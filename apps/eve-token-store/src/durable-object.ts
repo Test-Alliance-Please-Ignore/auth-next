@@ -912,8 +912,19 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			const cached = [...cachedCursor]
 
 			if (cached.length > 0 && cached[0].expires_at > now) {
-				// Cache hit
-				return JSON.parse(cached[0].entity_data) as EsiCorporation
+				// Parse cached data
+				const cachedData = JSON.parse(cached[0].entity_data) as EsiCorporation
+
+				// Validate that cached data has required fields (ticker)
+				// If ticker is missing, it's likely incomplete data from name resolver
+				if (cachedData.ticker) {
+					// Cache hit with valid data
+					return cachedData
+				}
+				// If ticker is missing, treat as cache miss and fetch from ESI
+				logger
+					.withTags({ corporationId, operation: 'cache_read' })
+					.info('Cached corporation data missing ticker, fetching from ESI')
 			}
 		} catch (error) {
 			// Cache read failure - log and continue (treat as cache miss)
@@ -1004,8 +1015,19 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			const cached = [...cachedCursor]
 
 			if (cached.length > 0 && cached[0].expires_at > now) {
-				// Cache hit
-				return JSON.parse(cached[0].entity_data) as EsiAlliance
+				// Parse cached data
+				const cachedData = JSON.parse(cached[0].entity_data) as EsiAlliance
+
+				// Validate that cached data has required fields (ticker)
+				// If ticker is missing, it's likely incomplete data from name resolver
+				if (cachedData.ticker) {
+					// Cache hit with valid data
+					return cachedData
+				}
+				// If ticker is missing, treat as cache miss and fetch from ESI
+				logger
+					.withTags({ allianceId, operation: 'cache_read' })
+					.info('Cached alliance data missing ticker, fetching from ESI')
 			}
 		} catch (error) {
 			// Cache read failure - log and continue (treat as cache miss)
@@ -1069,15 +1091,16 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 * Uses name resolution and then fetches by ID
 	 */
 	async getCorporationByName(name: string): Promise<EsiCorporation | null> {
-		// First check entity cache by name (non-critical, failures treated as cache miss)
+		// First check entity cache by name for ID resolution (non-critical, failures treated as cache miss)
 		const now = Date.now()
+		let corporationId: string | null = null
+
 		try {
 			const cachedCursor = await this.state.storage.sql.exec<{
 				entity_id: string
-				entity_data: string
 				expires_at: number
 			}>(
-				`SELECT entity_id, entity_data, expires_at FROM entity_cache WHERE entity_type = ? AND entity_name = ?`,
+				`SELECT entity_id, expires_at FROM entity_cache WHERE entity_type = ? AND entity_name = ?`,
 				'corporation',
 				name
 			)
@@ -1085,23 +1108,25 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			const cached = [...cachedCursor]
 
 			if (cached.length > 0 && cached[0].expires_at > now) {
-				// Cache hit
-				return JSON.parse(cached[0].entity_data) as EsiCorporation
+				// Cache hit - we have the ID
+				corporationId = cached[0].entity_id
 			}
 		} catch (error) {
 			// Cache read failure - treat as cache miss
 			logger.withTags({ name, operation: 'cache_read' }).warn('Entity cache read failed', error)
 		}
 
-		// Resolve name to ID
-		const nameMap = await this.resolveNames([name])
-		const corporationId = nameMap[name]
-
+		// If not cached, resolve name to ID
 		if (!corporationId) {
-			return null
+			const nameMap = await this.resolveNames([name])
+			corporationId = nameMap[name] ?? null
+
+			if (!corporationId) {
+				return null
+			}
 		}
 
-		// Fetch by ID (which will cache it)
+		// Fetch full corporation data by ID (which will cache it)
 		return this.getCorporationById(corporationId)
 	}
 
@@ -1110,15 +1135,16 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 * Uses name resolution and then fetches by ID
 	 */
 	async getAllianceByName(name: string): Promise<EsiAlliance | null> {
-		// First check entity cache by name (non-critical, failures treated as cache miss)
+		// First check entity cache by name for ID resolution (non-critical, failures treated as cache miss)
 		const now = Date.now()
+		let allianceId: string | null = null
+
 		try {
 			const cachedCursor = await this.state.storage.sql.exec<{
 				entity_id: string
-				entity_data: string
 				expires_at: number
 			}>(
-				`SELECT entity_id, entity_data, expires_at FROM entity_cache WHERE entity_type = ? AND entity_name = ?`,
+				`SELECT entity_id, expires_at FROM entity_cache WHERE entity_type = ? AND entity_name = ?`,
 				'alliance',
 				name
 			)
@@ -1126,23 +1152,25 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			const cached = [...cachedCursor]
 
 			if (cached.length > 0 && cached[0].expires_at > now) {
-				// Cache hit
-				return JSON.parse(cached[0].entity_data) as EsiAlliance
+				// Cache hit - we have the ID
+				allianceId = cached[0].entity_id
 			}
 		} catch (error) {
 			// Cache read failure - treat as cache miss
 			logger.withTags({ name, operation: 'cache_read' }).warn('Entity cache read failed', error)
 		}
 
-		// Resolve name to ID
-		const nameMap = await this.resolveNames([name])
-		const allianceId = nameMap[name]
-
+		// If not cached, resolve name to ID
 		if (!allianceId) {
-			return null
+			const nameMap = await this.resolveNames([name])
+			allianceId = nameMap[name] ?? null
+
+			if (!allianceId) {
+				return null
+			}
 		}
 
-		// Fetch by ID (which will cache it)
+		// Fetch full alliance data by ID (which will cache it)
 		return this.getAllianceById(allianceId)
 	}
 
