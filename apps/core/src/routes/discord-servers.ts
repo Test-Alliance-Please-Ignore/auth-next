@@ -82,6 +82,7 @@ app.get('/search', requireAuth(), requireAdmin(), async (c) => {
  *   guildId: string
  *   guildName: string
  *   description?: string
+ *   manageNicknames?: boolean
  * }
  */
 app.post('/', requireAuth(), requireAdmin(), async (c) => {
@@ -94,7 +95,7 @@ app.post('/', requireAuth(), requireAdmin(), async (c) => {
 
 	try {
 		const body = await c.req.json()
-		const { guildId, guildName, description } = body
+		const { guildId, guildName, description, manageNicknames } = body
 
 		if (!guildId || !guildName) {
 			return c.json({ error: 'guildId and guildName are required' }, 400)
@@ -116,6 +117,7 @@ app.post('/', requireAuth(), requireAdmin(), async (c) => {
 				guildId,
 				guildName,
 				description: description || null,
+				...(manageNicknames !== undefined && { manageNicknames }),
 				createdBy: user.id,
 			})
 			.returning()
@@ -170,6 +172,7 @@ app.get('/:id', requireAuth(), requireAdmin(), async (c) => {
  *   guildName?: string
  *   description?: string
  *   isActive?: boolean
+ *   manageNicknames?: boolean
  * }
  */
 app.put('/:id', requireAuth(), requireAdmin(), async (c) => {
@@ -182,7 +185,7 @@ app.put('/:id', requireAuth(), requireAdmin(), async (c) => {
 
 	try {
 		const body = await c.req.json()
-		const { guildName, description, isActive } = body
+		const { guildName, description, isActive, manageNicknames } = body
 
 		// Check if server exists
 		const existing = await db.query.discordServers.findFirst({
@@ -200,6 +203,7 @@ app.put('/:id', requireAuth(), requireAdmin(), async (c) => {
 				...(guildName !== undefined && { guildName }),
 				...(description !== undefined && { description }),
 				...(isActive !== undefined && { isActive }),
+				...(manageNicknames !== undefined && { manageNicknames }),
 				updatedAt: new Date(),
 			})
 			.where(eq(discordServers.id, id))

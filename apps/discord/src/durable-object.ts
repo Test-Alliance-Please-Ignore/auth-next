@@ -308,7 +308,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 	 */
 	async joinUserToServersWithRoles(
 		coreUserId: string,
-		joinRequests: Array<{ guildId: string; roleIds: string[] }>
+		joinRequests: Array<{ guildId: string; roleIds: string[]; nickname?: string }>
 	): Promise<
 		Array<{
 			guildId: string
@@ -389,7 +389,8 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 							req.guildId,
 							user.userId,
 							decryptedAccessToken,
-							req.roleIds
+							req.roleIds,
+							req.nickname
 						)
 						return {
 							guildId: req.guildId,
@@ -442,7 +443,8 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 						req.guildId,
 						user.userId,
 						decryptedAccessToken,
-						req.roleIds
+						req.roleIds,
+						req.nickname
 					)
 					return {
 						guildId: req.guildId,

@@ -400,6 +400,7 @@ export interface DiscordServer {
 	guildName: string
 	description: string | null
 	isActive: boolean
+	manageNicknames: boolean
 	createdBy: string
 	createdAt: string
 	updatedAt: string
@@ -441,12 +442,14 @@ export interface CreateDiscordServerRequest {
 	guildId: string
 	guildName: string
 	description?: string
+	manageNicknames?: boolean
 }
 
 export interface UpdateDiscordServerRequest {
 	guildName?: string
 	description?: string
 	isActive?: boolean
+	manageNicknames?: boolean
 }
 
 export interface CreateDiscordRoleRequest {

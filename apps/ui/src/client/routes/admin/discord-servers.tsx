@@ -85,12 +85,14 @@ export default function DiscordServersPage() {
 		guildId: '',
 		guildName: '',
 		description: '',
+		manageNicknames: false,
 	})
 
 	const [serverEditFormData, setServerEditFormData] = useState<UpdateDiscordServerRequest>({
 		guildName: '',
 		description: '',
 		isActive: true,
+		manageNicknames: false,
 	})
 
 	const [roleFormData, setRoleFormData] = useState<CreateDiscordRoleRequest>({
@@ -123,6 +125,7 @@ export default function DiscordServersPage() {
 				guildId: '',
 				guildName: '',
 				description: '',
+				manageNicknames: false,
 			})
 			showSuccess('Discord server added successfully!')
 		} catch (error) {
@@ -167,6 +170,7 @@ export default function DiscordServersPage() {
 			guildName: server.guildName,
 			description: server.description || '',
 			isActive: server.isActive,
+			manageNicknames: server.manageNicknames ?? false,
 		})
 		setEditServerDialogOpen(true)
 	}
@@ -552,6 +556,24 @@ export default function DiscordServersPage() {
 							/>
 						</div>
 
+						<div className="flex items-center space-x-2">
+							<Switch
+								id="manageNicknames"
+								checked={serverFormData.manageNicknames ?? false}
+								onCheckedChange={(checked) =>
+									setServerFormData({ ...serverFormData, manageNicknames: checked })
+								}
+							/>
+							<div className="flex-1">
+								<Label htmlFor="manageNicknames" className="cursor-pointer">
+									Manage Nicknames
+								</Label>
+								<p className="text-xs text-muted-foreground">
+									Automatically set member nicknames to their primary character name
+								</p>
+							</div>
+						</div>
+
 						<DialogFooter>
 							<CancelButton type="button" onClick={() => setCreateServerDialogOpen(false)}>
 								Cancel
@@ -608,6 +630,24 @@ export default function DiscordServersPage() {
 							<Label htmlFor="edit-isActive" className="cursor-pointer">
 								Active
 							</Label>
+						</div>
+
+						<div className="flex items-center space-x-2">
+							<Switch
+								id="edit-manageNicknames"
+								checked={serverEditFormData.manageNicknames ?? false}
+								onCheckedChange={(checked) =>
+									setServerEditFormData({ ...serverEditFormData, manageNicknames: checked })
+								}
+							/>
+							<div className="flex-1">
+								<Label htmlFor="edit-manageNicknames" className="cursor-pointer">
+									Manage Nicknames
+								</Label>
+								<p className="text-xs text-muted-foreground">
+									Automatically set member nicknames to their primary character name
+								</p>
+							</div>
 						</div>
 
 						<DialogFooter>

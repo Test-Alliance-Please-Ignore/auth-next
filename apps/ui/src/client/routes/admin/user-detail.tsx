@@ -40,6 +40,7 @@ import {
 	useDeleteUserCharacter,
 	useRevokeDiscordLink,
 	useSetUserAdmin,
+	useUpdateDiscordAccess,
 } from '@/hooks/useAdminUsers'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'
@@ -54,11 +55,25 @@ export default function UserDetailPage() {
 	const setUserAdmin = useSetUserAdmin()
 	const deleteCharacter = useDeleteUserCharacter()
 	const revokeDiscord = useRevokeDiscordLink()
+	const updateDiscordAccess = useUpdateDiscordAccess()
 
 	// Dialog state
 	const [adminDialogOpen, setAdminDialogOpen] = useState(false)
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 	const [revokeDiscordDialogOpen, setRevokeDiscordDialogOpen] = useState(false)
+	const [updateDiscordDialogOpen, setUpdateDiscordDialogOpen] = useState(false)
+	const [discordUpdateResults, setDiscordUpdateResults] = useState<{
+		results: Array<{
+			guildId: string
+			guildName: string
+			corporationName: string
+			success: boolean
+			errorMessage?: string
+			alreadyMember?: boolean
+		}>
+		totalInvited: number
+		totalFailed: number
+	} | null>(null)
 	const [selectedCharacter, setSelectedCharacter] = useState<string | null>(null)
 
 	// Message state
@@ -178,6 +193,25 @@ export default function UserDetailPage() {
 		}
 	}
 
+	const handleUpdateDiscordAccess = async () => {
+		try {
+			const results = await updateDiscordAccess.mutateAsync(user.id)
+			setDiscordUpdateResults(results)
+			setUpdateDiscordDialogOpen(true)
+			setMessage({
+				type: 'success',
+				text: `Discord access updated! Joined ${results.totalInvited} server(s), ${results.totalFailed} failed.`,
+			})
+			setTimeout(() => setMessage(null), 5000)
+		} catch (error) {
+			setMessage({
+				type: 'error',
+				text: error instanceof Error ? error.message : 'Failed to update Discord access',
+			})
+			setTimeout(() => setMessage(null), 5000)
+		}
+	}
+
 	const selectedCharacterData = user.characters.find((c) => c.characterId === selectedCharacter)
 
 	return (
@@ -288,15 +322,26 @@ export default function UserDetailPage() {
 								<CardDescription>Linked Discord account information</CardDescription>
 							</div>
 							{!user.discord.authRevoked && (
-								<DestructiveButton
-									onClick={() => setRevokeDiscordDialogOpen(true)}
-									disabled={revokeDiscord.isPending}
-									size="sm"
-									showIcon={false}
-								>
-									<XCircle className="h-4 w-4 mr-2" />
-									Revoke Authorization
-								</DestructiveButton>
+								<div className="flex items-center gap-2">
+									<Button
+										variant="outline"
+										onClick={handleUpdateDiscordAccess}
+										disabled={updateDiscordAccess.isPending}
+										size="sm"
+									>
+										<RefreshCw className={cn("h-4 w-4 mr-2", updateDiscordAccess.isPending && "animate-spin")} />
+										Update Discord Access
+									</Button>
+									<DestructiveButton
+										onClick={() => setRevokeDiscordDialogOpen(true)}
+										disabled={revokeDiscord.isPending}
+										size="sm"
+										showIcon={false}
+									>
+										<XCircle className="h-4 w-4 mr-2" />
+										Revoke Authorization
+									</DestructiveButton>
+								</div>
 							)}
 						</div>
 					</CardHeader>
@@ -611,6 +656,91 @@ export default function UserDetailPage() {
 							<Trash2 className="mr-2 h-4 w-4" />
 							Delete Character
 						</DestructiveButton>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
+			{/* Discord Access Update Results Dialog */}
+			<Dialog open={updateDiscordDialogOpen} onOpenChange={setUpdateDiscordDialogOpen}>
+				<DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+					<DialogHeader>
+						<DialogTitle>Discord Access Update Results</DialogTitle>
+						<DialogDescription>
+							Results of updating Discord server access for{' '}
+							{user.characters.find((c) => c.is_primary)?.characterName || 'this user'}
+						</DialogDescription>
+					</DialogHeader>
+					{discordUpdateResults && (
+						<div className="space-y-4">
+							<div className="grid grid-cols-2 gap-4">
+								<div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3">
+									<div className="text-sm text-muted-foreground">Servers Joined</div>
+									<div className="text-2xl font-bold text-green-500">
+										{discordUpdateResults.totalInvited}
+									</div>
+								</div>
+								<div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+									<div className="text-sm text-muted-foreground">Failed</div>
+									<div className="text-2xl font-bold text-red-500">
+										{discordUpdateResults.totalFailed}
+									</div>
+								</div>
+							</div>
+
+							{discordUpdateResults.results.length > 0 && (
+								<div className="space-y-2">
+									<div className="text-sm font-semibold">Server Details</div>
+									{discordUpdateResults.results.map((result, index) => (
+										<div
+											key={`${result.guildId}-${index}`}
+											className={cn(
+												'p-3 rounded-lg border',
+												result.success
+													? 'bg-green-500/5 border-green-500/20'
+													: 'bg-red-500/5 border-red-500/20'
+											)}
+										>
+											<div className="flex items-start justify-between gap-3">
+												<div className="flex-1">
+													<div className="font-medium">{result.guildName}</div>
+													<div className="text-sm text-muted-foreground">
+														{result.corporationName}
+													</div>
+													{result.errorMessage && (
+														<div className="text-sm text-red-500 mt-1">{result.errorMessage}</div>
+													)}
+													{result.alreadyMember && (
+														<div className="text-sm text-muted-foreground mt-1">
+															Already a member
+														</div>
+													)}
+												</div>
+												<Badge
+													variant="outline"
+													className={
+														result.success
+															? 'border-green-500 text-green-500'
+															: 'border-red-500 text-red-500'
+													}
+												>
+													{result.success ? 'Success' : 'Failed'}
+												</Badge>
+											</div>
+										</div>
+									))}
+								</div>
+							)}
+						</div>
+					)}
+					<DialogFooter>
+						<Button
+							onClick={() => {
+								setUpdateDiscordDialogOpen(false)
+								setDiscordUpdateResults(null)
+							}}
+						>
+							Close
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>

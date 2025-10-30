@@ -114,6 +114,22 @@ export function useRevokeDiscordLink() {
 }
 
 /**
+ * Update a user's Discord access - joins them to all eligible Discord servers
+ * with appropriate roles based on corporation and group memberships
+ */
+export function useUpdateDiscordAccess() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: (userId: string) => api.triggerDiscordJoin(userId),
+		onSuccess: (_, userId) => {
+			// Invalidate user detail to refetch Discord status
+			void queryClient.invalidateQueries({ queryKey: adminUserKeys.detail(userId) })
+		},
+	})
+}
+
+/**
  * Delete a character from a user account
  */
 export function useDeleteUserCharacter() {

@@ -256,6 +256,8 @@ export const discordServers = pgTable(
 		description: text('description'),
 		/** Whether this server is active */
 		isActive: boolean('is_active').default(true).notNull(),
+		/** Whether to automatically manage user nicknames to match their primary character name */
+		manageNicknames: boolean('manage_nicknames').default(false).notNull(),
 		/** Admin user who added this server */
 		createdBy: uuid('created_by')
 			.notNull()

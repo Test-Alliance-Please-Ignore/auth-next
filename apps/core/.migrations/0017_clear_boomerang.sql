@@ -1,0 +1,1 @@
+ALTER TABLE "discord_servers" ADD COLUMN "manage_nicknames" boolean DEFAULT false NOT NULL;

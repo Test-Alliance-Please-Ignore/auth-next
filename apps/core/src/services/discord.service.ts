@@ -277,6 +277,10 @@ export async function joinUserToCorporationServers(
 
 	const characterIds = userChars.map((char) => char.characterId)
 
+	// Get primary character name for nickname management
+	const primaryCharacter = userChars.find((char) => char.is_primary)
+	const primaryCharacterName = primaryCharacter?.characterName
+
 	if (characterIds.length === 0) {
 		return {
 			results: [],
@@ -513,11 +517,13 @@ export async function joinUserToCorporationServers(
 
 	// Deduplicate guild IDs (same server might be attached to multiple corps/groups)
 	// Keep track of all role IDs that should be assigned
+	// Also track Discord server DB IDs to fetch manageNicknames settings
 	const guildMap = new Map<
 		string,
 		{
 			guildId: string
 			roleIds: string[]
+			discordServerDbId?: string
 		}
 	>()
 
@@ -529,11 +535,13 @@ export async function joinUserToCorporationServers(
 			guildMap.set(guild.guildId, {
 				guildId: guild.guildId,
 				roleIds: combinedRoles,
+				discordServerDbId: existing.discordServerDbId || guild.discordServerId,
 			})
 		} else {
 			guildMap.set(guild.guildId, {
 				guildId: guild.guildId,
 				roleIds: guild.roleIds || [],
+				discordServerDbId: guild.discordServerId,
 			})
 		}
 	}
@@ -555,11 +563,34 @@ export async function joinUserToCorporationServers(
 		}
 	}
 
-	const joinRequests = Array.from(guildMap.values())
+	// Fetch Discord server settings to check manageNicknames
+	const discordServerDbIds = Array.from(guildMap.values())
+		.map((g) => g.discordServerDbId)
+		.filter((id): id is string => id !== undefined)
+
+	const discordServerSettings = await db.query.discordServers.findMany({
+		where: inArray(discordServers.id, discordServerDbIds),
+	})
+
+	// Build a map of guildId -> manageNicknames setting
+	const manageNicknamesByGuildId = new Map<string, boolean>()
+	for (const server of discordServerSettings) {
+		manageNicknamesByGuildId.set(server.guildId, server.manageNicknames)
+	}
+
+	// Build join requests with nicknames where appropriate
+	const joinRequests = Array.from(guildMap.values()).map((guild) => ({
+		guildId: guild.guildId,
+		roleIds: guild.roleIds,
+		// Include nickname if server has manageNicknames enabled AND user has primary character
+		...(manageNicknamesByGuildId.get(guild.guildId) &&
+			primaryCharacterName && { nickname: primaryCharacterName }),
+	}))
 
 	logger.info('[Discord] Deduplicated guild join requests', {
 		originalCount: guildsToJoin.length,
 		deduplicatedCount: joinRequests.length,
+		nicknameManagementEnabled: joinRequests.filter((r) => r.nickname).length,
 	})
 
 	// Call Discord DO via RPC to join the servers with role assignments
