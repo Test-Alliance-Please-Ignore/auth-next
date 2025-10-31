@@ -116,7 +116,7 @@ app.get('/:characterId', requireAuth(), async (c) => {
 
 	try {
 		// Fetch all public character data pieces
-		const [info, portrait, corporationHistory, skills, attributes, lastUpdated] = await Promise.all(
+		let [info, portrait, corporationHistory, skills, attributes, lastUpdated] = await Promise.all(
 			[
 				eveCharacterDataStub.getCharacterInfo(characterIdStr),
 				eveCharacterDataStub.getPortrait(characterIdStr),
@@ -127,8 +127,48 @@ app.get('/:characterId', requireAuth(), async (c) => {
 			]
 		)
 
+		// If character not found in database, try to auto-fetch from ESI
 		if (!info) {
-			return c.json({ error: 'Character not found' }, 404)
+			logger.info('[Character Detail] Character not in database, attempting auto-fetch', {
+				characterId: characterIdStr,
+			})
+
+			try {
+				// Fetch public character data from ESI and store in database
+				await eveCharacterDataStub.fetchCharacterData(characterIdStr)
+
+				// Retry fetching from database after auto-fetch
+				const [newInfo, newPortrait, newCorporationHistory] = await Promise.all([
+					eveCharacterDataStub.getCharacterInfo(characterIdStr),
+					eveCharacterDataStub.getPortrait(characterIdStr),
+					eveCharacterDataStub.getCorporationHistory(characterIdStr),
+				])
+
+				if (newInfo) {
+					// Successfully fetched and stored - update variables
+					info = newInfo
+					portrait = newPortrait
+					corporationHistory = newCorporationHistory
+
+					logger.info('[Character Detail] Auto-fetch successful', {
+						characterId: characterIdStr,
+						characterName: newInfo.name,
+					})
+				} else {
+					// Still not found after fetch - character doesn't exist in ESI
+					logger.warn('[Character Detail] Character not found in ESI', {
+						characterId: characterIdStr,
+					})
+					return c.json({ error: 'Character not found' }, 404)
+				}
+			} catch (error) {
+				// Auto-fetch failed - log and return 404
+				logger.error('[Character Detail] Auto-fetch failed', {
+					characterId: characterIdStr,
+					error: error instanceof Error ? error.message : String(error),
+				})
+				return c.json({ error: 'Character not found' }, 404)
+			}
 		}
 
 		// Initialize entity resolver service
@@ -372,7 +412,8 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 		// Get the updated data
 		let lastUpdated: string | null = null
 		try {
-			lastUpdated = await eveCharacterDataStub.getLastUpdated(characterIdStr)
+			const lastUpdatedDate = await eveCharacterDataStub.getLastUpdated(characterIdStr)
+		lastUpdated = lastUpdatedDate ? lastUpdatedDate.toISOString() : null
 		} catch (error) {
 			logger.error('Failed to get last updated timestamp:', error)
 			// Don't throw here, just set to null and continue

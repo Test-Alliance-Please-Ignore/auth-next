@@ -62,7 +62,7 @@ describe('EveCorporationData Durable Object', () => {
 		const stub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, String(testCorp))
 
 		// Should return null before any data fetched
-		const infoBefore = await stub.getCorporationInfo()
+		const infoBefore = await stub.getCorporationInfo(String(testCorp))
 		expect(infoBefore).toBeNull()
 	})
 

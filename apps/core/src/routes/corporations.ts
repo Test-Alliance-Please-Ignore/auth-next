@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 
-import { and, desc, eq, ilike, or } from '@repo/db-utils'
+import { and, desc, eq, ilike, inArray, or } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
@@ -16,9 +16,74 @@ import { requireAdmin, requireAuth } from '../middleware/session'
 
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
+import type { EveTokenStore } from '@repo/eve-token-store'
 import type { App } from '../context'
 
 const app = new Hono<App>()
+
+/**
+ * Cache duration for corporation member data (5 minutes)
+ */
+const CACHE_TTL = 5 * 60 // 5 minutes in seconds
+
+/**
+ * Helper to get cache instance
+ */
+function getCache() {
+	return caches.default
+}
+
+/**
+ * Helper to create cache key for corporation members
+ */
+function getCorpMembersCacheKey(corporationId: string): string {
+	return `https://cache.local/corporations/${corporationId}/members`
+}
+
+/**
+ * Helper to check cache for JSON response
+ */
+async function getCachedJson<T>(cacheKey: string): Promise<T | null> {
+	try {
+		const cache = getCache()
+		const cachedResponse = await cache.match(cacheKey)
+		if (cachedResponse) {
+			const age = cachedResponse.headers.get('age')
+			logger.info('[Cache] Hit', { cacheKey, age: age ? `${age}s` : 'unknown' })
+			return await cachedResponse.json()
+		}
+		logger.info('[Cache] Miss', { cacheKey })
+		return null
+	} catch (error) {
+		logger.warn('[Cache] Error reading cache', {
+			cacheKey,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return null
+	}
+}
+
+/**
+ * Helper to store JSON response in cache
+ */
+async function cacheJson(cacheKey: string, data: unknown, ttl: number): Promise<void> {
+	try {
+		const cache = getCache()
+		const response = new Response(JSON.stringify(data), {
+			headers: {
+				'Content-Type': 'application/json',
+				'Cache-Control': `public, max-age=${ttl}`,
+			},
+		})
+		await cache.put(cacheKey, response)
+		logger.info('[Cache] Stored', { cacheKey, ttl })
+	} catch (error) {
+		logger.warn('[Cache] Error storing cache', {
+			cacheKey,
+			error: error instanceof Error ? error.message : String(error),
+		})
+	}
+}
 
 /**
  * GET /corporations
@@ -510,7 +575,7 @@ app.get('/:corporationId/data', requireAuth(), requireAdmin(), async (c) => {
 		logger.info('[Corporations] Fetching all data from DO', { corporationId })
 		const [publicInfo, coreData, financialData, assetsData, marketData, killmails] =
 			await Promise.all([
-				stub.getCorporationInfo().catch((e: unknown) => {
+				stub.getCorporationInfo(corporationId).catch((e: unknown) => {
 					logger.error('[Corporations] getCorporationInfo failed', {
 						corporationId,
 						error: e instanceof Error ? e.message : String(e),
@@ -647,6 +712,13 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 			where: eq(userCharacters.userId, user.id),
 		})
 
+		logger.info('[Corporations Members] Checking user access', {
+			corporationId,
+			userId: user.id,
+			userCharacterCount: userChars.length,
+			userCharacters: userChars.map(c => ({ id: c.characterId, name: c.characterName }))
+		})
+
 		let hasAccess = false
 		let userRole: 'CEO' | 'Director' | null = null
 
@@ -654,30 +726,61 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 			try {
 				// Check if character is in this corporation
 				const charStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, character.characterId)
-				const charData = await charStub.getCharacterInfo()
+				const charData = await charStub.getCharacterInfo(character.characterId)
+
+				logger.info('[Corporations Members] Character corporation check', {
+					characterId: character.characterId,
+					characterName: character.characterName,
+					characterCorporationId: charData?.corporationId,
+					targetCorporationId: corporationId,
+					matches: charData && String(charData.corporationId) === corporationId
+				})
 
 				// Convert corporation_id to string for comparison
-				if (!charData || String(charData.corporation_id) !== corporationId) {
+				if (!charData || String(charData.corporationId) !== corporationId) {
 					continue
 				}
 
 				// Get corporation data to check CEO
 				const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
-				const corpInfo = await corpStub.getCorporationInfo()
+				const [corpInfo, directors] = await Promise.all([
+					corpStub.getCorporationInfo(corporationId),
+					corpStub.getDirectors(corporationId)
+				])
+
+				logger.info('[Corporations Members] Checking roles for character', {
+					characterId: character.characterId,
+					characterName: character.characterName,
+					corporationId,
+					ceoId: corpInfo?.ceoId,
+					directorCount: directors.length,
+					directors: directors.map(d => ({ id: d.characterId, name: d.characterName, isHealthy: d.isHealthy }))
+				})
 
 				// Check if character is CEO (convert ceo_id to string for comparison)
-				if (corpInfo && String(corpInfo.ceo_id) === character.characterId) {
+				const isCeo = corpInfo && String(corpInfo.ceoId) === character.characterId
+				if (isCeo) {
 					hasAccess = true
 					userRole = 'CEO'
+					logger.info('[Corporations Members] Access granted - CEO', {
+						characterId: character.characterId,
+						characterName: character.characterName,
+						corporationId
+					})
 					break
 				}
 
 				// Check if character is a director
-				const directors = await corpStub.getDirectors(corporationId)
-				const isDirector = directors.some((d) => d.characterId === character.characterId)
-				if (isDirector) {
+				const matchedDirector = directors.find((d) => d.characterId === character.characterId)
+				if (matchedDirector) {
 					hasAccess = true
 					userRole = 'Director'
+					logger.info('[Corporations Members] Access granted - Director', {
+						characterId: character.characterId,
+						characterName: character.characterName,
+						corporationId,
+						directorName: matchedDirector.characterName
+					})
 					// Continue checking in case another character is CEO
 				}
 			} catch (error) {
@@ -690,15 +793,52 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 		}
 
 		if (!hasAccess) {
+			logger.warn('[Corporations Members] Access denied', {
+				corporationId,
+				userId: user.id,
+				checkedCharacters: userChars.length,
+				reason: 'No character found with CEO or Director role'
+			})
 			return c.json({ error: 'Access denied. CEO or director role required.' }, 403)
 		}
 
 		logger.info('[Corporations] User has access', { corporationId, userId: user.id, userRole })
 
+		// Check cache for member data
+		const cacheKey = getCorpMembersCacheKey(corporationId)
+		const cached = await getCachedJson<
+			Array<{
+				characterId: string
+				characterName: string
+				corporationId: string
+				corporationName: string
+				role: 'CEO' | 'Director' | 'Member'
+				hasAuthAccount: boolean
+				authUserId?: string
+				authUserName?: string
+				joinDate: string
+				lastEsiUpdate: string
+				lastLogin?: string
+				allianceId?: string
+				allianceName?: string
+				locationSystem?: string
+				locationRegion?: string
+				activityStatus: 'active' | 'inactive' | 'unknown'
+			}>
+		>(cacheKey)
+
+		if (cached) {
+			logger.info('[Corporations] Returning cached member data', {
+				corporationId,
+				memberCount: cached.length,
+			})
+			return c.json(cached)
+		}
+
 		// Get corporation members from DO
 		const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 		const [corpInfo, coreData] = await Promise.all([
-			corpStub.getCorporationInfo(),
+			corpStub.getCorporationInfo(corporationId),
 			corpStub.getCoreData(corporationId),
 		])
 
@@ -706,77 +846,76 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 			return c.json([])
 		}
 
-		// Get all linked characters for auth status check
-		const allLinkedCharacters = await db.query.userCharacters.findMany()
-		const linkedCharacterIds = new Set(allLinkedCharacters.map((c) => c.characterId))
+		// Collect all member character IDs first
+		const memberCharacterIds = coreData.members.map((m) => String(m.characterId))
+
+		// Batch query: only fetch linked characters for THIS corporation's members
+		const linkedCharacters =
+			memberCharacterIds.length > 0
+				? await db.query.userCharacters.findMany({
+						where: inArray(userCharacters.characterId, memberCharacterIds),
+					})
+				: []
+
+		const linkedCharacterMap = new Map(linkedCharacters.map((c) => [c.characterId, c]))
+
+		// Fetch directors list once for role determination
+		const directors = await corpStub.getDirectors(corporationId)
+		const directorIds = new Set(directors.map((d) => d.characterId))
+
+		// Batch resolve all character names using ESI bulk endpoint
+		// Character ID → name mappings are cached for 1 year (essentially permanent)
+		const tokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+		const characterNameMap = await tokenStoreStub.resolveIds(memberCharacterIds)
+
+		logger.info('[Corporations Members] Resolved character names', {
+			corporationId,
+			totalMembers: memberCharacterIds.length,
+			resolvedCount: Object.keys(characterNameMap).length,
+			unresolvedCount: memberCharacterIds.length - Object.keys(characterNameMap).length,
+		})
 
 		// Process members with comprehensive data
 		const membersWithDetails = await Promise.all(
 			coreData.members.map(async (member) => {
-				const characterId = String(member.character_id)
+				const characterId = String(member.characterId)
 
-				// Check auth link status
-				const linkedChar = allLinkedCharacters.find((c) => c.characterId === characterId)
+				// Check auth link status using the map
+				const linkedChar = linkedCharacterMap.get(characterId)
 				const hasAuthAccount = !!linkedChar
 
-				// Determine role
+				// Determine role using pre-fetched data
 				let role: 'CEO' | 'Director' | 'Member' = 'Member'
-				// Convert ceo_id to string for comparison
-				if (corpInfo && String(corpInfo.ceo_id) === characterId) {
+				if (corpInfo && String(corpInfo.ceoId) === characterId) {
 					role = 'CEO'
-				} else {
-					// Check if director
-					const directors = await corpStub.getDirectors(corporationId)
-					const isDirector = directors.some((d) => d.characterId === characterId)
-					if (isDirector) {
-						role = 'Director'
-					}
+				} else if (directorIds.has(characterId)) {
+					role = 'Director'
 				}
 
 				// Find member tracking data if available
-				const tracking = coreData.memberTracking?.find((t) => t.character_id === member.character_id)
+				const tracking = coreData.memberTracking?.find((t) => t.characterId === characterId)
 
-				// Get character public info for location data
-				let locationSystem: string | undefined
-				let locationRegion: string | undefined
-				let lastLogin: Date | undefined
-
-				try {
-					const charStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, characterId)
-					const charInfo = await charStub.getCharacterInfo()
-
-					if (charInfo) {
-						// Note: Location data would need to be fetched from ESI with proper scopes
-						// This is a placeholder for the structure
-						locationSystem = tracking?.location_name || undefined
-						locationRegion = undefined // Would need to be resolved from system ID
-					}
-
-					if (tracking?.logon_date) {
-						lastLogin = new Date(tracking.logon_date)
-					}
-				} catch (error) {
-					logger.debug('Could not fetch character details:', { characterId })
-				}
+				// Get character name from resolved names (returns Record<string, string>)
+				const characterName = characterNameMap[characterId] || 'Unknown'
 
 				return {
 					characterId,
-					characterName: member.name || 'Unknown',
+					characterName,
 					corporationId,
 					corporationName: managedCorp.name,
 					role,
 					hasAuthAccount,
 					authUserId: linkedChar?.userId,
 					authUserName: linkedChar?.characterName,
-					joinDate: member.start_date || new Date().toISOString(),
-					lastEsiUpdate: coreData.lastFetched || new Date().toISOString(),
-					lastLogin: lastLogin?.toISOString(),
-					allianceId: corpInfo?.alliance_id ? String(corpInfo.alliance_id) : undefined,
-					allianceName: corpInfo?.alliance_name,
-					locationSystem,
-					locationRegion,
-					activityStatus: tracking?.logon_date
-						? (new Date().getTime() - new Date(tracking.logon_date).getTime() < 7 * 24 * 60 * 60 * 1000
+					joinDate: tracking?.startDate?.toISOString() || member.updatedAt.toISOString(),
+					lastEsiUpdate: member.updatedAt.toISOString(),
+					lastLogin: tracking?.logonDate?.toISOString(),
+					allianceId: corpInfo?.allianceId ? String(corpInfo.allianceId) : undefined,
+					allianceName: undefined, // Not available in CorporationPublicData
+					locationSystem: undefined, // Would need additional ESI scopes
+					locationRegion: undefined, // Would need to be resolved from system ID
+					activityStatus: tracking?.logonDate
+						? (new Date().getTime() - tracking.logonDate.getTime() < 7 * 24 * 60 * 60 * 1000
 							? 'active'
 							: 'inactive')
 						: 'unknown',
@@ -796,6 +935,9 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 			corporationId,
 			memberCount: membersWithDetails.length,
 		})
+
+		// Store in cache for future requests
+		await cacheJson(cacheKey, membersWithDetails, CACHE_TTL)
 
 		return c.json(membersWithDetails)
 	} catch (error) {

@@ -13,6 +13,8 @@ export type Env = SharedHonoEnv & {
 	CORE: CoreWorker
 	EVE_CORPORATION_DATA: DurableObjectNamespace
 	EVE_TOKEN_STORE: DurableObjectNamespace
+	/** KV cache for directors and other data */
+	CACHE: KVNamespace
 
 	// Queue bindings
 	'corp-public-refresh': Queue<unknown>

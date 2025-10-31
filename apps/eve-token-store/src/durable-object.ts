@@ -1263,7 +1263,8 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			}>()
 
 			// Process all entity types and cache them
-			const expiresAt = Date.now() + 60 * 60 * 1000 // 1 hour cache
+			// Character/corp/alliance names are essentially permanent - cache for 1 year
+			const expiresAt = Date.now() + 365 * 24 * 60 * 60 * 1000
 
 			for (const [entityType, entities] of Object.entries(data)) {
 				if (!entities) continue
@@ -1341,6 +1342,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		}
 
 		// Fetch from ESI for uncached IDs
+		// ESI /universe/names/ has a limit of 1000 IDs per request
 		try {
 			// Convert string IDs to integers for ESI API
 			const integerIds = idsToResolve.map((id) => parseInt(id, 10)).filter((id) => !isNaN(id))
@@ -1350,26 +1352,61 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				return result
 			}
 
-			const response = await fetch('https://esi.evetech.net/latest/universe/names/', {
-				method: 'POST',
-				headers: {
-					'X-Compatibility-Date': '2025-09-30',
-					'Content-Type': 'application/json',
-				},
-				body: JSON.stringify(integerIds),
-			})
+			// Batch size limit for ESI /universe/names/ endpoint
+			const BATCH_SIZE = 1000
 
-			if (!response.ok) {
-				const errorText = await response.text()
-				logger.withTags({ status: response.status, errorText }).error('ESI ID resolution failed')
-				return result
+			// Split into batches if we have more than the limit
+			const batches: number[][] = []
+			for (let i = 0; i < integerIds.length; i += BATCH_SIZE) {
+				batches.push(integerIds.slice(i, i + BATCH_SIZE))
 			}
 
-			// ESI returns numbers for IDs, but we need strings
-			const data = await response.json<Array<{ id: number; name: string; category: string }>>()
+			logger
+				.withTags({
+					totalIds: integerIds.length,
+					batchCount: batches.length,
+					batchSize: BATCH_SIZE,
+				})
+				.info('Resolving IDs from ESI in batches')
 
-			// Cache the results
-			const expiresAt = Date.now() + 60 * 60 * 1000 // 1 hour cache
+			// Process batches in parallel for better performance
+			const batchResults = await Promise.all(
+				batches.map(async (batch) => {
+					const response = await fetch('https://esi.evetech.net/latest/universe/names/', {
+						method: 'POST',
+						headers: {
+							'X-Compatibility-Date': '2025-09-30',
+							'Content-Type': 'application/json',
+						},
+						body: JSON.stringify(batch),
+					})
+
+					if (!response.ok) {
+						const errorText = await response.text()
+						logger
+							.withTags({ status: response.status, errorText, batchSize: batch.length })
+							.error('ESI ID resolution batch failed')
+						return []
+					}
+
+					// ESI returns numbers for IDs, but we need strings
+					return response.json<Array<{ id: number; name: string; category: string }>>()
+				})
+			)
+
+			// Flatten all batch results
+			const data = batchResults.flat()
+
+			logger
+				.withTags({
+					resolvedCount: data.length,
+					requestedCount: integerIds.length,
+				})
+				.info('ID resolution completed')
+
+			// Cache the results - character/corp/alliance IDs to names are essentially permanent
+			// Cache for 1 year (effectively forever - names very rarely change)
+			const expiresAt = Date.now() + 365 * 24 * 60 * 60 * 1000
 
 			for (const entity of data) {
 				const entityId = String(entity.id)

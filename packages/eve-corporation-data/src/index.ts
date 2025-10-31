@@ -781,9 +781,10 @@ export interface EveCorporationData {
 
 	/**
 	 * Get corporation public information
+	 * @param corporationId Corporation ID to fetch info for
 	 * @returns Public corporation data or null if not found
 	 */
-	getCorporationInfo(): Promise<CorporationPublicData | null>
+	getCorporationInfo(corporationId: string): Promise<CorporationPublicData | null>
 
 	/**
 	 * Get corporation members list

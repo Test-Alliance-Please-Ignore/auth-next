@@ -72,6 +72,7 @@ import type { Env } from './context'
  */
 export class EveCorporationDataDO extends DurableObject<Env> implements EveCorporationData {
 	private db: ReturnType<typeof createDb>
+	private readonly DIRECTORS_CACHE_TTL = 30 * 60 // 30 minutes in seconds (KV expirationTtl)
 
 	/**
 	 * Initialize the Durable Object with database connection
@@ -93,6 +94,30 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 */
 	private getTokenStoreStub(): EveTokenStore {
 		return getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+	}
+
+	/**
+	 * Invalidate directors cache for a corporation
+	 */
+	private async invalidateDirectorsCache(corporationId: string): Promise<void> {
+		const cacheKey = `directors:${corporationId}`
+		try {
+			await this.env.CACHE.delete(cacheKey)
+		} catch (error) {
+			console.warn('[Directors Cache] Failed to invalidate cache', { corporationId, error })
+		}
+	}
+
+	/**
+	 * Invalidate members cache for a corporation
+	 */
+	private async invalidateMembersCache(corporationId: string): Promise<void> {
+		const cacheKey = `members:${corporationId}`
+		try {
+			await this.env.CACHE.delete(cacheKey)
+		} catch (error) {
+			console.warn('[Members Cache] Failed to invalidate cache', { corporationId, error })
+		}
 	}
 
 	/**
@@ -349,6 +374,9 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 		const directorManager = new DirectorManager(this.db, corporationId, this.getTokenStoreStub())
 		await directorManager.addDirector(characterId, characterName, priority)
+
+		// Invalidate directors cache
+		await this.invalidateDirectorsCache(corporationId)
 	}
 
 	/**
@@ -357,6 +385,9 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	async removeDirector(corporationId: string, characterId: string): Promise<void> {
 		const directorManager = new DirectorManager(this.db, corporationId, this.getTokenStoreStub())
 		await directorManager.removeDirector(characterId)
+
+		// Invalidate directors cache
+		await this.invalidateDirectorsCache(corporationId)
 	}
 
 	/**
@@ -369,14 +400,49 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	): Promise<void> {
 		const directorManager = new DirectorManager(this.db, corporationId, this.getTokenStoreStub())
 		await directorManager.updateDirectorPriority(characterId, priority)
+
+		// Invalidate directors cache
+		await this.invalidateDirectorsCache(corporationId)
 	}
 
 	/**
 	 * Get all directors for this corporation
+	 * Cached in KV for 30 minutes to reduce database queries
 	 */
 	async getDirectors(corporationId: string): Promise<DirectorHealth[]> {
+		const cacheKey = `directors:${corporationId}`
+
+		// Check KV cache first
+		try {
+			const cached = await this.env.CACHE.get<DirectorHealth[]>(cacheKey, 'json')
+			if (cached) {
+				// Convert Date fields from strings back to Date objects
+				return cached.map((d) => ({
+					...d,
+					lastHealthCheck: d.lastHealthCheck ? new Date(d.lastHealthCheck) : null,
+					lastUsed: d.lastUsed ? new Date(d.lastUsed) : null,
+				}))
+			}
+		} catch (error) {
+			// Cache read failure - log but continue to fetch from DB
+			console.warn('[Directors Cache] Failed to read from KV', { corporationId, error })
+		}
+
+		// Cache miss or error - fetch from database
 		const directorManager = new DirectorManager(this.db, corporationId, this.getTokenStoreStub())
-		return await directorManager.getAllDirectors()
+		const directors = await directorManager.getAllDirectors()
+
+		// Store in KV cache with 30 minute TTL
+		try {
+			await this.env.CACHE.put(cacheKey, JSON.stringify(directors), {
+				expirationTtl: this.DIRECTORS_CACHE_TTL,
+			})
+		} catch (error) {
+			// Cache write failure - log but don't fail the request
+			console.warn('[Directors Cache] Failed to write to KV', { corporationId, error })
+		}
+
+		return directors
 	}
 
 	/**
@@ -500,6 +566,9 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					.onConflictDoNothing({
 						target: [corporationMembers.corporationId, corporationMembers.characterId],
 					})
+
+				// Invalidate members cache after successful update
+				await this.invalidateMembersCache(corporationId)
 			} catch (error) {
 				console.error('[fetchAndStoreMembers] Database insert failed:', {
 					error,
@@ -1691,8 +1760,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Get corporation public information
 	 */
-	async getCorporationInfo(): Promise<CorporationPublicData | null> {
-		const result = await this.db.query.corporationPublicInfo.findFirst()
+	async getCorporationInfo(corporationId: string): Promise<CorporationPublicData | null> {
+		const result = await this.db.query.corporationPublicInfo.findFirst({
+			where: eq(corporationPublicInfo.corporationId, corporationId),
+		})
 
 		if (!result) {
 			return null
@@ -1722,16 +1793,46 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 * Get corporation members list
 	 */
 	async getMembers(corporationId: string): Promise<CorporationMemberData[]> {
+		const cacheKey = `members:${corporationId}`
+
+		// Check KV cache first
+		try {
+			const cached = await this.env.CACHE.get<CorporationMemberData[]>(cacheKey, 'json')
+			if (cached) {
+				// Convert updatedAt from string back to Date object
+				return cached.map((m) => ({
+					...m,
+					updatedAt: new Date(m.updatedAt),
+				}))
+			}
+		} catch (error) {
+			// Cache read failure - log but continue to fetch from DB
+			console.warn('[Members Cache] Failed to read from KV', { corporationId, error })
+		}
+
+		// Cache miss or error - fetch from database
 		const results = await this.db.query.corporationMembers.findMany({
 			where: eq(corporationMembers.corporationId, corporationId),
 		})
 
-		return results.map((r) => ({
+		const members = results.map((r) => ({
 			id: r.id,
 			corporationId: r.corporationId,
 			characterId: r.characterId,
 			updatedAt: r.updatedAt,
 		}))
+
+		// Store in KV cache with 30 minute TTL
+		try {
+			await this.env.CACHE.put(cacheKey, JSON.stringify(members), {
+				expirationTtl: this.DIRECTORS_CACHE_TTL, // 30 * 60 seconds
+			})
+		} catch (error) {
+			// Cache write failure - log but don't fail the request
+			console.warn('[Members Cache] Failed to write to KV', { corporationId, error })
+		}
+
+		return members
 	}
 
 	/**
@@ -1761,7 +1862,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 */
 	async getCoreData(corporationId: string): Promise<CorporationCoreData | null> {
 		const [publicInfo, members, memberTracking] = await Promise.all([
-			this.getCorporationInfo(),
+			this.getCorporationInfo(corporationId),
 			this.getMembers(corporationId),
 			this.getMemberTracking(corporationId),
 		])

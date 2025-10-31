@@ -645,7 +645,6 @@ groups.post('/permissions', requireAuth(), requireAdmin(), async (c) => {
 				name: body.name,
 				description: body.description,
 				categoryId: body.categoryId,
-				createdBy: user.id,
 			},
 			user.id
 		)
@@ -758,7 +757,6 @@ groups.post('/:groupId/permissions/attach', requireAuth(), requireAdmin(), async
 				groupId,
 				permissionId: body.permissionId,
 				targetType: body.targetType,
-				createdBy: user.id,
 			},
 			user.id
 		)
@@ -790,7 +788,6 @@ groups.post('/:groupId/permissions/custom', requireAuth(), requireAdmin(), async
 				name: body.name,
 				description: body.description,
 				targetType: body.targetType,
-				createdBy: user.id,
 			},
 			user.id
 		)
@@ -1086,7 +1083,7 @@ groups.post('/:groupId/admins', requireAuth(), requireAdmin(), async (c) => {
 	}
 
 	try {
-		await groupsDO.addAdmin(groupId, user.id, body.userId, user.is_admin)
+		await groupsDO.addAdmin(groupId, user.id, body.userId)
 		return c.json({ success: true }, 200)
 	} catch (error) {
 		if (error instanceof Error) {
@@ -1111,7 +1108,7 @@ groups.delete('/:groupId/admins/:userId', requireAuth(), requireAdmin(), async (
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
-		await groupsDO.removeAdmin(groupId, user.id, targetUserId, user.is_admin)
+		await groupsDO.removeAdmin(groupId, user.id, targetUserId)
 		return c.json({ success: true }, 200)
 	} catch (error) {
 		if (error instanceof Error) {

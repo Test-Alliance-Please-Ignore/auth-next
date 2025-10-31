@@ -11,6 +11,12 @@
 		"enabled": true
 	},
 	"vars": {},
+	"kv_namespaces": [
+		{
+			"binding": "CACHE",
+			"id": "ab5cf334a1294610896c1a732dcde577"
+		}
+	],
 	"queues": {
 		"producers": [
 			{ "queue": "corp-public-refresh", "binding": "corp-public-refresh" },
