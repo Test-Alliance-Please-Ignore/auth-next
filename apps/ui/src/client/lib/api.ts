@@ -318,6 +318,7 @@ export interface ManagedCorporation {
 	includeInBackgroundRefresh: boolean
 	isMemberCorporation: boolean
 	isAltCorp: boolean
+	isSpecialPurpose: boolean
 	lastSync: string | null
 	lastVerified: string | null
 	isVerified: boolean
@@ -355,11 +356,11 @@ export interface UpdateCorporationRequest {
 	includeInBackgroundRefresh?: boolean
 	isMemberCorporation?: boolean
 	isAltCorp?: boolean
+	isSpecialPurpose?: boolean
 }
 
 export interface CorporationsFilters {
-	isMember?: boolean
-	isAlt?: boolean
+	corporationType?: 'member' | 'alt' | 'special' | 'other'
 }
 
 export interface CorporationAccessVerification {
@@ -1209,8 +1210,7 @@ export class ApiClient {
 
 	async getCorporations(filters?: CorporationsFilters): Promise<ManagedCorporation[]> {
 		const params = new URLSearchParams()
-		if (filters?.isMember !== undefined) params.set('isMember', String(filters.isMember))
-		if (filters?.isAlt !== undefined) params.set('isAlt', String(filters.isAlt))
+		if (filters?.corporationType !== undefined) params.set('corporationType', filters.corporationType)
 
 		const query = params.toString()
 		return this.get(`/corporations${query ? `?${query}` : ''}`)
@@ -1434,6 +1434,10 @@ export class ApiClient {
 
 	async deleteUserCharacter(userId: string, characterId: string): Promise<{ success: boolean }> {
 		return this.delete(`/admin/users/${userId}/characters/${characterId}`)
+	}
+
+	async setUserPrimaryCharacter(userId: string, characterId: string): Promise<{ success: boolean }> {
+		return this.post(`/admin/users/${userId}/characters/${characterId}/set-primary`)
 	}
 
 	async getActivityLogs(

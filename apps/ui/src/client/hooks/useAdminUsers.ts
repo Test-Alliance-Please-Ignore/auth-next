@@ -156,3 +156,35 @@ export function useDeleteUserCharacter() {
 		},
 	})
 }
+
+/**
+ * Set a character as the primary character for a user
+ */
+export function useSetUserPrimaryCharacter() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: ({ userId, characterId }: { userId: string; characterId: string }) =>
+			api.setUserPrimaryCharacter(userId, characterId),
+		onSuccess: (_, { userId, characterId }) => {
+			// Invalidate user lists
+			void queryClient.invalidateQueries({ queryKey: adminUserKeys.lists() })
+
+			// Update user detail cache optimistically
+			queryClient.setQueryData(adminUserKeys.detail(userId), (old: AdminUserDetail | undefined) => {
+				if (!old) return old
+				return {
+					...old,
+					mainCharacterId: characterId,
+					characters: old.characters.map((char) => ({
+						...char,
+						is_primary: char.characterId === characterId,
+					})),
+				}
+			})
+
+			// Invalidate to refetch and ensure consistency
+			void queryClient.invalidateQueries({ queryKey: adminUserKeys.detail(userId) })
+		},
+	})
+}

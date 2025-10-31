@@ -1,6 +1,7 @@
 import {
 	AlertTriangle,
 	ArrowLeft,
+	CheckCircle,
 	ExternalLink,
 	MessageSquare,
 	RefreshCw,
@@ -40,6 +41,7 @@ import {
 	useDeleteUserCharacter,
 	useRevokeDiscordLink,
 	useSetUserAdmin,
+	useSetUserPrimaryCharacter,
 	useUpdateDiscordAccess,
 } from '@/hooks/useAdminUsers'
 import { usePageTitle } from '@/hooks/usePageTitle'
@@ -54,12 +56,14 @@ export default function UserDetailPage() {
 	const { data: user, isLoading, refetch } = useAdminUser(userId!)
 	const setUserAdmin = useSetUserAdmin()
 	const deleteCharacter = useDeleteUserCharacter()
+	const setPrimaryCharacter = useSetUserPrimaryCharacter()
 	const revokeDiscord = useRevokeDiscordLink()
 	const updateDiscordAccess = useUpdateDiscordAccess()
 
 	// Dialog state
 	const [adminDialogOpen, setAdminDialogOpen] = useState(false)
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+	const [primaryDialogOpen, setPrimaryDialogOpen] = useState(false)
 	const [revokeDiscordDialogOpen, setRevokeDiscordDialogOpen] = useState(false)
 	const [updateDiscordDialogOpen, setUpdateDiscordDialogOpen] = useState(false)
 	const [discordUpdateResults, setDiscordUpdateResults] = useState<{
@@ -170,6 +174,34 @@ export default function UserDetailPage() {
 			setMessage({
 				type: 'error',
 				text: error instanceof Error ? error.message : 'Failed to delete character',
+			})
+			setTimeout(() => setMessage(null), 5000)
+		}
+	}
+
+	const handleSetPrimaryClick = (characterId: string) => {
+		setSelectedCharacter(characterId)
+		setPrimaryDialogOpen(true)
+	}
+
+	const handleSetPrimaryConfirm = async () => {
+		if (!selectedCharacter) return
+
+		const character = user.characters.find((c) => c.characterId === selectedCharacter)
+
+		try {
+			await setPrimaryCharacter.mutateAsync({ userId: user.id, characterId: selectedCharacter })
+			setPrimaryDialogOpen(false)
+			setSelectedCharacter(null)
+			setMessage({
+				type: 'success',
+				text: `${character?.characterName} set as primary character`,
+			})
+			setTimeout(() => setMessage(null), 3000)
+		} catch (error) {
+			setMessage({
+				type: 'error',
+				text: error instanceof Error ? error.message : 'Failed to set primary character',
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -471,6 +503,17 @@ export default function UserDetailPage() {
 													<ExternalLink className="h-4 w-4" />
 												</Button>
 											</Link>
+											{!character.is_primary && (
+												<Button
+													variant="ghost"
+													size="sm"
+													onClick={() => handleSetPrimaryClick(character.characterId)}
+													disabled={setPrimaryCharacter.isPending}
+													title="Set as primary character"
+												>
+													<CheckCircle className="h-4 w-4 text-green-500" />
+												</Button>
+											)}
 											<Button
 												variant="ghost"
 												size="sm"
@@ -656,6 +699,41 @@ export default function UserDetailPage() {
 							<Trash2 className="mr-2 h-4 w-4" />
 							Delete Character
 						</DestructiveButton>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
+			{/* Set Primary Character Confirmation Dialog */}
+			<Dialog open={primaryDialogOpen} onOpenChange={setPrimaryDialogOpen}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Set Primary Character</DialogTitle>
+						<DialogDescription>
+							Are you sure you want to set "{selectedCharacterData?.characterName}" as the primary
+							character for {user.characters.find((c) => c.is_primary)?.characterName || 'this user'}?
+							This will change the user's main character and update their display name throughout the
+							system.
+						</DialogDescription>
+					</DialogHeader>
+					<DialogFooter>
+						<CancelButton
+							onClick={() => {
+								setPrimaryDialogOpen(false)
+								setSelectedCharacter(null)
+							}}
+							disabled={setPrimaryCharacter.isPending}
+						>
+							Cancel
+						</CancelButton>
+						<ConfirmButton
+							onClick={handleSetPrimaryConfirm}
+							loading={setPrimaryCharacter.isPending}
+							loadingText="Setting..."
+							showIcon={false}
+						>
+							<CheckCircle className="mr-2 h-4 w-4" />
+							Set as Primary
+						</ConfirmButton>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>

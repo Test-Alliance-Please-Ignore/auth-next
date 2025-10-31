@@ -58,9 +58,9 @@ export default function Layout() {
 			</aside>
 
 			{/* Main Content Area */}
-			<div className="flex-1 flex flex-col min-w-0">
+			<div className="flex-1 flex flex-col min-w-0 overflow-auto">
 				{/* Top Bar (Mobile) */}
-				<header className="sticky top-0 z-30 lg:hidden border-b border-border/30 bg-background shadow-sm">
+				<header className="sticky top-0 z-30 lg:hidden border-b border-border/30 bg-background/95 backdrop-blur-sm shadow-sm">
 					<div className="flex items-center justify-between px-4 py-3">
 						<Button
 							variant="ghost"
@@ -76,7 +76,7 @@ export default function Layout() {
 				</header>
 
 				{/* Page Content */}
-				<main className="flex-1 relative z-10 p-4 md:p-6 lg:p-8 overflow-auto bg-background">
+				<main className="flex-1 relative z-10 p-4 md:p-6 lg:p-8 bg-background">
 					<div className="max-w-7xl mx-auto">
 						<Outlet />
 					</div>

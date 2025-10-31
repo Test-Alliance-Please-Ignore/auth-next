@@ -101,22 +101,33 @@ app.get('/', requireAuth(), requireAdmin(), async (c) => {
 	}
 
 	try {
-		const isMemberParam = c.req.query('isMember')
-		const isAltParam = c.req.query('isAlt')
+		const corporationType = c.req.query('corporationType') as
+			| 'member'
+			| 'alt'
+			| 'special'
+			| 'other'
+			| undefined
 
-		// Build where conditions
-		const conditions = []
-		if (isMemberParam !== undefined) {
-			const isMember = isMemberParam === 'true'
-			conditions.push(eq(managedCorporations.isMemberCorporation, isMember))
+		// Build where conditions based on corporation type
+		let whereCondition
+		if (corporationType === 'member') {
+			whereCondition = eq(managedCorporations.isMemberCorporation, true)
+		} else if (corporationType === 'alt') {
+			whereCondition = eq(managedCorporations.isAltCorp, true)
+		} else if (corporationType === 'special') {
+			whereCondition = eq(managedCorporations.isSpecialPurpose, true)
+		} else if (corporationType === 'other') {
+			// "Other" corporations are those that are not member, alt, or special purpose
+			whereCondition = and(
+				eq(managedCorporations.isMemberCorporation, false),
+				eq(managedCorporations.isAltCorp, false),
+				eq(managedCorporations.isSpecialPurpose, false)
+			)
 		}
-		if (isAltParam !== undefined) {
-			const isAlt = isAltParam === 'true'
-			conditions.push(eq(managedCorporations.isAltCorp, isAlt))
-		}
+		// If corporationType is undefined, no filter (show all)
 
 		const corporations = await db.query.managedCorporations.findMany({
-			where: conditions.length > 0 ? and(...conditions) : undefined,
+			where: whereCondition,
 			orderBy: desc(managedCorporations.updatedAt),
 		})
 
@@ -302,6 +313,7 @@ app.get('/:corporationId', requireAuth(), requireAdmin(), async (c) => {
  *   isActive?: boolean
  *   isMemberCorporation?: boolean
  *   isAltCorp?: boolean
+ *   isSpecialPurpose?: boolean
  *   discordGuildId?: string | null
  *   discordGuildName?: string | null
  *   discordAutoInvite?: boolean
@@ -324,6 +336,7 @@ app.put('/:corporationId', requireAuth(), requireAdmin(), async (c) => {
 			includeInBackgroundRefresh,
 			isMemberCorporation,
 			isAltCorp,
+			isSpecialPurpose,
 			discordGuildId,
 			discordGuildName,
 			discordAutoInvite,
@@ -348,6 +361,7 @@ app.put('/:corporationId', requireAuth(), requireAdmin(), async (c) => {
 				...(includeInBackgroundRefresh !== undefined && { includeInBackgroundRefresh }),
 				...(isMemberCorporation !== undefined && { isMemberCorporation }),
 				...(isAltCorp !== undefined && { isAltCorp }),
+				...(isSpecialPurpose !== undefined && { isSpecialPurpose }),
 				...(discordGuildId !== undefined && { discordGuildId }),
 				...(discordGuildName !== undefined && { discordGuildName }),
 				...(discordAutoInvite !== undefined && { discordAutoInvite }),

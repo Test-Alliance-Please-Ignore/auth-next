@@ -93,7 +93,7 @@ export default function CorporationsPage() {
 	}, [corporations, searchQuery])
 
 	// Check if any filters are active
-	const hasActiveFilters = filters.isMember !== undefined || filters.isAlt !== undefined
+	const hasActiveFilters = filters.corporationType !== undefined
 
 	// Clear all filters
 	const clearFilters = () => {
@@ -268,54 +268,24 @@ export default function CorporationsPage() {
 						{/* Filters */}
 						<div className="flex gap-4">
 							<div className="flex-1 space-y-2">
-								<Label htmlFor="member-status-filter">Member Status</Label>
+								<Label htmlFor="corporation-type-filter">Corporation Type</Label>
 								<Select
-									value={
-										filters.isMember === undefined
-											? 'all'
-											: filters.isMember
-												? 'members'
-												: 'non-members'
-									}
+									value={filters.corporationType ?? 'all'}
 									onValueChange={(value) => {
-										setFilters((prev) => ({
-											...prev,
-											isMember:
-												value === 'all' ? undefined : value === 'members' ? true : false,
-										}))
+										setFilters({
+											corporationType: value === 'all' ? undefined : (value as 'member' | 'alt' | 'special' | 'other'),
+										})
 									}}
 								>
-									<SelectTrigger id="member-status-filter">
+									<SelectTrigger id="corporation-type-filter">
 										<SelectValue placeholder="All Corporations" />
 									</SelectTrigger>
 									<SelectContent>
 										<SelectItem value="all">All Corporations</SelectItem>
-										<SelectItem value="members">Member Corps Only</SelectItem>
-										<SelectItem value="non-members">Non-Member Corps Only</SelectItem>
-									</SelectContent>
-								</Select>
-							</div>
-
-							<div className="flex-1 space-y-2">
-								<Label htmlFor="alt-status-filter">Alt Corp Status</Label>
-								<Select
-									value={
-										filters.isAlt === undefined ? 'all' : filters.isAlt ? 'alt-corps' : 'non-alt-corps'
-									}
-									onValueChange={(value) => {
-										setFilters((prev) => ({
-											...prev,
-											isAlt: value === 'all' ? undefined : value === 'alt-corps' ? true : false,
-										}))
-									}}
-								>
-									<SelectTrigger id="alt-status-filter">
-										<SelectValue placeholder="All Corporations" />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value="all">All Corporations</SelectItem>
-										<SelectItem value="alt-corps">Alt Corps Only</SelectItem>
-										<SelectItem value="non-alt-corps">Non-Alt Corps Only</SelectItem>
+										<SelectItem value="member">Member Corps</SelectItem>
+										<SelectItem value="alt">Alt Corps</SelectItem>
+										<SelectItem value="special">Special Purpose Corps</SelectItem>
+										<SelectItem value="other">Other Corps</SelectItem>
 									</SelectContent>
 								</Select>
 							</div>

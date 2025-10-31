@@ -255,6 +255,18 @@ export default function CorporationDetailPage() {
 		}
 	}
 
+	const handleUpdateSpecialPurpose = async (enabled: boolean) => {
+		try {
+			await updateCorporation.mutateAsync({
+				corporationId: corpId,
+				data: { isSpecialPurpose: enabled },
+			})
+			showSuccess(`Special purpose status ${enabled ? 'enabled' : 'disabled'}`)
+		} catch (error) {
+			showError(error instanceof Error ? error.message : 'Failed to update setting')
+		}
+	}
+
 	const formatDate = (date: string | null) => {
 		if (!date) return 'Never'
 		return formatDistanceToNow(new Date(date), { addSuffix: true })
@@ -476,6 +488,25 @@ export default function CorporationDetailPage() {
 									</div>
 									<p className="text-sm text-muted-foreground ml-11">
 										Mark this corporation as an alt corp
+									</p>
+								</div>
+							</div>
+
+							<div className="flex items-center justify-between">
+								<div className="space-y-1">
+									<div className="flex items-center space-x-2">
+										<Switch
+											id="special-purpose"
+											checked={corporation.isSpecialPurpose}
+											onCheckedChange={(checked) => handleUpdateSpecialPurpose(checked)}
+											disabled={updateCorporation.isPending}
+										/>
+										<Label htmlFor="special-purpose" className="cursor-pointer font-medium">
+											Special Purpose Corporation
+										</Label>
+									</div>
+									<p className="text-sm text-muted-foreground ml-11">
+										Mark this corporation as a special purpose corp
 									</p>
 								</div>
 							</div>

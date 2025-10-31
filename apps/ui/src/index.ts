@@ -35,6 +35,20 @@ const app = new Hono<App>()
 		// Fetch the asset from the ASSETS binding
 		const response = await c.env.ASSETS.fetch(c.req.raw)
 
+		// Check if this is an asset request that failed
+		// When SPA mode is enabled, missing assets return index.html instead of 404
+		// We need to detect this and return a proper 404 to prevent module loading errors
+		const isAssetPath = /\.(js|css|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot|webp)$/i.test(url.pathname)
+		const contentType = response.headers.get('Content-Type') || ''
+
+		if (isAssetPath && contentType.includes('text/html')) {
+			// Asset request returned HTML (missing file in SPA mode) - return 404
+			return new Response('Asset not found', {
+				status: 404,
+				headers: { 'Content-Type': 'text/plain' }
+			})
+		}
+
 		// Clone the response so we can modify headers
 		const newResponse = new Response(response.body, response)
 

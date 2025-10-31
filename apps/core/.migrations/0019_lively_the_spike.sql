@@ -1,0 +1,2 @@
+ALTER TABLE "managed_corporations" ADD COLUMN "is_special_purpose" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+CREATE INDEX "managed_corporations_corporation_id_is_special_purpose_idx" ON "managed_corporations" USING btree ("corporation_id","is_special_purpose");

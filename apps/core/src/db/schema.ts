@@ -228,6 +228,8 @@ export const managedCorporations = pgTable(
 		isMemberCorporation: boolean('is_member_corporation').default(false).notNull(),
 		/** Whether this corporation is an alt corporation */
 		isAltCorp: boolean('is_alt_corp').default(false).notNull(),
+		/** Whether this corporation is a special purpose corporation */
+		isSpecialPurpose: boolean('is_special_purpose').default(false).notNull(),
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
@@ -246,6 +248,10 @@ export const managedCorporations = pgTable(
 		index('managed_corporations_corporation_id_is_alt_idx').on(
 			table.corporationId,
 			table.isAltCorp
+		),
+		index('managed_corporations_corporation_id_is_special_purpose_idx').on(
+			table.corporationId,
+			table.isSpecialPurpose
 		),
 	]
 )
