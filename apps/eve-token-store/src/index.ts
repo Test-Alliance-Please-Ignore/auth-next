@@ -139,7 +139,7 @@ const app = new Hono<App>()
 			// Return success response with character information
 			return c.json({
 				success: true,
-				characterOwnerHash: result.characterOwnerHash,
+				characterOwnerHash: result.characterInfo?.characterOwnerHash,
 				character: result.characterInfo,
 				message: 'Successfully authenticated with EVE Online',
 			})

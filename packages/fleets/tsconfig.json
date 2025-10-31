@@ -1,0 +1,11 @@
+{
+	"extends": "@repo/typescript-config/base.json",
+	"compilerOptions": {
+		"outDir": "dist",
+		"rootDir": "src",
+		"module": "ESNext",
+		"lib": ["ESNext"],
+		"types": []
+	},
+	"include": ["src/**/*", "worker-configuration.d.ts"]
+}

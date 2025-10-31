@@ -5,6 +5,8 @@
  * This package allows other workers to interact with the Durable Object via RPC.
  */
 
+import * as z4 from 'zod/v4/core'
+
 /**
  * EVE Online SSO OAuth Types
  */
@@ -304,6 +306,22 @@ export interface EveTokenStore {
 	fetchEsi<T>(path: string, characterId: string): Promise<EsiResponse<T>>
 
 	/**
+	 * Fetch data from ESI for this character (ESI Gateway) with a schema
+	 * Automatically handles authentication if token is available for the character
+	 * Caches responses according to ESI cache headers
+	 *
+	 * @param path - ESI path (e.g., '/characters/{character_id}/skills')
+	 * @param characterId - Character ID (used for authentication and path interpolation)
+	 * @param schema - Zod schema to parse the response data
+	 * @returns ESI response with cache metadata
+	 **/
+	fetchEsiWithSchema<S extends z4.$ZodType>(
+		path: string,
+		characterId: string,
+		schema: S
+	): Promise<EsiResponse<z4.output<S>>>
+
+	/**
 	 * Fetch public data from ESI (unauthenticated ESI Gateway)
 	 * For public endpoints that don't require authentication
 	 * Caches responses according to ESI cache headers
@@ -322,6 +340,16 @@ export interface EveTokenStore {
 	 */
 	fetchPublicEsi<T>(path: string): Promise<EsiResponse<T>>
 
+	/**
+	 * Fetch public data from ESI with a schema
+	 * @param path - ESI path (e.g., '/universe/types/587' or '/markets/prices')
+	 * @param schema - Zod schema to parse the response data
+	 * @returns ESI response with cache metadata
+	 */
+	fetchPublicEsiWithSchema<S extends z4.$ZodType>(
+		path: string,
+		schema: S
+	): Promise<EsiResponse<z4.output<S>>>
 	/**
 	 * Clear ESI cache for a specific path
 	 * Use this when you need to force a fresh fetch on the next request

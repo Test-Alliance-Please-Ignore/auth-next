@@ -150,6 +150,24 @@ groups.get('/', requireAuth(), async (c) => {
 
 	const groupsList = await groupsDO.listGroups(filters, user.id, user.is_admin)
 
+	// Hide sensitive information from non-members in list view
+	// Members and admins can see everything
+	const filteredGroupsList = user.is_admin
+		? groupsList
+		: groupsList.map((group) => {
+				if (group.isMember) {
+					// Member can see everything
+					return group
+				}
+				// Non-member: hide sensitive fields
+				return {
+					...group,
+					memberCount: undefined,
+					adminUserIds: undefined,
+					ownerName: undefined,
+				}
+		  })
+
 	// Cache unfiltered/non-search groups list for 60 seconds at edge
 	if (!filters.search && !filters.myGroups) {
 		c.header('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120')
@@ -158,7 +176,7 @@ groups.get('/', requireAuth(), async (c) => {
 		c.header('Cache-Control', 'private, no-cache')
 	}
 
-	return c.json(groupsList)
+	return c.json(filteredGroupsList)
 })
 
 /**
@@ -920,6 +938,24 @@ groups.get('/:id', requireAuth(), async (c) => {
 
 	try {
 		const group = await groupsDO.getGroup(groupId, user.id, user.is_admin)
+
+		if (!group) {
+			return c.json({ error: 'Group not found' }, 404)
+		}
+
+		// Hide sensitive information from non-members
+		// Members and admins can see everything
+		if (!user.is_admin && !group.isMember) {
+			// Remove sensitive fields for non-members
+			const publicGroup = {
+				...group,
+				memberCount: undefined,
+				adminUserIds: undefined,
+				ownerName: undefined,
+			}
+			return c.json(publicGroup)
+		}
+
 		return c.json(group)
 	} catch (error) {
 		if (error instanceof Error && error.message.includes('not found')) {

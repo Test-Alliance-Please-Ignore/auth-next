@@ -229,8 +229,9 @@ users.get('/has-corporation-access', async (c) => {
 			return c.json({ hasAccess: false })
 		}
 
-		// Quick check: fetch character corps in parallel
-		const charCorpPromises = characters.slice(0, 10).map(async (character) => {
+		// Fetch corporation IDs for ALL characters (not just first 10)
+		// This ensures we check all managed corporations the user has characters in
+		const charCorpPromises = characters.map(async (character) => {
 			try {
 				const charStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
 				const charData = await charStub.getCharacterInfo(character.characterId)

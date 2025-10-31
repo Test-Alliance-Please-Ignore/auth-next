@@ -512,7 +512,7 @@ export interface CharacterSensitiveData {
 	}
 	skillQueue?: Array<{
 		queue_position: number
-		skill_id: string
+		skill_id: number
 		finished_level: number
 		start_date?: string
 		finish_date?: string

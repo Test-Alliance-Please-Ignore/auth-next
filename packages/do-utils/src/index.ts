@@ -21,10 +21,10 @@ import { DurableObject } from 'cloudflare:workers'
 export function getStub<T>(
 	namespace: any, // Will be DurableObjectNamespace in the worker environment
 	id: string | any // Will be string | DurableObjectId in the worker environment
-): any & T {
+): T {
 	// Will return DurableObjectStub & T in the worker environment
 	const durableObjectId = typeof id === 'string' ? namespace.idFromName(id) : id
-	return namespace.get(durableObjectId) as any & T
+	return namespace.get(durableObjectId)
 }
 
 export class ResettableDurableObjectStub extends DurableObject {

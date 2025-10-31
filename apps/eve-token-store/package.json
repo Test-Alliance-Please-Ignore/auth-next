@@ -27,7 +27,8 @@
 		"@repo/hono-helpers": "workspace:*",
 		"drizzle-orm": "0.44.6",
 		"hono": "4.9.11",
-		"workers-tagged-logger": "0.13.3"
+		"workers-tagged-logger": "0.13.3",
+		"zod": "4.1.12"
 	},
 	"devDependencies": {
 		"@cloudflare/vite-plugin": "1.1.0",

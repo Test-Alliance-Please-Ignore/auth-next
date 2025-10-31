@@ -14,6 +14,7 @@ import { logger } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
 import { userCharacters, users } from '../db/schema'
+import { validatePagination } from '../lib/validation'
 import { requireAdmin, requireAuth } from '../middleware/session'
 import * as discordService from '../services/discord.service'
 
@@ -40,15 +41,19 @@ app.get('/users', requireAuth(), requireAdmin(), async (c) => {
 
 	try {
 		const search = c.req.query('search')
-		const limit = c.req.query('limit') ? parseInt(c.req.query('limit')!) : undefined
-		const offset = c.req.query('offset') ? parseInt(c.req.query('offset')!) : undefined
+
+		// Validate pagination parameters
+		const pagination = validatePagination(c.req.query('limit'), c.req.query('offset'))
+		if (!pagination.success) {
+			return c.json({ error: pagination.error }, pagination.status)
+		}
 
 		// Call admin worker via RPC
 		const result = await c.env.ADMIN.searchUsers(
 			{
 				search,
-				limit,
-				offset,
+				limit: pagination.data.limit,
+				offset: pagination.data.offset,
 			},
 			user.id
 		)
@@ -263,16 +268,20 @@ app.get('/activity-log', requireAuth(), requireAdmin(), async (c) => {
 	}
 
 	try {
-		const limit = c.req.query('limit') ? parseInt(c.req.query('limit')!) : undefined
-		const offset = c.req.query('offset') ? parseInt(c.req.query('offset')!) : undefined
+		// Validate pagination parameters
+		const pagination = validatePagination(c.req.query('limit'), c.req.query('offset'))
+		if (!pagination.success) {
+			return c.json({ error: pagination.error }, pagination.status)
+		}
+
 		const action = c.req.query('action') as any // AdminAction type
 		const adminUserId = c.req.query('adminUserId')
 
 		// Call admin worker via RPC
 		const result = await c.env.ADMIN.getActivityLog(
 			{
-				limit,
-				offset,
+				limit: pagination.data.limit,
+				offset: pagination.data.offset,
 				action,
 				adminUserId,
 			},

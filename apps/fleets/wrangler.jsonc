@@ -1,0 +1,43 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "fleets",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-04-28",
+	"compatibility_flags": ["nodejs_compat"],
+	"routes": [],
+	"logpush": false,
+	"observability": {
+		"enabled": true
+	},
+	"vars": {},
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "FLEETS",
+				"class_name": "Fleets",
+				
+			},
+			{
+				"name": "EVE_TOKEN_STORE",
+				"class_name": "EveTokenStore",
+				"script_name": "eve-token-store"
+			},
+			{
+				"name": "EVE_CHARACTER_DATA",
+				"class_name": "EveCharacterData",
+				"script_name": "eve-character-data"
+			},
+			{
+				"name": "EVE_CORPORATION_DATA",
+				"class_name": "EveCorporationData",
+				"script_name": "eve-corporation-data"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["Fleets"]
+		}
+	]
+}

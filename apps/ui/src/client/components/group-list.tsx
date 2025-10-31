@@ -73,9 +73,6 @@ const GroupRow = memo(
 				<TableCell>
 					<JoinModeBadge joinMode={group.joinMode} />
 				</TableCell>
-				<TableCell>
-					<span className="text-sm">{group.memberCount || 0}</span>
-				</TableCell>
 				<TableCell className="text-right">
 					<div className="flex items-center justify-end gap-2">
 						{group.joinMode === 'open' && !group.isMember && (
@@ -191,10 +188,7 @@ export const GroupList = memo(function GroupList({
 										<JoinModeBadge joinMode={group.joinMode} />
 									</div>
 
-									<div className="flex items-center justify-between pt-2 border-t border-border/50">
-										<span className="text-sm text-muted-foreground">
-											{group.memberCount || 0} members
-										</span>
+									<div className="flex items-center justify-end pt-2 border-t border-border/50">
 										{group.joinMode === 'open' && !group.isMember ? (
 											<Button
 												variant="default"
@@ -243,7 +237,6 @@ export const GroupList = memo(function GroupList({
 						<TableHead>Category</TableHead>
 						<TableHead>Visibility</TableHead>
 						<TableHead>Join Mode</TableHead>
-						<TableHead>Members</TableHead>
 						<TableHead className="text-right">Actions</TableHead>
 					</TableRow>
 				</TableHeader>

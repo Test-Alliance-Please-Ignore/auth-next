@@ -56,9 +56,14 @@ app.get('/search', requireAuth(), async (c) => {
  * GET /characters/:characterId
  * Get detailed character information with access control
  *
+ * Authorization:
+ * - Character owner can view their own character
+ * - Site admins can view any character
+ * - All others receive 403 Forbidden
+ *
  * Returns:
- * - Public data for all authenticated users
- * - Sensitive data only for character owner
+ * - Sensitive data for owner or admin
+ * - viewedAsAdmin flag when admin views another user's character
  */
 app.get('/:characterId', requireAuth(), async (c) => {
 	const characterIdStr = c.req.param('characterId')
@@ -66,8 +71,45 @@ app.get('/:characterId', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const db = c.get('db')
 
+	if (!db) {
+		return c.json({ error: 'Database not available' }, 500)
+	}
+
 	// Check if user owns this character
-	const isOwner = user.characters.some((char) => char.characterId.toString() === characterIdStr)
+	const isActualOwner = user.characters.some((char) => char.characterId.toString() === characterIdStr)
+	const isAdmin = user.is_admin
+
+	// Authorization: Must be owner OR admin
+	if (!isActualOwner && !isAdmin) {
+		return c.json({ error: 'You do not have permission to view this character' }, 403)
+	}
+
+	// For admins viewing someone else's character, fetch the actual owner info
+	let actualOwner: { userId: string; characterName: string } | null = null
+	const viewedAsAdmin = isAdmin && !isActualOwner
+
+	if (viewedAsAdmin) {
+		try {
+			const ownerRecord = await db
+				.select({
+					userId: userCharacters.userId,
+					characterName: userCharacters.characterName,
+				})
+				.from(userCharacters)
+				.where(eq(userCharacters.characterId, characterIdStr))
+				.limit(1)
+
+			if (ownerRecord.length > 0) {
+				actualOwner = ownerRecord[0]
+			}
+		} catch (error) {
+			logger.error('Error fetching character owner:', error)
+			// Continue anyway - this is just for context
+		}
+	}
+
+	// Treat admins as owners for data access purposes
+	const isOwner = isActualOwner || isAdmin
 
 	// Get EVE Character Data DO stub
 	const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
@@ -157,6 +199,7 @@ app.get('/:characterId', requireAuth(), async (c) => {
 		const response: any = {
 			characterId: characterIdStr,
 			isOwner,
+			viewedAsAdmin,
 			public: {
 				info: enrichedInfo,
 				portrait,
@@ -165,6 +208,14 @@ app.get('/:characterId', requireAuth(), async (c) => {
 				attributes,
 			},
 			lastUpdated,
+		}
+
+		// Add owner info when admin views someone else's character
+		if (viewedAsAdmin && actualOwner) {
+			response.owner = {
+				userId: actualOwner.userId,
+				mainCharacterName: actualOwner.characterName,
+			}
 		}
 
 		// Add sensitive data if user owns the character

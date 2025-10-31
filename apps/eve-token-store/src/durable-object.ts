@@ -1,4 +1,5 @@
 import { DurableObject } from 'cloudflare:workers'
+import * as z4 from 'zod/v4/core'
 
 import { and, eq, gt, lte } from '@repo/db-utils'
 import { logger } from '@repo/hono-helpers'
@@ -145,9 +146,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 		// Migrate existing tables to add pagination fields if they don't exist
 		// SQLite doesn't support "IF NOT EXISTS" for ALTER TABLE, so we check first
-		const columns = [
-			...this.state.storage.sql.exec(`PRAGMA table_info(esi_cache)`)
-		]
+		const columns = [...this.state.storage.sql.exec(`PRAGMA table_info(esi_cache)`)]
 		const hasPages = columns.some((col: any) => col.name === 'pages')
 		const hasPage = columns.some((col: any) => col.name === 'page')
 
@@ -460,7 +459,10 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			etag: string | null
 			pages: number | null
 			page: number | null
-		}>(`SELECT response_data, expires_at, etag, pages, page FROM esi_cache WHERE cache_key = ?`, cacheKey)
+		}>(
+			`SELECT response_data, expires_at, etag, pages, page FROM esi_cache WHERE cache_key = ?`,
+			cacheKey
+		)
 
 		const cached = [...cachedCursor]
 
@@ -575,6 +577,22 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		}
 	}
 
+	async fetchEsiWithSchema<S extends z4.$ZodType>(
+		path: string,
+		characterId: string,
+		schema: S
+	): Promise<EsiResponse<z4.output<S>>> {
+		const response = await this.fetchEsi<z4.output<S>>(path, characterId)
+		return { ...response, data: z4.parse(schema, response.data) }
+	}
+
+	async fetchPublicEsiWithSchema<S extends z4.$ZodType>(
+		path: string,
+		schema: S
+	): Promise<EsiResponse<z4.output<S>>> {
+		const response = await this.fetchPublicEsi<z4.output<S>>(path)
+		return { ...response, data: z4.parse(schema, response.data) }
+	}
 	/**
 	 * Fetch public data from ESI (unauthenticated ESI Gateway)
 	 * For public endpoints that don't require authentication
@@ -590,7 +608,10 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			etag: string | null
 			pages: number | null
 			page: number | null
-		}>(`SELECT response_data, expires_at, etag, pages, page FROM esi_cache WHERE cache_key = ?`, cacheKey)
+		}>(
+			`SELECT response_data, expires_at, etag, pages, page FROM esi_cache WHERE cache_key = ?`,
+			cacheKey
+		)
 
 		const cached = [...cachedCursor]
 

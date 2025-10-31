@@ -5,7 +5,9 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
 import { createDb } from './db'
+import { csrfProtection } from './middleware/csrf'
 import { sessionMiddleware } from './middleware/session'
+import { renderFleetJoinPage } from './pages/fleet-join'
 import adminRoutes from './routes/admin'
 import authRoutes from './routes/auth'
 import billsAdminRoutes from './routes/bills-admin'
@@ -14,6 +16,7 @@ import charactersRoutes from './routes/characters'
 import corporationsRoutes from './routes/corporations'
 import discordRoutes from './routes/discord'
 import discordServersRoutes from './routes/discord-servers'
+import fleetsRoutes from './routes/fleets'
 import groupsRoutes from './routes/groups'
 import inviteRoutes from './routes/invite'
 import loginRoutes from './routes/login'
@@ -47,6 +50,9 @@ const app = new Hono<App>()
 	// Session middleware - loads user into context if authenticated
 	.use('*', sessionMiddleware())
 
+	// CSRF protection - requires X-Requested-With header on state-changing API requests
+	.use('/api/*', csrfProtection())
+
 	.onError(withOnError())
 	.notFound(withNotFound())
 
@@ -58,6 +64,27 @@ const app = new Hono<App>()
 	// Public routes (for direct access and Discord embeds)
 	.route('/login', loginRoutes)
 	.route('/invite', inviteRoutes)
+
+	// Fleet join page route
+	.get('/fleets/join/:token', async (c) => {
+		const token = c.req.param('token')
+		const error = c.req.query('error')
+
+		// Check if user is authenticated by checking session
+		const sessionCookie = c.req.header('Cookie') || ''
+
+		// Try to get the user from session
+		const user = c.get('user')
+
+		if (!user) {
+			// Not authenticated - redirect to login with return URL
+			const returnUrl = encodeURIComponent(`https://pleaseignore.app/fleets/join/${token}`)
+			return c.redirect(`/login?return_url=${returnUrl}`)
+		}
+
+		// User is authenticated - render the join page
+		return c.html(await renderFleetJoinPage(c, token, error))
+	})
 
 	// API routes - mounted under /api prefix
 	.route('/api/admin', adminRoutes)
@@ -71,6 +98,7 @@ const app = new Hono<App>()
 	.route('/api/discord', discordRoutes)
 	.route('/api/groups', groupsRoutes)
 	.route('/api/broadcasts', broadcastsRoutes)
+	.route('/api/fleets', fleetsRoutes)
 	.route('/api/ws', wsRoutes)
 	// .route('/api/bills', userBillsRoutes) // User bills API (TODO: implement later)
 

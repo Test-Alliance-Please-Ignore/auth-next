@@ -28,6 +28,8 @@ export type Env = SharedHonoEnv & {
 	BILLS: DurableObjectNamespace
 	/** Broadcasts Durable Object binding */
 	BROADCASTS: DurableObjectNamespace
+	/** Fleets Durable Object binding */
+	FLEETS: DurableObjectNamespace
 	/** EVE Static Data service binding */
 	EVE_STATIC_DATA: Fetcher
 	/** Secret for session token generation and signing */

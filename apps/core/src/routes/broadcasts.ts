@@ -52,16 +52,35 @@ broadcasts.use('*', requireAuth())
 /**
  * List all broadcast targets (optionally filtered by group)
  * GET /api/broadcasts/targets?groupId=xxx
+ *
+ * Only returns targets from groups the user is a member of (unless admin)
  */
 broadcasts.get('/targets', async (c) => {
 	const user = c.get('user')!
 	const groupId = c.req.query('groupId')
 
+	// Get user's group memberships (admins can see all)
+	const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+	const memberships = user.is_admin ? [] : await groupsStub.getUserMemberships(user.id)
+	const userGroupIds = memberships.map((m) => m.groupId)
+
+	// If filtering by a specific group, verify user is a member
+	if (groupId) {
+		if (!user.is_admin && !userGroupIds.includes(groupId)) {
+			return c.json({ error: 'Not a member of this group' }, 403)
+		}
+	}
+
 	// Get Broadcasts DO stub
 	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
-
 	const targets = await broadcastsStub.listTargets(user.id, groupId)
-	return c.json(targets)
+
+	// Filter targets to only include those from groups the user is a member of
+	const filteredTargets = user.is_admin
+		? targets
+		: targets.filter((target) => userGroupIds.includes(target.groupId))
+
+	return c.json(filteredTargets)
 })
 
 /**
@@ -77,6 +96,17 @@ broadcasts.get('/targets/:id', async (c) => {
 
 	if (!target) {
 		return c.json({ error: 'Target not found' }, 404)
+	}
+
+	// Verify user is a member of the target's group
+	if (!user.is_admin) {
+		const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+		const memberships = await groupsStub.getUserMemberships(user.id)
+		const isMember = memberships.some((m) => m.groupId === target.groupId)
+
+		if (!isMember) {
+			return c.json({ error: 'Not authorized to view this target' }, 403)
+		}
 	}
 
 	return c.json(target)
@@ -183,16 +213,35 @@ broadcasts.delete('/targets/:id', async (c) => {
 /**
  * List broadcast templates (optionally filtered by targetType and/or groupId)
  * GET /api/broadcasts/templates?targetType=xxx&groupId=xxx
+ *
+ * Only returns templates from groups the user is a member of (unless admin)
  */
 broadcasts.get('/templates', async (c) => {
 	const user = c.get('user')!
 	const targetType = c.req.query('targetType')
 	const groupId = c.req.query('groupId')
 
+	// Get user's group memberships (admins can see all)
+	const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+	const memberships = user.is_admin ? [] : await groupsStub.getUserMemberships(user.id)
+	const userGroupIds = memberships.map((m) => m.groupId)
+
+	// If filtering by a specific group, verify user is a member
+	if (groupId) {
+		if (!user.is_admin && !userGroupIds.includes(groupId)) {
+			return c.json({ error: 'Not a member of this group' }, 403)
+		}
+	}
+
 	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const templates = await broadcastsStub.listTemplates(user.id, { targetType, groupId })
 
-	return c.json(templates)
+	// Filter templates to only include those from groups the user is a member of
+	const filteredTemplates = user.is_admin
+		? templates
+		: templates.filter((template) => userGroupIds.includes(template.groupId))
+
+	return c.json(filteredTemplates)
 })
 
 /**
@@ -208,6 +257,17 @@ broadcasts.get('/templates/:id', async (c) => {
 
 	if (!template) {
 		return c.json({ error: 'Template not found' }, 404)
+	}
+
+	// Verify user is a member of the template's group
+	if (!user.is_admin) {
+		const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+		const memberships = await groupsStub.getUserMemberships(user.id)
+		const isMember = memberships.some((m) => m.groupId === template.groupId)
+
+		if (!isMember) {
+			return c.json({ error: 'Not authorized to view this template' }, 403)
+		}
 	}
 
 	return c.json(template)
@@ -314,16 +374,36 @@ broadcasts.delete('/templates/:id', async (c) => {
 /**
  * List broadcasts (optionally filtered by groupId and/or status)
  * GET /api/broadcasts?groupId=xxx&status=xxx
+ *
+ * Only returns broadcasts from groups the user is a member of (unless admin)
  */
 broadcasts.get('/', async (c) => {
 	const user = c.get('user')!
 	const groupId = c.req.query('groupId')
 	const status = c.req.query('status') as any
 
+	// Get user's group memberships (admins can see all)
+	const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+	const memberships = user.is_admin ? [] : await groupsStub.getUserMemberships(user.id)
+	const userGroupIds = memberships.map((m) => m.groupId)
+
+	// If filtering by a specific group, verify user is a member
+	if (groupId) {
+		if (!user.is_admin && !userGroupIds.includes(groupId)) {
+			return c.json({ error: 'Not a member of this group' }, 403)
+		}
+	}
+
 	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const broadcastList = await broadcastsStub.listBroadcasts(user.id, { groupId, status })
 
-	return c.json(broadcastList)
+	// Filter broadcasts to only include those from groups the user is a member of
+	// Admins can see all broadcasts
+	const filteredBroadcasts = user.is_admin
+		? broadcastList
+		: broadcastList.filter((broadcast) => userGroupIds.includes(broadcast.groupId))
+
+	return c.json(filteredBroadcasts)
 })
 
 /**
@@ -339,6 +419,17 @@ broadcasts.get('/:id', async (c) => {
 
 	if (!broadcast) {
 		return c.json({ error: 'Broadcast not found' }, 404)
+	}
+
+	// Verify user is a member of the broadcast's group
+	if (!user.is_admin) {
+		const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+		const memberships = await groupsStub.getUserMemberships(user.id)
+		const isMember = memberships.some((m) => m.groupId === broadcast.groupId)
+
+		if (!isMember) {
+			return c.json({ error: 'Not authorized to view this broadcast' }, 403)
+		}
 	}
 
 	return c.json(broadcast)
@@ -455,6 +546,25 @@ broadcasts.get('/:id/deliveries', async (c) => {
 	const broadcastId = c.req.param('id')
 
 	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+
+	// First, get the broadcast to check which group it belongs to
+	const broadcast = await broadcastsStub.getBroadcast(broadcastId, user.id)
+
+	if (!broadcast) {
+		return c.json({ error: 'Broadcast not found' }, 404)
+	}
+
+	// Verify user is a member of the broadcast's group
+	if (!user.is_admin) {
+		const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+		const memberships = await groupsStub.getUserMemberships(user.id)
+		const isMember = memberships.some((m) => m.groupId === broadcast.groupId)
+
+		if (!isMember) {
+			return c.json({ error: 'Not authorized to view this broadcast' }, 403)
+		}
+	}
+
 	const deliveries = await broadcastsStub.getDeliveries(broadcastId, user.id)
 
 	return c.json(deliveries)

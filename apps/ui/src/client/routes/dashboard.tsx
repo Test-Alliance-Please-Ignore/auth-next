@@ -1,4 +1,4 @@
-import { ExternalLink, RefreshCw } from 'lucide-react'
+import { ExternalLink, RefreshCw, UserPlus } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
@@ -21,6 +21,7 @@ export default function DashboardPage() {
 	const [isLinkingCharacter, setIsLinkingCharacter] = useState(false)
 	const [refreshingCharacters, setRefreshingCharacters] = useState<Set<string>>(new Set())
 	const [mainCharacterDetails, setMainCharacterDetails] = useState<any>(null)
+	const [creatingInvites, setCreatingInvites] = useState<Set<string>>(new Set())
 
 	// Fetch main character details when user loads
 	useEffect(() => {
@@ -79,6 +80,74 @@ export default function DashboardPage() {
 			console.error('Failed to start character linking flow:', error)
 			setIsLinkingCharacter(false)
 			// TODO: Show error toast
+		}
+	}
+
+	const handleCreateFleetInvite = async (characterId: string) => {
+		// Only admins can create fleet invites
+		if (!user?.is_admin) return
+
+		// Prevent multiple invites for the same character
+		if (creatingInvites.has(characterId)) return
+
+		setCreatingInvites(prev => new Set(prev).add(characterId))
+
+		try {
+			// 1. Get character's current fleet info
+			const fleetInfo = await apiClient.getCharacterFleetInfo(characterId)
+			console.log('Fleet info received:', {
+				fleetInfo,
+				characterId,
+				fleetBossId: fleetInfo.fleet_boss_id,
+				fleetBossIdType: typeof fleetInfo.fleet_boss_id,
+				characterIdType: typeof characterId,
+				areEqual: fleetInfo.fleet_boss_id === characterId,
+				comparison: `${fleetInfo.fleet_boss_id} === ${characterId}`
+			})
+
+			if (!fleetInfo.isInFleet) {
+				alert('Character is not currently in a fleet')
+				return
+			}
+
+			// Check if the character is the fleet boss
+			// Explicitly convert both to strings to ensure comparison works
+			const fleetBossId = String(fleetInfo.fleet_boss_id)
+			const charId = String(characterId)
+
+			if (fleetBossId !== charId) {
+				console.error('Fleet boss check failed:', {
+					fleetBossId,
+					charId,
+					fleetBossIdType: typeof fleetInfo.fleet_boss_id,
+					charIdType: typeof characterId,
+					areEqual: fleetBossId === charId
+				})
+				alert('Only the fleet boss can create quick join invitations')
+				return
+			}
+
+			// 2. Create quick join invitation
+			// fleet_id is already a string from the API
+			const invite = await apiClient.createFleetQuickJoin(
+				characterId,
+				fleetInfo.fleet_id
+			)
+
+			// 3. Copy URL to clipboard
+			await navigator.clipboard.writeText(invite.url)
+
+			// 4. Show success message
+			alert(`Fleet invite created! URL copied to clipboard:\n${invite.url}`)
+		} catch (error) {
+			console.error('Failed to create fleet invite:', error)
+			alert('Failed to create fleet invite. Make sure the character is a fleet boss.')
+		} finally {
+			setCreatingInvites(prev => {
+				const next = new Set(prev)
+				next.delete(characterId)
+				return next
+			})
 		}
 	}
 
@@ -148,6 +217,24 @@ export default function DashboardPage() {
 												</Button>
 											</Link>
 										</div>
+										{/* Admin-only fleet invite button */}
+										{user?.is_admin && (
+											<Button
+												size="icon"
+												variant="ghost"
+												className="absolute top-4 right-16 hover:bg-primary/10 h-11 w-11"
+												onClick={() => handleCreateFleetInvite(mainCharacter.characterId)}
+												disabled={creatingInvites.has(mainCharacter.characterId)}
+												aria-label={`Create fleet invite for ${mainCharacter.characterName}`}
+												title="Create fleet invite for this character"
+											>
+												<UserPlus
+													className={`h-4 w-4 ${
+														creatingInvites.has(mainCharacter.characterId) ? 'animate-pulse' : ''
+													}`}
+												/>
+											</Button>
+										)}
 										<Button
 											size="icon"
 											variant="ghost"
@@ -247,6 +334,24 @@ export default function DashboardPage() {
 												</div>
 											</div>
 										</Link>
+										{/* Admin-only fleet invite button */}
+										{user?.is_admin && (
+											<Button
+												size="icon"
+												variant="ghost"
+												className="absolute top-2 right-12 h-11 w-11 hover:bg-primary/10"
+												onClick={() => handleCreateFleetInvite(character.characterId)}
+												disabled={creatingInvites.has(character.characterId)}
+												aria-label={`Create fleet invite for ${character.characterName}`}
+												title="Create fleet invite for this character"
+											>
+												<UserPlus
+													className={`h-4 w-4 ${
+														creatingInvites.has(character.characterId) ? 'animate-pulse' : ''
+													}`}
+												/>
+											</Button>
+										)}
 										<Button
 											size="icon"
 											variant="ghost"

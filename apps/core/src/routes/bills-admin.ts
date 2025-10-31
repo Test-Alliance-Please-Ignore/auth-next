@@ -10,6 +10,7 @@ import { Hono } from 'hono'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
+import { validatePagination } from '../lib/validation'
 import { requireAdmin, requireAuth } from '../middleware/session'
 
 import type { Bills } from '@repo/bills'
@@ -30,12 +31,16 @@ app.get('/', requireAuth(), requireAdmin(), async (c) => {
 	}
 
 	try {
+		// Validate pagination parameters
+		const pagination = validatePagination(c.req.query('limit'), c.req.query('offset'))
+		if (!pagination.success) {
+			return c.json({ error: pagination.error }, pagination.status)
+		}
+
 		const status = c.req.query('status')
 		const payerId = c.req.query('payerId')
 		const payerType = c.req.query('payerType')
 		const issuerId = c.req.query('issuerId')
-		const limit = c.req.query('limit') ? parseInt(c.req.query('limit')!) : undefined
-		const offset = c.req.query('offset') ? parseInt(c.req.query('offset')!) : undefined
 
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
 		const bills = await stub.listBills(user.id, {
@@ -44,6 +49,9 @@ app.get('/', requireAuth(), requireAdmin(), async (c) => {
 			payerType: payerType as any,
 			issuerId,
 		})
+
+		// Note: Pagination is validated but not currently used by Bills DO
+		// TODO: Implement pagination in Bills DO listBills method
 
 		return c.json(bills)
 	} catch (error) {
@@ -603,15 +611,20 @@ app.post('/schedules/:scheduleId/resume', requireAuth(), requireAdmin(), async (
 app.get('/schedules/:scheduleId/logs', requireAuth(), requireAdmin(), async (c) => {
 	const user = c.get('user')
 	const scheduleId = c.req.param('scheduleId')
-	const limit = c.req.query('limit') ? parseInt(c.req.query('limit')!) : undefined
 
 	if (!user) {
 		return c.json({ error: 'Unauthorized' }, 401)
 	}
 
 	try {
+		// Validate limit parameter
+		const pagination = validatePagination(c.req.query('limit'), undefined)
+		if (!pagination.success) {
+			return c.json({ error: pagination.error }, pagination.status)
+		}
+
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		const logs = await stub.getScheduleExecutionLogs(user.id, scheduleId, limit)
+		const logs = await stub.getScheduleExecutionLogs(user.id, scheduleId, pagination.data.limit)
 
 		return c.json(logs)
 	} catch (error) {

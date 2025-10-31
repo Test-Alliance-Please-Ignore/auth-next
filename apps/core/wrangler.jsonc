@@ -4,7 +4,7 @@
 	"main": "src/index.ts",
 	"compatibility_date": "2025-04-28",
 	"compatibility_flags": ["nodejs_compat"],
-	"routes": ["pleaseignore.app/api/*", "pleaseignore.app/invite/*", "pleaseignore.app/login*"],
+	"routes": ["pleaseignore.app/api/*", "pleaseignore.app/invite/*", "pleaseignore.app/login*", "pleaseignore.app/fleets/*"],
 	"logpush": true,
 	"observability": {
 		"enabled": true,
@@ -57,6 +57,11 @@
 				"name": "BROADCASTS",
 				"class_name": "Broadcasts",
 				"script_name": "broadcasts"
+			},
+			{
+				"name": "FLEETS",
+				"class_name": "Fleets",
+				"script_name": "fleets"
 			}
 		]
 	},

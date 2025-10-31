@@ -791,6 +791,7 @@ export class ApiClient {
 			credentials: 'include', // Send cookies with requests
 			headers: {
 				'Content-Type': 'application/json',
+				'X-Requested-With': 'XMLHttpRequest', // Required for CSRF protection
 				...options?.headers,
 			},
 		})
@@ -838,6 +839,7 @@ export class ApiClient {
 	async getCharacterDetail(characterId: string): Promise<{
 		characterId: string
 		isOwner: boolean
+		viewedAsAdmin: boolean
 		public: {
 			info: any
 			portrait: any
@@ -851,6 +853,10 @@ export class ApiClient {
 			assets?: any
 			status?: any
 			skillQueue?: any[]
+		}
+		owner?: {
+			userId: string
+			mainCharacterName: string
 		}
 		lastUpdated: string | null
 	}> {
@@ -1543,6 +1549,34 @@ export class ApiClient {
 
 	async getBroadcastDeliveries(broadcastId: string): Promise<BroadcastDelivery[]> {
 		return this.get(`/broadcasts/${broadcastId}/deliveries`)
+	}
+
+	// ===== Fleet API Methods =====
+
+	async getCharacterFleetInfo(characterId: string): Promise<{
+		isInFleet: boolean
+		fleet_id: string
+		fleet_boss_id: string
+		role: string
+		squad_id: number
+		wing_id: number
+	}> {
+		return this.get(`/fleets/character/${characterId}`)
+	}
+
+	async createFleetQuickJoin(
+		characterId: string,
+		fleetId: string
+	): Promise<{
+		token: string
+		url: string
+		expiresAt: Date
+	}> {
+		return this.post('/fleets/quick-join/create', {
+			characterId,
+			fleetId,
+			expiresInHours: 24
+		})
 	}
 }
 

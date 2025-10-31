@@ -47,6 +47,16 @@ export type EveAllianceId = EveBrandedType<string, 'EveAllianceId'>
 export type EveCharacterId = EveBrandedType<string, 'EveCharacterId'>
 
 /**
+ * Branded type for EVE Online Fleet IDs.
+ * These are typically numeric strings representing unique fleet identifiers.
+ *
+ * @example
+ * ```typescript
+ * const fleetId: EveFleetId = '1234567890' as EveFleetId;
+ * ```
+ */
+
+/**
  * Helper functions for creating specific EVE branded types.
  * These provide the most convenient syntax for common use cases.
  *

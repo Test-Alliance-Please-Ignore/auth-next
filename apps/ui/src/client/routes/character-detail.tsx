@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
-import { RefreshCw, User } from 'lucide-react'
+import { RefreshCw, Shield, User } from 'lucide-react'
 import { Navigate, useParams } from 'react-router-dom'
 
 import { CharacterAttributes } from '../components/character-attributes'
@@ -72,15 +72,23 @@ export default function CharacterDetailPage() {
 	}
 
 	if (error || !character) {
+		// Check if it's a 403 Forbidden error
+		const isForbidden = error && typeof error === 'object' && 'status' in error && error.status === 403
+		const isNotFound = error && typeof error === 'object' && 'status' in error && error.status === 404
+
 		return (
 			<div className="container mx-auto p-8">
 				<Card>
 					<CardHeader>
-						<CardTitle>Error</CardTitle>
+						<CardTitle>{isForbidden ? 'Access Denied' : 'Error'}</CardTitle>
 					</CardHeader>
 					<CardContent>
 						<p className="text-destructive">
-							{error ? 'Failed to load character details' : 'Character not found'}
+							{isForbidden
+								? 'You do not have permission to view this character. Only the character owner can view character details.'
+								: isNotFound
+									? 'Character not found'
+									: 'Failed to load character details'}
 						</p>
 					</CardContent>
 				</Card>
@@ -94,6 +102,25 @@ export default function CharacterDetailPage() {
 
 	return (
 		<div className="container mx-auto p-8 space-y-6">
+			{/* Admin View Alert */}
+			{character.viewedAsAdmin && (
+				<Card className="border-amber-500/50 bg-amber-500/10">
+					<CardContent className="pt-6">
+						<div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+							<Shield className="h-5 w-5" />
+							<div>
+								<p className="font-medium">Viewing as Site Administrator</p>
+								{character.owner && (
+									<p className="text-sm text-muted-foreground">
+										This character belongs to: {character.owner.mainCharacterName}
+									</p>
+								)}
+							</div>
+						</div>
+					</CardContent>
+				</Card>
+			)}
+
 			{/* Character Header */}
 			<Card>
 				<CardHeader className="flex flex-row items-center justify-between">
@@ -130,17 +157,24 @@ export default function CharacterDetailPage() {
 						</div>
 					</div>
 					<div className="flex items-center gap-2">
-						{character.isOwner && (
+						{character.isOwner && !character.viewedAsAdmin && (
 							<Button onClick={handleRefresh} size="sm" variant="outline">
 								<RefreshCw className="h-4 w-4 mr-2" />
 								Refresh
 							</Button>
 						)}
-						{character.isOwner && (
-							<span className="text-sm text-success font-medium flex items-center">
-								<User className="h-4 w-4 mr-1" />
-								Owner
+						{character.viewedAsAdmin ? (
+							<span className="text-sm text-amber-600 dark:text-amber-400 font-medium flex items-center">
+								<Shield className="h-4 w-4 mr-1" />
+								Admin View
 							</span>
+						) : (
+							character.isOwner && (
+								<span className="text-sm text-success font-medium flex items-center">
+									<User className="h-4 w-4 mr-1" />
+									Owner
+								</span>
+							)
 						)}
 					</div>
 				</CardHeader>

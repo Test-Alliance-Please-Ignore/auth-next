@@ -33,6 +33,7 @@ import type {
 	EsiCharacterAttributes,
 	EsiCharacterPortrait,
 	EsiCharacterPublicInfo,
+	EsiCharacterRoles,
 	EsiCharacterSkills,
 	EsiCorporationHistoryEntry,
 	EsiMarketOrder,
@@ -121,6 +122,32 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	 */
 	async fetchMarketOrders(characterId: string, forceRefresh = false): Promise<void> {
 		await this.fetchAndStoreMarketOrders(characterId, forceRefresh)
+	}
+
+	/**
+	 * Fetch character corporation roles
+	 * Returns null if the character doesn't have the required scope or an error occurs
+	 */
+	async fetchCorporationRoles(
+		characterId: string,
+		_forceRefresh = false,
+	): Promise<EsiCharacterRoles | null> {
+		try {
+			const tokenStoreStub = this.getTokenStoreStub()
+			const response: EsiResponse<EsiCharacterRoles> = await tokenStoreStub.fetchEsi(
+				`/characters/${String(characterId)}/roles`,
+				String(characterId),
+			)
+
+			return response.data
+		} catch (error) {
+			// If the character doesn't have the required scope or token is invalid, return null
+			console.error(
+				`Failed to fetch corporation roles for character ${characterId}:`,
+				error instanceof Error ? error.message : String(error),
+			)
+			return null
+		}
 	}
 
 	/**
