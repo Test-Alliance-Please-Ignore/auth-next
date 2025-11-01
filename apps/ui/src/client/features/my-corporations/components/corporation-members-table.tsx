@@ -13,6 +13,7 @@ import {
 	ExternalLink,
 	Link2,
 	Shield,
+	ShieldOff,
 	Star,
 	User,
 	Users,
@@ -39,8 +40,16 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { useMessage } from '@/hooks/useMessage'
 import { cn } from '@/lib/utils'
 
+import {
+	GrantHrRoleDialog,
+	HrRoleBadge,
+	RevokeHrRoleDialog,
+	useGrantHrRole,
+	useRevokeHrRole,
+} from '../../hr'
 import { filterMembersByActivity, filterMembersByAuthStatus, sortMembers } from '../api'
 
 import type { CorporationMember } from '../api'
@@ -51,6 +60,8 @@ interface CorporationMembersTableProps {
 	onMemberClick?: (member: CorporationMember) => void
 	onLinkAccount?: (member: CorporationMember) => void
 	showActions?: boolean
+	canManageHrRoles?: boolean
+	corporationId?: string
 }
 
 type SortField = 'name' | 'role' | 'auth' | 'activity' | 'lastLogin' | 'joinDate'
@@ -62,7 +73,11 @@ export default function CorporationMembersTable({
 	onMemberClick,
 	onLinkAccount,
 	showActions = true,
+	canManageHrRoles = false,
+	corporationId,
 }: CorporationMembersTableProps) {
+	const { showSuccess, showError } = useMessage()
+
 	// Filter states
 	const [searchQuery, setSearchQuery] = useState('')
 	const [authFilter, setAuthFilter] = useState<'all' | 'linked' | 'unlinked'>('all')
@@ -78,6 +93,14 @@ export default function CorporationMembersTable({
 	// Pagination
 	const [currentPage, setCurrentPage] = useState(1)
 	const itemsPerPage = 50
+
+	// HR dialog states
+	const [grantDialogMember, setGrantDialogMember] = useState<CorporationMember | null>(null)
+	const [revokeDialogMember, setRevokeDialogMember] = useState<CorporationMember | null>(null)
+
+	// HR mutations
+	const grantMutation = useGrantHrRole()
+	const revokeMutation = useRevokeHrRole()
 
 	// Filter and sort members
 	const filteredAndSortedMembers = useMemo(() => {
@@ -157,6 +180,35 @@ export default function CorporationMembersTable({
 			}
 		},
 		[sortField, sortOrder]
+	)
+
+	// HR role management handlers
+	const handleGrantHrRole = useCallback(
+		async (request: Parameters<typeof grantMutation.mutateAsync>[0]) => {
+			try {
+				await grantMutation.mutateAsync(request)
+				showSuccess('HR role granted successfully')
+				setGrantDialogMember(null)
+			} catch (error) {
+				showError('Failed to grant HR role')
+				throw error
+			}
+		},
+		[grantMutation, showSuccess, showError]
+	)
+
+	const handleRevokeHrRole = useCallback(
+		async (request: Parameters<typeof revokeMutation.mutateAsync>[0]) => {
+			try {
+				await revokeMutation.mutateAsync(request)
+				showSuccess('HR role revoked successfully')
+				setRevokeDialogMember(null)
+			} catch (error) {
+				showError('Failed to revoke HR role')
+				throw error
+			}
+		},
+		[revokeMutation, showSuccess, showError]
 	)
 
 	const formatDate = (dateString?: string) => {
@@ -297,6 +349,7 @@ export default function CorporationMembersTable({
 								Role
 								<SortIcon field="role" />
 							</TableHead>
+							{canManageHrRoles && <TableHead>HR Role</TableHead>}
 							<TableHead
 								className="cursor-pointer hover:bg-muted/50"
 								onClick={() => handleSort('auth')}
@@ -380,6 +433,15 @@ export default function CorporationMembersTable({
 										</Badge>
 									)}
 								</TableCell>
+								{canManageHrRoles && (
+									<TableCell>
+										{member.hrRole ? (
+											<HrRoleBadge role={member.hrRole} />
+										) : (
+											<span className="text-xs text-muted-foreground">None</span>
+										)}
+									</TableCell>
+								)}
 								<TableCell>
 									{member.hasAuthAccount ? (
 										<div className="space-y-1">
@@ -437,6 +499,26 @@ export default function CorporationMembersTable({
 												>
 													<Link2 className="h-3 w-3 mr-1" />
 													Link
+												</Button>
+											)}
+											{canManageHrRoles && member.hasAuthAccount && !member.hrRole && (
+												<Button
+													size="sm"
+													variant="outline"
+													onClick={() => setGrantDialogMember(member)}
+												>
+													<Shield className="h-3 w-3 mr-1" />
+													Grant HR Role
+												</Button>
+											)}
+											{canManageHrRoles && member.hrRole && (
+												<Button
+													size="sm"
+													variant="outline"
+													onClick={() => setRevokeDialogMember(member)}
+												>
+													<ShieldOff className="h-3 w-3 mr-1" />
+													Revoke Role
 												</Button>
 											)}
 											<Button
@@ -508,6 +590,28 @@ export default function CorporationMembersTable({
 					</div>
 				)}
 			</Card>
+
+			{/* HR Role Dialogs */}
+			{canManageHrRoles && corporationId && (
+				<>
+					<GrantHrRoleDialog
+						member={grantDialogMember}
+						corporationId={corporationId}
+						open={!!grantDialogMember}
+						onOpenChange={(open) => !open && setGrantDialogMember(null)}
+						onSubmit={handleGrantHrRole}
+						isSubmitting={grantMutation.isPending}
+					/>
+					<RevokeHrRoleDialog
+						member={revokeDialogMember}
+						hrRole={revokeDialogMember?.hrRole || null}
+						open={!!revokeDialogMember}
+						onOpenChange={(open) => !open && setRevokeDialogMember(null)}
+						onSubmit={handleRevokeHrRole}
+						isSubmitting={revokeMutation.isPending}
+					/>
+				</>
+			)}
 		</div>
 	)
 }

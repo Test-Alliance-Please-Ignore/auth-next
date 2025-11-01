@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 
-import { eq, inArray } from '@repo/db-utils'
+import { and, eq, inArray, or } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
@@ -275,6 +275,15 @@ users.get('/has-corporation-access', async (c) => {
 	const db = c.get('db') || createDb(c.env.DATABASE_URL)
 
 	try {
+		// Site admins have access to all corporations
+		if (user.is_admin) {
+			logger.info('[has-corporation-access] Admin access granted', {
+				userId: user.id,
+				reason: 'site_admin',
+			})
+			return c.json({ hasAccess: true })
+		}
+
 		// Get all user's characters
 		const characters = await db.query.userCharacters.findMany({
 			where: eq(userCharacters.userId, user.id),
@@ -290,9 +299,15 @@ users.get('/has-corporation-access', async (c) => {
 			return c.json({ hasAccess: false })
 		}
 
-		// Get all active managed corporations
+		// Get all active managed corporations (member and special purpose only)
 		const managedCorps = await db.query.managedCorporations.findMany({
-			where: eq(managedCorporations.isActive, true),
+			where: and(
+				eq(managedCorporations.isActive, true),
+				or(
+					eq(managedCorporations.isMemberCorporation, true),
+					eq(managedCorporations.isSpecialPurpose, true)
+				)
+			),
 		})
 
 		if (!managedCorps.length) {
@@ -413,6 +428,39 @@ users.get('/corporation-access', async (c) => {
 	logger.info('[Corporation Access] Checking access for user', { userId: user.id })
 
 	try {
+		// Site admins have access to ALL corporations (member and special purpose only)
+		if (user.is_admin) {
+			const managedCorps = await db.query.managedCorporations.findMany({
+				where: and(
+					eq(managedCorporations.isActive, true),
+					or(
+						eq(managedCorporations.isMemberCorporation, true),
+						eq(managedCorporations.isSpecialPurpose, true)
+					)
+				),
+			})
+
+			const adminCorps = managedCorps.map((corp) => ({
+				corporationId: corp.corporationId,
+				name: corp.name,
+				ticker: corp.ticker,
+				userRole: 'admin' as const,
+				characterId: null,
+				characterName: null,
+			}))
+
+			logger.info('[Corporation Access] Admin access granted', {
+				userId: user.id,
+				reason: 'site_admin',
+				corporationCount: adminCorps.length,
+			})
+
+			return c.json({
+				hasAccess: adminCorps.length > 0,
+				corporations: adminCorps,
+			})
+		}
+
 		// Get all user's characters
 		const characters = await db.query.userCharacters.findMany({
 			where: eq(userCharacters.userId, user.id),
@@ -428,9 +476,15 @@ users.get('/corporation-access', async (c) => {
 			return c.json({ hasAccess: false, corporations: [] })
 		}
 
-		// Get all managed corporations
+		// Get all managed corporations (member and special purpose only)
 		const managedCorps = await db.query.managedCorporations.findMany({
-			where: eq(managedCorporations.isActive, true),
+			where: and(
+				eq(managedCorporations.isActive, true),
+				or(
+					eq(managedCorporations.isMemberCorporation, true),
+					eq(managedCorporations.isSpecialPurpose, true)
+				)
+			),
 		})
 
 		logger.info('[Corporation Access] Found managed corporations', {
@@ -606,7 +660,7 @@ users.get('/my-corporations', async (c) => {
 				corporationId: string
 				name: string
 				ticker: string
-				userRole: 'CEO' | 'Director' | 'Both'
+				userRole: 'CEO' | 'Director' | 'Both' | 'admin'
 				memberCount: number
 				linkedMemberCount: number
 				unlinkedMemberCount: number
@@ -617,13 +671,93 @@ users.get('/my-corporations', async (c) => {
 		if (cached) {
 			return c.json(cached)
 		}
+
+		// Site admins have access to ALL corporations (member and special purpose only)
+		if (user.is_admin) {
+			const managedCorps = await db.query.managedCorporations.findMany({
+				where: and(
+					eq(managedCorporations.isActive, true),
+					or(
+						eq(managedCorporations.isMemberCorporation, true),
+						eq(managedCorporations.isSpecialPurpose, true)
+					)
+				),
+			})
+
+			// Fetch all corporation data in parallel
+			const corpDataPromises = managedCorps.map(async (corp) => {
+				try {
+					const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corp.corporationId)
+					const coreData = await corpStub.getCoreData(corp.corporationId)
+
+					// Count linked/unlinked members
+					let linkedMemberCount = 0
+					let unlinkedMemberCount = 0
+
+					if (coreData?.members) {
+						const memberCharIds = coreData.members.map((m) => String(m.characterId))
+						const linkedChars = await db.query.userCharacters.findMany({
+							where: inArray(userCharacters.characterId, memberCharIds),
+							columns: { characterId: true },
+						})
+						const linkedSet = new Set(linkedChars.map((c) => c.characterId))
+
+						for (const member of coreData.members) {
+							const memberCharId = String(member.characterId)
+							if (linkedSet.has(memberCharId)) {
+								linkedMemberCount++
+							} else {
+								unlinkedMemberCount++
+							}
+						}
+					}
+
+					return {
+						corporationId: corp.corporationId,
+						name: corp.name,
+						ticker: corp.ticker,
+						userRole: 'admin' as const,
+						memberCount: coreData?.members?.length || 0,
+						linkedMemberCount,
+						unlinkedMemberCount,
+						allianceId: coreData?.publicInfo?.allianceId || undefined,
+					}
+				} catch (error) {
+					logger.warn('Error fetching corporation data for admin:', {
+						corporationId: corp.corporationId,
+						error: error instanceof Error ? error.message : String(error),
+					})
+					return null
+				}
+			})
+
+			const adminCorps = (await Promise.all(corpDataPromises)).filter((corp) => corp !== null)
+
+			logger.info('[My Corporations] Admin access granted', {
+				userId: user.id,
+				reason: 'site_admin',
+				corporationCount: adminCorps.length,
+			})
+
+			// Cache the admin results
+			await cacheJson(cacheKey, adminCorps, CACHE_TTL)
+
+			return c.json(adminCorps)
+		}
+
 		// STEP 1: Parallel initial data fetch
 		const [characters, managedCorps] = await Promise.all([
 			db.query.userCharacters.findMany({
 				where: eq(userCharacters.userId, user.id),
 			}),
 			db.query.managedCorporations.findMany({
-				where: eq(managedCorporations.isActive, true),
+				where: and(
+					eq(managedCorporations.isActive, true),
+					or(
+						eq(managedCorporations.isMemberCorporation, true),
+						eq(managedCorporations.isSpecialPurpose, true)
+					)
+				),
 			}),
 		])
 

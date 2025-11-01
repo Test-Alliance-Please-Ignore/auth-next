@@ -35,6 +35,7 @@
 		"@repo/fleets": "workspace:*",
 		"@repo/groups": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
+		"@repo/hr": "workspace:*",
 		"@repo/notifications": "workspace:*",
 		"drizzle-orm": "0.44.6",
 		"hono": "4.9.11",

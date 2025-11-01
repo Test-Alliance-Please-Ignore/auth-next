@@ -136,11 +136,11 @@ export class CoreRpcService {
 		// 4. Build character summaries with token validation
 		const characterSummaries = await Promise.all(
 			chars.map(async (char) => {
-				// Check token validity
+				// Check token validity (getAccessToken auto-refreshes if needed)
 				let hasValidToken = false
 				try {
-					const tokenInfo = await eveTokenStore.getTokenInfo(char.characterId)
-					hasValidToken = !!tokenInfo && !tokenInfo.isExpired
+					const accessToken = await eveTokenStore.getAccessToken(char.characterId)
+					hasValidToken = accessToken !== null
 				} catch (error) {
 					console.error(`Failed to check token for character ${char.characterId}:`, error)
 				}

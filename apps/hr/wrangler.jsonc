@@ -1,0 +1,32 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "hr",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-04-28",
+	"compatibility_flags": ["nodejs_compat"],
+	"routes": [],
+	"logpush": false,
+	"workers_dev": false,
+	"observability": {
+		"enabled": true
+	},
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "HR",
+				"class_name": "Hr"
+			},
+			{
+				"name": "EVE_CORPORATION_DATA",
+				"class_name": "EveCorporationData",
+				"script_name": "eve-corporation-data"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["Hr"]
+		}
+	]
+}

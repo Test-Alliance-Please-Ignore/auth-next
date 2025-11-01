@@ -34,6 +34,7 @@ import BroadcastsPage from './routes/broadcasts'
 import BroadcastsNewPage from './routes/broadcasts-new'
 import CharacterDetailPage from './routes/character-detail'
 import ClaimMainPage from './routes/claim-main'
+import BrowseCorporations from './routes/browse-corporations'
 import DashboardPage from './routes/dashboard'
 import DiscordCallbackPage from './routes/discord-callback'
 import GroupDetailPage from './routes/group-detail'
@@ -46,6 +47,19 @@ import MyGroupsPage from './routes/my-groups'
 // Lazy load the My Corporations feature for code splitting
 const MyCorporationsList = lazy(() => import('./features/my-corporations/routes/my-corporations-list'))
 const CorporationMembers = lazy(() => import('./features/my-corporations/routes/corporation-members'))
+const CorporationSettings = lazy(() => import('./features/my-corporations/routes/corporation-settings'))
+
+// Lazy load public corporation pages
+const CorporationDetail = lazy(() => import('./routes/corporation-detail'))
+
+// Lazy load the Applications feature for code splitting
+const MyApplicationsList = lazy(() => import('./features/applications/routes/my-applications-list'))
+const ApplicationDetail = lazy(() => import('./features/applications/routes/application-detail'))
+const HrDashboard = lazy(() => import('./features/applications/routes/hr-dashboard'))
+const HrApplicationsList = lazy(() => import('./features/applications/routes/hr-applications-list'))
+const HrApplicationReview = lazy(() => import('./features/applications/routes/hr-application-review'))
+const HrRolesManagement = lazy(() => import('./features/applications/routes/hr-roles-management'))
+const UserHrNotes = lazy(() => import('./features/applications/routes/user-hr-notes'))
 
 // Create a client
 const queryClient = new QueryClient({
@@ -77,6 +91,24 @@ export default function App() {
 						<Route path="/groups/:groupId" element={<GroupDetailPage />} />
 						<Route path="/my-groups" element={<MyGroupsPage />} />
 
+						{/* Join Corporations */}
+						<Route
+							path="/join"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<BrowseCorporations />
+								</Suspense>
+							}
+						/>
+					<Route
+						path="/join/:corporationId"
+						element={
+							<Suspense fallback={<LoadingPage />}>
+								<CorporationDetail />
+							</Suspense>
+						}
+					/>
+
 						{/* My Corporations routes (lazy loaded) */}
 						<Route
 							path="/my-corporations"
@@ -91,6 +123,66 @@ export default function App() {
 							element={
 								<Suspense fallback={<LoadingPage />}>
 									<CorporationMembers />
+								</Suspense>
+							}
+						/>
+					<Route
+						path="/my-corporations/:corporationId/settings"
+						element={
+							<Suspense fallback={<LoadingPage />}>
+								<CorporationSettings />
+							</Suspense>
+						}
+					/>
+
+						{/* Application routes - User views (lazy loaded) */}
+						<Route
+							path="/my-applications"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<MyApplicationsList />
+								</Suspense>
+							}
+						/>
+						<Route
+							path="/my-applications/:applicationId"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<ApplicationDetail />
+								</Suspense>
+							}
+						/>
+
+						{/* Application routes - HR views (lazy loaded) */}
+						<Route
+							path="/corporations/:corporationId/hr/dashboard"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<HrDashboard />
+								</Suspense>
+							}
+						/>
+						<Route
+							path="/corporations/:corporationId/hr/applications"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<HrApplicationsList />
+								</Suspense>
+							}
+						/>
+						<Route
+							path="/corporations/:corporationId/hr/applications/:applicationId"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<HrApplicationReview />
+								</Suspense>
+							}
+						/>
+						<Route
+							path="/corporations/:corporationId/hr/roles"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<HrRolesManagement />
 								</Suspense>
 							}
 						/>
@@ -113,6 +205,14 @@ export default function App() {
 						<Route path="permissions/global" element={<AdminGlobalPermissionsPage />} />
 						<Route path="users" element={<AdminUsersPage />} />
 						<Route path="users/:userId" element={<AdminUserDetailPage />} />
+						<Route
+							path="users/:userId/hr-notes"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<UserHrNotes />
+								</Suspense>
+							}
+						/>
 						<Route path="activity-log" element={<AdminActivityLogPage />} />
 
 						{/* Bills routes */}

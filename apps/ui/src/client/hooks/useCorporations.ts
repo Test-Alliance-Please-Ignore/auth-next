@@ -23,9 +23,21 @@ export const corporationKeys = {
 	search: (query: string) => [...corporationKeys.all, 'search', query] as const,
 	directors: (corporationId: string) =>
 		[...corporationKeys.detail(corporationId), 'directors'] as const,
+	public: () => ['corporations', 'public'] as const,
 }
 
 // Queries
+
+/**
+ * Get public corporations (member corps only) for browsing/applying
+ */
+export function usePublicCorporations() {
+	return useQuery({
+		queryKey: corporationKeys.public(),
+		queryFn: () => api.getPublicCorporations(),
+		staleTime: 1000 * 60 * 5, // 5 minutes
+	})
+}
 
 /**
  * Fetch all managed corporations (admin only)

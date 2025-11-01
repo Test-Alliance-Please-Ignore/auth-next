@@ -1,0 +1,1 @@
+CREATE INDEX "idx_hr_roles_corp_active_granted" ON "hr_roles" USING btree ("corporation_id","is_active","granted_at" DESC NULLS LAST);

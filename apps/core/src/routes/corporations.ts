@@ -1,3 +1,4 @@
+import type { Context } from 'hono'
 import { Hono } from 'hono'
 
 import { and, desc, eq, ilike, inArray, or } from '@repo/db-utils'
@@ -86,6 +87,113 @@ async function cacheJson(cacheKey: string, data: unknown, ttl: number): Promise<
 }
 
 /**
+ * Check if the current user has CEO, director, or site admin access to a corporation
+ * @returns Object with hasAccess flag and role if access granted
+ * @throws Error with 403 status if user has no access
+ */
+async function checkCorporationAccess(
+	c: Context<App>,
+	corporationId: string
+): Promise<{ hasAccess: true; role: 'admin' | 'CEO' | 'Director' }> {
+	const user = c.get('user')!
+	const db = c.get('db')
+
+	if (!db) {
+		throw new Error('Database not available')
+	}
+
+	// Site admins have access to all corporations
+	if (user.is_admin) {
+		logger.info('[Corporation Access] Admin access granted', {
+			corporationId,
+			userId: user.id,
+			reason: 'site_admin',
+		})
+		return { hasAccess: true, role: 'admin' }
+	}
+
+	// Get user's characters to check CEO/Director status
+	const userChars = await db.query.userCharacters.findMany({
+		where: eq(userCharacters.userId, user.id),
+	})
+
+	logger.info('[Corporation Access] Checking user access', {
+		corporationId,
+		userId: user.id,
+		userCharacterCount: userChars.length,
+	})
+
+	let userRole: 'CEO' | 'Director' | null = null
+
+	for (const character of userChars) {
+		try {
+			// Check if character is in this corporation
+			const charStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, character.characterId)
+			const charData = await charStub.getCharacterInfo(character.characterId)
+
+			// Skip if character is not in the target corporation
+			if (!charData || String(charData.corporationId) !== corporationId) {
+				continue
+			}
+
+			// Get corporation data to check CEO and directors
+			const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+			const [corpInfo, directors] = await Promise.all([
+				corpStub.getCorporationInfo(corporationId),
+				corpStub.getDirectors(corporationId),
+			])
+
+			// Check if character is CEO
+			const isCeo = corpInfo && String(corpInfo.ceoId) === character.characterId
+			if (isCeo) {
+				userRole = 'CEO'
+				logger.info('[Corporation Access] CEO access granted', {
+					characterId: character.characterId,
+					characterName: character.characterName,
+					corporationId,
+					reason: 'corporation_ceo',
+				})
+				return { hasAccess: true, role: 'CEO' }
+			}
+
+			// Check if character is a director
+			const matchedDirector = directors.find((d) => d.characterId === character.characterId)
+			if (matchedDirector) {
+				userRole = 'Director'
+				logger.info('[Corporation Access] Director access granted', {
+					characterId: character.characterId,
+					characterName: character.characterName,
+					corporationId,
+					reason: 'corporation_director',
+				})
+				// Continue checking in case another character is CEO
+			}
+		} catch (error) {
+			logger.warn('[Corporation Access] Error checking character access:', {
+				characterId: character.characterId,
+				corporationId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+	}
+
+	// If we found a Director role, return it
+	if (userRole === 'Director') {
+		return { hasAccess: true, role: 'Director' }
+	}
+
+	// No access found
+	logger.warn('[Corporation Access] Access denied', {
+		corporationId,
+		userId: user.id,
+		isAdmin: user.is_admin,
+		checkedCharacters: userChars.length,
+	})
+
+	throw new Error('Access denied. Corporation CEO, Director, or site admin access required.')
+}
+
+/**
  * GET /corporations
  * List all configured corporations (admin only)
  *
@@ -171,6 +279,178 @@ app.get('/search', requireAuth(), requireAdmin(), async (c) => {
 	} catch (error) {
 		logger.error('Error searching corporations:', error)
 		return c.json({ error: 'Failed to search corporations' }, 500)
+	}
+})
+
+/**
+ * GET /corporations/browse
+ * List member corporations for public browsing (authenticated users only, not admin-only)
+ * Returns only corporations where isMemberCorporation = true AND isRecruiting = true
+ */
+app.get('/browse', requireAuth(), async (c) => {
+	const db = c.get('db')
+
+	if (!db) {
+		return c.json({ error: 'Database not available' }, 500)
+	}
+
+	try {
+		// Only return recruiting member corporations
+		const corporations = await db.query.managedCorporations.findMany({
+			where: and(
+				eq(managedCorporations.isMemberCorporation, true),
+				eq(managedCorporations.isRecruiting, true)
+			),
+			orderBy: desc(managedCorporations.updatedAt),
+		})
+
+		return c.json(corporations)
+	} catch (error) {
+		logger.error('Error fetching member corporations:', error)
+		return c.json({ error: 'Failed to fetch member corporations' }, 500)
+	}
+})
+
+/**
+ * GET /corporations/browse/search?q=:query
+ * Search member corporations by name or ticker (authenticated users only, not admin-only)
+ * Returns only corporations where isMemberCorporation = true AND isRecruiting = true
+ */
+app.get('/browse/search', requireAuth(), async (c) => {
+	const query = c.req.query('q')
+	const db = c.get('db')
+
+	if (!db) {
+		return c.json({ error: 'Database not available' }, 500)
+	}
+
+	if (!query || query.length < 2) {
+		return c.json({ error: 'Query must be at least 2 characters' }, 400)
+	}
+
+	try {
+		// Search only in recruiting member corporations
+		const results = await db
+			.select()
+			.from(managedCorporations)
+			.where(
+				and(
+					eq(managedCorporations.isMemberCorporation, true),
+					eq(managedCorporations.isRecruiting, true),
+					or(
+						ilike(managedCorporations.name, `%${query}%`),
+						ilike(managedCorporations.ticker, `%${query}%`)
+					)
+				)
+			)
+			.limit(20)
+
+		return c.json(results)
+	} catch (error) {
+		logger.error('Error searching member corporations:', error)
+		return c.json({ error: 'Failed to search member corporations' }, 500)
+	}
+})
+
+/**
+ * GET /corporations/browse/:corporationId
+ * Get detailed information about a specific corporation for the detail page
+ * Returns full corporation details including description and application instructions
+ */
+app.get('/browse/:corporationId', requireAuth(), async (c) => {
+	const corporationId = c.req.param('corporationId')
+	const db = c.get('db')
+
+	if (!db) {
+		return c.json({ error: 'Database not available' }, 500)
+	}
+
+	try {
+		const corporation = await db.query.managedCorporations.findFirst({
+			where: and(
+				eq(managedCorporations.corporationId, corporationId),
+				eq(managedCorporations.isRecruiting, true)
+			),
+		})
+
+		if (!corporation) {
+			return c.json({ error: 'Corporation not found or not recruiting' }, 404)
+		}
+
+		// Return corporation details
+		return c.json(corporation)
+	} catch (error) {
+		logger.error('Error fetching corporation details:', error)
+		return c.json({ error: 'Failed to fetch corporation details' }, 500)
+	}
+})
+
+/**
+ * PATCH /my-corporations/:corporationId/settings
+ * Update corporation recruiting settings (CEO or admin only)
+ * Updates isRecruiting, shortDescription, and fullDescription fields
+ */
+app.patch('/my-corporations/:corporationId/settings', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const corporationId = c.req.param('corporationId')
+	const db = c.get('db')
+
+	if (!db) {
+		return c.json({ error: 'Database not available' }, 500)
+	}
+
+	// Authorization check - user must be CEO or site admin
+	try {
+		await checkCeoOrAdminAccess(c, corporationId)
+	} catch (error) {
+		return c.json({ error: error instanceof Error ? error.message : 'Access denied' }, 403)
+	}
+
+	// Parse and validate request body
+	const body = await c.req.json()
+	const { isRecruiting, shortDescription, fullDescription } = body
+
+	// Validate short description length
+	if (shortDescription !== undefined && typeof shortDescription === 'string' && shortDescription.length > 250) {
+		return c.json({ error: 'Short description must not exceed 250 characters' }, 400)
+	}
+
+	try {
+		// Build update object with only provided fields
+		const updateData: Record<string, any> = {
+			updatedAt: new Date(),
+		}
+
+		if (isRecruiting !== undefined) {
+			updateData.isRecruiting = isRecruiting
+		}
+		if (shortDescription !== undefined) {
+			updateData.shortDescription = shortDescription || null
+		}
+		if (fullDescription !== undefined) {
+			updateData.fullDescription = fullDescription || null
+		}
+
+		// Update corporation
+		const [updatedCorporation] = await db
+			.update(managedCorporations)
+			.set(updateData)
+			.where(eq(managedCorporations.corporationId, corporationId))
+			.returning()
+
+		logger.info('[Corporations] Settings updated', {
+			corporationId,
+			updatedBy: user.id,
+			fields: Object.keys(updateData).filter((k) => k !== 'updatedAt'),
+		})
+
+		return c.json(updatedCorporation)
+	} catch (error) {
+		logger.error('[Corporations] Failed to update settings', {
+			corporationId,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return c.json({ error: 'Failed to update corporation settings' }, 500)
 	}
 })
 
@@ -721,99 +1001,17 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 			return c.json({ error: 'Corporation not found or not managed' }, 404)
 		}
 
-		// Check if user has CEO/director access
-		const userChars = await db.query.userCharacters.findMany({
-			where: eq(userCharacters.userId, user.id),
-		})
-
-		logger.info('[Corporations Members] Checking user access', {
-			corporationId,
-			userId: user.id,
-			userCharacterCount: userChars.length,
-			userCharacters: userChars.map(c => ({ id: c.characterId, name: c.characterName }))
-		})
-
-		let hasAccess = false
-		let userRole: 'CEO' | 'Director' | null = null
-
-		for (const character of userChars) {
-			try {
-				// Check if character is in this corporation
-				const charStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, character.characterId)
-				const charData = await charStub.getCharacterInfo(character.characterId)
-
-				logger.info('[Corporations Members] Character corporation check', {
-					characterId: character.characterId,
-					characterName: character.characterName,
-					characterCorporationId: charData?.corporationId,
-					targetCorporationId: corporationId,
-					matches: charData && String(charData.corporationId) === corporationId
-				})
-
-				// Convert corporation_id to string for comparison
-				if (!charData || String(charData.corporationId) !== corporationId) {
-					continue
-				}
-
-				// Get corporation data to check CEO
-				const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
-				const [corpInfo, directors] = await Promise.all([
-					corpStub.getCorporationInfo(corporationId),
-					corpStub.getDirectors(corporationId)
-				])
-
-				logger.info('[Corporations Members] Checking roles for character', {
-					characterId: character.characterId,
-					characterName: character.characterName,
-					corporationId,
-					ceoId: corpInfo?.ceoId,
-					directorCount: directors.length,
-					directors: directors.map(d => ({ id: d.characterId, name: d.characterName, isHealthy: d.isHealthy }))
-				})
-
-				// Check if character is CEO (convert ceo_id to string for comparison)
-				const isCeo = corpInfo && String(corpInfo.ceoId) === character.characterId
-				if (isCeo) {
-					hasAccess = true
-					userRole = 'CEO'
-					logger.info('[Corporations Members] Access granted - CEO', {
-						characterId: character.characterId,
-						characterName: character.characterName,
-						corporationId
-					})
-					break
-				}
-
-				// Check if character is a director
-				const matchedDirector = directors.find((d) => d.characterId === character.characterId)
-				if (matchedDirector) {
-					hasAccess = true
-					userRole = 'Director'
-					logger.info('[Corporations Members] Access granted - Director', {
-						characterId: character.characterId,
-						characterName: character.characterName,
-						corporationId,
-						directorName: matchedDirector.characterName
-					})
-					// Continue checking in case another character is CEO
-				}
-			} catch (error) {
-				logger.warn('Error checking character access:', {
-					characterId: character.characterId,
-					corporationId,
-					error: error instanceof Error ? error.message : String(error),
-				})
-			}
-		}
-
-		if (!hasAccess) {
-			logger.warn('[Corporations Members] Access denied', {
-				corporationId,
-				userId: user.id,
-				checkedCharacters: userChars.length,
-				reason: 'No character found with CEO or Director role'
-			})
-			return c.json({ error: 'Access denied. CEO or director role required.' }, 403)
+		// Check if user has CEO/Director/Admin access
+		let userRole: 'admin' | 'CEO' | 'Director'
+		try {
+			const access = await checkCorporationAccess(c, corporationId)
+			userRole = access.role
+		} catch (error) {
+			// Authorization failed - return 403
+			return c.json(
+				{ error: error instanceof Error ? error.message : 'Access denied' },
+				403
+			)
 		}
 
 		logger.info('[Corporations] User has access', { corporationId, userId: user.id, userRole })

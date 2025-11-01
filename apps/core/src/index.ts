@@ -18,6 +18,7 @@ import discordRoutes from './routes/discord'
 import discordServersRoutes from './routes/discord-servers'
 import fleetsRoutes from './routes/fleets'
 import groupsRoutes from './routes/groups'
+import hrRoutes from './routes/hr'
 import inviteRoutes from './routes/invite'
 import loginRoutes from './routes/login'
 import skillsRoutes from './routes/skills'
@@ -99,6 +100,7 @@ const app = new Hono<App>()
 	.route('/api/groups', groupsRoutes)
 	.route('/api/broadcasts', broadcastsRoutes)
 	.route('/api/fleets', fleetsRoutes)
+	.route('/api/hr', hrRoutes)
 	.route('/api/ws', wsRoutes)
 	// .route('/api/bills', userBillsRoutes) // User bills API (TODO: implement later)
 

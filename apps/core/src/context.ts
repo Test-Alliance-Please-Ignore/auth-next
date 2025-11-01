@@ -5,6 +5,7 @@ import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Groups } from '@repo/groups'
 import type { HonoApp } from '@repo/hono-helpers'
+import type { Hr } from '@repo/hr'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
 import type { Notifications } from '@repo/notifications'
 
@@ -30,6 +31,8 @@ export type Env = SharedHonoEnv & {
 	BROADCASTS: DurableObjectNamespace
 	/** Fleets Durable Object binding */
 	FLEETS: DurableObjectNamespace
+	/** HR Durable Object binding */
+	HR: DurableObjectNamespace
 	/** EVE Static Data service binding */
 	EVE_STATIC_DATA: Fetcher
 	/** Secret for session token generation and signing */

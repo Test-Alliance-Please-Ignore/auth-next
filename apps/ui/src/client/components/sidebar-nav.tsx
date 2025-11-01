@@ -1,10 +1,12 @@
 import {
 	Building2,
+	FileText,
 	FolderHeart,
 	LayoutDashboard,
 	LogOut,
 	Mail,
 	Radio,
+	Settings,
 	Shield,
 	Users,
 } from 'lucide-react'
@@ -53,19 +55,29 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 			href: '/my-groups',
 			icon: FolderHeart,
 		},
+		{
+			label: 'Join Corporations',
+			href: '/join',
+			icon: Building2,
+		},
 	]
 
-	// Add My Corporations nav item if user has CEO/director access
+	// Add Manage Corporation nav item if user has CEO/director access
 	if (corporationAccess?.hasAccess) {
 		navItems.push({
-			label: 'My Corporations',
+			label: 'Manage Corporation',
 			href: '/my-corporations',
-			icon: Building2,
+			icon: Settings,
 		})
 	}
 
 	// Continue with other nav items
 	navItems.push(
+		{
+			label: 'My Applications',
+			href: '/my-applications',
+			icon: FileText,
+		},
 		{
 			label: 'Invitations',
 			href: '/invitations',

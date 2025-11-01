@@ -230,6 +230,12 @@ export const managedCorporations = pgTable(
 		isAltCorp: boolean('is_alt_corp').default(false).notNull(),
 		/** Whether this corporation is a special purpose corporation */
 		isSpecialPurpose: boolean('is_special_purpose').default(false).notNull(),
+		/** Whether this corporation is actively recruiting (shown in browse corporations) */
+		isRecruiting: boolean('is_recruiting').default(true).notNull(),
+		/** Short description shown on browse corporations page (max 250 chars) */
+		shortDescription: varchar('short_description', { length: 250 }),
+		/** Full description and application instructions shown on corporation detail page */
+		fullDescription: text('full_description'),
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},

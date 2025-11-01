@@ -1,0 +1,9 @@
+# Routes Directory
+
+This directory will contain page components and route definitions for the applications feature.
+
+Phase 2+ will add:
+- Applications list page
+- Application detail page
+- Submit application form
+- Review application interface

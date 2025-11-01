@@ -4,8 +4,8 @@
  * Shows all members of a specific corporation with comprehensive data.
  */
 
-import { AlertCircle, ArrowLeft, Building2, Download, RefreshCw } from 'lucide-react'
-import { lazy, Suspense, useCallback } from 'react'
+import { AlertCircle, ArrowLeft, Building2, Download, RefreshCw, LayoutDashboard, FileText, Settings } from 'lucide-react'
+import { lazy, Suspense, useCallback, useMemo } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 
 import {
@@ -23,6 +23,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
+import { useHrRoles } from '../../hr'
 import {
 	useCanAccessCorporation,
 	useCorporationManager,
@@ -47,7 +48,32 @@ export default function CorporationMembers() {
 	const { canAccess, userRole } = useCanAccessCorporation(corporationId!)
 	const { data: corporation, isLoading: corpLoading } = useMyCorporation(corporationId!)
 	const { data: members, isLoading: membersLoading, error } = useCorporationMembers(corporationId!)
+	const { data: hrRoles, isLoading: hrRolesLoading } = useHrRoles(corporationId!)
 	const { invalidateMembers } = useCorporationManager()
+
+	// Check if current user can manage HR roles (CEOs and site admins)
+	const canManageHrRoles = useMemo(() => {
+		return userRole === 'CEO' || userRole === 'admin'
+	}, [userRole])
+
+	// Check if current user has HR role
+	const currentUserHrRole = useMemo(() => {
+		if (!hrRoles || !user) return null
+		return hrRoles.find((role) => role.userId === user.id)
+	}, [hrRoles, user])
+
+	// Enhance members with HR role data
+	const membersWithHrRoles = useMemo(() => {
+		if (!members || !hrRoles) return members
+
+		return members.map((member) => {
+			const hrRole = hrRoles.find((role) => role.userId === member.authUserId)
+			return {
+				...member,
+				hrRole,
+			}
+		})
+	}, [members, hrRoles])
 
 	// Set page title
 	usePageTitle(
@@ -82,13 +108,14 @@ export default function CorporationMembers() {
 	)
 
 	const handleExport = useCallback(() => {
-		if (!members) return
+		if (!membersWithHrRoles) return
 
 		// Create CSV content
 		const headers = [
 			'Character Name',
 			'Character ID',
 			'Role',
+			'HR Role',
 			'Auth Account',
 			'Activity Status',
 			'Last Login',
@@ -97,10 +124,11 @@ export default function CorporationMembers() {
 			'Location',
 		]
 
-		const rows = members.map((m) => [
+		const rows = membersWithHrRoles.map((m) => [
 			m.characterName,
 			m.characterId,
 			m.role,
+			m.hrRole?.role || '',
 			m.hasAuthAccount ? 'Yes' : 'No',
 			m.activityStatus,
 			m.lastLogin || 'Never',
@@ -121,7 +149,7 @@ export default function CorporationMembers() {
 		URL.revokeObjectURL(url)
 
 		showSuccess('Member list exported')
-	}, [members, corporation, showSuccess])
+	}, [membersWithHrRoles, corporation, showSuccess])
 
 	// Check authentication
 	if (!authLoading && !isAuthenticated) {
@@ -134,7 +162,7 @@ export default function CorporationMembers() {
 	}
 
 	// Loading state
-	if (corpLoading || membersLoading) {
+	if (corpLoading || membersLoading || hrRolesLoading) {
 		return (
 			<div className="container mx-auto max-w-7xl px-4 py-8">
 				<div className="flex items-center justify-center min-h-[400px]">
@@ -240,7 +268,7 @@ export default function CorporationMembers() {
 							<RefreshCw className="mr-2 h-4 w-4" />
 							Refresh
 						</Button>
-						<Button variant="outline" onClick={handleExport} disabled={!members || members.length === 0}>
+						<Button variant="outline" onClick={handleExport} disabled={!membersWithHrRoles || membersWithHrRoles.length === 0}>
 							<Download className="mr-2 h-4 w-4" />
 							Export CSV
 						</Button>
@@ -254,6 +282,53 @@ export default function CorporationMembers() {
 				</div>
 			</div>
 
+			{/* HR Navigation - Show if user has HR role or is site admin */}
+			{(currentUserHrRole || user?.is_admin) && (
+				<Card className="mb-6 bg-primary/5 border-primary/20">
+					<CardHeader>
+						<CardTitle className="text-lg flex items-center gap-2">
+							<Settings className="h-5 w-5" />
+							HR Management
+						</CardTitle>
+						<CardDescription>
+							{currentUserHrRole
+								? `You have ${currentUserHrRole.role} access for this corporation`
+								: 'You have site admin access to all HR features'}
+						</CardDescription>
+					</CardHeader>
+					<CardContent>
+						<div className="flex flex-wrap gap-2">
+							<Link to={`/corporations/${corporationId}/hr/dashboard`}>
+								<Button variant="default">
+									<LayoutDashboard className="mr-2 h-4 w-4" />
+									HR Dashboard
+								</Button>
+							</Link>
+							<Link to={`/corporations/${corporationId}/hr/applications`}>
+								<Button variant="default">
+									<FileText className="mr-2 h-4 w-4" />
+									Review Applications
+								</Button>
+							</Link>
+							<Link to={`/corporations/${corporationId}/hr/roles`}>
+								<Button variant="outline">
+									<Settings className="mr-2 h-4 w-4" />
+									Manage HR Roles
+								</Button>
+							</Link>
+						{canManageHrRoles && (
+							<Link to={`/my-corporations/${corporationId}/settings`}>
+								<Button variant="outline">
+									<Settings className="mr-2 h-4 w-4" />
+									Corporation Settings
+								</Button>
+							</Link>
+						)}
+						</div>
+					</CardContent>
+				</Card>
+			)}
+
 			{/* Members Table */}
 			<Suspense
 				fallback={
@@ -264,13 +339,15 @@ export default function CorporationMembers() {
 					</Card>
 				}
 			>
-				{members && members.length > 0 ? (
+				{membersWithHrRoles && membersWithHrRoles.length > 0 ? (
 					<CorporationMembersTable
-						members={members}
+						members={membersWithHrRoles}
 						loading={membersLoading}
 						onMemberClick={handleMemberClick}
 						onLinkAccount={handleLinkAccount}
 						showActions={true}
+						canManageHrRoles={canManageHrRoles}
+						corporationId={corporationId!}
 					/>
 				) : (
 					<Card>

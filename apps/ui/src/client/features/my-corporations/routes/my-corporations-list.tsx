@@ -4,7 +4,7 @@
  * Main page showing all corporations where the user has CEO/director access.
  */
 
-import { AlertCircle, Building2, ChevronRight, Shield, Star, Users } from 'lucide-react'
+import { AlertCircle, Building2, Settings, Shield, Star, Users } from 'lucide-react'
 import { useEffect } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 
@@ -253,13 +253,18 @@ export default function MyCorporationsList() {
 											</div>
 										)}
 
-										{/* View Members Button */}
-										<Link to={`/my-corporations/${corporation.corporationId}/members`}>
-											<Button className="w-full" variant="default">
-												View Members
-												<ChevronRight className="ml-2 h-4 w-4" />
-											</Button>
-										</Link>
+										{/* Action Buttons */}
+										<div>
+											<Link to={`/my-corporations/${corporation.corporationId}/members`}>
+												<Button
+													className="w-full bg-[hsl(220_10%_40%)] text-white border-2 border-[hsl(220_10%_40%)]/70 shadow-lg shadow-[hsl(220_10%_40%)]/25 hover:bg-[hsl(220_10%_32%)] hover:shadow-xl hover:shadow-[hsl(220_10%_32%)]/40 hover:border-[hsl(220_10%_32%)]/70 focus-visible:ring-2 focus-visible:ring-[hsl(220_10%_40%)] focus-visible:ring-offset-2 transition-all duration-200"
+													variant="default"
+												>
+													<Settings className="mr-2 h-4 w-4" />
+													Manage Corporation
+												</Button>
+											</Link>
+										</div>
 									</div>
 								</AccordionContent>
 							</AccordionItem>

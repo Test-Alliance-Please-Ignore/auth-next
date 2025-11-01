@@ -155,11 +155,11 @@ export class AdminService {
 			return null
 		}
 
-		// 4. Check token validity
+		// 4. Check token validity (getAccessToken auto-refreshes if needed)
 		let hasValidToken = false
 		try {
-			const tokenInfo = await this.eveTokenStore.getTokenInfo(characterId)
-			hasValidToken = !!tokenInfo && !tokenInfo.isExpired
+			const accessToken = await this.eveTokenStore.getAccessToken(characterId)
+			hasValidToken = accessToken !== null
 		} catch (error) {
 			console.error(`Failed to check token for character ${characterId}:`, error)
 		}

@@ -31,6 +31,7 @@ export interface CorporationMember {
 	locationSystem?: string
 	locationRegion?: string
 	activityStatus: 'active' | 'inactive' | 'unknown'
+	hrRole?: import('../hr/api').HrRoleGrant
 }
 
 /**
@@ -40,7 +41,7 @@ export interface MyCorporation {
 	corporationId: string
 	name: string
 	ticker: string
-	userRole: 'CEO' | 'Director' | 'Both'
+	userRole: 'CEO' | 'Director' | 'Both' | 'admin'
 	memberCount: number
 	linkedMemberCount: number
 	unlinkedMemberCount: number
@@ -57,9 +58,9 @@ export interface CorporationAccessResult {
 		corporationId: string
 		name: string
 		ticker: string
-		userRole: 'CEO' | 'Director'
-		characterId: string
-		characterName: string
+		userRole: 'CEO' | 'Director' | 'admin'
+		characterId: string | null
+		characterName: string | null
 	}>
 }
 

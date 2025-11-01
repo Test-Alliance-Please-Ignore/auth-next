@@ -319,6 +319,9 @@ export interface ManagedCorporation {
 	isMemberCorporation: boolean
 	isAltCorp: boolean
 	isSpecialPurpose: boolean
+	isRecruiting: boolean
+	shortDescription: string | null
+	fullDescription: string | null
 	lastSync: string | null
 	lastVerified: string | null
 	isVerified: boolean
@@ -1220,8 +1223,43 @@ export class ApiClient {
 		return this.get(`/corporations/${corporationId}`)
 	}
 
+	/**
+	 * Get public corporations (member corps only) for browsing/applying
+	 * Uses public /corporations/browse endpoint (authenticated users, not admin-only)
+	 */
+	async getPublicCorporations(): Promise<ManagedCorporation[]> {
+		return this.get('/corporations/browse')
+	}
+
+	/**
+	 * Search corporations by name or ticker (member corps only)
+	 * Uses public /corporations/browse/search endpoint (authenticated users, not admin-only)
+	 */
 	async searchCorporations(query: string): Promise<ManagedCorporation[]> {
-		return this.get(`/corporations/search?q=${encodeURIComponent(query)}`)
+		return this.get(`/corporations/browse/search?q=${encodeURIComponent(query)}`)
+	}
+
+	/**
+	 * Get detailed information about a specific corporation
+	 * Used for the corporation detail page
+	 */
+	async getCorporationDetail(corporationId: string): Promise<ManagedCorporation> {
+		return this.get(`/corporations/browse/${corporationId}`)
+	}
+
+	/**
+	 * Update corporation recruiting settings (CEO or admin only)
+	 * Updates isRecruiting, shortDescription, and fullDescription
+	 */
+	async updateCorporationSettings(
+		corporationId: string,
+		settings: {
+			isRecruiting?: boolean
+			shortDescription?: string
+			fullDescription?: string
+		}
+	): Promise<ManagedCorporation> {
+		return this.patch(`/my-corporations/${corporationId}/settings`, settings)
 	}
 
 	async createCorporation(data: CreateCorporationRequest): Promise<ManagedCorporation> {

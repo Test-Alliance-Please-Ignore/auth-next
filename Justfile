@@ -64,6 +64,7 @@ db-generate-all:
   cd apps/broadcasts && bun run db:generate
   cd apps/features && bun run db:generate
   cd apps/fleets && bun run db:generate
+  cd apps/hr && bun run db:generate
   cd apps/eve-corporation-data && bun run db:generate
   cd apps/eve-character-data && bun run db:generate
   cd apps/eve-static-data && bun run db:generate
@@ -81,6 +82,7 @@ db-push-all:
   cd apps/broadcasts && bun run db:push
   cd apps/features && bun run db:push
   cd apps/fleets && bun run db:push
+  cd apps/hr && bun run db:push
   cd apps/eve-corporation-data && bun run db:push
   cd apps/eve-character-data && bun run db:push
   cd apps/eve-static-data && bun run db:push
@@ -98,6 +100,7 @@ db-migrate-all:
   cd apps/broadcasts && bun run db:migrate
   cd apps/features && bun run db:migrate
   cd apps/fleets && bun run db:migrate
+  cd apps/hr && bun run db:migrate
   cd apps/eve-corporation-data && bun run db:migrate
   cd apps/eve-character-data && bun run db:migrate
   cd apps/eve-static-data && bun run db:migrate

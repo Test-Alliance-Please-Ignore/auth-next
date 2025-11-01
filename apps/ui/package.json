@@ -17,6 +17,7 @@
 		"test": "run-vitest"
 	},
 	"dependencies": {
+		"@hookform/resolvers": "^5.2.2",
 		"@radix-ui/react-accordion": "1.2.12",
 		"@radix-ui/react-dialog": "1.1.15",
 		"@radix-ui/react-label": "2.1.7",
@@ -32,8 +33,10 @@
 		"lucide-react": "0.546.0",
 		"react": "19.2.0",
 		"react-dom": "19.2.0",
+		"react-hook-form": "^7.65.0",
 		"react-router-dom": "7.9.4",
-		"workers-tagged-logger": "0.13.3"
+		"workers-tagged-logger": "0.13.3",
+		"zod": "4.1.12"
 	},
 	"devDependencies": {
 		"@cloudflare/vite-plugin": "1.1.0",
