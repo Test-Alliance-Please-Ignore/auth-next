@@ -103,7 +103,7 @@ export default function CorporationDetail() {
 			<Breadcrumb className="mb-6">
 				<BreadcrumbList>
 					<BreadcrumbItem>
-						<BreadcrumbLink href="/join">Join Corporations</BreadcrumbLink>
+						<BreadcrumbLink to="/join">Join Corporations</BreadcrumbLink>
 					</BreadcrumbItem>
 					<BreadcrumbSeparator />
 					<BreadcrumbItem>

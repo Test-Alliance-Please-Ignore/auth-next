@@ -264,7 +264,7 @@ export default function HrDashboard() {
 			{/* Help Text */}
 			<div className="mt-8 text-center">
 				<p className="text-sm text-muted-foreground">
-					Your Role: <strong>{permission.currentRole?.replace('hr_', 'HR ')}</strong>
+					Your Role: <strong>{permission?.currentRole?.replace('hr_', 'HR ')}</strong>
 				</p>
 			</div>
 		</div>

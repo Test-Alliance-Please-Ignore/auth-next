@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle2, Upload } from 'lucide-react'
+import { AlertCircle, CheckCircle2 } from 'lucide-react'
 import { formatSkillLevel, type ParsedEvemonSkill } from '../lib/evemon-parser'
 import { Button } from './ui/button'
 import { ConfirmButton } from './ui/confirm-button'
@@ -34,7 +34,7 @@ export function EvemonSkillPreview({
 					<CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5" />
 					<div className="text-sm">
 						Successfully parsed {totalSkills} unique skill{totalSkills !== 1 ? 's' : ''} from EVEMon XML.
-						All skills will be imported with their highest level as both required and recommended.
+						Priority 1-9 skills will be imported as required, priority 10 as optional (recommended only).
 					</div>
 				</CardContent>
 			</Card>
@@ -45,7 +45,8 @@ export function EvemonSkillPreview({
 						<TableHeader>
 							<TableRow>
 								<TableHead>Skill Name</TableHead>
-								<TableHead className="text-center">Level</TableHead>
+								<TableHead className="text-center">Required</TableHead>
+								<TableHead className="text-center">Recommended</TableHead>
 								<TableHead className="text-center">Priority</TableHead>
 								<TableHead className="text-right">Skill ID</TableHead>
 							</TableRow>
@@ -55,8 +56,17 @@ export function EvemonSkillPreview({
 								<TableRow key={skill.skillId}>
 									<TableCell className="font-medium">{skill.skillName}</TableCell>
 									<TableCell className="text-center">
-										<span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-semibold rounded bg-primary/10 text-primary">
-											Level {formatSkillLevel(skill.requiredLevel)}
+										{skill.requiredLevel > 0 ? (
+											<span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-semibold rounded bg-primary/10 text-primary">
+												Level {formatSkillLevel(skill.requiredLevel)}
+											</span>
+										) : (
+											<span className="text-muted-foreground">—</span>
+										)}
+									</TableCell>
+									<TableCell className="text-center">
+										<span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-semibold rounded bg-blue-50 text-blue-700">
+											Level {formatSkillLevel(skill.recommendedLevel)}
 										</span>
 									</TableCell>
 									<TableCell className="text-center text-muted-foreground">

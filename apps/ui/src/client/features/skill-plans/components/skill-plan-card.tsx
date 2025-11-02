@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Edit2, Eye, Trash2, Users, User, Lock, Globe, Copy } from 'lucide-react'
 import {
 	Card,
@@ -19,6 +19,8 @@ interface SkillPlanCardProps {
 }
 
 export function SkillPlanCard({ plan, onDelete, onClone }: SkillPlanCardProps) {
+	const navigate = useNavigate()
+
 	const getMaintainerIcon = () => {
 		if (!plan.maintainerId) return <Lock className="h-3 w-3" />
 		return plan.maintainerType === 'group' ? (
@@ -36,8 +38,25 @@ export function SkillPlanCard({ plan, onDelete, onClone }: SkillPlanCardProps) {
 		)
 	}
 
+	const handleCardClick = (e: React.MouseEvent) => {
+		// Don't navigate if clicking on a button or link inside the card
+		const target = e.target as HTMLElement
+		if (
+			target.closest('button') ||
+			target.closest('a') ||
+			target.closest('[role="button"]')
+		) {
+			return
+		}
+		navigate(`/skill-plans/${plan.id}`)
+	}
+
 	return (
-		<Card className="hover:shadow-lg transition-shadow" variant="interactive">
+		<Card
+			className="hover:shadow-lg transition-shadow cursor-pointer"
+			variant="interactive"
+			onClick={handleCardClick}
+		>
 			<CardHeader>
 				<div className="flex items-start justify-between">
 					<div className="space-y-1 flex-1">

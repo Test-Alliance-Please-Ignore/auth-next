@@ -1,7 +1,10 @@
 import { TimeCache } from '@repo/hono-helpers'
+import { eq } from '@repo/db-utils'
 
 import type { Groups } from '@repo/groups'
 import type { SkillPlan, SkillPlanSummary } from '@repo/skills'
+import type { schema } from '../db'
+import type { DbClient } from '@repo/db-utils'
 
 // Type that includes the fields we need for authorization
 type PlanForAuth = Pick<SkillPlan | SkillPlanSummary, 'maintainerId' | 'isPublished'>
@@ -171,23 +174,35 @@ export async function canCreateCategory(
 
 /**
  * Check if user can check character progress
- * Users can check their own characters
+ * Users can check any of their own characters (not just main character)
  * Admins or users with progress:check-any can check any character
  */
 export async function canCheckCharacterProgress(
 	characterId: string,
 	userId: string,
-	userMainCharacterId: string | null,
+	db: DbClient<typeof schema>,
 	groupsStub: Groups,
 	isAdmin: boolean
 ): Promise<boolean> {
-	// User checking their own character
-	if (characterId === userMainCharacterId) {
+	// Admins can check any character
+	if (isAdmin) {
 		return true
 	}
 
-	// Check for check-any permission
-	return hasSkillPlanPermission(groupsStub, userId, 'urn:skill-plans:progress:check-any', isAdmin)
+	// Check if user has check-any permission
+	const hasCheckAny = await hasSkillPlanPermission(groupsStub, userId, 'urn:skill-plans:progress:check-any', false)
+	if (hasCheckAny) {
+		return true
+	}
+
+	// Check if character belongs to the user (not just main character)
+	const { userCharacters } = await import('../db/schema')
+	const userChar = await db.query.userCharacters.findFirst({
+		where: eq(userCharacters.characterId, characterId),
+		columns: { userId: true }
+	})
+
+	return userChar?.userId === userId
 }
 
 /**

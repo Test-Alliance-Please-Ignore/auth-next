@@ -5,16 +5,8 @@ import { useCharacterProgress } from '../hooks'
 import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card'
-import { Label } from '../../../components/ui/label'
 import { LoadingSpinner } from '../../../components/ui/loading'
 import { Progress } from '../../../components/ui/progress'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '../../../components/ui/select'
 import {
 	Table,
 	TableBody,
@@ -23,17 +15,17 @@ import {
 	TableHeader,
 	TableRow,
 } from '../../../components/ui/table'
+import { cn } from '../../../lib/utils'
 
 interface ProgressCheckerProps {
 	planId: string
 	planName?: string
+	initialCharacterId?: string
 }
 
-export function ProgressChecker({ planId, planName }: ProgressCheckerProps) {
+export function ProgressChecker({ planId, planName, initialCharacterId }: ProgressCheckerProps) {
 	const { user } = useAuth()
-	const [selectedCharacterId, setSelectedCharacterId] = useState<string>(
-		user?.mainCharacterId || ''
-	)
+	const selectedCharacterId = initialCharacterId || user?.mainCharacterId || ''
 	const [skillFilter, setSkillFilter] = useState<'all' | 'needs-training' | 'missing-required'>('all')
 
 	const { data: progress, isLoading } = useCharacterProgress(
@@ -55,25 +47,6 @@ export function ProgressChecker({ planId, planName }: ProgressCheckerProps) {
 
 	return (
 		<div className="space-y-4">
-			{/* Character selector */}
-			<div className="space-y-2">
-				<Label htmlFor="character">Select Character</Label>
-				<Select value={selectedCharacterId} onValueChange={setSelectedCharacterId}>
-					<SelectTrigger id="character">
-						<SelectValue placeholder="Choose a character..." />
-					</SelectTrigger>
-					<SelectContent>
-						{user.characters.map((char) => (
-							<SelectItem key={char.characterId} value={char.characterId}>
-								{char.characterName}
-								{!char.hasValidToken && (
-									<span className="text-muted-foreground ml-2">(Token expired)</span>
-								)}
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
-			</div>
 
 			{/* Progress display */}
 			{isLoading ? (
@@ -216,7 +189,13 @@ export function ProgressChecker({ planId, planName }: ProgressCheckerProps) {
 										}
 
 										return filteredSkills.map((skill) => (
-										<TableRow key={skill.skillId}>
+										<TableRow
+											key={skill.skillId}
+											className={cn(
+												!skill.meetsRecommended && skill.meetsRequired && 'bg-yellow-500/10',
+												!skill.meetsRequired && 'bg-red-500/10'
+											)}
+										>
 											<TableCell className="font-medium">{skill.skillName || 'Unknown Skill'}</TableCell>
 											<TableCell className="text-center">
 												{(skill.currentLevel || 0) > 0 ? skill.currentLevel : '-'}

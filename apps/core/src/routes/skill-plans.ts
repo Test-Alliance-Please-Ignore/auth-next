@@ -11,6 +11,7 @@ import {
 	canModifyPlan,
 	canViewPlan,
 } from '../lib/skill-plan-auth'
+import { createDb } from '../db'
 import { requireAuth } from '../middleware/session'
 
 import type { EveCharacterData } from '@repo/eve-character-data'
@@ -23,6 +24,44 @@ import type {
 	SkillPlanCategory,
 } from '@repo/skills'
 import type { App } from '../context'
+
+/**
+ * Helper function to resolve maintainer name from maintainerId
+ */
+async function resolveMaintainerName(
+	maintainerId: string,
+	currentUserId: string,
+	groupsStub: Groups,
+	db: ReturnType<typeof createDb>,
+	isAdmin: boolean
+): Promise<string> {
+	if (maintainerId.startsWith('group:')) {
+		// Get group name
+		const groupId = maintainerId.replace('group:', '')
+		try {
+			const group = await groupsStub.getGroup(groupId, currentUserId, isAdmin)
+			return group?.name || groupId
+		} catch (error) {
+			console.error('Failed to fetch group name:', error)
+			return groupId
+		}
+	} else {
+		// Get user's character name
+		if (maintainerId === currentUserId) {
+			return 'You'
+		}
+		try {
+			const character = await db.query.userCharacters.findFirst({
+				where: (chars, { eq, and }) =>
+					and(eq(chars.userId, maintainerId), eq(chars.is_primary, true))
+			})
+			return character?.characterName || maintainerId
+		} catch (error) {
+			console.error('Failed to fetch user character name:', error)
+			return maintainerId
+		}
+	}
+}
 
 const skillPlansRoutes = new Hono<App>()
 	// All routes require authentication
@@ -181,16 +220,22 @@ const skillPlansRoutes = new Hono<App>()
 			} else {
 				// Get published plans, optionally filtered by category
 				const plans = await skillsStub.listPublishedPlans(categoryId)
+				const db = createDb(c.env.DATABASE_URL)
 
-				// Add permission flags for each plan
+				// Add permission flags and maintainer name for each plan
 				const plansWithPermissions = await Promise.all(plans.map(async (plan) => {
 					const canModify = await canModifyPlan(plan, user.id, groupsStub, user.is_admin)
 					const canDelete = await canDeletePlan(plan, user.id, groupsStub, user.is_admin)
+					const maintainerType = plan.maintainerId?.startsWith('group:') ? 'group' as const : 'user' as const
+					const maintainerName = plan.maintainerId
+						? await resolveMaintainerName(plan.maintainerId, user.id, groupsStub, db, user.is_admin)
+						: 'System'
 					return {
 						...plan,
 						canModify,
 						canDelete,
-						maintainerType: plan.maintainerId?.startsWith('group:') ? 'group' as const : 'user' as const,
+						maintainerType,
+						maintainerName,
 					}
 				}))
 
@@ -228,12 +273,21 @@ const skillPlansRoutes = new Hono<App>()
 				}
 			}
 
-			// Add permission flags for each plan
-			const plansWithPermissions = plans.map(plan => ({
-				...plan,
-				canModify: true, // User can modify plans they maintain
-				canDelete: true, // User can delete plans they maintain
-				maintainerType: plan.maintainerId?.startsWith('group:') ? 'group' as const : 'user' as const,
+			const db = createDb(c.env.DATABASE_URL)
+
+			// Add permission flags and maintainer name for each plan
+			const plansWithPermissions = await Promise.all(plans.map(async (plan) => {
+				const maintainerType = plan.maintainerId?.startsWith('group:') ? 'group' as const : 'user' as const
+				const maintainerName = plan.maintainerId
+					? await resolveMaintainerName(plan.maintainerId, user.id, groupsStub, db, user.is_admin)
+					: 'System'
+				return {
+					...plan,
+					canModify: true, // User can modify plans they maintain
+					canDelete: true, // User can delete plans they maintain
+					maintainerType,
+					maintainerName,
+				}
 			}))
 
 			return c.json(plansWithPermissions)
@@ -282,13 +336,14 @@ const skillPlansRoutes = new Hono<App>()
 		const planId = c.req.param('id')
 		const characterId = c.req.param('characterId')
 
+		const db = createDb(c.env.DATABASE_URL)
 		const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 
 		// Check if user can check this character's progress
 		const allowed = await canCheckCharacterProgress(
 			characterId,
 			user.id,
-			user.mainCharacterId,
+			db,
 			groupsStub,
 			user.is_admin
 		)
@@ -498,19 +553,11 @@ const skillPlansRoutes = new Hono<App>()
 		const canDelete = await canDeletePlan(plan, user.id, groupsStub, user.is_admin)
 
 		// Add maintainer name for display
-		let maintainerName = 'Unknown'
-		let maintainerType: 'user' | 'group' | undefined
-		if (plan.maintainerId) {
-			if (plan.maintainerId.startsWith('group:')) {
-				maintainerType = 'group'
-				// TODO: Get group name from groups DO
-				maintainerName = plan.maintainerId.replace('group:', '')
-			} else {
-				maintainerType = 'user'
-				// If it's the current user, show "You"
-				maintainerName = plan.maintainerId === user.id ? 'You' : plan.maintainerId
-			}
-		}
+		const db = createDb(c.env.DATABASE_URL)
+		const maintainerType = plan.maintainerId?.startsWith('group:') ? 'group' as const : 'user' as const
+		const maintainerName = plan.maintainerId
+			? await resolveMaintainerName(plan.maintainerId, user.id, groupsStub, db, user.is_admin)
+			: 'System'
 
 		return c.json({
 			...plan,
@@ -704,8 +751,14 @@ const skillPlansRoutes = new Hono<App>()
 		if (data.recommendedLevel === undefined || data.recommendedLevel < 0 || data.recommendedLevel > 5) {
 			return c.json({ error: 'Recommended level must be between 0 and 5' }, 400)
 		}
-		if (data.recommendedLevel < data.requiredLevel) {
+		// Validate level relationship
+		// Allow requiredLevel=0 with recommendedLevel>0 (optional skills)
+		// When requiredLevel>0, recommendedLevel must be >= requiredLevel
+		if (data.requiredLevel > 0 && data.recommendedLevel < data.requiredLevel) {
 			return c.json({ error: 'Recommended level must be >= required level' }, 400)
+		}
+		if (data.requiredLevel === 0 && data.recommendedLevel === 0) {
+			return c.json({ error: 'At least one of required or recommended level must be > 0' }, 400)
 		}
 
 		// Add the skill
@@ -794,8 +847,14 @@ const skillPlansRoutes = new Hono<App>()
 			if (skill.recommendedLevel === undefined || skill.recommendedLevel < 0 || skill.recommendedLevel > 5) {
 				return c.json({ error: `Recommended level must be between 0 and 5 for skill ${skill.skillId}` }, 400)
 			}
-			if (skill.recommendedLevel < skill.requiredLevel) {
+			// Validate level relationship
+			// Allow requiredLevel=0 with recommendedLevel>0 (optional skills)
+			// When requiredLevel>0, recommendedLevel must be >= requiredLevel
+			if (skill.requiredLevel > 0 && skill.recommendedLevel < skill.requiredLevel) {
 				return c.json({ error: `Recommended level must be >= required level for skill ${skill.skillId}` }, 400)
+			}
+			if (skill.requiredLevel === 0 && skill.recommendedLevel === 0) {
+				return c.json({ error: `At least one of required or recommended level must be > 0 for skill ${skill.skillId}` }, 400)
 			}
 		}
 
@@ -867,6 +926,18 @@ const skillPlansRoutes = new Hono<App>()
 		}
 		if (data.recommendedLevel !== undefined && (data.recommendedLevel < 0 || data.recommendedLevel > 5)) {
 			return c.json({ error: 'Recommended level must be between 0 and 5' }, 400)
+		}
+
+		// Validate level relationship if both are provided
+		if (data.requiredLevel !== undefined && data.recommendedLevel !== undefined) {
+			// Allow requiredLevel=0 with recommendedLevel>0 (optional skills)
+			// When requiredLevel>0, recommendedLevel must be >= requiredLevel
+			if (data.requiredLevel > 0 && data.recommendedLevel < data.requiredLevel) {
+				return c.json({ error: 'Recommended level must be >= required level' }, 400)
+			}
+			if (data.requiredLevel === 0 && data.recommendedLevel === 0) {
+				return c.json({ error: 'At least one of required or recommended level must be > 0' }, 400)
+			}
 		}
 
 		// Update the skill
@@ -1034,13 +1105,14 @@ const skillPlansRoutes = new Hono<App>()
 		const characterId = c.req.param('characterId')
 		const planId = c.req.param('planId')
 
+		const db = createDb(c.env.DATABASE_URL)
 		const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 
 		// Check if user can check this character's progress
 		const allowed = await canCheckCharacterProgress(
 			characterId,
 			user.id,
-			user.mainCharacterId,
+			db,
 			groupsStub,
 			user.is_admin
 		)
@@ -1137,13 +1209,14 @@ const skillPlansRoutes = new Hono<App>()
 		const characterId = c.req.param('characterId')
 		const planIdsParam = c.req.query('planIds')
 
+		const db = createDb(c.env.DATABASE_URL)
 		const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 
 		// Check if user can check this character's progress
 		const allowed = await canCheckCharacterProgress(
 			characterId,
 			user.id,
-			user.mainCharacterId,
+			db,
 			groupsStub,
 			user.is_admin
 		)

@@ -546,6 +546,57 @@ describe('Worker', () => {
 
 ---
 
+## React Development Guidelines
+
+**CRITICAL: NEVER Silence React Lint Errors**
+
+React lint rules exist to prevent serious bugs. **ALWAYS fix the underlying issue instead of silencing the warning.**
+
+**Why This Matters:**
+- ESLint rules like `react-hooks/rules-of-hooks` prevent violations of React's Rules of Hooks
+- Silencing these errors with `// eslint-disable-next-line` masks bugs that cause unpredictable behavior
+- React tracks hooks by call order - calling hooks conditionally or in loops breaks this system
+- Symptoms: Random failures, inconsistent behavior, "works sometimes but not others"
+
+**Common Mistakes:**
+
+```typescript
+// ❌ NEVER do this - silencing the error doesn't fix the bug!
+const queries = characters.map((char) =>
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  useCharacterMastery(...)  // Violates Rules of Hooks!
+)
+```
+
+**Correct Approach:**
+
+```typescript
+// ✅ Fix the underlying issue - use useQueries for dynamic arrays
+const queries = useQueries({
+  queries: characters.map((char) => ({
+    queryKey: skillPlanKeys.progress(planId, char.characterId),
+    queryFn: () => api.checkProgress(planId, char.characterId),
+    staleTime: 1000 * 60,
+  })),
+})
+```
+
+**Key Rules:**
+1. **ALWAYS investigate and fix React lint errors** - they indicate real problems
+2. **NEVER use `eslint-disable` for React hooks rules** - find the correct pattern instead
+3. **Hooks must be called at the top level** - not inside loops, conditions, or nested functions
+4. **Use React Query's `useQueries`** for dynamic arrays of queries
+5. **Use `useMemo` or `useCallback`** for dynamic hook dependencies, not conditional calls
+
+**When You See React Lint Errors:**
+1. Read the error message carefully - it explains what rule was violated
+2. Understand why the rule exists (usually to prevent bugs)
+3. Research the correct React pattern to use instead
+4. Refactor the code to follow React's rules
+5. Only proceed when the lint error is genuinely resolved, not silenced
+
+---
+
 ## Dependency Management
 
 ### Syncpack

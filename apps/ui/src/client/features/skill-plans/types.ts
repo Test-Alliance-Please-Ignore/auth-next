@@ -112,3 +112,29 @@ export interface MaintainerOption {
 	name: string
 	type: 'user' | 'group'
 }
+
+// Character Mastery Types
+export type MasteryStatus = 'fully_trained' | 'meets_minimum' | 'insufficient'
+
+export interface CharacterMastery {
+	characterId: string
+	characterName: string
+	planId: string
+	status: MasteryStatus
+	percentageRequired: number
+	percentageRecommended: number
+	completedRequired: number
+	completedRecommended: number
+	totalSkills: number
+	hasValidToken: boolean
+}
+
+export interface CharacterMasteryCardProps {
+	characterId: string
+	characterName: string
+	planId: string
+	progress?: CharacterProgress
+	isLoading?: boolean
+	error?: Error | null
+	onClick?: () => void
+}

@@ -389,7 +389,7 @@ export default function HrApplicationReview() {
 					{/* HR Action Panel */}
 					<ApplicationActionPanel
 						application={application}
-						userRole={permission.currentRole}
+						userRole={permission?.currentRole || null}
 						onStatusChange={() => {
 							// Status change is handled by React Query cache invalidation
 							// No need to manually refetch

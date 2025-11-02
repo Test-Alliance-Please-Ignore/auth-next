@@ -19,8 +19,9 @@ export interface ParseResult {
 
 /**
  * Parse EVEMon XML skill plan
- * Takes the highest level for each skill as required
- * Priority 1-3 considered required, 4-5 considered recommended
+ * Priority 1-9: Contributes to both required and recommended levels (max level used for both)
+ * Priority 10: Contributes only to recommended level (required level = 0)
+ * When a skill has mixed priorities, required = max from priorities 1-9, recommended = max from all priorities
  */
 export function parseEvemonXml(xmlContent: string): ParseResult {
 	try {
@@ -75,24 +76,24 @@ export function parseEvemonXml(xmlContent: string): ParseResult {
 
 			if (!existing) {
 				// First entry for this skill
-				const isRequired = priority <= 3
+				const isPriority10 = priority === 10
 				skillMap.set(skillId, {
 					name: skillName,
-					requiredLevel: isRequired ? level : 0,
-					recommendedLevel: !isRequired ? level : 0,
+					requiredLevel: isPriority10 ? 0 : level,  // Priority 10 = not required
+					recommendedLevel: level,  // All priorities contribute to recommended
 					highestPriority: priority
 				})
 			} else {
 				// Update with higher level if found
-				const isRequired = priority <= 3
+				const isPriority10 = priority === 10
 
-				if (isRequired) {
-					// Take the highest required level
+				if (!isPriority10) {
+					// Priority 1-9: contributes to both required and recommended
 					existing.requiredLevel = Math.max(existing.requiredLevel, level)
-				} else {
-					// Take the highest recommended level
-					existing.recommendedLevel = Math.max(existing.recommendedLevel, level)
 				}
+
+				// All priorities (including 10) contribute to recommended
+				existing.recommendedLevel = Math.max(existing.recommendedLevel, level)
 
 				// Track the highest priority (lower number = higher priority)
 				existing.highestPriority = Math.min(existing.highestPriority, priority)
@@ -102,15 +103,11 @@ export function parseEvemonXml(xmlContent: string): ParseResult {
 		// Convert map to array
 		const skills: ParsedEvemonSkill[] = []
 		skillMap.forEach((data, skillId) => {
-			// If we have both required and recommended, and recommended is higher,
-			// make it all required (as per user preference to take highest as required)
-			const finalRequiredLevel = Math.max(data.requiredLevel, data.recommendedLevel)
-
 			skills.push({
 				skillId,
 				skillName: data.name,
-				requiredLevel: finalRequiredLevel,
-				recommendedLevel: finalRequiredLevel, // Set same as required to satisfy API validation
+				requiredLevel: data.requiredLevel,
+				recommendedLevel: data.recommendedLevel,
 				priority: data.highestPriority
 			})
 		})

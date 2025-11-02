@@ -1,4 +1,4 @@
-import { useParams, Navigate, Link } from 'react-router-dom'
+import { useParams, Navigate, Link, useSearchParams } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { usePageTitle } from '../../../hooks/usePageTitle'
 import { useSkillPlan } from '../hooks'
@@ -11,6 +11,8 @@ import { Section } from '../../../components/ui/section'
 
 export default function SkillPlanProgress() {
 	const { id } = useParams<{ id: string }>()
+	const [searchParams] = useSearchParams()
+	const characterId = searchParams.get('characterId') || undefined
 	const { data: plan, isLoading } = useSkillPlan(id!)
 
 	usePageTitle(plan ? `Progress: ${plan.name}` : 'Skill Plan Progress')
@@ -40,11 +42,10 @@ export default function SkillPlanProgress() {
 
 			<PageHeader
 				title={`Progress Check: ${plan.name}`}
-				description="Check your character's progress against this skill plan"
 			/>
 
-			<Section>
-				<ProgressChecker planId={id} planName={plan.name} />
+			<Section className="mt-8">
+				<ProgressChecker planId={id} planName={plan.name} initialCharacterId={characterId} />
 			</Section>
 		</Container>
 	)

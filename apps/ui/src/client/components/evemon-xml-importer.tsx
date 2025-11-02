@@ -1,5 +1,5 @@
-import { Upload, FileText, AlertCircle } from 'lucide-react'
-import { useState } from 'react'
+import { Upload, FileText, AlertCircle, FileUp } from 'lucide-react'
+import { useRef, useState } from 'react'
 import { parseEvemonXml, type ParsedEvemonSkill } from '../lib/evemon-parser'
 import { EvemonSkillPreview } from './evemon-skill-preview'
 import { Button } from './ui/button'
@@ -20,10 +20,11 @@ export function EvemonXmlImporter({
 	const [xmlContent, setXmlContent] = useState('')
 	const [parseError, setParseError] = useState<string | null>(null)
 	const [parsedSkills, setParsedSkills] = useState<ParsedEvemonSkill[] | null>(null)
+	const fileInputRef = useRef<HTMLInputElement>(null)
 
 	const handleParse = () => {
 		if (!xmlContent.trim()) {
-			setParseError('Please paste EVEMon XML content')
+			setParseError('Please paste EVEMon XML content or upload a file')
 			return
 		}
 
@@ -36,6 +37,43 @@ export function EvemonXmlImporter({
 			setParseError(result.error || 'Failed to parse XML')
 			setParsedSkills(null)
 		}
+	}
+
+	const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+		const file = event.target.files?.[0]
+		if (!file) return
+
+		// Validate file type
+		if (!file.name.endsWith('.xml')) {
+			setParseError('Please select an XML file')
+			return
+		}
+
+		try {
+			const content = await file.text()
+			const result = parseEvemonXml(content)
+
+			if (result.success && result.skills) {
+				setParsedSkills(result.skills)
+				setParseError(null)
+				setXmlContent(content) // Save content for potential debugging
+			} else {
+				setParseError(result.error || 'Failed to parse XML file')
+				setParsedSkills(null)
+			}
+		} catch (error) {
+			console.error('Error reading file:', error)
+			setParseError('Failed to read file. Please try again.')
+		}
+
+		// Reset file input so the same file can be selected again
+		if (fileInputRef.current) {
+			fileInputRef.current.value = ''
+		}
+	}
+
+	const handleUploadButtonClick = () => {
+		fileInputRef.current?.click()
 	}
 
 	const handleConfirmImport = () => {
@@ -71,10 +109,45 @@ export function EvemonXmlImporter({
 					Import EVEMon Skill Plan
 				</CardTitle>
 				<CardDescription>
-					Paste your EVEMon XML skill plan below. The highest level for each skill will be imported as required.
+					Upload an EVEMon XML file or paste the content below. Priority 1-9 skills will be imported as required, priority 10 as optional (recommended only).
 				</CardDescription>
 			</CardHeader>
 			<CardContent className="space-y-4">
+				{/* Hidden file input */}
+				<input
+					ref={fileInputRef}
+					type="file"
+					accept=".xml"
+					onChange={handleFileUpload}
+					className="hidden"
+					disabled={isLoading}
+				/>
+
+				{/* File upload button */}
+				<div className="flex items-center justify-center p-6 border-2 border-dashed rounded-lg hover:border-primary/50 transition-colors">
+					<Button
+						type="button"
+						variant="outline"
+						onClick={handleUploadButtonClick}
+						disabled={isLoading}
+						className="gap-2"
+					>
+						<FileUp className="h-4 w-4" />
+						Upload XML File
+					</Button>
+				</div>
+
+				{/* Divider */}
+				<div className="relative">
+					<div className="absolute inset-0 flex items-center">
+						<span className="w-full border-t" />
+					</div>
+					<div className="relative flex justify-center text-xs uppercase">
+						<span className="bg-background px-2 text-muted-foreground">Or paste XML content</span>
+					</div>
+				</div>
+
+				{/* Textarea for pasting */}
 				<div className="space-y-2">
 					<Textarea
 						placeholder="Paste EVEMon XML content here..."
@@ -121,8 +194,12 @@ export function EvemonXmlImporter({
 								<li>Open EVEMon and go to your skill plan</li>
 								<li>Click File → Export Plan</li>
 								<li>Choose "EVEMon Skill Plan (*.xml)"</li>
-								<li>Open the saved file in a text editor</li>
-								<li>Copy all content and paste it above</li>
+								<li>Either:
+									<ul className="ml-4 mt-1 space-y-1 list-disc">
+										<li>Use the "Upload XML File" button above to select the saved file</li>
+										<li>Or open the file in a text editor, copy all content, and paste it above</li>
+									</ul>
+								</li>
 							</ol>
 						</div>
 					</CardContent>

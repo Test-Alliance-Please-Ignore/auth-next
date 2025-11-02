@@ -277,22 +277,12 @@ users.get('/has-corporation-access', async (c) => {
 	try {
 		// Site admins have access to all corporations
 		if (user.is_admin) {
-			logger.info('[has-corporation-access] Admin access granted', {
-				userId: user.id,
-				reason: 'site_admin',
-			})
 			return c.json({ hasAccess: true })
 		}
 
 		// Get all user's characters
 		const characters = await db.query.userCharacters.findMany({
 			where: eq(userCharacters.userId, user.id),
-		})
-
-		logger.info('[has-corporation-access] Fetched user characters', {
-			userId: user.id,
-			characterCount: characters.length,
-			characters: characters.map(c => ({ id: c.characterId, name: c.characterName }))
 		})
 
 		if (!characters.length) {
@@ -329,11 +319,6 @@ users.get('/has-corporation-access', async (c) => {
 		const characterCorpIds = await Promise.all(charCorpPromises)
 		const uniqueCorpIds = new Set(characterCorpIds.filter((id) => id !== null))
 
-		logger.info('[has-corporation-access] Mapped character corporations', {
-			uniqueCorpIds: Array.from(uniqueCorpIds),
-			managedCorpIds: managedCorps.map(c => c.corporationId)
-		})
-
 		// Check if any of these corps are managed and user has a role
 		for (const corpId of uniqueCorpIds) {
 			const managedCorp = managedCorps.find((c) => c.corporationId === corpId)
@@ -346,52 +331,15 @@ users.get('/has-corporation-access', async (c) => {
 						corpStub.getDirectors(corpId),
 					])
 
-					logger.info('[has-corporation-access] Checking corporation for access', {
-						corporationId: corpId,
-						corporationName: managedCorp.name,
-						ceoId: corpInfo?.ceoId ? String(corpInfo.ceoId) : null,
-						directorCount: directors.length,
-						directors: directors.map(d => ({
-							characterId: d.characterId,
-							characterName: d.characterName,
-							isHealthy: d.isHealthy
-						})),
-						userCharacterIds: characters.map(c => c.characterId)
-					})
-
 					// Check if any character is CEO or director
 					for (const char of characters) {
 						const isCeo = corpInfo && String(corpInfo.ceoId) === char.characterId
 						const matchedDirector = directors.find(d => d.characterId === char.characterId)
 
-						logger.info('[has-corporation-access] Comparing character against roles', {
-							characterId: char.characterId,
-							characterName: char.characterName,
-							corporationId: corpId,
-							checkingCeo: !!corpInfo,
-							ceoId: corpInfo?.ceoId ? String(corpInfo.ceoId) : null,
-							isCeo,
-							checkingDirectors: directors.length > 0,
-							matchedDirector: matchedDirector?.characterName || null
-						})
-
 						if (isCeo) {
-							logger.info('[has-corporation-access] Access granted', {
-								reason: 'CEO',
-								characterId: char.characterId,
-								characterName: char.characterName,
-								corporationId: corpId
-							})
 							return c.json({ hasAccess: true })
 						}
 						if (matchedDirector) {
-							logger.info('[has-corporation-access] Access granted', {
-								reason: 'Director',
-								characterId: char.characterId,
-								characterName: char.characterName,
-								corporationId: corpId,
-								directorName: matchedDirector.characterName
-							})
 							return c.json({ hasAccess: true })
 						}
 					}
@@ -400,12 +348,6 @@ users.get('/has-corporation-access', async (c) => {
 				}
 			}
 		}
-
-		logger.info('[has-corporation-access] No access found', {
-			userId: user.id,
-			checkedCharacters: characters.length,
-			checkedCorporations: uniqueCorpIds.size
-		})
 
 		return c.json({ hasAccess: false })
 	} catch (error) {

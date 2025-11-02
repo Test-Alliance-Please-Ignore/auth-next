@@ -97,8 +97,8 @@ export default function CorporationSettings() {
 		mutationFn: () =>
 			api.updateCorporationSettings(corporationId!, {
 				isRecruiting,
-				shortDescription: shortDescription || null,
-				fullDescription: fullDescription || null,
+				shortDescription: shortDescription || undefined,
+				fullDescription: fullDescription || undefined,
 			}),
 		onSuccess: (data) => {
 			// Update cache
@@ -176,11 +176,11 @@ export default function CorporationSettings() {
 			<Breadcrumb className="mb-6">
 				<BreadcrumbList>
 					<BreadcrumbItem>
-						<BreadcrumbLink href="/my-corporations">My Corporations</BreadcrumbLink>
+						<BreadcrumbLink to="/my-corporations">My Corporations</BreadcrumbLink>
 					</BreadcrumbItem>
 					<BreadcrumbSeparator />
 					<BreadcrumbItem>
-						<BreadcrumbLink href={`/my-corporations/${corporationId}/members`}>
+						<BreadcrumbLink to={`/my-corporations/${corporationId}/members`}>
 							{corporation.name}
 						</BreadcrumbLink>
 					</BreadcrumbItem>

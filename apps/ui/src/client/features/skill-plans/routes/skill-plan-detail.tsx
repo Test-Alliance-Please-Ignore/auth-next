@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate, Navigate, Link } from 'react-router-dom'
-import { Edit2, Trash2, Plus, Globe, Lock, User, Users } from 'lucide-react'
+import { Edit2, Trash2, Plus, Globe, Lock, User, Users, ArrowLeft } from 'lucide-react'
 import { usePageTitle } from '../../../hooks/usePageTitle'
 import { useAuth } from '../../../hooks/useAuth'
 import {
@@ -27,6 +27,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '../../../components/ui/table'
+import { CharacterMasteryGrid } from '../components/character-mastery-grid'
 
 export default function SkillPlanDetail() {
 	const { id } = useParams<{ id: string }>()
@@ -113,10 +114,12 @@ export default function SkillPlanDetail() {
 			<Section>
 				{/* Action buttons */}
 				<div className="flex justify-between items-center mb-6">
-					<div className="flex items-center gap-2 text-sm text-muted-foreground">
-						{getMaintainerIcon()}
-						<span>{plan.maintainerName || 'System'}</span>
-					</div>
+					<Button variant="outline" asChild>
+						<Link to="/skill-plans">
+							<ArrowLeft className="h-4 w-4 mr-2" />
+							Back to Plans
+						</Link>
+					</Button>
 
 					<div className="flex gap-2">
 						{plan.canModify && (
@@ -162,7 +165,6 @@ export default function SkillPlanDetail() {
 					<TabsList>
 						<TabsTrigger value="overview">Overview</TabsTrigger>
 						<TabsTrigger value="skills">Skills ({skills?.length || 0})</TabsTrigger>
-						<TabsTrigger value="progress">Progress</TabsTrigger>
 					</TabsList>
 
 					{/* Overview Tab */}
@@ -172,9 +174,20 @@ export default function SkillPlanDetail() {
 								<CardTitle>Plan Information</CardTitle>
 							</CardHeader>
 							<CardContent className="space-y-4">
-								<div>
-									<h3 className="font-semibold mb-1">Description</h3>
-									<p className="text-muted-foreground">{plan.description}</p>
+								{/* Description and Maintainer - side by side on desktop, stacked on mobile */}
+								<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+									<div>
+										<h3 className="font-semibold mb-1">Description</h3>
+										<p className="text-muted-foreground">{plan.description}</p>
+									</div>
+
+									<div>
+										<h3 className="font-semibold mb-2">Maintainer</h3>
+										<div className="flex items-center gap-2 text-muted-foreground">
+											{getMaintainerIcon()}
+											<span>{plan.maintainerName || 'System'}</span>
+										</div>
+									</div>
 								</div>
 
 								{plan.categories && plan.categories.length > 0 && (
@@ -206,6 +219,18 @@ export default function SkillPlanDetail() {
 								</div>
 							</CardContent>
 						</Card>
+
+						{/* Character Readiness - only show if user is logged in */}
+						{user && (
+							<CharacterMasteryGrid
+								planId={id}
+								title="Your Characters' Readiness"
+								onCharacterClick={(characterId) => {
+									// Navigate to detailed progress view for the character
+									navigate(`/skill-plans/${id}/progress?characterId=${characterId}`)
+								}}
+							/>
+						)}
 					</TabsContent>
 
 					{/* Skills Tab */}
@@ -271,34 +296,6 @@ export default function SkillPlanDetail() {
 												</Link>
 											</Button>
 										)}
-									</div>
-								)}
-							</CardContent>
-						</Card>
-					</TabsContent>
-
-					{/* Progress Tab */}
-					<TabsContent value="progress" className="space-y-4">
-						<Card>
-							<CardHeader>
-								<CardTitle>Character Progress</CardTitle>
-							</CardHeader>
-							<CardContent>
-								{user ? (
-									<div className="text-center py-8 text-muted-foreground">
-										<p>Select a character to check progress against this plan.</p>
-										<Button className="mt-4" asChild>
-											<Link to={`/skill-plans/${id}/progress`}>
-												Check My Progress
-											</Link>
-										</Button>
-									</div>
-								) : (
-									<div className="text-center py-8 text-muted-foreground">
-										<p>Please log in to check character progress.</p>
-										<Button className="mt-4" asChild>
-											<Link to="/auth/login">Log In</Link>
-										</Button>
 									</div>
 								)}
 							</CardContent>
