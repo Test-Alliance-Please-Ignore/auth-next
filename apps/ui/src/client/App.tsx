@@ -6,6 +6,7 @@ import Layout from './components/layout'
 import { LoadingPage } from './components/ui/loading'
 import AdminActivityLogPage from './routes/admin/activity-log'
 import AdminBillsDashboardPage from './routes/admin/bills-dashboard'
+import AdminBillsDetailPage from './routes/admin/bills-detail'
 import AdminBillsNewPage from './routes/admin/bills-new'
 import AdminBillsPage from './routes/admin/bills'
 import AdminBillsSchedulesEditPage from './routes/admin/bills-schedules-edit'
@@ -225,6 +226,7 @@ export default function App() {
 						<Route path="bills/schedules" element={<AdminBillsSchedulesPage />} />
 						<Route path="bills/schedules/new" element={<AdminBillsSchedulesNewPage />} />
 						<Route path="bills/schedules/:id" element={<AdminBillsSchedulesEditPage />} />
+						<Route path="bills/:billId" element={<AdminBillsDetailPage />} />
 
 						{/* Broadcast routes */}
 						<Route path="broadcasts" element={<AdminBroadcastsPage />} />

@@ -33,12 +33,15 @@ export class BillService {
 	 * Create a new bill
 	 */
 	async createBill(userId: string, data: CreateBillInput): Promise<Bill> {
-		const billId = generateUuidV7()
-		const paymentToken = generatePaymentToken()
+		console.log('[BillService.createBill] Starting bill creation', { userId, data })
 
-		const [bill] = await this.db
-			.insert(bills)
-			.values({
+		try {
+			const billId = generateUuidV7()
+			const paymentToken = generatePaymentToken()
+
+			console.log('[BillService.createBill] Generated IDs', { billId, paymentToken })
+
+			const insertData = {
 				id: billId,
 				issuerId: userId,
 				payerId: data.payerId,
@@ -50,13 +53,33 @@ export class BillService {
 				lateFeeType: data.lateFeeType || 'none',
 				lateFeeAmount: data.lateFeeAmount || '0',
 				lateFeeCompounding: data.lateFeeCompounding || 'none',
-				dueDate: data.dueDate,
-				status: 'draft',
+				dueDate: typeof data.dueDate === 'string' ? new Date(data.dueDate) : data.dueDate,
+				status: 'draft' as const,
 				paymentToken,
-			})
-			.returning()
+			}
 
-		return this.toBillResponse(bill)
+			console.log('[BillService.createBill] Insert data prepared', insertData)
+
+			const [bill] = await this.db
+				.insert(bills)
+				.values(insertData)
+				.returning()
+
+			console.log('[BillService.createBill] Bill inserted successfully', { billId: bill.id })
+
+			const response = this.toBillResponse(bill)
+			console.log('[BillService.createBill] Returning response', { billId: response.id })
+
+			return response
+		} catch (error) {
+			console.error('[BillService.createBill] Error creating bill', {
+				error: error instanceof Error ? error.message : String(error),
+				stack: error instanceof Error ? error.stack : undefined,
+				userId,
+				data,
+			})
+			throw error
+		}
 	}
 
 	/**

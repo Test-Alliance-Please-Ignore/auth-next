@@ -1,4 +1,4 @@
-import { and, eq, sql } from '@repo/db-utils'
+import { and, eq, inArray, sql } from '@repo/db-utils'
 
 import type {
 	Bill,
@@ -105,7 +105,7 @@ export class TemplateService {
 				count: sql<number>`count(*)::int`,
 			})
 			.from(billSchedules)
-			.where(and(sql`${billSchedules.templateId} = ANY(${templateIds})`, eq(billSchedules.isActive, true)))
+			.where(and(inArray(billSchedules.templateId, templateIds), eq(billSchedules.isActive, true)))
 			.groupBy(billSchedules.templateId)
 
 		const countMap = new Map<string, number>()

@@ -53,12 +53,27 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 		public env: Env
 	) {
 		super(state, env)
-		console.log('DATABASE_URL', process.env.DATABASE_URL)
-		this.db = createDb(process.env.DATABASE_URL!)
+		console.log('[BillsDO.constructor] Initializing', {
+			hasDatabaseUrl: !!env.DATABASE_URL,
+			databaseUrlLength: env.DATABASE_URL?.length,
+		})
 
-		this.billService = new BillService(this.db)
-		this.templateService = new TemplateService(this.db)
-		this.scheduleService = new ScheduleService(this.db)
+		try {
+			this.db = createDb(env.DATABASE_URL)
+			console.log('[BillsDO.constructor] Database client created')
+
+			this.billService = new BillService(this.db)
+			this.templateService = new TemplateService(this.db)
+			this.scheduleService = new ScheduleService(this.db)
+
+			console.log('[BillsDO.constructor] All services initialized')
+		} catch (error) {
+			console.error('[BillsDO.constructor] Initialization error', {
+				error: error instanceof Error ? error.message : String(error),
+				stack: error instanceof Error ? error.stack : undefined,
+			})
+			throw error
+		}
 	}
 
 	/**
@@ -68,7 +83,18 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 	 */
 
 	async createBill(userId: string, data: CreateBillInput): Promise<Bill> {
-		return this.billService.createBill(userId, data)
+		console.log('[BillsDO.createBill] Called', { userId, data })
+		try {
+			const result = await this.billService.createBill(userId, data)
+			console.log('[BillsDO.createBill] Success', { billId: result.id })
+			return result
+		} catch (error) {
+			console.error('[BillsDO.createBill] Error', {
+				error: error instanceof Error ? error.message : String(error),
+				stack: error instanceof Error ? error.stack : undefined,
+			})
+			throw error
+		}
 	}
 
 	async getBill(userId: string, billId: string): Promise<BillWithDetails | null> {

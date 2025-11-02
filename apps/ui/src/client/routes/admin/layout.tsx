@@ -64,7 +64,7 @@ function AdminLayoutContent() {
 	})
 
 	return (
-		<div className="min-h-screen flex flex-col">
+		<div className="h-screen flex flex-col overflow-hidden">
 			{/* Starfield Background */}
 			<Starfield />
 
@@ -72,7 +72,7 @@ function AdminLayoutContent() {
 			<div className="fixed inset-0 bg-background z-0 pointer-events-none" />
 
 			{/* Header with Breadcrumbs */}
-			<header className="border-b border-border/30 bg-background sticky top-0 z-50 shadow-[0_4px_20px_rgba(0,0,0,0.3)]">
+			<header className="border-b border-border/30 bg-background z-50 shadow-[0_4px_20px_rgba(0,0,0,0.3)] flex-shrink-0">
 				<div className="container mx-auto px-4 py-4">
 					<div className="flex items-center justify-between">
 						<h1 className="text-2xl font-bold gradient-text">Admin Panel</h1>
@@ -101,27 +101,29 @@ function AdminLayoutContent() {
 				</div>
 			</header>
 
-			{/* Main Layout with Sidebar */}
-			<div className="flex-1 container mx-auto px-4 py-8 relative z-10 bg-background">
-				<div className="flex gap-8">
-					{/* Sidebar Navigation */}
-					<aside className="w-64 flex-shrink-0">
-						<AdminNav />
-					</aside>
+			{/* Main Layout with Sidebar - scrollable content area */}
+			<div className="flex-1 overflow-auto relative z-10">
+				<div className="container mx-auto px-4 py-8 bg-background">
+					<div className="flex gap-8">
+						{/* Sidebar Navigation */}
+						<aside className="w-64 flex-shrink-0">
+							<AdminNav />
+						</aside>
 
-					{/* Main Content */}
-					<main className="flex-1 min-w-0">
-						<Outlet />
-					</main>
+						{/* Main Content */}
+						<main className="flex-1 min-w-0">
+							<Outlet />
+						</main>
+					</div>
 				</div>
+
+				{/* Footer */}
+				<footer className="border-t border-border/50 py-6 bg-background">
+					<div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
+						<p>Admin Panel • Manage Categories and Groups</p>
+					</div>
+				</footer>
 			</div>
-
-			{/* Footer */}
-			<footer className="border-t border-border/50 py-6 relative z-10 bg-background">
-				<div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
-					<p>Admin Panel • Manage Categories and Groups</p>
-				</div>
-			</footer>
 		</div>
 	)
 }

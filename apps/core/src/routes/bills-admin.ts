@@ -19,6 +19,8 @@ import type { App } from '../context'
 const app = new Hono<App>()
 
 // ===== Bill Routes =====
+// IMPORTANT: Specific routes (like /templates, /statistics) must be defined
+// BEFORE parameterized routes (like /:billId) to prevent incorrect matching
 
 /**
  * GET /bills
@@ -61,6 +63,212 @@ app.get('/', requireAuth(), requireAdmin(), async (c) => {
 })
 
 /**
+ * GET /bills/statistics
+ * Get bill statistics
+ */
+app.get('/statistics', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		const stats = await stub.getBillStatistics(user.id)
+
+		return c.json(stats)
+	} catch (error) {
+		logger.error('Error getting bill statistics:', error)
+		return c.json({ error: 'Failed to get statistics' }, 500)
+	}
+})
+
+/**
+ * POST /bills/from-template
+ * Create a bill from a template
+ */
+app.post('/from-template', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		const data = await c.req.json()
+		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		const bill = await stub.createBillFromTemplate(user.id, data)
+
+		return c.json(bill, 201)
+	} catch (error) {
+		logger.error('Error creating bill from template:', error)
+		return c.json({ error: 'Failed to create bill from template' }, 500)
+	}
+})
+
+// ===== Template Routes =====
+
+/**
+ * GET /bills/templates
+ * List templates
+ */
+app.get('/templates', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		const templates = await stub.listTemplates(user.id)
+
+		return c.json(templates)
+	} catch (error) {
+		logger.error('Error listing templates:', error)
+		return c.json({ error: 'Failed to list templates' }, 500)
+	}
+})
+
+/**
+ * POST /bills/templates
+ * Create a new template
+ */
+app.post('/templates', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		const data = await c.req.json()
+		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		const template = await stub.createTemplate(user.id, data)
+
+		return c.json(template, 201)
+	} catch (error) {
+		logger.error('Error creating template:', error)
+		return c.json({ error: 'Failed to create template' }, 500)
+	}
+})
+
+/**
+ * POST /bills/templates/clone
+ * Clone an existing template
+ */
+app.post('/templates/clone', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		const data = await c.req.json()
+		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		const template = await stub.cloneTemplate(user.id, data)
+
+		return c.json(template, 201)
+	} catch (error) {
+		logger.error('Error cloning template:', error)
+		return c.json({ error: 'Failed to clone template' }, 500)
+	}
+})
+
+/**
+ * POST /bills/templates/clone-from-bill
+ * Convert a bill into a template
+ */
+app.post('/templates/clone-from-bill', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		const data = await c.req.json()
+		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		const template = await stub.cloneBillAsTemplate(user.id, data)
+
+		return c.json(template, 201)
+	} catch (error) {
+		logger.error('Error cloning bill as template:', error)
+		return c.json({ error: 'Failed to clone bill as template' }, 500)
+	}
+})
+
+/**
+ * GET /bills/templates/:templateId
+ * Get a specific template
+ */
+app.get('/templates/:templateId', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	const templateId = c.req.param('templateId')
+
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		const template = await stub.getTemplate(user.id, templateId)
+
+		if (!template) {
+			return c.json({ error: 'Template not found' }, 404)
+		}
+
+		return c.json(template)
+	} catch (error) {
+		logger.error('Error getting template:', error)
+		return c.json({ error: 'Failed to get template' }, 500)
+	}
+})
+
+/**
+ * PUT /bills/templates/:templateId
+ * Update a template
+ */
+app.put('/templates/:templateId', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	const templateId = c.req.param('templateId')
+
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		const data = await c.req.json()
+		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		const template = await stub.updateTemplate(user.id, templateId, data)
+
+		return c.json(template)
+	} catch (error) {
+		logger.error('Error updating template:', error)
+		return c.json({ error: 'Failed to update template' }, 500)
+	}
+})
+
+/**
+ * DELETE /bills/templates/:templateId
+ * Delete a template
+ */
+app.delete('/templates/:templateId', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	const templateId = c.req.param('templateId')
+
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		await stub.deleteTemplate(user.id, templateId)
+
+		return c.json({ success: true })
+	} catch (error) {
+		logger.error('Error deleting template:', error)
+		return c.json({ error: 'Failed to delete template' }, 500)
+	}
+})
+
+/**
  * GET /bills/:billId
  * Get a specific bill
  */
@@ -99,12 +307,18 @@ app.post('/', requireAuth(), requireAdmin(), async (c) => {
 
 	try {
 		const data = await c.req.json()
+		logger.info('[bills-admin] Creating bill', { userId: user.id, data })
+
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
 		const bill = await stub.createBill(user.id, data)
 
+		logger.info('[bills-admin] Bill created successfully', { billId: bill.id })
 		return c.json(bill, 201)
 	} catch (error) {
-		logger.error('Error creating bill:', error)
+		logger.error('Error creating bill:', {
+			error: error instanceof Error ? error.message : String(error),
+			stack: error instanceof Error ? error.stack : undefined,
+		})
 		return c.json({ error: 'Failed to create bill' }, 500)
 	}
 })
@@ -225,212 +439,6 @@ app.post('/:billId/regenerate-token', requireAuth(), requireAdmin(), async (c) =
 	}
 })
 
-/**
- * GET /bills/statistics
- * Get bill statistics
- */
-app.get('/statistics', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')
-	if (!user) {
-		return c.json({ error: 'Unauthorized' }, 401)
-	}
-
-	try {
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		const stats = await stub.getBillStatistics(user.id)
-
-		return c.json(stats)
-	} catch (error) {
-		logger.error('Error getting bill statistics:', error)
-		return c.json({ error: 'Failed to get statistics' }, 500)
-	}
-})
-
-// ===== Template Routes =====
-
-/**
- * GET /bills/templates
- * List templates
- */
-app.get('/templates', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')
-	if (!user) {
-		return c.json({ error: 'Unauthorized' }, 401)
-	}
-
-	try {
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		const templates = await stub.listTemplates(user.id)
-
-		return c.json(templates)
-	} catch (error) {
-		logger.error('Error listing templates:', error)
-		return c.json({ error: 'Failed to list templates' }, 500)
-	}
-})
-
-/**
- * GET /bills/templates/:templateId
- * Get a specific template
- */
-app.get('/templates/:templateId', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')
-	const templateId = c.req.param('templateId')
-
-	if (!user) {
-		return c.json({ error: 'Unauthorized' }, 401)
-	}
-
-	try {
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		const template = await stub.getTemplate(user.id, templateId)
-
-		if (!template) {
-			return c.json({ error: 'Template not found' }, 404)
-		}
-
-		return c.json(template)
-	} catch (error) {
-		logger.error('Error getting template:', error)
-		return c.json({ error: 'Failed to get template' }, 500)
-	}
-})
-
-/**
- * POST /bills/templates
- * Create a new template
- */
-app.post('/templates', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')
-	if (!user) {
-		return c.json({ error: 'Unauthorized' }, 401)
-	}
-
-	try {
-		const data = await c.req.json()
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		const template = await stub.createTemplate(user.id, data)
-
-		return c.json(template, 201)
-	} catch (error) {
-		logger.error('Error creating template:', error)
-		return c.json({ error: 'Failed to create template' }, 500)
-	}
-})
-
-/**
- * PUT /bills/templates/:templateId
- * Update a template
- */
-app.put('/templates/:templateId', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')
-	const templateId = c.req.param('templateId')
-
-	if (!user) {
-		return c.json({ error: 'Unauthorized' }, 401)
-	}
-
-	try {
-		const data = await c.req.json()
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		const template = await stub.updateTemplate(user.id, templateId, data)
-
-		return c.json(template)
-	} catch (error) {
-		logger.error('Error updating template:', error)
-		return c.json({ error: 'Failed to update template' }, 500)
-	}
-})
-
-/**
- * DELETE /bills/templates/:templateId
- * Delete a template
- */
-app.delete('/templates/:templateId', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')
-	const templateId = c.req.param('templateId')
-
-	if (!user) {
-		return c.json({ error: 'Unauthorized' }, 401)
-	}
-
-	try {
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		await stub.deleteTemplate(user.id, templateId)
-
-		return c.json({ success: true })
-	} catch (error) {
-		logger.error('Error deleting template:', error)
-		return c.json({ error: 'Failed to delete template' }, 500)
-	}
-})
-
-/**
- * POST /bills/templates/clone
- * Clone an existing template
- */
-app.post('/templates/clone', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')
-	if (!user) {
-		return c.json({ error: 'Unauthorized' }, 401)
-	}
-
-	try {
-		const data = await c.req.json()
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		const template = await stub.cloneTemplate(user.id, data)
-
-		return c.json(template, 201)
-	} catch (error) {
-		logger.error('Error cloning template:', error)
-		return c.json({ error: 'Failed to clone template' }, 500)
-	}
-})
-
-/**
- * POST /bills/templates/clone-from-bill
- * Convert a bill into a template
- */
-app.post('/templates/clone-from-bill', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')
-	if (!user) {
-		return c.json({ error: 'Unauthorized' }, 401)
-	}
-
-	try {
-		const data = await c.req.json()
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		const template = await stub.cloneBillAsTemplate(user.id, data)
-
-		return c.json(template, 201)
-	} catch (error) {
-		logger.error('Error cloning bill as template:', error)
-		return c.json({ error: 'Failed to clone bill as template' }, 500)
-	}
-})
-
-/**
- * POST /bills/from-template
- * Create a bill from a template
- */
-app.post('/from-template', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')
-	if (!user) {
-		return c.json({ error: 'Unauthorized' }, 401)
-	}
-
-	try {
-		const data = await c.req.json()
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		const bill = await stub.createBillFromTemplate(user.id, data)
-
-		return c.json(bill, 201)
-	} catch (error) {
-		logger.error('Error creating bill from template:', error)
-		return c.json({ error: 'Failed to create bill from template' }, 500)
-	}
-})
-
 // ===== Schedule Routes =====
 
 /**
@@ -463,6 +471,78 @@ app.get('/schedules', requireAuth(), requireAdmin(), async (c) => {
 })
 
 /**
+ * POST /bills/schedules
+ * Create a new schedule
+ */
+app.post('/schedules', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		const data = await c.req.json()
+		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		const schedule = await stub.createSchedule(user.id, data)
+
+		return c.json(schedule, 201)
+	} catch (error) {
+		logger.error('Error creating schedule:', error)
+		return c.json({ error: 'Failed to create schedule' }, 500)
+	}
+})
+
+/**
+ * GET /bills/schedules/statistics
+ * Get schedule statistics
+ */
+app.get('/schedules/statistics', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		const stats = await stub.getScheduleStatistics(user.id)
+
+		return c.json(stats)
+	} catch (error) {
+		logger.error('Error getting schedule statistics:', error)
+		return c.json({ error: 'Failed to get statistics' }, 500)
+	}
+})
+
+/**
+ * GET /bills/schedules/:scheduleId/logs
+ * Get schedule execution logs
+ */
+app.get('/schedules/:scheduleId/logs', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	const scheduleId = c.req.param('scheduleId')
+
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		// Validate limit parameter
+		const pagination = validatePagination(c.req.query('limit'), undefined)
+		if (!pagination.success) {
+			return c.json({ error: pagination.error }, pagination.status)
+		}
+
+		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		const logs = await stub.getScheduleExecutionLogs(user.id, scheduleId, pagination.data.limit)
+
+		return c.json(logs)
+	} catch (error) {
+		logger.error('Error getting schedule logs:', error)
+		return c.json({ error: 'Failed to get schedule logs' }, 500)
+	}
+})
+
+/**
  * GET /bills/schedules/:scheduleId
  * Get a specific schedule
  */
@@ -486,28 +566,6 @@ app.get('/schedules/:scheduleId', requireAuth(), requireAdmin(), async (c) => {
 	} catch (error) {
 		logger.error('Error getting schedule:', error)
 		return c.json({ error: 'Failed to get schedule' }, 500)
-	}
-})
-
-/**
- * POST /bills/schedules
- * Create a new schedule
- */
-app.post('/schedules', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')
-	if (!user) {
-		return c.json({ error: 'Unauthorized' }, 401)
-	}
-
-	try {
-		const data = await c.req.json()
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		const schedule = await stub.createSchedule(user.id, data)
-
-		return c.json(schedule, 201)
-	} catch (error) {
-		logger.error('Error creating schedule:', error)
-		return c.json({ error: 'Failed to create schedule' }, 500)
 	}
 })
 
@@ -601,56 +659,6 @@ app.post('/schedules/:scheduleId/resume', requireAuth(), requireAdmin(), async (
 	} catch (error) {
 		logger.error('Error resuming schedule:', error)
 		return c.json({ error: 'Failed to resume schedule' }, 500)
-	}
-})
-
-/**
- * GET /bills/schedules/:scheduleId/logs
- * Get schedule execution logs
- */
-app.get('/schedules/:scheduleId/logs', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')
-	const scheduleId = c.req.param('scheduleId')
-
-	if (!user) {
-		return c.json({ error: 'Unauthorized' }, 401)
-	}
-
-	try {
-		// Validate limit parameter
-		const pagination = validatePagination(c.req.query('limit'), undefined)
-		if (!pagination.success) {
-			return c.json({ error: pagination.error }, pagination.status)
-		}
-
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		const logs = await stub.getScheduleExecutionLogs(user.id, scheduleId, pagination.data.limit)
-
-		return c.json(logs)
-	} catch (error) {
-		logger.error('Error getting schedule logs:', error)
-		return c.json({ error: 'Failed to get schedule logs' }, 500)
-	}
-})
-
-/**
- * GET /bills/schedules/statistics
- * Get schedule statistics
- */
-app.get('/schedules/statistics', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')
-	if (!user) {
-		return c.json({ error: 'Unauthorized' }, 401)
-	}
-
-	try {
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		const stats = await stub.getScheduleStatistics(user.id)
-
-		return c.json(stats)
-	} catch (error) {
-		logger.error('Error getting schedule statistics:', error)
-		return c.json({ error: 'Failed to get statistics' }, 500)
 	}
 })
 
