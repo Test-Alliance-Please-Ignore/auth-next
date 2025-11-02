@@ -15,6 +15,13 @@
       "when": 1762049863147,
       "tag": "0001_absurd_lily_hollister",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1762107591774,
+      "tag": "0002_sleepy_hex",
+      "breakpoints": true
     }
   ]
 }

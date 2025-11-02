@@ -4,6 +4,7 @@ import { Plus, Search, Settings } from 'lucide-react'
 import { usePageTitle } from '../../../hooks/usePageTitle'
 import { useAuth } from '../../../hooks/useAuth'
 import { useSkillPlans, useSkillPlanCategories, useDeleteSkillPlan } from '../hooks'
+import { CategorySectionHeader } from '../components/category-section-header'
 import { SkillPlanCard } from '../components/skill-plan-card'
 import { Button } from '../../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card'
@@ -20,6 +21,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from '../../../components/ui/select'
+import { groupPlansByCategory } from '../utils/group-by-category'
 import type { SkillPlansFilter } from '../types'
 
 export default function SkillPlansList() {
@@ -33,7 +35,7 @@ export default function SkillPlansList() {
 		maintainerType: 'all',
 	})
 
-	const { data: plans, isLoading: plansLoading } = useSkillPlans({
+	const { data: plansResponse, isLoading: plansLoading } = useSkillPlans({
 		search: filters.search || undefined,
 		categoryId: filters.categoryId,
 		published: filters.published,
@@ -59,6 +61,10 @@ export default function SkillPlansList() {
 		console.log('Clone plan:', planId)
 	}
 
+	// Extract plans from paginated response
+	const plans = plansResponse?.items || []
+	const totalPlans = plansResponse?.total || 0
+
 	// Filter plans based on maintainer type
 	const filteredPlans = useMemo(() => {
 		if (!plans) return []
@@ -72,6 +78,11 @@ export default function SkillPlansList() {
 			return plan.maintainerType === filters.maintainerType
 		})
 	}, [plans, filters.maintainerType])
+
+	// Group filtered plans by category
+	const groupedPlans = useMemo(() => {
+		return groupPlansByCategory(filteredPlans)
+	}, [filteredPlans])
 
 	if (plansLoading || categoriesLoading) {
 		return <LoadingPage />
@@ -221,16 +232,18 @@ export default function SkillPlansList() {
 					{filteredPlans && filteredPlans.length > 0 ? (
 						<>
 							<div className="text-sm text-muted-foreground">
-								Found {filteredPlans.length} plan{filteredPlans.length !== 1 ? 's' : ''}
+								Showing {filteredPlans.length} of {totalPlans} plan{totalPlans !== 1 ? 's' : ''}
 							</div>
-							<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-								{filteredPlans.map((plan) => (
-									<SkillPlanCard
-										key={plan.id}
-										plan={plan}
-										onDelete={handleDelete}
-										onClone={handleClone}
-									/>
+							<div className="space-y-6">
+								{groupedPlans.map((group) => (
+									<div key={group.category?.id || 'uncategorized'}>
+										<CategorySectionHeader name={group.category?.name || 'Uncategorized'} />
+										<div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
+											{group.plans.map((plan) => (
+												<SkillPlanCard key={`${group.category?.id || 'uncategorized'}-${plan.id}`} plan={plan} />
+											))}
+										</div>
+									</div>
 								))}
 							</div>
 						</>

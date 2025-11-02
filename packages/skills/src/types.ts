@@ -1,5 +1,23 @@
 import type { EveGroupId, EveSkillId } from '@repo/eve-types'
 
+/**
+ * Pagination options for list queries
+ */
+export interface PaginationOptions {
+	limit?: number
+	offset?: number
+}
+
+/**
+ * Paginated result wrapper
+ */
+export interface PaginatedResult<T> {
+	items: T[]
+	total: number
+	limit: number
+	offset: number
+}
+
 export interface SkillInfo {
 	id: EveSkillId
 	name: string
@@ -25,7 +43,7 @@ export interface SkillPlanSummary {
 	isPublished: boolean
 	maintainerId: string | null
 	ownerCharacterId: string | null
-	categories: string[]
+	categories: SkillPlanCategory[]
 	totalSkills: number
 	createdAt: Date
 	updatedAt: Date
@@ -47,7 +65,7 @@ export interface SkillPlan {
 	isPublished: boolean
 	maintainerId: string | null
 	ownerCharacterId: string | null
-	categories: string[]
+	categories: SkillPlanCategory[]
 	skills: SkillPlanSkill[]
 	createdAt: Date
 	updatedAt: Date

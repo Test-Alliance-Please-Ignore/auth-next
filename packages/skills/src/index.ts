@@ -13,6 +13,8 @@ import type {
 	BatchAddSkillsResult,
 	CharacterPlanProgress,
 	CreateSkillPlanInput,
+	PaginatedResult,
+	PaginationOptions,
 	SkillInfo,
 	SkillPlan,
 	SkillPlanCategory,
@@ -26,6 +28,8 @@ export type {
 	CharacterPlanProgress,
 	CharacterSkillReadiness,
 	CreateSkillPlanInput,
+	PaginatedResult,
+	PaginationOptions,
 	SkillGroupInfo,
 	SkillInfo,
 	SkillPlan,
@@ -56,6 +60,13 @@ export interface Skills extends DurableObject {
 	 * @returns The skill information or null if not found
 	 */
 	getSkillInfo(skillId: EveSkillId): Promise<SkillInfo | null>
+
+	/**
+	 * Get metadata for multiple skills including group and category information
+	 * @param skillIds - Array of skill IDs to get metadata for
+	 * @returns Array of skill metadata with group and category information
+	 */
+	getSkillsMetadata(skillIds: (string | number)[]): Promise<any[]>
 
 	/**
 	 * Get all available skills with group information
@@ -126,23 +137,29 @@ export interface Skills extends DurableObject {
 	/**
 	 * List published skill plans
 	 * @param categoryId - Optional category ID to filter by
-	 * @returns List of published skill plans
+	 * @param options - Pagination options (limit and offset)
+	 * @returns Paginated list of published skill plans
 	 */
-	listPublishedPlans(categoryId?: string): Promise<SkillPlanSummary[]>
+	listPublishedPlans(categoryId?: string, options?: PaginationOptions): Promise<PaginatedResult<SkillPlanSummary>>
 
 	/**
 	 * List skill plans by owner
 	 * @param ownerCharacterId - The character ID of the owner
-	 * @returns List of skill plans owned by the character
+	 * @param options - Pagination options (limit and offset)
+	 * @returns Paginated list of skill plans owned by the character
 	 */
-	listPlansByOwner(ownerCharacterId: string): Promise<SkillPlanSummary[]>
+	listPlansByOwner(ownerCharacterId: string, options?: PaginationOptions): Promise<PaginatedResult<SkillPlanSummary>>
 
 	/**
 	 * List skill plans by maintainer
 	 * @param maintainerId - The ID of the maintainer (user ID or group:groupId)
-	 * @returns List of skill plans maintained by the user or group
+	 * @param options - Pagination options (limit and offset)
+	 * @returns Paginated list of skill plans maintained by the user or group
 	 */
-	listPlansByMaintainer(maintainerId: string): Promise<SkillPlanSummary[]>
+	listPlansByMaintainer(
+		maintainerId: string,
+		options?: PaginationOptions
+	): Promise<PaginatedResult<SkillPlanSummary>>
 
 	/**
 	 * Add a skill to a plan

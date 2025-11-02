@@ -10,14 +10,16 @@ import type {
 	SkillPlanCategory,
 	AvailableSkill,
 	SkillPlanSkill,
+	PaginationParams,
+	PaginatedResponse,
 } from './types'
 
 // Query key factory
 export const skillPlanKeys = {
 	all: ['skill-plans'] as const,
 	lists: () => [...skillPlanKeys.all, 'list'] as const,
-	list: (filters?: any) => [...skillPlanKeys.lists(), filters] as const,
-	myPlans: () => [...skillPlanKeys.all, 'my-plans'] as const,
+	list: (filters?: any, pagination?: PaginationParams) => [...skillPlanKeys.lists(), filters, pagination] as const,
+	myPlans: (pagination?: PaginationParams) => [...skillPlanKeys.all, 'my-plans', pagination] as const,
 	details: () => [...skillPlanKeys.all, 'detail'] as const,
 	detail: (id: string) => [...skillPlanKeys.details(), id] as const,
 	skills: (planId: string) => [...skillPlanKeys.all, 'skills', planId] as const,
@@ -29,23 +31,26 @@ export const skillPlanKeys = {
 }
 
 // Plan queries
-export function useSkillPlans(filters?: {
-	search?: string
-	categoryId?: string
-	published?: boolean
-	maintainerId?: string
-}) {
-	return useQuery<SkillPlan[]>({
-		queryKey: skillPlanKeys.list(filters),
-		queryFn: () => skillPlansApi.getPlans(filters),
+export function useSkillPlans(
+	filters?: {
+		search?: string
+		categoryId?: string
+		published?: boolean
+		maintainerId?: string
+	},
+	pagination?: PaginationParams
+) {
+	return useQuery<PaginatedResponse<SkillPlan>>({
+		queryKey: skillPlanKeys.list(filters, pagination),
+		queryFn: () => skillPlansApi.getPlans(filters, pagination),
 		staleTime: 1000 * 60 * 5, // 5 minutes
 	})
 }
 
-export function useMySkillPlans() {
-	return useQuery<SkillPlan[]>({
-		queryKey: skillPlanKeys.myPlans(),
-		queryFn: () => skillPlansApi.getMyPlans(),
+export function useMySkillPlans(pagination?: PaginationParams) {
+	return useQuery<PaginatedResponse<SkillPlan>>({
+		queryKey: skillPlanKeys.myPlans(pagination),
+		queryFn: () => skillPlansApi.getMyPlans(pagination),
 		staleTime: 1000 * 60 * 2, // 2 minutes
 	})
 }

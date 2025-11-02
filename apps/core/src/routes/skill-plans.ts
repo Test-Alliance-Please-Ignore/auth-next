@@ -202,12 +202,15 @@ const skillPlansRoutes = new Hono<App>()
 	 * - Shows all published plans to authenticated users
 	 * - Shows user's maintained plans with ?myPlans=true
 	 * - Can filter by category with ?categoryId=xxx
+	 * - Supports pagination with ?limit=N&offset=N
 	 */
 	.get('/', async (c) => {
 		const user = c.get('user')!
 		const query = c.req.query()
 		const categoryId = query.categoryId
 		const myPlans = query.myPlans === 'true'
+		const limit = query.limit ? parseInt(query.limit, 10) : undefined
+		const offset = query.offset ? parseInt(query.offset, 10) : undefined
 
 		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 		const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
@@ -215,15 +218,15 @@ const skillPlansRoutes = new Hono<App>()
 		try {
 			if (myPlans && user.mainCharacterId) {
 				// Get plans maintained by the user
-				const plans = await skillsStub.listPlansByOwner(user.mainCharacterId)
-				return c.json(plans)
+				const result = await skillsStub.listPlansByOwner(user.mainCharacterId, { limit, offset })
+				return c.json(result)
 			} else {
 				// Get published plans, optionally filtered by category
-				const plans = await skillsStub.listPublishedPlans(categoryId)
+				const result = await skillsStub.listPublishedPlans(categoryId, { limit, offset })
 				const db = createDb(c.env.DATABASE_URL)
 
 				// Add permission flags and maintainer name for each plan
-				const plansWithPermissions = await Promise.all(plans.map(async (plan) => {
+				const plansWithPermissions = await Promise.all(result.items.map(async (plan) => {
 					const canModify = await canModifyPlan(plan, user.id, groupsStub, user.is_admin)
 					const canDelete = await canDeletePlan(plan, user.id, groupsStub, user.is_admin)
 					const maintainerType = plan.maintainerId?.startsWith('group:') ? 'group' as const : 'user' as const
@@ -239,7 +242,10 @@ const skillPlansRoutes = new Hono<App>()
 					}
 				}))
 
-				return c.json(plansWithPermissions)
+				return c.json({
+					...result,
+					items: plansWithPermissions,
+				})
 			}
 		} catch (error) {
 			console.error('Failed to list skill plans:', error)
@@ -250,24 +256,32 @@ const skillPlansRoutes = new Hono<App>()
 	/**
 	 * GET /api/skill-plans/my
 	 * Get skill plans maintained by the current user
+	 * Note: Pagination is applied AFTER merging user and group plans
 	 */
 	.get('/my', async (c) => {
 		const user = c.get('user')!
+		const query = c.req.query()
+		const limit = query.limit ? parseInt(query.limit, 10) : 50
+		const offset = query.offset ? parseInt(query.offset, 10) : 0
+
 		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 		try {
-			// Get plans where user is the maintainer
-			const plans = await skillsStub.listPlansByMaintainer(user.id)
+			// Get plans where user is the maintainer (without pagination for merging)
+			const userPlansResult = await skillsStub.listPlansByMaintainer(user.id, { limit: 1000 })
+			const plans = [...userPlansResult.items]
 
 			// Also get plans where user is part of a group that maintains the plan
 			const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 			const memberships = await groupsStub.getUserMemberships(user.id)
 
 			for (const membership of memberships) {
-				const groupPlans = await skillsStub.listPlansByMaintainer(`group:${membership.groupId}`)
+				const groupPlansResult = await skillsStub.listPlansByMaintainer(`group:${membership.groupId}`, {
+					limit: 1000,
+				})
 				// Merge group plans with user plans, avoiding duplicates
-				for (const plan of groupPlans) {
-					if (!plans.find(p => p.id === plan.id)) {
+				for (const plan of groupPlansResult.items) {
+					if (!plans.find((p) => p.id === plan.id)) {
 						plans.push(plan)
 					}
 				}
@@ -275,22 +289,36 @@ const skillPlansRoutes = new Hono<App>()
 
 			const db = createDb(c.env.DATABASE_URL)
 
-			// Add permission flags and maintainer name for each plan
-			const plansWithPermissions = await Promise.all(plans.map(async (plan) => {
-				const maintainerType = plan.maintainerId?.startsWith('group:') ? 'group' as const : 'user' as const
-				const maintainerName = plan.maintainerId
-					? await resolveMaintainerName(plan.maintainerId, user.id, groupsStub, db, user.is_admin)
-					: 'System'
-				return {
-					...plan,
-					canModify: true, // User can modify plans they maintain
-					canDelete: true, // User can delete plans they maintain
-					maintainerType,
-					maintainerName,
-				}
-			}))
+			// Sort by updated_at desc (same as the DO queries)
+			plans.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
 
-			return c.json(plansWithPermissions)
+			// Apply pagination after merging
+			const total = plans.length
+			const paginatedPlans = plans.slice(offset, offset + limit)
+
+			// Add permission flags and maintainer name for each plan
+			const plansWithPermissions = await Promise.all(
+				paginatedPlans.map(async (plan) => {
+					const maintainerType = plan.maintainerId?.startsWith('group:') ? ('group' as const) : ('user' as const)
+					const maintainerName = plan.maintainerId
+						? await resolveMaintainerName(plan.maintainerId, user.id, groupsStub, db, user.is_admin)
+						: 'System'
+					return {
+						...plan,
+						canModify: true, // User can modify plans they maintain
+						canDelete: true, // User can delete plans they maintain
+						maintainerType,
+						maintainerName,
+					}
+				})
+			)
+
+			return c.json({
+				items: plansWithPermissions,
+				total,
+				limit,
+				offset,
+			})
 		} catch (error) {
 			console.error('Failed to get user skill plans:', error)
 			return c.json({ error: 'Failed to get user skill plans' }, 500)

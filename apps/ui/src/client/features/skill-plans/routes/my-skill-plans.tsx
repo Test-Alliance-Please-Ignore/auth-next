@@ -1,8 +1,10 @@
+import { useMemo } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { Plus, Settings } from 'lucide-react'
 import { usePageTitle } from '../../../hooks/usePageTitle'
 import { useAuth } from '../../../hooks/useAuth'
 import { useMySkillPlans, useDeleteSkillPlan } from '../hooks'
+import { CategorySectionHeader } from '../components/category-section-header'
 import { SkillPlanCard } from '../components/skill-plan-card'
 import { Button } from '../../../components/ui/button'
 import { Card, CardContent } from '../../../components/ui/card'
@@ -10,18 +12,23 @@ import { Container } from '../../../components/ui/container'
 import { LoadingPage } from '../../../components/ui/loading'
 import { PageHeader } from '../../../components/ui/page-header'
 import { Section } from '../../../components/ui/section'
+import { groupPlansByCategory } from '../utils/group-by-category'
 
 export default function MySkillPlans() {
 	usePageTitle('My Skill Plans')
 
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
-	const { data: plans, isLoading } = useMySkillPlans()
+	const { data: plansResponse, isLoading } = useMySkillPlans()
 	const deletePlan = useDeleteSkillPlan()
 
 	// Redirect if not authenticated
 	if (!authLoading && !isAuthenticated) {
 		return <Navigate to="/skill-plans" replace />
 	}
+
+	// Extract plans from paginated response
+	const plans = plansResponse?.items || []
+	const totalPlans = plansResponse?.total || 0
 
 	const handleDelete = async (planId: string) => {
 		if (confirm('Are you sure you want to delete this skill plan?')) {
@@ -38,6 +45,11 @@ export default function MySkillPlans() {
 		console.log('Clone plan:', planId)
 	}
 
+	// Group plans by category
+	const groupedPlans = useMemo(() => {
+		return groupPlansByCategory(plans)
+	}, [plans])
+
 	if (isLoading || authLoading) {
 		return <LoadingPage />
 	}
@@ -52,9 +64,7 @@ export default function MySkillPlans() {
 			<Section>
 				{/* Actions bar */}
 				<div className="flex justify-between items-center mb-6">
-					<h2 className="text-xl font-semibold">
-						Your Plans ({plans?.length || 0})
-					</h2>
+					<h2 className="text-xl font-semibold">Your Plans ({totalPlans})</h2>
 					<div className="flex gap-2">
 						{user?.is_admin && (
 							<Button variant="outline" asChild>
@@ -78,14 +88,16 @@ export default function MySkillPlans() {
 
 				{/* Plans list */}
 				{plans && plans.length > 0 ? (
-					<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-						{plans.map((plan) => (
-							<SkillPlanCard
-								key={plan.id}
-								plan={plan}
-								onDelete={handleDelete}
-								onClone={handleClone}
-							/>
+					<div className="space-y-6">
+						{groupedPlans.map((group) => (
+							<div key={group.category?.id || 'uncategorized'}>
+								<CategorySectionHeader name={group.category?.name || 'Uncategorized'} />
+								<div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
+									{group.plans.map((plan) => (
+										<SkillPlanCard key={`${group.category?.id || 'uncategorized'}-${plan.id}`} plan={plan} />
+									))}
+								</div>
+							</div>
 						))}
 					</div>
 				) : (

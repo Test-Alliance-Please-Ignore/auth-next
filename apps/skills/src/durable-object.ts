@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { and, eq, inArray, isNull, or } from '@repo/db-utils'
+import { and, eq, inArray, isNull, or, sql } from '@repo/db-utils'
 
 import { createDb } from './db'
 import {
@@ -21,6 +21,8 @@ import type {
 	CharacterPlanProgress,
 	CharacterSkillReadiness,
 	CreateSkillPlanInput,
+	PaginatedResult,
+	PaginationOptions,
 	SkillInfo,
 	SkillPlan,
 	SkillPlanCategory,
@@ -450,7 +452,15 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 			isPublished: plan.isPublished,
 			maintainerId: plan.maintainerId,
 			ownerCharacterId: plan.ownerCharacterId,
-			categories: categories.map((c) => c.category?.name ?? ''),
+			categories: categories
+				.filter((c) => c.category !== null)
+				.map((c) => ({
+					id: c.category!.id,
+					name: c.category!.name,
+					description: c.category!.description,
+					icon: c.category!.icon,
+					displayOrder: c.category!.displayOrder,
+				})),
 			skills: [],
 			createdAt: plan.createdAt,
 			updatedAt: plan.updatedAt,
@@ -524,7 +534,15 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 			isPublished: plan.isPublished,
 			maintainerId: plan.maintainerId,
 			ownerCharacterId: plan.ownerCharacterId,
-			categories: categories.map((c) => c.category?.name ?? ''),
+			categories: categories
+				.filter((c) => c.category !== null)
+				.map((c) => ({
+					id: c.category!.id,
+					name: c.category!.name,
+					description: c.category!.description,
+					icon: c.category!.icon,
+					displayOrder: c.category!.displayOrder,
+				})),
 			skills: skillsWithDetails,
 			createdAt: plan.createdAt,
 			updatedAt: plan.updatedAt,
@@ -593,155 +611,250 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 	/**
 	 * List published skill plans
 	 * @param categoryId - Optional category ID to filter by
-	 * @returns List of published skill plans
+	 * @param options - Pagination options (limit and offset)
+	 * @returns Paginated list of published skill plans
 	 */
-	async listPublishedPlans(categoryId?: string): Promise<SkillPlanSummary[]> {
-		let planIds: string[] | undefined
+	async listPublishedPlans(
+		categoryId?: string,
+		options?: PaginationOptions
+	): Promise<PaginatedResult<SkillPlanSummary>> {
+		const limit = options?.limit ?? 50
+		const offset = options?.offset ?? 0
 
-		// If categoryId is provided, filter plans by category
-		if (categoryId) {
-			const mappings = await this.db.query.skillPlanCategoryMappings.findMany({
-				where: eq(skillPlanCategoryMappings.categoryId, categoryId),
-			})
-			planIds = mappings.map((m) => m.planId)
+		// Get total count first
+		const countQuery = sql`
+			SELECT COUNT(DISTINCT sp.id)::int as total
+			FROM ${skillPlans} sp
+			WHERE sp.is_published = true
+			${categoryId ? sql`AND EXISTS (
+				SELECT 1 FROM ${skillPlanCategoryMappings} cm2
+				WHERE cm2.plan_id = sp.id AND cm2.category_id = ${categoryId}
+			)` : sql``}
+		`
+		const countResult = await this.db.execute(countQuery)
+		const total = (countResult.rows[0] as any)?.total || 0
 
-			// If no plans in this category, return empty array
-			if (planIds.length === 0) {
-				return []
-			}
+		// Build the SQL query with aggregation to avoid N+1 queries
+		// This query performs LEFT JOINs and aggregates data in a single database roundtrip
+		const query = sql`
+			SELECT
+				sp.id,
+				sp.name,
+				sp.description,
+				sp.is_published as "isPublished",
+				sp.maintainer_id as "maintainerId",
+				sp.owner_character_id as "ownerCharacterId",
+				sp.created_at as "createdAt",
+				sp.updated_at as "updatedAt",
+				COUNT(DISTINCT sps.id)::int as "totalSkills",
+				COALESCE(
+					json_agg(
+						DISTINCT jsonb_build_object(
+							'id', c.id,
+							'name', c.name,
+							'description', c.description,
+							'icon', c.icon,
+							'displayOrder', c.display_order
+						)
+					) FILTER (WHERE c.id IS NOT NULL),
+					'[]'
+				) as categories
+			FROM ${skillPlans} sp
+			LEFT JOIN ${skillPlanSkills} sps ON sp.id = sps.plan_id
+			LEFT JOIN ${skillPlanCategoryMappings} cm ON sp.id = cm.plan_id
+			LEFT JOIN ${skillPlanCategories} c ON cm.category_id = c.id
+			WHERE sp.is_published = true
+			${categoryId ? sql`AND EXISTS (
+				SELECT 1 FROM ${skillPlanCategoryMappings} cm2
+				WHERE cm2.plan_id = sp.id AND cm2.category_id = ${categoryId}
+			)` : sql``}
+			GROUP BY sp.id
+			ORDER BY sp.updated_at DESC
+			LIMIT ${limit}
+			OFFSET ${offset}
+		`
+
+		const results = await this.db.execute(query)
+
+		const items = results.rows.map((row: any) => ({
+			id: row.id,
+			name: row.name,
+			description: row.description,
+			isPublished: row.isPublished,
+			maintainerId: row.maintainerId,
+			ownerCharacterId: row.ownerCharacterId,
+			categories: row.categories || [],
+			totalSkills: row.totalSkills || 0,
+			createdAt: new Date(row.createdAt),
+			updatedAt: new Date(row.updatedAt),
+		}))
+
+		return {
+			items,
+			total,
+			limit,
+			offset,
 		}
-
-		// Query for published plans
-		const plans = await this.db.query.skillPlans.findMany({
-			where: and(
-				eq(skillPlans.isPublished, true),
-				planIds ? inArray(skillPlans.id, planIds) : undefined
-			),
-			orderBy: (sp, { desc }) => [desc(sp.updatedAt)],
-		})
-
-		// Get skill counts and categories for each plan
-		const summaries = await Promise.all(
-			plans.map(async (plan) => {
-				// Get skill count
-				const skillCount = await this.db.query.skillPlanSkills.findMany({
-					where: eq(skillPlanSkills.planId, plan.id),
-				})
-
-				// Get categories
-				const categories = await this.db.query.skillPlanCategoryMappings.findMany({
-					where: eq(skillPlanCategoryMappings.planId, plan.id),
-					with: {
-						category: true,
-					},
-				})
-
-				return {
-					id: plan.id,
-					name: plan.name,
-					description: plan.description,
-					isPublished: plan.isPublished,
-					maintainerId: plan.maintainerId,
-					ownerCharacterId: plan.ownerCharacterId,
-					categories: categories.map((c) => c.category?.name ?? ''),
-					totalSkills: skillCount.length,
-					createdAt: plan.createdAt,
-					updatedAt: plan.updatedAt,
-				}
-			})
-		)
-
-		return summaries
 	}
 
 	/**
 	 * List skill plans by owner
 	 * @param ownerCharacterId - The character ID of the owner
-	 * @returns List of skill plans owned by the character
+	 * @param options - Pagination options (limit and offset)
+	 * @returns Paginated list of skill plans owned by the character
 	 */
-	async listPlansByOwner(ownerCharacterId: string): Promise<SkillPlanSummary[]> {
-		const plans = await this.db.query.skillPlans.findMany({
-			where: eq(skillPlans.ownerCharacterId, ownerCharacterId),
-			orderBy: (sp, { desc }) => [desc(sp.updatedAt)],
-		})
+	async listPlansByOwner(
+		ownerCharacterId: string,
+		options?: PaginationOptions
+	): Promise<PaginatedResult<SkillPlanSummary>> {
+		const limit = options?.limit ?? 50
+		const offset = options?.offset ?? 0
 
-		// Get skill counts and categories for each plan
-		const summaries = await Promise.all(
-			plans.map(async (plan) => {
-				// Get skill count
-				const skillCount = await this.db.query.skillPlanSkills.findMany({
-					where: eq(skillPlanSkills.planId, plan.id),
-				})
+		// Get total count first
+		const countQuery = sql`
+			SELECT COUNT(DISTINCT sp.id)::int as total
+			FROM ${skillPlans} sp
+			WHERE sp.owner_character_id = ${ownerCharacterId}
+		`
+		const countResult = await this.db.execute(countQuery)
+		const total = (countResult.rows[0] as any)?.total || 0
 
-				// Get categories
-				const categories = await this.db.query.skillPlanCategoryMappings.findMany({
-					where: eq(skillPlanCategoryMappings.planId, plan.id),
-					with: {
-						category: true,
-					},
-				})
+		// Build the SQL query with aggregation to avoid N+1 queries
+		const query = sql`
+			SELECT
+				sp.id,
+				sp.name,
+				sp.description,
+				sp.is_published as "isPublished",
+				sp.maintainer_id as "maintainerId",
+				sp.owner_character_id as "ownerCharacterId",
+				sp.created_at as "createdAt",
+				sp.updated_at as "updatedAt",
+				COUNT(DISTINCT sps.id)::int as "totalSkills",
+				COALESCE(
+					json_agg(
+						DISTINCT jsonb_build_object(
+							'id', c.id,
+							'name', c.name,
+							'description', c.description,
+							'icon', c.icon,
+							'displayOrder', c.display_order
+						)
+					) FILTER (WHERE c.id IS NOT NULL),
+					'[]'
+				) as categories
+			FROM ${skillPlans} sp
+			LEFT JOIN ${skillPlanSkills} sps ON sp.id = sps.plan_id
+			LEFT JOIN ${skillPlanCategoryMappings} cm ON sp.id = cm.plan_id
+			LEFT JOIN ${skillPlanCategories} c ON cm.category_id = c.id
+			WHERE sp.owner_character_id = ${ownerCharacterId}
+			GROUP BY sp.id
+			ORDER BY sp.updated_at DESC
+			LIMIT ${limit}
+			OFFSET ${offset}
+		`
 
-				return {
-					id: plan.id,
-					name: plan.name,
-					description: plan.description,
-					isPublished: plan.isPublished,
-					maintainerId: plan.maintainerId,
-					ownerCharacterId: plan.ownerCharacterId,
-					categories: categories.map((c) => c.category?.name ?? ''),
-					totalSkills: skillCount.length,
-					createdAt: plan.createdAt,
-					updatedAt: plan.updatedAt,
-				}
-			})
-		)
+		const results = await this.db.execute(query)
 
-		return summaries
+		const items = results.rows.map((row: any) => ({
+			id: row.id,
+			name: row.name,
+			description: row.description,
+			isPublished: row.isPublished,
+			maintainerId: row.maintainerId,
+			ownerCharacterId: row.ownerCharacterId,
+			categories: row.categories || [],
+			totalSkills: row.totalSkills || 0,
+			createdAt: new Date(row.createdAt),
+			updatedAt: new Date(row.updatedAt),
+		}))
+
+		return {
+			items,
+			total,
+			limit,
+			offset,
+		}
 	}
 
 	/**
 	 * List skill plans by maintainer
 	 * @param maintainerId - The ID of the maintainer (user ID or group:groupId)
-	 * @returns List of skill plans maintained by the user or group
+	 * @param options - Pagination options (limit and offset)
+	 * @returns Paginated list of skill plans maintained by the user or group
 	 */
-	async listPlansByMaintainer(maintainerId: string): Promise<SkillPlanSummary[]> {
-		const plans = await this.db.query.skillPlans.findMany({
-			where: eq(skillPlans.maintainerId, maintainerId),
-			orderBy: (sp, { desc }) => [desc(sp.updatedAt)],
-		})
+	async listPlansByMaintainer(
+		maintainerId: string,
+		options?: PaginationOptions
+	): Promise<PaginatedResult<SkillPlanSummary>> {
+		const limit = options?.limit ?? 50
+		const offset = options?.offset ?? 0
 
-		// Get skill counts and categories for each plan
-		const summaries = await Promise.all(
-			plans.map(async (plan) => {
-				// Get skill count
-				const skillCount = await this.db.query.skillPlanSkills.findMany({
-					where: eq(skillPlanSkills.planId, plan.id),
-				})
+		// Get total count first
+		const countQuery = sql`
+			SELECT COUNT(DISTINCT sp.id)::int as total
+			FROM ${skillPlans} sp
+			WHERE sp.maintainer_id = ${maintainerId}
+		`
+		const countResult = await this.db.execute(countQuery)
+		const total = (countResult.rows[0] as any)?.total || 0
 
-				// Get categories
-				const categories = await this.db.query.skillPlanCategoryMappings.findMany({
-					where: eq(skillPlanCategoryMappings.planId, plan.id),
-					with: {
-						category: true,
-					},
-				})
+		// Build the SQL query with aggregation to avoid N+1 queries
+		const query = sql`
+			SELECT
+				sp.id,
+				sp.name,
+				sp.description,
+				sp.is_published as "isPublished",
+				sp.maintainer_id as "maintainerId",
+				sp.owner_character_id as "ownerCharacterId",
+				sp.created_at as "createdAt",
+				sp.updated_at as "updatedAt",
+				COUNT(DISTINCT sps.id)::int as "totalSkills",
+				COALESCE(
+					json_agg(
+						DISTINCT jsonb_build_object(
+							'id', c.id,
+							'name', c.name,
+							'description', c.description,
+							'icon', c.icon,
+							'displayOrder', c.display_order
+						)
+					) FILTER (WHERE c.id IS NOT NULL),
+					'[]'
+				) as categories
+			FROM ${skillPlans} sp
+			LEFT JOIN ${skillPlanSkills} sps ON sp.id = sps.plan_id
+			LEFT JOIN ${skillPlanCategoryMappings} cm ON sp.id = cm.plan_id
+			LEFT JOIN ${skillPlanCategories} c ON cm.category_id = c.id
+			WHERE sp.maintainer_id = ${maintainerId}
+			GROUP BY sp.id
+			ORDER BY sp.updated_at DESC
+			LIMIT ${limit}
+			OFFSET ${offset}
+		`
 
-				return {
-					id: plan.id,
-					name: plan.name,
-					description: plan.description,
-					isPublished: plan.isPublished,
-					maintainerId: plan.maintainerId,
-					ownerCharacterId: plan.ownerCharacterId,
-					categories: categories.map((c) => c.category?.name ?? ''),
-					totalSkills: skillCount.length,
-					createdAt: plan.createdAt,
-					updatedAt: plan.updatedAt,
-				}
-			})
-		)
+		const results = await this.db.execute(query)
 
-		return summaries
+		const items = results.rows.map((row: any) => ({
+			id: row.id,
+			name: row.name,
+			description: row.description,
+			isPublished: row.isPublished,
+			maintainerId: row.maintainerId,
+			ownerCharacterId: row.ownerCharacterId,
+			categories: row.categories || [],
+			totalSkills: row.totalSkills || 0,
+			createdAt: new Date(row.createdAt),
+			updatedAt: new Date(row.updatedAt),
+		}))
+
+		return {
+			items,
+			total,
+			limit,
+			offset,
+		}
 	}
 
 	/**
@@ -1100,7 +1213,7 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 		} else {
 			// Default to all published plans
 			const publishedPlans = await this.listPublishedPlans()
-			plansToCheck = publishedPlans.map((p) => p.id)
+			plansToCheck = publishedPlans.items.map((p) => p.id)
 		}
 
 		// Calculate progress for each plan

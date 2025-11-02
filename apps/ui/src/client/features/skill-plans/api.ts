@@ -9,29 +9,42 @@ import type {
 	CharacterProgress,
 	AvailableSkill,
 	SkillPlanSkill,
+	PaginationParams,
+	PaginatedResponse,
 } from './types'
 
 export const skillPlansApi = {
 	// Plan CRUD operations
-	getPlans: async (filters?: {
-		search?: string
-		categoryId?: string
-		published?: boolean
-		maintainerId?: string
-	}): Promise<SkillPlan[]> => {
+	getPlans: async (
+		filters?: {
+			search?: string
+			categoryId?: string
+			published?: boolean
+			maintainerId?: string
+		},
+		pagination?: PaginationParams
+	): Promise<PaginatedResponse<SkillPlan>> => {
 		const params = new URLSearchParams()
 		if (filters?.search) params.append('search', filters.search)
 		if (filters?.categoryId) params.append('categoryId', filters.categoryId)
 		if (filters?.published !== undefined) params.append('published', String(filters.published))
 		if (filters?.maintainerId) params.append('maintainerId', filters.maintainerId)
+		if (pagination?.limit !== undefined) params.append('limit', String(pagination.limit))
+		if (pagination?.offset !== undefined) params.append('offset', String(pagination.offset))
 
 		const query = params.toString()
 		const url = query ? `/skill-plans?${query}` : '/skill-plans'
-		return apiClient.get<SkillPlan[]>(url)
+		return apiClient.get<PaginatedResponse<SkillPlan>>(url)
 	},
 
-	getMyPlans: async (): Promise<SkillPlan[]> => {
-		return apiClient.get<SkillPlan[]>('/skill-plans/my')
+	getMyPlans: async (pagination?: PaginationParams): Promise<PaginatedResponse<SkillPlan>> => {
+		const params = new URLSearchParams()
+		if (pagination?.limit !== undefined) params.append('limit', String(pagination.limit))
+		if (pagination?.offset !== undefined) params.append('offset', String(pagination.offset))
+
+		const query = params.toString()
+		const url = query ? `/skill-plans/my?${query}` : '/skill-plans/my'
+		return apiClient.get<PaginatedResponse<SkillPlan>>(url)
 	},
 
 	getPlan: async (planId: string): Promise<SkillPlan> => {

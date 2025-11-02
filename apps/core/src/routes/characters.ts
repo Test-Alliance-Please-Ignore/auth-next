@@ -45,7 +45,7 @@ async function transformAndEnrichSkillsData(skills: any, env: any) {
 		const skillMetadata = await skillsStub.getSkillsMetadata(skillIds)
 
 		// Create map for quick lookup
-		const metadataMap = new Map(skillMetadata.map((m: any) => [String(m.id), m]))
+		const metadataMap = new Map<string, any>(skillMetadata.map((m: any) => [String(m.id), m]))
 
 		// Enrich skills with metadata
 		transformed.skills = transformed.skills.map((skill: any) => {
@@ -111,7 +111,7 @@ async function transformAndEnrichSkillQueue(queue: any, env: any) {
 		const skillMetadata = await skillsStub.getSkillsMetadata(skillIds)
 
 		// Create map for quick lookup
-		const metadataMap = new Map(skillMetadata.map((m: any) => [String(m.id), m]))
+		const metadataMap = new Map<string, any>(skillMetadata.map((m: any) => [String(m.id), m]))
 
 		// Enrich queue entries with metadata
 		return transformed.map((entry: any) => {

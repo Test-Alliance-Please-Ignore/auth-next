@@ -1,5 +1,5 @@
 import { relations } from 'drizzle-orm'
-import { boolean, integer, numeric, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
+import { boolean, index, integer, numeric, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
 
 /**
  * Database schema for the skills worker
@@ -94,16 +94,25 @@ export const skillAttributes = pgTable(
  * Skill Plans - Main table storing skill plan metadata
  * A skill plan is a curated list of skills with required and recommended levels
  */
-export const skillPlans = pgTable('do_skill_plans', {
-	id: uuid('id').defaultRandom().primaryKey(),
-	name: text('name').notNull(),
-	description: text('description').notNull(),
-	isPublished: boolean('is_published').notNull().default(false),
-	maintainerId: text('maintainer_id'), // Optional maintainer name/identifier
-	ownerCharacterId: text('owner_character_id'), // EVE character ID of creator
-	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-})
+export const skillPlans = pgTable(
+	'do_skill_plans',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		name: text('name').notNull(),
+		description: text('description').notNull(),
+		isPublished: boolean('is_published').notNull().default(false),
+		maintainerId: text('maintainer_id'), // Optional maintainer name/identifier
+		ownerCharacterId: text('owner_character_id'), // EVE character ID of creator
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		index('idx_skill_plans_published').on(table.isPublished),
+		index('idx_skill_plans_maintainer').on(table.maintainerId),
+		index('idx_skill_plans_owner').on(table.ownerCharacterId),
+		index('idx_skill_plans_updated').on(table.updatedAt),
+	]
+)
 
 /**
  * Skill Plan Skills - Skills required for each plan with level requirements
@@ -125,7 +134,10 @@ export const skillPlanSkills = pgTable(
 		notes: text('notes'), // Optional notes about why this skill is needed
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 	},
-	(table) => [unique().on(table.planId, table.skillId)]
+	(table) => [
+		unique().on(table.planId, table.skillId),
+		index('idx_skill_plan_skills_plan').on(table.planId),
+	]
 )
 
 /**
@@ -156,7 +168,11 @@ export const skillPlanCategoryMappings = pgTable(
 			.references(() => skillPlanCategories.id, { onDelete: 'cascade' }),
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 	},
-	(table) => [unique().on(table.planId, table.categoryId)]
+	(table) => [
+		unique().on(table.planId, table.categoryId),
+		index('idx_category_mappings_plan').on(table.planId),
+		index('idx_category_mappings_category').on(table.categoryId),
+	]
 )
 
 // ===== Relations =====

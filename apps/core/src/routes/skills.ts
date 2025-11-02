@@ -47,10 +47,8 @@ skills.get('/', async (c) => {
 		if (ids) {
 			const skillIds = ids.split(',').filter(id => id.trim())
 
-			// Fetch all the requested skills
-			const skillPromises = skillIds.map(id => skillsStub.getSkillInfo(id as any))
-			const skillResults = await Promise.all(skillPromises)
-			const skills = skillResults.filter((s): s is NonNullable<typeof s> => s !== null)
+			// Fetch all the requested skills with metadata (category, group info)
+			const skills = await skillsStub.getSkillsMetadata(skillIds)
 
 			// Organize by category and group
 			const categoriesMap = new Map<number, {
