@@ -54,3 +54,6 @@ yarn-error.log*
 /worktree-*/
 secrets/
 .env.*
+tmp/
+_tmp_*
+*.xml

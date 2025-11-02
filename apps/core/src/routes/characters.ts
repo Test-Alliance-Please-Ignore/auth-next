@@ -13,6 +13,135 @@ import { EntityResolverService } from '../services/entity-resolver.service'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { App } from '../context'
 
+// Helper to transform and enrich skills data
+async function transformAndEnrichSkillsData(skills: any, env: any) {
+	if (!skills) return null
+
+	// Transform to camelCase first
+	const transformed = {
+		skills: skills.skills?.map((skill: any) => ({
+			activeSkillLevel: skill.active_skill_level ?? skill.activeSkillLevel,
+			skillId: skill.skill_id ?? skill.skillId,
+			skillpointsInSkill: skill.skillpoints_in_skill ?? skill.skillpointsInSkill,
+			trainedSkillLevel: skill.trained_skill_level ?? skill.trainedSkillLevel,
+		})) ?? [],
+		totalSp: skills.total_sp ?? skills.totalSp ?? 0,
+		unallocatedSp: skills.unallocated_sp ?? skills.unallocatedSp,
+	}
+
+	// If no skills, return as-is
+	if (transformed.skills.length === 0) {
+		return transformed
+	}
+
+	// Get Skills DO stub to fetch metadata
+	const skillsStub = getStub<any>(env.SKILLS, 'default')
+
+	// Extract all skill IDs
+	const skillIds = transformed.skills.map((s: any) => String(s.skillId))
+
+	try {
+		// Fetch metadata for all skills in one batch
+		const skillMetadata = await skillsStub.getSkillsMetadata(skillIds)
+
+		// Create map for quick lookup
+		const metadataMap = new Map(skillMetadata.map((m: any) => [String(m.id), m]))
+
+		// Enrich skills with metadata
+		transformed.skills = transformed.skills.map((skill: any) => {
+			const metadata = metadataMap.get(String(skill.skillId))
+			if (metadata) {
+				return {
+					...skill,
+					skillName: metadata.name,
+					skillGroup: metadata.groupName,
+					skillCategory: metadata.categoryName,
+					rank: metadata.rank,
+					description: metadata.description,
+				}
+			}
+			// Fallback if metadata not found
+			return {
+				...skill,
+				skillName: `Unknown Skill (${skill.skillId})`,
+				skillGroup: 'Unknown',
+				skillCategory: 'Unknown',
+			}
+		})
+	} catch (error) {
+		logger.warn('[Character Skills] Failed to enrich skills with metadata', {
+			error: error instanceof Error ? error.message : String(error),
+			skillCount: transformed.skills.length,
+		})
+		// Return unenriched skills on error
+	}
+
+	return transformed
+}
+
+// Helper to transform and enrich skill queue data
+async function transformAndEnrichSkillQueue(queue: any, env: any) {
+	if (!queue || !Array.isArray(queue)) return []
+
+	// Transform to camelCase first
+	const transformed = queue.map((entry: any) => ({
+		finishDate: entry.finish_date ?? entry.finishDate,
+		finishedLevel: entry.finished_level ?? entry.finishedLevel,
+		levelEndSp: entry.level_end_sp ?? entry.levelEndSp,
+		levelStartSp: entry.level_start_sp ?? entry.levelStartSp,
+		queuePosition: entry.queue_position ?? entry.queuePosition,
+		skillId: entry.skill_id ?? entry.skillId,
+		startDate: entry.start_date ?? entry.startDate,
+		trainingStartSp: entry.training_start_sp ?? entry.trainingStartSp,
+	}))
+
+	// If no queue entries, return as-is
+	if (transformed.length === 0) {
+		return transformed
+	}
+
+	// Get Skills DO stub to fetch metadata
+	const skillsStub = getStub<any>(env.SKILLS, 'default')
+
+	// Extract unique skill IDs
+	const skillIds = [...new Set(transformed.map((e: any) => String(e.skillId)))]
+
+	try {
+		// Fetch metadata for all skills in one batch
+		const skillMetadata = await skillsStub.getSkillsMetadata(skillIds)
+
+		// Create map for quick lookup
+		const metadataMap = new Map(skillMetadata.map((m: any) => [String(m.id), m]))
+
+		// Enrich queue entries with metadata
+		return transformed.map((entry: any) => {
+			const metadata = metadataMap.get(String(entry.skillId))
+			if (metadata) {
+				return {
+					...entry,
+					skillName: metadata.name,
+					skillGroup: metadata.groupName,
+					skillCategory: metadata.categoryName,
+				}
+			}
+			// Fallback if metadata not found
+			return {
+				...entry,
+				skillName: `Unknown Skill (${entry.skillId})`,
+				skillGroup: 'Unknown',
+				skillCategory: 'Unknown',
+			}
+		})
+	} catch (error) {
+		logger.warn('[Skill Queue] Failed to enrich queue with metadata', {
+			error: error instanceof Error ? error.message : String(error),
+			queueLength: transformed.length,
+		})
+		// Return unenriched queue on error
+		return transformed
+	}
+}
+
 const app = new Hono<App>()
 
 /**
@@ -235,6 +364,9 @@ app.get('/:characterId', requireAuth(), async (c) => {
 				)
 			: []
 
+		// Enrich skills with metadata
+		const enrichedSkills = await transformAndEnrichSkillsData(skills, c.env)
+
 		// Build response with public data
 		const response: any = {
 			characterId: characterIdStr,
@@ -244,7 +376,7 @@ app.get('/:characterId', requireAuth(), async (c) => {
 				info: enrichedInfo,
 				portrait,
 				corporationHistory: enrichedCorporationHistory,
-				skills,
+				skills: enrichedSkills,
 				attributes,
 			},
 			lastUpdated,
@@ -265,6 +397,9 @@ app.get('/:characterId', requireAuth(), async (c) => {
 			const sensitiveData = await eveCharacterDataStub.getSensitiveData(characterIdStr)
 
 			if (sensitiveData) {
+				// Enrich skill queue with metadata
+				const enrichedSkillQueue = await transformAndEnrichSkillQueue(sensitiveData.skillQueue, c.env)
+
 				// Resolve location names if available
 				if (sensitiveData.location) {
 					const locationIds: string[] = []
@@ -292,7 +427,7 @@ app.get('/:characterId', requireAuth(), async (c) => {
 							wallet: sensitiveData.wallet,
 							assets: sensitiveData.assets,
 							status: sensitiveData.status,
-							skillQueue: sensitiveData.skillQueue,
+							skillQueue: enrichedSkillQueue,
 						}
 					} else {
 						response.private = {
@@ -300,7 +435,7 @@ app.get('/:characterId', requireAuth(), async (c) => {
 							wallet: sensitiveData.wallet,
 							assets: sensitiveData.assets,
 							status: sensitiveData.status,
-							skillQueue: sensitiveData.skillQueue,
+							skillQueue: enrichedSkillQueue,
 						}
 					}
 				} else {
@@ -308,7 +443,7 @@ app.get('/:characterId', requireAuth(), async (c) => {
 						wallet: sensitiveData.wallet,
 						assets: sensitiveData.assets,
 						status: sensitiveData.status,
-						skillQueue: sensitiveData.skillQueue,
+						skillQueue: enrichedSkillQueue,
 					}
 				}
 			}

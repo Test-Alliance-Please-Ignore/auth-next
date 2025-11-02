@@ -401,7 +401,7 @@ app.patch('/my-corporations/:corporationId/settings', requireAuth(), async (c) =
 
 	// Authorization check - user must be CEO or site admin
 	try {
-		await checkCeoOrAdminAccess(c, corporationId)
+		await checkCorporationAccess(c, corporationId)
 	} catch (error) {
 		return c.json({ error: error instanceof Error ? error.message : 'Access denied' }, 403)
 	}

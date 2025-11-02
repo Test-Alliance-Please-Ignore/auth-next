@@ -1,28 +1,36 @@
 import { formatDistanceToNow } from 'date-fns'
 import { Clock, GraduationCap } from 'lucide-react'
+import { formatSkillWithLevel } from '@repo/eve-types'
 
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 
-interface SkillQueueEntry {
-	queue_position: number
-	skill_id: number
-	finished_level: number
-	start_date?: string
-	finish_date?: string
-	training_start_sp?: number
-	level_start_sp?: number
-	level_end_sp?: number
+// Extended queue entry with enriched data from backend
+interface EnrichedSkillQueueEntry {
+	queuePosition: number
+	skillId: number
+	finishedLevel: number
+	startDate?: string
+	finishDate?: string
+	levelStartSp?: number
+	levelEndSp?: number
+	trainingStartSp?: number
+	// Enriched fields from backend
+	skillName?: string
+	skillGroup?: string
+	skillCategory?: string
 }
 
 interface CharacterSkillQueueProps {
-	queue: SkillQueueEntry[]
+	queue: EnrichedSkillQueueEntry[]
 }
 
 export function CharacterSkillQueue({ queue }: CharacterSkillQueueProps) {
-	const sortedQueue = [...queue].sort((a, b) => a.queue_position - b.queue_position)
+	const sortedQueue = [...queue].sort((a, b) => a.queuePosition - b.queuePosition)
 	const currentlyTraining = sortedQueue.find(
-		(entry) => entry.start_date && new Date(entry.start_date) <= new Date()
+		(entry) => entry.startDate && new Date(entry.startDate) <= new Date()
 	)
+
+	// Skills now come enriched from the backend, no need for separate metadata fetch
 
 	return (
 		<Card>
@@ -39,17 +47,21 @@ export function CharacterSkillQueue({ queue }: CharacterSkillQueueProps) {
 					<div className="space-y-3">
 						{sortedQueue.slice(0, 10).map((entry) => {
 							const isCurrentlyTraining = entry === currentlyTraining
-							const finishTime = entry.finish_date ? new Date(entry.finish_date) : null
+							const finishTime = entry.finishDate ? new Date(entry.finishDate) : null
 							const progress =
-								entry.level_start_sp && entry.level_end_sp && entry.training_start_sp
-									? ((entry.training_start_sp - entry.level_start_sp) /
-											(entry.level_end_sp - entry.level_start_sp)) *
+								entry.levelStartSp && entry.levelEndSp && entry.trainingStartSp
+									? ((entry.trainingStartSp - entry.levelStartSp) /
+											(entry.levelEndSp - entry.levelStartSp)) *
 										100
 									: 0
 
+							// Use skill name directly from enriched data
+							const skillName = entry.skillName || `Unknown Skill (${entry.skillId})`
+							const skillDisplay = formatSkillWithLevel(skillName, entry.finishedLevel)
+
 							return (
 								<div
-									key={entry.queue_position}
+									key={entry.queuePosition}
 									className={`p-3 rounded-lg border ${
 										isCurrentlyTraining ? 'border-green-500 bg-green-50' : ''
 									}`}
@@ -57,10 +69,7 @@ export function CharacterSkillQueue({ queue }: CharacterSkillQueueProps) {
 									<div className="flex items-start justify-between">
 										<div className="flex-1">
 											<div className="flex items-center gap-2">
-												<span className="text-sm font-medium">Skill #{entry.skill_id}</span>
-												<span className="text-xs px-2 py-0.5 bg-gray-100 rounded">
-													Level {entry.finished_level}
-												</span>
+												<span className="text-sm font-medium">{skillDisplay}</span>
 												{isCurrentlyTraining && (
 													<span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded">
 														Training
@@ -75,7 +84,7 @@ export function CharacterSkillQueue({ queue }: CharacterSkillQueueProps) {
 											)}
 										</div>
 										<span className="text-xs text-muted-foreground">
-											#{entry.queue_position + 1}
+											#{entry.queuePosition + 1}
 										</span>
 									</div>
 									{isCurrentlyTraining && progress > 0 && (

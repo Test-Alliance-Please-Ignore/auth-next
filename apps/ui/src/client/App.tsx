@@ -62,6 +62,15 @@ const HrApplicationReview = lazy(() => import('./features/applications/routes/hr
 const HrRolesManagement = lazy(() => import('./features/applications/routes/hr-roles-management'))
 const UserHrNotes = lazy(() => import('./features/applications/routes/user-hr-notes'))
 
+// Lazy load the Skill Plans feature for code splitting
+const SkillPlansList = lazy(() => import('./features/skill-plans/routes/skill-plans-list'))
+const SkillPlanDetail = lazy(() => import('./features/skill-plans/routes/skill-plan-detail'))
+const SkillPlanCreate = lazy(() => import('./features/skill-plans/routes/skill-plan-create'))
+const SkillPlanEdit = lazy(() => import('./features/skill-plans/routes/skill-plan-edit'))
+const SkillPlanProgress = lazy(() => import('./features/skill-plans/routes/skill-plan-progress'))
+const MySkillPlans = lazy(() => import('./features/skill-plans/routes/my-skill-plans'))
+const CategoriesManagement = lazy(() => import('./features/skill-plans/routes/categories-management'))
+
 // Create a client
 const queryClient = new QueryClient({
 	defaultOptions: {
@@ -191,6 +200,64 @@ export default function App() {
 						<Route path="/invitations" element={<InvitationsPage />} />
 						<Route path="/broadcasts" element={<BroadcastsPage />} />
 						<Route path="/broadcasts/new" element={<BroadcastsNewPage />} />
+
+						{/* Skill Plans routes (lazy loaded) */}
+						<Route
+							path="/skill-plans"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<SkillPlansList />
+								</Suspense>
+							}
+						/>
+						<Route
+							path="/skill-plans/my"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<MySkillPlans />
+								</Suspense>
+							}
+						/>
+						<Route
+							path="/skill-plans/create"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<SkillPlanCreate />
+								</Suspense>
+							}
+						/>
+						<Route
+							path="/skill-plans/categories/manage"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<CategoriesManagement />
+								</Suspense>
+							}
+						/>
+						<Route
+							path="/skill-plans/:id/edit"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<SkillPlanEdit />
+								</Suspense>
+							}
+						/>
+						<Route
+							path="/skill-plans/:id/progress"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<SkillPlanProgress />
+								</Suspense>
+							}
+						/>
+						<Route
+							path="/skill-plans/:id"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<SkillPlanDetail />
+								</Suspense>
+							}
+						/>
 					</Route>
 
 					{/* Admin routes */}

@@ -893,6 +893,44 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	}
 
 	/**
+	 * Get character skills, fetching from ESI if not found or stale
+	 * @param characterId The character ID
+	 * @param maxAge Maximum age of cached data in milliseconds (default: 1 hour)
+	 * @returns Character skills or null if unable to fetch
+	 */
+	async getOrFetchSkills(characterId: string, maxAge: number = 60 * 60 * 1000) {
+		// First try to get existing skills
+		const existingSkills = await this.getSkills(characterId)
+
+		// Check if we have skills and they're fresh enough
+		if (existingSkills) {
+			// Check age of data
+			const result = await this.db.query.characterSkills.findFirst({
+				where: eq(characterSkills.characterId, characterId),
+				columns: { updatedAt: true }
+			})
+
+			if (result?.updatedAt) {
+				const age = Date.now() - result.updatedAt.getTime()
+				if (age < maxAge) {
+					return existingSkills
+				}
+			}
+		}
+
+		// Skills are missing or stale, try to fetch from ESI
+		try {
+			await this.fetchAndStoreSkills(characterId)
+			// Return the newly fetched skills
+			return await this.getSkills(characterId)
+		} catch (error) {
+			console.error(`Failed to fetch skills from ESI for character ${characterId}:`, error)
+			// Return existing skills if we have them, even if stale
+			return existingSkills
+		}
+	}
+
+	/**
 	 * Get character attributes
 	 */
 	async getAttributes(characterId: string) {

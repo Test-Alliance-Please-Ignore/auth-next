@@ -427,6 +427,7 @@ invite.get('/:code', async (c) => {
 												credentials: 'include',
 												headers: {
 													'Content-Type': 'application/json',
+													'X-Requested-With': 'XMLHttpRequest',
 												},
 												body: JSON.stringify({ code: '${code}' }),
 											})

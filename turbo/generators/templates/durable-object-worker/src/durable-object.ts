@@ -1,6 +1,7 @@
 import { DurableObject } from 'cloudflare:workers'
 
 import type { {{ pascalCase name }}, {{ pascalCase name }}State, {{ pascalCase name }}Message } from '@repo/{{ name }}'
+import type { Env } from './context'
 
 /**
  * {{ pascalCase name }} Durable Object
@@ -11,13 +12,13 @@ import type { {{ pascalCase name }}, {{ pascalCase name }}State, {{ pascalCase n
  * - Alarm handler for scheduled tasks
  * - SQLite storage via sql.exec()
  */
-export class {{ pascalCase name }}DO extends DurableObject implements {{ pascalCase name }} {
+export class {{ pascalCase name }}DO extends DurableObject<Env, {}> implements {{ pascalCase name }} {
 	/**
 	 * Initialize the Durable Object
 	 */
 	constructor(
 		public state: DurableObjectState,
-		public env: Record<string, unknown>
+		public env: Env
 	) {
 		super(state, env)
 	}

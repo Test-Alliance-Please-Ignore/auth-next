@@ -1,0 +1,68 @@
+import { Navigate, useNavigate } from 'react-router-dom'
+import { usePageTitle } from '../../../hooks/usePageTitle'
+import { useAuth } from '../../../hooks/useAuth'
+import { useCreateSkillPlan } from '../hooks'
+import { SkillPlanForm } from '../components/skill-plan-form'
+import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card'
+import { Container } from '../../../components/ui/container'
+import { LoadingPage } from '../../../components/ui/loading'
+import { PageHeader } from '../../../components/ui/page-header'
+import { Section } from '../../../components/ui/section'
+import type { CreateSkillPlanRequest, UpdateSkillPlanRequest } from '../types'
+
+export default function SkillPlanCreate() {
+	usePageTitle('Create Skill Plan')
+
+	const navigate = useNavigate()
+	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
+	const createPlan = useCreateSkillPlan()
+
+	// Redirect if not authenticated
+	if (!authLoading && !isAuthenticated) {
+		return <Navigate to="/skill-plans" replace />
+	}
+
+	const handleSubmit = async (data: CreateSkillPlanRequest | UpdateSkillPlanRequest) => {
+		try {
+			const newPlan = await createPlan.mutateAsync(data as CreateSkillPlanRequest)
+			// Navigate to the new plan's detail page
+			navigate(`/skill-plans/${newPlan.id}`)
+		} catch (error) {
+			console.error('Failed to create plan:', error)
+			// In a real app, show a toast notification
+		}
+	}
+
+	const handleCancel = () => {
+		navigate('/skill-plans')
+	}
+
+	if (authLoading) {
+		return <LoadingPage />
+	}
+
+	return (
+		<Container>
+			<PageHeader
+				title="Create Skill Plan"
+				description="Create a new skill training plan for EVE Online"
+			/>
+
+			<Section>
+				<Card>
+					<CardHeader>
+						<CardTitle>Plan Details</CardTitle>
+					</CardHeader>
+					<CardContent>
+						<SkillPlanForm
+							onSubmit={handleSubmit}
+							onCancel={handleCancel}
+							isSubmitting={createPlan.isPending}
+							mode="create"
+						/>
+					</CardContent>
+				</Card>
+			</Section>
+		</Container>
+	)
+}

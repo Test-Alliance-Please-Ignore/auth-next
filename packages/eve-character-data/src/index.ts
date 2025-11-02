@@ -434,6 +434,23 @@ export interface EveCharacterData {
 	} | null>
 
 	/**
+	 * Get character skills, fetching from ESI if not found or stale
+	 * @param characterId - EVE character ID
+	 * @param maxAge - Maximum age of cached data in milliseconds (default: 1 hour)
+	 * @returns Character skills data or null if unable to fetch
+	 */
+	getOrFetchSkills(characterId: string, maxAge?: number): Promise<{
+		skills: Array<{
+			active_skill_level: number
+			skill_id: number
+			skillpoints_in_skill: number
+			trained_skill_level: number
+		}>
+		total_sp: number
+		unallocated_sp?: number
+	} | null>
+
+	/**
 	 * Get character attributes
 	 * @param characterId - EVE character ID
 	 * @returns Character attributes data or null if not found

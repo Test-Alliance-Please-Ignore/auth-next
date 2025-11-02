@@ -1,60 +1,46 @@
-import { useQuery } from '@tanstack/react-query'
 import { GraduationCap } from 'lucide-react'
 import { useState } from 'react'
+import { formatSkillWithLevel, formatSkillPoints, toRomanLevel } from '@repo/eve-types'
 
-import { api } from '../lib/api'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 
 interface Skill {
-	active_skill_level: number
-	skill_id: number
-	skillpoints_in_skill: number
-	trained_skill_level: number
+	activeSkillLevel: number
+	skillId: number
+	skillpointsInSkill: number
+	trainedSkillLevel: number
+	// Enriched fields from backend
+	skillName?: string
+	skillGroup?: string
+	skillCategory?: string
+	rank?: number
+	description?: string
 }
 
 interface CharacterSkillsProps {
 	skills: {
 		skills: Skill[]
-		total_sp: number
-		unallocated_sp?: number
+		totalSp: number
+		unallocatedSp?: number
 	}
 	characterId: string
 	showProgress?: boolean
-}
-
-interface SkillMetadata {
-	id: number
-	name: string
-	description: string
-	rank: number
-	primaryAttribute: string | null
-	secondaryAttribute: string | null
-}
-
-interface SkillCategory {
-	categoryId: number
-	categoryName: string
-	groups: Array<{
-		groupId: number
-		groupName: string
-		skills: SkillMetadata[]
-	}>
 }
 
 // Skill points required per level
 const SKILL_POINTS_PER_LEVEL = [0, 250, 1414, 8000, 45255, 256000]
 
 function calculateSkillProgress(skill: Skill, skillRank: number = 1): number {
-	if (skill.trained_skill_level === 5) return 100
+	if (skill.trainedSkillLevel === 5) return 100
 
-	const currentLevel = skill.trained_skill_level
+	const currentLevel = skill.trainedSkillLevel
 	const nextLevel = currentLevel + 1
 
 	const spForCurrentLevel = SKILL_POINTS_PER_LEVEL[currentLevel] * skillRank
 	const spForNextLevel = SKILL_POINTS_PER_LEVEL[nextLevel] * skillRank
 	const spNeeded = spForNextLevel - spForCurrentLevel
-	const spProgress = skill.skillpoints_in_skill - spForCurrentLevel
+	const spProgress = skill.skillpointsInSkill - spForCurrentLevel
 
 	return Math.min(100, Math.max(0, (spProgress / spNeeded) * 100))
 }
@@ -62,71 +48,49 @@ function calculateSkillProgress(skill: Skill, skillRank: number = 1): number {
 export function CharacterSkills({ skills, showProgress = false }: CharacterSkillsProps) {
 	const [expandedCategories, setExpandedCategories] = useState<string[]>([])
 
-	// Fetch skill metadata from eve-static-data
-	const { data: skillMetadata, isLoading: isLoadingMetadata } = useQuery({
-		queryKey: ['skill-metadata', skills.skills.map((s) => s.skill_id)],
-		queryFn: async () => {
-			const skillIds = skills.skills.map((s) => s.skill_id).join(',')
-			return api.getSkillMetadata(skillIds)
-		},
-		enabled: skills.skills.length > 0,
-	})
+	// Skills now come enriched from the backend, no need for separate metadata fetch
 
 	// Group skills by category
-	type EnrichedSkill = SkillMetadata & {
-		groupName: string
-		characterSkill?: Skill
-	}
-
-	type CategorizedSkillGroup = SkillCategory & {
+	type CategorizedSkillGroup = {
+		categoryName: string
 		totalSP: number
 		trainedSkills: number
 		totalSkills: number
-		skills: EnrichedSkill[]
+		skills: Skill[]
 	}
 
-	const categorizedSkills =
-		skillMetadata?.reduce((acc, category) => {
-			const categorySkills = category.groups
-				.flatMap((group: { groupId: number; groupName: string; skills: SkillMetadata[] }) =>
-					group.skills.map((skill: SkillMetadata) => ({
-						...skill,
-						groupName: group.groupName,
-						characterSkill: skills.skills.find((s: Skill) => s.skill_id === Number(skill.id)),
-					}))
-				)
-				.filter((skill: EnrichedSkill) => skill.characterSkill)
+	const categorizedSkills = skills.skills.reduce((acc: CategorizedSkillGroup[], skill) => {
+		const categoryName = skill.skillCategory || 'Uncategorized'
 
-			if (categorySkills.length > 0) {
-				acc.push({
-					...category,
-					totalSP: categorySkills.reduce(
-						(sum: number, s: EnrichedSkill) => sum + (s.characterSkill?.skillpoints_in_skill || 0),
-						0
-					),
-					trainedSkills: categorySkills.filter(
-						(s: EnrichedSkill) => s.characterSkill && s.characterSkill.trained_skill_level > 0
-					).length,
-					totalSkills: categorySkills.length,
-					skills: categorySkills,
-				})
+		// Find or create category
+		let category = acc.find(c => c.categoryName === categoryName)
+		if (!category) {
+			category = {
+				categoryName,
+				totalSP: 0,
+				trainedSkills: 0,
+				totalSkills: 0,
+				skills: []
 			}
-			return acc
-		}, [] as CategorizedSkillGroup[]) || []
+			acc.push(category)
+		}
+
+		// Add skill to category
+		category.skills.push(skill)
+		category.totalSP += skill.skillpointsInSkill
+		category.totalSkills++
+		if (skill.trainedSkillLevel > 0) {
+			category.trainedSkills++
+		}
+
+		return acc
+	}, [])
 
 	// Sort categories by total SP (highest first)
 	categorizedSkills.sort(
 		(a: CategorizedSkillGroup, b: CategorizedSkillGroup) => b.totalSP - a.totalSP
 	)
 
-	const formatSP = (sp: number) => {
-		if (sp >= 1000000) {
-			return `${(sp / 1000000).toFixed(2)}M`
-		} else if (sp >= 1000) {
-			return `${(sp / 1000).toFixed(1)}K`
-		}
-		return sp.toString()
-	}
 
 	return (
 		<Card>
@@ -137,21 +101,15 @@ export function CharacterSkills({ skills, showProgress = false }: CharacterSkill
 						Skills
 					</div>
 					<div className="text-sm font-normal text-muted-foreground">
-						Total SP: {formatSP(skills.total_sp)}
-						{skills.unallocated_sp && skills.unallocated_sp > 0 && (
-							<span className="ml-2">• Unallocated: {formatSP(skills.unallocated_sp)}</span>
+						Total SP: {formatSkillPoints(skills.totalSp)}
+						{skills.unallocatedSp && skills.unallocatedSp > 0 && (
+							<span className="ml-2">• Unallocated: {formatSkillPoints(skills.unallocatedSp)}</span>
 						)}
 					</div>
 				</CardTitle>
 			</CardHeader>
 			<CardContent>
-				{isLoadingMetadata ? (
-					<div className="space-y-4">
-						{[1, 2, 3].map((i) => (
-							<div key={i} className="h-12 bg-gray-100 rounded animate-pulse" />
-						))}
-					</div>
-				) : categorizedSkills.length === 0 ? (
+				{categorizedSkills.length === 0 ? (
 					<p className="text-sm text-muted-foreground">No skills trained</p>
 				) : (
 					<Accordion
@@ -161,7 +119,7 @@ export function CharacterSkills({ skills, showProgress = false }: CharacterSkill
 						className="space-y-2"
 					>
 						{categorizedSkills.map((category: CategorizedSkillGroup) => (
-							<AccordionItem key={category.categoryId} value={`category-${category.categoryId}`}>
+							<AccordionItem key={category.categoryName} value={`category-${category.categoryName}`}>
 								<AccordionTrigger className="hover:no-underline">
 									<div className="flex items-center justify-between w-full pr-2">
 										<div className="flex items-center gap-2">
@@ -171,50 +129,54 @@ export function CharacterSkills({ skills, showProgress = false }: CharacterSkill
 											</span>
 										</div>
 										<span className="text-sm text-muted-foreground">
-											{formatSP(category.totalSP)} SP
+											{formatSkillPoints(category.totalSP)} SP
 										</span>
 									</div>
 								</AccordionTrigger>
 								<AccordionContent>
 									<div className="space-y-3 pt-2">
 										{category.skills
-											.sort(
-												(a: any, b: any) =>
-													b.characterSkill.skillpoints_in_skill -
-													a.characterSkill.skillpoints_in_skill
-											)
-											.map((skill: any) => {
+											.sort((a: Skill, b: Skill) => b.skillpointsInSkill - a.skillpointsInSkill)
+											.map((skill: Skill) => {
 												const progress = showProgress
-													? calculateSkillProgress(skill.characterSkill, skill.rank)
+													? calculateSkillProgress(skill, skill.rank || 1)
 													: 0
 
 												return (
-													<div key={skill.id} className="space-y-1">
+													<div key={skill.skillId} className="space-y-1">
 														<div className="flex items-center justify-between">
 															<div className="flex-1">
 																<div className="flex items-center gap-2">
-																	<span className="text-sm font-medium">{skill.name}</span>
-																	<span className="text-xs text-muted-foreground">
-																		Rank {skill.rank}
+																	<span className="text-sm font-medium">
+																		{formatSkillWithLevel(
+																			skill.skillName || `Unknown Skill (${skill.skillId})`,
+																			skill.trainedSkillLevel
+																		)}
 																	</span>
+																	{skill.rank && (
+																		<span className="text-xs text-muted-foreground">
+																			Rank {skill.rank}
+																		</span>
+																	)}
 																</div>
-																<p className="text-xs text-muted-foreground">
-																	{skill.groupName} • Level{' '}
-																	{skill.characterSkill.trained_skill_level}
-																</p>
+																{skill.skillGroup && (
+																	<p className="text-xs text-muted-foreground">
+																		{skill.skillGroup}
+																	</p>
+																)}
 															</div>
 															<div className="text-right">
 																<p className="text-sm font-medium">
-																	{formatSP(skill.characterSkill.skillpoints_in_skill)}
+																	{formatSkillPoints(skill.skillpointsInSkill)}
 																</p>
-																{skill.characterSkill.trained_skill_level < 5 && (
+																{skill.trainedSkillLevel < 5 && (
 																	<p className="text-xs text-muted-foreground">
-																		{Math.round(progress)}%
+																		{Math.round(progress)}% to Level {toRomanLevel(skill.trainedSkillLevel + 1)}
 																	</p>
 																)}
 															</div>
 														</div>
-														{showProgress && skill.characterSkill.trained_skill_level < 5 && (
+														{showProgress && skill.trainedSkillLevel < 5 && (
 															<div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
 																<div
 																	className="h-full bg-blue-500 transition-all"

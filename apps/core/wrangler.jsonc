@@ -67,6 +67,11 @@
 				"name": "HR",
 				"class_name": "Hr",
 				"script_name": "hr"
+			},
+			{
+				"name": "SKILLS",
+				"class_name": "Skills",
+				"script_name": "skills"
 			}
 		]
 	},

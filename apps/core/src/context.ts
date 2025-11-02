@@ -8,6 +8,7 @@ import type { HonoApp } from '@repo/hono-helpers'
 import type { Hr } from '@repo/hr'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
 import type { Notifications } from '@repo/notifications'
+import type { Skills } from '@repo/skills'
 
 export type Env = SharedHonoEnv & {
 	DATABASE_URL: string
@@ -33,6 +34,8 @@ export type Env = SharedHonoEnv & {
 	FLEETS: DurableObjectNamespace
 	/** HR Durable Object binding */
 	HR: DurableObjectNamespace
+	/** Skills Durable Object binding */
+	SKILLS: DurableObjectNamespace
 	/** EVE Static Data service binding */
 	EVE_STATIC_DATA: Fetcher
 	/** Secret for session token generation and signing */
@@ -77,6 +80,8 @@ export type Variables = SharedHonoVariables & {
 	groupsDO?: Groups
 	/** Notifications Durable Object stub */
 	notificationsDO?: Notifications
+	/** Skills Durable Object stub */
+	skillsDO?: Skills
 }
 
 export interface App extends HonoApp {

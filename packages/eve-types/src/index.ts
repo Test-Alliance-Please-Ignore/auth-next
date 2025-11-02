@@ -55,6 +55,29 @@ export type EveCharacterId = EveBrandedType<string, 'EveCharacterId'>
  * const fleetId: EveFleetId = '1234567890' as EveFleetId;
  * ```
  */
+export type EveFleetId = EveBrandedType<string, 'EveFleetId'>
+
+/**
+ * Branded type for EVE Online Skill IDs.
+ * These are typically numeric strings representing unique skill identifiers.
+ *
+ * @example
+ * ```typescript
+ * const skillId: EveSkillId = '1234567890' as EveSkillId;
+ * ```
+ */
+export type EveSkillId = EveBrandedType<string, 'EveSkillId'>
+
+/**
+ * Branded type for EVE Online Group IDs.
+ * These are typically numeric strings representing unique group identifiers.
+ *
+ * @example
+ * ```typescript
+ * const groupId: EveGroupId = '1234567890' as EveGroupId;
+ * ```
+ */
+export type EveGroupId = EveBrandedType<string, 'EveGroupId'>
 
 /**
  * Helper functions for creating specific EVE branded types.
@@ -89,3 +112,6 @@ export const assertEveCharacterId = (id: string | number): string => {
 	}
 	return typeof id === 'string' ? id : id.toString()
 }
+
+// Re-export skill types and utilities
+export * from './skills'

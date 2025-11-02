@@ -21,6 +21,7 @@ import groupsRoutes from './routes/groups'
 import hrRoutes from './routes/hr'
 import inviteRoutes from './routes/invite'
 import loginRoutes from './routes/login'
+import skillPlansRoutes from './routes/skill-plans'
 import skillsRoutes from './routes/skills'
 import usersRoutes from './routes/users'
 import wsRoutes from './routes/ws'
@@ -96,6 +97,7 @@ const app = new Hono<App>()
 	.route('/api/corporations', corporationsRoutes)
 	.route('/api/discord-servers', discordServersRoutes)
 	.route('/api/skills', skillsRoutes)
+	.route('/api/skill-plans', skillPlansRoutes)
 	.route('/api/discord', discordRoutes)
 	.route('/api/groups', groupsRoutes)
 	.route('/api/broadcasts', broadcastsRoutes)

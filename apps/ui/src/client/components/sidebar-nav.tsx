@@ -1,4 +1,5 @@
 import {
+	BookOpen,
 	Building2,
 	FileText,
 	FolderHeart,
@@ -54,6 +55,11 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 			label: 'My Groups',
 			href: '/my-groups',
 			icon: FolderHeart,
+		},
+		{
+			label: 'Skill Plans',
+			href: '/skill-plans',
+			icon: BookOpen,
 		},
 		{
 			label: 'Join Corporations',
