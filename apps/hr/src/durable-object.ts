@@ -67,6 +67,14 @@ export class HrDO extends DurableObject<Env> implements Hr {
 		this.blacklistService = new BlacklistService(this.db)
 	}
 
+	/**
+	 * HTTP fetch handler (required by DurableObject interface)
+	 * This DO is used purely for RPC, so HTTP access is not supported
+	 */
+	async fetch(_request: Request): Promise<Response> {
+		return new Response('Hr Durable Object - RPC only', { status: 404 })
+	}
+
 	// ==================== Application Methods ====================
 
 	/**
@@ -79,6 +87,12 @@ export class HrDO extends DurableObject<Env> implements Hr {
 		applicationText: string,
 		characterName: string
 	): Promise<Application> {
+		// Check total open applications (max 2 across all corporations)
+		const openCount = await this.applicationService.countOpenApplications(userId)
+		if (openCount >= 2) {
+			throw new Error('You cannot have more than 2 open applications at a time. Please wait for your existing applications to be processed or withdraw one before submitting a new application.')
+		}
+
 		// Check for existing pending application
 		const hasPending = await this.applicationService.hasPendingApplication(userId, corporationId)
 		if (hasPending) {
@@ -467,6 +481,13 @@ export class HrDO extends DurableObject<Env> implements Hr {
 	 */
 	async getTriggeredBlacklists(characterBlacklistId: string): Promise<BlacklistEntry[]> {
 		return await this.blacklistService.getTriggeredBlacklists(characterBlacklistId)
+	}
+
+	/**
+	 * Find ALL blacklist entries triggered by a specific entry (for cascading removal)
+	 */
+	async findTriggeredEntries(blacklistId: string): Promise<BlacklistEntry[]> {
+		return await this.blacklistService.findTriggeredEntries(blacklistId)
 	}
 
 	/**

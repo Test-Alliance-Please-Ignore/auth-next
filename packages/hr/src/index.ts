@@ -560,6 +560,13 @@ export interface Hr extends DurableObject {
 	getTriggeredBlacklists(characterBlacklistId: string): Promise<BlacklistEntry[]>
 
 	/**
+	 * Find ALL blacklist entries triggered by a specific entry (for cascading removal)
+	 * @param blacklistId - Blacklist entry ID
+	 * @returns Array of blacklist entries (both user and character) triggered by this entry
+	 */
+	findTriggeredEntries(blacklistId: string): Promise<BlacklistEntry[]>
+
+	/**
 	 * List all blacklist entries with filters and pagination
 	 * @param filters - Filter criteria and pagination options
 	 * @returns Paginated blacklist results

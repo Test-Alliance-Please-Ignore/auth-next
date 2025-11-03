@@ -13,6 +13,7 @@ import {
 	ExternalLink,
 	Link2,
 	Shield,
+	ShieldBan,
 	ShieldOff,
 	Star,
 	User,
@@ -414,24 +415,32 @@ export default function CorporationMembersTable({
 									</div>
 								</TableCell>
 								<TableCell>
-									{member.role === 'CEO' && (
-										<Badge variant="default" className="bg-yellow-500">
-											<Star className="mr-1 h-3 w-3" />
-											CEO
-										</Badge>
-									)}
-									{member.role === 'Director' && (
-										<Badge variant="secondary">
-											<Shield className="mr-1 h-3 w-3" />
-											Director
-										</Badge>
-									)}
-									{member.role === 'Member' && (
-										<Badge variant="outline">
-											<User className="mr-1 h-3 w-3" />
-											Member
-										</Badge>
-									)}
+									<div className="flex gap-2">
+										{member.role === 'CEO' && (
+											<Badge variant="default" className="bg-yellow-500">
+												<Star className="mr-1 h-3 w-3" />
+												CEO
+											</Badge>
+										)}
+										{member.role === 'Director' && (
+											<Badge variant="secondary">
+												<Shield className="mr-1 h-3 w-3" />
+												Director
+											</Badge>
+										)}
+										{member.role === 'Member' && (
+											<Badge variant="outline">
+												<User className="mr-1 h-3 w-3" />
+												Member
+											</Badge>
+										)}
+										{member.isBlacklisted && (
+											<Badge variant="default" className="bg-red-500/20 text-red-500">
+												<ShieldBan className="h-3 w-3 mr-1" />
+												Blacklisted
+											</Badge>
+										)}
+									</div>
 								</TableCell>
 								{canManageHrRoles && (
 									<TableCell>

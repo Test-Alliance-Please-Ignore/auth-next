@@ -80,11 +80,14 @@ export default function BlacklistPage() {
 	// Create user blacklist mutation
 	const createUserBlacklist = useMutation({
 		mutationFn: (data: { userId: string; reason: string }) => api.createUserBlacklist(data),
-		onSuccess: () => {
+		onSuccess: (result) => {
 			queryClient.invalidateQueries({ queryKey: ['blacklists'] })
 			setAddDialogOpen(false)
 			setFormData({ targetType: 'user', userId: '', characterId: '', reason: '' })
-			setMessage({ type: 'success', text: 'User blacklisted successfully' })
+			const cascadeMsg = result.autoBlacklisted.totalCount > 0
+				? ` Auto-blacklisted ${result.autoBlacklisted.characters.length} character(s) and ${result.autoBlacklisted.users.length} user(s).`
+				: ''
+			setMessage({ type: 'success', text: `User blacklisted successfully.${cascadeMsg}` })
 			setTimeout(() => setMessage(null), 5000)
 		},
 		onError: (error: any) => {
@@ -121,11 +124,14 @@ export default function BlacklistPage() {
 	// Remove blacklist mutation
 	const removeBlacklist = useMutation({
 		mutationFn: (id: string) => api.removeBlacklistEntry(id),
-		onSuccess: () => {
+		onSuccess: (result) => {
 			queryClient.invalidateQueries({ queryKey: ['blacklists'] })
 			setDeleteDialogOpen(false)
 			setSelectedEntry(null)
-			setMessage({ type: 'success', text: 'Blacklist entry removed successfully' })
+			const cascadeMsg = result.removedCount > 1
+				? ` Also removed ${result.removedCount - 1} triggered blacklist(s).`
+				: ''
+			setMessage({ type: 'success', text: `Blacklist entry removed successfully.${cascadeMsg}` })
 			setTimeout(() => setMessage(null), 5000)
 		},
 		onError: (error: any) => {

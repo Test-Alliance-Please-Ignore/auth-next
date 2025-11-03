@@ -178,6 +178,7 @@ export default function HrRolesManagement() {
 			lastLogin: undefined,
 			activityStatus: 'unknown' as const,
 			hrRole: role,
+			isBlacklisted: false, // Not available in HrRoleGrant context
 		}
 		setRevokeDialogMember(member)
 	}

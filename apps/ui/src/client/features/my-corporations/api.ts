@@ -32,6 +32,7 @@ export interface CorporationMember {
 	locationRegion?: string
 	activityStatus: 'active' | 'inactive' | 'unknown'
 	hrRole?: import('../hr/api').HrRoleGrant
+	isBlacklisted: boolean
 }
 
 /**

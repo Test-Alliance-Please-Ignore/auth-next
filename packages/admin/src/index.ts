@@ -81,6 +81,7 @@ export interface CharacterSummary {
 	is_primary: boolean
 	linkedAt: Date
 	hasValidToken: boolean
+	isBlacklisted: boolean
 }
 
 /**

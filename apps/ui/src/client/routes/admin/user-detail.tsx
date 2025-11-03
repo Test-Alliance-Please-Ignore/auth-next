@@ -651,11 +651,19 @@ export default function UserDetailPage() {
 										</div>
 									</TableCell>
 									<TableCell>
-										{character.is_primary && (
-											<Badge variant="default" className="bg-blue-500/20 text-blue-500">
-												Primary
-											</Badge>
-										)}
+										<div className="flex gap-2">
+											{character.is_primary && (
+												<Badge variant="default" className="bg-blue-500/20 text-blue-500">
+													Primary
+												</Badge>
+											)}
+											{character.isBlacklisted && (
+												<Badge variant="default" className="bg-red-500/20 text-red-500">
+													<ShieldBan className="h-3 w-3 mr-1" />
+													Blacklisted
+												</Badge>
+											)}
+										</div>
 									</TableCell>
 									<TableCell>
 										<div className="text-sm">

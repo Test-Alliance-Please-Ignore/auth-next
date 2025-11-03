@@ -293,6 +293,35 @@ export class BlacklistService {
 	}
 
 	/**
+	 * Find ALL blacklist entries triggered by a specific entry (for cascading removal)
+	 * Includes both:
+	 * - User blacklists with triggeredBy pointing to this entry
+	 * - Character blacklists with metadata.triggeredByUserBlacklist pointing to this entry
+	 */
+	async findTriggeredEntries(blacklistId: string): Promise<BlacklistEntry[]> {
+		// Find user blacklists triggered by this entry (via triggeredBy)
+		const triggeredUsers = await this.db.query.blacklistEntries.findMany({
+			where: eq(blacklistEntries.triggeredBy, blacklistId),
+		})
+
+		// Find character blacklists triggered by this entry (via metadata)
+		// Note: This requires checking JSON metadata, which is database-specific
+		// For now, we'll fetch all character blacklists and filter in-memory
+		const allCharBlacklists = await this.db.query.blacklistEntries.findMany({
+			where: eq(blacklistEntries.targetType, 'character'),
+		})
+
+		const triggeredChars = allCharBlacklists.filter((entry) => {
+			if (!entry.metadata) return false
+			const metadata = entry.metadata as Record<string, unknown>
+			return metadata.triggeredByUserBlacklist === blacklistId
+		})
+
+		const allTriggered = [...triggeredUsers, ...triggeredChars]
+		return allTriggered.map((e) => this.mapToBlacklistEntry(e))
+	}
+
+	/**
 	 * List all blacklist entries with filters and pagination
 	 */
 	async getAllBlacklists(filters: BlacklistFilters = {}): Promise<BlacklistResults> {

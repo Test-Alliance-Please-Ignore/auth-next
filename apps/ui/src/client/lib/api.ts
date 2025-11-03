@@ -577,6 +577,7 @@ export interface AdminUserCharacter {
 	is_primary: boolean
 	linkedAt: string
 	hasValidToken: boolean
+	isBlacklisted: boolean
 }
 
 export interface AdminDiscordStatus {
@@ -1558,7 +1559,14 @@ export class ApiClient {
 
 	async createUserBlacklist(
 		request: CreateUserBlacklistRequest
-	): Promise<BlacklistEntry> {
+	): Promise<{
+		userId: string
+		autoBlacklisted: {
+			characters: string[]
+			users: string[]
+			totalCount: number
+		}
+	}> {
 		return this.post('/admin/blacklist/user', request)
 	}
 
@@ -1612,7 +1620,7 @@ export class ApiClient {
 		return this.get(`/admin/blacklist/character/${characterId}`)
 	}
 
-	async removeBlacklistEntry(id: string): Promise<{ success: boolean }> {
+	async removeBlacklistEntry(id: string): Promise<{ success: boolean; removedCount: number }> {
 		return this.delete(`/admin/blacklist/${id}`)
 	}
 

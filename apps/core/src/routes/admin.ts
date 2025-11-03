@@ -554,28 +554,115 @@ app.post('/blacklist/user', requireAuth(), requireAdmin(), async (c) => {
 
 		const { userId, reason, metadata } = validation.data
 
-		// Call HR DO via RPC
-		const hrStub = getStub<Hr>(c.env.HR, 'default')
-		const entry = await hrStub.createUserBlacklist({
-			userId,
-			reason,
-			blacklistedBy: user.id,
-			isAutoBlacklist: false,
-			metadata,
-		})
+		// Capture user ID for nested function
+		const blacklistedByUserId = user.id
 
-		// Invalidate all sessions for the blacklisted user
-		const db = createDb(c.env.DATABASE_URL)
-		const sessionService = new SessionService(db)
-		await sessionService.invalidateAllUserSessions(userId)
+		// Track all blacklisted entities for the response
+		const blacklistedCharacters: string[] = []
+		const blacklistedUsers: string[] = []
+		const processedUsers = new Set<string>()
+		const processedCharacters = new Set<string>()
 
-		logger.info('[Admin] User blacklisted', {
+		// Helper function to cascade blacklists with depth limiting
+		async function cascadeBlacklist(
+			targetUserId: string,
+			cascadeReason: string,
+			triggeredBy: string | undefined,
+			isAuto: boolean,
+			depth: number
+		): Promise<void> {
+			// Max depth limit to prevent infinite recursion
+			if (depth > 10) {
+				logger.warn('[Admin] Max cascade depth reached', { targetUserId, depth })
+				return
+			}
+
+			// Skip if already processed
+			if (processedUsers.has(targetUserId)) {
+				return
+			}
+			processedUsers.add(targetUserId)
+
+			const db = createDb(c.env.DATABASE_URL)
+			const hrStub = getStub<Hr>(c.env.HR, 'default')
+			const sessionService = new SessionService(db)
+
+			// 1. Create user blacklist
+			await hrStub.createUserBlacklist({
+				userId: targetUserId,
+				reason: cascadeReason,
+				blacklistedBy: blacklistedByUserId,
+				isAutoBlacklist: isAuto,
+				triggeredBy,
+			})
+			if (isAuto) {
+				blacklistedUsers.push(targetUserId)
+			}
+
+			// 2. Invalidate sessions
+			await sessionService.invalidateAllUserSessions(targetUserId)
+
+			// 3. Get all characters for this user
+			const userChars = await db.query.userCharacters.findMany({
+				where: eq(userCharacters.userId, targetUserId),
+			})
+
+			// 4. For each character, blacklist it and cascade to other users
+			for (const char of userChars) {
+				// Skip if character already processed
+				if (processedCharacters.has(char.characterId)) {
+					continue
+				}
+				processedCharacters.add(char.characterId)
+
+				// Create character blacklist
+				const charEntry = await hrStub.createCharacterBlacklist({
+					characterId: char.characterId,
+					reason: `Auto-blacklisted: owned by blacklisted user ${targetUserId}`,
+					blacklistedBy: blacklistedByUserId,
+					metadata: { triggeredByUserBlacklist: triggeredBy || userId },
+				})
+				blacklistedCharacters.push(char.characterId)
+
+				// Find all OTHER users with this character
+				const otherUsersWithChar = await db.query.userCharacters.findMany({
+					where: eq(userCharacters.characterId, char.characterId),
+				})
+
+				// Recursively blacklist other users (excluding already processed ones)
+				for (const otherChar of otherUsersWithChar) {
+					if (!processedUsers.has(otherChar.userId)) {
+						await cascadeBlacklist(
+							otherChar.userId,
+							`Auto-blacklisted: linked to blacklisted character ${char.characterId}`,
+							charEntry.id,
+							true,
+							depth + 1
+						)
+					}
+				}
+			}
+		}
+
+		// Start the cascade with the initial user
+		await cascadeBlacklist(userId, reason, undefined, false, 0)
+
+		logger.info('[Admin] User blacklisted with cascade', {
 			adminUserId: user.id,
 			targetUserId: userId,
 			reason,
+			blacklistedCharactersCount: blacklistedCharacters.length,
+			blacklistedUsersCount: blacklistedUsers.length,
 		})
 
-		return c.json(entry)
+		return c.json({
+			userId,
+			autoBlacklisted: {
+				characters: blacklistedCharacters,
+				users: blacklistedUsers,
+				totalCount: blacklistedCharacters.length + blacklistedUsers.length,
+			},
+		})
 	} catch (error) {
 		logger.error('Error creating user blacklist:', error)
 		return c.json({ error: 'Failed to create user blacklist' }, 500)
@@ -776,8 +863,7 @@ app.get('/blacklist/character/:characterId', requireAuth(), requireAdmin(), asyn
 
 /**
  * DELETE /admin/blacklist/:id
- * Remove a blacklist entry
- * IMPORTANT: Removing a character blacklist does NOT remove user blacklists it triggered
+ * Remove a blacklist entry and all triggered entries (cascading removal)
  */
 app.delete('/blacklist/:id', requireAuth(), requireAdmin(), async (c) => {
 	const user = c.get('user')
@@ -796,16 +882,41 @@ app.delete('/blacklist/:id', requireAuth(), requireAdmin(), async (c) => {
 	}
 
 	try {
-		// Call HR DO via RPC
 		const hrStub = getStub<Hr>(c.env.HR, 'default')
-		await hrStub.removeBlacklistEntry(blacklistId)
+		let removedCount = 0
+		const processedIds = new Set<string>()
 
-		logger.info('[Admin] Blacklist entry removed', {
+		// Recursive function to remove entry and all triggered entries
+		async function cascadeRemove(entryId: string): Promise<void> {
+			// Skip if already processed
+			if (processedIds.has(entryId)) {
+				return
+			}
+			processedIds.add(entryId)
+
+			// Find all entries triggered by this one
+			const triggered = await hrStub.findTriggeredEntries(entryId)
+
+			// Recursively remove triggered entries first
+			for (const triggeredEntry of triggered) {
+				await cascadeRemove(triggeredEntry.id)
+			}
+
+			// Remove this entry
+			await hrStub.removeBlacklistEntry(entryId)
+			removedCount++
+		}
+
+		// Start cascading removal
+		await cascadeRemove(blacklistId)
+
+		logger.info('[Admin] Blacklist entry removed with cascade', {
 			adminUserId: user.id,
 			blacklistId,
+			removedCount,
 		})
 
-		return c.json({ success: true })
+		return c.json({ success: true, removedCount })
 	} catch (error) {
 		logger.error('Error removing blacklist entry:', error)
 		return c.json({ error: 'Failed to remove blacklist entry' }, 500)

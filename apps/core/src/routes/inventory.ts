@@ -48,7 +48,7 @@ app.post('/parse', async (c) => {
 		if (!response.ok) {
 			const errorText = await response.text()
 			logger.error('Eve-static-data parse failed:', { status: response.status, error: errorText })
-			return c.json({ error: 'Failed to parse inventory' }, response.status)
+			return c.json({ error: 'Failed to parse inventory' }, 500)
 		}
 
 		const result: InventoryParseResult = await response.json()

@@ -132,7 +132,7 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	private getService(): CoreRpcService {
 		if (!this.service) {
 			const db = createDb(this.env.DATABASE_URL)
-			this.service = new CoreRpcService(db, this.env.EVE_TOKEN_STORE, this.env.DISCORD)
+			this.service = new CoreRpcService(db, this.env.EVE_TOKEN_STORE, this.env.DISCORD, this.env.HR)
 		}
 		return this.service
 	}

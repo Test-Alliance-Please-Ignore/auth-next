@@ -29,7 +29,8 @@ export class CoreRpcService {
 	constructor(
 		private db: DbClient<typeof schema>,
 		private eveTokenStoreNamespace: DurableObjectNamespace,
-		private discordNamespace: DurableObjectNamespace
+		private discordNamespace: DurableObjectNamespace,
+		private hrNamespace: DurableObjectNamespace
 	) {}
 
 	/**
@@ -133,7 +134,16 @@ export class CoreRpcService {
 		// 3. Get EVE Token Store stub for token validation
 		const eveTokenStore = getStub<EveTokenStore>(this.eveTokenStoreNamespace, 'default')
 
-		// 4. Build character summaries with token validation
+		// 4. Get HR stub for blacklist status check
+		const hrStub = getStub<import('@repo/hr').Hr>(this.hrNamespace, 'default')
+
+		// 5. Bulk check blacklist status for all characters
+		const characterIds = chars.map((c) => c.characterId)
+		const blacklistStatuses = characterIds.length > 0
+			? await hrStub.checkCharactersBlacklisted(characterIds)
+			: {}
+
+		// 6. Build character summaries with token validation and blacklist status
 		const characterSummaries = await Promise.all(
 			chars.map(async (char) => {
 				// Check token validity (getAccessToken auto-refreshes if needed)
@@ -152,11 +162,12 @@ export class CoreRpcService {
 					is_primary: char.is_primary,
 					linkedAt: char.linkedAt,
 					hasValidToken,
+					isBlacklisted: blacklistStatuses[char.characterId] || false,
 				}
 			})
 		)
 
-		// 5. Get Discord status if linked
+		// 7. Get Discord status if linked
 		let discordStatus = null
 		if (user.discordUserId) {
 			try {
@@ -180,7 +191,7 @@ export class CoreRpcService {
 			}
 		}
 
-		// 6. Return user details
+		// 8. Return user details
 		return {
 			id: user.id,
 			mainCharacterId: user.mainCharacterId,

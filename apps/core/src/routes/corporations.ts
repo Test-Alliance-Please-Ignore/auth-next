@@ -18,6 +18,7 @@ import { requireAdmin, requireAuth } from '../middleware/session'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
+import type { Hr } from '@repo/hr'
 import type { App } from '../context'
 
 const app = new Hono<App>()
@@ -1036,6 +1037,7 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 				locationSystem?: string
 				locationRegion?: string
 				activityStatus: 'active' | 'inactive' | 'unknown'
+				isBlacklisted: boolean
 			}>
 		>(cacheKey)
 
@@ -1087,6 +1089,12 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 			unresolvedCount: memberCharacterIds.length - Object.keys(characterNameMap).length,
 		})
 
+		// Bulk check blacklist status for all members
+		const hrStub = getStub<Hr>(c.env.HR, 'default')
+		const blacklistStatuses = memberCharacterIds.length > 0
+			? await hrStub.checkCharactersBlacklisted(memberCharacterIds)
+			: {}
+
 		// Process members with comprehensive data
 		const membersWithDetails = await Promise.all(
 			coreData.members.map(async (member) => {
@@ -1131,6 +1139,7 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 							? 'active'
 							: 'inactive')
 						: 'unknown',
+					isBlacklisted: blacklistStatuses[characterId] || false,
 				}
 			})
 		)

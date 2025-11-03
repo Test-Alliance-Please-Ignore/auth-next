@@ -147,6 +147,15 @@ Each worker is a microservice with a single responsibility:
 - **notifications**: Real-time WebSocket notifications (per-user DO, PostgreSQL)
 - **eve-character-data**: EVE character wallet/assets/orders (singleton DO, SQLite cache)
 - **eve-corporation-data**: EVE corporation data aggregation (per-corp DO, PostgreSQL + Queues)
+- **fleets**: Fleet operations and management (per-user DO, WebSocket support)
+- **hr**: Human resources - applications, blacklist, roles, recommendations (per-corporation DO, PostgreSQL)
+- **bills**: Corporation billing and invoice management (per-corporation DO, PostgreSQL)
+- **broadcasts**: Corporation broadcast messaging (per-corporation DO, PostgreSQL)
+- **skills**: Character skill plans and tracking (per-user DO, PostgreSQL)
+- **freight**: Freight contracts and logistics (per-corporation DO, PostgreSQL)
+- **markets**: Market orders and trading (per-user DO, PostgreSQL)
+- **features**: Feature flag management (singleton DO, PostgreSQL)
+- **orchestrator**: Workflow orchestration using Cloudflare Workflows (singleton DO, durable execution)
 
 **Benefits:**
 
@@ -728,6 +737,13 @@ The system uses a **multi-tier storage architecture** optimized for different ac
 - `notifications`: notifications, notificationAcknowledgements (per-user isolation)
 - `admin`: adminOperationsLog (audit trail)
 - `eve-corporation-data`: corporation public data, members, wallets, assets, etc. (per-corp isolation)
+- `hr`: applications, blacklistEntries, roles, roleAssignments, recommendations (per-corp isolation)
+- `bills`: invoices, billItems, payments (per-corp isolation)
+- `broadcasts`: messages, recipients, acknowledgements (per-corp isolation)
+- `skills`: skillPlans, skillPlanItems, characterSkills (per-user isolation)
+- `freight`: contracts, contractItems, routes (per-corp isolation)
+- `markets`: orders, transactions, marketHistory (per-user isolation)
+- `features`: featureFlags, featureOverrides (singleton)
 
 **2. Durable Object SQLite - Transient Cache**
 
@@ -797,6 +813,12 @@ return data
 | Group category cache      | Workers KV | Frequently read, rarely written           |
 | Notifications (real-time) | PostgreSQL | Durable, needs ordering, per-user         |
 | Corp data (ESI)           | PostgreSQL | Large datasets, complex queries, per-corp |
+| HR (applications, blacklist) | PostgreSQL | Complex workflows, relational, per-corp |
+| Fleet operations          | PostgreSQL | Real-time coordination, per-user          |
+| Skill plans               | PostgreSQL | Character progression, per-user           |
+| Market data               | PostgreSQL | Trading history, orders, per-user         |
+| Freight contracts         | PostgreSQL | Logistics tracking, per-corp              |
+| Feature flags             | PostgreSQL | Configuration, singleton, global          |
 
 ### Database Isolation Patterns
 
@@ -1412,6 +1434,90 @@ DO → Mark as read
 
 **Implementation:** `apps/notifications/src/durable-object.ts`
 
+### 5. HR Application System (hr)
+
+**Problem:** Need to manage corporation member applications, blacklist entries, and role recommendations.
+
+**Solution:** Per-corporation Durable Object with PostgreSQL for persistent storage.
+
+**Features:**
+
+- **Applications**: Track and manage member applications with status workflows
+- **Blacklist**: Maintain corporation-level blacklist with character and alliance tracking
+- **Roles**: Manage corporation role definitions and assignments
+- **Recommendations**: Character recommendation system for recruitment
+
+**Key Methods:**
+
+```typescript
+export interface HR {
+  // Applications
+  createApplication(corpId: string, data: CreateApplicationInput): Promise<Application>
+  updateApplicationStatus(corpId: string, appId: string, status: string): Promise<Application>
+
+  // Blacklist
+  addToBlacklist(corpId: string, data: BlacklistEntry): Promise<BlacklistEntry>
+  removeFromBlacklist(corpId: string, entryId: string): Promise<void>
+
+  // Roles
+  createRole(corpId: string, data: RoleInput): Promise<Role>
+  assignRole(corpId: string, characterId: string, roleId: string): Promise<void>
+}
+```
+
+**Implementation:** `apps/hr/src/durable-object.ts`, `apps/hr/src/services/`
+
+### 6. Workflow Orchestration (orchestrator)
+
+**Problem:** Need durable execution for long-running tasks like periodic EVE data synchronization.
+
+**Solution:** Cloudflare Workflows with automatic retry, backoff, and state management.
+
+**Features:**
+
+- **Durable Execution**: Workflows survive worker restarts and deployments
+- **Automatic Retry**: Failed steps retry with exponential backoff
+- **State Management**: Workflow state persisted automatically
+- **Cron Integration**: Scheduled workflows via Cloudflare Cron Triggers
+
+**Example Workflow:**
+
+```typescript
+export class SyncWorkflow extends WorkflowEntrypoint<Env, Params, StepResult> {
+  async run(event: WorkflowEvent<Params>, step: WorkflowStep) {
+    // Step 1: Fetch data from ESI
+    const data = await step.do('fetch-data', async () => {
+      return await fetchFromESI(event.params.characterId)
+    })
+
+    // Step 2: Process and store (automatic retry on failure)
+    await step.do('process-data', async () => {
+      await processAndStore(data)
+    })
+
+    // Step 3: Send notifications
+    await step.do('notify', async () => {
+      await sendNotification(event.params.userId)
+    })
+  }
+}
+```
+
+**Cron Triggers:**
+
+- Hourly: Discord user refresh workflows (jitter-distributed)
+- 5-minute: Corporation data sync for active corps
+- Daily: Cleanup and maintenance tasks
+
+**Benefits:**
+
+- **Reliability**: Guaranteed completion even with failures
+- **Observability**: Built-in workflow status tracking
+- **Scalability**: Handles thousands of concurrent workflows
+- **Developer Experience**: Simple async/await API
+
+**Implementation:** `apps/orchestrator/src/`, configured in `wrangler.jsonc` with cron triggers
+
 ### 4. ESI Caching with ETags (eve-corporation-data, eve-character-data)
 
 **Problem:** EVE's ESI API rate limits aggressively.
@@ -1818,17 +1924,28 @@ just tail <app-name>        # Tail specific worker logs
 tapi-workers/
 ├── apps/                      # Worker applications
 │   ├── admin/                 # Admin RPC worker (user/character management)
+│   ├── bills/                 # Corporation billing DO worker (per-corp)
+│   ├── broadcasts/            # Corporation broadcast messaging DO worker (per-corp)
 │   ├── core/                  # Main HTTP + RPC worker (auth, orchestration)
 │   ├── discord/               # Discord OAuth DO worker (per-user)
 │   ├── eve-character-data/    # EVE character data DO worker (singleton)
 │   ├── eve-corporation-data/  # EVE corp data DO worker (per-corp, queues)
 │   ├── eve-static-data/       # EVE SDE API worker (KV cache)
 │   ├── eve-token-store/       # EVE token DO worker (singleton, SQLite)
+│   ├── features/              # Feature flag management DO worker (singleton)
+│   ├── fleets/                # Fleet operations DO worker (per-user, WebSocket)
+│   ├── freight/               # Freight contracts DO worker (per-corp)
 │   ├── groups/                # Groups DO worker (per-user, PostgreSQL)
+│   ├── hr/                    # HR DO worker (per-corp, applications, blacklist)
+│   ├── markets/               # Market orders DO worker (per-user)
 │   ├── notifications/         # WebSocket notifications DO worker (per-user)
+│   ├── orchestrator/          # Workflow orchestration worker (Cloudflare Workflows)
+│   ├── skills/                # Skill plans DO worker (per-user)
 │   └── ui/                    # React SPA static assets worker
 ├── packages/                  # Shared packages
 │   ├── admin/                 # Admin RPC interface types
+│   ├── bills/                 # Bills RPC interface types
+│   ├── broadcasts/            # Broadcasts RPC interface types
 │   ├── db-utils/              # Database utilities (Drizzle ORM helpers)
 │   ├── discord/               # Discord RPC interface types
 │   ├── do-utils/              # Durable Object utilities (getStub helper)
@@ -1837,12 +1954,18 @@ tapi-workers/
 │   ├── eve-corporation-data/  # EVE corporation data RPC types
 │   ├── eve-token-store/       # EVE token store RPC types
 │   ├── eve-types/             # Shared EVE Online type definitions
+│   ├── features/              # Feature flags RPC interface types
 │   ├── fetch-utils/           # HTTP request deduplication utilities
+│   ├── fleets/                # Fleets RPC interface types
+│   ├── freight/               # Freight RPC interface types
 │   ├── groups/                # Groups RPC interface types
 │   ├── hazmat/                # Low-level utilities (encryption, etc.)
 │   ├── hono-helpers/          # Hono middleware and utilities
+│   ├── hr/                    # HR RPC interface types
+│   ├── markets/               # Markets RPC interface types
 │   ├── notifications/         # Notifications RPC interface types
 │   ├── queue-utils/           # Type-safe Cloudflare Queues utilities
+│   ├── skills/                # Skills RPC interface types
 │   ├── static-auth/           # Static authentication middleware
 │   ├── tools/                 # CLI development tools
 │   ├── typescript-config/     # Shared TypeScript configurations
@@ -1875,5 +1998,42 @@ tapi-workers/
 
 ---
 
-**Last Updated:** 2025-10-26
+**Last Updated:** 2025-11-02
 **Maintained By:** Development Team
+
+---
+
+## Complete Worker Inventory
+
+### HTTP Workers (4)
+1. **core** - Main API gateway, authentication, session management
+2. **eve-token-store** - OAuth callbacks, token management
+3. **eve-static-data** - EVE SDE lookups with KV caching
+4. **ui** - React SPA static asset serving
+
+### RPC-Only Workers (1)
+1. **admin** - Administrative operations, audit logging
+
+### Durable Object Workers (14)
+
+**Per-User DOs:**
+1. **discord** - Discord OAuth and guild management
+2. **groups** - Group/category/membership management
+3. **notifications** - Real-time WebSocket notifications
+4. **fleets** - Fleet operations and coordination
+5. **skills** - Skill plans and character progression
+6. **markets** - Market orders and trading
+
+**Per-Corporation DOs:**
+1. **eve-corporation-data** - Corporation data sync with queues
+2. **hr** - Applications, blacklist, roles, recommendations
+3. **bills** - Billing and invoice management
+4. **broadcasts** - Corporation broadcast messaging
+5. **freight** - Freight contracts and logistics
+
+**Singleton DOs:**
+1. **eve-character-data** - Character wallet/assets/orders
+2. **features** - Feature flag management
+3. **orchestrator** - Workflow orchestration (Cloudflare Workflows)
+
+### Total: 19 Workers

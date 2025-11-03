@@ -291,6 +291,23 @@ export class ApplicationService {
 	}
 
 	/**
+	 * Count open applications for a user across all corporations
+	 */
+	async countOpenApplications(userId: string): Promise<number> {
+		const result = await this.db
+			.select({ count: sql<number>`cast(count(*) as integer)` })
+			.from(applications)
+			.where(
+				and(
+					eq(applications.userId, userId),
+					inArray(applications.status, ['pending', 'under_review'])
+				)
+			)
+
+		return result[0]?.count ?? 0
+	}
+
+	/**
 	 * Log activity for an application
 	 */
 	private async logActivity(
