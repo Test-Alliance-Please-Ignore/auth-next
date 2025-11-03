@@ -246,6 +246,60 @@ export const hrRoles = pgTable(
 )
 
 /**
+ * Blacklist entries table - Global blacklisting for users and characters
+ *
+ * SECURITY CRITICAL: This table controls access to the entire platform.
+ * Two types of blacklists:
+ * 1. User blacklist: User account is banned (cannot login)
+ * 2. Character blacklist: EVE character is banned (anyone who uses it gets auto-blacklisted)
+ *
+ * Auto-blacklist behavior:
+ * - When a character is blacklisted, all users with that character are auto-blacklisted
+ * - When someone tries to login/link a blacklisted character, they are auto-blacklisted
+ * - Auto-blacklists track the triggering character via triggeredBy FK
+ */
+export const blacklistEntries = pgTable(
+	'blacklist_entries',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		/** Type of blacklist: 'user' or 'character' */
+		targetType: varchar('target_type', { length: 20 }).notNull(),
+		/** User ID (set when targetType='user') */
+		userId: uuid('user_id'),
+		/** Character ID (set when targetType='character') */
+		characterId: text('character_id'),
+		/** Reason for blacklist */
+		reason: text('reason').notNull(),
+		/** Admin who created this blacklist entry */
+		blacklistedBy: uuid('blacklisted_by').notNull(),
+		/** Character blacklist that triggered this user blacklist (for auto-blacklists) */
+		triggeredBy: uuid('triggered_by'),
+		/** True if this entry was auto-created from a character blacklist */
+		isAutoBlacklist: boolean('is_auto_blacklist').notNull().default(false),
+		/** Additional metadata (extensible) */
+		metadata: jsonb('metadata').$type<Record<string, unknown>>(),
+		createdAt: timestamp('created_at').defaultNow().notNull(),
+	},
+	(table) => [
+		// Fast user blacklist lookups (checked on every auth)
+		// Used for: "is this user blacklisted?" (most critical query)
+		index('idx_blacklist_user').on(table.userId),
+		// Fast character blacklist lookups (checked on login/link)
+		// Used for: "is this character blacklisted?"
+		index('idx_blacklist_character').on(table.characterId),
+		// Triggered-by relationship tracking
+		// Used for: "show all users auto-blacklisted from this character"
+		index('idx_blacklist_triggered_by').on(table.triggeredBy),
+		// Filter by type and auto-blacklist status
+		// Used for: "show all manual user blacklists" or "show all auto-blacklists"
+		index('idx_blacklist_type_auto').on(table.targetType, table.isAutoBlacklist),
+		// Recent blacklists dashboard
+		// Used for: "show me the latest blacklists"
+		index('idx_blacklist_created').on(table.createdAt.desc()),
+	]
+)
+
+/**
  * Relations (for Drizzle ORM query builder)
  * These define the relationships between tables for type-safe joins
  */
@@ -268,6 +322,19 @@ export const activityLogRelations = relations(applicationActivityLog, ({ one }) 
 	}),
 }))
 
+export const blacklistRelations = relations(blacklistEntries, ({ one, many }) => ({
+	// Self-referential: Character blacklist that triggered this user blacklist
+	triggeringEntry: one(blacklistEntries, {
+		fields: [blacklistEntries.triggeredBy],
+		references: [blacklistEntries.id],
+		relationName: 'triggeredBlacklists',
+	}),
+	// Self-referential: User blacklists triggered by this character blacklist
+	triggeredEntries: many(blacklistEntries, {
+		relationName: 'triggeredBlacklists',
+	}),
+}))
+
 /**
  * Export schema object for Drizzle
  */
@@ -277,7 +344,9 @@ export const schema = {
 	applicationActivityLog,
 	hrNotes,
 	hrRoles,
+	blacklistEntries,
 	applicationsRelations,
 	recommendationsRelations,
 	activityLogRelations,
+	blacklistRelations,
 }

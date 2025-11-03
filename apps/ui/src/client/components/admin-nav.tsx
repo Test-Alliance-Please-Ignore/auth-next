@@ -7,7 +7,9 @@ import {
 	Radio,
 	Receipt,
 	ScrollText,
+	ShieldBan,
 	Target,
+	Truck,
 	UserCircle,
 	Users,
 } from 'lucide-react'
@@ -65,9 +67,19 @@ export function AdminNav() {
 			icon: Receipt,
 		},
 		{
+			label: 'Freight Routes',
+			href: '/admin/freight-routes',
+			icon: Truck,
+		},
+		{
 			label: 'Users',
 			href: '/admin/users',
 			icon: UserCircle,
+		},
+		{
+			label: 'Blacklist',
+			href: '/admin/blacklist',
+			icon: ShieldBan,
 		},
 		{
 			label: 'Activity Log',

@@ -1,0 +1,37 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "markets",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-04-28",
+	"compatibility_flags": ["nodejs_compat"],
+	"routes": [],
+	"logpush": false,
+	"observability": {
+		"enabled": true
+	},
+	"vars": {},
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "MARKETS",
+				"class_name": "Markets"
+			},
+			{
+				"name": "EVE_STATIC_DATA",
+				"class_name": "EveStaticData",
+				"script_name": "eve-static-data"
+			},
+			{
+				"name": "EVE_TOKEN_STORE",
+				"class_name": "EveTokenStore",
+				"script_name": "eve-token-store"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["Markets"]
+		}
+	]
+}

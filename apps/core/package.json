@@ -33,6 +33,7 @@
 		"@repo/eve-token-store": "workspace:*",
 		"@repo/eve-types": "workspace:*",
 		"@repo/fleets": "workspace:*",
+		"@repo/freight": "workspace:*",
 		"@repo/groups": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
 		"@repo/hr": "workspace:*",

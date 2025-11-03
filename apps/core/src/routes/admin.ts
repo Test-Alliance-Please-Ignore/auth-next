@@ -16,10 +16,12 @@ import { createDb } from '../db'
 import { userCharacters, users } from '../db/schema'
 import { validatePagination } from '../lib/validation'
 import { requireAdmin, requireAuth } from '../middleware/session'
+import { SessionService } from '../services/session.service'
 import { UserService } from '../services/user.service'
 import * as discordService from '../services/discord.service'
 
 import type { Discord } from '@repo/discord'
+import type { Hr } from '@repo/hr'
 import type { App } from '../context'
 
 const app = new Hono<App>()
@@ -510,6 +512,303 @@ app.post('/users/:userId/discord/revoke', requireAuth(), requireAdmin(), async (
 			},
 			500
 		)
+	}
+})
+
+/**
+ * POST /admin/blacklist/user
+ * Create a user blacklist entry
+ *
+ * Body: {
+ *   userId: string,
+ *   reason: string,
+ *   metadata?: Record<string, unknown>
+ * }
+ */
+app.post('/blacklist/user', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		const bodySchema = z.object({
+			userId: z.string().uuid(),
+			reason: z.string().min(1),
+			metadata: z.record(z.string(), z.unknown()).optional(),
+		})
+
+		const body = await c.req.json()
+		const validation = bodySchema.safeParse(body)
+
+		if (!validation.success) {
+			return c.json(
+				{
+					error: 'Invalid request body',
+					details: validation.error.format(),
+				},
+				400
+			)
+		}
+
+		const { userId, reason, metadata } = validation.data
+
+		// Call HR DO via RPC
+		const hrStub = getStub<Hr>(c.env.HR, 'default')
+		const entry = await hrStub.createUserBlacklist({
+			userId,
+			reason,
+			blacklistedBy: user.id,
+			isAutoBlacklist: false,
+			metadata,
+		})
+
+		// Invalidate all sessions for the blacklisted user
+		const db = createDb(c.env.DATABASE_URL)
+		const sessionService = new SessionService(db)
+		await sessionService.invalidateAllUserSessions(userId)
+
+		logger.info('[Admin] User blacklisted', {
+			adminUserId: user.id,
+			targetUserId: userId,
+			reason,
+		})
+
+		return c.json(entry)
+	} catch (error) {
+		logger.error('Error creating user blacklist:', error)
+		return c.json({ error: 'Failed to create user blacklist' }, 500)
+	}
+})
+
+/**
+ * POST /admin/blacklist/character
+ * Create a character blacklist entry
+ * Automatically blacklists all users with this character linked
+ *
+ * Body: {
+ *   characterId: string,
+ *   reason: string,
+ *   metadata?: Record<string, unknown>
+ * }
+ */
+app.post('/blacklist/character', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		const bodySchema = z.object({
+			characterId: z.string(),
+			reason: z.string().min(1),
+			metadata: z.record(z.string(), z.unknown()).optional(),
+		})
+
+		const body = await c.req.json()
+		const validation = bodySchema.safeParse(body)
+
+		if (!validation.success) {
+			return c.json(
+				{
+					error: 'Invalid request body',
+					details: validation.error.format(),
+				},
+				400
+			)
+		}
+
+		const { characterId, reason, metadata } = validation.data
+
+		// Call HR DO via RPC
+		const hrStub = getStub<Hr>(c.env.HR, 'default')
+		const entry = await hrStub.createCharacterBlacklist({
+			characterId,
+			reason,
+			blacklistedBy: user.id,
+			metadata,
+		})
+
+		// Find all users with this character and auto-blacklist them
+		const db = createDb(c.env.DATABASE_URL)
+		const usersWithChar = await db.query.userCharacters.findMany({
+			where: eq(userCharacters.characterId, characterId),
+		})
+
+		const sessionService = new SessionService(db)
+		const autoBlacklistedUsers: string[] = []
+
+		for (const char of usersWithChar) {
+			// Auto-blacklist each user
+			await hrStub.createUserBlacklist({
+				userId: char.userId,
+				reason: `Auto-blacklisted: linked to blacklisted character ${characterId}`,
+				blacklistedBy: user.id,
+				triggeredBy: entry.id,
+				isAutoBlacklist: true,
+			})
+
+			// Invalidate all sessions
+			await sessionService.invalidateAllUserSessions(char.userId)
+			autoBlacklistedUsers.push(char.userId)
+		}
+
+		logger.info('[Admin] Character blacklisted', {
+			adminUserId: user.id,
+			characterId,
+			reason,
+			autoBlacklistedUserCount: autoBlacklistedUsers.length,
+		})
+
+		return c.json({
+			entry,
+			autoBlacklistedUsers,
+			autoBlacklistedCount: autoBlacklistedUsers.length,
+		})
+	} catch (error) {
+		logger.error('Error creating character blacklist:', error)
+		return c.json({ error: 'Failed to create character blacklist' }, 500)
+	}
+})
+
+/**
+ * GET /admin/blacklist
+ * List all blacklist entries with filters and pagination
+ *
+ * Query params:
+ * - targetType?: 'user' | 'character' - Filter by target type
+ * - isAutoBlacklist?: boolean - Filter by auto-blacklist status
+ * - limit?: number - Results per page (default 50)
+ * - offset?: number - Pagination offset (default 0)
+ */
+app.get('/blacklist', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		// Validate pagination parameters
+		const pagination = validatePagination(c.req.query('limit'), c.req.query('offset'))
+		if (!pagination.success) {
+			return c.json({ error: pagination.error }, pagination.status)
+		}
+
+		const targetType = c.req.query('targetType') as 'user' | 'character' | undefined
+		const isAutoBlacklistParam = c.req.query('isAutoBlacklist')
+		const isAutoBlacklist =
+			isAutoBlacklistParam === 'true' ? true : isAutoBlacklistParam === 'false' ? false : undefined
+
+		// Call HR DO via RPC
+		const hrStub = getStub<Hr>(c.env.HR, 'default')
+		const result = await hrStub.getAllBlacklists({
+			targetType,
+			isAutoBlacklist,
+			limit: pagination.data.limit,
+			offset: pagination.data.offset,
+		})
+
+		return c.json(result)
+	} catch (error) {
+		logger.error('Error fetching blacklists:', error)
+		return c.json({ error: 'Failed to fetch blacklists' }, 500)
+	}
+})
+
+/**
+ * GET /admin/blacklist/user/:userId
+ * Get all blacklist entries for a specific user
+ */
+app.get('/blacklist/user/:userId', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	const userId = c.req.param('userId')
+
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	// Validate UUID format
+	const uuidSchema = z.string().uuid()
+	const validation = uuidSchema.safeParse(userId)
+
+	if (!validation.success) {
+		return c.json({ error: 'Invalid user ID format' }, 400)
+	}
+
+	try {
+		// Call HR DO via RPC
+		const hrStub = getStub<Hr>(c.env.HR, 'default')
+		const entries = await hrStub.getBlacklistsForUser(userId)
+
+		return c.json(entries)
+	} catch (error) {
+		logger.error('Error fetching user blacklists:', error)
+		return c.json({ error: 'Failed to fetch user blacklists' }, 500)
+	}
+})
+
+/**
+ * GET /admin/blacklist/character/:characterId
+ * Get all blacklist entries for a specific character
+ */
+app.get('/blacklist/character/:characterId', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	const characterId = c.req.param('characterId')
+
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		// Call HR DO via RPC
+		const hrStub = getStub<Hr>(c.env.HR, 'default')
+		const entries = await hrStub.getBlacklistsForCharacter(characterId)
+
+		return c.json(entries)
+	} catch (error) {
+		logger.error('Error fetching character blacklists:', error)
+		return c.json({ error: 'Failed to fetch character blacklists' }, 500)
+	}
+})
+
+/**
+ * DELETE /admin/blacklist/:id
+ * Remove a blacklist entry
+ * IMPORTANT: Removing a character blacklist does NOT remove user blacklists it triggered
+ */
+app.delete('/blacklist/:id', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	const blacklistId = c.req.param('id')
+
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	// Validate UUID format
+	const uuidSchema = z.string().uuid()
+	const validation = uuidSchema.safeParse(blacklistId)
+
+	if (!validation.success) {
+		return c.json({ error: 'Invalid blacklist ID format' }, 400)
+	}
+
+	try {
+		// Call HR DO via RPC
+		const hrStub = getStub<Hr>(c.env.HR, 'default')
+		await hrStub.removeBlacklistEntry(blacklistId)
+
+		logger.info('[Admin] Blacklist entry removed', {
+			adminUserId: user.id,
+			blacklistId,
+		})
+
+		return c.json({ success: true })
+	} catch (error) {
+		logger.error('Error removing blacklist entry:', error)
+		return c.json({ error: 'Failed to remove blacklist entry' }, 500)
 	}
 })
 

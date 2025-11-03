@@ -64,6 +64,11 @@
 				"script_name": "fleets"
 			},
 			{
+				"name": "FREIGHT",
+				"class_name": "Freight",
+				"script_name": "freight"
+			},
+			{
 				"name": "HR",
 				"class_name": "Hr",
 				"script_name": "hr"

@@ -629,6 +629,51 @@ export interface AdminActivityLogFilters {
 	pageSize?: number
 }
 
+/**
+ * Admin Blacklist Management API Types
+ */
+
+export type BlacklistTargetType = 'user' | 'character'
+
+export interface BlacklistEntry {
+	id: string
+	targetType: BlacklistTargetType
+	userId: string | null
+	characterId: string | null
+	reason: string
+	blacklistedBy: string
+	triggeredBy: string | null
+	isAutoBlacklist: boolean
+	metadata: Record<string, unknown> | null
+	createdAt: string
+}
+
+export interface CreateUserBlacklistRequest {
+	userId: string
+	reason: string
+	metadata?: Record<string, unknown>
+}
+
+export interface CreateCharacterBlacklistRequest {
+	characterId: string
+	reason: string
+	metadata?: Record<string, unknown>
+}
+
+export interface BlacklistFilters {
+	targetType?: BlacklistTargetType
+	isAutoBlacklist?: boolean
+	page?: number
+	pageSize?: number
+}
+
+export interface BlacklistResults {
+	entries: BlacklistEntry[]
+	total: number
+	limit: number
+	offset: number
+}
+
 export interface PaginatedResponse<T> {
 	data: T[]
 	pagination: {
@@ -1507,6 +1552,68 @@ export class ApiClient {
 		totalFailed: number
 	}> {
 		return this.post(`/admin/users/${userId}/discord/join-servers`)
+	}
+
+	// ===== Admin Blacklist Management API Methods =====
+
+	async createUserBlacklist(
+		request: CreateUserBlacklistRequest
+	): Promise<BlacklistEntry> {
+		return this.post('/admin/blacklist/user', request)
+	}
+
+	async createCharacterBlacklist(
+		request: CreateCharacterBlacklistRequest
+	): Promise<{
+		entry: BlacklistEntry
+		autoBlacklistedUsers: string[]
+		autoBlacklistedCount: number
+	}> {
+		return this.post('/admin/blacklist/character', request)
+	}
+
+	async getBlacklists(
+		filters?: BlacklistFilters
+	): Promise<PaginatedResponse<BlacklistEntry>> {
+		const params = new URLSearchParams()
+		if (filters?.targetType) params.set('targetType', filters.targetType)
+		if (filters?.isAutoBlacklist !== undefined)
+			params.set('isAutoBlacklist', String(filters.isAutoBlacklist))
+		if (filters?.page !== undefined)
+			params.set('offset', String((filters.page - 1) * (filters.pageSize || 50)))
+		if (filters?.pageSize !== undefined) params.set('limit', String(filters.pageSize))
+
+		const query = params.toString()
+		const response = await this.get<BlacklistResults>(
+			`/admin/blacklist${query ? `?${query}` : ''}`
+		)
+
+		// Transform backend response to frontend pagination format
+		const pageSize = response.limit
+		const currentPage = Math.floor(response.offset / pageSize) + 1
+		const totalPages = Math.ceil(response.total / pageSize)
+
+		return {
+			data: response.entries,
+			pagination: {
+				page: currentPage,
+				pageSize: pageSize,
+				totalCount: response.total,
+				totalPages: totalPages,
+			},
+		}
+	}
+
+	async getUserBlacklists(userId: string): Promise<BlacklistEntry[]> {
+		return this.get(`/admin/blacklist/user/${userId}`)
+	}
+
+	async getCharacterBlacklists(characterId: string): Promise<BlacklistEntry[]> {
+		return this.get(`/admin/blacklist/character/${characterId}`)
+	}
+
+	async removeBlacklistEntry(id: string): Promise<{ success: boolean }> {
+		return this.delete(`/admin/blacklist/${id}`)
 	}
 
 	// ===== Broadcasts API =====

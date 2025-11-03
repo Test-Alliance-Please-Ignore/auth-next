@@ -1,0 +1,21 @@
+{
+	"name": "@repo/freight",
+	"version": "0.1.0",
+	"private": true,
+	"sideEffects": false,
+	"type": "module",
+	"main": "src/index.ts",
+	"scripts": {
+		"check:lint": "run-eslint",
+		"check:types": "run-tsc"
+	},
+	"dependencies": {
+		"zod": "4.1.12",
+		"@repo/eve-types": "workspace:*"
+	},
+	"devDependencies": {
+		"@repo/eslint-config": "workspace:*",
+		"@repo/tools": "workspace:*",
+		"@repo/typescript-config": "workspace:*"
+	}
+}

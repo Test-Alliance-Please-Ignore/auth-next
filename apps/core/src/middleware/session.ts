@@ -5,11 +5,13 @@ import { logger } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
 import { AuthService } from '../services/auth.service'
+import { SessionService } from '../services/session.service'
 import * as discordService from '../services/discord.service'
 import { UserService } from '../services/user.service'
 
 import type { MiddlewareHandler } from 'hono'
 import type { EveTokenStore } from '@repo/eve-token-store'
+import type { Hr } from '@repo/hr'
 import type { App, SessionUser } from '../context'
 
 /**
@@ -66,6 +68,17 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 
 			// Load user profile
 			const userProfile = await userService.getUserProfile(userId)
+
+			// SECURITY: Check if user is blacklisted
+			const hrStub = getStub<Hr>(c.env.HR, 'default')
+			const isBlacklisted = await hrStub.isUserBlacklisted(userId)
+
+			if (isBlacklisted) {
+				// User is blacklisted - invalidate session and reject
+				const sessionService = new SessionService(db)
+				await sessionService.invalidateSession(sessionToken)
+				return c.json({ error: 'Account suspended' }, 403)
+			}
 
 			// Find primary character
 			const primaryChar = userProfile.characters.find((c) => c.is_primary)

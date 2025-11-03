@@ -80,6 +80,83 @@ export type EveSkillId = EveBrandedType<string, 'EveSkillId'>
 export type EveGroupId = EveBrandedType<string, 'EveGroupId'>
 
 /**
+ * Branded type for EVE Online System IDs.
+ * These are typically numeric strings representing unique system identifiers.
+ *
+ * @example
+ * ```typescript
+ * const systemId: EveSystemId = '1234567890' as EveSystemId;
+ * ```
+ */
+export type EveSystemId = EveBrandedType<string, 'EveSystemId'>
+
+/**
+ * Branded type for EVE Online Type IDs.
+ * These are typically numeric strings representing unique type identifiers.
+ *
+ * @example
+ * ```typescript
+ * const typeId: EveTypeId = '1234567890' as EveTypeId;
+ * ```
+ */
+export type EveTypeId = EveBrandedType<string, 'EveTypeId'>
+
+/**
+ * Branded type for EVE Online Region IDs.
+ * These are typically numeric strings representing unique region identifiers.
+ *
+ * @example
+ * ```typescript
+ * const regionId: EveRegionId = '1234567890' as EveRegionId;
+ * ```
+ */
+export type EveRegionId = EveBrandedType<string, 'EveRegionId'>
+
+/**
+ * Branded type for EVE Online Constellation IDs.
+ * These are typically numeric strings representing unique constellation identifiers.
+ *
+ * @example
+ * ```typescript
+ * const constellationId: EveConstellationId = '1234567890' as EveConstellationId;
+ * ```
+ */
+export type EveConstellationId = EveBrandedType<string, 'EveConstellationId'>
+
+/**
+ * Branded type for EVE Online Structure IDs.
+ * These are typically numeric strings representing unique structure identifiers.
+ *
+ * @example
+ * ```typescript
+ * const structureId: EveStructureId = '1234567890' as EveStructureId;
+ * ```
+ */
+export type EveStructureId = EveBrandedType<string, 'EveStructureId'>
+
+/**
+ * Branded type for EVE Online Category IDs.
+ * These are typically numeric strings representing unique category identifiers for items.
+ *
+ * @example
+ * ```typescript
+ * const categoryId: EveCategoryId = '6' as EveCategoryId; // Ship category
+ * ```
+ */
+export type EveCategoryId = EveBrandedType<string, 'EveCategoryId'>
+
+/**
+ * Branded type for EVE Online Market Group IDs.
+ * These are typically numeric strings representing unique market group identifiers.
+ *
+ * @example
+ * ```typescript
+ * const marketGroupId: EveMarketGroupId = '157' as EveMarketGroupId;
+ * ```
+ */
+export type EveMarketGroupId = EveBrandedType<string, 'EveMarketGroupId'>
+
+/**
  * Helper functions for creating specific EVE branded types.
  * These provide the most convenient syntax for common use cases.
  *
@@ -106,6 +183,23 @@ export const createEveCharacterId = (id: string): EveCharacterId => brand(id, 'E
 
 export const createEveAllianceId = (id: string): EveAllianceId => brand(id, 'EveAllianceId')
 
+export const createEveTypeId = (id: string): EveTypeId => brand(id, 'EveTypeId')
+
+export const createEveGroupId = (id: string): EveGroupId => brand(id, 'EveGroupId')
+
+export const createEveCategoryId = (id: string): EveCategoryId => brand(id, 'EveCategoryId')
+
+export const createEveMarketGroupId = (id: string): EveMarketGroupId => brand(id, 'EveMarketGroupId')
+
+export const createEveSystemId = (id: string): EveSystemId => brand(id, 'EveSystemId')
+
+export const createEveRegionId = (id: string): EveRegionId => brand(id, 'EveRegionId')
+
+export const createEveConstellationId = (id: string): EveConstellationId =>
+	brand(id, 'EveConstellationId')
+
+export const createEveStructureId = (id: string): EveStructureId => brand(id, 'EveStructureId')
+
 export const assertEveCharacterId = (id: string | number): string => {
 	if (typeof id !== 'string' && typeof id !== 'number') {
 		throw new Error(`Invalid character ID: ${id} type: ${typeof id}`)
@@ -115,3 +209,6 @@ export const assertEveCharacterId = (id: string | number): string => {
 
 // Re-export skill types and utilities
 export * from './skills'
+
+// Re-export inventory types and utilities
+export * from './inventory'

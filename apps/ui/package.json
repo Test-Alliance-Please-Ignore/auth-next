@@ -25,6 +25,7 @@
 		"@radix-ui/react-switch": "1.2.6",
 		"@repo/bills": "workspace:*",
 		"@repo/eve-types": "workspace:*",
+		"@repo/freight": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
 		"@repo/notifications": "workspace:*",
 		"@tanstack/react-query": "5.90.5",

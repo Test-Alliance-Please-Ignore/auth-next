@@ -32,6 +32,8 @@ export type Env = SharedHonoEnv & {
 	BROADCASTS: DurableObjectNamespace
 	/** Fleets Durable Object binding */
 	FLEETS: DurableObjectNamespace
+	/** Freight Durable Object binding */
+	FREIGHT: DurableObjectNamespace
 	/** HR Durable Object binding */
 	HR: DurableObjectNamespace
 	/** Skills Durable Object binding */

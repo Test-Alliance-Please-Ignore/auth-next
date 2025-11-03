@@ -6,6 +6,7 @@ import {
 	LayoutDashboard,
 	LogOut,
 	Mail,
+	Package,
 	Radio,
 	Settings,
 	Shield,
@@ -96,6 +97,13 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 			icon: Radio,
 		}
 	)
+
+	// Utilities section
+	navItems.push({
+		label: 'Inventory Parser',
+		href: '/inventory-parser',
+		icon: Package,
+	})
 
 	// Add admin nav item if user is admin
 	if (user?.is_admin) {

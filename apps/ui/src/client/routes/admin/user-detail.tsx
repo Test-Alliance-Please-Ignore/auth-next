@@ -6,12 +6,14 @@ import {
 	MessageSquare,
 	RefreshCw,
 	Shield,
+	ShieldBan,
 	ShieldOff,
 	Trash2,
 	XCircle,
 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -27,6 +29,8 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
 	Table,
 	TableBody,
@@ -35,6 +39,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { Textarea } from '@/components/ui/textarea'
 import {
 	useActivityLogs,
 	useAdminUser,
@@ -45,6 +50,7 @@ import {
 	useUpdateDiscordAccess,
 } from '@/hooks/useAdminUsers'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { api } from '@/lib/api'
 import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
@@ -52,6 +58,7 @@ export default function UserDetailPage() {
 	usePageTitle('Admin - User Details')
 	const { userId } = useParams<{ userId: string }>()
 	const navigate = useNavigate()
+	const queryClient = useQueryClient()
 
 	const { data: user, isLoading, refetch } = useAdminUser(userId!)
 	const setUserAdmin = useSetUserAdmin()
@@ -60,12 +67,41 @@ export default function UserDetailPage() {
 	const revokeDiscord = useRevokeDiscordLink()
 	const updateDiscordAccess = useUpdateDiscordAccess()
 
+	// Blacklist data
+	const { data: blacklistEntries = [] } = useQuery({
+		queryKey: ['userBlacklists', userId],
+		queryFn: () => api.getUserBlacklists(userId!),
+		enabled: !!userId,
+	})
+
+	const createBlacklist = useMutation({
+		mutationFn: (data: { userId: string; reason: string }) =>
+			api.createUserBlacklist({ userId: data.userId, reason: data.reason }),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ['userBlacklists', userId] })
+			queryClient.invalidateQueries({ queryKey: ['adminUser', userId] })
+		},
+	})
+
+	const removeBlacklist = useMutation({
+		mutationFn: (id: string) => api.removeBlacklistEntry(id),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ['userBlacklists', userId] })
+			queryClient.invalidateQueries({ queryKey: ['adminUser', userId] })
+		},
+	})
+
+	const activeBlacklist = blacklistEntries.find((entry) => entry.targetType === 'user')
+
 	// Dialog state
 	const [adminDialogOpen, setAdminDialogOpen] = useState(false)
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 	const [primaryDialogOpen, setPrimaryDialogOpen] = useState(false)
 	const [revokeDiscordDialogOpen, setRevokeDiscordDialogOpen] = useState(false)
 	const [updateDiscordDialogOpen, setUpdateDiscordDialogOpen] = useState(false)
+	const [blacklistDialogOpen, setBlacklistDialogOpen] = useState(false)
+	const [removeBlacklistDialogOpen, setRemoveBlacklistDialogOpen] = useState(false)
+	const [blacklistReason, setBlacklistReason] = useState('')
 	const [discordUpdateResults, setDiscordUpdateResults] = useState<{
 		results: Array<{
 			guildId: string
@@ -244,6 +280,54 @@ export default function UserDetailPage() {
 		}
 	}
 
+	const handleBlacklistConfirm = async () => {
+		if (!blacklistReason.trim()) {
+			setMessage({
+				type: 'error',
+				text: 'Please provide a reason for blacklisting',
+			})
+			setTimeout(() => setMessage(null), 3000)
+			return
+		}
+
+		try {
+			await createBlacklist.mutateAsync({ userId: user.id, reason: blacklistReason })
+			setBlacklistDialogOpen(false)
+			setBlacklistReason('')
+			setMessage({
+				type: 'success',
+				text: 'User has been blacklisted successfully',
+			})
+			setTimeout(() => setMessage(null), 3000)
+		} catch (error) {
+			setMessage({
+				type: 'error',
+				text: error instanceof Error ? error.message : 'Failed to blacklist user',
+			})
+			setTimeout(() => setMessage(null), 5000)
+		}
+	}
+
+	const handleRemoveBlacklistConfirm = async () => {
+		if (!activeBlacklist) return
+
+		try {
+			await removeBlacklist.mutateAsync(activeBlacklist.id)
+			setRemoveBlacklistDialogOpen(false)
+			setMessage({
+				type: 'success',
+				text: 'User has been removed from blacklist',
+			})
+			setTimeout(() => setMessage(null), 3000)
+		} catch (error) {
+			setMessage({
+				type: 'error',
+				text: error instanceof Error ? error.message : 'Failed to remove blacklist',
+			})
+			setTimeout(() => setMessage(null), 5000)
+		}
+	}
+
 	const selectedCharacterData = user.characters.find((c) => c.characterId === selectedCharacter)
 
 	return (
@@ -300,6 +384,12 @@ export default function UserDetailPage() {
 											Admin
 										</Badge>
 									)}
+									{activeBlacklist && (
+										<Badge variant="default" className="bg-red-500/20 text-red-500">
+											<ShieldBan className="h-3 w-3 mr-1" />
+											Blacklisted
+										</Badge>
+									)}
 									<Button
 										variant={user.is_admin ? 'destructive' : 'default'}
 										size="sm"
@@ -318,6 +408,27 @@ export default function UserDetailPage() {
 											</>
 										)}
 									</Button>
+									{activeBlacklist ? (
+										<Button
+											variant="outline"
+											size="sm"
+											onClick={() => setRemoveBlacklistDialogOpen(true)}
+											disabled={removeBlacklist.isPending}
+										>
+											<ShieldBan className="h-4 w-4 mr-2" />
+											Remove from Blacklist
+										</Button>
+									) : (
+										<DestructiveButton
+											onClick={() => setBlacklistDialogOpen(true)}
+											disabled={createBlacklist.isPending}
+											size="sm"
+											showIcon={false}
+										>
+											<ShieldBan className="h-4 w-4 mr-2" />
+											Blacklist User
+										</DestructiveButton>
+									)}
 								</div>
 							</div>
 
@@ -433,6 +544,74 @@ export default function UserDetailPage() {
 									</div>
 								</div>
 							</div>
+						</div>
+					</CardContent>
+				</Card>
+			)}
+
+			{/* Blacklist Information */}
+			{activeBlacklist && (
+				<Card variant="interactive" className="border-red-500/20 bg-red-500/5">
+					<CardHeader>
+						<CardTitle className="text-red-500">Blacklist Status</CardTitle>
+						<CardDescription>This user has been blacklisted</CardDescription>
+					</CardHeader>
+					<CardContent>
+						<div className="space-y-4">
+							<div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4">
+								<div className="flex items-start gap-2">
+									<AlertTriangle className="h-5 w-5 text-destructive mt-0.5 flex-shrink-0" />
+									<div className="flex-1">
+										<p className="text-sm font-medium text-destructive mb-2">Reason:</p>
+										<p className="text-sm text-foreground">{activeBlacklist.reason}</p>
+									</div>
+								</div>
+							</div>
+
+							<div className="grid grid-cols-2 gap-4">
+								<div>
+									<div className="text-sm text-muted-foreground">Blacklisted On</div>
+									<div className="text-sm font-medium">{formatDateTime(activeBlacklist.createdAt)}</div>
+									<div className="text-xs text-muted-foreground">
+										{formatRelativeTime(activeBlacklist.createdAt)}
+									</div>
+								</div>
+								<div>
+									<div className="text-sm text-muted-foreground">Type</div>
+									<div className="text-sm font-medium">
+										{activeBlacklist.isAutoBlacklist ? (
+											<Badge variant="default" className="bg-orange-500/20 text-orange-500">
+												Auto-Blacklisted
+											</Badge>
+										) : (
+											<Badge variant="default" className="bg-red-500/20 text-red-500">
+												Manual Blacklist
+											</Badge>
+										)}
+									</div>
+								</div>
+							</div>
+
+							{activeBlacklist.isAutoBlacklist && activeBlacklist.triggeredBy && (
+								<div className="bg-orange-500/10 border border-orange-500/20 rounded-lg p-3">
+									<div className="flex items-start gap-2">
+										<AlertTriangle className="h-4 w-4 text-orange-500 mt-0.5 flex-shrink-0" />
+										<div>
+											<p className="text-sm text-orange-500 font-medium">Automatically Blacklisted</p>
+											<p className="text-sm text-orange-500/90 mt-1">
+												This user was automatically blacklisted due to a character blacklist. View the{' '}
+												<Link
+													to="/admin/blacklist"
+													className="underline hover:text-orange-400"
+												>
+													blacklist page
+												</Link>{' '}
+												for more details.
+											</p>
+										</div>
+									</div>
+								</div>
+							)}
 						</div>
 					</CardContent>
 				</Card>
@@ -819,6 +998,91 @@ export default function UserDetailPage() {
 						>
 							Close
 						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
+			{/* Blacklist User Dialog */}
+			<Dialog open={blacklistDialogOpen} onOpenChange={setBlacklistDialogOpen}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Blacklist User</DialogTitle>
+						<DialogDescription>
+							Blacklist {user.characters.find((c) => c.is_primary)?.characterName || 'this user'}. This
+							will immediately disable all services and prevent login. This action can be reversed.
+						</DialogDescription>
+					</DialogHeader>
+					<div className="space-y-4 py-4">
+						<div className="space-y-2">
+							<Label htmlFor="blacklist-reason">Reason *</Label>
+							<Textarea
+								id="blacklist-reason"
+								placeholder="Enter the reason for blacklisting this user..."
+								value={blacklistReason}
+								onChange={(e) => setBlacklistReason(e.target.value)}
+								rows={4}
+							/>
+							<p className="text-xs text-muted-foreground">
+								This reason will be visible to other administrators.
+							</p>
+						</div>
+					</div>
+					<DialogFooter>
+						<CancelButton
+							onClick={() => {
+								setBlacklistDialogOpen(false)
+								setBlacklistReason('')
+							}}
+							disabled={createBlacklist.isPending}
+						>
+							Cancel
+						</CancelButton>
+						<DestructiveButton
+							onClick={handleBlacklistConfirm}
+							loading={createBlacklist.isPending}
+							loadingText="Blacklisting..."
+							showIcon={false}
+						>
+							<ShieldBan className="mr-2 h-4 w-4" />
+							Blacklist User
+						</DestructiveButton>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
+			{/* Remove Blacklist Dialog */}
+			<Dialog open={removeBlacklistDialogOpen} onOpenChange={setRemoveBlacklistDialogOpen}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Remove from Blacklist</DialogTitle>
+						<DialogDescription>
+							Are you sure you want to remove{' '}
+							{user.characters.find((c) => c.is_primary)?.characterName || 'this user'} from the
+							blacklist? They will regain access to all services immediately.
+						</DialogDescription>
+					</DialogHeader>
+					{activeBlacklist && (
+						<div className="bg-muted/50 border rounded-lg p-3 my-2">
+							<p className="text-sm text-muted-foreground mb-1">Current blacklist reason:</p>
+							<p className="text-sm">{activeBlacklist.reason}</p>
+						</div>
+					)}
+					<DialogFooter>
+						<CancelButton
+							onClick={() => setRemoveBlacklistDialogOpen(false)}
+							disabled={removeBlacklist.isPending}
+						>
+							Cancel
+						</CancelButton>
+						<ConfirmButton
+							onClick={handleRemoveBlacklistConfirm}
+							loading={removeBlacklist.isPending}
+							loadingText="Removing..."
+							showIcon={false}
+						>
+							<ShieldBan className="mr-2 h-4 w-4" />
+							Remove from Blacklist
+						</ConfirmButton>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>

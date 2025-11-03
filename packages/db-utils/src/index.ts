@@ -1,5 +1,5 @@
 export { createDbClient, createDbClientRaw, createDbClientWs, createDbClientRawWs } from './client'
-export { migrate } from './migrate'
+export { migrate, migrateWs } from './migrate'
 export type { MigrationConfig } from './migrate'
 export type { DbClient, DbClientWs, TimestampFields, NewEntity, UpdateEntity } from './types'
 

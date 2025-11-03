@@ -12,11 +12,13 @@ import { requireAuth } from '../middleware/session'
 import { ActivityService } from '../services/activity.service'
 import { AuthService } from '../services/auth.service'
 import { autoRegisterDirectorCorporation } from '../services/corporation-auto-register.service'
+import { SessionService } from '../services/session.service'
 import { UserService } from '../services/user.service'
 
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
+import type { Hr } from '@repo/hr'
 import type { App } from '../context'
 import type { RequestMetadata } from '../types/user'
 
@@ -214,6 +216,30 @@ auth.get('/callback', async (c) => {
 			}
 		}
 
+		// SECURITY: Check if character is blacklisted
+		const hrStub = getStub<Hr>(c.env.HR, 'default')
+		const isCharBlacklisted = await hrStub.isCharacterBlacklisted(characterId)
+
+		if (isCharBlacklisted) {
+			// Character is blacklisted - auto-blacklist the user
+			const charBlacklists = await hrStub.getBlacklistsForCharacter(characterId)
+			if (charBlacklists.length > 0) {
+				await hrStub.createUserBlacklist({
+					userId: stateUserId,
+					reason: `Auto-blacklisted: attempted to link blacklisted character ${characterId}`,
+					blacklistedBy: charBlacklists[0].blacklistedBy,
+					triggeredBy: charBlacklists[0].id,
+					isAutoBlacklist: true,
+				})
+			}
+
+			// Invalidate all sessions for this user
+			const sessionService = new SessionService(db)
+			await sessionService.invalidateAllUserSessions(stateUserId)
+
+			return c.json({ error: 'Account suspended' }, 403)
+		}
+
 		// Link the character
 		const linkedCharacter = await userService.linkCharacter({
 			userId: stateUserId,
@@ -278,6 +304,41 @@ auth.get('/callback', async (c) => {
 	const user = await userService.getUserByCharacterId(characterId)
 
 	if (user) {
+		// SECURITY: Check if character or user is blacklisted
+		const hrStub = getStub<Hr>(c.env.HR, 'default')
+		const isCharBlacklisted = await hrStub.isCharacterBlacklisted(characterId)
+		const isUserBlacklisted = await hrStub.isUserBlacklisted(user.id)
+
+		if (isCharBlacklisted) {
+			// Character is blacklisted - auto-blacklist the user if not already blacklisted
+			if (!isUserBlacklisted) {
+				const charBlacklists = await hrStub.getBlacklistsForCharacter(characterId)
+				if (charBlacklists.length > 0) {
+					await hrStub.createUserBlacklist({
+						userId: user.id,
+						reason: `Auto-blacklisted: attempted login with blacklisted character ${characterId}`,
+						blacklistedBy: charBlacklists[0].blacklistedBy,
+						triggeredBy: charBlacklists[0].id,
+						isAutoBlacklist: true,
+					})
+				}
+			}
+
+			// Invalidate all sessions for this user
+			const sessionService = new SessionService(db)
+			await sessionService.invalidateAllUserSessions(user.id)
+
+			return c.json({ error: 'Account suspended' }, 403)
+		}
+
+		if (isUserBlacklisted) {
+			// User is blacklisted - reject login
+			const sessionService = new SessionService(db)
+			await sessionService.invalidateAllUserSessions(user.id)
+
+			return c.json({ error: 'Account suspended' }, 403)
+		}
+
 		// Existing user - create session
 		const session = await authService.createSession({
 			userId: user.id,
@@ -350,6 +411,15 @@ auth.get('/callback', async (c) => {
 		})
 	}
 
+	// New user - check if character is blacklisted before allowing claim-main
+	const hrStub = getStub<Hr>(c.env.HR, 'default')
+	const isCharBlacklisted = await hrStub.isCharacterBlacklisted(characterId)
+
+	if (isCharBlacklisted) {
+		// Character is blacklisted - prevent new user creation
+		return c.json({ error: 'Account suspended' }, 403)
+	}
+
 	// New user - return character info for claim-main flow
 	return c.json({
 		requiresClaimMain: true,
@@ -389,6 +459,15 @@ auth.post('/claim-main', async (c) => {
 
 	if (!tokenInfo) {
 		return c.json({ error: 'Character not authenticated. Please login first.' }, 400)
+	}
+
+	// SECURITY: Check if character is blacklisted before creating user
+	const hrStub = getStub<Hr>(c.env.HR, 'default')
+	const isCharBlacklisted = await hrStub.isCharacterBlacklisted(tokenInfo.characterId)
+
+	if (isCharBlacklisted) {
+		// Character is blacklisted - prevent user creation
+		return c.json({ error: 'Account suspended' }, 403)
 	}
 
 	// Create user with verified data from token store (not from client)
@@ -500,6 +579,30 @@ auth.post('/link-character', requireAuth(), async (c) => {
 			{ error: 'Character not authenticated. Please complete character flow first.' },
 			400
 		)
+	}
+
+	// SECURITY: Check if character is blacklisted
+	const hrStub = getStub<Hr>(c.env.HR, 'default')
+	const isCharBlacklisted = await hrStub.isCharacterBlacklisted(tokenInfo.characterId)
+
+	if (isCharBlacklisted) {
+		// Character is blacklisted - auto-blacklist the user
+		const charBlacklists = await hrStub.getBlacklistsForCharacter(tokenInfo.characterId)
+		if (charBlacklists.length > 0) {
+			await hrStub.createUserBlacklist({
+				userId: user.id,
+				reason: `Auto-blacklisted: attempted to link blacklisted character ${tokenInfo.characterId}`,
+				blacklistedBy: charBlacklists[0].blacklistedBy,
+				triggeredBy: charBlacklists[0].id,
+				isAutoBlacklist: true,
+			})
+		}
+
+		// Invalidate all sessions for this user
+		const sessionService = new SessionService(db)
+		await sessionService.invalidateAllUserSessions(user.id)
+
+		return c.json({ error: 'Account suspended' }, 403)
 	}
 
 	// Link character with verified data from token store (not from client)

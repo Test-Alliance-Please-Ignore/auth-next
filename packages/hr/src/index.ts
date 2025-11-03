@@ -31,6 +31,11 @@ export type HrNotePriority = 'low' | 'normal' | 'high' | 'critical'
 export type HrRoleType = 'hr_admin' | 'hr_reviewer' | 'hr_viewer'
 
 /**
+ * Blacklist target types
+ */
+export type BlacklistTargetType = 'user' | 'character'
+
+/**
  * Application data transfer object
  */
 export interface Application {
@@ -121,6 +126,66 @@ export interface HrRole {
 	isActive: boolean
 	createdAt: Date
 	updatedAt: Date
+}
+
+/**
+ * Blacklist entry data transfer object
+ */
+export interface BlacklistEntry {
+	id: string
+	targetType: BlacklistTargetType
+	userId: string | null
+	characterId: string | null
+	reason: string
+	blacklistedBy: string
+	triggeredBy: string | null
+	isAutoBlacklist: boolean
+	metadata: Record<string, unknown> | null
+	createdAt: Date
+}
+
+/**
+ * Parameters for creating a user blacklist
+ */
+export interface CreateUserBlacklistParams {
+	userId: string
+	reason: string
+	blacklistedBy: string
+	triggeredBy?: string
+	isAutoBlacklist?: boolean
+	metadata?: Record<string, unknown>
+}
+
+/**
+ * Parameters for creating a character blacklist
+ */
+export interface CreateCharacterBlacklistParams {
+	characterId: string
+	reason: string
+	blacklistedBy: string
+	metadata?: Record<string, unknown>
+}
+
+/**
+ * Filters for listing blacklists
+ */
+export interface BlacklistFilters {
+	targetType?: BlacklistTargetType
+	isAutoBlacklist?: boolean
+	userId?: string
+	characterId?: string
+	limit?: number
+	offset?: number
+}
+
+/**
+ * Paginated blacklist results
+ */
+export interface BlacklistResults {
+	entries: BlacklistEntry[]
+	total: number
+	limit: number
+	offset: number
 }
 
 /**
@@ -415,4 +480,89 @@ export interface Hr extends DurableObject {
 	 * @returns Whether the user has the required permission
 	 */
 	checkPermission(userId: string, corporationId: string, requiredRole: HrRoleType): Promise<boolean>
+
+	// ==================== Blacklist Methods ====================
+
+	/**
+	 * Check if a user is blacklisted
+	 * Fast lookup - used on every auth request
+	 * @param userId - User ID to check
+	 * @returns Whether the user is blacklisted
+	 */
+	isUserBlacklisted(userId: string): Promise<boolean>
+
+	/**
+	 * Check if a character is blacklisted
+	 * Fast lookup - used on login and character linking
+	 * @param characterId - Character ID to check
+	 * @returns Whether the character is blacklisted
+	 */
+	isCharacterBlacklisted(characterId: string): Promise<boolean>
+
+	/**
+	 * Bulk check if multiple characters are blacklisted
+	 * Optimized for checking many characters at once (e.g., displaying member lists)
+	 * @param characterIds - Array of character IDs to check
+	 * @returns Object mapping character ID to blacklist status
+	 */
+	checkCharactersBlacklisted(characterIds: string[]): Promise<Record<string, boolean>>
+
+	/**
+	 * Create a user blacklist entry
+	 * Used for both manual blacklists and auto-blacklists triggered by characters
+	 * @param params - Parameters for creating the user blacklist
+	 * @returns The created blacklist entry
+	 */
+	createUserBlacklist(params: CreateUserBlacklistParams): Promise<BlacklistEntry>
+
+	/**
+	 * Create a character blacklist entry
+	 * The Core worker will handle finding users with this character and auto-blacklisting them
+	 * @param params - Parameters for creating the character blacklist
+	 * @returns The created blacklist entry
+	 */
+	createCharacterBlacklist(params: CreateCharacterBlacklistParams): Promise<BlacklistEntry>
+
+	/**
+	 * Remove a blacklist entry
+	 * IMPORTANT: Removing a character blacklist does NOT remove user blacklists it triggered
+	 * @param id - Blacklist entry ID to remove
+	 */
+	removeBlacklistEntry(id: string): Promise<void>
+
+	/**
+	 * Get all blacklist entries for a user (including auto-blacklists)
+	 * @param userId - User ID to get blacklists for
+	 * @returns Array of blacklist entries for the user
+	 */
+	getBlacklistsForUser(userId: string): Promise<BlacklistEntry[]>
+
+	/**
+	 * Get all blacklist entries for a character
+	 * @param characterId - Character ID to get blacklists for
+	 * @returns Array of blacklist entries for the character
+	 */
+	getBlacklistsForCharacter(characterId: string): Promise<BlacklistEntry[]>
+
+	/**
+	 * Get a specific blacklist entry by ID
+	 * @param id - Blacklist entry ID to retrieve
+	 * @returns The blacklist entry or null if not found
+	 */
+	getBlacklistEntry(id: string): Promise<BlacklistEntry | null>
+
+	/**
+	 * Get user blacklists triggered by a character blacklist
+	 * Used to show "N users auto-blacklisted from this character"
+	 * @param characterBlacklistId - Character blacklist entry ID
+	 * @returns Array of user blacklist entries triggered by this character
+	 */
+	getTriggeredBlacklists(characterBlacklistId: string): Promise<BlacklistEntry[]>
+
+	/**
+	 * List all blacklist entries with filters and pagination
+	 * @param filters - Filter criteria and pagination options
+	 * @returns Paginated blacklist results
+	 */
+	getAllBlacklists(filters: BlacklistFilters): Promise<BlacklistResults>
 }

@@ -1,4 +1,4 @@
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, ilike } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { useWorkersLogger } from 'workers-tagged-logger'
@@ -8,8 +8,10 @@ import { withNotFound, withOnError } from '@repo/hono-helpers'
 
 import { createDb } from './db'
 import { schema } from './db/schema'
+import { parseInventoryWithTables } from './utils/inventory-parser'
 
 import type { App } from './context'
+import type { InventoryParseResult } from '@repo/eve-types'
 
 const app = new Hono<App>()
 	.use('*', (c, next) =>
@@ -363,6 +365,96 @@ app.get('/sde/version', async (c) => {
 	}
 
 	return c.json(version)
+})
+
+// Parse inventory text
+app.post('/inventory/parse', async (c) => {
+	const db = c.get('db')
+
+	// Get the request body
+	const body = await c.req.json<{ inventoryText?: string }>().catch(() => null)
+
+	if (!body || !body.inventoryText) {
+		return c.json({ error: 'Missing inventoryText in request body' }, 400)
+	}
+
+	const { inventoryText } = body
+
+	if (typeof inventoryText !== 'string') {
+		return c.json({ error: 'inventoryText must be a string' }, 400)
+	}
+
+	// Limit input size to prevent abuse (max 1MB)
+	if (inventoryText.length > 1024 * 1024) {
+		return c.json({ error: 'Input text too large (max 1MB)' }, 400)
+	}
+
+	try {
+		// Parse the inventory using our utility
+		const result: InventoryParseResult = await parseInventoryWithTables(
+			schema.invTypes,
+			schema.invGroups,
+			schema.invCategories,
+			schema.marketGroups,
+			db,
+			inventoryText
+		)
+
+		// Return the parsed result
+		return c.json(result)
+	} catch (error) {
+		console.error('Error parsing inventory:', error)
+		return c.json(
+			{
+				error: 'Failed to parse inventory',
+				details: error instanceof Error ? error.message : 'Unknown error',
+			},
+			500
+		)
+	}
+})
+
+// Get item types by name (for autocomplete/search)
+app.get('/items/search', async (c) => {
+	const db = c.get('db')
+	const query = c.req.query('q')
+	const limit = parseInt(c.req.query('limit') || '10', 10)
+
+	if (!query || query.length < 2) {
+		return c.json({ error: 'Query must be at least 2 characters' }, 400)
+	}
+
+	if (limit < 1 || limit > 100) {
+		return c.json({ error: 'Limit must be between 1 and 100' }, 400)
+	}
+
+	try {
+		const items = await db
+			.select({
+				typeId: schema.invTypes.typeId,
+				typeName: schema.invTypes.typeName,
+				groupId: schema.invTypes.groupId,
+				groupName: schema.invGroups.groupName,
+				categoryName: schema.invCategories.categoryName,
+				volume: schema.invTypes.volume,
+				marketGroupId: schema.invTypes.marketGroupId,
+			})
+			.from(schema.invTypes)
+			.innerJoin(schema.invGroups, eq(schema.invTypes.groupId, schema.invGroups.groupId))
+			.innerJoin(schema.invCategories, eq(schema.invGroups.categoryId, schema.invCategories.categoryId))
+			.where(
+				and(
+					ilike(schema.invTypes.typeName, `%${query}%`),
+					eq(schema.invTypes.published, true)
+				)
+			)
+			.limit(limit)
+
+		return c.json(items)
+	} catch (error) {
+		console.error('Error searching items:', error)
+		return c.json({ error: 'Failed to search items' }, 500)
+	}
 })
 
 export default app

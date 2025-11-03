@@ -15,6 +15,7 @@ import AdminBillsSchedulesPage from './routes/admin/bills-schedules'
 import AdminBillsTemplatesEditPage from './routes/admin/bills-templates-edit'
 import AdminBillsTemplatesNewPage from './routes/admin/bills-templates-new'
 import AdminBillsTemplatesPage from './routes/admin/bills-templates'
+import AdminBlacklistPage from './routes/admin/blacklist'
 import AdminCategoriesPage from './routes/admin/categories'
 import AdminCorporationDetailPage from './routes/admin/corporation-detail'
 import AdminCorporationsPage from './routes/admin/corporations'
@@ -30,6 +31,9 @@ import AdminUsersPage from './routes/admin/users'
 import AdminBroadcastsPage from './routes/admin/broadcasts'
 import AdminBroadcastTargetsPage from './routes/admin/broadcasts-targets'
 import AdminBroadcastTemplatesPage from './routes/admin/broadcasts-templates'
+import AdminFreightRoutesPage from './routes/admin/freight-routes'
+import AdminFreightRoutesNewPage from './routes/admin/freight-routes-new'
+import AdminFreightRoutesEditPage from './routes/admin/freight-routes-edit'
 import AuthCallbackPage from './routes/auth-callback'
 import BroadcastsPage from './routes/broadcasts'
 import BroadcastsNewPage from './routes/broadcasts-new'
@@ -42,6 +46,7 @@ import GroupDetailPage from './routes/group-detail'
 // User-facing group routes
 import GroupsPage from './routes/groups'
 import InvitationsPage from './routes/invitations'
+import InventoryParserPage from './routes/inventory-parser'
 import LandingPage from './routes/landing'
 import MyGroupsPage from './routes/my-groups'
 
@@ -201,6 +206,9 @@ export default function App() {
 						<Route path="/broadcasts" element={<BroadcastsPage />} />
 						<Route path="/broadcasts/new" element={<BroadcastsNewPage />} />
 
+						{/* Utilities routes */}
+						<Route path="/inventory-parser" element={<InventoryParserPage />} />
+
 						{/* Skill Plans routes (lazy loaded) */}
 						<Route
 							path="/skill-plans"
@@ -281,6 +289,7 @@ export default function App() {
 								</Suspense>
 							}
 						/>
+						<Route path="blacklist" element={<AdminBlacklistPage />} />
 						<Route path="activity-log" element={<AdminActivityLogPage />} />
 
 						{/* Bills routes */}
@@ -299,6 +308,11 @@ export default function App() {
 						<Route path="broadcasts" element={<AdminBroadcastsPage />} />
 						<Route path="broadcasts-targets" element={<AdminBroadcastTargetsPage />} />
 						<Route path="broadcasts-templates" element={<AdminBroadcastTemplatesPage />} />
+
+						{/* Freight routes */}
+						<Route path="freight-routes" element={<AdminFreightRoutesPage />} />
+						<Route path="freight-routes/new" element={<AdminFreightRoutesNewPage />} />
+						<Route path="freight-routes/:id/edit" element={<AdminFreightRoutesEditPage />} />
 					</Route>
 				</Routes>
 			</BrowserRouter>

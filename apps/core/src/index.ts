@@ -16,9 +16,12 @@ import charactersRoutes from './routes/characters'
 import corporationsRoutes from './routes/corporations'
 import discordRoutes from './routes/discord'
 import discordServersRoutes from './routes/discord-servers'
+import esiRoutes from './routes/esi'
 import fleetsRoutes from './routes/fleets'
+import freightRoutes from './routes/freight'
 import groupsRoutes from './routes/groups'
 import hrRoutes from './routes/hr'
+import inventoryRoutes from './routes/inventory'
 import inviteRoutes from './routes/invite'
 import loginRoutes from './routes/login'
 import skillPlansRoutes from './routes/skill-plans'
@@ -96,12 +99,15 @@ const app = new Hono<App>()
 	.route('/api/characters', charactersRoutes)
 	.route('/api/corporations', corporationsRoutes)
 	.route('/api/discord-servers', discordServersRoutes)
+	.route('/api/esi', esiRoutes)
 	.route('/api/skills', skillsRoutes)
 	.route('/api/skill-plans', skillPlansRoutes)
 	.route('/api/discord', discordRoutes)
 	.route('/api/groups', groupsRoutes)
 	.route('/api/broadcasts', broadcastsRoutes)
 	.route('/api/fleets', fleetsRoutes)
+	.route('/api/freight', freightRoutes)
+	.route('/api/inventory', inventoryRoutes)
 	.route('/api/hr', hrRoutes)
 	.route('/api/ws', wsRoutes)
 	// .route('/api/bills', userBillsRoutes) // User bills API (TODO: implement later)

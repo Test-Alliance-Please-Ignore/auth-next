@@ -1,4 +1,4 @@
-import type { DbClient } from '@repo/db-utils'
+import type { DbClientWs } from '@repo/db-utils'
 import type { KVCache } from '@repo/do-utils'
 import type { HonoApp, SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers'
 import type { schema } from './db/schema'
@@ -9,7 +9,7 @@ export type Env = SharedHonoEnv & {
 }
 
 export type Variables = SharedHonoVariables & {
-	db: DbClient<typeof schema>
+	db: DbClientWs<typeof schema>
 	idCache: KVCache<string, string>
 	nameCache: KVCache<string, string>
 }

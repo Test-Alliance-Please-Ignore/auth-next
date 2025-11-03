@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers'
 
 import { createDb } from './db'
 import { ApplicationService } from './services/application.service'
+import { BlacklistService } from './services/blacklist.service'
 import { HrNotesService } from './services/hr-notes.service'
 import { HrRoleService } from './services/hr-role.service'
 import { RecommendationService } from './services/recommendation.service'
@@ -11,6 +12,11 @@ import type {
 	ApplicationDetail,
 	ApplicationFilters,
 	ApplicationStatus,
+	BlacklistEntry,
+	BlacklistFilters,
+	BlacklistResults,
+	CreateCharacterBlacklistParams,
+	CreateUserBlacklistParams,
 	Hr,
 	HrNote,
 	HrNotePriority,
@@ -21,14 +27,7 @@ import type {
 	Recommendation,
 	RecommendationSentiment,
 } from '@repo/hr'
-
-/**
- * Environment bindings for Hr Durable Object
- */
-interface Env {
-	DATABASE_URL: string
-	EVE_CORPORATION_DATA: DurableObjectNamespace
-}
+import type { Env } from './context'
 
 /**
  * Hr Durable Object
@@ -36,12 +35,13 @@ interface Env {
  * Singleton instance that manages all HR functionality for the application.
  * Uses Neon PostgreSQL for data storage and delegates to service classes.
  */
-export class HrDO extends DurableObject implements Hr {
+export class HrDO extends DurableObject<Env> implements Hr {
 	private db: ReturnType<typeof createDb>
 	private applicationService: ApplicationService
 	private recommendationService: RecommendationService
 	private hrNotesService: HrNotesService
 	private hrRoleService: HrRoleService
+	private blacklistService: BlacklistService
 
 	// Cache for corporation roles (in-memory)
 	private roleCache = new Map<string, { data: HrRole[], timestamp: number }>()
@@ -64,6 +64,7 @@ export class HrDO extends DurableObject implements Hr {
 		this.recommendationService = new RecommendationService(this.db)
 		this.hrNotesService = new HrNotesService(this.db)
 		this.hrRoleService = new HrRoleService(this.db)
+		this.blacklistService = new BlacklistService(this.db)
 	}
 
 	// ==================== Application Methods ====================
@@ -387,5 +388,91 @@ export class HrDO extends DurableObject implements Hr {
 		requiredRole: HrRoleType
 	): Promise<boolean> {
 		return await this.hrRoleService.checkPermission(userId, corporationId, requiredRole)
+	}
+
+	// ==================== Blacklist Methods ====================
+
+	/**
+	 * Check if a user is blacklisted
+	 * Fast lookup - used on every auth request
+	 */
+	async isUserBlacklisted(userId: string): Promise<boolean> {
+		return await this.blacklistService.isUserBlacklisted(userId)
+	}
+
+	/**
+	 * Check if a character is blacklisted
+	 * Fast lookup - used on login and character linking
+	 */
+	async isCharacterBlacklisted(characterId: string): Promise<boolean> {
+		return await this.blacklistService.isCharacterBlacklisted(characterId)
+	}
+
+	/**
+	 * Bulk check if multiple characters are blacklisted
+	 * Optimized for checking many characters at once (e.g., displaying member lists)
+	 */
+	async checkCharactersBlacklisted(characterIds: string[]): Promise<Record<string, boolean>> {
+		return await this.blacklistService.checkCharactersBlacklisted(characterIds)
+	}
+
+	/**
+	 * Create a user blacklist entry
+	 * Used for both manual blacklists and auto-blacklists triggered by characters
+	 */
+	async createUserBlacklist(params: CreateUserBlacklistParams): Promise<BlacklistEntry> {
+		return await this.blacklistService.createUserBlacklist(params)
+	}
+
+	/**
+	 * Create a character blacklist entry
+	 * The Core worker will handle finding users with this character and auto-blacklisting them
+	 */
+	async createCharacterBlacklist(params: CreateCharacterBlacklistParams): Promise<BlacklistEntry> {
+		return await this.blacklistService.createCharacterBlacklist(params)
+	}
+
+	/**
+	 * Remove a blacklist entry
+	 * IMPORTANT: Removing a character blacklist does NOT remove user blacklists it triggered
+	 */
+	async removeBlacklistEntry(id: string): Promise<void> {
+		return await this.blacklistService.removeBlacklistEntry(id)
+	}
+
+	/**
+	 * Get all blacklist entries for a user (including auto-blacklists)
+	 */
+	async getBlacklistsForUser(userId: string): Promise<BlacklistEntry[]> {
+		return await this.blacklistService.getBlacklistsForUser(userId)
+	}
+
+	/**
+	 * Get all blacklist entries for a character
+	 */
+	async getBlacklistsForCharacter(characterId: string): Promise<BlacklistEntry[]> {
+		return await this.blacklistService.getBlacklistsForCharacter(characterId)
+	}
+
+	/**
+	 * Get a specific blacklist entry by ID
+	 */
+	async getBlacklistEntry(id: string): Promise<BlacklistEntry | null> {
+		return await this.blacklistService.getBlacklistEntry(id)
+	}
+
+	/**
+	 * Get user blacklists triggered by a character blacklist
+	 * Used to show "N users auto-blacklisted from this character"
+	 */
+	async getTriggeredBlacklists(characterBlacklistId: string): Promise<BlacklistEntry[]> {
+		return await this.blacklistService.getTriggeredBlacklists(characterBlacklistId)
+	}
+
+	/**
+	 * List all blacklist entries with filters and pagination
+	 */
+	async getAllBlacklists(filters: BlacklistFilters): Promise<BlacklistResults> {
+		return await this.blacklistService.getAllBlacklists(filters)
 	}
 }
