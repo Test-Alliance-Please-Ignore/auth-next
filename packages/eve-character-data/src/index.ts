@@ -5,6 +5,8 @@
  * This package allows other workers to interact with the Durable Object via RPC.
  */
 
+import { RpcTarget } from 'cloudflare:workers'
+
 import type { EveAllianceId, EveCharacterId, EveCorporationId } from '@repo/eve-types'
 
 /**
@@ -322,6 +324,25 @@ export interface CharacterMarketOrderData {
 }
 
 /**
+ * Character skill entry from RPC response
+ */
+export interface CharacterSkillEntry {
+	active_skill_level: number
+	skill_id: number
+	skillpoints_in_skill: number
+	trained_skill_level: number
+}
+
+/**
+ * Character skills response from RPC methods
+ */
+export interface CharacterSkillsResponse {
+	skills: Array<CharacterSkillEntry>
+	total_sp: number
+	unallocated_sp?: number
+}
+
+/**
  * Public RPC interface for EveCharacterData Durable Object
  *
  * All public methods defined here will be available to call via RPC
@@ -422,16 +443,7 @@ export interface EveCharacterData {
 	 * @param characterId - EVE character ID
 	 * @returns Character skills data or null if not found
 	 */
-	getSkills(characterId: string): Promise<{
-		skills: Array<{
-			active_skill_level: number
-			skill_id: number
-			skillpoints_in_skill: number
-			trained_skill_level: number
-		}>
-		total_sp: number
-		unallocated_sp?: number
-	} | null>
+	getSkills(characterId: string): Promise<CharacterSkillsResponse | null>
 
 	/**
 	 * Get character skills, fetching from ESI if not found or stale
@@ -439,19 +451,7 @@ export interface EveCharacterData {
 	 * @param maxAge - Maximum age of cached data in milliseconds (default: 1 hour)
 	 * @returns Character skills data or null if unable to fetch
 	 */
-	getOrFetchSkills(
-		characterId: string,
-		maxAge?: number
-	): Promise<{
-		skills: Array<{
-			active_skill_level: number
-			skill_id: number
-			skillpoints_in_skill: number
-			trained_skill_level: number
-		}>
-		total_sp: number
-		unallocated_sp?: number
-	} | null>
+	getOrFetchSkills(characterId: string, maxAge?: number): Promise<CharacterSkillsResponse | null>
 
 	/**
 	 * Get character attributes
@@ -503,6 +503,121 @@ export interface EveCharacterData {
 	 * @returns Array of market orders
 	 */
 	getMarketOrders(characterId: string): Promise<CharacterMarketOrderData[]>
+
+	/**
+	 * Get instance of EveCharacterData Durable Object
+	 * @param characterId - EVE character ID
+	 * @returns Instance of EveCharacterData Durable Object
+	 */
+	getInstance(characterId: string): Promise<EveCharacterDataInstance>
+}
+
+/**
+ * Implementation of EveCharacterDataInstance
+ * Wraps an EveCharacterData instance and automatically provides characterId to all methods
+ */
+export class EveCharacterDataInstance extends RpcTarget {
+	constructor(
+		private characterDataObject: EveCharacterData,
+		private characterId: EveCharacterId | string
+	) {
+		super()
+	}
+
+	async fetchCharacterData(forceRefresh?: boolean): Promise<void> {
+		await this.characterDataObject.fetchCharacterData(this.characterId, forceRefresh)
+	}
+
+	async fetchAuthenticatedData(forceRefresh?: boolean): Promise<void> {
+		await this.characterDataObject.fetchAuthenticatedData(this.characterId, forceRefresh)
+	}
+
+	async fetchWalletJournal(forceRefresh?: boolean): Promise<void> {
+		await this.characterDataObject.fetchWalletJournal(this.characterId, forceRefresh)
+	}
+
+	async fetchMarketTransactions(forceRefresh?: boolean): Promise<void> {
+		await this.characterDataObject.fetchMarketTransactions(this.characterId, forceRefresh)
+	}
+
+	async fetchMarketOrders(forceRefresh?: boolean): Promise<void> {
+		await this.characterDataObject.fetchMarketOrders(this.characterId, forceRefresh)
+	}
+
+	async fetchCorporationRoles(forceRefresh?: boolean): Promise<EsiCharacterRoles | null> {
+		return await this.characterDataObject.fetchCorporationRoles(this.characterId, forceRefresh)
+	}
+
+	async getCharacterInfo(): Promise<CharacterPublicData | null> {
+		return await this.characterDataObject.getCharacterInfo(this.characterId)
+	}
+
+	async getLastUpdated(): Promise<Date | null> {
+		return await this.characterDataObject.getLastUpdated(this.characterId)
+	}
+
+	async getPortrait(): Promise<{
+		characterId: EveCharacterId
+		px64x64?: string
+		px128x128?: string
+		px256x256?: string
+		px512x512?: string
+	} | null> {
+		return await this.characterDataObject.getPortrait(this.characterId)
+	}
+
+	async getCorporationHistory(): Promise<
+		Array<{
+			recordId: string
+			corporationId: EveCorporationId
+			startDate: string
+			isDeleted?: boolean
+		}>
+	> {
+		return await this.characterDataObject.getCorporationHistory(this.characterId)
+	}
+
+	async getSkills(): Promise<CharacterSkillsResponse | null> {
+		return await this.characterDataObject.getSkills(this.characterId)
+	}
+
+	async getOrFetchSkills(maxAge?: number): Promise<CharacterSkillsResponse | null> {
+		return await this.characterDataObject.getOrFetchSkills(this.characterId, maxAge)
+	}
+
+	async getAttributes(): Promise<{
+		intelligence: number
+		perception: number
+		memory: number
+		willpower: number
+		charisma: number
+		accruedRemapCooldownDate?: string
+		bonusRemaps?: number
+		lastRemapDate?: string
+	} | null> {
+		return await this.characterDataObject.getAttributes(this.characterId)
+	}
+
+	async getSensitiveData(): Promise<CharacterSensitiveData | null> {
+		return await this.characterDataObject.getSensitiveData(this.characterId)
+	}
+
+	async getWalletJournal(): Promise<CharacterWalletJournalData[]> {
+		return await this.characterDataObject.getWalletJournal(this.characterId)
+	}
+
+	async getMarketTransactions(): Promise<CharacterMarketTransactionData[]> {
+		return await this.characterDataObject.getMarketTransactions(this.characterId)
+	}
+
+	async getMarketOrders(): Promise<CharacterMarketOrderData[]> {
+		return await this.characterDataObject.getMarketOrders(this.characterId)
+	}
+
+	[Symbol.dispose](): void {
+		// No cleanup needed - this is a thin wrapper around an RPC target
+		// The RPC target lifecycle is managed by Cloudflare Workers
+	}
 }
 
 /**
@@ -543,4 +658,12 @@ export interface CharacterSensitiveData {
 	walletJournal?: CharacterWalletJournalData[]
 	marketTransactions?: CharacterMarketTransactionData[]
 	marketOrders?: CharacterMarketOrderData[]
+}
+
+export async function getCharacterDataStub(
+	namespace: DurableObjectNamespace,
+	characterId: EveCharacterId
+): Promise<EveCharacterDataInstance> {
+	const stub = namespace.getByName(characterId) as unknown as EveCharacterData
+	return stub.getInstance(characterId)
 }

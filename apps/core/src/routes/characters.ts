@@ -244,17 +244,18 @@ app.get('/:characterId', requireAuth(), async (c) => {
 	const isOwner = isActualOwner || isAdmin
 
 	// Get EVE Character Data DO stub
-	const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+	const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, characterId)
+	const eveCharacterData = await eveCharacterDataStub.getInstance(characterId)
 
 	try {
 		// Fetch all public character data pieces
 		let [info, portrait, corporationHistory, skills, attributes, lastUpdated] = await Promise.all([
-			eveCharacterDataStub.getCharacterInfo(characterIdStr),
-			eveCharacterDataStub.getPortrait(characterIdStr),
-			eveCharacterDataStub.getCorporationHistory(characterIdStr),
-			eveCharacterDataStub.getSkills(characterIdStr),
-			eveCharacterDataStub.getAttributes(characterIdStr),
-			eveCharacterDataStub.getLastUpdated(characterIdStr),
+			eveCharacterData.getCharacterInfo(),
+			eveCharacterData.getPortrait(),
+			eveCharacterData.getCorporationHistory(),
+			eveCharacterData.getSkills(),
+			eveCharacterData.getAttributes(),
+			eveCharacterData.getLastUpdated(),
 		])
 
 		// If character not found in database, try to auto-fetch from ESI
@@ -265,13 +266,13 @@ app.get('/:characterId', requireAuth(), async (c) => {
 
 			try {
 				// Fetch public character data from ESI and store in database
-				await eveCharacterDataStub.fetchCharacterData(characterIdStr)
+				await eveCharacterData.fetchCharacterData()
 
 				// Retry fetching from database after auto-fetch
 				const [newInfo, newPortrait, newCorporationHistory] = await Promise.all([
-					eveCharacterDataStub.getCharacterInfo(characterIdStr),
-					eveCharacterDataStub.getPortrait(characterIdStr),
-					eveCharacterDataStub.getCorporationHistory(characterIdStr),
+					eveCharacterData.getCharacterInfo(),
+					eveCharacterData.getPortrait(),
+					eveCharacterData.getCorporationHistory(),
 				])
 
 				if (newInfo) {
@@ -395,7 +396,7 @@ app.get('/:characterId', requireAuth(), async (c) => {
 		if (isOwner) {
 			// Fetch sensitive data from DO (location, wallet, etc.)
 			// These would be fetched via authenticated ESI calls
-			const sensitiveData = await eveCharacterDataStub.getSensitiveData(characterIdStr)
+			const sensitiveData = await eveCharacterData.getSensitiveData()
 
 			if (sensitiveData) {
 				// Enrich skill queue with metadata
@@ -477,7 +478,8 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 	}
 
 	// Get EVE Character Data DO stub
-	const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+	const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, characterId)
+	const eveCharacterData = await eveCharacterDataStub.getInstance(characterId)
 
 	// Get EVE Token Store DO stub for authenticated data
 	const eveTokenStoreStub = c.get('eveTokenStore')
@@ -499,7 +501,7 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 				'type:',
 				typeof characterIdStr
 			)
-			await eveCharacterDataStub.fetchCharacterData(characterIdStr, true)
+			await eveCharacterData.fetchCharacterData(true)
 			logger.info('fetchCharacterData completed successfully')
 		} catch (error) {
 			logger.error('Failed to fetch public character data:', error)
@@ -520,7 +522,7 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 		let hasValidToken = false
 		let authError: string | undefined
 		try {
-			await eveCharacterDataStub.fetchAuthenticatedData(characterIdStr, true)
+			await eveCharacterData.fetchAuthenticatedData(true)
 			hasValidToken = true
 		} catch (error) {
 			// If authenticated data fetch fails, token is likely missing or invalid
@@ -551,7 +553,7 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 		// Get the updated data
 		let lastUpdated: string | null = null
 		try {
-			const lastUpdatedDate = await eveCharacterDataStub.getLastUpdated(characterIdStr)
+			const lastUpdatedDate = await eveCharacterData.getLastUpdated()
 			lastUpdated = lastUpdatedDate ? lastUpdatedDate.toISOString() : null
 		} catch (error) {
 			logger.error('Failed to get last updated timestamp:', error)

@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers'
 
 import { eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
+import { EveCharacterDataInstance } from '@repo/eve-character-data'
 import { createEveAllianceId, createEveCharacterId, createEveCorporationId } from '@repo/eve-types'
 
 import { createDb } from './db'
@@ -28,7 +29,9 @@ import type {
 	CharacterMarketTransactionData,
 	CharacterPortraitData,
 	CharacterPublicData,
+	CharacterSensitiveData,
 	CharacterSkillsData,
+	CharacterSkillsResponse,
 	CharacterWalletJournalData,
 	EsiCharacterAttributes,
 	EsiCharacterPortrait,
@@ -42,7 +45,6 @@ import type {
 	EveCharacterData,
 } from '@repo/eve-character-data'
 import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
-import type { EveCharacterId } from '@repo/eve-types'
 import type { Env } from './context'
 
 /**
@@ -62,6 +64,10 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	) {
 		super(state, env)
 		this.db = createDb(env.DATABASE_URL)
+	}
+
+	async getInstance(characterId: string): Promise<EveCharacterDataInstance> {
+		return new EveCharacterDataInstance(this, createEveCharacterId(characterId))
 	}
 
 	/**
@@ -874,7 +880,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	/**
 	 * Get character skills
 	 */
-	async getSkills(characterId: string) {
+	async getSkills(characterId: string): Promise<CharacterSkillsResponse | null> {
 		const result = await this.db.query.characterSkills.findFirst({
 			where: eq(characterSkills.characterId, characterId),
 		})
@@ -897,7 +903,10 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	 * @param maxAge Maximum age of cached data in milliseconds (default: 1 hour)
 	 * @returns Character skills or null if unable to fetch
 	 */
-	async getOrFetchSkills(characterId: string, maxAge: number = 60 * 60 * 1000) {
+	async getOrFetchSkills(
+		characterId: string,
+		maxAge: number = 60 * 60 * 1000
+	): Promise<CharacterSkillsResponse | null> {
 		// First try to get existing skills
 		const existingSkills = await this.getSkills(characterId)
 
