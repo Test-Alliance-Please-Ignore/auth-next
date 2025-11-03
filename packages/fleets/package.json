@@ -9,13 +9,13 @@
 		"check:lint": "run-eslint",
 		"check:types": "run-tsc"
 	},
+	"dependencies": {
+		"zod": "4.1.12"
+	},
 	"devDependencies": {
 		"@repo/eslint-config": "workspace:*",
 		"@repo/eve-types": "workspace:*",
 		"@repo/tools": "workspace:*",
 		"@repo/typescript-config": "workspace:*"
-	},
-	"dependencies": {
-		"zod": "4.1.12"
 	}
 }

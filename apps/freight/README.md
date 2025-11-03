@@ -46,8 +46,9 @@ The Freight Durable Object is available to this worker via the `FREIGHT` binding
 ### From within this worker:
 
 ```typescript
-import type { Freight } from '@repo/freight'
 import { getStub } from '@repo/do-utils'
+
+import type { Freight } from '@repo/freight'
 
 // Get a stub to the Durable Object
 const stub = getStub<Freight>(c.env.FREIGHT, 'unique-id')

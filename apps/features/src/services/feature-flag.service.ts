@@ -1,4 +1,7 @@
 import { and, eq, like, sql } from '@repo/db-utils'
+
+import { featureFlags } from '../db/schema'
+
 import type { DbClient } from '@repo/db-utils'
 import type {
 	FeatureFlag,
@@ -7,7 +10,6 @@ import type {
 	RegisterFlagOptions,
 	SetFlagOptions,
 } from '@repo/features'
-import { featureFlags } from '../db/schema'
 import type { schema } from '../db/schema'
 
 /**
@@ -27,7 +29,11 @@ export class FeatureFlagService {
 	 * @returns The created feature flag
 	 * @throws Error if flag with same key already exists
 	 */
-	async registerFlag(key: string, value: boolean, options?: RegisterFlagOptions): Promise<FeatureFlag> {
+	async registerFlag(
+		key: string,
+		value: boolean,
+		options?: RegisterFlagOptions
+	): Promise<FeatureFlag> {
 		// Check if flag already exists
 		const existing = await this.db.query.featureFlags.findFirst({
 			where: eq(featureFlags.key, key),
@@ -76,7 +82,7 @@ export class FeatureFlagService {
 	async setFlag(
 		key: string,
 		value: boolean | string | number | unknown,
-		options?: SetFlagOptions,
+		options?: SetFlagOptions
 	): Promise<FeatureFlag> {
 		// Check if flag exists
 		const existing = await this.db.query.featureFlags.findFirst({
@@ -114,7 +120,10 @@ export class FeatureFlagService {
 	 * @param tags - Optional tags to filter by (flag must have ALL specified tags)
 	 * @returns The flag value (null if not found or tags don't match)
 	 */
-	async checkFlag(key: string, tags?: string[]): Promise<boolean | string | number | unknown | null> {
+	async checkFlag(
+		key: string,
+		tags?: string[]
+	): Promise<boolean | string | number | unknown | null> {
 		const flag = await this.getFlag(key)
 
 		if (!flag) {
@@ -196,7 +205,7 @@ export class FeatureFlagService {
 	 */
 	private prepareValueForStorage(
 		value: unknown,
-		valueType: FeatureFlagValueType,
+		valueType: FeatureFlagValueType
 	): { booleanValue: boolean | null; jsonValue: unknown | null } {
 		if (valueType === 'boolean') {
 			return { booleanValue: value as boolean, jsonValue: null }

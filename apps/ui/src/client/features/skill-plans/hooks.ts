@@ -1,25 +1,29 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+
 import { skillPlansApi } from './api'
+
 import type {
-	SkillPlan,
-	CreateSkillPlanRequest,
-	UpdateSkillPlanRequest,
 	AddSkillRequest,
-	UpdateSkillLevelsRequest,
-	CharacterProgress,
-	SkillPlanCategory,
 	AvailableSkill,
-	SkillPlanSkill,
-	PaginationParams,
+	CharacterProgress,
+	CreateSkillPlanRequest,
 	PaginatedResponse,
+	PaginationParams,
+	SkillPlan,
+	SkillPlanCategory,
+	SkillPlanSkill,
+	UpdateSkillLevelsRequest,
+	UpdateSkillPlanRequest,
 } from './types'
 
 // Query key factory
 export const skillPlanKeys = {
 	all: ['skill-plans'] as const,
 	lists: () => [...skillPlanKeys.all, 'list'] as const,
-	list: (filters?: any, pagination?: PaginationParams) => [...skillPlanKeys.lists(), filters, pagination] as const,
-	myPlans: (pagination?: PaginationParams) => [...skillPlanKeys.all, 'my-plans', pagination] as const,
+	list: (filters?: any, pagination?: PaginationParams) =>
+		[...skillPlanKeys.lists(), filters, pagination] as const,
+	myPlans: (pagination?: PaginationParams) =>
+		[...skillPlanKeys.all, 'my-plans', pagination] as const,
 	details: () => [...skillPlanKeys.all, 'detail'] as const,
 	detail: (id: string) => [...skillPlanKeys.details(), id] as const,
 	skills: (planId: string) => [...skillPlanKeys.all, 'skills', planId] as const,
@@ -135,7 +139,14 @@ export function useAddSkillToPlan() {
 export function useBatchAddSkillsToPlan() {
 	const queryClient = useQueryClient()
 
-	return useMutation<any, Error, { planId: string; skills: Array<{ skillId: number; requiredLevel: number; recommendedLevel: number }> }>({
+	return useMutation<
+		any,
+		Error,
+		{
+			planId: string
+			skills: Array<{ skillId: number; requiredLevel: number; recommendedLevel: number }>
+		}
+	>({
 		mutationFn: ({ planId, skills }) => skillPlansApi.batchAddSkillsToPlan(planId, skills),
 		onSuccess: (_, variables) => {
 			// Invalidate plan skills
@@ -189,7 +200,11 @@ export function useSkillPlanCategories() {
 export function useCreateCategory() {
 	const queryClient = useQueryClient()
 
-	return useMutation<SkillPlanCategory, Error, { name: string; description: string; displayOrder?: number }>({
+	return useMutation<
+		SkillPlanCategory,
+		Error,
+		{ name: string; description: string; displayOrder?: number }
+	>({
 		mutationFn: (data) => skillPlansApi.createCategory(data),
 		onSuccess: () => {
 			// Invalidate categories list

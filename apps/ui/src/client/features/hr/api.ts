@@ -63,8 +63,7 @@ export interface CheckHrPermissionResult {
  * HR Role capabilities for UI display
  */
 export const HR_ROLE_DESCRIPTIONS: Record<HrRoleType, string> = {
-	hr_admin:
-		'Full HR system access. Can manage applications, recommendations, notes, and HR roles.',
+	hr_admin: 'Full HR system access. Can manage applications, recommendations, notes, and HR roles.',
 	hr_reviewer:
 		'Can review and process applications. Can add recommendations and notes. Cannot manage HR roles.',
 	hr_viewer: 'Read-only access. Can view applications and recommendations. Cannot make changes.',

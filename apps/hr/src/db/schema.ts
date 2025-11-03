@@ -175,10 +175,7 @@ export const hrNotes = pgTable(
 		index('idx_hr_notes_subject_user_created').on(table.subjectUserId, table.createdAt.desc()),
 		// Character notes lookup
 		// Used for: "show me all notes about this character"
-		index('idx_hr_notes_subject_char_created').on(
-			table.subjectCharacterId,
-			table.createdAt.desc()
-		),
+		index('idx_hr_notes_subject_char_created').on(table.subjectCharacterId, table.createdAt.desc()),
 		// High priority notes dashboard
 		// NOTE: Partial index not supported by Drizzle - create manually if needed
 		// Manual SQL: CREATE INDEX idx_hr_notes_high_priority ON hr_notes(priority, created_at DESC)

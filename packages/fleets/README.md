@@ -7,8 +7,9 @@ Shared types and interfaces for the Fleets Durable Object.
 Import this package in any worker that needs to interact with the Fleets Durable Object:
 
 ```typescript
-import type { Fleets } from '@repo/fleets'
 import { getStub } from '@repo/do-utils'
+
+import type { Fleets } from '@repo/fleets'
 
 // Get a typed stub to the Durable Object
 const stub = getStub<Fleets>(env.FLEETS, 'unique-id')

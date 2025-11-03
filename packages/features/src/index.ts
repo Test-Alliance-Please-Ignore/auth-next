@@ -93,7 +93,11 @@ export interface Features extends DurableObject {
 	 * @returns The updated feature flag
 	 * @throws Error if flag not found
 	 */
-	setFlag(key: string, value: boolean | string | number | unknown, options?: SetFlagOptions): Promise<FeatureFlag>
+	setFlag(
+		key: string,
+		value: boolean | string | number | unknown,
+		options?: SetFlagOptions
+	): Promise<FeatureFlag>
 
 	/**
 	 * Check a feature flag value

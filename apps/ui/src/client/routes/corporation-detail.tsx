@@ -113,12 +113,7 @@ export default function CorporationDetail() {
 			</Breadcrumb>
 
 			{/* Back Button */}
-			<Button
-				variant="ghost"
-				size="sm"
-				onClick={() => navigate('/join')}
-				className="mb-4"
-			>
+			<Button variant="ghost" size="sm" onClick={() => navigate('/join')} className="mb-4">
 				<ArrowLeft className="mr-2 h-4 w-4" />
 				Back to Browse
 			</Button>
@@ -175,9 +170,7 @@ export default function CorporationDetail() {
 			<Card className="bg-primary/5 border-primary/20">
 				<CardHeader>
 					<CardTitle>Ready to Apply?</CardTitle>
-					<CardDescription>
-						Submit your application to join {corporation.name}
-					</CardDescription>
+					<CardDescription>Submit your application to join {corporation.name}</CardDescription>
 				</CardHeader>
 				<CardContent>
 					<ConfirmButton

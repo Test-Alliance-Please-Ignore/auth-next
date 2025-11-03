@@ -1,21 +1,11 @@
+import { Edit2, Plus, Settings, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { Plus, Edit2, Trash2, Settings } from 'lucide-react'
-import { usePageTitle } from '../../../hooks/usePageTitle'
-import { useAuth } from '../../../hooks/useAuth'
-import {
-	useSkillPlanCategories,
-	useCreateCategory,
-	useUpdateCategory,
-	useDeleteCategory,
-} from '../hooks'
-import { CategoryForm } from '../components/category-form'
+
+import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card'
 import { Container } from '../../../components/ui/container'
-import { LoadingPage } from '../../../components/ui/loading'
-import { PageHeader } from '../../../components/ui/page-header'
-import { Section } from '../../../components/ui/section'
 import {
 	Dialog,
 	DialogContent,
@@ -23,6 +13,9 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '../../../components/ui/dialog'
+import { LoadingPage } from '../../../components/ui/loading'
+import { PageHeader } from '../../../components/ui/page-header'
+import { Section } from '../../../components/ui/section'
 import {
 	Table,
 	TableBody,
@@ -31,7 +24,16 @@ import {
 	TableHeader,
 	TableRow,
 } from '../../../components/ui/table'
-import { Badge } from '../../../components/ui/badge'
+import { useAuth } from '../../../hooks/useAuth'
+import { usePageTitle } from '../../../hooks/usePageTitle'
+import { CategoryForm } from '../components/category-form'
+import {
+	useCreateCategory,
+	useDeleteCategory,
+	useSkillPlanCategories,
+	useUpdateCategory,
+} from '../hooks'
+
 import type { SkillPlanCategory } from '../types'
 
 export default function CategoriesManagement() {
@@ -119,9 +121,7 @@ export default function CategoriesManagement() {
 			<Section>
 				{/* Actions bar */}
 				<div className="flex justify-between items-center mb-6">
-					<h2 className="text-xl font-semibold">
-						Categories ({sortedCategories.length})
-					</h2>
+					<h2 className="text-xl font-semibold">Categories ({sortedCategories.length})</h2>
 					<Button onClick={() => setShowCreateDialog(true)}>
 						<Plus className="h-4 w-4 mr-2" />
 						New Category
@@ -196,9 +196,7 @@ export default function CategoriesManagement() {
 				<DialogContent>
 					<DialogHeader>
 						<DialogTitle>Create New Category</DialogTitle>
-						<DialogDescription>
-							Create a new category to organize skill plans.
-						</DialogDescription>
+						<DialogDescription>Create a new category to organize skill plans.</DialogDescription>
 					</DialogHeader>
 					<CategoryForm
 						onSubmit={handleCreateCategory}
@@ -214,9 +212,7 @@ export default function CategoriesManagement() {
 				<DialogContent>
 					<DialogHeader>
 						<DialogTitle>Edit Category</DialogTitle>
-						<DialogDescription>
-							Update the category details.
-						</DialogDescription>
+						<DialogDescription>Update the category details.</DialogDescription>
 					</DialogHeader>
 					{editingCategory && (
 						<CategoryForm

@@ -73,8 +73,10 @@ export default function CharacterDetailPage() {
 
 	if (error || !character) {
 		// Check if it's a 403 Forbidden error
-		const isForbidden = error && typeof error === 'object' && 'status' in error && error.status === 403
-		const isNotFound = error && typeof error === 'object' && 'status' in error && error.status === 404
+		const isForbidden =
+			error && typeof error === 'object' && 'status' in error && error.status === 403
+		const isNotFound =
+			error && typeof error === 'object' && 'status' in error && error.status === 404
 
 		return (
 			<div className="container mx-auto p-8">

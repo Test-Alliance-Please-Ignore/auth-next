@@ -3,19 +3,25 @@ import { useNavigate, useParams } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { CancelButton } from '@/components/ui/cancel-button'
-import { ConfirmButton } from '@/components/ui/confirm-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { ConfirmButton } from '@/components/ui/confirm-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LocationSearch } from '@/components/ui/location-search'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { useFreightRoute, useUpdateFreightRoute } from '@/hooks/useFreightRoutes'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
-import type { EsiLocationSearchResult } from '@/lib/esi-api'
 import type { FreightRouteStatus, UpdateFreightRouteInput } from '@repo/freight'
+import type { EsiLocationSearchResult } from '@/lib/esi-api'
 
 export default function AdminFreightRoutesEditPage() {
 	const { id } = useParams<{ id: string }>()
@@ -222,11 +228,7 @@ export default function AdminFreightRoutesEditPage() {
 						{message && (
 							<Card variant={message.type === 'success' ? 'flat' : 'flat'}>
 								<CardContent className="pt-6">
-									<p
-										className={
-											message.type === 'success' ? 'text-success' : 'text-destructive'
-										}
-									>
+									<p className={message.type === 'success' ? 'text-success' : 'text-destructive'}>
 										{message.text}
 									</p>
 								</CardContent>
@@ -288,9 +290,7 @@ export default function AdminFreightRoutesEditPage() {
 								placeholder="Optional - leave empty for unlimited"
 								className={errors.maxVolume ? 'border-destructive' : ''}
 							/>
-							{errors.maxVolume && (
-								<p className="text-sm text-destructive">{errors.maxVolume}</p>
-							)}
+							{errors.maxVolume && <p className="text-sm text-destructive">{errors.maxVolume}</p>}
 							<p className="text-sm text-muted-foreground">
 								Maximum cargo volume allowed per contract (optional)
 							</p>
@@ -314,7 +314,10 @@ export default function AdminFreightRoutesEditPage() {
 						{/* Status */}
 						<div className="space-y-2">
 							<Label htmlFor="status">Status</Label>
-							<Select value={formData.status} onValueChange={(value) => handleChange('status', value as FreightRouteStatus)}>
+							<Select
+								value={formData.status}
+								onValueChange={(value) => handleChange('status', value as FreightRouteStatus)}
+							>
 								<SelectTrigger id="status">
 									<SelectValue />
 								</SelectTrigger>
@@ -335,11 +338,7 @@ export default function AdminFreightRoutesEditPage() {
 					<CancelButton type="button" onClick={() => navigate('/admin/freight-routes')}>
 						Cancel
 					</CancelButton>
-					<ConfirmButton
-						type="submit"
-						loading={updateRoute.isPending}
-						loadingText="Saving..."
-					>
+					<ConfirmButton type="submit" loading={updateRoute.isPending} loadingText="Saving...">
 						Save Changes
 					</ConfirmButton>
 				</div>

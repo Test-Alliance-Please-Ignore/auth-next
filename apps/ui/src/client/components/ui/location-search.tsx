@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 
+import { useLocationSearch } from '@/hooks/useLocationSearch'
+
 import { Badge } from './badge'
 import { Input } from './input'
 import { Label } from './label'
-
-import { useLocationSearch } from '@/hooks/useLocationSearch'
 
 import type { EsiLocationSearchResult } from '@/lib/esi-api'
 
@@ -122,9 +122,7 @@ export function LocationSearch({
 							{value.systemName} ({value.regionName})
 						</div>
 					</div>
-					<Badge variant={getTypeBadgeVariant(value.type)}>
-						{value.type}
-					</Badge>
+					<Badge variant={getTypeBadgeVariant(value.type)}>{value.type}</Badge>
 					<button
 						type="button"
 						onClick={handleClear}

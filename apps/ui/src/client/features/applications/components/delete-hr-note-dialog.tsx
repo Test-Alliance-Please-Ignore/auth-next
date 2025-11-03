@@ -20,9 +20,9 @@ import {
 } from '@/components/ui/dialog'
 import { useMessage } from '@/hooks/useMessage'
 
-import { HRNoteTypeBadge } from './hr-note-type-badge'
-import { HRNotePriorityBadge } from './hr-note-priority-badge'
 import { useDeleteHRNote } from '../hooks'
+import { HRNotePriorityBadge } from './hr-note-priority-badge'
+import { HRNoteTypeBadge } from './hr-note-type-badge'
 
 import type { HRNote } from '../api'
 
@@ -79,8 +79,7 @@ export function DeleteHRNoteDialog({
 			onOpenChange(false)
 			onSuccess?.()
 		} catch (error) {
-			const message =
-				error instanceof Error ? error.message : 'Failed to delete HR note'
+			const message = error instanceof Error ? error.message : 'Failed to delete HR note'
 			showError(message)
 		}
 	}
@@ -112,16 +111,12 @@ export function DeleteHRNoteDialog({
 					</div>
 
 					<div className="p-4 rounded-lg bg-muted border border-border">
-						<p className="text-sm text-muted-foreground line-clamp-4">
-							{note.noteText}
-						</p>
+						<p className="text-sm text-muted-foreground line-clamp-4">{note.noteText}</p>
 					</div>
 
 					<div className="text-xs text-muted-foreground">
 						<p>Author: {note.authorCharacterName}</p>
-						{note.subjectCharacterName && (
-							<p>Subject: {note.subjectCharacterName}</p>
-						)}
+						{note.subjectCharacterName && <p>Subject: {note.subjectCharacterName}</p>}
 					</div>
 				</div>
 
@@ -129,11 +124,7 @@ export function DeleteHRNoteDialog({
 					<Button variant="outline" onClick={handleCancel} disabled={isPending}>
 						Cancel
 					</Button>
-					<Button
-						variant="destructive"
-						onClick={handleDelete}
-						disabled={isPending}
-					>
+					<Button variant="destructive" onClick={handleDelete} disabled={isPending}>
 						{isPending ? 'Deleting...' : 'Delete Note'}
 					</Button>
 				</DialogFooter>

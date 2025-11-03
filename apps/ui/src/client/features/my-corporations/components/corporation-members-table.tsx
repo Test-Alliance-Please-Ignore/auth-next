@@ -113,7 +113,7 @@ export default function CorporationMembersTable({
 			filtered = filtered.filter(
 				(m) =>
 					m.characterName.toLowerCase().includes(query) ||
-					m.authUserName?.toLowerCase().includes(query) ||
+					m.mainCharacterName?.toLowerCase().includes(query) ||
 					m.locationSystem?.toLowerCase().includes(query)
 			)
 		}
@@ -407,9 +407,7 @@ export default function CorporationMembersTable({
 										<div>
 											<div className="font-medium">{member.characterName}</div>
 											{member.locationSystem && (
-												<div className="text-xs text-muted-foreground">
-													{member.locationSystem}
-												</div>
+												<div className="text-xs text-muted-foreground">{member.locationSystem}</div>
 											)}
 										</div>
 									</div>
@@ -458,9 +456,9 @@ export default function CorporationMembersTable({
 												<CheckCircle className="mr-1 h-3 w-3" />
 												Linked
 											</Badge>
-											{member.authUserName && (
+											{member.mainCharacterName && (
 												<div className="text-xs text-muted-foreground">
-													{member.authUserName}
+													{member.mainCharacterName}
 												</div>
 											)}
 										</div>
@@ -495,17 +493,10 @@ export default function CorporationMembersTable({
 									<div className="text-sm">{formatDate(member.joinDate)}</div>
 								</TableCell>
 								{showActions && (
-									<TableCell
-										className="text-right"
-										onClick={(e) => e.stopPropagation()}
-									>
+									<TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
 										<div className="flex justify-end gap-2">
 											{!member.hasAuthAccount && onLinkAccount && (
-												<Button
-													size="sm"
-													variant="outline"
-													onClick={() => onLinkAccount(member)}
-												>
+												<Button size="sm" variant="outline" onClick={() => onLinkAccount(member)}>
 													<Link2 className="h-3 w-3 mr-1" />
 													Link
 												</Button>
@@ -530,11 +521,7 @@ export default function CorporationMembersTable({
 													Revoke Role
 												</Button>
 											)}
-											<Button
-												size="sm"
-												variant="ghost"
-												onClick={() => onMemberClick?.(member)}
-											>
+											<Button size="sm" variant="ghost" onClick={() => onMemberClick?.(member)}>
 												<ExternalLink className="h-3 w-3" />
 											</Button>
 										</div>

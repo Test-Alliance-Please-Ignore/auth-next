@@ -166,7 +166,7 @@ groups.get('/', requireAuth(), async (c) => {
 					adminUserIds: undefined,
 					ownerName: undefined,
 				}
-		  })
+			})
 
 	// Cache unfiltered/non-search groups list for 60 seconds at edge
 	if (!filters.search && !filters.myGroups) {

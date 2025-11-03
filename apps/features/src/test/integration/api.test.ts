@@ -1,9 +1,12 @@
 import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:test'
 import { describe, expect, it } from 'vitest'
+
 import { getStub } from '@repo/do-utils'
+
+import worker from '../../index'
+
 import type { Features } from '@repo/features'
 import type { Env } from '../../context'
-import worker from '../../index'
 
 // Cast env to have correct types
 const testEnv = env as unknown as Env
@@ -114,7 +117,7 @@ describe('Features Durable Object - Feature Flags', () => {
 		await stub.registerFlag('test.duplicate.enabled', true)
 
 		await expect(stub.registerFlag('test.duplicate.enabled', false)).rejects.toThrow(
-			'already exists',
+			'already exists'
 		)
 	})
 })

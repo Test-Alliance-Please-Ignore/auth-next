@@ -802,23 +802,23 @@ return data
 
 ### Storage Decision Matrix
 
-| Data Type                 | Storage    | Reason                                    |
-| ------------------------- | ---------- | ----------------------------------------- |
-| User accounts, characters | PostgreSQL | Durable, relational, needs joins          |
-| Groups, memberships       | PostgreSQL | Complex relationships, ACLs               |
-| Discord state (per user)  | PostgreSQL | Per-user isolation, relational            |
-| EVE OAuth tokens          | DO SQLite  | Encrypted, low-latency, singleton access  |
-| ESI API cache             | DO SQLite  | Transient, ETag-based, per-DO instance    |
-| EVE Static Data (SDE)     | Workers KV | Globally cacheable, rarely changes        |
-| Group category cache      | Workers KV | Frequently read, rarely written           |
-| Notifications (real-time) | PostgreSQL | Durable, needs ordering, per-user         |
-| Corp data (ESI)           | PostgreSQL | Large datasets, complex queries, per-corp |
-| HR (applications, blacklist) | PostgreSQL | Complex workflows, relational, per-corp |
-| Fleet operations          | PostgreSQL | Real-time coordination, per-user          |
-| Skill plans               | PostgreSQL | Character progression, per-user           |
-| Market data               | PostgreSQL | Trading history, orders, per-user         |
-| Freight contracts         | PostgreSQL | Logistics tracking, per-corp              |
-| Feature flags             | PostgreSQL | Configuration, singleton, global          |
+| Data Type                    | Storage    | Reason                                    |
+| ---------------------------- | ---------- | ----------------------------------------- |
+| User accounts, characters    | PostgreSQL | Durable, relational, needs joins          |
+| Groups, memberships          | PostgreSQL | Complex relationships, ACLs               |
+| Discord state (per user)     | PostgreSQL | Per-user isolation, relational            |
+| EVE OAuth tokens             | DO SQLite  | Encrypted, low-latency, singleton access  |
+| ESI API cache                | DO SQLite  | Transient, ETag-based, per-DO instance    |
+| EVE Static Data (SDE)        | Workers KV | Globally cacheable, rarely changes        |
+| Group category cache         | Workers KV | Frequently read, rarely written           |
+| Notifications (real-time)    | PostgreSQL | Durable, needs ordering, per-user         |
+| Corp data (ESI)              | PostgreSQL | Large datasets, complex queries, per-corp |
+| HR (applications, blacklist) | PostgreSQL | Complex workflows, relational, per-corp   |
+| Fleet operations             | PostgreSQL | Real-time coordination, per-user          |
+| Skill plans                  | PostgreSQL | Character progression, per-user           |
+| Market data                  | PostgreSQL | Trading history, orders, per-user         |
+| Freight contracts            | PostgreSQL | Logistics tracking, per-corp              |
+| Feature flags                | PostgreSQL | Configuration, singleton, global          |
 
 ### Database Isolation Patterns
 
@@ -2006,17 +2006,20 @@ tapi-workers/
 ## Complete Worker Inventory
 
 ### HTTP Workers (4)
+
 1. **core** - Main API gateway, authentication, session management
 2. **eve-token-store** - OAuth callbacks, token management
 3. **eve-static-data** - EVE SDE lookups with KV caching
 4. **ui** - React SPA static asset serving
 
 ### RPC-Only Workers (1)
+
 1. **admin** - Administrative operations, audit logging
 
 ### Durable Object Workers (14)
 
 **Per-User DOs:**
+
 1. **discord** - Discord OAuth and guild management
 2. **groups** - Group/category/membership management
 3. **notifications** - Real-time WebSocket notifications
@@ -2025,6 +2028,7 @@ tapi-workers/
 6. **markets** - Market orders and trading
 
 **Per-Corporation DOs:**
+
 1. **eve-corporation-data** - Corporation data sync with queues
 2. **hr** - Applications, blacklist, roles, recommendations
 3. **bills** - Billing and invoice management
@@ -2032,6 +2036,7 @@ tapi-workers/
 5. **freight** - Freight contracts and logistics
 
 **Singleton DOs:**
+
 1. **eve-character-data** - Character wallet/assets/orders
 2. **features** - Feature flag management
 3. **orchestrator** - Workflow orchestration (Cloudflare Workflows)

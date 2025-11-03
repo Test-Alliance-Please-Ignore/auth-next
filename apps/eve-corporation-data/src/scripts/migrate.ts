@@ -2,7 +2,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { config } from 'dotenv'
 
-import { migrate, createDbClient } from '@repo/db-utils'
+import { createDbClient, migrate } from '@repo/db-utils'
 
 import drizzleConfig from '../../drizzle.config'
 import { schema } from '../db'

@@ -2,15 +2,21 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { CancelButton } from '@/components/ui/cancel-button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmButton } from '@/components/ui/confirm-button'
 import { Container } from '@/components/ui/container'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import {
 	useBroadcastTargets,
@@ -44,10 +50,7 @@ export default function NewBroadcastPage() {
 	const selectedTarget = targets?.find((t) => t.id === selectedTargetId)
 
 	// Fetch templates for the selected target's type and group
-	const { data: templates } = useBroadcastTemplates(
-		selectedTarget?.type,
-		selectedTarget?.groupId
-	)
+	const { data: templates } = useBroadcastTemplates(selectedTarget?.type, selectedTarget?.groupId)
 
 	// Message state
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)

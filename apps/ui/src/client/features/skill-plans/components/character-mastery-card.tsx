@@ -1,9 +1,11 @@
-import { CheckCircle2, AlertCircle, XCircle } from 'lucide-react'
-import { Card } from '@/components/ui/card'
+import { AlertCircle, CheckCircle2, XCircle } from 'lucide-react'
+
 import { MemberAvatar } from '@/components/member-avatar'
+import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import type { CharacterMasteryCardProps, MasteryStatus } from '../types'
 import { cn } from '@/lib/utils'
+
+import type { CharacterMasteryCardProps, MasteryStatus } from '../types'
 
 export function CharacterMasteryCard({
 	characterId,
@@ -120,10 +122,22 @@ export function CharacterMasteryCard({
 					</div>
 
 					{/* Skeleton elements with staggered animation */}
-					<div className="h-5 w-32 bg-primary/40 rounded animate-pulse" style={{ animationDelay: '0.1s' }} />
-					<div className="h-10 w-40 bg-primary/40 rounded-md animate-pulse" style={{ animationDelay: '0.2s' }} />
-					<div className="h-4 w-24 bg-primary/30 rounded animate-pulse" style={{ animationDelay: '0.3s' }} />
-					<div className="h-4 w-28 bg-primary/30 rounded animate-pulse" style={{ animationDelay: '0.4s' }} />
+					<div
+						className="h-5 w-32 bg-primary/40 rounded animate-pulse"
+						style={{ animationDelay: '0.1s' }}
+					/>
+					<div
+						className="h-10 w-40 bg-primary/40 rounded-md animate-pulse"
+						style={{ animationDelay: '0.2s' }}
+					/>
+					<div
+						className="h-4 w-24 bg-primary/30 rounded animate-pulse"
+						style={{ animationDelay: '0.3s' }}
+					/>
+					<div
+						className="h-4 w-28 bg-primary/30 rounded animate-pulse"
+						style={{ animationDelay: '0.4s' }}
+					/>
 
 					{/* Loading text with fade animation */}
 					<div className="text-sm font-medium text-primary mt-2 animate-pulse">
@@ -148,34 +162,32 @@ export function CharacterMasteryCard({
 
 	return (
 		<Card
-			variant={onClick ? "interactive" : "flat"}
-			className={cn("p-4 transition-all", onClick && "cursor-pointer hover:scale-[1.02]")}
+			variant={onClick ? 'interactive' : 'flat'}
+			className={cn('p-4 transition-all', onClick && 'cursor-pointer hover:scale-[1.02]')}
 			onClick={onClick}
 		>
 			<div className="flex flex-col items-center gap-3">
 				{/* Character Avatar */}
-				<MemberAvatar
-					characterId={characterId}
-					characterName={characterName}
-					size="lg"
-				/>
+				<MemberAvatar characterId={characterId} characterName={characterName} size="lg" />
 
 				{/* Character Name */}
 				<h4 className="font-medium text-sm text-center">{characterName}</h4>
 
 				{/* Status Box with Progress Fill */}
-				<div className={cn(
-					"relative overflow-hidden rounded-md border",
-					statusDisplay.boxClass,
-					"min-w-[160px]"
-				)}>
+				<div
+					className={cn(
+						'relative overflow-hidden rounded-md border',
+						statusDisplay.boxClass,
+						'min-w-[160px]'
+					)}
+				>
 					{/* Background for contrast */}
 					<div className="absolute inset-0 bg-background opacity-50" />
 
 					{/* Progress fill */}
 					<div
 						className={cn(
-							"absolute inset-y-0 left-0 transition-all duration-500 ease-out",
+							'absolute inset-y-0 left-0 transition-all duration-500 ease-out',
 							statusDisplay.bgClass
 						)}
 						style={{

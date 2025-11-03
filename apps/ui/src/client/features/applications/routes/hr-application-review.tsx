@@ -11,6 +11,7 @@ import { AlertCircle, ArrowLeft, Briefcase, Lock } from 'lucide-react'
 import { useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 
+import { MemberAvatar } from '@/components/member-avatar'
 import {
 	Breadcrumb,
 	BreadcrumbItem,
@@ -24,10 +25,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { LoadingSpinner } from '@/components/ui/loading'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { MemberAvatar } from '@/components/member-avatar'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
+import { useHrPermissionCheck } from '../../hr/hooks'
 import { AddHRNoteDialog } from '../components/add-hr-note-dialog'
 import { ApplicationActionPanel } from '../components/application-action-panel'
 import { ApplicationStatusBadge } from '../components/application-status-badge'
@@ -36,7 +37,6 @@ import { DeleteHRNoteDialog } from '../components/delete-hr-note-dialog'
 import { HRNotesList } from '../components/hr-notes-list'
 import { RecommendationList } from '../components/recommendation-list'
 import { useApplication, useApplicationActivity, useHRNote, useRecommendations } from '../hooks'
-import { useHrPermissionCheck } from '../../hr/hooks'
 
 // ============================================================================
 // Component
@@ -80,9 +80,7 @@ export default function HrApplicationReview() {
 
 	// Set page title
 	usePageTitle(
-		application
-			? `Review Application - ${application.characterName}`
-			: 'Review Application'
+		application ? `Review Application - ${application.characterName}` : 'Review Application'
 	)
 
 	// Handlers
@@ -138,12 +136,10 @@ export default function HrApplicationReview() {
 				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
 					<CardHeader className="text-center">
 						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
-						<CardTitle className="text-2xl text-red-900 dark:text-red-100">
-							Access Denied
-						</CardTitle>
+						<CardTitle className="text-2xl text-red-900 dark:text-red-100">Access Denied</CardTitle>
 						<CardDescription className="mt-2 text-red-700 dark:text-red-300">
-							You don't have HR permissions for this corporation. Contact an HR Admin to
-							request access.
+							You don't have HR permissions for this corporation. Contact an HR Admin to request
+							access.
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
@@ -191,9 +187,7 @@ export default function HrApplicationReview() {
 					<CardHeader className="text-center">
 						<Briefcase className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
 						<CardTitle>Application Not Found</CardTitle>
-						<CardDescription>
-							This application doesn't exist or has been removed.
-						</CardDescription>
+						<CardDescription>This application doesn't exist or has been removed.</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
 						<Button variant="outline" onClick={handleBackClick}>
@@ -433,9 +427,7 @@ export default function HrApplicationReview() {
 							) : activityLog && activityLog.length > 0 ? (
 								<ApplicationTimeline activityLog={activityLog} showActors={true} />
 							) : (
-								<p className="text-center text-muted-foreground py-8">
-									No activity recorded yet
-								</p>
+								<p className="text-center text-muted-foreground py-8">No activity recorded yet</p>
 							)}
 						</CardContent>
 					</Card>

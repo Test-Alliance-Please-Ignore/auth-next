@@ -139,9 +139,8 @@ export class CoreRpcService {
 
 		// 5. Bulk check blacklist status for all characters
 		const characterIds = chars.map((c) => c.characterId)
-		const blacklistStatuses = characterIds.length > 0
-			? await hrStub.checkCharactersBlacklisted(characterIds)
-			: {}
+		const blacklistStatuses =
+			characterIds.length > 0 ? await hrStub.checkCharactersBlacklisted(characterIds) : {}
 
 		// 6. Build character summaries with token validation and blacklist status
 		const characterSummaries = await Promise.all(
@@ -484,7 +483,11 @@ export class CoreRpcService {
 	 * @param action - Action description
 	 * @param metadata - Additional metadata (stored as JSONB)
 	 */
-	async logUserActivity(userId: string, action: string, metadata?: Record<string, any>): Promise<void> {
+	async logUserActivity(
+		userId: string,
+		action: string,
+		metadata?: Record<string, any>
+	): Promise<void> {
 		const { userActivityLog } = await import('../db/schema')
 
 		await this.db.insert(userActivityLog).values({

@@ -10,8 +10,8 @@
 		"check:types": "run-tsc"
 	},
 	"dependencies": {
-		"zod": "4.1.12",
-		"@repo/eve-types": "workspace:*"
+		"@repo/eve-types": "workspace:*",
+		"zod": "4.1.12"
 	},
 	"devDependencies": {
 		"@repo/eslint-config": "workspace:*",

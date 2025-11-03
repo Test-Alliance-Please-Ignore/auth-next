@@ -1,5 +1,14 @@
 import { formatDistanceToNow } from 'date-fns'
-import { Building2, Plus, RefreshCw, Search, ShieldAlert, ShieldCheck, Trash2, X } from 'lucide-react'
+import {
+	Building2,
+	Plus,
+	RefreshCw,
+	Search,
+	ShieldAlert,
+	ShieldCheck,
+	Trash2,
+	X,
+} from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
@@ -46,7 +55,7 @@ import {
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
-import type { CreateCorporationRequest, CorporationsFilters } from '@/lib/api'
+import type { CorporationsFilters, CreateCorporationRequest } from '@/lib/api'
 
 export default function CorporationsPage() {
 	usePageTitle('Admin - Corporations')
@@ -273,7 +282,10 @@ export default function CorporationsPage() {
 									value={filters.corporationType ?? 'all'}
 									onValueChange={(value) => {
 										setFilters({
-											corporationType: value === 'all' ? undefined : (value as 'member' | 'alt' | 'special' | 'other'),
+											corporationType:
+												value === 'all'
+													? undefined
+													: (value as 'member' | 'alt' | 'special' | 'other'),
 										})
 									}}
 								>

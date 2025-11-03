@@ -10,13 +10,13 @@
 import { formatDistanceToNow } from 'date-fns'
 import { Edit2, Lock, Trash2 } from 'lucide-react'
 
+import { MemberAvatar } from '@/components/member-avatar'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
-import { MemberAvatar } from '@/components/member-avatar'
 import { cn } from '@/lib/utils'
 
-import { HRNoteTypeBadge } from './hr-note-type-badge'
 import { HRNotePriorityBadge } from './hr-note-priority-badge'
+import { HRNoteTypeBadge } from './hr-note-type-badge'
 
 import type { HRNote } from '../api'
 
@@ -146,12 +146,7 @@ export function HRNoteCard({
 				{(canEdit || canDelete) && (
 					<div className="flex items-center gap-2 pt-2 border-t border-border/50">
 						{canEdit && (
-							<Button
-								variant="ghost"
-								size="sm"
-								onClick={() => onEdit?.(note)}
-								className="text-xs"
-							>
+							<Button variant="ghost" size="sm" onClick={() => onEdit?.(note)} className="text-xs">
 								<Edit2 className="h-3.5 w-3.5 mr-1.5" />
 								Edit
 							</Button>

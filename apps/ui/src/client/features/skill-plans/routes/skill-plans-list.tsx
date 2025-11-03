@@ -1,11 +1,7 @@
-import { useState, useMemo } from 'react'
-import { Link } from 'react-router-dom'
 import { Plus, Search, Settings } from 'lucide-react'
-import { usePageTitle } from '../../../hooks/usePageTitle'
-import { useAuth } from '../../../hooks/useAuth'
-import { useSkillPlans, useSkillPlanCategories, useDeleteSkillPlan } from '../hooks'
-import { CategorySectionHeader } from '../components/category-section-header'
-import { SkillPlanCard } from '../components/skill-plan-card'
+import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+
 import { Button } from '../../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card'
 import { Container } from '../../../components/ui/container'
@@ -21,7 +17,13 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from '../../../components/ui/select'
+import { useAuth } from '../../../hooks/useAuth'
+import { usePageTitle } from '../../../hooks/usePageTitle'
+import { CategorySectionHeader } from '../components/category-section-header'
+import { SkillPlanCard } from '../components/skill-plan-card'
+import { useDeleteSkillPlan, useSkillPlanCategories, useSkillPlans } from '../hooks'
 import { groupPlansByCategory } from '../utils/group-by-category'
+
 import type { SkillPlansFilter } from '../types'
 
 export default function SkillPlansList() {
@@ -240,7 +242,10 @@ export default function SkillPlansList() {
 										<CategorySectionHeader name={group.category?.name || 'Uncategorized'} />
 										<div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
 											{group.plans.map((plan) => (
-												<SkillPlanCard key={`${group.category?.id || 'uncategorized'}-${plan.id}`} plan={plan} />
+												<SkillPlanCard
+													key={`${group.category?.id || 'uncategorized'}-${plan.id}`}
+													plan={plan}
+												/>
 											))}
 										</div>
 									</div>

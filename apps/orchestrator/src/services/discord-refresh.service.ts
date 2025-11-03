@@ -88,7 +88,9 @@ export class DiscordRefreshService {
 			} catch (error) {
 				// Token refresh failures may indicate revoked auth
 				logger.error('[DiscordRefresh] Failed to refresh token', { userId, error })
-				result.errors.push(`Token refresh failed: ${error instanceof Error ? error.message : String(error)}`)
+				result.errors.push(
+					`Token refresh failed: ${error instanceof Error ? error.message : String(error)}`
+				)
 				// Don't mark as complete failure yet - check if it's a revocation
 				if (error instanceof Error && error.message.includes('revoked')) {
 					result.authRevoked = true
@@ -120,7 +122,9 @@ export class DiscordRefreshService {
 		} catch (error) {
 			logger.error('[DiscordRefresh] Unexpected error during refresh', { userId, error })
 			result.success = false
-			result.errors.push(`Unexpected error: ${error instanceof Error ? error.message : String(error)}`)
+			result.errors.push(
+				`Unexpected error: ${error instanceof Error ? error.message : String(error)}`
+			)
 			return result
 		}
 	}

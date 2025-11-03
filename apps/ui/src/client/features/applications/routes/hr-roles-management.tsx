@@ -32,18 +32,17 @@ import {
 	GrantHrRoleDialog,
 	HrRoleBadge,
 	RevokeHrRoleDialog,
-	useHrRoles,
 	useGrantHrRole,
+	useHrRoles,
 	useRevokeHrRole,
-	type HrRoleGrant,
-	type GrantHrRoleRequest,
-	type RevokeHrRoleRequest,
 } from '@/features/hr'
 import { useAuth } from '@/hooks/useAuth'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { useCanAccessCorporation, useMyCorporation } from '../../my-corporations/hooks'
+
+import type { GrantHrRoleRequest, HrRoleGrant, RevokeHrRoleRequest } from '@/features/hr'
 import type { CorporationMember } from '../../my-corporations'
 
 /**
@@ -265,7 +264,9 @@ export default function HrRolesManagement() {
 												/>
 												<div>
 													<div className="font-medium">{role.characterName}</div>
-													<div className="text-xs text-muted-foreground">ID: {role.characterId}</div>
+													<div className="text-xs text-muted-foreground">
+														ID: {role.characterId}
+													</div>
 												</div>
 											</div>
 										</TableCell>

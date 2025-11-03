@@ -14,8 +14,21 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from '@/components/ui/select'
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from '@/components/ui/table'
 import {
 	useBroadcasts,
 	useBroadcastTargets,
@@ -185,7 +198,9 @@ export default function AdminBroadcastsPage() {
 												</Badge>
 											</TableCell>
 											<TableCell>{group?.name || broadcast.groupId}</TableCell>
-											<TableCell className="font-medium">{target?.name || broadcast.targetId}</TableCell>
+											<TableCell className="font-medium">
+												{target?.name || broadcast.targetId}
+											</TableCell>
 											<TableCell>{template?.name || 'Custom'}</TableCell>
 											<TableCell className="text-sm text-muted-foreground">
 												{broadcast.createdBy}

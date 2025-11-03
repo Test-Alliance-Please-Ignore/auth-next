@@ -1,6 +1,7 @@
 import { GraduationCap } from 'lucide-react'
 import { useState } from 'react'
-import { formatSkillWithLevel, formatSkillPoints, toRomanLevel } from '@repo/eve-types'
+
+import { formatSkillPoints, formatSkillWithLevel, toRomanLevel } from '@repo/eve-types'
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
@@ -63,14 +64,14 @@ export function CharacterSkills({ skills, showProgress = false }: CharacterSkill
 		const categoryName = skill.skillCategory || 'Uncategorized'
 
 		// Find or create category
-		let category = acc.find(c => c.categoryName === categoryName)
+		let category = acc.find((c) => c.categoryName === categoryName)
 		if (!category) {
 			category = {
 				categoryName,
 				totalSP: 0,
 				trainedSkills: 0,
 				totalSkills: 0,
-				skills: []
+				skills: [],
 			}
 			acc.push(category)
 		}
@@ -90,7 +91,6 @@ export function CharacterSkills({ skills, showProgress = false }: CharacterSkill
 	categorizedSkills.sort(
 		(a: CategorizedSkillGroup, b: CategorizedSkillGroup) => b.totalSP - a.totalSP
 	)
-
 
 	return (
 		<Card>
@@ -119,7 +119,10 @@ export function CharacterSkills({ skills, showProgress = false }: CharacterSkill
 						className="space-y-2"
 					>
 						{categorizedSkills.map((category: CategorizedSkillGroup) => (
-							<AccordionItem key={category.categoryName} value={`category-${category.categoryName}`}>
+							<AccordionItem
+								key={category.categoryName}
+								value={`category-${category.categoryName}`}
+							>
 								<AccordionTrigger className="hover:no-underline">
 									<div className="flex items-center justify-between w-full pr-2">
 										<div className="flex items-center gap-2">
@@ -171,7 +174,8 @@ export function CharacterSkills({ skills, showProgress = false }: CharacterSkill
 																</p>
 																{skill.trainedSkillLevel < 5 && (
 																	<p className="text-xs text-muted-foreground">
-																		{Math.round(progress)}% to Level {toRomanLevel(skill.trainedSkillLevel + 1)}
+																		{Math.round(progress)}% to Level{' '}
+																		{toRomanLevel(skill.trainedSkillLevel + 1)}
 																	</p>
 																)}
 															</div>

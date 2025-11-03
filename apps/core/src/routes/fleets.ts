@@ -6,9 +6,9 @@ import { logger } from '@repo/hono-helpers'
 
 import { requireAuth } from '../middleware/session'
 
-import type { Fleets, CharacterForFleetJoin } from '@repo/fleets'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
+import type { CharacterForFleetJoin, Fleets } from '@repo/fleets'
 import type { App } from '../context'
 
 const app = new Hono<App>()
@@ -25,9 +25,7 @@ app.get('/character/:characterId', async (c) => {
 	const user = c.get('user')!
 
 	// Verify user owns the character
-	const ownsCharacter = user.characters.some(
-		char => char.characterId.toString() === characterId
-	)
+	const ownsCharacter = user.characters.some((char) => char.characterId.toString() === characterId)
 
 	if (!ownsCharacter) {
 		return c.json({ error: 'You do not own this character' }, 403)
@@ -43,7 +41,7 @@ app.get('/character/:characterId', async (c) => {
 		logger.info('Fetching fleet information for character', {
 			characterId,
 			eveCharacterId,
-			userId: user.id
+			userId: user.id,
 		})
 
 		const fleetInfo = await fleetsStub.getCharacterFleetInformation(eveCharacterId)
@@ -55,7 +53,7 @@ app.get('/character/:characterId', async (c) => {
 			fleetBossId: fleetInfo.fleet_boss_id,
 			role: fleetInfo.role,
 			squadId: fleetInfo.squad_id,
-			wingId: fleetInfo.wing_id
+			wingId: fleetInfo.wing_id,
 		})
 
 		// Check if character is in a fleet (fleet_id !== '0' means in fleet)
@@ -67,7 +65,7 @@ app.get('/character/:characterId', async (c) => {
 			isInFleet,
 			fleetId: fleetInfo.fleet_id,
 			fleetBossId: fleetInfo.fleet_boss_id,
-			isBoss: fleetInfo.fleet_boss_id === characterId
+			isBoss: fleetInfo.fleet_boss_id === characterId,
 		})
 
 		return c.json({
@@ -83,8 +81,8 @@ app.get('/character/:characterId', async (c) => {
 				rawFleetId: fleetInfo.fleet_id,
 				isValidFleet: fleetInfo.fleet_id !== '0',
 				isBoss: String(fleetInfo.fleet_boss_id) === characterId,
-				timestamp: new Date().toISOString()
-			}
+				timestamp: new Date().toISOString(),
+			},
 		})
 	} catch (error) {
 		logger.error('Failed to get character fleet info:', error)
@@ -114,7 +112,7 @@ app.post('/quick-join/create', async (c) => {
 
 	// Verify user owns the character
 	const ownsCharacter = user.characters.some(
-		char => char.characterId.toString() === body.characterId
+		(char) => char.characterId.toString() === body.characterId
 	)
 
 	if (!ownsCharacter) {
@@ -169,26 +167,28 @@ app.get('/quick-join/:token/validate', async (c) => {
 				const characterId = char.characterId.toString()
 
 				// Check if character has valid ESI token
-				const hasValidToken = await tokenStore.getAccessToken(characterId) !== null
+				const hasValidToken = (await tokenStore.getAccessToken(characterId)) !== null
 
 				// Get character info and portrait
 				const [info, portrait] = await Promise.all([
 					characterData.getCharacterInfo(characterId),
-					characterData.getPortrait(characterId)
+					characterData.getPortrait(characterId),
 				])
 
 				return {
 					characterId,
 					characterName: info?.name || char.characterName,
-					portrait: portrait ? {
-						px64x64: portrait.px64x64 || '',
-						px128x128: portrait.px128x128 || '',
-						px256x256: portrait.px256x256 || '',
-						px512x512: portrait.px512x512 || ''
-					} : undefined,
+					portrait: portrait
+						? {
+								px64x64: portrait.px64x64 || '',
+								px128x128: portrait.px128x128 || '',
+								px256x256: portrait.px256x256 || '',
+								px512x512: portrait.px512x512 || '',
+							}
+						: undefined,
 					hasValidToken,
 					corporationId: info?.corporationId?.toString(),
-					corporationName: undefined // Will be resolved if needed
+					corporationName: undefined, // Will be resolved if needed
 				}
 			})
 		)
@@ -198,7 +198,7 @@ app.get('/quick-join/:token/validate', async (c) => {
 
 		return c.json({
 			...validation,
-			characters: charactersForJoin
+			characters: charactersForJoin,
 		})
 	} catch (error) {
 		logger.error('Failed to validate quick join token:', error)
@@ -221,7 +221,7 @@ app.post('/quick-join/:token/join', async (c) => {
 
 	// Verify user owns the character
 	const ownsCharacter = user.characters.some(
-		char => char.characterId.toString() === body.characterId
+		(char) => char.characterId.toString() === body.characterId
 	)
 
 	if (!ownsCharacter) {
@@ -285,7 +285,7 @@ app.delete('/quick-join/:token', async (c) => {
 	// Verify user owns the character if specified
 	if (c.req.query('characterId')) {
 		const ownsCharacter = user.characters.some(
-			char => char.characterId.toString() === characterId
+			(char) => char.characterId.toString() === characterId
 		)
 
 		if (!ownsCharacter) {

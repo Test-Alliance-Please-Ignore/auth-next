@@ -3,9 +3,9 @@ import { getStub } from '@repo/do-utils'
 
 import { hrRoles } from '../db/schema'
 
-import type { HrRole, HrRoleType, RoleFilters } from '@repo/hr'
 import type { DbClient } from '@repo/db-utils'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
+import type { HrRole, HrRoleType, RoleFilters } from '@repo/hr'
 import type * as schema from '../db/schema'
 
 /**
@@ -47,9 +47,7 @@ export class HrRoleService {
 		const isMember = members.some((m) => m.characterId === characterId)
 
 		if (!isMember) {
-			throw new Error(
-				`Character ${characterId} is not a member of corporation ${corporationId}`
-			)
+			throw new Error(`Character ${characterId} is not a member of corporation ${corporationId}`)
 		}
 
 		// Check for existing active role

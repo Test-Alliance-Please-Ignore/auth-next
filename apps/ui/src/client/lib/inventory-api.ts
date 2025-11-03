@@ -3,9 +3,9 @@
  * Extends the main API client with inventory parsing methods
  */
 
-import type { InventoryParseResult } from '@repo/eve-types'
-
 import { ApiClient } from './api'
+
+import type { InventoryParseResult } from '@repo/eve-types'
 
 const INVENTORY_API_BASE = '/inventory'
 

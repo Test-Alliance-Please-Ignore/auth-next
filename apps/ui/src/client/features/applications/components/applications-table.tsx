@@ -11,6 +11,7 @@ import * as React from 'react'
 import { useCallback, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
+import { MemberAvatar } from '@/components/member-avatar'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -22,7 +23,6 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
-import { MemberAvatar } from '@/components/member-avatar'
 import { cn } from '@/lib/utils'
 
 import { ApplicationCard } from './application-card'
@@ -125,9 +125,7 @@ export function ApplicationsTable({
 		// Filter by search term
 		if (debouncedSearchTerm) {
 			const searchLower = debouncedSearchTerm.toLowerCase()
-			filtered = filtered.filter((app) =>
-				app.characterName.toLowerCase().includes(searchLower)
-			)
+			filtered = filtered.filter((app) => app.characterName.toLowerCase().includes(searchLower))
 		}
 
 		return filtered
@@ -258,15 +256,9 @@ export function ApplicationsTable({
 		return (
 			<Card>
 				<CardContent className="py-12 text-center">
-					<p className="text-muted-foreground">
-						No applications match your search or filters
-					</p>
+					<p className="text-muted-foreground">No applications match your search or filters</p>
 					{searchTerm && (
-						<Button
-							variant="outline"
-							className="mt-4"
-							onClick={() => handleSearchChange('')}
-						>
+						<Button variant="outline" className="mt-4" onClick={() => handleSearchChange('')}>
 							Clear Search
 						</Button>
 					)}

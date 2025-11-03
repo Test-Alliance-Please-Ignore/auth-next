@@ -189,7 +189,8 @@ export const createEveGroupId = (id: string): EveGroupId => brand(id, 'EveGroupI
 
 export const createEveCategoryId = (id: string): EveCategoryId => brand(id, 'EveCategoryId')
 
-export const createEveMarketGroupId = (id: string): EveMarketGroupId => brand(id, 'EveMarketGroupId')
+export const createEveMarketGroupId = (id: string): EveMarketGroupId =>
+	brand(id, 'EveMarketGroupId')
 
 export const createEveSystemId = (id: string): EveSystemId => brand(id, 'EveSystemId')
 

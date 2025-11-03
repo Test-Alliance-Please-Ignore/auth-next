@@ -73,8 +73,7 @@ export function DeleteRecommendationDialog({
 			onOpenChange(false)
 			onSuccess?.()
 		} catch (error) {
-			const message =
-				error instanceof Error ? error.message : 'Failed to delete recommendation'
+			const message = error instanceof Error ? error.message : 'Failed to delete recommendation'
 			showError(message)
 		}
 	}
@@ -101,18 +100,12 @@ export function DeleteRecommendationDialog({
 				{recommendation && (
 					<div className="rounded-lg border bg-muted/50 p-4">
 						<p className="text-sm text-muted-foreground mb-1">Your recommendation:</p>
-						<p className="text-sm italic line-clamp-3">
-							"{recommendation.recommendationText}"
-						</p>
+						<p className="text-sm italic line-clamp-3">"{recommendation.recommendationText}"</p>
 					</div>
 				)}
 
 				<DialogFooter>
-					<Button
-						variant="outline"
-						onClick={handleCancel}
-						disabled={deleteMutation.isPending}
-					>
+					<Button variant="outline" onClick={handleCancel} disabled={deleteMutation.isPending}>
 						Cancel
 					</Button>
 					<DestructiveButton

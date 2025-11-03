@@ -46,8 +46,9 @@ The Fleets Durable Object is available to this worker via the `FLEETS` binding.
 ### From within this worker:
 
 ```typescript
-import type { Fleets } from '@repo/fleets'
 import { getStub } from '@repo/do-utils'
+
+import type { Fleets } from '@repo/fleets'
 
 // Get a stub to the Durable Object
 const stub = getStub<Fleets>(c.env.FLEETS, 'unique-id')

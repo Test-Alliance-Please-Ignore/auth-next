@@ -1,13 +1,9 @@
 import { and, desc, eq, inArray, or, sql } from '@repo/db-utils'
 
-import {
-	applications,
-	applicationActivityLog,
-	applicationRecommendations,
-} from '../db/schema'
+import { applicationActivityLog, applicationRecommendations, applications } from '../db/schema'
 
-import type { Application, ApplicationDetail, ApplicationFilters } from '@repo/hr'
 import type { DbClient } from '@repo/db-utils'
+import type { Application, ApplicationDetail, ApplicationFilters } from '@repo/hr'
 import type * as schema from '../db/schema'
 
 /**
@@ -46,14 +42,7 @@ export class ApplicationService {
 		}
 
 		// Log the submission
-		await this.logActivity(
-			application.id,
-			userId,
-			characterId,
-			'submitted',
-			null,
-			'pending'
-		)
+		await this.logActivity(application.id, userId, characterId, 'submitted', null, 'pending')
 
 		return this.mapToApplication(application)
 	}
@@ -141,7 +130,7 @@ export class ApplicationService {
 		})
 
 		// Get activity log if requested (HR only)
-		let activityLog: typeof applicationActivityLog.$inferSelect[] | undefined
+		let activityLog: (typeof applicationActivityLog.$inferSelect)[] | undefined
 
 		if (includeActivityLog && (hasHrAccess || isAdmin)) {
 			activityLog = await this.db.query.applicationActivityLog.findMany({
@@ -333,9 +322,7 @@ export class ApplicationService {
 	/**
 	 * Map database record to Application DTO
 	 */
-	private mapToApplication(
-		app: typeof applications.$inferSelect
-	): Application {
+	private mapToApplication(app: typeof applications.$inferSelect): Application {
 		return {
 			id: app.id,
 			corporationId: app.corporationId,

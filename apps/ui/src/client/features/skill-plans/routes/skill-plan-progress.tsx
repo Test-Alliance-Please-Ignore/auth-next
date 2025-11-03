@@ -1,18 +1,17 @@
-import { useParams, Navigate, Link, useSearchParams } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
-import { usePageTitle } from '../../../hooks/usePageTitle'
-import { useSkillPlan } from '../hooks'
-import { ProgressChecker } from '../components/progress-checker'
+import { Link, Navigate, useParams } from 'react-router-dom'
+
 import { Button } from '../../../components/ui/button'
 import { Container } from '../../../components/ui/container'
 import { LoadingPage } from '../../../components/ui/loading'
 import { PageHeader } from '../../../components/ui/page-header'
 import { Section } from '../../../components/ui/section'
+import { usePageTitle } from '../../../hooks/usePageTitle'
+import { ProgressChecker } from '../components/progress-checker'
+import { useSkillPlan } from '../hooks'
 
 export default function SkillPlanProgress() {
-	const { id } = useParams<{ id: string }>()
-	const [searchParams] = useSearchParams()
-	const characterId = searchParams.get('characterId') || undefined
+	const { id, characterId } = useParams<{ id: string; characterId?: string }>()
 	const { data: plan, isLoading } = useSkillPlan(id!)
 
 	usePageTitle(plan ? `Progress: ${plan.name}` : 'Skill Plan Progress')
@@ -40,9 +39,7 @@ export default function SkillPlanProgress() {
 				</Button>
 			</div>
 
-			<PageHeader
-				title={`Progress Check: ${plan.name}`}
-			/>
+			<PageHeader title={`Progress Check: ${plan.name}`} />
 
 			<Section className="mt-8">
 				<ProgressChecker planId={id} planName={plan.name} initialCharacterId={characterId} />

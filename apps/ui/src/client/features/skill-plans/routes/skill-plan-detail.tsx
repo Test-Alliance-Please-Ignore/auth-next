@@ -1,16 +1,7 @@
+import { ArrowLeft, Edit2, Globe, Lock, Plus, Trash2, User, Users } from 'lucide-react'
 import { useState } from 'react'
-import { useParams, useNavigate, Navigate, Link } from 'react-router-dom'
-import { Edit2, Trash2, Plus, Globe, Lock, User, Users, ArrowLeft } from 'lucide-react'
-import { usePageTitle } from '../../../hooks/usePageTitle'
-import { useAuth } from '../../../hooks/useAuth'
-import {
-	useSkillPlan,
-	usePlanSkills,
-	useDeleteSkillPlan,
-	useUpdateSkillPlan,
-	useRemoveSkillFromPlan,
-	useUpdateSkillLevels
-} from '../hooks'
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
+
 import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card'
@@ -18,7 +9,6 @@ import { Container } from '../../../components/ui/container'
 import { LoadingPage } from '../../../components/ui/loading'
 import { PageHeader } from '../../../components/ui/page-header'
 import { Section } from '../../../components/ui/section'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../components/ui/tabs'
 import {
 	Table,
 	TableBody,
@@ -27,7 +17,18 @@ import {
 	TableHeader,
 	TableRow,
 } from '../../../components/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../components/ui/tabs'
+import { useAuth } from '../../../hooks/useAuth'
+import { usePageTitle } from '../../../hooks/usePageTitle'
 import { CharacterMasteryGrid } from '../components/character-mastery-grid'
+import {
+	useDeleteSkillPlan,
+	usePlanSkills,
+	useRemoveSkillFromPlan,
+	useSkillPlan,
+	useUpdateSkillLevels,
+	useUpdateSkillPlan,
+} from '../hooks'
 
 export default function SkillPlanDetail() {
 	const { id } = useParams<{ id: string }>()
@@ -71,7 +72,7 @@ export default function SkillPlanDetail() {
 		try {
 			await updatePlan.mutateAsync({
 				planId: id,
-				data: { isPublished: !plan.isPublished }
+				data: { isPublished: !plan.isPublished },
 			})
 		} catch (error) {
 			console.error('Failed to update plan:', error)
@@ -99,10 +100,7 @@ export default function SkillPlanDetail() {
 
 	return (
 		<Container>
-			<PageHeader
-				title={plan.name}
-				description={plan.description}
-			/>
+			<PageHeader title={plan.name} description={plan.description} />
 
 			{/* Plan status badge */}
 			<div className="mb-6">
@@ -124,10 +122,7 @@ export default function SkillPlanDetail() {
 					<div className="flex gap-2">
 						{plan.canModify && (
 							<>
-								<Button
-									variant="outline"
-									onClick={handlePublish}
-								>
+								<Button variant="outline" onClick={handlePublish}>
 									{plan.isPublished ? (
 										<>
 											<Lock className="h-4 w-4 mr-2" />
@@ -149,10 +144,7 @@ export default function SkillPlanDetail() {
 							</>
 						)}
 						{plan.canDelete && (
-							<Button
-								variant="destructive"
-								onClick={handleDelete}
-							>
+							<Button variant="destructive" onClick={handleDelete}>
 								<Trash2 className="h-4 w-4 mr-2" />
 								Delete
 							</Button>
@@ -206,15 +198,11 @@ export default function SkillPlanDetail() {
 								<div className="grid grid-cols-2 gap-4 pt-4 border-t">
 									<div>
 										<p className="text-sm text-muted-foreground">Created</p>
-										<p className="font-medium">
-											{new Date(plan.createdAt).toLocaleDateString()}
-										</p>
+										<p className="font-medium">{new Date(plan.createdAt).toLocaleDateString()}</p>
 									</div>
 									<div>
 										<p className="text-sm text-muted-foreground">Last Updated</p>
-										<p className="font-medium">
-											{new Date(plan.updatedAt).toLocaleDateString()}
-										</p>
+										<p className="font-medium">{new Date(plan.updatedAt).toLocaleDateString()}</p>
 									</div>
 								</div>
 							</CardContent>
@@ -227,7 +215,7 @@ export default function SkillPlanDetail() {
 								title="Your Characters' Readiness"
 								onCharacterClick={(characterId) => {
 									// Navigate to detailed progress view for the character
-									navigate(`/skill-plans/${id}/progress?characterId=${characterId}`)
+									navigate(`/skill-plans/${id}/progress/character/${characterId}`)
 								}}
 							/>
 						)}

@@ -121,17 +121,17 @@ export default function AdminBillsTemplatesEditPage() {
 			newErrors.titleTemplate = 'Title template is required'
 		}
 
-		if (formData.daysUntilDue && (isNaN(Number(formData.daysUntilDue)) || Number(formData.daysUntilDue) < 0)) {
+		if (
+			formData.daysUntilDue &&
+			(isNaN(Number(formData.daysUntilDue)) || Number(formData.daysUntilDue) < 0)
+		) {
 			newErrors.daysUntilDue = 'Days until due must be a non-negative number'
 		}
 
 		if (formData.enableLateFee) {
 			if (!formData.lateFeeAmount.trim()) {
 				newErrors.lateFeeAmount = 'Late fee amount is required when late fees are enabled'
-			} else if (
-				isNaN(Number(formData.lateFeeAmount)) ||
-				Number(formData.lateFeeAmount) < 0
-			) {
+			} else if (isNaN(Number(formData.lateFeeAmount)) || Number(formData.lateFeeAmount) < 0) {
 				newErrors.lateFeeAmount = 'Late fee amount must be a non-negative number'
 			}
 		}
@@ -336,9 +336,7 @@ export default function AdminBillsTemplatesEditPage() {
 				<Card variant="interactive" className="mb-6">
 					<CardHeader>
 						<CardTitle>Template Content</CardTitle>
-						<CardDescription>
-							Define the bill structure using placeholders
-						</CardDescription>
+						<CardDescription>Define the bill structure using placeholders</CardDescription>
 					</CardHeader>
 					<CardContent className="space-y-4">
 						<div className="rounded-md bg-muted/50 p-4 border border-border">
@@ -346,21 +344,13 @@ export default function AdminBillsTemplatesEditPage() {
 								<Info className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
 								<div className="text-sm text-muted-foreground">
 									<p className="font-medium mb-1">Available Placeholders:</p>
-									<code className="text-xs bg-background px-1 py-0.5 rounded">
-										{'{amount}'}
-									</code>
+									<code className="text-xs bg-background px-1 py-0.5 rounded">{'{amount}'}</code>
 									{' - Bill amount, '}
-									<code className="text-xs bg-background px-1 py-0.5 rounded">
-										{'{payerName}'}
-									</code>
+									<code className="text-xs bg-background px-1 py-0.5 rounded">{'{payerName}'}</code>
 									{' - Payer name, '}
-									<code className="text-xs bg-background px-1 py-0.5 rounded">
-										{'{payerType}'}
-									</code>
+									<code className="text-xs bg-background px-1 py-0.5 rounded">{'{payerType}'}</code>
 									{' - Payer type, '}
-									<code className="text-xs bg-background px-1 py-0.5 rounded">
-										{'{dueDate}'}
-									</code>
+									<code className="text-xs bg-background px-1 py-0.5 rounded">{'{dueDate}'}</code>
 									{' - Due date'}
 								</div>
 							</div>
@@ -439,9 +429,7 @@ export default function AdminBillsTemplatesEditPage() {
 				<Card variant="interactive" className="mb-6">
 					<CardHeader>
 						<CardTitle>Late Fee Settings</CardTitle>
-						<CardDescription>
-							Configure default penalties for late payment
-						</CardDescription>
+						<CardDescription>Configure default penalties for late payment</CardDescription>
 					</CardHeader>
 					<CardContent className="space-y-4">
 						<div className="flex items-center justify-between">
@@ -470,36 +458,27 @@ export default function AdminBillsTemplatesEditPage() {
 											<SelectValue />
 										</SelectTrigger>
 										<SelectContent>
-											<SelectItem value="static">
-												Static Amount (Fixed ISK)
-											</SelectItem>
-											<SelectItem value="percentage">
-												Percentage (% of bill amount)
-											</SelectItem>
+											<SelectItem value="static">Static Amount (Fixed ISK)</SelectItem>
+											<SelectItem value="percentage">Percentage (% of bill amount)</SelectItem>
 										</SelectContent>
 									</Select>
 								</div>
 
 								<div className="space-y-2">
 									<Label htmlFor="lateFeeAmount">
-										Late Fee Amount{' '}
-										{formData.lateFeeType === 'percentage' ? '(%)' : '(ISK)'}{' '}
+										Late Fee Amount {formData.lateFeeType === 'percentage' ? '(%)' : '(ISK)'}{' '}
 										<span className="text-destructive">*</span>
 									</Label>
 									<Input
 										id="lateFeeAmount"
 										type="text"
-										placeholder={
-											formData.lateFeeType === 'percentage' ? '5' : '10000'
-										}
+										placeholder={formData.lateFeeType === 'percentage' ? '5' : '10000'}
 										value={formData.lateFeeAmount}
 										onChange={(e) => handleChange('lateFeeAmount', e.target.value)}
 										className={errors.lateFeeAmount ? 'border-destructive' : ''}
 									/>
 									{errors.lateFeeAmount && (
-										<p className="text-sm text-destructive">
-											{errors.lateFeeAmount}
-										</p>
+										<p className="text-sm text-destructive">{errors.lateFeeAmount}</p>
 									)}
 								</div>
 
@@ -507,24 +486,16 @@ export default function AdminBillsTemplatesEditPage() {
 									<Label htmlFor="lateFeeCompounding">Late Fee Compounding</Label>
 									<Select
 										value={formData.lateFeeCompounding}
-										onValueChange={(value) =>
-											handleChange('lateFeeCompounding', value)
-										}
+										onValueChange={(value) => handleChange('lateFeeCompounding', value)}
 									>
 										<SelectTrigger id="lateFeeCompounding">
 											<SelectValue />
 										</SelectTrigger>
 										<SelectContent>
 											<SelectItem value="none">None (One-time fee)</SelectItem>
-											<SelectItem value="daily">
-												Daily (Compounds every day)
-											</SelectItem>
-											<SelectItem value="weekly">
-												Weekly (Compounds every week)
-											</SelectItem>
-											<SelectItem value="monthly">
-												Monthly (Compounds every month)
-											</SelectItem>
+											<SelectItem value="daily">Daily (Compounds every day)</SelectItem>
+											<SelectItem value="weekly">Weekly (Compounds every week)</SelectItem>
+											<SelectItem value="monthly">Monthly (Compounds every month)</SelectItem>
 										</SelectContent>
 									</Select>
 									<p className="text-sm text-muted-foreground">
@@ -552,9 +523,7 @@ export default function AdminBillsTemplatesEditPage() {
 				<DialogContent>
 					<DialogHeader>
 						<DialogTitle>Clone Template</DialogTitle>
-						<DialogDescription>
-							Create a copy of this template with a new name
-						</DialogDescription>
+						<DialogDescription>Create a copy of this template with a new name</DialogDescription>
 					</DialogHeader>
 					<div className="space-y-4 py-4">
 						<div className="space-y-2">
@@ -569,10 +538,7 @@ export default function AdminBillsTemplatesEditPage() {
 					</div>
 					<DialogFooter>
 						<CancelButton onClick={() => setCloneDialogOpen(false)}>Cancel</CancelButton>
-						<Button
-							onClick={handleClone}
-							disabled={!cloneName.trim() || cloneTemplate.isPending}
-						>
+						<Button onClick={handleClone} disabled={!cloneName.trim() || cloneTemplate.isPending}>
 							{cloneTemplate.isPending ? 'Cloning...' : 'Clone Template'}
 						</Button>
 					</DialogFooter>
@@ -585,8 +551,7 @@ export default function AdminBillsTemplatesEditPage() {
 					<DialogHeader>
 						<DialogTitle>Delete Template</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to delete "{template.name}"? This action cannot be
-							undone.
+							Are you sure you want to delete "{template.name}"? This action cannot be undone.
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>

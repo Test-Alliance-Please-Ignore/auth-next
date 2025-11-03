@@ -46,8 +46,9 @@ The Markets Durable Object is available to this worker via the `MARKETS` binding
 ### From within this worker:
 
 ```typescript
-import type { Markets } from '@repo/markets'
 import { getStub } from '@repo/do-utils'
+
+import type { Markets } from '@repo/markets'
 
 // Get a stub to the Durable Object
 const stub = getStub<Markets>(c.env.MARKETS, 'unique-id')

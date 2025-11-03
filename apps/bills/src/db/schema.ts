@@ -1,11 +1,17 @@
-import { index, pgEnum, pgTable, text, timestamp, integer, boolean } from 'drizzle-orm/pg-core'
 import { relations } from 'drizzle-orm'
+import { boolean, index, integer, pgEnum, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
 
 /**
  * Enums for bill system
  */
 
-export const billStatusEnum = pgEnum('bill_status', ['draft', 'issued', 'paid', 'cancelled', 'overdue'])
+export const billStatusEnum = pgEnum('bill_status', [
+	'draft',
+	'issued',
+	'paid',
+	'cancelled',
+	'overdue',
+])
 
 export const entityTypeEnum = pgEnum('entity_type', ['character', 'corporation', 'group'])
 

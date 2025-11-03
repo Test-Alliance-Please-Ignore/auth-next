@@ -48,9 +48,10 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 			icon: LayoutDashboard,
 		},
 		{
-			label: 'Groups',
-			href: '/groups',
-			icon: Users,
+			label: 'Invitations',
+			href: '/invitations',
+			icon: Mail,
+			badge: pendingCount > 0 ? pendingCount : undefined,
 		},
 		{
 			label: 'My Groups',
@@ -58,9 +59,19 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 			icon: FolderHeart,
 		},
 		{
+			label: 'Groups',
+			href: '/groups',
+			icon: Users,
+		},
+		{
 			label: 'Skill Plans',
 			href: '/skill-plans',
 			icon: BookOpen,
+		},
+		{
+			label: 'My Applications',
+			href: '/my-applications',
+			icon: FileText,
 		},
 		{
 			label: 'Join Corporations',
@@ -69,34 +80,12 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 		},
 	]
 
-	// Add Manage Corporation nav item if user has CEO/director access
-	if (corporationAccess?.hasAccess) {
-		navItems.push({
-			label: 'Manage Corporation',
-			href: '/my-corporations',
-			icon: Settings,
-		})
-	}
-
 	// Continue with other nav items
-	navItems.push(
-		{
-			label: 'My Applications',
-			href: '/my-applications',
-			icon: FileText,
-		},
-		{
-			label: 'Invitations',
-			href: '/invitations',
-			icon: Mail,
-			badge: pendingCount > 0 ? pendingCount : undefined,
-		},
-		{
-			label: 'Broadcasts',
-			href: '/broadcasts',
-			icon: Radio,
-		}
-	)
+	navItems.push({
+		label: 'Broadcasts',
+		href: '/broadcasts',
+		icon: Radio,
+	})
 
 	// Utilities section
 	navItems.push({
@@ -105,7 +94,16 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 		icon: Package,
 	})
 
-	// Add admin nav item if user is admin
+	// Add Manage Corporation nav item if user has CEO/director access (second from bottom)
+	if (corporationAccess?.hasAccess) {
+		navItems.push({
+			label: 'Manage Corporation',
+			href: '/my-corporations',
+			icon: Settings,
+		})
+	}
+
+	// Add admin nav item if user is admin (bottom)
 	if (user?.is_admin) {
 		navItems.push({
 			label: 'Admin',

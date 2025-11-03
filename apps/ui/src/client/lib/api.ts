@@ -1259,7 +1259,8 @@ export class ApiClient {
 
 	async getCorporations(filters?: CorporationsFilters): Promise<ManagedCorporation[]> {
 		const params = new URLSearchParams()
-		if (filters?.corporationType !== undefined) params.set('corporationType', filters.corporationType)
+		if (filters?.corporationType !== undefined)
+			params.set('corporationType', filters.corporationType)
 
 		const query = params.toString()
 		return this.get(`/corporations${query ? `?${query}` : ''}`)
@@ -1520,7 +1521,10 @@ export class ApiClient {
 		return this.delete(`/admin/users/${userId}/characters/${characterId}`)
 	}
 
-	async setUserPrimaryCharacter(userId: string, characterId: string): Promise<{ success: boolean }> {
+	async setUserPrimaryCharacter(
+		userId: string,
+		characterId: string
+	): Promise<{ success: boolean }> {
 		return this.post(`/admin/users/${userId}/characters/${characterId}/set-primary`)
 	}
 
@@ -1557,9 +1561,7 @@ export class ApiClient {
 
 	// ===== Admin Blacklist Management API Methods =====
 
-	async createUserBlacklist(
-		request: CreateUserBlacklistRequest
-	): Promise<{
+	async createUserBlacklist(request: CreateUserBlacklistRequest): Promise<{
 		userId: string
 		autoBlacklisted: {
 			characters: string[]
@@ -1570,9 +1572,7 @@ export class ApiClient {
 		return this.post('/admin/blacklist/user', request)
 	}
 
-	async createCharacterBlacklist(
-		request: CreateCharacterBlacklistRequest
-	): Promise<{
+	async createCharacterBlacklist(request: CreateCharacterBlacklistRequest): Promise<{
 		entry: BlacklistEntry
 		autoBlacklistedUsers: string[]
 		autoBlacklistedCount: number
@@ -1580,9 +1580,7 @@ export class ApiClient {
 		return this.post('/admin/blacklist/character', request)
 	}
 
-	async getBlacklists(
-		filters?: BlacklistFilters
-	): Promise<PaginatedResponse<BlacklistEntry>> {
+	async getBlacklists(filters?: BlacklistFilters): Promise<PaginatedResponse<BlacklistEntry>> {
 		const params = new URLSearchParams()
 		if (filters?.targetType) params.set('targetType', filters.targetType)
 		if (filters?.isAutoBlacklist !== undefined)
@@ -1592,9 +1590,7 @@ export class ApiClient {
 		if (filters?.pageSize !== undefined) params.set('limit', String(filters.pageSize))
 
 		const query = params.toString()
-		const response = await this.get<BlacklistResults>(
-			`/admin/blacklist${query ? `?${query}` : ''}`
-		)
+		const response = await this.get<BlacklistResults>(`/admin/blacklist${query ? `?${query}` : ''}`)
 
 		// Transform backend response to frontend pagination format
 		const pageSize = response.limit
@@ -1732,7 +1728,7 @@ export class ApiClient {
 		return this.post('/fleets/quick-join/create', {
 			characterId,
 			fleetId,
-			expiresInHours: 24
+			expiresInHours: 24,
 		})
 	}
 }

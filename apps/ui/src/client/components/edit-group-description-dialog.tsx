@@ -81,9 +81,7 @@ export function EditGroupDescriptionDialog({
 							rows={5}
 							maxLength={500}
 						/>
-						<p className="text-xs text-muted-foreground">
-							{description.length}/500 characters
-						</p>
+						<p className="text-xs text-muted-foreground">{description.length}/500 characters</p>
 					</div>
 				</div>
 

@@ -44,7 +44,7 @@ export class HrDO extends DurableObject<Env> implements Hr {
 	private blacklistService: BlacklistService
 
 	// Cache for corporation roles (in-memory)
-	private roleCache = new Map<string, { data: HrRole[], timestamp: number }>()
+	private roleCache = new Map<string, { data: HrRole[]; timestamp: number }>()
 	private readonly CACHE_TTL = 5 * 60 * 1000 // 5 minutes
 
 	/**
@@ -90,7 +90,9 @@ export class HrDO extends DurableObject<Env> implements Hr {
 		// Check total open applications (max 2 across all corporations)
 		const openCount = await this.applicationService.countOpenApplications(userId)
 		if (openCount >= 2) {
-			throw new Error('You cannot have more than 2 open applications at a time. Please wait for your existing applications to be processed or withdraw one before submitting a new application.')
+			throw new Error(
+				'You cannot have more than 2 open applications at a time. Please wait for your existing applications to be processed or withdraw one before submitting a new application.'
+			)
 		}
 
 		// Check for existing pending application

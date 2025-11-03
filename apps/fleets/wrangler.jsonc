@@ -14,8 +14,7 @@
 		"bindings": [
 			{
 				"name": "FLEETS",
-				"class_name": "Fleets",
-				
+				"class_name": "Fleets"
 			},
 			{
 				"name": "EVE_TOKEN_STORE",

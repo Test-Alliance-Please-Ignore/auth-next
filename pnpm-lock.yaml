@@ -1351,7 +1351,7 @@ importers:
   apps/ui:
     dependencies:
       '@hookform/resolvers':
-        specifier: ^5.2.2
+        specifier: 5.2.2
         version: 5.2.2(react-hook-form@7.65.0(react@19.2.0))
       '@radix-ui/react-accordion':
         specifier: 1.2.12
@@ -1402,7 +1402,7 @@ importers:
         specifier: 19.2.0
         version: 19.2.0(react@19.2.0)
       react-hook-form:
-        specifier: ^7.65.0
+        specifier: 7.65.0
         version: 7.65.0(react@19.2.0)
       react-router-dom:
         specifier: 7.9.4
@@ -1517,7 +1517,7 @@ importers:
   packages/db-utils:
     dependencies:
       '@neondatabase/api-client':
-        specifier: ^2.2.0
+        specifier: 2.2.0
         version: 2.2.0
       '@neondatabase/serverless':
         specifier: 0.10.4

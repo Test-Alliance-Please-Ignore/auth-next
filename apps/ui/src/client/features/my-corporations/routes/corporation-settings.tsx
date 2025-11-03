@@ -153,7 +153,8 @@ export default function CorporationSettings() {
 							Corporation Not Found
 						</CardTitle>
 						<CardDescription className="mt-2 text-red-700 dark:text-red-300">
-							The requested corporation could not be found or you don't have permission to access it.
+							The requested corporation could not be found or you don't have permission to access
+							it.
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
@@ -214,14 +215,11 @@ export default function CorporationSettings() {
 									Open for Recruitment
 								</Label>
 								<div className="text-sm text-muted-foreground">
-									When enabled, your corporation will be visible to players browsing for corporations to join
+									When enabled, your corporation will be visible to players browsing for
+									corporations to join
 								</div>
 							</div>
-							<Switch
-								id="is-recruiting"
-								checked={isRecruiting}
-								onCheckedChange={setIsRecruiting}
-							/>
+							<Switch id="is-recruiting" checked={isRecruiting} onCheckedChange={setIsRecruiting} />
 						</div>
 					</CardContent>
 				</Card>
@@ -231,7 +229,8 @@ export default function CorporationSettings() {
 					<CardHeader>
 						<CardTitle>Short Description</CardTitle>
 						<CardDescription>
-							Brief description shown on the Browse Corporations page (2-3 sentences, max 250 characters)
+							Brief description shown on the Browse Corporations page (2-3 sentences, max 250
+							characters)
 						</CardDescription>
 					</CardHeader>
 					<CardContent>
@@ -243,14 +242,16 @@ export default function CorporationSettings() {
 								onChange={(e) => setShortDescription(e.target.value)}
 							/>
 							<div className="flex justify-between text-sm">
-								<span className="text-muted-foreground">This appears on the browse page to attract applicants</span>
-								<span className={shortDescRemaining < 0 ? 'text-destructive' : 'text-muted-foreground'}>
+								<span className="text-muted-foreground">
+									This appears on the browse page to attract applicants
+								</span>
+								<span
+									className={shortDescRemaining < 0 ? 'text-destructive' : 'text-muted-foreground'}
+								>
 									{shortDescRemaining} characters remaining
 								</span>
 							</div>
-							{shortDescError && (
-								<p className="text-sm text-destructive">{shortDescError}</p>
-							)}
+							{shortDescError && <p className="text-sm text-destructive">{shortDescError}</p>}
 						</div>
 					</CardContent>
 				</Card>
@@ -260,7 +261,8 @@ export default function CorporationSettings() {
 					<CardHeader>
 						<CardTitle>Full Description & Application Instructions</CardTitle>
 						<CardDescription>
-							Detailed information shown on the corporation detail page, including requirements and how to apply
+							Detailed information shown on the corporation detail page, including requirements and
+							how to apply
 						</CardDescription>
 					</CardHeader>
 					<CardContent>
@@ -272,8 +274,8 @@ export default function CorporationSettings() {
 								onChange={(e) => setFullDescription(e.target.value)}
 							/>
 							<p className="text-sm text-muted-foreground">
-								Use this space to describe your corporation, list requirements, and explain the application process.
-								You can use formatting like ** for bold and ## for headings.
+								Use this space to describe your corporation, list requirements, and explain the
+								application process. You can use formatting like ** for bold and ## for headings.
 							</p>
 						</div>
 					</CardContent>

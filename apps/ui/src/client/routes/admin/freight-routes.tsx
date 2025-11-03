@@ -7,9 +7,22 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { LocationDisplay } from '@/components/ui/location-display'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from '@/components/ui/table'
 import {
 	useActivateFreightRoute,
 	useDeactivateFreightRoute,
@@ -78,7 +91,10 @@ export default function AdminFreightRoutesPage() {
 					<div className="flex items-center gap-4">
 						<div className="w-full md:w-64 space-y-2">
 							<Label htmlFor="status">Status</Label>
-							<Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as FreightRouteStatus | 'all')}>
+							<Select
+								value={statusFilter}
+								onValueChange={(value) => setStatusFilter(value as FreightRouteStatus | 'all')}
+							>
 								<SelectTrigger id="status">
 									<SelectValue placeholder="All statuses" />
 								</SelectTrigger>
@@ -149,7 +165,11 @@ export default function AdminFreightRoutesPage() {
 												{formatISK(route.iskPerVolumeUnit)}
 											</TableCell>
 											<TableCell className="text-right">
-												{route.maxVolume ? `${formatISK(route.maxVolume)} m³` : <span className="text-muted-foreground">Unlimited</span>}
+												{route.maxVolume ? (
+													`${formatISK(route.maxVolume)} m³`
+												) : (
+													<span className="text-muted-foreground">Unlimited</span>
+												)}
 											</TableCell>
 											<TableCell>
 												<Badge variant={route.status === 'active' ? 'default' : 'secondary'}>

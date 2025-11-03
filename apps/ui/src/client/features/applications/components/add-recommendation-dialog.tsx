@@ -272,12 +272,18 @@ export function AddRecommendationDialog({
 								<SelectValue placeholder="Select character" />
 							</SelectTrigger>
 							<SelectContent>
-								{user?.characters.map((char: { characterId: string; characterName: string; hasValidToken: boolean }) => (
-									<SelectItem key={char.characterId} value={char.characterId}>
-										{char.characterName}
-										{!char.hasValidToken && ' (Token expired)'}
-									</SelectItem>
-								))}
+								{user?.characters.map(
+									(char: {
+										characterId: string
+										characterName: string
+										hasValidToken: boolean
+									}) => (
+										<SelectItem key={char.characterId} value={char.characterId}>
+											{char.characterName}
+											{!char.hasValidToken && ' (Token expired)'}
+										</SelectItem>
+									)
+								)}
 							</SelectContent>
 						</Select>
 					</div>
@@ -338,9 +344,7 @@ export function AddRecommendationDialog({
 								Make recommendation public
 							</Label>
 							<p className="text-sm text-muted-foreground">
-								{isPublic
-									? 'Visible to the applicant and HR staff'
-									: 'Only visible to HR staff'}
+								{isPublic ? 'Visible to the applicant and HR staff' : 'Only visible to HR staff'}
 							</p>
 						</div>
 						<Switch

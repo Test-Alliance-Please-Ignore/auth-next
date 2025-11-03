@@ -1,5 +1,10 @@
 import { and, eq, gte, lte, or, sql } from '@repo/db-utils'
 
+import { bills } from '../db/schema'
+import { calculateLateFee } from '../utils/late-fees'
+import { generatePaymentToken } from '../utils/token'
+import { generateUuidV7 } from '../utils/uuid'
+
 import type {
 	Bill,
 	BillFilters,
@@ -12,10 +17,6 @@ import type {
 	UpdateBillInput,
 } from '@repo/bills'
 import type { BillsDb } from '../db'
-import { bills } from '../db/schema'
-import { calculateLateFee } from '../utils/late-fees'
-import { generatePaymentToken } from '../utils/token'
-import { generateUuidV7 } from '../utils/uuid'
 
 /**
  * Bill Service
@@ -60,10 +61,7 @@ export class BillService {
 
 			console.log('[BillService.createBill] Insert data prepared', insertData)
 
-			const [bill] = await this.db
-				.insert(bills)
-				.values(insertData)
-				.returning()
+			const [bill] = await this.db.insert(bills).values(insertData).returning()
 
 			console.log('[BillService.createBill] Bill inserted successfully', { billId: bill.id })
 
@@ -160,7 +158,9 @@ export class BillService {
 		})
 
 		// Update late fees for issued/overdue bills
-		const updatedResults = await Promise.all(results.map((bill) => this.updateLateFeeIfNeeded(bill)))
+		const updatedResults = await Promise.all(
+			results.map((bill) => this.updateLateFeeIfNeeded(bill))
+		)
 
 		return updatedResults.map((bill) => this.toBillWithDetailsResponse(bill))
 	}
@@ -430,7 +430,10 @@ export class BillService {
 
 			if (bill.status === 'paid') {
 				paidAmount += amount + parseFloat(bill.lateFee)
-			} else if (bill.status === 'overdue' || (bill.status === 'issued' && new Date() > bill.dueDate)) {
+			} else if (
+				bill.status === 'overdue' ||
+				(bill.status === 'issued' && new Date() > bill.dueDate)
+			) {
 				overdueAmount += amount
 			}
 

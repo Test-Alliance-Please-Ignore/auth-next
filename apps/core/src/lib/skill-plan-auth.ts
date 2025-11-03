@@ -1,10 +1,10 @@
-import { TimeCache } from '@repo/hono-helpers'
 import { eq } from '@repo/db-utils'
+import { TimeCache } from '@repo/hono-helpers'
 
+import type { DbClient } from '@repo/db-utils'
 import type { Groups } from '@repo/groups'
 import type { SkillPlan, SkillPlanSummary } from '@repo/skills'
 import type { schema } from '../db'
-import type { DbClient } from '@repo/db-utils'
 
 // Type that includes the fields we need for authorization
 type PlanForAuth = Pick<SkillPlan | SkillPlanSummary, 'maintainerId' | 'isPublished'>
@@ -190,7 +190,12 @@ export async function canCheckCharacterProgress(
 	}
 
 	// Check if user has check-any permission
-	const hasCheckAny = await hasSkillPlanPermission(groupsStub, userId, 'urn:skill-plans:progress:check-any', false)
+	const hasCheckAny = await hasSkillPlanPermission(
+		groupsStub,
+		userId,
+		'urn:skill-plans:progress:check-any',
+		false
+	)
 	if (hasCheckAny) {
 		return true
 	}
@@ -199,7 +204,7 @@ export async function canCheckCharacterProgress(
 	const { userCharacters } = await import('../db/schema')
 	const userChar = await db.query.userCharacters.findFirst({
 		where: eq(userCharacters.characterId, characterId),
-		columns: { userId: true }
+		columns: { userId: true },
 	})
 
 	return userChar?.userId === userId

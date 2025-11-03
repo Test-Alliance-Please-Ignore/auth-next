@@ -26,10 +26,7 @@ export interface UserDiscordRefreshPayload {
  *
  * Triggered by the orchestrator scheduled handler every 5 minutes
  */
-export class UserDiscordRefreshWorkflow extends WorkflowEntrypoint<
-	Env,
-	UserDiscordRefreshPayload
-> {
+export class UserDiscordRefreshWorkflow extends WorkflowEntrypoint<Env, UserDiscordRefreshPayload> {
 	/**
 	 * Main workflow entry point
 	 */

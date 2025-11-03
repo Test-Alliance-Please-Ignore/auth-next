@@ -11,7 +11,7 @@ export default defineWorkersProject({
 						CORE_API_URL: 'https://pleaseignore.app',
 					},
 					durableObjects: {
-						FLEETS: 'Fleets'
+						FLEETS: 'Fleets',
 					},
 				},
 			},

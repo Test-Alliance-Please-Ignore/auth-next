@@ -15,8 +15,8 @@ import {
 	SelectValue,
 } from '@/components/ui/select'
 import { useCreateSchedule, useTemplates } from '@/hooks/useBills'
-import { formatScheduleFrequency } from '@/lib/bills-utils'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { formatScheduleFrequency } from '@/lib/bills-utils'
 
 import type { CreateScheduleInput, EntityType, ScheduleFrequency } from '@repo/bills'
 
@@ -146,9 +146,7 @@ export default function AdminBillsSchedulesNewPage() {
 			<div className="flex items-center justify-between">
 				<div>
 					<h1 className="text-3xl font-bold gradient-text">Create Bill Schedule</h1>
-					<p className="text-muted-foreground mt-2">
-						Set up automated recurring bill generation
-					</p>
+					<p className="text-muted-foreground mt-2">Set up automated recurring bill generation</p>
 				</div>
 				<Button variant="outline" asChild>
 					<Link to="/admin/bills/schedules">
@@ -180,9 +178,7 @@ export default function AdminBillsSchedulesNewPage() {
 				<Card variant="interactive" className="mb-6">
 					<CardHeader>
 						<CardTitle>Schedule Configuration</CardTitle>
-						<CardDescription>
-							Configure how and when bills should be generated
-						</CardDescription>
+						<CardDescription>Configure how and when bills should be generated</CardDescription>
 					</CardHeader>
 					<CardContent className="space-y-4">
 						<div className="space-y-2">
@@ -217,9 +213,7 @@ export default function AdminBillsSchedulesNewPage() {
 									)}
 								</SelectContent>
 							</Select>
-							{errors.templateId && (
-								<p className="text-sm text-destructive">{errors.templateId}</p>
-							)}
+							{errors.templateId && <p className="text-sm text-destructive">{errors.templateId}</p>}
 							{selectedTemplate && (
 								<div className="text-sm text-muted-foreground">
 									<p>Template: {selectedTemplate.titleTemplate}</p>
@@ -248,9 +242,7 @@ export default function AdminBillsSchedulesNewPage() {
 										<SelectItem value="monthly">Monthly</SelectItem>
 									</SelectContent>
 								</Select>
-								<p className="text-sm text-muted-foreground">
-									How often bills should be generated
-								</p>
+								<p className="text-sm text-muted-foreground">How often bills should be generated</p>
 							</div>
 
 							<div className="space-y-2">
@@ -262,9 +254,7 @@ export default function AdminBillsSchedulesNewPage() {
 									onChange={(e) => handleChange('startDate', e.target.value)}
 									className={errors.startDate ? 'border-destructive' : ''}
 								/>
-								{errors.startDate && (
-									<p className="text-sm text-destructive">{errors.startDate}</p>
-								)}
+								{errors.startDate && <p className="text-sm text-destructive">{errors.startDate}</p>}
 								<p className="text-sm text-muted-foreground">
 									When to start generating bills (defaults to now)
 								</p>
@@ -284,7 +274,8 @@ export default function AdminBillsSchedulesNewPage() {
 										})}
 									</p>
 									<p className="text-muted-foreground mt-1">
-										Bills will be generated {formatScheduleFrequency(formData.frequency).toLowerCase()} starting from{' '}
+										Bills will be generated{' '}
+										{formatScheduleFrequency(formData.frequency).toLowerCase()} starting from{' '}
 										{formData.startDate ? 'the specified date' : 'now'}
 									</p>
 								</div>
@@ -337,9 +328,7 @@ export default function AdminBillsSchedulesNewPage() {
 									onChange={(e) => handleChange('payerId', e.target.value)}
 									className={errors.payerId ? 'border-destructive' : ''}
 								/>
-								{errors.payerId && (
-									<p className="text-sm text-destructive">{errors.payerId}</p>
-								)}
+								{errors.payerId && <p className="text-sm text-destructive">{errors.payerId}</p>}
 								<p className="text-sm text-muted-foreground">
 									Enter the EVE Online {formData.payerType} ID or group ID
 								</p>
@@ -352,9 +341,7 @@ export default function AdminBillsSchedulesNewPage() {
 				<Card variant="interactive" className="mb-6">
 					<CardHeader>
 						<CardTitle>Bill Amount</CardTitle>
-						<CardDescription>
-							The amount to charge for each generated bill
-						</CardDescription>
+						<CardDescription>The amount to charge for each generated bill</CardDescription>
 					</CardHeader>
 					<CardContent className="space-y-4">
 						<div className="space-y-2">
@@ -369,12 +356,10 @@ export default function AdminBillsSchedulesNewPage() {
 								onChange={(e) => handleChange('amount', e.target.value)}
 								className={errors.amount ? 'border-destructive' : ''}
 							/>
-							{errors.amount && (
-								<p className="text-sm text-destructive">{errors.amount}</p>
-							)}
+							{errors.amount && <p className="text-sm text-destructive">{errors.amount}</p>}
 							<p className="text-sm text-muted-foreground">
-								This amount will be used for each generated bill. The template may also
-								define a default amount.
+								This amount will be used for each generated bill. The template may also define a
+								default amount.
 							</p>
 						</div>
 					</CardContent>
@@ -385,10 +370,7 @@ export default function AdminBillsSchedulesNewPage() {
 					<Button type="submit" disabled={createSchedule.isPending}>
 						{createSchedule.isPending ? 'Creating Schedule...' : 'Create Schedule'}
 					</Button>
-					<CancelButton
-						type="button"
-						onClick={() => navigate('/admin/bills/schedules')}
-					>
+					<CancelButton type="button" onClick={() => navigate('/admin/bills/schedules')}>
 						Cancel
 					</CancelButton>
 				</div>

@@ -7,8 +7,9 @@ Shared types and interfaces for the Broadcasts Durable Object.
 Import this package in any worker that needs to interact with the Broadcasts Durable Object:
 
 ```typescript
-import type { Broadcasts } from '@repo/broadcasts'
 import { getStub } from '@repo/do-utils'
+
+import type { Broadcasts } from '@repo/broadcasts'
 
 // Get a typed stub to the Durable Object
 const stub = getStub<Broadcasts>(env.BROADCASTS, 'unique-id')

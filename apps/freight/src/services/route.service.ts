@@ -1,5 +1,8 @@
 import { and, eq } from '@repo/db-utils'
 
+import { freightRoutes } from '../db/schema'
+import { generateUuidV7 } from '../utils/uuid'
+
 import type {
 	CreateFreightRouteInput,
 	FreightRoute,
@@ -7,8 +10,6 @@ import type {
 	UpdateFreightRouteInput,
 } from '@repo/freight'
 import type { FreightDb } from '../db'
-import { freightRoutes } from '../db/schema'
-import { generateUuidV7 } from '../utils/uuid'
 
 /**
  * Route Service
@@ -105,7 +106,11 @@ export class RouteService {
 	/**
 	 * Update an existing freight route
 	 */
-	async updateRoute(_adminId: string, routeId: string, data: UpdateFreightRouteInput): Promise<FreightRoute> {
+	async updateRoute(
+		_adminId: string,
+		routeId: string,
+		data: UpdateFreightRouteInput
+	): Promise<FreightRoute> {
 		console.log('[RouteService.updateRoute] Starting route update', { routeId, data })
 
 		// Check if route exists

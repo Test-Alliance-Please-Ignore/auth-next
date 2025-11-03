@@ -6,7 +6,10 @@ export type Env = SharedHonoEnv & {
 
 	// Service bindings
 	CORE: Fetcher & {
-		getUsersForDiscordRefresh(limit?: number, refreshIntervalMinutes?: number): Promise<
+		getUsersForDiscordRefresh(
+			limit?: number,
+			refreshIntervalMinutes?: number
+		): Promise<
 			Array<{
 				userId: string
 				discordUserId: string
@@ -43,7 +46,15 @@ interface WorkflowInstance {
 }
 
 interface WorkflowInstanceStatus {
-	status: 'running' | 'paused' | 'errored' | 'terminated' | 'complete' | 'waiting' | 'queued' | 'unknown'
+	status:
+		| 'running'
+		| 'paused'
+		| 'errored'
+		| 'terminated'
+		| 'complete'
+		| 'waiting'
+		| 'queued'
+		| 'unknown'
 	error?: string
 	output?: any
 }

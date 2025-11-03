@@ -90,7 +90,7 @@ export default function DashboardPage() {
 		// Prevent multiple invites for the same character
 		if (creatingInvites.has(characterId)) return
 
-		setCreatingInvites(prev => new Set(prev).add(characterId))
+		setCreatingInvites((prev) => new Set(prev).add(characterId))
 
 		try {
 			// 1. Get character's current fleet info
@@ -102,7 +102,7 @@ export default function DashboardPage() {
 				fleetBossIdType: typeof fleetInfo.fleet_boss_id,
 				characterIdType: typeof characterId,
 				areEqual: fleetInfo.fleet_boss_id === characterId,
-				comparison: `${fleetInfo.fleet_boss_id} === ${characterId}`
+				comparison: `${fleetInfo.fleet_boss_id} === ${characterId}`,
 			})
 
 			if (!fleetInfo.isInFleet) {
@@ -121,7 +121,7 @@ export default function DashboardPage() {
 					charId,
 					fleetBossIdType: typeof fleetInfo.fleet_boss_id,
 					charIdType: typeof characterId,
-					areEqual: fleetBossId === charId
+					areEqual: fleetBossId === charId,
 				})
 				alert('Only the fleet boss can create quick join invitations')
 				return
@@ -129,10 +129,7 @@ export default function DashboardPage() {
 
 			// 2. Create quick join invitation
 			// fleet_id is already a string from the API
-			const invite = await apiClient.createFleetQuickJoin(
-				characterId,
-				fleetInfo.fleet_id
-			)
+			const invite = await apiClient.createFleetQuickJoin(characterId, fleetInfo.fleet_id)
 
 			// 3. Copy URL to clipboard
 			await navigator.clipboard.writeText(invite.url)
@@ -143,7 +140,7 @@ export default function DashboardPage() {
 			console.error('Failed to create fleet invite:', error)
 			alert('Failed to create fleet invite. Make sure the character is a fleet boss.')
 		} finally {
-			setCreatingInvites(prev => {
+			setCreatingInvites((prev) => {
 				const next = new Set(prev)
 				next.delete(characterId)
 				return next

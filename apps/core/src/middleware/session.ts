@@ -5,8 +5,8 @@ import { logger } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
 import { AuthService } from '../services/auth.service'
-import { SessionService } from '../services/session.service'
 import * as discordService from '../services/discord.service'
+import { SessionService } from '../services/session.service'
 import { UserService } from '../services/user.service'
 
 import type { MiddlewareHandler } from 'hono'

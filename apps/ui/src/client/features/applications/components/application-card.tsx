@@ -8,8 +8,8 @@
 import { formatDistanceToNow } from 'date-fns'
 import { MessageSquare } from 'lucide-react'
 
-import { Card, CardContent } from '@/components/ui/card'
 import { MemberAvatar } from '@/components/member-avatar'
+import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 
 import { ApplicationStatusBadge } from './application-status-badge'

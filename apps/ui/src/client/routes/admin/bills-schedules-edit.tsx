@@ -42,8 +42,8 @@ import {
 	useTemplates,
 	useUpdateSchedule,
 } from '@/hooks/useBills'
-import { formatScheduleFrequency } from '@/lib/bills-utils'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { formatScheduleFrequency } from '@/lib/bills-utils'
 
 import type { EntityType, ScheduleFrequency, UpdateScheduleInput } from '@repo/bills'
 
@@ -230,9 +230,7 @@ export default function AdminBillsSchedulesEditPage() {
 			<div className="flex items-center justify-between">
 				<div>
 					<h1 className="text-3xl font-bold gradient-text">Edit Bill Schedule</h1>
-					<p className="text-muted-foreground mt-2">
-						Manage recurring bill generation schedule
-					</p>
+					<p className="text-muted-foreground mt-2">Manage recurring bill generation schedule</p>
 				</div>
 				<div className="flex gap-2">
 					{schedule.isActive ? (
@@ -245,11 +243,7 @@ export default function AdminBillsSchedulesEditPage() {
 							Pause Schedule
 						</CancelButton>
 					) : (
-						<Button
-							size="sm"
-							variant="outline"
-							onClick={() => setResumeDialogOpen(true)}
-						>
+						<Button size="sm" variant="outline" onClick={() => setResumeDialogOpen(true)}>
 							<Play className="mr-2 h-4 w-4" />
 							Resume Schedule
 						</Button>
@@ -307,9 +301,7 @@ export default function AdminBillsSchedulesEditPage() {
 						<div>
 							<Label className="text-muted-foreground">Consecutive Failures</Label>
 							<div className="mt-1">
-								<Badge
-									variant={schedule.consecutiveFailures > 0 ? 'destructive' : 'default'}
-								>
+								<Badge variant={schedule.consecutiveFailures > 0 ? 'destructive' : 'default'}>
 									{schedule.consecutiveFailures}
 								</Badge>
 							</div>
@@ -401,9 +393,7 @@ export default function AdminBillsSchedulesEditPage() {
 									)}
 								</SelectContent>
 							</Select>
-							{errors.templateId && (
-								<p className="text-sm text-destructive">{errors.templateId}</p>
-							)}
+							{errors.templateId && <p className="text-sm text-destructive">{errors.templateId}</p>}
 							{selectedTemplate && (
 								<div className="text-sm text-muted-foreground">
 									<p>Template: {selectedTemplate.titleTemplate}</p>
@@ -432,9 +422,7 @@ export default function AdminBillsSchedulesEditPage() {
 										<SelectItem value="monthly">Monthly</SelectItem>
 									</SelectContent>
 								</Select>
-								<p className="text-sm text-muted-foreground">
-									How often bills should be generated
-								</p>
+								<p className="text-sm text-muted-foreground">How often bills should be generated</p>
 							</div>
 
 							<div className="space-y-2">
@@ -449,9 +437,7 @@ export default function AdminBillsSchedulesEditPage() {
 									onChange={(e) => handleChange('amount', e.target.value)}
 									className={errors.amount ? 'border-destructive' : ''}
 								/>
-								{errors.amount && (
-									<p className="text-sm text-destructive">{errors.amount}</p>
-								)}
+								{errors.amount && <p className="text-sm text-destructive">{errors.amount}</p>}
 							</div>
 						</div>
 					</CardContent>
@@ -462,10 +448,7 @@ export default function AdminBillsSchedulesEditPage() {
 					<Button type="submit" disabled={updateSchedule.isPending}>
 						{updateSchedule.isPending ? 'Saving Changes...' : 'Save Changes'}
 					</Button>
-					<CancelButton
-						type="button"
-						onClick={() => navigate('/admin/bills/schedules')}
-					>
+					<CancelButton type="button" onClick={() => navigate('/admin/bills/schedules')}>
 						Cancel
 					</CancelButton>
 				</div>
@@ -509,9 +492,7 @@ export default function AdminBillsSchedulesEditPage() {
 												</Badge>
 											</TableCell>
 											<TableCell>
-												<div className="text-sm">
-													{new Date(log.executedAt).toLocaleString()}
-												</div>
+												<div className="text-sm">{new Date(log.executedAt).toLocaleString()}</div>
 											</TableCell>
 											<TableCell>
 												{log.generatedBillId ? (
@@ -527,9 +508,7 @@ export default function AdminBillsSchedulesEditPage() {
 											</TableCell>
 											<TableCell>
 												{log.errorMessage ? (
-													<span className="text-sm text-destructive">
-														{log.errorMessage}
-													</span>
+													<span className="text-sm text-destructive">{log.errorMessage}</span>
 												) : (
 													<span className="text-muted-foreground text-sm">-</span>
 												)}
@@ -549,8 +528,8 @@ export default function AdminBillsSchedulesEditPage() {
 					<DialogHeader>
 						<DialogTitle>Pause Schedule</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to pause this schedule? No new bills will be
-							generated until you resume it.
+							Are you sure you want to pause this schedule? No new bills will be generated until you
+							resume it.
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
@@ -568,8 +547,8 @@ export default function AdminBillsSchedulesEditPage() {
 					<DialogHeader>
 						<DialogTitle>Resume Schedule</DialogTitle>
 						<DialogDescription>
-							Resume this schedule? Bills will start being generated again according to
-							the configured frequency.
+							Resume this schedule? Bills will start being generated again according to the
+							configured frequency.
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
@@ -587,8 +566,8 @@ export default function AdminBillsSchedulesEditPage() {
 					<DialogHeader>
 						<DialogTitle>Delete Schedule</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to delete this schedule? This action cannot be undone.
-							Existing bills will not be affected.
+							Are you sure you want to delete this schedule? This action cannot be undone. Existing
+							bills will not be affected.
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>

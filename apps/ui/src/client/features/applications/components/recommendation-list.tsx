@@ -13,8 +13,8 @@ import { LoadingSpinner } from '@/components/ui/loading'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
-import { RecommendationCard } from './recommendation-card'
 import { useRecommendations } from '../hooks'
+import { RecommendationCard } from './recommendation-card'
 
 import type { Recommendation } from '../api'
 

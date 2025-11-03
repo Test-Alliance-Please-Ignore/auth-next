@@ -1,19 +1,7 @@
-import { useState, useEffect } from 'react'
-import { useParams, useNavigate, Navigate, Link } from 'react-router-dom'
-import { ArrowLeft, Save, Trash2, Upload, Plus } from 'lucide-react'
-import { usePageTitle } from '../../../hooks/usePageTitle'
-import { useAuth } from '../../../hooks/useAuth'
-import {
-	useSkillPlan,
-	usePlanSkills,
-	useUpdateSkillPlan,
-	useAddSkillToPlan,
-	useRemoveSkillFromPlan,
-	useUpdateSkillLevels,
-	useBatchAddSkillsToPlan,
-} from '../hooks'
-import { SkillPlanForm } from '../components/skill-plan-form'
-import { SkillSelector } from '../components/skill-selector'
+import { ArrowLeft, Plus, Save, Trash2, Upload } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
+
 import { EvemonXmlImporter } from '../../../components/evemon-xml-importer'
 import { Button } from '../../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card'
@@ -21,7 +9,13 @@ import { Container } from '../../../components/ui/container'
 import { LoadingPage } from '../../../components/ui/loading'
 import { PageHeader } from '../../../components/ui/page-header'
 import { Section } from '../../../components/ui/section'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../components/ui/tabs'
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from '../../../components/ui/select'
 import {
 	Table,
 	TableBody,
@@ -30,15 +24,23 @@ import {
 	TableHeader,
 	TableRow,
 } from '../../../components/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../components/ui/tabs'
+import { useAuth } from '../../../hooks/useAuth'
+import { usePageTitle } from '../../../hooks/usePageTitle'
+import { SkillPlanForm } from '../components/skill-plan-form'
+import { SkillSelector } from '../components/skill-selector'
 import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '../../../components/ui/select'
-import type { UpdateSkillPlanRequest, AddSkillRequest } from '../types'
+	useAddSkillToPlan,
+	useBatchAddSkillsToPlan,
+	usePlanSkills,
+	useRemoveSkillFromPlan,
+	useSkillPlan,
+	useUpdateSkillLevels,
+	useUpdateSkillPlan,
+} from '../hooks'
+
 import type { ParsedEvemonSkill } from '../../../lib/evemon-parser'
+import type { AddSkillRequest, UpdateSkillPlanRequest } from '../types'
 
 export default function SkillPlanEdit() {
 	const { id } = useParams<{ id: string }>()
@@ -131,11 +133,11 @@ export default function SkillPlanEdit() {
 		try {
 			const result = await batchAddSkills.mutateAsync({
 				planId: id,
-				skills: importedSkills.map(skill => ({
+				skills: importedSkills.map((skill) => ({
 					skillId: skill.skillId,
 					requiredLevel: skill.requiredLevel,
 					recommendedLevel: skill.recommendedLevel,
-				}))
+				})),
 			})
 
 			// Hide importer and refetch skills
@@ -144,17 +146,22 @@ export default function SkillPlanEdit() {
 
 			// Show success message (in a real app, use a toast)
 			if (result.successful > 0) {
-				alert(`Successfully imported ${result.successful} skill${result.successful !== 1 ? 's' : ''}`)
+				alert(
+					`Successfully imported ${result.successful} skill${result.successful !== 1 ? 's' : ''}`
+				)
 			}
 			if (result.failed > 0) {
-				console.warn(`Failed to import ${result.failed} skill${result.failed !== 1 ? 's' : ''}`, result.errors)
+				console.warn(
+					`Failed to import ${result.failed} skill${result.failed !== 1 ? 's' : ''}`,
+					result.errors
+				)
 			}
 		} catch (error) {
 			console.error('Failed to import skills:', error)
 		}
 	}
 
-	const existingSkillIds = skills?.map(s => s.skillId) || []
+	const existingSkillIds = skills?.map((s) => s.skillId) || []
 
 	return (
 		<Container>

@@ -1,7 +1,7 @@
+import { useSystemDetails } from '@/hooks/useLocationSearch'
+
 import { Badge } from './badge'
 import { Skeleton } from './skeleton'
-
-import { useSystemDetails } from '@/hooks/useLocationSearch'
 
 import type { FreightLocation } from '@repo/freight'
 

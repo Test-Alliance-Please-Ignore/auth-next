@@ -4,7 +4,16 @@
  * Shows all members of a specific corporation with comprehensive data.
  */
 
-import { AlertCircle, ArrowLeft, Building2, Download, RefreshCw, LayoutDashboard, FileText, Settings } from 'lucide-react'
+import {
+	AlertCircle,
+	ArrowLeft,
+	Building2,
+	Download,
+	FileText,
+	LayoutDashboard,
+	RefreshCw,
+	Settings,
+} from 'lucide-react'
 import { lazy, Suspense, useCallback, useMemo } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 
@@ -254,7 +263,8 @@ export default function CorporationMembers() {
 							{corporation?.name || 'Corporation'} Members
 						</h1>
 						<p className="text-muted-foreground mt-2">
-							View and manage all members of {corporation?.ticker ? `[${corporation.ticker}]` : 'this corporation'}
+							View and manage all members of{' '}
+							{corporation?.ticker ? `[${corporation.ticker}]` : 'this corporation'}
 							{corporation?.allianceName && ` • Alliance: ${corporation.allianceName}`}
 						</p>
 						{userRole && (
@@ -268,7 +278,11 @@ export default function CorporationMembers() {
 							<RefreshCw className="mr-2 h-4 w-4" />
 							Refresh
 						</Button>
-						<Button variant="outline" onClick={handleExport} disabled={!membersWithHrRoles || membersWithHrRoles.length === 0}>
+						<Button
+							variant="outline"
+							onClick={handleExport}
+							disabled={!membersWithHrRoles || membersWithHrRoles.length === 0}
+						>
 							<Download className="mr-2 h-4 w-4" />
 							Export CSV
 						</Button>
@@ -316,14 +330,14 @@ export default function CorporationMembers() {
 									Manage HR Roles
 								</Button>
 							</Link>
-						{canManageHrRoles && (
-							<Link to={`/my-corporations/${corporationId}/settings`}>
-								<Button variant="outline">
-									<Settings className="mr-2 h-4 w-4" />
-									Corporation Settings
-								</Button>
-							</Link>
-						)}
+							{canManageHrRoles && (
+								<Link to={`/my-corporations/${corporationId}/settings`}>
+									<Button variant="outline">
+										<Settings className="mr-2 h-4 w-4" />
+										Corporation Settings
+									</Button>
+								</Link>
+							)}
 						</div>
 					</CardContent>
 				</Card>

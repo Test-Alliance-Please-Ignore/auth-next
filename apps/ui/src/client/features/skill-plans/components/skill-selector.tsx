@@ -1,5 +1,6 @@
-import { useState, useMemo, useEffect } from 'react'
-import { Search, Plus } from 'lucide-react'
+import { Plus, Search } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+
 import { Button } from '../../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card'
 import { Input } from '../../../components/ui/input'
@@ -12,6 +13,7 @@ import {
 	SelectValue,
 } from '../../../components/ui/select'
 import { useAvailableSkills, useSearchSkills } from '../hooks'
+
 import type { AddSkillRequest, AvailableSkill } from '../types'
 
 interface SkillSelectorProps {
@@ -24,7 +26,11 @@ interface SkillToAdd extends AddSkillRequest {
 	skillName?: string
 }
 
-export function SkillSelector({ existingSkillIds, onAddSkill, isSubmitting = false }: SkillSelectorProps) {
+export function SkillSelector({
+	existingSkillIds,
+	onAddSkill,
+	isSubmitting = false,
+}: SkillSelectorProps) {
 	const [searchTerm, setSearchTerm] = useState('')
 	const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
 	const [selectedGroup, setSelectedGroup] = useState<string>('all')
@@ -106,7 +112,7 @@ export function SkillSelector({ existingSkillIds, onAddSkill, isSubmitting = fal
 
 	// Reset selected skill when filtered skills change
 	useEffect(() => {
-		if (selectedSkill && !filteredSkills.find(s => s.skillId === selectedSkill.skillId)) {
+		if (selectedSkill && !filteredSkills.find((s) => s.skillId === selectedSkill.skillId)) {
 			setSelectedSkill(null)
 		}
 	}, [filteredSkills, selectedSkill])
@@ -129,9 +135,7 @@ export function SkillSelector({ existingSkillIds, onAddSkill, isSubmitting = fal
 						/>
 					</div>
 					{searchTerm.length > 0 && searchTerm.length < 2 && (
-						<p className="text-xs text-muted-foreground">
-							Type at least 2 characters to search
-						</p>
+						<p className="text-xs text-muted-foreground">Type at least 2 characters to search</p>
 					)}
 				</div>
 
@@ -194,10 +198,7 @@ export function SkillSelector({ existingSkillIds, onAddSkill, isSubmitting = fal
 										))
 									) : (
 										<div className="py-2 px-3 text-sm text-muted-foreground">
-											{searchTerm ?
-												'No skills found matching your search' :
-												'No skills available'
-											}
+											{searchTerm ? 'No skills found matching your search' : 'No skills available'}
 										</div>
 									)}
 								</SelectContent>
@@ -241,9 +242,7 @@ export function SkillSelector({ existingSkillIds, onAddSkill, isSubmitting = fal
 											))}
 										</SelectContent>
 									</Select>
-									<p className="text-xs text-muted-foreground">
-										Minimum level needed for the plan
-									</p>
+									<p className="text-xs text-muted-foreground">Minimum level needed for the plan</p>
 								</div>
 
 								<div className="space-y-2">
@@ -286,8 +285,8 @@ export function SkillSelector({ existingSkillIds, onAddSkill, isSubmitting = fal
 
 			{/* Info text */}
 			<p className="text-sm text-muted-foreground">
-				Already added skills are automatically hidden from the selection.
-				Required level must be less than or equal to recommended level.
+				Already added skills are automatically hidden from the selection. Required level must be
+				less than or equal to recommended level.
 				{searchTerm && ' Search results are cached for better performance.'}
 			</p>
 		</div>

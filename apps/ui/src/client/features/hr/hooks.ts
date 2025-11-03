@@ -1,4 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+
+import { hrApi } from './api'
+
 import type {
 	CheckHrPermissionRequest,
 	CheckHrPermissionResult,
@@ -6,7 +9,6 @@ import type {
 	HrRoleGrant,
 	RevokeHrRoleRequest,
 } from './api'
-import { hrApi } from './api'
 
 /**
  * Query key factory for HR-related queries
@@ -15,8 +17,7 @@ import { hrApi } from './api'
 export const hrKeys = {
 	all: ['hr'] as const,
 	roles: (corporationId: string) => [...hrKeys.all, 'roles', corporationId] as const,
-	permission: (corporationId: string) =>
-		[...hrKeys.all, 'permission', corporationId] as const,
+	permission: (corporationId: string) => [...hrKeys.all, 'permission', corporationId] as const,
 }
 
 /**
@@ -38,9 +39,7 @@ export function useHrRoles(corporationId: string) {
  */
 export function useHrPermissionCheck(request: CheckHrPermissionRequest | null) {
 	return useQuery({
-		queryKey: request
-			? hrKeys.permission(request.corporationId)
-			: ['hr', 'permission', 'null'],
+		queryKey: request ? hrKeys.permission(request.corporationId) : ['hr', 'permission', 'null'],
 		queryFn: () => {
 			if (!request) throw new Error('No request provided')
 			return hrApi.checkHrPermission(request)

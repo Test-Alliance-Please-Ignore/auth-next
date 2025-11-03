@@ -7,8 +7,9 @@ Shared types and interfaces for the Markets Durable Object.
 Import this package in any worker that needs to interact with the Markets Durable Object:
 
 ```typescript
-import type { Markets } from '@repo/markets'
 import { getStub } from '@repo/do-utils'
+
+import type { Markets } from '@repo/markets'
 
 // Get a typed stub to the Durable Object
 const stub = getStub<Markets>(env.MARKETS, 'unique-id')

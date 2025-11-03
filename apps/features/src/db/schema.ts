@@ -1,4 +1,4 @@
-import { index, jsonb, pgTable, text, timestamp, boolean } from 'drizzle-orm/pg-core'
+import { boolean, index, jsonb, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
 
 /**
  * Feature flags table
@@ -10,7 +10,9 @@ export const featureFlags = pgTable(
 	'feature_flags',
 	{
 		// Primary identifier
-		id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => crypto.randomUUID()),
 
 		// Hierarchical key (e.g., "notifications.email.sendGrid")
 		key: text('key').notNull().unique(),
@@ -37,7 +39,7 @@ export const featureFlags = pgTable(
 	(table) => ({
 		// Index for tag filtering
 		tagsIdx: index('feature_flags_tags_idx').using('gin', table.tags),
-	}),
+	})
 )
 
 // Export schema object for Drizzle

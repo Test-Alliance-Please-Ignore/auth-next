@@ -439,7 +439,10 @@ export interface EveCharacterData {
 	 * @param maxAge - Maximum age of cached data in milliseconds (default: 1 hour)
 	 * @returns Character skills data or null if unable to fetch
 	 */
-	getOrFetchSkills(characterId: string, maxAge?: number): Promise<{
+	getOrFetchSkills(
+		characterId: string,
+		maxAge?: number
+	): Promise<{
 		skills: Array<{
 			active_skill_level: number
 			skill_id: number

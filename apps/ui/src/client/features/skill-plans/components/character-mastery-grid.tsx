@@ -1,10 +1,13 @@
 import { useQueries } from '@tanstack/react-query'
-import { useAuth } from '@/hooks/useAuth'
-import { CharacterMasteryCard } from './character-mastery-card'
-import { skillPlanKeys } from '../hooks'
-import { skillPlansApi } from '../api'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { AlertCircle } from 'lucide-react'
+
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useAuth } from '@/hooks/useAuth'
+
+import { skillPlansApi } from '../api'
+import { skillPlanKeys } from '../hooks'
+import { CharacterMasteryCard } from './character-mastery-card'
+
 import type { MasteryStatus } from '../types'
 
 interface CharacterMasteryGridProps {
@@ -13,7 +16,11 @@ interface CharacterMasteryGridProps {
 	onCharacterClick?: (characterId: string) => void
 }
 
-export function CharacterMasteryGrid({ planId, title = 'Character Readiness', onCharacterClick }: CharacterMasteryGridProps) {
+export function CharacterMasteryGrid({
+	planId,
+	title = 'Character Readiness',
+	onCharacterClick,
+}: CharacterMasteryGridProps) {
 	const { user } = useAuth()
 
 	// Get all user characters
@@ -84,7 +91,7 @@ export function CharacterMasteryGrid({ planId, title = 'Character Readiness', on
 							hasData: !!progress,
 							hasError: !!query.error,
 							isLoading,
-							hasValidToken: character.hasValidToken
+							hasValidToken: character.hasValidToken,
 						})
 
 						// Determine error state
@@ -98,8 +105,10 @@ export function CharacterMasteryGrid({ planId, title = 'Character Readiness', on
 								planId={planId}
 								progress={progress}
 								isLoading={isLoading}
-								error={hasError ? (query.error || new Error('Invalid token')) : null}
-								onClick={onCharacterClick ? () => onCharacterClick(character.characterId) : undefined}
+								error={hasError ? query.error || new Error('Invalid token') : null}
+								onClick={
+									onCharacterClick ? () => onCharacterClick(character.characterId) : undefined
+								}
 							/>
 						)
 					})}

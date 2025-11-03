@@ -1,6 +1,8 @@
 import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:test'
 import { describe, expect, it } from 'vitest'
+
 import worker from '../../index'
+
 import type { Env } from '../../context'
 
 // Type augmentation for test environment

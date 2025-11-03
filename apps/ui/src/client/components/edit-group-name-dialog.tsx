@@ -80,9 +80,7 @@ export function EditGroupNameDialog({
 							disabled={updateGroup.isPending}
 							maxLength={100}
 						/>
-						{isInvalid && (
-							<p className="text-xs text-destructive">Group name cannot be empty</p>
-						)}
+						{isInvalid && <p className="text-xs text-destructive">Group name cannot be empty</p>}
 					</div>
 				</div>
 

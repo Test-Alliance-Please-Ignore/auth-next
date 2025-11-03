@@ -3,8 +3,9 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
-import type { App } from './context'
 import { UserDiscordRefreshWorkflow } from './workflows/user-discord-refresh'
+
+import type { App } from './context'
 
 const app = new Hono<App>()
 	.use(

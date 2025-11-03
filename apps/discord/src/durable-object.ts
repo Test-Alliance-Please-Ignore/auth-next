@@ -1,15 +1,20 @@
 import { DurableObject } from 'cloudflare:workers'
 
 import { eq } from '@repo/db-utils'
+import { generateShardKey } from '@repo/hazmat'
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from './db'
 import { discordTokens, discordUsers } from './db/schema'
 import { DiscordBotService } from './services/discord-bot.service'
 
-import type { Discord, DiscordTokenResponse, MessageContent, SendMessageResult } from '@repo/discord'
+import type {
+	Discord,
+	DiscordTokenResponse,
+	MessageContent,
+	SendMessageResult,
+} from '@repo/discord'
 import type { Env } from './context'
-import { generateShardKey } from '@repo/hazmat'
 
 /**
  * Discord Durable Object

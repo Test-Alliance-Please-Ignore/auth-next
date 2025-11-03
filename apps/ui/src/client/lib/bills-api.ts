@@ -3,6 +3,8 @@
  * Extends the main API client with bills-specific methods
  */
 
+import { ApiClient } from './api'
+
 import type {
 	Bill,
 	BillSchedule,
@@ -18,8 +20,6 @@ import type {
 	UpdateScheduleInput,
 	UpdateTemplateInput,
 } from '@repo/bills'
-
-import { ApiClient } from './api'
 
 const BILLS_API_BASE = '/admin/bills'
 
@@ -104,7 +104,11 @@ export class BillsApiClient extends ApiClient {
 		return this.delete(`${BILLS_API_BASE}/templates/${templateId}`)
 	}
 
-	async cloneTemplate(sourceTemplateId: string, name: string, description?: string): Promise<BillTemplate> {
+	async cloneTemplate(
+		sourceTemplateId: string,
+		name: string,
+		description?: string
+	): Promise<BillTemplate> {
 		return this.post(`${BILLS_API_BASE}/templates/clone`, {
 			sourceTemplateId,
 			name,
@@ -112,7 +116,11 @@ export class BillsApiClient extends ApiClient {
 		})
 	}
 
-	async cloneBillAsTemplate(sourceBillId: string, name: string, description?: string): Promise<BillTemplate> {
+	async cloneBillAsTemplate(
+		sourceBillId: string,
+		name: string,
+		description?: string
+	): Promise<BillTemplate> {
 		return this.post(`${BILLS_API_BASE}/templates/clone-from-bill`, {
 			sourceBillId,
 			name,
@@ -164,7 +172,10 @@ export class BillsApiClient extends ApiClient {
 		return this.post(`${BILLS_API_BASE}/schedules/${scheduleId}/resume`)
 	}
 
-	async getScheduleExecutionLogs(scheduleId: string, limit?: number): Promise<ScheduleExecutionLog[]> {
+	async getScheduleExecutionLogs(
+		scheduleId: string,
+		limit?: number
+	): Promise<ScheduleExecutionLog[]> {
 		const params = limit ? `?limit=${limit}` : ''
 		return this.get(`${BILLS_API_BASE}/schedules/${scheduleId}/logs${params}`)
 	}

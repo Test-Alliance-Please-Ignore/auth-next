@@ -21,12 +21,12 @@
 	},
 	"dependencies": {
 		"@neondatabase/serverless": "0.10.4",
+		"@repo/db-utils": "workspace:*",
 		"@repo/do-utils": "workspace:*",
 		"@repo/eve-token-store": "workspace:*",
 		"@repo/eve-types": "workspace:*",
-		"@repo/markets": "workspace:*",
-		"@repo/db-utils": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
+		"@repo/markets": "workspace:*",
 		"drizzle-orm": "0.44.6",
 		"hono": "4.9.11",
 		"workers-tagged-logger": "0.13.3"

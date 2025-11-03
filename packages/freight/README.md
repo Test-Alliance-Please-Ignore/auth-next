@@ -7,8 +7,9 @@ Shared types and interfaces for the Freight Durable Object.
 Import this package in any worker that needs to interact with the Freight Durable Object:
 
 ```typescript
-import type { Freight } from '@repo/freight'
 import { getStub } from '@repo/do-utils'
+
+import type { Freight } from '@repo/freight'
 
 // Get a typed stub to the Durable Object
 const stub = getStub<Freight>(env.FREIGHT, 'unique-id')

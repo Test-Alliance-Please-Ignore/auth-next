@@ -53,7 +53,6 @@ import type { Env } from './context'
  */
 export class EveCharacterDataDO extends DurableObject<Env> implements EveCharacterData {
 	private db: ReturnType<typeof createDb>
-
 	/**
 	 * Initialize the Durable Object
 	 */
@@ -130,13 +129,13 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	 */
 	async fetchCorporationRoles(
 		characterId: string,
-		_forceRefresh = false,
+		_forceRefresh = false
 	): Promise<EsiCharacterRoles | null> {
 		try {
 			const tokenStoreStub = this.getTokenStoreStub()
 			const response: EsiResponse<EsiCharacterRoles> = await tokenStoreStub.fetchEsi(
 				`/characters/${String(characterId)}/roles`,
-				String(characterId),
+				String(characterId)
 			)
 
 			return response.data
@@ -144,7 +143,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			// If the character doesn't have the required scope or token is invalid, return null
 			console.error(
 				`Failed to fetch corporation roles for character ${characterId}:`,
-				error instanceof Error ? error.message : String(error),
+				error instanceof Error ? error.message : String(error)
 			)
 			return null
 		}
@@ -907,7 +906,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			// Check age of data
 			const result = await this.db.query.characterSkills.findFirst({
 				where: eq(characterSkills.characterId, characterId),
-				columns: { updatedAt: true }
+				columns: { updatedAt: true },
 			})
 
 			if (result?.updatedAt) {

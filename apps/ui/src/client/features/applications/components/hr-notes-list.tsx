@@ -19,10 +19,10 @@ import {
 } from '@/components/ui/select'
 import { useAuth } from '@/hooks/useAuth'
 
-import { HRNoteCard } from './hr-note-card'
 import { useHRNotes } from '../hooks'
+import { HRNoteCard } from './hr-note-card'
 
-import type { HRNoteType, HRNotePriority } from '../api'
+import type { HRNotePriority, HRNoteType } from '../api'
 
 // ============================================================================
 // Types

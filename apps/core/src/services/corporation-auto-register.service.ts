@@ -211,12 +211,7 @@ export async function autoRegisterDirectorCorporation(
 
 			// This will silently succeed if director already exists (uses ON CONFLICT DO NOTHING)
 			// Ensure all parameters are primitive types to avoid serialization issues
-			await stub.addDirector(
-				String(corporationId),
-				String(characterId),
-				String(characterName),
-				100
-			)
+			await stub.addDirector(String(corporationId), String(characterId), String(characterName), 100)
 
 			// Step 9: Trigger director verification (fire and forget)
 			stub.verifyAllDirectorsHealth(corporationId).catch((error: unknown) => {
@@ -304,7 +299,7 @@ export async function checkAndUpdateDirectorStatus(
 	db: ReturnType<typeof createDb>,
 	eveCharacterDataNamespace: DurableObjectNamespace,
 	eveTokenStoreNamespace: DurableObjectNamespace,
-	eveCorporationDataNamespace: DurableObjectNamespace,
+	eveCorporationDataNamespace: DurableObjectNamespace
 ): Promise<{ updated: boolean; reason?: string }> {
 	try {
 		// Get the character data stub
@@ -328,7 +323,7 @@ export async function checkAndUpdateDirectorStatus(
 				userId,
 				db,
 				eveTokenStoreNamespace,
-				eveCorporationDataNamespace,
+				eveCorporationDataNamespace
 			)
 
 			return {

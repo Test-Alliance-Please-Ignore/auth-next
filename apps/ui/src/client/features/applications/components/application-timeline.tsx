@@ -10,8 +10,8 @@ import { CheckCircle, Clock, Eye, Minus, User, XCircle } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 
-import type { ApplicationActivityLogEntry } from '../api'
 import type { LucideIcon } from 'lucide-react'
+import type { ApplicationActivityLogEntry } from '../api'
 
 // ============================================================================
 // Types
@@ -156,9 +156,7 @@ export function ApplicationTimeline({
 				return (
 					<div key={entry.id} className="relative flex gap-3">
 						{/* Timeline Line */}
-						{!isLast && (
-							<div className="absolute left-[15px] top-8 bottom-0 w-px bg-border" />
-						)}
+						{!isLast && <div className="absolute left-[15px] top-8 bottom-0 w-px bg-border" />}
 
 						{/* Timeline Dot */}
 						<div className="relative flex-shrink-0">
@@ -181,9 +179,7 @@ export function ApplicationTimeline({
 
 									{/* Actor (if shown and available) */}
 									{showActors && entry.characterName ? (
-										<p className="text-xs text-muted-foreground">
-											by {entry.characterName}
-										</p>
+										<p className="text-xs text-muted-foreground">by {entry.characterName}</p>
 									) : null}
 
 									{/* Additional Metadata */}
@@ -191,7 +187,8 @@ export function ApplicationTimeline({
 										<p className="text-xs text-muted-foreground">
 											{entry.previousValue ? (
 												<span>
-													Changed from <span className="font-medium">{entry.previousValue}</span> to{' '}
+													Changed from <span className="font-medium">{entry.previousValue}</span>{' '}
+													to{' '}
 												</span>
 											) : null}
 											<span className="font-medium">{entry.newValue}</span>

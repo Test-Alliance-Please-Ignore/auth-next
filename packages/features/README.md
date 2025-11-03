@@ -7,8 +7,9 @@ Shared types and interfaces for the Features Durable Object.
 Import this package in any worker that needs to interact with the Features Durable Object:
 
 ```typescript
-import type { Features } from '@repo/features'
 import { getStub } from '@repo/do-utils'
+
+import type { Features } from '@repo/features'
 
 // Get a typed stub to the Durable Object
 const stub = getStub<Features>(env.FEATURES, 'unique-id')

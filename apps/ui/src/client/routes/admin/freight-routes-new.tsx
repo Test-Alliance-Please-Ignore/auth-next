@@ -2,18 +2,24 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { CancelButton } from '@/components/ui/cancel-button'
-import { ConfirmButton } from '@/components/ui/confirm-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { ConfirmButton } from '@/components/ui/confirm-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LocationSearch } from '@/components/ui/location-search'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useCreateFreightRoute } from '@/hooks/useFreightRoutes'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
-import type { EsiLocationSearchResult } from '@/lib/esi-api'
 import type { CreateFreightRouteInput, FreightRouteStatus } from '@repo/freight'
+import type { EsiLocationSearchResult } from '@/lib/esi-api'
 
 export default function AdminFreightRoutesNewPage() {
 	usePageTitle('Admin - Create Freight Route')
@@ -133,7 +139,9 @@ export default function AdminFreightRoutesNewPage() {
 			{/* Page Header */}
 			<div>
 				<h1 className="text-3xl font-bold gradient-text">Create Freight Route</h1>
-				<p className="text-muted-foreground mt-1">Define a new official freight route with pricing</p>
+				<p className="text-muted-foreground mt-1">
+					Define a new official freight route with pricing
+				</p>
 			</div>
 
 			<form onSubmit={handleSubmit}>
@@ -149,11 +157,7 @@ export default function AdminFreightRoutesNewPage() {
 						{message && (
 							<Card variant={message.type === 'success' ? 'flat' : 'flat'}>
 								<CardContent className="pt-6">
-									<p
-										className={
-											message.type === 'success' ? 'text-success' : 'text-destructive'
-										}
-									>
+									<p className={message.type === 'success' ? 'text-success' : 'text-destructive'}>
 										{message.text}
 									</p>
 								</CardContent>
@@ -215,9 +219,7 @@ export default function AdminFreightRoutesNewPage() {
 								placeholder="Optional - leave empty for unlimited"
 								className={errors.maxVolume ? 'border-destructive' : ''}
 							/>
-							{errors.maxVolume && (
-								<p className="text-sm text-destructive">{errors.maxVolume}</p>
-							)}
+							{errors.maxVolume && <p className="text-sm text-destructive">{errors.maxVolume}</p>}
 							<p className="text-sm text-muted-foreground">
 								Maximum cargo volume allowed per contract (optional)
 							</p>
@@ -241,7 +243,10 @@ export default function AdminFreightRoutesNewPage() {
 						{/* Status */}
 						<div className="space-y-2">
 							<Label htmlFor="status">Initial Status</Label>
-							<Select value={formData.status} onValueChange={(value) => handleChange('status', value as FreightRouteStatus)}>
+							<Select
+								value={formData.status}
+								onValueChange={(value) => handleChange('status', value as FreightRouteStatus)}
+							>
 								<SelectTrigger id="status">
 									<SelectValue />
 								</SelectTrigger>
@@ -262,11 +267,7 @@ export default function AdminFreightRoutesNewPage() {
 					<CancelButton type="button" onClick={() => navigate('/admin/freight-routes')}>
 						Cancel
 					</CancelButton>
-					<ConfirmButton
-						type="submit"
-						loading={createRoute.isPending}
-						loadingText="Creating..."
-					>
+					<ConfirmButton type="submit" loading={createRoute.isPending} loadingText="Creating...">
 						Create Route
 					</ConfirmButton>
 				</div>

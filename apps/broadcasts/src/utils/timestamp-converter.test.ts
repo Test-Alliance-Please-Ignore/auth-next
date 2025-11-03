@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+
 import { convertUnixTimestamps } from './timestamp-converter'
 
 describe('convertUnixTimestamps', () => {
@@ -128,20 +129,17 @@ describe('convertUnixTimestamps', () => {
 
 	describe('real-world scenarios', () => {
 		it('handles typical broadcast message', () => {
-			const input =
-				'Fleet operation scheduled for 1609459200. Please be online by 1609458600.'
+			const input = 'Fleet operation scheduled for 1609459200. Please be online by 1609458600.'
 			const output = convertUnixTimestamps(input)
 			expect(output).toBe(
-				'Fleet operation scheduled for <t:1609459200:f>. Please be online by <t:1609458600:f>.',
+				'Fleet operation scheduled for <t:1609459200:f>. Please be online by <t:1609458600:f>.'
 			)
 		})
 
 		it('handles message with template and timestamp', () => {
 			const input = 'Meeting with John Doe at 1609459200 in Conference Room A'
 			const output = convertUnixTimestamps(input)
-			expect(output).toBe(
-				'Meeting with John Doe at <t:1609459200:f> in Conference Room A',
-			)
+			expect(output).toBe('Meeting with John Doe at <t:1609459200:f> in Conference Room A')
 		})
 
 		it('handles multiline messages', () => {

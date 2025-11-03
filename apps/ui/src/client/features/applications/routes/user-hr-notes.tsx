@@ -9,6 +9,7 @@ import { AlertCircle, ArrowLeft, Lock } from 'lucide-react'
 import { useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 
+import { MemberAvatar } from '@/components/member-avatar'
 import {
 	Breadcrumb,
 	BreadcrumbItem,
@@ -20,7 +21,6 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { LoadingSpinner } from '@/components/ui/loading'
-import { MemberAvatar } from '@/components/member-avatar'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
@@ -63,11 +63,7 @@ export default function UserHrNotes() {
 	const subjectCharacterName = notes?.[0]?.subjectCharacterName
 
 	// Set page title
-	usePageTitle(
-		subjectCharacterName
-			? `HR Notes - ${subjectCharacterName}`
-			: 'HR Notes'
-	)
+	usePageTitle(subjectCharacterName ? `HR Notes - ${subjectCharacterName}` : 'HR Notes')
 
 	// Handlers
 	const handleBackClick = () => {
@@ -105,9 +101,7 @@ export default function UserHrNotes() {
 				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
 					<CardHeader className="text-center">
 						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
-						<CardTitle className="text-2xl text-red-900 dark:text-red-100">
-							Access Denied
-						</CardTitle>
+						<CardTitle className="text-2xl text-red-900 dark:text-red-100">Access Denied</CardTitle>
 						<CardDescription className="mt-2 text-red-700 dark:text-red-300">
 							You must be a site administrator to view HR notes.
 						</CardDescription>
@@ -153,9 +147,7 @@ export default function UserHrNotes() {
 					</BreadcrumbItem>
 					<BreadcrumbSeparator />
 					<BreadcrumbItem>
-						<BreadcrumbPage>
-							{subjectCharacterName || 'HR Notes'}
-						</BreadcrumbPage>
+						<BreadcrumbPage>{subjectCharacterName || 'HR Notes'}</BreadcrumbPage>
 					</BreadcrumbItem>
 				</BreadcrumbList>
 			</Breadcrumb>
@@ -177,9 +169,7 @@ export default function UserHrNotes() {
 						<div className="flex-1 min-w-0">
 							<div className="flex items-center gap-2 text-warning mb-2">
 								<Lock className="h-4 w-4" />
-								<span className="text-xs font-semibold uppercase tracking-wide">
-									Admin Only
-								</span>
+								<span className="text-xs font-semibold uppercase tracking-wide">Admin Only</span>
 							</div>
 							<h1 className="text-2xl font-bold text-foreground mb-1">
 								{subjectCharacterName || 'User HR Notes'}
@@ -199,9 +189,7 @@ export default function UserHrNotes() {
 						<Lock className="h-5 w-5 text-warning" />
 						HR Notes
 					</CardTitle>
-					<CardDescription>
-						Internal administrative notes about this user
-					</CardDescription>
+					<CardDescription>Internal administrative notes about this user</CardDescription>
 				</CardHeader>
 				<CardContent>
 					<HRNotesList

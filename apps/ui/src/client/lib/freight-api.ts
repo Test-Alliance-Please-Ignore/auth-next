@@ -3,14 +3,14 @@
  * Extends the main API client with freight-specific methods
  */
 
+import { ApiClient } from './api'
+
 import type {
 	CreateFreightRouteInput,
 	FreightRoute,
 	FreightRouteStatus,
 	UpdateFreightRouteInput,
 } from '@repo/freight'
-
-import { ApiClient } from './api'
 
 const FREIGHT_API_BASE = '/freight'
 

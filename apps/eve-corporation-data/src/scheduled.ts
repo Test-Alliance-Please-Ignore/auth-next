@@ -91,8 +91,7 @@ export async function scheduledHandler(event: ScheduledEvent, env: Env, _ctx: Ex
  * Send refresh messages to all queues for a specific corporation
  */
 async function refreshCorporation(env: Env, corporationId: string): Promise<void> {
-	const messagesToSend: Array<{ queue: Queue; message: Record<string, unknown>; type: string }> =
-		[]
+	const messagesToSend: Array<{ queue: Queue; message: Record<string, unknown>; type: string }> = []
 
 	// Base message with required fields
 	const timestamp = Date.now()

@@ -4,13 +4,13 @@ import { and, eq, inArray, isNull, or, sql } from '@repo/db-utils'
 
 import { createDb } from './db'
 import {
+	skillGroups,
 	skillPlanCategories,
 	skillPlanCategoryMappings,
-	skillPlanSkills,
 	skillPlans,
+	skillPlanSkills,
 	skillRequirements,
 	skills,
-	skillGroups,
 } from './db/schema'
 
 import type { EveGroupId, EveSkillId } from '@repo/eve-types'
@@ -143,9 +143,11 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 		const cacheKey = includeUnpublished ? 'all-with-unpublished' : 'all-published'
 
 		// Check cache first
-		if (this.allSkillsCache &&
+		if (
+			this.allSkillsCache &&
 			this.isCacheValid(this.allSkillsCache.cachedAt, this.ALL_SKILLS_CACHE_TTL) &&
-			(includeUnpublished || !this.allSkillsCache.skills.some(s => !s.published))) {
+			(includeUnpublished || !this.allSkillsCache.skills.some((s) => !s.published))
+		) {
 			return this.allSkillsCache.skills
 		}
 
@@ -196,9 +198,10 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 
 		const lowerQuery = query.toLowerCase()
 		const filtered = allSkills
-			.filter(skill =>
-				skill.name.toLowerCase().includes(lowerQuery) ||
-				skill.groupName.toLowerCase().includes(lowerQuery)
+			.filter(
+				(skill) =>
+					skill.name.toLowerCase().includes(lowerQuery) ||
+					skill.groupName.toLowerCase().includes(lowerQuery)
 			)
 			.slice(0, limit)
 
@@ -252,7 +255,7 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 		}
 
 		// Normalize IDs to strings
-		const normalizedIds = skillIds.map(id => String(id))
+		const normalizedIds = skillIds.map((id) => String(id))
 
 		// Check cache for all skills first
 		const cached: any[] = []
@@ -262,7 +265,11 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 			const cacheKey = String(id)
 			const cachedEntry = this.skillCache.get(cacheKey)
 
-			if (cachedEntry && this.isCacheValid(cachedEntry.cachedAt, this.SKILL_CACHE_TTL) && cachedEntry.skill) {
+			if (
+				cachedEntry &&
+				this.isCacheValid(cachedEntry.cachedAt, this.SKILL_CACHE_TTL) &&
+				cachedEntry.skill
+			) {
 				// We have basic skill info cached, but need to add group/category
 				cached.push(cachedEntry.skill)
 			} else {
@@ -284,7 +291,7 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 				},
 			})
 
-			fetchedSkills = skillList.map(skill => {
+			fetchedSkills = skillList.map((skill) => {
 				const skillInfo = {
 					id: skill.id as EveSkillId,
 					name: skill.name,
@@ -312,7 +319,7 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 						published: skillInfo.published,
 						canNotBeTrained: skillInfo.canNotBeTrained,
 					},
-					cachedAt: Date.now()
+					cachedAt: Date.now(),
 				})
 
 				return skillInfo
@@ -323,7 +330,7 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 		let enrichedCached: any[] = []
 		if (cached.length > 0) {
 			// Get unique group IDs from cached skills
-			const groupIds = [...new Set(cached.map(s => s.groupId).filter(Boolean))]
+			const groupIds = [...new Set(cached.map((s) => s.groupId).filter(Boolean))]
 
 			if (groupIds.length > 0) {
 				// Fetch group and category info
@@ -335,17 +342,19 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 				})
 
 				// Create a map for quick lookup
-				const groupMap = new Map(groups.map(g => [
-					g.id,
-					{
-						groupName: g.name,
-						categoryId: g.categoryId,
-						categoryName: g.category?.name ?? 'Unknown'
-					}
-				]))
+				const groupMap = new Map(
+					groups.map((g) => [
+						g.id,
+						{
+							groupName: g.name,
+							categoryId: g.categoryId,
+							categoryName: g.category?.name ?? 'Unknown',
+						},
+					])
+				)
 
 				// Enrich cached skills with group/category info
-				enrichedCached = cached.map(skill => {
+				enrichedCached = cached.map((skill) => {
 					const groupInfo = skill.groupId ? groupMap.get(skill.groupId) : null
 					return {
 						...skill,
@@ -355,7 +364,7 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 					}
 				})
 			} else {
-				enrichedCached = cached.map(skill => ({
+				enrichedCached = cached.map((skill) => ({
 					...skill,
 					groupName: 'Unknown',
 					categoryName: 'Unknown',
@@ -365,10 +374,10 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 
 		// Combine and return all skills in the order requested
 		const allSkills = [...enrichedCached, ...fetchedSkills]
-		const skillMap = new Map(allSkills.map(s => [String(s.id), s]))
+		const skillMap = new Map(allSkills.map((s) => [String(s.id), s]))
 
 		// Return in the same order as requested, with null for missing skills
-		return normalizedIds.map(id => skillMap.get(id) || null).filter(Boolean)
+		return normalizedIds.map((id) => skillMap.get(id) || null).filter(Boolean)
 	}
 
 	/**
@@ -489,14 +498,15 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 
 		// Get skill details for each skill in the plan (with group information)
 		const skillIds = planSkills.map((ps) => ps.skillId)
-		const skillDetails = skillIds.length > 0
-			? await this.db.query.skills.findMany({
-					where: inArray(skills.id, skillIds),
-					with: {
-						group: true, // Include the skill group
-					},
-				})
-			: []
+		const skillDetails =
+			skillIds.length > 0
+				? await this.db.query.skills.findMany({
+						where: inArray(skills.id, skillIds),
+						with: {
+							group: true, // Include the skill group
+						},
+					})
+				: []
 
 		// Map skills with their details including group information
 		const skillsWithDetails = planSkills.map((ps) => {
@@ -577,7 +587,9 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 		// Update categories if provided
 		if (input.categoryIds !== undefined) {
 			// Delete existing mappings
-			await this.db.delete(skillPlanCategoryMappings).where(eq(skillPlanCategoryMappings.planId, planId))
+			await this.db
+				.delete(skillPlanCategoryMappings)
+				.where(eq(skillPlanCategoryMappings.planId, planId))
 
 			// Add new mappings
 			if (input.categoryIds.length > 0) {
@@ -626,10 +638,14 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 			SELECT COUNT(DISTINCT sp.id)::int as total
 			FROM ${skillPlans} sp
 			WHERE sp.is_published = true
-			${categoryId ? sql`AND EXISTS (
+			${
+				categoryId
+					? sql`AND EXISTS (
 				SELECT 1 FROM ${skillPlanCategoryMappings} cm2
 				WHERE cm2.plan_id = sp.id AND cm2.category_id = ${categoryId}
-			)` : sql``}
+			)`
+					: sql``
+			}
 		`
 		const countResult = await this.db.execute(countQuery)
 		const total = (countResult.rows[0] as any)?.total || 0
@@ -664,10 +680,14 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 			LEFT JOIN ${skillPlanCategoryMappings} cm ON sp.id = cm.plan_id
 			LEFT JOIN ${skillPlanCategories} c ON cm.category_id = c.id
 			WHERE sp.is_published = true
-			${categoryId ? sql`AND EXISTS (
+			${
+				categoryId
+					? sql`AND EXISTS (
 				SELECT 1 FROM ${skillPlanCategoryMappings} cm2
 				WHERE cm2.plan_id = sp.id AND cm2.category_id = ${categoryId}
-			)` : sql``}
+			)`
+					: sql``
+			}
 			GROUP BY sp.id
 			ORDER BY sp.updated_at DESC
 			LIMIT ${limit}
@@ -883,10 +903,7 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 
 		// Check if skill already exists in plan
 		const existing = await this.db.query.skillPlanSkills.findFirst({
-			where: and(
-				eq(skillPlanSkills.planId, input.planId),
-				eq(skillPlanSkills.skillId, skillIdStr)
-			),
+			where: and(eq(skillPlanSkills.planId, input.planId), eq(skillPlanSkills.skillId, skillIdStr)),
 		})
 
 		if (existing) {
@@ -932,7 +949,7 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 		const result: BatchAddSkillsResult = {
 			successful: 0,
 			failed: 0,
-			errors: []
+			errors: [],
 		}
 
 		// Process skills in a transaction for consistency
@@ -944,7 +961,7 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 						result.failed++
 						result.errors.push({
 							skillId: skill.skillId,
-							error: 'Recommended level must be greater than or equal to required level'
+							error: 'Recommended level must be greater than or equal to required level',
 						})
 						continue
 					}
@@ -959,7 +976,7 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 						result.failed++
 						result.errors.push({
 							skillId: skill.skillId,
-							error: 'Skill levels must be between 0 and 5'
+							error: 'Skill levels must be between 0 and 5',
 						})
 						continue
 					}
@@ -981,23 +998,21 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 					}
 
 					// Add the skill to the plan
-					await tx
-						.insert(skillPlanSkills)
-						.values({
-							planId: input.planId,
-							skillId: skillIdStr,
-							requiredLevel: skill.requiredLevel,
-							recommendedLevel: skill.recommendedLevel,
-							displayOrder: skill.displayOrder ?? 0,
-							notes: skill.notes ?? null,
-						})
+					await tx.insert(skillPlanSkills).values({
+						planId: input.planId,
+						skillId: skillIdStr,
+						requiredLevel: skill.requiredLevel,
+						recommendedLevel: skill.recommendedLevel,
+						displayOrder: skill.displayOrder ?? 0,
+						notes: skill.notes ?? null,
+					})
 
 					result.successful++
 				} catch (error) {
 					result.failed++
 					result.errors.push({
 						skillId: skill.skillId,
-						error: error instanceof Error ? error.message : 'Unknown error'
+						error: error instanceof Error ? error.message : 'Unknown error',
 					})
 				}
 			}
@@ -1023,12 +1038,7 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 	async removeSkillFromPlan(planId: string, skillId: EveSkillId): Promise<boolean> {
 		const result = await this.db
 			.delete(skillPlanSkills)
-			.where(
-				and(
-					eq(skillPlanSkills.planId, planId),
-					eq(skillPlanSkills.skillId, skillId)
-				)
-			)
+			.where(and(eq(skillPlanSkills.planId, planId), eq(skillPlanSkills.skillId, skillId)))
 			.returning()
 
 		if (result.length > 0) {
@@ -1056,10 +1066,7 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 	): Promise<boolean> {
 		// Get current skill to validate changes
 		const currentSkill = await this.db.query.skillPlanSkills.findFirst({
-			where: and(
-				eq(skillPlanSkills.planId, planId),
-				eq(skillPlanSkills.skillId, skillId)
-			),
+			where: and(eq(skillPlanSkills.planId, planId), eq(skillPlanSkills.skillId, skillId)),
 		})
 
 		if (!currentSkill) {
@@ -1093,12 +1100,7 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 				...(input.displayOrder !== undefined && { displayOrder: input.displayOrder }),
 				...(input.notes !== undefined && { notes: input.notes }),
 			})
-			.where(
-				and(
-					eq(skillPlanSkills.planId, planId),
-					eq(skillPlanSkills.skillId, skillId)
-				)
-			)
+			.where(and(eq(skillPlanSkills.planId, planId), eq(skillPlanSkills.skillId, skillId)))
 			.returning()
 
 		if (result.length > 0) {
@@ -1175,7 +1177,8 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 		const skillsFullyTrained = skillReadiness.filter((sr) => sr.status === 'fully_trained').length
 
 		const minimumProgressPercent = totalSkills > 0 ? (skillsMeetingMinimum / totalSkills) * 100 : 0
-		const recommendedProgressPercent = totalSkills > 0 ? (skillsFullyTrained / totalSkills) * 100 : 0
+		const recommendedProgressPercent =
+			totalSkills > 0 ? (skillsFullyTrained / totalSkills) * 100 : 0
 
 		return {
 			planId: plan.id,

@@ -13,7 +13,8 @@ import type {
 export const freightRouteKeys = {
 	all: ['freight-routes'] as const,
 	lists: () => [...freightRouteKeys.all, 'list'] as const,
-	list: (filters?: { status?: FreightRouteStatus }) => [...freightRouteKeys.lists(), filters] as const,
+	list: (filters?: { status?: FreightRouteStatus }) =>
+		[...freightRouteKeys.lists(), filters] as const,
 	details: () => [...freightRouteKeys.all, 'detail'] as const,
 	detail: (id: string) => [...freightRouteKeys.details(), id] as const,
 }

@@ -116,9 +116,7 @@ export function SubmitApplicationDialog({
 			// Navigate to My Applications page
 			navigate('/my-applications')
 		} catch (error) {
-			showError(
-				error instanceof Error ? error.message : 'Failed to submit application'
-			)
+			showError(error instanceof Error ? error.message : 'Failed to submit application')
 		}
 	}
 
@@ -137,8 +135,8 @@ export function SubmitApplicationDialog({
 				<DialogHeader>
 					<DialogTitle>Apply to {corporationName}</DialogTitle>
 					<DialogDescription>
-						Submit your application to join this corporation. Make sure to explain why you
-						want to join and what you can bring to the corporation.
+						Submit your application to join this corporation. Make sure to explain why you want to
+						join and what you can bring to the corporation.
 					</DialogDescription>
 				</DialogHeader>
 
@@ -153,12 +151,18 @@ export function SubmitApplicationDialog({
 								<SelectValue placeholder="Select a character" />
 							</SelectTrigger>
 							<SelectContent>
-								{characters.map((char: { characterId: string; characterName: string; hasValidToken: boolean }) => (
-									<SelectItem key={char.characterId} value={char.characterId}>
-										{char.characterName}
-										{!char.hasValidToken && ' (No valid token)'}
-									</SelectItem>
-								))}
+								{characters.map(
+									(char: {
+										characterId: string
+										characterName: string
+										hasValidToken: boolean
+									}) => (
+										<SelectItem key={char.characterId} value={char.characterId}>
+											{char.characterName}
+											{!char.hasValidToken && ' (No valid token)'}
+										</SelectItem>
+									)
+								)}
 							</SelectContent>
 						</Select>
 						{characters.length === 0 && (
@@ -192,13 +196,9 @@ export function SubmitApplicationDialog({
 								)}
 							>
 								{characterCount < MIN_APPLICATION_LENGTH && (
-									<>
-										{MIN_APPLICATION_LENGTH - characterCount} more characters required
-									</>
+									<>{MIN_APPLICATION_LENGTH - characterCount} more characters required</>
 								)}
-								{characterCount >= MIN_APPLICATION_LENGTH && isTextValid && (
-									<>Minimum length met</>
-								)}
+								{characterCount >= MIN_APPLICATION_LENGTH && isTextValid && <>Minimum length met</>}
 							</span>
 							<span
 								className={cn(

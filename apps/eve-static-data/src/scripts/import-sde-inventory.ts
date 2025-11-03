@@ -7,10 +7,12 @@
 
 import { promises as fs } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { createDbClient } from '@repo/db-utils'
 import { config } from 'dotenv'
 import { eq, sql } from 'drizzle-orm'
-import { invCategories, invGroups, invTypes, marketGroups, sdeVersion, schema } from '../db/schema'
+
+import { createDbClient } from '@repo/db-utils'
+
+import { invCategories, invGroups, invTypes, marketGroups, schema, sdeVersion } from '../db/schema'
 
 // Load environment variables - try multiple locations
 config({ path: join(process.cwd(), '.env') }) // Try current working directory
@@ -81,7 +83,7 @@ async function importCategories(db: any) {
 	const batches = []
 
 	for (let i = 0; i < categories.length; i += batchSize) {
-		const batch = categories.slice(i, i + batchSize).map(cat => ({
+		const batch = categories.slice(i, i + batchSize).map((cat) => ({
 			categoryId: cat.categoryID.toString(),
 			categoryName: cat.categoryName,
 			iconId: cat.iconID || null,
@@ -91,7 +93,8 @@ async function importCategories(db: any) {
 	}
 
 	for (const batch of batches) {
-		await db.insert(invCategories)
+		await db
+			.insert(invCategories)
 			.values(batch)
 			.onConflictDoUpdate({
 				target: invCategories.categoryId,
@@ -99,7 +102,7 @@ async function importCategories(db: any) {
 					categoryName: sql`excluded.category_name`,
 					iconId: sql`excluded.icon_id`,
 					published: sql`excluded.published`,
-				}
+				},
 			})
 		count += batch.length
 	}
@@ -116,7 +119,7 @@ async function importGroups(db: any) {
 	const batches = []
 
 	for (let i = 0; i < groups.length; i += batchSize) {
-		const batch = groups.slice(i, i + batchSize).map(grp => ({
+		const batch = groups.slice(i, i + batchSize).map((grp) => ({
 			groupId: grp.groupID.toString(),
 			categoryId: grp.categoryID.toString(),
 			groupName: grp.groupName,
@@ -131,7 +134,8 @@ async function importGroups(db: any) {
 	}
 
 	for (const batch of batches) {
-		await db.insert(invGroups)
+		await db
+			.insert(invGroups)
 			.values(batch)
 			.onConflictDoUpdate({
 				target: invGroups.groupId,
@@ -144,7 +148,7 @@ async function importGroups(db: any) {
 					anchorable: sql`excluded.anchorable`,
 					fittableNonSingleton: sql`excluded.fittable_non_singleton`,
 					published: sql`excluded.published`,
-				}
+				},
 			})
 		count += batch.length
 	}
@@ -161,7 +165,7 @@ async function importMarketGroups(db: any) {
 	const batches = []
 
 	for (let i = 0; i < marketGroupsData.length; i += batchSize) {
-		const batch = marketGroupsData.slice(i, i + batchSize).map(mg => ({
+		const batch = marketGroupsData.slice(i, i + batchSize).map((mg) => ({
 			marketGroupId: mg.marketGroupID.toString(),
 			parentGroupId: mg.parentGroupID?.toString() || null,
 			marketGroupName: mg.marketGroupName,
@@ -173,7 +177,8 @@ async function importMarketGroups(db: any) {
 	}
 
 	for (const batch of batches) {
-		await db.insert(marketGroups)
+		await db
+			.insert(marketGroups)
 			.values(batch)
 			.onConflictDoUpdate({
 				target: marketGroups.marketGroupId,
@@ -183,7 +188,7 @@ async function importMarketGroups(db: any) {
 					description: sql`excluded.description`,
 					iconId: sql`excluded.icon_id`,
 					hasTypes: sql`excluded.has_types`,
-				}
+				},
 			})
 		count += batch.length
 	}
@@ -200,10 +205,10 @@ async function importTypes(db: any) {
 	const batches = []
 
 	// Filter to only import published types to reduce dataset size
-	const publishedTypes = types.filter(t => t.published === 1)
+	const publishedTypes = types.filter((t) => t.published === 1)
 
 	for (let i = 0; i < publishedTypes.length; i += batchSize) {
-		const batch = publishedTypes.slice(i, i + batchSize).map(type => ({
+		const batch = publishedTypes.slice(i, i + batchSize).map((type) => ({
 			typeId: type.typeID.toString(),
 			groupId: type.groupID.toString(),
 			typeName: type.typeName,
@@ -225,7 +230,8 @@ async function importTypes(db: any) {
 
 	for (const batch of batches) {
 		try {
-			await db.insert(invTypes)
+			await db
+				.insert(invTypes)
 				.values(batch)
 				.onConflictDoUpdate({
 					target: invTypes.typeId,
@@ -244,7 +250,7 @@ async function importTypes(db: any) {
 						iconId: sql`excluded.icon_id`,
 						soundId: sql`excluded.sound_id`,
 						graphicId: sql`excluded.graphic_id`,
-					}
+					},
 				})
 			count += batch.length
 
@@ -264,7 +270,8 @@ async function importTypes(db: any) {
 async function updateSDEVersion(db: any, version: string) {
 	console.log('Updating SDE version...')
 
-	await db.insert(sdeVersion)
+	await db
+		.insert(sdeVersion)
 		.values({
 			version: version,
 			importedAt: new Date(),
@@ -274,7 +281,7 @@ async function updateSDEVersion(db: any, version: string) {
 			target: sdeVersion.version,
 			set: {
 				importedAt: new Date(),
-			}
+			},
 		})
 
 	console.log(`  SDE version set to: ${version}`)
@@ -305,7 +312,6 @@ async function main() {
 		await updateSDEVersion(db, 'fuzzwork-latest-2024')
 
 		console.log('\n✅ SDE inventory data import completed successfully!')
-
 	} catch (error) {
 		console.error('❌ Error importing SDE data:', error)
 		process.exit(1)

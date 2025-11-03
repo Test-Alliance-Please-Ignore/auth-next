@@ -1,4 +1,8 @@
 import { DurableObject } from 'cloudflare:workers'
+
+import { createDb } from './db'
+import { FeatureFlagService } from './services/feature-flag.service'
+
 import type {
 	FeatureFlag,
 	Features,
@@ -7,8 +11,6 @@ import type {
 	SetFlagOptions,
 } from '@repo/features'
 import type { Env } from './context'
-import { createDb } from './db'
-import { FeatureFlagService } from './services/feature-flag.service'
 
 /**
  * Features Durable Object
@@ -24,7 +26,7 @@ export class FeaturesDO extends DurableObject implements Features {
 	 */
 	constructor(
 		public state: DurableObjectState,
-		public env: Env,
+		public env: Env
 	) {
 		super(state, env)
 
@@ -36,7 +38,11 @@ export class FeaturesDO extends DurableObject implements Features {
 	/**
 	 * Register a new feature flag
 	 */
-	async registerFlag(key: string, value: boolean, options?: RegisterFlagOptions): Promise<FeatureFlag> {
+	async registerFlag(
+		key: string,
+		value: boolean,
+		options?: RegisterFlagOptions
+	): Promise<FeatureFlag> {
 		return await this.service.registerFlag(key, value, options)
 	}
 
@@ -53,7 +59,7 @@ export class FeaturesDO extends DurableObject implements Features {
 	async setFlag(
 		key: string,
 		value: boolean | string | number | unknown,
-		options?: SetFlagOptions,
+		options?: SetFlagOptions
 	): Promise<FeatureFlag> {
 		return await this.service.setFlag(key, value, options)
 	}
@@ -61,7 +67,10 @@ export class FeaturesDO extends DurableObject implements Features {
 	/**
 	 * Check a feature flag value
 	 */
-	async checkFlag(key: string, tags?: string[]): Promise<boolean | string | number | unknown | null> {
+	async checkFlag(
+		key: string,
+		tags?: string[]
+	): Promise<boolean | string | number | unknown | null> {
 		return await this.service.checkFlag(key, tags)
 	}
 

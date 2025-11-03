@@ -86,9 +86,7 @@ export default function AdminBillsDetailPage() {
 			<div className="flex items-center justify-between">
 				<div>
 					<h1 className="text-3xl font-bold gradient-text">{bill.title}</h1>
-					<p className="text-muted-foreground mt-2">
-						Bill ID: {bill.id}
-					</p>
+					<p className="text-muted-foreground mt-2">Bill ID: {bill.id}</p>
 				</div>
 				<Button variant="outline" asChild>
 					<Link to="/admin/bills">
@@ -128,7 +126,8 @@ export default function AdminBillsDetailPage() {
 						<div>
 							<h3 className="text-sm font-medium text-muted-foreground mb-1">Payer</h3>
 							<p className="text-lg">
-								{bill.payerType.charAt(0).toUpperCase() + bill.payerType.slice(1)} ID: {bill.payerId}
+								{bill.payerType.charAt(0).toUpperCase() + bill.payerType.slice(1)} ID:{' '}
+								{bill.payerId}
 							</p>
 						</div>
 
@@ -217,9 +216,7 @@ export default function AdminBillsDetailPage() {
 						<CardDescription>Use this token to pay the bill</CardDescription>
 					</CardHeader>
 					<CardContent>
-						<div className="font-mono bg-muted p-3 rounded-md break-all">
-							{bill.paymentToken}
-						</div>
+						<div className="font-mono bg-muted p-3 rounded-md break-all">{bill.paymentToken}</div>
 					</CardContent>
 				</Card>
 			)}

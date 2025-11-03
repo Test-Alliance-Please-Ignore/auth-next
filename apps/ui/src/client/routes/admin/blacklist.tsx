@@ -1,7 +1,7 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Plus, Search, ShieldBan, Trash2, X } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -20,9 +20,22 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { useDebounce } from '@/hooks/useDebounce'
 import { usePageTitle } from '@/hooks/usePageTitle'
@@ -84,9 +97,10 @@ export default function BlacklistPage() {
 			queryClient.invalidateQueries({ queryKey: ['blacklists'] })
 			setAddDialogOpen(false)
 			setFormData({ targetType: 'user', userId: '', characterId: '', reason: '' })
-			const cascadeMsg = result.autoBlacklisted.totalCount > 0
-				? ` Auto-blacklisted ${result.autoBlacklisted.characters.length} character(s) and ${result.autoBlacklisted.users.length} user(s).`
-				: ''
+			const cascadeMsg =
+				result.autoBlacklisted.totalCount > 0
+					? ` Auto-blacklisted ${result.autoBlacklisted.characters.length} character(s) and ${result.autoBlacklisted.users.length} user(s).`
+					: ''
 			setMessage({ type: 'success', text: `User blacklisted successfully.${cascadeMsg}` })
 			setTimeout(() => setMessage(null), 5000)
 		},
@@ -101,7 +115,8 @@ export default function BlacklistPage() {
 
 	// Create character blacklist mutation
 	const createCharacterBlacklist = useMutation({
-		mutationFn: (data: { characterId: string; reason: string }) => api.createCharacterBlacklist(data),
+		mutationFn: (data: { characterId: string; reason: string }) =>
+			api.createCharacterBlacklist(data),
 		onSuccess: (result) => {
 			queryClient.invalidateQueries({ queryKey: ['blacklists'] })
 			setAddDialogOpen(false)
@@ -128,9 +143,10 @@ export default function BlacklistPage() {
 			queryClient.invalidateQueries({ queryKey: ['blacklists'] })
 			setDeleteDialogOpen(false)
 			setSelectedEntry(null)
-			const cascadeMsg = result.removedCount > 1
-				? ` Also removed ${result.removedCount - 1} triggered blacklist(s).`
-				: ''
+			const cascadeMsg =
+				result.removedCount > 1
+					? ` Also removed ${result.removedCount - 1} triggered blacklist(s).`
+					: ''
 			setMessage({ type: 'success', text: `Blacklist entry removed successfully.${cascadeMsg}` })
 			setTimeout(() => setMessage(null), 5000)
 		},
@@ -269,7 +285,10 @@ export default function BlacklistPage() {
 
 						<div className="space-y-2">
 							<Label htmlFor="autoBlacklist">Auto-Blacklist</Label>
-							<Select value={autoBlacklistFilter} onValueChange={(v: any) => setAutoBlacklistFilter(v)}>
+							<Select
+								value={autoBlacklistFilter}
+								onValueChange={(v: any) => setAutoBlacklistFilter(v)}
+							>
 								<SelectTrigger id="autoBlacklist">
 									<SelectValue />
 								</SelectTrigger>
@@ -472,7 +491,9 @@ export default function BlacklistPage() {
 									</SelectTrigger>
 									<SelectContent>
 										<SelectItem value="user">User</SelectItem>
-										<SelectItem value="character">Character (Auto-blacklists linked users)</SelectItem>
+										<SelectItem value="character">
+											Character (Auto-blacklists linked users)
+										</SelectItem>
 									</SelectContent>
 								</Select>
 							</div>

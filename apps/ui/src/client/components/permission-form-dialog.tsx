@@ -189,7 +189,9 @@ export function PermissionFormDialog({
 				<Label htmlFor="category">Category (optional)</Label>
 				<Select
 					value={formData.categoryId || 'none'}
-					onValueChange={(value) => setFormData({ ...formData, categoryId: value === 'none' ? undefined : value })}
+					onValueChange={(value) =>
+						setFormData({ ...formData, categoryId: value === 'none' ? undefined : value })
+					}
 					disabled={isSubmitting}
 				>
 					<SelectTrigger id="category">

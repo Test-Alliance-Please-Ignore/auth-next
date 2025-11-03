@@ -1,9 +1,10 @@
-import type { Context } from 'hono'
-import type { Fleets, CharacterForFleetJoin } from '@repo/fleets'
-import type { EveCharacterData } from '@repo/eve-character-data'
-import type { EveTokenStore } from '@repo/eve-token-store'
 import { getStub } from '@repo/do-utils'
 import { createEveCharacterId } from '@repo/eve-types'
+
+import type { Context } from 'hono'
+import type { EveCharacterData } from '@repo/eve-character-data'
+import type { EveTokenStore } from '@repo/eve-token-store'
+import type { CharacterForFleetJoin, Fleets } from '@repo/fleets'
 
 /**
  * Render the fleet quick join page
@@ -33,7 +34,7 @@ export async function renderFleetJoinPage(
 		const characterData = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
 
 		const charactersWithTokens: CharacterForFleetJoin[] = await Promise.all(
-			user.characters.map(async (char: typeof user.characters[number]) => {
+			user.characters.map(async (char: (typeof user.characters)[number]) => {
 				const characterId = char.characterId.toString()
 
 				// Check if character has valid ESI token
@@ -42,7 +43,7 @@ export async function renderFleetJoinPage(
 				// Get character info and portrait
 				const [info, portrait] = await Promise.all([
 					characterData.getCharacterInfo(characterId),
-					characterData.getPortrait(characterId)
+					characterData.getPortrait(characterId),
 				])
 
 				return {
@@ -51,10 +52,10 @@ export async function renderFleetJoinPage(
 					portrait: portrait
 						? {
 								px64x64: portrait.px64x64 || '',
-								px128x128: portrait.px128x128 || ''
+								px128x128: portrait.px128x128 || '',
 							}
 						: undefined,
-					hasValidToken
+					hasValidToken,
 				}
 			})
 		)
@@ -68,11 +69,11 @@ export async function renderFleetJoinPage(
 			invitation: validation.invitation,
 			fleetInfo: validation.fleetInfo,
 			fleetBossName: fleetBossInfo?.name || 'Unknown',
-			characters: charactersWithTokens
+			characters: charactersWithTokens,
 		}
 
-	// Render the character selection page
-	return `
+		// Render the character selection page
+		return `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -337,12 +338,16 @@ export async function renderFleetJoinPage(
 				<span class="label">Fleet Commander:</span>
 				<span class="value">${data.fleetBossName || 'Unknown'}</span>
 			</div>
-			${data.fleetInfo?.motd ? `
+			${
+				data.fleetInfo?.motd
+					? `
 			<div class="fleet-detail">
 				<span class="label">Message:</span>
 				<span class="value">${escapeHtml(data.fleetInfo.motd)}</span>
 			</div>
-			` : ''}
+			`
+					: ''
+			}
 			<div class="fleet-tags">
 				${data.fleetInfo?.is_free_move ? '<span class="tag">Free Move</span>' : ''}
 				${data.fleetInfo?.is_registered ? '<span class="tag">Registered</span>' : ''}
@@ -356,7 +361,10 @@ export async function renderFleetJoinPage(
 			<h2 class="section-title">Select Character</h2>
 
 			<div class="characters-grid">
-				${data.characters?.map(char => `
+				${
+					data.characters
+						?.map(
+							(char) => `
 					<div class="character-card ${!char.hasValidToken ? 'disabled' : ''}" data-character-id="${char.characterId}">
 						<img
 							src="${char.portrait?.px64x64 || '/default-portrait.png'}"
@@ -369,14 +377,21 @@ export async function renderFleetJoinPage(
 								${char.hasValidToken ? '✓ Ready to join' : '✗ No ESI access'}
 							</div>
 						</div>
-						${char.hasValidToken ? `
+						${
+							char.hasValidToken
+								? `
 							<button class="join-button" onclick="joinFleet('${char.characterId}', this)">
 								Join
 								<span class="loading"></span>
 							</button>
-						` : ''}
+						`
+								: ''
+						}
 					</div>
-				`).join('') || '<p style="color: #999;">No characters available</p>'}
+				`
+						)
+						.join('') || '<p style="color: #999;">No characters available</p>'
+				}
 			</div>
 		</div>
 
@@ -545,7 +560,7 @@ function escapeHtml(text: string): string {
 		'<': '&lt;',
 		'>': '&gt;',
 		'"': '&quot;',
-		"'": '&#039;'
+		"'": '&#039;',
 	}
 	return text.replace(/[&<>"']/g, (m) => map[m])
 }

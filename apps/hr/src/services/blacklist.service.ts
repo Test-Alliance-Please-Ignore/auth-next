@@ -160,7 +160,10 @@ export class BlacklistService {
 	async createUserBlacklist(params: CreateUserBlacklistParams): Promise<BlacklistEntry> {
 		// Check if user is already blacklisted
 		const existing = await this.db.query.blacklistEntries.findFirst({
-			where: and(eq(blacklistEntries.targetType, 'user'), eq(blacklistEntries.userId, params.userId)),
+			where: and(
+				eq(blacklistEntries.targetType, 'user'),
+				eq(blacklistEntries.userId, params.userId)
+			),
 		})
 
 		if (existing) {

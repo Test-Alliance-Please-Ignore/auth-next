@@ -19,10 +19,11 @@ import {
 	SelectValue,
 } from '@/components/ui/select'
 
-import type { CorporationMember } from '../../my-corporations/api'
-import type { GrantHrRoleRequest, HrRoleType } from '../api'
 import { HR_ROLE_DESCRIPTIONS, HR_ROLE_NAMES } from '../api'
 import { HrRoleBadge } from './hr-role-badge'
+
+import type { CorporationMember } from '../../my-corporations/api'
+import type { GrantHrRoleRequest, HrRoleType } from '../api'
 
 interface GrantHrRoleDialogProps {
 	member: CorporationMember | null
@@ -107,7 +108,10 @@ export function GrantHrRoleDialog({
 						<Label htmlFor="hr-role">
 							HR Role <span className="text-destructive">*</span>
 						</Label>
-						<Select value={selectedRole} onValueChange={(value) => setSelectedRole(value as HrRoleType)}>
+						<Select
+							value={selectedRole}
+							onValueChange={(value) => setSelectedRole(value as HrRoleType)}
+						>
 							<SelectTrigger id="hr-role">
 								<SelectValue />
 							</SelectTrigger>
@@ -121,7 +125,9 @@ export function GrantHrRoleDialog({
 								))}
 							</SelectContent>
 						</Select>
-						<p className="text-xs text-muted-foreground">Select the HR role to grant to this member</p>
+						<p className="text-xs text-muted-foreground">
+							Select the HR role to grant to this member
+						</p>
 					</div>
 
 					{/* Role Description */}

@@ -5,21 +5,27 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import Layout from './components/layout'
 import { LoadingPage } from './components/ui/loading'
 import AdminActivityLogPage from './routes/admin/activity-log'
+import AdminBillsPage from './routes/admin/bills'
 import AdminBillsDashboardPage from './routes/admin/bills-dashboard'
 import AdminBillsDetailPage from './routes/admin/bills-detail'
 import AdminBillsNewPage from './routes/admin/bills-new'
-import AdminBillsPage from './routes/admin/bills'
+import AdminBillsSchedulesPage from './routes/admin/bills-schedules'
 import AdminBillsSchedulesEditPage from './routes/admin/bills-schedules-edit'
 import AdminBillsSchedulesNewPage from './routes/admin/bills-schedules-new'
-import AdminBillsSchedulesPage from './routes/admin/bills-schedules'
+import AdminBillsTemplatesPage from './routes/admin/bills-templates'
 import AdminBillsTemplatesEditPage from './routes/admin/bills-templates-edit'
 import AdminBillsTemplatesNewPage from './routes/admin/bills-templates-new'
-import AdminBillsTemplatesPage from './routes/admin/bills-templates'
 import AdminBlacklistPage from './routes/admin/blacklist'
+import AdminBroadcastsPage from './routes/admin/broadcasts'
+import AdminBroadcastTargetsPage from './routes/admin/broadcasts-targets'
+import AdminBroadcastTemplatesPage from './routes/admin/broadcasts-templates'
 import AdminCategoriesPage from './routes/admin/categories'
 import AdminCorporationDetailPage from './routes/admin/corporation-detail'
 import AdminCorporationsPage from './routes/admin/corporations'
 import AdminDiscordServersPage from './routes/admin/discord-servers'
+import AdminFreightRoutesPage from './routes/admin/freight-routes'
+import AdminFreightRoutesEditPage from './routes/admin/freight-routes-edit'
+import AdminFreightRoutesNewPage from './routes/admin/freight-routes-new'
 import AdminGroupDetailPage from './routes/admin/group-detail'
 import AdminGroupsPage from './routes/admin/groups'
 // Admin routes
@@ -28,32 +34,32 @@ import AdminPermissionCategoriesPage from './routes/admin/permissions/categories
 import AdminGlobalPermissionsPage from './routes/admin/permissions/global'
 import AdminUserDetailPage from './routes/admin/user-detail'
 import AdminUsersPage from './routes/admin/users'
-import AdminBroadcastsPage from './routes/admin/broadcasts'
-import AdminBroadcastTargetsPage from './routes/admin/broadcasts-targets'
-import AdminBroadcastTemplatesPage from './routes/admin/broadcasts-templates'
-import AdminFreightRoutesPage from './routes/admin/freight-routes'
-import AdminFreightRoutesNewPage from './routes/admin/freight-routes-new'
-import AdminFreightRoutesEditPage from './routes/admin/freight-routes-edit'
 import AuthCallbackPage from './routes/auth-callback'
 import BroadcastsPage from './routes/broadcasts'
 import BroadcastsNewPage from './routes/broadcasts-new'
+import BrowseCorporations from './routes/browse-corporations'
 import CharacterDetailPage from './routes/character-detail'
 import ClaimMainPage from './routes/claim-main'
-import BrowseCorporations from './routes/browse-corporations'
 import DashboardPage from './routes/dashboard'
 import DiscordCallbackPage from './routes/discord-callback'
 import GroupDetailPage from './routes/group-detail'
 // User-facing group routes
 import GroupsPage from './routes/groups'
-import InvitationsPage from './routes/invitations'
 import InventoryParserPage from './routes/inventory-parser'
+import InvitationsPage from './routes/invitations'
 import LandingPage from './routes/landing'
 import MyGroupsPage from './routes/my-groups'
 
 // Lazy load the My Corporations feature for code splitting
-const MyCorporationsList = lazy(() => import('./features/my-corporations/routes/my-corporations-list'))
-const CorporationMembers = lazy(() => import('./features/my-corporations/routes/corporation-members'))
-const CorporationSettings = lazy(() => import('./features/my-corporations/routes/corporation-settings'))
+const MyCorporationsList = lazy(
+	() => import('./features/my-corporations/routes/my-corporations-list')
+)
+const CorporationMembers = lazy(
+	() => import('./features/my-corporations/routes/corporation-members')
+)
+const CorporationSettings = lazy(
+	() => import('./features/my-corporations/routes/corporation-settings')
+)
 
 // Lazy load public corporation pages
 const CorporationDetail = lazy(() => import('./routes/corporation-detail'))
@@ -63,7 +69,9 @@ const MyApplicationsList = lazy(() => import('./features/applications/routes/my-
 const ApplicationDetail = lazy(() => import('./features/applications/routes/application-detail'))
 const HrDashboard = lazy(() => import('./features/applications/routes/hr-dashboard'))
 const HrApplicationsList = lazy(() => import('./features/applications/routes/hr-applications-list'))
-const HrApplicationReview = lazy(() => import('./features/applications/routes/hr-application-review'))
+const HrApplicationReview = lazy(
+	() => import('./features/applications/routes/hr-application-review')
+)
 const HrRolesManagement = lazy(() => import('./features/applications/routes/hr-roles-management'))
 const UserHrNotes = lazy(() => import('./features/applications/routes/user-hr-notes'))
 
@@ -74,7 +82,9 @@ const SkillPlanCreate = lazy(() => import('./features/skill-plans/routes/skill-p
 const SkillPlanEdit = lazy(() => import('./features/skill-plans/routes/skill-plan-edit'))
 const SkillPlanProgress = lazy(() => import('./features/skill-plans/routes/skill-plan-progress'))
 const MySkillPlans = lazy(() => import('./features/skill-plans/routes/my-skill-plans'))
-const CategoriesManagement = lazy(() => import('./features/skill-plans/routes/categories-management'))
+const CategoriesManagement = lazy(
+	() => import('./features/skill-plans/routes/categories-management')
+)
 
 // Create a client
 const queryClient = new QueryClient({
@@ -115,14 +125,14 @@ export default function App() {
 								</Suspense>
 							}
 						/>
-					<Route
-						path="/join/:corporationId"
-						element={
-							<Suspense fallback={<LoadingPage />}>
-								<CorporationDetail />
-							</Suspense>
-						}
-					/>
+						<Route
+							path="/join/:corporationId"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<CorporationDetail />
+								</Suspense>
+							}
+						/>
 
 						{/* My Corporations routes (lazy loaded) */}
 						<Route
@@ -141,14 +151,14 @@ export default function App() {
 								</Suspense>
 							}
 						/>
-					<Route
-						path="/my-corporations/:corporationId/settings"
-						element={
-							<Suspense fallback={<LoadingPage />}>
-								<CorporationSettings />
-							</Suspense>
-						}
-					/>
+						<Route
+							path="/my-corporations/:corporationId/settings"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<CorporationSettings />
+								</Suspense>
+							}
+						/>
 
 						{/* Application routes - User views (lazy loaded) */}
 						<Route
@@ -247,6 +257,14 @@ export default function App() {
 							element={
 								<Suspense fallback={<LoadingPage />}>
 									<SkillPlanEdit />
+								</Suspense>
+							}
+						/>
+						<Route
+							path="/skill-plans/:id/progress/character/:characterId"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<SkillPlanProgress />
 								</Suspense>
 							}
 						/>

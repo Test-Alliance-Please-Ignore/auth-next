@@ -7,14 +7,14 @@
 
 import { useState } from 'react'
 
-import type { InventoryParseResult } from '@repo/eve-types'
-
 import { useParseInventory } from '../hooks/useInventoryParser'
-import { ConfirmButton } from './ui/confirm-button'
 import { JsonViewer } from './json-viewer'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
+import { ConfirmButton } from './ui/confirm-button'
 import { Label } from './ui/label'
 import { Textarea } from './ui/textarea'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
+
+import type { InventoryParseResult } from '@repo/eve-types'
 
 export interface InventoryParserProps {
 	/** Callback when parsing completes successfully */

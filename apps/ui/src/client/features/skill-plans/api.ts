@@ -1,16 +1,17 @@
 import { apiClient } from '../../lib/api'
+
 import type {
-	SkillPlan,
-	CreateSkillPlanRequest,
-	UpdateSkillPlanRequest,
 	AddSkillRequest,
-	UpdateSkillLevelsRequest,
-	SkillPlanCategory,
-	CharacterProgress,
 	AvailableSkill,
-	SkillPlanSkill,
-	PaginationParams,
+	CharacterProgress,
+	CreateSkillPlanRequest,
 	PaginatedResponse,
+	PaginationParams,
+	SkillPlan,
+	SkillPlanCategory,
+	SkillPlanSkill,
+	UpdateSkillLevelsRequest,
+	UpdateSkillPlanRequest,
 } from './types'
 
 export const skillPlansApi = {
@@ -137,7 +138,7 @@ export const skillPlansApi = {
 		characterId?: string
 	): Promise<CharacterProgress> => {
 		const url = characterId
-			? `/skill-plans/${planId}/progress/${characterId}`
+			? `/skill-plans/${planId}/progress/character/${characterId}`
 			: `/skill-plans/${planId}/progress`
 		return apiClient.get<CharacterProgress>(url)
 	},
@@ -146,7 +147,7 @@ export const skillPlansApi = {
 	getAvailableSkills: async (): Promise<AvailableSkill[]> => {
 		const skills = await apiClient.get<any[]>('/skills')
 		// Transform the response to match AvailableSkill interface
-		return skills.map(skill => ({
+		return skills.map((skill) => ({
 			skillId: String(skill.id || skill.skillId),
 			name: skill.name,
 			group: skill.groupName || 'Unknown',
@@ -162,7 +163,7 @@ export const skillPlansApi = {
 		const params = new URLSearchParams({ search: query, limit: String(limit) })
 		const skills = await apiClient.get<any[]>(`/skills?${params}`)
 		// Transform the response to match AvailableSkill interface
-		return skills.map(skill => ({
+		return skills.map((skill) => ({
 			skillId: String(skill.id || skill.skillId),
 			name: skill.name,
 			group: skill.groupName || 'Unknown',

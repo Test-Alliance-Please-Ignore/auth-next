@@ -1,10 +1,12 @@
 import { useState } from 'react'
+
 import { Button } from '../../../components/ui/button'
 import { CancelButton } from '../../../components/ui/cancel-button'
 import { ConfirmButton } from '../../../components/ui/confirm-button'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import { Textarea } from '../../../components/ui/textarea'
+
 import type { SkillPlanCategory } from '../types'
 
 interface CategoryFormProps {
@@ -109,15 +111,15 @@ export function CategoryForm({
 					id="displayOrder"
 					type="number"
 					value={formData.displayOrder}
-					onChange={(e) => setFormData({ ...formData, displayOrder: parseInt(e.target.value) || 0 })}
+					onChange={(e) =>
+						setFormData({ ...formData, displayOrder: parseInt(e.target.value) || 0 })
+					}
 					placeholder="0"
 					disabled={isSubmitting}
 					min={0}
 					max={999}
 				/>
-				<p className="text-sm text-muted-foreground">
-					Lower numbers appear first in lists
-				</p>
+				<p className="text-sm text-muted-foreground">Lower numbers appear first in lists</p>
 			</div>
 
 			{/* Form actions */}

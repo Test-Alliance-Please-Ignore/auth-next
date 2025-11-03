@@ -17,8 +17,10 @@ Complete bills management system for EVE Online corporations, groups, and charac
 ### Singleton Durable Object Pattern
 
 This worker uses a singleton Durable Object pattern:
+
 ```typescript
 import { getStub } from '@repo/do-utils'
+
 import type { Bills } from '@repo/bills'
 
 const stub = getStub<Bills>(env.BILLS, 'default')
@@ -28,6 +30,7 @@ const bill = await stub.createBill(userId, billData)
 ### Database
 
 PostgreSQL via Neon serverless with Drizzle ORM:
+
 - **bills**: Main bills table
 - **bill_templates**: Reusable templates
 - **bill_schedules**: Recurring bill schedules
@@ -36,6 +39,7 @@ PostgreSQL via Neon serverless with Drizzle ORM:
 ### Services
 
 Business logic is separated into service classes:
+
 - **BillService**: Bill lifecycle, late fees, payment processing
 - **TemplateService**: Template CRUD, cloning, bill generation
 - **ScheduleService**: Schedule management, next run calculation
@@ -43,6 +47,7 @@ Business logic is separated into service classes:
 ### Workflows
 
 **BillScheduleExecutorWorkflow**: Executes scheduled bill generation with:
+
 - Exponential backoff retry logic
 - Failure tracking and auto-pause after 3 consecutive failures
 - Integration with notification system (future)
@@ -104,7 +109,7 @@ const bill = await stub.createBill(userId, {
   dueDate: new Date('2025-02-01'),
   lateFeeType: 'percentage',
   lateFeeAmount: '5', // 5% per day
-  lateFeeCompounding: 'daily'
+  lateFeeCompounding: 'daily',
 })
 ```
 
@@ -129,7 +134,7 @@ const template = await stub.createTemplate(userId, {
   lateFeeType: 'static',
   lateFeeAmount: '50000000',
   lateFeeCompounding: 'weekly',
-  daysUntilDue: 7
+  daysUntilDue: 7,
 })
 ```
 
@@ -142,7 +147,7 @@ const schedule = await stub.createSchedule(userId, {
   payerType: 'corporation',
   frequency: 'monthly',
   amount: '500000000', // 500M ISK per month
-  startDate: new Date('2025-02-01')
+  startDate: new Date('2025-02-01'),
 })
 ```
 
@@ -163,6 +168,7 @@ const schedule = await stub.createSchedule(userId, {
 - **Monthly**: Percentage × months overdue
 
 Example: 1M ISK bill, 5% daily late fee, 3 days overdue:
+
 ```
 Late Fee = 1,000,000 × 0.05 × 3 = 150,000 ISK
 ```
@@ -205,13 +211,13 @@ Full type safety via shared `@repo/bills` package:
 
 ```typescript
 import type {
-  Bills,
   Bill,
-  BillTemplate,
+  Bills,
   BillSchedule,
+  BillTemplate,
   CreateBillInput,
+  CreateScheduleInput,
   CreateTemplateInput,
-  CreateScheduleInput
 } from '@repo/bills'
 ```
 
@@ -226,10 +232,10 @@ import type {
       {
         "name": "BILLS",
         "class_name": "Bills",
-        "script_name": "bills"
-      }
-    ]
-  }
+        "script_name": "bills",
+      },
+    ],
+  },
 }
 ```
 
@@ -244,6 +250,7 @@ pnpm -F your-worker add '@repo/do-utils@workspace:*'
 
 ```typescript
 import { getStub } from '@repo/do-utils'
+
 import type { Bills } from '@repo/bills'
 
 const stub = getStub<Bills>(env.BILLS, 'default')

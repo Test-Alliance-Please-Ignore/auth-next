@@ -33,7 +33,7 @@ export function parseEvemonXml(xmlContent: string): ParseResult {
 		if (parserError) {
 			return {
 				success: false,
-				error: 'Invalid XML format. Please paste valid EVEMon skill plan XML.'
+				error: 'Invalid XML format. Please paste valid EVEMon skill plan XML.',
 			}
 		}
 
@@ -42,17 +42,21 @@ export function parseEvemonXml(xmlContent: string): ParseResult {
 		if (entries.length === 0) {
 			return {
 				success: false,
-				error: 'No skill entries found in the XML. Please ensure this is a valid EVEMon skill plan.'
+				error:
+					'No skill entries found in the XML. Please ensure this is a valid EVEMon skill plan.',
 			}
 		}
 
 		// Group entries by skill ID, tracking highest level and priority
-		const skillMap = new Map<number, {
-			name: string
-			requiredLevel: number
-			recommendedLevel: number
-			highestPriority: number
-		}>()
+		const skillMap = new Map<
+			number,
+			{
+				name: string
+				requiredLevel: number
+				recommendedLevel: number
+				highestPriority: number
+			}
+		>()
 
 		entries.forEach((entry) => {
 			const skillIdStr = entry.getAttribute('skillID')
@@ -79,9 +83,9 @@ export function parseEvemonXml(xmlContent: string): ParseResult {
 				const isPriority10 = priority === 10
 				skillMap.set(skillId, {
 					name: skillName,
-					requiredLevel: isPriority10 ? 0 : level,  // Priority 10 = not required
-					recommendedLevel: level,  // All priorities contribute to recommended
-					highestPriority: priority
+					requiredLevel: isPriority10 ? 0 : level, // Priority 10 = not required
+					recommendedLevel: level, // All priorities contribute to recommended
+					highestPriority: priority,
 				})
 			} else {
 				// Update with higher level if found
@@ -108,7 +112,7 @@ export function parseEvemonXml(xmlContent: string): ParseResult {
 				skillName: data.name,
 				requiredLevel: data.requiredLevel,
 				recommendedLevel: data.recommendedLevel,
-				priority: data.highestPriority
+				priority: data.highestPriority,
 			})
 		})
 
@@ -122,13 +126,13 @@ export function parseEvemonXml(xmlContent: string): ParseResult {
 
 		return {
 			success: true,
-			skills
+			skills,
 		}
 	} catch (error) {
 		console.error('Error parsing EVEMon XML:', error)
 		return {
 			success: false,
-			error: 'Failed to parse XML. Please ensure the content is valid.'
+			error: 'Failed to parse XML. Please ensure the content is valid.',
 		}
 	}
 }

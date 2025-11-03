@@ -34,7 +34,7 @@ import { cn } from '@/lib/utils'
 
 import { useAddHRNote, useUpdateHRNote } from '../hooks'
 
-import type { HRNote, HRNoteType, HRNotePriority } from '../api'
+import type { HRNote, HRNotePriority, HRNoteType } from '../api'
 
 // ============================================================================
 // Types
@@ -207,11 +207,7 @@ export function AddHRNoteDialog({
 				setNoteType(existingNote.noteType)
 				setPriority(existingNote.priority)
 				setNoteText(existingNote.noteText)
-				setTags(
-					existingNote.metadata?.tags
-						? (existingNote.metadata.tags as string[])
-						: []
-				)
+				setTags(existingNote.metadata?.tags ? (existingNote.metadata.tags as string[]) : [])
 			} else {
 				// Add mode - reset to defaults
 				setNoteType('general')

@@ -1,6 +1,6 @@
-import { useState } from 'react'
 import { X } from 'lucide-react'
-import { useSkillPlanCategories } from '../hooks'
+import { useState } from 'react'
+
 import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
 import { Label } from '../../../components/ui/label'
@@ -12,6 +12,7 @@ import {
 	SelectValue,
 } from '../../../components/ui/select'
 import { Skeleton } from '../../../components/ui/skeleton'
+import { useSkillPlanCategories } from '../hooks'
 
 interface CategorySelectorProps {
 	value: string[] | undefined
@@ -31,19 +32,17 @@ export function CategorySelector({ value = [], onChange, disabled }: CategorySel
 	}
 
 	const handleRemoveCategory = (categoryId: string) => {
-		onChange(value.filter(id => id !== categoryId))
+		onChange(value.filter((id) => id !== categoryId))
 	}
 
 	// Get category names for display
 	const getCategoryName = (categoryId: string) => {
-		const category = categories?.find(c => c.id === categoryId)
+		const category = categories?.find((c) => c.id === categoryId)
 		return category?.name || 'Unknown Category'
 	}
 
 	// Filter out already selected categories from dropdown
-	const availableCategories = categories?.filter(
-		category => !value.includes(category.id)
-	) || []
+	const availableCategories = categories?.filter((category) => !value.includes(category.id)) || []
 
 	if (isLoading) {
 		return (
@@ -94,11 +93,7 @@ export function CategorySelector({ value = [], onChange, disabled }: CategorySel
 			{value.length > 0 && (
 				<div className="flex flex-wrap gap-2 mt-2">
 					{value.map((categoryId) => (
-						<Badge
-							key={categoryId}
-							variant="secondary"
-							className="flex items-center gap-1"
-						>
+						<Badge key={categoryId} variant="secondary" className="flex items-center gap-1">
 							{getCategoryName(categoryId)}
 							<Button
 								type="button"

@@ -1,5 +1,8 @@
 import { DurableObject } from 'cloudflare:workers'
 
+import { createDb } from './db'
+import { RouteService } from './services/route.service'
+
 import type {
 	CreateFreightRouteInput,
 	Freight,
@@ -7,10 +10,8 @@ import type {
 	FreightRouteStatus,
 	UpdateFreightRouteInput,
 } from '@repo/freight'
-import { createDb } from './db'
-import type { FreightDb } from './db'
-import { RouteService } from './services/route.service'
 import type { Env } from './context'
+import type { FreightDb } from './db'
 
 /**
  * Freight Durable Object
@@ -51,7 +52,11 @@ export class FreightDO extends DurableObject<Env, {}> implements Freight {
 		return this.routeService.listRoutes(filters)
 	}
 
-	async updateRoute(adminId: string, routeId: string, data: UpdateFreightRouteInput): Promise<FreightRoute> {
+	async updateRoute(
+		adminId: string,
+		routeId: string,
+		data: UpdateFreightRouteInput
+	): Promise<FreightRoute> {
 		return this.routeService.updateRoute(adminId, routeId, data)
 	}
 

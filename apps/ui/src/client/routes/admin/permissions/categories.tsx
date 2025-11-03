@@ -14,13 +14,13 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import {
 	useCreatePermissionCategory,
 	useDeletePermissionCategory,
 	usePermissionCategories,
 	useUpdatePermissionCategory,
 } from '@/hooks/usePermissionCategories'
-import { usePageTitle } from '@/hooks/usePageTitle'
 
 import type {
 	CreatePermissionCategoryRequest,

@@ -25,10 +25,10 @@ import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { cn } from '@/lib/utils'
 
+import { useHrPermissionCheck } from '../../hr/hooks'
 import { ApplicationStatsCard } from '../components/application-stats-card'
 import { ApplicationsTable } from '../components/applications-table'
 import { useApplications } from '../hooks'
-import { useHrPermissionCheck } from '../../hr/hooks'
 
 import type { ApplicationStatus } from '../api'
 
@@ -157,12 +157,10 @@ export default function HrApplicationsList() {
 				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
 					<CardHeader className="text-center">
 						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
-						<CardTitle className="text-2xl text-red-900 dark:text-red-100">
-							Access Denied
-						</CardTitle>
+						<CardTitle className="text-2xl text-red-900 dark:text-red-100">Access Denied</CardTitle>
 						<CardDescription className="mt-2 text-red-700 dark:text-red-300">
-							You don't have HR permissions for this corporation. Contact an HR Admin to
-							request access.
+							You don't have HR permissions for this corporation. Contact an HR Admin to request
+							access.
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">

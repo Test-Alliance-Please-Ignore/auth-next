@@ -1,4 +1,4 @@
-import { and, eq, inArray, ilike } from 'drizzle-orm'
+import { and, eq, ilike, inArray } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { useWorkersLogger } from 'workers-tagged-logger'
@@ -10,8 +10,8 @@ import { createDb } from './db'
 import { schema } from './db/schema'
 import { parseInventoryWithTables } from './utils/inventory-parser'
 
-import type { App } from './context'
 import type { InventoryParseResult } from '@repo/eve-types'
+import type { App } from './context'
 
 const app = new Hono<App>()
 	.use('*', (c, next) =>
@@ -441,12 +441,12 @@ app.get('/items/search', async (c) => {
 			})
 			.from(schema.invTypes)
 			.innerJoin(schema.invGroups, eq(schema.invTypes.groupId, schema.invGroups.groupId))
-			.innerJoin(schema.invCategories, eq(schema.invGroups.categoryId, schema.invCategories.categoryId))
+			.innerJoin(
+				schema.invCategories,
+				eq(schema.invGroups.categoryId, schema.invCategories.categoryId)
+			)
 			.where(
-				and(
-					ilike(schema.invTypes.typeName, `%${query}%`),
-					eq(schema.invTypes.published, true)
-				)
+				and(ilike(schema.invTypes.typeName, `%${query}%`), eq(schema.invTypes.published, true))
 			)
 			.limit(limit)
 

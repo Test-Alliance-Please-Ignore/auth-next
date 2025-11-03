@@ -1,5 +1,9 @@
 import { and, eq, inArray, sql } from '@repo/db-utils'
 
+import { bills, billSchedules, billTemplates } from '../db/schema'
+import { generatePaymentToken } from '../utils/token'
+import { generateUuidV7 } from '../utils/uuid'
+
 import type {
 	Bill,
 	BillTemplate,
@@ -11,9 +15,6 @@ import type {
 	UpdateTemplateInput,
 } from '@repo/bills'
 import type { BillsDb } from '../db'
-import { billSchedules, bills, billTemplates } from '../db/schema'
-import { generatePaymentToken } from '../utils/token'
-import { generateUuidV7 } from '../utils/uuid'
 
 /**
  * Template Service
@@ -124,7 +125,11 @@ export class TemplateService {
 	/**
 	 * Update a template (owner only)
 	 */
-	async updateTemplate(userId: string, templateId: string, data: UpdateTemplateInput): Promise<BillTemplate> {
+	async updateTemplate(
+		userId: string,
+		templateId: string,
+		data: UpdateTemplateInput
+	): Promise<BillTemplate> {
 		const template = await this.db.query.billTemplates.findFirst({
 			where: eq(billTemplates.id, templateId),
 		})
@@ -171,7 +176,9 @@ export class TemplateService {
 		})
 
 		if (activeSchedules.length > 0) {
-			throw new Error('Cannot delete template with active schedules. Pause or delete schedules first.')
+			throw new Error(
+				'Cannot delete template with active schedules. Pause or delete schedules first.'
+			)
 		}
 
 		await this.db.delete(billTemplates).where(eq(billTemplates.id, templateId))

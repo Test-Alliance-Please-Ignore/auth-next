@@ -7,8 +7,9 @@ Shared types and interfaces for the Skills Durable Object.
 Import this package in any worker that needs to interact with the Skills Durable Object:
 
 ```typescript
-import type { Skills } from '@repo/skills'
 import { getStub } from '@repo/do-utils'
+
+import type { Skills } from '@repo/skills'
 
 // Get a typed stub to the Durable Object
 const stub = getStub<Skills>(env.SKILLS, 'unique-id')

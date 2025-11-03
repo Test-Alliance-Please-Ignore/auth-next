@@ -14,8 +14,8 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { useCloneTemplate, useDeleteTemplate, useTemplates } from '@/hooks/useBills'
-import { formatLateFeeCompounding, formatLateFeeType } from '@/lib/bills-utils'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { formatLateFeeCompounding, formatLateFeeType } from '@/lib/bills-utils'
 
 export default function BillsTemplatesPage() {
 	usePageTitle('Admin - Bill Templates')
@@ -98,11 +98,7 @@ export default function BillsTemplatesPage() {
 			{message && (
 				<Card className={message.type === 'error' ? 'border-destructive' : 'border-success'}>
 					<CardContent className="pt-6">
-						<p
-							className={
-								message.type === 'error' ? 'text-destructive' : 'text-success'
-							}
-						>
+						<p className={message.type === 'error' ? 'text-destructive' : 'text-success'}>
 							{message.text}
 						</p>
 					</CardContent>
@@ -207,9 +203,7 @@ export default function BillsTemplatesPage() {
 														<Trash2 className="h-4 w-4 mr-0" />
 													</DestructiveButton>
 													<Button size="sm" variant="outline" asChild>
-														<Link to={`/admin/bills/templates/${template.id}`}>
-															Edit
-														</Link>
+														<Link to={`/admin/bills/templates/${template.id}`}>Edit</Link>
 													</Button>
 												</div>
 											</TableCell>

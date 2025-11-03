@@ -1,5 +1,9 @@
 import { and, desc, eq, sql } from '@repo/db-utils'
 
+import { billSchedules, billTemplates, scheduleExecutionLogs } from '../db/schema'
+import { calculateInitialGenerationTime, calculateNextGenerationTime } from '../utils/schedule'
+import { generateUuidV7 } from '../utils/uuid'
+
 import type {
 	BillSchedule,
 	BillScheduleWithDetails,
@@ -10,12 +14,6 @@ import type {
 	UpdateScheduleInput,
 } from '@repo/bills'
 import type { BillsDb } from '../db'
-import { billSchedules, billTemplates, scheduleExecutionLogs } from '../db/schema'
-import {
-	calculateInitialGenerationTime,
-	calculateNextGenerationTime,
-} from '../utils/schedule'
-import { generateUuidV7 } from '../utils/uuid'
 
 /**
  * Schedule Service
@@ -104,7 +102,10 @@ export class ScheduleService {
 	/**
 	 * List schedules owned by user
 	 */
-	async listSchedules(userId: string, filters: ScheduleFilters = {}): Promise<BillScheduleWithDetails[]> {
+	async listSchedules(
+		userId: string,
+		filters: ScheduleFilters = {}
+	): Promise<BillScheduleWithDetails[]> {
 		const conditions = [eq(billSchedules.ownerId, userId)]
 
 		// Apply filters
@@ -159,7 +160,11 @@ export class ScheduleService {
 	/**
 	 * Update a schedule (owner only)
 	 */
-	async updateSchedule(userId: string, scheduleId: string, data: UpdateScheduleInput): Promise<BillSchedule> {
+	async updateSchedule(
+		userId: string,
+		scheduleId: string,
+		data: UpdateScheduleInput
+	): Promise<BillSchedule> {
 		const schedule = await this.db.query.billSchedules.findFirst({
 			where: eq(billSchedules.id, scheduleId),
 		})
@@ -408,7 +413,10 @@ export class ScheduleService {
 		const now = new Date()
 
 		const schedules = await this.db.query.billSchedules.findMany({
-			where: and(eq(billSchedules.isActive, true), sql`${billSchedules.nextGenerationTime} <= ${now}`),
+			where: and(
+				eq(billSchedules.isActive, true),
+				sql`${billSchedules.nextGenerationTime} <= ${now}`
+			),
 			with: {
 				template: true,
 			},

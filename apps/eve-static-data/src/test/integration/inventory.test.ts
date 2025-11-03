@@ -4,6 +4,7 @@
 
 import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:test'
 import { beforeAll, describe, expect, it } from 'vitest'
+
 import worker from '../../index'
 
 describe('Inventory Parsing', () => {
@@ -87,9 +88,7 @@ Pyerite	250`
 			expect(result.errors.length).toBeGreaterThanOrEqual(1)
 
 			// Check error structure
-			const error = result.errors.find(
-				(e: any) => e.reason === 'item_not_found'
-			)
+			const error = result.errors.find((e: any) => e.reason === 'item_not_found')
 			expect(error).toBeDefined()
 			expect(error).toHaveProperty('lineNumber')
 			expect(error).toHaveProperty('rawText')

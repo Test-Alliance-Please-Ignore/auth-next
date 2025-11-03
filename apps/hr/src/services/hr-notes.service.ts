@@ -2,8 +2,8 @@ import { and, desc, eq, inArray } from '@repo/db-utils'
 
 import { hrNotes } from '../db/schema'
 
-import type { HrNote, HrNoteType, HrNotePriority, NoteFilters } from '@repo/hr'
 import type { DbClient } from '@repo/db-utils'
+import type { HrNote, HrNotePriority, HrNoteType, NoteFilters } from '@repo/hr'
 import type * as schema from '../db/schema'
 
 /**

@@ -203,7 +203,9 @@ export function GroupPermissionForm({
 				</Label>
 				<Select
 					value={formData.targetType}
-					onValueChange={(value) => setFormData({ ...formData, targetType: value as PermissionTarget })}
+					onValueChange={(value) =>
+						setFormData({ ...formData, targetType: value as PermissionTarget })
+					}
 					disabled={isSubmitting}
 				>
 					<SelectTrigger id="target-type">

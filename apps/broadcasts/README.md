@@ -46,8 +46,9 @@ The Broadcasts Durable Object is available to this worker via the `BROADCASTS` b
 ### From within this worker:
 
 ```typescript
-import type { Broadcasts } from '@repo/broadcasts'
 import { getStub } from '@repo/do-utils'
+
+import type { Broadcasts } from '@repo/broadcasts'
 
 // Get a stub to the Durable Object
 const stub = getStub<Broadcasts>(c.env.BROADCASTS, 'unique-id')

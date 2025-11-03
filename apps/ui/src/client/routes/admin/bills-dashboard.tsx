@@ -21,9 +21,7 @@ export default function BillsDashboardPage() {
 			<div className="flex items-center justify-between">
 				<div>
 					<h1 className="text-3xl font-bold gradient-text">Bills Dashboard</h1>
-					<p className="text-muted-foreground mt-1">
-						Overview of bills, templates, and schedules
-					</p>
+					<p className="text-muted-foreground mt-1">Overview of bills, templates, and schedules</p>
 				</div>
 				<Button asChild>
 					<Link to="/admin/bills">View All Bills</Link>
@@ -55,9 +53,7 @@ export default function BillsDashboardPage() {
 								<TrendingUp className="h-4 w-4 text-muted-foreground" />
 							</CardHeader>
 							<CardContent>
-								<div className="text-2xl font-bold">
-									{billStats?.billsByStatus?.paid || 0}
-								</div>
+								<div className="text-2xl font-bold">{billStats?.billsByStatus?.paid || 0}</div>
 								<p className="text-xs text-muted-foreground">Successfully paid</p>
 							</CardContent>
 						</Card>
@@ -82,11 +78,7 @@ export default function BillsDashboardPage() {
 							</CardHeader>
 							<CardContent>
 								<div className="text-2xl font-bold">
-									{billStats?.totalAmount ? (
-										<ISKAmount amount={billStats.totalAmount} />
-									) : (
-										'0 ISK'
-									)}
+									{billStats?.totalAmount ? <ISKAmount amount={billStats.totalAmount} /> : '0 ISK'}
 								</div>
 								<p className="text-xs text-muted-foreground">All bills combined</p>
 							</CardContent>
@@ -104,9 +96,7 @@ export default function BillsDashboardPage() {
 								<div className="text-2xl font-bold text-success">
 									{scheduleStats?.activeSchedules || 0}
 								</div>
-								<p className="text-xs text-muted-foreground">
-									Currently running schedules
-								</p>
+								<p className="text-xs text-muted-foreground">Currently running schedules</p>
 							</CardContent>
 						</Card>
 

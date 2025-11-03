@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 
 import { getStub } from '@repo/do-utils'
 
+import { createDb } from '../db'
 import {
 	canCheckCharacterProgress,
 	canCreateCategory,
@@ -11,7 +12,6 @@ import {
 	canModifyPlan,
 	canViewPlan,
 } from '../lib/skill-plan-auth'
-import { createDb } from '../db'
 import { requireAuth } from '../middleware/session'
 
 import type { EveCharacterData } from '@repo/eve-character-data'
@@ -19,9 +19,9 @@ import type { Groups } from '@repo/groups'
 import type {
 	AddSkillToPlanInput,
 	CreateSkillPlanInput,
-	Skills,
 	SkillPlan,
 	SkillPlanCategory,
+	Skills,
 } from '@repo/skills'
 import type { App } from '../context'
 
@@ -53,7 +53,7 @@ async function resolveMaintainerName(
 		try {
 			const character = await db.query.userCharacters.findFirst({
 				where: (chars, { eq, and }) =>
-					and(eq(chars.userId, maintainerId), eq(chars.is_primary, true))
+					and(eq(chars.userId, maintainerId), eq(chars.is_primary, true)),
 			})
 			return character?.characterName || maintainerId
 		} catch (error) {
@@ -226,21 +226,31 @@ const skillPlansRoutes = new Hono<App>()
 				const db = createDb(c.env.DATABASE_URL)
 
 				// Add permission flags and maintainer name for each plan
-				const plansWithPermissions = await Promise.all(result.items.map(async (plan) => {
-					const canModify = await canModifyPlan(plan, user.id, groupsStub, user.is_admin)
-					const canDelete = await canDeletePlan(plan, user.id, groupsStub, user.is_admin)
-					const maintainerType = plan.maintainerId?.startsWith('group:') ? 'group' as const : 'user' as const
-					const maintainerName = plan.maintainerId
-						? await resolveMaintainerName(plan.maintainerId, user.id, groupsStub, db, user.is_admin)
-						: 'System'
-					return {
-						...plan,
-						canModify,
-						canDelete,
-						maintainerType,
-						maintainerName,
-					}
-				}))
+				const plansWithPermissions = await Promise.all(
+					result.items.map(async (plan) => {
+						const canModify = await canModifyPlan(plan, user.id, groupsStub, user.is_admin)
+						const canDelete = await canDeletePlan(plan, user.id, groupsStub, user.is_admin)
+						const maintainerType = plan.maintainerId?.startsWith('group:')
+							? ('group' as const)
+							: ('user' as const)
+						const maintainerName = plan.maintainerId
+							? await resolveMaintainerName(
+									plan.maintainerId,
+									user.id,
+									groupsStub,
+									db,
+									user.is_admin
+								)
+							: 'System'
+						return {
+							...plan,
+							canModify,
+							canDelete,
+							maintainerType,
+							maintainerName,
+						}
+					})
+				)
 
 				return c.json({
 					...result,
@@ -276,9 +286,12 @@ const skillPlansRoutes = new Hono<App>()
 			const memberships = await groupsStub.getUserMemberships(user.id)
 
 			for (const membership of memberships) {
-				const groupPlansResult = await skillsStub.listPlansByMaintainer(`group:${membership.groupId}`, {
-					limit: 1000,
-				})
+				const groupPlansResult = await skillsStub.listPlansByMaintainer(
+					`group:${membership.groupId}`,
+					{
+						limit: 1000,
+					}
+				)
 				// Merge group plans with user plans, avoiding duplicates
 				for (const plan of groupPlansResult.items) {
 					if (!plans.find((p) => p.id === plan.id)) {
@@ -299,7 +312,9 @@ const skillPlansRoutes = new Hono<App>()
 			// Add permission flags and maintainer name for each plan
 			const plansWithPermissions = await Promise.all(
 				paginatedPlans.map(async (plan) => {
-					const maintainerType = plan.maintainerId?.startsWith('group:') ? ('group' as const) : ('user' as const)
+					const maintainerType = plan.maintainerId?.startsWith('group:')
+						? ('group' as const)
+						: ('user' as const)
 					const maintainerName = plan.maintainerId
 						? await resolveMaintainerName(plan.maintainerId, user.id, groupsStub, db, user.is_admin)
 						: 'System'
@@ -355,11 +370,11 @@ const skillPlansRoutes = new Hono<App>()
 	})
 
 	/**
-	 * GET /api/skill-plans/:id/progress/:characterId
+	 * GET /api/skill-plans/:id/progress/character/:characterId
 	 * Check a character's progress on a specific skill plan
 	 * Authorization: Character owner OR urn:skill-plans:progress:check-any
 	 */
-	.get('/:id/progress/:characterId', async (c) => {
+	.get('/:id/progress/character/:characterId', async (c) => {
 		const user = c.get('user')!
 		const planId = c.req.param('id')
 		const characterId = c.req.param('characterId')
@@ -414,7 +429,12 @@ const skillPlansRoutes = new Hono<App>()
 
 			// If still no skills after attempting to fetch
 			if (!skillsData || !skillsData.skills) {
-				return c.json({ error: 'Character skills not found. Please ensure the character has a valid EVE token.' }, 404)
+				return c.json(
+					{
+						error: 'Character skills not found. Please ensure the character has a valid EVE token.',
+					},
+					404
+				)
 			}
 
 			// Convert skills to format expected by Skills DO
@@ -426,7 +446,11 @@ const skillPlansRoutes = new Hono<App>()
 			}))
 
 			// Check progress
-			const progress = await skillsStub.checkCharacterPlanReadiness(planId, characterId, characterSkills)
+			const progress = await skillsStub.checkCharacterPlanReadiness(
+				planId,
+				characterId,
+				characterSkills
+			)
 
 			// Transform the response to match the UI's expected format
 			const transformedProgress = {
@@ -508,7 +532,12 @@ const skillPlansRoutes = new Hono<App>()
 
 			// If still no skills after attempting to fetch
 			if (!skillsData || !skillsData.skills) {
-				return c.json({ error: 'Character skills not found. Please ensure the character has a valid EVE token.' }, 404)
+				return c.json(
+					{
+						error: 'Character skills not found. Please ensure the character has a valid EVE token.',
+					},
+					404
+				)
 			}
 
 			// Convert skills to format expected by Skills DO
@@ -520,7 +549,11 @@ const skillPlansRoutes = new Hono<App>()
 			}))
 
 			// Check progress
-			const progress = await skillsStub.checkCharacterPlanReadiness(planId, characterId, characterSkills)
+			const progress = await skillsStub.checkCharacterPlanReadiness(
+				planId,
+				characterId,
+				characterSkills
+			)
 
 			// Transform the response to match the UI's expected format
 			const transformedProgress = {
@@ -582,7 +615,9 @@ const skillPlansRoutes = new Hono<App>()
 
 		// Add maintainer name for display
 		const db = createDb(c.env.DATABASE_URL)
-		const maintainerType = plan.maintainerId?.startsWith('group:') ? 'group' as const : 'user' as const
+		const maintainerType = plan.maintainerId?.startsWith('group:')
+			? ('group' as const)
+			: ('user' as const)
 		const maintainerName = plan.maintainerId
 			? await resolveMaintainerName(plan.maintainerId, user.id, groupsStub, db, user.is_admin)
 			: 'System'
@@ -776,7 +811,11 @@ const skillPlansRoutes = new Hono<App>()
 		if (data.requiredLevel === undefined || data.requiredLevel < 0 || data.requiredLevel > 5) {
 			return c.json({ error: 'Required level must be between 0 and 5' }, 400)
 		}
-		if (data.recommendedLevel === undefined || data.recommendedLevel < 0 || data.recommendedLevel > 5) {
+		if (
+			data.recommendedLevel === undefined ||
+			data.recommendedLevel < 0 ||
+			data.recommendedLevel > 5
+		) {
 			return c.json({ error: 'Recommended level must be between 0 and 5' }, 400)
 		}
 		// Validate level relationship
@@ -870,19 +909,37 @@ const skillPlansRoutes = new Hono<App>()
 				return c.json({ error: 'Each skill must have a skillId' }, 400)
 			}
 			if (skill.requiredLevel === undefined || skill.requiredLevel < 0 || skill.requiredLevel > 5) {
-				return c.json({ error: `Required level must be between 0 and 5 for skill ${skill.skillId}` }, 400)
+				return c.json(
+					{ error: `Required level must be between 0 and 5 for skill ${skill.skillId}` },
+					400
+				)
 			}
-			if (skill.recommendedLevel === undefined || skill.recommendedLevel < 0 || skill.recommendedLevel > 5) {
-				return c.json({ error: `Recommended level must be between 0 and 5 for skill ${skill.skillId}` }, 400)
+			if (
+				skill.recommendedLevel === undefined ||
+				skill.recommendedLevel < 0 ||
+				skill.recommendedLevel > 5
+			) {
+				return c.json(
+					{ error: `Recommended level must be between 0 and 5 for skill ${skill.skillId}` },
+					400
+				)
 			}
 			// Validate level relationship
 			// Allow requiredLevel=0 with recommendedLevel>0 (optional skills)
 			// When requiredLevel>0, recommendedLevel must be >= requiredLevel
 			if (skill.requiredLevel > 0 && skill.recommendedLevel < skill.requiredLevel) {
-				return c.json({ error: `Recommended level must be >= required level for skill ${skill.skillId}` }, 400)
+				return c.json(
+					{ error: `Recommended level must be >= required level for skill ${skill.skillId}` },
+					400
+				)
 			}
 			if (skill.requiredLevel === 0 && skill.recommendedLevel === 0) {
-				return c.json({ error: `At least one of required or recommended level must be > 0 for skill ${skill.skillId}` }, 400)
+				return c.json(
+					{
+						error: `At least one of required or recommended level must be > 0 for skill ${skill.skillId}`,
+					},
+					400
+				)
 			}
 		}
 
@@ -890,13 +947,13 @@ const skillPlansRoutes = new Hono<App>()
 		try {
 			const result = await skillsStub.batchAddSkillsToPlan({
 				planId,
-				skills: data.skills.map(skill => ({
+				skills: data.skills.map((skill) => ({
 					skillId: String(skill.skillId) as any, // Convert to string for API
 					requiredLevel: skill.requiredLevel,
 					recommendedLevel: skill.recommendedLevel,
 					displayOrder: skill.displayOrder,
 					notes: skill.notes,
-				}))
+				})),
 			})
 
 			// Return the result with the updated plan if successful
@@ -904,7 +961,7 @@ const skillPlansRoutes = new Hono<App>()
 				const updatedPlan = await skillsStub.getSkillPlan(planId)
 				return c.json({
 					...result,
-					plan: updatedPlan
+					plan: updatedPlan,
 				})
 			} else {
 				return c.json(result, 400)
@@ -952,7 +1009,10 @@ const skillPlansRoutes = new Hono<App>()
 		if (data.requiredLevel !== undefined && (data.requiredLevel < 0 || data.requiredLevel > 5)) {
 			return c.json({ error: 'Required level must be between 0 and 5' }, 400)
 		}
-		if (data.recommendedLevel !== undefined && (data.recommendedLevel < 0 || data.recommendedLevel > 5)) {
+		if (
+			data.recommendedLevel !== undefined &&
+			(data.recommendedLevel < 0 || data.recommendedLevel > 5)
+		) {
 			return c.json({ error: 'Recommended level must be between 0 and 5' }, 400)
 		}
 
@@ -1183,7 +1243,12 @@ const skillPlansRoutes = new Hono<App>()
 
 			// If still no skills after attempting to fetch
 			if (!skillsData || !skillsData.skills) {
-				return c.json({ error: 'Character skills not found. Please ensure the character has a valid EVE token.' }, 404)
+				return c.json(
+					{
+						error: 'Character skills not found. Please ensure the character has a valid EVE token.',
+					},
+					404
+				)
 			}
 
 			// Convert skills to format expected by Skills DO
@@ -1195,7 +1260,11 @@ const skillPlansRoutes = new Hono<App>()
 			}))
 
 			// Check progress
-			const progress = await skillsStub.checkCharacterPlanReadiness(planId, characterId, characterSkills)
+			const progress = await skillsStub.checkCharacterPlanReadiness(
+				planId,
+				characterId,
+				characterSkills
+			)
 
 			// Transform the response to match the UI's expected format
 			const transformedProgress = {
@@ -1276,7 +1345,12 @@ const skillPlansRoutes = new Hono<App>()
 
 			// If still no skills after attempting to fetch
 			if (!skillsData || !skillsData.skills) {
-				return c.json({ error: 'Character skills not found. Please ensure the character has a valid EVE token.' }, 404)
+				return c.json(
+					{
+						error: 'Character skills not found. Please ensure the character has a valid EVE token.',
+					},
+					404
+				)
 			}
 
 			// Convert skills to format expected by Skills DO

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+
 import { Button } from '../../../components/ui/button'
 import { CancelButton } from '../../../components/ui/cancel-button'
 import { ConfirmButton } from '../../../components/ui/confirm-button'
@@ -6,9 +7,10 @@ import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import { Switch } from '../../../components/ui/switch'
 import { Textarea } from '../../../components/ui/textarea'
-import { MaintainerSelector } from './maintainer-selector'
 import { CategorySelector } from './category-selector'
-import type { CreateSkillPlanRequest, UpdateSkillPlanRequest, SkillPlan } from '../types'
+import { MaintainerSelector } from './maintainer-selector'
+
+import type { CreateSkillPlanRequest, SkillPlan, UpdateSkillPlanRequest } from '../types'
 
 interface SkillPlanFormProps {
 	initialData?: SkillPlan
@@ -31,7 +33,7 @@ export function SkillPlanForm({
 		isPublished: initialData?.isPublished || false,
 		maintainerId: initialData?.maintainerId || null,
 		ownerCharacterId: initialData?.ownerCharacterId || null,
-		categoryIds: initialData?.categories?.map(c => c.id) || [],
+		categoryIds: initialData?.categories?.map((c) => c.id) || [],
 	})
 
 	const [errors, setErrors] = useState<Partial<Record<keyof CreateSkillPlanRequest, string>>>({})
@@ -68,14 +70,18 @@ export function SkillPlanForm({
 				// For edit mode, only send changed fields
 				const updates: UpdateSkillPlanRequest = {}
 				if (formData.name !== initialData?.name) updates.name = formData.name
-				if (formData.description !== initialData?.description) updates.description = formData.description
-				if (formData.isPublished !== initialData?.isPublished) updates.isPublished = formData.isPublished
-				if (formData.maintainerId !== initialData?.maintainerId) updates.maintainerId = formData.maintainerId
+				if (formData.description !== initialData?.description)
+					updates.description = formData.description
+				if (formData.isPublished !== initialData?.isPublished)
+					updates.isPublished = formData.isPublished
+				if (formData.maintainerId !== initialData?.maintainerId)
+					updates.maintainerId = formData.maintainerId
 
 				// Check if categories changed
-				const initialCategoryIds = initialData?.categories?.map(c => c.id) || []
-				const categoriesChanged = formData.categoryIds?.length !== initialCategoryIds.length ||
-					formData.categoryIds?.some(id => !initialCategoryIds.includes(id))
+				const initialCategoryIds = initialData?.categories?.map((c) => c.id) || []
+				const categoriesChanged =
+					formData.categoryIds?.length !== initialCategoryIds.length ||
+					formData.categoryIds?.some((id) => !initialCategoryIds.includes(id))
 				if (categoriesChanged) updates.categoryIds = formData.categoryIds
 
 				await onSubmit(updates)

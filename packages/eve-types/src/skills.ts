@@ -281,7 +281,7 @@ export const SKILL_LEVEL_NAMES = [
 	'Level II',
 	'Level III',
 	'Level IV',
-	'Level V'
+	'Level V',
 ] as const
 
 /**
@@ -292,7 +292,7 @@ export type SkillLevel = 0 | 1 | 2 | 3 | 4 | 5
 /**
  * Helper type for Roman numeral skill level
  */
-export type RomanSkillLevel = typeof SKILL_LEVELS_ROMAN[number]
+export type RomanSkillLevel = (typeof SKILL_LEVELS_ROMAN)[number]
 
 /**
  * Convert numeric level to Roman numeral
@@ -306,11 +306,7 @@ export function toRomanLevel(level: number): string {
  * Format skill name with level
  * @example formatSkillWithLevel("Shield Management", 4) => "Shield Management IV"
  */
-export function formatSkillWithLevel(
-	skillName: string,
-	level: number,
-	useRoman = true
-): string {
+export function formatSkillWithLevel(skillName: string, level: number, useRoman = true): string {
 	if (level === 0) return `${skillName} (Untrained)`
 	const levelStr = useRoman ? toRomanLevel(level) : String(level)
 	return `${skillName} ${levelStr}`
@@ -344,11 +340,7 @@ export function formatSkillPoints(sp: number, format: 'compact' | 'full' = 'comp
 /**
  * Calculate training time in milliseconds
  */
-export function calculateTrainingTime(
-	startSp: number,
-	endSp: number,
-	spPerHour: number
-): number {
+export function calculateTrainingTime(startSp: number, endSp: number, spPerHour: number): number {
 	if (spPerHour <= 0) return 0
 	const spNeeded = endSp - startSp
 	return (spNeeded / spPerHour) * 60 * 60 * 1000 // Convert hours to milliseconds

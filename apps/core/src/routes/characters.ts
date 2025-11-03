@@ -19,12 +19,13 @@ async function transformAndEnrichSkillsData(skills: any, env: any) {
 
 	// Transform to camelCase first
 	const transformed = {
-		skills: skills.skills?.map((skill: any) => ({
-			activeSkillLevel: skill.active_skill_level ?? skill.activeSkillLevel,
-			skillId: skill.skill_id ?? skill.skillId,
-			skillpointsInSkill: skill.skillpoints_in_skill ?? skill.skillpointsInSkill,
-			trainedSkillLevel: skill.trained_skill_level ?? skill.trainedSkillLevel,
-		})) ?? [],
+		skills:
+			skills.skills?.map((skill: any) => ({
+				activeSkillLevel: skill.active_skill_level ?? skill.activeSkillLevel,
+				skillId: skill.skill_id ?? skill.skillId,
+				skillpointsInSkill: skill.skillpoints_in_skill ?? skill.skillpointsInSkill,
+				trainedSkillLevel: skill.trained_skill_level ?? skill.trainedSkillLevel,
+			})) ?? [],
 		totalSp: skills.total_sp ?? skills.totalSp ?? 0,
 		unallocatedSp: skills.unallocated_sp ?? skills.unallocatedSp,
 	}
@@ -205,7 +206,9 @@ app.get('/:characterId', requireAuth(), async (c) => {
 	}
 
 	// Check if user owns this character
-	const isActualOwner = user.characters.some((char) => char.characterId.toString() === characterIdStr)
+	const isActualOwner = user.characters.some(
+		(char) => char.characterId.toString() === characterIdStr
+	)
 	const isAdmin = user.is_admin
 
 	// Authorization: Must be owner OR admin
@@ -245,16 +248,14 @@ app.get('/:characterId', requireAuth(), async (c) => {
 
 	try {
 		// Fetch all public character data pieces
-		let [info, portrait, corporationHistory, skills, attributes, lastUpdated] = await Promise.all(
-			[
-				eveCharacterDataStub.getCharacterInfo(characterIdStr),
-				eveCharacterDataStub.getPortrait(characterIdStr),
-				eveCharacterDataStub.getCorporationHistory(characterIdStr),
-				eveCharacterDataStub.getSkills(characterIdStr),
-				eveCharacterDataStub.getAttributes(characterIdStr),
-				eveCharacterDataStub.getLastUpdated(characterIdStr),
-			]
-		)
+		let [info, portrait, corporationHistory, skills, attributes, lastUpdated] = await Promise.all([
+			eveCharacterDataStub.getCharacterInfo(characterIdStr),
+			eveCharacterDataStub.getPortrait(characterIdStr),
+			eveCharacterDataStub.getCorporationHistory(characterIdStr),
+			eveCharacterDataStub.getSkills(characterIdStr),
+			eveCharacterDataStub.getAttributes(characterIdStr),
+			eveCharacterDataStub.getLastUpdated(characterIdStr),
+		])
 
 		// If character not found in database, try to auto-fetch from ESI
 		if (!info) {
@@ -398,7 +399,10 @@ app.get('/:characterId', requireAuth(), async (c) => {
 
 			if (sensitiveData) {
 				// Enrich skill queue with metadata
-				const enrichedSkillQueue = await transformAndEnrichSkillQueue(sensitiveData.skillQueue, c.env)
+				const enrichedSkillQueue = await transformAndEnrichSkillQueue(
+					sensitiveData.skillQueue,
+					c.env
+				)
 
 				// Resolve location names if available
 				if (sensitiveData.location) {
@@ -548,7 +552,7 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 		let lastUpdated: string | null = null
 		try {
 			const lastUpdatedDate = await eveCharacterDataStub.getLastUpdated(characterIdStr)
-		lastUpdated = lastUpdatedDate ? lastUpdatedDate.toISOString() : null
+			lastUpdated = lastUpdatedDate ? lastUpdatedDate.toISOString() : null
 		} catch (error) {
 			logger.error('Failed to get last updated timestamp:', error)
 			// Don't throw here, just set to null and continue
@@ -569,7 +573,7 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 						db!,
 						c.env.EVE_CHARACTER_DATA,
 						c.env.EVE_TOKEN_STORE,
-						c.env.EVE_CORPORATION_DATA,
+						c.env.EVE_CORPORATION_DATA
 					)
 
 					logger.info('[CharacterRefresh] Director status check completed', {
@@ -581,7 +585,7 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 						error: error instanceof Error ? error.message : String(error),
 					})
 				}
-			})(),
+			})()
 		)
 
 		return c.json({

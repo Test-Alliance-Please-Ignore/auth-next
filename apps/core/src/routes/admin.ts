@@ -16,9 +16,9 @@ import { createDb } from '../db'
 import { userCharacters, users } from '../db/schema'
 import { validatePagination } from '../lib/validation'
 import { requireAdmin, requireAuth } from '../middleware/session'
+import * as discordService from '../services/discord.service'
 import { SessionService } from '../services/session.service'
 import { UserService } from '../services/user.service'
-import * as discordService from '../services/discord.service'
 
 import type { Discord } from '@repo/discord'
 import type { Hr } from '@repo/hr'
@@ -387,51 +387,56 @@ app.delete('/users/:userId/characters/:characterId', requireAuth(), requireAdmin
  * POST /admin/users/:userId/characters/:characterId/set-primary
  * Set a character as the primary character for a user
  */
-app.post('/users/:userId/characters/:characterId/set-primary', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')
-	const userId = c.req.param('userId')
-	const characterId = c.req.param('characterId')
+app.post(
+	'/users/:userId/characters/:characterId/set-primary',
+	requireAuth(),
+	requireAdmin(),
+	async (c) => {
+		const user = c.get('user')
+		const userId = c.req.param('userId')
+		const characterId = c.req.param('characterId')
 
-	if (!user) {
-		return c.json({ error: 'Unauthorized' }, 401)
-	}
-
-	try {
-		const db = createDb(c.env.DATABASE_URL)
-
-		// Verify character belongs to user
-		const char = await db.query.userCharacters.findFirst({
-			where: and(eq(userCharacters.userId, userId), eq(userCharacters.characterId, characterId)),
-		})
-
-		if (!char) {
-			return c.json({ error: 'Character not found or not owned by user' }, 404)
+		if (!user) {
+			return c.json({ error: 'Unauthorized' }, 401)
 		}
 
-		// Use UserService to set primary character
-		const userService = new UserService(db)
+		try {
+			const db = createDb(c.env.DATABASE_URL)
 
-		const success = await userService.setPrimaryCharacter(userId, characterId)
+			// Verify character belongs to user
+			const char = await db.query.userCharacters.findFirst({
+				where: and(eq(userCharacters.userId, userId), eq(userCharacters.characterId, characterId)),
+			})
 
-		if (!success) {
+			if (!char) {
+				return c.json({ error: 'Character not found or not owned by user' }, 404)
+			}
+
+			// Use UserService to set primary character
+			const userService = new UserService(db)
+
+			const success = await userService.setPrimaryCharacter(userId, characterId)
+
+			if (!success) {
+				return c.json({ error: 'Failed to set primary character' }, 500)
+			}
+
+			logger.info('[Admin] Primary character set by admin', {
+				adminUserId: user.id,
+				targetUserId: userId,
+				characterId,
+			})
+
+			return c.json({ success: true })
+		} catch (error) {
+			if (error instanceof Error && error.message.includes('Character not found')) {
+				return c.json({ error: error.message }, 404)
+			}
+			logger.error('Error setting primary character:', error)
 			return c.json({ error: 'Failed to set primary character' }, 500)
 		}
-
-		logger.info('[Admin] Primary character set by admin', {
-			adminUserId: user.id,
-			targetUserId: userId,
-			characterId,
-		})
-
-		return c.json({ success: true })
-	} catch (error) {
-		if (error instanceof Error && error.message.includes('Character not found')) {
-			return c.json({ error: error.message }, 404)
-		}
-		logger.error('Error setting primary character:', error)
-		return c.json({ error: 'Failed to set primary character' }, 500)
 	}
-})
+)
 
 /**
  * POST /admin/users/:userId/discord/join-servers

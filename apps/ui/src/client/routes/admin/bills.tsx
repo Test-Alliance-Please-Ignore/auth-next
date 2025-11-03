@@ -26,14 +26,9 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
-import {
-	useBills,
-	useCancelBill,
-	useDeleteBill,
-	useIssueBill,
-} from '@/hooks/useBills'
-import { formatDueDate, formatEntityType } from '@/lib/bills-utils'
+import { useBills, useCancelBill, useDeleteBill, useIssueBill } from '@/hooks/useBills'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { formatDueDate, formatEntityType } from '@/lib/bills-utils'
 
 export default function AdminBillsPage() {
 	usePageTitle('Admin - Bills Management')

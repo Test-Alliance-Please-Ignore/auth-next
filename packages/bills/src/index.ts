@@ -327,7 +327,11 @@ export interface Bills {
 	listTemplates(userId: string): Promise<BillTemplateWithDetails[]>
 
 	/** Update a template (owner only) */
-	updateTemplate(userId: string, templateId: string, data: UpdateTemplateInput): Promise<BillTemplate>
+	updateTemplate(
+		userId: string,
+		templateId: string,
+		data: UpdateTemplateInput
+	): Promise<BillTemplate>
 
 	/** Delete a template (owner only, no active schedules) */
 	deleteTemplate(userId: string, templateId: string): Promise<void>
@@ -355,7 +359,11 @@ export interface Bills {
 	listSchedules(userId: string, filters?: ScheduleFilters): Promise<BillScheduleWithDetails[]>
 
 	/** Update a schedule (owner only) */
-	updateSchedule(userId: string, scheduleId: string, data: UpdateScheduleInput): Promise<BillSchedule>
+	updateSchedule(
+		userId: string,
+		scheduleId: string,
+		data: UpdateScheduleInput
+	): Promise<BillSchedule>
 
 	/** Pause a schedule (owner only) */
 	pauseSchedule(userId: string, scheduleId: string): Promise<BillSchedule>

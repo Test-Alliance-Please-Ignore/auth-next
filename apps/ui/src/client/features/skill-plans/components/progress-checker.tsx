@@ -1,7 +1,6 @@
+import { AlertCircle, CheckCircle2, Filter, XCircle } from 'lucide-react'
 import { useState } from 'react'
-import { CheckCircle2, XCircle, AlertCircle, Filter } from 'lucide-react'
-import { useAuth } from '../../../hooks/useAuth'
-import { useCharacterProgress } from '../hooks'
+
 import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card'
@@ -15,7 +14,9 @@ import {
 	TableHeader,
 	TableRow,
 } from '../../../components/ui/table'
+import { useAuth } from '../../../hooks/useAuth'
 import { cn } from '../../../lib/utils'
+import { useCharacterProgress } from '../hooks'
 
 interface ProgressCheckerProps {
 	planId: string
@@ -26,7 +27,9 @@ interface ProgressCheckerProps {
 export function ProgressChecker({ planId, planName, initialCharacterId }: ProgressCheckerProps) {
 	const { user } = useAuth()
 	const selectedCharacterId = initialCharacterId || user?.mainCharacterId || ''
-	const [skillFilter, setSkillFilter] = useState<'all' | 'needs-training' | 'missing-required'>('all')
+	const [skillFilter, setSkillFilter] = useState<'all' | 'needs-training' | 'missing-required'>(
+		'all'
+	)
 
 	const { data: progress, isLoading } = useCharacterProgress(
 		planId,
@@ -47,7 +50,6 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 
 	return (
 		<div className="space-y-4">
-
 			{/* Progress display */}
 			{isLoading ? (
 				<Card>
@@ -133,7 +135,7 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 										onClick={() => setSkillFilter('missing-required')}
 									>
 										<XCircle className="h-3 w-3 mr-1" />
-										Required ({progress.skills?.filter(s => !s.meetsRequired).length || 0})
+										Required ({progress.skills?.filter((s) => !s.meetsRequired).length || 0})
 									</Button>
 									<Button
 										variant={skillFilter === 'needs-training' ? 'secondary' : 'ghost'}
@@ -142,7 +144,7 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 										onClick={() => setSkillFilter('needs-training')}
 									>
 										<Filter className="h-3 w-3 mr-1" />
-										Training ({progress.skills?.filter(s => !s.meetsRecommended).length || 0})
+										Training ({progress.skills?.filter((s) => !s.meetsRecommended).length || 0})
 									</Button>
 								</div>
 							</div>
@@ -164,9 +166,9 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 										let filteredSkills = allSkills
 
 										if (skillFilter === 'needs-training') {
-											filteredSkills = allSkills.filter(skill => !skill.meetsRecommended)
+											filteredSkills = allSkills.filter((skill) => !skill.meetsRecommended)
 										} else if (skillFilter === 'missing-required') {
-											filteredSkills = allSkills.filter(skill => !skill.meetsRequired)
+											filteredSkills = allSkills.filter((skill) => !skill.meetsRequired)
 										}
 
 										if (filteredSkills.length === 0) {
@@ -180,7 +182,10 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 											if (message) {
 												return (
 													<TableRow>
-														<TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+														<TableCell
+															colSpan={5}
+															className="text-center py-8 text-muted-foreground"
+														>
 															{message}
 														</TableCell>
 													</TableRow>
@@ -189,40 +194,42 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 										}
 
 										return filteredSkills.map((skill) => (
-										<TableRow
-											key={skill.skillId}
-											className={cn(
-												!skill.meetsRecommended && skill.meetsRequired && 'bg-yellow-500/10',
-												!skill.meetsRequired && 'bg-red-500/10'
-											)}
-										>
-											<TableCell className="font-medium">{skill.skillName || 'Unknown Skill'}</TableCell>
-											<TableCell className="text-center">
-												{(skill.currentLevel || 0) > 0 ? skill.currentLevel : '-'}
-											</TableCell>
-											<TableCell className="text-center">{skill.requiredLevel || 0}</TableCell>
-											<TableCell className="text-center">{skill.recommendedLevel || 0}</TableCell>
-											<TableCell>
-												{skill.meetsRecommended ? (
-													<div className="flex items-center gap-1 text-green-500">
-														<CheckCircle2 className="h-4 w-4" />
-														<span className="text-xs">Fully trained</span>
-													</div>
-												) : skill.meetsRequired ? (
-													<div className="flex items-center gap-1 text-yellow-500">
-														<AlertCircle className="h-4 w-4" />
-														<span className="text-xs">Meets minimum</span>
-													</div>
-												) : (
-													<div className="flex items-center gap-1 text-destructive">
-														<XCircle className="h-4 w-4" />
-														<span className="text-xs">
-															{skill.currentLevel === 0 ? 'Not trained' : 'Needs training'}
-														</span>
-													</div>
+											<TableRow
+												key={skill.skillId}
+												className={cn(
+													!skill.meetsRecommended && skill.meetsRequired && 'bg-yellow-500/10',
+													!skill.meetsRequired && 'bg-red-500/10'
 												)}
-											</TableCell>
-										</TableRow>
+											>
+												<TableCell className="font-medium">
+													{skill.skillName || 'Unknown Skill'}
+												</TableCell>
+												<TableCell className="text-center">
+													{(skill.currentLevel || 0) > 0 ? skill.currentLevel : '-'}
+												</TableCell>
+												<TableCell className="text-center">{skill.requiredLevel || 0}</TableCell>
+												<TableCell className="text-center">{skill.recommendedLevel || 0}</TableCell>
+												<TableCell>
+													{skill.meetsRecommended ? (
+														<div className="flex items-center gap-1 text-green-500">
+															<CheckCircle2 className="h-4 w-4" />
+															<span className="text-xs">Fully trained</span>
+														</div>
+													) : skill.meetsRequired ? (
+														<div className="flex items-center gap-1 text-yellow-500">
+															<AlertCircle className="h-4 w-4" />
+															<span className="text-xs">Meets minimum</span>
+														</div>
+													) : (
+														<div className="flex items-center gap-1 text-destructive">
+															<XCircle className="h-4 w-4" />
+															<span className="text-xs">
+																{skill.currentLevel === 0 ? 'Not trained' : 'Needs training'}
+															</span>
+														</div>
+													)}
+												</TableCell>
+											</TableRow>
 										))
 									})()}
 								</TableBody>
@@ -239,9 +246,7 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 			) : selectedCharacter && !selectedCharacter.hasValidToken ? (
 				<Card>
 					<CardContent className="py-8 text-center">
-						<p className="text-muted-foreground mb-2">
-							This character's EVE token has expired.
-						</p>
+						<p className="text-muted-foreground mb-2">This character's EVE token has expired.</p>
 						<p className="text-sm text-muted-foreground">
 							Please re-authenticate with EVE Online to check skill progress.
 						</p>

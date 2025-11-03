@@ -1,5 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
+import { and, createDbClient, eq, gt, lte } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { assertEveCharacterId } from '@repo/eve-types'
 import {
@@ -9,18 +10,17 @@ import {
 	esiGetFleetInformationSchema,
 	EsiGetFleetMembers,
 	esiGetFleetMembersSchema,
-	Fleets,
-	FleetInformation,
-	QuickJoinCreationResult,
-	QuickJoinValidationResult,
-	QuickJoinInvitation,
 	FleetDetailsResponse,
-	FleetJoinResult
+	FleetInformation,
+	FleetJoinResult,
+	Fleets,
+	QuickJoinCreationResult,
+	QuickJoinInvitation,
+	QuickJoinValidationResult,
 } from '@repo/fleets'
-import { createDbClient, eq, and, gt, lte } from '@repo/db-utils'
 
 import { Env } from './context'
-import { schema, fleetInvitations, fleetMemberships, fleetStateCache } from './db/schema'
+import { fleetInvitations, fleetMemberships, fleetStateCache, schema } from './db/schema'
 
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
@@ -57,13 +57,11 @@ export class FleetsDO extends DurableObject implements Fleets {
 		const randomBytes = new Uint8Array(length)
 		crypto.getRandomValues(randomBytes)
 		return Array.from(randomBytes)
-			.map(byte => chars[byte % chars.length])
+			.map((byte) => chars[byte % chars.length])
 			.join('')
 	}
 
-	async getCharacterFleetInformation(
-		characterId: EveCharacterId
-	): Promise<FleetInformation> {
+	async getCharacterFleetInformation(characterId: EveCharacterId): Promise<FleetInformation> {
 		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 
 		console.log(`[Fleets DO] Getting fleet information for character ${characterId}`)
@@ -86,7 +84,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 				fleetBossId: validatedData.fleet_boss_id,
 				role: validatedData.role,
 				squadId: validatedData.squad_id,
-				wingId: validatedData.wing_id
+				wingId: validatedData.wing_id,
 			})
 
 			// Ensure IDs are returned as strings for consistency
@@ -95,7 +93,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 				fleet_boss_id: String(validatedData.fleet_boss_id),
 				role: validatedData.role,
 				squad_id: validatedData.squad_id,
-				wing_id: validatedData.wing_id
+				wing_id: validatedData.wing_id,
 			} as FleetInformation
 		} catch (error) {
 			// Safely extract error information without serializing complex objects
@@ -109,18 +107,28 @@ export class FleetsDO extends DurableObject implements Fleets {
 			// Check if it's a specific ESI error or HTTP response error
 			if (error instanceof Error) {
 				// Check for specific error patterns in the message
-				if (error.message.includes('404') || error.message.includes('Not found') || error.message.includes('Not Found')) {
+				if (
+					error.message.includes('404') ||
+					error.message.includes('Not found') ||
+					error.message.includes('Not Found')
+				) {
 					console.log(`[Fleets DO] Character ${characterId} is not in a fleet (404 response)`)
 				} else if (error.message.includes('403') || error.message.includes('Forbidden')) {
-					console.log(`[Fleets DO] Forbidden error - character ${characterId} may not have fleet scope`)
+					console.log(
+						`[Fleets DO] Forbidden error - character ${characterId} may not have fleet scope`
+					)
 				} else if (error.message.includes('401') || error.message.includes('Unauthorized')) {
-					console.log(`[Fleets DO] Unauthorized - token may be expired for character ${characterId}`)
+					console.log(
+						`[Fleets DO] Unauthorized - token may be expired for character ${characterId}`
+					)
 				} else if (error.message.includes('400') || error.message.includes('Bad Request')) {
 					console.log(`[Fleets DO] Bad request - invalid parameters for character ${characterId}`)
 				} else {
 					// Log first 500 chars of stack trace if available
 					if (error.stack) {
-						console.error(`[Fleets DO] Stack trace (first 500 chars): ${error.stack.substring(0, 500)}`)
+						console.error(
+							`[Fleets DO] Stack trace (first 500 chars): ${error.stack.substring(0, 500)}`
+						)
 					}
 				}
 			}
@@ -163,50 +171,57 @@ export class FleetsDO extends DurableObject implements Fleets {
 		const expiresAt = new Date(Date.now() + expiresInHours * 60 * 60 * 1000)
 
 		// Store in database
-		const [invitation] = await this.db.insert(fleetInvitations).values({
-			token,
-			fleetBossId,
-			fleetId,
-			expiresAt,
-			maxUses: maxUses || null,
-			usesCount: 0,
-			isActive: true
-		}).returning()
+		const [invitation] = await this.db
+			.insert(fleetInvitations)
+			.values({
+				token,
+				fleetBossId,
+				fleetId,
+				expiresAt,
+				maxUses: maxUses || null,
+				usesCount: 0,
+				isActive: true,
+			})
+			.returning()
 
 		// Update fleet cache
-		await this.db.insert(fleetStateCache).values({
-			fleetId,
-			fleetBossId,
-			isActive: true,
-			memberCount: 0,
-			motd: fleetData.motd || null,
-			isFreeMove: fleetData.is_free_move,
-			isRegistered: fleetData.is_registered,
-			isVoiceEnabled: fleetData.is_voice_enabled,
-		}).onConflictDoUpdate({
-			target: fleetStateCache.fleetId,
-			set: {
+		await this.db
+			.insert(fleetStateCache)
+			.values({
+				fleetId,
 				fleetBossId,
 				isActive: true,
+				memberCount: 0,
 				motd: fleetData.motd || null,
 				isFreeMove: fleetData.is_free_move,
 				isRegistered: fleetData.is_registered,
 				isVoiceEnabled: fleetData.is_voice_enabled,
-				lastChecked: new Date(),
-				updatedAt: new Date()
-			}
-		})
+			})
+			.onConflictDoUpdate({
+				target: fleetStateCache.fleetId,
+				set: {
+					fleetBossId,
+					isActive: true,
+					motd: fleetData.motd || null,
+					isFreeMove: fleetData.is_free_move,
+					isRegistered: fleetData.is_registered,
+					isVoiceEnabled: fleetData.is_voice_enabled,
+					lastChecked: new Date(),
+					updatedAt: new Date(),
+				},
+			})
 
 		return {
 			token,
 			url: `https://pleaseignore.app/fleets/join/${token}`,
-			expiresAt
+			expiresAt,
 		}
 	}
 
 	async validateQuickJoinToken(token: string): Promise<QuickJoinValidationResult> {
 		// Fetch invitation from database
-		const [invitation] = await this.db.select()
+		const [invitation] = await this.db
+			.select()
 			.from(fleetInvitations)
 			.where(
 				and(
@@ -220,7 +235,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 		if (!invitation) {
 			return {
 				valid: false,
-				error: 'Invalid or expired invitation token'
+				error: 'Invalid or expired invitation token',
 			}
 		}
 
@@ -228,7 +243,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 		if (invitation.maxUses && invitation.usesCount >= invitation.maxUses) {
 			return {
 				valid: false,
-				error: 'This invitation has reached its maximum uses'
+				error: 'This invitation has reached its maximum uses',
 			}
 		}
 
@@ -237,13 +252,14 @@ export class FleetsDO extends DurableObject implements Fleets {
 
 		if (!isActive) {
 			// Mark invitation as inactive
-			await this.db.update(fleetInvitations)
+			await this.db
+				.update(fleetInvitations)
 				.set({ isActive: false })
 				.where(eq(fleetInvitations.id, invitation.id))
 
 			return {
 				valid: false,
-				error: 'The fleet is no longer active'
+				error: 'The fleet is no longer active',
 			}
 		}
 
@@ -278,16 +294,17 @@ export class FleetsDO extends DurableObject implements Fleets {
 				expiresAt: invitation.expiresAt,
 				maxUses: invitation.maxUses || undefined,
 				usesCount: invitation.usesCount,
-				isActive: invitation.isActive
+				isActive: invitation.isActive,
 			},
 			fleetInfo,
-			fleetBossName: characterInfo?.name
+			fleetBossName: characterInfo?.name,
 		}
 	}
 
 	async getFleetDetails(fleetId: string, characterId: string): Promise<FleetDetailsResponse> {
 		// Check if fleet is marked as not found in cache
-		const [cached] = await this.db.select()
+		const [cached] = await this.db
+			.select()
 			.from(fleetStateCache)
 			.where(eq(fleetStateCache.fleetId, fleetId))
 			.limit(1)
@@ -296,7 +313,9 @@ export class FleetsDO extends DurableObject implements Fleets {
 			const notFoundAge = Date.now() - cached.notFoundAt.getTime()
 			const twentyFourHours = 24 * 60 * 60 * 1000
 			if (notFoundAge < twentyFourHours) {
-				console.log(`[Fleet ${fleetId}] Marked as 404, skipping ESI query (age: ${Math.round(notFoundAge / 1000 / 60)} minutes)`)
+				console.log(
+					`[Fleet ${fleetId}] Marked as 404, skipping ESI query (age: ${Math.round(notFoundAge / 1000 / 60)} minutes)`
+				)
 				throw new Error('Fleet not found (404)')
 			}
 		}
@@ -314,40 +333,48 @@ export class FleetsDO extends DurableObject implements Fleets {
 
 			// Clear notFound flag if fleet is now found
 			if (cached?.notFound) {
-				await this.db.update(fleetStateCache)
+				await this.db
+					.update(fleetStateCache)
 					.set({
 						notFound: false,
 						notFoundAt: null,
 						lastChecked: new Date(),
-						updatedAt: new Date()
+						updatedAt: new Date(),
 					})
 					.where(eq(fleetStateCache.fleetId, fleetId))
 			}
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : String(error)
 			// Check if it's a 404 error
-			if (errorMessage.includes('404') || errorMessage.includes('Not found') || errorMessage.includes('Not Found')) {
+			if (
+				errorMessage.includes('404') ||
+				errorMessage.includes('Not found') ||
+				errorMessage.includes('Not Found')
+			) {
 				console.log(`[Fleet ${fleetId}] Received 404 from ESI, marking as not found`)
 
 				// Mark fleet as not found
-				await this.db.insert(fleetStateCache).values({
-					fleetId,
-					fleetBossId: characterId,
-					isActive: false,
-					memberCount: 0,
-					notFound: true,
-					notFoundAt: new Date(),
-					lastChecked: new Date()
-				}).onConflictDoUpdate({
-					target: fleetStateCache.fleetId,
-					set: {
+				await this.db
+					.insert(fleetStateCache)
+					.values({
+						fleetId,
+						fleetBossId: characterId,
+						isActive: false,
+						memberCount: 0,
 						notFound: true,
 						notFoundAt: new Date(),
-						isActive: false,
 						lastChecked: new Date(),
-						updatedAt: new Date()
-					}
-				})
+					})
+					.onConflictDoUpdate({
+						target: fleetStateCache.fleetId,
+						set: {
+							notFound: true,
+							notFoundAt: new Date(),
+							isActive: false,
+							lastChecked: new Date(),
+							updatedAt: new Date(),
+						},
+					})
 			}
 			throw error
 		}
@@ -362,9 +389,18 @@ export class FleetsDO extends DurableObject implements Fleets {
 			)
 
 			// Debug logging to see raw ESI response
-			console.log('[Fleet Members] Raw ESI response sample (first member):', JSON.stringify(membersResponse.data[0], null, 2))
-			console.log('[Fleet Members] First member station_id type:', typeof membersResponse.data[0]?.station_id)
-			console.log('[Fleet Members] First member station_id value:', membersResponse.data[0]?.station_id)
+			console.log(
+				'[Fleet Members] Raw ESI response sample (first member):',
+				JSON.stringify(membersResponse.data[0], null, 2)
+			)
+			console.log(
+				'[Fleet Members] First member station_id type:',
+				typeof membersResponse.data[0]?.station_id
+			)
+			console.log(
+				'[Fleet Members] First member station_id value:',
+				membersResponse.data[0]?.station_id
+			)
 
 			members = esiGetFleetMembersSchema.parse(membersResponse.data)
 			memberCount = members.length
@@ -375,17 +411,14 @@ export class FleetsDO extends DurableObject implements Fleets {
 		}
 
 		// Get fleet boss name
-		const characterStub = getStub<EveCharacterData>(
-			this.env.EVE_CHARACTER_DATA,
-			characterId
-		)
+		const characterStub = getStub<EveCharacterData>(this.env.EVE_CHARACTER_DATA, characterId)
 		const characterInfo = await characterStub.getCharacterInfo(characterId)
 
 		return {
 			fleetInfo,
 			members,
 			fleetBossName: characterInfo?.name,
-			memberCount
+			memberCount,
 		}
 	}
 
@@ -400,7 +433,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 		if (!validation.valid || !validation.invitation) {
 			return {
 				success: false,
-				error: validation.error || 'Invalid token'
+				error: validation.error || 'Invalid token',
 			}
 		}
 
@@ -416,9 +449,18 @@ export class FleetsDO extends DurableObject implements Fleets {
 			)
 
 			// Debug logging to see raw ESI response
-			console.log('[Fleet Join] Raw ESI response sample (first member):', JSON.stringify(membersResponse.data[0], null, 2))
-			console.log('[Fleet Join] First member station_id type:', typeof membersResponse.data[0]?.station_id)
-			console.log('[Fleet Join] First member station_id value:', membersResponse.data[0]?.station_id)
+			console.log(
+				'[Fleet Join] Raw ESI response sample (first member):',
+				JSON.stringify(membersResponse.data[0], null, 2)
+			)
+			console.log(
+				'[Fleet Join] First member station_id type:',
+				typeof membersResponse.data[0]?.station_id
+			)
+			console.log(
+				'[Fleet Join] First member station_id value:',
+				membersResponse.data[0]?.station_id
+			)
 
 			const members = esiGetFleetMembersSchema.parse(membersResponse.data)
 
@@ -429,7 +471,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 			if (isAlreadyMember) {
 				return {
 					success: false,
-					error: 'Character is already in the fleet'
+					error: 'Character is already in the fleet',
 				}
 			}
 		} catch (error) {
@@ -445,7 +487,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 			if (!accessToken) {
 				return {
 					success: false,
-					error: 'Fleet commander ESI access expired'
+					error: 'Fleet commander ESI access expired',
 				}
 			}
 
@@ -455,12 +497,12 @@ export class FleetsDO extends DurableObject implements Fleets {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json',
-						'Authorization': `Bearer ${accessToken}`
+						Authorization: `Bearer ${accessToken}`,
 					},
 					body: JSON.stringify({
 						character_id: parseInt(joiningCharacterId),
-						role: 'squad_member'
-					})
+						role: 'squad_member',
+					}),
 				}
 			)
 
@@ -469,19 +511,20 @@ export class FleetsDO extends DurableObject implements Fleets {
 				console.error('ESI fleet invite failed:', errorText)
 				return {
 					success: false,
-					error: 'Failed to create fleet invitation'
+					error: 'Failed to create fleet invitation',
 				}
 			}
 		} catch (error) {
 			console.error('Failed to create fleet invitation:', error)
 			return {
 				success: false,
-				error: 'Failed to create fleet invitation'
+				error: 'Failed to create fleet invitation',
 			}
 		}
 
 		// Update usage count
-		await this.db.update(fleetInvitations)
+		await this.db
+			.update(fleetInvitations)
 			.set({ usesCount: invitation.usesCount + 1 })
 			.where(eq(fleetInvitations.id, invitation.id))
 
@@ -490,18 +533,19 @@ export class FleetsDO extends DurableObject implements Fleets {
 			characterId: joiningCharacterId,
 			fleetId: invitation.fleetId,
 			invitationId: invitation.id,
-			role: 'squad_member'
+			role: 'squad_member',
 		})
 
 		return {
 			success: true,
-			invitationSent: true
+			invitationSent: true,
 		}
 	}
 
 	async isFleetActive(fleetId: string, characterId: string): Promise<boolean> {
 		// Check cache first
-		const [cached] = await this.db.select()
+		const [cached] = await this.db
+			.select()
 			.from(fleetStateCache)
 			.where(
 				and(
@@ -518,7 +562,9 @@ export class FleetsDO extends DurableObject implements Fleets {
 				const notFoundAge = Date.now() - cached.notFoundAt.getTime()
 				const twentyFourHours = 24 * 60 * 60 * 1000
 				if (notFoundAge < twentyFourHours) {
-					console.log(`[Fleet ${fleetId}] Marked as 404, skipping ESI query (age: ${Math.round(notFoundAge / 1000 / 60)} minutes)`)
+					console.log(
+						`[Fleet ${fleetId}] Marked as 404, skipping ESI query (age: ${Math.round(notFoundAge / 1000 / 60)} minutes)`
+					)
 					return false
 				}
 			}
@@ -540,7 +586,11 @@ export class FleetsDO extends DurableObject implements Fleets {
 		} catch (error) {
 			// Check if it's a 404 error
 			const errorMessage = error instanceof Error ? error.message : String(error)
-			if (errorMessage.includes('404') || errorMessage.includes('Not found') || errorMessage.includes('Not Found')) {
+			if (
+				errorMessage.includes('404') ||
+				errorMessage.includes('Not found') ||
+				errorMessage.includes('Not Found')
+			) {
 				console.log(`[Fleet ${fleetId}] Received 404 from ESI, marking as not found`)
 				isNotFound = true
 			}
@@ -548,38 +598,37 @@ export class FleetsDO extends DurableObject implements Fleets {
 		}
 
 		// Update cache
-		await this.db.insert(fleetStateCache).values({
-			fleetId,
-			fleetBossId: characterId,
-			isActive,
-			memberCount: 0,
-			notFound: isNotFound,
-			notFoundAt: isNotFound ? new Date() : null,
-			lastChecked: new Date()
-		}).onConflictDoUpdate({
-			target: fleetStateCache.fleetId,
-			set: {
+		await this.db
+			.insert(fleetStateCache)
+			.values({
+				fleetId,
+				fleetBossId: characterId,
 				isActive,
+				memberCount: 0,
 				notFound: isNotFound,
 				notFoundAt: isNotFound ? new Date() : null,
 				lastChecked: new Date(),
-				updatedAt: new Date()
-			}
-		})
+			})
+			.onConflictDoUpdate({
+				target: fleetStateCache.fleetId,
+				set: {
+					isActive,
+					notFound: isNotFound,
+					notFoundAt: isNotFound ? new Date() : null,
+					lastChecked: new Date(),
+					updatedAt: new Date(),
+				},
+			})
 
 		return isActive
 	}
 
 	async revokeQuickJoinInvitation(token: string, characterId: string): Promise<boolean> {
 		// Verify ownership
-		const [invitation] = await this.db.select()
+		const [invitation] = await this.db
+			.select()
 			.from(fleetInvitations)
-			.where(
-				and(
-					eq(fleetInvitations.token, token),
-					eq(fleetInvitations.fleetBossId, characterId)
-				)
-			)
+			.where(and(eq(fleetInvitations.token, token), eq(fleetInvitations.fleetBossId, characterId)))
 			.limit(1)
 
 		if (!invitation) {
@@ -587,7 +636,8 @@ export class FleetsDO extends DurableObject implements Fleets {
 		}
 
 		// Mark as inactive
-		await this.db.update(fleetInvitations)
+		await this.db
+			.update(fleetInvitations)
 			.set({ isActive: false })
 			.where(eq(fleetInvitations.id, invitation.id))
 

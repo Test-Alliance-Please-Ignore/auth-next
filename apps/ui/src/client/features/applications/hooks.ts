@@ -465,13 +465,8 @@ export function useDeleteHRNote() {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: ({
-			noteId,
-			subjectUserId,
-		}: {
-			noteId: string
-			subjectUserId: string
-		}) => applicationsApi.deleteHRNote(noteId),
+		mutationFn: ({ noteId, subjectUserId }: { noteId: string; subjectUserId: string }) =>
+			applicationsApi.deleteHRNote(noteId),
 		onSuccess: (_, variables) => {
 			// Invalidate all HR notes lists
 			queryClient.invalidateQueries({

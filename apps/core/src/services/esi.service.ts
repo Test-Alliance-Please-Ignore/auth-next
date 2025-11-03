@@ -1,7 +1,7 @@
 import { getStub } from '@repo/do-utils'
-import type { EveTokenStore } from '@repo/eve-token-store'
 import { logger } from '@repo/hono-helpers'
 
+import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Env } from '../context'
 
 const AUTH_CHARACTER_ID = '2114114257' // Test Auth character
@@ -103,11 +103,14 @@ export class EsiService {
 			const searchPath = `/latest/characters/${AUTH_CHARACTER_ID}/search/?categories=solar_system&search=${encodeURIComponent(query)}&strict=false`
 			logger.info('searchSystems: calling fetchEsi', { searchPath, characterId: AUTH_CHARACTER_ID })
 
-			const searchResult = await this.tokenStore.fetchEsi<EsiSearchResponse>(searchPath, AUTH_CHARACTER_ID)
+			const searchResult = await this.tokenStore.fetchEsi<EsiSearchResponse>(
+				searchPath,
+				AUTH_CHARACTER_ID
+			)
 			logger.info('searchSystems: got response', {
 				cached: searchResult.cached,
 				hasData: !!searchResult.data,
-				solarSystemCount: searchResult.data.solar_system?.length || 0
+				solarSystemCount: searchResult.data.solar_system?.length || 0,
 			})
 
 			const searchResponse = searchResult.data
@@ -127,7 +130,9 @@ export class EsiService {
 
 			// Get constellation details to map to regions
 			const constellationIds = [...new Set(systemDetails.map((s) => s.constellation_id.toString()))]
-			logger.info('searchSystems: fetching constellation details', { constellationIdCount: constellationIds.length })
+			logger.info('searchSystems: fetching constellation details', {
+				constellationIdCount: constellationIds.length,
+			})
 
 			const constellationDetails = await Promise.all(
 				constellationIds.map((id) => this.getConstellationDetails(id))
@@ -178,7 +183,10 @@ export class EsiService {
 		try {
 			// Search for stations using ESI character search endpoint
 			const searchPath = `/latest/characters/${AUTH_CHARACTER_ID}/search/?categories=station&search=${encodeURIComponent(query)}&strict=false`
-			logger.info('searchStations: calling fetchEsi', { searchPath, characterId: AUTH_CHARACTER_ID })
+			logger.info('searchStations: calling fetchEsi', {
+				searchPath,
+				characterId: AUTH_CHARACTER_ID,
+			})
 
 			const searchResult = await this.tokenStore.fetchEsi<EsiSearchResponse>(
 				searchPath,
@@ -187,7 +195,7 @@ export class EsiService {
 			logger.info('searchStations: got response', {
 				cached: searchResult.cached,
 				hasData: !!searchResult.data,
-				stationCount: searchResult.data.station?.length || 0
+				stationCount: searchResult.data.station?.length || 0,
 			})
 
 			const searchResponse = searchResult.data
@@ -205,7 +213,10 @@ export class EsiService {
 
 			// Filter out failed fetches
 			const stationDetails = stationDetailsResults
-				.filter((result): result is PromiseFulfilledResult<EsiStationDetails> => result.status === 'fulfilled')
+				.filter(
+					(result): result is PromiseFulfilledResult<EsiStationDetails> =>
+						result.status === 'fulfilled'
+				)
 				.map((result) => result.value)
 
 			if (stationDetails.length === 0) {
@@ -218,12 +229,12 @@ export class EsiService {
 			const systemDetailsMap = await Promise.all(
 				systemIds.map((id) => this.getSystemDetails(id.toString()))
 			)
-			const systemMap = Object.fromEntries(
-				systemDetailsMap.map((s) => [s.system_id, s])
-			)
+			const systemMap = Object.fromEntries(systemDetailsMap.map((s) => [s.system_id, s]))
 
 			// Get constellation details to map to regions
-			const constellationIds = [...new Set(systemDetailsMap.map((s) => s.constellation_id.toString()))]
+			const constellationIds = [
+				...new Set(systemDetailsMap.map((s) => s.constellation_id.toString())),
+			]
 			const constellationDetails = await Promise.all(
 				constellationIds.map((id) => this.getConstellationDetails(id))
 			)
@@ -244,7 +255,7 @@ export class EsiService {
 					systemId: station.system_id.toString(),
 					systemName: system?.name || 'Unknown',
 					regionId: constellation?.region_id.toString() || '0',
-					regionName: constellation ? (regionNames[constellation.region_id] || 'Unknown') : 'Unknown',
+					regionName: constellation ? regionNames[constellation.region_id] || 'Unknown' : 'Unknown',
 					type: 'station' as const,
 				}
 			})
@@ -269,7 +280,10 @@ export class EsiService {
 		try {
 			// Search for structures using ESI character search endpoint
 			const searchPath = `/latest/characters/${AUTH_CHARACTER_ID}/search/?categories=structure&search=${encodeURIComponent(query)}&strict=false`
-			logger.info('searchStructures: calling fetchEsi', { searchPath, characterId: AUTH_CHARACTER_ID })
+			logger.info('searchStructures: calling fetchEsi', {
+				searchPath,
+				characterId: AUTH_CHARACTER_ID,
+			})
 
 			const searchResult = await this.tokenStore.fetchEsi<EsiSearchResponse>(
 				searchPath,
@@ -278,7 +292,7 @@ export class EsiService {
 			logger.info('searchStructures: got response', {
 				cached: searchResult.cached,
 				hasData: !!searchResult.data,
-				structureCount: searchResult.data.structure?.length || 0
+				structureCount: searchResult.data.structure?.length || 0,
 			})
 
 			const searchResponse = searchResult.data
@@ -296,7 +310,10 @@ export class EsiService {
 
 			// Filter out failed fetches (403 Forbidden, etc.)
 			const structureDetails = structureDetailsResults
-				.filter((result): result is PromiseFulfilledResult<EsiStructureDetails> => result.status === 'fulfilled')
+				.filter(
+					(result): result is PromiseFulfilledResult<EsiStructureDetails> =>
+						result.status === 'fulfilled'
+				)
 				.map((result) => result.value)
 
 			if (structureDetails.length === 0) {
@@ -309,12 +326,12 @@ export class EsiService {
 			const systemDetailsMap = await Promise.all(
 				systemIds.map((id) => this.getSystemDetails(id.toString()))
 			)
-			const systemMap = Object.fromEntries(
-				systemDetailsMap.map((s) => [s.system_id, s])
-			)
+			const systemMap = Object.fromEntries(systemDetailsMap.map((s) => [s.system_id, s]))
 
 			// Get constellation details to map to regions
-			const constellationIds = [...new Set(systemDetailsMap.map((s) => s.constellation_id.toString()))]
+			const constellationIds = [
+				...new Set(systemDetailsMap.map((s) => s.constellation_id.toString())),
+			]
 			const constellationDetails = await Promise.all(
 				constellationIds.map((id) => this.getConstellationDetails(id))
 			)
@@ -335,7 +352,7 @@ export class EsiService {
 					systemId: structure.solar_system_id.toString(),
 					systemName: system?.name || 'Unknown',
 					regionId: constellation?.region_id.toString() || '0',
-					regionName: constellation ? (regionNames[constellation.region_id] || 'Unknown') : 'Unknown',
+					regionName: constellation ? regionNames[constellation.region_id] || 'Unknown' : 'Unknown',
 					type: 'structure' as const,
 				}
 			})
@@ -459,13 +476,10 @@ export class EsiService {
 			const names = await this.tokenStore.resolveIds(stringIds)
 
 			// Convert back to number keys
-			return Object.fromEntries(
-				Object.entries(names).map(([id, name]) => [parseInt(id), name])
-			)
+			return Object.fromEntries(Object.entries(names).map(([id, name]) => [parseInt(id), name]))
 		} catch (error) {
 			logger.error('Error fetching names from EveTokenStore:', error)
 			return {}
 		}
 	}
-
 }

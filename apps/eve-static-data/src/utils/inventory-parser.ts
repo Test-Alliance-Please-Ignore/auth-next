@@ -5,19 +5,23 @@
  * with item metadata from the database.
  */
 
+import { and, eq, ilike, sql } from 'drizzle-orm'
+
 import type {
 	InventoryParseError,
 	InventoryParseResult,
 	ParsedInventoryItem,
 } from '@repo/eve-types'
 import type { invCategories, invGroups, invTypes, marketGroups } from '../db/schema'
-import { eq, ilike, sql, and } from 'drizzle-orm'
 
 /**
  * Parse a single line of inventory text
  * Format: ItemName[TAB]Quantity
  */
-function parseInventoryLine(line: string, lineNumber: number): {
+function parseInventoryLine(
+	line: string,
+	lineNumber: number
+): {
 	itemName: string | null
 	quantity: number
 	error?: InventoryParseError

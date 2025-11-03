@@ -1,10 +1,13 @@
-import { Upload, FileText, AlertCircle, FileUp } from 'lucide-react'
+import { AlertCircle, FileText, FileUp, Upload } from 'lucide-react'
 import { useRef, useState } from 'react'
-import { parseEvemonXml, type ParsedEvemonSkill } from '../lib/evemon-parser'
+
+import { parseEvemonXml } from '../lib/evemon-parser'
 import { EvemonSkillPreview } from './evemon-skill-preview'
 import { Button } from './ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
 import { Textarea } from './ui/textarea'
+
+import type { ParsedEvemonSkill } from '../lib/evemon-parser'
 
 interface EvemonXmlImporterProps {
 	onImport: (skills: ParsedEvemonSkill[]) => void
@@ -15,7 +18,7 @@ interface EvemonXmlImporterProps {
 export function EvemonXmlImporter({
 	onImport,
 	onCancel,
-	isLoading = false
+	isLoading = false,
 }: EvemonXmlImporterProps) {
 	const [xmlContent, setXmlContent] = useState('')
 	const [parseError, setParseError] = useState<string | null>(null)
@@ -109,7 +112,8 @@ export function EvemonXmlImporter({
 					Import EVEMon Skill Plan
 				</CardTitle>
 				<CardDescription>
-					Upload an EVEMon XML file or paste the content below. Priority 1-9 skills will be imported as required, priority 10 as optional (recommended only).
+					Upload an EVEMon XML file or paste the content below. Priority 1-9 skills will be imported
+					as required, priority 10 as optional (recommended only).
 				</CardDescription>
 			</CardHeader>
 			<CardContent className="space-y-4">
@@ -168,19 +172,10 @@ export function EvemonXmlImporter({
 				</div>
 
 				<div className="flex items-center justify-between">
-					<Button
-						type="button"
-						variant="outline"
-						onClick={onCancel}
-						disabled={isLoading}
-					>
+					<Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
 						Cancel
 					</Button>
-					<Button
-						type="button"
-						onClick={handleParse}
-						disabled={!xmlContent.trim() || isLoading}
-					>
+					<Button type="button" onClick={handleParse} disabled={!xmlContent.trim() || isLoading}>
 						<Upload className="h-4 w-4 mr-2" />
 						Parse XML
 					</Button>
@@ -194,7 +189,8 @@ export function EvemonXmlImporter({
 								<li>Open EVEMon and go to your skill plan</li>
 								<li>Click File → Export Plan</li>
 								<li>Choose "EVEMon Skill Plan (*.xml)"</li>
-								<li>Either:
+								<li>
+									Either:
 									<ul className="ml-4 mt-1 space-y-1 list-disc">
 										<li>Use the "Upload XML File" button above to select the saved file</li>
 										<li>Or open the file in a text editor, copy all content, and paste it above</li>

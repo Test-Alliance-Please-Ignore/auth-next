@@ -22,17 +22,17 @@
 	"dependencies": {
 		"@neondatabase/serverless": "0.10.4",
 		"@repo/db-utils": "workspace:*",
-		"@repo/fleets": "workspace:*",
-		"@repo/hono-helpers": "workspace:*",
-		"drizzle-orm": "0.44.6",
-		"hono": "4.9.11",
-		"workers-tagged-logger": "0.13.3",
-		"zod": "4.1.12",
+		"@repo/do-utils": "workspace:*",
 		"@repo/eve-character-data": "workspace:*",
 		"@repo/eve-token-store": "workspace:*",
 		"@repo/eve-types": "workspace:*",
-		"@repo/do-utils": "workspace:*",
-		"@repo/tools": "workspace:*"
+		"@repo/fleets": "workspace:*",
+		"@repo/hono-helpers": "workspace:*",
+		"@repo/tools": "workspace:*",
+		"drizzle-orm": "0.44.6",
+		"hono": "4.9.11",
+		"workers-tagged-logger": "0.13.3",
+		"zod": "4.1.12"
 	},
 	"devDependencies": {
 		"@cloudflare/vite-plugin": "1.1.0",

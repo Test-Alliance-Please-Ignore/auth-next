@@ -22,8 +22,8 @@ import {
 	useResumeSchedule,
 	useSchedules,
 } from '@/hooks/useBills'
-import { formatScheduleFrequency } from '@/lib/bills-utils'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { formatScheduleFrequency } from '@/lib/bills-utils'
 
 export default function BillsSchedulesPage() {
 	usePageTitle('Admin - Bill Schedules')
@@ -110,11 +110,7 @@ export default function BillsSchedulesPage() {
 			{message && (
 				<Card className={message.type === 'error' ? 'border-destructive' : 'border-success'}>
 					<CardContent className="pt-6">
-						<p
-							className={
-								message.type === 'error' ? 'text-destructive' : 'text-success'
-							}
-						>
+						<p className={message.type === 'error' ? 'text-destructive' : 'text-success'}>
 							{message.text}
 						</p>
 					</CardContent>
@@ -176,9 +172,7 @@ export default function BillsSchedulesPage() {
 											<TableCell>
 												<div className="text-sm">{schedule.payerId}</div>
 											</TableCell>
-											<TableCell>
-												{formatScheduleFrequency(schedule.frequency)}
-											</TableCell>
+											<TableCell>{formatScheduleFrequency(schedule.frequency)}</TableCell>
 											<TableCell>
 												<div className="text-sm">
 													{new Date(schedule.nextGenerationTime).toLocaleString()}
@@ -186,11 +180,7 @@ export default function BillsSchedulesPage() {
 											</TableCell>
 											<TableCell>
 												<Badge
-													variant={
-														schedule.consecutiveFailures > 0
-															? 'destructive'
-															: 'default'
-													}
+													variant={schedule.consecutiveFailures > 0 ? 'destructive' : 'default'}
 												>
 													{schedule.consecutiveFailures}
 												</Badge>
@@ -227,9 +217,7 @@ export default function BillsSchedulesPage() {
 														Delete
 													</DestructiveButton>
 													<Button size="sm" variant="outline" asChild>
-														<Link to={`/admin/bills/schedules/${schedule.id}`}>
-															View
-														</Link>
+														<Link to={`/admin/bills/schedules/${schedule.id}`}>View</Link>
 													</Button>
 												</div>
 											</TableCell>

@@ -293,11 +293,14 @@ export class DiscordBotService {
 						})
 					} else if (nickname) {
 						// No new roles to add, but update nickname if provided
-						logger.info('[DiscordBot] User already has all required roles, updating nickname only', {
-							guildId,
-							userId,
-							roleCount: currentRoleIds.length,
-						})
+						logger.info(
+							'[DiscordBot] User already has all required roles, updating nickname only',
+							{
+								guildId,
+								userId,
+								roleCount: currentRoleIds.length,
+							}
+						)
 
 						const updateResult = await this.updateGuildMemberRoles(
 							guildId,

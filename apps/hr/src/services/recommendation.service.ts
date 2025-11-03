@@ -1,9 +1,9 @@
 import { and, eq } from '@repo/db-utils'
 
-import { applicationRecommendations, applicationActivityLog, applications } from '../db/schema'
+import { applicationActivityLog, applicationRecommendations, applications } from '../db/schema'
 
-import type { Recommendation, RecommendationSentiment } from '@repo/hr'
 import type { DbClient } from '@repo/db-utils'
+import type { Recommendation, RecommendationSentiment } from '@repo/hr'
 import type * as schema from '../db/schema'
 
 /**
@@ -179,9 +179,7 @@ export class RecommendationService {
 	/**
 	 * Map database record to Recommendation DTO
 	 */
-	private mapToRecommendation(
-		rec: typeof applicationRecommendations.$inferSelect
-	): Recommendation {
+	private mapToRecommendation(rec: typeof applicationRecommendations.$inferSelect): Recommendation {
 		return {
 			id: rec.id,
 			applicationId: rec.applicationId,

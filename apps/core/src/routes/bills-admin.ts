@@ -453,7 +453,12 @@ app.get('/schedules', requireAuth(), requireAdmin(), async (c) => {
 
 	try {
 		const frequency = c.req.query('frequency')
-		const isActive = c.req.query('isActive') === 'true' ? true : c.req.query('isActive') === 'false' ? false : undefined
+		const isActive =
+			c.req.query('isActive') === 'true'
+				? true
+				: c.req.query('isActive') === 'false'
+					? false
+					: undefined
 		const templateId = c.req.query('templateId')
 
 		const stub = getStub<Bills>(c.env.BILLS, 'default')

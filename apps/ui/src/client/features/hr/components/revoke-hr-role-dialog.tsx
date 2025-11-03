@@ -10,9 +10,10 @@ import {
 	DialogTitle,
 } from '@/components/ui/dialog'
 
+import { HrRoleBadge } from './hr-role-badge'
+
 import type { CorporationMember } from '../../my-corporations/api'
 import type { HrRoleGrant, RevokeHrRoleRequest } from '../api'
-import { HrRoleBadge } from './hr-role-badge'
 
 interface RevokeHrRoleDialogProps {
 	member: CorporationMember | null

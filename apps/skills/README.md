@@ -46,8 +46,9 @@ The Skills Durable Object is available to this worker via the `SKILLS` binding.
 ### From within this worker:
 
 ```typescript
-import type { Skills } from '@repo/skills'
 import { getStub } from '@repo/do-utils'
+
+import type { Skills } from '@repo/skills'
 
 // Get a stub to the Durable Object
 const stub = getStub<Skills>(c.env.SKILLS, 'unique-id')

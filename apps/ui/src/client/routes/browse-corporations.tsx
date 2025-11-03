@@ -10,17 +10,16 @@ import { Building2, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 
-import { useAuth } from '@/hooks/useAuth'
-import { usePublicCorporations } from '@/hooks/useCorporations'
-import { usePageTitle } from '@/hooks/usePageTitle'
-import { api } from '@/lib/api'
-
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useAuth } from '@/hooks/useAuth'
+import { usePublicCorporations } from '@/hooks/useCorporations'
+import { usePageTitle } from '@/hooks/usePageTitle'
+import { api } from '@/lib/api'
 
 import type { ManagedCorporation } from '@/lib/api'
 
@@ -39,10 +38,7 @@ interface CorporationCardProps {
 
 function CorporationCard({ corporation, onClick }: CorporationCardProps) {
 	return (
-		<Card
-			variant="elevated"
-			className="transition-all hover:border-primary/50 hover:shadow-lg"
-		>
+		<Card variant="elevated" className="transition-all hover:border-primary/50 hover:shadow-lg">
 			<CardHeader className="pb-4">
 				<div className="flex items-start gap-4">
 					<div className="p-3 bg-primary/10 rounded-lg">
@@ -73,10 +69,7 @@ function CorporationCard({ corporation, onClick }: CorporationCardProps) {
 				)}
 
 				{/* View Details Button */}
-				<Button
-					className="w-full"
-					onClick={() => onClick(corporation.corporationId)}
-				>
+				<Button className="w-full" onClick={() => onClick(corporation.corporationId)}>
 					View Details
 				</Button>
 			</CardContent>

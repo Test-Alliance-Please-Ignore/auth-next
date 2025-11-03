@@ -98,10 +98,7 @@ export default function AdminBillsNewPage() {
 		if (formData.enableLateFee) {
 			if (!formData.lateFeeAmount.trim()) {
 				newErrors.lateFeeAmount = 'Late fee amount is required when late fees are enabled'
-			} else if (
-				isNaN(Number(formData.lateFeeAmount)) ||
-				Number(formData.lateFeeAmount) < 0
-			) {
+			} else if (isNaN(Number(formData.lateFeeAmount)) || Number(formData.lateFeeAmount) < 0) {
 				newErrors.lateFeeAmount = 'Late fee amount must be a non-negative number'
 			}
 		}
@@ -230,9 +227,7 @@ export default function AdminBillsNewPage() {
 									onChange={(e) => handleChange('payerId', e.target.value)}
 									className={errors.payerId ? 'border-destructive' : ''}
 								/>
-								{errors.payerId && (
-									<p className="text-sm text-destructive">{errors.payerId}</p>
-								)}
+								{errors.payerId && <p className="text-sm text-destructive">{errors.payerId}</p>}
 								<p className="text-sm text-muted-foreground">
 									Enter the EVE Online {formData.payerType} ID or group ID
 								</p>
@@ -245,9 +240,7 @@ export default function AdminBillsNewPage() {
 				<Card variant="interactive" className="mb-6">
 					<CardHeader>
 						<CardTitle>Bill Details</CardTitle>
-						<CardDescription>
-							Enter the amount and description for this bill
-						</CardDescription>
+						<CardDescription>Enter the amount and description for this bill</CardDescription>
 					</CardHeader>
 					<CardContent className="space-y-4">
 						<div className="space-y-2">
@@ -291,9 +284,7 @@ export default function AdminBillsNewPage() {
 									onChange={(e) => handleChange('amount', e.target.value)}
 									className={errors.amount ? 'border-destructive' : ''}
 								/>
-								{errors.amount && (
-									<p className="text-sm text-destructive">{errors.amount}</p>
-								)}
+								{errors.amount && <p className="text-sm text-destructive">{errors.amount}</p>}
 							</div>
 
 							<div className="space-y-2">
@@ -307,9 +298,7 @@ export default function AdminBillsNewPage() {
 									onChange={(e) => handleChange('dueDate', e.target.value)}
 									className={errors.dueDate ? 'border-destructive' : ''}
 								/>
-								{errors.dueDate && (
-									<p className="text-sm text-destructive">{errors.dueDate}</p>
-								)}
+								{errors.dueDate && <p className="text-sm text-destructive">{errors.dueDate}</p>}
 							</div>
 						</div>
 					</CardContent>
@@ -319,9 +308,7 @@ export default function AdminBillsNewPage() {
 				<Card variant="interactive" className="mb-6">
 					<CardHeader>
 						<CardTitle>Late Fee Settings</CardTitle>
-						<CardDescription>
-							Configure penalties for late payment (optional)
-						</CardDescription>
+						<CardDescription>Configure penalties for late payment (optional)</CardDescription>
 					</CardHeader>
 					<CardContent className="space-y-4">
 						<div className="flex items-center justify-between">
@@ -350,65 +337,44 @@ export default function AdminBillsNewPage() {
 											<SelectValue />
 										</SelectTrigger>
 										<SelectContent>
-											<SelectItem value="static">
-												Static Amount (Fixed ISK)
-											</SelectItem>
-											<SelectItem value="percentage">
-												Percentage (% of bill amount)
-											</SelectItem>
+											<SelectItem value="static">Static Amount (Fixed ISK)</SelectItem>
+											<SelectItem value="percentage">Percentage (% of bill amount)</SelectItem>
 										</SelectContent>
 									</Select>
 								</div>
 
 								<div className="space-y-2">
 									<Label htmlFor="lateFeeAmount">
-										Late Fee Amount{' '}
-										{formData.lateFeeType === 'percentage' ? '(%)' : '(ISK)'}{' '}
+										Late Fee Amount {formData.lateFeeType === 'percentage' ? '(%)' : '(ISK)'}{' '}
 										<span className="text-destructive">*</span>
 									</Label>
 									<Input
 										id="lateFeeAmount"
 										type="text"
-										placeholder={
-											formData.lateFeeType === 'percentage' ? '5' : '10000'
-										}
+										placeholder={formData.lateFeeType === 'percentage' ? '5' : '10000'}
 										value={formData.lateFeeAmount}
 										onChange={(e) => handleChange('lateFeeAmount', e.target.value)}
 										className={errors.lateFeeAmount ? 'border-destructive' : ''}
 									/>
 									{errors.lateFeeAmount && (
-										<p className="text-sm text-destructive">
-											{errors.lateFeeAmount}
-										</p>
+										<p className="text-sm text-destructive">{errors.lateFeeAmount}</p>
 									)}
 								</div>
 
 								<div className="space-y-2">
-									<Label htmlFor="lateFeeCompounding">
-										Late Fee Compounding
-									</Label>
+									<Label htmlFor="lateFeeCompounding">Late Fee Compounding</Label>
 									<Select
 										value={formData.lateFeeCompounding}
-										onValueChange={(value) =>
-											handleChange('lateFeeCompounding', value)
-										}
+										onValueChange={(value) => handleChange('lateFeeCompounding', value)}
 									>
 										<SelectTrigger id="lateFeeCompounding">
 											<SelectValue />
 										</SelectTrigger>
 										<SelectContent>
-											<SelectItem value="none">
-												None (One-time fee)
-											</SelectItem>
-											<SelectItem value="daily">
-												Daily (Compounds every day)
-											</SelectItem>
-											<SelectItem value="weekly">
-												Weekly (Compounds every week)
-											</SelectItem>
-											<SelectItem value="monthly">
-												Monthly (Compounds every month)
-											</SelectItem>
+											<SelectItem value="none">None (One-time fee)</SelectItem>
+											<SelectItem value="daily">Daily (Compounds every day)</SelectItem>
+											<SelectItem value="weekly">Weekly (Compounds every week)</SelectItem>
+											<SelectItem value="monthly">Monthly (Compounds every month)</SelectItem>
 										</SelectContent>
 									</Select>
 									<p className="text-sm text-muted-foreground">

@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react'
 import { User, Users } from 'lucide-react'
-import { useAuth } from '../../../hooks/useAuth'
-import { useGroups } from '../../../hooks/useGroups'
+import { useEffect, useState } from 'react'
+
 import { Label } from '../../../components/ui/label'
 import {
 	Select,
@@ -10,6 +9,9 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from '../../../components/ui/select'
+import { useAuth } from '../../../hooks/useAuth'
+import { useGroups } from '../../../hooks/useGroups'
+
 import type { MaintainerOption } from '../types'
 
 interface MaintainerSelectorProps {

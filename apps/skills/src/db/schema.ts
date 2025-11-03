@@ -1,5 +1,15 @@
 import { relations } from 'drizzle-orm'
-import { boolean, index, integer, numeric, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
+import {
+	boolean,
+	index,
+	integer,
+	numeric,
+	pgTable,
+	text,
+	timestamp,
+	unique,
+	uuid,
+} from 'drizzle-orm/pg-core'
 
 /**
  * Database schema for the skills worker
@@ -271,16 +281,19 @@ export const skillPlanCategoriesRelations = relations(skillPlanCategories, ({ ma
 /**
  * Skill plan category mappings relations
  */
-export const skillPlanCategoryMappingsRelations = relations(skillPlanCategoryMappings, ({ one }) => ({
-	plan: one(skillPlans, {
-		fields: [skillPlanCategoryMappings.planId],
-		references: [skillPlans.id],
-	}),
-	category: one(skillPlanCategories, {
-		fields: [skillPlanCategoryMappings.categoryId],
-		references: [skillPlanCategories.id],
-	}),
-}))
+export const skillPlanCategoryMappingsRelations = relations(
+	skillPlanCategoryMappings,
+	({ one }) => ({
+		plan: one(skillPlans, {
+			fields: [skillPlanCategoryMappings.planId],
+			references: [skillPlans.id],
+		}),
+		category: one(skillPlanCategories, {
+			fields: [skillPlanCategoryMappings.categoryId],
+			references: [skillPlanCategories.id],
+		}),
+	})
+)
 
 export const schema = {
 	skillCategories,

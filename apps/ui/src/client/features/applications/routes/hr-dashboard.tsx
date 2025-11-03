@@ -17,10 +17,10 @@ import { Separator } from '@/components/ui/separator'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
+import { useHrPermissionCheck } from '../../hr/hooks'
 import { ApplicationCard } from '../components/application-card'
 import { ApplicationStatsCard } from '../components/application-stats-card'
 import { useApplications } from '../hooks'
-import { useHrPermissionCheck } from '../../hr/hooks'
 
 // ============================================================================
 // Component
@@ -129,12 +129,10 @@ export default function HrDashboard() {
 				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
 					<CardHeader className="text-center">
 						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
-						<CardTitle className="text-2xl text-red-900 dark:text-red-100">
-							Access Denied
-						</CardTitle>
+						<CardTitle className="text-2xl text-red-900 dark:text-red-100">Access Denied</CardTitle>
 						<CardDescription className="mt-2 text-red-700 dark:text-red-300">
-							You don't have HR permissions for this corporation. Contact an HR Admin to
-							request access.
+							You don't have HR permissions for this corporation. Contact an HR Admin to request
+							access.
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
@@ -250,8 +248,8 @@ export default function HrDashboard() {
 								Action Required
 							</CardTitle>
 							<CardDescription>
-								You have {stats.pending} pending application{stats.pending !== 1 ? 's' : ''}{' '}
-								waiting for review
+								You have {stats.pending} pending application{stats.pending !== 1 ? 's' : ''} waiting
+								for review
 							</CardDescription>
 						</CardHeader>
 						<CardContent>

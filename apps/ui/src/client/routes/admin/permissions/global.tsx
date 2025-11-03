@@ -24,6 +24,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from '@/components/ui/select'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { usePermissionCategories } from '@/hooks/usePermissionCategories'
 import {
 	useCreatePermission,
@@ -31,7 +32,6 @@ import {
 	useGlobalPermissions,
 	useUpdatePermission,
 } from '@/hooks/usePermissions'
-import { usePageTitle } from '@/hooks/usePageTitle'
 
 import type {
 	CreatePermissionRequest,

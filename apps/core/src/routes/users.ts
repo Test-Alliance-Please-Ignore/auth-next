@@ -334,7 +334,7 @@ users.get('/has-corporation-access', async (c) => {
 					// Check if any character is CEO or director
 					for (const char of characters) {
 						const isCeo = corpInfo && String(corpInfo.ceoId) === char.characterId
-						const matchedDirector = directors.find(d => d.characterId === char.characterId)
+						const matchedDirector = directors.find((d) => d.characterId === char.characterId)
 
 						if (isCeo) {
 							return c.json({ hasAccess: true })
@@ -629,7 +629,10 @@ users.get('/my-corporations', async (c) => {
 			// Fetch all corporation data in parallel
 			const corpDataPromises = managedCorps.map(async (corp) => {
 				try {
-					const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corp.corporationId)
+					const corpStub = getStub<EveCorporationData>(
+						c.env.EVE_CORPORATION_DATA,
+						corp.corporationId
+					)
 					const coreData = await corpStub.getCoreData(corp.corporationId)
 
 					// Count linked/unlinked members
@@ -763,7 +766,9 @@ users.get('/my-corporations', async (c) => {
 			}
 		})
 
-		const corpDataResults = (await Promise.all(corpDataPromises)).filter((result) => result !== null)
+		const corpDataResults = (await Promise.all(corpDataPromises)).filter(
+			(result) => result !== null
+		)
 
 		// STEP 7: Batch check ALL member linkage status with ONE query
 		// Collect all unique member character IDs across all corporations

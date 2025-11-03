@@ -110,7 +110,7 @@ const app = new Hono<App>()
 	.route('/api/inventory', inventoryRoutes)
 	.route('/api/hr', hrRoutes)
 	.route('/api/ws', wsRoutes)
-	// .route('/api/bills', userBillsRoutes) // User bills API (TODO: implement later)
+// .route('/api/bills', userBillsRoutes) // User bills API (TODO: implement later)
 
 // Export Hono app as default export (HTTP handler)
 export default app

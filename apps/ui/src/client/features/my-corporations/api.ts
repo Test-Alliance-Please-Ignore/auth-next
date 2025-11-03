@@ -22,7 +22,7 @@ export interface CorporationMember {
 	role: 'CEO' | 'Director' | 'Member'
 	hasAuthAccount: boolean
 	authUserId?: string
-	authUserName?: string
+	mainCharacterName?: string
 	joinDate: string
 	lastEsiUpdate: string
 	lastLogin?: string

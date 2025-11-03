@@ -46,7 +46,11 @@ export interface Freight {
 	/**
 	 * Update an existing freight route (admin only)
 	 */
-	updateRoute(adminId: string, routeId: string, data: UpdateFreightRouteInput): Promise<FreightRoute>
+	updateRoute(
+		adminId: string,
+		routeId: string,
+		data: UpdateFreightRouteInput
+	): Promise<FreightRoute>
 
 	/**
 	 * Activate a freight route (admin only)

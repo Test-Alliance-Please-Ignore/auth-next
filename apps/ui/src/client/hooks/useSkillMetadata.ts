@@ -6,13 +6,15 @@
  */
 
 import { useQuery } from '@tanstack/react-query'
-import type {
-	SkillMetadata,
-	EnhancedCharacterSkill,
-	CharacterSkill,
-	normalizeSkillId
-} from '@repo/eve-types'
+
 import { api } from '../lib/api'
+
+import type {
+	CharacterSkill,
+	EnhancedCharacterSkill,
+	normalizeSkillId,
+	SkillMetadata,
+} from '@repo/eve-types'
 
 /**
  * Categorized skills response from API
@@ -48,7 +50,7 @@ interface CategorizedSkillsResponse {
  */
 export function useSkillMetadata(skillIds: (number | string)[]) {
 	// Normalize and sort IDs for consistent cache key
-	const normalizedIds = skillIds.map(id => String(id))
+	const normalizedIds = skillIds.map((id) => String(id))
 	const sortedIds = [...normalizedIds].sort((a, b) => Number(a) - Number(b))
 	const idsString = sortedIds.join(',')
 
@@ -112,10 +114,10 @@ export function useSkillMetadata(skillIds: (number | string)[]) {
  * ```
  */
 export function useEnhancedCharacterSkills(characterSkills?: CharacterSkill[]) {
-	const skillIds = characterSkills?.map(s => s.skill_id) || []
+	const skillIds = characterSkills?.map((s) => s.skill_id) || []
 	const { data: skillMap, ...queryResult } = useSkillMetadata(skillIds)
 
-	const enhancedSkills = characterSkills?.map(skill => {
+	const enhancedSkills = characterSkills?.map((skill) => {
 		const metadata = skillMap?.get(skill.skill_id)
 		return {
 			...skill,
@@ -177,7 +179,5 @@ export function getSkillWithGroup(
 	const metadata = skillMap?.get(skillId)
 	if (!metadata) return `Unknown Skill #${skillId}`
 
-	return metadata.groupName
-		? `${metadata.name} (${metadata.groupName})`
-		: metadata.name
+	return metadata.groupName ? `${metadata.name} (${metadata.groupName})` : metadata.name
 }

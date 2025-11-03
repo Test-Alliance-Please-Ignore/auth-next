@@ -1,24 +1,20 @@
 import { DurableObject } from 'cloudflare:workers'
+
 import { and, desc, eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
 import { createDb } from './db'
-import {
-	broadcastDeliveries,
-	broadcasts,
-	broadcastTargets,
-	broadcastTemplates,
-} from './db/schema'
+import { broadcastDeliveries, broadcasts, broadcastTargets, broadcastTemplates } from './db/schema'
 import { convertUnixTimestamps } from './utils/timestamp-converter'
 
 import type {
 	Broadcast,
 	BroadcastDelivery,
+	Broadcasts,
 	BroadcastStatus,
 	BroadcastTarget,
 	BroadcastTemplate,
 	BroadcastWithDetails,
-	Broadcasts,
 	CreateBroadcastRequest,
 	CreateBroadcastTargetRequest,
 	CreateBroadcastTemplateRequest,
@@ -79,10 +75,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 		}
 	}
 
-	async createTarget(
-		data: CreateBroadcastTargetRequest,
-		userId: string
-	): Promise<BroadcastTarget> {
+	async createTarget(data: CreateBroadcastTargetRequest, userId: string): Promise<BroadcastTarget> {
 		const now = new Date()
 
 		const [target] = await this.db
@@ -472,7 +465,9 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 					broadcast: {
 						...updatedBroadcast,
 						content: updatedBroadcast.content as Record<string, unknown>,
-						scheduledFor: updatedBroadcast.scheduledFor ? updatedBroadcast.scheduledFor.toISOString() : null,
+						scheduledFor: updatedBroadcast.scheduledFor
+							? updatedBroadcast.scheduledFor.toISOString()
+							: null,
 						sentAt: updatedBroadcast.sentAt ? updatedBroadcast.sentAt.toISOString() : null,
 						createdAt: updatedBroadcast.createdAt.toISOString(),
 						updatedAt: updatedBroadcast.updatedAt.toISOString(),
@@ -520,7 +515,9 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 				broadcast: {
 					...updatedBroadcast,
 					content: updatedBroadcast.content as Record<string, unknown>,
-					scheduledFor: updatedBroadcast.scheduledFor ? updatedBroadcast.scheduledFor.toISOString() : null,
+					scheduledFor: updatedBroadcast.scheduledFor
+						? updatedBroadcast.scheduledFor.toISOString()
+						: null,
 					sentAt: updatedBroadcast.sentAt ? updatedBroadcast.sentAt.toISOString() : null,
 					createdAt: updatedBroadcast.createdAt.toISOString(),
 					updatedAt: updatedBroadcast.updatedAt.toISOString(),
@@ -536,7 +533,9 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 
 	async deleteBroadcast(broadcastId: string, userId: string): Promise<void> {
 		// Delete deliveries first
-		await this.db.delete(broadcastDeliveries).where(eq(broadcastDeliveries.broadcastId, broadcastId))
+		await this.db
+			.delete(broadcastDeliveries)
+			.where(eq(broadcastDeliveries.broadcastId, broadcastId))
 
 		// Delete broadcast
 		await this.db.delete(broadcasts).where(eq(broadcasts.id, broadcastId))

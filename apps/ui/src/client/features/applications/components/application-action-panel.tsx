@@ -28,8 +28,8 @@ import { cn } from '@/lib/utils'
 import { canReviewApplication } from '../api'
 import { useUpdateApplicationStatus } from '../hooks'
 
-import type { Application, ApplicationStatus } from '../api'
 import type { HrRoleType } from '../../hr/api'
+import type { Application, ApplicationStatus } from '../api'
 
 // ============================================================================
 // Types
@@ -284,8 +284,7 @@ export function ApplicationActionPanel({
 				{/* Role Information */}
 				<div className="pt-4 border-t">
 					<p className="text-xs text-muted-foreground">
-						<strong>Your Role:</strong>{' '}
-						{userRole === 'hr_admin' ? 'HR Admin' : 'HR Reviewer'}
+						<strong>Your Role:</strong> {userRole === 'hr_admin' ? 'HR Admin' : 'HR Reviewer'}
 						{userRole === 'hr_reviewer' && (
 							<span className="block mt-1">
 								Note: Only HR Admins can accept or reject applications.
@@ -302,8 +301,8 @@ export function ApplicationActionPanel({
 						<DialogTitle>Accept Application?</DialogTitle>
 						<DialogDescription>
 							Are you sure you want to accept the application from{' '}
-							<strong>{application.characterName}</strong>? This will notify the applicant
-							and they can proceed with joining the corporation.
+							<strong>{application.characterName}</strong>? This will notify the applicant and they
+							can proceed with joining the corporation.
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
@@ -332,8 +331,8 @@ export function ApplicationActionPanel({
 						<DialogTitle>Reject Application?</DialogTitle>
 						<DialogDescription>
 							Are you sure you want to reject the application from{' '}
-							<strong>{application.characterName}</strong>? You must provide review notes
-							explaining the reason for rejection.
+							<strong>{application.characterName}</strong>? You must provide review notes explaining
+							the reason for rejection.
 						</DialogDescription>
 					</DialogHeader>
 

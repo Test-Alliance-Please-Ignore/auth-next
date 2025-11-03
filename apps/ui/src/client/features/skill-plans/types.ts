@@ -32,7 +32,7 @@ export interface SkillPlan {
 
 export interface SkillPlanSkill {
 	skillId: string
-	skillName: string  // Should always be provided by backend
+	skillName: string // Should always be provided by backend
 	skillGroup: string // Should always be provided by backend
 	requiredLevel: number
 	recommendedLevel: number

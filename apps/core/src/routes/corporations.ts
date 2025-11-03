@@ -1,4 +1,3 @@
-import type { Context } from 'hono'
 import { Hono } from 'hono'
 
 import { and, desc, eq, ilike, inArray, or } from '@repo/db-utils'
@@ -12,9 +11,11 @@ import {
 	discordServers,
 	managedCorporations,
 	userCharacters,
+	users,
 } from '../db/schema'
 import { requireAdmin, requireAuth } from '../middleware/session'
 
+import type { Context } from 'hono'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
@@ -412,7 +413,11 @@ app.patch('/my-corporations/:corporationId/settings', requireAuth(), async (c) =
 	const { isRecruiting, shortDescription, fullDescription } = body
 
 	// Validate short description length
-	if (shortDescription !== undefined && typeof shortDescription === 'string' && shortDescription.length > 250) {
+	if (
+		shortDescription !== undefined &&
+		typeof shortDescription === 'string' &&
+		shortDescription.length > 250
+	) {
 		return c.json({ error: 'Short description must not exceed 250 characters' }, 400)
 	}
 
@@ -1009,10 +1014,7 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 			userRole = access.role
 		} catch (error) {
 			// Authorization failed - return 403
-			return c.json(
-				{ error: error instanceof Error ? error.message : 'Access denied' },
-				403
-			)
+			return c.json({ error: error instanceof Error ? error.message : 'Access denied' }, 403)
 		}
 
 		logger.info('[Corporations] User has access', { corporationId, userId: user.id, userRole })
@@ -1089,11 +1091,37 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 			unresolvedCount: memberCharacterIds.length - Object.keys(characterNameMap).length,
 		})
 
+		// Fetch user data to get main character IDs for linked accounts
+		const linkedUserIds = [...new Set(linkedCharacters.map((c) => c.userId))]
+		const linkedUsers =
+			linkedUserIds.length > 0
+				? await db.query.users.findMany({
+						where: inArray(users.id, linkedUserIds),
+					})
+				: []
+
+		// Resolve main character IDs to character names
+		const mainCharacterIds = linkedUsers.map((u) => u.mainCharacterId)
+		const mainCharacterNameMap =
+			mainCharacterIds.length > 0 ? await tokenStoreStub.resolveIds(mainCharacterIds) : {}
+
+		// Create a map from userId to main character name
+		const userIdToMainCharacterName = new Map(
+			linkedUsers.map((u) => [u.id, mainCharacterNameMap[u.mainCharacterId] || 'Unknown'])
+		)
+
+		logger.info('[Corporations Members] Resolved main character names for linked accounts', {
+			corporationId,
+			linkedAccountCount: linkedUserIds.length,
+			resolvedMainCharacters: Object.keys(mainCharacterNameMap).length,
+		})
+
 		// Bulk check blacklist status for all members
 		const hrStub = getStub<Hr>(c.env.HR, 'default')
-		const blacklistStatuses = memberCharacterIds.length > 0
-			? await hrStub.checkCharactersBlacklisted(memberCharacterIds)
-			: {}
+		const blacklistStatuses =
+			memberCharacterIds.length > 0
+				? await hrStub.checkCharactersBlacklisted(memberCharacterIds)
+				: {}
 
 		// Process members with comprehensive data
 		const membersWithDetails = await Promise.all(
@@ -1126,7 +1154,9 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 					role,
 					hasAuthAccount,
 					authUserId: linkedChar?.userId,
-					authUserName: linkedChar?.characterName,
+					mainCharacterName: linkedChar?.userId
+						? userIdToMainCharacterName.get(linkedChar.userId)
+						: undefined,
 					joinDate: tracking?.startDate?.toISOString() || member.updatedAt.toISOString(),
 					lastEsiUpdate: member.updatedAt.toISOString(),
 					lastLogin: tracking?.logonDate?.toISOString(),
@@ -1135,9 +1165,9 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 					locationSystem: undefined, // Would need additional ESI scopes
 					locationRegion: undefined, // Would need to be resolved from system ID
 					activityStatus: tracking?.logonDate
-						? (new Date().getTime() - tracking.logonDate.getTime() < 7 * 24 * 60 * 60 * 1000
+						? new Date().getTime() - tracking.logonDate.getTime() < 7 * 24 * 60 * 60 * 1000
 							? 'active'
-							: 'inactive')
+							: 'inactive'
 						: 'unknown',
 					isBlacklisted: blacklistStatuses[characterId] || false,
 				}

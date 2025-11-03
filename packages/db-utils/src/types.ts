@@ -10,8 +10,7 @@ export type DbClient<T extends Record<string, unknown> = Record<string, never>> 
 /**
  * Database client type using WebSocket driver
  */
-export type DbClientWs<T extends Record<string, unknown> = Record<string, never>> =
-	NeonDatabase<T>
+export type DbClientWs<T extends Record<string, unknown> = Record<string, never>> = NeonDatabase<T>
 
 export type NeonTestEnv = {
 	NEON_API_KEY: string

@@ -7,8 +7,9 @@ Shared types and interfaces for the Bills Durable Object.
 Import this package in any worker that needs to interact with the Bills Durable Object:
 
 ```typescript
-import type { Bills } from '@repo/bills'
 import { getStub } from '@repo/do-utils'
+
+import type { Bills } from '@repo/bills'
 
 // Get a typed stub to the Durable Object
 const stub = getStub<Bills>(env.BILLS, 'unique-id')

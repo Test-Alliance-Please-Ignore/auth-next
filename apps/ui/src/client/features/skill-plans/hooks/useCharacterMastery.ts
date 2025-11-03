@@ -1,4 +1,5 @@
 import { useCharacterProgress } from '../hooks'
+
 import type { CharacterMastery, MasteryStatus } from '../types'
 
 /**
@@ -37,7 +38,7 @@ export function useCharacterMastery(
 				completedRecommended: progress.completedRecommended,
 				totalSkills: progress.totalSkills,
 				hasValidToken,
-		  }
+			}
 		: undefined
 
 	return {

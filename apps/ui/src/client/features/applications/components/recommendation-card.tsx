@@ -8,9 +8,9 @@
 import { formatDistanceToNow } from 'date-fns'
 import { Edit, Trash2 } from 'lucide-react'
 
+import { MemberAvatar } from '@/components/member-avatar'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
-import { MemberAvatar } from '@/components/member-avatar'
 import { cn } from '@/lib/utils'
 
 import { RecommendationSentimentBadge } from './recommendation-sentiment-badge'

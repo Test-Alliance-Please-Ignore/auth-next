@@ -1,7 +1,9 @@
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-import type { HrRoleGrant, HrRoleType } from '../api'
+
 import { HR_ROLE_DESCRIPTIONS, HR_ROLE_NAMES } from '../api'
+
+import type { HrRoleGrant, HrRoleType } from '../api'
 
 interface HrRoleBadgeProps {
 	role: HrRoleType | HrRoleGrant | null | undefined

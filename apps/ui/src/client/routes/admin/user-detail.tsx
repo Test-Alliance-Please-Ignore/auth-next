@@ -1,3 +1,4 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
 	AlertTriangle,
 	ArrowLeft,
@@ -13,7 +14,6 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -390,24 +390,27 @@ export default function UserDetailPage() {
 											Blacklisted
 										</Badge>
 									)}
-									<Button
-										variant={user.is_admin ? 'destructive' : 'default'}
-										size="sm"
-										onClick={() => setAdminDialogOpen(true)}
-										disabled={setUserAdmin.isPending}
-									>
-										{user.is_admin ? (
-											<>
-												<ShieldOff className="h-4 w-4 mr-2" />
-												Revoke Admin
-											</>
-										) : (
-											<>
-												<Shield className="h-4 w-4 mr-2" />
-												Grant Admin
-											</>
-										)}
-									</Button>
+									{user.is_admin ? (
+										<Button
+											variant="destructive"
+											size="sm"
+											onClick={() => setAdminDialogOpen(true)}
+											disabled={setUserAdmin.isPending}
+										>
+											<ShieldOff className="h-4 w-4 mr-2" />
+											Revoke Admin
+										</Button>
+									) : (
+										<DestructiveButton
+											onClick={() => setAdminDialogOpen(true)}
+											disabled={setUserAdmin.isPending}
+											size="sm"
+											showIcon={false}
+										>
+											<Shield className="h-4 w-4 mr-2" />
+											Grant Admin
+										</DestructiveButton>
+									)}
 									{activeBlacklist ? (
 										<Button
 											variant="outline"
@@ -424,9 +427,9 @@ export default function UserDetailPage() {
 											disabled={createBlacklist.isPending}
 											size="sm"
 											showIcon={false}
+											className="bg-red-800 hover:bg-red-900 text-white border-red-900"
 										>
-											<ShieldBan className="h-4 w-4 mr-2" />
-											Blacklist User
+											💩 Blacklist User
 										</DestructiveButton>
 									)}
 								</div>
@@ -472,7 +475,12 @@ export default function UserDetailPage() {
 										disabled={updateDiscordAccess.isPending}
 										size="sm"
 									>
-										<RefreshCw className={cn("h-4 w-4 mr-2", updateDiscordAccess.isPending && "animate-spin")} />
+										<RefreshCw
+											className={cn(
+												'h-4 w-4 mr-2',
+												updateDiscordAccess.isPending && 'animate-spin'
+											)}
+										/>
 										Update Discord Access
 									</Button>
 									<DestructiveButton
@@ -571,7 +579,9 @@ export default function UserDetailPage() {
 							<div className="grid grid-cols-2 gap-4">
 								<div>
 									<div className="text-sm text-muted-foreground">Blacklisted On</div>
-									<div className="text-sm font-medium">{formatDateTime(activeBlacklist.createdAt)}</div>
+									<div className="text-sm font-medium">
+										{formatDateTime(activeBlacklist.createdAt)}
+									</div>
 									<div className="text-xs text-muted-foreground">
 										{formatRelativeTime(activeBlacklist.createdAt)}
 									</div>
@@ -597,13 +607,13 @@ export default function UserDetailPage() {
 									<div className="flex items-start gap-2">
 										<AlertTriangle className="h-4 w-4 text-orange-500 mt-0.5 flex-shrink-0" />
 										<div>
-											<p className="text-sm text-orange-500 font-medium">Automatically Blacklisted</p>
+											<p className="text-sm text-orange-500 font-medium">
+												Automatically Blacklisted
+											</p>
 											<p className="text-sm text-orange-500/90 mt-1">
-												This user was automatically blacklisted due to a character blacklist. View the{' '}
-												<Link
-													to="/admin/blacklist"
-													className="underline hover:text-orange-400"
-												>
+												This user was automatically blacklisted due to a character blacklist. View
+												the{' '}
+												<Link to="/admin/blacklist" className="underline hover:text-orange-400">
 													blacklist page
 												</Link>{' '}
 												for more details.
@@ -897,9 +907,9 @@ export default function UserDetailPage() {
 						<DialogTitle>Set Primary Character</DialogTitle>
 						<DialogDescription>
 							Are you sure you want to set "{selectedCharacterData?.characterName}" as the primary
-							character for {user.characters.find((c) => c.is_primary)?.characterName || 'this user'}?
-							This will change the user's main character and update their display name throughout the
-							system.
+							character for{' '}
+							{user.characters.find((c) => c.is_primary)?.characterName || 'this user'}? This will
+							change the user's main character and update their display name throughout the system.
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
@@ -1016,8 +1026,9 @@ export default function UserDetailPage() {
 					<DialogHeader>
 						<DialogTitle>Blacklist User</DialogTitle>
 						<DialogDescription>
-							Blacklist {user.characters.find((c) => c.is_primary)?.characterName || 'this user'}. This
-							will immediately disable all services and prevent login. This action can be reversed.
+							Blacklist {user.characters.find((c) => c.is_primary)?.characterName || 'this user'}.
+							This will immediately disable all services and prevent login. This action can be
+							reversed.
 						</DialogDescription>
 					</DialogHeader>
 					<div className="space-y-4 py-4">

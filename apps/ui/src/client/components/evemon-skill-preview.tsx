@@ -1,16 +1,12 @@
 import { AlertCircle, CheckCircle2 } from 'lucide-react'
-import { formatSkillLevel, type ParsedEvemonSkill } from '../lib/evemon-parser'
+
+import { formatSkillLevel } from '../lib/evemon-parser'
 import { Button } from './ui/button'
-import { ConfirmButton } from './ui/confirm-button'
 import { Card, CardContent } from './ui/card'
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from './ui/table'
+import { ConfirmButton } from './ui/confirm-button'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table'
+
+import type { ParsedEvemonSkill } from '../lib/evemon-parser'
 
 interface EvemonSkillPreviewProps {
 	skills: ParsedEvemonSkill[]
@@ -23,7 +19,7 @@ export function EvemonSkillPreview({
 	skills,
 	onConfirm,
 	onCancel,
-	isLoading = false
+	isLoading = false,
 }: EvemonSkillPreviewProps) {
 	const totalSkills = skills.length
 
@@ -33,8 +29,9 @@ export function EvemonSkillPreview({
 				<CardContent className="flex items-start gap-2 pt-4">
 					<CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5" />
 					<div className="text-sm">
-						Successfully parsed {totalSkills} unique skill{totalSkills !== 1 ? 's' : ''} from EVEMon XML.
-						Priority 1-9 skills will be imported as required, priority 10 as optional (recommended only).
+						Successfully parsed {totalSkills} unique skill{totalSkills !== 1 ? 's' : ''} from EVEMon
+						XML. Priority 1-9 skills will be imported as required, priority 10 as optional
+						(recommended only).
 					</div>
 				</CardContent>
 			</Card>
@@ -86,18 +83,14 @@ export function EvemonSkillPreview({
 				<CardContent className="flex items-start gap-2 pt-4">
 					<AlertCircle className="h-4 w-4 text-blue-600 mt-0.5" />
 					<div className="text-sm text-muted-foreground">
-						After import, you can adjust the required and recommended levels for individual skills in the skill plan editor.
+						After import, you can adjust the required and recommended levels for individual skills
+						in the skill plan editor.
 					</div>
 				</CardContent>
 			</Card>
 
 			<div className="flex justify-end gap-2">
-				<Button
-					type="button"
-					variant="outline"
-					onClick={onCancel}
-					disabled={isLoading}
-				>
+				<Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
 					Cancel
 				</Button>
 				<ConfirmButton

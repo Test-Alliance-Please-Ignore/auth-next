@@ -21,11 +21,11 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 
 import { AttachPermissionDialog } from '@/components/attach-permission-dialog'
-import { GroupPermissionForm } from '@/components/group-permission-form'
 import { EditGroupDescriptionDialog } from '@/components/edit-group-description-dialog'
 import { EditGroupNameDialog } from '@/components/edit-group-name-dialog'
 import { GroupCard } from '@/components/group-card'
 import { GroupPermissionCard } from '@/components/group-permission-card'
+import { GroupPermissionForm } from '@/components/group-permission-form'
 import { InviteMemberForm } from '@/components/invite-member-form'
 import { MemberList } from '@/components/member-list'
 import { PendingInvitationsList } from '@/components/pending-invitations-list'
@@ -280,14 +280,15 @@ export default function GroupDetailPage() {
 			const result = await refreshServerRoles.mutateAsync({ groupId, attachmentId })
 
 			// Show detailed summary
-			const successMsg = result.message ||
+			const successMsg =
+				result.message ||
 				`Refreshed ${result.success}/${result.totalMembers} members successfully` +
-				(result.skipped > 0 ? ` (${result.skipped} skipped)` : '') +
-				(result.failed > 0 ? ` (${result.failed} failed)` : '')
+					(result.skipped > 0 ? ` (${result.skipped} skipped)` : '') +
+					(result.failed > 0 ? ` (${result.failed} failed)` : '')
 
 			setMessage({
 				type: result.failed > 0 && result.success === 0 ? 'error' : 'success',
-				text: successMsg
+				text: successMsg,
 			})
 			setTimeout(() => setMessage(null), 5000)
 		} catch (error) {
@@ -561,19 +562,11 @@ export default function GroupDetailPage() {
 							<Pencil className="mr-2 h-4 w-4" />
 							Edit Name
 						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={() => setEditDescriptionDialogOpen(true)}
-						>
+						<Button variant="outline" size="sm" onClick={() => setEditDescriptionDialogOpen(true)}>
 							<Pencil className="mr-2 h-4 w-4" />
 							Edit Description
 						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={() => setReassignCategoryDialogOpen(true)}
-						>
+						<Button variant="outline" size="sm" onClick={() => setReassignCategoryDialogOpen(true)}>
 							<FolderEdit className="mr-2 h-4 w-4" />
 							Reassign Category
 						</Button>
@@ -854,7 +847,9 @@ export default function GroupDetailPage() {
 												variant="ghost"
 												size="sm"
 												onClick={() => handleRefreshServerRoles(attachment.id)}
-												disabled={refreshServerRoles.isPending || (attachment.roles?.length ?? 0) === 0}
+												disabled={
+													refreshServerRoles.isPending || (attachment.roles?.length ?? 0) === 0
+												}
 												title={
 													(attachment.roles?.length ?? 0) === 0
 														? 'No roles configured'
@@ -1104,7 +1099,10 @@ export default function GroupDetailPage() {
 					/>
 
 					{/* Create Custom Permission Dialog */}
-					<Dialog open={showCreateCustomPermissionDialog} onOpenChange={setShowCreateCustomPermissionDialog}>
+					<Dialog
+						open={showCreateCustomPermissionDialog}
+						onOpenChange={setShowCreateCustomPermissionDialog}
+					>
 						<DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
 							<DialogHeader>
 								<DialogTitle>Create Custom Permission</DialogTitle>

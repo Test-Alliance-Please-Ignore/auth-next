@@ -1,5 +1,5 @@
-import type { Context } from 'hono'
 import { Hono } from 'hono'
+
 import { eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
@@ -7,9 +7,10 @@ import { logger } from '@repo/hono-helpers'
 import { userCharacters } from '../db/schema'
 import { requireAdmin, requireAuth } from '../middleware/session'
 
-import type { EveCorporationData } from '@repo/eve-corporation-data'
+import type { Context } from 'hono'
 import type { EveCharacterData } from '@repo/eve-character-data'
-import type { Hr, ApplicationFilters, NoteFilters, RoleFilters } from '@repo/hr'
+import type { EveCorporationData } from '@repo/eve-corporation-data'
+import type { ApplicationFilters, Hr, NoteFilters, RoleFilters } from '@repo/hr'
 import type { App } from '../context'
 
 const app = new Hono<App>()
@@ -139,7 +140,10 @@ app.post('/applications', requireAuth(), async (c) => {
 
 		return c.json(application, 201)
 	} catch (error) {
-		return c.json({ error: error instanceof Error ? error.message : 'Failed to submit application' }, 400)
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to submit application' },
+			400
+		)
 	}
 })
 
@@ -165,7 +169,10 @@ app.get('/applications', requireAuth(), async (c) => {
 
 		return c.json(applications)
 	} catch (error) {
-		return c.json({ error: error instanceof Error ? error.message : 'Failed to list applications' }, 500)
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to list applications' },
+			500
+		)
 	}
 })
 
@@ -183,7 +190,10 @@ app.get('/applications/:id', requireAuth(), async (c) => {
 
 		return c.json(application)
 	} catch (error) {
-		return c.json({ error: error instanceof Error ? error.message : 'Failed to get application' }, error instanceof Error && error.message.includes('permission') ? 403 : 404)
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to get application' },
+			error instanceof Error && error.message.includes('permission') ? 403 : 404
+		)
 	}
 })
 
@@ -206,7 +216,10 @@ app.patch('/applications/:id', requireAuth(), async (c) => {
 
 		return c.json({ success: true })
 	} catch (error) {
-		return c.json({ error: error instanceof Error ? error.message : 'Failed to update application' }, 400)
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to update application' },
+			400
+		)
 	}
 })
 
@@ -228,7 +241,10 @@ app.post('/applications/:id/withdraw', requireAuth(), async (c) => {
 
 		return c.json({ success: true })
 	} catch (error) {
-		return c.json({ error: error instanceof Error ? error.message : 'Failed to withdraw application' }, 400)
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to withdraw application' },
+			400
+		)
 	}
 })
 
@@ -245,7 +261,10 @@ app.delete('/applications/:id', requireAdmin(), async (c) => {
 
 		return c.json({ success: true })
 	} catch (error) {
-		return c.json({ error: error instanceof Error ? error.message : 'Failed to delete application' }, 500)
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to delete application' },
+			500
+		)
 	}
 })
 
@@ -281,7 +300,10 @@ app.post('/applications/:applicationId/recommendations', requireAuth(), async (c
 
 		return c.json(recommendation, 201)
 	} catch (error) {
-		return c.json({ error: error instanceof Error ? error.message : 'Failed to add recommendation' }, 400)
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to add recommendation' },
+			400
+		)
 	}
 })
 
@@ -307,7 +329,10 @@ app.patch('/applications/:applicationId/recommendations/:id', requireAuth(), asy
 
 		return c.json({ success: true })
 	} catch (error) {
-		return c.json({ error: error instanceof Error ? error.message : 'Failed to update recommendation' }, 400)
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to update recommendation' },
+			400
+		)
 	}
 })
 
@@ -329,7 +354,10 @@ app.delete('/applications/:applicationId/recommendations/:id', requireAuth(), as
 
 		return c.json({ success: true })
 	} catch (error) {
-		return c.json({ error: error instanceof Error ? error.message : 'Failed to delete recommendation' }, 400)
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to delete recommendation' },
+			400
+		)
 	}
 })
 
@@ -341,7 +369,8 @@ app.delete('/applications/:applicationId/recommendations/:id', requireAuth(), as
  */
 app.post('/notes', requireAdmin(), async (c) => {
 	const user = c.get('user')!
-	const { subjectUserId, subjectCharacterId, noteText, noteType, priority, metadata } = await c.req.json()
+	const { subjectUserId, subjectCharacterId, noteText, noteType, priority, metadata } =
+		await c.req.json()
 
 	// Get admin's primary character
 	const primaryCharacter = user.characters.find((c) => c.is_primary)
@@ -405,7 +434,10 @@ app.get('/notes/user/:userId', requireAdmin(), async (c) => {
 
 		return c.json(notes)
 	} catch (error) {
-		return c.json({ error: error instanceof Error ? error.message : 'Failed to get user notes' }, 500)
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to get user notes' },
+			500
+		)
 	}
 })
 
@@ -587,7 +619,11 @@ app.get('/:corporationId/roles', requireAuth(), async (c) => {
 app.get('/roles/check', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const corporationId = c.req.query('corporationId')
-	const requiredRole = c.req.query('requiredRole') as 'hr_viewer' | 'hr_reviewer' | 'hr_admin' | undefined
+	const requiredRole = c.req.query('requiredRole') as
+		| 'hr_viewer'
+		| 'hr_reviewer'
+		| 'hr_admin'
+		| undefined
 
 	if (!corporationId) {
 		return c.json({ error: 'corporationId is required' }, 400)
@@ -653,7 +689,10 @@ app.get('/roles/check', requireAuth(), async (c) => {
 			userId,
 			error: error instanceof Error ? error.message : String(error),
 		})
-		return c.json({ error: error instanceof Error ? error.message : 'Permission check failed' }, 500)
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Permission check failed' },
+			500
+		)
 	}
 })
 

@@ -86,11 +86,11 @@ export function convertUnixTimestamps(message: string, format: string = 'f'): st
 		// Look at the characters immediately before and after
 		const beforeMatch = message.substring(
 			Math.max(0, message.indexOf(match) - 3),
-			message.indexOf(match),
+			message.indexOf(match)
 		)
 		const afterMatch = message.substring(
 			message.indexOf(match) + match.length,
-			message.indexOf(match) + match.length + 3,
+			message.indexOf(match) + match.length + 3
 		)
 
 		if (beforeMatch.includes('<t:') || afterMatch.startsWith(':')) {

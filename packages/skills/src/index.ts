@@ -140,7 +140,10 @@ export interface Skills extends DurableObject {
 	 * @param options - Pagination options (limit and offset)
 	 * @returns Paginated list of published skill plans
 	 */
-	listPublishedPlans(categoryId?: string, options?: PaginationOptions): Promise<PaginatedResult<SkillPlanSummary>>
+	listPublishedPlans(
+		categoryId?: string,
+		options?: PaginationOptions
+	): Promise<PaginatedResult<SkillPlanSummary>>
 
 	/**
 	 * List skill plans by owner
@@ -148,7 +151,10 @@ export interface Skills extends DurableObject {
 	 * @param options - Pagination options (limit and offset)
 	 * @returns Paginated list of skill plans owned by the character
 	 */
-	listPlansByOwner(ownerCharacterId: string, options?: PaginationOptions): Promise<PaginatedResult<SkillPlanSummary>>
+	listPlansByOwner(
+		ownerCharacterId: string,
+		options?: PaginationOptions
+	): Promise<PaginatedResult<SkillPlanSummary>>
 
 	/**
 	 * List skill plans by maintainer

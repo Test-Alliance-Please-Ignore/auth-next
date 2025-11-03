@@ -45,21 +45,27 @@ skills.get('/', async (c) => {
 	try {
 		// Handle skill IDs request (for character skills display)
 		if (ids) {
-			const skillIds = ids.split(',').filter(id => id.trim())
+			const skillIds = ids.split(',').filter((id) => id.trim())
 
 			// Fetch all the requested skills with metadata (category, group info)
 			const skills = await skillsStub.getSkillsMetadata(skillIds)
 
 			// Organize by category and group
-			const categoriesMap = new Map<number, {
-				categoryId: number
-				categoryName: string
-				groups: Map<number, {
-					groupId: number
-					groupName: string
-					skills: any[]
-				}>
-			}>()
+			const categoriesMap = new Map<
+				number,
+				{
+					categoryId: number
+					categoryName: string
+					groups: Map<
+						number,
+						{
+							groupId: number
+							groupName: string
+							skills: any[]
+						}
+					>
+				}
+			>()
 
 			for (const skill of skills) {
 				// Use categoryId and categoryName from skill metadata
@@ -72,7 +78,7 @@ skills.get('/', async (c) => {
 					categoriesMap.set(categoryId, {
 						categoryId,
 						categoryName,
-						groups: new Map()
+						groups: new Map(),
 					})
 				}
 
@@ -81,7 +87,7 @@ skills.get('/', async (c) => {
 					category.groups.set(groupId, {
 						groupId,
 						groupName,
-						skills: []
+						skills: [],
 					})
 				}
 
@@ -91,15 +97,15 @@ skills.get('/', async (c) => {
 					description: skill.description,
 					rank: skill.rank,
 					primaryAttribute: skill.primaryAttribute,
-					secondaryAttribute: skill.secondaryAttribute
+					secondaryAttribute: skill.secondaryAttribute,
 				})
 			}
 
 			// Convert to array format
-			const categories = Array.from(categoriesMap.values()).map(cat => ({
+			const categories = Array.from(categoriesMap.values()).map((cat) => ({
 				categoryId: cat.categoryId,
 				categoryName: cat.categoryName,
-				groups: Array.from(cat.groups.values())
+				groups: Array.from(cat.groups.values()),
 			}))
 
 			return c.json(categories)
@@ -131,13 +137,13 @@ skills.get('/groups', async (c) => {
 		// For now, we'll get all skills and extract unique groups
 		// In the future, we could add a dedicated method for this
 		const allSkills = await skillsStub.getAllSkills()
-		const groups = [...new Set(allSkills.map(s => s.groupName))].filter(g => g !== 'Unknown')
+		const groups = [...new Set(allSkills.map((s) => s.groupName))].filter((g) => g !== 'Unknown')
 
 		// Return as an array of group objects for future extensibility
-		const groupData = groups.sort().map(name => ({
+		const groupData = groups.sort().map((name) => ({
 			id: name.toLowerCase().replace(/\s+/g, '-'),
 			name,
-			skillCount: allSkills.filter(s => s.groupName === name).length
+			skillCount: allSkills.filter((s) => s.groupName === name).length,
 		}))
 
 		return c.json(groupData)

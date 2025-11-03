@@ -46,8 +46,9 @@ The Features Durable Object is available to this worker via the `FEATURES` bindi
 ### From within this worker:
 
 ```typescript
-import type { Features } from '@repo/features'
 import { getStub } from '@repo/do-utils'
+
+import type { Features } from '@repo/features'
 
 // Get a stub to the Durable Object
 const stub = getStub<Features>(c.env.FEATURES, 'unique-id')

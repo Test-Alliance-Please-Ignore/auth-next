@@ -16,8 +16,21 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from '@/components/ui/select'
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import {
 	useBroadcastTemplates,
@@ -295,7 +308,11 @@ export default function BroadcastTemplatesPage() {
 							<CancelButton onClick={() => setCreateDialogOpen(false)} type="button">
 								Cancel
 							</CancelButton>
-							<ConfirmButton type="submit" loading={createTemplate.isPending} loadingText="Creating...">
+							<ConfirmButton
+								type="submit"
+								loading={createTemplate.isPending}
+								loadingText="Creating..."
+							>
 								Create Template
 							</ConfirmButton>
 						</DialogFooter>
@@ -353,7 +370,11 @@ export default function BroadcastTemplatesPage() {
 							>
 								Cancel
 							</CancelButton>
-							<ConfirmButton type="submit" loading={updateTemplate.isPending} loadingText="Updating...">
+							<ConfirmButton
+								type="submit"
+								loading={updateTemplate.isPending}
+								loadingText="Updating..."
+							>
 								Update Template
 							</ConfirmButton>
 						</DialogFooter>
@@ -367,8 +388,8 @@ export default function BroadcastTemplatesPage() {
 					<DialogHeader>
 						<DialogTitle>Delete Template</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to delete "{selectedTemplate?.name}"? Broadcasts using this template
-							will not be affected.
+							Are you sure you want to delete "{selectedTemplate?.name}"? Broadcasts using this
+							template will not be affected.
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>

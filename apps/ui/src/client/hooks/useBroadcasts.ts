@@ -3,15 +3,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 
 import type {
+	BroadcastStatus,
 	BroadcastTarget,
 	BroadcastTemplate,
 	BroadcastWithDetails,
+	CreateBroadcastRequest,
 	CreateBroadcastTargetRequest,
 	CreateBroadcastTemplateRequest,
-	CreateBroadcastRequest,
 	UpdateBroadcastTargetRequest,
 	UpdateBroadcastTemplateRequest,
-	BroadcastStatus,
 } from '@/lib/api'
 
 // Query keys
@@ -143,7 +143,9 @@ export function useCreateBroadcastTemplate() {
 			queryClient.invalidateQueries({ queryKey: broadcastKeys.templates() })
 			// Invalidate group-specific list
 			if (variables.groupId) {
-				queryClient.invalidateQueries({ queryKey: broadcastKeys.templatesByGroup(variables.groupId) })
+				queryClient.invalidateQueries({
+					queryKey: broadcastKeys.templatesByGroup(variables.groupId),
+				})
 			}
 		},
 	})

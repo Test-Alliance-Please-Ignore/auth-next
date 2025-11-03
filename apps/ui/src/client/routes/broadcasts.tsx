@@ -7,7 +7,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from '@/components/ui/table'
 import { useAuth } from '@/hooks/useAuth'
 import { useBroadcasts, useBroadcastTargets, useBroadcastTemplates } from '@/hooks/useBroadcasts'
 import { useGroups } from '@/hooks/useGroups'
@@ -167,7 +174,9 @@ export default function BroadcastsPage() {
 													</Badge>
 												</TableCell>
 												<TableCell>{group?.name || broadcast.groupId}</TableCell>
-												<TableCell className="font-medium">{target?.name || broadcast.targetId}</TableCell>
+												<TableCell className="font-medium">
+													{target?.name || broadcast.targetId}
+												</TableCell>
 												<TableCell>{template?.name || 'Custom'}</TableCell>
 												<TableCell className="text-sm text-muted-foreground">
 													{formatDate(broadcast.createdAt)}

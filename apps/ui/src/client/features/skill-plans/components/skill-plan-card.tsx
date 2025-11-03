@@ -1,5 +1,7 @@
+import { Globe, Lock } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Lock, Globe } from 'lucide-react'
+
+import { Badge } from '../../../components/ui/badge'
 import {
 	Card,
 	CardContent,
@@ -7,7 +9,7 @@ import {
 	CardHeader,
 	CardTitle,
 } from '../../../components/ui/card'
-import { Badge } from '../../../components/ui/badge'
+
 import type { SkillPlan } from '../types'
 
 interface SkillPlanCardProps {
@@ -28,11 +30,7 @@ export function SkillPlanCard({ plan }: SkillPlanCardProps) {
 	const handleCardClick = (e: React.MouseEvent) => {
 		// Don't navigate if clicking on a button or link inside the card
 		const target = e.target as HTMLElement
-		if (
-			target.closest('button') ||
-			target.closest('a') ||
-			target.closest('[role="button"]')
-		) {
+		if (target.closest('button') || target.closest('a') || target.closest('[role="button"]')) {
 			return
 		}
 		navigate(`/skill-plans/${plan.id}`)
@@ -48,10 +46,7 @@ export function SkillPlanCard({ plan }: SkillPlanCardProps) {
 				<div className="flex items-start justify-between">
 					<div className="space-y-1 flex-1">
 						<CardTitle className="text-lg">
-							<Link
-								to={`/skill-plans/${plan.id}`}
-								className="hover:text-primary transition-colors"
-							>
+							<Link to={`/skill-plans/${plan.id}`} className="hover:text-primary transition-colors">
 								{plan.name}
 							</Link>
 						</CardTitle>

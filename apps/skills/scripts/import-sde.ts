@@ -328,7 +328,9 @@ async function main() {
 				})
 		}
 
-		console.log(`✓ Imported ${skillAttributesToInsert.length} skill attributes (skill points per level)`)
+		console.log(
+			`✓ Imported ${skillAttributesToInsert.length} skill attributes (skill points per level)`
+		)
 	} catch (error) {
 		console.error('SDE import failed:', error)
 		process.exit(1)
