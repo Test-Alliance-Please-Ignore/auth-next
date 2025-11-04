@@ -26,6 +26,8 @@
 		"@repo/db-utils": "workspace:*",
 		"@repo/do-utils": "workspace:*",
 		"@repo/eve-types": "workspace:*",
+		"@repo/eve-token-store": "workspace:*",
+		"@repo/eve-universe": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
 		"drizzle-orm": "0.44.6",
 		"hono": "4.9.11",

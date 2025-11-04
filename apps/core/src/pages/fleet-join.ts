@@ -416,6 +416,7 @@ export async function renderFleetJoinPage(
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json',
+						'X-Requested-With': 'XMLHttpRequest',
 					},
 					body: JSON.stringify({ characterId }),
 					credentials: 'include'

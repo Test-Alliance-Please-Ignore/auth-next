@@ -429,6 +429,47 @@ export interface EveTokenStore {
 	}>
 
 	/**
+	 * Fetch all pages from a paginated public ESI endpoint as a stream (unauthenticated)
+	 * Returns a ReadableStream that yields newline-delimited JSON for each order
+	 * Use this for large datasets (>32MiB) to bypass RPC size limits
+	 *
+	 * @param basePath - ESI path without page parameter (e.g., '/markets/10000002/orders')
+	 * @param options - Optional configuration
+	 * @param options.maxConcurrent - Maximum concurrent requests (default: 5)
+	 * @returns ReadableStream of Uint8Array containing newline-delimited JSON
+	 *
+	 * @example
+	 * ```ts
+	 * const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
+	 * const stream = await stub.fetchPublicEsiAllPagesStream(
+	 *   `/markets/10000002/orders`,
+	 *   { maxConcurrent: 10 }
+	 * )
+	 *
+	 * // Decode and parse line by line
+	 * const reader = stream.pipeThrough(new TextDecoderStream()).getReader()
+	 * let buffer = ''
+	 * while (true) {
+	 *   const { done, value } = await reader.read()
+	 *   if (done) break
+	 *   buffer += value
+	 *   const lines = buffer.split('\n')
+	 *   buffer = lines.pop() || ''
+	 *   for (const line of lines) {
+	 *     if (line.trim()) {
+	 *       const order = JSON.parse(line)
+	 *       // Process order...
+	 *     }
+	 *   }
+	 * }
+	 * ```
+	 */
+	fetchPublicEsiAllPagesStream(
+		basePath: string,
+		options?: { maxConcurrent?: number }
+	): Promise<ReadableStream<Uint8Array>>
+
+	/**
 	 * Get corporation information by ID
 	 * Automatically caches results in SQLite storage
 	 *

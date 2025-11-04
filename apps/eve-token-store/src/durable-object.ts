@@ -912,6 +912,116 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	}
 
 	/**
+	 * Fetch all pages from a paginated public ESI endpoint as a stream (unauthenticated)
+	 * Returns a ReadableStream that yields newline-delimited JSON for each item
+	 * Use this for large datasets (>32MiB) to bypass RPC size limits
+	 */
+	async fetchPublicEsiAllPagesStream(
+		basePath: string,
+		options?: { maxConcurrent?: number }
+	): Promise<ReadableStream<Uint8Array>> {
+		const maxConcurrent = options?.maxConcurrent ?? 5
+
+		// Remove any existing page parameter from basePath
+		const cleanPath = basePath.replace(/[?&]page=\d+/, '')
+		const separator = cleanPath.includes('?') ? '&' : '?'
+
+		logger
+			.withTags({ basePath: cleanPath, operation: 'esi_fetch_all_pages_stream' })
+			.debug('Starting fetchPublicEsiAllPagesStream', { maxConcurrent })
+
+		const encoder = new TextEncoder()
+
+		return new ReadableStream({
+			start: async (controller) => {
+				try {
+					// Fetch first page to get total page count
+					const firstPagePath = `${cleanPath}${separator}page=1`
+					const firstResponse = await this.fetchPublicEsi<any[]>(firstPagePath)
+
+					const totalPages = firstResponse.pages ?? 1
+
+					logger
+						.withTags({ basePath: cleanPath, totalPages, operation: 'esi_fetch_all_pages_stream' })
+						.debug('Fetched first page', { totalPages, hasMorePages: totalPages > 1 })
+
+					// Stream first page items immediately
+					for (const item of firstResponse.data) {
+						const line = JSON.stringify(item) + '\n'
+						controller.enqueue(encoder.encode(line))
+					}
+
+					// If there's only one page, we're done
+					if (totalPages === 1) {
+						logger
+							.withTags({ basePath: cleanPath, operation: 'esi_fetch_all_pages_stream' })
+							.debug('Completed fetchPublicEsiAllPagesStream (single page)', {
+								totalPages: 1,
+								totalItems: firstResponse.data.length,
+							})
+						controller.close()
+						return
+					}
+
+					// Fetch and stream remaining pages with concurrency control
+					const remainingPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
+					let totalItems = firstResponse.data.length
+
+					for (let i = 0; i < remainingPages.length; i += maxConcurrent) {
+						const batch = remainingPages.slice(i, i + maxConcurrent)
+
+						logger
+							.withTags({ basePath: cleanPath, operation: 'esi_fetch_all_pages_stream' })
+							.debug('Fetching batch of pages', {
+								batchPages: batch,
+								progress: `${i + batch.length}/${remainingPages.length}`,
+							})
+
+						// Fetch batch of pages in parallel
+						const fetchPage = async (pageNum: number) => {
+							const pagePath = `${cleanPath}${separator}page=${pageNum}`
+							return this.fetchPublicEsi<any[]>(pagePath)
+						}
+
+						const batchResponses = await Promise.all(batch.map(fetchPage))
+
+						// Stream each page's items immediately
+						for (const response of batchResponses) {
+							for (const item of response.data) {
+								const line = JSON.stringify(item) + '\n'
+								controller.enqueue(encoder.encode(line))
+								totalItems++
+							}
+						}
+					}
+
+					logger
+						.withTags({ basePath: cleanPath, operation: 'esi_fetch_all_pages_stream' })
+						.debug('Completed fetchPublicEsiAllPagesStream', {
+							totalPages,
+							totalItems,
+						})
+
+					controller.close()
+				} catch (error) {
+					logger
+						.withTags({ basePath: cleanPath, operation: 'esi_fetch_all_pages_stream' })
+						.error('Error in fetchPublicEsiAllPagesStream', {
+							error: error instanceof Error ? error.message : String(error),
+						})
+					controller.error(error)
+				}
+			},
+
+			cancel(reason) {
+				logger
+					.withTags({ basePath: cleanPath, operation: 'esi_fetch_all_pages_stream' })
+					.debug('Stream cancelled', { reason: String(reason) })
+			},
+		})
+	}
+
+	/**
 	 * Get corporation information by ID
 	 * Checks entity cache first, then fetches from ESI if needed
 	 */

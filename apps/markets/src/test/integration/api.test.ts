@@ -1,6 +1,9 @@
 import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:test'
 import { describe, expect, it } from 'vitest'
 
+import { getStub } from '@repo/do-utils'
+import type { Markets } from '@repo/markets'
+
 import worker from '../../index'
 
 describe('Markets Worker', () => {
@@ -29,36 +32,34 @@ describe('Markets Worker', () => {
 })
 
 describe('Markets Durable Object', () => {
-	it('can increment counter', async () => {
-		const id = env.MARKETS.idFromName(`test-counter-${Date.now()}-${Math.random()}`)
-		const stub = env.MARKETS.get(id)
+	it('can get alarm status', async () => {
+		const stub = getStub<Markets>(env.MARKETS, `test-alarm-${Date.now()}-${Math.random()}`)
 
-		const count1 = await stub.incrementCounter()
-		const count2 = await stub.incrementCounter()
+		const status = await stub.getAlarmStatus()
 
-		expect(count2).toBeGreaterThan(count1)
-		expect(count2).toBe(2)
+		expect(status).toHaveProperty('isActive')
+		expect(status).toHaveProperty('locationId')
+		expect(status).toHaveProperty('locationType')
+		expect(status.isActive).toBe(false)
 	})
 
-	it('can get state', async () => {
-		const id = env.MARKETS.idFromName(`test-state-${Date.now()}-${Math.random()}`)
-		const stub = env.MARKETS.get(id)
+	it('can start and stop hourly snapshots', async () => {
+		const stub = getStub<Markets>(env.MARKETS, `test-region-${Date.now()}-${Math.random()}`)
+		const testRegionId = '10000002' // The Forge
 
-		await stub.incrementCounter()
-		const state = await stub.getState()
+		// Start snapshots
+		await stub.startHourlySnapshots(testRegionId)
 
-		expect(state).toHaveProperty('counter')
-		expect(state).toHaveProperty('lastUpdated')
-		expect(state.counter).toBeGreaterThan(0)
-	})
+		// Check alarm is active
+		const statusActive = await stub.getAlarmStatus()
+		expect(statusActive.isActive).toBe(true)
+		expect(statusActive.locationId).toBe(testRegionId)
 
-	it('can call example method', async () => {
-		const id = env.MARKETS.idFromName('test-example')
-		const stub = env.MARKETS.get(id)
+		// Stop snapshots
+		await stub.stopHourlySnapshots(testRegionId)
 
-		const result = await stub.exampleMethod('test message')
-
-		expect(result).toContain('Received: test message')
-		expect(result).toContain('counter:')
+		// Check alarm is inactive
+		const statusInactive = await stub.getAlarmStatus()
+		expect(statusInactive.isActive).toBe(false)
 	})
 })
