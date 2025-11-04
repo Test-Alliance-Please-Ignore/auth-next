@@ -11,6 +11,9 @@ export type Env = SharedHonoEnv & {
 /** Variables can be extended */
 export type Variables = SharedHonoVariables & {
 	db?: ReturnType<typeof import('./db').createDb>
+	apiKeyId?: string
+	apiKeyName?: string
+	requestId?: string
 }
 
 export interface App extends HonoApp {

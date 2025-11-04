@@ -176,3 +176,38 @@ export const latestMarketPrices = pgTable(
 		unique('latest_prices_location_type_unique').on(table.locationId, table.typeId),
 	]
 )
+
+// ============================================================================
+// API KEYS
+// ============================================================================
+
+/**
+ * API keys - Authentication tokens for third-party API access
+ * Used for read-only access to market data via REST API
+ */
+export const apiKeys = pgTable(
+	'api_keys',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		key: text('key').notNull(), // The actual API key (bearer token)
+		name: text('name').notNull(), // Descriptive name for the key
+		description: text('description'), // Optional description
+		isActive: boolean('is_active').default(true).notNull(), // Can be disabled without deletion
+
+		// Usage tracking
+		requestCount: integer('request_count').default(0).notNull(), // Total requests made
+		totalBandwidth: text('total_bandwidth').default('0').notNull(), // Total bytes served (as text for large numbers)
+		lastUsedAt: timestamp('last_used_at', { withTimezone: true }), // Last successful request
+
+		// Metadata
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		// Primary lookup pattern: validate key on every request
+		unique('api_keys_key_unique').on(table.key),
+
+		// For listing active keys
+		index('api_keys_active_idx').on(table.isActive),
+	]
+)

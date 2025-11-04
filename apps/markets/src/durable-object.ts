@@ -259,7 +259,7 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 	 *
 	 * @param regionId - EVE region ID to fetch market data for
 	 */
-	private async fetchAndStoreSnapshot(regionId: string): Promise<void> {
+	private async fetchAndStoreSnapshot(regionId: string, skipRefresh = false): Promise<void> {
 		console.log(`[fetchAndStoreSnapshot] Starting for region ${regionId}`)
 		const startTime = Date.now()
 
@@ -293,7 +293,7 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 			const reader = stream.pipeThrough(new TextDecoderStream()).getReader()
 
 			let buffer = ''
-			let ordersToInsert: typeof marketOrders.$inferInsert[] = []
+			let ordersToInsert: Array<typeof marketOrders.$inferInsert> = []
 			let totalOrders = 0
 			const BATCH_SIZE = 1000
 
@@ -375,9 +375,13 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 				})
 				.where(eq(marketSnapshots.id, snapshot.id))
 
-			// Refresh materialized view
-			console.log(`[fetchAndStoreSnapshot] Refreshing materialized view`)
-			await this.refreshLatestPrices(snapshot.id)
+			// Refresh materialized view (skip if requested to avoid timeout in waitUntil)
+			if (!skipRefresh) {
+				console.log(`[fetchAndStoreSnapshot] Refreshing materialized view`)
+				await this.refreshLatestPrices(snapshot.id)
+			} else {
+				console.log(`[fetchAndStoreSnapshot] Skipping materialized view refresh (will be done on next alarm)`)
+			}
 			console.log(`[fetchAndStoreSnapshot] SUCCESS - Snapshot complete for region ${regionId}`)
 		} catch (error) {
 			console.error(`[fetchAndStoreSnapshot] ERROR:`, error)
@@ -403,7 +407,7 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 	 * @param structureId - EVE structure ID to fetch market data for
 	 * @param characterId - Character ID for authentication
 	 */
-	private async fetchAndStoreStructureSnapshot(structureId: string, characterId: string): Promise<void> {
+	private async fetchAndStoreStructureSnapshot(structureId: string, characterId: string, skipRefresh = false): Promise<void> {
 		console.log(`[fetchAndStoreStructureSnapshot] Starting for structure ${structureId}`)
 		const startTime = Date.now()
 
@@ -435,7 +439,7 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 			console.log(`[fetchAndStoreStructureSnapshot] Response received, processing ${response.data.length} orders`)
 
 			// Process and insert orders in batches
-			let ordersToInsert: typeof marketOrders.$inferInsert[] = []
+			let ordersToInsert: Array<typeof marketOrders.$inferInsert> = []
 			let totalOrders = 0
 			const BATCH_SIZE = 1000
 
@@ -498,9 +502,13 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 				})
 				.where(eq(marketSnapshots.id, snapshot.id))
 
-			// Refresh materialized view
-			console.log(`[fetchAndStoreStructureSnapshot] Refreshing materialized view`)
-			await this.refreshLatestPrices(snapshot.id)
+			// Refresh materialized view (skip if requested to avoid timeout in waitUntil)
+			if (!skipRefresh) {
+				console.log(`[fetchAndStoreStructureSnapshot] Refreshing materialized view`)
+				await this.refreshLatestPrices(snapshot.id)
+			} else {
+				console.log(`[fetchAndStoreStructureSnapshot] Skipping materialized view refresh (will be done on next alarm)`)
+			}
 			console.log(`[fetchAndStoreStructureSnapshot] SUCCESS - Snapshot complete for structure ${structureId}`)
 		} catch (error) {
 			console.error(`[fetchAndStoreStructureSnapshot] ERROR:`, error)
@@ -764,31 +772,35 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 		characterId: string | null
 		alarmEnabled: boolean
 	} {
-		const cursor = this.state.storage.sql.exec(
-			`SELECT location_id, location_type, character_id, alarm_enabled FROM config WHERE id = 1`
-		)
+		try {
+			const cursor = this.state.storage.sql.exec(
+				`SELECT location_id, location_type, character_id, alarm_enabled FROM config WHERE id = 1`
+			)
 
-		// Convert cursor to array
-		const rows = [...cursor] as Array<{
-			location_id: string | null
-			location_type: 'region' | 'structure' | null
-			character_id: string | null
-			alarm_enabled: number
-		}>
+			// Convert cursor to array
+			const rows = [...cursor] as Array<{
+				location_id: string | null
+				location_type: 'region' | 'structure' | null
+				character_id: string | null
+				alarm_enabled: number
+			}>
 
-		console.log(`[getConfig] SQLite query returned ${rows.length} rows:`, rows)
+			console.log(`[getConfig] SQLite query returned ${rows.length} rows:`, rows)
 
-		if (rows.length > 0) {
-			return {
-				locationId: rows[0].location_id,
-				locationType: rows[0].location_type,
-				characterId: rows[0].character_id,
-				alarmEnabled: rows[0].alarm_enabled === 1,
+			if (rows.length > 0) {
+				return {
+					locationId: rows[0].location_id,
+					locationType: rows[0].location_type,
+					characterId: rows[0].character_id,
+					alarmEnabled: rows[0].alarm_enabled === 1,
+				}
 			}
+		} catch (error) {
+			console.warn(`[getConfig] SQLite error (table may not exist on old DO instance):`, error)
 		}
 
-		// Return default if no config exists
-		console.log(`[getConfig] No config found, returning defaults`)
+		// Return default if no config exists or query failed
+		console.log(`[getConfig] No config found or error occurred, returning defaults`)
 		return {
 			locationId: null,
 			locationType: null,
@@ -830,12 +842,13 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 		await this.scheduleNextAlarm()
 
 		// Take immediate snapshot in background (don't block the response)
+		// Skip refresh to avoid waitUntil timeout - it will run on next alarm
 		console.log(`[startHourlySnapshots] Scheduling immediate snapshot in background`)
 		this.ctx.waitUntil(
 			(async () => {
 				try {
 					console.log(`[startHourlySnapshots:background] Starting immediate snapshot`)
-					await this.fetchAndStoreSnapshot(regionId)
+					await this.fetchAndStoreSnapshot(regionId, true)
 					console.log(`[startHourlySnapshots:background] Immediate snapshot complete`)
 				} catch (error) {
 					console.error(`[startHourlySnapshots:background] ERROR:`, error)
@@ -882,12 +895,13 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 		await this.scheduleNextAlarm()
 
 		// Take immediate snapshot in background (don't block the response)
+		// Skip refresh to avoid waitUntil timeout - it will run on next alarm
 		console.log(`[startHourlySnapshotsForStructure] Scheduling immediate snapshot in background`)
 		this.ctx.waitUntil(
 			(async () => {
 				try {
 					console.log(`[startHourlySnapshotsForStructure:background] Starting immediate snapshot`)
-					await this.fetchAndStoreStructureSnapshot(structureId, characterId)
+					await this.fetchAndStoreStructureSnapshot(structureId, characterId, true)
 					console.log(`[startHourlySnapshotsForStructure:background] Immediate snapshot complete`)
 				} catch (error) {
 					console.error(`[startHourlySnapshotsForStructure:background] ERROR:`, error)
@@ -968,13 +982,21 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 		console.log(`[getActiveMonitors] Querying for locations with completed snapshots`)
 
 		try {
-			// Absolute simplest query - no WHERE, just limit
+			// Query for snapshots from the last 48 hours with status 'complete'
+			const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000)
+
 			const snapshots = await this.db
 				.select()
 				.from(marketSnapshots)
-				.limit(10)
+				.where(
+					and(
+						eq(marketSnapshots.status, 'complete'),
+						gt(marketSnapshots.snapshotTime, twoDaysAgo)
+					)
+				)
+				.orderBy(desc(marketSnapshots.snapshotTime))
 
-			console.log(`[getActiveMonitors] Retrieved ${snapshots.length} snapshots`)
+			console.log(`[getActiveMonitors] Retrieved ${snapshots.length} recent complete snapshots`)
 
 			// Deduplicate by location (locationId + locationType combination)
 			const uniqueLocations = new Map<

@@ -4,6 +4,7 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 import { getStub } from '@repo/do-utils'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
+import { v1Router } from './api/v1'
 import { MarketsDO } from './durable-object'
 import { checkTradeHubStatus, setupTradeHubs, stopAllTradeHubs, TRADE_HUBS } from '../scripts/setup-trade-hubs'
 
@@ -43,6 +44,9 @@ const app = new Hono<App>()
 		console.log('[/] Root endpoint accessed')
 		return c.text('Markets Durable Object Worker')
 	})
+
+	// Mount v1 API router at /v1/markets for pleaseignore.app/v1/markets/* routing
+	.route('/v1/markets', v1Router)
 
 	/**
 	 * Health check endpoint - verifies database connectivity
