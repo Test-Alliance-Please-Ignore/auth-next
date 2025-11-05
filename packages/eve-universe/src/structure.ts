@@ -17,6 +17,43 @@ export const EsiGetStructureResponseSchema = z.object({
 
 export type EsiGetStructureResponse = z.infer<typeof EsiGetStructureResponseSchema>
 
+export const EsiGetStructureMarketDataResponseObjectSchema = z.object({
+	duration: z.coerce.string().transform((val) => parseInt(val)),
+	is_buy_order: z.boolean(),
+	issued: z.coerce.string().transform((val) => new Date(val)),
+	location_id: z.coerce.string(),
+	min_volume: z.coerce.string(),
+	order_id: z.coerce.string(),
+	price: z.coerce.string().transform((val) => parseFloat(val)),
+	range: z.enum([
+		'station',
+		'solarsystem',
+		'region',
+		'1',
+		'2',
+		'3',
+		'4',
+		'5',
+		'10',
+		'20',
+		'30',
+		'40',
+	]),
+	type_id: z.coerce.string(),
+	volume_remain: z.coerce.string(),
+	volume_total: z.coerce.string(),
+})
+
+export type EsiGetStructureMarketDataResponseObject = z.infer<
+	typeof EsiGetStructureMarketDataResponseObjectSchema
+>
+
+export const EsiGetStructureMarketDataResponseSchema = z.array(
+	EsiGetStructureMarketDataResponseObjectSchema
+)
+export type EsiGetStructureMarketDataResponse = z.infer<
+	typeof EsiGetStructureMarketDataResponseSchema
+>
 export interface EveStructure extends DurableObject {
 	fetchStructureInfo: (
 		structureId: EveStructureId,
@@ -27,6 +64,11 @@ export interface EveStructure extends DurableObject {
 		structureId: EveStructureId,
 		authorizedCharacterId: EveCharacterId
 	) => Promise<EveStructureInstance>
+
+	fetchStructureMarketData: (
+		structureId: EveStructureId,
+		authorizedCharacterId: EveCharacterId
+	) => Promise<EsiGetStructureMarketDataResponse | null>
 }
 
 export class EveStructureInstance extends RpcTarget {
@@ -40,6 +82,13 @@ export class EveStructureInstance extends RpcTarget {
 
 	async getStructureInfo(): Promise<EsiGetStructureResponse | null> {
 		return await this.structureObject.fetchStructureInfo(
+			this.structureId,
+			this.authorizedCharacterId
+		)
+	}
+
+	async getStructureMarketData(): Promise<EsiGetStructureMarketDataResponse | null> {
+		return await this.structureObject.fetchStructureMarketData(
 			this.structureId,
 			this.authorizedCharacterId
 		)

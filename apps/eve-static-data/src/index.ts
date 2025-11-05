@@ -8,6 +8,7 @@ import { withNotFound, withOnError } from '@repo/hono-helpers'
 
 import { createDb } from './db'
 import { schema } from './db/schema'
+import { EveStructureDO } from './durable-object'
 import { parseInventoryWithTables } from './utils/inventory-parser'
 
 import type { InventoryParseResult } from '@repo/eve-types'
@@ -458,3 +459,5 @@ app.get('/items/search', async (c) => {
 })
 
 export default app
+
+export { EveStructureDO as EveStructure }

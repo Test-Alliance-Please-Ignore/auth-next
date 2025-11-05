@@ -50,6 +50,7 @@ export interface GroupWithDetails extends Group {
 	isOwner?: boolean
 	isAdmin?: boolean
 	isMember?: boolean
+	hasPendingJoinRequest?: boolean
 	adminUserIds?: string[]
 	ownerName?: string
 }

@@ -5,9 +5,4 @@
  * Provides interfaces for systems, regions, constellations, and other universe entities.
  */
 
-export {
-	EsiGetStructureResponseSchema,
-	type EsiGetStructureResponse,
-	type EveStructure,
-	EveStructureInstance,
-} from './structure'
+export * from './structure'

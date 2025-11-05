@@ -1,4 +1,4 @@
-import { Send, UserPlus } from 'lucide-react'
+import { Clock, Send, UserPlus } from 'lucide-react'
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -65,6 +65,15 @@ export function JoinButton({ group, onSuccess }: JoinButtonProps) {
 
 	if (group.isMember) {
 		return null
+	}
+
+	if (group.hasPendingJoinRequest) {
+		return (
+			<Button disabled variant="outline">
+				<Clock className="mr-2 h-4 w-4" />
+				Request Pending
+			</Button>
+		)
 	}
 
 	if (group.joinMode === 'invitation_only') {

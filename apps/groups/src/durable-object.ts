@@ -410,6 +410,15 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		const characterNames = await bulkFindMainCharactersByUserIds([group.ownerId], this.db)
 		const ownerName = characterNames.get(group.ownerId)
 
+		// Check if user has a pending join request
+		const pendingRequest = await this.db.query.groupJoinRequests.findFirst({
+			where: and(
+				eq(groupJoinRequests.groupId, id),
+				eq(groupJoinRequests.userId, userId),
+				eq(groupJoinRequests.status, 'pending')
+			),
+		})
+
 		return {
 			...this.mapGroup(group),
 			category: this.mapCategory(group.category),
@@ -417,6 +426,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			isOwner,
 			isAdmin: isAdminOfGroup,
 			isMember,
+			hasPendingJoinRequest: !!pendingRequest,
 			adminUserIds,
 			ownerName,
 		}
