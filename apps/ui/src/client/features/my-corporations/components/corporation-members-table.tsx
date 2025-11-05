@@ -11,6 +11,7 @@ import {
 	ChevronDown,
 	ChevronUp,
 	ExternalLink,
+	Heart,
 	Link2,
 	Shield,
 	ShieldBan,
@@ -21,6 +22,7 @@ import {
 	XCircle,
 } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -51,7 +53,13 @@ import {
 	useGrantHrRole,
 	useRevokeHrRole,
 } from '../../hr'
-import { filterMembersByActivity, filterMembersByAuthStatus, sortMembers } from '../api'
+import {
+	filterMembersByActivity,
+	filterMembersByAuthStatus,
+	myCorporationsApi,
+	sortMembers,
+} from '../api'
+import { EmeritusConfirmationDialog } from './emeritus-confirmation-dialog'
 
 import type { CorporationMember } from '../api'
 
@@ -99,9 +107,33 @@ export default function CorporationMembersTable({
 	const [grantDialogMember, setGrantDialogMember] = useState<CorporationMember | null>(null)
 	const [revokeDialogMember, setRevokeDialogMember] = useState<CorporationMember | null>(null)
 
+	// Emeritus dialog states
+	const [emeritusDialogMember, setEmeritusDialogMember] = useState<CorporationMember | null>(null)
+	const [emeritusAction, setEmeritusAction] = useState<'mark' | 'remove'>('mark')
+
 	// HR mutations
 	const grantMutation = useGrantHrRole()
 	const revokeMutation = useRevokeHrRole()
+
+	// Emeritus mutation
+	const queryClient = useQueryClient()
+	const emeritusMutation = useMutation({
+		mutationFn: async ({
+			characterId,
+			status,
+		}: {
+			characterId: string
+			status: 'active' | 'emeritus'
+		}) => {
+			if (!corporationId) throw new Error('Corporation ID is required')
+			return myCorporationsApi.updateMemberStatus(corporationId, characterId, status)
+		},
+		onSuccess: () => {
+			// Invalidate queries to refresh member list and statistics
+			queryClient.invalidateQueries({ queryKey: ['corporation-members', corporationId] })
+			queryClient.invalidateQueries({ queryKey: ['my-corporations'] })
+		},
+	})
 
 	// Filter and sort members
 	const filteredAndSortedMembers = useMemo(() => {
@@ -210,6 +242,22 @@ export default function CorporationMembersTable({
 			}
 		},
 		[revokeMutation, showSuccess, showError]
+	)
+
+	// Emeritus status management handler
+	const handleEmeritusStatusUpdate = useCallback(
+		async (characterId: string, status: 'active' | 'emeritus') => {
+			try {
+				await emeritusMutation.mutateAsync({ characterId, status })
+				const action = status === 'emeritus' ? 'marked as emeritus' : 'emeritus status removed'
+				showSuccess(`Member ${action} successfully`)
+				setEmeritusDialogMember(null)
+			} catch (error) {
+				showError('Failed to update member status')
+				throw error
+			}
+		},
+		[emeritusMutation, showSuccess, showError]
 	)
 
 	const formatDate = (dateString?: string) => {
@@ -413,7 +461,7 @@ export default function CorporationMembersTable({
 									</div>
 								</TableCell>
 								<TableCell>
-									<div className="flex gap-2">
+									<div className="flex gap-2 flex-wrap">
 										{member.role === 'CEO' && (
 											<Badge variant="default" className="bg-yellow-500">
 												<Star className="mr-1 h-3 w-3" />
@@ -430,6 +478,12 @@ export default function CorporationMembersTable({
 											<Badge variant="outline">
 												<User className="mr-1 h-3 w-3" />
 												Member
+											</Badge>
+										)}
+										{member.status === 'emeritus' && (
+											<Badge variant="default" className="bg-purple-500/20 text-purple-500">
+												<Heart className="h-3 w-3 mr-1" />
+												Emeritus
 											</Badge>
 										)}
 										{member.isBlacklisted && (
@@ -521,6 +575,35 @@ export default function CorporationMembersTable({
 													Revoke Role
 												</Button>
 											)}
+											{canManageHrRoles &&
+												member.hasAuthAccount &&
+												member.role !== 'CEO' &&
+												member.status !== 'emeritus' && (
+													<Button
+														size="sm"
+														variant="outline"
+														onClick={() => {
+															setEmeritusAction('mark')
+															setEmeritusDialogMember(member)
+														}}
+													>
+														<Heart className="h-3 w-3 mr-1" />
+														Mark Emeritus
+													</Button>
+												)}
+											{canManageHrRoles && member.status === 'emeritus' && (
+												<Button
+													size="sm"
+													variant="outline"
+													onClick={() => {
+														setEmeritusAction('remove')
+														setEmeritusDialogMember(member)
+													}}
+												>
+													<Heart className="h-3 w-3 mr-1" />
+													Remove Emeritus
+												</Button>
+											)}
 											<Button size="sm" variant="ghost" onClick={() => onMemberClick?.(member)}>
 												<ExternalLink className="h-3 w-3" />
 											</Button>
@@ -607,6 +690,18 @@ export default function CorporationMembersTable({
 						isSubmitting={revokeMutation.isPending}
 					/>
 				</>
+			)}
+
+			{/* Emeritus Status Dialog */}
+			{canManageHrRoles && (
+				<EmeritusConfirmationDialog
+					member={emeritusDialogMember}
+					action={emeritusAction}
+					open={!!emeritusDialogMember}
+					onOpenChange={(open) => !open && setEmeritusDialogMember(null)}
+					onSubmit={handleEmeritusStatusUpdate}
+					isSubmitting={emeritusMutation.isPending}
+				/>
 			)}
 		</div>
 	)

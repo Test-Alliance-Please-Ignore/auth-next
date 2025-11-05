@@ -1031,6 +1031,7 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 				hasAuthAccount: boolean
 				authUserId?: string
 				authUserName?: string
+				status?: 'active' | 'emeritus'
 				joinDate: string
 				lastEsiUpdate: string
 				lastLogin?: string
@@ -1157,6 +1158,7 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 					mainCharacterName: linkedChar?.userId
 						? userIdToMainCharacterName.get(linkedChar.userId)
 						: undefined,
+					status: linkedChar?.status,
 					joinDate: tracking?.startDate?.toISOString() || member.updatedAt.toISOString(),
 					lastEsiUpdate: member.updatedAt.toISOString(),
 					lastLogin: tracking?.logonDate?.toISOString(),
@@ -1198,6 +1200,138 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 			stack: error instanceof Error ? error.stack : undefined,
 		})
 		return c.json({ error: 'Failed to fetch corporation members' }, 500)
+	}
+})
+
+/**
+ * PATCH /corporations/:corporationId/members/:characterId/status
+ * Update a member's status (active/emeritus)
+ * Requires CEO or admin access
+ */
+app.patch('/:corporationId/members/:characterId/status', requireAuth(), async (c) => {
+	const corporationId = c.req.param('corporationId')
+	const characterId = c.req.param('characterId')
+	const user = c.get('user')!
+	const db = c.get('db')
+
+	if (!db) {
+		return c.json({ error: 'Database not available' }, 500)
+	}
+
+	logger.info('[Corporations] Update member status request', {
+		corporationId,
+		characterId,
+		userId: user.id,
+	})
+
+	try {
+		// Parse and validate request body
+		const body = await c.req.json()
+		const status = body.status
+
+		if (!status || (status !== 'active' && status !== 'emeritus')) {
+			return c.json({ error: 'Invalid status. Must be "active" or "emeritus"' }, 400)
+		}
+
+		// Check if corporation is managed
+		const managedCorp = await db.query.managedCorporations.findFirst({
+			where: and(
+				eq(managedCorporations.corporationId, corporationId),
+				eq(managedCorporations.isActive, true)
+			),
+		})
+
+		if (!managedCorp) {
+			return c.json({ error: 'Corporation not found or not managed' }, 404)
+		}
+
+		// Check if user has CEO or Admin access (Directors cannot change status)
+		let userRole: 'admin' | 'CEO' | 'Director'
+		try {
+			const access = await checkCorporationAccess(c, corporationId)
+			userRole = access.role
+
+			// Only CEO or admin can change status
+			if (userRole !== 'CEO' && userRole !== 'admin') {
+				return c.json({ error: 'Only CEOs and site admins can change member status' }, 403)
+			}
+		} catch (error) {
+			return c.json({ error: error instanceof Error ? error.message : 'Access denied' }, 403)
+		}
+
+		// Get corporation info to check if character is CEO
+		const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+		const corpInfo = await corpStub.getCorporationInfo(corporationId)
+
+		// Prevent marking CEO as emeritus
+		if (corpInfo && String(corpInfo.ceoId) === characterId && status === 'emeritus') {
+			return c.json(
+				{ error: 'Cannot mark the corporation CEO as emeritus. Transfer CEO role first.' },
+				400
+			)
+		}
+
+		// Check if character exists in database and is in this corporation
+		const character = await db.query.userCharacters.findFirst({
+			where: eq(userCharacters.characterId, characterId),
+		})
+
+		if (!character) {
+			return c.json({ error: 'Character not found in auth database' }, 404)
+		}
+
+		// Verify character is actually a member of this corporation
+		const coreData = await corpStub.getCoreData(corporationId)
+		const isMember = coreData?.members.some((m) => String(m.characterId) === characterId)
+
+		if (!isMember) {
+			return c.json({ error: 'Character is not a member of this corporation' }, 400)
+		}
+
+		// Update character status
+		await db
+			.update(userCharacters)
+			.set({
+				status,
+				updatedAt: new Date(),
+			})
+			.where(eq(userCharacters.characterId, characterId))
+
+		logger.info('[Corporations] Member status updated', {
+			corporationId,
+			characterId,
+			characterName: character.characterName,
+			newStatus: status,
+			updatedBy: user.id,
+			updatedByRole: userRole,
+		})
+
+		// Invalidate cache to force refresh of member list
+		const cacheKey = getCorpMembersCacheKey(corporationId)
+		try {
+			await caches.default.delete(cacheKey)
+			logger.info('[Corporations] Invalidated members cache', { cacheKey })
+		} catch (error) {
+			logger.warn('[Corporations] Failed to invalidate cache', {
+				cacheKey,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+
+		return c.json({
+			success: true,
+			characterId,
+			characterName: character.characterName,
+			status,
+		})
+	} catch (error) {
+		logger.error('[Corporations] Error updating member status', {
+			corporationId,
+			characterId,
+			error: error instanceof Error ? error.message : String(error),
+			stack: error instanceof Error ? error.stack : undefined,
+		})
+		return c.json({ error: 'Failed to update member status' }, 500)
 	}
 })
 

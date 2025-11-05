@@ -788,12 +788,20 @@ users.get('/my-corporations', async (c) => {
 						where: inArray(userCharacters.characterId, Array.from(allMemberCharIds)),
 						columns: {
 							characterId: true,
+							status: true,
 						},
 					})
 				: []
 
-		// Create fast lookup set
-		const linkedCharSet = new Set(linkedCharacters.map((c) => c.characterId))
+		// Create fast lookup set (excluding emeritus characters from statistics)
+		const linkedCharSet = new Set(
+			linkedCharacters.filter((c) => c.status !== 'emeritus').map((c) => c.characterId)
+		)
+
+		// Also create a set of emeritus character IDs to exclude from total count
+		const emeritusCharSet = new Set(
+			linkedCharacters.filter((c) => c.status === 'emeritus').map((c) => c.characterId)
+		)
 
 		// STEP 8: Build final response
 		const myCorporations: Array<{
@@ -832,13 +840,22 @@ users.get('/my-corporations', async (c) => {
 
 			if (!role) continue // User has no leadership role
 
-			// Count linked/unlinked members using the pre-built set
+			// Count linked/unlinked members using the pre-built set (excluding emeritus)
 			let linkedMemberCount = 0
 			let unlinkedMemberCount = 0
+			let totalActiveMemberCount = 0
 
 			if (coreData?.members) {
 				for (const member of coreData.members) {
 					const memberCharId = String(member.characterId)
+
+					// Skip emeritus characters from all statistics
+					if (emeritusCharSet.has(memberCharId)) {
+						continue
+					}
+
+					totalActiveMemberCount++
+
 					if (linkedCharSet.has(memberCharId)) {
 						linkedMemberCount++
 					} else {
@@ -852,7 +869,7 @@ users.get('/my-corporations', async (c) => {
 				name: corp.name,
 				ticker: corp.ticker,
 				userRole: role,
-				memberCount: coreData?.members?.length || 0, // Use actual tracked count, not ESI total
+				memberCount: totalActiveMemberCount, // Only count active members (excludes emeritus)
 				linkedMemberCount,
 				unlinkedMemberCount,
 				allianceId: corpInfo?.allianceId ? String(corpInfo.allianceId) : undefined,

@@ -228,6 +228,9 @@ export default function MyCorporationsList() {
 													<Users className="h-5 w-5" />
 													{corporation.memberCount}
 												</div>
+												<div className="text-xs text-muted-foreground mt-1">
+													Excludes emeritus characters
+												</div>
 											</div>
 											<div>
 												<div className="text-sm text-muted-foreground">Auth Status</div>

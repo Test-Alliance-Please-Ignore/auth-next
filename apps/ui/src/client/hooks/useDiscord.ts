@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { apiClient } from '@/lib/api'
 
@@ -12,11 +11,6 @@ import type {
 	UpdateDiscordServerAttachmentRequest,
 	UpdateDiscordServerRequest,
 } from '@/lib/api'
-
-interface DiscordOAuthMessage {
-	type: 'discord-oauth-success' | 'discord-oauth-error' | 'discord-oauth-ack'
-	error?: string
-}
 
 /**
  * Generate PKCE code verifier and challenge
@@ -43,58 +37,23 @@ async function generatePKCE() {
 }
 
 /**
- * Hook to handle Discord account linking via popup OAuth flow with PKCE
+ * Hook to handle Discord account linking via full-page redirect OAuth flow with PKCE
  */
 export function useDiscordLink() {
-	const queryClient = useQueryClient()
-	const popupRef = useRef<Window | null>(null)
-	const messageHandlerRef = useRef<((event: MessageEvent) => void) | null>(null)
-	const intervalRef = useRef<number | null>(null)
-	const timeoutRef = useRef<number | null>(null)
-	const [linkError, setLinkError] = useState<string | null>(null)
-
-	// Cleanup function to remove event listener, close popup, and clear timers
-	const cleanup = useCallback(() => {
-		if (messageHandlerRef.current) {
-			window.removeEventListener('message', messageHandlerRef.current)
-			messageHandlerRef.current = null
-		}
-		if (popupRef.current && !popupRef.current.closed) {
-			popupRef.current.close()
-			popupRef.current = null
-		}
-		if (intervalRef.current !== null) {
-			clearInterval(intervalRef.current)
-			intervalRef.current = null
-		}
-		if (timeoutRef.current !== null) {
-			clearTimeout(timeoutRef.current)
-			timeoutRef.current = null
-		}
-	}, [])
-
-	// Cleanup on unmount
-	useEffect(() => {
-		return () => {
-			cleanup()
-		}
-	}, [cleanup])
-
 	const mutation = useMutation({
 		mutationFn: async () => {
-			// Clear previous error state
-			setLinkError(null)
-
 			// Generate PKCE parameters
 			const { codeVerifier, codeChallenge } = await generatePKCE()
 
-			// Get state from backend (still need this for CSRF protection)
+			// Get state from backend (for CSRF protection)
 			const response = await apiClient.startDiscordLinking()
 			const state = response.state
 
 			// Store code verifier in localStorage (will be read by callback page)
-			// Note: localStorage is shared across windows/tabs, sessionStorage is not
 			localStorage.setItem(`discord_code_verifier_${state}`, codeVerifier)
+
+			// Store current URL as return destination after OAuth completes
+			localStorage.setItem('discord_return_url', window.location.pathname)
 
 			// Build OAuth URL with PKCE parameters
 			const params = new URLSearchParams({
@@ -110,89 +69,15 @@ export function useDiscordLink() {
 			return `https://discord.com/oauth2/authorize?${params.toString()}`
 		},
 		onSuccess: (oauthUrl) => {
-			// Calculate centered popup position
-			const width = 600
-			const height = 700
-			const left = window.screen.width / 2 - width / 2
-			const top = window.screen.height / 2 - height / 2
-
-			// Open popup window
-			const popup = window.open(
-				oauthUrl,
-				'discord-oauth',
-				`width=${width},height=${height},left=${left},top=${top},toolbar=no,location=no,status=no,menubar=no,scrollbars=yes,resizable=yes`
-			)
-
-			if (!popup) {
-				const errorMsg = 'Popup blocked. Please allow popups for this site.'
-				setLinkError(errorMsg)
-				throw new Error(errorMsg)
-			}
-
-			popupRef.current = popup
-
-			// Create message handler for communication from popup
-			const messageHandler = (event: MessageEvent<DiscordOAuthMessage>) => {
-				// Verify origin matches current window origin for security
-				if (event.origin !== window.location.origin) {
-					return
-				}
-
-				const data = event.data
-
-				if (data.type === 'discord-oauth-success') {
-					// Send acknowledgment back to popup
-					popup.postMessage({ type: 'discord-oauth-ack' }, window.location.origin)
-
-					// Success - force immediate refetch of user data to get updated Discord info
-					void queryClient.refetchQueries({ queryKey: ['auth', 'session'] })
-					cleanup()
-				} else if (data.type === 'discord-oauth-error') {
-					// Send acknowledgment back to popup
-					popup.postMessage({ type: 'discord-oauth-ack' }, window.location.origin)
-
-					// Set error state for UI display
-					const errorMsg = data.error || 'Unknown error occurred during Discord linking'
-					setLinkError(errorMsg)
-					console.error('Discord OAuth error:', errorMsg)
-					cleanup()
-				}
-			}
-
-			messageHandlerRef.current = messageHandler
-			window.addEventListener('message', messageHandler)
-
-			// Monitor popup closure (user manually closed it)
-			intervalRef.current = window.setInterval(() => {
-				if (popup.closed) {
-					cleanup()
-				}
-			}, 500)
-
-			// 2-minute timeout for OAuth flow
-			timeoutRef.current = window.setTimeout(
-				() => {
-					const errorMsg = 'Discord linking timed out after 2 minutes. Please try again.'
-					setLinkError(errorMsg)
-					console.warn(errorMsg)
-					cleanup()
-				},
-				2 * 60 * 1000
-			) // 2 minutes
+			// Redirect to Discord OAuth page
+			window.location.href = oauthUrl
 		},
 		onError: (error) => {
-			const errorMsg = error instanceof Error ? error.message : 'Failed to start Discord linking'
-			setLinkError(errorMsg)
 			console.error('Failed to start Discord linking:', error)
-			cleanup()
 		},
 	})
 
-	return {
-		...mutation,
-		linkError,
-		clearError: () => setLinkError(null),
-	}
+	return mutation
 }
 
 // ===== Discord Registry Hooks =====

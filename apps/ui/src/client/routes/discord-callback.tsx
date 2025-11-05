@@ -8,15 +8,14 @@ import { apiClient } from '@/lib/api'
 
 /**
  * Discord OAuth callback page (PKCE flow)
- * This page is shown in the popup window after Discord OAuth completes
+ * This page handles the OAuth redirect from Discord
  * It exchanges the code for tokens client-side, then sends them to the backend
+ * Finally redirects back to the original page
  */
 export default function DiscordCallbackPage() {
 	usePageTitle('Linking Discord')
 	const [searchParams] = useSearchParams()
-	const [isClosing, setIsClosing] = useState(false)
 	const [isProcessing, setIsProcessing] = useState(false)
-	const [waitingForConfirmation, setWaitingForConfirmation] = useState(false)
 	const [error, setError] = useState<string | null>(searchParams.get('error'))
 	const code = searchParams.get('code')
 	const state = searchParams.get('state')
@@ -25,23 +24,19 @@ export default function DiscordCallbackPage() {
 		async function handleCallback() {
 			// If there's an error parameter, show it immediately
 			if (error) {
-				notifyParentWithRetry(false, error)
 				return
 			}
 
 			// If no code, something went wrong
 			if (!code || !state) {
-				const errorMsg = 'Missing code or state parameter'
-				setError(errorMsg)
-				notifyParentWithRetry(false, errorMsg)
+				setError('Missing code or state parameter')
 				return
 			}
 
 			setIsProcessing(true)
 
 			try {
-				// Get code verifier from localStorage (set by parent window)
-				// Note: localStorage is shared across windows/tabs, sessionStorage is not
+				// Get code verifier from localStorage (set before OAuth redirect)
 				const codeVerifier = localStorage.getItem(`discord_code_verifier_${state}`)
 
 				if (!codeVerifier) {
@@ -97,81 +92,19 @@ export default function DiscordCallbackPage() {
 					state,
 				})
 
-				// Clean up code verifier
+				// Clean up localStorage
 				localStorage.removeItem(`discord_code_verifier_${state}`)
+				const returnUrl = localStorage.getItem('discord_return_url') || '/profile'
+				localStorage.removeItem('discord_return_url')
 
-				setIsProcessing(false)
-				setWaitingForConfirmation(true)
-
-				// Success! Wait for parent acknowledgment before closing
-				await notifyParentWithRetry(true)
+				// Success! Redirect back to original page
+				await new Promise((resolve) => setTimeout(resolve, 1000)) // Brief delay to show success
+				window.location.href = returnUrl
 			} catch (err) {
 				const errorMsg = err instanceof Error ? err.message : 'Unknown error occurred'
 				console.error('Discord callback error:', err)
 				setError(errorMsg)
 				setIsProcessing(false)
-				notifyParentWithRetry(false, errorMsg)
-			}
-		}
-
-		/**
-		 * Send message to parent with exponential backoff retry
-		 * Ensures message delivery even if parent isn't ready yet
-		 */
-		async function notifyParentWithRetry(success: boolean, errorMessage?: string): Promise<void> {
-			if (!window.opener) {
-				console.error('No opener window available')
-				return
-			}
-
-			const message = success
-				? { type: 'discord-oauth-success' }
-				: { type: 'discord-oauth-error', error: errorMessage || 'Unknown error' }
-
-			// Retry configuration: 100ms, 300ms, 900ms (total ~1.3s)
-			const retryDelays = [100, 300, 900]
-			let ackReceived = false
-
-			// Listen for acknowledgment from parent
-			const ackListener = (event: MessageEvent) => {
-				if (event.origin !== window.location.origin) return
-				if (event.data?.type === 'discord-oauth-ack') {
-					ackReceived = true
-				}
-			}
-			window.addEventListener('message', ackListener)
-
-			try {
-				// Send initial message
-				window.opener.postMessage(message, window.location.origin)
-
-				// Retry with exponential backoff
-				for (const delay of retryDelays) {
-					await new Promise((resolve) => setTimeout(resolve, delay))
-
-					if (ackReceived) {
-						console.log('Parent acknowledged message')
-						break
-					}
-
-					console.log(`Retrying message delivery after ${delay}ms...`)
-					window.opener.postMessage(message, window.location.origin)
-				}
-
-				// Wait a bit longer for final ack
-				if (!ackReceived) {
-					await new Promise((resolve) => setTimeout(resolve, 500))
-				}
-
-				if (ackReceived && success) {
-					// Close window only after successful acknowledgment
-					setIsClosing(true)
-					setTimeout(() => {
-						window.close()
-					}, 500)
-				}
-			} finally {
-				window.removeEventListener('message', ackListener)
 			}
 		}
 
@@ -187,7 +120,7 @@ export default function DiscordCallbackPage() {
 							<div className="flex items-center justify-center w-16 h-16 rounded-full bg-destructive/20">
 								<XCircle className="h-10 w-10 text-destructive" />
 							</div>
-						) : isProcessing || waitingForConfirmation ? (
+						) : isProcessing ? (
 							<div className="flex items-center justify-center w-16 h-16 rounded-full bg-primary/20">
 								<Loader2 className="h-10 w-10 text-primary animate-spin" />
 							</div>
@@ -202,28 +135,28 @@ export default function DiscordCallbackPage() {
 									? 'Discord Linking Failed'
 									: isProcessing
 										? 'Linking Discord Account...'
-										: waitingForConfirmation
-											? 'Confirming...'
-											: 'Discord Linked Successfully'}
+										: 'Discord Linked Successfully'}
 							</CardTitle>
 							<CardDescription>
 								{error
 									? 'There was an error linking your Discord account.'
 									: isProcessing
-										? 'Exchanging authorization code for access tokens...'
-										: waitingForConfirmation
-											? 'Waiting for confirmation from parent window...'
-											: isClosing
-												? 'Closing window...'
-												: 'You can close this window now.'}
+										? 'Exchanging authorization code and storing tokens...'
+										: 'Redirecting you back...'}
 							</CardDescription>
 						</div>
 					</div>
 				</CardHeader>
 				{error && (
 					<CardContent>
-						<div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4">
+						<div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4 space-y-3">
 							<p className="text-sm text-destructive">Error: {error}</p>
+							<a
+								href="/profile"
+								className="inline-block text-sm text-primary hover:underline font-medium"
+							>
+								Return to Profile
+							</a>
 						</div>
 					</CardContent>
 				)}

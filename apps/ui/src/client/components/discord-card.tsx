@@ -18,14 +18,14 @@ interface DiscordCardProps {
  * Shows link button when not linked, or Discord username when linked
  */
 export function DiscordCard({ user }: DiscordCardProps) {
-	const { mutate: linkDiscord, isPending, linkError, clearError } = useDiscordLink()
+	const { mutate: linkDiscord, isPending, error: linkError, reset } = useDiscordLink()
 	const [isJoiningServers, setIsJoiningServers] = useState(false)
 	const [joinMessage, setJoinMessage] = useState<string | null>(null)
 	const [joinError, setJoinError] = useState<string | null>(null)
 
 	const handleLinkClick = () => {
 		// Clear any previous errors before starting new link attempt
-		clearError()
+		reset()
 		linkDiscord()
 	}
 
@@ -116,7 +116,7 @@ export function DiscordCard({ user }: DiscordCardProps) {
 									className="w-full gap-2 bg-[hsl(var(--discord-blurple))] text-white hover:bg-[hsl(var(--discord-blurple))]/90"
 								>
 									<MessageSquare className="h-4 w-4" />
-									{isPending ? 'Opening Discord...' : 'Re-link Discord Account'}
+									{isPending ? 'Redirecting to Discord...' : 'Re-link Discord Account'}
 								</Button>
 							) : (
 								<Button
@@ -151,12 +151,14 @@ export function DiscordCard({ user }: DiscordCardProps) {
 							disabled={isPending}
 							className="w-full sm:w-auto bg-[hsl(var(--discord-blurple))] text-white hover:bg-[hsl(var(--discord-blurple))]/90"
 						>
-							{isPending ? 'Opening Discord...' : 'Link Discord Account'}
+							{isPending ? 'Redirecting to Discord...' : 'Link Discord Account'}
 						</Button>
 						{linkError && (
 							<div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3">
 								<p className="text-sm text-destructive font-medium">Linking Failed</p>
-								<p className="text-sm text-destructive/90 mt-1">{linkError}</p>
+								<p className="text-sm text-destructive/90 mt-1">
+									{linkError instanceof Error ? linkError.message : 'An error occurred'}
+								</p>
 							</div>
 						)}
 					</div>

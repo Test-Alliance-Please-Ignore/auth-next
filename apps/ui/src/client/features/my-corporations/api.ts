@@ -23,6 +23,7 @@ export interface CorporationMember {
 	hasAuthAccount: boolean
 	authUserId?: string
 	mainCharacterName?: string
+	status?: 'active' | 'emeritus'
 	joinDate: string
 	lastEsiUpdate: string
 	lastLogin?: string
@@ -108,6 +109,20 @@ export const myCorporationsApi = {
 	 */
 	async getCorporationMembers(corporationId: string): Promise<CorporationMember[]> {
 		return apiClient.get(`/corporations/${corporationId}/members`)
+	},
+
+	/**
+	 * Update a member's status (active/emeritus)
+	 * Requires CEO or admin access
+	 */
+	async updateMemberStatus(
+		corporationId: string,
+		characterId: string,
+		status: 'active' | 'emeritus'
+	): Promise<{ success: boolean; characterId: string; characterName: string; status: string }> {
+		return apiClient.patch(`/corporations/${corporationId}/members/${characterId}/status`, {
+			status,
+		})
 	},
 }
 

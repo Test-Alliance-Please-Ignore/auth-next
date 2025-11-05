@@ -169,7 +169,7 @@ export default function HrRolesManagement() {
 			corporationId: role.corporationId,
 			corporationName: corporation?.name || '',
 			authUserId: role.userId,
-			authUserName: role.userId, // We don't have this in HrRoleGrant
+			mainCharacterName: undefined, // We don't have this in HrRoleGrant
 			hasAuthAccount: true,
 			role: 'Member', // Default role since we don't have this in HrRoleGrant
 			joinDate: role.grantedAt,

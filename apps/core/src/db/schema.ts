@@ -63,6 +63,10 @@ export const userCharacters = pgTable(
 		is_primary: boolean('is_primary').default(false).notNull(),
 		/** Cached token validity status (NULL = unknown, true = valid, false = invalid/expired) */
 		hasValidToken: boolean('has_valid_token'),
+		/** Character status: 'active' (default) or 'emeritus' (deceased player, excluded from statistics) */
+		status: text('status', { enum: ['active', 'emeritus'] })
+			.notNull()
+			.default('active'),
 		linkedAt: timestamp('linked_at').defaultNow().notNull(),
 		updatedAt: timestamp('updated_at').defaultNow().notNull(),
 	},
@@ -73,6 +77,8 @@ export const userCharacters = pgTable(
 		index('user_characters_character_id_idx').on(table.characterId),
 		// Index for finding primary character (enforced in application logic: only one primary per user)
 		index('user_characters_is_primary_idx').on(table.userId, table.is_primary),
+		// Index for filtering by status (active vs emeritus)
+		index('user_characters_status_idx').on(table.status),
 	]
 )
 

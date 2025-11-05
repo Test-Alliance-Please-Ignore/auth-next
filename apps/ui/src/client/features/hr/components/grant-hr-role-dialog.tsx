@@ -99,7 +99,7 @@ export function GrantHrRoleDialog({
 						</div>
 						<div className="text-sm text-muted-foreground space-y-1">
 							<p>Corporation Role: {member.role}</p>
-							{member.authUserName && <p>Auth Account: {member.authUserName}</p>}
+							{member.mainCharacterName && <p>Main Character: {member.mainCharacterName}</p>}
 						</div>
 					</div>
 
