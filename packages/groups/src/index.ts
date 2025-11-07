@@ -283,11 +283,11 @@ export interface Groups {
 	/** Get a specific group */
 	getGroup(id: string, userId: string, isAdmin: boolean): Promise<GroupWithDetails | null>
 
-	/** Update a group (owner only) */
-	updateGroup(id: string, data: UpdateGroupRequest, userId: string): Promise<Group>
+	/** Update a group (owner or site admin) */
+	updateGroup(id: string, data: UpdateGroupRequest, userId: string, isAdmin?: boolean): Promise<Group>
 
-	/** Delete a group (owner only) */
-	deleteGroup(id: string, userId: string): Promise<void>
+	/** Delete a group (owner or site admin) */
+	deleteGroup(id: string, userId: string, isAdmin?: boolean): Promise<void>
 
 	/** Transfer group ownership (owner or admin) */
 	transferOwnership(

@@ -974,7 +974,7 @@ groups.patch('/:id', requireAuth(), requireAdmin(), async (c) => {
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
-		const group = await groupsDO.updateGroup(groupId, body, user.id)
+		const group = await groupsDO.updateGroup(groupId, body, user.id, user.is_admin)
 		return c.json(group)
 	} catch (error) {
 		if (error instanceof Error) {
@@ -998,7 +998,7 @@ groups.delete('/:id', requireAuth(), requireAdmin(), async (c) => {
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
-		await groupsDO.deleteGroup(groupId, user.id)
+		await groupsDO.deleteGroup(groupId, user.id, user.is_admin)
 		return c.json({ success: true }, 200)
 	} catch (error) {
 		if (error instanceof Error) {

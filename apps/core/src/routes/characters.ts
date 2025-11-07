@@ -11,6 +11,7 @@ import { checkAndUpdateDirectorStatus } from '../services/corporation-auto-regis
 import { EntityResolverService } from '../services/entity-resolver.service'
 
 import type { EveCharacterData } from '@repo/eve-character-data'
+import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { App } from '../context'
 
 // Helper to transform and enrich skills data
@@ -211,14 +212,90 @@ app.get('/:characterId', requireAuth(), async (c) => {
 	)
 	const isAdmin = user.is_admin
 
-	// Authorization: Must be owner OR admin
+	// Check if user is CEO/Director of character's corporation
+	let isCeoOrDirector = false
+	let viewerRole: 'CEO' | 'Director' | null = null
+
 	if (!isActualOwner && !isAdmin) {
+		// Get character's corporation to check CEO/Director access
+		try {
+			const eveCharacterDataStubForAuth = getStub<EveCharacterData>(
+				c.env.EVE_CHARACTER_DATA,
+				characterId
+			)
+			const charInfoInstance = await eveCharacterDataStubForAuth.getInstance(characterId)
+			const charInfo = await charInfoInstance.getCharacterInfo()
+
+			if (charInfo?.corporationId) {
+				const corporationId = String(charInfo.corporationId)
+
+				// Check if any of user's characters are CEO/Director of this corporation
+				for (const userChar of user.characters) {
+					const userCharStub = getStub<EveCharacterData>(
+						c.env.EVE_CHARACTER_DATA,
+						userChar.characterId
+					)
+					const userCharInstance = await userCharStub.getInstance(userChar.characterId)
+					const userCharInfo = await userCharInstance.getCharacterInfo()
+
+					// Skip if user's character not in the same corporation
+					if (!userCharInfo || String(userCharInfo.corporationId) !== corporationId) {
+						continue
+					}
+
+					// Get corporation info and directors
+					const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+					const [corpInfo, directors] = await Promise.all([
+						corpStub.getCorporationInfo(corporationId),
+						corpStub.getDirectors(corporationId),
+					])
+
+					// Check if CEO
+					if (corpInfo && String(corpInfo.ceoId) === userChar.characterId) {
+						isCeoOrDirector = true
+						viewerRole = 'CEO'
+						logger.info('[Character Detail] CEO access granted', {
+							characterId: characterIdStr,
+							viewerCharacterId: userChar.characterId,
+							corporationId,
+						})
+						break
+					}
+
+					// Check if Director
+					const isDirector = directors.some(
+						(d: { characterId: string }) => d.characterId === userChar.characterId
+					)
+					if (isDirector) {
+						isCeoOrDirector = true
+						viewerRole = 'Director'
+						logger.info('[Character Detail] Director access granted', {
+							characterId: characterIdStr,
+							viewerCharacterId: userChar.characterId,
+							corporationId,
+						})
+						break
+					}
+				}
+			}
+		} catch (error) {
+			logger.warn('[Character Detail] Error checking corporation access:', {
+				characterId: characterIdStr,
+				error: error instanceof Error ? error.message : String(error),
+			})
+			// Continue to authorization check below
+		}
+	}
+
+	// Authorization: Must be owner OR admin OR CEO/Director of same corp
+	if (!isActualOwner && !isAdmin && !isCeoOrDirector) {
 		return c.json({ error: 'You do not have permission to view this character' }, 403)
 	}
 
 	// For admins viewing someone else's character, fetch the actual owner info
 	let actualOwner: { userId: string; characterName: string } | null = null
 	const viewedAsAdmin = isAdmin && !isActualOwner
+	const viewedAsCeoOrDirector = isCeoOrDirector && !isActualOwner
 
 	if (viewedAsAdmin) {
 		try {
@@ -374,6 +451,8 @@ app.get('/:characterId', requireAuth(), async (c) => {
 			characterId: characterIdStr,
 			isOwner,
 			viewedAsAdmin,
+			viewedAsCeoOrDirector,
+			viewerRole,
 			public: {
 				info: enrichedInfo,
 				portrait,

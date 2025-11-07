@@ -10,6 +10,7 @@ import { CharacterSkillQueue } from '../components/character-skill-queue'
 import { CharacterSkills } from '../components/character-skills'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
+import { useRefreshCharacter } from '../hooks/useCharacters'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { api } from '../lib/api'
 
@@ -25,7 +26,6 @@ export default function CharacterDetailPage() {
 		data: character,
 		isLoading,
 		error,
-		refetch,
 	} = useQuery({
 		queryKey: ['character', characterId],
 		queryFn: () => api.getCharacterDetail(characterId),
@@ -35,15 +35,12 @@ export default function CharacterDetailPage() {
 	// Set page title based on character name
 	usePageTitle(character?.public?.info?.name ? `${character.public.info.name}` : 'Character')
 
-	// Handle refresh
-	const handleRefresh = async () => {
+	// Handle character refresh with toast notifications
+	const refreshCharacter = useRefreshCharacter()
+
+	const handleRefresh = () => {
 		if (!characterId) return
-		try {
-			await api.refreshCharacterById(characterId)
-			await refetch()
-		} catch (error) {
-			console.error('Failed to refresh character:', error)
-		}
+		refreshCharacter.mutate(characterId)
 	}
 
 	if (!characterId) {
@@ -123,6 +120,26 @@ export default function CharacterDetailPage() {
 				</Card>
 			)}
 
+			{/* CEO/Director View Alert */}
+			{character.viewedAsCeoOrDirector && (
+				<Card className="border-blue-500/50 bg-blue-500/10">
+					<CardContent className="pt-6">
+						<div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+							<Shield className="h-5 w-5" />
+							<div>
+								<p className="font-medium">
+									Viewing as Corporation {character.viewerRole}
+								</p>
+								<p className="text-sm text-muted-foreground">
+									You can view public character information (skills, attributes, corporation history).
+									Private data (wallet, location, assets) is not available.
+								</p>
+							</div>
+						</div>
+					</CardContent>
+				</Card>
+			)}
+
 			{/* Character Header */}
 			<Card>
 				<CardHeader className="flex flex-row items-center justify-between">
@@ -160,15 +177,27 @@ export default function CharacterDetailPage() {
 					</div>
 					<div className="flex items-center gap-2">
 						{character.isOwner && !character.viewedAsAdmin && (
-							<Button onClick={handleRefresh} size="sm" variant="outline">
-								<RefreshCw className="h-4 w-4 mr-2" />
-								Refresh
+							<Button
+								onClick={handleRefresh}
+								size="sm"
+								variant="outline"
+								disabled={refreshCharacter.isPending}
+							>
+								<RefreshCw
+									className={`h-4 w-4 mr-2 ${refreshCharacter.isPending ? 'animate-spin' : ''}`}
+								/>
+								{refreshCharacter.isPending ? 'Refreshing...' : 'Refresh'}
 							</Button>
 						)}
 						{character.viewedAsAdmin ? (
 							<span className="text-sm text-amber-600 dark:text-amber-400 font-medium flex items-center">
 								<Shield className="h-4 w-4 mr-1" />
 								Admin View
+							</span>
+						) : character.viewedAsCeoOrDirector ? (
+							<span className="text-sm text-blue-600 dark:text-blue-400 font-medium flex items-center">
+								<Shield className="h-4 w-4 mr-1" />
+								{character.viewerRole} View
 							</span>
 						) : (
 							character.isOwner && (
@@ -228,9 +257,15 @@ export default function CharacterDetailPage() {
 								Skills data hasn't been fetched yet. Click the Refresh button above to load your
 								character's skills.
 							</p>
-							<Button onClick={handleRefresh} variant="default">
-								<RefreshCw className="h-4 w-4 mr-2" />
-								Refresh Character Data
+							<Button
+								onClick={handleRefresh}
+								variant="default"
+								disabled={refreshCharacter.isPending}
+							>
+								<RefreshCw
+									className={`h-4 w-4 mr-2 ${refreshCharacter.isPending ? 'animate-spin' : ''}`}
+								/>
+								{refreshCharacter.isPending ? 'Refreshing...' : 'Refresh Character Data'}
 							</Button>
 						</div>
 					</CardContent>

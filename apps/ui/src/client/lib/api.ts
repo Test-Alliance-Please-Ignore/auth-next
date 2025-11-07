@@ -10,6 +10,82 @@ export interface ApiError {
 }
 
 /**
+ * Base error class for API errors
+ */
+export class BaseApiError extends Error {
+	constructor(
+		message: string,
+		public status: number
+	) {
+		super(message)
+		this.name = 'BaseApiError'
+	}
+}
+
+/**
+ * Network-related errors (fetch failures, timeouts, etc.)
+ */
+export class NetworkError extends Error {
+	constructor(message: string = 'Unable to connect. Please check your internet connection.') {
+		super(message)
+		this.name = 'NetworkError'
+	}
+}
+
+/**
+ * Authentication errors (401)
+ */
+export class AuthenticationError extends BaseApiError {
+	constructor(message: string = 'Your session has expired. Please log in again.') {
+		super(message, 401)
+		this.name = 'AuthenticationError'
+	}
+}
+
+/**
+ * Authorization errors (403)
+ */
+export class AuthorizationError extends BaseApiError {
+	constructor(message: string = 'You do not have permission to perform this action.') {
+		super(message, 403)
+		this.name = 'AuthorizationError'
+	}
+}
+
+/**
+ * Validation errors (400)
+ */
+export class ValidationError extends BaseApiError {
+	constructor(
+		message: string,
+		public fields?: Record<string, string[]>
+	) {
+		super(message, 400)
+		this.name = 'ValidationError'
+	}
+}
+
+/**
+ * Not found errors (404)
+ */
+export class NotFoundError extends BaseApiError {
+	constructor(message: string = 'The requested resource was not found.') {
+		super(message, 404)
+		this.name = 'NotFoundError'
+	}
+}
+
+/**
+ * Server errors (500+)
+ */
+export class ServerError extends BaseApiError {
+	constructor(message: string = 'Something went wrong on the server. Please try again later.') {
+		super(message, 500)
+		this.name = 'ServerError'
+	}
+}
+
+/**
  * Groups API Types
  */
 
@@ -837,25 +913,80 @@ export class ApiClient {
 	private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
 		const url = `${this.baseUrl}${endpoint}`
 
-		const response = await fetch(url, {
-			...options,
-			credentials: 'include', // Send cookies with requests
-			headers: {
-				'Content-Type': 'application/json',
-				'X-Requested-With': 'XMLHttpRequest', // Required for CSRF protection
-				...options?.headers,
-			},
-		})
+		try {
+			const response = await fetch(url, {
+				...options,
+				credentials: 'include', // Send cookies with requests
+				headers: {
+					'Content-Type': 'application/json',
+					'X-Requested-With': 'XMLHttpRequest', // Required for CSRF protection
+					...options?.headers,
+				},
+			})
 
-		if (!response.ok) {
-			const error: ApiError = {
-				message: `API request failed: ${response.statusText}`,
-				status: response.status,
+			if (!response.ok) {
+				// Try to parse error response body
+				let errorMessage: string
+				let errorFields: Record<string, string[]> | undefined
+
+				try {
+					const errorData = (await response.json()) as {
+						error?: string
+						message?: string
+						fields?: Record<string, string[]>
+					}
+					// Backend may return { error: string } or { message: string } or { error: string, fields: {...} }
+					errorMessage =
+						errorData.error || errorData.message || `Request failed: ${response.statusText}`
+					errorFields = errorData.fields
+				} catch {
+					// If response body is not JSON, use status text
+					errorMessage = response.statusText || 'Request failed'
+				}
+
+				// Throw appropriate error type based on status code
+				switch (response.status) {
+					case 400:
+						throw new ValidationError(errorMessage, errorFields)
+					case 401:
+						throw new AuthenticationError(errorMessage)
+					case 403:
+						throw new AuthorizationError(errorMessage)
+					case 404:
+						throw new NotFoundError(errorMessage)
+					case 500:
+					case 502:
+					case 503:
+					case 504:
+						throw new ServerError(errorMessage)
+					default:
+						throw new BaseApiError(errorMessage, response.status)
+				}
 			}
-			throw error
-		}
 
-		return response.json()
+			return response.json()
+		} catch (error) {
+			// Handle network errors (fetch failures, timeouts, etc.)
+			if (error instanceof TypeError && error.message.includes('fetch')) {
+				throw new NetworkError()
+			}
+
+			// Re-throw API errors
+			if (
+				error instanceof BaseApiError ||
+				error instanceof NetworkError ||
+				error instanceof AuthenticationError ||
+				error instanceof AuthorizationError ||
+				error instanceof ValidationError ||
+				error instanceof NotFoundError ||
+				error instanceof ServerError
+			) {
+				throw error
+			}
+
+			// Unknown error
+			throw new NetworkError('An unexpected error occurred. Please try again.')
+		}
 	}
 
 	async get<T>(endpoint: string): Promise<T> {
@@ -891,6 +1022,8 @@ export class ApiClient {
 		characterId: string
 		isOwner: boolean
 		viewedAsAdmin: boolean
+		viewedAsCeoOrDirector: boolean
+		viewerRole: 'CEO' | 'Director' | null
 		public: {
 			info: any
 			portrait: any

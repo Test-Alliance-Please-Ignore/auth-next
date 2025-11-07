@@ -324,6 +324,17 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 		}>
 	> {
 		try {
+			logger.info('[DiscordDO] Starting joinUserToServersWithRoles', {
+				coreUserId,
+				requestCount: joinRequests.length,
+				requests: joinRequests.map((req) => ({
+					guildId: req.guildId,
+					roleCount: req.roleIds.length,
+					hasNickname: !!req.nickname,
+					nickname: req.nickname,
+				})),
+			})
+
 			// Get user from database
 			const user = await this.db.query.discordUsers.findFirst({
 				where: eq(discordUsers.coreUserId, coreUserId),
@@ -338,6 +349,11 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 					errorMessage: 'Discord account not linked',
 				}))
 			}
+
+			logger.info('[DiscordDO] Found Discord user', {
+				coreUserId,
+				discordUserId: user.userId,
+			})
 
 			// Get user's token
 			const tokenRecord = await this.db.query.discordTokens.findFirst({
@@ -387,9 +403,24 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 				const decryptedAccessToken = await this.decrypt(refreshedToken.accessToken)
 				const botService = new DiscordBotService(this.env)
 
+				logger.info('[DiscordDO] Processing guild join requests (with refreshed token)', {
+					coreUserId,
+					discordUserId: user.userId,
+					requestCount: joinRequests.length,
+				})
+
 				// Process each guild with role assignments
 				const results = await Promise.all(
 					joinRequests.map(async (req) => {
+						logger.info('[DiscordDO] Calling addGuildMember for guild (refreshed token)', {
+							coreUserId,
+							discordUserId: user.userId,
+							guildId: req.guildId,
+							roleCount: req.roleIds.length,
+							hasNickname: !!req.nickname,
+							nickname: req.nickname,
+						})
+
 						const result = await botService.addGuildMember(
 							req.guildId,
 							user.userId,
@@ -397,12 +428,36 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 							req.roleIds,
 							req.nickname
 						)
+
+						logger.info('[DiscordDO] addGuildMember result (refreshed token)', {
+							coreUserId,
+							discordUserId: user.userId,
+							guildId: req.guildId,
+							success: result.success,
+							alreadyMember: result.alreadyMember,
+							errorMessage: result.errorMessage,
+						})
+
 						return {
 							guildId: req.guildId,
 							...result,
 						}
 					})
 				)
+
+				logger.info('[DiscordDO] Completed all guild join requests (refreshed token)', {
+					coreUserId,
+					discordUserId: user.userId,
+					totalRequests: results.length,
+					successCount: results.filter((r) => r.success).length,
+					failureCount: results.filter((r) => !r.success).length,
+					results: results.map((r) => ({
+						guildId: r.guildId,
+						success: r.success,
+						alreadyMember: r.alreadyMember,
+						errorMessage: r.errorMessage,
+					})),
+				})
 
 				// Check if any result indicates revoked authorization
 				const hasRevokedAuth = results.some((result) => result.authRevoked === true)
@@ -441,9 +496,24 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 			const decryptedAccessToken = await this.decrypt(tokenRecord.accessToken)
 			const botService = new DiscordBotService(this.env)
 
+			logger.info('[DiscordDO] Processing guild join requests', {
+				coreUserId,
+				discordUserId: user.userId,
+				requestCount: joinRequests.length,
+			})
+
 			// Process each guild with role assignments
 			const results = await Promise.all(
 				joinRequests.map(async (req) => {
+					logger.info('[DiscordDO] Calling addGuildMember for guild', {
+						coreUserId,
+						discordUserId: user.userId,
+						guildId: req.guildId,
+						roleCount: req.roleIds.length,
+						hasNickname: !!req.nickname,
+						nickname: req.nickname,
+					})
+
 					const result = await botService.addGuildMember(
 						req.guildId,
 						user.userId,
@@ -451,12 +521,36 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 						req.roleIds,
 						req.nickname
 					)
+
+					logger.info('[DiscordDO] addGuildMember result', {
+						coreUserId,
+						discordUserId: user.userId,
+						guildId: req.guildId,
+						success: result.success,
+						alreadyMember: result.alreadyMember,
+						errorMessage: result.errorMessage,
+					})
+
 					return {
 						guildId: req.guildId,
 						...result,
 					}
 				})
 			)
+
+			logger.info('[DiscordDO] Completed all guild join requests', {
+				coreUserId,
+				discordUserId: user.userId,
+				totalRequests: results.length,
+				successCount: results.filter((r) => r.success).length,
+				failureCount: results.filter((r) => !r.success).length,
+				results: results.map((r) => ({
+					guildId: r.guildId,
+					success: r.success,
+					alreadyMember: r.alreadyMember,
+					errorMessage: r.errorMessage,
+				})),
+			})
 
 			// Check if any result indicates revoked authorization
 			const hasRevokedAuth = results.some((result) => result.authRevoked === true)

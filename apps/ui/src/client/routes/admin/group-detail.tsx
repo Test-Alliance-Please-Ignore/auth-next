@@ -18,10 +18,11 @@ import {
 	X,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Link, useLocation, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { AttachPermissionDialog } from '@/components/attach-permission-dialog'
 import { EditGroupDescriptionDialog } from '@/components/edit-group-description-dialog'
+import { EditGroupDialog } from '@/components/edit-group-dialog'
 import { EditGroupNameDialog } from '@/components/edit-group-name-dialog'
 import { GroupCard } from '@/components/group-card'
 import { GroupPermissionCard } from '@/components/group-permission-card'
@@ -50,6 +51,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { useAuth } from '@/hooks/useAuth'
 import { useBreadcrumb } from '@/hooks/useBreadcrumb'
+import { useCategories } from '@/hooks/useCategories'
 import {
 	useAssignRoleToGroupServer,
 	useAttachDiscordServerToGroup,
@@ -68,7 +70,7 @@ import {
 	useRemoveGroupPermission,
 	useUpdateGroupPermission,
 } from '@/hooks/useGroupPermissions'
-import { useGroup } from '@/hooks/useGroups'
+import { useDeleteGroup, useGroup, useUpdateGroup } from '@/hooks/useGroups'
 import {
 	useCreateInviteCode,
 	useGroupInviteCodes,
@@ -82,9 +84,13 @@ import type { GroupDiscordServer, GroupPermissionWithDetails } from '@/lib/api'
 export default function GroupDetailPage() {
 	const { groupId } = useParams<{ groupId: string }>()
 	const location = useLocation()
+	const navigate = useNavigate()
 	const { setCustomLabel, clearCustomLabel } = useBreadcrumb()
 	const { user } = useAuth()
 	const { data: group, isLoading: groupLoading } = useGroup(groupId!)
+	const { data: categories = [] } = useCategories()
+	const updateGroup = useUpdateGroup()
+	const deleteGroup = useDeleteGroup()
 
 	// Set dynamic page title based on group name
 	usePageTitle(group?.name ? `Admin - ${group.name}` : 'Admin - Group Details')
@@ -121,6 +127,9 @@ export default function GroupDetailPage() {
 	const [reassignCategoryDialogOpen, setReassignCategoryDialogOpen] = useState(false)
 	const [editNameDialogOpen, setEditNameDialogOpen] = useState(false)
 	const [editDescriptionDialogOpen, setEditDescriptionDialogOpen] = useState(false)
+	const [editGroupDialogOpen, setEditGroupDialogOpen] = useState(false)
+	const [deleteGroupDialogOpen, setDeleteGroupDialogOpen] = useState(false)
+	const [deleteConfirmationText, setDeleteConfirmationText] = useState('')
 	const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
 	const [selectedUserIsAdmin, setSelectedUserIsAdmin] = useState(false)
 
@@ -489,6 +498,51 @@ export default function GroupDetailPage() {
 		setRemovePermissionDialogOpen(true)
 	}
 
+	// Group edit and delete handlers
+	const handleEditGroup = async (data: any) => {
+		if (!groupId) return
+
+		try {
+			await updateGroup.mutateAsync({ id: groupId, data })
+			setMessage({ type: 'success', text: 'Group updated successfully!' })
+			setTimeout(() => setMessage(null), 3000)
+		} catch (error) {
+			setMessage({
+				type: 'error',
+				text: error instanceof Error ? error.message : 'Failed to update group',
+			})
+			setTimeout(() => setMessage(null), 5000)
+		}
+	}
+
+	const handleDeleteGroup = async () => {
+		if (!groupId || !group) return
+
+		// Verify the confirmation text matches
+		if (deleteConfirmationText !== group.name) {
+			setMessage({
+				type: 'error',
+				text: 'Group name does not match. Please type the exact group name to confirm deletion.',
+			})
+			setTimeout(() => setMessage(null), 5000)
+			return
+		}
+
+		try {
+			await deleteGroup.mutateAsync(groupId)
+			setMessage({ type: 'success', text: 'Group deleted successfully!' })
+			setTimeout(() => {
+				navigate('/admin/groups')
+			}, 1000)
+		} catch (error) {
+			setMessage({
+				type: 'error',
+				text: error instanceof Error ? error.message : 'Failed to delete group',
+			})
+			setTimeout(() => setMessage(null), 5000)
+		}
+	}
+
 	// Loading state
 	if (groupLoading) {
 		return (
@@ -558,6 +612,10 @@ export default function GroupDetailPage() {
 				</CardHeader>
 				<CardContent>
 					<div className="flex flex-wrap gap-2">
+						<Button variant="default" size="sm" onClick={() => setEditGroupDialogOpen(true)}>
+							<Settings className="mr-2 h-4 w-4" />
+							Edit Group
+						</Button>
 						<Button variant="outline" size="sm" onClick={() => setEditNameDialogOpen(true)}>
 							<Pencil className="mr-2 h-4 w-4" />
 							Edit Name
@@ -1173,6 +1231,46 @@ export default function GroupDetailPage() {
 				</CardContent>
 			</Card>
 
+			{/* Danger Zone */}
+			<Card variant="interactive" className="border-destructive">
+				<CardHeader>
+					<CardTitle className="text-destructive">Danger Zone</CardTitle>
+					<CardDescription>
+						Irreversible and destructive actions. Please be certain before proceeding.
+					</CardDescription>
+				</CardHeader>
+				<CardContent className="space-y-4">
+					<div className="rounded-lg border border-destructive/50 bg-destructive/5 p-4">
+						<div className="flex items-start justify-between">
+							<div className="space-y-1">
+								<h4 className="font-medium text-destructive">Delete This Group</h4>
+								<p className="text-sm text-muted-foreground">
+									Once you delete a group, there is no going back. This will permanently delete:
+								</p>
+								<ul className="text-sm text-muted-foreground list-disc list-inside space-y-1 mt-2">
+									<li>All {memberCount} member{memberCount !== 1 ? 's' : ''}</li>
+									<li>All {adminCount} admin{adminCount !== 1 ? 's' : ''}</li>
+									<li>All pending invitations and join requests</li>
+									<li>All invite codes</li>
+									<li>All Discord server attachments</li>
+									<li>All permissions</li>
+								</ul>
+							</div>
+							<DestructiveButton
+								onClick={() => {
+									setDeleteConfirmationText('')
+									setDeleteGroupDialogOpen(true)
+								}}
+								size="sm"
+							>
+								<Trash2 className="mr-2 h-4 w-4" />
+								Delete Group
+							</DestructiveButton>
+						</div>
+					</div>
+				</CardContent>
+			</Card>
+
 			{/* Remove Member Confirmation Dialog */}
 			<Dialog open={removeDialogOpen} onOpenChange={setRemoveDialogOpen}>
 				<DialogContent>
@@ -1305,6 +1403,76 @@ export default function GroupDetailPage() {
 					}}
 				/>
 			)}
+
+			{/* Edit Group Dialog */}
+			{group && categories.length > 0 && (
+				<EditGroupDialog
+					group={group}
+					categories={categories}
+					open={editGroupDialogOpen}
+					onOpenChange={setEditGroupDialogOpen}
+					onSubmit={handleEditGroup}
+				/>
+			)}
+
+			{/* Delete Group Confirmation Dialog */}
+			<Dialog open={deleteGroupDialogOpen} onOpenChange={setDeleteGroupDialogOpen}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Delete Group</DialogTitle>
+						<DialogDescription>
+							This action cannot be undone. This will permanently delete the group and all associated
+							data.
+						</DialogDescription>
+					</DialogHeader>
+					<div className="space-y-4 py-4">
+						<div className="space-y-2">
+							<Label htmlFor="confirm-delete">
+								Type <span className="font-mono font-bold">{group?.name}</span> to confirm deletion
+							</Label>
+							<Input
+								id="confirm-delete"
+								value={deleteConfirmationText}
+								onChange={(e) => setDeleteConfirmationText((e.target as HTMLInputElement).value)}
+								placeholder="Enter group name"
+								disabled={deleteGroup.isPending}
+							/>
+						</div>
+						<div className="rounded-lg border border-destructive/50 bg-destructive/5 p-3">
+							<p className="text-sm text-muted-foreground">
+								<strong className="text-destructive">Warning:</strong> Deleting this group will
+								permanently remove:
+							</p>
+							<ul className="text-sm text-muted-foreground list-disc list-inside mt-2 space-y-1">
+								<li>{memberCount} member{memberCount !== 1 ? 's' : ''}</li>
+								<li>{adminCount} admin{adminCount !== 1 ? 's' : ''}</li>
+								<li>All invitations, join requests, and invite codes</li>
+								<li>All Discord server attachments and role assignments</li>
+								<li>All permissions</li>
+							</ul>
+						</div>
+					</div>
+					<DialogFooter>
+						<CancelButton
+							onClick={() => {
+								setDeleteGroupDialogOpen(false)
+								setDeleteConfirmationText('')
+							}}
+							disabled={deleteGroup.isPending}
+						>
+							Cancel
+						</CancelButton>
+						<DestructiveButton
+							onClick={handleDeleteGroup}
+							disabled={deleteConfirmationText !== group?.name}
+							loading={deleteGroup.isPending}
+							loadingText="Deleting..."
+						>
+							Delete Group Permanently
+						</DestructiveButton>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 		</div>
 	)
 }

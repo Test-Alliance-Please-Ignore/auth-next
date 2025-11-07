@@ -1,6 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
+import { useApiMutation } from './useApiMutation'
 
 import type {
 	CreateGroupRequest,
@@ -61,8 +62,9 @@ export function useGroup(id: string) {
 export function useCreateGroup() {
 	const queryClient = useQueryClient()
 
-	return useMutation({
+	return useApiMutation({
 		mutationFn: (data: CreateGroupRequest) => api.createGroup(data),
+		successMessage: (group) => `Group "${group.name}" created successfully`,
 		onSuccess: (_newGroup) => {
 			// Invalidate all group lists (they may have different filters)
 			void queryClient.invalidateQueries({ queryKey: groupKeys.lists() })
@@ -84,9 +86,10 @@ export function useCreateGroup() {
 export function useUpdateGroup() {
 	const queryClient = useQueryClient()
 
-	return useMutation({
+	return useApiMutation({
 		mutationFn: ({ id, data }: { id: string; data: UpdateGroupRequest }) =>
 			api.updateGroup(id, data),
+		successMessage: 'Group settings saved',
 		onSuccess: (updatedGroup) => {
 			// Invalidate all group lists (they may have different filters)
 			void queryClient.invalidateQueries({ queryKey: groupKeys.lists() })
@@ -117,8 +120,9 @@ export function useUpdateGroup() {
 export function useDeleteGroup() {
 	const queryClient = useQueryClient()
 
-	return useMutation({
+	return useApiMutation({
 		mutationFn: (id: string) => api.deleteGroup(id),
+		successMessage: 'Group deleted',
 		onSuccess: (_, deletedId) => {
 			// Invalidate all group lists
 			void queryClient.invalidateQueries({ queryKey: groupKeys.lists() })
@@ -153,8 +157,9 @@ export function useUserMemberships() {
 export function useJoinGroup() {
 	const queryClient = useQueryClient()
 
-	return useMutation({
+	return useApiMutation({
 		mutationFn: (groupId: string) => api.joinGroup(groupId),
+		successMessage: 'You have joined the group',
 		onSuccess: () => {
 			// Invalidate group lists and user memberships
 			void queryClient.invalidateQueries({ queryKey: groupKeys.lists() })
@@ -169,8 +174,9 @@ export function useJoinGroup() {
 export function useLeaveGroup() {
 	const queryClient = useQueryClient()
 
-	return useMutation({
+	return useApiMutation({
 		mutationFn: (groupId: string) => api.leaveGroup(groupId),
+		successMessage: 'You have left the group',
 		onSuccess: () => {
 			// Invalidate group lists and user memberships
 			void queryClient.invalidateQueries({ queryKey: groupKeys.lists() })
@@ -185,8 +191,9 @@ export function useLeaveGroup() {
 export function useCreateJoinRequest() {
 	const queryClient = useQueryClient()
 
-	return useMutation({
+	return useApiMutation({
 		mutationFn: (data: CreateJoinRequestRequest) => api.createJoinRequest(data),
+		successMessage: 'Join request submitted',
 		onSuccess: () => {
 			// Invalidate group details to show pending request status
 			void queryClient.invalidateQueries({ queryKey: groupKeys.details() })
@@ -211,8 +218,9 @@ export function useJoinRequests(groupId: string) {
 export function useApproveJoinRequest() {
 	const queryClient = useQueryClient()
 
-	return useMutation({
+	return useApiMutation({
 		mutationFn: (requestId: string) => api.approveJoinRequest(requestId),
+		successMessage: 'Join request approved',
 		onSuccess: () => {
 			// Invalidate join requests and group details
 			void queryClient.invalidateQueries({ queryKey: ['groups'] })
@@ -226,8 +234,9 @@ export function useApproveJoinRequest() {
 export function useRejectJoinRequest() {
 	const queryClient = useQueryClient()
 
-	return useMutation({
+	return useApiMutation({
 		mutationFn: (requestId: string) => api.rejectJoinRequest(requestId),
+		successMessage: 'Join request rejected',
 		onSuccess: () => {
 			// Invalidate join requests
 			void queryClient.invalidateQueries({ queryKey: ['groups'] })
@@ -251,8 +260,9 @@ export function usePendingInvitations() {
 export function useAcceptInvitation() {
 	const queryClient = useQueryClient()
 
-	return useMutation({
+	return useApiMutation({
 		mutationFn: (invitationId: string) => api.acceptInvitation(invitationId),
+		successMessage: 'Invitation accepted',
 		onSuccess: () => {
 			// Invalidate invitations and user memberships
 			void queryClient.invalidateQueries({ queryKey: groupKeys.invitations() })
@@ -268,8 +278,9 @@ export function useAcceptInvitation() {
 export function useDeclineInvitation() {
 	const queryClient = useQueryClient()
 
-	return useMutation({
+	return useApiMutation({
 		mutationFn: (invitationId: string) => api.declineInvitation(invitationId),
+		successMessage: 'Invitation declined',
 		onSuccess: () => {
 			// Invalidate invitations
 			void queryClient.invalidateQueries({ queryKey: groupKeys.invitations() })
@@ -283,8 +294,9 @@ export function useDeclineInvitation() {
 export function useRedeemInviteCode() {
 	const queryClient = useQueryClient()
 
-	return useMutation({
+	return useApiMutation({
 		mutationFn: (code: string) => api.redeemInviteCode(code),
+		successMessage: (response) => `You have joined "${response.group.name}"`,
 		onSuccess: () => {
 			// Invalidate user memberships and group lists
 			void queryClient.invalidateQueries({ queryKey: groupKeys.userMemberships() })
@@ -322,9 +334,10 @@ export function useGroupInvitations(groupId: string) {
 export function useCreateInvitation() {
 	const queryClient = useQueryClient()
 
-	return useMutation({
+	return useApiMutation({
 		mutationFn: ({ groupId, characterName }: { groupId: string; characterName: string }) =>
 			api.createInvitation(groupId, characterName),
+		successMessage: (_, { characterName }) => `Invitation sent to ${characterName}`,
 		onSuccess: (_, { groupId }) => {
 			// Invalidate group invitations list
 			void queryClient.invalidateQueries({ queryKey: groupKeys.groupInvitations(groupId) })
@@ -340,9 +353,10 @@ export function useCreateInvitation() {
 export function useTransferOwnership() {
 	const queryClient = useQueryClient()
 
-	return useMutation({
+	return useApiMutation({
 		mutationFn: ({ groupId, newOwnerId }: { groupId: string; newOwnerId: string }) =>
 			api.transferGroupOwnership(groupId, newOwnerId),
+		successMessage: 'Group ownership transferred',
 		onSuccess: (_, { groupId }) => {
 			// Invalidate group details (ownership changed)
 			void queryClient.invalidateQueries({ queryKey: groupKeys.detail(groupId) })

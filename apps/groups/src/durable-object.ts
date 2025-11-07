@@ -432,7 +432,12 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		}
 	}
 
-	async updateGroup(id: string, data: UpdateGroupRequest, userId: string): Promise<Group> {
+	async updateGroup(
+		id: string,
+		data: UpdateGroupRequest,
+		userId: string,
+		isAdmin = false
+	): Promise<Group> {
 		const group = await this.db.query.groups.findFirst({
 			where: eq(groups.id, id),
 		})
@@ -441,8 +446,9 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Group not found')
 		}
 
-		if (!canManageGroup(group, userId)) {
-			throw new Error('Only the group owner can update the group')
+		// Site admins can update any group, otherwise must be the owner
+		if (!isAdmin && !canManageGroup(group, userId)) {
+			throw new Error('Only the group owner or site admins can update the group')
 		}
 
 		// Validate category exists if categoryId is being updated
@@ -475,7 +481,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		return this.mapGroup(updated)
 	}
 
-	async deleteGroup(id: string, userId: string): Promise<void> {
+	async deleteGroup(id: string, userId: string, isAdmin = false): Promise<void> {
 		const group = await this.db.query.groups.findFirst({
 			where: eq(groups.id, id),
 		})
@@ -484,8 +490,9 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Group not found')
 		}
 
-		if (!canManageGroup(group, userId)) {
-			throw new Error('Only the group owner can delete the group')
+		// Site admins can delete any group, otherwise must be the owner
+		if (!isAdmin && !canManageGroup(group, userId)) {
+			throw new Error('Only the group owner or site admins can delete the group')
 		}
 
 		// CASCADE will delete all members, admins, invitations, etc.

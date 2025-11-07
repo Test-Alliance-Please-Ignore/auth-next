@@ -1,5 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { Toaster } from 'sonner'
 
 import App from './App'
 import { ErrorBoundary } from './components/error-boundary'
@@ -47,6 +48,20 @@ createRoot(rootElement).render(
 	<StrictMode>
 		<ErrorBoundary>
 			<App />
+			<Toaster
+				position="bottom-right"
+				theme="dark"
+				closeButton
+				richColors
+				toastOptions={{
+					style: {
+						background: 'hsl(var(--card))',
+						border: '1px solid hsl(var(--border))',
+						color: 'hsl(var(--foreground))',
+					},
+					className: 'backdrop-blur-sm',
+				}}
+			/>
 		</ErrorBoundary>
 	</StrictMode>
 )
