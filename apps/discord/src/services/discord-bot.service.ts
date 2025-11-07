@@ -114,20 +114,6 @@ export class DiscordBotService {
 		try {
 			const proxyUrl = getDiscordProxyUrl(this.env)
 
-			const payload = {
-				roles: roleIds,
-				...(nickname !== undefined && { nick: nickname }),
-			}
-
-			logger.info('[DiscordBot] Updating guild member', {
-				guildId,
-				userId,
-				roleCount: roleIds.length,
-				hasNickname: nickname !== undefined,
-				nickname: nickname !== undefined ? nickname : null,
-				payload,
-			})
-
 			const url = `${this.baseUrl}/guilds/${guildId}/members/${userId}`
 			const response = await fetch(url, {
 				method: 'PATCH',
@@ -135,33 +121,18 @@ export class DiscordBotService {
 					Authorization: `Bot ${this.env.DISCORD_BOT_TOKEN}`,
 					'Content-Type': 'application/json',
 				},
-				body: JSON.stringify(payload),
+				body: JSON.stringify({
+					roles: roleIds,
+					...(nickname !== undefined && { nick: nickname }),
+				}),
 				// @ts-expect-error - Cloudflare Workers supports proxy in fetch
 				proxy: proxyUrl,
 			})
 
 			if (!response.ok) {
 				const errorData = await response.json().catch(() => ({}))
-				logger.error('[DiscordBot] Discord API rejected member update', {
-					guildId,
-					userId,
-					status: response.status,
-					statusText: response.statusText,
-					errorData,
-					requestPayload: payload,
-				})
 				throw new DiscordAPIError(response.status, errorData)
 			}
-
-			const responseData = await response.json().catch(() => null)
-			logger.info('[DiscordBot] Successfully updated guild member', {
-				guildId,
-				userId,
-				roleCount: roleIds.length,
-				nicknameSet: nickname !== undefined,
-				nickname,
-				responseData,
-			})
 
 			return { success: true }
 		} catch (error) {
@@ -251,12 +222,6 @@ export class DiscordBotService {
 
 			// 204 No Content = user was already a member
 			if (response.status === 204) {
-				logger.info('[DiscordBot] User already member of guild, updating roles', {
-					guildId,
-					userId,
-					newRoleCount: roleIds?.length ?? 0,
-				})
-
 				// User is already a member, update their roles if needed
 				if (roleIds && roleIds.length > 0) {
 					// Get current member data to merge roles
@@ -280,14 +245,6 @@ export class DiscordBotService {
 
 					// Only update if there are new roles to add
 					if (mergedRoleIds.length > currentRoleIds.length) {
-						logger.info('[DiscordBot] Merging roles for existing member', {
-							guildId,
-							userId,
-							currentRoles: currentRoleIds.length,
-							newRoles: roleIds.length,
-							mergedRoles: mergedRoleIds.length,
-						})
-
 						const updateResult = await this.updateGuildMemberRoles(
 							guildId,
 							userId,
@@ -308,24 +265,8 @@ export class DiscordBotService {
 								errorMessage: `Member exists but role update failed: ${updateResult.errorMessage}`,
 							}
 						}
-
-						logger.info('[DiscordBot] Successfully updated roles for existing member', {
-							guildId,
-							userId,
-							rolesAdded: mergedRoleIds.length - currentRoleIds.length,
-						})
 					} else if (nickname) {
 						// No new roles to add, but update nickname if provided
-						logger.info(
-							'[DiscordBot] User already has all required roles, updating nickname only',
-							{
-								guildId,
-								userId,
-								roleCount: currentRoleIds.length,
-								nickname,
-							}
-						)
-
 						const updateResult = await this.updateGuildMemberRoles(
 							guildId,
 							userId,
@@ -337,22 +278,9 @@ export class DiscordBotService {
 							logger.warn('[DiscordBot] Failed to update nickname for existing member', {
 								guildId,
 								userId,
-								nickname,
 								error: updateResult.errorMessage,
 							})
-						} else {
-							logger.info('[DiscordBot] Successfully updated nickname for existing member', {
-								guildId,
-								userId,
-								nickname,
-							})
 						}
-					} else {
-						logger.info('[DiscordBot] User already has all required roles, no nickname to update', {
-							guildId,
-							userId,
-							roleCount: currentRoleIds.length,
-						})
 					}
 				}
 

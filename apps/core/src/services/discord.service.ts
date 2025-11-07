@@ -281,15 +281,7 @@ export async function joinUserToCorporationServers(
 	const primaryCharacter = userChars.find((char) => char.is_primary)
 	const primaryCharacterName = primaryCharacter?.characterName
 
-	logger.info('[Discord] Primary character info for nickname management', {
-		userId,
-		hasPrimaryCharacter: !!primaryCharacter,
-		primaryCharacterId: primaryCharacter?.characterId,
-		primaryCharacterName,
-	})
-
 	if (characterIds.length === 0) {
-		logger.warn('[Discord] User has no characters, cannot join servers', { userId })
 		return {
 			results: [],
 			totalInvited: 0,
@@ -578,24 +570,8 @@ export async function joinUserToCorporationServers(
 		.map((g) => g.discordServerDbId)
 		.filter((id): id is string => id !== undefined)
 
-	logger.info('[Discord] Fetching server settings for nickname management', {
-		userId,
-		serverCount: discordServerDbIds.length,
-		serverDbIds: discordServerDbIds,
-	})
-
 	const discordServerSettings = await db.query.discordServers.findMany({
 		where: inArray(discordServers.id, discordServerDbIds),
-	})
-
-	logger.info('[Discord] Retrieved server settings', {
-		userId,
-		settingsCount: discordServerSettings.length,
-		settingsDetails: discordServerSettings.map((s) => ({
-			guildId: s.guildId,
-			guildName: s.guildName,
-			manageNicknames: s.manageNicknames,
-		})),
 	})
 
 	// Build a map of guildId -> manageNicknames setting
@@ -609,15 +585,6 @@ export async function joinUserToCorporationServers(
 		const manageNicknames = manageNicknamesByGuildId.get(guild.guildId)
 		const shouldSetNickname = manageNicknames && primaryCharacterName
 
-		logger.info('[Discord] Building join request for guild', {
-			userId,
-			guildId: guild.guildId,
-			manageNicknames,
-			primaryCharacterName,
-			shouldSetNickname,
-			roleCount: guild.roleIds.length,
-		})
-
 		return {
 			guildId: guild.guildId,
 			roleIds: guild.roleIds,
@@ -627,16 +594,9 @@ export async function joinUserToCorporationServers(
 	})
 
 	logger.info('[Discord] Deduplicated guild join requests', {
-		userId,
 		originalCount: guildsToJoin.length,
 		deduplicatedCount: joinRequests.length,
 		nicknameManagementEnabled: joinRequests.filter((r) => r.nickname).length,
-		requestsWithNickname: joinRequests
-			.filter((r) => r.nickname)
-			.map((r) => ({
-				guildId: r.guildId,
-				nickname: r.nickname,
-			})),
 	})
 
 	// Call Discord DO via RPC to join the servers with role assignments
