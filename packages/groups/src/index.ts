@@ -10,6 +10,23 @@
  */
 export * from './permissions'
 
+import type {
+	AttachPermissionRequest,
+	CreateGroupScopedPermissionRequest,
+	CreatePermissionCategoryRequest,
+	CreatePermissionRequest,
+	GetGroupMemberPermissionsResponse,
+	GetMultiGroupMemberPermissionsResponse,
+	GroupPermissionWithDetails,
+	Permission,
+	PermissionCategory,
+	PermissionWithDetails,
+	UpdateGroupPermissionRequest,
+	UpdatePermissionCategoryRequest,
+	UpdatePermissionRequest,
+	UserPermission,
+} from './permissions'
+
 /**
  * Enums matching database schema
  */

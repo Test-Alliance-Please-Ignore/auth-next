@@ -229,6 +229,14 @@ export interface Discord {
 	): Promise<Array<{ id: string; name: string; icon?: string; owner: boolean; permissions: string }>>
 
 	/**
+	 * Check which guilds a user is a member of using bot token (fallback for missing guilds scope)
+	 * @param coreUserId - Core user ID
+	 * @param guildIds - Array of guild IDs to check
+	 * @returns Array of guild IDs the user is a member of
+	 */
+	checkGuildMembershipWithBot(coreUserId: string, guildIds: string[]): Promise<string[]>
+
+	/**
 	 * Update Discord roles for a user who is already a member of servers
 	 * Does NOT invite them to new servers
 	 * @param coreUserId - Core user ID

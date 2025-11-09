@@ -334,10 +334,10 @@ async function getAllManagedRolesForGuild(
 		}
 
 		if (groupDiscordRoleIds.length > 0) {
-			// Query back to core DB to get actual roleId and verify they're active
+			// Verify roles are still active (roleIds are already Discord snowflake IDs)
 			const groupRoles = await db.query.discordRoles.findMany({
 				where: and(
-					inArray(discordRoles.id, groupDiscordRoleIds),
+					inArray(discordRoles.roleId, groupDiscordRoleIds),
 					eq(discordRoles.isActive, true)
 				),
 				columns: { roleId: true },
@@ -901,6 +901,37 @@ export async function updateUserDiscordRoles(
 		const discordStub = getStub<Discord>(env.DISCORD, 'default')
 		const currentGuilds = await discordStub.getUserGuilds(userId)
 		serversToUpdate = currentGuilds.map(g => g.id)
+
+		// FALLBACK: If getUserGuilds returns empty (user missing 'guilds' OAuth scope),
+		// check known active guilds using bot token
+		if (serversToUpdate.length === 0) {
+			logger.info('[Discord] getUserGuilds returned empty, falling back to bot token check', {
+				userId,
+			})
+
+			// Get all active Discord servers from our database
+			const knownServers = await db.query.discordServers.findMany({
+				where: eq(discordServers.isActive, true),
+				columns: { guildId: true },
+			})
+
+			const knownGuildIds = knownServers.map(s => s.guildId)
+
+			if (knownGuildIds.length > 0) {
+				// Use bot token to check which guilds the user is a member of
+				const memberGuildIds = await discordStub.checkGuildMembershipWithBot(
+					userId,
+					knownGuildIds
+				)
+				serversToUpdate = memberGuildIds
+
+				logger.info('[Discord] Bot token fallback completed', {
+					userId,
+					knownServers: knownGuildIds.length,
+					memberServers: memberGuildIds.length,
+				})
+			}
+		}
 	}
 
 	if (serversToUpdate.length === 0) {

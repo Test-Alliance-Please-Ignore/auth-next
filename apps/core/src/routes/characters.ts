@@ -76,6 +76,8 @@ async function transformAndEnrichSkillsData(skills: any, env: any) {
 			skillCount: transformed.skills.length,
 		})
 		// Return unenriched skills on error
+	} finally {
+		skillsStub.dispose()
 	}
 
 	return transformed
@@ -141,6 +143,8 @@ async function transformAndEnrichSkillQueue(queue: any, env: any) {
 		})
 		// Return unenriched queue on error
 		return transformed
+	} finally {
+		skillsStub.dispose()
 	}
 }
 
@@ -218,11 +222,11 @@ app.get('/:characterId', requireAuth(), async (c) => {
 
 	if (!isActualOwner && !isAdmin) {
 		// Get character's corporation to check CEO/Director access
+		const eveCharacterDataStubForAuth = getStub<EveCharacterData>(
+			c.env.EVE_CHARACTER_DATA,
+			characterId
+		)
 		try {
-			const eveCharacterDataStubForAuth = getStub<EveCharacterData>(
-				c.env.EVE_CHARACTER_DATA,
-				characterId
-			)
 			const charInfoInstance = await eveCharacterDataStubForAuth.getInstance(characterId)
 			const charInfo = await charInfoInstance.getCharacterInfo()
 
@@ -235,47 +239,58 @@ app.get('/:characterId', requireAuth(), async (c) => {
 						c.env.EVE_CHARACTER_DATA,
 						userChar.characterId
 					)
-					const userCharInstance = await userCharStub.getInstance(userChar.characterId)
-					const userCharInfo = await userCharInstance.getCharacterInfo()
+					try {
+						const userCharInstance = await userCharStub.getInstance(userChar.characterId)
+						const userCharInfo = await userCharInstance.getCharacterInfo()
 
-					// Skip if user's character not in the same corporation
-					if (!userCharInfo || String(userCharInfo.corporationId) !== corporationId) {
-						continue
+						// Skip if user's character not in the same corporation
+						if (!userCharInfo || String(userCharInfo.corporationId) !== corporationId) {
+							continue
+						}
+
+						// Get corporation info and directors
+						const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+						try {
+							const [corpInfo, directors] = await Promise.all([
+								corpStub.getCorporationInfo(corporationId),
+								corpStub.getDirectors(corporationId),
+							])
+
+							// Check if CEO
+							if (corpInfo && String(corpInfo.ceoId) === userChar.characterId) {
+								isCeoOrDirector = true
+								viewerRole = 'CEO'
+								logger.info('[Character Detail] CEO access granted', {
+									characterId: characterIdStr,
+									viewerCharacterId: userChar.characterId,
+									corporationId,
+								})
+								break
+							}
+
+							// Check if Director
+							const isDirector = directors.some(
+								(d: { characterId: string }) => d.characterId === userChar.characterId
+							)
+							if (isDirector) {
+								isCeoOrDirector = true
+								viewerRole = 'Director'
+								logger.info('[Character Detail] Director access granted', {
+									characterId: characterIdStr,
+									viewerCharacterId: userChar.characterId,
+									corporationId,
+								})
+								break
+							}
+						} finally {
+							corpStub.dispose()
+						}
+					} finally {
+						userCharStub.dispose()
 					}
 
-					// Get corporation info and directors
-					const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
-					const [corpInfo, directors] = await Promise.all([
-						corpStub.getCorporationInfo(corporationId),
-						corpStub.getDirectors(corporationId),
-					])
-
-					// Check if CEO
-					if (corpInfo && String(corpInfo.ceoId) === userChar.characterId) {
-						isCeoOrDirector = true
-						viewerRole = 'CEO'
-						logger.info('[Character Detail] CEO access granted', {
-							characterId: characterIdStr,
-							viewerCharacterId: userChar.characterId,
-							corporationId,
-						})
-						break
-					}
-
-					// Check if Director
-					const isDirector = directors.some(
-						(d: { characterId: string }) => d.characterId === userChar.characterId
-					)
-					if (isDirector) {
-						isCeoOrDirector = true
-						viewerRole = 'Director'
-						logger.info('[Character Detail] Director access granted', {
-							characterId: characterIdStr,
-							viewerCharacterId: userChar.characterId,
-							corporationId,
-						})
-						break
-					}
+					// If we found CEO/Director access, break out of the loop
+					if (isCeoOrDirector) break
 				}
 			}
 		} catch (error) {
@@ -284,6 +299,8 @@ app.get('/:characterId', requireAuth(), async (c) => {
 				error: error instanceof Error ? error.message : String(error),
 			})
 			// Continue to authorization check below
+		} finally {
+			eveCharacterDataStubForAuth.dispose()
 		}
 	}
 

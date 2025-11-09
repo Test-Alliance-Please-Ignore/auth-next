@@ -379,6 +379,86 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 	}
 
 	/**
+	 * Check which guilds a user is a member of using bot token (fallback for missing guilds scope)
+	 * @param coreUserId - Core user ID
+	 * @param guildIds - Array of guild IDs to check
+	 * @returns Array of guild IDs the user is a member of
+	 */
+	async checkGuildMembershipWithBot(
+		coreUserId: string,
+		guildIds: string[]
+	): Promise<string[]> {
+		try {
+			// Get user from database
+			const user = await this.getUserByCoreUserId(coreUserId)
+			if (!user) {
+				logger.error('[DiscordDO] User not found for checkGuildMembershipWithBot', {
+					coreUserId,
+				})
+				return []
+			}
+
+			const discordUserId = user.userId
+			const memberGuilds: string[] = []
+
+			// Check each guild using bot token
+			await Promise.all(
+				guildIds.map(async (guildId) => {
+					try {
+						const response = await fetch(
+							`https://discord.com/api/v10/guilds/${guildId}/members/${discordUserId}`,
+							{
+								headers: {
+									Authorization: `Bot ${this.env.DISCORD_BOT_TOKEN}`,
+								},
+							}
+						)
+
+						if (response.ok) {
+							memberGuilds.push(guildId)
+						} else if (response.status === 404) {
+							// User is not a member
+							logger.debug('[DiscordDO] User not a member of guild (bot check)', {
+								coreUserId,
+								discordUserId,
+								guildId,
+							})
+						} else {
+							logger.warn('[DiscordDO] Unexpected response checking guild membership', {
+								coreUserId,
+								discordUserId,
+								guildId,
+								status: response.status,
+							})
+						}
+					} catch (error) {
+						logger.error('[DiscordDO] Error checking guild membership', {
+							coreUserId,
+							guildId,
+							error: String(error),
+						})
+					}
+				})
+			)
+
+			logger.info('[DiscordDO] Checked guild membership with bot token', {
+				coreUserId,
+				discordUserId,
+				totalChecked: guildIds.length,
+				memberCount: memberGuilds.length,
+			})
+
+			return memberGuilds
+		} catch (error) {
+			logger.error('[DiscordDO] Error in checkGuildMembershipWithBot', {
+				coreUserId,
+				error: String(error),
+			})
+			return []
+		}
+	}
+
+	/**
 	 * Update Discord roles for a user who is already a member of servers
 	 */
 	async updateUserRoles(
