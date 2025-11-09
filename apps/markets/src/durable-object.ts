@@ -4,7 +4,7 @@ import { and, desc, eq, gt, inArray, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
 import { createDb } from './db'
-import { latestMarketPrices, marketOrders, marketSnapshots } from './db/schema'
+import { latestMarketPrices, marketOrders, marketSnapshots, schema } from './db/schema'
 
 import type { EveTokenStore } from '@repo/eve-token-store'
 import {
@@ -33,7 +33,7 @@ import type { DbClientWs } from '@repo/db-utils'
  * - Pre-computed latest prices via materialized view
  */
 export class MarketsDO extends DurableObject<Env, {}> implements Markets {
-	private db: DbClientWs<typeof import('./db/schema')>
+	private db: DbClientWs<typeof schema>
 
 	constructor(
 		public state: DurableObjectState,

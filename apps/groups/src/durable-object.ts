@@ -60,6 +60,7 @@ import type {
 	GroupPermissionWithDetails,
 	Groups,
 	GroupWithDetails,
+	GroupByInviteCodeResponse,
 	ListGroupsFilters,
 	Permission,
 	PermissionCategory,
@@ -1343,7 +1344,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	async getGroupByInviteCode(
 		code: string,
 		userId?: string
-	): Promise<import('@repo/groups').GroupByInviteCodeResponse> {
+	): Promise<GroupByInviteCodeResponse> {
 		const inviteCode = await this.db.query.groupInviteCodes.findFirst({
 			where: eq(groupInviteCodes.code, code),
 			with: {
@@ -1388,7 +1389,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			isMember = await this.isUserMember(group.id, userId)
 		}
 
-		const groupDetails: import('@repo/groups').GroupWithDetails = {
+		const groupDetails: GroupWithDetails = {
 			...this.mapGroup(group),
 			category: this.mapCategory(category),
 			memberCount,

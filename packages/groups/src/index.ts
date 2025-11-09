@@ -458,19 +458,19 @@ export interface Groups {
 
 	/** Create a permission category (admin only) */
 	createPermissionCategory(
-		data: import('./permissions').CreatePermissionCategoryRequest,
+		data: CreatePermissionCategoryRequest,
 		adminUserId: string
-	): Promise<import('./permissions').PermissionCategory>
+	): Promise<PermissionCategory>
 
 	/** List all permission categories */
-	listPermissionCategories(): Promise<import('./permissions').PermissionCategory[]>
+	listPermissionCategories(): Promise<PermissionCategory[]>
 
 	/** Update a permission category (admin only) */
 	updatePermissionCategory(
 		id: string,
-		data: import('./permissions').UpdatePermissionCategoryRequest,
+		data: UpdatePermissionCategoryRequest,
 		adminUserId: string
-	): Promise<import('./permissions').PermissionCategory>
+	): Promise<PermissionCategory>
 
 	/** Delete a permission category (admin only) */
 	deletePermissionCategory(id: string, adminUserId: string): Promise<void>
@@ -481,22 +481,22 @@ export interface Groups {
 
 	/** Create a global permission (admin only) */
 	createPermission(
-		data: import('./permissions').CreatePermissionRequest,
+		data: CreatePermissionRequest,
 		adminUserId: string
-	): Promise<import('./permissions').Permission>
+	): Promise<Permission>
 
 	/** List all global permissions */
-	listPermissions(categoryId?: string): Promise<import('./permissions').PermissionWithDetails[]>
+	listPermissions(categoryId?: string): Promise<PermissionWithDetails[]>
 
 	/** Get a specific global permission */
-	getPermission(id: string): Promise<import('./permissions').PermissionWithDetails | null>
+	getPermission(id: string): Promise<PermissionWithDetails | null>
 
 	/** Update a global permission (admin only) */
 	updatePermission(
 		id: string,
-		data: import('./permissions').UpdatePermissionRequest,
+		data: UpdatePermissionRequest,
 		adminUserId: string
-	): Promise<import('./permissions').Permission>
+	): Promise<Permission>
 
 	/** Delete a global permission (admin only) */
 	deletePermission(id: string, adminUserId: string): Promise<void>
@@ -507,28 +507,28 @@ export interface Groups {
 
 	/** Attach a global permission to a group (admin only) */
 	attachPermissionToGroup(
-		data: import('./permissions').AttachPermissionRequest,
+		data: AttachPermissionRequest,
 		adminUserId: string
-	): Promise<import('./permissions').GroupPermissionWithDetails>
+	): Promise<GroupPermissionWithDetails>
 
 	/** Create a group-scoped permission (admin only) */
 	createGroupScopedPermission(
-		data: import('./permissions').CreateGroupScopedPermissionRequest,
+		data: CreateGroupScopedPermissionRequest,
 		adminUserId: string
-	): Promise<import('./permissions').GroupPermissionWithDetails>
+	): Promise<GroupPermissionWithDetails>
 
 	/** List permissions attached to a group (admin only) */
 	listGroupPermissions(
 		groupId: string,
 		adminUserId: string
-	): Promise<import('./permissions').GroupPermissionWithDetails[]>
+	): Promise<GroupPermissionWithDetails[]>
 
 	/** Update a group permission (admin only) */
 	updateGroupPermission(
 		groupPermissionId: string,
-		data: import('./permissions').UpdateGroupPermissionRequest,
+		data: UpdateGroupPermissionRequest,
 		adminUserId: string
-	): Promise<import('./permissions').GroupPermissionWithDetails>
+	): Promise<GroupPermissionWithDetails>
 
 	/** Remove a permission from a group (admin only) */
 	removePermissionFromGroup(groupPermissionId: string, adminUserId: string): Promise<void>
@@ -538,15 +538,15 @@ export interface Groups {
 	 */
 
 	/** Get all permissions for a specific user across all their groups */
-	getUserPermissions(userId: string): Promise<import('./permissions').UserPermission[]>
+	getUserPermissions(userId: string): Promise<UserPermission[]>
 
 	/** Get permissions for all members of a specific group */
 	getGroupMemberPermissions(
 		groupId: string
-	): Promise<import('./permissions').GetGroupMemberPermissionsResponse>
+	): Promise<GetGroupMemberPermissionsResponse>
 
 	/** Get permissions for all members across multiple groups */
 	getMultiGroupMemberPermissions(
 		groupIds: string[]
-	): Promise<import('./permissions').GetMultiGroupMemberPermissionsResponse>
+	): Promise<GetMultiGroupMemberPermissionsResponse>
 }
