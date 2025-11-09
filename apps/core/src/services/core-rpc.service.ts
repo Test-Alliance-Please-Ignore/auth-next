@@ -15,7 +15,9 @@ import type {
 	UserDetails,
 } from '@repo/admin'
 import type { DbClient } from '@repo/db-utils'
+import type { Discord } from '@repo/discord'
 import type { EveTokenStore } from '@repo/eve-token-store'
+import type { Hr } from '@repo/hr'
 import type { Env } from '../context'
 import type { schema } from '../db'
 
@@ -135,7 +137,7 @@ export class CoreRpcService {
 		const eveTokenStore = getStub<EveTokenStore>(this.eveTokenStoreNamespace, 'default')
 
 		// 4. Get HR stub for blacklist status check
-		const hrStub = getStub<import('@repo/hr').Hr>(this.hrNamespace, 'default')
+		const hrStub = getStub<Hr>(this.hrNamespace, 'default')
 
 		// 5. Bulk check blacklist status for all characters
 		const characterIds = chars.map((c) => c.characterId)
@@ -170,7 +172,7 @@ export class CoreRpcService {
 		let discordStatus = null
 		if (user.discordUserId) {
 			try {
-				const discordStub = getStub<import('@repo/discord').Discord>(
+				const discordStub = getStub<Discord>(
 					this.discordNamespace,
 					'default'
 				)

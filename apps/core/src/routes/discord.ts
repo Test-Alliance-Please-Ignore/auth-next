@@ -182,8 +182,7 @@ discord.post('/join-servers', requireAuth(), async (c) => {
 	const user = c.get('user')!
 
 	try {
-		const result = await discordService.joinUserToCorporationServers(c.env, user.id)
-
+		const result = await discordService.syncUserDiscordAccess(c.env, user.id)
 		return c.json(result)
 	} catch (error) {
 		logger.error('Error joining Discord servers:', error)

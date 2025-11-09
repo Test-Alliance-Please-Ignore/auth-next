@@ -49,7 +49,8 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 				location_id TEXT,
 				location_type TEXT,
 				character_id TEXT,
-				alarm_enabled INTEGER DEFAULT 0
+				alarm_enabled INTEGER DEFAULT 0,
+				max_snapshots INTEGER DEFAULT NULL
 			)
 		`)
 	}
@@ -63,6 +64,116 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 	 */
 	private getTokenStoreStub(): EveTokenStore {
 		return getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+	}
+
+	/**
+	 * Get the maximum number of snapshots to retain for a location
+	 * Checks SQLite config first, falls back to environment variable
+	 */
+	private getMaxSnapshots(): number {
+		// Query SQLite config for override
+		const config = this.state.storage.sql.exec<{ max_snapshots: number | null }>(
+			'SELECT max_snapshots FROM config WHERE id = 1'
+		).toArray()[0]
+
+		// Use config if set, otherwise fall back to env var
+		if (config?.max_snapshots !== null && config?.max_snapshots !== undefined) {
+			return config.max_snapshots
+		}
+
+		// Fall back to environment variable (default is 168 = 1 week)
+		return this.env.MAX_SNAPSHOTS_PER_LOCATION ?? 168
+	}
+
+	/**
+	 * Clean up old snapshots that exceed the maximum retention limit
+	 * Implements ring buffer behavior by deleting oldest snapshots
+	 */
+	private async cleanupOldSnapshots(locationId: string, locationType: 'region' | 'structure'): Promise<void> {
+		try {
+			const maxSnapshots = this.getMaxSnapshots()
+
+			// Skip cleanup if max is 0 or negative
+			if (maxSnapshots <= 0) {
+				console.warn(`[cleanupOldSnapshots] Skipping cleanup - invalid maxSnapshots: ${maxSnapshots}`)
+				return
+			}
+
+			console.log(`[cleanupOldSnapshots] Checking snapshots for ${locationType} ${locationId} (max: ${maxSnapshots})`)
+
+			// Count total complete snapshots for this location
+			const [countResult] = await this.db
+				.select({ count: sql<number>`COUNT(*)` })
+				.from(marketSnapshots)
+				.where(
+					and(
+						eq(marketSnapshots.locationId, locationId),
+						eq(marketSnapshots.locationType, locationType),
+						eq(marketSnapshots.status, 'complete')
+					)
+				)
+
+			const totalSnapshots = countResult?.count ?? 0
+			console.log(`[cleanupOldSnapshots] Found ${totalSnapshots} complete snapshots`)
+
+			// Only delete if we exceed the limit
+			if (totalSnapshots <= maxSnapshots) {
+				console.log(`[cleanupOldSnapshots] Within limit, no cleanup needed`)
+				return
+			}
+
+			// Calculate how many to delete
+			const deleteCount = totalSnapshots - maxSnapshots
+			console.log(`[cleanupOldSnapshots] Need to delete ${deleteCount} oldest snapshots`)
+
+			// Get the oldest snapshots to delete
+			const snapshotsToDelete = await this.db
+				.select({
+					id: marketSnapshots.id,
+					snapshotTime: marketSnapshots.snapshotTime
+				})
+				.from(marketSnapshots)
+				.where(
+					and(
+						eq(marketSnapshots.locationId, locationId),
+						eq(marketSnapshots.locationType, locationType),
+						eq(marketSnapshots.status, 'complete')
+					)
+				)
+				.orderBy(marketSnapshots.snapshotTime) // ASC = oldest first
+				.limit(deleteCount)
+
+			if (snapshotsToDelete.length === 0) {
+				console.warn(`[cleanupOldSnapshots] No snapshots found to delete`)
+				return
+			}
+
+			const snapshotIds = snapshotsToDelete.map(s => s.id)
+			const oldestTime = snapshotsToDelete[0].snapshotTime
+			const newestTime = snapshotsToDelete[snapshotsToDelete.length - 1].snapshotTime
+
+			console.log(
+				`[cleanupOldSnapshots] Deleting ${snapshotIds.length} snapshots from ${oldestTime} to ${newestTime}`
+			)
+
+			// Delete the snapshots (CASCADE will handle market_orders)
+			await this.db
+				.delete(marketSnapshots)
+				.where(inArray(marketSnapshots.id, snapshotIds))
+
+			// Cleanup orphaned latest_market_prices records
+			const deletedPrices = await this.db
+				.delete(latestMarketPrices)
+				.where(inArray(latestMarketPrices.snapshotId, snapshotIds))
+
+			console.log(
+				`[cleanupOldSnapshots] SUCCESS - Deleted ${snapshotIds.length} snapshots and associated data`
+			)
+
+		} catch (error) {
+			// Log error but don't throw - cleanup is non-critical
+			console.error(`[cleanupOldSnapshots] ERROR during cleanup:`, error)
+		}
 	}
 
 	// ========================================================================
@@ -383,6 +494,9 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 				console.log(`[fetchAndStoreSnapshot] Skipping materialized view refresh (will be done on next alarm)`)
 			}
 			console.log(`[fetchAndStoreSnapshot] SUCCESS - Snapshot complete for region ${regionId}`)
+
+			// Clean up old snapshots (non-blocking)
+			await this.cleanupOldSnapshots(regionId, 'region')
 		} catch (error) {
 			console.error(`[fetchAndStoreSnapshot] ERROR:`, error)
 			// Mark snapshot as failed
@@ -510,6 +624,9 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 				console.log(`[fetchAndStoreStructureSnapshot] Skipping materialized view refresh (will be done on next alarm)`)
 			}
 			console.log(`[fetchAndStoreStructureSnapshot] SUCCESS - Snapshot complete for structure ${structureId}`)
+
+			// Clean up old snapshots (non-blocking)
+			await this.cleanupOldSnapshots(structureId, 'structure')
 		} catch (error) {
 			console.error(`[fetchAndStoreStructureSnapshot] ERROR:`, error)
 			// Mark snapshot as failed

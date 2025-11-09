@@ -1470,7 +1470,7 @@ groups.post(
 			// Process members sequentially to avoid rate limiting
 			for (const user of usersWithDiscord) {
 				try {
-					const results = await discordDO.joinUserToServersWithRoles(user.id, [
+					const results = await discordDO.updateUserRoles(user.id, [
 						{
 							guildId: config.guildId,
 							roleIds: config.roleIds,

@@ -1,0 +1,1 @@
+CREATE INDEX "group_discord_servers_server_auto_assign_idx" ON "group_discord_servers" USING btree ("discord_server_id","auto_assign_roles") WHERE "group_discord_servers"."auto_assign_roles" = true;

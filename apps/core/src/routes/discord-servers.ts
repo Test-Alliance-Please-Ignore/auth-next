@@ -2,6 +2,8 @@ import { Hono } from 'hono'
 
 import { and, desc, eq, ilike, inArray, isNotNull } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
+import type { EveCorporationData } from '@repo/eve-corporation-data'
+import type { Groups } from '@repo/groups'
 import { logger } from '@repo/hono-helpers'
 
 import {
@@ -457,7 +459,7 @@ app.post('/:id/refresh-members', requireAuth(), requireAdmin(), async (c) => {
 		for (const attachment of corpAttachments) {
 			try {
 				// Get corporation members via RPC
-				const corpStub = getStub<import('@repo/eve-corporation-data').EveCorporationData>(
+				const corpStub = getStub<EveCorporationData>(
 					c.env.EVE_CORPORATION_DATA,
 					attachment.corporationId
 				)
@@ -501,7 +503,7 @@ app.post('/:id/refresh-members', requireAuth(), requireAdmin(), async (c) => {
 		const userIdsFromGroups = new Set<string>()
 
 		try {
-			const groupsStub = getStub<import('@repo/groups').Groups>(c.env.GROUPS, 'default')
+			const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 
 			// Get all groups that have this Discord server attached
 			const groupsWithServer = await groupsStub.getGroupsByDiscordServer(serverId)
@@ -575,7 +577,7 @@ app.post('/:id/refresh-members', requireAuth(), requireAdmin(), async (c) => {
 
 		for (const userId of allUserIds) {
 			try {
-				const result = await discordService.joinUserToCorporationServers(c.env, userId)
+				const result = await discordService.syncUserDiscordAccess(c.env, userId)
 
 				// Find results specific to this guild
 				const guildResults = result.results.filter((r) => r.guildId === server.guildId)

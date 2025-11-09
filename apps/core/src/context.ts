@@ -1,3 +1,4 @@
+import type { createDb } from './db'
 import type { AdminWorker as IAdminWorker } from '@repo/admin'
 import type { Bills } from '@repo/bills'
 import type { Broadcasts } from '@repo/broadcasts'
@@ -71,7 +72,7 @@ export interface SessionUser {
 
 /** Variables can be extended */
 export type Variables = SharedHonoVariables & {
-	db?: ReturnType<typeof import('./db').createDb>
+	db?: ReturnType<typeof createDb>
 	/** Current authenticated user (set by session middleware) */
 	user?: SessionUser
 	/** EVE Token Store Durable Object stub */

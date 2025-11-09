@@ -1,3 +1,4 @@
+import type { createDb } from './db'
 import type { Discord } from '@repo/discord'
 import type { Groups } from '@repo/groups'
 import type { HonoApp } from '@repo/hono-helpers'
@@ -37,7 +38,7 @@ export interface SessionUser {
 
 /** Variables can be extended */
 export type Variables = SharedHonoVariables & {
-	db?: ReturnType<typeof import('./db').createDb>
+	db?: ReturnType<typeof createDb>
 	/** Current authenticated user (set by session middleware from core) */
 	user?: SessionUser
 	discordDO?: Discord
@@ -48,3 +49,4 @@ export interface App extends HonoApp {
 	Bindings: Env
 	Variables: Variables
 }
+

@@ -1882,8 +1882,9 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	*/
 
 	/**
-	 * Get all groups with Discord auto-invite enabled
+	 * Get all groups with Discord servers attached (both auto-invite and manual join)
 	 * Cached in DO storage with 5-minute refresh
+	 * Note: Method name kept for backward compatibility, but now returns all Discord servers
 	 */
 	async getGroupsWithDiscordAutoInvite(): Promise<
 		Array<{
@@ -1893,11 +1894,13 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 				id: string
 				discordServerId: string
 				roleIds?: string[]
+				autoInvite?: boolean
+				autoAssignRoles?: boolean
 			}>
 		}>
 	> {
 		// Try to get from DO storage cache
-		const cacheKey = 'groups-with-discord-auto-invite'
+		const cacheKey = 'groups-with-discord-servers'  // Updated cache key
 		const cached = await this.state.storage.get<{
 			data: any[]
 			expires: number
@@ -1907,9 +1910,10 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			return cached.data
 		}
 
-		// Cache miss - fetch from database with Discord server registry info
+		// Cache miss - fetch ALL group Discord servers (not just auto-invite)
+		// The autoInvite flag only controls automatic vs manual joining, not eligibility
 		const servers = await this.db.query.groupDiscordServers.findMany({
-			where: eq(groupDiscordServers.autoInvite, true),
+			// No WHERE clause - get all Discord server attachments
 			with: {
 				group: true,
 				roles: true,
@@ -1926,6 +1930,8 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 					id: string
 					discordServerId: string
 					roleIds?: string[]
+					autoInvite?: boolean
+					autoAssignRoles?: boolean
 				}>
 			}
 		>()
@@ -1947,6 +1953,8 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 				id: server.id,
 				discordServerId: server.discordServerId,
 				roleIds,
+				autoInvite: server.autoInvite,  // Include autoInvite flag
+				autoAssignRoles: server.autoAssignRoles,  // Include autoAssignRoles flag
 			})
 		}
 
@@ -1966,7 +1974,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	 */
 	async getGroupsByDiscordServer(
 		discordServerId: string
-	): Promise<Array<{ groupId: string; groupName: string }>> {
+	): Promise<Array<{ groupId: string; groupName: string; id: string; autoAssignRoles: boolean }>> {
 		const servers = await this.db.query.groupDiscordServers.findMany({
 			where: eq(groupDiscordServers.discordServerId, discordServerId),
 			with: {
@@ -1977,6 +1985,8 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		return servers.map((server) => ({
 			groupId: server.groupId,
 			groupName: server.group.name,
+			id: server.id,
+			autoAssignRoles: server.autoAssignRoles,
 		}))
 	}
 

@@ -6,6 +6,7 @@ export type Env = SharedHonoEnv & {
 	MARKETS: DurableObjectNamespace
 	EVE_STATIC_DATA: Fetcher
 	EVE_TOKEN_STORE: DurableObjectNamespace
+	MAX_SNAPSHOTS_PER_LOCATION?: number
 }
 
 /** Variables can be extended */

@@ -176,23 +176,14 @@ export class DiscordRefreshService {
 		}
 
 		try {
-			// Prepare join requests with roles
-			const joinRequests = expectedAccess.map((access) => ({
-				guildId: access.guildId,
-				roleIds: access.roleIds,
-			}))
-
-			// Execute join requests
-			const joinResults = await this.discordStub.joinUserToServersWithRoles(userId, joinRequests)
+			// Join servers
+			const guildIds = expectedAccess.map((access) => access.guildId)
+			const joinResults = await this.discordStub.joinUserToServers(userId, guildIds)
 
 			for (const joinResult of joinResults) {
 				if (joinResult.success) {
 					result.serversJoined++
-					if (joinResult.alreadyMember) {
-						// User was already a member, so we likely just updated roles
-						result.rolesUpdated++
-					}
-					logger.info('[DiscordRefresh] Successfully joined/updated server', {
+					logger.info('[DiscordRefresh] Successfully joined server', {
 						userId,
 						guildId: joinResult.guildId,
 						alreadyMember: joinResult.alreadyMember,
@@ -205,6 +196,36 @@ export class DiscordRefreshService {
 						guildId: joinResult.guildId,
 						error: joinResult.errorMessage,
 					})
+				}
+			}
+
+			// Update roles for all servers
+			const roleUpdateRequests = expectedAccess
+				.filter((access) => access.roleIds.length > 0)
+				.map((access) => ({
+					guildId: access.guildId,
+					roleIds: access.roleIds,
+				}))
+
+			if (roleUpdateRequests.length > 0) {
+				const roleResults = await this.discordStub.updateUserRoles(userId, roleUpdateRequests)
+
+				for (const roleResult of roleResults) {
+					if (roleResult.success) {
+						result.rolesUpdated++
+						logger.info('[DiscordRefresh] Successfully updated roles', {
+							userId,
+							guildId: roleResult.guildId,
+						})
+					} else {
+						const errorMsg = `Failed to update roles for ${roleResult.guildId}: ${roleResult.errorMessage || 'Unknown error'}`
+						result.errors.push(errorMsg)
+						logger.warn('[DiscordRefresh] Failed to update roles', {
+							userId,
+							guildId: roleResult.guildId,
+							error: roleResult.errorMessage,
+						})
+					}
 				}
 			}
 		} catch (error) {

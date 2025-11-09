@@ -1,0 +1,3 @@
+CREATE INDEX "corp_discord_servers_server_auto_assign_idx" ON "corporation_discord_servers" USING btree ("discord_server_id","auto_assign_roles") WHERE "corporation_discord_servers"."auto_assign_roles" = true;--> statement-breakpoint
+CREATE INDEX "discord_roles_server_auto_apply_active_idx" ON "discord_roles" USING btree ("discord_server_id","auto_apply","is_active") WHERE "discord_roles"."auto_apply" = true AND "discord_roles"."is_active" = true;--> statement-breakpoint
+CREATE INDEX "discord_servers_active_idx" ON "discord_servers" USING btree ("is_active") WHERE "discord_servers"."is_active" = true;

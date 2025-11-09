@@ -253,13 +253,14 @@ users.post('/me/characters/:characterId/set-primary', async (c) => {
 			getRequestMetadata(c)
 		)
 
-		// Trigger Discord nickname sync if user has Discord linked
+		// Update Discord nickname if user has Discord linked
 		if (user.discord) {
 			try {
 				const discordService = await import('../services/discord.service.js')
-				await discordService.joinUserToCorporationServers(c.env, user.id)
+				// Only update nickname, don't re-invite or update roles
+				await discordService.updateUserDiscordNickname(c.env, user.id)
 			} catch (discordError) {
-				logger.error('[SetPrimaryCharacter] Discord sync failed', {
+				logger.error('[SetPrimaryCharacter] Discord nickname update failed', {
 					userId: user.id,
 					error: discordError instanceof Error ? discordError.message : String(discordError),
 				})

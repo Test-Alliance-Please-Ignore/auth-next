@@ -207,17 +207,6 @@ export interface Discord {
 	joinUserToServers(coreUserId: string, guildIds: string[]): Promise<JoinServerResult[]>
 
 	/**
-	 * Join a user to multiple Discord servers with role assignments
-	 * @param coreUserId - Core user ID
-	 * @param joinRequests - Array of guild join requests with role IDs and optional nickname
-	 * @returns Results for each guild join attempt
-	 */
-	joinUserToServersWithRoles(
-		coreUserId: string,
-		joinRequests: Array<{ guildId: string; roleIds: string[]; nickname?: string }>
-	): Promise<JoinServerResult[]>
-
-	/**
 	 * Send a message to a Discord channel using the bot token
 	 * @param guildId - Discord guild/server ID
 	 * @param channelId - Discord channel ID
@@ -229,4 +218,46 @@ export interface Discord {
 		channelId: string,
 		message: MessageContent
 	): Promise<SendMessageResult>
+
+	/**
+	 * Get all Discord servers/guilds that a user is currently a member of
+	 * @param coreUserId - Core user ID
+	 * @returns Array of guilds the user is a member of
+	 */
+	getUserGuilds(
+		coreUserId: string
+	): Promise<Array<{ id: string; name: string; icon?: string; owner: boolean; permissions: string }>>
+
+	/**
+	 * Update Discord roles for a user who is already a member of servers
+	 * Does NOT invite them to new servers
+	 * @param coreUserId - Core user ID
+	 * @param updateRequests - Array of guild IDs, role sets, and optional managed role IDs
+	 * @returns Array of update results
+	 */
+	updateUserRoles(
+		coreUserId: string,
+		updateRequests: Array<{
+			guildId: string
+			roleIds: string[]
+			managedRoleIds?: string[] // All system-managed role IDs for this guild
+		}>
+	): Promise<
+		Array<{
+			guildId: string
+			success: boolean
+			errorMessage?: string
+			rolesAdded?: string[]
+			rolesRemoved?: string[]
+		}>
+	>
+
+	/**
+	 * Update user's nickname on specified Discord servers
+	 * This is a lightweight operation that only updates the display name
+	 * @param coreUserId - Core user ID
+	 * @param guildIds - Array of Discord guild/server IDs to update nickname on
+	 * @param nickname - New nickname to set
+	 */
+	updateUserNickname(coreUserId: string, guildIds: string[], nickname: string): Promise<void>
 }

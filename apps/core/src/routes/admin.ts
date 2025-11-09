@@ -21,6 +21,7 @@ import { SessionService } from '../services/session.service'
 import { UserService } from '../services/user.service'
 
 import type { Discord } from '@repo/discord'
+import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Hr } from '@repo/hr'
 import type { App } from '../context'
 
@@ -367,7 +368,7 @@ app.delete('/users/:userId/characters/:characterId', requireAuth(), requireAdmin
 		}
 
 		// Revoke ESI token
-		const eveTokenStore = getStub<import('@repo/eve-token-store').EveTokenStore>(
+		const eveTokenStore = getStub<EveTokenStore>(
 			c.env.EVE_TOKEN_STORE,
 			'default'
 		)
@@ -453,8 +454,7 @@ app.post('/users/:userId/discord/join-servers', requireAuth(), requireAdmin(), a
 	}
 
 	try {
-		const result = await discordService.joinUserToCorporationServers(c.env, userId)
-
+		const result = await discordService.syncUserDiscordAccess(c.env, userId)
 		return c.json(result)
 	} catch (error) {
 		logger.error('Error joining user to Discord servers:', error)

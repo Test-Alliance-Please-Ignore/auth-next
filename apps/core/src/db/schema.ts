@@ -1,4 +1,4 @@
-import { relations } from 'drizzle-orm'
+import { relations, sql } from 'drizzle-orm'
 import {
 	boolean,
 	index,
@@ -295,7 +295,10 @@ export const discordServers = pgTable(
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
-	(table) => [index('discord_servers_guild_id_idx').on(table.guildId)]
+	(table) => [
+		index('discord_servers_guild_id_idx').on(table.guildId),
+		index('discord_servers_active_idx').on(table.isActive).where(sql`${table.isActive} = true`),
+	]
 )
 
 /**
@@ -327,6 +330,9 @@ export const discordRoles = pgTable(
 	},
 	(table) => [
 		index('discord_roles_server_id_idx').on(table.discordServerId),
+		index('discord_roles_server_auto_apply_active_idx')
+			.on(table.discordServerId, table.autoApply, table.isActive)
+			.where(sql`${table.autoApply} = true AND ${table.isActive} = true`),
 		unique('unique_discord_server_role').on(table.discordServerId, table.roleId),
 	]
 )
@@ -359,6 +365,9 @@ export const corporationDiscordServers = pgTable(
 	(table) => [
 		index('corp_discord_servers_corp_id_idx').on(table.corporationId),
 		index('corp_discord_servers_server_id_idx').on(table.discordServerId),
+		index('corp_discord_servers_server_auto_assign_idx')
+			.on(table.discordServerId, table.autoAssignRoles)
+			.where(sql`${table.autoAssignRoles} = true`),
 		unique('unique_corp_discord_server').on(table.corporationId, table.discordServerId),
 	]
 )

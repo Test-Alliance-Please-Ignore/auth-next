@@ -12,7 +12,10 @@
 	"observability": {
 		"enabled": true
 	},
-	"vars": {},
+	"vars": {
+		// Maximum number of snapshots to retain per location (default: 168 = 1 week of hourly snapshots)
+		"MAX_SNAPSHOTS_PER_LOCATION": 168
+	},
 	"services": [
 		{
 			"binding": "EVE_STATIC_DATA",

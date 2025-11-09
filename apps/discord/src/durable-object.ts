@@ -7,6 +7,7 @@ import { logger } from '@repo/hono-helpers'
 import { createDb } from './db'
 import { discordTokens, discordUsers } from './db/schema'
 import { DiscordBotService } from './services/discord-bot.service'
+import { calculateRoleChanges } from './utils/role-calculation'
 
 import type {
 	Discord,
@@ -39,10 +40,109 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 		this.db = createDb(env.DATABASE_URL)
 	}
 
+	// ==================== HELPER FUNCTIONS ====================
+
+	/**
+	 * Helper to get user by core user ID with standard error handling
+	 */
+	private async getUserByCoreUserId(coreUserId: string) {
+		const user = await this.db.query.discordUsers.findFirst({
+			where: eq(discordUsers.coreUserId, coreUserId),
+		})
+
+		if (!user) {
+			logger.error('[DiscordDO] User not found by core user ID', { coreUserId })
+		}
+
+		return user
+	}
+
+	/**
+	 * Helper to get a valid access token for a user, refreshing if necessary
+	 * @returns Decrypted access token or null if unable to get valid token
+	 */
+	private async getValidAccessToken(userId: string, discordUserId: string): Promise<string | null> {
+		// Get user's token
+		const tokenRecord = await this.db.query.discordTokens.findFirst({
+			where: eq(discordTokens.userId, userId),
+		})
+
+		if (!tokenRecord) {
+			logger.error('[DiscordDO] Token not found for user', { discordUserId })
+			return null
+		}
+
+		// Check if token is expired
+		if (tokenRecord.expiresAt < new Date()) {
+			logger.info('[DiscordDO] Token expired, attempting refresh', { discordUserId })
+
+			// Try to refresh the token
+			const refreshSuccess = await this.refreshToken(discordUserId)
+
+			if (!refreshSuccess) {
+				logger.error('[DiscordDO] Failed to refresh expired token', { discordUserId })
+				return null
+			}
+
+			// Get the refreshed token
+			const refreshedToken = await this.db.query.discordTokens.findFirst({
+				where: eq(discordTokens.userId, userId),
+			})
+
+			if (!refreshedToken) {
+				logger.error('[DiscordDO] Failed to retrieve refreshed token', { discordUserId })
+				return null
+			}
+
+			return await this.decrypt(refreshedToken.accessToken)
+		}
+
+		// Token is valid, decrypt and return it
+		return await this.decrypt(tokenRecord.accessToken)
+	}
+
+	/**
+	 * Helper to handle authentication results and update user status
+	 */
+	private async handleAuthResults(
+		results: Array<{ success?: boolean; authRevoked?: boolean }>,
+		userId: string,
+		coreUserId: string
+	): Promise<void> {
+		const hasRevokedAuth = results.some((result) => result.authRevoked === true)
+		const hasSuccessfulAuth = results.some((result) => result.success === true)
+
+		if (hasRevokedAuth) {
+			// Mark user as having revoked authorization
+			await this.db
+				.update(discordUsers)
+				.set({
+					authRevoked: true,
+					authRevokedAt: new Date(),
+					updatedAt: new Date(),
+				})
+				.where(eq(discordUsers.id, userId))
+
+			logger.warn('[DiscordDO] Marked user as having revoked Discord authorization', {
+				userId,
+				coreUserId,
+			})
+		} else if (hasSuccessfulAuth) {
+			// Update last successful auth timestamp
+			await this.db
+				.update(discordUsers)
+				.set({
+					lastSuccessfulAuth: new Date(),
+					updatedAt: new Date(),
+				})
+				.where(eq(discordUsers.id, userId))
+		}
+	}
+
+	// ==================== PUBLIC RPC METHODS ====================
+
 	/**
 	 * Get Discord profile by core user ID
-	 * @param coreUserId - Core user ID to look up
-	 * @returns Discord user info or null if not found
 	 */
 	async getProfileByCoreUserId(coreUserId: string): Promise<{
 		userId: string
@@ -50,13 +150,8 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 		discriminator: string
 		scopes: string[]
 	} | null> {
-		const user = await this.db.query.discordUsers.findFirst({
-			where: eq(discordUsers.coreUserId, coreUserId),
-		})
-
-		if (!user) {
-			return null
-		}
+		const user = await this.getUserByCoreUserId(coreUserId)
+		if (!user) return null
 
 		return {
 			userId: user.userId,
@@ -68,8 +163,6 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 
 	/**
 	 * Get Discord user status including auth revocation info
-	 * @param coreUserId - Core user ID
-	 * @returns Discord user status or null if not found
 	 */
 	async getDiscordUserStatus(coreUserId: string): Promise<{
 		userId: string
@@ -82,13 +175,8 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 		createdAt: Date
 		updatedAt: Date
 	} | null> {
-		const user = await this.db.query.discordUsers.findFirst({
-			where: eq(discordUsers.coreUserId, coreUserId),
-		})
-
-		if (!user) {
-			return null
-		}
+		const user = await this.getUserByCoreUserId(coreUserId)
+		if (!user) return null
 
 		return {
 			userId: user.userId,
@@ -105,18 +193,10 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 
 	/**
 	 * Manually revoke Discord authorization for a user (admin action)
-	 * @param coreUserId - Core user ID
-	 * @returns Success status
 	 */
 	async revokeAuthorization(coreUserId: string): Promise<boolean> {
-		const user = await this.db.query.discordUsers.findFirst({
-			where: eq(discordUsers.coreUserId, coreUserId),
-		})
-
-		if (!user) {
-			logger.error('[DiscordDO] User not found for manual revocation', { coreUserId })
-			return false
-		}
+		const user = await this.getUserByCoreUserId(coreUserId)
+		if (!user) return false
 
 		if (user.authRevoked) {
 			logger.warn('[DiscordDO] Authorization already revoked', { coreUserId })
@@ -143,17 +223,10 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 
 	/**
 	 * Refresh token by core user ID
-	 * @param coreUserId - Core user ID
-	 * @returns Success status
 	 */
 	async refreshTokenByCoreUserId(coreUserId: string): Promise<boolean> {
-		const user = await this.db.query.discordUsers.findFirst({
-			where: eq(discordUsers.coreUserId, coreUserId),
-		})
-
-		if (!user) {
-			return false
-		}
+		const user = await this.getUserByCoreUserId(coreUserId)
+		if (!user) return false
 
 		return this.refreshToken(user.userId)
 	}
@@ -191,11 +264,6 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 
 	/**
 	 * Join a user to one or more Discord servers
-	 * Uses the user's OAuth token and bot token to add them directly to servers
-	 *
-	 * @param coreUserId - Core user ID
-	 * @param guildIds - Array of Discord guild/server IDs to join
-	 * @returns Array of results for each guild
 	 */
 	async joinUserToServers(
 		coreUserId: string,
@@ -210,13 +278,8 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 		}>
 	> {
 		// Get user from database
-		const user = await this.db.query.discordUsers.findFirst({
-			where: eq(discordUsers.coreUserId, coreUserId),
-		})
-
+		const user = await this.getUserByCoreUserId(coreUserId)
 		if (!user) {
-			logger.error('[DiscordDO] User not found by core user ID', { coreUserId })
-			// Return failure for all guilds
 			return guildIds.map((guildId) => ({
 				guildId,
 				success: false,
@@ -224,76 +287,22 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 			}))
 		}
 
-		// Get user's token
-		const tokenRecord = await this.db.query.discordTokens.findFirst({
-			where: eq(discordTokens.userId, user.id),
-		})
-
-		if (!tokenRecord) {
-			logger.error('[DiscordDO] Token not found for user', { userId: user.userId })
+		// Get valid access token
+		const accessToken = await this.getValidAccessToken(user.id, user.userId)
+		if (!accessToken) {
 			return guildIds.map((guildId) => ({
 				guildId,
 				success: false,
-				errorMessage: 'Discord token not found',
+				errorMessage:
+					'Discord token expired and refresh failed. Please re-link your Discord account.',
 			}))
 		}
 
-		// Check if token is expired
-		if (tokenRecord.expiresAt < new Date()) {
-			logger.info('[DiscordDO] Token expired, attempting refresh', { userId: user.userId })
-
-			// Try to refresh the token
-			const refreshSuccess = await this.refreshToken(user.userId)
-
-			if (!refreshSuccess) {
-				logger.error('[DiscordDO] Failed to refresh expired token', { userId: user.userId })
-				return guildIds.map((guildId) => ({
-					guildId,
-					success: false,
-					errorMessage:
-						'Discord token expired and refresh failed. Please re-link your Discord account.',
-				}))
-			}
-
-			// Get the refreshed token
-			const refreshedToken = await this.db.query.discordTokens.findFirst({
-				where: eq(discordTokens.userId, user.id),
-			})
-
-			if (!refreshedToken) {
-				return guildIds.map((guildId) => ({
-					guildId,
-					success: false,
-					errorMessage: 'Failed to retrieve refreshed token',
-				}))
-			}
-
-			// Use refreshed token
-			const decryptedAccessToken = await this.decrypt(refreshedToken.accessToken)
-			const botService = new DiscordBotService(this.env)
-
-			// Process each guild
-			const results = await Promise.all(
-				guildIds.map(async (guildId) => {
-					const result = await botService.addGuildMember(guildId, user.userId, decryptedAccessToken)
-					return {
-						guildId,
-						...result,
-					}
-				})
-			)
-
-			return results
-		}
-
-		// Token is valid, decrypt and use it
-		const decryptedAccessToken = await this.decrypt(tokenRecord.accessToken)
-		const botService = new DiscordBotService(this.env)
-
 		// Process each guild
+		const botService = new DiscordBotService(this.env)
 		const results = await Promise.all(
 			guildIds.map(async (guildId) => {
-				const result = await botService.addGuildMember(guildId, user.userId, decryptedAccessToken)
+				const result = await botService.addGuildMember(guildId, user.userId, accessToken)
 				return {
 					guildId,
 					...result,
@@ -301,296 +310,243 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 			})
 		)
 
+		// Track auth status
+		await this.handleAuthResults(results, user.id, coreUserId)
+
 		return results
 	}
 
 	/**
-	 * Join a user to multiple Discord servers with role assignments
-	 *
-	 * @param coreUserId - Core user ID
-	 * @param joinRequests - Array of guild join requests with role IDs
-	 * @returns Results for each guild join attempt
+	 * Get all Discord servers/guilds that a user is currently a member of
 	 */
-	async joinUserToServersWithRoles(
+	async getUserGuilds(
+		coreUserId: string
+	): Promise<
+		Array<{ id: string; name: string; icon?: string; owner: boolean; permissions: string }>
+	> {
+		try {
+			// Get user from database
+			const user = await this.getUserByCoreUserId(coreUserId)
+			if (!user) {
+				logger.error('[DiscordDO] User not found for getUserGuilds', { coreUserId })
+				return []
+			}
+
+			// Get valid access token
+			const accessToken = await this.getValidAccessToken(user.id, user.userId)
+			if (!accessToken) {
+				logger.error('[DiscordDO] Unable to get valid token for getUserGuilds', { coreUserId })
+				return []
+			}
+
+			// Fetch user's guilds from Discord API
+			const response = await fetch('https://discord.com/api/v10/users/@me/guilds', {
+				headers: {
+					Authorization: `Bearer ${accessToken}`,
+				},
+			})
+
+			if (!response.ok) {
+				logger.error('[DiscordDO] Failed to fetch user guilds', {
+					coreUserId,
+					status: response.status,
+					statusText: response.statusText,
+				})
+				return []
+			}
+
+			const guilds = (await response.json()) as Array<{
+				id: string
+				name: string
+				icon?: string
+				owner: boolean
+				permissions: string
+			}>
+
+			logger.info('[DiscordDO] Successfully fetched user guilds', {
+				coreUserId,
+				guildCount: guilds.length,
+			})
+
+			return guilds
+		} catch (error) {
+			logger.error('[DiscordDO] Error in getUserGuilds', {
+				coreUserId,
+				error: String(error),
+			})
+			return []
+		}
+	}
+
+	/**
+	 * Update Discord roles for a user who is already a member of servers
+	 */
+	async updateUserRoles(
 		coreUserId: string,
-		joinRequests: Array<{ guildId: string; roleIds: string[]; nickname?: string }>
+		updateRequests: Array<{ guildId: string; roleIds: string[]; managedRoleIds?: string[] }>
 	): Promise<
 		Array<{
 			guildId: string
-			guildName?: string
 			success: boolean
 			errorMessage?: string
-			alreadyMember?: boolean
+			rolesAdded?: string[]
+			rolesRemoved?: string[]
 		}>
 	> {
 		try {
-			logger.info('[DiscordDO] Starting joinUserToServersWithRoles', {
+			// Check if add-only mode is enabled (default: true)
+			const isAddOnlyMode = this.env.DISCORD_ROLE_ADD_ONLY_MODE !== 'false'
+
+			logger.info('[DiscordDO] Starting updateUserRoles', {
 				coreUserId,
-				requestCount: joinRequests.length,
-				requests: joinRequests.map((req) => ({
-					guildId: req.guildId,
-					roleCount: req.roleIds.length,
-					hasNickname: !!req.nickname,
-					nickname: req.nickname,
-				})),
+				requestCount: updateRequests.length,
+				addOnlyMode: isAddOnlyMode,
 			})
 
 			// Get user from database
-			const user = await this.db.query.discordUsers.findFirst({
-				where: eq(discordUsers.coreUserId, coreUserId),
-			})
-
+			const user = await this.getUserByCoreUserId(coreUserId)
 			if (!user) {
-				logger.error('[DiscordDO] User not found by core user ID', { coreUserId })
-				// Return failure for all guilds
-				return joinRequests.map((req) => ({
+				return updateRequests.map((req) => ({
 					guildId: req.guildId,
 					success: false,
 					errorMessage: 'Discord account not linked',
 				}))
 			}
 
-			logger.info('[DiscordDO] Found Discord user', {
-				coreUserId,
-				discordUserId: user.userId,
-			})
-
-			// Get user's token
-			const tokenRecord = await this.db.query.discordTokens.findFirst({
-				where: eq(discordTokens.userId, user.id),
-			})
-
-			if (!tokenRecord) {
-				logger.error('[DiscordDO] Token not found for user', { userId: user.userId })
-				return joinRequests.map((req) => ({
+			// Get valid access token
+			const accessToken = await this.getValidAccessToken(user.id, user.userId)
+			if (!accessToken) {
+				return updateRequests.map((req) => ({
 					guildId: req.guildId,
 					success: false,
-					errorMessage: 'Discord token not found',
+					errorMessage: 'Discord token expired and refresh failed',
 				}))
 			}
 
-			// Check if token is expired
-			if (tokenRecord.expiresAt < new Date()) {
-				logger.info('[DiscordDO] Token expired, attempting refresh', { userId: user.userId })
-
-				// Try to refresh the token
-				const refreshSuccess = await this.refreshToken(user.userId)
-
-				if (!refreshSuccess) {
-					logger.error('[DiscordDO] Failed to refresh expired token', { userId: user.userId })
-					return joinRequests.map((req) => ({
-						guildId: req.guildId,
-						success: false,
-						errorMessage:
-							'Discord token expired and refresh failed. Please re-link your Discord account.',
-					}))
-				}
-
-				// Get the refreshed token
-				const refreshedToken = await this.db.query.discordTokens.findFirst({
-					where: eq(discordTokens.userId, user.id),
-				})
-
-				if (!refreshedToken) {
-					return joinRequests.map((req) => ({
-						guildId: req.guildId,
-						success: false,
-						errorMessage: 'Failed to retrieve refreshed token',
-					}))
-				}
-
-				// Use refreshed token
-				const decryptedAccessToken = await this.decrypt(refreshedToken.accessToken)
-				const botService = new DiscordBotService(this.env)
-
-				logger.info('[DiscordDO] Processing guild join requests (with refreshed token)', {
-					coreUserId,
-					discordUserId: user.userId,
-					requestCount: joinRequests.length,
-				})
-
-				// Process each guild with role assignments
-				const results = await Promise.all(
-					joinRequests.map(async (req) => {
-						logger.info('[DiscordDO] Calling addGuildMember for guild (refreshed token)', {
+			// Process each update request
+			const botService = new DiscordBotService(this.env)
+			const results = await Promise.all(
+				updateRequests.map(async (req) => {
+					try {
+						logger.info('[DiscordDO] Updating roles for guild', {
 							coreUserId,
 							discordUserId: user.userId,
 							guildId: req.guildId,
-							roleCount: req.roleIds.length,
-							hasNickname: !!req.nickname,
-							nickname: req.nickname,
+							newRoleCount: req.roleIds.length,
 						})
 
-						const result = await botService.addGuildMember(
+						// First, get current member data to see existing roles
+						const currentMember = await botService.getGuildMember(req.guildId, user.userId)
+
+						if (!currentMember) {
+							logger.warn('[DiscordDO] User not a member of guild for role update', {
+								guildId: req.guildId,
+								userId: user.userId,
+							})
+							return {
+								guildId: req.guildId,
+								success: false,
+								errorMessage: 'User is not a member of this server',
+							}
+						}
+
+						const currentRoleIds = currentMember.roles || []
+						const managedRoleIds = req.managedRoleIds || []
+
+						// Calculate role changes using testable helper function
+					const { newRoleIds, rolesAdded, rolesRemoved } = calculateRoleChanges({
+						currentRoleIds,
+						requestedRoleIds: req.roleIds,
+						managedRoleIds,
+						isAddOnlyMode,
+					})
+
+						// Only update if there are changes
+						if (rolesAdded.length === 0 && rolesRemoved.length === 0) {
+							logger.info('[DiscordDO] No role changes needed', {
+								guildId: req.guildId,
+								userId: user.userId,
+								addOnlyMode: isAddOnlyMode,
+							})
+							return {
+								guildId: req.guildId,
+								success: true,
+								rolesAdded: [],
+								rolesRemoved: [],
+							}
+						}
+
+						// Update the roles
+						const updateResult = await botService.updateGuildMemberRoles(
 							req.guildId,
 							user.userId,
-							decryptedAccessToken,
-							req.roleIds,
-							req.nickname
+							newRoleIds
 						)
 
-						logger.info('[DiscordDO] addGuildMember result (refreshed token)', {
-							coreUserId,
-							discordUserId: user.userId,
+						if (!updateResult.success) {
+							logger.error('[DiscordDO] Failed to update roles', {
+								guildId: req.guildId,
+								userId: user.userId,
+								error: updateResult.errorMessage,
+							})
+							return {
+								guildId: req.guildId,
+								success: false,
+								errorMessage: updateResult.errorMessage,
+							}
+						}
+
+						// Count preserved manual roles in normal mode
+						const manualRolesPreserved = isAddOnlyMode
+							? 0
+							: currentRoleIds.filter((id) => !managedRoleIds.includes(id)).length
+
+						logger.info('[DiscordDO] Successfully updated roles', {
 							guildId: req.guildId,
-							success: result.success,
-							alreadyMember: result.alreadyMember,
-							errorMessage: result.errorMessage,
+							userId: user.userId,
+							rolesAdded: rolesAdded.length,
+							rolesRemoved: rolesRemoved.length,
+							addOnlyMode: isAddOnlyMode,
+							manualRolesPreserved,
 						})
 
 						return {
 							guildId: req.guildId,
-							...result,
+							success: true,
+							rolesAdded,
+							rolesRemoved,
 						}
-					})
-				)
-
-				logger.info('[DiscordDO] Completed all guild join requests (refreshed token)', {
-					coreUserId,
-					discordUserId: user.userId,
-					totalRequests: results.length,
-					successCount: results.filter((r) => r.success).length,
-					failureCount: results.filter((r) => !r.success).length,
-					results: results.map((r) => ({
-						guildId: r.guildId,
-						success: r.success,
-						alreadyMember: r.alreadyMember,
-						errorMessage: r.errorMessage,
-					})),
-				})
-
-				// Check if any result indicates revoked authorization
-				const hasRevokedAuth = results.some((result) => result.authRevoked === true)
-				const hasSuccessfulAuth = results.some((result) => result.success === true)
-
-				if (hasRevokedAuth) {
-					// Mark user as having revoked authorization
-					await this.db
-						.update(discordUsers)
-						.set({
-							authRevoked: true,
-							authRevokedAt: new Date(),
-							updatedAt: new Date(),
+					} catch (error) {
+						logger.error('[DiscordDO] Error updating roles for guild', {
+							guildId: req.guildId,
+							error: String(error),
 						})
-						.where(eq(discordUsers.id, user.id))
-
-					logger.warn('[DiscordDO] Marked user as having revoked Discord authorization', {
-						userId: user.userId,
-						coreUserId,
-					})
-				} else if (hasSuccessfulAuth) {
-					// Update last successful auth timestamp
-					await this.db
-						.update(discordUsers)
-						.set({
-							lastSuccessfulAuth: new Date(),
-							updatedAt: new Date(),
-						})
-						.where(eq(discordUsers.id, user.id))
-				}
-
-				return results
-			}
-
-			// Token is valid, decrypt and use it
-			const decryptedAccessToken = await this.decrypt(tokenRecord.accessToken)
-			const botService = new DiscordBotService(this.env)
-
-			logger.info('[DiscordDO] Processing guild join requests', {
-				coreUserId,
-				discordUserId: user.userId,
-				requestCount: joinRequests.length,
-			})
-
-			// Process each guild with role assignments
-			const results = await Promise.all(
-				joinRequests.map(async (req) => {
-					logger.info('[DiscordDO] Calling addGuildMember for guild', {
-						coreUserId,
-						discordUserId: user.userId,
-						guildId: req.guildId,
-						roleCount: req.roleIds.length,
-						hasNickname: !!req.nickname,
-						nickname: req.nickname,
-					})
-
-					const result = await botService.addGuildMember(
-						req.guildId,
-						user.userId,
-						decryptedAccessToken,
-						req.roleIds,
-						req.nickname
-					)
-
-					logger.info('[DiscordDO] addGuildMember result', {
-						coreUserId,
-						discordUserId: user.userId,
-						guildId: req.guildId,
-						success: result.success,
-						alreadyMember: result.alreadyMember,
-						errorMessage: result.errorMessage,
-					})
-
-					return {
-						guildId: req.guildId,
-						...result,
+						return {
+							guildId: req.guildId,
+							success: false,
+							errorMessage: error instanceof Error ? error.message : 'Unknown error',
+						}
 					}
 				})
 			)
 
-			logger.info('[DiscordDO] Completed all guild join requests', {
+			logger.info('[DiscordDO] Completed role updates', {
 				coreUserId,
-				discordUserId: user.userId,
 				totalRequests: results.length,
 				successCount: results.filter((r) => r.success).length,
 				failureCount: results.filter((r) => !r.success).length,
-				results: results.map((r) => ({
-					guildId: r.guildId,
-					success: r.success,
-					alreadyMember: r.alreadyMember,
-					errorMessage: r.errorMessage,
-				})),
 			})
 
-			// Check if any result indicates revoked authorization
-			const hasRevokedAuth = results.some((result) => result.authRevoked === true)
-			const hasSuccessfulAuth = results.some((result) => result.success === true)
-
-			if (hasRevokedAuth) {
-				// Mark user as having revoked authorization
-				await this.db
-					.update(discordUsers)
-					.set({
-						authRevoked: true,
-						authRevokedAt: new Date(),
-						updatedAt: new Date(),
-					})
-					.where(eq(discordUsers.id, user.id))
-
-				logger.warn('[DiscordDO] Marked user as having revoked Discord authorization', {
-					userId: user.userId,
-					coreUserId,
-				})
-			} else if (hasSuccessfulAuth) {
-				// Update last successful auth timestamp
-				await this.db
-					.update(discordUsers)
-					.set({
-						lastSuccessfulAuth: new Date(),
-						updatedAt: new Date(),
-					})
-					.where(eq(discordUsers.id, user.id))
-			}
+			// Track auth status
+			await this.handleAuthResults(results, user.id, coreUserId)
 
 			return results
 		} catch (error) {
-			logger.error('[DiscordDO] Error in joinUserToServersWithRoles', {
-				error: String(error),
-				errorMessage: error instanceof Error ? error.message : 'Unknown error',
+			logger.error('[DiscordDO] Error in updateUserRoles', {
 				coreUserId,
+				error: String(error),
 			})
-			// Return failure for all guilds
-			return joinRequests.map((req) => ({
+			return updateRequests.map((req) => ({
 				guildId: req.guildId,
 				success: false,
 				errorMessage: error instanceof Error ? error.message : 'Unknown error occurred',
@@ -599,7 +555,189 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 	}
 
 	/**
-	 * Manually refresh a token (private - used internally)
+	 * Update user's nickname on specified Discord servers
+	 */
+	async updateUserNickname(
+		coreUserId: string,
+		guildIds: string[],
+		nickname: string
+	): Promise<void> {
+		try {
+			// Get user from database
+			const user = await this.getUserByCoreUserId(coreUserId)
+			if (!user) {
+				logger.warn('[DiscordDO] User not found for nickname update', { coreUserId })
+				return
+			}
+
+			// Get valid access token (needed for member verification)
+			const accessToken = await this.getValidAccessToken(user.id, user.userId)
+			if (!accessToken) {
+				logger.warn('[DiscordDO] No valid token for nickname update', { coreUserId })
+				return
+			}
+
+			const botService = new DiscordBotService(this.env)
+
+			// Update nickname on each guild
+			await Promise.all(
+				guildIds.map(async (guildId) => {
+					try {
+						// Get current member to retrieve current roles
+						const currentMember = await botService.getGuildMember(guildId, user.userId)
+
+						if (!currentMember) {
+							logger.warn('[DiscordDO] User not a member of guild for nickname update', {
+								guildId,
+								userId: user.userId,
+							})
+							return
+						}
+
+						const currentRoleIds = currentMember.roles || []
+
+						// Update roles (keeping them the same) and set nickname
+						await botService.updateGuildMemberRoles(guildId, user.userId, currentRoleIds, nickname)
+					} catch (error) {
+						logger.error('[DiscordDO] Error updating nickname for guild', {
+							guildId,
+							userId: user.userId,
+							error: String(error),
+						})
+					}
+				})
+			)
+		} catch (error) {
+			logger.error('[DiscordDO] Error in updateUserNickname', {
+				coreUserId,
+				error: String(error),
+			})
+		}
+	}
+
+	/**
+	 * Send a message to a Discord channel using the bot token
+	 */
+	async sendMessage(
+		guildId: string,
+		channelId: string,
+		message: MessageContent
+	): Promise<SendMessageResult> {
+		try {
+			// Generate dynamic proxy URL using rotating ports
+			const portStart = Number(this.env.DISCORD_PROXY_PORT_START)
+			const portCount = Number(this.env.DISCORD_PROXY_PORT_COUNT)
+			const portEnd = portStart + portCount - 1
+			const port = generateShardKey(portStart, portEnd)
+
+			const proxyUrl = `https://${this.env.DISCORD_PROXY_USERNAME}:${this.env.DISCORD_PROXY_PASSWORD}@${this.env.DISCORD_PROXY_HOST}:${port}`
+
+			// Build the message payload
+			const payload: any = {
+				content: message.content,
+			}
+
+			// Add embeds if provided
+			if (message.embeds && message.embeds.length > 0) {
+				payload.embeds = message.embeds
+			}
+
+			// Handle mention permissions
+			if (message.allowEveryone === false) {
+				payload.allowed_mentions = {
+					parse: [], // Don't parse any mentions
+				}
+			} else if (message.allowEveryone === true) {
+				payload.allowed_mentions = {
+					parse: ['everyone', 'roles', 'users'],
+				}
+			} else {
+				// Default: allow user and role mentions but not @everyone/@here
+				payload.allowed_mentions = {
+					parse: ['roles', 'users'],
+				}
+			}
+
+			// Send message via Discord API
+			const url = `https://discord.com/api/v10/channels/${channelId}/messages`
+			const response = await fetch(url, {
+				method: 'POST',
+				headers: {
+					Authorization: `Bot ${this.env.DISCORD_BOT_TOKEN}`,
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify(payload),
+				// @ts-expect-error - Cloudflare Workers supports proxy in fetch
+				proxy: proxyUrl,
+			})
+
+			if (!response.ok) {
+				const errorData = (await response.json().catch(() => ({ message: 'Unknown error' }))) as {
+					message?: string
+				}
+
+				// Check for rate limit
+				if (response.status === 429) {
+					const retryAfter = response.headers.get('X-RateLimit-Reset-After')
+					return {
+						success: false,
+						error: 'Rate limited',
+						retryAfter: retryAfter ? Number.parseInt(retryAfter, 10) : undefined,
+					}
+				}
+
+				// Check for permission errors
+				if (response.status === 403) {
+					return {
+						success: false,
+						error: 'Missing permissions to send message in this channel',
+					}
+				}
+
+				// Check for not found
+				if (response.status === 404) {
+					return {
+						success: false,
+						error: 'Channel not found',
+					}
+				}
+
+				return {
+					success: false,
+					error: errorData.message || `Discord API error: ${response.status}`,
+				}
+			}
+
+			const result = (await response.json()) as { id: string }
+
+			logger.info('[DiscordDO] Successfully sent message', {
+				guildId,
+				channelId,
+				messageId: result.id,
+			})
+
+			return {
+				success: true,
+				messageId: result.id,
+			}
+		} catch (error) {
+			logger.error('[DiscordDO] Error sending message', {
+				guildId,
+				channelId,
+				error: String(error),
+			})
+
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to send message',
+			}
+		}
+	}
+
+	// ==================== PRIVATE HELPER METHODS ====================
+
+	/**
+	 * Manually refresh a token
 	 */
 	private async refreshToken(userId: string): Promise<boolean> {
 		try {
@@ -611,189 +749,90 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 				},
 			})
 
-			if (!user) {
-				logger.error('User not found:', userId)
+			if (!user || user.tokens.length === 0) {
+				logger.error('[DiscordDO] User or tokens not found for refresh', { userId })
 				return false
 			}
 
-			// Get token record
-			const tokenRecord = await this.db.query.discordTokens.findFirst({
-				where: eq(discordTokens.userId, user.id),
+			const token = user.tokens[0]
+
+			if (!token.refreshToken) {
+				logger.error('[DiscordDO] No refresh token available', { userId })
+				return false
+			}
+
+			const decryptedRefreshToken = await this.decrypt(token.refreshToken)
+
+			// Generate dynamic proxy URL
+			const portStart = Number(this.env.DISCORD_PROXY_PORT_START)
+			const portCount = Number(this.env.DISCORD_PROXY_PORT_COUNT)
+			const portEnd = portStart + portCount - 1
+			const port = generateShardKey(portStart, portEnd)
+
+			const proxyUrl = `https://${this.env.DISCORD_PROXY_USERNAME}:${this.env.DISCORD_PROXY_PASSWORD}@${this.env.DISCORD_PROXY_HOST}:${port}`
+
+			// Prepare the token refresh request
+			const params = new URLSearchParams({
+				grant_type: 'refresh_token',
+				refresh_token: decryptedRefreshToken,
 			})
 
-			if (!tokenRecord || !tokenRecord.refreshToken) {
-				logger.error('Token or refresh token not found')
+			const response = await fetch(this.env.DISCORD_TOKEN_URL, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/x-www-form-urlencoded',
+					Authorization: `Basic ${btoa(`${this.env.DISCORD_CLIENT_ID}:${this.env.DISCORD_CLIENT_SECRET}`)}`,
+				},
+				body: params.toString(),
+				// @ts-expect-error - Cloudflare Workers supports proxy in fetch
+				proxy: proxyUrl,
+			})
+
+			if (!response.ok) {
+				const errorText = await response.text()
+				logger.error('[DiscordDO] Failed to refresh token', {
+					userId,
+					status: response.status,
+					error: errorText,
+				})
 				return false
 			}
 
-			// Decrypt refresh token
-			const refreshToken = await this.decrypt(tokenRecord.refreshToken)
+			const data = (await response.json()) as DiscordTokenResponse
+			const newExpiresAt = new Date(Date.now() + data.expires_in * 1000)
 
-			// Refresh the token
-			const newTokenResponse = await this.refreshAccessToken(refreshToken)
+			// Encrypt the new tokens
+			const encryptedAccessToken = await this.encrypt(data.access_token)
+			const encryptedRefreshToken = await this.encrypt(data.refresh_token || decryptedRefreshToken)
 
-			// Calculate new expiration
-			const expiresAt = new Date(Date.now() + newTokenResponse.expires_in * 1000)
-
-			// Encrypt new tokens
-			const encryptedAccessToken = await this.encrypt(newTokenResponse.access_token)
-			const encryptedRefreshToken = newTokenResponse.refresh_token
-				? await this.encrypt(newTokenResponse.refresh_token)
-				: tokenRecord.refreshToken
-
-			// Update token in database
+			// Update the tokens in the database
 			await this.db
 				.update(discordTokens)
 				.set({
 					accessToken: encryptedAccessToken,
 					refreshToken: encryptedRefreshToken,
-					expiresAt,
+					expiresAt: newExpiresAt,
 					updatedAt: new Date(),
 				})
-				.where(eq(discordTokens.id, tokenRecord.id))
+				.where(eq(discordTokens.id, token.id))
+
+			logger.info('[DiscordDO] Successfully refreshed token', {
+				userId,
+				newExpiresAt,
+			})
 
 			return true
 		} catch (error) {
-			logger.error('Error refreshing token:', error)
+			logger.error('[DiscordDO] Error refreshing token', {
+				userId,
+				error,
+			})
 			return false
 		}
 	}
 
 	/**
-	 * Get access token for a user (decrypted and auto-refreshed if needed)
-	 * @param userId - Discord user ID
-	 * @returns Access token or null if not found
-	 */
-	private async getAccessToken(userId: string): Promise<string | null> {
-		const user = await this.db.query.discordUsers.findFirst({
-			where: eq(discordUsers.userId, userId),
-		})
-
-		if (!user) {
-			return null
-		}
-
-		const tokenRecord = await this.db.query.discordTokens.findFirst({
-			where: eq(discordTokens.userId, user.id),
-		})
-
-		if (!tokenRecord) {
-			return null
-		}
-
-		// Check if token is expired
-		if (tokenRecord.expiresAt < new Date()) {
-			// Try to refresh
-			const refreshed = await this.refreshToken(userId)
-			if (!refreshed) {
-				return null
-			}
-
-			// Fetch updated token
-			const updatedToken = await this.db.query.discordTokens.findFirst({
-				where: eq(discordTokens.userId, user.id),
-			})
-
-			if (!updatedToken) {
-				return null
-			}
-
-			return this.decrypt(updatedToken.accessToken)
-		}
-
-		return this.decrypt(tokenRecord.accessToken)
-	}
-
-	/**
-	 * Make an authenticated Discord API request
-	 * @param userId - Discord user ID for authentication
-	 * @param path - Discord API path (e.g., '/users/@me/guilds')
-	 * @param options - Optional fetch options (method, body, headers, etc.)
-	 * @returns Response from Discord API
-	 * @throws Error if user has no valid token or API request fails
-	 *
-	 * @example
-	 * ```ts
-	 * // Get user's guilds
-	 * const guilds = await this.fetchDiscordApi<Guild[]>(userId, '/users/@me/guilds')
-	 *
-	 * // Add user to guild
-	 * await this.fetchDiscordApi(userId, `/guilds/${guildId}/members/${userId}`, {
-	 *   method: 'PUT',
-	 *   body: JSON.stringify({ access_token: token })
-	 * })
-	 * ```
-	 */
-	private async fetchDiscordApi<T = unknown>(
-		userId: string,
-		path: string,
-		options?: RequestInit
-	): Promise<T> {
-		// Get access token for the user
-		const accessToken = await this.getAccessToken(userId)
-
-		if (!accessToken) {
-			throw new Error(`No valid access token for user ${userId}`)
-		}
-
-		// Build full URL
-		const url = `https://discord.com/api/v10${path}`
-
-		// Merge headers with authorization
-		const headers = new Headers(options?.headers)
-		headers.set('Authorization', `Bearer ${accessToken}`)
-		headers.set('Content-Type', 'application/json')
-
-		// Make the request
-		const response = await fetch(url, {
-			...options,
-			headers,
-		})
-
-		if (!response.ok) {
-			const errorText = await response.text()
-			throw new Error(
-				`Discord API request failed: ${response.status} ${response.statusText} - ${errorText}`
-			)
-		}
-
-		// Handle 204 No Content responses
-		if (response.status === 204) {
-			return undefined as T
-		}
-
-		return response.json<T>()
-	}
-
-	/**
-	 * Refresh access token using refresh token
-	 */
-	private async refreshAccessToken(refreshToken: string): Promise<DiscordTokenResponse> {
-		const response = await fetch(this.env.DISCORD_TOKEN_URL, {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/x-www-form-urlencoded',
-				'User-Agent': 'DiscordBot (https://pleaseignore.app, 1.0.0)',
-				Accept: 'application/json',
-			},
-			body: new URLSearchParams({
-				grant_type: 'refresh_token',
-				refresh_token: refreshToken,
-				client_id: this.env.DISCORD_CLIENT_ID,
-				client_secret: this.env.DISCORD_CLIENT_SECRET,
-			}),
-		})
-
-		if (!response.ok) {
-			const error = await response.text()
-			throw new Error(`Token refresh failed: ${error}`)
-		}
-
-		return response.json<DiscordTokenResponse>()
-	}
-
-	/**
-	 * Store token in database (upsert)
+	 * Store Discord tokens (private - for internal use)
 	 */
 	private async storeToken(
 		userId: string,
@@ -801,36 +840,60 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 		discriminator: string,
 		scopes: string[],
 		accessToken: string,
-		refreshToken: string | null,
+		refreshToken: string,
 		expiresAt: Date,
-		coreUserId?: string
+		coreUserId: string
 	): Promise<void> {
 		// Encrypt tokens
 		const encryptedAccessToken = await this.encrypt(accessToken)
-		const encryptedRefreshToken = refreshToken ? await this.encrypt(refreshToken) : null
+		const encryptedRefreshToken = await this.encrypt(refreshToken)
 
-		// Check if user exists
+		// Check if user already exists
 		let user = await this.db.query.discordUsers.findFirst({
 			where: eq(discordUsers.userId, userId),
 		})
 
 		if (user) {
-			// Update existing user (clear authRevoked and set lastSuccessfulAuth when re-linking)
+			// Update existing user
 			await this.db
 				.update(discordUsers)
 				.set({
 					username,
 					discriminator,
 					scopes: JSON.stringify(scopes),
-					coreUserId: coreUserId ?? user.coreUserId,
-					authRevoked: false,
+					coreUserId,
+					authRevoked: false, // Clear revoked status when re-linking
 					authRevokedAt: null,
 					lastSuccessfulAuth: new Date(),
 					updatedAt: new Date(),
 				})
 				.where(eq(discordUsers.id, user.id))
+
+			// Update or create token
+			const existingToken = await this.db.query.discordTokens.findFirst({
+				where: eq(discordTokens.userId, user.id),
+			})
+
+			if (existingToken) {
+				await this.db
+					.update(discordTokens)
+					.set({
+						accessToken: encryptedAccessToken,
+						refreshToken: encryptedRefreshToken,
+						expiresAt,
+						updatedAt: new Date(),
+					})
+					.where(eq(discordTokens.id, existingToken.id))
+			} else {
+				await this.db.insert(discordTokens).values({
+					userId: user.id,
+					accessToken: encryptedAccessToken,
+					refreshToken: encryptedRefreshToken,
+					expiresAt,
+				})
+			}
 		} else {
-			// Insert new user
+			// Create new user
 			const [newUser] = await this.db
 				.insert(discordUsers)
 				.values({
@@ -839,98 +902,29 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 					discriminator,
 					scopes: JSON.stringify(scopes),
 					coreUserId,
-				})
-				.returning()
-
-			user = newUser
-		}
-
-		if (!user) {
-			throw new Error('Failed to create or update user')
-		}
-
-		// Check if token exists
-		const existingToken = await this.db.query.discordTokens.findFirst({
-			where: eq(discordTokens.userId, user.id),
-		})
-
-		if (existingToken) {
-			// Update existing token (set lastSuccessfulAuth when re-linking)
-			await this.db
-				.update(discordTokens)
-				.set({
-					accessToken: encryptedAccessToken,
-					refreshToken: encryptedRefreshToken,
-					expiresAt,
+					authRevoked: false,
 					lastSuccessfulAuth: new Date(),
-					updatedAt: new Date(),
 				})
-				.where(eq(discordTokens.id, existingToken.id))
-		} else {
-			// Insert new token
+				.returning({ id: discordUsers.id })
+
+			// Create token
 			await this.db.insert(discordTokens).values({
-				userId: user.id,
+				userId: newUser.id,
 				accessToken: encryptedAccessToken,
 				refreshToken: encryptedRefreshToken,
 				expiresAt,
-				lastSuccessfulAuth: new Date(),
 			})
 		}
+
+		logger.info('[DiscordDO] Stored tokens successfully', {
+			userId,
+			username,
+			coreUserId,
+		})
 	}
 
 	/**
-	 * Encrypt data using AES-GCM
-	 */
-	private async encrypt(data: string): Promise<string> {
-		const key = await this.getEncryptionKey()
-		const iv = crypto.getRandomValues(new Uint8Array(12))
-		const encodedData = new TextEncoder().encode(data)
-
-		const encryptedData = await crypto.subtle.encrypt(
-			{
-				name: 'AES-GCM',
-				iv,
-			},
-			key,
-			encodedData
-		)
-
-		// Combine IV and encrypted data
-		const combined = new Uint8Array(iv.length + encryptedData.byteLength)
-		combined.set(iv)
-		combined.set(new Uint8Array(encryptedData), iv.length)
-
-		// Return as base64
-		return btoa(String.fromCharCode(...combined))
-	}
-
-	/**
-	 * Decrypt data using AES-GCM
-	 */
-	private async decrypt(encryptedData: string): Promise<string> {
-		const key = await this.getEncryptionKey()
-
-		// Decode from base64
-		const combined = Uint8Array.from(atob(encryptedData), (c) => c.charCodeAt(0))
-
-		// Extract IV and data
-		const iv = combined.slice(0, 12)
-		const data = combined.slice(12)
-
-		const decryptedData = await crypto.subtle.decrypt(
-			{
-				name: 'AES-GCM',
-				iv,
-			},
-			key,
-			data
-		)
-
-		return new TextDecoder().decode(decryptedData)
-	}
-
-	/**
-	 * Get or create encryption key from environment
+	 * Get encryption key from environment
 	 */
 	private async getEncryptionKey(): Promise<CryptoKey> {
 		// Convert hex string to bytes
@@ -945,147 +939,39 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 	}
 
 	/**
-	 * Send a message to a Discord channel using the bot token
-	 * @param guildId - Discord guild/server ID (used for logging)
-	 * @param channelId - Discord channel ID
-	 * @param message - Message content to send
-	 * @returns Result indicating success or failure
+	 * Encrypt data using Web Crypto API
 	 */
-	async sendMessage(
-		guildId: string,
-		channelId: string,
-		message: MessageContent
-	): Promise<SendMessageResult> {
-		try {
-			// Generate dynamic proxy URL for rate limit handling
-			const proxyUrl = this.getDiscordProxyUrl()
+	private async encrypt(data: string): Promise<string> {
+		const key = await this.getEncryptionKey()
+		const iv = crypto.getRandomValues(new Uint8Array(12))
+		const encodedData = new TextEncoder().encode(data)
 
-			// Build allowed_mentions based on allowEveryone flag
-			const allowedMentions: any = {
-				parse: message.allowEveryone ? ['everyone', 'roles', 'users'] : ['users', 'roles'],
-			}
+		const encryptedData = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encodedData)
 
-			// Build request body
-			const body: any = {
-				content: message.content,
-				allowed_mentions: allowedMentions,
-			}
+		// Combine IV and encrypted data
+		const combined = new Uint8Array(iv.length + encryptedData.byteLength)
+		combined.set(iv)
+		combined.set(new Uint8Array(encryptedData), iv.length)
 
-			// Add embeds if provided
-			if (message.embeds && message.embeds.length > 0) {
-				body.embeds = message.embeds
-			}
-
-			// Make API call to send message
-			const url = `https://discord.com/api/v10/channels/${channelId}/messages`
-			const response = await fetch(url, {
-				method: 'POST',
-				headers: {
-					Authorization: `Bot ${this.env.DISCORD_BOT_TOKEN}`,
-					'Content-Type': 'application/json',
-				},
-				body: JSON.stringify(body),
-				// @ts-expect-error - Cloudflare Workers supports proxy in fetch
-				proxy: proxyUrl,
-			})
-
-			// Handle success
-			if (response.ok) {
-				const result = await response.json<{ id: string }>()
-				logger.info('[DiscordDO] Successfully sent message', {
-					guildId,
-					channelId,
-					messageId: result.id,
-				})
-
-				return {
-					success: true,
-					messageId: result.id,
-				}
-			}
-
-			// Handle rate limiting (429)
-			if (response.status === 429) {
-				const rateLimitData = await response.json<{ retry_after: number }>()
-				logger.warn('[DiscordDO] Rate limited sending message', {
-					guildId,
-					channelId,
-					retryAfter: rateLimitData.retry_after,
-				})
-
-				return {
-					success: false,
-					error: 'Rate limited',
-					retryAfter: rateLimitData.retry_after,
-				}
-			}
-
-			// Handle permission errors (403)
-			if (response.status === 403) {
-				const errorData = await response.json().catch(() => ({}))
-				logger.error('[DiscordDO] Permission denied sending message', {
-					guildId,
-					channelId,
-					error: errorData,
-				})
-
-				return {
-					success: false,
-					error: 'Bot lacks permission to send messages in this channel',
-				}
-			}
-
-			// Handle invalid channel (404)
-			if (response.status === 404) {
-				logger.error('[DiscordDO] Channel not found', {
-					guildId,
-					channelId,
-				})
-
-				return {
-					success: false,
-					error: 'Channel not found',
-				}
-			}
-
-			// Handle other errors
-			const errorData = await response.json().catch(() => ({}))
-			logger.error('[DiscordDO] Discord API error sending message', {
-				guildId,
-				channelId,
-				status: response.status,
-				error: errorData,
-			})
-
-			return {
-				success: false,
-				error: `Discord API error: ${response.status} ${response.statusText}`,
-			}
-		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : String(error)
-			logger.error('[DiscordDO] Unexpected error sending message', {
-				guildId,
-				channelId,
-				error: errorMessage,
-			})
-
-			return {
-				success: false,
-				error: `Failed to send message: ${errorMessage}`,
-			}
-		}
+		// Return as base64
+		return btoa(String.fromCharCode(...combined))
 	}
 
 	/**
-	 * Generate a dynamic HTTPS proxy URL using rotating ports
-	 * Uses generateShardKey for cryptographically secure random port selection
+	 * Decrypt data using Web Crypto API
 	 */
-	private getDiscordProxyUrl(): string {
-		const portStart = Number(this.env.DISCORD_PROXY_PORT_START)
-		const portCount = Number(this.env.DISCORD_PROXY_PORT_COUNT)
-		const portEnd = portStart + portCount - 1
-		const port = generateShardKey(portStart, portEnd)
+	private async decrypt(encryptedData: string): Promise<string> {
+		const key = await this.getEncryptionKey()
 
-		return `https://${this.env.DISCORD_PROXY_USERNAME}:${this.env.DISCORD_PROXY_PASSWORD}@${this.env.DISCORD_PROXY_HOST}:${port}`
+		// Decode from base64
+		const combined = Uint8Array.from(atob(encryptedData), (c) => c.charCodeAt(0))
+
+		// Extract IV and data
+		const iv = combined.slice(0, 12)
+		const data = combined.slice(12)
+
+		const decryptedData = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data)
+
+		return new TextDecoder().decode(decryptedData)
 	}
 }

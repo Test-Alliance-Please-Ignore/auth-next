@@ -447,7 +447,7 @@ export interface Groups {
 	/** Get groups that have a specific Discord server attached */
 	getGroupsByDiscordServer(
 		discordServerId: string
-	): Promise<Array<{ groupId: string; groupName: string }>>
+	): Promise<Array<{ groupId: string; groupName: string; id: string; autoAssignRoles: boolean }>>
 
 	/** Insert Discord invite audit records */
 	insertDiscordInviteAuditRecords(records: any[]): Promise<void>

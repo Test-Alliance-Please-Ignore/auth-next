@@ -1,3 +1,4 @@
+import type { createDb } from './db'
 import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
 
@@ -22,11 +23,14 @@ export type Env = SharedHonoEnv & {
 	DISCORD_PROXY_PASSWORD: string
 
 	ENCRYPTION_KEY: string
+
+	// Role management configuration
+	DISCORD_ROLE_ADD_ONLY_MODE: string
 }
 
 /** Variables can be extended */
 export type Variables = SharedHonoVariables & {
-	db?: ReturnType<typeof import('./db').createDb>
+	db?: ReturnType<typeof createDb>
 }
 
 export interface App extends HonoApp {

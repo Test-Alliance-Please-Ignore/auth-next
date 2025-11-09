@@ -1,4 +1,4 @@
-import { relations } from 'drizzle-orm'
+import { relations, sql } from 'drizzle-orm'
 import {
 	bigint,
 	boolean,
@@ -314,6 +314,9 @@ export const groupDiscordServers = pgTable(
 		index('group_discord_servers_group_id_idx').on(table.groupId),
 		index('group_discord_servers_server_id_idx').on(table.discordServerId),
 		index('group_discord_servers_auto_invite_idx').on(table.autoInvite),
+		index('group_discord_servers_server_auto_assign_idx')
+			.on(table.discordServerId, table.autoAssignRoles)
+			.where(sql`${table.autoAssignRoles} = true`),
 		// One Discord server per group (unique server ID per group)
 		unique('unique_group_discord_server').on(table.groupId, table.discordServerId),
 	]
