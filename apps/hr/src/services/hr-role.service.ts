@@ -42,7 +42,7 @@ export class HrRoleService {
 		expiresAt?: Date
 	): Promise<HrRole> {
 		// Validate corporation membership via EVE Corporation Data DO
-		const corpStub = getStub<EveCorporationData>(eveCorporationDataNamespace, corporationId)
+		using corpStub = getStub<EveCorporationData>(eveCorporationDataNamespace, corporationId)
 		const members = await corpStub.getMembers(corporationId)
 		const isMember = members.some((m) => m.characterId === characterId)
 

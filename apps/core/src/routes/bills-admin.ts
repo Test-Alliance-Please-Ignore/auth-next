@@ -44,7 +44,7 @@ app.get('/', requireAuth(), requireAdmin(), async (c) => {
 		const payerType = c.req.query('payerType')
 		const issuerId = c.req.query('issuerId')
 
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		using stub = getStub<Bills>(c.env.BILLS, 'default')
 		const bills = await stub.listBills(user.id, {
 			status: status as any,
 			payerId,
@@ -73,7 +73,7 @@ app.get('/statistics', requireAuth(), requireAdmin(), async (c) => {
 	}
 
 	try {
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		using stub = getStub<Bills>(c.env.BILLS, 'default')
 		const stats = await stub.getBillStatistics(user.id)
 
 		return c.json(stats)
@@ -95,7 +95,7 @@ app.post('/from-template', requireAuth(), requireAdmin(), async (c) => {
 
 	try {
 		const data = await c.req.json()
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		using stub = getStub<Bills>(c.env.BILLS, 'default')
 		const bill = await stub.createBillFromTemplate(user.id, data)
 
 		return c.json(bill, 201)
@@ -118,7 +118,7 @@ app.get('/templates', requireAuth(), requireAdmin(), async (c) => {
 	}
 
 	try {
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		using stub = getStub<Bills>(c.env.BILLS, 'default')
 		const templates = await stub.listTemplates(user.id)
 
 		return c.json(templates)
@@ -140,7 +140,7 @@ app.post('/templates', requireAuth(), requireAdmin(), async (c) => {
 
 	try {
 		const data = await c.req.json()
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		using stub = getStub<Bills>(c.env.BILLS, 'default')
 		const template = await stub.createTemplate(user.id, data)
 
 		return c.json(template, 201)
@@ -162,7 +162,7 @@ app.post('/templates/clone', requireAuth(), requireAdmin(), async (c) => {
 
 	try {
 		const data = await c.req.json()
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		using stub = getStub<Bills>(c.env.BILLS, 'default')
 		const template = await stub.cloneTemplate(user.id, data)
 
 		return c.json(template, 201)
@@ -184,7 +184,7 @@ app.post('/templates/clone-from-bill', requireAuth(), requireAdmin(), async (c) 
 
 	try {
 		const data = await c.req.json()
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		using stub = getStub<Bills>(c.env.BILLS, 'default')
 		const template = await stub.cloneBillAsTemplate(user.id, data)
 
 		return c.json(template, 201)
@@ -207,7 +207,7 @@ app.get('/templates/:templateId', requireAuth(), requireAdmin(), async (c) => {
 	}
 
 	try {
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		using stub = getStub<Bills>(c.env.BILLS, 'default')
 		const template = await stub.getTemplate(user.id, templateId)
 
 		if (!template) {
@@ -235,7 +235,7 @@ app.put('/templates/:templateId', requireAuth(), requireAdmin(), async (c) => {
 
 	try {
 		const data = await c.req.json()
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		using stub = getStub<Bills>(c.env.BILLS, 'default')
 		const template = await stub.updateTemplate(user.id, templateId, data)
 
 		return c.json(template)
@@ -258,7 +258,7 @@ app.delete('/templates/:templateId', requireAuth(), requireAdmin(), async (c) =>
 	}
 
 	try {
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		using stub = getStub<Bills>(c.env.BILLS, 'default')
 		await stub.deleteTemplate(user.id, templateId)
 
 		return c.json({ success: true })
@@ -281,7 +281,7 @@ app.get('/:billId', requireAuth(), requireAdmin(), async (c) => {
 	}
 
 	try {
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		using stub = getStub<Bills>(c.env.BILLS, 'default')
 		const bill = await stub.getBill(user.id, billId)
 
 		if (!bill) {
@@ -309,7 +309,7 @@ app.post('/', requireAuth(), requireAdmin(), async (c) => {
 		const data = await c.req.json()
 		logger.info('[bills-admin] Creating bill', { userId: user.id, data })
 
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		using stub = getStub<Bills>(c.env.BILLS, 'default')
 		const bill = await stub.createBill(user.id, data)
 
 		logger.info('[bills-admin] Bill created successfully', { billId: bill.id })
@@ -337,7 +337,7 @@ app.put('/:billId', requireAuth(), requireAdmin(), async (c) => {
 
 	try {
 		const data = await c.req.json()
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		using stub = getStub<Bills>(c.env.BILLS, 'default')
 		const bill = await stub.updateBill(user.id, billId, data)
 
 		return c.json(bill)
@@ -360,7 +360,7 @@ app.delete('/:billId', requireAuth(), requireAdmin(), async (c) => {
 	}
 
 	try {
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		using stub = getStub<Bills>(c.env.BILLS, 'default')
 		await stub.deleteBill(user.id, billId)
 
 		return c.json({ success: true })
@@ -383,7 +383,7 @@ app.post('/:billId/issue', requireAuth(), requireAdmin(), async (c) => {
 	}
 
 	try {
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		using stub = getStub<Bills>(c.env.BILLS, 'default')
 		const bill = await stub.issueBill(user.id, billId)
 
 		return c.json(bill)
@@ -406,7 +406,7 @@ app.post('/:billId/cancel', requireAuth(), requireAdmin(), async (c) => {
 	}
 
 	try {
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		using stub = getStub<Bills>(c.env.BILLS, 'default')
 		const bill = await stub.cancelBill(user.id, billId)
 
 		return c.json(bill)
@@ -429,7 +429,7 @@ app.post('/:billId/regenerate-token', requireAuth(), requireAdmin(), async (c) =
 	}
 
 	try {
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		using stub = getStub<Bills>(c.env.BILLS, 'default')
 		const result = await stub.regeneratePaymentToken(user.id, billId)
 
 		return c.json(result)
@@ -461,7 +461,7 @@ app.get('/schedules', requireAuth(), requireAdmin(), async (c) => {
 					: undefined
 		const templateId = c.req.query('templateId')
 
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		using stub = getStub<Bills>(c.env.BILLS, 'default')
 		const schedules = await stub.listSchedules(user.id, {
 			frequency: frequency as any,
 			isActive,
@@ -487,7 +487,7 @@ app.post('/schedules', requireAuth(), requireAdmin(), async (c) => {
 
 	try {
 		const data = await c.req.json()
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		using stub = getStub<Bills>(c.env.BILLS, 'default')
 		const schedule = await stub.createSchedule(user.id, data)
 
 		return c.json(schedule, 201)
@@ -508,7 +508,7 @@ app.get('/schedules/statistics', requireAuth(), requireAdmin(), async (c) => {
 	}
 
 	try {
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		using stub = getStub<Bills>(c.env.BILLS, 'default')
 		const stats = await stub.getScheduleStatistics(user.id)
 
 		return c.json(stats)
@@ -537,7 +537,7 @@ app.get('/schedules/:scheduleId/logs', requireAuth(), requireAdmin(), async (c) 
 			return c.json({ error: pagination.error }, pagination.status)
 		}
 
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		using stub = getStub<Bills>(c.env.BILLS, 'default')
 		const logs = await stub.getScheduleExecutionLogs(user.id, scheduleId, pagination.data.limit)
 
 		return c.json(logs)
@@ -560,7 +560,7 @@ app.get('/schedules/:scheduleId', requireAuth(), requireAdmin(), async (c) => {
 	}
 
 	try {
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		using stub = getStub<Bills>(c.env.BILLS, 'default')
 		const schedule = await stub.getSchedule(user.id, scheduleId)
 
 		if (!schedule) {
@@ -588,7 +588,7 @@ app.put('/schedules/:scheduleId', requireAuth(), requireAdmin(), async (c) => {
 
 	try {
 		const data = await c.req.json()
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		using stub = getStub<Bills>(c.env.BILLS, 'default')
 		const schedule = await stub.updateSchedule(user.id, scheduleId, data)
 
 		return c.json(schedule)
@@ -611,7 +611,7 @@ app.delete('/schedules/:scheduleId', requireAuth(), requireAdmin(), async (c) =>
 	}
 
 	try {
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		using stub = getStub<Bills>(c.env.BILLS, 'default')
 		await stub.deleteSchedule(user.id, scheduleId)
 
 		return c.json({ success: true })
@@ -634,7 +634,7 @@ app.post('/schedules/:scheduleId/pause', requireAuth(), requireAdmin(), async (c
 	}
 
 	try {
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		using stub = getStub<Bills>(c.env.BILLS, 'default')
 		const schedule = await stub.pauseSchedule(user.id, scheduleId)
 
 		return c.json(schedule)
@@ -657,7 +657,7 @@ app.post('/schedules/:scheduleId/resume', requireAuth(), requireAdmin(), async (
 	}
 
 	try {
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		using stub = getStub<Bills>(c.env.BILLS, 'default')
 		const schedule = await stub.resumeSchedule(user.id, scheduleId)
 
 		return c.json(schedule)

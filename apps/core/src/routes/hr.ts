@@ -67,7 +67,7 @@ async function checkCeoOrAdminAccess(c: Context<App>, corporationId: string): Pr
 	for (const character of userChars) {
 		try {
 			// Check if character is in this corporation
-			const charStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, character.characterId)
+			using charStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, character.characterId)
 			const charData = await charStub.getCharacterInfo(character.characterId)
 
 			// Skip if character is not in the target corporation
@@ -76,7 +76,7 @@ async function checkCeoOrAdminAccess(c: Context<App>, corporationId: string): Pr
 			}
 
 			// Get corporation data to check CEO
-			const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+			using corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 			const corpInfo = await corpStub.getCorporationInfo(corporationId)
 
 			// Check if character is CEO

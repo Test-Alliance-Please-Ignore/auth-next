@@ -36,7 +36,7 @@
 		"react-dom": "19.2.0",
 		"react-hook-form": "7.65.0",
 		"react-router-dom": "7.9.4",
-		"sonner": "^2.0.7",
+		"sonner": "2.0.7",
 		"workers-tagged-logger": "0.13.3",
 		"zod": "4.1.12"
 	},

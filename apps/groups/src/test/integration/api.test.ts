@@ -33,7 +33,7 @@ describe('Groups Worker', () => {
 
 describe('Groups Durable Object - Categories', () => {
 	it('should create a category', async () => {
-		const stub = getStub<Groups>(testEnv.GROUPS, 'test-category-create')
+		using stub = getStub<Groups>(testEnv.GROUPS, 'test-category-create')
 
 		const category = await stub.createCategory(
 			{
@@ -51,7 +51,7 @@ describe('Groups Durable Object - Categories', () => {
 	})
 
 	it('should list categories', async () => {
-		const stub = getStub<Groups>(testEnv.GROUPS, 'test-category-list')
+		using stub = getStub<Groups>(testEnv.GROUPS, 'test-category-list')
 
 		// Create a category first
 		await stub.createCategory(
@@ -70,7 +70,7 @@ describe('Groups Durable Object - Categories', () => {
 	})
 
 	it('should get a category with groups', async () => {
-		const stub = getStub<Groups>(testEnv.GROUPS, 'test-category-get')
+		using stub = getStub<Groups>(testEnv.GROUPS, 'test-category-get')
 
 		const category = await stub.createCategory(
 			{
@@ -88,7 +88,7 @@ describe('Groups Durable Object - Categories', () => {
 	})
 
 	it('should update a category', async () => {
-		const stub = getStub<Groups>(testEnv.GROUPS, 'test-category-update')
+		using stub = getStub<Groups>(testEnv.GROUPS, 'test-category-update')
 
 		const category = await stub.createCategory(
 			{
@@ -112,7 +112,7 @@ describe('Groups Durable Object - Categories', () => {
 	})
 
 	it('should delete a category', async () => {
-		const stub = getStub<Groups>(testEnv.GROUPS, 'test-category-delete')
+		using stub = getStub<Groups>(testEnv.GROUPS, 'test-category-delete')
 
 		const category = await stub.createCategory(
 			{
@@ -131,7 +131,7 @@ describe('Groups Durable Object - Categories', () => {
 
 describe('Groups Durable Object - Groups', () => {
 	it('should create a group', async () => {
-		const stub = getStub<Groups>(testEnv.GROUPS, 'test-group-create')
+		using stub = getStub<Groups>(testEnv.GROUPS, 'test-group-create')
 
 		const category = await stub.createCategory(
 			{
@@ -160,7 +160,7 @@ describe('Groups Durable Object - Groups', () => {
 	})
 
 	it('should list groups', async () => {
-		const stub = getStub<Groups>(testEnv.GROUPS, 'test-group-list')
+		using stub = getStub<Groups>(testEnv.GROUPS, 'test-group-list')
 
 		const category = await stub.createCategory(
 			{
@@ -195,7 +195,7 @@ describe('Groups Durable Object - Groups', () => {
 	})
 
 	it('should get a group with details', async () => {
-		const stub = getStub<Groups>(testEnv.GROUPS, 'test-group-get')
+		using stub = getStub<Groups>(testEnv.GROUPS, 'test-group-get')
 
 		const category = await stub.createCategory(
 			{
@@ -224,7 +224,7 @@ describe('Groups Durable Object - Groups', () => {
 	})
 
 	it('should update a group', async () => {
-		const stub = getStub<Groups>(testEnv.GROUPS, 'test-group-update')
+		using stub = getStub<Groups>(testEnv.GROUPS, 'test-group-update')
 
 		const category = await stub.createCategory(
 			{
@@ -257,7 +257,7 @@ describe('Groups Durable Object - Groups', () => {
 	})
 
 	it('should delete a group', async () => {
-		const stub = getStub<Groups>(testEnv.GROUPS, 'test-group-delete')
+		using stub = getStub<Groups>(testEnv.GROUPS, 'test-group-delete')
 
 		const category = await stub.createCategory(
 			{
@@ -285,7 +285,7 @@ describe('Groups Durable Object - Groups', () => {
 
 describe('Groups Durable Object - Membership', () => {
 	it('should allow user to join open group', async () => {
-		const stub = getStub<Groups>(testEnv.GROUPS, 'test-membership-join')
+		using stub = getStub<Groups>(testEnv.GROUPS, 'test-membership-join')
 
 		const category = await stub.createCategory(
 			{
@@ -313,7 +313,7 @@ describe('Groups Durable Object - Membership', () => {
 	})
 
 	it('should allow user to leave group', async () => {
-		const stub = getStub<Groups>(testEnv.GROUPS, 'test-membership-leave')
+		using stub = getStub<Groups>(testEnv.GROUPS, 'test-membership-leave')
 
 		const category = await stub.createCategory(
 			{
@@ -342,7 +342,7 @@ describe('Groups Durable Object - Membership', () => {
 	})
 
 	it('should allow admin to remove member', async () => {
-		const stub = getStub<Groups>(testEnv.GROUPS, 'test-membership-remove')
+		using stub = getStub<Groups>(testEnv.GROUPS, 'test-membership-remove')
 
 		const category = await stub.createCategory(
 			{
@@ -370,7 +370,7 @@ describe('Groups Durable Object - Membership', () => {
 	})
 
 	it('should get user memberships', async () => {
-		const stub = getStub<Groups>(testEnv.GROUPS, 'test-membership-list')
+		using stub = getStub<Groups>(testEnv.GROUPS, 'test-membership-list')
 
 		const category = await stub.createCategory(
 			{
@@ -411,7 +411,7 @@ describe('Groups Durable Object - Invitations', () => {
 	// For now, we test the error handling when character is not found
 
 	it('should reject invitation for non-existent character', async () => {
-		const stub = getStub<Groups>(testEnv.GROUPS, 'test-invitation-nonexistent')
+		using stub = getStub<Groups>(testEnv.GROUPS, 'test-invitation-nonexistent')
 
 		const category = await stub.createCategory(
 			{
@@ -442,7 +442,7 @@ describe('Groups Durable Object - Invitations', () => {
 	})
 
 	it('should list pending invitations', async () => {
-		const stub = getStub<Groups>(testEnv.GROUPS, 'test-invitation-list')
+		using stub = getStub<Groups>(testEnv.GROUPS, 'test-invitation-list')
 
 		const invitations = await stub.listPendingInvitations(USER_2_ID)
 
@@ -452,7 +452,7 @@ describe('Groups Durable Object - Invitations', () => {
 
 describe('Groups Durable Object - Invite Codes', () => {
 	it('should create an invite code', async () => {
-		const stub = getStub<Groups>(testEnv.GROUPS, 'test-invite-code-create')
+		using stub = getStub<Groups>(testEnv.GROUPS, 'test-invite-code-create')
 
 		const category = await stub.createCategory(
 			{
@@ -486,7 +486,7 @@ describe('Groups Durable Object - Invite Codes', () => {
 	})
 
 	it('should list invite codes', async () => {
-		const stub = getStub<Groups>(testEnv.GROUPS, 'test-invite-code-list')
+		using stub = getStub<Groups>(testEnv.GROUPS, 'test-invite-code-list')
 
 		const category = await stub.createCategory(
 			{
@@ -520,7 +520,7 @@ describe('Groups Durable Object - Invite Codes', () => {
 	})
 
 	it('should redeem an invite code', async () => {
-		const stub = getStub<Groups>(testEnv.GROUPS, 'test-invite-code-redeem')
+		using stub = getStub<Groups>(testEnv.GROUPS, 'test-invite-code-redeem')
 
 		const category = await stub.createCategory(
 			{
@@ -557,7 +557,7 @@ describe('Groups Durable Object - Invite Codes', () => {
 	})
 
 	it('should revoke an invite code', async () => {
-		const stub = getStub<Groups>(testEnv.GROUPS, 'test-invite-code-revoke')
+		using stub = getStub<Groups>(testEnv.GROUPS, 'test-invite-code-revoke')
 
 		const category = await stub.createCategory(
 			{
@@ -592,7 +592,7 @@ describe('Groups Durable Object - Invite Codes', () => {
 
 describe('Groups Durable Object - Join Requests', () => {
 	it('should create a join request', async () => {
-		const stub = getStub<Groups>(testEnv.GROUPS, 'test-join-request-create')
+		using stub = getStub<Groups>(testEnv.GROUPS, 'test-join-request-create')
 
 		const category = await stub.createCategory(
 			{
@@ -626,7 +626,7 @@ describe('Groups Durable Object - Join Requests', () => {
 	})
 
 	it('should list join requests', async () => {
-		const stub = getStub<Groups>(testEnv.GROUPS, 'test-join-request-list')
+		using stub = getStub<Groups>(testEnv.GROUPS, 'test-join-request-list')
 
 		const category = await stub.createCategory(
 			{
@@ -660,7 +660,7 @@ describe('Groups Durable Object - Join Requests', () => {
 	})
 
 	it('should approve a join request', async () => {
-		const stub = getStub<Groups>(testEnv.GROUPS, 'test-join-request-approve')
+		using stub = getStub<Groups>(testEnv.GROUPS, 'test-join-request-approve')
 
 		const category = await stub.createCategory(
 			{
@@ -694,7 +694,7 @@ describe('Groups Durable Object - Join Requests', () => {
 	})
 
 	it('should reject a join request', async () => {
-		const stub = getStub<Groups>(testEnv.GROUPS, 'test-join-request-reject')
+		using stub = getStub<Groups>(testEnv.GROUPS, 'test-join-request-reject')
 
 		const category = await stub.createCategory(
 			{

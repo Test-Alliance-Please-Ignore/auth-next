@@ -48,7 +48,7 @@ function getRequestMetadata(c: any): RequestMetadata {
 auth.get('/login', async (c) => {
 	const redirectUrl = c.req.query('redirect')
 	const db = createDb(c.env.DATABASE_URL)
-	const eveTokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+	using eveTokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
 
 	// Start login flow
 	const authUrl = await eveTokenStoreStub.startLoginFlow()
@@ -75,7 +75,7 @@ auth.get('/login', async (c) => {
  */
 auth.post('/login/start', async (c) => {
 	const db = createDb(c.env.DATABASE_URL)
-	const eveTokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+	using eveTokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
 
 	// Start login flow
 	const authUrl = await eveTokenStoreStub.startLoginFlow()
@@ -106,7 +106,7 @@ auth.post('/login/start', async (c) => {
 auth.post('/character/start', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const db = c.get('db') || createDb(c.env.DATABASE_URL)
-	const eveTokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+	using eveTokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
 
 	// Start character flow
 	const authUrl = await eveTokenStoreStub.startCharacterFlow()
@@ -142,7 +142,7 @@ auth.get('/callback', async (c) => {
 	}
 
 	const db = createDb(c.env.DATABASE_URL)
-	const eveTokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+	using eveTokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
 
 	const authService = new AuthService(db, eveTokenStoreStub, c.env.SESSION_SECRET)
 	const userService = new UserService(db)
@@ -217,7 +217,7 @@ auth.get('/callback', async (c) => {
 		}
 
 		// SECURITY: Check if character is blacklisted
-		const hrStub = getStub<Hr>(c.env.HR, 'default')
+		using hrStub = getStub<Hr>(c.env.HR, 'default')
 		const isCharBlacklisted = await hrStub.isCharacterBlacklisted(characterId)
 
 		if (isCharBlacklisted) {
@@ -257,7 +257,7 @@ auth.get('/callback', async (c) => {
 		await activityService.logCharacterLinked(stateUserId, characterId, getRequestMetadata(c))
 
 		// Fetch character data in background (non-blocking)
-		const eveCharacterDataStub = getStub<EveCharacterData>(
+		using eveCharacterDataStub = getStub<EveCharacterData>(
 			c.env.EVE_CHARACTER_DATA,
 			typeof characterId === 'string' ? characterId : String(characterId)
 		)
@@ -305,7 +305,7 @@ auth.get('/callback', async (c) => {
 
 	if (user) {
 		// SECURITY: Check if character or user is blacklisted
-		const hrStub = getStub<Hr>(c.env.HR, 'default')
+		using hrStub = getStub<Hr>(c.env.HR, 'default')
 		const isCharBlacklisted = await hrStub.isCharacterBlacklisted(characterId)
 		const isUserBlacklisted = await hrStub.isUserBlacklisted(user.id)
 
@@ -355,7 +355,7 @@ auth.get('/callback', async (c) => {
 		await activityService.logLogin(user.id, characterId, getRequestMetadata(c))
 
 		// Fetch character data in background (non-blocking)
-		const eveCharacterDataStub = getStub<EveCharacterData>(
+		using eveCharacterDataStub = getStub<EveCharacterData>(
 			c.env.EVE_CHARACTER_DATA,
 			typeof characterId === 'string' ? characterId : String(characterId)
 		)
@@ -412,7 +412,7 @@ auth.get('/callback', async (c) => {
 	}
 
 	// New user - check if character is blacklisted before allowing claim-main
-	const hrStub = getStub<Hr>(c.env.HR, 'default')
+	using hrStub = getStub<Hr>(c.env.HR, 'default')
 	const isCharBlacklisted = await hrStub.isCharacterBlacklisted(characterId)
 
 	if (isCharBlacklisted) {
@@ -448,7 +448,7 @@ auth.post('/claim-main', async (c) => {
 	}
 
 	const db = createDb(c.env.DATABASE_URL)
-	const eveTokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+	using eveTokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
 
 	const authService = new AuthService(db, eveTokenStoreStub, c.env.SESSION_SECRET)
 	const userService = new UserService(db)
@@ -462,7 +462,7 @@ auth.post('/claim-main', async (c) => {
 	}
 
 	// SECURITY: Check if character is blacklisted before creating user
-	const hrStub = getStub<Hr>(c.env.HR, 'default')
+	using hrStub = getStub<Hr>(c.env.HR, 'default')
 	const isCharBlacklisted = await hrStub.isCharacterBlacklisted(tokenInfo.characterId)
 
 	if (isCharBlacklisted) {
@@ -493,7 +493,7 @@ auth.post('/claim-main', async (c) => {
 	await activityService.logLogin(user.id, tokenInfo.characterId, getRequestMetadata(c))
 
 	// Fetch character data in background (non-blocking)
-	const eveCharacterDataStub = getStub<EveCharacterData>(
+	using eveCharacterDataStub = getStub<EveCharacterData>(
 		c.env.EVE_CHARACTER_DATA,
 		typeof characterId === 'string' ? characterId : String(characterId)
 	)
@@ -582,7 +582,7 @@ auth.post('/link-character', requireAuth(), async (c) => {
 	}
 
 	// SECURITY: Check if character is blacklisted
-	const hrStub = getStub<Hr>(c.env.HR, 'default')
+	using hrStub = getStub<Hr>(c.env.HR, 'default')
 	const isCharBlacklisted = await hrStub.isCharacterBlacklisted(tokenInfo.characterId)
 
 	if (isCharBlacklisted) {
@@ -646,7 +646,7 @@ auth.post('/logout', requireAuth(), async (c) => {
 	}
 
 	const db = c.get('db') || createDb(c.env.DATABASE_URL)
-	const eveTokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+	using eveTokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
 
 	const authService = new AuthService(db, eveTokenStoreStub, c.env.SESSION_SECRET)
 	const activityService = new ActivityService(db)

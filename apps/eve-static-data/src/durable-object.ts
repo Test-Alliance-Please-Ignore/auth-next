@@ -38,16 +38,6 @@ export class EveStructureDO extends DurableObject<Env> implements EveStructure {
 	}
 
 	/**
-	 * Get token store stub for ESI requests
-	 */
-	private getTokenStoreStub(structureId?: string): EveTokenStore {
-		return getStub<EveTokenStore>(
-			this.env.EVE_TOKEN_STORE,
-			structureId ? String(structureId) : 'default'
-		)
-	}
-
-	/**
 	 * Fetch structure information from ESI
 	 * Requires authentication via authorized character
 	 */
@@ -56,7 +46,10 @@ export class EveStructureDO extends DurableObject<Env> implements EveStructure {
 		authorizedCharacterId: EveCharacterId
 	): Promise<EsiGetStructureResponse | null> {
 		try {
-			const tokenStoreStub = this.getTokenStoreStub(structureId)
+			using tokenStoreStub = getStub<EveTokenStore>(
+				this.env.EVE_TOKEN_STORE,
+				structureId ? String(structureId) : 'default'
+			)
 			const response: EsiResponse<EsiGetStructureResponse> = await tokenStoreStub.fetchEsi(
 				`/universe/structures/${String(structureId)}`,
 				String(authorizedCharacterId)
@@ -96,7 +89,10 @@ export class EveStructureDO extends DurableObject<Env> implements EveStructure {
 		authorizedCharacterId: EveCharacterId
 	): Promise<EsiGetStructureMarketDataResponse | null> {
 		try {
-			const tokenStoreStub = this.getTokenStoreStub(structureId)
+			using tokenStoreStub = getStub<EveTokenStore>(
+				this.env.EVE_TOKEN_STORE,
+				structureId ? String(structureId) : 'default'
+			)
 			// fetchEsiAllPages expects the element type, not the array type
 			const result = await tokenStoreStub.fetchEsiAllPages<EsiGetStructureMarketDataResponseObject>(
 				`/markets/structures/${String(structureId)}`,

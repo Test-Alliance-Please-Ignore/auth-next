@@ -2,13 +2,9 @@ import { env } from 'cloudflare:test'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 import { createDb } from '../../db'
-import { withNeonTestBranch } from '../setup'
+import '../setup'
 
 import type { Bills, CreateBillFromTemplateInput, CreateTemplateInput } from '@repo/bills'
-
-beforeAll(() => {
-	withNeonTestBranch()
-})
 
 describe('Templates Integration Tests', () => {
 	let db: ReturnType<typeof createDb>

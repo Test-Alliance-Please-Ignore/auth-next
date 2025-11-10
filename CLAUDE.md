@@ -55,30 +55,50 @@ When working with Cloudflare Workers in this repository, follow these principles
 ### Durable Objects Access Pattern
 **CRITICAL:** Always use the `getStub` helper from `@repo/do-utils` to access Durable Object stubs. NEVER directly call `.idFromName()`, `.idFromString()`, or `.get()` on the namespace.
 
-**Correct Pattern:**
+**CRITICAL:** Always dispose of stubs using the `using` keyword for automatic resource management. This prevents RPC stub leaks.
+
+**Correct Pattern (Automatic Disposal with `using` keyword):**
 ```typescript
 import { getStub } from '@repo/do-utils'
 import type { EveTokenStore } from '@repo/eve-token-store'
 
-// Using a named ID
-const stub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
-
-// Using a dynamic ID
-const stub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, `user-${userId}`)
+// Using 'using' keyword - stub is automatically disposed when scope exits
+using stub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
 
 // Call methods on the stub
 const token = await stub.getAccessToken(characterId)
+return c.json({ token })
+// stub.dispose() is automatically called here
+```
+
+**Manual Disposal Pattern (if `using` is not available):**
+```typescript
+const stub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+try {
+  const token = await stub.getAccessToken(characterId)
+  return c.json({ token })
+} finally {
+  stub.dispose()
+}
 ```
 
 **Incorrect Pattern (DO NOT USE):**
 ```typescript
-// ❌ NEVER do this
+// ❌ NEVER do this - accessing namespace directly
 const id = c.env.EVE_TOKEN_STORE.idFromName('default')
 const stub = c.env.EVE_TOKEN_STORE.get(id)
+
+// ❌ NEVER do this - forgetting to dispose
+const stub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+const token = await stub.getAccessToken(characterId)
+return c.json({ token })
+// stub is never disposed - causes RPC warnings and resource leaks!
 ```
 
 **Benefits:**
+- **Automatic Resource Management:** `using` keyword ensures stubs are always disposed
 - **Type Safety:** The generic parameter provides full TypeScript typing for stub methods
+- **No Memory Leaks:** Prevents "RPC stub was not disposed properly" warnings
 - **Consistency:** Single pattern used across the entire codebase
 - **Simplicity:** Handles both string IDs and DurableObjectId instances automatically
 - **Maintainability:** Easier to update if Durable Object access patterns change

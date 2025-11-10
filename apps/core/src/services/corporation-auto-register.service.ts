@@ -41,7 +41,7 @@ export async function autoRegisterDirectorCorporation(
 	characterId = String(characterId)
 
 	// Create token store stub inside the function to avoid serialization issues
-	const tokenStore: EveTokenStore = getStub<EveTokenStore>(eveTokenStoreNamespace, 'default')
+	using tokenStore: EveTokenStore = getStub<EveTokenStore>(eveTokenStoreNamespace, 'default')
 
 	try {
 		// Step 1: Check if token has the required scope
@@ -207,7 +207,7 @@ export async function autoRegisterDirectorCorporation(
 
 		// Step 8: Add character as director via eve-corporation-data DO
 		try {
-			const stub = getStub<EveCorporationData>(eveCorporationDataNamespace, corporationId)
+			using stub = getStub<EveCorporationData>(eveCorporationDataNamespace, corporationId)
 
 			// This will silently succeed if director already exists (uses ON CONFLICT DO NOTHING)
 			// Ensure all parameters are primitive types to avoid serialization issues
@@ -303,7 +303,7 @@ export async function checkAndUpdateDirectorStatus(
 ): Promise<{ updated: boolean; reason?: string }> {
 	try {
 		// Get the character data stub
-		const characterDataStub = getStub<EveCharacterData>(eveCharacterDataNamespace, characterId)
+		using characterDataStub = getStub<EveCharacterData>(eveCharacterDataNamespace, characterId)
 
 		// Fetch corporation roles
 		const roles = await characterDataStub.fetchCorporationRoles(characterId, false)
@@ -349,7 +349,7 @@ export async function checkAndUpdateDirectorStatus(
 			if (managedCorp) {
 				// Corporation is managed, remove character as director
 				try {
-					const stub = getStub<EveCorporationData>(eveCorporationDataNamespace, corporationId)
+					using stub = getStub<EveCorporationData>(eveCorporationDataNamespace, corporationId)
 					await stub.removeDirector(corporationId, characterId)
 
 					return { updated: true, reason: 'director_removed' }

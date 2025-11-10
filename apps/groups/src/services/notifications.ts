@@ -54,7 +54,7 @@ export class NotificationService {
 		try {
 			// Send to all group admins
 			for (const adminId of adminUserIds) {
-				const stub = getStub<Notifications>(env.NOTIFICATIONS, adminId)
+				using stub = getStub<Notifications>(env.NOTIFICATIONS, adminId)
 				await stub.publishNotification(adminId, {
 					type: 'group.invitation.accepted',
 					requiresAck: false,
@@ -82,7 +82,7 @@ export class NotificationService {
 	): Promise<void> {
 		try {
 			for (const adminId of adminUserIds) {
-				const stub = getStub<Notifications>(env.NOTIFICATIONS, adminId)
+				using stub = getStub<Notifications>(env.NOTIFICATIONS, adminId)
 				await stub.publishNotification(adminId, {
 					type: 'group.member.joined',
 					requiresAck: false,
@@ -108,7 +108,7 @@ export class NotificationService {
 		env: Env
 	): Promise<void> {
 		try {
-			const stub = getStub<Notifications>(env.NOTIFICATIONS, newAdminUserId)
+			using stub = getStub<Notifications>(env.NOTIFICATIONS, newAdminUserId)
 			await stub.publishNotification(newAdminUserId, {
 				type: 'group.admin.granted',
 				requiresAck: true,
@@ -136,7 +136,7 @@ export class NotificationService {
 	): Promise<void> {
 		try {
 			for (const adminId of adminUserIds) {
-				const stub = getStub<Notifications>(env.NOTIFICATIONS, adminId)
+				using stub = getStub<Notifications>(env.NOTIFICATIONS, adminId)
 				await stub.publishNotification(adminId, {
 					type: 'group.join_request.created',
 					requiresAck: true,
@@ -163,7 +163,7 @@ export class NotificationService {
 		env: Env
 	): Promise<void> {
 		try {
-			const stub = getStub<Notifications>(env.NOTIFICATIONS, requesterUserId)
+			using stub = getStub<Notifications>(env.NOTIFICATIONS, requesterUserId)
 			await stub.publishNotification(requesterUserId, {
 				type: 'group.join_request.approved',
 				requiresAck: true,
@@ -189,7 +189,7 @@ export class NotificationService {
 		env: Env
 	): Promise<void> {
 		try {
-			const stub = getStub<Notifications>(env.NOTIFICATIONS, removedUserId)
+			using stub = getStub<Notifications>(env.NOTIFICATIONS, removedUserId)
 			await stub.publishNotification(removedUserId, {
 				type: 'group.member.removed',
 				requiresAck: true,

@@ -33,7 +33,7 @@ app.get('/character/:characterId', async (c) => {
 
 	try {
 		// Get Fleets DO stub
-		const fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
+		using fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
 
 		// Get character's fleet information
 		const eveCharacterId = createEveCharacterId(characterId)
@@ -121,7 +121,7 @@ app.post('/quick-join/create', async (c) => {
 
 	try {
 		// Get Fleets DO stub (using 'default' instance)
-		const fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
+		using fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
 
 		// Create the invitation
 		const result = await fleetsStub.createQuickJoinInvitation(
@@ -148,7 +148,7 @@ app.get('/quick-join/:token/validate', async (c) => {
 
 	try {
 		// Get Fleets DO stub
-		const fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
+		using fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
 
 		// Validate the token
 		const validation = await fleetsStub.validateQuickJoinToken(token)
@@ -158,8 +158,8 @@ app.get('/quick-join/:token/validate', async (c) => {
 		}
 
 		// Get user's characters for selection
-		const tokenStore = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
-		const characterData = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+		using tokenStore = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+		using characterData = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
 
 		// Fetch character details for all user's characters
 		const charactersForJoin: CharacterForFleetJoin[] = await Promise.all(
@@ -230,7 +230,7 @@ app.post('/quick-join/:token/join', async (c) => {
 
 	try {
 		// Get Fleets DO stub
-		const fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
+		using fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
 
 		// Join the fleet
 		const result = await fleetsStub.joinFleetViaQuickJoin(
@@ -259,7 +259,7 @@ app.get('/:fleetId', async (c) => {
 
 	try {
 		// Get Fleets DO stub
-		const fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
+		using fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
 
 		// Get fleet details
 		const details = await fleetsStub.getFleetDetails(fleetId, characterId)
@@ -295,7 +295,7 @@ app.delete('/quick-join/:token', async (c) => {
 
 	try {
 		// Get Fleets DO stub
-		const fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
+		using fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
 
 		// Revoke the invitation
 		const success = await fleetsStub.revokeQuickJoinInvitation(token, characterId)

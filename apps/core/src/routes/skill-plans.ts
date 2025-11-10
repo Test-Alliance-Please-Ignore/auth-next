@@ -75,7 +75,7 @@ const skillPlansRoutes = new Hono<App>()
 	 * Public endpoint for authenticated users
 	 */
 	.get('/categories', async (c) => {
-		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 		const categories = await skillsStub.listSkillPlanCategories()
 		return c.json(categories)
 	})
@@ -87,7 +87,7 @@ const skillPlansRoutes = new Hono<App>()
 	 */
 	.post('/categories', async (c) => {
 		const user = c.get('user')!
-		const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 
 		// Check permission
 		const allowed = await canCreateCategory(groupsStub, user.id, user.is_admin)
@@ -108,7 +108,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Create category
-		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 		try {
 			const category = await skillsStub.createSkillPlanCategory({
 				name: data.name.trim(),
@@ -131,7 +131,7 @@ const skillPlansRoutes = new Hono<App>()
 	.patch('/categories/:categoryId', async (c) => {
 		const user = c.get('user')!
 		const categoryId = c.req.param('categoryId')
-		const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 
 		// Check permission
 		const allowed = await canManageCategories(groupsStub, user.id, user.is_admin)
@@ -148,7 +148,7 @@ const skillPlansRoutes = new Hono<App>()
 		}>()
 
 		// Update category
-		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 		try {
 			const category = await skillsStub.updateSkillPlanCategory(categoryId, {
 				...(data.name !== undefined && { name: data.name.trim() }),
@@ -171,7 +171,7 @@ const skillPlansRoutes = new Hono<App>()
 	.delete('/categories/:categoryId', async (c) => {
 		const user = c.get('user')!
 		const categoryId = c.req.param('categoryId')
-		const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 
 		// Check permission
 		const allowed = await canManageCategories(groupsStub, user.id, user.is_admin)
@@ -180,7 +180,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Delete category
-		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 		try {
 			const success = await skillsStub.deleteSkillPlanCategory(categoryId)
 			if (success) {
@@ -212,8 +212,8 @@ const skillPlansRoutes = new Hono<App>()
 		const limit = query.limit ? parseInt(query.limit, 10) : undefined
 		const offset = query.offset ? parseInt(query.offset, 10) : undefined
 
-		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
-		const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 
 		try {
 			if (myPlans && user.mainCharacterId) {
@@ -274,7 +274,7 @@ const skillPlansRoutes = new Hono<App>()
 		const limit = query.limit ? parseInt(query.limit, 10) : 50
 		const offset = query.offset ? parseInt(query.offset, 10) : 0
 
-		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 		try {
 			// Get plans where user is the maintainer (without pagination for merging)
@@ -282,7 +282,7 @@ const skillPlansRoutes = new Hono<App>()
 			const plans = [...userPlansResult.items]
 
 			// Also get plans where user is part of a group that maintains the plan
-			const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+			using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 			const memberships = await groupsStub.getUserMemberships(user.id)
 
 			for (const membership of memberships) {
@@ -349,7 +349,7 @@ const skillPlansRoutes = new Hono<App>()
 		const user = c.get('user')!
 		const planId = c.req.param('id')
 
-		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 		// Get the plan
 		const plan = await skillsStub.getSkillPlan(planId)
@@ -358,7 +358,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check view permission (same as viewing the plan)
-		const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 		const allowed = await canViewPlan(plan, user.id, groupsStub, user.is_admin)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
@@ -380,7 +380,7 @@ const skillPlansRoutes = new Hono<App>()
 		const characterId = c.req.param('characterId')
 
 		const db = createDb(c.env.DATABASE_URL)
-		const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 
 		// Check if user can check this character's progress
 		const allowed = await canCheckCharacterProgress(
@@ -394,7 +394,7 @@ const skillPlansRoutes = new Hono<App>()
 			return c.json({ error: 'Permission denied' }, 403)
 		}
 
-		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 		// Get the plan first to verify it exists
 		const plan = await skillsStub.getSkillPlan(planId)
@@ -409,7 +409,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Get character skills from EveCharacterData DO
-		const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+		using eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
 
 		try {
 			let skillsData = await eveCharacterDataStub.getSkills(characterId)
@@ -496,8 +496,8 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		const characterId = user.mainCharacterId
-		const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 		// Get the plan first to verify it exists
 		const plan = await skillsStub.getSkillPlan(planId)
@@ -512,7 +512,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Get character skills from EveCharacterData DO
-		const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+		using eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
 
 		try {
 			let skillsData = await eveCharacterDataStub.getSkills(characterId)
@@ -594,7 +594,7 @@ const skillPlansRoutes = new Hono<App>()
 		const user = c.get('user')!
 		const planId = c.req.param('id')
 
-		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 		// Get the plan
 		const plan = await skillsStub.getSkillPlan(planId)
@@ -603,7 +603,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check view permission
-		const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 		const allowed = await canViewPlan(plan, user.id, groupsStub, user.is_admin)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
@@ -638,7 +638,7 @@ const skillPlansRoutes = new Hono<App>()
 	 */
 	.post('/', async (c) => {
 		const user = c.get('user')!
-		const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 
 		// Check permission
 		const allowed = await canCreateSkillPlan(groupsStub, user.id, user.is_admin)
@@ -669,7 +669,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Create the plan
-		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 		try {
 			const plan = await skillsStub.createSkillPlan({
 				name: data.name.trim(),
@@ -695,7 +695,7 @@ const skillPlansRoutes = new Hono<App>()
 		const user = c.get('user')!
 		const planId = c.req.param('id')
 
-		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 		// Get the plan to check permissions
 		const plan = await skillsStub.getSkillPlan(planId)
@@ -704,7 +704,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check modification permission
-		const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 		const allowed = await canModifyPlan(plan, user.id, groupsStub, user.is_admin)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
@@ -746,7 +746,7 @@ const skillPlansRoutes = new Hono<App>()
 		const user = c.get('user')!
 		const planId = c.req.param('id')
 
-		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 		// Get the plan to check permissions
 		const plan = await skillsStub.getSkillPlan(planId)
@@ -755,7 +755,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check deletion permission
-		const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 		const allowed = await canDeletePlan(plan, user.id, groupsStub, user.is_admin)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
@@ -786,7 +786,7 @@ const skillPlansRoutes = new Hono<App>()
 		const user = c.get('user')!
 		const planId = c.req.param('id')
 
-		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 		// Get the plan to check permissions
 		const plan = await skillsStub.getSkillPlan(planId)
@@ -795,7 +795,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check modification permission
-		const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 		const allowed = await canModifyPlan(plan, user.id, groupsStub, user.is_admin)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
@@ -864,7 +864,7 @@ const skillPlansRoutes = new Hono<App>()
 		const user = c.get('user')!
 		const planId = c.req.param('id')
 
-		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 		// Get the plan to check permissions
 		const plan = await skillsStub.getSkillPlan(planId)
@@ -873,7 +873,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check modification permission
-		const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 		const allowed = await canModifyPlan(plan, user.id, groupsStub, user.is_admin)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
@@ -982,7 +982,7 @@ const skillPlansRoutes = new Hono<App>()
 		const planId = c.req.param('id')
 		const skillId = c.req.param('skillId')
 
-		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 		// Get the plan to check permissions
 		const plan = await skillsStub.getSkillPlan(planId)
@@ -991,7 +991,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check modification permission
-		const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 		const allowed = await canModifyPlan(plan, user.id, groupsStub, user.is_admin)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
@@ -1061,7 +1061,7 @@ const skillPlansRoutes = new Hono<App>()
 		const planId = c.req.param('id')
 		const skillId = c.req.param('skillId')
 
-		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 		// Get the plan to check permissions
 		const plan = await skillsStub.getSkillPlan(planId)
@@ -1070,7 +1070,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check modification permission
-		const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 		const allowed = await canModifyPlan(plan, user.id, groupsStub, user.is_admin)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
@@ -1105,7 +1105,7 @@ const skillPlansRoutes = new Hono<App>()
 		const planId = c.req.param('id')
 		const categoryId = c.req.param('categoryId')
 
-		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 		// Get the plan to check permissions
 		const plan = await skillsStub.getSkillPlan(planId)
@@ -1114,7 +1114,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check modification permission
-		const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 		const allowed = await canModifyPlan(plan, user.id, groupsStub, user.is_admin)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
@@ -1147,7 +1147,7 @@ const skillPlansRoutes = new Hono<App>()
 		const planId = c.req.param('id')
 		const categoryId = c.req.param('categoryId')
 
-		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 		// Get the plan to check permissions
 		const plan = await skillsStub.getSkillPlan(planId)
@@ -1156,7 +1156,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check modification permission
-		const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 		const allowed = await canModifyPlan(plan, user.id, groupsStub, user.is_admin)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
@@ -1194,7 +1194,7 @@ const skillPlansRoutes = new Hono<App>()
 		const planId = c.req.param('planId')
 
 		const db = createDb(c.env.DATABASE_URL)
-		const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 
 		// Check if user can check this character's progress
 		const allowed = await canCheckCharacterProgress(
@@ -1208,7 +1208,7 @@ const skillPlansRoutes = new Hono<App>()
 			return c.json({ error: 'Permission denied' }, 403)
 		}
 
-		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 		// Get the plan first to verify it exists
 		const plan = await skillsStub.getSkillPlan(planId)
@@ -1223,7 +1223,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Get character skills from EveCharacterData DO
-		const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+		using eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
 
 		try {
 			let skillsData = await eveCharacterDataStub.getSkills(characterId)
@@ -1307,7 +1307,7 @@ const skillPlansRoutes = new Hono<App>()
 		const planIdsParam = c.req.query('planIds')
 
 		const db = createDb(c.env.DATABASE_URL)
-		const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 
 		// Check if user can check this character's progress
 		const allowed = await canCheckCharacterProgress(
@@ -1325,7 +1325,7 @@ const skillPlansRoutes = new Hono<App>()
 		const planIds = planIdsParam ? planIdsParam.split(',').filter(Boolean) : undefined
 
 		// Get character skills from EveCharacterData DO
-		const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+		using eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
 
 		try {
 			let skillsData = await eveCharacterDataStub.getSkills(characterId)
@@ -1362,7 +1362,7 @@ const skillPlansRoutes = new Hono<App>()
 			}))
 
 			// Check progress on multiple plans
-			const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+			using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 			const progressResults = await skillsStub.calculateMultiplePlanProgress(
 				characterId,
 				characterSkills,

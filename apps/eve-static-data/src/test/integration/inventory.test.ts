@@ -7,6 +7,25 @@ import { beforeAll, describe, expect, it } from 'vitest'
 
 import worker from '../../index'
 
+type ParseInventoryResponse = {
+	items: Array<{
+		type_id: number
+		type_name: string
+		quantity: number
+		volume: number
+		mass: number
+	}>
+	errors: Array<{ line: string; error: string }>
+	summary: {
+		uniqueTypes: number
+		totalQuantity: number
+		totalVolume: number
+		totalMass: number
+		successCount: number
+		errorCount: number
+	}
+}
+
 describe('Inventory Parsing', () => {
 	describe('POST /inventory/parse', () => {
 		it('should parse a simple inventory with single items', async () => {
@@ -26,7 +45,7 @@ Mexallon	250`
 
 			expect(response.status).toBe(200)
 
-			const result = await response.json()
+			const result = await response.json() as ParseInventoryResponse
 			expect(result).toHaveProperty('items')
 			expect(result).toHaveProperty('errors')
 			expect(result).toHaveProperty('summary')
@@ -53,7 +72,7 @@ Defender Launcher I	`
 
 			expect(response.status).toBe(200)
 
-			const result = await response.json()
+			const result = await response.json() as ParseInventoryResponse
 			expect(result).toHaveProperty('items')
 			expect(result).toHaveProperty('errors')
 
@@ -80,7 +99,7 @@ Pyerite	250`
 
 			expect(response.status).toBe(200)
 
-			const result = await response.json()
+			const result = await response.json() as ParseInventoryResponse
 			expect(result).toHaveProperty('items')
 			expect(result).toHaveProperty('errors')
 
@@ -112,7 +131,7 @@ Mexallon	0`
 
 			expect(response.status).toBe(200)
 
-			const result = await response.json()
+			const result = await response.json() as ParseInventoryResponse
 			expect(result.errors.length).toBeGreaterThanOrEqual(2) // At least 'abc' and '-100' should error
 		})
 
@@ -132,7 +151,7 @@ Pyerite	500`
 
 			expect(response.status).toBe(200)
 
-			const result = await response.json()
+			const result = await response.json() as ParseInventoryResponse
 			expect(result.summary).toBeDefined()
 			expect(result.summary.uniqueTypes).toBeGreaterThanOrEqual(0)
 			expect(result.summary.totalQuantity).toBeGreaterThanOrEqual(0)
@@ -155,7 +174,7 @@ Pyerite	500`
 
 			expect(response.status).toBe(400)
 
-			const result = await response.json()
+			const result = await response.json() as { error: string }
 			expect(result.error).toContain('Missing inventoryText')
 		})
 
@@ -172,7 +191,7 @@ Pyerite	500`
 
 			expect(response.status).toBe(400)
 
-			const result = await response.json()
+			const result = await response.json() as { error: string }
 			expect(result.error).toContain('must be a string')
 		})
 
@@ -192,7 +211,7 @@ Pyerite	500`
 
 			expect(response.status).toBe(400)
 
-			const result = await response.json()
+			const result = await response.json() as { error: string }
 			expect(result.error).toContain('too large')
 		})
 
@@ -216,7 +235,7 @@ Pyerite	500
 
 			expect(response.status).toBe(200)
 
-			const result = await response.json()
+			const result = await response.json() as ParseInventoryResponse
 			expect(result).toHaveProperty('items')
 			// Empty lines should be skipped without errors
 		})
@@ -238,7 +257,7 @@ Tritanium	100`
 
 			expect(response.status).toBe(200)
 
-			const result = await response.json()
+			const result = await response.json() as ParseInventoryResponse
 			// All three should parse successfully if case-insensitive matching works
 			const tritaniumItems = result.items.filter(
 				(item: any) => item.typeName && item.typeName.toLowerCase().includes('tritanium')
@@ -259,7 +278,7 @@ Tritanium	100`
 
 			expect(response.status).toBe(200)
 
-			const result = await response.json()
+			const result = await response.json() as any
 			expect(Array.isArray(result)).toBe(true)
 
 			if (result.length > 0) {
@@ -281,7 +300,7 @@ Tritanium	100`
 
 			expect(response.status).toBe(400)
 
-			const result = await response.json()
+			const result = await response.json() as any
 			expect(result.error).toContain('at least 2 characters')
 		})
 
@@ -296,7 +315,7 @@ Tritanium	100`
 
 			expect(response.status).toBe(200)
 
-			const result = await response.json()
+			const result = await response.json() as any
 			expect(Array.isArray(result)).toBe(true)
 			expect(result.length).toBeLessThanOrEqual(5)
 		})

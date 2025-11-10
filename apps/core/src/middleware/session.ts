@@ -39,12 +39,12 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 			return next()
 		}
 
+		// Create EVE Token Store stub (moved before try block for proper lifecycle)
+		const eveTokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+
 		try {
 			// Create database client
 			const db = createDb(c.env.DATABASE_URL)
-
-			// Create EVE Token Store stub
-			const eveTokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
 
 			// Create services
 			const authService = new AuthService(db, eveTokenStoreStub, c.env.SESSION_SECRET)
@@ -55,7 +55,8 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 
 			if (!session) {
 				// Invalid or expired session
-				return next()
+				await next()
+				return
 			}
 
 			// Get user ID from session
@@ -63,14 +64,15 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 
 			if (!userId) {
 				// Session exists but user not found
-				return next()
+				await next()
+				return
 			}
 
 			// Load user profile
 			const userProfile = await userService.getUserProfile(userId)
 
 			// SECURITY: Check if user is blacklisted
-			const hrStub = getStub<Hr>(c.env.HR, 'default')
+			using hrStub = getStub<Hr>(c.env.HR, 'default')
 			const isBlacklisted = await hrStub.isUserBlacklisted(userId)
 
 			if (isBlacklisted) {
@@ -125,12 +127,16 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 			c.set('user', sessionUser)
 			c.set('db', db)
 			c.set('eveTokenStore', eveTokenStoreStub)
+
+			await next()
 		} catch (error) {
 			logger.error('Error in session middleware:', error)
 			// Continue without user if error occurs
+			await next()
+		} finally {
+			// Manually dispose of eveTokenStoreStub after request completes
+			eveTokenStoreStub.dispose()
 		}
-
-		return next()
 	}
 }
 

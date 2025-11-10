@@ -24,7 +24,7 @@ ws.get('/notifications', async (c) => {
 
 	// Get the NotificationsDO stub for this user
 	// Each user gets their own DO instance for isolation
-	const notificationsStub = getStub<Notifications>(c.env.NOTIFICATIONS, user.id)
+	using notificationsStub = getStub<Notifications>(c.env.NOTIFICATIONS, user.id)
 
 	// Forward the request to the Durable Object for WebSocket upgrade
 	// The DO will handle the WebSocket protocol from here

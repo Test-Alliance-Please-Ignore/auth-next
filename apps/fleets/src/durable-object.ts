@@ -62,7 +62,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 	}
 
 	async getCharacterFleetInformation(characterId: EveCharacterId): Promise<FleetInformation> {
-		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 
 		console.log(`[Fleets DO] Getting fleet information for character ${characterId}`)
 
@@ -152,7 +152,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 		maxUses?: number
 	): Promise<QuickJoinCreationResult> {
 		// Verify the fleet boss actually owns the fleet
-		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 
 		// Check fleet info to verify boss
 		let fleetData: EsiGetFleetInformation
@@ -264,7 +264,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 		}
 
 		// Get fleet details
-		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		let fleetInfo: EsiGetFleetInformation | undefined
 		try {
 			const fleetResponse = await tokenStore.fetchEsi<EsiGetFleetInformation>(
@@ -278,7 +278,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 		}
 
 		// Get fleet boss name
-		const characterStub = getStub<EveCharacterData>(
+		using characterStub = getStub<EveCharacterData>(
 			this.env.EVE_CHARACTER_DATA,
 			invitation.fleetBossId
 		)
@@ -320,7 +320,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 			}
 		}
 
-		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 
 		// Fetch fleet info
 		let fleetInfo: EsiGetFleetInformation
@@ -411,7 +411,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 		}
 
 		// Get fleet boss name
-		const characterStub = getStub<EveCharacterData>(this.env.EVE_CHARACTER_DATA, characterId)
+		using characterStub = getStub<EveCharacterData>(this.env.EVE_CHARACTER_DATA, characterId)
 		const characterInfo = await characterStub.getCharacterInfo(characterId)
 
 		return {
@@ -440,7 +440,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 		const { invitation } = validation
 
 		// Check if character is already in the fleet
-		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 
 		try {
 			const membersResponse = await tokenStore.fetchEsi<EsiGetFleetMembers>(
@@ -572,7 +572,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 		}
 
 		// Check with ESI
-		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		let isActive = false
 		let isNotFound = false
 		try {

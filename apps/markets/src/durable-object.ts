@@ -4,7 +4,7 @@ import { and, desc, eq, gt, inArray, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
 import { createDb } from './db'
-import { latestMarketPrices, marketOrders, marketSnapshots, schema } from './db/schema'
+import { apiKeys, latestMarketPrices, marketOrders, marketSnapshots } from './db/schema'
 
 import type { EveTokenStore } from '@repo/eve-token-store'
 import {
@@ -19,6 +19,8 @@ import {
 } from '@repo/markets'
 import type { Env } from './context'
 import type { DbClientWs } from '@repo/db-utils'
+
+const schema = { apiKeys, latestMarketPrices, marketOrders, marketSnapshots }
 
 /**
  * Markets Durable Object
@@ -58,13 +60,6 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 	// ========================================================================
 	// HELPER METHODS
 	// ========================================================================
-
-	/**
-	 * Get token store stub for ESI requests
-	 */
-	private getTokenStoreStub(): EveTokenStore {
-		return getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-	}
 
 	/**
 	 * Get the maximum number of snapshots to retain for a location
@@ -390,7 +385,7 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 		try {
 			// Fetch stream from ESI via EveTokenStore
 			console.log(`[fetchAndStoreSnapshot] Getting token store stub`)
-			const tokenStore = this.getTokenStoreStub()
+			using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 			console.log(`[fetchAndStoreSnapshot] Calling fetchPublicEsiAllPagesStream`)
 			const stream = await tokenStore.fetchPublicEsiAllPagesStream(
 				`/markets/${regionId}/orders`,
@@ -541,7 +536,7 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 		try {
 			// Fetch from ESI via EveTokenStore (authenticated)
 			console.log(`[fetchAndStoreStructureSnapshot] Getting token store stub`)
-			const tokenStore = this.getTokenStoreStub()
+			using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 			console.log(`[fetchAndStoreStructureSnapshot] Calling fetchEsi`)
 
 			// Structure markets endpoint returns all orders in single page

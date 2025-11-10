@@ -61,7 +61,7 @@ broadcasts.get('/targets', async (c) => {
 	const groupId = c.req.query('groupId')
 
 	// Get user's group memberships (admins can see all)
-	const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 	const memberships = user.is_admin ? [] : await groupsStub.getUserMemberships(user.id)
 	const userGroupIds = memberships.map((m) => m.groupId)
 
@@ -73,7 +73,7 @@ broadcasts.get('/targets', async (c) => {
 	}
 
 	// Get Broadcasts DO stub
-	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	using broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const targets = await broadcastsStub.listTargets(user.id, groupId)
 
 	// Filter targets to only include those from groups the user is a member of
@@ -92,7 +92,7 @@ broadcasts.get('/targets/:id', async (c) => {
 	const user = c.get('user')!
 	const targetId = c.req.param('id')
 
-	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	using broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const target = await broadcastsStub.getTarget(targetId, user.id)
 
 	if (!target) {
@@ -101,7 +101,7 @@ broadcasts.get('/targets/:id', async (c) => {
 
 	// Verify user is a member of the target's group
 	if (!user.is_admin) {
-		const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 		const memberships = await groupsStub.getUserMemberships(user.id)
 		const isMember = memberships.some((m) => m.groupId === target.groupId)
 
@@ -122,7 +122,7 @@ broadcasts.post('/targets', async (c) => {
 	const data = await c.req.json()
 
 	// Check permissions - user must be admin or have broadcast permission in the group
-	const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 	const allowed = await hasPermission(
 		groupsStub,
 		user.id,
@@ -134,7 +134,7 @@ broadcasts.post('/targets', async (c) => {
 		return c.json({ error: 'Permission denied' }, 403)
 	}
 
-	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	using broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const target = await broadcastsStub.createTarget(data, user.id)
 
 	return c.json(target, 201)
@@ -150,7 +150,7 @@ broadcasts.patch('/targets/:id', async (c) => {
 	const data = await c.req.json()
 
 	// Get target to check group ownership
-	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	using broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const target = await broadcastsStub.getTarget(targetId, user.id)
 
 	if (!target) {
@@ -158,7 +158,7 @@ broadcasts.patch('/targets/:id', async (c) => {
 	}
 
 	// Check permissions
-	const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 	const allowed = await hasPermission(
 		groupsStub,
 		user.id,
@@ -183,7 +183,7 @@ broadcasts.delete('/targets/:id', async (c) => {
 	const targetId = c.req.param('id')
 
 	// Get target to check group ownership
-	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	using broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const target = await broadcastsStub.getTarget(targetId, user.id)
 
 	if (!target) {
@@ -191,7 +191,7 @@ broadcasts.delete('/targets/:id', async (c) => {
 	}
 
 	// Check permissions
-	const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 	const allowed = await hasPermission(
 		groupsStub,
 		user.id,
@@ -223,7 +223,7 @@ broadcasts.get('/templates', async (c) => {
 	const groupId = c.req.query('groupId')
 
 	// Get user's group memberships (admins can see all)
-	const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 	const memberships = user.is_admin ? [] : await groupsStub.getUserMemberships(user.id)
 	const userGroupIds = memberships.map((m) => m.groupId)
 
@@ -234,7 +234,7 @@ broadcasts.get('/templates', async (c) => {
 		}
 	}
 
-	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	using broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const templates = await broadcastsStub.listTemplates(user.id, { targetType, groupId })
 
 	// Filter templates to only include those from groups the user is a member of
@@ -253,7 +253,7 @@ broadcasts.get('/templates/:id', async (c) => {
 	const user = c.get('user')!
 	const templateId = c.req.param('id')
 
-	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	using broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const template = await broadcastsStub.getTemplate(templateId, user.id)
 
 	if (!template) {
@@ -262,7 +262,7 @@ broadcasts.get('/templates/:id', async (c) => {
 
 	// Verify user is a member of the template's group
 	if (!user.is_admin) {
-		const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 		const memberships = await groupsStub.getUserMemberships(user.id)
 		const isMember = memberships.some((m) => m.groupId === template.groupId)
 
@@ -283,7 +283,7 @@ broadcasts.post('/templates', async (c) => {
 	const data = await c.req.json()
 
 	// Check permissions
-	const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 	const allowed = await hasPermission(
 		groupsStub,
 		user.id,
@@ -295,7 +295,7 @@ broadcasts.post('/templates', async (c) => {
 		return c.json({ error: 'Permission denied' }, 403)
 	}
 
-	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	using broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const template = await broadcastsStub.createTemplate(data, user.id)
 
 	return c.json(template, 201)
@@ -311,7 +311,7 @@ broadcasts.patch('/templates/:id', async (c) => {
 	const data = await c.req.json()
 
 	// Get template to check group ownership
-	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	using broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const template = await broadcastsStub.getTemplate(templateId, user.id)
 
 	if (!template) {
@@ -319,7 +319,7 @@ broadcasts.patch('/templates/:id', async (c) => {
 	}
 
 	// Check permissions
-	const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 	const allowed = await hasPermission(
 		groupsStub,
 		user.id,
@@ -344,7 +344,7 @@ broadcasts.delete('/templates/:id', async (c) => {
 	const templateId = c.req.param('id')
 
 	// Get template to check group ownership
-	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	using broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const template = await broadcastsStub.getTemplate(templateId, user.id)
 
 	if (!template) {
@@ -352,7 +352,7 @@ broadcasts.delete('/templates/:id', async (c) => {
 	}
 
 	// Check permissions
-	const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 	const allowed = await hasPermission(
 		groupsStub,
 		user.id,
@@ -384,7 +384,7 @@ broadcasts.get('/', async (c) => {
 	const status = c.req.query('status') as any
 
 	// Get user's group memberships (admins can see all)
-	const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 	const memberships = user.is_admin ? [] : await groupsStub.getUserMemberships(user.id)
 	const userGroupIds = memberships.map((m) => m.groupId)
 
@@ -395,7 +395,7 @@ broadcasts.get('/', async (c) => {
 		}
 	}
 
-	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	using broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const broadcastList = await broadcastsStub.listBroadcasts(user.id, { groupId, status })
 
 	// Filter broadcasts to only include those from groups the user is a member of
@@ -415,7 +415,7 @@ broadcasts.get('/:id', async (c) => {
 	const user = c.get('user')!
 	const broadcastId = c.req.param('id')
 
-	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	using broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const broadcast = await broadcastsStub.getBroadcast(broadcastId, user.id)
 
 	if (!broadcast) {
@@ -424,7 +424,7 @@ broadcasts.get('/:id', async (c) => {
 
 	// Verify user is a member of the broadcast's group
 	if (!user.is_admin) {
-		const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 		const memberships = await groupsStub.getUserMemberships(user.id)
 		const isMember = memberships.some((m) => m.groupId === broadcast.groupId)
 
@@ -445,7 +445,7 @@ broadcasts.post('/', async (c) => {
 	const data = await c.req.json()
 
 	// Check permissions
-	const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 	const allowed = await hasPermission(
 		groupsStub,
 		user.id,
@@ -461,7 +461,7 @@ broadcasts.post('/', async (c) => {
 	const mainCharacter = user.characters.find((c) => c.is_primary)
 	const createdByCharacterName = mainCharacter?.characterName || 'Unknown'
 
-	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	using broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const broadcast = await broadcastsStub.createBroadcast(
 		{ ...data, createdByCharacterName },
 		user.id
@@ -479,7 +479,7 @@ broadcasts.post('/:id/send', async (c) => {
 	const broadcastId = c.req.param('id')
 
 	// Get broadcast to check group ownership
-	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	using broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const broadcast = await broadcastsStub.getBroadcast(broadcastId, user.id)
 
 	if (!broadcast) {
@@ -487,7 +487,7 @@ broadcasts.post('/:id/send', async (c) => {
 	}
 
 	// Check permissions
-	const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 	const allowed = await hasPermission(
 		groupsStub,
 		user.id,
@@ -514,7 +514,7 @@ broadcasts.delete('/:id', async (c) => {
 	const broadcastId = c.req.param('id')
 
 	// Get broadcast to check group ownership
-	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	using broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const broadcast = await broadcastsStub.getBroadcast(broadcastId, user.id)
 
 	if (!broadcast) {
@@ -522,7 +522,7 @@ broadcasts.delete('/:id', async (c) => {
 	}
 
 	// Check permissions
-	const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 	const allowed = await hasPermission(
 		groupsStub,
 		user.id,
@@ -546,7 +546,7 @@ broadcasts.get('/:id/deliveries', async (c) => {
 	const user = c.get('user')!
 	const broadcastId = c.req.param('id')
 
-	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	using broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 
 	// First, get the broadcast to check which group it belongs to
 	const broadcast = await broadcastsStub.getBroadcast(broadcastId, user.id)
@@ -557,7 +557,7 @@ broadcasts.get('/:id/deliveries', async (c) => {
 
 	// Verify user is a member of the broadcast's group
 	if (!user.is_admin) {
-		const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 		const memberships = await groupsStub.getUserMemberships(user.id)
 		const isMember = memberships.some((m) => m.groupId === broadcast.groupId)
 

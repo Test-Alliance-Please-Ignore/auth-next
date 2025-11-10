@@ -20,7 +20,7 @@ export async function renderFleetJoinPage(
 	}
 
 	// Call the Fleets Durable Object directly instead of making HTTP request
-	const fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
+	using fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
 
 	try {
 		const validation = await fleetsStub.validateQuickJoinToken(token)
@@ -30,8 +30,8 @@ export async function renderFleetJoinPage(
 		}
 
 		// Get user's characters from the user object
-		const tokenStore = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
-		const characterData = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+		using tokenStore = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+		using characterData = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
 
 		const charactersWithTokens: CharacterForFleetJoin[] = await Promise.all(
 			user.characters.map(async (char: (typeof user.characters)[number]) => {

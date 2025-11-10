@@ -63,7 +63,7 @@ refreshRouter.get('/:locationId/refresh', async (c) => {
 		const stubId =
 			latestSnapshot.locationType === 'region' ? `region-${locationId}` : `structure-${locationId}`
 
-		const stub = getStub<Markets>(c.env.MARKETS, stubId)
+		using stub = getStub<Markets>(c.env.MARKETS, stubId)
 
 		// Get alarm status from DO
 		const alarmStatus = await stub.getAlarmStatus()

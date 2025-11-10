@@ -8,8 +8,8 @@ import type { schema } from './db/schema'
 export type Env = SharedHonoEnv & {
 	DATABASE_URL: string
 	EVE_SDE_CACHE: KVNamespace
-	EVE_STRUCTURE: DurableObjectNamespace<EveStructure>
-	EVE_TOKEN_STORE: DurableObjectNamespace<EveTokenStore>
+	EVE_STRUCTURE: DurableObjectNamespace
+	EVE_TOKEN_STORE: DurableObjectNamespace
 }
 
 export type Variables = SharedHonoVariables & {

@@ -38,7 +38,7 @@ describe('EveTokenStore Worker', () => {
 
 describe('EveTokenStore Durable Object RPC', () => {
 	it('can list tokens', async () => {
-		const stub = getStub<EveTokenStore>(testEnv.EVE_TOKEN_STORE, 'test-list-tokens')
+		using stub = getStub<EveTokenStore>(testEnv.EVE_TOKEN_STORE, 'test-list-tokens')
 
 		const tokens = await stub.listTokens()
 
@@ -46,7 +46,7 @@ describe('EveTokenStore Durable Object RPC', () => {
 	})
 
 	it('returns null for non-existent token info', async () => {
-		const stub = getStub<EveTokenStore>(testEnv.EVE_TOKEN_STORE, 'test-token-info')
+		using stub = getStub<EveTokenStore>(testEnv.EVE_TOKEN_STORE, 'test-token-info')
 
 		const tokenInfo = await stub.getTokenInfo('non-existent-hash')
 

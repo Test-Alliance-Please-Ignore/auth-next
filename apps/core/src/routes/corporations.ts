@@ -130,7 +130,7 @@ async function checkCorporationAccess(
 	for (const character of userChars) {
 		try {
 			// Check if character is in this corporation
-			const charStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, character.characterId)
+			using charStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, character.characterId)
 			const charData = await charStub.getCharacterInfo(character.characterId)
 
 			// Skip if character is not in the target corporation
@@ -139,7 +139,7 @@ async function checkCorporationAccess(
 			}
 
 			// Get corporation data to check CEO and directors
-			const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+			using corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 			const [corpInfo, directors] = await Promise.all([
 				corpStub.getCorporationInfo(corporationId),
 				corpStub.getDirectors(corporationId),
@@ -528,7 +528,7 @@ app.post('/', requireAuth(), requireAdmin(), async (c) => {
 					assignedCharacterId,
 					assignedCharacterName,
 				})
-				const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+				using stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 
 				await stub.setCharacter(corporationId, assignedCharacterId, assignedCharacterName)
 				logger.info('[Corporations] Character set in DO successfully', { corporationId })
@@ -573,7 +573,7 @@ app.get('/:corporationId', requireAuth(), requireAdmin(), async (c) => {
 		// Get configuration from Durable Object if exists
 		let doConfig = null
 		try {
-			const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+			using stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 			doConfig = await stub.getConfiguration()
 		} catch (error) {
 			logger.error('Error fetching DO config:', error)
@@ -664,7 +664,7 @@ app.put('/:corporationId', requireAuth(), requireAdmin(), async (c) => {
 					assignedCharacterId,
 					assignedCharacterName,
 				})
-				const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+				using stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 				await stub.setCharacter(corporationId, assignedCharacterId, assignedCharacterName)
 				logger.info('[Corporations] Character updated in DO successfully', { corporationId })
 			} catch (error) {
@@ -723,7 +723,7 @@ app.post('/:corporationId/verify', requireAuth(), requireAdmin(), async (c) => {
 	try {
 		// Verify access via Durable Object
 		logger.info('[Corporations] Getting DO stub', { corporationId, stubId: corporationId })
-		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+		using stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 
 		logger.info('[Corporations] Calling verifyAccess on DO', { corporationId })
 		const verification = await stub.verifyAccess()
@@ -795,7 +795,7 @@ app.post('/:corporationId/fetch', requireAuth(), requireAdmin(), async (c) => {
 			corporationId,
 			stubId: corporationId,
 		})
-		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+		using stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 
 		logger.info('[Corporations] Calling fetch method on DO', { corporationId, category })
 
@@ -870,7 +870,7 @@ app.get('/:corporationId/data', requireAuth(), requireAdmin(), async (c) => {
 			corporationId,
 			stubId: corporationId,
 		})
-		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+		using stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 
 		logger.info('[Corporations] Fetching all data from DO', { corporationId })
 		const [publicInfo, coreData, financialData, assetsData, marketData, killmails] =
@@ -1053,7 +1053,7 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 		}
 
 		// Get corporation members from DO
-		const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+		using corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 		const [corpInfo, coreData] = await Promise.all([
 			corpStub.getCorporationInfo(corporationId),
 			corpStub.getCoreData(corporationId),
@@ -1082,7 +1082,7 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 
 		// Batch resolve all character names using ESI bulk endpoint
 		// Character ID → name mappings are cached for 1 year (essentially permanent)
-		const tokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+		using tokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
 		const characterNameMap = await tokenStoreStub.resolveIds(memberCharacterIds)
 
 		logger.info('[Corporations Members] Resolved character names', {
@@ -1118,7 +1118,7 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 		})
 
 		// Bulk check blacklist status for all members
-		const hrStub = getStub<Hr>(c.env.HR, 'default')
+		using hrStub = getStub<Hr>(c.env.HR, 'default')
 		const blacklistStatuses =
 			memberCharacterIds.length > 0
 				? await hrStub.checkCharactersBlacklisted(memberCharacterIds)
@@ -1260,7 +1260,7 @@ app.patch('/:corporationId/members/:characterId/status', requireAuth(), async (c
 		}
 
 		// Get corporation info to check if character is CEO
-		const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+		using corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 		const corpInfo = await corpStub.getCorporationInfo(corporationId)
 
 		// Prevent marking CEO as emeritus
@@ -1347,7 +1347,7 @@ app.get('/:corporationId/directors', requireAuth(), requireAdmin(), async (c) =>
 	const corporationId = c.req.param('corporationId')
 
 	try {
-		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+		using stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 		const directors = await stub.getDirectors(corporationId)
 
 		return c.json(directors)
@@ -1383,7 +1383,7 @@ app.post('/:corporationId/directors', requireAuth(), requireAdmin(), async (c) =
 			return c.json({ error: 'characterId and characterName are required' }, 400)
 		}
 
-		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+		using stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 		await stub.addDirector(corporationId, characterId, characterName, priority)
 
 		// Update managedCorporations to set primary director if this is the first one
@@ -1415,7 +1415,7 @@ app.delete('/:corporationId/directors/:characterId', requireAuth(), requireAdmin
 	const characterId = c.req.param('characterId')
 
 	try {
-		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+		using stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 		await stub.removeDirector(corporationId, characterId)
 
 		return c.json({ success: true })
@@ -1445,7 +1445,7 @@ app.put('/:corporationId/directors/:characterId', requireAuth(), requireAdmin(),
 			return c.json({ error: 'priority is required and must be a number' }, 400)
 		}
 
-		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+		using stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 		await stub.updateDirectorPriority(corporationId, characterId, priority)
 
 		return c.json({ success: true, characterId, priority })
@@ -1468,7 +1468,7 @@ app.post(
 		const directorId = c.req.param('directorId')
 
 		try {
-			const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+			using stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 			const isHealthy = await stub.verifyDirectorHealth(corporationId, directorId)
 
 			return c.json({ success: true, directorId, isHealthy })
@@ -1492,7 +1492,7 @@ app.post('/:corporationId/directors/verify-all', requireAuth(), requireAdmin(), 
 	}
 
 	try {
-		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+		using stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 		const result = await stub.verifyAllDirectorsHealth(corporationId)
 
 		// Update managedCorporations with healthy director count

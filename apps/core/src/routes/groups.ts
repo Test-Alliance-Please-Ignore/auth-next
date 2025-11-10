@@ -26,7 +26,7 @@ const groups = new Hono<App>()
  */
 groups.get('/categories', requireAuth(), async (c) => {
 	const user = c.get('user')!
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	const categories = await groupsDO.listCategories(user.id, user.is_admin)
 
@@ -44,7 +44,7 @@ groups.get('/categories', requireAuth(), async (c) => {
 groups.get('/categories/:id', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const categoryId = c.req.param('id')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		const category = await groupsDO.getCategory(categoryId, user.id, user.is_admin)
@@ -65,7 +65,7 @@ groups.get('/categories/:id', requireAuth(), async (c) => {
 groups.post('/categories', requireAuth(), requireAdmin(), async (c) => {
 	const user = c.get('user')!
 	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		const category = await groupsDO.createCategory(body, user.id)
@@ -87,7 +87,7 @@ groups.patch('/categories/:id', requireAuth(), requireAdmin(), async (c) => {
 	const user = c.get('user')!
 	const categoryId = c.req.param('id')
 	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		const category = await groupsDO.updateCategory(categoryId, body, user.id)
@@ -111,7 +111,7 @@ groups.patch('/categories/:id', requireAuth(), requireAdmin(), async (c) => {
 groups.delete('/categories/:id', requireAuth(), requireAdmin(), async (c) => {
 	const user = c.get('user')!
 	const categoryId = c.req.param('id')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		await groupsDO.deleteCategory(categoryId, user.id)
@@ -137,7 +137,7 @@ groups.delete('/categories/:id', requireAuth(), requireAdmin(), async (c) => {
  */
 groups.get('/', requireAuth(), async (c) => {
 	const user = c.get('user')!
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	// Parse query parameters
 	const filters = {
@@ -187,7 +187,7 @@ groups.get('/', requireAuth(), async (c) => {
 groups.post('/', requireAuth(), requireAdmin(), async (c) => {
 	const user = c.get('user')!
 	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		const group = await groupsDO.createGroup(body, user.id, user.is_admin)
@@ -209,7 +209,7 @@ groups.post('/', requireAuth(), requireAdmin(), async (c) => {
  */
 groups.get('/my-groups', requireAuth(), async (c) => {
 	const user = c.get('user')!
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	const memberships = await groupsDO.getUserMemberships(user.id)
 	return c.json(memberships)
@@ -222,7 +222,7 @@ groups.get('/my-groups', requireAuth(), async (c) => {
  */
 groups.get('/invitations', requireAuth(), async (c) => {
 	const user = c.get('user')!
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	const invitations = await groupsDO.listPendingInvitations(user.id)
 	return c.json(invitations)
@@ -236,7 +236,7 @@ groups.get('/invitations', requireAuth(), async (c) => {
 groups.get('/:groupId/invitations', requireAuth(), requireAdmin(), async (c) => {
 	const user = c.get('user')!
 	const groupId = c.req.param('groupId')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		const invitations = await groupsDO.getGroupInvitations(groupId, user.id, user.is_admin)
@@ -258,7 +258,7 @@ groups.post('/:groupId/invitations', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const groupId = c.req.param('groupId')
 	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	if (!body.characterName) {
 		return c.json({ error: 'characterName is required' }, 400)
@@ -289,7 +289,7 @@ groups.post('/:groupId/invitations', requireAuth(), async (c) => {
 groups.post('/invitations/:id/accept', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const invitationId = c.req.param('id')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		await groupsDO.acceptInvitation(invitationId, user.id)
@@ -310,7 +310,7 @@ groups.post('/invitations/:id/accept', requireAuth(), async (c) => {
 groups.post('/invitations/:id/decline', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const invitationId = c.req.param('id')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		await groupsDO.declineInvitation(invitationId, user.id)
@@ -332,7 +332,7 @@ groups.post('/:groupId/invite-codes', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const groupId = c.req.param('groupId')
 	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		const result = await groupsDO.createInviteCode(
@@ -361,7 +361,7 @@ groups.post('/:groupId/invite-codes', requireAuth(), async (c) => {
 groups.get('/:groupId/invite-codes', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const groupId = c.req.param('groupId')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		const codes = await groupsDO.listInviteCodes(groupId, user.id, user.is_admin)
@@ -382,7 +382,7 @@ groups.get('/:groupId/invite-codes', requireAuth(), async (c) => {
 groups.delete('/invite-codes/:codeId', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const codeId = c.req.param('codeId')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		await groupsDO.revokeInviteCode(codeId, user.id, user.is_admin)
@@ -403,7 +403,7 @@ groups.delete('/invite-codes/:codeId', requireAuth(), async (c) => {
 groups.post('/invite-codes/redeem', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	if (!body.code) {
 		return c.json({ error: 'Invite code is required' }, 400)
@@ -428,7 +428,7 @@ groups.post('/invite-codes/redeem', requireAuth(), async (c) => {
 groups.post('/join-requests/:requestId/approve', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const requestId = c.req.param('requestId')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		await groupsDO.approveJoinRequest(requestId, user.id)
@@ -449,7 +449,7 @@ groups.post('/join-requests/:requestId/approve', requireAuth(), async (c) => {
 groups.post('/join-requests/:requestId/reject', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const requestId = c.req.param('requestId')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		await groupsDO.rejectJoinRequest(requestId, user.id)
@@ -473,7 +473,7 @@ groups.get('/permissions/categories', requireAuth(), requireAdmin(), async (c) =
 	console.log('[API] GET /permissions/categories - Start')
 
 	try {
-		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+		using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 		console.log('[API] GET /permissions/categories - Got DO stub')
 
 		const categories = await groupsDO.listPermissionCategories()
@@ -499,7 +499,7 @@ groups.get('/permissions/categories', requireAuth(), requireAdmin(), async (c) =
 groups.post('/permissions/categories', requireAuth(), requireAdmin(), async (c) => {
 	const user = c.get('user')!
 	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		const category = await groupsDO.createPermissionCategory(
@@ -527,7 +527,7 @@ groups.patch('/permissions/categories/:id', requireAuth(), requireAdmin(), async
 	const user = c.get('user')!
 	const categoryId = c.req.param('id')
 	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		const category = await groupsDO.updatePermissionCategory(
@@ -558,7 +558,7 @@ groups.patch('/permissions/categories/:id', requireAuth(), requireAdmin(), async
 groups.delete('/permissions/categories/:id', requireAuth(), requireAdmin(), async (c) => {
 	const user = c.get('user')!
 	const categoryId = c.req.param('id')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		await groupsDO.deletePermissionCategory(categoryId, user.id)
@@ -587,7 +587,7 @@ groups.get('/permissions', requireAuth(), requireAdmin(), async (c) => {
 	console.log('[API] GET /permissions - categoryId:', categoryId)
 
 	try {
-		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+		using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 		console.log('[API] GET /permissions - Got DO stub')
 
 		const permissions = await groupsDO.listPermissions(categoryId)
@@ -612,7 +612,7 @@ groups.get('/permissions', requireAuth(), requireAdmin(), async (c) => {
  */
 groups.get('/permissions/:id', requireAuth(), requireAdmin(), async (c) => {
 	const permissionId = c.req.param('id')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		const permission = await groupsDO.getPermission(permissionId)
@@ -636,7 +636,7 @@ groups.get('/permissions/:id', requireAuth(), requireAdmin(), async (c) => {
 groups.post('/permissions', requireAuth(), requireAdmin(), async (c) => {
 	const user = c.get('user')!
 	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		const permission = await groupsDO.createPermission(
@@ -666,7 +666,7 @@ groups.patch('/permissions/:id', requireAuth(), requireAdmin(), async (c) => {
 	const user = c.get('user')!
 	const permissionId = c.req.param('id')
 	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		const permission = await groupsDO.updatePermission(
@@ -698,7 +698,7 @@ groups.patch('/permissions/:id', requireAuth(), requireAdmin(), async (c) => {
 groups.delete('/permissions/:id', requireAuth(), requireAdmin(), async (c) => {
 	const user = c.get('user')!
 	const permissionId = c.req.param('id')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		await groupsDO.deletePermission(permissionId, user.id)
@@ -724,7 +724,7 @@ groups.delete('/permissions/:id', requireAuth(), requireAdmin(), async (c) => {
 groups.get('/:groupId/permissions', requireAuth(), requireAdmin(), async (c) => {
 	const user = c.get('user')!
 	const groupId = c.req.param('groupId')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		const permissions = await groupsDO.listGroupPermissions(groupId, user.id)
@@ -749,7 +749,7 @@ groups.post('/:groupId/permissions/attach', requireAuth(), requireAdmin(), async
 	const user = c.get('user')!
 	const groupId = c.req.param('groupId')
 	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		const groupPermission = await groupsDO.attachPermissionToGroup(
@@ -778,7 +778,7 @@ groups.post('/:groupId/permissions/custom', requireAuth(), requireAdmin(), async
 	const user = c.get('user')!
 	const groupId = c.req.param('groupId')
 	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		const groupPermission = await groupsDO.createGroupScopedPermission(
@@ -813,7 +813,7 @@ groups.patch(
 		const user = c.get('user')!
 		const groupPermissionId = c.req.param('groupPermissionId')
 		const body = await c.req.json()
-		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+		using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 		try {
 			const groupPermission = await groupsDO.updateGroupPermission(
@@ -848,7 +848,7 @@ groups.delete(
 	async (c) => {
 		const user = c.get('user')!
 		const groupPermissionId = c.req.param('groupPermissionId')
-		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+		using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 		try {
 			await groupsDO.removePermissionFromGroup(groupPermissionId, user.id)
@@ -872,7 +872,7 @@ groups.delete(
  */
 groups.get('/:groupId/permissions/members', requireAuth(), requireAdmin(), async (c) => {
 	const groupId = c.req.param('groupId')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		const memberPermissions = await groupsDO.getGroupMemberPermissions(groupId)
@@ -895,7 +895,7 @@ groups.get('/:groupId/permissions/members', requireAuth(), requireAdmin(), async
  */
 groups.get('/users/:userId/permissions', requireAuth(), requireAdmin(), async (c) => {
 	const userId = c.req.param('userId')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	const permissions = await groupsDO.getUserPermissions(userId)
 	return c.json(permissions)
@@ -908,7 +908,7 @@ groups.get('/users/:userId/permissions', requireAuth(), requireAdmin(), async (c
  */
 groups.post('/permissions/members/multi-group', requireAuth(), requireAdmin(), async (c) => {
 	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		const memberPermissions = await groupsDO.getMultiGroupMemberPermissions(body.groupIds)
@@ -931,7 +931,7 @@ groups.post('/permissions/members/multi-group', requireAuth(), requireAdmin(), a
 groups.get('/:id', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const groupId = c.req.param('id')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		const group = await groupsDO.getGroup(groupId, user.id, user.is_admin)
@@ -971,7 +971,7 @@ groups.patch('/:id', requireAuth(), requireAdmin(), async (c) => {
 	const user = c.get('user')!
 	const groupId = c.req.param('id')
 	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		const group = await groupsDO.updateGroup(groupId, body, user.id, user.is_admin)
@@ -995,7 +995,7 @@ groups.patch('/:id', requireAuth(), requireAdmin(), async (c) => {
 groups.delete('/:id', requireAuth(), requireAdmin(), async (c) => {
 	const user = c.get('user')!
 	const groupId = c.req.param('id')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		await groupsDO.deleteGroup(groupId, user.id, user.is_admin)
@@ -1022,7 +1022,7 @@ groups.delete('/:id', requireAuth(), requireAdmin(), async (c) => {
 groups.get('/:groupId/members', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const groupId = c.req.param('groupId')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		const members = await groupsDO.getGroupMembers(groupId, user.id, user.is_admin)
@@ -1049,7 +1049,7 @@ groups.delete('/:groupId/members/:userId', requireAuth(), requireAdmin(), async 
 	const user = c.get('user')!
 	const groupId = c.req.param('groupId')
 	const memberUserId = c.req.param('userId')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		await groupsDO.removeMember(groupId, user.id, memberUserId)
@@ -1076,7 +1076,7 @@ groups.post('/:groupId/admins', requireAuth(), requireAdmin(), async (c) => {
 	const user = c.get('user')!
 	const groupId = c.req.param('groupId')
 	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	if (!body.userId) {
 		return c.json({ error: 'userId is required' }, 400)
@@ -1105,7 +1105,7 @@ groups.delete('/:groupId/admins/:userId', requireAuth(), requireAdmin(), async (
 	const user = c.get('user')!
 	const groupId = c.req.param('groupId')
 	const targetUserId = c.req.param('userId')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		await groupsDO.removeAdmin(groupId, user.id, targetUserId)
@@ -1129,7 +1129,7 @@ groups.delete('/:groupId/admins/:userId', requireAuth(), requireAdmin(), async (
 groups.post('/:id/join', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const groupId = c.req.param('id')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		await groupsDO.joinGroup(groupId, user.id)
@@ -1150,7 +1150,7 @@ groups.post('/:id/join', requireAuth(), async (c) => {
 groups.post('/:id/leave', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const groupId = c.req.param('id')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		await groupsDO.leaveGroup(groupId, user.id)
@@ -1172,7 +1172,7 @@ groups.post('/:id/transfer', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const groupId = c.req.param('id')
 	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	if (!body.newOwnerId) {
 		return c.json({ error: 'newOwnerId is required' }, 400)
@@ -1200,7 +1200,7 @@ groups.post('/:id/join-requests', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const groupId = c.req.param('id')
 	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		const request = await groupsDO.createJoinRequest(
@@ -1227,7 +1227,7 @@ groups.post('/:id/join-requests', requireAuth(), async (c) => {
 groups.get('/:id/join-requests', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const groupId = c.req.param('id')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		const requests = await groupsDO.listJoinRequests(groupId, user.id)
@@ -1249,7 +1249,7 @@ groups.get('/:id/join-requests', requireAuth(), async (c) => {
  */
 groups.get('/:groupId/discord-servers', requireAuth(), requireAdmin(), async (c) => {
 	const groupId = c.req.param('groupId')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		const servers = await groupsDO.getDiscordServers(groupId)
@@ -1276,7 +1276,7 @@ groups.get('/:groupId/discord-servers', requireAuth(), requireAdmin(), async (c)
 groups.post('/:groupId/discord-servers', requireAuth(), requireAdmin(), async (c) => {
 	const groupId = c.req.param('groupId')
 	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	if (!body.discordServerId) {
 		return c.json({ error: 'discordServerId is required' }, 400)
@@ -1306,7 +1306,7 @@ groups.post('/:groupId/discord-servers', requireAuth(), requireAdmin(), async (c
 groups.put('/:groupId/discord-servers/:attachmentId', requireAuth(), requireAdmin(), async (c) => {
 	const attachmentId = c.req.param('attachmentId')
 	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		const server = await groupsDO.updateDiscordServerAttachment(attachmentId, {
@@ -1336,7 +1336,7 @@ groups.delete(
 	requireAdmin(),
 	async (c) => {
 		const attachmentId = c.req.param('attachmentId')
-		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+		using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 		try {
 			await groupsDO.detachDiscordServer(attachmentId)
@@ -1365,7 +1365,7 @@ groups.post(
 	async (c) => {
 		const attachmentId = c.req.param('attachmentId')
 		const body = await c.req.json()
-		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+		using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 		if (!body.discordRoleId) {
 			return c.json({ error: 'discordRoleId is required' }, 400)
@@ -1404,7 +1404,7 @@ groups.post(
 
 		try {
 			// Get Discord server configuration (guild ID + role IDs)
-			const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+			using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 			const config = await groupsDO.getDiscordServerAttachmentConfig(attachmentId)
 
 			// Verify attachment belongs to this group
@@ -1462,7 +1462,7 @@ groups.post(
 			}
 
 			// Call Discord DO to refresh roles for each member
-			const discordDO = getStub<Discord>(c.env.DISCORD, 'default')
+			using discordDO = getStub<Discord>(c.env.DISCORD, 'default')
 
 			let successCount = 0
 			let failedCount = 0
@@ -1517,7 +1517,7 @@ groups.delete(
 	requireAdmin(),
 	async (c) => {
 		const roleAssignmentId = c.req.param('roleAssignmentId')
-		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+		using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 		try {
 			await groupsDO.unassignRoleFromDiscordServer(roleAssignmentId)

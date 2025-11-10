@@ -39,7 +39,7 @@ describe('Discord Worker', () => {
 
 describe('Discord Durable Object', () => {
 	it('returns null for non-existent profile', async () => {
-		const stub = getStub<Discord>(testEnv.DISCORD, 'default')
+		using stub = getStub<Discord>(testEnv.DISCORD, 'default')
 
 		const profile = await stub.getProfileByCoreUserId('550e8400-e29b-41d4-a716-446655440000')
 
@@ -47,7 +47,7 @@ describe('Discord Durable Object', () => {
 	})
 
 	it('can call refreshTokenByCoreUserId', async () => {
-		const stub = getStub<Discord>(testEnv.DISCORD, 'default')
+		using stub = getStub<Discord>(testEnv.DISCORD, 'default')
 
 		const result = await stub.refreshTokenByCoreUserId('550e8400-e29b-41d4-a716-446655440000')
 

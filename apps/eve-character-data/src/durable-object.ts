@@ -138,7 +138,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		_forceRefresh = false
 	): Promise<EsiCharacterRoles | null> {
 		try {
-			const tokenStoreStub = this.getTokenStoreStub()
+			using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 			const response: EsiResponse<EsiCharacterRoles> = await tokenStoreStub.fetchEsi(
 				`/characters/${String(characterId)}/roles`,
 				String(characterId)
@@ -200,20 +200,13 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	}
 
 	/**
-	 * Get token store stub for this character
-	 */
-	private getTokenStoreStub(): EveTokenStore {
-		return getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-	}
-
-	/**
 	 * Fetch and store public character info
 	 */
 	private async fetchAndStorePublicInfo(
 		characterId: string,
 		_forceRefresh = false
 	): Promise<CharacterPublicData> {
-		const tokenStoreStub = this.getTokenStoreStub()
+		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		// ESI returns numbers for IDs, but we need strings
 		const response = await tokenStoreStub.fetchEsi<{
 			alliance_id?: number
@@ -287,7 +280,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		characterId: string,
 		_forceRefresh = false
 	): Promise<CharacterPortraitData> {
-		const tokenStoreStub = this.getTokenStoreStub()
+		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const response: EsiResponse<EsiCharacterPortrait> = await tokenStoreStub.fetchEsi(
 			`/characters/${String(characterId)}/portrait`,
 			String(characterId)
@@ -339,7 +332,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		characterId: string,
 		_forceRefresh = false
 	): Promise<CharacterCorporationHistoryData[]> {
-		const tokenStoreStub = this.getTokenStoreStub()
+		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		// ESI returns numbers for IDs, but we need strings
 		const response = await tokenStoreStub.fetchEsi<
 			Array<{
@@ -406,7 +399,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		characterId: string,
 		_forceRefresh = false
 	): Promise<CharacterSkillsData> {
-		const tokenStoreStub = this.getTokenStoreStub()
+		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		// ESI returns numbers for skill_id, but we need strings
 		const response = await tokenStoreStub.fetchEsi<{
 			skills: Array<{
@@ -471,7 +464,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		characterId: string,
 		_forceRefresh = false
 	): Promise<CharacterAttributesData> {
-		const tokenStoreStub = this.getTokenStoreStub()
+		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const response: EsiResponse<EsiCharacterAttributes> = await tokenStoreStub.fetchEsi(
 			`/characters/${String(characterId)}/attributes`,
 			String(characterId)
@@ -535,7 +528,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		characterId: string,
 		_forceRefresh = false
 	): Promise<CharacterWalletJournalData[]> {
-		const tokenStoreStub = this.getTokenStoreStub()
+		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		// ESI returns numbers for IDs, but we need strings
 		const response = await tokenStoreStub.fetchEsi<
 			Array<{
@@ -653,7 +646,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		characterId: string,
 		_forceRefresh = false
 	): Promise<CharacterMarketTransactionData[]> {
-		const tokenStoreStub = this.getTokenStoreStub()
+		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		// ESI returns numbers for IDs, but we need strings
 		const response = await tokenStoreStub.fetchEsi<
 			Array<{
@@ -742,7 +735,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		characterId: string,
 		_forceRefresh = false
 	): Promise<CharacterMarketOrderData[]> {
-		const tokenStoreStub = this.getTokenStoreStub()
+		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		// ESI returns numbers for IDs, but we need strings
 		const response = await tokenStoreStub.fetchEsi<
 			Array<{

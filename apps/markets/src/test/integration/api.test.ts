@@ -33,7 +33,7 @@ describe('Markets Worker', () => {
 
 describe('Markets Durable Object', () => {
 	it('can get alarm status', async () => {
-		const stub = getStub<Markets>(env.MARKETS, `test-alarm-${Date.now()}-${Math.random()}`)
+		using stub = getStub<Markets>(env.MARKETS, `test-alarm-${Date.now()}-${Math.random()}`)
 
 		const status = await stub.getAlarmStatus()
 
@@ -44,7 +44,7 @@ describe('Markets Durable Object', () => {
 	})
 
 	it('can start and stop hourly snapshots', async () => {
-		const stub = getStub<Markets>(env.MARKETS, `test-region-${Date.now()}-${Math.random()}`)
+		using stub = getStub<Markets>(env.MARKETS, `test-region-${Date.now()}-${Math.random()}`)
 		const testRegionId = '10000002' // The Forge
 
 		// Start snapshots

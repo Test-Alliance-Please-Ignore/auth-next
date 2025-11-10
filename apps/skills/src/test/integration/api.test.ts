@@ -41,7 +41,7 @@ describe('Skills Worker', () => {
 describe('Skills Durable Object', () => {
 	it('can create and retrieve a skill plan', async () => {
 		const testEnv = env as unknown as Env
-		const stub = getStub<Skills>(testEnv.SKILLS, 'test')
+		using stub = getStub<Skills>(testEnv.SKILLS, 'test')
 
 		// Create a skill plan
 		const plan = await stub.createSkillPlan({
@@ -63,7 +63,7 @@ describe('Skills Durable Object', () => {
 
 	it('can add skills to a plan', async () => {
 		const testEnv = env as unknown as Env
-		const stub = getStub<Skills>(testEnv.SKILLS, 'test')
+		using stub = getStub<Skills>(testEnv.SKILLS, 'test')
 
 		// Create a skill plan
 		const plan = await stub.createSkillPlan({
@@ -85,7 +85,7 @@ describe('Skills Durable Object', () => {
 
 	it('can create and list skill plan categories', async () => {
 		const testEnv = env as unknown as Env
-		const stub = getStub<Skills>(testEnv.SKILLS, 'test')
+		using stub = getStub<Skills>(testEnv.SKILLS, 'test')
 
 		// Create a category
 		const category = await stub.createSkillPlanCategory({

@@ -150,7 +150,7 @@ export async function handleTokens(
 		const scopes = scope ? scope.split(' ') : []
 		const expiresAt = new Date(Date.now() + expiresIn * 1000)
 
-		const discordStub = getStub<Discord>(env.DISCORD, 'default')
+		using discordStub = getStub<Discord>(env.DISCORD, 'default')
 		const success = await discordStub.storeTokensDirect(
 			userInfo.id,
 			userInfo.username,
@@ -206,7 +206,7 @@ export async function handleTokens(
  * @returns Discord profile or null
  */
 export async function getProfile(env: Env, userId: string): Promise<DiscordProfile | null> {
-	const discordStub = getStub<Discord>(env.DISCORD, 'default')
+	using discordStub = getStub<Discord>(env.DISCORD, 'default')
 	return discordStub.getProfileByCoreUserId(userId)
 }
 
@@ -217,7 +217,7 @@ export async function getProfile(env: Env, userId: string): Promise<DiscordProfi
  * @returns Discord user status or null if not found
  */
 export async function getUserStatus(env: Env, userId: string) {
-	const discordStub = getStub<Discord>(env.DISCORD, 'default')
+	using discordStub = getStub<Discord>(env.DISCORD, 'default')
 	return discordStub.getDiscordUserStatus(userId)
 }
 
@@ -228,7 +228,7 @@ export async function getUserStatus(env: Env, userId: string) {
  * @returns Success status
  */
 export async function refreshToken(env: Env, userId: string): Promise<boolean> {
-	const discordStub = getStub<Discord>(env.DISCORD, 'default')
+	using discordStub = getStub<Discord>(env.DISCORD, 'default')
 	return discordStub.refreshTokenByCoreUserId(userId)
 }
 
@@ -320,7 +320,7 @@ async function getAllManagedRolesForGuild(
 
 	// Query 3: Group-managed roles
 	// Uses: group_discord_servers_server_auto_assign_idx (new index)
-	const groupsStub = getStub<Groups>(env.GROUPS, 'default')
+	using groupsStub = getStub<Groups>(env.GROUPS, 'default')
 	const groupAttachments = await groupsStub.getGroupsByDiscordServer(discordServerId)
 
 	if (groupAttachments.length > 0) {
@@ -408,7 +408,7 @@ export async function inviteUserToDiscordServers(
 	}
 
 	// Check if user is blacklisted - prevent Discord invites for blacklisted users
-	const hrStub = getStub<Hr>(env.HR, 'default')
+	using hrStub = getStub<Hr>(env.HR, 'default')
 	const isBlacklisted = await hrStub.isUserBlacklisted(userId)
 
 	if (isBlacklisted) {
@@ -490,7 +490,7 @@ export async function inviteUserToDiscordServers(
 	// Check corporation memberships
 	for (const attachment of activeCorpAttachments) {
 		try {
-			const corpStub = getStub<EveCorporationData>(
+			using corpStub = getStub<EveCorporationData>(
 				env.EVE_CORPORATION_DATA,
 				attachment.corporationId
 			)
@@ -537,7 +537,7 @@ export async function inviteUserToDiscordServers(
 	// === CHECK GROUPS (ONLY autoInvite=true) ===
 
 	try {
-		const groupsStub = getStub<Groups>(env.GROUPS, 'default')
+		using groupsStub = getStub<Groups>(env.GROUPS, 'default')
 		const groupsWithDiscord = await groupsStub.getGroupsWithDiscordAutoInvite()
 
 		logger.info('[Discord] Found groups with Discord servers', {
@@ -729,7 +729,7 @@ export async function inviteUserToDiscordServers(
 		guildCount: guildIds.length,
 	})
 
-	const discordStub = getStub<Discord>(env.DISCORD, 'default')
+	using discordStub = getStub<Discord>(env.DISCORD, 'default')
 	const inviteResults = await discordStub.joinUserToServers(userId, guildIds)
 
 	// === UPDATE ROLES ===
@@ -850,7 +850,7 @@ export async function updateUserDiscordRoles(
 	}
 
 	// Check if user is blacklisted - prevent role updates for blacklisted users
-	const hrStub = getStub<Hr>(env.HR, 'default')
+	using hrStub = getStub<Hr>(env.HR, 'default')
 	const isBlacklisted = await hrStub.isUserBlacklisted(userId)
 
 	if (isBlacklisted) {
@@ -898,7 +898,7 @@ export async function updateUserDiscordRoles(
 		serversToUpdate = guildIds
 	} else {
 		// Get all servers user is currently a member of from Discord
-		const discordStub = getStub<Discord>(env.DISCORD, 'default')
+		using discordStub = getStub<Discord>(env.DISCORD, 'default')
 		const currentGuilds = await discordStub.getUserGuilds(userId)
 		serversToUpdate = currentGuilds.map(g => g.id)
 
@@ -991,7 +991,7 @@ export async function updateUserDiscordRoles(
 
 	for (const attachment of corpAttachments) {
 		try {
-			const corpStub = getStub<EveCorporationData>(
+			using corpStub = getStub<EveCorporationData>(
 				env.EVE_CORPORATION_DATA,
 				attachment.corporationId
 			)
@@ -1033,7 +1033,7 @@ export async function updateUserDiscordRoles(
 	// === CHECK GROUP ROLES (all attachments, not just auto-invite) ===
 
 	try {
-		const groupsStub = getStub<Groups>(env.GROUPS, 'default')
+		using groupsStub = getStub<Groups>(env.GROUPS, 'default')
 		const groupsWithDiscord = await groupsStub.getGroupsWithDiscordAutoInvite()
 
 		for (const group of groupsWithDiscord) {
@@ -1164,7 +1164,7 @@ export async function updateUserDiscordRoles(
 
 	// === CALL DISCORD DO - UPDATE ROLES ONLY ===
 
-	const discordStub = getStub<Discord>(env.DISCORD, 'default')
+	using discordStub = getStub<Discord>(env.DISCORD, 'default')
 	const updateResults = await discordStub.updateUserRoles(userId, updateRequests)
 
 	// Build final results
@@ -1224,7 +1224,7 @@ export async function syncUserDiscordAccess(
 	totalFailed: number
 }> {
 	// Check if user is blacklisted early for efficiency
-	const hrStub = getStub<Hr>(env.HR, 'default')
+	using hrStub = getStub<Hr>(env.HR, 'default')
 	const isBlacklisted = await hrStub.isUserBlacklisted(userId)
 
 	if (isBlacklisted) {
@@ -1292,7 +1292,7 @@ export async function updateUserDiscordNickname(env: Env, userId: string): Promi
 	const nickname = primaryChar.characterName
 
 	// Get all Discord servers the user is a member of
-	const discordStub = getStub<Discord>(env.DISCORD, 'default')
+	using discordStub = getStub<Discord>(env.DISCORD, 'default')
 	const userGuilds = await discordStub.getUserGuilds(userId)
 
 	if (userGuilds.length === 0) {

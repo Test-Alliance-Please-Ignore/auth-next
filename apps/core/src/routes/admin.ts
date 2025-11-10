@@ -368,7 +368,7 @@ app.delete('/users/:userId/characters/:characterId', requireAuth(), requireAdmin
 		}
 
 		// Revoke ESI token
-		const eveTokenStore = getStub<EveTokenStore>(
+		using eveTokenStore = getStub<EveTokenStore>(
 			c.env.EVE_TOKEN_STORE,
 			'default'
 		)
@@ -483,7 +483,7 @@ app.post('/users/:userId/discord/revoke', requireAuth(), requireAdmin(), async (
 
 	try {
 		// Get Discord DO stub
-		const discordStub = getStub<Discord>(c.env.DISCORD, 'default')
+		using discordStub = getStub<Discord>(c.env.DISCORD, 'default')
 
 		// Get current Discord status
 		const status = await discordStub.getDiscordUserStatus(userId)
@@ -589,7 +589,7 @@ app.post('/blacklist/user', requireAuth(), requireAdmin(), async (c) => {
 			processedUsers.add(targetUserId)
 
 			const db = createDb(c.env.DATABASE_URL)
-			const hrStub = getStub<Hr>(c.env.HR, 'default')
+			using hrStub = getStub<Hr>(c.env.HR, 'default')
 			const sessionService = new SessionService(db)
 
 			// 1. Create user blacklist
@@ -715,7 +715,7 @@ app.post('/blacklist/character', requireAuth(), requireAdmin(), async (c) => {
 		const { characterId, reason, metadata } = validation.data
 
 		// Call HR DO via RPC
-		const hrStub = getStub<Hr>(c.env.HR, 'default')
+		using hrStub = getStub<Hr>(c.env.HR, 'default')
 		const entry = await hrStub.createCharacterBlacklist({
 			characterId,
 			reason,
@@ -795,7 +795,7 @@ app.get('/blacklist', requireAuth(), requireAdmin(), async (c) => {
 			isAutoBlacklistParam === 'true' ? true : isAutoBlacklistParam === 'false' ? false : undefined
 
 		// Call HR DO via RPC
-		const hrStub = getStub<Hr>(c.env.HR, 'default')
+		using hrStub = getStub<Hr>(c.env.HR, 'default')
 		const result = await hrStub.getAllBlacklists({
 			targetType,
 			isAutoBlacklist,
@@ -832,7 +832,7 @@ app.get('/blacklist/user/:userId', requireAuth(), requireAdmin(), async (c) => {
 
 	try {
 		// Call HR DO via RPC
-		const hrStub = getStub<Hr>(c.env.HR, 'default')
+		using hrStub = getStub<Hr>(c.env.HR, 'default')
 		const entries = await hrStub.getBlacklistsForUser(userId)
 
 		return c.json(entries)
@@ -856,7 +856,7 @@ app.get('/blacklist/character/:characterId', requireAuth(), requireAdmin(), asyn
 
 	try {
 		// Call HR DO via RPC
-		const hrStub = getStub<Hr>(c.env.HR, 'default')
+		using hrStub = getStub<Hr>(c.env.HR, 'default')
 		const entries = await hrStub.getBlacklistsForCharacter(characterId)
 
 		return c.json(entries)
@@ -887,7 +887,7 @@ app.delete('/blacklist/:id', requireAuth(), requireAdmin(), async (c) => {
 	}
 
 	try {
-		const hrStub = getStub<Hr>(c.env.HR, 'default')
+		using hrStub = getStub<Hr>(c.env.HR, 'default')
 		let removedCount = 0
 		const processedIds = new Set<string>()
 

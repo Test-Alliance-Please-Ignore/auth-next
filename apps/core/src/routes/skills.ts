@@ -40,7 +40,7 @@ skills.get('/', async (c) => {
 		return c.json({ error: 'Permission denied' }, 403)
 	}
 
-	const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+	using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 	try {
 		// Handle skill IDs request (for character skills display)
@@ -131,7 +131,7 @@ skills.get('/', async (c) => {
  * Get all skill groups
  */
 skills.get('/groups', async (c) => {
-	const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+	using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 	try {
 		// For now, we'll get all skills and extract unique groups
@@ -159,7 +159,7 @@ skills.get('/groups', async (c) => {
  */
 skills.get('/group/:groupId', async (c) => {
 	const groupId = c.req.param('groupId')
-	const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+	using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 	try {
 		const skillsInGroup = await skillsStub.getSkillsByGroupId(groupId as any)
@@ -176,7 +176,7 @@ skills.get('/group/:groupId', async (c) => {
  */
 skills.get('/:skillId', async (c) => {
 	const skillId = c.req.param('skillId')
-	const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+	using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 	try {
 		const skill = await skillsStub.getSkillInfo(skillId as any)
@@ -202,7 +202,7 @@ skills.post('/cache/clear', async (c) => {
 		return c.json({ error: 'Permission denied' }, 403)
 	}
 
-	const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+	using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 	try {
 		await skillsStub.clearAllCaches()
