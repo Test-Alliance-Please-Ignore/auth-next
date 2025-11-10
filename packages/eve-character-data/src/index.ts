@@ -6,6 +6,9 @@
  */
 
 import { RpcTarget } from 'cloudflare:workers'
+import { z } from 'zod'
+
+import { Killmails, killmailSchema, killmailsSchema } from './killmails'
 
 import type { EveAllianceId, EveCharacterId, EveCorporationId } from '@repo/eve-types'
 
@@ -510,6 +513,13 @@ export interface EveCharacterData {
 	 * @returns Instance of EveCharacterData Durable Object
 	 */
 	getInstance(characterId: string): Promise<EveCharacterDataInstance>
+
+	/**
+	 * Get killmails for a character
+	 * @param characterId - EVE character ID
+	 * @returns Array of killmail data
+	 */
+	getKillmails(characterId: string): Promise<Killmails>
 }
 
 /**
@@ -522,6 +532,10 @@ export class EveCharacterDataInstance extends RpcTarget {
 		private characterId: EveCharacterId | string
 	) {
 		super()
+	}
+
+	async getKillmails(): Promise<Killmails> {
+		return await this.characterDataObject.getKillmails(this.characterId)
 	}
 
 	async fetchCharacterData(forceRefresh?: boolean): Promise<void> {
@@ -667,3 +681,5 @@ export async function getCharacterDataStub(
 	const stub = namespace.getByName(characterId) as unknown as EveCharacterData
 	return stub.getInstance(characterId)
 }
+
+export * from './killmails'

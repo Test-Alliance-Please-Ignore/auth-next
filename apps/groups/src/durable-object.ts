@@ -1246,8 +1246,10 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Group not found')
 		}
 
-		if (!canManageGroup(group, userId, isAdmin)) {
-			throw new Error('Only the group owner or global admin can create invite codes')
+		const isGroupAdmin = await this.isUserGroupAdmin(data.groupId, userId)
+
+		if (!canModerateGroup(group, userId, isGroupAdmin)) {
+			throw new Error('Only group owner or group admins can create invite codes')
 		}
 
 		// Validate expiration
@@ -1331,8 +1333,10 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Invite code not found')
 		}
 
-		if (!canManageGroup(inviteCode.group, userId, isAdmin)) {
-			throw new Error('Only the group owner or global admin can revoke invite codes')
+		const isGroupAdmin = await this.isUserGroupAdmin(inviteCode.groupId, userId)
+
+		if (!canModerateGroup(inviteCode.group, userId, isGroupAdmin)) {
+			throw new Error('Only group owner or group admins can revoke invite codes')
 		}
 
 		await this.db

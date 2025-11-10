@@ -949,6 +949,8 @@ groups.get('/:id', requireAuth(), async (c) => {
 				memberCount: undefined,
 				adminUserIds: undefined,
 				ownerName: undefined,
+				isOwner: group.isOwner || false,
+				isAdmin: group.isAdmin || false,
 			}
 			return c.json(publicGroup)
 		}

@@ -2,7 +2,7 @@ import { DurableObject } from 'cloudflare:workers'
 
 import { eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
-import { EveCharacterDataInstance } from '@repo/eve-character-data'
+import { EveCharacterDataInstance, killmailsSchema } from '@repo/eve-character-data'
 import { createEveAllianceId, createEveCharacterId, createEveCorporationId } from '@repo/eve-types'
 
 import { createDb } from './db'
@@ -43,6 +43,7 @@ import type {
 	EsiMarketTransaction,
 	EsiWalletJournalEntry,
 	EveCharacterData,
+	Killmails,
 } from '@repo/eve-character-data'
 import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
 import type { Env } from './context'
@@ -70,6 +71,20 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		return new EveCharacterDataInstance(this, createEveCharacterId(characterId))
 	}
 
+	/**
+	 * Get killmails for a character
+	 * @param characterId - EVE character ID
+	 * @returns Array of killmail data
+	 */
+	async getKillmails(characterId: string): Promise<Killmails> {
+		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const response = await tokenStoreStub.fetchEsiAllPages<{
+			killmail_id: string
+			killmail_hash: string
+		}>(`/characters/${characterId}/killmails/recent`, String(characterId))
+
+		return killmailsSchema.parse(response.data)
+	}
 	/**
 	 * Fetch and store all public character data
 	 */
