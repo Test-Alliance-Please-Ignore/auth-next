@@ -4,7 +4,7 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
 import type { App } from './context'
-import { {{ pascalCase name }}DO } from './durable-object'
+import { UniverseDO } from './durable-object'
 
 const app = new Hono<App>()
 	.use(
@@ -21,10 +21,10 @@ const app = new Hono<App>()
 	.notFound(withNotFound())
 
 	.get('/', async (c) => {
-		return c.text('{{ pascalCase name }} Durable Object Worker')
+		return c.text('Universe Durable Object Worker')
 	})
 
 export default app
 
 // Export the Durable Object class
-export { {{ pascalCase name }}DO as {{ pascalCase name }} }
+export { UniverseDO as Universe }

@@ -162,6 +162,20 @@
       "when": 1762696794826,
       "tag": "0022_fantastic_barracuda",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1762799006858,
+      "tag": "0023_chief_ender_wiggin",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1762801704515,
+      "tag": "0024_silly_the_phantom",
+      "breakpoints": true
     }
   ]
 }

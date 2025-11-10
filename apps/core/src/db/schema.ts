@@ -444,6 +444,123 @@ export const corporationDiscordInvites = pgTable(
 )
 
 /**
+ * DKP Transactions table - Immutable ledger of all DKP activity
+ *
+ * Tracks all DKP earnings and spending for characters.
+ * Character DKP automatically contributes to their corporation's total (shared pool).
+ * Never UPDATE or DELETE transactions - only INSERT new ones.
+ */
+export const dkpTransactions = pgTable(
+	'dkp_transactions',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		/** User ID who owns the character (for efficient user-level queries) */
+		userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+		/** EVE character ID who earned/spent DKP */
+		characterId: text('character_id').notNull(),
+		/** Cached character name (avoids joins) */
+		characterName: varchar('character_name', { length: 255 }).notNull(),
+		/** EVE corporation ID (denormalized for query performance) */
+		corporationId: text('corporation_id').notNull(),
+		/** Cached corporation name (avoids joins) */
+		corporationName: varchar('corporation_name', { length: 255 }).notNull(),
+		/** DKP amount (positive for earning, negative for spending) */
+		amount: integer('amount').notNull(),
+		/** Source type of DKP award */
+		sourceType: text('source_type', {
+			enum: ['fleet', 'market', 'mining', 'manual', 'adjustment'],
+		}).notNull(),
+		/** Reference to source entity (fleet ID, killmail ID, etc.) */
+		sourceId: text('source_id'),
+		/** Additional metadata about the source */
+		sourceMetadata: jsonb('source_metadata').$type<{
+			fleetId?: string
+			fleetType?: string
+			killmailId?: string
+			marketOrderId?: string
+			miningOpId?: string
+			itemTypeId?: string
+			quantity?: number
+			iskValue?: string
+			[key: string]: unknown
+		}>(),
+		/** Admin user who awarded this DKP (null for automated awards) */
+		awardedBy: uuid('awarded_by').references(() => users.id, { onDelete: 'set null' }),
+		/** Reason for manual awards (required for manual type) */
+		awardReason: text('award_reason'),
+		/** Time decay model for inflation control (not yet applied) */
+		decayModel: text('decay_model', {
+			enum: ['none', 'percentage', 'linear', 'halflife'],
+		})
+			.default('none')
+			.notNull(),
+		/** Decay rate (e.g., "0.01" for 1% per period) */
+		decayRate: text('decay_rate'),
+		/** Decay period in days (e.g., 7 for weekly decay) */
+		decayPeriodDays: integer('decay_period_days'),
+		/** When the DKP was actually earned (can be backdated) */
+		earnedAt: timestamp('earned_at', { withTimezone: true }).notNull(),
+		/** When the transaction was recorded in the system */
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		// User-level queries (most common pattern)
+		index('dkp_transactions_user_earned_idx').on(table.userId, table.earnedAt.desc()),
+		index('dkp_transactions_user_source_idx').on(table.userId, table.sourceType),
+		// Primary query patterns: character/corp + time range
+		index('dkp_transactions_character_earned_idx').on(table.characterId, table.earnedAt.desc()),
+		index('dkp_transactions_corp_earned_idx').on(table.corporationId, table.earnedAt.desc()),
+		// Time-based filtering for leaderboards
+		index('dkp_transactions_earned_at_idx').on(table.earnedAt.desc()),
+		// Source tracking
+		index('dkp_transactions_source_type_idx').on(table.sourceType),
+		index('dkp_transactions_source_id_idx').on(table.sourceId),
+		// Manual award auditing
+		index('dkp_transactions_awarded_by_idx').on(table.awardedBy),
+	]
+)
+
+/**
+ * DKP Decay Configuration table - Global time decay settings
+ *
+ * Stores decay parameters that can be applied at query time.
+ * Allows changing decay rules without migrating transaction data.
+ * Only one config should be active at a time.
+ */
+export const dkpDecayConfig = pgTable(
+	'dkp_decay_config',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		/** Whether this configuration is currently active */
+		isActive: boolean('is_active').default(false).notNull(),
+		/** Decay model type */
+		decayModel: text('decay_model', {
+			enum: ['none', 'percentage', 'linear', 'halflife'],
+		}).notNull(),
+		/** Decay rate (e.g., "0.01" for 1% per period) */
+		decayRate: text('decay_rate'),
+		/** Decay period in days (e.g., 7 for weekly decay) */
+		decayPeriodDays: integer('decay_period_days'),
+		/** When this config becomes effective */
+		effectiveFrom: timestamp('effective_from', { withTimezone: true }).notNull(),
+		/** When this config stops being effective (null = ongoing) */
+		effectiveTo: timestamp('effective_to', { withTimezone: true }),
+		/** Description of this decay configuration */
+		description: text('description'),
+		/** Admin user who created this configuration */
+		createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		// Partial index for active config (only one should be active)
+		index('dkp_decay_config_active_idx')
+			.on(table.isActive)
+			.where(sql`${table.isActive} = true`),
+		index('dkp_decay_config_effective_from_idx').on(table.effectiveFrom),
+	]
+)
+
+/**
  * Relations
  */
 export const usersRelations = relations(users, ({ many, one }) => ({
@@ -554,6 +671,20 @@ export const corporationDiscordInvitesRelations = relations(
 	})
 )
 
+export const dkpTransactionsRelations = relations(dkpTransactions, ({ one }) => ({
+	awardedByUser: one(users, {
+		fields: [dkpTransactions.awardedBy],
+		references: [users.id],
+	}),
+}))
+
+export const dkpDecayConfigRelations = relations(dkpDecayConfig, ({ one }) => ({
+	createdByUser: one(users, {
+		fields: [dkpDecayConfig.createdBy],
+		references: [users.id],
+	}),
+}))
+
 /**
  * Export schema for db client
  */
@@ -570,6 +701,8 @@ export const schema = {
 	corporationDiscordServers,
 	corporationDiscordServerRoles,
 	corporationDiscordInvites,
+	dkpTransactions,
+	dkpDecayConfig,
 	usersRelations,
 	userCharactersRelations,
 	userSessionsRelations,
@@ -581,4 +714,6 @@ export const schema = {
 	corporationDiscordServersRelations,
 	corporationDiscordServerRolesRelations,
 	corporationDiscordInvitesRelations,
+	dkpTransactionsRelations,
+	dkpDecayConfigRelations,
 }

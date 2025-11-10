@@ -4,44 +4,51 @@ import { getStub } from '@repo/do-utils'
 import {
 	EsiGetStructureMarketDataResponseSchema,
 	EsiGetStructureResponseSchema,
-	EveStructureInstance,
-} from '@repo/eve-universe'
+} from '@repo/universe'
 
-import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
-import type { EveCharacterId, EveStructureId } from '@repo/eve-types'
 import type {
 	EsiGetStructureMarketDataResponse,
 	EsiGetStructureMarketDataResponseObject,
 	EsiGetStructureResponse,
-	EveStructure,
-} from '@repo/eve-universe'
+	EveCharacterId,
+	EveStructureId,
+	Universe,
+} from '@repo/universe'
+import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
 import type { Env } from './context'
 
 /**
- * EveStructure Durable Object
+ * Universe Durable Object
  *
- * This Durable Object provides access to EVE Online structure information
- * and market data via ESI API. Uses eve-token-store for authenticated ESI requests.
- *
- * Instance ID pattern: `{structureId}`
- * Example: `1234567890`
+ * This Durable Object uses SQLite storage and implements:
+ * - RPC methods for remote calls
+ * - WebSocket hibernation API
+ * - Alarm handler for scheduled tasks
+ * - SQLite storage via sql.exec()
  */
-export class EveStructureDO extends DurableObject<Env> implements EveStructure {
+export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	/**
 	 * Initialize the Durable Object
 	 */
 	constructor(
 		public state: DurableObjectState,
-		env: Env
+		public env: Env
 	) {
 		super(state, env)
 	}
 
+	// ========================================================================
+	// STRUCTURE METHODS
+	// ========================================================================
+
 	/**
-	 * Fetch structure information from ESI
+	 * Get structure information from ESI
 	 * Requires authentication via authorized character
+	 * @param structureId - The structure ID
+	 * @param authorizedCharacterId - Character ID with access to the structure
+	 * @returns Structure info or null if not found/no access
 	 */
-	async fetchStructureInfo(
+	async getStructureInfo(
 		structureId: EveStructureId,
 		authorizedCharacterId: EveCharacterId
 	): Promise<EsiGetStructureResponse | null> {
@@ -80,11 +87,14 @@ export class EveStructureDO extends DurableObject<Env> implements EveStructure {
 	}
 
 	/**
-	 * Fetch structure market data from ESI
+	 * Get structure market data from ESI
 	 * Requires authentication via authorized character
 	 * Note: This endpoint is paginated, so we fetch all pages
+	 * @param structureId - The structure ID
+	 * @param authorizedCharacterId - Character ID with access to the structure
+	 * @returns Market orders or null if not found/no access
 	 */
-	async fetchStructureMarketData(
+	async getStructureMarketData(
 		structureId: EveStructureId,
 		authorizedCharacterId: EveCharacterId
 	): Promise<EsiGetStructureMarketDataResponse | null> {
@@ -123,20 +133,62 @@ export class EveStructureDO extends DurableObject<Env> implements EveStructure {
 		}
 	}
 
+	// ========================================================================
+	// WEBSOCKET HANDLERS
+	// ========================================================================
+
 	/**
-	 * Get an instance wrapper for this structure
+	 * WebSocket message handler (Hibernation API)
+	 * Called when a WebSocket message is received
 	 */
-	async getInstance(
-		structureId: EveStructureId,
-		authorizedCharacterId: EveCharacterId
-	): Promise<EveStructureInstance> {
-		return new EveStructureInstance(this, structureId, authorizedCharacterId)
+	async webSocketMessage(ws: WebSocket, message: ArrayBuffer | string): Promise<void> {
+		// TODO: Implement WebSocket message handling
 	}
 
 	/**
-	 * Fetch handler for HTTP requests (minimal implementation)
+	 * WebSocket close handler (Hibernation API)
+	 * Called when a WebSocket connection is closed
 	 */
-	override async fetch(_request: Request): Promise<Response> {
-		return new Response('EveStructure Durable Object', { status: 200 })
+	async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean): Promise<void> {
+		// TODO: Implement cleanup logic
+	}
+
+	/**
+	 * WebSocket error handler (Hibernation API)
+	 * Called when a WebSocket error occurs
+	 */
+	async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
+		console.error('WebSocket error:', error)
+	}
+
+	/**
+	 * Alarm handler
+	 * Called when a scheduled alarm triggers
+	 */
+	async alarm(): Promise<void> {
+		// TODO: Implement alarm logic
+	}
+
+	/**
+	 * Fetch handler for HTTP requests to the Durable Object
+	 */
+	async fetch(request: Request): Promise<Response> {
+		const url = new URL(request.url)
+
+		// WebSocket upgrade handling
+		if (request.headers.get('Upgrade') === 'websocket') {
+			const pair = new WebSocketPair()
+			const [client, server] = Object.values(pair)
+
+			// Accept the WebSocket connection using hibernation API
+			this.ctx.acceptWebSocket(server)
+
+			return new Response(null, {
+				status: 101,
+				webSocket: client,
+			})
+		}
+
+		return new Response('Universe Durable Object', { status: 200 })
 	}
 }

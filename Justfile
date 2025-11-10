@@ -69,6 +69,7 @@ db-generate-all:
   cd apps/freight && bun run db:generate
   cd apps/markets && bun run db:generate
   cd apps/industry && bun run db:generate
+  cd apps/universe && bun run db:generate
   cd apps/eve-corporation-data && bun run db:generate
   cd apps/eve-character-data && bun run db:generate
   cd apps/eve-static-data && bun run db:generate
@@ -91,6 +92,7 @@ db-push-all:
   cd apps/freight && bun run db:push
   cd apps/markets && bun run db:push
   cd apps/industry && bun run db:push
+  cd apps/universe && bun run db:push
   cd apps/eve-corporation-data && bun run db:push
   cd apps/eve-character-data && bun run db:push
   cd apps/eve-static-data && bun run db:push
@@ -113,6 +115,7 @@ db-migrate-all:
   cd apps/freight && bun run db:migrate
   cd apps/markets && bun run db:migrate
   cd apps/industry && bun run db:migrate
+  cd apps/universe && bun run db:migrate
   cd apps/eve-corporation-data && bun run db:migrate
   cd apps/eve-character-data && bun run db:migrate
   cd apps/eve-static-data && bun run db:migrate

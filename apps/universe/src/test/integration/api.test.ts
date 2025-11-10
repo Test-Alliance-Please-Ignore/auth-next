@@ -8,7 +8,7 @@ import type { Env } from '../../context'
 // Cast env to have correct types
 const testEnv = env as unknown as Env
 
-describe('{{ pascalCase name }} Worker', () => {
+describe('Universe Worker', () => {
 	it('responds to root endpoint', async () => {
 		const request = new Request('http://example.com/')
 		const ctx = createExecutionContext()
@@ -17,6 +17,6 @@ describe('{{ pascalCase name }} Worker', () => {
 
 		expect(response.status).toBe(200)
 		const text = await response.text()
-		expect(text).toContain('{{ pascalCase name }}')
+		expect(text).toContain('Universe')
 	})
 })

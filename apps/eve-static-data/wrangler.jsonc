@@ -26,10 +26,6 @@
 	"durable_objects": {
 		"bindings": [
 			{
-				"name": "EVE_STRUCTURE",
-				"class_name": "EveStructure"
-			},
-			{
 				"name": "EVE_TOKEN_STORE",
 				"class_name": "EveTokenStore",
 				"script_name": "eve-token-store"
@@ -40,6 +36,11 @@
 		{
 			"tag": "v1",
 			"new_sqlite_classes": ["EveStructure"]
-		}
+		},
+		{
+			"tag": "v2",
+			"deleted_classes": ["EveStructure"]
+		},
+
 	]
 }

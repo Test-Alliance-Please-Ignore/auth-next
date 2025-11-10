@@ -16,6 +16,7 @@ import charactersRoutes from './routes/characters'
 import corporationsRoutes from './routes/corporations'
 import discordRoutes from './routes/discord'
 import discordServersRoutes from './routes/discord-servers'
+import dkpRoutes from './routes/dkp'
 import esiRoutes from './routes/esi'
 import fleetsRoutes from './routes/fleets'
 import freightRoutes from './routes/freight'
@@ -99,6 +100,7 @@ const app = new Hono<App>()
 	.route('/api/characters', charactersRoutes)
 	.route('/api/corporations', corporationsRoutes)
 	.route('/api/discord-servers', discordServersRoutes)
+	.route('/api/dkp', dkpRoutes)
 	.route('/api/esi', esiRoutes)
 	.route('/api/skills', skillsRoutes)
 	.route('/api/skill-plans', skillPlansRoutes)
@@ -224,5 +226,72 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	 */
 	async updateUserDiscordRefreshTimestamp(userId: string): Promise<void> {
 		return this.getService().updateUserDiscordRefreshTimestamp(userId)
+	}
+
+	/**
+	 * Award DKP to a character
+	 */
+	async awardDkp(params: {
+		characterId: string
+		corporationId?: string
+		amount: number
+		sourceType: 'fleet' | 'market' | 'mining' | 'manual' | 'adjustment'
+		sourceId?: string
+		sourceMetadata?: Record<string, unknown>
+		awardedBy?: string
+		awardReason?: string
+		earnedAt?: Date
+	}): Promise<{
+		success: boolean
+		transactionId: string
+		character: {
+			characterId: string
+			characterName: string
+			newBalance: number
+		}
+		corporation: {
+			corporationId: string
+			corporationName: string
+			newBalance: number
+		}
+	}> {
+		const db = createDb(this.env.DATABASE_URL)
+		const { DkpService } = await import('./services/dkp.service')
+		const dkpService = new DkpService(db, this.env.EVE_CORPORATION_DATA, this.env.EVE_CHARACTER_DATA)
+		return dkpService.awardDkp(params)
+	}
+
+	/**
+	 * Award DKP to multiple characters at once
+	 */
+	async awardDkpBulk(params: {
+		awards: Array<{
+			characterId: string
+			corporationId?: string
+			amount: number
+			reason?: string
+		}>
+		globalReason: string
+		sourceType?: 'fleet' | 'manual'
+		sourceId?: string
+		awardedBy?: string
+		earnedAt?: Date
+	}): Promise<{
+		success: boolean
+		totalAwarded: number
+		transactions: Array<{
+			characterId: string
+			transactionId: string
+			amount: number
+		}>
+		errors: Array<{
+			characterId: string
+			error: string
+		}>
+	}> {
+		const db = createDb(this.env.DATABASE_URL)
+		const { DkpService } = await import('./services/dkp.service')
+		const dkpService = new DkpService(db, this.env.EVE_CORPORATION_DATA, this.env.EVE_CHARACTER_DATA)
+		return dkpService.awardDkpBulk(params)
 	}
 }
