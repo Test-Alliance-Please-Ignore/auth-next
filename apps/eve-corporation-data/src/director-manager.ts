@@ -170,15 +170,6 @@ export class DirectorManager {
 		// Already sorted by priority, then lastUsed (nulls first)
 		const selected = healthyDirectors[0]
 
-		console.log('[DirectorManager] Selected director', {
-			corporationId: this.corporationId,
-			directorId: selected.directorId,
-			characterId: selected.characterId,
-			characterName: selected.characterName,
-			lastUsed: selected.lastUsed,
-			priority: selected.priority,
-		})
-
 		return {
 			directorId: selected.directorId,
 			characterId: selected.characterId,

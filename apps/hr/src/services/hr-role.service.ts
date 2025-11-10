@@ -256,6 +256,29 @@ export class HrRoleService {
 	}
 
 	/**
+	 * Deactivate HR roles for a departed member
+	 * Called when a member leaves a corporation
+	 */
+	async deactivateRolesForDepartedMember(
+		corporationId: string,
+		characterId: string
+	): Promise<number> {
+		const result = await this.db
+			.update(hrRoles)
+			.set({ isActive: false, updatedAt: new Date() })
+			.where(
+				and(
+					eq(hrRoles.corporationId, corporationId),
+					eq(hrRoles.characterId, characterId),
+					eq(hrRoles.isActive, true)
+				)
+			)
+
+		// Drizzle doesn't always provide rowCount, so we return a generic success indicator
+		return result.rowCount ?? 0
+	}
+
+	/**
 	 * Map database record to HrRole DTO
 	 */
 	private mapToHrRole(role: typeof hrRoles.$inferSelect): HrRole {

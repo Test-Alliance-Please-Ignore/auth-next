@@ -207,6 +207,12 @@ Happy coding! 🚀
 					return true
 				},
 			},
+			{
+				type: 'confirm',
+				name: 'needsWorkers',
+				message: 'Does this package need Cloudflare Workers support?',
+				default: false,
+			},
 		],
 		actions: [
 			// Copy all template files
@@ -219,13 +225,47 @@ Happy coding! 🚀
 					dot: true,
 				},
 			},
+			// Conditionally copy wrangler.jsonc if Workers support is needed
+			{
+				type: 'add',
+				path: '{{ turbo.paths.root }}/packages/{{ name }}/wrangler.jsonc',
+				templateFile: 'templates/package/wrangler.jsonc',
+				skip: (answers) => {
+					if (!answers.needsWorkers) {
+						return 'Skipping wrangler.jsonc (Workers support not needed)'
+					}
+					return false
+				},
+			},
 			// Install dependencies
 			{
 				type: 'custom-exec',
 				command: 'pnpm install',
 			},
+			// Generate wrangler types if Workers support is needed
+			{
+				type: 'custom-exec',
+				command: 'pnpm turbo -F @repo/{{ name }} fix:workers-types',
+				skip: (answers) => {
+					if (!answers.needsWorkers) {
+						return 'Skipping type generation (Workers support not needed)'
+					}
+					return false
+				},
+			},
 			// Success message
 			(answers) => {
+				const workersInfo = answers.needsWorkers
+					? `
+  - Cloudflare Workers configuration (wrangler.jsonc)
+  - Workers TypeScript types (worker-configuration.d.ts)`
+					: ''
+
+				const workersSteps = answers.needsWorkers
+					? `
+  5. Use Workers types: import { DurableObjectState, etc. } from '@cloudflare/workers-types'`
+					: ''
+
 				return `
 ✅ Package "@repo/${answers.name}" created successfully!
 
@@ -237,13 +277,13 @@ The package includes:
   - ESLint configuration
   - Vitest test setup
   - Example function and tests
-  - README with usage instructions
+  - README with usage instructions${workersInfo}
 
 Next steps:
   1. Implement your utilities in packages/${answers.name}/src/index.ts
   2. Add tests in packages/${answers.name}/src/test/
   3. Run tests: pnpm -F @repo/${answers.name} test
-  4. Add to other packages: pnpm -F your-worker add '@repo/${answers.name}@workspace:*'
+  4. Add to other packages: pnpm -F your-worker add '@repo/${answers.name}@workspace:*'${workersSteps}
 
 Happy coding! 🚀
 				`.trim()

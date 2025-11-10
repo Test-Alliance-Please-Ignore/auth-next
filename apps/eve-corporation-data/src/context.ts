@@ -30,6 +30,7 @@ export type Env = SharedHonoEnv & {
 	'corp-contracts-refresh': Queue<unknown>
 	'corp-industry-jobs-refresh': Queue<unknown>
 	'corp-killmails-refresh': Queue<unknown>
+	'hr-member-departed': Queue<{ corporationId: string; characterId: string }>
 }
 
 /** Variables can be extended */

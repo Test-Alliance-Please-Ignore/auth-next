@@ -61,7 +61,7 @@ export default function CorporationsPage() {
 	usePageTitle('Admin - Corporations')
 
 	// Filter state
-	const [filters, setFilters] = useState<CorporationsFilters>({})
+	const [filters, setFilters] = useState<CorporationsFilters>({ corporationType: 'member' })
 
 	const { data: corporations, isLoading } = useCorporations(filters)
 	const createCorporation = useCreateCorporation()
@@ -101,12 +101,12 @@ export default function CorporationsPage() {
 		)
 	}, [corporations, searchQuery])
 
-	// Check if any filters are active
-	const hasActiveFilters = filters.corporationType !== undefined
+	// Check if any filters are active (different from default)
+	const hasActiveFilters = filters.corporationType !== 'member'
 
-	// Clear all filters
+	// Clear all filters (reset to default)
 	const clearFilters = () => {
-		setFilters({})
+		setFilters({ corporationType: 'member' })
 	}
 
 	// Handlers

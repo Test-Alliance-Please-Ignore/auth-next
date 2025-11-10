@@ -40,7 +40,7 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 		}
 
 		// Create EVE Token Store stub (moved before try block for proper lifecycle)
-		const eveTokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+		using eveTokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
 
 		try {
 			// Create database client
@@ -133,9 +133,6 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 			logger.error('Error in session middleware:', error)
 			// Continue without user if error occurs
 			await next()
-		} finally {
-			// Manually dispose of eveTokenStoreStub after request completes
-			eveTokenStoreStub.dispose()
 		}
 	}
 }

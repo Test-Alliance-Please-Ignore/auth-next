@@ -7,7 +7,8 @@
 	"main": "src/index.ts",
 	"scripts": {
 		"check:lint": "run-eslint",
-		"check:types": "run-tsc",
+		"check:types": "run-tsc",{{#if needsWorkers}}
+		"fix:workers-types": "run-wrangler-types",{{/if}}
 		"test": "run-vitest"
 	},
 	"devDependencies": {

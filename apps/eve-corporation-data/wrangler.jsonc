@@ -33,7 +33,8 @@
 			{ "queue": "corp-orders-refresh", "binding": "corp-orders-refresh" },
 			{ "queue": "corp-contracts-refresh", "binding": "corp-contracts-refresh" },
 			{ "queue": "corp-industry-jobs-refresh", "binding": "corp-industry-jobs-refresh" },
-			{ "queue": "corp-killmails-refresh", "binding": "corp-killmails-refresh" }
+			{ "queue": "corp-killmails-refresh", "binding": "corp-killmails-refresh" },
+			{ "queue": "hr-member-departed", "binding": "hr-member-departed" }
 		],
 		"consumers": [
 			{ "queue": "corp-public-refresh", "max_batch_size": 10, "max_batch_timeout": 30 },

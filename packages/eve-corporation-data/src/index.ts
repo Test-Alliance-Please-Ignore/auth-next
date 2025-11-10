@@ -801,6 +801,17 @@ export interface EveCorporationData {
 	getMemberTracking(corporationId: string): Promise<CorporationMemberTrackingData[]>
 
 	/**
+	 * Clean up stale member data by syncing with current ESI member list
+	 * This removes members who are no longer in the corporation and triggers HR cleanup
+	 * @param corporationId - The corporation ID
+	 * @returns Cleanup result with count and character IDs of removed members
+	 */
+	cleanupStaleMemberData(corporationId: string): Promise<{
+		membersRemoved: number
+		characterIds: string[]
+	}>
+
+	/**
 	 * Get corporation core data (public info + members)
 	 * @param corporationId - The corporation ID
 	 * @returns Core data or null if not found

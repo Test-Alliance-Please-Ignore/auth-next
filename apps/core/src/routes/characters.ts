@@ -76,8 +76,6 @@ async function transformAndEnrichSkillsData(skills: any, env: any) {
 			skillCount: transformed.skills.length,
 		})
 		// Return unenriched skills on error
-	} finally {
-		skillsStub.dispose()
 	}
 
 	return transformed
@@ -143,8 +141,6 @@ async function transformAndEnrichSkillQueue(queue: any, env: any) {
 		})
 		// Return unenriched queue on error
 		return transformed
-	} finally {
-		skillsStub.dispose()
 	}
 }
 
@@ -282,13 +278,20 @@ app.get('/:characterId', requireAuth(), async (c) => {
 								})
 								break
 							}
-						} finally {
-							corpStub.dispose()
+						} catch (error) {
+							logger.warn('[Character Detail] Error checking corporation access:', {
+								characterId: characterIdStr,
+								error: error instanceof Error ? error.message : String(error),
+							})
+							// Continue to authorization check below
 						}
-					} finally {
-						userCharStub.dispose()
+					} catch (error) {
+						logger.warn('[Character Detail] Error checking character access:', {
+							characterId: characterIdStr,
+							error: error instanceof Error ? error.message : String(error),
+						})
+						// Continue to authorization check below
 					}
-
 					// If we found CEO/Director access, break out of the loop
 					if (isCeoOrDirector) break
 				}
@@ -299,8 +302,6 @@ app.get('/:characterId', requireAuth(), async (c) => {
 				error: error instanceof Error ? error.message : String(error),
 			})
 			// Continue to authorization check below
-		} finally {
-			eveCharacterDataStubForAuth.dispose()
 		}
 	}
 

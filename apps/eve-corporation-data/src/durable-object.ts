@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { and, desc, eq, sql } from '@repo/db-utils'
+import { and, desc, eq, inArray, notInArray, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
@@ -257,13 +257,17 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	async getConfiguration(): Promise<CorporationConfigData | null> {
 		const config = await this.db.query.corporationConfig.findFirst()
 
-		        using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		        		const directorManager = new DirectorManager(
-		        			this.db,
-		        			config.corporationId,
-		        			tokenStoreStub
-		        		)
-		        		const directors = await directorManager.getAllDirectors()
+		if (!config) {
+			return null
+		}
+
+		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const directorManager = new DirectorManager(
+			this.db,
+			config.corporationId,
+			tokenStoreStub
+		)
+		const directors = await directorManager.getAllDirectors()
 		const primaryDirector = directors[0] // First director by priority
 
 		return {
@@ -371,9 +375,11 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				lastVerified: null,
 				updatedAt: new Date(),
 			})
-		        				using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		        				const directorManager = new DirectorManager(this.db, corporationId, tokenStoreStub)
-		        				await directorManager.addDirector(characterId, characterName, priority)
+		}
+
+		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const directorManager = new DirectorManager(this.db, corporationId, tokenStoreStub)
+		await directorManager.addDirector(characterId, characterName, priority)
 
 		// Invalidate directors cache
 		await this.invalidateDirectorsCache(corporationId)
@@ -382,6 +388,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Remove a director character from this corporation
 	 */
+	async removeDirector(corporationId: string, characterId: string): Promise<void> {
 		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const directorManager = new DirectorManager(this.db, corporationId, tokenStoreStub)
 		await directorManager.removeDirector(characterId)
@@ -556,36 +563,107 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		// Convert numeric IDs to strings
 		const memberIds: EsiCorporationMembers = response.data.map(String)
 
-		// Upsert members in batch to improve performance
-		if (memberIds.length > 0) {
-			const values = memberIds.map((memberId) => ({
-				corporationId: String(corporationId),
-				characterId: memberId,
-			}))
+		// Fetch existing members from database to identify departed members
+		const existingMembers = await this.db
+			.select({ characterId: corporationMembers.characterId })
+			.from(corporationMembers)
+			.where(eq(corporationMembers.corporationId, corporationId))
 
-			try {
+		const existingMemberIds = new Set(existingMembers.map((m) => m.characterId))
+		const currentMemberIds = new Set(memberIds)
+
+		// Identify departed members (in database but not in current ESI response)
+		const departedMemberIds = existingMembers
+			.filter((m) => !currentMemberIds.has(m.characterId))
+			.map((m) => m.characterId)
+
+		try {
+			// Remove departed members from corporationMembers table
+			if (departedMemberIds.length > 0) {
+				await this.db
+					.delete(corporationMembers)
+					.where(
+						and(
+							eq(corporationMembers.corporationId, corporationId),
+							inArray(corporationMembers.characterId, departedMemberIds)
+						)
+					)
+
+				console.log('[fetchAndStoreMembers] Removed departed members:', {
+					corporationId,
+					count: departedMemberIds.length,
+					characterIds: departedMemberIds,
+				})
+
+				// Also remove from corporationMemberTracking table
+				await this.db
+					.delete(corporationMemberTracking)
+					.where(
+						and(
+							eq(corporationMemberTracking.corporationId, corporationId),
+							inArray(corporationMemberTracking.characterId, departedMemberIds)
+						)
+					)
+
+				// Send messages to HR service to clean up roles for departed members
+				const hrQueue = this.env['hr-member-departed']
+				const messages = departedMemberIds.map((characterId) => ({
+					body: {
+						corporationId,
+						characterId,
+					},
+				}))
+
+				await hrQueue.sendBatch(messages)
+				console.log('[fetchAndStoreMembers] Sent HR cleanup messages:', {
+					corporationId,
+					count: messages.length,
+				})
+			}
+
+			// Upsert current members in batch to improve performance
+			if (memberIds.length > 0) {
+				const values = memberIds.map((memberId) => ({
+					corporationId: String(corporationId),
+					characterId: memberId,
+				}))
+
 				await this.db
 					.insert(corporationMembers)
 					.values(values)
-					.onConflictDoNothing({
+					.onConflictDoUpdate({
 						target: [corporationMembers.corporationId, corporationMembers.characterId],
+						set: {
+							updatedAt: sql`CURRENT_TIMESTAMP`,
+						},
 					})
-
-				// Invalidate members cache after successful update
-				await this.invalidateMembersCache(corporationId)
-			} catch (error) {
-				console.error('[fetchAndStoreMembers] Database insert failed:', {
-					error,
-					errorMessage: error instanceof Error ? error.message : String(error),
-					errorStack: error instanceof Error ? error.stack : undefined,
-					errorName: error instanceof Error ? error.name : undefined,
-					errorCause: error instanceof Error ? error.cause : undefined,
-					corporationId: String(corporationId),
-					memberCount: memberIds.length,
-					firstMember: memberIds[0],
-				})
-				throw error
 			}
+
+			// Invalidate members cache after successful update
+			await this.invalidateMembersCache(corporationId)
+
+			// Log summary of changes
+			const addedCount = memberIds.filter((id) => !existingMemberIds.has(id)).length
+			if (addedCount > 0 || departedMemberIds.length > 0) {
+				console.log('[fetchAndStoreMembers] Member sync completed:', {
+					corporationId,
+					added: addedCount,
+					removed: departedMemberIds.length,
+					total: memberIds.length,
+				})
+			}
+		} catch (error) {
+			console.error('[fetchAndStoreMembers] Database operation failed:', {
+				error,
+				errorMessage: error instanceof Error ? error.message : String(error),
+				errorStack: error instanceof Error ? error.stack : undefined,
+				errorName: error instanceof Error ? error.name : undefined,
+				errorCause: error instanceof Error ? error.cause : undefined,
+				corporationId: String(corporationId),
+				memberCount: memberIds.length,
+				departedCount: departedMemberIds.length,
+			})
+			throw error
 		}
 	}
 
@@ -626,6 +704,38 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			start_date: member.start_date,
 		}))
 
+		// Fetch existing tracking records to identify departed members
+		const existingTracking = await this.db
+			.select({ characterId: corporationMemberTracking.characterId })
+			.from(corporationMemberTracking)
+			.where(eq(corporationMemberTracking.corporationId, corporationId))
+
+		const currentTrackingIds = new Set(trackingData.map((m) => m.character_id))
+
+		// Identify departed members (in database but not in current ESI response)
+		const departedMemberIds = existingTracking
+			.filter((m) => !currentTrackingIds.has(m.characterId))
+			.map((m) => m.characterId)
+
+		// Remove departed members from tracking table
+		if (departedMemberIds.length > 0) {
+			await this.db
+				.delete(corporationMemberTracking)
+				.where(
+					and(
+						eq(corporationMemberTracking.corporationId, corporationId),
+						inArray(corporationMemberTracking.characterId, departedMemberIds)
+					)
+				)
+
+			console.log('[fetchAndStoreMemberTracking] Removed departed members:', {
+				corporationId,
+				count: departedMemberIds.length,
+				characterIds: departedMemberIds,
+			})
+		}
+
+		// Update tracking data for current members
 		for (const member of trackingData) {
 			await this.db
 				.insert(corporationMemberTracking)
@@ -833,21 +943,6 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					})
 
 				insertedCount += batch.length
-
-				// Log progress
-				logger
-					.withTags({
-						corporationId,
-						division,
-						operation: 'fetch_wallet_journal',
-					})
-					.debug('Database insertion progress', {
-						inserted: insertedCount,
-						total: entries.length,
-						batchNumber: Math.floor(i / BATCH_SIZE) + 1,
-						totalBatches: Math.ceil(entries.length / BATCH_SIZE),
-						progress: `${((insertedCount / entries.length) * 100).toFixed(1)}%`,
-					})
 			}
 		} catch (error) {
 			logger
@@ -1002,21 +1097,6 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					})
 
 				insertedCount += batch.length
-
-				// Log progress
-				logger
-					.withTags({
-						corporationId,
-						division,
-						operation: 'fetch_wallet_transactions',
-					})
-					.debug('Database insertion progress', {
-						inserted: insertedCount,
-						total: transactions.length,
-						batchNumber: Math.floor(i / BATCH_SIZE) + 1,
-						totalBatches: Math.ceil(transactions.length / BATCH_SIZE),
-						progress: `${((insertedCount / transactions.length) * 100).toFixed(1)}%`,
-					})
 			}
 		} catch (error) {
 			logger
@@ -1074,6 +1154,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 * Fetch and store corporation assets (paginated)
 	 */
 	private async fetchAndStoreAssets(corporationId: string, _forceRefresh = false): Promise<void> {
+		console.log('[fetchAndStoreAssets] Starting asset fetch', { corporationId })
+
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
 		await this.verifyRole(characterId, ['Director'])
 
@@ -1096,6 +1178,12 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			characterId
 		)
 
+		console.log('[fetchAndStoreAssets] Fetched assets from ESI', {
+			corporationId,
+			totalAssets: result.data.length,
+			pages: result.pages,
+		})
+
 		// Convert numeric IDs to strings
 		const assets: EsiCorporationAsset[] = result.data.map((asset) => ({
 			item_id: String(asset.item_id),
@@ -1108,10 +1196,15 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			is_blueprint_copy: asset.is_blueprint_copy,
 		}))
 
-		for (const asset of assets) {
-			await this.db
-				.insert(corporationAssets)
-				.values({
+		// Batch insert to avoid hitting Cloudflare's subrequest limits and prevent timeouts
+		// Insert 25 assets at a time (conservative to stay well below the 50 subrequest limit)
+		const BATCH_SIZE = 25
+		let insertedCount = 0
+
+		try {
+			for (let i = 0; i < assets.length; i += BATCH_SIZE) {
+				const batch = assets.slice(i, i + BATCH_SIZE)
+				const valuesToInsert = batch.map((asset) => ({
 					corporationId: String(corporationId),
 					itemId: asset.item_id,
 					isSingleton: asset.is_singleton,
@@ -1122,21 +1215,65 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					typeId: asset.type_id,
 					isBlueprintCopy: asset.is_blueprint_copy,
 					updatedAt: new Date(),
+				}))
+
+				await this.db
+					.insert(corporationAssets)
+					.values(valuesToInsert)
+					.onConflictDoUpdate({
+						target: [corporationAssets.corporationId, corporationAssets.itemId],
+						set: {
+							isSingleton: sql`excluded.is_singleton`,
+							locationFlag: sql`excluded.location_flag`,
+							locationId: sql`excluded.location_id`,
+							locationType: sql`excluded.location_type`,
+							quantity: sql`excluded.quantity`,
+							typeId: sql`excluded.type_id`,
+							isBlueprintCopy: sql`excluded.is_blueprint_copy`,
+							updatedAt: sql`excluded.updated_at`,
+						},
+					})
+
+				insertedCount += batch.length
+
+				// Log progress for large datasets
+				if (insertedCount % 100 === 0 || insertedCount === assets.length) {
+					console.log('[fetchAndStoreAssets] Insert progress', {
+						corporationId,
+						inserted: insertedCount,
+						total: assets.length,
+						percentage: Math.round((insertedCount / assets.length) * 100),
+					})
+				}
+			}
+		} catch (error) {
+			console.error('[fetchAndStoreAssets] Failed to insert assets', {
+				corporationId,
+				insertedSoFar: insertedCount,
+				totalAssets: assets.length,
+				error: error instanceof Error ? error.message : String(error),
+				errorStack: error instanceof Error ? error.stack : undefined,
+			})
+
+			// Clear cache for this endpoint so next attempt fetches fresh data
+			const path = `/corporations/${corporationId}/assets`
+			try {
+				await tokenStore.clearEsiCache(path, characterId)
+				console.log('[fetchAndStoreAssets] Cleared ESI cache after error', { path })
+			} catch (clearError) {
+				console.error('[fetchAndStoreAssets] Failed to clear cache', {
+					error: clearError instanceof Error ? clearError.message : String(clearError),
 				})
-				.onConflictDoUpdate({
-					target: [corporationAssets.corporationId, corporationAssets.itemId],
-					set: {
-						isSingleton: asset.is_singleton,
-						locationFlag: asset.location_flag,
-						locationId: asset.location_id,
-						locationType: asset.location_type,
-						quantity: asset.quantity,
-						typeId: asset.type_id,
-						isBlueprintCopy: asset.is_blueprint_copy,
-						updatedAt: sql`excluded.updated_at`,
-					},
-				})
+			}
+
+			throw error
 		}
+
+		console.log('[fetchAndStoreAssets] Completed asset fetch and store', {
+			corporationId,
+			totalInserted: insertedCount,
+			totalAssets: assets.length,
+		})
 	}
 
 	/**
@@ -1188,46 +1325,47 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			services: structure.services,
 		}))
 
-		for (const structure of structures) {
+		// Batch insert to prevent timeouts
+		const BATCH_SIZE = 10 // Structures have more fields, use smaller batch
+		for (let i = 0; i < structures.length; i += BATCH_SIZE) {
+			const batch = structures.slice(i, i + BATCH_SIZE)
+			const valuesToInsert = batch.map((structure) => ({
+				corporationId: String(corporationId),
+				structureId: structure.structure_id,
+				typeId: structure.type_id,
+				systemId: structure.system_id,
+				profileId: structure.profile_id,
+				fuelExpires: structure.fuel_expires ? new Date(structure.fuel_expires) : null,
+				nextReinforceApply: structure.next_reinforce_apply
+					? new Date(structure.next_reinforce_apply)
+					: null,
+				nextReinforceHour: structure.next_reinforce_hour ?? null,
+				reinforceHour: structure.reinforce_hour ?? null,
+				state: structure.state,
+				stateTimerEnd: structure.state_timer_end ? new Date(structure.state_timer_end) : null,
+				stateTimerStart: structure.state_timer_start
+					? new Date(structure.state_timer_start)
+					: null,
+				unanchorsAt: structure.unanchors_at ? new Date(structure.unanchors_at) : null,
+				services: structure.services || null,
+				updatedAt: new Date(),
+			}))
+
 			await this.db
 				.insert(corporationStructures)
-				.values({
-					corporationId: String(corporationId),
-					structureId: structure.structure_id,
-					typeId: structure.type_id,
-					systemId: structure.system_id,
-					profileId: structure.profile_id,
-					fuelExpires: structure.fuel_expires ? new Date(structure.fuel_expires) : null,
-					nextReinforceApply: structure.next_reinforce_apply
-						? new Date(structure.next_reinforce_apply)
-						: null,
-					nextReinforceHour: structure.next_reinforce_hour ?? null,
-					reinforceHour: structure.reinforce_hour ?? null,
-					state: structure.state,
-					stateTimerEnd: structure.state_timer_end ? new Date(structure.state_timer_end) : null,
-					stateTimerStart: structure.state_timer_start
-						? new Date(structure.state_timer_start)
-						: null,
-					unanchorsAt: structure.unanchors_at ? new Date(structure.unanchors_at) : null,
-					services: structure.services || null,
-					updatedAt: new Date(),
-				})
+				.values(valuesToInsert)
 				.onConflictDoUpdate({
 					target: [corporationStructures.corporationId, corporationStructures.structureId],
 					set: {
-						state: structure.state,
-						fuelExpires: structure.fuel_expires ? new Date(structure.fuel_expires) : null,
-						nextReinforceApply: structure.next_reinforce_apply
-							? new Date(structure.next_reinforce_apply)
-							: null,
-						nextReinforceHour: structure.next_reinforce_hour ?? null,
-						reinforceHour: structure.reinforce_hour ?? null,
-						stateTimerEnd: structure.state_timer_end ? new Date(structure.state_timer_end) : null,
-						stateTimerStart: structure.state_timer_start
-							? new Date(structure.state_timer_start)
-							: null,
-						unanchorsAt: structure.unanchors_at ? new Date(structure.unanchors_at) : null,
-						services: structure.services || null,
+						state: sql`excluded.state`,
+						fuelExpires: sql`excluded.fuel_expires`,
+						nextReinforceApply: sql`excluded.next_reinforce_apply`,
+						nextReinforceHour: sql`excluded.next_reinforce_hour`,
+						reinforceHour: sql`excluded.reinforce_hour`,
+						stateTimerEnd: sql`excluded.state_timer_end`,
+						stateTimerStart: sql`excluded.state_timer_start`,
+						unanchorsAt: sql`excluded.unanchors_at`,
+						services: sql`excluded.services`,
 						updatedAt: sql`excluded.updated_at`,
 					},
 				})
@@ -1284,33 +1422,38 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			wallet_division: order.wallet_division,
 		}))
 
-		for (const order of orders) {
+		// Batch insert to prevent timeouts
+		const BATCH_SIZE = 25
+		for (let i = 0; i < orders.length; i += BATCH_SIZE) {
+			const batch = orders.slice(i, i + BATCH_SIZE)
+			const valuesToInsert = batch.map((order) => ({
+				corporationId: String(corporationId),
+				orderId: order.order_id,
+				duration: order.duration,
+				escrow: order.escrow?.toString() || null,
+				isBuyOrder: order.is_buy_order,
+				issued: new Date(order.issued),
+				issuedBy: order.issued_by,
+				locationId: order.location_id,
+				minVolume: order.min_volume ?? null,
+				price: order.price.toString(),
+				range: order.range,
+				regionId: order.region_id,
+				typeId: order.type_id,
+				volumeRemain: order.volume_remain,
+				volumeTotal: order.volume_total,
+				walletDivision: order.wallet_division,
+				updatedAt: new Date(),
+			}))
+
 			await this.db
 				.insert(corporationOrders)
-				.values({
-					corporationId: String(corporationId),
-					orderId: order.order_id,
-					duration: order.duration,
-					escrow: order.escrow?.toString() || null,
-					isBuyOrder: order.is_buy_order,
-					issued: new Date(order.issued),
-					issuedBy: order.issued_by,
-					locationId: order.location_id,
-					minVolume: order.min_volume ?? null,
-					price: order.price.toString(),
-					range: order.range,
-					regionId: order.region_id,
-					typeId: order.type_id,
-					volumeRemain: order.volume_remain,
-					volumeTotal: order.volume_total,
-					walletDivision: order.wallet_division,
-					updatedAt: new Date(),
-				})
+				.values(valuesToInsert)
 				.onConflictDoUpdate({
 					target: [corporationOrders.corporationId, corporationOrders.orderId],
 					set: {
-						volumeRemain: order.volume_remain,
-						price: order.price.toString(),
+						volumeRemain: sql`excluded.volume_remain`,
+						price: sql`excluded.price`,
 						updatedAt: sql`excluded.updated_at`,
 					},
 				})
@@ -1386,41 +1529,46 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			volume: contract.volume,
 		}))
 
-		for (const contract of contracts) {
+		// Batch insert to prevent timeouts
+		const BATCH_SIZE = 20 // Contracts have many fields, use smaller batch
+		for (let i = 0; i < contracts.length; i += BATCH_SIZE) {
+			const batch = contracts.slice(i, i + BATCH_SIZE)
+			const valuesToInsert = batch.map((contract) => ({
+				corporationId: String(corporationId),
+				contractId: contract.contract_id,
+				acceptorId: contract.acceptor_id || null,
+				assigneeId: contract.assignee_id,
+				availability: contract.availability,
+				buyout: contract.buyout?.toString() || null,
+				collateral: contract.collateral?.toString() || null,
+				dateAccepted: contract.date_accepted ? new Date(contract.date_accepted) : null,
+				dateCompleted: contract.date_completed ? new Date(contract.date_completed) : null,
+				dateExpired: new Date(contract.date_expired),
+				dateIssued: new Date(contract.date_issued),
+				daysToComplete: contract.days_to_complete ?? null,
+				endLocationId: contract.end_location_id || null,
+				forCorporation: contract.for_corporation,
+				issuerCorporationId: contract.issuer_corporation_id,
+				issuerId: contract.issuer_id,
+				price: contract.price?.toString() || null,
+				reward: contract.reward?.toString() || null,
+				startLocationId: contract.start_location_id || null,
+				status: contract.status,
+				title: contract.title || null,
+				type: contract.type,
+				volume: contract.volume?.toString() || null,
+				updatedAt: new Date(),
+			}))
+
 			await this.db
 				.insert(corporationContracts)
-				.values({
-					corporationId: String(corporationId),
-					contractId: contract.contract_id,
-					acceptorId: contract.acceptor_id || null,
-					assigneeId: contract.assignee_id,
-					availability: contract.availability,
-					buyout: contract.buyout?.toString() || null,
-					collateral: contract.collateral?.toString() || null,
-					dateAccepted: contract.date_accepted ? new Date(contract.date_accepted) : null,
-					dateCompleted: contract.date_completed ? new Date(contract.date_completed) : null,
-					dateExpired: new Date(contract.date_expired),
-					dateIssued: new Date(contract.date_issued),
-					daysToComplete: contract.days_to_complete ?? null,
-					endLocationId: contract.end_location_id || null,
-					forCorporation: contract.for_corporation,
-					issuerCorporationId: contract.issuer_corporation_id,
-					issuerId: contract.issuer_id,
-					price: contract.price?.toString() || null,
-					reward: contract.reward?.toString() || null,
-					startLocationId: contract.start_location_id || null,
-					status: contract.status,
-					title: contract.title || null,
-					type: contract.type,
-					volume: contract.volume?.toString() || null,
-					updatedAt: new Date(),
-				})
+				.values(valuesToInsert)
 				.onConflictDoUpdate({
 					target: [corporationContracts.corporationId, corporationContracts.contractId],
 					set: {
-						status: contract.status,
-						dateAccepted: contract.date_accepted ? new Date(contract.date_accepted) : null,
-						dateCompleted: contract.date_completed ? new Date(contract.date_completed) : null,
+						status: sql`excluded.status`,
+						dateAccepted: sql`excluded.date_accepted`,
+						dateCompleted: sql`excluded.date_completed`,
 						updatedAt: sql`excluded.updated_at`,
 					},
 				})
@@ -1496,43 +1644,48 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			successful_runs: job.successful_runs,
 		}))
 
-		for (const job of jobs) {
+		// Batch insert to prevent timeouts
+		const BATCH_SIZE = 20 // Industry jobs have many fields, use smaller batch
+		for (let i = 0; i < jobs.length; i += BATCH_SIZE) {
+			const batch = jobs.slice(i, i + BATCH_SIZE)
+			const valuesToInsert = batch.map((job) => ({
+				corporationId: String(corporationId),
+				jobId: job.job_id,
+				installerId: job.installer_id,
+				facilityId: job.facility_id,
+				locationId: job.location_id,
+				activityId: job.activity_id,
+				blueprintId: job.blueprint_id,
+				blueprintTypeId: job.blueprint_type_id,
+				blueprintLocationId: job.blueprint_location_id,
+				outputLocationId: job.output_location_id,
+				runs: job.runs,
+				cost: job.cost?.toString() || null,
+				licensedRuns: job.licensed_runs ?? null,
+				probability: job.probability?.toString() || null,
+				productTypeId: job.product_type_id || null,
+				status: job.status,
+				duration: job.duration,
+				startDate: new Date(job.start_date),
+				endDate: new Date(job.end_date),
+				pauseDate: job.pause_date ? new Date(job.pause_date) : null,
+				completedDate: job.completed_date ? new Date(job.completed_date) : null,
+				completedCharacterId: job.completed_character_id || null,
+				successfulRuns: job.successful_runs ?? null,
+				updatedAt: new Date(),
+			}))
+
 			await this.db
 				.insert(corporationIndustryJobs)
-				.values({
-					corporationId: String(corporationId),
-					jobId: job.job_id,
-					installerId: job.installer_id,
-					facilityId: job.facility_id,
-					locationId: job.location_id,
-					activityId: job.activity_id,
-					blueprintId: job.blueprint_id,
-					blueprintTypeId: job.blueprint_type_id,
-					blueprintLocationId: job.blueprint_location_id,
-					outputLocationId: job.output_location_id,
-					runs: job.runs,
-					cost: job.cost?.toString() || null,
-					licensedRuns: job.licensed_runs ?? null,
-					probability: job.probability?.toString() || null,
-					productTypeId: job.product_type_id || null,
-					status: job.status,
-					duration: job.duration,
-					startDate: new Date(job.start_date),
-					endDate: new Date(job.end_date),
-					pauseDate: job.pause_date ? new Date(job.pause_date) : null,
-					completedDate: job.completed_date ? new Date(job.completed_date) : null,
-					completedCharacterId: job.completed_character_id || null,
-					successfulRuns: job.successful_runs ?? null,
-					updatedAt: new Date(),
-				})
+				.values(valuesToInsert)
 				.onConflictDoUpdate({
 					target: [corporationIndustryJobs.corporationId, corporationIndustryJobs.jobId],
 					set: {
-						status: job.status,
-						pauseDate: job.pause_date ? new Date(job.pause_date) : null,
-						completedDate: job.completed_date ? new Date(job.completed_date) : null,
-						completedCharacterId: job.completed_character_id || null,
-						successfulRuns: job.successful_runs ?? null,
+						status: sql`excluded.status`,
+						pauseDate: sql`excluded.pause_date`,
+						completedDate: sql`excluded.completed_date`,
+						completedCharacterId: sql`excluded.completed_character_id`,
+						successfulRuns: sql`excluded.successful_runs`,
 						updatedAt: sql`excluded.updated_at`,
 					},
 				})
@@ -1566,21 +1719,25 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			killmail_hash: km.killmail_hash,
 		}))
 
-		for (const km of killmails) {
-			// Note: killmail_time is not in the ESI response, we'll use updatedAt
+		// Batch insert to prevent timeouts
+		const BATCH_SIZE = 50 // Killmails have few fields, can use larger batch
+		for (let i = 0; i < killmails.length; i += BATCH_SIZE) {
+			const batch = killmails.slice(i, i + BATCH_SIZE)
+			const valuesToInsert = batch.map((km) => ({
+				corporationId: String(corporationId),
+				killmailId: km.killmail_id,
+				killmailHash: km.killmail_hash,
+				killmailTime: new Date(), // ESI doesn't provide time in this endpoint
+				updatedAt: new Date(),
+			}))
+
 			await this.db
 				.insert(corporationKillmails)
-				.values({
-					corporationId: String(corporationId),
-					killmailId: km.killmail_id,
-					killmailHash: km.killmail_hash,
-					killmailTime: new Date(), // ESI doesn't provide time in this endpoint
-					updatedAt: new Date(),
-				})
+				.values(valuesToInsert)
 				.onConflictDoUpdate({
 					target: [corporationKillmails.corporationId, corporationKillmails.killmailId],
 					set: {
-						killmailHash: km.killmail_hash,
+						killmailHash: sql`excluded.killmail_hash`,
 						updatedAt: sql`excluded.updated_at`,
 					},
 				})
@@ -1859,6 +2016,88 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			startDate: r.startDate,
 			updatedAt: r.updatedAt,
 		}))
+	}
+
+	/**
+	 * Clean up stale member data by syncing with current ESI member list
+	 * This is a one-time operation to remove members who are no longer in the corporation
+	 * Returns the number of members removed
+	 */
+	async cleanupStaleMemberData(corporationId: string): Promise<{
+		membersRemoved: number
+		characterIds: string[]
+	}> {
+		// Fetch current members from ESI
+		const { characterId } = await this.getConfiguredCharacter(corporationId)
+		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+
+		const response = await tokenStore.fetchEsi<number[]>(
+			`/corporations/${corporationId}/members`,
+			characterId
+		)
+
+		const currentMemberIds = new Set(response.data.map(String))
+
+		// Fetch all members from database
+		const dbMembers = await this.db
+			.select({ characterId: corporationMembers.characterId })
+			.from(corporationMembers)
+			.where(eq(corporationMembers.corporationId, corporationId))
+
+		// Identify stale members (in database but not in ESI)
+		const staleMemberIds = dbMembers
+			.filter((m) => !currentMemberIds.has(m.characterId))
+			.map((m) => m.characterId)
+
+		if (staleMemberIds.length === 0) {
+			console.log('[cleanupStaleMemberData] No stale members found:', { corporationId })
+			return { membersRemoved: 0, characterIds: [] }
+		}
+
+		// Remove stale members from database
+		await this.db
+			.delete(corporationMembers)
+			.where(
+				and(
+					eq(corporationMembers.corporationId, corporationId),
+					inArray(corporationMembers.characterId, staleMemberIds)
+				)
+			)
+
+		// Remove stale member tracking
+		await this.db
+			.delete(corporationMemberTracking)
+			.where(
+				and(
+					eq(corporationMemberTracking.corporationId, corporationId),
+					inArray(corporationMemberTracking.characterId, staleMemberIds)
+				)
+			)
+
+		// Send HR cleanup messages
+		const hrQueue = this.env['hr-member-departed']
+		const messages = staleMemberIds.map((characterId) => ({
+			body: {
+				corporationId,
+				characterId,
+			},
+		}))
+
+		await hrQueue.sendBatch(messages)
+
+		// Invalidate cache
+		await this.invalidateMembersCache(corporationId)
+
+		console.log('[cleanupStaleMemberData] Cleanup completed:', {
+			corporationId,
+			membersRemoved: staleMemberIds.length,
+			characterIds: staleMemberIds,
+		})
+
+		return {
+			membersRemoved: staleMemberIds.length,
+			characterIds: staleMemberIds,
+		}
 	}
 
 	/**

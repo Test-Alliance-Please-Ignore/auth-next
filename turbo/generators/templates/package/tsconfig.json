@@ -4,5 +4,5 @@
 		"outDir": "dist",
 		"rootDir": "src"
 	},
-	"include": ["src/**/*"]
+	"include": ["src/**/*"{{#if needsWorkers}}, "worker-configuration.d.ts"{{/if}}]
 }
