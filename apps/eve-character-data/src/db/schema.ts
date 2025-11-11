@@ -277,6 +277,25 @@ export const characterMarketOrders = pgTable(
 )
 
 /**
+ * Character killmails - Sensitive data (owner only)
+ * Stores recent killmail ID and hash for detailed lookups
+ */
+export const characterKillmails = pgTable(
+	'character_killmails',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		characterId: text('character_id')
+			.notNull()
+			.references(() => characterPublicInfo.characterId),
+		killmailId: text('killmail_id').notNull(),
+		killmailHash: text('killmail_hash').notNull(),
+		killmailTime: timestamp('killmail_time', { withTimezone: true }).notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [unique().on(table.characterId, table.killmailId)]
+)
+
+/**
  * Schema export for Drizzle relations
  */
 export const schema = {
@@ -293,4 +312,5 @@ export const schema = {
 	characterWalletJournal,
 	characterMarketTransactions,
 	characterMarketOrders,
+	characterKillmails,
 }

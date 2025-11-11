@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { eq } from '@repo/db-utils'
+import { desc, eq, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { EveCharacterDataInstance, killmailsSchema } from '@repo/eve-character-data'
 import { createEveAllianceId, createEveCharacterId, createEveCorporationId } from '@repo/eve-types'
@@ -10,6 +10,7 @@ import {
 	characterAssets,
 	characterAttributes,
 	characterCorporationHistory,
+	characterKillmails,
 	characterLocation,
 	characterMarketOrders,
 	characterMarketTransactions,
@@ -72,18 +73,22 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	}
 
 	/**
-	 * Get killmails for a character
+	 * Get killmails for a character from the database
 	 * @param characterId - EVE character ID
+	 * @param limit - Maximum number of killmails to return (default: 100)
 	 * @returns Array of killmail data
 	 */
-	async getKillmails(characterId: string): Promise<Killmails> {
-		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		const response = await tokenStoreStub.fetchEsiAllPages<{
-			killmail_id: string
-			killmail_hash: string
-		}>(`/characters/${characterId}/killmails/recent`, String(characterId))
+	async getKillmails(characterId: string, limit = 100): Promise<Killmails> {
+		const results = await this.db.query.characterKillmails.findMany({
+			where: eq(characterKillmails.characterId, characterId),
+			orderBy: desc(characterKillmails.killmailTime),
+			limit,
+		})
 
-		return killmailsSchema.parse(response.data)
+		return results.map((r) => ({
+			killmailId: r.killmailId,
+			killmailHash: r.killmailHash,
+		}))
 	}
 	/**
 	 * Fetch and store all public character data
@@ -848,6 +853,72 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			createdAt: new Date(r.createdAt),
 			updatedAt: new Date(r.updatedAt),
 		}))
+	}
+
+	/**
+	 * Store killmails in the database
+	 * @param characterId - Character ID
+	 * @param killmails - Array of killmail data from ESI
+	 */
+	private async storeKillmails(
+		characterId: string,
+		killmails: Array<{ killmailId: string; killmailHash: string }>
+	): Promise<void> {
+		const BATCH_SIZE = 50
+
+		// Process in batches to avoid timeouts
+		for (let i = 0; i < killmails.length; i += BATCH_SIZE) {
+			const batch = killmails.slice(i, i + BATCH_SIZE)
+
+			const valuesToInsert = batch.map((km) => ({
+				characterId: String(characterId),
+				killmailId: km.killmailId,
+				killmailHash: km.killmailHash,
+				killmailTime: new Date(), // ESI doesn't provide time in recent endpoint
+				updatedAt: new Date(),
+			}))
+
+			await this.db
+				.insert(characterKillmails)
+				.values(valuesToInsert)
+				.onConflictDoUpdate({
+					target: [characterKillmails.characterId, characterKillmails.killmailId],
+					set: {
+						killmailHash: sql`excluded.killmail_hash`,
+						updatedAt: sql`excluded.updated_at`,
+					},
+				})
+		}
+	}
+
+	/**
+	 * Fetch and store killmails
+	 * @param characterId - Character ID
+	 * @param _forceRefresh - Whether to force refresh (unused for now)
+	 */
+	private async fetchAndStoreKillmails(
+		characterId: string,
+		_forceRefresh = false
+	): Promise<void> {
+		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const response = await tokenStoreStub.fetchEsiAllPages<{
+			killmail_id: string
+			killmail_hash: string
+		}>(`/characters/${characterId}/killmails/recent`, String(characterId))
+
+		const killmails = killmailsSchema.parse(response.data)
+
+		// Store the killmails
+		await this.storeKillmails(characterId, killmails)
+	}
+
+	/**
+	 * Fetch killmails from ESI and store them
+	 * Public method for external callers
+	 * @param characterId - Character ID
+	 */
+	async fetchKillmails(characterId: string): Promise<void> {
+		await this.fetchAndStoreKillmails(characterId)
 	}
 
 	/**

@@ -327,6 +327,18 @@ export interface CharacterMarketOrderData {
 }
 
 /**
+ * Killmail stored in database
+ */
+export interface CharacterKillmailData {
+	id: string
+	characterId: EveCharacterId
+	killmailId: string
+	killmailHash: string
+	killmailTime: Date
+	updatedAt: Date
+}
+
+/**
  * Character skill entry from RPC response
  */
 export interface CharacterSkillEntry {
@@ -395,6 +407,12 @@ export interface EveCharacterData {
 	 * @param forceRefresh - Force refresh even if cached
 	 */
 	fetchMarketOrders(characterId: string, forceRefresh?: boolean): Promise<void>
+
+	/**
+	 * Fetch and store killmails (requires token)
+	 * @param characterId - EVE character ID
+	 */
+	fetchKillmails(characterId: string): Promise<void>
 
 	/**
 	 * Fetch character corporation roles (requires token)
@@ -515,11 +533,12 @@ export interface EveCharacterData {
 	getInstance(characterId: string): Promise<EveCharacterDataInstance>
 
 	/**
-	 * Get killmails for a character
+	 * Get killmails for a character from the database
 	 * @param characterId - EVE character ID
+	 * @param limit - Maximum number of killmails to return (default: 100)
 	 * @returns Array of killmail data
 	 */
-	getKillmails(characterId: string): Promise<Killmails>
+	getKillmails(characterId: string, limit?: number): Promise<Killmails>
 }
 
 /**
@@ -534,8 +553,8 @@ export class EveCharacterDataInstance extends RpcTarget {
 		super()
 	}
 
-	async getKillmails(): Promise<Killmails> {
-		return await this.characterDataObject.getKillmails(this.characterId)
+	async getKillmails(limit?: number): Promise<Killmails> {
+		return await this.characterDataObject.getKillmails(this.characterId, limit)
 	}
 
 	async fetchCharacterData(forceRefresh?: boolean): Promise<void> {
@@ -556,6 +575,10 @@ export class EveCharacterDataInstance extends RpcTarget {
 
 	async fetchMarketOrders(forceRefresh?: boolean): Promise<void> {
 		await this.characterDataObject.fetchMarketOrders(this.characterId, forceRefresh)
+	}
+
+	async fetchKillmails(): Promise<void> {
+		await this.characterDataObject.fetchKillmails(this.characterId)
 	}
 
 	async fetchCorporationRoles(forceRefresh?: boolean): Promise<EsiCharacterRoles | null> {
