@@ -23,6 +23,10 @@ import AdminCategoriesPage from './routes/admin/categories'
 import AdminCorporationDetailPage from './routes/admin/corporation-detail'
 import AdminCorporationsPage from './routes/admin/corporations'
 import AdminDiscordServersPage from './routes/admin/discord-servers'
+import AdminDkpAwardsPage from './routes/admin/dkp-awards'
+import AdminDkpDashboardPage from './routes/admin/dkp-dashboard'
+import AdminDkpHistoryPage from './routes/admin/dkp-history'
+import AdminDkpLeaderboardsPage from './routes/admin/dkp-leaderboards'
 import AdminFreightRoutesPage from './routes/admin/freight-routes'
 import AdminFreightRoutesEditPage from './routes/admin/freight-routes-edit'
 import AdminFreightRoutesNewPage from './routes/admin/freight-routes-new'
@@ -326,6 +330,12 @@ export default function App() {
 						<Route path="broadcasts" element={<AdminBroadcastsPage />} />
 						<Route path="broadcasts-targets" element={<AdminBroadcastTargetsPage />} />
 						<Route path="broadcasts-templates" element={<AdminBroadcastTemplatesPage />} />
+
+						{/* DKP routes */}
+						<Route path="dkp" element={<AdminDkpDashboardPage />} />
+						<Route path="dkp/awards" element={<AdminDkpAwardsPage />} />
+						<Route path="dkp/leaderboards" element={<AdminDkpLeaderboardsPage />} />
+						<Route path="dkp/history" element={<AdminDkpHistoryPage />} />
 
 						{/* Freight routes */}
 						<Route path="freight-routes" element={<AdminFreightRoutesPage />} />

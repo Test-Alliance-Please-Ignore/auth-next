@@ -1,7 +1,7 @@
 import { and, desc, eq, gte, inArray, lte, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
-import { dkpTransactions, dkpDecayConfig, userCharacters } from '../db/schema'
+import { dkpTransactions, dkpDecayConfig, users, userCharacters } from '../db/schema'
 
 import type { DbClient } from '@repo/db-utils'
 import type { EveCharacterData } from '@repo/eve-character-data'
@@ -72,8 +72,8 @@ export class DkpService {
 		let corporationId = params.corporationId || ''
 		let corporationName = ''
 
-		// Try to look up character info from eve-character-data if corporation ID not provided
-		if (!corporationId && this.eveCharacterDataNamespace) {
+		// Strategy 1: Try eve-character-data Durable Object (most reliable, ESI-backed)
+		if (this.eveCharacterDataNamespace) {
 			try {
 				using charStub = getStub<EveCharacterData>(
 					this.eveCharacterDataNamespace,
@@ -83,7 +83,9 @@ export class DkpService {
 
 				if (characterInfo) {
 					characterName = characterInfo.name
-					corporationId = characterInfo.corporationId.toString()
+					if (!corporationId) {
+						corporationId = characterInfo.corporationId.toString()
+					}
 					corporationName = characterInfo.corporationName || ''
 				}
 			} catch (error) {
@@ -98,7 +100,7 @@ export class DkpService {
 			)
 		}
 
-		// If we don't have names yet, check for existing transactions to get cached names
+		// Strategy 2: Check existing transactions for cached names
 		if (!characterName || !corporationName) {
 			const existingTx = await this.db.query.dkpTransactions.findFirst({
 				where: eq(dkpTransactions.characterId, params.characterId),
@@ -111,13 +113,38 @@ export class DkpService {
 			}
 		}
 
-		// Final fallback - use IDs as names
+		// Strategy 3: Try eve-corporation-data for corporation name if still missing
+		if (!corporationName && this.eveCorporationDataNamespace) {
+			try {
+				using corpStub = getStub<EveCorporationData>(
+					this.eveCorporationDataNamespace,
+					corporationId
+				)
+				const corpInfo = await corpStub.getCorporationInfo(corporationId)
+				if (corpInfo) {
+					corporationName = corpInfo.name
+				}
+			} catch (error) {
+				console.warn('Failed to get corporation info from eve-corporation-data:', error)
+			}
+		}
+
+		// Final fallback - use IDs as names (should rarely happen now)
 		if (!characterName) characterName = `Character ${params.characterId}`
 		if (!corporationName) corporationName = `Corporation ${corporationId}`
 
 		// Check for integer overflow when calculating new balance
-		const currentBalance = await this.getCharacterBalance(params.characterId)
-		const newBalance = currentBalance.balance.current + params.amount
+		// For new characters with no transactions, assume 0 balance
+		let currentBalanceAmount = 0
+		try {
+			const currentBalance = await this.getCharacterBalance(params.characterId)
+			currentBalanceAmount = currentBalance.balance.current
+		} catch (error) {
+			// Character has no prior transactions, balance is 0
+			currentBalanceAmount = 0
+		}
+
+		const newBalance = currentBalanceAmount + params.amount
 
 		if (newBalance > Number.MAX_SAFE_INTEGER || newBalance < Number.MIN_SAFE_INTEGER) {
 			throw new Error('Transaction would cause integer overflow')
@@ -639,6 +666,7 @@ export class DkpService {
 		leaderboard: Array<{
 			rank: number
 			userId: string
+			mainCharacterName: string
 			balance: number
 			characterCount: number
 			transactionCount: number
@@ -682,14 +710,51 @@ export class DkpService {
 			.limit(limit)
 			.offset(offset)
 
-		// Add ranking
-		const leaderboard = results.map((row, index) => ({
-			rank: offset + index + 1,
-			userId: row.userId!,
-			balance: Number(row.balance),
-			characterCount: Number(row.characterCount),
-			transactionCount: Number(row.transactionCount),
-		}))
+		// Look up main character names for each user
+		const userIds = results.map((r) => r.userId!).filter(Boolean)
+		const userMainCharacters = await this.db.query.users.findMany({
+			where: inArray(users.id, userIds),
+			columns: {
+				id: true,
+				mainCharacterId: true,
+			},
+		})
+
+		// Create a map of userId -> mainCharacterId
+		const mainCharIdMap = new Map(
+			userMainCharacters.map((u) => [u.id, u.mainCharacterId])
+		)
+
+		// Look up character names from dkpTransactions (cached names)
+		const mainCharIds = Array.from(new Set(userMainCharacters.map((u) => u.mainCharacterId)))
+		const charNames = await this.db.query.dkpTransactions.findMany({
+			where: inArray(dkpTransactions.characterId, mainCharIds),
+			columns: {
+				characterId: true,
+				characterName: true,
+			},
+		})
+
+		// Create map of characterId -> name
+		const charNameMap = new Map(
+			charNames.map((c) => [c.characterId, c.characterName])
+		)
+
+		// Add ranking and main character names
+		const leaderboard = results.map((row, index) => {
+			const userId = row.userId!
+			const mainCharId = mainCharIdMap.get(userId)
+			const mainCharacterName = mainCharId ? charNameMap.get(mainCharId) || `Character ${mainCharId}` : 'Unknown'
+
+			return {
+				rank: offset + index + 1,
+				userId,
+				mainCharacterName,
+				balance: Number(row.balance),
+				characterCount: Number(row.characterCount),
+				transactionCount: Number(row.transactionCount),
+			}
+		})
 
 		// Get total count for pagination
 		const totalResults = await this.db

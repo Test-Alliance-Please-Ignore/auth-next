@@ -1,20 +1,31 @@
 import { DurableObject } from 'cloudflare:workers'
 
+import { eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import {
 	EsiGetStructureMarketDataResponseSchema,
 	EsiGetStructureResponseSchema,
+	UniverseMoonResourceSchema,
+	UniverseMoonSchema,
+	UniverseMoonWithResourcesSchema,
 } from '@repo/universe'
 
+import { createDb } from './db'
+import { moonResources, moons } from './db/schema'
+
+import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
 import type {
 	EsiGetStructureMarketDataResponse,
 	EsiGetStructureMarketDataResponseObject,
 	EsiGetStructureResponse,
 	EveCharacterId,
+	EveMoonId,
 	EveStructureId,
 	Universe,
+	UniverseMoon,
+	UniverseMoonResource,
+	UniverseMoonWithResources,
 } from '@repo/universe'
-import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
 import type { Env } from './context'
 
 /**
@@ -27,6 +38,8 @@ import type { Env } from './context'
  * - SQLite storage via sql.exec()
  */
 export class UniverseDO extends DurableObject<Env, {}> implements Universe {
+	private db: ReturnType<typeof createDb>
+
 	/**
 	 * Initialize the Durable Object
 	 */
@@ -35,6 +48,42 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 		public env: Env
 	) {
 		super(state, env)
+		this.db = createDb(env.DATABASE_URL)
+	}
+
+	// ========================================================================
+	// PRIVATE HELPERS
+	// ========================================================================
+
+	/**
+	 * Normalize incoming moon ID values and ensure they are not empty.
+	 */
+	private normalizeMoonId(moonId: EveMoonId): string {
+		const normalized = String(moonId ?? '').trim()
+		if (!normalized) {
+			throw new Error('moonId is required')
+		}
+		return normalized
+	}
+
+	/**
+	 * Convert timestamp fields to ISO strings.
+	 */
+	private toIsoString(value: Date | string): string {
+		if (value instanceof Date) {
+			return value.toISOString()
+		}
+		const parsed = new Date(value)
+		return parsed.toISOString()
+	}
+
+	/**
+	 * Fetch a moon row by its EVE moon ID.
+	 */
+	private async findMoonRowByMoonId(moonId: string) {
+		const [moon] = await this.db.select().from(moons).where(eq(moons.moonId, moonId)).limit(1)
+
+		return moon ?? null
 	}
 
 	// ========================================================================
@@ -134,6 +183,97 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	}
 
 	// ========================================================================
+	// MOON METHODS
+	// ========================================================================
+
+	/**
+	 * Get moon metadata by moon ID.
+	 */
+	async getMoonById(moonId: EveMoonId): Promise<UniverseMoon | null> {
+		const normalizedMoonId = this.normalizeMoonId(moonId)
+
+		try {
+			const moonRow = await this.findMoonRowByMoonId(normalizedMoonId)
+
+			if (!moonRow) {
+				return null
+			}
+
+			const moon = UniverseMoonSchema.parse({
+				id: moonRow.id,
+				moonId: moonRow.moonId,
+				name: moonRow.name,
+				planetId: moonRow.planetId,
+				solarSystemId: moonRow.solarSystemId,
+				createdAt: this.toIsoString(moonRow.createdAt),
+				updatedAt: this.toIsoString(moonRow.updatedAt),
+			})
+
+			return moon
+		} catch (error) {
+			console.error(`Failed to get moon ${normalizedMoonId}`, error)
+			throw error
+		}
+	}
+
+	/**
+	 * Get moon metadata and resource composition by moon ID.
+	 */
+	async getMoonWithResourcesById(moonId: EveMoonId): Promise<UniverseMoonWithResources | null> {
+		const normalizedMoonId = this.normalizeMoonId(moonId)
+
+		try {
+			const moonRow = await this.findMoonRowByMoonId(normalizedMoonId)
+
+			if (!moonRow) {
+				return null
+			}
+
+			const moon = UniverseMoonSchema.parse({
+				id: moonRow.id,
+				moonId: moonRow.moonId,
+				name: moonRow.name,
+				planetId: moonRow.planetId,
+				solarSystemId: moonRow.solarSystemId,
+				createdAt: this.toIsoString(moonRow.createdAt),
+				updatedAt: this.toIsoString(moonRow.updatedAt),
+			})
+
+			const resourceRows = await this.db
+				.select({
+					id: moonResources.id,
+					productName: moonResources.productName,
+					quantity: moonResources.quantity,
+					oreTypeId: moonResources.oreTypeId,
+					createdAt: moonResources.createdAt,
+					updatedAt: moonResources.updatedAt,
+				})
+				.from(moonResources)
+				.where(eq(moonResources.moonId, moonRow.id))
+
+			const resources: UniverseMoonResource[] = UniverseMoonResourceSchema.array().parse(
+				resourceRows.map((resource) => ({
+					id: resource.id,
+					moonId: moon.moonId,
+					productName: resource.productName,
+					quantity: resource.quantity,
+					oreTypeId: resource.oreTypeId,
+					createdAt: this.toIsoString(resource.createdAt),
+					updatedAt: this.toIsoString(resource.updatedAt),
+				}))
+			)
+
+			return UniverseMoonWithResourcesSchema.parse({
+				...moon,
+				resources,
+			})
+		} catch (error) {
+			console.error(`Failed to get moon with resources ${normalizedMoonId}`, error)
+			throw error
+		}
+	}
+
+	// ========================================================================
 	// WEBSOCKET HANDLERS
 	// ========================================================================
 
@@ -149,7 +289,12 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	 * WebSocket close handler (Hibernation API)
 	 * Called when a WebSocket connection is closed
 	 */
-	async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean): Promise<void> {
+	async webSocketClose(
+		ws: WebSocket,
+		code: number,
+		reason: string,
+		wasClean: boolean
+	): Promise<void> {
 		// TODO: Implement cleanup logic
 	}
 

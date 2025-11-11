@@ -1,6 +1,7 @@
 import type { createDb } from './db'
 import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
+import type { EveCorporationSyncParams } from './workflows/sync-workflow'
 
 // Define CoreWorker RPC interface
 export interface CoreWorker {
@@ -16,20 +17,10 @@ export type Env = SharedHonoEnv & {
 	EVE_TOKEN_STORE: DurableObjectNamespace
 	/** KV cache for directors and other data */
 	CACHE: KVNamespace
+	/** Workflow binding for corporation sync */
+	EVE_CORPORATION_SYNC: Workflow<EveCorporationSyncParams>
 
-	// Queue bindings
-	'corp-public-refresh': Queue<unknown>
-	'corp-members-refresh': Queue<unknown>
-	'corp-member-tracking-refresh': Queue<unknown>
-	'corp-wallets-refresh': Queue<unknown>
-	'corp-wallet-journal-refresh': Queue<unknown>
-	'corp-wallet-transactions-refresh': Queue<unknown>
-	'corp-assets-refresh': Queue<unknown>
-	'corp-structures-refresh': Queue<unknown>
-	'corp-orders-refresh': Queue<unknown>
-	'corp-contracts-refresh': Queue<unknown>
-	'corp-industry-jobs-refresh': Queue<unknown>
-	'corp-killmails-refresh': Queue<unknown>
+	// Queue binding for notifying HR worker of departed members
 	'hr-member-departed': Queue<{ corporationId: string; characterId: string }>
 }
 

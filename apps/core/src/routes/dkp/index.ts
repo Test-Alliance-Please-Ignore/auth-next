@@ -97,7 +97,11 @@ app.post('/award-manual', requireAdmin(), async (c) => {
 		if (error instanceof z.ZodError) {
 			return c.json({ error: 'Validation failed', issues: error.issues }, 400)
 		}
-		logger.error('Error awarding DKP manually:', error)
+		logger.error('Error awarding DKP manually:', {
+			error: error instanceof Error ? error.message : String(error),
+			stack: error instanceof Error ? error.stack : undefined,
+			errorType: error?.constructor?.name,
+		})
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to award DKP' },
 			500
@@ -143,7 +147,11 @@ app.post('/award-bulk', requireAdmin(), async (c) => {
 		if (error instanceof z.ZodError) {
 			return c.json({ error: 'Validation failed', issues: error.issues }, 400)
 		}
-		logger.error('Error bulk awarding DKP:', error)
+		logger.error('Error bulk awarding DKP:', {
+			error: error instanceof Error ? error.message : String(error),
+			stack: error instanceof Error ? error.stack : undefined,
+			errorType: error?.constructor?.name,
+		})
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to bulk award DKP' },
 			500
@@ -509,7 +517,11 @@ app.get('/admin/statistics', requireAdmin(), async (c) => {
 
 		return c.json(statistics)
 	} catch (error) {
-		logger.error('Error getting DKP statistics:', error)
+		logger.error('Error getting DKP statistics:', {
+			error: error instanceof Error ? error.message : String(error),
+			stack: error instanceof Error ? error.stack : undefined,
+			errorType: error?.constructor?.name,
+		})
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to get statistics' },
 			500

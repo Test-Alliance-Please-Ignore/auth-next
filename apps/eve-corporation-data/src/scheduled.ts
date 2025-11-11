@@ -5,15 +5,15 @@ import type { Env } from './context'
 /**
  * Background Corporation Data Refresh Handler
  *
- * This handler runs on a scheduled cron trigger (hourly) and:
+ * This handler runs on a scheduled cron trigger (every 15 minutes) and:
  * 1. Queries the core worker for corporations with includeInBackgroundRefresh = true
- * 2. Sends refresh messages to ALL queues for each corporation
- * 3. Updates lastSync timestamps via core worker RPC
- * 4. Handles errors gracefully
+ * 2. Creates workflow instances for each corporation
+ * 3. Handles "already running" workflows gracefully
+ * 4. Tracks instance creation success/failure
  */
 export async function scheduledHandler(event: ScheduledEvent, env: Env, _ctx: ExecutionContext) {
 	const start = Date.now()
-	logger.info('[BackgroundRefresh] Starting scheduled refresh', {
+	logger.info('[BackgroundRefresh] Starting scheduled refresh via workflows', {
 		scheduledTime: new Date(event.scheduledTime).toISOString(),
 		cron: event.cron,
 	})
@@ -32,31 +32,24 @@ export async function scheduledHandler(event: ScheduledEvent, env: Env, _ctx: Ex
 			return
 		}
 
-		// Process each corporation - refresh all data types
+		// Create workflow instances for each corporation
 		const results = await Promise.allSettled(
-			corporations.map((corp) => refreshCorporation(env, corp.corporationId))
+			corporations.map((corp) => createWorkflowInstance(env, corp.corporationId, corp.name))
 		)
 
-		// Count successes and failures
-		const succeeded = results.filter((r) => r.status === 'fulfilled').length
+		// Count successes, failures, and already running
+		const succeeded = results.filter((r) => r.status === 'fulfilled' && r.value.created).length
+		const alreadyRunning = results.filter(
+			(r) => r.status === 'fulfilled' && !r.value.created
+		).length
 		const failed = results.filter((r) => r.status === 'rejected').length
-
-		// Update lastSync for successful corporations via Core RPC
-		const successfulCorporations = results
-			.map((result, index) => (result.status === 'fulfilled' ? corporations[index] : null))
-			.filter((c) => c !== null)
-
-		if (successfulCorporations.length > 0) {
-			await Promise.allSettled(
-				successfulCorporations.map((corp) => env.CORE.updateCorporationLastSync(corp.corporationId))
-			)
-		}
 
 		const duration = Date.now() - start
 
 		logger.info('[BackgroundRefresh] Scheduled refresh completed', {
 			totalCorporations: corporations.length,
-			succeeded,
+			workflowsCreated: succeeded,
+			alreadyRunning,
 			failed,
 			durationMs: duration,
 		})
@@ -69,7 +62,7 @@ export async function scheduledHandler(event: ScheduledEvent, env: Env, _ctx: Ex
 				)
 				.filter((c) => c !== null)
 
-			logger.error('[BackgroundRefresh] Some corporations failed to refresh', {
+			logger.error('[BackgroundRefresh] Some workflow creations failed', {
 				failed,
 				errors: failedCorporations.map((c) => ({
 					corporationId: c.corporationId,
@@ -88,116 +81,64 @@ export async function scheduledHandler(event: ScheduledEvent, env: Env, _ctx: Ex
 }
 
 /**
- * Send refresh messages to all queues for a specific corporation
+ * Create a workflow instance for a specific corporation
+ *
+ * Uses corporationId as the workflow instance ID for idempotency.
+ * If a workflow is already running for this corporation, it will be skipped gracefully.
+ *
+ * @returns Object indicating whether workflow was created or already running
  */
-async function refreshCorporation(env: Env, corporationId: string): Promise<void> {
-	const messagesToSend: Array<{ queue: Queue; message: Record<string, unknown>; type: string }> = []
+async function createWorkflowInstance(
+	env: Env,
+	corporationId: string,
+	corporationName: string
+): Promise<{ created: boolean; instanceId: string }> {
+	try {
+		logger.info('[BackgroundRefresh] Creating workflow instance', {
+			corporationId,
+			corporationName,
+		})
 
-	// Base message with required fields
-	const timestamp = Date.now()
-	const baseMessage = {
-		corporationId,
-		timestamp,
-		requesterId: 'scheduled-refresh',
-	}
+		// Use corporationId as instance ID for idempotency
+		// This ensures only one workflow runs per corporation at a time
+		const instance = await env.EVE_CORPORATION_SYNC.create({
+			id: corporationId,
+			params: {
+				corporationId,
+				trigger: 'cron',
+			},
+		})
 
-	// Refresh all data types
-	messagesToSend.push(
-		{
-			queue: env['corp-public-refresh'],
-			message: baseMessage,
-			type: 'public',
-		},
-		{
-			queue: env['corp-members-refresh'],
-			message: baseMessage,
-			type: 'members',
-		},
-		{
-			queue: env['corp-member-tracking-refresh'],
-			message: baseMessage,
-			type: 'memberTracking',
-		},
-		{
-			queue: env['corp-wallets-refresh'],
-			message: baseMessage,
-			type: 'wallets',
-		},
-		{
-			queue: env['corp-wallet-journal-refresh'],
-			message: baseMessage,
-			type: 'walletJournal',
-		},
-		{
-			queue: env['corp-wallet-transactions-refresh'],
-			message: baseMessage,
-			type: 'walletTransactions',
-		},
-		{
-			queue: env['corp-assets-refresh'],
-			message: baseMessage,
-			type: 'assets',
-		},
-		{
-			queue: env['corp-structures-refresh'],
-			message: baseMessage,
-			type: 'structures',
-		},
-		{
-			queue: env['corp-orders-refresh'],
-			message: baseMessage,
-			type: 'orders',
-		},
-		{
-			queue: env['corp-contracts-refresh'],
-			message: baseMessage,
-			type: 'contracts',
-		},
-		{
-			queue: env['corp-industry-jobs-refresh'],
-			message: baseMessage,
-			type: 'industryJobs',
-		},
-		{
-			queue: env['corp-killmails-refresh'],
-			message: baseMessage,
-			type: 'killmails',
+		logger.info('[BackgroundRefresh] Workflow instance created', {
+			corporationId,
+			corporationName,
+			instanceId: instance.id,
+		})
+
+		return {
+			created: true,
+			instanceId: instance.id,
 		}
-	)
+	} catch (error) {
+		// Check if workflow is already running
+		if (error instanceof Error && error.message.includes('already exists')) {
+			logger.info('[BackgroundRefresh] Workflow already running, skipping', {
+				corporationId,
+				corporationName,
+			})
 
-	logger.info('[BackgroundRefresh] Sending queue messages for corporation', {
-		corporationId,
-		messageCount: messagesToSend.length,
-		types: messagesToSend.map((m) => m.type),
-	})
+			return {
+				created: false,
+				instanceId: corporationId,
+			}
+		}
 
-	// Send all messages in parallel
-	const results = await Promise.allSettled(
-		messagesToSend.map(({ queue, message, type }) =>
-			queue
-				.send(message)
-				.then(() => {
-					logger.debug('[BackgroundRefresh] Queue message sent', {
-						corporationId,
-						type,
-					})
-				})
-				.catch((error: unknown) => {
-					logger.error('[BackgroundRefresh] Failed to send queue message', {
-						corporationId,
-						type,
-						error: error instanceof Error ? error.message : String(error),
-					})
-					throw error
-				})
-		)
-	)
-
-	// Check if any messages failed
-	const failedMessages = results.filter((r) => r.status === 'rejected')
-	if (failedMessages.length > 0) {
-		throw new Error(
-			`Failed to send ${failedMessages.length} out of ${messagesToSend.length} queue messages`
-		)
+		// Re-throw other errors
+		logger.error('[BackgroundRefresh] Failed to create workflow instance', {
+			corporationId,
+			corporationName,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		throw error
 	}
 }

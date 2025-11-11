@@ -199,8 +199,18 @@ export function useFetchCorporationData() {
 			corporationId: string
 			data?: FetchCorporationDataRequest
 		}) => api.fetchCorporationData(corporationId, data),
-		onSuccess: (_, { corporationId }) => {
-			// Use Promise.all to batch invalidations for better performance
+		onSuccess: (_, { corporationId, data }) => {
+			// Only invalidate queries if fetching 'all' data
+			// For specific categories (killmails, assets, etc.), skip all invalidations
+			// since the data hasn't materially changed the corporation config
+			const shouldInvalidate = !data?.category || data.category === 'all'
+
+			if (!shouldInvalidate) {
+				// Skip query invalidations for specific category fetches
+				return
+			}
+
+			// Only invalidate for 'all' fetches
 			void Promise.all([
 				queryClient.invalidateQueries({
 					queryKey: corporationKeys.detail(corporationId),

@@ -710,6 +710,110 @@ export interface EveCorporationData {
 	verifyAllDirectorsHealth(corporationId: string): Promise<{ verified: number; failed: number }>
 
 	// ========================================================================
+	// STORAGE-ONLY METHODS (for workflow use)
+	// ========================================================================
+
+	/**
+	 * Store public corporation info (workflow-friendly)
+	 * Takes pre-fetched data and stores it in the database
+	 * @param corporationId - The corporation ID
+	 * @param publicInfo - Pre-fetched public info from ESI
+	 */
+	storePublicInfo(corporationId: string, publicInfo: any): Promise<void>
+
+	/**
+	 * Store corporation members (workflow-friendly)
+	 * Handles member additions, updates, and departures
+	 * @param corporationId - The corporation ID
+	 * @param memberIds - Array of member character IDs
+	 * @returns Object with departed member IDs for HR processing
+	 */
+	storeMembers(corporationId: string, memberIds: string[]): Promise<{ departedMemberIds: string[] }>
+
+	/**
+	 * Store member tracking data (workflow-friendly)
+	 * @param corporationId - The corporation ID
+	 * @param trackingData - Pre-fetched tracking data from ESI
+	 */
+	storeMemberTracking(
+		corporationId: string,
+		trackingData: Array<{
+			character_id: string
+			base_id?: string
+			location_id?: string
+			logoff_date?: string
+			logon_date?: string
+			ship_type_id?: string
+			start_date?: string
+		}>
+	): Promise<void>
+
+	/**
+	 * Store wallets data (workflow-friendly)
+	 * @param corporationId - The corporation ID
+	 * @param wallets - Pre-fetched wallet data from ESI
+	 */
+	storeWallets(corporationId: string, wallets: Array<{ division: number; balance: number }>): Promise<void>
+
+	/**
+	 * Store wallet journal entries (workflow-friendly)
+	 * @param corporationId - The corporation ID
+	 * @param division - Wallet division (1-7)
+	 * @param entries - Pre-fetched journal entries from ESI
+	 */
+	storeWalletJournal(corporationId: string, division: number, entries: any[]): Promise<void>
+
+	/**
+	 * Store wallet transactions (workflow-friendly)
+	 * @param corporationId - The corporation ID
+	 * @param division - Wallet division (1-7)
+	 * @param transactions - Pre-fetched transactions from ESI
+	 */
+	storeWalletTransactions(corporationId: string, division: number, transactions: any[]): Promise<void>
+
+	/**
+	 * Store assets (workflow-friendly)
+	 * @param corporationId - The corporation ID
+	 * @param assets - Pre-fetched assets from ESI
+	 */
+	storeAssets(corporationId: string, assets: any[]): Promise<void>
+
+	/**
+	 * Store structures (workflow-friendly)
+	 * @param corporationId - The corporation ID
+	 * @param structures - Pre-fetched structures from ESI
+	 */
+	storeStructures(corporationId: string, structures: any[]): Promise<void>
+
+	/**
+	 * Store market orders (workflow-friendly)
+	 * @param corporationId - The corporation ID
+	 * @param orders - Pre-fetched orders from ESI
+	 */
+	storeOrders(corporationId: string, orders: any[]): Promise<void>
+
+	/**
+	 * Store contracts (workflow-friendly)
+	 * @param corporationId - The corporation ID
+	 * @param contracts - Pre-fetched contracts from ESI
+	 */
+	storeContracts(corporationId: string, contracts: any[]): Promise<void>
+
+	/**
+	 * Store industry jobs (workflow-friendly)
+	 * @param corporationId - The corporation ID
+	 * @param jobs - Pre-fetched industry jobs from ESI
+	 */
+	storeIndustryJobs(corporationId: string, jobs: any[]): Promise<void>
+
+	/**
+	 * Store killmails (workflow-friendly)
+	 * @param corporationId - The corporation ID
+	 * @param killmails - Pre-fetched killmails from ESI
+	 */
+	storeKillmails(corporationId: string, killmails: any[]): Promise<void>
+
+	// ========================================================================
 	// FETCH ORCHESTRATION METHODS (fetch and store data from ESI)
 	// ========================================================================
 

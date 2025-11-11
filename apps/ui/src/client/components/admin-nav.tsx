@@ -1,6 +1,7 @@
 import {
 	ArrowLeft,
 	Building2,
+	Coins,
 	FolderKanban,
 	Key,
 	MessageSquare,
@@ -65,6 +66,11 @@ export function AdminNav() {
 			label: 'Bills',
 			href: '/admin/bills',
 			icon: Receipt,
+		},
+		{
+			label: 'DKP',
+			href: '/admin/dkp',
+			icon: Coins,
 		},
 		{
 			label: 'Freight Routes',

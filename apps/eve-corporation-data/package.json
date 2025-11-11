@@ -16,6 +16,7 @@
 		"dev": "run-vite-dev",
 		"fix:workers-types": "run-wrangler-types",
 		"preview": "run-vite-preview",
+		"query-killmails": "tsx ./src/scripts/query-killmails.ts",
 		"tail": "run-wrangler-tail",
 		"test": "run-vitest"
 	},

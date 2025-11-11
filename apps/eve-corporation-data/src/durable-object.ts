@@ -21,7 +21,7 @@ import {
 	corporationWallets,
 	corporationWalletTransactions,
 } from './db/schema'
-import { DirectorManager } from './director-manager'
+import { DirectorManager } from './services/director-manager'
 
 import type {
 	CharacterCorporationRolesData,
@@ -480,6 +480,559 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const directorManager = new DirectorManager(this.db, corporationId, tokenStoreStub)
 		return await directorManager.verifyAllDirectorsHealth()
+	}
+
+	// ========================================================================
+	// STORAGE-ONLY METHODS (public) - For use by workflows
+	// ========================================================================
+
+	/**
+	 * Store public corporation info (workflow-friendly)
+	 * Takes pre-fetched data and stores it in the database
+	 */
+	async storePublicInfo(corporationId: string, publicInfo: any): Promise<void> {
+		await this.db
+			.insert(corporationPublicInfo)
+			.values({
+				...publicInfo,
+				updatedAt: new Date(),
+			})
+			.onConflictDoUpdate({
+				target: corporationPublicInfo.corporationId,
+				set: {
+					name: publicInfo.name,
+					ticker: publicInfo.ticker,
+					ceoId: publicInfo.ceoId,
+					memberCount: publicInfo.memberCount,
+					shares: publicInfo.shares,
+					taxRate: publicInfo.taxRate,
+					url: publicInfo.url,
+					allianceId: publicInfo.allianceId,
+					factionId: publicInfo.factionId,
+					warEligible: publicInfo.warEligible,
+					updatedAt: sql`excluded.updated_at`,
+				},
+			})
+	}
+
+	/**
+	 * Store corporation members (workflow-friendly)
+	 * Handles member additions, updates, and departures
+	 * Returns IDs of departed members for HR processing
+	 */
+	async storeMembers(
+		corporationId: string,
+		memberIds: string[]
+	): Promise<{ departedMemberIds: string[] }> {
+		// Fetch existing members to identify departures
+		const existingMembers = await this.db
+			.select({ characterId: corporationMembers.characterId })
+			.from(corporationMembers)
+			.where(eq(corporationMembers.corporationId, corporationId))
+
+		const existingMemberIds = new Set(existingMembers.map((m) => m.characterId))
+		const currentMemberIds = new Set(memberIds)
+
+		// Identify departed members
+		const departedMemberIds = existingMembers
+			.filter((m) => !currentMemberIds.has(m.characterId))
+			.map((m) => m.characterId)
+
+		try {
+			// Remove departed members
+			if (departedMemberIds.length > 0) {
+				await this.db
+					.delete(corporationMembers)
+					.where(
+						and(
+							eq(corporationMembers.corporationId, corporationId),
+							inArray(corporationMembers.characterId, departedMemberIds)
+						)
+					)
+
+				// Also remove from tracking table
+				await this.db
+					.delete(corporationMemberTracking)
+					.where(
+						and(
+							eq(corporationMemberTracking.corporationId, corporationId),
+							inArray(corporationMemberTracking.characterId, departedMemberIds)
+						)
+					)
+
+				console.log('[storeMembers] Removed departed members:', {
+					corporationId,
+					count: departedMemberIds.length,
+				})
+			}
+
+			// Upsert current members
+			if (memberIds.length > 0) {
+				const values = memberIds.map((memberId) => ({
+					corporationId: String(corporationId),
+					characterId: memberId,
+				}))
+
+				await this.db
+					.insert(corporationMembers)
+					.values(values)
+					.onConflictDoUpdate({
+						target: [corporationMembers.corporationId, corporationMembers.characterId],
+						set: {
+							updatedAt: sql`CURRENT_TIMESTAMP`,
+						},
+					})
+			}
+
+			// Invalidate cache
+			await this.invalidateMembersCache(corporationId)
+
+			return { departedMemberIds }
+		} catch (error) {
+			console.error('[storeMembers] Database operation failed:', {
+				error,
+				corporationId,
+				memberCount: memberIds.length,
+			})
+			throw error
+		}
+	}
+
+	/**
+	 * Store member tracking data (workflow-friendly)
+	 */
+	async storeMemberTracking(
+		corporationId: string,
+		trackingData: Array<{
+			character_id: string
+			base_id?: string
+			location_id?: string
+			logoff_date?: string
+			logon_date?: string
+			ship_type_id?: string
+			start_date?: string
+		}>
+	): Promise<void> {
+		// Identify departed members
+		const existingTracking = await this.db
+			.select({ characterId: corporationMemberTracking.characterId })
+			.from(corporationMemberTracking)
+			.where(eq(corporationMemberTracking.corporationId, corporationId))
+
+		const currentTrackingIds = new Set(trackingData.map((m) => m.character_id))
+		const departedMemberIds = existingTracking
+			.filter((m) => !currentTrackingIds.has(m.characterId))
+			.map((m) => m.characterId)
+
+		// Remove departed members
+		if (departedMemberIds.length > 0) {
+			await this.db
+				.delete(corporationMemberTracking)
+				.where(
+					and(
+						eq(corporationMemberTracking.corporationId, corporationId),
+						inArray(corporationMemberTracking.characterId, departedMemberIds)
+					)
+				)
+		}
+
+		// Upsert tracking data
+		for (const member of trackingData) {
+			await this.db
+				.insert(corporationMemberTracking)
+				.values({
+					corporationId: String(corporationId),
+					characterId: member.character_id,
+					baseId: member.base_id || null,
+					locationId: member.location_id || null,
+					logoffDate: member.logoff_date ? new Date(member.logoff_date) : null,
+					logonDate: member.logon_date ? new Date(member.logon_date) : null,
+					shipTypeId: member.ship_type_id || null,
+					startDate: member.start_date ? new Date(member.start_date) : null,
+					updatedAt: new Date(),
+				})
+				.onConflictDoUpdate({
+					target: [corporationMemberTracking.corporationId, corporationMemberTracking.characterId],
+					set: {
+						baseId: member.base_id || null,
+						locationId: member.location_id || null,
+						logoffDate: member.logoff_date ? new Date(member.logoff_date) : null,
+						logonDate: member.logon_date ? new Date(member.logon_date) : null,
+						shipTypeId: member.ship_type_id || null,
+						startDate: member.start_date ? new Date(member.start_date) : null,
+						updatedAt: sql`excluded.updated_at`,
+					},
+				})
+		}
+	}
+
+	/**
+	 * Store wallets data (workflow-friendly)
+	 */
+	async storeWallets(corporationId: string, wallets: Array<{ division: number; balance: number }>): Promise<void> {
+		for (const wallet of wallets) {
+			await this.db
+				.insert(corporationWallets)
+				.values({
+					corporationId: String(corporationId),
+					division: wallet.division,
+					balance: wallet.balance.toString(),
+					updatedAt: new Date(),
+				})
+				.onConflictDoUpdate({
+					target: [corporationWallets.corporationId, corporationWallets.division],
+					set: {
+						balance: wallet.balance.toString(),
+						updatedAt: sql`excluded.updated_at`,
+					},
+				})
+		}
+	}
+
+	/**
+	 * Store wallet journal entries (workflow-friendly)
+	 */
+	async storeWalletJournal(corporationId: string, division: number, entries: any[]): Promise<void> {
+		const BATCH_SIZE = 25
+		for (let i = 0; i < entries.length; i += BATCH_SIZE) {
+			const batch = entries.slice(i, i + BATCH_SIZE)
+			const valuesToInsert = batch.map((entry) => ({
+				corporationId: String(corporationId),
+				division,
+				journalId: String(entry.id),
+				amount: entry.amount !== undefined ? String(entry.amount) : null,
+				balance: entry.balance !== undefined ? String(entry.balance) : null,
+				contextId: entry.context_id ? String(entry.context_id) : null,
+				contextIdType: entry.context_id_type || null,
+				date: new Date(entry.date),
+				description: entry.description,
+				firstPartyId: entry.first_party_id ? String(entry.first_party_id) : null,
+				reason: entry.reason || null,
+				refType: entry.ref_type,
+				secondPartyId: entry.second_party_id ? String(entry.second_party_id) : null,
+				tax: entry.tax !== undefined ? String(entry.tax) : null,
+				taxReceiverId: entry.tax_receiver_id ? String(entry.tax_receiver_id) : null,
+				updatedAt: new Date(),
+			}))
+
+			await this.db
+				.insert(corporationWalletJournal)
+				.values(valuesToInsert)
+				.onConflictDoUpdate({
+					target: [
+						corporationWalletJournal.corporationId,
+						corporationWalletJournal.division,
+						corporationWalletJournal.journalId,
+					],
+					set: {
+						amount: sql`excluded.amount`,
+						balance: sql`excluded.balance`,
+						contextId: sql`excluded.context_id`,
+						contextIdType: sql`excluded.context_id_type`,
+						description: sql`excluded.description`,
+						reason: sql`excluded.reason`,
+						tax: sql`excluded.tax`,
+						updatedAt: sql`excluded.updated_at`,
+					},
+				})
+		}
+	}
+
+	/**
+	 * Store wallet transactions (workflow-friendly)
+	 */
+	async storeWalletTransactions(corporationId: string, division: number, transactions: any[]): Promise<void> {
+		const BATCH_SIZE = 25
+		for (let i = 0; i < transactions.length; i += BATCH_SIZE) {
+			const batch = transactions.slice(i, i + BATCH_SIZE)
+			const valuesToInsert = batch.map((tx) => ({
+				corporationId: String(corporationId),
+				division,
+				transactionId: tx.transaction_id,
+				clientId: tx.client_id,
+				date: new Date(tx.date),
+				isBuy: tx.is_buy,
+				isPersonal: tx.is_personal,
+				journalRefId: tx.journal_ref_id,
+				locationId: tx.location_id,
+				quantity: tx.quantity,
+				typeId: tx.type_id,
+				unitPrice: tx.unit_price,
+				updatedAt: new Date(),
+			}))
+
+			await this.db
+				.insert(corporationWalletTransactions)
+				.values(valuesToInsert)
+				.onConflictDoUpdate({
+					target: [
+						corporationWalletTransactions.corporationId,
+						corporationWalletTransactions.division,
+						corporationWalletTransactions.transactionId,
+					],
+					set: {
+						updatedAt: sql`excluded.updated_at`,
+					},
+				})
+		}
+	}
+
+	/**
+	 * Store assets (workflow-friendly)
+	 */
+	async storeAssets(corporationId: string, assets: any[]): Promise<void> {
+		const BATCH_SIZE = 25
+		for (let i = 0; i < assets.length; i += BATCH_SIZE) {
+			const batch = assets.slice(i, i + BATCH_SIZE)
+			const valuesToInsert = batch.map((asset) => ({
+				corporationId: String(corporationId),
+				itemId: asset.item_id,
+				isSingleton: asset.is_singleton,
+				locationFlag: asset.location_flag,
+				locationId: asset.location_id,
+				locationType: asset.location_type,
+				quantity: asset.quantity,
+				typeId: asset.type_id,
+				isBlueprintCopy: asset.is_blueprint_copy,
+				updatedAt: new Date(),
+			}))
+
+			await this.db
+				.insert(corporationAssets)
+				.values(valuesToInsert)
+				.onConflictDoUpdate({
+					target: [corporationAssets.corporationId, corporationAssets.itemId],
+					set: {
+						isSingleton: sql`excluded.is_singleton`,
+						locationFlag: sql`excluded.location_flag`,
+						locationId: sql`excluded.location_id`,
+						locationType: sql`excluded.location_type`,
+						quantity: sql`excluded.quantity`,
+						typeId: sql`excluded.type_id`,
+						isBlueprintCopy: sql`excluded.is_blueprint_copy`,
+						updatedAt: sql`excluded.updated_at`,
+					},
+				})
+		}
+	}
+
+	/**
+	 * Store structures (workflow-friendly)
+	 */
+	async storeStructures(corporationId: string, structures: any[]): Promise<void> {
+		const BATCH_SIZE = 10
+		for (let i = 0; i < structures.length; i += BATCH_SIZE) {
+			const batch = structures.slice(i, i + BATCH_SIZE)
+			const valuesToInsert = batch.map((structure) => ({
+				corporationId: String(corporationId),
+				structureId: structure.structure_id,
+				typeId: structure.type_id,
+				systemId: structure.system_id,
+				profileId: structure.profile_id,
+				fuelExpires: structure.fuel_expires ? new Date(structure.fuel_expires) : null,
+				nextReinforceApply: structure.next_reinforce_apply
+					? new Date(structure.next_reinforce_apply)
+					: null,
+				nextReinforceHour: structure.next_reinforce_hour ?? null,
+				reinforceHour: structure.reinforce_hour ?? null,
+				state: structure.state,
+				stateTimerEnd: structure.state_timer_end ? new Date(structure.state_timer_end) : null,
+				stateTimerStart: structure.state_timer_start
+					? new Date(structure.state_timer_start)
+					: null,
+				unanchorsAt: structure.unanchors_at ? new Date(structure.unanchors_at) : null,
+				services: structure.services || null,
+				updatedAt: new Date(),
+			}))
+
+			await this.db
+				.insert(corporationStructures)
+				.values(valuesToInsert)
+				.onConflictDoUpdate({
+					target: [corporationStructures.corporationId, corporationStructures.structureId],
+					set: {
+						state: sql`excluded.state`,
+						fuelExpires: sql`excluded.fuel_expires`,
+						nextReinforceApply: sql`excluded.next_reinforce_apply`,
+						nextReinforceHour: sql`excluded.next_reinforce_hour`,
+						reinforceHour: sql`excluded.reinforce_hour`,
+						stateTimerEnd: sql`excluded.state_timer_end`,
+						stateTimerStart: sql`excluded.state_timer_start`,
+						unanchorsAt: sql`excluded.unanchors_at`,
+						services: sql`excluded.services`,
+						updatedAt: sql`excluded.updated_at`,
+					},
+				})
+		}
+	}
+
+	/**
+	 * Store market orders (workflow-friendly)
+	 */
+	async storeOrders(corporationId: string, orders: any[]): Promise<void> {
+		const BATCH_SIZE = 25
+		for (let i = 0; i < orders.length; i += BATCH_SIZE) {
+			const batch = orders.slice(i, i + BATCH_SIZE)
+			const valuesToInsert = batch.map((order) => ({
+				corporationId: String(corporationId),
+				orderId: order.order_id,
+				duration: order.duration,
+				escrow: order.escrow?.toString() || null,
+				isBuyOrder: order.is_buy_order,
+				issued: new Date(order.issued),
+				issuedBy: order.issued_by,
+				locationId: order.location_id,
+				minVolume: order.min_volume ?? null,
+				price: order.price.toString(),
+				range: order.range,
+				regionId: order.region_id,
+				typeId: order.type_id,
+				volumeRemain: order.volume_remain,
+				volumeTotal: order.volume_total,
+				walletDivision: order.wallet_division,
+				updatedAt: new Date(),
+			}))
+
+			await this.db
+				.insert(corporationOrders)
+				.values(valuesToInsert)
+				.onConflictDoUpdate({
+					target: [corporationOrders.corporationId, corporationOrders.orderId],
+					set: {
+						volumeRemain: sql`excluded.volume_remain`,
+						price: sql`excluded.price`,
+						updatedAt: sql`excluded.updated_at`,
+					},
+				})
+		}
+	}
+
+	/**
+	 * Store contracts (workflow-friendly)
+	 */
+	async storeContracts(corporationId: string, contracts: any[]): Promise<void> {
+		const BATCH_SIZE = 20
+		for (let i = 0; i < contracts.length; i += BATCH_SIZE) {
+			const batch = contracts.slice(i, i + BATCH_SIZE)
+			const valuesToInsert = batch.map((contract) => ({
+				corporationId: String(corporationId),
+				contractId: contract.contract_id,
+				acceptorId: contract.acceptor_id || null,
+				assigneeId: contract.assignee_id,
+				availability: contract.availability,
+				buyout: contract.buyout?.toString() || null,
+				collateral: contract.collateral?.toString() || null,
+				dateAccepted: contract.date_accepted ? new Date(contract.date_accepted) : null,
+				dateCompleted: contract.date_completed ? new Date(contract.date_completed) : null,
+				dateExpired: new Date(contract.date_expired),
+				dateIssued: new Date(contract.date_issued),
+				daysToComplete: contract.days_to_complete ?? null,
+				endLocationId: contract.end_location_id || null,
+				forCorporation: contract.for_corporation,
+				issuerCorporationId: contract.issuer_corporation_id,
+				issuerId: contract.issuer_id,
+				price: contract.price?.toString() || null,
+				reward: contract.reward?.toString() || null,
+				startLocationId: contract.start_location_id || null,
+				status: contract.status,
+				title: contract.title || null,
+				type: contract.type,
+				volume: contract.volume?.toString() || null,
+				updatedAt: new Date(),
+			}))
+
+			await this.db
+				.insert(corporationContracts)
+				.values(valuesToInsert)
+				.onConflictDoUpdate({
+					target: [corporationContracts.corporationId, corporationContracts.contractId],
+					set: {
+						status: sql`excluded.status`,
+						dateAccepted: sql`excluded.date_accepted`,
+						dateCompleted: sql`excluded.date_completed`,
+						updatedAt: sql`excluded.updated_at`,
+					},
+				})
+		}
+	}
+
+	/**
+	 * Store industry jobs (workflow-friendly)
+	 */
+	async storeIndustryJobs(corporationId: string, jobs: any[]): Promise<void> {
+		const BATCH_SIZE = 20
+		for (let i = 0; i < jobs.length; i += BATCH_SIZE) {
+			const batch = jobs.slice(i, i + BATCH_SIZE)
+			const valuesToInsert = batch.map((job) => ({
+				corporationId: String(corporationId),
+				jobId: job.job_id,
+				installerId: job.installer_id,
+				facilityId: job.facility_id,
+				locationId: job.location_id,
+				activityId: job.activity_id,
+				blueprintId: job.blueprint_id,
+				blueprintTypeId: job.blueprint_type_id,
+				blueprintLocationId: job.blueprint_location_id,
+				outputLocationId: job.output_location_id,
+				runs: job.runs,
+				cost: job.cost?.toString() || null,
+				licensedRuns: job.licensed_runs ?? null,
+				probability: job.probability?.toString() || null,
+				productTypeId: job.product_type_id || null,
+				status: job.status,
+				duration: job.duration,
+				startDate: new Date(job.start_date),
+				endDate: new Date(job.end_date),
+				pauseDate: job.pause_date ? new Date(job.pause_date) : null,
+				completedDate: job.completed_date ? new Date(job.completed_date) : null,
+				completedCharacterId: job.completed_character_id || null,
+				successfulRuns: job.successful_runs ?? null,
+				updatedAt: new Date(),
+			}))
+
+			await this.db
+				.insert(corporationIndustryJobs)
+				.values(valuesToInsert)
+				.onConflictDoUpdate({
+					target: [corporationIndustryJobs.corporationId, corporationIndustryJobs.jobId],
+					set: {
+						status: sql`excluded.status`,
+						pauseDate: sql`excluded.pause_date`,
+						completedDate: sql`excluded.completed_date`,
+						completedCharacterId: sql`excluded.completed_character_id`,
+						successfulRuns: sql`excluded.successful_runs`,
+						updatedAt: sql`excluded.updated_at`,
+					},
+				})
+		}
+	}
+
+	/**
+	 * Store killmails (workflow-friendly)
+	 */
+	async storeKillmails(corporationId: string, killmails: any[]): Promise<void> {
+		const BATCH_SIZE = 50
+		for (let i = 0; i < killmails.length; i += BATCH_SIZE) {
+			const batch = killmails.slice(i, i + BATCH_SIZE)
+			const valuesToInsert = batch.map((km) => ({
+				corporationId: String(corporationId),
+				killmailId: km.killmail_id,
+				killmailHash: km.killmail_hash,
+				killmailTime: new Date(),
+				updatedAt: new Date(),
+			}))
+
+			await this.db
+				.insert(corporationKillmails)
+				.values(valuesToInsert)
+				.onConflictDoUpdate({
+					target: [corporationKillmails.corporationId, corporationKillmails.killmailId],
+					set: {
+						killmailHash: sql`excluded.killmail_hash`,
+						updatedAt: sql`excluded.updated_at`,
+					},
+				})
+		}
 	}
 
 	// ========================================================================

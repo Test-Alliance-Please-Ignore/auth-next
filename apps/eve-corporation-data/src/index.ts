@@ -5,8 +5,8 @@ import { getStub } from '@repo/do-utils'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
 import { EveCorporationDataDO } from './durable-object'
-import * as queueConsumers from './queue/consumers'
 import { scheduledHandler } from './scheduled'
+import { EveCorporationSyncWorkflow } from './workflows/sync-workflow'
 
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { App, Env } from './context'
@@ -40,35 +40,94 @@ const app = new Hono<App>()
 		return c.json({ id, config })
 	})
 
-// Map queue names to their handlers
-const queueHandlers = {
-	'corp-public-refresh': queueConsumers.publicRefreshQueue,
-	'corp-members-refresh': queueConsumers.membersRefreshQueue,
-	'corp-member-tracking-refresh': queueConsumers.memberTrackingRefreshQueue,
-	'corp-wallets-refresh': queueConsumers.walletsRefreshQueue,
-	'corp-wallet-journal-refresh': queueConsumers.walletJournalRefreshQueue,
-	'corp-wallet-transactions-refresh': queueConsumers.walletTransactionsRefreshQueue,
-	'corp-assets-refresh': queueConsumers.assetsRefreshQueue,
-	'corp-structures-refresh': queueConsumers.structuresRefreshQueue,
-	'corp-orders-refresh': queueConsumers.ordersRefreshQueue,
-	'corp-contracts-refresh': queueConsumers.contractsRefreshQueue,
-	'corp-industry-jobs-refresh': queueConsumers.industryJobsRefreshQueue,
-	'corp-killmails-refresh': queueConsumers.killmailsRefreshQueue,
-} as const
+	.post('/test/workflow/:corporationId', async (c) => {
+		// Test endpoint to manually trigger a workflow for a corporation
+		const corporationId = c.req.param('corporationId')
+
+		try {
+			// Create a workflow instance
+			const instance = await c.env.EVE_CORPORATION_SYNC.create({
+				params: {
+					corporationId,
+					trigger: 'api',
+				},
+			})
+
+			// Get the workflow status
+			const status = await instance.status()
+
+			return c.json({
+				success: true,
+				corporationId,
+				workflow: {
+					id: instance.id,
+					status: status.status,
+				},
+				message: 'Workflow instance created successfully',
+			})
+		} catch (error) {
+			console.error('[Test Workflow] Failed to create workflow:', error)
+			return c.json(
+				{
+					success: false,
+					error: error instanceof Error ? error.message : String(error),
+				},
+				500
+			)
+		}
+	})
+
+	.get('/test/workflow/:corporationId/status', async (c) => {
+		// Test endpoint to check workflow status
+		const corporationId = c.req.param('corporationId')
+
+		try {
+			// Get the workflow instance by corporation ID (used as instance ID)
+			const instance = await c.env.EVE_CORPORATION_SYNC.get(corporationId)
+
+			if (!instance) {
+				return c.json(
+					{
+						success: false,
+						message: 'No workflow found for this corporation',
+					},
+					404
+				)
+			}
+
+			const status = await instance.status()
+
+			return c.json({
+				success: true,
+				corporationId,
+				workflow: {
+					id: instance.id,
+					status: status.status,
+					output: status.output,
+				},
+			})
+		} catch (error) {
+			console.error('[Test Workflow Status] Failed to get status:', error)
+			return c.json(
+				{
+					success: false,
+					error: error instanceof Error ? error.message : String(error),
+				},
+				500
+			)
+		}
+	})
 
 // Export default worker with fetch, queue, and scheduled handlers
 export default {
 	fetch: app.fetch.bind(app),
 	async queue(batch: MessageBatch, env: Env, ctx: ExecutionContext): Promise<void> {
-		const queueName = batch.queue as keyof typeof queueHandlers
-		const handler = queueHandlers[queueName]
-
-		if (!handler) {
-			console.error(`No handler found for queue: ${batch.queue}`)
-			return
-		}
-
-		await handler(batch, env, ctx)
+		// No queue consumers anymore - this handler exists only because
+		// we have the hr-member-departed producer binding which requires
+		// a queue handler to be defined
+		console.warn(
+			`Received unexpected queue message on ${batch.queue} - all queue consumers have been migrated to workflows`
+		)
 	},
 	async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
 		await scheduledHandler(event, env, ctx)
@@ -77,3 +136,6 @@ export default {
 
 // Export the Durable Object class
 export { EveCorporationDataDO as EveCorporationData }
+
+// Export the Workflow class
+export { EveCorporationSyncWorkflow }

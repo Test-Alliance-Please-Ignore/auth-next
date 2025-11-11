@@ -5,6 +5,9 @@
  * This package allows other workers to interact with the Durable Object via RPC.
  */
 
+// Export moon schemas and types
+export * from './moons'
+
 // Export killmail schemas and types
 export * from './killmails'
 
@@ -17,6 +20,11 @@ import type {
 	EveCharacterId,
 	EveStructureId,
 } from './structure'
+import type {
+	EveMoonId,
+	UniverseMoon,
+	UniverseMoonWithResources,
+} from './moons'
 
 /**
  * Public RPC interface for Universe Durable Object
@@ -55,4 +63,18 @@ export interface Universe {
 		structureId: EveStructureId,
 		authorizedCharacterId: EveCharacterId
 	): Promise<EsiGetStructureMarketDataResponse | null>
+
+	/**
+	 * Get stored moon metadata by moon ID.
+	 * @param moonId - The EVE moon ID
+	 * @returns Moon metadata or null if not found
+	 */
+	getMoonById(moonId: EveMoonId): Promise<UniverseMoon | null>
+
+	/**
+	 * Get stored moon metadata and resource composition by moon ID.
+	 * @param moonId - The EVE moon ID
+	 * @returns Moon info with resources or null if not found
+	 */
+	getMoonWithResourcesById(moonId: EveMoonId): Promise<UniverseMoonWithResources | null>
 }
