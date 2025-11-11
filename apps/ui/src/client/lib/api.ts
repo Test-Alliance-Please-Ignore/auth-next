@@ -1865,6 +1865,249 @@ export class ApiClient {
 			expiresInHours: 24,
 		})
 	}
+
+	// ===== SRP (Ship Replacement Program) API Methods =====
+
+	/**
+	 * Get recent losses for all user's characters with SRP status
+	 */
+	async getRecentLosses(
+		daysBack: number = 30
+	): Promise<
+		Array<{
+			killmailId: string
+			killmailHash: string
+			killmailTime: string
+			shipTypeId: string
+			shipTypeName?: string
+			totalValue: string
+			solarSystemId: string
+			solarSystemName?: string
+			victimCharacterId: string
+			hasSRPRequest: boolean
+			srpRequestId?: string
+			srpRequestStatus?: string
+		}>
+	> {
+		return this.get(`/srp/losses?daysBack=${daysBack}`)
+	}
+
+	/**
+	 * Create a new SRP request
+	 */
+	async createSRPRequest(data: {
+		characterId: string
+		killmailId: string
+		killmailHash: string
+		requestedAmount?: string
+	}): Promise<any> {
+		return this.post('/srp/requests', data)
+	}
+
+	/**
+	 * Get user's own SRP requests (paginated)
+	 */
+	async getMyRequests(params?: {
+		limit?: number
+		offset?: number
+		status?: string
+	}): Promise<{
+		requests: any[]
+		total: number
+		limit: number
+		offset: number
+	}> {
+		const searchParams = new URLSearchParams()
+		if (params?.limit) searchParams.set('limit', String(params.limit))
+		if (params?.offset) searchParams.set('offset', String(params.offset))
+		if (params?.status) searchParams.set('status', params.status)
+
+		const query = searchParams.toString()
+		return this.get(`/srp/requests${query ? `?${query}` : ''}`)
+	}
+
+	/**
+	 * Get single SRP request by ID
+	 */
+	async getRequest(id: string): Promise<any> {
+		return this.get(`/srp/requests/${id}`)
+	}
+
+	/**
+	 * Get pending requests for review (paginated)
+	 */
+	async getPendingRequests(params?: {
+		corporationId?: string
+		limit?: number
+		offset?: number
+	}): Promise<{
+		requests: any[]
+		total: number
+		limit: number
+		offset: number
+	}> {
+		const searchParams = new URLSearchParams()
+		if (params?.corporationId) searchParams.set('corporationId', params.corporationId)
+		if (params?.limit) searchParams.set('limit', String(params.limit))
+		if (params?.offset) searchParams.set('offset', String(params.offset))
+
+		const query = searchParams.toString()
+		return this.get(`/srp/pending${query ? `?${query}` : ''}`)
+	}
+
+	/**
+	 * Approve an SRP request
+	 */
+	async approveRequest(
+		id: string,
+		data: {
+			approvedAmount: string
+			reviewNotes?: string
+		}
+	): Promise<any> {
+		return this.post(`/srp/requests/${id}/approve`, data)
+	}
+
+	/**
+	 * Partially approve an SRP request
+	 */
+	async partiallyApproveRequest(
+		id: string,
+		data: {
+			approvedAmount: string
+			rejectionReason: string
+			reviewNotes?: string
+		}
+	): Promise<any> {
+		return this.post(`/srp/requests/${id}/partially-approve`, data)
+	}
+
+	/**
+	 * Reject an SRP request
+	 */
+	async rejectRequest(
+		id: string,
+		data: {
+			rejectionReason: string
+			reviewNotes?: string
+		}
+	): Promise<any> {
+		return this.post(`/srp/requests/${id}/reject`, data)
+	}
+
+	/**
+	 * Get comments for a request
+	 */
+	async getRequestComments(requestId: string, includeInternal: boolean = false): Promise<any[]> {
+		return this.get(`/srp/requests/${requestId}/comments?includeInternal=${includeInternal}`)
+	}
+
+	/**
+	 * Add a comment to a request
+	 */
+	async addComment(
+		requestId: string,
+		data: {
+			content: string
+			visibility: 'public' | 'internal'
+		}
+	): Promise<any> {
+		return this.post(`/srp/requests/${requestId}/comments`, data)
+	}
+
+	/**
+	 * Update a comment
+	 */
+	async updateComment(commentId: string, content: string): Promise<any> {
+		return this.patch(`/srp/comments/${commentId}`, { content })
+	}
+
+	/**
+	 * Delete a comment
+	 */
+	async deleteComment(commentId: string): Promise<void> {
+		return this.delete(`/srp/comments/${commentId}`)
+	}
+
+	/**
+	 * Get pending payments (approved requests awaiting payment)
+	 */
+	async getPendingPayments(params?: {
+		corporationId?: string
+		limit?: number
+		offset?: number
+	}): Promise<{
+		requests: any[]
+		total: number
+		limit: number
+		offset: number
+	}> {
+		const searchParams = new URLSearchParams()
+		if (params?.corporationId) searchParams.set('corporationId', params.corporationId)
+		if (params?.limit) searchParams.set('limit', String(params.limit))
+		if (params?.offset) searchParams.set('offset', String(params.offset))
+
+		const query = searchParams.toString()
+		return this.get(`/srp/payments/pending${query ? `?${query}` : ''}`)
+	}
+
+	/**
+	 * Mark request as fully paid
+	 */
+	async markPaid(
+		id: string,
+		data: {
+			paidAmount: string
+			paymentToken: string
+		}
+	): Promise<any> {
+		return this.post(`/srp/requests/${id}/mark-paid`, data)
+	}
+
+	/**
+	 * Mark request as partially paid
+	 */
+	async markPartiallyPaid(
+		id: string,
+		data: {
+			paidAmount: string
+			paymentToken: string
+			notes?: string
+		}
+	): Promise<any> {
+		return this.post(`/srp/requests/${id}/mark-partially-paid`, data)
+	}
+
+	/**
+	 * Get active SRP configuration
+	 */
+	async getSRPConfig(): Promise<any> {
+		return this.get('/srp/config')
+	}
+
+	/**
+	 * Update SRP configuration (admin only)
+	 */
+	async updateSRPConfig(data: any): Promise<any> {
+		return this.patch('/srp/config', data)
+	}
+
+	/**
+	 * Get SRP statistics (admin only)
+	 */
+	async getSRPStats(params?: {
+		startDate?: string
+		endDate?: string
+		corporationId?: string
+	}): Promise<any> {
+		const searchParams = new URLSearchParams()
+		if (params?.startDate) searchParams.set('startDate', params.startDate)
+		if (params?.endDate) searchParams.set('endDate', params.endDate)
+		if (params?.corporationId) searchParams.set('corporationId', params.corporationId)
+
+		const query = searchParams.toString()
+		return this.get(`/srp/stats${query ? `?${query}` : ''}`)
+	}
 }
 
 export const apiClient = new ApiClient()

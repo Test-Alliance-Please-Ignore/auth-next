@@ -39,6 +39,8 @@ export type Env = SharedHonoEnv & {
 	HR: DurableObjectNamespace
 	/** Skills Durable Object binding */
 	SKILLS: DurableObjectNamespace
+	/** SRP (Ship Replacement Program) Durable Object binding */
+	SRP: DurableObjectNamespace
 	/** EVE Static Data service binding */
 	EVE_STATIC_DATA: Fetcher
 	/** Secret for session token generation and signing */

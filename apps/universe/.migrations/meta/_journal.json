@@ -8,6 +8,27 @@
       "when": 1762795760856,
       "tag": "0000_lumpy_dreadnoughts",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1762884806257,
+      "tag": "0001_white_tiger_shark",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1762884909611,
+      "tag": "0002_gorgeous_captain_america",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1762886089271,
+      "tag": "0003_smiling_betty_ross",
+      "breakpoints": true
     }
   ]
 }

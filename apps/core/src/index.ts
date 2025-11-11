@@ -27,6 +27,7 @@ import inviteRoutes from './routes/invite'
 import loginRoutes from './routes/login'
 import skillPlansRoutes from './routes/skill-plans'
 import skillsRoutes from './routes/skills'
+import srpRoutes from './routes/srp'
 import usersRoutes from './routes/users'
 import wsRoutes from './routes/ws'
 import { CoreRpcService } from './services/core-rpc.service'
@@ -111,6 +112,7 @@ const app = new Hono<App>()
 	.route('/api/freight', freightRoutes)
 	.route('/api/inventory', inventoryRoutes)
 	.route('/api/hr', hrRoutes)
+	.route('/api/srp', srpRoutes)
 	.route('/api/ws', wsRoutes)
 // .route('/api/bills', userBillsRoutes) // User bills API (TODO: implement later)
 

@@ -15,7 +15,12 @@
 		"deploy": "run-wrangler-deploy",
 		"dev": "run-vite-dev",
 		"fix:workers-types": "run-wrangler-types",
+		"import:inv-flags": "tsx ./src/scripts/import-inv-flags.ts",
+		"import:inv-groups": "tsx ./src/scripts/import-inv-groups.ts",
+		"import:inv-items": "tsx ./src/scripts/import-inv-items.ts",
+		"import:inv-names": "tsx ./src/scripts/import-inv-names.ts",
 		"preview": "run-vite-preview",
+		"test:resolve": "tsx ./src/scripts/test-resolve.ts",
 		"tail": "run-wrangler-tail",
 		"test": "run-vitest"
 	},
@@ -29,7 +34,8 @@
 		"@repo/universe": "workspace:*",
 		"drizzle-orm": "0.44.6",
 		"hono": "4.9.11",
-		"workers-tagged-logger": "0.13.3"
+		"workers-tagged-logger": "0.13.3",
+		"zod": "4.1.12"
 	},
 	"devDependencies": {
 		"@cloudflare/vite-plugin": "1.1.0",

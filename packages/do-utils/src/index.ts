@@ -89,3 +89,112 @@ export class KVCache<K, T> {
 export function getCache<K, T>(namespace: unknown): KVCache<K, T> {
 	return new KVCache(namespace)
 }
+
+/**
+ * Simple LRU (Least Recently Used) Cache implementation for in-memory caching
+ *
+ * This cache uses a Map to store key-value pairs and implements LRU eviction
+ * when the cache reaches its maximum size. The cache is ideal for:
+ * - Caching frequently accessed data in Durable Objects
+ * - Reducing database queries
+ * - Improving response times for repeated lookups
+ *
+ * @example
+ * ```ts
+ * import { LRUCache } from '@repo/do-utils'
+ *
+ * class MyDurableObject extends DurableObject {
+ *   private cache = new LRUCache<string>(1000)
+ *
+ *   async getData(id: string) {
+ *     // Check cache first
+ *     const cached = this.cache.get(id)
+ *     if (cached !== undefined) {
+ *       return cached
+ *     }
+ *
+ *     // Fetch from database
+ *     const data = await this.db.query(id)
+ *
+ *     // Store in cache
+ *     this.cache.set(id, data)
+ *
+ *     return data
+ *   }
+ * }
+ * ```
+ */
+export class LRUCache<T> {
+	private cache: Map<string, T>
+	private readonly maxSize: number
+
+	/**
+	 * Create a new LRU cache
+	 * @param maxSize - Maximum number of entries to store (default: 1000)
+	 */
+	constructor(maxSize: number = 1000) {
+		this.cache = new Map()
+		this.maxSize = maxSize
+	}
+
+	/**
+	 * Get a value from the cache
+	 * @param key - The cache key
+	 * @returns The cached value, or undefined if not found
+	 */
+	get(key: string): T | undefined {
+		const value = this.cache.get(key)
+		if (value !== undefined) {
+			// Move to end (most recently used)
+			this.cache.delete(key)
+			this.cache.set(key, value)
+		}
+		return value
+	}
+
+	/**
+	 * Set a value in the cache
+	 * @param key - The cache key
+	 * @param value - The value to cache
+	 */
+	set(key: string, value: T): void {
+		// If key exists, delete it first to update position
+		if (this.cache.has(key)) {
+			this.cache.delete(key)
+		}
+
+		// If at capacity, remove least recently used (first item)
+		if (this.cache.size >= this.maxSize) {
+			const firstKey = this.cache.keys().next().value
+			if (firstKey !== undefined) {
+				this.cache.delete(firstKey)
+			}
+		}
+
+		this.cache.set(key, value)
+	}
+
+	/**
+	 * Check if a key exists in the cache
+	 * @param key - The cache key
+	 * @returns True if the key exists, false otherwise
+	 */
+	has(key: string): boolean {
+		return this.cache.has(key)
+	}
+
+	/**
+	 * Get the current number of entries in the cache
+	 * @returns The cache size
+	 */
+	get size(): number {
+		return this.cache.size
+	}
+
+	/**
+	 * Clear all entries from the cache
+	 */
+	clear(): void {
+		this.cache.clear()
+	}
+}

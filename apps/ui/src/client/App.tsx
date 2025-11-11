@@ -90,6 +90,14 @@ const CategoriesManagement = lazy(
 	() => import('./features/skill-plans/routes/categories-management')
 )
 
+// Lazy load the SRP (Ship Replacement Program) feature for code splitting
+const SRPIndex = lazy(() => import('./features/srp/routes/index'))
+const SRPMyRequests = lazy(() => import('./features/srp/routes/my-requests'))
+const SRPCreate = lazy(() => import('./features/srp/routes/create'))
+const SRPRequestDetails = lazy(() => import('./features/srp/routes/request.$id'))
+const SRPReview = lazy(() => import('./features/srp/routes/review'))
+const SRPPayments = lazy(() => import('./features/srp/routes/payments'))
+
 // Create a client
 const queryClient = new QueryClient({
 	defaultOptions: {
@@ -285,6 +293,56 @@ export default function App() {
 							element={
 								<Suspense fallback={<LoadingPage />}>
 									<SkillPlanDetail />
+								</Suspense>
+							}
+						/>
+
+						{/* SRP (Ship Replacement Program) routes (lazy loaded) */}
+						<Route
+							path="/srp"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<SRPIndex />
+								</Suspense>
+							}
+						/>
+						<Route
+							path="/srp/my-requests"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<SRPMyRequests />
+								</Suspense>
+							}
+						/>
+						<Route
+							path="/srp/create"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<SRPCreate />
+								</Suspense>
+							}
+						/>
+						<Route
+							path="/srp/request/:id"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<SRPRequestDetails />
+								</Suspense>
+							}
+						/>
+						<Route
+							path="/srp/review"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<SRPReview />
+								</Suspense>
+							}
+						/>
+						<Route
+							path="/srp/payments"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<SRPPayments />
 								</Suspense>
 							}
 						/>

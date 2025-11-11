@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { desc, eq, sql } from '@repo/db-utils'
+import { and, desc, eq, gte, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { EveCharacterDataInstance, killmailsSchema } from '@repo/eve-character-data'
 import { createEveAllianceId, createEveCharacterId, createEveCorporationId } from '@repo/eve-types'
@@ -26,6 +26,8 @@ import {
 import type {
 	CharacterAttributesData,
 	CharacterCorporationHistoryData,
+	CharacterKillmailData,
+	CharacterLossData,
 	CharacterMarketOrderData,
 	CharacterMarketTransactionData,
 	CharacterPortraitData,
@@ -90,6 +92,200 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			killmailHash: r.killmailHash,
 		}))
 	}
+
+	/**
+	 * Fetch detailed killmail data from ESI and store it
+	 * @param killmailId - Killmail ID
+	 * @param killmailHash - Killmail hash
+	 * @param characterId - Character ID (to determine if this is a loss)
+	 * @returns Detailed killmail data
+	 */
+	async fetchKillmailDetails(
+		killmailId: string,
+		killmailHash: string,
+		characterId: string
+	): Promise<CharacterKillmailData | null> {
+		try {
+			console.log(`[fetchKillmailDetails] Fetching details for killmail ${killmailId}`)
+
+			// Fetch killmail details from ESI (public endpoint, no auth required)
+			const url = `https://esi.evetech.net/latest/killmails/${killmailId}/${killmailHash}/?datasource=tranquility`
+			console.log(`[fetchKillmailDetails] URL: ${url}`)
+
+			const response = await fetch(url)
+
+			console.log(`[fetchKillmailDetails] ESI response status: ${response.status} for killmail ${killmailId}`)
+
+			if (!response.ok) {
+				console.error(`[fetchKillmailDetails] Failed to fetch killmail ${killmailId}: ${response.status} ${response.statusText}`)
+				const errorText = await response.text()
+				console.error(`[fetchKillmailDetails] Error response body:`, errorText)
+				return null
+			}
+
+			const killmailData = (await response.json()) as {
+				killmail_time: string
+				solar_system_id: number
+				victim: {
+					character_id?: number
+					ship_type_id: number
+					damage_taken: number
+				}
+				zkb?: {
+					totalValue?: number
+				}
+			}
+
+			console.log(`[fetchKillmailDetails] Parsed killmail data for ${killmailId}:`, {
+				killmail_time: killmailData.killmail_time,
+				solar_system_id: killmailData.solar_system_id,
+				victim_character_id: killmailData.victim.character_id,
+				ship_type_id: killmailData.victim.ship_type_id,
+			})
+
+			// Determine if this character was the victim (loss) or attacker (kill)
+			const victimCharId = killmailData.victim.character_id?.toString()
+			const isLoss = victimCharId === characterId
+
+			console.log(`[fetchKillmailDetails] Character ${characterId}, Victim ${victimCharId}, isLoss: ${isLoss}`)
+
+			// Extract ISK value - try zkb data first, fallback to 0
+			let totalValue = '0'
+			if (killmailData.zkb?.totalValue) {
+				totalValue = killmailData.zkb.totalValue.toString()
+			}
+
+			console.log(`[fetchKillmailDetails] Total value: ${totalValue}`)
+
+			// Resolve ship type name and solar system name
+			console.log(`[fetchKillmailDetails] Resolving ship type and solar system names`)
+			using tokenStoreStub = getStub<any>(this.env.EVE_TOKEN_STORE, 'default')
+			const idsToResolve = [
+				killmailData.victim.ship_type_id.toString(),
+				killmailData.solar_system_id.toString(),
+			]
+			const resolved = await tokenStoreStub.resolveIds(idsToResolve)
+
+			const shipTypeName = resolved[killmailData.victim.ship_type_id.toString()] || null
+			const solarSystemName = resolved[killmailData.solar_system_id.toString()] || null
+
+			console.log(
+				`[fetchKillmailDetails] Resolved names - Ship: ${shipTypeName}, System: ${solarSystemName}`
+			)
+
+			// Store or update the killmail with detailed data
+			const killmailTime = new Date(killmailData.killmail_time)
+
+			console.log(`[fetchKillmailDetails] Inserting/updating killmail ${killmailId} in database`)
+
+			const result = await this.db
+				.insert(characterKillmails)
+				.values({
+					characterId: String(characterId),
+					killmailId: String(killmailId),
+					killmailHash: String(killmailHash),
+					killmailTime,
+					isLoss,
+					shipTypeId: killmailData.victim.ship_type_id.toString(),
+					shipTypeName,
+					totalValue,
+					solarSystemId: killmailData.solar_system_id.toString(),
+					solarSystemName,
+					victimCharacterId: victimCharId ?? null,
+					killmailData: killmailData as unknown,
+					updatedAt: new Date(),
+				})
+				.onConflictDoUpdate({
+					target: [characterKillmails.characterId, characterKillmails.killmailId],
+					set: {
+						killmailHash: sql`excluded.killmail_hash`,
+						killmailTime: sql`excluded.killmail_time`,
+						isLoss: sql`excluded.is_loss`,
+						shipTypeId: sql`excluded.ship_type_id`,
+						shipTypeName: sql`excluded.ship_type_name`,
+						totalValue: sql`excluded.total_value`,
+						solarSystemId: sql`excluded.solar_system_id`,
+						solarSystemName: sql`excluded.solar_system_name`,
+						victimCharacterId: sql`excluded.victim_character_id`,
+						killmailData: sql`excluded.killmail_data`,
+						updatedAt: sql`excluded.updated_at`,
+					},
+				})
+				.returning()
+
+			console.log(`[fetchKillmailDetails] Successfully stored killmail ${killmailId}, DB ID: ${result[0].id}`)
+
+			return {
+				id: result[0].id,
+				characterId: createEveCharacterId(result[0].characterId),
+				killmailId: result[0].killmailId,
+				killmailHash: result[0].killmailHash,
+				killmailTime: result[0].killmailTime,
+				isLoss: result[0].isLoss,
+				shipTypeId: result[0].shipTypeId,
+				totalValue: result[0].totalValue,
+				solarSystemId: result[0].solarSystemId,
+				victimCharacterId: result[0].victimCharacterId,
+				killmailData: result[0].killmailData,
+				updatedAt: result[0].updatedAt,
+			}
+		} catch (error) {
+			console.error(`[fetchKillmailDetails] Error fetching killmail details for ${killmailId}:`, error)
+			console.error(`[fetchKillmailDetails] Error stack:`, error instanceof Error ? error.stack : 'No stack')
+			return null
+		}
+	}
+
+	/**
+	 * Get recent losses for a character (last N days)
+	 * Filters to only losses where the character was the victim
+	 * @param characterId - Character ID
+	 * @param daysBack - Number of days to look back (default: 30)
+	 * @param excludeNonSrpEligible - If true, exclude ships like pods and shuttles that typically aren't SRP eligible (default: false)
+	 * @returns Array of loss data
+	 */
+	async getRecentLosses(characterId: string, daysBack = 30, excludeNonSrpEligible = false): Promise<CharacterLossData[]> {
+		const cutoffDate = new Date()
+		cutoffDate.setDate(cutoffDate.getDate() - daysBack)
+
+		// Ship type IDs that are typically not SRP eligible
+		const nonSrpEligibleShipTypes = [
+			'670', // Capsule (pod)
+			'33328', // Capsule - Genolution 'Auroral' 197-variant
+			'672', // Shuttle
+			'11129', // Novice
+			'588', // Ibis (Caldari rookie)
+			'606', // Velator (Gallente rookie)
+			'596', // Reaper (Minmatar rookie)
+			'601', // Impairor (Amarr rookie)
+			'85230', // Mercenary Den
+		]
+
+		const results = await this.db.query.characterKillmails.findMany({
+			where: and(
+				eq(characterKillmails.characterId, characterId),
+				eq(characterKillmails.isLoss, true),
+				gte(characterKillmails.killmailTime, cutoffDate)
+			),
+			orderBy: desc(characterKillmails.killmailTime),
+		})
+
+		return results
+			.filter((r) => r.shipTypeId && r.totalValue && r.solarSystemId && r.victimCharacterId)
+			.filter((r) => !excludeNonSrpEligible || !nonSrpEligibleShipTypes.includes(r.shipTypeId as string))
+			.map((r) => ({
+				killmailId: r.killmailId,
+				killmailHash: r.killmailHash,
+				killmailTime: r.killmailTime,
+				shipTypeId: r.shipTypeId as string,
+				shipTypeName: r.shipTypeName ?? undefined,
+				totalValue: r.totalValue as string,
+				solarSystemId: r.solarSystemId as string,
+				solarSystemName: r.solarSystemName ?? undefined,
+				victimCharacterId: r.victimCharacterId as string,
+			}))
+	}
+
 	/**
 	 * Fetch and store all public character data
 	 */
@@ -900,16 +1096,64 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		characterId: string,
 		_forceRefresh = false
 	): Promise<void> {
+		console.log(`[fetchAndStoreKillmails] Starting fetch for character ${characterId}`)
+
 		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+
+		console.log(`[fetchAndStoreKillmails] Fetching recent killmails from ESI for character ${characterId}`)
 		const response = await tokenStoreStub.fetchEsiAllPages<{
-			killmail_id: string
+			killmail_id: number
 			killmail_hash: string
 		}>(`/characters/${characterId}/killmails/recent`, String(characterId))
 
-		const killmails = killmailsSchema.parse(response.data)
+		console.log(`[fetchAndStoreKillmails] ESI response pages: ${response.pages}, data length: ${response.data?.length || 0}`)
+		console.log(`[fetchAndStoreKillmails] Raw response data:`, JSON.stringify(response.data))
 
-		// Store the killmails
-		await this.storeKillmails(characterId, killmails)
+		// Transform ESI response (snake_case) to match schema (camelCase)
+		const transformedData = response.data.map((km) => ({
+			killmailId: String(km.killmail_id),
+			killmailHash: km.killmail_hash,
+		}))
+
+		console.log(`[fetchAndStoreKillmails] Transformed data:`, JSON.stringify(transformedData))
+
+		const killmails = killmailsSchema.parse(transformedData)
+		console.log(`[fetchAndStoreKillmails] Parsed ${killmails.length} killmails for character ${characterId}`)
+
+		if (killmails.length === 0) {
+			console.log(`[fetchAndStoreKillmails] No killmails found for character ${characterId}`)
+			return
+		}
+
+		// Fetch detailed data for each killmail and store with all enriched fields
+		// Process sequentially to avoid overwhelming ESI with concurrent requests
+		let successCount = 0
+		let errorCount = 0
+
+		for (const killmail of killmails) {
+			console.log(`[fetchAndStoreKillmails] Processing killmail ${killmail.killmailId} (${successCount + errorCount + 1}/${killmails.length})`)
+			try {
+				await this.fetchKillmailDetails(
+					killmail.killmailId,
+					killmail.killmailHash,
+					characterId
+				)
+				successCount++
+				console.log(`[fetchAndStoreKillmails] Successfully stored killmail ${killmail.killmailId}`)
+			} catch (error) {
+				errorCount++
+				console.error(
+					`[fetchAndStoreKillmails] Failed to fetch details for killmail ${killmail.killmailId}:`,
+					error instanceof Error ? error.message : String(error)
+				)
+				console.error(`[fetchAndStoreKillmails] Error stack:`, error instanceof Error ? error.stack : 'No stack')
+				// Continue processing remaining killmails even if one fails
+			}
+		}
+
+		console.log(
+			`[fetchAndStoreKillmails] Completed processing ${killmails.length} killmails for character ${characterId}: ${successCount} successful, ${errorCount} failed`
+		)
 	}
 
 	/**

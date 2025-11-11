@@ -633,6 +633,22 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 			logger.error('Full error:', error)
 		}
 
+		// Try to fetch killmails (requires authentication)
+		if (hasValidToken) {
+			try {
+				await eveCharacterData.fetchKillmails()
+				logger.info('[CharacterRefresh] Killmails fetched successfully', {
+					characterId: characterIdStr,
+				})
+			} catch (error) {
+				// Log error but don't fail the refresh
+				logger.error('[CharacterRefresh] Failed to fetch killmails', {
+					characterId: characterIdStr,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
+		}
+
 		// Cache the token validity status in the database
 		const db = c.get('db')
 		if (db) {

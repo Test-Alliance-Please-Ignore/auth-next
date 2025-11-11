@@ -1,6 +1,7 @@
 import {
 	BookOpen,
 	Building2,
+	CircleDollarSign,
 	FileText,
 	FolderHeart,
 	LayoutDashboard,
@@ -67,6 +68,11 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 			label: 'Skill Plans',
 			href: '/skill-plans',
 			icon: BookOpen,
+		},
+		{
+			label: 'SRP',
+			href: '/srp',
+			icon: CircleDollarSign,
 		},
 		{
 			label: 'My Applications',

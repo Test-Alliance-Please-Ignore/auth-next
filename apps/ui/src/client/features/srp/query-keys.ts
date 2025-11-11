@@ -1,0 +1,39 @@
+import type { PaymentStatus, RequestStatus } from './types'
+
+/**
+ * Query key factory for SRP feature
+ * Provides consistent, type-safe query keys for React Query
+ */
+export const srpKeys = {
+	all: ['srp'] as const,
+
+	// Losses
+	losses: (daysBack?: number) => [...srpKeys.all, 'losses', daysBack] as const,
+
+	// Requests
+	requests: () => [...srpKeys.all, 'requests'] as const,
+	myRequests: (params: { limit?: number; offset?: number; status?: RequestStatus }) =>
+		[...srpKeys.requests(), 'my', params] as const,
+	request: (id: string) => [...srpKeys.requests(), id] as const,
+
+	// Pending reviews
+	pending: () => [...srpKeys.all, 'pending'] as const,
+	pendingRequests: (params: { corporationId?: string; limit?: number; offset?: number }) =>
+		[...srpKeys.pending(), 'requests', params] as const,
+
+	// Payments
+	payments: () => [...srpKeys.all, 'payments'] as const,
+	pendingPayments: (params: { corporationId?: string; limit?: number; offset?: number }) =>
+		[...srpKeys.payments(), 'pending', params] as const,
+
+	// Comments
+	comments: (requestId: string, includeInternal: boolean) =>
+		[...srpKeys.all, 'comments', requestId, includeInternal] as const,
+
+	// Config
+	config: () => [...srpKeys.all, 'config'] as const,
+
+	// Stats
+	stats: (params?: { startDate?: string; endDate?: string; corporationId?: string }) =>
+		[...srpKeys.all, 'stats', params] as const,
+}

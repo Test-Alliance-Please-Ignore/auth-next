@@ -6,11 +6,14 @@
  */
 
 import * as moons from './moons'
+import * as typeIds from './type-ids'
 
 // Combine all schemas
 export const schema = {
 	...moons,
+	...typeIds,
 }
 
 // Re-export individual modules for direct imports
 export * from './moons'
+export * from './type-ids'

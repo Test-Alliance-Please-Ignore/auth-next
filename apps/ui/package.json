@@ -28,6 +28,7 @@
 		"@repo/freight": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
 		"@repo/notifications": "workspace:*",
+		"@repo/srp": "workspace:*",
 		"@tanstack/react-query": "5.90.5",
 		"date-fns": "4.1.0",
 		"hono": "4.9.11",

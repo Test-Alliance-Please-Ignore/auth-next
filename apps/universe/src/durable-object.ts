@@ -1,7 +1,7 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { eq } from '@repo/db-utils'
-import { getStub } from '@repo/do-utils'
+import { eq, inArray } from '@repo/db-utils'
+import { getStub, LRUCache } from '@repo/do-utils'
 import {
 	EsiGetStructureMarketDataResponseSchema,
 	EsiGetStructureResponseSchema,
@@ -11,7 +11,7 @@ import {
 } from '@repo/universe'
 
 import { createDb } from './db'
-import { moonResources, moons } from './db/schema'
+import { invFlags, invGroups, invItems, invNames, moonResources, moons, typeIds } from './db/schema'
 
 import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
 import type {
@@ -21,6 +21,10 @@ import type {
 	EveCharacterId,
 	EveMoonId,
 	EveStructureId,
+	InvFlag,
+	InvGroup,
+	InvItem,
+	InvName,
 	Universe,
 	UniverseMoon,
 	UniverseMoonResource,
@@ -39,6 +43,10 @@ import type { Env } from './context'
  */
 export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	private db: ReturnType<typeof createDb>
+	private invFlagsCache: LRUCache<InvFlag>
+	private invGroupsCache: LRUCache<InvGroup>
+	private invItemsCache: LRUCache<InvItem>
+	private invNamesCache: LRUCache<InvName>
 
 	/**
 	 * Initialize the Durable Object
@@ -49,6 +57,10 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	) {
 		super(state, env)
 		this.db = createDb(env.DATABASE_URL)
+		this.invFlagsCache = new LRUCache<InvFlag>(1000)
+		this.invGroupsCache = new LRUCache<InvGroup>(1000)
+		this.invItemsCache = new LRUCache<InvItem>(10000) // Larger cache for items
+		this.invNamesCache = new LRUCache<InvName>(10000) // Larger cache for names
 	}
 
 	// ========================================================================
@@ -84,6 +96,16 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 		const [moon] = await this.db.select().from(moons).where(eq(moons.moonId, moonId)).limit(1)
 
 		return moon ?? null
+	}
+
+	private async findTypeIdByName(typeName: string) {
+		const [type] = await this.db
+			.select()
+			.from(typeIds)
+			.where(eq(typeIds.typeName, typeName))
+			.limit(1)
+
+		return type?.typeId ?? null
 	}
 
 	// ========================================================================
@@ -269,6 +291,235 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 			})
 		} catch (error) {
 			console.error(`Failed to get moon with resources ${normalizedMoonId}`, error)
+			throw error
+		}
+	}
+
+	// ========================================================================
+	// INVENTORY RESOLUTION METHODS
+	// ========================================================================
+
+	/**
+	 * Resolve multiple inventory flags by their IDs
+	 * Uses in-memory LRU cache to reduce database load
+	 * @param flagIds - Array of flag IDs to resolve
+	 * @returns Record mapping flag IDs to their data (null if not found)
+	 */
+	async resolveInvFlags(flagIds: string[]): Promise<Record<string, InvFlag | null>> {
+		try {
+			const result: Record<string, InvFlag | null> = {}
+			const cacheMisses: string[] = []
+
+			// Check cache for each ID
+			for (const flagId of flagIds) {
+				const cached = this.invFlagsCache.get(flagId)
+				if (cached !== undefined) {
+					result[flagId] = cached
+				} else {
+					cacheMisses.push(flagId)
+				}
+			}
+
+			// Fetch cache misses from database
+			if (cacheMisses.length > 0) {
+				const flags = await this.db
+					.select()
+					.from(invFlags)
+					.where(inArray(invFlags.flagId, cacheMisses))
+
+				// Update cache and result
+				for (const flag of flags) {
+					const invFlag: InvFlag = {
+						flagId: flag.flagId,
+						flagName: flag.flagName,
+						flagText: flag.flagText,
+						orderId: flag.orderId,
+					}
+					this.invFlagsCache.set(flag.flagId, invFlag)
+					result[flag.flagId] = invFlag
+				}
+
+				// Mark not found items as null
+				for (const missedId of cacheMisses) {
+					if (!(missedId in result)) {
+						result[missedId] = null
+					}
+				}
+			}
+
+			return result
+		} catch (error) {
+			console.error('Failed to resolve invFlags', error)
+			throw error
+		}
+	}
+
+	/**
+	 * Resolve multiple inventory groups by their IDs
+	 * Uses in-memory LRU cache to reduce database load
+	 * @param groupIds - Array of group IDs to resolve
+	 * @returns Record mapping group IDs to their data (null if not found)
+	 */
+	async resolveInvGroups(groupIds: string[]): Promise<Record<string, InvGroup | null>> {
+		try {
+			const result: Record<string, InvGroup | null> = {}
+			const cacheMisses: string[] = []
+
+			// Check cache for each ID
+			for (const groupId of groupIds) {
+				const cached = this.invGroupsCache.get(groupId)
+				if (cached !== undefined) {
+					result[groupId] = cached
+				} else {
+					cacheMisses.push(groupId)
+				}
+			}
+
+			// Fetch cache misses from database
+			if (cacheMisses.length > 0) {
+				const groups = await this.db
+					.select()
+					.from(invGroups)
+					.where(inArray(invGroups.groupId, cacheMisses))
+
+				// Update cache and result
+				for (const group of groups) {
+					const invGroup: InvGroup = {
+						groupId: group.groupId,
+						categoryId: group.categoryId,
+						groupName: group.groupName,
+						iconId: group.iconId,
+						useBasePrice: group.useBasePrice,
+						anchored: group.anchored,
+						anchorable: group.anchorable,
+						fittableNonSingleton: group.fittableNonSingleton,
+						published: group.published,
+					}
+					this.invGroupsCache.set(group.groupId, invGroup)
+					result[group.groupId] = invGroup
+				}
+
+				// Mark not found items as null
+				for (const missedId of cacheMisses) {
+					if (!(missedId in result)) {
+						result[missedId] = null
+					}
+				}
+			}
+
+			return result
+		} catch (error) {
+			console.error('Failed to resolve invGroups', error)
+			throw error
+		}
+	}
+
+	/**
+	 * Resolve multiple inventory items by their IDs
+	 * Uses in-memory LRU cache to reduce database load
+	 * @param itemIds - Array of item IDs to resolve
+	 * @returns Record mapping item IDs to their data (null if not found)
+	 */
+	async resolveInvItems(itemIds: string[]): Promise<Record<string, InvItem | null>> {
+		try {
+			const result: Record<string, InvItem | null> = {}
+			const cacheMisses: string[] = []
+
+			// Check cache for each ID
+			for (const itemId of itemIds) {
+				const cached = this.invItemsCache.get(itemId)
+				if (cached !== undefined) {
+					result[itemId] = cached
+				} else {
+					cacheMisses.push(itemId)
+				}
+			}
+
+			// Fetch cache misses from database
+			if (cacheMisses.length > 0) {
+				const items = await this.db
+					.select()
+					.from(invItems)
+					.where(inArray(invItems.itemId, cacheMisses))
+
+				// Update cache and result
+				for (const item of items) {
+					const invItem: InvItem = {
+						itemId: item.itemId,
+						typeId: item.typeId,
+						ownerId: item.ownerId,
+						locationId: item.locationId,
+						flagId: item.flagId,
+						quantity: item.quantity,
+					}
+					this.invItemsCache.set(item.itemId, invItem)
+					result[item.itemId] = invItem
+				}
+
+				// Mark not found items as null
+				for (const missedId of cacheMisses) {
+					if (!(missedId in result)) {
+						result[missedId] = null
+					}
+				}
+			}
+
+			return result
+		} catch (error) {
+			console.error('Failed to resolve invItems', error)
+			throw error
+		}
+	}
+
+	/**
+	 * Resolve multiple inventory item names by their IDs
+	 * Uses in-memory LRU cache to reduce database load
+	 * @param itemIds - Array of item IDs to resolve
+	 * @returns Record mapping item IDs to their names (null if not found)
+	 */
+	async resolveInvNames(itemIds: string[]): Promise<Record<string, InvName | null>> {
+		try {
+			const result: Record<string, InvName | null> = {}
+			const cacheMisses: string[] = []
+
+			// Check cache for each ID
+			for (const itemId of itemIds) {
+				const cached = this.invNamesCache.get(itemId)
+				if (cached !== undefined) {
+					result[itemId] = cached
+				} else {
+					cacheMisses.push(itemId)
+				}
+			}
+
+			// Fetch cache misses from database
+			if (cacheMisses.length > 0) {
+				const names = await this.db
+					.select()
+					.from(invNames)
+					.where(inArray(invNames.itemId, cacheMisses))
+
+				// Update cache and result
+				for (const name of names) {
+					const invName: InvName = {
+						itemId: name.itemId,
+						itemName: name.itemName,
+					}
+					this.invNamesCache.set(name.itemId, invName)
+					result[name.itemId] = invName
+				}
+
+				// Mark not found items as null
+				for (const missedId of cacheMisses) {
+					if (!(missedId in result)) {
+						result[missedId] = null
+					}
+				}
+			}
+
+			return result
+		} catch (error) {
+			console.error('Failed to resolve invNames', error)
 			throw error
 		}
 	}

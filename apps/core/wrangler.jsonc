@@ -82,6 +82,11 @@
 				"name": "SKILLS",
 				"class_name": "Skills",
 				"script_name": "skills"
+			},
+			{
+				"name": "SRP",
+				"class_name": "Srp",
+				"script_name": "srp"
 			}
 		]
 	},

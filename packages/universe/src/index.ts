@@ -1,3 +1,17 @@
+import { EveTypeId } from '@repo/eve-types'
+
+import type { InvFlag } from './inv-flags'
+import type { InvGroup } from './inv-groups'
+import type { InvItem } from './inv-items'
+import type { InvName } from './inv-names'
+import type { EveMoonId, UniverseMoon, UniverseMoonWithResources } from './moons'
+import type {
+	EsiGetStructureMarketDataResponse,
+	EsiGetStructureResponse,
+	EveCharacterId,
+	EveStructureId,
+} from './structure'
+
 /**
  * @repo/universe
  *
@@ -14,17 +28,17 @@ export * from './killmails'
 // Export structure schemas and types
 export * from './structure'
 
-import type {
-	EsiGetStructureMarketDataResponse,
-	EsiGetStructureResponse,
-	EveCharacterId,
-	EveStructureId,
-} from './structure'
-import type {
-	EveMoonId,
-	UniverseMoon,
-	UniverseMoonWithResources,
-} from './moons'
+// Export inventory flag types
+export * from './inv-flags'
+
+// Export inventory group types
+export * from './inv-groups'
+
+// Export inventory item types
+export * from './inv-items'
+
+// Export inventory name types
+export * from './inv-names'
 
 /**
  * Public RPC interface for Universe Durable Object
@@ -77,4 +91,32 @@ export interface Universe {
 	 * @returns Moon info with resources or null if not found
 	 */
 	getMoonWithResourcesById(moonId: EveMoonId): Promise<UniverseMoonWithResources | null>
+
+	/**
+	 * Resolve multiple inventory flags by their IDs
+	 * @param flagIds - Array of flag IDs to resolve
+	 * @returns Record mapping flag IDs to their data (null if not found)
+	 */
+	resolveInvFlags(flagIds: string[]): Promise<Record<string, InvFlag | null>>
+
+	/**
+	 * Resolve multiple inventory groups by their IDs
+	 * @param groupIds - Array of group IDs to resolve
+	 * @returns Record mapping group IDs to their data (null if not found)
+	 */
+	resolveInvGroups(groupIds: string[]): Promise<Record<string, InvGroup | null>>
+
+	/**
+	 * Resolve multiple inventory items by their IDs
+	 * @param itemIds - Array of item IDs to resolve
+	 * @returns Record mapping item IDs to their data (null if not found)
+	 */
+	resolveInvItems(itemIds: string[]): Promise<Record<string, InvItem | null>>
+
+	/**
+	 * Resolve multiple inventory item names by their IDs
+	 * @param itemIds - Array of item IDs to resolve
+	 * @returns Record mapping item IDs to their names (null if not found)
+	 */
+	resolveInvNames(itemIds: string[]): Promise<Record<string, InvName | null>>
 }

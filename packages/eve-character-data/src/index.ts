@@ -335,7 +335,33 @@ export interface CharacterKillmailData {
 	killmailId: string
 	killmailHash: string
 	killmailTime: Date
+	// Detailed killmail fields for SRP
+	isLoss?: boolean | null // True if character was the victim
+	shipTypeId?: string | null // Ship type that was destroyed
+	totalValue?: string | null // ISK value as text
+	solarSystemId?: string | null // Solar system where kill occurred
+	victimCharacterId?: string | null // Character ID of the victim
+	killmailData?: unknown | null // Full killmail JSON data
 	updatedAt: Date
+}
+
+/**
+ * Detailed loss data for SRP system
+ */
+export interface CharacterLossData {
+	killmailId: string
+	killmailHash: string
+	killmailTime: Date
+	shipTypeId: string
+	totalValue: string // ISK value as text
+	solarSystemId: string
+	victimCharacterId: string
+	// Optional fields from killmail data
+	shipTypeName?: string // Resolved from static data
+	solarSystemName?: string // Resolved from static data
+	// Additional data for UI
+	hasSRPRequest?: boolean // Whether an SRP request exists for this loss
+	srpRequestStatus?: string // Status of the SRP request if it exists
 }
 
 /**
@@ -539,6 +565,29 @@ export interface EveCharacterData {
 	 * @returns Array of killmail data
 	 */
 	getKillmails(characterId: string, limit?: number): Promise<Killmails>
+
+	/**
+	 * Fetch detailed killmail data from ESI and store it
+	 * @param killmailId - Killmail ID
+	 * @param killmailHash - Killmail hash
+	 * @param characterId - Character ID (to determine if this is a loss)
+	 * @returns Detailed killmail data
+	 */
+	fetchKillmailDetails(
+		killmailId: string,
+		killmailHash: string,
+		characterId: string
+	): Promise<CharacterKillmailData | null>
+
+	/**
+	 * Get recent losses for a character (last N days)
+	 * Filters to only losses where the character was the victim
+	 * @param characterId - EVE character ID
+	 * @param daysBack - Number of days to look back (default: 30)
+	 * @param excludeNonSrpEligible - If true, exclude ships like pods and shuttles that typically aren't SRP eligible (default: false)
+	 * @returns Array of loss data
+	 */
+	getRecentLosses(characterId: string, daysBack?: number, excludeNonSrpEligible?: boolean): Promise<CharacterLossData[]>
 }
 
 /**
@@ -649,6 +698,21 @@ export class EveCharacterDataInstance extends RpcTarget {
 
 	async getMarketOrders(): Promise<CharacterMarketOrderData[]> {
 		return await this.characterDataObject.getMarketOrders(this.characterId)
+	}
+
+	async fetchKillmailDetails(
+		killmailId: string,
+		killmailHash: string
+	): Promise<CharacterKillmailData | null> {
+		return await this.characterDataObject.fetchKillmailDetails(
+			killmailId,
+			killmailHash,
+			this.characterId
+		)
+	}
+
+	async getRecentLosses(daysBack?: number, excludeNonSrpEligible?: boolean): Promise<CharacterLossData[]> {
+		return await this.characterDataObject.getRecentLosses(this.characterId, daysBack, excludeNonSrpEligible)
 	}
 
 	[Symbol.dispose](): void {

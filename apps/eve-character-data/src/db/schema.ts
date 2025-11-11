@@ -290,6 +290,15 @@ export const characterKillmails = pgTable(
 		killmailId: text('killmail_id').notNull(),
 		killmailHash: text('killmail_hash').notNull(),
 		killmailTime: timestamp('killmail_time', { withTimezone: true }).notNull(),
+		// Detailed killmail fields for SRP
+		isLoss: boolean('is_loss'), // True if character was the victim, false if attacker, null if unknown
+		shipTypeId: text('ship_type_id'), // Ship type that was destroyed
+		shipTypeName: text('ship_type_name'), // Resolved ship type name
+		totalValue: text('total_value'), // ISK value (stored as text to avoid BigInt issues)
+		solarSystemId: text('solar_system_id'), // Solar system where kill occurred
+		solarSystemName: text('solar_system_name'), // Resolved solar system name
+		victimCharacterId: text('victim_character_id'), // Character ID of the victim
+		killmailData: jsonb('killmail_data'), // Full killmail JSON data for reference
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
 	(table) => [unique().on(table.characterId, table.killmailId)]

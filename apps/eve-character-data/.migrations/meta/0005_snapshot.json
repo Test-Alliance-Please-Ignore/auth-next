@@ -1,6 +1,6 @@
 {
-  "id": "0ffac089-4546-4e9f-b063-4161ef6f1c97",
-  "prevId": "99930f2a-012e-4f99-a72d-200e90c923a8",
+  "id": "2d758613-04b0-4eee-abb8-0a57df21e4ff",
+  "prevId": "376b909c-c87c-4200-a3ab-ec8e56e637f9",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -285,6 +285,54 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true
+        },
+        "is_loss": {
+          "name": "is_loss",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ship_type_id": {
+          "name": "ship_type_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ship_type_name": {
+          "name": "ship_type_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "total_value": {
+          "name": "total_value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "solar_system_id": {
+          "name": "solar_system_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "solar_system_name": {
+          "name": "solar_system_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "victim_character_id": {
+          "name": "victim_character_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "killmail_data": {
+          "name": "killmail_data",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         },
         "updated_at": {
           "name": "updated_at",
