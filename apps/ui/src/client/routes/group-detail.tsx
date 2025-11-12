@@ -125,8 +125,6 @@ export default function GroupDetailPage() {
 					Back to Groups
 				</Button>
 
-
-
 				{/* Group Info */}
 				<GroupCard group={group} />
 
@@ -192,8 +190,8 @@ export default function GroupDetailPage() {
 										<CardTitle>Invite Codes</CardTitle>
 									</div>
 									<CardDescription>
-										Create reusable invite codes for this group. Codes can be shared to allow users to
-										join without approval.
+										Create reusable invite codes for this group. Codes can be shared to allow users
+										to join without approval.
 									</CardDescription>
 								</div>
 								<Button onClick={() => setShowCreateInviteCodeDialog(true)} size="sm">
@@ -296,11 +294,16 @@ export default function GroupDetailPage() {
 							)}
 
 							{/* Create Invite Code Dialog */}
-							<Dialog open={showCreateInviteCodeDialog} onOpenChange={setShowCreateInviteCodeDialog}>
+							<Dialog
+								open={showCreateInviteCodeDialog}
+								onOpenChange={setShowCreateInviteCodeDialog}
+							>
 								<DialogContent>
 									<DialogHeader>
 										<DialogTitle>Create Invite Code</DialogTitle>
-										<DialogDescription>Configure settings for the new invite code</DialogDescription>
+										<DialogDescription>
+											Configure settings for the new invite code
+										</DialogDescription>
 									</DialogHeader>
 
 									<div className="space-y-4">
@@ -319,7 +322,9 @@ export default function GroupDetailPage() {
 													})
 												}
 											/>
-											<p className="text-xs text-muted-foreground">Leave empty for unlimited uses</p>
+											<p className="text-xs text-muted-foreground">
+												Leave empty for unlimited uses
+											</p>
 										</div>
 
 										<div className="space-y-2">

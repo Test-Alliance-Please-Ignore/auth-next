@@ -28,6 +28,7 @@
 		"@repo/db-utils": "workspace:*",
 		"@repo/discord": "workspace:*",
 		"@repo/do-utils": "workspace:*",
+		"@repo/doctrines": "workspace:*",
 		"@repo/eve-character-data": "workspace:*",
 		"@repo/eve-corporation-data": "workspace:*",
 		"@repo/eve-token-store": "workspace:*",

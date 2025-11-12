@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+
 import { calculateRoleChanges } from '../role-calculation'
 
 describe('calculateRoleChanges', () => {
@@ -29,9 +30,7 @@ describe('calculateRoleChanges', () => {
 			})
 
 			expect(result.newRoleIds).toHaveLength(3)
-			expect(result.newRoleIds).toEqual(
-				expect.arrayContaining(['role1', 'role2', 'role3'])
-			)
+			expect(result.newRoleIds).toEqual(expect.arrayContaining(['role1', 'role2', 'role3']))
 			expect(result.rolesAdded).toEqual([])
 			expect(result.rolesRemoved).toEqual([])
 		})
@@ -45,9 +44,7 @@ describe('calculateRoleChanges', () => {
 			})
 
 			expect(result.newRoleIds).toHaveLength(3)
-			expect(result.newRoleIds).toEqual(
-				expect.arrayContaining(['role1', 'role2', 'role3'])
-			)
+			expect(result.newRoleIds).toEqual(expect.arrayContaining(['role1', 'role2', 'role3']))
 			expect(result.rolesAdded).toEqual(['role3'])
 			expect(result.rolesRemoved).toEqual([])
 		})
@@ -88,9 +85,7 @@ describe('calculateRoleChanges', () => {
 
 			// Should deduplicate all roles
 			expect(result.newRoleIds).toHaveLength(3)
-			expect(result.newRoleIds).toEqual(
-				expect.arrayContaining(['role1', 'role2', 'role3'])
-			)
+			expect(result.newRoleIds).toEqual(expect.arrayContaining(['role1', 'role2', 'role3']))
 			expect(result.rolesAdded).toEqual(['role3'])
 			expect(result.rolesRemoved).toEqual([])
 		})
@@ -132,9 +127,7 @@ describe('calculateRoleChanges', () => {
 			})
 
 			expect(result.newRoleIds).toHaveLength(3)
-			expect(result.newRoleIds).toEqual(
-				expect.arrayContaining(['manual1', 'manual2', 'managed2'])
-			)
+			expect(result.newRoleIds).toEqual(expect.arrayContaining(['manual1', 'manual2', 'managed2']))
 			expect(result.rolesAdded).toEqual(['managed2'])
 			expect(result.rolesRemoved).toEqual(['managed1'])
 		})
@@ -150,9 +143,7 @@ describe('calculateRoleChanges', () => {
 			expect(result.newRoleIds).toEqual(['role1'])
 			expect(result.rolesAdded).toEqual([])
 			expect(result.rolesRemoved).toHaveLength(2)
-			expect(result.rolesRemoved).toEqual(
-				expect.arrayContaining(['role2', 'role3'])
-			)
+			expect(result.rolesRemoved).toEqual(expect.arrayContaining(['role2', 'role3']))
 		})
 
 		it('should add new requested roles', () => {
@@ -164,9 +155,7 @@ describe('calculateRoleChanges', () => {
 			})
 
 			expect(result.newRoleIds).toHaveLength(3)
-			expect(result.newRoleIds).toEqual(
-				expect.arrayContaining(['role1', 'role2', 'role3'])
-			)
+			expect(result.newRoleIds).toEqual(expect.arrayContaining(['role1', 'role2', 'role3']))
 			expect(result.rolesAdded).toHaveLength(2)
 			expect(result.rolesAdded).toEqual(expect.arrayContaining(['role2', 'role3']))
 			expect(result.rolesRemoved).toEqual([])
@@ -209,9 +198,7 @@ describe('calculateRoleChanges', () => {
 			// Since managedRoleIds is empty, all current roles are considered manual
 			// and should be preserved, plus requested roles added
 			expect(result.newRoleIds).toHaveLength(3)
-			expect(result.newRoleIds).toEqual(
-				expect.arrayContaining(['manual1', 'manual2', 'role1'])
-			)
+			expect(result.newRoleIds).toEqual(expect.arrayContaining(['manual1', 'manual2', 'role1']))
 			expect(result.rolesAdded).toEqual(['role1'])
 			expect(result.rolesRemoved).toEqual([])
 		})
@@ -227,9 +214,7 @@ describe('calculateRoleChanges', () => {
 			expect(result.newRoleIds).toEqual(['managed1'])
 			expect(result.rolesAdded).toEqual([])
 			expect(result.rolesRemoved).toHaveLength(2)
-			expect(result.rolesRemoved).toEqual(
-				expect.arrayContaining(['managed2', 'managed3'])
-			)
+			expect(result.rolesRemoved).toEqual(expect.arrayContaining(['managed2', 'managed3']))
 		})
 
 		it('should handle when no current roles are managed', () => {
@@ -246,9 +231,7 @@ describe('calculateRoleChanges', () => {
 				expect.arrayContaining(['manual1', 'manual2', 'managed1', 'managed2'])
 			)
 			expect(result.rolesAdded).toHaveLength(2)
-			expect(result.rolesAdded).toEqual(
-				expect.arrayContaining(['managed1', 'managed2'])
-			)
+			expect(result.rolesAdded).toEqual(expect.arrayContaining(['managed1', 'managed2']))
 			expect(result.rolesRemoved).toEqual([])
 		})
 
@@ -276,9 +259,7 @@ describe('calculateRoleChanges', () => {
 			// manual1 appears in both current (as manual) and requested
 			// Should only appear once in newRoleIds
 			expect(result.newRoleIds).toHaveLength(2)
-			expect(result.newRoleIds).toEqual(
-				expect.arrayContaining(['manual1', 'managed2'])
-			)
+			expect(result.newRoleIds).toEqual(expect.arrayContaining(['manual1', 'managed2']))
 			expect(result.rolesAdded).toEqual(['managed2'])
 			expect(result.rolesRemoved).toEqual(['managed1'])
 		})
@@ -292,9 +273,7 @@ describe('calculateRoleChanges', () => {
 			})
 
 			expect(result.newRoleIds).toHaveLength(2)
-			expect(result.newRoleIds).toEqual(
-				expect.arrayContaining(['manual1', 'managed2'])
-			)
+			expect(result.newRoleIds).toEqual(expect.arrayContaining(['manual1', 'managed2']))
 			expect(result.rolesAdded).toEqual(['managed2'])
 			expect(result.rolesRemoved).toEqual(['managed1'])
 		})
@@ -362,9 +341,7 @@ describe('calculateRoleChanges', () => {
 				...result.rolesAdded,
 			]
 
-			expect([...new Set(simulatedNewRoles)].sort()).toEqual(
-				[...result.newRoleIds].sort()
-			)
+			expect([...new Set(simulatedNewRoles)].sort()).toEqual([...result.newRoleIds].sort())
 		})
 	})
 })

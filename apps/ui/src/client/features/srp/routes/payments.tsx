@@ -1,25 +1,23 @@
+import { useState } from 'react'
+import { Link, Navigate } from 'react-router-dom'
+
 import { Button } from '@/components/ui/button'
 import { Container } from '@/components/ui/container'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { PageHeader } from '@/components/ui/page-header'
 import { useAuth } from '@/hooks/useAuth'
-import { useState } from 'react'
-import { Link, Navigate } from 'react-router-dom'
+
 import { PaymentForm } from '../components/PaymentForm'
 import { RequestTable } from '../components/RequestTable'
 import { usePendingPayments } from '../hooks'
 import { isSRPPayer } from '../utils'
+
 import type { SRPRequestResponse } from '../types'
 
 export default function PaymentsQueue() {
 	const { user } = useAuth()
 	const [selectedRequest, setSelectedRequest] = useState<SRPRequestResponse | null>(null)
-	const {
-		data,
-		isLoading,
-		error,
-		refetch,
-	} = usePendingPayments({ limit: 50 })
+	const { data, isLoading, error, refetch } = usePendingPayments({ limit: 50 })
 
 	// Check permissions
 	if (!isSRPPayer(user)) {

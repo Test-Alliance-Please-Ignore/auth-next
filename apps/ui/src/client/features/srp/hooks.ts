@@ -1,6 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+
 import { api } from '@/lib/api'
+
 import { srpKeys } from './query-keys'
+
 import type {
 	CommentVisibility,
 	LossWithSRPStatus,
@@ -27,7 +30,9 @@ export function useRecentLosses(daysBack: number = 30) {
 /**
  * Get user's own SRP requests
  */
-export function useMyRequests(params: { limit?: number; offset?: number; status?: RequestStatus } = {}) {
+export function useMyRequests(
+	params: { limit?: number; offset?: number; status?: RequestStatus } = {}
+) {
 	return useQuery({
 		queryKey: srpKeys.myRequests(params),
 		queryFn: () => api.getMyRequests(params),
@@ -76,7 +81,10 @@ export function usePendingPayments(
 /**
  * Get comments for a request
  */
-export function useRequestComments(requestId: string | undefined, includeInternal: boolean = false) {
+export function useRequestComments(
+	requestId: string | undefined,
+	includeInternal: boolean = false
+) {
 	return useQuery({
 		queryKey: srpKeys.comments(requestId!, includeInternal),
 		queryFn: () => api.getRequestComments(requestId!, includeInternal),
@@ -141,9 +149,17 @@ export function useApproveRequest() {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: ({ id, data }: { id: string; data: { approvedAmount: string; reviewNotes?: string } }) =>
-			api.approveRequest(id, data),
-		onSuccess: (_data: any, variables: { id: string; data: { approvedAmount: string; reviewNotes?: string } }) => {
+		mutationFn: ({
+			id,
+			data,
+		}: {
+			id: string
+			data: { approvedAmount: string; reviewNotes?: string }
+		}) => api.approveRequest(id, data),
+		onSuccess: (
+			_data: any,
+			variables: { id: string; data: { approvedAmount: string; reviewNotes?: string } }
+		) => {
 			// Invalidate relevant queries
 			queryClient.invalidateQueries({ queryKey: srpKeys.request(variables.id) })
 			queryClient.invalidateQueries({ queryKey: srpKeys.pending() })
@@ -166,7 +182,13 @@ export function usePartiallyApproveRequest() {
 			id: string
 			data: { approvedAmount: string; rejectionReason: string; reviewNotes?: string }
 		}) => api.partiallyApproveRequest(id, data),
-		onSuccess: (_data: any, variables: { id: string; data: { approvedAmount: string; rejectionReason: string; reviewNotes?: string } }) => {
+		onSuccess: (
+			_data: any,
+			variables: {
+				id: string
+				data: { approvedAmount: string; rejectionReason: string; reviewNotes?: string }
+			}
+		) => {
 			queryClient.invalidateQueries({ queryKey: srpKeys.request(variables.id) })
 			queryClient.invalidateQueries({ queryKey: srpKeys.pending() })
 			queryClient.invalidateQueries({ queryKey: srpKeys.payments() })
@@ -188,7 +210,10 @@ export function useRejectRequest() {
 			id: string
 			data: { rejectionReason: string; reviewNotes?: string }
 		}) => api.rejectRequest(id, data),
-		onSuccess: (_data: any, variables: { id: string; data: { rejectionReason: string; reviewNotes?: string } }) => {
+		onSuccess: (
+			_data: any,
+			variables: { id: string; data: { rejectionReason: string; reviewNotes?: string } }
+		) => {
 			queryClient.invalidateQueries({ queryKey: srpKeys.request(variables.id) })
 			queryClient.invalidateQueries({ queryKey: srpKeys.pending() })
 		},
@@ -209,7 +234,10 @@ export function useAddComment() {
 			requestId: string
 			data: { content: string; visibility: CommentVisibility }
 		}) => api.addComment(requestId, data),
-		onSuccess: (_data: any, variables: { requestId: string; data: { content: string; visibility: CommentVisibility } }) => {
+		onSuccess: (
+			_data: any,
+			variables: { requestId: string; data: { content: string; visibility: CommentVisibility } }
+		) => {
 			// Invalidate both public and internal comments
 			queryClient.invalidateQueries({ queryKey: srpKeys.comments(variables.requestId, false) })
 			queryClient.invalidateQueries({ queryKey: srpKeys.comments(variables.requestId, true) })
@@ -254,9 +282,17 @@ export function useMarkPaid() {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: ({ id, data }: { id: string; data: { paidAmount: string; paymentToken: string } }) =>
-			api.markPaid(id, data),
-		onSuccess: (_data: any, variables: { id: string; data: { paidAmount: string; paymentToken: string } }) => {
+		mutationFn: ({
+			id,
+			data,
+		}: {
+			id: string
+			data: { paidAmount: string; paymentToken: string }
+		}) => api.markPaid(id, data),
+		onSuccess: (
+			_data: any,
+			variables: { id: string; data: { paidAmount: string; paymentToken: string } }
+		) => {
 			queryClient.invalidateQueries({ queryKey: srpKeys.request(variables.id) })
 			queryClient.invalidateQueries({ queryKey: srpKeys.payments() })
 		},
@@ -277,7 +313,10 @@ export function useMarkPartiallyPaid() {
 			id: string
 			data: { paidAmount: string; paymentToken: string; notes?: string }
 		}) => api.markPartiallyPaid(id, data),
-		onSuccess: (_data: any, variables: { id: string; data: { paidAmount: string; paymentToken: string; notes?: string } }) => {
+		onSuccess: (
+			_data: any,
+			variables: { id: string; data: { paidAmount: string; paymentToken: string; notes?: string } }
+		) => {
 			queryClient.invalidateQueries({ queryKey: srpKeys.request(variables.id) })
 			queryClient.invalidateQueries({ queryKey: srpKeys.payments() })
 		},

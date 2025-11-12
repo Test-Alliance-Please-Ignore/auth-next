@@ -127,12 +127,10 @@ export default function CharacterDetailPage() {
 						<div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
 							<Shield className="h-5 w-5" />
 							<div>
-								<p className="font-medium">
-									Viewing as Corporation {character.viewerRole}
-								</p>
+								<p className="font-medium">Viewing as Corporation {character.viewerRole}</p>
 								<p className="text-sm text-muted-foreground">
-									You can view public character information (skills, attributes, corporation history).
-									Private data (wallet, location, assets) is not available.
+									You can view public character information (skills, attributes, corporation
+									history). Private data (wallet, location, assets) is not available.
 								</p>
 							</div>
 						</div>

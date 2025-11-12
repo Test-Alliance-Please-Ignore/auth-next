@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom'
+
 import { Button } from '@/components/ui/button'
 import {
 	Table,
@@ -7,9 +9,10 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
-import { Link } from 'react-router-dom'
+
 import { formatISK, formatRelativeTime, getKillmailUrl } from '../utils'
 import { RequestStatusBadge } from './RequestStatusBadge'
+
 import type { LossWithSRPStatus } from '../types'
 
 interface LossTableProps {
@@ -37,9 +40,7 @@ export function LossTable({ losses, isLoading }: LossTableProps) {
 	if (losses.length === 0) {
 		return (
 			<div className="rounded-lg border border-dashed p-8 text-center">
-				<p className="text-sm text-muted-foreground">
-					No recent losses found. Fly safe! o7
-				</p>
+				<p className="text-sm text-muted-foreground">No recent losses found. Fly safe! o7</p>
 			</div>
 		)
 	}
@@ -51,9 +52,7 @@ export function LossTable({ losses, isLoading }: LossTableProps) {
 					<TableRow className="border-b-2 border-primary/40 bg-primary/30 hover:bg-primary/30">
 						<TableHead className="w-20 font-bold text-foreground"></TableHead>
 						<TableHead className="font-bold text-foreground">Ship</TableHead>
-						<TableHead className="text-right font-bold text-foreground">
-							Value (ISK)
-						</TableHead>
+						<TableHead className="text-right font-bold text-foreground">Value (ISK)</TableHead>
 						<TableHead className="font-bold text-foreground">Date/Time</TableHead>
 						<TableHead className="font-bold text-foreground">Location</TableHead>
 						<TableHead className="font-bold text-foreground">SRP Status</TableHead>
@@ -66,8 +65,7 @@ export function LossTable({ losses, isLoading }: LossTableProps) {
 							key={loss.killmailId}
 							className="border-b border-border/50 transition-colors hover:bg-primary/15"
 							style={{
-								background:
-									index % 2 === 0 ? 'hsl(var(--card))' : 'hsl(var(--muted) / 0.5)',
+								background: index % 2 === 0 ? 'hsl(var(--card))' : 'hsl(var(--muted) / 0.5)',
 							}}
 						>
 							<TableCell className="w-20 py-2">
@@ -112,9 +110,7 @@ export function LossTable({ losses, isLoading }: LossTableProps) {
 									</Button>
 									{loss.hasSRPRequest && loss.srpRequestId ? (
 										<Button variant="outline" size="sm" asChild>
-											<Link to={`/srp/request/${loss.srpRequestId}`}>
-												View Request
-											</Link>
+											<Link to={`/srp/request/${loss.srpRequestId}`}>View Request</Link>
 										</Button>
 									) : (
 										<Button size="sm" asChild>

@@ -4,6 +4,7 @@ import type { InvFlag } from './inv-flags'
 import type { InvGroup } from './inv-groups'
 import type { InvItem } from './inv-items'
 import type { InvName } from './inv-names'
+import type { InvType } from './inv-types'
 import type { EveMoonId, UniverseMoon, UniverseMoonWithResources } from './moons'
 import type {
 	EsiGetStructureMarketDataResponse,
@@ -33,6 +34,9 @@ export * from './inv-flags'
 
 // Export inventory group types
 export * from './inv-groups'
+
+// Export inventory type types
+export * from './inv-types'
 
 // Export inventory item types
 export * from './inv-items'
@@ -107,16 +111,16 @@ export interface Universe {
 	resolveInvGroups(groupIds: string[]): Promise<Record<string, InvGroup | null>>
 
 	/**
-	 * Resolve multiple inventory items by their IDs
-	 * @param itemIds - Array of item IDs to resolve
-	 * @returns Record mapping item IDs to their data (null if not found)
+	 * Resolve multiple type details by their names
+	 * @param typeNames - Array of type names to resolve
+	 * @returns Record mapping type names to their full type data (null if not found)
 	 */
-	resolveInvItems(itemIds: string[]): Promise<Record<string, InvItem | null>>
+	resolveTypeIdsByNames(typeNames: string[]): Promise<Record<string, InvType | null>>
 
 	/**
-	 * Resolve multiple inventory item names by their IDs
-	 * @param itemIds - Array of item IDs to resolve
-	 * @returns Record mapping item IDs to their names (null if not found)
+	 * Resolve multiple type details by their IDs
+	 * @param typeIds - Array of type IDs to resolve
+	 * @returns Record mapping type IDs to their full type data (null if not found)
 	 */
-	resolveInvNames(itemIds: string[]): Promise<Record<string, InvName | null>>
+	resolveTypeNamesByIds(typeIds: string[]): Promise<Record<string, InvType | null>>
 }

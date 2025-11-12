@@ -45,4 +45,3 @@ export const UniverseMoonWithResourcesSchema = UniverseMoonSchema.extend({
 })
 
 export type UniverseMoonWithResources = z.infer<typeof UniverseMoonWithResourcesSchema>
-

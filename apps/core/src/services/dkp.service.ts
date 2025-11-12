@@ -1,7 +1,7 @@
 import { and, desc, eq, gte, inArray, lte, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
-import { dkpTransactions, dkpDecayConfig, users, userCharacters } from '../db/schema'
+import { dkpDecayConfig, dkpTransactions, userCharacters, users } from '../db/schema'
 
 import type { DbClient } from '@repo/db-utils'
 import type { EveCharacterData } from '@repo/eve-character-data'
@@ -514,10 +514,7 @@ export class DkpService {
 		}
 
 		// Get unique members and their totals for top earners
-		const memberTotals = new Map<
-			string,
-			{ name: string; amount: number }
-		>()
+		const memberTotals = new Map<string, { name: string; amount: number }>()
 
 		for (const tx of transactions) {
 			const existing = memberTotals.get(tx.characterId)
@@ -588,8 +585,7 @@ export class DkpService {
 		let timeFilter: Date | null = null
 		if (period !== 'all') {
 			const now = new Date()
-			const days =
-				period === '7d' ? 7 : period === '30d' ? 30 : period === '90d' ? 90 : 0
+			const days = period === '7d' ? 7 : period === '30d' ? 30 : period === '90d' ? 90 : 0
 			timeFilter = new Date(now.getTime() - days * 24 * 60 * 60 * 1000)
 		}
 
@@ -685,8 +681,7 @@ export class DkpService {
 		let timeFilter: Date | null = null
 		if (period !== 'all') {
 			const now = new Date()
-			const days =
-				period === '7d' ? 7 : period === '30d' ? 30 : period === '90d' ? 90 : 0
+			const days = period === '7d' ? 7 : period === '30d' ? 30 : period === '90d' ? 90 : 0
 			timeFilter = new Date(now.getTime() - days * 24 * 60 * 60 * 1000)
 		}
 
@@ -721,9 +716,7 @@ export class DkpService {
 		})
 
 		// Create a map of userId -> mainCharacterId
-		const mainCharIdMap = new Map(
-			userMainCharacters.map((u) => [u.id, u.mainCharacterId])
-		)
+		const mainCharIdMap = new Map(userMainCharacters.map((u) => [u.id, u.mainCharacterId]))
 
 		// Look up character names from dkpTransactions (cached names)
 		const mainCharIds = Array.from(new Set(userMainCharacters.map((u) => u.mainCharacterId)))
@@ -736,15 +729,15 @@ export class DkpService {
 		})
 
 		// Create map of characterId -> name
-		const charNameMap = new Map(
-			charNames.map((c) => [c.characterId, c.characterName])
-		)
+		const charNameMap = new Map(charNames.map((c) => [c.characterId, c.characterName]))
 
 		// Add ranking and main character names
 		const leaderboard = results.map((row, index) => {
 			const userId = row.userId!
 			const mainCharId = mainCharIdMap.get(userId)
-			const mainCharacterName = mainCharId ? charNameMap.get(mainCharId) || `Character ${mainCharId}` : 'Unknown'
+			const mainCharacterName = mainCharId
+				? charNameMap.get(mainCharId) || `Character ${mainCharId}`
+				: 'Unknown'
 
 			return {
 				rank: offset + index + 1,
@@ -812,8 +805,7 @@ export class DkpService {
 		let timeFilter: Date | null = null
 		if (period !== 'all') {
 			const now = new Date()
-			const days =
-				period === '7d' ? 7 : period === '30d' ? 30 : period === '90d' ? 90 : 0
+			const days = period === '7d' ? 7 : period === '30d' ? 30 : period === '90d' ? 90 : 0
 			timeFilter = new Date(now.getTime() - days * 24 * 60 * 60 * 1000)
 		}
 

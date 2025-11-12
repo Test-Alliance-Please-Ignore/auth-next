@@ -5,21 +5,53 @@
  * This package allows other workers to interact with the Durable Object via RPC.
  */
 
-import type { InferInsertModel, InferSelectModel } from 'drizzle-orm'
-import type * as schema from '../apps/doctrines/src/db/schema'
-
 // --- Database Models ---
-export type Doctrine = InferSelectModel<typeof schema.doctrinesDoctrines>
-export type Fitting = InferSelectModel<typeof schema.doctrinesFittings>
-export type FittingItem = InferSelectModel<typeof schema.doctrinesFittingItems>
-export type DoctrineFitting = InferSelectModel<typeof schema.doctrinesDoctrineFittings>
+export interface Doctrine {
+	id: string
+	name: string
+	category: string
+	maintainer: string
+	createdAt: Date
+	updatedAt: Date
+}
+
+export interface Fitting {
+	id: string
+	shipTypeId: string
+	shipName: string
+	fitting: string
+	category: string
+	maintainer: string
+	srpEligible: boolean
+	srpValue: string
+	createdAt: Date
+	updatedAt: Date
+}
+
+export interface FittingItem {
+	id: string
+	fittingId: string
+	typeId: string
+	typeName: string
+	quantity: string
+	flagId: string
+	flagName: string
+	groupId: string
+	groupName: string
+	categoryId: string
+}
+
+export interface DoctrineFitting {
+	doctrineId: string
+	fittingId: string
+}
 
 // --- Request Payloads ---
-export type CreateDoctrineRequest = InferInsertModel<typeof schema.doctrinesDoctrines>
+export type CreateDoctrineRequest = Omit<Doctrine, 'id' | 'createdAt' | 'updatedAt'>
 export type UpdateDoctrineRequest = Partial<CreateDoctrineRequest>
 
-export type CreateFittingRequest = InferInsertModel<typeof schema.doctrinesFittings> & {
-	fittingItems: Array<Omit<InferInsertModel<typeof schema.doctrinesFittingItems>, 'fittingId'>>
+export type CreateFittingRequest = Omit<Fitting, 'id' | 'createdAt' | 'updatedAt'> & {
+	fittingItems: Array<Omit<FittingItem, 'id' | 'fittingId'>>
 }
 export type UpdateFittingRequest = Partial<CreateFittingRequest>
 
@@ -62,22 +94,84 @@ export type FittingWithItems = Fitting & {
  * // Add method calls here
  * ```
  */
-export interface Doctrines extends DurableObject {
+export interface Doctrines {
 	// Doctrine Management
-	createDoctrine(data: CreateDoctrineRequest, userId: string): Promise<Doctrine>
-	getDoctrines(filters: ListDoctrinesFilters, userId: string, isAdmin: boolean): Promise<Doctrine[]>
-	getDoctrine(id: string, userId: string, isAdmin: boolean): Promise<DoctrineWithFittings | null>
-	updateDoctrine(id: string, data: UpdateDoctrineRequest, userId: string, isAdmin: boolean): Promise<Doctrine>
-	deleteDoctrine(id: string, userId: string, isAdmin: boolean): Promise<void>
+	createDoctrine(
+		data: CreateDoctrineRequest,
+		userId: string,
+		characterIds: string[]
+	): Promise<Doctrine>
+	getDoctrines(
+		filters: ListDoctrinesFilters,
+		userId: string,
+		characterIds: string[],
+		isAdmin: boolean
+	): Promise<Doctrine[]>
+	getDoctrine(
+		id: string,
+		userId: string,
+		characterIds: string[],
+		isAdmin: boolean
+	): Promise<DoctrineWithFittings | null>
+	updateDoctrine(
+		id: string,
+		data: UpdateDoctrineRequest,
+		userId: string,
+		characterIds: string[],
+		isAdmin: boolean
+	): Promise<Doctrine>
+	deleteDoctrine(
+		id: string,
+		userId: string,
+		characterIds: string[],
+		isAdmin: boolean
+	): Promise<void>
 
 	// Fitting Management
-	createFitting(data: CreateFittingRequest, userId: string): Promise<Fitting>
-	getFittings(filters: ListFittingsFilters, userId: string, isAdmin: boolean): Promise<Fitting[]>
-	getFitting(id: string, userId: string, isAdmin: boolean): Promise<FittingWithItems | null>
-	updateFitting(id: string, data: UpdateFittingRequest, userId: string, isAdmin: boolean): Promise<Fitting>
-	deleteFitting(id: string, userId: string, isAdmin: boolean): Promise<void>
+	createFitting(
+		data: CreateFittingRequest,
+		userId: string,
+		characterIds: string[]
+	): Promise<Fitting>
+	getFittings(
+		filters: ListFittingsFilters,
+		userId: string,
+		characterIds: string[],
+		isAdmin: boolean
+	): Promise<Fitting[]>
+	getFitting(
+		id: string,
+		userId: string,
+		characterIds: string[],
+		isAdmin: boolean
+	): Promise<FittingWithItems | null>
+	updateFitting(
+		id: string,
+		data: UpdateFittingRequest,
+		userId: string,
+		characterIds: string[],
+		isAdmin: boolean
+	): Promise<Fitting>
+	deleteFitting(
+		id: string,
+		userId: string,
+		characterIds: string[],
+		isAdmin: boolean
+	): Promise<void>
 
 	// Doctrine-Fitting Relationship
-	addFittingToDoctrine(doctrineId: string, fittingId: string, userId: string, isAdmin: boolean): Promise<void>
-	removeFittingFromDoctrine(doctrineId: string, fittingId: string, userId: string, isAdmin: boolean): Promise<void>
+	addFittingToDoctrine(
+		doctrineId: string,
+		fittingId: string,
+		userId: string,
+		characterIds: string[],
+		isAdmin: boolean
+	): Promise<void>
+	removeFittingFromDoctrine(
+		doctrineId: string,
+		fittingId: string,
+		userId: string,
+		characterIds: string[],
+		isAdmin: boolean
+	): Promise<void>
 }

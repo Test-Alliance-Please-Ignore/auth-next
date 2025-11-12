@@ -7,8 +7,9 @@ Shared types and interfaces for the Industry Durable Object.
 Import this package in any worker that needs to interact with the Industry Durable Object:
 
 ```typescript
-import type { Industry } from '@repo/industry'
 import { getStub } from '@repo/do-utils'
+
+import type { Industry } from '@repo/industry'
 
 // Get a typed stub to the Durable Object
 const stub = getStub<Industry>(env.INDUSTRY, 'unique-id')

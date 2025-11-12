@@ -36,9 +36,12 @@ function getRequestId(c: any): string {
 /**
  * Helper function to check if a user has a specific permission
  * Results are cached for 15 seconds to reduce load on Groups DO
+ *
+ * IMPORTANT: Creates fresh stubs internally to avoid stub invalidation issues.
+ * Each RPC operation gets its own isolated stub.
  */
 async function hasPermission(
-	groupsStub: Groups,
+	env: { GROUPS: DurableObjectNamespace },
 	userId: string,
 	permissionUrn: string,
 	isAdmin: boolean
@@ -49,6 +52,8 @@ async function hasPermission(
 	// Check cache or fetch user permissions
 	const cacheKey = `${userId}:${permissionUrn}`
 	return permissionCache.getOrSet(cacheKey, async () => {
+		// Create fresh stub for this permission check
+		using groupsStub = getStub<Groups>(env.GROUPS, 'default')
 		const permissions = await groupsStub.getUserPermissions(userId)
 		return permissions.some((p) => p.urn === permissionUrn)
 	})
@@ -188,8 +193,7 @@ srp.get('/pending', async (c) => {
 	const offset = c.req.query('offset') ? Number.parseInt(c.req.query('offset')!, 10) : 0
 
 	// Check reviewer permissions
-	using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-	const allowed = await hasPermission(groupsStub, user.id, 'urn:srp:reviewer', user.is_admin)
+	const allowed = await hasPermission(c.env, user.id, 'urn:srp:reviewer', user.is_admin)
 
 	if (!allowed) {
 		return c.json({ error: 'Requires reviewer permissions' }, 403)
@@ -222,8 +226,7 @@ srp.post('/requests/:id/approve', async (c) => {
 	}
 
 	// Check reviewer permissions
-	using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-	const allowed = await hasPermission(groupsStub, user.id, 'urn:srp:reviewer', user.is_admin)
+	const allowed = await hasPermission(c.env, user.id, 'urn:srp:reviewer', user.is_admin)
 
 	if (!allowed) {
 		return c.json({ error: 'Requires reviewer permissions' }, 403)
@@ -232,12 +235,7 @@ srp.post('/requests/:id/approve', async (c) => {
 	const { approvedAmount, reviewNotes } = validation.data
 
 	using srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
-	const request = await srpStub.approveRequest(
-		requestId,
-		user.id,
-		approvedAmount,
-		reviewNotes
-	)
+	const request = await srpStub.approveRequest(requestId, user.id, approvedAmount, reviewNotes)
 
 	return c.json(request)
 })
@@ -258,8 +256,7 @@ srp.post('/requests/:id/partially-approve', async (c) => {
 	}
 
 	// Check reviewer permissions
-	using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-	const allowed = await hasPermission(groupsStub, user.id, 'urn:srp:reviewer', user.is_admin)
+	const allowed = await hasPermission(c.env, user.id, 'urn:srp:reviewer', user.is_admin)
 
 	if (!allowed) {
 		return c.json({ error: 'Requires reviewer permissions' }, 403)
@@ -295,8 +292,7 @@ srp.post('/requests/:id/reject', async (c) => {
 	}
 
 	// Check reviewer permissions
-	using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-	const allowed = await hasPermission(groupsStub, user.id, 'urn:srp:reviewer', user.is_admin)
+	const allowed = await hasPermission(c.env, user.id, 'urn:srp:reviewer', user.is_admin)
 
 	if (!allowed) {
 		return c.json({ error: 'Requires reviewer permissions' }, 403)
@@ -336,13 +332,7 @@ srp.get('/requests/:id/comments', async (c) => {
 	}
 
 	// Only admins/reviewers can see internal comments
-	using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-	const canSeeInternal = await hasPermission(
-		groupsStub,
-		user.id,
-		'urn:srp:reviewer',
-		user.is_admin
-	)
+	const canSeeInternal = await hasPermission(c.env, user.id, 'urn:srp:reviewer', user.is_admin)
 	const comments = await srpStub.getComments(requestId, user.id, canSeeInternal && includeInternal)
 
 	return c.json(comments)
@@ -379,9 +369,8 @@ srp.post('/requests/:id/comments', async (c) => {
 
 	// Only admins/reviewers can create internal comments
 	if (visibility === 'internal') {
-		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 		const canCreateInternal = await hasPermission(
-			groupsStub,
+			c.env,
 			user.id,
 			'urn:srp:reviewer',
 			user.is_admin
@@ -451,8 +440,7 @@ srp.get('/payments/pending', async (c) => {
 	const offset = c.req.query('offset') ? Number.parseInt(c.req.query('offset')!, 10) : 0
 
 	// Check payer permissions (admins do NOT bypass)
-	using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-	const allowed = await hasPermission(groupsStub, user.id, 'urn:srp:payer', false)
+	const allowed = await hasPermission(c.env, user.id, 'urn:srp:payer', false)
 
 	if (!allowed) {
 		return c.json({ error: 'Requires payer permissions' }, 403)
@@ -485,8 +473,7 @@ srp.post('/requests/:id/mark-paid', async (c) => {
 	}
 
 	// Check payer permissions (admins do NOT bypass)
-	using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-	const allowed = await hasPermission(groupsStub, user.id, 'urn:srp:payer', false)
+	const allowed = await hasPermission(c.env, user.id, 'urn:srp:payer', false)
 
 	if (!allowed) {
 		return c.json({ error: 'Requires payer permissions' }, 403)
@@ -516,8 +503,7 @@ srp.post('/requests/:id/mark-partially-paid', async (c) => {
 	}
 
 	// Check payer permissions (admins do NOT bypass)
-	using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-	const allowed = await hasPermission(groupsStub, user.id, 'urn:srp:payer', false)
+	const allowed = await hasPermission(c.env, user.id, 'urn:srp:payer', false)
 
 	if (!allowed) {
 		return c.json({ error: 'Requires payer permissions' }, 403)

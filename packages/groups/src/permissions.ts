@@ -161,6 +161,42 @@ export interface UpdateGroupPermissionRequest {
 }
 
 /**
+ * Corporation Permission Types
+ */
+
+/**
+ * Corporation Permission Attachment
+ *
+ * Links a permission to a corporation. All members of the corporation
+ * automatically inherit this permission.
+ */
+export interface CorporationPermission {
+	id: string
+	corporationId: string
+	permissionId: string
+	createdBy: string
+	createdAt: Date
+}
+
+/**
+ * Corporation Permission with Full Details
+ *
+ * Includes the global permission definition and category
+ */
+export interface CorporationPermissionWithDetails extends CorporationPermission {
+	/** Global permission details */
+	permission: PermissionWithDetails
+}
+
+/**
+ * Request to attach a permission to a corporation
+ */
+export interface AttachPermissionToCorporationRequest {
+	corporationId: string
+	permissionId: string
+}
+
+/**
  * Response Types
  */
 

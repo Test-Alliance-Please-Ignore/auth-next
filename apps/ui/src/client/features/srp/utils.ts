@@ -186,7 +186,10 @@ export function canSeeInternalComments(user: any): boolean {
 /**
  * Calculate difference between two ISK amounts
  */
-export function calculateDifference(requested: string | undefined, approved: string | undefined): number {
+export function calculateDifference(
+	requested: string | undefined,
+	approved: string | undefined
+): number {
 	if (!requested || !approved) return 0
 	const req = parseFloat(requested)
 	const app = parseFloat(approved)
@@ -197,7 +200,11 @@ export function calculateDifference(requested: string | undefined, approved: str
 /**
  * Get pagination range for display (with ellipsis)
  */
-export function getPaginationRange(current: number, total: number, delta: number = 2): (number | string)[] {
+export function getPaginationRange(
+	current: number,
+	total: number,
+	delta: number = 2
+): (number | string)[] {
 	const range: number[] = []
 	const rangeWithDots: (number | string)[] = []
 

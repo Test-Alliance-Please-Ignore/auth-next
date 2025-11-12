@@ -1,6 +1,8 @@
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
+
 import { getRequestStatusColor, getRequestStatusText } from '../utils'
+
 import type { RequestStatus } from '../types'
 
 interface RequestStatusBadgeProps {

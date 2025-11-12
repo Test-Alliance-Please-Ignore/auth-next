@@ -7,8 +7,9 @@ Shared types and interfaces for the Doctrines Durable Object.
 Import this package in any worker that needs to interact with the Doctrines Durable Object:
 
 ```typescript
-import type { Doctrines } from '@repo/doctrines'
 import { getStub } from '@repo/do-utils'
+
+import type { Doctrines } from '@repo/doctrines'
 
 // Get a typed stub to the Durable Object
 const stub = getStub<Doctrines>(env.DOCTRINES, 'unique-id')

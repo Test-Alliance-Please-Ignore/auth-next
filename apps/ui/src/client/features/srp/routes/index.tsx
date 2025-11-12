@@ -1,24 +1,23 @@
+import { Link } from 'react-router-dom'
+
 import { Button } from '@/components/ui/button'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAuth } from '@/hooks/useAuth'
-import { Link } from 'react-router-dom'
+
 import { LossTable } from '../components/LossTable'
 import { RequestTable } from '../components/RequestTable'
 import { useMyRequests, useRecentLosses } from '../hooks'
-import type { LossWithSRPStatus } from '../types'
 import { isSRPPayer, isSRPReviewer } from '../utils'
+
+import type { LossWithSRPStatus } from '../types'
 
 export default function SRPIndex() {
 	const { user } = useAuth()
 
 	// Get recent losses for all user's characters
-	const {
-		data: losses,
-		isLoading: lossesLoading,
-		error: lossesError,
-	} = useRecentLosses(30)
+	const { data: losses, isLoading: lossesLoading, error: lossesError } = useRecentLosses(30)
 
 	// Get user's recent requests
 	const {
@@ -73,16 +72,11 @@ export default function SRPIndex() {
 						</div>
 					) : (
 						<>
-							<RequestTable
-								requests={requestsData?.requests || []}
-								isLoading={requestsLoading}
-							/>
+							<RequestTable requests={requestsData?.requests || []} isLoading={requestsLoading} />
 							{requestsData && requestsData.total > 10 && (
 								<div className="text-center">
 									<Button variant="outline" asChild>
-										<Link to="/srp/my-requests">
-											View All ({requestsData.total} requests)
-										</Link>
+										<Link to="/srp/my-requests">View All ({requestsData.total} requests)</Link>
 									</Button>
 								</div>
 							)}

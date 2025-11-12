@@ -7,8 +7,9 @@ Shared types and interfaces for the Srp Durable Object.
 Import this package in any worker that needs to interact with the Srp Durable Object:
 
 ```typescript
-import type { Srp } from '@repo/srp'
 import { getStub } from '@repo/do-utils'
+
+import type { Srp } from '@repo/srp'
 
 // Get a typed stub to the Durable Object
 const stub = getStub<Srp>(env.SRP, 'unique-id')

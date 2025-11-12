@@ -477,6 +477,34 @@ export const groupPermissions = pgTable(
 )
 
 /**
+ * Corporation Permissions table - Direct permission attachments to corporations
+ *
+ * Permissions attached to corporations are automatically inherited by all members.
+ * This provides a simpler alternative to group-based permissions for corporation-wide access.
+ */
+export const corporationPermissions = pgTable(
+	'corporation_permissions',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		/** Corporation ID this permission is attached to */
+		corporationId: text('corporation_id').notNull(),
+		/** Reference to global permission */
+		permissionId: uuid('permission_id')
+			.notNull()
+			.references(() => permissions.id, { onDelete: 'cascade' }),
+		/** Admin user who created this attachment */
+		createdBy: varchar('created_by', { length: 255 }).notNull(),
+		createdAt: timestamp('created_at').defaultNow().notNull(),
+	},
+	(table) => [
+		index('corporation_permissions_corp_id_idx').on(table.corporationId),
+		index('corporation_permissions_permission_id_idx').on(table.permissionId),
+		// Prevent duplicate permission attachments
+		unique('unique_corporation_permission').on(table.corporationId, table.permissionId),
+	]
+)
+
+/**
  * Relations
  */
 
@@ -581,6 +609,7 @@ export const permissionsRelations = relations(permissions, ({ one, many }) => ({
 		references: [permissionCategories.id],
 	}),
 	groupPermissions: many(groupPermissions),
+	corporationPermissions: many(corporationPermissions),
 }))
 
 export const groupPermissionsRelations = relations(groupPermissions, ({ one }) => ({
@@ -590,6 +619,13 @@ export const groupPermissionsRelations = relations(groupPermissions, ({ one }) =
 	}),
 	permission: one(permissions, {
 		fields: [groupPermissions.permissionId],
+		references: [permissions.id],
+	}),
+}))
+
+export const corporationPermissionsRelations = relations(corporationPermissions, ({ one }) => ({
+	permission: one(permissions, {
+		fields: [corporationPermissions.permissionId],
 		references: [permissions.id],
 	}),
 }))
@@ -620,6 +656,7 @@ export const schema = {
 	permissionCategories,
 	permissions,
 	groupPermissions,
+	corporationPermissions,
 	// Relations
 	categoriesRelations,
 	groupsRelations,
@@ -635,4 +672,5 @@ export const schema = {
 	permissionCategoriesRelations,
 	permissionsRelations,
 	groupPermissionsRelations,
+	corporationPermissionsRelations,
 }

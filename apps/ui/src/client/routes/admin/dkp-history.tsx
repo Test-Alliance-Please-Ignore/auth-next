@@ -22,8 +22,10 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
-import { useTransactionHistory, type DkpFilters, type DkpSourceType } from '@/features/dkp'
+import { useTransactionHistory } from '@/features/dkp'
 import { usePageTitle } from '@/hooks/usePageTitle'
+
+import type { DkpFilters, DkpSourceType } from '@/features/dkp'
 
 const SOURCE_TYPE_COLORS: Record<DkpSourceType, string> = {
 	fleet: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
@@ -61,7 +63,8 @@ export default function DkpHistory() {
 			userId: tempFilters.userId || undefined,
 			characterId: tempFilters.characterId || undefined,
 			corporationId: tempFilters.corporationId || undefined,
-			sourceType: tempFilters.sourceType !== 'all' ? (tempFilters.sourceType as DkpSourceType) : undefined,
+			sourceType:
+				tempFilters.sourceType !== 'all' ? (tempFilters.sourceType as DkpSourceType) : undefined,
 			startDate: tempFilters.startDate || undefined,
 			endDate: tempFilters.endDate || undefined,
 			offset: 0,
@@ -213,7 +216,9 @@ export default function DkpHistory() {
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
-					{error && <p className="text-destructive">Failed to load transactions: {error.message}</p>}
+					{error && (
+						<p className="text-destructive">Failed to load transactions: {error.message}</p>
+					)}
 
 					{isLoading && (
 						<div className="space-y-2">

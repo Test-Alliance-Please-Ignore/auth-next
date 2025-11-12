@@ -1,9 +1,9 @@
 import { eq } from '@repo/db-utils'
-import type { Context, Next } from 'hono'
 
 import { createDb } from '../db'
 import { apiKeys } from '../db/schema'
 
+import type { Context, Next } from 'hono'
 import type { App } from '../context'
 
 /**

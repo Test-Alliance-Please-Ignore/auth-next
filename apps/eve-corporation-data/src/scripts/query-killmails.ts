@@ -1,7 +1,10 @@
-import { createInterface } from 'node:readline/promises'
-import { stdin as input, stdout as output } from 'node:process'
+// Manually load .env without using dotenv to avoid any debug output
+import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
+import { stdin as input, stdout as output } from 'node:process'
+import { createInterface } from 'node:readline/promises'
 import { fileURLToPath } from 'node:url'
+
 import { and, createDbClient, eq, gte, ilike, inArray, or } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
@@ -15,8 +18,6 @@ import type { Killmail } from '@repo/universe'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const envPath = resolve(__dirname, '../../../../.env')
 
-// Manually load .env without using dotenv to avoid any debug output
-import { readFileSync } from 'node:fs'
 try {
 	const envContent = readFileSync(envPath, 'utf-8')
 	for (const line of envContent.split('\n')) {
@@ -27,8 +28,10 @@ try {
 			const key = match[1].trim()
 			let value = match[2].trim()
 			// Remove quotes if present
-			if ((value.startsWith('"') && value.endsWith('"')) ||
-			    (value.startsWith("'") && value.endsWith("'"))) {
+			if (
+				(value.startsWith('"') && value.endsWith('"')) ||
+				(value.startsWith("'") && value.endsWith("'"))
+			) {
 				value = value.slice(1, -1)
 			}
 			process.env[key] = value
@@ -187,10 +190,7 @@ async function queryKillmails(
 		const cutoffDate = new Date()
 		cutoffDate.setDate(cutoffDate.getDate() - days)
 
-		whereClause = and(
-			whereClause,
-			gte(schema.corporationKillmails.killmailTime, cutoffDate)
-		) as any
+		whereClause = and(whereClause, gte(schema.corporationKillmails.killmailTime, cutoffDate)) as any
 	}
 
 	const killmails = await db.query.corporationKillmails.findMany({
@@ -477,14 +477,24 @@ function parseArgs() {
 			console.log('Usage: pnpm -F eve-corporation-data query-killmails [options]')
 			console.log('\nEntity Options (choose one):')
 			console.log('  --corporation, --corp <name-or-id>  Query killmails for a corporation')
-			console.log('  --alliance <id>                     Query killmails for all corps in an alliance')
-			console.log('  --character, --char <id>            Query killmails for a character\'s corporation')
+			console.log(
+				'  --alliance <id>                     Query killmails for all corps in an alliance'
+			)
+			console.log(
+				"  --character, --char <id>            Query killmails for a character's corporation"
+			)
 			console.log('\nFilter Options:')
-			console.log('  --limit, -l <number>                Number of killmails to fetch (default: 100)')
-			console.log('  --offset, -o <number>               Skip this many killmails (for pagination, default: 0)')
+			console.log(
+				'  --limit, -l <number>                Number of killmails to fetch (default: 100)'
+			)
+			console.log(
+				'  --offset, -o <number>               Skip this many killmails (for pagination, default: 0)'
+			)
 			console.log('  --days, -d <number>                 Only show killmails from the past N days')
 			console.log('  --kills                             Only show kills (exclude losses)')
-			console.log('  --output                            Silence all output except final JSON (for piping)')
+			console.log(
+				'  --output                            Silence all output except final JSON (for piping)'
+			)
 			console.log('  --help, -h                          Show this help message')
 			console.log('\nOutput Format:')
 			console.log('  JSON Lines (NDJSON) - one killmail JSON object per line')
@@ -496,13 +506,21 @@ function parseArgs() {
 			console.log('  pnpm -F eve-corporation-data query-killmails --corp "Corp" --days 7 --kills')
 			console.log('\nProcessing with jq (use --silent to suppress pnpm output):')
 			console.log('  # Get all killmails with pretty printing')
-			console.log('  pnpm --silent -F eve-corporation-data query-killmails --corp "Corp" --output | jq .')
+			console.log(
+				'  pnpm --silent -F eve-corporation-data query-killmails --corp "Corp" --output | jq .'
+			)
 			console.log('  # Filter by ship type')
-			console.log('  pnpm --silent -F eve-corporation-data query-killmails --corp "Corp" --output | jq \'select(.victim.ship_type_name == "Rifter")\'')
+			console.log(
+				'  pnpm --silent -F eve-corporation-data query-killmails --corp "Corp" --output | jq \'select(.victim.ship_type_name == "Rifter")\''
+			)
 			console.log('  # Get only victim ship names')
-			console.log('  pnpm --silent -F eve-corporation-data query-killmails --corp "Corp" --output | jq -r .victim.ship_type_name')
+			console.log(
+				'  pnpm --silent -F eve-corporation-data query-killmails --corp "Corp" --output | jq -r .victim.ship_type_name'
+			)
 			console.log('\nOr run directly with tsx:')
-			console.log('  cd apps/eve-corporation-data && tsx src/scripts/query-killmails.ts --corp "Corp" --output | jq .')
+			console.log(
+				'  cd apps/eve-corporation-data && tsx src/scripts/query-killmails.ts --corp "Corp" --output | jq .'
+			)
 			process.exit(0)
 		} else {
 			console.error(`Unknown argument: ${arg}`)
@@ -578,7 +596,9 @@ async function getCorporationsByAlliance(allianceId: string): Promise<Corporatio
 	return results
 }
 
-async function getCorporationByCharacter(characterId: string): Promise<CorporationSearchResult | null> {
+async function getCorporationByCharacter(
+	characterId: string
+): Promise<CorporationSearchResult | null> {
 	const coreDatabaseUrl = process.env.DATABASE_URL_MIGRATIONS
 
 	if (!coreDatabaseUrl) {

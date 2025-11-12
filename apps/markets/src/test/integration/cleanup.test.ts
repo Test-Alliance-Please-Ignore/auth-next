@@ -1,12 +1,19 @@
 import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:test'
-import { describe, expect, it, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
+
 import { and, eq, sql } from '@repo/db-utils'
+
 import { createDb } from '../../db'
-import { marketSnapshots, marketOrders, latestMarketPrices } from '../../db/schema'
+import { latestMarketPrices, marketOrders, marketSnapshots } from '../../db/schema'
+
 import type { MarketsDO } from '../../durable-object'
 
 // Mock data for testing
-const createMockSnapshot = (locationId: string, locationType: 'region' | 'structure', snapshotTime: Date) => ({
+const createMockSnapshot = (
+	locationId: string,
+	locationType: 'region' | 'structure',
+	snapshotTime: Date
+) => ({
 	id: crypto.randomUUID(),
 	locationId,
 	locationType,
@@ -94,14 +101,16 @@ describe('Snapshot Cleanup', () => {
 		expect(snapshotsToDelete.length).toBe(2)
 
 		// Delete snapshots
-		const snapshotIds = snapshotsToDelete.map(s => s.id)
-		await db.delete(marketSnapshots).where(
-			and(
-				eq(marketSnapshots.locationId, locationId),
-				eq(marketSnapshots.locationType, locationType),
-				sql`${marketSnapshots.id} IN (${sql.join(snapshotIds, sql`, `)})`
+		const snapshotIds = snapshotsToDelete.map((s) => s.id)
+		await db
+			.delete(marketSnapshots)
+			.where(
+				and(
+					eq(marketSnapshots.locationId, locationId),
+					eq(marketSnapshots.locationType, locationType),
+					sql`${marketSnapshots.id} IN (${sql.join(snapshotIds, sql`, `)})`
+				)
 			)
-		)
 
 		// Verify only 3 snapshots remain
 		const remaining = await db
@@ -148,10 +157,10 @@ describe('Snapshot Cleanup', () => {
 			.orderBy(marketSnapshots.snapshotTime)
 			.limit(deleteCount)
 
-		const deleteIds = snapshotsToDelete.map(s => s.id)
-		await db.delete(marketSnapshots).where(
-			sql`${marketSnapshots.id} IN (${sql.join(deleteIds, sql`, `)})`
-		)
+		const deleteIds = snapshotsToDelete.map((s) => s.id)
+		await db
+			.delete(marketSnapshots)
+			.where(sql`${marketSnapshots.id} IN (${sql.join(deleteIds, sql`, `)})`)
 
 		// Verify newest 2 snapshots remain
 		const remaining = await db
@@ -222,10 +231,22 @@ describe('Snapshot Cleanup', () => {
 
 		// Create mixed status snapshots
 		const snapshots = [
-			{ ...createMockSnapshot(locationId, locationType, new Date(Date.now() - 4 * 60 * 60 * 1000)), status: 'complete' as const },
-			{ ...createMockSnapshot(locationId, locationType, new Date(Date.now() - 3 * 60 * 60 * 1000)), status: 'failed' as const },
-			{ ...createMockSnapshot(locationId, locationType, new Date(Date.now() - 2 * 60 * 60 * 1000)), status: 'complete' as const },
-			{ ...createMockSnapshot(locationId, locationType, new Date(Date.now() - 1 * 60 * 60 * 1000)), status: 'pending' as const },
+			{
+				...createMockSnapshot(locationId, locationType, new Date(Date.now() - 4 * 60 * 60 * 1000)),
+				status: 'complete' as const,
+			},
+			{
+				...createMockSnapshot(locationId, locationType, new Date(Date.now() - 3 * 60 * 60 * 1000)),
+				status: 'failed' as const,
+			},
+			{
+				...createMockSnapshot(locationId, locationType, new Date(Date.now() - 2 * 60 * 60 * 1000)),
+				status: 'complete' as const,
+			},
+			{
+				...createMockSnapshot(locationId, locationType, new Date(Date.now() - 1 * 60 * 60 * 1000)),
+				status: 'pending' as const,
+			},
 			{ ...createMockSnapshot(locationId, locationType, new Date()), status: 'complete' as const },
 		]
 
@@ -263,7 +284,10 @@ describe('Snapshot Cleanup', () => {
 			.limit(deleteCount)
 
 		await db.delete(marketSnapshots).where(
-			sql`${marketSnapshots.id} IN (${sql.join(snapshotsToDelete.map(s => s.id), sql`, `)})`
+			sql`${marketSnapshots.id} IN (${sql.join(
+				snapshotsToDelete.map((s) => s.id),
+				sql`, `
+			)})`
 		)
 
 		// Verify failed and pending snapshots were not deleted
@@ -278,9 +302,9 @@ describe('Snapshot Cleanup', () => {
 			)
 
 		expect(remaining.length).toBe(4) // 2 complete + 1 failed + 1 pending
-		expect(remaining.filter(r => r.status === 'failed').length).toBe(1)
-		expect(remaining.filter(r => r.status === 'pending').length).toBe(1)
-		expect(remaining.filter(r => r.status === 'complete').length).toBe(2)
+		expect(remaining.filter((r) => r.status === 'failed').length).toBe(1)
+		expect(remaining.filter((r) => r.status === 'pending').length).toBe(1)
+		expect(remaining.filter((r) => r.status === 'complete').length).toBe(2)
 	})
 
 	it('should handle cascade deletion of market_orders', async () => {
@@ -293,9 +317,9 @@ describe('Snapshot Cleanup', () => {
 
 		// Insert related orders
 		const orders = [
-			createMockOrder(snapshot.id, 34, 100.50),
-			createMockOrder(snapshot.id, 34, 101.00),
-			createMockOrder(snapshot.id, 35, 200.00),
+			createMockOrder(snapshot.id, 34, 100.5),
+			createMockOrder(snapshot.id, 34, 101.0),
+			createMockOrder(snapshot.id, 35, 200.0),
 		]
 		await db.insert(marketOrders).values(orders)
 
@@ -400,19 +424,14 @@ describe('Snapshot Cleanup', () => {
 			.orderBy(marketSnapshots.snapshotTime)
 			.limit(1)
 
-		await db.delete(marketSnapshots).where(
-			sql`${marketSnapshots.id} = ${regionToDelete[0].id}`
-		)
+		await db.delete(marketSnapshots).where(sql`${marketSnapshots.id} = ${regionToDelete[0].id}`)
 
 		// Verify region has 2 snapshots, structure still has 3
 		const regionRemaining = await db
 			.select()
 			.from(marketSnapshots)
 			.where(
-				and(
-					eq(marketSnapshots.locationId, locationId),
-					eq(marketSnapshots.locationType, 'region')
-				)
+				and(eq(marketSnapshots.locationId, locationId), eq(marketSnapshots.locationType, 'region'))
 			)
 
 		const structureRemaining = await db

@@ -20,27 +20,82 @@ import { z } from 'zod'
  */
 export interface Srp {
 	// Request Management
-	createRequest(userId: string, characterId: string, killmailId: string, killmailHash: string, requestedAmount?: string): Promise<SRPRequestResponse>
+	createRequest(
+		userId: string,
+		characterId: string,
+		killmailId: string,
+		killmailHash: string,
+		requestedAmount?: string
+	): Promise<SRPRequestResponse>
 	getRequest(requestId: string, userId: string): Promise<SRPRequestResponse | null>
 	getUserRequests(userId: string, limit?: number, offset?: number): Promise<SRPRequestResponse[]>
-	getRecentLosses(characterIds: string[], userId: string, daysBack?: number, excludeNonSrpEligible?: boolean): Promise<LossWithSRPStatus[]>
+	getRecentLosses(
+		characterIds: string[],
+		userId: string,
+		daysBack?: number,
+		excludeNonSrpEligible?: boolean
+	): Promise<LossWithSRPStatus[]>
 
 	// Review Management
-	getPendingRequests(corporationId: string, limit?: number, offset?: number): Promise<SRPRequestResponse[]>
-	approveRequest(requestId: string, reviewerUserId: string, approvedAmount: string, reviewNotes?: string): Promise<SRPRequestResponse>
-	partiallyApproveRequest(requestId: string, reviewerUserId: string, approvedAmount: string, rejectionReason: string, reviewNotes?: string): Promise<SRPRequestResponse>
-	rejectRequest(requestId: string, reviewerUserId: string, rejectionReason: string, reviewNotes?: string): Promise<SRPRequestResponse>
+	getPendingRequests(
+		corporationId: string,
+		limit?: number,
+		offset?: number
+	): Promise<SRPRequestResponse[]>
+	approveRequest(
+		requestId: string,
+		reviewerUserId: string,
+		approvedAmount: string,
+		reviewNotes?: string
+	): Promise<SRPRequestResponse>
+	partiallyApproveRequest(
+		requestId: string,
+		reviewerUserId: string,
+		approvedAmount: string,
+		rejectionReason: string,
+		reviewNotes?: string
+	): Promise<SRPRequestResponse>
+	rejectRequest(
+		requestId: string,
+		reviewerUserId: string,
+		rejectionReason: string,
+		reviewNotes?: string
+	): Promise<SRPRequestResponse>
 
 	// Comments
-	getComments(requestId: string, userId: string, includeInternal: boolean): Promise<SRPCommentResponse[]>
-	addComment(requestId: string, userId: string, content: string, visibility?: 'public' | 'internal'): Promise<SRPCommentResponse>
+	getComments(
+		requestId: string,
+		userId: string,
+		includeInternal: boolean
+	): Promise<SRPCommentResponse[]>
+	addComment(
+		requestId: string,
+		userId: string,
+		content: string,
+		visibility?: 'public' | 'internal'
+	): Promise<SRPCommentResponse>
 	editComment(commentId: string, userId: string, content: string): Promise<SRPCommentResponse>
 	deleteComment(commentId: string, userId: string): Promise<void>
 
 	// Payments
-	getPendingPayments(corporationId?: string, limit?: number, offset?: number): Promise<SRPRequestResponse[]>
-	markPaid(requestId: string, payerUserId: string, paidAmount: string, paymentToken: string): Promise<SRPRequestResponse>
-	markPartiallyPaid(requestId: string, payerUserId: string, paidAmount: string, paymentToken: string, notes?: string): Promise<SRPRequestResponse>
+	getPendingPayments(
+		corporationId?: string,
+		limit?: number,
+		offset?: number
+	): Promise<SRPRequestResponse[]>
+	markPaid(
+		requestId: string,
+		payerUserId: string,
+		paidAmount: string,
+		paymentToken: string
+	): Promise<SRPRequestResponse>
+	markPartiallyPaid(
+		requestId: string,
+		payerUserId: string,
+		paidAmount: string,
+		paymentToken: string,
+		notes?: string
+	): Promise<SRPRequestResponse>
 
 	// Configuration
 	getConfig(): Promise<SRPConfigResponse | null>
@@ -328,10 +383,7 @@ export function generatePaymentToken(): string {
  * @param to New status
  * @returns True if transition is allowed
  */
-export function isValidStatusTransition(
-	from: RequestStatus,
-	to: RequestStatus
-): boolean {
+export function isValidStatusTransition(from: RequestStatus, to: RequestStatus): boolean {
 	const ALLOWED_TRANSITIONS: Record<RequestStatus, RequestStatus[]> = {
 		pending: ['in_review', 'approved', 'partially_approved', 'rejected'],
 		in_review: ['pending', 'approved', 'partially_approved', 'rejected'],
@@ -349,15 +401,12 @@ export function isValidStatusTransition(
  * @param to New payment status
  * @returns True if transition is allowed
  */
-export function isValidPaymentStatusTransition(
-	from: PaymentStatus,
-	to: PaymentStatus
-): boolean {
+export function isValidPaymentStatusTransition(from: PaymentStatus, to: PaymentStatus): boolean {
 	const ALLOWED_TRANSITIONS: Record<PaymentStatus, PaymentStatus[]> = {
 		'n/a': ['pending'],
-		'pending': ['paid_in_full', 'partial_payment'],
-		'paid_in_full': [],
-		'partial_payment': ['paid_in_full'], // Can pay remainder
+		pending: ['paid_in_full', 'partial_payment'],
+		paid_in_full: [],
+		partial_payment: ['paid_in_full'], // Can pay remainder
 	}
 
 	return ALLOWED_TRANSITIONS[from]?.includes(to) ?? false

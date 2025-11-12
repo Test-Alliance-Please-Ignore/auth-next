@@ -98,6 +98,15 @@ const SRPRequestDetails = lazy(() => import('./features/srp/routes/request.$id')
 const SRPReview = lazy(() => import('./features/srp/routes/review'))
 const SRPPayments = lazy(() => import('./features/srp/routes/payments'))
 
+// Lazy load the Doctrines feature for code splitting
+const DoctrinesIndex = lazy(() => import('./features/doctrines/routes/index'))
+const DoctrineDetail = lazy(() => import('./features/doctrines/routes/doctrine-detail'))
+const DoctrineCreate = lazy(() => import('./features/doctrines/routes/doctrine-create'))
+const DoctrineEdit = lazy(() => import('./features/doctrines/routes/doctrine-edit'))
+const FittingCreate = lazy(() => import('./features/doctrines/routes/fitting-create'))
+const FittingDetail = lazy(() => import('./features/doctrines/routes/fitting-detail'))
+const FittingEdit = lazy(() => import('./features/doctrines/routes/fitting-edit'))
+
 // Create a client
 const queryClient = new QueryClient({
 	defaultOptions: {
@@ -343,6 +352,64 @@ export default function App() {
 							element={
 								<Suspense fallback={<LoadingPage />}>
 									<SRPPayments />
+								</Suspense>
+							}
+						/>
+
+						{/* Doctrines routes (lazy loaded) */}
+						<Route
+							path="/doctrines"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<DoctrinesIndex />
+								</Suspense>
+							}
+						/>
+						<Route
+							path="/doctrines/create"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<DoctrineCreate />
+								</Suspense>
+							}
+						/>
+						<Route
+							path="/doctrines/:id"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<DoctrineDetail />
+								</Suspense>
+							}
+						/>
+						<Route
+							path="/doctrines/:id/edit"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<DoctrineEdit />
+								</Suspense>
+							}
+						/>
+						<Route
+							path="/doctrines/fittings/create"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<FittingCreate />
+								</Suspense>
+							}
+						/>
+						<Route
+							path="/doctrines/fittings/:id"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<FittingDetail />
+								</Suspense>
+							}
+						/>
+						<Route
+							path="/doctrines/fittings/:id/edit"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<FittingEdit />
 								</Suspense>
 							}
 						/>

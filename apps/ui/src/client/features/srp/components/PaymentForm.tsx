@@ -1,15 +1,18 @@
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { AlertCircle, Check, X } from 'lucide-react'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { toast } from 'sonner'
 import { z } from 'zod'
+
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+
 import { useMarkPaid, useMarkPartiallyPaid } from '../hooks'
 import { formatISK } from '../utils'
+
 import type { SRPRequestResponse } from '../types'
 
 const paymentSchema = z.object({
@@ -96,7 +99,9 @@ export function PaymentForm({ request, onSuccess, onCancel }: PaymentFormProps) 
 				</div>
 				<div>
 					<span className="text-muted-foreground">Approved Amount:</span>{' '}
-					<span className="font-medium tabular-nums">{formatISK(request.approvedAmount || '0')} ISK</span>
+					<span className="font-medium tabular-nums">
+						{formatISK(request.approvedAmount || '0')} ISK
+					</span>
 				</div>
 			</div>
 

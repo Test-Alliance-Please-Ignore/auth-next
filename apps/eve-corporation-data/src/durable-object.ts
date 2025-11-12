@@ -126,27 +126,21 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			where: eq(corporationConfig.corporationId, corporationId),
 		})
 
-		        		if (!config) {
+		if (!config) {
+			throw new Error('Corporation not configured.')
+		}
 
-		        			throw new Error('Corporation not configured.')
+		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 
-		        		}
+		const directorManager = new DirectorManager(
+			this.db,
 
-		        
+			config.corporationId,
 
-		        		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+			tokenStoreStub
+		)
 
-		        		const directorManager = new DirectorManager(
-
-		        			this.db,
-
-		        			config.corporationId,
-
-		        			tokenStoreStub
-
-		        		)
-
-		        		const director = await directorManager.selectDirector()
+		const director = await directorManager.selectDirector()
 
 		if (!director) {
 			throw new Error('No healthy directors available. Please add or verify directors.')
@@ -262,11 +256,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		}
 
 		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		const directorManager = new DirectorManager(
-			this.db,
-			config.corporationId,
-			tokenStoreStub
-		)
+		const directorManager = new DirectorManager(this.db, config.corporationId, tokenStoreStub)
 		const directors = await directorManager.getAllDirectors()
 		const primaryDirector = directors[0] // First director by priority
 
@@ -301,11 +291,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		}
 
 		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		const directorManager = new DirectorManager(
-			this.db,
-			config.corporationId,
-			tokenStoreStub
-		)
+		const directorManager = new DirectorManager(this.db, config.corporationId, tokenStoreStub)
 		const result = await directorManager.verifyAllDirectorsHealth()
 
 		console.log('[EveCorporationData] verifyAccess: Verification complete', {
@@ -669,7 +655,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Store wallets data (workflow-friendly)
 	 */
-	async storeWallets(corporationId: string, wallets: Array<{ division: number; balance: number }>): Promise<void> {
+	async storeWallets(
+		corporationId: string,
+		wallets: Array<{ division: number; balance: number }>
+	): Promise<void> {
 		for (const wallet of wallets) {
 			await this.db
 				.insert(corporationWallets)
@@ -741,7 +730,11 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Store wallet transactions (workflow-friendly)
 	 */
-	async storeWalletTransactions(corporationId: string, division: number, transactions: any[]): Promise<void> {
+	async storeWalletTransactions(
+		corporationId: string,
+		division: number,
+		transactions: any[]
+	): Promise<void> {
 		const BATCH_SIZE = 25
 		for (let i = 0; i < transactions.length; i += BATCH_SIZE) {
 			const batch = transactions.slice(i, i + BATCH_SIZE)
@@ -837,9 +830,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				reinforceHour: structure.reinforce_hour ?? null,
 				state: structure.state,
 				stateTimerEnd: structure.state_timer_end ? new Date(structure.state_timer_end) : null,
-				stateTimerStart: structure.state_timer_start
-					? new Date(structure.state_timer_start)
-					: null,
+				stateTimerStart: structure.state_timer_start ? new Date(structure.state_timer_start) : null,
 				unanchorsAt: structure.unanchors_at ? new Date(structure.unanchors_at) : null,
 				services: structure.services || null,
 				updatedAt: new Date(),
@@ -1896,9 +1887,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				reinforceHour: structure.reinforce_hour ?? null,
 				state: structure.state,
 				stateTimerEnd: structure.state_timer_end ? new Date(structure.state_timer_end) : null,
-				stateTimerStart: structure.state_timer_start
-					? new Date(structure.state_timer_start)
-					: null,
+				stateTimerStart: structure.state_timer_start ? new Date(structure.state_timer_start) : null,
 				unanchorsAt: structure.unanchors_at ? new Date(structure.unanchors_at) : null,
 				services: structure.services || null,
 				updatedAt: new Date(),

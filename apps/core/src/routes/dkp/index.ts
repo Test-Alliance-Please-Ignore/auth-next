@@ -67,9 +67,11 @@ app.post('/award-manual', requireAdmin(), async (c) => {
 		const body = await c.req.json()
 
 		// Manual awards require reason
-		const validated = awardDkpSchema.extend({
-			awardReason: z.string().min(10).max(500),
-		}).parse(body)
+		const validated = awardDkpSchema
+			.extend({
+				awardReason: z.string().min(10).max(500),
+			})
+			.parse(body)
 
 		const db = c.get('db')
 		if (!db) {
@@ -102,10 +104,7 @@ app.post('/award-manual', requireAdmin(), async (c) => {
 			stack: error instanceof Error ? error.stack : undefined,
 			errorType: error?.constructor?.name,
 		})
-		return c.json(
-			{ error: error instanceof Error ? error.message : 'Failed to award DKP' },
-			500
-		)
+		return c.json({ error: error instanceof Error ? error.message : 'Failed to award DKP' }, 500)
 	}
 })
 
@@ -187,10 +186,7 @@ app.get('/balance/:characterId', requireAuth(), async (c) => {
 		return c.json(balance)
 	} catch (error) {
 		logger.error('Error getting character balance:', error)
-		return c.json(
-			{ error: error instanceof Error ? error.message : 'Failed to get balance' },
-			500
-		)
+		return c.json({ error: error instanceof Error ? error.message : 'Failed to get balance' }, 500)
 	}
 })
 
@@ -215,10 +211,7 @@ app.get('/balance/corporation/:corporationId', async (c) => {
 		return c.json(balance)
 	} catch (error) {
 		logger.error('Error getting corporation balance:', error)
-		return c.json(
-			{ error: error instanceof Error ? error.message : 'Failed to get balance' },
-			500
-		)
+		return c.json({ error: error instanceof Error ? error.message : 'Failed to get balance' }, 500)
 	}
 })
 
@@ -249,10 +242,7 @@ app.get('/balance/user/:userId', requireAuth(), async (c) => {
 		return c.json(balance)
 	} catch (error) {
 		logger.error('Error getting user balance:', error)
-		return c.json(
-			{ error: error instanceof Error ? error.message : 'Failed to get balance' },
-			500
-		)
+		return c.json({ error: error instanceof Error ? error.message : 'Failed to get balance' }, 500)
 	}
 })
 

@@ -1,3 +1,6 @@
+// Import types for use in local interfaces
+import type { RequestStatus, SRPRequestResponse } from '@repo/srp'
+
 // Re-export types from @repo/srp package
 export type {
 	CommentVisibility,
@@ -17,9 +20,6 @@ export type {
 	SRPStatsResponse,
 	UpdateSRPConfigSchema,
 } from '@repo/srp'
-
-// Import types for use in local interfaces
-import type { RequestStatus, SRPRequestResponse } from '@repo/srp'
 
 // UI-specific types
 export interface PaginationParams {

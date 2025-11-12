@@ -466,8 +466,8 @@ export async function inviteUserToDiscordServers(
 	})
 
 	// Filter out inactive Discord servers
-	const activeCorpAttachments = corpAttachments.filter(attachment =>
-		attachment.discordServer.isActive
+	const activeCorpAttachments = corpAttachments.filter(
+		(attachment) => attachment.discordServer.isActive
 	)
 
 	logger.info('[Discord] Found active corporation Discord servers with auto-invite', {
@@ -497,15 +497,17 @@ export async function inviteUserToDiscordServers(
 			const members = await corpStub.getMembers(attachment.corporationId)
 			const memberCharacterIds = members.map((m: CorporationMemberData) => m.characterId)
 
-			const matchingCharacters = characterIds.filter((charId) => memberCharacterIds.includes(charId))
+			const matchingCharacters = characterIds.filter((charId) =>
+				memberCharacterIds.includes(charId)
+			)
 			const isMember = matchingCharacters.length > 0
 
 			if (isMember) {
 				// Collect role IDs if auto-assign is enabled
 				const roleIds = attachment.autoAssignRoles
 					? attachment.roles
-						.filter(r => r.discordRole.isActive) // SECURITY: Only active roles
-						.map((r) => r.discordRole.roleId)
+							.filter((r) => r.discordRole.isActive) // SECURITY: Only active roles
+							.map((r) => r.discordRole.roleId)
 					: []
 
 				guildsToJoin.push({
@@ -566,7 +568,11 @@ export async function inviteUserToDiscordServers(
 						if (serverInfo) {
 							let actualRoleIds: string[] = []
 
-							if (discordServer.roleIds && discordServer.roleIds.length > 0 && discordServer.autoAssignRoles) {
+							if (
+								discordServer.roleIds &&
+								discordServer.roleIds.length > 0 &&
+								discordServer.autoAssignRoles
+							) {
 								const roleRecords = await db.query.discordRoles.findMany({
 									where: and(
 										inArray(discordRoles.id, discordServer.roleIds),
@@ -621,19 +627,14 @@ export async function inviteUserToDiscordServers(
 	// === FETCH AUTO-APPLY ROLES (for initial invite) ===
 
 	const autoApplyRoles = await db.query.discordRoles.findMany({
-		where: and(
-			eq(discordRoles.autoApply, true),
-			eq(discordRoles.isActive, true)
-		),
+		where: and(eq(discordRoles.autoApply, true), eq(discordRoles.isActive, true)),
 		with: {
 			discordServer: true,
 		},
 	})
 
 	// Filter to only include roles from active servers
-	const activeAutoApplyRoles = autoApplyRoles.filter(role =>
-		role.discordServer.isActive
-	)
+	const activeAutoApplyRoles = autoApplyRoles.filter((role) => role.discordServer.isActive)
 
 	// Build map of guildId -> auto-apply role IDs
 	const autoApplyRolesByGuild = new Map<string, string[]>()
@@ -649,13 +650,16 @@ export async function inviteUserToDiscordServers(
 
 	// === DEDUPLICATE AND MERGE ROLES ===
 
-	const guildMap = new Map<string, {
-		guildId: string
-		guildName: string
-		roleIds: string[]
-		discordServerDbIds: string[]
-		sources: Array<{ type: 'corporation' | 'group', name: string }>
-	}>()
+	const guildMap = new Map<
+		string,
+		{
+			guildId: string
+			guildName: string
+			roleIds: string[]
+			discordServerDbIds: string[]
+			sources: Array<{ type: 'corporation' | 'group'; name: string }>
+		}
+	>()
 
 	for (const guild of guildsToJoin) {
 		const existing = guildMap.get(guild.guildId)
@@ -668,7 +672,7 @@ export async function inviteUserToDiscordServers(
 
 			existing.sources.push({
 				type: guild.type,
-				name: guild.type === 'corporation' ? guild.corporationName! : guild.groupName!
+				name: guild.type === 'corporation' ? guild.corporationName! : guild.groupName!,
 			})
 
 			guildMap.set(guild.guildId, {
@@ -682,10 +686,12 @@ export async function inviteUserToDiscordServers(
 				guildName: guild.guildName,
 				roleIds: guild.roleIds || [],
 				discordServerDbIds: guild.discordServerId ? [guild.discordServerId] : [],
-				sources: [{
-					type: guild.type,
-					name: guild.type === 'corporation' ? guild.corporationName! : guild.groupName!
-				}]
+				sources: [
+					{
+						type: guild.type,
+						name: guild.type === 'corporation' ? guild.corporationName! : guild.groupName!,
+					},
+				],
 			})
 		}
 	}
@@ -701,11 +707,13 @@ export async function inviteUserToDiscordServers(
 
 	// === FETCH NICKNAME SETTINGS ===
 
-	const uniqueDbIds = [...new Set(
-		Array.from(guildMap.values())
-			.flatMap((g) => g.discordServerDbIds)
-			.filter((id): id is string => id !== undefined && id !== '')
-	)]
+	const uniqueDbIds = [
+		...new Set(
+			Array.from(guildMap.values())
+				.flatMap((g) => g.discordServerDbIds)
+				.filter((id): id is string => id !== undefined && id !== '')
+		),
+	]
 
 	const discordServerSettings = await db.query.discordServers.findMany({
 		where: and(
@@ -783,8 +791,8 @@ export async function inviteUserToDiscordServers(
 		return {
 			guildId: result.guildId,
 			guildName: guildData?.guildName ?? result.guildName ?? result.guildId,
-			corporationName: guildData?.sources.find(s => s.type === 'corporation')?.name,
-			groupName: guildData?.sources.find(s => s.type === 'group')?.name,
+			corporationName: guildData?.sources.find((s) => s.type === 'corporation')?.name,
+			groupName: guildData?.sources.find((s) => s.type === 'group')?.name,
 			success: result.success,
 			errorMessage: result.errorMessage,
 			alreadyMember: result.alreadyMember,
@@ -793,14 +801,14 @@ export async function inviteUserToDiscordServers(
 	})
 
 	// Count only actual invites (not already members)
-	const totalInvited = results.filter(r => r.success && !r.alreadyMember).length
-	const totalFailed = results.filter(r => !r.success).length
+	const totalInvited = results.filter((r) => r.success && !r.alreadyMember).length
+	const totalFailed = results.filter((r) => !r.success).length
 
 	logger.info('[Discord] Invite process completed', {
 		userId,
 		totalInvited,
 		totalFailed,
-		alreadyMembers: results.filter(r => r.alreadyMember).length,
+		alreadyMembers: results.filter((r) => r.alreadyMember).length,
 	})
 
 	return {
@@ -900,7 +908,7 @@ export async function updateUserDiscordRoles(
 		// Get all servers user is currently a member of from Discord
 		using discordStub = getStub<Discord>(env.DISCORD, 'default')
 		const currentGuilds = await discordStub.getUserGuilds(userId)
-		serversToUpdate = currentGuilds.map(g => g.id)
+		serversToUpdate = currentGuilds.map((g) => g.id)
 
 		// FALLBACK: If getUserGuilds returns empty (user missing 'guilds' OAuth scope),
 		// check known active guilds using bot token
@@ -915,14 +923,11 @@ export async function updateUserDiscordRoles(
 				columns: { guildId: true },
 			})
 
-			const knownGuildIds = knownServers.map(s => s.guildId)
+			const knownGuildIds = knownServers.map((s) => s.guildId)
 
 			if (knownGuildIds.length > 0) {
 				// Use bot token to check which guilds the user is a member of
-				const memberGuildIds = await discordStub.checkGuildMembershipWithBot(
-					userId,
-					knownGuildIds
-				)
+				const memberGuildIds = await discordStub.checkGuildMembershipWithBot(userId, knownGuildIds)
 				serversToUpdate = memberGuildIds
 
 				logger.info('[Discord] Bot token fallback completed', {
@@ -951,12 +956,15 @@ export async function updateUserDiscordRoles(
 
 	// === CALCULATE WHAT ROLES USER SHOULD HAVE ===
 
-	const rolesByGuild = new Map<string, {
-		guildId: string
-		guildName: string
-		expectedRoleIds: string[]
-		sources: Array<{ type: 'corporation' | 'group' | 'auto-apply', name: string }>
-	}>()
+	const rolesByGuild = new Map<
+		string,
+		{
+			guildId: string
+			guildName: string
+			expectedRoleIds: string[]
+			sources: Array<{ type: 'corporation' | 'group' | 'auto-apply'; name: string }>
+		}
+	>()
 
 	// Initialize map with empty role sets
 	for (const guildId of serversToUpdate) {
@@ -964,7 +972,7 @@ export async function updateUserDiscordRoles(
 			guildId,
 			guildName: guildId, // Will be updated if we find the name
 			expectedRoleIds: [],
-			sources: []
+			sources: [],
 		})
 	}
 
@@ -984,9 +992,10 @@ export async function updateUserDiscordRoles(
 	})
 
 	// Filter to only active Discord servers
-	const corpAttachments = allCorpAttachments.filter(attachment =>
-		attachment.discordServer.isActive &&
-		serversToUpdate.includes(attachment.discordServer.guildId)
+	const corpAttachments = allCorpAttachments.filter(
+		(attachment) =>
+			attachment.discordServer.isActive &&
+			serversToUpdate.includes(attachment.discordServer.guildId)
 	)
 
 	for (const attachment of corpAttachments) {
@@ -1002,7 +1011,7 @@ export async function updateUserDiscordRoles(
 
 			if (isMember && attachment.autoAssignRoles) {
 				const roleIds = attachment.roles
-					.filter(r => r.discordRole.isActive) // SECURITY: Only active roles
+					.filter((r) => r.discordRole.isActive) // SECURITY: Only active roles
 					.map((r) => r.discordRole.roleId)
 
 				const guildData = rolesByGuild.get(attachment.discordServer.guildId)
@@ -1010,7 +1019,7 @@ export async function updateUserDiscordRoles(
 					guildData.expectedRoleIds.push(...roleIds)
 					guildData.sources.push({
 						type: 'corporation',
-						name: attachment.corporation.name
+						name: attachment.corporation.name,
 					})
 					guildData.guildName = attachment.discordServer.guildName
 				}
@@ -1051,7 +1060,11 @@ export async function updateUserDiscordRoles(
 							),
 						})
 
-						if (serverInfo && serversToUpdate.includes(serverInfo.guildId) && discordServer.autoAssignRoles) {
+						if (
+							serverInfo &&
+							serversToUpdate.includes(serverInfo.guildId) &&
+							discordServer.autoAssignRoles
+						) {
 							let actualRoleIds: string[] = []
 
 							if (discordServer.roleIds && discordServer.roleIds.length > 0) {
@@ -1069,7 +1082,7 @@ export async function updateUserDiscordRoles(
 								guildData.expectedRoleIds.push(...actualRoleIds)
 								guildData.sources.push({
 									type: 'group',
-									name: group.groupName
+									name: group.groupName,
 								})
 								guildData.guildName = serverInfo.guildName
 							}
@@ -1099,10 +1112,7 @@ export async function updateUserDiscordRoles(
 	// === ADD AUTO-APPLY ROLES ===
 
 	const autoApplyRoles = await db.query.discordRoles.findMany({
-		where: and(
-			eq(discordRoles.autoApply, true),
-			eq(discordRoles.isActive, true)
-		),
+		where: and(eq(discordRoles.autoApply, true), eq(discordRoles.isActive, true)),
 		with: {
 			discordServer: true,
 		},
@@ -1115,7 +1125,7 @@ export async function updateUserDiscordRoles(
 				guildData.expectedRoleIds.push(role.roleId)
 				guildData.sources.push({
 					type: 'auto-apply',
-					name: role.roleName
+					name: role.roleName,
 				})
 			}
 		}
@@ -1131,7 +1141,7 @@ export async function updateUserDiscordRoles(
 
 	const updateRequests = await Promise.all(
 		Array.from(rolesByGuild.values())
-			.filter(guild => guild.expectedRoleIds.length > 0) // Only update if there are roles to set
+			.filter((guild) => guild.expectedRoleIds.length > 0) // Only update if there are roles to set
 			.map(async (guild) => {
 				// Get all managed roles for this guild
 				const managedRoleIds = await getAllManagedRolesForGuild(db, env, guild.guildId)
@@ -1156,7 +1166,7 @@ export async function updateUserDiscordRoles(
 	logger.info('[Discord] Sending role update requests to Discord DO', {
 		userId,
 		requestCount: updateRequests.length,
-		requests: updateRequests.map(r => ({
+		requests: updateRequests.map((r) => ({
 			guildId: r.guildId,
 			roleCount: r.roleIds.length,
 		})),
@@ -1180,8 +1190,8 @@ export async function updateUserDiscordRoles(
 		}
 	})
 
-	const totalUpdated = results.filter(r => r.success).length
-	const totalFailed = results.filter(r => !r.success).length
+	const totalUpdated = results.filter((r) => r.success).length
+	const totalFailed = results.filter((r) => !r.success).length
 
 	logger.info('[Discord] Role update process completed', {
 		userId,
@@ -1195,7 +1205,6 @@ export async function updateUserDiscordRoles(
 		totalFailed,
 	}
 }
-
 
 /**
  * Helper function that performs both invite and role update operations
@@ -1247,8 +1256,8 @@ export async function syncUserDiscordAccess(
 
 	// Combine results from both operations
 	const combinedResults = [
-		...inviteResult.results.map(r => ({ ...r, operation: 'invite' as const })),
-		...updateResult.results.map(r => ({ ...r, operation: 'update' as const }))
+		...inviteResult.results.map((r) => ({ ...r, operation: 'invite' as const })),
+		...updateResult.results.map((r) => ({ ...r, operation: 'update' as const })),
 	]
 
 	return {
@@ -1279,10 +1288,7 @@ export async function updateUserDiscordNickname(env: Env, userId: string): Promi
 
 	// Get primary character
 	const primaryChar = await db.query.userCharacters.findFirst({
-		where: and(
-			eq(userCharacters.userId, userId),
-			eq(userCharacters.is_primary, true)
-		),
+		where: and(eq(userCharacters.userId, userId), eq(userCharacters.is_primary, true)),
 	})
 
 	if (!primaryChar) {
@@ -1302,7 +1308,10 @@ export async function updateUserDiscordNickname(env: Env, userId: string): Promi
 	// Get server settings to find which servers have manageNicknames enabled
 	const serverSettings = await db.query.discordServers.findMany({
 		where: and(
-			inArray(discordServers.guildId, userGuilds.map(g => g.id)),
+			inArray(
+				discordServers.guildId,
+				userGuilds.map((g) => g.id)
+			),
 			eq(discordServers.manageNicknames, true),
 			eq(discordServers.isActive, true)
 		),
@@ -1315,7 +1324,7 @@ export async function updateUserDiscordNickname(env: Env, userId: string): Promi
 	// Update nickname on each server
 	await discordStub.updateUserNickname(
 		userId,
-		serverSettings.map(s => s.guildId),
+		serverSettings.map((s) => s.guildId),
 		nickname
 	)
 

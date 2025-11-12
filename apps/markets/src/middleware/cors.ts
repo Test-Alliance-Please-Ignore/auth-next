@@ -1,5 +1,4 @@
 import type { Context, Next } from 'hono'
-
 import type { App } from '../context'
 
 /**

@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+
 import { and, desc, eq, inArray } from '@repo/db-utils'
 
 import { createDb } from '../../db'
@@ -79,7 +80,9 @@ pricesRouter.post('/:locationId/prices', async (c) => {
 			const [latestSnapshot] = await db
 				.select()
 				.from(marketSnapshots)
-				.where(and(eq(marketSnapshots.locationId, locationId), eq(marketSnapshots.status, 'complete')))
+				.where(
+					and(eq(marketSnapshots.locationId, locationId), eq(marketSnapshots.status, 'complete'))
+				)
 				.orderBy(desc(marketSnapshots.snapshotTime))
 				.limit(1)
 

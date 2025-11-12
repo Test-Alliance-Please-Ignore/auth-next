@@ -1,20 +1,17 @@
+import { Link, Navigate } from 'react-router-dom'
+
 import { Button } from '@/components/ui/button'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
 import { useAuth } from '@/hooks/useAuth'
-import { Link, Navigate } from 'react-router-dom'
+
 import { RequestTable } from '../components/RequestTable'
 import { usePendingRequests } from '../hooks'
 import { isSRPReviewer } from '../utils'
 
 export default function ReviewQueue() {
 	const { user } = useAuth()
-	const {
-		data,
-		isLoading,
-		error,
-		refetch,
-	} = usePendingRequests({ limit: 50 })
+	const { data, isLoading, error, refetch } = usePendingRequests({ limit: 50 })
 
 	// Check permissions
 	if (!isSRPReviewer(user)) {
@@ -46,9 +43,7 @@ export default function ReviewQueue() {
 			) : data && data.requests.length === 0 ? (
 				<div className="rounded-lg border border-dashed p-12 text-center">
 					<h3 className="mb-2 font-semibold">All caught up!</h3>
-					<p className="text-sm text-muted-foreground">
-						No requests pending review. Great work!
-					</p>
+					<p className="text-sm text-muted-foreground">No requests pending review. Great work!</p>
 					<Button variant="outline" className="mt-4" asChild>
 						<Link to="/srp">Back to Dashboard</Link>
 					</Button>

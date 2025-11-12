@@ -384,10 +384,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 	 * @param guildIds - Array of guild IDs to check
 	 * @returns Array of guild IDs the user is a member of
 	 */
-	async checkGuildMembershipWithBot(
-		coreUserId: string,
-		guildIds: string[]
-	): Promise<string[]> {
+	async checkGuildMembershipWithBot(coreUserId: string, guildIds: string[]): Promise<string[]> {
 		try {
 			// Get user from database
 			const user = await this.getUserByCoreUserId(coreUserId)
@@ -534,12 +531,12 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 						const managedRoleIds = req.managedRoleIds || []
 
 						// Calculate role changes using testable helper function
-					const { newRoleIds, rolesAdded, rolesRemoved } = calculateRoleChanges({
-						currentRoleIds,
-						requestedRoleIds: req.roleIds,
-						managedRoleIds,
-						isAddOnlyMode,
-					})
+						const { newRoleIds, rolesAdded, rolesRemoved } = calculateRoleChanges({
+							currentRoleIds,
+							requestedRoleIds: req.roleIds,
+							managedRoleIds,
+							isAddOnlyMode,
+						})
 
 						// Only update if there are changes
 						if (rolesAdded.length === 0 && rolesRemoved.length === 0) {

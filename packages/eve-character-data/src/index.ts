@@ -587,7 +587,11 @@ export interface EveCharacterData {
 	 * @param excludeNonSrpEligible - If true, exclude ships like pods and shuttles that typically aren't SRP eligible (default: false)
 	 * @returns Array of loss data
 	 */
-	getRecentLosses(characterId: string, daysBack?: number, excludeNonSrpEligible?: boolean): Promise<CharacterLossData[]>
+	getRecentLosses(
+		characterId: string,
+		daysBack?: number,
+		excludeNonSrpEligible?: boolean
+	): Promise<CharacterLossData[]>
 }
 
 /**
@@ -711,8 +715,15 @@ export class EveCharacterDataInstance extends RpcTarget {
 		)
 	}
 
-	async getRecentLosses(daysBack?: number, excludeNonSrpEligible?: boolean): Promise<CharacterLossData[]> {
-		return await this.characterDataObject.getRecentLosses(this.characterId, daysBack, excludeNonSrpEligible)
+	async getRecentLosses(
+		daysBack?: number,
+		excludeNonSrpEligible?: boolean
+	): Promise<CharacterLossData[]> {
+		return await this.characterDataObject.getRecentLosses(
+			this.characterId,
+			daysBack,
+			excludeNonSrpEligible
+		)
 	}
 
 	[Symbol.dispose](): void {

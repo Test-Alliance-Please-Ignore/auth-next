@@ -46,8 +46,9 @@ The Universe Durable Object is available to this worker via the `UNIVERSE` bindi
 ### From within this worker:
 
 ```typescript
-import type { Universe } from '@repo/universe'
 import { getStub } from '@repo/do-utils'
+
+import type { Universe } from '@repo/universe'
 
 // Get a stub to the Durable Object
 const stub = getStub<Universe>(c.env.UNIVERSE, 'unique-id')

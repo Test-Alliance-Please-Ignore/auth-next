@@ -35,7 +35,12 @@ export class IndustryDO extends DurableObject<Env, {}> implements Industry {
 	 * WebSocket close handler (Hibernation API)
 	 * Called when a WebSocket connection is closed
 	 */
-	async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean): Promise<void> {
+	async webSocketClose(
+		ws: WebSocket,
+		code: number,
+		reason: string,
+		wasClean: boolean
+	): Promise<void> {
 		// Handle WebSocket close here
 	}
 

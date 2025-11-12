@@ -1,14 +1,16 @@
-import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { AlertCircle } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { z } from 'zod'
+
+import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+
 import { useCreateRequest } from '../hooks'
 import { formatISK, getKillmailUrl } from '../utils'
 
@@ -91,11 +93,7 @@ export function CreateRequestForm({
 						</div>
 					</div>
 					<Button variant="outline" size="sm" asChild>
-						<a
-							href={getKillmailUrl(killmailId)}
-							target="_blank"
-							rel="noopener noreferrer"
-						>
+						<a href={getKillmailUrl(killmailId)} target="_blank" rel="noopener noreferrer">
 							View Full Killmail →
 						</a>
 					</Button>

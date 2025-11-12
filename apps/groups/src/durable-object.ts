@@ -1,6 +1,7 @@
 import { DurableObject } from 'cloudflare:workers'
 
 import { and, createDbClient, eq, inArray, isNull, like, or, sql } from '@repo/db-utils'
+import { getStub } from '@repo/do-utils'
 
 // Import Core database schema for Discord server and role lookups
 import { discordRoles, discordServers } from '../../core/src/db/schema'
@@ -8,6 +9,7 @@ import * as coreSchema from '../../core/src/db/schema'
 import { createDb } from './db'
 import {
 	categories,
+	corporationPermissions,
 	groupAdmins,
 	groupDiscordInvites,
 	groupDiscordServerRoles,
@@ -33,10 +35,13 @@ import {
 	isGroupOwner,
 } from './services/permissions'
 
+import type { EveCharacterData } from '@repo/eve-character-data'
 import type {
 	AttachPermissionRequest,
+	AttachPermissionToCorporationRequest,
 	Category,
 	CategoryWithGroups,
+	CorporationPermissionWithDetails,
 	CreateCategoryRequest,
 	CreateGroupRequest,
 	CreateGroupScopedPermissionRequest,
@@ -50,6 +55,7 @@ import type {
 	GetMultiGroupMemberPermissionsResponse,
 	Group,
 	GroupAdmin,
+	GroupByInviteCodeResponse,
 	GroupInvitation,
 	GroupInvitationWithDetails,
 	GroupInviteCode,
@@ -60,7 +66,6 @@ import type {
 	GroupPermissionWithDetails,
 	Groups,
 	GroupWithDetails,
-	GroupByInviteCodeResponse,
 	ListGroupsFilters,
 	Permission,
 	PermissionCategory,
@@ -1345,10 +1350,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			.where(eq(groupInviteCodes.id, codeId))
 	}
 
-	async getGroupByInviteCode(
-		code: string,
-		userId?: string
-	): Promise<GroupByInviteCodeResponse> {
+	async getGroupByInviteCode(code: string, userId?: string): Promise<GroupByInviteCodeResponse> {
 		const inviteCode = await this.db.query.groupInviteCodes.findFirst({
 			where: eq(groupInviteCodes.code, code),
 			with: {
@@ -1905,7 +1907,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		}>
 	> {
 		// Try to get from DO storage cache
-		const cacheKey = 'groups-with-discord-servers'  // Updated cache key
+		const cacheKey = 'groups-with-discord-servers' // Updated cache key
 		const cached = await this.state.storage.get<{
 			data: any[]
 			expires: number
@@ -1958,8 +1960,8 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 				id: server.id,
 				discordServerId: server.discordServerId,
 				roleIds,
-				autoInvite: server.autoInvite,  // Include autoInvite flag
-				autoAssignRoles: server.autoAssignRoles,  // Include autoAssignRoles flag
+				autoInvite: server.autoInvite, // Include autoInvite flag
+				autoAssignRoles: server.autoAssignRoles, // Include autoAssignRoles flag
 			})
 		}
 
@@ -2533,14 +2535,182 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 	/**
 	 * ============================================
+	 * CORPORATION PERMISSION OPERATIONS
+	 * ============================================
+	 */
+
+	async attachPermissionToCorporation(
+		data: AttachPermissionToCorporationRequest,
+		adminUserId: string
+	): Promise<CorporationPermissionWithDetails> {
+		// Admin-only operation
+
+		// Verify the permission exists
+		const permission = await this.db.query.permissions.findFirst({
+			where: eq(permissions.id, data.permissionId),
+			with: {
+				category: true,
+			},
+		})
+
+		if (!permission) {
+			throw new Error('Permission not found')
+		}
+
+		// Check for duplicate
+		const existing = await this.db.query.corporationPermissions.findFirst({
+			where: and(
+				eq(corporationPermissions.corporationId, data.corporationId),
+				eq(corporationPermissions.permissionId, data.permissionId)
+			),
+		})
+
+		if (existing) {
+			throw new Error('Permission already attached to this corporation')
+		}
+
+		const [corpPerm] = await this.db
+			.insert(corporationPermissions)
+			.values({
+				corporationId: data.corporationId,
+				permissionId: data.permissionId,
+				createdBy: adminUserId,
+			})
+			.returning()
+
+		return {
+			id: corpPerm.id,
+			corporationId: corpPerm.corporationId,
+			permissionId: corpPerm.permissionId,
+			createdBy: corpPerm.createdBy,
+			createdAt: corpPerm.createdAt,
+			permission: {
+				...this.mapPermission(permission),
+				category: permission.category ? this.mapPermissionCategory(permission.category) : null,
+			},
+		}
+	}
+
+	async listCorporationPermissions(
+		corporationId: string
+	): Promise<CorporationPermissionWithDetails[]> {
+		const corpPerms = await this.db.query.corporationPermissions.findMany({
+			where: eq(corporationPermissions.corporationId, corporationId),
+			with: {
+				permission: {
+					with: {
+						category: true,
+					},
+				},
+			},
+			orderBy: (corporationPermissions, { desc }) => [desc(corporationPermissions.createdAt)],
+		})
+
+		return corpPerms.map((cp) => ({
+			id: cp.id,
+			corporationId: cp.corporationId,
+			permissionId: cp.permissionId,
+			createdBy: cp.createdBy,
+			createdAt: cp.createdAt,
+			permission: {
+				...this.mapPermission(cp.permission),
+				category: cp.permission.category
+					? this.mapPermissionCategory(cp.permission.category)
+					: null,
+			},
+		}))
+	}
+
+	async removePermissionFromCorporation(
+		corporationPermissionId: string,
+		adminUserId: string
+	): Promise<void> {
+		// Admin-only operation
+
+		const corpPerm = await this.db.query.corporationPermissions.findFirst({
+			where: eq(corporationPermissions.id, corporationPermissionId),
+		})
+
+		if (!corpPerm) {
+			throw new Error('Corporation permission not found')
+		}
+
+		await this.db
+			.delete(corporationPermissions)
+			.where(eq(corporationPermissions.id, corporationPermissionId))
+	}
+
+	async getCharacterPermissions(characterId: string): Promise<UserPermission[]> {
+		console.log('[getCharacterPermissions] Fetching permissions for character', { characterId })
+
+		// Resolve character's corporation via EveCharacterData DO
+		using charStub = getStub<EveCharacterData>(this.env.EVE_CHARACTER_DATA, characterId)
+		const charInfo = await charStub.getCharacterInfo(characterId)
+
+		if (!charInfo || !charInfo.corporationId) {
+			console.log('[getCharacterPermissions] No character info or corporation ID', {
+				characterId,
+				hasCharInfo: !!charInfo,
+				corporationId: charInfo?.corporationId,
+			})
+			return []
+		}
+
+		const corporationId = String(charInfo.corporationId)
+		console.log('[getCharacterPermissions] Character corporation resolved', {
+			characterId,
+			corporationId,
+		})
+
+		// Query corporation permissions with join
+		const corpPerms = await this.db.query.corporationPermissions.findMany({
+			where: eq(corporationPermissions.corporationId, corporationId),
+			with: {
+				permission: {
+					with: {
+						category: true,
+					},
+				},
+			},
+		})
+
+		console.log('[getCharacterPermissions] Found corporation permissions', {
+			characterId,
+			corporationId,
+			count: corpPerms.length,
+			permissions: corpPerms.map((cp) => cp.permission.urn),
+		})
+
+		// Transform to UserPermission format
+		return corpPerms.map((cp) => ({
+			urn: cp.permission.urn,
+			name: cp.permission.name,
+			description: cp.permission.description,
+			category: cp.permission.category ? this.mapPermissionCategory(cp.permission.category) : null,
+			groupId: corporationId, // Use corporationId as groupId for consistency
+			groupName: charInfo.corporationName || corporationId,
+			targetType: 'all_members' as PermissionTarget, // Corporation permissions always apply to all members
+			source: 'global' as const,
+		}))
+	}
+
+	/**
+	 * ============================================
 	 * PERMISSION QUERY OPERATIONS
 	 * ============================================
 	 */
 
 	async getUserPermissions(userId: string): Promise<UserPermission[]> {
+		console.log('[getUserPermissions] Fetching permissions for user', { userId })
+
 		// Check cache first
 		const cached = this.permissionsCache.get(userId)
 		if (cached && cached.expires > Date.now()) {
+			console.log('[getUserPermissions] Returning cached permissions', {
+				userId,
+				count: cached.data.length,
+				permissions: cached.data.map((p) => p.urn),
+			})
 			return cached.data
 		}
 
@@ -2553,10 +2723,16 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		})
 
 		if (memberships.length === 0) {
+			console.log('[getUserPermissions] User has no group memberships', { userId })
 			return []
 		}
 
 		const groupIds = memberships.map((m) => m.groupId)
+		console.log('[getUserPermissions] User memberships found', {
+			userId,
+			groupCount: memberships.length,
+			groupIds,
+		})
 
 		// Get user's admin roles
 		const adminRoles = await this.db.query.groupAdmins.findMany({
@@ -2618,6 +2794,13 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 		// Deduplicate by URN (in case user has same permission from multiple groups)
 		const deduped = Array.from(new Map(resolvedPermissions.map((p) => [p.urn, p])).values())
+
+		console.log('[getUserPermissions] Resolved user permissions', {
+			userId,
+			totalPermissions: resolvedPermissions.length,
+			dedupedCount: deduped.length,
+			permissions: deduped.map((p) => ({ urn: p.urn, groupId: p.groupId, source: p.source })),
+		})
 
 		// Cache the result
 		this.permissionsCache.set(userId, {

@@ -226,7 +226,9 @@ export interface Discord {
 	 */
 	getUserGuilds(
 		coreUserId: string
-	): Promise<Array<{ id: string; name: string; icon?: string; owner: boolean; permissions: string }>>
+	): Promise<
+		Array<{ id: string; name: string; icon?: string; owner: boolean; permissions: string }>
+	>
 
 	/**
 	 * Check which guilds a user is a member of using bot token (fallback for missing guilds scope)

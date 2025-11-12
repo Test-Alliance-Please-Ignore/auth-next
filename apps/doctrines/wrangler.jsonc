@@ -6,6 +6,7 @@
 	"compatibility_flags": ["nodejs_compat"],
 	"routes": [],
 	"logpush": false,
+	"workers_dev": false,
 	"observability": {
 		"enabled": true
 	},
@@ -15,12 +16,31 @@
 			{
 				"name": "DOCTRINES",
 				"class_name": "Doctrines"
+			},
+			{
+				"name": "GROUPS",
+				"class_name": "Groups",
+				"script_name": "groups"
+			},
+			{
+				"name": "EVE_CHARACTER_DATA",
+				"class_name": "EveCharacterData",
+				"script_name": "eve-character-data"
+			},
+			{
+				"name": "UNIVERSE",
+				"class_name": "Universe",
+				"script_name": "universe"
 			}
 		]
 	},
 	"migrations": [
 		{
 			"tag": "v1",
+			"new_sqlite_classes": ["Doctrines"]
+		},
+		{
+			"tag": "v2",
 			"new_sqlite_classes": ["Doctrines"]
 		}
 	]

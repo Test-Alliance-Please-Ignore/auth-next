@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+
 import { and, desc, eq, gt, sql } from '@repo/db-utils'
 
 import { createDb } from '../../db'
@@ -34,7 +35,12 @@ snapshotsRouter.get('/:locationId/snapshots', async (c) => {
 	}
 
 	// Parse and validate query parameters
-	let queryParams: { locationType?: 'region' | 'structure'; status?: string; limit: number; cursor?: string }
+	let queryParams: {
+		locationType?: 'region' | 'structure'
+		status?: string
+		limit: number
+		cursor?: string
+	}
 	try {
 		const query = c.req.query()
 		queryParams = SnapshotsQuerySchema.parse(query)

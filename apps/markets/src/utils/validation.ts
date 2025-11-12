@@ -74,7 +74,10 @@ export const TypeSearchQuerySchema = z.object({
 /**
  * Validate entity ID (exists and is numeric)
  */
-export function validateEntityId(id: string, paramName: string): { valid: boolean; error?: string } {
+export function validateEntityId(
+	id: string,
+	paramName: string
+): { valid: boolean; error?: string } {
 	if (!id || id.trim() === '') {
 		return { valid: false, error: `${paramName} is required` }
 	}

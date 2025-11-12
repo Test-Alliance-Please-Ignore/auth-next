@@ -1,12 +1,15 @@
-import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { useAuth } from '@/hooks/useAuth'
 import { Edit, Lock, Trash } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
+
+import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
+import { useAuth } from '@/hooks/useAuth'
+
 import { useDeleteComment } from '../hooks'
 import { formatRelativeTime } from '../utils'
 import { CommentForm } from './CommentForm'
+
 import type { SRPCommentResponse } from '../types'
 
 interface CommentsListProps {
@@ -16,7 +19,12 @@ interface CommentsListProps {
 	onCommentAdded: () => void
 }
 
-export function CommentsList({ comments, requestId, canAddInternal, onCommentAdded }: CommentsListProps) {
+export function CommentsList({
+	comments,
+	requestId,
+	canAddInternal,
+	onCommentAdded,
+}: CommentsListProps) {
 	const { user } = useAuth()
 	const [editingId, setEditingId] = useState<string | null>(null)
 	const deleteMutation = useDeleteComment()
@@ -85,20 +93,12 @@ export function CommentsList({ comments, requestId, canAddInternal, onCommentAdd
 								{(canEdit(comment) || canDelete(comment)) && (
 									<div className="flex gap-1">
 										{canEdit(comment) && (
-											<Button
-												variant="ghost"
-												size="sm"
-												onClick={() => setEditingId(comment.id)}
-											>
+											<Button variant="ghost" size="sm" onClick={() => setEditingId(comment.id)}>
 												<Edit className="h-4 w-4" />
 											</Button>
 										)}
 										{canDelete(comment) && (
-											<Button
-												variant="ghost"
-												size="sm"
-												onClick={() => handleDelete(comment.id)}
-											>
+											<Button variant="ghost" size="sm" onClick={() => handleDelete(comment.id)}>
 												<Trash className="h-4 w-4" />
 											</Button>
 										)}

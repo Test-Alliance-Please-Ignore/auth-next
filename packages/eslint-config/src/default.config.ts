@@ -54,8 +54,12 @@ export function getConfig(importMetaUrl: string): Array<Linter.Config<Linter.Rul
 						jsx: true,
 					},
 					sourceType: 'module',
-					projectService: true,
-					tsconfigRootDir: getTsconfigRootDir(importMetaUrl),
+					...(getTsconfigRootDir(importMetaUrl)
+						? {
+								projectService: true,
+								tsconfigRootDir: getTsconfigRootDir(importMetaUrl),
+							}
+						: {}),
 				},
 			},
 			settings: {
@@ -75,7 +79,14 @@ export function getConfig(importMetaUrl: string): Array<Linter.Config<Linter.Rul
 				'@typescript-eslint/consistent-type-imports': ['warn', { prefer: 'type-imports' }],
 				'@typescript-eslint/explicit-function-return-type': 'off',
 				'@typescript-eslint/ban-ts-comment': 'off',
-				'@typescript-eslint/no-floating-promises': 'warn',
+				// Only enable type-aware rules if we have a tsconfig
+				...(getTsconfigRootDir(importMetaUrl)
+					? {
+							'@typescript-eslint/no-floating-promises': 'warn',
+						}
+					: {
+							'@typescript-eslint/no-floating-promises': 'off',
+						}),
 				'@typescript-eslint/array-type': ['warn', { default: 'array-simple' }],
 				// Note: you must disable the base rule as it can report incorrect errors
 				'no-unused-vars': 'off',

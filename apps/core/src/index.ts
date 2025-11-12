@@ -17,6 +17,7 @@ import corporationsRoutes from './routes/corporations'
 import discordRoutes from './routes/discord'
 import discordServersRoutes from './routes/discord-servers'
 import dkpRoutes from './routes/dkp'
+import doctrinesRoutes from './routes/doctrines'
 import esiRoutes from './routes/esi'
 import fleetsRoutes from './routes/fleets'
 import freightRoutes from './routes/freight'
@@ -102,6 +103,7 @@ const app = new Hono<App>()
 	.route('/api/corporations', corporationsRoutes)
 	.route('/api/discord-servers', discordServersRoutes)
 	.route('/api/dkp', dkpRoutes)
+	.route('/api/doctrines', doctrinesRoutes)
 	.route('/api/esi', esiRoutes)
 	.route('/api/skills', skillsRoutes)
 	.route('/api/skill-plans', skillPlansRoutes)
@@ -259,7 +261,11 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	}> {
 		const db = createDb(this.env.DATABASE_URL)
 		const { DkpService } = await import('./services/dkp.service')
-		const dkpService = new DkpService(db, this.env.EVE_CORPORATION_DATA, this.env.EVE_CHARACTER_DATA)
+		const dkpService = new DkpService(
+			db,
+			this.env.EVE_CORPORATION_DATA,
+			this.env.EVE_CHARACTER_DATA
+		)
 		return dkpService.awardDkp(params)
 	}
 
@@ -293,7 +299,11 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	}> {
 		const db = createDb(this.env.DATABASE_URL)
 		const { DkpService } = await import('./services/dkp.service')
-		const dkpService = new DkpService(db, this.env.EVE_CORPORATION_DATA, this.env.EVE_CHARACTER_DATA)
+		const dkpService = new DkpService(
+			db,
+			this.env.EVE_CORPORATION_DATA,
+			this.env.EVE_CHARACTER_DATA
+		)
 		return dkpService.awardDkpBulk(params)
 	}
 }

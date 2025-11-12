@@ -1,16 +1,19 @@
-import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { AlertCircle } from 'lucide-react'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { toast } from 'sonner'
 import { z } from 'zod'
+
+import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+
 import { useApproveRequest, usePartiallyApproveRequest, useRejectRequest } from '../hooks'
 import { formatISK } from '../utils'
+
 import type { SRPRequestResponse } from '../types'
 
 const reviewSchema = z
@@ -136,12 +139,7 @@ export function ReviewRequestForm({ request, onSuccess }: ReviewRequestFormProps
 							<span className="text-sm">Partially Approve</span>
 						</label>
 						<label className="flex items-center gap-2">
-							<input
-								type="radio"
-								value="reject"
-								{...form.register('action')}
-								className="h-4 w-4"
-							/>
+							<input type="radio" value="reject" {...form.register('action')} className="h-4 w-4" />
 							<span className="text-sm">Reject</span>
 						</label>
 					</div>
@@ -158,8 +156,8 @@ export function ReviewRequestForm({ request, onSuccess }: ReviewRequestFormProps
 							</p>
 						)}
 						<p className="mt-1 text-xs text-muted-foreground">
-							Requested: {request.requestedAmount ? formatISK(request.requestedAmount) : '—'} ·
-							Ship value: {formatISK(request.shipValue)}
+							Requested: {request.requestedAmount ? formatISK(request.requestedAmount) : '—'} · Ship
+							value: {formatISK(request.shipValue)}
 						</p>
 					</div>
 				)}

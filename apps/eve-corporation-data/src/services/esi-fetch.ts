@@ -399,9 +399,7 @@ export async function fetchContracts(
 		issuer_id: String(contract.issuer_id),
 		price: contract.price,
 		reward: contract.reward,
-		start_location_id: contract.start_location_id
-			? String(contract.start_location_id)
-			: undefined,
+		start_location_id: contract.start_location_id ? String(contract.start_location_id) : undefined,
 		status: contract.status,
 		title: contract.title,
 		type: contract.type,

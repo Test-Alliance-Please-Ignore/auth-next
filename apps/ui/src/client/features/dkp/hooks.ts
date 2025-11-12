@@ -1,10 +1,5 @@
-/**
- * DKP React Query Hooks
- *
- * Custom hooks for DKP data fetching and mutations
- */
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { useMutation, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query'
 import {
 	awardDkp,
 	awardDkpBulk,
@@ -17,12 +12,15 @@ import {
 	getUserBalance,
 	getUserLeaderboard,
 } from './api'
-import type {
-	AwardDkpRequest,
-	BulkAwardDkpRequest,
-	DkpFilters,
-	LeaderboardFilters,
-} from './types'
+
+import type { QueryKey } from '@tanstack/react-query'
+import type { AwardDkpRequest, BulkAwardDkpRequest, DkpFilters, LeaderboardFilters } from './types'
+
+/**
+ * DKP React Query Hooks
+ *
+ * Custom hooks for DKP data fetching and mutations
+ */
 
 /**
  * Query key factory for DKP queries

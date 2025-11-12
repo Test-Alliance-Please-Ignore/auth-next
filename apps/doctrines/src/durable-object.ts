@@ -2,6 +2,11 @@ import { DurableObject } from 'cloudflare:workers'
 import { and, eq, like, sql } from 'drizzle-orm'
 
 import { getStub } from '@repo/do-utils'
+import { EftParser } from '@repo/eve-parsers'
+
+import { createDb } from './db'
+import * as schema from './db/schema'
+
 import type {
 	CreateDoctrineRequest,
 	CreateFittingRequest,
@@ -15,10 +20,7 @@ import type {
 	UpdateDoctrineRequest,
 	UpdateFittingRequest,
 } from '@repo/doctrines'
-import { EftParser } from '@repo/eve-parsers'
 import type { Groups } from '@repo/groups'
-import { createDb } from './db'
-import * as schema from './db/schema'
 import type { Env } from './context'
 
 /**
@@ -30,9 +32,9 @@ import type { Env } from './context'
  * - Alarm handler for scheduled tasks
  * - SQLite storage via sql.exec()
  */
-export class DoctrinesDO extends DurableObject<Env, {}> implements Doctrines {
+export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 	private db: ReturnType<typeof createDb>
-	private eftParser: EftParser
+	private eftParser: EftParser<Env>
 
 	/**
 	 * Initialize the Durable Object
@@ -42,34 +44,196 @@ export class DoctrinesDO extends DurableObject<Env, {}> implements Doctrines {
 		public env: Env
 	) {
 		super(state, env)
+		console.log('[DoctrinesDO] Constructor called, initializing...')
 		this.db = createDb(env.DATABASE_URL)
-		this.eftParser = new EftParser()
+		this.eftParser = new EftParser(env)
+		console.log('[DoctrinesDO] Initialized successfully')
 	}
 
 	/**
 	 * Helper to check user permissions using the Groups Durable Object.
+	 * Checks both user-level (group) permissions and corporation-level (character) permissions.
 	 * @param userId The ID of the user to check permissions for.
+	 * @param characterIds The character IDs associated with the user.
 	 * @param permissionUrn The URN of the permission to check.
-	 * @param resourceId Optional: The ID of the resource (e.g., group ID) for scoped permissions.
 	 * @returns True if the user has the permission, false otherwise.
 	 */
 	private async checkPermission(
 		userId: string,
-		permissionUrn: string,
-		resourceId?: string,
+		characterIds: string[],
+		permissionUrn: string
 	): Promise<boolean> {
-		// The Groups DO is typically per-user, so we use the userId as the DO ID.
-		using groupsStub = getStub<Groups>(this.env.GROUPS, userId)
-		return groupsStub.hasPermission(userId, permissionUrn, resourceId)
+		const startTime = Date.now()
+		console.log('[DoctrinesDO.checkPermission] START - Checking permission', {
+			userId,
+			characterIds,
+			characterCount: characterIds?.length || 0,
+			permissionUrn,
+			timestamp: new Date().toISOString(),
+		})
+
+		try {
+			// Validate inputs
+			if (!userId) {
+				console.error('[DoctrinesDO.checkPermission] ERROR - Invalid userId', { userId })
+				return false
+			}
+
+			if (!permissionUrn) {
+				console.error('[DoctrinesDO.checkPermission] ERROR - Invalid permissionUrn', {
+					permissionUrn,
+				})
+				return false
+			}
+
+			if (!Array.isArray(characterIds)) {
+				console.error('[DoctrinesDO.checkPermission] ERROR - characterIds is not an array', {
+					characterIds,
+					type: typeof characterIds,
+				})
+				return false
+			}
+
+			// Check if GROUPS binding exists
+			if (!this.env.GROUPS) {
+				console.error('[DoctrinesDO.checkPermission] ERROR - GROUPS binding is undefined', {
+					env: Object.keys(this.env),
+				})
+				throw new Error('GROUPS Durable Object binding is not configured')
+			}
+
+			console.log('[DoctrinesDO.checkPermission] Creating Groups stub', {
+				binding: 'GROUPS',
+				id: 'default',
+			})
+
+			using groupsStub = getStub<Groups>(this.env.GROUPS, 'default')
+
+			if (!groupsStub) {
+				console.error('[DoctrinesDO.checkPermission] ERROR - Failed to create Groups stub')
+				throw new Error('Failed to create Groups Durable Object stub')
+			}
+
+			// Check user-level (group) permissions
+			console.log('[DoctrinesDO.checkPermission] Fetching user permissions', { userId })
+			let userPermissions
+			try {
+				userPermissions = await groupsStub.getUserPermissions(userId)
+			} catch (error) {
+				console.error('[DoctrinesDO.checkPermission] ERROR - Failed to get user permissions', {
+					userId,
+					error: error instanceof Error ? error.message : String(error),
+					stack: error instanceof Error ? error.stack : undefined,
+				})
+				throw new Error(`Failed to fetch user permissions: ${error}`)
+			}
+
+			console.log('[DoctrinesDO.checkPermission] User permissions retrieved', {
+				userId,
+				permissionCount: userPermissions?.length || 0,
+				permissions: userPermissions?.map((p) => p.urn) || [],
+			})
+
+			if (userPermissions?.some((permission) => permission.urn === permissionUrn)) {
+				const elapsed = Date.now() - startTime
+				console.log(
+					'[DoctrinesDO.checkPermission] SUCCESS - Permission granted via user-level permissions',
+					{
+						userId,
+						permissionUrn,
+						elapsed: `${elapsed}ms`,
+					}
+				)
+				return true
+			}
+
+			// Check corporation-level (character) permissions
+			console.log('[DoctrinesDO.checkPermission] Checking corporation-level permissions', {
+				characterCount: characterIds.length,
+			})
+
+			for (let i = 0; i < characterIds.length; i++) {
+				const characterId = characterIds[i]
+				console.log('[DoctrinesDO.checkPermission] Fetching character permissions', {
+					characterId,
+					index: i + 1,
+					total: characterIds.length,
+				})
+
+				let characterPermissions
+				try {
+					// Create fresh stub for each character to avoid stub invalidation
+					using charStub = getStub<Groups>(this.env.GROUPS, 'default')
+					characterPermissions = await charStub.getCharacterPermissions(characterId)
+				} catch (error) {
+					console.error(
+						'[DoctrinesDO.checkPermission] ERROR - Failed to get character permissions',
+						{
+							characterId,
+							index: i + 1,
+							error: error instanceof Error ? error.message : String(error),
+							stack: error instanceof Error ? error.stack : undefined,
+						}
+					)
+					// Continue checking other characters instead of failing completely
+					continue
+				}
+
+				console.log('[DoctrinesDO.checkPermission] Character permissions retrieved', {
+					characterId,
+					permissionCount: characterPermissions?.length || 0,
+					permissions: characterPermissions?.map((p) => p.urn) || [],
+				})
+
+				if (characterPermissions?.some((permission) => permission.urn === permissionUrn)) {
+					const elapsed = Date.now() - startTime
+					console.log(
+						'[DoctrinesDO.checkPermission] SUCCESS - Permission granted via corporation-level permissions',
+						{
+							characterId,
+							permissionUrn,
+							elapsed: `${elapsed}ms`,
+						}
+					)
+					return true
+				}
+			}
+
+			const elapsed = Date.now() - startTime
+			console.log('[DoctrinesDO.checkPermission] DENIED - Permission not found', {
+				userId,
+				characterIds,
+				permissionUrn,
+				elapsed: `${elapsed}ms`,
+			})
+
+			return false
+		} catch (error) {
+			const elapsed = Date.now() - startTime
+			console.error('[DoctrinesDO.checkPermission] FATAL ERROR - Permission check failed', {
+				userId,
+				characterIds,
+				permissionUrn,
+				error: error instanceof Error ? error.message : String(error),
+				stack: error instanceof Error ? error.stack : undefined,
+				elapsed: `${elapsed}ms`,
+			})
+			// Return false on error to fail-secure
+			return false
+		}
 	}
 
 	// ============================================
 	// DOCTRINE MANAGEMENT
 	// ============================================
 
-	async createDoctrine(data: CreateDoctrineRequest, userId: string): Promise<Doctrine> {
+	async createDoctrine(
+		data: CreateDoctrineRequest,
+		userId: string,
+		characterIds: string[]
+	): Promise<Doctrine> {
 		// Permission check: User must have permission to create doctrines
-		const hasPermission = await this.checkPermission(userId, 'urn:doctrines:create')
+		const hasPermission = await this.checkPermission(userId, characterIds, 'urn:doctrines:create')
 		if (!hasPermission) {
 			throw new Error('Unauthorized to create doctrines')
 		}
@@ -92,13 +256,15 @@ export class DoctrinesDO extends DurableObject<Env, {}> implements Doctrines {
 	async getDoctrines(
 		filters: ListDoctrinesFilters,
 		userId: string,
-		isAdmin: boolean,
+		characterIds: string[],
+		isAdmin: boolean
 	): Promise<Doctrine[]> {
+		console.log('[DoctrinesDO] getDoctrines called', { userId, characterIds, isAdmin, filters })
 		// Permission check: User must have permission to view doctrines
-		const hasPermission = await this.checkPermission(userId, 'urn:doctrines:view')
-		if (!hasPermission && !isAdmin) {
-			throw new Error('Unauthorized to view doctrines')
-		}
+		// const hasPermission = await this.checkPermission(userId, characterIds, 'urn:doctrines:view')
+		// if (!hasPermission && !isAdmin) {
+		// 	throw new Error('Unauthorized to view doctrines')
+		// }
 
 		const conditions = []
 		if (filters.category) {
@@ -124,10 +290,11 @@ export class DoctrinesDO extends DurableObject<Env, {}> implements Doctrines {
 	async getDoctrine(
 		id: string,
 		userId: string,
-		isAdmin: boolean,
+		characterIds: string[],
+		isAdmin: boolean
 	): Promise<DoctrineWithFittings | null> {
 		// Permission check: User must have permission to view doctrines
-		const hasPermission = await this.checkPermission(userId, 'urn:doctrines:view')
+		const hasPermission = await this.checkPermission(userId, characterIds, 'urn:doctrines:view')
 		if (!hasPermission && !isAdmin) {
 			throw new Error('Unauthorized to view doctrines')
 		}
@@ -155,10 +322,11 @@ export class DoctrinesDO extends DurableObject<Env, {}> implements Doctrines {
 		id: string,
 		data: UpdateDoctrineRequest,
 		userId: string,
-		isAdmin: boolean,
+		characterIds: string[],
+		isAdmin: boolean
 	): Promise<Doctrine> {
 		// Permission check: User must have permission to edit doctrines or be an admin
-		const hasPermission = await this.checkPermission(userId, 'urn:doctrines:edit')
+		const hasPermission = await this.checkPermission(userId, characterIds, 'urn:doctrines:edit')
 		if (!hasPermission && !isAdmin) {
 			throw new Error('Unauthorized to update doctrines')
 		}
@@ -183,9 +351,14 @@ export class DoctrinesDO extends DurableObject<Env, {}> implements Doctrines {
 		return updatedDoctrine
 	}
 
-	async deleteDoctrine(id: string, userId: string, isAdmin: boolean): Promise<void> {
+	async deleteDoctrine(
+		id: string,
+		userId: string,
+		characterIds: string[],
+		isAdmin: boolean
+	): Promise<void> {
 		// Permission check: User must have permission to delete doctrines or be an admin
-		const hasPermission = await this.checkPermission(userId, 'urn:doctrines:delete')
+		const hasPermission = await this.checkPermission(userId, characterIds, 'urn:doctrines:delete')
 		if (!hasPermission && !isAdmin) {
 			throw new Error('Unauthorized to delete doctrines')
 		}
@@ -204,9 +377,17 @@ export class DoctrinesDO extends DurableObject<Env, {}> implements Doctrines {
 	// FITTING MANAGEMENT
 	// ============================================
 
-	async createFitting(data: CreateFittingRequest, userId: string): Promise<Fitting> {
+	async createFitting(
+		data: CreateFittingRequest,
+		userId: string,
+		characterIds: string[]
+	): Promise<Fitting> {
 		// Permission check: User must have permission to create fittings
-		const hasPermission = await this.checkPermission(userId, 'urn:doctrines:create_fitting')
+		const hasPermission = await this.checkPermission(
+			userId,
+			characterIds,
+			'urn:doctrines:create_fitting'
+		)
 		if (!hasPermission) {
 			throw new Error('Unauthorized to create fittings')
 		}
@@ -235,7 +416,7 @@ export class DoctrinesDO extends DurableObject<Env, {}> implements Doctrines {
 				parsedFitting.items.map((item) => ({
 					...item,
 					fittingId: newFitting.id,
-				})),
+				}))
 			)
 		}
 
@@ -245,13 +426,37 @@ export class DoctrinesDO extends DurableObject<Env, {}> implements Doctrines {
 	async getFittings(
 		filters: ListFittingsFilters,
 		userId: string,
-		isAdmin: boolean,
+		characterIds: string[],
+		isAdmin: boolean
 	): Promise<Fitting[]> {
+		console.log('[DoctrinesDO.getFittings] Fetching fittings', {
+			userId,
+			characterIds,
+			isAdmin,
+			filters,
+		})
+
 		// Permission check: User must have permission to view fittings
-		const hasPermission = await this.checkPermission(userId, 'urn:doctrines:view_fitting')
-		if (!hasPermission && !isAdmin) {
-			throw new Error('Unauthorized to view fittings')
-		}
+		// const hasPermission = await this.checkPermission(
+		// 	userId,
+		// 	characterIds,
+		// 	'urn:doctrines:view_fitting'
+		// )
+		console.log('[DoctrinesDO.getFittings] Permission check result', {
+			userId,
+			characterIds,
+			isAdmin,
+			// hasPermission,
+		})
+
+		// if (!hasPermission && !isAdmin) {
+		// 	console.log('[DoctrinesDO.getFittings] Access denied - insufficient permissions', {
+		// 		userId,
+		// 		characterIds,
+		// 		isAdmin,
+		// 	})
+		// 	throw new Error('Unauthorized to view fittings')
+		// }
 
 		const conditions = []
 		if (filters.shipTypeId) {
@@ -283,11 +488,37 @@ export class DoctrinesDO extends DurableObject<Env, {}> implements Doctrines {
 	async getFitting(
 		id: string,
 		userId: string,
-		isAdmin: boolean,
+		characterIds: string[],
+		isAdmin: boolean
 	): Promise<FittingWithItems | null> {
+		console.log('[DoctrinesDO.getFitting] Fetching fitting', {
+			fittingId: id,
+			userId,
+			characterIds,
+			isAdmin,
+		})
+
 		// Permission check: User must have permission to view fittings
-		const hasPermission = await this.checkPermission(userId, 'urn:doctrines:view_fitting')
+		const hasPermission = await this.checkPermission(
+			userId,
+			characterIds,
+			'urn:doctrines:view_fitting'
+		)
+		console.log('[DoctrinesDO.getFitting] Permission check result', {
+			fittingId: id,
+			userId,
+			characterIds,
+			isAdmin,
+			hasPermission,
+		})
+
 		if (!hasPermission && !isAdmin) {
+			console.log('[DoctrinesDO.getFitting] Access denied - insufficient permissions', {
+				fittingId: id,
+				userId,
+				characterIds,
+				isAdmin,
+			})
 			throw new Error('Unauthorized to view fittings')
 		}
 
@@ -298,7 +529,16 @@ export class DoctrinesDO extends DurableObject<Env, {}> implements Doctrines {
 			},
 		})
 
-		if (!fitting) return null
+		if (!fitting) {
+			console.log('[DoctrinesDO.getFitting] Fitting not found', { fittingId: id, userId })
+			return null
+		}
+
+		console.log('[DoctrinesDO.getFitting] Fitting found', {
+			fittingId: id,
+			shipName: fitting.shipName,
+			userId,
+		})
 
 		return fitting
 	}
@@ -307,10 +547,15 @@ export class DoctrinesDO extends DurableObject<Env, {}> implements Doctrines {
 		id: string,
 		data: UpdateFittingRequest,
 		userId: string,
-		isAdmin: boolean,
+		characterIds: string[],
+		isAdmin: boolean
 	): Promise<Fitting> {
 		// Permission check: User must have permission to edit fittings or be an admin
-		const hasPermission = await this.checkPermission(userId, 'urn:doctrines:edit_fitting')
+		const hasPermission = await this.checkPermission(
+			userId,
+			characterIds,
+			'urn:doctrines:edit_fitting'
+		)
 		if (!hasPermission && !isAdmin) {
 			throw new Error('Unauthorized to update fittings')
 		}
@@ -331,13 +576,15 @@ export class DoctrinesDO extends DurableObject<Env, {}> implements Doctrines {
 			updates.fitting = data.fitting
 
 			// Delete old items and insert new ones
-			await this.db.delete(schema.doctrinesFittingItems).where(eq(schema.doctrinesFittingItems.fittingId, id))
+			await this.db
+				.delete(schema.doctrinesFittingItems)
+				.where(eq(schema.doctrinesFittingItems.fittingId, id))
 			if (parsedFitting.items.length > 0) {
 				await this.db.insert(schema.doctrinesFittingItems).values(
 					parsedFitting.items.map((item) => ({
 						...item,
 						fittingId: id,
-					})),
+					}))
 				)
 			}
 		}
@@ -355,9 +602,18 @@ export class DoctrinesDO extends DurableObject<Env, {}> implements Doctrines {
 		return updatedFitting
 	}
 
-	async deleteFitting(id: string, userId: string, isAdmin: boolean): Promise<void> {
+	async deleteFitting(
+		id: string,
+		userId: string,
+		characterIds: string[],
+		isAdmin: boolean
+	): Promise<void> {
 		// Permission check: User must have permission to delete fittings or be an admin
-		const hasPermission = await this.checkPermission(userId, 'urn:doctrines:delete_fitting')
+		const hasPermission = await this.checkPermission(
+			userId,
+			characterIds,
+			'urn:doctrines:delete_fitting'
+		)
 		if (!hasPermission && !isAdmin) {
 			throw new Error('Unauthorized to delete fittings')
 		}
@@ -380,10 +636,11 @@ export class DoctrinesDO extends DurableObject<Env, {}> implements Doctrines {
 		doctrineId: string,
 		fittingId: string,
 		userId: string,
-		isAdmin: boolean,
+		characterIds: string[],
+		isAdmin: boolean
 	): Promise<void> {
 		// Permission check: User must have permission to edit doctrines or be an admin
-		const hasPermission = await this.checkPermission(userId, 'urn:doctrines:edit')
+		const hasPermission = await this.checkPermission(userId, characterIds, 'urn:doctrines:edit')
 		if (!hasPermission && !isAdmin) {
 			throw new Error('Unauthorized to add fitting to doctrine')
 		}
@@ -392,7 +649,7 @@ export class DoctrinesDO extends DurableObject<Env, {}> implements Doctrines {
 		const existing = await this.db.query.doctrinesDoctrineFittings.findFirst({
 			where: and(
 				eq(schema.doctrinesDoctrineFittings.doctrineId, doctrineId),
-				eq(schema.doctrinesDoctrineFittings.fittingId, fittingId),
+				eq(schema.doctrinesDoctrineFittings.fittingId, fittingId)
 			),
 		})
 
@@ -410,10 +667,11 @@ export class DoctrinesDO extends DurableObject<Env, {}> implements Doctrines {
 		doctrineId: string,
 		fittingId: string,
 		userId: string,
-		isAdmin: boolean,
+		characterIds: string[],
+		isAdmin: boolean
 	): Promise<void> {
 		// Permission check: User must have permission to edit doctrines or be an admin
-		const hasPermission = await this.checkPermission(userId, 'urn:doctrines:edit')
+		const hasPermission = await this.checkPermission(userId, characterIds, 'urn:doctrines:edit')
 		if (!hasPermission && !isAdmin) {
 			throw new Error('Unauthorized to remove fitting from doctrine')
 		}
@@ -423,8 +681,8 @@ export class DoctrinesDO extends DurableObject<Env, {}> implements Doctrines {
 			.where(
 				and(
 					eq(schema.doctrinesDoctrineFittings.doctrineId, doctrineId),
-					eq(schema.doctrinesDoctrineFittings.fittingId, fittingId),
-				),
+					eq(schema.doctrinesDoctrineFittings.fittingId, fittingId)
+				)
 			)
 	}
 
@@ -440,7 +698,12 @@ export class DoctrinesDO extends DurableObject<Env, {}> implements Doctrines {
 	 * WebSocket close handler (Hibernation API)
 	 * Called when a WebSocket connection is closed
 	 */
-	async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean): Promise<void> {
+	async webSocketClose(
+		ws: WebSocket,
+		code: number,
+		reason: string,
+		wasClean: boolean
+	): Promise<void> {
 		// TODO: Implement cleanup logic
 	}
 

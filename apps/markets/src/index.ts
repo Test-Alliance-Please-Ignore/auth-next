@@ -4,9 +4,14 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 import { getStub } from '@repo/do-utils'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
+import {
+	checkTradeHubStatus,
+	setupTradeHubs,
+	stopAllTradeHubs,
+	TRADE_HUBS,
+} from '../scripts/setup-trade-hubs'
 import { v1Router } from './api/v1'
 import { MarketsDO } from './durable-object'
-import { checkTradeHubStatus, setupTradeHubs, stopAllTradeHubs, TRADE_HUBS } from '../scripts/setup-trade-hubs'
 
 import type { Markets } from '@repo/markets'
 import type { App } from './context'

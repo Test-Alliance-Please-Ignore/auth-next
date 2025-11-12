@@ -64,6 +64,11 @@
 				"script_name": "broadcasts"
 			},
 			{
+				"name": "DOCTRINES",
+				"class_name": "Doctrines",
+				"script_name": "doctrines"
+			},
+			{
 				"name": "FLEETS",
 				"class_name": "Fleets",
 				"script_name": "fleets"

@@ -5,9 +5,7 @@
 	"compatibility_date": "2025-04-28",
 	"compatibility_flags": ["nodejs_compat"],
 	"workers_dev": true,
-	"routes": [
-		"api.pleaseignore.app/v1/markets/*"
-	],
+	"routes": ["api.pleaseignore.app/v1/markets/*"],
 	"logpush": false,
 	"observability": {
 		"enabled": true

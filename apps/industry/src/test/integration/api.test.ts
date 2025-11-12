@@ -1,8 +1,11 @@
 import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:test'
 import { describe, expect, it } from 'vitest'
+
 import { getStub } from '@repo/do-utils'
-import type { Industry } from '@repo/industry'
+
 import worker from '../../index'
+
+import type { Industry } from '@repo/industry'
 
 describe('Industry Worker', () => {
 	it('responds to root endpoint', async () => {

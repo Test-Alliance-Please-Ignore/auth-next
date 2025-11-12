@@ -1,579 +1,572 @@
 {
-  "id": "3c44d52c-33c2-4ffc-936a-f565d65dcea6",
-  "prevId": "b03fdad2-e9aa-410a-b192-2b5853f0b508",
-  "version": "7",
-  "dialect": "postgresql",
-  "tables": {
-    "public.latest_market_prices": {
-      "name": "latest_market_prices",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "region_id": {
-          "name": "region_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "type_id": {
-          "name": "type_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "snapshot_id": {
-          "name": "snapshot_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "snapshot_time": {
-          "name": "snapshot_time",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "best_buy_price": {
-          "name": "best_buy_price",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "best_buy_order_id": {
-          "name": "best_buy_order_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "best_buy_location": {
-          "name": "best_buy_location",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "best_buy_volume": {
-          "name": "best_buy_volume",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "total_buy_volume": {
-          "name": "total_buy_volume",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'0'"
-        },
-        "buy_order_count": {
-          "name": "buy_order_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "best_sell_price": {
-          "name": "best_sell_price",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "best_sell_order_id": {
-          "name": "best_sell_order_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "best_sell_location": {
-          "name": "best_sell_location",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "best_sell_volume": {
-          "name": "best_sell_volume",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "total_sell_volume": {
-          "name": "total_sell_volume",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'0'"
-        },
-        "sell_order_count": {
-          "name": "sell_order_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "spread_amount": {
-          "name": "spread_amount",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "spread_percent": {
-          "name": "spread_percent",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "latest_prices_region_idx": {
-          "name": "latest_prices_region_idx",
-          "columns": [
-            {
-              "expression": "region_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "latest_prices_region_type_idx": {
-          "name": "latest_prices_region_type_idx",
-          "columns": [
-            {
-              "expression": "region_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "type_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "latest_prices_region_type_unique": {
-          "name": "latest_prices_region_type_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "region_id",
-            "type_id"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.market_orders": {
-      "name": "market_orders",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "snapshot_id": {
-          "name": "snapshot_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "region_id": {
-          "name": "region_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "snapshot_time": {
-          "name": "snapshot_time",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "order_id": {
-          "name": "order_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "type_id": {
-          "name": "type_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "location_id": {
-          "name": "location_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "system_id": {
-          "name": "system_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "price": {
-          "name": "price",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "volume_remain": {
-          "name": "volume_remain",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "volume_total": {
-          "name": "volume_total",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "min_volume": {
-          "name": "min_volume",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "is_buy_order": {
-          "name": "is_buy_order",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "duration": {
-          "name": "duration",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "issued": {
-          "name": "issued",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "range": {
-          "name": "range",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "market_orders_region_type_time_idx": {
-          "name": "market_orders_region_type_time_idx",
-          "columns": [
-            {
-              "expression": "region_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "type_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "snapshot_time",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "market_orders_region_type_buy_time_idx": {
-          "name": "market_orders_region_type_buy_time_idx",
-          "columns": [
-            {
-              "expression": "region_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "type_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "is_buy_order",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "snapshot_time",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "market_orders_snapshot_idx": {
-          "name": "market_orders_snapshot_idx",
-          "columns": [
-            {
-              "expression": "snapshot_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "market_orders_location_type_time_idx": {
-          "name": "market_orders_location_type_time_idx",
-          "columns": [
-            {
-              "expression": "location_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "type_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "snapshot_time",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "market_orders_order_snapshot_idx": {
-          "name": "market_orders_order_snapshot_idx",
-          "columns": [
-            {
-              "expression": "order_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "snapshot_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "market_orders_snapshot_id_market_snapshots_id_fk": {
-          "name": "market_orders_snapshot_id_market_snapshots_id_fk",
-          "tableFrom": "market_orders",
-          "tableTo": "market_snapshots",
-          "columnsFrom": [
-            "snapshot_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.market_snapshots": {
-      "name": "market_snapshots",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "region_id": {
-          "name": "region_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "snapshot_time": {
-          "name": "snapshot_time",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "order_count": {
-          "name": "order_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "error_message": {
-          "name": "error_message",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "fetch_duration_ms": {
-          "name": "fetch_duration_ms",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "market_snapshots_region_time_idx": {
-          "name": "market_snapshots_region_time_idx",
-          "columns": [
-            {
-              "expression": "region_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "snapshot_time",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "market_snapshots_region_status_time_idx": {
-          "name": "market_snapshots_region_status_time_idx",
-          "columns": [
-            {
-              "expression": "region_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "snapshot_time",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    }
-  },
-  "enums": {},
-  "schemas": {},
-  "sequences": {},
-  "roles": {},
-  "policies": {},
-  "views": {},
-  "_meta": {
-    "columns": {},
-    "schemas": {},
-    "tables": {}
-  }
+	"id": "3c44d52c-33c2-4ffc-936a-f565d65dcea6",
+	"prevId": "b03fdad2-e9aa-410a-b192-2b5853f0b508",
+	"version": "7",
+	"dialect": "postgresql",
+	"tables": {
+		"public.latest_market_prices": {
+			"name": "latest_market_prices",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "uuid",
+					"primaryKey": true,
+					"notNull": true,
+					"default": "gen_random_uuid()"
+				},
+				"region_id": {
+					"name": "region_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"type_id": {
+					"name": "type_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"snapshot_id": {
+					"name": "snapshot_id",
+					"type": "uuid",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"snapshot_time": {
+					"name": "snapshot_time",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"best_buy_price": {
+					"name": "best_buy_price",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"best_buy_order_id": {
+					"name": "best_buy_order_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"best_buy_location": {
+					"name": "best_buy_location",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"best_buy_volume": {
+					"name": "best_buy_volume",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"total_buy_volume": {
+					"name": "total_buy_volume",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "'0'"
+				},
+				"buy_order_count": {
+					"name": "buy_order_count",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"default": 0
+				},
+				"best_sell_price": {
+					"name": "best_sell_price",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"best_sell_order_id": {
+					"name": "best_sell_order_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"best_sell_location": {
+					"name": "best_sell_location",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"best_sell_volume": {
+					"name": "best_sell_volume",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"total_sell_volume": {
+					"name": "total_sell_volume",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "'0'"
+				},
+				"sell_order_count": {
+					"name": "sell_order_count",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"default": 0
+				},
+				"spread_amount": {
+					"name": "spread_amount",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"spread_percent": {
+					"name": "spread_percent",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"updated_at": {
+					"name": "updated_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
+				}
+			},
+			"indexes": {
+				"latest_prices_region_idx": {
+					"name": "latest_prices_region_idx",
+					"columns": [
+						{
+							"expression": "region_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": false,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				},
+				"latest_prices_region_type_idx": {
+					"name": "latest_prices_region_type_idx",
+					"columns": [
+						{
+							"expression": "region_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "type_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": false,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				}
+			},
+			"foreignKeys": {},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {
+				"latest_prices_region_type_unique": {
+					"name": "latest_prices_region_type_unique",
+					"nullsNotDistinct": false,
+					"columns": ["region_id", "type_id"]
+				}
+			},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.market_orders": {
+			"name": "market_orders",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "uuid",
+					"primaryKey": true,
+					"notNull": true,
+					"default": "gen_random_uuid()"
+				},
+				"snapshot_id": {
+					"name": "snapshot_id",
+					"type": "uuid",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"region_id": {
+					"name": "region_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"snapshot_time": {
+					"name": "snapshot_time",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"order_id": {
+					"name": "order_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"type_id": {
+					"name": "type_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"location_id": {
+					"name": "location_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"system_id": {
+					"name": "system_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"price": {
+					"name": "price",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"volume_remain": {
+					"name": "volume_remain",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"volume_total": {
+					"name": "volume_total",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"min_volume": {
+					"name": "min_volume",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"is_buy_order": {
+					"name": "is_buy_order",
+					"type": "boolean",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"duration": {
+					"name": "duration",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"issued": {
+					"name": "issued",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"range": {
+					"name": "range",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"created_at": {
+					"name": "created_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
+				}
+			},
+			"indexes": {
+				"market_orders_region_type_time_idx": {
+					"name": "market_orders_region_type_time_idx",
+					"columns": [
+						{
+							"expression": "region_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "type_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "snapshot_time",
+							"isExpression": false,
+							"asc": false,
+							"nulls": "last"
+						}
+					],
+					"isUnique": false,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				},
+				"market_orders_region_type_buy_time_idx": {
+					"name": "market_orders_region_type_buy_time_idx",
+					"columns": [
+						{
+							"expression": "region_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "type_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "is_buy_order",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "snapshot_time",
+							"isExpression": false,
+							"asc": false,
+							"nulls": "last"
+						}
+					],
+					"isUnique": false,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				},
+				"market_orders_snapshot_idx": {
+					"name": "market_orders_snapshot_idx",
+					"columns": [
+						{
+							"expression": "snapshot_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": false,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				},
+				"market_orders_location_type_time_idx": {
+					"name": "market_orders_location_type_time_idx",
+					"columns": [
+						{
+							"expression": "location_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "type_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "snapshot_time",
+							"isExpression": false,
+							"asc": false,
+							"nulls": "last"
+						}
+					],
+					"isUnique": false,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				},
+				"market_orders_order_snapshot_idx": {
+					"name": "market_orders_order_snapshot_idx",
+					"columns": [
+						{
+							"expression": "order_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "snapshot_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": false,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				}
+			},
+			"foreignKeys": {
+				"market_orders_snapshot_id_market_snapshots_id_fk": {
+					"name": "market_orders_snapshot_id_market_snapshots_id_fk",
+					"tableFrom": "market_orders",
+					"tableTo": "market_snapshots",
+					"columnsFrom": ["snapshot_id"],
+					"columnsTo": ["id"],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.market_snapshots": {
+			"name": "market_snapshots",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "uuid",
+					"primaryKey": true,
+					"notNull": true,
+					"default": "gen_random_uuid()"
+				},
+				"region_id": {
+					"name": "region_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"snapshot_time": {
+					"name": "snapshot_time",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"status": {
+					"name": "status",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"order_count": {
+					"name": "order_count",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"default": 0
+				},
+				"error_message": {
+					"name": "error_message",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"fetch_duration_ms": {
+					"name": "fetch_duration_ms",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"created_at": {
+					"name": "created_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
+				},
+				"updated_at": {
+					"name": "updated_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
+				}
+			},
+			"indexes": {
+				"market_snapshots_region_time_idx": {
+					"name": "market_snapshots_region_time_idx",
+					"columns": [
+						{
+							"expression": "region_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "snapshot_time",
+							"isExpression": false,
+							"asc": false,
+							"nulls": "last"
+						}
+					],
+					"isUnique": false,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				},
+				"market_snapshots_region_status_time_idx": {
+					"name": "market_snapshots_region_status_time_idx",
+					"columns": [
+						{
+							"expression": "region_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "status",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "snapshot_time",
+							"isExpression": false,
+							"asc": false,
+							"nulls": "last"
+						}
+					],
+					"isUnique": false,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				}
+			},
+			"foreignKeys": {},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		}
+	},
+	"enums": {},
+	"schemas": {},
+	"sequences": {},
+	"roles": {},
+	"policies": {},
+	"views": {},
+	"_meta": {
+		"columns": {},
+		"schemas": {},
+		"tables": {}
+	}
 }

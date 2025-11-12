@@ -2,8 +2,6 @@ import { Hono } from 'hono'
 
 import { and, desc, eq, ilike, inArray, isNotNull } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
-import type { EveCorporationData } from '@repo/eve-corporation-data'
-import type { Groups } from '@repo/groups'
 import { logger } from '@repo/hono-helpers'
 
 import {
@@ -16,6 +14,8 @@ import {
 import { requireAdmin, requireAuth } from '../middleware/session'
 import * as discordService from '../services/discord.service'
 
+import type { EveCorporationData } from '@repo/eve-corporation-data'
+import type { Groups } from '@repo/groups'
 import type { App } from '../context'
 
 const app = new Hono<App>()

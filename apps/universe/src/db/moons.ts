@@ -47,6 +47,10 @@ export const moonResources = pgTable(
 	(table) => ({
 		moonIdIdx: index('universe_moon_resources_moon_id_idx').on(table.moonId),
 		lookupIdx: index('universe_moon_resources_lookup_idx').on(table.productName, table.oreTypeId),
-		coveringIdx: index('universe_moon_resources_covering_idx').on(table.moonId, table.productName, table.quantity),
+		coveringIdx: index('universe_moon_resources_covering_idx').on(
+			table.moonId,
+			table.productName,
+			table.quantity
+		),
 	})
 )

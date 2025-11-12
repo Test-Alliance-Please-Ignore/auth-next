@@ -141,7 +141,9 @@ export function EditGroupDialog({
 						<Input
 							id="name"
 							value={formData.name}
-							onChange={(e) => setFormData({ ...formData, name: (e.target as HTMLInputElement).value })}
+							onChange={(e) =>
+								setFormData({ ...formData, name: (e.target as HTMLInputElement).value })
+							}
 							placeholder="Enter group name"
 							disabled={isSubmitting}
 						/>

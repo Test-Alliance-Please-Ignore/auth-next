@@ -14,8 +14,10 @@ import {
 } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
-import { useAwardDkp, useAwardDkpBulk, type AwardDkpRequest, type DkpSourceType } from '@/features/dkp'
+import { useAwardDkp, useAwardDkpBulk } from '@/features/dkp'
 import { usePageTitle } from '@/hooks/usePageTitle'
+
+import type { AwardDkpRequest, DkpSourceType } from '@/features/dkp'
 
 export default function DkpAwards() {
 	usePageTitle('Admin - Award DKP')
@@ -157,7 +159,10 @@ function SingleAwardForm() {
 							<Label htmlFor="sourceType">
 								Source Type <span className="text-destructive">*</span>
 							</Label>
-							<Select value={sourceType} onValueChange={(val) => setSourceType(val as DkpSourceType)}>
+							<Select
+								value={sourceType}
+								onValueChange={(val) => setSourceType(val as DkpSourceType)}
+							>
 								<SelectTrigger id="sourceType">
 									<SelectValue />
 								</SelectTrigger>
@@ -356,7 +361,10 @@ function BulkAwardForm() {
 					</div>
 
 					<div className="flex gap-2">
-						<Button type="submit" disabled={awardDkpBulkMutation.isPending || parsedAwards.length === 0}>
+						<Button
+							type="submit"
+							disabled={awardDkpBulkMutation.isPending || parsedAwards.length === 0}
+						>
 							{awardDkpBulkMutation.isPending
 								? 'Processing...'
 								: `Award DKP to ${parsedAwards.length} Characters`}

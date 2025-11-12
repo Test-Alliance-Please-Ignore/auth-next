@@ -1,8 +1,10 @@
 import { Card } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
+
 import { formatFullDate } from '../utils'
 import { PaymentStatusBadge } from './PaymentStatusBadge'
 import { RequestStatusBadge } from './RequestStatusBadge'
+
 import type { SRPHistoryResponse } from '../types'
 
 interface RequestHistoryProps {
@@ -37,12 +39,8 @@ export function RequestHistory({ history, className }: RequestHistoryProps) {
 						<div className="space-y-1">
 							<div className="flex items-center gap-2">
 								<span className="text-sm font-medium">{getActionLabel(entry.action)}</span>
-								{entry.newRequestStatus && (
-									<RequestStatusBadge status={entry.newRequestStatus} />
-								)}
-								{entry.newPaymentStatus && (
-									<PaymentStatusBadge status={entry.newPaymentStatus} />
-								)}
+								{entry.newRequestStatus && <RequestStatusBadge status={entry.newRequestStatus} />}
+								{entry.newPaymentStatus && <PaymentStatusBadge status={entry.newPaymentStatus} />}
 							</div>
 							<div className="text-xs text-muted-foreground">
 								{entry.actorCharacterName} · {formatFullDate(entry.timestamp)}

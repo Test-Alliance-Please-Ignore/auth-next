@@ -46,8 +46,9 @@ The Srp Durable Object is available to this worker via the `SRP` binding.
 ### From within this worker:
 
 ```typescript
-import type { Srp } from '@repo/srp'
 import { getStub } from '@repo/do-utils'
+
+import type { Srp } from '@repo/srp'
 
 // Get a stub to the Durable Object
 const stub = getStub<Srp>(c.env.SRP, 'unique-id')

@@ -753,7 +753,10 @@ export interface EveCorporationData {
 	 * @param corporationId - The corporation ID
 	 * @param wallets - Pre-fetched wallet data from ESI
 	 */
-	storeWallets(corporationId: string, wallets: Array<{ division: number; balance: number }>): Promise<void>
+	storeWallets(
+		corporationId: string,
+		wallets: Array<{ division: number; balance: number }>
+	): Promise<void>
 
 	/**
 	 * Store wallet journal entries (workflow-friendly)
@@ -769,7 +772,11 @@ export interface EveCorporationData {
 	 * @param division - Wallet division (1-7)
 	 * @param transactions - Pre-fetched transactions from ESI
 	 */
-	storeWalletTransactions(corporationId: string, division: number, transactions: any[]): Promise<void>
+	storeWalletTransactions(
+		corporationId: string,
+		division: number,
+		transactions: any[]
+	): Promise<void>
 
 	/**
 	 * Store assets (workflow-friendly)

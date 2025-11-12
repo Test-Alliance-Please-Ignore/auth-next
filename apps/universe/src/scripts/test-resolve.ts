@@ -30,10 +30,7 @@ async function main() {
 	console.log('Testing invFlags resolution:')
 	const testFlagIds = ['1', '87', '4', '999999'] // Last one doesn't exist
 
-	const flagResults = await db
-		.select()
-		.from(invFlags)
-		.where(inArray(invFlags.flagId, testFlagIds))
+	const flagResults = await db.select().from(invFlags).where(inArray(invFlags.flagId, testFlagIds))
 
 	console.log(`Requested IDs: ${testFlagIds.join(', ')}`)
 	console.log(`Found ${flagResults.length} flags:`)

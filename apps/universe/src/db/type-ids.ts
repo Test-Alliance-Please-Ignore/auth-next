@@ -40,18 +40,6 @@ export const allianceIds = pgTable(
 	]
 )
 
-export const typeIds = pgTable(
-	'universe_eve_type_ids',
-	{
-		typeId: text('type_id').primaryKey(),
-		typeName: text('type_name').notNull(),
-	},
-	(table) => [
-		index('universe_eve_type_ids_type_id_idx').on(table.typeId),
-		index('universe_eve_type_ids_type_name_idx').on(table.typeName),
-	]
-)
-
 export const invFlags = pgTable(
 	'universe_eve_inv_flags',
 	{
@@ -88,32 +76,45 @@ export const invGroups = pgTable(
 	]
 )
 
-export const invItems = pgTable(
-	'universe_eve_inv_items',
+export const invCategories = pgTable(
+	'universe_eve_inv_categories',
 	{
-		itemId: text('item_id').primaryKey(),
-		typeId: text('type_id').notNull(),
-		ownerId: text('owner_id').notNull(),
-		locationId: text('location_id').notNull(),
-		flagId: text('flag_id').notNull(),
-		quantity: text('quantity').notNull(), // Store as text to preserve large numbers
+		categoryId: text('category_id').primaryKey(),
+		categoryName: text('category_name').notNull(),
+		iconId: text('icon_id'),
+		published: boolean('published').notNull().default(false),
 	},
 	(table) => [
-		index('universe_eve_inv_items_item_id_idx').on(table.itemId),
-		index('universe_eve_inv_items_type_id_idx').on(table.typeId),
-		index('universe_eve_inv_items_owner_id_idx').on(table.ownerId),
-		index('universe_eve_inv_items_location_id_idx').on(table.locationId),
+		index('universe_eve_inv_categories_category_id_idx').on(table.categoryId),
+		index('universe_eve_inv_categories_category_name_idx').on(table.categoryName),
+		index('universe_eve_inv_categories_published_idx').on(table.published),
 	]
 )
 
-export const invNames = pgTable(
-	'universe_eve_inv_names',
+export const invTypes = pgTable(
+	'universe_eve_inv_types',
 	{
-		itemId: text('item_id').primaryKey(),
-		itemName: text('item_name').notNull(),
+		typeId: text('type_id').primaryKey(),
+		groupId: text('group_id').notNull(),
+		typeName: text('type_name').notNull(),
+		description: text('description').notNull(),
+		mass: text('mass').notNull(), // Store as text to preserve large numbers
+		volume: text('volume').notNull(),
+		capacity: text('capacity').notNull(),
+		portionSize: integer('portion_size').notNull(),
+		raceId: text('race_id'),
+		basePrice: text('base_price'),
+		published: boolean('published').notNull().default(false),
+		marketGroupId: text('market_group_id'),
+		iconId: text('icon_id'),
+		soundId: text('sound_id'),
+		graphicId: text('graphic_id').notNull(),
 	},
 	(table) => [
-		index('universe_eve_inv_names_item_id_idx').on(table.itemId),
-		index('universe_eve_inv_names_item_name_idx').on(table.itemName),
+		index('universe_eve_inv_types_type_id_idx').on(table.typeId),
+		index('universe_eve_inv_types_group_id_idx').on(table.groupId),
+		index('universe_eve_inv_types_type_name_idx').on(table.typeName),
+		index('universe_eve_inv_types_published_idx').on(table.published),
+		index('universe_eve_inv_types_market_group_id_idx').on(table.marketGroupId),
 	]
 )

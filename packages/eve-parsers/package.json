@@ -11,7 +11,9 @@
 		"test": "run-vitest"
 	},
 	"dependencies": {
-		"@repo/doctrines": "workspace:*"
+		"@repo/do-utils": "workspace:*",
+		"@repo/doctrines": "workspace:*",
+		"@repo/universe": "workspace:*"
 	},
 	"devDependencies": {
 		"@cloudflare/vitest-pool-workers": "0.9.12",

@@ -1,13 +1,14 @@
 import { WorkflowEntrypoint, WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
 
 import { getStub } from '@repo/do-utils'
-import * as esiFetch from '../services/esi-fetch'
-import { DirectorManager } from '../services/director-manager'
-import { createDb } from '../db'
 
-import type { Env } from '../context'
+import { createDb } from '../db'
+import { DirectorManager } from '../services/director-manager'
+import * as esiFetch from '../services/esi-fetch'
+
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
+import type { Env } from '../context'
 import type { SelectedDirector } from '../services/director-manager'
 
 /**
@@ -159,7 +160,11 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			},
 			async () => {
 				using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-				const data = await esiFetch.fetchMemberTracking(tokenStore, corporationId, director.characterId)
+				const data = await esiFetch.fetchMemberTracking(
+					tokenStore,
+					corporationId,
+					director.characterId
+				)
 				console.log('[Step] Member tracking fetched', { corporationId, count: data.length })
 				return data
 			}
@@ -222,9 +227,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 					})
 				)
 
-				const divisionResults = results
-					.filter((r) => r.status === 'fulfilled')
-					.map((r) => r.value)
+				const divisionResults = results.filter((r) => r.status === 'fulfilled').map((r) => r.value)
 				const totalEntries = divisionResults.reduce((sum, r) => sum + (r?.count || 0), 0)
 
 				return {
@@ -261,9 +264,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 					})
 				)
 
-				const divisionResults = results
-					.filter((r) => r.status === 'fulfilled')
-					.map((r) => r.value)
+				const divisionResults = results.filter((r) => r.status === 'fulfilled').map((r) => r.value)
 				const totalTransactions = divisionResults.reduce((sum, r) => sum + (r?.count || 0), 0)
 
 				return {
@@ -376,7 +377,11 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			},
 			async () => {
 				using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-				const data = await esiFetch.fetchIndustryJobs(tokenStore, corporationId, director.characterId)
+				const data = await esiFetch.fetchIndustryJobs(
+					tokenStore,
+					corporationId,
+					director.characterId
+				)
 				console.log('[Step] Industry jobs fetched', { corporationId, count: data.length })
 				return data
 			}

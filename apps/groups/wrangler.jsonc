@@ -25,6 +25,11 @@
 				"class_name": "Groups"
 			},
 			{
+				"name": "EVE_CHARACTER_DATA",
+				"class_name": "EveCharacterData",
+				"script_name": "eve-character-data"
+			},
+			{
 				"name": "NOTIFICATIONS",
 				"class_name": "Notifications",
 				"script_name": "notifications"

@@ -1,7 +1,7 @@
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { config } from 'dotenv'
 import { neon } from '@neondatabase/serverless'
+import { config } from 'dotenv'
 
 // Load .env from monorepo root
 const __dirname = dirname(fileURLToPath(import.meta.url))

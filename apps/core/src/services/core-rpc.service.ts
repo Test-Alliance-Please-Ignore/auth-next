@@ -172,10 +172,7 @@ export class CoreRpcService {
 		let discordStatus = null
 		if (user.discordUserId) {
 			try {
-				using discordStub = getStub<Discord>(
-					this.discordNamespace,
-					'default'
-				)
+				using discordStub = getStub<Discord>(this.discordNamespace, 'default')
 				const status = await discordStub.getDiscordUserStatus(userId)
 				if (status) {
 					discordStatus = {

@@ -27,9 +27,7 @@ export function calculateRoleChanges(params: {
 		? [...new Set([...currentRoleIds, ...requestedRoleIds])] // Merge + dedupe
 		: (() => {
 				// In normal mode: only remove managed roles, keep manually-assigned roles
-				const nonManagedRoles = currentRoleIds.filter(
-					(id) => !managedRoleIds.includes(id)
-				)
+				const nonManagedRoles = currentRoleIds.filter((id) => !managedRoleIds.includes(id))
 				return [...new Set([...nonManagedRoles, ...requestedRoleIds])]
 			})()
 

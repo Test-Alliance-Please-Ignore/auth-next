@@ -46,8 +46,9 @@ The Doctrines Durable Object is available to this worker via the `DOCTRINES` bin
 ### From within this worker:
 
 ```typescript
-import type { Doctrines } from '@repo/doctrines'
 import { getStub } from '@repo/do-utils'
+
+import type { Doctrines } from '@repo/doctrines'
 
 // Get a stub to the Durable Object
 const stub = getStub<Doctrines>(c.env.DOCTRINES, 'unique-id')

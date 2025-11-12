@@ -50,11 +50,12 @@ The maximum number of snapshots to retain can be configured in two ways:
 
 1. **Environment Variable** (Global Default):
    Set `MAX_SNAPSHOTS_PER_LOCATION` in `wrangler.jsonc`:
+
    ```jsonc
    {
      "vars": {
-       "MAX_SNAPSHOTS_PER_LOCATION": 168  // Default: 168 (1 week of hourly snapshots)
-     }
+       "MAX_SNAPSHOTS_PER_LOCATION": 168, // Default: 168 (1 week of hourly snapshots)
+     },
    }
    ```
 
@@ -64,13 +65,13 @@ The maximum number of snapshots to retain can be configured in two ways:
 
 ### Retention Recommendations
 
-| Use Case | Value | Retention Period |
-|----------|-------|------------------|
-| Default (1 week) | 168 | 7 days × 24 hours |
-| Development/Testing | 24 | 1 day |
-| High-frequency analysis | 336 | 2 weeks |
-| Long-term historical | 720 | 30 days |
-| Minimal storage | 48 | 2 days |
+| Use Case                | Value | Retention Period  |
+| ----------------------- | ----- | ----------------- |
+| Default (1 week)        | 168   | 7 days × 24 hours |
+| Development/Testing     | 24    | 1 day             |
+| High-frequency analysis | 336   | 2 weeks           |
+| Long-term historical    | 720   | 30 days           |
+| Minimal storage         | 48    | 2 days            |
 
 ### How It Works
 

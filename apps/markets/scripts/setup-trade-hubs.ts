@@ -79,7 +79,9 @@ async function setupTradeHubs(env: { MARKETS: DurableObjectNamespace }) {
 
 			if (status.isActive) {
 				const nextSnapshot = new Date(status.nextAlarmTime!)
-				console.log(`   ✅ Active - First snapshot in progress, next at: ${nextSnapshot.toISOString()}`)
+				console.log(
+					`   ✅ Active - First snapshot in progress, next at: ${nextSnapshot.toISOString()}`
+				)
 				results.push({ ...hub, status: 'success', nextSnapshot })
 			} else {
 				console.log(`   ⚠️  Started but alarm not active`)
@@ -88,7 +90,11 @@ async function setupTradeHubs(env: { MARKETS: DurableObjectNamespace }) {
 		} catch (error) {
 			console.error(`   ❌ Failed:`, error)
 			console.error(`   Stack:`, error instanceof Error ? error.stack : 'No stack')
-			results.push({ ...hub, status: 'error', error: error instanceof Error ? error.message : String(error) })
+			results.push({
+				...hub,
+				status: 'error',
+				error: error instanceof Error ? error.message : String(error),
+			})
 		}
 
 		console.log('')
@@ -145,7 +151,9 @@ async function stopAllTradeHubs(env: { MARKETS: DurableObjectNamespace }) {
 			await stub.stopHourlySnapshots(hub.regionId)
 			console.log(`✅ ${hub.name} - Stopped`)
 		} catch (error) {
-			console.error(`❌ ${hub.name} - Failed: ${error instanceof Error ? error.message : String(error)}`)
+			console.error(
+				`❌ ${hub.name} - Failed: ${error instanceof Error ? error.message : String(error)}`
+			)
 		}
 	}
 

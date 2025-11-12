@@ -20,12 +20,10 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import {
-	useCorporationLeaderboard,
-	useUserLeaderboard,
-	type DkpPeriod,
-} from '@/features/dkp'
+import { useCorporationLeaderboard, useUserLeaderboard } from '@/features/dkp'
 import { usePageTitle } from '@/hooks/usePageTitle'
+
+import type { DkpPeriod } from '@/features/dkp'
 
 export default function DkpLeaderboards() {
 	usePageTitle('Admin - DKP Leaderboards')
@@ -80,10 +78,13 @@ function UserLeaderboard() {
 					<div className="flex gap-4 items-end">
 						<div className="flex-1 max-w-xs space-y-2">
 							<label className="text-sm font-medium">Time Period</label>
-							<Select value={period} onValueChange={(val) => {
-								setPeriod(val as DkpPeriod)
-								setPage(0)
-							}}>
+							<Select
+								value={period}
+								onValueChange={(val) => {
+									setPeriod(val as DkpPeriod)
+									setPage(0)
+								}}
+							>
 								<SelectTrigger>
 									<SelectValue />
 								</SelectTrigger>
@@ -110,9 +111,7 @@ function UserLeaderboard() {
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
-					{error && (
-						<p className="text-destructive">Failed to load leaderboard: {error.message}</p>
-					)}
+					{error && <p className="text-destructive">Failed to load leaderboard: {error.message}</p>}
 
 					{isLoading && (
 						<div className="space-y-2">
@@ -238,10 +237,13 @@ function CorporationLeaderboard() {
 					<div className="flex gap-4 items-end">
 						<div className="flex-1 max-w-xs space-y-2">
 							<label className="text-sm font-medium">Time Period</label>
-							<Select value={period} onValueChange={(val) => {
-								setPeriod(val as DkpPeriod)
-								setPage(0)
-							}}>
+							<Select
+								value={period}
+								onValueChange={(val) => {
+									setPeriod(val as DkpPeriod)
+									setPage(0)
+								}}
+							>
 								<SelectTrigger>
 									<SelectValue />
 								</SelectTrigger>
@@ -268,9 +270,7 @@ function CorporationLeaderboard() {
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
-					{error && (
-						<p className="text-destructive">Failed to load leaderboard: {error.message}</p>
-					)}
+					{error && <p className="text-destructive">Failed to load leaderboard: {error.message}</p>}
 
 					{isLoading && (
 						<div className="space-y-2">

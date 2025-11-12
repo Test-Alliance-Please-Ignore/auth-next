@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+
 import { desc, eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
@@ -6,8 +7,8 @@ import { createDb } from '../../db'
 import { marketSnapshots } from '../../db/schema'
 import { validateEntityId } from '../../utils/validation'
 
-import type { App } from '../../context'
 import type { Markets } from '@repo/markets'
+import type { App } from '../../context'
 
 const refreshRouter = new Hono<App>()
 
@@ -73,7 +74,9 @@ refreshRouter.get('/:locationId/refresh', async (c) => {
 				locationId,
 				locationType: latestSnapshot.locationType,
 				isActive: alarmStatus.isActive,
-				nextRefreshTime: alarmStatus.nextAlarmTime ? new Date(alarmStatus.nextAlarmTime).toISOString() : null,
+				nextRefreshTime: alarmStatus.nextAlarmTime
+					? new Date(alarmStatus.nextAlarmTime).toISOString()
+					: null,
 				nextRefreshTimestamp: alarmStatus.nextAlarmTime,
 				lastSnapshotTime: latestSnapshot.snapshotTime.toISOString(),
 				lastSnapshotStatus: latestSnapshot.status,

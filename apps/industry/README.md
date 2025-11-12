@@ -46,8 +46,9 @@ The Industry Durable Object is available to this worker via the `INDUSTRY` bindi
 ### From within this worker:
 
 ```typescript
-import type { Industry } from '@repo/industry'
 import { getStub } from '@repo/do-utils'
+
+import type { Industry } from '@repo/industry'
 
 // Get a stub to the Durable Object
 const stub = getStub<Industry>(c.env.INDUSTRY, 'unique-id')

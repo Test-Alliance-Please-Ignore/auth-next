@@ -7,8 +7,9 @@ Shared types and interfaces for the Universe Durable Object.
 Import this package in any worker that needs to interact with the Universe Durable Object:
 
 ```typescript
-import type { Universe } from '@repo/universe'
 import { getStub } from '@repo/do-utils'
+
+import type { Universe } from '@repo/universe'
 
 // Get a typed stub to the Durable Object
 const stub = getStub<Universe>(env.UNIVERSE, 'unique-id')

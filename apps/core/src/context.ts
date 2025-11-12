@@ -1,15 +1,12 @@
-import type { createDb } from './db'
 import type { AdminWorker as IAdminWorker } from '@repo/admin'
-import type { Bills } from '@repo/bills'
-import type { Broadcasts } from '@repo/broadcasts'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Groups } from '@repo/groups'
 import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
-import type { Hr } from '@repo/hr'
 import type { Notifications } from '@repo/notifications'
 import type { Skills } from '@repo/skills'
+import type { createDb } from './db'
 
 export type Env = SharedHonoEnv & {
 	DATABASE_URL: string
@@ -31,6 +28,8 @@ export type Env = SharedHonoEnv & {
 	BILLS: DurableObjectNamespace
 	/** Broadcasts Durable Object binding */
 	BROADCASTS: DurableObjectNamespace
+	/** Doctrines Durable Object binding */
+	DOCTRINES: DurableObjectNamespace
 	/** Fleets Durable Object binding */
 	FLEETS: DurableObjectNamespace
 	/** Freight Durable Object binding */

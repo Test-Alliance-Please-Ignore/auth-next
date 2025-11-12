@@ -4,6 +4,7 @@
  */
 
 import { toast as sonnerToast } from 'sonner'
+
 import type { ExternalToast } from 'sonner'
 
 /**

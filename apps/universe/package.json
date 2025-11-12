@@ -15,14 +15,14 @@
 		"deploy": "run-wrangler-deploy",
 		"dev": "run-vite-dev",
 		"fix:workers-types": "run-wrangler-types",
+		"import:inv-categories": "tsx ./src/scripts/import-inv-categories.ts",
 		"import:inv-flags": "tsx ./src/scripts/import-inv-flags.ts",
 		"import:inv-groups": "tsx ./src/scripts/import-inv-groups.ts",
-		"import:inv-items": "tsx ./src/scripts/import-inv-items.ts",
-		"import:inv-names": "tsx ./src/scripts/import-inv-names.ts",
+		"import:inv-types": "tsx ./src/scripts/import-inv-types.ts",
 		"preview": "run-vite-preview",
-		"test:resolve": "tsx ./src/scripts/test-resolve.ts",
 		"tail": "run-wrangler-tail",
-		"test": "run-vitest"
+		"test": "run-vitest",
+		"test:resolve": "tsx ./src/scripts/test-resolve.ts"
 	},
 	"dependencies": {
 		"@neondatabase/serverless": "0.10.4",

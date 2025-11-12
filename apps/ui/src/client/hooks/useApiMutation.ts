@@ -3,8 +3,7 @@
  */
 
 import { useMutation } from '@tanstack/react-query'
-import type { UseMutationOptions, UseMutationResult } from '@tanstack/react-query'
-import toast from '../lib/toast'
+
 import {
 	AuthenticationError,
 	AuthorizationError,
@@ -13,6 +12,9 @@ import {
 	ServerError,
 	ValidationError,
 } from '../lib/api'
+import toast from '../lib/toast'
+
+import type { UseMutationOptions, UseMutationResult } from '@tanstack/react-query'
 
 /**
  * Format error message for display

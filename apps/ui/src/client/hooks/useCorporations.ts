@@ -23,6 +23,8 @@ export const corporationKeys = {
 	search: (query: string) => [...corporationKeys.all, 'search', query] as const,
 	directors: (corporationId: string) =>
 		[...corporationKeys.detail(corporationId), 'directors'] as const,
+	permissions: (corporationId: string) =>
+		[...corporationKeys.detail(corporationId), 'permissions'] as const,
 	public: () => ['corporations', 'public'] as const,
 }
 
@@ -380,6 +382,71 @@ export function useVerifyAllDirectors() {
 					refetchType: 'active',
 				}),
 			])
+		},
+	})
+}
+
+// ===== Corporation Permissions Hooks =====
+
+/**
+ * Fetch all permissions attached to a corporation
+ */
+export function useCorporationPermissions(corporationId: string) {
+	return useQuery({
+		queryKey: corporationKeys.permissions(corporationId),
+		queryFn: async () => {
+			const result = await api.getCorporationPermissions(corporationId)
+			return result.permissions
+		},
+		enabled: !!corporationId,
+		staleTime: 1000 * 60, // 1 minute
+	})
+}
+
+/**
+ * Attach a permission to a corporation (admin only)
+ */
+export function useAttachCorporationPermission() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: ({
+			corporationId,
+			permissionId,
+		}: {
+			corporationId: string
+			permissionId: string
+		}) => api.attachPermissionToCorporation(corporationId, permissionId),
+		onSuccess: (_, { corporationId }) => {
+			// Invalidate permissions list to show new permission
+			void queryClient.invalidateQueries({
+				queryKey: corporationKeys.permissions(corporationId),
+				refetchType: 'active',
+			})
+		},
+	})
+}
+
+/**
+ * Remove a permission from a corporation (admin only)
+ */
+export function useRemoveCorporationPermission() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: ({
+			corporationId,
+			permissionId,
+		}: {
+			corporationId: string
+			permissionId: string
+		}) => api.removePermissionFromCorporation(corporationId, permissionId),
+		onSuccess: (_, { corporationId }) => {
+			// Invalidate permissions list to remove deleted permission
+			void queryClient.invalidateQueries({
+				queryKey: corporationKeys.permissions(corporationId),
+				refetchType: 'active',
+			})
 		},
 	})
 }

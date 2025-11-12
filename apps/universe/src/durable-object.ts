@@ -11,7 +11,7 @@ import {
 } from '@repo/universe'
 
 import { createDb } from './db'
-import { invFlags, invGroups, invItems, invNames, moonResources, moons, typeIds } from './db/schema'
+import { invFlags, invGroups, invTypes, moonResources, moons } from './db/schema'
 
 import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
 import type {
@@ -23,8 +23,7 @@ import type {
 	EveStructureId,
 	InvFlag,
 	InvGroup,
-	InvItem,
-	InvName,
+	InvType,
 	Universe,
 	UniverseMoon,
 	UniverseMoonResource,
@@ -45,8 +44,8 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	private db: ReturnType<typeof createDb>
 	private invFlagsCache: LRUCache<InvFlag>
 	private invGroupsCache: LRUCache<InvGroup>
-	private invItemsCache: LRUCache<InvItem>
-	private invNamesCache: LRUCache<InvName>
+	private typeIdsCache: LRUCache<InvType> // Cache for type name -> full InvType object
+	private typeNamesCache: LRUCache<InvType> // Cache for type ID -> full InvType object
 
 	/**
 	 * Initialize the Durable Object
@@ -59,8 +58,8 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 		this.db = createDb(env.DATABASE_URL)
 		this.invFlagsCache = new LRUCache<InvFlag>(1000)
 		this.invGroupsCache = new LRUCache<InvGroup>(1000)
-		this.invItemsCache = new LRUCache<InvItem>(10000) // Larger cache for items
-		this.invNamesCache = new LRUCache<InvName>(10000) // Larger cache for names
+		this.typeIdsCache = new LRUCache<InvType>(10000) // Cache for type name -> full InvType object
+		this.typeNamesCache = new LRUCache<InvType>(10000) // Cache for type ID -> full InvType object
 	}
 
 	// ========================================================================
@@ -101,8 +100,8 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	private async findTypeIdByName(typeName: string) {
 		const [type] = await this.db
 			.select()
-			.from(typeIds)
-			.where(eq(typeIds.typeName, typeName))
+			.from(invTypes)
+			.where(eq(invTypes.typeName, typeName))
 			.limit(1)
 
 		return type?.typeId ?? null
@@ -415,98 +414,91 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	}
 
 	/**
-	 * Resolve multiple inventory items by their IDs
+	 * Resolve multiple type details by their names
 	 * Uses in-memory LRU cache to reduce database load
-	 * @param itemIds - Array of item IDs to resolve
-	 * @returns Record mapping item IDs to their data (null if not found)
+	 * Note: typeIds are the same as itemIds in EVE Online
+	 * @param typeNames - Array of type names to resolve
+	 * @returns Record mapping type names to their full type data (null if not found)
 	 */
-	async resolveInvItems(itemIds: string[]): Promise<Record<string, InvItem | null>> {
+	async resolveTypeIdsByNames(typeNames: string[]): Promise<Record<string, InvType | null>> {
 		try {
-			const result: Record<string, InvItem | null> = {}
+			const result: Record<string, InvType | null> = {}
 			const cacheMisses: string[] = []
 
-			// Check cache for each ID
-			for (const itemId of itemIds) {
-				const cached = this.invItemsCache.get(itemId)
+			// Check cache for each name
+			for (const typeName of typeNames) {
+				const cached = this.typeIdsCache.get(typeName)
 				if (cached !== undefined) {
-					result[itemId] = cached
+					result[typeName] = cached
 				} else {
-					cacheMisses.push(itemId)
+					cacheMisses.push(typeName)
 				}
 			}
 
 			// Fetch cache misses from database
 			if (cacheMisses.length > 0) {
-				const items = await this.db
+				const types = await this.db
 					.select()
-					.from(invItems)
-					.where(inArray(invItems.itemId, cacheMisses))
+					.from(invTypes)
+					.where(inArray(invTypes.typeName, cacheMisses))
 
 				// Update cache and result
-				for (const item of items) {
-					const invItem: InvItem = {
-						itemId: item.itemId,
-						typeId: item.typeId,
-						ownerId: item.ownerId,
-						locationId: item.locationId,
-						flagId: item.flagId,
-						quantity: item.quantity,
-					}
-					this.invItemsCache.set(item.itemId, invItem)
-					result[item.itemId] = invItem
+				for (const type of types) {
+					const invType: InvType = { ...type }
+					this.typeIdsCache.set(type.typeName, invType)
+					this.typeNamesCache.set(type.typeId, invType) // Also cache reverse mapping
+					result[type.typeName] = invType
 				}
 
 				// Mark not found items as null
-				for (const missedId of cacheMisses) {
-					if (!(missedId in result)) {
-						result[missedId] = null
+				for (const missedName of cacheMisses) {
+					if (!(missedName in result)) {
+						result[missedName] = null
 					}
 				}
 			}
 
 			return result
 		} catch (error) {
-			console.error('Failed to resolve invItems', error)
+			console.error('Failed to resolve type details', error)
 			throw error
 		}
 	}
 
 	/**
-	 * Resolve multiple inventory item names by their IDs
+	 * Resolve multiple type details by their IDs
 	 * Uses in-memory LRU cache to reduce database load
-	 * @param itemIds - Array of item IDs to resolve
-	 * @returns Record mapping item IDs to their names (null if not found)
+	 * @param typeIds - Array of type IDs to resolve
+	 * @returns Record mapping type IDs to their full type data (null if not found)
 	 */
-	async resolveInvNames(itemIds: string[]): Promise<Record<string, InvName | null>> {
+	async resolveTypeNamesByIds(typeIds: string[]): Promise<Record<string, InvType | null>> {
 		try {
-			const result: Record<string, InvName | null> = {}
+			const result: Record<string, InvType | null> = {}
 			const cacheMisses: string[] = []
 
 			// Check cache for each ID
-			for (const itemId of itemIds) {
-				const cached = this.invNamesCache.get(itemId)
+			for (const typeId of typeIds) {
+				const cached = this.typeNamesCache.get(typeId)
 				if (cached !== undefined) {
-					result[itemId] = cached
+					result[typeId] = cached
 				} else {
-					cacheMisses.push(itemId)
+					cacheMisses.push(typeId)
 				}
 			}
 
 			// Fetch cache misses from database
 			if (cacheMisses.length > 0) {
-				const names = await this.db
+				const types = await this.db
 					.select()
-					.from(invNames)
-					.where(inArray(invNames.itemId, cacheMisses))
+					.from(invTypes)
+					.where(inArray(invTypes.typeId, cacheMisses))
 
 				// Update cache and result
-				for (const name of names) {
-					const invName: InvName = {
-						itemId: name.itemId,
-						itemName: name.itemName,
-					}
-					this.invNamesCache.set(name.itemId, invName)
-					result[name.itemId] = invName
+				for (const type of types) {
+					const invType: InvType = { ...type }
+					this.typeNamesCache.set(type.typeId, invType)
+					this.typeIdsCache.set(type.typeName, invType) // Also cache reverse mapping
+					result[type.typeId] = invType
 				}
 
 				// Mark not found items as null
@@ -519,7 +511,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 
 			return result
 		} catch (error) {
-			console.error('Failed to resolve invNames', error)
+			console.error('Failed to resolve type details', error)
 			throw error
 		}
 	}

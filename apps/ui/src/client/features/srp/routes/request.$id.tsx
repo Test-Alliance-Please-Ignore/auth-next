@@ -1,3 +1,7 @@
+import { Copy } from 'lucide-react'
+import { Link, Navigate, useParams } from 'react-router-dom'
+import { toast } from 'sonner'
+
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
@@ -5,9 +9,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAuth } from '@/hooks/useAuth'
-import { Copy } from 'lucide-react'
-import { Link, Navigate, useParams } from 'react-router-dom'
-import { toast } from 'sonner'
+
 import { CommentForm } from '../components/CommentForm'
 import { CommentsList } from '../components/CommentsList'
 import { PaymentStatusBadge } from '../components/PaymentStatusBadge'

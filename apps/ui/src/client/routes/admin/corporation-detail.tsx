@@ -44,9 +44,12 @@ import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useBreadcrumb } from '@/hooks/useBreadcrumb'
 import {
+	useAttachCorporationPermission,
 	useCorporation,
 	useCorporationDataSummary,
+	useCorporationPermissions,
 	useFetchCorporationData,
+	useRemoveCorporationPermission,
 	useUpdateCorporation,
 	useVerifyCorporationAccess,
 } from '@/hooks/useCorporations'
@@ -61,6 +64,7 @@ import {
 } from '@/hooks/useDiscord'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useGlobalPermissions } from '@/hooks/usePermissions'
 
 import type { UpdateCorporationRequest } from '@/lib/api'
 
@@ -86,6 +90,13 @@ export default function CorporationDetailPage() {
 	const assignRole = useAssignRoleToCorporationServer()
 	const unassignRole = useUnassignRoleFromCorporationServer()
 
+	// Permission hooks
+	const { data: corporationPermissions = [], isLoading: permissionsLoading } =
+		useCorporationPermissions(corpId)
+	const { data: globalPermissions = [] } = useGlobalPermissions()
+	const attachPermission = useAttachCorporationPermission()
+	const removePermission = useRemoveCorporationPermission()
+
 	// Set breadcrumb
 	const { setCustomLabel, clearCustomLabel } = useBreadcrumb()
 	useEffect(() => {
@@ -109,6 +120,10 @@ export default function CorporationDetailPage() {
 		autoInvite: false,
 		autoAssignRoles: false,
 	})
+
+	// Permission UI state
+	const [showAttachPermissionDialog, setShowAttachPermissionDialog] = useState(false)
+	const [selectedPermissionId, setSelectedPermissionId] = useState('')
 
 	// Handlers for Discord servers
 	const handleAttachServer = async () => {
@@ -192,6 +207,35 @@ export default function CorporationDetailPage() {
 			showSuccess('Role unassigned successfully!')
 		} catch (error) {
 			showError(error instanceof Error ? error.message : 'Failed to unassign role')
+		}
+	}
+
+	// Handlers for permissions
+	const handleAttachPermission = async () => {
+		if (!selectedPermissionId) return
+
+		try {
+			await attachPermission.mutateAsync({
+				corporationId: corpId,
+				permissionId: selectedPermissionId,
+			})
+			setShowAttachPermissionDialog(false)
+			setSelectedPermissionId('')
+			showSuccess('Permission attached successfully!')
+		} catch (error) {
+			showError(error instanceof Error ? error.message : 'Failed to attach permission')
+		}
+	}
+
+	const handleRemovePermission = async (permissionId: string) => {
+		try {
+			await removePermission.mutateAsync({
+				corporationId: corpId,
+				permissionId,
+			})
+			showSuccess('Permission removed successfully!')
+		} catch (error) {
+			showError(error instanceof Error ? error.message : 'Failed to remove permission')
 		}
 	}
 
@@ -391,6 +435,7 @@ export default function CorporationDetailPage() {
 					<TabsTrigger value="config">Configuration</TabsTrigger>
 					<TabsTrigger value="data">Data Summary</TabsTrigger>
 					<TabsTrigger value="fetch">Fetch Data</TabsTrigger>
+					<TabsTrigger value="permissions">Permissions</TabsTrigger>
 				</TabsList>
 
 				{/* Configuration Tab */}
@@ -923,6 +968,119 @@ export default function CorporationDetailPage() {
 							</div>
 						</CardContent>
 					</Card>
+				</TabsContent>
+
+				{/* Permissions Tab */}
+				<TabsContent value="permissions" className="space-y-4">
+					<Card>
+						<CardHeader>
+							<div className="flex items-center justify-between">
+								<div>
+									<CardTitle>Corporation Permissions</CardTitle>
+									<CardDescription>
+										Manage permissions for all members of this corporation. Permissions are
+										automatically inherited by all corporation members.
+									</CardDescription>
+								</div>
+								<Button onClick={() => setShowAttachPermissionDialog(true)}>
+									<Plus className="mr-2 h-4 w-4" />
+									Attach Permission
+								</Button>
+							</div>
+						</CardHeader>
+						<CardContent>
+							{permissionsLoading ? (
+								<LoadingSpinner />
+							) : corporationPermissions.length === 0 ? (
+								<p className="text-sm text-muted-foreground">
+									No permissions attached to this corporation.
+								</p>
+							) : (
+								<div className="space-y-2">
+									{corporationPermissions.map((perm) => (
+										<Card key={perm.id} className="p-4">
+											<div className="flex items-start justify-between">
+												<div className="flex-1">
+													<div className="flex items-center gap-2">
+														<Shield className="h-4 w-4 text-muted-foreground" />
+														<h4 className="font-semibold">{perm.permission.name}</h4>
+													</div>
+													<p className="mt-1 text-sm text-muted-foreground">
+														{perm.permission.urn}
+													</p>
+													{perm.permission.description && (
+														<p className="mt-1 text-sm">{perm.permission.description}</p>
+													)}
+													{perm.permission.category && (
+														<div className="mt-2 inline-flex items-center rounded-md bg-muted px-2 py-1 text-xs">
+															{perm.permission.category.name}
+														</div>
+													)}
+													<p className="mt-2 text-xs text-muted-foreground">
+														Added {new Date(perm.createdAt).toLocaleDateString()}
+													</p>
+												</div>
+												<ConfirmButton
+													variant="ghost"
+													size="sm"
+													onConfirm={() => handleRemovePermission(perm.id)}
+													confirmText="Are you sure you want to remove this permission from the corporation?"
+												>
+													<Trash2 className="h-4 w-4" />
+												</ConfirmButton>
+											</div>
+										</Card>
+									))}
+								</div>
+							)}
+						</CardContent>
+					</Card>
+
+					{/* Attach Permission Dialog */}
+					<Dialog open={showAttachPermissionDialog} onOpenChange={setShowAttachPermissionDialog}>
+						<DialogContent>
+							<DialogHeader>
+								<DialogTitle>Attach Permission to Corporation</DialogTitle>
+								<DialogDescription>
+									Select a global permission to attach to this corporation. All members will
+									automatically inherit this permission.
+								</DialogDescription>
+							</DialogHeader>
+							<div className="space-y-4">
+								<div>
+									<Label htmlFor="permission">Permission</Label>
+									<select
+										id="permission"
+										className="mt-1.5 w-full rounded-md border border-input bg-background px-3 py-2"
+										value={selectedPermissionId}
+										onChange={(e) => setSelectedPermissionId(e.target.value)}
+									>
+										<option value="">Select a permission...</option>
+										{globalPermissions
+											.filter(
+												(gp) => !corporationPermissions.some((cp) => cp.permissionId === gp.id)
+											)
+											.map((perm) => (
+												<option key={perm.id} value={perm.id}>
+													{perm.name} ({perm.urn})
+												</option>
+											))}
+									</select>
+								</div>
+							</div>
+							<DialogFooter>
+								<CancelButton onClick={() => setShowAttachPermissionDialog(false)}>
+									Cancel
+								</CancelButton>
+								<ConfirmButton
+									onClick={handleAttachPermission}
+									disabled={!selectedPermissionId || attachPermission.isPending}
+								>
+									Attach Permission
+								</ConfirmButton>
+							</DialogFooter>
+						</DialogContent>
+					</Dialog>
 				</TabsContent>
 			</Tabs>
 		</div>

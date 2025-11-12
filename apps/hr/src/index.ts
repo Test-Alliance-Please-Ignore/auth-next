@@ -3,8 +3,8 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
-import { HrDO } from './durable-object'
 import { createDb } from './db'
+import { HrDO } from './durable-object'
 import { HrRoleService } from './services/hr-role.service'
 
 import type { App, Env } from './context'

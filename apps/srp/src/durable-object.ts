@@ -2,21 +2,20 @@ import { DurableObject } from 'cloudflare:workers'
 
 import { and, desc, eq, gte, inArray, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
-import type { EveCharacterData } from '@repo/eve-character-data'
-import {
-	generateKillmailUrl,
-	generatePaymentToken,
-	type LossWithSRPStatus,
-	type SRPCommentResponse,
-	type SRPConfigResponse,
-	type SRPRequestResponse,
-	type SRPStatsResponse,
-	type Srp,
-} from '@repo/srp'
+import { generateKillmailUrl, generatePaymentToken } from '@repo/srp'
 
 import { createDb } from './db'
 import { srpComments, srpConfig, srpRequestHistory, srpRequests } from './db/schema'
 
+import type { EveCharacterData } from '@repo/eve-character-data'
+import type {
+	LossWithSRPStatus,
+	Srp,
+	SRPCommentResponse,
+	SRPConfigResponse,
+	SRPRequestResponse,
+	SRPStatsResponse,
+} from '@repo/srp'
 import type { Env } from './context'
 
 /**
@@ -136,11 +135,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 	/**
 	 * Get all requests for a user
 	 */
-	async getUserRequests(
-		userId: string,
-		limit = 50,
-		offset = 0
-	): Promise<SRPRequestResponse[]> {
+	async getUserRequests(userId: string, limit = 50, offset = 0): Promise<SRPRequestResponse[]> {
 		const requests = await this.db.query.srpRequests.findMany({
 			where: eq(srpRequests.userId, userId),
 			orderBy: desc(srpRequests.createdAt),
@@ -439,7 +434,11 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 	/**
 	 * Edit a comment
 	 */
-	async editComment(commentId: string, userId: string, content: string): Promise<SRPCommentResponse> {
+	async editComment(
+		commentId: string,
+		userId: string,
+		content: string
+	): Promise<SRPCommentResponse> {
 		const comment = await this.db.query.srpComments.findFirst({
 			where: eq(srpComments.id, commentId),
 		})
@@ -643,8 +642,10 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 				maxPayoutAmount: updates.maxPayoutAmount || current?.maxPayoutAmount || null,
 				minShipValue: updates.minShipValue || current?.minShipValue || '0',
 				autoApprovalEnabled: updates.autoApprovalEnabled ?? current?.autoApprovalEnabled ?? false,
-				autoApprovalThreshold: updates.autoApprovalThreshold || current?.autoApprovalThreshold || null,
-				eligibleCorporationIds: updates.eligibleCorporationIds || current?.eligibleCorporationIds || null,
+				autoApprovalThreshold:
+					updates.autoApprovalThreshold || current?.autoApprovalThreshold || null,
+				eligibleCorporationIds:
+					updates.eligibleCorporationIds || current?.eligibleCorporationIds || null,
 				rejectionReasons: updates.rejectionReasons || current?.rejectionReasons || [],
 				metadata: updates.metadata || current?.metadata || {},
 				createdBy: userId,
@@ -658,7 +659,11 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 	/**
 	 * Get SRP statistics
 	 */
-	async getStats(startDate?: string, endDate?: string, corporationId?: string): Promise<SRPStatsResponse> {
+	async getStats(
+		startDate?: string,
+		endDate?: string,
+		corporationId?: string
+	): Promise<SRPStatsResponse> {
 		// TODO: Implement comprehensive statistics
 		// This is a placeholder implementation
 		return {

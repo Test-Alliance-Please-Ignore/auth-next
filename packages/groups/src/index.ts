@@ -1,17 +1,8 @@
-/**
- * @repo/groups
- *
- * Shared types and interfaces for the Groups Durable Object.
- * This package allows other workers to interact with the Durable Object via RPC.
- */
-
-/**
- * Re-export permission types
- */
-export * from './permissions'
-
 import type {
 	AttachPermissionRequest,
+	AttachPermissionToCorporationRequest,
+	CorporationPermission,
+	CorporationPermissionWithDetails,
 	CreateGroupScopedPermissionRequest,
 	CreatePermissionCategoryRequest,
 	CreatePermissionRequest,
@@ -26,6 +17,18 @@ import type {
 	UpdatePermissionRequest,
 	UserPermission,
 } from './permissions'
+
+/**
+ * @repo/groups
+ *
+ * Shared types and interfaces for the Groups Durable Object.
+ * This package allows other workers to interact with the Durable Object via RPC.
+ */
+
+/**
+ * Re-export permission types
+ */
+export * from './permissions'
 
 /**
  * Enums matching database schema
@@ -301,7 +304,12 @@ export interface Groups {
 	getGroup(id: string, userId: string, isAdmin: boolean): Promise<GroupWithDetails | null>
 
 	/** Update a group (owner or site admin) */
-	updateGroup(id: string, data: UpdateGroupRequest, userId: string, isAdmin?: boolean): Promise<Group>
+	updateGroup(
+		id: string,
+		data: UpdateGroupRequest,
+		userId: string,
+		isAdmin?: boolean
+	): Promise<Group>
 
 	/** Delete a group (owner or site admin) */
 	deleteGroup(id: string, userId: string, isAdmin?: boolean): Promise<void>
@@ -497,10 +505,7 @@ export interface Groups {
 	 */
 
 	/** Create a global permission (admin only) */
-	createPermission(
-		data: CreatePermissionRequest,
-		adminUserId: string
-	): Promise<Permission>
+	createPermission(data: CreatePermissionRequest, adminUserId: string): Promise<Permission>
 
 	/** List all global permissions */
 	listPermissions(categoryId?: string): Promise<PermissionWithDetails[]>
@@ -535,10 +540,7 @@ export interface Groups {
 	): Promise<GroupPermissionWithDetails>
 
 	/** List permissions attached to a group (admin only) */
-	listGroupPermissions(
-		groupId: string,
-		adminUserId: string
-	): Promise<GroupPermissionWithDetails[]>
+	listGroupPermissions(groupId: string, adminUserId: string): Promise<GroupPermissionWithDetails[]>
 
 	/** Update a group permission (admin only) */
 	updateGroupPermission(
@@ -558,12 +560,32 @@ export interface Groups {
 	getUserPermissions(userId: string): Promise<UserPermission[]>
 
 	/** Get permissions for all members of a specific group */
-	getGroupMemberPermissions(
-		groupId: string
-	): Promise<GetGroupMemberPermissionsResponse>
+	getGroupMemberPermissions(groupId: string): Promise<GetGroupMemberPermissionsResponse>
 
 	/** Get permissions for all members across multiple groups */
 	getMultiGroupMemberPermissions(
 		groupIds: string[]
 	): Promise<GetMultiGroupMemberPermissionsResponse>
+
+	/**
+	 * Corporation Permission Operations
+	 */
+
+	/** Attach a global permission to a corporation (admin only) */
+	attachPermissionToCorporation(
+		data: AttachPermissionToCorporationRequest,
+		adminUserId: string
+	): Promise<CorporationPermissionWithDetails>
+
+	/** List permissions attached to a corporation */
+	listCorporationPermissions(corporationId: string): Promise<CorporationPermissionWithDetails[]>
+
+	/** Remove a permission from a corporation (admin only) */
+	removePermissionFromCorporation(
+		corporationPermissionId: string,
+		adminUserId: string
+	): Promise<void>
+
+	/** Get all permissions for a character based on their corporation membership */
+	getCharacterPermissions(characterId: string): Promise<UserPermission[]>
 }

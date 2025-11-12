@@ -1248,8 +1248,12 @@ export default function GroupDetailPage() {
 									Once you delete a group, there is no going back. This will permanently delete:
 								</p>
 								<ul className="text-sm text-muted-foreground list-disc list-inside space-y-1 mt-2">
-									<li>All {memberCount} member{memberCount !== 1 ? 's' : ''}</li>
-									<li>All {adminCount} admin{adminCount !== 1 ? 's' : ''}</li>
+									<li>
+										All {memberCount} member{memberCount !== 1 ? 's' : ''}
+									</li>
+									<li>
+										All {adminCount} admin{adminCount !== 1 ? 's' : ''}
+									</li>
 									<li>All pending invitations and join requests</li>
 									<li>All invite codes</li>
 									<li>All Discord server attachments</li>
@@ -1421,8 +1425,8 @@ export default function GroupDetailPage() {
 					<DialogHeader>
 						<DialogTitle>Delete Group</DialogTitle>
 						<DialogDescription>
-							This action cannot be undone. This will permanently delete the group and all associated
-							data.
+							This action cannot be undone. This will permanently delete the group and all
+							associated data.
 						</DialogDescription>
 					</DialogHeader>
 					<div className="space-y-4 py-4">
@@ -1444,8 +1448,12 @@ export default function GroupDetailPage() {
 								permanently remove:
 							</p>
 							<ul className="text-sm text-muted-foreground list-disc list-inside mt-2 space-y-1">
-								<li>{memberCount} member{memberCount !== 1 ? 's' : ''}</li>
-								<li>{adminCount} admin{adminCount !== 1 ? 's' : ''}</li>
+								<li>
+									{memberCount} member{memberCount !== 1 ? 's' : ''}
+								</li>
+								<li>
+									{adminCount} admin{adminCount !== 1 ? 's' : ''}
+								</li>
 								<li>All invitations, join requests, and invite codes</li>
 								<li>All Discord server attachments and role assignments</li>
 								<li>All permissions</li>

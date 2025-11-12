@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom'
+
 import { Button } from '@/components/ui/button'
 import {
 	Table,
@@ -7,10 +9,11 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
-import { Link } from 'react-router-dom'
+
 import { formatISK, formatRelativeTime } from '../utils'
 import { PaymentStatusBadge } from './PaymentStatusBadge'
 import { RequestStatusBadge } from './RequestStatusBadge'
+
 import type { SRPRequestResponse } from '../types'
 
 interface RequestTableProps {
@@ -46,12 +49,8 @@ export function RequestTable({ requests, isLoading, showPagination }: RequestTab
 						<TableHead className="font-bold text-foreground">Ship</TableHead>
 						<TableHead className="font-bold text-foreground">Character</TableHead>
 						<TableHead className="font-bold text-foreground">Date</TableHead>
-						<TableHead className="text-right font-bold text-foreground">
-							Requested
-						</TableHead>
-						<TableHead className="text-right font-bold text-foreground">
-							Approved
-						</TableHead>
+						<TableHead className="text-right font-bold text-foreground">Requested</TableHead>
+						<TableHead className="text-right font-bold text-foreground">Approved</TableHead>
 						<TableHead className="font-bold text-foreground">Status</TableHead>
 						<TableHead className="font-bold text-foreground">Payment</TableHead>
 						<TableHead className="text-right font-bold text-foreground">Actions</TableHead>
@@ -63,14 +62,11 @@ export function RequestTable({ requests, isLoading, showPagination }: RequestTab
 							key={request.id}
 							className="border-b border-border/40 transition-colors hover:bg-primary/5"
 							style={{
-								background:
-									index % 2 === 0 ? 'transparent' : 'hsl(var(--muted) / 0.15)',
+								background: index % 2 === 0 ? 'transparent' : 'hsl(var(--muted) / 0.15)',
 							}}
 						>
 							<TableCell className="font-semibold">{request.shipTypeName}</TableCell>
-							<TableCell className="text-sm font-medium">
-								{request.characterName}
-							</TableCell>
+							<TableCell className="text-sm font-medium">{request.characterName}</TableCell>
 							<TableCell className="text-sm text-muted-foreground">
 								{formatRelativeTime(request.createdAt)}
 							</TableCell>

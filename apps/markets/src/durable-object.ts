@@ -2,23 +2,23 @@ import { DurableObject } from 'cloudflare:workers'
 
 import { and, desc, eq, gt, inArray, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
+import { GetRegionMarketDataResponseObjectSchema } from '@repo/markets'
 
 import { createDb } from './db'
 import { apiKeys, latestMarketPrices, marketOrders, marketSnapshots } from './db/schema'
 
+import type { DbClientWs } from '@repo/db-utils'
 import type { EveTokenStore } from '@repo/eve-token-store'
-import {
-	GetRegionMarketDataResponseObjectSchema,
-	type GetBatchMarketDataInput,
-	type GetBatchMarketDataResponse,
-	type GetRegionMarketDataInput,
-	type GetRegionMarketDataResponse,
-	type GetRegionMarketDataResponseObject,
-	type LatestMarketPrice,
-	type Markets,
+import type {
+	GetBatchMarketDataInput,
+	GetBatchMarketDataResponse,
+	GetRegionMarketDataInput,
+	GetRegionMarketDataResponse,
+	GetRegionMarketDataResponseObject,
+	LatestMarketPrice,
+	Markets,
 } from '@repo/markets'
 import type { Env } from './context'
-import type { DbClientWs } from '@repo/db-utils'
 
 const schema = { apiKeys, latestMarketPrices, marketOrders, marketSnapshots }
 
@@ -67,9 +67,9 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 	 */
 	private getMaxSnapshots(): number {
 		// Query SQLite config for override
-		const config = this.state.storage.sql.exec<{ max_snapshots: number | null }>(
-			'SELECT max_snapshots FROM config WHERE id = 1'
-		).toArray()[0]
+		const config = this.state.storage.sql
+			.exec<{ max_snapshots: number | null }>('SELECT max_snapshots FROM config WHERE id = 1')
+			.toArray()[0]
 
 		// Use config if set, otherwise fall back to env var
 		if (config?.max_snapshots !== null && config?.max_snapshots !== undefined) {
@@ -84,17 +84,24 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 	 * Clean up old snapshots that exceed the maximum retention limit
 	 * Implements ring buffer behavior by deleting oldest snapshots
 	 */
-	private async cleanupOldSnapshots(locationId: string, locationType: 'region' | 'structure'): Promise<void> {
+	private async cleanupOldSnapshots(
+		locationId: string,
+		locationType: 'region' | 'structure'
+	): Promise<void> {
 		try {
 			const maxSnapshots = this.getMaxSnapshots()
 
 			// Skip cleanup if max is 0 or negative
 			if (maxSnapshots <= 0) {
-				console.warn(`[cleanupOldSnapshots] Skipping cleanup - invalid maxSnapshots: ${maxSnapshots}`)
+				console.warn(
+					`[cleanupOldSnapshots] Skipping cleanup - invalid maxSnapshots: ${maxSnapshots}`
+				)
 				return
 			}
 
-			console.log(`[cleanupOldSnapshots] Checking snapshots for ${locationType} ${locationId} (max: ${maxSnapshots})`)
+			console.log(
+				`[cleanupOldSnapshots] Checking snapshots for ${locationType} ${locationId} (max: ${maxSnapshots})`
+			)
 
 			// Count total complete snapshots for this location
 			const [countResult] = await this.db
@@ -125,7 +132,7 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 			const snapshotsToDelete = await this.db
 				.select({
 					id: marketSnapshots.id,
-					snapshotTime: marketSnapshots.snapshotTime
+					snapshotTime: marketSnapshots.snapshotTime,
 				})
 				.from(marketSnapshots)
 				.where(
@@ -143,7 +150,7 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 				return
 			}
 
-			const snapshotIds = snapshotsToDelete.map(s => s.id)
+			const snapshotIds = snapshotsToDelete.map((s) => s.id)
 			const oldestTime = snapshotsToDelete[0].snapshotTime
 			const newestTime = snapshotsToDelete[snapshotsToDelete.length - 1].snapshotTime
 
@@ -152,9 +159,7 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 			)
 
 			// Delete the snapshots (CASCADE will handle market_orders)
-			await this.db
-				.delete(marketSnapshots)
-				.where(inArray(marketSnapshots.id, snapshotIds))
+			await this.db.delete(marketSnapshots).where(inArray(marketSnapshots.id, snapshotIds))
 
 			// Cleanup orphaned latest_market_prices records
 			const deletedPrices = await this.db
@@ -164,7 +169,6 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 			console.log(
 				`[cleanupOldSnapshots] SUCCESS - Deleted ${snapshotIds.length} snapshots and associated data`
 			)
-
 		} catch (error) {
 			// Log error but don't throw - cleanup is non-critical
 			console.error(`[cleanupOldSnapshots] ERROR during cleanup:`, error)
@@ -214,7 +218,10 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 		}
 
 		// Query orders from database
-		const conditions = [eq(marketOrders.sourceLocationId, regionId), eq(marketOrders.sourceLocationType, 'region')]
+		const conditions = [
+			eq(marketOrders.sourceLocationId, regionId),
+			eq(marketOrders.sourceLocationType, 'region'),
+		]
 
 		if (typeId) {
 			conditions.push(eq(marketOrders.typeId, typeId))
@@ -387,12 +394,9 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 			console.log(`[fetchAndStoreSnapshot] Getting token store stub`)
 			using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 			console.log(`[fetchAndStoreSnapshot] Calling fetchPublicEsiAllPagesStream`)
-			const stream = await tokenStore.fetchPublicEsiAllPagesStream(
-				`/markets/${regionId}/orders`,
-				{
-					maxConcurrent: 10,
-				}
-			)
+			const stream = await tokenStore.fetchPublicEsiAllPagesStream(`/markets/${regionId}/orders`, {
+				maxConcurrent: 10,
+			})
 			console.log(`[fetchAndStoreSnapshot] Stream received, starting to read`)
 
 			// Decode stream as text
@@ -462,7 +466,9 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 
 			// Insert remaining orders
 			if (ordersToInsert.length > 0) {
-				console.log(`[fetchAndStoreSnapshot] Inserting final batch of ${ordersToInsert.length} orders`)
+				console.log(
+					`[fetchAndStoreSnapshot] Inserting final batch of ${ordersToInsert.length} orders`
+				)
 				await this.db.insert(marketOrders).values(ordersToInsert)
 			}
 
@@ -470,7 +476,9 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 
 			// Mark snapshot as complete
 			const fetchDurationMs = Date.now() - startTime
-			console.log(`[fetchAndStoreSnapshot] Marking snapshot complete (duration: ${fetchDurationMs}ms)`)
+			console.log(
+				`[fetchAndStoreSnapshot] Marking snapshot complete (duration: ${fetchDurationMs}ms)`
+			)
 			await this.db
 				.update(marketSnapshots)
 				.set({
@@ -486,7 +494,9 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 				console.log(`[fetchAndStoreSnapshot] Refreshing materialized view`)
 				await this.refreshLatestPrices(snapshot.id)
 			} else {
-				console.log(`[fetchAndStoreSnapshot] Skipping materialized view refresh (will be done on next alarm)`)
+				console.log(
+					`[fetchAndStoreSnapshot] Skipping materialized view refresh (will be done on next alarm)`
+				)
 			}
 			console.log(`[fetchAndStoreSnapshot] SUCCESS - Snapshot complete for region ${regionId}`)
 
@@ -516,7 +526,11 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 	 * @param structureId - EVE structure ID to fetch market data for
 	 * @param characterId - Character ID for authentication
 	 */
-	private async fetchAndStoreStructureSnapshot(structureId: string, characterId: string, skipRefresh = false): Promise<void> {
+	private async fetchAndStoreStructureSnapshot(
+		structureId: string,
+		characterId: string,
+		skipRefresh = false
+	): Promise<void> {
 		console.log(`[fetchAndStoreStructureSnapshot] Starting for structure ${structureId}`)
 		const startTime = Date.now()
 
@@ -545,7 +559,9 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 				characterId
 			)
 
-			console.log(`[fetchAndStoreStructureSnapshot] Response received, processing ${response.data.length} orders`)
+			console.log(
+				`[fetchAndStoreStructureSnapshot] Response received, processing ${response.data.length} orders`
+			)
 
 			// Process and insert orders in batches
 			let ordersToInsert: Array<typeof marketOrders.$inferInsert> = []
@@ -592,7 +608,9 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 
 			// Insert remaining orders
 			if (ordersToInsert.length > 0) {
-				console.log(`[fetchAndStoreStructureSnapshot] Inserting final batch of ${ordersToInsert.length} orders`)
+				console.log(
+					`[fetchAndStoreStructureSnapshot] Inserting final batch of ${ordersToInsert.length} orders`
+				)
 				await this.db.insert(marketOrders).values(ordersToInsert)
 			}
 
@@ -600,7 +618,9 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 
 			// Mark snapshot as complete
 			const fetchDurationMs = Date.now() - startTime
-			console.log(`[fetchAndStoreStructureSnapshot] Marking snapshot complete (duration: ${fetchDurationMs}ms)`)
+			console.log(
+				`[fetchAndStoreStructureSnapshot] Marking snapshot complete (duration: ${fetchDurationMs}ms)`
+			)
 			await this.db
 				.update(marketSnapshots)
 				.set({
@@ -616,9 +636,13 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 				console.log(`[fetchAndStoreStructureSnapshot] Refreshing materialized view`)
 				await this.refreshLatestPrices(snapshot.id)
 			} else {
-				console.log(`[fetchAndStoreStructureSnapshot] Skipping materialized view refresh (will be done on next alarm)`)
+				console.log(
+					`[fetchAndStoreStructureSnapshot] Skipping materialized view refresh (will be done on next alarm)`
+				)
 			}
-			console.log(`[fetchAndStoreStructureSnapshot] SUCCESS - Snapshot complete for structure ${structureId}`)
+			console.log(
+				`[fetchAndStoreStructureSnapshot] SUCCESS - Snapshot complete for structure ${structureId}`
+			)
 
 			// Clean up old snapshots (non-blocking)
 			await this.cleanupOldSnapshots(structureId, 'structure')
@@ -657,7 +681,11 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 			throw new Error(`Snapshot ${snapshotId} not found`)
 		}
 
-		console.log(`[refreshLatestPrices] Snapshot found:`, { locationId: snapshot.locationId, locationType: snapshot.locationType, snapshotTime: snapshot.snapshotTime })
+		console.log(`[refreshLatestPrices] Snapshot found:`, {
+			locationId: snapshot.locationId,
+			locationType: snapshot.locationType,
+			snapshotTime: snapshot.snapshotTime,
+		})
 
 		// Get all unique type IDs in this snapshot
 		const types = await this.db
@@ -666,7 +694,10 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 			.where(eq(marketOrders.snapshotId, snapshotId))
 
 		console.log(`[refreshLatestPrices] Found ${types.length} unique type IDs`)
-		console.log(`[refreshLatestPrices] First 10 type IDs:`, types.slice(0, 10).map(t => t.typeId))
+		console.log(
+			`[refreshLatestPrices] First 10 type IDs:`,
+			types.slice(0, 10).map((t) => t.typeId)
+		)
 
 		// Process each type ID
 		let processedCount = 0
@@ -815,7 +846,9 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 			}
 		}
 
-		console.log(`[refreshLatestPrices] COMPLETE - Processed ${processedCount} types for location ${snapshot.locationId}`)
+		console.log(
+			`[refreshLatestPrices] COMPLETE - Processed ${processedCount} types for location ${snapshot.locationId}`
+		)
 	}
 
 	// ========================================================================
@@ -836,7 +869,9 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 			console.log(`[alarm] Config:`, config)
 
 			if (!config?.locationId || !config.alarmEnabled) {
-				console.warn(`[alarm] No location configured or alarm disabled - locationId: ${config?.locationId}, enabled: ${config?.alarmEnabled}`)
+				console.warn(
+					`[alarm] No location configured or alarm disabled - locationId: ${config?.locationId}, enabled: ${config?.alarmEnabled}`
+				)
 				return
 			}
 
@@ -946,7 +981,9 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 		console.log(`[startHourlySnapshots] Config verified after save:`, config)
 
 		if (!config.locationId || config.locationId !== regionId) {
-			console.error(`[startHourlySnapshots] CONFIG MISMATCH! Expected ${regionId}, got ${config.locationId}`)
+			console.error(
+				`[startHourlySnapshots] CONFIG MISMATCH! Expected ${regionId}, got ${config.locationId}`
+			)
 		}
 
 		// Schedule first alarm
@@ -968,7 +1005,9 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 			})()
 		)
 
-		console.log(`[startHourlySnapshots] SUCCESS - Hourly snapshots started for region ${regionId} (snapshot running in background)`)
+		console.log(
+			`[startHourlySnapshots] SUCCESS - Hourly snapshots started for region ${regionId} (snapshot running in background)`
+		)
 	}
 
 	/**
@@ -983,7 +1022,9 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 		console.log(`[startHourlySnapshotsForStructure] Starting for structure ${structureId}`)
 
 		// Update configuration in SQLite storage
-		console.log(`[startHourlySnapshotsForStructure] Updating SQLite config for structureId: ${structureId}`)
+		console.log(
+			`[startHourlySnapshotsForStructure] Updating SQLite config for structureId: ${structureId}`
+		)
 		const writeResult = this.state.storage.sql.exec(
 			`INSERT INTO config (id, location_id, location_type, character_id, alarm_enabled) VALUES (1, ?, 'structure', ?, 1)
 			 ON CONFLICT(id) DO UPDATE SET location_id = ?, location_type = 'structure', character_id = ?, alarm_enabled = 1`,
@@ -999,7 +1040,9 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 		console.log(`[startHourlySnapshotsForStructure] Config verified after save:`, config)
 
 		if (!config.locationId || config.locationId !== structureId) {
-			console.error(`[startHourlySnapshotsForStructure] CONFIG MISMATCH! Expected ${structureId}, got ${config.locationId}`)
+			console.error(
+				`[startHourlySnapshotsForStructure] CONFIG MISMATCH! Expected ${structureId}, got ${config.locationId}`
+			)
 		}
 
 		// Schedule first alarm
@@ -1021,7 +1064,9 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 			})()
 		)
 
-		console.log(`[startHourlySnapshotsForStructure] SUCCESS - Hourly snapshots started for structure ${structureId} (snapshot running in background)`)
+		console.log(
+			`[startHourlySnapshotsForStructure] SUCCESS - Hourly snapshots started for structure ${structureId} (snapshot running in background)`
+		)
 	}
 
 	/**
@@ -1101,10 +1146,7 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 				.select()
 				.from(marketSnapshots)
 				.where(
-					and(
-						eq(marketSnapshots.status, 'complete'),
-						gt(marketSnapshots.snapshotTime, twoDaysAgo)
-					)
+					and(eq(marketSnapshots.status, 'complete'), gt(marketSnapshots.snapshotTime, twoDaysAgo))
 				)
 				.orderBy(desc(marketSnapshots.snapshotTime))
 
@@ -1155,7 +1197,10 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 			}
 
 			await this.startHourlySnapshots(regionId)
-			return Response.json({ success: true, message: `Hourly snapshots started for region ${regionId}` })
+			return Response.json({
+				success: true,
+				message: `Hourly snapshots started for region ${regionId}`,
+			})
 		}
 
 		if (url.pathname === '/alarm/stop' && request.method === 'POST') {
@@ -1168,7 +1213,10 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 			}
 
 			await this.stopHourlySnapshots(regionId)
-			return Response.json({ success: true, message: `Hourly snapshots stopped for region ${regionId}` })
+			return Response.json({
+				success: true,
+				message: `Hourly snapshots stopped for region ${regionId}`,
+			})
 		}
 
 		if (url.pathname === '/alarm/status' && request.method === 'GET') {

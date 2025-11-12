@@ -297,7 +297,9 @@ export const discordServers = pgTable(
 	},
 	(table) => [
 		index('discord_servers_guild_id_idx').on(table.guildId),
-		index('discord_servers_active_idx').on(table.isActive).where(sql`${table.isActive} = true`),
+		index('discord_servers_active_idx')
+			.on(table.isActive)
+			.where(sql`${table.isActive} = true`),
 	]
 )
 

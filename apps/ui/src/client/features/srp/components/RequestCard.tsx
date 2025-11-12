@@ -1,9 +1,12 @@
+import { Link } from 'react-router-dom'
+
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Link } from 'react-router-dom'
+
 import { calculateDifference, formatISK, formatRelativeTime, getKillmailUrl } from '../utils'
 import { PaymentStatusBadge } from './PaymentStatusBadge'
 import { RequestStatusBadge } from './RequestStatusBadge'
+
 import type { SRPRequestResponse } from '../types'
 
 interface RequestCardProps {

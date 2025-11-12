@@ -78,7 +78,9 @@ export function RevokeHrRoleDialog({
 								<HrRoleBadge role={hrRole} />
 							</div>
 							{member.mainCharacterName && (
-								<p className="text-sm text-muted-foreground">Main Character: {member.mainCharacterName}</p>
+								<p className="text-sm text-muted-foreground">
+									Main Character: {member.mainCharacterName}
+								</p>
 							)}
 						</div>
 					</div>

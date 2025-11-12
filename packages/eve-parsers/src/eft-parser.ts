@@ -1,4 +1,7 @@
+import { getStub } from '@repo/do-utils'
+
 import type { FittingItem } from '@repo/doctrines'
+import type { Universe } from '@repo/universe'
 
 export interface ParsedFitting {
 	shipName: string
@@ -7,7 +10,9 @@ export interface ParsedFitting {
 	items: Array<Omit<FittingItem, 'id' | 'fittingId'>>
 }
 
-export class EftParser {
+export class EftParser<Env> {
+	constructor(private env: Env & { UNIVERSE: DurableObjectNamespace }) {}
+
 	public async parse(eftString: string): Promise<ParsedFitting> {
 		const lines = eftString
 			.trim()
@@ -18,7 +23,7 @@ export class EftParser {
 		}
 
 		// --- Parse Header ---
-		const headerMatch = lines.shift()!.match(/^[\[\]\([^,]+\),\s*([^\]]+)\]$/)
+		const headerMatch = lines.shift()!.match(/^\[([^,]+),\s*([^\]]+)\]$/)
 		if (!headerMatch) {
 			throw new Error('Invalid EFT header format')
 		}
@@ -26,8 +31,8 @@ export class EftParser {
 		const fittingName = headerMatch[2].trim()
 
 		// --- Parse Items ---
-		const items: Array<Omit<FittingItem, 'id' | 'fittingId'>> = []
 		const itemNames = new Set<string>()
+		const itemData: Array<{ name: string; quantity: string }> = []
 
 		for (const line of lines) {
 			if (line.startsWith('[Empty') || line.startsWith('[Subsystem')) {
@@ -47,41 +52,60 @@ export class EftParser {
 				quantity = '1'
 			}
 			itemNames.add(itemName)
+			itemData.push({ name: itemName, quantity })
 		}
 
-		// TODO: Determine flagId and flagName based on slot sections.
-		// This is a simplified approach for now.
-		for (const line of lines) {
-			if (line.startsWith('[Empty') || line.startsWith('[Subsystem')) {
-				continue
+		// --- Resolve Type IDs ---
+		// Collect all type names (ship + items) for batch resolution
+		const allTypeNames = [shipName, ...Array.from(itemNames)]
+		using stub = getStub<Universe>(this.env.UNIVERSE, 'default')
+		const typeIdMap = await stub.resolveTypeIdsByNames(allTypeNames)
+
+		// Resolve ship type ID
+		const shipType = typeIdMap[shipName]
+		if (!shipType) {
+			throw new Error(`Failed to resolve ship type ID for: ${shipName}`)
+		}
+
+		// --- Resolve Group IDs to get Category IDs and Group Names ---
+		// Collect all unique group IDs from the resolved types
+		const groupIds = new Set<string>()
+		for (const typeName of allTypeNames) {
+			const type = typeIdMap[typeName]
+			if (type) {
+				groupIds.add(type.groupId)
+			}
+		}
+
+		const groupIdMap = await stub.resolveInvGroups([...groupIds])
+
+		// --- Build Items Array ---
+		const items: Array<Omit<FittingItem, 'id' | 'fittingId'>> = []
+		for (const { name, quantity } of itemData) {
+			const itemType = typeIdMap[name]
+			if (!itemType) {
+				throw new Error(`Failed to resolve type ID for: ${name}`)
 			}
 
-			const quantityMatch = line.match(/^(.*)\s+x(\d+)$/)
-			let itemName: string
-			let quantity: string
+			const group = groupIdMap[itemType.groupId]
+			const categoryId = group?.categoryId ?? '-1'
+			const groupName = group?.groupName ?? 'Unknown'
 
-			if (quantityMatch) {
-				itemName = quantityMatch[1].trim()
-				quantity = quantityMatch[2].trim()
-			} else {
-				itemName = line.trim()
-				quantity = '1'
-			}
 			items.push({
-				typeId: itemName,
-				typeName: itemName,
+				typeId: itemType.typeId,
+				typeName: itemType.typeName,
 				quantity: quantity,
-				flagId: '-1', // Placeholder
-				flagName: 'None', // Placeholder
-				groupId: '-1', // Placeholder
-				groupName: 'Unknown', // TODO: Get groupName from SDE
-				categoryId: '-1', // Placeholder
+				flagId: '-1', // Placeholder - TODO: Determine flagId based on slot sections
+				flagName: 'None', // Placeholder - TODO: Determine flagName based on slot sections
+				groupId: itemType.groupId,
+				groupName: groupName,
+				categoryId: categoryId,
 			})
 		}
 
 		return {
 			shipName,
-			shipTypeId: '-1', // Placeholder
+			shipTypeId: shipType.typeId,
 			fittingName,
 			items,
 		}

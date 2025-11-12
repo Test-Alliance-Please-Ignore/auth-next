@@ -368,10 +368,7 @@ app.delete('/users/:userId/characters/:characterId', requireAuth(), requireAdmin
 		}
 
 		// Revoke ESI token
-		using eveTokenStore = getStub<EveTokenStore>(
-			c.env.EVE_TOKEN_STORE,
-			'default'
-		)
+		using eveTokenStore = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
 		await eveTokenStore.revokeToken(characterId)
 
 		// Delete character

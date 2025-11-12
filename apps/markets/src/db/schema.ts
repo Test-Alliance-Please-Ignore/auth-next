@@ -1,4 +1,13 @@
-import { boolean, index, integer, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
+import {
+	boolean,
+	index,
+	integer,
+	pgTable,
+	text,
+	timestamp,
+	unique,
+	uuid,
+} from 'drizzle-orm/pg-core'
 
 /**
  * Database schema for the markets worker
@@ -85,7 +94,18 @@ export const marketOrders = pgTable(
 		range: text('range')
 			.notNull()
 			.$type<
-				'station' | 'solarsystem' | 'region' | '1' | '2' | '3' | '4' | '5' | '10' | '20' | '30' | '40'
+				| 'station'
+				| 'solarsystem'
+				| 'region'
+				| '1'
+				| '2'
+				| '3'
+				| '4'
+				| '5'
+				| '10'
+				| '20'
+				| '30'
+				| '40'
 			>(),
 
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),

@@ -139,28 +139,36 @@ export default function DkpDashboard() {
 											<div className="h-3 w-3 rounded-full bg-blue-500" />
 											<span className="text-sm font-medium">Fleet</span>
 										</div>
-										<span className="text-sm font-bold">{stats.breakdown.fleet.toLocaleString()}</span>
+										<span className="text-sm font-bold">
+											{stats.breakdown.fleet.toLocaleString()}
+										</span>
 									</div>
 									<div className="flex items-center justify-between">
 										<div className="flex items-center gap-2">
 											<div className="h-3 w-3 rounded-full bg-green-500" />
 											<span className="text-sm font-medium">Market</span>
 										</div>
-										<span className="text-sm font-bold">{stats.breakdown.market.toLocaleString()}</span>
+										<span className="text-sm font-bold">
+											{stats.breakdown.market.toLocaleString()}
+										</span>
 									</div>
 									<div className="flex items-center justify-between">
 										<div className="flex items-center gap-2">
 											<div className="h-3 w-3 rounded-full bg-yellow-500" />
 											<span className="text-sm font-medium">Mining</span>
 										</div>
-										<span className="text-sm font-bold">{stats.breakdown.mining.toLocaleString()}</span>
+										<span className="text-sm font-bold">
+											{stats.breakdown.mining.toLocaleString()}
+										</span>
 									</div>
 									<div className="flex items-center justify-between">
 										<div className="flex items-center gap-2">
 											<div className="h-3 w-3 rounded-full bg-purple-500" />
 											<span className="text-sm font-medium">Manual</span>
 										</div>
-										<span className="text-sm font-bold">{stats.breakdown.manual.toLocaleString()}</span>
+										<span className="text-sm font-bold">
+											{stats.breakdown.manual.toLocaleString()}
+										</span>
 									</div>
 									<div className="flex items-center justify-between">
 										<div className="flex items-center gap-2">

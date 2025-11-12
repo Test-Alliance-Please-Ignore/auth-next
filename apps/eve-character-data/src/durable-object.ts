@@ -114,10 +114,14 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 
 			const response = await fetch(url)
 
-			console.log(`[fetchKillmailDetails] ESI response status: ${response.status} for killmail ${killmailId}`)
+			console.log(
+				`[fetchKillmailDetails] ESI response status: ${response.status} for killmail ${killmailId}`
+			)
 
 			if (!response.ok) {
-				console.error(`[fetchKillmailDetails] Failed to fetch killmail ${killmailId}: ${response.status} ${response.statusText}`)
+				console.error(
+					`[fetchKillmailDetails] Failed to fetch killmail ${killmailId}: ${response.status} ${response.statusText}`
+				)
 				const errorText = await response.text()
 				console.error(`[fetchKillmailDetails] Error response body:`, errorText)
 				return null
@@ -147,7 +151,9 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			const victimCharId = killmailData.victim.character_id?.toString()
 			const isLoss = victimCharId === characterId
 
-			console.log(`[fetchKillmailDetails] Character ${characterId}, Victim ${victimCharId}, isLoss: ${isLoss}`)
+			console.log(
+				`[fetchKillmailDetails] Character ${characterId}, Victim ${victimCharId}, isLoss: ${isLoss}`
+			)
 
 			// Extract ISK value - try zkb data first, fallback to 0
 			let totalValue = '0'
@@ -213,7 +219,9 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 				})
 				.returning()
 
-			console.log(`[fetchKillmailDetails] Successfully stored killmail ${killmailId}, DB ID: ${result[0].id}`)
+			console.log(
+				`[fetchKillmailDetails] Successfully stored killmail ${killmailId}, DB ID: ${result[0].id}`
+			)
 
 			return {
 				id: result[0].id,
@@ -230,8 +238,14 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 				updatedAt: result[0].updatedAt,
 			}
 		} catch (error) {
-			console.error(`[fetchKillmailDetails] Error fetching killmail details for ${killmailId}:`, error)
-			console.error(`[fetchKillmailDetails] Error stack:`, error instanceof Error ? error.stack : 'No stack')
+			console.error(
+				`[fetchKillmailDetails] Error fetching killmail details for ${killmailId}:`,
+				error
+			)
+			console.error(
+				`[fetchKillmailDetails] Error stack:`,
+				error instanceof Error ? error.stack : 'No stack'
+			)
 			return null
 		}
 	}
@@ -244,7 +258,11 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	 * @param excludeNonSrpEligible - If true, exclude ships like pods and shuttles that typically aren't SRP eligible (default: false)
 	 * @returns Array of loss data
 	 */
-	async getRecentLosses(characterId: string, daysBack = 30, excludeNonSrpEligible = false): Promise<CharacterLossData[]> {
+	async getRecentLosses(
+		characterId: string,
+		daysBack = 30,
+		excludeNonSrpEligible = false
+	): Promise<CharacterLossData[]> {
 		const cutoffDate = new Date()
 		cutoffDate.setDate(cutoffDate.getDate() - daysBack)
 
@@ -272,7 +290,9 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 
 		return results
 			.filter((r) => r.shipTypeId && r.totalValue && r.solarSystemId && r.victimCharacterId)
-			.filter((r) => !excludeNonSrpEligible || !nonSrpEligibleShipTypes.includes(r.shipTypeId as string))
+			.filter(
+				(r) => !excludeNonSrpEligible || !nonSrpEligibleShipTypes.includes(r.shipTypeId as string)
+			)
 			.map((r) => ({
 				killmailId: r.killmailId,
 				killmailHash: r.killmailHash,
@@ -1092,21 +1112,22 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	 * @param characterId - Character ID
 	 * @param _forceRefresh - Whether to force refresh (unused for now)
 	 */
-	private async fetchAndStoreKillmails(
-		characterId: string,
-		_forceRefresh = false
-	): Promise<void> {
+	private async fetchAndStoreKillmails(characterId: string, _forceRefresh = false): Promise<void> {
 		console.log(`[fetchAndStoreKillmails] Starting fetch for character ${characterId}`)
 
 		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 
-		console.log(`[fetchAndStoreKillmails] Fetching recent killmails from ESI for character ${characterId}`)
+		console.log(
+			`[fetchAndStoreKillmails] Fetching recent killmails from ESI for character ${characterId}`
+		)
 		const response = await tokenStoreStub.fetchEsiAllPages<{
 			killmail_id: number
 			killmail_hash: string
 		}>(`/characters/${characterId}/killmails/recent`, String(characterId))
 
-		console.log(`[fetchAndStoreKillmails] ESI response pages: ${response.pages}, data length: ${response.data?.length || 0}`)
+		console.log(
+			`[fetchAndStoreKillmails] ESI response pages: ${response.pages}, data length: ${response.data?.length || 0}`
+		)
 		console.log(`[fetchAndStoreKillmails] Raw response data:`, JSON.stringify(response.data))
 
 		// Transform ESI response (snake_case) to match schema (camelCase)
@@ -1118,7 +1139,9 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		console.log(`[fetchAndStoreKillmails] Transformed data:`, JSON.stringify(transformedData))
 
 		const killmails = killmailsSchema.parse(transformedData)
-		console.log(`[fetchAndStoreKillmails] Parsed ${killmails.length} killmails for character ${characterId}`)
+		console.log(
+			`[fetchAndStoreKillmails] Parsed ${killmails.length} killmails for character ${characterId}`
+		)
 
 		if (killmails.length === 0) {
 			console.log(`[fetchAndStoreKillmails] No killmails found for character ${characterId}`)
@@ -1131,13 +1154,11 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		let errorCount = 0
 
 		for (const killmail of killmails) {
-			console.log(`[fetchAndStoreKillmails] Processing killmail ${killmail.killmailId} (${successCount + errorCount + 1}/${killmails.length})`)
+			console.log(
+				`[fetchAndStoreKillmails] Processing killmail ${killmail.killmailId} (${successCount + errorCount + 1}/${killmails.length})`
+			)
 			try {
-				await this.fetchKillmailDetails(
-					killmail.killmailId,
-					killmail.killmailHash,
-					characterId
-				)
+				await this.fetchKillmailDetails(killmail.killmailId, killmail.killmailHash, characterId)
 				successCount++
 				console.log(`[fetchAndStoreKillmails] Successfully stored killmail ${killmail.killmailId}`)
 			} catch (error) {
@@ -1146,7 +1167,10 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 					`[fetchAndStoreKillmails] Failed to fetch details for killmail ${killmail.killmailId}:`,
 					error instanceof Error ? error.message : String(error)
 				)
-				console.error(`[fetchAndStoreKillmails] Error stack:`, error instanceof Error ? error.stack : 'No stack')
+				console.error(
+					`[fetchAndStoreKillmails] Error stack:`,
+					error instanceof Error ? error.stack : 'No stack'
+				)
 				// Continue processing remaining killmails even if one fails
 			}
 		}

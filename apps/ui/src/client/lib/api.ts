@@ -311,6 +311,15 @@ export interface GroupPermissionWithDetails extends GroupPermission {
 	}
 }
 
+export interface CorporationPermissionWithDetails {
+	id: string
+	corporationId: string
+	permissionId: string
+	createdBy: string
+	createdAt: Date
+	permission: PermissionWithDetails
+}
+
 export interface UserPermission {
 	urn: string
 	name: string
@@ -901,6 +910,97 @@ export interface SendBroadcastResponse {
 		error?: string
 		retryAfter?: number
 	}
+}
+
+/**
+ * Doctrines API Types
+ */
+
+export interface Doctrine {
+	id: string
+	name: string
+	category: string
+	maintainer: string
+	createdAt: string
+	updatedAt: string
+}
+
+export interface Fitting {
+	id: string
+	shipTypeId: string
+	shipName: string
+	fitting: string
+	category: string
+	maintainer: string
+	srpEligible: boolean
+	srpValue: string
+	createdAt: string
+	updatedAt: string
+}
+
+export interface FittingItem {
+	id: string
+	fittingId: string
+	typeId: string
+	typeName: string
+	quantity: string
+	flagId: string
+	flagName: string
+	groupId: string
+	groupName: string
+	categoryId: string
+}
+
+export interface DoctrineWithFittings extends Doctrine {
+	fittings: Fitting[]
+}
+
+export interface FittingWithItems extends Fitting {
+	fittingItems: FittingItem[]
+}
+
+export interface CreateDoctrineRequest {
+	name: string
+	category: string
+	maintainer: string
+}
+
+export interface UpdateDoctrineRequest {
+	name?: string
+	category?: string
+	maintainer?: string
+}
+
+export interface CreateFittingRequest {
+	fitting: string
+	category: string
+	maintainer: string
+	srpEligible: boolean
+	srpValue: string
+	fittingItems: Array<Omit<FittingItem, 'id' | 'fittingId'>>
+}
+
+export interface UpdateFittingRequest {
+	fitting?: string
+	category?: string
+	maintainer?: string
+	srpEligible?: boolean
+	srpValue?: string
+	fittingItems?: Array<Omit<FittingItem, 'id' | 'fittingId'>>
+}
+
+export interface ListDoctrinesFilters {
+	category?: string
+	maintainer?: string
+	search?: string
+}
+
+export interface ListFittingsFilters {
+	shipTypeId?: string
+	category?: string
+	maintainer?: string
+	srpEligible?: boolean
+	search?: string
 }
 
 export class ApiClient {
@@ -1606,6 +1706,28 @@ export class ApiClient {
 		)
 	}
 
+	// ===== Corporation Permissions API Methods =====
+
+	async getCorporationPermissions(
+		corporationId: string
+	): Promise<{ permissions: CorporationPermissionWithDetails[] }> {
+		return this.get(`/corporations/${corporationId}/permissions`)
+	}
+
+	async attachPermissionToCorporation(
+		corporationId: string,
+		permissionId: string
+	): Promise<{ permission: CorporationPermissionWithDetails }> {
+		return this.post(`/corporations/${corporationId}/permissions`, { permissionId })
+	}
+
+	async removePermissionFromCorporation(
+		corporationId: string,
+		permissionId: string
+	): Promise<{ success: boolean }> {
+		return this.delete(`/corporations/${corporationId}/permissions/${permissionId}`)
+	}
+
 	// ===== Admin User Management API Methods =====
 
 	async getAdminUsers(filters?: AdminUsersFilters): Promise<PaginatedResponse<AdminUser>> {
@@ -1871,9 +1993,7 @@ export class ApiClient {
 	/**
 	 * Get recent losses for all user's characters with SRP status
 	 */
-	async getRecentLosses(
-		daysBack: number = 30
-	): Promise<
+	async getRecentLosses(daysBack: number = 30): Promise<
 		Array<{
 			killmailId: string
 			killmailHash: string
@@ -1907,11 +2027,7 @@ export class ApiClient {
 	/**
 	 * Get user's own SRP requests (paginated)
 	 */
-	async getMyRequests(params?: {
-		limit?: number
-		offset?: number
-		status?: string
-	}): Promise<{
+	async getMyRequests(params?: { limit?: number; offset?: number; status?: string }): Promise<{
 		requests: any[]
 		total: number
 		limit: number
@@ -2107,6 +2223,72 @@ export class ApiClient {
 
 		const query = searchParams.toString()
 		return this.get(`/srp/stats${query ? `?${query}` : ''}`)
+	}
+
+	// ===== Doctrines API Methods =====
+
+	// Doctrines
+	async getDoctrines(filters?: ListDoctrinesFilters): Promise<Doctrine[]> {
+		const params = new URLSearchParams()
+		if (filters?.category) params.set('category', filters.category)
+		if (filters?.maintainer) params.set('maintainer', filters.maintainer)
+		if (filters?.search) params.set('search', filters.search)
+
+		const query = params.toString()
+		return this.get(`/doctrines${query ? `?${query}` : ''}`)
+	}
+
+	async getDoctrine(id: string): Promise<DoctrineWithFittings> {
+		return this.get(`/doctrines/${id}`)
+	}
+
+	async createDoctrine(data: CreateDoctrineRequest): Promise<Doctrine> {
+		return this.post('/doctrines', data)
+	}
+
+	async updateDoctrine(id: string, data: UpdateDoctrineRequest): Promise<Doctrine> {
+		return this.patch(`/doctrines/${id}`, data)
+	}
+
+	async deleteDoctrine(id: string): Promise<void> {
+		return this.delete(`/doctrines/${id}`)
+	}
+
+	async addFittingToDoctrine(doctrineId: string, fittingId: string): Promise<void> {
+		return this.post(`/doctrines/${doctrineId}/fittings`, { fittingId })
+	}
+
+	async removeFittingFromDoctrine(doctrineId: string, fittingId: string): Promise<void> {
+		return this.delete(`/doctrines/${doctrineId}/fittings/${fittingId}`)
+	}
+
+	// Fittings
+	async getFittings(filters?: ListFittingsFilters): Promise<Fitting[]> {
+		const params = new URLSearchParams()
+		if (filters?.shipTypeId) params.set('shipTypeId', filters.shipTypeId)
+		if (filters?.category) params.set('category', filters.category)
+		if (filters?.maintainer) params.set('maintainer', filters.maintainer)
+		if (filters?.srpEligible !== undefined) params.set('srpEligible', String(filters.srpEligible))
+		if (filters?.search) params.set('search', filters.search)
+
+		const query = params.toString()
+		return this.get(`/doctrines/fittings${query ? `?${query}` : ''}`)
+	}
+
+	async getFitting(id: string): Promise<FittingWithItems> {
+		return this.get(`/doctrines/fittings/${id}`)
+	}
+
+	async createFitting(data: CreateFittingRequest): Promise<Fitting> {
+		return this.post('/doctrines/fittings', data)
+	}
+
+	async updateFitting(id: string, data: UpdateFittingRequest): Promise<Fitting> {
+		return this.patch(`/doctrines/fittings/${id}`, data)
+	}
+
+	async deleteFitting(id: string): Promise<void> {
+		return this.delete(`/doctrines/fittings/${id}`)
 	}
 }
 
