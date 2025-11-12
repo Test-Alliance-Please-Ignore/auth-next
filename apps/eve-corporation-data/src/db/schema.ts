@@ -3,6 +3,7 @@ import {
 	index,
 	integer,
 	jsonb,
+	pgEnum,
 	pgTable,
 	text,
 	timestamp,
@@ -25,17 +26,35 @@ import {
 // CONFIGURATION
 // ============================================================================
 
+export const corporationTypeEnum = pgEnum('corporation_type', [
+	'member',
+	'alt',
+	'special_purpose',
+	'other',
+])
+
 /**
  * Configuration table - tracks corporation metadata
  * Director characters are now stored in corporationDirectors table
  */
-export const corporationConfig = pgTable('corporation_config', {
-	corporationId: text('corporation_id').primaryKey(),
-	lastVerified: timestamp('last_verified', { withTimezone: true }),
-	isVerified: boolean('is_verified').default(false).notNull(),
-	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-})
+export const corporationConfig = pgTable(
+	'corporation_config',
+	{
+		corporationId: text('corporation_id').primaryKey(),
+		lastVerified: timestamp('last_verified', { withTimezone: true }),
+		isVerified: boolean('is_verified').default(false).notNull(),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+		includeInBackgroundRefresh: boolean('include_in_background_refresh').default(false).notNull(),
+		corporationType: corporationTypeEnum('corporation_type').default('other').notNull(),
+	},
+	(table) => [
+		index('corporation_config_include_in_background_refresh_idx').on(
+			table.includeInBackgroundRefresh
+		),
+		index('corporation_config_corporation_type_idx').on(table.corporationType),
+	]
+)
 
 /**
  * Corporation directors table - manages multiple director characters per corporation

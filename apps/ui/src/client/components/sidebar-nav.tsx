@@ -1,5 +1,4 @@
 import {
-	BookMarked,
 	BookOpen,
 	Building2,
 	CircleDollarSign,
@@ -74,11 +73,6 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 			label: 'SRP',
 			href: '/srp',
 			icon: CircleDollarSign,
-		},
-		{
-			label: 'Doctrines',
-			href: '/doctrines',
-			icon: BookMarked,
 		},
 		{
 			label: 'My Applications',

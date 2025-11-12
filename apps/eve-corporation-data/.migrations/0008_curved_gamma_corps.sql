@@ -1,0 +1,1 @@
+ALTER TABLE "corporation_config" ADD COLUMN "include_in_background_refresh" boolean DEFAULT false NOT NULL;

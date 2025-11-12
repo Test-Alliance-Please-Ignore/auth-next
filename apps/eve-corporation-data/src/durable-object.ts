@@ -21,6 +21,20 @@ import {
 	corporationWallets,
 	corporationWalletTransactions,
 } from './db/schema'
+import {
+	transformAssets,
+	transformContracts,
+	transformIndustryJobs,
+	transformKillmails,
+	transformMembers,
+	transformMemberTracking,
+	transformOrders,
+	transformPublicInfo,
+	transformStructures,
+	transformWalletJournal,
+	transformWallets,
+	transformWalletTransactions,
+} from './lib/esi-transforms'
 import { DirectorManager } from './services/director-manager'
 
 import type {
@@ -41,6 +55,7 @@ import type {
 	CorporationPublicData,
 	CorporationRole,
 	CorporationStructureData,
+	CorporationType,
 	CorporationWalletData,
 	CorporationWalletJournalData,
 	CorporationWalletTransactionData,
@@ -90,6 +105,13 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	// ========================================================================
 
 	/**
+	 * Get a stub for the EveTokenStore Durable Object
+	 */
+	private getEveTokenStoreStub() {
+		return getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+	}
+
+	/**
 	 * Invalidate directors cache for a corporation
 	 */
 	private async invalidateDirectorsCache(corporationId: string): Promise<void> {
@@ -97,7 +119,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		try {
 			await this.env.CACHE.delete(cacheKey)
 		} catch (error) {
-			console.warn('[Directors Cache] Failed to invalidate cache', { corporationId, error })
+			logger.warn('[Directors Cache] Failed to invalidate cache', { corporationId, error })
 		}
 	}
 
@@ -109,7 +131,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		try {
 			await this.env.CACHE.delete(cacheKey)
 		} catch (error) {
-			console.warn('[Members Cache] Failed to invalidate cache', { corporationId, error })
+			logger.warn('[Members Cache] Failed to invalidate cache', { corporationId, error })
 		}
 	}
 
@@ -268,6 +290,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			isVerified: config.isVerified,
 			createdAt: config.createdAt,
 			updatedAt: config.updatedAt,
+			includeInBackgroundRefresh: config.includeInBackgroundRefresh,
+			corporationType: config.corporationType as CorporationType,
 		}
 	}
 
@@ -419,7 +443,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			}
 		} catch (error) {
 			// Cache read failure - log but continue to fetch from DB
-			console.warn('[Directors Cache] Failed to read from KV', { corporationId, error })
+			logger.warn('[Directors Cache] Failed to read from KV', { corporationId, error })
 		}
 
 		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
@@ -433,7 +457,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			})
 		} catch (error) {
 			// Cache write failure - log but don't fail the request
-			console.warn('[Directors Cache] Failed to write to KV', { corporationId, error })
+			logger.warn('[Directors Cache] Failed to write to KV', { corporationId, error })
 		}
 
 		return directors
@@ -546,7 +570,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						)
 					)
 
-				console.log('[storeMembers] Removed departed members:', {
+				logger.debug('[storeMembers] Removed departed members:', {
 					corporationId,
 					count: departedMemberIds.length,
 				})
@@ -575,7 +599,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 			return { departedMemberIds }
 		} catch (error) {
-			console.error('[storeMembers] Database operation failed:', {
+			logger.error('[storeMembers] Database operation failed:', {
 				error,
 				corporationId,
 				memberCount: memberIds.length,
@@ -1040,37 +1064,13 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const response = await tokenStore.fetchPublicEsi<any>(`/corporations/${corporationId}`)
 
-		// ESI returns numeric IDs at runtime despite our type definitions
-		// Cast to any to force proper conversion
-		const data = response.data as any
-
-		// Convert all numeric IDs to strings explicitly
-		const ceoIdStr: string = String(data.ceo_id)
-		const creatorIdStr: string = String(data.creator_id)
-		const homeStationIdStr: string | null = data.home_station_id
-			? String(data.home_station_id)
-			: null
-		const allianceIdStr: string | null = data.alliance_id ? String(data.alliance_id) : null
-		const factionIdStr: string | null = data.faction_id ? String(data.faction_id) : null
+		const data = transformPublicInfo(response.data)
 
 		await this.db
 			.insert(corporationPublicInfo)
 			.values({
 				corporationId: String(corporationId),
-				name: data.name,
-				ticker: data.ticker,
-				ceoId: ceoIdStr,
-				creatorId: creatorIdStr,
-				dateFounded: data.date_founded ? new Date(data.date_founded) : null,
-				description: data.description || null,
-				homeStationId: homeStationIdStr,
-				memberCount: data.member_count,
-				shares: data.shares ? data.shares.toString() : null,
-				taxRate: data.tax_rate.toString(),
-				url: data.url || null,
-				allianceId: allianceIdStr,
-				factionId: factionIdStr,
-				warEligible: data.war_eligible,
+				...data,
 				updatedAt: new Date(),
 			})
 			.onConflictDoUpdate({
@@ -1078,14 +1078,14 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				set: {
 					name: data.name,
 					ticker: data.ticker,
-					ceoId: ceoIdStr,
-					memberCount: data.member_count,
-					shares: data.shares ? data.shares.toString() : null,
-					taxRate: data.tax_rate.toString(),
-					url: data.url || null,
-					allianceId: allianceIdStr,
-					factionId: factionIdStr,
-					warEligible: data.war_eligible,
+					ceoId: data.ceoId,
+					memberCount: data.memberCount,
+					shares: data.shares,
+					taxRate: data.taxRate,
+					url: data.url,
+					allianceId: data.allianceId,
+					factionId: data.factionId,
+					warEligible: data.warEligible,
 					updatedAt: sql`excluded.updated_at`,
 				},
 			})
@@ -1104,8 +1104,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			characterId
 		)
 
-		// Convert numeric IDs to strings
-		const memberIds: EsiCorporationMembers = response.data.map(String)
+		const memberIds: EsiCorporationMembers = transformMembers(response.data)
 
 		// Fetch existing members from database to identify departed members
 		const existingMembers = await this.db
@@ -1133,7 +1132,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						)
 					)
 
-				console.log('[fetchAndStoreMembers] Removed departed members:', {
+				logger.debug('[fetchAndStoreMembers] Removed departed members:', {
 					corporationId,
 					count: departedMemberIds.length,
 					characterIds: departedMemberIds,
@@ -1159,7 +1158,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				}))
 
 				await hrQueue.sendBatch(messages)
-				console.log('[fetchAndStoreMembers] Sent HR cleanup messages:', {
+				logger.debug('[fetchAndStoreMembers] Sent HR cleanup messages:', {
 					corporationId,
 					count: messages.length,
 				})
@@ -1189,7 +1188,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			// Log summary of changes
 			const addedCount = memberIds.filter((id) => !existingMemberIds.has(id)).length
 			if (addedCount > 0 || departedMemberIds.length > 0) {
-				console.log('[fetchAndStoreMembers] Member sync completed:', {
+				logger.debug('[fetchAndStoreMembers] Member sync completed:', {
 					corporationId,
 					added: addedCount,
 					removed: departedMemberIds.length,
@@ -1197,7 +1196,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				})
 			}
 		} catch (error) {
-			console.error('[fetchAndStoreMembers] Database operation failed:', {
+			logger.error('[fetchAndStoreMembers] Database operation failed:', {
 				error,
 				errorMessage: error instanceof Error ? error.message : String(error),
 				errorStack: error instanceof Error ? error.stack : undefined,
@@ -1237,16 +1236,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 		const rawData = response.data
 
-		// Convert numeric IDs to strings
-		const trackingData: EsiCorporationMemberTracking[] = rawData.map((member) => ({
-			character_id: String(member.character_id),
-			base_id: member.base_id ? String(member.base_id) : undefined,
-			location_id: member.location_id ? String(member.location_id) : undefined,
-			logoff_date: member.logoff_date,
-			logon_date: member.logon_date,
-			ship_type_id: member.ship_type_id ? String(member.ship_type_id) : undefined,
-			start_date: member.start_date,
-		}))
+		const trackingData: EsiCorporationMemberTracking[] = transformMemberTracking(rawData)
 
 		// Fetch existing tracking records to identify departed members
 		const existingTracking = await this.db
@@ -1272,7 +1262,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					)
 				)
 
-			console.log('[fetchAndStoreMemberTracking] Removed departed members:', {
+			logger.debug('[fetchAndStoreMemberTracking] Removed departed members:', {
 				corporationId,
 				count: departedMemberIds.length,
 				characterIds: departedMemberIds,
@@ -1322,7 +1312,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			characterId
 		)
 
-		const wallets = response.data
+		const wallets = transformWallets(response.data)
 
 		for (const wallet of wallets) {
 			await this.db
@@ -1330,13 +1320,13 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				.values({
 					corporationId: String(corporationId),
 					division: wallet.division,
-					balance: wallet.balance.toString(),
+					balance: wallet.balance,
 					updatedAt: new Date(),
 				})
 				.onConflictDoUpdate({
 					target: [corporationWallets.corporationId, corporationWallets.division],
 					set: {
-						balance: wallet.balance.toString(),
+						balance: wallet.balance,
 						updatedAt: sql`excluded.updated_at`,
 					},
 				})
@@ -1411,22 +1401,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				})
 		}
 
-		// Convert numeric IDs and amounts to strings
-		const entries = result.data.map((entry) => ({
-			id: String(entry.id),
-			amount: entry.amount !== undefined ? String(entry.amount) : null,
-			balance: entry.balance !== undefined ? String(entry.balance) : null,
-			context_id: entry.context_id ? String(entry.context_id) : null,
-			context_id_type: entry.context_id_type || null,
-			date: entry.date,
-			description: entry.description,
-			first_party_id: entry.first_party_id ? String(entry.first_party_id) : null,
-			reason: entry.reason || null,
-			ref_type: entry.ref_type,
-			second_party_id: entry.second_party_id ? String(entry.second_party_id) : null,
-			tax: entry.tax !== undefined ? String(entry.tax) : null,
-			tax_receiver_id: entry.tax_receiver_id ? String(entry.tax_receiver_id) : null,
-		}))
+		const entries = transformWalletJournal(result.data)
 
 		logger
 			.withTags({
@@ -1589,19 +1564,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				cached: response.cached,
 			})
 
-		// Convert numeric IDs to strings
-		const transactions: EsiCorporationWalletTransaction[] = rawTransactions.map((tx) => ({
-			transaction_id: String(tx.transaction_id),
-			client_id: String(tx.client_id),
-			date: tx.date,
-			is_buy: tx.is_buy,
-			is_personal: tx.is_personal,
-			journal_ref_id: String(tx.journal_ref_id),
-			location_id: String(tx.location_id),
-			quantity: tx.quantity,
-			type_id: String(tx.type_id),
-			unit_price: String(tx.unit_price),
-		}))
+		const transactions: EsiCorporationWalletTransaction[] =
+			transformWalletTransactions(rawTransactions)
 
 		// Batch insert to avoid hitting Cloudflare's 50 subrequest limit
 		const BATCH_SIZE = 25
@@ -1698,7 +1662,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 * Fetch and store corporation assets (paginated)
 	 */
 	private async fetchAndStoreAssets(corporationId: string, _forceRefresh = false): Promise<void> {
-		console.log('[fetchAndStoreAssets] Starting asset fetch', { corporationId })
+		logger.debug('[fetchAndStoreAssets] Starting asset fetch', { corporationId })
 
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
 		await this.verifyRole(characterId, ['Director'])
@@ -1722,23 +1686,13 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			characterId
 		)
 
-		console.log('[fetchAndStoreAssets] Fetched assets from ESI', {
+		logger.debug('[fetchAndStoreAssets] Fetched assets from ESI', {
 			corporationId,
 			totalAssets: result.data.length,
 			pages: result.pages,
 		})
 
-		// Convert numeric IDs to strings
-		const assets: EsiCorporationAsset[] = result.data.map((asset) => ({
-			item_id: String(asset.item_id),
-			is_singleton: asset.is_singleton,
-			location_flag: asset.location_flag,
-			location_id: String(asset.location_id),
-			location_type: asset.location_type,
-			quantity: asset.quantity,
-			type_id: String(asset.type_id),
-			is_blueprint_copy: asset.is_blueprint_copy,
-		}))
+		const assets: EsiCorporationAsset[] = transformAssets(result.data)
 
 		// Batch insert to avoid hitting Cloudflare's subrequest limits and prevent timeouts
 		// Insert 25 assets at a time (conservative to stay well below the 50 subrequest limit)
@@ -1782,16 +1736,15 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 				// Log progress for large datasets
 				if (insertedCount % 100 === 0 || insertedCount === assets.length) {
-					console.log('[fetchAndStoreAssets] Insert progress', {
-						corporationId,
-						inserted: insertedCount,
-						total: assets.length,
-						percentage: Math.round((insertedCount / assets.length) * 100),
-					})
-				}
+									logger.debug('[fetchAndStoreAssets] Insert progress', {
+										corporationId,
+										inserted: insertedCount,
+										total: assets.length,
+										percentage: Math.round((insertedCount / assets.length) * 100),
+									})				}
 			}
 		} catch (error) {
-			console.error('[fetchAndStoreAssets] Failed to insert assets', {
+			logger.error('[fetchAndStoreAssets] Failed to insert assets', {
 				corporationId,
 				insertedSoFar: insertedCount,
 				totalAssets: assets.length,
@@ -1803,9 +1756,9 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			const path = `/corporations/${corporationId}/assets`
 			try {
 				await tokenStore.clearEsiCache(path, characterId)
-				console.log('[fetchAndStoreAssets] Cleared ESI cache after error', { path })
+				logger.debug('[fetchAndStoreAssets] Cleared ESI cache after error', { path })
 			} catch (clearError) {
-				console.error('[fetchAndStoreAssets] Failed to clear cache', {
+				logger.error('[fetchAndStoreAssets] Failed to clear cache', {
 					error: clearError instanceof Error ? clearError.message : String(clearError),
 				})
 			}
@@ -1813,7 +1766,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			throw error
 		}
 
-		console.log('[fetchAndStoreAssets] Completed asset fetch and store', {
+		logger.debug('[fetchAndStoreAssets] Completed asset fetch and store', {
 			corporationId,
 			totalInserted: insertedCount,
 			totalAssets: assets.length,
@@ -1852,22 +1805,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 		const rawStructures = response.data
 
-		// Convert numeric IDs to strings
-		const structures: EsiCorporationStructure[] = rawStructures.map((structure) => ({
-			structure_id: String(structure.structure_id),
-			type_id: String(structure.type_id),
-			system_id: String(structure.system_id),
-			profile_id: String(structure.profile_id),
-			fuel_expires: structure.fuel_expires,
-			next_reinforce_apply: structure.next_reinforce_apply,
-			next_reinforce_hour: structure.next_reinforce_hour,
-			reinforce_hour: structure.reinforce_hour,
-			state: structure.state,
-			state_timer_end: structure.state_timer_end,
-			state_timer_start: structure.state_timer_start,
-			unanchors_at: structure.unanchors_at,
-			services: structure.services,
-		}))
+		const structures: EsiCorporationStructure[] = transformStructures(rawStructures)
 
 		// Batch insert to prevent timeouts
 		const BATCH_SIZE = 10 // Structures have more fields, use smaller batch
@@ -1945,24 +1883,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 		const rawOrders = response.data
 
-		// Convert numeric IDs to strings
-		const orders: EsiCorporationOrder[] = rawOrders.map((order) => ({
-			order_id: String(order.order_id),
-			duration: order.duration,
-			escrow: order.escrow,
-			is_buy_order: order.is_buy_order,
-			issued: order.issued,
-			issued_by: String(order.issued_by),
-			location_id: String(order.location_id),
-			min_volume: order.min_volume,
-			price: order.price,
-			range: order.range,
-			region_id: String(order.region_id),
-			type_id: String(order.type_id),
-			volume_remain: order.volume_remain,
-			volume_total: order.volume_total,
-			wallet_division: order.wallet_division,
-		}))
+		const orders: EsiCorporationOrder[] = transformOrders(rawOrders)
 
 		// Batch insert to prevent timeouts
 		const BATCH_SIZE = 25
@@ -2043,33 +1964,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 		const rawContracts = response.data
 
-		// Convert numeric IDs to strings
-		const contracts: EsiCorporationContract[] = rawContracts.map((contract) => ({
-			contract_id: String(contract.contract_id),
-			acceptor_id: contract.acceptor_id ? String(contract.acceptor_id) : undefined,
-			assignee_id: String(contract.assignee_id),
-			availability: contract.availability,
-			buyout: contract.buyout,
-			collateral: contract.collateral,
-			date_accepted: contract.date_accepted,
-			date_completed: contract.date_completed,
-			date_expired: contract.date_expired,
-			date_issued: contract.date_issued,
-			days_to_complete: contract.days_to_complete,
-			end_location_id: contract.end_location_id ? String(contract.end_location_id) : undefined,
-			for_corporation: contract.for_corporation,
-			issuer_corporation_id: String(contract.issuer_corporation_id),
-			issuer_id: String(contract.issuer_id),
-			price: contract.price,
-			reward: contract.reward,
-			start_location_id: contract.start_location_id
-				? String(contract.start_location_id)
-				: undefined,
-			status: contract.status,
-			title: contract.title,
-			type: contract.type,
-			volume: contract.volume,
-		}))
+		const contracts: EsiCorporationContract[] = transformContracts(rawContracts)
 
 		// Batch insert to prevent timeouts
 		const BATCH_SIZE = 20 // Contracts have many fields, use smaller batch
@@ -2158,33 +2053,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 		const rawJobs = response.data
 
-		// Convert numeric IDs to strings
-		const jobs: EsiCorporationIndustryJob[] = rawJobs.map((job) => ({
-			job_id: String(job.job_id),
-			installer_id: String(job.installer_id),
-			facility_id: String(job.facility_id),
-			location_id: String(job.location_id),
-			activity_id: String(job.activity_id),
-			blueprint_id: String(job.blueprint_id),
-			blueprint_type_id: String(job.blueprint_type_id),
-			blueprint_location_id: String(job.blueprint_location_id),
-			output_location_id: String(job.output_location_id),
-			runs: job.runs,
-			cost: job.cost,
-			licensed_runs: job.licensed_runs,
-			probability: job.probability,
-			product_type_id: job.product_type_id ? String(job.product_type_id) : undefined,
-			status: job.status,
-			duration: job.duration,
-			start_date: job.start_date,
-			end_date: job.end_date,
-			pause_date: job.pause_date,
-			completed_date: job.completed_date,
-			completed_character_id: job.completed_character_id
-				? String(job.completed_character_id)
-				: undefined,
-			successful_runs: job.successful_runs,
-		}))
+		const jobs: EsiCorporationIndustryJob[] = transformIndustryJobs(rawJobs)
 
 		// Batch insert to prevent timeouts
 		const BATCH_SIZE = 20 // Industry jobs have many fields, use smaller batch
@@ -2255,11 +2124,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 		const rawKillmails = response.data
 
-		// Convert numeric IDs to strings
-		const killmails: EsiCorporationKillmail[] = rawKillmails.map((km) => ({
-			killmail_id: String(km.killmail_id),
-			killmail_hash: km.killmail_hash,
-		}))
+		const killmails: EsiCorporationKillmail[] = transformKillmails(rawKillmails)
 
 		// Batch insert to prevent timeouts
 		const BATCH_SIZE = 50 // Killmails have few fields, can use larger batch
@@ -2294,38 +2159,38 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 * Fetch all accessible corporation data in parallel
 	 */
 	async fetchAllCorporationData(corporationId: string, forceRefresh = false): Promise<void> {
-		console.log('[EveCorporationData] fetchAllCorporationData: Starting', {
+		logger.debug('[EveCorporationData] fetchAllCorporationData: Starting', {
 			corporationId,
 			forceRefresh,
 		})
 
 		// Public data
-		console.log('[EveCorporationData] fetchAllCorporationData: Fetching public data')
+		logger.debug('[EveCorporationData] fetchAllCorporationData: Fetching public data')
 		await this.fetchPublicData(corporationId, forceRefresh)
-		console.log('[EveCorporationData] fetchAllCorporationData: Public data fetched')
+		logger.debug('[EveCorporationData] fetchAllCorporationData: Public data fetched')
 
 		// Try to fetch all other data, but don't fail if role verification fails
-		console.log('[EveCorporationData] fetchAllCorporationData: Starting parallel fetches')
+		logger.debug('[EveCorporationData] fetchAllCorporationData: Starting parallel fetches')
 		const fetchPromises = [
 			this.fetchCoreData(corporationId, forceRefresh).catch((e) =>
-				console.error('[EveCorporationData] Failed to fetch core data:', e)
+				logger.error('[EveCorporationData] Failed to fetch core data:', e)
 			),
 			this.fetchFinancialData(corporationId, undefined, forceRefresh).catch((e) =>
-				console.error('[EveCorporationData] Failed to fetch financial data:', e)
+				logger.error('[EveCorporationData] Failed to fetch financial data:', e)
 			),
 			this.fetchAssetsData(corporationId, forceRefresh).catch((e) =>
-				console.error('[EveCorporationData] Failed to fetch assets data:', e)
+				logger.error('[EveCorporationData] Failed to fetch assets data:', e)
 			),
 			this.fetchMarketData(corporationId, forceRefresh).catch((e) =>
-				console.error('[EveCorporationData] Failed to fetch market data:', e)
+				logger.error('[EveCorporationData] Failed to fetch market data:', e)
 			),
 			this.fetchKillmails(corporationId, forceRefresh).catch((e) =>
-				console.error('[EveCorporationData] Failed to fetch killmails:', e)
+				logger.error('[EveCorporationData] Failed to fetch killmails:', e)
 			),
 		]
 
 		const results = await Promise.allSettled(fetchPromises)
-		console.log('[EveCorporationData] fetchAllCorporationData: All fetches completed', {
+		logger.debug('[EveCorporationData] fetchAllCorporationData: All fetches completed', {
 			fulfilled: results.filter((r) => r.status === 'fulfilled').length,
 			rejected: results.filter((r) => r.status === 'rejected').length,
 		})
@@ -2345,7 +2210,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		await Promise.all([
 			this.fetchAndStoreMembers(corporationId, forceRefresh),
 			this.fetchAndStoreMemberTracking(corporationId, forceRefresh).catch((e) =>
-				console.error('Member tracking failed:', e)
+				logger.error('Member tracking failed:', e)
 			),
 		])
 	}
@@ -2427,7 +2292,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		await Promise.all([
 			this.fetchAndStoreAssets(corporationId, forceRefresh),
 			this.fetchAndStoreStructures(corporationId, forceRefresh).catch((e) =>
-				console.error('Structures fetch failed:', e)
+				logger.error('Structures fetch failed:', e)
 			),
 		])
 	}
@@ -2438,13 +2303,13 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	async fetchMarketData(corporationId: string, forceRefresh = false): Promise<void> {
 		await Promise.all([
 			this.fetchAndStoreOrders(corporationId, forceRefresh).catch((e) =>
-				console.error('Orders fetch failed:', e)
+				logger.error('Orders fetch failed:', e)
 			),
 			this.fetchAndStoreContracts(corporationId, forceRefresh).catch((e) =>
-				console.error('Contracts fetch failed:', e)
+				logger.error('Contracts fetch failed:', e)
 			),
 			this.fetchAndStoreIndustryJobs(corporationId, forceRefresh).catch((e) =>
-				console.error('Industry jobs fetch failed:', e)
+				logger.error('Industry jobs fetch failed:', e)
 			),
 		])
 	}
@@ -2510,7 +2375,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			}
 		} catch (error) {
 			// Cache read failure - log but continue to fetch from DB
-			console.warn('[Members Cache] Failed to read from KV', { corporationId, error })
+			logger.warn('[Members Cache] Failed to read from KV', { corporationId, error })
 		}
 
 		// Cache miss or error - fetch from database
@@ -2532,7 +2397,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			})
 		} catch (error) {
 			// Cache write failure - log but don't fail the request
-			console.warn('[Members Cache] Failed to write to KV', { corporationId, error })
+			logger.warn('[Members Cache] Failed to write to KV', { corporationId, error })
 		}
 
 		return members
@@ -2547,16 +2412,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		})
 
 		return results.map((r) => ({
-			id: r.id,
-			corporationId: r.corporationId,
-			characterId: r.characterId,
-			baseId: r.baseId,
-			locationId: r.locationId,
-			logoffDate: r.logoffDate,
-			logonDate: r.logonDate,
-			shipTypeId: r.shipTypeId,
-			startDate: r.startDate,
-			updatedAt: r.updatedAt,
+			...r,
 		}))
 	}
 
@@ -2592,7 +2448,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			.map((m) => m.characterId)
 
 		if (staleMemberIds.length === 0) {
-			console.log('[cleanupStaleMemberData] No stale members found:', { corporationId })
+			logger.debug('[cleanupStaleMemberData] No stale members found:', { corporationId })
 			return { membersRemoved: 0, characterIds: [] }
 		}
 
@@ -2630,7 +2486,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		// Invalidate cache
 		await this.invalidateMembersCache(corporationId)
 
-		console.log('[cleanupStaleMemberData] Cleanup completed:', {
+		logger.debug('[cleanupStaleMemberData] Cleanup completed:', {
 			corporationId,
 			membersRemoved: staleMemberIds.length,
 			characterIds: staleMemberIds,

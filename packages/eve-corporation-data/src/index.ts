@@ -239,6 +239,12 @@ export interface EsiCorporationKillmail {
 // DATABASE TYPES (camelCase, match our schema)
 // ============================================================================
 
+export enum CorporationType {
+	Member = 'member',
+	Alt = 'alt',
+	SpecialPurpose = 'special_purpose',
+}
+
 /**
  * Corporation configuration data
  */
@@ -250,6 +256,8 @@ export interface CorporationConfigData {
 	isVerified: boolean
 	createdAt: Date
 	updatedAt: Date
+	includeInBackgroundRefresh: boolean
+	corporationType: CorporationType
 }
 
 /**

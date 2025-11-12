@@ -1,0 +1,1 @@
+CREATE INDEX "corporation_config_include_in_background_refresh_idx" ON "corporation_config" USING btree ("include_in_background_refresh");

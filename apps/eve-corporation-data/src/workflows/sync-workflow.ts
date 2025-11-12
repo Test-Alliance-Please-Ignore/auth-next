@@ -115,29 +115,33 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 		})
 
 		// Step 3: Fetch & store members
-		const memberIds = await step.do(
-			'fetch-members',
+		const memberResult = await step.do(
+			'fetch-store-members',
 			{
 				retries: { limit: 5, delay: '10 seconds', backoff: 'exponential' },
 				timeout: '1 minute',
 			},
 			async () => {
 				using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-				const members = await esiFetch.fetchMembers(tokenStore, corporationId, director.characterId)
-				console.log('[Step] Members fetched', { corporationId, count: members.length })
-				return members
+				using corpDataDO = getStub<EveCorporationData>(this.env.EVE_CORPORATION_DATA, corporationId)
+
+				const memberIds = await esiFetch.fetchMembers(tokenStore, corporationId, director.characterId)
+				console.log('[Step] Members fetched', { corporationId, count: memberIds.length })
+
+				const result = await corpDataDO.storeMembers(corporationId, memberIds)
+				console.log('[Step] Members stored', {
+					corporationId,
+					stored: memberIds.length,
+					departed: result.departedMemberIds.length,
+				})
+
+				return {
+					stored: memberIds.length,
+					departed: result.departedMemberIds.length,
+					departedMemberIds: result.departedMemberIds,
+				}
 			}
 		)
-
-		const memberResult = await step.do('store-members', {}, async () => {
-			using corpDataDO = getStub<EveCorporationData>(this.env.EVE_CORPORATION_DATA, corporationId)
-			const result = await corpDataDO.storeMembers(corporationId, memberIds)
-			return {
-				stored: memberIds.length,
-				departed: result.departedMemberIds.length,
-				departedMemberIds: result.departedMemberIds,
-			}
-		})
 
 		// Step 4: Send HR cleanup messages for departed members
 		if (memberResult.departedMemberIds.length > 0) {
@@ -152,31 +156,31 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 		}
 
 		// Step 5: Fetch & store member tracking
-		const trackingData = await step.do(
-			'fetch-member-tracking',
+		await step.do(
+			'fetch-store-member-tracking',
 			{
 				retries: { limit: 5, delay: '10 seconds', backoff: 'exponential' },
 				timeout: '1 minute',
 			},
 			async () => {
 				using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+				using corpDataDO = getStub<EveCorporationData>(this.env.EVE_CORPORATION_DATA, corporationId)
+
 				const data = await esiFetch.fetchMemberTracking(
 					tokenStore,
 					corporationId,
 					director.characterId
 				)
 				console.log('[Step] Member tracking fetched', { corporationId, count: data.length })
-				return data
+
+				await corpDataDO.storeMemberTracking(corporationId, data)
+				console.log('[Step] Member tracking stored', { corporationId, count: data.length })
+
+				return {
+					stored: data.length,
+				}
 			}
 		)
-
-		await step.do('store-member-tracking', {}, async () => {
-			using corpDataDO = getStub<EveCorporationData>(this.env.EVE_CORPORATION_DATA, corporationId)
-			await corpDataDO.storeMemberTracking(corporationId, trackingData)
-			return {
-				stored: trackingData.length,
-			}
-		})
 
 		// Step 6: Fetch & store wallets
 		const wallets = await step.do(
@@ -277,146 +281,146 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 		)
 
 		// Step 9: Fetch & store assets
-		const assets = await step.do(
-			'fetch-assets',
+		const assetsResult = await step.do(
+			'fetch-store-assets',
 			{
 				retries: { limit: 5, delay: '10 seconds', backoff: 'exponential' },
 				timeout: '2 minutes',
 			},
 			async () => {
 				using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+				using corpDataDO = getStub<EveCorporationData>(this.env.EVE_CORPORATION_DATA, corporationId)
+
 				const data = await esiFetch.fetchAssets(tokenStore, corporationId, director.characterId)
 				console.log('[Step] Assets fetched', { corporationId, count: data.length })
-				return data
+
+				await corpDataDO.storeAssets(corporationId, data)
+				console.log('[Step] Assets stored', { corporationId, count: data.length })
+
+				return {
+					stored: data.length,
+				}
 			}
 		)
-
-		await step.do('store-assets', {}, async () => {
-			using corpDataDO = getStub<EveCorporationData>(this.env.EVE_CORPORATION_DATA, corporationId)
-			await corpDataDO.storeAssets(corporationId, assets)
-			return {
-				stored: assets.length,
-			}
-		})
 
 		// Step 10: Fetch & store structures
-		const structures = await step.do(
-			'fetch-structures',
+		const structuresResult = await step.do(
+			'fetch-store-structures',
 			{
 				retries: { limit: 5, delay: '10 seconds', backoff: 'exponential' },
 				timeout: '1 minute',
 			},
 			async () => {
 				using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+				using corpDataDO = getStub<EveCorporationData>(this.env.EVE_CORPORATION_DATA, corporationId)
+
 				const data = await esiFetch.fetchStructures(tokenStore, corporationId, director.characterId)
 				console.log('[Step] Structures fetched', { corporationId, count: data.length })
-				return data
+
+				await corpDataDO.storeStructures(corporationId, data)
+				console.log('[Step] Structures stored', { corporationId, count: data.length })
+
+				return {
+					stored: data.length,
+				}
 			}
 		)
-
-		await step.do('store-structures', {}, async () => {
-			using corpDataDO = getStub<EveCorporationData>(this.env.EVE_CORPORATION_DATA, corporationId)
-			await corpDataDO.storeStructures(corporationId, structures)
-			return {
-				stored: structures.length,
-			}
-		})
 
 		// Step 11: Fetch & store market orders
-		const orders = await step.do(
-			'fetch-orders',
+		const ordersResult = await step.do(
+			'fetch-store-orders',
 			{
 				retries: { limit: 5, delay: '10 seconds', backoff: 'exponential' },
 				timeout: '1 minute',
 			},
 			async () => {
 				using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+				using corpDataDO = getStub<EveCorporationData>(this.env.EVE_CORPORATION_DATA, corporationId)
+
 				const data = await esiFetch.fetchOrders(tokenStore, corporationId, director.characterId)
 				console.log('[Step] Orders fetched', { corporationId, count: data.length })
-				return data
+
+				await corpDataDO.storeOrders(corporationId, data)
+				console.log('[Step] Orders stored', { corporationId, count: data.length })
+
+				return {
+					stored: data.length,
+				}
 			}
 		)
-
-		await step.do('store-orders', {}, async () => {
-			using corpDataDO = getStub<EveCorporationData>(this.env.EVE_CORPORATION_DATA, corporationId)
-			await corpDataDO.storeOrders(corporationId, orders)
-			return {
-				stored: orders.length,
-			}
-		})
 
 		// Step 12: Fetch & store contracts
-		const contracts = await step.do(
-			'fetch-contracts',
+		const contractsResult = await step.do(
+			'fetch-store-contracts',
 			{
 				retries: { limit: 5, delay: '10 seconds', backoff: 'exponential' },
 				timeout: '1 minute',
 			},
 			async () => {
 				using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+				using corpDataDO = getStub<EveCorporationData>(this.env.EVE_CORPORATION_DATA, corporationId)
+
 				const data = await esiFetch.fetchContracts(tokenStore, corporationId, director.characterId)
 				console.log('[Step] Contracts fetched', { corporationId, count: data.length })
-				return data
+
+				await corpDataDO.storeContracts(corporationId, data)
+				console.log('[Step] Contracts stored', { corporationId, count: data.length })
+
+				return {
+					stored: data.length,
+				}
 			}
 		)
 
-		await step.do('store-contracts', {}, async () => {
-			using corpDataDO = getStub<EveCorporationData>(this.env.EVE_CORPORATION_DATA, corporationId)
-			await corpDataDO.storeContracts(corporationId, contracts)
-			return {
-				stored: contracts.length,
-			}
-		})
-
 		// Step 13: Fetch & store industry jobs
-		const industryJobs = await step.do(
-			'fetch-industry-jobs',
+		const industryJobsResult = await step.do(
+			'fetch-store-industry-jobs',
 			{
 				retries: { limit: 5, delay: '10 seconds', backoff: 'exponential' },
 				timeout: '1 minute',
 			},
 			async () => {
 				using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+				using corpDataDO = getStub<EveCorporationData>(this.env.EVE_CORPORATION_DATA, corporationId)
+
 				const data = await esiFetch.fetchIndustryJobs(
 					tokenStore,
 					corporationId,
 					director.characterId
 				)
 				console.log('[Step] Industry jobs fetched', { corporationId, count: data.length })
-				return data
+
+				await corpDataDO.storeIndustryJobs(corporationId, data)
+				console.log('[Step] Industry jobs stored', { corporationId, count: data.length })
+
+				return {
+					stored: data.length,
+				}
 			}
 		)
 
-		await step.do('store-industry-jobs', {}, async () => {
-			using corpDataDO = getStub<EveCorporationData>(this.env.EVE_CORPORATION_DATA, corporationId)
-			await corpDataDO.storeIndustryJobs(corporationId, industryJobs)
-			return {
-				stored: industryJobs.length,
-			}
-		})
-
 		// Step 14: Fetch & store killmails
-		const killmails = await step.do(
-			'fetch-killmails',
+		const killmailsResult = await step.do(
+			'fetch-store-killmails',
 			{
 				retries: { limit: 5, delay: '10 seconds', backoff: 'exponential' },
 				timeout: '1 minute',
 			},
 			async () => {
 				using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+				using corpDataDO = getStub<EveCorporationData>(this.env.EVE_CORPORATION_DATA, corporationId)
+
 				const data = await esiFetch.fetchKillmails(tokenStore, corporationId, director.characterId)
 				console.log('[Step] Killmails fetched', { corporationId, count: data.length })
-				return data
+
+				await corpDataDO.storeKillmails(corporationId, data)
+				console.log('[Step] Killmails stored', { corporationId, count: data.length })
+
+				return {
+					stored: data.length,
+				}
 			}
 		)
-
-		await step.do('store-killmails', {}, async () => {
-			using corpDataDO = getStub<EveCorporationData>(this.env.EVE_CORPORATION_DATA, corporationId)
-			await corpDataDO.storeKillmails(corporationId, killmails)
-			return {
-				stored: killmails.length,
-			}
-		})
 
 		// Step 15: Update last sync timestamp
 		await step.do('update-last-sync', {}, async () => {
@@ -438,15 +442,15 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			trigger,
 			stats: {
 				corporationName: publicInfo.name,
-				totalMembers: memberIds.length,
+				totalMembers: memberResult.stored,
 				departedMembers: memberResult.departedMemberIds.length,
 				walletsCount: wallets.length,
-				assetsCount: assets.length,
-				structuresCount: structures.length,
-				ordersCount: orders.length,
-				contractsCount: contracts.length,
-				industryJobsCount: industryJobs.length,
-				killmailsCount: killmails.length,
+				assetsCount: assetsResult.stored,
+				structuresCount: structuresResult.stored,
+				ordersCount: ordersResult.stored,
+				contractsCount: contractsResult.stored,
+				industryJobsCount: industryJobsResult.stored,
+				killmailsCount: killmailsResult.stored,
 			},
 		})
 
@@ -456,15 +460,15 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			trigger,
 			stats: {
 				corporationName: publicInfo.name,
-				totalMembers: memberIds.length,
+				totalMembers: memberResult.stored,
 				departedMembers: memberResult.departedMemberIds.length,
 				walletsCount: wallets.length,
-				assetsCount: assets.length,
-				structuresCount: structures.length,
-				ordersCount: orders.length,
-				contractsCount: contracts.length,
-				industryJobsCount: industryJobs.length,
-				killmailsCount: killmails.length,
+				assetsCount: assetsResult.stored,
+				structuresCount: structuresResult.stored,
+				ordersCount: ordersResult.stored,
+				contractsCount: contractsResult.stored,
+				industryJobsCount: industryJobsResult.stored,
+				killmailsCount: killmailsResult.stored,
 			},
 		}
 	}
