@@ -18,7 +18,36 @@
 			"name": "user-discord-refresh",
 			"binding": "USER_DISCORD_REFRESH",
 			"class_name": "UserDiscordRefreshWorkflow"
+		},
+		{
+			"name": "eve-corporation-sync",
+			"binding": "EVE_CORPORATION_SYNC",
+			"class_name": "EveCorporationSyncWorkflow"
 		}
 	],
-	"vars": {}
+	"services": [
+		{
+			"binding": "CORE",
+			"service": "core",
+			"entrypoint": "CoreWorker"
+		}
+	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "DISCORD",
+				"class_name": "Discord",
+				"script_name": "discord"
+			},
+			{
+				"name": "EVE_CORPORATION_DATA",
+				"class_name": "EveCorporationData",
+				"script_name": "eve-corporation-data"
+			}
+		]
+	},
+	"vars": {
+		"SHOULD_REFRESH_CORPORATION_DATA": true,
+		"SHOULD_REFRESH_USER_DISCORD": false
+	}
 }

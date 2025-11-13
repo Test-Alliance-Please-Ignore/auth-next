@@ -47,12 +47,36 @@ export const corporationConfig = pgTable(
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 		includeInBackgroundRefresh: boolean('include_in_background_refresh').default(false).notNull(),
 		corporationType: corporationTypeEnum('corporation_type').default('other').notNull(),
+		membersLastSync: timestamp('members_last_sync', { withTimezone: true }),
+		memberTrackingLastSync: timestamp('member_tracking_last_sync', { withTimezone: true }),
+		walletsLastSync: timestamp('wallets_last_sync', { withTimezone: true }),
+		walletJournalLastSync: timestamp('wallet_journal_last_sync', { withTimezone: true }),
+		walletTransactionsLastSync: timestamp('wallet_transactions_last_sync', { withTimezone: true }),
+		assetsLastSync: timestamp('assets_last_sync', { withTimezone: true }),
+		structuresLastSync: timestamp('structures_last_sync', { withTimezone: true }),
+		ordersLastSync: timestamp('orders_last_sync', { withTimezone: true }),
+		contractsLastSync: timestamp('contracts_last_sync', { withTimezone: true }),
+		industryJobsLastSync: timestamp('industry_jobs_last_sync', { withTimezone: true }),
+		killmailsLastSync: timestamp('killmails_last_sync', { withTimezone: true }),
 	},
 	(table) => [
 		index('corporation_config_include_in_background_refresh_idx').on(
 			table.includeInBackgroundRefresh
 		),
 		index('corporation_config_corporation_type_idx').on(table.corporationType),
+		index('corporation_config_member_tracking_last_sync_idx').on(table.memberTrackingLastSync),
+		index('corporation_config_wallets_last_sync_idx').on(table.walletsLastSync),
+		index('corporation_config_assets_last_sync_idx').on(table.assetsLastSync),
+		index('corporation_config_structures_last_sync_idx').on(table.structuresLastSync),
+		index('corporation_config_orders_last_sync_idx').on(table.ordersLastSync),
+		index('corporation_config_contracts_last_sync_idx').on(table.contractsLastSync),
+		index('corporation_config_industry_jobs_last_sync_idx').on(table.industryJobsLastSync),
+		index('corporation_config_killmails_last_sync_idx').on(table.killmailsLastSync),
+		index('corporation_config_members_last_sync_idx').on(table.membersLastSync),
+		index('corporation_config_wallet_transactions_last_sync_idx').on(
+			table.walletTransactionsLastSync
+		),
+		index('corporation_config_wallet_journal_last_sync_idx').on(table.walletJournalLastSync),
 	]
 )
 

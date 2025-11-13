@@ -415,11 +415,6 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 							memberGuilds.push(guildId)
 						} else if (response.status === 404) {
 							// User is not a member
-							logger.debug('[DiscordDO] User not a member of guild (bot check)', {
-								coreUserId,
-								discordUserId,
-								guildId,
-							})
 						} else {
 							logger.warn('[DiscordDO] Unexpected response checking guild membership', {
 								coreUserId,
@@ -474,12 +469,6 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 			// Check if add-only mode is enabled (default: true)
 			const isAddOnlyMode = this.env.DISCORD_ROLE_ADD_ONLY_MODE !== 'false'
 
-			logger.info('[DiscordDO] Starting updateUserRoles', {
-				coreUserId,
-				requestCount: updateRequests.length,
-				addOnlyMode: isAddOnlyMode,
-			})
-
 			// Get user from database
 			const user = await this.getUserByCoreUserId(coreUserId)
 			if (!user) {
@@ -505,13 +494,6 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 			const results = await Promise.all(
 				updateRequests.map(async (req) => {
 					try {
-						logger.info('[DiscordDO] Updating roles for guild', {
-							coreUserId,
-							discordUserId: user.userId,
-							guildId: req.guildId,
-							newRoleCount: req.roleIds.length,
-						})
-
 						// First, get current member data to see existing roles
 						const currentMember = await botService.getGuildMember(req.guildId, user.userId)
 
@@ -540,11 +522,6 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 
 						// Only update if there are changes
 						if (rolesAdded.length === 0 && rolesRemoved.length === 0) {
-							logger.info('[DiscordDO] No role changes needed', {
-								guildId: req.guildId,
-								userId: user.userId,
-								addOnlyMode: isAddOnlyMode,
-							})
 							return {
 								guildId: req.guildId,
 								success: true,
@@ -573,20 +550,6 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 							}
 						}
 
-						// Count preserved manual roles in normal mode
-						const manualRolesPreserved = isAddOnlyMode
-							? 0
-							: currentRoleIds.filter((id) => !managedRoleIds.includes(id)).length
-
-						logger.info('[DiscordDO] Successfully updated roles', {
-							guildId: req.guildId,
-							userId: user.userId,
-							rolesAdded: rolesAdded.length,
-							rolesRemoved: rolesRemoved.length,
-							addOnlyMode: isAddOnlyMode,
-							manualRolesPreserved,
-						})
-
 						return {
 							guildId: req.guildId,
 							success: true,
@@ -606,13 +569,6 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 					}
 				})
 			)
-
-			logger.info('[DiscordDO] Completed role updates', {
-				coreUserId,
-				totalRequests: results.length,
-				successCount: results.filter((r) => r.success).length,
-				failureCount: results.filter((r) => !r.success).length,
-			})
 
 			// Track auth status
 			await this.handleAuthResults(results, user.id, coreUserId)

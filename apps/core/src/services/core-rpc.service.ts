@@ -30,9 +30,7 @@ import type { schema } from '../db'
 export class CoreRpcService {
 	constructor(
 		private db: DbClient<typeof schema>,
-		private eveTokenStoreNamespace: DurableObjectNamespace,
-		private discordNamespace: DurableObjectNamespace,
-		private hrNamespace: DurableObjectNamespace
+		private env: Env
 	) {}
 
 	/**
@@ -134,10 +132,10 @@ export class CoreRpcService {
 		})
 
 		// 3. Get EVE Token Store stub for token validation
-		using eveTokenStore = getStub<EveTokenStore>(this.eveTokenStoreNamespace, 'default')
+		using eveTokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 
 		// 4. Get HR stub for blacklist status check
-		using hrStub = getStub<Hr>(this.hrNamespace, 'default')
+		using hrStub = getStub<Hr>(this.env.HR, 'default')
 
 		// 5. Bulk check blacklist status for all characters
 		const characterIds = chars.map((c) => c.characterId)
@@ -172,7 +170,7 @@ export class CoreRpcService {
 		let discordStatus = null
 		if (user.discordUserId) {
 			try {
-				using discordStub = getStub<Discord>(this.discordNamespace, 'default')
+				using discordStub = getStub<Discord>(this.env.DISCORD, 'default')
 				const status = await discordStub.getDiscordUserStatus(userId)
 				if (status) {
 					discordStatus = {
@@ -224,7 +222,7 @@ export class CoreRpcService {
 
 		// 3. Revoke all ESI tokens for user's characters
 		let tokensRevoked = 0
-		using eveTokenStore = getStub<EveTokenStore>(this.eveTokenStoreNamespace, 'default')
+		using eveTokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 
 		for (const characterId of characterIds) {
 			try {
@@ -293,7 +291,7 @@ export class CoreRpcService {
 
 		// 5. Revoke ESI token (security critical - log failure but continue)
 		let tokensRevoked = false
-		using eveTokenStore = getStub<EveTokenStore>(this.eveTokenStoreNamespace, 'default')
+		using eveTokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 
 		try {
 			tokensRevoked = await eveTokenStore.revokeToken(characterId)
@@ -347,7 +345,7 @@ export class CoreRpcService {
 
 		// 3. Revoke ESI token (security critical - log failure but continue)
 		let tokensRevoked = false
-		using eveTokenStore = getStub<EveTokenStore>(this.eveTokenStoreNamespace, 'default')
+		using eveTokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 
 		try {
 			tokensRevoked = await eveTokenStore.revokeToken(characterId)
@@ -510,5 +508,34 @@ export class CoreRpcService {
 				updatedAt: now,
 			})
 			.where(eq(users.id, userId))
+	}
+
+	/**
+	 * Sync Discord access for a user
+	 * - Invites user to servers they should be in
+	 * - Updates roles based on corporation/group memberships
+	 * - Applies auto-apply roles
+	 * - Updates nicknames if enabled
+	 *
+	 * @param userId - User ID
+	 * @returns Sync result with statistics
+	 */
+	async syncUserDiscordAccess(userId: string): Promise<{
+		results: Array<{
+			guildId: string
+			guildName: string
+			corporationName?: string
+			groupName?: string
+			success: boolean
+			errorMessage?: string
+			alreadyMember?: boolean
+			type?: 'corporation' | 'group'
+			operation?: 'invite' | 'update'
+		}>
+		totalInvited: number
+		totalUpdated: number
+		totalFailed: number
+	}> {
+		return await discordService.syncUserDiscordAccess(this.env, userId)
 	}
 }

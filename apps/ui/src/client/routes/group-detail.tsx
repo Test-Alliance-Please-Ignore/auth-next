@@ -145,7 +145,7 @@ export default function GroupDetailPage() {
 							<LeaveButton
 								group={group}
 								onSuccess={() => {
-									void navigate('/groups')
+									void navigate('/my-groups')
 								}}
 							/>
 						</CardContent>

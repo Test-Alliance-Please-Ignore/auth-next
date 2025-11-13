@@ -1,0 +1,2 @@
+ALTER TABLE "corporation_config" ADD COLUMN "members_last_sync" timestamp with time zone;--> statement-breakpoint
+CREATE INDEX "corporation_config_members_last_sync_idx" ON "corporation_config" USING btree ("members_last_sync");

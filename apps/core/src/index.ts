@@ -138,7 +138,7 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	private getService(): CoreRpcService {
 		if (!this.service) {
 			const db = createDb(this.env.DATABASE_URL)
-			this.service = new CoreRpcService(db, this.env.EVE_TOKEN_STORE, this.env.DISCORD, this.env.HR)
+			this.service = new CoreRpcService(db, this.env)
 		}
 		return this.service
 	}
@@ -230,6 +230,32 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	 */
 	async updateUserDiscordRefreshTimestamp(userId: string): Promise<void> {
 		return this.getService().updateUserDiscordRefreshTimestamp(userId)
+	}
+
+	/**
+	 * Sync Discord access for a user
+	 * - Invites user to servers they should be in
+	 * - Updates roles based on corporation/group memberships
+	 * - Applies auto-apply roles
+	 * - Updates nicknames if enabled
+	 */
+	async syncUserDiscordAccess(userId: string): Promise<{
+		results: Array<{
+			guildId: string
+			guildName: string
+			corporationName?: string
+			groupName?: string
+			success: boolean
+			errorMessage?: string
+			alreadyMember?: boolean
+			type?: 'corporation' | 'group'
+			operation?: 'invite' | 'update'
+		}>
+		totalInvited: number
+		totalUpdated: number
+		totalFailed: number
+	}> {
+		return this.getService().syncUserDiscordAccess(userId)
 	}
 
 	/**

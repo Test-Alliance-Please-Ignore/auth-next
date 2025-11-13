@@ -1,7 +1,8 @@
-import { WorkflowEntrypoint, WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
+import { WorkflowEntrypoint } from 'cloudflare:workers'
 
-import { DiscordRefreshService } from '../services/discord-refresh.service'
+import { createWorkflowInstanceUpdater } from '@repo/orchestrator'
 
+import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
 import type { Env } from '../context'
 
 /**
@@ -37,60 +38,70 @@ export class UserDiscordRefreshWorkflow extends WorkflowEntrypoint<Env, UserDisc
 			throw new Error('Missing required payload: userId and discordUserId are required')
 		}
 
-		// Step 1: Apply jitter delay if specified
-		if (jitterDelaySeconds && jitterDelaySeconds > 0) {
-			await step.sleep('apply-jitter', `${jitterDelaySeconds} seconds`)
-		}
+		const updater = createWorkflowInstanceUpdater(event.instanceId, this.env.DATABASE_URL)
+		await updater.markRunning()
 
-		// Step 2: Execute Discord refresh with retry logic
-		const refreshResult = await step.do(
-			'refresh-discord-access',
-			{
-				retries: {
-					limit: 3,
-					delay: 2000, // 2 seconds initial delay
-					backoff: 'exponential',
+		try {
+			// Step 1: Apply jitter delay if specified
+			if (jitterDelaySeconds && jitterDelaySeconds > 0) {
+				await step.sleep('apply-jitter', `${jitterDelaySeconds} seconds`)
+			}
+
+			// Step 2: Execute Discord refresh with retry logic
+			const refreshResult = await step.do(
+				'refresh-discord-access',
+				{
+					retries: {
+						limit: 3,
+						delay: 2000, // 2 seconds initial delay
+						backoff: 'exponential',
+					},
 				},
-			},
-			async () => {
-				const refreshService = new DiscordRefreshService(this.env)
-				return await refreshService.refreshUserDiscordAccess(userId, discordUserId)
-			}
-		)
+				async () => {
+					return await this.env.CORE.syncUserDiscordAccess(userId)
+				}
+			)
 
-		// Step 3: Handle refresh result
-		await step.do('handle-result', async () => {
-			// Update refresh timestamp if successful
-			if (refreshResult.success) {
+			// Step 3: Handle refresh result
+			await step.do('handle-result', async () => {
+				const success = refreshResult.totalFailed === 0
+
+				// Always update refresh timestamp (even if some operations failed)
+				// This prevents the workflow from retrying too aggressively
 				await this.env.CORE.updateUserDiscordRefreshTimestamp(userId)
-			}
 
-			// Log activity
-			await this.env.CORE.logUserActivity(userId, 'discord.refresh', {
-				success: refreshResult.success,
-				tokenRefreshed: refreshResult.tokenRefreshed,
-				serversJoined: refreshResult.serversJoined,
-				rolesUpdated: refreshResult.rolesUpdated,
-				errors: refreshResult.errors,
-				authRevoked: refreshResult.authRevoked,
+				// Log activity
+				await this.env.CORE.logUserActivity(userId, 'discord.refresh', {
+					success,
+					totalInvited: refreshResult.totalInvited,
+					totalUpdated: refreshResult.totalUpdated,
+					totalFailed: refreshResult.totalFailed,
+					results: refreshResult.results.map((r) => ({
+						...r,
+					})),
+				})
+
+				return {
+					logged: true,
+					timestampUpdated: true,
+				}
 			})
 
-			return {
-				logged: true,
-				timestampUpdated: refreshResult.success,
-			}
-		})
+			await updater.markCompleted()
 
-		// Return workflow result
-		return {
-			userId,
-			discordUserId,
-			success: refreshResult.success,
-			tokenRefreshed: refreshResult.tokenRefreshed,
-			serversJoined: refreshResult.serversJoined,
-			rolesUpdated: refreshResult.rolesUpdated,
-			errorCount: refreshResult.errors.length,
-			authRevoked: refreshResult.authRevoked,
+			// Return workflow result
+			return {
+				userId,
+				discordUserId,
+				success: refreshResult.totalFailed === 0,
+				totalInvited: refreshResult.totalInvited,
+				totalUpdated: refreshResult.totalUpdated,
+				totalFailed: refreshResult.totalFailed,
+				guildsProcessed: refreshResult.results.length,
+			}
+		} catch (error) {
+			await updater.markFailed(error)
+			throw error
 		}
 	}
 }

@@ -54,18 +54,18 @@ export function transformWallets(wallets: Array<{ division: number; balance: num
 export function transformWalletJournal(entries: any[]) {
 	return entries.map((entry) => ({
 		id: String(entry.id),
-		amount: entry.amount !== undefined ? String(entry.amount) : null,
-		balance: entry.balance !== undefined ? String(entry.balance) : null,
-		context_id: entry.context_id ? String(entry.context_id) : null,
-		context_id_type: entry.context_id_type || null,
+		amount: entry.amount !== undefined ? String(entry.amount) : undefined,
+		balance: entry.balance !== undefined ? String(entry.balance) : undefined,
+		context_id: entry.context_id ? String(entry.context_id) : undefined,
+		context_id_type: entry.context_id_type,
 		date: entry.date,
 		description: entry.description,
-		first_party_id: entry.first_party_id ? String(entry.first_party_id) : null,
-		reason: entry.reason || null,
+		first_party_id: entry.first_party_id ? String(entry.first_party_id) : undefined,
+		reason: entry.reason,
 		ref_type: entry.ref_type,
-		second_party_id: entry.second_party_id ? String(entry.second_party_id) : null,
-		tax: entry.tax !== undefined ? String(entry.tax) : null,
-		tax_receiver_id: entry.tax_receiver_id ? String(entry.tax_receiver_id) : null,
+		second_party_id: entry.second_party_id ? String(entry.second_party_id) : undefined,
+		tax: entry.tax !== undefined ? String(entry.tax) : undefined,
+		tax_receiver_id: entry.tax_receiver_id ? String(entry.tax_receiver_id) : undefined,
 	}))
 }
 

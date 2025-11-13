@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { and, desc, eq, inArray, notInArray, sql } from '@repo/db-utils'
+import { and, coalesce, desc, eq, inArray, lte, notInArray, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
@@ -21,21 +21,8 @@ import {
 	corporationWallets,
 	corporationWalletTransactions,
 } from './db/schema'
-import {
-	transformAssets,
-	transformContracts,
-	transformIndustryJobs,
-	transformKillmails,
-	transformMembers,
-	transformMemberTracking,
-	transformOrders,
-	transformPublicInfo,
-	transformStructures,
-	transformWalletJournal,
-	transformWallets,
-	transformWalletTransactions,
-} from './lib/esi-transforms'
 import { DirectorManager } from './services/director-manager'
+import * as esiFetch from './services/esi-fetch'
 
 import type {
 	CharacterCorporationRolesData,
@@ -51,6 +38,7 @@ import type {
 	CorporationMarketData,
 	CorporationMemberData,
 	CorporationMemberTrackingData,
+	CorporationNeedingRefreshData,
 	CorporationOrderData,
 	CorporationPublicData,
 	CorporationRole,
@@ -75,6 +63,12 @@ import type {
 } from '@repo/eve-corporation-data'
 import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
 import type { Env } from './context'
+
+type CorporationConfigRow = typeof corporationConfig.$inferSelect
+
+function minutesAgo(minutes: number): Date {
+	return new Date(Date.now() - minutes * 60 * 1000)
+}
 
 /**
  * EveCorporationData Durable Object
@@ -231,6 +225,121 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	// CONFIGURATION METHODS
 	// ========================================================================
 
+	async getCorporationsNeedingRefresh(): Promise<CorporationNeedingRefreshData> {
+		const tooOld = minutesAgo(20)
+		const transformConfig = (config: CorporationConfigRow): CorporationConfigData => ({
+			corporationId: config.corporationId,
+			characterId: '',
+			characterName: '',
+			lastVerified: config.lastVerified,
+			isVerified: config.isVerified,
+			createdAt: config.createdAt,
+			updatedAt: config.updatedAt,
+			includeInBackgroundRefresh: config.includeInBackgroundRefresh,
+			corporationType: config.corporationType as CorporationType,
+			membersLastSync: config.membersLastSync ?? null,
+			memberTrackingLastSync: config.memberTrackingLastSync ?? null,
+			walletsLastSync: config.walletsLastSync ?? null,
+			walletJournalLastSync: config.walletJournalLastSync ?? null,
+			walletTransactionsLastSync: config.walletTransactionsLastSync ?? null,
+			assetsLastSync: config.assetsLastSync ?? null,
+			structuresLastSync: config.structuresLastSync ?? null,
+			ordersLastSync: config.ordersLastSync ?? null,
+			contractsLastSync: config.contractsLastSync ?? null,
+			industryJobsLastSync: config.industryJobsLastSync ?? null,
+			killmailsLastSync: config.killmailsLastSync ?? null,
+		})
+
+		const results: CorporationNeedingRefreshData = {
+			members: [],
+			'member-tracking': [],
+			wallets: [],
+			'wallet-journal': [],
+			'wallet-transactions': [],
+			assets: [],
+			structures: [],
+			orders: [],
+			contracts: [],
+			'industry-jobs': [],
+			killmails: [],
+		}
+
+		const configs = await this.db.query.corporationConfig.findMany({
+			where: and(eq(corporationConfig.includeInBackgroundRefresh, true)),
+		})
+
+		const syncTargets = [
+			{ bucket: 'members' as const, field: 'membersLastSync' as const },
+			{ bucket: 'member-tracking' as const, field: 'memberTrackingLastSync' as const },
+			{ bucket: 'wallets' as const, field: 'walletsLastSync' as const },
+			{ bucket: 'wallet-journal' as const, field: 'walletJournalLastSync' as const },
+			{ bucket: 'wallet-transactions' as const, field: 'walletTransactionsLastSync' as const },
+			{ bucket: 'assets' as const, field: 'assetsLastSync' as const },
+			{ bucket: 'structures' as const, field: 'structuresLastSync' as const },
+			{ bucket: 'orders' as const, field: 'ordersLastSync' as const },
+			{ bucket: 'contracts' as const, field: 'contractsLastSync' as const },
+			{ bucket: 'industry-jobs' as const, field: 'industryJobsLastSync' as const },
+			{ bucket: 'killmails' as const, field: 'killmailsLastSync' as const },
+		]
+
+		const isStale = (lastSync: Date | null | undefined, cutoff: Date) =>
+			!lastSync || lastSync < cutoff
+
+		for (const corp of configs) {
+			const transformed = transformConfig(corp)
+
+			for (const { bucket, field } of syncTargets) {
+				if (isStale(corp[field], tooOld)) {
+					results[bucket].push(transformed)
+				}
+			}
+		}
+
+		logger.info('[EveCorporationData] getCorporationsNeedingRefresh: Results', { results })
+
+		return results
+	}
+
+	/**
+	 * Update corporation configuration settings
+	 */
+	async updateCorporationConfig(
+		corporationId: string,
+		updates: { includeInBackgroundRefresh?: boolean }
+	): Promise<void> {
+		// Ensure corporation config exists
+		const config = await this.db.query.corporationConfig.findFirst({
+			where: eq(corporationConfig.corporationId, corporationId),
+		})
+
+		if (!config) {
+			// Create config if it doesn't exist
+			await this.db.insert(corporationConfig).values({
+				corporationId: String(corporationId),
+				isVerified: false,
+				lastVerified: null,
+				includeInBackgroundRefresh: updates.includeInBackgroundRefresh ?? false,
+				updatedAt: new Date(),
+			})
+		} else {
+			// Update existing config
+			await this.db
+				.update(corporationConfig)
+				.set({
+					...(updates.includeInBackgroundRefresh !== undefined && {
+						includeInBackgroundRefresh: updates.includeInBackgroundRefresh,
+					}),
+					updatedAt: new Date(),
+				})
+				.where(eq(corporationConfig.corporationId, corporationId))
+		}
+
+		logger.info('[EveCorporationData] Updated corporation config', {
+			corporationId,
+			updates,
+		})
+	}
+
 	/**
 	 * Configure which character to use for API access (legacy method for backwards compatibility)
 	 * @deprecated Use addDirector() instead
@@ -292,6 +401,17 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			updatedAt: config.updatedAt,
 			includeInBackgroundRefresh: config.includeInBackgroundRefresh,
 			corporationType: config.corporationType as CorporationType,
+			membersLastSync: config.membersLastSync,
+			memberTrackingLastSync: config.memberTrackingLastSync,
+			walletsLastSync: config.walletsLastSync,
+			walletJournalLastSync: config.walletJournalLastSync,
+			walletTransactionsLastSync: config.walletTransactionsLastSync,
+			assetsLastSync: config.assetsLastSync,
+			structuresLastSync: config.structuresLastSync,
+			ordersLastSync: config.ordersLastSync,
+			contractsLastSync: config.contractsLastSync,
+			industryJobsLastSync: config.industryJobsLastSync,
+			killmailsLastSync: config.killmailsLastSync,
 		}
 	}
 
@@ -681,7 +801,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 */
 	async storeWallets(
 		corporationId: string,
-		wallets: Array<{ division: number; balance: number }>
+		wallets: Array<{ division: number; balance: string }>
 	): Promise<void> {
 		for (const wallet of wallets) {
 			await this.db
@@ -689,13 +809,13 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				.values({
 					corporationId: String(corporationId),
 					division: wallet.division,
-					balance: wallet.balance.toString(),
+					balance: wallet.balance,
 					updatedAt: new Date(),
 				})
 				.onConflictDoUpdate({
 					target: [corporationWallets.corporationId, corporationWallets.division],
 					set: {
-						balance: wallet.balance.toString(),
+						balance: wallet.balance,
 						updatedAt: sql`excluded.updated_at`,
 					},
 				})
@@ -1062,14 +1182,11 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		_forceRefresh = false
 	): Promise<void> {
 		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		const response = await tokenStore.fetchPublicEsi<any>(`/corporations/${corporationId}`)
-
-		const data = transformPublicInfo(response.data)
+		const data = await esiFetch.fetchPublicInfo(tokenStore, corporationId)
 
 		await this.db
 			.insert(corporationPublicInfo)
 			.values({
-				corporationId: String(corporationId),
 				...data,
 				updatedAt: new Date(),
 			})
@@ -1098,13 +1215,11 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
 		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 
-		// ESI returns numbers for character IDs, but we need strings
-		const response = await tokenStore.fetchEsi<number[]>(
-			`/corporations/${corporationId}/members`,
+		const memberIds: EsiCorporationMembers = await esiFetch.fetchMembers(
+			tokenStore,
+			corporationId,
 			characterId
 		)
-
-		const memberIds: EsiCorporationMembers = transformMembers(response.data)
 
 		// Fetch existing members from database to identify departed members
 		const existingMembers = await this.db
@@ -1221,22 +1336,11 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		await this.verifyRole(characterId, ['Director'])
 
 		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		// ESI returns numbers for IDs, but we need strings
-		const response = await tokenStore.fetchEsi<
-			Array<{
-				character_id: number
-				base_id?: number
-				location_id?: number
-				logoff_date?: string
-				logon_date?: string
-				ship_type_id?: number
-				start_date?: string
-			}>
-		>(`/corporations/${corporationId}/membertracking`, characterId)
-
-		const rawData = response.data
-
-		const trackingData: EsiCorporationMemberTracking[] = transformMemberTracking(rawData)
+		const trackingData: EsiCorporationMemberTracking[] = await esiFetch.fetchMemberTracking(
+			tokenStore,
+			corporationId,
+			characterId
+		)
 
 		// Fetch existing tracking records to identify departed members
 		const existingTracking = await this.db
@@ -1307,12 +1411,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		await this.verifyRole(characterId, ['Accountant', 'Junior_Accountant'])
 
 		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		const response: EsiResponse<EsiCorporationWallet[]> = await tokenStore.fetchEsi(
-			`/corporations/${corporationId}/wallets`,
-			characterId
-		)
-
-		const wallets = transformWallets(response.data)
+		const wallets = await esiFetch.fetchWallets(tokenStore, corporationId, characterId)
 
 		for (const wallet of wallets) {
 			await this.db
@@ -1353,26 +1452,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		await this.verifyRole(characterId, ['Accountant', 'Junior_Accountant'])
 
 		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-
-		// Wallet journal is paginated, fetch all pages using helper
-		type RawJournalEntry = {
-			id: number
-			amount?: number
-			balance?: number
-			context_id?: number
-			context_id_type?: string
-			date: string
-			description: string
-			first_party_id?: number
-			reason?: string
-			ref_type: string
-			second_party_id?: number
-			tax?: number
-			tax_receiver_id?: number
-		}
-
-		const result = await tokenStore.fetchEsiAllPages<RawJournalEntry>(
-			`/corporations/${corporationId}/wallets/${division}/journal`,
+		const entries = await esiFetch.fetchWalletJournal(
+			tokenStore,
+			corporationId,
+			division,
 			characterId
 		)
 
@@ -1383,25 +1466,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				operation: 'fetch_wallet_journal',
 			})
 			.debug('Fetched wallet journal from ESI', {
-				totalPages: result.pages,
-				totalEntries: result.data.length,
-				cached: result.responses.filter((r) => r.cached).length,
+				totalEntries: entries.length,
 			})
-
-		// Log sample of first entry for debugging
-		if (result.data.length > 0) {
-			logger
-				.withTags({
-					corporationId,
-					division,
-					operation: 'fetch_wallet_journal',
-				})
-				.debug('Sample journal entry (raw)', {
-					sampleEntry: result.data[0],
-				})
-		}
-
-		const entries = transformWalletJournal(result.data)
 
 		logger
 			.withTags({
@@ -1535,23 +1601,12 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		await this.verifyRole(characterId, ['Accountant', 'Junior_Accountant'])
 
 		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		// ESI returns numbers for IDs, but we need strings
-		const response = await tokenStore.fetchEsi<
-			Array<{
-				transaction_id: number
-				client_id: number
-				date: string
-				is_buy: boolean
-				is_personal: boolean
-				journal_ref_id: number
-				location_id: number
-				quantity: number
-				type_id: number
-				unit_price: number
-			}>
-		>(`/corporations/${corporationId}/wallets/${division}/transactions`, characterId)
-
-		const rawTransactions = response.data
+		const transactions: EsiCorporationWalletTransaction[] = await esiFetch.fetchWalletTransactions(
+			tokenStore,
+			corporationId,
+			division,
+			characterId
+		)
 
 		logger
 			.withTags({
@@ -1560,12 +1615,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				operation: 'fetch_wallet_transactions',
 			})
 			.debug('Fetched wallet transactions from ESI', {
-				totalTransactions: rawTransactions.length,
-				cached: response.cached,
+				totalTransactions: transactions.length,
 			})
-
-		const transactions: EsiCorporationWalletTransaction[] =
-			transformWalletTransactions(rawTransactions)
 
 		// Batch insert to avoid hitting Cloudflare's 50 subrequest limit
 		const BATCH_SIZE = 25
@@ -1668,31 +1719,16 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		await this.verifyRole(characterId, ['Director'])
 
 		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-
-		// Assets are paginated, fetch all pages using helper
-		type RawAsset = {
-			item_id: number
-			is_singleton: boolean
-			location_flag: string
-			location_id: number
-			location_type: string
-			quantity: number
-			type_id: number
-			is_blueprint_copy?: boolean
-		}
-
-		const result = await tokenStore.fetchEsiAllPages<RawAsset>(
-			`/corporations/${corporationId}/assets`,
+		const assets: EsiCorporationAsset[] = await esiFetch.fetchAssets(
+			tokenStore,
+			corporationId,
 			characterId
 		)
 
 		logger.debug('[fetchAndStoreAssets] Fetched assets from ESI', {
 			corporationId,
-			totalAssets: result.data.length,
-			pages: result.pages,
+			totalAssets: assets.length,
 		})
-
-		const assets: EsiCorporationAsset[] = transformAssets(result.data)
 
 		// Batch insert to avoid hitting Cloudflare's subrequest limits and prevent timeouts
 		// Insert 25 assets at a time (conservative to stay well below the 50 subrequest limit)
@@ -1736,12 +1772,13 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 				// Log progress for large datasets
 				if (insertedCount % 100 === 0 || insertedCount === assets.length) {
-									logger.debug('[fetchAndStoreAssets] Insert progress', {
-										corporationId,
-										inserted: insertedCount,
-										total: assets.length,
-										percentage: Math.round((insertedCount / assets.length) * 100),
-									})				}
+					logger.debug('[fetchAndStoreAssets] Insert progress', {
+						corporationId,
+						inserted: insertedCount,
+						total: assets.length,
+						percentage: Math.round((insertedCount / assets.length) * 100),
+					})
+				}
 			}
 		} catch (error) {
 			logger.error('[fetchAndStoreAssets] Failed to insert assets', {
@@ -1784,28 +1821,11 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		await this.verifyRole(characterId, ['Station_Manager'])
 
 		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		// ESI returns numbers for IDs, but we need strings
-		const response = await tokenStore.fetchEsi<
-			Array<{
-				structure_id: number
-				type_id: number
-				system_id: number
-				profile_id: number
-				fuel_expires?: string
-				next_reinforce_apply?: string
-				next_reinforce_hour?: number
-				reinforce_hour?: number
-				state: string
-				state_timer_end?: string
-				state_timer_start?: string
-				unanchors_at?: string
-				services?: Array<{ name: string; state: string }>
-			}>
-		>(`/corporations/${corporationId}/structures`, characterId)
-
-		const rawStructures = response.data
-
-		const structures: EsiCorporationStructure[] = transformStructures(rawStructures)
+		const structures: EsiCorporationStructure[] = await esiFetch.fetchStructures(
+			tokenStore,
+			corporationId,
+			characterId
+		)
 
 		// Batch insert to prevent timeouts
 		const BATCH_SIZE = 10 // Structures have more fields, use smaller batch
@@ -1860,30 +1880,11 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		await this.verifyRole(characterId, ['Accountant', 'Junior_Accountant', 'Trader'])
 
 		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		// ESI returns numbers for IDs, but we need strings
-		const response = await tokenStore.fetchEsi<
-			Array<{
-				order_id: number
-				duration: number
-				escrow?: number
-				is_buy_order: boolean
-				issued: string
-				issued_by: number
-				location_id: number
-				min_volume?: number
-				price: number
-				range: string
-				region_id: number
-				type_id: number
-				volume_remain: number
-				volume_total: number
-				wallet_division: number
-			}>
-		>(`/corporations/${corporationId}/orders`, characterId)
-
-		const rawOrders = response.data
-
-		const orders: EsiCorporationOrder[] = transformOrders(rawOrders)
+		const orders: EsiCorporationOrder[] = await esiFetch.fetchOrders(
+			tokenStore,
+			corporationId,
+			characterId
+		)
 
 		// Batch insert to prevent timeouts
 		const BATCH_SIZE = 25
@@ -1934,37 +1935,11 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		await this.verifyRole(characterId, ['Director'])
 
 		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		// ESI returns numbers for IDs, but we need strings
-		const response = await tokenStore.fetchEsi<
-			Array<{
-				contract_id: number
-				acceptor_id?: number
-				assignee_id: number
-				availability: string
-				buyout?: number
-				collateral?: number
-				date_accepted?: string
-				date_completed?: string
-				date_expired: string
-				date_issued: string
-				days_to_complete?: number
-				end_location_id?: number
-				for_corporation: boolean
-				issuer_corporation_id: number
-				issuer_id: number
-				price?: number
-				reward?: number
-				start_location_id?: number
-				status: string
-				title?: string
-				type: string
-				volume?: number
-			}>
-		>(`/corporations/${corporationId}/contracts`, characterId)
-
-		const rawContracts = response.data
-
-		const contracts: EsiCorporationContract[] = transformContracts(rawContracts)
+		const contracts: EsiCorporationContract[] = await esiFetch.fetchContracts(
+			tokenStore,
+			corporationId,
+			characterId
+		)
 
 		// Batch insert to prevent timeouts
 		const BATCH_SIZE = 20 // Contracts have many fields, use smaller batch
@@ -2023,37 +1998,11 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		await this.verifyRole(characterId, ['Factory_Manager'])
 
 		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		// ESI returns numbers for IDs, but we need strings
-		const response = await tokenStore.fetchEsi<
-			Array<{
-				job_id: number
-				installer_id: number
-				facility_id: number
-				location_id: number
-				activity_id: number
-				blueprint_id: number
-				blueprint_type_id: number
-				blueprint_location_id: number
-				output_location_id: number
-				runs: number
-				cost?: number
-				licensed_runs?: number
-				probability?: number
-				product_type_id?: number
-				status: string
-				duration: number
-				start_date: string
-				end_date: string
-				pause_date?: string
-				completed_date?: string
-				completed_character_id?: number
-				successful_runs?: number
-			}>
-		>(`/corporations/${corporationId}/industry/jobs`, characterId)
-
-		const rawJobs = response.data
-
-		const jobs: EsiCorporationIndustryJob[] = transformIndustryJobs(rawJobs)
+		const jobs: EsiCorporationIndustryJob[] = await esiFetch.fetchIndustryJobs(
+			tokenStore,
+			corporationId,
+			characterId
+		)
 
 		// Batch insert to prevent timeouts
 		const BATCH_SIZE = 20 // Industry jobs have many fields, use smaller batch
@@ -2114,17 +2063,11 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		await this.verifyRole(characterId, ['Director'])
 
 		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		// ESI returns numbers for IDs, but we need strings
-		const response = await tokenStore.fetchEsi<
-			Array<{
-				killmail_id: number
-				killmail_hash: string
-			}>
-		>(`/corporations/${corporationId}/killmails/recent`, characterId)
-
-		const rawKillmails = response.data
-
-		const killmails: EsiCorporationKillmail[] = transformKillmails(rawKillmails)
+		const killmails: EsiCorporationKillmail[] = await esiFetch.fetchKillmails(
+			tokenStore,
+			corporationId,
+			characterId
+		)
 
 		// Batch insert to prevent timeouts
 		const BATCH_SIZE = 50 // Killmails have few fields, can use larger batch

@@ -1,9 +1,12 @@
 import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
-import type { createDb } from './db'
+import type { createDb } from '@repo/orchestrator'
 
 export type Env = SharedHonoEnv & {
 	DATABASE_URL: string
+
+	SHOULD_REFRESH_CORPORATION_DATA: boolean
+	SHOULD_REFRESH_USER_DISCORD: boolean
 
 	// Service bindings
 	CORE: Fetcher & {
@@ -19,6 +22,22 @@ export type Env = SharedHonoEnv & {
 		>
 		logUserActivity(userId: string, action: string, metadata?: Record<string, any>): Promise<void>
 		updateUserDiscordRefreshTimestamp(userId: string): Promise<void>
+		syncUserDiscordAccess(userId: string): Promise<{
+			results: Array<{
+				guildId: string
+				guildName: string
+				corporationName?: string
+				groupName?: string
+				success: boolean
+				errorMessage?: string
+				alreadyMember?: boolean
+				type?: 'corporation' | 'group'
+				operation?: 'invite' | 'update'
+			}>
+			totalInvited: number
+			totalUpdated: number
+			totalFailed: number
+		}>
 	}
 
 	// Durable Object bindings
@@ -26,38 +45,8 @@ export type Env = SharedHonoEnv & {
 	EVE_CORPORATION_DATA: DurableObjectNamespace
 
 	// Workflow bindings
-	USER_DISCORD_REFRESH: WorkflowNamespace
-}
-
-/**
- * Workflow namespace type (from @cloudflare/workers-types)
- */
-interface WorkflowNamespace {
-	create(options: { id?: string; params: any }): Promise<WorkflowInstance>
-	get(id: string): Promise<WorkflowInstance | null>
-}
-
-interface WorkflowInstance {
-	id: string
-	status(): Promise<WorkflowInstanceStatus>
-	pause(): Promise<void>
-	resume(): Promise<void>
-	terminate(): Promise<void>
-	restart(): Promise<void>
-}
-
-interface WorkflowInstanceStatus {
-	status:
-		| 'running'
-		| 'paused'
-		| 'errored'
-		| 'terminated'
-		| 'complete'
-		| 'waiting'
-		| 'queued'
-		| 'unknown'
-	error?: string
-	output?: any
+	USER_DISCORD_REFRESH: Workflow
+	EVE_CORPORATION_SYNC: Workflow
 }
 
 /** Variables can be extended */

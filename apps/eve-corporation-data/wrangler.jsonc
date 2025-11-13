@@ -10,6 +10,9 @@
 	"observability": {
 		"enabled": true
 	},
+	"limits": {
+		"cpu_ms": 300000
+	},
 	"vars": {},
 	"kv_namespaces": [
 		{
@@ -52,8 +55,5 @@
 			"tag": "v1",
 			"new_sqlite_classes": ["EveCorporationData"]
 		}
-	],
-	"triggers": {
-		"crons": ["*/15 * * * *"]
-	}
+	]
 }

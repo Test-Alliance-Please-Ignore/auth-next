@@ -25,6 +25,7 @@
 		"@repo/discord": "workspace:*",
 		"@repo/do-utils": "workspace:*",
 		"@repo/eve-corporation-data": "workspace:*",
+		"@repo/orchestrator": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
 		"drizzle-orm": "0.44.6",
 		"hono": "4.9.11",

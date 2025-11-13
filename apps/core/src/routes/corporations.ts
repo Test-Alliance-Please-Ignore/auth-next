@@ -521,26 +521,36 @@ app.post('/', requireAuth(), requireAdmin(), async (c) => {
 			})
 			.returning()
 
-		// If character assigned, configure the Durable Object
-		if (assignedCharacterId && assignedCharacterName) {
-			try {
+		// Configure the Durable Object
+		try {
+			using stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+
+			// Set character if assigned
+			if (assignedCharacterId && assignedCharacterName) {
 				logger.info('[Corporations] Setting character in DO', {
 					corporationId,
 					assignedCharacterId,
 					assignedCharacterName,
 				})
-				using stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
-
 				await stub.setCharacter(corporationId, assignedCharacterId, assignedCharacterName)
 				logger.info('[Corporations] Character set in DO successfully', { corporationId })
-			} catch (error) {
-				logger.error('[Corporations] Error configuring corporation DO', {
-					corporationId,
-					error: error instanceof Error ? error.message : String(error),
-					stack: error instanceof Error ? error.stack : undefined,
-				})
-				// Don't fail the request, just log the error
 			}
+
+			// Sync includeInBackgroundRefresh setting
+			if (includeInBackgroundRefresh !== undefined) {
+				await stub.updateCorporationConfig(corporationId, { includeInBackgroundRefresh })
+				logger.info('[Corporations] Synced includeInBackgroundRefresh to eve-corporation-data', {
+					corporationId,
+					includeInBackgroundRefresh,
+				})
+			}
+		} catch (error) {
+			logger.error('[Corporations] Error configuring corporation DO', {
+				corporationId,
+				error: error instanceof Error ? error.message : String(error),
+				stack: error instanceof Error ? error.stack : undefined,
+			})
+			// Don't fail the request, just log the error
 		}
 
 		return c.json(corporation, 201)
@@ -673,6 +683,23 @@ app.put('/:corporationId', requireAuth(), requireAdmin(), async (c) => {
 					corporationId,
 					error: error instanceof Error ? error.message : String(error),
 					stack: error instanceof Error ? error.stack : undefined,
+				})
+			}
+		}
+
+		// Sync includeInBackgroundRefresh to eve-corporation-data DB
+		if (includeInBackgroundRefresh !== undefined) {
+			try {
+				using stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+				await stub.updateCorporationConfig(corporationId, { includeInBackgroundRefresh })
+				logger.info('[Corporations] Synced includeInBackgroundRefresh to eve-corporation-data', {
+					corporationId,
+					includeInBackgroundRefresh,
+				})
+			} catch (error) {
+				logger.error('[Corporations] Failed to sync includeInBackgroundRefresh', {
+					corporationId,
+					error: error instanceof Error ? error.message : String(error),
 				})
 			}
 		}

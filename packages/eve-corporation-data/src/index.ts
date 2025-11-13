@@ -6,6 +6,27 @@
  */
 
 // ============================================================================
+// SYNC WORKFLOW TYPES
+// ============================================================================
+
+/**
+ * Supported data types for corporation synchronization workflows.
+ */
+export type EveCorporationSyncDataType =
+	| 'public-info'
+	| 'members'
+	| 'member-tracking'
+	| 'wallets'
+	| 'wallet-journal'
+	| 'wallet-transactions'
+	| 'assets'
+	| 'structures'
+	| 'orders'
+	| 'contracts'
+	| 'industry-jobs'
+	| 'killmails'
+
+// ============================================================================
 // ESI RESPONSE TYPES (match EVE Online API - snake_case)
 // ============================================================================
 
@@ -68,7 +89,7 @@ export interface EsiCorporationMemberTracking {
  */
 export interface EsiCorporationWallet {
 	division: number
-	balance: number
+	balance: string // String to avoid bigint precision issues with large ISK amounts
 }
 
 /**
@@ -77,8 +98,8 @@ export interface EsiCorporationWallet {
  */
 export interface EsiCorporationWalletJournalEntry {
 	id: string
-	amount?: number
-	balance?: number
+	amount?: string // String to avoid bigint precision issues
+	balance?: string // String to avoid bigint precision issues
 	context_id?: string
 	context_id_type?: string
 	date: string
@@ -87,7 +108,7 @@ export interface EsiCorporationWalletJournalEntry {
 	reason?: string
 	ref_type: string
 	second_party_id?: string
-	tax?: number
+	tax?: string // String to avoid bigint precision issues
 	tax_receiver_id?: string
 }
 
@@ -245,10 +266,24 @@ export enum CorporationType {
 	SpecialPurpose = 'special_purpose',
 }
 
+export interface CorporationLastSyncData {
+	membersLastSync: Date | null
+	memberTrackingLastSync: Date | null
+	walletsLastSync: Date | null
+	walletJournalLastSync: Date | null
+	walletTransactionsLastSync: Date | null
+	assetsLastSync: Date | null
+	structuresLastSync: Date | null
+	ordersLastSync: Date | null
+	contractsLastSync: Date | null
+	industryJobsLastSync: Date | null
+	killmailsLastSync: Date | null
+}
+
 /**
  * Corporation configuration data
  */
-export interface CorporationConfigData {
+export interface CorporationConfigData extends CorporationLastSyncData {
 	corporationId: string
 	characterId: string
 	characterName: string
@@ -258,6 +293,20 @@ export interface CorporationConfigData {
 	updatedAt: Date
 	includeInBackgroundRefresh: boolean
 	corporationType: CorporationType
+}
+
+export interface CorporationNeedingRefreshData {
+	members: CorporationConfigData[]
+	'member-tracking': CorporationConfigData[]
+	wallets: CorporationConfigData[]
+	'wallet-journal': CorporationConfigData[]
+	'wallet-transactions': CorporationConfigData[]
+	assets: CorporationConfigData[]
+	structures: CorporationConfigData[]
+	orders: CorporationConfigData[]
+	contracts: CorporationConfigData[]
+	'industry-jobs': CorporationConfigData[]
+	killmails: CorporationConfigData[]
 }
 
 /**
@@ -763,7 +812,7 @@ export interface EveCorporationData {
 	 */
 	storeWallets(
 		corporationId: string,
-		wallets: Array<{ division: number; balance: number }>
+		wallets: Array<{ division: number; balance: string }>
 	): Promise<void>
 
 	/**
@@ -1048,4 +1097,20 @@ export interface EveCorporationData {
 	 * @returns Roles data or null if not found
 	 */
 	getCharacterRoles(characterId: string): Promise<CharacterCorporationRolesData | null>
+
+	/**
+	 * Get corporations that need to be refreshed
+	 * @returns Corporation configuration data
+	 */
+	getCorporationsNeedingRefresh(): Promise<CorporationNeedingRefreshData>
+
+	/**
+	 * Update corporation configuration settings
+	 * @param corporationId - The corporation ID
+	 * @param updates - Partial configuration updates
+	 */
+	updateCorporationConfig(
+		corporationId: string,
+		updates: { includeInBackgroundRefresh?: boolean }
+	): Promise<void>
 }

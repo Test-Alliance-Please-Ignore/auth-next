@@ -444,12 +444,6 @@ export async function inviteUserToDiscordServers(
 		}
 	}
 
-	logger.info('[Discord] Starting invite-only process for user', {
-		userId,
-		discordUserId,
-		characterCount: characterIds.length,
-	})
-
 	// === CHECK CORPORATIONS (ONLY autoInvite=true) ===
 
 	const corpAttachments = await db.query.corporationDiscordServers.findMany({
@@ -469,11 +463,6 @@ export async function inviteUserToDiscordServers(
 	const activeCorpAttachments = corpAttachments.filter(
 		(attachment) => attachment.discordServer.isActive
 	)
-
-	logger.info('[Discord] Found active corporation Discord servers with auto-invite', {
-		totalAttachments: corpAttachments.length,
-		activeAttachments: activeCorpAttachments.length,
-	})
 
 	const guildsToJoin: Array<{
 		guildId: string
@@ -519,14 +508,6 @@ export async function inviteUserToDiscordServers(
 					discordServerId: attachment.discordServerId,
 					roleIds,
 				})
-
-				logger.info('[Discord] User eligible for corporation Discord auto-invite', {
-					userId,
-					corporationId: attachment.corporationId,
-					corporationName: attachment.corporation.name,
-					guildId: attachment.discordServer.guildId,
-					roleCount: roleIds.length,
-				})
 			}
 		} catch (error) {
 			logger.error('[Discord] Error checking corporation members', {
@@ -541,10 +522,6 @@ export async function inviteUserToDiscordServers(
 	try {
 		using groupsStub = getStub<Groups>(env.GROUPS, 'default')
 		const groupsWithDiscord = await groupsStub.getGroupsWithDiscordAutoInvite()
-
-		logger.info('[Discord] Found groups with Discord servers', {
-			groupCount: groupsWithDiscord.length,
-		})
 
 		for (const group of groupsWithDiscord) {
 			try {
@@ -591,14 +568,6 @@ export async function inviteUserToDiscordServers(
 								discordServerId: serverInfo.id,
 								roleIds: actualRoleIds,
 							})
-
-							logger.info('[Discord] User eligible for group Discord auto-invite', {
-								userId,
-								groupId: group.groupId,
-								groupName: group.groupName,
-								guildId: serverInfo.guildId,
-								roleCount: actualRoleIds.length,
-							})
 						}
 					}
 				}
@@ -616,7 +585,6 @@ export async function inviteUserToDiscordServers(
 	}
 
 	if (guildsToJoin.length === 0) {
-		logger.info('[Discord] User not eligible for any auto-invites')
 		return {
 			results: [],
 			totalInvited: 0,
@@ -732,11 +700,6 @@ export async function inviteUserToDiscordServers(
 
 	const guildIds = Array.from(guildMap.values()).map((guild) => guild.guildId)
 
-	logger.info('[Discord] Sending invite requests to Discord DO', {
-		userId,
-		guildCount: guildIds.length,
-	})
-
 	using discordStub = getStub<Discord>(env.DISCORD, 'default')
 	const inviteResults = await discordStub.joinUserToServers(userId, guildIds)
 
@@ -758,11 +721,6 @@ export async function inviteUserToDiscordServers(
 	)
 
 	if (roleUpdateRequests.length > 0) {
-		logger.info('[Discord] Updating roles for guilds', {
-			userId,
-			updateCount: roleUpdateRequests.length,
-		})
-
 		await discordStub.updateUserRoles(userId, roleUpdateRequests)
 	}
 
@@ -776,12 +734,6 @@ export async function inviteUserToDiscordServers(
 		.map((guild) => guild.guildId)
 
 	if (guildsForNicknameUpdate.length > 0 && primaryCharacterName) {
-		logger.info('[Discord] Updating nicknames for guilds', {
-			userId,
-			updateCount: guildsForNicknameUpdate.length,
-			nickname: primaryCharacterName,
-		})
-
 		await discordStub.updateUserNickname(userId, guildsForNicknameUpdate, primaryCharacterName)
 	}
 
@@ -803,13 +755,6 @@ export async function inviteUserToDiscordServers(
 	// Count only actual invites (not already members)
 	const totalInvited = results.filter((r) => r.success && !r.alreadyMember).length
 	const totalFailed = results.filter((r) => !r.success).length
-
-	logger.info('[Discord] Invite process completed', {
-		userId,
-		totalInvited,
-		totalFailed,
-		alreadyMembers: results.filter((r) => r.alreadyMember).length,
-	})
 
 	return {
 		results,
@@ -890,13 +835,6 @@ export async function updateUserDiscordRoles(
 		}
 	}
 
-	logger.info('[Discord] Starting role update process for user', {
-		userId,
-		discordUserId,
-		characterCount: characterIds.length,
-		specificGuilds: guildIds,
-	})
-
 	// === DETERMINE WHICH SERVERS TO UPDATE ===
 
 	let serversToUpdate: string[]
@@ -913,10 +851,6 @@ export async function updateUserDiscordRoles(
 		// FALLBACK: If getUserGuilds returns empty (user missing 'guilds' OAuth scope),
 		// check known active guilds using bot token
 		if (serversToUpdate.length === 0) {
-			logger.info('[Discord] getUserGuilds returned empty, falling back to bot token check', {
-				userId,
-			})
-
 			// Get all active Discord servers from our database
 			const knownServers = await db.query.discordServers.findMany({
 				where: eq(discordServers.isActive, true),
@@ -929,30 +863,17 @@ export async function updateUserDiscordRoles(
 				// Use bot token to check which guilds the user is a member of
 				const memberGuildIds = await discordStub.checkGuildMembershipWithBot(userId, knownGuildIds)
 				serversToUpdate = memberGuildIds
-
-				logger.info('[Discord] Bot token fallback completed', {
-					userId,
-					knownServers: knownGuildIds.length,
-					memberServers: memberGuildIds.length,
-				})
 			}
 		}
 	}
 
 	if (serversToUpdate.length === 0) {
-		logger.info('[Discord] User is not a member of any Discord servers')
 		return {
 			results: [],
 			totalUpdated: 0,
 			totalFailed: 0,
 		}
 	}
-
-	logger.info('[Discord] Servers to update roles for', {
-		userId,
-		serverCount: serversToUpdate.length,
-		serverIds: serversToUpdate,
-	})
 
 	// === CALCULATE WHAT ROLES USER SHOULD HAVE ===
 
@@ -1023,13 +944,6 @@ export async function updateUserDiscordRoles(
 					})
 					guildData.guildName = attachment.discordServer.guildName
 				}
-
-				logger.info('[Discord] User should have corporation roles', {
-					userId,
-					corporationName: attachment.corporation.name,
-					guildId: attachment.discordServer.guildId,
-					roleCount: roleIds.length,
-				})
 			}
 		} catch (error) {
 			logger.error('[Discord] Error checking corporation members for role update', {
@@ -1086,13 +1000,6 @@ export async function updateUserDiscordRoles(
 								})
 								guildData.guildName = serverInfo.guildName
 							}
-
-							logger.info('[Discord] User should have group roles', {
-								userId,
-								groupName: group.groupName,
-								guildId: serverInfo.guildId,
-								roleCount: actualRoleIds.length,
-							})
 						}
 					}
 				}
@@ -1155,22 +1062,12 @@ export async function updateUserDiscordRoles(
 	)
 
 	if (updateRequests.length === 0) {
-		logger.info('[Discord] No role updates needed')
 		return {
 			results: [],
 			totalUpdated: 0,
 			totalFailed: 0,
 		}
 	}
-
-	logger.info('[Discord] Sending role update requests to Discord DO', {
-		userId,
-		requestCount: updateRequests.length,
-		requests: updateRequests.map((r) => ({
-			guildId: r.guildId,
-			roleCount: r.roleIds.length,
-		})),
-	})
 
 	// === CALL DISCORD DO - UPDATE ROLES ONLY ===
 
@@ -1192,12 +1089,6 @@ export async function updateUserDiscordRoles(
 
 	const totalUpdated = results.filter((r) => r.success).length
 	const totalFailed = results.filter((r) => !r.success).length
-
-	logger.info('[Discord] Role update process completed', {
-		userId,
-		totalUpdated,
-		totalFailed,
-	})
 
 	return {
 		results,

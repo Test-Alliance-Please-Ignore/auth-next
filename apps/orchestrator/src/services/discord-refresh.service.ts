@@ -37,11 +37,7 @@ export interface DiscordRefreshResult {
  * - Updating roles based on corporation assignments
  */
 export class DiscordRefreshService {
-	private discordStub: Discord
-
-	constructor(private env: Env) {
-		this.discordStub = getStub<Discord>(env.DISCORD, 'default')
-	}
+	constructor(private env: Env) {}
 
 	/**
 	 * Perform a complete Discord refresh for a user
@@ -64,9 +60,12 @@ export class DiscordRefreshService {
 			authRevoked: false,
 		}
 
+		// Create Discord stub with automatic disposal
+		using discordStub = getStub<Discord>(this.env.DISCORD, 'default')
+
 		try {
 			// Step 1: Check Discord user status
-			const status = await this.discordStub.getDiscordUserStatus(userId)
+			const status = await discordStub.getDiscordUserStatus(userId)
 			if (!status) {
 				result.success = false
 				result.errors.push('Discord user status not found')
@@ -82,7 +81,7 @@ export class DiscordRefreshService {
 
 			// Step 2: Refresh OAuth token
 			try {
-				const tokenRefreshed = await this.discordStub.refreshTokenByCoreUserId(userId)
+				const tokenRefreshed = await discordStub.refreshTokenByCoreUserId(userId)
 				result.tokenRefreshed = tokenRefreshed
 				logger.info('[DiscordRefresh] Token refresh result', { userId, tokenRefreshed })
 			} catch (error) {
@@ -108,7 +107,7 @@ export class DiscordRefreshService {
 
 			// Step 4: Sync server access
 			if (expectedAccess.length > 0) {
-				const syncResult = await this.syncServerAccess(userId, expectedAccess)
+				const syncResult = await this.syncServerAccess(userId, discordStub, expectedAccess)
 				result.serversJoined = syncResult.serversJoined
 				result.rolesUpdated = syncResult.rolesUpdated
 				result.errors.push(...syncResult.errors)
@@ -158,11 +157,13 @@ export class DiscordRefreshService {
 	 * Sync user's Discord server access to match expected configuration
 	 *
 	 * @param userId - Core user ID
+	 * @param discordStub - Discord service stub
 	 * @param expectedAccess - Expected server access configurations
 	 * @returns Sync result with counts and errors
 	 */
 	private async syncServerAccess(
 		userId: string,
+		discordStub: Discord,
 		expectedAccess: ExpectedServerAccess[]
 	): Promise<{
 		serversJoined: number
@@ -178,7 +179,7 @@ export class DiscordRefreshService {
 		try {
 			// Join servers
 			const guildIds = expectedAccess.map((access) => access.guildId)
-			const joinResults = await this.discordStub.joinUserToServers(userId, guildIds)
+			const joinResults = await discordStub.joinUserToServers(userId, guildIds)
 
 			for (const joinResult of joinResults) {
 				if (joinResult.success) {
@@ -208,7 +209,7 @@ export class DiscordRefreshService {
 				}))
 
 			if (roleUpdateRequests.length > 0) {
-				const roleResults = await this.discordStub.updateUserRoles(userId, roleUpdateRequests)
+				const roleResults = await discordStub.updateUserRoles(userId, roleUpdateRequests)
 
 				for (const roleResult of roleResults) {
 					if (roleResult.success) {

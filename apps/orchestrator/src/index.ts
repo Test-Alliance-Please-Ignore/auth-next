@@ -3,6 +3,8 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
+// Export the scheduled handler
+import { scheduled } from './scheduled'
 import { UserDiscordRefreshWorkflow } from './workflows/user-discord-refresh'
 
 import type { App } from './context'
@@ -141,10 +143,10 @@ const app = new Hono<App>()
 		}
 	})
 
-export default app
-
 // Export the Workflow class
 export { UserDiscordRefreshWorkflow }
 
-// Export the scheduled handler
-export { default as scheduled } from './scheduled'
+export default {
+	fetch: app.fetch,
+	scheduled: scheduled,
+}

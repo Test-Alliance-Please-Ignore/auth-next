@@ -1,0 +1,24 @@
+{
+	"name": "@repo/orchestrator",
+	"version": "0.1.0",
+	"private": true,
+	"sideEffects": false,
+	"type": "module",
+	"main": "src/index.ts",
+	"dependencies": {
+		"@repo/db-utils": "workspace:*",
+		"drizzle-orm": "0.44.6"
+	},
+	"scripts": {
+		"check:lint": "run-eslint",
+		"check:types": "run-tsc",
+		"test": "run-vitest"
+	},
+	"devDependencies": {
+		"@cloudflare/vitest-pool-workers": "0.9.12",
+		"@repo/eslint-config": "workspace:*",
+		"@repo/tools": "workspace:*",
+		"@repo/typescript-config": "workspace:*",
+		"vitest": "3.2.4"
+	}
+}
