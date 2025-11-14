@@ -4,8 +4,10 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
 import { FleetsDO } from './durable-object'
+import { FleetMonitorDO } from './fleet-monitor'
+import { scheduledHandler } from './scheduled'
 
-import type { App } from './context'
+import type { App, Env } from './context'
 
 const app = new Hono<App>()
 	.use(
@@ -25,7 +27,14 @@ const app = new Hono<App>()
 		return c.text('Fleets Durable Object Worker')
 	})
 
-export default app
+// Export default worker with fetch and scheduled handlers
+export default {
+	fetch: app.fetch.bind(app),
+	async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+		await scheduledHandler(event, env, ctx)
+	},
+}
 
-// Export the Durable Object class
+// Export the Durable Object classes
 export { FleetsDO as Fleets }
+export { FleetMonitorDO as FleetMonitor }

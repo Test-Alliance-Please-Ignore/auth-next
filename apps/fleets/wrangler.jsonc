@@ -9,12 +9,19 @@
 	"observability": {
 		"enabled": true
 	},
+	"triggers": {
+		"crons": ["*/5 * * * *"]
+	},
 	"vars": {},
 	"durable_objects": {
 		"bindings": [
 			{
 				"name": "FLEETS",
 				"class_name": "Fleets"
+			},
+			{
+				"name": "FLEET_MONITOR",
+				"class_name": "FleetMonitor"
 			},
 			{
 				"name": "EVE_TOKEN_STORE",
@@ -37,6 +44,10 @@
 		{
 			"tag": "v1",
 			"new_sqlite_classes": ["Fleets"]
+		},
+		{
+			"tag": "v2",
+			"new_sqlite_classes": ["FleetMonitor"]
 		}
 	]
 }

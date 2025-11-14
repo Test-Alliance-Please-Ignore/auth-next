@@ -8,6 +8,7 @@
 import { EsiGetCharacterFleetInformation, EsiGetFleetInformation, EsiGetFleetMembers } from './esi'
 
 import type { EveCharacterId } from '@repo/eve-types'
+import type { FleetDetailsResponse } from './fleet-monitor'
 
 /**
  * Quick join invitation data structure
@@ -70,16 +71,6 @@ export interface FleetJoinResult {
 }
 
 /**
- * Fleet details response
- */
-export interface FleetDetailsResponse {
-	fleetInfo: EsiGetFleetInformation
-	members?: EsiGetFleetMembers
-	fleetBossName?: string
-	memberCount: number
-}
-
-/**
  * Public RPC interface for Fleets Durable Object
  *
  * All public methods defined here will be available to call via RPC
@@ -103,6 +94,7 @@ export type FleetInformation = Omit<
 > & {
 	fleet_id: string
 	fleet_boss_id: string
+	lastUpdated: string
 }
 
 export interface Fleets extends DurableObject {
@@ -164,6 +156,29 @@ export interface Fleets extends DurableObject {
 	 * @param characterId - Character ID of the fleet boss
 	 */
 	revokeQuickJoinInvitation(token: string, characterId: string): Promise<boolean>
+
+	/**
+	 * List all monitored fleet commanders
+	 * @returns Array of character IDs
+	 */
+	listMonitoredFleetCommanders(): Promise<string[]>
+
+	/**
+	 * Add a fleet commander to the monitored list
+	 * @param characterId - EVE character ID to monitor
+	 * @returns true if added successfully, false if already exists
+	 */
+	addMonitoredFleetCommander(characterId: string): Promise<boolean>
+
+	/**
+	 * Remove a fleet commander from the monitored list
+	 * @param characterId - EVE character ID to remove
+	 * @returns true if removed successfully, false if not found
+	 */
+	removeMonitoredFleetCommander(characterId: string): Promise<boolean>
 }
 
 export * from './esi'
+export * from './fleet-monitor'
+// Re-export FleetDetailsResponse for backward compatibility with Fleets interface
+export type { FleetDetailsResponse } from './fleet-monitor'

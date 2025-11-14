@@ -20,7 +20,13 @@ import {
 } from '@repo/fleets'
 
 import { Env } from './context'
-import { fleetInvitations, fleetMemberships, fleetStateCache, schema } from './db/schema'
+import {
+	fleetInvitations,
+	fleetMemberships,
+	fleetStateCache,
+	monitoredFleetCommanders,
+	schema,
+} from './db/schema'
 
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
@@ -94,6 +100,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 				role: validatedData.role,
 				squad_id: validatedData.squad_id,
 				wing_id: validatedData.wing_id,
+				lastUpdated: new Date().toISOString(),
 			} as FleetInformation
 		} catch (error) {
 			// Safely extract error information without serializing complex objects
@@ -141,6 +148,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 				role: 'fleet_commander',
 				squad_id: 0,
 				wing_id: 0,
+				lastUpdated: new Date().toISOString(),
 			} as FleetInformation
 		}
 	}
@@ -643,6 +651,61 @@ export class FleetsDO extends DurableObject implements Fleets {
 
 		return true
 	}
+
+	/**
+	 * List all monitored fleet commanders
+	 * @returns Array of character IDs
+	 */
+	async listMonitoredFleetCommanders(): Promise<string[]> {
+		const commanders = await this.db.select().from(monitoredFleetCommanders)
+		return commanders.map((c) => c.characterId)
+	}
+
+	/**
+	 * Add a fleet commander to the monitored list
+	 * @param characterId - EVE character ID to monitor
+	 * @returns true if added successfully, false if already exists
+	 */
+	async addMonitoredFleetCommander(characterId: string): Promise<boolean> {
+		try {
+			await this.db.insert(monitoredFleetCommanders).values({
+				characterId,
+			})
+			return true
+		} catch (error) {
+			// Check if it's a unique constraint violation (already exists)
+			if (error instanceof Error && error.message.includes('unique')) {
+				return false
+			}
+			throw error
+		}
+	}
+
+	/**
+	 * Remove a fleet commander from the monitored list
+	 * @param characterId - EVE character ID to remove
+	 * @returns true if removed successfully, false if not found
+	 */
+	async removeMonitoredFleetCommander(characterId: string): Promise<boolean> {
+		// Check if the record exists first
+		const existing = await this.db
+			.select()
+			.from(monitoredFleetCommanders)
+			.where(eq(monitoredFleetCommanders.characterId, characterId))
+			.limit(1)
+
+		if (existing.length === 0) {
+			return false
+		}
+
+		// Delete the record
+		await this.db
+			.delete(monitoredFleetCommanders)
+			.where(eq(monitoredFleetCommanders.characterId, characterId))
+
+		return true
+	}
+
 	/**
 	 * WebSocket message handler (Hibernation API)
 	 * Called when a WebSocket message is received

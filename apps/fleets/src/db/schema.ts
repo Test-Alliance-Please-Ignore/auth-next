@@ -79,9 +79,26 @@ export const fleetStateCache = pgTable(
 	})
 )
 
+/**
+ * Monitored fleet commanders table
+ * Stores character IDs of fleet commanders to monitor for fleet activity
+ */
+export const monitoredFleetCommanders = pgTable(
+	'monitored_fleet_commanders',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		characterId: text('character_id').notNull().unique(),
+		createdAt: timestamp('created_at').defaultNow().notNull(),
+	},
+	(table) => ({
+		characterIdIdx: index('monitored_fleet_commanders_character_id_idx').on(table.characterId),
+	})
+)
+
 // Export schema object for Drizzle
 export const schema = {
 	fleetInvitations,
 	fleetMemberships,
 	fleetStateCache,
+	monitoredFleetCommanders,
 }
