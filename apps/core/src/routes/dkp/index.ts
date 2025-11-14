@@ -22,7 +22,7 @@ const bulkAwardSchema = z.object({
 	awards: z
 		.array(
 			z.object({
-				characterId: z.string().regex(/^\d+$/),
+				characterName: z.string().min(1).max(255),
 				corporationId: z.string().regex(/^\d+$/).optional(),
 				amount: z.number().int().min(1).max(1000000),
 				reason: z.string().min(10).max(500).optional(),

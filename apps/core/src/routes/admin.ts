@@ -518,6 +518,43 @@ app.post('/users/:userId/discord/revoke', requireAuth(), requireAdmin(), async (
 })
 
 /**
+ * POST /admin/users/:userId/clear-sessions
+ * Clear all active sessions for a user (admin action)
+ *
+ * Forces the user to re-authenticate on all devices
+ */
+app.post('/users/:userId/clear-sessions', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	const userId = c.req.param('userId')
+
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		const sessionService = new SessionService(c.env.DB)
+
+		// Invalidate all sessions for the user
+		await sessionService.invalidateAllUserSessions(userId)
+
+		logger.info('[Admin] All sessions cleared by admin', {
+			adminUserId: user.id,
+			targetUserId: userId,
+		})
+
+		return c.json({ success: true })
+	} catch (error) {
+		logger.error('Error clearing user sessions:', error)
+		return c.json(
+			{
+				error: error instanceof Error ? error.message : 'Failed to clear user sessions',
+			},
+			500
+		)
+	}
+})
+
+/**
  * POST /admin/blacklist/user
  * Create a user blacklist entry
  *

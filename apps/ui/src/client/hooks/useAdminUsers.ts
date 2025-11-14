@@ -114,6 +114,21 @@ export function useRevokeDiscordLink() {
 }
 
 /**
+ * Clear all active sessions for a user (admin action)
+ */
+export function useClearUserSessions() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: (userId: string) => api.clearUserSessions(userId),
+		onSuccess: (_, userId) => {
+			// Invalidate user detail to refetch activity logs
+			void queryClient.invalidateQueries({ queryKey: adminUserKeys.detail(userId) })
+		},
+	})
+}
+
+/**
  * Update a user's Discord access - joins them to all eligible Discord servers
  * with appropriate roles based on corporation and group memberships
  */

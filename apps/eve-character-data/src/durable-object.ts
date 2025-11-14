@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { and, desc, eq, gte, sql } from '@repo/db-utils'
+import { and, desc, eq, gte, ilike, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { EveCharacterDataInstance, killmailsSchema } from '@repo/eve-character-data'
 import { createEveAllianceId, createEveCharacterId, createEveCorporationId } from '@repo/eve-types'
@@ -419,6 +419,52 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			createdAt: result.createdAt,
 			updatedAt: result.updatedAt,
 		}
+	}
+
+	/**
+	 * Search for a character by name (case-insensitive)
+	 * Tries local database first, falls back to ESI search if not found
+	 */
+	async searchCharacterByName(characterName: string, exact = true): Promise<string | null> {
+		if (!characterName.trim()) {
+			return null
+		}
+
+		// Try local database first (case-insensitive)
+		const dbResult = await this.db.query.characterPublicInfo.findFirst({
+			where: exact
+				? ilike(characterPublicInfo.name, characterName)
+				: ilike(characterPublicInfo.name, `%${characterName}%`),
+			columns: {
+				characterId: true,
+			},
+		})
+
+		if (dbResult) {
+			return dbResult.characterId
+		}
+
+		// Fall back to ESI search
+		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+
+		const characterIds = await tokenStoreStub.searchCharacter(characterName, exact)
+
+		if (characterIds.length === 0) {
+			return null
+		}
+
+		// Take the first result (ESI search should return exact match first when strict=true)
+		const characterId = characterIds[0]
+
+		// Fetch and cache the character data for future lookups
+		try {
+			await this.fetchCharacterData(characterId, false)
+		} catch (error) {
+			// If we can't fetch character data, still return the ID
+			// The error will be logged by fetchCharacterData
+		}
+
+		return characterId
 	}
 
 	/**

@@ -1549,6 +1549,65 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	}
 
 	/**
+	 * Search for a character by name using ESI search endpoint
+	 */
+	async searchCharacter(characterName: string, strict = true): Promise<string[]> {
+		if (!characterName.trim()) {
+			return []
+		}
+
+		try {
+			// Get any character token for authentication (ESI search requires auth)
+			const tokens = await this.db.query.eveTokens.findMany({
+				where: eq(eveTokens.tokenType, 'character'),
+				limit: 1,
+			})
+
+			if (tokens.length === 0) {
+				logger.warn('No character tokens available for ESI search')
+				return []
+			}
+
+			// Get access token
+			const { accessToken } = await this.getAccessToken(tokens[0].characterId)
+
+			// Call ESI search endpoint
+			// GET /search/?categories=character&search={name}&strict={strict}
+			const url = new URL('https://esi.evetech.net/latest/search/')
+			url.searchParams.set('categories', 'character')
+			url.searchParams.set('search', characterName)
+			url.searchParams.set('strict', String(strict))
+
+			const response = await fetch(url.toString(), {
+				headers: {
+					Authorization: `Bearer ${accessToken}`,
+					'X-Compatibility-Date': '2025-09-30',
+				},
+			})
+
+			if (!response.ok) {
+				if (response.status === 404) {
+					// No results found
+					return []
+				}
+				const errorText = await response.text()
+				logger
+					.withTags({ status: response.status, errorText, characterName, strict })
+					.error('ESI character search failed')
+				return []
+			}
+
+			const data = await response.json<{ character?: number[] }>()
+
+			// Convert number IDs to strings
+			return (data.character || []).map((id) => String(id))
+		} catch (error) {
+			logger.withTags({ characterName, strict }).error('Character search error', error)
+			return []
+		}
+	}
+
+	/**
 	 * Alarm handler - automatically refresh tokens that are expiring soon
 	 */
 	async alarm(): Promise<void> {

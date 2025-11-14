@@ -1773,6 +1773,10 @@ export class ApiClient {
 		return this.post(`/admin/users/${userId}/discord/revoke`, {})
 	}
 
+	async clearUserSessions(userId: string): Promise<{ success: boolean }> {
+		return this.post(`/admin/users/${userId}/clear-sessions`, {})
+	}
+
 	async deleteUserCharacter(userId: string, characterId: string): Promise<{ success: boolean }> {
 		return this.delete(`/admin/users/${userId}/characters/${characterId}`)
 	}

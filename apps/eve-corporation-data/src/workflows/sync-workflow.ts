@@ -109,10 +109,20 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 
 		await updater.markRunning()
 
+		let directorManager: DirectorManager | null = null
+		let director: SelectedDirector | null = null
+		let directorId: string | null = null
+		let directorCharacterId: string | null = null
+		let directorCharacterName: string | null = null
+
 		try {
 			const requestedTypes = dataTypes ? new Set<EveCorporationSyncDataType>(dataTypes) : null
 			const shouldSync = (type: EveCorporationSyncDataType) =>
 				!requestedTypes || requestedTypes.size === 0 || requestedTypes.has(type)
+
+			const db = createDb(this.env.DATABASE_URL)
+			using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+			directorManager = new DirectorManager(db, corporationId, tokenStore)
 
 			logger.info('[EveCorporationSyncWorkflow] Starting full sync', {
 				corporationId,
@@ -122,7 +132,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			})
 
 			// Step 1: Select a healthy director
-			const director = await step.do(
+			director = await step.do(
 				'select-director',
 				{
 					retries: { limit: 3, delay: '2 seconds', backoff: 'exponential' },
@@ -130,10 +140,10 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				},
 				async () => {
 					logger.debug('[Step] Selecting healthy director', { corporationId })
+					if (!directorManager) {
+						throw new Error('DirectorManager not initialized')
+					}
 
-					const db = createDb(this.env.DATABASE_URL)
-					using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-					const directorManager = new DirectorManager(db, corporationId, tokenStore)
 					const selected = await directorManager.selectDirector()
 
 					if (!selected) {
@@ -149,6 +159,15 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 					return selected
 				}
 			)
+			if (!director) {
+				throw new Error('Director selection failed to return a director')
+			}
+			directorId = director.directorId
+			directorCharacterId = director.characterId
+			directorCharacterName = director.characterName
+			const activeDirectorId = directorId!
+			const activeDirectorCharacterId = directorCharacterId!
+			const activeDirectorCharacterName = directorCharacterName!
 
 			// Step 2: Fetch & store public info
 			let publicInfo: Awaited<ReturnType<typeof esiFetch.fetchPublicInfo>> | null = null
@@ -161,7 +180,6 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 					},
 					async () => {
 						logger.debug('[Step] Fetching public info', { corporationId })
-						using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 						const info = await esiFetch.fetchPublicInfo(tokenStore, corporationId)
 						logger.info('[Step] Public info fetched', {
 							corporationId,
@@ -204,7 +222,6 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						timeout: '1 minute',
 					},
 					async () => {
-						using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 						using corpDataDO = getStub<EveCorporationData>(
 							this.env.EVE_CORPORATION_DATA,
 							corporationId
@@ -213,7 +230,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						const memberIds = await esiFetch.fetchMembers(
 							tokenStore,
 							corporationId,
-							director.characterId
+							activeDirectorCharacterId
 						)
 						logger.debug('[Step] Members fetched', { corporationId, count: memberIds.length })
 
@@ -270,7 +287,6 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						timeout: '1 minute',
 					},
 					async () => {
-						using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 						using corpDataDO = getStub<EveCorporationData>(
 							this.env.EVE_CORPORATION_DATA,
 							corporationId
@@ -279,7 +295,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						const data = await esiFetch.fetchMemberTracking(
 							tokenStore,
 							corporationId,
-							director.characterId
+							activeDirectorCharacterId
 						)
 						logger.debug('[Step] Member tracking fetched', { corporationId, count: data.length })
 
@@ -319,11 +335,10 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						timeout: '1 minute',
 					},
 					async () => {
-						using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 						const data = await esiFetch.fetchWallets(
 							tokenStore,
 							corporationId,
-							director.characterId
+							activeDirectorCharacterId
 						)
 						logger.debug('[Step] Wallets fetched', { corporationId, count: data.length })
 						return data
@@ -368,7 +383,6 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						timeout: '5 minutes',
 					},
 					async () => {
-						using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 						using corpDataDO = getStub<EveCorporationData>(
 							this.env.EVE_CORPORATION_DATA,
 							corporationId
@@ -381,7 +395,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 									tokenStore,
 									corporationId,
 									division,
-									director.characterId
+									activeDirectorCharacterId
 								)
 								await corpDataDO.storeWalletJournal(corporationId, division, entries)
 								return { division, count: entries.length }
@@ -430,7 +444,6 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						timeout: '5 minutes',
 					},
 					async () => {
-						using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 						using corpDataDO = getStub<EveCorporationData>(
 							this.env.EVE_CORPORATION_DATA,
 							corporationId
@@ -443,7 +456,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 									tokenStore,
 									corporationId,
 									division,
-									director.characterId
+									activeDirectorCharacterId
 								)
 								await corpDataDO.storeWalletTransactions(corporationId, division, txs)
 								return { division, count: txs.length }
@@ -494,13 +507,16 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						timeout: '2 minutes',
 					},
 					async () => {
-						using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 						using corpDataDO = getStub<EveCorporationData>(
 							this.env.EVE_CORPORATION_DATA,
 							corporationId
 						)
 
-						const data = await esiFetch.fetchAssets(tokenStore, corporationId, director.characterId)
+						const data = await esiFetch.fetchAssets(
+							tokenStore,
+							corporationId,
+							activeDirectorCharacterId
+						)
 						logger.debug('[Step] Assets fetched', { corporationId, count: data.length })
 
 						await corpDataDO.storeAssets(corporationId, data)
@@ -526,7 +542,6 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						timeout: '1 minute',
 					},
 					async () => {
-						using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 						using corpDataDO = getStub<EveCorporationData>(
 							this.env.EVE_CORPORATION_DATA,
 							corporationId
@@ -535,7 +550,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						const data = await esiFetch.fetchStructures(
 							tokenStore,
 							corporationId,
-							director.characterId
+							activeDirectorCharacterId
 						)
 						logger.debug('[Step] Structures fetched', { corporationId, count: data.length })
 
@@ -563,13 +578,16 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						timeout: '1 minute',
 					},
 					async () => {
-						using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 						using corpDataDO = getStub<EveCorporationData>(
 							this.env.EVE_CORPORATION_DATA,
 							corporationId
 						)
 
-						const data = await esiFetch.fetchOrders(tokenStore, corporationId, director.characterId)
+						const data = await esiFetch.fetchOrders(
+							tokenStore,
+							corporationId,
+							activeDirectorCharacterId
+						)
 						logger.debug('[Step] Orders fetched', { corporationId, count: data.length })
 
 						await corpDataDO.storeOrders(corporationId, data)
@@ -596,7 +614,6 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						timeout: '1 minute',
 					},
 					async () => {
-						using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 						using corpDataDO = getStub<EveCorporationData>(
 							this.env.EVE_CORPORATION_DATA,
 							corporationId
@@ -605,7 +622,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						const data = await esiFetch.fetchContracts(
 							tokenStore,
 							corporationId,
-							director.characterId
+							activeDirectorCharacterId
 						)
 						logger.debug('[Step] Contracts fetched', { corporationId, count: data.length })
 
@@ -633,7 +650,6 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						timeout: '1 minute',
 					},
 					async () => {
-						using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 						using corpDataDO = getStub<EveCorporationData>(
 							this.env.EVE_CORPORATION_DATA,
 							corporationId
@@ -642,7 +658,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						const data = await esiFetch.fetchIndustryJobs(
 							tokenStore,
 							corporationId,
-							director.characterId
+							activeDirectorCharacterId
 						)
 						logger.debug('[Step] Industry jobs fetched', { corporationId, count: data.length })
 
@@ -670,7 +686,6 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						timeout: '1 minute',
 					},
 					async () => {
-						using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 						using corpDataDO = getStub<EveCorporationData>(
 							this.env.EVE_CORPORATION_DATA,
 							corporationId
@@ -679,7 +694,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						const data = await esiFetch.fetchKillmails(
 							tokenStore,
 							corporationId,
-							director.characterId
+							activeDirectorCharacterId
 						)
 						logger.debug('[Step] Killmails fetched', { corporationId, count: data.length })
 
@@ -705,16 +720,25 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 
 			// Step 16: Record director success
 			await step.do('record-director-success', {}, async () => {
-				const db = createDb(this.env.DATABASE_URL)
-				using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-				const directorManager = new DirectorManager(db, corporationId, tokenStore)
-				await directorManager.recordSuccess(director.directorId)
-				logger.info('[Step] Director success recorded', { corporationId })
+				if (!directorManager) {
+					throw new Error('DirectorManager not initialized')
+				}
+				await directorManager.recordSuccess(activeDirectorId)
+				logger.info('[Step] Director success recorded', {
+					corporationId,
+					directorId: activeDirectorId,
+					directorCharacterId: activeDirectorCharacterId,
+				})
 			})
 
 			logger.info('[EveCorporationSyncWorkflow] Full sync completed successfully', {
 				corporationId,
 				trigger,
+				director: {
+					directorId: activeDirectorId,
+					characterId: activeDirectorCharacterId,
+					characterName: activeDirectorCharacterName,
+				},
 				stats: {
 					corporationName: publicInfo?.name,
 					totalMembers: memberResult?.stored,
@@ -754,10 +778,32 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			logger.error('[EveCorporationSyncWorkflow] Sync failed with error', {
 				corporationId,
 				trigger,
+				director: director
+					? {
+							directorId: director.directorId,
+							characterId: directorCharacterId ?? director.characterId,
+							characterName: directorCharacterName ?? director.characterName,
+						}
+					: undefined,
 				error: error instanceof Error ? error.message : String(error),
 				stack: error instanceof Error ? error.stack : undefined,
 				errorType: error?.constructor?.name,
 			})
+
+			if (directorManager && director) {
+				try {
+					await directorManager.recordFailure(
+						director.directorId,
+						error instanceof Error ? error.message : String(error)
+					)
+				} catch (recordError) {
+					logger.error('[EveCorporationSyncWorkflow] Failed to record director failure', {
+						corporationId,
+						trigger,
+						recordError: recordError instanceof Error ? recordError.message : String(recordError),
+					})
+				}
+			}
 
 			await updater.markFailed(error)
 			throw error

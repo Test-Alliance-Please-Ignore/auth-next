@@ -228,14 +228,9 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	async getCorporationsNeedingRefresh(): Promise<CorporationNeedingRefreshData> {
 		const tooOld = minutesAgo(20)
 		const transformConfig = (config: CorporationConfigRow): CorporationConfigData => ({
-			corporationId: config.corporationId,
+			...config,
 			characterId: '',
 			characterName: '',
-			lastVerified: config.lastVerified,
-			isVerified: config.isVerified,
-			createdAt: config.createdAt,
-			updatedAt: config.updatedAt,
-			includeInBackgroundRefresh: config.includeInBackgroundRefresh,
 			corporationType: config.corporationType as CorporationType,
 			membersLastSync: config.membersLastSync ?? null,
 			memberTrackingLastSync: config.memberTrackingLastSync ?? null,

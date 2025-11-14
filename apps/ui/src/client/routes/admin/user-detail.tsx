@@ -4,6 +4,7 @@ import {
 	ArrowLeft,
 	CheckCircle,
 	ExternalLink,
+	LogOut,
 	MessageSquare,
 	RefreshCw,
 	Shield,
@@ -43,6 +44,7 @@ import { Textarea } from '@/components/ui/textarea'
 import {
 	useActivityLogs,
 	useAdminUser,
+	useClearUserSessions,
 	useDeleteUserCharacter,
 	useRevokeDiscordLink,
 	useSetUserAdmin,
@@ -65,6 +67,7 @@ export default function UserDetailPage() {
 	const deleteCharacter = useDeleteUserCharacter()
 	const setPrimaryCharacter = useSetUserPrimaryCharacter()
 	const revokeDiscord = useRevokeDiscordLink()
+	const clearSessions = useClearUserSessions()
 	const updateDiscordAccess = useUpdateDiscordAccess()
 
 	// Blacklist data
@@ -98,6 +101,7 @@ export default function UserDetailPage() {
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 	const [primaryDialogOpen, setPrimaryDialogOpen] = useState(false)
 	const [revokeDiscordDialogOpen, setRevokeDiscordDialogOpen] = useState(false)
+	const [clearSessionsDialogOpen, setClearSessionsDialogOpen] = useState(false)
 	const [updateDiscordDialogOpen, setUpdateDiscordDialogOpen] = useState(false)
 	const [blacklistDialogOpen, setBlacklistDialogOpen] = useState(false)
 	const [removeBlacklistDialogOpen, setRemoveBlacklistDialogOpen] = useState(false)
@@ -256,6 +260,24 @@ export default function UserDetailPage() {
 			setMessage({
 				type: 'error',
 				text: error instanceof Error ? error.message : 'Failed to revoke Discord authorization',
+			})
+			setTimeout(() => setMessage(null), 5000)
+		}
+	}
+
+	const handleClearSessionsConfirm = async () => {
+		try {
+			await clearSessions.mutateAsync(user.id)
+			setClearSessionsDialogOpen(false)
+			setMessage({
+				type: 'success',
+				text: 'All sessions cleared successfully',
+			})
+			setTimeout(() => setMessage(null), 3000)
+		} catch (error) {
+			setMessage({
+				type: 'error',
+				text: error instanceof Error ? error.message : 'Failed to clear sessions',
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -432,6 +454,15 @@ export default function UserDetailPage() {
 											💩 Blacklist User
 										</DestructiveButton>
 									)}
+									<DestructiveButton
+										onClick={() => setClearSessionsDialogOpen(true)}
+										disabled={clearSessions.isPending}
+										size="sm"
+										showIcon={false}
+									>
+										<LogOut className="h-4 w-4 mr-2" />
+										Clear Sessions
+									</DestructiveButton>
 								</div>
 							</div>
 
@@ -856,6 +887,37 @@ export default function UserDetailPage() {
 						>
 							<XCircle className="mr-2 h-4 w-4" />
 							Revoke Authorization
+						</DestructiveButton>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
+			{/* Clear Sessions Confirmation Dialog */}
+			<Dialog open={clearSessionsDialogOpen} onOpenChange={setClearSessionsDialogOpen}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Clear All Sessions</DialogTitle>
+						<DialogDescription>
+							Are you sure you want to clear all active sessions for{' '}
+							{user.characters.find((c) => c.is_primary)?.characterName || 'this user'}? This will
+							force them to re-authenticate on all devices.
+						</DialogDescription>
+					</DialogHeader>
+					<DialogFooter>
+						<CancelButton
+							onClick={() => setClearSessionsDialogOpen(false)}
+							disabled={clearSessions.isPending}
+						>
+							Cancel
+						</CancelButton>
+						<DestructiveButton
+							onClick={handleClearSessionsConfirm}
+							loading={clearSessions.isPending}
+							loadingText="Clearing..."
+							showIcon={false}
+						>
+							<LogOut className="mr-2 h-4 w-4" />
+							Clear Sessions
 						</DestructiveButton>
 					</DialogFooter>
 				</DialogContent>

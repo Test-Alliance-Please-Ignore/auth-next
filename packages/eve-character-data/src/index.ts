@@ -459,6 +459,15 @@ export interface EveCharacterData {
 	getCharacterInfo(characterId: string): Promise<CharacterPublicData | null>
 
 	/**
+	 * Search for a character by name (case-insensitive)
+	 * Tries local database first, falls back to ESI search if not found
+	 * @param characterName - Character name to search for
+	 * @param exact - If true, require exact match (default: true)
+	 * @returns Character ID if found, null otherwise
+	 */
+	searchCharacterByName(characterName: string, exact?: boolean): Promise<string | null>
+
+	/**
 	 * Get character portrait data
 	 * @param characterId - EVE character ID
 	 * @returns Character portrait URLs or null if not found
@@ -640,6 +649,10 @@ export class EveCharacterDataInstance extends RpcTarget {
 
 	async getCharacterInfo(): Promise<CharacterPublicData | null> {
 		return await this.characterDataObject.getCharacterInfo(this.characterId)
+	}
+
+	async searchCharacterByName(characterName: string, exact?: boolean): Promise<string | null> {
+		return await this.characterDataObject.searchCharacterByName(characterName, exact)
 	}
 
 	async getLastUpdated(): Promise<Date | null> {

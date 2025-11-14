@@ -205,11 +205,60 @@ export class DkpService {
 	}
 
 	/**
+	 * Resolve character names to character IDs
+	 */
+	private async resolveCharacterNames(
+		names: string[]
+	): Promise<Map<string, { characterId: string; error?: string }>> {
+		const results = new Map<string, { characterId: string; error?: string }>()
+
+		if (!this.eveCharacterDataNamespace) {
+			// If character data namespace not available, mark all as errors
+			for (const name of names) {
+				results.set(name, {
+					characterId: '',
+					error: 'Character data service not available',
+				})
+			}
+			return results
+		}
+
+		// Get unique names
+		const uniqueNames = [...new Set(names)]
+
+		// Get eve-character-data stub (use any character ID as the DO is stateless for search)
+		using charDataStub = getStub<EveCharacterData>(this.eveCharacterDataNamespace, '0')
+
+		// Resolve each name
+		for (const name of uniqueNames) {
+			try {
+				const characterId = await charDataStub.searchCharacterByName(name, true)
+
+				if (characterId) {
+					results.set(name, { characterId })
+				} else {
+					results.set(name, {
+						characterId: '',
+						error: `Character '${name}' not found`,
+					})
+				}
+			} catch (error) {
+				results.set(name, {
+					characterId: '',
+					error: error instanceof Error ? error.message : 'Failed to resolve character name',
+				})
+			}
+		}
+
+		return results
+	}
+
+	/**
 	 * Award DKP to multiple characters at once
 	 */
 	async awardDkpBulk(params: {
 		awards: Array<{
-			characterId: string
+			characterName: string
 			corporationId?: string
 			amount: number
 			reason?: string
@@ -223,29 +272,45 @@ export class DkpService {
 		success: boolean
 		totalAwarded: number
 		transactions: Array<{
+			characterName: string
 			characterId: string
 			transactionId: string
 			amount: number
 		}>
 		errors: Array<{
-			characterId: string
+			characterName: string
 			error: string
 		}>
 	}> {
 		const transactions: Array<{
+			characterName: string
 			characterId: string
 			transactionId: string
 			amount: number
 		}> = []
 		const errors: Array<{
-			characterId: string
+			characterName: string
 			error: string
 		}> = []
 
+		// Resolve all character names to IDs
+		const characterNames = params.awards.map((a) => a.characterName)
+		const nameToIdMap = await this.resolveCharacterNames(characterNames)
+
 		for (const award of params.awards) {
+			const resolution = nameToIdMap.get(award.characterName)
+
+			if (!resolution || resolution.error) {
+				errors.push({
+					characterName: award.characterName,
+					error: resolution?.error || 'Character not found',
+				})
+				continue
+			}
+
 			try {
 				const result = await this.awardDkp({
-					characterId: award.characterId,
+					characterId: resolution.characterId,
 					corporationId: award.corporationId,
 					amount: award.amount,
 					sourceType: params.sourceType || 'manual',
@@ -256,13 +321,14 @@ export class DkpService {
 				})
 
 				transactions.push({
-					characterId: award.characterId,
+					characterName: award.characterName,
+					characterId: resolution.characterId,
 					transactionId: result.transactionId,
 					amount: award.amount,
 				})
 			} catch (error) {
 				errors.push({
-					characterId: award.characterId,
+					characterName: award.characterName,
 					error: error instanceof Error ? error.message : 'Unknown error',
 				})
 			}

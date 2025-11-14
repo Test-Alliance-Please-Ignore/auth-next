@@ -232,12 +232,12 @@ function BulkAwardForm() {
 		.map((line) => {
 			const parts = line.split(',').map((p) => p.trim())
 			return {
-				characterId: parts[0] || '',
+				characterName: parts[0] || '',
 				amount: Number(parts[1]) || 0,
 				reason: parts[2] || undefined,
 			}
 		})
-		.filter((award) => award.characterId && award.amount > 0)
+		.filter((award) => award.characterName && award.amount > 0)
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault()
@@ -287,7 +287,7 @@ function BulkAwardForm() {
 						</Label>
 						<Textarea
 							id="bulkInput"
-							placeholder="characterId,amount,reason (optional)&#10;12345678,100,Fleet participation&#10;98765432,150"
+							placeholder="characterName,amount,reason (optional)&#10;Ozzie Dreadnaught,100,Fleet participation&#10;Jane Pilot,150"
 							value={bulkInput}
 							onChange={(e) => setBulkInput(e.target.value)}
 							rows={8}
@@ -295,7 +295,7 @@ function BulkAwardForm() {
 							className="font-mono text-sm"
 						/>
 						<p className="text-xs text-muted-foreground">
-							One award per line: characterId,amount,reason (optional)
+							One award per line: characterName,amount,reason (optional)
 						</p>
 					</div>
 
@@ -309,7 +309,7 @@ function BulkAwardForm() {
 									{parsedAwards.map((award, index) => (
 										<div key={index} className="text-xs font-mono flex items-center gap-2">
 											<span className="text-muted-foreground">{index + 1}.</span>
-											<span>{award.characterId}</span>
+											<span>{award.characterName}</span>
 											<span className="text-green-500">+{award.amount}</span>
 											{award.reason && (
 												<span className="text-muted-foreground">({award.reason})</span>

@@ -562,4 +562,20 @@ export interface EveTokenStore {
 	 * ```
 	 */
 	resolveIds(ids: string[]): Promise<Record<string, string>>
+
+	/**
+	 * Search for a character by name using ESI
+	 *
+	 * @param characterName - Character name to search for
+	 * @param strict - If true, only exact matches are returned (default: true)
+	 * @returns Array of character IDs matching the search, or empty array if none found
+	 *
+	 * @example
+	 * ```ts
+	 * const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
+	 * const ids = await stub.searchCharacter('Ozzie Dreadnaught', true)
+	 * // Returns: ['123456789'] or []
+	 * ```
+	 */
+	searchCharacter(characterName: string, strict?: boolean): Promise<string[]>
 }

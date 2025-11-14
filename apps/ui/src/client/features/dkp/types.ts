@@ -177,7 +177,7 @@ export interface AwardDkpResponse {
 
 export interface BulkAwardDkpRequest {
 	awards: Array<{
-		characterId: string
+		characterName: string
 		corporationId?: string
 		amount: number
 		reason?: string
@@ -192,12 +192,13 @@ export interface BulkAwardDkpResponse {
 	success: boolean
 	totalAwarded: number
 	transactions: Array<{
+		characterName: string
 		characterId: string
 		transactionId: string
 		amount: number
 	}>
 	errors: Array<{
-		characterId: string
+		characterName: string
 		error: string
 	}>
 }
