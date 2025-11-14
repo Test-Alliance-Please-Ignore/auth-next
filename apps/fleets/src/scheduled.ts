@@ -8,7 +8,7 @@ import type { Env } from './context'
 /**
  * Scheduled handler for fleet commander monitoring
  *
- * This handler runs on a scheduled cron trigger (every 5 minutes) and:
+ * This handler runs on a scheduled cron trigger (every 15 minutes) and:
  * 1. Queries the main FleetsDO for list of monitored fleet commanders
  * 2. For each commander, checks if they are in a fleet
  * 3. If commander is in a fleet and is the fleet boss, creates/initializes FleetMonitor DO instance
@@ -123,13 +123,72 @@ async function checkCommanderFleetStatus(env: Env, characterId: string): Promise
 		if (isInFleet && isFleetBoss) {
 			const fleetId = fleetInfo.fleet_id
 
-			logger.info('[FleetMonitoring] Commander is fleet boss, initializing FleetMonitor', {
-				characterId,
-				fleetId,
-			})
+			// Check fleet cache status to detect if fleet was erroneously marked as ended
+			const cacheStatus = await fleetsStub.getFleetCacheStatus(fleetId)
+
+			// Detect blip: fleet is active in ESI but marked as inactive/ended in cache
+			if (cacheStatus && (!cacheStatus.isActive || cacheStatus.notFound || cacheStatus.endedAt)) {
+				logger.warn(
+					'[FleetMonitoring] Detected fleet blip - fleet active in ESI but marked inactive/ended in cache',
+					{
+						characterId,
+						fleetId,
+						cacheStatus: {
+							isActive: cacheStatus.isActive,
+							notFound: cacheStatus.notFound,
+							endedAt: cacheStatus.endedAt?.toISOString() || null,
+						},
+					}
+				)
+			}
 
 			// Create/get FleetMonitor DO instance using id 'fleet-${fleetId}'
 			using fleetMonitorStub = getStub<FleetMonitor>(env.FLEET_MONITOR, `fleet-${fleetId}`)
+
+			// Check if FleetMonitor is already initialized
+			const monitorState = await fleetMonitorStub.getMonitorState()
+
+			if (monitorState && monitorState.isInitialized && monitorState.fleetId === fleetId) {
+				// If cache shows inactive but monitor is initialized, force reinitialize to clear cache state and restart alarms
+				if (cacheStatus && (!cacheStatus.isActive || cacheStatus.notFound || cacheStatus.endedAt)) {
+					logger.warn(
+						'[FleetMonitoring] FleetMonitor active but cache shows inactive - force reinitializing to clear cache state and restart alarms',
+						{
+							characterId,
+							fleetId,
+							cacheStatus: {
+								isActive: cacheStatus.isActive,
+								notFound: cacheStatus.notFound,
+								endedAt: cacheStatus.endedAt?.toISOString() || null,
+							},
+						}
+					)
+					// Force reinitialize to update cache state and restart alarms
+					await fleetMonitorStub.initializeMonitoring(fleetId, characterId, true)
+					logger.info(
+						'[FleetMonitoring] FleetMonitor force reinitialized after blip detection - alarms restarted',
+						{
+							characterId,
+							fleetId,
+						}
+					)
+				} else {
+					logger.debug('[FleetMonitoring] FleetMonitor already initialized, skipping', {
+						characterId,
+						fleetId,
+						lastChecked: monitorState.lastChecked,
+					})
+				}
+				return
+			}
+
+			logger.info('[FleetMonitoring] Commander is fleet boss, initializing FleetMonitor', {
+				characterId,
+				fleetId,
+				wasInactive: cacheStatus
+					? !cacheStatus.isActive || cacheStatus.notFound || cacheStatus.endedAt
+					: false,
+			})
 
 			// Initialize monitoring for this fleet
 			await fleetMonitorStub.initializeMonitoring(fleetId, characterId)

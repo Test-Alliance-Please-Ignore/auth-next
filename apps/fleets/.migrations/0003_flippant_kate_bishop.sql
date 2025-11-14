@@ -1,0 +1,1 @@
+ALTER TABLE "fleet_state_cache" ADD COLUMN "ended_at" timestamp;

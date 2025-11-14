@@ -1,5 +1,9 @@
 import { DurableObject } from 'cloudflare:workers'
 
+// Export SQLite helpers for Durable Objects
+export { createSqliteDbClient, migrateSqlite } from './sqlite-client'
+export type { DrizzleSqliteDODatabase, SqliteMigrationConfig } from './sqlite-client'
+
 /**
  * Durable Object Stub interface with RPC control methods
  */

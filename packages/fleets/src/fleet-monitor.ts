@@ -55,12 +55,26 @@ export interface FleetMonitor extends DurableObject {
 	 * Initialize fleet monitoring for a specific fleet
 	 * @param fleetId - ESI fleet ID
 	 * @param characterId - Character ID of the fleet boss (for ESI access)
+	 * @param force - If true, force re-initialization even if already initialized
 	 */
-	initializeMonitoring(fleetId: string, characterId: string): Promise<void>
+	initializeMonitoring(fleetId: string, characterId: string, force?: boolean): Promise<void>
 
 	/**
 	 * Get current fleet status
 	 * @returns Current fleet details including members and status, or null if not initialized
 	 */
 	getFleetStatus(): Promise<FleetDetailsResponse | null>
+
+	/**
+	 * Get monitor state (for watchdog checks)
+	 * @returns Monitor state including lastChecked timestamp, or null if not initialized
+	 */
+	getMonitorState(): Promise<FleetMonitorState | null>
+
+	/**
+	 * Delete all storage and terminate the Durable Object
+	 * This signals to Cloudflare that the DO can be garbage collected
+	 * @returns Promise that resolves when cleanup is complete
+	 */
+	terminate(): Promise<void>
 }

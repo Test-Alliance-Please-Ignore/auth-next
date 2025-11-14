@@ -55,7 +55,7 @@ export type EsiGetCharacterFleetInformation = z.infer<typeof esiGetCharacterFlee
  * - ship_type_id: Type ID of the ship the member is flying
  * - solar_system_id: Current solar system ID for the member
  * - squad_id: Squad ID for the member
- * - station_id: Station ID if docked (may be 0 if not applicable)
+ * - station_id: Station ID if docked (null if not docked)
  * - takes_fleet_warp: Whether the member accepts fleet warps
  * - wing_id: Wing ID for the member
  */
@@ -67,7 +67,16 @@ export const esiGetFleetMembersObjectSchema = z.object({
 	ship_type_id: z.number(),
 	solar_system_id: z.number(),
 	squad_id: z.number(),
-	station_id: z.number(),
+	station_id: z.preprocess((val) => {
+		if (val === null || val === undefined || val === '') {
+			return null
+		}
+		if (typeof val === 'string') {
+			const num = Number(val)
+			return isNaN(num) ? null : num
+		}
+		return typeof val === 'number' ? val : null
+	}, z.number().nullable()),
 	takes_fleet_warp: z.boolean(),
 	wing_id: z.number(),
 })

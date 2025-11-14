@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers'
 
 import { and, createDbClient, eq, gt, lte } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
+import { logger } from '@repo/hono-helpers'
 import { assertEveCharacterId } from '@repo/eve-types'
 import {
 	EsiGetCharacterFleetInformation,
@@ -30,7 +31,9 @@ import {
 
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
+import type { FleetMonitor } from '@repo/fleets'
 import type { EveCharacterId } from '@repo/eve-types'
+import type { Universe } from '@repo/universe'
 
 /**
  * Fleets Durable Object
@@ -70,11 +73,14 @@ export class FleetsDO extends DurableObject implements Fleets {
 	async getCharacterFleetInformation(characterId: EveCharacterId): Promise<FleetInformation> {
 		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 
-		console.log(`[Fleets DO] Getting fleet information for character ${characterId}`)
+		logger.info('[Fleets DO] Getting fleet information for character', { characterId })
 
 		try {
 			// Fetch from ESI without schema (schemas can't be serialized across DO boundary)
-			console.log(`[Fleets DO] Making ESI request to /characters/${characterId}/fleet/`)
+			logger.debug('[Fleets DO] Making ESI request', {
+				characterId,
+				endpoint: `/characters/${characterId}/fleet/`,
+			})
 
 			const response = await tokenStore.fetchEsi<EsiGetCharacterFleetInformation>(
 				`/characters/${characterId}/fleet/`,
@@ -84,7 +90,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 			// Validate the response locally using the schema
 			const validatedData = esiGetCharacterFleetInformationSchema.parse(response.data)
 
-			console.log(`[Fleets DO] ESI response received:`, {
+			logger.info('[Fleets DO] ESI response received', {
 				characterId,
 				fleetId: validatedData.fleet_id,
 				fleetBossId: validatedData.fleet_boss_id,
@@ -422,11 +428,94 @@ export class FleetsDO extends DurableObject implements Fleets {
 		using characterStub = getStub<EveCharacterData>(this.env.EVE_CHARACTER_DATA, characterId)
 		const characterInfo = await characterStub.getCharacterInfo(characterId)
 
+		// Resolve ship type IDs, character IDs, system IDs, and station IDs to names if members are available
+		let resolvedShipTypes: Record<string, string> | undefined
+		let resolvedCharacterNames: Record<string, string> | undefined
+		let resolvedSystemNames: Record<string, string> | undefined
+		let resolvedStationNames: Record<string, string> | undefined
+		if (members && members.length > 0) {
+			try {
+				// Resolve ship type IDs
+				using universeStub = getStub<Universe>(this.env.UNIVERSE, 'default')
+				const uniqueShipTypeIds = [
+					...new Set(members.map((m) => String(m.ship_type_id))),
+				]
+				const shipTypes = await universeStub.resolveTypeNamesByIds(uniqueShipTypeIds)
+				resolvedShipTypes = Object.fromEntries(
+					Object.entries(shipTypes).map(([id, type]) => [
+						id,
+						type?.typeName || id,
+					])
+				)
+			} catch (error) {
+				logger.warn(`[Fleets DO] Failed to resolve ship type names`, {
+					fleetId,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
+
+			try {
+				// Resolve character IDs to names
+				const uniqueCharacterIds = [
+					...new Set(members.map((m) => String(m.character_id))),
+				]
+				// Also include fleet boss if not already in the list
+				if (characterId && !uniqueCharacterIds.includes(characterId)) {
+					uniqueCharacterIds.push(characterId)
+				}
+				const characterNames = await tokenStore.resolveIds(uniqueCharacterIds)
+				resolvedCharacterNames = characterNames
+			} catch (error) {
+				logger.warn(`[Fleets DO] Failed to resolve character names`, {
+					fleetId,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
+
+			try {
+				// Resolve system IDs to names
+				const uniqueSystemIds = [
+					...new Set(members.map((m) => String(m.solar_system_id))),
+				]
+				const systemNames = await tokenStore.resolveIds(uniqueSystemIds)
+				resolvedSystemNames = systemNames
+			} catch (error) {
+				logger.warn(`[Fleets DO] Failed to resolve system names`, {
+					fleetId,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
+
+			try {
+				// Resolve station IDs to names
+				// Filter out null/undefined station IDs
+				const stationIds = members
+					.map((m) => m.station_id)
+					.filter((id): id is number => id !== null && id !== undefined && id !== 0)
+				const uniqueStationIds = [...new Set(stationIds.map((id) => String(id)))]
+
+				if (uniqueStationIds.length > 0) {
+					const stationNames = await tokenStore.resolveIds(uniqueStationIds)
+					resolvedStationNames = stationNames
+				}
+			} catch (error) {
+				logger.warn(`[Fleets DO] Failed to resolve station names`, {
+					fleetId,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
+		}
+
 		return {
 			fleetInfo,
 			members,
 			fleetBossName: characterInfo?.name,
 			memberCount,
+			// Include resolved ship type names, character names, system names, and station names as metadata
+			...(resolvedShipTypes && { shipTypeNames: resolvedShipTypes }),
+			...(resolvedCharacterNames && { characterNames: resolvedCharacterNames }),
+			...(resolvedSystemNames && { systemNames: resolvedSystemNames }),
+			...(resolvedStationNames && { stationNames: resolvedStationNames }),
 		}
 	}
 
@@ -631,6 +720,30 @@ export class FleetsDO extends DurableObject implements Fleets {
 		return isActive
 	}
 
+	async getFleetCacheStatus(
+		fleetId: string
+	): Promise<{ isActive: boolean; notFound: boolean; endedAt: Date | null } | null> {
+		const [cached] = await this.db
+			.select({
+				isActive: fleetStateCache.isActive,
+				notFound: fleetStateCache.notFound,
+				endedAt: fleetStateCache.endedAt,
+			})
+			.from(fleetStateCache)
+			.where(eq(fleetStateCache.fleetId, fleetId))
+			.limit(1)
+
+		if (!cached) {
+			return null
+		}
+
+		return {
+			isActive: cached.isActive,
+			notFound: cached.notFound,
+			endedAt: cached.endedAt,
+		}
+	}
+
 	async revokeQuickJoinInvitation(token: string, characterId: string): Promise<boolean> {
 		// Verify ownership
 		const [invitation] = await this.db
@@ -766,11 +879,146 @@ export class FleetsDO extends DurableObject implements Fleets {
 	}
 
 	/**
-	 * Alarm handler
-	 * Called when a scheduled alarm triggers
+	 * Alarm handler - Watchdog for FleetMonitor instances
+	 * Checks all active FleetMonitor instances to ensure they're updating regularly
+	 * Runs every 2 minutes to detect stale monitors
 	 */
 	async alarm(): Promise<void> {
-		console.log('FleetsDO alarm triggered at:', new Date().toISOString())
+		logger.info('[FleetsDO Watchdog] Starting FleetMonitor health check', {
+			timestamp: new Date().toISOString(),
+		})
+
+		try {
+			// Get all active fleets from cache (excluding not found fleets)
+			const activeFleets = await this.db
+				.select({
+					fleetId: fleetStateCache.fleetId,
+					fleetBossId: fleetStateCache.fleetBossId,
+					lastChecked: fleetStateCache.lastChecked,
+				})
+				.from(fleetStateCache)
+				.where(and(eq(fleetStateCache.notFound, false), eq(fleetStateCache.isActive, true)))
+
+			logger.info('[FleetsDO Watchdog] Found active fleets to check', {
+				count: activeFleets.length,
+			})
+
+			if (activeFleets.length === 0) {
+				logger.info('[FleetsDO Watchdog] No active fleets to monitor')
+				await this.scheduleNextWatchdog()
+				return
+			}
+
+			// Check each FleetMonitor instance
+			const now = Date.now()
+			const staleThreshold = 2 * 60 * 1000 // 2 minutes in milliseconds
+			const staleFleets: Array<{ fleetId: string; lastChecked: Date | null; ageMs: number }> = []
+
+			for (const fleet of activeFleets) {
+				try {
+					// Get the FleetMonitor DO stub for this fleet
+					using fleetMonitorStub = getStub<FleetMonitor>(
+						this.env.FLEET_MONITOR,
+						`fleet-${fleet.fleetId}`
+					)
+
+					// Get the monitor's internal state
+					const monitorState = await fleetMonitorStub.getMonitorState()
+
+					if (!monitorState || !monitorState.isInitialized) {
+						logger.warn('[FleetsDO Watchdog] FleetMonitor not initialized', {
+							fleetId: fleet.fleetId,
+						})
+						continue
+					}
+
+					// Check if lastChecked is stale
+					if (monitorState.lastChecked) {
+						const lastCheckedTime = new Date(monitorState.lastChecked).getTime()
+						const ageMs = now - lastCheckedTime
+
+						if (ageMs > staleThreshold) {
+							staleFleets.push({
+								fleetId: fleet.fleetId,
+								lastChecked: new Date(monitorState.lastChecked),
+								ageMs,
+							})
+
+							logger.error('[FleetsDO Watchdog] Stale FleetMonitor detected', {
+								fleetId: fleet.fleetId,
+								lastChecked: monitorState.lastChecked,
+								ageMs,
+								ageSeconds: Math.round(ageMs / 1000),
+								thresholdMs: staleThreshold,
+							})
+						} else {
+							logger.debug('[FleetsDO Watchdog] FleetMonitor is healthy', {
+								fleetId: fleet.fleetId,
+								lastChecked: monitorState.lastChecked,
+								ageMs,
+								ageSeconds: Math.round(ageMs / 1000),
+							})
+						}
+					} else {
+						logger.warn('[FleetsDO Watchdog] FleetMonitor has no lastChecked timestamp', {
+							fleetId: fleet.fleetId,
+						})
+					}
+				} catch (error) {
+					logger.error('[FleetsDO Watchdog] Failed to check FleetMonitor', {
+						fleetId: fleet.fleetId,
+						error: error instanceof Error ? error.message : String(error),
+					})
+				}
+			}
+
+			// Log summary
+			if (staleFleets.length > 0) {
+				logger.error('[FleetsDO Watchdog] Watchdog check completed with stale monitors', {
+					totalChecked: activeFleets.length,
+					staleCount: staleFleets.length,
+					staleFleets: staleFleets.map((f) => ({
+						fleetId: f.fleetId,
+						ageSeconds: Math.round(f.ageMs / 1000),
+					})),
+				})
+			} else {
+				logger.info('[FleetsDO Watchdog] All FleetMonitors are healthy', {
+					totalChecked: activeFleets.length,
+				})
+			}
+		} catch (error) {
+			logger.error('[FleetsDO Watchdog] Watchdog check failed', {
+				error: error instanceof Error ? error.message : String(error),
+				stack: error instanceof Error ? error.stack : undefined,
+			})
+		} finally {
+			// Always reschedule the watchdog
+			await this.scheduleNextWatchdog()
+		}
+	}
+
+	/**
+	 * Schedule the next watchdog alarm to run 2 minutes from now
+	 */
+	private async scheduleNextWatchdog(): Promise<void> {
+		const twoMinutes = 2 * 60 * 1000 // 2 minutes in milliseconds
+		const nextAlarmTime = Date.now() + twoMinutes
+
+		await this.state.storage.setAlarm(nextAlarmTime)
+
+		logger.debug('[FleetsDO Watchdog] Next watchdog scheduled', {
+			nextAlarmTime: new Date(nextAlarmTime).toISOString(),
+		})
+	}
+
+	/**
+	 * Start the watchdog (schedules the first alarm)
+	 * Can be called manually or will start automatically
+	 */
+	async startWatchdog(): Promise<void> {
+		logger.info('[FleetsDO Watchdog] Starting watchdog')
+		await this.scheduleNextWatchdog()
 	}
 
 	/**
@@ -790,6 +1038,17 @@ export class FleetsDO extends DurableObject implements Fleets {
 			return new Response(null, {
 				status: 101,
 				webSocket: client,
+			})
+		}
+
+		// Start watchdog on first access if not already running
+		// This ensures the watchdog starts automatically
+		try {
+			await this.startWatchdog()
+		} catch (error) {
+			// Ignore errors if alarm is already scheduled
+			logger.debug('[FleetsDO] Watchdog may already be running', {
+				error: error instanceof Error ? error.message : String(error),
 			})
 		}
 

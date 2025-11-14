@@ -9,6 +9,9 @@
 		"check:lint": "run-eslint",
 		"check:types": "run-tsc"
 	},
+	"dependencies": {
+		"drizzle-orm": "0.44.6"
+	},
 	"devDependencies": {
 		"@repo/eslint-config": "workspace:*",
 		"@repo/tools": "workspace:*",

@@ -176,6 +176,13 @@ export interface Fleets extends DurableObject {
 	 * @returns true if removed successfully, false if not found
 	 */
 	removeMonitoredFleetCommander(characterId: string): Promise<boolean>
+
+	/**
+	 * Get fleet cache status from database
+	 * @param fleetId - ESI fleet ID
+	 * @returns Cache status with isActive, notFound, and endedAt, or null if not in cache
+	 */
+	getFleetCacheStatus(fleetId: string): Promise<{ isActive: boolean; notFound: boolean; endedAt: Date | null } | null>
 }
 
 export * from './esi'

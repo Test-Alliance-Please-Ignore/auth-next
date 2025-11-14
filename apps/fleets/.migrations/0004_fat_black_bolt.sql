@@ -1,0 +1,1 @@
+CREATE INDEX "fleet_state_cache_ended_at_idx" ON "fleet_state_cache" USING btree ("ended_at");

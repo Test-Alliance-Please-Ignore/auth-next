@@ -67,6 +67,7 @@ export const fleetStateCache = pgTable(
 		isVoiceEnabled: boolean('is_voice_enabled').default(false).notNull(),
 		notFound: boolean('not_found').default(false).notNull(),
 		notFoundAt: timestamp('not_found_at'),
+		endedAt: timestamp('ended_at'),
 		lastChecked: timestamp('last_checked').defaultNow().notNull(),
 		createdAt: timestamp('created_at').defaultNow().notNull(),
 		updatedAt: timestamp('updated_at').defaultNow().notNull(),
@@ -76,6 +77,7 @@ export const fleetStateCache = pgTable(
 		fleetBossIdIdx: index('fleet_state_cache_fleet_boss_id_idx').on(table.fleetBossId),
 		lastCheckedIdx: index('fleet_state_cache_last_checked_idx').on(table.lastChecked),
 		notFoundIdx: index('fleet_state_cache_not_found_idx').on(table.notFound),
+		endedAtIdx: index('fleet_state_cache_ended_at_idx').on(table.endedAt),
 	})
 )
 
@@ -95,10 +97,43 @@ export const monitoredFleetCommanders = pgTable(
 	})
 )
 
+/**
+ * Fleet member history table
+ * Tracks historical join/leave events for fleet members with ship and location data
+ */
+export const fleetMemberHistory = pgTable(
+	'fleet_member_history',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		fleetId: text('fleet_id').notNull(),
+		characterId: text('character_id').notNull(),
+		eventType: text('event_type').notNull(), // 'join' or 'leave'
+		shipTypeId: integer('ship_type_id').notNull(),
+		solarSystemId: integer('solar_system_id').notNull(),
+		stationId: integer('station_id'), // null if in space
+		role: text('role').notNull(), // 'fleet_commander', 'wing_commander', 'squad_commander', 'squad_member'
+		roleName: text('role_name').notNull(),
+		squadId: text('squad_id').notNull(), // Changed from integer to text - values can exceed integer max
+		wingId: text('wing_id').notNull(), // Changed from integer to text - values can exceed integer max
+		joinedAt: timestamp('joined_at'), // When they joined (for join events)
+		leftAt: timestamp('left_at'), // When they left (for leave events)
+		eventTimestamp: timestamp('event_timestamp').defaultNow().notNull(),
+		createdAt: timestamp('created_at').defaultNow().notNull(),
+	},
+	(table) => ({
+		fleetIdIdx: index('fleet_member_history_fleet_id_idx').on(table.fleetId),
+		characterIdIdx: index('fleet_member_history_character_id_idx').on(table.characterId),
+		eventTypeIdx: index('fleet_member_history_event_type_idx').on(table.eventType),
+		eventTimestampIdx: index('fleet_member_history_event_timestamp_idx').on(table.eventTimestamp),
+		fleetCharacterIdx: index('fleet_member_history_fleet_character_idx').on(table.fleetId, table.characterId),
+	})
+)
+
 // Export schema object for Drizzle
 export const schema = {
 	fleetInvitations,
 	fleetMemberships,
 	fleetStateCache,
 	monitoredFleetCommanders,
+	fleetMemberHistory,
 }

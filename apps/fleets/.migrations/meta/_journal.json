@@ -22,6 +22,34 @@
       "when": 1763128203641,
       "tag": "0002_freezing_chat",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1763140194922,
+      "tag": "0003_flippant_kate_bishop",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1763140212135,
+      "tag": "0004_fat_black_bolt",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1763141021271,
+      "tag": "0005_exotic_ozymandias",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1763143649418,
+      "tag": "0006_thick_shen",
+      "breakpoints": true
     }
   ]
 }
