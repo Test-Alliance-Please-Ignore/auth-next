@@ -139,12 +139,12 @@ export interface Universe {
 	): Promise<Killmail>
 
 	/**
-	 * Get killmail by ID and hash
+	 * Fetch killmail by ID and hash
 	 * @param killmailId - Killmail ID
 	 * @param killmailHash - Killmail hash
 	 * @returns Killmail record or null if not found
 	 */
-	getKillmailById(killmailId: string, killmailHash: string): Promise<Killmail | null>
+	fetchKillmailByIdAndHash(killmailId: string, killmailHash: string): Promise<Killmail | null>
 
 	/**
 	 * Get killmails by character ID

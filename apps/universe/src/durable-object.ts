@@ -570,10 +570,10 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	}
 
 	/**
-	 * Get killmail by ID and hash
+	 * Fetch killmail by ID and hash
 	 */
-	async getKillmailById(killmailId: string, killmailHash: string): Promise<Killmail | null> {
-		return this.killmailService.getKillmailById(killmailId, killmailHash)
+	async fetchKillmailByIdAndHash(killmailId: string, killmailHash: string): Promise<Killmail | null> {
+		return this.killmailService.fetchKillmailByIdAndHash(killmailId, killmailHash)
 	}
 
 	/**

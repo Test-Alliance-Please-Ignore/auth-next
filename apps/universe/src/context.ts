@@ -5,6 +5,7 @@ export type Env = SharedHonoEnv & {
 	DATABASE_URL: string
 	UNIVERSE: DurableObjectNamespace
 	EVE_TOKEN_STORE: DurableObjectNamespace
+	UNIVERSE_CACHE: KVNamespace
 }
 
 /** Variables can be extended */

@@ -4,10 +4,10 @@ import { killmailDetailSchema } from '@repo/universe'
 
 import { killmails, schema } from '../db/schema'
 
+import type { DbClient } from '@repo/db-utils'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Killmail, KillmailDetail } from '@repo/universe'
 import type { Env } from '../context'
-import type { DbClient } from '@repo/db-utils'
 
 /**
  * Killmail Service
@@ -94,12 +94,12 @@ export class KillmailService {
 		}
 
 		// Map resolved names to attacker arrays (matching order)
-		const attackerCharacterNames = attackerCharacterIds.map(
-			(id) => resolvedNames[id] ?? null
-		).filter((name): name is string => name !== null)
-		const attackerCorporationNames = attackerCorporationIds.map(
-			(id) => resolvedNames[id] ?? null
-		).filter((name): name is string => name !== null)
+		const attackerCharacterNames = attackerCharacterIds
+			.map((id) => resolvedNames[id] ?? null)
+			.filter((name): name is string => name !== null)
+		const attackerCorporationNames = attackerCorporationIds
+			.map((id) => resolvedNames[id] ?? null)
+			.filter((name): name is string => name !== null)
 
 		// Prepare data for insertion
 		const killmailTime = new Date(validated.killmail_time)
@@ -132,7 +132,8 @@ export class KillmailService {
 			attackerCharacterIds: attackerCharacterIds.length > 0 ? attackerCharacterIds : null,
 			attackerCharacterNames: attackerCharacterNames.length > 0 ? attackerCharacterNames : null,
 			attackerCorporationIds: attackerCorporationIds.length > 0 ? attackerCorporationIds : null,
-			attackerCorporationNames: attackerCorporationNames.length > 0 ? attackerCorporationNames : null,
+			attackerCorporationNames:
+				attackerCorporationNames.length > 0 ? attackerCorporationNames : null,
 			killmailData: validated as unknown,
 			updatedAt: new Date(),
 		}
@@ -174,16 +175,72 @@ export class KillmailService {
 	}
 
 	/**
-	 * Get killmail by ID and hash
+	 * Fetch killmail by ID and hash
+	 * First checks the database, then fetches from ESI if not found
 	 */
-	async getKillmailById(killmailId: string, killmailHash: string): Promise<Killmail | null> {
+	async fetchKillmailByIdAndHash(
+		killmailId: string,
+		killmailHash: string
+	): Promise<Killmail | null> {
+		// First, check the database
 		const [result] = await this.db
 			.select()
 			.from(killmails)
-			.where(and(eq(killmails.killmailId, String(killmailId)), eq(killmails.killmailHash, String(killmailHash))))
+			.where(
+				and(
+					eq(killmails.killmailId, String(killmailId)),
+					eq(killmails.killmailHash, String(killmailHash))
+				)
+			)
 			.limit(1)
 
-		return result ?? null
+		// If found in database, return immediately
+		if (result) {
+			return result
+		}
+
+		// Not found in database, fetch from ESI
+		try {
+			const url = `https://esi.evetech.net/latest/killmails/${killmailId}/${killmailHash}/?datasource=tranquility`
+			const response = await fetch(url)
+
+			if (!response.ok) {
+				// Return null for 404 (killmail not found)
+				if (response.status === 404) {
+					return null
+				}
+
+				// Log and return null for other non-ok responses
+				console.error(
+					`Failed to fetch killmail ${killmailId} from ESI: ${response.status} ${response.statusText}`
+				)
+				const errorText = await response.text()
+				console.error(`ESI error response body:`, errorText)
+				return null
+			}
+
+			// Parse and validate the response
+			const killmailData = await response.json()
+			const validatedData = killmailDetailSchema.parse(killmailData)
+
+			// Store the killmail in the database
+			const storedKillmail = await this.storeKillmail(killmailId, killmailHash, validatedData)
+
+			return storedKillmail
+		} catch (error) {
+			// Handle validation errors or other unexpected errors
+			if (error instanceof Error) {
+				const errorMessage = error.message.toLowerCase()
+				// Return null for 404 errors
+				if (errorMessage.includes('404')) {
+					return null
+				}
+			}
+
+			// Log and re-throw other errors
+			console.error(`Error fetching killmail ${killmailId} from ESI:`, error)
+			throw error
+		}
 	}
 
 	/**
@@ -289,4 +346,3 @@ export class KillmailService {
 			.orderBy(sql`${killmails.killmailTime} DESC`)
 	}
 }
-
