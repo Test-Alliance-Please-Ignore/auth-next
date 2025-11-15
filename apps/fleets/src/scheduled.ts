@@ -8,7 +8,7 @@ import type { Env } from './context'
 /**
  * Scheduled handler for fleet commander monitoring
  *
- * This handler runs on a scheduled cron trigger (every 15 minutes) and:
+ * This handler runs on a scheduled cron trigger (every 5 minutes) and:
  * 1. Queries the main FleetsDO for list of monitored fleet commanders
  * 2. For each commander, checks if they are in a fleet
  * 3. If commander is in a fleet and is the fleet boss, creates/initializes FleetMonitor DO instance
@@ -123,8 +123,52 @@ async function checkCommanderFleetStatus(env: Env, characterId: string): Promise
 		if (isInFleet && isFleetBoss) {
 			const fleetId = fleetInfo.fleet_id
 
-			// Check fleet cache status to detect if fleet was erroneously marked as ended
-			const cacheStatus = await fleetsStub.getFleetCacheStatus(fleetId)
+			// Create/get FleetMonitor DO instance using id 'fleet-${fleetId}'
+			using fleetMonitorStub = getStub<FleetMonitor>(env.FLEET_MONITOR, `fleet-${fleetId}`)
+
+			// Check fleet cache status and monitor state in parallel since they're independent
+			const [cacheStatusResult, monitorStateResult] = await Promise.allSettled([
+				// Check fleet cache status to detect if fleet was erroneously marked as ended
+				fleetsStub.getFleetCacheStatus(fleetId),
+				// Check if FleetMonitor is already initialized
+				fleetMonitorStub.getMonitorState(),
+			])
+
+			// Extract cache status result
+			let cacheStatus: { isActive: boolean; notFound: boolean; endedAt: Date | null } | null = null
+			if (cacheStatusResult.status === 'fulfilled') {
+				cacheStatus = cacheStatusResult.value
+			} else {
+				logger.warn('[FleetMonitoring] Failed to get fleet cache status, continuing anyway', {
+					characterId,
+					fleetId,
+					error:
+						cacheStatusResult.reason instanceof Error
+							? cacheStatusResult.reason.message
+							: String(cacheStatusResult.reason),
+				})
+				// Continue without cache status - we still know the fleet exists from ESI
+			}
+
+			// Extract monitor state result
+			let monitorState: {
+				isInitialized: boolean
+				fleetId: string
+				lastChecked: string | null
+			} | null = null
+			if (monitorStateResult.status === 'fulfilled') {
+				monitorState = monitorStateResult.value
+			} else {
+				logger.warn('[FleetMonitoring] Failed to get monitor state, will attempt initialization', {
+					characterId,
+					fleetId,
+					error:
+						monitorStateResult.reason instanceof Error
+							? monitorStateResult.reason.message
+							: String(monitorStateResult.reason),
+				})
+				// Continue - we'll try to initialize anyway
+			}
 
 			// Detect blip: fleet is active in ESI but marked as inactive/ended in cache
 			if (cacheStatus && (!cacheStatus.isActive || cacheStatus.notFound || cacheStatus.endedAt)) {
@@ -141,12 +185,6 @@ async function checkCommanderFleetStatus(env: Env, characterId: string): Promise
 					}
 				)
 			}
-
-			// Create/get FleetMonitor DO instance using id 'fleet-${fleetId}'
-			using fleetMonitorStub = getStub<FleetMonitor>(env.FLEET_MONITOR, `fleet-${fleetId}`)
-
-			// Check if FleetMonitor is already initialized
-			const monitorState = await fleetMonitorStub.getMonitorState()
 
 			if (monitorState && monitorState.isInitialized && monitorState.fleetId === fleetId) {
 				// If cache shows inactive but monitor is initialized, force reinitialize to clear cache state and restart alarms
@@ -188,9 +226,11 @@ async function checkCommanderFleetStatus(env: Env, characterId: string): Promise
 				wasInactive: cacheStatus
 					? !cacheStatus.isActive || cacheStatus.notFound || cacheStatus.endedAt
 					: false,
+				monitorStateKnown: monitorState !== null,
 			})
 
 			// Initialize monitoring for this fleet
+			// initializeMonitoring will check if already initialized and return early if so
 			await fleetMonitorStub.initializeMonitoring(fleetId, characterId)
 
 			logger.info('[FleetMonitoring] FleetMonitor initialized successfully', {

@@ -1045,9 +1045,9 @@ groups.get('/:groupId/members', requireAuth(), async (c) => {
 /**
  * DELETE /:groupId/members/:userId
  *
- * Remove a member from a group (admin only)
+ * Remove a member from a group (group owner or admin only)
  */
-groups.delete('/:groupId/members/:userId', requireAuth(), requireAdmin(), async (c) => {
+groups.delete('/:groupId/members/:userId', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const groupId = c.req.param('groupId')
 	const memberUserId = c.req.param('userId')

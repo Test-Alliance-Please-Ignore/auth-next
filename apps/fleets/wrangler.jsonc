@@ -6,12 +6,12 @@
 	"compatibility_flags": ["nodejs_compat"],
 	"routes": [],
 	"logpush": false,
-	"workers_dev": false,
+	"workers_dev": true,
 	"observability": {
 		"enabled": true
 	},
 	"triggers": {
-		"crons": ["*/15 * * * *"]
+		"crons": ["*/5 * * * *"]
 	},
 	"vars": {},
 	"durable_objects": {

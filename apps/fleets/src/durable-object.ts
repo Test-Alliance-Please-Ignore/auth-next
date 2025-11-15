@@ -113,49 +113,49 @@ export class FleetsDO extends DurableObject implements Fleets {
 			const errorMessage = error instanceof Error ? error.message : String(error)
 			const errorName = error instanceof Error ? error.constructor.name : typeof error
 
-			console.error(`[Fleets DO] Error fetching fleet information for character ${characterId}:`)
-			console.error(`[Fleets DO] Error message: ${errorMessage}`)
-			console.error(`[Fleets DO] Error type: ${errorName}`)
+			logger.error('[Fleets DO] Error fetching fleet information for character', {
+				characterId,
+				error: errorMessage,
+				errorType: errorName,
+			})
 
-			// Check if it's a specific ESI error or HTTP response error
+			// Check if it's a 404 error (character not in a fleet) - this is expected and should return default
 			if (error instanceof Error) {
-				// Check for specific error patterns in the message
-				if (
+				const is404 =
 					error.message.includes('404') ||
 					error.message.includes('Not found') ||
-					error.message.includes('Not Found')
-				) {
-					console.log(`[Fleets DO] Character ${characterId} is not in a fleet (404 response)`)
-				} else if (error.message.includes('403') || error.message.includes('Forbidden')) {
-					console.log(
-						`[Fleets DO] Forbidden error - character ${characterId} may not have fleet scope`
-					)
-				} else if (error.message.includes('401') || error.message.includes('Unauthorized')) {
-					console.log(
-						`[Fleets DO] Unauthorized - token may be expired for character ${characterId}`
-					)
-				} else if (error.message.includes('400') || error.message.includes('Bad Request')) {
-					console.log(`[Fleets DO] Bad request - invalid parameters for character ${characterId}`)
-				} else {
-					// Log first 500 chars of stack trace if available
-					if (error.stack) {
-						console.error(
-							`[Fleets DO] Stack trace (first 500 chars): ${error.stack.substring(0, 500)}`
-						)
-					}
+					error.message.includes('Not Found') ||
+					error.message.includes('ESI request failed: 404')
+
+				if (is404) {
+					logger.info('[Fleets DO] Character is not in a fleet (404 response)', {
+						characterId,
+					})
+					// Return default if character is not in a fleet (this is expected)
+					return {
+						fleet_boss_id: '0',
+						fleet_id: '0',
+						role: 'fleet_commander',
+						squad_id: 0,
+						wing_id: 0,
+						lastUpdated: new Date().toISOString(),
+					} as FleetInformation
 				}
+
+				// For all other errors (401, 403, 500, network errors, etc.), throw the error
+				// This allows the scheduled handler to know there was a problem and log it appropriately
+				// The scheduled handler uses Promise.allSettled, so this won't stop other commanders from being checked
+				logger.error('[Fleets DO] Unexpected error fetching fleet information', {
+					characterId,
+					error: errorMessage,
+					errorType: errorName,
+					note: 'This error will be propagated to the scheduled handler',
+				})
 			}
 
-			// Return default if character is not in a fleet or error occurs
-			// Return IDs as strings for consistency
-			return {
-				fleet_boss_id: '0',
-				fleet_id: '0',
-				role: 'fleet_commander',
-				squad_id: 0,
-				wing_id: 0,
-				lastUpdated: new Date().toISOString(),
-			} as FleetInformation
+			// Re-throw the error so the scheduled handler knows there was a problem
+			// This ensures failures are properly tracked and don't silently prevent monitoring
+			throw error
 		}
 	}
 

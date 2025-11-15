@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { createDbClient, createDbClientWs } from '@repo/db-utils'
+import { createDbClient, createDbClientWs, eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import {
 	EsiGetFleetInformation,
@@ -14,7 +14,7 @@ import {
 import { logger } from '@repo/hono-helpers'
 
 import { Env } from './context'
-import { fleetMemberHistory, fleetStateCache, schema } from './db/schema'
+import { fleetMemberHistory, fleetStateCache, fleetSummaries, schema } from './db/schema'
 
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
@@ -331,106 +331,21 @@ export class FleetMonitorDO extends DurableObject {
 							joinedAt: new Date(member.join_time),
 							leftAt: null,
 							eventTimestamp: now,
+							// Names not resolved for initial snapshot (will be null)
+							characterName: null,
+							systemName: null,
+							shipTypeName: null,
+							wingName: null,
+							squadName: null,
 						}))
 
-						// Insert in batches
-						for (let i = 0; i < memberHistoryValues.length; i += BATCH_SIZE) {
-							const batch = memberHistoryValues.slice(i, i + BATCH_SIZE)
-
-							// Validate and normalize batch data before insert
-							const validatedBatch = batch.map((item) => ({
-								...item,
-								stationId: normalizeStationId(item.stationId),
-							}))
-
-							try {
-								await this.db.insert(fleetMemberHistory).values(validatedBatch)
-							} catch (insertError) {
-								// Extract error message without the full SQL query (too large for logs)
-								let errorMessage =
-									insertError instanceof Error ? insertError.message : String(insertError)
-								if (errorMessage.includes('Failed query:')) {
-									errorMessage = errorMessage.split('\nparams:')[0] // Keep only the part before params
-								}
-
-								// Capture essential error details (without the huge SQL query)
-								const errorDetails: Record<string, unknown> = {
-									fleetId,
-									batchIndex: i / BATCH_SIZE + 1,
-									batchSize: batch.length,
-									error: errorMessage,
-								}
-
-								// Extract nested error information (common in Neon/Drizzle errors)
-								if (insertError && typeof insertError === 'object') {
-									const err = insertError as Record<string, unknown>
-
-									// Check for common PostgreSQL error properties
-									if (err.code) errorDetails.code = err.code
-									if (err.detail) errorDetails.detail = err.detail
-									if (err.hint) errorDetails.hint = err.hint
-									if (err.severity) errorDetails.severity = err.severity
-									if (err.position) errorDetails.position = err.position
-
-									// Check for nested cause
-									if (err.cause) {
-										if (err.cause && typeof err.cause === 'object') {
-											const cause = err.cause as Record<string, unknown>
-											if (cause.message) errorDetails.causeMessage = cause.message
-											if (cause.code) errorDetails.causeCode = cause.code
-											if (cause.detail) errorDetails.causeDetail = cause.detail
-										} else {
-											errorDetails.cause = String(err.cause)
-										}
-									}
-
-									// Include other important error properties (but not huge strings)
-									Object.keys(err).forEach((key) => {
-										if (
-											![
-												'message',
-												'stack',
-												'code',
-												'detail',
-												'hint',
-												'severity',
-												'position',
-												'cause',
-											].includes(key)
-										) {
-											const value = err[key]
-											// Only include simple values, not huge objects/strings
-											if (
-												typeof value === 'string' &&
-												value.length < 500 &&
-												!value.includes('insert into') &&
-												!value.includes('values (default')
-											) {
-												errorDetails[key] = value
-											} else if (typeof value !== 'object' && typeof value !== 'function') {
-												errorDetails[key] = value
-											}
-										}
-									})
-								}
-
-								// Log first item in batch for debugging data issues
-								if (validatedBatch.length > 0) {
-									errorDetails.sampleRecord = {
-										characterId: validatedBatch[0].characterId,
-										shipTypeId: validatedBatch[0].shipTypeId,
-										stationId: validatedBatch[0].stationId,
-										stationIdType: typeof validatedBatch[0].stationId,
-									}
-								}
-
-								logger.error(
-									`[FleetMonitor ${fleetId}] Failed to insert batch ${i / BATCH_SIZE + 1}`,
-									errorDetails
-								)
-								throw insertError
-							}
-						}
+						// Insert in batches using helper
+						await this.insertFleetMemberHistoryBatch(
+							memberHistoryValues,
+							fleetId,
+							BATCH_SIZE,
+							'initial'
+						)
 
 						// Create initial snapshot in SQLite
 						for (const member of initialStatus.members) {
@@ -532,155 +447,71 @@ export class FleetMonitorDO extends DurableObject {
 			let resolvedSystemNames: Record<string, string> | undefined
 			let resolvedStationNames: Record<string, string> | undefined
 			if (members && members.length > 0) {
-				try {
-					// Resolve ship type IDs (with cache)
-					using universeStub = getStub<Universe>(this.env.UNIVERSE, 'default')
-					const uniqueShipTypeIds = [...new Set(members.map((m) => String(m.ship_type_id)))]
+				// Collect unique IDs
+				const uniqueShipTypeIds = new Set(members.map((m) => String(m.ship_type_id)))
+				const uniqueCharacterIds = new Set(members.map((m) => String(m.character_id)))
+				// Also include fleet boss if not already in the list
+				if (characterId && !uniqueCharacterIds.has(characterId)) {
+					uniqueCharacterIds.add(characterId)
+				}
+				const uniqueSystemIds = new Set(members.map((m) => String(m.solar_system_id)))
+				const stationIds = members.map((m) => m.station_id)
 
-					// Check cache first
-					const cachedShipTypes: Record<string, string> = {}
-					const uncachedShipTypeIds: string[] = []
+				// Resolve all names in parallel using helper functions
+				const [shipTypesResult, characterNamesResult, systemNamesResult, stationNamesResult] =
+					await Promise.allSettled([
+						uniqueShipTypeIds.size > 0 ? this.resolveShipTypeNames(uniqueShipTypeIds) : {},
+						uniqueCharacterIds.size > 0 ? this.resolveCharacterNames(uniqueCharacterIds) : {},
+						uniqueSystemIds.size > 0 ? this.resolveSystemNames(uniqueSystemIds) : {},
+						this.resolveStationNames(stationIds),
+					])
 
-					for (const id of uniqueShipTypeIds) {
-						const cached = this.shipTypeNameCache.get(id)
-						if (cached !== undefined) {
-							cachedShipTypes[id] = cached
-						} else {
-							uncachedShipTypeIds.push(id)
-						}
-					}
-
-					// Fetch uncached ship types
-					if (uncachedShipTypeIds.length > 0) {
-						const shipTypes = await universeStub.resolveTypeNamesByIds(uncachedShipTypeIds)
-						for (const [id, type] of Object.entries(shipTypes)) {
-							const name = (type as InvType | null)?.typeName || id
-							cachedShipTypes[id] = name
-							// Update cache
-							this.shipTypeNameCache.set(id, name)
-						}
-					}
-
-					resolvedShipTypes = cachedShipTypes
-				} catch (error) {
+				// Extract results with error handling
+				if (shipTypesResult.status === 'fulfilled') {
+					resolvedShipTypes = shipTypesResult.value
+				} else {
 					logger.warn(`[FleetMonitor ${fleetId}] Failed to resolve ship type names`, {
 						fleetId,
-						error: error instanceof Error ? error.message : String(error),
+						error:
+							shipTypesResult.reason instanceof Error
+								? shipTypesResult.reason.message
+								: String(shipTypesResult.reason),
 					})
 				}
 
-				try {
-					// Resolve character IDs to names (with cache)
-					const uniqueCharacterIds = [...new Set(members.map((m) => String(m.character_id)))]
-					// Also include fleet boss if not already in the list
-					if (characterId && !uniqueCharacterIds.includes(characterId)) {
-						uniqueCharacterIds.push(characterId)
-					}
-
-					// Check cache first
-					const cachedCharacterNames: Record<string, string> = {}
-					const uncachedCharacterIds: string[] = []
-
-					for (const id of uniqueCharacterIds) {
-						const cached = this.characterNameCache.get(id)
-						if (cached !== undefined) {
-							cachedCharacterNames[id] = cached
-						} else {
-							uncachedCharacterIds.push(id)
-						}
-					}
-
-					// Fetch uncached character names
-					if (uncachedCharacterIds.length > 0) {
-						const characterNames = await tokenStore.resolveIds(uncachedCharacterIds)
-						for (const [id, name] of Object.entries(characterNames)) {
-							cachedCharacterNames[id] = name
-							// Update cache
-							this.characterNameCache.set(id, name)
-						}
-					}
-
-					resolvedCharacterNames = cachedCharacterNames
-				} catch (error) {
+				if (characterNamesResult.status === 'fulfilled') {
+					resolvedCharacterNames = characterNamesResult.value
+				} else {
 					logger.warn(`[FleetMonitor ${fleetId}] Failed to resolve character names`, {
 						fleetId,
-						error: error instanceof Error ? error.message : String(error),
+						error:
+							characterNamesResult.reason instanceof Error
+								? characterNamesResult.reason.message
+								: String(characterNamesResult.reason),
 					})
 				}
 
-				try {
-					// Resolve system IDs to names (with cache)
-					const uniqueSystemIds = [...new Set(members.map((m) => String(m.solar_system_id)))]
-
-					// Check cache first
-					const cachedSystemNames: Record<string, string> = {}
-					const uncachedSystemIds: string[] = []
-
-					for (const id of uniqueSystemIds) {
-						const cached = this.systemNameCache.get(id)
-						if (cached !== undefined) {
-							cachedSystemNames[id] = cached
-						} else {
-							uncachedSystemIds.push(id)
-						}
-					}
-
-					// Fetch uncached system names
-					if (uncachedSystemIds.length > 0) {
-						const systemNames = await tokenStore.resolveIds(uncachedSystemIds)
-						for (const [id, name] of Object.entries(systemNames)) {
-							cachedSystemNames[id] = name
-							// Update cache
-							this.systemNameCache.set(id, name)
-						}
-					}
-
-					resolvedSystemNames = cachedSystemNames
-				} catch (error) {
+				if (systemNamesResult.status === 'fulfilled') {
+					resolvedSystemNames = systemNamesResult.value
+				} else {
 					logger.warn(`[FleetMonitor ${fleetId}] Failed to resolve system names`, {
 						fleetId,
-						error: error instanceof Error ? error.message : String(error),
+						error:
+							systemNamesResult.reason instanceof Error
+								? systemNamesResult.reason.message
+								: String(systemNamesResult.reason),
 					})
 				}
 
-				try {
-					// Resolve station IDs to names (with cache)
-					// Filter out null/undefined station IDs
-					const stationIds = members
-						.map((m) => normalizeStationId(m.station_id))
-						.filter((id): id is number => id !== null)
-					const uniqueStationIds = [...new Set(stationIds.map((id) => String(id)))]
-
-					if (uniqueStationIds.length > 0) {
-						// Check cache first
-						const cachedStationNames: Record<string, string> = {}
-						const uncachedStationIds: string[] = []
-
-						for (const id of uniqueStationIds) {
-							const cached = this.stationNameCache.get(id)
-							if (cached !== undefined) {
-								cachedStationNames[id] = cached
-							} else {
-								uncachedStationIds.push(id)
-							}
-						}
-
-						// Fetch uncached station names
-						if (uncachedStationIds.length > 0) {
-							const stationNames = await tokenStore.resolveIds(uncachedStationIds)
-							for (const [id, name] of Object.entries(stationNames)) {
-								cachedStationNames[id] = name
-								// Update cache
-								this.stationNameCache.set(id, name)
-							}
-						}
-
-						resolvedStationNames = cachedStationNames
-					}
-				} catch (error) {
+				if (stationNamesResult.status === 'fulfilled') {
+					resolvedStationNames = stationNamesResult.value
+				} else {
 					logger.warn(`[FleetMonitor ${fleetId}] Failed to resolve station names`, {
 						fleetId,
-						error: error instanceof Error ? error.message : String(error),
+						error:
+							stationNamesResult.reason instanceof Error
+								? stationNamesResult.reason.message
+								: String(stationNamesResult.reason),
 					})
 				}
 			}
@@ -796,6 +627,408 @@ export class FleetMonitorDO extends DurableObject {
 	}
 
 	/**
+	 * Archive a fleet to fleet_summaries before deletion from fleet_state_cache
+	 * Uses createdAt from fleet_state_cache as startedAt (for existing fleets)
+	 *
+	 * @param fleetId - Fleet ID to archive
+	 * @param characterId - Fleet boss character ID
+	 * @param endedAt - When the fleet ended
+	 */
+	private async archiveFleetToSummary(
+		fleetId: string,
+		characterId: string,
+		endedAt: Date
+	): Promise<void> {
+		try {
+			// Get current fleet state from cache
+			const [cached] = await this.db
+				.select()
+				.from(fleetStateCache)
+				.where(eq(fleetStateCache.fleetId, fleetId))
+				.limit(1)
+
+			if (!cached) {
+				logger.warn(`[FleetMonitor ${fleetId}] No cache entry found to archive`, {
+					fleetId,
+					characterId,
+				})
+				return
+			}
+
+			// Use createdAt as startedAt (for existing fleets when migration runs)
+			// For new fleets, this will be accurate
+			const startedAt = cached.createdAt || new Date()
+
+			// Calculate duration in minutes
+			const durationMs = endedAt.getTime() - startedAt.getTime()
+			const durationMinutes = Math.round(durationMs / (1000 * 60))
+
+			// For now, use current member count as both peak and final
+			// TODO: Track peak member count during fleet lifetime
+			const peakMemberCount = cached.memberCount
+			const finalMemberCount = cached.memberCount
+
+			// Check if summary already exists (idempotent)
+			const [existing] = await this.db
+				.select()
+				.from(fleetSummaries)
+				.where(eq(fleetSummaries.fleetId, fleetId))
+				.limit(1)
+
+			if (existing) {
+				logger.debug(`[FleetMonitor ${fleetId}] Summary already exists, skipping archive`, {
+					fleetId,
+				})
+				return
+			}
+
+			// Create summary entry
+			await this.db.insert(fleetSummaries).values({
+				fleetId,
+				fleetBossId: characterId,
+				startedAt,
+				endedAt,
+				peakMemberCount,
+				finalMemberCount,
+				motd: cached.motd || null,
+				isFreeMove: cached.isFreeMove,
+				isRegistered: cached.isRegistered,
+				isVoiceEnabled: cached.isVoiceEnabled,
+				durationMinutes,
+			})
+
+			logger.info(`[FleetMonitor ${fleetId}] Archived fleet to summaries`, {
+				fleetId,
+				characterId,
+				startedAt: startedAt.toISOString(),
+				endedAt: endedAt.toISOString(),
+				durationMinutes,
+				peakMemberCount,
+			})
+		} catch (error) {
+			// Log error but don't throw - we don't want to prevent fleet cleanup
+			logger.error(`[FleetMonitor ${fleetId}] Failed to archive fleet to summary`, {
+				fleetId,
+				characterId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+	}
+
+	/**
+	 * Resolve character IDs to names using cache and API
+	 * @param characterIds - Set of character IDs to resolve
+	 * @returns Record mapping character ID to name
+	 */
+	private async resolveCharacterNames(characterIds: Set<string>): Promise<Record<string, string>> {
+		const resolved: Record<string, string> = {}
+		const uncachedIds: string[] = []
+
+		// Check cache first
+		for (const id of characterIds) {
+			const cached = this.characterNameCache.get(id)
+			if (cached !== undefined) {
+				resolved[id] = cached
+			} else {
+				uncachedIds.push(id)
+			}
+		}
+
+		// Resolve uncached IDs
+		if (uncachedIds.length > 0) {
+			using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+			const characterNames = await tokenStore.resolveIds(uncachedIds)
+			for (const [id, name] of Object.entries(characterNames)) {
+				resolved[id] = name
+				this.characterNameCache.set(id, name)
+			}
+		}
+
+		return resolved
+	}
+
+	/**
+	 * Resolve system IDs to names using cache and API
+	 * @param systemIds - Set of system IDs to resolve
+	 * @returns Record mapping system ID to name
+	 */
+	private async resolveSystemNames(systemIds: Set<string>): Promise<Record<string, string>> {
+		const resolved: Record<string, string> = {}
+		const uncachedIds: string[] = []
+
+		// Check cache first
+		for (const id of systemIds) {
+			const cached = this.systemNameCache.get(id)
+			if (cached !== undefined) {
+				resolved[id] = cached
+			} else {
+				uncachedIds.push(id)
+			}
+		}
+
+		// Resolve uncached IDs
+		if (uncachedIds.length > 0) {
+			using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+			const systemNames = await tokenStore.resolveIds(uncachedIds)
+			for (const [id, name] of Object.entries(systemNames)) {
+				resolved[id] = name
+				this.systemNameCache.set(id, name)
+			}
+		}
+
+		return resolved
+	}
+
+	/**
+	 * Resolve ship type IDs to names using cache and API
+	 * @param shipTypeIds - Set of ship type IDs to resolve
+	 * @returns Record mapping ship type ID to name
+	 */
+	private async resolveShipTypeNames(shipTypeIds: Set<string>): Promise<Record<string, string>> {
+		const resolved: Record<string, string> = {}
+		const uncachedIds: string[] = []
+
+		// Check cache first
+		for (const id of shipTypeIds) {
+			const cached = this.shipTypeNameCache.get(id)
+			if (cached !== undefined) {
+				resolved[id] = cached
+			} else {
+				uncachedIds.push(id)
+			}
+		}
+
+		// Resolve uncached IDs
+		if (uncachedIds.length > 0) {
+			using universeStub = getStub<Universe>(this.env.UNIVERSE, 'default')
+			const shipTypes = await universeStub.resolveTypeNamesByIds(uncachedIds)
+			for (const [id, type] of Object.entries(shipTypes)) {
+				const name = (type as InvType | null)?.typeName || id
+				resolved[id] = name
+				this.shipTypeNameCache.set(id, name)
+			}
+		}
+
+		return resolved
+	}
+
+	/**
+	 * Resolve station IDs to names using cache and API
+	 * Filters out null/undefined/0 station IDs before resolution
+	 * @param stationIds - Array of station IDs (may include nulls)
+	 * @returns Record mapping station ID to name
+	 */
+	private async resolveStationNames(
+		stationIds: Array<number | null | undefined>
+	): Promise<Record<string, string>> {
+		const resolved: Record<string, string> = {}
+
+		// Filter out null/undefined/0 station IDs
+		const validStationIds = stationIds
+			.map((id) => normalizeStationId(id))
+			.filter((id): id is number => id !== null)
+
+		if (validStationIds.length === 0) {
+			return resolved
+		}
+
+		const uniqueStationIds = [...new Set(validStationIds.map((id) => String(id)))]
+		const uncachedIds: string[] = []
+
+		// Check cache first
+		for (const id of uniqueStationIds) {
+			const cached = this.stationNameCache.get(id)
+			if (cached !== undefined) {
+				resolved[id] = cached
+			} else {
+				uncachedIds.push(id)
+			}
+		}
+
+		// Resolve uncached IDs
+		if (uncachedIds.length > 0) {
+			using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+			const stationNames = await tokenStore.resolveIds(uncachedIds)
+			for (const [id, name] of Object.entries(stationNames)) {
+				resolved[id] = name
+				this.stationNameCache.set(id, name)
+			}
+		}
+
+		return resolved
+	}
+
+	/**
+	 * Extract error details from a database insert error for logging
+	 * Handles PostgreSQL/Drizzle error properties and filters out large SQL queries
+	 *
+	 * @param insertError - The error that occurred during insert
+	 * @param context - Context information (fleetId, batchIndex, batchSize)
+	 * @param sampleRecord - Optional sample record from the batch for debugging
+	 * @returns Error details object suitable for logging
+	 */
+	private extractInsertErrorDetails(
+		insertError: unknown,
+		context: {
+			fleetId: string
+			batchIndex: number
+			batchSize: number
+		},
+		sampleRecord?: {
+			characterId: string
+			shipTypeId: number
+			stationId: number | null
+		}
+	): Record<string, unknown> {
+		// Extract error message without the full SQL query (too large for logs)
+		let errorMessage = insertError instanceof Error ? insertError.message : String(insertError)
+		if (errorMessage.includes('Failed query:')) {
+			errorMessage = errorMessage.split('\nparams:')[0] // Keep only the part before params
+		}
+
+		// Capture essential error details (without the huge SQL query)
+		const errorDetails: Record<string, unknown> = {
+			fleetId: context.fleetId,
+			batchIndex: context.batchIndex,
+			batchSize: context.batchSize,
+			error: errorMessage,
+		}
+
+		// Extract nested error information (common in Neon/Drizzle errors)
+		if (insertError && typeof insertError === 'object') {
+			const err = insertError as Record<string, unknown>
+
+			// Check for common PostgreSQL error properties
+			if (err.code) errorDetails.code = err.code
+			if (err.detail) errorDetails.detail = err.detail
+			if (err.hint) errorDetails.hint = err.hint
+			if (err.severity) errorDetails.severity = err.severity
+			if (err.position) errorDetails.position = err.position
+
+			// Check for nested cause
+			if (err.cause) {
+				if (err.cause && typeof err.cause === 'object') {
+					const cause = err.cause as Record<string, unknown>
+					if (cause.message) errorDetails.causeMessage = cause.message
+					if (cause.code) errorDetails.causeCode = cause.code
+					if (cause.detail) errorDetails.causeDetail = cause.detail
+				} else {
+					errorDetails.cause = String(err.cause)
+				}
+			}
+
+			// Include other important error properties (but not huge strings)
+			Object.keys(err).forEach((key) => {
+				if (
+					!['message', 'stack', 'code', 'detail', 'hint', 'severity', 'position', 'cause'].includes(
+						key
+					)
+				) {
+					const value = err[key]
+					// Only include simple values, not huge objects/strings
+					if (
+						typeof value === 'string' &&
+						value.length < 500 &&
+						!value.includes('insert into') &&
+						!value.includes('values (default')
+					) {
+						errorDetails[key] = value
+					} else if (typeof value !== 'object' && typeof value !== 'function') {
+						errorDetails[key] = value
+					}
+				}
+			})
+		}
+
+		// Add sample record for debugging data issues
+		if (sampleRecord) {
+			errorDetails.sampleRecord = {
+				characterId: sampleRecord.characterId,
+				shipTypeId: sampleRecord.shipTypeId,
+				stationId: sampleRecord.stationId,
+				stationIdType: typeof sampleRecord.stationId,
+			}
+		}
+
+		return errorDetails
+	}
+
+	/**
+	 * Insert fleet member history records in batches with validation and error handling
+	 *
+	 * @param values - Array of fleet member history records to insert
+	 * @param fleetId - Fleet ID for context
+	 * @param batchSize - Size of each batch (default: 20)
+	 * @param eventType - Type of event for logging ('join' | 'leave' | 'initial')
+	 */
+	private async insertFleetMemberHistoryBatch(
+		values: Array<{
+			fleetId: string
+			characterId: string
+			eventType: 'join' | 'leave'
+			shipTypeId: number
+			solarSystemId: number
+			stationId: number | null
+			role: string
+			roleName: string
+			squadId: string
+			wingId: string
+			joinedAt: Date | null
+			leftAt: Date | null
+			eventTimestamp: Date
+			characterName: string | null
+			systemName: string | null
+			shipTypeName: string | null
+			wingName: string | null
+			squadName: string | null
+		}>,
+		fleetId: string,
+		batchSize: number = 20,
+		eventType: 'join' | 'leave' | 'initial'
+	): Promise<void> {
+		if (values.length === 0) {
+			return
+		}
+
+		// Insert in batches
+		for (let i = 0; i < values.length; i += batchSize) {
+			const batch = values.slice(i, i + batchSize)
+
+			// Validate and normalize batch data before insert
+			const validatedBatch = batch.map((item) => ({
+				...item,
+				stationId: normalizeStationId(item.stationId),
+			}))
+
+			try {
+				await this.db.insert(fleetMemberHistory).values(validatedBatch)
+			} catch (insertError) {
+				const errorDetails = this.extractInsertErrorDetails(
+					insertError,
+					{
+						fleetId,
+						batchIndex: i / batchSize + 1,
+						batchSize: batch.length,
+					},
+					validatedBatch.length > 0
+						? {
+								characterId: validatedBatch[0].characterId,
+								shipTypeId: validatedBatch[0].shipTypeId,
+								stationId: validatedBatch[0].stationId,
+							}
+						: undefined
+				)
+
+				logger.error(
+					`[FleetMonitor ${fleetId}] Failed to insert ${eventType} batch ${i / batchSize + 1}`,
+					errorDetails
+				)
+				throw insertError
+			}
+		}
+	}
+
+	/**
 	 * Track member history by comparing current members with previous snapshot
 	 * Detects joins and leaves, stores them in fleetMemberHistory table
 	 */
@@ -850,6 +1083,75 @@ export class FleetMonitorDO extends DurableObject {
 			}
 		}
 
+		// Resolve names for all events (joins and leaves)
+		// Collect unique IDs from both joins and leaves
+		const allCharacterIds = new Set<string>()
+		const allSystemIds = new Set<string>()
+		const allShipTypeIds = new Set<string>()
+
+		for (const { member } of joins) {
+			allCharacterIds.add(String(member.character_id))
+			allSystemIds.add(String(member.solar_system_id))
+			allShipTypeIds.add(String(member.ship_type_id))
+		}
+
+		for (const { previous } of leaves) {
+			allCharacterIds.add(previous.character_id)
+			allSystemIds.add(String(previous.solar_system_id))
+			allShipTypeIds.add(String(previous.ship_type_id))
+		}
+
+		// Resolve names using helper functions
+		const resolvedCharacterNames: Record<string, string> = {}
+		const resolvedSystemNames: Record<string, string> = {}
+		const resolvedShipTypeNames: Record<string, string> = {}
+
+		// Resolve all names in parallel for better performance
+		const [characterNamesResult, systemNamesResult, shipTypeNamesResult] = await Promise.allSettled(
+			[
+				allCharacterIds.size > 0 ? this.resolveCharacterNames(allCharacterIds) : {},
+				allSystemIds.size > 0 ? this.resolveSystemNames(allSystemIds) : {},
+				allShipTypeIds.size > 0 ? this.resolveShipTypeNames(allShipTypeIds) : {},
+			]
+		)
+
+		// Extract results with error handling
+		if (characterNamesResult.status === 'fulfilled') {
+			Object.assign(resolvedCharacterNames, characterNamesResult.value)
+		} else {
+			logger.warn(`[FleetMonitor ${fleetId}] Failed to resolve character names for history`, {
+				fleetId,
+				error:
+					characterNamesResult.reason instanceof Error
+						? characterNamesResult.reason.message
+						: String(characterNamesResult.reason),
+			})
+		}
+
+		if (systemNamesResult.status === 'fulfilled') {
+			Object.assign(resolvedSystemNames, systemNamesResult.value)
+		} else {
+			logger.warn(`[FleetMonitor ${fleetId}] Failed to resolve system names for history`, {
+				fleetId,
+				error:
+					systemNamesResult.reason instanceof Error
+						? systemNamesResult.reason.message
+						: String(systemNamesResult.reason),
+			})
+		}
+
+		if (shipTypeNamesResult.status === 'fulfilled') {
+			Object.assign(resolvedShipTypeNames, shipTypeNamesResult.value)
+		} else {
+			logger.warn(`[FleetMonitor ${fleetId}] Failed to resolve ship type names for history`, {
+				fleetId,
+				error:
+					shipTypeNamesResult.reason instanceof Error
+						? shipTypeNamesResult.reason.message
+						: String(shipTypeNamesResult.reason),
+			})
+		}
+
 		// Store join events (batched to avoid parameter limits)
 		if (joins.length > 0) {
 			const BATCH_SIZE = 20 // Reduced from 50 to avoid parameter limit issues
@@ -867,106 +1169,16 @@ export class FleetMonitorDO extends DurableObject {
 				joinedAt: new Date(member.join_time),
 				leftAt: null,
 				eventTimestamp: now,
+				// Include resolved names (null if resolution failed)
+				characterName: resolvedCharacterNames[characterId] || null,
+				systemName: resolvedSystemNames[String(member.solar_system_id)] || null,
+				shipTypeName: resolvedShipTypeNames[String(member.ship_type_id)] || null,
+				wingName: null, // To be implemented later
+				squadName: null, // To be implemented later
 			}))
 
-			// Insert in batches
-			for (let i = 0; i < joinValues.length; i += BATCH_SIZE) {
-				const batch = joinValues.slice(i, i + BATCH_SIZE)
-
-				// Validate and normalize batch data before insert
-				const validatedBatch = batch.map((item) => ({
-					...item,
-					stationId: normalizeStationId(item.stationId),
-				}))
-
-				try {
-					await this.db.insert(fleetMemberHistory).values(validatedBatch)
-				} catch (insertError) {
-					// Extract error message without the full SQL query (too large for logs)
-					let errorMessage =
-						insertError instanceof Error ? insertError.message : String(insertError)
-					if (errorMessage.includes('Failed query:')) {
-						errorMessage = errorMessage.split('\nparams:')[0] // Keep only the part before params
-					}
-
-					// Capture essential error details (without the huge SQL query)
-					const errorDetails: Record<string, unknown> = {
-						fleetId,
-						batchIndex: i / BATCH_SIZE + 1,
-						batchSize: batch.length,
-						error: errorMessage,
-					}
-
-					// Extract nested error information (common in Neon/Drizzle errors)
-					if (insertError && typeof insertError === 'object') {
-						const err = insertError as Record<string, unknown>
-
-						// Check for common PostgreSQL error properties
-						if (err.code) errorDetails.code = err.code
-						if (err.detail) errorDetails.detail = err.detail
-						if (err.hint) errorDetails.hint = err.hint
-						if (err.severity) errorDetails.severity = err.severity
-						if (err.position) errorDetails.position = err.position
-
-						// Check for nested cause
-						if (err.cause) {
-							if (err.cause && typeof err.cause === 'object') {
-								const cause = err.cause as Record<string, unknown>
-								if (cause.message) errorDetails.causeMessage = cause.message
-								if (cause.code) errorDetails.causeCode = cause.code
-								if (cause.detail) errorDetails.causeDetail = cause.detail
-							} else {
-								errorDetails.cause = String(err.cause)
-							}
-						}
-
-						// Include other important error properties (but not huge strings)
-						Object.keys(err).forEach((key) => {
-							if (
-								![
-									'message',
-									'stack',
-									'code',
-									'detail',
-									'hint',
-									'severity',
-									'position',
-									'cause',
-								].includes(key)
-							) {
-								const value = err[key]
-								// Only include simple values, not huge objects/strings
-								if (
-									typeof value === 'string' &&
-									value.length < 500 &&
-									!value.includes('insert into') &&
-									!value.includes('values (default')
-								) {
-									errorDetails[key] = value
-								} else if (typeof value !== 'object' && typeof value !== 'function') {
-									errorDetails[key] = value
-								}
-							}
-						})
-					}
-
-					// Log first item in batch for debugging data issues
-					if (validatedBatch.length > 0) {
-						errorDetails.sampleRecord = {
-							characterId: validatedBatch[0].characterId,
-							shipTypeId: validatedBatch[0].shipTypeId,
-							stationId: validatedBatch[0].stationId,
-							stationIdType: typeof validatedBatch[0].stationId,
-						}
-					}
-
-					logger.error(
-						`[FleetMonitor ${fleetId}] Failed to insert join batch ${i / BATCH_SIZE + 1}`,
-						errorDetails
-					)
-					throw insertError
-				}
-			}
+			// Insert in batches using helper
+			await this.insertFleetMemberHistoryBatch(joinValues, fleetId, BATCH_SIZE, 'join')
 
 			logger.info(`[FleetMonitor ${fleetId}] Detected ${joins.length} member joins`, {
 				fleetId,
@@ -991,106 +1203,16 @@ export class FleetMonitorDO extends DurableObject {
 				joinedAt: previous.join_time ? new Date(previous.join_time) : null,
 				leftAt: now,
 				eventTimestamp: now,
+				// Include resolved names (null if resolution failed)
+				characterName: resolvedCharacterNames[characterId] || null,
+				systemName: resolvedSystemNames[String(previous.solar_system_id)] || null,
+				shipTypeName: resolvedShipTypeNames[String(previous.ship_type_id)] || null,
+				wingName: null, // To be implemented later
+				squadName: null, // To be implemented later
 			}))
 
-			// Insert in batches
-			for (let i = 0; i < leaveValues.length; i += BATCH_SIZE) {
-				const batch = leaveValues.slice(i, i + BATCH_SIZE)
-
-				// Validate and normalize batch data before insert
-				const validatedBatch = batch.map((item) => ({
-					...item,
-					stationId: normalizeStationId(item.stationId),
-				}))
-
-				try {
-					await this.db.insert(fleetMemberHistory).values(validatedBatch)
-				} catch (insertError) {
-					// Extract error message without the full SQL query (too large for logs)
-					let errorMessage =
-						insertError instanceof Error ? insertError.message : String(insertError)
-					if (errorMessage.includes('Failed query:')) {
-						errorMessage = errorMessage.split('\nparams:')[0] // Keep only the part before params
-					}
-
-					// Capture essential error details (without the huge SQL query)
-					const errorDetails: Record<string, unknown> = {
-						fleetId,
-						batchIndex: i / BATCH_SIZE + 1,
-						batchSize: batch.length,
-						error: errorMessage,
-					}
-
-					// Extract nested error information (common in Neon/Drizzle errors)
-					if (insertError && typeof insertError === 'object') {
-						const err = insertError as Record<string, unknown>
-
-						// Check for common PostgreSQL error properties
-						if (err.code) errorDetails.code = err.code
-						if (err.detail) errorDetails.detail = err.detail
-						if (err.hint) errorDetails.hint = err.hint
-						if (err.severity) errorDetails.severity = err.severity
-						if (err.position) errorDetails.position = err.position
-
-						// Check for nested cause
-						if (err.cause) {
-							if (err.cause && typeof err.cause === 'object') {
-								const cause = err.cause as Record<string, unknown>
-								if (cause.message) errorDetails.causeMessage = cause.message
-								if (cause.code) errorDetails.causeCode = cause.code
-								if (cause.detail) errorDetails.causeDetail = cause.detail
-							} else {
-								errorDetails.cause = String(err.cause)
-							}
-						}
-
-						// Include other important error properties (but not huge strings)
-						Object.keys(err).forEach((key) => {
-							if (
-								![
-									'message',
-									'stack',
-									'code',
-									'detail',
-									'hint',
-									'severity',
-									'position',
-									'cause',
-								].includes(key)
-							) {
-								const value = err[key]
-								// Only include simple values, not huge objects/strings
-								if (
-									typeof value === 'string' &&
-									value.length < 500 &&
-									!value.includes('insert into') &&
-									!value.includes('values (default')
-								) {
-									errorDetails[key] = value
-								} else if (typeof value !== 'object' && typeof value !== 'function') {
-									errorDetails[key] = value
-								}
-							}
-						})
-					}
-
-					// Log first item in batch for debugging data issues
-					if (validatedBatch.length > 0) {
-						errorDetails.sampleRecord = {
-							characterId: validatedBatch[0].characterId,
-							shipTypeId: validatedBatch[0].shipTypeId,
-							stationId: validatedBatch[0].stationId,
-							stationIdType: typeof validatedBatch[0].stationId,
-						}
-					}
-
-					logger.error(
-						`[FleetMonitor ${fleetId}] Failed to insert leave batch ${i / BATCH_SIZE + 1}`,
-						errorDetails
-					)
-					throw insertError
-				}
-			}
+			// Insert in batches using helper
+			await this.insertFleetMemberHistoryBatch(leaveValues, fleetId, BATCH_SIZE, 'leave')
 
 			logger.info(`[FleetMonitor ${fleetId}] Detected ${leaves.length} member leaves`, {
 				fleetId,
@@ -1355,6 +1477,10 @@ export class FleetMonitorDO extends DurableObject {
 
 					// Mark fleet as not found in PostgreSQL cache
 					const endedAt = new Date()
+
+					// Archive fleet to summaries before updating cache
+					await this.archiveFleetToSummary(fleetId, characterId, endedAt)
+
 					await this.db
 						.insert(fleetStateCache)
 						.values({

@@ -82,6 +82,40 @@ export const fleetStateCache = pgTable(
 )
 
 /**
+ * Fleet summaries table
+ * Stores historical fleet data before deletion from fleet_state_cache
+ * This allows us to maintain a permanent record of past fleets
+ */
+export const fleetSummaries = pgTable(
+	'fleet_summaries',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		fleetId: text('fleet_id').notNull(),
+		fleetBossId: text('fleet_boss_id').notNull(),
+		startedAt: timestamp('started_at').notNull(),
+		endedAt: timestamp('ended_at').notNull(),
+		peakMemberCount: integer('peak_member_count').default(0).notNull(),
+		finalMemberCount: integer('final_member_count').default(0).notNull(),
+		motd: text('motd'),
+		isFreeMove: boolean('is_free_move').default(false).notNull(),
+		isRegistered: boolean('is_registered').default(false).notNull(),
+		isVoiceEnabled: boolean('is_voice_enabled').default(false).notNull(),
+		durationMinutes: integer('duration_minutes'), // Calculated: (endedAt - startedAt) in minutes
+		createdAt: timestamp('created_at').defaultNow().notNull(),
+	},
+	(table) => ({
+		fleetIdIdx: index('fleet_summaries_fleet_id_idx').on(table.fleetId),
+		fleetBossIdIdx: index('fleet_summaries_fleet_boss_id_idx').on(table.fleetBossId),
+		startedAtIdx: index('fleet_summaries_started_at_idx').on(table.startedAt),
+		endedAtIdx: index('fleet_summaries_ended_at_idx').on(table.endedAt),
+		fleetBossStartedIdx: index('fleet_summaries_fleet_boss_started_idx').on(
+			table.fleetBossId,
+			table.startedAt
+		),
+	})
+)
+
+/**
  * Monitored fleet commanders table
  * Stores character IDs of fleet commanders to monitor for fleet activity
  */
@@ -119,13 +153,22 @@ export const fleetMemberHistory = pgTable(
 		leftAt: timestamp('left_at'), // When they left (for leave events)
 		eventTimestamp: timestamp('event_timestamp').defaultNow().notNull(),
 		createdAt: timestamp('created_at').defaultNow().notNull(),
+		// Name columns (denormalized for query performance)
+		characterName: text('character_name'), // Character name (resolved from characterId)
+		systemName: text('system_name'), // Solar system name (resolved from solarSystemId)
+		shipTypeName: text('ship_type_name'), // Ship type name (resolved from shipTypeId)
+		wingName: text('wing_name'), // Wing name (resolution to be implemented later)
+		squadName: text('squad_name'), // Squad name (resolution to be implemented later)
 	},
 	(table) => ({
 		fleetIdIdx: index('fleet_member_history_fleet_id_idx').on(table.fleetId),
 		characterIdIdx: index('fleet_member_history_character_id_idx').on(table.characterId),
 		eventTypeIdx: index('fleet_member_history_event_type_idx').on(table.eventType),
 		eventTimestampIdx: index('fleet_member_history_event_timestamp_idx').on(table.eventTimestamp),
-		fleetCharacterIdx: index('fleet_member_history_fleet_character_idx').on(table.fleetId, table.characterId),
+		fleetCharacterIdx: index('fleet_member_history_fleet_character_idx').on(
+			table.fleetId,
+			table.characterId
+		),
 	})
 )
 
@@ -134,6 +177,7 @@ export const schema = {
 	fleetInvitations,
 	fleetMemberships,
 	fleetStateCache,
+	fleetSummaries,
 	monitoredFleetCommanders,
 	fleetMemberHistory,
 }

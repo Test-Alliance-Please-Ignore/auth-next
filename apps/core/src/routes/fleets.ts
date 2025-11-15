@@ -2,14 +2,57 @@ import { Hono } from 'hono'
 
 import { getStub } from '@repo/do-utils'
 import { createEveCharacterId } from '@repo/eve-types'
-import { logger } from '@repo/hono-helpers'
+import { logger, TimeCache } from '@repo/hono-helpers'
 
-import { requireAuth } from '../middleware/session'
+import { requireAdmin, requireAuth } from '../middleware/session'
 
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { CharacterForFleetJoin, Fleets } from '@repo/fleets'
+import type { Groups } from '@repo/groups'
 import type { App } from '../context'
+
+/**
+ * Permission check cache - 15 second TTL
+ */
+const permissionCache = new TimeCache<boolean>(15000)
+
+/**
+ * Helper function to check if a character has a specific permission
+ * Checks both user permissions and character permissions
+ * Results are cached for 15 seconds to reduce load on Groups DO
+ *
+ * IMPORTANT: Creates fresh stubs internally to avoid stub invalidation issues.
+ * Each RPC operation gets its own isolated stub.
+ */
+async function hasCharacterPermission(
+	env: { GROUPS: DurableObjectNamespace },
+	userId: string,
+	characterId: string,
+	permissionUrn: string,
+	isAdmin: boolean
+): Promise<boolean> {
+	// Admins bypass permission checks
+	if (isAdmin) {
+		return true
+	}
+
+	// Check cache or fetch permissions
+	const cacheKey = `${userId}:${characterId}:${permissionUrn}`
+	return permissionCache.getOrSet(cacheKey, async () => {
+		// Check user group permissions first
+		using groupsStub = getStub<Groups>(env.GROUPS, 'default')
+		const groupPermissions = await groupsStub.getUserPermissions(userId)
+
+		if (groupPermissions.some((p) => p.urn === permissionUrn)) {
+			return true
+		}
+
+		// Check character permissions
+		const characterPermissions = await groupsStub.getCharacterPermissions(characterId)
+		return characterPermissions.some((p) => p.urn === permissionUrn)
+	})
+}
 
 const app = new Hono<App>()
 
@@ -308,6 +351,191 @@ app.delete('/quick-join/:token', async (c) => {
 	} catch (error) {
 		logger.error('Failed to revoke quick join invitation:', error)
 		return c.json({ error: 'Failed to revoke invitation' }, 500)
+	}
+})
+
+/**
+ * GET /fleets/monitoring
+ * List all characters that are currently monitored (admin only)
+ */
+app.get('/monitoring', requireAdmin(), async (c) => {
+	try {
+		// Get Fleets DO stub
+		using fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
+
+		// Get all monitored commanders
+		const monitoredCommanders = await fleetsStub.listMonitoredFleetCommanders()
+
+		// Get character data for all monitored characters
+		using characterData = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+
+		const characters = await Promise.all(
+			monitoredCommanders.map(async (characterId) => {
+				// Try to get character info for additional metadata
+				try {
+					const info = await characterData.getCharacterInfo(characterId)
+					return {
+						characterId,
+						characterName: info?.name || characterId,
+					}
+				} catch (error) {
+					logger.warn('Failed to get character info for monitored character', {
+						characterId,
+						error: error instanceof Error ? error.message : String(error),
+					})
+					return {
+						characterId,
+						characterName: characterId, // Fallback if not found
+					}
+				}
+			})
+		)
+
+		return c.json({
+			characterIds: monitoredCommanders,
+			characters,
+		})
+	} catch (error) {
+		logger.error('Failed to list monitored characters:', error)
+		return c.json({ error: 'Failed to list monitored characters' }, 500)
+	}
+})
+
+/**
+ * POST /fleets/monitoring
+ * Enable fleet monitoring for a character
+ *
+ * Body: {
+ *   characterId: string - Character ID to enable monitoring for
+ * }
+ */
+app.post('/monitoring', async (c) => {
+	const user = c.get('user')!
+	const body = await c.req.json<{ characterId: string }>()
+
+	if (!body.characterId || typeof body.characterId !== 'string' || body.characterId.trim() === '') {
+		return c.json({ error: 'characterId is required' }, 400)
+	}
+
+	const characterId = body.characterId.trim()
+
+	// Verify user owns the character
+	const ownsCharacter = user.characters.some((char) => char.characterId.toString() === characterId)
+
+	if (!ownsCharacter) {
+		return c.json({ error: 'You do not own this character' }, 403)
+	}
+
+	try {
+		// Check if user/character has fleet commander permission
+		const hasPermission = await hasCharacterPermission(
+			c.env,
+			user.id,
+			characterId,
+			'urn:military:is-fleet-commander',
+			user.is_admin
+		)
+
+		if (!hasPermission) {
+			return c.json(
+				{
+					error:
+						'You do not have permission to enable fleet monitoring. Requires fleet commander permission.',
+				},
+				403
+			)
+		}
+
+		// Verify character has valid ESI token
+		using tokenStore = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+		const tokenInfo = await tokenStore.getTokenInfo(characterId)
+
+		if (!tokenInfo) {
+			return c.json(
+				{
+					error: 'Character does not have a valid ESI token. Please re-authenticate.',
+				},
+				400
+			)
+		}
+
+		// Check if token is expired
+		if (tokenInfo.expiresAt && new Date(tokenInfo.expiresAt) < new Date()) {
+			return c.json(
+				{
+					error: 'Character token has expired. Please re-authenticate.',
+				},
+				400
+			)
+		}
+
+		// Get Fleets DO stub
+		using fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
+
+		// Add character to monitored list
+		const added = await fleetsStub.addMonitoredFleetCommander(characterId)
+
+		if (!added) {
+			return c.json(
+				{
+					error: 'Character is already being monitored',
+				},
+				409
+			)
+		}
+
+		logger.info('Fleet monitoring enabled for character', {
+			characterId,
+			userId: user.id,
+		})
+
+		return c.json({ characterId }, 201)
+	} catch (error) {
+		logger.error('Failed to enable fleet monitoring:', error)
+		return c.json({ error: 'Failed to enable fleet monitoring' }, 500)
+	}
+})
+
+/**
+ * DELETE /fleets/monitoring/:characterId
+ * Disable fleet monitoring for a character
+ */
+app.delete('/monitoring/:characterId', async (c) => {
+	const characterId = c.req.param('characterId')
+	const user = c.get('user')!
+
+	// Verify user owns the character
+	const ownsCharacter = user.characters.some((char) => char.characterId.toString() === characterId)
+
+	if (!ownsCharacter) {
+		return c.json({ error: 'You do not own this character' }, 403)
+	}
+
+	try {
+		// Get Fleets DO stub
+		using fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
+
+		// Remove character from monitored list
+		const removed = await fleetsStub.removeMonitoredFleetCommander(characterId)
+
+		if (!removed) {
+			return c.json(
+				{
+					error: 'Character is not being monitored',
+				},
+				404
+			)
+		}
+
+		logger.info('Fleet monitoring disabled for character', {
+			characterId,
+			userId: user.id,
+		})
+
+		return new Response(null, { status: 204 })
+	} catch (error) {
+		logger.error('Failed to disable fleet monitoring:', error)
+		return c.json({ error: 'Failed to disable fleet monitoring' }, 500)
 	}
 })
 

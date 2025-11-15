@@ -50,6 +50,20 @@
       "when": 1763143649418,
       "tag": "0006_thick_shen",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1763166375637,
+      "tag": "0007_fine_iron_lad",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1763215122931,
+      "tag": "0008_curious_hydra",
+      "breakpoints": true
     }
   ]
 }
