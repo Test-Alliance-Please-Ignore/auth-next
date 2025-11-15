@@ -1,13 +1,20 @@
 {
-	"version": "7",
-	"dialect": "postgresql",
-	"entries": [
-		{
-			"idx": 0,
-			"version": "7",
-			"when": 1762888343120,
-			"tag": "0000_ambiguous_sphinx",
-			"breakpoints": true
-		}
-	]
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1762888343120,
+      "tag": "0000_ambiguous_sphinx",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1763219569810,
+      "tag": "0001_flimsy_jigsaw",
+      "breakpoints": true
+    }
+  ]
 }

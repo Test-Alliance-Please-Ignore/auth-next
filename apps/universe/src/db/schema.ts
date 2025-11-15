@@ -5,15 +5,18 @@
  * Individual schema modules are organized by domain (e.g., moons, structures, etc.)
  */
 
+import * as killmails from './killmails'
 import * as moons from './moons'
 import * as typeIds from './type-ids'
 
 // Combine all schemas
 export const schema = {
+	...killmails,
 	...moons,
 	...typeIds,
 }
 
 // Re-export individual modules for direct imports
+export * from './killmails'
 export * from './moons'
 export * from './type-ids'

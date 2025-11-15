@@ -5,6 +5,7 @@ import type { InvGroup } from './inv-groups'
 import type { InvItem } from './inv-items'
 import type { InvName } from './inv-names'
 import type { InvType } from './inv-types'
+import type { Killmail, KillmailDetail } from './killmails'
 import type { EveMoonId, UniverseMoon, UniverseMoonWithResources } from './moons'
 import type {
 	EsiGetStructureMarketDataResponse,
@@ -123,4 +124,66 @@ export interface Universe {
 	 * @returns Record mapping type IDs to their full type data (null if not found)
 	 */
 	resolveTypeNamesByIds(typeIds: string[]): Promise<Record<string, InvType | null>>
+
+	/**
+	 * Store killmail data, resolving all entity names
+	 * @param killmailId - Killmail ID
+	 * @param killmailHash - Killmail hash
+	 * @param killmailData - Full killmail data from ESI
+	 * @returns Stored killmail record
+	 */
+	storeKillmail(
+		killmailId: string,
+		killmailHash: string,
+		killmailData: KillmailDetail
+	): Promise<Killmail>
+
+	/**
+	 * Get killmail by ID and hash
+	 * @param killmailId - Killmail ID
+	 * @param killmailHash - Killmail hash
+	 * @returns Killmail record or null if not found
+	 */
+	getKillmailById(killmailId: string, killmailHash: string): Promise<Killmail | null>
+
+	/**
+	 * Get killmails by character ID
+	 * @param characterId - Character ID
+	 * @param filters - Optional filters for time range and losses only
+	 * @returns Array of killmail records
+	 */
+	getKillmailsByCharacter(
+		characterId: string,
+		filters?: { startTime?: Date; endTime?: Date; lossesOnly?: boolean }
+	): Promise<Killmail[]>
+
+	/**
+	 * Get killmails by corporation ID
+	 * @param corporationId - Corporation ID
+	 * @param filters - Optional filters for time range and losses only
+	 * @returns Array of killmail records
+	 */
+	getKillmailsByCorporation(
+		corporationId: string,
+		filters?: { startTime?: Date; endTime?: Date; lossesOnly?: boolean }
+	): Promise<Killmail[]>
+
+	/**
+	 * Get killmails by solar system ID
+	 * @param solarSystemId - Solar system ID
+	 * @param filters - Optional filters for time range
+	 * @returns Array of killmail records
+	 */
+	getKillmailsBySystem(
+		solarSystemId: string,
+		filters?: { startTime?: Date; endTime?: Date }
+	): Promise<Killmail[]>
+
+	/**
+	 * Get killmails by time range
+	 * @param startTime - Start time
+	 * @param endTime - End time
+	 * @returns Array of killmail records
+	 */
+	getKillmailsByTimeRange(startTime: Date, endTime: Date): Promise<Killmail[]>
 }

@@ -82,3 +82,35 @@ export type KillmailItemBase = z.infer<typeof killmailItemSchema>
 export type KillmailVictim = z.infer<typeof killmailVictimSchema>
 export type KillmailAttacker = z.infer<typeof killmailAttackerSchema>
 export type KillmailDetail = z.infer<typeof killmailDetailSchema>
+
+/**
+ * Killmail database row type
+ * This represents a killmail record stored in the database
+ */
+export type Killmail = {
+	killmailId: string
+	killmailHash: string
+	killmailTime: Date
+	solarSystemId: string
+	solarSystemName: string | null
+	moonId: string | null
+	moonName: string | null
+	warId: string | null
+	warName: string | null
+	victimCharacterId: string | null
+	victimCharacterName: string | null
+	victimCorporationId: string | null
+	victimCorporationName: string | null
+	victimAllianceId: string | null
+	victimAllianceName: string | null
+	victimShipTypeId: string
+	victimShipTypeName: string | null
+	victimDamageTaken: number
+	attackerCharacterIds: string[] | null
+	attackerCharacterNames: string[] | null
+	attackerCorporationIds: string[] | null
+	attackerCorporationNames: string[] | null
+	killmailData: unknown
+	createdAt: Date
+	updatedAt: Date
+}

@@ -12,6 +12,7 @@ import {
 
 import { createDb } from './db'
 import { invFlags, invGroups, invTypes, moonResources, moons } from './db/schema'
+import { KillmailService } from './services/killmail.service'
 
 import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
 import type {
@@ -24,6 +25,8 @@ import type {
 	InvFlag,
 	InvGroup,
 	InvType,
+	Killmail,
+	KillmailDetail,
 	Universe,
 	UniverseMoon,
 	UniverseMoonResource,
@@ -46,6 +49,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	private invGroupsCache: LRUCache<InvGroup>
 	private typeIdsCache: LRUCache<InvType> // Cache for type name -> full InvType object
 	private typeNamesCache: LRUCache<InvType> // Cache for type ID -> full InvType object
+	private killmailService: KillmailService
 
 	/**
 	 * Initialize the Durable Object
@@ -60,6 +64,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 		this.invGroupsCache = new LRUCache<InvGroup>(1000)
 		this.typeIdsCache = new LRUCache<InvType>(10000) // Cache for type name -> full InvType object
 		this.typeNamesCache = new LRUCache<InvType>(10000) // Cache for type ID -> full InvType object
+		this.killmailService = new KillmailService(this.db, this.env)
 	}
 
 	// ========================================================================
@@ -547,6 +552,65 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	 */
 	async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
 		console.error('WebSocket error:', error)
+	}
+
+	// ========================================================================
+	// KILLMAIL METHODS
+	// ========================================================================
+
+	/**
+	 * Store killmail data, resolving all entity names
+	 */
+	async storeKillmail(
+		killmailId: string,
+		killmailHash: string,
+		killmailData: KillmailDetail
+	): Promise<Killmail> {
+		return this.killmailService.storeKillmail(killmailId, killmailHash, killmailData)
+	}
+
+	/**
+	 * Get killmail by ID and hash
+	 */
+	async getKillmailById(killmailId: string, killmailHash: string): Promise<Killmail | null> {
+		return this.killmailService.getKillmailById(killmailId, killmailHash)
+	}
+
+	/**
+	 * Get killmails by character ID
+	 */
+	async getKillmailsByCharacter(
+		characterId: string,
+		filters?: { startTime?: Date; endTime?: Date; lossesOnly?: boolean }
+	): Promise<Killmail[]> {
+		return this.killmailService.getKillmailsByCharacter(characterId, filters)
+	}
+
+	/**
+	 * Get killmails by corporation ID
+	 */
+	async getKillmailsByCorporation(
+		corporationId: string,
+		filters?: { startTime?: Date; endTime?: Date; lossesOnly?: boolean }
+	): Promise<Killmail[]> {
+		return this.killmailService.getKillmailsByCorporation(corporationId, filters)
+	}
+
+	/**
+	 * Get killmails by solar system ID
+	 */
+	async getKillmailsBySystem(
+		solarSystemId: string,
+		filters?: { startTime?: Date; endTime?: Date }
+	): Promise<Killmail[]> {
+		return this.killmailService.getKillmailsBySystem(solarSystemId, filters)
+	}
+
+	/**
+	 * Get killmails by time range
+	 */
+	async getKillmailsByTimeRange(startTime: Date, endTime: Date): Promise<Killmail[]> {
+		return this.killmailService.getKillmailsByTimeRange(startTime, endTime)
 	}
 
 	/**
