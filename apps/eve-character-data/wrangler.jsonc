@@ -25,6 +25,13 @@
 			}
 		]
 	},
+	"workflows": [
+		{
+			"name": "eve-character-sync",
+			"binding": "EVE_CHARACTER_SYNC",
+			"class_name": "EveCharacterSyncWorkflow"
+		}
+	],
 	"migrations": [
 		{
 			"tag": "v1",

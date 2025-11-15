@@ -67,6 +67,8 @@ export const userCharacters = pgTable(
 		status: text('status', { enum: ['active', 'emeritus'] })
 			.notNull()
 			.default('active'),
+		/** Last time character data was refreshed via background workflow */
+		lastCharacterRefresh: timestamp('last_character_refresh', { withTimezone: true }),
 		linkedAt: timestamp('linked_at').defaultNow().notNull(),
 		updatedAt: timestamp('updated_at').defaultNow().notNull(),
 	},

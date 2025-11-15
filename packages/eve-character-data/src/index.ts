@@ -12,6 +12,26 @@ import { Killmails, killmailSchema, killmailsSchema } from './killmails'
 
 import type { EveAllianceId, EveCharacterId, EveCorporationId } from '@repo/eve-types'
 
+// ============================================================================
+// SYNC WORKFLOW TYPES
+// ============================================================================
+
+/**
+ * Supported data types for character synchronization workflows.
+ */
+export type EveCharacterSyncDataType =
+	| 'public-info'
+	| 'authenticated'
+	| 'killmails'
+	| 'wallet-journal'
+	| 'market-transactions'
+	| 'market-orders'
+	| 'assets'
+	| 'contracts'
+	| 'fittings'
+	| 'mining-ledger'
+	| 'open-market-orders'
+
 /**
  * ESI Response Types
  */

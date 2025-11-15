@@ -1,0 +1,1 @@
+ALTER TABLE "user_characters" ADD COLUMN "last_character_refresh" timestamp with time zone;
