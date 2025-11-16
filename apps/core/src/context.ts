@@ -4,7 +4,6 @@ import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Groups } from '@repo/groups'
 import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
-import type { Notifications } from '@repo/notifications'
 import type { Skills } from '@repo/skills'
 import type { createDb } from './db'
 
@@ -20,8 +19,6 @@ export type Env = SharedHonoEnv & {
 	EVE_CORPORATION_DATA: DurableObjectNamespace
 	/** Groups Durable Object binding */
 	GROUPS: DurableObjectNamespace
-	/** Notifications Durable Object binding */
-	NOTIFICATIONS: DurableObjectNamespace
 	/** Discord Durable Object binding */
 	DISCORD: DurableObjectNamespace
 	/** Bills Durable Object binding */
@@ -82,8 +79,6 @@ export type Variables = SharedHonoVariables & {
 	eveCharacterData?: EveCharacterData
 	/** Groups Durable Object stub */
 	groupsDO?: Groups
-	/** Notifications Durable Object stub */
-	notificationsDO?: Notifications
 	/** Skills Durable Object stub */
 	skillsDO?: Skills
 }

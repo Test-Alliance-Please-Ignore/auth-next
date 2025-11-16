@@ -49,17 +49,7 @@ export class BillScheduleExecutorWorkflow extends WorkflowEntrypoint<Env, { sche
 				// Log the failure
 				console.error(`Schedule ${scheduleId} execution failed:`, result.error)
 
-				// TODO: Send notification to schedule owner about the failure
-				// This would integrate with the notifications DO once implemented
-				// Example:
-				// const notifStub = getStub<Notifications>(this.env.NOTIFICATIONS, ownerId)
-				// await notifStub.publishNotification(ownerId, {
-				//   type: 'bill.schedule.failed',
-				//   data: { scheduleId, error: result.error },
-				//   requiresAck: true
-				// })
-
-				return { notified: false, reason: 'Notification system not yet integrated' }
+				return { notified: false }
 			})
 
 			throw new Error(`Schedule execution failed: ${result.error}`)
@@ -68,9 +58,6 @@ export class BillScheduleExecutorWorkflow extends WorkflowEntrypoint<Env, { sche
 		// Step 3: Handle success
 		await step.do('handle-success', async () => {
 			console.log(`Schedule ${scheduleId} executed successfully, created bill ${result.billId}`)
-
-			// TODO: Send notification to payer about the new bill
-			// This would integrate with the notifications DO once implemented
 
 			return { billId: result.billId }
 		})

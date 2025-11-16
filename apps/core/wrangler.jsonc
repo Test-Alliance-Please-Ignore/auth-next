@@ -44,11 +44,6 @@
 				"script_name": "groups"
 			},
 			{
-				"name": "NOTIFICATIONS",
-				"class_name": "Notifications",
-				"script_name": "notifications"
-			},
-			{
 				"name": "DISCORD",
 				"class_name": "Discord",
 				"script_name": "discord"

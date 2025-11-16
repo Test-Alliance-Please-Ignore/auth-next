@@ -1,13 +1,11 @@
 import type { Groups } from '@repo/groups'
 import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
-import type { Notifications } from '@repo/notifications'
 import type { createDb } from './db'
 
 export type Env = SharedHonoEnv & {
 	DATABASE_URL: string
 	GROUPS: DurableObjectNamespace
-	NOTIFICATIONS: DurableObjectNamespace
 	EVE_CHARACTER_DATA: DurableObjectNamespace
 	GROUPS_KV: KVNamespace
 }
@@ -16,7 +14,6 @@ export type Env = SharedHonoEnv & {
 export type Variables = SharedHonoVariables & {
 	db?: ReturnType<typeof createDb>
 	groupsDO?: Groups
-	notificationsDO?: Notifications
 }
 
 export interface App extends HonoApp {

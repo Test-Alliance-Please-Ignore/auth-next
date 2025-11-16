@@ -63,13 +63,13 @@ This document describes the major architectural decisions, patterns, and design 
 │  └──────────────┘  └──────────────┘  └──────┬───────┘            │
 │                                              │                     │
 │  Per-User DOs (Isolated State)              │ Queue Producers     │
-│  ┌──────────────┐  ┌──────────────┐         ▼                     │
-│  │    Groups    │  │Notifications │  ┌──────────────┐            │
-│  │      DO      │  │      DO      │  │   Queues     │            │
-│  │  (per user)  │  │  (per user)  │  │ (Corp Data   │            │
-│  │              │  │              │  │  Refresh)    │            │
-│  │  PostgreSQL  │  │  PostgreSQL  │  └──────────────┘            │
-│  └──────────────┘  └──────────────┘                               │
+│  ┌──────────────┐                          ▼                     │
+│  │    Groups    │                   ┌──────────────┐            │
+│  │      DO      │                   │   Queues     │            │
+│  │  (per user)  │                   │ (Corp Data   │            │
+│  │              │                   │  Refresh)    │            │
+│  │  PostgreSQL  │                   └──────────────┘            │
+│  └──────────────┘                               │
 │                                                                     │
 │  Service DOs (Isolated Services)                                   │
 │  ┌──────────────┐                                                  │
@@ -144,7 +144,6 @@ Each worker is a microservice with a single responsibility:
 
 - **discord**: Discord OAuth and guild management (per-user DO, PostgreSQL)
 - **groups**: Group/category/membership management (per-user DO, PostgreSQL + KV cache)
-- **notifications**: Real-time WebSocket notifications (per-user DO, PostgreSQL)
 - **eve-character-data**: EVE character wallet/assets/orders (singleton DO, SQLite cache)
 - **eve-corporation-data**: EVE corporation data aggregation (per-corp DO, PostgreSQL + Queues)
 - **fleets**: Fleet operations and management (per-user DO, WebSocket support)
@@ -221,10 +220,10 @@ import type { EveTokenStore } from '@repo/eve-token-store'
 const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
 
 // Using a dynamic ID
-const stub = getStub<Notifications>(env.NOTIFICATIONS, userId)
+const stub = getStub<Groups>(env.GROUPS, userId)
 
 // Call methods with full type safety
-const token = await stub.getAccessToken(characterId)
+const groups = await stub.listGroups()
 ```
 
 **Anti-Pattern (NEVER DO THIS):**
@@ -235,8 +234,8 @@ const id = env.EVE_TOKEN_STORE.idFromName('default')
 const stub = env.EVE_TOKEN_STORE.get(id)
 
 // ❌ WRONG - Casting defeats the purpose
-const stub = getStub<Notifications>(
-  this.notificationsStub as unknown as DurableObjectNamespace,
+const stub = getStub<Groups>(
+  this.groupsStub as unknown as DurableObjectNamespace,
   adminId
 )
 ```
@@ -473,7 +472,7 @@ import type { HonoApp, SharedHonoEnv, SharedHonoVariables } from '@repo/hono-hel
 export interface Env extends SharedHonoEnv {
   // Bindings
   EVE_TOKEN_STORE: DurableObjectNamespace
-  NOTIFICATIONS: DurableObjectNamespace
+  GROUPS: DurableObjectNamespace
 
   // Environment variables
   DATABASE_URL: string
@@ -512,7 +511,7 @@ export interface App extends HonoApp {
 
 ```typescript
 // Durable Object class
-export class NotificationsDO implements DurableObject {
+export class FleetsDO implements DurableObject {
   async fetch(request: Request): Promise<Response> {
     // Validate WebSocket upgrade
     const upgradeHeader = request.headers.get('Upgrade')
@@ -561,7 +560,7 @@ server.accept()
 ws.addEventListener('message', handler)
 ```
 
-**Implementation:** See `apps/notifications/src/durable-object.ts` for full implementation.
+**Implementation:** See `apps/fleets/src/durable-object.ts` for full implementation.
 
 ### Pattern 7: Service Boundaries and RPC
 
@@ -727,14 +726,13 @@ The system uses a **multi-tier storage architecture** optimized for different ac
 - **Performance:** Connection pooling, prepared statements
 - **Serverless:** Auto-scaling, zero maintenance
 - **Location:** Centralized (not edge) for strong consistency
-- **Used by:** core, groups, discord, notifications, admin, eve-corporation-data
+- **Used by:** core, groups, discord, admin, eve-corporation-data
 
 **Database per Worker:**
 
 - `core`: users, userCharacters, userSessions, managedCorporations, discordServers, etc.
 - `groups`: categories, groups, groupMembers, groupAdmins, groupInvitations, permissions
 - `discord`: discordUsers, guildMembers (per-user isolation)
-- `notifications`: notifications, notificationAcknowledgements (per-user isolation)
 - `admin`: adminOperationsLog (audit trail)
 - `eve-corporation-data`: corporation public data, members, wallets, assets, etc. (per-corp isolation)
 - `hr`: applications, blacklistEntries, roles, roleAssignments, recommendations (per-corp isolation)
@@ -811,7 +809,6 @@ return data
 | ESI API cache                | DO SQLite  | Transient, ETag-based, per-DO instance    |
 | EVE Static Data (SDE)        | Workers KV | Globally cacheable, rarely changes        |
 | Group category cache         | Workers KV | Frequently read, rarely written           |
-| Notifications (real-time)    | PostgreSQL | Durable, needs ordering, per-user         |
 | Corp data (ESI)              | PostgreSQL | Large datasets, complex queries, per-corp |
 | HR (applications, blacklist) | PostgreSQL | Complex workflows, relational, per-corp   |
 | Fleet operations             | PostgreSQL | Real-time coordination, per-user          |
@@ -834,9 +831,9 @@ const stub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, 'default')
 
 ```typescript
 // One instance per user - use for user-specific data
-const stub = getStub<Notifications>(env.NOTIFICATIONS, userId)
 const stub = getStub<Discord>(env.DISCORD, userId)
 const stub = getStub<Groups>(env.GROUPS, userId)
+const stub = getStub<Fleets>(env.FLEETS, userId)
 ```
 
 **Per-Entity Pattern (Isolated Resources):**
@@ -1405,36 +1402,7 @@ async listGroups(categoryId: string, userId: string) {
 
 **Implementation:** `apps/groups/src/durable-object.ts:298-347`
 
-### 3. WebSocket Notification System
-
-**Problem:** Need real-time notifications for group invites, member joins, etc.
-
-**Solution:** Per-user Durable Objects with WebSocket Hibernation API.
-
-**Features:**
-
-- Multi-connection support (web + mobile)
-- Acknowledgment tracking with retry
-- Alarm-based retry for offline users
-- Automatic cleanup on disconnect
-
-**Message Flow:**
-
-```
-Action (e.g., invite) → NotificationService.send()
-  ↓
-Notifications DO → Store in database
-  ↓
-WebSocket → Send to client(s)
-  ↓
-Client → Acknowledge
-  ↓
-DO → Mark as read
-```
-
-**Implementation:** `apps/notifications/src/durable-object.ts`
-
-### 5. HR Application System (hr)
+### 3. HR Application System (hr)
 
 **Problem:** Need to manage corporation member applications, blacklist entries, and role recommendations.
 
@@ -1495,9 +1463,9 @@ export class SyncWorkflow extends WorkflowEntrypoint<Env, Params, StepResult> {
       await processAndStore(data)
     })
 
-    // Step 3: Send notifications
-    await step.do('notify', async () => {
-      await sendNotification(event.params.userId)
+    // Step 3: Handle completion
+    await step.do('complete', async () => {
+      // Process completion
     })
   }
 }
@@ -1720,7 +1688,7 @@ const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, userId)
 
 ```typescript
 // ✅ Good - isolated state
-const stub = getStub<Notifications>(env.NOTIFICATIONS, userId)
+const stub = getStub<Groups>(env.GROUPS, userId)
 ```
 
 ---
@@ -1938,7 +1906,6 @@ tapi-workers/
 │   ├── groups/                # Groups DO worker (per-user, PostgreSQL)
 │   ├── hr/                    # HR DO worker (per-corp, applications, blacklist)
 │   ├── markets/               # Market orders DO worker (per-user)
-│   ├── notifications/         # WebSocket notifications DO worker (per-user)
 │   ├── orchestrator/          # Workflow orchestration worker (Cloudflare Workflows)
 │   ├── skills/                # Skill plans DO worker (per-user)
 │   └── ui/                    # React SPA static assets worker
@@ -1963,7 +1930,6 @@ tapi-workers/
 │   ├── hono-helpers/          # Hono middleware and utilities
 │   ├── hr/                    # HR RPC interface types
 │   ├── markets/               # Markets RPC interface types
-│   ├── notifications/         # Notifications RPC interface types
 │   ├── queue-utils/           # Type-safe Cloudflare Queues utilities
 │   ├── skills/                # Skills RPC interface types
 │   ├── static-auth/           # Static authentication middleware
@@ -2022,10 +1988,9 @@ tapi-workers/
 
 1. **discord** - Discord OAuth and guild management
 2. **groups** - Group/category/membership management
-3. **notifications** - Real-time WebSocket notifications
-4. **fleets** - Fleet operations and coordination
-5. **skills** - Skill plans and character progression
-6. **markets** - Market orders and trading
+3. **fleets** - Fleet operations and coordination
+4. **skills** - Skill plans and character progression
+5. **markets** - Market orders and trading
 
 **Per-Corporation DOs:**
 

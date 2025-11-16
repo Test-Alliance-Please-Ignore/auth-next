@@ -27,7 +27,6 @@
 		"@repo/eve-types": "workspace:*",
 		"@repo/freight": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
-		"@repo/notifications": "workspace:*",
 		"@repo/srp": "workspace:*",
 		"@tanstack/react-query": "5.90.5",
 		"date-fns": "4.1.0",
