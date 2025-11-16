@@ -50,7 +50,18 @@ async function updateLastSync(
 	logger.debug('[updateLastSync] Starting update', { corporationId, syncProperty })
 
 	try {
-		const db = createDb(env.DATABASE_URL)
+		// Validate DATABASE_URL before creating database client
+		if (!env.DATABASE_URL || typeof env.DATABASE_URL !== 'string' || env.DATABASE_URL.trim() === '') {
+			throw new Error('DATABASE_URL environment variable is missing or empty')
+		}
+
+		let db: ReturnType<typeof createDb>
+		try {
+			db = createDb(env.DATABASE_URL)
+		} catch (error) {
+			throw new Error(`Failed to create database client: ${error instanceof Error ? error.message : String(error)}`)
+		}
+
 		const timestamp = new Date()
 
 		logger.debug('[updateLastSync] Executing database update', {
@@ -105,9 +116,74 @@ async function updateLastSync(
 export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorporationSyncParams> {
 	async run(event: WorkflowEvent<EveCorporationSyncParams>, step: WorkflowStep) {
 		const { corporationId, dataTypes, trigger } = event.payload
-		const updater = createWorkflowInstanceUpdater(event.instanceId, this.env.DATABASE_URL)
 
-		await updater.markRunning()
+		// Validate environment variables and bindings before any operations
+		if (!this.env.DATABASE_URL || typeof this.env.DATABASE_URL !== 'string' || this.env.DATABASE_URL.trim() === '') {
+			const error = new Error('DATABASE_URL environment variable is missing or empty')
+			logger.error('[EveCorporationSyncWorkflow] Environment validation failed', {
+				corporationId,
+				trigger,
+				error: error.message,
+			})
+			throw error
+		}
+
+		if (!this.env.EVE_TOKEN_STORE) {
+			const error = new Error('EVE_TOKEN_STORE binding is missing')
+			logger.error('[EveCorporationSyncWorkflow] Environment validation failed', {
+				corporationId,
+				trigger,
+				error: error.message,
+			})
+			throw error
+		}
+
+		if (!this.env.EVE_CORPORATION_DATA) {
+			const error = new Error('EVE_CORPORATION_DATA binding is missing')
+			logger.error('[EveCorporationSyncWorkflow] Environment validation failed', {
+				corporationId,
+				trigger,
+				error: error.message,
+			})
+			throw error
+		}
+
+		if (!this.env.CORE) {
+			const error = new Error('CORE service binding is missing')
+			logger.error('[EveCorporationSyncWorkflow] Environment validation failed', {
+				corporationId,
+				trigger,
+				error: error.message,
+			})
+			throw error
+		}
+
+		// Initialize workflow instance updater with error handling (non-blocking)
+		// This is for observability only - failures should not stop the workflow
+		let updater: ReturnType<typeof createWorkflowInstanceUpdater> | null = null
+		try {
+			updater = createWorkflowInstanceUpdater(event.instanceId, this.env.DATABASE_URL)
+			try {
+				await updater.markRunning()
+			} catch (error) {
+				// Log but don't throw - workflow instance updater is for tracking only
+				logger.warn('[EveCorporationSyncWorkflow] Failed to mark workflow as running (non-blocking)', {
+					corporationId,
+					trigger,
+					error: error instanceof Error ? error.message : String(error),
+					stack: error instanceof Error ? error.stack : undefined,
+				})
+			}
+		} catch (error) {
+			// Log but don't throw - workflow instance updater is for tracking only
+			logger.warn('[EveCorporationSyncWorkflow] Failed to create workflow instance updater (non-blocking)', {
+				corporationId,
+				trigger,
+				error: error instanceof Error ? error.message : String(error),
+				stack: error instanceof Error ? error.stack : undefined,
+			})
+			// Continue without updater - it's just for observability
+		}
 
 		let directorManager: DirectorManager | null = null
 		let director: SelectedDirector | null = null
@@ -120,7 +196,21 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			const shouldSync = (type: EveCorporationSyncDataType) =>
 				!requestedTypes || requestedTypes.size === 0 || requestedTypes.has(type)
 
-			const db = createDb(this.env.DATABASE_URL)
+			// Initialize database client with error handling
+			let db: ReturnType<typeof createDb>
+			try {
+				db = createDb(this.env.DATABASE_URL)
+			} catch (error) {
+				const errorMessage = `Failed to create database client: ${error instanceof Error ? error.message : String(error)}`
+				logger.error('[EveCorporationSyncWorkflow] Database initialization failed', {
+					corporationId,
+					trigger,
+					error: errorMessage,
+					stack: error instanceof Error ? error.stack : undefined,
+				})
+				throw new Error(errorMessage)
+			}
+
 			using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 			directorManager = new DirectorManager(db, corporationId, tokenStore)
 
@@ -771,7 +861,18 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				},
 			}
 
-			await updater.markCompleted()
+			// Mark workflow as completed (non-blocking)
+			if (updater) {
+				try {
+					await updater.markCompleted()
+				} catch (error) {
+					logger.warn('[EveCorporationSyncWorkflow] Failed to mark workflow as completed (non-blocking)', {
+						corporationId,
+						trigger,
+						error: error instanceof Error ? error.message : String(error),
+					})
+				}
+			}
 
 			return result
 		} catch (error) {
@@ -805,7 +906,18 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				}
 			}
 
-			await updater.markFailed(error)
+			// Mark workflow as failed (non-blocking)
+			if (updater) {
+				try {
+					await updater.markFailed(error)
+				} catch (markFailedError) {
+					logger.warn('[EveCorporationSyncWorkflow] Failed to mark workflow as failed (non-blocking)', {
+						corporationId,
+						trigger,
+						error: markFailedError instanceof Error ? markFailedError.message : String(markFailedError),
+					})
+				}
+			}
 			throw error
 		}
 	}
