@@ -15,6 +15,7 @@ import {
 } from '../db/schema'
 
 import type { Discord, DiscordProfile, JoinServerResult } from '@repo/discord'
+import type { EveCharacterData } from '@repo/eve-character-data'
 import type { CorporationMemberData, EveCorporationData } from '@repo/eve-corporation-data'
 import type { Groups } from '@repo/groups'
 import type { Hr } from '@repo/hr'
@@ -428,6 +429,39 @@ async function getAllManagedRolesForGuild(
 }
 
 /**
+ * Get corporation IDs for a user's registered characters
+ * This is much more efficient than fetching all corporation members
+ * @param env - Worker environment
+ * @param characterIds - Array of character IDs to check
+ * @returns Set of corporation IDs the user's characters belong to
+ */
+async function getUserCorporationIds(env: Env, characterIds: string[]): Promise<Set<string>> {
+	if (characterIds.length === 0) {
+		return new Set()
+	}
+
+	using charStub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, 'default')
+	const characterCorpPromises = characterIds.map(async (charId) => {
+		try {
+			const charInfo = await charStub.getCharacterInfo(charId)
+			return charInfo?.corporationId ? String(charInfo.corporationId) : null
+		} catch (error) {
+			logger.warn('[Discord] Error fetching character corporation', {
+				characterId: charId,
+				error: String(error),
+			})
+			return null
+		}
+	})
+
+	const characterCorporationIds = (await Promise.all(characterCorpPromises)).filter(
+		(corpId): corpId is string => corpId !== null
+	)
+
+	return new Set(characterCorporationIds)
+}
+
+/**
  * ONLY invites a user to Discord servers they are NOT already a member of
  * Based on their corporation and group memberships with autoInvite=true
  * Does NOT update roles for existing members
@@ -504,20 +538,35 @@ export async function inviteUserToDiscordServers(
 		}
 	}
 
-	// === CHECK CORPORATIONS (ONLY autoInvite=true) ===
+	// === GET USER'S CHARACTER CORPORATION IDs ===
+	// This is much more efficient than fetching all corporation members
+	const userCorporationIds = await getUserCorporationIds(env, characterIds)
 
-	const corpAttachments = await db.query.corporationDiscordServers.findMany({
-		where: eq(corporationDiscordServers.autoInvite, true), // ONLY auto-invite servers
-		with: {
-			corporation: true,
-			discordServer: true,
-			roles: {
-				with: {
-					discordRole: true,
-				},
-			},
-		},
-	})
+	if (userCorporationIds.size === 0) {
+		// User has no corporation memberships, skip corporation checks
+		logger.debug('[Discord] User has no corporation memberships', { userId })
+	}
+
+	// === CHECK CORPORATIONS (ONLY autoInvite=true) ===
+	// Only fetch attachments for corporations the user is actually in
+	const corpAttachments =
+		userCorporationIds.size > 0
+			? await db.query.corporationDiscordServers.findMany({
+					where: and(
+						eq(corporationDiscordServers.autoInvite, true), // ONLY auto-invite servers
+						inArray(corporationDiscordServers.corporationId, Array.from(userCorporationIds))
+					),
+					with: {
+						corporation: true,
+						discordServer: true,
+						roles: {
+							with: {
+								discordRole: true,
+							},
+						},
+					},
+				})
+			: []
 
 	// Filter out inactive Discord servers
 	const activeCorpAttachments = corpAttachments.filter(
@@ -536,45 +585,25 @@ export async function inviteUserToDiscordServers(
 		roleIds?: string[]
 	}> = []
 
-	// Check corporation memberships
+	// Add corporation attachments - no need to check membership, we already filtered by corporation ID
 	for (const attachment of activeCorpAttachments) {
-		try {
-			using corpStub = getStub<EveCorporationData>(
-				env.EVE_CORPORATION_DATA,
-				attachment.corporationId
-			)
-			const members = await corpStub.getMembers(attachment.corporationId)
-			const memberCharacterIds = members.map((m: CorporationMemberData) => m.characterId)
+		// User is definitely a member since we filtered attachments by their corporation IDs
+		// Collect role IDs if auto-assign is enabled
+		const roleIds = attachment.autoAssignRoles
+			? attachment.roles
+					.filter((r) => r.discordRole.isActive) // SECURITY: Only active roles
+					.map((r) => r.discordRole.roleId)
+			: []
 
-			const matchingCharacters = characterIds.filter((charId) =>
-				memberCharacterIds.includes(charId)
-			)
-			const isMember = matchingCharacters.length > 0
-
-			if (isMember) {
-				// Collect role IDs if auto-assign is enabled
-				const roleIds = attachment.autoAssignRoles
-					? attachment.roles
-							.filter((r) => r.discordRole.isActive) // SECURITY: Only active roles
-							.map((r) => r.discordRole.roleId)
-					: []
-
-				guildsToJoin.push({
-					type: 'corporation',
-					guildId: attachment.discordServer.guildId,
-					guildName: attachment.discordServer.guildName,
-					corporationId: attachment.corporationId,
-					corporationName: attachment.corporation.name,
-					discordServerId: attachment.discordServerId,
-					roleIds,
-				})
-			}
-		} catch (error) {
-			logger.error('[Discord] Error checking corporation members', {
-				corporationId: attachment.corporationId,
-				error: String(error),
-			})
-		}
+		guildsToJoin.push({
+			type: 'corporation',
+			guildId: attachment.discordServer.guildId,
+			guildName: attachment.discordServer.guildName,
+			corporationId: attachment.corporationId,
+			corporationName: attachment.corporation.name,
+			discordServerId: attachment.discordServerId,
+			roleIds,
+		})
 	}
 
 	// === CHECK GROUPS (ONLY autoInvite=true) ===
@@ -958,58 +987,49 @@ export async function updateUserDiscordRoles(
 	}
 
 	// === CHECK CORPORATION ROLES (all attachments, not just auto-invite) ===
+	// Get user's corporation IDs first to filter efficiently
+	const userCorporationIds = await getUserCorporationIds(env, characterIds)
 
-	const allCorpAttachments = await db.query.corporationDiscordServers.findMany({
-		// No autoInvite filter - we want ALL attachments for role updates
-		with: {
-			corporation: true,
-			discordServer: true,
-			roles: {
-				with: {
-					discordRole: true,
-				},
-			},
-		},
-	})
+	// Only fetch attachments for corporations the user is actually in
+	const corpAttachments =
+		userCorporationIds.size > 0
+			? await db.query.corporationDiscordServers.findMany({
+					where: inArray(corporationDiscordServers.corporationId, Array.from(userCorporationIds)),
+					with: {
+						corporation: true,
+						discordServer: true,
+						roles: {
+							with: {
+								discordRole: true,
+							},
+						},
+					},
+				})
+			: []
 
-	// Filter to only active Discord servers
-	const corpAttachments = allCorpAttachments.filter(
+	// Filter to only active Discord servers in the servers we're updating
+	const relevantCorpAttachments = corpAttachments.filter(
 		(attachment) =>
 			attachment.discordServer.isActive &&
 			serversToUpdate.includes(attachment.discordServer.guildId)
 	)
 
-	for (const attachment of corpAttachments) {
-		try {
-			using corpStub = getStub<EveCorporationData>(
-				env.EVE_CORPORATION_DATA,
-				attachment.corporationId
-			)
-			const members = await corpStub.getMembers(attachment.corporationId)
-			const memberCharacterIds = members.map((m: CorporationMemberData) => m.characterId)
+	for (const attachment of relevantCorpAttachments) {
+		// User is definitely a member since we filtered attachments by their corporation IDs
+		if (attachment.autoAssignRoles) {
+			const roleIds = attachment.roles
+				.filter((r) => r.discordRole.isActive) // SECURITY: Only active roles
+				.map((r) => r.discordRole.roleId)
 
-			const isMember = characterIds.some((charId) => memberCharacterIds.includes(charId))
-
-			if (isMember && attachment.autoAssignRoles) {
-				const roleIds = attachment.roles
-					.filter((r) => r.discordRole.isActive) // SECURITY: Only active roles
-					.map((r) => r.discordRole.roleId)
-
-				const guildData = rolesByGuild.get(attachment.discordServer.guildId)
-				if (guildData) {
-					guildData.expectedRoleIds.push(...roleIds)
-					guildData.sources.push({
-						type: 'corporation',
-						name: attachment.corporation.name,
-					})
-					guildData.guildName = attachment.discordServer.guildName
-				}
+			const guildData = rolesByGuild.get(attachment.discordServer.guildId)
+			if (guildData) {
+				guildData.expectedRoleIds.push(...roleIds)
+				guildData.sources.push({
+					type: 'corporation',
+					name: attachment.corporation.name,
+				})
+				guildData.guildName = attachment.discordServer.guildName
 			}
-		} catch (error) {
-			logger.error('[Discord] Error checking corporation members for role update', {
-				corporationId: attachment.corporationId,
-				error: String(error),
-			})
 		}
 	}
 

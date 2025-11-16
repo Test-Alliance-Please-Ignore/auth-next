@@ -356,12 +356,18 @@ export class DirectorManager {
 	 */
 	async verifyAllDirectorsHealth(): Promise<{ verified: number; failed: number }> {
 		const directors = await this.getAllDirectors()
+
+		// Run all verifications in parallel
+		const results = await Promise.allSettled(
+			directors.map((director) => this.verifyDirectorHealth(director.directorId))
+		)
+
+		// Count verified vs failed
 		let verified = 0
 		let failed = 0
 
-		for (const director of directors) {
-			const isHealthy = await this.verifyDirectorHealth(director.directorId)
-			if (isHealthy) {
+		for (const result of results) {
+			if (result.status === 'fulfilled' && result.value === true) {
 				verified++
 			} else {
 				failed++

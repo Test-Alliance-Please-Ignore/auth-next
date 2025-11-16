@@ -4,6 +4,7 @@ import { getStub } from '@repo/do-utils'
 import { hrRoles } from '../db/schema'
 
 import type { DbClient } from '@repo/db-utils'
+import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { HrRole, HrRoleType, RoleFilters } from '@repo/hr'
 import type * as schema from '../db/schema'
@@ -39,15 +40,23 @@ export class HrRoleService {
 		role: HrRoleType,
 		grantedBy: string,
 		eveCorporationDataNamespace: DurableObjectNamespace,
+		eveCharacterDataNamespace: DurableObjectNamespace,
 		expiresAt?: Date
 	): Promise<HrRole> {
-		// Validate corporation membership via EVE Corporation Data DO
-		using corpStub = getStub<EveCorporationData>(eveCorporationDataNamespace, corporationId)
-		const members = await corpStub.getMembers(corporationId)
-		const isMember = members.some((m) => m.characterId === characterId)
+		// Validate corporation membership by checking character's corporation ID
+		// This is much more efficient than fetching all corporation members
+		using charStub = getStub<EveCharacterData>(eveCharacterDataNamespace, 'default')
+		const charInfo = await charStub.getCharacterInfo(characterId)
 
-		if (!isMember) {
-			throw new Error(`Character ${characterId} is not a member of corporation ${corporationId}`)
+		if (!charInfo?.corporationId) {
+			throw new Error(`Character ${characterId} not found or has no corporation`)
+		}
+
+		const characterCorporationId = String(charInfo.corporationId)
+		if (characterCorporationId !== corporationId) {
+			throw new Error(
+				`Character ${characterId} is not a member of corporation ${corporationId} (belongs to ${characterCorporationId})`
+			)
 		}
 
 		// Check for existing active role

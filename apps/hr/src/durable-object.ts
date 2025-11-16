@@ -327,6 +327,7 @@ export class HrDO extends DurableObject<Env> implements Hr {
 			role,
 			grantedBy,
 			this.env.EVE_CORPORATION_DATA,
+			this.env.EVE_CHARACTER_DATA,
 			expiresAt
 		)
 

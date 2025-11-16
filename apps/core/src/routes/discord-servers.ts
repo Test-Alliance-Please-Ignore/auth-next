@@ -464,7 +464,7 @@ app.post('/:id/refresh-members', requireAuth(), requireAdmin(), async (c) => {
 					attachment.corporationId
 				)
 				const members = await corpStub.getMembers(attachment.corporationId)
-				const memberCharacterIds = members.map((m: any) => m.characterId)
+				const memberCharacterIds = members.map((m) => m.characterId)
 
 				logger.info('[Discord] Corporation members fetched', {
 					corporationId: attachment.corporationId,
@@ -575,6 +575,7 @@ app.post('/:id/refresh-members', requireAuth(), requireAdmin(), async (c) => {
 		let successfulInvites = 0
 		let failedInvites = 0
 
+		// Process each user
 		for (const userId of allUserIds) {
 			try {
 				const result = await discordService.syncUserDiscordAccess(c.env, userId)

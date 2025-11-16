@@ -859,15 +859,6 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				}
 			}
 
-			// Dispose of stub if it was created
-			if (workflowInstanceManager) {
-				try {
-					workflowInstanceManager.dispose()
-				} catch {
-					// Ignore disposal errors
-				}
-			}
-
 			return result
 		} catch (error) {
 			logger.error('[EveCorporationSyncWorkflow] Sync failed with error', {
@@ -918,15 +909,6 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 									: String(markFailedError),
 						}
 					)
-				}
-			}
-
-			// Dispose of stub if it was created
-			if (workflowInstanceManager) {
-				try {
-					workflowInstanceManager.dispose()
-				} catch {
-					// Ignore disposal errors
 				}
 			}
 
