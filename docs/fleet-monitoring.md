@@ -27,7 +27,7 @@
 FleetMonitor is a real-time fleet tracking system for EVE Online built on Cloudflare Workers and Durable Objects. It provides:
 
 - **Automatic fleet detection** for configured fleet commanders
-- **Real-time monitoring** of fleet status with 20-second update intervals
+- **Real-time monitoring** of fleet status with 30-second update intervals
 - **Member history tracking** to detect joins/leaves with ship and location data
 - **WebSocket support** for live fleet updates to connected clients
 - **Quick join invitation system** for easy fleet access
@@ -66,7 +66,7 @@ FleetMonitor solves the problem of tracking EVE Online fleet composition and act
 │         │                ┌───────────────────────┐          │
 │         └───────────────>│ FleetMonitorDO (N)    │          │
 │                          │ - Per-Fleet Instance  │          │
-│                          │ - 20s Update Alarm    │          │
+│                          │ - 30s Update Alarm    │          │
 │                          │ - WebSocket Support   │          │
 │                          │ - Member Tracking     │          │
 │                          └───────────────────────┘          │
@@ -181,7 +181,7 @@ interface Fleets {
 **Responsibilities:**
 
 - Monitors a single fleet in real-time
-- Updates fleet status every 20 seconds via alarm
+- Updates fleet status every 30 seconds via alarm
 - Tracks member join/leave events
 - Broadcasts updates via WebSocket
 - Handles fleet lifecycle (active → ended)
@@ -212,7 +212,7 @@ interface FleetMonitor {
 
 **Alarm Cycle:**
 
-1. Trigger every 20 seconds
+1. Trigger every 30 seconds
 2. Fetch fleet info and members from ESI
 3. Compare with previous snapshot to detect joins/leaves
 4. Update PostgreSQL cache
@@ -320,7 +320,7 @@ interface FleetMonitor {
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│ FleetMonitorDO Alarm (Every 20 Seconds)                      │
+│ FleetMonitorDO Alarm (Every 30 Seconds)                      │
 └───────────────────────┬──────────────────────────────────────┘
                         │
                         │ 1. Schedule next alarm early
@@ -393,7 +393,7 @@ Client                  Worker               FleetMonitorDO
   │<──────────────────────────────────────────────────┤
   │ {"type":"fleet_status"}                         │
   │                       │                         │
-  │                       │   Every 20s alarm:      │
+  │                       │   Every 30s alarm:      │
   │<──────────────────────────────────────────────────┤
   │ {"type":"fleet_update"}                         │
   │                       │                         │
@@ -462,7 +462,7 @@ Client                  Worker               FleetMonitorDO
 
 ### 2. Real-Time Fleet Tracking
 
-- 20-second update intervals
+- 30-second update intervals
 - Tracks fleet configuration (MOTD, settings)
 - Monitors member count
 - Detects fleet disbanding
@@ -493,7 +493,7 @@ Client                  Worker               FleetMonitorDO
 - Real-time fleet status broadcasts
 - Subscribe/unsubscribe messaging
 - Ping/pong keepalive
-- Automatic updates every 20 seconds
+- Automatic updates every 30 seconds
 
 ### 6. Fleet State Caching
 
@@ -739,7 +739,7 @@ Response:
 
 #### Server → Client
 
-**Fleet Update (every 20 seconds):**
+**Fleet Update (every 30 seconds):**
 
 ```json
 {
@@ -1033,7 +1033,7 @@ ORDER BY duration_hours DESC
 
 #### Incremental Member Updates
 
-**Problem:** Full member list fetched every 20 seconds
+**Problem:** Full member list fetched every 30 seconds
 **Solution:**
 
 - Use ESI `If-None-Match` headers for caching
@@ -1525,7 +1525,7 @@ just tail fleets
 The FleetMonitor system provides a robust, scalable solution for real-time EVE Online fleet tracking. Built on Cloudflare's edge infrastructure with Durable Objects, it offers:
 
 - **Reliability:** Automatic recovery from failures, health monitoring
-- **Performance:** 20-second update intervals, WebSocket real-time delivery
+- **Performance:** 30-second update intervals, WebSocket real-time delivery
 - **Scalability:** Per-fleet isolation, distributed across edge network
 - **Extensibility:** Type-safe RPC interfaces, PostgreSQL for analytics
 

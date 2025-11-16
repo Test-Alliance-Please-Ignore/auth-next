@@ -38,7 +38,7 @@ export interface FleetMonitorState {
  *
  * This interface defines the RPC methods available on FleetMonitor instances.
  * Each FleetMonitor DO is created per-fleet (id: `fleet-${fleetId}`) and provides
- * real-time fleet status monitoring with periodic updates every 20 seconds.
+ * real-time fleet status monitoring with periodic updates every 30 seconds.
  *
  * @example
  * ```ts

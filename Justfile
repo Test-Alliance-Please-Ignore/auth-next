@@ -73,6 +73,8 @@ db-generate-all:
   cd apps/srp && bun run db:generate
   cd apps/doctrines && bun run db:generate
   cd apps/strife && bun run db:generate
+  cd apps/fulcrum && bun run db:generate
+  cd apps/fulcrum && bun run db:generate
   cd apps/eve-corporation-data && bun run db:generate
   cd apps/eve-character-data && bun run db:generate
   cd apps/eve-static-data && bun run db:generate
@@ -99,6 +101,8 @@ db-push-all:
   cd apps/srp && bun run db:push
   cd apps/doctrines && bun run db:push
   cd apps/strife && bun run db:push
+  cd apps/fulcrum && bun run db:push
+  cd apps/fulcrum && bun run db:push
   cd apps/eve-corporation-data && bun run db:push
   cd apps/eve-character-data && bun run db:push
   cd apps/eve-static-data && bun run db:push
@@ -125,6 +129,8 @@ db-migrate-all:
   cd apps/srp && bun run db:migrate
   cd apps/doctrines && bun run db:migrate
   cd apps/strife && bun run db:migrate
+  cd apps/fulcrum && bun run db:migrate
+  cd apps/fulcrum && bun run db:migrate
   cd apps/eve-corporation-data && bun run db:migrate
   cd apps/eve-character-data && bun run db:migrate
   cd apps/eve-static-data && bun run db:migrate

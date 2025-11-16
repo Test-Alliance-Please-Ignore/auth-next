@@ -2,7 +2,6 @@ import { DurableObject } from 'cloudflare:workers'
 
 import { and, createDbClient, eq, gt, lte } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
-import { logger } from '@repo/hono-helpers'
 import { assertEveCharacterId } from '@repo/eve-types'
 import {
 	EsiGetCharacterFleetInformation,
@@ -19,6 +18,7 @@ import {
 	QuickJoinInvitation,
 	QuickJoinValidationResult,
 } from '@repo/fleets'
+import { logger } from '@repo/hono-helpers'
 
 import { Env } from './context'
 import {
@@ -31,8 +31,8 @@ import {
 
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
-import type { FleetMonitor } from '@repo/fleets'
 import type { EveCharacterId } from '@repo/eve-types'
+import type { FleetMonitor } from '@repo/fleets'
 import type { Universe } from '@repo/universe'
 
 /**
@@ -99,6 +99,10 @@ export class FleetsDO extends DurableObject implements Fleets {
 				wingId: validatedData.wing_id,
 			})
 
+			const fleetDetailsResponse = await this.getFleetDetails(
+				String(validatedData.fleet_id),
+				String(validatedData.fleet_boss_id)
+			)
 			// Ensure IDs are returned as strings for consistency
 			return {
 				fleet_id: String(validatedData.fleet_id),
@@ -345,18 +349,37 @@ export class FleetsDO extends DurableObject implements Fleets {
 			)
 			fleetInfo = esiGetFleetInformationSchema.parse(fleetResponse.data)
 
-			// Clear notFound flag if fleet is now found
-			if (cached?.notFound) {
-				await this.db
-					.update(fleetStateCache)
-					.set({
+			// Update cache with all fleet properties
+			await this.db
+				.insert(fleetStateCache)
+				.values({
+					fleetId,
+					fleetBossId: characterId,
+					isActive: true,
+					memberCount: 0,
+					motd: fleetInfo.motd || null,
+					isFreeMove: fleetInfo.is_free_move,
+					isRegistered: fleetInfo.is_registered,
+					isVoiceEnabled: fleetInfo.is_voice_enabled,
+					notFound: false,
+					notFoundAt: null,
+					lastChecked: new Date(),
+				})
+				.onConflictDoUpdate({
+					target: fleetStateCache.fleetId,
+					set: {
+						fleetBossId: characterId,
+						isActive: true,
+						motd: fleetInfo.motd || null,
+						isFreeMove: fleetInfo.is_free_move,
+						isRegistered: fleetInfo.is_registered,
+						isVoiceEnabled: fleetInfo.is_voice_enabled,
 						notFound: false,
 						notFoundAt: null,
 						lastChecked: new Date(),
 						updatedAt: new Date(),
-					})
-					.where(eq(fleetStateCache.fleetId, fleetId))
-			}
+					},
+				})
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : String(error)
 			// Check if it's a 404 error
@@ -437,15 +460,10 @@ export class FleetsDO extends DurableObject implements Fleets {
 			try {
 				// Resolve ship type IDs
 				using universeStub = getStub<Universe>(this.env.UNIVERSE, 'default')
-				const uniqueShipTypeIds = [
-					...new Set(members.map((m) => String(m.ship_type_id))),
-				]
+				const uniqueShipTypeIds = [...new Set(members.map((m) => String(m.ship_type_id)))]
 				const shipTypes = await universeStub.resolveTypeNamesByIds(uniqueShipTypeIds)
 				resolvedShipTypes = Object.fromEntries(
-					Object.entries(shipTypes).map(([id, type]) => [
-						id,
-						type?.typeName || id,
-					])
+					Object.entries(shipTypes).map(([id, type]) => [id, type?.typeName || id])
 				)
 			} catch (error) {
 				logger.warn(`[Fleets DO] Failed to resolve ship type names`, {
@@ -456,9 +474,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 
 			try {
 				// Resolve character IDs to names
-				const uniqueCharacterIds = [
-					...new Set(members.map((m) => String(m.character_id))),
-				]
+				const uniqueCharacterIds = [...new Set(members.map((m) => String(m.character_id)))]
 				// Also include fleet boss if not already in the list
 				if (characterId && !uniqueCharacterIds.includes(characterId)) {
 					uniqueCharacterIds.push(characterId)
@@ -474,9 +490,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 
 			try {
 				// Resolve system IDs to names
-				const uniqueSystemIds = [
-					...new Set(members.map((m) => String(m.solar_system_id))),
-				]
+				const uniqueSystemIds = [...new Set(members.map((m) => String(m.solar_system_id)))]
 				const systemNames = await tokenStore.resolveIds(uniqueSystemIds)
 				resolvedSystemNames = systemNames
 			} catch (error) {
@@ -647,8 +661,8 @@ export class FleetsDO extends DurableObject implements Fleets {
 			.where(
 				and(
 					eq(fleetStateCache.fleetId, fleetId),
-					// Cache valid for 5 minutes
-					gt(fleetStateCache.lastChecked, new Date(Date.now() - 5 * 60 * 1000))
+					// Cache valid for 4 minutes 30 seconds (to eliminate race conditions)
+					gt(fleetStateCache.lastChecked, new Date(Date.now() - (4 * 60 + 30) * 1000))
 				)
 			)
 			.limit(1)
@@ -672,13 +686,14 @@ export class FleetsDO extends DurableObject implements Fleets {
 		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		let isActive = false
 		let isNotFound = false
+		let fleetInfo: EsiGetFleetInformation | null = null
 		try {
 			const fleetResponse = await tokenStore.fetchEsi<EsiGetFleetInformation>(
 				`/fleets/${fleetId}/`,
 				characterId
 			)
 			// Validate the response to ensure it's valid fleet data
-			esiGetFleetInformationSchema.parse(fleetResponse.data)
+			fleetInfo = esiGetFleetInformationSchema.parse(fleetResponse.data)
 			isActive = true
 		} catch (error) {
 			// Check if it's a 404 error
@@ -694,28 +709,62 @@ export class FleetsDO extends DurableObject implements Fleets {
 			isActive = false
 		}
 
-		// Update cache
-		await this.db
-			.insert(fleetStateCache)
-			.values({
-				fleetId,
-				fleetBossId: characterId,
-				isActive,
-				memberCount: 0,
-				notFound: isNotFound,
-				notFoundAt: isNotFound ? new Date() : null,
-				lastChecked: new Date(),
-			})
-			.onConflictDoUpdate({
-				target: fleetStateCache.fleetId,
-				set: {
-					isActive,
+		// Update cache with all fleet properties
+		if (fleetInfo) {
+			await this.db
+				.insert(fleetStateCache)
+				.values({
+					fleetId,
+					fleetBossId: characterId,
+					isActive: true,
+					memberCount: 0,
+					motd: fleetInfo.motd || null,
+					isFreeMove: fleetInfo.is_free_move,
+					isRegistered: fleetInfo.is_registered,
+					isVoiceEnabled: fleetInfo.is_voice_enabled,
+					notFound: false,
+					notFoundAt: null,
+					lastChecked: new Date(),
+				})
+				.onConflictDoUpdate({
+					target: fleetStateCache.fleetId,
+					set: {
+						fleetBossId: characterId,
+						isActive: true,
+						motd: fleetInfo.motd || null,
+						isFreeMove: fleetInfo.is_free_move,
+						isRegistered: fleetInfo.is_registered,
+						isVoiceEnabled: fleetInfo.is_voice_enabled,
+						notFound: false,
+						notFoundAt: null,
+						lastChecked: new Date(),
+						updatedAt: new Date(),
+					},
+				})
+		} else {
+			// Fleet not found or error - update cache with not found status
+			await this.db
+				.insert(fleetStateCache)
+				.values({
+					fleetId,
+					fleetBossId: characterId,
+					isActive: false,
+					memberCount: 0,
 					notFound: isNotFound,
 					notFoundAt: isNotFound ? new Date() : null,
 					lastChecked: new Date(),
-					updatedAt: new Date(),
-				},
-			})
+				})
+				.onConflictDoUpdate({
+					target: fleetStateCache.fleetId,
+					set: {
+						isActive: false,
+						notFound: isNotFound,
+						notFoundAt: isNotFound ? new Date() : null,
+						lastChecked: new Date(),
+						updatedAt: new Date(),
+					},
+				})
+		}
 
 		return isActive
 	}
@@ -742,6 +791,115 @@ export class FleetsDO extends DurableObject implements Fleets {
 			notFound: cached.notFound,
 			endedAt: cached.endedAt,
 		}
+	}
+
+	async getFleetIsRegistered(fleetId: string, characterId: string): Promise<boolean> {
+		// Check cache first with 4 minutes 30 seconds validity (same as isFleetActive)
+		const [cached] = await this.db
+			.select({
+				isRegistered: fleetStateCache.isRegistered,
+				lastChecked: fleetStateCache.lastChecked,
+			})
+			.from(fleetStateCache)
+			.where(
+				and(
+					eq(fleetStateCache.fleetId, fleetId),
+					// Cache valid for 4 minutes 30 seconds (to eliminate race conditions)
+					gt(fleetStateCache.lastChecked, new Date(Date.now() - (4 * 60 + 30) * 1000))
+				)
+			)
+			.limit(1)
+
+		if (cached) {
+			// Use cached value if fresh
+			return cached.isRegistered
+		}
+
+		// Cache is missing or stale, fetch from ESI
+		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		let fleetInfo: EsiGetFleetInformation | null = null
+		let isNotFound = false
+
+		try {
+			const fleetResponse = await tokenStore.fetchEsi<EsiGetFleetInformation>(
+				`/fleets/${fleetId}/`,
+				characterId
+			)
+			fleetInfo = esiGetFleetInformationSchema.parse(fleetResponse.data)
+		} catch (error) {
+			// Check if it's a 404 error
+			const errorMessage = error instanceof Error ? error.message : String(error)
+			if (
+				errorMessage.includes('404') ||
+				errorMessage.includes('Not found') ||
+				errorMessage.includes('Not Found')
+			) {
+				isNotFound = true
+			}
+			// If fleet not found, return false for isRegistered
+			fleetInfo = null
+		}
+
+		// Update cache with all fleet properties
+		if (fleetInfo) {
+			await this.db
+				.insert(fleetStateCache)
+				.values({
+					fleetId,
+					fleetBossId: characterId,
+					isActive: true,
+					memberCount: 0,
+					motd: fleetInfo.motd || null,
+					isFreeMove: fleetInfo.is_free_move,
+					isRegistered: fleetInfo.is_registered,
+					isVoiceEnabled: fleetInfo.is_voice_enabled,
+					notFound: false,
+					notFoundAt: null,
+					lastChecked: new Date(),
+				})
+				.onConflictDoUpdate({
+					target: fleetStateCache.fleetId,
+					set: {
+						fleetBossId: characterId,
+						isActive: true,
+						motd: fleetInfo.motd || null,
+						isFreeMove: fleetInfo.is_free_move,
+						isRegistered: fleetInfo.is_registered,
+						isVoiceEnabled: fleetInfo.is_voice_enabled,
+						notFound: false,
+						notFoundAt: null,
+						lastChecked: new Date(),
+						updatedAt: new Date(),
+					},
+				})
+
+			return fleetInfo.is_registered
+		}
+
+		// Fleet not found or error - update cache with not found status
+		await this.db
+			.insert(fleetStateCache)
+			.values({
+				fleetId,
+				fleetBossId: characterId,
+				isActive: false,
+				memberCount: 0,
+				notFound: isNotFound,
+				notFoundAt: isNotFound ? new Date() : null,
+				lastChecked: new Date(),
+			})
+			.onConflictDoUpdate({
+				target: fleetStateCache.fleetId,
+				set: {
+					isActive: false,
+					notFound: isNotFound,
+					notFoundAt: isNotFound ? new Date() : null,
+					lastChecked: new Date(),
+					updatedAt: new Date(),
+				},
+			})
+
+		return false
 	}
 
 	async revokeQuickJoinInvitation(token: string, characterId: string): Promise<boolean> {

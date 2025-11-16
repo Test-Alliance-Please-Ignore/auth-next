@@ -51,7 +51,7 @@ function normalizeStationId(value: number | null | undefined | string): number |
  *
  * This Durable Object is created per-fleet (id: `fleet-${fleetId}`) and implements:
  * - RPC methods for fleet status queries
- * - Alarm handler for periodic fleet status updates (every 20 seconds)
+ * - Alarm handler for periodic fleet status updates (every 30 seconds)
  * - WebSocket hibernation API for real-time updates
  * - SQLite-backed state for instance-specific data (fleetId, characterId)
  * - PostgreSQL for cross-instance data (fleetStateCache)
@@ -389,7 +389,7 @@ export class FleetMonitorDO extends DurableObject {
 			})
 		}
 
-		// Schedule first alarm for 20 seconds from now
+		// Schedule first alarm for 30 seconds from now
 		await this.scheduleNextAlarm()
 
 		logger.info(`[FleetMonitor ${fleetId}] Monitoring initialized and alarm scheduled`)
@@ -1252,8 +1252,8 @@ export class FleetMonitorDO extends DurableObject {
 	}
 
 	/**
-	 * Alarm handler - triggered every 20 seconds to update fleet status
-	 * Automatically reschedules itself for the next 20 seconds
+	 * Alarm handler - triggered every 30 seconds to update fleet status
+	 * Automatically reschedules itself for the next 30 seconds
 	 */
 	async alarm(): Promise<void> {
 		logger.info('[FleetMonitor] Alarm triggered', {
@@ -1439,7 +1439,7 @@ export class FleetMonitorDO extends DurableObject {
 				)
 
 				// Check if we've had enough 404s in the time window to confirm fleet is gone
-				// Require 3 consecutive 404s within 2 minutes (6 checks at 20s intervals)
+				// Require 3 consecutive 404s within 2 minutes (4 checks at 30s intervals)
 				const timeWindowMs = 2 * 60 * 1000 // 2 minutes
 				const required404Count = 3
 				const cutoffTime = new Date(Date.now() - timeWindowMs).toISOString()
@@ -1548,7 +1548,7 @@ export class FleetMonitorDO extends DurableObject {
 	}
 
 	/**
-	 * Schedule the next alarm to run 20 seconds from now
+	 * Schedule the next alarm to run 30 seconds from now
 	 * Only schedules if the monitor is properly initialized with valid IDs
 	 */
 	private async scheduleNextAlarm(): Promise<void> {
@@ -1572,8 +1572,8 @@ export class FleetMonitorDO extends DurableObject {
 			return
 		}
 
-		const twentySeconds = 20 * 1000 // 20 seconds in milliseconds
-		const nextAlarmTime = Date.now() + twentySeconds
+		const thirtySeconds = 30 * 1000 // 30 seconds in milliseconds
+		const nextAlarmTime = Date.now() + thirtySeconds
 
 		await this.state.storage.setAlarm(nextAlarmTime)
 

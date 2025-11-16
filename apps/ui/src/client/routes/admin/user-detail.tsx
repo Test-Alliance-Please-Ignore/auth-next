@@ -268,6 +268,24 @@ export default function UserDetailPage() {
 		}
 	}
 
+	const handleUnlinkDiscordConfirm = async () => {
+		try {
+			await unlinkDiscord.mutateAsync(user.id)
+			setUnlinkDiscordDialogOpen(false)
+			setMessage({
+				type: 'success',
+				text: 'Discord account unlinked successfully',
+			})
+			setTimeout(() => setMessage(null), 3000)
+		} catch (error) {
+			setMessage({
+				type: 'error',
+				text: error instanceof Error ? error.message : 'Failed to unlink Discord account',
+			})
+			setTimeout(() => setMessage(null), 5000)
+		}
+	}
+
 	const handleClearSessionsConfirm = async () => {
 		try {
 			await clearSessions.mutateAsync(user.id)
@@ -525,6 +543,15 @@ export default function UserDetailPage() {
 									>
 										<XCircle className="h-4 w-4 mr-2" />
 										Revoke Authorization
+									</DestructiveButton>
+									<DestructiveButton
+										onClick={() => setUnlinkDiscordDialogOpen(true)}
+										disabled={unlinkDiscord.isPending}
+										size="sm"
+										showIcon={false}
+									>
+										<Trash2 className="h-4 w-4 mr-2" />
+										Unlink Discord Account
 									</DestructiveButton>
 								</div>
 							)}
@@ -890,6 +917,43 @@ export default function UserDetailPage() {
 						>
 							<XCircle className="mr-2 h-4 w-4" />
 							Revoke Authorization
+						</DestructiveButton>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
+			{/* Unlink Discord Account Confirmation Dialog */}
+			<Dialog open={unlinkDiscordDialogOpen} onOpenChange={setUnlinkDiscordDialogOpen}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Unlink Discord Account</DialogTitle>
+						<DialogDescription>
+							Are you sure you want to completely unlink the Discord account for{' '}
+							{user.characters.find((c) => c.is_primary)?.characterName || 'this user'}? This action
+							will:
+							<ul className="list-disc list-inside mt-2 space-y-1">
+								<li>Remove the Discord link from their account</li>
+								<li>Delete all Discord tokens</li>
+								<li>Remove them from all managed Discord servers</li>
+							</ul>
+							<strong className="block mt-2">They will need to re-link Discord from scratch.</strong>
+						</DialogDescription>
+					</DialogHeader>
+					<DialogFooter>
+						<CancelButton
+							onClick={() => setUnlinkDiscordDialogOpen(false)}
+							disabled={unlinkDiscord.isPending}
+						>
+							Cancel
+						</CancelButton>
+						<DestructiveButton
+							onClick={handleUnlinkDiscordConfirm}
+							loading={unlinkDiscord.isPending}
+							loadingText="Unlinking..."
+							showIcon={false}
+						>
+							<Trash2 className="mr-2 h-4 w-4" />
+							Unlink Discord Account
 						</DestructiveButton>
 					</DialogFooter>
 				</DialogContent>

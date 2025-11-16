@@ -3,13 +3,14 @@ import { DurableObject } from 'cloudflare:workers'
 import { eq } from '@repo/db-utils'
 
 import { createDb } from './db'
-import { notificationLog } from './db/schema'
+import { notificationLog, userSessions } from './db/schema'
 
 import type {
 	ClientMessage,
 	ConnectionMetadata,
 	Notification,
 	Notifications,
+	NotificationTransportExecutor,
 	ServerMessage,
 } from '@repo/notifications'
 import type { Env } from './context'
@@ -28,10 +29,15 @@ import type { Env } from './context'
  */
 export class NotificationsDO extends DurableObject<Env> implements Notifications {
 	private db: ReturnType<typeof createDb>
+	private transportExecutor: NotificationTransportExecutor | null = null
 
 	// Storage keys
 	private static readonly CONNECTIONS_KEY = 'connections'
 	private static readonly PENDING_ACKS_KEY = 'pending_acks'
+
+	// Re-validation settings
+	private static readonly REVALIDATION_INTERVAL_MS = 5 * 60 * 1000 // 5 minutes
+	private static readonly REVALIDATION_MESSAGE_COUNT = 10 // Every 10 messages
 
 	constructor(
 		public state: DurableObjectState,
@@ -39,6 +45,78 @@ export class NotificationsDO extends DurableObject<Env> implements Notifications
 	) {
 		super(state, env)
 		this.db = createDb(env.DATABASE_URL)
+	}
+
+	/**
+	 * Get or create transport executor (lazy initialization)
+	 */
+	private getTransportExecutor(): NotificationTransportExecutor | null {
+		if (!this.transportExecutor && this.env.transportExecutor) {
+			this.transportExecutor = this.env.transportExecutor
+		}
+		return this.transportExecutor
+	}
+
+	/**
+	 * Extract session token from request headers
+	 */
+	private extractSessionToken(request: Request): string | null {
+		// Try Authorization header first (Bearer token)
+		const authHeader = request.headers.get('Authorization')
+		if (authHeader && authHeader.startsWith('Bearer ')) {
+			return authHeader.substring(7)
+		}
+
+		// Try Cookie header (session cookie)
+		const cookieHeader = request.headers.get('Cookie')
+		if (cookieHeader) {
+			const cookies = cookieHeader.split(';').map((c) => c.trim())
+			const sessionCookie = cookies.find((c) => c.startsWith('session='))
+			if (sessionCookie) {
+				return sessionCookie.substring(8) // 'session='.length
+			}
+		}
+
+		// Try X-Session-Token header (passed from core worker)
+		const customHeader = request.headers.get('X-Session-Token')
+		if (customHeader) {
+			return customHeader
+		}
+
+		return null
+	}
+
+	/**
+	 * Validate session token and return userId if valid
+	 */
+	private async validateSessionToken(sessionToken: string): Promise<string | null> {
+		try {
+			const session = await this.db.query.userSessions.findFirst({
+				where: eq(userSessions.sessionToken, sessionToken),
+			})
+
+			if (!session) {
+				return null
+			}
+
+			// Check if session is expired
+			if (session.expiresAt < new Date()) {
+				// Delete expired session
+				await this.db.delete(userSessions).where(eq(userSessions.id, session.id))
+				return null
+			}
+
+			// Update last activity timestamp
+			await this.db
+				.update(userSessions)
+				.set({ lastActivityAt: new Date() })
+				.where(eq(userSessions.id, session.id))
+
+			return session.userId
+		} catch (error) {
+			console.error('Error validating session token:', error)
+			return null
+		}
 	}
 
 	/**
@@ -51,6 +129,23 @@ export class NotificationsDO extends DurableObject<Env> implements Notifications
 			return new Response('Expected WebSocket upgrade', { status: 426 })
 		}
 
+		// Extract and validate session token
+		const sessionToken = this.extractSessionToken(request)
+		if (!sessionToken) {
+			return new Response('Missing session token', { status: 401 })
+		}
+
+		// Validate session token
+		const validatedUserId = await this.validateSessionToken(sessionToken)
+		if (!validatedUserId) {
+			return new Response('Invalid or expired session', { status: 401 })
+		}
+
+		// Ensure validated userId matches the userId parameter
+		if (validatedUserId !== userId) {
+			return new Response('User ID mismatch', { status: 403 })
+		}
+
 		// Create WebSocket pair
 		const webSocketPair = new WebSocketPair()
 		const [client, server] = Object.values(webSocketPair)
@@ -58,16 +153,19 @@ export class NotificationsDO extends DurableObject<Env> implements Notifications
 		// Accept the WebSocket connection using Hibernation API
 		this.ctx.acceptWebSocket(server)
 
-		// Store connection metadata
+		// Store connection metadata with session token for re-validation
 		const metadata: ConnectionMetadata = {
 			connectedAt: Date.now(),
 			userAgent: request.headers.get('User-Agent') || undefined,
 		}
 
-		// Tag the WebSocket with user ID and metadata
+		// Tag the WebSocket with user ID, session token, and metadata
 		server.serializeAttachment({
-			userId,
+			userId: validatedUserId,
+			sessionToken,
 			metadata,
+			messageCount: 0,
+			lastValidatedAt: Date.now(),
 		})
 
 		// Return the client WebSocket to the caller
@@ -104,7 +202,7 @@ export class NotificationsDO extends DurableObject<Env> implements Notifications
 			return attachment?.userId === userId
 		})
 
-		// Send to all connected clients
+		// Send to all connected clients (WebSocket transport)
 		const message: ServerMessage = fullNotification
 		const messageStr = JSON.stringify(message)
 
@@ -118,6 +216,26 @@ export class NotificationsDO extends DurableObject<Env> implements Notifications
 				}
 			} catch (error) {
 				console.error(`Failed to send notification to WebSocket:`, error)
+			}
+		}
+
+		// Execute other transports (Discord, email, etc.) in parallel
+		const executor = this.getTransportExecutor()
+		if (executor) {
+			try {
+				const results = await executor.send(userId, fullNotification)
+				// Log transport results but don't fail notification if transports fail
+				for (const result of results) {
+					if (!result.result.success) {
+						console.error(
+							`Transport '${result.transportType}' failed for notification ${id}:`,
+							result.result.error
+						)
+					}
+				}
+			} catch (error) {
+				// Log but don't fail notification delivery
+				console.error(`Failed to execute transports for notification ${id}:`, error)
 			}
 		}
 	}
@@ -150,10 +268,36 @@ export class NotificationsDO extends DurableObject<Env> implements Notifications
 	 */
 	async webSocketMessage(ws: WebSocket, message: ArrayBuffer | string): Promise<void> {
 		try {
-			const attachment = ws.deserializeAttachment()
+			const attachment = ws.deserializeAttachment() as {
+				userId?: string
+				sessionToken?: string
+				metadata?: ConnectionMetadata
+				messageCount?: number
+				lastValidatedAt?: number
+			}
+
 			if (!attachment?.userId) {
 				ws.close(1008, 'Missing user ID')
 				return
+			}
+
+			// Increment message count
+			attachment.messageCount = (attachment.messageCount || 0) + 1
+
+			// Periodically re-validate session (every N messages or every N minutes)
+			const now = Date.now()
+			const shouldRevalidate =
+				!attachment.lastValidatedAt ||
+				attachment.messageCount % NotificationsDO.REVALIDATION_MESSAGE_COUNT === 0 ||
+				now - attachment.lastValidatedAt > NotificationsDO.REVALIDATION_INTERVAL_MS
+
+			if (shouldRevalidate && attachment.sessionToken) {
+				const validatedUserId = await this.validateSessionToken(attachment.sessionToken)
+				if (!validatedUserId || validatedUserId !== attachment.userId) {
+					ws.close(1008, 'Session expired or invalid')
+					return
+				}
+				attachment.lastValidatedAt = now
 			}
 
 			// Parse message
@@ -162,7 +306,9 @@ export class NotificationsDO extends DurableObject<Env> implements Notifications
 
 			if (clientMessage.type === 'ping') {
 				// Update last ping time
-				attachment.metadata.lastPingAt = Date.now()
+				if (attachment.metadata) {
+					attachment.metadata.lastPingAt = Date.now()
+				}
 				ws.serializeAttachment(attachment)
 
 				// Send pong response
@@ -171,6 +317,10 @@ export class NotificationsDO extends DurableObject<Env> implements Notifications
 			} else if (clientMessage.type === 'ack') {
 				// Handle acknowledgment
 				await this.handleAcknowledgment(attachment.userId, clientMessage.notificationId)
+				ws.serializeAttachment(attachment)
+			} else {
+				// Update attachment for other message types
+				ws.serializeAttachment(attachment)
 			}
 		} catch (error) {
 			console.error('Error handling WebSocket message:', error)

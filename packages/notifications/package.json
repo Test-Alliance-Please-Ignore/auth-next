@@ -9,6 +9,10 @@
 		"check:lint": "run-eslint",
 		"check:types": "run-tsc"
 	},
+	"dependencies": {
+		"@repo/notification-transport-base": "workspace:*",
+		"@repo/queue-utils": "workspace:*"
+	},
 	"devDependencies": {
 		"@repo/eslint-config": "workspace:*",
 		"@repo/tools": "workspace:*",

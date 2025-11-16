@@ -1,0 +1,1 @@
+ALTER TABLE "notifications_user_config" ADD PRIMARY KEY ("user_id");

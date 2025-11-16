@@ -123,6 +123,24 @@ async function checkCommanderFleetStatus(env: Env, characterId: string): Promise
 		if (isInFleet && isFleetBoss) {
 			const fleetId = fleetInfo.fleet_id
 
+			// Check if fleet is registered in fleet finder (cache-first with 5-minute validity)
+			const isRegistered = await fleetsStub.getFleetIsRegistered(fleetId, characterId)
+
+			logger.info('[FleetMonitoring] Fleet registration check result', {
+				characterId,
+				fleetId,
+				isRegistered,
+			})
+
+			// Only proceed if fleet is registered
+			if (!isRegistered) {
+				logger.info('[FleetMonitoring] Fleet is not registered in fleet finder, skipping', {
+					characterId,
+					fleetId,
+				})
+				return
+			}
+
 			// Create/get FleetMonitor DO instance using id 'fleet-${fleetId}'
 			using fleetMonitorStub = getStub<FleetMonitor>(env.FLEET_MONITOR, `fleet-${fleetId}`)
 
@@ -220,14 +238,18 @@ async function checkCommanderFleetStatus(env: Env, characterId: string): Promise
 				return
 			}
 
-			logger.info('[FleetMonitoring] Commander is fleet boss, initializing FleetMonitor', {
-				characterId,
-				fleetId,
-				wasInactive: cacheStatus
-					? !cacheStatus.isActive || cacheStatus.notFound || cacheStatus.endedAt
-					: false,
-				monitorStateKnown: monitorState !== null,
-			})
+			logger.info(
+				'[FleetMonitoring] Commander is fleet boss and fleet is registered, initializing FleetMonitor',
+				{
+					characterId,
+					fleetId,
+					isRegistered,
+					wasInactive: cacheStatus
+						? !cacheStatus.isActive || cacheStatus.notFound || cacheStatus.endedAt
+						: false,
+					monitorStateKnown: monitorState !== null,
+				}
+			)
 
 			// Initialize monitoring for this fleet
 			// initializeMonitoring will check if already initialized and return early if so

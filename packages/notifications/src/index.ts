@@ -5,6 +5,13 @@
  * This package allows other workers to interact with the Durable Object via RPC.
  */
 
+export { NotificationTransportRegistryImpl } from './transport-registry'
+export { NotificationTransportExecutor } from './transport-executor'
+export type {
+	ExecutionOptions,
+	ExecutionResult,
+} from './transport-executor'
+
 /**
  * Notification event types for different system events
  */
@@ -216,6 +223,19 @@ export interface ConnectionMetadata {
 	userAgent?: string
 }
 
+/**
+ * Notification configuration
+ */
+export interface NotificationConfig {
+	coreUserId: string
+	notificationType: string
+	eventType: string
+	enabled: boolean
+	notifyCount: number
+	lastNotifiedAt: Date | null
+	createdAt: Date
+	updatedAt: Date
+}
 /**
  * RPC interface for the Notifications Durable Object
  */

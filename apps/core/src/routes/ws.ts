@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { getCookie } from 'hono/cookie'
 
 import { getStub } from '@repo/do-utils'
 
@@ -22,13 +23,41 @@ ws.get('/notifications', async (c) => {
 		return c.json({ error: 'Unauthorized' }, 401)
 	}
 
+	// Extract session token from request (Authorization header or cookie)
+	// This matches the session middleware logic
+	const authHeader = c.req.header('Authorization')
+	const cookieToken = getCookie(c, 'session')
+
+	let sessionToken: string | undefined
+
+	if (authHeader && authHeader.startsWith('Bearer ')) {
+		sessionToken = authHeader.substring(7)
+	} else if (cookieToken) {
+		sessionToken = cookieToken
+	}
+
+	// Create a new request with session token in header for DO validation
+	const originalRequest = c.req.raw
+	const headers = new Headers(originalRequest.headers)
+
+	// Pass session token via custom header if available
+	if (sessionToken) {
+		headers.set('X-Session-Token', sessionToken)
+	}
+
+	const requestWithToken = new Request(originalRequest.url, {
+		method: originalRequest.method,
+		headers,
+		body: originalRequest.body,
+	})
+
 	// Get the NotificationsDO stub for this user
 	// Each user gets their own DO instance for isolation
 	using notificationsStub = getStub<Notifications>(c.env.NOTIFICATIONS, user.id)
 
 	// Forward the request to the Durable Object for WebSocket upgrade
 	// The DO will handle the WebSocket protocol from here
-	return notificationsStub.connect(c.req.raw, user.id)
+	return notificationsStub.connect(requestWithToken, user.id)
 })
 
 export default ws
