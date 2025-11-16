@@ -58,7 +58,7 @@ export class EftParser<Env> {
 		// --- Resolve Type IDs ---
 		// Collect all type names (ship + items) for batch resolution
 		const allTypeNames = [shipName, ...Array.from(itemNames)]
-		using stub = getStub<Universe>(this.env.UNIVERSE, 'default')
+		const stub = getStub<Universe>(this.env.UNIVERSE, 'default')
 		const typeIdMap = await stub.resolveTypeIdsByNames(allTypeNames)
 
 		// Resolve ship type ID

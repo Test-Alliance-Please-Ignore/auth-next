@@ -19,7 +19,7 @@ describe('Member Removal and Cleanup', () => {
 	})
 
 	it('removes departed members from database when syncing member list', async () => {
-		using stub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, testCorpId)
+		const stub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, testCorpId)
 
 		// Configure the corporation
 		await stub.setCharacter(testCorpId, '2119123456', 'Test Character')
@@ -38,7 +38,7 @@ describe('Member Removal and Cleanup', () => {
 	})
 
 	it('cleanupStaleMemberData returns zero when no stale members exist', async () => {
-		using stub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, testCorpId)
+		const stub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, testCorpId)
 
 		// Configure the corporation
 		await stub.setCharacter(testCorpId, '2119123456', 'Test Character')
@@ -55,7 +55,7 @@ describe('Member Removal and Cleanup', () => {
 	})
 
 	it('member list updates properly invalidate cache', async () => {
-		using stub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, testCorpId)
+		const stub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, testCorpId)
 
 		// Configure the corporation
 		await stub.setCharacter(testCorpId, '2119123456', 'Test Character')
@@ -70,14 +70,14 @@ describe('Member Removal and Cleanup', () => {
 	})
 
 	it('getMemberTracking returns empty array for unconfigured corporation', async () => {
-		using stub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, testCorpId)
+		const stub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, testCorpId)
 
 		const tracking = await stub.getMemberTracking(testCorpId)
 		expect(tracking).toEqual([])
 	})
 
 	it('handles empty member list correctly', async () => {
-		using stub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, testCorpId)
+		const stub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, testCorpId)
 
 		// Even without configuration, getting members should return empty array
 		const members = await stub.getMembers(testCorpId)

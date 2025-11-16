@@ -89,7 +89,7 @@ export function EditGroupNameDialog({
 						Cancel
 					</CancelButton>
 					<ConfirmButton
-						onClick={handleSave}
+						onConfirm={handleSave}
 						loading={updateGroup.isPending}
 						loadingText="Saving..."
 						disabled={isUnchanged || isInvalid}

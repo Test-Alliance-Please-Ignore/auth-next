@@ -878,7 +878,7 @@ export default function UserDetailPage() {
 							</DestructiveButton>
 						) : (
 							<ConfirmButton
-								onClick={handleToggleAdmin}
+								onConfirm={handleToggleAdmin}
 								loading={setUserAdmin.isPending}
 								loadingText="Granting..."
 								showIcon={false}
@@ -1052,7 +1052,7 @@ export default function UserDetailPage() {
 							Cancel
 						</CancelButton>
 						<ConfirmButton
-							onClick={handleSetPrimaryConfirm}
+							onConfirm={handleSetPrimaryConfirm}
 							loading={setPrimaryCharacter.isPending}
 							loadingText="Setting..."
 							showIcon={false}
@@ -1223,7 +1223,7 @@ export default function UserDetailPage() {
 							Cancel
 						</CancelButton>
 						<ConfirmButton
-							onClick={handleRemoveBlacklistConfirm}
+							onConfirm={handleRemoveBlacklistConfirm}
 							loading={removeBlacklist.isPending}
 							loadingText="Removing..."
 							showIcon={false}

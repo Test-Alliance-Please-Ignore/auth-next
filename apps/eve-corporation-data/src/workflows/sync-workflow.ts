@@ -40,7 +40,7 @@ async function updateSyncTimestamp(
 ): Promise<void> {
 	logger.debug('[updateSyncTimestamp] Starting update', { corporationId, syncProperty })
 	try {
-		using syncTimestampDO = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, 'default')
+		const syncTimestampDO = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, 'default')
 		await syncTimestampDO.updateCorporationSyncTimestamp(corporationId, syncProperty)
 		logger.debug('[updateSyncTimestamp] Updated successfully', { corporationId, syncProperty })
 	} catch (error) {
@@ -136,7 +136,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 
 		// Initialize workflow instance manager stub via RPC (non-blocking)
 		// This is for observability only - failures should not stop the workflow
-		let workflowInstanceManager: (WorkflowInstanceManager & { dispose(): void }) | null = null
+		let workflowInstanceManager: WorkflowInstanceManager | null = null
 		try {
 			workflowInstanceManager = getStub<WorkflowInstanceManager>(
 				this.env.ORCHESTRATOR_WORKFLOW_INSTANCE_MANAGER,
@@ -198,7 +198,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				throw new Error(errorMessage)
 			}
 
-			using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+			const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 			directorManager = new DirectorManager(db, corporationId, tokenStore)
 
 			logger.info('[EveCorporationSyncWorkflow] Starting full sync', {
@@ -268,7 +268,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				)
 
 				await step.do('store-public-info', {}, async () => {
-					using corpDataDO = getStub<EveCorporationData>(
+					const corpDataDO = getStub<EveCorporationData>(
 						this.env.EVE_CORPORATION_DATA,
 						corporationId
 					)
@@ -299,7 +299,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						timeout: '1 minute',
 					},
 					async () => {
-						using corpDataDO = getStub<EveCorporationData>(
+						const corpDataDO = getStub<EveCorporationData>(
 							this.env.EVE_CORPORATION_DATA,
 							corporationId
 						)
@@ -355,7 +355,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						timeout: '1 minute',
 					},
 					async () => {
-						using corpDataDO = getStub<EveCorporationData>(
+						const corpDataDO = getStub<EveCorporationData>(
 							this.env.EVE_CORPORATION_DATA,
 							corporationId
 						)
@@ -405,7 +405,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				)
 
 				await step.do('store-wallets', {}, async () => {
-					using corpDataDO = getStub<EveCorporationData>(
+					const corpDataDO = getStub<EveCorporationData>(
 						this.env.EVE_CORPORATION_DATA,
 						corporationId
 					)
@@ -433,7 +433,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						timeout: '5 minutes',
 					},
 					async () => {
-						using corpDataDO = getStub<EveCorporationData>(
+						const corpDataDO = getStub<EveCorporationData>(
 							this.env.EVE_CORPORATION_DATA,
 							corporationId
 						)
@@ -497,7 +497,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						timeout: '5 minutes',
 					},
 					async () => {
-						using corpDataDO = getStub<EveCorporationData>(
+						const corpDataDO = getStub<EveCorporationData>(
 							this.env.EVE_CORPORATION_DATA,
 							corporationId
 						)
@@ -564,7 +564,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						timeout: '2 minutes',
 					},
 					async () => {
-						using corpDataDO = getStub<EveCorporationData>(
+						const corpDataDO = getStub<EveCorporationData>(
 							this.env.EVE_CORPORATION_DATA,
 							corporationId
 						)
@@ -602,7 +602,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						timeout: '1 minute',
 					},
 					async () => {
-						using corpDataDO = getStub<EveCorporationData>(
+						const corpDataDO = getStub<EveCorporationData>(
 							this.env.EVE_CORPORATION_DATA,
 							corporationId
 						)
@@ -640,7 +640,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						timeout: '1 minute',
 					},
 					async () => {
-						using corpDataDO = getStub<EveCorporationData>(
+						const corpDataDO = getStub<EveCorporationData>(
 							this.env.EVE_CORPORATION_DATA,
 							corporationId
 						)
@@ -679,7 +679,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						timeout: '1 minute',
 					},
 					async () => {
-						using corpDataDO = getStub<EveCorporationData>(
+						const corpDataDO = getStub<EveCorporationData>(
 							this.env.EVE_CORPORATION_DATA,
 							corporationId
 						)
@@ -717,7 +717,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						timeout: '1 minute',
 					},
 					async () => {
-						using corpDataDO = getStub<EveCorporationData>(
+						const corpDataDO = getStub<EveCorporationData>(
 							this.env.EVE_CORPORATION_DATA,
 							corporationId
 						)
@@ -755,7 +755,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						timeout: '1 minute',
 					},
 					async () => {
-						using corpDataDO = getStub<EveCorporationData>(
+						const corpDataDO = getStub<EveCorporationData>(
 							this.env.EVE_CORPORATION_DATA,
 							corporationId
 						)

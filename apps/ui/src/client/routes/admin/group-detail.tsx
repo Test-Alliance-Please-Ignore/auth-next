@@ -833,7 +833,7 @@ export default function GroupDetailPage() {
 									Cancel
 								</CancelButton>
 								<ConfirmButton
-									onClick={handleCreateInviteCode}
+									onConfirm={handleCreateInviteCode}
 									loading={createInviteCode.isPending}
 									loadingText="Creating..."
 								>
@@ -1083,7 +1083,7 @@ export default function GroupDetailPage() {
 							<DialogFooter>
 								<CancelButton onClick={() => setShowAddServerDialog(false)}>Cancel</CancelButton>
 								<ConfirmButton
-									onClick={handleAttachServer}
+									onConfirm={handleAttachServer}
 									disabled={!selectedServerId}
 									showIcon={false}
 								>
@@ -1341,7 +1341,7 @@ export default function GroupDetailPage() {
 							</DestructiveButton>
 						) : (
 							<ConfirmButton
-								onClick={handleToggleAdminConfirm}
+								onConfirm={handleToggleAdminConfirm}
 								loading={toggleAdmin.isPending}
 								loadingText="Promoting..."
 								showIcon={false}

@@ -16,7 +16,7 @@ import type { Env } from '../context'
  * @returns Discord profile or null
  */
 export async function getProfile(env: Env, coreUserId: string) {
-	using stub = getStub<Discord>(env.DISCORD, 'default')
+	const stub = getStub<Discord>(env.DISCORD, 'default')
 	return stub.getProfileByCoreUserId(coreUserId)
 }
 
@@ -27,7 +27,7 @@ export async function getProfile(env: Env, coreUserId: string) {
  * @returns Success status
  */
 export async function refreshToken(env: Env, coreUserId: string) {
-	using stub = getStub<Discord>(env.DISCORD, 'default')
+	const stub = getStub<Discord>(env.DISCORD, 'default')
 	return stub.refreshTokenByCoreUserId(coreUserId)
 }
 
@@ -55,7 +55,7 @@ export async function storeTokens(
 	expiresAt: Date,
 	coreUserId: string
 ): Promise<boolean> {
-	using stub = getStub<Discord>(env.DISCORD, 'default')
+	const stub = getStub<Discord>(env.DISCORD, 'default')
 	return stub.storeTokensDirect(
 		userId,
 		username,

@@ -7,10 +7,12 @@ import { Button } from './button'
 
 import type { ButtonProps } from './button'
 
-export interface ConfirmButtonProps extends Omit<ButtonProps, 'variant'> {
+export interface ConfirmButtonProps extends Omit<ButtonProps, 'variant' | 'onClick'> {
 	loading?: boolean
 	loadingText?: string
 	showIcon?: boolean // Default true - shows check icon
+	onConfirm?: () => void | Promise<void>
+	confirmText?: string
 }
 
 /**
@@ -19,18 +21,29 @@ export interface ConfirmButtonProps extends Omit<ButtonProps, 'variant'> {
  * - Elevated shadow with subtle glow
  * - Strong hover states
  * - Loading state support
+ * - Optional confirmation dialog
  *
  * Use for primary confirmation actions: Create, Attach, Transfer, Make Admin, etc.
  */
 const ConfirmButton = React.forwardRef<HTMLButtonElement, ConfirmButtonProps>(
-	({ className, children, loading, loadingText, disabled, showIcon = true, ...props }, ref) => {
+	({ className, children, loading, loadingText, disabled, showIcon = true, onConfirm, confirmText, ...props }, ref) => {
 		const isDisabled = disabled || loading
+
+		const handleClick = async () => {
+			if (confirmText) {
+				if (!confirm(confirmText)) {
+					return
+				}
+			}
+			await onConfirm?.()
+		}
 
 		return (
 			<Button
 				ref={ref}
 				variant="default"
 				disabled={isDisabled}
+				onClick={handleClick}
 				className={cn(
 					// Greenish success background at rest - visible default state
 					'bg-[hsl(var(--confirm))] text-[hsl(var(--confirm-foreground))]',

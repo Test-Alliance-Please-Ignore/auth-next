@@ -55,52 +55,51 @@ When working with Cloudflare Workers in this repository, follow these principles
 ### Durable Objects Access Pattern
 **CRITICAL:** Always use the `getStub` helper from `@repo/do-utils` to access Durable Object stubs. NEVER directly call `.idFromName()`, `.idFromString()`, or `.get()` on the namespace.
 
-**CRITICAL:** Always dispose of stubs using the `using` keyword for automatic resource management. This prevents RPC stub leaks.
+**IMPORTANT:** Only stubs that return RpcTarget instances need disposal. Regular DurableObject stubs don't have a `dispose()` method and don't need the `using` keyword.
 
-**Correct Pattern (Automatic Disposal with `using` keyword):**
+**Correct Pattern (Regular DurableObject stubs - no disposal needed):**
 ```typescript
 import { getStub } from '@repo/do-utils'
-import type { EveTokenStore } from '@repo/eve-token-store'
+import type { Groups } from '@repo/groups'
 
-// Using 'using' keyword - stub is automatically disposed when scope exits
-using stub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
-
-// Call methods on the stub
-const token = await stub.getAccessToken(characterId)
-return c.json({ token })
-// stub.dispose() is automatically called here
+// Regular DurableObject stub - no disposal needed
+const stub = getStub<Groups>(c.env.GROUPS, 'default')
+const groups = await stub.listGroups()
+return c.json(groups)
 ```
 
-**Manual Disposal Pattern (if `using` is not available):**
+**Correct Pattern (RpcTarget stubs - disposal needed):**
 ```typescript
-const stub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
-try {
-  const token = await stub.getAccessToken(characterId)
-  return c.json({ token })
-} finally {
-  stub.dispose()
-}
+import { getStub } from '@repo/do-utils'
+import type { EveCharacterData } from '@repo/eve-character-data'
+
+// RpcTarget stub - needs disposal (only if stub has dispose method)
+// Note: Most stubs don't need 'using' - only those that return RpcTargets
+const stub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, characterId)
+const instance = await stub.getInstance(characterId) // Returns RpcTarget
+// If instance is an RpcTarget, use 'using' for it:
+using charInstance = instance
+const data = await charInstance.getKillmails()
+// charInstance.dispose() is automatically called here
 ```
 
 **Incorrect Pattern (DO NOT USE):**
 ```typescript
 // ❌ NEVER do this - accessing namespace directly
-const id = c.env.EVE_TOKEN_STORE.idFromName('default')
-const stub = c.env.EVE_TOKEN_STORE.get(id)
+const id = c.env.GROUPS.idFromName('default')
+const stub = c.env.GROUPS.get(id)
 
-// ❌ NEVER do this - forgetting to dispose
-const stub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
-const token = await stub.getAccessToken(characterId)
-return c.json({ token })
-// stub is never disposed - causes RPC warnings and resource leaks!
+// ❌ NEVER do this - using 'using' on regular DurableObject stubs
+using stub = getStub<Groups>(c.env.GROUPS, 'default') // Not needed!
+const groups = await stub.listGroups()
 ```
 
 **Benefits:**
-- **Automatic Resource Management:** `using` keyword ensures stubs are always disposed
 - **Type Safety:** The generic parameter provides full TypeScript typing for stub methods
-- **No Memory Leaks:** Prevents "RPC stub was not disposed properly" warnings
+- **Automatic Resource Management:** `getStub()` automatically adds `Symbol.dispose` only for RpcTarget stubs
+- **No Memory Leaks:** RpcTarget stubs are properly disposed when needed
+- **Simplicity:** Regular stubs work like normal variables - no special handling required
 - **Consistency:** Single pattern used across the entire codebase
-- **Simplicity:** Handles both string IDs and DurableObjectId instances automatically
 - **Maintainability:** Easier to update if Durable Object access patterns change
 
 ### Durable Objects Method Pattern

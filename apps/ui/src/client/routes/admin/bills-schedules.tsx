@@ -201,7 +201,7 @@ export default function BillsSchedulesPage() {
 														<ConfirmButton
 															size="sm"
 															showIcon={false}
-															onClick={() => handleResume(schedule.id)}
+															onConfirm={() => handleResume(schedule.id)}
 															loading={resumeSchedule.isPending}
 														>
 															<Play className="h-4 w-4 mr-2" />

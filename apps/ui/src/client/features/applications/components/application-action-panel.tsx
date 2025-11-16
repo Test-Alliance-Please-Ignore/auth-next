@@ -261,7 +261,7 @@ export function ApplicationActionPanel({
 					{/* Accept - Admin Only */}
 					{canAccept && (
 						<ConfirmButton
-							onClick={handleAcceptClick}
+							onConfirm={handleAcceptClick}
 							disabled={disabled || updateStatusMutation.isPending}
 							className="flex-1"
 						>
@@ -314,7 +314,7 @@ export function ApplicationActionPanel({
 							Cancel
 						</Button>
 						<ConfirmButton
-							onClick={handleAcceptConfirm}
+							onConfirm={handleAcceptConfirm}
 							loading={updateStatusMutation.isPending}
 							loadingText="Accepting..."
 						>

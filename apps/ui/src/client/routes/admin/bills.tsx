@@ -281,7 +281,7 @@ export default function AdminBillsPage() {
 														<ConfirmButton
 															size="sm"
 															showIcon={false}
-															onClick={() => handleIssue(bill.id)}
+															onConfirm={() => handleIssue(bill.id)}
 															loading={issueBill.isPending}
 														>
 															Issue

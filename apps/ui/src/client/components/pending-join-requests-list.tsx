@@ -131,7 +131,7 @@ export function PendingJoinRequestsList({ groupId }: PendingJoinRequestsListProp
 										disabled={processingId === request.id}
 										loading={processingId === request.id && approveRequest.isPending}
 										loadingText="Approving..."
-										onClick={() => handleApprove(request.id)}
+										onConfirm={() => handleApprove(request.id)}
 										showIcon={false}
 									>
 										<Check className="h-4 w-4 mr-1" />

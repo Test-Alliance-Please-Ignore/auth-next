@@ -146,7 +146,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			throw new Error('Corporation not configured.')
 		}
 
-		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 
 		const directorManager = new DirectorManager(
 			this.db,
@@ -178,7 +178,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			throw new Error('Corporation not configured.')
 		}
 
-		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		return new DirectorManager(this.db, config.corporationId, tokenStoreStub)
 	}
 
@@ -397,7 +397,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			})
 		}
 
-		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const directorManager = new DirectorManager(this.db, corporationId, tokenStoreStub)
 
 		// Check if director already exists
@@ -420,7 +420,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			return null
 		}
 
-		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const directorManager = new DirectorManager(this.db, config.corporationId, tokenStoreStub)
 		const directors = await directorManager.getAllDirectors()
 		const primaryDirector = directors[0] // First director by priority
@@ -468,7 +468,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			}
 		}
 
-		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const directorManager = new DirectorManager(this.db, config.corporationId, tokenStoreStub)
 		const result = await directorManager.verifyAllDirectorsHealth()
 
@@ -541,7 +541,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			})
 		}
 
-		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const directorManager = new DirectorManager(this.db, corporationId, tokenStoreStub)
 		await directorManager.addDirector(characterId, characterName, priority)
 
@@ -553,7 +553,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 * Remove a director character from this corporation
 	 */
 	async removeDirector(corporationId: string, characterId: string): Promise<void> {
-		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const directorManager = new DirectorManager(this.db, corporationId, tokenStoreStub)
 		await directorManager.removeDirector(characterId)
 
@@ -569,7 +569,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		characterId: string,
 		priority: number
 	): Promise<void> {
-		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const directorManager = new DirectorManager(this.db, corporationId, tokenStoreStub)
 		await directorManager.updateDirectorPriority(characterId, priority)
 
@@ -600,7 +600,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			logger.warn('[Directors Cache] Failed to read from KV', { corporationId, error })
 		}
 
-		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const directorManager = new DirectorManager(this.db, corporationId, tokenStoreStub)
 		const directors = await directorManager.getAllDirectors()
 
@@ -621,7 +621,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 * Get healthy directors for this corporation
 	 */
 	async getHealthyDirectors(corporationId: string): Promise<DirectorHealth[]> {
-		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const directorManager = new DirectorManager(this.db, corporationId, tokenStoreStub)
 		return await directorManager.getHealthyDirectors()
 	}
@@ -630,7 +630,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 * Verify health of a specific director
 	 */
 	async verifyDirectorHealth(corporationId: string, directorId: string): Promise<boolean> {
-		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const directorManager = new DirectorManager(this.db, corporationId, tokenStoreStub)
 		return await directorManager.verifyDirectorHealth(directorId)
 	}
@@ -641,7 +641,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	async verifyAllDirectorsHealth(
 		corporationId: string
 	): Promise<{ verified: number; failed: number }> {
-		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const directorManager = new DirectorManager(this.db, corporationId, tokenStoreStub)
 		return await directorManager.verifyAllDirectorsHealth()
 	}
@@ -1215,7 +1215,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		corporationId: string,
 		_forceRefresh = false
 	): Promise<void> {
-		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const data = await esiFetch.fetchPublicInfo(tokenStore, corporationId)
 
 		await this.db
@@ -1247,7 +1247,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 */
 	private async fetchAndStoreMembers(corporationId: string, _forceRefresh = false): Promise<void> {
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
-		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 
 		const memberIds: EsiCorporationMembers = await esiFetch.fetchMembers(
 			tokenStore,
@@ -1369,7 +1369,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
 		await this.verifyRole(characterId, ['Director'])
 
-		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const trackingData: EsiCorporationMemberTracking[] = await esiFetch.fetchMemberTracking(
 			tokenStore,
 			corporationId,
@@ -1444,7 +1444,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
 		await this.verifyRole(characterId, ['Accountant', 'Junior_Accountant'])
 
-		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const wallets = await esiFetch.fetchWallets(tokenStore, corporationId, characterId)
 
 		for (const wallet of wallets) {
@@ -1485,7 +1485,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
 		await this.verifyRole(characterId, ['Accountant', 'Junior_Accountant'])
 
-		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const entries = await esiFetch.fetchWalletJournal(
 			tokenStore,
 			corporationId,
@@ -1634,7 +1634,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
 		await this.verifyRole(characterId, ['Accountant', 'Junior_Accountant'])
 
-		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const transactions: EsiCorporationWalletTransaction[] = await esiFetch.fetchWalletTransactions(
 			tokenStore,
 			corporationId,
@@ -1752,7 +1752,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
 		await this.verifyRole(characterId, ['Director'])
 
-		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const assets: EsiCorporationAsset[] = await esiFetch.fetchAssets(
 			tokenStore,
 			corporationId,
@@ -1854,7 +1854,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
 		await this.verifyRole(characterId, ['Station_Manager'])
 
-		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const structures: EsiCorporationStructure[] = await esiFetch.fetchStructures(
 			tokenStore,
 			corporationId,
@@ -1913,7 +1913,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
 		await this.verifyRole(characterId, ['Accountant', 'Junior_Accountant', 'Trader'])
 
-		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const orders: EsiCorporationOrder[] = await esiFetch.fetchOrders(
 			tokenStore,
 			corporationId,
@@ -1968,7 +1968,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
 		await this.verifyRole(characterId, ['Director'])
 
-		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const contracts: EsiCorporationContract[] = await esiFetch.fetchContracts(
 			tokenStore,
 			corporationId,
@@ -2031,7 +2031,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
 		await this.verifyRole(characterId, ['Factory_Manager'])
 
-		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const jobs: EsiCorporationIndustryJob[] = await esiFetch.fetchIndustryJobs(
 			tokenStore,
 			corporationId,
@@ -2096,7 +2096,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
 		await this.verifyRole(characterId, ['Director'])
 
-		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const killmails: EsiCorporationKillmail[] = await esiFetch.fetchKillmails(
 			tokenStore,
 			corporationId,
@@ -2404,7 +2404,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	}> {
 		// Fetch current members from ESI
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
-		using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 
 		const response = await tokenStore.fetchEsi<number[]>(
 			`/corporations/${corporationId}/members`,

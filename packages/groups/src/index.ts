@@ -37,7 +37,7 @@ export * from './permissions'
 export type Visibility = 'public' | 'hidden' | 'system'
 export type CategoryPermission = 'anyone' | 'admin_only'
 export type JoinMode = 'open' | 'approval' | 'invitation_only'
-export type InvitationStatus = 'pending' | 'accepted' | 'declined' | 'expired'
+export type InvitationStatus = 'pending' | 'accepted' | 'declined' | 'expired' | 'cancelled'
 export type JoinRequestStatus = 'pending' | 'approved' | 'rejected' | 'cancelled'
 
 /**

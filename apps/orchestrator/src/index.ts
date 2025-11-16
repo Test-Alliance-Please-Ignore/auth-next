@@ -50,7 +50,7 @@ const app = new Hono<App>()
 
 		try {
 			// Fetch user from Discord DO to get discordUserId
-			using discordStub = getStub<Discord>(c.env.DISCORD, 'default')
+			const discordStub = getStub<Discord>(c.env.DISCORD, 'default')
 			const users = await discordStub.getUsersNeedingRefresh(1000, 15)
 			const discordUser = users.find((u) => u.coreUserId === userId)
 
@@ -97,7 +97,7 @@ const app = new Hono<App>()
 		try {
 			// Manually trigger the batch process (same as scheduled handler)
 			// Query Discord database directly via RPC (15-minute minimum interval)
-			using discordStub = getStub<Discord>(c.env.DISCORD, 'default')
+			const discordStub = getStub<Discord>(c.env.DISCORD, 'default')
 			const discordUsers = await discordStub.getUsersNeedingRefresh(50, 15)
 
 			if (discordUsers.length === 0) {

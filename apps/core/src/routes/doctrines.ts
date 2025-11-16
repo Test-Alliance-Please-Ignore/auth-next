@@ -106,7 +106,7 @@ doctrines.get('/', async (c) => {
 		search: c.req.query('search'),
 	}
 
-	using doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
+	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
 	const doctrinesList = await doctrinesStub.getDoctrines(filters, user.id, characterIds, user.is_admin)
 
 	return c.json(doctrinesList)
@@ -121,7 +121,7 @@ doctrines.get('/:id', async (c) => {
 	const characterIds = user.characters.map((ch) => ch.characterId)
 	const doctrineId = c.req.param('id')
 
-	using doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
+	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
 	const doctrine = await doctrinesStub.getDoctrine(doctrineId, user.id, characterIds, user.is_admin)
 
 	if (!doctrine) {
@@ -155,7 +155,7 @@ doctrines.post('/', async (c) => {
 		return c.json({ error: 'Requires doctrines:create permission' }, 403)
 	}
 
-	using doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
+	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
 	const doctrine = await doctrinesStub.createDoctrine(body, user.id, characterIds)
 
 	return c.json(doctrine, 201)
@@ -186,7 +186,7 @@ doctrines.patch('/:id', async (c) => {
 		return c.json({ error: 'Requires doctrines:edit permission' }, 403)
 	}
 
-	using doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
+	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
 	const doctrine = await doctrinesStub.updateDoctrine(doctrineId, body, user.id, characterIds, user.is_admin)
 
 	return c.json(doctrine)
@@ -216,7 +216,7 @@ doctrines.delete('/:id', async (c) => {
 		return c.json({ error: 'Requires doctrines:delete permission' }, 403)
 	}
 
-	using doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
+	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
 	await doctrinesStub.deleteDoctrine(doctrineId, user.id, characterIds, user.is_admin)
 
 	return c.json({ success: true })
@@ -253,7 +253,7 @@ doctrines.post('/:id/fittings', async (c) => {
 		return c.json({ error: 'Requires doctrines:edit permission' }, 403)
 	}
 
-	using doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
+	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
 	await doctrinesStub.addFittingToDoctrine(doctrineId, body.fittingId, user.id, characterIds, user.is_admin)
 
 	return c.json({ success: true })
@@ -284,7 +284,7 @@ doctrines.delete('/:id/fittings/:fittingId', async (c) => {
 		return c.json({ error: 'Requires doctrines:edit permission' }, 403)
 	}
 
-	using doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
+	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
 	await doctrinesStub.removeFittingFromDoctrine(doctrineId, fittingId, user.id, characterIds, user.is_admin)
 
 	return c.json({ success: true })
@@ -316,7 +316,7 @@ doctrines.get('/fittings', async (c) => {
 		search: c.req.query('search'),
 	}
 
-	using doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
+	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
 	const fittingsList = await doctrinesStub.getFittings(filters, user.id, characterIds, user.is_admin)
 
 	console.log('[GET /fittings] Fetched fittings', {
@@ -343,7 +343,7 @@ doctrines.get('/fittings/:id', async (c) => {
 		isAdmin: user.is_admin,
 	})
 
-	using doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
+	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
 	const fitting = await doctrinesStub.getFitting(fittingId, user.id, characterIds, user.is_admin)
 
 	if (!fitting) {
@@ -384,7 +384,7 @@ doctrines.post('/fittings', async (c) => {
 		return c.json({ error: 'Requires doctrines:create_fitting permission' }, 403)
 	}
 
-	using doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
+	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
 	const fitting = await doctrinesStub.createFitting(body, user.id, characterIds)
 
 	return c.json(fitting, 201)
@@ -415,7 +415,7 @@ doctrines.patch('/fittings/:id', async (c) => {
 		return c.json({ error: 'Requires doctrines:edit_fitting permission' }, 403)
 	}
 
-	using doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
+	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
 	const fitting = await doctrinesStub.updateFitting(fittingId, body, user.id, characterIds, user.is_admin)
 
 	return c.json(fitting)
@@ -445,7 +445,7 @@ doctrines.delete('/fittings/:id', async (c) => {
 		return c.json({ error: 'Requires doctrines:delete_fitting permission' }, 403)
 	}
 
-	using doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
+	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
 	await doctrinesStub.deleteFitting(fittingId, user.id, characterIds, user.is_admin)
 
 	return c.json({ success: true })

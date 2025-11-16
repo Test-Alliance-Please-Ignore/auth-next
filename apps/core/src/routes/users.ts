@@ -323,7 +323,7 @@ users.get('/has-corporation-access', async (c) => {
 		// This ensures we check all managed corporations the user has characters in
 		const charCorpPromises = characters.map(async (character) => {
 			try {
-				using charStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+				const charStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
 				const charData = await charStub.getCharacterInfo(character.characterId)
 				return charData ? String(charData.corporationId) : null
 			} catch {
@@ -340,7 +340,7 @@ users.get('/has-corporation-access', async (c) => {
 			if (managedCorp) {
 				// Found a managed corp - quick check for any role
 				try {
-					using corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corpId)
+					const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corpId)
 					const [corpInfo, directors] = await Promise.all([
 						corpStub.getCorporationInfo(corpId),
 						corpStub.getDirectors(corpId),
@@ -455,7 +455,7 @@ users.get('/corporation-access', async (c) => {
 		logger.info('[Corporation Access] Fetching character corporation IDs...')
 
 		// Create single character stub (reuse for all calls)
-		using charStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+		const charStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
 
 		// Fetch character data in parallel to get corporation IDs
 		const charDataPromises = characters.map(async (character) => {
@@ -506,7 +506,7 @@ users.get('/corporation-access', async (c) => {
 		// Process corporations in parallel instead of sequential loop
 		const corpCheckPromises = relevantCorps.map(async (corp) => {
 			try {
-				using corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corp.corporationId)
+				const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corp.corporationId)
 
 				// Get corporation info and directors in parallel
 				const [corpInfo, directors] = await Promise.all([
@@ -644,7 +644,7 @@ users.get('/my-corporations', async (c) => {
 			// Fetch all corporation data in parallel
 			const corpDataPromises = managedCorps.map(async (corp) => {
 				try {
-					using corpStub = getStub<EveCorporationData>(
+					const corpStub = getStub<EveCorporationData>(
 						c.env.EVE_CORPORATION_DATA,
 						corp.corporationId
 					)
@@ -726,7 +726,7 @@ users.get('/my-corporations', async (c) => {
 		}
 
 		// STEP 2: Create stubs ONCE (outside loops)
-		using charStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+		const charStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
 
 		// STEP 3: Batch fetch all character data in parallel
 		const characterDataMap = new Map<string, any>()
@@ -762,7 +762,7 @@ users.get('/my-corporations', async (c) => {
 		// STEP 6: Batch fetch all corporation data in parallel
 		const corpDataPromises = relevantCorps.map(async (corp) => {
 			try {
-				using corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corp.corporationId)
+				const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corp.corporationId)
 
 				// Fetch all corp data in parallel for each corporation
 				const [corpInfo, directors, coreData] = await Promise.all([

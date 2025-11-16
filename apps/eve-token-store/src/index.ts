@@ -34,7 +34,7 @@ const app = new Hono<App>()
 	.get('/evesso/login', async (c) => {
 		try {
 			// Get the Durable Object stub
-			using stub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+			const stub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
 
 			// Optional state parameter from query
 			const state = c.req.query('state')
@@ -63,7 +63,7 @@ const app = new Hono<App>()
 	.get('/evesso/character', async (c) => {
 		try {
 			// Get the Durable Object stub
-			using stub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+			const stub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
 
 			// Optional state parameter from query
 			const state = c.req.query('state')
@@ -121,7 +121,7 @@ const app = new Hono<App>()
 			}
 
 			// Get the Durable Object stub
-			using stub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+			const stub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
 
 			// Handle callback
 			const result = await stub.handleCallback(code, state)

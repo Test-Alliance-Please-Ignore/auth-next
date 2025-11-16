@@ -45,7 +45,7 @@ export class HrRoleService {
 	): Promise<HrRole> {
 		// Validate corporation membership by checking character's corporation ID
 		// This is much more efficient than fetching all corporation members
-		using charStub = getStub<EveCharacterData>(eveCharacterDataNamespace, 'default')
+		const charStub = getStub<EveCharacterData>(eveCharacterDataNamespace, 'default')
 		const charInfo = await charStub.getCharacterInfo(characterId)
 
 		if (!charInfo?.corporationId) {

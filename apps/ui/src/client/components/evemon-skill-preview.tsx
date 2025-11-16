@@ -95,7 +95,7 @@ export function EvemonSkillPreview({
 				</Button>
 				<ConfirmButton
 					type="button"
-					onClick={onConfirm}
+					onConfirm={onConfirm}
 					loading={isLoading}
 					loadingText="Importing..."
 					showIcon={!isLoading}

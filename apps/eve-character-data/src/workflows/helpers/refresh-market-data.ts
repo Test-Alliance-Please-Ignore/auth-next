@@ -22,8 +22,8 @@ export async function refreshMarketData(
 	characterId: string
 ): Promise<RefreshMarketDataResult> {
 	// Create fresh stubs for this operation
-	using characterDataStub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, characterId)
-	using tokenStoreStub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
+	const characterDataStub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, characterId)
+	const tokenStoreStub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
 	const characterData = await characterDataStub.getInstance(characterId)
 
 	try {

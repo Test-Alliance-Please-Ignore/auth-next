@@ -19,7 +19,7 @@ const invite = new Hono<App>()
 invite.get('/:code', async (c) => {
 	const code = c.req.param('code')
 	const user = c.get('user')
-	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
 		const result = await groupsDO.getGroupByInviteCode(code, user?.id)

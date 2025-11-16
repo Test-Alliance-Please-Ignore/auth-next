@@ -27,7 +27,7 @@ export async function scheduledHandler(
 
 	try {
 		// Get the main FleetsDO instance
-		using fleetsStub = getStub<Fleets>(env.FLEETS, 'default')
+		const fleetsStub = getStub<Fleets>(env.FLEETS, 'default')
 
 		// Get list of monitored fleet commanders from database
 		const monitoredCommanders = await fleetsStub.listMonitoredFleetCommanders()
@@ -100,7 +100,7 @@ async function checkCommanderFleetStatus(env: Env, characterId: string): Promise
 		})
 
 		// Get the main FleetsDO instance
-		using fleetsStub = getStub<Fleets>(env.FLEETS, 'default')
+		const fleetsStub = getStub<Fleets>(env.FLEETS, 'default')
 
 		// Get character's fleet information
 		const fleetInfo = await fleetsStub.getCharacterFleetInformation(characterId as EveCharacterId)
@@ -142,7 +142,7 @@ async function checkCommanderFleetStatus(env: Env, characterId: string): Promise
 			}
 
 			// Create/get FleetMonitor DO instance using id 'fleet-${fleetId}'
-			using fleetMonitorStub = getStub<FleetMonitor>(env.FLEET_MONITOR, `fleet-${fleetId}`)
+			const fleetMonitorStub = getStub<FleetMonitor>(env.FLEET_MONITOR, `fleet-${fleetId}`)
 
 			// Check fleet cache status and monitor state in parallel since they're independent
 			const [cacheStatusResult, monitorStateResult] = await Promise.allSettled([

@@ -4,7 +4,7 @@
  * Re-export types from API client for consistency
  */
 
-export type {
+import type {
 	Doctrine,
 	Fitting,
 	FittingItem,
@@ -17,6 +17,20 @@ export type {
 	ListDoctrinesFilters,
 	ListFittingsFilters,
 } from '@/lib/api'
+
+export type {
+	Doctrine,
+	Fitting,
+	FittingItem,
+	DoctrineWithFittings,
+	FittingWithItems,
+	CreateDoctrineRequest,
+	UpdateDoctrineRequest,
+	CreateFittingRequest,
+	UpdateFittingRequest,
+	ListDoctrinesFilters,
+	ListFittingsFilters,
+}
 
 /**
  * Parsed EFT (EVE Fitting Tool) format data

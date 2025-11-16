@@ -128,7 +128,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 		authorizedCharacterId: EveCharacterId
 	): Promise<EsiGetStructureResponse | null> {
 		try {
-			using tokenStoreStub = getStub<EveTokenStore>(
+			const tokenStoreStub = getStub<EveTokenStore>(
 				this.env.EVE_TOKEN_STORE,
 				structureId ? String(structureId) : 'default'
 			)
@@ -174,7 +174,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 		authorizedCharacterId: EveCharacterId
 	): Promise<EsiGetStructureMarketDataResponse | null> {
 		try {
-			using tokenStoreStub = getStub<EveTokenStore>(
+			const tokenStoreStub = getStub<EveTokenStore>(
 				this.env.EVE_TOKEN_STORE,
 				structureId ? String(structureId) : 'default'
 			)

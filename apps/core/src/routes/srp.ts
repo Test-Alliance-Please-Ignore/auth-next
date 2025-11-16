@@ -85,7 +85,7 @@ srp.get('/losses', async (c) => {
 		return c.json([])
 	}
 
-	using srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
 	const losses = await srpStub.getRecentLosses(characterIds, user.id, daysBack)
 
 	return c.json(losses)
@@ -117,7 +117,7 @@ srp.post('/requests', async (c) => {
 		return c.json({ error: 'Not authorized to create request for this character' }, 403)
 	}
 
-	using srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
 	const request = await srpStub.createRequest(
 		user.id,
 		characterId,
@@ -138,7 +138,7 @@ srp.get('/requests', async (c) => {
 	const limit = c.req.query('limit') ? Number.parseInt(c.req.query('limit')!, 10) : 50
 	const offset = c.req.query('offset') ? Number.parseInt(c.req.query('offset')!, 10) : 0
 
-	using srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
 	const requests = await srpStub.getUserRequests(user.id, limit, offset)
 
 	return c.json({
@@ -157,7 +157,7 @@ srp.get('/requests/:id', async (c) => {
 	const user = c.get('user')!
 	const requestId = c.req.param('id')
 
-	using srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
 	const request = await srpStub.getRequest(requestId, user.id)
 
 	if (!request) {
@@ -195,7 +195,7 @@ srp.get('/pending', async (c) => {
 		return c.json({ error: 'Requires reviewer permissions' }, 403)
 	}
 
-	using srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
 	const requests = await srpStub.getPendingRequests(corporationId || '', limit, offset)
 
 	return c.json({
@@ -230,7 +230,7 @@ srp.post('/requests/:id/approve', async (c) => {
 
 	const { approvedAmount, reviewNotes } = validation.data
 
-	using srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
 	const request = await srpStub.approveRequest(requestId, user.id, approvedAmount, reviewNotes)
 
 	return c.json(request)
@@ -260,7 +260,7 @@ srp.post('/requests/:id/partially-approve', async (c) => {
 
 	const { approvedAmount, rejectionReason, reviewNotes } = validation.data
 
-	using srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
 	const request = await srpStub.partiallyApproveRequest(
 		requestId,
 		user.id,
@@ -296,7 +296,7 @@ srp.post('/requests/:id/reject', async (c) => {
 
 	const { rejectionReason, reviewNotes } = validation.data
 
-	using srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
 	const request = await srpStub.rejectRequest(requestId, user.id, rejectionReason, reviewNotes)
 
 	return c.json(request)
@@ -316,7 +316,7 @@ srp.get('/requests/:id/comments', async (c) => {
 	const includeInternal = c.req.query('includeInternal') === 'true'
 
 	// Verify access to request
-	using srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
 	const request = await srpStub.getRequest(requestId, user.id)
 
 	if (!request) {
@@ -350,7 +350,7 @@ srp.post('/requests/:id/comments', async (c) => {
 	}
 
 	// Verify access to request
-	using srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
 	const request = await srpStub.getRequest(requestId, user.id)
 
 	if (!request) {
@@ -399,7 +399,7 @@ srp.patch('/comments/:id', async (c) => {
 
 	const { content } = validation.data
 
-	using srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
 	const comment = await srpStub.editComment(commentId, user.id, content)
 
 	return c.json(comment)
@@ -413,7 +413,7 @@ srp.delete('/comments/:id', async (c) => {
 	const user = c.get('user')!
 	const commentId = c.req.param('id')
 
-	using srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
 	await srpStub.deleteComment(commentId, user.id)
 
 	return c.json({ success: true })
@@ -442,7 +442,7 @@ srp.get('/payments/pending', async (c) => {
 		return c.json({ error: 'Requires payer permissions' }, 403)
 	}
 
-	using srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
 	const requests = await srpStub.getPendingPayments(corporationId, limit, offset)
 
 	return c.json({
@@ -477,7 +477,7 @@ srp.post('/requests/:id/mark-paid', async (c) => {
 
 	const { paidAmount, paymentToken } = validation.data
 
-	using srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
 	const request = await srpStub.markPaid(requestId, user.id, paidAmount, paymentToken)
 
 	return c.json(request)
@@ -507,7 +507,7 @@ srp.post('/requests/:id/mark-partially-paid', async (c) => {
 
 	const { paidAmount, paymentToken, notes } = validation.data
 
-	using srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
 	const request = await srpStub.markPartiallyPaid(
 		requestId,
 		user.id,
@@ -530,7 +530,7 @@ srp.post('/requests/:id/mark-partially-paid', async (c) => {
 srp.get('/config', async (c) => {
 	const user = c.get('user')!
 
-	using srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
 	const config = await srpStub.getConfig()
 
 	if (!config) {
@@ -559,7 +559,7 @@ srp.patch('/config', async (c) => {
 		return c.json({ error: 'Requires admin permissions' }, 403)
 	}
 
-	using srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
 	const config = await srpStub.updateConfig(user.id, validation.data)
 
 	return c.json(config)
@@ -584,7 +584,7 @@ srp.get('/stats', async (c) => {
 		return c.json({ error: 'Requires admin permissions' }, 403)
 	}
 
-	using srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
 	const stats = await srpStub.getStats(startDate, endDate, corporationId)
 
 	return c.json(stats)

@@ -796,7 +796,7 @@ export default function CorporationDetailPage() {
 											Cancel
 										</CancelButton>
 										<ConfirmButton
-											onClick={handleAttachServer}
+											onConfirm={handleAttachServer}
 											disabled={!selectedServerId}
 											showIcon={false}
 										>
@@ -1021,7 +1021,6 @@ export default function CorporationDetailPage() {
 													</p>
 												</div>
 												<ConfirmButton
-													variant="ghost"
 													size="sm"
 													onConfirm={() => handleRemovePermission(perm.id)}
 													confirmText="Are you sure you want to remove this permission from the corporation?"
@@ -1073,7 +1072,7 @@ export default function CorporationDetailPage() {
 									Cancel
 								</CancelButton>
 								<ConfirmButton
-									onClick={handleAttachPermission}
+									onConfirm={handleAttachPermission}
 									disabled={!selectedPermissionId || attachPermission.isPending}
 								>
 									Attach Permission

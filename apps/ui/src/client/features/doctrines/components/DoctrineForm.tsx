@@ -16,7 +16,7 @@ import type { CreateDoctrineRequest, Doctrine, UpdateDoctrineRequest } from '../
 
 interface DoctrineFormProps {
 	doctrine?: Doctrine
-	onSubmit: (data: CreateDoctrineRequest | UpdateDoctrineRequest) => void
+	onSubmit: (data: CreateDoctrineRequest | UpdateDoctrineRequest) => void | Promise<void>
 	onCancel: () => void
 	isSubmitting?: boolean
 }

@@ -75,7 +75,7 @@ export class DkpService {
 		// Strategy 1: Try eve-character-data Durable Object (most reliable, ESI-backed)
 		if (this.eveCharacterDataNamespace) {
 			try {
-				using charStub = getStub<EveCharacterData>(
+				const charStub = getStub<EveCharacterData>(
 					this.eveCharacterDataNamespace,
 					params.characterId
 				)
@@ -116,7 +116,7 @@ export class DkpService {
 		// Strategy 3: Try eve-corporation-data for corporation name if still missing
 		if (!corporationName && this.eveCorporationDataNamespace) {
 			try {
-				using corpStub = getStub<EveCorporationData>(
+				const corpStub = getStub<EveCorporationData>(
 					this.eveCorporationDataNamespace,
 					corporationId
 				)
@@ -227,7 +227,7 @@ export class DkpService {
 		const uniqueNames = [...new Set(names)]
 
 		// Get eve-character-data stub (use any character ID as the DO is stateless for search)
-		using charDataStub = getStub<EveCharacterData>(this.eveCharacterDataNamespace, '0')
+		const charDataStub = getStub<EveCharacterData>(this.eveCharacterDataNamespace, '0')
 
 		// Resolve each name
 		for (const name of uniqueNames) {

@@ -410,7 +410,7 @@ export class FleetMonitorDO extends DurableObject {
 		const { fleetId, characterId } = state
 
 		try {
-			using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+			const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 
 			// Fetch fleet info
 			const fleetResponse = await tokenStore.fetchEsi<EsiGetFleetInformation>(
@@ -438,7 +438,7 @@ export class FleetMonitorDO extends DurableObject {
 			}
 
 			// Get fleet boss name
-			using characterStub = getStub<EveCharacterData>(this.env.EVE_CHARACTER_DATA, characterId)
+			const characterStub = getStub<EveCharacterData>(this.env.EVE_CHARACTER_DATA, characterId)
 			const characterInfo = await characterStub.getCharacterInfo(characterId)
 
 			// Resolve ship type IDs, character IDs, system IDs, and station IDs to names if members are available
@@ -736,7 +736,7 @@ export class FleetMonitorDO extends DurableObject {
 
 		// Resolve uncached IDs
 		if (uncachedIds.length > 0) {
-			using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+			const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 			const characterNames = await tokenStore.resolveIds(uncachedIds)
 			for (const [id, name] of Object.entries(characterNames)) {
 				resolved[id] = name
@@ -768,7 +768,7 @@ export class FleetMonitorDO extends DurableObject {
 
 		// Resolve uncached IDs
 		if (uncachedIds.length > 0) {
-			using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+			const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 			const systemNames = await tokenStore.resolveIds(uncachedIds)
 			for (const [id, name] of Object.entries(systemNames)) {
 				resolved[id] = name
@@ -800,7 +800,7 @@ export class FleetMonitorDO extends DurableObject {
 
 		// Resolve uncached IDs
 		if (uncachedIds.length > 0) {
-			using universeStub = getStub<Universe>(this.env.UNIVERSE, 'default')
+			const universeStub = getStub<Universe>(this.env.UNIVERSE, 'default')
 			const shipTypes = await universeStub.resolveTypeNamesByIds(uncachedIds)
 			for (const [id, type] of Object.entries(shipTypes)) {
 				const name = (type as InvType | null)?.typeName || id
@@ -847,7 +847,7 @@ export class FleetMonitorDO extends DurableObject {
 
 		// Resolve uncached IDs
 		if (uncachedIds.length > 0) {
-			using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+			const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 			const stationNames = await tokenStore.resolveIds(uncachedIds)
 			for (const [id, name] of Object.entries(stationNames)) {
 				resolved[id] = name

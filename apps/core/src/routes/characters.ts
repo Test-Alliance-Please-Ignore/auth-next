@@ -37,7 +37,7 @@ async function transformAndEnrichSkillsData(skills: any, env: any) {
 	}
 
 	// Get Skills DO stub to fetch metadata
-	using skillsStub = getStub<any>(env.SKILLS, 'default')
+	const skillsStub = getStub<any>(env.SKILLS, 'default')
 
 	// Extract all skill IDs
 	const skillIds = transformed.skills.map((s: any) => String(s.skillId))
@@ -103,7 +103,7 @@ async function transformAndEnrichSkillQueue(queue: any, env: any) {
 	}
 
 	// Get Skills DO stub to fetch metadata
-	using skillsStub = getStub<any>(env.SKILLS, 'default')
+	const skillsStub = getStub<any>(env.SKILLS, 'default')
 
 	// Extract unique skill IDs
 	const skillIds = [...new Set(transformed.map((e: any) => String(e.skillId)))]
@@ -218,7 +218,7 @@ app.get('/:characterId', requireAuth(), async (c) => {
 
 	if (!isActualOwner && !isAdmin) {
 		// Get character's corporation to check CEO/Director access
-		using eveCharacterDataStubForAuth = getStub<EveCharacterData>(
+		const eveCharacterDataStubForAuth = getStub<EveCharacterData>(
 			c.env.EVE_CHARACTER_DATA,
 			characterId
 		)
@@ -231,7 +231,7 @@ app.get('/:characterId', requireAuth(), async (c) => {
 
 				// Check if any of user's characters are CEO/Director of this corporation
 				for (const userChar of user.characters) {
-					using userCharStub = getStub<EveCharacterData>(
+					const userCharStub = getStub<EveCharacterData>(
 						c.env.EVE_CHARACTER_DATA,
 						userChar.characterId
 					)
@@ -245,7 +245,7 @@ app.get('/:characterId', requireAuth(), async (c) => {
 						}
 
 						// Get corporation info and directors
-						using corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+						const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 						try {
 							const [corpInfo, directors] = await Promise.all([
 								corpStub.getCorporationInfo(corporationId),
@@ -339,7 +339,7 @@ app.get('/:characterId', requireAuth(), async (c) => {
 	const isOwner = isActualOwner || isAdmin
 
 	// Get EVE Character Data DO stub
-	using eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, characterId)
+	const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, characterId)
 	const eveCharacterData = await eveCharacterDataStub.getInstance(characterId)
 
 	try {
@@ -575,7 +575,7 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 	}
 
 	// Get EVE Character Data DO stub
-	using eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, characterId)
+	const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, characterId)
 	const eveCharacterData = await eveCharacterDataStub.getInstance(characterId)
 
 	// Get EVE Token Store DO stub for authenticated data

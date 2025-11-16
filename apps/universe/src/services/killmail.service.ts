@@ -89,7 +89,7 @@ export class KillmailService {
 		// Resolve all IDs to names
 		let resolvedNames: Record<string, string> = {}
 		if (entityIds.size > 0) {
-			using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+			const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 			resolvedNames = await tokenStoreStub.resolveIds(Array.from(entityIds))
 		}
 

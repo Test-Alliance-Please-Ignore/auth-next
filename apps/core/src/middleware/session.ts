@@ -40,7 +40,7 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 		}
 
 		// Create EVE Token Store stub (moved before try block for proper lifecycle)
-		using eveTokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+		const eveTokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
 
 		try {
 			// Create database client
@@ -72,7 +72,7 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 			const userProfile = await userService.getUserProfile(userId)
 
 			// SECURITY: Check if user is blacklisted
-			using hrStub = getStub<Hr>(c.env.HR, 'default')
+			const hrStub = getStub<Hr>(c.env.HR, 'default')
 			const isBlacklisted = await hrStub.isUserBlacklisted(userId)
 
 			if (isBlacklisted) {

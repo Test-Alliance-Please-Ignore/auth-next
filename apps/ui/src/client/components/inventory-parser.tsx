@@ -87,7 +87,7 @@ export function InventoryParser({
 
 					<div className="flex items-center gap-4">
 						<ConfirmButton
-							onClick={handleParse}
+							onConfirm={handleParse}
 							disabled={!inventoryText.trim() || isLoading}
 							loading={isLoading}
 						>

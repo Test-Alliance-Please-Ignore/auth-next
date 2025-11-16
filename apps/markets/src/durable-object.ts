@@ -392,7 +392,7 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 		try {
 			// Fetch stream from ESI via EveTokenStore
 			console.log(`[fetchAndStoreSnapshot] Getting token store stub`)
-			using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+			const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 			console.log(`[fetchAndStoreSnapshot] Calling fetchPublicEsiAllPagesStream`)
 			const stream = await tokenStore.fetchPublicEsiAllPagesStream(`/markets/${regionId}/orders`, {
 				maxConcurrent: 10,
@@ -550,7 +550,7 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 		try {
 			// Fetch from ESI via EveTokenStore (authenticated)
 			console.log(`[fetchAndStoreStructureSnapshot] Getting token store stub`)
-			using tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+			const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 			console.log(`[fetchAndStoreStructureSnapshot] Calling fetchEsi`)
 
 			// Structure markets endpoint returns all orders in single page

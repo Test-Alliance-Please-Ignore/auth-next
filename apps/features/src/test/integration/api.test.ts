@@ -26,7 +26,7 @@ describe('Features Worker', () => {
 
 describe('Features Durable Object - Feature Flags', () => {
 	it('can register a new feature flag', async () => {
-		using stub = getStub<Features>(testEnv.FEATURES, `test-${Date.now()}-${Math.random()}`)
+		const stub = getStub<Features>(testEnv.FEATURES, `test-${Date.now()}-${Math.random()}`)
 
 		const flag = await stub.registerFlag('test.feature.enabled', true, {
 			description: 'Test feature flag',
@@ -42,7 +42,7 @@ describe('Features Durable Object - Feature Flags', () => {
 	})
 
 	it('can check a feature flag value', async () => {
-		using stub = getStub<Features>(testEnv.FEATURES, `test-${Date.now()}-${Math.random()}`)
+		const stub = getStub<Features>(testEnv.FEATURES, `test-${Date.now()}-${Math.random()}`)
 
 		await stub.registerFlag('test.check.enabled', true)
 		const value = await stub.checkFlag('test.check.enabled')
@@ -51,7 +51,7 @@ describe('Features Durable Object - Feature Flags', () => {
 	})
 
 	it('can set/update a feature flag value', async () => {
-		using stub = getStub<Features>(testEnv.FEATURES, `test-${Date.now()}-${Math.random()}`)
+		const stub = getStub<Features>(testEnv.FEATURES, `test-${Date.now()}-${Math.random()}`)
 
 		await stub.registerFlag('test.update.enabled', false)
 		const updated = await stub.setFlag('test.update.enabled', true)
@@ -60,7 +60,7 @@ describe('Features Durable Object - Feature Flags', () => {
 	})
 
 	it('can delete a feature flag', async () => {
-		using stub = getStub<Features>(testEnv.FEATURES, `test-${Date.now()}-${Math.random()}`)
+		const stub = getStub<Features>(testEnv.FEATURES, `test-${Date.now()}-${Math.random()}`)
 
 		await stub.registerFlag('test.delete.enabled', true)
 		const deleted = await stub.deleteFlag('test.delete.enabled')
@@ -72,7 +72,7 @@ describe('Features Durable Object - Feature Flags', () => {
 	})
 
 	it('can list feature flags with prefix filtering', async () => {
-		using stub = getStub<Features>(testEnv.FEATURES, `test-${Date.now()}-${Math.random()}`)
+		const stub = getStub<Features>(testEnv.FEATURES, `test-${Date.now()}-${Math.random()}`)
 
 		await stub.registerFlag('notifications.email.enabled', true)
 		await stub.registerFlag('notifications.sms.enabled', false)
@@ -85,7 +85,7 @@ describe('Features Durable Object - Feature Flags', () => {
 	})
 
 	it('can filter feature flags by tags', async () => {
-		using stub = getStub<Features>(testEnv.FEATURES, `test-${Date.now()}-${Math.random()}`)
+		const stub = getStub<Features>(testEnv.FEATURES, `test-${Date.now()}-${Math.random()}`)
 
 		await stub.registerFlag('test.prod.feature', true, { tags: ['production'] })
 		await stub.registerFlag('test.dev.feature', true, { tags: ['development'] })
@@ -98,7 +98,7 @@ describe('Features Durable Object - Feature Flags', () => {
 	})
 
 	it('can get a specific feature flag', async () => {
-		using stub = getStub<Features>(testEnv.FEATURES, `test-${Date.now()}-${Math.random()}`)
+		const stub = getStub<Features>(testEnv.FEATURES, `test-${Date.now()}-${Math.random()}`)
 
 		await stub.registerFlag('test.get.enabled', true, {
 			description: 'Test get method',
@@ -112,7 +112,7 @@ describe('Features Durable Object - Feature Flags', () => {
 	})
 
 	it('throws error when registering duplicate key', async () => {
-		using stub = getStub<Features>(testEnv.FEATURES, `test-${Date.now()}-${Math.random()}`)
+		const stub = getStub<Features>(testEnv.FEATURES, `test-${Date.now()}-${Math.random()}`)
 
 		await stub.registerFlag('test.duplicate.enabled', true)
 

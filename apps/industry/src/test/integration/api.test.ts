@@ -22,7 +22,7 @@ describe('Industry Worker', () => {
 
 describe('Industry Durable Object', () => {
 	it('can be instantiated', async () => {
-		using stub = getStub<Industry>(env.INDUSTRY, `test-${Date.now()}-${Math.random()}`)
+		const stub = getStub<Industry>(env.INDUSTRY, `test-${Date.now()}-${Math.random()}`)
 
 		// Call fetch to verify the DO can be accessed
 		const response = await stub.fetch(new Request('http://example.com/'))

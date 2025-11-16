@@ -107,7 +107,7 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 				id: 'default',
 			})
 
-			using groupsStub = getStub<Groups>(this.env.GROUPS, 'default')
+			const groupsStub = getStub<Groups>(this.env.GROUPS, 'default')
 
 			if (!groupsStub) {
 				console.error('[DoctrinesDO.checkPermission] ERROR - Failed to create Groups stub')

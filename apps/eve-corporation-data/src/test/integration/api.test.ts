@@ -39,7 +39,7 @@ describe('EveCorporationData Worker', () => {
 describe('EveCorporationData Durable Object', () => {
 	it('can set and get configuration', async () => {
 		const testCorp = Math.floor(Math.random() * 1000000) + 98000000
-		using stub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, String(testCorp))
+		const stub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, String(testCorp))
 
 		// Should return null before configuration
 		const configBefore = await stub.getConfiguration()
@@ -59,7 +59,7 @@ describe('EveCorporationData Durable Object', () => {
 
 	it('can get corporation info when configured', async () => {
 		const testCorp = Math.floor(Math.random() * 1000000) + 98000000
-		using stub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, String(testCorp))
+		const stub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, String(testCorp))
 
 		// Should return null before any data fetched
 		const infoBefore = await stub.getCorporationInfo(String(testCorp))
@@ -69,7 +69,7 @@ describe('EveCorporationData Durable Object', () => {
 	it('throws error when fetching data without configuration', async () => {
 		const testCorp = Math.floor(Math.random() * 1000000) + 98000000
 		const testCorpId = String(testCorp)
-		using stub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, testCorpId)
+		const stub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, testCorpId)
 
 		// Should throw error when trying to fetch without configuration
 		await expect(stub.fetchCoreData(testCorpId)).rejects.toThrow('Corporation not configured')
@@ -78,7 +78,7 @@ describe('EveCorporationData Durable Object', () => {
 	it('can get empty arrays for uninitialized data', async () => {
 		const testCorp = Math.floor(Math.random() * 1000000) + 98000000
 		const testCorpId = String(testCorp)
-		using stub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, testCorpId)
+		const stub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, testCorpId)
 
 		// Should return empty arrays for uninitialized data
 		const members = await stub.getMembers(testCorpId)
@@ -95,8 +95,8 @@ describe('EveCorporationData Durable Object', () => {
 		const testCorp1 = Math.floor(Math.random() * 1000000) + 98000000
 		const testCorp2 = Math.floor(Math.random() * 1000000) + 98000000
 
-		using stub1 = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, String(testCorp1))
-		using stub2 = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, String(testCorp2))
+		const stub1 = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, String(testCorp1))
+		const stub2 = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, String(testCorp2))
 
 		// Configure both corporations with different characters
 		await stub1.setCharacter(String(testCorp1), '1111111111', 'Character 1')

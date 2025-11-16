@@ -152,7 +152,7 @@ export function TransferOwnershipDialog({
 						Cancel
 					</CancelButton>
 					<ConfirmButton
-						onClick={handleTransfer}
+						onConfirm={handleTransfer}
 						disabled={!selectedUserId}
 						loading={transferOwnership.isPending}
 						loadingText="Transferring..."

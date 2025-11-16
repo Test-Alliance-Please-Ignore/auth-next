@@ -132,10 +132,10 @@ export class CoreRpcService {
 		})
 
 		// 3. Get EVE Token Store stub for token validation
-		using eveTokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const eveTokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 
 		// 4. Get HR stub for blacklist status check
-		using hrStub = getStub<Hr>(this.env.HR, 'default')
+		const hrStub = getStub<Hr>(this.env.HR, 'default')
 
 		// 5. Bulk check blacklist status for all characters
 		const characterIds = chars.map((c) => c.characterId)
@@ -170,7 +170,7 @@ export class CoreRpcService {
 		let discordStatus = null
 		if (user.discordUserId) {
 			try {
-				using discordStub = getStub<Discord>(this.env.DISCORD, 'default')
+				const discordStub = getStub<Discord>(this.env.DISCORD, 'default')
 				const status = await discordStub.getDiscordUserStatus(userId)
 				if (status) {
 					discordStatus = {
@@ -222,7 +222,7 @@ export class CoreRpcService {
 
 		// 3. Revoke all ESI tokens for user's characters
 		let tokensRevoked = 0
-		using eveTokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const eveTokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 
 		for (const characterId of characterIds) {
 			try {
@@ -291,7 +291,7 @@ export class CoreRpcService {
 
 		// 5. Revoke ESI token (security critical - log failure but continue)
 		let tokensRevoked = false
-		using eveTokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const eveTokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 
 		try {
 			tokensRevoked = await eveTokenStore.revokeToken(characterId)
@@ -345,7 +345,7 @@ export class CoreRpcService {
 
 		// 3. Revoke ESI token (security critical - log failure but continue)
 		let tokensRevoked = false
-		using eveTokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const eveTokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 
 		try {
 			tokensRevoked = await eveTokenStore.revokeToken(characterId)

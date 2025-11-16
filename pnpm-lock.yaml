@@ -324,9 +324,6 @@ importers:
       '@repo/hr':
         specifier: workspace:*
         version: link:../../packages/hr
-      '@repo/notifications':
-        specifier: workspace:*
-        version: link:../../packages/notifications
       '@repo/skills':
         specifier: workspace:*
         version: link:../../packages/skills
@@ -1103,15 +1100,15 @@ importers:
       '@repo/do-utils':
         specifier: workspace:*
         version: link:../../packages/do-utils
+      '@repo/eve-character-data':
+        specifier: workspace:*
+        version: link:../../packages/eve-character-data
       '@repo/groups':
         specifier: workspace:*
         version: link:../../packages/groups
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
-      '@repo/notifications':
-        specifier: workspace:*
-        version: link:../../packages/notifications
       drizzle-orm:
         specifier: 0.44.6
         version: 0.44.6(@cloudflare/workers-types@4.20251014.0)(@neondatabase/serverless@0.10.4)(@opentelemetry/api@1.9.0)(@types/pg@8.11.6)(bun-types@1.3.0(@types/react@19.2.2))
@@ -1173,6 +1170,9 @@ importers:
       '@repo/do-utils':
         specifier: workspace:*
         version: link:../../packages/do-utils
+      '@repo/eve-character-data':
+        specifier: workspace:*
+        version: link:../../packages/eve-character-data
       '@repo/eve-corporation-data':
         specifier: workspace:*
         version: link:../../packages/eve-corporation-data
@@ -1745,9 +1745,6 @@ importers:
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
-      '@repo/notifications':
-        specifier: workspace:*
-        version: link:../../packages/notifications
       '@repo/srp':
         specifier: workspace:*
         version: link:../../packages/srp

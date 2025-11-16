@@ -459,7 +459,7 @@ app.post('/:id/refresh-members', requireAuth(), requireAdmin(), async (c) => {
 		for (const attachment of corpAttachments) {
 			try {
 				// Get corporation members via RPC
-				using corpStub = getStub<EveCorporationData>(
+				const corpStub = getStub<EveCorporationData>(
 					c.env.EVE_CORPORATION_DATA,
 					attachment.corporationId
 				)
@@ -503,7 +503,7 @@ app.post('/:id/refresh-members', requireAuth(), requireAdmin(), async (c) => {
 		const userIdsFromGroups = new Set<string>()
 
 		try {
-			using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+			const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 
 			// Get all groups that have this Discord server attached
 			const groupsWithServer = await groupsStub.getGroupsByDiscordServer(serverId)

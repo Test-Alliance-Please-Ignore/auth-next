@@ -18,7 +18,7 @@ export async function refreshPublicInfo(
 	characterId: string
 ): Promise<RefreshPublicInfoResult> {
 	// Create fresh stubs for this operation
-	using characterDataStub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, characterId)
+	const characterDataStub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, characterId)
 	const characterData = await characterDataStub.getInstance(characterId)
 
 	try {

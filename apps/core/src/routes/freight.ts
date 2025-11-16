@@ -30,7 +30,7 @@ app.get('/routes', requireAuth(), requireAdmin(), async (c) => {
 	try {
 		const status = c.req.query('status')
 
-		using stub = getStub<Freight>(c.env.FREIGHT, 'default')
+		const stub = getStub<Freight>(c.env.FREIGHT, 'default')
 		const routes = await stub.listRoutes({
 			status: status as any,
 		})
@@ -55,7 +55,7 @@ app.post('/routes', requireAuth(), requireAdmin(), async (c) => {
 	try {
 		const data = await c.req.json()
 
-		using stub = getStub<Freight>(c.env.FREIGHT, 'default')
+		const stub = getStub<Freight>(c.env.FREIGHT, 'default')
 		const route = await stub.createRoute(user.id, data)
 
 		return c.json(route, 201)
@@ -78,7 +78,7 @@ app.get('/routes/:routeId', requireAuth(), requireAdmin(), async (c) => {
 	}
 
 	try {
-		using stub = getStub<Freight>(c.env.FREIGHT, 'default')
+		const stub = getStub<Freight>(c.env.FREIGHT, 'default')
 		const route = await stub.getRoute(routeId)
 
 		if (!route) {
@@ -107,7 +107,7 @@ app.put('/routes/:routeId', requireAuth(), requireAdmin(), async (c) => {
 	try {
 		const data = await c.req.json()
 
-		using stub = getStub<Freight>(c.env.FREIGHT, 'default')
+		const stub = getStub<Freight>(c.env.FREIGHT, 'default')
 		const route = await stub.updateRoute(user.id, routeId, data)
 
 		return c.json(route)
@@ -136,7 +136,7 @@ app.post('/routes/:routeId/activate', requireAuth(), requireAdmin(), async (c) =
 	}
 
 	try {
-		using stub = getStub<Freight>(c.env.FREIGHT, 'default')
+		const stub = getStub<Freight>(c.env.FREIGHT, 'default')
 		const route = await stub.activateRoute(user.id, routeId)
 
 		return c.json(route)
@@ -164,7 +164,7 @@ app.post('/routes/:routeId/deactivate', requireAuth(), requireAdmin(), async (c)
 	}
 
 	try {
-		using stub = getStub<Freight>(c.env.FREIGHT, 'default')
+		const stub = getStub<Freight>(c.env.FREIGHT, 'default')
 		const route = await stub.deactivateRoute(user.id, routeId)
 
 		return c.json(route)

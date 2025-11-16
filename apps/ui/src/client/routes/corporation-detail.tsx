@@ -175,7 +175,7 @@ export default function CorporationDetail() {
 				<CardContent>
 					<ConfirmButton
 						size="lg"
-						onClick={() => setShowApplicationDialog(true)}
+						onConfirm={() => setShowApplicationDialog(true)}
 						className="w-full sm:w-auto"
 					>
 						Apply to Join {corporation.name}

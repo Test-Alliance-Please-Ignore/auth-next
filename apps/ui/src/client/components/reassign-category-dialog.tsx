@@ -123,7 +123,7 @@ export function ReassignCategoryDialog({
 						Cancel
 					</CancelButton>
 					<ConfirmButton
-						onClick={handleReassign}
+						onConfirm={handleReassign}
 						loading={updateGroup.isPending}
 						loadingText="Reassigning..."
 						disabled={isSameCategory}

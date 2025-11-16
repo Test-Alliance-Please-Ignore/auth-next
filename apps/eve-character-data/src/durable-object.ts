@@ -165,7 +165,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 
 			// Resolve ship type name and solar system name
 			console.log(`[fetchKillmailDetails] Resolving ship type and solar system names`)
-			using tokenStoreStub = getStub<any>(this.env.EVE_TOKEN_STORE, 'default')
+			const tokenStoreStub = getStub<any>(this.env.EVE_TOKEN_STORE, 'default')
 			const idsToResolve = [
 				killmailData.victim.ship_type_id.toString(),
 				killmailData.solar_system_id.toString(),
@@ -374,7 +374,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		_forceRefresh = false
 	): Promise<EsiCharacterRoles | null> {
 		try {
-			using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+			const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 			const response: EsiResponse<EsiCharacterRoles> = await tokenStoreStub.fetchEsi(
 				`/characters/${String(characterId)}/roles`,
 				String(characterId)
@@ -445,7 +445,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		}
 
 		// Fall back to ESI search
-		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 
 		const characterIds = await tokenStoreStub.searchCharacter(characterName, exact)
 
@@ -488,7 +488,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		characterId: string,
 		_forceRefresh = false
 	): Promise<CharacterPublicData> {
-		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		// ESI returns numbers for IDs, but we need strings
 		const response = await tokenStoreStub.fetchEsi<{
 			alliance_id?: number
@@ -562,7 +562,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		characterId: string,
 		_forceRefresh = false
 	): Promise<CharacterPortraitData> {
-		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const response: EsiResponse<EsiCharacterPortrait> = await tokenStoreStub.fetchEsi(
 			`/characters/${String(characterId)}/portrait`,
 			String(characterId)
@@ -614,7 +614,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		characterId: string,
 		_forceRefresh = false
 	): Promise<CharacterCorporationHistoryData[]> {
-		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		// ESI returns numbers for IDs, but we need strings
 		const response = await tokenStoreStub.fetchEsi<
 			Array<{
@@ -681,7 +681,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		characterId: string,
 		_forceRefresh = false
 	): Promise<CharacterSkillsData> {
-		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		// ESI returns numbers for skill_id, but we need strings
 		const response = await tokenStoreStub.fetchEsi<{
 			skills: Array<{
@@ -746,7 +746,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		characterId: string,
 		_forceRefresh = false
 	): Promise<CharacterAttributesData> {
-		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const response: EsiResponse<EsiCharacterAttributes> = await tokenStoreStub.fetchEsi(
 			`/characters/${String(characterId)}/attributes`,
 			String(characterId)
@@ -810,7 +810,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		characterId: string,
 		_forceRefresh = false
 	): Promise<CharacterWalletJournalData[]> {
-		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		// ESI returns numbers for IDs, but we need strings
 		const response = await tokenStoreStub.fetchEsi<
 			Array<{
@@ -928,7 +928,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		characterId: string,
 		_forceRefresh = false
 	): Promise<CharacterMarketTransactionData[]> {
-		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		// ESI returns numbers for IDs, but we need strings
 		const response = await tokenStoreStub.fetchEsi<
 			Array<{
@@ -1017,7 +1017,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		characterId: string,
 		_forceRefresh = false
 	): Promise<CharacterMarketOrderData[]> {
-		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		// ESI returns numbers for IDs, but we need strings
 		const response = await tokenStoreStub.fetchEsi<
 			Array<{
@@ -1161,7 +1161,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	private async fetchAndStoreKillmails(characterId: string, _forceRefresh = false): Promise<void> {
 		console.log(`[fetchAndStoreKillmails] Starting fetch for character ${characterId}`)
 
-		using tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 
 		console.log(
 			`[fetchAndStoreKillmails] Fetching recent killmails from ESI for character ${characterId}`

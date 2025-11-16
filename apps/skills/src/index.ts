@@ -30,7 +30,7 @@ const app = new Hono<App>()
 	.get('/skill/:skillId', async (c) => {
 		// Example: Get skill information
 		const skillId = c.req.param('skillId') as any // skillId from URL is string, Skills interface expects EveSkillId
-		using stub = getStub<Skills>(c.env.SKILLS, 'default')
+		const stub = getStub<Skills>(c.env.SKILLS, 'default')
 
 		const skillInfo = await stub.getSkillInfo(skillId)
 

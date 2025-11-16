@@ -1559,7 +1559,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		try {
 			// Get any character token for authentication (ESI search requires auth)
 			const tokens = await this.db.query.eveTokens.findMany({
-				where: eq(eveTokens.tokenType, 'character'),
 				limit: 1,
 			})
 
@@ -1569,7 +1568,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			}
 
 			// Get access token
-			const { accessToken } = await this.getAccessToken(tokens[0].characterId)
+			const accessToken = await this.getAccessToken(tokens[0].characterId)
 
 			// Call ESI search endpoint
 			// GET /search/?categories=character&search={name}&strict={strict}

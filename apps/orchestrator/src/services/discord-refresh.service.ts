@@ -61,7 +61,7 @@ export class DiscordRefreshService {
 		}
 
 		// Create Discord stub with automatic disposal
-		using discordStub = getStub<Discord>(this.env.DISCORD, 'default')
+		const discordStub = getStub<Discord>(this.env.DISCORD, 'default')
 
 		try {
 			// Step 1: Check Discord user status

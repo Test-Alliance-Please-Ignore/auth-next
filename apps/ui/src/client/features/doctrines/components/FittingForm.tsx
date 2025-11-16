@@ -27,7 +27,7 @@ import type { CreateFittingRequest, Fitting, UpdateFittingRequest } from '../typ
 
 interface FittingFormProps {
 	fitting?: Fitting
-	onSubmit: (data: CreateFittingRequest | UpdateFittingRequest) => void
+	onSubmit: (data: CreateFittingRequest | UpdateFittingRequest) => void | Promise<void>
 	onCancel: () => void
 	isSubmitting?: boolean
 }

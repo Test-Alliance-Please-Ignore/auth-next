@@ -117,7 +117,7 @@ export function JoinButton({ group, onSuccess }: JoinButtonProps) {
 							Cancel
 						</CancelButton>
 						<ConfirmButton
-							onClick={handleSubmitRequest}
+							onConfirm={handleSubmitRequest}
 							disabled={isLoading}
 							loading={isLoading}
 							loadingText="Sending..."

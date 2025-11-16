@@ -219,7 +219,7 @@ export function SubmitApplicationDialog({
 						Cancel
 					</CancelButton>
 					<ConfirmButton
-						onClick={handleSubmit}
+						onConfirm={handleSubmit}
 						disabled={!isFormValid}
 						loading={submitMutation.isPending}
 						loadingText="Submitting..."

@@ -137,7 +137,7 @@ const app = new Hono<App>()
 		const statuses = []
 
 		for (const hub of TRADE_HUBS) {
-			using stub = getStub<Markets>(c.env.MARKETS, `region-${hub.regionId}`)
+			const stub = getStub<Markets>(c.env.MARKETS, `region-${hub.regionId}`)
 			const status = await stub.getAlarmStatus()
 
 			statuses.push({
@@ -179,7 +179,7 @@ const app = new Hono<App>()
 		try {
 			// Create a temporary DO stub to query the database
 			// Any stub will work since they all share the same Neon database
-			using tempStub = getStub<Markets>(c.env.MARKETS, 'registry')
+			const tempStub = getStub<Markets>(c.env.MARKETS, 'registry')
 
 			// Get list of locations with recent snapshots
 			const locations = await tempStub.getActiveMonitors()
@@ -197,7 +197,7 @@ const app = new Hono<App>()
 							? `region-${location.locationId}`
 							: `structure-${location.locationId}`
 
-					using stub = getStub<Markets>(c.env.MARKETS, stubId)
+					const stub = getStub<Markets>(c.env.MARKETS, stubId)
 					const status = await stub.getAlarmStatus()
 
 					const statusInfo = {
@@ -267,7 +267,7 @@ const app = new Hono<App>()
 
 		console.log(`[/region/${regionId}/alarm/start] Starting region snapshots`)
 
-		using stub = getStub<Markets>(c.env.MARKETS, `region-${regionId}`)
+		const stub = getStub<Markets>(c.env.MARKETS, `region-${regionId}`)
 		await stub.startHourlySnapshots(regionId)
 
 		return c.json({
@@ -294,7 +294,7 @@ const app = new Hono<App>()
 
 		console.log(`[/region/${regionId}/alarm/stop] Stopping region snapshots`)
 
-		using stub = getStub<Markets>(c.env.MARKETS, `region-${regionId}`)
+		const stub = getStub<Markets>(c.env.MARKETS, `region-${regionId}`)
 		await stub.stopHourlySnapshots(regionId)
 
 		return c.json({
@@ -321,7 +321,7 @@ const app = new Hono<App>()
 
 		console.log(`[/region/${regionId}/alarm/status] Checking region alarm status`)
 
-		using stub = getStub<Markets>(c.env.MARKETS, `region-${regionId}`)
+		const stub = getStub<Markets>(c.env.MARKETS, `region-${regionId}`)
 		const status = await stub.getAlarmStatus()
 
 		return c.json(status)
@@ -357,7 +357,7 @@ const app = new Hono<App>()
 			return c.json({ error: charValidation.error }, 400)
 		}
 
-		using stub = getStub<Markets>(c.env.MARKETS, `structure-${structureId}`)
+		const stub = getStub<Markets>(c.env.MARKETS, `structure-${structureId}`)
 		await stub.startHourlySnapshotsForStructure(structureId, characterId)
 
 		return c.json({
@@ -384,7 +384,7 @@ const app = new Hono<App>()
 
 		console.log(`[/structure/${structureId}/alarm/stop] Stopping structure snapshots`)
 
-		using stub = getStub<Markets>(c.env.MARKETS, `structure-${structureId}`)
+		const stub = getStub<Markets>(c.env.MARKETS, `structure-${structureId}`)
 		await stub.stopHourlySnapshots(structureId)
 
 		return c.json({
@@ -411,7 +411,7 @@ const app = new Hono<App>()
 
 		console.log(`[/structure/${structureId}/alarm/status] Checking structure alarm status`)
 
-		using stub = getStub<Markets>(c.env.MARKETS, `structure-${structureId}`)
+		const stub = getStub<Markets>(c.env.MARKETS, `structure-${structureId}`)
 		const status = await stub.getAlarmStatus()
 
 		return c.json(status)

@@ -62,7 +62,7 @@ broadcasts.get('/targets', async (c) => {
 	}
 
 	// Get Broadcasts DO stub
-	using broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const targets = await broadcastsStub.listTargets(user.id, groupId)
 
 	// Filter targets to only include those from groups the user is a member of
@@ -81,7 +81,7 @@ broadcasts.get('/targets/:id', async (c) => {
 	const user = c.get('user')!
 	const targetId = c.req.param('id')
 
-	using broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const target = await broadcastsStub.getTarget(targetId, user.id)
 
 	if (!target) {
@@ -121,7 +121,7 @@ broadcasts.post('/targets', async (c) => {
 		return c.json({ error: 'Permission denied' }, 403)
 	}
 
-	using broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const target = await broadcastsStub.createTarget(data, user.id)
 
 	return c.json(target, 201)
@@ -137,7 +137,7 @@ broadcasts.patch('/targets/:id', async (c) => {
 	const data = await c.req.json()
 
 	// Get target to check group ownership
-	using broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const target = await broadcastsStub.getTarget(targetId, user.id)
 
 	if (!target) {
@@ -169,7 +169,7 @@ broadcasts.delete('/targets/:id', async (c) => {
 	const targetId = c.req.param('id')
 
 	// Get target to check group ownership
-	using broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const target = await broadcastsStub.getTarget(targetId, user.id)
 
 	if (!target) {
@@ -218,7 +218,7 @@ broadcasts.get('/templates', async (c) => {
 		}
 	}
 
-	using broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const templates = await broadcastsStub.listTemplates(user.id, { targetType, groupId })
 
 	// Filter templates to only include those from groups the user is a member of
@@ -237,7 +237,7 @@ broadcasts.get('/templates/:id', async (c) => {
 	const user = c.get('user')!
 	const templateId = c.req.param('id')
 
-	using broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const template = await broadcastsStub.getTemplate(templateId, user.id)
 
 	if (!template) {
@@ -277,7 +277,7 @@ broadcasts.post('/templates', async (c) => {
 		return c.json({ error: 'Permission denied' }, 403)
 	}
 
-	using broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const template = await broadcastsStub.createTemplate(data, user.id)
 
 	return c.json(template, 201)
@@ -293,7 +293,7 @@ broadcasts.patch('/templates/:id', async (c) => {
 	const data = await c.req.json()
 
 	// Get template to check group ownership
-	using broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const template = await broadcastsStub.getTemplate(templateId, user.id)
 
 	if (!template) {
@@ -325,7 +325,7 @@ broadcasts.delete('/templates/:id', async (c) => {
 	const templateId = c.req.param('id')
 
 	// Get template to check group ownership
-	using broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const template = await broadcastsStub.getTemplate(templateId, user.id)
 
 	if (!template) {
@@ -374,7 +374,7 @@ broadcasts.get('/', async (c) => {
 		}
 	}
 
-	using broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const broadcastList = await broadcastsStub.listBroadcasts(user.id, { groupId, status })
 
 	// Filter broadcasts to only include those from groups the user is a member of
@@ -394,7 +394,7 @@ broadcasts.get('/:id', async (c) => {
 	const user = c.get('user')!
 	const broadcastId = c.req.param('id')
 
-	using broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const broadcast = await broadcastsStub.getBroadcast(broadcastId, user.id)
 
 	if (!broadcast) {
@@ -438,7 +438,7 @@ broadcasts.post('/', async (c) => {
 	const mainCharacter = user.characters.find((c) => c.is_primary)
 	const createdByCharacterName = mainCharacter?.characterName || 'Unknown'
 
-	using broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const broadcast = await broadcastsStub.createBroadcast(
 		{ ...data, createdByCharacterName },
 		user.id
@@ -456,7 +456,7 @@ broadcasts.post('/:id/send', async (c) => {
 	const broadcastId = c.req.param('id')
 
 	// Get broadcast to check group ownership
-	using broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const broadcast = await broadcastsStub.getBroadcast(broadcastId, user.id)
 
 	if (!broadcast) {
@@ -490,7 +490,7 @@ broadcasts.delete('/:id', async (c) => {
 	const broadcastId = c.req.param('id')
 
 	// Get broadcast to check group ownership
-	using broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const broadcast = await broadcastsStub.getBroadcast(broadcastId, user.id)
 
 	if (!broadcast) {
@@ -521,7 +521,7 @@ broadcasts.get('/:id/deliveries', async (c) => {
 	const user = c.get('user')!
 	const broadcastId = c.req.param('id')
 
-	using broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 
 	// First, get the broadcast to check which group it belongs to
 	const broadcast = await broadcastsStub.getBroadcast(broadcastId, user.id)

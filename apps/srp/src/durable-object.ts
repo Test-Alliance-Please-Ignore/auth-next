@@ -52,7 +52,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		}
 
 		// Fetch killmail details from eve-character-data using instance pattern
-		using charStub = getStub<EveCharacterData>(this.env.EVE_CHARACTER_DATA, characterId)
+		const charStub = getStub<EveCharacterData>(this.env.EVE_CHARACTER_DATA, characterId)
 		const charInstance = await charStub.getInstance(characterId)
 		const killmailData = await charInstance.fetchKillmailDetails(killmailId, killmailHash)
 
@@ -161,7 +161,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		> = []
 
 		for (const characterId of characterIds) {
-			using charStub = getStub<EveCharacterData>(this.env.EVE_CHARACTER_DATA, characterId)
+			const charStub = getStub<EveCharacterData>(this.env.EVE_CHARACTER_DATA, characterId)
 			const charInstance = await charStub.getInstance(characterId)
 			const losses = await charInstance.getRecentLosses(daysBack, excludeNonSrpEligible)
 

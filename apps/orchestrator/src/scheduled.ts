@@ -108,7 +108,7 @@ async function createCorporationRefreshWorkflow(
 }
 
 export async function scheduleCorpDataRefresh(event: ScheduledEvent, env: Env): Promise<void> {
-	using corpStub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, 'global')
+	const corpStub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, 'global')
 
 	logger.info('[Orchestrator] Starting corporation data refresh batch', {
 		scheduledTime: new Date(event.scheduledTime).toISOString(),
@@ -211,7 +211,7 @@ export async function scheduleDiscordRefresh(event: ScheduledEvent, env: Env): P
 
 		// Fetch users that need Discord refresh
 		// Query Discord database directly via RPC (15-minute minimum interval)
-		using discordStub = getStub<Discord>(env.DISCORD, 'default')
+		const discordStub = getStub<Discord>(env.DISCORD, 'default')
 		const discordUsers = await discordStub.getUsersNeedingRefresh(50, 15)
 
 		logger.info('[Orchestrator] Fetched users for refresh', {

@@ -38,7 +38,7 @@ const app = new Hono<App>()
 	// Monitored Fleet Commanders CRUD API
 	.get('/api/monitored-fcs', async (c) => {
 		try {
-			using stub = getStub<Fleets>(c.env.FLEETS, 'default')
+			const stub = getStub<Fleets>(c.env.FLEETS, 'default')
 			const characterIds = await stub.listMonitoredFleetCommanders()
 
 			return c.json({ characterIds })
@@ -72,7 +72,7 @@ const app = new Hono<App>()
 				)
 			}
 
-			using stub = getStub<Fleets>(c.env.FLEETS, 'default')
+			const stub = getStub<Fleets>(c.env.FLEETS, 'default')
 			const added = await stub.addMonitoredFleetCommander(body.characterId)
 
 			if (!added) {
@@ -115,7 +115,7 @@ const app = new Hono<App>()
 				)
 			}
 
-			using stub = getStub<Fleets>(c.env.FLEETS, 'default')
+			const stub = getStub<Fleets>(c.env.FLEETS, 'default')
 			const removed = await stub.removeMonitoredFleetCommander(characterId)
 
 			if (!removed) {
@@ -159,7 +159,7 @@ const app = new Hono<App>()
 
 		// Get the FleetMonitor DO stub for this fleet
 		// DO ID format: 'fleet-${fleetId}'
-		using fleetMonitorStub = getStub<FleetMonitor>(c.env.FLEET_MONITOR, `fleet-${fleetId}`)
+		const fleetMonitorStub = getStub<FleetMonitor>(c.env.FLEET_MONITOR, `fleet-${fleetId}`)
 
 		// Forward the request to the Durable Object for WebSocket upgrade
 		// The DO will handle the WebSocket protocol from here
@@ -181,7 +181,7 @@ const app = new Hono<App>()
 
 		try {
 			// Get the FleetMonitor DO stub for this fleet
-			using fleetMonitorStub = getStub<FleetMonitor>(c.env.FLEET_MONITOR, `fleet-${fleetId}`)
+			const fleetMonitorStub = getStub<FleetMonitor>(c.env.FLEET_MONITOR, `fleet-${fleetId}`)
 
 			// Forward the request to the Durable Object
 			return fleetMonitorStub.fetch(c.req.raw)

@@ -16,16 +16,16 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 import { FittingForm } from '../components/FittingForm'
 import { useCreateFitting } from '../hooks'
 
-import type { CreateFittingRequest } from '../types'
+import type { CreateFittingRequest, UpdateFittingRequest } from '../types'
 
 export default function FittingCreatePage() {
 	usePageTitle('Create Fitting')
 	const navigate = useNavigate()
 	const createMutation = useCreateFitting()
 
-	const handleSubmit = async (data: CreateFittingRequest) => {
+	const handleSubmit = async (data: CreateFittingRequest | UpdateFittingRequest) => {
 		try {
-			const result = await createMutation.mutateAsync(data)
+			const result = await createMutation.mutateAsync(data as CreateFittingRequest)
 			navigate(`/doctrines/fittings/${result.id}`)
 		} catch (error) {
 			console.error('Failed to create fitting:', error)

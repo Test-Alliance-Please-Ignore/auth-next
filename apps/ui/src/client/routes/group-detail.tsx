@@ -356,7 +356,7 @@ export default function GroupDetailPage() {
 											Cancel
 										</CancelButton>
 										<ConfirmButton
-											onClick={handleCreateInviteCode}
+											onConfirm={handleCreateInviteCode}
 											loading={createInviteCode.isPending}
 											loadingText="Creating..."
 										>

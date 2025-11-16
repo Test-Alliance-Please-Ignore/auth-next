@@ -26,45 +26,33 @@ export interface DurableObjectStubMethods {
  * This helper provides type-safe access to Durable Object stubs when calling
  * across workers using shared interface packages.
  *
- * The stub supports automatic disposal using the 'using' keyword (explicit resource management).
+ * Only stubs that return RpcTargets (which have a `dispose()` method) will have
+ * automatic resource management via the 'using' keyword. Regular DurableObject
+ * stubs don't need disposal.
  *
  * Note: DurableObjectNamespace, DurableObjectId, and DurableObjectStub are expected
  * to be available as global types in the worker environment (from worker-configuration.d.ts)
  *
  * @example
  * ```ts
- * import type { UserTokenStore } from '@repo/user-token-store'
+ * import type { EveTokenStore } from '@repo/eve-token-store'
  * import { getStub } from '@repo/do-utils'
  *
- * // Using automatic resource management (recommended)
- * using stub = getStub<UserTokenStore>(c.env.USER_TOKEN_STORE, 'global')
- * const token = await stub.getAccessToken(characterId)
- * return token
- * // stub is automatically disposed when it goes out of scope
+ * // Regular DurableObject stub (no disposal needed)
+ * const stub = getStub<Groups>(c.env.GROUPS, 'default')
+ * const groups = await stub.listGroups()
  *
- * // Manual disposal (if 'using' is not available)
- * const stub = getStub<UserTokenStore>(c.env.USER_TOKEN_STORE, 'global')
- * try {
- *   const token = await stub.getAccessToken(characterId)
- *   return token
- * } finally {
- *   stub.dispose()
- * }
+ * // RpcTarget stub (disposal needed - only if stub has dispose method)
+ * // Note: Most stubs don't need 'using' - only those that return RpcTargets
  * ```
  */
 export function getStub<T>(
 	namespace: any, // Will be DurableObjectNamespace in the worker environment
 	id: string | any // Will be string | DurableObjectId in the worker environment
-): T & DurableObjectStubMethods {
+): T {
 	// Will return DurableObjectStub & T in the worker environment
 	const durableObjectId = typeof id === 'string' ? namespace.idFromName(id) : id
 	const stub = namespace.get(durableObjectId)
-
-	// Add Symbol.dispose for automatic resource management
-	if (!stub[Symbol.dispose]) {
-		stub[Symbol.dispose] = () => stub.dispose()
-	}
-
 	return stub
 }
 

@@ -73,7 +73,7 @@ app.get('/character/:characterId', async (c) => {
 
 	try {
 		// Get Fleets DO stub
-		using fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
+		const fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
 
 		// Get character's fleet information
 		const eveCharacterId = createEveCharacterId(characterId)
@@ -161,7 +161,7 @@ app.post('/quick-join/create', async (c) => {
 
 	try {
 		// Get Fleets DO stub (using 'default' instance)
-		using fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
+		const fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
 
 		// Create the invitation
 		const result = await fleetsStub.createQuickJoinInvitation(
@@ -188,7 +188,7 @@ app.get('/quick-join/:token/validate', async (c) => {
 
 	try {
 		// Get Fleets DO stub
-		using fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
+		const fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
 
 		// Validate the token
 		const validation = await fleetsStub.validateQuickJoinToken(token)
@@ -198,8 +198,8 @@ app.get('/quick-join/:token/validate', async (c) => {
 		}
 
 		// Get user's characters for selection
-		using tokenStore = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
-		using characterData = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+		const tokenStore = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+		const characterData = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
 
 		// Fetch character details for all user's characters
 		const charactersForJoin: CharacterForFleetJoin[] = await Promise.all(
@@ -270,7 +270,7 @@ app.post('/quick-join/:token/join', async (c) => {
 
 	try {
 		// Get Fleets DO stub
-		using fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
+		const fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
 
 		// Join the fleet
 		const result = await fleetsStub.joinFleetViaQuickJoin(
@@ -299,7 +299,7 @@ app.get('/:fleetId', async (c) => {
 
 	try {
 		// Get Fleets DO stub
-		using fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
+		const fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
 
 		// Get fleet details
 		const details = await fleetsStub.getFleetDetails(fleetId, characterId)
@@ -335,7 +335,7 @@ app.delete('/quick-join/:token', async (c) => {
 
 	try {
 		// Get Fleets DO stub
-		using fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
+		const fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
 
 		// Revoke the invitation
 		const success = await fleetsStub.revokeQuickJoinInvitation(token, characterId)
@@ -358,13 +358,13 @@ app.delete('/quick-join/:token', async (c) => {
 app.get('/monitoring', requireAdmin(), async (c) => {
 	try {
 		// Get Fleets DO stub
-		using fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
+		const fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
 
 		// Get all monitored commanders
 		const monitoredCommanders = await fleetsStub.listMonitoredFleetCommanders()
 
 		// Get character data for all monitored characters
-		using characterData = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+		const characterData = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
 
 		const characters = await Promise.all(
 			monitoredCommanders.map(async (characterId) => {
@@ -444,7 +444,7 @@ app.post('/monitoring', async (c) => {
 		}
 
 		// Verify character has valid ESI token
-		using tokenStore = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+		const tokenStore = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
 		const tokenInfo = await tokenStore.getTokenInfo(characterId)
 
 		if (!tokenInfo) {
@@ -467,7 +467,7 @@ app.post('/monitoring', async (c) => {
 		}
 
 		// Get Fleets DO stub
-		using fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
+		const fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
 
 		// Add character to monitored list
 		const added = await fleetsStub.addMonitoredFleetCommander(characterId)
@@ -510,7 +510,7 @@ app.delete('/monitoring/:characterId', async (c) => {
 
 	try {
 		// Get Fleets DO stub
-		using fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
+		const fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
 
 		// Remove character from monitored list
 		const removed = await fleetsStub.removeMonitoredFleetCommander(characterId)

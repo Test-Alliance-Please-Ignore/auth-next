@@ -16,16 +16,16 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 import { DoctrineForm } from '../components/DoctrineForm'
 import { useCreateDoctrine } from '../hooks'
 
-import type { CreateDoctrineRequest } from '../types'
+import type { CreateDoctrineRequest, UpdateDoctrineRequest } from '../types'
 
 export default function DoctrineCreatePage() {
 	usePageTitle('Create Doctrine')
 	const navigate = useNavigate()
 	const createMutation = useCreateDoctrine()
 
-	const handleSubmit = async (data: CreateDoctrineRequest) => {
+	const handleSubmit = async (data: CreateDoctrineRequest | UpdateDoctrineRequest) => {
 		try {
-			const result = await createMutation.mutateAsync(data)
+			const result = await createMutation.mutateAsync(data as CreateDoctrineRequest)
 			navigate(`/doctrines/${result.id}`)
 		} catch (error) {
 			console.error('Failed to create doctrine:', error)

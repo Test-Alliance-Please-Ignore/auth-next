@@ -75,7 +75,7 @@ const skillPlansRoutes = new Hono<App>()
 	 * Public endpoint for authenticated users
 	 */
 	.get('/categories', async (c) => {
-		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 		const categories = await skillsStub.listSkillPlanCategories()
 		return c.json(categories)
 	})
@@ -107,7 +107,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Create category
-		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 		try {
 			const category = await skillsStub.createSkillPlanCategory({
 				name: data.name.trim(),
@@ -146,7 +146,7 @@ const skillPlansRoutes = new Hono<App>()
 		}>()
 
 		// Update category
-		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 		try {
 			const category = await skillsStub.updateSkillPlanCategory(categoryId, {
 				...(data.name !== undefined && { name: data.name.trim() }),
@@ -177,7 +177,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Delete category
-		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 		try {
 			const success = await skillsStub.deleteSkillPlanCategory(categoryId)
 			if (success) {
@@ -209,7 +209,7 @@ const skillPlansRoutes = new Hono<App>()
 		const limit = query.limit ? parseInt(query.limit, 10) : undefined
 		const offset = query.offset ? parseInt(query.offset, 10) : undefined
 
-		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 		try {
 			if (myPlans && user.mainCharacterId) {
@@ -270,7 +270,7 @@ const skillPlansRoutes = new Hono<App>()
 		const limit = query.limit ? parseInt(query.limit, 10) : 50
 		const offset = query.offset ? parseInt(query.offset, 10) : 0
 
-		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 		try {
 			// Get plans where user is the maintainer (without pagination for merging)
@@ -344,7 +344,7 @@ const skillPlansRoutes = new Hono<App>()
 		const user = c.get('user')!
 		const planId = c.req.param('id')
 
-		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 		// Get the plan
 		const plan = await skillsStub.getSkillPlan(planId)
@@ -387,7 +387,7 @@ const skillPlansRoutes = new Hono<App>()
 			return c.json({ error: 'Permission denied' }, 403)
 		}
 
-		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 		// Get the plan first to verify it exists
 		const plan = await skillsStub.getSkillPlan(planId)
@@ -402,7 +402,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Get character skills from EveCharacterData DO
-		using eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+		const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
 
 		try {
 			let skillsData = await eveCharacterDataStub.getSkills(characterId)
@@ -489,7 +489,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		const characterId = user.mainCharacterId
-		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 		// Get the plan first to verify it exists
 		const plan = await skillsStub.getSkillPlan(planId)
@@ -504,7 +504,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Get character skills from EveCharacterData DO
-		using eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+		const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
 
 		try {
 			let skillsData = await eveCharacterDataStub.getSkills(characterId)
@@ -586,7 +586,7 @@ const skillPlansRoutes = new Hono<App>()
 		const user = c.get('user')!
 		const planId = c.req.param('id')
 
-		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 		// Get the plan
 		const plan = await skillsStub.getSkillPlan(planId)
@@ -659,7 +659,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Create the plan
-		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 		try {
 			const plan = await skillsStub.createSkillPlan({
 				name: data.name.trim(),
@@ -685,7 +685,7 @@ const skillPlansRoutes = new Hono<App>()
 		const user = c.get('user')!
 		const planId = c.req.param('id')
 
-		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 		// Get the plan to check permissions
 		const plan = await skillsStub.getSkillPlan(planId)
@@ -735,7 +735,7 @@ const skillPlansRoutes = new Hono<App>()
 		const user = c.get('user')!
 		const planId = c.req.param('id')
 
-		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 		// Get the plan to check permissions
 		const plan = await skillsStub.getSkillPlan(planId)
@@ -774,7 +774,7 @@ const skillPlansRoutes = new Hono<App>()
 		const user = c.get('user')!
 		const planId = c.req.param('id')
 
-		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 		// Get the plan to check permissions
 		const plan = await skillsStub.getSkillPlan(planId)
@@ -851,7 +851,7 @@ const skillPlansRoutes = new Hono<App>()
 		const user = c.get('user')!
 		const planId = c.req.param('id')
 
-		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 		// Get the plan to check permissions
 		const plan = await skillsStub.getSkillPlan(planId)
@@ -968,7 +968,7 @@ const skillPlansRoutes = new Hono<App>()
 		const planId = c.req.param('id')
 		const skillId = c.req.param('skillId')
 
-		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 		// Get the plan to check permissions
 		const plan = await skillsStub.getSkillPlan(planId)
@@ -1046,7 +1046,7 @@ const skillPlansRoutes = new Hono<App>()
 		const planId = c.req.param('id')
 		const skillId = c.req.param('skillId')
 
-		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 		// Get the plan to check permissions
 		const plan = await skillsStub.getSkillPlan(planId)
@@ -1089,7 +1089,7 @@ const skillPlansRoutes = new Hono<App>()
 		const planId = c.req.param('id')
 		const categoryId = c.req.param('categoryId')
 
-		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 		// Get the plan to check permissions
 		const plan = await skillsStub.getSkillPlan(planId)
@@ -1130,7 +1130,7 @@ const skillPlansRoutes = new Hono<App>()
 		const planId = c.req.param('id')
 		const categoryId = c.req.param('categoryId')
 
-		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 		// Get the plan to check permissions
 		const plan = await skillsStub.getSkillPlan(planId)
@@ -1189,7 +1189,7 @@ const skillPlansRoutes = new Hono<App>()
 			return c.json({ error: 'Permission denied' }, 403)
 		}
 
-		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 		// Get the plan first to verify it exists
 		const plan = await skillsStub.getSkillPlan(planId)
@@ -1204,7 +1204,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Get character skills from EveCharacterData DO
-		using eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+		const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
 
 		try {
 			let skillsData = await eveCharacterDataStub.getSkills(characterId)
@@ -1305,7 +1305,7 @@ const skillPlansRoutes = new Hono<App>()
 		const planIds = planIdsParam ? planIdsParam.split(',').filter(Boolean) : undefined
 
 		// Get character skills from EveCharacterData DO
-		using eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+		const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
 
 		try {
 			let skillsData = await eveCharacterDataStub.getSkills(characterId)
@@ -1342,7 +1342,7 @@ const skillPlansRoutes = new Hono<App>()
 			}))
 
 			// Check progress on multiple plans
-			using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
+			const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 			const progressResults = await skillsStub.calculateMultiplePlanProgress(
 				characterId,
 				characterSkills,

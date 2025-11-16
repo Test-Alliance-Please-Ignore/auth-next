@@ -44,7 +44,7 @@ export async function getCachedUserPermissions(
 ): Promise<UserPermission[]> {
 	const cacheKey = `permissions:${userId}`
 	return permissionsCache.getOrSet(cacheKey, async () => {
-		using groupsStub = getStub<Groups>(env.GROUPS, 'default')
+		const groupsStub = getStub<Groups>(env.GROUPS, 'default')
 		return await groupsStub.getUserPermissions(userId)
 	})
 }
@@ -58,7 +58,7 @@ export async function getCachedUserMemberships(
 ): Promise<GroupMembershipSummary[]> {
 	const cacheKey = `memberships:${userId}`
 	return membershipsCache.getOrSet(cacheKey, async () => {
-		using groupsStub = getStub<Groups>(env.GROUPS, 'default')
+		const groupsStub = getStub<Groups>(env.GROUPS, 'default')
 		return await groupsStub.getUserMemberships(userId)
 	})
 }
@@ -74,7 +74,7 @@ export async function getCachedGroup(
 ): Promise<GroupWithDetails | null> {
 	const cacheKey = `group:${groupId}:${userId}:${isAdmin}`
 	return groupsCache.getOrSet(cacheKey, async () => {
-		using groupsStub = getStub<Groups>(env.GROUPS, 'default')
+		const groupsStub = getStub<Groups>(env.GROUPS, 'default')
 		return await groupsStub.getGroup(groupId, userId, isAdmin)
 	})
 }
@@ -88,7 +88,7 @@ export async function getCachedCharacterPermissions(
 ): Promise<UserPermission[]> {
 	const cacheKey = `character-permissions:${characterId}`
 	return characterPermissionsCache.getOrSet(cacheKey, async () => {
-		using groupsStub = getStub<Groups>(env.GROUPS, 'default')
+		const groupsStub = getStub<Groups>(env.GROUPS, 'default')
 		return await groupsStub.getCharacterPermissions(characterId)
 	})
 }

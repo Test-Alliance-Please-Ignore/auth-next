@@ -64,7 +64,7 @@ async function setupTradeHubs(env: { MARKETS: DurableObjectNamespace }) {
 
 			// Get DO stub for this region
 			console.log(`   [setup] Getting DO stub for region-${hub.regionId}`)
-			using stub = getStub<Markets>(env.MARKETS, `region-${hub.regionId}`)
+			const stub = getStub<Markets>(env.MARKETS, `region-${hub.regionId}`)
 			console.log(`   [setup] DO stub acquired`)
 
 			// Start hourly snapshots (returns immediately, snapshot happens in background)
@@ -121,7 +121,7 @@ async function checkTradeHubStatus(env: { MARKETS: DurableObjectNamespace }) {
 	console.log('🔍 Checking status of all trade hub alarms...\n')
 
 	for (const hub of TRADE_HUBS) {
-		using stub = getStub<Markets>(env.MARKETS, `region-${hub.regionId}`)
+		const stub = getStub<Markets>(env.MARKETS, `region-${hub.regionId}`)
 		const status = await stub.getAlarmStatus()
 
 		console.log(`📊 ${hub.name} (${hub.primaryHub})`)
@@ -147,7 +147,7 @@ async function stopAllTradeHubs(env: { MARKETS: DurableObjectNamespace }) {
 
 	for (const hub of TRADE_HUBS) {
 		try {
-			using stub = getStub<Markets>(env.MARKETS, `region-${hub.regionId}`)
+			const stub = getStub<Markets>(env.MARKETS, `region-${hub.regionId}`)
 			await stub.stopHourlySnapshots(hub.regionId)
 			console.log(`✅ ${hub.name} - Stopped`)
 		} catch (error) {
