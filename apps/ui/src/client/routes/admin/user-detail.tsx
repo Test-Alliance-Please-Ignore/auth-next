@@ -49,6 +49,7 @@ import {
 	useRevokeDiscordLink,
 	useSetUserAdmin,
 	useSetUserPrimaryCharacter,
+	useUnlinkDiscordAccount,
 	useUpdateDiscordAccess,
 } from '@/hooks/useAdminUsers'
 import { usePageTitle } from '@/hooks/usePageTitle'
@@ -67,6 +68,7 @@ export default function UserDetailPage() {
 	const deleteCharacter = useDeleteUserCharacter()
 	const setPrimaryCharacter = useSetUserPrimaryCharacter()
 	const revokeDiscord = useRevokeDiscordLink()
+	const unlinkDiscord = useUnlinkDiscordAccount()
 	const clearSessions = useClearUserSessions()
 	const updateDiscordAccess = useUpdateDiscordAccess()
 
@@ -101,6 +103,7 @@ export default function UserDetailPage() {
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 	const [primaryDialogOpen, setPrimaryDialogOpen] = useState(false)
 	const [revokeDiscordDialogOpen, setRevokeDiscordDialogOpen] = useState(false)
+	const [unlinkDiscordDialogOpen, setUnlinkDiscordDialogOpen] = useState(false)
 	const [clearSessionsDialogOpen, setClearSessionsDialogOpen] = useState(false)
 	const [updateDiscordDialogOpen, setUpdateDiscordDialogOpen] = useState(false)
 	const [blacklistDialogOpen, setBlacklistDialogOpen] = useState(false)

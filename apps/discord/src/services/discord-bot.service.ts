@@ -93,6 +93,87 @@ export class DiscordBotService {
 	}
 
 	/**
+	 * Remove a user from a Discord guild/server
+	 * Uses the "Remove Guild Member" endpoint
+	 *
+	 * @param guildId - Discord guild/server ID
+	 * @param userId - Discord user ID
+	 * @returns Success status
+	 */
+	async removeGuildMember(
+		guildId: string,
+		userId: string
+	): Promise<{
+		success: boolean
+		errorMessage?: string
+	}> {
+		try {
+			const proxyUrl = getDiscordProxyUrl(this.env)
+
+			const url = `${this.baseUrl}/guilds/${guildId}/members/${userId}`
+			const response = await fetch(url, {
+				method: 'DELETE',
+				headers: {
+					Authorization: `Bot ${this.env.DISCORD_BOT_TOKEN}`,
+				},
+				// @ts-expect-error - Cloudflare Workers supports proxy in fetch
+				proxy: proxyUrl,
+			})
+
+			if (response.status === 404) {
+				// User was not a member
+				return { success: true }
+			}
+
+			if (!response.ok) {
+				const errorData = await response.json().catch(() => ({}))
+				throw new DiscordAPIError(response.status, errorData)
+			}
+
+			logger.info('[DiscordBot] Successfully removed user from guild', {
+				guildId,
+				userId,
+			})
+
+			return { success: true }
+		} catch (error) {
+			if (error instanceof DiscordAPIError) {
+				logger.error('[DiscordBot] Discord API error removing member', {
+					guildId,
+					userId,
+					status: error.status,
+					code: error.code,
+					message: error.message,
+				})
+
+				if (error.status === 403) {
+					return {
+						success: false,
+						errorMessage: 'Bot lacks KICK_MEMBERS permission',
+					}
+				}
+
+				return {
+					success: false,
+					errorMessage: `Discord API error: ${error.data?.message ?? error.message}`,
+				}
+			}
+
+			const errorMessage = error instanceof Error ? error.message : String(error)
+			logger.error('[DiscordBot] Unexpected error removing member', {
+				guildId,
+				userId,
+				error: errorMessage,
+			})
+
+			return {
+				success: false,
+				errorMessage: `Failed to remove member: ${errorMessage}`,
+			}
+		}
+	}
+
+	/**
 	 * Update guild member roles and/or nickname
 	 * Uses the "Modify Guild Member" endpoint
 	 *

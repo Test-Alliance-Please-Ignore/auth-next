@@ -1,12 +1,14 @@
 import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
+import { getStub } from '@repo/do-utils'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
 // Export the scheduled handler
 import { scheduled } from './scheduled'
 import { UserDiscordRefreshWorkflow } from './workflows/user-discord-refresh'
 
+import type { Discord } from '@repo/discord'
 import type { App } from './context'
 
 const app = new Hono<App>()
@@ -47,11 +49,12 @@ const app = new Hono<App>()
 		}
 
 		try {
-			// Fetch user from CORE to get discordUserId
-			const users = await c.env.CORE.getUsersForDiscordRefresh(1000, 30)
-			const user = users.find((u) => u.userId === userId)
+			// Fetch user from Discord DO to get discordUserId
+			using discordStub = getStub<Discord>(c.env.DISCORD, 'default')
+			const users = await discordStub.getUsersNeedingRefresh(1000, 15)
+			const discordUser = users.find((u) => u.coreUserId === userId)
 
-			if (!user) {
+			if (!discordUser) {
 				return c.json(
 					{
 						error: 'User not found or does not have Discord linked',
@@ -66,8 +69,8 @@ const app = new Hono<App>()
 			const instance = await c.env.USER_DISCORD_REFRESH.create({
 				id: workflowId,
 				params: {
-					userId: user.userId,
-					discordUserId: user.discordUserId,
+					userId,
+					discordUserId: discordUser.discordUserId,
 					jitterDelaySeconds: 0, // No jitter for manual trigger
 				},
 			})
@@ -75,7 +78,7 @@ const app = new Hono<App>()
 			return c.json({
 				success: true,
 				userId,
-				discordUserId: user.discordUserId,
+				discordUserId: discordUser.discordUserId,
 				workflowId: instance.id,
 				message: 'Workflow instance created',
 			})
@@ -93,9 +96,11 @@ const app = new Hono<App>()
 	.post('/trigger/discord-refresh-batch', async (c) => {
 		try {
 			// Manually trigger the batch process (same as scheduled handler)
-			const users = await c.env.CORE.getUsersForDiscordRefresh(50, 30)
+			// Query Discord database directly via RPC (15-minute minimum interval)
+			using discordStub = getStub<Discord>(c.env.DISCORD, 'default')
+			const discordUsers = await discordStub.getUsersNeedingRefresh(50, 15)
 
-			if (users.length === 0) {
+			if (discordUsers.length === 0) {
 				return c.json({
 					success: true,
 					message: 'No users need refresh at this time',
@@ -103,22 +108,22 @@ const app = new Hono<App>()
 				})
 			}
 
-			const workflowPromises = users.map(async (user) => {
+			const workflowPromises = discordUsers.map(async (discordUser) => {
 				// Use small jitter for manual batch (0-5 minutes)
 				const jitterSeconds = Math.floor(Math.random() * 300)
 
-				const workflowId = `user-discord-refresh-${user.userId}-batch-${Date.now()}`
+				const workflowId = `user-discord-refresh-${discordUser.coreUserId}-batch-${Date.now()}`
 				const instance = await c.env.USER_DISCORD_REFRESH.create({
 					id: workflowId,
 					params: {
-						userId: user.userId,
-						discordUserId: user.discordUserId,
+						userId: discordUser.coreUserId,
+						discordUserId: discordUser.discordUserId,
 						jitterDelaySeconds: jitterSeconds,
 					},
 				})
 
 				return {
-					userId: user.userId,
+					userId: discordUser.coreUserId,
 					workflowId: instance.id,
 					jitterMinutes: Math.floor(jitterSeconds / 60),
 				}
@@ -145,6 +150,10 @@ const app = new Hono<App>()
 
 // Export the Workflow class
 export { UserDiscordRefreshWorkflow }
+
+// Export the Durable Object class
+export { WorkflowInstanceManager } from './durable-object'
+export { WorkflowInstanceManagerDO } from './durable-object'
 
 export default {
 	fetch: app.fetch,

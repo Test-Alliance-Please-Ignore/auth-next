@@ -595,6 +595,8 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 		// Cancel any pending join requests from this user for this group
 		await this.cancelPendingJoinRequests(groupId, userId)
+		// Cancel any pending invitations for this user to this group
+		await this.cancelPendingInvitations(groupId, userId)
 
 		// Invalidate group members cache
 		this.invalidateGroupMembersCache(groupId)
@@ -940,6 +942,12 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Join request is not pending')
 		}
 
+		// Check if already a member
+		const isMember = await this.isUserMember(request.groupId, request.userId)
+		if (isMember) {
+			throw new Error('Already a member of this group')
+		}
+
 		// Add user as member
 		await this.db.insert(groupMembers).values({
 			groupId: request.groupId,
@@ -959,6 +967,8 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		// Cancel any OTHER pending join requests from this user for this group
 		// (The approved one has already been updated above)
 		await this.cancelPendingJoinRequests(request.groupId, request.userId)
+		// Cancel any pending invitations for this user to this group
+		await this.cancelPendingInvitations(request.groupId, request.userId)
 
 		// Invalidate group members cache
 		this.invalidateGroupMembersCache(request.groupId)
@@ -2964,6 +2974,28 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 					eq(groupJoinRequests.groupId, groupId),
 					eq(groupJoinRequests.userId, userId),
 					eq(groupJoinRequests.status, 'pending')
+				)
+			)
+	}
+
+	/**
+	 * Cancel all pending invitations for a user in a specific group.
+	 * This should be called whenever a user joins a group through any method
+	 * (direct join, request approval, or invitation acceptance) to prevent
+	 * showing stale invitations to users and admins.
+	 */
+	private async cancelPendingInvitations(groupId: string, userId: string): Promise<void> {
+		await this.db
+			.update(groupInvitations)
+			.set({
+				status: 'cancelled',
+				respondedAt: new Date(),
+			})
+			.where(
+				and(
+					eq(groupInvitations.groupId, groupId),
+					eq(groupInvitations.inviteeUserId, userId),
+					eq(groupInvitations.status, 'pending')
 				)
 			)
 	}

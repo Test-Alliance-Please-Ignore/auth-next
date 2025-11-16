@@ -518,6 +518,45 @@ app.post('/users/:userId/discord/revoke', requireAuth(), requireAdmin(), async (
 })
 
 /**
+ * DELETE /admin/users/:userId/discord/unlink
+ * Completely unlink a user's Discord account (admin action)
+ *
+ * Removes Discord link, revokes authorization, deletes tokens, and removes user from Discord servers
+ */
+app.delete('/users/:userId/discord/unlink', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	const userId = c.req.param('userId')
+
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		// Call Discord service to unlink
+		const success = await discordService.unlinkUser(c.env, userId)
+
+		if (!success) {
+			return c.json({ error: 'Failed to unlink Discord account' }, 500)
+		}
+
+		logger.info('[Admin] Discord account unlinked by admin', {
+			adminUserId: user.id,
+			targetUserId: userId,
+		})
+
+		return c.json({ success: true })
+	} catch (error) {
+		logger.error('Error unlinking Discord account:', error)
+		return c.json(
+			{
+				error: error instanceof Error ? error.message : 'Failed to unlink Discord account',
+			},
+			500
+		)
+	}
+})
+
+/**
  * POST /admin/users/:userId/clear-sessions
  * Clear all active sessions for a user (admin action)
  *

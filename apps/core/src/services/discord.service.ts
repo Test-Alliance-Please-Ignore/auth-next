@@ -233,6 +233,66 @@ export async function refreshToken(env: Env, userId: string): Promise<boolean> {
 }
 
 /**
+ * Completely unlink a user's Discord account (admin action)
+ * Removes Discord link from core user, revokes authorization,
+ * deletes tokens, and removes user from all managed Discord servers
+ * @param env - Worker environment
+ * @param userId - Core user ID
+ * @returns Success status
+ */
+export async function unlinkUser(env: Env, userId: string): Promise<boolean> {
+	const db = createDb(env.DATABASE_URL)
+
+	// Get user to verify they have Discord linked
+	const user = await db.query.users.findFirst({
+		where: eq(users.id, userId),
+	})
+
+	if (!user) {
+		logger.error('[Discord] User not found for unlinking', { userId })
+		return false
+	}
+
+	if (!user.discordUserId) {
+		logger.warn('[Discord] User does not have Discord linked', { userId })
+		return true // Already unlinked, so technically successful
+	}
+
+	try {
+		// Call Discord DO to unlink on Discord side
+		using discordStub = getStub<Discord>(env.DISCORD, 'default')
+		const success = await discordStub.unlinkCoreUser(userId)
+
+		if (!success) {
+			logger.error('[Discord] Failed to unlink user on Discord side', { userId })
+			return false
+		}
+
+		// Clear Discord user ID from core users table
+		await db
+			.update(users)
+			.set({
+				discordUserId: null,
+				updatedAt: new Date(),
+			})
+			.where(eq(users.id, userId))
+
+		logger.info('[Discord] Successfully unlinked Discord account', {
+			userId,
+			previousDiscordUserId: user.discordUserId,
+		})
+
+		return true
+	} catch (error) {
+		logger.error('[Discord] Error unlinking Discord account', {
+			userId,
+			error: String(error),
+		})
+		return false
+	}
+}
+
+/**
  * Get all system-managed role IDs for a Discord guild
  *
  * Returns a Set of Discord role IDs (text) that are managed by the system
@@ -1139,11 +1199,41 @@ export async function syncUserDiscordAccess(
 		}
 	}
 
+	// Check if refresh is needed (15-minute minimum interval)
+	using discordStub = getStub<Discord>(env.DISCORD, 'default')
+	const shouldRefresh = await discordStub.shouldRefreshDiscordAccess(userId, 15)
+
+	if (!shouldRefresh) {
+		logger.debug('[Discord] Skipping sync - recently refreshed', {
+			userId,
+		})
+		return {
+			results: [],
+			totalInvited: 0,
+			totalUpdated: 0,
+			totalFailed: 0,
+		}
+	}
+
 	// First invite to new servers
 	const inviteResult = await inviteUserToDiscordServers(env, userId)
 
 	// Then update roles on all servers
 	const updateResult = await updateUserDiscordRoles(env, userId)
+
+	// Update last refreshed timestamp after successful sync
+	try {
+		await discordStub.updateLastRefreshed(userId)
+		logger.debug('[Discord] Updated lastRefreshed timestamp', {
+			userId,
+		})
+	} catch (error) {
+		// Log error but don't fail the sync operation
+		logger.error('[Discord] Failed to update lastRefreshed timestamp', {
+			userId,
+			error: error instanceof Error ? error.message : String(error),
+		})
+	}
 
 	// Combine results from both operations
 	const combinedResults = [

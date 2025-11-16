@@ -336,6 +336,45 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	}
 
 	/**
+	 * Update corporation sync timestamp for a specific property
+	 * Updates the corporationConfig table with the current timestamp for the specified sync property
+	 */
+	async updateCorporationSyncTimestamp(
+		corporationId: string,
+		syncProperty: string
+	): Promise<void> {
+		logger.debug('[EveCorporationData] Updating sync timestamp', {
+			corporationId,
+			syncProperty,
+		})
+
+		try {
+			const timestamp = new Date()
+
+			await this.db
+				.update(corporationConfig)
+				.set({
+					[syncProperty]: timestamp,
+				})
+				.where(eq(corporationConfig.corporationId, corporationId))
+
+			logger.debug('[EveCorporationData] Sync timestamp updated successfully', {
+				corporationId,
+				syncProperty,
+				timestamp: timestamp.toISOString(),
+			})
+		} catch (error) {
+			logger.error('[EveCorporationData] Failed to update sync timestamp', {
+				corporationId,
+				syncProperty,
+				error: error instanceof Error ? error.message : String(error),
+				stack: error instanceof Error ? error.stack : undefined,
+			})
+			throw error
+		}
+	}
+
+	/**
 	 * Configure which character to use for API access (legacy method for backwards compatibility)
 	 * @deprecated Use addDirector() instead
 	 */

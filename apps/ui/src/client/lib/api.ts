@@ -1773,6 +1773,10 @@ export class ApiClient {
 		return this.post(`/admin/users/${userId}/discord/revoke`, {})
 	}
 
+	async unlinkDiscordAccount(userId: string): Promise<{ success: boolean }> {
+		return this.delete(`/admin/users/${userId}/discord/unlink`)
+	}
+
 	async clearUserSessions(userId: string): Promise<{ success: boolean }> {
 		return this.post(`/admin/users/${userId}/clear-sessions`, {})
 	}

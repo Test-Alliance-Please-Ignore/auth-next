@@ -8,6 +8,7 @@ import type {
 	EveCorporationData,
 	EveCorporationSyncDataType,
 } from '@repo/eve-corporation-data'
+import type { Discord } from '@repo/discord'
 import type { Env } from './context'
 import type { UserDiscordRefreshPayload } from './workflows/user-discord-refresh'
 
@@ -209,22 +210,26 @@ export async function scheduleDiscordRefresh(event: ScheduledEvent, env: Env): P
 		})
 
 		// Fetch users that need Discord refresh
-		// Default: 50 users per batch, users with lastDiscordRefresh > 30 minutes ago
-		const users = await env.CORE.getUsersForDiscordRefresh(50, 30)
+		// Query Discord database directly via RPC (15-minute minimum interval)
+		using discordStub = getStub<Discord>(env.DISCORD, 'default')
+		const discordUsers = await discordStub.getUsersNeedingRefresh(50, 15)
 
 		logger.info('[Orchestrator] Fetched users for refresh', {
-			userCount: users.length,
+			userCount: discordUsers.length,
 		})
 
-		if (users.length === 0) {
+		if (discordUsers.length === 0) {
 			logger.info('[Orchestrator] No users need refresh at this time')
 			return
 		}
 
 		// Create workflow instances for each user with jitter
-		const workflowPromises = users.map(async (user) => {
+		const workflowPromises = discordUsers.map(async (discordUser) => {
+			// Map coreUserId to userId for workflow
+			const userId = discordUser.coreUserId
+
 			// Use idempotent workflow ID (no timestamp)
-			const workflowId = generateWorkflowId('user-discord-refresh', user.userId)
+			const workflowId = generateWorkflowId('user-discord-refresh', userId)
 
 			const existingWorkflow = await db.query.workflowInstances.findFirst({
 				where: eq(workflowInstances.id, workflowId),
@@ -232,11 +237,11 @@ export async function scheduleDiscordRefresh(event: ScheduledEvent, env: Env): P
 
 			if (existingWorkflow) {
 				logger.info('[Orchestrator] Workflow instance already exists', {
-					userId: user.userId,
+					userId,
 					workflowId,
 				})
 				return {
-					userId: user.userId,
+					userId,
 					workflowId: existingWorkflow.id,
 					skipped: true,
 					success: true,
@@ -248,15 +253,15 @@ export async function scheduleDiscordRefresh(event: ScheduledEvent, env: Env): P
 				const jitterSeconds = generateJitterSeconds()
 
 				const payload: UserDiscordRefreshPayload = {
-					userId: user.userId,
-					discordUserId: user.discordUserId,
+					userId,
+					discordUserId: discordUser.discordUserId,
 					jitterDelaySeconds: jitterSeconds,
 				}
 
 				await db.insert(workflowInstances).values({
 					id: workflowId,
 					workflowType: 'user-discord-refresh',
-					resourceId: user.userId,
+					resourceId: userId,
 					status: WorkflowStatus.Pending,
 				})
 
@@ -274,20 +279,20 @@ export async function scheduleDiscordRefresh(event: ScheduledEvent, env: Env): P
 					.where(eq(workflowInstances.id, workflowId))
 
 				logger.info('[Orchestrator] Created workflow instance', {
-					userId: user.userId,
+					userId,
 					workflowId: instance.id,
 					jitterMinutes: Math.floor(jitterSeconds / 60),
 				})
 
 				return {
-					userId: user.userId,
+					userId,
 					workflowId: instance.id,
 					skipped: false,
 					success: true,
 				}
 			} catch (error) {
 				logger.error('[Orchestrator] Failed to create workflow', {
-					userId: user.userId,
+					userId,
 					workflowId,
 					errorMessage: error instanceof Error ? error.message : String(error),
 					errorStack: error instanceof Error ? error.stack : undefined,
@@ -304,7 +309,7 @@ export async function scheduleDiscordRefresh(event: ScheduledEvent, env: Env): P
 					.where(eq(workflowInstances.id, workflowId))
 
 				return {
-					userId: user.userId,
+					userId,
 					workflowId: null,
 					skipped: false,
 					success: false,

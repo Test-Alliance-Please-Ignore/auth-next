@@ -1,17 +1,15 @@
 import { WorkflowEntrypoint, WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
 
-import { eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
-import { createWorkflowInstanceUpdater } from '@repo/orchestrator'
 
 import { createDb } from '../db'
-import { corporationConfig } from '../db/schema'
 import { DirectorManager } from '../services/director-manager'
 import * as esiFetch from '../services/esi-fetch'
 
 import type { EveCorporationData, EveCorporationSyncDataType } from '@repo/eve-corporation-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
+import type { WorkflowInstanceManager } from '@repo/orchestrator'
 import type { Env } from '../context'
 import type { SelectedDirector } from '../services/director-manager'
 
@@ -27,63 +25,26 @@ export interface EveCorporationSyncParams {
 	trigger: 'cron' | 'api'
 }
 
-type CorporationSyncProperty =
-	| 'memberTrackingLastSync'
-	| 'membersLastSync'
-	| 'walletsLastSync'
-	| 'walletJournalLastSync'
-	| 'walletTransactionsLastSync'
-	| 'assetsLastSync'
-	| 'structuresLastSync'
-	| 'ordersLastSync'
-	| 'contractsLastSync'
-	| 'industryJobsLastSync'
-	| 'killmailsLastSync'
-
-type CorporationConfigUpdate = Partial<typeof corporationConfig.$inferInsert>
-
-async function updateLastSync(
+/**
+ * Update corporation sync timestamp via singleton Durable Object
+ * Creates a fresh stub per call to avoid stub invalidation issues
+ *
+ * @param env - Workflow environment with bindings
+ * @param corporationId - The corporation ID
+ * @param syncProperty - The sync property to update (e.g., 'membersLastSync')
+ */
+async function updateSyncTimestamp(
 	env: Env,
 	corporationId: string,
-	syncProperty: CorporationSyncProperty
+	syncProperty: string
 ): Promise<void> {
-	logger.debug('[updateLastSync] Starting update', { corporationId, syncProperty })
-
+	logger.debug('[updateSyncTimestamp] Starting update', { corporationId, syncProperty })
 	try {
-		// Validate DATABASE_URL before creating database client
-		if (!env.DATABASE_URL || typeof env.DATABASE_URL !== 'string' || env.DATABASE_URL.trim() === '') {
-			throw new Error('DATABASE_URL environment variable is missing or empty')
-		}
-
-		let db: ReturnType<typeof createDb>
-		try {
-			db = createDb(env.DATABASE_URL)
-		} catch (error) {
-			throw new Error(`Failed to create database client: ${error instanceof Error ? error.message : String(error)}`)
-		}
-
-		const timestamp = new Date()
-
-		logger.debug('[updateLastSync] Executing database update', {
-			corporationId,
-			syncProperty,
-			timestamp: timestamp.toISOString(),
-		})
-
-		const result = await db
-			.update(corporationConfig)
-			.set({
-				[syncProperty]: timestamp,
-			} satisfies CorporationConfigUpdate)
-			.where(eq(corporationConfig.corporationId, corporationId))
-
-		logger.debug('[updateLastSync] Database update completed', {
-			corporationId,
-			syncProperty,
-			result,
-		})
+		using syncTimestampDO = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, 'default')
+		await syncTimestampDO.updateCorporationSyncTimestamp(corporationId, syncProperty)
+		logger.debug('[updateSyncTimestamp] Updated successfully', { corporationId, syncProperty })
 	} catch (error) {
-		logger.error('[updateLastSync] Database update failed', {
+		logger.error('[updateSyncTimestamp] Failed to update', {
 			corporationId,
 			syncProperty,
 			error: error instanceof Error ? error.message : String(error),
@@ -118,7 +79,11 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 		const { corporationId, dataTypes, trigger } = event.payload
 
 		// Validate environment variables and bindings before any operations
-		if (!this.env.DATABASE_URL || typeof this.env.DATABASE_URL !== 'string' || this.env.DATABASE_URL.trim() === '') {
+		if (
+			!this.env.DATABASE_URL ||
+			typeof this.env.DATABASE_URL !== 'string' ||
+			this.env.DATABASE_URL.trim() === ''
+		) {
 			const error = new Error('DATABASE_URL environment variable is missing or empty')
 			logger.error('[EveCorporationSyncWorkflow] Environment validation failed', {
 				corporationId,
@@ -158,31 +123,53 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			throw error
 		}
 
-		// Initialize workflow instance updater with error handling (non-blocking)
-		// This is for observability only - failures should not stop the workflow
-		let updater: ReturnType<typeof createWorkflowInstanceUpdater> | null = null
-		try {
-			updater = createWorkflowInstanceUpdater(event.instanceId, this.env.DATABASE_URL)
-			try {
-				await updater.markRunning()
-			} catch (error) {
-				// Log but don't throw - workflow instance updater is for tracking only
-				logger.warn('[EveCorporationSyncWorkflow] Failed to mark workflow as running (non-blocking)', {
-					corporationId,
-					trigger,
-					error: error instanceof Error ? error.message : String(error),
-					stack: error instanceof Error ? error.stack : undefined,
-				})
-			}
-		} catch (error) {
-			// Log but don't throw - workflow instance updater is for tracking only
-			logger.warn('[EveCorporationSyncWorkflow] Failed to create workflow instance updater (non-blocking)', {
+		// Validate orchestrator workflow instance manager binding
+		if (!this.env.ORCHESTRATOR_WORKFLOW_INSTANCE_MANAGER) {
+			const error = new Error('ORCHESTRATOR_WORKFLOW_INSTANCE_MANAGER binding is missing')
+			logger.error('[EveCorporationSyncWorkflow] Environment validation failed', {
 				corporationId,
 				trigger,
-				error: error instanceof Error ? error.message : String(error),
-				stack: error instanceof Error ? error.stack : undefined,
+				error: error.message,
 			})
-			// Continue without updater - it's just for observability
+			throw error
+		}
+
+		// Initialize workflow instance manager stub via RPC (non-blocking)
+		// This is for observability only - failures should not stop the workflow
+		let workflowInstanceManager: (WorkflowInstanceManager & { dispose(): void }) | null = null
+		try {
+			workflowInstanceManager = getStub<WorkflowInstanceManager>(
+				this.env.ORCHESTRATOR_WORKFLOW_INSTANCE_MANAGER,
+				'default'
+			)
+			try {
+				await workflowInstanceManager.markRunning(event.instanceId)
+			} catch (error) {
+				// Log but don't throw - workflow instance manager is for tracking only
+				logger.warn(
+					'[EveCorporationSyncWorkflow] Failed to mark workflow as running via RPC (non-blocking)',
+					{
+						corporationId,
+						trigger,
+						instanceId: event.instanceId,
+						error: error instanceof Error ? error.message : String(error),
+						stack: error instanceof Error ? error.stack : undefined,
+					}
+				)
+			}
+		} catch (error) {
+			// Log but don't throw - workflow instance manager is for tracking only
+			logger.warn(
+				'[EveCorporationSyncWorkflow] Failed to create workflow instance manager stub (non-blocking)',
+				{
+					corporationId,
+					trigger,
+					instanceId: event.instanceId,
+					error: error instanceof Error ? error.message : String(error),
+					stack: error instanceof Error ? error.stack : undefined,
+				}
+			)
+			// Continue without manager - it's just for observability
 		}
 
 		let directorManager: DirectorManager | null = null
@@ -327,17 +314,8 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						const result = await corpDataDO.storeMembers(corporationId, memberIds)
 
 						logger.debug('[Step] Updating membersLastSync', { corporationId })
-						try {
-							await updateLastSync(this.env, corporationId, 'membersLastSync')
-							logger.debug('[Step] membersLastSync updated successfully', { corporationId })
-						} catch (error) {
-							logger.error('[Step] Failed to update membersLastSync', {
-								corporationId,
-								error: error instanceof Error ? error.message : String(error),
-								stack: error instanceof Error ? error.stack : undefined,
-							})
-							throw error
-						}
+						await updateSyncTimestamp(this.env, corporationId, 'membersLastSync')
+						logger.debug('[Step] membersLastSync updated successfully', { corporationId })
 
 						logger.info('[Step] Members stored', {
 							corporationId,
@@ -392,17 +370,8 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						await corpDataDO.storeMemberTracking(corporationId, data)
 
 						logger.debug('[Step] Updating memberTrackingLastSync', { corporationId })
-						try {
-							await updateLastSync(this.env, corporationId, 'memberTrackingLastSync')
-							logger.debug('[Step] memberTrackingLastSync updated successfully', { corporationId })
-						} catch (error) {
-							logger.error('[Step] Failed to update memberTrackingLastSync', {
-								corporationId,
-								error: error instanceof Error ? error.message : String(error),
-								stack: error instanceof Error ? error.stack : undefined,
-							})
-							throw error
-						}
+						await updateSyncTimestamp(this.env, corporationId, 'memberTrackingLastSync')
+						logger.debug('[Step] memberTrackingLastSync updated successfully', { corporationId })
 
 						logger.info('[Step] Member tracking stored', { corporationId, count: data.length })
 
@@ -443,17 +412,8 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 					await corpDataDO.storeWallets(corporationId, wallets!)
 
 					logger.debug('[Step] Updating walletsLastSync', { corporationId })
-					try {
-						await updateLastSync(this.env, corporationId, 'walletsLastSync')
-						logger.debug('[Step] walletsLastSync updated successfully', { corporationId })
-					} catch (error) {
-						logger.error('[Step] Failed to update walletsLastSync', {
-							corporationId,
-							error: error instanceof Error ? error.message : String(error),
-							stack: error instanceof Error ? error.stack : undefined,
-						})
-						throw error
-					}
+					await updateSyncTimestamp(this.env, corporationId, 'walletsLastSync')
+					logger.debug('[Step] walletsLastSync updated successfully', { corporationId })
 
 					return {
 						divisions: wallets!.length,
@@ -512,7 +472,10 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 							})
 						}
 
-						await updateLastSync(this.env, corporationId, 'walletJournalLastSync')
+						logger.debug('[Step] Updating walletJournalLastSync', { corporationId })
+						await updateSyncTimestamp(this.env, corporationId, 'walletJournalLastSync')
+						logger.debug('[Step] walletJournalLastSync updated successfully', { corporationId })
+
 						return {
 							divisionsProcessed: divisionResults.length,
 							divisionsFailed: failures.length,
@@ -573,7 +536,11 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 							})
 						}
 
-						await updateLastSync(this.env, corporationId, 'walletTransactionsLastSync')
+						logger.debug('[Step] Updating walletTransactionsLastSync', { corporationId })
+						await updateSyncTimestamp(this.env, corporationId, 'walletTransactionsLastSync')
+						logger.debug('[Step] walletTransactionsLastSync updated successfully', {
+							corporationId,
+						})
 
 						return {
 							divisionsProcessed: divisionResults.length,
@@ -612,7 +579,10 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						await corpDataDO.storeAssets(corporationId, data)
 						logger.info('[Step] Assets stored', { corporationId, count: data.length })
 
-						await updateLastSync(this.env, corporationId, 'assetsLastSync')
+						logger.debug('[Step] Updating assetsLastSync', { corporationId })
+						await updateSyncTimestamp(this.env, corporationId, 'assetsLastSync')
+						logger.debug('[Step] assetsLastSync updated successfully', { corporationId })
+
 						return {
 							stored: data.length,
 						}
@@ -647,7 +617,9 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						await corpDataDO.storeStructures(corporationId, data)
 						logger.info('[Step] Structures stored', { corporationId, count: data.length })
 
-						await updateLastSync(this.env, corporationId, 'structuresLastSync')
+						logger.debug('[Step] Updating structuresLastSync', { corporationId })
+						await updateSyncTimestamp(this.env, corporationId, 'structuresLastSync')
+						logger.debug('[Step] structuresLastSync updated successfully', { corporationId })
 
 						return {
 							stored: data.length,
@@ -681,7 +653,10 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						logger.debug('[Step] Orders fetched', { corporationId, count: data.length })
 
 						await corpDataDO.storeOrders(corporationId, data)
-						await updateLastSync(this.env, corporationId, 'ordersLastSync')
+
+						logger.debug('[Step] Updating ordersLastSync', { corporationId })
+						await updateSyncTimestamp(this.env, corporationId, 'ordersLastSync')
+						logger.debug('[Step] ordersLastSync updated successfully', { corporationId })
 
 						logger.info('[Step] Orders stored', { corporationId, count: data.length })
 
@@ -719,7 +694,9 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						await corpDataDO.storeContracts(corporationId, data)
 						logger.info('[Step] Contracts stored', { corporationId, count: data.length })
 
-						await updateLastSync(this.env, corporationId, 'contractsLastSync')
+						logger.debug('[Step] Updating contractsLastSync', { corporationId })
+						await updateSyncTimestamp(this.env, corporationId, 'contractsLastSync')
+						logger.debug('[Step] contractsLastSync updated successfully', { corporationId })
 
 						return {
 							stored: data.length,
@@ -755,7 +732,9 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						await corpDataDO.storeIndustryJobs(corporationId, data)
 						logger.info('[Step] Industry jobs stored', { corporationId, count: data.length })
 
-						await updateLastSync(this.env, corporationId, 'industryJobsLastSync')
+						logger.debug('[Step] Updating industryJobsLastSync', { corporationId })
+						await updateSyncTimestamp(this.env, corporationId, 'industryJobsLastSync')
+						logger.debug('[Step] industryJobsLastSync updated successfully', { corporationId })
 
 						return {
 							stored: data.length,
@@ -791,7 +770,9 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						await corpDataDO.storeKillmails(corporationId, data)
 						logger.info('[Step] Killmails stored', { corporationId, count: data.length })
 
-						await updateLastSync(this.env, corporationId, 'killmailsLastSync')
+						logger.debug('[Step] Updating killmailsLastSync', { corporationId })
+						await updateSyncTimestamp(this.env, corporationId, 'killmailsLastSync')
+						logger.debug('[Step] killmailsLastSync updated successfully', { corporationId })
 
 						return {
 							stored: data.length,
@@ -861,16 +842,29 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				},
 			}
 
-			// Mark workflow as completed (non-blocking)
-			if (updater) {
+			// Mark workflow as completed via RPC (non-blocking)
+			if (workflowInstanceManager) {
 				try {
-					await updater.markCompleted()
+					await workflowInstanceManager.markCompleted(event.instanceId)
 				} catch (error) {
-					logger.warn('[EveCorporationSyncWorkflow] Failed to mark workflow as completed (non-blocking)', {
-						corporationId,
-						trigger,
-						error: error instanceof Error ? error.message : String(error),
-					})
+					logger.warn(
+						'[EveCorporationSyncWorkflow] Failed to mark workflow as completed via RPC (non-blocking)',
+						{
+							corporationId,
+							trigger,
+							instanceId: event.instanceId,
+							error: error instanceof Error ? error.message : String(error),
+						}
+					)
+				}
+			}
+
+			// Dispose of stub if it was created
+			if (workflowInstanceManager) {
+				try {
+					workflowInstanceManager.dispose()
+				} catch {
+					// Ignore disposal errors
 				}
 			}
 
@@ -906,18 +900,36 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				}
 			}
 
-			// Mark workflow as failed (non-blocking)
-			if (updater) {
+			// Mark workflow as failed via RPC (non-blocking)
+			if (workflowInstanceManager) {
 				try {
-					await updater.markFailed(error)
+					const errorMessage = error instanceof Error ? error.message : String(error)
+					await workflowInstanceManager.markFailed(event.instanceId, errorMessage)
 				} catch (markFailedError) {
-					logger.warn('[EveCorporationSyncWorkflow] Failed to mark workflow as failed (non-blocking)', {
-						corporationId,
-						trigger,
-						error: markFailedError instanceof Error ? markFailedError.message : String(markFailedError),
-					})
+					logger.warn(
+						'[EveCorporationSyncWorkflow] Failed to mark workflow as failed via RPC (non-blocking)',
+						{
+							corporationId,
+							trigger,
+							instanceId: event.instanceId,
+							error:
+								markFailedError instanceof Error
+									? markFailedError.message
+									: String(markFailedError),
+						}
+					)
 				}
 			}
+
+			// Dispose of stub if it was created
+			if (workflowInstanceManager) {
+				try {
+					workflowInstanceManager.dispose()
+				} catch {
+					// Ignore disposal errors
+				}
+			}
+
 			throw error
 		}
 	}

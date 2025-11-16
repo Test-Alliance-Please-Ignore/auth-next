@@ -35,6 +35,10 @@
 	"durable_objects": {
 		"bindings": [
 			{
+				"name": "WORKFLOW_INSTANCE_MANAGER",
+				"class_name": "WorkflowInstanceManager"
+			},
+			{
 				"name": "DISCORD",
 				"class_name": "Discord",
 				"script_name": "discord"
@@ -49,5 +53,20 @@
 	"vars": {
 		"SHOULD_REFRESH_CORPORATION_DATA": true,
 		"SHOULD_REFRESH_USER_DISCORD": true
-	}
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["WorkflowInstanceManagerDO"]
+		},
+		{
+			"tag": "v2",
+			"renamed_classes": [
+				{
+					"from": "WorkflowInstanceManagerDO",
+					"to": "WorkflowInstanceManager"
+				}
+			]
+		}
+	]
 }

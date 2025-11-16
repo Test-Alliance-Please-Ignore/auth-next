@@ -72,6 +72,8 @@ export interface DiscordUserStatus {
 	authRevokedAt: Date | null
 	/** Last time credentials were successfully used */
 	lastSuccessfulAuth: Date | null
+	/** Last time we synced Discord access (server invites and role updates) for this user (null if never synced) */
+	lastRefreshed: Date | null
 	/** When the user was created */
 	createdAt: Date
 	/** When the user was last updated */
@@ -161,11 +163,53 @@ export interface Discord {
 	getDiscordUserStatus(coreUserId: string): Promise<DiscordUserStatus | null>
 
 	/**
+	 * Update the last refreshed timestamp for a Discord user
+	 * @param coreUserId - Core user ID
+	 */
+	updateLastRefreshed(coreUserId: string): Promise<void>
+
+	/**
+	 * Check if Discord access should be refreshed for a user
+	 * @param coreUserId - Core user ID
+	 * @param intervalMinutes - Minimum minutes between refreshes (default: 15)
+	 * @returns Whether refresh is needed (true if never refreshed or last refresh was more than intervalMinutes ago)
+	 */
+	shouldRefreshDiscordAccess(coreUserId: string, intervalMinutes?: number): Promise<boolean>
+
+	/**
+	 * Get users that need Discord access refresh
+	 * Queries Discord database for users where coreUserId is not null and
+	 * (lastRefreshed is null OR lastRefreshed is older than intervalMinutes)
+	 * @param limit - Maximum number of users to return (default: 50)
+	 * @param intervalMinutes - Minimum minutes between refreshes (default: 15)
+	 * @returns Array of users needing refresh with coreUserId and discordUserId
+	 */
+	getUsersNeedingRefresh(
+		limit?: number,
+		intervalMinutes?: number
+	): Promise<
+		Array<{
+			coreUserId: string
+			discordUserId: string
+			lastRefreshed: Date | null
+		}>
+	>
+
+	/**
 	 * Manually revoke Discord authorization for a user (admin action)
 	 * @param coreUserId - Core user ID
 	 * @returns Whether revocation was successful
 	 */
 	revokeAuthorization(coreUserId: string): Promise<boolean>
+
+	/**
+	 * Completely unlink a Discord account from a core user (admin action)
+	 * Breaks the link by clearing coreUserId, revokes authorization,
+	 * deletes tokens, and removes user from all managed Discord servers
+	 * @param coreUserId - Core user ID to unlink
+	 * @returns Whether unlinking was successful
+	 */
+	unlinkCoreUser(coreUserId: string): Promise<boolean>
 
 	/**
 	 * Refresh token by core user ID

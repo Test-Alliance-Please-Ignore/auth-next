@@ -19,6 +19,8 @@ export type Env = SharedHonoEnv & {
 	CACHE: KVNamespace
 	/** Workflow binding for corporation sync */
 	EVE_CORPORATION_SYNC: Workflow<EveCorporationSyncParams>
+	/** Orchestrator workflow instance manager Durable Object for RPC updates */
+	ORCHESTRATOR_WORKFLOW_INSTANCE_MANAGER: DurableObjectNamespace
 
 	// Queue binding for notifying HR worker of departed members
 	'hr-member-departed': Queue<{ corporationId: string; characterId: string }>

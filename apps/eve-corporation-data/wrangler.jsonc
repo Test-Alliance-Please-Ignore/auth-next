@@ -40,6 +40,11 @@
 				"name": "EVE_TOKEN_STORE",
 				"class_name": "EveTokenStore",
 				"script_name": "eve-token-store"
+			},
+			{
+				"name": "ORCHESTRATOR_WORKFLOW_INSTANCE_MANAGER",
+				"class_name": "WorkflowInstanceManager",
+				"script_name": "orchestrator"
 			}
 		]
 	},

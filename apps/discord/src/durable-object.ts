@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { eq } from '@repo/db-utils'
+import { and, eq, isNotNull, sql } from '@repo/db-utils'
 import { generateShardKey } from '@repo/hazmat'
 import { logger } from '@repo/hono-helpers'
 
@@ -172,6 +172,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 		authRevoked: boolean
 		authRevokedAt: Date | null
 		lastSuccessfulAuth: Date | null
+		lastRefreshed: Date | null
 		createdAt: Date
 		updatedAt: Date
 	} | null> {
@@ -186,9 +187,138 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 			authRevoked: user.authRevoked,
 			authRevokedAt: user.authRevokedAt,
 			lastSuccessfulAuth: user.lastSuccessfulAuth,
+			lastRefreshed: user.lastRefreshed,
 			createdAt: user.createdAt,
 			updatedAt: user.updatedAt,
 		}
+	}
+
+	/**
+	 * Update the last refreshed timestamp for a Discord user
+	 */
+	async updateLastRefreshed(coreUserId: string): Promise<void> {
+		const user = await this.getUserByCoreUserId(coreUserId)
+		if (!user) {
+			logger.error('[DiscordDO] User not found for updateLastRefreshed', { coreUserId })
+			return
+		}
+
+		const now = new Date()
+		await this.db
+			.update(discordUsers)
+			.set({
+				lastRefreshed: now,
+				updatedAt: now,
+			})
+			.where(eq(discordUsers.id, user.id))
+
+		logger.debug('[DiscordDO] Updated lastRefreshed timestamp', {
+			coreUserId,
+			userId: user.userId,
+			timestamp: now.toISOString(),
+		})
+	}
+
+	/**
+	 * Check if Discord access should be refreshed for a user
+	 * @param coreUserId - Core user ID
+	 * @param intervalMinutes - Minimum minutes between refreshes (default: 15)
+	 * @returns Whether refresh is needed (true if never refreshed or last refresh was more than intervalMinutes ago)
+	 */
+	async shouldRefreshDiscordAccess(
+		coreUserId: string,
+		intervalMinutes = 15
+	): Promise<boolean> {
+		const user = await this.getUserByCoreUserId(coreUserId)
+		if (!user) {
+			logger.warn('[DiscordDO] User not found for shouldRefreshDiscordAccess', { coreUserId })
+			return false
+		}
+
+		// If never refreshed, refresh is needed
+		if (!user.lastRefreshed) {
+			logger.debug('[DiscordDO] Refresh needed - never refreshed', { coreUserId })
+			return true
+		}
+
+		// Calculate cutoff time
+		const cutoffTime = new Date(Date.now() - intervalMinutes * 60 * 1000)
+
+		// Refresh is needed if last refresh was before cutoff time
+		const needsRefresh = user.lastRefreshed < cutoffTime
+
+		if (needsRefresh) {
+			logger.debug('[DiscordDO] Refresh needed - last refresh too old', {
+				coreUserId,
+				lastRefreshed: user.lastRefreshed.toISOString(),
+				cutoffTime: cutoffTime.toISOString(),
+				intervalMinutes,
+			})
+		} else {
+			logger.debug('[DiscordDO] Refresh not needed - recently refreshed', {
+				coreUserId,
+				lastRefreshed: user.lastRefreshed.toISOString(),
+				cutoffTime: cutoffTime.toISOString(),
+				intervalMinutes,
+			})
+		}
+
+		return needsRefresh
+	}
+
+	/**
+	 * Get users that need Discord access refresh
+	 * Queries Discord database for users where coreUserId is not null and
+	 * (lastRefreshed is null OR lastRefreshed is older than intervalMinutes)
+	 *
+	 * @param limit - Maximum number of users to return (default: 50)
+	 * @param intervalMinutes - Minimum minutes between refreshes (default: 15)
+	 * @returns Array of users needing refresh with coreUserId and discordUserId
+	 */
+	async getUsersNeedingRefresh(
+		limit = 50,
+		intervalMinutes = 15
+	): Promise<
+		Array<{
+			coreUserId: string
+			discordUserId: string
+			lastRefreshed: Date | null
+		}>
+	> {
+		const cutoffTime = new Date(Date.now() - intervalMinutes * 60 * 1000)
+
+		const usersNeedingRefresh = await this.db
+			.select({
+				coreUserId: discordUsers.coreUserId,
+				discordUserId: discordUsers.userId,
+				lastRefreshed: discordUsers.lastRefreshed,
+			})
+			.from(discordUsers)
+			.where(
+				and(
+					isNotNull(discordUsers.coreUserId),
+					eq(discordUsers.authRevoked, false),
+					sql`(${discordUsers.lastRefreshed} IS NULL OR ${discordUsers.lastRefreshed} < ${cutoffTime})`
+				)
+			)
+			.orderBy(sql`${discordUsers.lastRefreshed} ASC NULLS FIRST`)
+			.limit(limit)
+
+		const results = usersNeedingRefresh
+			.filter((u) => u.coreUserId !== null) // Filter out any null coreUserIds (shouldn't happen but TypeScript safety)
+			.map((u) => ({
+				coreUserId: u.coreUserId!,
+				discordUserId: u.discordUserId,
+				lastRefreshed: u.lastRefreshed,
+			}))
+
+		logger.debug('[DiscordDO] Found users needing refresh', {
+			count: results.length,
+			intervalMinutes,
+			cutoffTime: cutoffTime.toISOString(),
+		})
+
+		return results
 	}
 
 	/**
@@ -219,6 +349,102 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 		})
 
 		return true
+	}
+
+	/**
+	 * Completely unlink a Discord account from a core user (admin action)
+	 * Breaks the link by clearing coreUserId, revokes authorization,
+	 * deletes tokens, and removes user from all managed Discord servers
+	 */
+	async unlinkCoreUser(coreUserId: string): Promise<boolean> {
+		try {
+			const user = await this.getUserByCoreUserId(coreUserId)
+			if (!user) {
+				logger.warn('[DiscordDO] User not found for unlinking', { coreUserId })
+				return false
+			}
+
+			const discordUserId = user.userId
+			const botService = new DiscordBotService(this.env)
+
+			// Get all guilds the user is a member of before unlinking
+			// This requires a valid token, so we do it before deletion
+			let guildIds: string[] = []
+			try {
+				const accessToken = await this.getValidAccessToken(user.id, discordUserId)
+				if (accessToken) {
+					const guilds = await this.getUserGuilds(coreUserId)
+					guildIds = guilds.map((g) => g.id)
+
+					logger.info('[DiscordDO] Found guilds for user removal', {
+						coreUserId,
+						discordUserId,
+						guildCount: guildIds.length,
+					})
+				}
+			} catch (error) {
+				logger.warn('[DiscordDO] Could not fetch user guilds for removal', {
+					coreUserId,
+					discordUserId,
+					error: String(error),
+				})
+			}
+
+			// Delete all tokens first
+			await this.db.delete(discordTokens).where(eq(discordTokens.userId, user.id))
+
+			logger.info('[DiscordDO] Deleted Discord tokens', {
+				coreUserId,
+				discordUserId,
+			})
+
+			// Break the link by clearing coreUserId and marking as revoked
+			await this.db
+				.update(discordUsers)
+				.set({
+					coreUserId: null,
+					authRevoked: true,
+					authRevokedAt: new Date(),
+					updatedAt: new Date(),
+				})
+				.where(eq(discordUsers.id, user.id))
+
+			logger.info('[DiscordDO] Unlinked Discord account from core user', {
+				coreUserId,
+				discordUserId,
+			})
+
+			// Remove user from all guilds they were a member of
+			if (guildIds.length > 0) {
+				await Promise.all(
+					guildIds.map(async (guildId) => {
+						try {
+							await botService.removeGuildMember(guildId, discordUserId)
+							logger.info('[DiscordDO] Removed user from guild', {
+								coreUserId,
+								discordUserId,
+								guildId,
+							})
+						} catch (error) {
+							logger.error('[DiscordDO] Failed to remove user from guild', {
+								coreUserId,
+								discordUserId,
+								guildId,
+								error: String(error),
+							})
+						}
+					})
+				)
+			}
+
+			return true
+		} catch (error) {
+			logger.error('[DiscordDO] Error unlinking Discord account', {
+				coreUserId,
+				error: String(error),
+			})
+			return false
+		}
 	}
 
 	/**

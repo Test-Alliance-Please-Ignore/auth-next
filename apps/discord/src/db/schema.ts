@@ -40,6 +40,9 @@ export const discordUsers = pgTable('discord_users', {
 	/** Last time we successfully used this user's credentials (null if never successful) */
 	lastSuccessfulAuth: timestamp('last_successful_auth'),
 
+	/** Last time we synced Discord access (server invites and role updates) for this user (null if never synced) */
+	lastRefreshed: timestamp('last_refreshed', { withTimezone: true }),
+
 	/** When the user was first added */
 	createdAt: timestamp('created_at').defaultNow().notNull(),
 

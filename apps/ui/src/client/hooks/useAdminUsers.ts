@@ -114,6 +114,21 @@ export function useRevokeDiscordLink() {
 }
 
 /**
+ * Completely unlink a user's Discord account (admin action)
+ */
+export function useUnlinkDiscordAccount() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: (userId: string) => api.unlinkDiscordAccount(userId),
+		onSuccess: (_, userId) => {
+			// Invalidate user detail to refetch Discord status
+			void queryClient.invalidateQueries({ queryKey: adminUserKeys.detail(userId) })
+		},
+	})
+}
+
+/**
  * Clear all active sessions for a user (admin action)
  */
 export function useClearUserSessions() {

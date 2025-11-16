@@ -6,13 +6,40 @@ import { createInterface } from 'node:readline/promises'
 import { fileURLToPath } from 'node:url'
 
 import { and, createDbClient, eq, gte, ilike, inArray, or } from '@repo/db-utils'
-import { getStub } from '@repo/do-utils'
 
 import { schema as coreSchema } from '../../../core/src/db/schema'
 import { schema } from '../db'
+import type {
+	KillmailAttacker,
+	KillmailDetail,
+	KillmailItem,
+	KillmailVictim,
+} from '@repo/universe'
 
-import type { EveTokenStore } from '@repo/eve-token-store'
-import type { Killmail } from '@repo/universe'
+// Extended types with name resolution
+type KillmailItemWithName = KillmailItem & { item_type_name?: string }
+
+type KillmailVictimWithNames = KillmailVictim & {
+	character_name?: string
+	corporation_name?: string
+	alliance_name?: string
+	ship_type_name?: string
+	items?: KillmailItemWithName[]
+}
+
+type KillmailAttackerWithNames = KillmailAttacker & {
+	character_name?: string
+	corporation_name?: string
+	alliance_name?: string
+	ship_type_name?: string
+	weapon_type_name?: string
+}
+
+type KillmailDetailWithNames = KillmailDetail & {
+	solar_system_name?: string
+	victim: KillmailVictimWithNames
+	attackers: KillmailAttackerWithNames[]
+}
 
 // Load .env from monorepo root - done manually to avoid dotenv debug output
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -37,7 +64,7 @@ try {
 			process.env[key] = value
 		}
 	}
-} catch (error) {
+} catch {
 	// .env file not found or not readable - that's okay, env vars might be set elsewhere
 }
 
@@ -78,9 +105,9 @@ function log(...args: any[]) {
 	}
 }
 
-function logWrite(...args: any[]) {
+function logWrite(str: string) {
 	if (!quietMode) {
-		process.stdout.write(...args)
+		process.stdout.write(str)
 	}
 }
 
@@ -212,7 +239,7 @@ async function fetchKillmailDetails(
 	killmailId: string,
 	killmailHash: string,
 	retryCount = 0
-): Promise<Killmail> {
+): Promise<KillmailDetail> {
 	const maxRetries = 3
 
 	// For scripts, we'll fetch directly from ESI public endpoint
@@ -244,17 +271,17 @@ async function fetchKillmailDetails(
 	const data = await response.json()
 
 	// Convert all IDs to strings to match codebase pattern
-	return convertKillmailIds(data)
+	return convertKillmailIds(data) as KillmailDetail
 }
 
-function convertKillmailIds(data: any): Killmail {
+function convertKillmailIds(data: unknown): unknown {
 	// Recursively convert all numeric IDs to strings
 	if (typeof data === 'object' && data !== null) {
 		if (Array.isArray(data)) {
-			return data.map(convertKillmailIds) as any
+			return data.map(convertKillmailIds)
 		}
 
-		const result: any = {}
+		const result: Record<string, unknown> = {}
 		for (const [key, value] of Object.entries(data)) {
 			// Convert ID fields to strings
 			if (
@@ -279,7 +306,7 @@ function convertKillmailIds(data: any): Killmail {
 	return data
 }
 
-async function resolveAndAddEntityNames(killmail: Killmail): Promise<void> {
+async function resolveAndAddEntityNames(killmail: KillmailDetailWithNames): Promise<void> {
 	// Collect all entity IDs that need resolution for this killmail
 	const entityIds = new Set<string>()
 
@@ -363,12 +390,12 @@ async function resolveAndAddEntityNames(killmail: Killmail): Promise<void> {
 			}
 
 			if (response.ok) {
-				const data = await response.json()
+				const data = (await response.json()) as Array<{ id: number; name: string }>
 				for (const entry of data) {
 					names[String(entry.id)] = entry.name
 				}
 			}
-		} catch (error) {
+		} catch {
 			// Silently fail - names are optional
 		}
 	}
@@ -562,8 +589,8 @@ async function getCorporationsByAlliance(allianceId: string): Promise<Corporatio
 	const corpDataDb = createDbClient(eveCorporationDataDatabaseUrl, schema)
 
 	// Find all corporations with this alliance ID
-	const corpInfos = await corpDataDb.query.corporationInfo.findMany({
-		where: eq(schema.corporationInfo.allianceId, allianceId),
+	const corpInfos = await corpDataDb.query.corporationPublicInfo.findMany({
+		where: eq(schema.corporationPublicInfo.allianceId, allianceId),
 		columns: {
 			corporationId: true,
 		},
@@ -716,7 +743,7 @@ async function main() {
 	}
 
 	// Query killmails from all corporations and merge
-	let allKillmails: Array<{
+	const allKillmails: Array<{
 		killmailId: string
 		killmailHash: string
 		killmailTime: Date
@@ -771,7 +798,10 @@ async function main() {
 			logWrite(`\rProcessing killmail ${processedCount}...`)
 
 			// Fetch full details
-			const details = await fetchKillmailDetails(km.killmailId, km.killmailHash)
+			const details = (await fetchKillmailDetails(
+				km.killmailId,
+				km.killmailHash
+			)) as KillmailDetailWithNames
 
 			// Filter to kills only if requested
 			if (killsOnly && corporationIds.has(details.victim?.corporation_id || '')) {

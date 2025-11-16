@@ -700,6 +700,14 @@ export interface EveCorporationData {
 	 */
 	verifyAccess(): Promise<CorporationAccessVerification>
 
+	/**
+	 * Update corporation sync timestamp for a specific property
+	 * Updates the corporationConfig table with the current timestamp for the specified sync property
+	 * @param corporationId - The corporation ID
+	 * @param syncProperty - The sync property to update (e.g., 'membersLastSync', 'assetsLastSync')
+	 */
+	updateCorporationSyncTimestamp(corporationId: string, syncProperty: string): Promise<void>
+
 	// ========================================================================
 	// DIRECTOR MANAGEMENT METHODS
 	// ========================================================================

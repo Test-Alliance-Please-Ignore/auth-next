@@ -1,0 +1,1 @@
+ALTER TABLE "discord_users" ADD COLUMN "last_refreshed" timestamp with time zone;

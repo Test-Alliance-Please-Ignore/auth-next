@@ -32,6 +32,7 @@ export const invitationStatusEnum = pgEnum('invitation_status', [
 	'accepted',
 	'declined',
 	'expired',
+	'cancelled',
 ])
 
 /** Join request status */
