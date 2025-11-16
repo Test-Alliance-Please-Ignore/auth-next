@@ -51,8 +51,8 @@
 		]
 	},
 	"vars": {
-		"SHOULD_REFRESH_CORPORATION_DATA": true,
-		"SHOULD_REFRESH_USER_DISCORD": true
+		"SHOULD_REFRESH_CORPORATION_DATA": false,
+		"SHOULD_REFRESH_USER_DISCORD": false
 	},
 	"migrations": [
 		{

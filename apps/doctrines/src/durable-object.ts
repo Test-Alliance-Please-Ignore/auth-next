@@ -118,7 +118,9 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 			console.log('[DoctrinesDO.checkPermission] Fetching user permissions', { userId })
 			let userPermissions
 			try {
-				userPermissions = await groupsStub.getUserPermissions(userId)
+				// Use cached permissions - import from core worker
+				const { getCachedUserPermissions } = await import('../../core/src/lib/groups-cache')
+				userPermissions = await getCachedUserPermissions(this.env, userId)
 			} catch (error) {
 				console.error('[DoctrinesDO.checkPermission] ERROR - Failed to get user permissions', {
 					userId,
@@ -162,9 +164,9 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 
 				let characterPermissions
 				try {
-					// Create fresh stub for each character to avoid stub invalidation
-					using charStub = getStub<Groups>(this.env.GROUPS, 'default')
-					characterPermissions = await charStub.getCharacterPermissions(characterId)
+					// Use cached character permissions - import from core worker
+					const { getCachedCharacterPermissions } = await import('../../core/src/lib/groups-cache')
+					characterPermissions = await getCachedCharacterPermissions(this.env, characterId)
 				} catch (error) {
 					console.error(
 						'[DoctrinesDO.checkPermission] ERROR - Failed to get character permissions',

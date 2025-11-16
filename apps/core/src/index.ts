@@ -298,7 +298,7 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	 */
 	async awardDkpBulk(params: {
 		awards: Array<{
-			characterId: string
+			characterName: string
 			corporationId?: string
 			amount: number
 			reason?: string
@@ -312,12 +312,13 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 		success: boolean
 		totalAwarded: number
 		transactions: Array<{
+			characterName: string
 			characterId: string
 			transactionId: string
 			amount: number
 		}>
 		errors: Array<{
-			characterId: string
+			characterName: string
 			error: string
 		}>
 	}> {

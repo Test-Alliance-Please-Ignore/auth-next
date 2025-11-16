@@ -163,7 +163,7 @@ describe('DkpService', () => {
 			const result = await dkpService.awardDkpBulk({
 				awards: [
 					{
-						characterId: '12345',
+						characterName: 'Test Character',
 						corporationId: '67890',
 						amount: 100,
 					},
@@ -182,7 +182,7 @@ describe('DkpService', () => {
 			const result = await dkpService.awardDkpBulk({
 				awards: [
 					{
-						characterId: '12345',
+						characterName: 'Test Character',
 						// Missing corporationId - will fail
 						amount: 100,
 					},
@@ -194,7 +194,7 @@ describe('DkpService', () => {
 			expect(result.success).toBe(false)
 			expect(result.totalAwarded).toBe(0)
 			expect(result.errors).toHaveLength(1)
-			expect(result.errors[0].characterId).toBe('12345')
+			expect(result.errors[0].characterName).toBe('Test Character')
 		})
 	})
 

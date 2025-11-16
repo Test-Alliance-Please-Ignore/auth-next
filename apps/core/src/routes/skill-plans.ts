@@ -12,10 +12,10 @@ import {
 	canModifyPlan,
 	canViewPlan,
 } from '../lib/skill-plan-auth'
+import { getCachedGroup, getCachedUserMemberships } from '../lib/groups-cache'
 import { requireAuth } from '../middleware/session'
 
 import type { EveCharacterData } from '@repo/eve-character-data'
-import type { Groups } from '@repo/groups'
 import type {
 	AddSkillToPlanInput,
 	CreateSkillPlanInput,
@@ -31,7 +31,7 @@ import type { App } from '../context'
 async function resolveMaintainerName(
 	maintainerId: string,
 	currentUserId: string,
-	groupsStub: Groups,
+	env: { GROUPS: DurableObjectNamespace },
 	db: ReturnType<typeof createDb>,
 	isAdmin: boolean
 ): Promise<string> {
@@ -39,7 +39,7 @@ async function resolveMaintainerName(
 		// Get group name
 		const groupId = maintainerId.replace('group:', '')
 		try {
-			const group = await groupsStub.getGroup(groupId, currentUserId, isAdmin)
+			const group = await getCachedGroup(env, groupId, currentUserId, isAdmin)
 			return group?.name || groupId
 		} catch (error) {
 			console.error('Failed to fetch group name:', error)
@@ -87,10 +87,9 @@ const skillPlansRoutes = new Hono<App>()
 	 */
 	.post('/categories', async (c) => {
 		const user = c.get('user')!
-		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 
 		// Check permission
-		const allowed = await canCreateCategory(groupsStub, user.id, user.is_admin)
+		const allowed = await canCreateCategory(c.env, user.id, user.is_admin)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -131,10 +130,9 @@ const skillPlansRoutes = new Hono<App>()
 	.patch('/categories/:categoryId', async (c) => {
 		const user = c.get('user')!
 		const categoryId = c.req.param('categoryId')
-		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 
 		// Check permission
-		const allowed = await canManageCategories(groupsStub, user.id, user.is_admin)
+		const allowed = await canManageCategories(c.env, user.id, user.is_admin)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -171,10 +169,9 @@ const skillPlansRoutes = new Hono<App>()
 	.delete('/categories/:categoryId', async (c) => {
 		const user = c.get('user')!
 		const categoryId = c.req.param('categoryId')
-		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 
 		// Check permission
-		const allowed = await canManageCategories(groupsStub, user.id, user.is_admin)
+		const allowed = await canManageCategories(c.env, user.id, user.is_admin)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -213,7 +210,6 @@ const skillPlansRoutes = new Hono<App>()
 		const offset = query.offset ? parseInt(query.offset, 10) : undefined
 
 		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
-		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 
 		try {
 			if (myPlans && user.mainCharacterId) {
@@ -228,8 +224,8 @@ const skillPlansRoutes = new Hono<App>()
 				// Add permission flags and maintainer name for each plan
 				const plansWithPermissions = await Promise.all(
 					result.items.map(async (plan) => {
-						const canModify = await canModifyPlan(plan, user.id, groupsStub, user.is_admin)
-						const canDelete = await canDeletePlan(plan, user.id, groupsStub, user.is_admin)
+						const canModify = await canModifyPlan(plan, user.id, c.env, user.is_admin)
+						const canDelete = await canDeletePlan(plan, user.id, c.env, user.is_admin)
 						const maintainerType = plan.maintainerId?.startsWith('group:')
 							? ('group' as const)
 							: ('user' as const)
@@ -237,7 +233,7 @@ const skillPlansRoutes = new Hono<App>()
 							? await resolveMaintainerName(
 									plan.maintainerId,
 									user.id,
-									groupsStub,
+									c.env,
 									db,
 									user.is_admin
 								)
@@ -282,8 +278,7 @@ const skillPlansRoutes = new Hono<App>()
 			const plans = [...userPlansResult.items]
 
 			// Also get plans where user is part of a group that maintains the plan
-			using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-			const memberships = await groupsStub.getUserMemberships(user.id)
+			const memberships = await getCachedUserMemberships(c.env, user.id)
 
 			for (const membership of memberships) {
 				const groupPlansResult = await skillsStub.listPlansByMaintainer(
@@ -316,7 +311,7 @@ const skillPlansRoutes = new Hono<App>()
 						? ('group' as const)
 						: ('user' as const)
 					const maintainerName = plan.maintainerId
-						? await resolveMaintainerName(plan.maintainerId, user.id, groupsStub, db, user.is_admin)
+						? await resolveMaintainerName(plan.maintainerId, user.id, c.env, db, user.is_admin)
 						: 'System'
 					return {
 						...plan,
@@ -358,8 +353,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check view permission (same as viewing the plan)
-		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-		const allowed = await canViewPlan(plan, user.id, groupsStub, user.is_admin)
+		const allowed = await canViewPlan(plan, user.id, c.env, user.is_admin)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -380,14 +374,13 @@ const skillPlansRoutes = new Hono<App>()
 		const characterId = c.req.param('characterId')
 
 		const db = createDb(c.env.DATABASE_URL)
-		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 
 		// Check if user can check this character's progress
 		const allowed = await canCheckCharacterProgress(
 			characterId,
 			user.id,
 			db,
-			groupsStub,
+			c.env,
 			user.is_admin
 		)
 		if (!allowed) {
@@ -403,7 +396,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check if user can view the plan (if private)
-		const canView = await canViewPlan(plan, user.id, groupsStub, user.is_admin)
+		const canView = await canViewPlan(plan, user.id, c.env, user.is_admin)
 		if (!canView) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -496,7 +489,6 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		const characterId = user.mainCharacterId
-		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 		using skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 
 		// Get the plan first to verify it exists
@@ -506,7 +498,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check if user can view the plan (if private)
-		const canView = await canViewPlan(plan, user.id, groupsStub, user.is_admin)
+		const canView = await canViewPlan(plan, user.id, c.env, user.is_admin)
 		if (!canView) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -603,15 +595,14 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check view permission
-		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-		const allowed = await canViewPlan(plan, user.id, groupsStub, user.is_admin)
+		const allowed = await canViewPlan(plan, user.id, c.env, user.is_admin)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
 
 		// Add permission flags for the UI
-		const canModify = await canModifyPlan(plan, user.id, groupsStub, user.is_admin)
-		const canDelete = await canDeletePlan(plan, user.id, groupsStub, user.is_admin)
+		const canModify = await canModifyPlan(plan, user.id, c.env, user.is_admin)
+		const canDelete = await canDeletePlan(plan, user.id, c.env, user.is_admin)
 
 		// Add maintainer name for display
 		const db = createDb(c.env.DATABASE_URL)
@@ -619,7 +610,7 @@ const skillPlansRoutes = new Hono<App>()
 			? ('group' as const)
 			: ('user' as const)
 		const maintainerName = plan.maintainerId
-			? await resolveMaintainerName(plan.maintainerId, user.id, groupsStub, db, user.is_admin)
+			? await resolveMaintainerName(plan.maintainerId, user.id, c.env, db, user.is_admin)
 			: 'System'
 
 		return c.json({
@@ -638,10 +629,9 @@ const skillPlansRoutes = new Hono<App>()
 	 */
 	.post('/', async (c) => {
 		const user = c.get('user')!
-		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 
 		// Check permission
-		const allowed = await canCreateSkillPlan(groupsStub, user.id, user.is_admin)
+		const allowed = await canCreateSkillPlan(c.env, user.id, user.is_admin)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -704,8 +694,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check modification permission
-		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-		const allowed = await canModifyPlan(plan, user.id, groupsStub, user.is_admin)
+		const allowed = await canModifyPlan(plan, user.id, c.env, user.is_admin)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -755,8 +744,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check deletion permission
-		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-		const allowed = await canDeletePlan(plan, user.id, groupsStub, user.is_admin)
+		const allowed = await canDeletePlan(plan, user.id, c.env, user.is_admin)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -795,8 +783,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check modification permission
-		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-		const allowed = await canModifyPlan(plan, user.id, groupsStub, user.is_admin)
+		const allowed = await canModifyPlan(plan, user.id, c.env, user.is_admin)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -873,8 +860,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check modification permission
-		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-		const allowed = await canModifyPlan(plan, user.id, groupsStub, user.is_admin)
+		const allowed = await canModifyPlan(plan, user.id, c.env, user.is_admin)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -991,8 +977,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check modification permission
-		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-		const allowed = await canModifyPlan(plan, user.id, groupsStub, user.is_admin)
+		const allowed = await canModifyPlan(plan, user.id, c.env, user.is_admin)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -1070,8 +1055,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check modification permission
-		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-		const allowed = await canModifyPlan(plan, user.id, groupsStub, user.is_admin)
+		const allowed = await canModifyPlan(plan, user.id, c.env, user.is_admin)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -1114,8 +1098,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check modification permission
-		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-		const allowed = await canModifyPlan(plan, user.id, groupsStub, user.is_admin)
+		const allowed = await canModifyPlan(plan, user.id, c.env, user.is_admin)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -1156,8 +1139,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check modification permission
-		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-		const allowed = await canModifyPlan(plan, user.id, groupsStub, user.is_admin)
+		const allowed = await canModifyPlan(plan, user.id, c.env, user.is_admin)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -1194,14 +1176,13 @@ const skillPlansRoutes = new Hono<App>()
 		const planId = c.req.param('planId')
 
 		const db = createDb(c.env.DATABASE_URL)
-		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 
 		// Check if user can check this character's progress
 		const allowed = await canCheckCharacterProgress(
 			characterId,
 			user.id,
 			db,
-			groupsStub,
+			c.env,
 			user.is_admin
 		)
 		if (!allowed) {
@@ -1217,7 +1198,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check if user can view the plan (if private)
-		const canView = await canViewPlan(plan, user.id, groupsStub, user.is_admin)
+		const canView = await canViewPlan(plan, user.id, c.env, user.is_admin)
 		if (!canView) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -1307,14 +1288,13 @@ const skillPlansRoutes = new Hono<App>()
 		const planIdsParam = c.req.query('planIds')
 
 		const db = createDb(c.env.DATABASE_URL)
-		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 
 		// Check if user can check this character's progress
 		const allowed = await canCheckCharacterProgress(
 			characterId,
 			user.id,
 			db,
-			groupsStub,
+			c.env,
 			user.is_admin
 		)
 		if (!allowed) {

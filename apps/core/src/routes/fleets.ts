@@ -4,16 +4,17 @@ import { getStub } from '@repo/do-utils'
 import { createEveCharacterId } from '@repo/eve-types'
 import { logger, TimeCache } from '@repo/hono-helpers'
 
+import { getCachedCharacterPermissions, getCachedUserPermissions } from '../lib/groups-cache'
 import { requireAdmin, requireAuth } from '../middleware/session'
 
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { CharacterForFleetJoin, Fleets } from '@repo/fleets'
-import type { Groups } from '@repo/groups'
 import type { App } from '../context'
 
 /**
  * Permission check cache - 15 second TTL
+ * Caches the boolean result of permission checks
  */
 const permissionCache = new TimeCache<boolean>(15000)
 
@@ -21,9 +22,6 @@ const permissionCache = new TimeCache<boolean>(15000)
  * Helper function to check if a character has a specific permission
  * Checks both user permissions and character permissions
  * Results are cached for 15 seconds to reduce load on Groups DO
- *
- * IMPORTANT: Creates fresh stubs internally to avoid stub invalidation issues.
- * Each RPC operation gets its own isolated stub.
  */
 async function hasCharacterPermission(
 	env: { GROUPS: DurableObjectNamespace },
@@ -40,16 +38,15 @@ async function hasCharacterPermission(
 	// Check cache or fetch permissions
 	const cacheKey = `${userId}:${characterId}:${permissionUrn}`
 	return permissionCache.getOrSet(cacheKey, async () => {
-		// Check user group permissions first
-		using groupsStub = getStub<Groups>(env.GROUPS, 'default')
-		const groupPermissions = await groupsStub.getUserPermissions(userId)
+		// Check user group permissions first (cached)
+		const groupPermissions = await getCachedUserPermissions(env, userId)
 
 		if (groupPermissions.some((p) => p.urn === permissionUrn)) {
 			return true
 		}
 
-		// Check character permissions
-		const characterPermissions = await groupsStub.getCharacterPermissions(characterId)
+		// Check character permissions (cached)
+		const characterPermissions = await getCachedCharacterPermissions(env, characterId)
 		return characterPermissions.some((p) => p.urn === permissionUrn)
 	})
 }

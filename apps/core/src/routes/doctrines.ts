@@ -3,14 +3,15 @@ import { Hono } from 'hono'
 import { getStub } from '@repo/do-utils'
 import { TimeCache } from '@repo/hono-helpers'
 
+import { getCachedCharacterPermissions, getCachedUserPermissions } from '../lib/groups-cache'
 import { requireAuth } from '../middleware/session'
 
 import type { Doctrines } from '@repo/doctrines'
-import type { Groups } from '@repo/groups'
 import type { App } from '../context'
 
 /**
  * Permission check cache - 15 second TTL
+ * Caches the boolean result of permission checks (userId:permissionUrn:characterIds)
  */
 const permissionCache = new TimeCache<boolean>(15000)
 
@@ -18,9 +19,6 @@ const permissionCache = new TimeCache<boolean>(15000)
  * Helper function to check if a user has a specific permission
  * Checks both group permissions and corporation permissions
  * Results are cached for 15 seconds to reduce load on Groups DO
- *
- * IMPORTANT: Creates fresh stubs internally to avoid stub invalidation issues.
- * Each RPC operation gets its own isolated stub.
  */
 async function hasPermission(
 	env: { GROUPS: DurableObjectNamespace },
@@ -42,12 +40,11 @@ async function hasPermission(
 		return true
 	}
 
-	// Check cache or fetch user permissions
-	const cacheKey = `${userId}:${permissionUrn}`
+	// Check cache or fetch permissions
+	const cacheKey = `${userId}:${permissionUrn}:${characterIds.join(',')}`
 	return permissionCache.getOrSet(cacheKey, async () => {
-		// Create fresh stub for user permissions check
-		using groupsStub = getStub<Groups>(env.GROUPS, 'default')
-		const groupPermissions = await groupsStub.getUserPermissions(userId)
+		// Check user group permissions (cached)
+		const groupPermissions = await getCachedUserPermissions(env, userId)
 		console.log('[hasPermission] User group permissions', {
 			userId,
 			groupPermissions: groupPermissions.map((p) => p.urn),
@@ -58,11 +55,9 @@ async function hasPermission(
 			return true
 		}
 
-		// Check corporation permissions for all user's characters
-		// Each character check gets its own fresh stub
+		// Check corporation permissions for all user's characters (cached)
 		for (const characterId of characterIds) {
-			using charStub = getStub<Groups>(env.GROUPS, 'default')
-			const characterPermissions = await charStub.getCharacterPermissions(characterId)
+			const characterPermissions = await getCachedCharacterPermissions(env, characterId)
 			console.log('[hasPermission] Character permissions', {
 				characterId,
 				permissions: characterPermissions.map((p) => p.urn),

@@ -3,6 +3,7 @@ import { Hono } from 'hono'
 import { and, createDbClient } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
+import { clearUserCache, getCachedGroup, getCachedUserMemberships } from '../lib/groups-cache'
 import { requireAdmin, requireAuth } from '../middleware/session'
 
 import type { Discord } from '@repo/discord'
@@ -211,7 +212,7 @@ groups.get('/my-groups', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	const memberships = await groupsDO.getUserMemberships(user.id)
+	const memberships = await getCachedUserMemberships(c.env, user.id)
 	return c.json(memberships)
 })
 
@@ -293,6 +294,8 @@ groups.post('/invitations/:id/accept', requireAuth(), async (c) => {
 
 	try {
 		await groupsDO.acceptInvitation(invitationId, user.id)
+		// Invalidate user cache after accepting invitation
+		clearUserCache(user.id)
 		return c.json({ success: true }, 200)
 	} catch (error) {
 		if (error instanceof Error) {
@@ -432,6 +435,8 @@ groups.post('/join-requests/:requestId/approve', requireAuth(), async (c) => {
 
 	try {
 		await groupsDO.approveJoinRequest(requestId, user.id)
+		// Invalidate caches - the approved user's memberships changed
+		// Note: We don't have the approved user's ID here, so we rely on TTL expiration
 		return c.json({ success: true }, 200)
 	} catch (error) {
 		if (error instanceof Error) {
@@ -934,7 +939,7 @@ groups.get('/:id', requireAuth(), async (c) => {
 	using groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
-		const group = await groupsDO.getGroup(groupId, user.id, user.is_admin)
+		const group = await getCachedGroup(c.env, groupId, user.id, user.is_admin)
 
 		if (!group) {
 			return c.json({ error: 'Group not found' }, 404)
@@ -1135,6 +1140,8 @@ groups.post('/:id/join', requireAuth(), async (c) => {
 
 	try {
 		await groupsDO.joinGroup(groupId, user.id)
+		// Invalidate user cache after joining group
+		clearUserCache(user.id)
 		return c.json({ success: true }, 200)
 	} catch (error) {
 		if (error instanceof Error) {
@@ -1156,6 +1163,8 @@ groups.post('/:id/leave', requireAuth(), async (c) => {
 
 	try {
 		await groupsDO.leaveGroup(groupId, user.id)
+		// Invalidate user cache after leaving group
+		clearUserCache(user.id)
 		return c.json({ success: true }, 200)
 	} catch (error) {
 		if (error instanceof Error) {

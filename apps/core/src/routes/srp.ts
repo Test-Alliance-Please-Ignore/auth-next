@@ -14,14 +14,15 @@ import {
 	UpdateSRPConfigSchema,
 } from '@repo/srp'
 
+import { getCachedUserPermissions } from '../lib/groups-cache'
 import { requireAuth } from '../middleware/session'
 
-import type { Groups } from '@repo/groups'
 import type { Srp } from '@repo/srp'
 import type { App } from '../context'
 
 /**
  * Permission check cache - 15 second TTL
+ * Caches the boolean result of permission checks
  */
 const permissionCache = new TimeCache<boolean>(15000)
 
@@ -36,9 +37,6 @@ function getRequestId(c: any): string {
 /**
  * Helper function to check if a user has a specific permission
  * Results are cached for 15 seconds to reduce load on Groups DO
- *
- * IMPORTANT: Creates fresh stubs internally to avoid stub invalidation issues.
- * Each RPC operation gets its own isolated stub.
  */
 async function hasPermission(
 	env: { GROUPS: DurableObjectNamespace },
@@ -52,9 +50,7 @@ async function hasPermission(
 	// Check cache or fetch user permissions
 	const cacheKey = `${userId}:${permissionUrn}`
 	return permissionCache.getOrSet(cacheKey, async () => {
-		// Create fresh stub for this permission check
-		using groupsStub = getStub<Groups>(env.GROUPS, 'default')
-		const permissions = await groupsStub.getUserPermissions(userId)
+		const permissions = await getCachedUserPermissions(env, userId)
 		return permissions.some((p) => p.urn === permissionUrn)
 	})
 }

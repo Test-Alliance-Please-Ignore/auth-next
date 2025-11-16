@@ -1,25 +1,19 @@
 import { Hono } from 'hono'
 
 import { getStub } from '@repo/do-utils'
-import { TimeCache } from '@repo/hono-helpers'
 
+import { getCachedUserMemberships, getCachedUserPermissions } from '../lib/groups-cache'
 import { requireAuth } from '../middleware/session'
 
 import type { Broadcasts } from '@repo/broadcasts'
-import type { Groups } from '@repo/groups'
 import type { App } from '../context'
 
 /**
- * Permission check cache - 15 second TTL
- */
-const permissionCache = new TimeCache<boolean>(15000)
-
-/**
  * Helper function to check if a user has a specific permission
- * Results are cached for 15 seconds to reduce load on Groups DO
+ * Results are cached via shared cache utility
  */
 async function hasPermission(
-	groupsStub: Groups,
+	env: { GROUPS: DurableObjectNamespace },
 	userId: string,
 	permissionUrn: string,
 	isAdmin: boolean
@@ -27,12 +21,8 @@ async function hasPermission(
 	// Admins bypass permission checks
 	if (isAdmin) return true
 
-	// Check cache or fetch user permissions
-	const cacheKey = `${userId}:${permissionUrn}`
-	return permissionCache.getOrSet(cacheKey, async () => {
-		const permissions = await groupsStub.getUserPermissions(userId)
-		return permissions.some((p) => p.urn === permissionUrn)
-	})
+	const permissions = await getCachedUserPermissions(env, userId)
+	return permissions.some((p) => p.urn === permissionUrn)
 }
 
 /**
@@ -61,8 +51,7 @@ broadcasts.get('/targets', async (c) => {
 	const groupId = c.req.query('groupId')
 
 	// Get user's group memberships (admins can see all)
-	using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-	const memberships = user.is_admin ? [] : await groupsStub.getUserMemberships(user.id)
+	const memberships = user.is_admin ? [] : await getCachedUserMemberships(c.env, user.id)
 	const userGroupIds = memberships.map((m) => m.groupId)
 
 	// If filtering by a specific group, verify user is a member
@@ -101,8 +90,7 @@ broadcasts.get('/targets/:id', async (c) => {
 
 	// Verify user is a member of the target's group
 	if (!user.is_admin) {
-		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-		const memberships = await groupsStub.getUserMemberships(user.id)
+		const memberships = await getCachedUserMemberships(c.env, user.id)
 		const isMember = memberships.some((m) => m.groupId === target.groupId)
 
 		if (!isMember) {
@@ -122,10 +110,9 @@ broadcasts.post('/targets', async (c) => {
 	const data = await c.req.json()
 
 	// Check permissions - user must be admin or have broadcast permission in the group
-	using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-	const allowed = await hasPermission(
-		groupsStub,
-		user.id,
+		const allowed = await hasPermission(
+			c.env,
+			user.id,
 		`urn:group:${data.groupId}:broadcasts:manage`,
 		user.is_admin
 	)
@@ -158,10 +145,9 @@ broadcasts.patch('/targets/:id', async (c) => {
 	}
 
 	// Check permissions
-	using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-	const allowed = await hasPermission(
-		groupsStub,
-		user.id,
+		const allowed = await hasPermission(
+			c.env,
+			user.id,
 		`urn:group:${target.groupId}:broadcasts:manage`,
 		user.is_admin
 	)
@@ -191,10 +177,9 @@ broadcasts.delete('/targets/:id', async (c) => {
 	}
 
 	// Check permissions
-	using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-	const allowed = await hasPermission(
-		groupsStub,
-		user.id,
+		const allowed = await hasPermission(
+			c.env,
+			user.id,
 		`urn:group:${target.groupId}:broadcasts:manage`,
 		user.is_admin
 	)
@@ -223,8 +208,7 @@ broadcasts.get('/templates', async (c) => {
 	const groupId = c.req.query('groupId')
 
 	// Get user's group memberships (admins can see all)
-	using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-	const memberships = user.is_admin ? [] : await groupsStub.getUserMemberships(user.id)
+	const memberships = user.is_admin ? [] : await getCachedUserMemberships(c.env, user.id)
 	const userGroupIds = memberships.map((m) => m.groupId)
 
 	// If filtering by a specific group, verify user is a member
@@ -262,8 +246,7 @@ broadcasts.get('/templates/:id', async (c) => {
 
 	// Verify user is a member of the template's group
 	if (!user.is_admin) {
-		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-		const memberships = await groupsStub.getUserMemberships(user.id)
+		const memberships = await getCachedUserMemberships(c.env, user.id)
 		const isMember = memberships.some((m) => m.groupId === template.groupId)
 
 		if (!isMember) {
@@ -283,10 +266,9 @@ broadcasts.post('/templates', async (c) => {
 	const data = await c.req.json()
 
 	// Check permissions
-	using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-	const allowed = await hasPermission(
-		groupsStub,
-		user.id,
+		const allowed = await hasPermission(
+			c.env,
+			user.id,
 		`urn:group:${data.groupId}:broadcasts:manage`,
 		user.is_admin
 	)
@@ -319,10 +301,9 @@ broadcasts.patch('/templates/:id', async (c) => {
 	}
 
 	// Check permissions
-	using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-	const allowed = await hasPermission(
-		groupsStub,
-		user.id,
+		const allowed = await hasPermission(
+			c.env,
+			user.id,
 		`urn:group:${template.groupId}:broadcasts:manage`,
 		user.is_admin
 	)
@@ -352,10 +333,9 @@ broadcasts.delete('/templates/:id', async (c) => {
 	}
 
 	// Check permissions
-	using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-	const allowed = await hasPermission(
-		groupsStub,
-		user.id,
+		const allowed = await hasPermission(
+			c.env,
+			user.id,
 		`urn:group:${template.groupId}:broadcasts:manage`,
 		user.is_admin
 	)
@@ -384,8 +364,7 @@ broadcasts.get('/', async (c) => {
 	const status = c.req.query('status') as any
 
 	// Get user's group memberships (admins can see all)
-	using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-	const memberships = user.is_admin ? [] : await groupsStub.getUserMemberships(user.id)
+	const memberships = user.is_admin ? [] : await getCachedUserMemberships(c.env, user.id)
 	const userGroupIds = memberships.map((m) => m.groupId)
 
 	// If filtering by a specific group, verify user is a member
@@ -424,8 +403,7 @@ broadcasts.get('/:id', async (c) => {
 
 	// Verify user is a member of the broadcast's group
 	if (!user.is_admin) {
-		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-		const memberships = await groupsStub.getUserMemberships(user.id)
+		const memberships = await getCachedUserMemberships(c.env, user.id)
 		const isMember = memberships.some((m) => m.groupId === broadcast.groupId)
 
 		if (!isMember) {
@@ -445,10 +423,9 @@ broadcasts.post('/', async (c) => {
 	const data = await c.req.json()
 
 	// Check permissions
-	using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-	const allowed = await hasPermission(
-		groupsStub,
-		user.id,
+		const allowed = await hasPermission(
+			c.env,
+			user.id,
 		`urn:group:${data.groupId}:broadcasts:send`,
 		user.is_admin
 	)
@@ -487,10 +464,9 @@ broadcasts.post('/:id/send', async (c) => {
 	}
 
 	// Check permissions
-	using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-	const allowed = await hasPermission(
-		groupsStub,
-		user.id,
+		const allowed = await hasPermission(
+			c.env,
+			user.id,
 		`urn:group:${broadcast.groupId}:broadcasts:send`,
 		user.is_admin
 	)
@@ -522,10 +498,9 @@ broadcasts.delete('/:id', async (c) => {
 	}
 
 	// Check permissions
-	using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-	const allowed = await hasPermission(
-		groupsStub,
-		user.id,
+		const allowed = await hasPermission(
+			c.env,
+			user.id,
 		`urn:group:${broadcast.groupId}:broadcasts:manage`,
 		user.is_admin
 	)
@@ -557,8 +532,7 @@ broadcasts.get('/:id/deliveries', async (c) => {
 
 	// Verify user is a member of the broadcast's group
 	if (!user.is_admin) {
-		using groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-		const memberships = await groupsStub.getUserMemberships(user.id)
+		const memberships = await getCachedUserMemberships(c.env, user.id)
 		const isMember = memberships.some((m) => m.groupId === broadcast.groupId)
 
 		if (!isMember) {

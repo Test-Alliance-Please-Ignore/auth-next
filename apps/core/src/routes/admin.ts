@@ -571,7 +571,8 @@ app.post('/users/:userId/clear-sessions', requireAuth(), requireAdmin(), async (
 	}
 
 	try {
-		const sessionService = new SessionService(c.env.DB)
+		const db = createDb(c.env.DATABASE_URL)
+		const sessionService = new SessionService(db)
 
 		// Invalidate all sessions for the user
 		await sessionService.invalidateAllUserSessions(userId)

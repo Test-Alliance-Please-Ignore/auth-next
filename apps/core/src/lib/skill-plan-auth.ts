@@ -1,22 +1,26 @@
 import { eq } from '@repo/db-utils'
-import { TimeCache } from '@repo/hono-helpers'
+
+import { getCachedUserMemberships, getCachedUserPermissions } from './groups-cache'
 
 import type { DbClient } from '@repo/db-utils'
-import type { Groups } from '@repo/groups'
 import type { SkillPlan, SkillPlanSummary } from '@repo/skills'
 import type { schema } from '../db'
 
 // Type that includes the fields we need for authorization
 type PlanForAuth = Pick<SkillPlan | SkillPlanSummary, 'maintainerId' | 'isPublished'>
 
-// Cache permission checks for 15 seconds
-const permissionCache = new TimeCache<boolean>(15000)
+/**
+ * Environment type that includes GROUPS binding
+ */
+type GroupsEnv = {
+	GROUPS: DurableObjectNamespace
+}
 
 /**
  * Check if a user has a specific skill plan permission
  */
 export async function hasSkillPlanPermission(
-	groupsStub: Groups,
+	env: GroupsEnv,
 	userId: string,
 	permissionUrn: string,
 	isAdmin: boolean
@@ -26,22 +30,19 @@ export async function hasSkillPlanPermission(
 		return true
 	}
 
-	const cacheKey = `${userId}:${permissionUrn}`
-	return permissionCache.getOrSet(cacheKey, async () => {
-		const permissions = await groupsStub.getUserPermissions(userId)
-		return permissions.some((p) => p.urn === permissionUrn)
-	})
+	const permissions = await getCachedUserPermissions(env, userId)
+	return permissions.some((p) => p.urn === permissionUrn)
 }
 
 /**
  * Check if user can create skill plans
  */
 export async function canCreateSkillPlan(
-	groupsStub: Groups,
+	env: GroupsEnv,
 	userId: string,
 	isAdmin: boolean
 ): Promise<boolean> {
-	return hasSkillPlanPermission(groupsStub, userId, 'urn:skill-plans:create', isAdmin)
+	return hasSkillPlanPermission(env, userId, 'urn:skill-plans:create', isAdmin)
 }
 
 /**
@@ -53,7 +54,7 @@ export async function canCreateSkillPlan(
 export async function canModifyPlan(
 	plan: PlanForAuth,
 	userId: string,
-	groupsStub: Groups,
+	env: GroupsEnv,
 	isAdmin: boolean
 ): Promise<boolean> {
 	// Site admins can ALWAYS modify any plan
@@ -62,7 +63,7 @@ export async function canModifyPlan(
 	}
 
 	// Users with manage-all permission
-	if (await hasSkillPlanPermission(groupsStub, userId, 'urn:skill-plans:manage-all', false)) {
+	if (await hasSkillPlanPermission(env, userId, 'urn:skill-plans:manage-all', false)) {
 		return true
 	}
 
@@ -74,7 +75,7 @@ export async function canModifyPlan(
 	// Check if maintainer is a group and user is a member
 	if (plan.maintainerId?.startsWith('group:')) {
 		const groupId = plan.maintainerId.replace('group:', '')
-		const memberships = await groupsStub.getUserMemberships(userId)
+		const memberships = await getCachedUserMemberships(env, userId)
 		return memberships.some((m) => m.groupId === groupId)
 	}
 
@@ -90,7 +91,7 @@ export async function canModifyPlan(
 export async function canDeletePlan(
 	plan: PlanForAuth,
 	userId: string,
-	groupsStub: Groups,
+	env: GroupsEnv,
 	isAdmin: boolean
 ): Promise<boolean> {
 	// Site admins can always delete
@@ -99,12 +100,12 @@ export async function canDeletePlan(
 	}
 
 	// Check for delete-any permission
-	if (await hasSkillPlanPermission(groupsStub, userId, 'urn:skill-plans:delete-any', false)) {
+	if (await hasSkillPlanPermission(env, userId, 'urn:skill-plans:delete-any', false)) {
 		return true
 	}
 
 	// Otherwise, check if user can modify (maintainer check)
-	return canModifyPlan(plan, userId, groupsStub, false)
+	return canModifyPlan(plan, userId, env, false)
 }
 
 /**
@@ -115,7 +116,7 @@ export async function canDeletePlan(
 export async function canViewPlan(
 	plan: PlanForAuth,
 	userId: string,
-	groupsStub: Groups,
+	env: GroupsEnv,
 	isAdmin: boolean
 ): Promise<boolean> {
 	// Published plans are visible to all authenticated users
@@ -129,7 +130,7 @@ export async function canViewPlan(
 	}
 
 	// Check for view-private permission
-	if (await hasSkillPlanPermission(groupsStub, userId, 'urn:skill-plans:view-private', false)) {
+	if (await hasSkillPlanPermission(env, userId, 'urn:skill-plans:view-private', false)) {
 		return true
 	}
 
@@ -141,7 +142,7 @@ export async function canViewPlan(
 	// Check if maintainer is a group and user is a member
 	if (plan.maintainerId?.startsWith('group:')) {
 		const groupId = plan.maintainerId.replace('group:', '')
-		const memberships = await groupsStub.getUserMemberships(userId)
+		const memberships = await getCachedUserMemberships(env, userId)
 		return memberships.some((m) => m.groupId === groupId)
 	}
 
@@ -153,11 +154,11 @@ export async function canViewPlan(
  * Only admins or users with categories:manage permission
  */
 export async function canManageCategories(
-	groupsStub: Groups,
+	env: GroupsEnv,
 	userId: string,
 	isAdmin: boolean
 ): Promise<boolean> {
-	return hasSkillPlanPermission(groupsStub, userId, 'urn:skill-plans:categories:manage', isAdmin)
+	return hasSkillPlanPermission(env, userId, 'urn:skill-plans:categories:manage', isAdmin)
 }
 
 /**
@@ -165,11 +166,11 @@ export async function canManageCategories(
  * Admins or users with categories:create permission
  */
 export async function canCreateCategory(
-	groupsStub: Groups,
+	env: GroupsEnv,
 	userId: string,
 	isAdmin: boolean
 ): Promise<boolean> {
-	return hasSkillPlanPermission(groupsStub, userId, 'urn:skill-plans:categories:create', isAdmin)
+	return hasSkillPlanPermission(env, userId, 'urn:skill-plans:categories:create', isAdmin)
 }
 
 /**
@@ -181,7 +182,7 @@ export async function canCheckCharacterProgress(
 	characterId: string,
 	userId: string,
 	db: DbClient<typeof schema>,
-	groupsStub: Groups,
+	env: GroupsEnv,
 	isAdmin: boolean
 ): Promise<boolean> {
 	// Admins can check any character
@@ -191,7 +192,7 @@ export async function canCheckCharacterProgress(
 
 	// Check if user has check-any permission
 	const hasCheckAny = await hasSkillPlanPermission(
-		groupsStub,
+		env,
 		userId,
 		'urn:skill-plans:progress:check-any',
 		false
@@ -208,15 +209,4 @@ export async function canCheckCharacterProgress(
 	})
 
 	return userChar?.userId === userId
-}
-
-/**
- * Clear the permission cache for a user
- * Useful when permissions change
- */
-export function clearUserPermissionCache(userId: string): void {
-	// Clear all cache entries for this user
-	// Since we don't have direct access to cache keys, we'll clear the entire cache
-	// In a production system, you might want to track keys per user
-	permissionCache.clear()
 }
