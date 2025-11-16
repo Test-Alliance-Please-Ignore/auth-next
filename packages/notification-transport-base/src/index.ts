@@ -66,10 +66,7 @@ export type ExternalTransportConfig =
 	  }
 
 /** Function signature that all transport packages must export */
-export type RegisterTransport = (
-	registry: NotificationTransportRegistry,
-	env: Record<string, unknown>
-) => void
+export type RegisterTransport<TEnv> = (registry: NotificationTransportRegistry, env: TEnv) => void
 
 /** Base class for internal transports */
 export abstract class BaseNotificationTransport<TParams extends z.ZodType = z.ZodType>

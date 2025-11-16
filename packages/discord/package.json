@@ -13,5 +13,9 @@
 		"@repo/eslint-config": "workspace:*",
 		"@repo/tools": "workspace:*",
 		"@repo/typescript-config": "workspace:*"
+	},
+	"dependencies": {
+		"discord-interactions": "^4.4.0",
+		"discord.js": "^14.24.2"
 	}
 }
