@@ -187,7 +187,10 @@ export const corporationMembers = pgTable(
 		characterId: text('character_id').notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
-	(table) => [unique().on(table.corporationId, table.characterId)]
+	(table) => [
+		unique().on(table.corporationId, table.characterId),
+		index('corporation_members_character_id_idx').on(table.characterId),
+	]
 )
 
 /**

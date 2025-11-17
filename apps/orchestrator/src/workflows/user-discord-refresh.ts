@@ -1,7 +1,5 @@
 import { WorkflowEntrypoint } from 'cloudflare:workers'
 
-import { createWorkflowInstanceUpdater } from '@repo/orchestrator'
-
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
 import type { Env } from '../context'
 
@@ -37,9 +35,6 @@ export class UserDiscordRefreshWorkflow extends WorkflowEntrypoint<Env, UserDisc
 		if (!userId || !discordUserId) {
 			throw new Error('Missing required payload: userId and discordUserId are required')
 		}
-
-		const updater = createWorkflowInstanceUpdater(event.instanceId, this.env.DATABASE_URL)
-		await updater.markRunning()
 
 		try {
 			// Step 1: Apply jitter delay if specified
@@ -87,8 +82,6 @@ export class UserDiscordRefreshWorkflow extends WorkflowEntrypoint<Env, UserDisc
 				}
 			})
 
-			await updater.markCompleted()
-
 			// Return workflow result
 			return {
 				userId,
@@ -100,7 +93,6 @@ export class UserDiscordRefreshWorkflow extends WorkflowEntrypoint<Env, UserDisc
 				guildsProcessed: refreshResult.results.length,
 			}
 		} catch (error) {
-			await updater.markFailed(error)
 			throw error
 		}
 	}

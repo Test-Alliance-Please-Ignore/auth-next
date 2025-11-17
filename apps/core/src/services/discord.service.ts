@@ -430,35 +430,61 @@ async function getAllManagedRolesForGuild(
 
 /**
  * Get corporation IDs for a user's registered characters
- * This is much more efficient than fetching all corporation members
+ * Uses the corporation_members table for efficient bulk lookup
  * @param env - Worker environment
  * @param characterIds - Array of character IDs to check
  * @returns Set of corporation IDs the user's characters belong to
  */
 async function getUserCorporationIds(env: Env, characterIds: string[]): Promise<Set<string>> {
+	logger.debug('[Discord] getUserCorporationIds: Starting', {
+		characterIds,
+		characterCount: characterIds.length,
+	})
+
 	if (characterIds.length === 0) {
+		logger.debug('[Discord] getUserCorporationIds: No character IDs provided')
 		return new Set()
 	}
 
-	const charStub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, 'default')
-	const characterCorpPromises = characterIds.map(async (charId) => {
-		try {
-			const charInfo = await charStub.getCharacterInfo(charId)
-			return charInfo?.corporationId ? String(charInfo.corporationId) : null
-		} catch (error) {
-			logger.warn('[Discord] Error fetching character corporation', {
-				characterId: charId,
-				error: String(error),
+	try {
+		// Use the new bulk lookup function from EveCorporationData
+		const corpStub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, 'default')
+		const corporationMap = await corpStub.getCorporationIdsByCharacterIds(characterIds)
+
+		// Convert the Record to a Set of unique corporation IDs
+		const corporationIdsSet = new Set(Object.values(corporationMap))
+
+		// Log which characters were found and which weren't
+		const foundCharacterIds = Object.keys(corporationMap)
+		const missingCharacterIds = characterIds.filter((id) => !foundCharacterIds.includes(id))
+
+		if (corporationIdsSet.size === 0) {
+			logger.warn('[Discord] getUserCorporationIds: No corporation IDs found', {
+				characterIds,
+				checkedCharacterCount: characterIds.length,
+				missingCharacterIds,
 			})
-			return null
+		} else {
+			logger.debug('[Discord] getUserCorporationIds: Found corporation IDs', {
+				corporationIds: Array.from(corporationIdsSet),
+				corporationCount: corporationIdsSet.size,
+				characterIds,
+				foundCharacterIds,
+				missingCharacterIds,
+				characterCorporationMap: corporationMap,
+			})
 		}
-	})
 
-	const characterCorporationIds = (await Promise.all(characterCorpPromises)).filter(
-		(corpId): corpId is string => corpId !== null
-	)
-
-	return new Set(characterCorporationIds)
+		return corporationIdsSet
+	} catch (error) {
+		logger.error('[Discord] getUserCorporationIds: Error fetching corporation IDs', {
+			characterIds,
+			error: String(error),
+			errorStack: error instanceof Error ? error.stack : undefined,
+		})
+		// Return empty set on error to prevent blocking the invitation flow
+		return new Set()
+	}
 }
 
 /**
@@ -486,6 +512,10 @@ export async function inviteUserToDiscordServers(
 	totalInvited: number
 	totalFailed: number
 }> {
+	logger.debug('[Discord] inviteUserToDiscordServers: Starting', {
+		userId,
+	})
+
 	const db = createDb(env.DATABASE_URL)
 
 	// Get user to check if they have Discord linked
@@ -494,10 +524,12 @@ export async function inviteUserToDiscordServers(
 	})
 
 	if (!user) {
+		logger.error('[Discord] inviteUserToDiscordServers: User not found', { userId })
 		throw new Error('User not found')
 	}
 
 	if (!user.discordUserId) {
+		logger.warn('[Discord] inviteUserToDiscordServers: Discord account not linked', { userId })
 		throw new Error('Discord account not linked')
 	}
 
@@ -526,11 +558,19 @@ export async function inviteUserToDiscordServers(
 
 	const characterIds = userChars.map((char) => char.characterId)
 
+	logger.debug('[Discord] inviteUserToDiscordServers: User characters', {
+		userId,
+		characterIds,
+		characterCount: characterIds.length,
+		characterNames: userChars.map((char) => char.characterName),
+	})
+
 	// Get primary character name for nickname management
 	const primaryCharacter = userChars.find((char) => char.is_primary)
 	const primaryCharacterName = primaryCharacter?.characterName
 
 	if (characterIds.length === 0) {
+		logger.warn('[Discord] inviteUserToDiscordServers: User has no characters', { userId })
 		return {
 			results: [],
 			totalInvited: 0,
@@ -542,9 +582,19 @@ export async function inviteUserToDiscordServers(
 	// This is much more efficient than fetching all corporation members
 	const userCorporationIds = await getUserCorporationIds(env, characterIds)
 
+	logger.debug('[Discord] inviteUserToDiscordServers: Corporation IDs retrieved', {
+		userId,
+		userCorporationIds: Array.from(userCorporationIds),
+		corporationCount: userCorporationIds.size,
+		characterIds,
+	})
+
 	if (userCorporationIds.size === 0) {
 		// User has no corporation memberships, skip corporation checks
-		logger.debug('[Discord] User has no corporation memberships', { userId })
+		logger.warn('[Discord] inviteUserToDiscordServers: User has no corporation memberships', {
+			userId,
+			characterIds,
+		})
 	}
 
 	// === CHECK CORPORATIONS (ONLY autoInvite=true) ===
@@ -568,10 +618,28 @@ export async function inviteUserToDiscordServers(
 				})
 			: []
 
+	logger.debug('[Discord] inviteUserToDiscordServers: Corporation attachments found', {
+		userId,
+		corpAttachmentsCount: corpAttachments.length,
+		corpAttachments: corpAttachments.map((att) => ({
+			corporationId: att.corporationId,
+			corporationName: att.corporation.name,
+			guildId: att.discordServer.guildId,
+			guildName: att.discordServer.guildName,
+			isActive: att.discordServer.isActive,
+		})),
+	})
+
 	// Filter out inactive Discord servers
 	const activeCorpAttachments = corpAttachments.filter(
 		(attachment) => attachment.discordServer.isActive
 	)
+
+	logger.debug('[Discord] inviteUserToDiscordServers: Active corporation attachments', {
+		userId,
+		activeCorpAttachmentsCount: activeCorpAttachments.length,
+		filteredOutCount: corpAttachments.length - activeCorpAttachments.length,
+	})
 
 	const guildsToJoin: Array<{
 		guildId: string
@@ -595,6 +663,16 @@ export async function inviteUserToDiscordServers(
 					.map((r) => r.discordRole.roleId)
 			: []
 
+		logger.debug('[Discord] inviteUserToDiscordServers: Adding corporation guild to join', {
+			userId,
+			guildId: attachment.discordServer.guildId,
+			guildName: attachment.discordServer.guildName,
+			corporationId: attachment.corporationId,
+			corporationName: attachment.corporation.name,
+			roleIds,
+			roleCount: roleIds.length,
+		})
+
 		guildsToJoin.push({
 			type: 'corporation',
 			guildId: attachment.discordServer.guildId,
@@ -612,15 +690,34 @@ export async function inviteUserToDiscordServers(
 		const groupsStub = getStub<Groups>(env.GROUPS, 'default')
 		const groupsWithDiscord = await groupsStub.getGroupsWithDiscordAutoInvite()
 
+		logger.debug('[Discord] inviteUserToDiscordServers: Groups with Discord auto-invite', {
+			userId,
+			groupsCount: groupsWithDiscord.length,
+			groupIds: groupsWithDiscord.map((g) => g.groupId),
+		})
+
 		for (const group of groupsWithDiscord) {
 			try {
 				const memberUserIds = await groupsStub.getGroupMemberUserIds(group.groupId)
 				const isMember = memberUserIds.includes(userId)
 
+				logger.debug('[Discord] inviteUserToDiscordServers: Checking group membership', {
+					userId,
+					groupId: group.groupId,
+					groupName: group.groupName,
+					isMember,
+					memberCount: memberUserIds.length,
+				})
+
 				if (isMember) {
 					for (const discordServer of group.discordServers) {
 						// ONLY process servers with autoInvite=true
 						if (!discordServer.autoInvite) {
+							logger.debug('[Discord] inviteUserToDiscordServers: Skipping group server (autoInvite=false)', {
+								userId,
+								groupId: group.groupId,
+								discordServerId: discordServer.discordServerId,
+							})
 							continue
 						}
 
@@ -648,6 +745,16 @@ export async function inviteUserToDiscordServers(
 								actualRoleIds = roleRecords.map((r) => r.roleId)
 							}
 
+							logger.debug('[Discord] inviteUserToDiscordServers: Adding group guild to join', {
+								userId,
+								guildId: serverInfo.guildId,
+								guildName: serverInfo.guildName,
+								groupId: group.groupId,
+								groupName: group.groupName,
+								roleIds: actualRoleIds,
+								roleCount: actualRoleIds.length,
+							})
+
 							guildsToJoin.push({
 								type: 'group',
 								guildId: serverInfo.guildId,
@@ -657,23 +764,49 @@ export async function inviteUserToDiscordServers(
 								discordServerId: serverInfo.id,
 								roleIds: actualRoleIds,
 							})
+						} else {
+							logger.warn('[Discord] inviteUserToDiscordServers: Group server not found or inactive', {
+								userId,
+								groupId: group.groupId,
+								discordServerId: discordServer.discordServerId,
+							})
 						}
 					}
 				}
 			} catch (error) {
-				logger.error('[Discord] Error checking group members', {
+				logger.error('[Discord] inviteUserToDiscordServers: Error checking group members', {
+					userId,
 					groupId: group.groupId,
 					error: String(error),
 				})
 			}
 		}
 	} catch (error) {
-		logger.error('[Discord] Error fetching groups with Discord', {
+		logger.error('[Discord] inviteUserToDiscordServers: Error fetching groups with Discord', {
+			userId,
 			error: String(error),
 		})
 	}
 
+	logger.debug('[Discord] inviteUserToDiscordServers: Guilds to join (before deduplication)', {
+		userId,
+		guildsToJoinCount: guildsToJoin.length,
+		guildsToJoin: guildsToJoin.map((g) => ({
+			guildId: g.guildId,
+			guildName: g.guildName,
+			type: g.type,
+			corporationName: g.corporationName,
+			groupName: g.groupName,
+			roleCount: g.roleIds?.length || 0,
+		})),
+	})
+
 	if (guildsToJoin.length === 0) {
+		logger.warn('[Discord] inviteUserToDiscordServers: No guilds to join', {
+			userId,
+			characterIds,
+			userCorporationIds: Array.from(userCorporationIds),
+		})
 		return {
 			results: [],
 			totalInvited: 0,
@@ -753,6 +886,17 @@ export async function inviteUserToDiscordServers(
 		}
 	}
 
+	logger.debug('[Discord] inviteUserToDiscordServers: Guild map after deduplication', {
+		userId,
+		guildMapSize: guildMap.size,
+		guildMap: Array.from(guildMap.entries()).map(([guildId, data]) => ({
+			guildId,
+			guildName: data.guildName,
+			roleCount: data.roleIds.length,
+			sources: data.sources,
+		})),
+	})
+
 	// Merge auto-apply roles
 	for (const [guildId, guildData] of guildMap.entries()) {
 		const autoRoles = autoApplyRolesByGuild.get(guildId)
@@ -789,8 +933,26 @@ export async function inviteUserToDiscordServers(
 
 	const guildIds = Array.from(guildMap.values()).map((guild) => guild.guildId)
 
+	logger.info('[Discord] inviteUserToDiscordServers: Inviting user to servers', {
+		userId,
+		guildIds,
+		guildCount: guildIds.length,
+		guildNames: Array.from(guildMap.values()).map((g) => g.guildName),
+	})
+
 	const discordStub = getStub<Discord>(env.DISCORD, 'default')
 	const inviteResults = await discordStub.joinUserToServers(userId, guildIds)
+
+	logger.debug('[Discord] inviteUserToDiscordServers: Invite results received', {
+		userId,
+		resultsCount: inviteResults.length,
+		results: inviteResults.map((r) => ({
+			guildId: r.guildId,
+			success: r.success,
+			alreadyMember: r.alreadyMember,
+			errorMessage: r.errorMessage,
+		})),
+	})
 
 	// === UPDATE ROLES ===
 
@@ -844,6 +1006,14 @@ export async function inviteUserToDiscordServers(
 	// Count only actual invites (not already members)
 	const totalInvited = results.filter((r) => r.success && !r.alreadyMember).length
 	const totalFailed = results.filter((r) => !r.success).length
+
+	logger.info('[Discord] inviteUserToDiscordServers: Completed', {
+		userId,
+		totalInvited,
+		totalFailed,
+		totalResults: results.length,
+		alreadyMemberCount: results.filter((r) => r.alreadyMember).length,
+	})
 
 	return {
 		results,
@@ -1220,29 +1390,45 @@ export async function syncUserDiscordAccess(
 	}
 
 	// Check if refresh is needed (15-minute minimum interval)
-	const discordStub = getStub<Discord>(env.DISCORD, 'default')
-	const shouldRefresh = await discordStub.shouldRefreshDiscordAccess(userId, 15)
-
-	if (!shouldRefresh) {
-		logger.debug('[Discord] Skipping sync - recently refreshed', {
-			userId,
-		})
-		return {
-			results: [],
-			totalInvited: 0,
-			totalUpdated: 0,
-			totalFailed: 0,
-		}
-	}
+	// COMMENTED OUT: This was blocking invitations when users were recently refreshed
+	// const discordStub = getStub<Discord>(env.DISCORD, 'default')
+	// const shouldRefresh = await discordStub.shouldRefreshDiscordAccess(userId, 15)
+	//
+	// if (!shouldRefresh) {
+	// 	logger.debug('[Discord] Skipping sync - recently refreshed', {
+	// 		userId,
+	// 	})
+	// 	return {
+	// 		results: [],
+	// 		totalInvited: 0,
+	// 		totalUpdated: 0,
+	// 		totalFailed: 0,
+	// 	}
+	// }
 
 	// First invite to new servers
+	logger.info('[Discord] syncUserDiscordAccess: Starting invitation process', { userId })
 	const inviteResult = await inviteUserToDiscordServers(env, userId)
+	logger.info('[Discord] syncUserDiscordAccess: Invitation process completed', {
+		userId,
+		totalInvited: inviteResult.totalInvited,
+		totalFailed: inviteResult.totalFailed,
+		resultsCount: inviteResult.results.length,
+	})
 
 	// Then update roles on all servers
+	logger.info('[Discord] syncUserDiscordAccess: Starting role update process', { userId })
 	const updateResult = await updateUserDiscordRoles(env, userId)
+	logger.info('[Discord] syncUserDiscordAccess: Role update process completed', {
+		userId,
+		totalUpdated: updateResult.totalUpdated,
+		totalFailed: updateResult.totalFailed,
+		resultsCount: updateResult.results.length,
+	})
 
 	// Update last refreshed timestamp after successful sync
 	try {
+		const discordStub = getStub<Discord>(env.DISCORD, 'default')
 		await discordStub.updateLastRefreshed(userId)
 		logger.debug('[Discord] Updated lastRefreshed timestamp', {
 			userId,

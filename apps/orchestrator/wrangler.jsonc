@@ -35,10 +35,6 @@
 	"durable_objects": {
 		"bindings": [
 			{
-				"name": "WORKFLOW_INSTANCE_MANAGER",
-				"class_name": "WorkflowInstanceManager"
-			},
-			{
 				"name": "DISCORD",
 				"class_name": "Discord",
 				"script_name": "discord"
@@ -51,7 +47,7 @@
 		]
 	},
 	"vars": {
-		"SHOULD_REFRESH_CORPORATION_DATA": false,
+		"SHOULD_REFRESH_CORPORATION_DATA": true,
 		"SHOULD_REFRESH_USER_DISCORD": false
 	},
 	"migrations": [
@@ -67,6 +63,10 @@
 					"to": "WorkflowInstanceManager"
 				}
 			]
+		},
+		{
+			"tag": "v3",
+			"deleted_classes": ["WorkflowInstanceManager"]
 		}
 	]
 }

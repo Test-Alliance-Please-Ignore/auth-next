@@ -708,6 +708,17 @@ export interface EveCorporationData {
 	 */
 	updateCorporationSyncTimestamp(corporationId: string, syncProperty: string): Promise<void>
 
+	/**
+	 * Batch update corporation sync timestamps for multiple properties
+	 * Updates the corporationConfig table with the current timestamp for all specified sync properties
+	 * @param corporationId - The corporation ID
+	 * @param syncProperties - Array of sync property names to update (e.g., ['membersLastSync', 'assetsLastSync'])
+	 */
+	batchUpdateCorporationSyncTimestamps(
+		corporationId: string,
+		syncProperties: string[]
+	): Promise<void>
+
 	// ========================================================================
 	// DIRECTOR MANAGEMENT METHODS
 	// ========================================================================
@@ -970,6 +981,14 @@ export interface EveCorporationData {
 	getMembers(corporationId: string): Promise<CorporationMemberData[]>
 
 	/**
+	 * Get corporation IDs for a list of character IDs
+	 * Queries the corporation_members table to find which corporations each character belongs to
+	 * @param characterIds - Array of character IDs to look up
+	 * @returns Record mapping characterId to corporationId (only includes characters that exist in corporation_members)
+	 */
+	getCorporationIdsByCharacterIds(characterIds: string[]): Promise<Record<string, string>>
+
+	/**
 	 * Get corporation member tracking data
 	 * @param corporationId - The corporation ID
 	 * @returns Array of member tracking data
@@ -1108,9 +1127,9 @@ export interface EveCorporationData {
 
 	/**
 	 * Get corporations that need to be refreshed
-	 * @returns Corporation configuration data
+	 * @returns Array of corporation IDs that need refresh
 	 */
-	getCorporationsNeedingRefresh(): Promise<CorporationNeedingRefreshData>
+	getCorporationsNeedingRefresh(): Promise<string[]>
 
 	/**
 	 * Update corporation configuration settings

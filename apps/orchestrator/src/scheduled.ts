@@ -1,14 +1,8 @@
-import { eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
-import { createDb, workflowInstances, WorkflowStatus } from '@repo/orchestrator'
 
-import type {
-	CorporationConfigData,
-	EveCorporationData,
-	EveCorporationSyncDataType,
-} from '@repo/eve-corporation-data'
 import type { Discord } from '@repo/discord'
+import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { Env } from './context'
 import type { UserDiscordRefreshPayload } from './workflows/user-discord-refresh'
 
@@ -30,80 +24,35 @@ export function generateWorkflowId(workflowType: string, resourceId: string): st
 	return `${workflowType}-${resourceId}-${Date.now()}`
 }
 
-async function createCorporationRefreshWorkflow(
-	env: Env,
-	workflowType: EveCorporationSyncDataType,
-	corporationData: CorporationConfigData
-): Promise<void> {
-	const db = createDb(env.DATABASE_URL)
-	const workflowId = generateWorkflowId(
-		`eve-corporation-sync-${workflowType}`,
-		corporationData.corporationId
-	)
-	const existingWorkflow = await db.query.workflowInstances.findFirst({
-		where: eq(workflowInstances.id, workflowId),
-	})
+async function createCorporationRefreshWorkflow(env: Env, corporationId: string): Promise<void> {
+	// Generate unique workflow ID with UUID to allow multiple concurrent workflows
+	const workflowId = `${corporationId}-${crypto.randomUUID()}`
 
-	if (existingWorkflow) {
-		logger.info('[Orchestrator] Workflow instance already exists', {
-			corporationId: corporationData.corporationId,
-			workflowId,
-		})
-		return
-	}
-
-	logger.info('[Orchestrator] Queueing corporation sync workflow for starting', {
-		corporationId: corporationData.corporationId,
+	logger.info('[Orchestrator] Creating corporation sync workflow', {
+		corporationId,
 		workflowId,
-		workflowType,
-	})
-
-	await db.insert(workflowInstances).values({
-		id: workflowId,
-		workflowType: `eve-corporation-sync-${workflowType}`,
-		resourceId: corporationData.corporationId,
-		status: WorkflowStatus.Pending,
 	})
 
 	try {
 		await env.EVE_CORPORATION_SYNC.create({
 			id: workflowId,
 			params: {
-				corporationId: corporationData.corporationId,
-				dataTypes: [workflowType],
+				corporationId,
 				trigger: 'cron',
 			},
 		})
 
-		await db
-			.update(workflowInstances)
-			.set({
-				status: WorkflowStatus.Created,
-				updatedAt: new Date(),
-			})
-			.where(eq(workflowInstances.id, workflowId))
-
 		logger.info('[Orchestrator] Corporation sync workflow created', {
-			corporationId: corporationData.corporationId,
+			corporationId,
 			workflowId,
-			workflowType,
 		})
 	} catch (error) {
-		logger.error('[Orchestrator] Failed to queue corporation sync workflow', {
-			corporationId: corporationData.corporationId,
+		logger.error('[Orchestrator] Failed to create corporation sync workflow', {
+			corporationId,
 			workflowId,
-			workflowType,
 			errorMessage: error instanceof Error ? error.message : String(error),
 		})
-
-		await db
-			.update(workflowInstances)
-			.set({
-				status: WorkflowStatus.NotCreated,
-				errorMessage: error instanceof Error ? error.message : String(error),
-				updatedAt: new Date(),
-			})
-			.where(eq(workflowInstances.id, workflowId))
+		throw error
 	}
 }
 
@@ -115,72 +64,33 @@ export async function scheduleCorpDataRefresh(event: ScheduledEvent, env: Env): 
 		cron: event.cron,
 	})
 
-	const corporations = await corpStub.getCorporationsNeedingRefresh()
-	for (const corporation of corporations.members) {
-		logger.info('[Orchestrator] Creating corporation sync workflow for members', {
-			corporationId: corporation.corporationId,
+	const corporationIds = await corpStub.getCorporationsNeedingRefresh()
+
+	logger.info('[Orchestrator] Found corporations needing refresh', {
+		count: corporationIds.length,
+		corporationIds,
+	})
+
+	// Create one workflow per corporation (handles all data types)
+	// Add jitter to spread out workflow creations and avoid thundering herd
+	for (const corporationId of corporationIds) {
+		logger.info('[Orchestrator] Creating corporation sync workflow for all data types', {
+			corporationId,
 		})
-		await createCorporationRefreshWorkflow(env, 'members', corporation)
-	}
-	for (const corporation of corporations['member-tracking']) {
-		logger.info('[Orchestrator] Creating corporation sync workflow for member tracking', {
-			corporationId: corporation.corporationId,
-		})
-		await createCorporationRefreshWorkflow(env, 'member-tracking', corporation)
-	}
-	for (const corporation of corporations.wallets) {
-		logger.info('[Orchestrator] Creating corporation sync workflow for wallets', {
-			corporationId: corporation.corporationId,
-		})
-		await createCorporationRefreshWorkflow(env, 'wallets', corporation)
-	}
-	for (const corporation of corporations['wallet-journal']) {
-		logger.info('[Orchestrator] Creating corporation sync workflow for wallet journal', {
-			corporationId: corporation.corporationId,
-		})
-		await createCorporationRefreshWorkflow(env, 'wallet-journal', corporation)
-	}
-	for (const corporation of corporations['wallet-transactions']) {
-		logger.info('[Orchestrator] Creating corporation sync workflow for wallet transactions', {
-			corporationId: corporation.corporationId,
-		})
-		await createCorporationRefreshWorkflow(env, 'wallet-transactions', corporation)
-	}
-	for (const corporation of corporations.assets) {
-		logger.info('[Orchestrator] Creating corporation sync workflow for assets', {
-			corporationId: corporation.corporationId,
-		})
-		await createCorporationRefreshWorkflow(env, 'assets', corporation)
-	}
-	for (const corporation of corporations.structures) {
-		logger.info('[Orchestrator] Creating corporation sync workflow for structures', {
-			corporationId: corporation.corporationId,
-		})
-		await createCorporationRefreshWorkflow(env, 'structures', corporation)
-	}
-	for (const corporation of corporations.orders) {
-		logger.info('[Orchestrator] Creating corporation sync workflow for orders', {
-			corporationId: corporation.corporationId,
-		})
-		await createCorporationRefreshWorkflow(env, 'orders', corporation)
-	}
-	for (const corporation of corporations.contracts) {
-		logger.info('[Orchestrator] Creating corporation sync workflow for contracts', {
-			corporationId: corporation.corporationId,
-		})
-		await createCorporationRefreshWorkflow(env, 'contracts', corporation)
-	}
-	for (const corporation of corporations['industry-jobs']) {
-		logger.info('[Orchestrator] Creating corporation sync workflow for industry jobs', {
-			corporationId: corporation.corporationId,
-		})
-		await createCorporationRefreshWorkflow(env, 'industry-jobs', corporation)
-	}
-	for (const corporation of corporations.killmails) {
-		logger.info('[Orchestrator] Creating corporation sync workflow for killmails', {
-			corporationId: corporation.corporationId,
-		})
-		await createCorporationRefreshWorkflow(env, 'killmails', corporation)
+
+		try {
+			await createCorporationRefreshWorkflow(env, corporationId)
+		} catch (error) {
+			// Log error but continue with other corporations
+			logger.error('[Orchestrator] Failed to create workflow for corporation', {
+				corporationId,
+				errorMessage: error instanceof Error ? error.message : String(error),
+			})
+		}
+
+		// Add jitter delay (200-500ms) between workflow creations to avoid throttling
+		const jitterMs = 200 + Math.floor(Math.random() * 300)
+		await new Promise((resolve) => setTimeout(resolve, jitterMs))
 	}
 }
 
@@ -191,7 +101,7 @@ export async function scheduleCorpDataRefresh(event: ScheduledEvent, env: Env): 
  *
  * Flow:
  * 1. Fetches batch of users that need Discord refresh (up to 50 users)
- * 2. For each user, creates a workflow instance with random jitter delay (0-10 minutes)
+ * 2. For each user, creates a workflow with random jitter delay (0-10 minutes)
  * 3. Workflows execute asynchronously with delays spread across 10 minutes
  *
  * This approach ensures:
@@ -201,7 +111,6 @@ export async function scheduleCorpDataRefresh(event: ScheduledEvent, env: Env): 
  */
 export async function scheduleDiscordRefresh(event: ScheduledEvent, env: Env): Promise<void> {
 	const batchStartTime = Date.now()
-	const db = createDb(env.DATABASE_URL)
 
 	try {
 		logger.info('[Orchestrator] Starting Discord refresh batch', {
@@ -223,30 +132,13 @@ export async function scheduleDiscordRefresh(event: ScheduledEvent, env: Env): P
 			return
 		}
 
-		// Create workflow instances for each user with jitter
+		// Create workflows for each user with jitter
 		const workflowPromises = discordUsers.map(async (discordUser) => {
 			// Map coreUserId to userId for workflow
 			const userId = discordUser.coreUserId
 
 			// Use idempotent workflow ID (no timestamp)
 			const workflowId = generateWorkflowId('user-discord-refresh', userId)
-
-			const existingWorkflow = await db.query.workflowInstances.findFirst({
-				where: eq(workflowInstances.id, workflowId),
-			})
-
-			if (existingWorkflow) {
-				logger.info('[Orchestrator] Workflow instance already exists', {
-					userId,
-					workflowId,
-				})
-				return {
-					userId,
-					workflowId: existingWorkflow.id,
-					skipped: true,
-					success: true,
-				}
-			}
 
 			try {
 				// Generate jitter for this workflow
@@ -258,27 +150,13 @@ export async function scheduleDiscordRefresh(event: ScheduledEvent, env: Env): P
 					jitterDelaySeconds: jitterSeconds,
 				}
 
-				await db.insert(workflowInstances).values({
-					id: workflowId,
-					workflowType: 'user-discord-refresh',
-					resourceId: userId,
-					status: WorkflowStatus.Pending,
-				})
-
-				// Create workflow instance
+				// Create workflow
 				const instance = await env.USER_DISCORD_REFRESH.create({
 					id: workflowId,
 					params: payload,
 				})
 
-				await db
-					.update(workflowInstances)
-					.set({
-						status: WorkflowStatus.Created,
-					})
-					.where(eq(workflowInstances.id, workflowId))
-
-				logger.info('[Orchestrator] Created workflow instance', {
+				logger.info('[Orchestrator] Created workflow', {
 					userId,
 					workflowId: instance.id,
 					jitterMinutes: Math.floor(jitterSeconds / 60),
@@ -287,7 +165,6 @@ export async function scheduleDiscordRefresh(event: ScheduledEvent, env: Env): P
 				return {
 					userId,
 					workflowId: instance.id,
-					skipped: false,
 					success: true,
 				}
 			} catch (error) {
@@ -300,18 +177,9 @@ export async function scheduleDiscordRefresh(event: ScheduledEvent, env: Env): P
 					bindingAvailable: typeof env.USER_DISCORD_REFRESH !== 'undefined',
 				})
 
-				await db
-					.update(workflowInstances)
-					.set({
-						status: WorkflowStatus.NotCreated,
-						errorMessage: error instanceof Error ? error.message : String(error),
-					})
-					.where(eq(workflowInstances.id, workflowId))
-
 				return {
 					userId,
 					workflowId: null,
-					skipped: false,
 					success: false,
 					error: error instanceof Error ? error.message : String(error),
 				}
@@ -321,22 +189,17 @@ export async function scheduleDiscordRefresh(event: ScheduledEvent, env: Env): P
 		// Wait for all workflow creations to complete
 		const results = await Promise.allSettled(workflowPromises)
 
-		// Count created, skipped, and failed workflows
+		// Count created and failed workflows
 		const stats = {
 			total: results.length,
 			created: 0,
-			skipped: 0,
 			failed: 0,
 		}
 
 		for (const result of results) {
 			if (result.status === 'fulfilled') {
 				if (result.value.success) {
-					if (result.value.skipped) {
-						stats.skipped++
-					} else {
-						stats.created++
-					}
+					stats.created++
 				} else {
 					stats.failed++
 				}

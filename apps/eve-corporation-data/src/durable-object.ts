@@ -38,7 +38,6 @@ import type {
 	CorporationMarketData,
 	CorporationMemberData,
 	CorporationMemberTrackingData,
-	CorporationNeedingRefreshData,
 	CorporationOrderData,
 	CorporationPublicData,
 	CorporationRole,
@@ -225,74 +224,51 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	// CONFIGURATION METHODS
 	// ========================================================================
 
-	async getCorporationsNeedingRefresh(): Promise<CorporationNeedingRefreshData> {
+	async getCorporationsNeedingRefresh(): Promise<string[]> {
 		const tooOld = minutesAgo(20)
-		const transformConfig = (config: CorporationConfigRow): CorporationConfigData => ({
-			...config,
-			characterId: '',
-			characterName: '',
-			corporationType: config.corporationType as CorporationType,
-			membersLastSync: config.membersLastSync ?? null,
-			memberTrackingLastSync: config.memberTrackingLastSync ?? null,
-			walletsLastSync: config.walletsLastSync ?? null,
-			walletJournalLastSync: config.walletJournalLastSync ?? null,
-			walletTransactionsLastSync: config.walletTransactionsLastSync ?? null,
-			assetsLastSync: config.assetsLastSync ?? null,
-			structuresLastSync: config.structuresLastSync ?? null,
-			ordersLastSync: config.ordersLastSync ?? null,
-			contractsLastSync: config.contractsLastSync ?? null,
-			industryJobsLastSync: config.industryJobsLastSync ?? null,
-			killmailsLastSync: config.killmailsLastSync ?? null,
-		})
-
-		const results: CorporationNeedingRefreshData = {
-			members: [],
-			'member-tracking': [],
-			wallets: [],
-			'wallet-journal': [],
-			'wallet-transactions': [],
-			assets: [],
-			structures: [],
-			orders: [],
-			contracts: [],
-			'industry-jobs': [],
-			killmails: [],
-		}
 
 		const configs = await this.db.query.corporationConfig.findMany({
 			where: and(eq(corporationConfig.includeInBackgroundRefresh, true)),
 		})
 
 		const syncTargets = [
-			{ bucket: 'members' as const, field: 'membersLastSync' as const },
-			{ bucket: 'member-tracking' as const, field: 'memberTrackingLastSync' as const },
-			{ bucket: 'wallets' as const, field: 'walletsLastSync' as const },
-			{ bucket: 'wallet-journal' as const, field: 'walletJournalLastSync' as const },
-			{ bucket: 'wallet-transactions' as const, field: 'walletTransactionsLastSync' as const },
-			{ bucket: 'assets' as const, field: 'assetsLastSync' as const },
-			{ bucket: 'structures' as const, field: 'structuresLastSync' as const },
-			{ bucket: 'orders' as const, field: 'ordersLastSync' as const },
-			{ bucket: 'contracts' as const, field: 'contractsLastSync' as const },
-			{ bucket: 'industry-jobs' as const, field: 'industryJobsLastSync' as const },
-			{ bucket: 'killmails' as const, field: 'killmailsLastSync' as const },
+			{ field: 'membersLastSync' as const },
+			{ field: 'memberTrackingLastSync' as const },
+			{ field: 'walletsLastSync' as const },
+			{ field: 'walletJournalLastSync' as const },
+			{ field: 'walletTransactionsLastSync' as const },
+			{ field: 'assetsLastSync' as const },
+			{ field: 'structuresLastSync' as const },
+			{ field: 'ordersLastSync' as const },
+			{ field: 'contractsLastSync' as const },
+			{ field: 'industryJobsLastSync' as const },
+			{ field: 'killmailsLastSync' as const },
 		]
 
 		const isStale = (lastSync: Date | null | undefined, cutoff: Date) =>
 			!lastSync || lastSync < cutoff
 
-		for (const corp of configs) {
-			const transformed = transformConfig(corp)
+		// Collect unique corporation IDs that need refresh (any data type)
+		const corporationIds = new Set<string>()
 
-			for (const { bucket, field } of syncTargets) {
+		for (const corp of configs) {
+			// Check if any data type needs refresh
+			for (const { field } of syncTargets) {
 				if (isStale(corp[field], tooOld)) {
-					results[bucket].push(transformed)
+					corporationIds.add(corp.corporationId)
+					break // No need to check other fields for this corporation
 				}
 			}
 		}
 
-		logger.info('[EveCorporationData] getCorporationsNeedingRefresh: Results', { results })
+		const result = Array.from(corporationIds)
 
-		return results
+		logger.info('[EveCorporationData] getCorporationsNeedingRefresh: Results', {
+			count: result.length,
+			corporationIds: result,
+		})
+
+		return result
 	}
 
 	/**
@@ -339,10 +315,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 * Update corporation sync timestamp for a specific property
 	 * Updates the corporationConfig table with the current timestamp for the specified sync property
 	 */
-	async updateCorporationSyncTimestamp(
-		corporationId: string,
-		syncProperty: string
-	): Promise<void> {
+	async updateCorporationSyncTimestamp(corporationId: string, syncProperty: string): Promise<void> {
 		logger.debug('[EveCorporationData] Updating sync timestamp', {
 			corporationId,
 			syncProperty,
@@ -367,6 +340,57 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			logger.error('[EveCorporationData] Failed to update sync timestamp', {
 				corporationId,
 				syncProperty,
+				error: error instanceof Error ? error.message : String(error),
+				stack: error instanceof Error ? error.stack : undefined,
+			})
+			throw error
+		}
+	}
+
+	/**
+	 * Batch update corporation sync timestamps for multiple properties
+	 * Updates the corporationConfig table with the current timestamp for all specified sync properties
+	 * @param corporationId - The corporation ID
+	 * @param syncProperties - Array of sync property names to update (e.g., ['membersLastSync', 'assetsLastSync'])
+	 */
+	async batchUpdateCorporationSyncTimestamps(
+		corporationId: string,
+		syncProperties: string[]
+	): Promise<void> {
+		if (syncProperties.length === 0) {
+			return
+		}
+
+		logger.debug('[EveCorporationData] Batch updating sync timestamps', {
+			corporationId,
+			syncProperties,
+			count: syncProperties.length,
+		})
+
+		try {
+			const timestamp = new Date()
+
+			// Build update object with all sync properties
+			const updateData: Record<string, Date> = {}
+			for (const syncProperty of syncProperties) {
+				updateData[syncProperty] = timestamp
+			}
+
+			await this.db
+				.update(corporationConfig)
+				.set(updateData)
+				.where(eq(corporationConfig.corporationId, corporationId))
+
+			logger.debug('[EveCorporationData] Batch sync timestamps updated successfully', {
+				corporationId,
+				syncProperties,
+				count: syncProperties.length,
+				timestamp: timestamp.toISOString(),
+			})
+		} catch (error) {
+			logger.error('[EveCorporationData] Failed to batch update sync timestamps', {
+				corporationId,
+				syncProperties,
 				error: error instanceof Error ? error.message : String(error),
 				stack: error instanceof Error ? error.stack : undefined,
 			})
@@ -681,8 +705,9 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 	/**
 	 * Store corporation members (workflow-friendly)
-	 * Handles member additions, updates, and departures
-	 * Returns IDs of departed members for HR processing
+	 * Handles member additions, updates, and departures.
+	 * Automatically removes members from the database if they are no longer in the corporation.
+	 * Returns IDs of departed members for HR processing.
 	 */
 	async storeMembers(
 		corporationId: string,
@@ -703,7 +728,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			.map((m) => m.characterId)
 
 		try {
-			// Remove departed members
+			// Remove departed members (those in database but not in current ESI response)
 			if (departedMemberIds.length > 0) {
 				await this.db
 					.delete(corporationMembers)
@@ -724,9 +749,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						)
 					)
 
-				logger.debug('[storeMembers] Removed departed members:', {
+				logger.info('[storeMembers] Removed departed members:', {
 					corporationId,
 					count: departedMemberIds.length,
+					characterIds: departedMemberIds,
 				})
 			}
 
@@ -750,6 +776,17 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 			// Invalidate cache
 			await this.invalidateMembersCache(corporationId)
+
+			// Log summary of changes
+			const addedCount = memberIds.filter((id) => !existingMemberIds.has(id)).length
+			if (addedCount > 0 || departedMemberIds.length > 0) {
+				logger.debug('[storeMembers] Member sync completed:', {
+					corporationId,
+					added: addedCount,
+					removed: departedMemberIds.length,
+					total: memberIds.length,
+				})
+			}
 
 			return { departedMemberIds }
 		} catch (error) {
@@ -800,30 +837,32 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				)
 		}
 
-		// Upsert tracking data
-		for (const member of trackingData) {
+		// Upsert tracking data in batch
+		if (trackingData.length > 0) {
+			const values = trackingData.map((member) => ({
+				corporationId: String(corporationId),
+				characterId: member.character_id,
+				baseId: member.base_id || null,
+				locationId: member.location_id || null,
+				logoffDate: member.logoff_date ? new Date(member.logoff_date) : null,
+				logonDate: member.logon_date ? new Date(member.logon_date) : null,
+				shipTypeId: member.ship_type_id || null,
+				startDate: member.start_date ? new Date(member.start_date) : null,
+				updatedAt: new Date(),
+			}))
+
 			await this.db
 				.insert(corporationMemberTracking)
-				.values({
-					corporationId: String(corporationId),
-					characterId: member.character_id,
-					baseId: member.base_id || null,
-					locationId: member.location_id || null,
-					logoffDate: member.logoff_date ? new Date(member.logoff_date) : null,
-					logonDate: member.logon_date ? new Date(member.logon_date) : null,
-					shipTypeId: member.ship_type_id || null,
-					startDate: member.start_date ? new Date(member.start_date) : null,
-					updatedAt: new Date(),
-				})
+				.values(values)
 				.onConflictDoUpdate({
 					target: [corporationMemberTracking.corporationId, corporationMemberTracking.characterId],
 					set: {
-						baseId: member.base_id || null,
-						locationId: member.location_id || null,
-						logoffDate: member.logoff_date ? new Date(member.logoff_date) : null,
-						logonDate: member.logon_date ? new Date(member.logon_date) : null,
-						shipTypeId: member.ship_type_id || null,
-						startDate: member.start_date ? new Date(member.start_date) : null,
+						baseId: sql`excluded.base_id`,
+						locationId: sql`excluded.location_id`,
+						logoffDate: sql`excluded.logoff_date`,
+						logonDate: sql`excluded.logon_date`,
+						shipTypeId: sql`excluded.ship_type_id`,
+						startDate: sql`excluded.start_date`,
 						updatedAt: sql`excluded.updated_at`,
 					},
 				})
@@ -837,19 +876,21 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		corporationId: string,
 		wallets: Array<{ division: number; balance: string }>
 	): Promise<void> {
-		for (const wallet of wallets) {
+		if (wallets.length > 0) {
+			const values = wallets.map((wallet) => ({
+				corporationId: String(corporationId),
+				division: wallet.division,
+				balance: wallet.balance,
+				updatedAt: new Date(),
+			}))
+
 			await this.db
 				.insert(corporationWallets)
-				.values({
-					corporationId: String(corporationId),
-					division: wallet.division,
-					balance: wallet.balance,
-					updatedAt: new Date(),
-				})
+				.values(values)
 				.onConflictDoUpdate({
 					target: [corporationWallets.corporationId, corporationWallets.division],
 					set: {
-						balance: wallet.balance,
+						balance: sql`excluded.balance`,
 						updatedAt: sql`excluded.updated_at`,
 					},
 				})
@@ -1270,7 +1311,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			.map((m) => m.characterId)
 
 		try {
-			// Remove departed members from corporationMembers table
+			// Remove departed members (those in database but not in current ESI response)
 			if (departedMemberIds.length > 0) {
 				await this.db
 					.delete(corporationMembers)
@@ -1281,7 +1322,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						)
 					)
 
-				logger.debug('[fetchAndStoreMembers] Removed departed members:', {
+				logger.info('[fetchAndStoreMembers] Removed departed members:', {
 					corporationId,
 					count: departedMemberIds.length,
 					characterIds: departedMemberIds,
@@ -1407,30 +1448,32 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			})
 		}
 
-		// Update tracking data for current members
-		for (const member of trackingData) {
+		// Update tracking data for current members in batch
+		if (trackingData.length > 0) {
+			const values = trackingData.map((member) => ({
+				corporationId: String(corporationId),
+				characterId: member.character_id,
+				baseId: member.base_id || null,
+				locationId: member.location_id || null,
+				logoffDate: member.logoff_date ? new Date(member.logoff_date) : null,
+				logonDate: member.logon_date ? new Date(member.logon_date) : null,
+				shipTypeId: member.ship_type_id || null,
+				startDate: member.start_date ? new Date(member.start_date) : null,
+				updatedAt: new Date(),
+			}))
+
 			await this.db
 				.insert(corporationMemberTracking)
-				.values({
-					corporationId: String(corporationId),
-					characterId: member.character_id,
-					baseId: member.base_id || null,
-					locationId: member.location_id || null,
-					logoffDate: member.logoff_date ? new Date(member.logoff_date) : null,
-					logonDate: member.logon_date ? new Date(member.logon_date) : null,
-					shipTypeId: member.ship_type_id || null,
-					startDate: member.start_date ? new Date(member.start_date) : null,
-					updatedAt: new Date(),
-				})
+				.values(values)
 				.onConflictDoUpdate({
 					target: [corporationMemberTracking.corporationId, corporationMemberTracking.characterId],
 					set: {
-						baseId: member.base_id || null,
-						locationId: member.location_id || null,
-						logoffDate: member.logoff_date ? new Date(member.logoff_date) : null,
-						logonDate: member.logon_date ? new Date(member.logon_date) : null,
-						shipTypeId: member.ship_type_id || null,
-						startDate: member.start_date ? new Date(member.start_date) : null,
+						baseId: sql`excluded.base_id`,
+						locationId: sql`excluded.location_id`,
+						logoffDate: sql`excluded.logoff_date`,
+						logonDate: sql`excluded.logon_date`,
+						shipTypeId: sql`excluded.ship_type_id`,
+						startDate: sql`excluded.start_date`,
 						updatedAt: sql`excluded.updated_at`,
 					},
 				})
@@ -1447,19 +1490,21 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const wallets = await esiFetch.fetchWallets(tokenStore, corporationId, characterId)
 
-		for (const wallet of wallets) {
+		if (wallets.length > 0) {
+			const values = wallets.map((wallet) => ({
+				corporationId: String(corporationId),
+				division: wallet.division,
+				balance: wallet.balance,
+				updatedAt: new Date(),
+			}))
+
 			await this.db
 				.insert(corporationWallets)
-				.values({
-					corporationId: String(corporationId),
-					division: wallet.division,
-					balance: wallet.balance,
-					updatedAt: new Date(),
-				})
+				.values(values)
 				.onConflictDoUpdate({
 					target: [corporationWallets.corporationId, corporationWallets.division],
 					set: {
-						balance: wallet.balance,
+						balance: sql`excluded.balance`,
 						updatedAt: sql`excluded.updated_at`,
 					},
 				})
@@ -2378,6 +2423,43 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		}
 
 		return members
+	}
+
+	/**
+	 * Get corporation IDs for a list of character IDs
+	 * Queries the corporation_members table across all corporations
+	 */
+	async getCorporationIdsByCharacterIds(characterIds: string[]): Promise<Record<string, string>> {
+		if (characterIds.length === 0) {
+			return {}
+		}
+
+		logger.debug('[EveCorporationData] getCorporationIdsByCharacterIds: Starting', {
+			characterIdsCount: characterIds.length,
+		})
+
+		// Query corporation_members table for all matching character IDs
+		const results = await this.db.query.corporationMembers.findMany({
+			where: inArray(corporationMembers.characterId, characterIds),
+			columns: {
+				characterId: true,
+				corporationId: true,
+			},
+		})
+
+		// Build result map: characterId -> corporationId
+		const result: Record<string, string> = {}
+		for (const row of results) {
+			result[row.characterId] = row.corporationId
+		}
+
+		logger.debug('[EveCorporationData] getCorporationIdsByCharacterIds: Completed', {
+			characterIdsCount: characterIds.length,
+			foundCount: results.length,
+			resultCount: Object.keys(result).length,
+		})
+
+		return result
 	}
 
 	/**

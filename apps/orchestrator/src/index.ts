@@ -64,7 +64,7 @@ const app = new Hono<App>()
 				)
 			}
 
-			// Create workflow instance without jitter for immediate testing
+			// Create workflow without jitter for immediate testing
 			const workflowId = `user-discord-refresh-${userId}-manual-${Date.now()}`
 			const instance = await c.env.USER_DISCORD_REFRESH.create({
 				id: workflowId,
@@ -80,7 +80,7 @@ const app = new Hono<App>()
 				userId,
 				discordUserId: discordUser.discordUserId,
 				workflowId: instance.id,
-				message: 'Workflow instance created',
+				message: 'Workflow created',
 			})
 		} catch (error) {
 			return c.json(
@@ -133,7 +133,7 @@ const app = new Hono<App>()
 
 			return c.json({
 				success: true,
-				message: 'Batch workflow instances created',
+				message: 'Batch workflows created',
 				userCount: results.length,
 				workflows: results,
 			})
@@ -150,10 +150,6 @@ const app = new Hono<App>()
 
 // Export the Workflow class
 export { UserDiscordRefreshWorkflow }
-
-// Export the Durable Object class
-export { WorkflowInstanceManager } from './durable-object'
-export { WorkflowInstanceManagerDO } from './durable-object'
 
 export default {
 	fetch: app.fetch,
