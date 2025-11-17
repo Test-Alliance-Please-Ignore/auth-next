@@ -13,8 +13,13 @@
 	"durable_objects": {
 		"bindings": [
 			{
-				"name": "BEANCOUNTER",
-				"class_name": "Beancounter"
+				"name": "STRUCTURE_MONITOR",
+				"class_name": "StructureMonitor"
+			},
+			{
+				"name": "EVE_CORPORATION_DATA",
+				"class_name": "EveCorporationData",
+				"script_name": "eve-corporation-data"
 			}
 		]
 	},
@@ -22,6 +27,15 @@
 		{
 			"tag": "v1",
 			"new_sqlite_classes": ["Beancounter"]
+		},
+		{
+			"tag": "v2",
+			"renamed_classes": [
+				{
+					"from": "Beancounter",
+					"to": "StructureMonitor"
+				}
+			]
 		}
 	]
 }

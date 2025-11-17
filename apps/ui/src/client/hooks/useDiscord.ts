@@ -60,7 +60,7 @@ export function useDiscordLink() {
 				client_id: import.meta.env.VITE_DISCORD_CLIENT_ID,
 				redirect_uri: window.location.origin + '/discord/callback',
 				response_type: 'code',
-				scope: 'identify guilds guilds.join',
+				scope: 'identify guilds.join',
 				state: state,
 				code_challenge: codeChallenge,
 				code_challenge_method: 'S256',

@@ -3,8 +3,10 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
+import { registerCoordinatorRoutes } from './coordinator/routes'
+import { StructureMonitorDO } from './structure-monitor'
+
 import type { App } from './context'
-import { BeancounterDO } from './durable-object'
 
 const app = new Hono<App>()
 	.use(
@@ -21,10 +23,12 @@ const app = new Hono<App>()
 	.notFound(withNotFound())
 
 	.get('/', async (c) => {
-		return c.text('Beancounter Durable Object Worker')
+		return c.text('Structure Monitor Coordinator Worker')
 	})
+
+registerCoordinatorRoutes(app)
 
 export default app
 
 // Export the Durable Object class
-export { BeancounterDO as Beancounter }
+export { StructureMonitorDO as StructureMonitor }

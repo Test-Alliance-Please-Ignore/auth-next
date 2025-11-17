@@ -1,13 +1,12 @@
 # beancounter
 
-Cloudflare Worker with Beancounter Durable Object.
+Cloudflare Worker that coordinates structure monitoring workflows and per-structure Durable Objects.
 
 ## Features
 
-- **Durable Object**: SQLite-backed Durable Object with RPC support
-- **WebSocket Support**: WebSocket hibernation API handlers
-- **Database**: PostgreSQL with Drizzle ORM
-- **Web Framework**: Hono
+- **Structure coordinator**: Hono worker that orchestrates scans across corporations and spawns Durable Object monitors
+- **Per-structure Durable Object**: SQLite-backed Structure Monitor DO powered by Drizzle ORM for Durable Objects
+- **Postgres (Neon)**: Tracks corporations, structures, monitor health, and watchdog metadata via Drizzle pg-core schema
 - **Testing**: Vitest with Cloudflare Workers pool
 
 ## Development
@@ -26,37 +25,41 @@ just deploy -F beancounter
 ## Database
 
 ```bash
-# Generate migrations
-just db-generate beancounter
+# Generate Postgres migrations (Drizzle Kit)
+pnpm -F beancounter db:generate
 
 # Run migrations
-just db-migrate beancounter
-
-# Push schema changes (dev only)
-just db-push beancounter
+pnpm -F beancounter db:migrate
 
 # Open Drizzle Studio
-just db-studio beancounter
+pnpm -F beancounter db:studio
 ```
 
-## Using the Durable Object
+- Neon/Postgres schema is defined in `src/db/schema.ts`.
+- SQLite Durable Object schema lives in `src/structure-monitor/schema.ts` and follows the
+  [Drizzle Durable Object guide](https://orm.drizzle.team/docs/get-started/do-new).
+- Always use Drizzle Kit to generate migrations—never craft SQL files by hand.
 
-The Beancounter Durable Object is available to this worker via the `BEANCOUNTER` binding.
+## Structure Monitor Durable Object
 
-### From within this worker:
+- Available inside this worker as the `STRUCTURE_MONITOR` binding.
+- RPC interface lives in `@repo/beancounter` (`StructureMonitor`, `StructureFuelSnapshotInput`, etc.).
 
-```typescript
-import type { Beancounter } from '@repo/beancounter'
+### From within this worker
+
+```ts
+import type { StructureMonitor } from '@repo/beancounter'
 import { getStub } from '@repo/do-utils'
 
-// Get a stub to the Durable Object
-const stub = getStub<Beancounter>(c.env.BEANCOUNTER, 'unique-id')
+const structureId = '1020999999990'
+const monitor = getStub<StructureMonitor>(c.env.STRUCTURE_MONITOR, structureId)
 
-// Call RPC methods
-const result = await stub.exampleMethod('hello')
+await monitor.recordFuelSnapshot(structureId, {
+	fuelExpiresAt: new Date().toISOString(),
+})
 ```
 
-### From other workers:
+### From other workers
 
 1. Add the binding to `wrangler.jsonc`:
 
@@ -65,12 +68,12 @@ const result = await stub.exampleMethod('hello')
      "durable_objects": {
        "bindings": [
          {
-           "name": "BEANCOUNTER",
-           "class_name": "Beancounter",
-           "script_name": "beancounter",
-         },
-       ],
-     },
+           "name": "STRUCTURE_MONITOR",
+           "class_name": "StructureMonitor",
+           "script_name": "beancounter"
+         }
+       ]
+     }
    }
    ```
 
@@ -80,4 +83,4 @@ const result = await stub.exampleMethod('hello')
    pnpm -F your-worker add '@repo/beancounter@workspace:*'
    ```
 
-3. Add the binding to your context types and use it!
+3. Extend your context bindings with `STRUCTURE_MONITOR` and call the RPC methods as needed.

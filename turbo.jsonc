@@ -1,5 +1,6 @@
 {
 	"$schema": "https://turbo.build/schema.json",
+	"concurrency": "30",
 	"globalDependencies": ["**/.dev.vars"],
 	"globalEnv": [
 		"CI",

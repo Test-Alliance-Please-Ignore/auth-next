@@ -142,6 +142,12 @@ importers:
       '@repo/db-utils':
         specifier: workspace:*
         version: link:../../packages/db-utils
+      '@repo/do-utils':
+        specifier: workspace:*
+        version: link:../../packages/do-utils
+      '@repo/eve-corporation-data':
+        specifier: workspace:*
+        version: link:../../packages/eve-corporation-data
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers

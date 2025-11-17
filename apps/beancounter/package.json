@@ -23,6 +23,8 @@
 		"@neondatabase/serverless": "0.10.4",
 		"@repo/beancounter": "workspace:*",
 		"@repo/db-utils": "workspace:*",
+		"@repo/do-utils": "workspace:*",
+		"@repo/eve-corporation-data": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
 		"drizzle-orm": "0.44.6",
 		"hono": "4.9.11",
