@@ -41,15 +41,15 @@
 		"test": "run-vitest"
 	},
 	"dependencies": {
-		"esbuild": "0.25.10",
+		"esbuild": "0.27.0",
 		"slugify": "1.6.6",
-		"wrangler": "4.42.2",
+		"wrangler": "4.49.0",
 		"yaml": "2.8.1",
 		"zod": "4.1.12",
-		"zx": "8.8.4"
+		"zx": "8.8.5"
 	},
 	"devDependencies": {
-		"@cloudflare/workers-types": "4.20251014.0",
+		"@cloudflare/workers-types": "4.20251118.0",
 		"@repo/tools": "workspace:*",
 		"vitest": "3.2.4"
 	}

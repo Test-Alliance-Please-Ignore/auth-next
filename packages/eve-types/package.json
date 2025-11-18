@@ -11,7 +11,7 @@
 		"test": "run-vitest"
 	},
 	"devDependencies": {
-		"@cloudflare/vitest-pool-workers": "0.9.12",
+		"@cloudflare/vitest-pool-workers": "0.10.8",
 		"@repo/eslint-config": "workspace:*",
 		"@repo/tools": "workspace:*",
 		"@repo/typescript-config": "workspace:*",

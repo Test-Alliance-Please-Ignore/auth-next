@@ -10,12 +10,6 @@
 		"head_sampling_rate": 1
 	},
 	"workers_dev": false,
-	"exports": {
-		"handlers": ["fetch"],
-		"rpc": {
-			"class_name": "AdminWorkerEntrypoint"
-		}
-	},
 	"vars": {
 		"NAME": "admin",
 		"ENVIRONMENT": "production",

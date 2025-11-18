@@ -15,7 +15,7 @@
 		"@repo/typescript-config": "workspace:*"
 	},
 	"dependencies": {
-		"discord-interactions": "^4.4.0",
-		"discord.js": "^14.24.2"
+		"discord-interactions": "4.4.0",
+		"discord.js": "14.25.0"
 	}
 }

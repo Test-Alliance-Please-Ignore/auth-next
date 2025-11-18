@@ -11,11 +11,11 @@
 		"test": "run-vitest"
 	},
 	"dependencies": {
-		"hono": "4.9.11",
-		"workers-tagged-logger": "0.13.3"
+		"hono": "4.10.6",
+		"workers-tagged-logger": "0.13.7"
 	},
 	"devDependencies": {
-		"@cloudflare/vitest-pool-workers": "0.9.12",
+		"@cloudflare/vitest-pool-workers": "0.10.8",
 		"@repo/eslint-config": "workspace:*",
 		"@repo/tools": "workspace:*",
 		"@repo/typescript-config": "workspace:*",

@@ -1,6 +1,6 @@
 {
 	"name": "freight",
-	"version": "0.1.0",
+	"version": "0.6.0",
 	"private": true,
 	"sideEffects": false,
 	"type": "module",
@@ -20,26 +20,26 @@
 		"test": "run-vitest"
 	},
 	"dependencies": {
-		"@neondatabase/serverless": "0.10.4",
+		"@neondatabase/serverless": "1.0.2",
 		"@repo/db-utils": "workspace:*",
 		"@repo/freight": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
-		"drizzle-orm": "0.44.6",
-		"hono": "4.9.11",
-		"workers-tagged-logger": "0.13.3"
+		"drizzle-orm": "0.44.7",
+		"hono": "4.10.6",
+		"workers-tagged-logger": "0.13.7"
 	},
 	"devDependencies": {
-		"@cloudflare/vite-plugin": "1.1.0",
-		"@cloudflare/vitest-pool-workers": "0.9.12",
+		"@cloudflare/vite-plugin": "1.15.0",
+		"@cloudflare/vitest-pool-workers": "0.10.8",
 		"@repo/eslint-config": "workspace:*",
 		"@repo/tools": "workspace:*",
 		"@repo/typescript-config": "workspace:*",
 		"@types/node": "22.15.27",
 		"dotenv": "17.2.3",
-		"drizzle-kit": "0.31.5",
+		"drizzle-kit": "0.31.7",
 		"tsx": "4.20.6",
 		"vite": "6.3.4",
 		"vitest": "3.2.4",
-		"wrangler": "4.42.2"
+		"wrangler": "4.49.0"
 	}
 }
