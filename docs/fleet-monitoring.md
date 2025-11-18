@@ -1288,24 +1288,6 @@ describe('FleetMonitor', () => {
 
 ---
 
-### 6. Advanced Features
-
-#### Predictive Fleet Formation
-
-**ML Feature:** Predict when FC will form fleet
-
-**Data:**
-
-- Historical fleet formation times
-- Day of week patterns
-- Recent activity
-
-**Model:** Time-series forecasting (LSTM or Prophet)
-
-**Output:** "FC typically forms fleets at 18:00 UTC on Saturdays"
-
----
-
 #### Doctrine Compliance Checker
 
 **Feature:** Validate fleet composition against doctrine
