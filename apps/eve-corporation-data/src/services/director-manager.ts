@@ -307,7 +307,7 @@ export class DirectorManager {
 				.insert(characterCorporationRoles)
 				.values({
 					corporationId: this.corporationId,
-					characterId: director.characterId,
+					characterId: String(director.characterId),
 					roles: roles.roles || [],
 					rolesAtHq: roles.roles_at_hq,
 					rolesAtBase: roles.roles_at_base,

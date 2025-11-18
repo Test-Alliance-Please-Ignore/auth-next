@@ -38,6 +38,9 @@
 		{
 			"tag": "v1",
 			"new_sqlite_classes": ["Doctrines"]
+		},
+		{
+			"tag": "v2"
 		}
 	]
 }

@@ -571,7 +571,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			})
 			return null
 		}
-		return selected?.characterId || null
+		return String(selected.characterId)
 	}
 
 	/**

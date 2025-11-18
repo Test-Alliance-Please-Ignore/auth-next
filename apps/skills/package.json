@@ -40,12 +40,12 @@
 		"@repo/tools": "workspace:*",
 		"@repo/typescript-config": "workspace:*",
 		"@types/cli-progress": "3.11.6",
-		"@types/node": "22.15.27",
+		"@types/node": "24.10.1",
 		"cli-progress": "3.12.0",
 		"dotenv": "17.2.3",
 		"drizzle-kit": "0.31.7",
 		"tsx": "4.20.6",
-		"vite": "6.3.4",
+		"vite": "7.2.2",
 		"vitest": "3.2.4",
 		"wrangler": "4.49.0"
 	}

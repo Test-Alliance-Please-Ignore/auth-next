@@ -41,6 +41,11 @@
 				"name": "UNIVERSE",
 				"class_name": "Universe",
 				"script_name": "universe"
+			},
+			{
+				"name": "ESI",
+				"class_name": "Esi",
+				"script_name": "esi"
 			}
 		]
 	},

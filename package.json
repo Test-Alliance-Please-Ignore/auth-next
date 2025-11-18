@@ -31,5 +31,12 @@
 		"vitest": "3.2.4",
 		"wrangler": "4.49.0"
 	},
+	"pnpm": {
+		"overrides": {
+			"@vitest/runner": "3.2.4",
+			"@vitest/snapshot": "3.2.4",
+			"workerd": "^1.20251106.1"
+		}
+	},
 	"packageManager": "pnpm@10.14.0"
 }

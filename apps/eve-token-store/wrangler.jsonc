@@ -12,7 +12,6 @@
 		"head_sampling_rate": 1
 	},
 	"vars": {},
-
 	"durable_objects": {
 		"bindings": [
 			{

@@ -27,6 +27,7 @@
 		"@repo/do-utils": "workspace:*",
 		"@repo/eve-token-store": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
+		"@repo/vite-config": "workspace:*",
 		"drizzle-orm": "0.44.7",
 		"hono": "4.10.6",
 		"workers-tagged-logger": "0.13.7"
