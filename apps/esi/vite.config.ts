@@ -10,6 +10,7 @@ type AuxiliaryWorkerConfig = {
 }
 
 type WranglerConfig = {
+	name?: string
 	durable_objects?: {
 		bindings?: Array<{
 			script_name?: string
@@ -56,21 +57,30 @@ const findAuxiliaryWorkers = (): AuxiliaryWorkerConfig[] => {
 		return []
 	}
 
+	// Read current worker's config to get its name
+	const initialConfigContent = readFileSync(currentWranglerConfig, 'utf-8')
+	const initialConfig = parseJsonc(initialConfigContent) as WranglerConfig
+	const currentWorkerName = initialConfig.name
+
+	if (!currentWorkerName) {
+		return []
+	}
+
 	// Set to track all discovered workers (prevents duplicates and infinite loops)
 	const discoveredWorkers = new Set<string>()
 
 	// Queue of workers to process
 	const workersToProcess: string[] = []
 
-	// Start with the current worker's config
-	const initialConfigContent = readFileSync(currentWranglerConfig, 'utf-8')
-	const initialConfig = parseJsonc(initialConfigContent) as WranglerConfig
+	// Extract initial auxiliary workers (excluding the current worker itself)
 	const initialWorkers = extractWorkerNamesFromConfig(initialConfig)
 
-	// Add initial workers to discovered set and queue
+	// Add initial workers to discovered set and queue (excluding current worker)
 	for (const workerName of initialWorkers) {
-		discoveredWorkers.add(workerName)
-		workersToProcess.push(workerName)
+		if (workerName !== currentWorkerName) {
+			discoveredWorkers.add(workerName)
+			workersToProcess.push(workerName)
+		}
 	}
 
 	// Recursively process workers
@@ -88,9 +98,9 @@ const findAuxiliaryWorkers = (): AuxiliaryWorkerConfig[] => {
 		const workerConfig = parseJsonc(workerConfigContent) as WranglerConfig
 		const workerAuxiliaries = extractWorkerNamesFromConfig(workerConfig)
 
-		// Add new workers to discovered set and queue
+		// Add new workers to discovered set and queue (excluding current worker)
 		for (const auxiliaryWorker of workerAuxiliaries) {
-			if (!discoveredWorkers.has(auxiliaryWorker)) {
+			if (auxiliaryWorker !== currentWorkerName && !discoveredWorkers.has(auxiliaryWorker)) {
 				discoveredWorkers.add(auxiliaryWorker)
 				workersToProcess.push(auxiliaryWorker)
 			}
@@ -119,11 +129,7 @@ export default defineConfig({
 	plugins: [
 		cloudflare({
 			configPath: currentWranglerConfig,
-			auxiliaryWorkers: [
-				{ configPath: '../eve-token-store/wrangler.jsonc' },
-				{ configPath: '../eve-corporation-data/wrangler.jsonc' },
-				{ configPath: '../universe/wrangler.jsonc' },
-			],
+			auxiliaryWorkers: findAuxiliaryWorkers(),
 		}),
 	],
 })

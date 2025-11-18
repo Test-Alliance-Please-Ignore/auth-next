@@ -60,7 +60,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	 * Fetch corporation members from ESI
 	 */
 	async fetchMembers(corporationId: string): Promise<CorporationMembers> {
-		this.esiFetcher.authenticateWithCorporation(corporationId)
+		await this.esiFetcher.authenticateWithCorporation(corporationId)
 		const result = await this.esiFetcher.fetchEsi<EsiCorporationMembers>(
 			`/corporations/${corporationId}/members`
 		)
@@ -68,7 +68,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	}
 
 	async fetchMemberTracking(corporationId: string): Promise<CorporationMemberTracking[]> {
-		this.esiFetcher.authenticateWithCorporation(corporationId)
+		await this.esiFetcher.authenticateWithCorporation(corporationId)
 		const result = await this.esiFetcher.fetchEsi<EsiCorporationMemberTracking>(
 			`/corporations/${corporationId}/membertracking`
 		)
@@ -76,7 +76,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	}
 
 	async fetchWallets(corporationId: string): Promise<CorporationWallet[]> {
-		this.esiFetcher.authenticateWithCorporation(corporationId)
+		await this.esiFetcher.authenticateWithCorporation(corporationId)
 		const result = await this.esiFetcher.fetchEsi<EsiCorporationWallet>(
 			`/corporations/${corporationId}/wallets`
 		)
@@ -87,7 +87,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 		corporationId: string,
 		division: number
 	): Promise<CorporationWalletJournalEntry[]> {
-		this.esiFetcher.authenticateWithCorporation(corporationId)
+		await this.esiFetcher.authenticateWithCorporation(corporationId)
 		const result = await this.esiFetcher.fetchEsi<EsiCorporationWalletJournalEntry>(
 			`/corporations/${corporationId}/wallets/${division}/journal`
 		)
@@ -98,7 +98,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 		corporationId: string,
 		division: number
 	): Promise<CorporationWalletTransaction[]> {
-		this.esiFetcher.authenticateWithCorporation(corporationId)
+		await this.esiFetcher.authenticateWithCorporation(corporationId)
 		const result = await this.esiFetcher.fetchEsi<EsiCorporationWalletTransaction>(
 			`/corporations/${corporationId}/wallets/${division}/transactions`
 		)
@@ -106,7 +106,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	}
 
 	async fetchAssets(corporationId: string): Promise<CorporationAsset[]> {
-		this.esiFetcher.authenticateWithCorporation(corporationId)
+		await this.esiFetcher.authenticateWithCorporation(corporationId)
 		const result = await this.esiFetcher.fetchEsi<EsiCorporationAsset>(
 			`/corporations/${corporationId}/assets`
 		)
@@ -114,7 +114,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	}
 
 	async fetchStructures(corporationId: string): Promise<CorporationStructure[]> {
-		this.esiFetcher.authenticateWithCorporation(corporationId)
+		await this.esiFetcher.authenticateWithCorporation(corporationId)
 		const result = await this.esiFetcher.fetchEsi<EsiCorporationStructure>(
 			`/corporations/${corporationId}/structures`
 		)
@@ -122,7 +122,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	}
 
 	async fetchOrders(corporationId: string): Promise<CorporationOrder[]> {
-		this.esiFetcher.authenticateWithCorporation(corporationId)
+		await this.esiFetcher.authenticateWithCorporation(corporationId)
 		const result = await this.esiFetcher.fetchEsi<EsiCorporationOrder>(
 			`/corporations/${corporationId}/orders`
 		)
@@ -130,7 +130,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	}
 
 	async fetchContracts(corporationId: string): Promise<CorporationContract[]> {
-		this.esiFetcher.authenticateWithCorporation(corporationId)
+		await this.esiFetcher.authenticateWithCorporation(corporationId)
 		const result = await this.esiFetcher.fetchEsi<EsiCorporationContract>(
 			`/corporations/${corporationId}/contracts`
 		)
@@ -138,7 +138,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	}
 
 	async fetchIndustryJobs(corporationId: string): Promise<CorporationIndustryJob[]> {
-		this.esiFetcher.authenticateWithCorporation(corporationId)
+		await this.esiFetcher.authenticateWithCorporation(corporationId)
 		const result = await this.esiFetcher.fetchEsi<EsiCorporationIndustryJob>(
 			`/corporations/${corporationId}/industry/jobs`
 		)
@@ -146,7 +146,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	}
 
 	async fetchKillmails(corporationId: string): Promise<CorporationKillmail[]> {
-		this.esiFetcher.authenticateWithCorporation(corporationId)
+		await this.esiFetcher.authenticateWithCorporation(corporationId)
 		const result = await this.esiFetcher.fetchEsi<EsiCorporationKillmail>(
 			`/corporations/${corporationId}/killmails/recent`
 		)

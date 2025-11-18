@@ -5,11 +5,6 @@ export default defineWorkersProject({
 		poolOptions: {
 			workers: {
 				wrangler: { configPath: `${__dirname}/wrangler.jsonc` },
-				miniflare: {
-					bindings: {
-						ENVIRONMENT: 'VITEST',
-					},
-				},
 			},
 		},
 	},

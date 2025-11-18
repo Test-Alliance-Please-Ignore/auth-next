@@ -58,7 +58,7 @@ export class EsiCache {
 }
 
 export class EsiFetcher {
-	private characterId: string | undefined = undefined
+	private characterId: string | null = null
 	private cache: EsiCache
 
 	constructor(
@@ -69,7 +69,7 @@ export class EsiFetcher {
 	}
 
 	async clearAuthentication(): Promise<void> {
-		this.characterId = undefined
+		this.characterId = null
 	}
 
 	async authenticateWithCorporation(corporationId: string): Promise<void> {
@@ -79,7 +79,11 @@ export class EsiFetcher {
 			this.env.EVE_CORPORATION_DATA,
 			corporationId
 		)
+
+		logger.info(`[EsiFetcher] Getting load-balanced director for corporation: ${corporationId}`)
 		const directorId = await corporationData.getLoadBalancedDirector(corporationId)
+		logger.info(`[EsiFetcher] Load-balanced director: ${directorId}`)
+
 		if (!directorId) {
 			throw new Error('No director found for corporation')
 		}
@@ -88,6 +92,12 @@ export class EsiFetcher {
 
 	async authenticateWithCharacter(characterId: string): Promise<void> {
 		logger.info(`[EsiFetcher] Authenticating with character: ${characterId}`)
+		if (typeof characterId !== 'string') {
+			throw new Error('Character ID must be a string')
+		}
+		if (!characterId) {
+			throw new Error('Character ID is required')
+		}
 		this.characterId = characterId
 	}
 
@@ -105,9 +115,8 @@ export class EsiFetcher {
 
 	async _fetchEsi<T>(path: string): Promise<EsiResponse<T>> {
 		if (!this.characterId) {
-			throw new Error('No character ID authenticated')
+			throw new Error('No character ID authenticated for _fetchEsi')
 		}
-
 		const cachedResponse = await this.cache.getCachedResponse<T>(this.characterId, path)
 		if (cachedResponse) {
 			logger
