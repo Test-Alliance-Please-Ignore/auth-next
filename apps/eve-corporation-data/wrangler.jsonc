@@ -17,7 +17,8 @@
 	"kv_namespaces": [
 		{
 			"binding": "CACHE",
-			"id": "ab5cf334a1294610896c1a732dcde577"
+			"id": "ab5cf334a1294610896c1a732dcde577",
+			"remote": false
 		}
 	],
 	"queues": {
@@ -36,11 +37,16 @@
 				"name": "EVE_CORPORATION_DATA",
 				"class_name": "EveCorporationData"
 			},
-		{
-			"name": "EVE_TOKEN_STORE",
-			"class_name": "EveTokenStore",
-			"script_name": "eve-token-store"
-		}
+			{
+				"name": "EVE_TOKEN_STORE",
+				"class_name": "EveTokenStore",
+				"script_name": "eve-token-store"
+			},
+			{
+				"name": "UNIVERSE",
+				"class_name": "Universe",
+				"script_name": "universe"
+			}
 		]
 	},
 	"workflows": [

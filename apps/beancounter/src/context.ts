@@ -6,7 +6,10 @@ import type { createDb } from './common/db'
 export type Env = SharedHonoEnv & {
 	DATABASE_URL: string
 	STRUCTURE_MONITOR: DurableObjectNamespace
+	STRUCTURE_COORDINATOR: DurableObjectNamespace
 	EVE_CORPORATION_DATA: DurableObjectNamespace
+	EVE_TOKEN_STORE: DurableObjectNamespace
+	UNIVERSE: DurableObjectNamespace
 }
 
 export type Variables = SharedHonoVariables & {

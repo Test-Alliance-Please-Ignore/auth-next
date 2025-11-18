@@ -27,7 +27,7 @@ export const structureMonitorStatusEnum = pgEnum('structure_monitor_status', [
 ])
 
 export const corporations = pgTable(
-	'structure_monitor_corporations',
+	'beancounter_structure_monitor_corporations',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
 		corporationId: text('corporation_id').notNull(),
@@ -43,13 +43,15 @@ export const corporations = pgTable(
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
 	(table) => [
-		uniqueIndex('structure_monitor_corporations_corporation_id_idx').on(table.corporationId),
-		index('structure_monitor_corporations_tracking_idx').on(table.trackingEnabled),
+		uniqueIndex('beancounter_structure_monitor_corporations_corporation_id_idx').on(
+			table.corporationId
+		),
+		index('beancounter_structure_monitor_corporations_tracking_idx').on(table.trackingEnabled),
 	]
 )
 
 export const structures = pgTable(
-	'structure_monitor_structures',
+	'beancounter_structure_monitor_structures',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
 		corporationId: uuid('corporation_id')
@@ -69,13 +71,13 @@ export const structures = pgTable(
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
 	(table) => [
-		uniqueIndex('structure_monitor_structures_structure_id_idx').on(table.structureId),
-		index('structure_monitor_structures_corporation_idx').on(table.corporationId),
+		uniqueIndex('beancounter_structure_monitor_structures_structure_id_idx').on(table.structureId),
+		index('beancounter_structure_monitor_structures_corporation_idx').on(table.corporationId),
 	]
 )
 
 export const structureMonitorInstances = pgTable(
-	'structure_monitor_instances',
+	'beancounter_structure_monitor_instances',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
 		structureId: uuid('structure_id')
@@ -92,13 +94,16 @@ export const structureMonitorInstances = pgTable(
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
 	(table) => [
-		uniqueIndex('structure_monitor_instances_structure_idx').on(table.structureId),
-		index('structure_monitor_instances_status_idx').on(table.status, table.lastHeartbeatAt),
+		uniqueIndex('beancounter_structure_monitor_instances_structure_idx').on(table.structureId),
+		index('beancounter_structure_monitor_instances_status_idx').on(
+			table.status,
+			table.lastHeartbeatAt
+		),
 	]
 )
 
 export const structureMonitorRuns = pgTable(
-	'structure_monitor_runs',
+	'beancounter_structure_monitor_runs',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
 		structureId: uuid('structure_id')
@@ -120,8 +125,8 @@ export const structureMonitorRuns = pgTable(
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
 	(table) => [
-		index('structure_monitor_runs_structure_idx').on(table.structureId),
-		index('structure_monitor_runs_status_idx').on(table.status),
+		index('beancounter_structure_monitor_runs_structure_idx').on(table.structureId),
+		index('beancounter_structure_monitor_runs_status_idx').on(table.status),
 	]
 )
 

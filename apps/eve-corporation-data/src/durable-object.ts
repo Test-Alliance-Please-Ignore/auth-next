@@ -24,6 +24,7 @@ import {
 import { DirectorManager } from './services/director-manager'
 import * as esiFetch from './services/esi-fetch'
 
+import type { SQL } from 'drizzle-orm'
 import type {
 	CharacterCorporationRolesData,
 	CorporationAccessVerification,
@@ -59,8 +60,12 @@ import type {
 	EsiCorporationWalletJournalEntry,
 	EsiCorporationWalletTransaction,
 	EveCorporationData,
+	SearchAssetsFilters,
+	StructureDetailsData,
 } from '@repo/eve-corporation-data'
 import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
+import type { EveCharacterId, EveStructureId } from '@repo/eve-types'
+import type { Universe } from '@repo/universe'
 import type { Env } from './context'
 
 type CorporationConfigRow = typeof corporationConfig.$inferSelect
@@ -188,6 +193,11 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		characterId: string,
 		requiredRole: CorporationRole
 	): Promise<boolean> {
+		logger.info('[EveCorporationData] hasRequiredRole: Checking role', {
+			characterId,
+			requiredRole,
+		})
+
 		const rolesData = await this.db.query.characterCorporationRoles.findFirst({
 			where: eq(characterCorporationRoles.characterId, characterId),
 		})
@@ -541,6 +551,28 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	// ========================================================================
 	// DIRECTOR MANAGEMENT METHODS
 	// ========================================================================
+
+	/**
+	 * Get a load-balanced director character ID for this corporation
+	 * @param corporationId - The corporation ID
+	 * @returns A load-balanced director character ID or null if no healthy directors are available
+	 */
+	async getLoadBalancedDirector(corporationId: string): Promise<string | null> {
+		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const directorManager = new DirectorManager(this.db, corporationId, tokenStoreStub)
+		const selected = await directorManager.selectDirector()
+		logger.info('[EveCorporationData] getLoadBalancedDirector: Selected director', {
+			corporationId,
+			selected,
+		})
+		if (!selected) {
+			logger.error('[EveCorporationData] getLoadBalancedDirector: No director selected', {
+				corporationId,
+			})
+			return null
+		}
+		return selected?.characterId || null
+	}
 
 	/**
 	 * Add a new director character for this corporation
@@ -1795,7 +1827,17 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		logger.debug('[fetchAndStoreAssets] Starting asset fetch', { corporationId })
 
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
+		logger.info('[EveCorporationData] fetchAndStoreAssets: Selected character', {
+			corporationId,
+			characterId,
+		})
+
 		await this.verifyRole(characterId, ['Director'])
+
+		logger.info('[EveCorporationData] fetchAndStoreAssets: Role verified', {
+			corporationId,
+			characterId,
+		})
 
 		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const assets: EsiCorporationAsset[] = await esiFetch.fetchAssets(
@@ -2312,9 +2354,11 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 */
 	async fetchAssetsData(corporationId: string, forceRefresh = false): Promise<void> {
 		await Promise.all([
-			this.fetchAndStoreAssets(corporationId, forceRefresh),
+			this.fetchAndStoreAssets(corporationId, forceRefresh).catch((e) =>
+				logger.error('Assets fetch failed:', e.message)
+			),
 			this.fetchAndStoreStructures(corporationId, forceRefresh).catch((e) =>
-				logger.error('Structures fetch failed:', e)
+				logger.error('Structures fetch failed:', e.message)
 			),
 		])
 	}
@@ -2608,7 +2652,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	async getWalletJournal(
 		corporationId: string,
 		division?: number,
-		limit = 1000
+		limit = 10000
 	): Promise<CorporationWalletJournalData[]> {
 		const results = division
 			? await this.db.query.corporationWalletJournal.findMany({
@@ -2652,7 +2696,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	async getWalletTransactions(
 		corporationId: string,
 		division?: number,
-		limit = 1000
+		limit = 10000
 	): Promise<CorporationWalletTransactionData[]> {
 		const results = division
 			? await this.db.query.corporationWalletTransactions.findMany({
@@ -2711,6 +2755,50 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		}
 	}
 
+	private async getCachedAssets(
+		corporationId: string,
+		filters?: SearchAssetsFilters
+	): Promise<CorporationAssetData[]> {
+		const where: SQL[] = [eq(corporationAssets.corporationId, corporationId)]
+		if (filters?.itemId) {
+			where.push(eq(corporationAssets.itemId, filters.itemId))
+		}
+		if (filters?.isSingleton) {
+			where.push(eq(corporationAssets.isSingleton, filters.isSingleton))
+		}
+		if (filters?.locationFlag) {
+			where.push(eq(corporationAssets.locationFlag, filters.locationFlag))
+		}
+		if (filters?.locationId) {
+			where.push(eq(corporationAssets.locationId, filters.locationId))
+		}
+		if (filters?.locationType) {
+			where.push(eq(corporationAssets.locationType, filters.locationType))
+		}
+		if (filters?.quantity) {
+			where.push(eq(corporationAssets.quantity, filters.quantity))
+		}
+		if (filters?.typeId) {
+			where.push(eq(corporationAssets.typeId, filters.typeId))
+		}
+		if (filters?.isBlueprintCopy) {
+			where.push(eq(corporationAssets.isBlueprintCopy, filters.isBlueprintCopy))
+		}
+		const results = await this.db.query.corporationAssets.findMany({
+			where: and(...where),
+			limit: filters?.limit,
+		})
+		return results
+	}
+
+	async searchAssets(
+		corporationId: string,
+		filters?: SearchAssetsFilters
+	): Promise<CorporationAssetData[]> {
+		const results = await this.getCachedAssets(corporationId, filters)
+		return results
+	}
+
 	/**
 	 * Get corporation assets
 	 */
@@ -2761,6 +2849,112 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			services: r.services,
 			updatedAt: r.updatedAt,
 		}))
+	}
+
+	/**
+	 * Get structure details - union of all ESI lookups
+	 */
+	async getStructureDetails(
+		corporationId: string,
+		structureId: string
+	): Promise<StructureDetailsData | null> {
+		// Get structure from database
+		const structure = await this.db.query.corporationStructures.findFirst({
+			where: and(
+				eq(corporationStructures.corporationId, corporationId),
+				eq(corporationStructures.structureId, structureId)
+			),
+		})
+
+		if (!structure) {
+			return null
+		}
+
+		// Get character ID for Universe service access using DirectorManager
+		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const directorManager = new DirectorManager(this.db, corporationId, tokenStoreStub)
+		const director = await directorManager.selectDirector()
+
+		if (!director) {
+			logger.error(
+				'[EveCorporationData] No healthy directors available for structure details lookup',
+				{
+					corporationId,
+					structureId,
+				}
+			)
+			return null
+		}
+
+		const characterId = String(director.characterId)
+
+		// Get structure info and resolve names in parallel
+		const [structureInfo, resolvedNames] = await Promise.all([
+			// Get structure info from Universe service
+			(async () => {
+				try {
+					const universe = await getStub<Universe>(this.env.UNIVERSE, 'default')
+					return await universe.getStructureInfo(
+						structureId as EveStructureId,
+						characterId as EveCharacterId
+					)
+				} catch (error) {
+					logger.error('[EveCorporationData] Failed to get structure info', {
+						structureId,
+						error: error instanceof Error ? error.message : String(error),
+					})
+					return null
+				}
+			})(),
+			// Resolve system name from EveTokenStore
+			(async () => {
+				try {
+					const tokenStore = await getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+					return await tokenStore.resolveIds([structure.systemId])
+				} catch (error) {
+					logger.error('[EveCorporationData] Failed to resolve location name', {
+						systemId: structure.systemId,
+						error: error instanceof Error ? error.message : String(error),
+					})
+					return {}
+				}
+			})(),
+		])
+
+		if (!structureInfo) {
+			return null
+		}
+
+		// Resolve type and owner names
+		const [typeAndOwnerNames] = await Promise.all([
+			(async () => {
+				try {
+					const tokenStore = await getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+					const idsToResolve = [structureInfo.type_id, structureInfo.owner_id].filter(
+						Boolean
+					) as string[]
+					if (idsToResolve.length === 0) {
+						return {}
+					}
+					return await tokenStore.resolveIds(idsToResolve)
+				} catch (error) {
+					logger.error('[EveCorporationData] Failed to resolve type and owner names', {
+						typeId: structureInfo.type_id,
+						ownerId: structureInfo.owner_id,
+						error: error instanceof Error ? error.message : String(error),
+					})
+					return {}
+				}
+			})(),
+		])
+
+		// Return union of all three ESI lookups
+		return {
+			...structureInfo,
+			systemName: resolvedNames[structure.systemId] ?? null,
+			typeName: typeAndOwnerNames[structureInfo.type_id] ?? null,
+			ownerName: typeAndOwnerNames[structureInfo.owner_id] ?? null,
+		}
 	}
 
 	/**

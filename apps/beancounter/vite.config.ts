@@ -31,7 +31,6 @@ const findAuxiliaryWorkers = (): AuxiliaryWorkerConfig[] => {
 export default defineConfig({
 	plugins: [
 		cloudflare({
-			configPath: './wrangler.jsonc',
 			auxiliaryWorkers: findAuxiliaryWorkers(),
 		}),
 	],

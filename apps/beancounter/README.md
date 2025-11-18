@@ -22,6 +22,39 @@ pnpm test
 just deploy -F beancounter
 ```
 
+## CLI
+
+Manage corporations and structures from the command line:
+
+```bash
+# List all corporations
+pnpm -F beancounter cli corp list
+
+# Add a new corporation
+pnpm -F beancounter cli corp add --id 123456789 --name "My Corp" --ticker "MC"
+
+# Update a corporation
+pnpm -F beancounter cli corp update --id <uuid> --name "New Name"
+
+# Toggle tracking for a corporation
+pnpm -F beancounter cli corp toggle --id <uuid>
+
+# List all structures
+pnpm -F beancounter cli struct list
+
+# List structures for a specific corporation
+pnpm -F beancounter cli struct list --corp 123456789
+
+# Add a new structure
+pnpm -F beancounter cli struct add --corp-id 123456789 --id 9876543210 --name "My Structure"
+
+# Toggle monitoring for a structure
+pnpm -F beancounter cli struct toggle --id <uuid>
+
+# Get help
+pnpm -F beancounter cli --help
+```
+
 ## Database
 
 ```bash

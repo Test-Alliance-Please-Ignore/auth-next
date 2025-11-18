@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers'
 
 import { eq, inArray } from '@repo/db-utils'
 import { getStub, LRUCache } from '@repo/do-utils'
+import { logger } from '@repo/hono-helpers'
 import {
 	EsiGetStructureMarketDataResponseSchema,
 	EsiGetStructureResponseSchema,
@@ -132,6 +133,12 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 				this.env.EVE_TOKEN_STORE,
 				structureId ? String(structureId) : 'default'
 			)
+
+			logger.info('[UniverseDO] Fetching structure info', {
+				structureId,
+				authorizedCharacterId,
+			})
+
 			const response: EsiResponse<EsiGetStructureResponse> = await tokenStoreStub.fetchEsi(
 				`/universe/structures/${String(structureId)}`,
 				String(authorizedCharacterId)
@@ -572,7 +579,10 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	/**
 	 * Fetch killmail by ID and hash
 	 */
-	async fetchKillmailByIdAndHash(killmailId: string, killmailHash: string): Promise<Killmail | null> {
+	async fetchKillmailByIdAndHash(
+		killmailId: string,
+		killmailHash: string
+	): Promise<Killmail | null> {
 		return this.killmailService.fetchKillmailByIdAndHash(killmailId, killmailHash)
 	}
 

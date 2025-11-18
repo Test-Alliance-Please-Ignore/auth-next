@@ -465,6 +465,21 @@ export interface CorporationStructureData {
 }
 
 /**
+ * Structure details data - union of all ESI lookups
+ * Includes structure info, system name, type name, and owner name
+ */
+export interface StructureDetailsData {
+	name: string
+	owner_id: string
+	type_id: string
+	position: { x: number; y: number; z: number }
+	solar_system_id: string
+	systemName: string | null
+	typeName: string | null
+	ownerName: string | null
+}
+
+/**
  * Corporation market order data
  */
 export interface CorporationOrderData {
@@ -643,6 +658,23 @@ export interface DirectorHealth {
 	priority: number
 }
 
+export interface SearchAssetsFilters
+	extends Partial<
+		Pick<
+			CorporationAssetData,
+			| 'itemId'
+			| 'isSingleton'
+			| 'locationFlag'
+			| 'locationId'
+			| 'locationType'
+			| 'quantity'
+			| 'typeId'
+			| 'isBlueprintCopy'
+		>
+	> {
+	limit?: number
+}
+
 // ============================================================================
 // PUBLIC RPC INTERFACE
 // ============================================================================
@@ -755,6 +787,13 @@ export interface EveCorporationData {
 		characterId: string,
 		priority: number
 	): Promise<void>
+
+	/**
+	 * Get a load-balanced director for this corporation
+	 * @param corporationId - The corporation ID
+	 * @returns A load-balanced director or null if no healthy directors are available
+	 */
+	getLoadBalancedDirector(corporationId: string): Promise<string | null>
 
 	/**
 	 * Get all directors for this corporation
@@ -937,6 +976,17 @@ export interface EveCorporationData {
 	): Promise<void>
 
 	/**
+	 * Search assets
+	 * @param corporationId - The corporation ID
+	 * @param filters - Filters to apply to the search
+	 * @returns Array of assets
+	 */
+	searchAssets(
+		corporationId: string,
+		filters?: SearchAssetsFilters
+	): Promise<CorporationAssetData[]>
+
+	/**
 	 * Fetch assets and structures
 	 * Requires: esi-assets.read_corporation_assets.v1, esi-corporations.read_structures.v1
 	 * Requires role: Director (assets), Station_Manager (structures)
@@ -1072,6 +1122,17 @@ export interface EveCorporationData {
 	 * @returns Array of structure data
 	 */
 	getStructures(corporationId: string): Promise<CorporationStructureData[]>
+
+	/**
+	 * Get structure details - union of all ESI lookups
+	 * @param corporationId - The corporation ID
+	 * @param structureId - The structure ID
+	 * @returns Structure details including structure info, system name, type name, and owner name, or null if not found
+	 */
+	getStructureDetails(
+		corporationId: string,
+		structureId: string
+	): Promise<StructureDetailsData | null>
 
 	/**
 	 * Get complete assets data

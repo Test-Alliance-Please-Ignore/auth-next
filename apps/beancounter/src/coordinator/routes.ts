@@ -1,19 +1,15 @@
-import { createDb } from '../common/db'
-import { StructureMonitorRepository } from './repository'
-import { StructureCoordinator } from './structure-coordinator'
+import { getStub } from '@repo/do-utils'
 
-import type { Context, Hono } from 'hono'
-import type { BeancounterDb } from '../common/db'
+import type { StructureCoordinator } from '@repo/beancounter'
+import type { Hono } from 'hono'
 import type { App } from '../context'
-
-type AppContext = Context<App>
 
 export function registerCoordinatorRoutes(app: Hono<App>): void {
 	app
 		.get('/coordinator/scan', async (c) => {
 			try {
-				const coordinator = await createCoordinator(c)
-				await coordinator.scanCorporations()
+				const coordinatorStub = getStub<StructureCoordinator>(c.env.STRUCTURE_COORDINATOR, 'default')
+				await coordinatorStub.scanCorporations()
 				return c.json({ success: true })
 			} catch (error) {
 				c.status(500)
@@ -32,8 +28,8 @@ export function registerCoordinatorRoutes(app: Hono<App>): void {
 			}
 
 			try {
-				const coordinator = await createCoordinator(c)
-				await coordinator.syncStructuresForCorp(corporationId)
+				const coordinatorStub = getStub<StructureCoordinator>(c.env.STRUCTURE_COORDINATOR, 'default')
+				await coordinatorStub.syncStructuresForCorp(corporationId)
 				return c.json({ success: true })
 			} catch (error) {
 				c.status(500)
@@ -46,14 +42,19 @@ export function registerCoordinatorRoutes(app: Hono<App>): void {
 
 		.post('/coordinator/structures/:structureId/ensure', async (c) => {
 			const structureId = c.req.param('structureId')
+			const corporationId = c.req.query('corporationId')
 
 			if (!structureId) {
 				return c.json({ success: false, error: 'structureId is required' }, 400)
 			}
 
+			if (!corporationId) {
+				return c.json({ success: false, error: 'corporationId query parameter is required' }, 400)
+			}
+
 			try {
-				const coordinator = await createCoordinator(c)
-				await coordinator.ensureMonitor(structureId)
+				const coordinatorStub = getStub<StructureCoordinator>(c.env.STRUCTURE_COORDINATOR, 'default')
+				await coordinatorStub.ensureMonitor(corporationId, structureId)
 				return c.json({ success: true })
 			} catch (error) {
 				c.status(500)
@@ -63,27 +64,4 @@ export function registerCoordinatorRoutes(app: Hono<App>): void {
 				})
 			}
 		})
-}
-
-async function getDb(c: AppContext): Promise<BeancounterDb> {
-	let db = c.get('db')
-
-	if (!db) {
-		db = createDb(c.env.DATABASE_URL)
-		c.set('db', db)
-	}
-
-	return db
-}
-
-async function createCoordinator(c: AppContext): Promise<StructureCoordinator> {
-	const db = await getDb(c)
-	const repository = new StructureMonitorRepository(db)
-
-	return new StructureCoordinator({
-		repository,
-		eveCorporationDataNamespace: c.env.EVE_CORPORATION_DATA,
-		structureMonitorNamespace: c.env.STRUCTURE_MONITOR,
-		logger: console,
-	})
 }

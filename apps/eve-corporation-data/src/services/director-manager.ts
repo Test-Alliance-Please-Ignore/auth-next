@@ -1,4 +1,5 @@
 import { and, asc, eq } from '@repo/db-utils'
+import { logger } from '@repo/hono-helpers'
 
 import { characterCorporationRoles, corporationConfig, corporationDirectors } from '../db/schema'
 
@@ -115,7 +116,7 @@ export class DirectorManager {
 
 		return directors.map((d) => ({
 			directorId: d.id,
-			characterId: d.characterId,
+			characterId: String(d.characterId),
 			characterName: d.characterName,
 			isHealthy: d.isHealthy,
 			lastHealthCheck: d.lastHealthCheck,
@@ -139,9 +140,9 @@ export class DirectorManager {
 			orderBy: [asc(corporationDirectors.priority), asc(corporationDirectors.lastUsed)],
 		})
 
-		return directors.map((d) => ({
+		const result = directors.map((d) => ({
 			directorId: d.id,
-			characterId: d.characterId,
+			characterId: String(d.characterId),
 			characterName: d.characterName,
 			isHealthy: d.isHealthy,
 			lastHealthCheck: d.lastHealthCheck,
@@ -150,6 +151,11 @@ export class DirectorManager {
 			lastFailureReason: d.lastFailureReason,
 			priority: d.priority,
 		}))
+		logger.info('[DirectorManager] getHealthyDirectors: Found directors', {
+			corporationId: this.corporationId,
+			directors: result,
+		})
+		return result
 	}
 
 	/**
@@ -172,7 +178,7 @@ export class DirectorManager {
 
 		return {
 			directorId: selected.directorId,
-			characterId: selected.characterId,
+			characterId: String(selected.characterId),
 			characterName: selected.characterName,
 		}
 	}

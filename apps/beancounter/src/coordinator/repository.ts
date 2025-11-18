@@ -1,6 +1,7 @@
-import { schema } from '../common/db/schema'
+import { DbClient, eq } from '@repo/db-utils'
 
-import type { DbClient } from '@repo/db-utils'
+import { corporations, schema, structures } from '../common/db/schema'
+
 import type { StructureRow } from '../common/db/schema'
 import type { CorporationScanTarget } from '../types'
 
@@ -17,17 +18,24 @@ export class StructureMonitorRepository {
 	 */
 	async listTrackedCorporations(): Promise<CorporationScanTarget[]> {
 		// TODO: Implement real query using Drizzle once coordinator logic is ready.
-		return [] as CorporationScanTarget[]
+		const result = await this.db
+			.select()
+			.from(corporations)
+			.where(eq(corporations.trackingEnabled, true))
+
+		return result.map((corp) => ({
+			...corp,
+		}))
 	}
 
 	/**
 	 * Upsert structures discovered for a corporation.
 	 */
 	async upsertStructuresForCorporation(
-		_corporationId: string,
-		_structures: Array<Pick<StructureRow, 'structureId' | 'typeId' | 'solarSystemId'>>
+		corporationId: string,
+		structures: Array<Pick<StructureRow, 'structureId' | 'typeId' | 'solarSystemId'>>
 	): Promise<void> {
-		// TODO: Persist structure metadata in Neon.
+		// TODO: Implement real query using Drizzle once coordinator logic is ready.
 	}
 
 	/**
@@ -61,5 +69,15 @@ export class StructureMonitorRepository {
 		}
 	): Promise<void> {
 		// TODO: Write to structure_monitor_runs table.
+	}
+
+	/**
+	 * Return all structures that are being monitored.
+	 */
+	async listMonitoredStructures(): Promise<StructureRow[]> {
+		return await this.db
+			.select()
+			.from(structures)
+			.where(eq(structures.monitoringEnabled, true))
 	}
 }

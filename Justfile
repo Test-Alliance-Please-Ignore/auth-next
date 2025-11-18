@@ -76,6 +76,7 @@ db-generate-all:
   cd apps/fulcrum && bun run db:generate
   cd apps/fulcrum && bun run db:generate
   cd apps/beancounter && bun run db:generate
+  cd apps/esi && bun run db:generate
   cd apps/eve-corporation-data && bun run db:generate
   cd apps/eve-character-data && bun run db:generate
   cd apps/eve-static-data && bun run db:generate
@@ -105,6 +106,7 @@ db-push-all:
   cd apps/fulcrum && bun run db:push
   cd apps/fulcrum && bun run db:push
   cd apps/beancounter && bun run db:push
+  cd apps/esi && bun run db:push
   cd apps/eve-corporation-data && bun run db:push
   cd apps/eve-character-data && bun run db:push
   cd apps/eve-static-data && bun run db:push
@@ -134,6 +136,7 @@ db-migrate-all:
   cd apps/fulcrum && bun run db:migrate
   cd apps/fulcrum && bun run db:migrate
   cd apps/beancounter && bun run db:migrate
+  cd apps/esi && bun run db:migrate
   cd apps/eve-corporation-data && bun run db:migrate
   cd apps/eve-character-data && bun run db:migrate
   cd apps/eve-static-data && bun run db:migrate

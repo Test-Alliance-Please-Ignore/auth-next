@@ -26,6 +26,7 @@
 		"@repo/do-utils": "workspace:*",
 		"@repo/eve-corporation-data": "workspace:*",
 		"@repo/eve-token-store": "workspace:*",
+		"@repo/eve-types": "workspace:*",
 		"@repo/hazmat": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
 		"@repo/orchestrator": "workspace:*",

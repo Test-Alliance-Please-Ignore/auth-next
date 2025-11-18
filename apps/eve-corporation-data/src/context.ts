@@ -15,6 +15,7 @@ export type Env = SharedHonoEnv & {
 	CORE: CoreWorker
 	EVE_CORPORATION_DATA: DurableObjectNamespace
 	EVE_TOKEN_STORE: DurableObjectNamespace
+	UNIVERSE: DurableObjectNamespace
 	/** KV cache for directors and other data */
 	CACHE: KVNamespace
 	/** Workflow binding for corporation sync */

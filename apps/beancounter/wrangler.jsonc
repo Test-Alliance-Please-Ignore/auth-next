@@ -10,6 +10,13 @@
 		"enabled": true
 	},
 	"vars": {},
+	"rules": [
+		{
+			"type": "Text",
+			"globs": ["**/*.sql"],
+			"fallthrough": true
+		}
+	],
 	"durable_objects": {
 		"bindings": [
 			{
@@ -17,9 +24,23 @@
 				"class_name": "StructureMonitor"
 			},
 			{
+				"name": "STRUCTURE_COORDINATOR",
+				"class_name": "StructureCoordinator"
+			},
+			{
 				"name": "EVE_CORPORATION_DATA",
 				"class_name": "EveCorporationData",
 				"script_name": "eve-corporation-data"
+			},
+			{
+				"name": "EVE_TOKEN_STORE",
+				"class_name": "EveTokenStore",
+				"script_name": "eve-token-store"
+			},
+			{
+				"name": "UNIVERSE",
+				"class_name": "Universe",
+				"script_name": "universe"
 			}
 		]
 	},
@@ -36,6 +57,10 @@
 					"to": "StructureMonitor"
 				}
 			]
+		},
+		{
+			"tag": "v3",
+			"new_sqlite_classes": ["StructureCoordinator"]
 		}
 	]
 }

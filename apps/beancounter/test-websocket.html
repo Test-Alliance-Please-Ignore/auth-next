@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Structure Coordinator WebSocket Test</title>
+	<style>
+		body {
+			font-family: system-ui, -apple-system, sans-serif;
+			max-width: 1200px;
+			margin: 0 auto;
+			padding: 20px;
+			background: #1a1a1a;
+			color: #e0e0e0;
+		}
+		.container {
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			gap: 20px;
+		}
+		.panel {
+			background: #2a2a2a;
+			border-radius: 8px;
+			padding: 20px;
+		}
+		.controls {
+			display: flex;
+			gap: 10px;
+			margin-bottom: 20px;
+		}
+		button {
+			padding: 10px 20px;
+			background: #4a9eff;
+			color: white;
+			border: none;
+			border-radius: 4px;
+			cursor: pointer;
+			font-size: 14px;
+		}
+		button:hover {
+			background: #3a8eef;
+		}
+		button:disabled {
+			background: #555;
+			cursor: not-allowed;
+		}
+		button.disconnect {
+			background: #ff4a4a;
+		}
+		button.disconnect:hover {
+			background: #ee3a3a;
+		}
+		.status {
+			padding: 10px;
+			border-radius: 4px;
+			margin-bottom: 20px;
+			font-weight: 500;
+		}
+		.status.connected {
+			background: #2a5a2a;
+			color: #90ee90;
+		}
+		.status.disconnected {
+			background: #5a2a2a;
+			color: #ee9090;
+		}
+		.status.connecting {
+			background: #5a5a2a;
+			color: #eeee90;
+		}
+		.messages {
+			background: #1a1a1a;
+			border: 1px solid #444;
+			border-radius: 4px;
+			padding: 15px;
+			height: 400px;
+			overflow-y: auto;
+			font-family: 'Courier New', monospace;
+			font-size: 12px;
+		}
+		.message {
+			margin-bottom: 10px;
+			padding: 8px;
+			border-radius: 4px;
+		}
+		.message.sent {
+			background: #2a3a5a;
+			border-left: 3px solid #4a9eff;
+		}
+		.message.received {
+			background: #3a5a2a;
+			border-left: 3px solid #90ee90;
+		}
+		.message.error {
+			background: #5a2a2a;
+			border-left: 3px solid #ff4a4a;
+		}
+		.message.system {
+			background: #3a3a3a;
+			border-left: 3px solid #aaa;
+		}
+		.timestamp {
+			color: #888;
+			font-size: 10px;
+			margin-right: 10px;
+		}
+		.message-type {
+			font-weight: bold;
+			margin-right: 10px;
+		}
+		.message-type.inventory_update {
+			color: #ffaa00;
+		}
+		.message-type.status_update {
+			color: #00aaff;
+		}
+		.message-type.pong {
+			color: #90ee90;
+		}
+		.message-type.error {
+			color: #ff4a4a;
+		}
+		input[type="text"] {
+			width: 100%;
+			padding: 10px;
+			background: #1a1a1a;
+			border: 1px solid #444;
+			border-radius: 4px;
+			color: #e0e0e0;
+			font-family: 'Courier New', monospace;
+			font-size: 12px;
+			margin-bottom: 10px;
+		}
+		.stats {
+			display: grid;
+			grid-template-columns: repeat(3, 1fr);
+			gap: 10px;
+			margin-top: 20px;
+		}
+		.stat {
+			background: #1a1a1a;
+			padding: 15px;
+			border-radius: 4px;
+			text-align: center;
+		}
+		.stat-value {
+			font-size: 24px;
+			font-weight: bold;
+			color: #4a9eff;
+		}
+		.stat-label {
+			font-size: 12px;
+			color: #888;
+			margin-top: 5px;
+		}
+	</style>
+</head>
+<body>
+	<h1>Structure Coordinator WebSocket Test</h1>
+	
+	<div class="container">
+		<div class="panel">
+			<h2>Connection</h2>
+			<div class="controls">
+				<button id="connectBtn" onclick="connect()">Connect</button>
+				<button id="disconnectBtn" onclick="disconnect()" disabled class="disconnect">Disconnect</button>
+				<button onclick="sendPing()" id="pingBtn" disabled>Send Ping</button>
+				<button onclick="sendSubscribe()" id="subscribeBtn" disabled>Subscribe</button>
+			</div>
+			<div id="status" class="status disconnected">Disconnected</div>
+			<input type="text" id="wsUrl" placeholder="ws://localhost:8787/coordinator/ws" value="ws://localhost:8787/coordinator/ws">
+			
+			<div class="stats">
+				<div class="stat">
+					<div class="stat-value" id="sentCount">0</div>
+					<div class="stat-label">Messages Sent</div>
+				</div>
+				<div class="stat">
+					<div class="stat-value" id="receivedCount">0</div>
+					<div class="stat-label">Messages Received</div>
+				</div>
+				<div class="stat">
+					<div class="stat-value" id="updateCount">0</div>
+					<div class="stat-label">Updates Received</div>
+				</div>
+			</div>
+		</div>
+		
+		<div class="panel">
+			<h2>Messages</h2>
+			<div id="messages" class="messages"></div>
+			<button onclick="clearMessages()" style="margin-top: 10px;">Clear Messages</button>
+		</div>
+	</div>
+
+	<script>
+		let ws = null;
+		let sentCount = 0;
+		let receivedCount = 0;
+		let updateCount = 0;
+
+		function updateStatus(status, className) {
+			const statusEl = document.getElementById('status');
+			statusEl.textContent = status;
+			statusEl.className = `status ${className}`;
+		}
+
+		function updateButtons(connected) {
+			document.getElementById('connectBtn').disabled = connected;
+			document.getElementById('disconnectBtn').disabled = !connected;
+			document.getElementById('pingBtn').disabled = !connected;
+			document.getElementById('subscribeBtn').disabled = !connected;
+		}
+
+		function addMessage(message, type = 'system') {
+			const messagesEl = document.getElementById('messages');
+			const messageEl = document.createElement('div');
+			messageEl.className = `message ${type}`;
+			
+			const timestamp = new Date().toLocaleTimeString();
+			const timestampEl = document.createElement('span');
+			timestampEl.className = 'timestamp';
+			timestampEl.textContent = timestamp;
+			messageEl.appendChild(timestampEl);
+			
+			if (typeof message === 'object') {
+				const typeEl = document.createElement('span');
+				typeEl.className = `message-type ${message.type || ''}`;
+				typeEl.textContent = message.type || 'message';
+				messageEl.appendChild(typeEl);
+				
+				const contentEl = document.createElement('pre');
+				contentEl.style.margin = '5px 0 0 0';
+				contentEl.style.whiteSpace = 'pre-wrap';
+				contentEl.textContent = JSON.stringify(message, null, 2);
+				messageEl.appendChild(contentEl);
+			} else {
+				messageEl.appendChild(document.createTextNode(message));
+			}
+			
+			messagesEl.appendChild(messageEl);
+			messagesEl.scrollTop = messagesEl.scrollHeight;
+		}
+
+		function connect() {
+			const url = document.getElementById('wsUrl').value;
+			if (!url) {
+				alert('Please enter a WebSocket URL');
+				return;
+			}
+
+			updateStatus('Connecting...', 'connecting');
+			updateButtons(false);
+
+			try {
+				ws = new WebSocket(url);
+
+				ws.onopen = () => {
+					updateStatus('Connected', 'connected');
+					updateButtons(true);
+					addMessage('WebSocket connection established', 'system');
+				};
+
+				ws.onmessage = (event) => {
+					receivedCount++;
+					document.getElementById('receivedCount').textContent = receivedCount;
+					
+					try {
+						const message = JSON.parse(event.data);
+						const isUpdate = message.type === 'inventory_update' || message.type === 'status_update';
+						
+						if (isUpdate) {
+							updateCount++;
+							document.getElementById('updateCount').textContent = updateCount;
+						}
+						
+						addMessage(message, 'received');
+					} catch (e) {
+						addMessage(`Received (non-JSON): ${event.data}`, 'received');
+					}
+				};
+
+				ws.onerror = (error) => {
+					addMessage(`WebSocket error: ${error}`, 'error');
+					updateStatus('Error', 'disconnected');
+				};
+
+				ws.onclose = (event) => {
+					updateStatus('Disconnected', 'disconnected');
+					updateButtons(false);
+					addMessage(`WebSocket closed: Code ${event.code}, Reason: ${event.reason || 'None'}`, 'system');
+					ws = null;
+				};
+			} catch (error) {
+				addMessage(`Failed to create WebSocket: ${error.message}`, 'error');
+				updateStatus('Error', 'disconnected');
+				updateButtons(false);
+			}
+		}
+
+		function disconnect() {
+			if (ws) {
+				ws.close();
+				ws = null;
+			}
+		}
+
+		function sendPing() {
+			if (!ws || ws.readyState !== WebSocket.OPEN) {
+				addMessage('Not connected', 'error');
+				return;
+			}
+
+			const message = { type: 'ping' };
+			ws.send(JSON.stringify(message));
+			sentCount++;
+			document.getElementById('sentCount').textContent = sentCount;
+			addMessage(message, 'sent');
+		}
+
+		function sendSubscribe() {
+			if (!ws || ws.readyState !== WebSocket.OPEN) {
+				addMessage('Not connected', 'error');
+				return;
+			}
+
+			const message = { type: 'subscribe' };
+			ws.send(JSON.stringify(message));
+			sentCount++;
+			document.getElementById('sentCount').textContent = sentCount;
+			addMessage(message, 'sent');
+		}
+
+		function clearMessages() {
+			document.getElementById('messages').innerHTML = '';
+		}
+
+		// Auto-connect on page load (optional)
+		// connect();
+	</script>
+</body>
+</html>
+

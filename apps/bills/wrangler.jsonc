@@ -14,7 +14,8 @@
 		"bindings": [
 			{
 				"name": "BILLS",
-				"class_name": "Bills"
+				"class_name": "Bills",
+				"script_name": "bills"
 			}
 		]
 	},
