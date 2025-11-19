@@ -10,6 +10,7 @@ export type Env = SharedHonoEnv & {
 	EVE_CORPORATION_DATA: DurableObjectNamespace
 	EVE_TOKEN_STORE: DurableObjectNamespace
 	UNIVERSE: DurableObjectNamespace
+	ESI: DurableObjectNamespace
 }
 
 export type Variables = SharedHonoVariables & {

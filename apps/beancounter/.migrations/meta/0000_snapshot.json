@@ -1,5 +1,5 @@
 {
-  "id": "73d597df-4d4d-4df1-bce2-078a34b716e2",
+  "id": "2b9e4e5c-988b-4b1d-876b-f4dc050834e8",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -8,17 +8,10 @@
       "name": "beancounter_structure_monitor_corporations",
       "schema": "",
       "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
         "corporation_id": {
           "name": "corporation_id",
           "type": "text",
-          "primaryKey": false,
+          "primaryKey": true,
           "notNull": true
         },
         "name": {
@@ -38,7 +31,7 @@
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
-          "default": true
+          "default": false
         },
         "structure_type_filter": {
           "name": "structure_type_filter",
@@ -139,7 +132,7 @@
         },
         "structure_id": {
           "name": "structure_id",
-          "type": "uuid",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
@@ -242,15 +235,15 @@
         }
       },
       "foreignKeys": {
-        "beancounter_structure_monitor_instances_structure_id_beancounter_structure_monitor_structures_id_fk": {
-          "name": "beancounter_structure_monitor_instances_structure_id_beancounter_structure_monitor_structures_id_fk",
+        "beancounter_structure_monitor_instances_structure_id_beancounter_structure_monitor_structures_structure_id_fk": {
+          "name": "beancounter_structure_monitor_instances_structure_id_beancounter_structure_monitor_structures_structure_id_fk",
           "tableFrom": "beancounter_structure_monitor_instances",
           "tableTo": "beancounter_structure_monitor_structures",
           "columnsFrom": [
             "structure_id"
           ],
           "columnsTo": [
-            "id"
+            "structure_id"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
@@ -275,7 +268,7 @@
         },
         "structure_id": {
           "name": "structure_id",
-          "type": "uuid",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
@@ -379,15 +372,15 @@
         }
       },
       "foreignKeys": {
-        "beancounter_structure_monitor_runs_structure_id_beancounter_structure_monitor_structures_id_fk": {
-          "name": "beancounter_structure_monitor_runs_structure_id_beancounter_structure_monitor_structures_id_fk",
+        "beancounter_structure_monitor_runs_structure_id_beancounter_structure_monitor_structures_structure_id_fk": {
+          "name": "beancounter_structure_monitor_runs_structure_id_beancounter_structure_monitor_structures_structure_id_fk",
           "tableFrom": "beancounter_structure_monitor_runs",
           "tableTo": "beancounter_structure_monitor_structures",
           "columnsFrom": [
             "structure_id"
           ],
           "columnsTo": [
-            "id"
+            "structure_id"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
@@ -412,8 +405,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.beancounter_structure_monitor_structures": {
-      "name": "beancounter_structure_monitor_structures",
+    "public.beancounter_structure_snapshots": {
+      "name": "beancounter_structure_snapshots",
       "schema": "",
       "columns": {
         "id": {
@@ -423,14 +416,117 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "corporation_id": {
-          "name": "corporation_id",
-          "type": "uuid",
+        "structure_id": {
+          "name": "structure_id",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
+        "recorded_at": {
+          "name": "recorded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fuel_expires_at": {
+          "name": "fuel_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "services_json": {
+          "name": "services_json",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'null'::jsonb"
+        },
+        "metadata_json": {
+          "name": "metadata_json",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'null'::jsonb"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "beancounter_structure_snapshots_structure_id_idx": {
+          "name": "beancounter_structure_snapshots_structure_id_idx",
+          "columns": [
+            {
+              "expression": "structure_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "beancounter_structure_snapshots_recorded_at_idx": {
+          "name": "beancounter_structure_snapshots_recorded_at_idx",
+          "columns": [
+            {
+              "expression": "structure_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "recorded_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "beancounter_structure_snapshots_structure_id_beancounter_structure_monitor_structures_structure_id_fk": {
+          "name": "beancounter_structure_snapshots_structure_id_beancounter_structure_monitor_structures_structure_id_fk",
+          "tableFrom": "beancounter_structure_snapshots",
+          "tableTo": "beancounter_structure_monitor_structures",
+          "columnsFrom": [
+            "structure_id"
+          ],
+          "columnsTo": [
+            "structure_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.beancounter_structure_monitor_structures": {
+      "name": "beancounter_structure_monitor_structures",
+      "schema": "",
+      "columns": {
         "structure_id": {
           "name": "structure_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "corporation_id": {
+          "name": "corporation_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true
@@ -539,15 +635,15 @@
         }
       },
       "foreignKeys": {
-        "beancounter_structure_monitor_structures_corporation_id_beancounter_structure_monitor_corporations_id_fk": {
-          "name": "beancounter_structure_monitor_structures_corporation_id_beancounter_structure_monitor_corporations_id_fk",
+        "beancounter_structure_monitor_structures_corporation_id_beancounter_structure_monitor_corporations_corporation_id_fk": {
+          "name": "beancounter_structure_monitor_structures_corporation_id_beancounter_structure_monitor_corporations_corporation_id_fk",
           "tableFrom": "beancounter_structure_monitor_structures",
           "tableTo": "beancounter_structure_monitor_corporations",
           "columnsFrom": [
             "corporation_id"
           ],
           "columnsTo": [
-            "id"
+            "corporation_id"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"

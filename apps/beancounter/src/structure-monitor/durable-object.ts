@@ -4,6 +4,8 @@ import { desc, eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
+import { createDb } from '../common/db'
+import { structureSnapshots as pgStructureSnapshots } from '../common/db/schema'
 import { createStructureMonitorDb, runStructureMonitorMigrations } from './database'
 import { inventorySnapshots, monitorConfig, structureSnapshots } from './schema'
 
@@ -17,36 +19,13 @@ import type {
 	StructureMonitorStatus,
 	StructureStatusUpdate,
 } from '@repo/beancounter'
-import type {
-	EsiCorporationAsset,
-	EsiCorporationContract,
-	EsiCorporationIndustryJob,
-	EsiCorporationKillmail,
-	EsiCorporationMemberTracking,
-	EsiCorporationOrder,
-	EsiCorporationStructure,
-	EsiCorporationWalletTransaction,
-	EveCorporationData,
-} from '@repo/eve-corporation-data'
-import type { EveTokenStore } from '@repo/eve-token-store'
-import type { InvName, Universe } from '@repo/universe'
+import type { Esi } from '@repo/esi'
+import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { Env } from '../context'
 import type { StructureMonitorDb } from './database'
 
-const DEFAULT_POLL_DELAY_MS = 15 * 60 * 1000
+const DEFAULT_POLL_DELAY_MS = 75 * 60 * 1000 // 1 hour 15 minutes (assets cached for 1 hour)
 
-export function transformAssets(assets: any[]): EsiCorporationAsset[] {
-	return assets.map((asset) => ({
-		item_id: String(asset.item_id),
-		is_singleton: asset.is_singleton,
-		location_flag: asset.location_flag,
-		location_id: String(asset.location_id),
-		location_type: asset.location_type,
-		quantity: asset.quantity,
-		type_id: String(asset.type_id),
-		is_blueprint_copy: asset.is_blueprint_copy,
-	}))
-}
 export class StructureMonitorDO extends DurableObject<Env> implements StructureMonitor {
 	private db: StructureMonitorDb
 	private logger: typeof logger
@@ -65,44 +44,130 @@ export class StructureMonitorDO extends DurableObject<Env> implements StructureM
 		})
 	}
 
-	async initialize(
-		corporationId: string,
-		structureId: string,
-		force: boolean = false
-	): Promise<boolean> {
+	/**
+	 * Sets up logger tags for structure monitoring operations
+	 */
+	private setLoggerTags(corporationId: string, structureId: string): void {
 		this.logger.setTags({
 			corporationId,
 			structureId,
 			service: 'structure-monitor',
 		})
+	}
 
-		if (!force) {
-			const existingConfig = await this.db.query.monitorConfig.findFirst({
-				where: eq(monitorConfig.corporationId, corporationId),
-			})
+	/**
+	 * Checks if the monitor is already initialized for the given corporation
+	 */
+	private async isAlreadyInitialized(corporationId: string): Promise<boolean> {
+		const existingConfig = await this.db.query.monitorConfig.findFirst({
+			where: eq(monitorConfig.corporationId, corporationId),
+		})
+		return existingConfig !== null && existingConfig !== undefined
+	}
 
-			if (existingConfig) {
-				logger.info('[StructureMonitorDO] Already initialized, skipping re-initialization', {
-					corporationId,
-					structureId,
-				})
-				return true
-			}
-		}
+	/**
+	 * Deletes existing monitor configuration for the given corporation
+	 */
+	private async deleteExistingConfig(corporationId: string): Promise<void> {
+		await this.db.delete(monitorConfig).where(eq(monitorConfig.corporationId, corporationId))
+	}
 
-		const corpData = await getStub<EveCorporationData>(this.env.EVE_CORPORATION_DATA, corporationId)
-		const structureDetails = await corpData.getStructureDetails(corporationId, structureId)
+	/**
+	 * Fetches structure details from the corporation data service
+	 */
+	private async fetchStructureDetails(
+		corporationId: string,
+		structureId: string
+	): Promise<Awaited<ReturnType<EveCorporationData['getStructureDetails']>>> {
+		const corpData = getStub<EveCorporationData>(this.env.EVE_CORPORATION_DATA, corporationId)
+		return await corpData.getStructureDetails(corporationId, structureId)
+	}
 
-		await this.db.insert(monitorConfig).values({
+	/**
+	 * Creates a monitor config object from structure details
+	 */
+	private createConfigFromStructureDetails(
+		corporationId: string,
+		structureId: string,
+		structureDetails: Awaited<ReturnType<EveCorporationData['getStructureDetails']>>
+	) {
+		return {
 			corporationId,
 			structureId,
 			initialized: 1,
-			structureName: structureDetails?.name,
-			structureTypeName: structureDetails?.typeName,
-			structureSolarSystemId: structureDetails?.solar_system_id,
-			structureSolarSystemName: structureDetails?.systemName,
-			structureOwnerName: structureDetails?.ownerName,
-		})
+			structureName: structureDetails?.name ?? null,
+			structureTypeName: structureDetails?.typeName ?? null,
+			structureSolarSystemId: structureDetails?.solar_system_id ?? null,
+			structureSolarSystemName: structureDetails?.systemName ?? null,
+			structureOwnerName: structureDetails?.ownerName ?? null,
+		}
+	}
+
+	/**
+	 * Saves monitor configuration to the database
+	 */
+	private async saveMonitorConfig(
+		config: ReturnType<StructureMonitorDO['createConfigFromStructureDetails']>
+	): Promise<void> {
+		await this.db.insert(monitorConfig).values(config)
+	}
+
+	/**
+	 * Gets the monitor configuration from the database
+	 * Returns null if no config is found
+	 */
+	private async getMonitorConfig(): Promise<typeof monitorConfig.$inferSelect | null> {
+		const config = await this.db.query.monitorConfig.findFirst()
+		return config ?? null
+	}
+
+	async initialize(
+		corporationId: string,
+		structureId: string,
+		force: boolean = false
+	): Promise<boolean> {
+		this.setLoggerTags(corporationId, structureId)
+
+		if (!force && (await this.isAlreadyInitialized(corporationId))) {
+			logger.info('[StructureMonitorDO] Already initialized, skipping re-initialization', {
+				corporationId,
+				structureId,
+			})
+			return true
+		}
+
+		// Clear existing config when forcing re-initialization
+		if (force && (await this.isAlreadyInitialized(corporationId))) {
+			await this.deleteExistingConfig(corporationId)
+			logger.info('[StructureMonitorDO] Forced re-initialization: cleared existing config', {
+				corporationId,
+				structureId,
+			})
+		}
+
+		const structureDetails = await this.fetchStructureDetails(corporationId, structureId)
+
+		if (!structureDetails) {
+			const errorMessage = `Failed to fetch structure details for corporation ${corporationId}, structure ${structureId}. Structure may not exist or no healthy directors available.`
+			this.logger.error('[StructureMonitorDO] Cannot initialize without structure details', {
+				corporationId,
+				structureId,
+			})
+			throw new Error(errorMessage)
+		}
+
+		const config = this.createConfigFromStructureDetails(
+			corporationId,
+			structureId,
+			structureDetails
+		)
+		await this.saveMonitorConfig(config)
+
+		// Refresh the structure inventory
+		await this.refreshStructureInventory()
+
+		// Schedule the first poll after successful initialization
+		await this.scheduleNextPoll(structureId)
 
 		return true
 	}
@@ -133,7 +198,7 @@ export class StructureMonitorDO extends DurableObject<Env> implements StructureM
 	}
 
 	async scheduleNextPoll(
-		_structureId: string,
+		structureId: string,
 		options?: StructureMonitorSchedulingOptions
 	): Promise<void> {
 		const targetTime =
@@ -144,13 +209,16 @@ export class StructureMonitorDO extends DurableObject<Env> implements StructureM
 
 	async alarm(): Promise<void> {
 		console.info('[StructureMonitorDO] alarm fired')
-		const config = await this.db.query.monitorConfig.findFirst()
+		const config = await this.getMonitorConfig()
 		if (!config) {
 			this.logger.error('[StructureMonitorDO] No config found')
 			return
 		}
 
 		await this.refreshStructureInventory()
+
+		// Schedule the next poll after refreshing
+		await this.scheduleNextPoll(config.structureId)
 	}
 
 	async fetch(request: Request): Promise<Response> {
@@ -171,7 +239,7 @@ export class StructureMonitorDO extends DurableObject<Env> implements StructureM
 	}
 
 	async refreshStructureInventory(): Promise<void> {
-		const config = await this.db.query.monitorConfig.findFirst()
+		const config = await this.getMonitorConfig()
 		if (!config) {
 			this.logger.error('[StructureMonitorDO] No config found')
 			return
@@ -179,67 +247,19 @@ export class StructureMonitorDO extends DurableObject<Env> implements StructureM
 		const corporationId = config.corporationId
 		const structureId = config.structureId
 
-		const corpData = await getStub<EveCorporationData>(this.env.EVE_CORPORATION_DATA, corporationId)
-		const assets = await corpData.searchAssets(corporationId, {
-			locationId: structureId,
+		const stub = getStub<Esi>(this.env.ESI, corporationId)
+		const assets = await stub.fetchAssets(corporationId)
+		logger.info('[StructureMonitorDO] Fetched assets', {
+			corporationId,
+			structureId,
+			assets,
 		})
 
-		// TODO: Process assets and create inventory snapshots
-		// For now, we'll send a placeholder update to demonstrate the flow
-		// Once inventory processing is implemented, replace this with actual inventory data
-
-		// Get structure status (fuel, services)
-		const structures = await corpData.getStructures(corporationId)
-		const structure = structures.find((s) => s.structureId === structureId)
-
-		if (structure) {
-			// Get structure name and location name
-			// Structure name would need to come from database or Universe service
-			// For now, we'll try to get it from Universe service
-			let structureName: string | null = null
-			let locationName: string | null = null
-
-			try {
-				const universe = await getStub<Universe>(this.env.UNIVERSE, 'default')
-
-				// Try to resolve structure name and location name
-				// Note: This requires a character ID with access - we might not have this here
-				// For now, we'll leave these as null and they can be populated from the database
-				// in the coordinator when sending updates
-			} catch (error) {
-				// Silently fail - we'll get names from database in coordinator
-			}
-
-			// Send status update if structure data is available
-			const statusUpdate: StructureStatusUpdate = {
-				lastSnapshotAt: new Date().toISOString(),
-				fuelExpiresAt: structure.fuelExpires ? new Date(structure.fuelExpires).toISOString() : null,
-				services: structure.services?.map((s) => ({ name: s.name, state: s.state })) ?? null,
-				structureName,
-				locationName,
-			}
-
-			// Notify coordinator of status update
-			try {
-				const coordinatorStub = getStub<StructureCoordinator>(
-					this.env.STRUCTURE_COORDINATOR,
-					'default'
-				)
-				await coordinatorStub.notifyStatusUpdate(structureId, statusUpdate)
-			} catch (error) {
-				this.logger.error('[StructureMonitorDO] Failed to notify coordinator of status update', {
-					structureId,
-					error: error instanceof Error ? error.message : String(error),
-				})
-			}
-		}
-
-		// TODO: Once inventory processing is complete, send inventory update:
-		// const inventoryUpdate: StructureInventoryUpdate = {
-		//   recordedAt: new Date().toISOString(),
-		//   slots: processedSlots
-		// }
-		// const coordinatorStub = getStub<StructureCoordinator>(this.env.STRUCTURE_COORDINATOR, 'default')
-		// await coordinatorStub.notifyInventoryUpdate(structureId, inventoryUpdate)
+		const structureAssets = assets.filter((asset) => asset.location_id === structureId)
+		logger.info('[StructureMonitorDO] Fetched structure assets', {
+			corporationId,
+			structureId,
+			structureAssets,
+		})
 	}
 }

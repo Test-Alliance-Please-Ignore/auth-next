@@ -13,6 +13,5 @@ export function createStructureMonitorDb(storage: DurableObjectStorage): Structu
 }
 
 export async function runStructureMonitorMigrations(db: StructureMonitorDb): Promise<void> {
-	// TODO: Integrate drizzle-kit migrations for SQLite durable objects.
 	migrate(db, migrations)
 }

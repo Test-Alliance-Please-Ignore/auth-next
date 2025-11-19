@@ -8,7 +8,7 @@
 		"build": "run-vite-build",
 		"check:lint": "run-eslint",
 		"check:types": "run-tsc",
-		"db:generate": "drizzle-kit generate",
+		"db:generate": "drizzle-kit generate --config drizzle-sqlite.config.ts && drizzle-kit generate --config drizzle.config.ts",
 		"db:migrate": "tsx ./src/scripts/migrate.ts",
 		"db:push": "drizzle-kit push",
 		"db:studio": "drizzle-kit studio",

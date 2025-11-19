@@ -24,13 +24,10 @@ async function main() {
 		throw new Error('DATABASE_URL_MIGRATIONS environment variable is required')
 	}
 
-	console.log('Running migrations for eve-token-store worker...')
-
 	// Use HTTP driver for migrations (external operation)
 	const db = createDbClient(databaseUrl, schema)
 	await migrate(db, { migrationsFolder: drizzleConfig.out! })
 
-	console.log('Migrations completed successfully!')
 	process.exit(0)
 }
 

@@ -15,48 +15,15 @@ import { getStub } from '@repo/do-utils'
 import { EveCorporationData } from '@repo/eve-corporation-data'
 import { logger } from '@repo/hono-helpers'
 
+import { EsiCache } from './cache'
+
 import type { EveTokenStore } from '@repo/eve-token-store'
-import type { Env } from './context'
+import type { Env } from '../context'
+import type { EsiResponse } from './types'
 
 // ========================================================================
 // PUBLIC DATA FETCHING
 // ========================================================================
-
-export interface EsiResponse<T> {
-	data: T
-	expiresAt: Date
-	etag: string | null
-	pages: number | null
-	page: number | null
-}
-
-export class EsiCache {
-	constructor(private state: DurableObjectState) {}
-
-	private getCacheKey(characterId: string, path: string): string {
-		return `esi:${characterId}:${path}`
-	}
-
-	async getCachedResponse<T>(characterId: string, path: string): Promise<EsiResponse<T> | null> {
-		const cacheKey = this.getCacheKey(characterId, path)
-		const cachedResponse = await this.state.storage.kv.get<string>(cacheKey)
-		if (!cachedResponse) {
-			return null
-		}
-		const cached = JSON.parse(cachedResponse) as EsiResponse<T>
-		return cached
-	}
-
-	async setCachedResponse<T>(
-		characterId: string,
-		path: string,
-		response: EsiResponse<T>
-	): Promise<void> {
-		const cacheKey = this.getCacheKey(characterId, path)
-		await this.state.storage.kv.put(cacheKey, JSON.stringify(response))
-	}
-}
-
 export class EsiFetcher {
 	private characterId: string | null = null
 	private cache: EsiCache

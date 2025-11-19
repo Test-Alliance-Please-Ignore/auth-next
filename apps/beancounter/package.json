@@ -23,13 +23,13 @@
 		"wrangler": "wrangler"
 	},
 	"dependencies": {
-		
 		"@neondatabase/serverless": "1.0.2",
 		"@repo/beancounter": "workspace:*",
 		"@repo/db-utils": "workspace:*",
 		"@repo/do-utils": "workspace:*",
 		"@repo/eve-corporation-data": "workspace:*",
 		"@repo/eve-token-store": "workspace:*",
+		"@repo/esi": "workspace:*",
 		"@repo/universe": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
 		"@repo/vite-config": "workspace:*",

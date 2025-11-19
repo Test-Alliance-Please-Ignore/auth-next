@@ -151,10 +151,6 @@ export class DirectorManager {
 			lastFailureReason: d.lastFailureReason,
 			priority: d.priority,
 		}))
-		logger.info('[DirectorManager] getHealthyDirectors: Found directors', {
-			corporationId: this.corporationId,
-			directors: result,
-		})
 		return result
 	}
 

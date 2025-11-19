@@ -158,6 +158,12 @@ export class StructureCoordinatorDO extends DurableObject<Env> implements Struct
 		this.logger.info(`[StructureCoordinator] scanning ${corporations.length} corporation(s)`)
 
 		for (const corporation of corporations) {
+			if (!corporation || !corporation.corporationId) {
+				this.logger.warn('[StructureCoordinator] Skipping corporation with missing corporationId', {
+					corporation,
+				})
+				continue
+			}
 			await this.syncStructuresForCorp(corporation.corporationId)
 		}
 	}
@@ -174,9 +180,59 @@ export class StructureCoordinatorDO extends DurableObject<Env> implements Struct
 			.withTags({ corporationId })
 			.info(`[StructureCoordinator] found ${structures.length} structure(s)`)
 
+		// Upsert structures into PostgreSQL first
+		// Filter out any invalid structures before mapping
+		const validStructures = structures.filter(
+			(s) =>
+				s &&
+				s.structureId &&
+				s.typeId &&
+				s.systemId &&
+				s.profileId !== undefined &&
+				s.profileId !== null
+		)
+
+		if (validStructures.length !== structures.length) {
+			this.logger.warn('[StructureCoordinator] Filtered out invalid structures', {
+				corporationId,
+				total: structures.length,
+				valid: validStructures.length,
+				invalid: structures.length - validStructures.length,
+			})
+		}
+
+		if (validStructures.length > 0) {
+			try {
+				await this.repository.upsertStructuresForCorporation(
+					corporationId,
+					validStructures.map((s) => ({
+						structureId: s.structureId,
+						typeId: s.typeId,
+						systemId: s.systemId,
+						profileId: s.profileId,
+						fuelExpires: s.fuelExpires,
+					}))
+				)
+			} catch (error) {
+				this.logger.error('[StructureCoordinator] Failed to upsert structures', {
+					corporationId,
+					structureCount: validStructures.length,
+					error: error instanceof Error ? error.message : String(error),
+					errorStack: error instanceof Error ? error.stack : undefined,
+				})
+				throw error
+			}
+		}
+
+		// Get all monitored structures from database (already filtered by monitoringEnabled = true)
+		const dbStructures = await this.repository.listMonitoredStructures()
+		const monitoredStructureIds = new Set(dbStructures.map((s) => s.structureId))
+
+		// Only create monitors for structures with monitoringEnabled = true
 		for (const structure of structures) {
-			await this.ensureMonitor(corporationId, structure.structureId)
-			break
+			if (monitoredStructureIds.has(structure.structureId)) {
+				await this.ensureMonitor(corporationId, structure.structureId)
+			}
 		}
 	}
 
@@ -223,57 +279,45 @@ export class StructureCoordinatorDO extends DurableObject<Env> implements Struct
 				}
 			}
 
-			const statusPromises = structures.map(async (structure) => {
-				try {
-					const monitorStub = getStub<StructureMonitor>(
-						this.env.STRUCTURE_MONITOR,
-						structure.structureId
-					)
-					const status = await monitorStub.getLatestStatus(structure.structureId)
-
-					return {
-						structureId: structure.structureId,
-						status: status
-							? {
-									lastSnapshotAt: status.lastSnapshotAt,
-									fuelExpiresAt: status.fuelExpiresAt,
-									services: status.services ?? null,
-									structureName: structure.name ?? null,
-									locationName: structure.solarSystemId
-										? (locationNames[structure.solarSystemId] ?? null)
-										: null,
-								}
-							: {
-									lastSnapshotAt: null,
-									fuelExpiresAt: null,
-									services: null,
-									structureName: structure.name ?? null,
-									locationName: structure.solarSystemId
-										? (locationNames[structure.solarSystemId] ?? null)
-										: null,
-								},
-					}
-				} catch (error) {
-					this.logger.error('[StructureCoordinator] Failed to get status for structure', {
-						structureId: structure.structureId,
-						error: error instanceof Error ? error.message : String(error),
-					})
-					return {
-						structureId: structure.structureId,
-						status: {
-							lastSnapshotAt: null,
-							fuelExpiresAt: null,
-							services: null,
-							structureName: structure.name ?? null,
-							locationName: structure.solarSystemId
-								? (locationNames[structure.solarSystemId] ?? null)
-								: null,
-						},
-					}
-				}
+			// Get latest snapshots from PostgreSQL for all structures
+			const structureIds = structures.map((s) => s.structureId)
+			this.logger.info('[StructureCoordinator] Querying snapshots', {
+				structureIds,
+				structureIdsCount: structureIds.length,
+			})
+			const latestSnapshots = await this.repository.getLatestSnapshotsForStructures(structureIds)
+			this.logger.info('[StructureCoordinator] Retrieved snapshots', {
+				snapshotCount: latestSnapshots.size,
+				snapshotKeys: Array.from(latestSnapshots.keys()),
 			})
 
-			const statuses = await Promise.all(statusPromises)
+			// Map structures to status format
+			const statuses = structures.map((structure) => {
+				const snapshot = latestSnapshots.get(structure.structureId)
+
+				return {
+					structureId: structure.structureId,
+					status: snapshot
+						? {
+								lastSnapshotAt: snapshot.lastSnapshotAt,
+								fuelExpiresAt: snapshot.fuelExpiresAt,
+								services: snapshot.services,
+								structureName: structure.name ?? null,
+								locationName: structure.solarSystemId
+									? (locationNames[structure.solarSystemId] ?? null)
+									: null,
+							}
+						: {
+								lastSnapshotAt: null,
+								fuelExpiresAt: null,
+								services: null,
+								structureName: structure.name ?? null,
+								locationName: structure.solarSystemId
+									? (locationNames[structure.solarSystemId] ?? null)
+									: null,
+							},
+				}
+			})
 
 			const message: ServerWebSocketMessage = {
 				type: 'initial_status',

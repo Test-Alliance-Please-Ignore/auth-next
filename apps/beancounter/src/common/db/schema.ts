@@ -29,11 +29,10 @@ export const structureMonitorStatusEnum = pgEnum('structure_monitor_status', [
 export const corporations = pgTable(
 	'beancounter_structure_monitor_corporations',
 	{
-		id: uuid('id').defaultRandom().primaryKey(),
-		corporationId: text('corporation_id').notNull(),
+		corporationId: text('corporation_id').primaryKey(),
 		name: text('name'),
 		ticker: text('ticker'),
-		trackingEnabled: boolean('tracking_enabled').notNull().default(true),
+		trackingEnabled: boolean('tracking_enabled').notNull().default(false),
 		structureTypeFilter: jsonb('structure_type_filter').$type<string[] | null>().default(null),
 		minimumFuelHours: integer('minimum_fuel_hours').notNull().default(48),
 		lastScanStartedAt: timestamp('last_scan_started_at', { withTimezone: true }),
@@ -53,11 +52,10 @@ export const corporations = pgTable(
 export const structures = pgTable(
 	'beancounter_structure_monitor_structures',
 	{
-		id: uuid('id').defaultRandom().primaryKey(),
-		corporationId: uuid('corporation_id')
+		structureId: text('structure_id').primaryKey(),
+		corporationId: text('corporation_id')
 			.notNull()
-			.references(() => corporations.id, { onDelete: 'cascade' }),
-		structureId: text('structure_id').notNull(),
+			.references(() => corporations.corporationId, { onDelete: 'cascade' }),
 		name: text('name'),
 		typeId: text('type_id'),
 		solarSystemId: text('solar_system_id'),
@@ -80,9 +78,9 @@ export const structureMonitorInstances = pgTable(
 	'beancounter_structure_monitor_instances',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
-		structureId: uuid('structure_id')
+		structureId: text('structure_id')
 			.notNull()
-			.references(() => structures.id, { onDelete: 'cascade' }),
+			.references(() => structures.structureId, { onDelete: 'cascade' }),
 		durableObjectName: text('durable_object_name').notNull(),
 		status: structureMonitorStatusEnum('status').notNull().default('idle'),
 		lastHeartbeatAt: timestamp('last_heartbeat_at', { withTimezone: true }),
@@ -106,9 +104,9 @@ export const structureMonitorRuns = pgTable(
 	'beancounter_structure_monitor_runs',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
-		structureId: uuid('structure_id')
+		structureId: text('structure_id')
 			.notNull()
-			.references(() => structures.id, { onDelete: 'cascade' }),
+			.references(() => structures.structureId, { onDelete: 'cascade' }),
 		monitorInstanceId: uuid('monitor_instance_id').references(() => structureMonitorInstances.id, {
 			onDelete: 'set null',
 		}),
@@ -130,11 +128,36 @@ export const structureMonitorRuns = pgTable(
 	]
 )
 
+export const structureSnapshots = pgTable(
+	'beancounter_structure_snapshots',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		structureId: text('structure_id')
+			.notNull()
+			.references(() => structures.structureId, { onDelete: 'cascade' }),
+		recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull(),
+		fuelExpiresAt: timestamp('fuel_expires_at', { withTimezone: true }),
+		servicesJson: jsonb('services_json')
+			.$type<Array<{ name: string; state: string }> | null>()
+			.default(null),
+		metadataJson: jsonb('metadata_json').$type<Record<string, unknown> | null>().default(null),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		index('beancounter_structure_snapshots_structure_id_idx').on(table.structureId),
+		index('beancounter_structure_snapshots_recorded_at_idx').on(
+			table.structureId,
+			table.recordedAt
+		),
+	]
+)
+
 export const schema = {
 	corporations,
 	structures,
 	structureMonitorInstances,
 	structureMonitorRuns,
+	structureSnapshots,
 }
 
 export type CorporationRow = InferSelectModel<typeof corporations>
@@ -148,3 +171,6 @@ export type NewStructureMonitorInstanceRow = InferInsertModel<typeof structureMo
 
 export type StructureMonitorRunRow = InferSelectModel<typeof structureMonitorRuns>
 export type NewStructureMonitorRunRow = InferInsertModel<typeof structureMonitorRuns>
+
+export type StructureSnapshotRow = InferSelectModel<typeof structureSnapshots>
+export type NewStructureSnapshotRow = InferInsertModel<typeof structureSnapshots>

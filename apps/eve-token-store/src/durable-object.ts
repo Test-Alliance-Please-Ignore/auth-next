@@ -118,7 +118,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		public env: Env
 	) {
 		super(state, env)
-		logger.withTags({ operation: 'constructor' }).debug('Initializing EveTokenStoreDO')
 		this.db = createDb(env.DATABASE_URL)
 
 		// Initialize SQLite cache table for ESI responses
@@ -126,7 +125,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 		// Schedule alarm for token refresh (check every 5 minutes)
 		void this.state.storage.setAlarm(Date.now() + 5 * 60 * 1000)
-		logger.withTags({ operation: 'constructor' }).debug('EveTokenStoreDO initialized')
 	}
 
 	/**
@@ -134,7 +132,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 */
 	private async initializeEsiCache(): Promise<void> {
 		try {
-			logger.withTags({ operation: 'initializeEsiCache' }).debug('Initializing ESI cache tables')
 			// ESI response cache (for raw API responses)
 			await this.state.storage.sql.exec(`
 				CREATE TABLE IF NOT EXISTS esi_cache (
@@ -156,13 +153,9 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 			if (!hasPages) {
 				await this.state.storage.sql.exec(`ALTER TABLE esi_cache ADD COLUMN pages INTEGER`)
-				logger
-					.withTags({ operation: 'initializeEsiCache' })
-					.debug('Added pages column to esi_cache')
 			}
 			if (!hasPage) {
 				await this.state.storage.sql.exec(`ALTER TABLE esi_cache ADD COLUMN page INTEGER`)
-				logger.withTags({ operation: 'initializeEsiCache' }).debug('Added page column to esi_cache')
 			}
 
 			// Entity cache (for corporations, alliances, etc.)
@@ -182,9 +175,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				CREATE INDEX IF NOT EXISTS idx_entity_name
 				ON entity_cache(entity_type, entity_name)
 			`)
-			logger
-				.withTags({ operation: 'initializeEsiCache' })
-				.debug('ESI cache tables initialized successfully')
 		} catch (error) {
 			logger
 				.withTags({ operation: 'initializeEsiCache' })
@@ -197,12 +187,8 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 * Start OAuth flow for login (all scopes)
 	 */
 	async startLoginFlow(state?: string): Promise<AuthorizationUrlResponse> {
-		logger.withTags({ operation: 'startLoginFlow', state }).debug('Starting login flow')
 		try {
 			const result = this.generateAuthUrl(EVE_SCOPES_ALL, state)
-			logger
-				.withTags({ operation: 'startLoginFlow', state })
-				.debug('Login flow started', { url: result.url })
 			return result
 		} catch (error) {
 			logger
@@ -216,12 +202,8 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 * Start OAuth flow for character attachment (all scopes)
 	 */
 	async startCharacterFlow(state?: string): Promise<AuthorizationUrlResponse> {
-		logger.withTags({ operation: 'startCharacterFlow', state }).debug('Starting character flow')
 		try {
 			const result = this.generateAuthUrl(EVE_SCOPES_ALL, state)
-			logger
-				.withTags({ operation: 'startCharacterFlow', state })
-				.debug('Character flow started', { url: result.url })
 			return result
 		} catch (error) {
 			logger
@@ -235,40 +217,20 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 * Handle OAuth callback - exchange code for tokens and store them
 	 */
 	async handleCallback(code: string, state?: string): Promise<CallbackResult> {
-		logger
-			.withTags({ operation: 'handleCallback', state })
-			.debug('Handling OAuth callback', { codeLength: code.length })
 		try {
 			// Exchange authorization code for tokens
-			logger.withTags({ operation: 'handleCallback' }).debug('Exchanging code for token')
 			const tokenResponse = await this.exchangeCodeForToken(code)
-			logger
-				.withTags({ operation: 'handleCallback' })
-				.debug('Token exchange successful', { hasRefreshToken: !!tokenResponse.refresh_token })
 
 			// Verify the token and get character information
-			logger.withTags({ operation: 'handleCallback' }).debug('Verifying token')
 			const verifyResponse = await this.verifyToken(tokenResponse.access_token)
-			logger
-				.withTags({ operation: 'handleCallback', characterId: verifyResponse.CharacterID })
-				.debug('Token verified', { characterName: verifyResponse.CharacterName })
 
 			// Parse scopes
 			const scopes = verifyResponse.Scopes ? verifyResponse.Scopes.split(' ') : []
-			logger
-				.withTags({ operation: 'handleCallback', characterId: verifyResponse.CharacterID })
-				.debug('Scopes parsed', { scopeCount: scopes.length })
 
 			// Calculate token expiration
 			const expiresAt = new Date(Date.now() + tokenResponse.expires_in * 1000)
-			logger
-				.withTags({ operation: 'handleCallback', characterId: verifyResponse.CharacterID })
-				.debug('Token expiration calculated', { expiresAt })
 
 			// Store character and token in database
-			logger
-				.withTags({ operation: 'handleCallback', characterId: verifyResponse.CharacterID })
-				.debug('Storing token')
 			await this.storeToken(
 				verifyResponse.CharacterID,
 				verifyResponse.CharacterName,
@@ -278,9 +240,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				tokenResponse.refresh_token || null,
 				expiresAt
 			)
-			logger
-				.withTags({ operation: 'handleCallback', characterId: verifyResponse.CharacterID })
-				.debug('Token stored successfully')
 
 			const result = {
 				success: true,
@@ -292,9 +251,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 					scopes,
 				},
 			}
-			logger
-				.withTags({ operation: 'handleCallback', characterId: verifyResponse.CharacterID })
-				.debug('Callback handled successfully')
 			return result
 		} catch (error) {
 			logger
@@ -311,11 +267,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 * Manually refresh a token
 	 */
 	async refreshToken(characterId: string): Promise<boolean> {
-		logger.withTags({ operation: 'refreshToken', characterId }).debug('Starting token refresh')
 		try {
-			logger
-				.withTags({ operation: 'refreshToken', characterId })
-				.debug('Looking up character in database')
 			const character = await this.db.query.eveCharacters.findFirst({
 				where: eq(eveCharacters.characterId, String(characterId)),
 			})
@@ -324,13 +276,8 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				logger.withTags({ operation: 'refreshToken', characterId }).error('Character not found')
 				return false
 			}
-			logger.withTags({ operation: 'refreshToken', characterId }).debug('Character found', {
-				characterName: character.characterName,
-				characterDbId: character.id,
-			})
 
 			// Get token record
-			logger.withTags({ operation: 'refreshToken', characterId }).debug('Looking up token record')
 			const tokenRecord = await this.db.query.eveTokens.findFirst({
 				where: eq(eveTokens.characterId, character.id),
 			})
@@ -344,60 +291,27 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 					})
 				return false
 			}
-			logger
-				.withTags({ operation: 'refreshToken', characterId })
-				.debug('Token record found', { tokenId: tokenRecord.id, expiresAt: tokenRecord.expiresAt })
 
 			// Decrypt refresh token
-			logger.withTags({ operation: 'refreshToken', characterId }).debug('Decrypting refresh token')
 			const refreshToken = await this.decrypt(tokenRecord.refreshToken)
-			logger
-				.withTags({ operation: 'refreshToken', characterId })
-				.debug('Refresh token decrypted', { refreshTokenLength: refreshToken.length })
 
 			// Refresh the token
-			logger
-				.withTags({ operation: 'refreshToken', characterId })
-				.debug('Calling refreshAccessToken')
 			const newTokenResponse = await this.refreshAccessToken(refreshToken)
-			logger
-				.withTags({ operation: 'refreshToken', characterId })
-				.debug('Token refresh successful', {
-					expiresIn: newTokenResponse.expires_in,
-					hasNewRefreshToken: !!newTokenResponse.refresh_token,
-				})
 
 			// Calculate new expiration
 			const expiresAt = new Date(Date.now() + newTokenResponse.expires_in * 1000)
-			logger
-				.withTags({ operation: 'refreshToken', characterId })
-				.debug('New expiration calculated', { expiresAt })
 
 			// Encrypt new tokens
-			logger
-				.withTags({ operation: 'refreshToken', characterId })
-				.debug('Encrypting new access token')
 			const encryptedAccessToken = await this.encrypt(newTokenResponse.access_token)
-			logger.withTags({ operation: 'refreshToken', characterId }).debug('Access token encrypted')
 
 			let encryptedRefreshToken: string | null
 			if (newTokenResponse.refresh_token) {
-				logger
-					.withTags({ operation: 'refreshToken', characterId })
-					.debug('Encrypting new refresh token')
 				encryptedRefreshToken = await this.encrypt(newTokenResponse.refresh_token)
-				logger.withTags({ operation: 'refreshToken', characterId }).debug('Refresh token encrypted')
 			} else {
-				logger
-					.withTags({ operation: 'refreshToken', characterId })
-					.debug('No new refresh token, keeping existing')
 				encryptedRefreshToken = tokenRecord.refreshToken
 			}
 
 			// Update token in database
-			logger
-				.withTags({ operation: 'refreshToken', characterId })
-				.debug('Updating token in database')
 			await this.db
 				.update(eveTokens)
 				.set({
@@ -407,13 +321,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 					updatedAt: new Date(),
 				})
 				.where(eq(eveTokens.id, tokenRecord.id))
-			logger
-				.withTags({ operation: 'refreshToken', characterId })
-				.debug('Token updated in database successfully')
 
-			logger
-				.withTags({ operation: 'refreshToken', characterId })
-				.debug('Token refresh completed successfully')
 			return true
 		} catch (error) {
 			logger
@@ -460,62 +368,33 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 * Get access token for use (decrypted)
 	 */
 	async getAccessToken(characterId: string): Promise<string | null> {
-		logger.withTags({ operation: 'getAccessToken', characterId }).debug('Getting access token')
 		try {
-			logger
-				.withTags({ operation: 'getAccessToken', characterId })
-				.debug('Looking up character in database')
-
 			const character = await this.db.query.eveCharacters.findFirst({
 				where: eq(eveCharacters.characterId, String(characterId)),
 			})
 
 			if (!character) {
-				logger.withTags({ operation: 'getAccessToken', characterId }).debug('Character not found')
 				return null
 			}
-			logger.withTags({ operation: 'getAccessToken', characterId }).debug('Character found', {
-				characterName: character.characterName,
-				characterDbId: character.id,
-			})
 
-			logger.withTags({ operation: 'getAccessToken', characterId }).debug('Looking up token record')
 			const tokenRecord = await this.db.query.eveTokens.findFirst({
 				where: eq(eveTokens.characterId, character.id),
 			})
 
 			if (!tokenRecord) {
-				logger
-					.withTags({ operation: 'getAccessToken', characterId })
-					.debug('Token record not found')
 				return null
 			}
-			logger
-				.withTags({ operation: 'getAccessToken', characterId })
-				.debug('Token record found', { tokenId: tokenRecord.id, expiresAt: tokenRecord.expiresAt })
 
 			// Check if token is expired
 			const now = new Date()
 			const isExpired = tokenRecord.expiresAt < now
-			logger
-				.withTags({ operation: 'getAccessToken', characterId })
-				.debug('Checking token expiration', { expiresAt: tokenRecord.expiresAt, now, isExpired })
 
 			if (isExpired) {
-				logger
-					.withTags({ operation: 'getAccessToken', characterId })
-					.debug('Token expired, attempting refresh')
 				// Try to refresh
 				const refreshed = await this.refreshToken(characterId)
 				if (!refreshed) {
-					logger
-						.withTags({ operation: 'getAccessToken', characterId })
-						.debug('Token refresh failed')
 					return null
 				}
-				logger
-					.withTags({ operation: 'getAccessToken', characterId })
-					.debug('Token refresh successful, fetching updated token')
 
 				// Fetch updated token
 				const updatedToken = await this.db.query.eveTokens.findFirst({
@@ -528,28 +407,12 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 						.error('Updated token not found after refresh')
 					return null
 				}
-				logger
-					.withTags({ operation: 'getAccessToken', characterId })
-					.debug('Updated token found, decrypting')
 
 				const decryptedToken = await this.decrypt(updatedToken.accessToken)
-				logger
-					.withTags({ operation: 'getAccessToken', characterId })
-					.debug('Access token retrieved and decrypted successfully', {
-						tokenLength: decryptedToken.length,
-					})
 				return decryptedToken
 			}
 
-			logger
-				.withTags({ operation: 'getAccessToken', characterId })
-				.debug('Token not expired, decrypting existing token')
 			const decryptedToken = await this.decrypt(tokenRecord.accessToken)
-			logger
-				.withTags({ operation: 'getAccessToken', characterId })
-				.debug('Access token retrieved and decrypted successfully', {
-					tokenLength: decryptedToken.length,
-				})
 			return decryptedToken
 		} catch (error) {
 			logger
@@ -734,13 +597,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		const pages = this.parseXPages(response.headers)
 		const page = this.extractPageFromPath(path)
 
-		// Log pagination info if present
-		if (pages !== undefined || page !== undefined) {
-			logger
-				.withTags({ path, characterId, page, pages, operation: 'esi_fetch_paginated' })
-				.debug('ESI response with pagination metadata', { page, totalPages: pages })
-		}
-
 		await this.state.storage.sql.exec(
 			`INSERT OR REPLACE INTO esi_cache (cache_key, response_data, expires_at, etag, pages, page)
 			 VALUES (?, ?, ?, ?, ?, ?)`,
@@ -858,13 +714,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		const pages = this.parseXPages(response.headers)
 		const page = this.extractPageFromPath(path)
 
-		// Log pagination info if present
-		if (pages !== undefined || page !== undefined) {
-			logger
-				.withTags({ path, page, pages, operation: 'esi_fetch_public_paginated' })
-				.debug('Public ESI response with pagination metadata', { page, totalPages: pages })
-		}
-
 		await this.state.storage.sql.exec(
 			`INSERT OR REPLACE INTO esi_cache (cache_key, response_data, expires_at, etag, pages, page)
 			 VALUES (?, ?, ?, ?, ?, ?)`,
@@ -894,10 +743,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		// Build cache key based on whether it's authenticated or public
 		const cacheKey = characterId ? `${characterId}:${path}` : `public:${path}`
 
-		logger
-			.withTags({ path, characterId, cacheKey, operation: 'clear_esi_cache' })
-			.debug('Clearing ESI cache', { cacheKey })
-
 		// Delete all cache entries matching this key (including all pages if paginated)
 		// Use LIKE to match all pages: /path?page=1, /path?page=2, etc.
 		const baseKey = cacheKey.split('?')[0]
@@ -908,10 +753,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		)
 
 		const deletedCount = result.rowsWritten || 0
-
-		logger
-			.withTags({ path, characterId, operation: 'clear_esi_cache' })
-			.debug('Cleared ESI cache', { deletedCount, cacheKey })
 
 		return deletedCount
 	}
@@ -935,20 +776,12 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		const cleanPath = basePath.replace(/[?&]page=\d+/, '')
 		const separator = cleanPath.includes('?') ? '&' : '?'
 
-		logger
-			.withTags({ basePath: cleanPath, characterId, operation: 'esi_fetch_all_pages' })
-			.debug('Starting fetchEsiAllPages', { maxConcurrent })
-
 		// Fetch first page to get total page count
 		const firstPagePath = `${cleanPath}${separator}page=1`
 		const firstResponse = await this.fetchEsi<T[]>(firstPagePath, characterId)
 
 		const totalPages = firstResponse.pages ?? 1
 		const responses: EsiResponse<T[]>[] = [firstResponse]
-
-		logger
-			.withTags({ basePath: cleanPath, characterId, totalPages, operation: 'esi_fetch_all_pages' })
-			.debug('Fetched first page', { totalPages, hasMorePages: totalPages > 1 })
 
 		// If there's only one page, return early
 		if (totalPages === 1) {
@@ -970,16 +803,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		const remainingResponses: EsiResponse<T[]>[] = []
 		for (let i = 0; i < remainingPages.length; i += maxConcurrent) {
 			const batch = remainingPages.slice(i, i + maxConcurrent)
-			logger
-				.withTags({
-					basePath: cleanPath,
-					characterId,
-					operation: 'esi_fetch_all_pages',
-				})
-				.debug('Fetching batch of pages', {
-					batchPages: batch,
-					progress: `${i + batch.length}/${remainingPages.length}`,
-				})
 			const batchResponses = await Promise.all(batch.map(fetchPage))
 			remainingResponses.push(...batchResponses)
 		}
@@ -991,14 +814,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		for (const response of responses) {
 			allData.push(...response.data)
 		}
-
-		logger
-			.withTags({ basePath: cleanPath, characterId, operation: 'esi_fetch_all_pages' })
-			.debug('Completed fetchEsiAllPages', {
-				totalPages,
-				totalItems: allData.length,
-				cached: responses.filter((r) => r.cached).length,
-			})
 
 		return {
 			data: allData,
@@ -1025,20 +840,12 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		const cleanPath = basePath.replace(/[?&]page=\d+/, '')
 		const separator = cleanPath.includes('?') ? '&' : '?'
 
-		logger
-			.withTags({ basePath: cleanPath, operation: 'esi_fetch_all_pages_public' })
-			.debug('Starting fetchPublicEsiAllPages', { maxConcurrent })
-
 		// Fetch first page to get total page count
 		const firstPagePath = `${cleanPath}${separator}page=1`
 		const firstResponse = await this.fetchPublicEsi<T[]>(firstPagePath)
 
 		const totalPages = firstResponse.pages ?? 1
 		const responses: EsiResponse<T[]>[] = [firstResponse]
-
-		logger
-			.withTags({ basePath: cleanPath, totalPages, operation: 'esi_fetch_all_pages_public' })
-			.debug('Fetched first page', { totalPages, hasMorePages: totalPages > 1 })
 
 		// If there's only one page, return early
 		if (totalPages === 1) {
@@ -1060,15 +867,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		const remainingResponses: EsiResponse<T[]>[] = []
 		for (let i = 0; i < remainingPages.length; i += maxConcurrent) {
 			const batch = remainingPages.slice(i, i + maxConcurrent)
-			logger
-				.withTags({
-					basePath: cleanPath,
-					operation: 'esi_fetch_all_pages_public',
-				})
-				.debug('Fetching batch of pages', {
-					batchPages: batch,
-					progress: `${i + batch.length}/${remainingPages.length}`,
-				})
 			const batchResponses = await Promise.all(batch.map(fetchPage))
 			remainingResponses.push(...batchResponses)
 		}
@@ -1080,14 +878,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		for (const response of responses) {
 			allData.push(...response.data)
 		}
-
-		logger
-			.withTags({ basePath: cleanPath, operation: 'esi_fetch_all_pages_public' })
-			.debug('Completed fetchPublicEsiAllPages', {
-				totalPages,
-				totalItems: allData.length,
-				cached: responses.filter((r) => r.cached).length,
-			})
 
 		return {
 			data: allData,
@@ -1111,10 +901,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		const cleanPath = basePath.replace(/[?&]page=\d+/, '')
 		const separator = cleanPath.includes('?') ? '&' : '?'
 
-		logger
-			.withTags({ basePath: cleanPath, operation: 'esi_fetch_all_pages_stream' })
-			.debug('Starting fetchPublicEsiAllPagesStream', { maxConcurrent })
-
 		const encoder = new TextEncoder()
 
 		return new ReadableStream({
@@ -1126,10 +912,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 					const totalPages = firstResponse.pages ?? 1
 
-					logger
-						.withTags({ basePath: cleanPath, totalPages, operation: 'esi_fetch_all_pages_stream' })
-						.debug('Fetched first page', { totalPages, hasMorePages: totalPages > 1 })
-
 					// Stream first page items immediately
 					for (const item of firstResponse.data) {
 						const line = JSON.stringify(item) + '\n'
@@ -1138,12 +920,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 					// If there's only one page, we're done
 					if (totalPages === 1) {
-						logger
-							.withTags({ basePath: cleanPath, operation: 'esi_fetch_all_pages_stream' })
-							.debug('Completed fetchPublicEsiAllPagesStream (single page)', {
-								totalPages: 1,
-								totalItems: firstResponse.data.length,
-							})
 						controller.close()
 						return
 					}
@@ -1154,13 +930,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 					for (let i = 0; i < remainingPages.length; i += maxConcurrent) {
 						const batch = remainingPages.slice(i, i + maxConcurrent)
-
-						logger
-							.withTags({ basePath: cleanPath, operation: 'esi_fetch_all_pages_stream' })
-							.debug('Fetching batch of pages', {
-								batchPages: batch,
-								progress: `${i + batch.length}/${remainingPages.length}`,
-							})
 
 						// Fetch batch of pages in parallel
 						const fetchPage = async (pageNum: number) => {
@@ -1180,13 +949,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 						}
 					}
 
-					logger
-						.withTags({ basePath: cleanPath, operation: 'esi_fetch_all_pages_stream' })
-						.debug('Completed fetchPublicEsiAllPagesStream', {
-							totalPages,
-							totalItems,
-						})
-
 					controller.close()
 				} catch (error) {
 					logger
@@ -1199,9 +961,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			},
 
 			cancel(reason) {
-				logger
-					.withTags({ basePath: cleanPath, operation: 'esi_fetch_all_pages_stream' })
-					.debug('Stream cancelled', { reason: String(reason) })
+				// Stream cancelled
 			},
 		})
 	}
@@ -1876,14 +1636,8 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 * Refresh access token using refresh token
 	 */
 	private async refreshAccessToken(refreshToken: string): Promise<EveTokenResponse> {
-		logger
-			.withTags({ operation: 'refreshAccessToken' })
-			.debug('Starting refresh access token request', { refreshTokenLength: refreshToken.length })
 		try {
 			const credentials = btoa(`${this.env.EVE_SSO_CLIENT_ID}:${this.env.EVE_SSO_CLIENT_SECRET}`)
-			logger
-				.withTags({ operation: 'refreshAccessToken' })
-				.debug('Credentials prepared, making request to EVE SSO')
 
 			const response = await fetch(EVE_SSO_TOKEN_URL, {
 				method: 'POST',
@@ -1898,11 +1652,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				}),
 			})
 
-			logger.withTags({ operation: 'refreshAccessToken' }).debug('EVE SSO response received', {
-				status: response.status,
-				statusText: response.statusText,
-			})
-
 			if (!response.ok) {
 				const error = await response.text()
 				logger
@@ -1912,10 +1661,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			}
 
 			const tokenResponse = await response.json<EveTokenResponse>()
-			logger.withTags({ operation: 'refreshAccessToken' }).debug('Token refresh successful', {
-				expiresIn: tokenResponse.expires_in,
-				hasRefreshToken: !!tokenResponse.refresh_token,
-			})
 			return tokenResponse
 		} catch (error) {
 			logger
@@ -2025,19 +1770,12 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 * Encrypt data using AES-GCM
 	 */
 	private async encrypt(data: string): Promise<string> {
-		logger
-			.withTags({ operation: 'encrypt' })
-			.debug('Starting encryption', { dataLength: data.length })
 		try {
-			logger.withTags({ operation: 'encrypt' }).debug('Getting encryption key')
 			const key = await this.getEncryptionKey()
-			logger.withTags({ operation: 'encrypt' }).debug('Encryption key obtained')
 
 			const iv = crypto.getRandomValues(new Uint8Array(12))
-			logger.withTags({ operation: 'encrypt' }).debug('IV generated')
 
 			const encodedData = new TextEncoder().encode(data)
-			logger.withTags({ operation: 'encrypt' }).debug('Data encoded, encrypting')
 
 			const encryptedData = await crypto.subtle.encrypt(
 				{
@@ -2047,9 +1785,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				key,
 				encodedData
 			)
-			logger
-				.withTags({ operation: 'encrypt' })
-				.debug('Data encrypted', { encryptedLength: encryptedData.byteLength })
 
 			// Combine IV and encrypted data
 			const combined = new Uint8Array(iv.length + encryptedData.byteLength)
@@ -2058,9 +1793,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 			// Return as base64
 			const result = btoa(String.fromCharCode(...combined))
-			logger
-				.withTags({ operation: 'encrypt' })
-				.debug('Encryption completed', { resultLength: result.length })
 			return result
 		} catch (error) {
 			logger.withTags({ operation: 'encrypt' }).error('Encryption failed', error)
@@ -2072,29 +1804,16 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 * Decrypt data using AES-GCM
 	 */
 	private async decrypt(encryptedData: string): Promise<string> {
-		logger
-			.withTags({ operation: 'decrypt' })
-			.debug('Starting decryption', { encryptedDataLength: encryptedData.length })
 		try {
-			logger.withTags({ operation: 'decrypt' }).debug('Getting encryption key')
 			const key = await this.getEncryptionKey()
-			logger.withTags({ operation: 'decrypt' }).debug('Encryption key obtained')
 
 			// Decode from base64
-			logger.withTags({ operation: 'decrypt' }).debug('Decoding from base64')
 			const combined = Uint8Array.from(atob(encryptedData), (c) => c.charCodeAt(0))
-			logger
-				.withTags({ operation: 'decrypt' })
-				.debug('Base64 decoded', { combinedLength: combined.length })
 
 			// Extract IV and data
 			const iv = combined.slice(0, 12)
 			const data = combined.slice(12)
-			logger
-				.withTags({ operation: 'decrypt' })
-				.debug('IV and data extracted', { ivLength: iv.length, dataLength: data.length })
 
-			logger.withTags({ operation: 'decrypt' }).debug('Decrypting data')
 			const decryptedData = await crypto.subtle.decrypt(
 				{
 					name: 'AES-GCM',
@@ -2103,14 +1822,8 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				key,
 				data
 			)
-			logger
-				.withTags({ operation: 'decrypt' })
-				.debug('Data decrypted', { decryptedLength: decryptedData.byteLength })
 
 			const result = new TextDecoder().decode(decryptedData)
-			logger
-				.withTags({ operation: 'decrypt' })
-				.debug('Decryption completed', { resultLength: result.length })
 			return result
 		} catch (error) {
 			logger.withTags({ operation: 'decrypt' }).error('Decryption failed', error)
@@ -2122,9 +1835,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 * Get or create encryption key from environment
 	 */
 	private async getEncryptionKey(): Promise<CryptoKey> {
-		logger
-			.withTags({ operation: 'getEncryptionKey' })
-			.debug('Getting encryption key from environment')
 		try {
 			// Convert hex string to bytes
 			const keyMatch = this.env.ENCRYPTION_KEY.match(/.{1,2}/g)
@@ -2132,23 +1842,13 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				logger.withTags({ operation: 'getEncryptionKey' }).error('ENCRYPTION_KEY format invalid')
 				throw new Error('ENCRYPTION_KEY format invalid')
 			}
-			logger
-				.withTags({ operation: 'getEncryptionKey' })
-				.debug('ENCRYPTION_KEY parsed', { keyLength: keyMatch.length })
 
 			const keyData = new Uint8Array(keyMatch.map((byte) => parseInt(byte, 16)))
-			logger
-				.withTags({ operation: 'getEncryptionKey' })
-				.debug('Key data converted to bytes', { keyDataLength: keyData.length })
 
-			logger.withTags({ operation: 'getEncryptionKey' }).debug('Importing key')
 			const key = await crypto.subtle.importKey('raw', keyData, { name: 'AES-GCM' }, false, [
 				'encrypt',
 				'decrypt',
 			])
-			logger
-				.withTags({ operation: 'getEncryptionKey' })
-				.debug('Encryption key imported successfully')
 			return key
 		} catch (error) {
 			logger

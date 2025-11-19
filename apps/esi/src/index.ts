@@ -33,7 +33,7 @@ const app = new Hono<App>()
 		const stub = getStub<Esi>(c.env.ESI, 'default')
 
 		try {
-			const members = await stub.fetchMembers(corporationId)
+			const members = await stub.fetchCorporationMembers(corporationId)
 			return c.json({ corporationId, members })
 		} catch (error) {
 			return c.json(
@@ -50,7 +50,7 @@ const app = new Hono<App>()
 		const stub = getStub<Esi>(c.env.ESI, 'default')
 
 		try {
-			const memberTracking = await stub.fetchMemberTracking(corporationId)
+			const memberTracking = await stub.fetchCorporationMemberTracking(corporationId)
 			return c.json({ corporationId, memberTracking })
 		} catch (error) {
 			return c.json(
@@ -67,7 +67,7 @@ const app = new Hono<App>()
 		const stub = getStub<Esi>(c.env.ESI, 'default')
 
 		try {
-			const wallets = await stub.fetchWallets(corporationId)
+			const wallets = await stub.fetchCorporationWallets(corporationId)
 			return c.json({ corporationId, wallets })
 		} catch (error) {
 			return c.json(
@@ -90,7 +90,7 @@ const app = new Hono<App>()
 		const stub = getStub<Esi>(c.env.ESI, 'default')
 
 		try {
-			const journal = await stub.fetchWalletJournal(corporationId, division)
+			const journal = await stub.fetchCorporationWalletJournal(corporationId, division)
 			return c.json({ corporationId, division, journal })
 		} catch (error) {
 			return c.json(
@@ -113,7 +113,10 @@ const app = new Hono<App>()
 		const stub = getStub<Esi>(c.env.ESI, 'default')
 
 		try {
-			const transactions = await stub.fetchWalletTransactions(corporationId, division)
+			const transactions = await stub.fetchCorporationWalletTransactions(
+				corporationId,
+				division
+			)
 			return c.json({ corporationId, division, transactions })
 		} catch (error) {
 			return c.json(
@@ -130,7 +133,7 @@ const app = new Hono<App>()
 		const stub = getStub<Esi>(c.env.ESI, 'default')
 
 		try {
-			const assets = await stub.fetchAssets(corporationId)
+			const assets = await stub.fetchCorporationAssets(corporationId)
 			return c.json({ corporationId, assets })
 		} catch (error) {
 			return c.json(
@@ -147,7 +150,7 @@ const app = new Hono<App>()
 		const stub = getStub<Esi>(c.env.ESI, 'default')
 
 		try {
-			const structures = await stub.fetchStructures(corporationId)
+			const structures = await stub.fetchCorporationStructures(corporationId)
 			return c.json({ corporationId, structures })
 		} catch (error) {
 			return c.json(
@@ -164,7 +167,7 @@ const app = new Hono<App>()
 		const stub = getStub<Esi>(c.env.ESI, 'default')
 
 		try {
-			const orders = await stub.fetchOrders(corporationId)
+			const orders = await stub.fetchCorporationOrders(corporationId)
 			return c.json({ corporationId, orders })
 		} catch (error) {
 			return c.json(
@@ -181,7 +184,7 @@ const app = new Hono<App>()
 		const stub = getStub<Esi>(c.env.ESI, 'default')
 
 		try {
-			const contracts = await stub.fetchContracts(corporationId)
+			const contracts = await stub.fetchCorporationContracts(corporationId)
 			return c.json({ corporationId, contracts })
 		} catch (error) {
 			return c.json(
@@ -198,7 +201,7 @@ const app = new Hono<App>()
 		const stub = getStub<Esi>(c.env.ESI, 'default')
 
 		try {
-			const jobs = await stub.fetchIndustryJobs(corporationId)
+			const jobs = await stub.fetchCorporationIndustryJobs(corporationId)
 			return c.json({ corporationId, jobs })
 		} catch (error) {
 			return c.json(
@@ -215,7 +218,7 @@ const app = new Hono<App>()
 		const stub = getStub<Esi>(c.env.ESI, 'default')
 
 		try {
-			const killmails = await stub.fetchKillmails(corporationId)
+			const killmails = await stub.fetchCorporationKillmails(corporationId)
 			return c.json({ corporationId, killmails })
 		} catch (error) {
 			return c.json(
