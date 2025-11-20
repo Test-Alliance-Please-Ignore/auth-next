@@ -179,7 +179,6 @@ footer {
 	display: flex;
 	background: hsl(var(--background-elevated));
 	border-bottom: 2px solid hsl(var(--border-strong));
-	overflow-x: auto;
 }
 
 /* Hide radio buttons visually but keep them functional for CSS-only fallback */
@@ -191,8 +190,9 @@ footer {
 
 .tab-button,
 .tab-label {
-	flex: 1;
+	flex: 1 1 auto;
 	min-width: 150px;
+	max-width: 250px;
 	padding: 15px 20px;
 	background: transparent;
 	border: none;
@@ -238,12 +238,14 @@ footer {
 .tab-radio:checked + .tab-navigation + .tab-panels > .tab-panel,
 .tab-radio:nth-of-type(1):checked ~ .tab-panels > .tab-panel:nth-of-type(1),
 .tab-radio:nth-of-type(2):checked ~ .tab-panels > .tab-panel:nth-of-type(2),
-.tab-radio:nth-of-type(3):checked ~ .tab-panels > .tab-panel:nth-of-type(3) {
+.tab-radio:nth-of-type(3):checked ~ .tab-panels > .tab-panel:nth-of-type(3),
+.tab-radio:nth-of-type(4):checked ~ .tab-panels > .tab-panel:nth-of-type(4) {
 	display: block;
 }
 
 /* Since we can't directly style labels based on radio state with this structure,
    we'll use a different approach with adjacent selectors */
+#tab-contacts:checked ~ .tab-navigation label[for="tab-contacts"],
 #tab-assets:checked ~ .tab-navigation label[for="tab-assets"],
 #tab-transactions:checked ~ .tab-navigation label[for="tab-transactions"],
 #tab-journal:checked ~ .tab-navigation label[for="tab-journal"] {
@@ -251,6 +253,7 @@ footer {
 	background: hsl(var(--card));
 }
 
+#tab-contacts:checked ~ .tab-navigation label[for="tab-contacts"]::after,
 #tab-assets:checked ~ .tab-navigation label[for="tab-assets"]::after,
 #tab-transactions:checked ~ .tab-navigation label[for="tab-transactions"]::after,
 #tab-journal:checked ~ .tab-navigation label[for="tab-journal"]::after {
@@ -280,6 +283,7 @@ footer {
 }
 
 /* Show correct panel based on radio selection */
+#tab-contacts:checked ~ .tab-panels > [data-tab="contacts"],
 #tab-assets:checked ~ .tab-panels > [data-tab="assets"],
 #tab-transactions:checked ~ .tab-panels > [data-tab="transactions"],
 #tab-journal:checked ~ .tab-panels > [data-tab="journal"] {
@@ -330,14 +334,16 @@ footer {
 /* Responsive tabs */
 @media (max-width: 768px) {
 	.tab-navigation {
-		overflow-x: auto;
-		-webkit-overflow-scrolling: touch;
+		flex-wrap: wrap;
+		gap: 2px;
 	}
 
 	.tab-button,
 	.tab-label {
-		min-width: 120px;
-		padding: 12px 15px;
+		flex: 1 1 auto;
+		min-width: calc(33.333% - 2px);
+		max-width: none;
+		padding: 12px 10px;
 		font-size: 0.9em;
 	}
 

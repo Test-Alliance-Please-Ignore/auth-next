@@ -6,6 +6,8 @@
 import { logger } from '@repo/hono-helpers'
 import { createDb } from './db'
 import * as queries from './db/queries'
+import { sendReportFailedWebhook } from './lib/discord-webhook'
+import { resolveReportMetadata } from './lib/report-metadata'
 import type { Env } from './context'
 import type { WorkflowParams } from './workflows/character-report.workflow'
 
@@ -71,12 +73,63 @@ export async function handleCharacterReportsQueue(
 			// Acknowledge successful processing
 			message.ack()
 		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : String(error)
+
 			queueLogger.error('Failed to process message', {
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage,
 				errorStack: error instanceof Error ? error.stack : undefined,
 				messageId: message.id,
 				body: message.body,
 			})
+
+			// Update database to mark report as failed
+			const { reportId, characterId, requestorUserId, requestorCorporationId } =
+				message.body
+
+			try {
+				await queries.updateReportStatus(db, reportId, 'failed', {
+					errorMessage,
+				})
+
+				// Send Discord webhook notification (non-blocking)
+				if (env.DISCORD_WEBHOOK_URL) {
+					try {
+						const report = await queries.getReport(db, reportId)
+
+						if (report) {
+							const metadata = await resolveReportMetadata(
+								env,
+								reportId,
+								requestorUserId,
+								characterId,
+								report.characterName,
+								requestorCorporationId
+							)
+
+							if (metadata) {
+								await sendReportFailedWebhook(
+									env.DISCORD_WEBHOOK_URL,
+									metadata,
+									errorMessage
+								)
+							}
+						}
+					} catch (webhookError) {
+						queueLogger.error('Failed to send report failed webhook', {
+							reportId,
+							error:
+								webhookError instanceof Error
+									? webhookError.message
+									: String(webhookError),
+						})
+					}
+				}
+			} catch (updateError) {
+				queueLogger.error('Failed to update report status to failed', {
+					reportId,
+					error: updateError instanceof Error ? updateError.message : String(updateError),
+				})
+			}
 
 			// Retry the message
 			message.retry()

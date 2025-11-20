@@ -192,6 +192,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 		// Step 14: Update database with final status
 		await step.do('update-database', () =>
 			updateDatabase(
+				this.env,
 				this.env.DATABASE_URL,
 				reportId,
 				finalReportResult.bucket,

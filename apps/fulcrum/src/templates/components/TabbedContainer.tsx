@@ -30,7 +30,7 @@ export function TabbedContainer({ tabs, defaultActiveTab }: TabbedContainerProps
 					id={`tab-${tab.id}`}
 					name="report-tabs"
 					className="tab-radio"
-					checked={index === 0}
+					checked={tab.id === activeTabId}
 				/>
 			))}
 
@@ -54,7 +54,7 @@ export function TabbedContainer({ tabs, defaultActiveTab }: TabbedContainerProps
 				{tabs.map((tab, index) => (
 					<div
 						key={`panel-${tab.id}`}
-						className={`tab-panel ${index === 0 ? 'initial-active' : ''}`}
+						className={`tab-panel ${tab.id === activeTabId ? 'initial-active' : ''}`}
 						data-tab={tab.id}
 					>
 						<div className="tab-content">{tab.content}</div>
@@ -89,10 +89,18 @@ export function TabbedContainer({ tabs, defaultActiveTab }: TabbedContainerProps
 		const buttons = container.querySelectorAll('.tab-button');
 		const panels = container.querySelectorAll('.tab-panel');
 
-		// Remove initial-active class and set first tab as active
-		panels.forEach(panel => panel.classList.remove('initial-active'));
-		if (buttons[0]) buttons[0].classList.add('active');
-		if (panels[0]) panels[0].classList.add('active');
+		// Find the initially active panel and set corresponding button as active
+		let activeIndex = 0;
+		panels.forEach((panel, index) => {
+			if (panel.classList.contains('initial-active')) {
+				activeIndex = index;
+			}
+			panel.classList.remove('initial-active');
+		});
+
+		// Set the active tab based on initial state
+		if (buttons[activeIndex]) buttons[activeIndex].classList.add('active');
+		if (panels[activeIndex]) panels[activeIndex].classList.add('active');
 
 		// Tab switching functionality
 		buttons.forEach((button, index) => {

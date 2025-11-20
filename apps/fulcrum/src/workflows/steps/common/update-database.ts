@@ -2,19 +2,27 @@
  * Update database with final report status and R2 location
  */
 
+import { logger } from '@repo/hono-helpers'
+
 import { createDb } from '../../../db'
 import { characterReports } from '../../../db/schema'
-import { buildUpdateReportStatusQuery } from '../../../db/queries'
+import { buildUpdateReportStatusQuery, getReport } from '../../../db/queries'
+import { sendReportCompletedWebhook } from '../../../lib/discord-webhook'
+import { resolveReportMetadata } from '../../../lib/report-metadata'
+
+import type { Env } from '../../../context'
 
 /**
  * Update database to mark report as completed and store R2 location
  *
+ * @param env - Environment bindings
  * @param databaseUrl - Database connection URL
  * @param reportId - Report UUID
  * @param bucket - R2 bucket name
  * @param key - R2 key where report is stored
  */
 export async function updateDatabase(
+	env: Env,
 	databaseUrl: string,
 	reportId: string,
 	bucket: string,
@@ -28,4 +36,36 @@ export async function updateDatabase(
 	})
 
 	await db.update(characterReports).set(query.set).where(query.where)
+
+	// Send Discord webhook notification (non-blocking)
+	if (env.DISCORD_WEBHOOK_URL) {
+		try {
+			// Fetch report to get metadata
+			const report = await getReport(db, reportId)
+
+			if (report) {
+				const metadata = await resolveReportMetadata(
+					env,
+					reportId,
+					report.requestorUserId,
+					report.characterId,
+					report.characterName,
+					report.requestorCorporationId
+				)
+
+				if (metadata) {
+					// Construct report view URL
+					const viewUrl = `https://devtest.pleaseignore.app/test/reports/${reportId}/html`
+
+					await sendReportCompletedWebhook(env.DISCORD_WEBHOOK_URL, metadata, viewUrl)
+				}
+			}
+		} catch (error) {
+			// Log but don't fail - webhook failures should not block workflow
+			logger.error('[Workflow] Failed to send report completed webhook', {
+				reportId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+	}
 }

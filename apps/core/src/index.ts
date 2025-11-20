@@ -331,4 +331,11 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 		)
 		return dkpService.awardDkpBulk(params)
 	}
+
+	/**
+	 * Get user's main character name by user ID
+	 */
+	async getUserMainCharacterName(userId: string): Promise<string | null> {
+		return this.getService().getUserMainCharacterName(userId)
+	}
 }

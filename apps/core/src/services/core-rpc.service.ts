@@ -538,4 +538,26 @@ export class CoreRpcService {
 	}> {
 		return await discordService.syncUserDiscordAccess(this.env, userId)
 	}
+
+	/**
+	 * Get user's main character name by user ID
+	 *
+	 * @param userId - User ID
+	 * @returns Main character name, or null if user not found
+	 */
+	async getUserMainCharacterName(userId: string): Promise<string | null> {
+		const user = await this.db.query.users.findFirst({
+			where: eq(users.id, userId),
+		})
+
+		if (!user) {
+			return null
+		}
+
+		const mainCharacter = await this.db.query.userCharacters.findFirst({
+			where: eq(userCharacters.characterId, user.mainCharacterId),
+		})
+
+		return mainCharacter?.characterName ?? null
+	}
 }
