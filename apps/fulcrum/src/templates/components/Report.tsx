@@ -1,18 +1,21 @@
 /**
  * Main report component
- * Assembles all sections of the character report
+ * Assembles all sections of the character report with tabbed layout
  */
 
 import type { ProcessedPublicInfo } from '../../workflows/processors/helpers/public-info'
 import type { ProcessedAssets } from '../../workflows/processors/helpers/assets'
 import type { ProcessedWalletTransactions } from '../../workflows/processors/helpers/wallet-transactions'
 import type { ProcessedWalletJournalEntries } from '../../workflows/processors/helpers/wallet-journal'
+import type { ProcessedContacts } from '../../workflows/processors/helpers/contacts'
 import { PublicInfoSection } from './PublicInfoSection'
 import { AssetsSection } from './AssetsSection'
 import { WalletTransactionsSection } from './WalletTransactionsSection'
 import { WalletJournalSection } from './WalletJournalSection'
+import { ContactsSection } from './ContactsSection'
 import { ReportFooter } from './ReportFooter'
 import { ReportHeader } from './ReportHeader'
+import { TabbedContainer } from './TabbedContainer'
 
 interface ReportProps {
 	results: unknown[]
@@ -67,6 +70,58 @@ export function Report({ results }: ReportProps) {
 			'id' in r[0],
 	) as ProcessedWalletJournalEntries | undefined
 
+	const contacts = results.find(
+		(r): r is ProcessedContacts =>
+			r !== null &&
+			r !== undefined &&
+			Array.isArray(r) &&
+			r.length > 0 &&
+			typeof r[0] === 'object' &&
+			r[0] !== null &&
+			'contact_id' in r[0] &&
+			'contact_type' in r[0],
+	) as ProcessedContacts | undefined
+
+	// Build tabs array with available data
+	// Contacts tab MUST be first
+	const tabs = []
+
+	if (contacts) {
+		tabs.push({
+			id: 'contacts',
+			label: 'Contacts List',
+			count: contacts.length,
+			content: <ContactsSection data={contacts} />,
+		})
+	}
+
+	if (assets) {
+		tabs.push({
+			id: 'assets',
+			label: 'Assets',
+			count: assets.length,
+			content: <AssetsSection data={assets} />,
+		})
+	}
+
+	if (walletTransactions) {
+		tabs.push({
+			id: 'transactions',
+			label: 'Wallet Transactions',
+			count: walletTransactions.length,
+			content: <WalletTransactionsSection data={walletTransactions} />,
+		})
+	}
+
+	if (walletJournal) {
+		tabs.push({
+			id: 'journal',
+			label: 'Wallet Journal',
+			count: walletJournal.length,
+			content: <WalletJournalSection data={walletJournal} />,
+		})
+	}
+
 	return (
 		<div className="container">
 			<ReportHeader
@@ -83,11 +138,12 @@ export function Report({ results }: ReportProps) {
 				</section>
 			)}
 
-			{assets && <AssetsSection data={assets} />}
-
-			{walletTransactions && <WalletTransactionsSection data={walletTransactions} />}
-
-			{walletJournal && <WalletJournalSection data={walletJournal} />}
+			{tabs.length > 0 && (
+				<TabbedContainer
+					tabs={tabs}
+					defaultActiveTab={contacts ? 'contacts' : tabs[0]?.id || 'assets'}
+				/>
+			)}
 
 			<ReportFooter />
 		</div>

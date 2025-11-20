@@ -1,9 +1,10 @@
 /**
  * Wallet transactions section component
- * Displays EVE character wallet transactions in a filterable/sortable table
+ * Displays EVE character wallet transactions in a filterable/sortable table with pagination
  */
 
 import type { ProcessedWalletTransactions } from '../../workflows/processors/helpers/wallet-transactions'
+import { PaginationControls } from './PaginationControls'
 
 interface WalletTransactionsSectionProps {
 	data: ProcessedWalletTransactions
@@ -38,12 +39,9 @@ export function WalletTransactionsSection({ data }: WalletTransactionsSectionPro
 
 	if (data.length === 0) {
 		return (
-			<section className="collapsible-section">
-				<h2 className="collapsible-header" data-section-id={`wallet-transactions-${Date.now()}`}>
-					Wallet Transactions
-					<span className="collapse-indicator">▼</span>
-				</h2>
-				<div className="collapsible-content" id={`wallet-transactions-${Date.now()}`}>
+			<section>
+				<h2>Wallet Transactions</h2>
+				<div>
 					<p>No wallet transactions found.</p>
 				</div>
 			</section>
@@ -54,12 +52,9 @@ export function WalletTransactionsSection({ data }: WalletTransactionsSectionPro
 	const tableId = `wallet-transactions-table-${Date.now()}`
 
 	return (
-		<section className="collapsible-section">
-			<h2 className="collapsible-header" data-section-id={`wallet-transactions-${tableId}`}>
-				Wallet Transactions
-				<span className="collapse-indicator">▼</span>
-			</h2>
-			<div className="collapsible-content" id={`wallet-transactions-${tableId}`}>
+		<section>
+			<h2>Wallet Transactions</h2>
+			<div>
 				<div className="assets-controls">
 					<div className="search-control">
 						<label htmlFor={`${tableId}-search`}>Search:</label>
@@ -98,6 +93,9 @@ export function WalletTransactionsSection({ data }: WalletTransactionsSectionPro
 						</select>
 					</div>
 				</div>
+
+				<PaginationControls tableId={tableId} totalItems={data.length} defaultItemsPerPage={25} />
+
 				<div className="table-container">
 					<table id={tableId} className="assets-table">
 						<thead>
@@ -305,18 +303,25 @@ export function WalletTransactionsSection({ data }: WalletTransactionsSectionPro
 
 			if (matchesSearch && matchesBuySell && matchesPersonal) {
 				row.style.display = '';
+				row.removeAttribute('data-filtered');
 			} else {
 				row.style.display = 'none';
+				row.setAttribute('data-filtered', 'true');
 			}
 		});
 
 		// Update footer count
 		const visibleRows = rows.filter(
-			(row) => row.style.display !== 'none'
+			(row) => !row.hasAttribute('data-filtered')
 		).length;
 		const footer = table?.querySelector('tfoot td');
 		if (footer) {
 			footer.textContent = 'Visible transactions: ' + visibleRows.toLocaleString() + ' of ' + rows.length.toLocaleString();
+		}
+
+		// Trigger pagination update if available
+		if (window['pagination_${tableId}']) {
+			window['pagination_${tableId}'].reset();
 		}
 	}
 

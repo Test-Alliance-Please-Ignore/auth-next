@@ -1,6 +1,7 @@
 import { WorkflowEntrypoint } from 'cloudflare:workers'
 
 import { fetchAssets, processAssets } from './steps/assets'
+import { fetchContacts, processContacts } from './steps/contacts'
 import {
 	checkCancellation,
 	cleanupIntermediateData,
@@ -144,7 +145,31 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 		)
 
-		// Step 10: Generate HTML report and store in R2
+		// Step 10: Fetch contacts from ESI
+		const fetchContactsResult = await step.do('fetch-contacts', () =>
+			fetchContacts(
+				this.env.ESI,
+				this.env.CHARACTER_REPORTS,
+				'CHARACTER_REPORTS',
+				characterId,
+				workflowInstanceId
+			)
+		)
+
+		// Step 11: Process contacts
+		const processContactsResult = await step.do('process-contacts', () =>
+			processContacts(
+				this.env,
+				getBucket,
+				this.env.CHARACTER_REPORTS,
+				'CHARACTER_REPORTS',
+				fetchContactsResult,
+				workflowInstanceId,
+				characterId
+			)
+		)
+
+		// Step 12: Generate HTML report and store in R2
 		const finalReportResult = await step.do('generate-html', () =>
 			generateHtmlReport(
 				this.env.CHARACTER_REPORTS,
@@ -154,16 +179,17 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 				reportId,
 				processAssetsResult,
 				processWalletTransactionsResult,
-				processWalletJournalResult
+				processWalletJournalResult,
+				processContactsResult
 			)
 		)
 
-		// Step 11: Clean up intermediate data
+		// Step 13: Clean up intermediate data
 		await step.do('cleanup-intermediate-data', () =>
 			cleanupIntermediateData(this.env.CHARACTER_REPORTS, workflowInstanceId)
 		)
 
-		// Step 12: Update database with final status
+		// Step 14: Update database with final status
 		await step.do('update-database', () =>
 			updateDatabase(
 				this.env.DATABASE_URL,

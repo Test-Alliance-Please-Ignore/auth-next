@@ -4,7 +4,8 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 import { getStub } from '@repo/do-utils'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
-import { EsiDO, EsiTypeResolverDO } from './durable-object'
+import { EsiDO } from './durable-object'
+import { EsiTypeResolverDO } from './durable-object-id-resolver'
 
 import type { Esi, EsiTypeResolver } from '@repo/esi'
 import type { App } from './context'
@@ -231,5 +232,4 @@ export default app
 
 // Export the Durable Object class
 export { EsiDO as Esi }
-
 export { EsiTypeResolverDO as EsiTypeResolver }

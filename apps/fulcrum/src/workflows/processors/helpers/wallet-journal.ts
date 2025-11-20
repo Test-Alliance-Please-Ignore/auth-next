@@ -1,10 +1,10 @@
 import { getStub } from '@repo/do-utils'
+import { getIdClassification, isStructureId, normalizeIdToString } from '@repo/esi'
 
-import { resolveTypeIds } from '../../utils/type-resolver'
-import { retryWithBackoff, isRateLimitError } from '../../utils/retry'
+import { formatCurrency, toTitleCase } from '../../utils/formatting'
+import { isRateLimitError, retryWithBackoff } from '../../utils/retry'
 
-import { isStructureId } from '@repo/esi'
-import type { CharacterWalletJournalEntry, Esi } from '@repo/esi'
+import type { CharacterWalletJournalEntry, Esi, EsiTypeResolver } from '@repo/esi'
 
 export interface ProcessedWalletJournalEntry extends CharacterWalletJournalEntry {
 	refTypeLabel: string
@@ -22,38 +22,13 @@ export interface ProcessedWalletJournalEntry extends CharacterWalletJournalEntry
 
 export type ProcessedWalletJournalEntries = ProcessedWalletJournalEntry[]
 
-function formatCurrency(value: number | undefined): string | undefined {
-	if (value === undefined || Number.isNaN(value)) {
-		return undefined
-	}
-	return value.toLocaleString(undefined, {
-		minimumFractionDigits: 2,
-		maximumFractionDigits: 2,
-	})
-}
-
-function toTitleCase(input: string): string {
-	return input
-		.split('_')
-		.map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-		.join(' ')
-}
-
-function normalizeId(value?: string): string | undefined {
-	if (!value) {
-		return undefined
-	}
-
-	return value
-}
-
 export async function enrichWalletJournalEntries(
 	env: {
 		ESI_TYPE_RESOLVER: DurableObjectNamespace
 		ESI: DurableObjectNamespace
 	},
 	entries: CharacterWalletJournalEntry[],
-	characterId: string,
+	characterId: string
 ): Promise<ProcessedWalletJournalEntries> {
 	if (entries.length === 0) {
 		return []
@@ -63,23 +38,23 @@ export async function enrichWalletJournalEntries(
 	const structureIds = new Set<string>()
 
 	for (const entry of entries) {
-		const firstPartyId = normalizeId(entry.first_party_id)
+		const firstPartyId = normalizeIdToString(entry.first_party_id)
 		if (firstPartyId) {
 			idsToResolve.add(firstPartyId)
 		}
 
-		const secondPartyId = normalizeId(entry.second_party_id)
+		const secondPartyId = normalizeIdToString(entry.second_party_id)
 		if (secondPartyId) {
 			idsToResolve.add(secondPartyId)
 		}
 
-		const taxReceiverId = normalizeId(entry.tax_receiver_id)
+		const taxReceiverId = normalizeIdToString(entry.tax_receiver_id)
 		if (taxReceiverId) {
 			idsToResolve.add(taxReceiverId)
 		}
 
-		const contextId = normalizeId(entry.context_id)
-		if (contextId && entry.context_id_type) {
+		const contextId = normalizeIdToString(entry.context_id)
+		if (contextId) {
 			if (entry.context_id_type === 'structure_id' || isStructureId(contextId)) {
 				structureIds.add(contextId)
 			} else {
@@ -88,7 +63,19 @@ export async function enrichWalletJournalEntries(
 		}
 	}
 
-	const nameMap = await resolveTypeIds(env, Array.from(idsToResolve))
+	const nameMap: Record<string, string> = {}
+	if (idsToResolve.size > 0) {
+		try {
+			const resolver = getStub<EsiTypeResolver>(env.ESI_TYPE_RESOLVER, 'global')
+			const resolved = await resolver.resolveIds(Array.from(idsToResolve))
+			Object.assign(nameMap, resolved)
+		} catch (error) {
+			console.error('Failed to resolve type IDs:', {
+				error: error instanceof Error ? error.message : String(error),
+				idCount: idsToResolve.size,
+			})
+		}
+	}
 
 	const structureNameMap: Record<string, string> = {}
 	if (structureIds.size > 0) {
@@ -110,7 +97,7 @@ export async function enrichWalletJournalEntries(
 								error: error.message,
 							})
 						},
-					},
+					}
 				)
 
 				if (structureInfo) {
@@ -120,7 +107,7 @@ export async function enrichWalletJournalEntries(
 				if (isRateLimitError(error)) {
 					console.warn(
 						'[enrichWalletJournalEntries] Rate limit when fetching structure info, continuing without name',
-						{ structureId, error: error instanceof Error ? error.message : String(error) },
+						{ structureId, error: error instanceof Error ? error.message : String(error) }
 					)
 				} else {
 					console.warn('[enrichWalletJournalEntries] Failed to fetch structure info', {
@@ -146,18 +133,29 @@ export async function enrichWalletJournalEntries(
 			fallbackBalance = fallbackBalance + amountNumber
 		}
 
-		const firstPartyName = entry.first_party_id ? nameMap[entry.first_party_id] : undefined
-		const secondPartyName = entry.second_party_id ? nameMap[entry.second_party_id] : undefined
-		const taxReceiverName = entry.tax_receiver_id ? nameMap[entry.tax_receiver_id] : undefined
+		const firstPartyId = normalizeIdToString(entry.first_party_id)
+		const secondPartyId = normalizeIdToString(entry.second_party_id)
+		const taxReceiverId = normalizeIdToString(entry.tax_receiver_id)
+		const contextId = normalizeIdToString(entry.context_id)
+
+		const firstPartyName = firstPartyId ? nameMap[firstPartyId] : undefined
+		const secondPartyName = secondPartyId ? nameMap[secondPartyId] : undefined
+		const taxReceiverName = taxReceiverId ? nameMap[taxReceiverId] : undefined
 
 		let contextName: string | undefined
-		if (entry.context_id) {
-			if (entry.context_id_type === 'structure_id' || isStructureId(entry.context_id)) {
-				contextName = structureNameMap[entry.context_id] ?? entry.context_id
+		if (contextId) {
+			if (structureIds.has(contextId)) {
+				contextName = structureNameMap[contextId] ?? contextId
 			} else {
-				contextName = nameMap[entry.context_id] ?? entry.context_id
+				contextName = nameMap[contextId] ?? contextId
 			}
 		}
+
+		const classificationType = contextId ? getIdClassification(contextId).type : undefined
+		const derivedContextType =
+			classificationType && classificationType !== 'invalid' && classificationType !== 'unknown'
+				? classificationType
+				: undefined
 
 		const taxNumber = entry.tax ? Number(entry.tax) : undefined
 
@@ -172,9 +170,8 @@ export async function enrichWalletJournalEntries(
 			secondPartyName,
 			taxReceiverName,
 			contextName,
-			contextResolvedType: entry.context_id_type,
+			contextResolvedType: entry.context_id_type ?? derivedContextType,
 			processedAt,
 		}
 	})
 }
-

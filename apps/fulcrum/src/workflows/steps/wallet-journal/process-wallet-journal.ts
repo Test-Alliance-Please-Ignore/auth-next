@@ -66,6 +66,7 @@ export async function processWalletJournal(
 				: null,
 		})
 
+		// Store in R2
 		return await storeOrReturn(
 			bucket,
 			bucketName,

@@ -1,9 +1,10 @@
 /**
  * Assets section component
- * Displays EVE character assets in a filterable/searchable table
+ * Displays EVE character assets in a filterable/searchable table with pagination
  */
 
 import type { ProcessedAssets } from '../../workflows/processors/helpers/assets'
+import { PaginationControls } from './PaginationControls'
 
 interface AssetsSectionProps {
 	data: ProcessedAssets
@@ -48,12 +49,9 @@ export function AssetsSection({ data }: AssetsSectionProps) {
 	}
 
 	return (
-		<section className="collapsible-section">
-			<h2 className="collapsible-header" data-section-id={`assets-${tableId}`}>
-				Assets
-				<span className="collapse-indicator">▼</span>
-			</h2>
-			<div className="collapsible-content" id={`assets-${tableId}`}>
+		<section>
+			<h2>Assets</h2>
+			<div>
 				<div className="assets-controls">
 				<div className="search-control">
 					<label htmlFor={`${tableId}-search`}>Search:</label>
@@ -81,6 +79,9 @@ export function AssetsSection({ data }: AssetsSectionProps) {
 					</select>
 				</div>
 			</div>
+
+			<PaginationControls tableId={tableId} totalItems={data.length} defaultItemsPerPage={25} />
+
 			<div className="table-container">
 				<table id={tableId} className="assets-table">
 					<thead>
@@ -258,18 +259,25 @@ export function AssetsSection({ data }: AssetsSectionProps) {
 
 			if (matchesSearch && matchesLocationType) {
 				row.style.display = '';
+				row.removeAttribute('data-filtered');
 			} else {
 				row.style.display = 'none';
+				row.setAttribute('data-filtered', 'true');
 			}
 		});
 
 		// Update footer count
 		const visibleRows = rows.filter(
-			(row) => row.style.display !== 'none'
+			(row) => !row.hasAttribute('data-filtered')
 		).length;
 		const footer = table?.querySelector('tfoot td');
 		if (footer) {
 			footer.textContent = 'Visible assets: ' + visibleRows.toLocaleString() + ' of ' + rows.length.toLocaleString();
+		}
+
+		// Trigger pagination update if available
+		if (window['pagination_${tableId}']) {
+			window['pagination_${tableId}'].reset();
 		}
 	}
 

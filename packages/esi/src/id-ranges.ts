@@ -31,6 +31,10 @@ export type IdRangeType =
 	| 'legacy_entity'
 	| 'dust_character_post_2016'
 	| 'character_post_2016'
+	| 'character'
+	| 'dust_character'
+	| 'corporation'
+	| 'alliance'
 	| 'structure'
 	| 'unknown'
 	| 'invalid'
@@ -205,4 +209,49 @@ export function getIdClassification(id: number | string | bigint): IdClassificat
 export function isStructureId(id: number | string | bigint): boolean {
 	const numericId = normalizeId(id)
 	return numericId !== null && numericId >= MIN_STRUCTURE_ID && numericId <= MAX_STRUCTURE_ID
+}
+
+/**
+ * Normalize a specific ID range type to a simplified entity type
+ * Maps date-specific types (e.g., character_2010_2016) to generic types (e.g., character)
+ * @param type - Specific ID range type from classification
+ * @returns Simplified entity type
+ */
+export function normalizeEntityType(type: IdRangeType): IdRangeType {
+	switch (type) {
+		case 'character_2010_2016':
+		case 'character_post_2016':
+			return 'character'
+		case 'dust_character_post_2016':
+			return 'dust_character'
+		case 'corporation_post_2010':
+			return 'corporation'
+		case 'alliance_post_2010':
+			return 'alliance'
+		case 'legacy_entity':
+			// Legacy entity could be character, corporation, or alliance
+			// We'll keep it as legacy_entity for now, but could be normalized further if needed
+			return 'legacy_entity'
+		default:
+			return type
+	}
+}
+
+/**
+ * Normalize an ID value to a string format suitable for API calls
+ * Handles string, number, and null/undefined inputs
+ * @param value - ID value to normalize
+ * @returns Normalized string ID or undefined if invalid
+ */
+export function normalizeIdToString(value?: string | number | null): string | undefined {
+	if (value === undefined || value === null) {
+		return undefined
+	}
+
+	if (typeof value === 'number') {
+		return Number.isFinite(value) ? String(Math.trunc(value)) : undefined
+	}
+
+	const trimmed = value.trim()
+	return trimmed.length > 0 ? trimmed : undefined
 }

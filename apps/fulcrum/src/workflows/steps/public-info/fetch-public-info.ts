@@ -18,14 +18,14 @@ export async function fetchFromEsi(esiStub: Esi, characterId: string) {
 }
 
 /**
- * Fetch public character info from ESI and conditionally store in R2
+ * Fetch public character info from ESI and store in R2
  *
  * @param esiBinding - ESI Durable Object namespace
  * @param bucket - R2 bucket for storage
  * @param bucketName - Name of R2 bucket
  * @param characterId - EVE character ID
  * @param workflowInstanceId - Workflow instance ID for R2 key generation
- * @returns StepResult indicating where data is stored
+ * @returns StepResult with R2 location reference
  */
 export async function fetchPublicInfo(
 	esiBinding: DurableObjectNamespace,
@@ -41,7 +41,7 @@ export async function fetchPublicInfo(
 		// Fetch public info from ESI
 		const data = await fetchFromEsi(stub, characterId)
 
-		// Store or return based on size
+		// Store in R2
 		return await storeOrReturn(bucket, bucketName, workflowInstanceId, 'fetch-public-info', data)
 	} catch (error) {
 		return {

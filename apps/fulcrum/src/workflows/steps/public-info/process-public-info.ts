@@ -60,7 +60,7 @@ export async function processPublicInfo(
 		// Enrich data by resolving IDs to names
 		const enrichedData = await enrichPublicInfo(env, publicInfo)
 
-		// Store or return based on size
+		// Store in R2
 		return await storeOrReturn(
 			bucket,
 			bucketName,

@@ -1,13 +1,11 @@
 /**
- * Storage utilities for conditional R2 storage
- * Uses smart logic: only store in R2 if data exceeds 1 MiB
+ * Storage utilities for R2 storage for workflow steps
+ * All step outputs are stored in R2 to enable analyze steps to access previous outputs
  */
 
 import {
-	calculateJsonSize,
 	safeJsonParse,
 	safeJsonStringify,
-	shouldStoreInR2,
 } from './json'
 
 /**
@@ -44,15 +42,16 @@ export async function storeInR2(
 }
 
 /**
- * Conditionally store data in R2 or return in payload
- * Main storage decision function
+ * Store data in R2
+ * All step outputs are stored in R2 regardless of size to enable analyze steps
+ * to access previous step outputs for finding connections between entities
  *
  * @param bucket - R2 bucket to store data in
  * @param bucketName - Name of the bucket for reference
  * @param workflowInstanceId - Workflow instance ID
  * @param stepId - Step identifier
  * @param data - Data to store
- * @returns StepResult indicating where data is stored
+ * @returns StepResult with R2 location reference
  */
 export async function storeOrReturn<T>(
 	bucket: R2Bucket,
@@ -61,17 +60,9 @@ export async function storeOrReturn<T>(
 	stepId: string,
 	data: T,
 ): Promise<StepResult<T>> {
-	const sizeBytes = calculateJsonSize(data)
-
-	if (shouldStoreInR2(sizeBytes)) {
-		// Data is large - store in R2
-		const r2Key = generateR2Key(workflowInstanceId, stepId)
-		await storeInR2(bucket, r2Key, data)
-		return { source: 'r2', success: true, r2Bucket: bucketName, r2Key }
-	}
-
-	// Data is small - return in payload
-	return { source: 'payload', success: true, data }
+	const r2Key = generateR2Key(workflowInstanceId, stepId)
+	await storeInR2(bucket, r2Key, data)
+	return { source: 'r2', success: true, r2Bucket: bucketName, r2Key }
 }
 
 /**

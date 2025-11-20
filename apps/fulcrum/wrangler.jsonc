@@ -67,5 +67,11 @@
 			"bucket_name": "test-alliance-fulcrum-reports",
 			"remote": true
 		}
+	],
+	"services": [
+		{
+			"binding": "EVE_STATIC_DATA",
+			"service": "eve-static-data"
+		}
 	]
 }

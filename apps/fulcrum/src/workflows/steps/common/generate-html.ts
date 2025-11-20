@@ -35,6 +35,7 @@ export async function generateHtmlReport(
 	processAssetsResult?: StepResult,
 	processWalletTransactionsResult?: StepResult,
 	processWalletJournalResult?: StepResult,
+	processContactsResult?: StepResult,
 ): Promise<{ bucket: string; key: string }> {
 	// Retrieve processed data
 	const publicInfoData = processResult.success
@@ -58,9 +59,14 @@ export async function generateHtmlReport(
 			? await retrieveData(getBucket, processWalletJournalResult)
 			: null
 
+	const contactsData =
+		processContactsResult?.success && processContactsResult
+			? await retrieveData(getBucket, processContactsResult)
+			: null
+
 	// Collect all available data
 	const results = collectResults(
-		[publicInfoData, assetsData, walletTransactionsData, walletJournalData].filter(
+		[publicInfoData, assetsData, walletTransactionsData, walletJournalData, contactsData].filter(
 			(d) => d !== null && d !== undefined,
 		),
 	)

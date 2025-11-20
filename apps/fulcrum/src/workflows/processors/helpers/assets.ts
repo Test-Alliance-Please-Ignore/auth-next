@@ -4,12 +4,11 @@
  */
 
 import { getStub } from '@repo/do-utils'
+import { isStructureId } from '@repo/esi'
 
 import { isRateLimitError, retryWithBackoff } from '../../utils/retry'
-import { resolveTypeIds } from '../../utils/type-resolver'
 
-import { isStructureId } from '@repo/esi'
-import type { CharacterAsset, Esi } from '@repo/esi'
+import type { CharacterAsset, Esi, EsiTypeResolver } from '@repo/esi'
 
 /**
  * Enriched character asset with resolved names
@@ -17,6 +16,8 @@ import type { CharacterAsset, Esi } from '@repo/esi'
 export interface ProcessedAsset extends CharacterAsset {
 	typeName?: string
 	locationName?: string
+	marketGroupName?: string | null
+	categoryName?: string
 	processedAt: string
 }
 
@@ -39,6 +40,7 @@ export async function enrichAssets(
 	env: {
 		ESI_TYPE_RESOLVER: DurableObjectNamespace
 		ESI: DurableObjectNamespace
+		EVE_STATIC_DATA: Fetcher
 	},
 	assets: CharacterAsset[],
 	characterId: string
@@ -103,14 +105,62 @@ export async function enrichAssets(
 		skippedItemLocationIds: itemLocationIds.length,
 	})
 
-	const nameMap = await resolveTypeIds(env, allIdsToResolve)
+	const typeResolver = getStub<EsiTypeResolver>(env.ESI_TYPE_RESOLVER, 'global')
+	const nameMap = await typeResolver.resolveIds(allIdsToResolve)
+
+	// Fetch type metadata (market group and category) for all unique type IDs
+	const typeMetadataMap: Record<
+		string,
+		{
+			marketGroupName: string | null
+			categoryName: string
+		}
+	> = {}
+	if (uniqueTypeIds.length > 0) {
+		try {
+			// Batch fetch metadata in chunks of 1000 (API limit)
+			const BATCH_SIZE = 1000
+			for (let i = 0; i < uniqueTypeIds.length; i += BATCH_SIZE) {
+				const batch = uniqueTypeIds.slice(i, i + BATCH_SIZE)
+				const response = await env.EVE_STATIC_DATA.fetch('http://internal/types/metadata', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+					},
+					body: JSON.stringify({ typeIds: batch }),
+				})
+
+				if (response.ok) {
+					const batchMetadata = await response.json<
+						Record<
+							string,
+							{
+								marketGroupName: string | null
+								categoryName: string
+							}
+						>
+					>()
+					Object.assign(typeMetadataMap, batchMetadata)
+				} else {
+					console.warn('[enrichAssets] Failed to fetch type metadata', {
+						status: response.status,
+						batchSize: batch.length,
+					})
+				}
+			}
+		} catch (error) {
+			console.error('[enrichAssets] Error fetching type metadata:', {
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+	}
 
 	// Identify location IDs that are classified as structures
 	const structureLocationIds = Array.from(
 		new Set(
 			[...stationLocationIds, ...systemLocationIds, ...itemLocationIds].filter((id) =>
-				isStructureId(id),
-			),
+				isStructureId(id)
+			)
 		)
 	)
 
@@ -208,10 +258,13 @@ export async function enrichAssets(
 			// 'item' and 'other' types remain undefined
 		}
 
+		const typeMetadata = typeMetadataMap[asset.type_id]
 		const result: ProcessedAsset = {
 			...asset,
 			typeName,
 			locationName,
+			marketGroupName: typeMetadata?.marketGroupName ?? null,
+			categoryName: typeMetadata?.categoryName,
 			processedAt,
 		}
 		return result

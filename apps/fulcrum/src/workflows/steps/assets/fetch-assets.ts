@@ -18,14 +18,14 @@ export async function fetchAssetsFromEsi(esiStub: Esi, characterId: string) {
 }
 
 /**
- * Fetch character assets from ESI and conditionally store in R2
+ * Fetch character assets from ESI and store in R2
  *
  * @param esiBinding - ESI Durable Object namespace
  * @param bucket - R2 bucket for storage
  * @param bucketName - Name of R2 bucket
  * @param characterId - EVE character ID
  * @param workflowInstanceId - Workflow instance ID for R2 key generation
- * @returns StepResult indicating where data is stored
+ * @returns StepResult with R2 location reference
  */
 export async function fetchAssets(
 	esiBinding: DurableObjectNamespace,
@@ -41,7 +41,7 @@ export async function fetchAssets(
 		// Fetch assets from ESI
 		const data = await fetchAssetsFromEsi(stub, characterId)
 
-		// Store or return based on size
+		// Store in R2
 		return await storeOrReturn(bucket, bucketName, workflowInstanceId, 'fetch-assets', data)
 	} catch (error) {
 		return {

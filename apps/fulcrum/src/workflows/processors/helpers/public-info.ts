@@ -1,11 +1,11 @@
+import { getStub } from '@repo/do-utils'
+
+import type { CharacterPublicInfo, EsiTypeResolver } from '@repo/esi'
+
 /**
  * Data enrichment functions for public character information
  * Resolves IDs to human-readable names using ESI Type Resolver
  */
-
-import { resolveTypeIds } from '../../utils/type-resolver'
-
-import type { CharacterPublicInfo } from '@repo/esi'
 
 /**
  * Enriched public character information with resolved names
@@ -44,7 +44,7 @@ export async function enrichPublicInfo(
 	data: CharacterPublicInfo
 ): Promise<ProcessedPublicInfo> {
 	// Collect all IDs that need resolution
-	const idsToResolve: string[] = [data.corporation_id, data.race_id, data.bloodline_id]
+	const idsToResolve: string[] = [data.corporation_id]
 
 	if (data.alliance_id) {
 		idsToResolve.push(data.alliance_id)
@@ -55,7 +55,8 @@ export async function enrichPublicInfo(
 	}
 
 	// Batch resolve all IDs at once using helper
-	const nameMap = await resolveTypeIds(env, idsToResolve)
+	const typeResolver = getStub<EsiTypeResolver>(env.ESI_TYPE_RESOLVER, 'global')
+	const nameMap = await typeResolver.resolveIds(idsToResolve)
 
 	console.log('[enrichPublicInfo] Resolution complete', {
 		idsToResolve,

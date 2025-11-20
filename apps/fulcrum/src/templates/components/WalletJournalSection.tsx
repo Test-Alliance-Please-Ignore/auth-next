@@ -1,13 +1,11 @@
-import { useState } from 'preact/hooks'
-
 import type { ProcessedWalletJournalEntries } from '../../workflows/processors/helpers/wallet-journal'
+import { PaginationControls } from './PaginationControls'
 
 interface WalletJournalSectionProps {
 	data: ProcessedWalletJournalEntries
 }
 
 export function WalletJournalSection({ data }: WalletJournalSectionProps) {
-	const [isCollapsed, setIsCollapsed] = useState(false)
 	const tableId = `wallet-journal-table-${Date.now()}`
 
 	if (data.length === 0) {
@@ -18,23 +16,10 @@ export function WalletJournalSection({ data }: WalletJournalSectionProps) {
 		a.localeCompare(b),
 	)
 
-	const toggleCollapse = () => setIsCollapsed((prev) => !prev)
-
 	return (
-		<section className="collapsible-section">
-			<h2
-				className="collapsible-header"
-				onClick={toggleCollapse}
-				data-section-id={`wallet-journal-${tableId}`}
-			>
-				Wallet Journal
-				<span className="collapse-indicator">{isCollapsed ? '▶' : '▼'}</span>
-			</h2>
-			<div
-				className="collapsible-content"
-				id={`wallet-journal-${tableId}`}
-				style={{ display: isCollapsed ? 'none' : '' }}
-			>
+		<section>
+			<h2>Wallet Journal</h2>
+			<div>
 				<div className="assets-controls">
 					<div className="search-control">
 						<label htmlFor={`${tableId}-search`}>Search:</label>
@@ -70,6 +55,8 @@ export function WalletJournalSection({ data }: WalletJournalSectionProps) {
 						</select>
 					</div>
 				</div>
+
+				<PaginationControls tableId={tableId} totalItems={data.length} defaultItemsPerPage={25} />
 
 				<div className="table-container">
 					<table id={tableId} className="assets-table wallet-journal-table">
@@ -274,16 +261,23 @@ export function WalletJournalSection({ data }: WalletJournalSectionProps) {
 
 			if (matchesRefType && matchesAmount && matchesSearch) {
 				row.style.display = '';
+				row.removeAttribute('data-filtered');
 			} else {
 				row.style.display = 'none';
+				row.setAttribute('data-filtered', 'true');
 			}
 		});
 
-		const visibleRows = rows.filter((row) => row.style.display !== 'none').length;
+		const visibleRows = rows.filter((row) => !row.hasAttribute('data-filtered')).length;
 		const footer = table?.querySelector('tfoot td');
 		if (footer) {
 			footer.textContent =
 				'Visible entries: ' + visibleRows.toLocaleString() + ' of ' + rows.length.toLocaleString();
+		}
+
+		// Trigger pagination update if available
+		if (window['pagination_${tableId}']) {
+			window['pagination_${tableId}'].reset();
 		}
 	}
 

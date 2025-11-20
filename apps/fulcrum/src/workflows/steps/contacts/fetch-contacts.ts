@@ -1,5 +1,5 @@
 /**
- * Fetch character wallet transactions from ESI
+ * Fetch character contacts from ESI
  */
 
 import { getEsiInstanceForCharacter } from '@repo/esi'
@@ -10,15 +10,15 @@ import type { Esi } from '@repo/esi'
 import type { StepResult } from '../../utils/storage'
 
 /**
- * Fetch wallet transactions from ESI stub
+ * Fetch contacts from ESI stub
  * Separated for testability
  */
-export async function fetchWalletTransactionsFromEsi(esiStub: Esi, characterId: string) {
-	return await esiStub.fetchCharacterMarketTransactions(characterId)
+export async function fetchContactsFromEsi(esiStub: Esi, characterId: string) {
+	return await esiStub.fetchCharacterContacts(characterId)
 }
 
 /**
- * Fetch character wallet transactions from ESI and store in R2
+ * Fetch character contacts from ESI and store in R2
  *
  * @param esiBinding - ESI Durable Object namespace
  * @param bucket - R2 bucket for storage
@@ -27,7 +27,7 @@ export async function fetchWalletTransactionsFromEsi(esiStub: Esi, characterId: 
  * @param workflowInstanceId - Workflow instance ID for R2 key generation
  * @returns StepResult with R2 location reference
  */
-export async function fetchWalletTransactions(
+export async function fetchContacts(
 	esiBinding: DurableObjectNamespace,
 	bucket: R2Bucket,
 	bucketName: string,
@@ -38,17 +38,11 @@ export async function fetchWalletTransactions(
 		// Get character-specific ESI stub for caching
 		const stub = getEsiInstanceForCharacter(esiBinding, characterId)
 
-		// Fetch wallet transactions from ESI
-		const data = await fetchWalletTransactionsFromEsi(stub, characterId)
+		// Fetch contacts from ESI
+		const data = await fetchContactsFromEsi(stub, characterId)
 
 		// Store in R2
-		return await storeOrReturn(
-			bucket,
-			bucketName,
-			workflowInstanceId,
-			'fetch-wallet-transactions',
-			data
-		)
+		return await storeOrReturn(bucket, bucketName, workflowInstanceId, 'fetch-contacts', data)
 	} catch (error) {
 		return {
 			source: 'none',
@@ -57,3 +51,4 @@ export async function fetchWalletTransactions(
 		}
 	}
 }
+

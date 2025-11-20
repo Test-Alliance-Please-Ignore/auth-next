@@ -4,12 +4,12 @@
  */
 
 import { getStub } from '@repo/do-utils'
-
-import { resolveTypeIds } from '../../utils/type-resolver'
-import { retryWithBackoff, isRateLimitError } from '../../utils/retry'
-
 import { isStructureId } from '@repo/esi'
-import type { CharacterMarketTransaction, Esi } from '@repo/esi'
+
+import { formatCurrency } from '../../utils/formatting'
+import { isRateLimitError, retryWithBackoff } from '../../utils/retry'
+
+import type { CharacterMarketTransaction, Esi, EsiTypeResolver } from '@repo/esi'
 
 /**
  * Enriched wallet transaction with resolved names
@@ -18,6 +18,8 @@ export interface ProcessedWalletTransaction extends CharacterMarketTransaction {
 	typeName?: string
 	clientName?: string
 	locationName?: string
+	marketGroupName?: string | null
+	categoryName?: string
 	totalValue: string
 	processedAt: string
 }
@@ -41,9 +43,10 @@ export async function enrichWalletTransactions(
 	env: {
 		ESI_TYPE_RESOLVER: DurableObjectNamespace
 		ESI: DurableObjectNamespace
+		EVE_STATIC_DATA: Fetcher
 	},
 	transactions: CharacterMarketTransaction[],
-	characterId: string,
+	characterId: string
 ): Promise<ProcessedWalletTransactions> {
 	if (transactions.length === 0) {
 		return []
@@ -83,13 +86,59 @@ export async function enrichWalletTransactions(
 		totalIdsToResolve: allIdsToResolve.length,
 	})
 
-	const nameMap = await resolveTypeIds(env, allIdsToResolve)
+	const typeResolver = getStub<EsiTypeResolver>(env.ESI_TYPE_RESOLVER, 'global')
+	const nameMap = await typeResolver.resolveIds(allIdsToResolve)
+
+	// Fetch type metadata (market group and category) for all unique type IDs
+	const typeMetadataMap: Record<
+		string,
+		{
+			marketGroupName: string | null
+			categoryName: string
+		}
+	> = {}
+	if (uniqueTypeIds.length > 0) {
+		try {
+			// Batch fetch metadata in chunks of 1000 (API limit)
+			const BATCH_SIZE = 1000
+			for (let i = 0; i < uniqueTypeIds.length; i += BATCH_SIZE) {
+				const batch = uniqueTypeIds.slice(i, i + BATCH_SIZE)
+				const response = await env.EVE_STATIC_DATA.fetch('http://internal/types/metadata', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+					},
+					body: JSON.stringify({ typeIds: batch }),
+				})
+
+				if (response.ok) {
+					const batchMetadata = await response.json<
+						Record<
+							string,
+							{
+								marketGroupName: string | null
+								categoryName: string
+							}
+						>
+					>()
+					Object.assign(typeMetadataMap, batchMetadata)
+				} else {
+					console.warn('[enrichWalletTransactions] Failed to fetch type metadata', {
+						status: response.status,
+						batchSize: batch.length,
+					})
+				}
+			}
+		} catch (error) {
+			console.error('[enrichWalletTransactions] Error fetching type metadata:', {
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+	}
 
 	// Identify location IDs that are classified as structures
 	const structureLocationIds = Array.from(
-		new Set(
-			uniqueLocationIds.filter((id) => isStructureId(id)),
-		)
+		new Set(uniqueLocationIds.filter((id) => isStructureId(id)))
 	)
 
 	console.log('[enrichWalletTransactions] Resolution complete', {
@@ -143,10 +192,13 @@ export async function enrichWalletTransactions(
 			} catch (error) {
 				// If it's a rate limit error and we've exhausted retries, skip this structure
 				if (isRateLimitError(error)) {
-					console.warn('[enrichWalletTransactions] Rate limit error after retries, skipping structure', {
-						structureId,
-						error: error instanceof Error ? error.message : String(error),
-					})
+					console.warn(
+						'[enrichWalletTransactions] Rate limit error after retries, skipping structure',
+						{
+							structureId,
+							error: error instanceof Error ? error.message : String(error),
+						}
+					)
 				} else {
 					// Structure not found, no access, or other error - skip it
 					console.warn('[enrichWalletTransactions] Failed to fetch structure info', {
@@ -190,13 +242,16 @@ export async function enrichWalletTransactions(
 		}
 
 		// Calculate total value
-		const totalValue = (transaction.quantity * transaction.unit_price).toString()
+		const totalValue = formatCurrency(transaction.quantity * transaction.unit_price) ?? '0.00'
 
+		const typeMetadata = typeMetadataMap[transaction.type_id]
 		const result: ProcessedWalletTransaction = {
 			...transaction,
 			typeName,
 			clientName,
 			locationName,
+			marketGroupName: typeMetadata?.marketGroupName ?? null,
+			categoryName: typeMetadata?.categoryName,
 			totalValue,
 			processedAt,
 		}
@@ -219,4 +274,3 @@ export async function enrichWalletTransactions(
 
 	return enriched
 }
-

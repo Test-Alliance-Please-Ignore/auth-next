@@ -24,6 +24,7 @@ export async function processWalletTransactions(
 	env: {
 		ESI_TYPE_RESOLVER: DurableObjectNamespace
 		ESI: DurableObjectNamespace
+		EVE_STATIC_DATA: Fetcher
 	},
 	getBucket: (name: string) => R2Bucket,
 	bucket: R2Bucket,
@@ -91,7 +92,7 @@ export async function processWalletTransactions(
 				: null,
 		})
 
-		// Store or return based on size
+		// Store in R2
 		const result = await storeOrReturn(
 			bucket,
 			bucketName,

@@ -32,11 +32,17 @@ export const users = pgTable(
 		lastDiscordRefresh: timestamp('last_discord_refresh', { withTimezone: true }),
 		createdAt: timestamp('created_at').defaultNow().notNull(),
 		updatedAt: timestamp('updated_at').defaultNow().notNull(),
+		legacyAuthUserId: text('legacy_auth_user_id').unique(),
+		legacyAuthUserUsername: text('legacy_auth_user_username').unique(),
+		legacyAuthUserEmailHash: text('legacy_auth_user_email_hash').unique(),
 	},
 	(table) => [
 		index('users_main_character_id_idx').on(table.mainCharacterId),
 		index('users_discord_user_id_idx').on(table.discordUserId),
 		index('users_last_discord_refresh_idx').on(table.lastDiscordRefresh),
+		index('users_legacy_auth_user_id_idx').on(table.legacyAuthUserId),
+		index('users_legacy_auth_user_username_idx').on(table.legacyAuthUserUsername),
+		index('users_legacy_auth_user_email_hash_idx').on(table.legacyAuthUserEmailHash),
 	]
 )
 

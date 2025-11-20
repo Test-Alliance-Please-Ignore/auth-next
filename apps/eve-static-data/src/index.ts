@@ -457,4 +457,69 @@ app.get('/items/search', async (c) => {
 	}
 })
 
+// Get type metadata (market group and category) by type IDs
+app.post('/types/metadata', async (c) => {
+	const db = c.get('db')
+
+	// Get the request body
+	const body = await c.req.json<{ typeIds?: string[] }>().catch(() => null)
+
+	if (!body || !body.typeIds) {
+		return c.json({ error: 'Missing typeIds in request body' }, 400)
+	}
+
+	const { typeIds } = body
+
+	if (!Array.isArray(typeIds) || typeIds.length === 0) {
+		return c.json({ error: 'typeIds must be a non-empty array' }, 400)
+	}
+
+	// Limit batch size to prevent abuse
+	if (typeIds.length > 1000) {
+		return c.json({ error: 'Maximum 1000 typeIds allowed per request' }, 400)
+	}
+
+	try {
+		const results = await db
+			.select({
+				typeId: schema.invTypes.typeId,
+				marketGroupId: schema.invTypes.marketGroupId,
+				marketGroupName: schema.marketGroups.marketGroupName,
+				categoryName: schema.invCategories.categoryName,
+			})
+			.from(schema.invTypes)
+			.innerJoin(schema.invGroups, eq(schema.invTypes.groupId, schema.invGroups.groupId))
+			.innerJoin(
+				schema.invCategories,
+				eq(schema.invGroups.categoryId, schema.invCategories.categoryId)
+			)
+			.leftJoin(
+				schema.marketGroups,
+				eq(schema.invTypes.marketGroupId, schema.marketGroups.marketGroupId)
+			)
+			.where(inArray(schema.invTypes.typeId, typeIds))
+
+		// Convert to map for easy lookup
+		const metadataMap: Record<
+			string,
+			{
+				marketGroupName: string | null
+				categoryName: string
+			}
+		> = {}
+
+		for (const row of results) {
+			metadataMap[row.typeId] = {
+				marketGroupName: row.marketGroupName ?? null,
+				categoryName: row.categoryName,
+			}
+		}
+
+		return c.json(metadataMap)
+	} catch (error) {
+		console.error('Error fetching type metadata:', error)
+		return c.json({ error: 'Failed to fetch type metadata' }, 500)
+	}
+})
+
 export default app
