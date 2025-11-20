@@ -20,13 +20,19 @@
 		"test": "run-vitest"
 	},
 	"dependencies": {
+		"@hono/zod-validator": "0.7.4",
 		"@neondatabase/serverless": "1.0.2",
-		"@repo/fulcrum": "workspace:*",
 		"@repo/db-utils": "workspace:*",
+		"@repo/do-utils": "workspace:*",
+		"@repo/esi": "workspace:*",
+		"@repo/fulcrum": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
 		"drizzle-orm": "0.44.7",
 		"hono": "4.10.6",
-		"workers-tagged-logger": "0.13.7"
+		"preact": "^10.27.2",
+		"preact-render-to-string": "^6.6.3",
+		"workers-tagged-logger": "0.13.7",
+		"zod": "4.1.12"
 	},
 	"devDependencies": {
 		"@cloudflare/vite-plugin": "1.15.0",

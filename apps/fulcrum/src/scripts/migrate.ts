@@ -2,6 +2,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { config } from 'dotenv'
 
+import { logger } from '@repo/hono-helpers'
 import { migrate } from '@repo/db-utils'
 
 import drizzleConfig from '../../drizzle.config'
@@ -23,16 +24,19 @@ async function main() {
 		throw new Error('DATABASE_URL_MIGRATIONS environment variable is required')
 	}
 
-	console.log('Running migrations for fulcrum worker...')
+	logger.info('Running migrations for fulcrum worker')
 
 	const db = createDb(databaseUrl)
 	await migrate(db, { migrationsFolder: drizzleConfig.out! })
 
-	console.log('Migrations completed successfully!')
+	logger.info('Migrations completed successfully')
 	process.exit(0)
 }
 
 main().catch((error) => {
-	console.error('Migration failed:', error)
+	logger.error('Migration failed', {
+		error: error instanceof Error ? error.message : String(error),
+		errorStack: error instanceof Error ? error.stack : undefined,
+	})
 	process.exit(1)
 })

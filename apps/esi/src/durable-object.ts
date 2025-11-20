@@ -50,6 +50,7 @@ import {
 	transformCorporationWalletTransactions,
 	transformCorporationWallets,
 	transformCorporationHistoryEntry,
+	transformStructureInfo,
 } from './lib/esi-transforms'
 import { createEsiDb, runEsiMigrations } from './storage'
 
@@ -147,6 +148,9 @@ import type {
 	EsiCorporationWallet,
 	EsiCorporationWalletJournalEntry,
 	EsiCorporationWalletTransaction,
+	EsiStructureInfo,
+	EsiTypeResolver,
+	StructureInfo,
 } from '@repo/esi'
 import type { Env } from './context'
 import type { EsiDb } from './storage/state'
@@ -177,20 +181,33 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 		})
 	}
 
-	@UsePublicAuth
+	@UseCharacterAuth
 	async fetchCharacterPublicInfo(characterId: string): Promise<CharacterPublicInfo> {
 		const result = await this.esiFetcher.fetchEsi<EsiCharacterPublicInfo>(
 			`/characters/${characterId}`
 		)
-		if (result.data.length === 0) {
+
+		logger.info(`[fetchCharacterPublicInfo] Result: ${JSON.stringify(result)}`)
+
+		if (!result || !result.data) {
+			logger.info(`[fetchCharacterPublicInfo] No data found for character ID: ${characterId}`, {
+				characterId,
+				result,
+			})
 			throw new Error(`No character public info found for character ID: ${characterId}`)
 		}
-		return transformCharacterPublicInfo(result.data[0])
+		const transformed = transformCharacterPublicInfo(result.data)
+
+		logger.info(`[fetchCharacterPublicInfo] Transformed: ${JSON.stringify(transformed)}`, {
+			characterId,
+			transformed,
+		})
+		return transformed
 	}
 
 	@UseCharacterAuth
 	async fetchCharacterNotifications(characterId: string): Promise<CharacterNotification[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCharacterNotification>(
+		const result = await this.esiFetcher.fetchEsi<EsiCharacterNotification[]>(
 			`/characters/${characterId}/notifications`
 		)
 		return transformCharacterNotifications(result.data)
@@ -198,7 +215,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 
 	@UseCharacterAuth
 	async fetchCharacterAgentResearch(characterId: string): Promise<CharacterAgentResearch[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCharacterAgentResearch>(
+		const result = await this.esiFetcher.fetchEsi<EsiCharacterAgentResearch[]>(
 			`/characters/${characterId}/agents_research`
 		)
 		return transformCharacterAgentResearch(result.data)
@@ -206,7 +223,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 
 	@UseCharacterAuth
 	async fetchCharacterAssets(characterId: string): Promise<CharacterAsset[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCharacterAsset>(
+		const result = await this.esiFetcher.fetchEsiPaginated<EsiCharacterAsset>(
 			`/characters/${characterId}/assets`
 		)
 		return transformCharacterAsset(result.data)
@@ -217,15 +234,15 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 		const result = await this.esiFetcher.fetchEsi<EsiCharacterAttributes>(
 			`/characters/${characterId}/attributes`
 		)
-		if (result.data.length === 0) {
+		if (!result.data) {
 			throw new Error(`No character attributes found for character ID: ${characterId}`)
 		}
-		return transformCharacterAttributes(result.data[0])
+		return transformCharacterAttributes(result.data)
 	}
 
 	@UseCharacterAuth
 	async fetchCharacterBlueprints(characterId: string): Promise<CharacterBlueprint[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCharacterBlueprint>(
+		const result = await this.esiFetcher.fetchEsi<EsiCharacterBlueprint[]>(
 			`/characters/${characterId}/blueprints`
 		)
 		return transformCharacterBlueprint(result.data)
@@ -233,7 +250,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 
 	@UseCharacterAuth
 	async fetchCharacterCalendar(characterId: string): Promise<CharacterCalendar[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCharacterCalendar>(
+		const result = await this.esiFetcher.fetchEsi<EsiCharacterCalendar[]>(
 			`/characters/${characterId}/calendar`
 		)
 		return transformCharacterCalendar(result.data)
@@ -241,7 +258,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 
 	@UseCharacterAuth
 	async fetchCharacterContacts(characterId: string): Promise<CharacterContact[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCharacterContact>(
+		const result = await this.esiFetcher.fetchEsi<EsiCharacterContact[]>(
 			`/characters/${characterId}/contacts`
 		)
 		return transformCharacterContact(result.data)
@@ -249,7 +266,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 
 	@UseCharacterAuth
 	async fetchCharacterContracts(characterId: string): Promise<CharacterContract[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCharacterContract>(
+		const result = await this.esiFetcher.fetchEsi<EsiCharacterContract[]>(
 			`/characters/${characterId}/contracts`
 		)
 		return transformCharacterContract(result.data)
@@ -257,7 +274,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 
 	@UseCharacterAuth
 	async fetchCharacterFittings(characterId: string): Promise<CharacterFitting[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCharacterFitting>(
+		const result = await this.esiFetcher.fetchEsi<EsiCharacterFitting[]>(
 			`/characters/${characterId}/fittings`
 		)
 		return transformCharacterFitting(result.data)
@@ -268,15 +285,15 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 		const result = await this.esiFetcher.fetchEsi<EsiCharacterLocation>(
 			`/characters/${characterId}/location`
 		)
-		if (result.data.length === 0) {
+		if (!result.data) {
 			throw new Error(`No character location found for character ID: ${characterId}`)
 		}
-		return transformCharacterLocation(result.data[0])
+		return transformCharacterLocation(result.data)
 	}
 
 	@UseCharacterAuth
 	async fetchCharacterMail(characterId: string): Promise<CharacterMail[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCharacterMail>(
+		const result = await this.esiFetcher.fetchEsi<EsiCharacterMail[]>(
 			`/characters/${characterId}/mail`
 		)
 		return transformCharacterMail(result.data)
@@ -284,7 +301,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 
 	@UseCharacterAuth
 	async fetchCharacterMiningLedger(characterId: string): Promise<CharacterMiningLedger[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCharacterMiningLedger>(
+		const result = await this.esiFetcher.fetchEsi<EsiCharacterMiningLedger[]>(
 			`/characters/${characterId}/mining`
 		)
 		return transformCharacterMiningLedger(result.data)
@@ -292,21 +309,21 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 
 	@UseCharacterAuth
 	async fetchCharacterPlanets(characterId: string): Promise<CharacterPlanet[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCharacterPlanet>(
+		const result = await this.esiFetcher.fetchEsi<EsiCharacterPlanet[]>(
 			`/characters/${characterId}/planets`
 		)
 		return transformCharacterPlanet(result.data)
 	}
 
-	@UsePublicAuth
+	@UseCharacterAuth
 	async fetchCharacterPortrait(characterId: string): Promise<CharacterPortrait> {
 		const result = await this.esiFetcher.fetchEsi<EsiCharacterPortrait>(
 			`/characters/${characterId}/portrait`
 		)
-		if (result.data.length === 0) {
+		if (!result.data) {
 			throw new Error(`No character portrait found for character ID: ${characterId}`)
 		}
-		return transformCharacterPortrait(result.data[0])
+		return transformCharacterPortrait(result.data)
 	}
 
 	@UseCharacterAuth
@@ -314,10 +331,10 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 		const result = await this.esiFetcher.fetchEsi<EsiCharacterRoles>(
 			`/characters/${characterId}/roles`
 		)
-		if (result.data.length === 0) {
+		if (!result.data) {
 			throw new Error(`No character roles found for character ID: ${characterId}`)
 		}
-		return transformCharacterRoles(result.data[0])
+		return transformCharacterRoles(result.data)
 	}
 
 	@UseCharacterAuth
@@ -325,15 +342,15 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 		const result = await this.esiFetcher.fetchEsi<EsiCharacterShip>(
 			`/characters/${characterId}/ship`
 		)
-		if (result.data.length === 0) {
+		if (!result.data) {
 			throw new Error(`No character ship found for character ID: ${characterId}`)
 		}
-		return transformCharacterShip(result.data[0])
+		return transformCharacterShip(result.data)
 	}
 
 	@UseCharacterAuth
 	async fetchCharacterSkillQueue(characterId: string): Promise<CharacterSkillQueue[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCharacterSkillQueue>(
+		const result = await this.esiFetcher.fetchEsi<EsiCharacterSkillQueue[]>(
 			`/characters/${characterId}/skillqueue`
 		)
 		return transformCharacterSkillQueue(result.data)
@@ -344,15 +361,15 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 		const result = await this.esiFetcher.fetchEsi<EsiCharacterSkills>(
 			`/characters/${characterId}/skills`
 		)
-		if (result.data.length === 0) {
+		if (!result.data) {
 			throw new Error(`No character skills found for character ID: ${characterId}`)
 		}
-		return transformCharacterSkills(result.data[0])
+		return transformCharacterSkills(result.data)
 	}
 
 	@UseCharacterAuth
 	async fetchCharacterStandings(characterId: string): Promise<CharacterStanding[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCharacterStanding>(
+		const result = await this.esiFetcher.fetchEsi<EsiCharacterStanding[]>(
 			`/characters/${characterId}/standings`
 		)
 		return transformCharacterStanding(result.data)
@@ -360,7 +377,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 
 	@UseCharacterAuth
 	async fetchCharacterTitles(characterId: string): Promise<CharacterTitle[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCharacterTitle>(
+		const result = await this.esiFetcher.fetchEsi<EsiCharacterTitle[]>(
 			`/characters/${characterId}/titles`
 		)
 		return transformCharacterTitle(result.data)
@@ -368,7 +385,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 
 	@UseCharacterAuth
 	async fetchCorporationHistory(characterId: string): Promise<CorporationHistoryEntry[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCorporationHistoryEntry>(
+		const result = await this.esiFetcher.fetchEsi<EsiCorporationHistoryEntry[]>(
 			`/characters/${characterId}/corporationhistory`
 		)
 		return transformCorporationHistoryEntry(result.data)
@@ -376,7 +393,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 
 	@UseCharacterAuth
 	async fetchCharacterMarketOrders(characterId: string): Promise<CharacterMarketOrder[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCharacterMarketOrder>(
+		const result = await this.esiFetcher.fetchEsi<EsiCharacterMarketOrder[]>(
 			`/characters/${characterId}/orders`
 		)
 		return transformCharacterMarketOrder(result.data)
@@ -386,7 +403,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	async fetchCharacterMarketTransactions(
 		characterId: string
 	): Promise<CharacterMarketTransaction[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCharacterMarketTransaction>(
+		const result = await this.esiFetcher.fetchEsi<EsiCharacterMarketTransaction[]>(
 			`/characters/${characterId}/wallet/transactions`
 		)
 		return transformCharacterMarketTransaction(result.data)
@@ -394,7 +411,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 
 	@UseCharacterAuth
 	async fetchCharacterWalletJournal(characterId: string): Promise<CharacterWalletJournalEntry[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCharacterWalletJournalEntry>(
+		const result = await this.esiFetcher.fetchEsi<EsiCharacterWalletJournalEntry[]>(
 			`/characters/${characterId}/wallet/journal`
 		)
 		return transformCharacterWalletJournal(result.data)
@@ -407,7 +424,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	 */
 	@UseCorporationAuth
 	async fetchCorporationMembers(corporationId: string): Promise<CorporationMembers> {
-		const result = await this.esiFetcher.fetchEsi<EsiCorporationMembers>(
+		const result = await this.esiFetcher.fetchEsi<EsiCorporationMembers[]>(
 			`/corporations/${corporationId}/members`
 		)
 		return transformCorporationMembers(result.data)
@@ -422,7 +439,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	async fetchCorporationMemberTracking(
 		corporationId: string
 	): Promise<CorporationMemberTracking[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCorporationMemberTracking>(
+		const result = await this.esiFetcher.fetchEsi<EsiCorporationMemberTracking[]>(
 			`/corporations/${corporationId}/membertracking`
 		)
 		return transformCorporationMemberTracking(result.data)
@@ -435,7 +452,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	 */
 	@UseCorporationAuth
 	async fetchCorporationWallets(corporationId: string): Promise<CorporationWallet[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCorporationWallet>(
+		const result = await this.esiFetcher.fetchEsi<EsiCorporationWallet[]>(
 			`/corporations/${corporationId}/wallets`
 		)
 		return transformCorporationWallets(result.data)
@@ -452,7 +469,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 		corporationId: string,
 		division: number
 	): Promise<CorporationWalletJournalEntry[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCorporationWalletJournalEntry>(
+		const result = await this.esiFetcher.fetchEsi<EsiCorporationWalletJournalEntry[]>(
 			`/corporations/${corporationId}/wallets/${division}/journal`
 		)
 		return transformCorporationWalletJournal(result.data)
@@ -469,7 +486,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 		corporationId: string,
 		division: number
 	): Promise<CorporationWalletTransaction[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCorporationWalletTransaction>(
+		const result = await this.esiFetcher.fetchEsi<EsiCorporationWalletTransaction[]>(
 			`/corporations/${corporationId}/wallets/${division}/transactions`
 		)
 		return transformCorporationWalletTransactions(result.data)
@@ -482,7 +499,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	 */
 	@UseCorporationAuth
 	async fetchCorporationAssets(corporationId: string): Promise<CorporationAsset[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCorporationAsset>(
+		const result = await this.esiFetcher.fetchEsi<EsiCorporationAsset[]>(
 			`/corporations/${corporationId}/assets`
 		)
 		return transformCorporationAssets(result.data)
@@ -495,7 +512,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	 */
 	@UseCorporationAuth
 	async fetchCorporationStructures(corporationId: string): Promise<CorporationStructure[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCorporationStructure>(
+		const result = await this.esiFetcher.fetchEsi<EsiCorporationStructure[]>(
 			`/corporations/${corporationId}/structures`
 		)
 		return transformCorporationStructures(result.data)
@@ -508,7 +525,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	 */
 	@UseCorporationAuth
 	async fetchCorporationOrders(corporationId: string): Promise<CorporationOrder[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCorporationOrder>(
+		const result = await this.esiFetcher.fetchEsi<EsiCorporationOrder[]>(
 			`/corporations/${corporationId}/orders`
 		)
 		return transformCorporationOrders(result.data)
@@ -521,7 +538,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	 */
 	@UseCorporationAuth
 	async fetchCorporationContracts(corporationId: string): Promise<CorporationContract[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCorporationContract>(
+		const result = await this.esiFetcher.fetchEsi<EsiCorporationContract[]>(
 			`/corporations/${corporationId}/contracts`
 		)
 		return transformCorporationContracts(result.data)
@@ -534,7 +551,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	 */
 	@UseCorporationAuth
 	async fetchCorporationIndustryJobs(corporationId: string): Promise<CorporationIndustryJob[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCorporationIndustryJob>(
+		const result = await this.esiFetcher.fetchEsi<EsiCorporationIndustryJob[]>(
 			`/corporations/${corporationId}/industry/jobs`
 		)
 		return transformCorporationIndustryJobs(result.data)
@@ -547,7 +564,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	 */
 	@UseCorporationAuth
 	async fetchCorporationKillmails(corporationId: string): Promise<CorporationKillmail[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCorporationKillmail>(
+		const result = await this.esiFetcher.fetchEsi<EsiCorporationKillmail[]>(
 			`/corporations/${corporationId}/killmails/recent`
 		)
 		return transformCorporationKillmails(result.data)
@@ -558,15 +575,15 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	 * @param corporationId - The EVE corporation identifier.
 	 * @returns Public corporation information.
 	 */
-	@UsePublicAuth
+	@UseCorporationAuth
 	async fetchCorporationPublicInfo(corporationId: string): Promise<CorporationPublicInfo> {
 		const result = await this.esiFetcher.fetchEsi<EsiCorporationPublicInfo>(
 			`/corporations/${corporationId}`
 		)
-		if (result.data.length === 0) {
+		if (!result.data) {
 			throw new Error(`No corporation public info found for corporation ID: ${corporationId}`)
 		}
-		return transformCorporationPublicInfo(result.data[0])
+		return transformCorporationPublicInfo(result.data)
 	}
 
 	/**
@@ -576,7 +593,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	 */
 	@UseCorporationAuth
 	async fetchCorporationContact(corporationId: string): Promise<CorporationContact[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCorporationContact>(
+		const result = await this.esiFetcher.fetchEsi<EsiCorporationContact[]>(
 			`/corporations/${corporationId}/contacts`
 		)
 		return transformCorporationContact(result.data)
@@ -592,10 +609,10 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 		const result = await this.esiFetcher.fetchEsi<EsiCorporationDivision>(
 			`/corporations/${corporationId}/divisions`
 		)
-		if (result.data.length === 0) {
+		if (!result.data) {
 			throw new Error(`No corporation divisions found for corporation ID: ${corporationId}`)
 		}
-		return transformCorporationDivision(result.data[0])
+		return transformCorporationDivision(result.data)
 	}
 
 	/**
@@ -605,7 +622,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	 */
 	@UseCorporationAuth
 	async fetchCorporationFacility(corporationId: string): Promise<CorporationFacility[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCorporationFacility>(
+		const result = await this.esiFetcher.fetchEsi<EsiCorporationFacility[]>(
 			`/corporations/${corporationId}/facilities`
 		)
 		return transformCorporationFacility(result.data)
@@ -616,15 +633,15 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	 * @param corporationId - The EVE corporation identifier.
 	 * @returns Corporation icon information.
 	 */
-	@UsePublicAuth
+	@UseCorporationAuth
 	async fetchCorporationIcon(corporationId: string): Promise<CorporationIcon> {
 		const result = await this.esiFetcher.fetchEsi<EsiCorporationIcon>(
 			`/corporations/${corporationId}/icons`
 		)
-		if (result.data.length === 0) {
+		if (!result.data) {
 			throw new Error(`No corporation icon found for corporation ID: ${corporationId}`)
 		}
-		return transformCorporationIcon(result.data[0])
+		return transformCorporationIcon(result.data)
 	}
 
 	/**
@@ -634,7 +651,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	 */
 	@UseCorporationAuth
 	async fetchCorporationMedal(corporationId: string): Promise<CorporationMedal[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCorporationMedal>(
+		const result = await this.esiFetcher.fetchEsi<EsiCorporationMedal[]>(
 			`/corporations/${corporationId}/medals`
 		)
 		return transformCorporationMedal(result.data)
@@ -647,7 +664,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	 */
 	@UseCorporationAuth
 	async fetchCorporationRole(corporationId: string): Promise<CorporationRole[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCorporationRole>(
+		const result = await this.esiFetcher.fetchEsi<EsiCorporationRole[]>(
 			`/corporations/${corporationId}/roles`
 		)
 		return transformCorporationRole(result.data)
@@ -660,7 +677,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	 */
 	@UseCorporationAuth
 	async fetchCorporationShareholder(corporationId: string): Promise<CorporationShareholder[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCorporationShareholder>(
+		const result = await this.esiFetcher.fetchEsi<EsiCorporationShareholder[]>(
 			`/corporations/${corporationId}/shareholders`
 		)
 		return transformCorporationShareholder(result.data)
@@ -673,7 +690,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	 */
 	@UseCorporationAuth
 	async fetchCorporationStanding(corporationId: string): Promise<CorporationStanding[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCorporationStanding>(
+		const result = await this.esiFetcher.fetchEsi<EsiCorporationStanding[]>(
 			`/corporations/${corporationId}/standings`
 		)
 		return transformCorporationStanding(result.data)
@@ -686,14 +703,122 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	 */
 	@UseCorporationAuth
 	async fetchCorporationTitle(corporationId: string): Promise<CorporationTitle[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCorporationTitle>(
+		const result = await this.esiFetcher.fetchEsi<EsiCorporationTitle[]>(
 			`/corporations/${corporationId}/titles`
 		)
 		return transformCorporationTitle(result.data)
 	}
 
 	/**
+	 * Fetch structure information by ID
+	 * Requires authentication via character with access to the structure
+	 *
+	 * @param characterId - Character ID with access to the structure
+	 * @param structureId - Structure ID to fetch
+	 * @returns Structure name or null if not found/no access
+	 */
+	@UseCharacterAuth
+	async fetchStructureInfo(
+		characterId: string,
+		structureId: string
+	): Promise<StructureInfo | null> {
+		try {
+			// Use 'global' cache key to share structure cache across all characters
+			// Structure data is identical regardless of which character queries it
+			const result = await this.esiFetcher.fetchEsi<EsiStructureInfo>(
+				`/universe/structures/${structureId}`,
+				{ scope: 'global', scopeId: 'global' }
+			)
+			return transformStructureInfo(result.data)
+		} catch (error) {
+			// Structure not found, no access, or other error - return null
+			logger
+				.withTags({
+					structureId,
+					characterId,
+					error: error instanceof Error ? error.message : String(error),
+				})
+				.warn('[fetchStructureInfo] Failed to fetch structure info')
+
+			// Check if it's a 404 or 403 (not found or no access)
+			if (error instanceof Error) {
+				const errorMessage = error.message.toLowerCase()
+				if (errorMessage.includes('404') || errorMessage.includes('403')) {
+					return null
+				}
+			}
+
+			// Re-throw other errors
+			throw error
+		}
+	}
+}
+
+const TYPE_RESOLVER_GLOBAL_CACHE_TTL_SECONDS = 30 * 24 * 60 * 60 // 30 days
+
+export class EsiTypeResolverDO extends DurableObject<Env> implements EsiTypeResolver {
+	private readonly globalCache: KVNamespace
+
+	constructor(
+		public state: DurableObjectState,
+		public env: Env
+	) {
+		super(state, env)
+		this.globalCache = env.ESI_GLOBAL_CACHE
+	}
+
+	private getEntityCacheKey(id: string): string {
+		return `entity:${id}`
+	}
+
+	private async getLocalEntityName(cacheKey: string): Promise<string | null> {
+		try {
+			const cached = await this.state.storage.kv.get<string>(cacheKey)
+			return cached ?? null
+		} catch (error) {
+			logger.withTags({ cacheKey, operation: 'local_read' }).warn('Entity cache read failed', error)
+			return null
+		}
+	}
+
+	private async setLocalEntityName(cacheKey: string, name: string): Promise<void> {
+		try {
+			await this.state.storage.kv.put(cacheKey, name)
+		} catch (error) {
+			logger
+				.withTags({ cacheKey, operation: 'local_write' })
+				.warn('Entity cache write failed', error)
+		}
+	}
+
+	private async getGlobalEntityName(cacheKey: string): Promise<string | null> {
+		try {
+			const cached = await this.globalCache.get(cacheKey)
+			return cached ?? null
+		} catch (error) {
+			logger
+				.withTags({ cacheKey, operation: 'global_read' })
+				.warn('Global cache read failed', error)
+			return null
+		}
+	}
+
+	private async setGlobalEntityName(cacheKey: string, name: string): Promise<void> {
+		try {
+			await this.globalCache.put(cacheKey, name, {
+				expirationTtl: TYPE_RESOLVER_GLOBAL_CACHE_TTL_SECONDS,
+			})
+		} catch (error) {
+			logger
+				.withTags({ cacheKey, operation: 'global_write' })
+				.warn('Global cache write failed', error)
+		}
+	}
+
+	/**
 	 * Resolves EVE IDs to names via the `/universe/names/` bulk endpoint.
+	 * Supported ID's for resolving are: Characters, Corporations, Alliances, Stations,
+	 * Solar Systems, Constellations, Regions, Types, Factions
 	 * Falls back to cached values stored in Durable Object KV.
 	 * @param ids - Array of entity IDs to resolve.
 	 * @returns Map of ID to display name for successfully resolved entities.
@@ -706,22 +831,24 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 		const result: Record<string, string> = {}
 		const idsToResolve: string[] = []
 
-		// Check cache for each ID (non-critical, failures treated as cache miss)
+		// Check cache for each ID (local first, then global KV; failures treated as cache miss)
 		for (const id of ids) {
-			try {
-				const cacheKey = `entity:${id}`
-				const cached = this.state.storage.kv.get<string>(cacheKey)
+			const cacheKey = this.getEntityCacheKey(id)
+			const localCached = await this.getLocalEntityName(cacheKey)
 
-				if (cached !== undefined) {
-					result[id] = cached
-				} else {
-					idsToResolve.push(id)
-				}
-			} catch (error) {
-				// Cache read failure - treat as cache miss
-				logger.withTags({ id, operation: 'cache_read' }).warn('Entity cache read failed', error)
-				idsToResolve.push(id)
+			if (localCached !== null) {
+				result[id] = localCached
+				continue
 			}
+
+			const globalCached = await this.getGlobalEntityName(cacheKey)
+			if (globalCached !== null) {
+				result[id] = globalCached
+				await this.setLocalEntityName(cacheKey, globalCached)
+				continue
+			}
+
+			idsToResolve.push(id)
 		}
 
 		// If all IDs are cached, return early
@@ -798,17 +925,10 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 			for (const entity of data) {
 				const entityId = String(entity.id)
 				result[entityId] = entity.name
-
+				const cacheKey = this.getEntityCacheKey(entityId)
 				// Cache the id→name mapping (non-critical, failures should not prevent returning data)
-				try {
-					const cacheKey = `entity:${entityId}`
-					this.state.storage.kv.put(cacheKey, entity.name)
-				} catch (error) {
-					// Cache write failure - log but don't fail the request
-					logger
-						.withTags({ entityName: entity.name, entityId, operation: 'cache_write' })
-						.warn('Entity cache write failed', error)
-				}
+				await this.setLocalEntityName(cacheKey, entity.name)
+				await this.setGlobalEntityName(cacheKey, entity.name)
 			}
 
 			return result

@@ -4,17 +4,32 @@
 	"main": "src/index.ts",
 	"compatibility_date": "2025-04-28",
 	"compatibility_flags": ["nodejs_compat"],
-	"routes": [],
+	"workers_dev": false,
+	"routes": ["devtest.pleaseignore.app/test/*"],
+	// "routes": [],
 	"logpush": false,
 	"observability": {
 		"enabled": true
 	},
 	"vars": {},
+	"triggers": {
+		"crons": ["0 0 * * *"]
+	},
 	"durable_objects": {
 		"bindings": [
 			{
 				"name": "FULCRUM",
 				"class_name": "Fulcrum"
+			},
+			{
+				"name": "ESI",
+				"class_name": "Esi",
+				"script_name": "esi"
+			},
+			{
+				"name": "ESI_TYPE_RESOLVER",
+				"class_name": "EsiTypeResolver",
+				"script_name": "esi"
 			}
 		]
 	},
@@ -22,6 +37,35 @@
 		{
 			"tag": "v1",
 			"new_sqlite_classes": ["Fulcrum"]
+		}
+	],
+	"workflows": [
+		{
+			"name": "character-report-workflow",
+			"binding": "CHARACTER_REPORT_WORKFLOW",
+			"class_name": "CharacterReportWorkflow"
+		}
+	],
+	"queues": {
+		"producers": [
+			{
+				"queue": "character-reports-queue",
+				"binding": "CHARACTER_REPORTS_QUEUE"
+			}
+		],
+		"consumers": [
+			{
+				"queue": "character-reports-queue",
+				"max_batch_size": 10,
+				"max_batch_timeout": 30
+			}
+		]
+	},
+	"r2_buckets": [
+		{
+			"binding": "CHARACTER_REPORTS",
+			"bucket_name": "test-alliance-fulcrum-reports",
+			"remote": true
 		}
 	]
 }

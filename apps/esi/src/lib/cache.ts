@@ -6,6 +6,25 @@ import { esiCache } from '../storage/schema'
 import type { EsiDb } from '../storage'
 import type { EsiResponse } from './types'
 
+export type CacheScope = 'character' | 'corporation' | 'public' | 'global'
+
+export type CacheScopeContext = {
+	scope: CacheScope
+	scopeId: string
+}
+
+const DEFAULT_GLOBAL_CACHE_TTL_SECONDS = 5 * 60
+
+type SerializedCacheEntry<T> = {
+	data: T
+	expiresAt: string | null
+	etag: string | null
+	pages: number | null
+	page: number | null
+	scope: CacheScope
+	scopeId: string
+}
+
 /**
  * Checks if a response is expired
  * @param response - The response to check
@@ -23,27 +42,37 @@ export class EsiCache {
 	private logger = logger.withTags({ component: 'esi-cache' })
 	private storage: EsiDb
 
-	constructor(private state: DurableObjectState) {
+	constructor(
+		private state: DurableObjectState,
+		private globalCache: KVNamespace
+	) {
 		this.storage = createEsiDb(this.state.storage)
 	}
 
-	private getCacheKey(characterId: string, path: string): string {
-		this.logger.debug('Getting cache key', { characterId, path })
-		return `esi:${characterId}:${path}`
+	private getCacheKey(scope: CacheScopeContext, path: string, page?: number): string {
+		this.logger.debug('Getting cache key', { scope, path, page })
+		const baseKey = `esi:${scope.scope}:${scope.scopeId}:${path}`
+		if (page !== undefined) {
+			return `${baseKey}:page:${page}`
+		}
+		return baseKey
 	}
 
-	async getCachedResponse<T>(characterId: string, path: string): Promise<EsiResponse<T> | null> {
-		const cacheKey = this.getCacheKey(characterId, path)
+	private async getLocalCachedResponse<T>(
+		cacheKey: string,
+		includeExpired: boolean
+	): Promise<EsiResponse<T> | null> {
 		const cachedResponse = await this.storage.query.esiCache.findFirst({
 			where: eq(esiCache.cacheKey, cacheKey),
 		})
 
 		if (!cachedResponse) {
-			this.logger.debug('No cached response found', { cacheKey })
 			return null
 		}
 
-		if (isExpired(cachedResponse)) {
+		const expired = isExpired(cachedResponse)
+
+		if (expired && !includeExpired) {
 			this.logger.debug('Cached response expired. Deleting from db and returning null ', {
 				cacheKey,
 			})
@@ -51,7 +80,6 @@ export class EsiCache {
 			return null
 		}
 
-		this.logger.debug('Returning cached response', { cacheKey })
 		return {
 			data: cachedResponse.data as T,
 			expiresAt: cachedResponse.expiresAt ?? null,
@@ -61,16 +89,147 @@ export class EsiCache {
 		}
 	}
 
-	async setCachedResponse<T>(
-		characterId: string,
+	private async deleteGlobalCache(cacheKey: string): Promise<void> {
+		try {
+			await this.globalCache.delete(cacheKey)
+		} catch (error) {
+			this.logger.warn('Failed to delete global cache entry', {
+				cacheKey,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+	}
+
+	private async getGlobalCachedResponse<T>(cacheKey: string): Promise<EsiResponse<T> | null> {
+		try {
+			const cached = await this.globalCache.get<string>(cacheKey)
+			if (!cached) {
+				return null
+			}
+
+			const parsed = JSON.parse(cached) as SerializedCacheEntry<T>
+			return {
+				data: parsed.data,
+				expiresAt: parsed.expiresAt ? new Date(parsed.expiresAt) : null,
+				etag: parsed.etag,
+				pages: parsed.pages,
+				page: parsed.page,
+			}
+		} catch (error) {
+			this.logger.warn('Failed to parse global cache entry', {
+				cacheKey,
+				error: error instanceof Error ? error.message : String(error),
+			})
+			await this.deleteGlobalCache(cacheKey)
+			return null
+		}
+	}
+
+	private calculateGlobalTtlSeconds(expiresAt: Date | null): number | null {
+		if (!expiresAt) {
+			return DEFAULT_GLOBAL_CACHE_TTL_SECONDS
+		}
+		const ttlMs = expiresAt.getTime() - Date.now()
+		if (ttlMs <= 0) {
+			return null
+		}
+		return Math.max(1, Math.floor(ttlMs / 1000))
+	}
+
+	async getCachedResponse<T>(
+		scope: CacheScopeContext,
 		path: string,
-		response: EsiResponse<T>
+		page?: number,
+		includeExpired = false
+	): Promise<EsiResponse<T> | null> {
+		const cacheKey = this.getCacheKey(scope, path, page)
+		const cachedResponse = await this.getLocalCachedResponse<T>(cacheKey, includeExpired)
+
+		if (cachedResponse) {
+			if (isExpired(cachedResponse) && includeExpired) {
+				this.logger.debug('Returning expired cached response (for ETag/304 handling)', {
+					cacheKey,
+				})
+			} else {
+				this.logger.debug('Returning cached response', { cacheKey })
+			}
+			return cachedResponse
+		}
+
+		this.logger.debug('Local cache miss, checking global cache', { cacheKey })
+		const globalCachedResponse = await this.getGlobalCachedResponse<T>(cacheKey)
+
+		if (!globalCachedResponse) {
+			this.logger.debug('No global cached response found', { cacheKey })
+			return null
+		}
+
+		const globalExpired = isExpired(globalCachedResponse)
+		if (globalExpired && !includeExpired) {
+			this.logger.debug('Global cached response expired, deleting', { cacheKey })
+			await this.deleteGlobalCache(cacheKey)
+			return null
+		}
+
+		this.logger.debug('Hydrating local cache from global cache', { cacheKey })
+		await this.setCachedResponse(scope, path, globalCachedResponse, page, {
+			persistGlobal: false,
+		})
+
+		return globalCachedResponse
+	}
+
+	private async persistGlobalCache<T>(
+		cacheKey: string,
+		response: EsiResponse<T>,
+		scope: CacheScopeContext
 	): Promise<void> {
-		const cacheKey = this.getCacheKey(characterId, path)
+		const ttlSeconds = this.calculateGlobalTtlSeconds(response.expiresAt ?? null)
+
+		if (ttlSeconds === null) {
+			this.logger.debug('Skipping global cache persistence due to missing or expired TTL', {
+				cacheKey,
+			})
+			return
+		}
+
+		const serialized: SerializedCacheEntry<T> = {
+			data: response.data,
+			expiresAt: response.expiresAt ? response.expiresAt.toISOString() : null,
+			etag: response.etag,
+			page: response.page,
+			pages: response.pages,
+			scope: scope.scope,
+			scopeId: scope.scopeId,
+		}
+
+		try {
+			await this.globalCache.put(cacheKey, JSON.stringify(serialized), {
+				expirationTtl: ttlSeconds,
+			})
+			this.logger.debug('Persisted response to global cache', { cacheKey, ttlSeconds })
+		} catch (error) {
+			this.logger.warn('Failed to persist global cache entry', {
+				cacheKey,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+	}
+
+	async setCachedResponse<T>(
+		scope: CacheScopeContext,
+		path: string,
+		response: EsiResponse<T>,
+		page?: number,
+		options?: { persistGlobal?: boolean }
+	): Promise<void> {
+		const cacheKey = this.getCacheKey(scope, path, page)
 		const lastModified = new Date()
+		const persistGlobal = options?.persistGlobal ?? true
 
 		this.logger.debug('Setting cached response', {
 			cacheKey,
+			scope,
 			lastModified,
 			response: {
 				expiresAt: response.expiresAt ?? null,
@@ -80,7 +239,10 @@ export class EsiCache {
 			},
 		})
 		try {
-			this.logger.debug('Inserting cached response into db', { cacheKey })
+			this.logger.debug('Setting cached response in db', { cacheKey, scope })
+			// Delete existing entry first (if any) to ensure clean insert
+			await this.storage.delete(esiCache).where(eq(esiCache.cacheKey, cacheKey))
+			// Insert new entry
 			await this.storage.insert(esiCache).values({
 				cacheKey,
 				data: response.data,
@@ -91,6 +253,10 @@ export class EsiCache {
 				page: response.page ?? null,
 			})
 			this.logger.debug('Cached response set successfully', { cacheKey })
+
+			if (persistGlobal) {
+				await this.persistGlobalCache(cacheKey, response, scope)
+			}
 		} catch (error) {
 			this.logger.error('Error setting cached response', {
 				cacheKey,

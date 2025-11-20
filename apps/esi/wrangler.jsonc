@@ -6,6 +6,7 @@
 	"compatibility_flags": ["nodejs_compat"],
 	"routes": [],
 	"logpush": false,
+	"workers_dev": false,
 	"observability": {
 		"enabled": true
 	},
@@ -15,6 +16,12 @@
 			"type": "Text",
 			"globs": ["**/*.sql"],
 			"fallthrough": true
+		}
+	],
+	"kv_namespaces": [
+		{
+			"binding": "ESI_GLOBAL_CACHE",
+			"id": "cd0f385dd4d6458c80dea2108d51a8f7"
 		}
 	],
 	"durable_objects": {
@@ -33,6 +40,11 @@
 				"name": "EVE_CORPORATION_DATA",
 				"class_name": "EveCorporationData",
 				"script_name": "eve-corporation-data"
+			},
+			{
+				"name": "ESI_TYPE_RESOLVER",
+				"class_name": "EsiTypeResolver",
+				"script_name": "esi"
 			}
 		]
 	},
@@ -40,6 +52,10 @@
 		{
 			"tag": "v1",
 			"new_sqlite_classes": ["Esi"]
+		},
+		{
+			"tag": "v2",
+			"new_sqlite_classes": ["EsiTypeResolver"]
 		}
 	]
 }

@@ -1202,12 +1202,21 @@ importers:
 
   apps/fulcrum:
     dependencies:
+      '@hono/zod-validator':
+        specifier: 0.7.4
+        version: 0.7.4(hono@4.10.6)(zod@4.1.12)
       '@neondatabase/serverless':
         specifier: 1.0.2
         version: 1.0.2
       '@repo/db-utils':
         specifier: workspace:*
         version: link:../../packages/db-utils
+      '@repo/do-utils':
+        specifier: workspace:*
+        version: link:../../packages/do-utils
+      '@repo/esi':
+        specifier: workspace:*
+        version: link:../../packages/esi
       '@repo/fulcrum':
         specifier: workspace:*
         version: link:../../packages/fulcrum
@@ -1220,9 +1229,18 @@ importers:
       hono:
         specifier: 4.10.6
         version: 4.10.6
+      preact:
+        specifier: ^10.27.2
+        version: 10.27.2
+      preact-render-to-string:
+        specifier: ^6.6.3
+        version: 6.6.3(preact@10.27.2)
       workers-tagged-logger:
         specifier: 0.13.7
         version: 0.13.7
+      zod:
+        specifier: 4.1.12
+        version: 4.1.12
     devDependencies:
       '@cloudflare/vite-plugin':
         specifier: 1.15.0
@@ -2148,6 +2166,10 @@ importers:
         version: link:../typescript-config
 
   packages/esi:
+    dependencies:
+      '@repo/do-utils':
+        specifier: workspace:*
+        version: link:../do-utils
     devDependencies:
       '@repo/eslint-config':
         specifier: workspace:*
@@ -7038,6 +7060,14 @@ packages:
   postgres-interval@1.2.0:
     resolution: {integrity: sha512-9ZhXKM/rw350N1ovuWHbGxnGh/SNJ4cnxHiM0rxE4VN41wsg8P8zWn9hv/buK00RP4WvlOyr/RBDiptyxVbkZQ==}
     engines: {node: '>=0.10.0'}
+
+  preact-render-to-string@6.6.3:
+    resolution: {integrity: sha512-7oHG7jzjriqsFPkSPiPnzrQ0GcxFm6wOkYWNdStK5Ks9YlWSQQXKGBRAX4nKDdqX7HAQuRvI4pZNZMycK4WwDw==}
+    peerDependencies:
+      preact: '>=10 || >= 11.0.0-0'
+
+  preact@10.27.2:
+    resolution: {integrity: sha512-5SYSgFKSyhCbk6SrXyMpqjb5+MQBgfvEKE/OC+PujcY34sOpqtr+0AZQtPYx5IA6VxynQ7rUPCtKzyovpj9Bpg==}
 
   prelude-ls@1.2.1:
     resolution: {integrity: sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g==}
@@ -12265,6 +12295,12 @@ snapshots:
   postgres-interval@1.2.0:
     dependencies:
       xtend: 4.0.2
+
+  preact-render-to-string@6.6.3(preact@10.27.2):
+    dependencies:
+      preact: 10.27.2
+
+  preact@10.27.2: {}
 
   prelude-ls@1.2.1: {}
 

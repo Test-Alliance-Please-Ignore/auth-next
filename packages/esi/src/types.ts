@@ -13,3 +13,6 @@ export * from './character-types'
 
 // Export all corporation types
 export * from './corporation-types'
+
+// Export all universe types
+export * from './universe-types'

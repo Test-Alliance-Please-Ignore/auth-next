@@ -1,7 +1,12 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import type { Fulcrum } from '@repo/fulcrum'
+import { logger } from '@repo/hono-helpers'
+import type { CharacterReportMetadata, Fulcrum, ListReportsFilters } from '@repo/fulcrum'
+import { createDb } from './db'
+import type { DbClient } from './db/queries'
+import * as queries from './db/queries'
 import type { Env } from './context'
+import type { WorkflowParams } from './workflows/character-report.workflow'
 
 /**
  * Fulcrum Durable Object
@@ -13,14 +18,205 @@ import type { Env } from './context'
  * - SQLite storage via sql.exec()
  */
 export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
+	private logger = logger.withTags({ component: 'fulcrum-do' })
+
 	/**
 	 * Initialize the Durable Object
 	 */
 	constructor(
 		public state: DurableObjectState,
-		public env: Env
+		public env: Env,
 	) {
 		super(state, env)
+	}
+
+	/**
+	 * Get database client
+	 * Helper method to create database connection
+	 */
+	private getDb(): DbClient {
+		return createDb(this.env.DATABASE_URL)
+	}
+
+	/**
+	 * RPC: Create a new character report
+	 * Creates database record, queues workflow, returns report ID
+	 */
+	async createCharacterReport(
+		characterId: string,
+		requestorUserId: string,
+		requestorCorporationId: string,
+	): Promise<string> {
+		const db = this.getDb()
+
+		// Generate unique report ID
+		const reportId = crypto.randomUUID()
+
+		// Set expiration to 7 days from now
+		const expiresAt = new Date()
+		expiresAt.setDate(expiresAt.getDate() + 7)
+
+		// Create database record
+		await queries.createCharacterReport(db, {
+			id: reportId,
+			characterId,
+			requestorUserId,
+			requestorCorporationId,
+			expiresAt,
+		})
+
+		// Start workflow
+		const workflowParams: WorkflowParams = {
+			reportId,
+			characterId,
+		}
+		await this.env.CHARACTER_REPORT_WORKFLOW.create({
+			id: `${characterId}-${reportId}-${Date.now()}`,
+			params: workflowParams,
+		})
+
+		return reportId
+	}
+
+	/**
+	 * RPC: Get character report status and metadata
+	 * Returns report metadata or null if not found
+	 */
+	async getReportStatus(reportId: string): Promise<CharacterReportMetadata | null> {
+		const db = this.getDb()
+		const report = await queries.getReport(db, reportId)
+
+		if (!report) {
+			return null
+		}
+
+		return {
+			id: report.id,
+			characterId: report.characterId,
+			characterName: report.characterName ?? undefined,
+			status: report.status,
+			requestorUserId: report.requestorUserId,
+			requestorCorporationId: report.requestorCorporationId,
+			workflowInstanceId: report.workflowInstanceId ?? undefined,
+			createdAt: report.createdAt.toISOString(),
+			updatedAt: report.updatedAt.toISOString(),
+			expiresAt: report.expiresAt?.toISOString(),
+			viewedAt: report.viewedAt?.toISOString(),
+			errorMessage: report.errorMessage ?? undefined,
+		}
+	}
+
+	/**
+	 * RPC: Get character report HTML content
+	 * Updates viewed_at timestamp on first view
+	 * Returns HTML or null if not found/expired
+	 */
+	async getReportHtml(reportId: string): Promise<string | null> {
+		const db = this.getDb()
+		const report = await queries.getReport(db, reportId)
+
+		// Check if report exists and is completed
+		if (!report || report.status !== 'completed') {
+			return null
+		}
+
+		// Check if expired
+		if (report.expiresAt && new Date() > report.expiresAt) {
+			return null
+		}
+
+		// Check if R2 location is available
+		if (!report.r2Bucket || !report.r2Key) {
+			return null
+		}
+
+		// Fetch HTML from R2
+		const r2Object = await this.env.CHARACTER_REPORTS.get(report.r2Key)
+		if (!r2Object) {
+			return null
+		}
+
+		const html = await r2Object.text()
+
+		// Mark as viewed (only updates if first view)
+		await queries.markReportViewed(db, reportId)
+
+		return html
+	}
+
+	/**
+	 * RPC: List character reports with optional filters
+	 * Returns array of report metadata
+	 */
+	async listReports(
+		filters?: ListReportsFilters,
+		limit = 50,
+		offset = 0,
+	): Promise<CharacterReportMetadata[]> {
+		const db = this.getDb()
+		const reports = await queries.listReports(db, filters, limit, offset)
+
+		return reports.map((report) => ({
+			id: report.id,
+			characterId: report.characterId,
+			characterName: report.characterName ?? undefined,
+			status: report.status,
+			requestorUserId: report.requestorUserId,
+			requestorCorporationId: report.requestorCorporationId,
+			workflowInstanceId: report.workflowInstanceId ?? undefined,
+			createdAt: report.createdAt.toISOString(),
+			updatedAt: report.updatedAt.toISOString(),
+			expiresAt: report.expiresAt?.toISOString(),
+			viewedAt: report.viewedAt?.toISOString(),
+			errorMessage: report.errorMessage ?? undefined,
+		}))
+	}
+
+	/**
+	 * RPC: Generate a signed URL for sharing a character report
+	 * Currently not implemented - returns null
+	 * TODO: Implement signed URL generation with R2 presigned URLs or custom tokens
+	 */
+	async generateShareUrl(reportId: string, expiresIn: number): Promise<string | null> {
+		const db = this.getDb()
+		const report = await queries.getReport(db, reportId)
+
+		// Check if report exists and is completed
+		if (!report || report.status !== 'completed') {
+			return null
+		}
+
+		// TODO: Implement signed URL generation
+		// Options:
+		// 1. R2 presigned URLs (if available)
+		// 2. Custom token-based URLs with verification in CORE worker
+		// 3. Time-limited tokens stored in Durable Object state
+
+		return null
+	}
+
+	/**
+	 * RPC: Cancel a pending or processing character report
+	 * Returns true if cancelled, false if not found or already completed
+	 */
+	async cancelReport(reportId: string): Promise<boolean> {
+		const db = this.getDb()
+		const report = await queries.getReport(db, reportId)
+
+		// Check if report exists
+		if (!report) {
+			return false
+		}
+
+		// Can only cancel pending or processing reports
+		if (report.status !== 'pending' && report.status !== 'processing') {
+			return false
+		}
+
+		// Update status to cancelled
+		await queries.updateReportStatus(db, reportId, 'cancelled')
+
+		return true
 	}
 
 	/**
@@ -35,7 +231,12 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 	 * WebSocket close handler (Hibernation API)
 	 * Called when a WebSocket connection is closed
 	 */
-	async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean): Promise<void> {
+	async webSocketClose(
+		ws: WebSocket,
+		code: number,
+		reason: string,
+		wasClean: boolean,
+	): Promise<void> {
 		// TODO: Implement cleanup logic
 	}
 
@@ -44,7 +245,9 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 	 * Called when a WebSocket error occurs
 	 */
 	async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
-		console.error('WebSocket error:', error)
+		this.logger.error('WebSocket error', {
+			error: error instanceof Error ? error.message : String(error),
+		})
 	}
 
 	/**

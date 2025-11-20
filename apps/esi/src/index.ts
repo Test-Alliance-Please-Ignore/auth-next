@@ -4,9 +4,9 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 import { getStub } from '@repo/do-utils'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
-import { EsiDO } from './durable-object'
+import { EsiDO, EsiTypeResolverDO } from './durable-object'
 
-import type { Esi } from '@repo/esi'
+import type { Esi, EsiTypeResolver } from '@repo/esi'
 import type { App } from './context'
 
 const app = new Hono<App>()
@@ -113,10 +113,7 @@ const app = new Hono<App>()
 		const stub = getStub<Esi>(c.env.ESI, 'default')
 
 		try {
-			const transactions = await stub.fetchCorporationWalletTransactions(
-				corporationId,
-				division
-			)
+			const transactions = await stub.fetchCorporationWalletTransactions(corporationId, division)
 			return c.json({ corporationId, division, transactions })
 		} catch (error) {
 			return c.json(
@@ -234,3 +231,5 @@ export default app
 
 // Export the Durable Object class
 export { EsiDO as Esi }
+
+export { EsiTypeResolverDO as EsiTypeResolver }

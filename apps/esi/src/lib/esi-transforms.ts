@@ -91,6 +91,8 @@ import type {
 	EsiCorporationWallet,
 	EsiCorporationWalletJournalEntry,
 	EsiCorporationWalletTransaction,
+	EsiStructureInfo,
+	StructureInfo,
 } from '@repo/esi'
 
 export function transformCorporationPublicInfo(
@@ -110,14 +112,26 @@ export function transformCorporationPublicInfo(
 }
 
 export function transformCharacterPublicInfo(data: EsiCharacterPublicInfo): CharacterPublicInfo {
-	return {
-		...data,
-		alliance_id: data.alliance_id ? String(data.alliance_id) : undefined,
-		bloodline_id: String(data.bloodline_id),
-		corporation_id: String(data.corporation_id),
-		faction_id: data.faction_id ? String(data.faction_id) : undefined,
-		race_id: String(data.race_id),
-		security_status: data.security_status ? String(data.security_status) : undefined,
+	try {
+		return {
+			alliance_id: data.alliance_id ? String(data.alliance_id) : undefined,
+			birthday: data.birthday,
+			bloodline_id: String(data.bloodline_id),
+			corporation_id: String(data.corporation_id),
+			description: data.description,
+			faction_id: data.faction_id ? String(data.faction_id) : undefined,
+			gender: data.gender,
+			name: data.name,
+			race_id: String(data.race_id),
+			security_status: data.security_status ? String(data.security_status) : undefined,
+			title: data.title,
+		}
+	} catch (error) {
+		console.log(`[transformCharacterPublicInfo] Error: ${String(error)}`, {
+			data,
+			error,
+		})
+		throw error
 	}
 }
 
@@ -547,4 +561,13 @@ export function transformCharacterWalletJournal(
 		tax_receiver_id: entry.tax_receiver_id ? String(entry.tax_receiver_id) : undefined,
 		context_id: entry.context_id ? String(entry.context_id) : undefined,
 	}))
+}
+
+export function transformStructureInfo(data: EsiStructureInfo): StructureInfo {
+	return {
+		...data,
+		owner_id: String(data.owner_id),
+		solar_system_id: String(data.solar_system_id),
+		type_id: String(data.type_id),
+	}
 }

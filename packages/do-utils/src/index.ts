@@ -5,22 +5,6 @@ export { createSqliteDbClient, migrateSqlite } from './sqlite-client'
 export type { DrizzleSqliteDODatabase, SqliteMigrationConfig } from './sqlite-client'
 
 /**
- * Durable Object Stub interface with RPC control methods
- */
-export interface DurableObjectStubMethods {
-	/**
-	 * Disposes of the RPC stub, notifying the Durable Object that this client
-	 * is no longer using it. Must be called to prevent resource leaks.
-	 */
-	dispose(): void
-
-	/**
-	 * Symbol.dispose for automatic resource management with 'using' keyword
-	 */
-	[Symbol.dispose](): void
-}
-
-/**
  * Get a typed Durable Object stub with automatic resource management
  *
  * This helper provides type-safe access to Durable Object stubs when calling

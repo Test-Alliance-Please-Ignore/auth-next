@@ -7,11 +7,17 @@
 	"main": "src/index.ts",
 	"scripts": {
 		"check:lint": "run-eslint",
-		"check:types": "run-tsc"
+		"check:types": "run-tsc",
+		"test": "run-vitest"
+	},
+	"dependencies": {
+		"@repo/do-utils": "workspace:*"
 	},
 	"devDependencies": {
+		"@cloudflare/vitest-pool-workers": "0.10.8",
 		"@repo/eslint-config": "workspace:*",
 		"@repo/tools": "workspace:*",
-		"@repo/typescript-config": "workspace:*"
+		"@repo/typescript-config": "workspace:*",
+		"vitest": "3.2.4"
 	}
 }

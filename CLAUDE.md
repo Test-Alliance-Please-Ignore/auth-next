@@ -159,6 +159,261 @@ export class EveCorporationDataDO extends DurableObject {
 3. **Never trust `state.id`** for entity identification in queries
 4. **Callers must pass entity ID** even though it was used in `getStub()`
 
+### Durable Objects SQLite Storage Pattern
+
+**Overview:**
+Durable Objects can use SQLite via `drizzle-orm/durable-sqlite` for structured, queryable persistent state. This provides type-safe database operations with migrations, going beyond simple KV storage.
+
+**Benefits:**
+- **Structured queries** - Use SQL to filter, join, and aggregate data
+- **Type safety** - Full TypeScript typing with Drizzle ORM
+- **Migrations** - Version-controlled schema changes
+- **Performance** - SQLite is fast for reads and writes within a Durable Object
+- **Persistence** - Data persists beyond the object's lifetime, stored in Durable Object storage
+
+**File Structure:**
+```
+apps/your-app/
+├── src/
+│   ├── durable-object.ts          # Your Durable Object class
+│   └── storage/
+│       ├── index.ts                # Exports DB helpers and types
+│       ├── schema.ts               # SQLite table definitions
+│       ├── state.ts                # DB creation and migration runner
+│       └── migrations/
+│           ├── 0000_initial.sql    # Generated migration files
+│           ├── migrations.js       # Migration bundle for Vite
+│           └── meta/
+│               ├── _journal.json   # Migration metadata
+│               └── 0000_snapshot.json
+├── drizzle-sqlite.config.ts        # Drizzle config for SQLite
+└── package.json
+```
+
+**Step 1: Define Your Schema** (`src/storage/schema.ts`)
+```typescript
+import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+
+export const items = sqliteTable('items', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  value: integer('value').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }),
+})
+
+export type Item = typeof items.$inferSelect
+export type NewItem = typeof items.$inferInsert
+```
+
+**Step 2: Create Database Helpers** (`src/storage/state.ts`)
+```typescript
+import { drizzle } from 'drizzle-orm/durable-sqlite'
+import { migrate } from 'drizzle-orm/durable-sqlite/migrator'
+
+import migrations from './migrations/migrations.js'
+import * as schema from './schema'
+
+import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
+
+export type MyDb = DrizzleSqliteDODatabase<typeof schema>
+
+export function createDb(storage: DurableObjectStorage): MyDb {
+  return drizzle(storage, { schema, logger: false })
+}
+
+export async function runMigrations(db: MyDb): Promise<void> {
+  migrate(db, migrations)
+}
+```
+
+**Step 3: Export from Index** (`src/storage/index.ts`)
+```typescript
+import * as schema from './schema'
+import { createDb, runMigrations } from './state'
+
+import type { Item, NewItem } from './schema'
+import type { MyDb } from './state'
+
+export { createDb, runMigrations, schema, type Item, type MyDb, type NewItem }
+
+// Re-export common Drizzle operators for convenience
+export { eq, lt, lte, gt, gte, ne, inArray, notInArray, between, like, ilike } from 'drizzle-orm'
+```
+
+**Step 4: Configure Drizzle Kit** (`drizzle-sqlite.config.ts`)
+```typescript
+import 'dotenv/config'
+
+import { defineConfig } from 'drizzle-kit'
+
+export default defineConfig({
+  out: './src/storage/migrations',
+  schema: './src/storage/schema.ts',
+  dialect: 'sqlite',
+  driver: 'durable-sqlite',
+  verbose: true,
+  strict: true,
+})
+```
+
+**Step 5: Add Package Scripts** (`package.json`)
+```json
+{
+  "scripts": {
+    "db:generate": "drizzle-kit generate --config drizzle-sqlite.config.ts"
+  }
+}
+```
+
+**Step 6: Generate Initial Migration**
+```bash
+pnpm -F your-app db:generate
+```
+
+This creates migration files in `src/storage/migrations/`. You must create a `migrations.js` file to bundle them:
+
+**Step 7: Create Migration Bundle** (`src/storage/migrations/migrations.js`)
+```javascript
+import m0000 from './0000_initial.sql?raw'
+import journal from './meta/_journal.json'
+
+export default {
+  journal,
+  migrations: {
+    m0000,
+  },
+}
+```
+
+**IMPORTANT:** The `?raw` suffix tells Vite to import the SQL file as a raw string. Update this file every time you generate new migrations.
+
+**Step 8: Use in Durable Object** (`src/durable-object.ts`)
+```typescript
+import { DurableObject } from 'cloudflare:workers'
+import { createDb, runMigrations, eq } from './storage'
+import type { MyDb, Item, NewItem } from './storage'
+import type { Env } from './context'
+
+export class MyDO extends DurableObject<Env> {
+  private db: MyDb
+
+  constructor(state: DurableObjectState, env: Env) {
+    super(state, env)
+
+    // Create database instance
+    this.db = createDb(state.storage)
+
+    // Run migrations once during initialization
+    // CRITICAL: Use blockConcurrencyWhile to ensure migrations complete before handling requests
+    state.blockConcurrencyWhile(async () => {
+      await runMigrations(this.db)
+    })
+  }
+
+  async addItem(entityId: string, item: NewItem): Promise<Item> {
+    const [inserted] = await this.db.insert(items)
+      .values(item)
+      .returning()
+    return inserted
+  }
+
+  async getItems(entityId: string): Promise<Item[]> {
+    // CRITICAL: Always filter by entity ID to prevent data leakage
+    return await this.db.query.items.findMany({
+      where: eq(items.id, entityId)
+    })
+  }
+
+  async updateItem(entityId: string, id: string, updates: Partial<NewItem>): Promise<Item> {
+    const [updated] = await this.db.update(items)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(items.id, id))
+      .returning()
+    return updated
+  }
+
+  async deleteItem(entityId: string, id: string): Promise<void> {
+    await this.db.delete(items)
+      .where(eq(items.id, id))
+  }
+}
+```
+
+**Migration Workflow:**
+
+1. **Modify schema** in `src/storage/schema.ts`
+2. **Generate migration**: `pnpm -F your-app db:generate`
+3. **Update migration bundle**: Add new migration to `migrations.js`:
+   ```javascript
+   import m0000 from './0000_initial.sql?raw'
+   import m0001 from './0001_add_column.sql?raw'  // New migration
+   import journal from './meta/_journal.json'
+
+   export default {
+     journal,
+     migrations: {
+       m0000,
+       m0001,  // Add here
+     },
+   }
+   ```
+4. **Deploy** - Migrations run automatically on first request to each Durable Object instance
+
+**Key Differences from PostgreSQL Pattern:**
+
+| Aspect | PostgreSQL (`@repo/db-utils`) | SQLite (Durable Objects) |
+|--------|-------------------------------|--------------------------|
+| **Driver** | `drizzle-orm/neon-serverless` | `drizzle-orm/durable-sqlite` |
+| **Config** | `drizzle.config.ts` with `dialect: 'postgresql'` | `drizzle-sqlite.config.ts` with `dialect: 'sqlite'` and `driver: 'durable-sqlite'` |
+| **Storage** | External Neon database | Durable Object storage (local to instance) |
+| **Migration Import** | File paths in migration config | Raw SQL strings bundled with `?raw` suffix |
+| **Migration Execution** | Separate migration script/command | Runs in `blockConcurrencyWhile` during DO initialization |
+| **Scope** | Global, shared across all workers | Per Durable Object instance |
+
+**CRITICAL: Migration Bundle Maintenance**
+- Every time you run `drizzle-kit generate`, you must manually update `migrations.js` to include the new migration file
+- Use sequential naming: `m0000`, `m0001`, `m0002`, etc.
+- The `?raw` suffix is required for Vite to bundle SQL files correctly
+- Forgetting to update `migrations.js` will cause migrations to not run
+
+**Common Patterns:**
+
+**Querying with Relations:**
+```typescript
+// Define relations in schema.ts
+import { relations } from 'drizzle-orm'
+
+export const itemsRelations = relations(items, ({ many }) => ({
+  tags: many(itemTags),
+}))
+
+// Query with relations
+const itemsWithTags = await this.db.query.items.findMany({
+  with: { tags: true }
+})
+```
+
+**Transactions:**
+```typescript
+await this.db.transaction(async (tx) => {
+  await tx.insert(items).values(newItem)
+  await tx.insert(logs).values(logEntry)
+})
+```
+
+**Batch Operations:**
+```typescript
+// Insert multiple rows
+await this.db.insert(items).values([item1, item2, item3])
+
+// Delete multiple
+await this.db.delete(items).where(inArray(items.id, idsToDelete))
+```
+
+**Reference Implementation:**
+See `apps/esi/src/storage/` and `apps/esi/src/durable-object.ts` for a complete working example.
+
 ### Cloudflare Service Integrations
 
 When data storage or specific capabilities are needed, integrate with appropriate Cloudflare services:

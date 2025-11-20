@@ -1,3 +1,5 @@
+import { getStub } from '@repo/do-utils'
+
 import type {
 	CharacterAgentResearch,
 	CharacterAsset,
@@ -45,6 +47,7 @@ import type {
 	CorporationWallet,
 	CorporationWalletJournalEntry,
 	CorporationWalletTransaction,
+	StructureInfo,
 } from './types'
 
 /**
@@ -56,6 +59,7 @@ import type {
 
 // Export ESI response types
 export * from './types'
+export * from './id-ranges'
 
 /**
  * Public RPC interface for Esi Durable Object
@@ -129,6 +133,11 @@ export interface Esi {
 	fetchCorporationStanding(corporationId: string): Promise<CorporationStanding[]>
 	fetchCorporationTitle(corporationId: string): Promise<CorporationTitle[]>
 
+	// Universe endpoints
+	fetchStructureInfo(characterId: string, structureId: string): Promise<StructureInfo | null>
+}
+
+export interface EsiTypeResolver {
 	/**
 	 * Resolve multiple entity IDs to names
 	 * Supports alliances, characters, corporations, systems, etc.
@@ -139,10 +148,41 @@ export interface Esi {
 	 *
 	 * @example
 	 * ```ts
-	 * const stub = getStub<Esi>(env.ESI, 'default')
+	 * const stub = getStub<EsiTypeResolver>(env.ESI_TYPE_RESOLVER, 'global')
 	 * const idMap = await stub.resolveIds(['30000142', '1354830081'])
 	 * // Returns: { '30000142': 'Jita', '1354830081': 'Goonswarm Federation' }
 	 * ```
 	 */
 	resolveIds(ids: string[]): Promise<Record<string, string>>
 }
+
+/**
+ * Get an ESI instance for a given ID
+ * @param env - The environment object
+ * @param id - The ID of the ESI instance
+ * @returns The ESI instance
+ */
+export const getEsiInstance = (esiBinding: DurableObjectNamespace, id: string) =>
+	getStub<Esi>(esiBinding, id)
+
+/**
+ * Get an ESI instance for a given character ID
+ * @param env - The environment object
+ * @param characterId - The ID of the character
+ * @returns The ESI instance
+ */
+export const getEsiInstanceForCharacter = (
+	esiBinding: DurableObjectNamespace,
+	characterId: string
+) => getEsiInstance(esiBinding, characterId)
+
+/**
+ * Get an ESI instance for a given corporation ID
+ * @param env - The environment object
+ * @param corporationId - The ID of the corporation
+ * @returns The ESI instance
+ */
+export const getEsiInstanceForCorporation = (
+	esiBinding: DurableObjectNamespace,
+	corporationId: string
+) => getEsiInstance(esiBinding, corporationId)
