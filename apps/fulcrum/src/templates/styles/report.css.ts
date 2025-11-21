@@ -179,6 +179,7 @@ footer {
 	display: flex;
 	background: hsl(var(--background-elevated));
 	border-bottom: 2px solid hsl(var(--border-strong));
+	overflow: hidden;
 }
 
 /* Hide radio buttons visually but keep them functional for CSS-only fallback */
@@ -234,14 +235,7 @@ footer {
 	animation: slideIn 0.3s ease;
 }
 
-/* CSS-only tab switching using radio buttons */
-.tab-radio:checked + .tab-navigation + .tab-panels > .tab-panel,
-.tab-radio:nth-of-type(1):checked ~ .tab-panels > .tab-panel:nth-of-type(1),
-.tab-radio:nth-of-type(2):checked ~ .tab-panels > .tab-panel:nth-of-type(2),
-.tab-radio:nth-of-type(3):checked ~ .tab-panels > .tab-panel:nth-of-type(3),
-.tab-radio:nth-of-type(4):checked ~ .tab-panels > .tab-panel:nth-of-type(4) {
-	display: block;
-}
+/* CSS-only tab switching is handled by the ID-based selectors below */
 
 /* Since we can't directly style labels based on radio state with this structure,
    we'll use a different approach with adjacent selectors */
@@ -336,6 +330,7 @@ footer {
 	.tab-navigation {
 		flex-wrap: wrap;
 		gap: 2px;
+		overflow: hidden;
 	}
 
 	.tab-button,

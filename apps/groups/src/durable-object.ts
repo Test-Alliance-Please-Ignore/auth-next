@@ -26,6 +26,11 @@ import {
 } from './db/schema'
 import { generateInviteCode } from './services/code-generator'
 import {
+	bulkFindMainCharactersByUserIds,
+	bulkFindMainCharactersWithIdsByUserIds,
+	findUserByMainCharacterName,
+} from './services/character-lookup'
+import {
 	canCreateGroupInCategory,
 	canManageGroup,
 	canModerateGroup,
@@ -35,6 +40,7 @@ import {
 	isGroupOwner,
 } from './services/permissions'
 
+import type { Core } from '@repo/core'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type {
 	AttachPermissionRequest,
@@ -95,11 +101,35 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	private db: ReturnType<typeof createDb>
 	private coreDb: ReturnType<typeof createDbClient<typeof coreSchema>>
 
-	// In-memory caches with TTL
+	// In-memory caches with TTL and size limits
 	private discordServersCache = new Map<string, { data: any[]; expires: number }>()
 	private groupMembersCache = new Map<string, { data: string[]; expires: number }>()
 	private permissionsCache = new Map<string, { data: UserPermission[]; expires: number }>()
+	private corporationPermissionsCache = new Map<
+		string,
+		{ data: UserPermission[]; expires: number }
+	>()
 	private readonly CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+	private readonly MAX_CACHE_ENTRIES = 1000
+
+	/**
+	 * Set a cache entry with LRU eviction when the cache is full.
+	 * Removes the oldest entry (first inserted) when limit is reached.
+	 */
+	private setCacheEntry<T>(
+		cache: Map<string, { data: T; expires: number }>,
+		key: string,
+		data: T
+	): void {
+		// Evict oldest entry if cache is at capacity
+		if (cache.size >= this.MAX_CACHE_ENTRIES && !cache.has(key)) {
+			const oldestKey = cache.keys().next().value
+			if (oldestKey !== undefined) {
+				cache.delete(oldestKey)
+			}
+		}
+		cache.set(key, { data, expires: Date.now() + this.CACHE_TTL })
+	}
 
 	constructor(
 		public state: DurableObjectState,
@@ -181,21 +211,28 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			return null
 		}
 
+		// Batch fetch user memberships for all groups in this category
+		const groupIds = category.groups.map((g) => g.id)
+		const memberships =
+			groupIds.length > 0
+				? await this.db.query.groupMembers.findMany({
+						where: and(eq(groupMembers.userId, userId), inArray(groupMembers.groupId, groupIds)),
+					})
+				: []
+		const memberGroupIds = new Set(memberships.map((m) => m.groupId))
+
 		// Filter groups based on user permissions
-		const visibleGroups = await Promise.all(
-			category.groups.map(async (group) => {
-				const isMember = await this.isUserMember(group.id, userId)
-				if (canViewGroup(group, userId, isAdmin, isMember)) {
-					return this.mapGroup(group)
-				}
-				return null
+		const visibleGroups = category.groups
+			.filter((group) => {
+				const isMember = memberGroupIds.has(group.id)
+				return canViewGroup(group, userId, isAdmin, isMember)
 			})
-		)
+			.map((group) => this.mapGroup(group))
 
 		return {
 			...this.mapCategory(category),
-			groups: visibleGroups.filter((g): g is Group => g !== null),
-			groupCount: visibleGroups.filter((g) => g !== null).length,
+			groups: visibleGroups,
+			groupCount: visibleGroups.length,
 		}
 	}
 
@@ -402,28 +439,26 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		}
 
 		const isOwner = group.ownerId === userId
-		const isAdminOfGroup = await this.isUserGroupAdmin(id, userId)
-		const memberCount = await this.getGroupMemberCount(id)
 
-		// Fetch all group admins
-		const admins = await this.db.query.groupAdmins.findMany({
-			where: eq(groupAdmins.groupId, id),
-		})
+		// Parallelize independent queries for better performance
+		const [isAdminOfGroup, memberCount, admins, characterNames, pendingRequest] = await Promise.all([
+			this.isUserGroupAdmin(id, userId),
+			this.getGroupMemberCount(id),
+			this.db.query.groupAdmins.findMany({
+				where: eq(groupAdmins.groupId, id),
+			}),
+			bulkFindMainCharactersByUserIds([group.ownerId], this.db),
+			this.db.query.groupJoinRequests.findFirst({
+				where: and(
+					eq(groupJoinRequests.groupId, id),
+					eq(groupJoinRequests.userId, userId),
+					eq(groupJoinRequests.status, 'pending')
+				),
+			}),
+		])
+
 		const adminUserIds = admins.map((admin) => admin.userId)
-
-		// Lookup owner's character name
-		const { bulkFindMainCharactersByUserIds } = await import('./services/character-lookup')
-		const characterNames = await bulkFindMainCharactersByUserIds([group.ownerId], this.db)
 		const ownerName = characterNames.get(group.ownerId)
-
-		// Check if user has a pending join request
-		const pendingRequest = await this.db.query.groupJoinRequests.findFirst({
-			where: and(
-				eq(groupJoinRequests.groupId, id),
-				eq(groupJoinRequests.userId, userId),
-				eq(groupJoinRequests.status, 'pending')
-			),
-		})
 
 		return {
 			...this.mapGroup(group),
@@ -699,7 +734,6 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		})
 
 		// Fetch main character names and IDs for all members
-		const { bulkFindMainCharactersWithIdsByUserIds } = await import('./services/character-lookup')
 		const userIds = members.map((member) => member.userId)
 		const characterData = await bulkFindMainCharactersWithIdsByUserIds(userIds, this.db)
 
@@ -726,23 +760,25 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			},
 		})
 
-		const result: GroupMembershipSummary[] = []
-
-		for (const membership of memberships) {
-			const isOwner = membership.group.ownerId === userId
-			const isAdmin = await this.isUserGroupAdmin(membership.groupId, userId)
-
-			result.push({
-				groupId: membership.groupId,
-				groupName: membership.group.name,
-				categoryName: membership.group.category.name,
-				isOwner,
-				isAdmin,
-				joinedAt: membership.joinedAt,
-			})
+		if (memberships.length === 0) {
+			return []
 		}
 
-		return result
+		// Batch fetch all admin records for this user across all their groups
+		const groupIds = memberships.map((m) => m.groupId)
+		const adminRecords = await this.db.query.groupAdmins.findMany({
+			where: and(eq(groupAdmins.userId, userId), inArray(groupAdmins.groupId, groupIds)),
+		})
+		const adminGroupIds = new Set(adminRecords.map((a) => a.groupId))
+
+		return memberships.map((membership) => ({
+			groupId: membership.groupId,
+			groupName: membership.group.name,
+			categoryName: membership.group.category.name,
+			isOwner: membership.group.ownerId === userId,
+			isAdmin: adminGroupIds.has(membership.groupId),
+			joinedAt: membership.joinedAt,
+		}))
 	}
 
 	/**
@@ -904,7 +940,6 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		}
 
 		// Fetch main character names for all requesting users
-		const { bulkFindMainCharactersByUserIds } = await import('./services/character-lookup')
 		const userIds = requests.map((req) => req.userId)
 		const characterNames = await bulkFindMainCharactersByUserIds(userIds, this.db)
 
@@ -1039,7 +1074,6 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		}
 
 		// Look up user by their main character name
-		const { findUserByMainCharacterName } = await import('./services/character-lookup')
 		const userLookup = await findUserByMainCharacterName(data.characterName, this.db)
 
 		if (!userLookup) {
@@ -1220,7 +1254,6 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		})
 
 		// Enrich with character names
-		const { bulkFindMainCharactersByUserIds } = await import('./services/character-lookup')
 		const userIds = [
 			...new Set([
 				...invitations.map((inv) => inv.inviterId),
@@ -1563,50 +1596,60 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			orderBy: (groupDiscordServers, { asc }) => [asc(groupDiscordServers.createdAt)],
 		})
 
-		// Fetch Discord server details from Core database for each attachment
-		const results = await Promise.all(
-			attachments.map(async (attachment) => {
-				// Fetch Discord server from Core
-				const discordServer = await this.coreDb.query.discordServers.findFirst({
-					where: eq(discordServers.id, attachment.discordServerId),
-					with: {
-						roles: true,
-					},
-				})
+		if (attachments.length === 0) {
+			this.setCacheEntry(this.discordServersCache, groupId, [])
+			return []
+		}
 
-				// Fetch role details from Core for each role assignment
-				const rolesWithDetails = await Promise.all(
-					(attachment.roles || []).map(async (roleAssignment) => {
-						const roleDetails = await this.coreDb.query.discordRoles.findFirst({
-							where: eq(discordRoles.id, roleAssignment.discordRoleId),
-						})
-						return {
-							id: roleAssignment.id,
-							discordRoleId: roleAssignment.discordRoleId,
-							discordRole: roleDetails || {
-								id: roleAssignment.discordRoleId,
-								roleName: roleAssignment.roleName,
-								roleId: '',
-								discordServerId: attachment.discordServerId,
-								createdAt: new Date(),
-							},
-						}
+		// Collect all unique Discord server IDs and role IDs for batch queries
+		const serverIds = [...new Set(attachments.map((a) => a.discordServerId))]
+		const roleIds = [
+			...new Set(attachments.flatMap((a) => (a.roles || []).map((r) => r.discordRoleId))),
+		]
+
+		// Batch fetch all Discord servers and roles in parallel
+		const [allServers, allRoles] = await Promise.all([
+			this.coreDb.query.discordServers.findMany({
+				where: inArray(discordServers.id, serverIds),
+				with: { roles: true },
+			}),
+			roleIds.length > 0
+				? this.coreDb.query.discordRoles.findMany({
+						where: inArray(discordRoles.id, roleIds),
 					})
-				)
+				: [],
+		])
 
+		// Create lookup maps for O(1) access
+		const serverMap = new Map(allServers.map((s) => [s.id, s]))
+		const roleMap = new Map(allRoles.map((r) => [r.id, r]))
+
+		// Map results using the lookup maps
+		const results = attachments.map((attachment) => {
+			const rolesWithDetails = (attachment.roles || []).map((roleAssignment) => {
+				const roleDetails = roleMap.get(roleAssignment.discordRoleId)
 				return {
-					...attachment,
-					discordServer: discordServer || null,
-					roles: rolesWithDetails,
+					id: roleAssignment.id,
+					discordRoleId: roleAssignment.discordRoleId,
+					discordRole: roleDetails || {
+						id: roleAssignment.discordRoleId,
+						roleName: roleAssignment.roleName,
+						roleId: '',
+						discordServerId: attachment.discordServerId,
+						createdAt: new Date(),
+					},
 				}
 			})
-		)
 
-		// Cache the result
-		this.discordServersCache.set(groupId, {
-			data: results,
-			expires: Date.now() + this.CACHE_TTL,
+			return {
+				...attachment,
+				discordServer: serverMap.get(attachment.discordServerId) || null,
+				roles: rolesWithDetails,
+			}
 		})
+
+		// Cache the result with LRU eviction
+		this.setCacheEntry(this.discordServersCache, groupId, results)
 
 		return results
 	}
@@ -2025,11 +2068,8 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 		const userIds = members.map((m) => m.userId)
 
-		// Cache the result
-		this.groupMembersCache.set(groupId, {
-			data: userIds,
-			expires: Date.now() + this.CACHE_TTL,
-		})
+		// Cache the result with LRU eviction
+		this.setCacheEntry(this.groupMembersCache, groupId, userIds)
 
 		return userIds
 	}
@@ -2588,6 +2628,9 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			})
 			.returning()
 
+		// Invalidate cache for this corporation
+		this.invalidateCorporationPermissionsCache(data.corporationId)
+
 		return {
 			id: corpPerm.id,
 			corporationId: corpPerm.corporationId,
@@ -2648,6 +2691,9 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		await this.db
 			.delete(corporationPermissions)
 			.where(eq(corporationPermissions.id, corporationPermissionId))
+
+		// Invalidate cache for this corporation
+		this.invalidateCorporationPermissionsCache(corpPerm.corporationId)
 	}
 
 	async getCharacterPermissions(characterId: string): Promise<UserPermission[]> {
@@ -2710,48 +2756,69 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	 * ============================================
 	 */
 
-	async getUserPermissions(userId: string): Promise<UserPermission[]> {
-		console.log('[getUserPermissions] Fetching permissions for user', { userId })
-
-		// Check cache first
+	/**
+	 * Check cache for user permissions and return if valid
+	 */
+	private getCachedUserPermissions(userId: string): UserPermission[] | null {
 		const cached = this.permissionsCache.get(userId)
 		if (cached && cached.expires > Date.now()) {
-			console.log('[getUserPermissions] Returning cached permissions', {
-				userId,
-				count: cached.data.length,
-				permissions: cached.data.map((p) => p.urn),
-			})
 			return cached.data
 		}
+		return null
+	}
 
-		// Get all groups the user is a member of
-		const memberships = await this.db.query.groupMembers.findMany({
+	/**
+	 * Store user permissions in cache with LRU eviction
+	 */
+	private cacheUserPermissions(userId: string, permissions: UserPermission[]): void {
+		this.setCacheEntry(this.permissionsCache, userId, permissions)
+	}
+
+	/**
+	 * Check cache for corporation permissions and return if valid
+	 */
+	private getCachedCorporationPermissions(corporationId: string): UserPermission[] | null {
+		const cached = this.corporationPermissionsCache.get(corporationId)
+		if (cached && cached.expires > Date.now()) {
+			return cached.data
+		}
+		return null
+	}
+
+	/**
+	 * Store corporation permissions in cache with LRU eviction
+	 */
+	private cacheCorporationPermissions(corporationId: string, permissions: UserPermission[]): void {
+		this.setCacheEntry(this.corporationPermissionsCache, corporationId, permissions)
+	}
+
+	/**
+	 * Fetch user's group memberships with group details
+	 */
+	private async getUserGroupMemberships(userId: string) {
+		return await this.db.query.groupMembers.findMany({
 			where: eq(groupMembers.userId, userId),
 			with: {
 				group: true,
 			},
 		})
+	}
 
-		if (memberships.length === 0) {
-			console.log('[getUserPermissions] User has no group memberships', { userId })
-			return []
-		}
-
-		const groupIds = memberships.map((m) => m.groupId)
-		console.log('[getUserPermissions] User memberships found', {
-			userId,
-			groupCount: memberships.length,
-			groupIds,
-		})
-
-		// Get user's admin roles
+	/**
+	 * Fetch user's admin roles and return Set of group IDs where user is admin
+	 */
+	private async getUserAdminGroupIds(userId: string, groupIds: string[]): Promise<Set<string>> {
 		const adminRoles = await this.db.query.groupAdmins.findMany({
 			where: and(inArray(groupAdmins.groupId, groupIds), eq(groupAdmins.userId, userId)),
 		})
-		const adminGroupIds = new Set(adminRoles.map((a) => a.groupId))
+		return new Set(adminRoles.map((a) => a.groupId))
+	}
 
-		// Get all group permissions for these groups
-		const groupPerms = await this.db.query.groupPermissions.findMany({
+	/**
+	 * Fetch all group permissions for given groups with relations
+	 */
+	private async getGroupPermissionsForGroups(groupIds: string[]) {
+		return await this.db.query.groupPermissions.findMany({
 			where: inArray(groupPermissions.groupId, groupIds),
 			with: {
 				permission: {
@@ -2762,8 +2829,161 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 				group: true,
 			},
 		})
+	}
 
-		// Resolve permissions based on user's role in each group
+	/**
+	 * Fetch user's corporations and alliances from Core durable object
+	 */
+	private async getUserCorporationsAndAlliances(userId: string): Promise<{
+		corporations: Array<{ corporationId: string; corporationName: string }>
+		alliances: Array<{ allianceId: string; allianceName: string }>
+	}> {
+		const coreStub = getStub<Core>(this.env.CORE, 'default')
+		const [corporations, alliances] = await Promise.all([
+			coreStub.getUserCorporations(userId),
+			coreStub.getUserAlliances(userId),
+		])
+		return { corporations, alliances }
+	}
+
+	/**
+	 * Fetch corporation permissions for multiple corporations with caching
+	 */
+	private async getCorporationPermissionsForCorporations(
+		corporationIds: string[],
+		corporationNames: Map<string, string>
+	): Promise<UserPermission[]> {
+		if (corporationIds.length === 0) {
+			return []
+		}
+
+		// Check cache for each corporation and collect uncached IDs
+		const cachedPermissions: UserPermission[] = []
+		const uncachedCorporationIds: string[] = []
+
+		for (const corporationId of corporationIds) {
+			const cached = this.getCachedCorporationPermissions(corporationId)
+			if (cached) {
+				cachedPermissions.push(...cached)
+			} else {
+				uncachedCorporationIds.push(corporationId)
+			}
+		}
+
+		// If all were cached, return cached permissions
+		if (uncachedCorporationIds.length === 0) {
+			return cachedPermissions
+		}
+
+		// Query database for uncached corporations
+		const corpPerms = await this.db.query.corporationPermissions.findMany({
+			where: inArray(corporationPermissions.corporationId, uncachedCorporationIds),
+			with: {
+				permission: {
+					with: {
+						category: true,
+					},
+				},
+			},
+		})
+
+		// Group permissions by corporation ID and cache them
+		const permissionsByCorp = new Map<string, UserPermission[]>()
+		for (const cp of corpPerms) {
+			const corporationId = cp.corporationId
+			if (!permissionsByCorp.has(corporationId)) {
+				permissionsByCorp.set(corporationId, [])
+			}
+
+			const corporationName = corporationNames.get(corporationId) || corporationId
+			const userPermission: UserPermission = {
+				urn: cp.permission.urn,
+				name: cp.permission.name,
+				description: cp.permission.description,
+				category: cp.permission.category
+					? this.mapPermissionCategory(cp.permission.category)
+					: null,
+				groupId: corporationId,
+				groupName: corporationName,
+				targetType: 'all_members' as PermissionTarget,
+				source: 'global' as const,
+			}
+
+			permissionsByCorp.get(corporationId)!.push(userPermission)
+		}
+
+		// Cache permissions for each corporation
+		for (const [corporationId, permissions] of permissionsByCorp) {
+			this.cacheCorporationPermissions(corporationId, permissions)
+		}
+
+		// Combine cached and newly fetched permissions
+		const allPermissions = [...cachedPermissions]
+		for (const permissions of permissionsByCorp.values()) {
+			allPermissions.push(...permissions)
+		}
+
+		return allPermissions
+	}
+
+	/**
+	 * Determine if user qualifies for permission based on targetType
+	 */
+	private userHasPermission(
+		targetType: PermissionTarget,
+		isOwner: boolean,
+		isAdmin: boolean
+	): boolean {
+		if (targetType === 'all_members') {
+			return true
+		} else if (targetType === 'all_admins') {
+			return isAdmin
+		} else if (targetType === 'owner_only') {
+			return isOwner
+		} else if (targetType === 'owner_and_admins') {
+			return isOwner || isAdmin
+		}
+		return false
+	}
+
+	/**
+	 * Build UserPermission object from group permission data
+	 */
+	private buildUserPermission(
+		groupPerm: Awaited<ReturnType<typeof this.getGroupPermissionsForGroups>>[number],
+		userId: string
+	): UserPermission {
+		// Determine URN and name based on whether this is global or group-scoped
+		const urn = groupPerm.permissionId ? groupPerm.permission!.urn : groupPerm.customUrn!
+		const name = groupPerm.permissionId ? groupPerm.permission!.name : groupPerm.customName!
+		const description = groupPerm.permissionId
+			? groupPerm.permission!.description
+			: groupPerm.customDescription
+		const category =
+			groupPerm.permissionId && groupPerm.permission!.category
+				? groupPerm.permission!.category
+				: null
+
+		return {
+			urn,
+			name,
+			description,
+			category: category ? this.mapPermissionCategory(category) : null,
+			groupId: groupPerm.groupId,
+			groupName: groupPerm.group.name,
+			targetType: groupPerm.targetType,
+			source: groupPerm.permissionId ? 'global' : 'group_scoped',
+		}
+	}
+
+	/**
+	 * Resolve all permissions user should receive based on their role in each group
+	 */
+	private resolveUserPermissions(
+		groupPerms: Awaited<ReturnType<typeof this.getGroupPermissionsForGroups>>,
+		userId: string,
+		adminGroupIds: Set<string>
+	): UserPermission[] {
 		const resolvedPermissions: UserPermission[] = []
 
 		for (const gp of groupPerms) {
@@ -2771,54 +2991,284 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			const isAdmin = adminGroupIds.has(gp.groupId)
 
 			// Determine if user gets this permission based on target type
-			let hasPermission = false
-			if (gp.targetType === 'all_members') {
-				hasPermission = true
-			} else if (gp.targetType === 'all_admins') {
-				hasPermission = isAdmin
-			} else if (gp.targetType === 'owner_only') {
-				hasPermission = isOwner
-			} else if (gp.targetType === 'owner_and_admins') {
-				hasPermission = isOwner || isAdmin
+			if (!this.userHasPermission(gp.targetType, isOwner, isAdmin)) {
+				continue
 			}
 
-			if (!hasPermission) continue
-
-			// Determine URN and name based on whether this is global or group-scoped
-			const urn = gp.permissionId ? gp.permission!.urn : gp.customUrn!
-			const name = gp.permissionId ? gp.permission!.name : gp.customName!
-			const description = gp.permissionId ? gp.permission!.description : gp.customDescription
-			const category = gp.permissionId && gp.permission!.category ? gp.permission!.category : null
-
-			resolvedPermissions.push({
-				urn,
-				name,
-				description,
-				category: category ? this.mapPermissionCategory(category) : null,
-				groupId: gp.groupId,
-				groupName: gp.group.name,
-				targetType: gp.targetType,
-				source: gp.permissionId ? 'global' : 'group_scoped',
-			})
+			resolvedPermissions.push(this.buildUserPermission(gp, userId))
 		}
 
-		// Deduplicate by URN (in case user has same permission from multiple groups)
-		const deduped = Array.from(new Map(resolvedPermissions.map((p) => [p.urn, p])).values())
+		return resolvedPermissions
+	}
+
+	/**
+	 * Deduplicate permissions by URN (in case user has same permission from multiple groups)
+	 */
+	private deduplicatePermissionsByUrn(permissions: UserPermission[]): UserPermission[] {
+		return Array.from(new Map(permissions.map((p) => [p.urn, p])).values())
+	}
+
+	async getUserPermissions(userId: string): Promise<UserPermission[]> {
+		console.log('[getUserPermissions] Fetching permissions for user', { userId })
+
+		// Check cache first
+		const cached = this.getCachedUserPermissions(userId)
+		if (cached) {
+			console.log('[getUserPermissions] Returning cached permissions', {
+				userId,
+				count: cached.length,
+				permissions: cached.map((p) => p.urn),
+			})
+			return cached
+		}
+
+		// Get all groups the user is a member of and user's corporations in parallel
+		const [memberships, { corporations }] = await Promise.all([
+			this.getUserGroupMemberships(userId),
+			this.getUserCorporationsAndAlliances(userId),
+		])
+
+		// Resolve group permissions
+		let groupPermissions: UserPermission[] = []
+		if (memberships.length > 0) {
+			const groupIds = memberships.map((m) => m.groupId)
+			console.log('[getUserPermissions] User memberships found', {
+				userId,
+				groupCount: memberships.length,
+				groupIds,
+			})
+
+			// Get user's admin roles and group permissions
+			const [adminGroupIds, groupPerms] = await Promise.all([
+				this.getUserAdminGroupIds(userId, groupIds),
+				this.getGroupPermissionsForGroups(groupIds),
+			])
+
+			// Resolve permissions based on user's role in each group
+			groupPermissions = this.resolveUserPermissions(groupPerms, userId, adminGroupIds)
+		} else {
+			console.log('[getUserPermissions] User has no group memberships', { userId })
+		}
+
+		// Resolve corporation permissions
+		let corporationPermissions: UserPermission[] = []
+		if (corporations.length > 0) {
+			const corporationIds = corporations.map((c) => c.corporationId)
+			const corporationNames = new Map(
+				corporations.map((c) => [c.corporationId, c.corporationName])
+			)
+
+			console.log('[getUserPermissions] User corporations found', {
+				userId,
+				corporationCount: corporations.length,
+				corporationIds,
+			})
+
+			corporationPermissions = await this.getCorporationPermissionsForCorporations(
+				corporationIds,
+				corporationNames
+			)
+		}
+
+		// Combine group and corporation permissions
+		const allPermissions = [...groupPermissions, ...corporationPermissions]
+
+		// Deduplicate by URN (in case user has same permission from multiple groups or corporations)
+		const deduped = this.deduplicatePermissionsByUrn(allPermissions)
 
 		console.log('[getUserPermissions] Resolved user permissions', {
 			userId,
-			totalPermissions: resolvedPermissions.length,
+			groupPermissions: groupPermissions.length,
+			corporationPermissions: corporationPermissions.length,
+			totalPermissions: allPermissions.length,
 			dedupedCount: deduped.length,
 			permissions: deduped.map((p) => ({ urn: p.urn, groupId: p.groupId, source: p.source })),
 		})
 
 		// Cache the result
-		this.permissionsCache.set(userId, {
-			data: deduped,
-			expires: Date.now() + this.CACHE_TTL,
-		})
+		this.cacheUserPermissions(userId, deduped)
 
 		return deduped
+	}
+
+	/**
+	 * Batch version of getUserPermissions - optimized for fetching multiple users at once.
+	 * Reduces N+1 queries by batching all database operations.
+	 */
+	async getUserPermissionsBatch(
+		userIds: string[]
+	): Promise<Map<string, UserPermission[]>> {
+		if (userIds.length === 0) {
+			return new Map()
+		}
+
+		console.log('[getUserPermissionsBatch] Fetching permissions for users', {
+			userCount: userIds.length,
+		})
+
+		// Check cache and separate cached vs uncached users
+		const result = new Map<string, UserPermission[]>()
+		const uncachedUserIds: string[] = []
+
+		for (const userId of userIds) {
+			const cached = this.getCachedUserPermissions(userId)
+			if (cached) {
+				result.set(userId, cached)
+			} else {
+				uncachedUserIds.push(userId)
+			}
+		}
+
+		// If all users were cached, return early
+		if (uncachedUserIds.length === 0) {
+			console.log('[getUserPermissionsBatch] All users cached', {
+				cachedCount: userIds.length,
+			})
+			return result
+		}
+
+		// STEP 1: Batch fetch all group memberships for uncached users
+		const allMemberships = await this.db.query.groupMembers.findMany({
+			where: inArray(groupMembers.userId, uncachedUserIds),
+			with: {
+				group: true,
+			},
+		})
+
+		// Build user -> memberships map
+		const userMembershipsMap = new Map<
+			string,
+			Array<(typeof allMemberships)[number]>
+		>()
+		for (const membership of allMemberships) {
+			if (!userMembershipsMap.has(membership.userId)) {
+				userMembershipsMap.set(membership.userId, [])
+			}
+			userMembershipsMap.get(membership.userId)!.push(membership)
+		}
+
+		// STEP 2: Batch fetch corporations for all uncached users
+		const coreStub = getStub<Core>(this.env.CORE, 'default')
+		const [corporationsByUser, _alliancesByUser] = await Promise.all([
+			coreStub.getUserCorporationsBatch(uncachedUserIds),
+			Promise.resolve(new Map<string, Array<{ allianceId: string; allianceName: string }>>()), // Not used yet
+		])
+
+		// STEP 3: Collect all unique groupIds and corporationIds
+		const allGroupIds = new Set<string>()
+		const allCorporationIds = new Set<string>()
+		const corporationNamesMap = new Map<string, string>()
+
+		for (const userId of uncachedUserIds) {
+			const memberships = userMembershipsMap.get(userId) || []
+			for (const m of memberships) {
+				allGroupIds.add(m.groupId)
+			}
+
+			const corporations = corporationsByUser.get(userId) || []
+			for (const c of corporations) {
+				allCorporationIds.add(c.corporationId)
+				corporationNamesMap.set(c.corporationId, c.corporationName)
+			}
+		}
+
+		// STEP 4: Batch fetch admin roles and group permissions (shared data)
+		const [allAdminRoles, allGroupPerms] = await Promise.all([
+			allGroupIds.size > 0
+				? this.db.query.groupAdmins.findMany({
+						where: and(
+							inArray(groupAdmins.groupId, Array.from(allGroupIds)),
+							inArray(groupAdmins.userId, uncachedUserIds)
+						),
+					})
+				: [],
+			allGroupIds.size > 0
+				? this.getGroupPermissionsForGroups(Array.from(allGroupIds))
+				: [],
+		])
+
+		// Build user -> admin groupIds map
+		const userAdminGroupsMap = new Map<string, Set<string>>()
+		for (const admin of allAdminRoles) {
+			if (!userAdminGroupsMap.has(admin.userId)) {
+				userAdminGroupsMap.set(admin.userId, new Set())
+			}
+			userAdminGroupsMap.get(admin.userId)!.add(admin.groupId)
+		}
+
+		// Build groupId -> group permissions map (shared across users)
+		const groupPermsMap = new Map<
+			string,
+			Array<(typeof allGroupPerms)[number]>
+		>()
+		for (const gp of allGroupPerms) {
+			if (!groupPermsMap.has(gp.groupId)) {
+				groupPermsMap.set(gp.groupId, [])
+			}
+			groupPermsMap.get(gp.groupId)!.push(gp)
+		}
+
+		// STEP 5: Fetch corporation permissions (with caching)
+		const corpPermissions = await this.getCorporationPermissionsForCorporations(
+			Array.from(allCorporationIds),
+			corporationNamesMap
+		)
+
+		// Build corporationId -> permissions map
+		const corpPermsMap = new Map<string, UserPermission[]>()
+		for (const cp of corpPermissions) {
+			if (!corpPermsMap.has(cp.groupId)) {
+				corpPermsMap.set(cp.groupId, [])
+			}
+			corpPermsMap.get(cp.groupId)!.push(cp)
+		}
+
+		// STEP 6: Resolve permissions for each user
+		for (const userId of uncachedUserIds) {
+			const memberships = userMembershipsMap.get(userId) || []
+			const adminGroupIds = userAdminGroupsMap.get(userId) || new Set()
+			const userCorporations = corporationsByUser.get(userId) || []
+
+			// Resolve group permissions
+			const groupPermissions: UserPermission[] = []
+			for (const membership of memberships) {
+				const groupId = membership.groupId
+				const group = membership.group
+				const isOwner = group.ownerId === userId
+				const isAdmin = adminGroupIds.has(groupId)
+
+				const permsForGroup = groupPermsMap.get(groupId) || []
+				for (const gp of permsForGroup) {
+					if (!this.userHasPermission(gp.targetType, isOwner, isAdmin)) {
+						continue
+					}
+					groupPermissions.push(this.buildUserPermission(gp, userId))
+				}
+			}
+
+			// Resolve corporation permissions
+			const corporationPermissions: UserPermission[] = []
+			for (const corp of userCorporations) {
+				const perms = corpPermsMap.get(corp.corporationId) || []
+				corporationPermissions.push(...perms)
+			}
+
+			// Combine and deduplicate
+			const allPermissions = [...groupPermissions, ...corporationPermissions]
+			const deduped = this.deduplicatePermissionsByUrn(allPermissions)
+
+			// Cache the result
+			this.cacheUserPermissions(userId, deduped)
+			result.set(userId, deduped)
+		}
+
+		console.log('[getUserPermissionsBatch] Completed', {
+			totalUsers: userIds.length,
+			cachedUsers: userIds.length - uncachedUserIds.length,
+			fetchedUsers: uncachedUserIds.length,
+		})
+
+		return result
 	}
 
 	async getGroupMemberPermissions(groupId: string): Promise<GetGroupMemberPermissionsResponse> {
@@ -2833,16 +3283,14 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			return { userPermissions: {} }
 		}
 
-		// Get permissions for each user
-		const userPermissionsMap: Record<string, UserPermission[]> = {}
+		// Use batch method to get all permissions at once
+		const permissionsMap = await this.getUserPermissionsBatch(userIds)
 
-		await Promise.all(
-			userIds.map(async (userId) => {
-				const perms = await this.getUserPermissions(userId)
-				// Filter to only permissions from this group
-				userPermissionsMap[userId] = perms.filter((p) => p.groupId === groupId)
-			})
-		)
+		// Convert to response format, filtering to only permissions from this group
+		const userPermissionsMap: Record<string, UserPermission[]> = {}
+		for (const [userId, perms] of permissionsMap) {
+			userPermissionsMap[userId] = perms.filter((p) => p.groupId === groupId)
+		}
 
 		return { userPermissions: userPermissionsMap }
 	}
@@ -2862,16 +3310,15 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			return { userPermissions: {} }
 		}
 
-		// Get permissions for each user
-		const userPermissionsMap: Record<string, UserPermission[]> = {}
+		// Use batch method to get all permissions at once
+		const groupIdsSet = new Set(groupIds)
+		const permissionsMap = await this.getUserPermissionsBatch(uniqueUserIds)
 
-		await Promise.all(
-			uniqueUserIds.map(async (userId) => {
-				const perms = await this.getUserPermissions(userId)
-				// Filter to only permissions from the specified groups
-				userPermissionsMap[userId] = perms.filter((p) => groupIds.includes(p.groupId))
-			})
-		)
+		// Convert to response format, filtering to only permissions from specified groups
+		const userPermissionsMap: Record<string, UserPermission[]> = {}
+		for (const [userId, perms] of permissionsMap) {
+			userPermissionsMap[userId] = perms.filter((p) => groupIdsSet.has(p.groupId))
+		}
 
 		return { userPermissions: userPermissionsMap }
 	}
@@ -2934,6 +3381,16 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		this.permissionsCache.clear()
 	}
 
+	/**
+	 * Invalidate corporation permissions cache for a specific corporation
+	 */
+	private invalidateCorporationPermissionsCache(corporationId: string): void {
+		this.corporationPermissionsCache.delete(corporationId)
+		// Also clear user permissions cache since corporation permissions are included in getUserPermissions
+		// We don't know which users belong to this corporation without expensive queries, so clear all
+		this.permissionsCache.clear()
+	}
+
 	private async isUserMember(groupId: string, userId: string): Promise<boolean> {
 		const membership = await this.db.query.groupMembers.findFirst({
 			where: and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)),
@@ -2949,10 +3406,11 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	}
 
 	private async getGroupMemberCount(groupId: string): Promise<number> {
-		const members = await this.db.query.groupMembers.findMany({
-			where: eq(groupMembers.groupId, groupId),
-		})
-		return members.length
+		const result = await this.db
+			.select({ count: sql<number>`count(*)::int` })
+			.from(groupMembers)
+			.where(eq(groupMembers.groupId, groupId))
+		return result[0]?.count ?? 0
 	}
 
 	/**

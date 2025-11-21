@@ -71,6 +71,13 @@
       "when": 1763298258172,
       "tag": "0009_hesitant_diamondback",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1763702240645,
+      "tag": "0010_broad_kingpin",
+      "breakpoints": true
     }
   ]
 }

@@ -571,10 +571,10 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 
 	/**
 	 * Retrieves public corporation information.
+	 * This is a public ESI endpoint that does not require authentication.
 	 * @param corporationId - The EVE corporation identifier.
 	 * @returns Public corporation information.
 	 */
-	@UseCorporationAuth
 	async fetchCorporationPublicInfo(corporationId: string): Promise<CorporationPublicInfo> {
 		const result = await this.esiFetcher.fetchEsi<EsiCorporationPublicInfo>(
 			`/corporations/${corporationId}`

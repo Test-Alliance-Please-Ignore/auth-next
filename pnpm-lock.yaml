@@ -378,6 +378,9 @@ importers:
       '@repo/broadcasts':
         specifier: workspace:*
         version: link:../../packages/broadcasts
+      '@repo/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@repo/db-utils':
         specifier: workspace:*
         version: link:../../packages/db-utils
@@ -390,6 +393,9 @@ importers:
       '@repo/doctrines':
         specifier: workspace:*
         version: link:../../packages/doctrines
+      '@repo/esi':
+        specifier: workspace:*
+        version: link:../../packages/esi
       '@repo/eve-character-data':
         specifier: workspace:*
         version: link:../../packages/eve-character-data
@@ -1284,6 +1290,9 @@ importers:
       '@neondatabase/serverless':
         specifier: 1.0.2
         version: 1.0.2
+      '@repo/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@repo/db-utils':
         specifier: workspace:*
         version: link:../../packages/db-utils
@@ -2093,6 +2102,25 @@ importers:
         specifier: workspace:*
         version: link:../typescript-config
 
+  packages/core:
+    dependencies:
+      '@repo/eve-types':
+        specifier: workspace:*
+        version: link:../eve-types
+      zod:
+        specifier: 4.1.12
+        version: 4.1.12
+    devDependencies:
+      '@repo/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
+      '@repo/tools':
+        specifier: workspace:*
+        version: link:../tools
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+
   packages/db-utils:
     dependencies:
       '@neondatabase/api-client':
@@ -2171,6 +2199,9 @@ importers:
         specifier: workspace:*
         version: link:../do-utils
     devDependencies:
+      '@cloudflare/vitest-pool-workers':
+        specifier: 0.10.8
+        version: 0.10.8(@cloudflare/workers-types@4.20251118.0)(@vitest/runner@3.2.4)(@vitest/snapshot@3.2.4)(vitest@3.2.4)
       '@repo/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config
@@ -2180,6 +2211,9 @@ importers:
       '@repo/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
+      vitest:
+        specifier: 3.2.4
+        version: 3.2.4(@types/node@24.10.1)(@vitest/browser@3.2.4)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.6)(yaml@2.8.1)
 
   packages/eslint-config:
     devDependencies:

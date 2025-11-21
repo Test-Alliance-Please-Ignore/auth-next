@@ -5,7 +5,7 @@
  * Includes character selection, sentiment choice, and recommendation text.
  */
 
-import { Minus, ThumbsDown, ThumbsUp } from 'lucide-react'
+import { AlertCircle, Minus, ThumbsDown, ThumbsUp } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -43,6 +43,7 @@ export interface AddRecommendationDialogProps {
 	open: boolean
 	onOpenChange: (open: boolean) => void
 	applicationId: string
+	applicationUserId: string
 	existingRecommendation?: Recommendation
 	onSuccess?: () => void
 }
@@ -143,6 +144,7 @@ function SentimentButton({
  *   open={isOpen}
  *   onOpenChange={setIsOpen}
  *   applicationId={applicationId}
+ *   applicationUserId={application.userId}
  *   existingRecommendation={recommendation}
  *   onSuccess={handleSuccess}
  * />
@@ -152,6 +154,7 @@ export function AddRecommendationDialog({
 	open,
 	onOpenChange,
 	applicationId,
+	applicationUserId,
 	existingRecommendation,
 	onSuccess,
 }: AddRecommendationDialogProps) {
@@ -193,7 +196,15 @@ export function AddRecommendationDialog({
 	// Validation
 	const textLength = recommendationText.trim().length
 	const isTextValid = textLength >= MIN_LENGTH && textLength <= MAX_LENGTH
-	const isFormValid = characterId && sentiment && isTextValid
+
+	// Check if selected character belongs to the application owner (self-recommendation)
+	const selectedCharacter = user?.characters.find(
+		(char: { characterId: string }) => char.characterId === characterId
+	)
+	const isSelfRecommendation =
+		selectedCharacter && user?.id === applicationUserId && !isEditMode
+
+	const isFormValid = characterId && sentiment && isTextValid && !isSelfRecommendation
 
 	// Character counter color
 	const getCounterColor = () => {
@@ -286,6 +297,17 @@ export function AddRecommendationDialog({
 								)}
 							</SelectContent>
 						</Select>
+
+						{/* Self-recommendation warning */}
+						{isSelfRecommendation && (
+							<div className="mt-2 flex items-start gap-2 p-3 rounded-md bg-destructive/10 border border-destructive/30 text-destructive">
+								<AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+								<p className="text-sm">
+									You cannot recommend your own application. Please select a different character
+									or ask someone else to provide a recommendation.
+								</p>
+							</div>
+						)}
 					</div>
 
 					{/* Sentiment Selector */}

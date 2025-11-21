@@ -7,6 +7,7 @@ export type Env = SharedHonoEnv & {
 	DATABASE_URL: string
 	GROUPS: DurableObjectNamespace
 	EVE_CHARACTER_DATA: DurableObjectNamespace
+	CORE: DurableObjectNamespace
 	GROUPS_KV: KVNamespace
 }
 

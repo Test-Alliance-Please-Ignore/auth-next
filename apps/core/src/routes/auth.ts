@@ -8,6 +8,7 @@ import { assertEveCharacterId } from '@repo/eve-types'
 
 import { createDb } from '../db'
 import { oauthStates, userCharacters } from '../db/schema'
+import { getCachedUserPermissions } from '../lib/groups-cache'
 import { requireAuth } from '../middleware/session'
 import { ActivityService } from '../services/activity.service'
 import { AuthService } from '../services/auth.service'
@@ -676,8 +677,11 @@ auth.get('/session', async (c) => {
 	const user = c.get('user')
 
 	if (!user) {
-		return c.json({ authenticated: false, user: null })
+		return c.json({ authenticated: false, user: null, permissions: [] })
 	}
+
+	// Fetch user permissions (cached for 15 seconds)
+	const permissions = await getCachedUserPermissions(c.env, user.id)
 
 	return c.json({
 		authenticated: true,
@@ -688,6 +692,11 @@ auth.get('/session', async (c) => {
 			is_admin: user.is_admin,
 			discord: user.discord || null,
 		},
+		permissions: permissions.map(p => ({
+			urn: p.urn,
+			name: p.name,
+			description: p.description,
+		})),
 	})
 })
 

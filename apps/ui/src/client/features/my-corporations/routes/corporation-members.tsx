@@ -296,8 +296,8 @@ export default function CorporationMembers() {
 				</div>
 			</div>
 
-			{/* HR Navigation - Show if user has HR role or is site admin */}
-			{(currentUserHrRole || user?.is_admin) && (
+			{/* HR Navigation - Show if user has HR role, is CEO, or is site admin */}
+			{(currentUserHrRole || canManageHrRoles || user?.is_admin) && (
 				<Card className="mb-6 bg-primary/5 border-primary/20">
 					<CardHeader>
 						<CardTitle className="text-lg flex items-center gap-2">
@@ -307,7 +307,9 @@ export default function CorporationMembers() {
 						<CardDescription>
 							{currentUserHrRole
 								? `You have ${currentUserHrRole.role} access for this corporation`
-								: 'You have site admin access to all HR features'}
+								: userRole === 'CEO'
+									? 'You have CEO access to all HR features'
+									: 'You have site admin access to all HR features'}
 						</CardDescription>
 					</CardHeader>
 					<CardContent>

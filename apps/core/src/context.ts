@@ -41,6 +41,8 @@ export type Env = SharedHonoEnv & {
 	EVE_STATIC_DATA: Fetcher
 	/** Secret for session token generation and signing */
 	SESSION_SECRET: string
+	/** ESI Durable Object binding */
+	ESI: DurableObjectNamespace
 }
 
 /** Session user data attached to request context */

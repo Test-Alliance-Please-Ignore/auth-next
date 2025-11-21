@@ -25,6 +25,7 @@ export interface User {
 interface SessionResponse {
 	authenticated: boolean
 	user: User | null
+	permissions?: UserPermission[]
 }
 
 /**
@@ -40,6 +41,7 @@ export function useAuth() {
 
 	return {
 		user: data?.user ?? null,
+		permissions: data?.permissions ?? [],
 		isAuthenticated: data?.authenticated ?? false,
 		isLoading,
 		error,

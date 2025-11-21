@@ -447,6 +447,7 @@ export default function ApplicationDetail() {
 				open={showAddRecommendationDialog}
 				onOpenChange={setShowAddRecommendationDialog}
 				applicationId={applicationId!}
+				applicationUserId={application?.userId || ''}
 				existingRecommendation={editingRecommendation}
 				onSuccess={handleRecommendationSuccess}
 			/>

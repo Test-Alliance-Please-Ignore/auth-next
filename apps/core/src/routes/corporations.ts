@@ -359,6 +359,7 @@ app.get('/browse/search', requireAuth(), async (c) => {
  * GET /corporations/browse/:corporationId
  * Get detailed information about a specific corporation for the detail page
  * Returns full corporation details including description and application instructions
+ * CEOs, Directors, and site admins can access their corporation even if not recruiting
  */
 app.get('/browse/:corporationId', requireAuth(), async (c) => {
 	const corporationId = c.req.param('corporationId')
@@ -369,11 +370,23 @@ app.get('/browse/:corporationId', requireAuth(), async (c) => {
 	}
 
 	try {
+		// First, check if user has management access (CEO/Director/admin)
+		let hasManagementAccess = false
+		try {
+			await checkCorporationAccess(c, corporationId)
+			hasManagementAccess = true
+		} catch {
+			// User doesn't have management access, continue with public check
+		}
+
+		// Get corporation - include non-recruiting if user has management access
 		const corporation = await db.query.managedCorporations.findFirst({
-			where: and(
-				eq(managedCorporations.corporationId, corporationId),
-				eq(managedCorporations.isRecruiting, true)
-			),
+			where: hasManagementAccess
+				? eq(managedCorporations.corporationId, corporationId)
+				: and(
+						eq(managedCorporations.corporationId, corporationId),
+						eq(managedCorporations.isRecruiting, true)
+					),
 		})
 
 		if (!corporation) {
@@ -646,6 +659,93 @@ app.put('/:corporationId', requireAuth(), requireAdmin(), async (c) => {
 
 		if (!existing) {
 			return c.json({ error: 'Corporation not found' }, 404)
+		}
+
+		// Handle TEST alliance permission auto-attachment/detachment
+		if (isMemberCorporation !== undefined && isMemberCorporation !== existing.isMemberCorporation) {
+			const user = c.get('user')!
+			const testAllianceUrn = 'urn:eve:alliance:test-alliance'
+
+			try {
+				const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+
+				if (isMemberCorporation) {
+					// Corporation is being marked as a member corp - attach TEST alliance permission
+					logger.info('[Corporations] Marking as member corp - attaching TEST alliance permission', {
+						corporationId,
+						urn: testAllianceUrn,
+					})
+
+					// First, get all permissions to find the TEST alliance permission ID
+					const allPermissions = await groupsStub.listPermissions()
+					const testAlliancePermission = allPermissions.find(p => p.urn === testAllianceUrn)
+
+					if (testAlliancePermission) {
+						// Check if permission is already attached
+						const existingPermissions = await groupsStub.listCorporationPermissions(corporationId)
+						const alreadyAttached = existingPermissions.some(
+							cp => cp.permission.urn === testAllianceUrn
+						)
+
+						if (!alreadyAttached) {
+							// Attach the permission
+							await groupsStub.attachPermissionToCorporation(
+								{
+									corporationId,
+									permissionId: testAlliancePermission.id,
+								},
+								user.id
+							)
+							logger.info('[Corporations] TEST alliance permission attached', {
+								corporationId,
+								permissionId: testAlliancePermission.id,
+							})
+						} else {
+							logger.info('[Corporations] TEST alliance permission already attached', {
+								corporationId,
+							})
+						}
+					} else {
+						logger.warn('[Corporations] TEST alliance permission not found in system', {
+							corporationId,
+							urn: testAllianceUrn,
+						})
+					}
+				} else {
+					// Corporation is being unmarked as a member corp - detach TEST alliance permission
+					logger.info('[Corporations] Unmarking as member corp - detaching TEST alliance permission', {
+						corporationId,
+						urn: testAllianceUrn,
+					})
+
+					// Get corporation permissions to find the one to remove
+					const corpPermissions = await groupsStub.listCorporationPermissions(corporationId)
+					const testAllianceCorpPermission = corpPermissions.find(
+						cp => cp.permission.urn === testAllianceUrn
+					)
+
+					if (testAllianceCorpPermission) {
+						// Remove the permission
+						await groupsStub.removePermissionFromCorporation(testAllianceCorpPermission.id, user.id)
+						logger.info('[Corporations] TEST alliance permission detached', {
+							corporationId,
+							corporationPermissionId: testAllianceCorpPermission.id,
+						})
+					} else {
+						logger.info('[Corporations] TEST alliance permission was not attached', {
+							corporationId,
+						})
+					}
+				}
+			} catch (error) {
+				logger.error('[Corporations] Error managing TEST alliance permission', {
+					corporationId,
+					isMemberCorporation,
+					error: error instanceof Error ? error.message : String(error),
+				})
+				// Continue with the update even if permission management fails
+				// This ensures the corporation status is still updated
+			}
 		}
 
 		// Update database

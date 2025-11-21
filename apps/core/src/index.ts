@@ -5,6 +5,7 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
 import { createDb } from './db'
+import { CoreDO } from './durable-object'
 import { csrfProtection } from './middleware/csrf'
 import { sessionMiddleware } from './middleware/session'
 import { renderFleetJoinPage } from './pages/fleet-join'
@@ -339,3 +340,5 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 		return this.getService().getUserMainCharacterName(userId)
 	}
 }
+
+export { CoreDO as Core }

@@ -87,6 +87,11 @@
 				"name": "SRP",
 				"class_name": "Srp",
 				"script_name": "srp"
+			},
+			{
+				"name": "ESI",
+				"class_name": "Esi",
+				"script_name": "esi"
 			}
 		]
 	},
@@ -98,6 +103,12 @@
 		{
 			"binding": "EVE_STATIC_DATA",
 			"service": "eve-static-data"
+		}
+	],
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["Core"]
 		}
 	]
 }

@@ -284,6 +284,8 @@ export const groupJoinRequests = pgTable(
 		index('group_join_requests_group_id_idx').on(table.groupId),
 		index('group_join_requests_user_id_idx').on(table.userId),
 		index('group_join_requests_status_idx').on(table.status),
+		// Composite index for common query pattern: find pending request for user in group
+		index('group_join_requests_group_user_status_idx').on(table.groupId, table.userId, table.status),
 		// One pending request per user per group
 		unique('unique_pending_join_request').on(table.groupId, table.userId, table.status),
 	]

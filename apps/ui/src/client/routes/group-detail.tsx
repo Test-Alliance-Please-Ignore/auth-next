@@ -6,7 +6,7 @@ import { GroupCard } from '@/components/group-card'
 import { InviteMemberForm } from '@/components/invite-member-form'
 import { JoinButton } from '@/components/join-button'
 import { LeaveButton } from '@/components/leave-button'
-import { MemberListReadonly } from '@/components/member-list-readonly'
+import { MemberList } from '@/components/member-list'
 import { PendingJoinRequestsList } from '@/components/pending-join-requests-list'
 import { TransferOwnershipDialog } from '@/components/transfer-ownership-dialog'
 import { Button } from '@/components/ui/button'
@@ -14,6 +14,7 @@ import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmButton } from '@/components/ui/confirm-button'
 import { Container } from '@/components/ui/container'
+import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
 	Dialog,
 	DialogContent,
@@ -26,21 +27,27 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Section } from '@/components/ui/section'
 import { useAuth } from '@/hooks/useAuth'
-import { useGroupMembers } from '@/hooks/useGroupMembers'
+import { useGroupMembers, useRemoveMember, useToggleAdmin } from '@/hooks/useGroupMembers'
 import { useGroup } from '@/hooks/useGroups'
 import {
 	useCreateInviteCode,
 	useGroupInviteCodes,
 	useRevokeInviteCode,
 } from '@/hooks/useInviteCodes'
+import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 export default function GroupDetailPage() {
 	const { groupId } = useParams<{ groupId: string }>()
 	const navigate = useNavigate()
 	const { user } = useAuth()
+	const { showSuccess, showError } = useMessage()
 	const { data: group, isLoading } = useGroup(groupId!)
 	const { data: members, isLoading: membersLoading } = useGroupMembers(groupId!)
+
+	// Member management hooks
+	const removeMember = useRemoveMember()
+	const toggleAdmin = useToggleAdmin()
 
 	// Invite code hooks
 	const { data: inviteCodes = [] } = useGroupInviteCodes(groupId!)
@@ -53,6 +60,10 @@ export default function GroupDetailPage() {
 	// Dialog state
 	const [transferDialogOpen, setTransferDialogOpen] = useState(false)
 	const [showCreateInviteCodeDialog, setShowCreateInviteCodeDialog] = useState(false)
+	const [removeMemberDialogOpen, setRemoveMemberDialogOpen] = useState(false)
+	const [memberToRemove, setMemberToRemove] = useState<{ userId: string; name: string } | null>(
+		null
+	)
 	const [inviteCodeSettings, setInviteCodeSettings] = useState({
 		maxUses: null as number | null,
 		expiresInDays: 7,
@@ -93,6 +104,46 @@ export default function GroupDetailPage() {
 			setTimeout(() => setCopiedCode(null), 2000)
 		} catch (error) {
 			console.error('Failed to copy code to clipboard:', error)
+		}
+	}
+
+	// Member management handlers
+	const handleRemoveMember = (userId: string) => {
+		const member = members?.find((m) => m.userId === userId)
+		if (member) {
+			setMemberToRemove({ userId, name: member.mainCharacterName || 'Unknown' })
+			setRemoveMemberDialogOpen(true)
+		}
+	}
+
+	const handleConfirmRemove = async () => {
+		if (!groupId || !memberToRemove) return
+
+		try {
+			await removeMember.mutateAsync({ groupId, userId: memberToRemove.userId })
+			showSuccess(`${memberToRemove.name} has been removed from the group`)
+			setRemoveMemberDialogOpen(false)
+			setMemberToRemove(null)
+		} catch (error) {
+			showError(error instanceof Error ? error.message : 'Failed to remove member')
+		}
+	}
+
+	const handleToggleAdmin = async (userId: string, isCurrentlyAdmin: boolean) => {
+		if (!groupId) return
+
+		const member = members?.find((m) => m.userId === userId)
+		if (!member) return
+
+		try {
+			await toggleAdmin.mutateAsync({ groupId, userId, isCurrentlyAdmin })
+			showSuccess(
+				isCurrentlyAdmin
+					? `${member.mainCharacterName || 'Member'} is no longer a group admin`
+					: `${member.mainCharacterName || 'Member'} is now a group admin`
+			)
+		} catch (error) {
+			showError(error instanceof Error ? error.message : 'Failed to update admin status')
 		}
 	}
 
@@ -152,21 +203,24 @@ export default function GroupDetailPage() {
 					</Card>
 				)}
 
-				{/* Members List - Only show to members */}
-				{group.isMember && (
+				{/* Members List - Only show to group owners and admins */}
+				{(group.isOwner || group.isAdmin) && (
 					<Card variant="interactive">
 						<CardHeader>
 							<CardTitle className="flex items-center gap-2">
 								<Users className="h-5 w-5" />
 								Members ({group.memberCount || 0})
 							</CardTitle>
-							<CardDescription>All members of this group</CardDescription>
+							<CardDescription>Manage members of this group</CardDescription>
 						</CardHeader>
 						<CardContent>
-							<MemberListReadonly
+							<MemberList
 								members={members || []}
 								group={group}
+								adminUserIds={new Set(group.adminUserIds || [])}
 								currentUserId={user?.id}
+								onRemoveMember={handleRemoveMember}
+								onToggleAdmin={handleToggleAdmin}
 								isLoading={membersLoading}
 							/>
 						</CardContent>
@@ -390,6 +444,29 @@ export default function GroupDetailPage() {
 						</CardContent>
 					</Card>
 				)}
+
+				{/* Remove Member Confirmation Dialog */}
+				<Dialog open={removeMemberDialogOpen} onOpenChange={setRemoveMemberDialogOpen}>
+					<DialogContent>
+						<DialogHeader>
+							<DialogTitle>Remove Member</DialogTitle>
+							<DialogDescription>
+								Are you sure you want to remove {memberToRemove?.name} from this group? This action
+								cannot be undone.
+							</DialogDescription>
+						</DialogHeader>
+						<DialogFooter>
+							<CancelButton onClick={() => setRemoveMemberDialogOpen(false)}>Cancel</CancelButton>
+							<DestructiveButton
+								onClick={handleConfirmRemove}
+								loading={removeMember.isPending}
+								loadingText="Removing..."
+							>
+								Remove Member
+							</DestructiveButton>
+						</DialogFooter>
+					</DialogContent>
+				</Dialog>
 
 				{/* Transfer Ownership Dialog */}
 				{group && members && (

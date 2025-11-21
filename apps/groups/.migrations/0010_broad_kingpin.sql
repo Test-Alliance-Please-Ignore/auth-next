@@ -1,0 +1,1 @@
+CREATE INDEX "group_join_requests_group_user_status_idx" ON "group_join_requests" USING btree ("group_id","user_id","status");
