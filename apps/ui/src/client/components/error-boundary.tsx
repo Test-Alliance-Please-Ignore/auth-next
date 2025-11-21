@@ -2,6 +2,9 @@ import { Component } from 'react'
 
 import type { ErrorInfo, ReactNode } from 'react'
 
+const RELOAD_COUNT_KEY = 'errorBoundary_reloadCount'
+const MAX_RELOADS = 3
+
 interface Props {
 	children: ReactNode
 }
@@ -9,6 +12,7 @@ interface Props {
 interface State {
 	hasError: boolean
 	error?: Error
+	reloadLimitReached: boolean
 }
 
 /**
@@ -18,12 +22,18 @@ interface State {
 export class ErrorBoundary extends Component<Props, State> {
 	constructor(props: Props) {
 		super(props)
-		this.state = { hasError: false }
+		this.state = { hasError: false, reloadLimitReached: false }
+	}
+
+	override componentDidMount() {
+		// Clear reload count on successful mount (app loaded without errors)
+		sessionStorage.removeItem(RELOAD_COUNT_KEY)
 	}
 
 	static getDerivedStateFromError(error: Error): State {
 		// Update state so the next render will show the fallback UI
-		return { hasError: true, error }
+		const reloadCount = parseInt(sessionStorage.getItem(RELOAD_COUNT_KEY) || '0', 10)
+		return { hasError: true, error, reloadLimitReached: reloadCount >= MAX_RELOADS }
 	}
 
 	override componentDidCatch(error: Error, errorInfo: ErrorInfo) {
@@ -36,8 +46,21 @@ export class ErrorBoundary extends Component<Props, State> {
 			error.name === 'ChunkLoadError'
 
 		if (isChunkLoadError) {
-			console.warn('ErrorBoundary caught chunk load error, reloading page...', error)
-			// Reload the page to get fresh assets
+			const reloadCount = parseInt(sessionStorage.getItem(RELOAD_COUNT_KEY) || '0', 10)
+
+			if (reloadCount >= MAX_RELOADS) {
+				console.error(
+					`ErrorBoundary: Max reload attempts (${MAX_RELOADS}) reached for chunk load error`,
+					error,
+				)
+				return
+			}
+
+			console.warn(
+				`ErrorBoundary caught chunk load error, reloading page (attempt ${reloadCount + 1}/${MAX_RELOADS})...`,
+				error,
+			)
+			sessionStorage.setItem(RELOAD_COUNT_KEY, String(reloadCount + 1))
 			window.location.reload()
 			return
 		}
@@ -46,15 +69,42 @@ export class ErrorBoundary extends Component<Props, State> {
 		console.error('ErrorBoundary caught error:', error, errorInfo)
 	}
 
+	private handleManualReload = () => {
+		sessionStorage.removeItem(RELOAD_COUNT_KEY)
+		window.location.reload()
+	}
+
 	override render() {
 		if (this.state.hasError) {
-			// Don't show fallback UI for chunk errors since we're reloading
+			// Check if this is a chunk loading error
 			const isChunkLoadError =
 				this.state.error?.message?.includes('Failed to fetch dynamically imported module') ||
 				this.state.error?.message?.includes('Importing a module script failed') ||
 				this.state.error?.message?.includes('error loading dynamically imported module') ||
 				this.state.error?.message?.includes('Loading chunk')
 
+			// Show error UI if reload limit reached
+			if (isChunkLoadError && this.state.reloadLimitReached) {
+				return (
+					<div className="flex items-center justify-center min-h-screen p-4">
+						<div className="text-center max-w-md">
+							<h1 className="text-2xl font-bold mb-4">Unable to load application</h1>
+							<p className="text-muted-foreground mb-4">
+								We tried to reload the page automatically but the problem persists. This may be a
+								temporary network issue.
+							</p>
+							<button
+								onClick={this.handleManualReload}
+								className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+							>
+								Try Again
+							</button>
+						</div>
+					</div>
+				)
+			}
+
+			// Show loading message while auto-reloading for chunk errors
 			if (isChunkLoadError) {
 				return (
 					<div className="flex items-center justify-center min-h-screen">
