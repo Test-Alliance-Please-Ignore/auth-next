@@ -34,7 +34,7 @@ corpCommand
 
 			for (const corp of corps) {
 				table.push([
-					corp.id,
+					corp.corporationId,
 					corp.corporationId,
 					corp.name || '-',
 					corp.ticker || '-',

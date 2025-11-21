@@ -47,16 +47,13 @@ export const corpDb = {
 
 	async getById(id: string): Promise<CorporationRow | null> {
 		const db = getDb()
-		return await db.query.corporations.findFirst({
-			where: eq(corporations.id, id),
-		})
+		return (await db.query.corporations.findFirst({
+			where: eq(corporations.corporationId, id),
+		})) || null
 	},
 
 	async getByCorporationId(corporationId: string): Promise<CorporationRow | null> {
-		const db = getDb()
-		return await db.query.corporations.findFirst({
-			where: eq(corporations.corporationId, corporationId),
-		})
+		return this.getById(corporationId)
 	},
 
 	async create(data: NewCorporationRow): Promise<CorporationRow> {
@@ -70,7 +67,7 @@ export const corpDb = {
 		const [corp] = await db
 			.update(corporations)
 			.set({ ...data, updatedAt: new Date() })
-			.where(eq(corporations.id, id))
+			.where(eq(corporations.corporationId, id))
 			.returning()
 		if (!corp) {
 			throw new Error(`Corporation with id ${id} not found`)
@@ -80,7 +77,7 @@ export const corpDb = {
 
 	async delete(id: string): Promise<void> {
 		const db = getDb()
-		await db.delete(corporations).where(eq(corporations.id, id))
+		await db.delete(corporations).where(eq(corporations.corporationId, id))
 	},
 
 	async toggleTracking(id: string): Promise<CorporationRow> {
@@ -104,7 +101,7 @@ export const structDb = {
 				throw new Error(`Corporation with id ${corporationId} not found`)
 			}
 			return await db.query.structures.findMany({
-				where: eq(structures.corporationId, corp.id),
+				where: eq(structures.corporationId, corp.corporationId),
 				orderBy: (structs, { asc }) => [asc(structs.structureId)],
 			})
 		}
@@ -115,16 +112,13 @@ export const structDb = {
 
 	async getById(id: string): Promise<StructureRow | null> {
 		const db = getDb()
-		return await db.query.structures.findFirst({
-			where: eq(structures.id, id),
-		})
+		return (await db.query.structures.findFirst({
+			where: eq(structures.structureId, id),
+		})) || null
 	},
 
 	async getByStructureId(structureId: string): Promise<StructureRow | null> {
-		const db = getDb()
-		return await db.query.structures.findFirst({
-			where: eq(structures.structureId, structureId),
-		})
+		return this.getById(structureId)
 	},
 
 	async create(data: NewStructureRow): Promise<StructureRow> {
@@ -138,7 +132,7 @@ export const structDb = {
 		const [struct] = await db
 			.update(structures)
 			.set({ ...data, updatedAt: new Date() })
-			.where(eq(structures.id, id))
+			.where(eq(structures.structureId, id))
 			.returning()
 		if (!struct) {
 			throw new Error(`Structure with id ${id} not found`)
@@ -148,7 +142,7 @@ export const structDb = {
 
 	async delete(id: string): Promise<void> {
 		const db = getDb()
-		await db.delete(structures).where(eq(structures.id, id))
+		await db.delete(structures).where(eq(structures.structureId, id))
 	},
 
 	async toggleMonitoring(id: string): Promise<StructureRow> {

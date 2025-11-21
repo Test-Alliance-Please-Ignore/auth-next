@@ -248,14 +248,14 @@ export class StructureMonitorDO extends DurableObject<Env> implements StructureM
 		const structureId = config.structureId
 
 		const stub = getStub<Esi>(this.env.ESI, corporationId)
-		const assets = await stub.fetchAssets(corporationId)
+		const assets = await (stub as any).fetchAssets(corporationId)
 		logger.info('[StructureMonitorDO] Fetched assets', {
 			corporationId,
 			structureId,
 			assets,
 		})
 
-		const structureAssets = assets.filter((asset) => asset.location_id === structureId)
+		const structureAssets = assets.filter((asset: any) => asset.location_id === structureId)
 		logger.info('[StructureMonitorDO] Fetched structure assets', {
 			corporationId,
 			structureId,

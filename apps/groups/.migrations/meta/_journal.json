@@ -78,6 +78,20 @@
       "when": 1763702240645,
       "tag": "0010_broad_kingpin",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1763744731508,
+      "tag": "0011_awesome_rawhide_kid",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1763744871167,
+      "tag": "0012_greedy_black_crow",
+      "breakpoints": true
     }
   ]
 }

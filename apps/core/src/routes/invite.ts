@@ -23,6 +23,11 @@ invite.get('/:code', async (c) => {
 
 	try {
 		const result = await groupsDO.getGroupByInviteCode(code, user?.id)
+
+		if (!result) {
+			throw new Error('Invalid invite code') // Propagate as an error to be caught by the catch block
+		}
+
 		const { group, inviteCode, canJoin, errorMessage } = result
 
 		// Build the invite URL for meta tags

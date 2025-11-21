@@ -285,7 +285,11 @@ export const groupJoinRequests = pgTable(
 		index('group_join_requests_user_id_idx').on(table.userId),
 		index('group_join_requests_status_idx').on(table.status),
 		// Composite index for common query pattern: find pending request for user in group
-		index('group_join_requests_group_user_status_idx').on(table.groupId, table.userId, table.status),
+		index('group_join_requests_group_user_status_idx').on(
+			table.groupId,
+			table.userId,
+			table.status
+		),
 		// One pending request per user per group
 		unique('unique_pending_join_request').on(table.groupId, table.userId, table.status),
 	]
@@ -507,6 +511,47 @@ export const corporationPermissions = pgTable(
 	]
 )
 
+export const roles = pgTable(
+	'groups_roles',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		name: varchar('name', { length: 255 }).notNull(),
+		ownedBy: varchar('owned_by', { length: 255 }).notNull(),
+		description: text('description'),
+		createdAt: timestamp('created_at').defaultNow().notNull(),
+		updatedAt: timestamp('updated_at').defaultNow().notNull(),
+	},
+	(table) => [
+		index('groups_roles_owned_by_idx').on(table.ownedBy),
+		index('groups_roles_name_idx').on(table.name),
+		unique('unique_group_role').on(table.ownedBy, table.name),
+	]
+)
+
+export const roleAttachments = pgTable(
+	'groups_role_attachments',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		roleId: uuid('role_id')
+			.notNull()
+			.references(() => roles.id, { onDelete: 'cascade' }),
+		attachedToType: varchar('attached_to_type', { length: 255 }).notNull(),
+		attachedToId: varchar('attached_to_id', { length: 255 }).notNull(),
+		createdAt: timestamp('created_at').defaultNow().notNull(),
+		updatedAt: timestamp('updated_at').defaultNow().notNull(),
+	},
+	(table) => [
+		index('groups_role_attachments_role_id_idx').on(table.roleId),
+		index('groups_role_attachments_attached_to_type_idx').on(table.attachedToType),
+		index('groups_role_attachments_attached_to_id_idx').on(table.attachedToId),
+		unique('unique_group_role_attachment').on(
+			table.roleId,
+			table.attachedToType,
+			table.attachedToId
+		),
+	]
+)
+
 /**
  * Relations
  */
@@ -660,6 +705,8 @@ export const schema = {
 	permissions,
 	groupPermissions,
 	corporationPermissions,
+	roles,
+	roleAttachments,
 	// Relations
 	categoriesRelations,
 	groupsRelations,

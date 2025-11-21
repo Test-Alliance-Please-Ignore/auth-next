@@ -550,6 +550,8 @@ describe('Groups Durable Object - Invite Codes', () => {
 		const result = await stub.redeemInviteCode(code.code, USER_2_ID)
 
 		expect(result.success).toBe(true)
+		expect(result.group).toBeDefined()
+		if (!result.group) throw new Error('Group not found')
 		expect(result.group.id).toBe(group.id)
 
 		const members = await stub.getGroupMembers(group.id, USER_1_ID, false)

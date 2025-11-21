@@ -24,6 +24,7 @@ const CACHE_TTL = 5 * 60 // 5 minutes in seconds
  * Helper to get cache instance
  */
 function getCache() {
+	// @ts-ignore
 	return caches.default
 }
 

@@ -34,6 +34,7 @@ const CACHE_TTL = 5 * 60 // 5 minutes in seconds
  * Helper to get cache instance
  */
 function getCache() {
+	// @ts-ignore
 	return caches.default
 }
 
@@ -1437,7 +1438,8 @@ app.patch('/:corporationId/members/:characterId/status', requireAuth(), async (c
 		// Invalidate cache to force refresh of member list
 		const cacheKey = getCorpMembersCacheKey(corporationId)
 		try {
-			await caches.default.delete(cacheKey)
+			// @ts-ignore
+		await caches.default.delete(cacheKey)
 			logger.info('[Corporations] Invalidated members cache', { cacheKey })
 		} catch (error) {
 			logger.warn('[Corporations] Failed to invalidate cache', {

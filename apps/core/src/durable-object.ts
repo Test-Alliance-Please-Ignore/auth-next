@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { eq, inArray } from '@repo/db-utils'
+import { and, eq, inArray } from '@repo/db-utils'
 import { getEsiInstanceForCharacter, getEsiInstanceForCorporation } from '@repo/esi'
 
 import { createDb } from './db'
@@ -45,6 +45,20 @@ export class CoreDO extends DurableObject<Env> implements Core {
 			allianceId: String(corporationInfo.alliance_id),
 			allianceName: corporationInfo.name,
 		}
+	}
+
+	async getUserCharacters(
+		userId: string,
+		includeDeleted: boolean = false
+	): Promise<Array<{ characterId: string; characterName: string; isDeleted: boolean }>> {
+		const characters = await this.db.query.userCharacters.findMany({
+			where: and(eq(userCharacters.isDeleted, includeDeleted), eq(userCharacters.userId, userId)),
+		})
+		return characters.map((c) => ({
+			characterId: c.characterId,
+			characterName: c.characterName,
+			isDeleted: c.isDeleted,
+		}))
 	}
 
 	async getUserCorporations(
@@ -95,7 +109,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		})
 
 		// Group characters by userId
-		const charactersByUser = new Map<string, Array<typeof allCharacters[number]>>()
+		const charactersByUser = new Map<string, Array<(typeof allCharacters)[number]>>()
 		for (const char of allCharacters) {
 			if (!charactersByUser.has(char.userId)) {
 				charactersByUser.set(char.userId, [])

@@ -35,7 +35,7 @@ structCommand
 
 			for (const struct of structs) {
 				table.push([
-					struct.id,
+					struct.structureId,
 					struct.structureId,
 					struct.name || '-',
 					struct.typeId || '-',
@@ -77,8 +77,7 @@ structCommand
 			}
 
 			const struct = await structDb.create({
-				corporationId: corp.id,
-				structureId: options.id,
+									corporationId: corp.corporationId,				structureId: options.id,
 				name: options.name || null,
 				typeId: options.typeId || null,
 				solarSystemId: options.systemId || null,

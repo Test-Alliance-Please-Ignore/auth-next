@@ -9,6 +9,7 @@ export type Env = SharedHonoEnv & {
 	EVE_CHARACTER_DATA: DurableObjectNamespace
 	CORE: DurableObjectNamespace
 	GROUPS_KV: KVNamespace
+	PUBLIC_URL: string // Added PUBLIC_URL
 }
 
 /** Variables can be extended */

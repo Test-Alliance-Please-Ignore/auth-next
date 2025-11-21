@@ -548,7 +548,8 @@ app.get('/:corporationId/roles', requireAuth(), async (c) => {
 				`https://hr.internal/roles/${corporationId}?activeOnly=${activeOnly}`,
 				{ method: 'GET' }
 			)
-			const cache = caches.default
+			// @ts-ignore
+		const cache = caches.default
 			const cachedResponse = await cache.match(cacheKey)
 
 			if (cachedResponse) {
@@ -590,7 +591,8 @@ app.get('/:corporationId/roles', requireAuth(), async (c) => {
 					'Cache-Control': 'public, max-age=300', // 5 minutes
 				},
 			})
-			c.executionCtx.waitUntil(caches.default.put(cacheKey, response.clone()))
+			// @ts-ignore
+		c.executionCtx.waitUntil(caches.default.put(cacheKey, response.clone()))
 		}
 
 		return c.json(roles)

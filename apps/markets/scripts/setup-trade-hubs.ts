@@ -164,7 +164,6 @@ async function stopAllTradeHubs(env: { MARKETS: DurableObjectNamespace }) {
 export { setupTradeHubs, checkTradeHubStatus, stopAllTradeHubs, TRADE_HUBS }
 
 // CLI usage - only run if executed directly (Bun-specific)
-// @ts-expect-error - import.meta.main is Bun-specific
 if (import.meta.main) {
 	console.log('This script requires environment bindings to run.')
 	console.log('Please use one of these methods:\n')

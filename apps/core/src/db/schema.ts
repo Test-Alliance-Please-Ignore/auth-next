@@ -77,6 +77,7 @@ export const userCharacters = pgTable(
 		lastCharacterRefresh: timestamp('last_character_refresh', { withTimezone: true }),
 		linkedAt: timestamp('linked_at').defaultNow().notNull(),
 		updatedAt: timestamp('updated_at').defaultNow().notNull(),
+		isDeleted: boolean('deleted').default(false).notNull(),
 	},
 	(table) => [
 		// Index for finding characters by user
@@ -87,6 +88,7 @@ export const userCharacters = pgTable(
 		index('user_characters_is_primary_idx').on(table.userId, table.is_primary),
 		// Index for filtering by status (active vs emeritus)
 		index('user_characters_status_idx').on(table.status),
+		index('user_characters_deleted_idx').on(table.isDeleted),
 	]
 )
 

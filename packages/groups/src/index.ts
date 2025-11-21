@@ -17,6 +17,15 @@ import type {
 	UpdatePermissionRequest,
 	UserPermission,
 } from './permissions'
+import type {
+	AttachRoleToRequest,
+	BatchGetRolesForRequest,
+	CreateRoleRequest,
+	DetachRoleFromRequest,
+	GetRolesForRequest,
+	Role,
+	RoleAttachment,
+} from './roles'
 
 /**
  * @repo/groups
@@ -225,7 +234,7 @@ export interface CreateInviteCodeResponse {
 
 export interface RedeemInviteCodeResponse {
 	success: boolean
-	group: Group
+	group?: Group
 	message?: string
 }
 
@@ -418,7 +427,7 @@ export interface Groups {
 	redeemInviteCode(code: string, userId: string): Promise<RedeemInviteCodeResponse>
 
 	/** Get group information by invite code (for preview/landing page) */
-	getGroupByInviteCode(code: string, userId?: string): Promise<GroupByInviteCodeResponse>
+	getGroupByInviteCode(code: string, userId?: string): Promise<GroupByInviteCodeResponse | null>
 
 	/**
 	 * Discord Server Operations
@@ -588,4 +597,31 @@ export interface Groups {
 
 	/** Get all permissions for a character based on their corporation membership */
 	getCharacterPermissions(characterId: string): Promise<UserPermission[]>
+
+	/**
+	 * Role Operations
+	 */
+
+	/** Create a new role */
+	createRole(request: CreateRoleRequest): Promise<Role>
+
+	/** Get a specific role */
+	getRole(roleId: string): Promise<Role | null>
+
+	/** Get roles for a specific owner */
+	getRolesForOwnedBy(ownedBy: string): Promise<Role[]>
+
+	/** Attach a role to a specific object */
+	attachRoleTo(request: AttachRoleToRequest): Promise<RoleAttachment>
+
+	/** Detach a role from a specific object */
+	detachRoleFrom(request: DetachRoleFromRequest): Promise<boolean>
+
+	/** Get roles for a specific object */
+	getRolesFor(request: GetRolesForRequest): Promise<Role[]>
+
+	/** Batch get roles for multiple objects */
+	batchGetRolesFor(request: BatchGetRolesForRequest): Promise<Role[]>
 }
+
+export * from './roles'

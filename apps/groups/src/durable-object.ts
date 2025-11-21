@@ -24,12 +24,23 @@ import {
 	permissionCategories,
 	permissions,
 } from './db/schema'
-import { generateInviteCode } from './services/code-generator'
+import { CategoryService } from './services/category-service' // Added
 import {
 	bulkFindMainCharactersByUserIds,
 	bulkFindMainCharactersWithIdsByUserIds,
 	findUserByMainCharacterName,
 } from './services/character-lookup'
+import { generateInviteCode } from './services/code-generator'
+import { GroupsDOCache } from './services/groups-do-cache' // Added
+import {
+	mapCategory,
+	mapGroup,
+	mapGroupInvitation,
+	mapGroupInviteCode,
+	mapGroupJoinRequest,
+	mapGroupMember,
+} from './services/mappers'
+// Added
 import {
 	canCreateGroupInCategory,
 	canManageGroup,
@@ -39,12 +50,15 @@ import {
 	canViewGroupMembers,
 	isGroupOwner,
 } from './services/permissions'
+import { RoleService } from './services/role-service'
 
 import type { Core } from '@repo/core'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type {
 	AttachPermissionRequest,
 	AttachPermissionToCorporationRequest,
+	AttachRoleToRequest,
+	BatchGetRolesForRequest,
 	Category,
 	CategoryWithGroups,
 	CorporationPermissionWithDetails,
@@ -57,8 +71,11 @@ import type {
 	CreateJoinRequestRequest,
 	CreatePermissionCategoryRequest,
 	CreatePermissionRequest,
+	CreateRoleRequest,
+	DetachRoleFromRequest,
 	GetGroupMemberPermissionsResponse,
 	GetMultiGroupMemberPermissionsResponse,
+	GetRolesForRequest,
 	Group,
 	GroupAdmin,
 	GroupByInviteCodeResponse,
@@ -78,6 +95,8 @@ import type {
 	PermissionTarget,
 	PermissionWithDetails,
 	RedeemInviteCodeResponse,
+	Role,
+	RoleAttachment,
 	UpdateCategoryRequest,
 	UpdateGroupPermissionRequest,
 	UpdateGroupRequest,
@@ -86,6 +105,7 @@ import type {
 	UserPermission,
 } from '@repo/groups'
 import type { Env } from './context'
+import type { ServiceContext } from './services/context' // Added
 
 /**
  * Groups Durable Object
@@ -100,6 +120,9 @@ import type { Env } from './context'
 export class GroupsDO extends DurableObject<Env> implements Groups {
 	private db: ReturnType<typeof createDb>
 	private coreDb: ReturnType<typeof createDbClient<typeof coreSchema>>
+	private roleService: RoleService
+	private categoryService: CategoryService // Added
+	private groupsDOCache: GroupsDOCache // Added
 
 	// In-memory caches with TTL and size limits
 	private discordServersCache = new Map<string, { data: any[]; expires: number }>()
@@ -138,6 +161,23 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		super(state, env)
 		this.db = createDb(env.DATABASE_URL)
 		this.coreDb = createDbClient(env.DATABASE_URL, coreSchema)
+		this.groupsDOCache = new GroupsDOCache(
+			this.state,
+			this.env.GROUPS_KV,
+			this.discordServersCache,
+			this.groupMembersCache,
+			this.permissionsCache,
+			this.corporationPermissionsCache
+		)
+		const serviceContext: ServiceContext = {
+			db: this.db,
+			coreDb: this.coreDb,
+			env: this.env,
+			state: this.state,
+			groupsDOCache: this.groupsDOCache,
+		}
+		this.roleService = new RoleService(serviceContext)
+		this.categoryService = new CategoryService(serviceContext)
 	}
 
 	/**
@@ -147,49 +187,11 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	 */
 
 	async createCategory(data: CreateCategoryRequest, adminUserId: string): Promise<Category> {
-		// Admin-only operation - validation should happen before calling this
-
-		const [category] = await this.db
-			.insert(categories)
-			.values({
-				name: data.name,
-				description: data.description || null,
-				visibility: data.visibility || 'public',
-				allowGroupCreation: data.allowGroupCreation || 'anyone',
-			})
-			.returning()
-
-		// Invalidate categories cache
-		await this.invalidateCategoriesCache()
-
-		return this.mapCategory(category)
+		return this.categoryService.createCategory(data, adminUserId)
 	}
 
 	async listCategories(userId: string, isAdmin: boolean): Promise<Category[]> {
-		// Try to get from KV cache first
-		const cacheKey = 'categories:all:v1'
-		const cached = await this.env.GROUPS_KV?.get(cacheKey, { type: 'json' })
-
-		let allCategories: Array<typeof categories.$inferSelect>
-
-		if (cached) {
-			allCategories = cached as Array<typeof categories.$inferSelect>
-		} else {
-			// Cache miss - fetch from database
-			allCategories = await this.db.query.categories.findMany({
-				orderBy: (categories, { asc }) => [asc(categories.name)],
-			})
-
-			// Store in KV with 1 hour TTL
-			await this.env.GROUPS_KV?.put(cacheKey, JSON.stringify(allCategories), {
-				expirationTtl: 3600,
-			})
-		}
-
-		// Filter based on permissions (user-specific, so always done after caching)
-		const visible = allCategories.filter((cat) => canViewCategory(cat, userId, isAdmin))
-
-		return visible.map(this.mapCategory)
+		return this.categoryService.listCategories(userId, isAdmin)
 	}
 
 	async getCategory(
@@ -197,43 +199,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		userId: string,
 		isAdmin: boolean
 	): Promise<CategoryWithGroups | null> {
-		const category = await this.db.query.categories.findFirst({
-			where: eq(categories.id, id),
-			with: {
-				groups: true,
-			},
-		})
-
-		if (!category) return null
-
-		// Check if user can view this category
-		if (!canViewCategory(category, userId, isAdmin)) {
-			return null
-		}
-
-		// Batch fetch user memberships for all groups in this category
-		const groupIds = category.groups.map((g) => g.id)
-		const memberships =
-			groupIds.length > 0
-				? await this.db.query.groupMembers.findMany({
-						where: and(eq(groupMembers.userId, userId), inArray(groupMembers.groupId, groupIds)),
-					})
-				: []
-		const memberGroupIds = new Set(memberships.map((m) => m.groupId))
-
-		// Filter groups based on user permissions
-		const visibleGroups = category.groups
-			.filter((group) => {
-				const isMember = memberGroupIds.has(group.id)
-				return canViewGroup(group, userId, isAdmin, isMember)
-			})
-			.map((group) => this.mapGroup(group))
-
-		return {
-			...this.mapCategory(category),
-			groups: visibleGroups,
-			groupCount: visibleGroups.length,
-		}
+		return this.categoryService.getCategory(id, userId, isAdmin)
 	}
 
 	async updateCategory(
@@ -241,40 +207,11 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		data: UpdateCategoryRequest,
 		adminUserId: string
 	): Promise<Category> {
-		// Admin-only operation
-
-		const updates: Partial<typeof categories.$inferInsert> = {}
-
-		if (data.name !== undefined) updates.name = data.name
-		if (data.description !== undefined) updates.description = data.description
-		if (data.visibility !== undefined) updates.visibility = data.visibility
-		if (data.allowGroupCreation !== undefined) updates.allowGroupCreation = data.allowGroupCreation
-
-		updates.updatedAt = new Date()
-
-		const [updated] = await this.db
-			.update(categories)
-			.set(updates)
-			.where(eq(categories.id, id))
-			.returning()
-
-		if (!updated) {
-			throw new Error('Category not found')
-		}
-
-		// Invalidate categories cache
-		await this.invalidateCategoriesCache()
-
-		return this.mapCategory(updated)
+		return this.categoryService.updateCategory(id, data, adminUserId)
 	}
 
 	async deleteCategory(id: string, adminUserId: string): Promise<void> {
-		// Admin-only operation
-		// CASCADE will delete all groups in this category and their relations
-		await this.db.delete(categories).where(eq(categories.id, id))
-
-		// Invalidate categories cache
-		await this.invalidateCategoriesCache()
+		return this.categoryService.deleteCategory(id, adminUserId)
 	}
 
 	/**
@@ -410,7 +347,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 				result.push({
 					...this.mapGroup(group),
-					category: this.mapCategory(group.category),
+					category: mapCategory(group.category),
 					memberCount,
 					isOwner,
 					isAdmin: isAdminOfGroup,
@@ -441,28 +378,30 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		const isOwner = group.ownerId === userId
 
 		// Parallelize independent queries for better performance
-		const [isAdminOfGroup, memberCount, admins, characterNames, pendingRequest] = await Promise.all([
-			this.isUserGroupAdmin(id, userId),
-			this.getGroupMemberCount(id),
-			this.db.query.groupAdmins.findMany({
-				where: eq(groupAdmins.groupId, id),
-			}),
-			bulkFindMainCharactersByUserIds([group.ownerId], this.db),
-			this.db.query.groupJoinRequests.findFirst({
-				where: and(
-					eq(groupJoinRequests.groupId, id),
-					eq(groupJoinRequests.userId, userId),
-					eq(groupJoinRequests.status, 'pending')
-				),
-			}),
-		])
+		const [isAdminOfGroup, memberCount, admins, characterNames, pendingRequest] = await Promise.all(
+			[
+				this.isUserGroupAdmin(id, userId),
+				this.getGroupMemberCount(id),
+				this.db.query.groupAdmins.findMany({
+					where: eq(groupAdmins.groupId, id),
+				}),
+				bulkFindMainCharactersByUserIds([group.ownerId], this.db),
+				this.db.query.groupJoinRequests.findFirst({
+					where: and(
+						eq(groupJoinRequests.groupId, id),
+						eq(groupJoinRequests.userId, userId),
+						eq(groupJoinRequests.status, 'pending')
+					),
+				}),
+			]
+		)
 
 		const adminUserIds = admins.map((admin) => admin.userId)
 		const ownerName = characterNames.get(group.ownerId)
 
 		return {
 			...this.mapGroup(group),
-			category: this.mapCategory(group.category),
+			category: mapCategory(group.category),
 			memberCount,
 			isOwner,
 			isAdmin: isAdminOfGroup,
@@ -1440,7 +1379,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 		const groupDetails: GroupWithDetails = {
 			...this.mapGroup(group),
-			category: this.mapCategory(category),
+			category: mapCategory(category),
 			memberCount,
 			isOwner,
 			isAdmin,
@@ -2355,14 +2294,14 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		// Admin-only operation
 
 		// Verify the permission exists
-		const permission = await this.db.query.permissions.findFirst({
+		const perm = await this.db.query.permissions.findFirst({
 			where: eq(permissions.id, data.permissionId),
 			with: {
 				category: true,
 			},
 		})
 
-		if (!permission) {
+		if (!perm) {
 			throw new Error('Permission not found')
 		}
 
@@ -2387,7 +2326,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Permission already attached to this group')
 		}
 
-		const [groupPerm] = await this.db
+		const [permission] = await this.db
 			.insert(groupPermissions)
 			.values({
 				groupId: data.groupId,
@@ -2395,16 +2334,14 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 				targetType: data.targetType,
 				createdBy: adminUserId,
 			})
-			.returning()
-
-		// Invalidate permissions cache for all members of this group
+			.returning() // Invalidate permissions cache for all members of this group
 		this.invalidateGroupMemberPermissionsCache(data.groupId)
 
 		return {
-			...this.mapGroupPermission(groupPerm),
+			...this.mapGroupPermission(permission),
 			permission: {
-				...this.mapPermission(permission),
-				category: permission.category ? this.mapPermissionCategory(permission.category) : null,
+				...this.mapPermission(perm),
+				category: perm.category ? this.mapPermissionCategory(perm.category) : null,
 			},
 			group: {
 				id: group.id,
@@ -3095,9 +3032,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	 * Batch version of getUserPermissions - optimized for fetching multiple users at once.
 	 * Reduces N+1 queries by batching all database operations.
 	 */
-	async getUserPermissionsBatch(
-		userIds: string[]
-	): Promise<Map<string, UserPermission[]>> {
+	async getUserPermissionsBatch(userIds: string[]): Promise<Map<string, UserPermission[]>> {
 		if (userIds.length === 0) {
 			return new Map()
 		}
@@ -3136,10 +3071,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		})
 
 		// Build user -> memberships map
-		const userMembershipsMap = new Map<
-			string,
-			Array<(typeof allMemberships)[number]>
-		>()
+		const userMembershipsMap = new Map<string, Array<(typeof allMemberships)[number]>>()
 		for (const membership of allMemberships) {
 			if (!userMembershipsMap.has(membership.userId)) {
 				userMembershipsMap.set(membership.userId, [])
@@ -3182,9 +3114,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 						),
 					})
 				: [],
-			allGroupIds.size > 0
-				? this.getGroupPermissionsForGroups(Array.from(allGroupIds))
-				: [],
+			allGroupIds.size > 0 ? this.getGroupPermissionsForGroups(Array.from(allGroupIds)) : [],
 		])
 
 		// Build user -> admin groupIds map
@@ -3197,10 +3127,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		}
 
 		// Build groupId -> group permissions map (shared across users)
-		const groupPermsMap = new Map<
-			string,
-			Array<(typeof allGroupPerms)[number]>
-		>()
+		const groupPermsMap = new Map<string, Array<(typeof allGroupPerms)[number]>>()
 		for (const gp of allGroupPerms) {
 			if (!groupPermsMap.has(gp.groupId)) {
 				groupPermsMap.set(gp.groupId, [])
@@ -3323,19 +3250,39 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		return { userPermissions: userPermissionsMap }
 	}
 
+	async createRole(request: CreateRoleRequest): Promise<Role> {
+		return this.roleService.createRole(request)
+	}
+
+	async getRole(roleId: string): Promise<Role | null> {
+		return this.roleService.getRole(roleId)
+	}
+
+	async getRolesForOwnedBy(ownedBy: string): Promise<Role[]> {
+		return this.roleService.getRolesForOwnedBy(ownedBy)
+	}
+
+	async attachRoleTo(request: AttachRoleToRequest): Promise<RoleAttachment> {
+		return this.roleService.attachRoleTo(request)
+	}
+
+	async detachRoleFrom(request: DetachRoleFromRequest): Promise<boolean> {
+		return this.roleService.detachRoleFrom(request)
+	}
+
+	async getRolesFor(request: GetRolesForRequest): Promise<Role[]> {
+		return this.roleService.getRolesFor(request)
+	}
+
+	async batchGetRolesFor(request: BatchGetRolesForRequest): Promise<Role[]> {
+		return this.roleService.batchGetRolesFor(request)
+	}
+
 	/**
 	 * ============================================
 	 * HELPER METHODS
 	 * ============================================
 	 */
-
-	/**
-	 * Invalidate the categories cache in Workers KV
-	 */
-	private async invalidateCategoriesCache(): Promise<void> {
-		const cacheKey = 'categories:all:v1'
-		await this.env.GROUPS_KV?.delete(cacheKey)
-	}
 
 	/**
 	 * Invalidate the groups with Discord auto-invite cache in DO storage
@@ -3463,18 +3410,6 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	 * MAPPING FUNCTIONS
 	 * ============================================
 	 */
-
-	private mapCategory(cat: typeof categories.$inferSelect): Category {
-		return {
-			id: cat.id,
-			name: cat.name,
-			description: cat.description,
-			visibility: cat.visibility,
-			allowGroupCreation: cat.allowGroupCreation,
-			createdAt: cat.createdAt,
-			updatedAt: cat.updatedAt,
-		}
-	}
 
 	private mapGroup(group: typeof groups.$inferSelect): Group {
 		return {
