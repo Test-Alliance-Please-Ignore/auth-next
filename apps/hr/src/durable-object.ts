@@ -5,12 +5,14 @@ import { ApplicationService } from './services/application.service'
 import { BlacklistService } from './services/blacklist.service'
 import { HrNotesService } from './services/hr-notes.service'
 import { HrRoleService } from './services/hr-role.service'
+import { MessageService } from './services/message.service'
 import { RecommendationService } from './services/recommendation.service'
 
 import type {
 	Application,
 	ApplicationDetail,
 	ApplicationFilters,
+	ApplicationMessage,
 	ApplicationStatus,
 	BlacklistEntry,
 	BlacklistFilters,
@@ -42,6 +44,7 @@ export class HrDO extends DurableObject<Env> implements Hr {
 	private hrNotesService: HrNotesService
 	private hrRoleService: HrRoleService
 	private blacklistService: BlacklistService
+	private messageService: MessageService
 
 	// Cache for corporation roles (in-memory)
 	private roleCache = new Map<string, { data: HrRole[]; timestamp: number }>()
@@ -60,11 +63,16 @@ export class HrDO extends DurableObject<Env> implements Hr {
 		this.db = createDb(env.DATABASE_URL)
 
 		// Initialize services
-		this.applicationService = new ApplicationService(this.db)
-		this.recommendationService = new RecommendationService(this.db)
-		this.hrNotesService = new HrNotesService(this.db)
-		this.hrRoleService = new HrRoleService(this.db)
-		this.blacklistService = new BlacklistService(this.db)
+		this.applicationService = new ApplicationService({ db: this.db, env })
+		this.recommendationService = new RecommendationService({ db: this.db, env })
+		this.hrNotesService = new HrNotesService({ db: this.db, env })
+		this.hrRoleService = new HrRoleService({ db: this.db, env })
+		this.blacklistService = new BlacklistService({ db: this.db, env })
+		this.messageService = new MessageService({ db: this.db, env })
+
+		this.state.blockConcurrencyWhile(async () => {
+			await this.hrRoleService.ensureRolesExist()
+		})
 	}
 
 	/**
@@ -247,6 +255,84 @@ export class HrDO extends DurableObject<Env> implements Hr {
 		)
 	}
 
+	// ==================== Message Methods ====================
+
+	/**
+	 * Send a message from HR reviewer to applicant or vice versa
+	 */
+	async sendMessage(
+		applicationId: string,
+		senderId: string,
+		recipientId: string,
+		message: string,
+		characterId: string,
+		isAdmin: boolean
+	): Promise<ApplicationMessage> {
+		// Get sender's HR corporations for authorization
+		const senderHrCorporations = await this.hrRoleService.getUserHrCorporations(senderId)
+
+		// Get the application to determine if sender is applicant
+		const application = await this.applicationService.getApplication(
+			applicationId,
+			senderId,
+			isAdmin,
+			senderHrCorporations
+		)
+
+		const isSenderApplicant = application.userId === senderId
+
+		// If sender is applicant, get recipient's HR corporations to validate they have access
+		let recipientHrCorporations: string[] = []
+		if (isSenderApplicant) {
+			recipientHrCorporations = await this.hrRoleService.getUserHrCorporations(recipientId)
+		}
+
+		return await this.messageService.sendMessage(
+			applicationId,
+			senderId,
+			recipientId,
+			message,
+			characterId,
+			isSenderApplicant,
+			senderHrCorporations,
+			recipientHrCorporations
+		)
+	}
+
+	/**
+	 * List all messages for an application
+	 */
+	async listMessages(
+		applicationId: string,
+		userId: string,
+		isAdmin: boolean
+	): Promise<ApplicationMessage[]> {
+		// Get user's HR corporations for authorization
+		const userHrCorporations = await this.hrRoleService.getUserHrCorporations(userId)
+
+		return await this.messageService.listMessages(
+			applicationId,
+			userId,
+			isAdmin,
+			userHrCorporations
+		)
+	}
+
+	/**
+	 * Get count of messages for an application (for UI badges)
+	 */
+	async getMessageCount(applicationId: string, userId: string, isAdmin: boolean): Promise<number> {
+		// Get user's HR corporations for authorization
+		const userHrCorporations = await this.hrRoleService.getUserHrCorporations(userId)
+
+		return await this.messageService.getMessageCount(
+			applicationId,
+			userId,
+			isAdmin,
+			userHrCorporations
+		)
+	}
+
 	// ==================== HR Notes Methods (Admin Only) ====================
 
 	/**
@@ -313,8 +399,6 @@ export class HrDO extends DurableObject<Env> implements Hr {
 	async grantRole(
 		corporationId: string,
 		userId: string,
-		characterId: string,
-		characterName: string,
 		role: HrRoleType,
 		grantedBy: string,
 		expiresAt?: Date
@@ -322,12 +406,8 @@ export class HrDO extends DurableObject<Env> implements Hr {
 		const hrRole = await this.hrRoleService.grantRole(
 			corporationId,
 			userId,
-			characterId,
-			characterName,
 			role,
 			grantedBy,
-			this.env.EVE_CORPORATION_DATA,
-			this.env.EVE_CHARACTER_DATA,
 			expiresAt
 		)
 

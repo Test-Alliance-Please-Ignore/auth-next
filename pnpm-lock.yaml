@@ -1369,12 +1369,18 @@ importers:
       '@repo/do-utils':
         specifier: workspace:*
         version: link:../../packages/do-utils
+      '@repo/esi':
+        specifier: workspace:*
+        version: link:../../packages/esi
       '@repo/eve-character-data':
         specifier: workspace:*
         version: link:../../packages/eve-character-data
       '@repo/eve-corporation-data':
         specifier: workspace:*
         version: link:../../packages/eve-corporation-data
+      '@repo/groups':
+        specifier: workspace:*
+        version: link:../../packages/groups
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers

@@ -19,6 +19,7 @@ import type {
 } from './permissions'
 import type {
 	AttachRoleToRequest,
+	BatchCreateRolesRequest,
 	BatchGetRolesForRequest,
 	CreateRoleRequest,
 	DetachRoleFromRequest,
@@ -605,8 +606,14 @@ export interface Groups {
 	/** Create a new role */
 	createRole(request: CreateRoleRequest): Promise<Role>
 
+	/** Batch create roles */
+	batchCreateRoles(request: BatchCreateRolesRequest): Promise<Role[]>
+
 	/** Get a specific role */
 	getRole(roleId: string): Promise<Role | null>
+
+	/** Get a role by name */
+	getRoleByName(name: string): Promise<Role | null>
 
 	/** Get roles for a specific owner */
 	getRolesForOwnedBy(ownedBy: string): Promise<Role[]>
@@ -618,10 +625,10 @@ export interface Groups {
 	detachRoleFrom(request: DetachRoleFromRequest): Promise<boolean>
 
 	/** Get roles for a specific object */
-	getRolesFor(request: GetRolesForRequest): Promise<Role[]>
+	getRolesFor(request: GetRolesForRequest): Promise<RoleAttachment[]>
 
 	/** Batch get roles for multiple objects */
-	batchGetRolesFor(request: BatchGetRolesForRequest): Promise<Role[]>
+	batchGetRolesFor(request: BatchGetRolesForRequest): Promise<RoleAttachment[]>
 }
 
 export * from './roles'

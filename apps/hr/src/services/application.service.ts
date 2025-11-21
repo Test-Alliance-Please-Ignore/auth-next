@@ -2,9 +2,13 @@ import { and, desc, eq, inArray, or, sql } from '@repo/db-utils'
 
 import { applicationActivityLog, applicationRecommendations, applications } from '../db/schema'
 
-import type { DbClient } from '@repo/db-utils'
-import type { Application, ApplicationDetail, ApplicationFilters } from '@repo/hr'
-import type * as schema from '../db/schema'
+import type {
+	Application,
+	ApplicationDetail,
+	ApplicationFilters,
+	ApplicationStatus,
+} from '@repo/hr'
+import type { ServiceContext } from './context'
 
 /**
  * Application Service
@@ -12,7 +16,7 @@ import type * as schema from '../db/schema'
  * Handles all business logic for corporation membership applications.
  */
 export class ApplicationService {
-	constructor(private db: DbClient<typeof schema>) {}
+	constructor(private ctx: ServiceContext) {}
 
 	/**
 	 * Submit a new application to a corporation
@@ -25,7 +29,7 @@ export class ApplicationService {
 		applicationText: string
 	): Promise<Application> {
 		// Create the application
-		const [application] = await this.db
+		const [application] = await this.ctx.db
 			.insert(applications)
 			.values({
 				userId,
@@ -43,7 +47,6 @@ export class ApplicationService {
 
 		// Log the submission
 		await this.logActivity(application.id, userId, characterId, 'submitted', null, 'pending')
-
 		return this.mapToApplication(application)
 	}
 
@@ -84,7 +87,7 @@ export class ApplicationService {
 		}
 
 		// Build query
-		const query = this.db.query.applications.findMany({
+		const query = this.ctx.db.query.applications.findMany({
 			where: conditions.length > 0 ? and(...conditions) : undefined,
 			orderBy: [desc(applications.createdAt)],
 			limit: filters.limit || 50,
@@ -107,7 +110,7 @@ export class ApplicationService {
 		includeActivityLog = false
 	): Promise<ApplicationDetail> {
 		// Get the application
-		const application = await this.db.query.applications.findFirst({
+		const application = await this.ctx.db.query.applications.findFirst({
 			where: eq(applications.id, applicationId),
 		})
 
@@ -124,7 +127,7 @@ export class ApplicationService {
 		}
 
 		// Get recommendations
-		const recommendations = await this.db.query.applicationRecommendations.findMany({
+		const recommendations = await this.ctx.db.query.applicationRecommendations.findMany({
 			where: eq(applicationRecommendations.applicationId, applicationId),
 			orderBy: [desc(applicationRecommendations.createdAt)],
 		})
@@ -133,7 +136,7 @@ export class ApplicationService {
 		let activityLog: (typeof applicationActivityLog.$inferSelect)[] | undefined
 
 		if (includeActivityLog && (hasHrAccess || isAdmin)) {
-			activityLog = await this.db.query.applicationActivityLog.findMany({
+			activityLog = await this.ctx.db.query.applicationActivityLog.findMany({
 				where: eq(applicationActivityLog.applicationId, applicationId),
 				orderBy: [desc(applicationActivityLog.timestamp)],
 			})
@@ -178,7 +181,7 @@ export class ApplicationService {
 		reviewNotes?: string
 	): Promise<void> {
 		// Get current application
-		const application = await this.db.query.applications.findFirst({
+		const application = await this.ctx.db.query.applications.findFirst({
 			where: eq(applications.id, applicationId),
 		})
 
@@ -189,10 +192,10 @@ export class ApplicationService {
 		const previousStatus = application.status
 
 		// Update the application
-		await this.db
+		await this.ctx.db
 			.update(applications)
 			.set({
-				status,
+				status: status as ApplicationStatus,
 				reviewedBy: userId,
 				reviewedAt: new Date(),
 				reviewNotes,
@@ -221,7 +224,7 @@ export class ApplicationService {
 		characterId: string
 	): Promise<void> {
 		// Get current application
-		const application = await this.db.query.applications.findFirst({
+		const application = await this.ctx.db.query.applications.findFirst({
 			where: eq(applications.id, applicationId),
 		})
 
@@ -237,7 +240,7 @@ export class ApplicationService {
 		const previousStatus = application.status
 
 		// Update to withdrawn
-		await this.db
+		await this.ctx.db
 			.update(applications)
 			.set({
 				status: 'withdrawn',
@@ -261,14 +264,14 @@ export class ApplicationService {
 	 */
 	async deleteApplication(applicationId: string): Promise<void> {
 		// Recommendations and activity log will cascade delete via foreign keys
-		await this.db.delete(applications).where(eq(applications.id, applicationId))
+		await this.ctx.db.delete(applications).where(eq(applications.id, applicationId))
 	}
 
 	/**
 	 * Check if user has a pending application for a corporation
 	 */
 	async hasPendingApplication(userId: string, corporationId: string): Promise<boolean> {
-		const existing = await this.db.query.applications.findFirst({
+		const existing = await this.ctx.db.query.applications.findFirst({
 			where: and(
 				eq(applications.userId, userId),
 				eq(applications.corporationId, corporationId),
@@ -283,7 +286,7 @@ export class ApplicationService {
 	 * Count open applications for a user across all corporations
 	 */
 	async countOpenApplications(userId: string): Promise<number> {
-		const result = await this.db
+		const result = await this.ctx.db
 			.select({ count: sql<number>`cast(count(*) as integer)` })
 			.from(applications)
 			.where(
@@ -308,7 +311,7 @@ export class ApplicationService {
 		newValue: string | null,
 		metadata?: Record<string, unknown>
 	): Promise<void> {
-		await this.db.insert(applicationActivityLog).values({
+		await this.ctx.db.insert(applicationActivityLog).values({
 			applicationId,
 			userId,
 			characterId,

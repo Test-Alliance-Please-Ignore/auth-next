@@ -1,74 +1,16 @@
-import { and, desc, eq, inArray, or } from '@repo/db-utils'
+import { and, desc, eq, inArray } from '@repo/db-utils'
 
 import { blacklistEntries } from '../db/schema'
 
-import type { DbClient } from '@repo/db-utils'
-import type * as schema from '../db/schema'
-
-/**
- * Target type for blacklist entries
- */
-export type BlacklistTargetType = 'user' | 'character'
-
-/**
- * Blacklist entry data structure
- */
-export interface BlacklistEntry {
-	id: string
-	targetType: BlacklistTargetType
-	userId: string | null
-	characterId: string | null
-	reason: string
-	blacklistedBy: string
-	triggeredBy: string | null
-	isAutoBlacklist: boolean
-	metadata: Record<string, unknown> | null
-	createdAt: Date
-}
-
-/**
- * Parameters for creating a user blacklist
- */
-export interface CreateUserBlacklistParams {
-	userId: string
-	reason: string
-	blacklistedBy: string
-	triggeredBy?: string
-	isAutoBlacklist?: boolean
-	metadata?: Record<string, unknown>
-}
-
-/**
- * Parameters for creating a character blacklist
- */
-export interface CreateCharacterBlacklistParams {
-	characterId: string
-	reason: string
-	blacklistedBy: string
-	metadata?: Record<string, unknown>
-}
-
-/**
- * Filters for listing blacklists
- */
-export interface BlacklistFilters {
-	targetType?: BlacklistTargetType
-	isAutoBlacklist?: boolean
-	userId?: string
-	characterId?: string
-	limit?: number
-	offset?: number
-}
-
-/**
- * Paginated blacklist results
- */
-export interface BlacklistResults {
-	entries: BlacklistEntry[]
-	total: number
-	limit: number
-	offset: number
-}
+import type {
+	BlacklistEntry,
+	BlacklistFilters,
+	BlacklistResults,
+	BlacklistTargetType,
+	CreateCharacterBlacklistParams,
+	CreateUserBlacklistParams,
+} from '@repo/hr'
+import type { ServiceContext } from './context'
 
 /**
  * Blacklist Service
@@ -85,14 +27,14 @@ export interface BlacklistResults {
  * access to the userCharacters table. This service manages the blacklist entries.
  */
 export class BlacklistService {
-	constructor(private db: DbClient<typeof schema>) {}
+	constructor(private ctx: ServiceContext) {}
 
 	/**
 	 * Check if a user is blacklisted
 	 * Fast lookup - used on every auth request
 	 */
 	async isUserBlacklisted(userId: string): Promise<boolean> {
-		const entry = await this.db.query.blacklistEntries.findFirst({
+		const entry = await this.ctx.db.query.blacklistEntries.findFirst({
 			where: and(eq(blacklistEntries.targetType, 'user'), eq(blacklistEntries.userId, userId)),
 			columns: { id: true },
 		})
@@ -105,7 +47,7 @@ export class BlacklistService {
 	 * Fast lookup - used on login and character linking
 	 */
 	async isCharacterBlacklisted(characterId: string): Promise<boolean> {
-		const entry = await this.db.query.blacklistEntries.findFirst({
+		const entry = await this.ctx.db.query.blacklistEntries.findFirst({
 			where: and(
 				eq(blacklistEntries.targetType, 'character'),
 				eq(blacklistEntries.characterId, characterId)
@@ -129,7 +71,7 @@ export class BlacklistService {
 		}
 
 		// Query for all blacklisted characters in the provided list
-		const blacklistedEntries = await this.db
+		const blacklistedEntries = await this.ctx.db
 			.select({ characterId: blacklistEntries.characterId })
 			.from(blacklistEntries)
 			.where(
@@ -159,7 +101,7 @@ export class BlacklistService {
 	 */
 	async createUserBlacklist(params: CreateUserBlacklistParams): Promise<BlacklistEntry> {
 		// Check if user is already blacklisted
-		const existing = await this.db.query.blacklistEntries.findFirst({
+		const existing = await this.ctx.db.query.blacklistEntries.findFirst({
 			where: and(
 				eq(blacklistEntries.targetType, 'user'),
 				eq(blacklistEntries.userId, params.userId)
@@ -172,7 +114,7 @@ export class BlacklistService {
 		}
 
 		// Create new blacklist entry
-		const [entry] = await this.db
+		const [entry] = await this.ctx.db
 			.insert(blacklistEntries)
 			.values({
 				targetType: 'user',
@@ -199,7 +141,7 @@ export class BlacklistService {
 	 */
 	async createCharacterBlacklist(params: CreateCharacterBlacklistParams): Promise<BlacklistEntry> {
 		// Check if character is already blacklisted
-		const existing = await this.db.query.blacklistEntries.findFirst({
+		const existing = await this.ctx.db.query.blacklistEntries.findFirst({
 			where: and(
 				eq(blacklistEntries.targetType, 'character'),
 				eq(blacklistEntries.characterId, params.characterId)
@@ -212,7 +154,7 @@ export class BlacklistService {
 		}
 
 		// Create new blacklist entry
-		const [entry] = await this.db
+		const [entry] = await this.ctx.db
 			.insert(blacklistEntries)
 			.values({
 				targetType: 'character',
@@ -238,7 +180,7 @@ export class BlacklistService {
 	 * IMPORTANT: Removing a character blacklist does NOT remove user blacklists it triggered
 	 */
 	async removeBlacklistEntry(id: string): Promise<void> {
-		const result = await this.db.delete(blacklistEntries).where(eq(blacklistEntries.id, id))
+		const result = await this.ctx.db.delete(blacklistEntries).where(eq(blacklistEntries.id, id))
 
 		// Drizzle's delete doesn't return affected rows in a standard way, so we don't verify
 		// If the entry didn't exist, the delete is a no-op (idempotent)
@@ -248,7 +190,7 @@ export class BlacklistService {
 	 * Get all blacklist entries for a user (including auto-blacklists)
 	 */
 	async getBlacklistsForUser(userId: string): Promise<BlacklistEntry[]> {
-		const entries = await this.db.query.blacklistEntries.findMany({
+		const entries = await this.ctx.db.query.blacklistEntries.findMany({
 			where: and(eq(blacklistEntries.targetType, 'user'), eq(blacklistEntries.userId, userId)),
 			orderBy: [desc(blacklistEntries.createdAt)],
 		})
@@ -260,7 +202,7 @@ export class BlacklistService {
 	 * Get all blacklist entries for a character
 	 */
 	async getBlacklistsForCharacter(characterId: string): Promise<BlacklistEntry[]> {
-		const entries = await this.db.query.blacklistEntries.findMany({
+		const entries = await this.ctx.db.query.blacklistEntries.findMany({
 			where: and(
 				eq(blacklistEntries.targetType, 'character'),
 				eq(blacklistEntries.characterId, characterId)
@@ -275,7 +217,7 @@ export class BlacklistService {
 	 * Get a specific blacklist entry by ID
 	 */
 	async getBlacklistEntry(id: string): Promise<BlacklistEntry | null> {
-		const entry = await this.db.query.blacklistEntries.findFirst({
+		const entry = await this.ctx.db.query.blacklistEntries.findFirst({
 			where: eq(blacklistEntries.id, id),
 		})
 
@@ -287,7 +229,7 @@ export class BlacklistService {
 	 * Used to show "N users auto-blacklisted from this character"
 	 */
 	async getTriggeredBlacklists(characterBlacklistId: string): Promise<BlacklistEntry[]> {
-		const entries = await this.db.query.blacklistEntries.findMany({
+		const entries = await this.ctx.db.query.blacklistEntries.findMany({
 			where: eq(blacklistEntries.triggeredBy, characterBlacklistId),
 			orderBy: [desc(blacklistEntries.createdAt)],
 		})
@@ -303,14 +245,14 @@ export class BlacklistService {
 	 */
 	async findTriggeredEntries(blacklistId: string): Promise<BlacklistEntry[]> {
 		// Find user blacklists triggered by this entry (via triggeredBy)
-		const triggeredUsers = await this.db.query.blacklistEntries.findMany({
+		const triggeredUsers = await this.ctx.db.query.blacklistEntries.findMany({
 			where: eq(blacklistEntries.triggeredBy, blacklistId),
 		})
 
 		// Find character blacklists triggered by this entry (via metadata)
 		// Note: This requires checking JSON metadata, which is database-specific
 		// For now, we'll fetch all character blacklists and filter in-memory
-		const allCharBlacklists = await this.db.query.blacklistEntries.findMany({
+		const allCharBlacklists = await this.ctx.db.query.blacklistEntries.findMany({
 			where: eq(blacklistEntries.targetType, 'character'),
 		})
 
@@ -353,7 +295,7 @@ export class BlacklistService {
 		const whereClause = conditions.length > 0 ? and(...conditions) : undefined
 
 		// Get entries with pagination
-		const entries = await this.db.query.blacklistEntries.findMany({
+		const entries = await this.ctx.db.query.blacklistEntries.findMany({
 			where: whereClause,
 			orderBy: [desc(blacklistEntries.createdAt)],
 			limit,
@@ -361,7 +303,7 @@ export class BlacklistService {
 		})
 
 		// Get total count
-		const totalResult = await this.db
+		const totalResult = await this.ctx.db
 			.select({ count: blacklistEntries.id })
 			.from(blacklistEntries)
 			.where(whereClause ?? undefined)

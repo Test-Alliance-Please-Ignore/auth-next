@@ -8,8 +8,8 @@ import { userCharacters } from '../db/schema'
 import { requireAdmin, requireAuth } from '../middleware/session'
 
 import type { Context } from 'hono'
-import type { EveCharacterData } from '@repo/eve-character-data'
-import type { EveCorporationData } from '@repo/eve-corporation-data'
+import type { Core } from '@repo/core'
+import type { Esi } from '@repo/esi'
 import type { ApplicationFilters, Hr, NoteFilters, RoleFilters } from '@repo/hr'
 import type { App } from '../context'
 
@@ -20,6 +20,13 @@ const app = new Hono<App>()
  */
 function getHrStub(c: Context<App>): Hr {
 	return getStub<Hr>(c.env.HR, 'default')
+}
+
+/**
+ * Helper to get Core Durable Object stub
+ */
+function getCoreStub(c: Context<App>): Core {
+	return getStub<Core>(c.env.CORE, 'default')
 }
 
 /**
@@ -57,46 +64,26 @@ async function checkCeoOrAdminAccess(c: Context<App>, corporationId: string): Pr
 		where: eq(userCharacters.userId, user.id),
 	})
 
+	const userCharacterSet = new Set(userChars.map((c) => c.characterId))
+
 	logger.info('[HR Auth] Checking CEO access', {
 		corporationId,
 		userId: user.id,
 		userCharacterCount: userChars.length,
 	})
 
-	// Check each character to see if any is the CEO of this corporation
-	for (const character of userChars) {
-		try {
-			// Check if character is in this corporation
-			const charStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, character.characterId)
-			const charData = await charStub.getCharacterInfo(character.characterId)
+	const esiStub = getStub<Esi>(c.env.ESI, 'default')
+	const corporationInfo = await esiStub.fetchCorporationPublicInfo(corporationId)
+	const isCeo = corporationInfo && userCharacterSet.has(corporationInfo.ceo_id)
 
-			// Skip if character is not in the target corporation
-			if (!charData || String(charData.corporationId) !== corporationId) {
-				continue
-			}
-
-			// Get corporation data to check CEO
-			const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
-			const corpInfo = await corpStub.getCorporationInfo(corporationId)
-
-			// Check if character is CEO
-			const isCeo = corpInfo && String(corpInfo.ceoId) === character.characterId
-			if (isCeo) {
-				logger.info('[HR Auth] CEO access granted', {
-					characterId: character.characterId,
-					characterName: character.characterName,
-					corporationId,
-					reason: 'corporation_ceo',
-				})
-				return // Access granted via CEO
-			}
-		} catch (error) {
-			logger.warn('[HR Auth] Error checking character access:', {
-				characterId: character.characterId,
-				corporationId,
-				error: error instanceof Error ? error.message : String(error),
-			})
-		}
+	if (isCeo) {
+		logger.info('[HR Auth] CEO access granted', {
+			corporationId,
+			userId: user.id,
+			ceoId: corporationInfo.ceo_id,
+			reason: 'corporation_ceo',
+		})
+		return // Access granted via CEO
 	}
 
 	// No character found with CEO access
@@ -496,15 +483,18 @@ app.post('/:corporationId/roles', requireAuth(), async (c) => {
 	}
 
 	// Get character name
-	const characterName = c.req.query('characterName') || 'Unknown'
+	const coreStub = getCoreStub(c)
+	const characterOwner = await coreStub.getCharacterOwner(characterId)
+
+	if (!characterOwner) {
+		return c.json({ error: 'Character not linked to any user' }, 404)
+	}
 
 	try {
 		const hr = getHrStub(c)
 		const hrRole = await hr.grantRole(
 			corporationId,
-			userId,
-			characterId,
-			characterName,
+			characterOwner.userId,
 			role,
 			user.id,
 			expiresAt ? new Date(expiresAt) : undefined
@@ -539,25 +529,10 @@ app.post('/:corporationId/roles', requireAuth(), async (c) => {
 app.get('/:corporationId/roles', requireAuth(), async (c) => {
 	const corporationId = c.req.param('corporationId')
 	const userId = c.req.query('userId')
-	const activeOnly = c.req.query('activeOnly') !== 'false'
+
+	await checkCeoOrAdminAccess(c, corporationId)
 
 	try {
-		// Try cache first (only for corporation-wide queries, not user-specific)
-		if (!userId) {
-			const cacheKey = new Request(
-				`https://hr.internal/roles/${corporationId}?activeOnly=${activeOnly}`,
-				{ method: 'GET' }
-			)
-			// @ts-ignore
-		const cache = caches.default
-			const cachedResponse = await cache.match(cacheKey)
-
-			if (cachedResponse) {
-				logger.info('[HR Roles] Cache hit', { corporationId, activeOnly })
-				return c.json(await cachedResponse.json())
-			}
-		}
-
 		const hr = getHrStub(c)
 		let roles
 
@@ -571,28 +546,11 @@ app.get('/:corporationId/roles', requireAuth(), async (c) => {
 			})
 		} else {
 			// Get all roles for corporation
-			roles = await hr.getCorporationRoles(corporationId, activeOnly)
+			roles = await hr.getCorporationRoles(corporationId, false)
 			logger.info('[HR Roles] Fetched corporation roles', {
 				corporationId,
-				activeOnly,
 				count: roles.length,
 			})
-		}
-
-		// Cache the response (only for corporation-wide queries)
-		if (!userId) {
-			const cacheKey = new Request(
-				`https://hr.internal/roles/${corporationId}?activeOnly=${activeOnly}`,
-				{ method: 'GET' }
-			)
-			const response = new Response(JSON.stringify(roles), {
-				headers: {
-					'Content-Type': 'application/json',
-					'Cache-Control': 'public, max-age=300', // 5 minutes
-				},
-			})
-			// @ts-ignore
-		c.executionCtx.waitUntil(caches.default.put(cacheKey, response.clone()))
 		}
 
 		return c.json(roles)

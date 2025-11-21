@@ -58,6 +58,7 @@ import type {
 	AttachPermissionRequest,
 	AttachPermissionToCorporationRequest,
 	AttachRoleToRequest,
+	BatchCreateRolesRequest,
 	BatchGetRolesForRequest,
 	Category,
 	CategoryWithGroups,
@@ -3254,8 +3255,16 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		return this.roleService.createRole(request)
 	}
 
+	async batchCreateRoles(request: BatchCreateRolesRequest): Promise<Role[]> {
+		return this.roleService.batchCreateRoles(request)
+	}
+
 	async getRole(roleId: string): Promise<Role | null> {
 		return this.roleService.getRole(roleId)
+	}
+
+	async getRoleByName(name: string): Promise<Role | null> {
+		return this.roleService.getRoleByName(name)
 	}
 
 	async getRolesForOwnedBy(ownedBy: string): Promise<Role[]> {
@@ -3270,11 +3279,11 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		return this.roleService.detachRoleFrom(request)
 	}
 
-	async getRolesFor(request: GetRolesForRequest): Promise<Role[]> {
+	async getRolesFor(request: GetRolesForRequest): Promise<RoleAttachment[]> {
 		return this.roleService.getRolesFor(request)
 	}
 
-	async batchGetRolesFor(request: BatchGetRolesForRequest): Promise<Role[]> {
+	async batchGetRolesFor(request: BatchGetRolesForRequest): Promise<RoleAttachment[]> {
 		return this.roleService.batchGetRolesFor(request)
 	}
 

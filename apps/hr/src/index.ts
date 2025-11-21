@@ -41,7 +41,7 @@ async function handleMemberDepartedQueue(
 	_ctx: ExecutionContext
 ): Promise<void> {
 	const db = createDb(env.DATABASE_URL)
-	const hrRoleService = new HrRoleService(db)
+	const hrRoleService = new HrRoleService({ db, env })
 
 	for (const message of batch.messages) {
 		try {

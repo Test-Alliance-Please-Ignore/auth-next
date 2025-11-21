@@ -6,6 +6,7 @@
  */
 
 export interface Core {
+	getCharacterOwner(characterId: string): Promise<{ userId: string; isPrimary: boolean } | null>
 	getUserCharacters(
 		userId: string,
 		includeDeleted?: boolean

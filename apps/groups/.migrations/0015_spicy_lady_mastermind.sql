@@ -1,0 +1,2 @@
+ALTER TABLE "groups_role_attachments" DROP CONSTRAINT "unique_group_role_attachment";--> statement-breakpoint
+ALTER TABLE "groups_role_attachments" ADD CONSTRAINT "unique_group_role_attachment" UNIQUE("role_id","attached_to_type","attached_to_id","resource_id","resource_type");

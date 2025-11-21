@@ -15,11 +15,21 @@ export enum RoleAttachmentType {
 	USER = 'user',
 }
 
+export enum ResourceType {
+	GROUP = 'group',
+	CHARACTER = 'character',
+	CORPORATION = 'corporation',
+	ALLIANCE = 'alliance',
+	USER = 'user',
+}
+
 export interface RoleAttachment {
 	id: string
-	roleId: string
+	role: Role
 	attachedToType: RoleAttachmentType
 	attachedToId: string
+	resourceId?: string
+	resourceType?: ResourceType
 	createdAt: Date
 	updatedAt: Date
 }
@@ -34,6 +44,8 @@ export interface AttachRoleToRequest {
 	roleId: string
 	attachedToType: RoleAttachmentType
 	attachedToId: string
+	resourceId?: string
+	resourceType?: ResourceType
 }
 
 export interface DetachRoleFromRequest {
@@ -43,11 +55,20 @@ export interface DetachRoleFromRequest {
 }
 
 export interface GetRolesForRequest {
-	attachedToType: RoleAttachmentType
-	attachedToId: string
+	attachedToId?: string
+	attachedToType?: RoleAttachmentType
+	resourceId?: string
+	resourceType?: ResourceType
+	roleId?: string
+	roleName?: string
+	roleIds?: string[]
 }
 
 export interface BatchGetRolesForRequest {
 	attachedToType: RoleAttachmentType
 	attachedToIds: string[]
+}
+
+export interface BatchCreateRolesRequest {
+	roles: CreateRoleRequest[]
 }

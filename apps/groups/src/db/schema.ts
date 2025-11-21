@@ -535,8 +535,16 @@ export const roleAttachments = pgTable(
 		roleId: uuid('role_id')
 			.notNull()
 			.references(() => roles.id, { onDelete: 'cascade' }),
-		attachedToType: varchar('attached_to_type', { length: 255 }).notNull(),
+		attachedToType: varchar('attached_to_type', {
+			length: 255,
+			enum: ['group', 'character', 'corporation', 'alliance', 'user'],
+		}).notNull(),
 		attachedToId: varchar('attached_to_id', { length: 255 }).notNull(),
+		resourceId: varchar('resource_id', { length: 255 }),
+		resourceType: varchar('resource_type', {
+			length: 255,
+			enum: ['group', 'character', 'corporation', 'alliance', 'user'],
+		}),
 		createdAt: timestamp('created_at').defaultNow().notNull(),
 		updatedAt: timestamp('updated_at').defaultNow().notNull(),
 	},
@@ -544,10 +552,14 @@ export const roleAttachments = pgTable(
 		index('groups_role_attachments_role_id_idx').on(table.roleId),
 		index('groups_role_attachments_attached_to_type_idx').on(table.attachedToType),
 		index('groups_role_attachments_attached_to_id_idx').on(table.attachedToId),
+		index('groups_role_attachments_resource_id_idx').on(table.resourceId),
+		index('groups_role_attachments_resource_type_idx').on(table.resourceType),
 		unique('unique_group_role_attachment').on(
 			table.roleId,
 			table.attachedToType,
-			table.attachedToId
+			table.attachedToId,
+			table.resourceId,
+			table.resourceType
 		),
 	]
 )
@@ -555,6 +567,17 @@ export const roleAttachments = pgTable(
 /**
  * Relations
  */
+
+export const rolesRelations = relations(roles, ({ many }) => ({
+	roleAttachments: many(roleAttachments),
+}))
+
+export const roleAttachmentsRelations = relations(roleAttachments, ({ one }) => ({
+	role: one(roles, {
+		fields: [roleAttachments.roleId],
+		references: [roles.id],
+	}),
+}))
 
 export const categoriesRelations = relations(categories, ({ many }) => ({
 	groups: many(groups),

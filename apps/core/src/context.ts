@@ -43,6 +43,8 @@ export type Env = SharedHonoEnv & {
 	SESSION_SECRET: string
 	/** ESI Durable Object binding */
 	ESI: DurableObjectNamespace
+	/** Core Durable Object binding */
+	CORE: DurableObjectNamespace
 }
 
 /** Session user data attached to request context */

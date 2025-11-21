@@ -47,6 +47,18 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		}
 	}
 
+	async getCharacterOwner(
+		characterId: string
+	): Promise<{ userId: string; isPrimary: boolean } | null> {
+		const character = await this.db.query.userCharacters.findFirst({
+			where: eq(userCharacters.characterId, characterId),
+		})
+		if (!character) {
+			return null
+		}
+
+		return { userId: character.userId, isPrimary: character.is_primary }
+	}
 	async getUserCharacters(
 		userId: string,
 		includeDeleted: boolean = false

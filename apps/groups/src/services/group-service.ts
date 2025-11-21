@@ -1,11 +1,5 @@
 import { and, eq, inArray, sql } from '@repo/db-utils'
-import type {
-	CreateGroupRequest,
-	Group,
-	GroupWithDetails,
-	ListGroupsFilters,
-	UpdateGroupRequest,
-} from '@repo/groups'
+
 import { categories, groupAdmins, groupJoinRequests, groupMembers, groups } from '../db/schema'
 import { bulkFindMainCharactersByUserIds } from './character-lookup'
 import { mapCategory, mapGroup } from './mappers'
@@ -17,6 +11,13 @@ import {
 } from './permissions'
 import { getGroupMemberCount, isUserGroupAdmin, isUserMember } from './query-helpers'
 
+import type {
+	CreateGroupRequest,
+	Group,
+	GroupWithDetails,
+	ListGroupsFilters,
+	UpdateGroupRequest,
+} from '@repo/groups'
 import type { ServiceContext } from './context'
 
 export class GroupService {
@@ -41,12 +42,6 @@ export class GroupService {
 		// via its own methods or refactor the cache into a shared service.
 		// TODO: Refactor cache management
 	}
-
-
-
-
-
-
 
 	async createGroup(data: CreateGroupRequest, userId: string, isAdmin: boolean): Promise<Group> {
 		// Validate category exists and user can create groups in it
@@ -185,21 +180,23 @@ export class GroupService {
 		const isOwner = group.ownerId === userId
 
 		// Parallelize independent queries for better performance
-		const [isAdminOfGroup, memberCount, admins, characterNames, pendingRequest] = await Promise.all([
-			isUserGroupAdmin(this.ctx, id, userId),
-			getGroupMemberCount(this.ctx, id),
-			this.ctx.db.query.groupAdmins.findMany({
-				where: eq(groupAdmins.groupId, id),
-			}),
-			bulkFindMainCharactersByUserIds([group.ownerId], this.ctx.db),
-			this.ctx.db.query.groupJoinRequests.findFirst({
-				where: and(
-					eq(groupJoinRequests.groupId, id),
-					eq(groupJoinRequests.userId, userId),
-					eq(groupJoinRequests.status, 'pending')
-				),
-			}),
-		])
+		const [isAdminOfGroup, memberCount, admins, characterNames, pendingRequest] = await Promise.all(
+			[
+				isUserGroupAdmin(this.ctx, id, userId),
+				getGroupMemberCount(this.ctx, id),
+				this.ctx.db.query.groupAdmins.findMany({
+					where: eq(groupAdmins.groupId, id),
+				}),
+				bulkFindMainCharactersByUserIds([group.ownerId], this.ctx.db),
+				this.ctx.db.query.groupJoinRequests.findFirst({
+					where: and(
+						eq(groupJoinRequests.groupId, id),
+						eq(groupJoinRequests.userId, userId),
+						eq(groupJoinRequests.status, 'pending')
+					),
+				}),
+			]
+		)
 
 		const adminUserIds = admins.map((admin) => admin.userId)
 		const ownerName = characterNames.get(group.ownerId)

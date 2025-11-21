@@ -2,9 +2,8 @@ import { and, eq } from '@repo/db-utils'
 
 import { applicationActivityLog, applicationRecommendations, applications } from '../db/schema'
 
-import type { DbClient } from '@repo/db-utils'
 import type { Recommendation, RecommendationSentiment } from '@repo/hr'
-import type * as schema from '../db/schema'
+import type { ServiceContext } from './context'
 
 /**
  * Recommendation Service
@@ -12,7 +11,7 @@ import type * as schema from '../db/schema'
  * Handles all business logic for application recommendations.
  */
 export class RecommendationService {
-	constructor(private db: DbClient<typeof schema>) {}
+	constructor(private ctx: ServiceContext) {}
 
 	/**
 	 * Add a recommendation for an application
@@ -26,7 +25,7 @@ export class RecommendationService {
 		sentiment: RecommendationSentiment
 	): Promise<Recommendation> {
 		// Get the application to validate
-		const application = await this.db.query.applications.findFirst({
+		const application = await this.ctx.db.query.applications.findFirst({
 			where: eq(applications.id, applicationId),
 		})
 
@@ -45,7 +44,7 @@ export class RecommendationService {
 		}
 
 		// Check for existing recommendation (unique constraint will also catch this)
-		const existing = await this.db.query.applicationRecommendations.findFirst({
+		const existing = await this.ctx.db.query.applicationRecommendations.findFirst({
 			where: and(
 				eq(applicationRecommendations.applicationId, applicationId),
 				eq(applicationRecommendations.userId, userId)
@@ -57,7 +56,7 @@ export class RecommendationService {
 		}
 
 		// Create the recommendation
-		const [recommendation] = await this.db
+		const [recommendation] = await this.ctx.db
 			.insert(applicationRecommendations)
 			.values({
 				applicationId,
@@ -74,7 +73,7 @@ export class RecommendationService {
 		}
 
 		// Log the activity
-		await this.db.insert(applicationActivityLog).values({
+		await this.ctx.db.insert(applicationActivityLog).values({
 			applicationId,
 			userId,
 			characterId,
@@ -99,7 +98,7 @@ export class RecommendationService {
 		isAdmin: boolean
 	): Promise<void> {
 		// Get the recommendation
-		const recommendation = await this.db.query.applicationRecommendations.findFirst({
+		const recommendation = await this.ctx.db.query.applicationRecommendations.findFirst({
 			where: eq(applicationRecommendations.id, recommendationId),
 		})
 
@@ -115,7 +114,7 @@ export class RecommendationService {
 		const previousSentiment = recommendation.sentiment
 
 		// Update the recommendation
-		await this.db
+		await this.ctx.db
 			.update(applicationRecommendations)
 			.set({
 				recommendationText,
@@ -125,7 +124,7 @@ export class RecommendationService {
 			.where(eq(applicationRecommendations.id, recommendationId))
 
 		// Log the activity
-		await this.db.insert(applicationActivityLog).values({
+		await this.ctx.db.insert(applicationActivityLog).values({
 			applicationId: recommendation.applicationId,
 			userId,
 			characterId,
@@ -146,7 +145,7 @@ export class RecommendationService {
 		isAdmin: boolean
 	): Promise<void> {
 		// Get the recommendation
-		const recommendation = await this.db.query.applicationRecommendations.findFirst({
+		const recommendation = await this.ctx.db.query.applicationRecommendations.findFirst({
 			where: eq(applicationRecommendations.id, recommendationId),
 		})
 
@@ -160,7 +159,7 @@ export class RecommendationService {
 		}
 
 		// Log the activity before deleting
-		await this.db.insert(applicationActivityLog).values({
+		await this.ctx.db.insert(applicationActivityLog).values({
 			applicationId: recommendation.applicationId,
 			userId,
 			characterId,
@@ -171,7 +170,7 @@ export class RecommendationService {
 		})
 
 		// Delete the recommendation
-		await this.db
+		await this.ctx.db
 			.delete(applicationRecommendations)
 			.where(eq(applicationRecommendations.id, recommendationId))
 	}

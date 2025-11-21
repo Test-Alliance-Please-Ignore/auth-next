@@ -32,7 +32,12 @@ export const applications = pgTable(
 		/** Application text from the user */
 		applicationText: text('application_text').notNull(),
 		/** Status: pending, under_review, accepted, rejected, withdrawn */
-		status: varchar('status', { length: 50 }).notNull().default('pending'),
+		status: varchar('status', {
+			length: 50,
+			enum: ['pending', 'under_review', 'accepted', 'rejected', 'withdrawn'],
+		})
+			.notNull()
+			.default('pending'),
 		/** User who reviewed the application (HR admin) */
 		reviewedBy: uuid('reviewed_by'),
 		/** When the application was reviewed */
@@ -135,6 +140,50 @@ export const applicationActivityLog = pgTable(
 		// Global recent activity dashboard
 		// Used for: "show me the latest 50 activities across all applications"
 		index('idx_activity_log_timestamp').on(table.timestamp.desc()),
+	]
+)
+
+export const applicationMessages = pgTable(
+	'application_messages',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		applicationId: uuid('application_id')
+			.notNull()
+			.references(() => applications.id, { onDelete: 'cascade' }),
+		senderId: uuid('sender_id').notNull(),
+		recipientId: uuid('recipient_id').notNull(),
+		message: text('message').notNull(),
+		createdAt: timestamp('created_at').defaultNow().notNull(),
+	},
+	(table) => [
+		index('idx_messages_app_sender_recipient').on(
+			table.applicationId,
+			table.senderId,
+			table.recipientId
+		),
+		index('idx_messages_sender_recipient').on(table.senderId, table.recipientId),
+		index('idx_messages_recipient_sender').on(table.recipientId, table.senderId),
+	]
+)
+
+export const applicationMessageTemplates = pgTable(
+	'application_message_templates',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		status: varchar('status', { length: 50, enum: ['draft', 'active', 'inactive', 'deleted'] })
+			.notNull()
+			.default('draft'),
+		templateName: varchar('template_name', { length: 1024 }).notNull(),
+		ownerCorporationId: text('owner_corporation_id').notNull(),
+		description: text('description'),
+		messageTemplate: text('message_template').notNull(),
+		createdAt: timestamp('created_at').defaultNow().notNull(),
+		updatedAt: timestamp('updated_at').defaultNow().notNull(),
+	},
+	(table) => [
+		index('idx_message_templates_name').on(table.templateName),
+		index('idx_message_templates_status').on(table.status),
+		index('idx_message_templates_owner_corporation_id').on(table.ownerCorporationId),
 	]
 )
 
@@ -337,6 +386,7 @@ export const blacklistRelations = relations(blacklistEntries, ({ one, many }) =>
  */
 export const schema = {
 	applications,
+	applicationMessages,
 	applicationRecommendations,
 	applicationActivityLog,
 	hrNotes,

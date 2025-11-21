@@ -92,6 +92,11 @@
 				"name": "ESI",
 				"class_name": "Esi",
 				"script_name": "esi"
+			},
+			{
+				"name": "CORE",
+				"class_name": "Core",
+				"script_name": "core"
 			}
 		]
 	},

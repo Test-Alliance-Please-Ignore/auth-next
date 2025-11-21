@@ -95,6 +95,18 @@ export interface ActivityLogEntry {
 }
 
 /**
+ * Application message data transfer object
+ */
+export interface ApplicationMessage {
+	id: string
+	applicationId: string
+	senderId: string
+	recipientId: string
+	message: string
+	createdAt: Date
+}
+
+/**
  * HR note data transfer object
  */
 export interface HrNote {
@@ -367,6 +379,50 @@ export interface Hr extends DurableObject {
 		isAdmin: boolean
 	): Promise<void>
 
+	// ==================== Message Methods ====================
+
+	/**
+	 * Send a message from HR reviewer to applicant or vice versa
+	 * Messages can only be sent for applications in "open" status (pending or under_review)
+	 * @param applicationId - Application ID to send message for
+	 * @param senderId - ID of the user sending the message
+	 * @param recipientId - ID of the user receiving the message
+	 * @param message - Message text content
+	 * @param characterId - Character ID of the sender
+	 * @param isAdmin - Whether the requesting user is a site admin
+	 * @returns The created message
+	 */
+	sendMessage(
+		applicationId: string,
+		senderId: string,
+		recipientId: string,
+		message: string,
+		characterId: string,
+		isAdmin: boolean
+	): Promise<ApplicationMessage>
+
+	/**
+	 * List all messages for an application
+	 * @param applicationId - Application ID to get messages for
+	 * @param userId - ID of the requesting user
+	 * @param isAdmin - Whether the requesting user is a site admin
+	 * @returns Array of messages ordered by creation time
+	 */
+	listMessages(
+		applicationId: string,
+		userId: string,
+		isAdmin: boolean
+	): Promise<ApplicationMessage[]>
+
+	/**
+	 * Get count of messages for an application (for UI badges)
+	 * @param applicationId - Application ID to get message count for
+	 * @param userId - ID of the requesting user
+	 * @param isAdmin - Whether the requesting user is a site admin
+	 * @returns Number of messages for the application
+	 */
+	getMessageCount(applicationId: string, userId: string, isAdmin: boolean): Promise<number>
+
 	// ==================== HR Notes Methods (Admin Only) ====================
 
 	/**
@@ -438,8 +494,6 @@ export interface Hr extends DurableObject {
 	grantRole(
 		corporationId: string,
 		userId: string,
-		characterId: string,
-		characterName: string,
 		role: HrRoleType,
 		grantedBy: string,
 		expiresAt?: Date
@@ -575,3 +629,38 @@ export interface Hr extends DurableObject {
 	 */
 	getAllBlacklists(filters: BlacklistFilters): Promise<BlacklistResults>
 }
+
+/**
+ * Service URN for the HR Durable Object
+ */
+export const SERVICE_HR = 'urn:service:hr'
+
+/**
+ * HR viewer role URN
+ */
+export const ROLE_HR_VIEWER = `${SERVICE_HR}:role:hr-viewer`
+
+/**
+ * HR reviewer role URN
+ */
+export const ROLE_HR_REVIEWER = `${SERVICE_HR}:role:hr-reviewer`
+
+/**
+ * HR admin role URN
+ */
+export const ROLE_HR_ADMIN = `${SERVICE_HR}:role:hr-admin`
+
+/**
+ * HR corporation CEO role URN
+ */
+export const ROLE_HR_CORP_CEO = `${SERVICE_HR}:role:hr-corp-ceo`
+
+/**
+ * All HR roles
+ */
+export const HR_ROLES = [ROLE_HR_VIEWER, ROLE_HR_REVIEWER, ROLE_HR_ADMIN, ROLE_HR_CORP_CEO] as const
+
+/**
+ * HR role URN type
+ */
+export type HrRoleUrn = (typeof HR_ROLES)[number]

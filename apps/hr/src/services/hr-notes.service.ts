@@ -5,6 +5,7 @@ import { hrNotes } from '../db/schema'
 import type { DbClient } from '@repo/db-utils'
 import type { HrNote, HrNotePriority, HrNoteType, NoteFilters } from '@repo/hr'
 import type * as schema from '../db/schema'
+import type { ServiceContext } from './context'
 
 /**
  * HR Notes Service
@@ -13,7 +14,7 @@ import type * as schema from '../db/schema'
  * Manages private notes about users for HR/admin purposes.
  */
 export class HrNotesService {
-	constructor(private db: DbClient<typeof schema>) {}
+	constructor(private ctx: ServiceContext) {}
 
 	/**
 	 * Create an HR note about a user (admin only)
@@ -29,7 +30,7 @@ export class HrNotesService {
 		priority: HrNotePriority,
 		metadata?: Record<string, unknown>
 	): Promise<HrNote> {
-		const [note] = await this.db
+		const [note] = await this.ctx.db
 			.insert(hrNotes)
 			.values({
 				subjectUserId,
@@ -71,7 +72,7 @@ export class HrNotesService {
 		}
 
 		// Build query
-		const results = await this.db.query.hrNotes.findMany({
+		const results = await this.ctx.db.query.hrNotes.findMany({
 			where: conditions.length > 0 ? and(...conditions) : undefined,
 			orderBy: [desc(hrNotes.createdAt)],
 			limit: filters.limit || 50,
@@ -85,7 +86,7 @@ export class HrNotesService {
 	 * Get all HR notes for a specific user (admin only)
 	 */
 	async getUserNotes(subjectUserId: string): Promise<HrNote[]> {
-		const results = await this.db.query.hrNotes.findMany({
+		const results = await this.ctx.db.query.hrNotes.findMany({
 			where: eq(hrNotes.subjectUserId, subjectUserId),
 			orderBy: [desc(hrNotes.createdAt)],
 		})
@@ -97,7 +98,7 @@ export class HrNotesService {
 	 * Get a single HR note (admin only)
 	 */
 	async getNote(noteId: string): Promise<HrNote> {
-		const note = await this.db.query.hrNotes.findFirst({
+		const note = await this.ctx.db.query.hrNotes.findFirst({
 			where: eq(hrNotes.id, noteId),
 		})
 
@@ -113,7 +114,7 @@ export class HrNotesService {
 	 */
 	async updateNote(noteId: string, updates: Partial<HrNote>): Promise<void> {
 		// Get the note to verify it exists
-		const note = await this.db.query.hrNotes.findFirst({
+		const note = await this.ctx.db.query.hrNotes.findFirst({
 			where: eq(hrNotes.id, noteId),
 		})
 
@@ -143,21 +144,21 @@ export class HrNotesService {
 		}
 
 		// Update the note
-		await this.db.update(hrNotes).set(updateData).where(eq(hrNotes.id, noteId))
+		await this.ctx.db.update(hrNotes).set(updateData).where(eq(hrNotes.id, noteId))
 	}
 
 	/**
 	 * Delete an HR note (admin only)
 	 */
 	async deleteNote(noteId: string): Promise<void> {
-		await this.db.delete(hrNotes).where(eq(hrNotes.id, noteId))
+		await this.ctx.db.delete(hrNotes).where(eq(hrNotes.id, noteId))
 	}
 
 	/**
 	 * Get notes by character (admin only)
 	 */
 	async getCharacterNotes(subjectCharacterId: string): Promise<HrNote[]> {
-		const results = await this.db.query.hrNotes.findMany({
+		const results = await this.ctx.db.query.hrNotes.findMany({
 			where: eq(hrNotes.subjectCharacterId, subjectCharacterId),
 			orderBy: [desc(hrNotes.createdAt)],
 		})
@@ -169,7 +170,7 @@ export class HrNotesService {
 	 * Get high priority notes (admin dashboard)
 	 */
 	async getHighPriorityNotes(limit = 20): Promise<HrNote[]> {
-		const results = await this.db.query.hrNotes.findMany({
+		const results = await this.ctx.db.query.hrNotes.findMany({
 			where: inArray(hrNotes.priority, ['high', 'critical']),
 			orderBy: [desc(hrNotes.createdAt)],
 			limit,
