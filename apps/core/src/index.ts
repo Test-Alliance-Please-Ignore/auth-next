@@ -2,7 +2,7 @@ import { WorkerEntrypoint } from 'cloudflare:workers'
 import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
-import { withNotFound, withOnError } from '@repo/hono-helpers'
+import { withNotFound, withOnError, withSentry } from '@repo/hono-helpers'
 
 import { createDb } from './db'
 import { CoreDO } from './durable-object'
@@ -118,7 +118,8 @@ const app = new Hono<App>()
 // .route('/api/bills', userBillsRoutes) // User bills API (TODO: implement later)
 
 // Export Hono app as default export (HTTP handler)
-export default app
+// Wrapped with Sentry for automatic error tracking
+export default withSentry(app)
 
 /**
  * Core Worker RPC Service
@@ -341,4 +342,7 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	}
 }
 
+// Export Durable Object class
+// Note: Automatic Sentry instrumentation for DOs is not supported in Cloudflare Workers
+// Use manual captureException() in DO methods for error tracking
 export { CoreDO as Core }

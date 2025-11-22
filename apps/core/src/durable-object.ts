@@ -1,24 +1,48 @@
 import { DurableObject } from 'cloudflare:workers'
 
+import { CORE_ROLES, SERVICE_CORE } from '@repo/core'
 import { and, eq, inArray } from '@repo/db-utils'
+import { getStub } from '@repo/do-utils'
 import { getEsiInstanceForCharacter, getEsiInstanceForCorporation } from '@repo/esi'
+import { logger } from '@repo/hono-helpers'
 
 import { createDb } from './db'
 import { userCharacters, users } from './db/schema'
 
 import type { Core } from '@repo/core'
 import type { CharacterPublicInfo } from '@repo/esi'
+import type { CreateRoleRequest, Groups } from '@repo/groups'
 import type { Env } from './context'
 
 export class CoreDO extends DurableObject<Env> implements Core {
 	private db: ReturnType<typeof createDb>
-
+	private readonly logger = logger.withTags({ service: 'core-durable-object' })
 	constructor(
 		public state: DurableObjectState,
 		public env: Env
 	) {
 		super(state, env)
 		this.db = createDb(env.DATABASE_URL)
+
+		void this.state.blockConcurrencyWhile(async () => {
+			void this.ensureRolesExist()
+		})
+	}
+
+	private async ensureRolesExist(): Promise<void> {
+		const roles = CORE_ROLES.map((role) => ({
+			name: role,
+			ownedBy: SERVICE_CORE,
+			description: `${role} role for the HR system`,
+		})) as CreateRoleRequest[]
+
+		const groupsStub = getStub<Groups>(this.env.GROUPS, 'default')
+		try {
+			await groupsStub.batchCreateRoles({ roles })
+			this.logger.info('Groups roles created.', { roles })
+		} catch (_error) {
+			/* empty catch */
+		}
 	}
 
 	private async getCharacterInfo(characterId: string): Promise<CharacterPublicInfo | null> {

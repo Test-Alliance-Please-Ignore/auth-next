@@ -29,8 +29,8 @@
 		"@repo/hono-helpers": "workspace:*",
 		"drizzle-orm": "0.44.7",
 		"hono": "4.10.6",
-		"preact": "^10.27.2",
-		"preact-render-to-string": "^6.6.3",
+		"preact": "10.27.2",
+		"preact-render-to-string": "6.6.3",
 		"workers-tagged-logger": "0.13.7",
 		"zod": "4.1.12"
 	},

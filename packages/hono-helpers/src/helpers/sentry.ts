@@ -1,8 +1,10 @@
 import {
 	captureException as sentryCaptureException,
 	captureMessage as sentryCaptureMessage,
+	instrumentDurableObjectWithSentry,
 	withScope,
 } from '@sentry/cloudflare'
+import type { DurableObject, DurableObjectState } from 'cloudflare:workers'
 
 /**
  * Capture an exception to Sentry with optional context
@@ -53,6 +55,29 @@ export function captureMessage(
 	level: 'info' | 'warning' | 'error' = 'info'
 ): void {
 	sentryCaptureMessage(message, level)
+}
+
+/**
+ * Create an instrumented Durable Object class with automatic Sentry error tracking
+ *
+ * This wrapper automatically captures unhandled exceptions in Durable Object methods
+ * and sends them to Sentry with appropriate context.
+ *
+ * @example
+ * ```typescript
+ * import { createInstrumentedDurableObject } from '@repo/hono-helpers'
+ * import { MyDurableObjectClass } from './durable-object'
+ *
+ * export const MyDurableObject = createInstrumentedDurableObject(MyDurableObjectClass)
+ * ```
+ *
+ * @param DurableObjectClass - The Durable Object class to instrument
+ * @returns Instrumented Durable Object class with Sentry error tracking
+ */
+export function createInstrumentedDurableObject<T extends DurableObject>(
+	DurableObjectClass: new (state: DurableObjectState, env: any) => T
+): new (state: DurableObjectState, env: any) => T {
+	return instrumentDurableObjectWithSentry(DurableObjectClass)
 }
 
 // Re-export commonly used Sentry functions

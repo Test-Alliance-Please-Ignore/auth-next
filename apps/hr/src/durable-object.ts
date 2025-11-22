@@ -70,8 +70,8 @@ export class HrDO extends DurableObject<Env> implements Hr {
 		this.blacklistService = new BlacklistService({ db: this.db, env })
 		this.messageService = new MessageService({ db: this.db, env })
 
-		this.state.blockConcurrencyWhile(async () => {
-			await this.hrRoleService.ensureRolesExist()
+		void this.state.blockConcurrencyWhile(async () => {
+			void this.hrRoleService.ensureRolesExist()
 		})
 	}
 

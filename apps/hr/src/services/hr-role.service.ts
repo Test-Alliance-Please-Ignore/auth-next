@@ -6,9 +6,8 @@ import { HR_ROLES, ROLE_HR_ADMIN, ROLE_HR_REVIEWER, ROLE_HR_VIEWER, SERVICE_HR }
 
 import { hrRoles } from '../db/schema'
 
-import type { Esi } from '@repo/esi'
 import type { CreateRoleRequest, Groups, Role } from '@repo/groups'
-import type { HrRole, HrRoleType, HrRoleUrn, RoleFilters } from '@repo/hr'
+import type { HrRole, HrRoleType, HrRoleUrn } from '@repo/hr'
 import type { ServiceContext } from './context'
 
 /**
@@ -20,18 +19,9 @@ import type { ServiceContext } from './context'
 export class HrRoleService {
 	private readonly logger = logger.withTags({ service: 'hr-role' })
 	private readonly roleIdCache = new Map<HrRoleType, string>()
+	private readonly roleTypeCache = new Map<HrRoleUrn, Role>()
 
 	constructor(private ctx: ServiceContext) {}
-
-	/**
-	 * Role hierarchy for permission checks
-	 * Higher value = more permissions
-	 */
-	private readonly roleHierarchy: Record<HrRoleType, number> = {
-		hr_viewer: 1,
-		hr_reviewer: 2,
-		hr_admin: 3,
-	}
 
 	async ensureRolesExist(): Promise<void> {
 		const roles = HR_ROLES.map((role) => ({
@@ -68,12 +58,10 @@ export class HrRoleService {
 			default:
 				throw new Error(`Invalid HR role type: ${hrRoleType}`)
 		}
-		this.logger.info('[HrRoleService.lookupRoleByHrRoleType] looking up role by name', { roleName })
 		const role = await groupsStub.getRoleByName(roleName)
 		if (!role) {
 			throw new Error(`Role not found: ${roleName}`)
 		}
-		this.logger.info('[HrRoleService.lookupRoleByHrRoleType] role found', { role })
 
 		this.roleIdCache.set(hrRoleType, role.id)
 		return role.id
@@ -91,49 +79,29 @@ export class HrRoleService {
 	): Promise<HrRole> {
 		const roleId = await this.lookupRoleByHrRoleType(role)
 
-		// Check for existing role
-		const existing = await this.ctx.db.query.hrRoles.findFirst({
-			where: and(eq(hrRoles.corporationId, corporationId), eq(hrRoles.userId, userId)),
-		})
-
-		// If exists delete the old one
-		if (existing) {
-			await this.ctx.db.delete(hrRoles).where(eq(hrRoles.id, existing.id))
-		}
-
-		// Create the new role
-		const [hrRole] = await this.ctx.db
-			.insert(hrRoles)
-			.values({
-				corporationId,
-				userId,
-				characterId: userId,
-				characterName: userId,
-				role,
-				grantedBy,
-				expiresAt: expiresAt || null,
-				isActive: true,
-			})
-			.returning()
-
-		if (!hrRole) {
-			throw new Error('Failed to grant HR role')
-		}
-
-		this.logger.info('[HrRoleService.grantRole] attaching role to user', {
-			roleId,
-			userId,
-			corporationId,
-		})
 		try {
 			const groupsStub = getStub<Groups>(this.ctx.env.GROUPS, 'default')
-			await groupsStub.attachRoleTo({
+			const roleAttachment = await groupsStub.attachRoleTo({
 				roleId,
 				attachedToType: RoleAttachmentType.USER,
 				attachedToId: userId,
 				resourceId: corporationId,
 				resourceType: ResourceType.CORPORATION,
 			})
+			return {
+				id: roleAttachment.role.id,
+				corporationId: corporationId,
+				userId: userId,
+				characterId: userId,
+				characterName: userId,
+				role: role,
+				grantedBy: grantedBy,
+				grantedAt: roleAttachment.createdAt,
+				expiresAt: expiresAt || null,
+				isActive: true,
+				createdAt: roleAttachment.createdAt,
+				updatedAt: roleAttachment.updatedAt,
+			}
 		} catch (error) {
 			this.logger.error('[HrRoleService.grantRole] failed to attach role to user', {
 				error: error instanceof Error ? error.message : String(error),
@@ -142,8 +110,8 @@ export class HrRoleService {
 				userId,
 				corporationId,
 			})
+			throw error
 		}
-		return this.mapToHrRole(hrRole)
 	}
 
 	/**
@@ -179,11 +147,16 @@ export class HrRoleService {
 	}
 
 	private async getRoleForType(roleType: HrRoleUrn): Promise<Role> {
+		const cachedRole = this.roleTypeCache.get(roleType)
+		if (cachedRole) {
+			return cachedRole as Role
+		}
 		const groupsStub = getStub<Groups>(this.ctx.env.GROUPS, 'default')
-		const role = await groupsStub.getRoleByName(roleType)
+		const role = await groupsStub.getRoleByName(roleType as string)
 		if (!role) {
 			throw new Error(`Role not found: ${roleType}`)
 		}
+		this.roleTypeCache.set(roleType as HrRoleUrn, role)
 		return role
 	}
 

@@ -20,3 +20,5 @@ export interface Core {
 	getUserAlliances(userId: string): Promise<Array<{ allianceId: string; allianceName: string }>>
 	getUserDiscordUserId(userId: string): Promise<string | null>
 }
+
+export * from './roles'

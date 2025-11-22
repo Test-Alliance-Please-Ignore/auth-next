@@ -403,11 +403,11 @@ app.get('/browse/:corporationId', requireAuth(), async (c) => {
 })
 
 /**
- * PATCH /my-corporations/:corporationId/settings
+ * PATCH /:corporationId/settings
  * Update corporation recruiting settings (CEO or admin only)
  * Updates isRecruiting, shortDescription, and fullDescription fields
  */
-app.patch('/my-corporations/:corporationId/settings', requireAuth(), async (c) => {
+app.patch('/:corporationId/settings', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const corporationId = c.req.param('corporationId')
 	const db = c.get('db')
@@ -419,13 +419,27 @@ app.patch('/my-corporations/:corporationId/settings', requireAuth(), async (c) =
 	// Authorization check - user must be CEO or site admin
 	try {
 		await checkCorporationAccess(c, corporationId)
+		logger.info('[Corporations] Authorization check passed', {
+			corporationId,
+			userId: user.id,
+		})
 	} catch (error) {
+		logger.error('[Corporations] Failed to update settings', {
+			corporationId,
+			error: error instanceof Error ? error.message : String(error),
+		})
 		return c.json({ error: error instanceof Error ? error.message : 'Access denied' }, 403)
 	}
 
 	// Parse and validate request body
 	const body = await c.req.json()
 	const { isRecruiting, shortDescription, fullDescription } = body
+
+	logger.info('[Corporations] Request body parsed', {
+		corporationId,
+		userId: user.id,
+		body,
+	})
 
 	// Validate short description length
 	if (
@@ -435,6 +449,11 @@ app.patch('/my-corporations/:corporationId/settings', requireAuth(), async (c) =
 	) {
 		return c.json({ error: 'Short description must not exceed 250 characters' }, 400)
 	}
+	logger.info('[Corporations] Short description length validated', {
+		corporationId,
+		userId: user.id,
+		shortDescription,
+	})
 
 	try {
 		// Build update object with only provided fields
@@ -444,15 +463,31 @@ app.patch('/my-corporations/:corporationId/settings', requireAuth(), async (c) =
 
 		if (isRecruiting !== undefined) {
 			updateData.isRecruiting = isRecruiting
+			logger.info('[Corporations] isRecruiting updated', {
+				corporationId,
+				userId: user.id,
+				isRecruiting,
+			})
 		}
 		if (shortDescription !== undefined) {
 			updateData.shortDescription = shortDescription || null
+			logger.info('[Corporations] shortDescription updated', {
+				corporationId,
+				userId: user.id,
+				shortDescription,
+			})
 		}
 		if (fullDescription !== undefined) {
 			updateData.fullDescription = fullDescription || null
+			logger.info('[Corporations] fullDescription updated', {
+				corporationId,
+				userId: user.id,
+				fullDescription,
+			})
 		}
 
 		// Update corporation
+
 		const [updatedCorporation] = await db
 			.update(managedCorporations)
 			.set(updateData)
@@ -672,20 +707,23 @@ app.put('/:corporationId', requireAuth(), requireAdmin(), async (c) => {
 
 				if (isMemberCorporation) {
 					// Corporation is being marked as a member corp - attach TEST alliance permission
-					logger.info('[Corporations] Marking as member corp - attaching TEST alliance permission', {
-						corporationId,
-						urn: testAllianceUrn,
-					})
+					logger.info(
+						'[Corporations] Marking as member corp - attaching TEST alliance permission',
+						{
+							corporationId,
+							urn: testAllianceUrn,
+						}
+					)
 
 					// First, get all permissions to find the TEST alliance permission ID
 					const allPermissions = await groupsStub.listPermissions()
-					const testAlliancePermission = allPermissions.find(p => p.urn === testAllianceUrn)
+					const testAlliancePermission = allPermissions.find((p) => p.urn === testAllianceUrn)
 
 					if (testAlliancePermission) {
 						// Check if permission is already attached
 						const existingPermissions = await groupsStub.listCorporationPermissions(corporationId)
 						const alreadyAttached = existingPermissions.some(
-							cp => cp.permission.urn === testAllianceUrn
+							(cp) => cp.permission.urn === testAllianceUrn
 						)
 
 						if (!alreadyAttached) {
@@ -714,15 +752,18 @@ app.put('/:corporationId', requireAuth(), requireAdmin(), async (c) => {
 					}
 				} else {
 					// Corporation is being unmarked as a member corp - detach TEST alliance permission
-					logger.info('[Corporations] Unmarking as member corp - detaching TEST alliance permission', {
-						corporationId,
-						urn: testAllianceUrn,
-					})
+					logger.info(
+						'[Corporations] Unmarking as member corp - detaching TEST alliance permission',
+						{
+							corporationId,
+							urn: testAllianceUrn,
+						}
+					)
 
 					// Get corporation permissions to find the one to remove
 					const corpPermissions = await groupsStub.listCorporationPermissions(corporationId)
 					const testAllianceCorpPermission = corpPermissions.find(
-						cp => cp.permission.urn === testAllianceUrn
+						(cp) => cp.permission.urn === testAllianceUrn
 					)
 
 					if (testAllianceCorpPermission) {
@@ -852,7 +893,7 @@ app.post('/:corporationId/verify', requireAuth(), requireAdmin(), async (c) => {
 	try {
 		// Verify access via Durable Object
 		logger.info('[Corporations] Getting DO stub', { corporationId, stubId: corporationId })
-				const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 
 		logger.info('[Corporations] Calling verifyAccess on DO', { corporationId })
 		const verification = await stub.verifyAccess()
@@ -924,7 +965,7 @@ app.post('/:corporationId/fetch', requireAuth(), requireAdmin(), async (c) => {
 			corporationId,
 			stubId: corporationId,
 		})
-				const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 
 		logger.info('[Corporations] Calling fetch method on DO', { corporationId, category })
 
@@ -999,7 +1040,7 @@ app.get('/:corporationId/data', requireAuth(), requireAdmin(), async (c) => {
 			corporationId,
 			stubId: corporationId,
 		})
-				const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 
 		logger.info('[Corporations] Fetching all data from DO', { corporationId })
 		const [publicInfo, coreData, financialData, assetsData, marketData, killmails] =
@@ -1439,7 +1480,7 @@ app.patch('/:corporationId/members/:characterId/status', requireAuth(), async (c
 		const cacheKey = getCorpMembersCacheKey(corporationId)
 		try {
 			// @ts-ignore
-		await caches.default.delete(cacheKey)
+			await caches.default.delete(cacheKey)
 			logger.info('[Corporations] Invalidated members cache', { cacheKey })
 		} catch (error) {
 			logger.warn('[Corporations] Failed to invalidate cache', {
@@ -1477,7 +1518,7 @@ app.get('/:corporationId/directors', requireAuth(), requireAdmin(), async (c) =>
 	const corporationId = c.req.param('corporationId')
 
 	try {
-				const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 		const directors = await stub.getDirectors(corporationId)
 
 		return c.json(directors)
@@ -1513,7 +1554,7 @@ app.post('/:corporationId/directors', requireAuth(), requireAdmin(), async (c) =
 			return c.json({ error: 'characterId and characterName are required' }, 400)
 		}
 
-				const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 		await stub.addDirector(corporationId, characterId, characterName, priority)
 
 		// Update managedCorporations to set primary director if this is the first one
@@ -1545,7 +1586,7 @@ app.delete('/:corporationId/directors/:characterId', requireAuth(), requireAdmin
 	const characterId = c.req.param('characterId')
 
 	try {
-				const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 		await stub.removeDirector(corporationId, characterId)
 
 		return c.json({ success: true })
@@ -1575,7 +1616,7 @@ app.put('/:corporationId/directors/:characterId', requireAuth(), requireAdmin(),
 			return c.json({ error: 'priority is required and must be a number' }, 400)
 		}
 
-				const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 		await stub.updateDirectorPriority(corporationId, characterId, priority)
 
 		return c.json({ success: true, characterId, priority })
@@ -1622,7 +1663,7 @@ app.post('/:corporationId/directors/verify-all', requireAuth(), requireAdmin(), 
 	}
 
 	try {
-				const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 		const result = await stub.verifyAllDirectorsHealth(corporationId)
 
 		// Update managedCorporations with healthy director count

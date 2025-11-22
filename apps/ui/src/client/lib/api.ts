@@ -1540,7 +1540,7 @@ export class ApiClient {
 			fullDescription?: string
 		}
 	): Promise<ManagedCorporation> {
-		return this.patch(`/my-corporations/${corporationId}/settings`, settings)
+		return this.patch(`/corporations/${corporationId}/settings`, settings)
 	}
 
 	async createCorporation(data: CreateCorporationRequest): Promise<ManagedCorporation> {

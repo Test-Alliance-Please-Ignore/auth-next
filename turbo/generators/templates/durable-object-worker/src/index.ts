@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
-import { withNotFound, withOnError } from '@repo/hono-helpers'
+import { withNotFound, withOnError, withSentry } from '@repo/hono-helpers'
 
 import type { App } from './context'
 import { {{ pascalCase name }}DO } from './durable-object'
@@ -24,7 +24,10 @@ const app = new Hono<App>()
 		return c.text('{{ pascalCase name }} Durable Object Worker')
 	})
 
-export default app
+// Export Hono app wrapped with Sentry for automatic error tracking
+export default withSentry(app)
 
-// Export the Durable Object class
+// Export Durable Object class
+// Note: Automatic Sentry instrumentation for DOs is not supported in Cloudflare Workers
+// Use manual captureException() in DO methods for error tracking
 export { {{ pascalCase name }}DO as {{ pascalCase name }} }

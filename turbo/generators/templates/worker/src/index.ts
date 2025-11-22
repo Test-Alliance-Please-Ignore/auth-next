@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
-import { withNotFound, withOnError } from '@repo/hono-helpers'
+import { withNotFound, withOnError, withSentry } from '@repo/hono-helpers'
 
 import type { App } from './context'
 
@@ -23,4 +23,5 @@ const app = new Hono<App>()
 		return c.text('hello, world!')
 	})
 
-export default app
+// Export Hono app wrapped with Sentry for automatic error tracking
+export default withSentry(app)

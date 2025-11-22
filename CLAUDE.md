@@ -696,6 +696,78 @@ Database commands in apps should have these scripts:
 
 **CRITICAL:** Never use `db:push` or `drizzle-kit push` even in development. Always use the migration workflow.
 
+### Sentry Error Tracking Pattern
+
+All workers use Sentry for error tracking via `@repo/hono-helpers`. Sentry automatically captures 5xx errors and unhandled exceptions with full request context.
+
+**Configuration:**
+- `SENTRY_DSN`: Set as Wrangler secret (not in wrangler.jsonc)
+- `SENTRY_RELEASE`: Auto-populated with git SHA during deployment
+- `ENVIRONMENT`: Set in wrangler.jsonc vars
+- **Sampling:** 10% in production, 100% in development (automatic)
+- **Filtering:** 4xx client errors are automatically excluded
+
+**Usage in Workers:**
+```typescript
+import { withSentry, withOnError } from '@repo/hono-helpers'
+
+const app = new Hono<App>()
+  .onError(withOnError())  // Auto-captures errors to Sentry
+
+// CRITICAL: Wrap app export with withSentry to initialize Sentry SDK
+export default withSentry(app)
+```
+
+**Durable Objects:**
+Automatic instrumentation is not supported in Cloudflare Workers. Use manual error capture in critical methods:
+```typescript
+import { captureException } from '@repo/hono-helpers'
+
+export class MyDurableObject extends DurableObject<Env> {
+  async criticalMethod(entityId: string) {
+    try {
+      // Business logic
+      await this.performOperation(entityId)
+    } catch (error) {
+      // Capture error with context
+      captureException(error as Error, {
+        tags: {
+          durableObject: 'MyDurableObject',
+          method: 'criticalMethod',
+          entityId
+        },
+        extra: { /* additional context */ }
+      })
+      throw error  // Re-throw to maintain error propagation
+    }
+  }
+}
+```
+
+**Manual Error Capture:**
+For capturing errors with additional context:
+```typescript
+import { captureException } from '@repo/hono-helpers'
+
+try {
+  await riskyOperation()
+} catch (error) {
+  captureException(error as Error, {
+    tags: { operation: 'riskyOperation', userId: user.id },
+    extra: { requestData: data }
+  })
+  throw error  // Re-throw to maintain error propagation
+}
+```
+
+**Adding Sentry to New Workers:**
+1. Add `SENTRY_DSN` secret via Wrangler: `pnpm -F worker-name wrangler secret put SENTRY_DSN`
+2. Wrap Hono app export: `export default withSentry(app)`
+3. For Durable Object workers, add manual error capture in critical methods using `captureException()`
+4. Deploy and verify errors appear in Sentry dashboard
+
+**IMPORTANT:** Generator templates (`just gen`) automatically include Sentry integration for new workers.
+
 ### HTTP Request Deduplication Pattern
 
 When making external HTTP requests (especially in Durable Objects), use `@repo/fetch-utils` to prevent duplicate concurrent requests and improve performance.

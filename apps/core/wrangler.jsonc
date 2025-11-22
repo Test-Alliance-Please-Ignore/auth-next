@@ -19,7 +19,8 @@
 	"vars": {
 		"NAME": "core",
 		"ENVIRONMENT": "production",
-		"SENTRY_RELEASE": "unknown"
+		"SENTRY_RELEASE": "unknown",
+		"SENTRY_DSN": "https://8a3d31a3a18e448f97e19e3d9930547d@app.glitchtip.com/13711"
 	},
 	"durable_objects": {
 		"bindings": [
