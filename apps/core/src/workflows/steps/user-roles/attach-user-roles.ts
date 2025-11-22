@@ -35,7 +35,7 @@ export async function attachUserRoles(
 	ctx: WorkflowContext,
 	userId: string
 ): Promise<AttachUserRolesResult> {
-	const logger = getWorkflowLogger(ctx)
+	const logger = getWorkflowLogger(ctx, 'attach-user-roles')
 
 	const coreStub = getStub<Core>(ctx.env.CORE, 'default')
 
@@ -61,66 +61,66 @@ export async function attachUserRoles(
 		})
 	)
 
-	const attachCorporationRoles = async (characterInfo: CharacterInfo) => {
+	type RoleAttachment = {
+		roleName: string
+		attachedToType: RoleAttachmentType
+		attachedToId: string
+		resourceId: string
+		resourceType: ResourceType
+	}
+
+	const roleAttachments: RoleAttachment[] = []
+	const buildCorporationRoleAttachment = (characterInfo: CharacterInfo) => {
 		logger.info('[Workflow] Attaching corporation roles', {
 			characterId: characterInfo.characterId,
 			corporationId: characterInfo.corporationId,
 		})
 
-		const groupsStub = getStub<Groups>(ctx.env.GROUPS, 'default')
-		try {
-			const roleAttachment = await groupsStub.attachRoleTo({
-				roleName: ROLE_CORE_CORP_MEMBER,
-				attachedToType: RoleAttachmentType.USER,
-				attachedToId: userId,
-				resourceId: characterInfo.corporationId,
-				resourceType: ResourceType.CORPORATION,
-			})
-			return roleAttachment
-		} catch (error) {
-			// empty catch
-		}
+		roleAttachments.push({
+			roleName: ROLE_CORE_CORP_MEMBER,
+			attachedToType: RoleAttachmentType.USER,
+			attachedToId: userId,
+			resourceId: characterInfo.corporationId,
+			resourceType: ResourceType.CORPORATION,
+		})
 	}
 
-	const attachAllianceRoles = async (characterInfo: CharacterInfo) => {
+	const buildAllianceRoleAttachment = (characterInfo: CharacterInfo) => {
 		if (!characterInfo.allianceId) {
 			return undefined
 		}
-		const groupsStub = getStub<Groups>(ctx.env.GROUPS, 'default')
-		try {
-			const roleAttachment = await groupsStub.attachRoleTo({
-				roleName: ROLE_CORE_ALLIANCE_MEMBER,
-				attachedToType: RoleAttachmentType.USER,
-				attachedToId: userId,
-				resourceId: characterInfo.allianceId,
-				resourceType: ResourceType.ALLIANCE,
-			})
-			return roleAttachment
-		} catch (error) {
-			// empty catch
-		}
+
+		roleAttachments.push({
+			roleName: ROLE_CORE_ALLIANCE_MEMBER,
+			attachedToType: RoleAttachmentType.USER,
+			attachedToId: userId,
+			resourceId: characterInfo.allianceId,
+			resourceType: ResourceType.ALLIANCE,
+		})
 	}
 
-	const roleAttachments = await Promise.all(
-		characterInfoResults.map(async (characterInfo) => {
-			const corporationRoleAttachment = await attachCorporationRoles(characterInfo)
-			let allianceRoleAttachment: RoleAttachment | undefined
-			if (characterInfo.allianceId) {
-				allianceRoleAttachment = await attachAllianceRoles(characterInfo)
-			}
-			return {
-				corporationRoleAttachment,
-				allianceRoleAttachment,
-			}
-		})
-	)
+	characterInfoResults.forEach((characterInfo) => {
+		buildCorporationRoleAttachment(characterInfo)
+		buildAllianceRoleAttachment(characterInfo)
+	})
+
+	const groupsStub = getStub<Groups>(ctx.env.GROUPS, 'default')
+	const attachedRoleAttachments = await groupsStub.batchAttachRolesTo({
+		roles: roleAttachments.map((r) => ({
+			roleName: r.roleName,
+			attachedToType: r.attachedToType,
+			attachedToId: r.attachedToId,
+			resourceId: r.resourceId,
+			resourceType: r.resourceType,
+		})),
+	})
 
 	return {
-		corporationRoleAttachments: roleAttachments
-			.map((r) => r.corporationRoleAttachment)
-			.filter((r) => r !== undefined) as RoleAttachment[],
-		allianceRoleAttachments: roleAttachments
-			.map((r) => r.allianceRoleAttachment)
-			.filter((r) => r !== undefined) as RoleAttachment[],
+		corporationRoleAttachments: attachedRoleAttachments.filter(
+			(r) => r.resourceType === ResourceType.CORPORATION
+		),
+		allianceRoleAttachments: attachedRoleAttachments.filter(
+			(r) => r.resourceType === ResourceType.ALLIANCE
+		),
 	}
 }

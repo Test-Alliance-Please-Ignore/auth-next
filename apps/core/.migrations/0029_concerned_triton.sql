@@ -1,0 +1,2 @@
+ALTER TABLE "users" ADD COLUMN "last_refresh_workflow_attempt" timestamp with time zone;--> statement-breakpoint
+CREATE INDEX "users_last_refresh_workflow_attempt_idx" ON "users" USING btree ("last_refresh_workflow_attempt");

@@ -36,6 +36,7 @@ export const users = pgTable(
 		legacyAuthUserUsername: text('legacy_auth_user_username').unique(),
 		legacyAuthUserEmailHash: text('legacy_auth_user_email_hash').unique(),
 		lastRefreshWorkflow: timestamp('last_refresh_workflow', { withTimezone: true }),
+		lastRefreshWorkflowAttempt: timestamp('last_refresh_workflow_attempt', { withTimezone: true }),
 	},
 	(table) => [
 		index('users_main_character_id_idx').on(table.mainCharacterId),
@@ -45,6 +46,7 @@ export const users = pgTable(
 		index('users_legacy_auth_user_username_idx').on(table.legacyAuthUserUsername),
 		index('users_legacy_auth_user_email_hash_idx').on(table.legacyAuthUserEmailHash),
 		index('users_last_refresh_workflow_idx').on(table.lastRefreshWorkflow),
+		index('users_last_refresh_workflow_attempt_idx').on(table.lastRefreshWorkflowAttempt),
 	]
 )
 

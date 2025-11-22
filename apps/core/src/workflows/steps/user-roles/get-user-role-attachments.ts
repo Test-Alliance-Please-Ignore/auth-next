@@ -24,7 +24,7 @@ export async function getUserRoleAttachments(
 	ctx: WorkflowContext,
 	userId: string
 ): Promise<GetUserRoleAttachmentsResult> {
-	const logger = getWorkflowLogger(ctx)
+	const logger = getWorkflowLogger(ctx, 'get-user-role-attachments')
 
 	const groupsStub = getStub<Groups>(ctx.env.GROUPS, 'default')
 

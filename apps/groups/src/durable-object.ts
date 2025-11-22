@@ -58,6 +58,7 @@ import type {
 	AttachPermissionRequest,
 	AttachPermissionToCorporationRequest,
 	AttachRoleToRequest,
+	BatchAttachRoleToRequest,
 	BatchCreateRolesRequest,
 	BatchGetRolesForRequest,
 	Category,
@@ -3273,6 +3274,10 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 	async attachRoleTo(request: AttachRoleToRequest): Promise<RoleAttachment> {
 		return this.roleService.attachRoleTo(request)
+	}
+
+	async batchAttachRolesTo(request: BatchAttachRoleToRequest): Promise<RoleAttachment[]> {
+		return this.roleService.batchAttachRolesTo(request)
 	}
 
 	async detachRoleFrom(request: DetachRoleFromRequest): Promise<boolean> {

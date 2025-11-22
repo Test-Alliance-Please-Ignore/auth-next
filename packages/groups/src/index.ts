@@ -19,6 +19,7 @@ import type {
 } from './permissions'
 import type {
 	AttachRoleToRequest,
+	BatchAttachRoleToRequest,
 	BatchCreateRolesRequest,
 	BatchGetRolesForRequest,
 	CreateRoleRequest,
@@ -620,6 +621,9 @@ export interface Groups {
 
 	/** Attach a role to a specific object */
 	attachRoleTo(request: AttachRoleToRequest): Promise<RoleAttachment>
+
+	/** Batch attach roles to multiple objects */
+	batchAttachRolesTo(request: BatchAttachRoleToRequest): Promise<RoleAttachment[]>
 
 	/** Detach a role from a specific object */
 	detachRoleFrom(request: DetachRoleFromRequest): Promise<boolean>
