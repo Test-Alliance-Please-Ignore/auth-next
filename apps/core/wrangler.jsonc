@@ -116,5 +116,12 @@
 			"tag": "v1",
 			"new_sqlite_classes": ["Core"]
 		}
+	],
+	"workflows": [
+		{
+			"name": "user-refresh-workflow",
+			"binding": "USER_REFRESH_WORKFLOW",
+			"class_name": "UserRefreshWorkflow"
+		}
 	]
 }

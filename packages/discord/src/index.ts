@@ -315,3 +315,16 @@ export interface Discord {
 	 */
 	updateUserNickname(coreUserId: string, guildIds: string[], nickname: string): Promise<void>
 }
+
+/**
+ * Get a Discord stub
+ * @param env - Environment
+ * @returns Discord stub
+ */
+export const getDiscordStub = (env: { DISCORD: DurableObjectNamespace }): Discord => {
+	if (!env.DISCORD) {
+		throw new Error('DISCORD namespace is not defined')
+	}
+	const id = env.DISCORD.newUniqueId()
+	return env.DISCORD.get(id) as unknown as Discord
+}

@@ -1,10 +1,11 @@
-import { and, eq, inArray } from '@repo/db-utils'
+import { and, eq, inArray, isNull, sql } from '@repo/db-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { roleAttachments, roles } from '../db/schema'
 
 import type {
 	AttachRoleToRequest,
+	BatchAttachRoleToRequest,
 	BatchCreateRolesRequest,
 	BatchGetRolesForRequest,
 	CreateRoleRequest,
@@ -41,7 +42,17 @@ export class RoleService {
 
 	async batchCreateRoles(request: BatchCreateRolesRequest): Promise<Role[]> {
 		try {
-			const insertedRoles = await this.ctx.db.insert(roles).values(request.roles).returning()
+			const insertedRoles = await this.ctx.db
+				.insert(roles)
+				.values(request.roles)
+				.onConflictDoUpdate({
+					target: [roles.ownedBy, roles.name],
+					set: {
+						description: sql`excluded.description`,
+						updatedAt: sql`CURRENT_TIMESTAMP`,
+					},
+				})
+				.returning()
 			return insertedRoles.map((r) => r as Role)
 		} catch (error) {
 			console.error('[RoleService.batchCreateRoles] Failed to batch create roles', {
@@ -105,28 +116,189 @@ export class RoleService {
 	}
 
 	async attachRoleTo(request: AttachRoleToRequest): Promise<RoleAttachment> {
-		const role = await this.getRole(request.roleId)
-
-		if (!role) {
-			throw new Error(`Role not found: ${request.roleId}`)
+		if (request.roleId && request.roleName) {
+			throw new Error('Cannot specify both roleId and roleName')
 		}
+
+		let role: Role | null = null
+		if (request.roleId) {
+			role = await this.getRole(request.roleId)
+		}
+		if (request.roleName) {
+			role = await this.getRoleByName(request.roleName)
+		}
+		if (!role) {
+			throw new Error(`Role not found: ${request.roleId || request.roleName}`)
+		}
+
 		try {
-			const roleAttachment = await this.ctx.db.insert(roleAttachments).values(request).returning()
-			if (!roleAttachment) {
-				throw new Error('Failed to attach role to')
+			// Try to insert with conflict handling (idempotent)
+			const inserted = await this.ctx.db
+				.insert(roleAttachments)
+				.values({
+					roleId: role.id,
+					attachedToType: request.attachedToType,
+					attachedToId: request.attachedToId,
+					resourceId: request.resourceId,
+					resourceType: request.resourceType as ResourceType,
+				})
+				.onConflictDoNothing()
+				.returning()
+
+			// If conflict occurred (role already attached), fetch the existing attachment
+			if (inserted.length === 0) {
+				const existing = await this.ctx.db.query.roleAttachments.findFirst({
+					where: and(
+						eq(roleAttachments.roleId, role.id),
+						eq(roleAttachments.attachedToType, request.attachedToType),
+						eq(roleAttachments.attachedToId, request.attachedToId),
+						request.resourceId
+							? eq(roleAttachments.resourceId, request.resourceId)
+							: isNull(roleAttachments.resourceId),
+						request.resourceType
+							? eq(roleAttachments.resourceType, request.resourceType)
+							: isNull(roleAttachments.resourceType)
+					),
+					with: {
+						role: true,
+					},
+				})
+
+				if (!existing) {
+					throw new Error('Failed to attach role: conflict occurred but existing attachment not found')
+				}
+
+				return {
+					id: existing.id,
+					role: existing.role as Role,
+					attachedToType: existing.attachedToType as RoleAttachmentType,
+					attachedToId: existing.attachedToId,
+					resourceId: existing.resourceId as string | undefined,
+					resourceType: existing.resourceType as ResourceType | undefined,
+					createdAt: existing.createdAt,
+					updatedAt: existing.updatedAt,
+				} as RoleAttachment
 			}
+
+			// Return the newly inserted attachment
 			return {
-				id: roleAttachment[0].id,
+				id: inserted[0].id,
 				role: role as Role,
-				attachedToType: roleAttachment[0].attachedToType as RoleAttachmentType,
-				attachedToId: roleAttachment[0].attachedToId,
-				resourceId: roleAttachment[0].resourceId as string | undefined,
-				resourceType: roleAttachment[0].resourceType as ResourceType | undefined,
-				createdAt: roleAttachment[0].createdAt,
-				updatedAt: roleAttachment[0].updatedAt,
+				attachedToType: inserted[0].attachedToType as RoleAttachmentType,
+				attachedToId: inserted[0].attachedToId,
+				resourceId: inserted[0].resourceId as string | undefined,
+				resourceType: inserted[0].resourceType as ResourceType | undefined,
+				createdAt: inserted[0].createdAt,
+				updatedAt: inserted[0].updatedAt,
 			} as RoleAttachment
 		} catch (error) {
 			console.error('[RoleService.attachRoleTo] Failed to attach role to', {
+				error: error instanceof Error ? error.message : String(error),
+				stack: error instanceof Error ? error.stack : undefined,
+				request,
+			})
+			throw error
+		}
+	}
+
+	async batchAttachRolesTo(request: BatchAttachRoleToRequest): Promise<RoleAttachment[]> {
+		try {
+			// Validate each request has roleId XOR roleName
+			for (const req of request.roles) {
+				if (req.roleId && req.roleName) {
+					throw new Error('Cannot specify both roleId and roleName')
+				}
+				if (!req.roleId && !req.roleName) {
+					throw new Error('Must specify either roleId or roleName')
+				}
+			}
+
+			// Collect unique role IDs and names
+			const roleIds = new Set<string>()
+			const roleNames = new Set<string>()
+			for (const req of request.roles) {
+				if (req.roleId) roleIds.add(req.roleId)
+				if (req.roleName) roleNames.add(req.roleName)
+			}
+
+			// Fetch all roles in parallel
+			const [rolesById, rolesByName] = await Promise.all([
+				roleIds.size > 0
+					? this.ctx.db.query.roles.findMany({
+							where: inArray(roles.id, Array.from(roleIds)),
+						})
+					: [],
+				roleNames.size > 0
+					? this.ctx.db.query.roles.findMany({
+							where: inArray(roles.name, Array.from(roleNames)),
+						})
+					: [],
+			])
+
+			// Build role lookup map (by ID and by name)
+			const roleMap = new Map<string, Role>()
+			for (const role of rolesById) {
+				roleMap.set(`id:${role.id}`, role as Role)
+			}
+			for (const role of rolesByName) {
+				roleMap.set(`name:${role.name}`, role as Role)
+			}
+
+			// Validate all roles exist
+			for (const req of request.roles) {
+				const key = req.roleId ? `id:${req.roleId}` : `name:${req.roleName}`
+				if (!roleMap.has(key)) {
+					throw new Error(`Role not found: ${req.roleId || req.roleName}`)
+				}
+			}
+
+			// Build values array with deduplication
+			const valuesMap = new Map<string, { roleId: string; attachedToType: RoleAttachmentType; attachedToId: string; resourceId?: string; resourceType?: ResourceType }>()
+			for (const req of request.roles) {
+				const key = req.roleId ? `id:${req.roleId}` : `name:${req.roleName}`
+				const role = roleMap.get(key)!
+
+				// Create deduplication key based on unique constraint fields
+				const dedupKey = `${role.id}|${req.attachedToType}|${req.attachedToId}|${req.resourceId || ''}|${req.resourceType || ''}`
+
+				if (!valuesMap.has(dedupKey)) {
+					valuesMap.set(dedupKey, {
+						roleId: role.id,
+						attachedToType: req.attachedToType as RoleAttachmentType,
+						attachedToId: req.attachedToId,
+						resourceId: req.resourceId,
+						resourceType: req.resourceType as ResourceType,
+					})
+				}
+			}
+
+			const values = Array.from(valuesMap.values())
+
+			// Return empty array if nothing to insert (all duplicates)
+			if (values.length === 0) {
+				return []
+			}
+
+			// Batch insert with conflict handling
+			const inserted = await this.ctx.db
+				.insert(roleAttachments)
+				.values(values)
+				.onConflictDoNothing()
+				.returning()
+
+			// Enrich with role objects and return
+			return inserted.map((attachment) => ({
+				id: attachment.id,
+				role: roleMap.get(`id:${attachment.roleId}`)!,
+				attachedToType: attachment.attachedToType as RoleAttachmentType,
+				attachedToId: attachment.attachedToId,
+				resourceId: attachment.resourceId as string | undefined,
+				resourceType: attachment.resourceType as ResourceType | undefined,
+				createdAt: attachment.createdAt,
+				updatedAt: attachment.updatedAt,
+			}))
+		} catch (error) {
+			console.error('[RoleService.batchAttachRolesTo] Failed to batch attach roles', {
 				error: error instanceof Error ? error.message : String(error),
 				stack: error instanceof Error ? error.stack : undefined,
 				request,

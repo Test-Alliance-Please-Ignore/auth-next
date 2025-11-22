@@ -1,22 +1,20 @@
-import { and, eq, inArray, isNotNull } from '@repo/db-utils'
+import { and, eq, inArray } from '@repo/db-utils'
+import { getDiscordStub } from '@repo/discord'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
 import {
-	corporationDiscordInvites,
 	corporationDiscordServers,
 	discordRoles,
 	discordServers,
-	managedCorporations,
 	oauthStates,
 	userCharacters,
 	users,
 } from '../db/schema'
 
 import type { Discord, DiscordProfile, JoinServerResult } from '@repo/discord'
-import type { EveCharacterData } from '@repo/eve-character-data'
-import type { CorporationMemberData, EveCorporationData } from '@repo/eve-corporation-data'
+import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { Groups } from '@repo/groups'
 import type { Hr } from '@repo/hr'
 import type { Env } from '../context'
@@ -151,7 +149,7 @@ export async function handleTokens(
 		const scopes = scope ? scope.split(' ') : []
 		const expiresAt = new Date(Date.now() + expiresIn * 1000)
 
-		const discordStub = getStub<Discord>(env.DISCORD, 'default')
+		const discordStub = getDiscordStub(env)
 		const success = await discordStub.storeTokensDirect(
 			userInfo.id,
 			userInfo.username,
@@ -207,7 +205,7 @@ export async function handleTokens(
  * @returns Discord profile or null
  */
 export async function getProfile(env: Env, userId: string): Promise<DiscordProfile | null> {
-	const discordStub = getStub<Discord>(env.DISCORD, 'default')
+	const discordStub = getDiscordStub(env)
 	return discordStub.getProfileByCoreUserId(userId)
 }
 
@@ -218,7 +216,7 @@ export async function getProfile(env: Env, userId: string): Promise<DiscordProfi
  * @returns Discord user status or null if not found
  */
 export async function getUserStatus(env: Env, userId: string) {
-	const discordStub = getStub<Discord>(env.DISCORD, 'default')
+	const discordStub = getDiscordStub(env)
 	return discordStub.getDiscordUserStatus(userId)
 }
 
@@ -229,7 +227,7 @@ export async function getUserStatus(env: Env, userId: string) {
  * @returns Success status
  */
 export async function refreshToken(env: Env, userId: string): Promise<boolean> {
-	const discordStub = getStub<Discord>(env.DISCORD, 'default')
+	const discordStub = getDiscordStub(env)
 	return discordStub.refreshTokenByCoreUserId(userId)
 }
 
@@ -261,7 +259,7 @@ export async function unlinkUser(env: Env, userId: string): Promise<boolean> {
 
 	try {
 		// Call Discord DO to unlink on Discord side
-		const discordStub = getStub<Discord>(env.DISCORD, 'default')
+		const discordStub = getDiscordStub(env)
 		const success = await discordStub.unlinkCoreUser(userId)
 
 		if (!success) {
@@ -713,11 +711,14 @@ export async function inviteUserToDiscordServers(
 					for (const discordServer of group.discordServers) {
 						// ONLY process servers with autoInvite=true
 						if (!discordServer.autoInvite) {
-							logger.debug('[Discord] inviteUserToDiscordServers: Skipping group server (autoInvite=false)', {
-								userId,
-								groupId: group.groupId,
-								discordServerId: discordServer.discordServerId,
-							})
+							logger.debug(
+								'[Discord] inviteUserToDiscordServers: Skipping group server (autoInvite=false)',
+								{
+									userId,
+									groupId: group.groupId,
+									discordServerId: discordServer.discordServerId,
+								}
+							)
 							continue
 						}
 
@@ -765,11 +766,14 @@ export async function inviteUserToDiscordServers(
 								roleIds: actualRoleIds,
 							})
 						} else {
-							logger.warn('[Discord] inviteUserToDiscordServers: Group server not found or inactive', {
-								userId,
-								groupId: group.groupId,
-								discordServerId: discordServer.discordServerId,
-							})
+							logger.warn(
+								'[Discord] inviteUserToDiscordServers: Group server not found or inactive',
+								{
+									userId,
+									groupId: group.groupId,
+									discordServerId: discordServer.discordServerId,
+								}
+							)
 						}
 					}
 				}
@@ -940,7 +944,7 @@ export async function inviteUserToDiscordServers(
 		guildNames: Array.from(guildMap.values()).map((g) => g.guildName),
 	})
 
-	const discordStub = getStub<Discord>(env.DISCORD, 'default')
+	const discordStub = getDiscordStub(env)
 	const inviteResults = await discordStub.joinUserToServers(userId, guildIds)
 
 	logger.debug('[Discord] inviteUserToDiscordServers: Invite results received', {
@@ -1103,7 +1107,7 @@ export async function updateUserDiscordRoles(
 		serversToUpdate = guildIds
 	} else {
 		// Get all servers user is currently a member of from Discord
-		const discordStub = getStub<Discord>(env.DISCORD, 'default')
+		const discordStub = getDiscordStub(env)
 		const currentGuilds = await discordStub.getUserGuilds(userId)
 		serversToUpdate = currentGuilds.map((g) => g.id)
 
@@ -1321,7 +1325,7 @@ export async function updateUserDiscordRoles(
 
 	// === CALL DISCORD DO - UPDATE ROLES ONLY ===
 
-	const discordStub = getStub<Discord>(env.DISCORD, 'default')
+	const discordStub = getDiscordStub(env)
 	const updateResults = await discordStub.updateUserRoles(userId, updateRequests)
 
 	// Build final results
@@ -1428,7 +1432,7 @@ export async function syncUserDiscordAccess(
 
 	// Update last refreshed timestamp after successful sync
 	try {
-		const discordStub = getStub<Discord>(env.DISCORD, 'default')
+		const discordStub = getDiscordStub(env)
 		await discordStub.updateLastRefreshed(userId)
 		logger.debug('[Discord] Updated lastRefreshed timestamp', {
 			userId,
@@ -1485,7 +1489,7 @@ export async function updateUserDiscordNickname(env: Env, userId: string): Promi
 	const nickname = primaryChar.characterName
 
 	// Get all Discord servers the user is a member of
-	const discordStub = getStub<Discord>(env.DISCORD, 'default')
+	const discordStub = getDiscordStub(env)
 	const userGuilds = await discordStub.getUserGuilds(userId)
 
 	if (userGuilds.length === 0) {

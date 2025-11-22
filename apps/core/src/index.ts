@@ -346,3 +346,6 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 // Note: Automatic Sentry instrumentation for DOs is not supported in Cloudflare Workers
 // Use manual captureException() in DO methods for error tracking
 export { CoreDO as Core }
+
+// Export Workflow class
+export { UserRefreshWorkflow } from './workflows/user-refresh.workflow'

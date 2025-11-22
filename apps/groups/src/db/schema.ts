@@ -4,6 +4,7 @@ import {
 	boolean,
 	index,
 	integer,
+	jsonb,
 	pgEnum,
 	pgTable,
 	text,
@@ -543,8 +544,9 @@ export const roleAttachments = pgTable(
 		resourceId: varchar('resource_id', { length: 255 }),
 		resourceType: varchar('resource_type', {
 			length: 255,
-			enum: ['group', 'character', 'corporation', 'alliance', 'user'],
+			enum: ['group', 'character', 'corporation', 'alliance', 'user', 'app-specific'],
 		}),
+		resourceMeta: jsonb('resource_meta'),
 		createdAt: timestamp('created_at').defaultNow().notNull(),
 		updatedAt: timestamp('updated_at').defaultNow().notNull(),
 	},

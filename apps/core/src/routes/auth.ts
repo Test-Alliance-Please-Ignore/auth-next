@@ -1,6 +1,5 @@
 import { Hono } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
-import { html } from 'hono/html'
 
 import { eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
@@ -16,12 +15,11 @@ import { autoRegisterDirectorCorporation } from '../services/corporation-auto-re
 import { SessionService } from '../services/session.service'
 import { UserService } from '../services/user.service'
 
+import type { RequestMetadata } from '@repo/core'
 import type { EveCharacterData } from '@repo/eve-character-data'
-import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Hr } from '@repo/hr'
 import type { App } from '../context'
-import type { RequestMetadata } from '@repo/core'
 
 /**
  * Authentication routes
@@ -692,7 +690,7 @@ auth.get('/session', async (c) => {
 			is_admin: user.is_admin,
 			discord: user.discord || null,
 		},
-		permissions: permissions.map(p => ({
+		permissions: permissions.map((p) => ({
 			urn: p.urn,
 			name: p.name,
 			description: p.description,

@@ -664,3 +664,16 @@ export const HR_ROLES = [ROLE_HR_VIEWER, ROLE_HR_REVIEWER, ROLE_HR_ADMIN, ROLE_H
  * HR role URN type
  */
 export type HrRoleUrn = (typeof HR_ROLES)[number]
+
+/**
+ * Get a HR stub
+ * @param env - Environment
+ * @returns HR stub
+ */
+export const getHrStub = (env: { HR: DurableObjectNamespace }): Hr => {
+	if (!env.HR) {
+		throw new Error('HR namespace is not defined')
+	}
+	const id = env.HR.newUniqueId()
+	return env.HR.get(id) as unknown as Hr
+}

@@ -6,6 +6,7 @@ import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
 import type { Skills } from '@repo/skills'
 import type { createDb } from './db'
+import type { WorkflowParams } from './workflows/user-refresh.workflow'
 
 export type Env = SharedHonoEnv & {
 	DATABASE_URL: string
@@ -45,6 +46,8 @@ export type Env = SharedHonoEnv & {
 	ESI: DurableObjectNamespace
 	/** Core Durable Object binding */
 	CORE: DurableObjectNamespace
+	/** User Refresh Workflow binding */
+	USER_REFRESH_WORKFLOW: Workflow<WorkflowParams>
 }
 
 /** Session user data attached to request context */

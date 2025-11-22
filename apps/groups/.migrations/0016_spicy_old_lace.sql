@@ -1,0 +1,1 @@
+ALTER TABLE "groups_role_attachments" ADD COLUMN "resource_meta" jsonb;

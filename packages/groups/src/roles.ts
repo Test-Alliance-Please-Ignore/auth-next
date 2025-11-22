@@ -21,6 +21,7 @@ export enum ResourceType {
 	CORPORATION = 'corporation',
 	ALLIANCE = 'alliance',
 	USER = 'user',
+	APP_SPECIFIC = 'app-specific',
 }
 
 export interface RoleAttachment {
@@ -41,13 +42,17 @@ export interface CreateRoleRequest {
 }
 
 export interface AttachRoleToRequest {
-	roleId: string
+	roleId?: string
+	roleName?: string
 	attachedToType: RoleAttachmentType
 	attachedToId: string
 	resourceId?: string
 	resourceType?: ResourceType
 }
 
+export interface BatchAttachRoleToRequest {
+	roles: AttachRoleToRequest[]
+}
 export interface DetachRoleFromRequest {
 	roleId: string
 	attachedToType: RoleAttachmentType
