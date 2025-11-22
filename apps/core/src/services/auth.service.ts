@@ -4,7 +4,7 @@ import { userSessions } from '../db/schema'
 
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { createDb } from '../db'
-import type { CreateSessionOptions, RequestMetadata, UserSessionDTO } from '../types/user'
+import type { CreateSessionOptions, RequestMetadata, UserSessionDTO } from '@repo/core'
 
 /**
  * Authentication Service

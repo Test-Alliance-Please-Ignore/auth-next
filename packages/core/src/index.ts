@@ -22,3 +22,4 @@ export interface Core {
 }
 
 export * from './roles'
+export * from './user'

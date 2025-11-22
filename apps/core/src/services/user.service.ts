@@ -9,7 +9,7 @@ import type {
 	UserCharacterDTO,
 	UserPreferencesDTO,
 	UserProfileDTO,
-} from '../types/user'
+} from '@repo/core'
 
 /**
  * User Service

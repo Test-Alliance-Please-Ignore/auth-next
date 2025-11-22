@@ -1,7 +1,7 @@
 import { userActivityLog } from '../db/schema'
 
 import type { createDb } from '../db'
-import type { ActivityAction, RequestMetadata } from '../types/user'
+import type { ActivityAction, RequestMetadata } from '@repo/core'
 
 /**
  * Activity Service

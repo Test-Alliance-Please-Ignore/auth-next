@@ -21,7 +21,7 @@ import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Hr } from '@repo/hr'
 import type { App } from '../context'
-import type { RequestMetadata } from '../types/user'
+import type { RequestMetadata } from '@repo/core'
 
 /**
  * Authentication routes

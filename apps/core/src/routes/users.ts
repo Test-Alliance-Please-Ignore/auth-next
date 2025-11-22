@@ -13,7 +13,7 @@ import { UserService } from '../services/user.service'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { App } from '../context'
-import type { RequestMetadata, UserPreferencesDTO } from '../types/user'
+import type { RequestMetadata, UserPreferencesDTO } from '@repo/core'
 
 /**
  * Cache duration for user corporation data (5 minutes)

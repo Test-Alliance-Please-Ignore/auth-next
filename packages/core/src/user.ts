@@ -132,3 +132,4 @@ export interface LinkCharacterOptions {
 	characterId: string
 	characterName: string
 }
+
