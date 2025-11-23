@@ -24,43 +24,6 @@ export class IndustryDO extends DurableObject<Env, {}> implements Industry {
 	}
 
 	/**
-	 * WebSocket message handler (Hibernation API)
-	 * Called when a WebSocket message is received
-	 */
-	async webSocketMessage(ws: WebSocket, message: ArrayBuffer | string): Promise<void> {
-		// Handle WebSocket messages here
-	}
-
-	/**
-	 * WebSocket close handler (Hibernation API)
-	 * Called when a WebSocket connection is closed
-	 */
-	async webSocketClose(
-		ws: WebSocket,
-		code: number,
-		reason: string,
-		wasClean: boolean
-	): Promise<void> {
-		// Handle WebSocket close here
-	}
-
-	/**
-	 * WebSocket error handler (Hibernation API)
-	 * Called when a WebSocket error occurs
-	 */
-	async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
-		console.error('WebSocket error:', error)
-	}
-
-	/**
-	 * Alarm handler
-	 * Called when a scheduled alarm triggers
-	 */
-	async alarm(): Promise<void> {
-		// Handle scheduled alarms here
-	}
-
-	/**
 	 * Fetch handler for HTTP requests to the Durable Object
 	 */
 	async fetch(request: Request): Promise<Response> {

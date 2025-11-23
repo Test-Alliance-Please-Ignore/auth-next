@@ -5,7 +5,7 @@ import { createDb } from '../db'
 import { userCharacters } from '../db/schema'
 import { getWorkflowLogger } from './context'
 import { checkUserBlacklisted, disableBlacklistedUser } from './steps/check-user-blacklisted'
-import { updateCharacterPublicInfo } from './steps/update-character'
+import { tryCharacterAuthenticatedFetch, updateCharacterPublicInfo } from './steps/update-character'
 import { updateCompletionTimestamp } from './steps/update-completion-timestamp'
 import { attachUserRoles, getUserRoleAttachments } from './steps/user-roles'
 
@@ -70,14 +70,43 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams>
 
 		await Promise.all(
 			characters.map(async (character) => {
-				await step.do(
+				const result = await step.do(
 					`update-character-public-info-${character.characterId}`,
 					{
 						retries: { limit: 5, delay: '10 seconds', backoff: 'exponential' },
 						timeout: '1 minute',
 					},
-					async () => updateCharacterPublicInfo(workflowContext, character.characterId)
+					async () => {
+						const failedCharacters: string[] = []
+						await updateCharacterPublicInfo(workflowContext, character.characterId)
+						const authenticatedFetchResult = await step.do(
+							`try-character-authenticated-fetch-${character.characterId}`,
+							{
+								retries: { limit: 5, delay: '10 seconds', backoff: 'exponential' },
+								timeout: '1 minute',
+							},
+							async () => tryCharacterAuthenticatedFetch(workflowContext, character.characterId)
+						)
+						if (!authenticatedFetchResult.success) {
+							logger.error('[Workflow] Failed to fetch character authenticated data', {
+								characterId: character.characterId,
+								error: authenticatedFetchResult.error,
+							})
+							failedCharacters.push(character.characterId)
+						}
+						return {
+							failedCharacters: failedCharacters,
+						}
+					}
 				)
+				if (result.failedCharacters.length > 0) {
+					logger.error('[Workflow] Failed to update character authenticated data', {
+						userId,
+						workflowInstanceId,
+						characters: result.failedCharacters,
+					})
+				}
+				return result
 			})
 		)
 
