@@ -377,8 +377,40 @@ export class RoleService {
 			throw new Error('Cannot specify both roleId and roleName')
 		}
 		const conditions = []
-		if (request.roleIds) {
-			conditions.push(inArray(roleAttachments.roleId, request.roleIds))
+		if (request.roleIds && request.roleIds.length > 0) {
+			const resolvedRoleIds: string[] = []
+			const unresolvedNames: string[] = []
+
+			// Separate UUIDs from role names (URNs)
+			const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+			for (const id of request.roleIds) {
+				if (uuidRegex.test(id)) {
+					resolvedRoleIds.push(id) // It's a UUID
+				} else {
+					unresolvedNames.push(id) // It's a role name (URN)
+				}
+			}
+
+			// Resolve role names to IDs
+			if (unresolvedNames.length > 0) {
+				const resolvedRoles = await this.ctx.db.query.roles.findMany({
+					where: inArray(roles.name, unresolvedNames),
+				})
+
+				// Validate all names were found
+				const foundNames = new Set(resolvedRoles.map((r) => r.name))
+				const missingNames = unresolvedNames.filter((name) => !foundNames.has(name))
+				if (missingNames.length > 0) {
+					throw new Error(`Roles not found: ${missingNames.join(', ')}`)
+				}
+
+				resolvedRoleIds.push(...resolvedRoles.map((r) => r.id))
+			}
+
+			// Add condition with all resolved IDs
+			if (resolvedRoleIds.length > 0) {
+				conditions.push(inArray(roleAttachments.roleId, resolvedRoleIds))
+			}
 		}
 		if (request.attachedToId) {
 			conditions.push(eq(roleAttachments.attachedToId, request.attachedToId))

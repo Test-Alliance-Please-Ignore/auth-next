@@ -1,3 +1,4 @@
+import { ROLE_CORE_ALLIANCE_MEMBER, ROLE_CORE_CORP_MEMBER } from '@repo/core'
 import { getStub } from '@repo/do-utils'
 import { RoleAttachmentType } from '@repo/groups'
 
@@ -14,15 +15,12 @@ export interface GetUserRoleAttachmentsResult {
 }
 
 /**
- * Attach user roles to the user
+ * Get user role attachments
  * @param ctx - Workflow context
- * @param userId - User ID
- * @param workflowInstanceId - Workflow instance ID
- * @returns void
+ * @returns User role attachments
  */
 export async function getUserRoleAttachments(
-	ctx: WorkflowContext,
-	userId: string
+	ctx: WorkflowContext
 ): Promise<GetUserRoleAttachmentsResult> {
 	const logger = getWorkflowLogger(ctx, 'get-user-role-attachments')
 
@@ -30,11 +28,11 @@ export async function getUserRoleAttachments(
 
 	const userRoles = await groupsStub.getRolesFor({
 		attachedToType: RoleAttachmentType.USER,
-		attachedToId: userId,
+		attachedToId: ctx.userId,
 	})
 
 	logger.info('[Workflow] Attached user roles', {
-		userId,
+		userId: ctx.userId,
 		userRoles: userRoles.length,
 	})
 

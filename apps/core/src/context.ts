@@ -48,6 +48,8 @@ export type Env = SharedHonoEnv & {
 	CORE: DurableObjectNamespace
 	/** User Refresh Workflow binding */
 	USER_REFRESH_WORKFLOW: Workflow<WorkflowParams>
+	/** ESI Type Resolver Durable Object binding */
+	ESI_TYPE_RESOLVER: DurableObjectNamespace
 }
 
 /** Session user data attached to request context */

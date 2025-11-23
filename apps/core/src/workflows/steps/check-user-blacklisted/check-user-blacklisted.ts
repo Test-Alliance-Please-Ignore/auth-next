@@ -20,18 +20,16 @@ export interface CheckUserBlacklistedResult {
  * @param userId - User UUID
  */
 export async function checkUserBlacklisted(
-	ctx: WorkflowContext,
-	userId: string,
-	workflowInstanceId: string
+	ctx: WorkflowContext
 ): Promise<CheckUserBlacklistedResult> {
-	const logger = getWorkflowLogger(ctx)
+	const logger = getWorkflowLogger(ctx, 'check-user-blacklisted')
 
 	const hrStub = getStub<Hr>(ctx.env.HR, 'default')
-	const isBlacklisted = await hrStub.isUserBlacklisted(userId)
+	const isBlacklisted = await hrStub.isUserBlacklisted(ctx.userId)
 
 	logger.info('[Workflow] Checked user blacklisted', {
-		userId,
-		workflowInstanceId,
+		userId: ctx.userId,
+		workflowInstanceId: ctx.workflowInstanceId,
 		isBlacklisted,
 	})
 

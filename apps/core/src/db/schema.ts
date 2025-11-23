@@ -69,6 +69,14 @@ export const userCharacters = pgTable(
 		characterId: text('character_id').notNull().unique(),
 		/** EVE character name (cached from eve-token-store for convenience) */
 		characterName: varchar('character_name', { length: 255 }).notNull(),
+		/** EVE corporation ID */
+		corporationId: text('corporation_id'),
+		/** EVE corporation name */
+		corporationName: varchar('corporation_name', { length: 255 }),
+		/** EVE alliance ID */
+		allianceId: text('alliance_id'),
+		/** EVE alliance name */
+		allianceName: varchar('alliance_name', { length: 255 }),
 		/** Whether this is the user's primary character */
 		is_primary: boolean('is_primary').default(false).notNull(),
 		/** Cached token validity status (NULL = unknown, true = valid, false = invalid/expired) */
@@ -93,6 +101,10 @@ export const userCharacters = pgTable(
 		// Index for filtering by status (active vs emeritus)
 		index('user_characters_status_idx').on(table.status),
 		index('user_characters_deleted_idx').on(table.isDeleted),
+		index('user_characters_corporation_id_idx').on(table.corporationId),
+		index('user_characters_alliance_id_idx').on(table.allianceId),
+		index('user_characters_corporation_name_idx').on(table.corporationName),
+		index('user_characters_alliance_name_idx').on(table.allianceName),
 	]
 )
 

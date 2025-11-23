@@ -3,33 +3,27 @@
  */
 
 import { eq } from 'drizzle-orm'
-import { logger } from '@repo/hono-helpers'
 
-import { createDb } from '../../../db'
 import { users } from '../../../db/schema'
+import { getWorkflowLogger } from '../../context'
+
+import type { WorkflowContext } from '../../context'
 
 /**
  * Update database to mark workflow as completed
  *
- * @param databaseUrl - Database connection URL
- * @param userId - User UUID
- * @param workflowInstanceId - Workflow instance ID (for logging)
+ * @param ctx - Workflow context
  */
-export async function updateCompletionTimestamp(
-	databaseUrl: string,
-	userId: string,
-	workflowInstanceId: string,
-): Promise<void> {
-	const db = createDb(databaseUrl)
+export async function updateCompletionTimestamp(ctx: WorkflowContext): Promise<void> {
+	const logger = getWorkflowLogger(ctx, 'update-completion-timestamp')
 
-	await db
+	await ctx.db
 		.update(users)
 		.set({ lastRefreshWorkflow: new Date() })
-		.where(eq(users.id, userId))
+		.where(eq(users.id, ctx.userId))
 
 	logger.info('[Workflow] Updated user refresh workflow completion timestamp', {
-		userId,
-		workflowInstanceId,
+		userId: ctx.userId,
+		workflowInstanceId: ctx.workflowInstanceId,
 	})
 }
-

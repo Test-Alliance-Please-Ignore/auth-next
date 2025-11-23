@@ -27,19 +27,14 @@ interface CharacterInfo {
 /**
  * Attach user roles to the user
  * @param ctx - Workflow context
- * @param userId - User ID
- * @param workflowInstanceId - Workflow instance ID
- * @returns void
+ * @returns User role attachments
  */
-export async function attachUserRoles(
-	ctx: WorkflowContext,
-	userId: string
-): Promise<AttachUserRolesResult> {
+export async function attachUserRoles(ctx: WorkflowContext): Promise<AttachUserRolesResult> {
 	const logger = getWorkflowLogger(ctx, 'attach-user-roles')
 
 	const coreStub = getStub<Core>(ctx.env.CORE, 'default')
 
-	const characters = await coreStub.getUserCharacters(userId)
+	const characters = await coreStub.getUserCharacters(ctx.userId)
 
 	const characterInfoResults: CharacterInfo[] = await Promise.all(
 		characters.map(async (character) => {
@@ -79,7 +74,7 @@ export async function attachUserRoles(
 		roleAttachments.push({
 			roleName: ROLE_CORE_CORP_MEMBER,
 			attachedToType: RoleAttachmentType.USER,
-			attachedToId: userId,
+			attachedToId: ctx.userId,
 			resourceId: characterInfo.corporationId,
 			resourceType: ResourceType.CORPORATION,
 		})
@@ -93,7 +88,7 @@ export async function attachUserRoles(
 		roleAttachments.push({
 			roleName: ROLE_CORE_ALLIANCE_MEMBER,
 			attachedToType: RoleAttachmentType.USER,
-			attachedToId: userId,
+			attachedToId: ctx.userId,
 			resourceId: characterInfo.allianceId,
 			resourceType: ResourceType.ALLIANCE,
 		})

@@ -10,6 +10,7 @@ export interface WorkflowContext {
 	db: ReturnType<typeof createDb>
 	env: Env
 	workflowInstanceId: string
+	userId: string
 }
 
 /**
