@@ -1,7 +1,7 @@
 import { DurableObject } from 'cloudflare:workers'
 
 import { CORE_ROLES, SERVICE_CORE } from '@repo/core'
-import { and, eq, inArray } from '@repo/db-utils'
+import { and, asc, eq, inArray, isNull, lt, or } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { getEsiInstanceForCharacter, getEsiInstanceForCorporation } from '@repo/esi'
 import { logger } from '@repo/hono-helpers'
@@ -217,5 +217,43 @@ export class CoreDO extends DurableObject<Env> implements Core {
 
 	async getUserDiscordUserId(userId: string): Promise<string | null> {
 		throw new Error('Not implemented')
+	}
+
+	async listUsersNeedingRefresh(maxResults: number): Promise<string[]> {
+		const limit = Number.isFinite(maxResults) ? Math.floor(maxResults) : 0
+		if (limit <= 0) {
+			return []
+		}
+
+		const now = Date.now()
+		const refreshThreshold = new Date(now - 60 * 60 * 1000) // 1 hour
+		const attemptThreshold = new Date(now - 10 * 60 * 1000) // 10 minutes
+
+		const candidates = await this.db.query.users.findMany({
+			columns: {
+				id: true,
+			},
+			where: and(
+				or(isNull(users.lastRefreshWorkflow), lt(users.lastRefreshWorkflow, refreshThreshold)),
+				or(
+					isNull(users.lastRefreshWorkflowAttempt),
+					lt(users.lastRefreshWorkflowAttempt, attemptThreshold)
+				)
+			),
+			orderBy: (table) => [asc(table.lastRefreshWorkflow)],
+			limit,
+		})
+
+		if (candidates.length === 0) {
+			return []
+		}
+
+		const userIds = candidates.map((candidate) => candidate.id)
+		await this.db
+			.update(users)
+			.set({ lastRefreshWorkflowAttempt: new Date() })
+			.where(inArray(users.id, userIds))
+
+		return userIds
 	}
 }

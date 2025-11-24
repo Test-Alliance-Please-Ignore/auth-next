@@ -86,11 +86,12 @@ export function FittedShipsSection({ data }: FittedShipsSectionProps) {
 						const ships = shipsByLocation[locationId]
 						const locationGroupId = `location-${sectionId}-${locationId}`
 						const firstShip = ships[0]
+						const locationLabel = firstShip.locationName || locationId
 
 						return (
 							<div key={locationGroupId} className="location-group">
 								<div className="location-group-header">
-									<h3>Location: {locationId}</h3>
+									<h3>Location: {locationLabel}</h3>
 									<span className="location-group-meta">
 										{firstShip.locationType} • {ships.length} ship{ships.length !== 1 ? 's' : ''}
 									</span>
@@ -119,6 +120,7 @@ export function FittedShipsSection({ data }: FittedShipsSectionProps) {
 												data-ship-name={(ship.shipName || '').toLowerCase()}
 												data-location-type={ship.locationType}
 												data-location-id={ship.locationId}
+												data-location-name={(ship.locationName || '').toLowerCase()}
 											>
 												<div className="fitted-ship-header collapsible-header" data-ship-id={shipId}>
 													<div className="fitted-ship-title">
@@ -138,6 +140,10 @@ export function FittedShipsSection({ data }: FittedShipsSectionProps) {
 														<div className="info-item">
 															<label>Location ID:</label>
 															<span>{ship.locationId}</span>
+														</div>
+														<div className="info-item">
+															<label>Location Name:</label>
+															<span>{ship.locationName || ship.locationId}</span>
 														</div>
 														<div className="info-item">
 															<label>Location Flag:</label>
@@ -406,8 +412,12 @@ export function FittedShipsSection({ data }: FittedShipsSectionProps) {
 		shipCards.forEach((card) => {
 			const shipName = card.getAttribute('data-ship-name') || '';
 			const rowLocationType = card.getAttribute('data-location-type') || '';
+			const rowLocationName = card.getAttribute('data-location-name') || '';
 
-			const matchesSearch = !searchTerm || shipName.includes(searchTerm);
+			const matchesSearch =
+				!searchTerm ||
+				shipName.includes(searchTerm) ||
+				rowLocationName.includes(searchTerm);
 			const matchesLocationType = !locationType || rowLocationType === locationType;
 
 			if (matchesSearch && matchesLocationType) {

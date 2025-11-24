@@ -45,7 +45,7 @@ export async function tryCharacterAuthenticatedFetch(
 		success = false
 	}
 
-	ctx.db
+	await ctx.db
 		.update(userCharacters)
 		.set({
 			lastCharacterRefresh: new Date(),

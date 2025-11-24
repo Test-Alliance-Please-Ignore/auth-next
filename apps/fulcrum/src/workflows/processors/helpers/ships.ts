@@ -15,6 +15,7 @@ export interface FittedShip {
 	shipName: string
 	shipTypeId: string
 	locationId: string
+	locationName: string
 	locationFlag: string
 	locationType: 'station' | 'solar_system' | 'item' | 'other'
 	rigs: FittedShipItem[]
@@ -33,14 +34,15 @@ export interface FittedShip {
 
 export async function findFittedShips(
 	env: { ESI_TYPE_RESOLVER: DurableObjectNamespace },
-	assets: CharacterAsset[]
+	assets: CharacterAsset[],
+	characterId: string
 ): Promise<FittedShip[]> {
 	const ships = assets.filter(
 		(asset) => asset.is_singleton === true && shipTypeIds.has(asset.type_id)
 	)
 	return Promise.all(
 		ships.map(async (ship) => {
-			return await findShipItems(env, ship, assets)
+			return await findShipItems(env, ship, assets, characterId)
 		})
 	)
 }
@@ -54,7 +56,8 @@ const findItemsBySlot = (itemId: string, assets: CharacterAsset[], slot: string)
 export async function findShipItems(
 	env: { ESI_TYPE_RESOLVER: DurableObjectNamespace },
 	ship: CharacterAsset,
-	assets: CharacterAsset[]
+	assets: CharacterAsset[],
+	characterId: string
 ): Promise<FittedShip> {
 	const stub = getStub<EsiTypeResolver>(env.ESI_TYPE_RESOLVER, 'global')
 
@@ -89,10 +92,12 @@ export async function findShipItems(
 		ship.type_id, // Include ship type ID for name resolution
 	]
 	// Deduplicate type IDs to avoid unnecessary API calls
-	const uniqueTypeIds = Array.from(new Set(allTypeIds))
-	const nameMap = await stub.resolveIds(uniqueTypeIds)
+	const locationIds = [ship.location_id]
+	const idsToResolve = Array.from(new Set([...allTypeIds, ...locationIds]))
+	const nameMap = await stub.resolveIds(idsToResolve, characterId)
 	// Ensure shipName is always a string - fallback to typeId if resolution failed
 	const shipName = nameMap[ship.type_id] || ship.type_id
+	const locationName = nameMap[ship.location_id] || ship.location_id
 
 	if (!nameMap[ship.type_id]) {
 		console.warn('[findShipItems] Ship type ID not resolved:', {
@@ -130,6 +135,7 @@ export async function findShipItems(
 		shipName,
 		shipTypeId: ship.type_id,
 		locationId: ship.location_id,
+		locationName,
 		locationFlag: ship.location_flag,
 		locationType: ship.location_type,
 		rigs: resolvedRigs,

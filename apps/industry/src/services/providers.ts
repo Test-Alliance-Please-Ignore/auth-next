@@ -1,4 +1,4 @@
-import { and, desc, eq } from '@repo/db-utils'
+import { and, desc, eq, sql } from '@repo/db-utils'
 import {
 	ContactType,
 	CreateProviderParams,
@@ -6,6 +6,7 @@ import {
 	ProviderContact,
 	ProviderFilters,
 	ProviderServiceDTO,
+	ProviderStatistics,
 	ServiceProvider,
 	ServiceProviderId,
 	ServiceStatus,
@@ -373,6 +374,62 @@ export class ProviderService {
 		})
 
 		return contacts.map((contact) => this.mapToProviderContact(contact))
+	}
+
+	/**
+	 * Get provider statistics
+	 */
+	async getProviderStats(): Promise<ProviderStatistics> {
+		// Get total providers and group by entity type
+		const providers = await this.ctx.db.query.serviceProviders.findMany()
+
+		// Count providers by entity type
+		const totalByEntityType: Record<EntityType, number> = {
+			[EntityType.USER]: 0,
+			[EntityType.CHARACTER]: 0,
+			[EntityType.CORPORATION]: 0,
+			[EntityType.ALLIANCE]: 0,
+			[EntityType.SERVICE_PROVIDER]: 0,
+		}
+
+		let totalAcceptingOrders = 0
+
+		for (const provider of providers) {
+			totalByEntityType[provider.ownerEntityType as EntityType]++
+			if (provider.acceptingOrders) {
+				totalAcceptingOrders++
+			}
+		}
+
+		// Get service statistics
+		const services = await this.ctx.db.query.providerServices.findMany()
+
+		// Count services by type and status
+		const servicesByType: Record<ServiceType, number> = {} as Record<ServiceType, number>
+		const servicesByStatus: Record<ServiceStatus, number> = {
+			[ServiceStatus.ACTIVE]: 0,
+			[ServiceStatus.INACTIVE]: 0,
+			[ServiceStatus.CLOSED]: 0,
+		}
+
+		// Initialize all service types to 0
+		for (const serviceType of Object.values(ServiceType)) {
+			servicesByType[serviceType as ServiceType] = 0
+		}
+
+		for (const service of services) {
+			servicesByType[service.serviceType as ServiceType]++
+			servicesByStatus[service.status as ServiceStatus]++
+		}
+
+		return {
+			totalProviders: providers.length,
+			totalByEntityType,
+			totalAcceptingOrders,
+			totalServices: services.length,
+			servicesByType,
+			servicesByStatus,
+		}
 	}
 
 	/**

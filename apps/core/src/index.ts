@@ -24,6 +24,7 @@ import fleetsRoutes from './routes/fleets'
 import freightRoutes from './routes/freight'
 import groupsRoutes from './routes/groups'
 import hrRoutes from './routes/hr'
+import industryAdminRoutes from './routes/industry-admin'
 import inventoryRoutes from './routes/inventory'
 import inviteRoutes from './routes/invite'
 import loginRoutes from './routes/login'
@@ -97,6 +98,7 @@ const app = new Hono<App>()
 	// API routes - mounted under /api prefix
 	.route('/api/admin', adminRoutes)
 	.route('/api/admin/bills', billsAdminRoutes) // Admin bills API
+	.route('/api/admin', industryAdminRoutes) // Admin industry API
 	.route('/api/auth', authRoutes)
 	.route('/api/users', usersRoutes)
 	.route('/api/characters', charactersRoutes)

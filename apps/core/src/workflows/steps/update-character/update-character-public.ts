@@ -10,7 +10,7 @@ import { getEsiInstanceForCharacter } from '@repo/esi'
 import { userCharacters } from '../../../db/schema'
 import { getWorkflowLogger } from '../../context'
 
-import type { EsiTypeResolver } from '@repo/esi'
+import type { CharacterPublicInfo, EsiTypeResolver } from '@repo/esi'
 import type { WorkflowContext } from '../../context'
 
 /**
@@ -28,11 +28,45 @@ export async function updateCharacterPublicInfo(
 	corporationName: string
 	allianceId: string | null
 	allianceName: string | null
+	isDeleted: boolean
 }> {
 	const logger = getWorkflowLogger(ctx, 'update-character-public-info')
 
+	let characterInfo: CharacterPublicInfo | null = null
 	const esiStub = getEsiInstanceForCharacter(ctx.env.ESI, characterId)
-	const characterInfo = await esiStub.fetchCharacterPublicInfo(characterId)
+	try {
+		characterInfo = await esiStub.fetchCharacterPublicInfo(characterId)
+	} catch (error) {
+		const errorMessage = error instanceof Error ? error.message : String(error)
+		logger.error('[Workflow] Failed to fetch character public info', {
+			characterId,
+			error: errorMessage,
+		})
+
+		if (errorMessage.includes('Character has been deleted!')) {
+			return {
+				characterId: characterId,
+				characterName: '',
+				corporationId: '',
+				corporationName: '',
+				allianceId: null,
+				allianceName: null,
+				isDeleted: true,
+			}
+		}
+	}
+
+	if (!characterInfo) {
+		return {
+			characterId: characterId,
+			characterName: '',
+			corporationId: '',
+			corporationName: '',
+			allianceId: null,
+			allianceName: null,
+			isDeleted: true,
+		}
+	}
 
 	const typeResolver = getStub<EsiTypeResolver>(ctx.env.ESI_TYPE_RESOLVER, 'global')
 	const idsToResolve = [characterInfo.corporation_id]
@@ -69,5 +103,6 @@ export async function updateCharacterPublicInfo(
 		corporationName: corporationName,
 		allianceId: allianceId,
 		allianceName: allianceName,
+		isDeleted: false,
 	}
 }

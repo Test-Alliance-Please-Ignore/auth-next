@@ -30,6 +30,7 @@ export async function processFittedShips(
 	bucketName: string,
 	fetchAssetsResult: StepResult,
 	workflowInstanceId: string,
+	characterId: string,
 ): Promise<StepResult> {
 	try {
 		// Check if fetch was successful
@@ -74,7 +75,7 @@ export async function processFittedShips(
 				: null,
 		})
 
-		const fittedShips = await findFittedShips(env, assets)
+		const fittedShips = await findFittedShips(env, assets, characterId)
 
 		console.log('[processFittedShips] Fitted ships discovery complete', {
 			fittedShipsCount: fittedShips.length,

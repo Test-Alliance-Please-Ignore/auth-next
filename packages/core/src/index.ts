@@ -19,6 +19,7 @@ export interface Core {
 	): Promise<Map<string, Array<{ corporationId: string; corporationName: string }>>>
 	getUserAlliances(userId: string): Promise<Array<{ allianceId: string; allianceName: string }>>
 	getUserDiscordUserId(userId: string): Promise<string | null>
+	listUsersNeedingRefresh(limit: number): Promise<string[]>
 }
 
 export * from './roles'

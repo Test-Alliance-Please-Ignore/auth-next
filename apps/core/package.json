@@ -40,6 +40,7 @@
 		"@repo/groups": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
 		"@repo/hr": "workspace:*",
+		"@repo/industry": "workspace:*",
 		"@repo/skills": "workspace:*",
 		"@repo/srp": "workspace:*",
 		"drizzle-orm": "0.44.7",

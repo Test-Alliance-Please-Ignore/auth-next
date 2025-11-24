@@ -11,6 +11,7 @@ import { UserService } from '../services/user.service'
 
 import type { MiddlewareHandler } from 'hono'
 import type { EveTokenStore } from '@repo/eve-token-store'
+import type { Groups, RoleAttachmentType } from '@repo/groups'
 import type { Hr } from '@repo/hr'
 import type { App, SessionUser } from '../context'
 
@@ -85,6 +86,23 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 			// Find primary character
 			const primaryChar = userProfile.characters.find((c) => c.is_primary)
 
+			// Fetch user's roles from Groups Durable Object
+			let userRoles: string[] = []
+			try {
+				const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+				const roleAttachments = await groupsStub.getRolesFor({
+					attachedToType: 'user' as RoleAttachmentType,
+					attachedToId: userId,
+				})
+				// Extract role names (URNs) from attachments
+				userRoles = roleAttachments.map((attachment) => attachment.role.name)
+				logger.info(`Fetched roles for user ${userId}:`, userRoles.length > 0 ? userRoles : 'none')
+			} catch (error) {
+				logger.error('Error fetching user roles:', error)
+				// Continue without roles if error occurs
+				userRoles = []
+			}
+
 			// Load Discord profile if linked
 			let discordProfile
 			if (userProfile.discordUserId) {
@@ -120,6 +138,7 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 					hasValidToken: char.hasValidToken,
 				})),
 				is_admin: userProfile.is_admin,
+				roles: userRoles,
 				discord: discordProfile,
 			}
 
@@ -138,17 +157,87 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 }
 
 /**
- * Require authentication middleware
+ * Role requirement options for requireAuth middleware
+ */
+export type RoleRequirement =
+	| string // Single role (user must have this role)
+	| string[] // Multiple roles with OR logic (user must have at least one)
+	| { all: string[] } // Multiple roles with AND logic (user must have all)
+	| { any: string[] } // Multiple roles with OR logic (explicit)
+
+/**
+ * Require authentication middleware with optional role-based access control
  *
  * Returns 401 if no user is authenticated.
+ * Returns 403 if user is authenticated but lacks required roles.
  * Use this after sessionMiddleware for protected routes.
+ *
+ * @param requiredRoles Optional role requirements
+ * @example
+ * // Just authentication
+ * .use(requireAuth())
+ *
+ * // User needs this specific role
+ * .use(requireAuth('urn:service:core:role:admin'))
+ *
+ * // User needs ANY of these roles (OR logic)
+ * .use(requireAuth(['urn:service:core:role:admin', 'urn:service:core:role:industry-admin']))
+ *
+ * // User needs ALL of these roles (AND logic)
+ * .use(requireAuth({ all: ['urn:service:core:role:admin', 'urn:service:core:role:auditor'] }))
+ *
+ * // User needs ANY of these roles (OR logic, explicit)
+ * .use(requireAuth({ any: ['urn:service:core:role:admin', 'urn:service:core:role:industry-admin'] }))
  */
-export const requireAuth = (): MiddlewareHandler<App> => {
+export const requireAuth = (requiredRoles?: RoleRequirement): MiddlewareHandler<App> => {
 	return async (c, next) => {
 		const user = c.get('user')
 
+		// Check authentication
 		if (!user) {
 			return c.json({ error: 'Unauthorized' }, 401)
+		}
+
+		// If no role requirements, just check authentication
+		if (!requiredRoles) {
+			return next()
+		}
+
+		// Check role-based authorization
+		const userRoles = user.roles || []
+
+		let hasRequiredRoles = false
+		let errorMessage = 'Forbidden: Missing required role(s)'
+
+		if (typeof requiredRoles === 'string') {
+			// Single role requirement
+			hasRequiredRoles = userRoles.includes(requiredRoles)
+			if (!hasRequiredRoles) {
+				errorMessage = `Forbidden: Missing required role: ${requiredRoles}`
+			}
+		} else if (Array.isArray(requiredRoles)) {
+			// Array of roles with OR logic (user needs at least one)
+			hasRequiredRoles = requiredRoles.some((role) => userRoles.includes(role))
+			if (!hasRequiredRoles) {
+				errorMessage = `Forbidden: Missing one of required roles: ${requiredRoles.join(', ')}`
+			}
+		} else if ('all' in requiredRoles) {
+			// User needs ALL of the specified roles (AND logic)
+			hasRequiredRoles = requiredRoles.all.every((role) => userRoles.includes(role))
+			if (!hasRequiredRoles) {
+				const missingRoles = requiredRoles.all.filter((role) => !userRoles.includes(role))
+				errorMessage = `Forbidden: Missing required roles: ${missingRoles.join(', ')}`
+			}
+		} else if ('any' in requiredRoles) {
+			// User needs ANY of the specified roles (OR logic, explicit)
+			hasRequiredRoles = requiredRoles.any.some((role) => userRoles.includes(role))
+			if (!hasRequiredRoles) {
+				errorMessage = `Forbidden: Missing one of required roles: ${requiredRoles.any.join(', ')}`
+			}
+		}
+
+		if (!hasRequiredRoles) {
+			return c.json({ error: errorMessage }, 403)
 		}
 
 		return next()

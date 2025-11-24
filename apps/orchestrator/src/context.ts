@@ -47,6 +47,8 @@ export type Env = SharedHonoEnv & {
 	// Workflow bindings
 	USER_DISCORD_REFRESH: Workflow
 	EVE_CORPORATION_SYNC: Workflow
+	USER_REFRESH_WORKFLOW: Workflow
+	CORE_DURABLE_OBJECT: DurableObjectNamespace
 }
 
 /** Variables can be extended */

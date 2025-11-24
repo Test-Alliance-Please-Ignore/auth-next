@@ -1,14 +1,14 @@
 import { WorkflowEntrypoint } from 'cloudflare:workers'
 
 import { fetchAssets, processAssets } from './steps/assets'
-import { fetchContacts, processContacts } from './steps/contacts'
-import { processFittedShips } from './steps/fitted-ships'
 import {
 	checkCancellation,
 	cleanupIntermediateData,
 	generateHtmlReport,
 	updateDatabase,
 } from './steps/common'
+import { fetchContacts, processContacts } from './steps/contacts'
+import { processFittedShips } from './steps/fitted-ships'
 import { fetchMails, processMails } from './steps/mails'
 import { fetchPublicInfo, processPublicInfo } from './steps/public-info'
 import { fetchWalletJournal, processWalletJournal } from './steps/wallet-journal'
@@ -107,7 +107,8 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 				this.env.CHARACTER_REPORTS,
 				'CHARACTER_REPORTS',
 				fetchAssetsResult,
-				workflowInstanceId
+				workflowInstanceId,
+				characterId
 			)
 		)
 

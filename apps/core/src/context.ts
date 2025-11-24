@@ -4,6 +4,7 @@ import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Groups } from '@repo/groups'
 import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
+import type { Industry } from '@repo/industry'
 import type { Skills } from '@repo/skills'
 import type { createDb } from './db'
 import type { WorkflowParams } from './workflows/user-refresh.workflow'
@@ -50,6 +51,8 @@ export type Env = SharedHonoEnv & {
 	USER_REFRESH_WORKFLOW: Workflow<WorkflowParams>
 	/** ESI Type Resolver Durable Object binding */
 	ESI_TYPE_RESOLVER: DurableObjectNamespace
+	/** Industry Durable Object binding */
+	INDUSTRY: DurableObjectNamespace
 }
 
 /** Session user data attached to request context */
@@ -66,6 +69,8 @@ export interface SessionUser {
 		hasValidToken: boolean
 	}>
 	is_admin: boolean
+	/** Array of role URNs assigned to the user */
+	roles: string[]
 	/** Discord profile (if linked) */
 	discord?: {
 		userId: string

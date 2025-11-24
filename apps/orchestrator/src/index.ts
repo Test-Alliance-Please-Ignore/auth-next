@@ -8,6 +8,7 @@ import { withNotFound, withOnError } from '@repo/hono-helpers'
 import { scheduled } from './scheduled'
 import { UserDiscordRefreshWorkflow } from './workflows/user-discord-refresh'
 
+import type { Core } from '@repo/core'
 import type { Discord } from '@repo/discord'
 import type { App } from './context'
 
@@ -141,6 +142,59 @@ const app = new Hono<App>()
 			return c.json(
 				{
 					error: 'Failed to create batch workflows',
+					message: error instanceof Error ? error.message : String(error),
+				},
+				500
+			)
+		}
+	})
+
+	.get('/test/orchestrator/user-refresh', async (c) => {
+		const batchSizeParam = c.req.query('batchSize')
+		const parsedBatchSize = batchSizeParam ? Number.parseInt(batchSizeParam, 10) : 10
+
+		if (Number.isNaN(parsedBatchSize) || parsedBatchSize <= 0) {
+			return c.json({ error: 'batchSize must be a positive integer' }, 400)
+		}
+
+		const limit = Math.min(parsedBatchSize, 100)
+
+		try {
+			const stub = getStub<Core>(c.env.CORE_DURABLE_OBJECT, 'default')
+			const userIds = await stub.listUsersNeedingRefresh(limit)
+
+			if (userIds.length === 0) {
+				return c.json({
+					success: true,
+					message: 'No users need refresh',
+					userCount: 0,
+					workflows: [],
+				})
+			}
+
+			const now = Date.now()
+			const batchPayload = userIds.map((userId, index) => ({
+				id: `user-refresh-${userId}-${now}-${index}`,
+				params: {
+					userId,
+				},
+			}))
+
+			const instances = await c.env.USER_REFRESH_WORKFLOW.createBatch(batchPayload)
+
+			return c.json({
+				success: true,
+				message: 'User refresh workflows created',
+				userCount: userIds.length,
+				workflows: instances.map((instance, index) => ({
+					workflowId: instance.id,
+					userId: userIds[index],
+				})),
+			})
+		} catch (error) {
+			return c.json(
+				{
+					error: 'Failed to trigger user refresh workflows',
 					message: error instanceof Error ? error.message : String(error),
 				},
 				500

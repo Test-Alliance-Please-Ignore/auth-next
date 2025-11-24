@@ -5,7 +5,11 @@ import { createDb } from '../db'
 import { userCharacters } from '../db/schema'
 import { getWorkflowLogger } from './context'
 import { checkUserBlacklisted, disableBlacklistedUser } from './steps/check-user-blacklisted'
-import { tryCharacterAuthenticatedFetch, updateCharacterPublicInfo } from './steps/update-character'
+import {
+	handleCharacterDeleted,
+	tryCharacterAuthenticatedFetch,
+	updateCharacterPublicInfo,
+} from './steps/update-character'
 import { updateCompletionTimestamp } from './steps/update-completion-timestamp'
 import { attachUserRoles, getUserRoleAttachments } from './steps/user-roles'
 
@@ -42,6 +46,10 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams>
 		}
 
 		const logger = getWorkflowLogger(workflowContext)
+		logger.info('[Workflow] Starting user refresh workflow', {
+			userId,
+			workflowInstanceId,
+		})
 
 		// Step 1: Check if user is blacklisted
 		const checkUserBlacklistedResult = await step.do('check-user-blacklisted', () =>
@@ -68,47 +76,48 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams>
 			where: eq(userCharacters.userId, userId),
 		})
 
-		await Promise.all(
-			characters.map(async (character) => {
-				const result = await step.do(
-					`update-character-public-info-${character.characterId}`,
-					{
-						retries: { limit: 5, delay: '10 seconds', backoff: 'exponential' },
-						timeout: '1 minute',
-					},
-					async () => {
-						const failedCharacters: string[] = []
-						await updateCharacterPublicInfo(workflowContext, character.characterId)
-						const authenticatedFetchResult = await step.do(
-							`try-character-authenticated-fetch-${character.characterId}`,
-							{
-								retries: { limit: 5, delay: '10 seconds', backoff: 'exponential' },
-								timeout: '1 minute',
-							},
-							async () => tryCharacterAuthenticatedFetch(workflowContext, character.characterId)
-						)
-						if (!authenticatedFetchResult.success) {
-							logger.error('[Workflow] Failed to fetch character authenticated data', {
-								characterId: character.characterId,
-								error: authenticatedFetchResult.error,
-							})
-							failedCharacters.push(character.characterId)
-						}
-						return {
-							failedCharacters: failedCharacters,
-						}
-					}
+		// Process characters sequentially
+		for (const character of characters) {
+			// Step: Update character public info
+			const updateCharacterPublicInfoResult = await step.do(
+				`update-character-public-info-${character.characterId}`,
+				{
+					retries: { limit: 5, delay: '10 seconds', backoff: 'exponential' },
+					timeout: '1 minute',
+				},
+				async () => updateCharacterPublicInfo(workflowContext, character.characterId)
+			)
+
+			if (updateCharacterPublicInfoResult.isDeleted) {
+				logger.info('[Workflow] Character is deleted', {
+					characterId: character.characterId,
+				})
+				await step.do('handle-character-deleted', () =>
+					handleCharacterDeleted(workflowContext, character.characterId)
 				)
-				if (result.failedCharacters.length > 0) {
-					logger.error('[Workflow] Failed to update character authenticated data', {
-						userId,
-						workflowInstanceId,
-						characters: result.failedCharacters,
-					})
-				}
-				return result
-			})
-		)
+				logger.info('[Workflow] Character marked as deleted', {
+					characterId: character.characterId,
+				})
+			}
+
+			// Step: Try authenticated fetch
+			const authenticatedFetchResult = await step.do(
+				`try-character-authenticated-fetch-${character.characterId}`,
+				{
+					retries: { limit: 5, delay: '10 seconds', backoff: 'exponential' },
+					timeout: '1 minute',
+				},
+				async () => tryCharacterAuthenticatedFetch(workflowContext, character.characterId)
+			)
+
+			// Log failures
+			if (!authenticatedFetchResult.success) {
+				logger.error('[Workflow] Failed to fetch character authenticated data', {
+					characterId: character.characterId,
+					error: authenticatedFetchResult.error,
+				})
+			}
+		}
 
 		// Step 3: Get user role attachments
 		const getUserRoleAttachmentsResult = await step.do('get-user-role-attachments', () =>

@@ -42,7 +42,52 @@ export type ServiceProviderId = BrandedType<string, 'ServiceProviderId'>
  * ```
  */
 export interface Industry extends DurableObject {
-	// Add RPC method signatures here
+	// Provider management
+	createProvider(params: CreateProviderParams, adminUserId: string): Promise<ServiceProvider>
+	getProvider(providerId: ServiceProviderId): Promise<ServiceProvider>
+	listProviders(filters: ProviderFilters): Promise<ServiceProvider[]>
+	updateProvider(
+		providerId: ServiceProviderId,
+		params: UpdateProviderParams,
+		adminUserId: string
+	): Promise<ServiceProvider>
+	deleteProvider(providerId: ServiceProviderId, adminUserId: string): Promise<void>
+	setAcceptingOrders(
+		providerId: ServiceProviderId,
+		acceptingOrders: boolean,
+		adminUserId: string
+	): Promise<ServiceProvider>
+
+	// Service management
+	addService(
+		providerId: ServiceProviderId,
+		serviceType: ServiceType,
+		adminUserId: string
+	): Promise<ProviderServiceDTO>
+	removeService(
+		providerId: ServiceProviderId,
+		serviceType: ServiceType,
+		adminUserId: string
+	): Promise<void>
+	updateServiceStatus(
+		providerId: ServiceProviderId,
+		serviceType: ServiceType,
+		status: ServiceStatus,
+		adminUserId: string
+	): Promise<ProviderServiceDTO>
+	listProviderServices(providerId: ServiceProviderId): Promise<ProviderServiceDTO[]>
+
+	// Contact management
+	addContact(
+		providerId: ServiceProviderId,
+		contactType: ContactType,
+		adminUserId: string
+	): Promise<ProviderContact>
+	removeContact(contactId: string, adminUserId: string): Promise<void>
+	listProviderContacts(providerId: ServiceProviderId): Promise<ProviderContact[]>
+
+	// Statistics
+	getProviderStats(): Promise<ProviderStatistics>
 }
 
 export enum EntityType {
@@ -188,4 +233,16 @@ export interface UpdateProviderParams {
 	name?: string
 	description?: string | null
 	acceptingOrders?: boolean
+}
+
+/**
+ * Provider Statistics
+ */
+export interface ProviderStatistics {
+	totalProviders: number
+	totalByEntityType: Record<EntityType, number>
+	totalAcceptingOrders: number
+	totalServices: number
+	servicesByType: Record<ServiceType, number>
+	servicesByStatus: Record<ServiceStatus, number>
 }

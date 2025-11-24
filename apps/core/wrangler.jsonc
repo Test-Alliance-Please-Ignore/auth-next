@@ -103,6 +103,11 @@
 				"name": "CORE",
 				"class_name": "Core",
 				"script_name": "core"
+			},
+			{
+				"name": "INDUSTRY",
+				"class_name": "Industry",
+				"script_name": "industry"
 			}
 		]
 	},

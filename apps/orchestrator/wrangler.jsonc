@@ -5,7 +5,7 @@
 	"compatibility_date": "2025-04-28",
 	"compatibility_flags": ["nodejs_compat"],
 	"workers_dev": false,
-	"routes": [],
+	"routes": ["devtest.pleaseignore.app/test/orchestrator/*"],
 	"logpush": false,
 	"observability": {
 		"enabled": true
@@ -23,6 +23,11 @@
 			"name": "eve-corporation-sync",
 			"binding": "EVE_CORPORATION_SYNC",
 			"class_name": "EveCorporationSyncWorkflow"
+		},
+		{
+			"name": "user-refresh-workflow",
+			"binding": "USER_REFRESH_WORKFLOW",
+			"class_name": "UserRefreshWorkflow"
 		}
 	],
 	"services": [
@@ -43,6 +48,11 @@
 				"name": "EVE_CORPORATION_DATA",
 				"class_name": "EveCorporationData",
 				"script_name": "eve-corporation-data"
+			},
+			{
+				"name": "CORE_DURABLE_OBJECT",
+				"class_name": "Core",
+				"script_name": "core"
 			}
 		]
 	},
