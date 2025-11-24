@@ -1,9 +1,11 @@
+import { relations } from 'drizzle-orm'
 import {
 	boolean,
 	index,
 	integer,
 	numeric,
 	pgTable,
+	primaryKey,
 	real,
 	text,
 	timestamp,
@@ -202,12 +204,176 @@ export const invTypes = pgTable(
 )
 
 /**
+ * Dogma Attribute Categories - Categorizes attributes (filtered to categories 1,10,34,38,40,51)
+ */
+export const dgmAttributeCategories = pgTable('dgm_attribute_categories', {
+	categoryId: text('category_id').primaryKey(),
+	categoryName: text('category_name').notNull(),
+	categoryDescription: text('category_description'),
+})
+
+/**
+ * Dogma Attribute Types - Defines all possible attributes
+ */
+export const dgmAttributeTypes = pgTable(
+	'dgm_attribute_types',
+	{
+		attributeId: text('attribute_id').primaryKey(),
+		attributeName: text('attribute_name'),
+		description: text('description'),
+		iconId: integer('icon_id'),
+		defaultValue: real('default_value').notNull().default(0),
+		published: boolean('published').notNull().default(false),
+		displayName: text('display_name'),
+		unitId: integer('unit_id'),
+		stackable: boolean('stackable').notNull().default(false),
+		highIsGood: boolean('high_is_good').notNull().default(false),
+		categoryId: text('category_id').references(() => dgmAttributeCategories.categoryId),
+	},
+	(table) => ({
+		categoryIdx: index('dgm_attribute_types_category_idx').on(table.categoryId),
+	})
+)
+
+/**
+ * Dogma Type Attributes - Actual attribute values for each type
+ */
+export const dgmTypeAttributes = pgTable(
+	'dgm_type_attributes',
+	{
+		typeId: text('type_id').notNull(),
+		attributeId: text('attribute_id')
+			.notNull()
+			.references(() => dgmAttributeTypes.attributeId),
+		valueInt: integer('value_int'), // Always null in current data
+		valueFloat: real('value_float'),
+	},
+	(table) => ({
+		pk: primaryKey({ columns: [table.typeId, table.attributeId] }),
+		typeIdx: index('dgm_type_attributes_type_idx').on(table.typeId),
+		attributeIdx: index('dgm_type_attributes_attribute_idx').on(table.attributeId),
+	})
+)
+
+/**
+ * Relations for inventory tables
+ */
+export const invCategoriesRelations = relations(invCategories, ({ many }) => ({
+	groups: many(invGroups),
+}))
+
+export const invGroupsRelations = relations(invGroups, ({ one, many }) => ({
+	category: one(invCategories, {
+		fields: [invGroups.categoryId],
+		references: [invCategories.categoryId],
+	}),
+	types: many(invTypes),
+}))
+
+export const invTypesRelations = relations(invTypes, ({ one, many }) => ({
+	group: one(invGroups, {
+		fields: [invTypes.groupId],
+		references: [invGroups.groupId],
+	}),
+	marketGroup: one(marketGroups, {
+		fields: [invTypes.marketGroupId],
+		references: [marketGroups.marketGroupId],
+	}),
+	typeAttributes: many(dgmTypeAttributes),
+}))
+
+export const marketGroupsRelations = relations(marketGroups, ({ one, many }) => ({
+	parentGroup: one(marketGroups, {
+		fields: [marketGroups.parentGroupId],
+		references: [marketGroups.marketGroupId],
+		relationName: 'parentGroup',
+	}),
+	childGroups: many(marketGroups, {
+		relationName: 'parentGroup',
+	}),
+	types: many(invTypes),
+}))
+
+/**
+ * Relations for dogma attribute tables
+ */
+export const dgmAttributeCategoriesRelations = relations(dgmAttributeCategories, ({ many }) => ({
+	attributeTypes: many(dgmAttributeTypes),
+}))
+
+export const dgmAttributeTypesRelations = relations(dgmAttributeTypes, ({ one, many }) => ({
+	category: one(dgmAttributeCategories, {
+		fields: [dgmAttributeTypes.categoryId],
+		references: [dgmAttributeCategories.categoryId],
+	}),
+	typeAttributes: many(dgmTypeAttributes),
+}))
+
+export const dgmTypeAttributesRelations = relations(dgmTypeAttributes, ({ one }) => ({
+	attributeType: one(dgmAttributeTypes, {
+		fields: [dgmTypeAttributes.attributeId],
+		references: [dgmAttributeTypes.attributeId],
+	}),
+	// Note: We don't define a relation to invTypes here because not all typeIds exist in invTypes
+	// If you need to join with invTypes, do it conditionally in your queries
+}))
+
+/**
+ * Relations for skill tables
+ */
+export const skillCategoriesRelations = relations(skillCategories, ({ many }) => ({
+	groups: many(skillGroups),
+}))
+
+export const skillGroupsRelations = relations(skillGroups, ({ one, many }) => ({
+	category: one(skillCategories, {
+		fields: [skillGroups.categoryId],
+		references: [skillCategories.id],
+	}),
+	skills: many(skills),
+}))
+
+export const skillsRelations = relations(skills, ({ one, many }) => ({
+	group: one(skillGroups, {
+		fields: [skills.groupId],
+		references: [skillGroups.id],
+	}),
+	requirements: many(skillRequirements, {
+		relationName: 'skill',
+	}),
+	requiredFor: many(skillRequirements, {
+		relationName: 'requiredSkill',
+	}),
+	attributes: many(skillAttributes),
+}))
+
+export const skillRequirementsRelations = relations(skillRequirements, ({ one }) => ({
+	skill: one(skills, {
+		fields: [skillRequirements.skillId],
+		references: [skills.id],
+		relationName: 'skill',
+	}),
+	requiredSkill: one(skills, {
+		fields: [skillRequirements.requiredSkillId],
+		references: [skills.id],
+		relationName: 'requiredSkill',
+	}),
+}))
+
+export const skillAttributesRelations = relations(skillAttributes, ({ one }) => ({
+	skill: one(skills, {
+		fields: [skillAttributes.skillId],
+		references: [skills.id],
+	}),
+}))
+
+/**
  * Schema export for Drizzle relations
  */
 export const schema = {
+	// Entity tables
 	alliances,
 	corporations,
-
 	sdeVersion,
 
 	// Skill tables
@@ -222,4 +388,23 @@ export const schema = {
 	invGroups,
 	invTypes,
 	marketGroups,
+
+	// Dogma attribute tables
+	dgmAttributeCategories,
+	dgmAttributeTypes,
+	dgmTypeAttributes,
+
+	// Relations
+	invCategoriesRelations,
+	invGroupsRelations,
+	invTypesRelations,
+	marketGroupsRelations,
+	dgmAttributeCategoriesRelations,
+	dgmAttributeTypesRelations,
+	dgmTypeAttributesRelations,
+	skillCategoriesRelations,
+	skillGroupsRelations,
+	skillsRelations,
+	skillRequirementsRelations,
+	skillAttributesRelations,
 }

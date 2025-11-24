@@ -1,0 +1,1 @@
+ALTER TABLE "dgm_attribute_types" ALTER COLUMN "description" DROP NOT NULL;

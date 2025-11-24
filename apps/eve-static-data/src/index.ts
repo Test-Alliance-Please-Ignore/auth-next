@@ -522,4 +522,74 @@ app.post('/types/metadata', async (c) => {
 	}
 })
 
+// Get dogma attributes for a type
+app.get('/types/:typeId/dogma-attributes', async (c) => {
+	const db = c.get('db')
+	const typeId = c.req.param('typeId')
+
+	if (!typeId) {
+		return c.json({ error: 'Invalid type ID' }, 400)
+	}
+
+	// Check cache first
+	const cacheKey = `dogma:${typeId}`
+	const cached = await c.get('idCache').get(cacheKey)
+	if (cached) {
+		return c.json(JSON.parse(cached))
+	}
+
+	try {
+		const attributes = await db
+			.select({
+				attributeId: schema.dgmTypeAttributes.attributeId,
+				attributeName: schema.dgmAttributeTypes.attributeName,
+				displayName: schema.dgmAttributeTypes.displayName,
+				description: schema.dgmAttributeTypes.description,
+				valueInt: schema.dgmTypeAttributes.valueInt,
+				valueFloat: schema.dgmTypeAttributes.valueFloat,
+				value: schema.dgmTypeAttributes.valueFloat, // Use valueFloat as the main value
+				defaultValue: schema.dgmAttributeTypes.defaultValue,
+				published: schema.dgmAttributeTypes.published,
+				stackable: schema.dgmAttributeTypes.stackable,
+				highIsGood: schema.dgmAttributeTypes.highIsGood,
+				unitId: schema.dgmAttributeTypes.unitId,
+				categoryId: schema.dgmAttributeTypes.categoryId,
+				categoryName: schema.dgmAttributeCategories.categoryName,
+			})
+			.from(schema.dgmTypeAttributes)
+			.innerJoin(
+				schema.dgmAttributeTypes,
+				eq(schema.dgmTypeAttributes.attributeId, schema.dgmAttributeTypes.attributeId)
+			)
+			.leftJoin(
+				schema.dgmAttributeCategories,
+				eq(schema.dgmAttributeTypes.categoryId, schema.dgmAttributeCategories.categoryId)
+			)
+			.where(eq(schema.dgmTypeAttributes.typeId, typeId))
+			.orderBy(schema.dgmAttributeTypes.attributeName)
+
+		if (attributes.length === 0) {
+			// Type might not have any attributes or might not exist
+			// Still return a valid response structure
+			return c.json({
+				typeId,
+				attributes: [],
+			})
+		}
+
+		const response = {
+			typeId,
+			attributes,
+		}
+
+		// Cache the result
+		await c.get('idCache').set(cacheKey, JSON.stringify(response))
+
+		return c.json(response)
+	} catch (error) {
+		console.error('Error fetching dogma attributes:', error)
+		return c.json({ error: 'Failed to fetch dogma attributes' }, 500)
+	}
+})
+
 export default app

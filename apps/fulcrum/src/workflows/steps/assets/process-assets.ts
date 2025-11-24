@@ -3,9 +3,11 @@
  * Resolves IDs to human-readable names using ESI Type Resolver
  */
 
-import type { CharacterAsset } from '@repo/esi'
-import { retrieveData, storeOrReturn, type StepResult } from '../../utils/storage'
 import { enrichAssets } from '../../processors/helpers/assets'
+import { retrieveData, storeOrReturn } from '../../utils/storage'
+
+import type { CharacterAsset } from '@repo/esi'
+import type { StepResult } from '../../utils/storage'
 
 /**
  * Process character assets by enriching with resolved names
@@ -30,7 +32,7 @@ export async function processAssets(
 	bucketName: string,
 	fetchResult: StepResult,
 	workflowInstanceId: string,
-	characterId: string,
+	characterId: string
 ): Promise<StepResult> {
 	try {
 		// Check if fetch was successful
@@ -101,7 +103,7 @@ export async function processAssets(
 			bucketName,
 			workflowInstanceId,
 			'process-assets',
-			enrichedData,
+			enrichedData
 		)
 
 		console.log('[processAssets] Storage result', {
@@ -118,4 +120,3 @@ export async function processAssets(
 		}
 	}
 }
-

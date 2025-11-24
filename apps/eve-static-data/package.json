@@ -11,6 +11,8 @@
 		"db:generate": "drizzle-kit generate",
 		"db:import-sde": "tsx ./src/scripts/import-sde.ts",
 		"db:import-sde-inventory": "tsx ./src/scripts/import-sde-inventory.ts",
+		"db:import-sde-dogma": "tsx ./src/scripts/import-sde-dogma.ts",
+		"db:optimize-dogma": "tsx ./src/scripts/optimize-dogma.ts",
 		"db:migrate": "tsx ./src/scripts/migrate.ts",
 		"db:push": "drizzle-kit push",
 		"db:studio": "drizzle-kit studio",

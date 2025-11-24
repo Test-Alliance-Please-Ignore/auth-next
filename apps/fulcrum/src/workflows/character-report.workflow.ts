@@ -2,6 +2,7 @@ import { WorkflowEntrypoint } from 'cloudflare:workers'
 
 import { fetchAssets, processAssets } from './steps/assets'
 import { fetchContacts, processContacts } from './steps/contacts'
+import { processFittedShips } from './steps/fitted-ships'
 import {
 	checkCancellation,
 	cleanupIntermediateData,
@@ -98,7 +99,19 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 		)
 
-		// Step 6: Fetch wallet transactions from ESI
+		// Step 6: Process fitted ships
+		const processFittedShipsResult = await step.do('process-fitted-ships', () =>
+			processFittedShips(
+				this.env,
+				getBucket,
+				this.env.CHARACTER_REPORTS,
+				'CHARACTER_REPORTS',
+				fetchAssetsResult,
+				workflowInstanceId
+			)
+		)
+
+		// Step 8: Fetch wallet transactions from ESI
 		const fetchWalletTransactionsResult = await step.do('fetch-wallet-transactions', () =>
 			fetchWalletTransactions(
 				this.env.ESI,
@@ -109,7 +122,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 		)
 
-		// Step 7: Process wallet transactions
+		// Step 9: Process wallet transactions
 		const processWalletTransactionsResult = await step.do('process-wallet-transactions', () =>
 			processWalletTransactions(
 				this.env,
@@ -122,7 +135,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 		)
 
-		// Step 8: Fetch wallet journal entries
+		// Step 10: Fetch wallet journal entries
 		const fetchWalletJournalResult = await step.do('fetch-wallet-journal', () =>
 			fetchWalletJournal(
 				this.env.ESI,
@@ -133,7 +146,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 		)
 
-		// Step 9: Process wallet journal entries
+		// Step 11: Process wallet journal entries
 		const processWalletJournalResult = await step.do('process-wallet-journal', () =>
 			processWalletJournal(
 				this.env,
@@ -146,7 +159,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 		)
 
-		// Step 10: Fetch mails from ESI
+		// Step 12: Fetch mails from ESI
 		const fetchMailsResult = await step.do('fetch-mails', () =>
 			fetchMails(
 				this.env.ESI,
@@ -157,7 +170,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 		)
 
-		// Step 11: Process mails
+		// Step 13: Process mails
 		const processMailsResult = await step.do('process-mails', () =>
 			processMails(
 				this.env,
@@ -170,7 +183,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 		)
 
-		// Step 12: Fetch contacts from ESI
+		// Step 14: Fetch contacts from ESI
 		const fetchContactsResult = await step.do('fetch-contacts', () =>
 			fetchContacts(
 				this.env.ESI,
@@ -181,7 +194,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 		)
 
-		// Step 13: Process contacts
+		// Step 15: Process contacts
 		const processContactsResult = await step.do('process-contacts', () =>
 			processContacts(
 				this.env,
@@ -194,7 +207,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 		)
 
-		// Step 14: Generate HTML report and store in R2
+		// Step 16: Generate HTML report and store in R2
 		const finalReportResult = await step.do('generate-html', () =>
 			generateHtmlReport(
 				this.env.CHARACTER_REPORTS,
@@ -203,6 +216,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 				characterId,
 				reportId,
 				processAssetsResult,
+				processFittedShipsResult,
 				processWalletTransactionsResult,
 				processWalletJournalResult,
 				processMailsResult,
@@ -210,12 +224,12 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 		)
 
-		// Step 15: Clean up intermediate data
+		// Step 17: Clean up intermediate data
 		await step.do('cleanup-intermediate-data', () =>
 			cleanupIntermediateData(this.env.CHARACTER_REPORTS, workflowInstanceId)
 		)
 
-		// Step 16: Update database with final status
+		// Step 18: Update database with final status
 		await step.do('update-database', () =>
 			updateDatabase(
 				this.env,

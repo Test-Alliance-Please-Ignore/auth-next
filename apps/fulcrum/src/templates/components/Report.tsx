@@ -9,8 +9,10 @@ import type { ProcessedWalletTransactions } from '../../workflows/processors/hel
 import type { ProcessedWalletJournalEntries } from '../../workflows/processors/helpers/wallet-journal'
 import type { ProcessedMails } from '../../workflows/processors/helpers/mails'
 import type { ProcessedContacts } from '../../workflows/processors/helpers/contacts'
+import type { FittedShip } from '../../workflows/processors/helpers/ships'
 import { PublicInfoSection } from './PublicInfoSection'
 import { AssetsSection } from './AssetsSection'
+import { FittedShipsSection } from './FittedShipsSection'
 import { WalletTransactionsSection } from './WalletTransactionsSection'
 import { WalletJournalSection } from './WalletJournalSection'
 import { MailList } from './MailList'
@@ -24,6 +26,31 @@ interface ReportProps {
 }
 
 export function Report({ results }: ReportProps) {
+	// Debug logging
+	if (typeof window !== 'undefined') {
+		console.log('[Report] Received results:', {
+			totalResults: results.length,
+			resultTypes: results.map((r) => {
+				if (!r) return 'null'
+				if (Array.isArray(r)) {
+					if (r.length === 0) return 'empty-array'
+					const first = r[0]
+					if (typeof first === 'object' && first !== null) {
+						if ('shipName' in first) return 'fitted-ships-array'
+						if ('type_id' in first && 'item_id' in first) return 'assets-array'
+						if ('transaction_id' in first) return 'wallet-transactions-array'
+						if ('ref_type' in first) return 'wallet-journal-array'
+						if ('mail_id' in first) return 'mails-array'
+						if ('contact_id' in first) return 'contacts-array'
+					}
+					return 'unknown-array'
+				}
+				if (typeof r === 'object' && 'characterName' in r) return 'public-info'
+				return 'unknown'
+			}),
+		})
+	}
+
 	// Extract data by type
 	const publicInfo = results.find(
 		(r): r is ProcessedPublicInfo =>
@@ -96,9 +123,80 @@ export function Report({ results }: ReportProps) {
 			'contact_type' in r[0],
 	) as ProcessedContacts | undefined
 
+	// Find fitted ships - check for array with FittedShip structure
+	const fittedShips = results.find((r): r is FittedShip[] => {
+		if (!r || !Array.isArray(r)) {
+			if (typeof window !== 'undefined') {
+				console.log('[Report] Fitted ships type guard: not array', { type: typeof r, isNull: r === null })
+			}
+			return false
+		}
+		// Empty array is valid
+		if (r.length === 0) {
+			if (typeof window !== 'undefined') {
+				console.log('[Report] Fitted ships type guard: empty array matched')
+			}
+			return true
+		}
+		// Check first element has FittedShip structure
+		const first = r[0]
+		const matches =
+			typeof first === 'object' &&
+			first !== null &&
+			'shipName' in first &&
+			'shipTypeId' in first &&
+			'locationId' in first &&
+			'locationFlag' in first &&
+			'locationType' in first &&
+			Array.isArray(first.rigs) &&
+			Array.isArray(first.highs) &&
+			Array.isArray(first.meds) &&
+			Array.isArray(first.lows)
+		if (typeof window !== 'undefined') {
+			console.log('[Report] Fitted ships type guard:', {
+				matches,
+				firstElement: first
+					? {
+							type: typeof first,
+							hasShipName: 'shipName' in first,
+							hasShipTypeId: 'shipTypeId' in first,
+							hasLocationId: 'locationId' in first,
+							hasLocationFlag: 'locationFlag' in first,
+							hasLocationType: 'locationType' in first,
+							rigsIsArray: Array.isArray(first.rigs),
+							highsIsArray: Array.isArray(first.highs),
+							medsIsArray: Array.isArray(first.meds),
+							lowsIsArray: Array.isArray(first.lows),
+							allKeys: Object.keys(first),
+						}
+					: null,
+			})
+		}
+		return matches
+	}) as FittedShip[] | undefined
+
+	if (typeof window !== 'undefined') {
+		console.log('[Report] Fitted ships extraction result:', {
+			found: fittedShips !== undefined,
+			isArray: Array.isArray(fittedShips),
+			length: Array.isArray(fittedShips) ? fittedShips.length : 'N/A',
+		})
+	}
+
 	// Build tabs array with available data
 	// Contacts tab MUST be first
 	const tabs = []
+
+	if (typeof window !== 'undefined') {
+		console.log('[Report] Building tabs array, available data:', {
+			hasContacts: !!contacts,
+			hasAssets: !!assets,
+			hasFittedShips: fittedShips !== undefined,
+			hasWalletTransactions: !!walletTransactions,
+			hasWalletJournal: !!walletJournal,
+			hasMails: !!mails,
+		})
+	}
 
 	if (contacts) {
 		tabs.push({
@@ -116,6 +214,26 @@ export function Report({ results }: ReportProps) {
 			count: assets.length,
 			content: <AssetsSection data={assets} />,
 		})
+	}
+
+	if (fittedShips !== undefined) {
+		if (typeof window !== 'undefined') {
+			console.log('[Report] Adding fitted ships tab:', {
+				id: 'fitted-ships',
+				label: 'Fit ships',
+				count: fittedShips.length,
+			})
+		}
+		tabs.push({
+			id: 'fitted-ships',
+			label: 'Fit ships',
+			count: fittedShips.length,
+			content: <FittedShipsSection data={fittedShips} />,
+		})
+	} else {
+		if (typeof window !== 'undefined') {
+			console.log('[Report] Fitted ships tab NOT added - fittedShips is undefined')
+		}
 	}
 
 	if (walletTransactions) {
@@ -143,6 +261,10 @@ export function Report({ results }: ReportProps) {
 			count: mails.length,
 			content: <MailList data={mails} />,
 		})
+	}
+
+	if (typeof window !== 'undefined') {
+		console.log('[Report] Final tabs array:', tabs.map((t) => ({ id: t.id, label: t.label, count: t.count })))
 	}
 
 	return (

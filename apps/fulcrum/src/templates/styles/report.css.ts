@@ -182,7 +182,9 @@ footer {
 	display: flex;
 	background: hsl(var(--background-elevated));
 	border-bottom: 2px solid hsl(var(--border-strong));
-	overflow: hidden;
+	overflow-x: auto;
+	overflow-y: hidden;
+	flex-wrap: wrap;
 }
 
 /* Hide radio buttons visually but keep them functional for CSS-only fallback */
@@ -244,16 +246,20 @@ footer {
    we'll use a different approach with adjacent selectors */
 #tab-contacts:checked ~ .tab-navigation label[for="tab-contacts"],
 #tab-assets:checked ~ .tab-navigation label[for="tab-assets"],
+#tab-fitted-ships:checked ~ .tab-navigation label[for="tab-fitted-ships"],
 #tab-transactions:checked ~ .tab-navigation label[for="tab-transactions"],
-#tab-journal:checked ~ .tab-navigation label[for="tab-journal"] {
+#tab-journal:checked ~ .tab-navigation label[for="tab-journal"],
+#tab-mails:checked ~ .tab-navigation label[for="tab-mails"] {
 	color: hsl(var(--primary));
 	background: hsl(var(--card));
 }
 
 #tab-contacts:checked ~ .tab-navigation label[for="tab-contacts"]::after,
 #tab-assets:checked ~ .tab-navigation label[for="tab-assets"]::after,
+#tab-fitted-ships:checked ~ .tab-navigation label[for="tab-fitted-ships"]::after,
 #tab-transactions:checked ~ .tab-navigation label[for="tab-transactions"]::after,
-#tab-journal:checked ~ .tab-navigation label[for="tab-journal"]::after {
+#tab-journal:checked ~ .tab-navigation label[for="tab-journal"]::after,
+#tab-mails:checked ~ .tab-navigation label[for="tab-mails"]::after {
 	content: '';
 	position: absolute;
 	bottom: -2px;
@@ -282,8 +288,10 @@ footer {
 /* Show correct panel based on radio selection */
 #tab-contacts:checked ~ .tab-panels > [data-tab="contacts"],
 #tab-assets:checked ~ .tab-panels > [data-tab="assets"],
+#tab-fitted-ships:checked ~ .tab-panels > [data-tab="fitted-ships"],
 #tab-transactions:checked ~ .tab-panels > [data-tab="transactions"],
-#tab-journal:checked ~ .tab-panels > [data-tab="journal"] {
+#tab-journal:checked ~ .tab-panels > [data-tab="journal"],
+#tab-mails:checked ~ .tab-panels > [data-tab="mails"] {
 	display: block;
 }
 
@@ -563,6 +571,148 @@ footer {
 	border-top: none;
 	border-radius: 0 0 4px 4px;
 	background: hsl(var(--card));
+}
+
+/* Fitted ships styles */
+.fitted-ships-container {
+	display: flex;
+	flex-direction: column;
+	gap: 20px;
+	margin: 20px 0;
+}
+
+.location-group {
+	margin-bottom: 30px;
+	border: 1px solid hsl(var(--border));
+	border-radius: 4px;
+	overflow: hidden;
+	background: hsl(var(--card-elevated));
+}
+
+.location-group-header {
+	padding: 15px 20px;
+	background: hsl(var(--card-elevated));
+	border-bottom: 2px solid hsl(var(--border-strong));
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+}
+
+.location-group-header h3 {
+	margin: 0;
+	color: hsl(var(--primary));
+	font-size: 1.1em;
+	font-weight: 600;
+}
+
+.location-group-meta {
+	font-size: 0.9em;
+	color: hsl(var(--muted-foreground));
+}
+
+.location-group-ships {
+	display: flex;
+	flex-direction: column;
+	gap: 15px;
+	padding: 15px;
+	background: hsl(var(--card));
+}
+
+.fitted-ship-card {
+	background: hsl(var(--card));
+	border: 1px solid hsl(var(--border));
+	border-radius: 4px;
+	overflow: hidden;
+	box-shadow: var(--elevation-low);
+}
+
+.fitted-ship-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 15px;
+	background: hsl(var(--card-elevated));
+	border-bottom: 1px solid hsl(var(--border));
+}
+
+.fitted-ship-title {
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+	flex: 1;
+}
+
+.ship-name {
+	font-weight: 600;
+	font-size: 1.1em;
+	color: hsl(var(--primary));
+}
+
+.ship-meta {
+	font-size: 0.85em;
+	color: hsl(var(--muted-foreground));
+}
+
+.fitted-ship-content {
+	padding: 20px;
+}
+
+.fitted-ship-info {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+	gap: 15px;
+	margin-bottom: 20px;
+	padding-bottom: 20px;
+	border-bottom: 1px solid hsl(var(--border));
+}
+
+.slot-section {
+	margin: 15px 0;
+	padding: 15px;
+	background: hsl(var(--muted));
+	border-radius: 4px;
+	border: 1px solid hsl(var(--border));
+}
+
+.slot-section h4 {
+	margin: 0 0 10px 0;
+	color: hsl(var(--primary));
+	font-size: 1em;
+	font-weight: 600;
+}
+
+.slot-items {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.slot-item {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 8px 12px;
+	background: hsl(var(--card));
+	border-radius: 3px;
+	border: 1px solid hsl(var(--border));
+}
+
+.item-name {
+	font-weight: 500;
+	color: hsl(var(--foreground));
+}
+
+.item-meta {
+	font-size: 0.85em;
+	color: hsl(var(--muted-foreground));
+}
+
+.no-items {
+	color: hsl(var(--muted-foreground));
+	font-style: italic;
+	margin: 0;
+	padding: 10px;
+	text-align: center;
 }
 
 /* Assets table styles */
