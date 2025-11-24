@@ -7,6 +7,7 @@ import { assertEveCharacterId } from '@repo/eve-types'
 
 import { createDb } from '../db'
 import { oauthStates, userCharacters } from '../db/schema'
+import { getDiscordStatus } from '../lib/discord-helpers'
 import { getCachedUserPermissions } from '../lib/groups-cache'
 import { requireAuth } from '../middleware/session'
 import { ActivityService } from '../services/activity.service'
@@ -681,6 +682,9 @@ auth.get('/session', async (c) => {
 	// Fetch user permissions (cached for 15 seconds)
 	const permissions = await getCachedUserPermissions(c.env, user.id)
 
+	// Lazy-load Discord status if needed
+	const discordStatus = await getDiscordStatus(c)
+
 	return c.json({
 		authenticated: true,
 		user: {
@@ -688,7 +692,7 @@ auth.get('/session', async (c) => {
 			mainCharacterId: user.mainCharacterId,
 			characters: user.characters,
 			is_admin: user.is_admin,
-			discord: user.discord || null,
+			discord: discordStatus,
 		},
 		permissions: permissions.map((p) => ({
 			urn: p.urn,

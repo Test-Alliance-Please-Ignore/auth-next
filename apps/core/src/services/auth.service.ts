@@ -65,22 +65,25 @@ export class AuthService {
 	}
 
 	/**
-	 * Validate a session token and return session data
+	 * Validate a session token and return session data with userId
 	 */
-	async validateSession(sessionToken: string): Promise<UserSessionDTO | null> {
+	async validateSession(sessionToken: string): Promise<{
+		session: UserSessionDTO | null
+		userId: string | null
+	}> {
 		const session = await this.db.query.userSessions.findFirst({
 			where: eq(userSessions.sessionToken, sessionToken),
 		})
 
 		if (!session) {
-			return null
+			return { session: null, userId: null }
 		}
 
 		// Check if session is expired
 		if (session.expiresAt < new Date()) {
 			// Delete expired session
 			await this.db.delete(userSessions).where(eq(userSessions.id, session.id))
-			return null
+			return { session: null, userId: null }
 		}
 
 		// Update last activity timestamp
@@ -90,12 +93,15 @@ export class AuthService {
 			.where(eq(userSessions.id, session.id))
 
 		return {
-			id: session.id,
-			sessionToken: session.sessionToken,
-			expiresAt: session.expiresAt,
-			metadata: session.metadata as UserSessionDTO['metadata'],
-			lastActivityAt: new Date(),
-			createdAt: session.createdAt,
+			session: {
+				id: session.id,
+				sessionToken: session.sessionToken,
+				expiresAt: session.expiresAt,
+				metadata: session.metadata as UserSessionDTO['metadata'],
+				lastActivityAt: new Date(),
+				createdAt: session.createdAt,
+			},
+			userId: session.userId,
 		}
 	}
 

@@ -6,6 +6,7 @@ import { logger } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
 import { managedCorporations, userCharacters } from '../db/schema'
+import { getDiscordStatus } from '../lib/discord-helpers'
 import { requireAuth } from '../middleware/session'
 import { ActivityService } from '../services/activity.service'
 import { UserService } from '../services/user.service'
@@ -115,13 +116,16 @@ users.get('/me', async (c) => {
 	// Get full user profile
 	const profile = await userService.getUserProfile(user.id)
 
+	// Lazy-load Discord status if needed
+	const discordStatus = await getDiscordStatus(c)
+
 	return c.json({
 		id: profile.id,
 		mainCharacterId: profile.mainCharacterId,
 		characters: profile.characters,
 		is_admin: profile.is_admin,
 		preferences: profile.preferences,
-		discord: user.discord || null,
+		discord: discordStatus,
 		createdAt: profile.createdAt,
 		updatedAt: profile.updatedAt,
 	})
@@ -255,7 +259,7 @@ users.post('/me/characters/:characterId/set-primary', async (c) => {
 		)
 
 		// Update Discord nickname if user has Discord linked
-		if (user.discord) {
+		if (user.discordUserId) {
 			try {
 				const discordService = await import('../services/discord.service.js')
 				// Only update nickname, don't re-invite or update roles

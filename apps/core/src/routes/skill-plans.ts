@@ -5,15 +5,12 @@ import { getStub } from '@repo/do-utils'
 import { createDb } from '../db'
 import {
 	canCheckCharacterProgress,
-	canCreateCategory,
-	canCreateSkillPlan,
 	canDeletePlan,
-	canManageCategories,
 	canModifyPlan,
 	canViewPlan,
 } from '../lib/skill-plan-auth'
 import { getCachedGroup, getCachedUserMemberships } from '../lib/groups-cache'
-import { requireAuth } from '../middleware/session'
+import { requireAllianceMember } from '../middleware/session'
 
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type {
@@ -64,8 +61,8 @@ async function resolveMaintainerName(
 }
 
 const skillPlansRoutes = new Hono<App>()
-	// All routes require authentication
-	.use('*', requireAuth())
+	// All routes require alliance membership
+	.use('*', requireAllianceMember())
 
 	// ===== Category Management =====
 
@@ -83,15 +80,14 @@ const skillPlansRoutes = new Hono<App>()
 	/**
 	 * POST /api/skill-plans/categories
 	 * Create a new skill plan category
-	 * Requires: urn:skill-plans:categories:create permission
+	 * Requires: Admin role
 	 */
 	.post('/categories', async (c) => {
 		const user = c.get('user')!
 
-		// Check permission
-		const allowed = await canCreateCategory(c.env, user.id, user.is_admin)
-		if (!allowed) {
-			return c.json({ error: 'Permission denied' }, 403)
+		// Only admins can create categories
+		if (!user.is_admin) {
+			return c.json({ error: 'Forbidden' }, 403)
 		}
 
 		// Parse and validate input
@@ -125,16 +121,15 @@ const skillPlansRoutes = new Hono<App>()
 	/**
 	 * PATCH /api/skill-plans/categories/:categoryId
 	 * Update a skill plan category
-	 * Requires: urn:skill-plans:categories:manage permission
+	 * Requires: Admin role
 	 */
 	.patch('/categories/:categoryId', async (c) => {
 		const user = c.get('user')!
 		const categoryId = c.req.param('categoryId')
 
-		// Check permission
-		const allowed = await canManageCategories(c.env, user.id, user.is_admin)
-		if (!allowed) {
-			return c.json({ error: 'Permission denied' }, 403)
+		// Only admins can manage categories
+		if (!user.is_admin) {
+			return c.json({ error: 'Forbidden' }, 403)
 		}
 
 		// Parse and validate input
@@ -164,16 +159,15 @@ const skillPlansRoutes = new Hono<App>()
 	/**
 	 * DELETE /api/skill-plans/categories/:categoryId
 	 * Delete a skill plan category
-	 * Requires: urn:skill-plans:categories:manage permission
+	 * Requires: Admin role
 	 */
 	.delete('/categories/:categoryId', async (c) => {
 		const user = c.get('user')!
 		const categoryId = c.req.param('categoryId')
 
-		// Check permission
-		const allowed = await canManageCategories(c.env, user.id, user.is_admin)
-		if (!allowed) {
-			return c.json({ error: 'Permission denied' }, 403)
+		// Only admins can manage categories
+		if (!user.is_admin) {
+			return c.json({ error: 'Forbidden' }, 403)
 		}
 
 		// Delete category
@@ -224,8 +218,8 @@ const skillPlansRoutes = new Hono<App>()
 				// Add permission flags and maintainer name for each plan
 				const plansWithPermissions = await Promise.all(
 					result.items.map(async (plan) => {
-						const canModify = await canModifyPlan(plan, user.id, c.env, user.is_admin)
-						const canDelete = await canDeletePlan(plan, user.id, c.env, user.is_admin)
+						const canModify = await canModifyPlan(plan, user.id, c.env)
+						const canDelete = await canDeletePlan(plan, user.id, c.env)
 						const maintainerType = plan.maintainerId?.startsWith('group:')
 							? ('group' as const)
 							: ('user' as const)
@@ -353,7 +347,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check view permission (same as viewing the plan)
-		const allowed = await canViewPlan(plan, user.id, c.env, user.is_admin)
+		const allowed = await canViewPlan(plan, user.id, c.env)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -379,9 +373,7 @@ const skillPlansRoutes = new Hono<App>()
 		const allowed = await canCheckCharacterProgress(
 			characterId,
 			user.id,
-			db,
-			c.env,
-			user.is_admin
+			db
 		)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
@@ -396,7 +388,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check if user can view the plan (if private)
-		const canView = await canViewPlan(plan, user.id, c.env, user.is_admin)
+		const canView = await canViewPlan(plan, user.id, c.env)
 		if (!canView) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -498,7 +490,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check if user can view the plan (if private)
-		const canView = await canViewPlan(plan, user.id, c.env, user.is_admin)
+		const canView = await canViewPlan(plan, user.id, c.env)
 		if (!canView) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -595,14 +587,14 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check view permission
-		const allowed = await canViewPlan(plan, user.id, c.env, user.is_admin)
+		const allowed = await canViewPlan(plan, user.id, c.env)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
 
 		// Add permission flags for the UI
-		const canModify = await canModifyPlan(plan, user.id, c.env, user.is_admin)
-		const canDelete = await canDeletePlan(plan, user.id, c.env, user.is_admin)
+		const canModify = await canModifyPlan(plan, user.id, c.env)
+		const canDelete = await canDeletePlan(plan, user.id, c.env)
 
 		// Add maintainer name for display
 		const db = createDb(c.env.DATABASE_URL)
@@ -625,16 +617,10 @@ const skillPlansRoutes = new Hono<App>()
 	/**
 	 * POST /api/skill-plans
 	 * Create a new skill plan
-	 * Requires: urn:skill-plans:create permission
+	 * Any alliance member can create skill plans
 	 */
 	.post('/', async (c) => {
 		const user = c.get('user')!
-
-		// Check permission
-		const allowed = await canCreateSkillPlan(c.env, user.id, user.is_admin)
-		if (!allowed) {
-			return c.json({ error: 'Permission denied' }, 403)
-		}
 
 		// Parse input
 		const data = await c.req.json<CreateSkillPlanInput>()
@@ -694,7 +680,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check modification permission
-		const allowed = await canModifyPlan(plan, user.id, c.env, user.is_admin)
+		const allowed = await canModifyPlan(plan, user.id, c.env)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -744,7 +730,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check deletion permission
-		const allowed = await canDeletePlan(plan, user.id, c.env, user.is_admin)
+		const allowed = await canDeletePlan(plan, user.id, c.env)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -783,7 +769,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check modification permission
-		const allowed = await canModifyPlan(plan, user.id, c.env, user.is_admin)
+		const allowed = await canModifyPlan(plan, user.id, c.env)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -860,7 +846,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check modification permission
-		const allowed = await canModifyPlan(plan, user.id, c.env, user.is_admin)
+		const allowed = await canModifyPlan(plan, user.id, c.env)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -977,7 +963,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check modification permission
-		const allowed = await canModifyPlan(plan, user.id, c.env, user.is_admin)
+		const allowed = await canModifyPlan(plan, user.id, c.env)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -1055,7 +1041,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check modification permission
-		const allowed = await canModifyPlan(plan, user.id, c.env, user.is_admin)
+		const allowed = await canModifyPlan(plan, user.id, c.env)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -1098,7 +1084,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check modification permission
-		const allowed = await canModifyPlan(plan, user.id, c.env, user.is_admin)
+		const allowed = await canModifyPlan(plan, user.id, c.env)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -1139,7 +1125,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check modification permission
-		const allowed = await canModifyPlan(plan, user.id, c.env, user.is_admin)
+		const allowed = await canModifyPlan(plan, user.id, c.env)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -1181,9 +1167,7 @@ const skillPlansRoutes = new Hono<App>()
 		const allowed = await canCheckCharacterProgress(
 			characterId,
 			user.id,
-			db,
-			c.env,
-			user.is_admin
+			db
 		)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
@@ -1198,7 +1182,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check if user can view the plan (if private)
-		const canView = await canViewPlan(plan, user.id, c.env, user.is_admin)
+		const canView = await canViewPlan(plan, user.id, c.env)
 		if (!canView) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -1293,9 +1277,7 @@ const skillPlansRoutes = new Hono<App>()
 		const allowed = await canCheckCharacterProgress(
 			characterId,
 			user.id,
-			db,
-			c.env,
-			user.is_admin
+			db
 		)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)

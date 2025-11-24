@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 
 import { logger } from '@repo/hono-helpers'
 
+import { getDiscordStatus } from '../lib/discord-helpers'
 import { requireAuth } from '../middleware/session'
 import * as discordService from '../services/discord.service'
 
@@ -24,7 +25,8 @@ discord.post('/link/start', requireAuth(), async (c) => {
 	const user = c.get('user')!
 
 	// Check if user already has Discord linked and authorization is still valid
-	if (user.discord && !user.discord.authRevoked) {
+	const discordStatus = await getDiscordStatus(c)
+	if (discordStatus && !discordStatus.authRevoked) {
 		return c.json(
 			{
 				error: 'Discord account already linked',

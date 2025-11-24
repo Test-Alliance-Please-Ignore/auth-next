@@ -107,32 +107,37 @@ export class UserService {
 
 	/**
 	 * Get full user profile with characters and preferences
+	 * Optimized to fetch all data in parallel rather than sequentially
 	 */
 	async getUserProfile(userId: string): Promise<UserProfileDTO> {
-		const user = await this.db.query.users.findFirst({
-			where: eq(users.id, userId),
-			with: {
-				characters: {
-					columns: {
-						id: true,
-						userId: true,
-						characterOwnerHash: true,
-						characterId: true,
-						characterName: true,
-						is_primary: true,
-						hasValidToken: true,
-						linkedAt: true,
-					},
+		// Execute all 3 queries in parallel for better performance
+		const [user, characters, preferences] = await Promise.all([
+			this.db.query.users.findFirst({
+				where: eq(users.id, userId),
+			}),
+			this.db.query.userCharacters.findMany({
+				where: eq(userCharacters.userId, userId),
+				columns: {
+					id: true,
+					userId: true,
+					characterOwnerHash: true,
+					characterId: true,
+					characterName: true,
+					is_primary: true,
+					hasValidToken: true,
+					linkedAt: true,
 				},
-				preferences: true,
-			},
-		})
+			}),
+			this.db.query.userPreferences.findFirst({
+				where: eq(userPreferences.userId, userId),
+			}),
+		])
 
 		if (!user) {
 			throw new Error('User not found')
 		}
 
-		const charactersDTO: UserCharacterDTO[] = user.characters.map((char) => ({
+		const charactersDTO: UserCharacterDTO[] = characters.map((char) => ({
 			id: char.id,
 			characterOwnerHash: char.characterOwnerHash,
 			characterId: char.characterId,
@@ -142,7 +147,7 @@ export class UserService {
 			linkedAt: char.linkedAt,
 		}))
 
-		const preferencesDTO: UserPreferencesDTO = user.preferences?.preferences || {}
+		const preferencesDTO: UserPreferencesDTO = preferences?.preferences || {}
 
 		return {
 			id: user.id,

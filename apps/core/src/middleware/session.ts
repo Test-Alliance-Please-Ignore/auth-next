@@ -7,7 +7,6 @@ import { logger } from '@repo/hono-helpers'
 import { createDb } from '../db'
 import { getCachedUserRoles } from '../lib/groups-cache'
 import { AuthService } from '../services/auth.service'
-import * as discordService from '../services/discord.service'
 import { SessionService } from '../services/session.service'
 import { UserService } from '../services/user.service'
 
@@ -52,31 +51,26 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 			const authService = new AuthService(db, eveTokenStoreStub, c.env.SESSION_SECRET)
 			const userService = new UserService(db)
 
-			// Validate session
-			const session = await authService.validateSession(sessionToken)
+			// Validate session and get user ID in one call
+			const { session, userId } = await authService.validateSession(sessionToken)
 
-			if (!session) {
-				// Invalid or expired session
+			if (!session || !userId) {
+				// Invalid or expired session, or user not found
 				await next()
 				return
 			}
 
-			// Get user ID from session
-			const userId = await authService.getUserIdFromSession(sessionToken)
+			// Execute independent operations in parallel for better performance
+			const [userProfile, isBlacklisted, roleAttachments] = await Promise.all([
+				userService.getUserProfile(userId),
+				getStub<Hr>(c.env.HR, 'default').isUserBlacklisted(userId),
+				getCachedUserRoles(c.env, userId).catch((error) => {
+					logger.error('Error fetching user roles:', error)
+					return []
+				}),
+			])
 
-			if (!userId) {
-				// Session exists but user not found
-				await next()
-				return
-			}
-
-			// Load user profile
-			const userProfile = await userService.getUserProfile(userId)
-
-			// SECURITY: Check if user is blacklisted
-			const hrStub = getStub<Hr>(c.env.HR, 'default')
-			const isBlacklisted = await hrStub.isUserBlacklisted(userId)
-
+			// SECURITY: Check blacklist first (fail fast)
 			if (isBlacklisted) {
 				// User is blacklisted - invalidate session and reject
 				const sessionService = new SessionService(db)
@@ -84,40 +78,10 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 				return c.json({ error: 'Account suspended' }, 403)
 			}
 
-			// Fetch user's roles from Groups Durable Object (cached)
-			let userRoles: string[] = []
-			try {
-				const roleAttachments = await getCachedUserRoles(c.env, userId)
-				// Extract role names (URNs) from attachments
-				userRoles = roleAttachments.map((attachment) => attachment.role.name)
-			} catch (error) {
-				logger.error('Error fetching user roles:', error)
-				// Continue without roles if error occurs
-				userRoles = []
-			}
+			// Extract role names (URNs) from attachments
+			const userRoles = roleAttachments.map((attachment) => attachment.role.name)
 
-			// Load Discord profile if linked
-			let discordProfile
-			if (userProfile.discordUserId) {
-				try {
-					const status = await discordService.getUserStatus(c.env, userId)
-					if (status) {
-						discordProfile = {
-							userId: status.userId,
-							username: status.username,
-							discriminator: status.discriminator,
-							authRevoked: status.authRevoked,
-							authRevokedAt: status.authRevokedAt,
-							lastSuccessfulAuth: status.lastSuccessfulAuth,
-						}
-					}
-				} catch (error) {
-					logger.error('Error loading Discord profile:', error)
-					// Continue without Discord profile if error occurs
-				}
-			}
-
-			// Build session user object
+			// Build session user object (Discord status can be loaded on-demand via getDiscordStatus())
 			const sessionUser: SessionUser = {
 				id: userProfile.id,
 				mainCharacterId: userProfile.mainCharacterId,
@@ -132,7 +96,7 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 				})),
 				is_admin: userProfile.is_admin,
 				roles: userRoles,
-				discord: discordProfile,
+				discordUserId: userProfile.discordUserId || undefined,
 			}
 
 			// Attach to context

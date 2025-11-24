@@ -71,15 +71,8 @@ export interface SessionUser {
 	is_admin: boolean
 	/** Array of role URNs assigned to the user */
 	roles: string[]
-	/** Discord profile (if linked) */
-	discord?: {
-		userId: string
-		username: string
-		discriminator: string
-		authRevoked: boolean
-		authRevokedAt: Date | null
-		lastSuccessfulAuth: Date | null
-	}
+	/** Discord user ID (if linked). Use getDiscordStatus() to fetch full Discord profile. */
+	discordUserId?: string | null
 }
 
 /** Variables can be extended */
