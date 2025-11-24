@@ -7,9 +7,9 @@ import type {
 	CharacterContact,
 	CharacterContract,
 	CharacterFitting,
+	CharacterKillmailBasic,
 	CharacterLocation,
 	CharacterMail,
-	MailContent,
 	CharacterMarketOrder,
 	CharacterMarketTransaction,
 	CharacterMiningLedger,
@@ -54,9 +54,9 @@ import type {
 	EsiCharacterContact,
 	EsiCharacterContract,
 	EsiCharacterFitting,
+	EsiCharacterKillmail,
 	EsiCharacterLocation,
 	EsiCharacterMail,
-	EsiMailContent,
 	EsiCharacterMarketOrder,
 	EsiCharacterMarketTransaction,
 	EsiCharacterMiningLedger,
@@ -93,7 +93,9 @@ import type {
 	EsiCorporationWallet,
 	EsiCorporationWalletJournalEntry,
 	EsiCorporationWalletTransaction,
+	EsiMailContent,
 	EsiStructureInfo,
+	MailContent,
 	StructureInfo,
 } from '@repo/esi'
 
@@ -271,6 +273,15 @@ export function transformCorporationIndustryJobs(
 export function transformCorporationKillmails(
 	killmails: EsiCorporationKillmail[]
 ): CorporationKillmail[] {
+	return killmails.map((km) => ({
+		...km,
+		killmail_id: String(km.killmail_id),
+	}))
+}
+
+export function transformCharacterKillmails(
+	killmails: EsiCharacterKillmail[]
+): CharacterKillmailBasic[] {
 	return killmails.map((km) => ({
 		...km,
 		killmail_id: String(km.killmail_id),

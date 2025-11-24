@@ -393,6 +393,15 @@ export interface EsiCharacterWalletJournalEntry {
 	context_id_type?: string
 }
 
+/**
+ * Character killmail from ESI
+ * GET /characters/{character_id}/killmails/recent
+ */
+export interface EsiCharacterKillmail {
+	killmail_id: number
+	killmail_hash: string
+}
+
 // ============================================================================
 // CHARACTER TYPES - TRANSFORMED
 // ============================================================================
@@ -675,4 +684,9 @@ export interface CharacterWalletJournalEntry {
 	tax_receiver_id?: string
 	context_id?: string
 	context_id_type?: string
+}
+
+export interface CharacterKillmailBasic {
+	killmail_id: string
+	killmail_hash: string
 }

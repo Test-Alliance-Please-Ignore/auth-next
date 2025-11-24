@@ -15,7 +15,7 @@ import {
 } from '@repo/srp'
 
 import { getCachedUserPermissions } from '../lib/groups-cache'
-import { requireAuth } from '../middleware/session'
+import { requireAllianceMember } from '../middleware/session'
 
 import type { Srp } from '@repo/srp'
 import type { App } from '../context'
@@ -64,7 +64,7 @@ async function hasPermission(
 const srp = new Hono<App>()
 
 // Apply authentication middleware to all routes
-srp.use('*', requireAuth())
+srp.use('*', requireAllianceMember())
 
 // =============================================================================
 // LOSSES
@@ -365,12 +365,7 @@ srp.post('/requests/:id/comments', async (c) => {
 
 	// Only admins/reviewers can create internal comments
 	if (visibility === 'internal') {
-		const canCreateInternal = await hasPermission(
-			c.env,
-			user.id,
-			'urn:srp:reviewer',
-			user.is_admin
-		)
+		const canCreateInternal = await hasPermission(c.env, user.id, 'urn:srp:reviewer', user.is_admin)
 
 		if (!canCreateInternal) {
 			return c.json({ error: 'Not authorized to create internal comments' }, 403)

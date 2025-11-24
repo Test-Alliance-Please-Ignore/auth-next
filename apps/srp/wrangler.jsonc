@@ -32,6 +32,16 @@
 				"name": "EVE_TOKEN_STORE",
 				"class_name": "EveTokenStore",
 				"script_name": "eve-token-store"
+			},
+			{
+				"name": "ESI",
+				"class_name": "Esi",
+				"script_name": "esi"
+			},
+			{
+				"name": "ESI_TYPE_RESOLVER",
+				"class_name": "EsiTypeResolver",
+				"script_name": "esi"
 			}
 		]
 	},

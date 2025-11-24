@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 
+import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
 import { getStub } from '@repo/do-utils'
 
 import { getCachedUserMemberships, getCachedUserPermissions } from '../lib/groups-cache'
@@ -34,7 +35,7 @@ async function hasPermission(
 const broadcasts = new Hono<App>()
 
 // Apply authentication middleware to all routes
-broadcasts.use('*', requireAuth())
+broadcasts.use('*', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }))
 
 // =============================================================================
 // BROADCAST TARGETS
@@ -110,9 +111,9 @@ broadcasts.post('/targets', async (c) => {
 	const data = await c.req.json()
 
 	// Check permissions - user must be admin or have broadcast permission in the group
-		const allowed = await hasPermission(
-			c.env,
-			user.id,
+	const allowed = await hasPermission(
+		c.env,
+		user.id,
 		`urn:group:${data.groupId}:broadcasts:manage`,
 		user.is_admin
 	)
@@ -145,9 +146,9 @@ broadcasts.patch('/targets/:id', async (c) => {
 	}
 
 	// Check permissions
-		const allowed = await hasPermission(
-			c.env,
-			user.id,
+	const allowed = await hasPermission(
+		c.env,
+		user.id,
 		`urn:group:${target.groupId}:broadcasts:manage`,
 		user.is_admin
 	)
@@ -177,9 +178,9 @@ broadcasts.delete('/targets/:id', async (c) => {
 	}
 
 	// Check permissions
-		const allowed = await hasPermission(
-			c.env,
-			user.id,
+	const allowed = await hasPermission(
+		c.env,
+		user.id,
 		`urn:group:${target.groupId}:broadcasts:manage`,
 		user.is_admin
 	)
@@ -266,9 +267,9 @@ broadcasts.post('/templates', async (c) => {
 	const data = await c.req.json()
 
 	// Check permissions
-		const allowed = await hasPermission(
-			c.env,
-			user.id,
+	const allowed = await hasPermission(
+		c.env,
+		user.id,
 		`urn:group:${data.groupId}:broadcasts:manage`,
 		user.is_admin
 	)
@@ -301,9 +302,9 @@ broadcasts.patch('/templates/:id', async (c) => {
 	}
 
 	// Check permissions
-		const allowed = await hasPermission(
-			c.env,
-			user.id,
+	const allowed = await hasPermission(
+		c.env,
+		user.id,
 		`urn:group:${template.groupId}:broadcasts:manage`,
 		user.is_admin
 	)
@@ -333,9 +334,9 @@ broadcasts.delete('/templates/:id', async (c) => {
 	}
 
 	// Check permissions
-		const allowed = await hasPermission(
-			c.env,
-			user.id,
+	const allowed = await hasPermission(
+		c.env,
+		user.id,
 		`urn:group:${template.groupId}:broadcasts:manage`,
 		user.is_admin
 	)
@@ -423,9 +424,9 @@ broadcasts.post('/', async (c) => {
 	const data = await c.req.json()
 
 	// Check permissions
-		const allowed = await hasPermission(
-			c.env,
-			user.id,
+	const allowed = await hasPermission(
+		c.env,
+		user.id,
 		`urn:group:${data.groupId}:broadcasts:send`,
 		user.is_admin
 	)
@@ -464,9 +465,9 @@ broadcasts.post('/:id/send', async (c) => {
 	}
 
 	// Check permissions
-		const allowed = await hasPermission(
-			c.env,
-			user.id,
+	const allowed = await hasPermission(
+		c.env,
+		user.id,
 		`urn:group:${broadcast.groupId}:broadcasts:send`,
 		user.is_admin
 	)
@@ -498,9 +499,9 @@ broadcasts.delete('/:id', async (c) => {
 	}
 
 	// Check permissions
-		const allowed = await hasPermission(
-			c.env,
-			user.id,
+	const allowed = await hasPermission(
+		c.env,
+		user.id,
 		`urn:group:${broadcast.groupId}:broadcasts:manage`,
 		user.is_admin
 	)

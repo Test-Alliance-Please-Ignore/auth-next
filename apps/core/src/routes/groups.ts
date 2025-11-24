@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 
+import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
 import { and } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
@@ -18,7 +19,7 @@ import type { App } from '../context'
  * Session middleware loads user into context.
  */
 const groups = new Hono<App>()
-
+groups.use('*', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }))
 // ===== Categories =====
 
 /**
@@ -26,7 +27,7 @@ const groups = new Hono<App>()
  *
  * List all categories (respects visibility for non-admins)
  */
-groups.get('/categories', requireAuth(), async (c) => {
+groups.get('/categories', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), async (c) => {
 	const user = c.get('user')!
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
@@ -43,7 +44,7 @@ groups.get('/categories', requireAuth(), async (c) => {
  *
  * Get single category with its groups
  */
-groups.get('/categories/:id', requireAuth(), async (c) => {
+groups.get('/categories/:id', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), async (c) => {
 	const user = c.get('user')!
 	const categoryId = c.req.param('id')
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
@@ -64,70 +65,85 @@ groups.get('/categories/:id', requireAuth(), async (c) => {
  *
  * Create a new category (admin only)
  */
-groups.post('/categories', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')!
-	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.post(
+	'/categories',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	requireAdmin(),
+	async (c) => {
+		const user = c.get('user')!
+		const body = await c.req.json()
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	try {
-		const category = await groupsDO.createCategory(body, user.id)
-		return c.json(category, 201)
-	} catch (error) {
-		if (error instanceof Error) {
-			return c.json({ error: error.message }, 400)
+		try {
+			const category = await groupsDO.createCategory(body, user.id)
+			return c.json(category, 201)
+		} catch (error) {
+			if (error instanceof Error) {
+				return c.json({ error: error.message }, 400)
+			}
+			throw error
 		}
-		throw error
 	}
-})
+)
 
 /**
  * PATCH /categories/:id
  *
  * Update a category (admin only)
  */
-groups.patch('/categories/:id', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')!
-	const categoryId = c.req.param('id')
-	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.patch(
+	'/categories/:id',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	requireAdmin(),
+	async (c) => {
+		const user = c.get('user')!
+		const categoryId = c.req.param('id')
+		const body = await c.req.json()
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	try {
-		const category = await groupsDO.updateCategory(categoryId, body, user.id)
-		return c.json(category)
-	} catch (error) {
-		if (error instanceof Error) {
-			if (error.message.includes('not found')) {
-				return c.json({ error: 'Category not found' }, 404)
+		try {
+			const category = await groupsDO.updateCategory(categoryId, body, user.id)
+			return c.json(category)
+		} catch (error) {
+			if (error instanceof Error) {
+				if (error.message.includes('not found')) {
+					return c.json({ error: 'Category not found' }, 404)
+				}
+				return c.json({ error: error.message }, 400)
 			}
-			return c.json({ error: error.message }, 400)
+			throw error
 		}
-		throw error
 	}
-})
+)
 
 /**
  * DELETE /categories/:id
  *
  * Delete a category (admin only)
  */
-groups.delete('/categories/:id', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')!
-	const categoryId = c.req.param('id')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.delete(
+	'/categories/:id',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	requireAdmin(),
+	async (c) => {
+		const user = c.get('user')!
+		const categoryId = c.req.param('id')
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	try {
-		await groupsDO.deleteCategory(categoryId, user.id)
-		return c.json({ success: true }, 200)
-	} catch (error) {
-		if (error instanceof Error) {
-			if (error.message.includes('not found')) {
-				return c.json({ error: 'Category not found' }, 404)
+		try {
+			await groupsDO.deleteCategory(categoryId, user.id)
+			return c.json({ success: true }, 200)
+		} catch (error) {
+			if (error instanceof Error) {
+				if (error.message.includes('not found')) {
+					return c.json({ error: 'Category not found' }, 404)
+				}
+				return c.json({ error: error.message }, 400)
 			}
-			return c.json({ error: error.message }, 400)
+			throw error
 		}
-		throw error
 	}
-})
+)
 
 // ===== Groups =====
 
@@ -137,7 +153,7 @@ groups.delete('/categories/:id', requireAuth(), requireAdmin(), async (c) => {
  * List groups with optional filters
  * Query params: categoryId, visibility, joinMode, search, myGroups
  */
-groups.get('/', requireAuth(), async (c) => {
+groups.get('/', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), async (c) => {
 	const user = c.get('user')!
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
@@ -186,7 +202,7 @@ groups.get('/', requireAuth(), async (c) => {
  *
  * Create a new group (admin only)
  */
-groups.post('/', requireAuth(), requireAdmin(), async (c) => {
+groups.post('/', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), requireAdmin(), async (c) => {
 	const user = c.get('user')!
 	const body = await c.req.json()
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
@@ -209,7 +225,7 @@ groups.post('/', requireAuth(), requireAdmin(), async (c) => {
  *
  * Get current user's group memberships
  */
-groups.get('/my-groups', requireAuth(), async (c) => {
+groups.get('/my-groups', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), async (c) => {
 	const user = c.get('user')!
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
@@ -222,7 +238,7 @@ groups.get('/my-groups', requireAuth(), async (c) => {
  *
  * Get current user's pending invitations
  */
-groups.get('/invitations', requireAuth(), async (c) => {
+groups.get('/invitations', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), async (c) => {
 	const user = c.get('user')!
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
@@ -235,238 +251,279 @@ groups.get('/invitations', requireAuth(), async (c) => {
  *
  * List pending invitations for a group (owner/admin only)
  */
-groups.get('/:groupId/invitations', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')!
-	const groupId = c.req.param('groupId')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.get(
+	'/:groupId/invitations',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	requireAdmin(),
+	async (c) => {
+		const user = c.get('user')!
+		const groupId = c.req.param('groupId')
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	try {
-		const invitations = await groupsDO.getGroupInvitations(groupId, user.id, user.is_admin)
-		return c.json(invitations)
-	} catch (error) {
-		if (error instanceof Error) {
-			return c.json({ error: error.message }, 403)
+		try {
+			const invitations = await groupsDO.getGroupInvitations(groupId, user.id, user.is_admin)
+			return c.json(invitations)
+		} catch (error) {
+			if (error instanceof Error) {
+				return c.json({ error: error.message }, 403)
+			}
+			throw error
 		}
-		throw error
 	}
-})
+)
 
 /**
  * POST /:groupId/invitations
  *
  * Create a direct invitation by character name (admin only)
  */
-groups.post('/:groupId/invitations', requireAuth(), async (c) => {
-	const user = c.get('user')!
-	const groupId = c.req.param('groupId')
-	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.post(
+	'/:groupId/invitations',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	async (c) => {
+		const user = c.get('user')!
+		const groupId = c.req.param('groupId')
+		const body = await c.req.json()
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	if (!body.characterName) {
-		return c.json({ error: 'characterName is required' }, 400)
-	}
-
-	try {
-		const invitation = await groupsDO.createInvitation(
-			{
-				groupId,
-				characterName: body.characterName,
-			},
-			user.id
-		)
-		return c.json(invitation, 201)
-	} catch (error) {
-		if (error instanceof Error) {
-			return c.json({ error: error.message }, 400)
+		if (!body.characterName) {
+			return c.json({ error: 'characterName is required' }, 400)
 		}
-		throw error
+
+		try {
+			const invitation = await groupsDO.createInvitation(
+				{
+					groupId,
+					characterName: body.characterName,
+				},
+				user.id
+			)
+			return c.json(invitation, 201)
+		} catch (error) {
+			if (error instanceof Error) {
+				return c.json({ error: error.message }, 400)
+			}
+			throw error
+		}
 	}
-})
+)
 
 /**
  * POST /invitations/:id/accept
  *
  * Accept a group invitation
  */
-groups.post('/invitations/:id/accept', requireAuth(), async (c) => {
-	const user = c.get('user')!
-	const invitationId = c.req.param('id')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.post(
+	'/invitations/:id/accept',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	async (c) => {
+		const user = c.get('user')!
+		const invitationId = c.req.param('id')
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	try {
-		await groupsDO.acceptInvitation(invitationId, user.id)
-		// Invalidate user cache after accepting invitation
-		clearUserCache(user.id)
-		return c.json({ success: true }, 200)
-	} catch (error) {
-		if (error instanceof Error) {
-			return c.json({ error: error.message }, 400)
+		try {
+			await groupsDO.acceptInvitation(invitationId, user.id)
+			// Invalidate user cache after accepting invitation
+			clearUserCache(user.id)
+			return c.json({ success: true }, 200)
+		} catch (error) {
+			if (error instanceof Error) {
+				return c.json({ error: error.message }, 400)
+			}
+			throw error
 		}
-		throw error
 	}
-})
+)
 
 /**
  * POST /invitations/:id/decline
  *
  * Decline a group invitation
  */
-groups.post('/invitations/:id/decline', requireAuth(), async (c) => {
-	const user = c.get('user')!
-	const invitationId = c.req.param('id')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.post(
+	'/invitations/:id/decline',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	async (c) => {
+		const user = c.get('user')!
+		const invitationId = c.req.param('id')
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	try {
-		await groupsDO.declineInvitation(invitationId, user.id)
-		return c.json({ success: true }, 200)
-	} catch (error) {
-		if (error instanceof Error) {
-			return c.json({ error: error.message }, 400)
+		try {
+			await groupsDO.declineInvitation(invitationId, user.id)
+			return c.json({ success: true }, 200)
+		} catch (error) {
+			if (error instanceof Error) {
+				return c.json({ error: error.message }, 400)
+			}
+			throw error
 		}
-		throw error
 	}
-})
+)
 
 /**
  * POST /:groupId/invite-codes
  *
  * Create an invite code for a group (owner or global admin)
  */
-groups.post('/:groupId/invite-codes', requireAuth(), async (c) => {
-	const user = c.get('user')!
-	const groupId = c.req.param('groupId')
-	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.post(
+	'/:groupId/invite-codes',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	async (c) => {
+		const user = c.get('user')!
+		const groupId = c.req.param('groupId')
+		const body = await c.req.json()
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	try {
-		const result = await groupsDO.createInviteCode(
-			{
-				groupId,
-				maxUses: body.maxUses ?? null,
-				expiresInDays: body.expiresInDays ?? 7,
-			},
-			user.id,
-			user.is_admin
-		)
-		return c.json(result, 201)
-	} catch (error) {
-		if (error instanceof Error) {
-			return c.json({ error: error.message }, 400)
+		try {
+			const result = await groupsDO.createInviteCode(
+				{
+					groupId,
+					maxUses: body.maxUses ?? null,
+					expiresInDays: body.expiresInDays ?? 7,
+				},
+				user.id,
+				user.is_admin
+			)
+			return c.json(result, 201)
+		} catch (error) {
+			if (error instanceof Error) {
+				return c.json({ error: error.message }, 400)
+			}
+			throw error
 		}
-		throw error
 	}
-})
+)
 
 /**
  * GET /:groupId/invite-codes
  *
  * List invite codes for a group (owner/admin/global admin)
  */
-groups.get('/:groupId/invite-codes', requireAuth(), async (c) => {
-	const user = c.get('user')!
-	const groupId = c.req.param('groupId')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.get(
+	'/:groupId/invite-codes',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	async (c) => {
+		const user = c.get('user')!
+		const groupId = c.req.param('groupId')
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	try {
-		const codes = await groupsDO.listInviteCodes(groupId, user.id, user.is_admin)
-		return c.json(codes)
-	} catch (error) {
-		if (error instanceof Error) {
-			return c.json({ error: error.message }, 403)
+		try {
+			const codes = await groupsDO.listInviteCodes(groupId, user.id, user.is_admin)
+			return c.json(codes)
+		} catch (error) {
+			if (error instanceof Error) {
+				return c.json({ error: error.message }, 403)
+			}
+			throw error
 		}
-		throw error
 	}
-})
+)
 
 /**
  * DELETE /invite-codes/:codeId
  *
  * Revoke an invite code (owner or global admin)
  */
-groups.delete('/invite-codes/:codeId', requireAuth(), async (c) => {
-	const user = c.get('user')!
-	const codeId = c.req.param('codeId')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.delete(
+	'/invite-codes/:codeId',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	async (c) => {
+		const user = c.get('user')!
+		const codeId = c.req.param('codeId')
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	try {
-		await groupsDO.revokeInviteCode(codeId, user.id, user.is_admin)
-		return c.json({ success: true }, 200)
-	} catch (error) {
-		if (error instanceof Error) {
-			return c.json({ error: error.message }, 400)
+		try {
+			await groupsDO.revokeInviteCode(codeId, user.id, user.is_admin)
+			return c.json({ success: true }, 200)
+		} catch (error) {
+			if (error instanceof Error) {
+				return c.json({ error: error.message }, 400)
+			}
+			throw error
 		}
-		throw error
 	}
-})
+)
 
 /**
  * POST /invite-codes/redeem
  *
  * Redeem an invite code to join a group
  */
-groups.post('/invite-codes/redeem', requireAuth(), async (c) => {
-	const user = c.get('user')!
-	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.post(
+	'/invite-codes/redeem',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	async (c) => {
+		const user = c.get('user')!
+		const body = await c.req.json()
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	if (!body.code) {
-		return c.json({ error: 'Invite code is required' }, 400)
-	}
-
-	try {
-		const result = await groupsDO.redeemInviteCode(body.code, user.id)
-		return c.json(result, 200)
-	} catch (error) {
-		if (error instanceof Error) {
-			return c.json({ error: error.message }, 400)
+		if (!body.code) {
+			return c.json({ error: 'Invite code is required' }, 400)
 		}
-		throw error
+
+		try {
+			const result = await groupsDO.redeemInviteCode(body.code, user.id)
+			return c.json(result, 200)
+		} catch (error) {
+			if (error instanceof Error) {
+				return c.json({ error: error.message }, 400)
+			}
+			throw error
+		}
 	}
-})
+)
 
 /**
  * POST /join-requests/:requestId/approve
  *
  * Approve a join request (owner/admin only)
  */
-groups.post('/join-requests/:requestId/approve', requireAuth(), async (c) => {
-	const user = c.get('user')!
-	const requestId = c.req.param('requestId')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.post(
+	'/join-requests/:requestId/approve',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	async (c) => {
+		const user = c.get('user')!
+		const requestId = c.req.param('requestId')
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	try {
-		await groupsDO.approveJoinRequest(requestId, user.id)
-		// Invalidate caches - the approved user's memberships changed
-		// Note: We don't have the approved user's ID here, so we rely on TTL expiration
-		return c.json({ success: true }, 200)
-	} catch (error) {
-		if (error instanceof Error) {
-			return c.json({ error: error.message }, 400)
+		try {
+			await groupsDO.approveJoinRequest(requestId, user.id)
+			// Invalidate caches - the approved user's memberships changed
+			// Note: We don't have the approved user's ID here, so we rely on TTL expiration
+			return c.json({ success: true }, 200)
+		} catch (error) {
+			if (error instanceof Error) {
+				return c.json({ error: error.message }, 400)
+			}
+			throw error
 		}
-		throw error
 	}
-})
+)
 
 /**
  * POST /join-requests/:requestId/reject
  *
  * Reject a join request (owner/admin only)
  */
-groups.post('/join-requests/:requestId/reject', requireAuth(), async (c) => {
-	const user = c.get('user')!
-	const requestId = c.req.param('requestId')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.post(
+	'/join-requests/:requestId/reject',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	async (c) => {
+		const user = c.get('user')!
+		const requestId = c.req.param('requestId')
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	try {
-		await groupsDO.rejectJoinRequest(requestId, user.id)
-		return c.json({ success: true }, 200)
-	} catch (error) {
-		if (error instanceof Error) {
-			return c.json({ error: error.message }, 400)
+		try {
+			await groupsDO.rejectJoinRequest(requestId, user.id)
+			return c.json({ success: true }, 200)
+		} catch (error) {
+			if (error instanceof Error) {
+				return c.json({ error: error.message }, 400)
+			}
+			throw error
 		}
-		throw error
 	}
-})
+)
 
 // ===== Permission Categories =====
 
@@ -475,110 +532,130 @@ groups.post('/join-requests/:requestId/reject', requireAuth(), async (c) => {
  *
  * List all permission categories
  */
-groups.get('/permissions/categories', requireAuth(), requireAdmin(), async (c) => {
-	console.log('[API] GET /permissions/categories - Start')
+groups.get(
+	'/permissions/categories',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	requireAdmin(),
+	async (c) => {
+		console.log('[API] GET /permissions/categories - Start')
 
-	try {
-		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
-		console.log('[API] GET /permissions/categories - Got DO stub')
+		try {
+			const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+			console.log('[API] GET /permissions/categories - Got DO stub')
 
-		const categories = await groupsDO.listPermissionCategories()
-		console.log('[API] GET /permissions/categories - Got categories, count:', categories?.length)
+			const categories = await groupsDO.listPermissionCategories()
+			console.log('[API] GET /permissions/categories - Got categories, count:', categories?.length)
 
-		return c.json(categories)
-	} catch (error) {
-		console.error('[API] GET /permissions/categories - Error:', error)
-		if (error instanceof Error) {
-			console.error('[API] GET /permissions/categories - Error message:', error.message)
-			console.error('[API] GET /permissions/categories - Error stack:', error.stack)
-			return c.json({ error: error.message }, 500)
+			return c.json(categories)
+		} catch (error) {
+			console.error('[API] GET /permissions/categories - Error:', error)
+			if (error instanceof Error) {
+				console.error('[API] GET /permissions/categories - Error message:', error.message)
+				console.error('[API] GET /permissions/categories - Error stack:', error.stack)
+				return c.json({ error: error.message }, 500)
+			}
+			throw error
 		}
-		throw error
 	}
-})
+)
 
 /**
  * POST /permissions/categories
  *
  * Create a new permission category
  */
-groups.post('/permissions/categories', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')!
-	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.post(
+	'/permissions/categories',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	requireAdmin(),
+	async (c) => {
+		const user = c.get('user')!
+		const body = await c.req.json()
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	try {
-		const category = await groupsDO.createPermissionCategory(
-			{
-				name: body.name,
-				description: body.description,
-			},
-			user.id
-		)
-		return c.json(category, 201)
-	} catch (error) {
-		if (error instanceof Error) {
-			return c.json({ error: error.message }, 400)
+		try {
+			const category = await groupsDO.createPermissionCategory(
+				{
+					name: body.name,
+					description: body.description,
+				},
+				user.id
+			)
+			return c.json(category, 201)
+		} catch (error) {
+			if (error instanceof Error) {
+				return c.json({ error: error.message }, 400)
+			}
+			throw error
 		}
-		throw error
 	}
-})
+)
 
 /**
  * PATCH /permissions/categories/:id
  *
  * Update a permission category
  */
-groups.patch('/permissions/categories/:id', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')!
-	const categoryId = c.req.param('id')
-	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.patch(
+	'/permissions/categories/:id',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	requireAdmin(),
+	async (c) => {
+		const user = c.get('user')!
+		const categoryId = c.req.param('id')
+		const body = await c.req.json()
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	try {
-		const category = await groupsDO.updatePermissionCategory(
-			categoryId,
-			{
-				name: body.name,
-				description: body.description,
-			},
-			user.id
-		)
-		return c.json(category)
-	} catch (error) {
-		if (error instanceof Error) {
-			if (error.message.includes('not found')) {
-				return c.json({ error: 'Category not found' }, 404)
+		try {
+			const category = await groupsDO.updatePermissionCategory(
+				categoryId,
+				{
+					name: body.name,
+					description: body.description,
+				},
+				user.id
+			)
+			return c.json(category)
+		} catch (error) {
+			if (error instanceof Error) {
+				if (error.message.includes('not found')) {
+					return c.json({ error: 'Category not found' }, 404)
+				}
+				return c.json({ error: error.message }, 400)
 			}
-			return c.json({ error: error.message }, 400)
+			throw error
 		}
-		throw error
 	}
-})
+)
 
 /**
  * DELETE /permissions/categories/:id
  *
  * Delete a permission category
  */
-groups.delete('/permissions/categories/:id', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')!
-	const categoryId = c.req.param('id')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.delete(
+	'/permissions/categories/:id',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	requireAdmin(),
+	async (c) => {
+		const user = c.get('user')!
+		const categoryId = c.req.param('id')
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	try {
-		await groupsDO.deletePermissionCategory(categoryId, user.id)
-		return c.json({ success: true }, 200)
-	} catch (error) {
-		if (error instanceof Error) {
-			if (error.message.includes('not found')) {
-				return c.json({ error: 'Category not found' }, 404)
+		try {
+			await groupsDO.deletePermissionCategory(categoryId, user.id)
+			return c.json({ success: true }, 200)
+		} catch (error) {
+			if (error instanceof Error) {
+				if (error.message.includes('not found')) {
+					return c.json({ error: 'Category not found' }, 404)
+				}
+				return c.json({ error: error.message }, 400)
 			}
-			return c.json({ error: error.message }, 400)
+			throw error
 		}
-		throw error
 	}
-})
+)
 
 // ===== Global Permissions =====
 
@@ -587,138 +664,163 @@ groups.delete('/permissions/categories/:id', requireAuth(), requireAdmin(), asyn
  *
  * List all global permissions, optionally filtered by category
  */
-groups.get('/permissions', requireAuth(), requireAdmin(), async (c) => {
-	console.log('[API] GET /permissions - Start')
-	const categoryId = c.req.query('categoryId')
-	console.log('[API] GET /permissions - categoryId:', categoryId)
+groups.get(
+	'/permissions',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	requireAdmin(),
+	async (c) => {
+		console.log('[API] GET /permissions - Start')
+		const categoryId = c.req.query('categoryId')
+		console.log('[API] GET /permissions - categoryId:', categoryId)
 
-	try {
-		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
-		console.log('[API] GET /permissions - Got DO stub')
+		try {
+			const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+			console.log('[API] GET /permissions - Got DO stub')
 
-		const permissions = await groupsDO.listPermissions(categoryId)
-		console.log('[API] GET /permissions - Got permissions, count:', permissions?.length)
+			const permissions = await groupsDO.listPermissions(categoryId)
+			console.log('[API] GET /permissions - Got permissions, count:', permissions?.length)
 
-		return c.json(permissions)
-	} catch (error) {
-		console.error('[API] GET /permissions - Error:', error)
-		if (error instanceof Error) {
-			console.error('[API] GET /permissions - Error message:', error.message)
-			console.error('[API] GET /permissions - Error stack:', error.stack)
-			return c.json({ error: error.message }, 500)
+			return c.json(permissions)
+		} catch (error) {
+			console.error('[API] GET /permissions - Error:', error)
+			if (error instanceof Error) {
+				console.error('[API] GET /permissions - Error message:', error.message)
+				console.error('[API] GET /permissions - Error stack:', error.stack)
+				return c.json({ error: error.message }, 500)
+			}
+			throw error
 		}
-		throw error
 	}
-})
+)
 
 /**
  * GET /permissions/:id
  *
  * Get a single permission by ID
  */
-groups.get('/permissions/:id', requireAuth(), requireAdmin(), async (c) => {
-	const permissionId = c.req.param('id')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.get(
+	'/permissions/:id',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	requireAdmin(),
+	async (c) => {
+		const permissionId = c.req.param('id')
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	try {
-		const permission = await groupsDO.getPermission(permissionId)
-		return c.json(permission)
-	} catch (error) {
-		if (error instanceof Error) {
-			if (error.message.includes('not found')) {
-				return c.json({ error: 'Permission not found' }, 404)
+		try {
+			const permission = await groupsDO.getPermission(permissionId)
+			return c.json(permission)
+		} catch (error) {
+			if (error instanceof Error) {
+				if (error.message.includes('not found')) {
+					return c.json({ error: 'Permission not found' }, 404)
+				}
+				return c.json({ error: error.message }, 400)
 			}
-			return c.json({ error: error.message }, 400)
+			throw error
 		}
-		throw error
 	}
-})
+)
 
 /**
  * POST /permissions
  *
  * Create a new global permission
  */
-groups.post('/permissions', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')!
-	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.post(
+	'/permissions',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	requireAdmin(),
+	async (c) => {
+		const user = c.get('user')!
+		const body = await c.req.json()
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	try {
-		const permission = await groupsDO.createPermission(
-			{
-				urn: body.urn,
-				name: body.name,
-				description: body.description,
-				categoryId: body.categoryId,
-			},
-			user.id
-		)
-		return c.json(permission, 201)
-	} catch (error) {
-		if (error instanceof Error) {
-			return c.json({ error: error.message }, 400)
+		try {
+			const permission = await groupsDO.createPermission(
+				{
+					urn: body.urn,
+					name: body.name,
+					description: body.description,
+					categoryId: body.categoryId,
+				},
+				user.id
+			)
+			return c.json(permission, 201)
+		} catch (error) {
+			if (error instanceof Error) {
+				return c.json({ error: error.message }, 400)
+			}
+			throw error
 		}
-		throw error
 	}
-})
+)
 
 /**
  * PATCH /permissions/:id
  *
  * Update a global permission
  */
-groups.patch('/permissions/:id', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')!
-	const permissionId = c.req.param('id')
-	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.patch(
+	'/permissions/:id',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	requireAdmin(),
+	async (c) => {
+		const user = c.get('user')!
+		const permissionId = c.req.param('id')
+		const body = await c.req.json()
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	try {
-		const permission = await groupsDO.updatePermission(
-			permissionId,
-			{
-				name: body.name,
-				description: body.description,
-				categoryId: body.categoryId,
-			},
-			user.id
-		)
-		return c.json(permission)
-	} catch (error) {
-		if (error instanceof Error) {
-			if (error.message.includes('not found')) {
-				return c.json({ error: 'Permission not found' }, 404)
+		try {
+			const permission = await groupsDO.updatePermission(
+				permissionId,
+				{
+					name: body.name,
+					description: body.description,
+					categoryId: body.categoryId,
+				},
+				user.id
+			)
+			return c.json(permission)
+		} catch (error) {
+			if (error instanceof Error) {
+				if (error.message.includes('not found')) {
+					return c.json({ error: 'Permission not found' }, 404)
+				}
+				return c.json({ error: error.message }, 400)
 			}
-			return c.json({ error: error.message }, 400)
+			throw error
 		}
-		throw error
 	}
-})
+)
 
 /**
  * DELETE /permissions/:id
  *
  * Delete a global permission
  */
-groups.delete('/permissions/:id', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')!
-	const permissionId = c.req.param('id')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.delete(
+	'/permissions/:id',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	requireAdmin(),
+	async (c) => {
+		const user = c.get('user')!
+		const permissionId = c.req.param('id')
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	try {
-		await groupsDO.deletePermission(permissionId, user.id)
-		return c.json({ success: true }, 200)
-	} catch (error) {
-		if (error instanceof Error) {
-			if (error.message.includes('not found')) {
-				return c.json({ error: 'Permission not found' }, 404)
+		try {
+			await groupsDO.deletePermission(permissionId, user.id)
+			return c.json({ success: true }, 200)
+		} catch (error) {
+			if (error instanceof Error) {
+				if (error.message.includes('not found')) {
+					return c.json({ error: 'Permission not found' }, 404)
+				}
+				return c.json({ error: error.message }, 400)
 			}
-			return c.json({ error: error.message }, 400)
+			throw error
 		}
-		throw error
 	}
-})
+)
 
 // ===== Group Permissions =====
 
@@ -727,84 +829,99 @@ groups.delete('/permissions/:id', requireAuth(), requireAdmin(), async (c) => {
  *
  * List all permissions for a group (admin only)
  */
-groups.get('/:groupId/permissions', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')!
-	const groupId = c.req.param('groupId')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.get(
+	'/:groupId/permissions',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	requireAdmin(),
+	async (c) => {
+		const user = c.get('user')!
+		const groupId = c.req.param('groupId')
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	try {
-		const permissions = await groupsDO.listGroupPermissions(groupId, user.id)
-		return c.json(permissions)
-	} catch (error) {
-		if (error instanceof Error) {
-			if (error.message.includes('not found')) {
-				return c.json({ error: 'Group not found' }, 404)
+		try {
+			const permissions = await groupsDO.listGroupPermissions(groupId, user.id)
+			return c.json(permissions)
+		} catch (error) {
+			if (error instanceof Error) {
+				if (error.message.includes('not found')) {
+					return c.json({ error: 'Group not found' }, 404)
+				}
+				return c.json({ error: error.message }, 400)
 			}
-			return c.json({ error: error.message }, 400)
+			throw error
 		}
-		throw error
 	}
-})
+)
 
 /**
  * POST /:groupId/permissions/attach
  *
  * Attach a global permission to a group
  */
-groups.post('/:groupId/permissions/attach', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')!
-	const groupId = c.req.param('groupId')
-	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.post(
+	'/:groupId/permissions/attach',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	requireAdmin(),
+	async (c) => {
+		const user = c.get('user')!
+		const groupId = c.req.param('groupId')
+		const body = await c.req.json()
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	try {
-		const groupPermission = await groupsDO.attachPermissionToGroup(
-			{
-				groupId,
-				permissionId: body.permissionId,
-				targetType: body.targetType,
-			},
-			user.id
-		)
-		return c.json(groupPermission, 201)
-	} catch (error) {
-		if (error instanceof Error) {
-			return c.json({ error: error.message }, 400)
+		try {
+			const groupPermission = await groupsDO.attachPermissionToGroup(
+				{
+					groupId,
+					permissionId: body.permissionId,
+					targetType: body.targetType,
+				},
+				user.id
+			)
+			return c.json(groupPermission, 201)
+		} catch (error) {
+			if (error instanceof Error) {
+				return c.json({ error: error.message }, 400)
+			}
+			throw error
 		}
-		throw error
 	}
-})
+)
 
 /**
  * POST /:groupId/permissions/custom
  *
  * Create a custom group-scoped permission
  */
-groups.post('/:groupId/permissions/custom', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')!
-	const groupId = c.req.param('groupId')
-	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.post(
+	'/:groupId/permissions/custom',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	requireAdmin(),
+	async (c) => {
+		const user = c.get('user')!
+		const groupId = c.req.param('groupId')
+		const body = await c.req.json()
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	try {
-		const groupPermission = await groupsDO.createGroupScopedPermission(
-			{
-				groupId,
-				urn: body.urn,
-				name: body.name,
-				description: body.description,
-				targetType: body.targetType,
-			},
-			user.id
-		)
-		return c.json(groupPermission, 201)
-	} catch (error) {
-		if (error instanceof Error) {
-			return c.json({ error: error.message }, 400)
+		try {
+			const groupPermission = await groupsDO.createGroupScopedPermission(
+				{
+					groupId,
+					urn: body.urn,
+					name: body.name,
+					description: body.description,
+					targetType: body.targetType,
+				},
+				user.id
+			)
+			return c.json(groupPermission, 201)
+		} catch (error) {
+			if (error instanceof Error) {
+				return c.json({ error: error.message }, 400)
+			}
+			throw error
 		}
-		throw error
 	}
-})
+)
 
 /**
  * PATCH /:groupId/permissions/:groupPermissionId
@@ -813,7 +930,7 @@ groups.post('/:groupId/permissions/custom', requireAuth(), requireAdmin(), async
  */
 groups.patch(
 	'/:groupId/permissions/:groupPermissionId',
-	requireAuth(),
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
 	requireAdmin(),
 	async (c) => {
 		const user = c.get('user')!
@@ -849,7 +966,7 @@ groups.patch(
  */
 groups.delete(
 	'/:groupId/permissions/:groupPermissionId',
-	requireAuth(),
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
 	requireAdmin(),
 	async (c) => {
 		const user = c.get('user')!
@@ -876,56 +993,71 @@ groups.delete(
  *
  * Get permissions for all members of a group (admin only)
  */
-groups.get('/:groupId/permissions/members', requireAuth(), requireAdmin(), async (c) => {
-	const groupId = c.req.param('groupId')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.get(
+	'/:groupId/permissions/members',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	requireAdmin(),
+	async (c) => {
+		const groupId = c.req.param('groupId')
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	try {
-		const memberPermissions = await groupsDO.getGroupMemberPermissions(groupId)
-		return c.json(memberPermissions)
-	} catch (error) {
-		if (error instanceof Error) {
-			if (error.message.includes('not found')) {
-				return c.json({ error: 'Group not found' }, 404)
+		try {
+			const memberPermissions = await groupsDO.getGroupMemberPermissions(groupId)
+			return c.json(memberPermissions)
+		} catch (error) {
+			if (error instanceof Error) {
+				if (error.message.includes('not found')) {
+					return c.json({ error: 'Group not found' }, 404)
+				}
+				return c.json({ error: error.message }, 400)
 			}
-			return c.json({ error: error.message }, 400)
+			throw error
 		}
-		throw error
 	}
-})
+)
 
 /**
  * GET /users/:userId/permissions
  *
  * Get all permissions for a specific user across all groups (admin only)
  */
-groups.get('/users/:userId/permissions', requireAuth(), requireAdmin(), async (c) => {
-	const userId = c.req.param('userId')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.get(
+	'/users/:userId/permissions',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	requireAdmin(),
+	async (c) => {
+		const userId = c.req.param('userId')
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	const permissions = await groupsDO.getUserPermissions(userId)
-	return c.json(permissions)
-})
+		const permissions = await groupsDO.getUserPermissions(userId)
+		return c.json(permissions)
+	}
+)
 
 /**
  * POST /permissions/members/multi-group
  *
  * Get permissions for members across multiple groups (admin only)
  */
-groups.post('/permissions/members/multi-group', requireAuth(), requireAdmin(), async (c) => {
-	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.post(
+	'/permissions/members/multi-group',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	requireAdmin(),
+	async (c) => {
+		const body = await c.req.json()
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	try {
-		const memberPermissions = await groupsDO.getMultiGroupMemberPermissions(body.groupIds)
-		return c.json(memberPermissions)
-	} catch (error) {
-		if (error instanceof Error) {
-			return c.json({ error: error.message }, 400)
+		try {
+			const memberPermissions = await groupsDO.getMultiGroupMemberPermissions(body.groupIds)
+			return c.json(memberPermissions)
+		} catch (error) {
+			if (error instanceof Error) {
+				return c.json({ error: error.message }, 400)
+			}
+			throw error
 		}
-		throw error
 	}
-})
+)
 
 // ===== Parameterized Routes =====
 
@@ -934,7 +1066,7 @@ groups.post('/permissions/members/multi-group', requireAuth(), requireAdmin(), a
  *
  * Get single group with details
  */
-groups.get('/:id', requireAuth(), async (c) => {
+groups.get('/:id', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), async (c) => {
 	const user = c.get('user')!
 	const groupId = c.req.param('id')
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
@@ -975,49 +1107,59 @@ groups.get('/:id', requireAuth(), async (c) => {
  *
  * Update a group (admin only for now)
  */
-groups.patch('/:id', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')!
-	const groupId = c.req.param('id')
-	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.patch(
+	'/:id',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	requireAdmin(),
+	async (c) => {
+		const user = c.get('user')!
+		const groupId = c.req.param('id')
+		const body = await c.req.json()
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	try {
-		const group = await groupsDO.updateGroup(groupId, body, user.id, user.is_admin)
-		return c.json(group)
-	} catch (error) {
-		if (error instanceof Error) {
-			if (error.message.includes('not found')) {
-				return c.json({ error: 'Group not found' }, 404)
+		try {
+			const group = await groupsDO.updateGroup(groupId, body, user.id, user.is_admin)
+			return c.json(group)
+		} catch (error) {
+			if (error instanceof Error) {
+				if (error.message.includes('not found')) {
+					return c.json({ error: 'Group not found' }, 404)
+				}
+				return c.json({ error: error.message }, 400)
 			}
-			return c.json({ error: error.message }, 400)
+			throw error
 		}
-		throw error
 	}
-})
+)
 
 /**
  * DELETE /:id
  *
  * Delete a group (admin only)
  */
-groups.delete('/:id', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')!
-	const groupId = c.req.param('id')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.delete(
+	'/:id',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	requireAdmin(),
+	async (c) => {
+		const user = c.get('user')!
+		const groupId = c.req.param('id')
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	try {
-		await groupsDO.deleteGroup(groupId, user.id, user.is_admin)
-		return c.json({ success: true }, 200)
-	} catch (error) {
-		if (error instanceof Error) {
-			if (error.message.includes('not found')) {
-				return c.json({ error: 'Group not found' }, 404)
+		try {
+			await groupsDO.deleteGroup(groupId, user.id, user.is_admin)
+			return c.json({ success: true }, 200)
+		} catch (error) {
+			if (error instanceof Error) {
+				if (error.message.includes('not found')) {
+					return c.json({ error: 'Group not found' }, 404)
+				}
+				return c.json({ error: error.message }, 400)
 			}
-			return c.json({ error: error.message }, 400)
+			throw error
 		}
-		throw error
 	}
-})
+)
 
 // ===== Group Members =====
 
@@ -1027,7 +1169,7 @@ groups.delete('/:id', requireAuth(), requireAdmin(), async (c) => {
  * List all members of a group
  * Authorization is handled by the Groups DO based on group visibility and user role
  */
-groups.get('/:groupId/members', requireAuth(), async (c) => {
+groups.get('/:groupId/members', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), async (c) => {
 	const user = c.get('user')!
 	const groupId = c.req.param('groupId')
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
@@ -1053,25 +1195,29 @@ groups.get('/:groupId/members', requireAuth(), async (c) => {
  *
  * Remove a member from a group (group owner or admin only)
  */
-groups.delete('/:groupId/members/:userId', requireAuth(), async (c) => {
-	const user = c.get('user')!
-	const groupId = c.req.param('groupId')
-	const memberUserId = c.req.param('userId')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.delete(
+	'/:groupId/members/:userId',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	async (c) => {
+		const user = c.get('user')!
+		const groupId = c.req.param('groupId')
+		const memberUserId = c.req.param('userId')
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	try {
-		await groupsDO.removeMember(groupId, user.id, memberUserId)
-		return c.json({ success: true }, 200)
-	} catch (error) {
-		if (error instanceof Error) {
-			if (error.message.includes('not found')) {
-				return c.json({ error: 'Group or member not found' }, 404)
+		try {
+			await groupsDO.removeMember(groupId, user.id, memberUserId)
+			return c.json({ success: true }, 200)
+		} catch (error) {
+			if (error instanceof Error) {
+				if (error.message.includes('not found')) {
+					return c.json({ error: 'Group or member not found' }, 404)
+				}
+				return c.json({ error: error.message }, 400)
 			}
-			return c.json({ error: error.message }, 400)
+			throw error
 		}
-		throw error
 	}
-})
+)
 
 // ===== Group Admins =====
 
@@ -1080,61 +1226,71 @@ groups.delete('/:groupId/members/:userId', requireAuth(), async (c) => {
  *
  * Add a group admin (admin only)
  */
-groups.post('/:groupId/admins', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')!
-	const groupId = c.req.param('groupId')
-	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.post(
+	'/:groupId/admins',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	requireAdmin(),
+	async (c) => {
+		const user = c.get('user')!
+		const groupId = c.req.param('groupId')
+		const body = await c.req.json()
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	if (!body.userId) {
-		return c.json({ error: 'userId is required' }, 400)
-	}
-
-	try {
-		await groupsDO.addAdmin(groupId, user.id, body.userId)
-		return c.json({ success: true }, 200)
-	} catch (error) {
-		if (error instanceof Error) {
-			if (error.message.includes('not found')) {
-				return c.json({ error: 'Group or user not found' }, 404)
-			}
-			return c.json({ error: error.message }, 400)
+		if (!body.userId) {
+			return c.json({ error: 'userId is required' }, 400)
 		}
-		throw error
+
+		try {
+			await groupsDO.addAdmin(groupId, user.id, body.userId)
+			return c.json({ success: true }, 200)
+		} catch (error) {
+			if (error instanceof Error) {
+				if (error.message.includes('not found')) {
+					return c.json({ error: 'Group or user not found' }, 404)
+				}
+				return c.json({ error: error.message }, 400)
+			}
+			throw error
+		}
 	}
-})
+)
 
 /**
  * DELETE /:groupId/admins/:userId
  *
  * Remove a group admin (admin only)
  */
-groups.delete('/:groupId/admins/:userId', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')!
-	const groupId = c.req.param('groupId')
-	const targetUserId = c.req.param('userId')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.delete(
+	'/:groupId/admins/:userId',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	requireAdmin(),
+	async (c) => {
+		const user = c.get('user')!
+		const groupId = c.req.param('groupId')
+		const targetUserId = c.req.param('userId')
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	try {
-		await groupsDO.removeAdmin(groupId, user.id, targetUserId)
-		return c.json({ success: true }, 200)
-	} catch (error) {
-		if (error instanceof Error) {
-			if (error.message.includes('not found')) {
-				return c.json({ error: 'Group or admin not found' }, 404)
+		try {
+			await groupsDO.removeAdmin(groupId, user.id, targetUserId)
+			return c.json({ success: true }, 200)
+		} catch (error) {
+			if (error instanceof Error) {
+				if (error.message.includes('not found')) {
+					return c.json({ error: 'Group or admin not found' }, 404)
+				}
+				return c.json({ error: error.message }, 400)
 			}
-			return c.json({ error: error.message }, 400)
+			throw error
 		}
-		throw error
 	}
-})
+)
 
 /**
  * POST /:id/join
  *
  * Join an open group
  */
-groups.post('/:id/join', requireAuth(), async (c) => {
+groups.post('/:id/join', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), async (c) => {
 	const user = c.get('user')!
 	const groupId = c.req.param('id')
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
@@ -1157,7 +1313,7 @@ groups.post('/:id/join', requireAuth(), async (c) => {
  *
  * Leave a group
  */
-groups.post('/:id/leave', requireAuth(), async (c) => {
+groups.post('/:id/leave', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), async (c) => {
 	const user = c.get('user')!
 	const groupId = c.req.param('id')
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
@@ -1180,7 +1336,7 @@ groups.post('/:id/leave', requireAuth(), async (c) => {
  *
  * Transfer group ownership (owner or admin)
  */
-groups.post('/:id/transfer', requireAuth(), async (c) => {
+groups.post('/:id/transfer', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), async (c) => {
 	const user = c.get('user')!
 	const groupId = c.req.param('id')
 	const body = await c.req.json()
@@ -1208,7 +1364,7 @@ groups.post('/:id/transfer', requireAuth(), async (c) => {
  *
  * Create a join request for an approval-mode group
  */
-groups.post('/:id/join-requests', requireAuth(), async (c) => {
+groups.post('/:id/join-requests', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), async (c) => {
 	const user = c.get('user')!
 	const groupId = c.req.param('id')
 	const body = await c.req.json()
@@ -1236,7 +1392,7 @@ groups.post('/:id/join-requests', requireAuth(), async (c) => {
  *
  * List pending join requests for a group (owner/admin only)
  */
-groups.get('/:id/join-requests', requireAuth(), async (c) => {
+groups.get('/:id/join-requests', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), async (c) => {
 	const user = c.get('user')!
 	const groupId = c.req.param('id')
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
@@ -1259,20 +1415,25 @@ groups.get('/:id/join-requests', requireAuth(), async (c) => {
  *
  * List all Discord servers for a group (admin only)
  */
-groups.get('/:groupId/discord-servers', requireAuth(), requireAdmin(), async (c) => {
-	const groupId = c.req.param('groupId')
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.get(
+	'/:groupId/discord-servers',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	requireAdmin(),
+	async (c) => {
+		const groupId = c.req.param('groupId')
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	try {
-		const servers = await groupsDO.getDiscordServers(groupId)
-		return c.json(servers)
-	} catch (error) {
-		if (error instanceof Error) {
-			return c.json({ error: error.message }, 400)
+		try {
+			const servers = await groupsDO.getDiscordServers(groupId)
+			return c.json(servers)
+		} catch (error) {
+			if (error instanceof Error) {
+				return c.json({ error: error.message }, 400)
+			}
+			throw error
 		}
-		throw error
 	}
-})
+)
 
 /**
  * POST /:groupId/discord-servers
@@ -1285,57 +1446,67 @@ groups.get('/:groupId/discord-servers', requireAuth(), requireAdmin(), async (c)
  *   autoAssignRoles?: boolean
  * }
  */
-groups.post('/:groupId/discord-servers', requireAuth(), requireAdmin(), async (c) => {
-	const groupId = c.req.param('groupId')
-	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.post(
+	'/:groupId/discord-servers',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	requireAdmin(),
+	async (c) => {
+		const groupId = c.req.param('groupId')
+		const body = await c.req.json()
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	if (!body.discordServerId) {
-		return c.json({ error: 'discordServerId is required' }, 400)
-	}
-
-	try {
-		const server = await groupsDO.attachDiscordServer(
-			groupId,
-			body.discordServerId,
-			body.autoInvite ?? false,
-			body.autoAssignRoles ?? false
-		)
-		return c.json(server, 201)
-	} catch (error) {
-		if (error instanceof Error) {
-			return c.json({ error: error.message }, 400)
+		if (!body.discordServerId) {
+			return c.json({ error: 'discordServerId is required' }, 400)
 		}
-		throw error
+
+		try {
+			const server = await groupsDO.attachDiscordServer(
+				groupId,
+				body.discordServerId,
+				body.autoInvite ?? false,
+				body.autoAssignRoles ?? false
+			)
+			return c.json(server, 201)
+		} catch (error) {
+			if (error instanceof Error) {
+				return c.json({ error: error.message }, 400)
+			}
+			throw error
+		}
 	}
-})
+)
 
 /**
  * PUT /:groupId/discord-servers/:attachmentId
  *
  * Update a Discord server attachment's settings (admin only)
  */
-groups.put('/:groupId/discord-servers/:attachmentId', requireAuth(), requireAdmin(), async (c) => {
-	const attachmentId = c.req.param('attachmentId')
-	const body = await c.req.json()
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.put(
+	'/:groupId/discord-servers/:attachmentId',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	requireAdmin(),
+	async (c) => {
+		const attachmentId = c.req.param('attachmentId')
+		const body = await c.req.json()
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	try {
-		const server = await groupsDO.updateDiscordServerAttachment(attachmentId, {
-			autoInvite: body.autoInvite,
-			autoAssignRoles: body.autoAssignRoles,
-		})
-		return c.json(server)
-	} catch (error) {
-		if (error instanceof Error) {
-			if (error.message.includes('not found')) {
-				return c.json({ error: 'Discord server attachment not found' }, 404)
+		try {
+			const server = await groupsDO.updateDiscordServerAttachment(attachmentId, {
+				autoInvite: body.autoInvite,
+				autoAssignRoles: body.autoAssignRoles,
+			})
+			return c.json(server)
+		} catch (error) {
+			if (error instanceof Error) {
+				if (error.message.includes('not found')) {
+					return c.json({ error: 'Discord server attachment not found' }, 404)
+				}
+				return c.json({ error: error.message }, 400)
 			}
-			return c.json({ error: error.message }, 400)
+			throw error
 		}
-		throw error
 	}
-})
+)
 
 /**
  * DELETE /:groupId/discord-servers/:attachmentId
@@ -1344,7 +1515,7 @@ groups.put('/:groupId/discord-servers/:attachmentId', requireAuth(), requireAdmi
  */
 groups.delete(
 	'/:groupId/discord-servers/:attachmentId',
-	requireAuth(),
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
 	requireAdmin(),
 	async (c) => {
 		const attachmentId = c.req.param('attachmentId')
@@ -1372,7 +1543,7 @@ groups.delete(
  */
 groups.post(
 	'/:groupId/discord-servers/:attachmentId/roles',
-	requireAuth(),
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
 	requireAdmin(),
 	async (c) => {
 		const attachmentId = c.req.param('attachmentId')
@@ -1408,7 +1579,7 @@ groups.post(
  */
 groups.post(
 	'/:groupId/discord-servers/:attachmentId/refresh-roles',
-	requireAuth(),
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
 	requireAdmin(),
 	async (c) => {
 		const groupId = c.req.param('groupId')
@@ -1525,7 +1696,7 @@ groups.post(
  */
 groups.delete(
 	'/:groupId/discord-servers/:attachmentId/roles/:roleAssignmentId',
-	requireAuth(),
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
 	requireAdmin(),
 	async (c) => {
 		const roleAssignmentId = c.req.param('roleAssignmentId')

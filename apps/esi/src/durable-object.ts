@@ -2,6 +2,8 @@ import { DurableObject } from 'cloudflare:workers'
 
 import { logger } from '@repo/hono-helpers'
 
+import { KillmailDetail, killmailDetailSchema } from '@repo/universe'
+
 import { EsiFetcher } from './lib/esi-fetch'
 import {
 	transformCharacterAgentResearch,
@@ -12,6 +14,7 @@ import {
 	transformCharacterContact,
 	transformCharacterContract,
 	transformCharacterFitting,
+	transformCharacterKillmails,
 	transformCharacterLocation,
 	transformCharacterMail,
 	transformMailContent,
@@ -64,6 +67,7 @@ import type {
 	CharacterContact,
 	CharacterContract,
 	CharacterFitting,
+	CharacterKillmailBasic,
 	CharacterLocation,
 	CharacterMail,
 	MailContent,
@@ -112,6 +116,7 @@ import type {
 	EsiCharacterContact,
 	EsiCharacterContract,
 	EsiCharacterFitting,
+	EsiCharacterKillmail,
 	EsiCharacterLocation,
 	EsiCharacterMail,
 	EsiMailContent,
@@ -425,6 +430,47 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 			`/characters/${characterId}/wallet/journal`
 		)
 		return transformCharacterWalletJournal(result.data)
+	}
+
+	@UseCharacterAuth
+	async fetchCharacterBasicKillmails(characterId: string): Promise<CharacterKillmailBasic[]> {
+		const result = await this.esiFetcher.fetchEsiPaginated<EsiCharacterKillmail>(
+			`/characters/${characterId}/killmails/recent`
+		)
+		return transformCharacterKillmails(result.data)
+	}
+
+	@UseCharacterAuth
+	async fetchCharacterKillmailDetail(
+		characterId: string,
+		killmailId: string,
+		killmailHash: string
+	): Promise<KillmailDetail | null> {
+		const result = await this.esiFetcher.fetchEsi<KillmailDetail>(
+			`/killmails/${killmailId}/${killmailHash}`
+		)
+		if (!result.data) {
+			return null
+		}
+		const validatedData = killmailDetailSchema.parse(result.data)
+		return validatedData
+	}
+
+	@UseCharacterAuth
+	async fetchCharacterKillmails(characterId: string): Promise<KillmailDetail[]> {
+		const result = await this.esiFetcher.fetchEsiPaginated<EsiCharacterKillmail>(
+			`/characters/${characterId}/killmails/recent`
+		)
+		const killmails = await Promise.all(
+			result.data.map(async (km) => {
+				return this.fetchCharacterKillmailDetail(
+					characterId,
+					String(km.killmail_id),
+					km.killmail_hash
+				)
+			})
+		)
+		return killmails.filter((km): km is KillmailDetail => km !== null)
 	}
 
 	/**

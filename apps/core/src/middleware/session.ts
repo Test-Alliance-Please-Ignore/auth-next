@@ -1,9 +1,11 @@
 import { getCookie } from 'hono/cookie'
 
+import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
+import { getCachedUserRoles } from '../lib/groups-cache'
 import { AuthService } from '../services/auth.service'
 import * as discordService from '../services/discord.service'
 import { SessionService } from '../services/session.service'
@@ -11,7 +13,6 @@ import { UserService } from '../services/user.service'
 
 import type { MiddlewareHandler } from 'hono'
 import type { EveTokenStore } from '@repo/eve-token-store'
-import type { Groups, RoleAttachmentType } from '@repo/groups'
 import type { Hr } from '@repo/hr'
 import type { App, SessionUser } from '../context'
 
@@ -83,20 +84,12 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 				return c.json({ error: 'Account suspended' }, 403)
 			}
 
-			// Find primary character
-			const primaryChar = userProfile.characters.find((c) => c.is_primary)
-
-			// Fetch user's roles from Groups Durable Object
+			// Fetch user's roles from Groups Durable Object (cached)
 			let userRoles: string[] = []
 			try {
-				const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
-				const roleAttachments = await groupsStub.getRolesFor({
-					attachedToType: 'user' as RoleAttachmentType,
-					attachedToId: userId,
-				})
+				const roleAttachments = await getCachedUserRoles(c.env, userId)
 				// Extract role names (URNs) from attachments
 				userRoles = roleAttachments.map((attachment) => attachment.role.name)
-				logger.info(`Fetched roles for user ${userId}:`, userRoles.length > 0 ? userRoles : 'none')
 			} catch (error) {
 				logger.error('Error fetching user roles:', error)
 				// Continue without roles if error occurs
@@ -262,6 +255,20 @@ export const requireAdmin = (): MiddlewareHandler<App> => {
 			return c.json({ error: 'Forbidden' }, 403)
 		}
 
+		return next()
+	}
+}
+
+export const requireAllianceMember = (): MiddlewareHandler<App> => {
+	return async (c, next) => {
+		const user = c.get('user')
+
+		if (!user) {
+			return c.json({ error: 'Unauthorized' }, 401)
+		}
+		if (!user.roles.includes(ROLE_CORE_ALLIANCE_MEMBER)) {
+			return c.json({ error: 'Forbidden' }, 403)
+		}
 		return next()
 	}
 }

@@ -2,11 +2,13 @@ import { DurableObject } from 'cloudflare:workers'
 
 import { and, desc, eq, gte, inArray, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
+import { getEsiInstanceForCharacter } from '@repo/esi'
 import { generateKillmailUrl, generatePaymentToken } from '@repo/srp'
 
 import { createDb } from './db'
 import { srpComments, srpConfig, srpRequestHistory, srpRequests } from './db/schema'
 
+import type { Esi, EsiTypeResolver } from '@repo/esi'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type {
 	LossWithSRPStatus,
@@ -16,6 +18,7 @@ import type {
 	SRPRequestResponse,
 	SRPStatsResponse,
 } from '@repo/srp'
+import type { KillmailDetail } from '@repo/universe'
 import type { Env } from './context'
 
 /**
@@ -146,6 +149,14 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		return requests.map((r) => this.formatRequest(r))
 	}
 
+	// private async getLossesForCharacter(
+	// 	characterId: string,
+	// 	daysBack = 30,
+	// 	excludeNonSrpEligible = true
+	// ): Promise<LossWithSRPStatus[]> {
+	// 	const esiInstance = getEsiInstanceForCharacter(this.env.ESI, characterId)
+	// }
+
 	/**
 	 * Get recent losses for multiple characters with SRP status
 	 */
@@ -156,30 +167,31 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		excludeNonSrpEligible = true
 	): Promise<LossWithSRPStatus[]> {
 		// Fetch losses from eve-character-data for each character
-		const allLosses: Array<
-			Omit<LossWithSRPStatus, 'hasSRPRequest' | 'srpRequestId' | 'srpRequestStatus'>
-		> = []
+		const allLosses: KillmailDetail[] = []
 
+		const typeResolverStub = getStub<EsiTypeResolver>(this.env.ESI_TYPE_RESOLVER, 'global')
 		for (const characterId of characterIds) {
-			const charStub = getStub<EveCharacterData>(this.env.EVE_CHARACTER_DATA, characterId)
-			const charInstance = await charStub.getInstance(characterId)
-			const losses = await charInstance.getRecentLosses(daysBack, excludeNonSrpEligible)
+			const esiInstance = getEsiInstanceForCharacter(this.env.ESI, characterId)
+			const killmails = await esiInstance.fetchCharacterKillmails(characterId)
+
+			const losses = killmails.filter((km) => km.victim.character_id === characterId)
 
 			// Convert losses to the format we need (with string timestamps)
 			// Note: Date objects are serialized to ISO strings over RPC
 			allLosses.push(
 				...losses.map((loss) => ({
 					...loss,
-					killmailTime:
-						typeof loss.killmailTime === 'string'
-							? loss.killmailTime
-							: loss.killmailTime.toISOString(),
+					killmailTime: loss.killmail_time,
 				}))
 			)
 		}
 
+		const resolved = await typeResolverStub.resolveIds([
+			...new Set(allLosses.map((l) => l.victim.ship_type_id)),
+			...new Set(allLosses.map((l) => l.solar_system_id)),
+		])
 		// Get existing SRP requests for these losses
-		const killmailIds = allLosses.map((l) => l.killmailId)
+		const killmailIds = allLosses.map((l) => l.killmail_id)
 
 		if (killmailIds.length === 0) {
 			return []
@@ -196,9 +208,17 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		// Annotate losses with SRP status and sort by time descending
 		return allLosses
 			.map((loss) => {
-				const request = requestMap.get(loss.killmailId)
+				const request = requestMap.get(loss.killmail_id)
 				return {
-					...loss,
+					killmailId: loss.killmail_id,
+					killmailHash: 'buttes',
+					killmailTime: loss.killmail_time,
+					shipTypeId: loss.victim.ship_type_id,
+					shipTypeName: resolved[loss.victim.ship_type_id],
+					totalValue: '0',
+					solarSystemId: loss.solar_system_id,
+					solarSystemName: resolved[loss.solar_system_id],
+					victimCharacterId: String(loss.victim.character_id ?? ''),
 					hasSRPRequest: !!request,
 					srpRequestId: request?.id,
 					srpRequestStatus: request?.status,

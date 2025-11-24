@@ -1,7 +1,14 @@
 import { getStub } from '@repo/do-utils'
 import { TimeCache } from '@repo/hono-helpers'
 
-import type { GroupMembershipSummary, Groups, GroupWithDetails, UserPermission } from '@repo/groups'
+import type {
+	GroupMembershipSummary,
+	Groups,
+	GroupWithDetails,
+	RoleAttachment,
+	RoleAttachmentType,
+	UserPermission,
+} from '@repo/groups'
 
 /**
  * Shared caching utility for Groups Durable Object operations
@@ -15,6 +22,7 @@ const PERMISSIONS_TTL = 15 * 1000 // 15 seconds
 const MEMBERSHIPS_TTL = 30 * 1000 // 30 seconds
 const GROUPS_TTL = 30 * 1000 // 30 seconds
 const CHARACTER_PERMISSIONS_TTL = 15 * 1000 // 15 seconds
+const ROLES_TTL = 30 * 1000 // 30 seconds
 
 // Permission cache: userId -> UserPermission[]
 const permissionsCache = new TimeCache<UserPermission[]>(PERMISSIONS_TTL)
@@ -27,6 +35,9 @@ const groupsCache = new TimeCache<GroupWithDetails | null>(GROUPS_TTL)
 
 // Character permissions cache: characterId -> UserPermission[]
 const characterPermissionsCache = new TimeCache<UserPermission[]>(CHARACTER_PERMISSIONS_TTL)
+
+// Roles cache: userId -> RoleAttachment[]
+const rolesCache = new TimeCache<RoleAttachment[]>(ROLES_TTL)
 
 /**
  * Environment type that includes GROUPS binding
@@ -94,14 +105,40 @@ export async function getCachedCharacterPermissions(
 }
 
 /**
+ * Get cached user roles or fetch from Groups DO
+ */
+export async function getCachedUserRoles(
+	env: GroupsEnv,
+	userId: string
+): Promise<RoleAttachment[]> {
+	const cacheKey = `roles:${userId}`
+	return rolesCache.getOrSet(cacheKey, async () => {
+		const groupsStub = getStub<Groups>(env.GROUPS, 'default')
+		return await groupsStub.getRolesFor({
+			attachedToType: 'user' as RoleAttachmentType,
+			attachedToId: userId,
+		})
+	})
+}
+
+/**
  * Clear all caches for a specific user
  * Call this when user joins/leaves groups or permissions change
  */
 export function clearUserCache(userId: string): void {
 	permissionsCache.delete(`permissions:${userId}`)
 	membershipsCache.delete(`memberships:${userId}`)
+	rolesCache.delete(`roles:${userId}`)
 	// Note: We can't efficiently clear all group caches for a user without tracking keys
 	// Group caches will expire naturally based on TTL
+}
+
+/**
+ * Clear roles cache for a specific user
+ * Call this when user roles change
+ */
+export function clearUserRolesCache(userId: string): void {
+	rolesCache.delete(`roles:${userId}`)
 }
 
 /**
@@ -123,4 +160,5 @@ export function clearAllCaches(): void {
 	membershipsCache.clear()
 	groupsCache.clear()
 	characterPermissionsCache.clear()
+	rolesCache.clear()
 }

@@ -721,6 +721,9 @@ importers:
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
+      '@repo/universe':
+        specifier: workspace:*
+        version: link:../../packages/universe
       '@repo/vite-config':
         specifier: workspace:*
         version: link:../../packages/vite-config
@@ -1856,6 +1859,9 @@ importers:
       '@repo/do-utils':
         specifier: workspace:*
         version: link:../../packages/do-utils
+      '@repo/esi':
+        specifier: workspace:*
+        version: link:../../packages/esi
       '@repo/eve-character-data':
         specifier: workspace:*
         version: link:../../packages/eve-character-data
@@ -1874,6 +1880,9 @@ importers:
       '@repo/srp':
         specifier: workspace:*
         version: link:../../packages/srp
+      '@repo/universe':
+        specifier: workspace:*
+        version: link:../../packages/universe
       drizzle-orm:
         specifier: 0.44.7
         version: 0.44.7(@cloudflare/workers-types@4.20251118.0)(@neondatabase/serverless@1.0.2)(@opentelemetry/api@1.9.0)(@types/pg@8.15.6)(bun-types@1.3.2(@types/react@19.2.6))
@@ -2344,6 +2353,9 @@ importers:
       '@repo/do-utils':
         specifier: workspace:*
         version: link:../do-utils
+      '@repo/universe':
+        specifier: workspace:*
+        version: link:../universe
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.10.8
