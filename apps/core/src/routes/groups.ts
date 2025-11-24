@@ -1,8 +1,9 @@
 import { Hono } from 'hono'
 
-import { and, createDbClient } from '@repo/db-utils'
+import { and } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
+import { createDb } from '../db'
 import { clearUserCache, getCachedGroup, getCachedUserMemberships } from '../lib/groups-cache'
 import { requireAdmin, requireAuth } from '../middleware/session'
 
@@ -1437,7 +1438,7 @@ groups.post(
 			}
 
 			// Query Core database to get Discord user IDs for these members
-			const db = createDbClient(c.env.DATABASE_URL, await import('../db/schema.js'))
+			const db = createDb(c.env.DATABASE_URL)
 			const { users } = await import('../db/schema.js')
 			const { inArray, isNotNull } = await import('@repo/db-utils')
 

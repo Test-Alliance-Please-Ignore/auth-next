@@ -2,21 +2,21 @@
  * Check if a character report has been cancelled
  */
 
-import { createDb } from '../../../db'
-import { isReportCancelled } from '../../../db/queries'
+import { getStub } from '@repo/do-utils'
+import type { Fulcrum } from '@repo/fulcrum'
 
 /**
  * Check if report was cancelled by the user
  * This prevents unnecessary processing for cancelled reports
  *
- * @param databaseUrl - Database connection URL
+ * @param env - Environment with FULCRUM durable object namespace
  * @param reportId - Report UUID
  * @returns true if cancelled, false otherwise
  */
 export async function checkCancellation(
-	databaseUrl: string,
+	env: { FULCRUM: DurableObjectNamespace },
 	reportId: string,
 ): Promise<boolean> {
-	const db = createDb(databaseUrl)
-	return await isReportCancelled(db, reportId)
+	const stub = getStub<Fulcrum>(env.FULCRUM, 'default')
+	return await stub.isReportCancelled(reportId)
 }

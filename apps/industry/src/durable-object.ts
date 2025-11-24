@@ -1,18 +1,24 @@
 import { DurableObject } from 'cloudflare:workers'
 
+import { createDb } from './db'
+import { ProviderService } from './services/providers'
+
 import type { Industry } from '@repo/industry'
 import type { Env } from './context'
 
 /**
  * Industry Durable Object
  *
- * This Durable Object uses SQLite storage and implements:
+ * This Durable Object uses PostgreSQL storage and implements:
  * - RPC methods for remote calls
  * - WebSocket hibernation API
  * - Alarm handler for scheduled tasks
- * - SQLite storage via sql.exec()
+ * - PostgreSQL storage via Drizzle ORM
  */
 export class IndustryDO extends DurableObject<Env, {}> implements Industry {
+	private db: ReturnType<typeof createDb>
+	private providerService: ProviderService
+
 	/**
 	 * Initialize the Durable Object
 	 */
@@ -21,6 +27,12 @@ export class IndustryDO extends DurableObject<Env, {}> implements Industry {
 		public env: Env
 	) {
 		super(state, env)
+
+		// Initialize database client
+		this.db = createDb(env.DATABASE_URL)
+
+		// Initialize services
+		this.providerService = new ProviderService({ db: this.db, env })
 	}
 
 	/**

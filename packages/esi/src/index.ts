@@ -11,6 +11,7 @@ import type {
 	CharacterFitting,
 	CharacterLocation,
 	CharacterMail,
+	MailContent,
 	CharacterMarketOrder,
 	CharacterMarketTransaction,
 	CharacterMiningLedger,
@@ -90,6 +91,7 @@ export interface Esi {
 	fetchCharacterFittings(characterId: string): Promise<CharacterFitting[]>
 	fetchCharacterLocation(characterId: string): Promise<CharacterLocation>
 	fetchCharacterMail(characterId: string): Promise<CharacterMail[]>
+	fetchMailContent(characterId: string, mailId: string): Promise<MailContent>
 	fetchCharacterMiningLedger(characterId: string): Promise<CharacterMiningLedger[]>
 	fetchCharacterPlanets(characterId: string): Promise<CharacterPlanet[]>
 	fetchCharacterPortrait(characterId: string): Promise<CharacterPortrait>

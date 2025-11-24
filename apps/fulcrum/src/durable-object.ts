@@ -246,6 +246,18 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 	}
 
 	/**
+	 * RPC: Check if a report is cancelled
+	 * Returns true if the report status is 'cancelled', false otherwise
+	 */
+	async isReportCancelled(reportId: string): Promise<boolean> {
+		const db = this.getDb()
+		const report = await queries.getReport(db, reportId)
+
+		// Check if report exists and is cancelled
+		return report?.status === 'cancelled'
+	}
+
+	/**
 	 * WebSocket message handler (Hibernation API)
 	 * Called when a WebSocket message is received
 	 */

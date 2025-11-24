@@ -3,10 +3,9 @@ import { getStub } from '@repo/do-utils'
 
 import { dkpDecayConfig, dkpTransactions, userCharacters, users } from '../db/schema'
 
-import type { DbClient } from '@repo/db-utils'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
-import type { schema } from '../db'
+import type { DbClient, schema } from '../db'
 
 /**
  * DKP Service - Business logic for DKP tracking operations

@@ -105,4 +105,11 @@ export interface Fulcrum extends DurableObject {
 	 * @returns true if cancelled, false if not found or already completed
 	 */
 	cancelReport(reportId: string): Promise<boolean>
+
+	/**
+	 * Check if a report is cancelled
+	 * @param reportId - Report UUID
+	 * @returns true if the report status is 'cancelled', false otherwise
+	 */
+	isReportCancelled(reportId: string): Promise<boolean>
 }

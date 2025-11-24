@@ -9,6 +9,7 @@ import type {
 	CharacterFitting,
 	CharacterLocation,
 	CharacterMail,
+	MailContent,
 	CharacterMarketOrder,
 	CharacterMarketTransaction,
 	CharacterMiningLedger,
@@ -55,6 +56,7 @@ import type {
 	EsiCharacterFitting,
 	EsiCharacterLocation,
 	EsiCharacterMail,
+	EsiMailContent,
 	EsiCharacterMarketOrder,
 	EsiCharacterMarketTransaction,
 	EsiCharacterMiningLedger,
@@ -442,6 +444,14 @@ export function transformCharacterMail(mails: EsiCharacterMail[]): CharacterMail
 			recipient_id: String(recipient.recipient_id),
 		})),
 	}))
+}
+
+export function transformMailContent(content: EsiMailContent): MailContent {
+	return {
+		...content,
+		from: content.from ? String(content.from) : undefined,
+		labels: content.labels?.map(String),
+	}
 }
 
 export function transformCharacterMiningLedger(

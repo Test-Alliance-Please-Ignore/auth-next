@@ -2,9 +2,8 @@ import { eq } from '@repo/db-utils'
 
 import { getCachedUserMemberships, getCachedUserPermissions } from './groups-cache'
 
-import type { DbClient } from '@repo/db-utils'
 import type { SkillPlan, SkillPlanSummary } from '@repo/skills'
-import type { schema } from '../db'
+import type { DbClient, schema } from '../db'
 
 // Type that includes the fields we need for authorization
 type PlanForAuth = Pick<SkillPlan | SkillPlanSummary, 'maintainerId' | 'isPublished'>

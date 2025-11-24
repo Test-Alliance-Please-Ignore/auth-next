@@ -8,6 +8,7 @@ import {
 	generateHtmlReport,
 	updateDatabase,
 } from './steps/common'
+import { fetchMails, processMails } from './steps/mails'
 import { fetchPublicInfo, processPublicInfo } from './steps/public-info'
 import { fetchWalletJournal, processWalletJournal } from './steps/wallet-journal'
 import { fetchWalletTransactions, processWalletTransactions } from './steps/wallet-transactions'
@@ -42,7 +43,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 
 		// Step 1: Check if report was cancelled
 		const cancelled = await step.do('check-cancellation', () =>
-			checkCancellation(this.env.DATABASE_URL, reportId)
+			checkCancellation(this.env, reportId)
 		)
 
 		if (cancelled) {
@@ -145,7 +146,31 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 		)
 
-		// Step 10: Fetch contacts from ESI
+		// Step 10: Fetch mails from ESI
+		const fetchMailsResult = await step.do('fetch-mails', () =>
+			fetchMails(
+				this.env.ESI,
+				this.env.CHARACTER_REPORTS,
+				'CHARACTER_REPORTS',
+				characterId,
+				workflowInstanceId
+			)
+		)
+
+		// Step 11: Process mails
+		const processMailsResult = await step.do('process-mails', () =>
+			processMails(
+				this.env,
+				getBucket,
+				this.env.CHARACTER_REPORTS,
+				'CHARACTER_REPORTS',
+				fetchMailsResult,
+				workflowInstanceId,
+				characterId
+			)
+		)
+
+		// Step 12: Fetch contacts from ESI
 		const fetchContactsResult = await step.do('fetch-contacts', () =>
 			fetchContacts(
 				this.env.ESI,
@@ -156,7 +181,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 		)
 
-		// Step 11: Process contacts
+		// Step 13: Process contacts
 		const processContactsResult = await step.do('process-contacts', () =>
 			processContacts(
 				this.env,
@@ -169,7 +194,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 		)
 
-		// Step 12: Generate HTML report and store in R2
+		// Step 14: Generate HTML report and store in R2
 		const finalReportResult = await step.do('generate-html', () =>
 			generateHtmlReport(
 				this.env.CHARACTER_REPORTS,
@@ -180,16 +205,17 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 				processAssetsResult,
 				processWalletTransactionsResult,
 				processWalletJournalResult,
+				processMailsResult,
 				processContactsResult
 			)
 		)
 
-		// Step 13: Clean up intermediate data
+		// Step 15: Clean up intermediate data
 		await step.do('cleanup-intermediate-data', () =>
 			cleanupIntermediateData(this.env.CHARACTER_REPORTS, workflowInstanceId)
 		)
 
-		// Step 14: Update database with final status
+		// Step 16: Update database with final status
 		await step.do('update-database', () =>
 			updateDatabase(
 				this.env,

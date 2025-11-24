@@ -24,6 +24,9 @@ export function collectResults(data: unknown[]): unknown[] {
  * @param reportId - Report UUID
  * @param processAssetsResult - Result from process-assets step
  * @param processWalletTransactionsResult - Result from process-wallet-transactions step
+ * @param processWalletJournalResult - Result from process-wallet-journal step
+ * @param processMailsResult - Result from process-mails step
+ * @param processContactsResult - Result from process-contacts step
  * @returns Object with bucket name and key
  */
 export async function generateHtmlReport(
@@ -35,6 +38,7 @@ export async function generateHtmlReport(
 	processAssetsResult?: StepResult,
 	processWalletTransactionsResult?: StepResult,
 	processWalletJournalResult?: StepResult,
+	processMailsResult?: StepResult,
 	processContactsResult?: StepResult,
 ): Promise<{ bucket: string; key: string }> {
 	// Retrieve processed data
@@ -59,6 +63,11 @@ export async function generateHtmlReport(
 			? await retrieveData(getBucket, processWalletJournalResult)
 			: null
 
+	const mailsData =
+		processMailsResult?.success && processMailsResult
+			? await retrieveData(getBucket, processMailsResult)
+			: null
+
 	const contactsData =
 		processContactsResult?.success && processContactsResult
 			? await retrieveData(getBucket, processContactsResult)
@@ -66,7 +75,7 @@ export async function generateHtmlReport(
 
 	// Collect all available data
 	const results = collectResults(
-		[publicInfoData, assetsData, walletTransactionsData, walletJournalData, contactsData].filter(
+		[publicInfoData, assetsData, walletTransactionsData, walletJournalData, mailsData, contactsData].filter(
 			(d) => d !== null && d !== undefined,
 		),
 	)

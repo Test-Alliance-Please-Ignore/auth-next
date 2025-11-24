@@ -1,4 +1,5 @@
 import { getStub } from '@repo/do-utils'
+import { stripHtmlToPlainText } from './html-stripper'
 
 import type { CharacterPublicInfo, EsiTypeResolver } from '@repo/esi'
 
@@ -85,7 +86,7 @@ export async function enrichPublicInfo(
 		bloodlineName: nameMap[data.bloodline_id],
 		factionId: data.faction_id,
 		factionName: data.faction_id ? nameMap[data.faction_id] : undefined,
-		description: data.description,
+		description: stripHtmlToPlainText(data.description),
 		title: data.title,
 		processedAt: new Date().toISOString(),
 	}

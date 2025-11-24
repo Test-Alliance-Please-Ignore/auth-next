@@ -77,7 +77,7 @@ export function PublicInfoSection({ data }: PublicInfoSectionProps) {
 				{data.description && (
 					<div className="info-item full-width">
 						<label>Description</label>
-						<div className="description">{data.description}</div>
+						<pre className="description">{data.description}</pre>
 					</div>
 				)}
 			</div>

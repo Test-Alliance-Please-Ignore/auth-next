@@ -174,6 +174,19 @@ export interface EsiCharacterMail {
 }
 
 /**
+ * Individual mail content from ESI
+ * GET /characters/{character_id}/mail/{mail_id}
+ */
+export interface EsiMailContent {
+	body?: string
+	from?: number
+	labels?: number[]
+	read?: boolean
+	subject?: string
+	timestamp?: string
+}
+
+/**
  * Character mining ledger from ESI
  * GET /characters/{character_id}/mining
  */
@@ -528,6 +541,15 @@ export interface CharacterMail {
 		recipient_id: string
 		recipient_type: 'alliance' | 'character' | 'corporation' | 'mailing_list'
 	}>
+	subject?: string
+	timestamp?: string
+}
+
+export interface MailContent {
+	body?: string
+	from?: string
+	labels?: string[]
+	read?: boolean
 	subject?: string
 	timestamp?: string
 }

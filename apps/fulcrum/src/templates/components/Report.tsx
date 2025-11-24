@@ -7,11 +7,13 @@ import type { ProcessedPublicInfo } from '../../workflows/processors/helpers/pub
 import type { ProcessedAssets } from '../../workflows/processors/helpers/assets'
 import type { ProcessedWalletTransactions } from '../../workflows/processors/helpers/wallet-transactions'
 import type { ProcessedWalletJournalEntries } from '../../workflows/processors/helpers/wallet-journal'
+import type { ProcessedMails } from '../../workflows/processors/helpers/mails'
 import type { ProcessedContacts } from '../../workflows/processors/helpers/contacts'
 import { PublicInfoSection } from './PublicInfoSection'
 import { AssetsSection } from './AssetsSection'
 import { WalletTransactionsSection } from './WalletTransactionsSection'
 import { WalletJournalSection } from './WalletJournalSection'
+import { MailList } from './MailList'
 import { ContactsSection } from './ContactsSection'
 import { ReportFooter } from './ReportFooter'
 import { ReportHeader } from './ReportHeader'
@@ -70,6 +72,18 @@ export function Report({ results }: ReportProps) {
 			'id' in r[0],
 	) as ProcessedWalletJournalEntries | undefined
 
+	const mails = results.find(
+		(r): r is ProcessedMails =>
+			r !== null &&
+			r !== undefined &&
+			Array.isArray(r) &&
+			r.length > 0 &&
+			typeof r[0] === 'object' &&
+			r[0] !== null &&
+			'mail_id' in r[0] &&
+			('subject' in r[0] || 'from' in r[0]),
+	) as ProcessedMails | undefined
+
 	const contacts = results.find(
 		(r): r is ProcessedContacts =>
 			r !== null &&
@@ -119,6 +133,15 @@ export function Report({ results }: ReportProps) {
 			label: 'Wallet Journal',
 			count: walletJournal.length,
 			content: <WalletJournalSection data={walletJournal} />,
+		})
+	}
+
+	if (mails) {
+		tabs.push({
+			id: 'mails',
+			label: 'Mail',
+			count: mails.length,
+			content: <MailList data={mails} />,
 		})
 	}
 

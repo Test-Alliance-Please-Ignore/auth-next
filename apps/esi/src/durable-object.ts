@@ -14,6 +14,7 @@ import {
 	transformCharacterFitting,
 	transformCharacterLocation,
 	transformCharacterMail,
+	transformMailContent,
 	transformCharacterMarketOrder,
 	transformCharacterMarketTransaction,
 	transformCharacterMiningLedger,
@@ -65,6 +66,7 @@ import type {
 	CharacterFitting,
 	CharacterLocation,
 	CharacterMail,
+	MailContent,
 	CharacterMarketOrder,
 	CharacterMarketTransaction,
 	CharacterMiningLedger,
@@ -112,6 +114,7 @@ import type {
 	EsiCharacterFitting,
 	EsiCharacterLocation,
 	EsiCharacterMail,
+	EsiMailContent,
 	EsiCharacterMarketOrder,
 	EsiCharacterMarketTransaction,
 	EsiCharacterMiningLedger,
@@ -296,6 +299,14 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 			`/characters/${characterId}/mail`
 		)
 		return transformCharacterMail(result.data)
+	}
+
+	@UseCharacterAuth
+	async fetchMailContent(characterId: string, mailId: string): Promise<MailContent> {
+		const result = await this.esiFetcher.fetchEsi<EsiMailContent>(
+			`/characters/${characterId}/mail/${mailId}`
+		)
+		return transformMailContent(result.data)
 	}
 
 	@UseCharacterAuth

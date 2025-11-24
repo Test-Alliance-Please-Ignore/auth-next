@@ -14,12 +14,11 @@ import type {
 	TransferCharacterResult,
 	UserDetails,
 } from '@repo/admin'
-import type { DbClient } from '@repo/db-utils'
 import type { Discord } from '@repo/discord'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Hr } from '@repo/hr'
 import type { Env } from '../context'
-import type { schema } from '../db'
+import type { DbClient, schema } from '../db'
 
 /**
  * Core RPC Service - Business logic for user/character management operations

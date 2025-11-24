@@ -139,6 +139,9 @@ section {
 	background: hsl(var(--card-elevated));
 	border-left: 3px solid hsl(var(--primary));
 	margin-top: 5px;
+	font-family: inherit;
+	font-size: inherit;
+	margin: 5px 0 0 0;
 	border-radius: 0 4px 4px 0;
 }
 

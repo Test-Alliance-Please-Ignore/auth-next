@@ -6,6 +6,27 @@
  */
 
 /**
+ * A generic branded type that adds a readonly brand property to any type T.
+ * This pattern helps prevent accidental mixing of different ID types by making
+ * them structurally different at the type level while maintaining the same runtime value.
+ *
+ * @template T - The underlying type to brand
+ * @template Brand - The string literal type used as the brand identifier
+ */
+type BrandedType<T, Brand extends string> = T & { readonly __brand: Brand }
+
+/**
+ * Branded type for Service Provider IDs.
+ * These are UUIDs representing unique service provider identifiers.
+ *
+ * @example
+ * ```typescript
+ * const providerId: ServiceProviderId = '550e8400-e29b-41d4-a716-446655440000' as ServiceProviderId;
+ * ```
+ */
+export type ServiceProviderId = BrandedType<string, 'ServiceProviderId'>
+
+/**
  * Public RPC interface for Industry Durable Object
  *
  * All public methods defined here will be available to call via RPC
@@ -99,4 +120,72 @@ export enum ContactType {
 	MAILING_LIST = 'mailing_list',
 	DISCORD_SERVER_AND_CHANNEL = 'discord_server_and_channel',
 	DISCORD_USER = 'discord_user',
+}
+
+/**
+ * Service Provider DTO
+ */
+export interface ServiceProvider {
+	id: ServiceProviderId
+	name: string
+	description: string | null
+	createdAt: Date
+	updatedAt: Date
+	ownerEntityId: string
+	ownerEntityType: EntityType
+	acceptingOrders: boolean
+}
+
+/**
+ * Provider Service DTO
+ */
+export interface ProviderServiceDTO {
+	id: string
+	providerId: ServiceProviderId
+	serviceType: ServiceType
+	status: ServiceStatus
+	createdAt: Date
+	updatedAt: Date
+}
+
+/**
+ * Provider Contact DTO
+ */
+export interface ProviderContact {
+	id: string
+	providerId: ServiceProviderId
+	contactType: ContactType
+	createdAt: Date
+	updatedAt: Date
+}
+
+/**
+ * Provider Filters for listing
+ */
+export interface ProviderFilters {
+	ownerEntityId?: string
+	ownerEntityType?: EntityType
+	acceptingOrders?: boolean
+	limit?: number
+	offset?: number
+}
+
+/**
+ * Create Provider Parameters
+ */
+export interface CreateProviderParams {
+	name: string
+	description?: string | null
+	ownerEntityId: string
+	ownerEntityType: EntityType
+	acceptingOrders?: boolean
+}
+
+/**
+ * Update Provider Parameters
+ */
+export interface UpdateProviderParams {
+	name?: string
+	description?: string | null
+	acceptingOrders?: boolean
 }
