@@ -9,7 +9,7 @@ Complete bills management system for EVE Online corporations, groups, and charac
 - **Bill Templates**: Reusable templates with parameter substitution
 - **Recurring Bills**: Automated bill generation using Cloudflare Workflows
 - **Schedule Management**: Daily, weekly, or monthly recurring bills
-- **Secure Payments**: 32-byte cryptographically secure payment tokens
+- **Secure Payments**: 12-character cryptographically secure payment tokens (fits in EVE wallet reason field)
 - **Authorization**: Role-based access control (issuer vs. payer permissions)
 
 ## Architecture

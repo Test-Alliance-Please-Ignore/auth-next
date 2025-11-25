@@ -1,5 +1,14 @@
 import { relations } from 'drizzle-orm'
-import { boolean, index, integer, pgEnum, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
+import {
+	boolean,
+	index,
+	integer,
+	pgEnum,
+	pgTable,
+	text,
+	timestamp,
+	uuid,
+} from 'drizzle-orm/pg-core'
 
 /**
  * Enums for bill system
@@ -39,6 +48,8 @@ export const bills = pgTable(
 		issuerId: text('issuer_id').notNull(),
 		payerId: text('payer_id').notNull(),
 		payerType: entityTypeEnum('payer_type').notNull(),
+		payeeId: text('payee_id'),
+		payeeType: entityTypeEnum('payee_type'),
 		templateId: text('template_id'),
 		scheduleId: text('schedule_id'),
 		title: text('title').notNull(),
@@ -51,18 +62,44 @@ export const bills = pgTable(
 		dueDate: timestamp('due_date').notNull(),
 		status: billStatusEnum('status').notNull().default('draft'),
 		paidAt: timestamp('paid_at'),
-		paymentToken: text('payment_token').notNull().unique(), // 32-byte secure token
+		paymentToken: text('payment_token').notNull().unique(), // 12-character secure token (max length for EVE wallet reason field)
 		createdAt: timestamp('created_at').notNull().defaultNow(),
 		updatedAt: timestamp('updated_at').notNull().defaultNow(),
+		paymentLastCheckedAt: timestamp('payment_last_checked_at', { withTimezone: true }),
 	},
 	(table) => [
 		index('bills_issuer_id_idx').on(table.issuerId),
 		index('bills_payer_id_idx').on(table.payerId),
+		index('bills_payee_id_idx').on(table.payeeId),
+		index('bills_payee_type_idx').on(table.payeeType),
 		index('bills_status_idx').on(table.status),
 		index('bills_due_date_idx').on(table.dueDate),
 		index('bills_template_id_idx').on(table.templateId),
 		index('bills_schedule_id_idx').on(table.scheduleId),
 		index('bills_payment_token_idx').on(table.paymentToken),
+	]
+)
+
+export const billPayments = pgTable(
+	'bill_payments',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		billId: uuid('bill_id')
+			.notNull()
+			.references(() => bills.id, { onDelete: 'cascade' }),
+		paymentToken: text('payment_token').notNull(),
+		amount: text('amount').notNull(),
+		paidById: text('paid_by_id').notNull(),
+		paidByType: entityTypeEnum('paid_by_type').notNull(),
+		paidAt: timestamp('paid_at', { withTimezone: true }).notNull(),
+		createdAt: timestamp('created_at').notNull().defaultNow(),
+	},
+	(table) => [
+		index('bill_payments_bill_id_idx').on(table.billId),
+		index('bill_payments_payment_token_idx').on(table.paymentToken),
+		index('bill_payments_paid_by_id_idx').on(table.paidById),
+		index('bill_payments_paid_by_type_idx').on(table.paidByType),
+		index('bill_payments_paid_at_idx').on(table.paidAt),
 	]
 )
 
@@ -108,6 +145,8 @@ export const billSchedules = pgTable(
 			.references(() => billTemplates.id, { onDelete: 'restrict' }),
 		payerId: text('payer_id').notNull(),
 		payerType: entityTypeEnum('payer_type').notNull(),
+		payeeId: text('payee_id'),
+		payeeType: entityTypeEnum('payee_type'),
 		frequency: scheduleFrequencyEnum('frequency').notNull(),
 		amount: text('amount').notNull(), // Amount to use when generating bills
 		nextGenerationTime: timestamp('next_generation_time').notNull(),
@@ -121,6 +160,8 @@ export const billSchedules = pgTable(
 		index('bill_schedules_owner_id_idx').on(table.ownerId),
 		index('bill_schedules_template_id_idx').on(table.templateId),
 		index('bill_schedules_payer_id_idx').on(table.payerId),
+		index('bill_schedules_payee_id_idx').on(table.payeeId),
+		index('bill_schedules_payee_type_idx').on(table.payeeType),
 		index('bill_schedules_next_generation_time_idx').on(table.nextGenerationTime),
 		index('bill_schedules_is_active_idx').on(table.isActive),
 	]
@@ -154,7 +195,7 @@ export const scheduleExecutionLogs = pgTable(
  * Drizzle ORM Relations
  */
 
-export const billsRelations = relations(bills, ({ one }) => ({
+export const billsRelations = relations(bills, ({ one, many }) => ({
 	schedule: one(billSchedules, {
 		fields: [bills.scheduleId],
 		references: [billSchedules.id],
@@ -163,6 +204,7 @@ export const billsRelations = relations(bills, ({ one }) => ({
 		fields: [bills.templateId],
 		references: [billTemplates.id],
 	}),
+	payments: many(billPayments),
 }))
 
 export const billTemplatesRelations = relations(billTemplates, ({ many }) => ({
@@ -191,6 +233,7 @@ export const scheduleExecutionLogsRelations = relations(scheduleExecutionLogs, (
  */
 export const schema = {
 	bills,
+	billPayments,
 	billTemplates,
 	billSchedules,
 	scheduleExecutionLogs,

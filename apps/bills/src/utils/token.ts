@@ -1,29 +1,34 @@
 /**
  * Secure Payment Token Generation
  *
- * Generates cryptographically secure 32-byte random tokens
- * for bill payment authorization.
+ * Generates cryptographically secure 12-character random tokens
+ * for bill payment authorization. Tokens are limited to 12 characters
+ * to fit in EVE Online wallet transaction reason fields.
  */
 
 /**
- * Generate a secure 32-byte payment token with "tbt_" prefix
+ * Base62 character set (0-9, a-z, A-Z) for URL-safe encoding
+ */
+const BASE62_CHARS = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+
+/**
+ * Generate a secure 12-character payment token
  *
  * Uses Web Crypto API to generate cryptographically secure random bytes,
- * then encodes as URL-safe base64 without padding.
- * Prefixed with "tbt_" (TAPI Bill Token) for easy identification.
+ * then maps them to base62 characters (0-9, a-z, A-Z) for URL-safe tokens.
+ * Limited to exactly 12 characters to fit in EVE Online wallet transaction reason fields.
  *
- * @returns A URL-safe base64-encoded 32-byte token prefixed with "tbt_"
+ * @returns A 12-character alphanumeric token
  */
 export function generatePaymentToken(): string {
-	// Generate 32 random bytes
-	const bytes = crypto.getRandomValues(new Uint8Array(32))
+	// Generate enough random bytes (12 bytes gives us plenty of entropy)
+	const bytes = crypto.getRandomValues(new Uint8Array(12))
 
-	// Convert to base64 and make URL-safe
-	const base64 = btoa(String.fromCharCode(...bytes))
+	// Map each byte to a base62 character using modulo
+	// This ensures uniform distribution across the character set
+	const token = Array.from(bytes)
+		.map((byte) => BASE62_CHARS[byte % BASE62_CHARS.length])
+		.join('')
 
-	// Make URL-safe by replacing characters and removing padding
-	const token = base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
-
-	// Add prefix for easy identification and prefix matching
-	return `tbt_${token}`
+	return token
 }

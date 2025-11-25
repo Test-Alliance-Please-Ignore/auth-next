@@ -1,6 +1,6 @@
 import { and, eq, gte, lte, or, sql } from '@repo/db-utils'
 
-import { bills } from '../db/schema'
+import { billPayments, bills } from '../db/schema'
 import { calculateLateFee } from '../utils/late-fees'
 import { generatePaymentToken } from '../utils/token'
 import { generateUuidV7 } from '../utils/uuid'
@@ -12,6 +12,7 @@ import type {
 	BillStatus,
 	BillWithDetails,
 	CreateBillInput,
+	EntityType,
 	PaymentResponse,
 	RegenerateTokenResponse,
 	UpdateBillInput,
@@ -268,61 +269,46 @@ export class BillService {
 	/**
 	 * Pay a bill using payment token
 	 */
-	async payBill(paymentToken: string): Promise<PaymentResponse> {
+	async payBill(
+		paymentToken: string,
+		{ amount, paidById, paidByType }: { amount: bigint; paidById: string; paidByType: EntityType }
+	): Promise<typeof billPayments.$inferSelect> {
 		const bill = await this.db.query.bills.findFirst({
 			where: eq(bills.paymentToken, paymentToken),
 		})
 
 		if (!bill) {
-			return {
-				success: false,
-				bill: null as any,
-				message: 'Invalid payment token',
-			}
+			throw new Error('Invalid payment token')
 		}
 
 		if (bill.status === 'paid') {
-			return {
-				success: false,
-				bill: this.toBillResponse(bill),
-				message: 'Bill is already paid',
-			}
+			throw new Error('Bill is already paid')
 		}
 
 		if (bill.status === 'cancelled') {
-			return {
-				success: false,
-				bill: this.toBillResponse(bill),
-				message: 'Bill has been cancelled',
-			}
+			throw new Error('Bill has been cancelled')
 		}
 
 		if (bill.status === 'draft') {
-			return {
-				success: false,
-				bill: this.toBillResponse(bill),
-				message: 'Bill has not been issued yet',
-			}
+			throw new Error('Bill has not been issued yet')
 		}
 
 		// Update late fee before marking as paid
 		const updatedBill = await this.updateLateFeeIfNeeded(bill)
 
-		const [paidBill] = await this.db
-			.update(bills)
-			.set({
-				status: 'paid',
+		const [payment] = await this.db
+			.insert(billPayments)
+			.values({
+				billId: updatedBill.id,
+				paymentToken,
+				amount: amount.toString(),
+				paidById,
+				paidByType,
 				paidAt: new Date(),
-				updatedAt: new Date(),
 			})
-			.where(eq(bills.id, updatedBill.id))
 			.returning()
 
-		return {
-			success: true,
-			bill: this.toBillResponse(paidBill),
-			message: 'Payment successful',
-		}
+		return payment
 	}
 
 	/**
@@ -384,6 +370,34 @@ export class BillService {
 		await this.db.delete(bills).where(eq(bills.id, billId))
 	}
 
+	async checkBillBalancePaid(billId: string): Promise<boolean> {
+		const bill = await this.db.query.bills.findFirst({
+			where: eq(bills.id, billId),
+			with: {
+				payments: true,
+			},
+		})
+
+		if (!bill) {
+			throw new Error('Bill not found')
+		}
+		const totalAmount = BigInt(bill.amount) + BigInt(bill.lateFee)
+		const paidAmount = bill.payments.reduce(
+			(acc, payment) => acc + BigInt(payment.amount),
+			BigInt(0)
+		)
+		return paidAmount >= totalAmount ? true : false
+	}
+
+	async markBillAsPaid(billId: string): Promise<void> {
+		await this.db
+			.update(bills)
+			.set({
+				status: 'paid',
+				updatedAt: new Date(),
+			})
+			.where(eq(bills.id, billId))
+	}
 	/**
 	 * Get bill statistics for a user
 	 */

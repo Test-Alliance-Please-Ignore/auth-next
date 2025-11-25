@@ -2,6 +2,7 @@ import {
 	ArrowLeft,
 	Building2,
 	Coins,
+	Factory,
 	FolderKanban,
 	Key,
 	MessageSquare,
@@ -76,6 +77,11 @@ export function AdminNav() {
 			label: 'Freight Routes',
 			href: '/admin/freight-routes',
 			icon: Truck,
+		},
+		{
+			label: 'Industry Providers',
+			href: '/admin/industry-providers',
+			icon: Factory,
 		},
 		{
 			label: 'Users',

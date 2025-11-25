@@ -1,6 +1,7 @@
 import { DurableObject } from 'cloudflare:workers'
 
 import { createDb } from './db'
+import { billPayments } from './db/schema'
 import { BillService } from './services/bill.service'
 import { ScheduleService } from './services/schedule.service'
 import { TemplateService } from './services/template.service'
@@ -21,6 +22,7 @@ import type {
 	CreateBillInput,
 	CreateScheduleInput,
 	CreateTemplateInput,
+	EntityType,
 	PaymentResponse,
 	RegenerateTokenResponse,
 	ScheduleExecutionLog,
@@ -117,8 +119,11 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 		return this.billService.cancelBill(userId, billId)
 	}
 
-	async payBill(paymentToken: string): Promise<PaymentResponse> {
-		return this.billService.payBill(paymentToken)
+	async payBill(
+		paymentToken: string,
+		{ amount, paidById, paidByType }: { amount: bigint; paidById: string; paidByType: EntityType }
+	): Promise<typeof billPayments.$inferSelect> {
+		return this.billService.payBill(paymentToken, { amount, paidById, paidByType })
 	}
 
 	async regeneratePaymentToken(userId: string, billId: string): Promise<RegenerateTokenResponse> {

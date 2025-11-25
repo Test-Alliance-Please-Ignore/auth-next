@@ -25,6 +25,7 @@ import freightRoutes from './routes/freight'
 import groupsRoutes from './routes/groups'
 import hrRoutes from './routes/hr'
 import industryAdminRoutes from './routes/industry-admin'
+import industryOrdersRoutes from './routes/industry-orders'
 import inventoryRoutes from './routes/inventory'
 import inviteRoutes from './routes/invite'
 import loginRoutes from './routes/login'
@@ -116,6 +117,7 @@ const app = new Hono<App>()
 	.route('/api/freight', freightRoutes)
 	.route('/api/inventory', inventoryRoutes)
 	.route('/api/hr', hrRoutes)
+	.route('/api/industry', industryOrdersRoutes)
 	.route('/api/srp', srpRoutes)
 // .route('/api/bills', userBillsRoutes) // User bills API (TODO: implement later)
 

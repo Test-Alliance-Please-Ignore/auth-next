@@ -302,7 +302,10 @@ export interface Bills {
 	cancelBill(userId: string, billId: string): Promise<Bill>
 
 	/** Pay a bill using payment token */
-	payBill(paymentToken: string): Promise<PaymentResponse>
+	payBill(
+		paymentToken: string,
+		{ amount, paidById, paidByType }: { amount: bigint; paidById: string; paidByType: EntityType }
+	): Promise<any>
 
 	/** Regenerate payment token for a bill (issuer only) */
 	regeneratePaymentToken(userId: string, billId: string): Promise<RegenerateTokenResponse>

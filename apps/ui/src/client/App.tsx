@@ -107,6 +107,20 @@ const FittingCreate = lazy(() => import('./features/doctrines/routes/fitting-cre
 const FittingDetail = lazy(() => import('./features/doctrines/routes/fitting-detail'))
 const FittingEdit = lazy(() => import('./features/doctrines/routes/fitting-edit'))
 
+// Lazy load the Industry Providers feature for code splitting
+const IndustryProvidersPage = lazy(
+	() => import('./features/industry/routes/industry-providers')
+)
+const IndustryProviderDetailPage = lazy(
+	() => import('./features/industry/routes/industry-provider-detail')
+)
+const IndustryProviderEditPage = lazy(
+	() => import('./features/industry/routes/industry-provider-edit')
+)
+const IndustryProviderNewPage = lazy(
+	() => import('./features/industry/routes/industry-provider-new')
+)
+
 // Create a client
 const queryClient = new QueryClient({
 	defaultOptions: {
@@ -466,6 +480,40 @@ export default function App() {
 						<Route path="freight-routes" element={<AdminFreightRoutesPage />} />
 						<Route path="freight-routes/new" element={<AdminFreightRoutesNewPage />} />
 						<Route path="freight-routes/:id/edit" element={<AdminFreightRoutesEditPage />} />
+
+						{/* Industry Providers routes */}
+						<Route
+							path="industry-providers"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<IndustryProvidersPage />
+								</Suspense>
+							}
+						/>
+						<Route
+							path="industry-providers/new"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<IndustryProviderNewPage />
+								</Suspense>
+							}
+						/>
+						<Route
+							path="industry-providers/:providerId"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<IndustryProviderDetailPage />
+								</Suspense>
+							}
+						/>
+						<Route
+							path="industry-providers/:providerId/edit"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<IndustryProviderEditPage />
+								</Suspense>
+							}
+						/>
 					</Route>
 				</Routes>
 			</BrowserRouter>

@@ -16,6 +16,16 @@
 				"name": "BILLS",
 				"class_name": "Bills",
 				"script_name": "bills"
+			},
+			{
+				"name": "ESI",
+				"class_name": "Esi",
+				"script_name": "esi"
+			},
+			{
+				"name": "ESI_TYPE_RESOLVER",
+				"class_name": "EsiTypeResolver",
+				"script_name": "esi"
 			}
 		]
 	},
@@ -24,6 +34,11 @@
 			"name": "bill-schedule-executor",
 			"binding": "BILLS_SCHEDULE_EXECUTOR",
 			"class_name": "BillScheduleExecutorWorkflow"
+		},
+		{
+			"name": "bill-payment-status-check",
+			"binding": "BILL_PAYMENT_STATUS_CHECK",
+			"class_name": "BillPaymentStatusCheckWorkflow"
 		}
 	],
 	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["Bills"] }]

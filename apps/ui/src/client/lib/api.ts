@@ -1003,6 +1003,91 @@ export interface ListFittingsFilters {
 	search?: string
 }
 
+/**
+ * Industry Admin API Types
+ */
+
+export enum IndustryEntityType {
+	USER = 'user',
+	CHARACTER = 'character',
+	CORPORATION = 'corporation',
+	ALLIANCE = 'alliance',
+	SERVICE_PROVIDER = 'service_provider',
+}
+
+export enum ServiceType {
+	GENERAL_MANUFACTURING = 'general_manufacturing',
+	CAPITAL_SHIP_MANUFACTURING = 'capital_ship_manufacturing',
+	SUPERCAPITAL_SHIP_MANUFACTURING = 'supercapital_ship_manufacturing',
+	RESEARCHING = 'research',
+	BLUEPRINT_COPYING = 'blueprint_copying',
+	INVENTION = 'invention',
+	REACTION = 'reaction',
+	HAULING = 'hauling',
+	CUSTOM_HAULING = 'custom_hauling',
+	BUYBACK = 'buyback',
+	ACQUISITION = 'acquisition',
+	BOOKMARKS = 'bookmarks',
+	OTHER_SERVICE = 'other_service',
+}
+
+export enum ServiceStatus {
+	ACTIVE = 'active',
+	INACTIVE = 'inactive',
+	CLOSED = 'closed',
+}
+
+export interface ServiceProvider {
+	id: string
+	name: string
+	description: string | null
+	createdAt: string
+	updatedAt: string
+	ownerEntityId: string
+	ownerEntityType: IndustryEntityType
+	acceptingOrders: boolean
+}
+
+export interface ProviderServiceDTO {
+	id: string
+	providerId: string
+	serviceType: ServiceType
+	status: ServiceStatus
+	createdAt: string
+	updatedAt: string
+}
+
+export interface IndustryProviderFilters {
+	ownerEntityId?: string
+	ownerEntityType?: IndustryEntityType
+	acceptingOrders?: boolean
+	limit?: number
+	offset?: number
+}
+
+export interface CreateIndustryProviderRequest {
+	name: string
+	description?: string | null
+	ownerEntityId: string
+	ownerEntityType: IndustryEntityType
+	acceptingOrders?: boolean
+}
+
+export interface UpdateIndustryProviderRequest {
+	name?: string
+	description?: string | null
+	acceptingOrders?: boolean
+}
+
+export interface IndustryProviderStatistics {
+	totalProviders: number
+	totalByEntityType: Record<IndustryEntityType, number>
+	totalAcceptingOrders: number
+	totalServices: number
+	servicesByType: Record<ServiceType, number>
+	servicesByStatus: Record<ServiceStatus, number>
+}
+
 export class ApiClient {
 	private baseUrl: string
 
@@ -2297,6 +2382,97 @@ export class ApiClient {
 
 	async deleteFitting(id: string): Promise<void> {
 		return this.delete(`/doctrines/fittings/${id}`)
+	}
+
+	// ===== Industry Admin API Methods =====
+
+	/**
+	 * List industry providers with optional filters
+	 */
+	async getIndustryProviders(filters?: IndustryProviderFilters): Promise<ServiceProvider[]> {
+		const params = new URLSearchParams()
+		if (filters?.ownerEntityId) params.set('ownerEntityId', filters.ownerEntityId)
+		if (filters?.ownerEntityType) params.set('ownerEntityType', filters.ownerEntityType)
+		if (filters?.acceptingOrders !== undefined) params.set('acceptingOrders', String(filters.acceptingOrders))
+		if (filters?.limit) params.set('limit', String(filters.limit))
+		if (filters?.offset) params.set('offset', String(filters.offset))
+
+		const query = params.toString()
+		return this.get(`/admin/industry/providers${query ? `?${query}` : ''}`)
+	}
+
+	/**
+	 * Get a specific industry provider by ID
+	 */
+	async getIndustryProvider(providerId: string): Promise<ServiceProvider> {
+		return this.get(`/admin/industry/providers/${providerId}`)
+	}
+
+	/**
+	 * Create a new industry provider
+	 */
+	async createIndustryProvider(data: CreateIndustryProviderRequest): Promise<ServiceProvider> {
+		return this.post('/admin/industry/providers', data)
+	}
+
+	/**
+	 * Update an existing industry provider
+	 */
+	async updateIndustryProvider(providerId: string, data: UpdateIndustryProviderRequest): Promise<ServiceProvider> {
+		return this.patch(`/admin/industry/providers/${providerId}`, data)
+	}
+
+	/**
+	 * Delete an industry provider
+	 */
+	async deleteIndustryProvider(providerId: string): Promise<{ message: string }> {
+		return this.delete(`/admin/industry/providers/${providerId}`)
+	}
+
+	/**
+	 * Set provider accepting orders status
+	 */
+	async setProviderAcceptingOrders(providerId: string, acceptingOrders: boolean): Promise<ServiceProvider> {
+		return this.post(`/admin/industry/providers/${providerId}/accepting-orders`, { acceptingOrders })
+	}
+
+	/**
+	 * List services for a provider
+	 */
+	async getProviderServices(providerId: string): Promise<ProviderServiceDTO[]> {
+		return this.get(`/admin/industry/providers/${providerId}/services`)
+	}
+
+	/**
+	 * Add a service to a provider
+	 */
+	async addProviderService(providerId: string, serviceType: ServiceType): Promise<ProviderServiceDTO> {
+		return this.post(`/admin/industry/providers/${providerId}/services`, { serviceType })
+	}
+
+	/**
+	 * Remove a service from a provider
+	 */
+	async removeProviderService(providerId: string, serviceType: ServiceType): Promise<{ message: string }> {
+		return this.delete(`/admin/industry/providers/${providerId}/services/${serviceType}`)
+	}
+
+	/**
+	 * Update a service's status
+	 */
+	async updateProviderServiceStatus(
+		providerId: string,
+		serviceType: ServiceType,
+		status: ServiceStatus
+	): Promise<ProviderServiceDTO> {
+		return this.patch(`/admin/industry/providers/${providerId}/services/${serviceType}/status`, { status })
+	}
+
+	/**
+	 * Get industry statistics
+	 */
+	async getIndustryStats(): Promise<IndustryProviderStatistics> {
+		return this.get('/admin/industry/stats')
 	}
 }
 

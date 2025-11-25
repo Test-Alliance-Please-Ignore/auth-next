@@ -5,6 +5,8 @@ import type { createDb } from './db'
 export type Env = SharedHonoEnv & {
 	DATABASE_URL: string
 	BILLS: DurableObjectNamespace
+	ESI: DurableObjectNamespace
+	ESI_TYPE_RESOLVER: DurableObjectNamespace
 }
 
 /** Variables can be extended */

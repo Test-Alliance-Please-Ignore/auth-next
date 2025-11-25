@@ -88,6 +88,53 @@ export interface Industry extends DurableObject {
 
 	// Statistics
 	getProviderStats(): Promise<ProviderStatistics>
+
+	// Order Management
+	createOrder(params: CreateOrderParams): Promise<IndustryOrder>
+	getOrder(orderId: OrderId): Promise<IndustryOrder | null>
+	listOrders(filters: OrderFilters): Promise<IndustryOrder[]>
+	getOrderHistory(orderId: OrderId): Promise<OrderStatusHistoryEntry[]>
+
+	// Order State Transitions
+	claimOrder(
+		orderId: OrderId,
+		providerId: ServiceProviderId,
+		actorEntityId: string,
+		actorEntityType: EntityType
+	): Promise<IndustryOrder>
+	acceptOrder(
+		orderId: OrderId,
+		actorEntityId: string,
+		actorEntityType: EntityType
+	): Promise<IndustryOrder>
+	rejectOrder(
+		orderId: OrderId,
+		actorEntityId: string,
+		actorEntityType: EntityType,
+		reason?: string
+	): Promise<IndustryOrder>
+	updateOrderStatus(
+		orderId: OrderId,
+		status: OrderStatus,
+		actorEntityId: string,
+		actorEntityType: EntityType
+	): Promise<IndustryOrder>
+	cancelOrder(
+		orderId: OrderId,
+		actorEntityId: string,
+		actorEntityType: EntityType,
+		reason?: string
+	): Promise<IndustryOrder>
+	confirmDelivery(
+		orderId: OrderId,
+		actorEntityId: string,
+		actorEntityType: EntityType
+	): Promise<IndustryOrder>
+	completeOrder(
+		orderId: OrderId,
+		actorEntityId: string,
+		actorEntityType: EntityType
+	): Promise<IndustryOrder>
 }
 
 export enum EntityType {
@@ -245,4 +292,117 @@ export interface ProviderStatistics {
 	totalServices: number
 	servicesByType: Record<ServiceType, number>
 	servicesByStatus: Record<ServiceStatus, number>
+}
+
+// ============================================================================
+// Order Types
+// ============================================================================
+
+/**
+ * Branded type for Order IDs.
+ */
+export type OrderId = BrandedType<string, 'OrderId'>
+
+/**
+ * Industry Order DTO
+ */
+export interface IndustryOrder {
+	id: OrderId
+	title: string
+	description: string | null
+	status: OrderStatus
+	orderType: ServiceType
+	issuerEntityId: string
+	issuerEntityType: EntityType
+	assigneeEntityId: string | null
+	assigneeEntityType: EntityType | null
+	eveContractId: string | null
+	deliveryLocationId: string | null
+	rewardAmount: string
+	collateralAmount: string
+	createdAt: Date
+	updatedAt: Date
+	acceptedAt: Date | null
+	completedAt: Date | null
+	expiresAt: Date | null
+	cancelledAt: Date | null
+	rejectedAt: Date | null
+	refundedAt: Date | null
+}
+
+/**
+ * Create Order Parameters
+ */
+export interface CreateOrderParams {
+	title: string
+	description?: string | null
+	orderType: ServiceType
+	issuerEntityId: string
+	issuerEntityType: EntityType
+	assigneeEntityId?: string | null
+	assigneeEntityType?: EntityType | null
+	deliveryLocationId?: string | null
+	rewardAmount: string
+	collateralAmount?: string
+	expiresAt?: Date | null
+}
+
+/**
+ * Order Filters for listing
+ */
+export interface OrderFilters {
+	status?: OrderStatus | OrderStatus[]
+	orderType?: ServiceType | ServiceType[]
+	issuerEntityId?: string
+	issuerEntityType?: EntityType
+	assigneeEntityId?: string
+	assigneeEntityType?: EntityType
+	open?: boolean // Filter for orders without assignee
+	limit?: number
+	offset?: number
+	sortBy?: 'createdAt' | 'updatedAt' | 'expiresAt'
+	sortDirection?: 'asc' | 'desc'
+}
+
+/**
+ * Order Status History Entry
+ */
+export interface OrderStatusHistoryEntry {
+	id: string
+	orderId: OrderId
+	previousStatus: OrderStatus
+	newStatus: OrderStatus
+	actorEntityId: string
+	actorEntityType: EntityType
+	createdAt: Date
+}
+
+/**
+ * Actor information for state transitions
+ */
+export interface ActorInfo {
+	entityId: string
+	entityType: EntityType
+}
+
+/**
+ * Valid state transitions map
+ */
+export const VALID_ORDER_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
+	[OrderStatus.PENDING]: [OrderStatus.ACCEPTED, OrderStatus.CANCELLED, OrderStatus.EXPIRED],
+	[OrderStatus.ACCEPTED]: [OrderStatus.IN_PRODUCTION, OrderStatus.CANCELLED],
+	[OrderStatus.IN_PRODUCTION]: [OrderStatus.READY_FOR_DELIVERY, OrderStatus.CANCELLED],
+	[OrderStatus.READY_FOR_DELIVERY]: [OrderStatus.IN_TRANSIT, OrderStatus.CANCELLED],
+	[OrderStatus.IN_TRANSIT]: [OrderStatus.DELIVERED, OrderStatus.CANCELLED],
+	[OrderStatus.DELIVERED]: [OrderStatus.COMPLETED, OrderStatus.CANCELLED],
+	[OrderStatus.COMPLETED]: [], // Terminal
+	[OrderStatus.CANCELLED]: [], // Terminal
+	[OrderStatus.EXPIRED]: [], // Terminal
+}
+
+/**
+ * Check if a status transition is valid
+ */
+export function isValidOrderTransition(from: OrderStatus, to: OrderStatus): boolean {
+	return VALID_ORDER_TRANSITIONS[from]?.includes(to) ?? false
 }
