@@ -10,6 +10,7 @@ import type {
 	BillSchedule,
 	BillStatistics,
 	BillTemplate,
+	BillWithDetails,
 	CreateBillFromTemplateInput,
 	CreateBillInput,
 	CreateScheduleInput,
@@ -26,7 +27,7 @@ const BILLS_API_BASE = '/admin/bills'
 export class BillsApiClient extends ApiClient {
 	// ===== Bills API Methods =====
 
-	async getBill(billId: string): Promise<Bill> {
+	async getBill(billId: string): Promise<BillWithDetails> {
 		return this.get(`${BILLS_API_BASE}/${billId}`)
 	}
 

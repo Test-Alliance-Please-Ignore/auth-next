@@ -3,6 +3,15 @@ import { Link, useParams } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Progress } from '@/components/ui/progress'
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from '@/components/ui/table'
 import { useBill } from '@/hooks/useBills'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
@@ -62,6 +71,22 @@ export default function AdminBillsDetailPage() {
 			day: 'numeric',
 		})
 	}
+
+	const formatDateTime = (date: Date) => {
+		return new Date(date).toLocaleString('en-US', {
+			year: 'numeric',
+			month: 'short',
+			day: 'numeric',
+			hour: '2-digit',
+			minute: '2-digit',
+		})
+	}
+
+	// Calculate payment summary
+	const totalDue = Number(bill.amount) + Number(bill.lateFee)
+	const totalPaid = bill.payments?.reduce((sum, p) => sum + Number(p.amount), 0) ?? 0
+	const remaining = Math.max(0, totalDue - totalPaid)
+	const paymentProgress = totalDue > 0 ? Math.min(100, Math.floor((totalPaid / totalDue) * 100)) : 0
 
 	const getStatusBadgeClass = (status: string) => {
 		switch (status) {
@@ -126,14 +151,14 @@ export default function AdminBillsDetailPage() {
 						<div>
 							<h3 className="text-sm font-medium text-muted-foreground mb-1">Payer</h3>
 							<p className="text-lg">
-								{bill.payerType.charAt(0).toUpperCase() + bill.payerType.slice(1)} ID:{' '}
-								{bill.payerId}
+								{bill.payerName ||
+									`${bill.payerType.charAt(0).toUpperCase() + bill.payerType.slice(1)} ${bill.payerId}`}
 							</p>
 						</div>
 
 						<div>
 							<h3 className="text-sm font-medium text-muted-foreground mb-1">Issuer</h3>
-							<p className="text-lg">{bill.issuerId}</p>
+							<p className="text-lg">{bill.issuerName || bill.issuerId}</p>
 						</div>
 
 						{bill.description && (
@@ -157,6 +182,48 @@ export default function AdminBillsDetailPage() {
 					</div>
 				</CardContent>
 			</Card>
+
+			{/* Payment Summary */}
+			{bill.status !== 'draft' && (
+				<Card variant="interactive">
+					<CardHeader>
+						<CardTitle>Payment Summary</CardTitle>
+						<CardDescription>Payment progress for this bill</CardDescription>
+					</CardHeader>
+					<CardContent className="space-y-4">
+						<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+							<div>
+								<h3 className="text-sm font-medium text-muted-foreground mb-1">Total Due</h3>
+								<p className="text-xl font-bold">{formatAmount(totalDue.toString())} ISK</p>
+							</div>
+
+							<div>
+								<h3 className="text-sm font-medium text-muted-foreground mb-1">Total Paid</h3>
+								<p className="text-xl font-bold text-green-500">
+									{formatAmount(totalPaid.toString())} ISK
+								</p>
+							</div>
+
+							<div>
+								<h3 className="text-sm font-medium text-muted-foreground mb-1">Remaining</h3>
+								<p
+									className={`text-xl font-bold ${remaining > 0 ? 'text-orange-500' : 'text-green-500'}`}
+								>
+									{formatAmount(remaining.toString())} ISK
+								</p>
+							</div>
+						</div>
+
+						<div className="space-y-2">
+							<div className="flex justify-between text-sm">
+								<span className="text-muted-foreground">Payment Progress</span>
+								<span className="font-medium">{paymentProgress.toFixed(1)}%</span>
+							</div>
+							<Progress value={paymentProgress} className="h-2" />
+						</div>
+					</CardContent>
+				</Card>
+			)}
 
 			{/* Late Fee Information */}
 			{bill.lateFeeType !== 'none' && (
@@ -204,6 +271,58 @@ export default function AdminBillsDetailPage() {
 								</div>
 							)}
 						</div>
+					</CardContent>
+				</Card>
+			)}
+
+			{/* Payment History */}
+			{bill.status !== 'draft' && (
+				<Card variant="interactive">
+					<CardHeader>
+						<CardTitle>Payment History</CardTitle>
+						<CardDescription>
+							{bill.payments && bill.payments.length > 0
+								? `${bill.payments.length} payment${bill.payments.length > 1 ? 's' : ''} recorded`
+								: 'No payments recorded yet'}
+						</CardDescription>
+					</CardHeader>
+					<CardContent>
+						{bill.payments && bill.payments.length > 0 ? (
+							<Table>
+								<TableHeader>
+									<TableRow>
+										<TableHead>Date</TableHead>
+										<TableHead>Amount</TableHead>
+										<TableHead>Paid By</TableHead>
+										<TableHead>Transaction ID</TableHead>
+									</TableRow>
+								</TableHeader>
+								<TableBody>
+									{bill.payments.map((payment) => (
+										<TableRow key={payment.id}>
+											<TableCell>{formatDateTime(payment.paidAt)}</TableCell>
+											<TableCell className="font-medium">
+												{formatAmount(payment.amount)} ISK
+											</TableCell>
+											<TableCell>
+												{payment.paidByName ||
+													`${payment.paidByType.charAt(0).toUpperCase() + payment.paidByType.slice(1)} ${payment.paidById}`}
+											</TableCell>
+											<TableCell className="font-mono text-sm">
+												{payment.esiTransactionId}
+											</TableCell>
+										</TableRow>
+									))}
+								</TableBody>
+							</Table>
+						) : (
+							<div className="text-center py-8 text-muted-foreground">
+								<p>No payments have been made yet.</p>
+								<p className="text-sm mt-1">
+									Payments will appear here once they are processed.
+								</p>
+							</div>
+						)}
 					</CardContent>
 				</Card>
 			)}

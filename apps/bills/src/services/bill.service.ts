@@ -48,6 +48,8 @@ export class BillService {
 				issuerId: userId,
 				payerId: data.payerId,
 				payerType: data.payerType,
+				payeeId: data.payeeId,
+				payeeType: data.payeeType,
 				title: data.title,
 				description: data.description || null,
 				amount: data.amount,
@@ -90,6 +92,7 @@ export class BillService {
 			with: {
 				template: true,
 				schedule: true,
+				payments: true,
 			},
 		})
 
@@ -155,6 +158,7 @@ export class BillService {
 			with: {
 				template: true,
 				schedule: true,
+				payments: true,
 			},
 		})
 
@@ -271,7 +275,17 @@ export class BillService {
 	 */
 	async payBill(
 		paymentToken: string,
-		{ amount, paidById, paidByType }: { amount: bigint; paidById: string; paidByType: EntityType }
+		{
+			amount,
+			paidById,
+			paidByType,
+			esiTransactionId,
+		}: {
+			amount: bigint
+			paidById: string
+			paidByType: EntityType
+			esiTransactionId: string
+		}
 	): Promise<typeof billPayments.$inferSelect> {
 		const bill = await this.db.query.bills.findFirst({
 			where: eq(bills.paymentToken, paymentToken),
@@ -296,6 +310,14 @@ export class BillService {
 		// Update late fee before marking as paid
 		const updatedBill = await this.updateLateFeeIfNeeded(bill)
 
+		const existingPayment = await this.db.query.billPayments.findFirst({
+			where: eq(billPayments.esiTransactionId, esiTransactionId),
+		})
+
+		if (existingPayment) {
+			return existingPayment
+		}
+
 		const [payment] = await this.db
 			.insert(billPayments)
 			.values({
@@ -305,6 +327,7 @@ export class BillService {
 				paidById,
 				paidByType,
 				paidAt: new Date(),
+				esiTransactionId,
 			})
 			.returning()
 
@@ -529,6 +552,8 @@ export class BillService {
 			issuerId: bill.issuerId,
 			payerId: bill.payerId,
 			payerType: bill.payerType,
+			payeeId: bill.payeeId,
+			payeeType: bill.payeeType,
 			templateId: bill.templateId,
 			scheduleId: bill.scheduleId,
 			title: bill.title,
@@ -555,6 +580,17 @@ export class BillService {
 			...this.toBillResponse(bill),
 			template: bill.template || null,
 			schedule: bill.schedule || null,
+			payments: bill.payments?.map((p: any) => ({
+				id: p.id,
+				billId: p.billId,
+				paymentToken: p.paymentToken,
+				esiTransactionId: p.esiTransactionId,
+				amount: p.amount,
+				paidById: p.paidById,
+				paidByType: p.paidByType,
+				paidAt: p.paidAt,
+				createdAt: p.createdAt,
+			})),
 		}
 	}
 }

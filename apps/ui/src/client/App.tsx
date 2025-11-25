@@ -90,6 +90,10 @@ const CategoriesManagement = lazy(
 	() => import('./features/skill-plans/routes/categories-management')
 )
 
+// Lazy load the User Bills feature for code splitting
+const MyBillsPage = lazy(() => import('./features/bills/routes/my-bills'))
+const BillDetailPage = lazy(() => import('./features/bills/routes/bill-detail'))
+
 // Lazy load the SRP (Ship Replacement Program) feature for code splitting
 const SRPIndex = lazy(() => import('./features/srp/routes/index'))
 const SRPMyRequests = lazy(() => import('./features/srp/routes/my-requests'))
@@ -366,6 +370,24 @@ export default function App() {
 							element={
 								<Suspense fallback={<LoadingPage />}>
 									<SRPPayments />
+								</Suspense>
+							}
+						/>
+
+						{/* User Bills routes (lazy loaded) */}
+						<Route
+							path="/my-bills"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<MyBillsPage />
+								</Suspense>
+							}
+						/>
+						<Route
+							path="/my-bills/:billId"
+							element={
+								<Suspense fallback={<LoadingPage />}>
+									<BillDetailPage />
 								</Suspense>
 							}
 						/>

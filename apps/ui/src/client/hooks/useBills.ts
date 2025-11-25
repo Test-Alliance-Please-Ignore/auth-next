@@ -6,6 +6,7 @@ import type {
 	Bill,
 	BillSchedule,
 	BillTemplate,
+	BillWithDetails,
 	CreateBillFromTemplateInput,
 	CreateBillInput,
 	CreateScheduleInput,

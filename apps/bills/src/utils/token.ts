@@ -22,7 +22,7 @@ const BASE62_CHARS = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUV
  */
 export function generatePaymentToken(): string {
 	// Generate enough random bytes (12 bytes gives us plenty of entropy)
-	const bytes = crypto.getRandomValues(new Uint8Array(12))
+	const bytes = crypto.getRandomValues(new Uint8Array(8))
 
 	// Map each byte to a base62 character using modulo
 	// This ensures uniform distribution across the character set

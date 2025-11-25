@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { CancelButton } from '@/components/ui/cancel-button'
+import { ConfirmButton } from '@/components/ui/confirm-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -19,7 +20,13 @@ import { Textarea } from '@/components/ui/textarea'
 import { useCreateBill } from '@/hooks/useBills'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
-import type { CreateBillInput, EntityType, LateFeeCompounding, LateFeeType } from '@repo/bills'
+import type {
+	CreateBillInput,
+	EntityType,
+	LateFeeCompounding,
+	LateFeeType,
+	PayeeType,
+} from '@repo/bills'
 
 export default function AdminBillsNewPage() {
 	usePageTitle('Admin - Create Bill')
@@ -30,6 +37,8 @@ export default function AdminBillsNewPage() {
 	const [formData, setFormData] = useState<{
 		payerId: string
 		payerType: EntityType
+		payeeId: string
+		payeeType: PayeeType
 		title: string
 		description: string
 		amount: string
@@ -41,6 +50,8 @@ export default function AdminBillsNewPage() {
 	}>({
 		payerId: '',
 		payerType: 'character',
+		payeeId: '',
+		payeeType: 'character',
 		title: '',
 		description: '',
 		amount: '',
@@ -72,6 +83,10 @@ export default function AdminBillsNewPage() {
 
 		if (!formData.payerId.trim()) {
 			newErrors.payerId = 'Payer ID is required'
+		}
+
+		if (!formData.payeeId.trim()) {
+			newErrors.payeeId = 'Payee ID is required'
 		}
 
 		if (!formData.title.trim()) {
@@ -118,6 +133,8 @@ export default function AdminBillsNewPage() {
 			const input: CreateBillInput = {
 				payerId: formData.payerId.trim(),
 				payerType: formData.payerType,
+				payeeId: formData.payeeId.trim(),
+				payeeType: formData.payeeType,
 				title: formData.title.trim(),
 				description: formData.description.trim() || undefined,
 				amount: formData.amount.trim(),
@@ -230,6 +247,54 @@ export default function AdminBillsNewPage() {
 								{errors.payerId && <p className="text-sm text-destructive">{errors.payerId}</p>}
 								<p className="text-sm text-muted-foreground">
 									Enter the EVE Online {formData.payerType} ID or group ID
+								</p>
+							</div>
+						</div>
+					</CardContent>
+				</Card>
+
+				{/* Payee Information */}
+				<Card variant="interactive" className="mb-6">
+					<CardHeader>
+						<CardTitle>Payee Information</CardTitle>
+						<CardDescription>Who will receive the payment?</CardDescription>
+					</CardHeader>
+					<CardContent className="space-y-4">
+						<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+							<div className="space-y-2">
+								<Label htmlFor="payeeType">
+									Payee Type <span className="text-destructive">*</span>
+								</Label>
+								<Select
+									value={formData.payeeType}
+									onValueChange={(value) => handleChange('payeeType', value)}
+								>
+									<SelectTrigger id="payeeType">
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value="character">Character</SelectItem>
+										<SelectItem value="corporation">Corporation</SelectItem>
+									</SelectContent>
+								</Select>
+							</div>
+
+							<div className="space-y-2">
+								<Label htmlFor="payeeId">
+									Payee ID <span className="text-destructive">*</span>
+								</Label>
+								<Input
+									id="payeeId"
+									placeholder={`${
+										formData.payeeType === 'character' ? 'Character' : 'Corporation'
+									} ID`}
+									value={formData.payeeId}
+									onChange={(e) => handleChange('payeeId', e.target.value)}
+									className={errors.payeeId ? 'border-destructive' : ''}
+								/>
+								{errors.payeeId && <p className="text-sm text-destructive">{errors.payeeId}</p>}
+								<p className="text-sm text-muted-foreground">
+									Enter the EVE Online {formData.payeeType} ID to receive the payment
 								</p>
 							</div>
 						</div>
@@ -388,9 +453,9 @@ export default function AdminBillsNewPage() {
 
 				{/* Actions */}
 				<div className="flex gap-3">
-					<Button type="submit" disabled={createBill.isPending}>
-						{createBill.isPending ? 'Creating Bill...' : 'Create Bill'}
-					</Button>
+					<ConfirmButton type="submit" loading={createBill.isPending}>
+						Create Bill
+					</ConfirmButton>
 					<CancelButton type="button" onClick={() => navigate('/admin/bills')}>
 						Cancel
 					</CancelButton>

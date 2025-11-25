@@ -1,0 +1,2 @@
+ALTER TABLE "bills" ALTER COLUMN "template_id" SET DATA TYPE uuid USING template_id::uuid;--> statement-breakpoint
+ALTER TABLE "bills" ALTER COLUMN "schedule_id" SET DATA TYPE uuid USING schedule_id::uuid;

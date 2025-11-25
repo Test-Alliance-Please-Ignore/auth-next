@@ -7,6 +7,7 @@ import {
 	pgTable,
 	text,
 	timestamp,
+	unique,
 	uuid,
 } from 'drizzle-orm/pg-core'
 
@@ -22,7 +23,7 @@ export const billStatusEnum = pgEnum('bill_status', [
 	'overdue',
 ])
 
-export const entityTypeEnum = pgEnum('entity_type', ['character', 'corporation', 'group'])
+export const entityTypeEnum = pgEnum('bill_entity_type', ['character', 'corporation', 'group'])
 
 export const lateFeeTypeEnum = pgEnum('late_fee_type', ['none', 'static', 'percentage'])
 
@@ -44,14 +45,14 @@ export const scheduleFrequencyEnum = pgEnum('schedule_frequency', ['daily', 'wee
 export const bills = pgTable(
 	'bills',
 	{
-		id: text('id').primaryKey(),
+		id: uuid('id').defaultRandom().primaryKey(),
 		issuerId: text('issuer_id').notNull(),
 		payerId: text('payer_id').notNull(),
 		payerType: entityTypeEnum('payer_type').notNull(),
 		payeeId: text('payee_id'),
 		payeeType: entityTypeEnum('payee_type'),
-		templateId: text('template_id'),
-		scheduleId: text('schedule_id'),
+		templateId: uuid('template_id'),
+		scheduleId: uuid('schedule_id'),
 		title: text('title').notNull(),
 		description: text('description'),
 		amount: text('amount').notNull(), // ISK amounts as text to avoid BigInt issues
@@ -88,6 +89,7 @@ export const billPayments = pgTable(
 			.notNull()
 			.references(() => bills.id, { onDelete: 'cascade' }),
 		paymentToken: text('payment_token').notNull(),
+		esiTransactionId: text('esi_transaction_id').notNull(),
 		amount: text('amount').notNull(),
 		paidById: text('paid_by_id').notNull(),
 		paidByType: entityTypeEnum('paid_by_type').notNull(),
@@ -97,6 +99,8 @@ export const billPayments = pgTable(
 	(table) => [
 		index('bill_payments_bill_id_idx').on(table.billId),
 		index('bill_payments_payment_token_idx').on(table.paymentToken),
+		index('bill_payments_esi_transaction_id_idx').on(table.esiTransactionId),
+		unique('bill_payments_esi_transaction_id_unique').on(table.esiTransactionId),
 		index('bill_payments_paid_by_id_idx').on(table.paidById),
 		index('bill_payments_paid_by_type_idx').on(table.paidByType),
 		index('bill_payments_paid_at_idx').on(table.paidAt),
@@ -112,7 +116,7 @@ export const billPayments = pgTable(
 export const billTemplates = pgTable(
 	'bill_templates',
 	{
-		id: text('id').primaryKey(),
+		id: uuid('id').defaultRandom().primaryKey(),
 		ownerId: text('owner_id').notNull(),
 		name: text('name').notNull(),
 		description: text('description'),
@@ -138,9 +142,9 @@ export const billTemplates = pgTable(
 export const billSchedules = pgTable(
 	'bill_schedules',
 	{
-		id: text('id').primaryKey(),
+		id: uuid('id').defaultRandom().primaryKey(),
 		ownerId: text('owner_id').notNull(),
-		templateId: text('template_id')
+		templateId: uuid('template_id')
 			.notNull()
 			.references(() => billTemplates.id, { onDelete: 'restrict' }),
 		payerId: text('payer_id').notNull(),
@@ -176,8 +180,8 @@ export const billSchedules = pgTable(
 export const scheduleExecutionLogs = pgTable(
 	'schedule_execution_logs',
 	{
-		id: text('id').primaryKey(),
-		scheduleId: text('schedule_id')
+		id: uuid('id').defaultRandom().primaryKey(),
+		scheduleId: uuid('schedule_id')
 			.notNull()
 			.references(() => billSchedules.id, { onDelete: 'cascade' }),
 		generatedBillId: text('generated_bill_id'),
@@ -205,6 +209,13 @@ export const billsRelations = relations(bills, ({ one, many }) => ({
 		references: [billTemplates.id],
 	}),
 	payments: many(billPayments),
+}))
+
+export const billPaymentsRelations = relations(billPayments, ({ one }) => ({
+	bill: one(bills, {
+		fields: [billPayments.billId],
+		references: [bills.id],
+	}),
 }))
 
 export const billTemplatesRelations = relations(billTemplates, ({ many }) => ({
@@ -238,6 +249,7 @@ export const schema = {
 	billSchedules,
 	scheduleExecutionLogs,
 	billsRelations,
+	billPaymentsRelations,
 	billTemplatesRelations,
 	billSchedulesRelations,
 	scheduleExecutionLogsRelations,

@@ -1,14 +1,27 @@
 CREATE TYPE "public"."bill_status" AS ENUM('draft', 'issued', 'paid', 'cancelled', 'overdue');--> statement-breakpoint
-CREATE TYPE "public"."entity_type" AS ENUM('character', 'corporation', 'group');--> statement-breakpoint
+CREATE TYPE "public"."bill_entity_type" AS ENUM('character', 'corporation', 'group');--> statement-breakpoint
 CREATE TYPE "public"."late_fee_compounding" AS ENUM('none', 'daily', 'weekly', 'monthly');--> statement-breakpoint
 CREATE TYPE "public"."late_fee_type" AS ENUM('none', 'static', 'percentage');--> statement-breakpoint
 CREATE TYPE "public"."schedule_frequency" AS ENUM('daily', 'weekly', 'monthly');--> statement-breakpoint
+CREATE TABLE "bill_payments" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"bill_id" uuid NOT NULL,
+	"payment_token" text NOT NULL,
+	"amount" text NOT NULL,
+	"paid_by_id" text NOT NULL,
+	"paid_by_type" "bill_entity_type" NOT NULL,
+	"paid_at" timestamp with time zone NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "bill_schedules" (
-	"id" text PRIMARY KEY NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"owner_id" text NOT NULL,
-	"template_id" text NOT NULL,
+	"template_id" uuid NOT NULL,
 	"payer_id" text NOT NULL,
-	"payer_type" "entity_type" NOT NULL,
+	"payer_type" "bill_entity_type" NOT NULL,
+	"payee_id" text,
+	"payee_type" "bill_entity_type",
 	"frequency" "schedule_frequency" NOT NULL,
 	"amount" text NOT NULL,
 	"next_generation_time" timestamp NOT NULL,
@@ -20,7 +33,7 @@ CREATE TABLE "bill_schedules" (
 );
 --> statement-breakpoint
 CREATE TABLE "bill_templates" (
-	"id" text PRIMARY KEY NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"owner_id" text NOT NULL,
 	"name" text NOT NULL,
 	"description" text,
@@ -36,10 +49,12 @@ CREATE TABLE "bill_templates" (
 );
 --> statement-breakpoint
 CREATE TABLE "bills" (
-	"id" text PRIMARY KEY NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"issuer_id" text NOT NULL,
 	"payer_id" text NOT NULL,
-	"payer_type" "entity_type" NOT NULL,
+	"payer_type" "bill_entity_type" NOT NULL,
+	"payee_id" text,
+	"payee_type" "bill_entity_type",
 	"template_id" text,
 	"schedule_id" text,
 	"title" text NOT NULL,
@@ -55,28 +70,39 @@ CREATE TABLE "bills" (
 	"payment_token" text NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"payment_last_checked_at" timestamp with time zone,
 	CONSTRAINT "bills_payment_token_unique" UNIQUE("payment_token")
 );
 --> statement-breakpoint
 CREATE TABLE "schedule_execution_logs" (
-	"id" text PRIMARY KEY NOT NULL,
-	"schedule_id" text NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"schedule_id" uuid NOT NULL,
 	"generated_bill_id" text,
 	"executed_at" timestamp DEFAULT now() NOT NULL,
 	"success" boolean NOT NULL,
 	"error_message" text
 );
 --> statement-breakpoint
+ALTER TABLE "bill_payments" ADD CONSTRAINT "bill_payments_bill_id_bills_id_fk" FOREIGN KEY ("bill_id") REFERENCES "public"."bills"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "bill_schedules" ADD CONSTRAINT "bill_schedules_template_id_bill_templates_id_fk" FOREIGN KEY ("template_id") REFERENCES "public"."bill_templates"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "schedule_execution_logs" ADD CONSTRAINT "schedule_execution_logs_schedule_id_bill_schedules_id_fk" FOREIGN KEY ("schedule_id") REFERENCES "public"."bill_schedules"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "bill_payments_bill_id_idx" ON "bill_payments" USING btree ("bill_id");--> statement-breakpoint
+CREATE INDEX "bill_payments_payment_token_idx" ON "bill_payments" USING btree ("payment_token");--> statement-breakpoint
+CREATE INDEX "bill_payments_paid_by_id_idx" ON "bill_payments" USING btree ("paid_by_id");--> statement-breakpoint
+CREATE INDEX "bill_payments_paid_by_type_idx" ON "bill_payments" USING btree ("paid_by_type");--> statement-breakpoint
+CREATE INDEX "bill_payments_paid_at_idx" ON "bill_payments" USING btree ("paid_at");--> statement-breakpoint
 CREATE INDEX "bill_schedules_owner_id_idx" ON "bill_schedules" USING btree ("owner_id");--> statement-breakpoint
 CREATE INDEX "bill_schedules_template_id_idx" ON "bill_schedules" USING btree ("template_id");--> statement-breakpoint
 CREATE INDEX "bill_schedules_payer_id_idx" ON "bill_schedules" USING btree ("payer_id");--> statement-breakpoint
+CREATE INDEX "bill_schedules_payee_id_idx" ON "bill_schedules" USING btree ("payee_id");--> statement-breakpoint
+CREATE INDEX "bill_schedules_payee_type_idx" ON "bill_schedules" USING btree ("payee_type");--> statement-breakpoint
 CREATE INDEX "bill_schedules_next_generation_time_idx" ON "bill_schedules" USING btree ("next_generation_time");--> statement-breakpoint
 CREATE INDEX "bill_schedules_is_active_idx" ON "bill_schedules" USING btree ("is_active");--> statement-breakpoint
 CREATE INDEX "bill_templates_owner_id_idx" ON "bill_templates" USING btree ("owner_id");--> statement-breakpoint
 CREATE INDEX "bills_issuer_id_idx" ON "bills" USING btree ("issuer_id");--> statement-breakpoint
 CREATE INDEX "bills_payer_id_idx" ON "bills" USING btree ("payer_id");--> statement-breakpoint
+CREATE INDEX "bills_payee_id_idx" ON "bills" USING btree ("payee_id");--> statement-breakpoint
+CREATE INDEX "bills_payee_type_idx" ON "bills" USING btree ("payee_type");--> statement-breakpoint
 CREATE INDEX "bills_status_idx" ON "bills" USING btree ("status");--> statement-breakpoint
 CREATE INDEX "bills_due_date_idx" ON "bills" USING btree ("due_date");--> statement-breakpoint
 CREATE INDEX "bills_template_id_idx" ON "bills" USING btree ("template_id");--> statement-breakpoint

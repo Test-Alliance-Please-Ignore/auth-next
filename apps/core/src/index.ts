@@ -12,6 +12,7 @@ import { renderFleetJoinPage } from './pages/fleet-join'
 import adminRoutes from './routes/admin'
 import authRoutes from './routes/auth'
 import billsAdminRoutes from './routes/bills-admin'
+import billsUserRoutes from './routes/bills-user'
 import broadcastsRoutes from './routes/broadcasts'
 import charactersRoutes from './routes/characters'
 import corporationsRoutes from './routes/corporations'
@@ -119,7 +120,7 @@ const app = new Hono<App>()
 	.route('/api/hr', hrRoutes)
 	.route('/api/industry', industryOrdersRoutes)
 	.route('/api/srp', srpRoutes)
-// .route('/api/bills', userBillsRoutes) // User bills API (TODO: implement later)
+	.route('/api/bills', billsUserRoutes)
 
 // Export Hono app as default export (HTTP handler)
 // Wrapped with Sentry for automatic error tracking

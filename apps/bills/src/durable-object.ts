@@ -121,9 +121,24 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 
 	async payBill(
 		paymentToken: string,
-		{ amount, paidById, paidByType }: { amount: bigint; paidById: string; paidByType: EntityType }
+		{
+			amount,
+			paidById,
+			paidByType,
+			esiTransactionId,
+		}: {
+			amount: bigint
+			paidById: string
+			paidByType: EntityType
+			esiTransactionId: string
+		}
 	): Promise<typeof billPayments.$inferSelect> {
-		return this.billService.payBill(paymentToken, { amount, paidById, paidByType })
+		return this.billService.payBill(paymentToken, {
+			amount,
+			paidById,
+			paidByType,
+			esiTransactionId,
+		})
 	}
 
 	async regeneratePaymentToken(userId: string, billId: string): Promise<RegenerateTokenResponse> {
@@ -275,6 +290,8 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 				templateId: scheduleResult.templateId,
 				payerId: scheduleResult.payerId,
 				payerType: scheduleResult.payerType,
+				payeeId: scheduleResult.payeeId ?? '',
+				payeeType: (scheduleResult.payeeType as 'character' | 'corporation') ?? 'character',
 				amount: scheduleResult.amount,
 			}
 

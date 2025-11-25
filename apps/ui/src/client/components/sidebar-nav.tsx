@@ -9,6 +9,7 @@ import {
 	Mail,
 	Package,
 	Radio,
+	Receipt,
 	Settings,
 	Shield,
 	Users,
@@ -73,6 +74,11 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 			label: 'SRP',
 			href: '/srp',
 			icon: CircleDollarSign,
+		},
+		{
+			label: 'My Bills',
+			href: '/my-bills',
+			icon: Receipt,
 		},
 		{
 			label: 'My Applications',

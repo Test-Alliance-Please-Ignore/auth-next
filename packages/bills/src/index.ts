@@ -11,6 +11,7 @@
 
 export type BillStatus = 'draft' | 'issued' | 'paid' | 'cancelled' | 'overdue'
 export type EntityType = 'character' | 'corporation' | 'group'
+export type PayeeType = 'character' | 'corporation'
 export type LateFeeType = 'none' | 'static' | 'percentage'
 export type LateFeeCompounding = 'none' | 'daily' | 'weekly' | 'monthly'
 export type ScheduleFrequency = 'daily' | 'weekly' | 'monthly'
@@ -24,6 +25,8 @@ export interface Bill {
 	issuerId: string
 	payerId: string
 	payerType: EntityType
+	payeeId: string | null
+	payeeType: PayeeType | null
 	templateId: string | null
 	scheduleId: string | null
 	title: string
@@ -82,6 +85,19 @@ export interface ScheduleExecutionLog {
 	errorMessage: string | null
 }
 
+export interface BillPayment {
+	id: string
+	billId: string
+	paymentToken: string
+	esiTransactionId: string
+	amount: string
+	paidById: string
+	paidByType: EntityType
+	paidByName?: string
+	paidAt: Date
+	createdAt: Date
+}
+
 /**
  * Extended types with relations for API responses
  */
@@ -89,6 +105,7 @@ export interface ScheduleExecutionLog {
 export interface BillWithDetails extends Bill {
 	template: BillTemplate | null
 	schedule: BillSchedule | null
+	payments?: BillPayment[]
 	issuerName?: string
 	payerName?: string
 }
@@ -112,6 +129,8 @@ export interface BillScheduleWithDetails extends BillSchedule {
 export interface CreateBillInput {
 	payerId: string
 	payerType: EntityType
+	payeeId: string
+	payeeType: PayeeType
 	title: string
 	description?: string
 	amount: string
@@ -135,6 +154,8 @@ export interface CreateBillFromTemplateInput {
 	templateId: string
 	payerId: string
 	payerType: EntityType
+	payeeId: string
+	payeeType: PayeeType
 	amount: string
 	templateParams?: Record<string, string>
 }

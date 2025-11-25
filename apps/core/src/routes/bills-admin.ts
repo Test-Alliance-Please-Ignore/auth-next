@@ -5,15 +5,19 @@
  * These endpoints call the Bills Durable Object via RPC.
  */
 
+import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
+import { createDb } from '../db'
+import { users } from '../db/schema'
 import { validatePagination } from '../lib/validation'
 import { requireAdmin, requireAuth } from '../middleware/session'
 
 import type { Bills } from '@repo/bills'
+import type { EsiTypeResolver } from '@repo/esi'
 import type { App } from '../context'
 
 const app = new Hono<App>()
@@ -44,6 +48,8 @@ app.get('/', requireAuth(), requireAdmin(), async (c) => {
 		const payerType = c.req.query('payerType')
 		const issuerId = c.req.query('issuerId')
 
+		logger.info('[bills-admin] Fetching bills', { userId: user.id, status, payerId, payerType, issuerId })
+
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
 		const bills = await stub.listBills(user.id, {
 			status: status as any,
@@ -52,12 +58,19 @@ app.get('/', requireAuth(), requireAdmin(), async (c) => {
 			issuerId,
 		})
 
-		// Note: Pagination is validated but not currently used by Bills DO
-		// TODO: Implement pagination in Bills DO listBills method
+		logger.info('[bills-admin] Bills fetched successfully', { count: bills?.length, userId: user.id })
+
+		// Log first bill to check structure
+		if (bills?.length > 0) {
+			logger.info('[bills-admin] First bill sample', { bill: JSON.stringify(bills[0]) })
+		}
 
 		return c.json(bills)
 	} catch (error) {
-		logger.error('Error listing bills:', error)
+		logger.error('[bills-admin] Error listing bills:', {
+			error: error instanceof Error ? error.message : String(error),
+			stack: error instanceof Error ? error.stack : undefined,
+		})
 		return c.json({ error: 'Failed to list bills' }, 500)
 	}
 })
@@ -286,6 +299,42 @@ app.get('/:billId', requireAuth(), requireAdmin(), async (c) => {
 
 		if (!bill) {
 			return c.json({ error: 'Bill not found' }, 404)
+		}
+
+		// Resolve entity names (issuer's main character, payer, payment paidBy)
+		const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
+		const idsToResolve = [bill.payerId]
+
+		// Look up issuer's main character ID (issuerId is a user UUID)
+		const db = createDb(c.env.DATABASE_URL)
+		const issuerUser = await db.query.users.findFirst({
+			where: eq(users.id, bill.issuerId),
+			columns: { mainCharacterId: true },
+		})
+		if (issuerUser?.mainCharacterId) {
+			idsToResolve.push(issuerUser.mainCharacterId)
+		}
+
+		if (bill.payments && bill.payments.length > 0) {
+			idsToResolve.push(...bill.payments.map((p) => p.paidById))
+		}
+
+		const nameMap = await resolver.resolveIds([...new Set(idsToResolve)])
+
+		// Add issuer name (from main character)
+		if (issuerUser?.mainCharacterId) {
+			bill.issuerName = nameMap[issuerUser.mainCharacterId] || undefined
+		}
+
+		// Add payer name
+		bill.payerName = nameMap[bill.payerId] || undefined
+
+		// Add payment paidBy names
+		if (bill.payments && bill.payments.length > 0) {
+			bill.payments = bill.payments.map((payment) => ({
+				...payment,
+				paidByName: nameMap[payment.paidById] || undefined,
+			}))
 		}
 
 		return c.json(bill)
