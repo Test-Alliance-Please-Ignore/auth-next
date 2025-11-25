@@ -158,6 +158,8 @@ import type {
 	EsiCorporationWalletTransaction,
 	EsiStructureInfo,
 	StructureInfo,
+	EsiCorporationMemberRole,
+	CorporationMemberRole,
 } from '@repo/esi'
 import type { Env } from './context'
 import type { EsiDb } from './storage/state'
@@ -484,6 +486,14 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 			`/corporations/${corporationId}/members`
 		)
 		return transformCorporationMembers(result.data)
+	}
+
+	@UseCorporationAuth
+	async fetchCorporationMemberRoles(corporationId: string): Promise<CorporationMemberRole[]> {
+		const result = await this.esiFetcher.fetchEsi<EsiCorporationMemberRole[]>(
+			`/corporations/${corporationId}/roles`
+		)
+		return transformCorporationRole(result.data)
 	}
 
 	/**

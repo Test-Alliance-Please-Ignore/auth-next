@@ -90,15 +90,18 @@ export default function CorporationsPage() {
 	// Search state
 	const [searchQuery, setSearchQuery] = useState('')
 
-	// Memoize filtered corporations to prevent unnecessary filtering on every render
+	// Memoize filtered and sorted corporations to prevent unnecessary processing on every render
 	const filteredCorporations = useMemo(() => {
 		if (!corporations) return undefined
-		if (!searchQuery.trim()) return corporations
 
-		const query = searchQuery.toLowerCase()
-		return corporations.filter(
-			(corp) => corp.name.toLowerCase().includes(query) || corp.ticker.toLowerCase().includes(query)
-		)
+		const query = searchQuery.trim().toLowerCase()
+		const filtered = query
+			? corporations.filter(
+					(corp) => corp.name.toLowerCase().includes(query) || corp.ticker.toLowerCase().includes(query)
+				)
+			: corporations
+
+		return [...filtered].sort((a, b) => a.name.localeCompare(b.name))
 	}, [corporations, searchQuery])
 
 	// Check if any filters are active (different from default)

@@ -688,7 +688,12 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	async verifyDirectorHealth(corporationId: string, directorId: string): Promise<boolean> {
 		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const directorManager = new DirectorManager(this.db, corporationId, tokenStoreStub)
-		return await directorManager.verifyDirectorHealth(directorId)
+		const result = await directorManager.verifyDirectorHealth(directorId)
+
+		// Invalidate cache so next fetch returns fresh data
+		await this.invalidateDirectorsCache(corporationId)
+
+		return result
 	}
 
 	/**
@@ -699,7 +704,12 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	): Promise<{ verified: number; failed: number }> {
 		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const directorManager = new DirectorManager(this.db, corporationId, tokenStoreStub)
-		return await directorManager.verifyAllDirectorsHealth()
+		const result = await directorManager.verifyAllDirectorsHealth()
+
+		// Invalidate cache so next fetch returns fresh data
+		await this.invalidateDirectorsCache(corporationId)
+
+		return result
 	}
 
 	// ========================================================================

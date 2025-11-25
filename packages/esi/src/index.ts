@@ -37,6 +37,7 @@ import type {
 	CorporationIndustryJob,
 	CorporationKillmail,
 	CorporationMedal,
+	CorporationMemberRole,
 	CorporationMembers,
 	CorporationMemberTracking,
 	CorporationOrder,
@@ -119,6 +120,7 @@ export interface Esi {
 	// Corporation endpoints
 	fetchCorporationPublicInfo(corporationId: string): Promise<CorporationPublicInfo>
 	fetchCorporationMembers(corporationId: string): Promise<CorporationMembers>
+	fetchCorporationMemberRoles(corporationId: string): Promise<CorporationMemberRole[]>
 	fetchCorporationMemberTracking(corporationId: string): Promise<CorporationMemberTracking[]>
 	fetchCorporationWallets(corporationId: string): Promise<CorporationWallet[]>
 	fetchCorporationWalletJournal(

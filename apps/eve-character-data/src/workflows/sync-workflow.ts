@@ -51,25 +51,29 @@ export interface EveCharacterSyncParams {
 export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharacterSyncParams> {
 	async run(event: WorkflowEvent<EveCharacterSyncParams>, step: WorkflowStep) {
 		const { characterId, dataTypes, trigger } = event.payload
-		const updater = createWorkflowInstanceUpdater(event.instanceId, this.env.DATABASE_URL)
 
-		await updater.markRunning()
+		// Helper to check if a data type should be synced
+		const requestedTypes = dataTypes ? new Set<EveCharacterSyncDataType>(dataTypes) : null
+		const shouldSync = (type: EveCharacterSyncDataType) =>
+			!requestedTypes || requestedTypes.size === 0 || requestedTypes.has(type)
 
-		try {
-			const requestedTypes = dataTypes ? new Set<EveCharacterSyncDataType>(dataTypes) : null
-			const shouldSync = (type: EveCharacterSyncDataType) =>
-				!requestedTypes || requestedTypes.size === 0 || requestedTypes.has(type)
+		logger.info('[EveCharacterSyncWorkflow] Starting character sync', {
+			characterId,
+			dataTypes: dataTypes || 'all',
+			trigger,
+			timestamp: event.timestamp,
+		})
 
-			logger.info('[EveCharacterSyncWorkflow] Starting character sync', {
-				characterId,
-				dataTypes: dataTypes || 'all',
-				trigger,
-				timestamp: event.timestamp,
-			})
+		// Step 0: Mark workflow as running
+		// Note: updater must be created inside step to survive hibernation
+		await step.do('mark-running', async () => {
+			const updater = createWorkflowInstanceUpdater(event.instanceId, this.env.DATABASE_URL)
+			await updater.markRunning()
+		})
 
-			// Step 1: Fetch & store public info
-			let publicInfoResult: refreshHelpers.RefreshPublicInfoResult | null = null
-			if (shouldSync('public-info')) {
+		// Step 1: Fetch & store public info
+		let publicInfoResult: refreshHelpers.RefreshPublicInfoResult | null = null
+		if (shouldSync('public-info')) {
 				publicInfoResult = await step.do(
 					'fetch-public-info',
 					{
@@ -283,47 +287,38 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 				logger.debug('[Step] Skipping open market orders sync (filtered)', { characterId })
 			}
 
-			logger.info('[EveCharacterSyncWorkflow] Character sync completed successfully', {
-				characterId,
-				trigger,
-				stats: {
-					characterName: publicInfoResult?.characterName,
-					hasAuthenticatedData: authenticatedDataResult?.success,
-					killmailCount: killmailsResult?.killmailCount,
-					walletJournalEntries: walletJournalResult?.entryCount,
-					marketTransactions: marketDataResult?.transactionCount,
-					marketOrders: marketDataResult?.orderCount,
-				},
-			})
+		logger.info('[EveCharacterSyncWorkflow] Character sync completed successfully', {
+			characterId,
+			trigger,
+			stats: {
+				characterName: publicInfoResult?.characterName,
+				hasAuthenticatedData: authenticatedDataResult?.success,
+				killmailCount: killmailsResult?.killmailCount,
+				walletJournalEntries: walletJournalResult?.entryCount,
+				marketTransactions: marketDataResult?.transactionCount,
+				marketOrders: marketDataResult?.orderCount,
+			},
+		})
 
-			const result = {
-				success: true,
-				characterId,
-				trigger,
-				stats: {
-					characterName: publicInfoResult?.characterName,
-					hasAuthenticatedData: authenticatedDataResult?.success,
-					killmailCount: killmailsResult?.killmailCount,
-					walletJournalEntries: walletJournalResult?.entryCount,
-					marketTransactions: marketDataResult?.transactionCount,
-					marketOrders: marketDataResult?.orderCount,
-				},
-			}
-
+		// Step: Mark workflow as completed
+		// Note: updater must be created inside step to survive hibernation
+		await step.do('mark-completed', async () => {
+			const updater = createWorkflowInstanceUpdater(event.instanceId, this.env.DATABASE_URL)
 			await updater.markCompleted()
+		})
 
-			return result
-		} catch (error) {
-			logger.error('[EveCharacterSyncWorkflow] Character sync failed with error', {
-				characterId,
-				trigger,
-				error: error instanceof Error ? error.message : String(error),
-				stack: error instanceof Error ? error.stack : undefined,
-				errorType: error?.constructor?.name,
-			})
-
-			await updater.markFailed(error)
-			throw error
+		return {
+			success: true,
+			characterId,
+			trigger,
+			stats: {
+				characterName: publicInfoResult?.characterName,
+				hasAuthenticatedData: authenticatedDataResult?.success,
+				killmailCount: killmailsResult?.killmailCount,
+				walletJournalEntries: walletJournalResult?.entryCount,
+				marketTransactions: marketDataResult?.transactionCount,
+				marketOrders: marketDataResult?.orderCount,
+			},
 		}
 	}
 }

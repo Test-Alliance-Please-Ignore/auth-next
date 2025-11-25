@@ -8,7 +8,7 @@
 import { Hono } from 'hono'
 
 import { getStub } from '@repo/do-utils'
-import { logger } from '@repo/hono-helpers'
+import { logger, TimeCache } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
 import { userCharacters } from '../db/schema'
@@ -23,6 +23,9 @@ import type { App } from '../context'
 
 const app = new Hono<App>()
 
+// Cache for my-bills responses (10 minute TTL)
+const myBillsCache = new TimeCache<BillWithDetails[]>(10 * 60 * 1000)
+
 /**
  * GET /bills/my-bills
  * List bills where the current user is the payer
@@ -36,6 +39,15 @@ app.get('/my-bills', requireAllianceMember(), async (c) => {
 
 	try {
 		const status = c.req.query('status')
+
+		// Check cache first
+		const cacheKey = `my-bills:${user.id}:${status || 'all'}`
+		const cached = myBillsCache.get(cacheKey)
+		if (cached) {
+			logger.info('[bills-user] Cache hit for user bills', { userId: user.id, status })
+			return c.json(cached)
+		}
+
 		const db = createDb(c.env.DATABASE_URL)
 
 		logger.info('[bills-user] Fetching bills for user', { userId: user.id })
@@ -68,23 +80,25 @@ app.get('/my-bills', requireAllianceMember(), async (c) => {
 		// Step 3: Combine all payer IDs
 		const payerIds = [...characterIds, ...corporationIds]
 
-		// Step 4: Query bills for all payer IDs
+		// Step 4: Query bills for all payer IDs in parallel
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
 
-		// Fetch bills for each payer ID and combine results
-		// Note: The Bills DO listBills method filters by single payerId,
-		// so we need to fetch for each and combine
+		// Fetch bills for all payer IDs in parallel
+		const billsResults = await Promise.all(
+			payerIds.map(async (payerId) => {
+				const filters: BillFilters = {
+					payerId,
+					status: status as any,
+				}
+				return stub.listBills(user.id, filters)
+			})
+		)
+
+		// Combine and deduplicate results
 		const allBills: BillWithDetails[] = []
 		const seenBillIds = new Set<string>()
 
-		for (const payerId of payerIds) {
-			const filters: BillFilters = {
-				payerId,
-				status: status as any,
-			}
-
-			const bills = await stub.listBills(user.id, filters)
-
+		for (const bills of billsResults) {
 			for (const bill of bills) {
 				// Skip draft bills - users shouldn't see drafts
 				if (bill.status === 'draft') continue
@@ -115,6 +129,9 @@ app.get('/my-bills', requireAllianceMember(), async (c) => {
 			userId: user.id,
 			count: allBills.length,
 		})
+
+		// Cache the result
+		myBillsCache.set(cacheKey, allBills)
 
 		return c.json(allBills)
 	} catch (error) {
@@ -221,63 +238,83 @@ app.get('/my-bills/:billId', requireAllianceMember(), async (c) => {
 
 /**
  * Helper function to get corporation IDs where user has CEO or Director roles
+ * Parallelized for performance - fetches all character info and corp data concurrently
  */
 async function getCorporationIdsWithRoles(
 	env: App['Bindings'],
 	characters: Array<{ characterId: string; characterName: string | null }>
 ): Promise<string[]> {
-	const corporationIds: string[] = []
 	const charStub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, 'default')
+
+	// Step 1: Fetch all character info in parallel
+	const charDataResults = await Promise.all(
+		characters.map(async (character) => {
+			try {
+				const charData = await charStub.getCharacterInfo(character.characterId)
+				return {
+					characterId: character.characterId,
+					corporationId: charData?.corporationId ? String(charData.corporationId) : null,
+				}
+			} catch (error) {
+				logger.warn('[bills-user] Error fetching character data', {
+					characterId: character.characterId,
+					error: error instanceof Error ? error.message : String(error),
+				})
+				return { characterId: character.characterId, corporationId: null }
+			}
+		})
+	)
 
 	// Build map of character -> corporation
 	const characterCorpMap = new Map<string, string>()
-
-	for (const character of characters) {
-		try {
-			const charData = await charStub.getCharacterInfo(character.characterId)
-			if (charData?.corporationId) {
-				const corpId = String(charData.corporationId)
-				characterCorpMap.set(character.characterId, corpId)
-			}
-		} catch (error) {
-			logger.warn('[bills-user] Error fetching character data', {
-				characterId: character.characterId,
-				error: error instanceof Error ? error.message : String(error),
-			})
+	for (const result of charDataResults) {
+		if (result.corporationId) {
+			characterCorpMap.set(result.characterId, result.corporationId)
 		}
 	}
 
-	// Check each unique corporation for CEO/Director role
+	// Get unique corporation IDs
 	const uniqueCorpIds = [...new Set(characterCorpMap.values())]
 
-	for (const corpId of uniqueCorpIds) {
-		try {
-			const corpStub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, corpId)
-
-			const [corpInfo, directors] = await Promise.all([
-				corpStub.getCorporationInfo(corpId),
-				corpStub.getDirectors(corpId),
-			])
-
-			const directorIds = new Set(directors.map((d) => d.characterId))
-
-			// Check if any user character is CEO or Director
-			for (const [charId, charCorpId] of characterCorpMap.entries()) {
-				if (charCorpId !== corpId) continue
-
-				const isCeo = corpInfo && String(corpInfo.ceoId) === charId
-				const isDirector = directorIds.has(charId)
-
-				if (isCeo || isDirector) {
-					corporationIds.push(corpId)
-					break // Found a role, no need to check more characters for this corp
-				}
+	// Step 2: Check all corporations for CEO/Director roles in parallel
+	const corpResults = await Promise.all(
+		uniqueCorpIds.map(async (corpId) => {
+			try {
+				const corpStub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, corpId)
+				const [corpInfo, directors] = await Promise.all([
+					corpStub.getCorporationInfo(corpId),
+					corpStub.getDirectors(corpId),
+				])
+				return { corpId, corpInfo, directors }
+			} catch (error) {
+				logger.warn('[bills-user] Error checking corporation roles', {
+					corporationId: corpId,
+					error: error instanceof Error ? error.message : String(error),
+				})
+				return null
 			}
-		} catch (error) {
-			logger.warn('[bills-user] Error checking corporation roles', {
-				corporationId: corpId,
-				error: error instanceof Error ? error.message : String(error),
-			})
+		})
+	)
+
+	// Step 3: Determine which corporations the user has roles in
+	const corporationIds: string[] = []
+	for (const result of corpResults) {
+		if (!result) continue
+
+		const { corpId, corpInfo, directors } = result
+		const directorIds = new Set(directors.map((d) => d.characterId))
+
+		// Check if any user character is CEO or Director
+		for (const [charId, charCorpId] of characterCorpMap.entries()) {
+			if (charCorpId !== corpId) continue
+
+			const isCeo = corpInfo && String(corpInfo.ceoId) === charId
+			const isDirector = directorIds.has(charId)
+
+			if (isCeo || isDirector) {
+				corporationIds.push(corpId)
+				break // Found a role, no need to check more characters for this corp
+			}
 		}
 	}
 

@@ -3,7 +3,6 @@ import { eq } from 'drizzle-orm'
 
 import { createDb } from '../db'
 import { userCharacters } from '../db/schema'
-import { getWorkflowLogger } from './context'
 import { checkUserBlacklisted, disableBlacklistedUser } from './steps/check-user-blacklisted'
 import {
 	handleCharacterDeleted,
@@ -32,48 +31,60 @@ export interface WorkflowParams {
 /**
  * User Refresh Workflow
  * Updates the database with workflow completion timestamp
+ *
+ * IMPORTANT: Cloudflare Workflows hibernate between steps, discarding all in-memory state.
+ * Services (db) must be recreated inside each step using createContext().
+ * Database queries MUST be wrapped in step.do() to cache results across hibernation.
  */
 export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams> {
-	async run(event: WorkflowEvent<WorkflowParams>, step: WorkflowStep) {
-		const { userId } = event.payload
-		const workflowInstanceId = event.instanceId
-
-		const workflowContext: WorkflowContext = {
+	/**
+	 * Create workflow context inside each step.
+	 * MUST be called inside step.do() callbacks since services don't survive hibernation.
+	 */
+	private createContext(userId: string, workflowInstanceId: string): WorkflowContext {
+		return {
 			env: this.env,
 			workflowInstanceId,
 			db: createDb(this.env.DATABASE_URL),
 			userId,
 		}
+	}
 
-		const logger = getWorkflowLogger(workflowContext)
-		logger.info('[Workflow] Starting user refresh workflow', {
-			userId,
-			workflowInstanceId,
-		})
+	async run(event: WorkflowEvent<WorkflowParams>, step: WorkflowStep) {
+		const { userId } = event.payload
+		const workflowInstanceId = event.instanceId
+
+		const logContext = { userId, workflowInstanceId }
+		console.log('[Workflow] Starting user refresh workflow', logContext)
 
 		// Step 1: Check if user is blacklisted
-		const checkUserBlacklistedResult = await step.do('check-user-blacklisted', () =>
-			checkUserBlacklisted(workflowContext)
-		)
+		const checkUserBlacklistedResult = await step.do('check-user-blacklisted', () => {
+			const ctx = this.createContext(userId, workflowInstanceId)
+			return checkUserBlacklisted(ctx)
+		})
 
-		logger.info('[Workflow] Checked user blacklisted', {
-			userId,
-			workflowInstanceId,
+		console.log('[Workflow] Checked user blacklisted', {
+			...logContext,
 			isBlacklisted: checkUserBlacklistedResult.isBlacklisted,
 		})
 
 		// Step 2: Disable user if blacklisted
 		if (checkUserBlacklistedResult.isBlacklisted) {
-			await step.do('disable-blacklisted-user', () => disableBlacklistedUser(workflowContext))
-
-			logger.info('[Workflow] Disabled user', {
-				userId,
-				workflowInstanceId,
+			await step.do('disable-blacklisted-user', () => {
+				const ctx = this.createContext(userId, workflowInstanceId)
+				return disableBlacklistedUser(ctx)
 			})
+
+			console.log('[Workflow] Disabled user', logContext)
 		}
 
-		const characters = await workflowContext.db.query.userCharacters.findMany({
-			where: eq(userCharacters.userId, userId),
+		// Step 3: Fetch user's characters
+		// CRITICAL: Database query MUST be in a step to cache results across hibernation
+		const characters = await step.do('fetch-user-characters', async () => {
+			const db = createDb(this.env.DATABASE_URL)
+			return db.query.userCharacters.findMany({
+				where: eq(userCharacters.userId, userId),
+			})
 		})
 
 		// Process characters sequentially
@@ -85,17 +96,21 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams>
 					retries: { limit: 5, delay: '10 seconds', backoff: 'exponential' },
 					timeout: '1 minute',
 				},
-				async () => updateCharacterPublicInfo(workflowContext, character.characterId)
+				async () => {
+					const ctx = this.createContext(userId, workflowInstanceId)
+					return updateCharacterPublicInfo(ctx, character.characterId)
+				}
 			)
 
 			if (updateCharacterPublicInfoResult.isDeleted) {
-				logger.info('[Workflow] Character is deleted', {
+				console.log('[Workflow] Character is deleted', {
 					characterId: character.characterId,
 				})
-				await step.do('handle-character-deleted', () =>
-					handleCharacterDeleted(workflowContext, character.characterId)
-				)
-				logger.info('[Workflow] Character marked as deleted', {
+				await step.do(`handle-character-deleted-${character.characterId}`, () => {
+					const ctx = this.createContext(userId, workflowInstanceId)
+					return handleCharacterDeleted(ctx, character.characterId)
+				})
+				console.log('[Workflow] Character marked as deleted', {
 					characterId: character.characterId,
 				})
 			}
@@ -107,47 +122,50 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams>
 					retries: { limit: 5, delay: '10 seconds', backoff: 'exponential' },
 					timeout: '1 minute',
 				},
-				async () => tryCharacterAuthenticatedFetch(workflowContext, character.characterId)
+				async () => {
+					const ctx = this.createContext(userId, workflowInstanceId)
+					return tryCharacterAuthenticatedFetch(ctx, character.characterId)
+				}
 			)
 
 			// Log failures
 			if (!authenticatedFetchResult.success) {
-				logger.error('[Workflow] Failed to fetch character authenticated data', {
+				console.error('[Workflow] Failed to fetch character authenticated data', {
 					characterId: character.characterId,
 					error: authenticatedFetchResult.error,
 				})
 			}
 		}
 
-		// Step 3: Get user role attachments
-		const getUserRoleAttachmentsResult = await step.do('get-user-role-attachments', () =>
-			getUserRoleAttachments(workflowContext)
-		)
+		// Step 4: Get user role attachments
+		const getUserRoleAttachmentsResult = await step.do('get-user-role-attachments', () => {
+			const ctx = this.createContext(userId, workflowInstanceId)
+			return getUserRoleAttachments(ctx)
+		})
 
-		logger.info('[Workflow] Got user role attachments', {
-			userId,
-			workflowInstanceId,
+		console.log('[Workflow] Got user role attachments', {
+			...logContext,
 			roleAttachments: getUserRoleAttachmentsResult.roleAttachments.length,
 		})
 
-		// Step 3: Attach user roles
-		const attachUserRolesResult = await step.do('attach-user-roles', () =>
-			attachUserRoles(workflowContext)
-		)
+		// Step 5: Attach user roles
+		const attachUserRolesResult = await step.do('attach-user-roles', () => {
+			const ctx = this.createContext(userId, workflowInstanceId)
+			return attachUserRoles(ctx)
+		})
 
-		logger.info('[Workflow] Attached user roles', {
-			userId,
-			workflowInstanceId,
+		console.log('[Workflow] Attached user roles', {
+			...logContext,
 			corporationRoleAttachments: attachUserRolesResult.corporationRoleAttachments.length,
 			allianceRoleAttachments: attachUserRolesResult.allianceRoleAttachments.length,
 		})
 
-		// Step 4: Update completion timestamp
-		await step.do('update-completion-timestamp', () => updateCompletionTimestamp(workflowContext))
-
-		logger.info('[Workflow] Updated completion timestamp', {
-			userId,
-			workflowInstanceId,
+		// Step 6: Update completion timestamp
+		await step.do('update-completion-timestamp', () => {
+			const ctx = this.createContext(userId, workflowInstanceId)
+			return updateCompletionTimestamp(ctx)
 		})
+
+		console.log('[Workflow] Updated completion timestamp', logContext)
 	}
 }

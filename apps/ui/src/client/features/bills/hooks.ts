@@ -12,7 +12,7 @@ export function useMyBills(params?: { status?: BillStatus }) {
 	return useQuery({
 		queryKey: userBillsKeys.list(params),
 		queryFn: () => getMyBills(params),
-		staleTime: 1000 * 60 * 2, // 2 minutes
+		staleTime: 1000 * 60 * 10, // 10 minutes (matches backend cache TTL)
 	})
 }
 

@@ -226,6 +226,12 @@ export interface EsiCorporationRole {
 	roles_at_other?: string[]
 }
 
+export interface EsiCorporationMemberRole extends EsiCorporationRole {
+	grantable_roles_at_base?: string[]
+	grantable_roles_at_hq?: string[]
+	grantable_roles_at_other?: string[]
+}
+
 /**
  * ESI Corporation Shareholder
  * GET /corporations/{corporation_id}/shareholders
@@ -546,6 +552,12 @@ export interface CorporationRole {
 	roles_at_base?: string[]
 	roles_at_hq?: string[]
 	roles_at_other?: string[]
+}
+
+export interface CorporationMemberRole extends CorporationRole {
+	grantable_roles_at_base?: string[]
+	grantable_roles_at_hq?: string[]
+	grantable_roles_at_other?: string[]
 }
 
 export interface CorporationShareholder {

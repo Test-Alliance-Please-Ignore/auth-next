@@ -11,6 +11,7 @@ import { ConfirmButton } from '@/components/ui/confirm-button'
 import { DestructiveButton } from '@/components/ui/destructive-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Progress } from '@/components/ui/progress'
 import {
 	Select,
 	SelectContent,
@@ -249,6 +250,7 @@ export default function AdminBillsPage() {
 										<TableHead>Payer</TableHead>
 										<TableHead>Amount</TableHead>
 										<TableHead>Due Date</TableHead>
+										<TableHead>Payment Progress</TableHead>
 										<TableHead className="text-right">Actions</TableHead>
 									</TableRow>
 								</TableHeader>
@@ -274,6 +276,29 @@ export default function AdminBillsPage() {
 											</TableCell>
 											<TableCell>
 												<div className="text-sm">{formatDueDate(bill.dueDate)}</div>
+											</TableCell>
+											<TableCell>
+												{bill.status !== 'draft' ? (
+													(() => {
+														const totalDue = Number(bill.amount) + Number(bill.lateFee)
+														const totalPaid =
+															bill.payments?.reduce((sum, p) => sum + Number(p.amount), 0) ?? 0
+														const progress =
+															totalDue > 0
+																? Math.min(100, Math.floor((totalPaid / totalDue) * 100))
+																: 0
+														return (
+															<div className="space-y-1 min-w-[100px]">
+																<Progress value={progress} className="h-2" />
+																<div className="text-xs text-center text-muted-foreground">
+																	{progress}%
+																</div>
+															</div>
+														)
+													})()
+												) : (
+													<span className="text-xs text-muted-foreground">-</span>
+												)}
 											</TableCell>
 											<TableCell className="text-right">
 												<div className="flex justify-end gap-2">

@@ -154,6 +154,25 @@ export class DirectorManager {
 		return result
 	}
 
+	async getUnhealthyDirectors(): Promise<DirectorHealth[]> {
+		const directors = await this.db.query.corporationDirectors.findMany({
+			where: and(
+				eq(corporationDirectors.corporationId, this.corporationId),
+				eq(corporationDirectors.isHealthy, false)
+			),
+		})
+		return directors.map((d) => ({
+			directorId: d.id,
+			characterId: String(d.characterId),
+			characterName: d.characterName,
+			isHealthy: d.isHealthy,
+			lastHealthCheck: d.lastHealthCheck,
+			lastUsed: d.lastUsed,
+			failureCount: d.failureCount,
+			lastFailureReason: d.lastFailureReason,
+			priority: d.priority,
+		}))
+	}
 	/**
 	 * Select the next healthy director using round-robin with priority
 	 * Returns null if no healthy directors available

@@ -38,7 +38,7 @@ export class BillsApiClient extends ApiClient {
 		issuerId?: string
 		limit?: number
 		offset?: number
-	}): Promise<Bill[]> {
+	}): Promise<BillWithDetails[]> {
 		const params = new URLSearchParams()
 		if (filters?.status) params.set('status', filters.status)
 		if (filters?.payerId) params.set('payerId', filters.payerId)
