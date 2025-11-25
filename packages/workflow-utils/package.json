@@ -1,0 +1,24 @@
+{
+	"name": "@repo/workflow-utils",
+	"version": "0.1.0",
+	"private": true,
+	"sideEffects": false,
+	"type": "module",
+	"main": "src/index.ts",
+	"scripts": {
+		"check:lint": "run-eslint",
+		"check:types": "run-tsc",
+		"fix:workers-types": "run-wrangler-types",
+		"test": "run-vitest"
+	},
+	"dependencies": {
+		"@repo/hono-helpers": "workspace:*"
+	},
+	"devDependencies": {
+		"@cloudflare/vitest-pool-workers": "0.9.12",
+		"@repo/eslint-config": "workspace:*",
+		"@repo/tools": "workspace:*",
+		"@repo/typescript-config": "workspace:*",
+		"vitest": "3.2.4"
+	}
+}
