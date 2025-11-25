@@ -10,6 +10,9 @@
 	"observability": {
 		"enabled": true
 	},
+	"triggers": {
+		"crons": ["*/30 * * * *"]
+	},
 	"durable_objects": {
 		"bindings": [
 			{

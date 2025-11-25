@@ -4,8 +4,8 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
 import { BillsDO } from './durable-object'
-import { BillScheduleExecutorWorkflow } from './workflows/bill-schedule-executor'
 import { BillPaymentStatusCheckWorkflow } from './workflows/bill-payment-status-check'
+import { BillScheduleExecutorWorkflow } from './workflows/bill-schedule-executor'
 
 import type { App } from './context'
 
@@ -51,3 +51,6 @@ export { BillsDO as Bills }
 // Export the Workflow classes
 export { BillScheduleExecutorWorkflow }
 export { BillPaymentStatusCheckWorkflow }
+
+// Export the scheduled handler
+export { scheduledHandler } from './scheduled'

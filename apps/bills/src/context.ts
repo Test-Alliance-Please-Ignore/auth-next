@@ -7,6 +7,7 @@ export type Env = SharedHonoEnv & {
 	BILLS: DurableObjectNamespace
 	ESI: DurableObjectNamespace
 	ESI_TYPE_RESOLVER: DurableObjectNamespace
+	BILL_PAYMENT_STATUS_CHECK: Workflow<{ billId: string }>
 }
 
 /** Variables can be extended */
