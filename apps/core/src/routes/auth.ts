@@ -6,7 +6,7 @@ import { getStub } from '@repo/do-utils'
 import { assertEveCharacterId } from '@repo/eve-types'
 
 import { createDb } from '../db'
-import { oauthStates, userCharacters } from '../db/schema'
+import { oauthStates, userCharacters, users } from '../db/schema'
 import { getDiscordStatus } from '../lib/discord-helpers'
 import { getCachedUserPermissions } from '../lib/groups-cache'
 import { requireAuth } from '../middleware/session'
@@ -371,6 +371,33 @@ auth.get('/callback', async (c) => {
 					// Log but don't fail the auth flow if character data fetch fails
 					console.error('[Auth] Failed to fetch character data after login:', error)
 				}
+
+				// Trigger user refresh workflow (throttled to every 5 minutes)
+				try {
+					const THROTTLE_MS = 5 * 60 * 1000 // 5 minutes
+					const userRecord = await db.query.users.findFirst({
+						where: eq(users.id, user.id),
+						columns: { lastRefreshWorkflowAttempt: true },
+					})
+
+					const shouldTrigger =
+						!userRecord?.lastRefreshWorkflowAttempt ||
+						Date.now() - userRecord.lastRefreshWorkflowAttempt.getTime() > THROTTLE_MS
+
+					if (shouldTrigger) {
+						await db
+							.update(users)
+							.set({ lastRefreshWorkflowAttempt: new Date() })
+							.where(eq(users.id, user.id))
+
+						await c.env.USER_REFRESH_WORKFLOW.create({
+							id: `user-refresh-login-${user.id}-${Date.now()}`,
+							params: { userId: user.id },
+						})
+					}
+				} catch (error) {
+					console.error('[Auth] Failed to trigger user refresh workflow:', error)
+				}
 			})()
 		)
 
@@ -508,6 +535,21 @@ auth.post('/claim-main', async (c) => {
 			} catch (error) {
 				// Log but don't fail the auth flow if character data fetch fails
 				console.error('[Auth] Failed to fetch character data after claim-main:', error)
+			}
+
+			// Trigger user refresh workflow for new user
+			try {
+				await db
+					.update(users)
+					.set({ lastRefreshWorkflowAttempt: new Date() })
+					.where(eq(users.id, user.id))
+
+				await c.env.USER_REFRESH_WORKFLOW.create({
+					id: `user-refresh-login-${user.id}-${Date.now()}`,
+					params: { userId: user.id },
+				})
+			} catch (error) {
+				console.error('[Auth] Failed to trigger user refresh workflow:', error)
 			}
 		})()
 	)

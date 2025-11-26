@@ -106,6 +106,10 @@ export interface DiscordEmbed {
 	description?: string
 	/** Embed color (decimal) */
 	color?: number
+	/** Embed thumbnail */
+	thumbnail?: {
+		url: string
+	}
 	/** Embed fields */
 	fields?: Array<{
 		name: string
@@ -314,6 +318,15 @@ export interface Discord {
 	 * @param nickname - New nickname to set
 	 */
 	updateUserNickname(coreUserId: string, guildIds: string[], nickname: string): Promise<void>
+
+	/**
+	 * Send a direct message to a user by their core user ID
+	 * Creates or gets a DM channel and sends the message
+	 * @param coreUserId - Core user ID
+	 * @param message - Message content to send
+	 * @returns Result indicating success or failure
+	 */
+	sendDirectMessage(coreUserId: string, message: MessageContent): Promise<SendMessageResult>
 }
 
 /**
@@ -328,3 +341,22 @@ export const getDiscordStub = (env: { DISCORD: DurableObjectNamespace }): Discor
 	const id = env.DISCORD.newUniqueId()
 	return env.DISCORD.get(id) as unknown as Discord
 }
+
+// Re-export client utilities
+export {
+	DiscordFetch,
+	DiscordAPIError,
+	DiscordRateLimitError,
+	DiscordRoutes,
+	type DiscordFetchOptions,
+	type DiscordProxyConfig,
+	type DiscordRoutesType,
+	blockQuote,
+	bold,
+	italic,
+	quote,
+	spoiler,
+	strikethrough,
+	underline,
+	subtext,
+} from './client'

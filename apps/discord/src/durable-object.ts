@@ -1,6 +1,7 @@
 import { DurableObject } from 'cloudflare:workers'
 
 import { and, eq, isNotNull, sql } from '@repo/db-utils'
+import { DiscordAPIError, DiscordFetch, DiscordRoutes } from '@repo/discord'
 import { generateShardKey } from '@repo/hazmat'
 import { logger } from '@repo/hono-helpers'
 
@@ -225,10 +226,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 	 * @param intervalMinutes - Minimum minutes between refreshes (default: 15)
 	 * @returns Whether refresh is needed (true if never refreshed or last refresh was more than intervalMinutes ago)
 	 */
-	async shouldRefreshDiscordAccess(
-		coreUserId: string,
-		intervalMinutes = 15
-	): Promise<boolean> {
+	async shouldRefreshDiscordAccess(coreUserId: string, intervalMinutes = 15): Promise<boolean> {
 		const user = await this.getUserByCoreUserId(coreUserId)
 		if (!user) {
 			logger.warn('[DiscordDO] User not found for shouldRefreshDiscordAccess', { coreUserId })
@@ -993,7 +991,140 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 		}
 	}
 
+	/**
+	 * Send a direct message to a user by their core user ID
+	 * Creates or gets a DM channel and sends the message
+	 */
+	async sendDirectMessage(coreUserId: string, message: MessageContent): Promise<SendMessageResult> {
+		try {
+			// Get Discord profile by core user ID
+			const profile = await this.getProfileByCoreUserId(coreUserId)
+
+			if (!profile) {
+				return {
+					success: false,
+					error: 'Discord account not linked for this user',
+				}
+			}
+
+			// Create Discord fetch client with proxy support
+			const client = this.createDiscordClient()
+
+			// Create or get DM channel
+			const channel = await client.post<{ id: string }>(DiscordRoutes.userChannels(), {
+				recipient_id: profile.userId,
+			})
+
+			// Build the message payload
+			const payload: Record<string, unknown> = {
+				content: message.content,
+			}
+
+			// Add embeds if provided
+			if (message.embeds && message.embeds.length > 0) {
+				payload.embeds = message.embeds
+			}
+
+			// Handle mention permissions
+			if (message.allowEveryone === false) {
+				payload.allowed_mentions = {
+					parse: [], // Don't parse any mentions
+				}
+			} else if (message.allowEveryone === true) {
+				payload.allowed_mentions = {
+					parse: ['everyone', 'roles', 'users'],
+				}
+			} else {
+				// Default: allow user and role mentions but not @everyone/@here
+				payload.allowed_mentions = {
+					parse: ['roles', 'users'],
+				}
+			}
+
+			// Send message
+			const result = await client.post<{ id: string }>(
+				DiscordRoutes.channelMessages(channel.id),
+				payload
+			)
+
+			logger.info('[DiscordDO] Successfully sent direct message', {
+				coreUserId,
+				discordUserId: profile.userId,
+				messageId: result.id,
+			})
+
+			return {
+				success: true,
+				messageId: result.id,
+			}
+		} catch (error: unknown) {
+			// Handle Discord API errors
+			if (error instanceof DiscordAPIError) {
+				// Handle permission errors
+				if (error.status === 403) {
+					return {
+						success: false,
+						error: 'Missing permissions to send DM to this user',
+					}
+				}
+
+				// Handle not found
+				if (error.status === 404) {
+					return {
+						success: false,
+						error: 'DM channel not found',
+					}
+				}
+
+				logger.error('[DiscordDO] Discord API error sending direct message', {
+					coreUserId,
+					status: error.status,
+					body: error.body,
+				})
+
+				return {
+					success: false,
+					error: `Discord API error: ${error.status}`,
+				}
+			}
+
+			logger.error('[DiscordDO] Error sending direct message', {
+				coreUserId,
+				error: String(error),
+			})
+
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to send direct message',
+			}
+		}
+	}
+
 	// ==================== PRIVATE HELPER METHODS ====================
+
+	/**
+	 * Create a Discord fetch client with proxy support and rate limiting
+	 * @returns Configured DiscordFetch client instance
+	 */
+	private createDiscordClient(): DiscordFetch {
+		// Generate dynamic proxy port using rotating ports
+		const portStart = Number(this.env.DISCORD_PROXY_PORT_START)
+		const portCount = Number(this.env.DISCORD_PROXY_PORT_COUNT)
+		const portEnd = portStart + portCount - 1
+		const port = generateShardKey(portStart, portEnd)
+
+		return new DiscordFetch({
+			token: this.env.DISCORD_BOT_TOKEN,
+			tokenType: 'Bot',
+			proxy: {
+				host: this.env.DISCORD_PROXY_HOST,
+				port,
+				username: this.env.DISCORD_PROXY_USERNAME,
+				password: this.env.DISCORD_PROXY_PASSWORD,
+			},
+			maxRetries: 3,
+		})
+	}
 
 	/**
 	 * Manually refresh a token
@@ -1211,7 +1342,6 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 		const combined = new Uint8Array(iv.length + encryptedData.byteLength)
 		combined.set(iv)
 		combined.set(new Uint8Array(encryptedData), iv.length)
-
 		// Return as base64
 		return btoa(String.fromCharCode(...combined))
 	}

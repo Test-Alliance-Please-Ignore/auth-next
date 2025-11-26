@@ -1,4 +1,9 @@
+import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
+
+import type { Discord, MessageContent } from '@repo/discord'
+
+import type { Env } from '../context'
 
 /**
  * Discord embed colors
@@ -10,7 +15,7 @@ const COLORS = {
 }
 
 /**
- * Metadata for Discord webhook notifications
+ * Metadata for Discord notifications
  */
 export interface WebhookMetadata {
 	reportId: string
@@ -21,14 +26,18 @@ export interface WebhookMetadata {
 }
 
 /**
- * Send Discord webhook notification for report started
+ * Send Discord direct message notification for report started
  */
-export async function sendReportStartedWebhook(
-	webhookUrl: string,
+export async function sendReportStartedDM(
+	env: Env,
+	requestorUserId: string,
 	metadata: WebhookMetadata
 ): Promise<void> {
 	try {
-		await sendDiscordWebhook(webhookUrl, {
+		const discordStub = getStub<Discord>(env.DISCORD, 'default')
+
+		const message: MessageContent = {
+			content: '',
 			embeds: [
 				{
 					title: 'Character Report Started',
@@ -59,29 +68,46 @@ export async function sendReportStartedWebhook(
 					timestamp: new Date().toISOString(),
 				},
 			],
-		})
+		}
 
-		logger.info('[Discord Webhook] Report started notification sent', {
-			reportId: metadata.reportId,
-		})
+		const result = await discordStub.sendDirectMessage(requestorUserId, message)
+
+		if (!result.success) {
+			logger.warn('[Discord DM] Failed to send report started notification', {
+				reportId: metadata.reportId,
+				requestorUserId,
+				error: result.error,
+			})
+		} else {
+			logger.info('[Discord DM] Report started notification sent', {
+				reportId: metadata.reportId,
+				requestorUserId,
+			})
+		}
 	} catch (error) {
-		logger.error('[Discord Webhook] Failed to send report started notification', {
+		// Log but don't fail - DM failures should not block workflow
+		logger.error('[Discord DM] Failed to send report started notification', {
 			reportId: metadata.reportId,
+			requestorUserId,
 			error: error instanceof Error ? error.message : String(error),
 		})
 	}
 }
 
 /**
- * Send Discord webhook notification for report completed
+ * Send Discord direct message notification for report completed
  */
-export async function sendReportCompletedWebhook(
-	webhookUrl: string,
+export async function sendReportCompletedDM(
+	env: Env,
+	requestorUserId: string,
 	metadata: WebhookMetadata,
 	viewUrl: string
 ): Promise<void> {
 	try {
-		await sendDiscordWebhook(webhookUrl, {
+		const discordStub = getStub<Discord>(env.DISCORD, 'default')
+
+		const message: MessageContent = {
+			content: '',
 			embeds: [
 				{
 					title: 'Character Report Completed',
@@ -113,29 +139,46 @@ export async function sendReportCompletedWebhook(
 					timestamp: new Date().toISOString(),
 				},
 			],
-		})
+		}
 
-		logger.info('[Discord Webhook] Report completed notification sent', {
-			reportId: metadata.reportId,
-		})
+		const result = await discordStub.sendDirectMessage(requestorUserId, message)
+
+		if (!result.success) {
+			logger.warn('[Discord DM] Failed to send report completed notification', {
+				reportId: metadata.reportId,
+				requestorUserId,
+				error: result.error,
+			})
+		} else {
+			logger.info('[Discord DM] Report completed notification sent', {
+				reportId: metadata.reportId,
+				requestorUserId,
+			})
+		}
 	} catch (error) {
-		logger.error('[Discord Webhook] Failed to send report completed notification', {
+		// Log but don't fail - DM failures should not block workflow
+		logger.error('[Discord DM] Failed to send report completed notification', {
 			reportId: metadata.reportId,
+			requestorUserId,
 			error: error instanceof Error ? error.message : String(error),
 		})
 	}
 }
 
 /**
- * Send Discord webhook notification for report failed
+ * Send Discord direct message notification for report failed
  */
-export async function sendReportFailedWebhook(
-	webhookUrl: string,
+export async function sendReportFailedDM(
+	env: Env,
+	requestorUserId: string,
 	metadata: WebhookMetadata,
 	errorMessage: string
 ): Promise<void> {
 	try {
-		await sendDiscordWebhook(webhookUrl, {
+		const discordStub = getStub<Discord>(env.DISCORD, 'default')
+
+		const message: MessageContent = {
+			content: '',
 			embeds: [
 				{
 					title: 'Character Report Failed',
@@ -167,33 +210,28 @@ export async function sendReportFailedWebhook(
 					timestamp: new Date().toISOString(),
 				},
 			],
-		})
+		}
 
-		logger.info('[Discord Webhook] Report failed notification sent', {
-			reportId: metadata.reportId,
-		})
+		const result = await discordStub.sendDirectMessage(requestorUserId, message)
+
+		if (!result.success) {
+			logger.warn('[Discord DM] Failed to send report failed notification', {
+				reportId: metadata.reportId,
+				requestorUserId,
+				error: result.error,
+			})
+		} else {
+			logger.info('[Discord DM] Report failed notification sent', {
+				reportId: metadata.reportId,
+				requestorUserId,
+			})
+		}
 	} catch (error) {
-		logger.error('[Discord Webhook] Failed to send report failed notification', {
+		// Log but don't fail - DM failures should not block workflow
+		logger.error('[Discord DM] Failed to send report failed notification', {
 			reportId: metadata.reportId,
+			requestorUserId,
 			error: error instanceof Error ? error.message : String(error),
 		})
-	}
-}
-
-/**
- * Send a Discord webhook request
- */
-async function sendDiscordWebhook(webhookUrl: string, payload: unknown): Promise<void> {
-	const response = await fetch(webhookUrl, {
-		method: 'POST',
-		headers: {
-			'Content-Type': 'application/json',
-		},
-		body: JSON.stringify(payload),
-	})
-
-	if (!response.ok) {
-		const errorText = await response.text().catch(() => 'Unknown error')
-		throw new Error(`Discord webhook failed: ${response.status} - ${errorText}`)
 	}
 }

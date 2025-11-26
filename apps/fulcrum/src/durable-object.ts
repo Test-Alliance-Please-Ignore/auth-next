@@ -5,7 +5,7 @@ import type { CharacterReportMetadata, Fulcrum, ListReportsFilters } from '@repo
 import { createDb } from './db'
 import type { DbClient } from './db/queries'
 import * as queries from './db/queries'
-import { sendReportStartedWebhook } from './lib/discord-webhook'
+import { sendReportStartedDM } from './lib/discord-webhook'
 import { resolveReportMetadata } from './lib/report-metadata'
 import type { Env } from './context'
 import type { WorkflowParams } from './workflows/character-report.workflow'
@@ -67,28 +67,26 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 			expiresAt,
 		})
 
-		// Send Discord webhook notification (non-blocking)
-		if (this.env.DISCORD_WEBHOOK_URL) {
-			try {
-				const metadata = await resolveReportMetadata(
-					this.env,
-					reportId,
-					requestorUserId,
-					characterId,
-					null, // Character name not yet populated
-					requestorCorporationId
-				)
+		// Send Discord DM notification (non-blocking)
+		try {
+			const metadata = await resolveReportMetadata(
+				this.env,
+				reportId,
+				requestorUserId,
+				characterId,
+				null, // Character name not yet populated
+				requestorCorporationId
+			)
 
-				if (metadata) {
-					await sendReportStartedWebhook(this.env.DISCORD_WEBHOOK_URL, metadata)
-				}
-			} catch (error) {
-				// Log but don't fail - webhook failures should not block report creation
-				logger.error('[Fulcrum DO] Failed to send report started webhook', {
-					reportId,
-					error: error instanceof Error ? error.message : String(error),
-				})
+			if (metadata) {
+				await sendReportStartedDM(this.env, requestorUserId, metadata)
 			}
+		} catch (error) {
+			// Log but don't fail - DM failures should not block report creation
+			logger.error('[Fulcrum DO] Failed to send report started DM', {
+				reportId,
+				error: error instanceof Error ? error.message : String(error),
+			})
 		}
 
 		// Start workflow

@@ -83,8 +83,8 @@ export async function scheduledHandler(event: ScheduledEvent, env: Env, _ctx: Ex
 /**
  * Create a workflow instance for a specific corporation
  *
- * Uses corporationId as the workflow instance ID for idempotency.
- * If a workflow is already running for this corporation, it will be skipped gracefully.
+ * Checks if a workflow is already running for this corporation to maintain idempotency.
+ * Uses timestamped IDs to avoid conflicts with completed workflows that are still retained.
  *
  * @returns Object indicating whether workflow was created or already running
  */
@@ -94,15 +94,30 @@ async function createWorkflowInstance(
 	corporationName: string
 ): Promise<{ created: boolean; instanceId: string }> {
 	try {
-		logger.info('[BackgroundRefresh] Creating workflow instance', {
-			corporationId,
-			corporationName,
-		})
+		// Check if a workflow is already running for this corporation
+		try {
+			const existingInstance = await env.EVE_CORPORATION_SYNC.get(corporationId)
+			const status = await existingInstance.status()
 
-		// Use corporationId as instance ID for idempotency
-		// This ensures only one workflow runs per corporation at a time
+			if (status.status === 'running' || status.status === 'queued' || status.status === 'waiting') {
+				logger.info('[BackgroundRefresh] Workflow already running, skipping', {
+					corporationId,
+					corporationName,
+					status: status.status,
+				})
+
+				return {
+					created: false,
+					instanceId: corporationId,
+				}
+			}
+		} catch {
+			// No existing instance, proceed to create new one
+		}
+
+		// Create new workflow instance with timestamped ID to avoid conflicts with completed workflows
 		const instance = await env.EVE_CORPORATION_SYNC.create({
-			id: corporationId,
+			id: `${corporationId}-${Date.now()}`,
 			params: {
 				corporationId,
 				trigger: 'cron',
@@ -120,20 +135,6 @@ async function createWorkflowInstance(
 			instanceId: instance.id,
 		}
 	} catch (error) {
-		// Check if workflow is already running
-		if (error instanceof Error && error.message.includes('already exists')) {
-			logger.info('[BackgroundRefresh] Workflow already running, skipping', {
-				corporationId,
-				corporationName,
-			})
-
-			return {
-				created: false,
-				instanceId: corporationId,
-			}
-		}
-
-		// Re-throw other errors
 		logger.error('[BackgroundRefresh] Failed to create workflow instance', {
 			corporationId,
 			corporationName,

@@ -14,7 +14,7 @@ export type Env = SharedHonoEnv & {
 	CHARACTER_REPORTS: R2Bucket
 	CHARACTER_REPORT_WORKFLOW: Workflow<WorkflowParams>
 	CHARACTER_REPORTS_QUEUE: Queue
-	DISCORD_WEBHOOK_URL: string
+	DISCORD: DurableObjectNamespace
 }
 
 /** Variables can be extended */

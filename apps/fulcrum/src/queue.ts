@@ -6,7 +6,7 @@
 import { logger } from '@repo/hono-helpers'
 import { createDb } from './db'
 import * as queries from './db/queries'
-import { sendReportFailedWebhook } from './lib/discord-webhook'
+import { sendReportFailedDM } from './lib/discord-webhook'
 import { resolveReportMetadata } from './lib/report-metadata'
 import type { Env } from './context'
 import type { WorkflowParams } from './workflows/character-report.workflow'
@@ -91,38 +91,30 @@ export async function handleCharacterReportsQueue(
 					errorMessage,
 				})
 
-				// Send Discord webhook notification (non-blocking)
-				if (env.DISCORD_WEBHOOK_URL) {
-					try {
-						const report = await queries.getReport(db, reportId)
+				// Send Discord DM notification (non-blocking)
+				try {
+					const report = await queries.getReport(db, reportId)
 
-						if (report) {
-							const metadata = await resolveReportMetadata(
-								env,
-								reportId,
-								requestorUserId,
-								characterId,
-								report.characterName,
-								requestorCorporationId
-							)
-
-							if (metadata) {
-								await sendReportFailedWebhook(
-									env.DISCORD_WEBHOOK_URL,
-									metadata,
-									errorMessage
-								)
-							}
-						}
-					} catch (webhookError) {
-						queueLogger.error('Failed to send report failed webhook', {
+					if (report) {
+						const metadata = await resolveReportMetadata(
+							env,
 							reportId,
-							error:
-								webhookError instanceof Error
-									? webhookError.message
-									: String(webhookError),
-						})
+							requestorUserId,
+							characterId,
+							report.characterName,
+							requestorCorporationId
+						)
+
+						if (metadata) {
+							await sendReportFailedDM(env, requestorUserId, metadata, errorMessage)
+						}
 					}
+				} catch (dmError) {
+					queueLogger.error('Failed to send report failed DM', {
+						reportId,
+						error:
+							dmError instanceof Error ? dmError.message : String(dmError),
+					})
 				}
 			} catch (updateError) {
 				queueLogger.error('Failed to update report status to failed', {
