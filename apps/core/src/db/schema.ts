@@ -66,7 +66,7 @@ export const userIpAddresses = pgTable(
 	(table) => [
 		index('user_ip_addresses_user_id_idx').on(table.userId),
 		index('user_ip_addresses_ip_address_idx').on(table.ipAddress),
-		index('user_ip_address_user_id_ip_address_idx').on(table.userId, table.ipAddress),
+		unique('user_ip_addresses_user_ip_unique').on(table.userId, table.ipAddress),
 	]
 )
 
@@ -85,6 +85,48 @@ export const userFingerprints = pgTable(
 		index('user_fingerprints_user_id_idx').on(table.userId),
 		index('user_fingerprints_fingerprint_idx').on(table.fingerprint),
 		index('user_fingerprints_user_id_fingerprint_idx').on(table.userId, table.fingerprint),
+	]
+)
+
+export const services = pgTable(
+	'core_services',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		name: text('name').notNull(),
+		slug: text('slug').notNull(),
+		icon: text('icon'),
+		description: text('description'),
+		enabled: boolean('enabled').default(false).notNull(),
+		createdAt: timestamp('created_at').defaultNow().notNull(),
+		updatedAt: timestamp('updated_at').defaultNow().notNull(),
+	},
+	(table) => [
+		index('core_services_enabled_idx').on(table.enabled),
+		index('core_services_name_idx').on(table.name),
+		index('core_services_slug_idx').on(table.slug),
+	]
+)
+
+export const userServices = pgTable(
+	'core_user_services',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		userId: uuid('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		serviceId: uuid('service_id')
+			.notNull()
+			.references(() => services.id, { onDelete: 'cascade' }),
+		enabled: boolean('enabled').default(true).notNull(),
+		createdAt: timestamp('created_at').defaultNow().notNull(),
+		updatedAt: timestamp('updated_at').defaultNow().notNull(),
+	},
+	(table) => [
+		index('core_user_services_user_id_idx').on(table.userId),
+		index('core_user_services_service_id_idx').on(table.serviceId),
+		index('core_user_services_user_id_service_id_idx').on(table.userId, table.serviceId),
+		unique('core_user_services_user_id_service_id_unique').on(table.userId, table.serviceId),
+		index('core_user_services_enabled_idx').on(table.enabled),
 	]
 )
 

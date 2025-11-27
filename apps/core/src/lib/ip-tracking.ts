@@ -1,4 +1,4 @@
-import { and, eq } from '@repo/db-utils'
+import { sql } from '@repo/db-utils'
 
 import { userIpAddresses } from '../db/schema'
 
@@ -7,7 +7,6 @@ import type { App } from '../context'
 import type { createDb } from '../db'
 
 const encoder = new TextEncoder()
-const MIN_UPDATE_INTERVAL_MS = 15 * 60 * 1000 // 15 minutes
 
 let cachedSecret: string | null = null
 let cachedKey: CryptoKey | null = null
@@ -85,31 +84,26 @@ export async function recordUserIpAddress({
 	}
 
 	const ipAddressHash = await getHmac(hashSecret, ipAddress)
-	const existing = await db.query.userIpAddresses.findFirst({
-		where: and(eq(userIpAddresses.userId, userId), eq(userIpAddresses.ipAddress, ipAddress)),
-	})
 
-	if (!existing) {
-		await db.insert(userIpAddresses).values({
+	// Atomic upsert with conditional lastSeenAt update (respects 15-min rate limit)
+	await db
+		.insert(userIpAddresses)
+		.values({
 			userId,
 			ipAddress,
 			ipAddressHash,
 			firstSeenAt: now,
 			lastSeenAt: now,
 		})
-		return
-	}
-
-	const lastSeenAt = existing.lastSeenAt ?? existing.firstSeenAt
-	if (lastSeenAt && now.getTime() - lastSeenAt.getTime() < MIN_UPDATE_INTERVAL_MS) {
-		return
-	}
-
-	await db
-		.update(userIpAddresses)
-		.set({
-			ipAddressHash,
-			lastSeenAt: now,
+		.onConflictDoUpdate({
+			target: [userIpAddresses.userId, userIpAddresses.ipAddress],
+			set: {
+				ipAddressHash,
+				lastSeenAt: sql`CASE
+					WHEN ${userIpAddresses.lastSeenAt} < NOW() - INTERVAL '15 minutes'
+					THEN ${now}
+					ELSE ${userIpAddresses.lastSeenAt}
+				END`,
+			},
 		})
-		.where(eq(userIpAddresses.id, existing.id))
 }
