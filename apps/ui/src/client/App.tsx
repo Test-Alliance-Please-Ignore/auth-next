@@ -3,6 +3,8 @@ import { lazy, Suspense } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 
 import Layout from './components/layout'
+import { useAuth } from './hooks/useAuth'
+import { useSessionSync } from './hooks/useSessionSync'
 import { LoadingPage } from './components/ui/loading'
 import AdminActivityLogPage from './routes/admin/activity-log'
 import AdminBillsPage from './routes/admin/bills'
@@ -46,6 +48,7 @@ import CharacterDetailPage from './routes/character-detail'
 import ClaimMainPage from './routes/claim-main'
 import DashboardPage from './routes/dashboard'
 import DiscordCallbackPage from './routes/discord-callback'
+import LegacyAuthCallbackPage from './routes/legacy-auth-callback'
 import GroupDetailPage from './routes/group-detail'
 // User-facing group routes
 import GroupsPage from './routes/groups'
@@ -136,15 +139,24 @@ const queryClient = new QueryClient({
 	},
 })
 
+// Component to handle session sync (fingerprinting)
+function SessionSyncWrapper({ children }: { children: React.ReactNode }) {
+	const { isAuthenticated } = useAuth()
+	useSessionSync(isAuthenticated)
+	return <>{children}</>
+}
+
 export default function App() {
 	return (
 		<QueryClientProvider client={queryClient}>
-			<BrowserRouter>
-				<Routes>
+			<SessionSyncWrapper>
+				<BrowserRouter>
+					<Routes>
 					{/* Public routes */}
 					<Route path="/" element={<LandingPage />} />
 					<Route path="/auth/callback" element={<AuthCallbackPage />} />
 					<Route path="/discord/callback" element={<DiscordCallbackPage />} />
+					<Route path="/legacy-auth/callback" element={<LegacyAuthCallbackPage />} />
 					<Route path="/claim-main" element={<ClaimMainPage />} />
 
 					{/* Protected routes with layout */}
@@ -538,7 +550,8 @@ export default function App() {
 						/>
 					</Route>
 				</Routes>
-			</BrowserRouter>
+				</BrowserRouter>
+			</SessionSyncWrapper>
 		</QueryClientProvider>
 	)
 }

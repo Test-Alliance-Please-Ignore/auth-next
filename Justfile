@@ -79,6 +79,8 @@ db-generate-all:
   cd apps/esi && bun run db:generate
   cd apps/donations && bun run db:generate
   cd apps/postman && bun run db:generate
+  cd apps/bifrost && bun run db:generate
+  cd apps/mumble && bun run db:generate
   cd apps/eve-corporation-data && bun run db:generate
   cd apps/eve-character-data && bun run db:generate
   cd apps/eve-static-data && bun run db:generate
@@ -111,6 +113,8 @@ db-push-all:
   cd apps/esi && bun run db:push
   cd apps/donations && bun run db:push
   cd apps/postman && bun run db:push
+  cd apps/bifrost && bun run db:push
+  cd apps/mumble && bun run db:push
   cd apps/eve-corporation-data && bun run db:push
   cd apps/eve-character-data && bun run db:push
   cd apps/eve-static-data && bun run db:push
@@ -143,6 +147,8 @@ db-migrate-all:
   cd apps/esi && bun run db:migrate
   cd apps/donations && bun run db:migrate
   cd apps/postman && bun run db:migrate
+  cd apps/bifrost && bun run db:migrate
+  cd apps/mumble && bun run db:migrate
   cd apps/eve-corporation-data && bun run db:migrate
   cd apps/eve-character-data && bun run db:migrate
   cd apps/eve-static-data && bun run db:migrate

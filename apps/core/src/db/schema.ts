@@ -2,6 +2,7 @@ import { relations, sql } from 'drizzle-orm'
 import {
 	boolean,
 	index,
+	inet,
 	integer,
 	jsonb,
 	pgTable,
@@ -47,6 +48,43 @@ export const users = pgTable(
 		index('users_legacy_auth_user_email_hash_idx').on(table.legacyAuthUserEmailHash),
 		index('users_last_refresh_workflow_idx').on(table.lastRefreshWorkflow),
 		index('users_last_refresh_workflow_attempt_idx').on(table.lastRefreshWorkflowAttempt),
+	]
+)
+
+export const userIpAddresses = pgTable(
+	'user_ip_addresses',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		userId: uuid('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		ipAddress: inet('addr').notNull(),
+		ipAddressHash: text('ip_address_hash').notNull(),
+		firstSeenAt: timestamp('first_seen_at').defaultNow().notNull(),
+		lastSeenAt: timestamp('last_seen_at').defaultNow().notNull(),
+	},
+	(table) => [
+		index('user_ip_addresses_user_id_idx').on(table.userId),
+		index('user_ip_addresses_ip_address_idx').on(table.ipAddress),
+		index('user_ip_address_user_id_ip_address_idx').on(table.userId, table.ipAddress),
+	]
+)
+
+export const userFingerprints = pgTable(
+	'user_fingerprints',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		userId: uuid('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		fingerprint: text('fingerprint').notNull(),
+		firstSeenAt: timestamp('first_seen_at').defaultNow().notNull(),
+		lastSeenAt: timestamp('last_seen_at').defaultNow().notNull(),
+	},
+	(table) => [
+		index('user_fingerprints_user_id_idx').on(table.userId),
+		index('user_fingerprints_fingerprint_idx').on(table.fingerprint),
+		index('user_fingerprints_user_id_fingerprint_idx').on(table.userId, table.fingerprint),
 	]
 )
 
@@ -719,6 +757,7 @@ export const dkpDecayConfigRelations = relations(dkpDecayConfig, ({ one }) => ({
 export const schema = {
 	users,
 	userCharacters,
+	userIpAddresses,
 	userSessions,
 	userPreferences,
 	userActivityLog,

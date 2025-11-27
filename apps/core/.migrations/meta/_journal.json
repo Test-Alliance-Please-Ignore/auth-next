@@ -218,6 +218,20 @@
       "when": 1763840186860,
       "tag": "0030_chief_sway",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1764254691864,
+      "tag": "0031_talented_the_phantom",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1764254999450,
+      "tag": "0032_living_phalanx",
+      "breakpoints": true
     }
   ]
 }

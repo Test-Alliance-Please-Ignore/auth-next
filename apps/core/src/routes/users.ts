@@ -119,6 +119,14 @@ users.get('/me', async (c) => {
 	// Lazy-load Discord status if needed
 	const discordStatus = await getDiscordStatus(c)
 
+	// Build legacy auth status
+	const isLinked = !!(profile.legacyAuthUserId && profile.legacyAuthUserUsername)
+	const legacyAuth = {
+		userId: profile.legacyAuthUserId,
+		username: profile.legacyAuthUserUsername,
+		isLinked,
+	}
+
 	return c.json({
 		id: profile.id,
 		mainCharacterId: profile.mainCharacterId,
@@ -126,6 +134,7 @@ users.get('/me', async (c) => {
 		is_admin: profile.is_admin,
 		preferences: profile.preferences,
 		discord: discordStatus,
+		legacyAuth,
 		createdAt: profile.createdAt,
 		updatedAt: profile.updatedAt,
 	})

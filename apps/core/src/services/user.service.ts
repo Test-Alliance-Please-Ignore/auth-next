@@ -2,7 +2,6 @@ import { and, eq } from '@repo/db-utils'
 
 import { userCharacters, userPreferences, users } from '../db/schema'
 
-import type { createDb } from '../db'
 import type {
 	CreateUserOptions,
 	LinkCharacterOptions,
@@ -10,6 +9,7 @@ import type {
 	UserPreferencesDTO,
 	UserProfileDTO,
 } from '@repo/core'
+import type { createDb } from '../db'
 
 /**
  * User Service
@@ -111,29 +111,40 @@ export class UserService {
 	 */
 	async getUserProfile(userId: string): Promise<UserProfileDTO> {
 		// Execute all 3 queries in parallel for better performance
-		const [user, characters, preferences] = await Promise.all([
-			this.db.query.users.findFirst({
-				where: eq(users.id, userId),
-			}),
-			this.db.query.userCharacters.findMany({
-				where: eq(userCharacters.userId, userId),
-				columns: {
-					id: true,
-					userId: true,
-					characterOwnerHash: true,
-					characterId: true,
-					characterName: true,
-					is_primary: true,
-					hasValidToken: true,
-					linkedAt: true,
-				},
-			}),
-			this.db.query.userPreferences.findFirst({
-				where: eq(userPreferences.userId, userId),
-			}),
-		])
+		let user, characters, preferences
+		try {
+			;[user, characters, preferences] = await Promise.all([
+				this.db.query.users.findFirst({
+					where: eq(users.id, userId),
+				}),
+				this.db.query.userCharacters.findMany({
+					where: eq(userCharacters.userId, userId),
+					columns: {
+						id: true,
+						userId: true,
+						characterOwnerHash: true,
+						characterId: true,
+						characterName: true,
+						is_primary: true,
+						hasValidToken: true,
+						linkedAt: true,
+					},
+				}),
+				this.db.query.userPreferences.findFirst({
+					where: eq(userPreferences.userId, userId),
+				}),
+			])
+		} catch (error) {
+			console.error('[UserService] Database query failed', {
+				userId,
+				error: error instanceof Error ? error.message : String(error),
+				stack: error instanceof Error ? error.stack : undefined,
+			})
+			throw error
+		}
 
 		if (!user) {
+			console.error('[UserService] User not found', { userId })
 			throw new Error('User not found')
 		}
 
@@ -156,6 +167,8 @@ export class UserService {
 			characters: charactersDTO,
 			is_admin: user.is_admin,
 			preferences: preferencesDTO,
+			legacyAuthUserId: user.legacyAuthUserId || null,
+			legacyAuthUserUsername: user.legacyAuthUserUsername || null,
 			createdAt: user.createdAt,
 			updatedAt: user.updatedAt,
 		}
@@ -332,5 +345,49 @@ export class UserService {
 		}
 
 		return preferences
+	}
+
+	/**
+	 * Update legacy auth information for a user
+	 * Validates no duplicate links and updates user record
+	 */
+	async updateLegacyAuthInfo(
+		userId: string,
+		legacyId: string,
+		legacyUsername: string
+	): Promise<void> {
+		// Validate user exists
+		const user = await this.db.query.users.findFirst({
+			where: eq(users.id, userId),
+		})
+
+		if (!user) {
+			throw new Error('User not found')
+		}
+
+		// Check if current user already has legacy auth linked
+		if (user.legacyAuthUserId) {
+			throw new Error('User already has a legacy account linked')
+		}
+
+		// Check for duplicate legacyAuthUserId across all users
+		const existingUserWithLegacyId = await this.db.query.users.findFirst({
+			where: eq(users.legacyAuthUserId, legacyId),
+		})
+
+		if (existingUserWithLegacyId) {
+			throw new Error('This legacy account is already linked to another user')
+		}
+
+		// Update user record with legacy auth fields
+		await this.db
+			.update(users)
+			.set({
+				legacyAuthUserId: legacyId,
+				legacyAuthUserUsername: legacyUsername,
+				legacyAuthUserEmailHash: null,
+				updatedAt: new Date(),
+			})
+			.where(eq(users.id, userId))
 	}
 }

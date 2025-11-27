@@ -1,0 +1,27 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "mumble",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-04-28",
+	"compatibility_flags": ["nodejs_compat"],
+	"routes": [],
+	"logpush": false,
+	"observability": {
+		"enabled": true
+	},
+	"vars": {},
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "MUMBLE",
+				"class_name": "Mumble"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["Mumble"]
+		}
+	]
+}

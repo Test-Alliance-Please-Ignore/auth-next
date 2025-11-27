@@ -173,7 +173,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 		if (shouldSync('assets')) {
 			const result = await step.do(
 				'sync-assets',
-				{ ...STEP_RETRY_OPTIONS, timeout: '2 minutes' },
+				{ ...STEP_RETRY_OPTIONS, timeout: '10 minutes' },
 				() => syncAssets(this.env, corporationId, directorCharacterId)
 			)
 

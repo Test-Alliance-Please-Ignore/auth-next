@@ -22,6 +22,9 @@ export type Env = SharedHonoEnv & {
 	DISCORD_PROXY_USERNAME: string
 	DISCORD_PROXY_PASSWORD: string
 
+	LEGACY_AUTH_CLIENT_ID: string
+	LEGACY_AUTH_CLIENT_SECRET: string
+
 	ENCRYPTION_KEY: string
 
 	// Role management configuration

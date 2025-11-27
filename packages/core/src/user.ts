@@ -73,6 +73,8 @@ export interface UserProfileDTO {
 	characters: UserCharacterDTO[]
 	is_admin: boolean
 	preferences: UserPreferencesDTO
+	legacyAuthUserId: string | null
+	legacyAuthUserUsername: string | null
 	createdAt: Date
 	updatedAt: Date
 }

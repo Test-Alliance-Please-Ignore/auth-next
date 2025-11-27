@@ -8,7 +8,6 @@ import { createDb } from './db'
 import { CoreDO } from './durable-object'
 import { csrfProtection } from './middleware/csrf'
 import { sessionMiddleware } from './middleware/session'
-import { renderFleetJoinPage } from './pages/fleet-join'
 import adminRoutes from './routes/admin'
 import authRoutes from './routes/auth'
 import billsAdminRoutes from './routes/bills-admin'
@@ -30,11 +29,13 @@ import industryOrdersRoutes from './routes/industry-orders'
 import inventoryRoutes from './routes/inventory'
 import inviteRoutes from './routes/invite'
 import loginRoutes from './routes/login'
+import sessionRoutes from './routes/session'
 import skillPlansRoutes from './routes/skill-plans'
 import skillsRoutes from './routes/skills'
 import srpRoutes from './routes/srp'
 import usersRoutes from './routes/users'
 import { CoreRpcService } from './services/core-rpc.service'
+import { DkpService } from './services/dkp.service'
 
 import type {
 	CharacterOwnerInfo,
@@ -76,27 +77,6 @@ const app = new Hono<App>()
 	.route('/login', loginRoutes)
 	.route('/invite', inviteRoutes)
 
-	// Fleet join page route
-	.get('/fleets/join/:token', async (c) => {
-		const token = c.req.param('token')
-		const error = c.req.query('error')
-
-		// Check if user is authenticated by checking session
-		const sessionCookie = c.req.header('Cookie') || ''
-
-		// Try to get the user from session
-		const user = c.get('user')
-
-		if (!user) {
-			// Not authenticated - redirect to login with return URL
-			const returnUrl = encodeURIComponent(`https://pleaseignore.app/fleets/join/${token}`)
-			return c.redirect(`/login?return_url=${returnUrl}`)
-		}
-
-		// User is authenticated - render the join page
-		return c.html(await renderFleetJoinPage(c, token, error))
-	})
-
 	// API routes - mounted under /api prefix
 	.route('/api/admin', adminRoutes)
 	.route('/api/admin/bills', billsAdminRoutes) // Admin bills API
@@ -121,6 +101,7 @@ const app = new Hono<App>()
 	.route('/api/industry', industryOrdersRoutes)
 	.route('/api/srp', srpRoutes)
 	.route('/api/bills', billsUserRoutes)
+	.route('/api/session', sessionRoutes)
 
 // Export Hono app as default export (HTTP handler)
 // Wrapped with Sentry for automatic error tracking
@@ -291,7 +272,6 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 		}
 	}> {
 		const db = createDb(this.env.DATABASE_URL)
-		const { DkpService } = await import('./services/dkp.service')
 		const dkpService = new DkpService(
 			db,
 			this.env.EVE_CORPORATION_DATA,
@@ -330,7 +310,6 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 		}>
 	}> {
 		const db = createDb(this.env.DATABASE_URL)
-		const { DkpService } = await import('./services/dkp.service')
 		const dkpService = new DkpService(
 			db,
 			this.env.EVE_CORPORATION_DATA,

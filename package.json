@@ -35,6 +35,7 @@
 		"overrides": {
 			"@vitest/runner": "3.2.4",
 			"@vitest/snapshot": "3.2.4",
+			"drizzle-orm": "0.44.7",
 			"workerd": "1.20251106.1"
 		}
 	},

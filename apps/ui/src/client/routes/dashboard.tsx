@@ -1,8 +1,9 @@
 import { ExternalLink, RefreshCw, UserPlus } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import { DiscordCard } from '@/components/discord-card'
+import { LegacyCharacterCard } from '@/components/legacy-character-card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -11,6 +12,7 @@ import { LoadingPage } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
 import { useAuth } from '@/hooks/useAuth'
+import { useLegacyCharacters } from '@/hooks/useLegacyCharacters'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { apiClient } from '@/lib/api'
 
@@ -19,9 +21,28 @@ export default function DashboardPage() {
 	const { user, isLoading, refetch } = useAuth()
 	const navigate = useNavigate()
 	const [isLinkingCharacter, setIsLinkingCharacter] = useState(false)
+	const [isLinkingLegacyAuth, setIsLinkingLegacyAuth] = useState(false)
+	const [linkingLegacyCharacters, setLinkingLegacyCharacters] = useState<Set<string>>(new Set())
 	const [refreshingCharacters, setRefreshingCharacters] = useState<Set<string>>(new Set())
 	const [mainCharacterDetails, setMainCharacterDetails] = useState<any>(null)
 	const [creatingInvites, setCreatingInvites] = useState<Set<string>>(new Set())
+
+	// Fetch legacy characters when legacy auth is linked
+	const { data: legacyCharacters } = useLegacyCharacters(user?.legacyAuth?.isLinked ?? false)
+
+	// Calculate the "growth factor" for the legacy card prank (December 1-31)
+	const legacyCardGrowth = useMemo(() => {
+		const now = new Date()
+		const month = now.getMonth() // 0-indexed, so December = 11
+		const day = now.getDate()
+
+		// Only active in December
+		if (month !== 11) return null
+
+		// Calculate progress: day 1 = 0%, day 31 = 100%
+		const progress = Math.min((day - 1) / 30, 1)
+		return progress
+	}, [])
 
 	// Fetch main character details when user loads
 	useEffect(() => {
@@ -79,6 +100,49 @@ export default function DashboardPage() {
 		} catch (error) {
 			console.error('Failed to start character linking flow:', error)
 			setIsLinkingCharacter(false)
+			// TODO: Show error toast
+		}
+	}
+
+	const handleLinkLegacyAuth = async () => {
+		setIsLinkingLegacyAuth(true)
+		try {
+			// Start legacy auth linking flow
+			const response = await apiClient.post<{ authorizationUrl: string; state: string }>(
+				'/auth/legacy-auth/start'
+			)
+
+			// Redirect to legacy auth OIDC server
+			window.location.href = response.authorizationUrl
+		} catch (error) {
+			console.error('Failed to start legacy auth linking flow:', error)
+			setIsLinkingLegacyAuth(false)
+			// TODO: Show error toast
+		}
+	}
+
+	const handleLinkLegacyCharacter = async (characterId: string) => {
+		// Prevent multiple linking attempts for the same character
+		if (linkingLegacyCharacters.has(characterId)) return
+
+		setLinkingLegacyCharacters((prev) => new Set(prev).add(characterId))
+
+		try {
+			// Start character linking flow with the specific character ID as a hint
+			const response = await apiClient.post<{ authorizationUrl: string; state: string }>(
+				'/auth/character/start',
+				{ characterId }
+			)
+
+			// Redirect to EVE SSO for character authorization
+			window.location.href = response.authorizationUrl
+		} catch (error) {
+			console.error('Failed to start legacy character linking flow:', error)
+			setLinkingLegacyCharacters((prev) => {
+				const next = new Set(prev)
+				next.delete(characterId)
+				return next
+			})
 			// TODO: Show error toast
 		}
 	}
@@ -259,6 +323,95 @@ export default function DashboardPage() {
 						<DiscordCard user={user} />
 					</div>
 				</div>
+
+				{/* Legacy Auth Linking Card - Show when not linked */}
+				{user && (!user.legacyAuth?.isLinked || !user.legacyAuth) && (
+					<div
+						className="mt-6 transition-all duration-500"
+						style={
+							legacyCardGrowth !== null
+								? {
+										position: legacyCardGrowth > 0.5 ? 'fixed' : 'relative',
+										top: legacyCardGrowth > 0.5 ? `${50 - legacyCardGrowth * 50}%` : undefined,
+										left: legacyCardGrowth > 0.5 ? `${50 - legacyCardGrowth * 50}%` : undefined,
+										width: legacyCardGrowth > 0.5 ? `${legacyCardGrowth * 100}%` : undefined,
+										height: legacyCardGrowth > 0.5 ? `${legacyCardGrowth * 100}vh` : undefined,
+										transform: `scale(${1 + legacyCardGrowth * 0.5})`,
+										transformOrigin: 'center',
+										zIndex: legacyCardGrowth > 0.3 ? 50 : undefined,
+									}
+								: undefined
+						}
+					>
+						<Card
+							variant="elevated"
+							className="h-full"
+							style={
+								legacyCardGrowth !== null
+									? {
+											fontSize: `${1 + legacyCardGrowth * 2}rem`,
+											padding: `${legacyCardGrowth * 2}rem`,
+										}
+									: undefined
+							}
+						>
+							<CardHeader>
+								<CardTitle
+									className="md:text-2xl"
+									style={
+										legacyCardGrowth !== null
+											? { fontSize: `${1.25 + legacyCardGrowth * 3}rem` }
+											: undefined
+									}
+								>
+									Legacy Account
+								</CardTitle>
+								<CardDescription
+									style={
+										legacyCardGrowth !== null
+											? { fontSize: `${0.875 + legacyCardGrowth * 1.5}rem` }
+											: undefined
+									}
+								>
+									Link your legacy auth account to preserve your account history
+								</CardDescription>
+							</CardHeader>
+							<CardContent>
+								<div className="flex items-center justify-between gap-4 flex-wrap">
+									<div className="flex-1 min-w-0">
+										<p
+											className="text-muted-foreground"
+											style={
+												legacyCardGrowth !== null
+													? { fontSize: `${0.875 + legacyCardGrowth * 1}rem` }
+													: undefined
+											}
+										>
+											Connect your legacy account to maintain access to your historical data and
+											settings.
+										</p>
+									</div>
+									<Button
+										variant="outline"
+										className="glow-hover border-border/50 bg-muted/50 hover:bg-muted whitespace-nowrap"
+										onClick={handleLinkLegacyAuth}
+										disabled={isLinkingLegacyAuth}
+										style={
+											legacyCardGrowth !== null
+												? {
+														fontSize: `${0.875 + legacyCardGrowth * 1.5}rem`,
+														padding: `${0.5 + legacyCardGrowth * 1}rem ${1 + legacyCardGrowth * 2}rem`,
+													}
+												: undefined
+										}
+									>
+										{isLinkingLegacyAuth ? 'Redirecting...' : 'Link Legacy Account'}
+									</Button>
+								</div>
+							</CardContent>
+						</Card>
+					</div>
+				)}
 			</Section>
 
 			<div className="my-8" />
@@ -366,6 +519,21 @@ export default function DashboardPage() {
 									</CardContent>
 								</Card>
 							))}
+							{/* Legacy characters that need linking */}
+							{legacyCharacters
+								?.filter(
+									(legacy) =>
+										// Only show legacy characters not already linked
+										!user.characters.some((c) => c.characterId === legacy.characterId)
+								)
+								.map((character) => (
+									<LegacyCharacterCard
+										key={`legacy-${character.characterId}`}
+										character={character}
+										onLink={handleLinkLegacyCharacter}
+										isLinking={linkingLegacyCharacters.has(character.characterId)}
+									/>
+								))}
 						</div>
 					</CardContent>
 				</Card>

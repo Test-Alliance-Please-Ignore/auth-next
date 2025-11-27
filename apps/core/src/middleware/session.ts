@@ -6,6 +6,7 @@ import { logger } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
 import { getCachedUserRoles } from '../lib/groups-cache'
+import { extractClientIp, recordUserIpAddress } from '../lib/ip-tracking'
 import { AuthService } from '../services/auth.service'
 import { SessionService } from '../services/session.service'
 import { UserService } from '../services/user.service'
@@ -103,6 +104,19 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 			c.set('user', sessionUser)
 			c.set('db', db)
 			c.set('eveTokenStore', eveTokenStoreStub)
+
+			const ip = extractClientIp(c)
+			const hashSecret = c.env.IP_ADDRESS_HASH_SECRET
+			if (ip && hashSecret) {
+				c.executionCtx.waitUntil(
+					recordUserIpAddress({
+						db,
+						userId: sessionUser.id,
+						ip,
+						hashSecret,
+					}).catch((error) => logger.error('Failed to record user IP', error))
+				)
+			}
 
 			await next()
 		} catch (error) {

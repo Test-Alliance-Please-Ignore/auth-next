@@ -4,7 +4,6 @@ import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Groups } from '@repo/groups'
 import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
-import type { Industry } from '@repo/industry'
 import type { Skills } from '@repo/skills'
 import type { createDb } from './db'
 import type { WorkflowParams } from './workflows/user-refresh.workflow'
@@ -53,6 +52,14 @@ export type Env = SharedHonoEnv & {
 	ESI_TYPE_RESOLVER: DurableObjectNamespace
 	/** Industry Durable Object binding */
 	INDUSTRY: DurableObjectNamespace
+	/** Legacy Auth OAuth Client ID (set as Wrangler secret) */
+	LEGACY_AUTH_CLIENT_ID: string
+	/** Legacy Auth OAuth Client Secret (set as Wrangler secret) */
+	LEGACY_AUTH_CLIENT_SECRET: string
+	/** Legacy Auth OAuth Callback URL */
+	LEGACY_AUTH_CALLBACK_URL: string
+	/** IP Address Hash Secret */
+	IP_ADDRESS_HASH_SECRET: string
 }
 
 /** Session user data attached to request context */
