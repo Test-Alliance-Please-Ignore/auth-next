@@ -6,6 +6,7 @@
 	"compatibility_flags": ["nodejs_compat"],
 	"routes": [
 		"pleaseignore.app/api/*",
+		"pleaseignore.app/images/*",
 		"pleaseignore.app/invite/*",
 		"pleaseignore.app/login*",
 		"pleaseignore.app/fleets/*"
