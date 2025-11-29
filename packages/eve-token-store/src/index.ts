@@ -279,6 +279,16 @@ export interface EveTokenStore {
 	revokeToken(characterId: string): Promise<boolean>
 
 	/**
+	 * Mark a character as deleted (soft delete)
+	 * Called when ESI returns "Character has been deleted!" (biomassed or removed by CCP).
+	 * Unlike revokeToken, this preserves the record for audit purposes.
+	 *
+	 * @param characterId - EVE character ID
+	 * @returns true if character was marked as deleted, false if not found
+	 */
+	markCharacterDeleted(characterId: string): Promise<boolean>
+
+	/**
 	 * List all tokens stored in the system
 	 * @returns Array of token information
 	 */

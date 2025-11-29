@@ -348,6 +348,281 @@ app.delete('/applications/:applicationId/recommendations/:id', requireAuth(), as
 	}
 })
 
+// ==================== Message Routes ====================
+
+/**
+ * POST /api/hr/applications/:applicationId/messages
+ * Send a message (applicant → HR or HR → applicant)
+ */
+app.post('/applications/:applicationId/messages', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const applicationId = c.req.param('applicationId')
+	const { recipientId, message } = await c.req.json()
+
+	// Get primary character for logging
+	const primaryCharacter = user.characters.find((char) => char.is_primary)
+	const characterId = primaryCharacter?.characterId || user.mainCharacterId
+
+	try {
+		const hr = getHrStub(c)
+		const result = await hr.sendMessage(
+			applicationId,
+			user.id,
+			recipientId,
+			message,
+			characterId,
+			user.is_admin
+		)
+
+		return c.json(result, 201)
+	} catch (error) {
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to send message' },
+			400
+		)
+	}
+})
+
+/**
+ * GET /api/hr/applications/:applicationId/messages
+ * List all messages for an application
+ */
+app.get('/applications/:applicationId/messages', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const applicationId = c.req.param('applicationId')
+
+	try {
+		const hr = getHrStub(c)
+		const messages = await hr.listMessages(applicationId, user.id, user.is_admin)
+
+		return c.json(messages)
+	} catch (error) {
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to list messages' },
+			error instanceof Error && error.message.includes('permission') ? 403 : 500
+		)
+	}
+})
+
+/**
+ * GET /api/hr/applications/:applicationId/messages/count
+ * Get message count (for badge display)
+ */
+app.get('/applications/:applicationId/messages/count', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const applicationId = c.req.param('applicationId')
+
+	try {
+		const hr = getHrStub(c)
+		const count = await hr.getMessageCount(applicationId, user.id, user.is_admin)
+
+		return c.json({ count })
+	} catch (error) {
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to get message count' },
+			error instanceof Error && error.message.includes('permission') ? 403 : 500
+		)
+	}
+})
+
+// ==================== Message Template Routes ====================
+
+/**
+ * POST /api/hr/:corporationId/templates
+ * Create a new message template for a corporation
+ * REQUIRES: HR admin or reviewer role for the corporation
+ */
+app.post('/:corporationId/templates', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const corporationId = c.req.param('corporationId')
+	const { templateName, messageTemplate, description, status } = await c.req.json()
+
+	try {
+		// Check HR permission
+		const hr = getHrStub(c)
+		const hasPermission = await hr.checkPermission(user.id, corporationId, 'hr_reviewer')
+
+		if (!hasPermission && !user.is_admin) {
+			return c.json({ error: 'HR reviewer or admin role required' }, 403)
+		}
+
+		const template = await hr.createTemplate(
+			corporationId,
+			templateName,
+			messageTemplate,
+			description,
+			status
+		)
+
+		logger.info('[HR Templates] Template created', {
+			templateId: template.id,
+			corporationId,
+			createdBy: user.id,
+		})
+
+		return c.json(template, 201)
+	} catch (error) {
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to create template' },
+			400
+		)
+	}
+})
+
+/**
+ * GET /api/hr/:corporationId/templates
+ * List templates for a corporation
+ * Query params:
+ *   - status: Optional - filter by status ('draft', 'active', 'inactive', 'deleted')
+ */
+app.get('/:corporationId/templates', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const corporationId = c.req.param('corporationId')
+	const status = c.req.query('status') as 'draft' | 'active' | 'inactive' | 'deleted' | undefined
+
+	try {
+		// Check HR permission (any HR role can view templates)
+		const hr = getHrStub(c)
+		const hasPermission = await hr.checkPermission(user.id, corporationId, 'hr_viewer')
+
+		if (!hasPermission && !user.is_admin) {
+			return c.json({ error: 'HR role required' }, 403)
+		}
+
+		const templates = await hr.listTemplates(corporationId, status)
+
+		return c.json(templates)
+	} catch (error) {
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to list templates' },
+			500
+		)
+	}
+})
+
+/**
+ * GET /api/hr/templates/:templateId
+ * Get a single template by ID
+ */
+app.get('/templates/:templateId', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const templateId = c.req.param('templateId')
+
+	try {
+		const hr = getHrStub(c)
+		const template = await hr.getTemplate(templateId)
+
+		if (!template) {
+			return c.json({ error: 'Template not found' }, 404)
+		}
+
+		// Check HR permission for the template's corporation
+		const hasPermission = await hr.checkPermission(
+			user.id,
+			template.ownerCorporationId,
+			'hr_viewer'
+		)
+
+		if (!hasPermission && !user.is_admin) {
+			return c.json({ error: 'HR role required' }, 403)
+		}
+
+		return c.json(template)
+	} catch (error) {
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to get template' },
+			500
+		)
+	}
+})
+
+/**
+ * PATCH /api/hr/templates/:templateId
+ * Update a template
+ */
+app.patch('/templates/:templateId', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const templateId = c.req.param('templateId')
+	const updates = await c.req.json()
+
+	try {
+		const hr = getHrStub(c)
+		const template = await hr.getTemplate(templateId)
+
+		if (!template) {
+			return c.json({ error: 'Template not found' }, 404)
+		}
+
+		// Check HR permission (reviewer or admin required to edit)
+		const hasPermission = await hr.checkPermission(
+			user.id,
+			template.ownerCorporationId,
+			'hr_reviewer'
+		)
+
+		if (!hasPermission && !user.is_admin) {
+			return c.json({ error: 'HR reviewer or admin role required' }, 403)
+		}
+
+		const updated = await hr.updateTemplate(templateId, updates)
+
+		logger.info('[HR Templates] Template updated', {
+			templateId,
+			updatedBy: user.id,
+		})
+
+		return c.json(updated)
+	} catch (error) {
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to update template' },
+			400
+		)
+	}
+})
+
+/**
+ * DELETE /api/hr/templates/:templateId
+ * Delete a template (soft delete)
+ */
+app.delete('/templates/:templateId', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const templateId = c.req.param('templateId')
+
+	try {
+		const hr = getHrStub(c)
+		const template = await hr.getTemplate(templateId)
+
+		if (!template) {
+			return c.json({ error: 'Template not found' }, 404)
+		}
+
+		// Check HR permission (admin required to delete)
+		const hasPermission = await hr.checkPermission(
+			user.id,
+			template.ownerCorporationId,
+			'hr_admin'
+		)
+
+		if (!hasPermission && !user.is_admin) {
+			return c.json({ error: 'HR admin role required' }, 403)
+		}
+
+		await hr.deleteTemplate(templateId)
+
+		logger.info('[HR Templates] Template deleted', {
+			templateId,
+			deletedBy: user.id,
+		})
+
+		return c.json({ success: true })
+	} catch (error) {
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to delete template' },
+			500
+		)
+	}
+})
+
 // ==================== HR Notes Routes (Admin Only) ====================
 
 /**

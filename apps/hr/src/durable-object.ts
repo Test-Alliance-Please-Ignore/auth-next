@@ -7,6 +7,9 @@ import { HrNotesService } from './services/hr-notes.service'
 import { HrRoleService } from './services/hr-role.service'
 import { MessageService } from './services/message.service'
 import { RecommendationService } from './services/recommendation.service'
+import { TemplateService } from './services/template.service'
+
+import type { MessageTemplate } from './services/template.service'
 
 import type {
 	Application,
@@ -45,6 +48,7 @@ export class HrDO extends DurableObject<Env> implements Hr {
 	private hrRoleService: HrRoleService
 	private blacklistService: BlacklistService
 	private messageService: MessageService
+	private templateService: TemplateService
 
 	// Cache for corporation roles (in-memory)
 	private roleCache = new Map<string, { data: HrRole[]; timestamp: number }>()
@@ -69,6 +73,7 @@ export class HrDO extends DurableObject<Env> implements Hr {
 		this.hrRoleService = new HrRoleService({ db: this.db, env })
 		this.blacklistService = new BlacklistService({ db: this.db, env })
 		this.messageService = new MessageService({ db: this.db, env })
+		this.templateService = new TemplateService({ db: this.db, env })
 
 		void this.state.blockConcurrencyWhile(async () => {
 			void this.hrRoleService.ensureRolesExist()
@@ -578,5 +583,65 @@ export class HrDO extends DurableObject<Env> implements Hr {
 	 */
 	async getAllBlacklists(filters: BlacklistFilters): Promise<BlacklistResults> {
 		return await this.blacklistService.getAllBlacklists(filters)
+	}
+
+	// ==================== Message Template Methods ====================
+
+	/**
+	 * Create a new message template for a corporation
+	 */
+	async createTemplate(
+		corporationId: string,
+		templateName: string,
+		messageTemplate: string,
+		description?: string,
+		status?: 'draft' | 'active' | 'inactive'
+	): Promise<MessageTemplate> {
+		return await this.templateService.createTemplate(
+			corporationId,
+			templateName,
+			messageTemplate,
+			description,
+			status
+		)
+	}
+
+	/**
+	 * List templates for a corporation
+	 */
+	async listTemplates(
+		corporationId: string,
+		status?: 'draft' | 'active' | 'inactive' | 'deleted'
+	): Promise<MessageTemplate[]> {
+		return await this.templateService.listTemplates(corporationId, status)
+	}
+
+	/**
+	 * Get a single template by ID
+	 */
+	async getTemplate(templateId: string): Promise<MessageTemplate | null> {
+		return await this.templateService.getTemplate(templateId)
+	}
+
+	/**
+	 * Update a template
+	 */
+	async updateTemplate(
+		templateId: string,
+		updates: Partial<{
+			templateName: string
+			messageTemplate: string
+			description: string | null
+			status: 'draft' | 'active' | 'inactive' | 'deleted'
+		}>
+	): Promise<MessageTemplate> {
+		return await this.templateService.updateTemplate(templateId, updates)
+	}
+
+	/**
+	 * Delete a template (soft delete)
+	 */
+	async deleteTemplate(templateId: string): Promise<void> {
+		return await this.templateService.deleteTemplate(templateId)
 	}
 }

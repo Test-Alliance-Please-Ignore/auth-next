@@ -1,7 +1,7 @@
 import { DurableObject } from 'cloudflare:workers'
 import * as z4 from 'zod/v4/core'
 
-import { and, eq, gt, lte } from '@repo/db-utils'
+import { and, eq, gt, isNull, lte } from '@repo/db-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from './db'
@@ -366,11 +366,15 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 	/**
 	 * Get access token for use (decrypted)
+	 * Returns null if character is not found or has been marked as deleted
 	 */
 	async getAccessToken(characterId: string): Promise<string | null> {
 		try {
 			const character = await this.db.query.eveCharacters.findFirst({
-				where: eq(eveCharacters.characterId, String(characterId)),
+				where: and(
+					eq(eveCharacters.characterId, String(characterId)),
+					isNull(eveCharacters.deletedAt)
+				),
 			})
 
 			if (!character) {
@@ -446,6 +450,51 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	}
 
 	/**
+	 * Mark a character as deleted (soft delete).
+	 * Called when ESI returns "Character has been deleted!" (biomassed or removed by CCP).
+	 * Unlike revokeToken, this preserves the record for audit purposes.
+	 * @param characterId - EVE character ID
+	 * @returns true if character was marked, false if not found
+	 */
+	async markCharacterDeleted(characterId: string): Promise<boolean> {
+		try {
+			const character = await this.db.query.eveCharacters.findFirst({
+				where: eq(eveCharacters.characterId, String(characterId)),
+			})
+
+			if (!character) {
+				logger
+					.withTags({ operation: 'markCharacterDeleted', characterId })
+					.warn('Character not found')
+				return false
+			}
+
+			// Already marked as deleted?
+			if (character.deletedAt) {
+				logger
+					.withTags({ operation: 'markCharacterDeleted', characterId })
+					.info('Character already marked as deleted')
+				return true
+			}
+
+			await this.db
+				.update(eveCharacters)
+				.set({ deletedAt: new Date(), updatedAt: new Date() })
+				.where(eq(eveCharacters.id, character.id))
+
+			logger
+				.withTags({ operation: 'markCharacterDeleted', characterId })
+				.info('Character marked as deleted')
+			return true
+		} catch (error) {
+			logger
+				.withTags({ operation: 'markCharacterDeleted', characterId })
+				.error('Failed to mark character as deleted', error)
+			return false
+		}
+	}
+
+	/**
 	 * List all tokens stored in the system
 	 */
 	async listTokens(): Promise<TokenInfo[]> {
@@ -507,8 +556,9 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			etag: string | null
 			pages: number | null
 			page: number | null
+			last_modified: string | null
 		}>(
-			`SELECT response_data, expires_at, etag, pages, page FROM esi_cache WHERE cache_key = ?`,
+			`SELECT response_data, expires_at, etag, pages, page, last_modified FROM esi_cache WHERE cache_key = ?`,
 			cacheKey
 		)
 
@@ -516,7 +566,11 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 		if (cached.length > 0) {
 			const now = Date.now()
-			if (cached[0].expires_at > now) {
+			const lastModified = cached[0].last_modified ? new Date(cached[0].last_modified).getTime() : null
+			const cacheAge = lastModified ? now - lastModified : Infinity
+
+			// Check both expiry AND 12-hour max age (retroactive enforcement)
+			if (cached[0].expires_at > now && cacheAge <= EveTokenStoreDO.MAX_CACHE_TTL_MS) {
 				// Cache hit
 				return {
 					data: JSON.parse(cached[0].response_data) as T,
@@ -568,9 +622,11 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		// Handle 304 Not Modified
 		if (response.status === 304 && cached.length > 0) {
 			const newExpiresAt = this.parseEsiCacheExpiry(response.headers)
+			// Update both expires_at and last_modified to reset the 12-hour window
 			await this.state.storage.sql.exec(
-				`UPDATE esi_cache SET expires_at = ? WHERE cache_key = ?`,
+				`UPDATE esi_cache SET expires_at = ?, last_modified = ? WHERE cache_key = ?`,
 				newExpiresAt.getTime(),
+				new Date().toISOString(),
 				cacheKey
 			)
 			return {
@@ -598,14 +654,15 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		const page = this.extractPageFromPath(path)
 
 		await this.state.storage.sql.exec(
-			`INSERT OR REPLACE INTO esi_cache (cache_key, response_data, expires_at, etag, pages, page)
-			 VALUES (?, ?, ?, ?, ?, ?)`,
+			`INSERT OR REPLACE INTO esi_cache (cache_key, response_data, expires_at, etag, pages, page, last_modified)
+			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
 			cacheKey,
 			JSON.stringify(data),
 			expiresAt.getTime(),
 			etag,
 			pages ?? null,
-			page ?? null
+			page ?? null,
+			new Date().toISOString()
 		)
 
 		return {
@@ -649,8 +706,9 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			etag: string | null
 			pages: number | null
 			page: number | null
+			last_modified: string | null
 		}>(
-			`SELECT response_data, expires_at, etag, pages, page FROM esi_cache WHERE cache_key = ?`,
+			`SELECT response_data, expires_at, etag, pages, page, last_modified FROM esi_cache WHERE cache_key = ?`,
 			cacheKey
 		)
 
@@ -658,7 +716,11 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 		if (cached.length > 0) {
 			const now = Date.now()
-			if (cached[0].expires_at > now) {
+			const lastModified = cached[0].last_modified ? new Date(cached[0].last_modified).getTime() : null
+			const cacheAge = lastModified ? now - lastModified : Infinity
+
+			// Check both expiry AND 12-hour max age (retroactive enforcement)
+			if (cached[0].expires_at > now && cacheAge <= EveTokenStoreDO.MAX_CACHE_TTL_MS) {
 				// Cache hit
 				return {
 					data: JSON.parse(cached[0].response_data) as T,
@@ -685,9 +747,11 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		// Handle 304 Not Modified
 		if (response.status === 304 && cached.length > 0) {
 			const newExpiresAt = this.parseEsiCacheExpiry(response.headers)
+			// Update both expires_at and last_modified to reset the 12-hour window
 			await this.state.storage.sql.exec(
-				`UPDATE esi_cache SET expires_at = ? WHERE cache_key = ?`,
+				`UPDATE esi_cache SET expires_at = ?, last_modified = ? WHERE cache_key = ?`,
 				newExpiresAt.getTime(),
+				new Date().toISOString(),
 				cacheKey
 			)
 			return {
@@ -715,14 +779,15 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		const page = this.extractPageFromPath(path)
 
 		await this.state.storage.sql.exec(
-			`INSERT OR REPLACE INTO esi_cache (cache_key, response_data, expires_at, etag, pages, page)
-			 VALUES (?, ?, ?, ?, ?, ?)`,
+			`INSERT OR REPLACE INTO esi_cache (cache_key, response_data, expires_at, etag, pages, page, last_modified)
+			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
 			cacheKey,
 			JSON.stringify(data),
 			expiresAt.getTime(),
 			etag,
 			pages ?? null,
-			page ?? null
+			page ?? null,
+			new Date().toISOString()
 		)
 
 		return {
@@ -1858,26 +1923,44 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		}
 	}
 
+	/** Maximum cache TTL: 12 hours (in milliseconds) */
+	private static readonly MAX_CACHE_TTL_MS = 12 * 60 * 60 * 1000
+
 	/**
 	 * Parse ESI cache expiry from response headers
+	 * IMPORTANT: Caps all cache TTLs to 12 hours maximum regardless of ESI headers
 	 */
 	private parseEsiCacheExpiry(headers: Headers): Date {
+		const now = Date.now()
+		const maxExpiry = now + EveTokenStoreDO.MAX_CACHE_TTL_MS
+		let expiresAt: Date
+
 		// Check Expires header first
 		const expires = headers.get('Expires')
 		if (expires) {
-			return new Date(expires)
-		}
-
-		// Check Cache-Control header
-		const cacheControl = headers.get('Cache-Control')
-		if (cacheControl) {
-			const maxAgeMatch = cacheControl.match(/max-age=(\d+)/)
-			if (maxAgeMatch) {
-				return new Date(Date.now() + parseInt(maxAgeMatch[1], 10) * 1000)
+			expiresAt = new Date(expires)
+		} else {
+			// Check Cache-Control header
+			const cacheControl = headers.get('Cache-Control')
+			if (cacheControl) {
+				const maxAgeMatch = cacheControl.match(/max-age=(\d+)/)
+				if (maxAgeMatch) {
+					expiresAt = new Date(now + parseInt(maxAgeMatch[1], 10) * 1000)
+				} else {
+					// Default: 5 minutes
+					expiresAt = new Date(now + 5 * 60 * 1000)
+				}
+			} else {
+				// Default: 5 minutes
+				expiresAt = new Date(now + 5 * 60 * 1000)
 			}
 		}
 
-		// Default: 5 minutes
-		return new Date(Date.now() + 5 * 60 * 1000)
+		// Cap at 12 hours maximum
+		if (expiresAt.getTime() > maxExpiry) {
+			return new Date(maxExpiry)
+		}
+
+		return expiresAt
 	}
 }

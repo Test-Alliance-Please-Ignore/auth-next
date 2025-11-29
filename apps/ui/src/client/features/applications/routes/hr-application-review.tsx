@@ -35,8 +35,15 @@ import { ApplicationStatusBadge } from '../components/application-status-badge'
 import { ApplicationTimeline } from '../components/application-timeline'
 import { DeleteHRNoteDialog } from '../components/delete-hr-note-dialog'
 import { HRNotesList } from '../components/hr-notes-list'
+import { MessagesPanel } from '../components/messages-panel'
 import { RecommendationList } from '../components/recommendation-list'
-import { useApplication, useApplicationActivity, useHRNote, useRecommendations } from '../hooks'
+import {
+	useApplication,
+	useApplicationActivity,
+	useHRNote,
+	useMessageCount,
+	useRecommendations,
+} from '../hooks'
 
 // ============================================================================
 // Component
@@ -71,9 +78,10 @@ export default function HrApplicationReview() {
 		error: applicationError,
 	} = useApplication(applicationId!)
 
-	// Fetch activity log and recommendations
+	// Fetch activity log, recommendations, and message count
 	const { data: activityLog, isLoading: activityLoading } = useApplicationActivity(applicationId!)
 	const { data: recommendations } = useRecommendations(applicationId!)
+	const { data: messageCount = 0 } = useMessageCount(applicationId!)
 
 	// Fetch selected HR note for edit/delete
 	const { data: selectedNote } = useHRNote(selectedNoteId)
@@ -301,6 +309,12 @@ export default function HrApplicationReview() {
 					<TabsTrigger value="history" className="flex-1 sm:flex-none">
 						History
 					</TabsTrigger>
+					<TabsTrigger value="messages" className="flex-1 sm:flex-none">
+						Messages
+						{messageCount > 0 && (
+							<span className="ml-1.5 text-xs opacity-70">({messageCount})</span>
+						)}
+					</TabsTrigger>
 				</TabsList>
 
 				{/* Details Tab */}
@@ -429,6 +443,26 @@ export default function HrApplicationReview() {
 							) : (
 								<p className="text-center text-muted-foreground py-8">No activity recorded yet</p>
 							)}
+						</CardContent>
+					</Card>
+				</TabsContent>
+
+				{/* Messages Tab */}
+				<TabsContent value="messages">
+					<Card>
+						<CardHeader>
+							<CardTitle>Messages</CardTitle>
+							<CardDescription>Communicate with the applicant</CardDescription>
+						</CardHeader>
+						<CardContent>
+							<MessagesPanel
+								applicationId={applicationId!}
+								currentUserId={user!.id}
+								recipientId={application.userId}
+								corporationId={corporationId}
+								canSend={['pending', 'under_review'].includes(application.status)}
+								showTemplates={true}
+							/>
 						</CardContent>
 					</Card>
 				</TabsContent>

@@ -33,6 +33,11 @@ export type HrNotePriority = 'low' | 'normal' | 'high' | 'critical'
 export type HrRoleType = 'hr_admin' | 'hr_reviewer' | 'hr_viewer'
 
 /**
+ * Message template status values
+ */
+export type MessageTemplateStatus = 'draft' | 'active' | 'inactive' | 'deleted'
+
+/**
  * Blacklist target types
  */
 export type BlacklistTargetType = 'user' | 'character'
@@ -104,6 +109,20 @@ export interface ApplicationMessage {
 	recipientId: string
 	message: string
 	createdAt: Date
+}
+
+/**
+ * Message template data transfer object
+ */
+export interface MessageTemplate {
+	id: string
+	status: MessageTemplateStatus
+	templateName: string
+	ownerCorporationId: string
+	description: string | null
+	messageTemplate: string
+	createdAt: Date
+	updatedAt: Date
 }
 
 /**
@@ -422,6 +441,65 @@ export interface Hr extends DurableObject {
 	 * @returns Number of messages for the application
 	 */
 	getMessageCount(applicationId: string, userId: string, isAdmin: boolean): Promise<number>
+
+	// ==================== Message Template Methods ====================
+
+	/**
+	 * Create a new message template for a corporation
+	 * @param corporationId - Corporation ID that owns the template
+	 * @param templateName - Name for the template
+	 * @param messageTemplate - Template message content
+	 * @param description - Optional description of the template
+	 * @param status - Template status (default: 'active')
+	 * @returns The created template
+	 */
+	createTemplate(
+		corporationId: string,
+		templateName: string,
+		messageTemplate: string,
+		description?: string,
+		status?: 'draft' | 'active' | 'inactive'
+	): Promise<MessageTemplate>
+
+	/**
+	 * List templates for a corporation
+	 * @param corporationId - Corporation ID to list templates for
+	 * @param status - Optional: filter by status (excludes deleted by default)
+	 * @returns Array of templates
+	 */
+	listTemplates(
+		corporationId: string,
+		status?: MessageTemplateStatus
+	): Promise<MessageTemplate[]>
+
+	/**
+	 * Get a single template by ID
+	 * @param templateId - Template ID to retrieve
+	 * @returns The template or null if not found
+	 */
+	getTemplate(templateId: string): Promise<MessageTemplate | null>
+
+	/**
+	 * Update a template
+	 * @param templateId - Template ID to update
+	 * @param updates - Partial updates to apply
+	 * @returns The updated template
+	 */
+	updateTemplate(
+		templateId: string,
+		updates: Partial<{
+			templateName: string
+			messageTemplate: string
+			description: string | null
+			status: MessageTemplateStatus
+		}>
+	): Promise<MessageTemplate>
+
+	/**
+	 * Delete a template (soft delete by setting status to 'deleted')
+	 * @param templateId - Template ID to delete
+	 */
+	deleteTemplate(templateId: string): Promise<void>
 
 	// ==================== HR Notes Methods (Admin Only) ====================
 

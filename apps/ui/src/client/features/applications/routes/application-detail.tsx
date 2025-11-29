@@ -44,10 +44,12 @@ import { AddRecommendationDialog } from '../components/add-recommendation-dialog
 import { ApplicationStatusBadge } from '../components/application-status-badge'
 import { ApplicationTimeline } from '../components/application-timeline'
 import { DeleteRecommendationDialog } from '../components/delete-recommendation-dialog'
+import { MessagesPanel } from '../components/messages-panel'
 import { RecommendationList } from '../components/recommendation-list'
 import {
 	useApplication,
 	useApplicationActivity,
+	useMessageCount,
 	useRecommendations,
 	useWithdrawApplication,
 } from '../hooks'
@@ -83,6 +85,7 @@ export default function ApplicationDetail() {
 	} = useApplication(applicationId!)
 	const { data: activityLog, isLoading: activityLoading } = useApplicationActivity(applicationId!)
 	const { data: recommendations } = useRecommendations(applicationId!)
+	const { data: messageCount = 0 } = useMessageCount(applicationId!)
 
 	// Mutations
 	const withdrawMutation = useWithdrawApplication()
@@ -304,6 +307,12 @@ export default function ApplicationDetail() {
 					<TabsTrigger value="history" className="flex-1 sm:flex-none">
 						History
 					</TabsTrigger>
+					<TabsTrigger value="messages" className="flex-1 sm:flex-none">
+						Messages
+						{messageCount > 0 && (
+							<span className="ml-1.5 text-xs opacity-70">({messageCount})</span>
+						)}
+					</TabsTrigger>
 				</TabsList>
 
 				{/* Details Tab */}
@@ -407,6 +416,26 @@ export default function ApplicationDetail() {
 							) : (
 								<p className="text-center text-muted-foreground py-8">No activity recorded yet</p>
 							)}
+						</CardContent>
+					</Card>
+				</TabsContent>
+
+				{/* Messages Tab */}
+				<TabsContent value="messages">
+					<Card>
+						<CardHeader>
+							<CardTitle>Messages</CardTitle>
+							<CardDescription>
+								Communicate with the HR team about your application
+							</CardDescription>
+						</CardHeader>
+						<CardContent>
+							<MessagesPanel
+								applicationId={applicationId!}
+								currentUserId={user!.id}
+								recipientId={undefined}
+								canSend={canWithdraw}
+							/>
 						</CardContent>
 					</Card>
 				</TabsContent>

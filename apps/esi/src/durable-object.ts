@@ -165,6 +165,16 @@ import type { Env } from './context'
 import type { EsiDb } from './storage/state'
 import { UseCharacterAuth, UseCorporationAuth } from './lib/auth-decorators'
 
+// ========================================================================
+// CACHE REVALIDATION TTL CONSTANTS
+// ========================================================================
+// For endpoints with long CCP cache durations (e.g., 30 days), these TTLs
+// control how often we revalidate via ETag even when cache hasn't expired.
+// This ensures we detect changes (like name renames) without waiting for
+// full cache expiry.
+const REVALIDATE_15_MIN = 900 // 15 minutes - for frequently-changing public info
+const REVALIDATE_1_HOUR = 3600 // 1 hour - for less frequent updates
+
 /**
  * Durable Object responsible for authenticated ESI fetches on behalf of a character or corporation.
  * Provides typed RPC methods used by other workers to hydrate character or corporation data.
@@ -193,7 +203,8 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	@UseCharacterAuth
 	async fetchCharacterPublicInfo(characterId: string): Promise<CharacterPublicInfo> {
 		const result = await this.esiFetcher.fetchEsi<EsiCharacterPublicInfo>(
-			`/characters/${characterId}`
+			`/characters/${characterId}`,
+			{ maxLocalCacheTtl: REVALIDATE_15_MIN }
 		)
 
 		logger.info(`[fetchCharacterPublicInfo] Result: ${JSON.stringify(result)}`)
@@ -335,7 +346,8 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	@UseCharacterAuth
 	async fetchCharacterPortrait(characterId: string): Promise<CharacterPortrait> {
 		const result = await this.esiFetcher.fetchEsi<EsiCharacterPortrait>(
-			`/characters/${characterId}/portrait`
+			`/characters/${characterId}/portrait`,
+			{ maxLocalCacheTtl: REVALIDATE_15_MIN }
 		)
 		if (!result.data) {
 			throw new Error(`No character portrait found for character ID: ${characterId}`)
@@ -403,7 +415,8 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	@UseCharacterAuth
 	async fetchCorporationHistory(characterId: string): Promise<CorporationHistoryEntry[]> {
 		const result = await this.esiFetcher.fetchEsi<EsiCorporationHistoryEntry[]>(
-			`/characters/${characterId}/corporationhistory`
+			`/characters/${characterId}/corporationhistory`,
+			{ maxLocalCacheTtl: REVALIDATE_1_HOUR }
 		)
 		return transformCorporationHistoryEntry(result.data)
 	}
@@ -644,7 +657,8 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	 */
 	async fetchCorporationPublicInfo(corporationId: string): Promise<CorporationPublicInfo> {
 		const result = await this.esiFetcher.fetchEsi<EsiCorporationPublicInfo>(
-			`/corporations/${corporationId}`
+			`/corporations/${corporationId}`,
+			{ maxLocalCacheTtl: REVALIDATE_15_MIN }
 		)
 		if (!result.data) {
 			throw new Error(`No corporation public info found for corporation ID: ${corporationId}`)
@@ -702,7 +716,8 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	@UseCorporationAuth
 	async fetchCorporationIcon(corporationId: string): Promise<CorporationIcon> {
 		const result = await this.esiFetcher.fetchEsi<EsiCorporationIcon>(
-			`/corporations/${corporationId}/icons`
+			`/corporations/${corporationId}/icons`,
+			{ maxLocalCacheTtl: REVALIDATE_15_MIN }
 		)
 		if (!result.data) {
 			throw new Error(`No corporation icon found for corporation ID: ${corporationId}`)
@@ -793,7 +808,10 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 			// Structure data is identical regardless of which character queries it
 			const result = await this.esiFetcher.fetchEsi<EsiStructureInfo>(
 				`/universe/structures/${structureId}`,
-				{ scope: 'global', scopeId: 'global' }
+				{
+					cacheScopeOverride: { scope: 'global', scopeId: 'global' },
+					maxLocalCacheTtl: REVALIDATE_15_MIN,
+				}
 			)
 			return transformStructureInfo(result.data)
 		} catch (error) {

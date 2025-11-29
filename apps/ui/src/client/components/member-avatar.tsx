@@ -21,7 +21,7 @@ export function MemberAvatar({ characterId, characterName, size = 'md' }: Member
 		<div className={`${sizeClass} flex-shrink-0`}>
 			{characterId ? (
 				<img
-					src={`https://images.evetech.net/characters/${characterId}/portrait?size=64`}
+					src={`/images/characters/${characterId}/portrait?size=64`}
 					alt={characterName || 'Character portrait'}
 					className="h-full w-full rounded object-cover"
 					loading="lazy"

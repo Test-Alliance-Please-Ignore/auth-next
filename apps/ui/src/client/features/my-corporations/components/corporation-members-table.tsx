@@ -443,7 +443,7 @@ export default function CorporationMembersTable({
 								<TableCell>
 									<div className="flex items-center gap-3">
 										<img
-											src={`https://images.evetech.net/characters/${member.characterId}/portrait?size=64`}
+											src={`/images/characters/${member.characterId}/portrait?size=64`}
 											alt={`${member.characterName}'s portrait`}
 											loading="lazy"
 											onError={(e) => {

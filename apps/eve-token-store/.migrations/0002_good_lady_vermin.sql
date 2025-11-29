@@ -1,0 +1,1 @@
+ALTER TABLE "eve_characters" ADD COLUMN "deleted_at" timestamp;

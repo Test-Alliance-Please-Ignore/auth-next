@@ -12,6 +12,7 @@
  */
 
 import { getStub } from '@repo/do-utils'
+import { CharacterDeletedError } from '@repo/esi'
 import { EveCorporationData } from '@repo/eve-corporation-data'
 import { logger } from '@repo/hono-helpers'
 
@@ -21,6 +22,25 @@ import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Env } from '../context'
 import type { CacheScopeContext } from './cache'
 import type { EsiResponse } from './types'
+
+// ========================================================================
+// OPTIONS & TYPES
+// ========================================================================
+
+/**
+ * Options for fetchEsi and fetchEsiPaginated
+ */
+export interface FetchEsiOptions {
+	/** Override the default cache scope (defaults to authenticated scope or public) */
+	cacheScopeOverride?: CacheScopeContext
+	/**
+	 * Maximum seconds to trust cache before ETag revalidation.
+	 * If set, even non-expired cache entries will trigger conditional requests
+	 * after this many seconds since the cache was written.
+	 * Useful for long-cached endpoints where data might change (e.g., character names).
+	 */
+	maxLocalCacheTtl?: number
+}
 
 // ========================================================================
 // PUBLIC DATA FETCHING
@@ -94,28 +114,46 @@ export class EsiFetcher {
 	// HELPER METHODS
 	// ========================================================================
 
+	/** Maximum cache TTL: 12 hours (in milliseconds) */
+	private static readonly MAX_CACHE_TTL_MS = 12 * 60 * 60 * 1000
+
 	/**
 	 * Parse cache expiry from ESI response headers
 	 * Checks Expires header first, then Cache-Control max-age, defaults to 5 minutes
+	 * IMPORTANT: Caps all cache TTLs to 12 hours maximum regardless of ESI headers
 	 */
 	private parseEsiCacheExpiry(headers: Headers): Date {
+		const now = Date.now()
+		const maxExpiry = now + EsiFetcher.MAX_CACHE_TTL_MS
+		let expiresAt: Date
+
 		// Check Expires header first
 		const expires = headers.get('Expires')
 		if (expires) {
-			return new Date(expires)
-		}
-
-		// Check Cache-Control header
-		const cacheControl = headers.get('Cache-Control')
-		if (cacheControl) {
-			const maxAgeMatch = cacheControl.match(/max-age=(\d+)/)
-			if (maxAgeMatch) {
-				return new Date(Date.now() + parseInt(maxAgeMatch[1], 10) * 1000)
+			expiresAt = new Date(expires)
+		} else {
+			// Check Cache-Control header
+			const cacheControl = headers.get('Cache-Control')
+			if (cacheControl) {
+				const maxAgeMatch = cacheControl.match(/max-age=(\d+)/)
+				if (maxAgeMatch) {
+					expiresAt = new Date(now + parseInt(maxAgeMatch[1], 10) * 1000)
+				} else {
+					// Default: 5 minutes
+					expiresAt = new Date(now + 5 * 60 * 1000)
+				}
+			} else {
+				// Default: 5 minutes
+				expiresAt = new Date(now + 5 * 60 * 1000)
 			}
 		}
 
-		// Default: 5 minutes
-		return new Date(Date.now() + 5 * 60 * 1000)
+		// Cap at 12 hours maximum
+		if (expiresAt.getTime() > maxExpiry) {
+			return new Date(maxExpiry)
+		}
+
+		return expiresAt
 	}
 
 	/**
@@ -227,29 +265,49 @@ export class EsiFetcher {
 	 * Fetch data from ESI API (unpaginated endpoints)
 	 * Handles caching, ETag-based conditional requests, and rate limiting
 	 * @param path - ESI API path
-	 * @param cacheScopeOverride - Optional override for cache scope (defaults to authenticated scope or public)
+	 * @param options - Optional fetch options (cache scope override, max local cache TTL)
 	 */
-	async fetchEsi<T>(path: string, cacheScopeOverride?: CacheScopeContext): Promise<EsiResponse<T>> {
-		const cacheScope = cacheScopeOverride ?? this.getActiveCacheScope()
+	async fetchEsi<T>(path: string, options?: FetchEsiOptions): Promise<EsiResponse<T>> {
+		const cacheScope = options?.cacheScopeOverride ?? this.getActiveCacheScope()
+		const maxLocalCacheTtl = options?.maxLocalCacheTtl
 		const page = this.extractPageFromPath(path)
 		const cachePage = page ?? undefined
 		// Use path without page parameter for cache key
 		const cachePath = this.removePageFromPath(path)
 
 		// 1. Check cache for valid (non-expired) entries
-		const cached = await this.cache.getCachedResponse<T>(cacheScope, cachePath, cachePage, false)
+		let cached = await this.cache.getCachedResponse<T>(cacheScope, cachePath, cachePage, false)
+
 		if (cached) {
-			logger.debug('[EsiFetcher] Cache hit', { path, cacheScope })
-			return cached
+			// If maxLocalCacheTtl is set, check if we should revalidate via ETag
+			if (maxLocalCacheTtl !== undefined) {
+				// Treat missing lastModified as stale (legacy cache entries without lastModified)
+				const shouldRevalidate =
+					!cached.lastModified ||
+					(Date.now() - cached.lastModified.getTime()) / 1000 > maxLocalCacheTtl
+
+				if (shouldRevalidate) {
+					logger.debug('[EsiFetcher] Cache stale for ETag revalidation', {
+						path,
+						cacheScope,
+						hasLastModified: !!cached.lastModified,
+						maxLocalCacheTtl,
+					})
+					// Fall through to ETag revalidation below
+					cached = null
+				} else {
+					logger.debug('[EsiFetcher] Cache hit', { path, cacheScope })
+					return cached
+				}
+			} else {
+				logger.debug('[EsiFetcher] Cache hit', { path, cacheScope })
+				return cached
+			}
 		}
 
-		// 2. Get expired cache entry for ETag (even if expired, we can use ETag for conditional request)
-		const expiredCached = await this.cache.getCachedResponse<T>(
-			cacheScope,
-			cachePath,
-			cachePage,
-			true
-		)
+		// 2. Get cache entry for ETag (either expired or stale for revalidation)
+		const expiredCached =
+			cached ?? (await this.cache.getCachedResponse<T>(cacheScope, cachePath, cachePage, true))
 		const cachedEtag = expiredCached?.etag ?? null
 		const headers = await this.buildRequestHeaders(cachedEtag)
 
@@ -310,6 +368,27 @@ export class EsiFetcher {
 		// 5. Handle error responses
 		if (!response.ok) {
 			const errorText = await response.text().catch(() => 'Unknown error')
+
+			// Check for deleted character (fatal, non-retryable)
+			if (response.status === 404 && errorText.includes('Character has been deleted')) {
+				// Extract character ID from path (e.g., /characters/123456)
+				const charMatch = path.match(/\/characters\/(\d+)/)
+				if (charMatch) {
+					const deletedCharId = charMatch[1]
+					// Mark character as deleted in token store
+					try {
+						const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+						await tokenStore.markCharacterDeleted(deletedCharId)
+					} catch (markError) {
+						logger.warn('[EsiFetcher] Failed to mark character as deleted', {
+							characterId: deletedCharId,
+							error: markError instanceof Error ? markError.message : String(markError),
+						})
+					}
+					throw new CharacterDeletedError(deletedCharId)
+				}
+			}
+
 			logger.error('[EsiFetcher] ESI request failed', {
 				path,
 				status: response.status,
@@ -352,13 +431,13 @@ export class EsiFetcher {
 	/**
 	 * Fetch paginated data from ESI API
 	 * Automatically fetches all pages and combines results
+	 * @param path - ESI API path
+	 * @param options - Optional fetch options (cache scope override, max local cache TTL)
 	 */
-	async fetchEsiPaginated<T>(path: string): Promise<EsiResponse<T[]>> {
-		const cacheScope = this.getActiveCacheScope()
-
+	async fetchEsiPaginated<T>(path: string, options?: FetchEsiOptions): Promise<EsiResponse<T[]>> {
 		// 1. Fetch first page
 		const firstPagePath = path.includes('?') ? `${path}&page=1` : `${path}?page=1`
-		const firstPageResponse = await this.fetchEsi<T[]>(firstPagePath, cacheScope)
+		const firstPageResponse = await this.fetchEsi<T[]>(firstPagePath, options)
 
 		// 2. Check if pagination is needed
 		const totalPages = firstPageResponse.pages ?? 1
@@ -372,7 +451,7 @@ export class EsiFetcher {
 		const pagePromises: Promise<EsiResponse<T[]>>[] = []
 		for (let page = 2; page <= totalPages; page++) {
 			const pagePath = path.includes('?') ? `${path}&page=${page}` : `${path}?page=${page}`
-			pagePromises.push(this.fetchEsi<T[]>(pagePath, cacheScope))
+			pagePromises.push(this.fetchEsi<T[]>(pagePath, options))
 		}
 
 		// 4. Wait for all pages (with rate limiting handled by fetchEsi)

@@ -15,14 +15,20 @@ import type {
 	AddRecommendationRequest,
 	Application,
 	ApplicationActivityLogEntry,
+	ApplicationMessage,
 	ApplicationsParams,
+	CreateTemplateRequest,
 	HRNote,
 	HRNotesParams,
+	MessageTemplate,
+	MessageTemplateStatus,
 	Recommendation,
+	SendMessageRequest,
 	SubmitApplicationRequest,
 	UpdateApplicationStatusRequest,
 	UpdateHRNoteRequest,
 	UpdateRecommendationRequest,
+	UpdateTemplateRequest,
 } from './api'
 
 // ============================================================================
@@ -41,10 +47,17 @@ export const applicationKeys = {
 	detail: (id: string) => [...applicationKeys.details(), id] as const,
 	recommendations: (id: string) => [...applicationKeys.detail(id), 'recommendations'] as const,
 	activity: (id: string) => [...applicationKeys.detail(id), 'activity'] as const,
+	messages: (id: string) => [...applicationKeys.detail(id), 'messages'] as const,
+	messageCount: (id: string) => [...applicationKeys.detail(id), 'message-count'] as const,
 	hrNotes: () => [...applicationKeys.all, 'hr-notes'] as const,
 	hrNotesList: (filters: string) => [...applicationKeys.hrNotes(), filters] as const,
 	hrNoteDetail: (noteId: string) => [...applicationKeys.hrNotes(), noteId] as const,
 	hrNotesForUser: (userId: string) => [...applicationKeys.hrNotes(), 'user', userId] as const,
+	// Message Templates
+	templates: () => [...applicationKeys.all, 'templates'] as const,
+	templatesList: (corporationId: string, status?: string) =>
+		[...applicationKeys.templates(), corporationId, status || 'all'] as const,
+	templateDetail: (templateId: string) => [...applicationKeys.templates(), 'detail', templateId] as const,
 }
 
 // ============================================================================
@@ -104,6 +117,34 @@ export function useApplicationActivity(applicationId: string) {
 		queryFn: () => applicationsApi.getApplicationActivity(applicationId),
 		staleTime: 1000 * 60, // 1 minute
 		gcTime: 1000 * 60 * 3, // 3 minutes
+		enabled: !!applicationId,
+	})
+}
+
+/**
+ * Hook to fetch messages for an application
+ * @param applicationId - The application ID
+ */
+export function useMessages(applicationId: string) {
+	return useQuery<ApplicationMessage[]>({
+		queryKey: applicationKeys.messages(applicationId),
+		queryFn: () => applicationsApi.getMessages(applicationId),
+		staleTime: 1000 * 60, // 1 minute
+		gcTime: 1000 * 60 * 3, // 3 minutes
+		enabled: !!applicationId,
+	})
+}
+
+/**
+ * Hook to fetch message count for an application (for badge display)
+ * @param applicationId - The application ID
+ */
+export function useMessageCount(applicationId: string) {
+	return useQuery<number>({
+		queryKey: applicationKeys.messageCount(applicationId),
+		queryFn: () => applicationsApi.getMessageCount(applicationId),
+		staleTime: 1000 * 30, // 30 seconds (more frequent for counts)
+		gcTime: 1000 * 60 * 2, // 2 minutes
 		enabled: !!applicationId,
 	})
 }
@@ -287,6 +328,40 @@ export function useDeleteRecommendation() {
 			})
 
 			// Invalidate activity log
+			queryClient.invalidateQueries({
+				queryKey: applicationKeys.activity(variables.applicationId),
+			})
+		},
+	})
+}
+
+/**
+ * Hook to send a message for an application
+ * Invalidates messages list and count on success
+ */
+export function useSendMessage() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: ({
+			applicationId,
+			data,
+		}: {
+			applicationId: string
+			data: SendMessageRequest
+		}) => applicationsApi.sendMessage(applicationId, data),
+		onSuccess: (_, variables) => {
+			// Invalidate messages list
+			queryClient.invalidateQueries({
+				queryKey: applicationKeys.messages(variables.applicationId),
+			})
+
+			// Invalidate message count
+			queryClient.invalidateQueries({
+				queryKey: applicationKeys.messageCount(variables.applicationId),
+			})
+
+			// Invalidate activity log (messages are logged)
 			queryClient.invalidateQueries({
 				queryKey: applicationKeys.activity(variables.applicationId),
 			})
@@ -481,6 +556,128 @@ export function useDeleteHRNote() {
 			// Remove from cache
 			queryClient.removeQueries({
 				queryKey: applicationKeys.hrNoteDetail(variables.noteId),
+			})
+		},
+	})
+}
+
+// ============================================================================
+// Message Template Query Hooks
+// ============================================================================
+
+/**
+ * Hook to fetch message templates for a corporation
+ * @param corporationId - The corporation ID to fetch templates for
+ * @param status - Optional status filter
+ */
+export function useTemplates(corporationId: string, status?: MessageTemplateStatus) {
+	return useQuery<MessageTemplate[]>({
+		queryKey: applicationKeys.templatesList(corporationId, status),
+		queryFn: () => applicationsApi.getTemplates(corporationId, status),
+		staleTime: 1000 * 60 * 5, // 5 minutes (templates change less frequently)
+		gcTime: 1000 * 60 * 10, // 10 minutes
+		enabled: !!corporationId,
+	})
+}
+
+/**
+ * Hook to fetch a single template by ID
+ * @param templateId - The template ID to fetch
+ */
+export function useTemplate(templateId: string | null) {
+	return useQuery<MessageTemplate>({
+		queryKey: applicationKeys.templateDetail(templateId!),
+		queryFn: () => applicationsApi.getTemplate(templateId!),
+		staleTime: 1000 * 60 * 5, // 5 minutes
+		gcTime: 1000 * 60 * 10, // 10 minutes
+		enabled: !!templateId,
+	})
+}
+
+// ============================================================================
+// Message Template Mutation Hooks
+// ============================================================================
+
+/**
+ * Hook to create a new message template
+ * Invalidates template lists on success
+ */
+export function useCreateTemplate() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: ({
+			corporationId,
+			data,
+		}: {
+			corporationId: string
+			data: CreateTemplateRequest
+		}) => applicationsApi.createTemplate(corporationId, data),
+		onSuccess: (newTemplate) => {
+			// Invalidate template list for this corporation
+			queryClient.invalidateQueries({
+				queryKey: applicationKeys.templatesList(newTemplate.ownerCorporationId),
+			})
+
+			// Pre-populate the cache with the new template
+			queryClient.setQueryData(applicationKeys.templateDetail(newTemplate.id), newTemplate)
+		},
+	})
+}
+
+/**
+ * Hook to update a message template
+ * Invalidates template detail and list on success
+ */
+export function useUpdateTemplate() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: ({
+			templateId,
+			data,
+		}: {
+			templateId: string
+			data: UpdateTemplateRequest
+		}) => applicationsApi.updateTemplate(templateId, data),
+		onSuccess: (updatedTemplate) => {
+			// Invalidate the specific template
+			queryClient.invalidateQueries({
+				queryKey: applicationKeys.templateDetail(updatedTemplate.id),
+			})
+
+			// Invalidate template list for this corporation
+			queryClient.invalidateQueries({
+				queryKey: applicationKeys.templatesList(updatedTemplate.ownerCorporationId),
+			})
+		},
+	})
+}
+
+/**
+ * Hook to delete a message template
+ * Invalidates template lists on success
+ */
+export function useDeleteTemplate() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: ({
+			templateId,
+			corporationId,
+		}: {
+			templateId: string
+			corporationId: string
+		}) => applicationsApi.deleteTemplate(templateId),
+		onSuccess: (_, variables) => {
+			// Invalidate template list for this corporation
+			queryClient.invalidateQueries({
+				queryKey: applicationKeys.templatesList(variables.corporationId),
+			})
+
+			// Remove from cache
+			queryClient.removeQueries({
+				queryKey: applicationKeys.templateDetail(variables.templateId),
 			})
 		},
 	})

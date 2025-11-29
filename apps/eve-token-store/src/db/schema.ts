@@ -37,6 +37,13 @@ export const eveCharacters = pgTable('eve_characters', {
 
 	/** When the character record was last updated */
 	updatedAt: timestamp('updated_at').defaultNow().notNull(),
+
+	/**
+	 * When the character was marked as deleted from EVE.
+	 * null = active character, set = character has been deleted from EVE
+	 * (biomassed or otherwise removed by CCP)
+	 */
+	deletedAt: timestamp('deleted_at'),
 })
 
 /**

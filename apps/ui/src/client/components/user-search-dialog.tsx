@@ -98,7 +98,7 @@ export function UserSearchDialog({ open, onOpenChange }: UserSearchDialogProps) 
 								)}
 							>
 								<img
-									src={`https://images.evetech.net/characters/${user.mainCharacterId}/portrait?size=64`}
+									src={`/images/characters/${user.mainCharacterId}/portrait?size=64`}
 									alt={user.mainCharacterName || 'Unknown Character'}
 									className="h-10 w-10 rounded-full"
 								/>

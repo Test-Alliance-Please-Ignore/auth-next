@@ -65,6 +65,7 @@ import type {
 // Export ESI response types
 export * from './types'
 export * from './id-ranges'
+export * from './errors'
 
 /**
  * Public RPC interface for Esi Durable Object

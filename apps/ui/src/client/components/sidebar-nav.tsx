@@ -179,7 +179,7 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 				{mainCharacter && (
 					<div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-accent/30">
 						<img
-							src={`https://images.evetech.net/characters/${mainCharacter.characterId}/portrait?size=64`}
+							src={`/images/characters/${mainCharacter.characterId}/portrait?size=64`}
 							alt={`${mainCharacter.characterName}'s portrait`}
 							loading="lazy"
 							onError={(e) => {

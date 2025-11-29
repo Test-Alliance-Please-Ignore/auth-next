@@ -77,7 +77,7 @@ export default function ClaimMainPage() {
 					{/* Character Display */}
 					<div className="flex items-center gap-4 p-4 bg-muted rounded-lg">
 						<img
-							src={`https://images.evetech.net/characters/${characterInfo.characterId}/portrait?size=128`}
+							src={`/images/characters/${characterInfo.characterId}/portrait?size=128`}
 							alt={characterInfo.characterName}
 							className="w-16 h-16 rounded-full border-2 border-primary"
 						/>

@@ -15,6 +15,9 @@ export type CacheScopeContext = {
 
 const DEFAULT_GLOBAL_CACHE_TTL_SECONDS = 5 * 60
 
+/** Maximum cache age: 12 hours (in milliseconds) - applies retroactively to all cached data */
+const MAX_CACHE_AGE_MS = 12 * 60 * 60 * 1000
+
 type SerializedCacheEntry<T> = {
 	data: T
 	expiresAt: string | null
@@ -23,19 +26,33 @@ type SerializedCacheEntry<T> = {
 	page: number | null
 	scope: CacheScope
 	scopeId: string
+	lastModified?: string // ISO string of when cache entry was written
 }
 
 /**
  * Checks if a response is expired
+ * Also enforces 12-hour maximum cache age based on lastModified timestamp
  * @param response - The response to check
  * @returns True if the response is expired, false otherwise
  */
-function isExpired<T extends { expiresAt: Date | null }>(response: T): boolean {
-	// If expires at is not set, the response never expires
+function isExpired<T extends { expiresAt: Date | null; lastModified?: Date | null }>(
+	response: T
+): boolean {
+	const now = Date.now()
+
+	// Check if cache entry is older than 12 hours (retroactive enforcement)
+	if (response.lastModified) {
+		const age = now - response.lastModified.getTime()
+		if (age > MAX_CACHE_AGE_MS) {
+			return true
+		}
+	}
+
+	// Check standard expiry
 	if (!response.expiresAt) {
 		return false
 	}
-	return Date.now() > response.expiresAt.getTime()
+	return now > response.expiresAt.getTime()
 }
 
 export class EsiCache {
@@ -86,6 +103,7 @@ export class EsiCache {
 			etag: cachedResponse.etag ?? null,
 			pages: cachedResponse.pages ?? null,
 			page: cachedResponse.page ?? null,
+			lastModified: cachedResponse.lastModified ?? undefined,
 		}
 	}
 
@@ -114,6 +132,7 @@ export class EsiCache {
 				etag: parsed.etag,
 				pages: parsed.pages,
 				page: parsed.page,
+				lastModified: parsed.lastModified ? new Date(parsed.lastModified) : undefined,
 			}
 		} catch (error) {
 			this.logger.warn('Failed to parse global cache entry', {
@@ -201,6 +220,7 @@ export class EsiCache {
 			pages: response.pages,
 			scope: scope.scope,
 			scopeId: scope.scopeId,
+			lastModified: response.lastModified?.toISOString(),
 		}
 
 		try {
@@ -255,7 +275,8 @@ export class EsiCache {
 			this.logger.debug('Cached response set successfully', { cacheKey })
 
 			if (persistGlobal) {
-				await this.persistGlobalCache(cacheKey, response, scope)
+				// Include lastModified in the response for global cache persistence
+				await this.persistGlobalCache(cacheKey, { ...response, lastModified }, scope)
 			}
 		} catch (error) {
 			this.logger.error('Error setting cached response', {

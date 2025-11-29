@@ -4,4 +4,5 @@ export interface EsiResponse<T> {
 	etag: string | null
 	pages: number | null
 	page: number | null
+	lastModified?: Date // When cache entry was written (for ETag revalidation)
 }

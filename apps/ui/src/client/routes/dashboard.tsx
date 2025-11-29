@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 
 import { DiscordCard } from '@/components/discord-card'
 import { LegacyCharacterCard } from '@/components/legacy-character-card'
+import { ServicesCard } from '@/components/services-card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -243,7 +244,7 @@ export default function DashboardPage() {
 									<>
 										<div className="flex items-center gap-4">
 											<img
-												src={`https://images.evetech.net/characters/${mainCharacter.characterId}/portrait?size=128`}
+												src={`/images/characters/${mainCharacter.characterId}/portrait?size=128`}
 												alt={`${mainCharacter.characterName}'s portrait`}
 												loading="lazy"
 												onError={(e) => {
@@ -443,7 +444,7 @@ export default function DashboardPage() {
 										<Link to={`/character/${character.characterId}`} className="block">
 											<div className="flex items-center gap-3">
 												<img
-													src={`https://images.evetech.net/characters/${character.characterId}/portrait?size=64`}
+													src={`/images/characters/${character.characterId}/portrait?size=64`}
 													alt={`${character.characterName}'s portrait`}
 													loading="lazy"
 													onError={(e) => {
@@ -538,6 +539,16 @@ export default function DashboardPage() {
 					</CardContent>
 				</Card>
 			</Section>
+
+			{/* Services Card - Only show when legacy auth is linked */}
+			{user.legacyAuth?.isLinked && (
+				<>
+					<div className="my-8" />
+					<Section>
+						<ServicesCard isLegacyAuthLinked={true} />
+					</Section>
+				</>
+			)}
 		</Container>
 	)
 }

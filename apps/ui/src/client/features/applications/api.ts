@@ -75,6 +75,65 @@ export interface ApplicationActivityLogEntry {
 }
 
 /**
+ * Represents a message between HR and applicant
+ */
+export interface ApplicationMessage {
+	id: string
+	applicationId: string
+	senderId: string
+	recipientId: string
+	message: string
+	createdAt: string
+}
+
+/**
+ * Request body for sending a message
+ */
+export interface SendMessageRequest {
+	recipientId: string
+	message: string
+}
+
+/**
+ * Message template status types
+ */
+export type MessageTemplateStatus = 'draft' | 'active' | 'inactive' | 'deleted'
+
+/**
+ * Represents a message template for HR communications
+ */
+export interface MessageTemplate {
+	id: string
+	status: MessageTemplateStatus
+	templateName: string
+	ownerCorporationId: string
+	description: string | null
+	messageTemplate: string
+	createdAt: string
+	updatedAt: string
+}
+
+/**
+ * Request body for creating a message template
+ */
+export interface CreateTemplateRequest {
+	templateName: string
+	messageTemplate: string
+	description?: string
+	status?: 'draft' | 'active' | 'inactive'
+}
+
+/**
+ * Request body for updating a message template
+ */
+export interface UpdateTemplateRequest {
+	templateName?: string
+	messageTemplate?: string
+	description?: string | null
+	status?: MessageTemplateStatus
+}
+
+/**
  * HR Note types for categorization
  */
 export type HRNoteType = 'general' | 'warning' | 'positive' | 'incident' | 'background_check'
@@ -307,6 +366,35 @@ export const applicationsApi = {
 		return (application as any).activity || []
 	},
 
+	// ==================== Messages ====================
+
+	/**
+	 * Get all messages for an application
+	 */
+	async getMessages(applicationId: string): Promise<ApplicationMessage[]> {
+		return apiClient.get(`/hr/applications/${applicationId}/messages`)
+	},
+
+	/**
+	 * Send a message for an application
+	 */
+	async sendMessage(
+		applicationId: string,
+		data: SendMessageRequest
+	): Promise<ApplicationMessage> {
+		return apiClient.post(`/hr/applications/${applicationId}/messages`, data)
+	},
+
+	/**
+	 * Get message count for an application (for badge display)
+	 */
+	async getMessageCount(applicationId: string): Promise<number> {
+		const result = await apiClient.get<{ count: number }>(
+			`/hr/applications/${applicationId}/messages/count`
+		)
+		return result.count
+	},
+
 	// ==================== HR Notes (ADMIN ONLY) ====================
 
 	/**
@@ -350,6 +438,56 @@ export const applicationsApi = {
 	 */
 	async deleteHRNote(noteId: string): Promise<{ success: boolean }> {
 		return apiClient.delete(`/hr/notes/${noteId}`)
+	},
+
+	// ==================== Message Templates ====================
+
+	/**
+	 * Get templates for a corporation
+	 */
+	async getTemplates(
+		corporationId: string,
+		status?: MessageTemplateStatus
+	): Promise<MessageTemplate[]> {
+		const searchParams = new URLSearchParams()
+		if (status) searchParams.set('status', status)
+
+		const query = searchParams.toString()
+		return apiClient.get(`/hr/${corporationId}/templates${query ? `?${query}` : ''}`)
+	},
+
+	/**
+	 * Get a single template by ID
+	 */
+	async getTemplate(templateId: string): Promise<MessageTemplate> {
+		return apiClient.get(`/hr/templates/${templateId}`)
+	},
+
+	/**
+	 * Create a new message template
+	 */
+	async createTemplate(
+		corporationId: string,
+		data: CreateTemplateRequest
+	): Promise<MessageTemplate> {
+		return apiClient.post(`/hr/${corporationId}/templates`, data)
+	},
+
+	/**
+	 * Update a message template
+	 */
+	async updateTemplate(
+		templateId: string,
+		data: UpdateTemplateRequest
+	): Promise<MessageTemplate> {
+		return apiClient.patch(`/hr/templates/${templateId}`, data)
+	},
+
+	/**
+	 * Delete a message template (soft delete)
+	 */
+	async deleteTemplate(templateId: string): Promise<{ success: boolean }> {
+		return apiClient.delete(`/hr/templates/${templateId}`)
 	},
 }
 

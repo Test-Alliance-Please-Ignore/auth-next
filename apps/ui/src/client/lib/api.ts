@@ -1088,6 +1088,32 @@ export interface IndustryProviderStatistics {
 	servicesByStatus: Record<ServiceStatus, number>
 }
 
+/**
+ * User Services API Types
+ */
+
+export interface UserService {
+	id: string
+	serviceId: string
+	enabled: boolean
+	createdAt: string
+	updatedAt: string
+	service: {
+		id: string
+		name: string
+		slug: string
+		icon: string | null
+		description: string | null
+		enabled: boolean
+	}
+}
+
+export interface ResetServicePasswordResponse {
+	success: boolean
+	message: string
+	newPassword?: string
+}
+
 export class ApiClient {
 	private baseUrl: string
 
@@ -2473,6 +2499,22 @@ export class ApiClient {
 	 */
 	async getIndustryStats(): Promise<IndustryProviderStatistics> {
 		return this.get('/admin/industry/stats')
+	}
+
+	// ===== User Services API Methods =====
+
+	/**
+	 * Get current user's services
+	 */
+	async getUserServices(): Promise<UserService[]> {
+		return this.get('/users/me/services')
+	}
+
+	/**
+	 * Reset password for a service
+	 */
+	async resetServicePassword(slug: string): Promise<ResetServicePasswordResponse> {
+		return this.post(`/services/${slug}/reset`)
 	}
 }
 

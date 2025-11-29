@@ -23,6 +23,7 @@ import esiRoutes from './routes/esi'
 import fleetsRoutes from './routes/fleets'
 import freightRoutes from './routes/freight'
 import groupsRoutes from './routes/groups'
+import imagesRoutes from './routes/images'
 import hrRoutes from './routes/hr'
 import industryAdminRoutes from './routes/industry-admin'
 import industryOrdersRoutes from './routes/industry-orders'
@@ -76,6 +77,9 @@ const app = new Hono<App>()
 	// Public routes (for direct access and Discord embeds)
 	.route('/login', loginRoutes)
 	.route('/invite', inviteRoutes)
+
+	// Public image proxy (no auth, aggressive CDN caching)
+	.route('/images', imagesRoutes)
 
 	// API routes - mounted under /api prefix
 	.route('/api/admin', adminRoutes)
