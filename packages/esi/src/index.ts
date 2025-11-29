@@ -84,7 +84,10 @@ export * from './errors'
  */
 export interface Esi {
 	// Character endpoints
-	fetchCharacterAffiliation(characterId: string[]): Promise<CharacterAffiliation[]>
+	fetchCharacterAffiliation(
+		characterId: string,
+		characterIds: string[]
+	): Promise<CharacterAffiliation[]>
 	fetchCharacterPublicInfo(characterId: string): Promise<CharacterPublicInfo>
 	fetchCharacterNotifications(characterId: string): Promise<CharacterNotification[]>
 	fetchCharacterAgentResearch(characterId: string): Promise<CharacterAgentResearch[]>

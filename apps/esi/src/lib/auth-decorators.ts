@@ -11,6 +11,18 @@ type EsiDOInstance = {
 	}
 }
 
+function validateCharacterId(characterId: string | number): string {
+	if (!characterId) {
+		throw new Error('Character ID is required')
+	}
+	if (typeof characterId === 'number') {
+		return String(characterId)
+	}
+	if (typeof characterId !== 'string') {
+		throw new Error('Character ID must be a string or number got: ' + typeof characterId)
+	}
+	return characterId
+}
 /**
  * Decorator that authenticates with a character before method execution.
  * Expects the first parameter to be the characterId (string).
@@ -23,7 +35,8 @@ export function UseCharacterAuth(
 	const originalMethod = descriptor.value
 
 	descriptor.value = async function (this: EsiDOInstance, characterId: string, ...args: unknown[]) {
-		await this.esiFetcher.authenticateWithCharacter(characterId)
+		const validatedCharacterId = validateCharacterId(characterId)
+		await this.esiFetcher.authenticateWithCharacter(validatedCharacterId)
 		return originalMethod.apply(this, [characterId, ...args])
 	}
 

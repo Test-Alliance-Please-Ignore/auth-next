@@ -43,9 +43,13 @@ export async function attachUserRoles(ctx: WorkflowContext): Promise<AttachUserR
 			})
 
 			const esiStub = getEsiInstanceForCharacter(ctx.env.ESI, character.characterId)
-			const affiliation = await esiStub.fetchCharacterAffiliation([character.characterId])
+			// First parameter is the character ID to authenticate with
+			// Second parameter is the list of character IDs to fetch affiliation for
+			const affiliation = await esiStub.fetchCharacterAffiliation(character.characterId, [
+				character.characterId,
+			])
 			return {
-				characterId: character.characterId,
+				characterId: String(character.characterId),
 				characterName: character.characterName,
 				allianceId: affiliation[0].alliance_id,
 				corporationId: affiliation[0].corporation_id,

@@ -204,7 +204,10 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	}
 
 	@UseCharacterAuth
-	async fetchCharacterAffiliation(characterIds: string[]): Promise<CharacterAffiliation[]> {
+	async fetchCharacterAffiliation(
+		characterId: string,
+		characterIds: string[]
+	): Promise<CharacterAffiliation[]> {
 		const result = await this.esiFetcher.fetchEsi<EsiCharacterAffiliation[], number[]>(
 			`/characters/affiliation`,
 			{
