@@ -63,6 +63,7 @@ export {
 	defaultAuthAwareKeyGenerator,
 	bodyAwareKeyGenerator,
 	bodyAndAuthAwareKeyGenerator,
+	hashString,
 } from './key-generator'
 
 /**

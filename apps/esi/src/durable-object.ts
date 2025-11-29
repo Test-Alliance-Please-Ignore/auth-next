@@ -55,6 +55,7 @@ import {
 	transformCorporationWallets,
 	transformCorporationHistoryEntry,
 	transformStructureInfo,
+	transformCharacterAffiliation,
 } from './lib/esi-transforms'
 import { createEsiDb, runEsiMigrations } from './storage'
 
@@ -160,6 +161,8 @@ import type {
 	StructureInfo,
 	EsiCorporationMemberRole,
 	CorporationMemberRole,
+	CharacterAffiliation,
+	EsiCharacterAffiliation,
 } from '@repo/esi'
 import type { Env } from './context'
 import type { EsiDb } from './storage/state'
@@ -198,6 +201,18 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 		state.blockConcurrencyWhile(async () => {
 			await runEsiMigrations(this.storage)
 		})
+	}
+
+	@UseCharacterAuth
+	async fetchCharacterAffiliation(characterIds: string[]): Promise<CharacterAffiliation[]> {
+		const result = await this.esiFetcher.fetchEsi<EsiCharacterAffiliation[], number[]>(
+			`/characters/affiliation`,
+			{
+				body: characterIds.map((id) => parseInt(id, 10)),
+				method: 'POST',
+			}
+		)
+		return transformCharacterAffiliation(result.data)
 	}
 
 	@UseCharacterAuth

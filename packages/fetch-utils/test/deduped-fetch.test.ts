@@ -411,14 +411,14 @@ describe('DedupedFetch', () => {
 			const promise = deduper.fetch('https://api.example.com/data')
 
 			// Wait for fetch to be registered
-			await new Promise((resolve) => setTimeout(resolve, 1))
+			await new Promise((resolve) => setTimeout(resolve, 10))
 
-			expect(deduper.has('https://api.example.com/data')).toBe(true)
+			expect(await deduper.has('https://api.example.com/data')).toBe(true)
 
 			resolveFirst!()
 			await promise
 
-			expect(deduper.has('https://api.example.com/data')).toBe(false)
+			expect(await deduper.has('https://api.example.com/data')).toBe(false)
 		})
 	})
 })

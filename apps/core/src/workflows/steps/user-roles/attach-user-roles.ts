@@ -42,16 +42,13 @@ export async function attachUserRoles(ctx: WorkflowContext): Promise<AttachUserR
 				characterId: character.characterId,
 			})
 
-			const characterInfo = await getEsiInstanceForCharacter(
-				ctx.env.ESI,
-				character.characterId
-			).fetchCharacterPublicInfo(character.characterId)
-
+			const esiStub = getEsiInstanceForCharacter(ctx.env.ESI, character.characterId)
+			const affiliation = await esiStub.fetchCharacterAffiliation([character.characterId])
 			return {
 				characterId: character.characterId,
 				characterName: character.characterName,
-				allianceId: characterInfo.alliance_id,
-				corporationId: characterInfo.corporation_id,
+				allianceId: affiliation[0].alliance_id,
+				corporationId: affiliation[0].corporation_id,
 			}
 		})
 	)

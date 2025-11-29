@@ -1,15 +1,14 @@
-import { blake3_hash } from '@earthbucks/blake3'
+const textEncoder = new TextEncoder()
 
 /**
- * Hash a string using BLAKE3
+ * Hash a string using SHA-256
  * Returns a hex string representation of the hash
  */
-function hashString(value: string): string {
-	const encoder = new TextEncoder()
-	const data = encoder.encode(value)
-	const hash = blake3_hash(data)
-	// Convert Uint8Array to hex string
-	return Array.from(hash)
+export async function hashString(value: string | ArrayBuffer): Promise<string> {
+	const data = typeof value === 'string' ? textEncoder.encode(value) : value
+	const hash = await crypto.subtle.digest('SHA-256', data)
+	// Convert ArrayBuffer to hex string
+	return Array.from(new Uint8Array(hash))
 		.map((b) => b.toString(16).padStart(2, '0'))
 		.join('')
 }
@@ -69,7 +68,7 @@ export function defaultKeyGenerator(input: RequestInfo | URL, init?: RequestInit
  * This is the RECOMMENDED default for most use cases. It prevents data leakage
  * between users by including a hash of the Authorization header in the cache key.
  *
- * Security: The Authorization header is hashed using BLAKE3 before being included
+ * Security: The Authorization header is hashed using SHA-256 before being included
  * in the cache key to avoid storing sensitive credentials in memory.
  *
  * @param input - Request URL or Request object
@@ -83,12 +82,15 @@ export function defaultKeyGenerator(input: RequestInfo | URL, init?: RequestInit
  * })
  * // Returns: "GET:https://api.example.com/profile:a1b2c3d4..."
  */
-export function defaultAuthAwareKeyGenerator(input: RequestInfo | URL, init?: RequestInit): string {
+export async function defaultAuthAwareKeyGenerator(
+	input: RequestInfo | URL,
+	init?: RequestInit
+): Promise<string> {
 	const baseKey = defaultKeyGenerator(input, init)
 	const authHeader = getAuthHeader(input, init)
 
 	if (authHeader) {
-		const authHash = hashString(authHeader)
+		const authHash = await hashString(authHeader)
 		return `${baseKey}:${authHash}`
 	}
 
@@ -174,7 +176,10 @@ export function bodyAwareKeyGenerator(input: RequestInfo | URL, init?: RequestIn
  * })
  * // Returns: "POST:https://api.example.com/search:a1b2c3d4...:{"query":"test"}"
  */
-export function bodyAndAuthAwareKeyGenerator(input: RequestInfo | URL, init?: RequestInit): string {
+export async function bodyAndAuthAwareKeyGenerator(
+	input: RequestInfo | URL,
+	init?: RequestInit
+): Promise<string> {
 	const baseKey = defaultKeyGenerator(input, init)
 	const authHeader = getAuthHeader(input, init)
 	const method = init?.method?.toUpperCase() || 'GET'
@@ -183,7 +188,7 @@ export function bodyAndAuthAwareKeyGenerator(input: RequestInfo | URL, init?: Re
 
 	// Add auth hash if present
 	if (authHeader) {
-		const authHash = hashString(authHeader)
+		const authHash = await hashString(authHeader)
 		parts.push(authHash)
 	}
 

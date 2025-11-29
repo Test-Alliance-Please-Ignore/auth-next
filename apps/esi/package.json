@@ -26,6 +26,7 @@
 		"@repo/eve-corporation-data": "workspace:*",
 		"@repo/do-utils": "workspace:*",
 		"@repo/eve-token-store": "workspace:*",
+		"@repo/fetch-utils": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
 		"@repo/universe": "workspace:*",
 		"@repo/vite-config": "workspace:*",

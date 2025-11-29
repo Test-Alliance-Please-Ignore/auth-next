@@ -24,7 +24,9 @@ import type { DedupConfig, DedupStats } from './types'
  */
 export class DedupedFetch {
 	private inFlight: Map<string, Promise<Response>>
-	private config: Required<DedupConfig>
+	private config: Required<Omit<DedupConfig, 'keyGenerator'>> & {
+		keyGenerator: (input: RequestInfo | URL, init?: RequestInit) => string | Promise<string>
+	}
 	private stats: DedupStats
 
 	constructor(config?: DedupConfig) {
@@ -72,10 +74,10 @@ export class DedupedFetch {
 			return fetch(input, init)
 		}
 
-		// Generate cache key synchronously (no race conditions!)
-		const key = this.config.keyGenerator(input, init)
+		// Generate cache key (may be async for SHA-256 hashing)
+		const key = await this.config.keyGenerator(input, init)
 
-		// Check for in-flight request
+		// Check for in-flight request (synchronous after key is resolved)
 		const existing = this.inFlight.get(key)
 		if (existing) {
 			this.stats.hits++
@@ -149,8 +151,8 @@ export class DedupedFetch {
 	 * @param init - RequestInit options
 	 * @returns true if request is in-flight
 	 */
-	has(input: RequestInfo | URL, init?: RequestInit): boolean {
-		const key = this.config.keyGenerator(input, init)
+	async has(input: RequestInfo | URL, init?: RequestInit): Promise<boolean> {
+		const key = await this.config.keyGenerator(input, init)
 		return this.inFlight.has(key)
 	}
 

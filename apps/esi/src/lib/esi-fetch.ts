@@ -14,6 +14,7 @@
 import { getStub } from '@repo/do-utils'
 import { CharacterDeletedError } from '@repo/esi'
 import { EveCorporationData } from '@repo/eve-corporation-data'
+import { hashString } from '@repo/fetch-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { EsiCache } from './cache'
@@ -30,7 +31,10 @@ import type { EsiResponse } from './types'
 /**
  * Options for fetchEsi and fetchEsiPaginated
  */
-export interface FetchEsiOptions {
+export interface FetchEsiOptions<B = unknown> {
+	method?: 'GET' | 'POST'
+	/** Request body for POST requests */
+	body?: B
 	/** Override the default cache scope (defaults to authenticated scope or public) */
 	cacheScopeOverride?: CacheScopeContext
 	/**
@@ -200,12 +204,20 @@ export class EsiFetcher {
 
 	/**
 	 * Build request headers for ESI API calls
-	 * Includes authentication, compatibility date, and ETag if provided
+	 * Includes authentication, compatibility date, content type for POST, and ETag if provided
 	 */
-	private async buildRequestHeaders(cachedEtag: string | null): Promise<Record<string, string>> {
+	private async buildRequestHeaders(
+		cachedEtag: string | null,
+		method: 'GET' | 'POST' = 'GET'
+	): Promise<Record<string, string>> {
 		const headers: Record<string, string> = {
 			'X-Compatibility-Date': '2025-11-06',
 			Accept: 'application/json',
+		}
+
+		// Add Content-Type for POST requests
+		if (method === 'POST') {
+			headers['Content-Type'] = 'application/json'
 		}
 
 		// Add authentication if character is authenticated
@@ -265,15 +277,27 @@ export class EsiFetcher {
 	 * Fetch data from ESI API (unpaginated endpoints)
 	 * Handles caching, ETag-based conditional requests, and rate limiting
 	 * @param path - ESI API path
-	 * @param options - Optional fetch options (cache scope override, max local cache TTL)
+	 * @param options - Optional fetch options (method, body, cache scope override, max local cache TTL)
 	 */
-	async fetchEsi<T>(path: string, options?: FetchEsiOptions): Promise<EsiResponse<T>> {
+	async fetchEsi<T, B = unknown>(
+		path: string,
+		options?: FetchEsiOptions<B>
+	): Promise<EsiResponse<T>> {
 		const cacheScope = options?.cacheScopeOverride ?? this.getActiveCacheScope()
 		const maxLocalCacheTtl = options?.maxLocalCacheTtl
+		const method = options?.method ?? 'GET'
+		const body = options?.body
 		const page = this.extractPageFromPath(path)
 		const cachePage = page ?? undefined
 		// Use path without page parameter for cache key
-		const cachePath = this.removePageFromPath(path)
+		let cachePath = this.removePageFromPath(path)
+
+		// For POST requests with body, append hashed body to cache path
+		if (method === 'POST' && body !== undefined) {
+			const bodyStr = JSON.stringify(body)
+			const bodyHash = await hashString(bodyStr)
+			cachePath = `${cachePath}:body:${bodyHash}`
+		}
 
 		// 1. Check cache for valid (non-expired) entries
 		let cached = await this.cache.getCachedResponse<T>(cacheScope, cachePath, cachePage, false)
@@ -309,15 +333,21 @@ export class EsiFetcher {
 		const expiredCached =
 			cached ?? (await this.cache.getCachedResponse<T>(cacheScope, cachePath, cachePage, true))
 		const cachedEtag = expiredCached?.etag ?? null
-		const headers = await this.buildRequestHeaders(cachedEtag)
+		const headers = await this.buildRequestHeaders(cachedEtag, method)
 
-		// 3. Make request with retry logic for rate limiting
+		// 3. Build fetch options
+		const fetchOptions: RequestInit = { method, headers }
+		if (method === 'POST' && body !== undefined) {
+			fetchOptions.body = JSON.stringify(body)
+		}
+
+		// 4. Make request with retry logic for rate limiting
 		let retryCount = 0
 		let response: Response
 
 		while (true) {
 			try {
-				response = await fetch(`https://esi.evetech.net/latest${path}`, { headers })
+				response = await fetch(`https://esi.evetech.net/latest${path}`, fetchOptions)
 
 				// Handle rate limiting (420 and 429 are both rate limit errors)
 				if (response.status === 420 || response.status === 429) {
@@ -339,7 +369,7 @@ export class EsiFetcher {
 			}
 		}
 
-		// 4. Handle 304 Not Modified
+		// 5. Handle 304 Not Modified
 		if (response.status === 304) {
 			// We need the cached data (even if expired) to return it
 			if (!expiredCached) {
@@ -365,7 +395,7 @@ export class EsiFetcher {
 			}
 		}
 
-		// 5. Handle error responses
+		// 6. Handle error responses
 		if (!response.ok) {
 			const errorText = await response.text().catch(() => 'Unknown error')
 
@@ -400,7 +430,7 @@ export class EsiFetcher {
 			)
 		}
 
-		// 6. Parse response
+		// 7. Parse response
 		const data = (await response.json()) as T
 		const expiresAt = this.parseEsiCacheExpiry(response.headers)
 		const etag = response.headers.get('ETag')
@@ -415,7 +445,7 @@ export class EsiFetcher {
 			page: responsePage,
 		}
 
-		// 7. Cache response
+		// 8. Cache response
 		await this.cache.setCachedResponse(cacheScope, cachePath, esiResponse, cachePage)
 
 		logger.debug('[EsiFetcher] Successfully fetched and cached response', {
@@ -432,9 +462,12 @@ export class EsiFetcher {
 	 * Fetch paginated data from ESI API
 	 * Automatically fetches all pages and combines results
 	 * @param path - ESI API path
-	 * @param options - Optional fetch options (cache scope override, max local cache TTL)
+	 * @param options - Optional fetch options (method, body, cache scope override, max local cache TTL)
 	 */
-	async fetchEsiPaginated<T>(path: string, options?: FetchEsiOptions): Promise<EsiResponse<T[]>> {
+	async fetchEsiPaginated<T, B = unknown>(
+		path: string,
+		options?: FetchEsiOptions<B>
+	): Promise<EsiResponse<T[]>> {
 		// 1. Fetch first page
 		const firstPagePath = path.includes('?') ? `${path}&page=1` : `${path}?page=1`
 		const firstPageResponse = await this.fetchEsi<T[]>(firstPagePath, options)

@@ -9,6 +9,12 @@
 // CHARACTER TYPES - ESI
 // ============================================================================
 
+export interface EsiCharacterAffiliation {
+	alliance_id?: number
+	corporation_id: number
+	character_id: number
+}
+
 /**
  * Character agent research from ESI
  * GET /characters/{character_id}/agents_research
@@ -414,6 +420,12 @@ export interface CharacterNotification {
 	text?: string
 	timestamp: string
 	type: string
+}
+
+export interface CharacterAffiliation {
+	alliance_id?: string
+	corporation_id: string
+	character_id: string
 }
 
 export interface CharacterPublicInfo {

@@ -1,4 +1,5 @@
 import type {
+	CharacterAffiliation,
 	CharacterAgentResearch,
 	CharacterAsset,
 	CharacterAttributes,
@@ -46,6 +47,7 @@ import type {
 	CorporationWallet,
 	CorporationWalletJournalEntry,
 	CorporationWalletTransaction,
+	EsiCharacterAffiliation,
 	EsiCharacterAgentResearch,
 	EsiCharacterAsset,
 	EsiCharacterAttributes,
@@ -98,6 +100,17 @@ import type {
 	MailContent,
 	StructureInfo,
 } from '@repo/esi'
+
+export function transformCharacterAffiliation(
+	data: EsiCharacterAffiliation[]
+): CharacterAffiliation[] {
+	return data.map((affiliation) => ({
+		...affiliation,
+		alliance_id: affiliation.alliance_id ? String(affiliation.alliance_id) : undefined,
+		corporation_id: String(affiliation.corporation_id),
+		character_id: String(affiliation.character_id),
+	}))
+}
 
 export function transformCorporationPublicInfo(
 	data: EsiCorporationPublicInfo

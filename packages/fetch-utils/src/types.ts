@@ -4,11 +4,11 @@
 export interface DedupConfig {
 	/**
 	 * Custom function to generate cache keys from requests
-	 * Must be synchronous to avoid race conditions in deduplication.
+	 * Can be synchronous or asynchronous.
 	 *
-	 * @default defaultAuthAwareKeyGenerator (method + URL + hashed auth header using BLAKE3)
+	 * @default defaultAuthAwareKeyGenerator (method + URL + hashed auth header using SHA-256)
 	 */
-	keyGenerator?: (input: RequestInfo | URL, init?: RequestInit) => string
+	keyGenerator?: (input: RequestInfo | URL, init?: RequestInit) => string | Promise<string>
 
 	/**
 	 * Predicate to determine if a request should be deduplicated
