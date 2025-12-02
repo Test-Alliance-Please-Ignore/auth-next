@@ -11,6 +11,7 @@
 		"fix:workers-types": "run-wrangler-types"
 	},
 	"dependencies": {
+		"@repo/eve-types": "workspace:*",
 		"zod": "4.1.12"
 	},
 	"devDependencies": {

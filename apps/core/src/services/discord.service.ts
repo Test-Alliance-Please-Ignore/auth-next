@@ -122,59 +122,37 @@ export async function handleTokens(
 	}
 
 	try {
-		// Get user info from Discord using the access token
-		const userInfoResponse = await fetch('https://discord.com/api/users/@me', {
-			headers: {
-				Authorization: `Bearer ${accessToken}`,
-				'User-Agent': 'DiscordBot (https://pleaseignore.app, 1.0.0)',
-			},
-		})
-
-		if (!userInfoResponse.ok) {
-			throw new Error(`Failed to get user info: ${await userInfoResponse.text()}`)
-		}
-
-		const userInfo = await userInfoResponse.json<{
-			id: string
-			username: string
-			discriminator: string
-		}>()
-
-		logger.info('Got Discord user info', {
-			discordUserId: userInfo.id,
-			username: userInfo.username,
-		})
-
-		// Call Discord DO to store tokens via RPC
-		const scopes = scope ? scope.split(' ') : []
-		const expiresAt = new Date(Date.now() + expiresIn * 1000)
-
+		// Call Discord DO to fetch user info and store tokens (uses proxy + retry)
 		const discordStub = getDiscordStub(env)
-		const success = await discordStub.storeTokensDirect(
-			userInfo.id,
-			userInfo.username,
-			userInfo.discriminator,
-			scopes,
+		const linkResult = await discordStub.linkAccountWithTokens(
 			accessToken,
 			refreshToken,
-			expiresAt,
+			expiresIn,
+			scope || '',
 			coreUserId
 		)
 
-		if (!success) {
+		if (!linkResult.success) {
 			return {
 				success: false,
-				error: 'Failed to store tokens',
+				error: linkResult.error || 'Failed to link Discord account',
 			}
 		}
 
+		const discordUserId = linkResult.discordUserId!
+
+		logger.info('Got Discord user info', {
+			discordUserId,
+			username: linkResult.username,
+		})
+
 		// Update user record with Discord user ID
-		logger.info('Updating user with Discord ID', { coreUserId, discordUserId: userInfo.id })
+		logger.info('Updating user with Discord ID', { coreUserId, discordUserId })
 
 		const updateResult = await db
 			.update(users)
 			.set({
-				discordUserId: userInfo.id,
+				discordUserId: discordUserId,
 				updatedAt: new Date(),
 			})
 			.where(eq(users.id, coreUserId))
@@ -258,9 +236,16 @@ export async function unlinkUser(env: Env, userId: string): Promise<boolean> {
 	}
 
 	try {
+		// Get all active Discord servers to check for membership
+		const activeServers = await db.query.discordServers.findMany({
+			where: eq(discordServers.isActive, true),
+			columns: { guildId: true },
+		})
+		const guildIds = activeServers.map((s) => s.guildId)
+
 		// Call Discord DO to unlink on Discord side
 		const discordStub = getDiscordStub(env)
-		const success = await discordStub.unlinkCoreUser(userId)
+		const success = await discordStub.unlinkCoreUser(userId, guildIds)
 
 		if (!success) {
 			logger.error('[Discord] Failed to unlink user on Discord side', { userId })
@@ -947,9 +932,18 @@ export async function inviteUserToDiscordServers(
 	const discordStub = getDiscordStub(env)
 	const inviteResults = await discordStub.joinUserToServers(userId, guildIds)
 
+	// Track which guilds were successfully joined (or user was already a member)
+	const successfulGuildIds = new Set<string>()
+	for (const result of inviteResults) {
+		if (result.success) {
+			successfulGuildIds.add(result.guildId)
+		}
+	}
+
 	logger.debug('[Discord] inviteUserToDiscordServers: Invite results received', {
 		userId,
 		resultsCount: inviteResults.length,
+		successfulCount: successfulGuildIds.size,
 		results: inviteResults.map((r) => ({
 			guildId: r.guildId,
 			success: r.success,
@@ -958,11 +952,38 @@ export async function inviteUserToDiscordServers(
 		})),
 	})
 
-	// === UPDATE ROLES ===
+	// === UPDATE NICKNAMES (only for successful joins) ===
+	// NOTE: Nicknames are updated BEFORE roles to ensure proper display name setup
+
+	const guildsForNicknameUpdate = Array.from(guildMap.values())
+		.filter((guild) => {
+			const manageNicknames = manageNicknamesByGuildId.get(guild.guildId)
+			return manageNicknames && primaryCharacterName && successfulGuildIds.has(guild.guildId)
+		})
+		.map((guild) => guild.guildId)
+
+	logger.info('[Discord] inviteUserToDiscordServers: Nickname update check', {
+		userId,
+		primaryCharacterName,
+		guildsForNicknameUpdate,
+		successfulGuildIds: Array.from(successfulGuildIds),
+		manageNicknamesByGuildId: Object.fromEntries(manageNicknamesByGuildId),
+	})
+
+	if (guildsForNicknameUpdate.length > 0 && primaryCharacterName) {
+		logger.info('[Discord] inviteUserToDiscordServers: Updating nicknames', {
+			userId,
+			guilds: guildsForNicknameUpdate,
+			nickname: primaryCharacterName,
+		})
+		await discordStub.updateUserNickname(userId, guildsForNicknameUpdate, primaryCharacterName)
+	}
+
+	// === UPDATE ROLES (only for successful joins) ===
 
 	const roleUpdateRequests = await Promise.all(
 		Array.from(guildMap.values())
-			.filter((guild) => guild.roleIds.length > 0)
+			.filter((guild) => guild.roleIds.length > 0 && successfulGuildIds.has(guild.guildId))
 			.map(async (guild) => {
 				// Get all managed roles for this guild
 				const managedRoleIds = await getAllManagedRolesForGuild(db, env, guild.guildId)
@@ -977,19 +998,6 @@ export async function inviteUserToDiscordServers(
 
 	if (roleUpdateRequests.length > 0) {
 		await discordStub.updateUserRoles(userId, roleUpdateRequests)
-	}
-
-	// === UPDATE NICKNAMES ===
-
-	const guildsForNicknameUpdate = Array.from(guildMap.values())
-		.filter((guild) => {
-			const manageNicknames = manageNicknamesByGuildId.get(guild.guildId)
-			return manageNicknames && primaryCharacterName
-		})
-		.map((guild) => guild.guildId)
-
-	if (guildsForNicknameUpdate.length > 0 && primaryCharacterName) {
-		await discordStub.updateUserNickname(userId, guildsForNicknameUpdate, primaryCharacterName)
 	}
 
 	// Build final results
@@ -1106,27 +1114,20 @@ export async function updateUserDiscordRoles(
 		// Use provided guild IDs
 		serversToUpdate = guildIds
 	} else {
-		// Get all servers user is currently a member of from Discord
-		const discordStub = getDiscordStub(env)
-		const currentGuilds = await discordStub.getUserGuilds(userId)
-		serversToUpdate = currentGuilds.map((g) => g.id)
+		// Get all active Discord servers from our database
+		const knownServers = await db.query.discordServers.findMany({
+			where: eq(discordServers.isActive, true),
+			columns: { guildId: true },
+		})
 
-		// FALLBACK: If getUserGuilds returns empty (user missing 'guilds' OAuth scope),
-		// check known active guilds using bot token
-		if (serversToUpdate.length === 0) {
-			// Get all active Discord servers from our database
-			const knownServers = await db.query.discordServers.findMany({
-				where: eq(discordServers.isActive, true),
-				columns: { guildId: true },
-			})
+		const knownGuildIds = knownServers.map((s) => s.guildId)
 
-			const knownGuildIds = knownServers.map((s) => s.guildId)
-
-			if (knownGuildIds.length > 0) {
-				// Use bot token to check which guilds the user is a member of
-				const memberGuildIds = await discordStub.checkGuildMembershipWithBot(userId, knownGuildIds)
-				serversToUpdate = memberGuildIds
-			}
+		if (knownGuildIds.length > 0) {
+			// Use bot token to check which guilds the user is a member of
+			const discordStub = getDiscordStub(env)
+			serversToUpdate = await discordStub.checkGuildMembershipWithBot(userId, knownGuildIds)
+		} else {
+			serversToUpdate = []
 		}
 	}
 
@@ -1488,36 +1489,28 @@ export async function updateUserDiscordNickname(env: Env, userId: string): Promi
 
 	const nickname = primaryChar.characterName
 
-	// Get all Discord servers the user is a member of
-	const discordStub = getDiscordStub(env)
-	const userGuilds = await discordStub.getUserGuilds(userId)
-
-	if (userGuilds.length === 0) {
-		return // User is not in any Discord servers
-	}
-
-	// Get server settings to find which servers have manageNicknames enabled
+	// Get all servers with nickname management enabled
 	const serverSettings = await db.query.discordServers.findMany({
-		where: and(
-			inArray(
-				discordServers.guildId,
-				userGuilds.map((g) => g.id)
-			),
-			eq(discordServers.manageNicknames, true),
-			eq(discordServers.isActive, true)
-		),
+		where: and(eq(discordServers.manageNicknames, true), eq(discordServers.isActive, true)),
+		columns: { guildId: true },
 	})
 
 	if (serverSettings.length === 0) {
 		return // No servers have nickname management enabled
 	}
 
+	const candidateGuildIds = serverSettings.map((s) => s.guildId)
+
+	// Use bot token to check which servers the user is a member of
+	const discordStub = getDiscordStub(env)
+	const userGuildIds = await discordStub.checkGuildMembershipWithBot(userId, candidateGuildIds)
+
+	if (userGuildIds.length === 0) {
+		return // User is not in any Discord servers with nickname management
+	}
+
 	// Update nickname on each server
-	await discordStub.updateUserNickname(
-		userId,
-		serverSettings.map((s) => s.guildId),
-		nickname
-	)
+	await discordStub.updateUserNickname(userId, userGuildIds, nickname)
 
 	logger.info('[Discord] Updated user nickname', {
 		userId,
@@ -1525,4 +1518,262 @@ export async function updateUserDiscordNickname(env: Env, userId: string): Promi
 		nickname,
 		serverCount: serverSettings.length,
 	})
+}
+
+/**
+ * Calculate which roles a user should have on a specific Discord server
+ * Based on their corporation and group memberships
+ * @param db - Database client
+ * @param env - Worker environment
+ * @param userId - Core user ID
+ * @param serverId - Discord server DB ID
+ * @returns Array of Discord role IDs the user should have
+ */
+async function calculateUserRolesForServer(
+	db: ReturnType<typeof createDb>,
+	env: Env,
+	userId: string,
+	serverId: string
+): Promise<string[]> {
+	const roleIds = new Set<string>()
+
+	// Get user's characters
+	const userChars = await db.query.userCharacters.findMany({
+		where: eq(userCharacters.userId, userId),
+	})
+	const characterIds = userChars.map((c) => c.characterId)
+
+	if (characterIds.length === 0) {
+		return []
+	}
+
+	// Get user's corporation IDs
+	const userCorporationIds = await getUserCorporationIds(env, characterIds)
+
+	// === CORPORATION ROLES ===
+	if (userCorporationIds.size > 0) {
+		const corpAttachments = await db.query.corporationDiscordServers.findMany({
+			where: and(
+				eq(corporationDiscordServers.discordServerId, serverId),
+				eq(corporationDiscordServers.autoAssignRoles, true),
+				inArray(corporationDiscordServers.corporationId, Array.from(userCorporationIds))
+			),
+			with: {
+				roles: {
+					with: {
+						discordRole: true,
+					},
+				},
+			},
+		})
+
+		for (const attachment of corpAttachments) {
+			for (const roleAssignment of attachment.roles) {
+				if (roleAssignment.discordRole.isActive) {
+					roleIds.add(roleAssignment.discordRole.roleId)
+				}
+			}
+		}
+	}
+
+	// === GROUP ROLES ===
+	try {
+		const groupsStub = getStub<Groups>(env.GROUPS, 'default')
+
+		// Get groups attached to this server
+		const groupsWithServer = await groupsStub.getGroupsByDiscordServer(serverId)
+
+		for (const groupAttachment of groupsWithServer) {
+			// Check if user is a member of this group
+			const memberUserIds = await groupsStub.getGroupMemberUserIds(groupAttachment.groupId)
+			const isMember = memberUserIds.includes(userId)
+
+			if (isMember && groupAttachment.autoAssignRoles) {
+				// Get roles for this group attachment
+				try {
+					const attachmentConfig = await groupsStub.getDiscordServerAttachmentConfig(
+						groupAttachment.id
+					)
+					for (const roleId of attachmentConfig.roleIds) {
+						roleIds.add(roleId)
+					}
+				} catch (e) {
+					// Attachment config not found, skip
+					logger.debug('[Discord] Could not get group attachment config', {
+						attachmentId: groupAttachment.id,
+						error: String(e),
+					})
+				}
+			}
+		}
+	} catch (error) {
+		logger.error('[Discord] Error fetching group roles for server', {
+			userId,
+			serverId,
+			error: String(error),
+		})
+	}
+
+	// === AUTO-APPLY ROLES ===
+	const autoApplyRoles = await db.query.discordRoles.findMany({
+		where: and(
+			eq(discordRoles.discordServerId, serverId),
+			eq(discordRoles.autoApply, true),
+			eq(discordRoles.isActive, true)
+		),
+	})
+
+	for (const role of autoApplyRoles) {
+		roleIds.add(role.roleId)
+	}
+
+	return Array.from(roleIds)
+}
+
+/**
+ * Refresh all members for a specific Discord server
+ * For each user: invite -> set nickname -> set roles
+ * @param env - Worker environment
+ * @param serverId - Discord server DB ID
+ * @param userIds - Array of core user IDs to process
+ * @returns Results for each user processed
+ */
+export async function refreshServerMembers(
+	env: Env,
+	serverId: string,
+	userIds: string[]
+): Promise<{
+	results: Array<{
+		userId: string
+		userName: string
+		success: boolean
+		errorMessage?: string
+	}>
+	successCount: number
+	failCount: number
+}> {
+	const db = createDb(env.DATABASE_URL)
+	const discordStub = getDiscordStub(env)
+
+	// Get server info
+	const server = await db.query.discordServers.findFirst({
+		where: eq(discordServers.id, serverId),
+	})
+
+	if (!server) {
+		throw new Error('Discord server not found')
+	}
+
+	logger.info('[Discord] refreshServerMembers: Starting refresh', {
+		serverId,
+		guildId: server.guildId,
+		guildName: server.guildName,
+		userCount: userIds.length,
+		manageNicknames: server.manageNicknames,
+	})
+
+	const results: Array<{
+		userId: string
+		userName: string
+		success: boolean
+		errorMessage?: string
+	}> = []
+	let successCount = 0
+	let failCount = 0
+
+	for (const userId of userIds) {
+		try {
+			// Get user's primary character for nickname
+			const primaryChar = await db.query.userCharacters.findFirst({
+				where: and(eq(userCharacters.userId, userId), eq(userCharacters.is_primary, true)),
+			})
+			const nickname = primaryChar?.characterName || 'Unknown'
+
+			// Calculate roles for this user on this server
+			const roleIds = await calculateUserRolesForServer(db, env, userId, serverId)
+
+			logger.debug('[Discord] refreshServerMembers: Processing user', {
+				userId,
+				nickname,
+				roleCount: roleIds.length,
+				manageNicknames: server.manageNicknames,
+			})
+
+			// 1. INVITE to the specific server
+			const joinResults = await discordStub.joinUserToServers(userId, [server.guildId])
+			const joinResult = joinResults[0]
+
+			if (!joinResult?.success) {
+				failCount++
+				results.push({
+					userId,
+					userName: nickname,
+					success: false,
+					errorMessage: joinResult?.errorMessage || 'Failed to invite',
+				})
+				continue
+			}
+
+			// 2. SET NICKNAME (before roles)
+			if (server.manageNicknames && nickname && nickname !== 'Unknown') {
+				logger.debug('[Discord] refreshServerMembers: Setting nickname', {
+					userId,
+					nickname,
+					guildId: server.guildId,
+				})
+				await discordStub.updateUserNickname(userId, [server.guildId], nickname)
+			}
+
+			// 3. SET ROLES (after nickname)
+			if (roleIds.length > 0) {
+				const managedRoleIds = await getAllManagedRolesForGuild(db, env, server.guildId)
+				logger.debug('[Discord] refreshServerMembers: Setting roles', {
+					userId,
+					roleCount: roleIds.length,
+					managedRoleCount: managedRoleIds.length,
+				})
+				await discordStub.updateUserRoles(userId, [
+					{
+						guildId: server.guildId,
+						roleIds,
+						managedRoleIds,
+					},
+				])
+			}
+
+			successCount++
+			results.push({
+				userId,
+				userName: nickname,
+				success: true,
+			})
+
+			logger.debug('[Discord] refreshServerMembers: User processed successfully', {
+				userId,
+				nickname,
+			})
+		} catch (error) {
+			failCount++
+			logger.error('[Discord] refreshServerMembers: Error processing user', {
+				userId,
+				error: String(error),
+			})
+			results.push({
+				userId,
+				userName: 'Unknown',
+				success: false,
+				errorMessage: error instanceof Error ? error.message : 'Unknown error',
+			})
+		}
+	}
+
+	logger.info('[Discord] refreshServerMembers: Completed', {
+		serverId,
+		guildName: server.guildName,
+		successCount,
+		failCount,
+		totalProcessed: userIds.length,
+	})
+
+	return { results, successCount, failCount }
 }

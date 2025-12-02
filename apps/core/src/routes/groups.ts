@@ -1644,7 +1644,7 @@ groups.post(
 				})
 			}
 
-			// Call Discord DO to refresh roles for each member
+			// Call Discord DO to invite and refresh roles for each member
 			const discordDO = getStub<Discord>(c.env.DISCORD, 'default')
 
 			let successCount = 0
@@ -1653,6 +1653,20 @@ groups.post(
 			// Process members sequentially to avoid rate limiting
 			for (const user of usersWithDiscord) {
 				try {
+					// First, invite user to the server (or verify they're already a member)
+					const joinResults = await discordDO.joinUserToServers(user.id, [config.guildId])
+					const joinResult = joinResults[0]
+
+					if (!joinResult?.success) {
+						console.error(
+							`Failed to invite user ${user.id} to guild ${config.guildId}:`,
+							joinResult?.errorMessage
+						)
+						failedCount++
+						continue
+					}
+
+					// Then update roles
 					const results = await discordDO.updateUserRoles(user.id, [
 						{
 							guildId: config.guildId,

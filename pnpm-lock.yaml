@@ -1020,6 +1020,9 @@ importers:
       '@repo/eve-token-store':
         specifier: workspace:*
         version: link:../../packages/eve-token-store
+      '@repo/eve-types':
+        specifier: workspace:*
+        version: link:../../packages/eve-types
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
@@ -2573,6 +2576,9 @@ importers:
 
   packages/eve-token-store:
     dependencies:
+      '@repo/eve-types':
+        specifier: workspace:*
+        version: link:../eve-types
       zod:
         specifier: 4.1.12
         version: 4.1.12

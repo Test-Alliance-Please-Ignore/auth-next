@@ -15,18 +15,20 @@ import type { CreateRoleRequest, Groups } from '@repo/groups'
 import type { Env } from './context'
 
 export class CoreDO extends DurableObject<Env> implements Core {
-	private db: ReturnType<typeof createDb>
 	private readonly logger = logger.withTags({ service: 'core-durable-object' })
 	constructor(
 		public state: DurableObjectState,
 		public env: Env
 	) {
 		super(state, env)
-		this.db = createDb(env.DATABASE_URL)
 
 		void this.state.blockConcurrencyWhile(async () => {
 			void this.ensureRolesExist()
 		})
+	}
+
+	private getDb(): ReturnType<typeof createDb> {
+		return createDb(this.env.DATABASE_URL)
 	}
 
 	private async ensureRolesExist(): Promise<void> {
@@ -74,7 +76,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 	async getCharacterOwner(
 		characterId: string
 	): Promise<{ userId: string; isPrimary: boolean } | null> {
-		const character = await this.db.query.userCharacters.findFirst({
+		const character = await this.getDb().query.userCharacters.findFirst({
 			where: eq(userCharacters.characterId, characterId),
 		})
 		if (!character) {
@@ -87,7 +89,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		userId: string,
 		includeDeleted: boolean = false
 	): Promise<Array<{ characterId: string; characterName: string; isDeleted: boolean }>> {
-		const characters = await this.db.query.userCharacters.findMany({
+		const characters = await this.getDb().query.userCharacters.findMany({
 			where: and(eq(userCharacters.isDeleted, includeDeleted), eq(userCharacters.userId, userId)),
 		})
 		return characters.map((c) => ({
@@ -100,7 +102,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 	async getUserCorporations(
 		userId: string
 	): Promise<Array<{ corporationId: string; corporationName: string }>> {
-		const user = await this.db.query.users.findFirst({
+		const user = await this.getDb().query.users.findFirst({
 			where: eq(users.id, userId),
 		})
 
@@ -108,7 +110,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 			return []
 		}
 
-		const characters = await this.db.query.userCharacters.findMany({
+		const characters = await this.getDb().query.userCharacters.findMany({
 			where: eq(userCharacters.userId, userId),
 		})
 
@@ -140,7 +142,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		}
 
 		// Batch fetch all user characters
-		const allCharacters = await this.db.query.userCharacters.findMany({
+		const allCharacters = await this.getDb().query.userCharacters.findMany({
 			where: inArray(userCharacters.userId, userIds),
 		})
 
@@ -190,7 +192,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 	async getUserAlliances(
 		userId: string
 	): Promise<Array<{ allianceId: string; allianceName: string }>> {
-		const user = await this.db.query.users.findFirst({
+		const user = await this.getDb().query.users.findFirst({
 			where: eq(users.id, userId),
 		})
 
@@ -198,7 +200,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 			return []
 		}
 
-		const characters = await this.db.query.userCharacters.findMany({
+		const characters = await this.getDb().query.userCharacters.findMany({
 			where: eq(userCharacters.userId, userId),
 		})
 
@@ -229,7 +231,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		const refreshThreshold = new Date(now - 60 * 60 * 1000) // 1 hour
 		const attemptThreshold = new Date(now - 10 * 60 * 1000) // 10 minutes
 
-		const candidates = await this.db.query.users.findMany({
+		const candidates = await this.getDb().query.users.findMany({
 			columns: {
 				id: true,
 			},
@@ -249,7 +251,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		}
 
 		const userIds = candidates.map((candidate) => candidate.id)
-		await this.db
+		await this.getDb()
 			.update(users)
 			.set({ lastRefreshWorkflowAttempt: new Date() })
 			.where(inArray(users.id, userIds))

@@ -38,6 +38,59 @@ function getDiscordProxyUrl(env: Env): string {
 }
 
 /**
+ * Helper to sleep for a given number of milliseconds
+ */
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+const MAX_RETRIES = 3
+
+/**
+ * Make a fetch request with automatic rate limit retry handling
+ * Exported for use by other Discord-related code
+ */
+export async function fetchWithRetry(
+	url: string,
+	options: RequestInit & { proxy?: string },
+	maxRetries: number = MAX_RETRIES
+): Promise<Response> {
+	let retries = 0
+
+	while (retries <= maxRetries) {
+		const response = await fetch(url, options)
+
+		// Handle rate limiting with retry
+		if (response.status === 429) {
+			const retryAfter =
+				response.headers.get('Retry-After') ?? response.headers.get('X-RateLimit-Reset-After')
+			const waitMs = retryAfter ? parseFloat(retryAfter) * 1000 : Math.pow(2, retries) * 1000
+
+			logger.warn('[Discord] Rate limited, waiting before retry', {
+				url,
+				retryAfter: waitMs,
+				attempt: retries + 1,
+				maxRetries,
+			})
+
+			if (retries >= maxRetries) {
+				// Return the 429 response after max retries exhausted
+				return response
+			}
+
+			await sleep(waitMs)
+			retries++
+			continue
+		}
+
+		return response
+	}
+
+	// Shouldn't reach here, but TypeScript needs it
+	throw new Error('Unexpected loop exit in fetchWithRetry')
+}
+
+/**
  * Discord Bot Service
  *
  * Handles Discord API operations using the bot token
@@ -64,12 +117,11 @@ export class DiscordBotService {
 			const proxyUrl = getDiscordProxyUrl(this.env)
 
 			const url = `${this.baseUrl}/guilds/${guildId}/members/${userId}`
-			const response = await fetch(url, {
+			const response = await fetchWithRetry(url, {
 				method: 'GET',
 				headers: {
 					Authorization: `Bot ${this.env.DISCORD_BOT_TOKEN}`,
 				},
-				// @ts-expect-error - Cloudflare Workers supports proxy in fetch
 				proxy: proxyUrl,
 			})
 
@@ -111,12 +163,11 @@ export class DiscordBotService {
 			const proxyUrl = getDiscordProxyUrl(this.env)
 
 			const url = `${this.baseUrl}/guilds/${guildId}/members/${userId}`
-			const response = await fetch(url, {
+			const response = await fetchWithRetry(url, {
 				method: 'DELETE',
 				headers: {
 					Authorization: `Bot ${this.env.DISCORD_BOT_TOKEN}`,
 				},
-				// @ts-expect-error - Cloudflare Workers supports proxy in fetch
 				proxy: proxyUrl,
 			})
 
@@ -196,17 +247,26 @@ export class DiscordBotService {
 			const proxyUrl = getDiscordProxyUrl(this.env)
 
 			const url = `${this.baseUrl}/guilds/${guildId}/members/${userId}`
-			const response = await fetch(url, {
+			const body = {
+				roles: roleIds,
+				...(nickname !== undefined && { nick: nickname }),
+			}
+
+			logger.info('[DiscordBot] Updating guild member', {
+				guildId,
+				userId,
+				roleCount: roleIds.length,
+				hasNickname: nickname !== undefined,
+				nickname: nickname ?? null,
+			})
+
+			const response = await fetchWithRetry(url, {
 				method: 'PATCH',
 				headers: {
 					Authorization: `Bot ${this.env.DISCORD_BOT_TOKEN}`,
 					'Content-Type': 'application/json',
 				},
-				body: JSON.stringify({
-					roles: roleIds,
-					...(nickname !== undefined && { nick: nickname }),
-				}),
-				// @ts-expect-error - Cloudflare Workers supports proxy in fetch
+				body: JSON.stringify(body),
 				proxy: proxyUrl,
 			})
 
@@ -290,14 +350,13 @@ export class DiscordBotService {
 			// Make API call to add user to guild
 			// PUT /guilds/{guild.id}/members/{user.id}
 			const url = `${this.baseUrl}/guilds/${guildId}/members/${userId}`
-			const response = await fetch(url, {
+			const response = await fetchWithRetry(url, {
 				method: 'PUT',
 				headers: {
 					Authorization: `Bot ${this.env.DISCORD_BOT_TOKEN}`,
 					'Content-Type': 'application/json',
 				},
 				body: JSON.stringify(body),
-				// @ts-expect-error - Cloudflare Workers supports proxy in fetch
 				proxy: proxyUrl,
 			})
 

@@ -7,7 +7,7 @@ import { logger } from '@repo/hono-helpers'
 
 import { createDb } from './db'
 import { discordTokens, discordUsers } from './db/schema'
-import { DiscordBotService } from './services/discord-bot.service'
+import { DiscordBotService, fetchWithRetry } from './services/discord-bot.service'
 import { calculateRoleChanges } from './utils/role-calculation'
 
 import type {
@@ -353,8 +353,10 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 	 * Completely unlink a Discord account from a core user (admin action)
 	 * Breaks the link by clearing coreUserId, revokes authorization,
 	 * deletes tokens, and removes user from all managed Discord servers
+	 * @param coreUserId - Core user ID to unlink
+	 * @param knownGuildIds - Array of guild IDs to check for membership and remove user from
 	 */
-	async unlinkCoreUser(coreUserId: string): Promise<boolean> {
+	async unlinkCoreUser(coreUserId: string, knownGuildIds: string[]): Promise<boolean> {
 		try {
 			const user = await this.getUserByCoreUserId(coreUserId)
 			if (!user) {
@@ -365,15 +367,11 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 			const discordUserId = user.userId
 			const botService = new DiscordBotService(this.env)
 
-			// Get all guilds the user is a member of before unlinking
-			// This requires a valid token, so we do it before deletion
+			// Check which of the provided guilds the user is a member of
 			let guildIds: string[] = []
 			try {
-				const accessToken = await this.getValidAccessToken(user.id, discordUserId)
-				if (accessToken) {
-					const guilds = await this.getUserGuilds(coreUserId)
-					guildIds = guilds.map((g) => g.id)
-
+				if (knownGuildIds.length > 0) {
+					guildIds = await this.checkGuildMembershipWithBot(coreUserId, knownGuildIds)
 					logger.info('[DiscordDO] Found guilds for user removal', {
 						coreUserId,
 						discordUserId,
@@ -487,6 +485,94 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 	}
 
 	/**
+	 * Link a Discord account using OAuth tokens
+	 * Fetches user info from Discord and stores tokens
+	 */
+	async linkAccountWithTokens(
+		accessToken: string,
+		refreshToken: string,
+		expiresIn: number,
+		scopes: string,
+		coreUserId: string
+	): Promise<{
+		success: boolean
+		error?: string
+		discordUserId?: string
+		username?: string
+	}> {
+		try {
+			// Generate proxy URL for request
+			const portStart = Number(this.env.DISCORD_PROXY_PORT_START)
+			const portCount = Number(this.env.DISCORD_PROXY_PORT_COUNT)
+			const portEnd = portStart + portCount - 1
+			const port = generateShardKey(portStart, portEnd)
+			const proxyUrl = `https://${this.env.DISCORD_PROXY_USERNAME}:${this.env.DISCORD_PROXY_PASSWORD}@${this.env.DISCORD_PROXY_HOST}:${port}`
+
+			// Fetch user info from Discord
+			const userInfoResponse = await fetchWithRetry(this.env.DISCORD_USER_INFO_URL, {
+				method: 'GET',
+				headers: {
+					Authorization: `Bearer ${accessToken}`,
+					'User-Agent': 'DiscordBot (https://pleaseignore.app, 1.0.0)',
+				},
+				proxy: proxyUrl,
+			})
+
+			if (!userInfoResponse.ok) {
+				const errorText = await userInfoResponse.text()
+				logger.error('[DiscordDO] Failed to get user info from Discord', {
+					status: userInfoResponse.status,
+					error: errorText,
+				})
+				return {
+					success: false,
+					error: `Failed to get user info: ${errorText}`,
+				}
+			}
+
+			const userInfo = (await userInfoResponse.json()) as {
+				id: string
+				username: string
+				discriminator: string
+			}
+
+			logger.info('[DiscordDO] Got Discord user info', {
+				discordUserId: userInfo.id,
+				username: userInfo.username,
+			})
+
+			// Store the tokens
+			const scopeArray = scopes ? scopes.split(' ') : []
+			const expiresAt = new Date(Date.now() + expiresIn * 1000)
+
+			await this.storeToken(
+				userInfo.id,
+				userInfo.username,
+				userInfo.discriminator,
+				scopeArray,
+				accessToken,
+				refreshToken,
+				expiresAt,
+				coreUserId
+			)
+
+			return {
+				success: true,
+				discordUserId: userInfo.id,
+				username: userInfo.username,
+			}
+		} catch (error) {
+			logger.error('[DiscordDO] Error linking account with tokens', {
+				error: String(error),
+			})
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : String(error),
+			}
+		}
+	}
+
+	/**
 	 * Join a user to one or more Discord servers
 	 */
 	async joinUserToServers(
@@ -541,69 +627,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 	}
 
 	/**
-	 * Get all Discord servers/guilds that a user is currently a member of
-	 */
-	async getUserGuilds(
-		coreUserId: string
-	): Promise<
-		Array<{ id: string; name: string; icon?: string; owner: boolean; permissions: string }>
-	> {
-		try {
-			// Get user from database
-			const user = await this.getUserByCoreUserId(coreUserId)
-			if (!user) {
-				logger.error('[DiscordDO] User not found for getUserGuilds', { coreUserId })
-				return []
-			}
-
-			// Get valid access token
-			const accessToken = await this.getValidAccessToken(user.id, user.userId)
-			if (!accessToken) {
-				logger.error('[DiscordDO] Unable to get valid token for getUserGuilds', { coreUserId })
-				return []
-			}
-
-			// Fetch user's guilds from Discord API
-			const response = await fetch('https://discord.com/api/v10/users/@me/guilds', {
-				headers: {
-					Authorization: `Bearer ${accessToken}`,
-				},
-			})
-
-			if (!response.ok) {
-				logger.error('[DiscordDO] Failed to fetch user guilds', {
-					coreUserId,
-					status: response.status,
-					statusText: response.statusText,
-				})
-				return []
-			}
-
-			const guilds = (await response.json()) as Array<{
-				id: string
-				name: string
-				icon?: string
-				owner: boolean
-				permissions: string
-			}>
-
-			logger.info('[DiscordDO] Successfully fetched user guilds', {
-				coreUserId,
-				guildCount: guilds.length,
-			})
-
-			return guilds
-		} catch (error) {
-			logger.error('[DiscordDO] Error in getUserGuilds', {
-				coreUserId,
-				error: String(error),
-			})
-			return []
-		}
-	}
-
-	/**
-	 * Check which guilds a user is a member of using bot token (fallback for missing guilds scope)
+	 * Check which guilds a user is a member of using bot token
 	 * @param coreUserId - Core user ID
 	 * @param guildIds - Array of guild IDs to check
 	 * @returns Array of guild IDs the user is a member of
@@ -621,32 +645,17 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 
 			const discordUserId = user.userId
 			const memberGuilds: string[] = []
+			const botService = new DiscordBotService(this.env)
 
-			// Check each guild using bot token
+			// Check each guild using bot token (via proxy)
 			await Promise.all(
 				guildIds.map(async (guildId) => {
 					try {
-						const response = await fetch(
-							`https://discord.com/api/v10/guilds/${guildId}/members/${discordUserId}`,
-							{
-								headers: {
-									Authorization: `Bot ${this.env.DISCORD_BOT_TOKEN}`,
-								},
-							}
-						)
-
-						if (response.ok) {
+						const member = await botService.getGuildMember(guildId, discordUserId)
+						if (member) {
 							memberGuilds.push(guildId)
-						} else if (response.status === 404) {
-							// User is not a member
-						} else {
-							logger.warn('[DiscordDO] Unexpected response checking guild membership', {
-								coreUserId,
-								discordUserId,
-								guildId,
-								status: response.status,
-							})
 						}
+						// null means user is not a member (404)
 					} catch (error) {
 						logger.error('[DiscordDO] Error checking guild membership', {
 							coreUserId,
@@ -819,6 +828,12 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 		guildIds: string[],
 		nickname: string
 	): Promise<void> {
+		logger.info('[DiscordDO] updateUserNickname called', {
+			coreUserId,
+			guildIds,
+			nickname,
+		})
+
 		try {
 			// Get user from database
 			const user = await this.getUserByCoreUserId(coreUserId)
@@ -854,7 +869,27 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 						const currentRoleIds = currentMember.roles || []
 
 						// Update roles (keeping them the same) and set nickname
-						await botService.updateGuildMemberRoles(guildId, user.userId, currentRoleIds, nickname)
+						const result = await botService.updateGuildMemberRoles(
+							guildId,
+							user.userId,
+							currentRoleIds,
+							nickname
+						)
+
+						if (result.success) {
+							logger.info('[DiscordDO] Successfully updated nickname', {
+								guildId,
+								userId: user.userId,
+								nickname,
+							})
+						} else {
+							logger.error('[DiscordDO] Failed to update nickname', {
+								guildId,
+								userId: user.userId,
+								nickname,
+								error: result.errorMessage,
+							})
+						}
 					} catch (error) {
 						logger.error('[DiscordDO] Error updating nickname for guild', {
 							guildId,
@@ -915,16 +950,15 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 				}
 			}
 
-			// Send message via Discord API
+			// Send message via Discord API (with retry on rate limit)
 			const url = `https://discord.com/api/v10/channels/${channelId}/messages`
-			const response = await fetch(url, {
+			const response = await fetchWithRetry(url, {
 				method: 'POST',
 				headers: {
 					Authorization: `Bot ${this.env.DISCORD_BOT_TOKEN}`,
 					'Content-Type': 'application/json',
 				},
 				body: JSON.stringify(payload),
-				// @ts-expect-error - Cloudflare Workers supports proxy in fetch
 				proxy: proxyUrl,
 			})
 
@@ -1167,14 +1201,13 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 				refresh_token: decryptedRefreshToken,
 			})
 
-			const response = await fetch(this.env.DISCORD_TOKEN_URL, {
+			const response = await fetchWithRetry(this.env.DISCORD_TOKEN_URL, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/x-www-form-urlencoded',
 					Authorization: `Basic ${btoa(`${this.env.DISCORD_CLIENT_ID}:${this.env.DISCORD_CLIENT_SECRET}`)}`,
 				},
 				body: params.toString(),
-				// @ts-expect-error - Cloudflare Workers supports proxy in fetch
 				proxy: proxyUrl,
 			})
 

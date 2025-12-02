@@ -570,79 +570,22 @@ app.post('/:id/refresh-members', requireAuth(), requireAdmin(), async (c) => {
 		}
 
 		// === PROCESS EACH USER ===
+		// Use the refreshServerMembers helper which:
+		// 1. Invites each user to this specific server
+		// 2. Sets their nickname (before roles)
+		// 3. Sets their roles (after nickname)
 
-		const results = []
-		let successfulInvites = 0
-		let failedInvites = 0
-
-		// Process each user
-		for (const userId of allUserIds) {
-			try {
-				const result = await discordService.syncUserDiscordAccess(c.env, userId)
-
-				// Find results specific to this guild
-				const guildResults = result.results.filter((r) => r.guildId === server.guildId)
-
-				const success = guildResults.some((r) => r.success)
-				const errorMessage = guildResults.find((r) => r.errorMessage)?.errorMessage
-
-				if (success) {
-					successfulInvites++
-				} else {
-					failedInvites++
-				}
-
-				// Get user info for logging
-				const user = await db.query.users.findFirst({
-					where: eq(users.id, userId),
-					with: {
-						characters: {
-							where: eq(userCharacters.is_primary, true),
-						},
-					},
-				})
-
-				results.push({
-					userId,
-					userName: user?.characters[0]?.characterName || 'Unknown',
-					success,
-					errorMessage,
-				})
-
-				logger.info('[Discord] Processed user', {
-					userId,
-					userName: user?.characters[0]?.characterName,
-					success,
-				})
-			} catch (error) {
-				failedInvites++
-				logger.error('[Discord] Error processing user', {
-					userId,
-					error: String(error),
-				})
-
-				results.push({
-					userId,
-					userName: 'Unknown',
-					success: false,
-					errorMessage: error instanceof Error ? error.message : 'Unknown error',
-				})
-			}
-		}
-
-		logger.info('[Discord] Member refresh complete', {
+		const refreshResult = await discordService.refreshServerMembers(
+			c.env,
 			serverId,
-			guildName: server.guildName,
-			totalProcessed: allUserIds.size,
-			successfulInvites,
-			failedInvites,
-		})
+			Array.from(allUserIds)
+		)
 
 		return c.json({
 			totalProcessed: allUserIds.size,
-			successfulInvites,
-			failedInvites,
-			results,
+			successfulInvites: refreshResult.successCount,
+			failedInvites: refreshResult.failCount,
+			results: refreshResult.results,
 		})
 	} catch (error) {
 		logger.error('Error refreshing Discord server members:', error)

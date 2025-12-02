@@ -7,6 +7,8 @@
 
 import * as z4 from 'zod/v4/core'
 
+import type { EveCharacterId } from '@repo/eve-types'
+
 /**
  * EVE Online SSO OAuth Types
  */
@@ -588,4 +590,11 @@ export interface EveTokenStore {
 	 * ```
 	 */
 	searchCharacter(characterName: string, strict?: boolean): Promise<string[]>
+
+	/**
+	 * Get a batch of characters to refresh
+	 * @param batchSize - The number of characters to refresh
+	 * @returns An array of character IDs
+	 */
+	getRefreshCharacterBatch(batchSize?: number): Promise<EveCharacterId[]>
 }

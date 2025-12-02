@@ -1,0 +1,1 @@
+CREATE INDEX "eve_tokens_character_id_idx" ON "eve_tokens" USING btree ("character_id");

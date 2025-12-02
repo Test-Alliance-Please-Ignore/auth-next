@@ -181,9 +181,13 @@ export class DiscordRefreshService {
 			const guildIds = expectedAccess.map((access) => access.guildId)
 			const joinResults = await discordStub.joinUserToServers(userId, guildIds)
 
+			// Track which guilds were successfully joined (or user was already a member)
+			const successfulGuildIds = new Set<string>()
+
 			for (const joinResult of joinResults) {
 				if (joinResult.success) {
 					result.serversJoined++
+					successfulGuildIds.add(joinResult.guildId)
 					logger.info('[DiscordRefresh] Successfully joined server', {
 						userId,
 						guildId: joinResult.guildId,
@@ -200,9 +204,9 @@ export class DiscordRefreshService {
 				}
 			}
 
-			// Update roles for all servers
+			// Update roles only for servers where join was successful
 			const roleUpdateRequests = expectedAccess
-				.filter((access) => access.roleIds.length > 0)
+				.filter((access) => access.roleIds.length > 0 && successfulGuildIds.has(access.guildId))
 				.map((access) => ({
 					guildId: access.guildId,
 					roleIds: access.roleIds,

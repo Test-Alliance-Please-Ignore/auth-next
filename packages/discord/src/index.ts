@@ -211,9 +211,10 @@ export interface Discord {
 	 * Breaks the link by clearing coreUserId, revokes authorization,
 	 * deletes tokens, and removes user from all managed Discord servers
 	 * @param coreUserId - Core user ID to unlink
+	 * @param guildIds - Array of guild IDs to check for membership and remove user from
 	 * @returns Whether unlinking was successful
 	 */
-	unlinkCoreUser(coreUserId: string): Promise<boolean>
+	unlinkCoreUser(coreUserId: string, guildIds: string[]): Promise<boolean>
 
 	/**
 	 * Refresh token by core user ID
@@ -246,6 +247,29 @@ export interface Discord {
 	): Promise<boolean>
 
 	/**
+	 * Link a Discord account using OAuth tokens
+	 * Fetches user info from Discord and stores tokens
+	 * @param accessToken - OAuth access token
+	 * @param refreshToken - OAuth refresh token
+	 * @param expiresIn - Token expiration in seconds
+	 * @param scopes - OAuth scopes (space-separated)
+	 * @param coreUserId - Core user ID to link to
+	 * @returns User info and success status
+	 */
+	linkAccountWithTokens(
+		accessToken: string,
+		refreshToken: string,
+		expiresIn: number,
+		scopes: string,
+		coreUserId: string
+	): Promise<{
+		success: boolean
+		error?: string
+		discordUserId?: string
+		username?: string
+	}>
+
+	/**
 	 * Join a user to one or more Discord servers
 	 * Uses the user's OAuth token and bot token to add them directly to servers
 	 * @param coreUserId - Core user ID
@@ -268,18 +292,7 @@ export interface Discord {
 	): Promise<SendMessageResult>
 
 	/**
-	 * Get all Discord servers/guilds that a user is currently a member of
-	 * @param coreUserId - Core user ID
-	 * @returns Array of guilds the user is a member of
-	 */
-	getUserGuilds(
-		coreUserId: string
-	): Promise<
-		Array<{ id: string; name: string; icon?: string; owner: boolean; permissions: string }>
-	>
-
-	/**
-	 * Check which guilds a user is a member of using bot token (fallback for missing guilds scope)
+	 * Check which guilds a user is a member of using bot token
 	 * @param coreUserId - Core user ID
 	 * @param guildIds - Array of guild IDs to check
 	 * @returns Array of guild IDs the user is a member of

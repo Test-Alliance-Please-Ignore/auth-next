@@ -1,7 +1,7 @@
 import { DurableObject } from 'cloudflare:workers'
 import * as z4 from 'zod/v4/core'
 
-import { and, eq, gt, isNull, lte } from '@repo/db-utils'
+import { and, asc, eq, gt, gte, inArray, isNull, lt, lte, or } from '@repo/db-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from './db'
@@ -18,6 +18,7 @@ import type {
 	EveVerifyResponse,
 	TokenInfo,
 } from '@repo/eve-token-store'
+import type { EveCharacterId } from '@repo/eve-types'
 import type { Env } from './context'
 
 /**
@@ -26,6 +27,7 @@ import type { Env } from './context'
 const EVE_SSO_AUTHORIZE_URL = 'https://login.eveonline.com/v2/oauth/authorize'
 const EVE_SSO_TOKEN_URL = 'https://login.eveonline.com/v2/oauth/token'
 const EVE_SSO_VERIFY_URL = 'https://login.eveonline.com/oauth/verify'
+const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000
 
 /**
  * EVE SSO Scopes
@@ -566,7 +568,9 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 		if (cached.length > 0) {
 			const now = Date.now()
-			const lastModified = cached[0].last_modified ? new Date(cached[0].last_modified).getTime() : null
+			const lastModified = cached[0].last_modified
+				? new Date(cached[0].last_modified).getTime()
+				: null
 			const cacheAge = lastModified ? now - lastModified : Infinity
 
 			// Check both expiry AND 12-hour max age (retroactive enforcement)
@@ -716,7 +720,9 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 		if (cached.length > 0) {
 			const now = Date.now()
-			const lastModified = cached[0].last_modified ? new Date(cached[0].last_modified).getTime() : null
+			const lastModified = cached[0].last_modified
+				? new Date(cached[0].last_modified).getTime()
+				: null
 			const cacheAge = lastModified ? now - lastModified : Infinity
 
 			// Check both expiry AND 12-hour max age (retroactive enforcement)
@@ -1962,5 +1968,34 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		}
 
 		return expiresAt
+	}
+
+	/**
+	 * Get a batch of characters to refresh
+	 * @param batchSize - The number of characters to refresh
+	 * @returns An array of character IDs
+	 */
+	async getRefreshCharacterBatch(batchSize = 50): Promise<EveCharacterId[]> {
+		// Get characters that are not deleted and have not been refreshed in the last 24 hours
+		const characters = await this.db.query.eveCharacters.findMany({
+			where: and(
+				isNull(eveCharacters.deletedAt),
+				or(
+					isNull(eveCharacters.lastRefreshAt),
+					lt(eveCharacters.lastRefreshAt, new Date(Date.now() - TWENTY_FOUR_HOURS_MS))
+				)
+			),
+			orderBy: (table) => [asc(table.lastRefreshAt), asc(table.characterId)],
+			limit: batchSize,
+		})
+
+		/** Update the last attempted refresh timestamp for the characters */
+		const characterIds = characters.map((character) => character.characterId as EveCharacterId)
+		await this.db
+			.update(eveCharacters)
+			.set({ lastAttemptedRefreshAt: new Date() })
+			.where(inArray(eveCharacters.characterId, characterIds))
+
+		return characterIds
 	}
 }

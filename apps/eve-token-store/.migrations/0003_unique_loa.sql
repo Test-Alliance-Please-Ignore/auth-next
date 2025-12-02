@@ -1,0 +1,1 @@
+ALTER TABLE "eve_characters" ADD COLUMN "last_refresh_at" timestamp with time zone;
