@@ -10,9 +10,6 @@
 	"observability": {
 		"enabled": true
 	},
-	"limits": {
-		"cpu_ms": 300000
-	},
 	"vars": {},
 	"kv_namespaces": [
 		{
@@ -46,6 +43,16 @@
 				"name": "UNIVERSE",
 				"class_name": "Universe",
 				"script_name": "universe"
+			},
+			{
+				"name": "ESI",
+				"class_name": "Esi",
+				"script_name": "esi"
+			},
+			{
+				"name": "ESI_TYPE_RESOLVER",
+				"class_name": "EsiTypeResolver",
+				"script_name": "esi"
 			}
 		]
 	},

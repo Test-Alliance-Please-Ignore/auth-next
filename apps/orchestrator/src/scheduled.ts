@@ -24,73 +24,139 @@ export function generateWorkflowId(workflowType: string, resourceId: string): st
 	return `${workflowType}-${resourceId}-${Date.now()}`
 }
 
-async function createCorporationRefreshWorkflow(env: Env, corporationId: string): Promise<void> {
-	// Generate unique workflow ID with UUID to allow multiple concurrent workflows
-	const workflowId = `${corporationId}-${crypto.randomUUID()}`
-
-	logger.info('[Orchestrator] Creating corporation sync workflow', {
-		corporationId,
-		workflowId,
-	})
+export async function scheduleCorpDataRefresh(event: ScheduledEvent, env: Env): Promise<void> {
+	const batchStartTime = Date.now()
 
 	try {
-		await env.EVE_CORPORATION_SYNC.create({
-			id: workflowId,
-			params: {
-				corporationId,
-				trigger: 'cron',
-			},
+		const uniqueID = env.EVE_CORPORATION_DATA.newUniqueId()
+		const corpStub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, uniqueID)
+
+		logger.info('[Orchestrator] Starting corporation data refresh batch', {
+			scheduledTime: new Date(event.scheduledTime).toISOString(),
+			cron: event.cron,
 		})
 
-		logger.info('[Orchestrator] Corporation sync workflow created', {
-			corporationId,
-			workflowId,
-		})
-	} catch (error) {
-		logger.error('[Orchestrator] Failed to create corporation sync workflow', {
-			corporationId,
-			workflowId,
-			errorMessage: error instanceof Error ? error.message : String(error),
-		})
-		throw error
-	}
-}
+		const corporationIds = await corpStub.getCorporationsNeedingRefresh()
 
-export async function scheduleCorpDataRefresh(event: ScheduledEvent, env: Env): Promise<void> {
-	const corpStub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, 'global')
-
-	logger.info('[Orchestrator] Starting corporation data refresh batch', {
-		scheduledTime: new Date(event.scheduledTime).toISOString(),
-		cron: event.cron,
-	})
-
-	const corporationIds = await corpStub.getCorporationsNeedingRefresh()
-
-	logger.info('[Orchestrator] Found corporations needing refresh', {
-		count: corporationIds.length,
-		corporationIds,
-	})
-
-	// Create one workflow per corporation (handles all data types)
-	// Add jitter to spread out workflow creations and avoid thundering herd
-	for (const corporationId of corporationIds) {
-		logger.info('[Orchestrator] Creating corporation sync workflow for all data types', {
-			corporationId,
+		logger.info('[Orchestrator] Found corporations needing refresh', {
+			count: corporationIds.length,
+			corporationIds,
 		})
 
-		try {
-			await createCorporationRefreshWorkflow(env, corporationId)
-		} catch (error) {
-			// Log error but continue with other corporations
-			logger.error('[Orchestrator] Failed to create workflow for corporation', {
-				corporationId,
-				errorMessage: error instanceof Error ? error.message : String(error),
-			})
+		if (corporationIds.length === 0) {
+			logger.info('[Orchestrator] No corporations need refresh at this time')
+			return
 		}
 
-		// Add jitter delay (200-500ms) between workflow creations to avoid throttling
-		const jitterMs = 200 + Math.floor(Math.random() * 300)
-		await new Promise((resolve) => setTimeout(resolve, jitterMs))
+		// Prepare workflow creation options for all corporations
+		// Generate unique workflow IDs with UUID to allow multiple concurrent workflows
+		const workflowOptions = corporationIds.map((corporationId) => ({
+			id: `${corporationId}-${crypto.randomUUID()}`,
+			params: {
+				corporationId,
+				trigger: 'cron' as const,
+			},
+		}))
+
+		// createBatch is limited to 100 instances per call, using 75 for safety margin
+		const BATCH_SIZE = 75
+		const batches: Array<typeof workflowOptions> = []
+
+		for (let i = 0; i < workflowOptions.length; i += BATCH_SIZE) {
+			batches.push(workflowOptions.slice(i, i + BATCH_SIZE))
+		}
+
+		logger.info('[Orchestrator] Creating workflows in batches', {
+			totalCorporations: corporationIds.length,
+			batchCount: batches.length,
+			batchSize: BATCH_SIZE,
+		})
+
+		// Create workflows in batches
+		const batchResults = await Promise.allSettled(
+			batches.map(async (batch, batchIndex) => {
+				try {
+					const instances = await env.EVE_CORPORATION_SYNC.createBatch(batch)
+
+					logger.info('[Orchestrator] Created workflow batch', {
+						batchIndex: batchIndex + 1,
+						totalBatches: batches.length,
+						instancesCreated: instances.length,
+					})
+
+					return {
+						success: true,
+						instancesCreated: instances.length,
+						batchIndex,
+						batchSize: batch.length,
+					}
+				} catch (error) {
+					logger.error('[Orchestrator] Failed to create workflow batch', {
+						batchIndex: batchIndex + 1,
+						totalBatches: batches.length,
+						batchSize: batch.length,
+						errorMessage: error instanceof Error ? error.message : String(error),
+						errorStack: error instanceof Error ? error.stack : undefined,
+					})
+
+					return {
+						success: false,
+						instancesCreated: 0,
+						batchIndex,
+						batchSize: batch.length,
+						error: error instanceof Error ? error.message : String(error),
+					}
+				}
+			})
+		)
+
+		// Count created and failed workflows
+		const stats = {
+			total: corporationIds.length,
+			created: 0,
+			failed: 0,
+			batchesSucceeded: 0,
+			batchesFailed: 0,
+		}
+
+		batchResults.forEach((result, index) => {
+			if (result.status === 'fulfilled') {
+				if (result.value.success) {
+					stats.created += result.value.instancesCreated
+					stats.batchesSucceeded++
+				} else {
+					stats.failed += result.value.batchSize
+					stats.batchesFailed++
+				}
+			} else {
+				// For rejected promises, estimate failed count based on batch size
+				const batchSize = batches[index]?.length ?? 0
+				stats.failed += batchSize
+				stats.batchesFailed++
+			}
+		})
+
+		const duration = Date.now() - batchStartTime
+
+		logger.info('[Orchestrator] Corporation data refresh batch complete', {
+			totalCorporations: stats.total,
+			workflowsCreated: stats.created,
+			failed: stats.failed,
+			batchesSucceeded: stats.batchesSucceeded,
+			batchesFailed: stats.batchesFailed,
+			totalBatches: batches.length,
+			durationMs: duration,
+		})
+	} catch (error) {
+		const duration = Date.now() - batchStartTime
+		logger.error('[Orchestrator] Unexpected error during corporation data refresh', {
+			errorMessage: error instanceof Error ? error.message : String(error),
+			errorStack: error instanceof Error ? error.stack : undefined,
+			durationMs: duration,
+		})
+
+		// Re-throw to signal failure to Cloudflare
+		throw error
 	}
 }
 

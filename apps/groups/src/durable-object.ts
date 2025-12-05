@@ -855,7 +855,8 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 	async listJoinRequests(
 		groupId: string,
-		adminUserId: string
+		adminUserId: string,
+		isSiteAdmin = false
 	): Promise<GroupJoinRequestWithDetails[]> {
 		const group = await this.db.query.groups.findFirst({
 			where: eq(groups.id, groupId),
@@ -865,9 +866,9 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Group not found')
 		}
 
-		const isAdmin = await this.isUserGroupAdmin(groupId, adminUserId)
+		const isGroupAdmin = await this.isUserGroupAdmin(groupId, adminUserId)
 
-		if (!canModerateGroup(group, adminUserId, isAdmin)) {
+		if (!canModerateGroup(group, adminUserId, isGroupAdmin, isSiteAdmin)) {
 			throw new Error('Only group owner or admins can view join requests')
 		}
 
@@ -891,7 +892,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		}))
 	}
 
-	async approveJoinRequest(requestId: string, adminUserId: string): Promise<void> {
+	async approveJoinRequest(requestId: string, adminUserId: string, isSiteAdmin = false): Promise<void> {
 		const request = await this.db.query.groupJoinRequests.findFirst({
 			where: eq(groupJoinRequests.id, requestId),
 		})
@@ -908,9 +909,9 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Group not found')
 		}
 
-		const isAdmin = await this.isUserGroupAdmin(request.groupId, adminUserId)
+		const isGroupAdmin = await this.isUserGroupAdmin(request.groupId, adminUserId)
 
-		if (!canModerateGroup(group, adminUserId, isAdmin)) {
+		if (!canModerateGroup(group, adminUserId, isGroupAdmin, isSiteAdmin)) {
 			throw new Error('Only group owner or admins can approve join requests')
 		}
 
@@ -952,7 +953,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		this.invalidateUserPermissionsCache(request.userId)
 	}
 
-	async rejectJoinRequest(requestId: string, adminUserId: string): Promise<void> {
+	async rejectJoinRequest(requestId: string, adminUserId: string, isSiteAdmin = false): Promise<void> {
 		const request = await this.db.query.groupJoinRequests.findFirst({
 			where: eq(groupJoinRequests.id, requestId),
 		})
@@ -969,9 +970,9 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Group not found')
 		}
 
-		const isAdmin = await this.isUserGroupAdmin(request.groupId, adminUserId)
+		const isGroupAdmin = await this.isUserGroupAdmin(request.groupId, adminUserId)
 
-		if (!canModerateGroup(group, adminUserId, isAdmin)) {
+		if (!canModerateGroup(group, adminUserId, isGroupAdmin, isSiteAdmin)) {
 			throw new Error('Only group owner or admins can reject join requests')
 		}
 

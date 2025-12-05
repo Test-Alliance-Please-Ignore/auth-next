@@ -148,27 +148,31 @@ export function canManageAdmins(
 }
 
 /**
- * Check if a user can approve join requests or remove members (owner or admin)
+ * Check if a user can approve join requests or remove members (owner, group admin, or site admin)
  */
 export function canModerateGroup(
 	group: Group,
 	userId: string | undefined,
-	isGroupAdmin: boolean
+	isGroupAdmin: boolean,
+	isSiteAdmin = false
 ): boolean {
 	if (!userId) return false
+	// Site admins can moderate any group
+	if (isSiteAdmin) return true
 	// Owner or designated admin
 	return group.ownerId === userId || isGroupAdmin
 }
 
 /**
- * Check if a user can create invitations (owner or admin)
+ * Check if a user can create invitations (owner, group admin, or site admin)
  */
 export function canInviteToGroup(
 	group: Group,
 	userId: string | undefined,
-	isGroupAdmin: boolean
+	isGroupAdmin: boolean,
+	isSiteAdmin = false
 ): boolean {
-	return canModerateGroup(group, userId, isGroupAdmin)
+	return canModerateGroup(group, userId, isGroupAdmin, isSiteAdmin)
 }
 
 /**
@@ -183,14 +187,15 @@ export function canCreateInviteCode(
 }
 
 /**
- * Check if a user can view invite codes (owner or admin)
+ * Check if a user can view invite codes (owner, group admin, or site admin)
  */
 export function canViewInviteCodes(
 	group: Group,
 	userId: string | undefined,
-	isGroupAdmin: boolean
+	isGroupAdmin: boolean,
+	isSiteAdmin = false
 ): boolean {
-	return canModerateGroup(group, userId, isGroupAdmin)
+	return canModerateGroup(group, userId, isGroupAdmin, isSiteAdmin)
 }
 
 /**

@@ -487,7 +487,7 @@ groups.post(
 		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 		try {
-			await groupsDO.approveJoinRequest(requestId, user.id)
+			await groupsDO.approveJoinRequest(requestId, user.id, user.is_admin)
 			// Invalidate caches - the approved user's memberships changed
 			// Note: We don't have the approved user's ID here, so we rely on TTL expiration
 			return c.json({ success: true }, 200)
@@ -514,7 +514,7 @@ groups.post(
 		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 		try {
-			await groupsDO.rejectJoinRequest(requestId, user.id)
+			await groupsDO.rejectJoinRequest(requestId, user.id, user.is_admin)
 			return c.json({ success: true }, 200)
 		} catch (error) {
 			if (error instanceof Error) {
@@ -1398,7 +1398,7 @@ groups.get('/:id/join-requests', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] 
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
-		const requests = await groupsDO.listJoinRequests(groupId, user.id)
+		const requests = await groupsDO.listJoinRequests(groupId, user.id, user.is_admin)
 		return c.json(requests)
 	} catch (error) {
 		if (error instanceof Error) {

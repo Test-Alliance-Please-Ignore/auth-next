@@ -372,14 +372,18 @@ export interface Groups {
 	/** Create a join request */
 	createJoinRequest(data: CreateJoinRequestRequest, userId: string): Promise<GroupJoinRequest>
 
-	/** List join requests for a group (admin only) */
-	listJoinRequests(groupId: string, adminUserId: string): Promise<GroupJoinRequestWithDetails[]>
+	/** List join requests for a group (owner, group admin, or site admin) */
+	listJoinRequests(
+		groupId: string,
+		adminUserId: string,
+		isSiteAdmin?: boolean
+	): Promise<GroupJoinRequestWithDetails[]>
 
-	/** Approve a join request (admin only) */
-	approveJoinRequest(requestId: string, adminUserId: string): Promise<void>
+	/** Approve a join request (owner, group admin, or site admin) */
+	approveJoinRequest(requestId: string, adminUserId: string, isSiteAdmin?: boolean): Promise<void>
 
-	/** Reject a join request (admin only) */
-	rejectJoinRequest(requestId: string, adminUserId: string): Promise<void>
+	/** Reject a join request (owner, group admin, or site admin) */
+	rejectJoinRequest(requestId: string, adminUserId: string, isSiteAdmin?: boolean): Promise<void>
 
 	/**
 	 * Invitation Operations

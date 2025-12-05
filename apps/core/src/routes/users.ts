@@ -7,6 +7,7 @@ import { logger } from '@repo/hono-helpers'
 import { createDb } from '../db'
 import { managedCorporations, userCharacters } from '../db/schema'
 import { getDiscordStatus } from '../lib/discord-helpers'
+import { triggerUserRefreshWorkflow } from '../lib/workflow-triggers'
 import { requireAuth } from '../middleware/session'
 import { ActivityService } from '../services/activity.service'
 import { UserService } from '../services/user.service'
@@ -112,6 +113,16 @@ users.get('/me', async (c) => {
 
 	const db = c.get('db') || createDb(c.env.DATABASE_URL)
 	const userService = new UserService(db)
+
+	// Trigger user refresh workflow in background (throttled to every 5 minutes)
+	c.executionCtx.waitUntil(
+		triggerUserRefreshWorkflow({
+			db,
+			env: c.env,
+			userId: user.id,
+			source: 'users-me',
+		})
+	)
 
 	// Get full user profile
 	const profile = await userService.getUserProfile(user.id)
