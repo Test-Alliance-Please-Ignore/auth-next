@@ -196,8 +196,6 @@ export default function UserHrNotes() {
 						subjectUserId={userId}
 						subjectCharacterName={subjectCharacterName}
 						onAddNote={handleAddNote}
-						onEditNote={handleEditNote}
-						onDeleteNote={handleDeleteNote}
 					/>
 				</CardContent>
 			</Card>

@@ -32,8 +32,6 @@ export interface HRNotesListProps {
 	subjectUserId: string
 	subjectCharacterName?: string
 	onAddNote?: () => void
-	onEditNote?: (noteId: string) => void
-	onDeleteNote?: (noteId: string) => void
 	className?: string
 }
 
@@ -47,7 +45,6 @@ const NOTE_TYPE_OPTIONS: Array<{ value: string; label: string }> = [
 	{ value: 'warning', label: 'Warning' },
 	{ value: 'positive', label: 'Positive' },
 	{ value: 'incident', label: 'Incident' },
-	{ value: 'background_check', label: 'Background Check' },
 ]
 
 const PRIORITY_OPTIONS: Array<{ value: string; label: string }> = [
@@ -80,8 +77,6 @@ export function HRNotesList({
 	subjectUserId,
 	subjectCharacterName,
 	onAddNote,
-	onEditNote,
-	onDeleteNote,
 	className,
 }: HRNotesListProps) {
 	const { user } = useAuth()
@@ -203,14 +198,7 @@ export function HRNotesList({
 			{!isLoading && !error && sortedNotes.length > 0 && (
 				<div className="space-y-4">
 					{sortedNotes.map((note) => (
-						<HRNoteCard
-							key={note.id}
-							note={note}
-							canEdit={user.id === note.authorId || user.is_admin}
-							canDelete={user.is_admin}
-							onEdit={() => onEditNote?.(note.id)}
-							onDelete={() => onDeleteNote?.(note.id)}
-						/>
+						<HRNoteCard key={note.id} note={note} />
 					))}
 				</div>
 			)}

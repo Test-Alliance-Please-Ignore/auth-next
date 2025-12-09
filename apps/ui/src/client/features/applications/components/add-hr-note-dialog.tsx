@@ -7,10 +7,12 @@
  * SECURITY: This dialog should only be opened for admin users.
  */
 
-import { AlertOctagon, AlertTriangle, CheckCircle, Info, Lock, Shield, X } from 'lucide-react'
+import { AlertOctagon, AlertTriangle, CheckCircle, Info, Lock, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { CancelButton } from '@/components/ui/cancel-button'
+import { ConfirmButton } from '@/components/ui/confirm-button'
 import {
 	Dialog,
 	DialogContent,
@@ -62,46 +64,45 @@ const NOTE_TYPE_OPTIONS: Array<{
 	label: string
 	icon: typeof Info
 	description: string
-	colorClass: string
+	baseClass: string
+	selectedClass: string
+	iconClass: string
 }> = [
 	{
 		value: 'general',
 		label: 'General',
 		icon: Info,
 		description: 'General information',
-		colorClass: 'border-muted bg-muted/10 hover:bg-muted/20 data-[state=checked]:border-muted',
+		baseClass: 'border-muted/50 bg-muted/10 hover:bg-muted/20',
+		selectedClass: 'border-muted ring-2 ring-muted/30',
+		iconClass: 'text-muted-foreground',
 	},
 	{
 		value: 'warning',
 		label: 'Warning',
 		icon: AlertTriangle,
 		description: 'Caution advised',
-		colorClass:
-			'border-warning/30 bg-warning/10 hover:bg-warning/20 data-[state=checked]:border-warning',
+		baseClass: 'border-warning/30 bg-warning/10 hover:bg-warning/20',
+		selectedClass: 'border-warning ring-2 ring-warning/30',
+		iconClass: 'text-warning',
 	},
 	{
 		value: 'positive',
 		label: 'Positive',
 		icon: CheckCircle,
 		description: 'Positive note',
-		colorClass:
-			'border-success/30 bg-success/10 hover:bg-success/20 data-[state=checked]:border-success',
+		baseClass: 'border-success/30 bg-success/10 hover:bg-success/20',
+		selectedClass: 'border-success ring-2 ring-success/30',
+		iconClass: 'text-success',
 	},
 	{
 		value: 'incident',
 		label: 'Incident',
 		icon: AlertOctagon,
 		description: 'Security incident',
-		colorClass:
-			'border-destructive/30 bg-destructive/10 hover:bg-destructive/20 data-[state=checked]:border-destructive',
-	},
-	{
-		value: 'background_check',
-		label: 'Background Check',
-		icon: Shield,
-		description: 'Background verification',
-		colorClass:
-			'border-primary/30 bg-primary/10 hover:bg-primary/20 data-[state=checked]:border-primary',
+		baseClass: 'border-destructive/30 bg-destructive/10 hover:bg-destructive/20',
+		selectedClass: 'border-destructive ring-2 ring-destructive/30',
+		iconClass: 'text-destructive',
 	},
 ]
 
@@ -123,17 +124,20 @@ interface NoteTypeButtonProps {
 	icon: typeof Info
 	selected: boolean
 	onClick: () => void
-	colorClass: string
+	baseClass: string
+	selectedClass: string
+	iconClass: string
 }
 
 function NoteTypeButton({
-	value,
 	label,
 	description,
 	icon: Icon,
 	selected,
 	onClick,
-	colorClass,
+	baseClass,
+	selectedClass,
+	iconClass,
 }: NoteTypeButtonProps) {
 	return (
 		<button
@@ -141,12 +145,13 @@ function NoteTypeButton({
 			onClick={onClick}
 			className={cn(
 				'flex flex-col items-center gap-2 p-3 rounded-lg border-2 transition-all cursor-pointer',
-				'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
-				selected ? colorClass : 'border-input bg-background hover:bg-muted/50'
+				'focus:outline-none focus:ring-offset-2',
+				baseClass,
+				selected && selectedClass
 			)}
 			data-state={selected ? 'checked' : 'unchecked'}
 		>
-			<Icon className="h-4 w-4" />
+			<Icon className={cn('h-4 w-4', iconClass)} />
 			<div className="text-center">
 				<div className="font-semibold text-xs">{label}</div>
 				<div className="text-[10px] text-muted-foreground">{description}</div>
@@ -322,7 +327,7 @@ export function AddHRNoteDialog({
 						<Label>
 							Note Type <span className="text-destructive">*</span>
 						</Label>
-						<div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+						<div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
 							{NOTE_TYPE_OPTIONS.map((option) => (
 								<NoteTypeButton
 									key={option.value}
@@ -332,7 +337,9 @@ export function AddHRNoteDialog({
 									icon={option.icon}
 									selected={noteType === option.value}
 									onClick={() => setNoteType(option.value)}
-									colorClass={option.colorClass}
+									baseClass={option.baseClass}
+									selectedClass={option.selectedClass}
+									iconClass={option.iconClass}
 								/>
 							))}
 						</div>
@@ -436,18 +443,17 @@ export function AddHRNoteDialog({
 				</div>
 
 				<DialogFooter>
-					<Button variant="outline" onClick={handleCancel} disabled={isPending}>
+					<CancelButton onClick={handleCancel} disabled={isPending}>
 						Cancel
-					</Button>
-					<Button onClick={handleSubmit} disabled={!isFormValid || isPending}>
-						{isPending
-							? isEditMode
-								? 'Updating...'
-								: 'Saving...'
-							: isEditMode
-								? 'Update Note'
-								: 'Save Note'}
-					</Button>
+					</CancelButton>
+					<ConfirmButton
+						onConfirm={handleSubmit}
+						disabled={!isFormValid}
+						loading={isPending}
+						loadingText={isEditMode ? 'Updating...' : 'Saving...'}
+					>
+						{isEditMode ? 'Update Note' : 'Save Note'}
+					</ConfirmButton>
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>

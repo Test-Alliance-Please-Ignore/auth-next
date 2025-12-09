@@ -387,8 +387,6 @@ export default function HrApplicationReview() {
 									subjectUserId={application.userId}
 									subjectCharacterName={application.characterName}
 									onAddNote={handleAddNote}
-									onEditNote={handleEditNote}
-									onDeleteNote={handleDeleteNote}
 								/>
 							</CardContent>
 						</Card>

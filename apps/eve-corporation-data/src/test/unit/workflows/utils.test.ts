@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
 import { createShouldSyncPredicate } from '../../../workflows/utils/should-sync'
-import { createSyncedDataTracker } from '../../../workflows/utils/synced-data'
 
 describe('workflow utilities', () => {
 	it('returns true for all data types when no filters provided', () => {
@@ -25,24 +24,4 @@ describe('workflow utilities', () => {
 		expect(shouldSync('members')).toBe(true)
 		expect(shouldSync('wallets')).toBe(true)
 	})
-
-	it('tracks synced data types immutably', () => {
-		const tracker = createSyncedDataTracker()
-
-		const first = tracker.add('members')
-		const second = tracker.add('wallets')
-
-		expect(first).toEqual(['members'])
-		expect(second).toEqual(['members', 'wallets'])
-		expect(tracker.get()).toEqual(['members', 'wallets'])
-	})
-
-	it('handles duplicate additions by appending entries', () => {
-		const tracker = createSyncedDataTracker()
-		tracker.add('members')
-		tracker.add('members')
-
-		expect(tracker.get()).toEqual(['members', 'members'])
-	})
 })
-

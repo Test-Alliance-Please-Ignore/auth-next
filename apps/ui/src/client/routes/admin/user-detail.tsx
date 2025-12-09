@@ -6,6 +6,7 @@ import {
 	ExternalLink,
 	LogOut,
 	MessageSquare,
+	Plus,
 	RefreshCw,
 	Shield,
 	ShieldBan,
@@ -54,6 +55,9 @@ import {
 } from '@/hooks/useAdminUsers'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { api } from '@/lib/api'
+import { AddHRNoteDialog } from '@/features/applications/components/add-hr-note-dialog'
+import { HRNoteCard } from '@/features/applications/components/hr-note-card'
+import { useHRNotes } from '@/features/applications/hooks'
 import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
@@ -109,6 +113,7 @@ export default function UserDetailPage() {
 	const [blacklistDialogOpen, setBlacklistDialogOpen] = useState(false)
 	const [removeBlacklistDialogOpen, setRemoveBlacklistDialogOpen] = useState(false)
 	const [blacklistReason, setBlacklistReason] = useState('')
+	const [addNoteDialogOpen, setAddNoteDialogOpen] = useState(false)
 	const [discordUpdateResults, setDiscordUpdateResults] = useState<{
 		results: Array<{
 			guildId: string
@@ -133,6 +138,11 @@ export default function UserDetailPage() {
 	})
 
 	const recentActivity = activityData?.data || []
+
+	// Fetch HR notes for this user
+	const { data: hrNotes = [], isLoading: notesLoading } = useHRNotes({
+		subjectUserId: userId!,
+	})
 
 	if (isLoading) {
 		return (
@@ -507,6 +517,37 @@ export default function UserDetailPage() {
 							</div>
 						</div>
 					</div>
+				</CardContent>
+			</Card>
+
+			{/* Admin Notes */}
+			<Card variant="interactive">
+				<CardHeader>
+					<div className="flex items-center justify-between">
+						<div>
+							<CardTitle>Admin Notes</CardTitle>
+							<CardDescription>Private notes about this user (admin only)</CardDescription>
+						</div>
+						<Button onClick={() => setAddNoteDialogOpen(true)} size="sm">
+							<Plus className="h-4 w-4 mr-2" />
+							Add Note
+						</Button>
+					</div>
+				</CardHeader>
+				<CardContent>
+					{notesLoading ? (
+						<div className="text-center py-4 text-muted-foreground">Loading notes...</div>
+					) : hrNotes.length === 0 ? (
+						<div className="text-center py-8 text-muted-foreground border border-dashed rounded-md">
+							No notes yet. Add a note to track important information about this user.
+						</div>
+					) : (
+						<div className="space-y-4">
+							{hrNotes.map((note) => (
+								<HRNoteCard key={note.id} note={note} />
+							))}
+						</div>
+					)}
 				</CardContent>
 			</Card>
 
@@ -1234,6 +1275,18 @@ export default function UserDetailPage() {
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
+
+			{/* Add Note Dialog */}
+			<AddHRNoteDialog
+				open={addNoteDialogOpen}
+				onOpenChange={setAddNoteDialogOpen}
+				subjectUserId={user.id}
+				subjectCharacterName={user.characters.find((c) => c.is_primary)?.characterName}
+				onSuccess={() => {
+					setMessage({ type: 'success', text: 'Note added successfully' })
+					setTimeout(() => setMessage(null), 3000)
+				}}
+			/>
 		</div>
 	)
 }

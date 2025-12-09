@@ -3,24 +3,24 @@ import { NonRetryableError } from 'cloudflare:workflows'
 
 import { logger } from '@repo/hono-helpers'
 
-import { sendHrDepartedMessages, updateCoreLastSync, updateSyncTimestamps } from './steps/common'
-import { recordDirectorSuccess, selectDirector } from './steps/directors'
 import { syncAssets } from './steps/assets'
+import { sendHrDepartedMessages, updateCoreLastSync, updateSyncTimestamps } from './steps/common'
 import { fetchContracts, storeContracts } from './steps/contracts'
+import { recordDirectorSuccess, selectDirector } from './steps/directors'
 import { fetchIndustryJobs, storeIndustryJobs } from './steps/industry-jobs'
 import { fetchKillmails, storeKillmails } from './steps/killmails'
-import { fetchMembers, storeMembers } from './steps/members'
 import { fetchMemberTracking, storeMemberTracking } from './steps/member-tracking'
+import { fetchMembers, storeMembers } from './steps/members'
 import { fetchOrders, storeOrders } from './steps/orders'
 import { fetchPublicInfo, storePublicInfo } from './steps/public-info'
 import { fetchStructures, storeStructures } from './steps/structures'
-import { fetchWallets, storeWallets } from './steps/wallets'
 import { syncWalletJournal } from './steps/wallet-journal'
 import { syncWalletTransactions } from './steps/wallet-transactions'
+import { fetchWallets, storeWallets } from './steps/wallets'
 import { createShouldSyncPredicate } from './utils/should-sync'
-import { createSyncedDataTracker } from './utils/synced-data'
 
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
+import type { EveCorporationSyncDataType } from '@repo/eve-corporation-data'
 import type { Env } from '../context'
 import type {
 	DirectorInfo,
@@ -28,17 +28,18 @@ import type {
 	EveCorporationSyncResult,
 	SyncStats,
 } from './types'
-import type { PublicInfo } from './steps/public-info'
-import type { StoreMembersResult } from './steps/members'
-import type { WalletsData } from './steps/wallets'
-import type { StructuresData } from './steps/structures'
-import type { OrdersData } from './steps/orders'
-import type { ContractsData } from './steps/contracts'
-import type { IndustryJobsData } from './steps/industry-jobs'
-import type { KillmailsData } from './steps/killmails'
 
 const STEP_RETRY_OPTIONS = {
 	retries: { limit: 5, delay: '10 seconds', backoff: 'exponential' } as const,
+}
+
+/**
+ * Result type for sync steps that tracks both the data type synced and any stats
+ * All state must be derived from step returns to survive workflow hibernation
+ */
+interface SyncStepResult<T extends EveCorporationSyncDataType> {
+	dataType: T
+	stats: Partial<SyncStats>
 }
 
 export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorporationSyncParams> {
@@ -55,7 +56,6 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 		this.validateEnv()
 
 		const shouldSync = createShouldSyncPredicate(dataTypes)
-		const syncedDataTracker = createSyncedDataTracker()
 
 		const director: DirectorInfo = await step.do(
 			'select-director',
@@ -74,32 +74,41 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			}
 		)
 
-		const { directorId, characterId: directorCharacterId, characterName: directorCharacterName } =
-			director
+		const {
+			directorId,
+			characterId: directorCharacterId,
+			characterName: directorCharacterName,
+		} = director
 
-		const stats: SyncStats = {}
-		let publicInfo: PublicInfo | null = null
-		let memberResult: StoreMembersResult | null = null
-		let wallets: WalletsData | null = null
-		let structures: StructuresData | null = null
-		let orders: OrdersData | null = null
-		let contracts: ContractsData | null = null
-		let industryJobs: IndustryJobsData | null = null
-		let killmails: KillmailsData | null = null
+		// All step results - state is exclusively derived from step.do() returns
+		// to survive workflow hibernation
+		let publicInfoSync: SyncStepResult<'public-info'> | null = null
+		let membersSync: SyncStepResult<'members'> | null = null
+		let memberTrackingSync: SyncStepResult<'member-tracking'> | null = null
+		let walletsSync: SyncStepResult<'wallets'> | null = null
+		let walletJournalSync: SyncStepResult<'wallet-journal'> | null = null
+		let walletTransactionsSync: SyncStepResult<'wallet-transactions'> | null = null
+		let assetsSync: SyncStepResult<'assets'> | null = null
+		let structuresSync: SyncStepResult<'structures'> | null = null
+		let ordersSync: SyncStepResult<'orders'> | null = null
+		let contractsSync: SyncStepResult<'contracts'> | null = null
+		let industryJobsSync: SyncStepResult<'industry-jobs'> | null = null
+		let killmailsSync: SyncStepResult<'killmails'> | null = null
 
 		if (shouldSync('public-info')) {
-			publicInfo = await step.do(
+			const publicInfo = await step.do(
 				'fetch-public-info',
 				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
 				() => fetchPublicInfo(this.env, corporationId)
 			)
 
-			await step.do('store-public-info', {}, () =>
-				storePublicInfo(this.env, corporationId, publicInfo!)
-			)
-
-			syncedDataTracker.add('public-info')
-			stats.corporationName = publicInfo.name
+			publicInfoSync = await step.do('store-public-info', {}, async () => {
+				await storePublicInfo(this.env, corporationId, publicInfo)
+				return {
+					dataType: 'public-info' as const,
+					stats: { corporationName: publicInfo.name },
+				}
+			})
 		}
 
 		if (shouldSync('members')) {
@@ -109,19 +118,21 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				() => fetchMembers(this.env, corporationId, directorCharacterId)
 			)
 
-			memberResult = await step.do('store-members', {}, () =>
-				storeMembers(this.env, corporationId, members)
-			)
+			membersSync = await step.do('store-members', {}, async () => {
+				const memberResult = await storeMembers(this.env, corporationId, members)
 
-			syncedDataTracker.add('members')
-			stats.totalMembers = members.length
-			stats.departedMembers = memberResult.departedMemberIds.length
+				if (memberResult.departedMemberIds.length > 0) {
+					await sendHrDepartedMessages(this.env, corporationId, memberResult.departedMemberIds)
+				}
 
-			if (memberResult.departedMemberIds.length > 0) {
-				await step.do('send-hr-messages', {}, () =>
-					sendHrDepartedMessages(this.env, corporationId, memberResult!.departedMemberIds)
-				)
-			}
+				return {
+					dataType: 'members' as const,
+					stats: {
+						totalMembers: members.length,
+						departedMembers: memberResult.departedMemberIds.length,
+					},
+				}
+			})
 		}
 
 		if (shouldSync('member-tracking')) {
@@ -131,127 +142,180 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				() => fetchMemberTracking(this.env, corporationId, directorCharacterId)
 			)
 
-			await step.do('store-member-tracking', {}, () =>
-				storeMemberTracking(this.env, corporationId, trackingData)
-			)
-
-			syncedDataTracker.add('member-tracking')
+			memberTrackingSync = await step.do('store-member-tracking', {}, async () => {
+				await storeMemberTracking(this.env, corporationId, trackingData)
+				return {
+					dataType: 'member-tracking' as const,
+					stats: {},
+				}
+			})
 		}
 
 		if (shouldSync('wallets')) {
-			wallets = await step.do(
+			const wallets = await step.do(
 				'fetch-wallets',
 				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
 				() => fetchWallets(this.env, corporationId, directorCharacterId)
 			)
 
-			await step.do('store-wallets', {}, () => storeWallets(this.env, corporationId, wallets!))
-			syncedDataTracker.add('wallets')
-			stats.walletsCount = wallets.length
+			walletsSync = await step.do('store-wallets', {}, async () => {
+				await storeWallets(this.env, corporationId, wallets)
+				return {
+					dataType: 'wallets' as const,
+					stats: { walletsCount: wallets.length },
+				}
+			})
 		}
 
 		if (shouldSync('wallet-journal')) {
-			await step.do(
+			walletJournalSync = await step.do(
 				'sync-wallet-journal',
 				{ ...STEP_RETRY_OPTIONS, timeout: '5 minutes' },
-				() => syncWalletJournal(this.env, corporationId, directorCharacterId)
+				async () => {
+					await syncWalletJournal(this.env, corporationId, directorCharacterId)
+					return {
+						dataType: 'wallet-journal' as const,
+						stats: {},
+					}
+				}
 			)
-
-			syncedDataTracker.add('wallet-journal')
 		}
 
 		if (shouldSync('wallet-transactions')) {
-			await step.do(
+			walletTransactionsSync = await step.do(
 				'sync-wallet-transactions',
 				{ ...STEP_RETRY_OPTIONS, timeout: '5 minutes' },
-				() => syncWalletTransactions(this.env, corporationId, directorCharacterId)
+				async () => {
+					await syncWalletTransactions(this.env, corporationId, directorCharacterId)
+					return {
+						dataType: 'wallet-transactions' as const,
+						stats: {},
+					}
+				}
 			)
-
-			syncedDataTracker.add('wallet-transactions')
 		}
 
 		if (shouldSync('assets')) {
-			const result = await step.do(
+			assetsSync = await step.do(
 				'sync-assets',
 				{ ...STEP_RETRY_OPTIONS, timeout: '10 minutes' },
-				() => syncAssets(this.env, corporationId, directorCharacterId)
+				async () => {
+					const result = await syncAssets(this.env, corporationId, directorCharacterId)
+					return {
+						dataType: 'assets' as const,
+						stats: { assetsCount: result.assetsCount },
+					}
+				}
 			)
-
-			syncedDataTracker.add('assets')
-			stats.assetsCount = result.assetsCount
 		}
 
 		if (shouldSync('structures')) {
-			structures = await step.do(
+			const structures = await step.do(
 				'fetch-structures',
 				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
 				() => fetchStructures(this.env, corporationId, directorCharacterId)
 			)
 
-			await step.do('store-structures', {}, () =>
-				storeStructures(this.env, corporationId, structures!)
-			)
-
-			syncedDataTracker.add('structures')
-			stats.structuresCount = structures.length
+			structuresSync = await step.do('store-structures', {}, async () => {
+				await storeStructures(this.env, corporationId, structures)
+				return {
+					dataType: 'structures' as const,
+					stats: { structuresCount: structures.length },
+				}
+			})
 		}
 
 		if (shouldSync('orders')) {
-			orders = await step.do(
+			const orders = await step.do(
 				'fetch-orders',
 				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
 				() => fetchOrders(this.env, corporationId, directorCharacterId)
 			)
 
-			await step.do('store-orders', {}, () => storeOrders(this.env, corporationId, orders!))
-			syncedDataTracker.add('orders')
-			stats.ordersCount = orders.length
+			ordersSync = await step.do('store-orders', {}, async () => {
+				await storeOrders(this.env, corporationId, orders)
+				return {
+					dataType: 'orders' as const,
+					stats: { ordersCount: orders.length },
+				}
+			})
 		}
 
 		if (shouldSync('contracts')) {
-			contracts = await step.do(
+			const contracts = await step.do(
 				'fetch-contracts',
 				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
 				() => fetchContracts(this.env, corporationId, directorCharacterId)
 			)
 
-			await step.do('store-contracts', {}, () =>
-				storeContracts(this.env, corporationId, contracts!)
-			)
-
-			syncedDataTracker.add('contracts')
-			stats.contractsCount = contracts.length
+			contractsSync = await step.do('store-contracts', {}, async () => {
+				await storeContracts(this.env, corporationId, contracts)
+				return {
+					dataType: 'contracts' as const,
+					stats: { contractsCount: contracts.length },
+				}
+			})
 		}
 
 		if (shouldSync('industry-jobs')) {
-			industryJobs = await step.do(
+			const industryJobs = await step.do(
 				'fetch-industry-jobs',
 				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
 				() => fetchIndustryJobs(this.env, corporationId, directorCharacterId)
 			)
 
-			await step.do('store-industry-jobs', {}, () =>
-				storeIndustryJobs(this.env, corporationId, industryJobs!)
-			)
-
-			syncedDataTracker.add('industry-jobs')
-			stats.industryJobsCount = industryJobs.length
+			industryJobsSync = await step.do('store-industry-jobs', {}, async () => {
+				await storeIndustryJobs(this.env, corporationId, industryJobs)
+				return {
+					dataType: 'industry-jobs' as const,
+					stats: { industryJobsCount: industryJobs.length },
+				}
+			})
 		}
 
 		if (shouldSync('killmails')) {
-			killmails = await step.do(
+			const killmails = await step.do(
 				'fetch-killmails',
 				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
 				() => fetchKillmails(this.env, corporationId, directorCharacterId)
 			)
 
-			await step.do('store-killmails', {}, () => storeKillmails(this.env, corporationId, killmails!))
-			syncedDataTracker.add('killmails')
-			stats.killmailsCount = killmails.length
+			killmailsSync = await step.do('store-killmails', {}, async () => {
+				await storeKillmails(this.env, corporationId, killmails)
+				return {
+					dataType: 'killmails' as const,
+					stats: { killmailsCount: killmails.length },
+				}
+			})
 		}
 
+		// Build final state exclusively from step return values
+		// This ensures state survives workflow hibernation
+		const allSyncResults = [
+			publicInfoSync,
+			membersSync,
+			memberTrackingSync,
+			walletsSync,
+			walletJournalSync,
+			walletTransactionsSync,
+			assetsSync,
+			structuresSync,
+			ordersSync,
+			contractsSync,
+			industryJobsSync,
+			killmailsSync,
+		]
+
+		const syncedDataTypes = allSyncResults
+			.filter((result): result is NonNullable<typeof result> => result !== null)
+			.map((result) => result.dataType)
+
+		const stats: SyncStats = allSyncResults
+			.filter((result): result is NonNullable<typeof result> => result !== null)
+			.reduce((acc, result) => ({ ...acc, ...result.stats }), {} as SyncStats)
+
 		await step.do('update-sync-timestamps', {}, () =>
-			updateSyncTimestamps(this.env, corporationId, syncedDataTracker.get())
+			updateSyncTimestamps(this.env, corporationId, syncedDataTypes)
 		)
 
 		await step.do('update-last-sync', {}, () => updateCoreLastSync(this.env, corporationId))
