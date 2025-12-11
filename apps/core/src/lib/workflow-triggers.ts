@@ -13,6 +13,7 @@ export interface TriggerUserRefreshOptions {
 	env: Env
 	userId: string
 	source: string
+	bypassThrottle?: boolean
 }
 
 /**
@@ -25,6 +26,7 @@ export async function triggerUserRefreshWorkflow({
 	env,
 	userId,
 	source,
+	bypassThrottle = false,
 }: TriggerUserRefreshOptions): Promise<void> {
 	try {
 		const userRecord = await db.query.users.findFirst({
@@ -33,6 +35,7 @@ export async function triggerUserRefreshWorkflow({
 		})
 
 		const shouldTrigger =
+			bypassThrottle ||
 			!userRecord?.lastRefreshWorkflowAttempt ||
 			Date.now() - userRecord.lastRefreshWorkflowAttempt.getTime() > THROTTLE_MS
 
@@ -48,7 +51,7 @@ export async function triggerUserRefreshWorkflow({
 			params: { userId },
 		})
 
-		logger.info('[WorkflowTrigger] Triggered user refresh workflow', { userId, source })
+		logger.info('[WorkflowTrigger] Triggered user refresh workflow', { userId, source, bypassThrottle })
 	} catch (error) {
 		logger.error('[WorkflowTrigger] Failed to trigger user refresh workflow', {
 			userId,

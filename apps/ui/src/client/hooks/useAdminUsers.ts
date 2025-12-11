@@ -144,6 +144,24 @@ export function useClearUserSessions() {
 }
 
 /**
+ * Trigger user sync workflow (admin action)
+ * Bypasses the 5-minute throttle for immediate sync
+ */
+export function useSyncUser() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: (userId: string) => api.syncUser(userId),
+		onSuccess: (_, userId) => {
+			// Invalidate user detail to reflect any changes after sync completes
+			void queryClient.invalidateQueries({ queryKey: adminUserKeys.detail(userId) })
+			// Also invalidate user lists in case character data changed
+			void queryClient.invalidateQueries({ queryKey: adminUserKeys.lists() })
+		},
+	})
+}
+
+/**
  * Update a user's Discord access - joins them to all eligible Discord servers
  * with appropriate roles based on corporation and group memberships
  */

@@ -50,6 +50,7 @@ import {
 	useRevokeDiscordLink,
 	useSetUserAdmin,
 	useSetUserPrimaryCharacter,
+	useSyncUser,
 	useUnlinkDiscordAccount,
 	useUpdateDiscordAccess,
 } from '@/hooks/useAdminUsers'
@@ -74,6 +75,7 @@ export default function UserDetailPage() {
 	const revokeDiscord = useRevokeDiscordLink()
 	const unlinkDiscord = useUnlinkDiscordAccount()
 	const clearSessions = useClearUserSessions()
+	const syncUser = useSyncUser()
 	const updateDiscordAccess = useUpdateDiscordAccess()
 
 	// Blacklist data
@@ -109,6 +111,7 @@ export default function UserDetailPage() {
 	const [revokeDiscordDialogOpen, setRevokeDiscordDialogOpen] = useState(false)
 	const [unlinkDiscordDialogOpen, setUnlinkDiscordDialogOpen] = useState(false)
 	const [clearSessionsDialogOpen, setClearSessionsDialogOpen] = useState(false)
+	const [syncUserDialogOpen, setSyncUserDialogOpen] = useState(false)
 	const [updateDiscordDialogOpen, setUpdateDiscordDialogOpen] = useState(false)
 	const [blacklistDialogOpen, setBlacklistDialogOpen] = useState(false)
 	const [removeBlacklistDialogOpen, setRemoveBlacklistDialogOpen] = useState(false)
@@ -314,6 +317,24 @@ export default function UserDetailPage() {
 		}
 	}
 
+	const handleSyncUserConfirm = async () => {
+		try {
+			await syncUser.mutateAsync(user.id)
+			setSyncUserDialogOpen(false)
+			setMessage({
+				type: 'success',
+				text: 'User sync workflow triggered. Data will be refreshed in the background.',
+			})
+			setTimeout(() => setMessage(null), 5000)
+		} catch (error) {
+			setMessage({
+				type: 'error',
+				text: error instanceof Error ? error.message : 'Failed to trigger user sync',
+			})
+			setTimeout(() => setMessage(null), 5000)
+		}
+	}
+
 	const handleUpdateDiscordAccess = async () => {
 		try {
 			const results = await updateDiscordAccess.mutateAsync(user.id)
@@ -494,6 +515,17 @@ export default function UserDetailPage() {
 										<LogOut className="h-4 w-4 mr-2" />
 										Clear Sessions
 									</DestructiveButton>
+									<Button
+										variant="outline"
+										onClick={() => setSyncUserDialogOpen(true)}
+										disabled={syncUser.isPending}
+										size="sm"
+									>
+										<RefreshCw
+											className={cn('h-4 w-4 mr-2', syncUser.isPending && 'animate-spin')}
+										/>
+										Sync User
+									</Button>
 								</div>
 							</div>
 
@@ -1027,6 +1059,35 @@ export default function UserDetailPage() {
 							<LogOut className="mr-2 h-4 w-4" />
 							Clear Sessions
 						</DestructiveButton>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
+			{/* Sync User Confirmation Dialog */}
+			<Dialog open={syncUserDialogOpen} onOpenChange={setSyncUserDialogOpen}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Sync User Data</DialogTitle>
+						<DialogDescription>
+							Are you sure you want to trigger a data sync for{' '}
+							{user.characters.find((c) => c.is_primary)?.characterName || 'this user'}? This will
+							refresh all character data, authenticated data, and role assignments. The sync runs in
+							the background and may take a few minutes to complete.
+						</DialogDescription>
+					</DialogHeader>
+					<DialogFooter>
+						<CancelButton onClick={() => setSyncUserDialogOpen(false)} disabled={syncUser.isPending}>
+							Cancel
+						</CancelButton>
+						<ConfirmButton
+							onConfirm={handleSyncUserConfirm}
+							loading={syncUser.isPending}
+							loadingText="Triggering..."
+							showIcon={false}
+						>
+							<RefreshCw className="mr-2 h-4 w-4" />
+							Sync User
+						</ConfirmButton>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>

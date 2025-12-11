@@ -15,6 +15,7 @@ import { logger } from '@repo/hono-helpers'
 import { createDb } from '../db'
 import { userCharacters, users } from '../db/schema'
 import { validatePagination } from '../lib/validation'
+import { triggerUserRefreshWorkflow } from '../lib/workflow-triggers'
 import { requireAdmin, requireAuth } from '../middleware/session'
 import * as discordService from '../services/discord.service'
 import { SessionService } from '../services/session.service'
@@ -588,6 +589,68 @@ app.post('/users/:userId/clear-sessions', requireAuth(), requireAdmin(), async (
 		return c.json(
 			{
 				error: error instanceof Error ? error.message : 'Failed to clear user sessions',
+			},
+			500
+		)
+	}
+})
+
+/**
+ * POST /admin/users/:userId/sync
+ * Trigger user refresh workflow (admin action)
+ *
+ * Bypasses the 5-minute throttle for immediate sync.
+ * Refreshes character data, authenticated data, and role assignments.
+ */
+app.post('/users/:userId/sync', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	const userId = c.req.param('userId')
+
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	// Validate UUID format
+	const uuidSchema = z.string().uuid()
+	const validation = uuidSchema.safeParse(userId)
+
+	if (!validation.success) {
+		return c.json({ error: 'Invalid user ID format' }, 400)
+	}
+
+	try {
+		const db = createDb(c.env.DATABASE_URL)
+
+		// Verify user exists
+		const targetUser = await db.query.users.findFirst({
+			where: eq(users.id, userId),
+			columns: { id: true },
+		})
+
+		if (!targetUser) {
+			return c.json({ error: 'User not found' }, 404)
+		}
+
+		// Trigger user refresh workflow, bypassing throttle for admin action
+		await triggerUserRefreshWorkflow({
+			db,
+			env: c.env,
+			userId,
+			source: `admin-sync-${user.id}`,
+			bypassThrottle: true,
+		})
+
+		logger.info('[Admin] User sync triggered by admin', {
+			adminUserId: user.id,
+			targetUserId: userId,
+		})
+
+		return c.json({ success: true, message: 'User sync workflow triggered' })
+	} catch (error) {
+		logger.error('Error triggering user sync:', error)
+		return c.json(
+			{
+				error: error instanceof Error ? error.message : 'Failed to trigger user sync',
 			},
 			500
 		)

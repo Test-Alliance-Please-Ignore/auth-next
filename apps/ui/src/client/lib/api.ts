@@ -1892,6 +1892,10 @@ export class ApiClient {
 		return this.post(`/admin/users/${userId}/clear-sessions`, {})
 	}
 
+	async syncUser(userId: string): Promise<{ success: boolean; message: string }> {
+		return this.post(`/admin/users/${userId}/sync`, {})
+	}
+
 	async deleteUserCharacter(userId: string, characterId: string): Promise<{ success: boolean }> {
 		return this.delete(`/admin/users/${userId}/characters/${characterId}`)
 	}
