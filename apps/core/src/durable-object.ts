@@ -117,13 +117,25 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		const corporations = (
 			await Promise.all(
 				characters.map(async (c) => {
-					const characterInfo = await this.getCharacterInfo(c.characterId)
-					if (!characterInfo) {
+					try {
+						const characterInfo = await this.getCharacterInfo(c.characterId)
+						if (!characterInfo) {
+							return null
+						}
+						return {
+							corporationId: characterInfo.corporation_id,
+							corporationName: characterInfo.name,
+						}
+					} catch (error) {
+						// One bad/expired character token must not break the entire user's
+						// auth/session flow. Skipping is safe because this only omits
+						// character-derived corporation context; it never grants extra access.
+						this.logger.warn('Skipping character during corporation resolution', {
+							userId,
+							characterId: c.characterId,
+							error: error instanceof Error ? error.message : String(error),
+						})
 						return null
-					}
-					return {
-						corporationId: characterInfo.corporation_id,
-						corporationName: characterInfo.name,
 					}
 				})
 			)
@@ -161,9 +173,19 @@ export class CoreDO extends DurableObject<Env> implements Core {
 
 		await Promise.all(
 			allCharacterIds.map(async (characterId) => {
-				const info = await this.getCharacterInfo(characterId)
-				if (info) {
-					characterInfoMap.set(characterId, info)
+				try {
+					const info = await this.getCharacterInfo(characterId)
+					if (info) {
+						characterInfoMap.set(characterId, info)
+					}
+				} catch (error) {
+					// Partial-failure behavior: preserve permissions/auth for healthy
+					// characters and skip only unresolved entries. This is fail-closed
+					// for authorization (missing context can reduce permissions, not expand).
+					this.logger.warn('Skipping character during batch corporation resolution', {
+						characterId,
+						error: error instanceof Error ? error.message : String(error),
+					})
 				}
 			})
 		)
@@ -206,11 +228,22 @@ export class CoreDO extends DurableObject<Env> implements Core {
 
 		const alliances = await Promise.all(
 			characters.map(async (c) => {
-				const allianceInfo = await this.getCharacterAllianceInfo(c.characterId)
-				if (!allianceInfo) {
+				try {
+					const allianceInfo = await this.getCharacterAllianceInfo(c.characterId)
+					if (!allianceInfo) {
+						return null
+					}
+					return allianceInfo
+				} catch (error) {
+					// Same safety rule as corporation resolution: avoid cascading failure
+					// from one invalid character token, while never elevating access.
+					this.logger.warn('Skipping character during alliance resolution', {
+						userId,
+						characterId: c.characterId,
+						error: error instanceof Error ? error.message : String(error),
+					})
 					return null
 				}
-				return allianceInfo
 			})
 		)
 
