@@ -156,11 +156,12 @@ export async function handleTokens(
 				updatedAt: new Date(),
 			})
 			.where(eq(users.id, coreUserId))
-			.returning()
+			.returning({ id: users.id })
 
 		logger.info('User update complete', {
+			coreUserId,
+			discordUserId,
 			updated: updateResult.length > 0,
-			discordUserId: updateResult[0]?.discordUserId,
 		})
 
 		// Clean up OAuth state
