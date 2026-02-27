@@ -1,19 +1,11 @@
-import { ChevronsUpDown } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
 
 import { cn } from '@/lib/utils'
 
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from './command'
 import { Input } from './input'
 import { Popover, PopoverAnchor, PopoverContent } from './popover'
-import {
-	popoverListItemActiveClass,
-	popoverListItemBaseClass,
-	PopoverListScrollButton,
-	popoverListViewportClass,
-} from './popover-list'
-
-import type { ReactNode } from 'react'
 
 export interface SearchSelectOption {
 	id: string
@@ -23,7 +15,6 @@ export interface SearchSelectOption {
 }
 
 type FilterMode = 'server' | 'local'
-type SearchSelectMode = 'search' | 'dropdown'
 
 interface SearchSelectProps<TOption extends SearchSelectOption> {
 	inputId?: string
@@ -32,7 +23,6 @@ interface SearchSelectProps<TOption extends SearchSelectOption> {
 	options: TOption[]
 	onSelect: (option: TOption) => void
 	filterMode?: FilterMode
-	mode?: SearchSelectMode
 	minQueryLength?: number
 	placeholder?: string
 	loading?: boolean
@@ -54,7 +44,6 @@ export function SearchSelect<TOption extends SearchSelectOption>({
 	options,
 	onSelect,
 	filterMode = 'server',
-	mode = 'search',
 	minQueryLength = 2,
 	placeholder = 'Search...',
 	loading = false,
@@ -69,12 +58,6 @@ export function SearchSelect<TOption extends SearchSelectOption>({
 	getSearchText,
 }: SearchSelectProps<TOption>) {
 	const [open, setOpen] = useState(false)
-	const [highlightedIndex, setHighlightedIndex] = useState<number>(-1)
-	const optionRefs = useRef<Array<HTMLElement | null>>([])
-	const listRef = useRef<HTMLDivElement | null>(null)
-	const anchorRef = useRef<HTMLDivElement | null>(null)
-	const [canScrollUp, setCanScrollUp] = useState(false)
-	const [canScrollDown, setCanScrollDown] = useState(false)
 
 	const trimmedQuery = value.trim()
 	const queryMeetsMinimum = trimmedQuery.length >= minQueryLength
@@ -97,139 +80,28 @@ export function SearchSelect<TOption extends SearchSelectOption>({
 		})
 	}, [filterMode, getSearchText, options, trimmedQuery])
 
-	const canShowOptions =
-		!(filterMode === 'server' && !queryMeetsMinimum) && filteredOptions.length > 0
-
-	const shouldOpenOnFocus =
-		mode === 'dropdown' ? true : trimmedQuery.length > 0 || filteredOptions.length > 0
-
-	useEffect(() => {
-		if (!canShowOptions) {
-			setHighlightedIndex(-1)
-			return
-		}
-
-		setHighlightedIndex((prev) => {
-			if (prev < 0) return 0
-			if (prev >= filteredOptions.length) return filteredOptions.length - 1
-			return prev
-		})
-	}, [canShowOptions, filteredOptions.length])
-
-	useEffect(() => {
-		if (!open || highlightedIndex < 0) return
-		const activeOption = optionRefs.current[highlightedIndex]
-		activeOption?.scrollIntoView({ block: 'nearest' })
-	}, [highlightedIndex, open])
-
-	const updateScrollButtons = () => {
-		const listEl = listRef.current
-		if (!listEl) {
-			setCanScrollUp(false)
-			setCanScrollDown(false)
-			return
-		}
-
-		const { scrollTop, scrollHeight, clientHeight } = listEl
-		setCanScrollUp(scrollTop > 0)
-		setCanScrollDown(scrollTop + clientHeight < scrollHeight - 1)
-	}
-
-	useEffect(() => {
-		updateScrollButtons()
-	}, [open, filteredOptions.length, loading, queryMeetsMinimum])
-
-	const scrollListBy = (delta: number) => {
-		const listEl = listRef.current
-		if (!listEl) return
-		listEl.scrollBy({ top: delta, behavior: 'smooth' })
-	}
-
-	const selectOption = (option: TOption) => {
-		if (filterMode === 'local') {
-			// Mirror standard select behavior by reflecting the chosen label in the control.
-			onValueChange(option.label)
-		}
-		onSelect(option)
-		setOpen(false)
-		setHighlightedIndex(-1)
-	}
-
 	return (
 		<div className={cn('relative', className)}>
 			<Popover open={open} onOpenChange={setOpen}>
 				<PopoverAnchor asChild>
-					<div ref={anchorRef} className="relative">
+					<div className="relative">
 						<Input
 							id={inputId}
 							type="text"
 							value={value}
 							onChange={(e) => {
 								onValueChange(e.target.value)
-								setHighlightedIndex(0)
 								setOpen(true)
 							}}
-							onFocus={() => {
-								// Avoid showing the "min chars" empty-state on first click into an empty field.
-								if (shouldOpenOnFocus) {
-									setOpen(true)
-								}
-							}}
-							onMouseDown={() => {
-								if (mode === 'dropdown' && !open) {
-									setOpen(true)
-								}
-							}}
-							onKeyDown={(e) => {
-								if (e.key === 'Escape') {
-									setOpen(false)
-									setHighlightedIndex(-1)
-									return
-								}
-
-								if (e.key === 'ArrowDown') {
-									e.preventDefault()
-									if (!open) {
-										setOpen(true)
-									}
-									if (!canShowOptions) return
-									setHighlightedIndex((prev) =>
-										prev < 0 ? 0 : Math.min(prev + 1, filteredOptions.length - 1)
-									)
-									return
-								}
-
-								if (e.key === 'ArrowUp') {
-									e.preventDefault()
-									if (!open) {
-										setOpen(true)
-									}
-									if (!canShowOptions) return
-									setHighlightedIndex((prev) => (prev <= 0 ? 0 : prev - 1))
-									return
-								}
-
-								if (e.key === 'Enter' && open && canShowOptions && highlightedIndex >= 0) {
-									e.preventDefault()
-									const option = filteredOptions[highlightedIndex]
-									if (option) {
-										selectOption(option)
-									}
-								}
-							}}
+							onFocus={() => setOpen(true)}
 							placeholder={placeholder}
 							autoComplete="off"
 							disabled={disabled}
-							className={cn('w-full', mode === 'dropdown' && 'pr-9', inputClassName)}
+							className={cn('w-full', inputClassName)}
 						/>
 						{loading && (
 							<div className="absolute right-3 top-1/2 -translate-y-1/2">
 								<div className="h-4 w-4 animate-spin rounded-full border-2 border-border border-t-primary" />
-							</div>
-						)}
-						{!loading && mode === 'dropdown' && (
-							<div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-								<ChevronsUpDown className="h-4 w-4" />
 							</div>
 						)}
 					</div>
@@ -238,32 +110,10 @@ export function SearchSelect<TOption extends SearchSelectOption>({
 					align="start"
 					sideOffset={6}
 					className={cn('w-[var(--radix-popover-anchor-width)] p-0', contentClassName)}
-					onOpenAutoFocus={(event) => {
-						// Keep typing focus on the anchor input instead of moving focus into popover content.
-						event.preventDefault()
-					}}
-					onCloseAutoFocus={(event) => {
-						// Prevent focus jump loops that can cause immediate close/reopen flicker.
-						event.preventDefault()
-					}}
-					onInteractOutside={(event) => {
-						// Clicking the anchor input should not count as "outside" and immediately close the popover.
-						const target = event.target as Node | null
-						if (target && anchorRef.current?.contains(target)) {
-							event.preventDefault()
-						}
-					}}
 				>
 					{/* Filtering is controlled explicitly so local/server modes stay predictable. */}
 					<Command shouldFilter={false}>
-						{canScrollUp && (
-							<PopoverListScrollButton direction="up" onClick={() => scrollListBy(-120)} />
-						)}
-						<CommandList
-							ref={listRef}
-							className={cn('max-h-60', popoverListViewportClass)}
-							onScroll={() => updateScrollButtons()}
-						>
+						<CommandList className="max-h-60">
 							{filterMode === 'server' && !queryMeetsMinimum ? (
 								<CommandEmpty>{minCharsText}</CommandEmpty>
 							) : loading ? (
@@ -272,20 +122,14 @@ export function SearchSelect<TOption extends SearchSelectOption>({
 								<CommandEmpty>{emptyText}</CommandEmpty>
 							) : (
 								<CommandGroup>
-									{filteredOptions.map((option, index) => (
+									{filteredOptions.map((option) => (
 										<CommandItem
 											key={option.id}
 											value={option.value}
-											ref={(node) => {
-												optionRefs.current[index] = node
+											onSelect={() => {
+												onSelect(option)
+												setOpen(false)
 											}}
-											className={cn(
-												`cursor-pointer ${popoverListItemBaseClass}`,
-												highlightedIndex === index && popoverListItemActiveClass
-											)}
-											onMouseEnter={() => setHighlightedIndex(index)}
-											onMouseMove={() => setHighlightedIndex(index)}
-											onSelect={() => selectOption(option)}
 										>
 											{renderOption ? (
 												renderOption(option)
@@ -304,9 +148,6 @@ export function SearchSelect<TOption extends SearchSelectOption>({
 								</CommandGroup>
 							)}
 						</CommandList>
-						{canScrollDown && (
-							<PopoverListScrollButton direction="down" onClick={() => scrollListBy(120)} />
-						)}
 					</Command>
 				</PopoverContent>
 			</Popover>

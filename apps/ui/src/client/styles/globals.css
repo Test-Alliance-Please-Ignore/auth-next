@@ -291,27 +291,6 @@ footer:not([class*='bg-']) {
 		inset 0 1px 0 hsl(0 0% 100% / 0.04);
 }
 
-/* Shared item styles for popover/dropdown option lists (Select + SearchSelect) */
-.popover-list-item {
-	border-left: 2px solid transparent;
-	transition:
-		background-color 0.15s ease,
-		border-color 0.15s ease,
-		color 0.15s ease;
-}
-
-.popover-list-item:hover {
-	border-left-color: rgb(56 189 248 / 0.75);
-	background-color: rgb(14 116 144 / 0.22);
-	color: rgb(255 255 255);
-}
-
-.popover-list-item-active {
-	border-left-color: rgb(125 211 252 / 0.9);
-	background-color: rgb(14 116 144 / 0.34);
-	color: rgb(255 255 255);
-}
-
 /*
  * Native <select> controls need explicit option styling for consistent dark
  * contrast across browsers. This keeps admin/native selectors aligned with
