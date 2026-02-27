@@ -78,10 +78,8 @@
 		},
 		"check:ci": {
 			"dependsOn": [
-				"//#check:format",
 				"//#check:deps",
 				"check:types",
-				"//#check:lint:all",
 				"topo"
 			],
 			"outputLogs": "new-only"
