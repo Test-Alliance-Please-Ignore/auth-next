@@ -53,6 +53,48 @@ jobs:
             process.exit(1)
           }
           EOF
+      - name: Validate UI Build Env Injection
+        run: |
+          pnpm -F ui build
+          node <<'EOF'
+          const fs = require('node:fs')
+          const path = require('node:path')
+
+          const uiConfig = fs.readFileSync('apps/ui/wrangler.jsonc', 'utf8')
+          const uiMatch = uiConfig.match(/"VITE_DISCORD_CLIENT_ID"\s*:\s*"([^"]+)"/)
+          if (!uiMatch) {
+            console.error('Missing VITE_DISCORD_CLIENT_ID in apps/ui/wrangler.jsonc')
+            process.exit(1)
+          }
+          const expected = uiMatch[1]
+
+          const distDir = path.join('apps', 'ui', 'dist')
+          if (!fs.existsSync(distDir)) {
+            console.error('UI build output missing: apps/ui/dist')
+            process.exit(1)
+          }
+
+          const files = fs.readdirSync(distDir, { recursive: true })
+          const jsFiles = files
+            .filter((f) => typeof f === 'string' && f.endsWith('.js'))
+            .map((f) => path.join(distDir, f))
+
+          let found = false
+          for (const file of jsFiles) {
+            const content = fs.readFileSync(file, 'utf8')
+            if (content.includes(expected)) {
+              found = true
+              break
+            }
+          }
+
+          if (!found) {
+            console.error(
+              `UI build is missing injected VITE_DISCORD_CLIENT_ID (${expected}) in dist JS assets`
+            )
+            process.exit(1)
+          }
+          EOF
       - name: Check & Test
         run: bun turbo check:ci
       - name: Sync Discord Secrets
