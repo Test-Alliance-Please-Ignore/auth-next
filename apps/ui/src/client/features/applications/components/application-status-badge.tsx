@@ -5,7 +5,7 @@
  * Follows the Caldari-themed design system with space-themed colors.
  */
 
-import { CheckCircle, Clock, Eye, Minus, XCircle } from 'lucide-react'
+import { AlertCircle, CheckCircle, Clock, Eye, Minus, XCircle } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
@@ -17,7 +17,7 @@ import type { ApplicationStatus } from '../api'
 // ============================================================================
 
 export interface ApplicationStatusBadgeProps {
-	status: ApplicationStatus
+	status: ApplicationStatus | string
 	size?: 'sm' | 'md' | 'lg'
 	showIcon?: boolean
 	className?: string
@@ -62,6 +62,12 @@ const statusConfig: Record<
 	},
 }
 
+const unknownStatusConfig = {
+	label: 'Unknown Status',
+	icon: AlertCircle,
+	colorClasses: 'bg-muted/20 text-muted-foreground border-muted/50',
+}
+
 const sizeClasses = {
 	sm: 'text-xs px-2 py-0.5',
 	md: 'text-sm px-2.5 py-0.5',
@@ -93,7 +99,7 @@ export function ApplicationStatusBadge({
 	showIcon = true,
 	className,
 }: ApplicationStatusBadgeProps) {
-	const config = statusConfig[status]
+	const config = statusConfig[status as ApplicationStatus] ?? unknownStatusConfig
 	const Icon = config.icon
 
 	return (

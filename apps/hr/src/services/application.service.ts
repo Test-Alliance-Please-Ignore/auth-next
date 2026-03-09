@@ -1,4 +1,5 @@
 import { and, desc, eq, inArray, or, sql } from '@repo/db-utils'
+import { isApplicationStatus } from '@repo/hr'
 
 import { applicationActivityLog, applicationRecommendations, applications } from '../db/schema'
 
@@ -17,6 +18,19 @@ import type { ServiceContext } from './context'
  */
 export class ApplicationService {
 	constructor(private ctx: ServiceContext) {}
+
+	/**
+	 * Get raw application record by ID
+	 */
+	async getApplicationById(
+		applicationId: string
+	): Promise<typeof applications.$inferSelect | null> {
+		const application = await this.ctx.db.query.applications.findFirst({
+			where: eq(applications.id, applicationId),
+		})
+
+		return application ?? null
+	}
 
 	/**
 	 * Submit a new application to a corporation
@@ -175,15 +189,17 @@ export class ApplicationService {
 	 */
 	async updateApplicationStatus(
 		applicationId: string,
-		status: string,
+		status: ApplicationStatus,
 		userId: string,
 		characterId: string,
 		reviewNotes?: string
 	): Promise<void> {
+		if (!isApplicationStatus(status)) {
+			throw new Error(`Invalid application status: ${status}`)
+		}
+
 		// Get current application
-		const application = await this.ctx.db.query.applications.findFirst({
-			where: eq(applications.id, applicationId),
-		})
+		const application = await this.getApplicationById(applicationId)
 
 		if (!application) {
 			throw new Error('Application not found')

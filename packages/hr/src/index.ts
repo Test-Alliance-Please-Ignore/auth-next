@@ -10,7 +10,25 @@ import type { DurableObject } from 'cloudflare:workers'
 /**
  * Application status values
  */
-export type ApplicationStatus = 'pending' | 'under_review' | 'accepted' | 'rejected' | 'withdrawn'
+export const APPLICATION_STATUSES = [
+	'pending',
+	'under_review',
+	'accepted',
+	'rejected',
+	'withdrawn',
+] as const
+
+/**
+ * Application status type
+ */
+export type ApplicationStatus = (typeof APPLICATION_STATUSES)[number]
+
+/**
+ * Runtime guard for application statuses
+ */
+export function isApplicationStatus(value: string): value is ApplicationStatus {
+	return APPLICATION_STATUSES.includes(value as ApplicationStatus)
+}
 
 /**
  * Recommendation sentiment values
@@ -316,7 +334,7 @@ export interface Hr extends DurableObject {
 	): Promise<ApplicationDetail>
 
 	/**
-	 * Update application status (flexible - no state machine validation)
+	 * Update application status
 	 * @param applicationId - Application ID to update
 	 * @param status - New status
 	 * @param userId - ID of the user making the update
@@ -467,10 +485,7 @@ export interface Hr extends DurableObject {
 	 * @param status - Optional: filter by status (excludes deleted by default)
 	 * @returns Array of templates
 	 */
-	listTemplates(
-		corporationId: string,
-		status?: MessageTemplateStatus
-	): Promise<MessageTemplate[]>
+	listTemplates(corporationId: string, status?: MessageTemplateStatus): Promise<MessageTemplate[]>
 
 	/**
 	 * Get a single template by ID

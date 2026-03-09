@@ -12,6 +12,7 @@
 		"head_sampling_rate": 1
 	},
 	"vars": {
+		"DISCORD_CLIENT_ID": "1428533721585418350",
 		"DISCORD_AUTHORIZE_URL": "https://discord.com/oauth2/authorize",
 		"DISCORD_TOKEN_URL": "https://discord.com/api/oauth2/token",
 		"DISCORD_TOKEN_REVOKE_URL": "https://discord.com/api/oauth2/token/revoke",

@@ -24,5 +24,13 @@ jobs:
           cache: 'pnpm'
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile --child-concurrency=10
+      - name: Validate Discord Client ID Wiring
+        run: node scripts/ci/validate-discord-client-id-wiring.mjs
+      - name: Export UI Discord Client ID
+        run: echo "VITE_DISCORD_CLIENT_ID=$(node scripts/ci/get-ui-discord-client-id.mjs)" >> "$GITHUB_ENV"
+      - name: Validate UI Build Env Injection
+        run: |
+          pnpm -F ui build
+          node scripts/ci/validate-ui-build-env-injection.mjs
       - name: Check & Test
         run: bun runx ci check

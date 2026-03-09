@@ -1,8 +1,10 @@
 import { Hono } from 'hono'
+import { z } from 'zod'
 
 import { eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
+import { APPLICATION_STATUSES } from '@repo/hr'
 
 import { userCharacters } from '../db/schema'
 import { requireAdmin, requireAuth } from '../middleware/session'
@@ -14,6 +16,11 @@ import type { ApplicationFilters, Hr, NoteFilters, RoleFilters } from '@repo/hr'
 import type { App } from '../context'
 
 const app = new Hono<App>()
+
+const updateApplicationSchema = z.object({
+	status: z.enum(APPLICATION_STATUSES),
+	reviewNotes: z.string().trim().max(5000).optional(),
+})
 
 /**
  * Helper to get HR Durable Object stub
@@ -191,7 +198,14 @@ app.get('/applications/:id', requireAuth(), async (c) => {
 app.patch('/applications/:id', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const applicationId = c.req.param('id')
-	const { status, reviewNotes } = await c.req.json()
+	const parseResult = updateApplicationSchema.safeParse(await c.req.json())
+
+	if (!parseResult.success) {
+		const firstIssue = parseResult.error.issues[0]
+		return c.json({ error: firstIssue?.message || 'Invalid request body' }, 400)
+	}
+
+	const { status, reviewNotes } = parseResult.data
 
 	// Get primary character for logging
 	const primaryCharacter = user.characters.find((c) => c.is_primary)
@@ -203,10 +217,13 @@ app.patch('/applications/:id', requireAuth(), async (c) => {
 
 		return c.json({ success: true })
 	} catch (error) {
-		return c.json(
-			{ error: error instanceof Error ? error.message : 'Failed to update application' },
-			400
-		)
+		const message = error instanceof Error ? error.message : 'Failed to update application'
+		const isForbidden =
+			message.includes('permission') ||
+			message.includes('not authorized') ||
+			message.includes('forbidden')
+
+		return c.json({ error: message }, isForbidden ? 403 : 400)
 	}
 })
 
@@ -376,10 +393,7 @@ app.post('/applications/:applicationId/messages', requireAuth(), async (c) => {
 
 		return c.json(result, 201)
 	} catch (error) {
-		return c.json(
-			{ error: error instanceof Error ? error.message : 'Failed to send message' },
-			400
-		)
+		return c.json({ error: error instanceof Error ? error.message : 'Failed to send message' }, 400)
 	}
 })
 
@@ -529,10 +543,7 @@ app.get('/templates/:templateId', requireAuth(), async (c) => {
 
 		return c.json(template)
 	} catch (error) {
-		return c.json(
-			{ error: error instanceof Error ? error.message : 'Failed to get template' },
-			500
-		)
+		return c.json({ error: error instanceof Error ? error.message : 'Failed to get template' }, 500)
 	}
 })
 
@@ -597,11 +608,7 @@ app.delete('/templates/:templateId', requireAuth(), async (c) => {
 		}
 
 		// Check HR permission (admin required to delete)
-		const hasPermission = await hr.checkPermission(
-			user.id,
-			template.ownerCorporationId,
-			'hr_admin'
-		)
+		const hasPermission = await hr.checkPermission(user.id, template.ownerCorporationId, 'hr_admin')
 
 		if (!hasPermission && !user.is_admin) {
 			return c.json({ error: 'HR admin role required' }, 403)

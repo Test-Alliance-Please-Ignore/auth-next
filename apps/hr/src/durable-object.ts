@@ -9,8 +9,6 @@ import { MessageService } from './services/message.service'
 import { RecommendationService } from './services/recommendation.service'
 import { TemplateService } from './services/template.service'
 
-import type { MessageTemplate } from './services/template.service'
-
 import type {
 	Application,
 	ApplicationDetail,
@@ -33,6 +31,7 @@ import type {
 	RecommendationSentiment,
 } from '@repo/hr'
 import type { Env } from './context'
+import type { MessageTemplate } from './services/template.service'
 
 /**
  * Hr Durable Object
@@ -172,6 +171,26 @@ export class HrDO extends DurableObject<Env> implements Hr {
 		characterId: string,
 		reviewNotes?: string
 	): Promise<void> {
+		const application = await this.applicationService.getApplicationById(applicationId)
+		if (!application) {
+			throw new Error('Application not found')
+		}
+
+		const roles = await this.hrRoleService.getUserRoles(userId, application.corporationId)
+		const activeRoles = roles.filter((role) => role.isActive)
+
+		const hasReviewerAccess = activeRoles.some(
+			(role) => role.role === 'hr_reviewer' || role.role === 'hr_admin'
+		)
+		const hasAdminAccess = activeRoles.some((role) => role.role === 'hr_admin')
+
+		const requiresAdminAccess = status === 'accepted' || status === 'rejected'
+		const hasPermission = requiresAdminAccess ? hasAdminAccess : hasReviewerAccess
+
+		if (!hasPermission) {
+			throw new Error('You do not have permission to update this application')
+		}
+
 		await this.applicationService.updateApplicationStatus(
 			applicationId,
 			status,
