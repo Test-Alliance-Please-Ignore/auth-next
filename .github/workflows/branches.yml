@@ -25,74 +25,12 @@ jobs:
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile --child-concurrency=10
       - name: Validate Discord Client ID Wiring
-        run: |
-          node <<'EOF'
-          const fs = require('node:fs')
-
-          const discordConfig = fs.readFileSync('apps/discord/wrangler.jsonc', 'utf8')
-          const uiConfig = fs.readFileSync('apps/ui/wrangler.jsonc', 'utf8')
-
-          const discordMatch = discordConfig.match(/"DISCORD_CLIENT_ID"\s*:\s*"([^"]+)"/)
-          const uiMatch = uiConfig.match(/"VITE_DISCORD_CLIENT_ID"\s*:\s*"([^"]+)"/)
-
-          if (!discordMatch) {
-            console.error('Missing DISCORD_CLIENT_ID in apps/discord/wrangler.jsonc')
-            process.exit(1)
-          }
-
-          if (!uiMatch) {
-            console.error('Missing VITE_DISCORD_CLIENT_ID in apps/ui/wrangler.jsonc')
-            process.exit(1)
-          }
-
-          if (discordMatch[1] !== uiMatch[1]) {
-            console.error(
-              `Discord client ID mismatch: discord=${discordMatch[1]} ui=${uiMatch[1]}`
-            )
-            process.exit(1)
-          }
-          EOF
+        run: node scripts/ci/validate-discord-client-id-wiring.mjs
+      - name: Export UI Discord Client ID
+        run: echo "VITE_DISCORD_CLIENT_ID=$(node scripts/ci/get-ui-discord-client-id.mjs)" >> "$GITHUB_ENV"
       - name: Validate UI Build Env Injection
         run: |
           pnpm -F ui build
-          node <<'EOF'
-          const fs = require('node:fs')
-          const path = require('node:path')
-
-          const uiConfig = fs.readFileSync('apps/ui/wrangler.jsonc', 'utf8')
-          const uiMatch = uiConfig.match(/"VITE_DISCORD_CLIENT_ID"\s*:\s*"([^"]+)"/)
-          if (!uiMatch) {
-            console.error('Missing VITE_DISCORD_CLIENT_ID in apps/ui/wrangler.jsonc')
-            process.exit(1)
-          }
-          const expected = uiMatch[1]
-
-          const distDir = path.join('apps', 'ui', 'dist')
-          if (!fs.existsSync(distDir)) {
-            console.error('UI build output missing: apps/ui/dist')
-            process.exit(1)
-          }
-
-          const files = fs.readdirSync(distDir, { recursive: true })
-          const jsFiles = files
-            .filter((f) => typeof f === 'string' && f.endsWith('.js'))
-            .map((f) => path.join(distDir, f))
-
-          let found = false
-          for (const file of jsFiles) {
-            const content = fs.readFileSync(file, 'utf8')
-            if (content.includes(expected)) {
-              found = true
-              break
-            }
-          }
-
-          if (!found) {
-            console.error(
-              `UI build is missing injected VITE_DISCORD_CLIENT_ID (${expected}) in dist JS assets`
-            )
-            process.exit(1)
-          }
-          EOF
+          node scripts/ci/validate-ui-build-env-injection.mjs
       - name: Check & Test
         run: bun runx ci check
