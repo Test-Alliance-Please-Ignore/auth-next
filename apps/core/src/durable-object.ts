@@ -3,14 +3,12 @@ import { DurableObject } from 'cloudflare:workers'
 import { CORE_ROLES, SERVICE_CORE } from '@repo/core'
 import { and, asc, eq, inArray, isNull, lt, or } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
-import { getEsiInstanceForCharacter, getEsiInstanceForCorporation } from '@repo/esi'
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from './db'
 import { userCharacters, users } from './db/schema'
 
 import type { Core } from '@repo/core'
-import type { CharacterPublicInfo } from '@repo/esi'
 import type { CreateRoleRequest, Groups } from '@repo/groups'
 import type { Env } from './context'
 
@@ -60,32 +58,6 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		}
 	}
 
-	private async getCharacterInfo(characterId: string): Promise<CharacterPublicInfo | null> {
-		const instance = getEsiInstanceForCharacter(this.env.ESI, characterId)
-		const characterInfo = await instance.fetchCharacterPublicInfo(characterId)
-		return characterInfo
-	}
-
-	private async getCharacterAllianceInfo(
-		characterId: string
-	): Promise<{ allianceId: string; allianceName: string } | null> {
-		const characterInfo = await this.getCharacterInfo(characterId)
-		if (!characterInfo) {
-			return null
-		}
-		const instance = getEsiInstanceForCorporation(this.env.ESI, characterInfo.corporation_id)
-		const corporationInfo = await instance.fetchCorporationPublicInfo(characterInfo.corporation_id)
-
-		if (!corporationInfo.alliance_id) {
-			return null
-		}
-
-		return {
-			allianceId: String(corporationInfo.alliance_id),
-			allianceName: corporationInfo.name,
-		}
-	}
-
 	async getCharacterOwner(
 		characterId: string
 	): Promise<{ userId: string; isPrimary: boolean } | null> {
@@ -129,46 +101,16 @@ export class CoreDO extends DurableObject<Env> implements Core {
 	async getUserCorporations(
 		userId: string
 	): Promise<Array<{ corporationId: string; corporationName: string }>> {
-		const user = await this.getDb().query.users.findFirst({
-			where: eq(users.id, userId),
-		})
-
-		if (!user) {
-			return []
-		}
-
 		const characters = await this.getDb().query.userCharacters.findMany({
-			where: eq(userCharacters.userId, userId),
+			where: and(eq(userCharacters.userId, userId), eq(userCharacters.isDeleted, false)),
 		})
 
-		const corporations = (
-			await Promise.all(
-				characters.map(async (c) => {
-					try {
-						const characterInfo = await this.getCharacterInfo(c.characterId)
-						if (!characterInfo) {
-							return null
-						}
-						return {
-							corporationId: characterInfo.corporation_id,
-							corporationName: characterInfo.name,
-						}
-					} catch (error) {
-						// One bad/expired character token must not break the entire user's
-						// auth/session flow. Skipping is safe because this only omits
-						// character-derived corporation context; it never grants extra access.
-						this.logger.warn('Skipping character during corporation resolution', {
-							userId,
-							characterId: c.characterId,
-							error: error instanceof Error ? error.message : String(error),
-						})
-						return null
-					}
-				})
-			)
-		).filter((c): c is NonNullable<typeof c> => c !== null)
-
-		return corporations
+		return characters
+			.filter((char) => char.corporationId !== null)
+			.map((char) => ({
+				corporationId: char.corporationId!,
+				corporationName: char.corporationName ?? char.corporationId!,
+			}))
 	}
 
 	async getUserCorporationsBatch(
@@ -182,7 +124,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 
 		// Batch fetch all user characters
 		const allCharacters = await this.getDb().query.userCharacters.findMany({
-			where: inArray(userCharacters.userId, userIds),
+			where: and(inArray(userCharacters.userId, userIds), eq(userCharacters.isDeleted, false)),
 		})
 
 		// Group characters by userId
@@ -194,40 +136,16 @@ export class CoreDO extends DurableObject<Env> implements Core {
 			charactersByUser.get(char.userId)!.push(char)
 		}
 
-		// Fetch character info for all characters in parallel
-		const allCharacterIds = allCharacters.map((c) => c.characterId)
-		const characterInfoMap = new Map<string, CharacterPublicInfo>()
-
-		await Promise.all(
-			allCharacterIds.map(async (characterId) => {
-				try {
-					const info = await this.getCharacterInfo(characterId)
-					if (info) {
-						characterInfoMap.set(characterId, info)
-					}
-				} catch (error) {
-					// Partial-failure behavior: preserve permissions/auth for healthy
-					// characters and skip only unresolved entries. This is fail-closed
-					// for authorization (missing context can reduce permissions, not expand).
-					this.logger.warn('Skipping character during batch corporation resolution', {
-						characterId,
-						error: error instanceof Error ? error.message : String(error),
-					})
-				}
-			})
-		)
-
 		// Build result map
 		for (const userId of userIds) {
 			const chars = charactersByUser.get(userId) || []
 			const corporations: Array<{ corporationId: string; corporationName: string }> = []
 
 			for (const char of chars) {
-				const info = characterInfoMap.get(char.characterId)
-				if (info) {
+				if (char.corporationId) {
 					corporations.push({
-						corporationId: info.corporation_id,
-						corporationName: info.name,
+						corporationId: char.corporationId,
+						corporationName: char.corporationName ?? char.corporationId,
 					})
 				}
 			}
@@ -241,40 +159,16 @@ export class CoreDO extends DurableObject<Env> implements Core {
 	async getUserAlliances(
 		userId: string
 	): Promise<Array<{ allianceId: string; allianceName: string }>> {
-		const user = await this.getDb().query.users.findFirst({
-			where: eq(users.id, userId),
-		})
-
-		if (!user) {
-			return []
-		}
-
 		const characters = await this.getDb().query.userCharacters.findMany({
-			where: eq(userCharacters.userId, userId),
+			where: and(eq(userCharacters.userId, userId), eq(userCharacters.isDeleted, false)),
 		})
 
-		const alliances = await Promise.all(
-			characters.map(async (c) => {
-				try {
-					const allianceInfo = await this.getCharacterAllianceInfo(c.characterId)
-					if (!allianceInfo) {
-						return null
-					}
-					return allianceInfo
-				} catch (error) {
-					// Same safety rule as corporation resolution: avoid cascading failure
-					// from one invalid character token, while never elevating access.
-					this.logger.warn('Skipping character during alliance resolution', {
-						userId,
-						characterId: c.characterId,
-						error: error instanceof Error ? error.message : String(error),
-					})
-					return null
-				}
-			})
-		)
-
-		return alliances.filter((a): a is NonNullable<typeof a> => a !== null)
+		return characters
+			.filter((char) => char.allianceId !== null)
+			.map((char) => ({
+				allianceId: char.allianceId!,
+				allianceName: char.allianceName ?? char.allianceId!,
+			}))
 	}
 
 	async getUserDiscordUserId(userId: string): Promise<string | null> {
