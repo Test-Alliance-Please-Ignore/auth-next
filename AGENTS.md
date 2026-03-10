@@ -941,6 +941,15 @@ const queries = useQueries({
 4. Refactor the code to follow React's rules
 5. Only proceed when the lint error is genuinely resolved, not silenced
 
+### Form Controls And Dropdown UX
+
+- **Do not use native `<select>` in UI routes/components** unless explicitly requested for a very specific platform behavior.
+- **Use shared UI primitives**:
+  - `Select` from `apps/ui/src/client/components/ui/select.tsx` for standard dropdowns
+  - `SearchSelect` from `apps/ui/src/client/components/ui/search-select.tsx` for searchable/async lookup dropdowns
+- **Keep popover list behavior/styling consistent** by relying on shared popover list styles/components in `apps/ui/src/client/components/ui/popover-list.tsx` (scroll buttons, item active/hover states, viewport).
+- When migrating existing forms, prefer converting native selects to these shared components rather than introducing new one-off dropdown implementations.
+
 ---
 
 ## Dependency Management

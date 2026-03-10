@@ -120,7 +120,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		public env: Env
 	) {
 		super(state, env)
-		this.db = createDb(env.DATABASE_URL)
+		this.db = createDb(env.DATABASE_URL, env.ENVIRONMENT)
 
 		// Initialize SQLite cache table for ESI responses
 		void this.initializeEsiCache()

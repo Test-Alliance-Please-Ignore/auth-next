@@ -61,14 +61,20 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 				return
 			}
 
+			// Admin routes are authorized via user.is_admin and don't require group role attachments.
+			// Skipping role resolution here avoids unnecessary ESI/group lookups during admin requests.
+			const isAdminRoute = c.req.path.startsWith('/api/admin/')
+
 			// Execute independent operations in parallel for better performance
 			const [userProfile, isBlacklisted, roleAttachments] = await Promise.all([
 				userService.getUserProfile(userId),
 				getStub<Hr>(c.env.HR, 'default').isUserBlacklisted(userId),
-				getCachedUserRoles(c.env, userId).catch((error) => {
-					logger.error('Error fetching user roles:', error)
-					return []
-				}),
+				isAdminRoute
+					? Promise.resolve([])
+					: getCachedUserRoles(c.env, userId).catch((error) => {
+							logger.error('Error fetching user roles:', error)
+							return []
+						}),
 			])
 
 			// SECURITY: Check blacklist first (fail fast)

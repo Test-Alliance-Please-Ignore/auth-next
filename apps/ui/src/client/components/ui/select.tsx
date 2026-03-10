@@ -4,6 +4,13 @@ import * as React from 'react'
 
 import { cn } from '@/lib/utils'
 
+import {
+	popoverListItemActiveClass,
+	popoverListItemBaseClass,
+	popoverListScrollButtonClass,
+	popoverListViewportClass,
+} from './popover-list'
+
 const Select = SelectPrimitive.Root
 
 const SelectGroup = SelectPrimitive.Group
@@ -36,7 +43,7 @@ const SelectScrollUpButton = React.forwardRef<
 >(({ className, ...props }, ref) => (
 	<SelectPrimitive.ScrollUpButton
 		ref={ref}
-		className={cn('flex cursor-default items-center justify-center py-1', className)}
+		className={cn(popoverListScrollButtonClass, className)}
 		{...props}
 	>
 		<ChevronUp className="h-4 w-4" />
@@ -50,7 +57,7 @@ const SelectScrollDownButton = React.forwardRef<
 >(({ className, ...props }, ref) => (
 	<SelectPrimitive.ScrollDownButton
 		ref={ref}
-		className={cn('flex cursor-default items-center justify-center py-1', className)}
+		className={cn(popoverListScrollButtonClass, className)}
 		{...props}
 	>
 		<ChevronDown className="h-4 w-4" />
@@ -77,7 +84,7 @@ const SelectContent = React.forwardRef<
 			<SelectScrollUpButton />
 			<SelectPrimitive.Viewport
 				className={cn(
-					'p-1',
+					popoverListViewportClass,
 					position === 'popper' &&
 						'h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)]'
 				)}
@@ -109,7 +116,7 @@ const SelectItem = React.forwardRef<
 	<SelectPrimitive.Item
 		ref={ref}
 		className={cn(
-			'relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+			`relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none ${popoverListItemBaseClass} data-[highlighted]:popover-list-item-active data-[state=checked]:popover-list-item-active data-[disabled]:pointer-events-none data-[disabled]:opacity-50`,
 			className
 		)}
 		{...props}

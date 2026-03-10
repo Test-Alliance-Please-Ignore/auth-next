@@ -101,13 +101,16 @@ export default function GroupsPage() {
 							<div className="space-y-2">
 								<Label>Category</Label>
 								<Select
-									value={filters.categoryId}
-									onValueChange={(value) => updateFilter('categoryId', value || undefined)}
+									value={filters.categoryId ?? 'all'}
+									onValueChange={(value) =>
+										updateFilter('categoryId', value === 'all' ? undefined : value)
+									}
 								>
 									<SelectTrigger>
 										<SelectValue placeholder="All categories" />
 									</SelectTrigger>
 									<SelectContent>
+										<SelectItem value="all">All categories</SelectItem>
 										{categories?.map((category) => (
 											<SelectItem key={category.id} value={category.id}>
 												{category.name}
@@ -121,13 +124,16 @@ export default function GroupsPage() {
 							<div className="space-y-2">
 								<Label>Join Mode</Label>
 								<Select
-									value={filters.joinMode}
-									onValueChange={(value) => updateFilter('joinMode', value || undefined)}
+									value={filters.joinMode ?? 'all'}
+									onValueChange={(value) =>
+										updateFilter('joinMode', value === 'all' ? undefined : value)
+									}
 								>
 									<SelectTrigger>
 										<SelectValue placeholder="All join modes" />
 									</SelectTrigger>
 									<SelectContent>
+										<SelectItem value="all">All join modes</SelectItem>
 										<SelectItem value="open">Open</SelectItem>
 										<SelectItem value="approval">Approval</SelectItem>
 										<SelectItem value="invitation_only">Invitation Only</SelectItem>
