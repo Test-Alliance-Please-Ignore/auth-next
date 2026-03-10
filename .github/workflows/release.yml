@@ -35,24 +35,6 @@ jobs:
           node scripts/ci/validate-ui-build-env-injection.mjs
       - name: Check & Test
         run: bun turbo check:ci
-      - name: Sync Discord Secrets
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          DISCORD_CLIENT_SECRET: ${{ secrets.DISCORD_CLIENT_SECRET }}
-          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
-        run: |
-          if [ -z "${DISCORD_CLIENT_SECRET:-}" ]; then
-            echo "::error::Missing GitHub secret DISCORD_CLIENT_SECRET"
-            exit 1
-          fi
-          if [ -z "${DISCORD_BOT_TOKEN:-}" ]; then
-            echo "::error::Missing GitHub secret DISCORD_BOT_TOKEN"
-            exit 1
-          fi
-
-          printf '%s' "$DISCORD_CLIENT_SECRET" | pnpm -F discord exec wrangler secret put DISCORD_CLIENT_SECRET --config wrangler.jsonc
-          printf '%s' "$DISCORD_BOT_TOKEN" | pnpm -F discord exec wrangler secret put DISCORD_BOT_TOKEN --config wrangler.jsonc
       - name: Deploy
         run: bun turbo deploy
         env:

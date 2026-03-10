@@ -23,6 +23,7 @@ node_modules
 .secret
 *.env
 env.secrets.json
+.neon
 
 # Testing
 coverage
