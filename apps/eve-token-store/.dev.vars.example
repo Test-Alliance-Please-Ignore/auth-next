@@ -1,9 +1,6 @@
 # Eve token store local development bindings for wrangler dev
 # Copy to .dev.vars and fill values as needed.
 
-# Runtime environment for local behavior toggles
-ENVIRONMENT=development
-
 DATABASE_URL=postgresql://<user>:<password>@<host>/<db>?sslmode=require
 
 # EVE SSO credentials from developers.eveonline.com

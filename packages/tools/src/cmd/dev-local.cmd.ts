@@ -12,17 +12,6 @@ const sanitizeNodeOptions = (value: string | undefined): string | undefined => {
 	return sanitized.length > 0 ? sanitized : undefined
 }
 
-const clearProxyEnv = () => {
-	// Prevent local workerd/miniflare from attempting HTTPS proxy CONNECT tunneling,
-	// which is unsupported and can crash startup with "CONNECT is not implemented".
-	delete $.env.HTTP_PROXY
-	delete $.env.HTTPS_PROXY
-	delete $.env.ALL_PROXY
-	delete $.env.http_proxy
-	delete $.env.https_proxy
-	delete $.env.all_proxy
-}
-
 const parseCsvList = (value: string | undefined): string[] => {
 	if (!value) return []
 	return value
@@ -55,8 +44,6 @@ export const devLocalCmd = new Command('dev-local')
 		])
 
 		$.stdio = 'inherit'
-		clearProxyEnv()
-
 		if (!isRepoRoot && (hasWranglerJsonc || hasDevScript)) {
 			await $`bun run dev ${args}`
 		} else {
