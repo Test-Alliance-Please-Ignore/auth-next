@@ -48,6 +48,32 @@ build *flags:
 #       LOCAL DEV COMMANDS        #
 # =============================== #
 
+# Bootstrap local dev env: create .env (if missing), then migrate core DB.
+[group('2. local dev')]
+dev-local-init:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  if [ ! -f .env ]; then
+    if [ -f .env.example.local ]; then
+      cp .env.example.local .env
+      echo "Created .env from .env.example.local"
+    else
+      echo ".env.example.local not found; create .env manually" >&2
+      exit 1
+    fi
+  fi
+  DB_URL="$(awk -F= '/^DATABASE_URL_MIGRATIONS=/{print substr($0, index($0, "=") + 1)}' .env | tail -n 1)"
+  if [ -z "$DB_URL" ]; then
+    echo "DATABASE_URL_MIGRATIONS is missing in .env (set your Neon migrations URL)" >&2
+    exit 1
+  fi
+  if [[ "$DB_URL" == *"localhost"* || "$DB_URL" == *"127.0.0.1"* ]]; then
+    echo "DATABASE_URL_MIGRATIONS points to localhost; this flow expects a Neon URL." >&2
+    exit 1
+  fi
+  bun run --cwd apps/core db:migrate
+  echo "Local init complete. Run: just dev-local"
+
 # =============================== #
 #       DATABASE COMMANDS         #
 # =============================== #
@@ -176,6 +202,12 @@ db-migrate app:
 [no-cd]
 dev *flags:
   bun runx dev {{flags}}
+
+# Run local dev using bun-only pathway (opt-in).
+[group('2. local dev')]
+[no-cd]
+dev-local *flags:
+  bun runx dev-local {{flags}}
 
 # Run Workers in preview mode (if available)
 [group('2. local dev')]

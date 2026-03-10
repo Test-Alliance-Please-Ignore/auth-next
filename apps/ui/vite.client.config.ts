@@ -1,10 +1,9 @@
 import path from 'node:path'
-import { cloudflare } from '@cloudflare/vite-plugin'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
 export default defineConfig({
-	plugins: [cloudflare({ inspectorPort: false }), react()],
+	plugins: [react()],
 	resolve: {
 		alias: {
 			'@': path.resolve(__dirname, './src/client'),
@@ -14,7 +13,6 @@ export default defineConfig({
 		host: '127.0.0.1',
 		port: 5173,
 		strictPort: true,
-		// Proxy server-side auth/invite routes to the core worker during development.
 		proxy: {
 			'/api': {
 				target: 'http://127.0.0.1:8787',

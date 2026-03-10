@@ -10,7 +10,9 @@
 		"check:types": "run-tsc",
 		"deploy": "pnpm build && run-wrangler-deploy",
 		"dev": "run-vite-dev",
+		"dev:client": "vite dev --config vite.client.config.ts",
 		"dev:wrangler": "pnpm build && wrangler dev",
+		"dev:wrangler:local": "bun run build && run-wrangler-dev-local",
 		"fix:workers-types": "run-wrangler-types",
 		"preview": "run-vite-preview",
 		"tail": "run-wrangler-tail",
@@ -63,6 +65,6 @@
 		"tailwindcss": "4.1.17",
 		"vite": "7.2.2",
 		"vitest": "3.2.4",
-		"wrangler": "4.49.0"
+		"wrangler": "4.71.0"
 	}
 }

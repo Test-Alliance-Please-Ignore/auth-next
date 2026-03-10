@@ -1,0 +1,13 @@
+# Eve token store local development bindings for wrangler dev
+# Copy to .dev.vars and fill values as needed.
+
+DATABASE_URL=postgresql://<user>:<password>@<host>/<db>?sslmode=require
+
+# EVE SSO credentials from developers.eveonline.com
+EVE_SSO_CLIENT_ID=
+EVE_SSO_CLIENT_SECRET=
+# Local callback should align with UI route that forwards to core auth callback.
+EVE_SSO_CALLBACK_URL=http://127.0.0.1:5173/auth/callback
+
+# 32-byte hex key (64 chars) used for local token encryption
+ENCRYPTION_KEY=replace-with-64-char-hex-key

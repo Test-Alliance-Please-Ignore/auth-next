@@ -2,7 +2,8 @@
  * API client for making requests to the core worker
  */
 
-const API_BASE_URL = import.meta.env.PROD ? '/api' : 'http://localhost:8787/api'
+const API_BASE_URL =
+	import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? '/api' : 'http://localhost:8787/api')
 
 export interface ApiError {
 	message: string
@@ -2423,7 +2424,8 @@ export class ApiClient {
 		const params = new URLSearchParams()
 		if (filters?.ownerEntityId) params.set('ownerEntityId', filters.ownerEntityId)
 		if (filters?.ownerEntityType) params.set('ownerEntityType', filters.ownerEntityType)
-		if (filters?.acceptingOrders !== undefined) params.set('acceptingOrders', String(filters.acceptingOrders))
+		if (filters?.acceptingOrders !== undefined)
+			params.set('acceptingOrders', String(filters.acceptingOrders))
 		if (filters?.limit) params.set('limit', String(filters.limit))
 		if (filters?.offset) params.set('offset', String(filters.offset))
 
@@ -2448,7 +2450,10 @@ export class ApiClient {
 	/**
 	 * Update an existing industry provider
 	 */
-	async updateIndustryProvider(providerId: string, data: UpdateIndustryProviderRequest): Promise<ServiceProvider> {
+	async updateIndustryProvider(
+		providerId: string,
+		data: UpdateIndustryProviderRequest
+	): Promise<ServiceProvider> {
 		return this.patch(`/admin/industry/providers/${providerId}`, data)
 	}
 
@@ -2462,8 +2467,13 @@ export class ApiClient {
 	/**
 	 * Set provider accepting orders status
 	 */
-	async setProviderAcceptingOrders(providerId: string, acceptingOrders: boolean): Promise<ServiceProvider> {
-		return this.post(`/admin/industry/providers/${providerId}/accepting-orders`, { acceptingOrders })
+	async setProviderAcceptingOrders(
+		providerId: string,
+		acceptingOrders: boolean
+	): Promise<ServiceProvider> {
+		return this.post(`/admin/industry/providers/${providerId}/accepting-orders`, {
+			acceptingOrders,
+		})
 	}
 
 	/**
@@ -2476,14 +2486,20 @@ export class ApiClient {
 	/**
 	 * Add a service to a provider
 	 */
-	async addProviderService(providerId: string, serviceType: ServiceType): Promise<ProviderServiceDTO> {
+	async addProviderService(
+		providerId: string,
+		serviceType: ServiceType
+	): Promise<ProviderServiceDTO> {
 		return this.post(`/admin/industry/providers/${providerId}/services`, { serviceType })
 	}
 
 	/**
 	 * Remove a service from a provider
 	 */
-	async removeProviderService(providerId: string, serviceType: ServiceType): Promise<{ message: string }> {
+	async removeProviderService(
+		providerId: string,
+		serviceType: ServiceType
+	): Promise<{ message: string }> {
 		return this.delete(`/admin/industry/providers/${providerId}/services/${serviceType}`)
 	}
 
@@ -2495,7 +2511,9 @@ export class ApiClient {
 		serviceType: ServiceType,
 		status: ServiceStatus
 	): Promise<ProviderServiceDTO> {
-		return this.patch(`/admin/industry/providers/${providerId}/services/${serviceType}/status`, { status })
+		return this.patch(`/admin/industry/providers/${providerId}/services/${serviceType}/status`, {
+			status,
+		})
 	}
 
 	/**

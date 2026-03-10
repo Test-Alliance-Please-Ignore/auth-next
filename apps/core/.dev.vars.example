@@ -1,0 +1,22 @@
+# Core worker local development bindings for wrangler dev
+# Copy to .dev.vars and fill values as needed.
+# Note: core local dev also depends on sibling workers (for example eve-token-store, groups, hr).
+# Ensure those workers have valid `.dev.vars` too when running the full local stack.
+
+# Required for DB-backed routes (Neon URL)
+DATABASE_URL=postgresql://<user>:<password>@<host>/<db>?sslmode=require
+
+# Required for auth/session middleware
+SESSION_SECRET=replace-with-long-random-string
+IP_ADDRESS_HASH_SECRET=replace-with-another-long-random-string
+
+# Local runtime identity
+ENVIRONMENT=development
+SENTRY_RELEASE=local-dev
+# Keep empty in local unless you explicitly want local error reporting
+SENTRY_DSN=
+
+# Legacy auth local callback
+LEGACY_AUTH_CALLBACK_URL=http://127.0.0.1:8787/api/auth/legacy-auth/callback
+LEGACY_AUTH_CLIENT_ID=
+LEGACY_AUTH_CLIENT_SECRET=

@@ -8,6 +8,7 @@ import { checkWorkersTypesCmd } from '../cmd/check-workers-types.cmd'
 import { checkCmd } from '../cmd/check.cmd'
 import { ciCmd } from '../cmd/ci.cmd'
 import { devCmd } from '../cmd/dev.cmd'
+import { devLocalCmd } from '../cmd/dev-local.cmd'
 import { fixCmd } from '../cmd/fix.cmd'
 import { shfmtCmd } from '../cmd/shfmt.cmd'
 import { updateCmd } from '../cmd/update.cmd'
@@ -24,6 +25,7 @@ program
 	.addCommand(buildCmd)
 	.addCommand(checkCmd)
 	.addCommand(devCmd)
+	.addCommand(devLocalCmd)
 	.addCommand(ciCmd)
 	.addCommand(updateCmd)
 	.addCommand(shfmtCmd)

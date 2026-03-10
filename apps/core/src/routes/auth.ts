@@ -1,10 +1,10 @@
 import { Hono } from 'hono'
-import type { Context } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 
 import { eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { assertEveCharacterId } from '@repo/eve-types'
+import { toErrorMessage } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
 import { oauthStates, userCharacters, users } from '../db/schema'
@@ -18,6 +18,7 @@ import { autoRegisterDirectorCorporation } from '../services/corporation-auto-re
 import { SessionService } from '../services/session.service'
 import { UserService } from '../services/user.service'
 
+import type { Context } from 'hono'
 import type { RequestMetadata } from '@repo/core'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
@@ -60,7 +61,7 @@ function enqueueIpRecording(
 			ip,
 			hashSecret,
 		}).catch((error) => {
-			console.error('[Auth] Failed to record user IP:', error)
+			console.error('[Auth] Failed to record user IP:', toErrorMessage(error))
 		})
 	)
 }
@@ -297,7 +298,10 @@ auth.get('/callback', async (c) => {
 					await eveCharacterDataStub.fetchAuthenticatedData(String(characterId), false)
 				} catch (error) {
 					// Log but don't fail the auth flow if character data fetch fails
-					console.error('[Auth] Failed to fetch character data after linking:', error)
+					console.error(
+						'[Auth] Failed to fetch character data after linking:',
+						toErrorMessage(error)
+					)
 				}
 			})()
 		)
@@ -315,7 +319,7 @@ auth.get('/callback', async (c) => {
 			)
 		} catch (error) {
 			// Don't fail character linking if auto-registration fails
-			console.error('[Auth] Auto-registration failed:', error)
+			console.error('[Auth] Auto-registration failed:', toErrorMessage(error))
 		}
 
 		return c.json({
@@ -397,7 +401,7 @@ auth.get('/callback', async (c) => {
 					await eveCharacterDataStub.fetchAuthenticatedData(String(characterId), false)
 				} catch (error) {
 					// Log but don't fail the auth flow if character data fetch fails
-					console.error('[Auth] Failed to fetch character data after login:', error)
+					console.error('[Auth] Failed to fetch character data after login:', toErrorMessage(error))
 				}
 
 				// Trigger user refresh workflow (throttled to every 5 minutes)
@@ -424,7 +428,7 @@ auth.get('/callback', async (c) => {
 						})
 					}
 				} catch (error) {
-					console.error('[Auth] Failed to trigger user refresh workflow:', error)
+					console.error('[Auth] Failed to trigger user refresh workflow:', toErrorMessage(error))
 				}
 			})()
 		)
@@ -442,7 +446,7 @@ auth.get('/callback', async (c) => {
 			)
 		} catch (error) {
 			// Don't fail login if auto-registration fails
-			console.error('[Auth] Auto-registration failed:', error)
+			console.error('[Auth] Auto-registration failed:', toErrorMessage(error))
 		}
 
 		// Set session cookie
@@ -564,7 +568,10 @@ auth.post('/claim-main', async (c) => {
 				await eveCharacterDataStub.fetchAuthenticatedData(String(tokenInfo.characterId), false)
 			} catch (error) {
 				// Log but don't fail the auth flow if character data fetch fails
-				console.error('[Auth] Failed to fetch character data after claim-main:', error)
+				console.error(
+					'[Auth] Failed to fetch character data after claim-main:',
+					toErrorMessage(error)
+				)
 			}
 
 			// Trigger user refresh workflow for new user
@@ -579,7 +586,7 @@ auth.post('/claim-main', async (c) => {
 					params: { userId: user.id },
 				})
 			} catch (error) {
-				console.error('[Auth] Failed to trigger user refresh workflow:', error)
+				console.error('[Auth] Failed to trigger user refresh workflow:', toErrorMessage(error))
 			}
 		})()
 	)
@@ -597,7 +604,7 @@ auth.post('/claim-main', async (c) => {
 		)
 	} catch (error) {
 		// Don't fail user creation if auto-registration fails
-		console.error('[Auth] Auto-registration failed:', error)
+		console.error('[Auth] Auto-registration failed:', toErrorMessage(error))
 	}
 
 	// Set session cookie

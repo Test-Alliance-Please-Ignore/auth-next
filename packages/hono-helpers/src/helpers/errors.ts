@@ -16,3 +16,11 @@ export interface APIError {
 		message: string
 	}
 }
+
+/**
+ * Normalize unknown thrown values into a safe loggable message.
+ * This avoids passing complex/proxy objects to logger/console paths.
+ */
+export function toErrorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error)
+}
