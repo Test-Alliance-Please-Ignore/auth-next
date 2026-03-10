@@ -1,5 +1,5 @@
-import { Search, X } from 'lucide-react'
-import { useState } from 'react'
+import { X } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { GroupList } from '@/components/group-list'
@@ -45,22 +45,31 @@ export default function GroupsPage() {
 		})
 	}
 
-	// Handle search
-	const handleSearch = () => {
-		updateFilter('search', searchInput || undefined)
-	}
-
-	const handleSearchKeyPress = (e: React.KeyboardEvent) => {
-		if (e.key === 'Enter') {
-			handleSearch()
-		}
-	}
-
 	// Clear all filters
 	const clearFilters = () => {
 		setFilters({})
 		setSearchInput('')
 	}
+
+	useEffect(() => {
+		const timer = setTimeout(() => {
+			const query = searchInput.trim()
+			setFilters((prev) => {
+				if (!query) {
+					const { search: _search, ...rest } = prev
+					return rest
+				}
+				return { ...prev, search: query }
+			})
+		}, 300)
+
+		return () => clearTimeout(timer)
+	}, [searchInput])
+
+	const optimisticSearch = searchInput.trim().toLowerCase()
+	const displayedGroups = (groups || []).filter((group) =>
+		optimisticSearch ? group.name.toLowerCase().includes(optimisticSearch) : true
+	)
 
 	const hasActiveFilters = Object.keys(filters).length > 0
 
@@ -144,18 +153,12 @@ export default function GroupsPage() {
 							{/* Search Input */}
 							<div className="space-y-2">
 								<Label>Search</Label>
-								<div className="flex gap-2">
-									<Input
-										type="text"
-										placeholder="Search by name..."
-										value={searchInput}
-										onChange={(e) => setSearchInput((e.target as HTMLInputElement).value)}
-										onKeyPress={handleSearchKeyPress}
-									/>
-									<Button onClick={handleSearch} size="icon">
-										<Search className="h-4 w-4" />
-									</Button>
-								</div>
+								<Input
+									type="text"
+									placeholder="Search by name..."
+									value={searchInput}
+									onChange={(e) => setSearchInput((e.target as HTMLInputElement).value)}
+								/>
 							</div>
 						</div>
 					</CardContent>
@@ -167,7 +170,9 @@ export default function GroupsPage() {
 						<CardTitle>
 							Available Groups{' '}
 							{groups && (
-								<span className="text-muted-foreground font-normal">({groups.length})</span>
+								<span className="text-muted-foreground font-normal">
+									({displayedGroups.length})
+								</span>
 							)}
 						</CardTitle>
 						<CardDescription>
@@ -177,7 +182,7 @@ export default function GroupsPage() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent>
-						<GroupList groups={groups || []} isLoading={groupsLoading} />
+						<GroupList groups={displayedGroups} isLoading={groupsLoading} />
 					</CardContent>
 				</Card>
 			</Section>

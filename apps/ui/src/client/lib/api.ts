@@ -177,6 +177,8 @@ export interface GroupsFilters {
 	joinMode?: JoinMode
 	search?: string
 	myGroups?: boolean
+	limit?: number
+	offset?: number
 }
 
 export interface GroupMembershipSummary {
@@ -1327,6 +1329,8 @@ export class ApiClient {
 		if (filters?.joinMode) params.set('joinMode', filters.joinMode)
 		if (filters?.search) params.set('search', filters.search)
 		if (filters?.myGroups) params.set('myGroups', 'true')
+		params.set('limit', String(filters?.limit ?? 100))
+		if (filters?.offset !== undefined) params.set('offset', String(filters.offset))
 
 		const query = params.toString()
 		return this.get(`/groups${query ? `?${query}` : ''}`)

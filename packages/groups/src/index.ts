@@ -223,6 +223,8 @@ export interface ListGroupsFilters {
 	joinMode?: JoinMode
 	search?: string
 	myGroups?: boolean
+	limit?: number
+	offset?: number
 }
 
 /**

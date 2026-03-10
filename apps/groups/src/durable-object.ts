@@ -263,6 +263,9 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		userId: string,
 		isAdmin: boolean
 	): Promise<GroupWithDetails[]> {
+		const limit = filters.limit ?? 100
+		const offset = filters.offset ?? 0
+
 		// Build query conditions
 		const conditions = []
 
@@ -292,6 +295,8 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 				category: true,
 			},
 			orderBy: (groups, { asc }) => [asc(groups.name)],
+			limit: filters.myGroups ? undefined : limit,
+			offset: filters.myGroups ? undefined : offset,
 		})
 
 		// Filter by user memberships if requested
@@ -303,6 +308,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			})
 			const memberGroupIds = new Set(userMemberships.map((m) => m.groupId))
 			groupsToCheck = allGroups.filter((g) => memberGroupIds.has(g.id))
+			groupsToCheck = groupsToCheck.slice(offset, offset + limit)
 		}
 
 		// Early return if no groups to check
