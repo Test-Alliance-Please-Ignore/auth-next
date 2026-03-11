@@ -44,7 +44,6 @@ export const devLocalCmd = new Command('dev-local')
 		])
 
 		$.stdio = 'inherit'
-
 		if (!isRepoRoot && (hasWranglerJsonc || hasDevScript)) {
 			await $`bun run dev ${args}`
 		} else {

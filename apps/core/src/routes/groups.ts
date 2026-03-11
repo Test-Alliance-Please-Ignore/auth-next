@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { z } from 'zod'
 
 import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
 import { and } from '@repo/db-utils'
@@ -20,6 +21,11 @@ import type { App } from '../context'
  */
 const groups = new Hono<App>()
 groups.use('*', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }))
+
+const groupsListQuerySchema = z.object({
+	limit: z.coerce.number().int().min(1).max(100).optional().default(100),
+	offset: z.coerce.number().int().min(0).optional().default(0),
+})
 // ===== Categories =====
 
 /**
@@ -151,11 +157,20 @@ groups.delete(
  * GET /
  *
  * List groups with optional filters
- * Query params: categoryId, visibility, joinMode, search, myGroups
+ * Query params: categoryId, visibility, joinMode, search, myGroups, limit, offset
  */
 groups.get('/', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), async (c) => {
 	const user = c.get('user')!
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+	const queryValidation = groupsListQuerySchema.safeParse({
+		limit: c.req.query('limit'),
+		offset: c.req.query('offset'),
+	})
+
+	if (!queryValidation.success) {
+		const firstError = queryValidation.error.issues[0]
+		return c.json({ error: firstError?.message || 'Invalid pagination parameters' }, 400)
+	}
 
 	// Parse query parameters
 	const filters = {
@@ -164,6 +179,8 @@ groups.get('/', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), async (c) => 
 		joinMode: c.req.query('joinMode') as 'open' | 'approval' | 'invitation_only' | undefined,
 		search: c.req.query('search'),
 		myGroups: c.req.query('myGroups') === 'true',
+		limit: queryValidation.data.limit,
+		offset: queryValidation.data.offset,
 	}
 
 	const groupsList = await groupsDO.listGroups(filters, user.id, user.is_admin)

@@ -281,6 +281,53 @@ footer:not([class*='bg-']) {
 	background: linear-gradient(180deg, hsl(var(--popover-elevated)) 0%, hsl(var(--popover)) 100%);
 }
 
+/* Unified dropdown surface (Radix + custom popovers) */
+.dropdown-surface {
+	background: linear-gradient(180deg, hsl(var(--popover-elevated)) 0%, hsl(var(--popover)) 100%);
+	color: hsl(var(--popover-foreground));
+	border: 1px solid hsl(var(--border));
+	box-shadow:
+		var(--elevation-high),
+		inset 0 1px 0 hsl(0 0% 100% / 0.04);
+}
+
+/* Shared item styles for popover/dropdown option lists (Select + SearchSelect) */
+.popover-list-item {
+	border-left: 2px solid transparent;
+	transition:
+		background-color 0.15s ease,
+		border-color 0.15s ease,
+		color 0.15s ease;
+}
+
+.popover-list-item:hover {
+	border-left-color: rgb(56 189 248 / 0.75);
+	background-color: rgb(14 116 144 / 0.22);
+	color: rgb(255 255 255);
+}
+
+.popover-list-item-active {
+	border-left-color: rgb(125 211 252 / 0.9);
+	background-color: rgb(14 116 144 / 0.34);
+	color: rgb(255 255 255);
+}
+
+/*
+ * Native <select> controls need explicit option styling for consistent dark
+ * contrast across browsers. This keeps admin/native selectors aligned with
+ * the Radix dropdown look and prevents light option menus.
+ */
+select {
+	background-color: hsl(var(--input));
+	color: hsl(var(--foreground));
+}
+
+select option,
+select optgroup {
+	background-color: hsl(var(--popover));
+	color: hsl(var(--popover-foreground));
+}
+
 /* Border glow effects for EVE tech aesthetic */
 .border-glow-blue {
 	border: 1px solid hsl(var(--border-accent));
