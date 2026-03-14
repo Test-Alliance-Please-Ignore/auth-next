@@ -1,5 +1,32 @@
 @import 'tailwindcss';
 
+@theme inline {
+	--color-background: hsl(var(--background));
+	--color-foreground: hsl(var(--foreground));
+	--color-card: hsl(var(--card));
+	--color-card-foreground: hsl(var(--card-foreground));
+	--color-popover: hsl(var(--popover));
+	--color-popover-foreground: hsl(var(--popover-foreground));
+	--color-primary: hsl(var(--primary));
+	--color-primary-foreground: hsl(var(--primary-foreground));
+	--color-secondary: hsl(var(--secondary));
+	--color-secondary-foreground: hsl(var(--secondary-foreground));
+	--color-muted: hsl(var(--muted));
+	--color-muted-foreground: hsl(var(--muted-foreground));
+	--color-accent: hsl(var(--accent));
+	--color-accent-foreground: hsl(var(--accent-foreground));
+	--color-destructive: hsl(var(--destructive));
+	--color-destructive-foreground: hsl(var(--destructive-foreground));
+	--color-border: hsl(var(--border));
+	--color-input: hsl(var(--input));
+	--color-ring: hsl(var(--ring));
+	--color-chart-1: hsl(var(--chart-1));
+	--color-chart-2: hsl(var(--chart-2));
+	--color-chart-3: hsl(var(--chart-3));
+	--color-chart-4: hsl(var(--chart-4));
+	--color-chart-5: hsl(var(--chart-5));
+}
+
 /* EVE Online-Inspired Dark Space Theme */
 :root {
 	/* Deep space backgrounds - layered depth with blue tint */
@@ -28,10 +55,10 @@
 	--secondary-hover: 185 62% 42%; /* #268c8c - Darker cyan */
 	--secondary-foreground: 220 18% 8%;
 
-	/* Accent - Orange/Amber warnings (Caldari UI) */
-	--accent: 32 95% 55%; /* #f59e0b - Caldari orange */
-	--accent-hover: 32 95% 48%; /* #d98806 - Darker orange */
-	--accent-muted: 220 16% 22%; /* #2f3440 - Muted gray accent */
+	/* Accent - interactive surface state, not warning/status color */
+	--accent: 220 16% 22%; /* #2f3440 - Subtle elevated surface */
+	--accent-hover: 220 16% 26%; /* Slightly brighter hover state */
+	--accent-muted: 220 16% 20%; /* Deeper muted accent surface */
 	--accent-foreground: 210 12% 95%;
 
 	/* Muted backgrounds - subtle variations */
@@ -125,15 +152,6 @@ body {
 		'calt' 1;
 }
 
-/* Ensure all main layout containers have solid backgrounds
-   Note: Not using !important to allow component-level overrides */
-main:not([class*='bg-']),
-aside:not([class*='bg-']),
-header:not([class*='bg-']),
-footer:not([class*='bg-']) {
-	background-color: hsl(var(--background));
-}
-
 /* Starfield background effect - optimized for subtle, non-distracting animation */
 @keyframes twinkle {
 	0%,
@@ -154,7 +172,7 @@ footer:not([class*='bg-']) {
 	width: 100%;
 	height: 100%;
 	pointer-events: none;
-	z-index: -1; /* Ensure stars stay behind all content */
+	z-index: -1;
 	/* Prevent layout shifts from affecting star positions */
 	will-change: opacity;
 }
@@ -258,6 +276,204 @@ footer:not([class*='bg-']) {
 		0 0 20px hsl(var(--glow-secondary)),
 		0 4px 12px rgb(0 0 0 / 0.5),
 		0 2px 6px rgb(0 0 0 / 0.4);
+}
+
+.tax-report-grid .tax-report-grid__paper {
+	box-shadow:
+		var(--elevation-low),
+		inset 0 1px 0 hsl(0 0% 100% / 0.03);
+	border-radius: calc(var(--radius) + 2px);
+	overflow: hidden;
+}
+
+.tax-report-grid .tax-report-grid__container {
+	border-top: 1px solid hsl(var(--border) / 0.8);
+	background: linear-gradient(180deg, hsl(var(--card)) 0%, hsl(var(--background-elevated)) 100%);
+	border-radius: inherit;
+}
+
+.tax-report-grid .tax-report-grid__table tbody tr:nth-of-type(odd) {
+	background: hsl(var(--muted) / 0.14);
+}
+
+.tax-report-grid .tax-report-grid__table tbody tr:hover {
+	background: hsl(var(--accent-muted) / 0.7);
+}
+
+.tax-report-grid .tax-report-grid__table tbody td,
+.tax-report-grid .tax-report-grid__table thead th {
+	font-family: inherit;
+}
+
+.tax-report-grid .tax-report-grid__head-cell button {
+	color: hsl(var(--muted-foreground));
+	font-weight: 700;
+}
+
+.tax-report-grid .tax-report-grid__head-cell button:hover,
+.tax-report-grid .tax-report-grid__head-cell button:focus-visible {
+	background: hsl(var(--accent-muted) / 0.5);
+	color: hsl(var(--foreground));
+}
+
+.tax-report-grid .tax-report-grid__head-cell svg {
+	color: hsl(var(--primary));
+}
+
+.tax-report-grid .tax-report-grid__body-cell {
+	font-size: 0.875rem;
+}
+
+.tax-report-grid .mantine-Paper-root,
+.tax-report-grid .mantine-ScrollArea-root,
+.tax-report-grid .mantine-Table-root {
+	color: hsl(var(--foreground));
+}
+
+.tax-report-grid .mantine-Table-root {
+	border-radius: inherit;
+}
+
+.tax-report-grid .mantine-Alert-root {
+	background: hsl(var(--destructive) / 0.08);
+	border: 1px solid hsl(var(--destructive) / 0.28);
+	color: hsl(var(--foreground));
+}
+
+.tax-report-grid .mantine-Loader-root {
+	color: hsl(var(--primary));
+}
+
+.themed-date-picker__input {
+	height: 2.5rem;
+	background: hsl(var(--background));
+	border: 1px solid hsl(var(--input-border));
+	border-radius: var(--radius);
+	color: hsl(var(--foreground));
+	box-shadow:
+		var(--elevation-flat),
+		inset 0 1px 0 hsl(0 0% 100% / 0.03);
+	font-size: 0.95rem;
+}
+
+.themed-date-picker__range-input {
+	width: 100%;
+}
+
+.themed-date-picker__input:hover {
+	border-color: hsl(var(--border-strong));
+}
+
+.themed-date-picker__input[data-expanded],
+.themed-date-picker__input:focus-visible {
+	border-color: hsl(var(--ring));
+	box-shadow:
+		0 0 0 1px hsl(var(--ring) / 0.55),
+		0 0 0 4px hsl(var(--ring) / 0.12),
+		inset 0 1px 0 hsl(0 0% 100% / 0.03);
+	outline: none;
+}
+
+.themed-date-picker__input[data-disabled] {
+	background: hsl(var(--muted) / 0.45);
+	border-color: hsl(var(--border) / 0.65);
+	color: hsl(var(--muted-foreground));
+	opacity: 1;
+}
+
+.themed-date-picker__placeholder,
+.themed-date-picker__section {
+	color: hsl(var(--muted-foreground));
+}
+
+.themed-date-picker__clear-button {
+	border-radius: calc(var(--radius) - 1px);
+	color: hsl(var(--muted-foreground));
+	transition:
+		background-color 0.15s ease,
+		color 0.15s ease;
+}
+
+.themed-date-picker__clear-button:hover,
+.themed-date-picker__clear-button:focus-visible {
+	background: hsl(var(--accent-muted) / 0.5);
+	color: hsl(var(--foreground));
+}
+
+.themed-date-picker__dropdown {
+	border-radius: calc(var(--radius) + 0.25rem);
+	padding: 0.625rem;
+	color: hsl(var(--popover-foreground));
+}
+
+.themed-date-picker__calendar-header {
+	margin-bottom: 0.5rem;
+}
+
+.themed-date-picker__calendar-header-control,
+.themed-date-picker__calendar-header-level {
+	background: hsl(var(--background-elevated));
+	border: 1px solid hsl(var(--border));
+	color: hsl(var(--foreground));
+	border-radius: calc(var(--radius) - 1px);
+}
+
+.themed-date-picker__calendar-header-control:hover,
+.themed-date-picker__calendar-header-level:hover,
+.themed-date-picker__calendar-header-control:focus-visible,
+.themed-date-picker__calendar-header-level:focus-visible {
+	background: hsl(var(--accent-muted) / 0.55);
+	border-color: hsl(var(--border-strong));
+	color: hsl(var(--foreground));
+}
+
+.themed-date-picker__weekday {
+	color: hsl(var(--muted-foreground));
+	font-weight: 600;
+}
+
+.themed-date-picker__month-cell {
+	border-radius: var(--radius);
+}
+
+.themed-date-picker__day {
+	border: 1px solid transparent;
+	border-radius: var(--radius);
+	color: hsl(var(--foreground));
+}
+
+.themed-date-picker__day:hover,
+.themed-date-picker__day:focus-visible {
+	background: hsl(var(--accent-muted) / 0.7);
+	border-color: hsl(var(--border));
+	color: hsl(var(--foreground));
+}
+
+.themed-date-picker__day[data-selected] {
+	background: hsl(var(--primary));
+	border-color: hsl(var(--primary));
+	color: hsl(var(--primary-foreground));
+}
+
+.themed-date-picker__day[data-in-range] {
+	background: hsl(var(--accent-muted));
+	color: hsl(var(--foreground));
+}
+
+.themed-date-picker__day[data-first-in-range],
+.themed-date-picker__day[data-last-in-range] {
+	background: hsl(var(--primary));
+	border-color: hsl(var(--primary));
+	color: hsl(var(--primary-foreground));
+}
+
+.themed-date-picker__day[data-outside] {
+	color: hsl(var(--muted-foreground));
+	opacity: 0.45;
+}
+
+.themed-date-picker__day[data-weekend] {
+	color: hsl(var(--destructive));
 }
 
 .shadow-glow-orange {
@@ -376,20 +592,19 @@ select optgroup {
 	}
 }
 
-/* Defensive rule: Ensure backdrop-blur elements have solid backgrounds
-   This prevents starfield from showing through UI components */
+/* Defensive rule: Ensure backdrop-blur elements have a darkened backing surface
+   without fully flattening the global backdrop. */
 .backdrop-blur-sm:not([style*='background']),
 .backdrop-blur-md:not([style*='background']),
 .backdrop-blur-lg:not([style*='background']),
 .backdrop-blur-xl:not([style*='background']),
 .backdrop-blur:not([style*='background']) {
-	background-color: hsl(var(--background)) !important;
+	background-color: hsl(var(--background) / 0.82) !important;
 }
 
-/* Force all cards and backgrounds to be fully opaque
-   Prevents any transparency issues with starfield showing through */
+/* Keep content surfaces opaque, but allow layout-level background surfaces
+   to use intentional translucency so the global backdrop remains visible. */
 .bg-card,
-.bg-background,
 .bg-popover,
 .bg-input,
 .bg-muted {

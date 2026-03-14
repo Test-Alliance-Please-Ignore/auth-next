@@ -32,14 +32,14 @@ export default function Layout() {
 	}
 
 	return (
-		<div className="min-h-screen flex">
+		<div className="relative min-h-screen flex">
 			{/* Starfield Background */}
 			<Starfield />
 
 			{/* Mobile Overlay */}
 			{sidebarOpen && (
 				<div
-					className="fixed inset-0 bg-background backdrop-blur-sm z-40 lg:hidden"
+					className="fixed inset-0 bg-background/70 backdrop-blur-sm z-40 lg:hidden"
 					onClick={() => setSidebarOpen(false)}
 				/>
 			)}
@@ -49,7 +49,7 @@ export default function Layout() {
 				className={`
 					fixed lg:sticky top-0 left-0 h-screen w-64 z-50
 					border-r border-border/50
-					bg-background
+					bg-background/52
 					transition-transform duration-300 ease-in-out
 					${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
 				`}
@@ -58,7 +58,7 @@ export default function Layout() {
 			</aside>
 
 			{/* Main Content Area */}
-			<div className="flex-1 flex flex-col min-w-0 overflow-auto">
+			<div className="relative z-10 flex-1 flex flex-col min-w-0 overflow-auto">
 				{/* Top Bar (Mobile) */}
 				<header className="sticky top-0 z-30 lg:hidden border-b border-border/30 bg-background/95 backdrop-blur-sm shadow-sm">
 					<div className="flex items-center justify-between px-4 py-3">
@@ -76,14 +76,14 @@ export default function Layout() {
 				</header>
 
 				{/* Page Content */}
-				<main className="flex-1 relative z-10 p-4 md:p-6 lg:p-8 bg-background">
+				<main className="flex-1 relative z-10 p-4 md:p-6 lg:p-8">
 					<div className="max-w-7xl mx-auto">
 						<Outlet />
 					</div>
 				</main>
 
 				{/* Footer */}
-				<footer className="border-t border-border/50 py-4 relative z-10 bg-background">
+				<footer className="border-t border-border/50 py-4 relative z-10 bg-background/75 backdrop-blur-sm">
 					<div className="px-4 md:px-6 lg:px-8 text-center text-xs text-muted-foreground">
 						<p>Powered by EVE Online SSO • Built on Cloudflare Workers</p>
 					</div>

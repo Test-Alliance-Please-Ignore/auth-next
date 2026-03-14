@@ -40,6 +40,7 @@ interface SearchSelectProps<TOption extends SearchSelectOption> {
 	className?: string
 	contentClassName?: string
 	inputClassName?: string
+	listClassName?: string
 	minCharsText?: string
 	loadingText?: string
 	emptyText?: string
@@ -62,6 +63,7 @@ export function SearchSelect<TOption extends SearchSelectOption>({
 	className,
 	contentClassName,
 	inputClassName,
+	listClassName,
 	minCharsText = 'Type more characters to search',
 	loadingText = 'Searching...',
 	emptyText = 'No results found',
@@ -139,6 +141,13 @@ export function SearchSelect<TOption extends SearchSelectOption>({
 		updateScrollButtons()
 	}, [open, filteredOptions.length, loading, queryMeetsMinimum])
 
+	useEffect(() => {
+		if (disabled && open) {
+			setOpen(false)
+			setHighlightedIndex(-1)
+		}
+	}, [disabled, open])
+
 	const scrollListBy = (delta: number) => {
 		const listEl = listRef.current
 		if (!listEl) return
@@ -146,8 +155,12 @@ export function SearchSelect<TOption extends SearchSelectOption>({
 	}
 
 	const selectOption = (option: TOption) => {
-		if (filterMode === 'local') {
-			// Mirror standard select behavior by reflecting the chosen label in the control.
+		if (disabled) {
+			return
+		}
+		if (filterMode === 'local' && mode === 'search') {
+			// Search mode keeps the chosen label in the input; dropdown mode should fall back to
+			// placeholder-based selection display so reopening does not self-filter the list.
 			onValueChange(option.label)
 		}
 		onSelect(option)
@@ -165,22 +178,26 @@ export function SearchSelect<TOption extends SearchSelectOption>({
 							type="text"
 							value={value}
 							onChange={(e) => {
+								if (disabled) return
 								onValueChange(e.target.value)
 								setHighlightedIndex(0)
 								setOpen(true)
 							}}
 							onFocus={() => {
+								if (disabled) return
 								// Avoid showing the "min chars" empty-state on first click into an empty field.
 								if (shouldOpenOnFocus) {
 									setOpen(true)
 								}
 							}}
 							onMouseDown={() => {
+								if (disabled) return
 								if (mode === 'dropdown' && !open) {
 									setOpen(true)
 								}
 							}}
 							onKeyDown={(e) => {
+								if (disabled) return
 								if (e.key === 'Escape') {
 									setOpen(false)
 									setHighlightedIndex(-1)
@@ -220,7 +237,13 @@ export function SearchSelect<TOption extends SearchSelectOption>({
 							placeholder={placeholder}
 							autoComplete="off"
 							disabled={disabled}
-							className={cn('w-full', mode === 'dropdown' && 'pr-9', inputClassName)}
+							className={cn(
+								'w-full',
+								mode === 'dropdown' && 'pr-9',
+								disabled &&
+									'border-border/60 bg-muted/45 text-muted-foreground placeholder:text-muted-foreground',
+								inputClassName
+							)}
 						/>
 						{loading && (
 							<div className="absolute right-3 top-1/2 -translate-y-1/2">
@@ -228,7 +251,12 @@ export function SearchSelect<TOption extends SearchSelectOption>({
 							</div>
 						)}
 						{!loading && mode === 'dropdown' && (
-							<div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+							<div
+								className={cn(
+									'pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground',
+									disabled && 'opacity-50'
+								)}
+							>
 								<ChevronsUpDown className="h-4 w-4" />
 							</div>
 						)}
@@ -237,7 +265,10 @@ export function SearchSelect<TOption extends SearchSelectOption>({
 				<PopoverContent
 					align="start"
 					sideOffset={6}
-					className={cn('w-[var(--radix-popover-anchor-width)] p-0', contentClassName)}
+					className={cn(
+						'w-[var(--radix-popover-trigger-width)] min-w-[var(--radix-popover-trigger-width)] p-0',
+						contentClassName
+					)}
 					onOpenAutoFocus={(event) => {
 						// Keep typing focus on the anchor input instead of moving focus into popover content.
 						event.preventDefault()
@@ -261,7 +292,7 @@ export function SearchSelect<TOption extends SearchSelectOption>({
 						)}
 						<CommandList
 							ref={listRef}
-							className={cn('max-h-60', popoverListViewportClass)}
+							className={cn('max-h-60', popoverListViewportClass, listClassName)}
 							onScroll={() => updateScrollButtons()}
 						>
 							{filterMode === 'server' && !queryMeetsMinimum ? (

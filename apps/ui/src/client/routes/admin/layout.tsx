@@ -64,15 +64,12 @@ function AdminLayoutContent() {
 	})
 
 	return (
-		<div className="h-screen flex flex-col overflow-hidden">
+		<div className="relative h-screen flex flex-col overflow-hidden">
 			{/* Starfield Background */}
 			<Starfield />
 
-			{/* Solid background overlay to hide stars - with pointer-events: none */}
-			<div className="fixed inset-0 bg-background z-0 pointer-events-none" />
-
 			{/* Header with Breadcrumbs */}
-			<header className="border-b border-border/30 bg-background z-50 shadow-[0_4px_20px_rgba(0,0,0,0.3)] flex-shrink-0">
+			<header className="border-b border-border/30 bg-background/72 z-50 shadow-[0_4px_20px_rgba(0,0,0,0.3)] flex-shrink-0 backdrop-blur-sm">
 				<div className="container mx-auto px-4 py-4">
 					<div className="flex items-center justify-between">
 						<h1 className="text-2xl font-bold gradient-text">Admin Panel</h1>
@@ -103,10 +100,10 @@ function AdminLayoutContent() {
 
 			{/* Main Layout with Sidebar - scrollable content area */}
 			<div className="flex-1 overflow-auto relative z-10">
-				<div className="container mx-auto px-4 py-8 bg-background">
+				<div className="container mx-auto px-4 py-8">
 					<div className="flex gap-8">
 						{/* Sidebar Navigation */}
-						<aside className="w-64 flex-shrink-0">
+						<aside className="w-64 flex-shrink-0 rounded-lg bg-background/52 p-3">
 							<AdminNav />
 						</aside>
 
@@ -118,7 +115,7 @@ function AdminLayoutContent() {
 				</div>
 
 				{/* Footer */}
-				<footer className="border-t border-border/50 py-6 bg-background">
+				<footer className="border-t border-border/50 py-6 bg-background/68 backdrop-blur-sm">
 					<div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
 						<p>Admin Panel • Manage Categories and Groups</p>
 					</div>
