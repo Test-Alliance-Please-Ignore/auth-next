@@ -1,0 +1,868 @@
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lte, or } from '@repo/db-utils'
+import { getStub } from '@repo/do-utils'
+
+import {
+	taxAssessmentLines,
+	taxAssessments,
+	taxCorporationSettings,
+	taxDiscrepancies,
+	taxLedgerEntries,
+	taxPeriods,
+	taxRuleSets,
+} from '../db/schema'
+
+import type {
+	ListTaxAssessmentLinesFilters,
+	ListTaxAssessmentsFilters,
+	ListTaxDiscrepanciesFilters,
+	RunTaxAssessmentForPeriodInput,
+	RunTaxAssessmentForPeriodResult,
+	TaxAssessment,
+	TaxAssessmentLine,
+	TaxAssessmentScope,
+	TaxAssessmentStatus,
+	TaxDiscrepancy,
+	TaxDivisionAssessmentSummary,
+	TaxPeriod,
+	TaxPeriodStatus,
+	TaxRefTypeAssessmentSummary,
+} from '@repo/corporation-tax'
+import type { EveCorporationData } from '@repo/eve-corporation-data'
+import type { CorporationTaxDb } from '../db'
+
+type RuleCondition = {
+	appliesToRefType: string | null
+	walletDivision: number | null
+	partyType: string | null
+	minAmount: string | null
+	maxAmount: string | null
+	isEssOnly: boolean
+	essBankType: string | null
+}
+
+type CompiledRule = {
+	ruleSetId: string
+	label: string
+	taxRateBps: number
+	isTaxable: boolean
+	conditions: RuleCondition[]
+}
+
+type MutableSummary = {
+	taxableIncomeCenti: bigint
+	nonTaxableIncomeCenti: bigint
+	taxDueCenti: bigint
+	taxPaidCenti: bigint
+}
+
+type PendingAssessmentLine = Omit<typeof taxAssessmentLines.$inferInsert, 'assessmentId'>
+
+type ScopedAssessmentComputation = {
+	assessmentScope: 'corporation' | 'division' | 'character'
+	scopeId: string
+	totals: MutableSummary
+	inGameTaxRateBps: number | null
+	portalTaxRateBps: number
+	lines: PendingAssessmentLine[]
+}
+
+export class TaxAssessmentService {
+	constructor(
+		private db: CorporationTaxDb,
+		private eveCorporationDataNamespace: DurableObjectNamespace
+	) {}
+
+	async listAssessments(filters?: ListTaxAssessmentsFilters): Promise<TaxAssessment[]> {
+		const conditions = []
+
+		if (filters?.corporationId) {
+			conditions.push(eq(taxAssessments.corporationId, filters.corporationId))
+		}
+		if (filters?.status) {
+			conditions.push(eq(taxAssessments.status, filters.status))
+		}
+		if (filters?.assessmentScope) {
+			conditions.push(eq(taxAssessments.assessmentScope, filters.assessmentScope))
+		}
+		if (filters?.withBillOnly) {
+			conditions.push(isNotNull(taxAssessments.billId))
+		}
+		if (filters?.periodStart) {
+			conditions.push(gte(taxAssessments.taxPeriodStart, filters.periodStart))
+		}
+		if (filters?.periodEnd) {
+			conditions.push(lte(taxAssessments.taxPeriodEnd, filters.periodEnd))
+		}
+
+		const limit = Math.min(Math.max(filters?.limit ?? 50, 1), 200)
+		const offset = Math.max(filters?.offset ?? 0, 0)
+
+		const rows = await this.db.query.taxAssessments.findMany({
+			where: conditions.length ? and(...conditions) : undefined,
+			orderBy: [desc(taxAssessments.taxPeriodEnd), desc(taxAssessments.createdAt)],
+			limit,
+			offset,
+		})
+
+		return rows.map((row) => this.toAssessment(row))
+	}
+
+	async getAssessmentById(assessmentId: string): Promise<TaxAssessment | null> {
+		const row = await this.db.query.taxAssessments.findFirst({
+			where: eq(taxAssessments.id, assessmentId),
+		})
+		return row ? this.toAssessment(row) : null
+	}
+
+	async runAssessmentForPeriod(
+		input: RunTaxAssessmentForPeriodInput
+	): Promise<RunTaxAssessmentForPeriodResult> {
+		if (input.periodStart >= input.periodEnd) {
+			throw new Error('periodStart must be before periodEnd')
+		}
+
+		const settings = await this.db.query.taxCorporationSettings.findFirst({
+			where: eq(taxCorporationSettings.corporationId, input.corporationId),
+		})
+		if (!settings) {
+			throw new Error('Corporation tax settings not found')
+		}
+
+		const assessmentSourceTypes =
+			input.includeCharacterWallets === false
+				? (['corporation_wallet_journal', 'corporation_wallet_transaction'] as const)
+				: ([
+						'corporation_wallet_journal',
+						'corporation_wallet_transaction',
+						'character_wallet_journal',
+						'character_wallet_transaction',
+					] as const)
+
+		const ledgerRows = await this.db.query.taxLedgerEntries.findMany({
+			where: and(
+				eq(taxLedgerEntries.corporationId, input.corporationId),
+				inArray(taxLedgerEntries.sourceType, assessmentSourceTypes),
+				gte(taxLedgerEntries.entryDate, input.periodStart),
+				lte(taxLedgerEntries.entryDate, input.periodEnd)
+			),
+			orderBy: [desc(taxLedgerEntries.entryDate)],
+			limit: 100_000,
+		})
+
+		const activeRuleSets = await this.db.query.taxRuleSets.findMany({
+			where: and(
+				eq(taxRuleSets.isActive, true),
+				or(eq(taxRuleSets.corporationId, input.corporationId), isNull(taxRuleSets.corporationId)),
+				lte(taxRuleSets.effectiveFrom, input.periodEnd),
+				or(isNull(taxRuleSets.effectiveTo), gte(taxRuleSets.effectiveTo, input.periodStart))
+			),
+			orderBy: [desc(taxRuleSets.priority), desc(taxRuleSets.createdAt)],
+			with: {
+				conditions: true,
+				actions: true,
+			},
+		})
+
+		const compiledRules = activeRuleSets
+			.map((ruleSet) => {
+				const primaryAction = ruleSet.actions[0]
+				if (!primaryAction) {
+					return null
+				}
+				return {
+					ruleSetId: ruleSet.id,
+					label: primaryAction.label,
+					taxRateBps: primaryAction.taxRateBps,
+					isTaxable: primaryAction.isTaxable,
+					conditions: ruleSet.conditions.map((condition) => ({
+						appliesToRefType: condition.appliesToRefType,
+						walletDivision: condition.walletDivision,
+						partyType: condition.partyType,
+						minAmount: condition.minAmount,
+						maxAmount: condition.maxAmount,
+						isEssOnly: condition.isEssOnly,
+						essBankType: condition.essBankType,
+					})),
+				}
+			})
+			.filter((rule): rule is NonNullable<typeof rule> => !!rule)
+
+		const corporationTotals: MutableSummary = {
+			taxableIncomeCenti: 0n,
+			nonTaxableIncomeCenti: 0n,
+			taxDueCenti: 0n,
+			taxPaidCenti: 0n,
+		}
+		const corporationLines: PendingAssessmentLine[] = []
+		const divisionAssessments = new Map<string, ScopedAssessmentComputation>()
+		const characterAssessments = new Map<string, ScopedAssessmentComputation>()
+		const divisionSummaries = new Map<string, MutableSummary & { division: number | null }>()
+		const refTypeSummaries = new Map<string, MutableSummary & { refType: string }>()
+
+		for (const row of ledgerRows) {
+			const amountCenti = this.parseDecimalToCenti(row.amount)
+			const amountForTaxCenti = amountCenti > 0n ? amountCenti : 0n
+			if (amountForTaxCenti === 0n) {
+				continue
+			}
+
+			const resolved = this.resolveRuleForEntry({
+				entry: row,
+				amountCenti: amountForTaxCenti,
+				compiledRules,
+				defaultRateBps: row.isEss ? settings.essRateBps : settings.defaultRateBps,
+			})
+			const lineValue: PendingAssessmentLine = {
+				ledgerEntryId: row.id,
+				appliedRuleSetId: resolved.appliedRuleSetId,
+				taxRateBps: resolved.taxRateBps,
+				taxableAmount: this.formatCenti(resolved.taxableAmountCenti),
+				taxAmount: this.formatCenti(resolved.taxAmountCenti),
+				classification: resolved.classification,
+			}
+			const paidAmountCenti = this.extractTaxPaidFromPayload(row.rawPayload)
+
+			corporationTotals.taxableIncomeCenti += resolved.taxableAmountCenti
+			corporationTotals.nonTaxableIncomeCenti += amountForTaxCenti - resolved.taxableAmountCenti
+			corporationTotals.taxDueCenti += resolved.taxAmountCenti
+			corporationTotals.taxPaidCenti += paidAmountCenti
+			corporationLines.push(lineValue)
+
+			const divisionKey = row.division === null ? 'null' : `${row.division}`
+			const divisionSummary = divisionSummaries.get(divisionKey) ?? {
+				division: row.division,
+				taxableIncomeCenti: 0n,
+				nonTaxableIncomeCenti: 0n,
+				taxDueCenti: 0n,
+				taxPaidCenti: 0n,
+			}
+			divisionSummary.taxableIncomeCenti += resolved.taxableAmountCenti
+			divisionSummary.nonTaxableIncomeCenti += amountForTaxCenti - resolved.taxableAmountCenti
+			divisionSummary.taxDueCenti += resolved.taxAmountCenti
+			divisionSummary.taxPaidCenti += paidAmountCenti
+			divisionSummaries.set(divisionKey, divisionSummary)
+
+			const refTypeKey = row.refType
+			const refTypeSummary = refTypeSummaries.get(refTypeKey) ?? {
+				refType: row.refType,
+				taxableIncomeCenti: 0n,
+				nonTaxableIncomeCenti: 0n,
+				taxDueCenti: 0n,
+				taxPaidCenti: 0n,
+			}
+			refTypeSummary.taxableIncomeCenti += resolved.taxableAmountCenti
+			refTypeSummary.nonTaxableIncomeCenti += amountForTaxCenti - resolved.taxableAmountCenti
+			refTypeSummary.taxDueCenti += resolved.taxAmountCenti
+			refTypeSummary.taxPaidCenti += paidAmountCenti
+			refTypeSummaries.set(refTypeKey, refTypeSummary)
+
+			if (row.division !== null) {
+				const scoped = divisionAssessments.get(divisionKey) ?? {
+					assessmentScope: 'division',
+					scopeId: divisionKey,
+					totals: {
+						taxableIncomeCenti: 0n,
+						nonTaxableIncomeCenti: 0n,
+						taxDueCenti: 0n,
+						taxPaidCenti: 0n,
+					},
+					inGameTaxRateBps: null,
+					portalTaxRateBps: settings.defaultRateBps,
+					lines: [],
+				}
+				scoped.totals.taxableIncomeCenti += resolved.taxableAmountCenti
+				scoped.totals.nonTaxableIncomeCenti += amountForTaxCenti - resolved.taxableAmountCenti
+				scoped.totals.taxDueCenti += resolved.taxAmountCenti
+				scoped.totals.taxPaidCenti += paidAmountCenti
+				scoped.lines.push(lineValue)
+				divisionAssessments.set(divisionKey, scoped)
+			}
+
+			const characterId = this.extractCharacterId(row)
+			if (characterId) {
+				const scoped = characterAssessments.get(characterId) ?? {
+					assessmentScope: 'character',
+					scopeId: characterId,
+					totals: {
+						taxableIncomeCenti: 0n,
+						nonTaxableIncomeCenti: 0n,
+						taxDueCenti: 0n,
+						taxPaidCenti: 0n,
+					},
+					inGameTaxRateBps: null,
+					portalTaxRateBps: settings.defaultRateBps,
+					lines: [],
+				}
+				scoped.totals.taxableIncomeCenti += resolved.taxableAmountCenti
+				scoped.totals.nonTaxableIncomeCenti += amountForTaxCenti - resolved.taxableAmountCenti
+				scoped.totals.taxDueCenti += resolved.taxAmountCenti
+				scoped.totals.taxPaidCenti += paidAmountCenti
+				scoped.lines.push(lineValue)
+				characterAssessments.set(characterId, scoped)
+			}
+		}
+
+		const inGameTaxRateBps = await this.getInGameTaxRateBps(input.corporationId)
+		const portalTaxRateBps = settings.defaultRateBps
+		const taxDeltaCenti = corporationTotals.taxDueCenti - corporationTotals.taxPaidCenti
+		const discrepancyThresholdBps = settings.discrepancyThresholdBps
+
+		const discrepancyValues: Array<Omit<typeof taxDiscrepancies.$inferInsert, 'assessmentId'>> = []
+		if (
+			inGameTaxRateBps !== null &&
+			Math.abs(inGameTaxRateBps - portalTaxRateBps) > discrepancyThresholdBps
+		) {
+			discrepancyValues.push({
+				corporationId: input.corporationId,
+				discrepancyType: 'tax_rate_mismatch',
+				severity: 'warning',
+				details: {
+					inGameTaxRateBps,
+					portalTaxRateBps,
+					discrepancyBps: Math.abs(inGameTaxRateBps - portalTaxRateBps),
+					thresholdBps: discrepancyThresholdBps,
+				},
+			})
+		}
+
+		const taxDeltaAbsoluteCenti = taxDeltaCenti < 0n ? -taxDeltaCenti : taxDeltaCenti
+		let taxDeltaDiscrepancyBps: number | null = null
+		if (corporationTotals.taxDueCenti > 0n) {
+			taxDeltaDiscrepancyBps = Number(
+				(taxDeltaAbsoluteCenti * 10_000n) / corporationTotals.taxDueCenti
+			)
+		} else if (taxDeltaAbsoluteCenti > 0n) {
+			taxDeltaDiscrepancyBps = 10_000
+		}
+		if (taxDeltaDiscrepancyBps !== null && taxDeltaDiscrepancyBps > discrepancyThresholdBps) {
+			discrepancyValues.push({
+				corporationId: input.corporationId,
+				discrepancyType: 'tax_delta_threshold_exceeded',
+				severity: 'warning',
+				details: {
+					taxDue: this.formatCenti(corporationTotals.taxDueCenti),
+					taxPaid: this.formatCenti(corporationTotals.taxPaidCenti),
+					taxDelta: this.formatCenti(taxDeltaCenti),
+					discrepancyBps: taxDeltaDiscrepancyBps,
+					thresholdBps: discrepancyThresholdBps,
+				},
+			})
+		}
+
+		const divisionSummaryOutput = Array.from(divisionSummaries.values())
+			.sort((a, b) => (a.division ?? -1) - (b.division ?? -1))
+			.map((item) => this.toDivisionSummary(item, settings.included))
+		const refTypeSummaryOutput = Array.from(refTypeSummaries.values())
+			.sort((a, b) => a.refType.localeCompare(b.refType))
+			.map((item) => this.toRefTypeSummary(item, settings.included))
+		const scopeComputations: ScopedAssessmentComputation[] = [
+			{
+				assessmentScope: 'corporation',
+				scopeId: input.corporationId,
+				totals: corporationTotals,
+				inGameTaxRateBps,
+				portalTaxRateBps,
+				lines: corporationLines,
+			},
+			...Array.from(divisionAssessments.values()).sort(
+				(a, b) => Number(a.scopeId) - Number(b.scopeId)
+			),
+			...Array.from(characterAssessments.values()).sort((a, b) =>
+				a.scopeId.localeCompare(b.scopeId)
+			),
+		]
+
+		const result = await this.db.transaction(async (tx) => {
+			const now = new Date()
+
+			const [period] = await tx
+				.insert(taxPeriods)
+				.values({
+					corporationId: input.corporationId,
+					periodStart: input.periodStart,
+					periodEnd: input.periodEnd,
+					status: 'assessed',
+					closedAt: now,
+				})
+				.onConflictDoUpdate({
+					target: [taxPeriods.corporationId, taxPeriods.periodStart, taxPeriods.periodEnd],
+					set: {
+						status: 'assessed',
+						closedAt: now,
+						updatedAt: now,
+					},
+				})
+				.returning()
+			if (!period) {
+				throw new Error('Failed to upsert tax period')
+			}
+
+			const existingAssessments = await tx.query.taxAssessments.findMany({
+				where: and(
+					eq(taxAssessments.corporationId, input.corporationId),
+					eq(taxAssessments.taxPeriodStart, input.periodStart),
+					eq(taxAssessments.taxPeriodEnd, input.periodEnd),
+					inArray(taxAssessments.assessmentScope, ['corporation', 'division', 'character'])
+				),
+			})
+			const existingByScopeKey = new Map(
+				existingAssessments.map((assessment) => [
+					`${assessment.assessmentScope}:${assessment.scopeId}`,
+					assessment,
+				])
+			)
+			const targetScopeKeys = new Set(
+				scopeComputations.map((scope) => `${scope.assessmentScope}:${scope.scopeId}`)
+			)
+			const staleAssessmentIds = existingAssessments
+				.filter(
+					(assessment) =>
+						!targetScopeKeys.has(`${assessment.assessmentScope}:${assessment.scopeId}`)
+				)
+				.map((assessment) => assessment.id)
+
+			if (staleAssessmentIds.length > 0) {
+				await tx
+					.delete(taxDiscrepancies)
+					.where(inArray(taxDiscrepancies.assessmentId, staleAssessmentIds))
+				await tx
+					.delete(taxAssessmentLines)
+					.where(inArray(taxAssessmentLines.assessmentId, staleAssessmentIds))
+				await tx.delete(taxAssessments).where(inArray(taxAssessments.id, staleAssessmentIds))
+			}
+
+			const persistedByScopeKey = new Map<string, typeof taxAssessments.$inferSelect>()
+			for (const scope of scopeComputations) {
+				const scopeKey = `${scope.assessmentScope}:${scope.scopeId}`
+				const scopeTaxDeltaCenti = scope.totals.taxDueCenti - scope.totals.taxPaidCenti
+				const scopeStatus = this.resolveAssessmentStatus(settings.included, scopeTaxDeltaCenti)
+				const existing = existingByScopeKey.get(scopeKey)
+
+				if (existing) {
+					const [updated] = await tx
+						.update(taxAssessments)
+						.set({
+							taxableIncome: this.formatCenti(scope.totals.taxableIncomeCenti),
+							nonTaxableIncome: this.formatCenti(scope.totals.nonTaxableIncomeCenti),
+							taxDue: this.formatCenti(scope.totals.taxDueCenti),
+							taxPaid: this.formatCenti(scope.totals.taxPaidCenti),
+							taxDelta: this.formatCenti(scopeTaxDeltaCenti),
+							status: scopeStatus,
+							inGameTaxRateBps: scope.inGameTaxRateBps,
+							portalTaxRateBps: scope.portalTaxRateBps,
+							updatedAt: now,
+						})
+						.where(eq(taxAssessments.id, existing.id))
+						.returning()
+
+					if (!updated) {
+						throw new Error(`Failed to update ${scope.assessmentScope} assessment`)
+					}
+					persistedByScopeKey.set(scopeKey, updated)
+					continue
+				}
+
+				const [createdAssessment] = await tx
+					.insert(taxAssessments)
+					.values({
+						corporationId: input.corporationId,
+						taxPeriodStart: input.periodStart,
+						taxPeriodEnd: input.periodEnd,
+						assessmentScope: scope.assessmentScope,
+						scopeId: scope.scopeId,
+						taxableIncome: this.formatCenti(scope.totals.taxableIncomeCenti),
+						nonTaxableIncome: this.formatCenti(scope.totals.nonTaxableIncomeCenti),
+						taxDue: this.formatCenti(scope.totals.taxDueCenti),
+						taxPaid: this.formatCenti(scope.totals.taxPaidCenti),
+						taxDelta: this.formatCenti(scopeTaxDeltaCenti),
+						status: scopeStatus,
+						inGameTaxRateBps: scope.inGameTaxRateBps,
+						portalTaxRateBps: scope.portalTaxRateBps,
+					})
+					.returning()
+
+				if (!createdAssessment) {
+					throw new Error(`Failed to create ${scope.assessmentScope} assessment`)
+				}
+				persistedByScopeKey.set(scopeKey, createdAssessment)
+			}
+
+			const assessmentIds = Array.from(persistedByScopeKey.values()).map(
+				(assessment) => assessment.id
+			)
+			if (assessmentIds.length > 0) {
+				await tx
+					.delete(taxAssessmentLines)
+					.where(inArray(taxAssessmentLines.assessmentId, assessmentIds))
+				await tx
+					.delete(taxDiscrepancies)
+					.where(inArray(taxDiscrepancies.assessmentId, assessmentIds))
+			}
+
+			const scopedLineValues: Array<typeof taxAssessmentLines.$inferInsert> = []
+			for (const scope of scopeComputations) {
+				if (scope.lines.length === 0) {
+					continue
+				}
+				const persisted = persistedByScopeKey.get(`${scope.assessmentScope}:${scope.scopeId}`)
+				if (!persisted) {
+					throw new Error(`Missing persisted ${scope.assessmentScope} assessment`)
+				}
+				for (const line of scope.lines) {
+					scopedLineValues.push({
+						assessmentId: persisted.id,
+						ledgerEntryId: line.ledgerEntryId,
+						appliedRuleSetId: line.appliedRuleSetId,
+						taxRateBps: line.taxRateBps,
+						taxableAmount: line.taxableAmount,
+						taxAmount: line.taxAmount,
+						classification: line.classification,
+					})
+				}
+			}
+
+			if (scopedLineValues.length > 0) {
+				await tx.insert(taxAssessmentLines).values(scopedLineValues)
+			}
+
+			if (discrepancyValues.length > 0) {
+				const corporationAssessment = persistedByScopeKey.get(`corporation:${input.corporationId}`)
+				if (!corporationAssessment) {
+					throw new Error('Missing persisted corporation assessment')
+				}
+				await tx.insert(taxDiscrepancies).values(
+					discrepancyValues.map((item) => ({
+						...item,
+						assessmentId: corporationAssessment.id,
+					}))
+				)
+			}
+
+			const corporationAssessment = persistedByScopeKey.get(`corporation:${input.corporationId}`)
+			if (!corporationAssessment) {
+				throw new Error('Failed to persist corporation assessment')
+			}
+
+			return {
+				assessment: this.toAssessment(corporationAssessment),
+				period: this.toPeriod(period),
+				lineCount: corporationLines.length,
+				discrepancyCount: discrepancyValues.length,
+				divisionSummaries: divisionSummaryOutput,
+				refTypeSummaries: refTypeSummaryOutput,
+			}
+		})
+
+		return result
+	}
+
+	async listAssessmentLines(filters: ListTaxAssessmentLinesFilters): Promise<TaxAssessmentLine[]> {
+		const assessment = await this.db.query.taxAssessments.findFirst({
+			where: and(
+				eq(taxAssessments.id, filters.assessmentId),
+				eq(taxAssessments.corporationId, filters.corporationId)
+			),
+			columns: {
+				id: true,
+			},
+		})
+		if (!assessment) {
+			return []
+		}
+
+		const limit = Math.min(Math.max(filters.limit ?? 250, 1), 2000)
+		const offset = Math.max(filters.offset ?? 0, 0)
+
+		const rows = await this.db.query.taxAssessmentLines.findMany({
+			where: eq(taxAssessmentLines.assessmentId, filters.assessmentId),
+			orderBy: [desc(taxAssessmentLines.createdAt)],
+			limit,
+			offset,
+		})
+
+		return rows.map((row) => ({
+			id: row.id,
+			assessmentId: row.assessmentId,
+			ledgerEntryId: row.ledgerEntryId,
+			appliedRuleSetId: row.appliedRuleSetId,
+			taxRateBps: row.taxRateBps,
+			taxableAmount: row.taxableAmount,
+			taxAmount: row.taxAmount,
+			classification: row.classification,
+			createdAt: row.createdAt,
+			updatedAt: row.updatedAt,
+		}))
+	}
+
+	async listDiscrepancies(filters: ListTaxDiscrepanciesFilters): Promise<TaxDiscrepancy[]> {
+		const conditions = [eq(taxDiscrepancies.corporationId, filters.corporationId)]
+		if (filters.assessmentId) {
+			conditions.push(eq(taxDiscrepancies.assessmentId, filters.assessmentId))
+		}
+		if (filters.onlyOpen) {
+			conditions.push(isNull(taxDiscrepancies.resolvedAt))
+		}
+
+		const limit = Math.min(Math.max(filters.limit ?? 100, 1), 1000)
+		const offset = Math.max(filters.offset ?? 0, 0)
+		const rows = await this.db.query.taxDiscrepancies.findMany({
+			where: and(...conditions),
+			orderBy: [desc(taxDiscrepancies.createdAt)],
+			limit,
+			offset,
+		})
+
+		return rows.map((row) => ({
+			id: row.id,
+			corporationId: row.corporationId,
+			assessmentId: row.assessmentId,
+			discrepancyType: row.discrepancyType,
+			severity: row.severity,
+			details: row.details,
+			resolvedAt: row.resolvedAt,
+			createdAt: row.createdAt,
+			updatedAt: row.updatedAt,
+		}))
+	}
+
+	private resolveRuleForEntry(input: {
+		entry: typeof taxLedgerEntries.$inferSelect
+		amountCenti: bigint
+		compiledRules: CompiledRule[]
+		defaultRateBps: number
+	}): {
+		appliedRuleSetId: string | null
+		taxRateBps: number
+		taxableAmountCenti: bigint
+		taxAmountCenti: bigint
+		classification: string
+	} {
+		for (const rule of input.compiledRules) {
+			const matches = this.ruleMatches(rule.conditions, input.entry, input.amountCenti)
+			if (!matches) {
+				continue
+			}
+
+			if (!rule.isTaxable) {
+				return {
+					appliedRuleSetId: rule.ruleSetId,
+					taxRateBps: 0,
+					taxableAmountCenti: 0n,
+					taxAmountCenti: 0n,
+					classification: `rule_exempt:${rule.label}`,
+				}
+			}
+
+			const taxAmountCenti = (input.amountCenti * BigInt(rule.taxRateBps)) / 10_000n
+			return {
+				appliedRuleSetId: rule.ruleSetId,
+				taxRateBps: rule.taxRateBps,
+				taxableAmountCenti: input.amountCenti,
+				taxAmountCenti,
+				classification: `rule_taxable:${rule.label}`,
+			}
+		}
+
+		const taxAmountCenti = (input.amountCenti * BigInt(input.defaultRateBps)) / 10_000n
+		return {
+			appliedRuleSetId: null,
+			taxRateBps: input.defaultRateBps,
+			taxableAmountCenti: input.amountCenti,
+			taxAmountCenti,
+			classification: input.entry.isEss ? 'default_ess' : 'default',
+		}
+	}
+
+	private ruleMatches(
+		conditions: CompiledRule['conditions'],
+		entry: typeof taxLedgerEntries.$inferSelect,
+		amountCenti: bigint
+	): boolean {
+		if (conditions.length === 0) {
+			return true
+		}
+
+		return conditions.some((condition) => {
+			if (condition.appliesToRefType && condition.appliesToRefType !== entry.refType) {
+				return false
+			}
+			if (condition.walletDivision !== null && condition.walletDivision !== entry.division) {
+				return false
+			}
+			if (condition.partyType === 'first_party' && !entry.firstPartyId) {
+				return false
+			}
+			if (condition.partyType === 'second_party' && !entry.secondPartyId) {
+				return false
+			}
+			if (
+				condition.minAmount !== null &&
+				amountCenti < this.parseDecimalToCenti(condition.minAmount)
+			) {
+				return false
+			}
+			if (
+				condition.maxAmount !== null &&
+				amountCenti > this.parseDecimalToCenti(condition.maxAmount)
+			) {
+				return false
+			}
+			if (condition.isEssOnly && !entry.isEss) {
+				return false
+			}
+			if (condition.essBankType !== null && condition.essBankType !== entry.essBankType) {
+				return false
+			}
+			return true
+		})
+	}
+
+	private async getInGameTaxRateBps(corporationId: string): Promise<number | null> {
+		try {
+			const stub = getStub<EveCorporationData>(this.eveCorporationDataNamespace, corporationId)
+			const metadata = await stub.getCorporationTaxMetadata(corporationId)
+			return metadata?.inGameTaxRateBps ?? null
+		} catch (_error) {
+			return null
+		}
+	}
+
+	private resolveAssessmentStatus(isIncluded: boolean, taxDeltaCenti: bigint): TaxAssessmentStatus {
+		if (!isIncluded) {
+			return 'excluded'
+		}
+		if (taxDeltaCenti > 0n) {
+			return 'underpaid'
+		}
+		if (taxDeltaCenti < 0n) {
+			return 'overpaid'
+		}
+		return 'paid'
+	}
+
+	private extractTaxPaidFromPayload(payload: Record<string, unknown> | null): bigint {
+		if (!payload || typeof payload !== 'object') {
+			return 0n
+		}
+		const value = payload.tax
+		if (typeof value === 'string') {
+			return this.parseDecimalToCenti(value)
+		}
+		if (typeof value === 'number' && Number.isFinite(value)) {
+			return this.parseDecimalToCenti(value.toString())
+		}
+		return 0n
+	}
+
+	private extractCharacterId(row: typeof taxLedgerEntries.$inferSelect): string | null {
+		if (
+			row.sourceType === 'character_wallet_journal' ||
+			row.sourceType === 'character_wallet_transaction'
+		) {
+			return row.sourceSecondaryId ?? null
+		}
+		return null
+	}
+
+	private parseDecimalToCenti(value: string): bigint {
+		const trimmed = value.trim()
+		if (!trimmed) {
+			return 0n
+		}
+		const negative = trimmed.startsWith('-')
+		const normalized = negative ? trimmed.slice(1) : trimmed
+		const [wholePartRaw, fractionalRaw = ''] = normalized.split('.')
+		const wholePart = wholePartRaw.replace(/[^0-9]/g, '')
+		const fractional = fractionalRaw
+			.replace(/[^0-9]/g, '')
+			.padEnd(2, '0')
+			.slice(0, 2)
+		const whole = wholePart ? BigInt(wholePart) : 0n
+		const fraction = fractional ? BigInt(fractional) : 0n
+		const centi = whole * 100n + fraction
+		return negative ? -centi : centi
+	}
+
+	private formatCenti(value: bigint): string {
+		const negative = value < 0n
+		const absolute = negative ? -value : value
+		const whole = absolute / 100n
+		const fraction = absolute % 100n
+		const prefix = negative ? '-' : ''
+		if (fraction === 0n) {
+			return `${prefix}${whole.toString()}`
+		}
+		return `${prefix}${whole.toString()}.${fraction.toString().padStart(2, '0')}`
+	}
+
+	private toAssessment(row: typeof taxAssessments.$inferSelect): TaxAssessment {
+		return {
+			id: row.id,
+			corporationId: row.corporationId,
+			taxPeriodStart: row.taxPeriodStart,
+			taxPeriodEnd: row.taxPeriodEnd,
+			assessmentScope: row.assessmentScope as TaxAssessmentScope,
+			scopeId: row.scopeId,
+			taxableIncome: row.taxableIncome,
+			nonTaxableIncome: row.nonTaxableIncome,
+			taxDue: row.taxDue,
+			taxPaid: row.taxPaid,
+			taxDelta: row.taxDelta,
+			status: row.status as TaxAssessmentStatus,
+			inGameTaxRateBps: row.inGameTaxRateBps,
+			portalTaxRateBps: row.portalTaxRateBps,
+			billId: row.billId,
+			billStatus: row.billStatus,
+			billStatusLastSyncedAt: row.billStatusLastSyncedAt,
+			approvedBy: row.approvedBy,
+			approvedAt: row.approvedAt,
+			createdAt: row.createdAt,
+			updatedAt: row.updatedAt,
+		}
+	}
+
+	private toPeriod(row: typeof taxPeriods.$inferSelect): TaxPeriod {
+		return {
+			id: row.id,
+			corporationId: row.corporationId,
+			periodStart: row.periodStart,
+			periodEnd: row.periodEnd,
+			status: row.status as TaxPeriodStatus,
+			closedAt: row.closedAt,
+			createdAt: row.createdAt,
+			updatedAt: row.updatedAt,
+		}
+	}
+
+	private toDivisionSummary(
+		item: MutableSummary & { division: number | null },
+		included: boolean
+	): TaxDivisionAssessmentSummary {
+		const taxDeltaCenti = item.taxDueCenti - item.taxPaidCenti
+		return {
+			division: item.division,
+			taxableIncome: this.formatCenti(item.taxableIncomeCenti),
+			nonTaxableIncome: this.formatCenti(item.nonTaxableIncomeCenti),
+			taxDue: this.formatCenti(item.taxDueCenti),
+			taxPaid: this.formatCenti(item.taxPaidCenti),
+			taxDelta: this.formatCenti(taxDeltaCenti),
+			status: this.resolveAssessmentStatus(included, taxDeltaCenti),
+		}
+	}
+
+	private toRefTypeSummary(
+		item: MutableSummary & { refType: string },
+		included: boolean
+	): TaxRefTypeAssessmentSummary {
+		const taxDeltaCenti = item.taxDueCenti - item.taxPaidCenti
+		return {
+			refType: item.refType,
+			taxableIncome: this.formatCenti(item.taxableIncomeCenti),
+			nonTaxableIncome: this.formatCenti(item.nonTaxableIncomeCenti),
+			taxDue: this.formatCenti(item.taxDueCenti),
+			taxPaid: this.formatCenti(item.taxPaidCenti),
+			taxDelta: this.formatCenti(taxDeltaCenti),
+			status: this.resolveAssessmentStatus(included, taxDeltaCenti),
+		}
+	}
+}

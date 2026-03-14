@@ -1,0 +1,52 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "corporation-tax",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-04-28",
+	"compatibility_flags": ["nodejs_compat"],
+	"routes": [],
+	"logpush": false,
+	"workers_dev": false,
+	"observability": {
+		"enabled": true
+	},
+	"vars": {
+		"ESS_ALERT_THRESHOLD_ISK": "1000000000"
+	},
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "CORPORATION_TAX",
+				"class_name": "CorporationTax"
+			},
+			{
+				"name": "BILLS",
+				"class_name": "MockBills"
+			},
+			{
+				"name": "EVE_CORPORATION_DATA",
+				"class_name": "MockEveCorporationData"
+			},
+			{
+				"name": "EVE_CHARACTER_DATA",
+				"class_name": "MockEveCharacterData"
+			},
+			{
+				"name": "DISCORD",
+				"class_name": "MockDiscord"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": [
+				"CorporationTax",
+				"MockBills",
+				"MockEveCorporationData",
+				"MockEveCharacterData",
+				"MockDiscord"
+			]
+		}
+	]
+}
