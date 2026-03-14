@@ -1,6 +1,8 @@
 import {
 	BookOpen,
 	Building2,
+	ChevronDown,
+	ChevronRight,
 	CircleDollarSign,
 	FileText,
 	FolderHeart,
@@ -10,15 +12,19 @@ import {
 	Package,
 	Radio,
 	Receipt,
+	Scale,
 	Settings,
 	Shield,
 	Users,
 } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 
 import { useHasCorporationAccess } from '@/features/my-corporations'
 import { useAuth, useLogout } from '@/hooks/useAuth'
+import { useTaxAlerts } from '@/hooks/useCorporationTax'
 import { usePendingInvitations } from '@/hooks/useGroups'
+import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { cn } from '@/lib/utils'
 
 import { Badge } from './ui/badge'
@@ -28,22 +34,35 @@ interface SidebarNavProps {
 	onNavigate?: () => void
 }
 
+interface SidebarNavItem {
+	label: string
+	href: string
+	icon?: any
+	badge?: number
+	children?: SidebarNavItem[]
+}
+
 export function SidebarNav({ onNavigate }: SidebarNavProps) {
 	const location = useLocation()
 	const { user } = useAuth()
 	const logout = useLogout()
 	const { data: invitations } = usePendingInvitations()
 	const { data: corporationAccess } = useHasCorporationAccess()
+	const { hasAnyPermission } = useUserPermissions()
 
 	const pendingCount = invitations?.length || 0
 	const mainCharacter = user?.characters.find((c) => c.characterId === user.mainCharacterId)
+	const isSiteAdmin = user?.is_admin === true
+	const isTaxRoute = location.pathname === '/tax' || location.pathname.startsWith('/tax/')
+	const [taxMenuOpen, setTaxMenuOpen] = useState(isTaxRoute)
 
-	const navItems: Array<{
-		label: string
-		href: string
-		icon: any
-		badge?: number
-	}> = [
+	useEffect(() => {
+		if (isTaxRoute) {
+			setTaxMenuOpen(true)
+		}
+	}, [isTaxRoute])
+
+	const navItems: SidebarNavItem[] = [
 		{
 			label: 'Dashboard',
 			href: '/dashboard',
@@ -106,6 +125,65 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 		icon: Package,
 	})
 
+	const canReadTaxFeature =
+		isSiteAdmin ||
+		hasAnyPermission('urn:tax:viewer', 'urn:tax:auditor', 'urn:tax:admin') ||
+		!!corporationAccess?.hasAccess
+	const canAuditTaxFeature = isSiteAdmin || hasAnyPermission('urn:tax:auditor', 'urn:tax:admin')
+	const canManageTaxFeature = isSiteAdmin || hasAnyPermission('urn:tax:admin')
+	const { data: openTaxAlerts = [] } = useTaxAlerts({
+		status: 'open',
+		limit: 200,
+		enabled: canManageTaxFeature,
+	})
+	const openTaxAlertCount = openTaxAlerts.length
+
+	if (canReadTaxFeature) {
+		const taxItems: SidebarNavItem[] = []
+		taxItems.push({
+			label: 'Member Summary',
+			href: '/tax/member-summary',
+		})
+
+		if (canAuditTaxFeature) {
+			taxItems.push({
+				label: 'Reports',
+				href: '/tax/reports',
+			})
+			taxItems.push({
+				label: 'Billing',
+				href: '/tax/bills',
+			})
+		}
+
+		if (canManageTaxFeature) {
+			taxItems.push({
+				label: 'Alerts',
+				href: '/tax/alerts',
+				badge: openTaxAlertCount > 0 ? openTaxAlertCount : undefined,
+			})
+			taxItems.push({
+				label: 'Ledger',
+				href: '/tax/ledger',
+			})
+			taxItems.push({
+				label: 'Settings',
+				href: '/tax/settings',
+			})
+			taxItems.push({
+				label: 'Audit Log',
+				href: '/tax/audit-log',
+			})
+		}
+
+		navItems.push({
+			label: 'Tax',
+			href: '/tax',
+			icon: Scale,
+			children: taxItems,
+		})
+	}
+
 	// Add Manage Corporation nav item if user has CEO/director access (second from bottom)
 	if (corporationAccess?.hasAccess) {
 		navItems.push({
@@ -141,9 +219,80 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 			{/* Navigation Items */}
 			<nav className="flex-1 p-4 space-y-1 overflow-y-auto">
 				{navItems.map((item) => {
+					const childActive = (item.children ?? []).some(
+						(child) =>
+							location.pathname === child.href || location.pathname.startsWith(child.href + '/')
+					)
 					const isActive =
-						location.pathname === item.href || location.pathname.startsWith(item.href + '/')
+						childActive ||
+						location.pathname === item.href ||
+						location.pathname.startsWith(item.href + '/')
 					const Icon = item.icon
+
+					if (item.children && item.children.length > 0) {
+						return (
+							<div key={item.href} className="space-y-1">
+								<button
+									type="button"
+									onClick={() => setTaxMenuOpen((open) => !open)}
+									aria-expanded={taxMenuOpen}
+									className={cn(
+										'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all',
+										'hover:bg-accent/50 hover:text-accent-foreground',
+										'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+										isActive
+											? 'border-l-4 border-primary bg-[hsl(var(--accent-muted))] text-foreground shadow-sm'
+											: 'text-muted-foreground border-l-4 border-transparent'
+									)}
+								>
+									{Icon ? (
+										<Icon className={cn('h-5 w-5 flex-shrink-0', isActive && 'text-primary')} />
+									) : null}
+									<span className="flex-1 text-left">{item.label}</span>
+									{taxMenuOpen ? (
+										<ChevronDown className="h-4 w-4 opacity-70" />
+									) : (
+										<ChevronRight className="h-4 w-4 opacity-70" />
+									)}
+								</button>
+
+								{taxMenuOpen ? (
+									<div className="ml-6 space-y-1 border-l border-border/60 pl-2">
+										{item.children.map((child) => {
+											const childIsActive =
+												location.pathname === child.href ||
+												location.pathname.startsWith(child.href + '/')
+
+											return (
+												<Link
+													key={child.href}
+													to={child.href}
+													onClick={onNavigate}
+													className={cn(
+														'flex items-center rounded-lg px-3 py-2 text-sm transition-all',
+														'hover:bg-accent/50 hover:text-accent-foreground',
+														'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+														childIsActive
+															? 'bg-[hsl(var(--accent-muted))] text-foreground font-medium'
+															: 'text-muted-foreground'
+													)}
+												>
+													<span className="inline-flex items-center gap-2 leading-none">
+														<span>{child.label}</span>
+														{child.badge ? (
+															<span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-semibold leading-none text-destructive-foreground ring-1 ring-destructive/80">
+																{child.badge > 99 ? '99+' : child.badge}
+															</span>
+														) : null}
+													</span>
+												</Link>
+											)
+										})}
+									</div>
+								) : null}
+							</div>
+						)
+					}
 
 					return (
 						<Link
@@ -155,11 +304,13 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 								'hover:bg-accent/50 hover:text-accent-foreground relative group',
 								'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
 								isActive
-									? 'bg-accent text-accent-foreground border-l-4 border-primary shadow-sm'
+									? 'border-l-4 border-primary bg-[hsl(var(--accent-muted))] text-foreground shadow-sm'
 									: 'text-muted-foreground border-l-4 border-transparent'
 							)}
 						>
-							<Icon className={cn('h-5 w-5 flex-shrink-0', isActive && 'text-primary')} />
+							{Icon ? (
+								<Icon className={cn('h-5 w-5 flex-shrink-0', isActive && 'text-primary')} />
+							) : null}
 							<span className="flex-1">{item.label}</span>
 							{item.badge && (
 								<Badge
