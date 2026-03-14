@@ -1,0 +1,576 @@
+import { relations } from 'drizzle-orm'
+import {
+	boolean,
+	date,
+	index,
+	integer,
+	jsonb,
+	pgEnum,
+	pgTable,
+	text,
+	timestamp,
+	unique,
+	uuid,
+} from 'drizzle-orm/pg-core'
+
+/**
+ * Corporation-level settings for tax behavior and enablement.
+ */
+export const taxCorporationSettings = pgTable(
+	'tax_corporation_settings',
+	{
+		corporationId: text('corporation_id').primaryKey(),
+		included: boolean('included').notNull().default(false),
+		exclusionReason: text('exclusion_reason'),
+		defaultRateBps: integer('default_rate_bps').notNull().default(0),
+		essRateBps: integer('ess_rate_bps').notNull().default(0),
+		discrepancyThresholdBps: integer('discrepancy_threshold_bps').notNull().default(500),
+		memberSummaryEnabled: boolean('member_summary_enabled').notNull().default(false),
+		billingEnabled: boolean('billing_enabled').notNull().default(false),
+		billingIssuerUserId: text('billing_issuer_user_id'),
+		billingPayeeId: text('billing_payee_id'),
+		billingPayeeType: text('billing_payee_type'),
+		billingDueDays: integer('billing_due_days').notNull().default(14),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		index('tax_corporation_settings_included_idx').on(table.included),
+		index('tax_corporation_settings_updated_at_idx').on(table.updatedAt),
+	]
+)
+
+export const taxAssessmentScopeEnum = pgEnum('tax_assessment_scope', [
+	'corporation',
+	'division',
+	'character',
+])
+export const taxAssessmentStatusEnum = pgEnum('tax_assessment_status', [
+	'draft',
+	'underpaid',
+	'paid',
+	'overpaid',
+	'excluded',
+])
+export const taxPeriodStatusEnum = pgEnum('tax_period_status', ['open', 'assessed', 'closed'])
+export const taxBillStatusEnum = pgEnum('tax_bill_status', [
+	'draft',
+	'issued',
+	'paid',
+	'cancelled',
+	'overdue',
+])
+export const taxExportFormatEnum = pgEnum('tax_export_format', ['csv', 'xlsx'])
+export const taxExportStatusEnum = pgEnum('tax_export_status', [
+	'queued',
+	'running',
+	'completed',
+	'failed',
+])
+export const taxExportFrequencyEnum = pgEnum('tax_export_frequency', ['weekly', 'monthly'])
+export const taxAlertSeverityEnum = pgEnum('tax_alert_severity', ['critical', 'warning', 'info'])
+export const taxAlertStatusEnum = pgEnum('tax_alert_status', ['open', 'acknowledged', 'resolved'])
+export const taxAlertDiscordDeliveryStatusEnum = pgEnum('tax_alert_discord_delivery_status', [
+	'pending',
+	'sent',
+	'failed',
+	'skipped',
+])
+
+/**
+ * Audit records for tax configuration and administrative actions.
+ */
+export const taxAuditLog = pgTable(
+	'tax_audit_log',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		corporationId: text('corporation_id'),
+		actorUserId: text('actor_user_id').notNull(),
+		action: text('action').notNull(),
+		before: jsonb('before').$type<Record<string, unknown> | null>(),
+		after: jsonb('after').$type<Record<string, unknown> | null>(),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		index('tax_audit_log_corporation_id_idx').on(table.corporationId),
+		index('tax_audit_log_created_at_idx').on(table.createdAt),
+	]
+)
+
+export const taxAssessments = pgTable(
+	'tax_assessments',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		corporationId: text('corporation_id').notNull(),
+		taxPeriodStart: timestamp('tax_period_start', { withTimezone: true }).notNull(),
+		taxPeriodEnd: timestamp('tax_period_end', { withTimezone: true }).notNull(),
+		assessmentScope: taxAssessmentScopeEnum('assessment_scope').notNull().default('corporation'),
+		scopeId: text('scope_id').notNull(),
+		taxableIncome: text('taxable_income').notNull().default('0'),
+		nonTaxableIncome: text('non_taxable_income').notNull().default('0'),
+		taxDue: text('tax_due').notNull().default('0'),
+		taxPaid: text('tax_paid').notNull().default('0'),
+		taxDelta: text('tax_delta').notNull().default('0'),
+		status: taxAssessmentStatusEnum('status').notNull().default('draft'),
+		inGameTaxRateBps: integer('in_game_tax_rate_bps'),
+		portalTaxRateBps: integer('portal_tax_rate_bps').notNull().default(0),
+		billId: uuid('bill_id'),
+		billStatus: taxBillStatusEnum('bill_status'),
+		billStatusLastSyncedAt: timestamp('bill_status_last_synced_at', { withTimezone: true }),
+		approvedBy: text('approved_by'),
+		approvedAt: timestamp('approved_at', { withTimezone: true }),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		unique('tax_assessments_scope_period_unique').on(
+			table.corporationId,
+			table.taxPeriodStart,
+			table.taxPeriodEnd,
+			table.assessmentScope,
+			table.scopeId
+		),
+		index('tax_assessments_corporation_id_idx').on(table.corporationId),
+		index('tax_assessments_status_idx').on(table.status),
+		index('tax_assessments_scope_idx').on(table.assessmentScope),
+		index('tax_assessments_period_start_idx').on(table.taxPeriodStart),
+		index('tax_assessments_period_end_idx').on(table.taxPeriodEnd),
+		index('tax_assessments_bill_id_idx').on(table.billId),
+	]
+)
+
+export const taxPeriods = pgTable(
+	'tax_periods',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		corporationId: text('corporation_id').notNull(),
+		periodStart: timestamp('period_start', { withTimezone: true }).notNull(),
+		periodEnd: timestamp('period_end', { withTimezone: true }).notNull(),
+		status: taxPeriodStatusEnum('status').notNull().default('open'),
+		closedAt: timestamp('closed_at', { withTimezone: true }),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		unique('tax_periods_corp_period_unique').on(
+			table.corporationId,
+			table.periodStart,
+			table.periodEnd
+		),
+		index('tax_periods_corporation_id_idx').on(table.corporationId),
+		index('tax_periods_period_start_idx').on(table.periodStart),
+		index('tax_periods_period_end_idx').on(table.periodEnd),
+		index('tax_periods_status_idx').on(table.status),
+	]
+)
+
+export const taxAssessmentLines = pgTable(
+	'tax_assessment_lines',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		assessmentId: uuid('assessment_id')
+			.notNull()
+			.references(() => taxAssessments.id, { onDelete: 'cascade' }),
+		ledgerEntryId: uuid('ledger_entry_id').notNull(),
+		appliedRuleSetId: uuid('applied_rule_set_id'),
+		taxRateBps: integer('tax_rate_bps').notNull().default(0),
+		taxableAmount: text('taxable_amount').notNull().default('0'),
+		taxAmount: text('tax_amount').notNull().default('0'),
+		classification: text('classification').notNull(),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		unique('tax_assessment_lines_assessment_ledger_unique').on(
+			table.assessmentId,
+			table.ledgerEntryId
+		),
+		index('tax_assessment_lines_assessment_id_idx').on(table.assessmentId),
+		index('tax_assessment_lines_ledger_entry_id_idx').on(table.ledgerEntryId),
+		index('tax_assessment_lines_applied_rule_set_id_idx').on(table.appliedRuleSetId),
+	]
+)
+
+export const taxDiscrepancies = pgTable(
+	'tax_discrepancies',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		corporationId: text('corporation_id').notNull(),
+		assessmentId: uuid('assessment_id').references(() => taxAssessments.id, {
+			onDelete: 'set null',
+		}),
+		discrepancyType: text('discrepancy_type').notNull(),
+		severity: text('severity').notNull(),
+		details: jsonb('details').$type<Record<string, unknown> | null>(),
+		resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		index('tax_discrepancies_corporation_id_idx').on(table.corporationId),
+		index('tax_discrepancies_assessment_id_idx').on(table.assessmentId),
+		index('tax_discrepancies_discrepancy_type_idx').on(table.discrepancyType),
+		index('tax_discrepancies_severity_idx').on(table.severity),
+	]
+)
+
+export const taxBillSyncEvents = pgTable(
+	'tax_bill_sync_events',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		corporationId: text('corporation_id').notNull(),
+		assessmentId: uuid('assessment_id')
+			.notNull()
+			.references(() => taxAssessments.id, { onDelete: 'cascade' }),
+		billId: uuid('bill_id').notNull(),
+		eventType: text('event_type').notNull(),
+		fromStatus: text('from_status'),
+		toStatus: text('to_status'),
+		payload: jsonb('payload').$type<Record<string, string | number | boolean | null> | null>(),
+		syncedAt: timestamp('synced_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		index('tax_bill_sync_events_corporation_id_idx').on(table.corporationId),
+		index('tax_bill_sync_events_assessment_id_idx').on(table.assessmentId),
+		index('tax_bill_sync_events_bill_id_idx').on(table.billId),
+		index('tax_bill_sync_events_synced_at_idx').on(table.syncedAt),
+	]
+)
+
+export const taxExports = pgTable(
+	'tax_exports',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		corporationId: text('corporation_id'),
+		requestedByUserId: text('requested_by_user_id').notNull(),
+		format: taxExportFormatEnum('format').notNull(),
+		reportType: text('report_type').notNull(),
+		status: taxExportStatusEnum('status').notNull().default('queued'),
+		filters: jsonb('filters').$type<Record<string, unknown> | null>(),
+		rowCount: integer('row_count'),
+		sourceEsiVersion: text('source_esi_version'),
+		error: text('error'),
+		requestedAt: timestamp('requested_at', { withTimezone: true }).defaultNow().notNull(),
+		completedAt: timestamp('completed_at', { withTimezone: true }),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		index('tax_exports_corporation_id_idx').on(table.corporationId),
+		index('tax_exports_requested_by_idx').on(table.requestedByUserId),
+		index('tax_exports_status_idx').on(table.status),
+		index('tax_exports_requested_at_idx').on(table.requestedAt),
+	]
+)
+
+export const taxExportSchedules = pgTable(
+	'tax_export_schedules',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		name: text('name').notNull(),
+		corporationId: text('corporation_id'),
+		createdByUserId: text('created_by_user_id').notNull(),
+		format: taxExportFormatEnum('format').notNull(),
+		frequency: taxExportFrequencyEnum('frequency').notNull(),
+		reportType: text('report_type').notNull(),
+		filters: jsonb('filters').$type<Record<string, unknown> | null>(),
+		isActive: boolean('is_active').notNull().default(true),
+		nextRunAt: timestamp('next_run_at', { withTimezone: true }).notNull(),
+		lastRunAt: timestamp('last_run_at', { withTimezone: true }),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		index('tax_export_schedules_corporation_id_idx').on(table.corporationId),
+		index('tax_export_schedules_created_by_idx').on(table.createdByUserId),
+		index('tax_export_schedules_is_active_idx').on(table.isActive),
+		index('tax_export_schedules_next_run_at_idx').on(table.nextRunAt),
+	]
+)
+
+export const taxNotificationDestinations = pgTable(
+	'tax_notification_destinations',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		scope: text('scope').notNull(),
+		corporationId: text('corporation_id'),
+		guildId: text('guild_id').notNull(),
+		channelId: text('channel_id').notNull(),
+		isActive: boolean('is_active').notNull().default(true),
+		createdByUserId: text('created_by_user_id').notNull(),
+		updatedByUserId: text('updated_by_user_id').notNull(),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		unique('tax_notification_destinations_scope_corp_unique').on(table.scope, table.corporationId),
+		index('tax_notification_destinations_scope_idx').on(table.scope),
+		index('tax_notification_destinations_corporation_id_idx').on(table.corporationId),
+		index('tax_notification_destinations_active_idx').on(table.isActive),
+	]
+)
+
+export const taxAlerts = pgTable(
+	'tax_alerts',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		corporationId: text('corporation_id'),
+		alertType: text('alert_type').notNull(),
+		severity: taxAlertSeverityEnum('severity').notNull(),
+		status: taxAlertStatusEnum('status').notNull().default('open'),
+		dedupeKey: text('dedupe_key').notNull(),
+		payload: jsonb('payload').$type<Record<string, unknown> | null>(),
+		firstTriggeredAt: timestamp('first_triggered_at', { withTimezone: true })
+			.defaultNow()
+			.notNull(),
+		lastTriggeredAt: timestamp('last_triggered_at', { withTimezone: true }).defaultNow().notNull(),
+		acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }),
+		acknowledgedByUserId: text('acknowledged_by_user_id'),
+		resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+		resolvedByUserId: text('resolved_by_user_id'),
+		discordDeliveryStatus: taxAlertDiscordDeliveryStatusEnum('discord_delivery_status')
+			.notNull()
+			.default('pending'),
+		discordAttemptCount: integer('discord_attempt_count').notNull().default(0),
+		discordLastAttemptAt: timestamp('discord_last_attempt_at', { withTimezone: true }),
+		discordLastError: text('discord_last_error'),
+		nextRetryAt: timestamp('next_retry_at', { withTimezone: true }),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		unique('tax_alerts_dedupe_key_unique').on(table.dedupeKey),
+		index('tax_alerts_corporation_id_idx').on(table.corporationId),
+		index('tax_alerts_status_idx').on(table.status),
+		index('tax_alerts_severity_idx').on(table.severity),
+		index('tax_alerts_last_triggered_at_idx').on(table.lastTriggeredAt),
+		index('tax_alerts_discord_delivery_status_idx').on(table.discordDeliveryStatus),
+	]
+)
+
+export const taxLedgerEntries = pgTable(
+	'tax_ledger_entries',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		corporationId: text('corporation_id').notNull(),
+		sourceType: text('source_type').notNull(),
+		sourcePrimaryId: text('source_primary_id').notNull(),
+		sourceSecondaryId: text('source_secondary_id'),
+		sourceKey: text('source_key').notNull(),
+		division: integer('division'),
+		refType: text('ref_type').notNull(),
+		amount: text('amount').notNull(),
+		balance: text('balance'),
+		direction: text('direction').notNull(),
+		firstPartyId: text('first_party_id'),
+		secondPartyId: text('second_party_id'),
+		entryDate: timestamp('entry_date', { withTimezone: true }).notNull(),
+		isEss: boolean('is_ess').notNull().default(false),
+		essBankType: text('ess_bank_type'),
+		rawPayload: jsonb('raw_payload').$type<Record<string, unknown> | null>(),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		unique('tax_ledger_entries_source_key_unique').on(table.sourceKey),
+		index('tax_ledger_entries_corporation_id_idx').on(table.corporationId),
+		index('tax_ledger_entries_ref_type_idx').on(table.refType),
+		index('tax_ledger_entries_entry_date_idx').on(table.entryDate),
+		index('tax_ledger_entries_is_ess_idx').on(table.isEss),
+	]
+)
+
+export const taxSyncCheckpoints = pgTable(
+	'tax_sync_checkpoints',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		corporationId: text('corporation_id').notNull(),
+		sourceType: text('source_type').notNull(),
+		cursor: text('cursor'),
+		lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+		lastSuccessfulSyncAt: timestamp('last_successful_sync_at', { withTimezone: true }),
+		lastError: text('last_error'),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		unique('tax_sync_checkpoints_corp_source_unique').on(table.corporationId, table.sourceType),
+		index('tax_sync_checkpoints_corporation_id_idx').on(table.corporationId),
+		index('tax_sync_checkpoints_source_type_idx').on(table.sourceType),
+		index('tax_sync_checkpoints_last_successful_sync_at_idx').on(table.lastSuccessfulSyncAt),
+	]
+)
+
+export const taxDailyRollups = pgTable(
+	'tax_daily_rollups',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		corporationId: text('corporation_id').notNull(),
+		rollupDate: date('rollup_date', { mode: 'date' }).notNull(),
+		division: integer('division'),
+		refType: text('ref_type'),
+		taxableIncome: text('taxable_income').notNull().default('0'),
+		taxDue: text('tax_due').notNull().default('0'),
+		taxPaid: text('tax_paid').notNull().default('0'),
+		essIncome: text('ess_income').notNull().default('0'),
+		entryCount: integer('entry_count').notNull().default(0),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		unique('tax_daily_rollups_corp_date_division_ref_unique').on(
+			table.corporationId,
+			table.rollupDate,
+			table.division,
+			table.refType
+		),
+		index('tax_daily_rollups_corporation_id_idx').on(table.corporationId),
+		index('tax_daily_rollups_rollup_date_idx').on(table.rollupDate),
+		index('tax_daily_rollups_ref_type_idx').on(table.refType),
+	]
+)
+
+export const taxRuleSets = pgTable(
+	'tax_rule_sets',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		corporationId: text('corporation_id'),
+		name: text('name').notNull(),
+		priority: integer('priority').notNull().default(0),
+		isActive: boolean('is_active').notNull().default(true),
+		effectiveFrom: timestamp('effective_from', { withTimezone: true }).notNull().defaultNow(),
+		effectiveTo: timestamp('effective_to', { withTimezone: true }),
+		createdBy: text('created_by').notNull(),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		index('tax_rule_sets_corporation_id_idx').on(table.corporationId),
+		index('tax_rule_sets_is_active_idx').on(table.isActive),
+		index('tax_rule_sets_priority_idx').on(table.priority),
+	]
+)
+
+export const taxRuleConditions = pgTable(
+	'tax_rule_conditions',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		ruleSetId: uuid('rule_set_id')
+			.notNull()
+			.references(() => taxRuleSets.id, { onDelete: 'cascade' }),
+		appliesToRefType: text('applies_to_ref_type'),
+		walletDivision: integer('wallet_division'),
+		partyType: text('party_type'),
+		minAmount: text('min_amount'),
+		maxAmount: text('max_amount'),
+		isEssOnly: boolean('is_ess_only').notNull().default(false),
+		essBankType: text('ess_bank_type'),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		index('tax_rule_conditions_rule_set_id_idx').on(table.ruleSetId),
+		index('tax_rule_conditions_ref_type_idx').on(table.appliesToRefType),
+		index('tax_rule_conditions_wallet_division_idx').on(table.walletDivision),
+	]
+)
+
+export const taxRuleActions = pgTable(
+	'tax_rule_actions',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		ruleSetId: uuid('rule_set_id')
+			.notNull()
+			.references(() => taxRuleSets.id, { onDelete: 'cascade' }),
+		taxRateBps: integer('tax_rate_bps').notNull(),
+		isTaxable: boolean('is_taxable').notNull().default(true),
+		label: text('label').notNull(),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		index('tax_rule_actions_rule_set_id_idx').on(table.ruleSetId),
+		index('tax_rule_actions_tax_rate_bps_idx').on(table.taxRateBps),
+	]
+)
+
+export const taxRuleSetsRelations = relations(taxRuleSets, ({ many }) => ({
+	conditions: many(taxRuleConditions),
+	actions: many(taxRuleActions),
+}))
+
+export const taxRuleConditionsRelations = relations(taxRuleConditions, ({ one }) => ({
+	ruleSet: one(taxRuleSets, {
+		fields: [taxRuleConditions.ruleSetId],
+		references: [taxRuleSets.id],
+	}),
+}))
+
+export const taxRuleActionsRelations = relations(taxRuleActions, ({ one }) => ({
+	ruleSet: one(taxRuleSets, {
+		fields: [taxRuleActions.ruleSetId],
+		references: [taxRuleSets.id],
+	}),
+}))
+
+export const taxAssessmentsRelations = relations(taxAssessments, ({ many }) => ({
+	billSyncEvents: many(taxBillSyncEvents),
+	lines: many(taxAssessmentLines),
+	discrepancies: many(taxDiscrepancies),
+}))
+
+export const taxBillSyncEventsRelations = relations(taxBillSyncEvents, ({ one }) => ({
+	assessment: one(taxAssessments, {
+		fields: [taxBillSyncEvents.assessmentId],
+		references: [taxAssessments.id],
+	}),
+}))
+
+export const taxAssessmentLinesRelations = relations(taxAssessmentLines, ({ one }) => ({
+	assessment: one(taxAssessments, {
+		fields: [taxAssessmentLines.assessmentId],
+		references: [taxAssessments.id],
+	}),
+	ledgerEntry: one(taxLedgerEntries, {
+		fields: [taxAssessmentLines.ledgerEntryId],
+		references: [taxLedgerEntries.id],
+	}),
+	ruleSet: one(taxRuleSets, {
+		fields: [taxAssessmentLines.appliedRuleSetId],
+		references: [taxRuleSets.id],
+	}),
+}))
+
+export const taxDiscrepanciesRelations = relations(taxDiscrepancies, ({ one }) => ({
+	assessment: one(taxAssessments, {
+		fields: [taxDiscrepancies.assessmentId],
+		references: [taxAssessments.id],
+	}),
+}))
+
+export const schema = {
+	taxCorporationSettings,
+	taxAuditLog,
+	taxAssessments,
+	taxPeriods,
+	taxAssessmentLines,
+	taxDiscrepancies,
+	taxBillSyncEvents,
+	taxExports,
+	taxExportSchedules,
+	taxNotificationDestinations,
+	taxAlerts,
+	taxLedgerEntries,
+	taxSyncCheckpoints,
+	taxDailyRollups,
+	taxRuleSets,
+	taxRuleConditions,
+	taxRuleActions,
+	taxAssessmentsRelations,
+	taxBillSyncEventsRelations,
+	taxAssessmentLinesRelations,
+	taxDiscrepanciesRelations,
+	taxRuleSetsRelations,
+	taxRuleConditionsRelations,
+	taxRuleActionsRelations,
+}
