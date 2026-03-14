@@ -24,6 +24,8 @@ export type Env = SharedHonoEnv & {
 	DISCORD: DurableObjectNamespace
 	/** Bills Durable Object binding */
 	BILLS: DurableObjectNamespace
+	/** Corporation Tax Durable Object binding */
+	CORPORATION_TAX: DurableObjectNamespace
 	/** Broadcasts Durable Object binding */
 	BROADCASTS: DurableObjectNamespace
 	/** Doctrines Durable Object binding */
@@ -38,6 +40,8 @@ export type Env = SharedHonoEnv & {
 	SKILLS: DurableObjectNamespace
 	/** SRP (Ship Replacement Program) Durable Object binding */
 	SRP: DurableObjectNamespace
+	/** Features Durable Object binding */
+	FEATURES?: DurableObjectNamespace
 	/** EVE Static Data service binding */
 	EVE_STATIC_DATA: Fetcher
 	/** Secret for session token generation and signing */

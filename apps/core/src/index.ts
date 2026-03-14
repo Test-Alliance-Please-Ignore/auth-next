@@ -14,17 +14,19 @@ import billsAdminRoutes from './routes/bills-admin'
 import billsUserRoutes from './routes/bills-user'
 import broadcastsRoutes from './routes/broadcasts'
 import charactersRoutes from './routes/characters'
+import corporationTaxRoutes from './routes/corporation-tax'
 import corporationsRoutes from './routes/corporations'
 import discordRoutes from './routes/discord'
 import discordServersRoutes from './routes/discord-servers'
 import dkpRoutes from './routes/dkp'
 import doctrinesRoutes from './routes/doctrines'
+import entitiesRoutes from './routes/entities'
 import esiRoutes from './routes/esi'
 import fleetsRoutes from './routes/fleets'
 import freightRoutes from './routes/freight'
 import groupsRoutes from './routes/groups'
-import imagesRoutes from './routes/images'
 import hrRoutes from './routes/hr'
+import imagesRoutes from './routes/images'
 import industryAdminRoutes from './routes/industry-admin'
 import industryOrdersRoutes from './routes/industry-orders'
 import inventoryRoutes from './routes/inventory'
@@ -88,10 +90,12 @@ const app = new Hono<App>()
 	.route('/api/auth', authRoutes)
 	.route('/api/users', usersRoutes)
 	.route('/api/characters', charactersRoutes)
+	.route('/api/corporation-tax', corporationTaxRoutes)
 	.route('/api/corporations', corporationsRoutes)
 	.route('/api/discord-servers', discordServersRoutes)
 	.route('/api/dkp', dkpRoutes)
 	.route('/api/doctrines', doctrinesRoutes)
+	.route('/api/entities', entitiesRoutes)
 	.route('/api/esi', esiRoutes)
 	.route('/api/skills', skillsRoutes)
 	.route('/api/skill-plans', skillPlansRoutes)
