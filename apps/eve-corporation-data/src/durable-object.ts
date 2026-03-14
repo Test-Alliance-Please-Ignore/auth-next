@@ -30,6 +30,7 @@ import type {
 	CorporationAccessVerification,
 	CorporationAssetData,
 	CorporationAssetsData,
+	CorporationAuthStatus,
 	CorporationConfigData,
 	CorporationContractData,
 	CorporationCoreData,
@@ -43,6 +44,8 @@ import type {
 	CorporationPublicData,
 	CorporationRole,
 	CorporationStructureData,
+	CorporationSyncHealth,
+	CorporationTaxMetadata,
 	CorporationType,
 	CorporationWalletData,
 	CorporationWalletJournalData,
@@ -62,6 +65,8 @@ import type {
 	EveCorporationData,
 	SearchAssetsFilters,
 	StructureDetailsData,
+	WalletJournalWindowFilters,
+	WalletTransactionWindowFilters,
 } from '@repo/eve-corporation-data'
 import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
 import type { EveCharacterId, EveStructureId } from '@repo/eve-types'
@@ -73,6 +78,10 @@ type CorporationConfigRow = typeof corporationConfig.$inferSelect
 function minutesAgo(minutes: number): Date {
 	return new Date(Date.now() - minutes * 60 * 1000)
 }
+
+const REQUIRED_CORPORATION_WALLET_SCOPE = 'esi-wallet.read_corporation_wallets.v1'
+const CHARACTER_WALLET_SCOPE = 'esi-wallet.read_character_wallet.v1'
+const CORPORATION_MEMBERSHIP_SCOPE = 'esi-corporations.read_corporation_membership.v1'
 
 /**
  * EveCorporationData Durable Object
@@ -2746,6 +2755,198 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			unitPrice: r.unitPrice,
 			updatedAt: r.updatedAt,
 		}))
+	}
+
+	async getWalletJournalWindow(
+		corporationId: string,
+		filters: WalletJournalWindowFilters = {}
+	): Promise<CorporationWalletJournalData[]> {
+		const limit = Math.min(Math.max(filters.limit ?? 1000, 1), 10000)
+		const offset = Math.max(filters.offset ?? 0, 0)
+		const fetchSize = Math.min(limit + offset, 20000)
+
+		const rows = await this.getWalletJournal(corporationId, filters.division, fetchSize)
+		const filtered = rows.filter((row) => {
+			if (
+				filters.refTypes &&
+				filters.refTypes.length > 0 &&
+				!filters.refTypes.includes(row.refType)
+			) {
+				return false
+			}
+			if (filters.firstPartyId && row.firstPartyId !== filters.firstPartyId) {
+				return false
+			}
+			if (filters.secondPartyId && row.secondPartyId !== filters.secondPartyId) {
+				return false
+			}
+			if (filters.fromDate && row.date < filters.fromDate) {
+				return false
+			}
+			if (filters.toDate && row.date > filters.toDate) {
+				return false
+			}
+			if (filters.minAmount !== undefined) {
+				const amount = Number(row.amount ?? 0)
+				if (Number.isFinite(amount) && amount < Number(filters.minAmount)) {
+					return false
+				}
+			}
+			if (filters.maxAmount !== undefined) {
+				const amount = Number(row.amount ?? 0)
+				if (Number.isFinite(amount) && amount > Number(filters.maxAmount)) {
+					return false
+				}
+			}
+			return true
+		})
+
+		return filtered.slice(offset, offset + limit)
+	}
+
+	async getWalletTransactionsWindow(
+		corporationId: string,
+		filters: WalletTransactionWindowFilters = {}
+	): Promise<CorporationWalletTransactionData[]> {
+		const limit = Math.min(Math.max(filters.limit ?? 1000, 1), 10000)
+		const offset = Math.max(filters.offset ?? 0, 0)
+		const fetchSize = Math.min(limit + offset, 20000)
+
+		const rows = await this.getWalletTransactions(corporationId, filters.division, fetchSize)
+		const filtered = rows.filter((row) => {
+			if (filters.clientId && row.clientId !== filters.clientId) {
+				return false
+			}
+			if (filters.journalRefId && row.journalRefId !== filters.journalRefId) {
+				return false
+			}
+			if (filters.fromDate && row.date < filters.fromDate) {
+				return false
+			}
+			if (filters.toDate && row.date > filters.toDate) {
+				return false
+			}
+			if (filters.minUnitPrice !== undefined) {
+				const unitPrice = Number(row.unitPrice)
+				if (Number.isFinite(unitPrice) && unitPrice < Number(filters.minUnitPrice)) {
+					return false
+				}
+			}
+			if (filters.maxUnitPrice !== undefined) {
+				const unitPrice = Number(row.unitPrice)
+				if (Number.isFinite(unitPrice) && unitPrice > Number(filters.maxUnitPrice)) {
+					return false
+				}
+			}
+			return true
+		})
+
+		return filtered.slice(offset, offset + limit)
+	}
+
+	async getWalletDivisions(corporationId: string): Promise<number[]> {
+		const wallets = await this.getWallets(corporationId)
+		const divisions = new Set<number>()
+		for (const wallet of wallets) {
+			divisions.add(wallet.division)
+		}
+		return Array.from(divisions).sort((a, b) => a - b)
+	}
+
+	async getCorporationTaxMetadata(corporationId: string): Promise<CorporationTaxMetadata | null> {
+		const publicInfo = await this.getCorporationInfo(corporationId)
+		if (!publicInfo) {
+			return null
+		}
+
+		const taxRateDecimal = Number(publicInfo.taxRate)
+		return {
+			corporationId,
+			inGameTaxRateBps: Number.isFinite(taxRateDecimal)
+				? Math.round(taxRateDecimal * 10_000)
+				: null,
+			ceoId: publicInfo.ceoId,
+			memberCount: publicInfo.memberCount,
+			allianceId: publicInfo.allianceId,
+			updatedAt: publicInfo.updatedAt,
+		}
+	}
+
+	async getCorporationSyncHealth(corporationId: string): Promise<CorporationSyncHealth> {
+		const config = await this.getDb().query.corporationConfig.findFirst({
+			where: eq(corporationConfig.corporationId, corporationId),
+		})
+
+		return {
+			corporationId,
+			isConfigured: !!config,
+			lastVerified: config?.lastVerified ?? null,
+			sync: {
+				membersLastSync: config?.membersLastSync ?? null,
+				memberTrackingLastSync: config?.memberTrackingLastSync ?? null,
+				walletsLastSync: config?.walletsLastSync ?? null,
+				walletJournalLastSync: config?.walletJournalLastSync ?? null,
+				walletTransactionsLastSync: config?.walletTransactionsLastSync ?? null,
+				assetsLastSync: config?.assetsLastSync ?? null,
+				structuresLastSync: config?.structuresLastSync ?? null,
+				ordersLastSync: config?.ordersLastSync ?? null,
+				contractsLastSync: config?.contractsLastSync ?? null,
+				industryJobsLastSync: config?.industryJobsLastSync ?? null,
+				killmailsLastSync: config?.killmailsLastSync ?? null,
+			},
+		}
+	}
+
+	async getCorporationAuthStatus(corporationId: string): Promise<CorporationAuthStatus> {
+		const config = await this.getDb().query.corporationConfig.findFirst({
+			where: eq(corporationConfig.corporationId, corporationId),
+		})
+		const directors = config ? await this.getDirectors(corporationId) : []
+		const healthyDirectorCount = directors.filter((director) => director.isHealthy).length
+		const tokenStoreStub = this.getEveTokenStoreStub()
+		const scopeSet = new Set<string>()
+
+		await Promise.all(
+			directors.map(async (director) => {
+				try {
+					const tokenInfo = await tokenStoreStub.getTokenInfo(director.characterId)
+					if (!tokenInfo || tokenInfo.isExpired) {
+						return
+					}
+					for (const scope of tokenInfo.scopes) {
+						scopeSet.add(scope)
+					}
+				} catch (error) {
+					logger.warn('[EveCorporationData] Failed to resolve director token scopes', {
+						corporationId,
+						directorCharacterId: director.characterId,
+						error: error instanceof Error ? error.message : String(error),
+					})
+				}
+			})
+		)
+
+		const requiredScopes = [REQUIRED_CORPORATION_WALLET_SCOPE]
+		const missingRequiredScopes = requiredScopes.filter((scope) => !scopeSet.has(scope))
+		const hasCorporationWalletScope = scopeSet.has(REQUIRED_CORPORATION_WALLET_SCOPE)
+		const hasCharacterWalletScope = scopeSet.has(CHARACTER_WALLET_SCOPE)
+		const hasCorporationMembershipScope = scopeSet.has(CORPORATION_MEMBERSHIP_SCOPE)
+
+		return {
+			corporationId,
+			isConfigured: !!config,
+			isVerified: config?.isVerified ?? false,
+			lastVerified: config?.lastVerified ?? null,
+			directorCount: directors.length,
+			healthyDirectorCount,
+			requiredScopes,
+			missingRequiredScopes,
+			hasRequiredScopes: missingRequiredScopes.length === 0,
+			hasCorporationWalletScope,
+			hasCharacterWalletScope,
+			hasCorporationMembershipScope,
+			grantedScopeCount: scopeSet.size,
+		}
 	}
 
 	/**

@@ -1,19 +1,23 @@
-import { and, eq, gte, lte, or, sql } from '@repo/db-utils'
+import { and, eq, gte, inArray, lte, or, sql } from '@repo/db-utils'
 
-import { billPayments, bills } from '../db/schema'
+import { billPayments, bills, billStatusEvents } from '../db/schema'
 import { calculateLateFee } from '../utils/late-fees'
 import { generatePaymentToken } from '../utils/token'
 import { generateUuidV7 } from '../utils/uuid'
 
 import type {
 	Bill,
+	BillExternalRef,
 	BillFilters,
+	BillIntegrationView,
+	BillMetadata,
 	BillStatistics,
 	BillStatus,
+	BillStatusEvent,
+	BillStatusEventType,
 	BillWithDetails,
 	CreateBillInput,
 	EntityType,
-	PaymentResponse,
 	RegenerateTokenResponse,
 	UpdateBillInput,
 } from '@repo/bills'
@@ -35,52 +39,110 @@ export class BillService {
 	 * Create a new bill
 	 */
 	async createBill(userId: string, data: CreateBillInput): Promise<Bill> {
-		console.log('[BillService.createBill] Starting bill creation', { userId, data })
+		return this.createBillInternal(userId, data)
+	}
+
+	/**
+	 * Create a bill from an external source idempotently.
+	 */
+	async createBillFromExternalSource(
+		userId: string,
+		externalRef: BillExternalRef,
+		data: CreateBillInput
+	): Promise<Bill> {
+		const sourceType = externalRef.sourceType.trim()
+		const sourceId = externalRef.sourceId.trim()
+		if (!sourceType || !sourceId) {
+			throw new Error('externalRef sourceType and sourceId are required')
+		}
+
+		const existing = await this.db.query.bills.findFirst({
+			where: and(eq(bills.externalSourceType, sourceType), eq(bills.externalSourceId, sourceId)),
+		})
+		if (existing) {
+			return this.toBillResponse(existing)
+		}
 
 		try {
-			const billId = generateUuidV7()
-			const paymentToken = generatePaymentToken()
-
-			console.log('[BillService.createBill] Generated IDs', { billId, paymentToken })
-
-			const insertData = {
-				id: billId,
-				issuerId: userId,
-				payerId: data.payerId,
-				payerType: data.payerType,
-				payeeId: data.payeeId,
-				payeeType: data.payeeType,
-				title: data.title,
-				description: data.description || null,
-				amount: data.amount,
-				lateFee: '0',
-				lateFeeType: data.lateFeeType || 'none',
-				lateFeeAmount: data.lateFeeAmount || '0',
-				lateFeeCompounding: data.lateFeeCompounding || 'none',
-				dueDate: typeof data.dueDate === 'string' ? new Date(data.dueDate) : data.dueDate,
-				status: 'draft' as const,
-				paymentToken,
-			}
-
-			console.log('[BillService.createBill] Insert data prepared', insertData)
-
-			const [bill] = await this.db.insert(bills).values(insertData).returning()
-
-			console.log('[BillService.createBill] Bill inserted successfully', { billId: bill.id })
-
-			const response = this.toBillResponse(bill)
-			console.log('[BillService.createBill] Returning response', { billId: response.id })
-
-			return response
-		} catch (error) {
-			console.error('[BillService.createBill] Error creating bill', {
-				error: error instanceof Error ? error.message : String(error),
-				stack: error instanceof Error ? error.stack : undefined,
-				userId,
-				data,
+			return await this.createBillInternal(userId, data, {
+				sourceType,
+				sourceId,
+				metadata: externalRef.metadata ?? null,
 			})
+		} catch (error) {
+			// Handle race conditions on unique external source key.
+			const raced = await this.db.query.bills.findFirst({
+				where: and(eq(bills.externalSourceType, sourceType), eq(bills.externalSourceId, sourceId)),
+			})
+			if (raced) {
+				return this.toBillResponse(raced)
+			}
 			throw error
 		}
+	}
+
+	async getBillIntegrationView(billId: string): Promise<BillIntegrationView | null> {
+		const bill = await this.db.query.bills.findFirst({
+			where: eq(bills.id, billId),
+			with: {
+				template: true,
+				schedule: true,
+				payments: true,
+			},
+		})
+		if (!bill) {
+			return null
+		}
+
+		const updatedBill = await this.updateLateFeeIfNeeded(bill)
+		return this.toBillWithDetailsResponse(updatedBill)
+	}
+
+	async listBillsByExternalSource(
+		sourceType: string,
+		sourceIds: string[]
+	): Promise<BillIntegrationView[]> {
+		const normalizedSourceType = sourceType.trim()
+		const normalizedSourceIds = sourceIds.map((sourceId) => sourceId.trim()).filter(Boolean)
+		if (!normalizedSourceType || normalizedSourceIds.length === 0) {
+			return []
+		}
+
+		const matchedBills = await this.db.query.bills.findMany({
+			where: and(
+				eq(bills.externalSourceType, normalizedSourceType),
+				inArray(bills.externalSourceId, normalizedSourceIds)
+			),
+			with: {
+				template: true,
+				schedule: true,
+				payments: true,
+			},
+			orderBy: (bills, { desc }) => [desc(bills.createdAt)],
+		})
+
+		const updatedResults = await Promise.all(
+			matchedBills.map((bill) => this.updateLateFeeIfNeeded(bill))
+		)
+		return updatedResults.map((bill) => this.toBillWithDetailsResponse(bill))
+	}
+
+	async getBillTimeline(billId: string): Promise<BillStatusEvent[]> {
+		const events = await this.db.query.billStatusEvents.findMany({
+			where: eq(billStatusEvents.billId, billId),
+			orderBy: (billStatusEvents, { asc }) => [asc(billStatusEvents.createdAt)],
+		})
+
+		return events.map((event) => ({
+			id: event.id,
+			billId: event.billId,
+			eventType: event.eventType,
+			fromStatus: event.fromStatus,
+			toStatus: event.toStatus,
+			actorUserId: event.actorUserId,
+			metadata: event.metadata ?? null,
+			createdAt: event.createdAt,
+		}))
 	}
 
 	/**
@@ -231,6 +293,14 @@ export class BillService {
 			.where(eq(bills.id, billId))
 			.returning()
 
+		await this.createStatusEvent({
+			billId: updated.id,
+			eventType: 'issued',
+			fromStatus: bill.status,
+			toStatus: updated.status,
+			actorUserId: userId,
+		})
+
 		return this.toBillResponse(updated)
 	}
 
@@ -266,6 +336,14 @@ export class BillService {
 			})
 			.where(eq(bills.id, billId))
 			.returning()
+
+		await this.createStatusEvent({
+			billId: updated.id,
+			eventType: 'cancelled',
+			fromStatus: bill.status,
+			toStatus: updated.status,
+			actorUserId: userId,
+		})
 
 		return this.toBillResponse(updated)
 	}
@@ -331,6 +409,20 @@ export class BillService {
 			})
 			.returning()
 
+		await this.createStatusEvent({
+			billId: updatedBill.id,
+			eventType: 'payment_recorded',
+			fromStatus: null,
+			toStatus: null,
+			actorUserId: null,
+			metadata: {
+				amount: payment.amount,
+				paidById,
+				paidByType,
+				esiTransactionId: payment.esiTransactionId,
+			},
+		})
+
 		return payment
 	}
 
@@ -363,6 +455,14 @@ export class BillService {
 				updatedAt: new Date(),
 			})
 			.where(eq(bills.id, billId))
+
+		await this.createStatusEvent({
+			billId: bill.id,
+			eventType: 'payment_token_regenerated',
+			fromStatus: bill.status,
+			toStatus: bill.status,
+			actorUserId: userId,
+		})
 
 		return {
 			token: newToken,
@@ -413,13 +513,32 @@ export class BillService {
 	}
 
 	async markBillAsPaid(billId: string): Promise<void> {
+		const existingBill = await this.db.query.bills.findFirst({
+			where: eq(bills.id, billId),
+		})
+		if (!existingBill) {
+			throw new Error('Bill not found')
+		}
+		if (existingBill.status === 'paid') {
+			return
+		}
+
 		await this.db
 			.update(bills)
 			.set({
 				status: 'paid',
+				paidAt: new Date(),
 				updatedAt: new Date(),
 			})
 			.where(eq(bills.id, billId))
+
+		await this.createStatusEvent({
+			billId,
+			eventType: 'paid',
+			fromStatus: existingBill.status,
+			toStatus: 'paid',
+			actorUserId: null,
+		})
 	}
 	/**
 	 * Get bill statistics for a user
@@ -484,6 +603,80 @@ export class BillService {
 		return stats
 	}
 
+	private async createBillInternal(
+		userId: string,
+		data: CreateBillInput,
+		externalRef?: {
+			sourceType: string
+			sourceId: string
+			metadata: BillMetadata | null
+		}
+	): Promise<Bill> {
+		const billId = generateUuidV7()
+		const paymentToken = generatePaymentToken()
+		const dueDate = typeof data.dueDate === 'string' ? new Date(data.dueDate) : data.dueDate
+
+		const [bill] = await this.db
+			.insert(bills)
+			.values({
+				id: billId,
+				issuerId: userId,
+				payerId: data.payerId,
+				payerType: data.payerType,
+				payeeId: data.payeeId,
+				payeeType: data.payeeType,
+				title: data.title,
+				description: data.description || null,
+				amount: data.amount,
+				lateFee: '0',
+				lateFeeType: data.lateFeeType || 'none',
+				lateFeeAmount: data.lateFeeAmount || '0',
+				lateFeeCompounding: data.lateFeeCompounding || 'none',
+				dueDate,
+				status: 'draft',
+				paymentToken,
+				externalSourceType: externalRef?.sourceType ?? null,
+				externalSourceId: externalRef?.sourceId ?? null,
+				externalMetadata: externalRef?.metadata ?? null,
+			})
+			.returning()
+
+		await this.createStatusEvent({
+			billId: bill.id,
+			eventType: 'created',
+			fromStatus: null,
+			toStatus: bill.status,
+			actorUserId: userId,
+			metadata: externalRef
+				? {
+						sourceType: externalRef.sourceType,
+						sourceId: externalRef.sourceId,
+					}
+				: null,
+		})
+
+		return this.toBillResponse(bill)
+	}
+
+	private async createStatusEvent(input: {
+		billId: string
+		eventType: BillStatusEventType
+		fromStatus: BillStatus | null
+		toStatus: BillStatus | null
+		actorUserId: string | null
+		metadata?: BillMetadata | null
+	}): Promise<void> {
+		await this.db.insert(billStatusEvents).values({
+			id: generateUuidV7(),
+			billId: input.billId,
+			eventType: input.eventType,
+			fromStatus: input.fromStatus,
+			toStatus: input.toStatus,
+			actorUserId: input.actorUserId,
+			metadata: input.metadata ?? null,
+		})
+	}
+
 	/**
 	 * Update late fee if bill is overdue
 	 * Also updates status to 'overdue' if issued and past due date
@@ -509,10 +702,27 @@ export class BillService {
 					lateFee,
 					updatedAt: now,
 				})
-				.where(eq(bills.id, bill.id))
+				.where(and(eq(bills.id, bill.id), eq(bills.status, 'issued')))
 				.returning()
 
-			return updated
+			if (updated) {
+				await this.createStatusEvent({
+					billId: updated.id,
+					eventType: 'overdue',
+					fromStatus: 'issued',
+					toStatus: 'overdue',
+					actorUserId: null,
+					metadata: {
+						dueDate: bill.dueDate.toISOString(),
+					},
+				})
+				return updated
+			}
+
+			const current = await this.db.query.bills.findFirst({
+				where: eq(bills.id, bill.id),
+			})
+			return current ?? bill
 		}
 
 		// Update late fee for already overdue bills
@@ -567,6 +777,9 @@ export class BillService {
 			status: bill.status,
 			paidAt: bill.paidAt,
 			paymentToken: bill.paymentToken,
+			externalSourceType: bill.externalSourceType,
+			externalSourceId: bill.externalSourceId,
+			externalMetadata: bill.externalMetadata ?? null,
 			createdAt: bill.createdAt,
 			updatedAt: bill.updatedAt,
 		}

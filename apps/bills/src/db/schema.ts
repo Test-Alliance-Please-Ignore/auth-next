@@ -3,6 +3,7 @@ import {
 	boolean,
 	index,
 	integer,
+	jsonb,
 	pgEnum,
 	pgTable,
 	text,
@@ -35,6 +36,15 @@ export const lateFeeCompoundingEnum = pgEnum('late_fee_compounding', [
 ])
 
 export const scheduleFrequencyEnum = pgEnum('schedule_frequency', ['daily', 'weekly', 'monthly'])
+export const billStatusEventTypeEnum = pgEnum('bill_status_event_type', [
+	'created',
+	'issued',
+	'payment_recorded',
+	'paid',
+	'cancelled',
+	'overdue',
+	'payment_token_regenerated',
+])
 
 /**
  * Bills table
@@ -64,6 +74,12 @@ export const bills = pgTable(
 		status: billStatusEnum('status').notNull().default('draft'),
 		paidAt: timestamp('paid_at'),
 		paymentToken: text('payment_token').notNull().unique(), // 12-character secure token (max length for EVE wallet reason field)
+		externalSourceType: text('external_source_type'),
+		externalSourceId: text('external_source_id'),
+		externalMetadata: jsonb('external_metadata').$type<Record<
+			string,
+			string | number | boolean | null
+		> | null>(),
 		createdAt: timestamp('created_at').notNull().defaultNow(),
 		updatedAt: timestamp('updated_at').notNull().defaultNow(),
 		paymentLastCheckedAt: timestamp('payment_last_checked_at', { withTimezone: true }),
@@ -78,6 +94,9 @@ export const bills = pgTable(
 		index('bills_template_id_idx').on(table.templateId),
 		index('bills_schedule_id_idx').on(table.scheduleId),
 		index('bills_payment_token_idx').on(table.paymentToken),
+		index('bills_external_source_type_idx').on(table.externalSourceType),
+		index('bills_external_source_id_idx').on(table.externalSourceId),
+		unique('bills_external_source_unique').on(table.externalSourceType, table.externalSourceId),
 	]
 )
 
@@ -104,6 +123,27 @@ export const billPayments = pgTable(
 		index('bill_payments_paid_by_id_idx').on(table.paidById),
 		index('bill_payments_paid_by_type_idx').on(table.paidByType),
 		index('bill_payments_paid_at_idx').on(table.paidAt),
+	]
+)
+
+export const billStatusEvents = pgTable(
+	'bill_status_events',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		billId: uuid('bill_id')
+			.notNull()
+			.references(() => bills.id, { onDelete: 'cascade' }),
+		eventType: billStatusEventTypeEnum('event_type').notNull(),
+		fromStatus: billStatusEnum('from_status'),
+		toStatus: billStatusEnum('to_status'),
+		actorUserId: text('actor_user_id'),
+		metadata: jsonb('metadata').$type<Record<string, string | number | boolean | null> | null>(),
+		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+	},
+	(table) => [
+		index('bill_status_events_bill_id_idx').on(table.billId),
+		index('bill_status_events_event_type_idx').on(table.eventType),
+		index('bill_status_events_created_at_idx').on(table.createdAt),
 	]
 )
 
@@ -209,11 +249,19 @@ export const billsRelations = relations(bills, ({ one, many }) => ({
 		references: [billTemplates.id],
 	}),
 	payments: many(billPayments),
+	statusEvents: many(billStatusEvents),
 }))
 
 export const billPaymentsRelations = relations(billPayments, ({ one }) => ({
 	bill: one(bills, {
 		fields: [billPayments.billId],
+		references: [bills.id],
+	}),
+}))
+
+export const billStatusEventsRelations = relations(billStatusEvents, ({ one }) => ({
+	bill: one(bills, {
+		fields: [billStatusEvents.billId],
 		references: [bills.id],
 	}),
 }))
@@ -245,11 +293,13 @@ export const scheduleExecutionLogsRelations = relations(scheduleExecutionLogs, (
 export const schema = {
 	bills,
 	billPayments,
+	billStatusEvents,
 	billTemplates,
 	billSchedules,
 	scheduleExecutionLogs,
 	billsRelations,
 	billPaymentsRelations,
+	billStatusEventsRelations,
 	billTemplatesRelations,
 	billSchedulesRelations,
 	scheduleExecutionLogsRelations,

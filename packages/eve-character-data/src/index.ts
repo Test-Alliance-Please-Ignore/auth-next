@@ -403,6 +403,36 @@ export interface CharacterSkillsResponse {
 	unallocated_sp?: number
 }
 
+export interface CharacterWalletJournalWindowFilters {
+	refTypes?: string[]
+	firstPartyId?: string
+	secondPartyId?: string
+	fromDate?: Date
+	toDate?: Date
+	minAmount?: string
+	maxAmount?: string
+	limit?: number
+	offset?: number
+}
+
+export interface CharacterMarketTransactionsWindowFilters {
+	clientId?: string
+	typeId?: string
+	journalRefId?: string
+	fromDate?: Date
+	toDate?: Date
+	minUnitPrice?: string
+	maxUnitPrice?: string
+	limit?: number
+	offset?: number
+}
+
+export interface CharacterWalletSyncHealth {
+	characterId: EveCharacterId
+	walletJournalLastUpdated: Date | null
+	marketTransactionsLastUpdated: Date | null
+}
+
 /**
  * Public RPC interface for EveCharacterData Durable Object
  *
@@ -567,11 +597,32 @@ export interface EveCharacterData {
 	getWalletJournal(characterId: string): Promise<CharacterWalletJournalData[]>
 
 	/**
+	 * Get wallet journal entries constrained to a filter window.
+	 */
+	getWalletJournalWindow(
+		characterId: string,
+		filters?: CharacterWalletJournalWindowFilters
+	): Promise<CharacterWalletJournalData[]>
+
+	/**
 	 * Get market transactions for a character
 	 * @param characterId - EVE character ID
 	 * @returns Array of market transactions
 	 */
 	getMarketTransactions(characterId: string): Promise<CharacterMarketTransactionData[]>
+
+	/**
+	 * Get market transactions constrained to a filter window.
+	 */
+	getMarketTransactionsWindow(
+		characterId: string,
+		filters?: CharacterMarketTransactionsWindowFilters
+	): Promise<CharacterMarketTransactionData[]>
+
+	/**
+	 * Get wallet-source synchronization health for a character.
+	 */
+	getCharacterWalletSyncHealth(characterId: string): Promise<CharacterWalletSyncHealth>
 
 	/**
 	 * Get market orders for a character
@@ -729,8 +780,24 @@ export class EveCharacterDataInstance extends RpcTarget {
 		return await this.characterDataObject.getWalletJournal(this.characterId)
 	}
 
+	async getWalletJournalWindow(
+		filters?: CharacterWalletJournalWindowFilters
+	): Promise<CharacterWalletJournalData[]> {
+		return await this.characterDataObject.getWalletJournalWindow(this.characterId, filters)
+	}
+
 	async getMarketTransactions(): Promise<CharacterMarketTransactionData[]> {
 		return await this.characterDataObject.getMarketTransactions(this.characterId)
+	}
+
+	async getMarketTransactionsWindow(
+		filters?: CharacterMarketTransactionsWindowFilters
+	): Promise<CharacterMarketTransactionData[]> {
+		return await this.characterDataObject.getMarketTransactionsWindow(this.characterId, filters)
+	}
+
+	async getCharacterWalletSyncHealth(): Promise<CharacterWalletSyncHealth> {
+		return await this.characterDataObject.getCharacterWalletSyncHealth(this.characterId)
 	}
 
 	async getMarketOrders(): Promise<CharacterMarketOrderData[]> {

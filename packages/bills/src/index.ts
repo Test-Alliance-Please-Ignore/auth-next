@@ -10,11 +10,21 @@
  */
 
 export type BillStatus = 'draft' | 'issued' | 'paid' | 'cancelled' | 'overdue'
+export type BillStatusEventType =
+	| 'created'
+	| 'issued'
+	| 'payment_recorded'
+	| 'paid'
+	| 'cancelled'
+	| 'overdue'
+	| 'payment_token_regenerated'
 export type EntityType = 'character' | 'corporation' | 'group'
 export type PayeeType = 'character' | 'corporation'
 export type LateFeeType = 'none' | 'static' | 'percentage'
 export type LateFeeCompounding = 'none' | 'daily' | 'weekly' | 'monthly'
 export type ScheduleFrequency = 'daily' | 'weekly' | 'monthly'
+export type BillMetadataScalar = string | number | boolean | null
+export type BillMetadata = Record<string, BillMetadataScalar>
 
 /**
  * Core data types
@@ -40,8 +50,28 @@ export interface Bill {
 	status: BillStatus
 	paidAt: Date | null
 	paymentToken: string // 32-byte secure token
+	externalSourceType: string | null
+	externalSourceId: string | null
+	externalMetadata: BillMetadata | null
 	createdAt: Date
 	updatedAt: Date
+}
+
+export interface BillExternalRef {
+	sourceType: string
+	sourceId: string
+	metadata?: BillMetadata | null
+}
+
+export interface BillStatusEvent {
+	id: string
+	billId: string
+	eventType: BillStatusEventType
+	fromStatus: BillStatus | null
+	toStatus: BillStatus | null
+	actorUserId: string | null
+	metadata: BillMetadata | null
+	createdAt: Date
 }
 
 export interface BillTemplate {
@@ -109,6 +139,8 @@ export interface BillWithDetails extends Bill {
 	issuerName?: string
 	payerName?: string
 }
+
+export interface BillIntegrationView extends BillWithDetails {}
 
 export interface BillTemplateWithDetails extends BillTemplate {
 	ownerName?: string
@@ -307,11 +339,27 @@ export interface Bills {
 	/** Create a new bill */
 	createBill(userId: string, data: CreateBillInput): Promise<Bill>
 
+	/** Create a bill idempotently using an external source reference */
+	createBillFromExternalSource(
+		userId: string,
+		externalRef: BillExternalRef,
+		data: CreateBillInput
+	): Promise<Bill>
+
 	/** Get a specific bill */
 	getBill(userId: string, billId: string): Promise<BillWithDetails | null>
 
+	/** Get an integration-safe bill view without user auth filtering */
+	getBillIntegrationView(billId: string): Promise<BillIntegrationView | null>
+
 	/** List bills with filters */
 	listBills(userId: string, filters?: BillFilters): Promise<BillWithDetails[]>
+
+	/** List bills by external source references */
+	listBillsByExternalSource(sourceType: string, sourceIds: string[]): Promise<BillIntegrationView[]>
+
+	/** Get bill status timeline events */
+	getBillTimeline(billId: string): Promise<BillStatusEvent[]>
 
 	/** Update a bill (draft only, issuer only) */
 	updateBill(userId: string, billId: string, data: UpdateBillInput): Promise<Bill>
@@ -325,7 +373,12 @@ export interface Bills {
 	/** Pay a bill using payment token */
 	payBill(
 		paymentToken: string,
-		{ amount, paidById, paidByType }: { amount: bigint; paidById: string; paidByType: EntityType }
+		{
+			amount,
+			paidById,
+			paidByType,
+			esiTransactionId,
+		}: { amount: bigint; paidById: string; paidByType: EntityType; esiTransactionId: string }
 	): Promise<any>
 
 	/** Regenerate payment token for a bill (issuer only) */

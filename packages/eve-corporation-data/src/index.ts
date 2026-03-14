@@ -675,6 +675,63 @@ export interface SearchAssetsFilters
 	limit?: number
 }
 
+export interface WalletJournalWindowFilters {
+	division?: number
+	refTypes?: string[]
+	firstPartyId?: string
+	secondPartyId?: string
+	fromDate?: Date
+	toDate?: Date
+	minAmount?: string
+	maxAmount?: string
+	limit?: number
+	offset?: number
+}
+
+export interface WalletTransactionWindowFilters {
+	division?: number
+	clientId?: string
+	journalRefId?: string
+	fromDate?: Date
+	toDate?: Date
+	minUnitPrice?: string
+	maxUnitPrice?: string
+	limit?: number
+	offset?: number
+}
+
+export interface CorporationTaxMetadata {
+	corporationId: string
+	inGameTaxRateBps: number | null
+	ceoId: string | null
+	memberCount: number | null
+	allianceId: string | null
+	updatedAt: Date | null
+}
+
+export interface CorporationSyncHealth {
+	corporationId: string
+	isConfigured: boolean
+	lastVerified: Date | null
+	sync: CorporationLastSyncData
+}
+
+export interface CorporationAuthStatus {
+	corporationId: string
+	isConfigured: boolean
+	isVerified: boolean
+	lastVerified: Date | null
+	directorCount: number
+	healthyDirectorCount: number
+	requiredScopes: string[]
+	missingRequiredScopes: string[]
+	hasRequiredScopes: boolean
+	hasCorporationWalletScope: boolean
+	hasCharacterWalletScope: boolean
+	hasCorporationMembershipScope: boolean
+	grantedScopeCount: number
+}
+
 // ============================================================================
 // PUBLIC RPC INTERFACE
 // ============================================================================
@@ -1096,6 +1153,42 @@ export interface EveCorporationData {
 		division?: number,
 		limit?: number
 	): Promise<CorporationWalletTransactionData[]>
+
+	/**
+	 * Get wallet journal entries constrained to a filter window.
+	 */
+	getWalletJournalWindow(
+		corporationId: string,
+		filters?: WalletJournalWindowFilters
+	): Promise<CorporationWalletJournalData[]>
+
+	/**
+	 * Get wallet transactions constrained to a filter window.
+	 */
+	getWalletTransactionsWindow(
+		corporationId: string,
+		filters?: WalletTransactionWindowFilters
+	): Promise<CorporationWalletTransactionData[]>
+
+	/**
+	 * Get available wallet divisions for a corporation.
+	 */
+	getWalletDivisions(corporationId: string): Promise<number[]>
+
+	/**
+	 * Get tax-relevant corporation metadata.
+	 */
+	getCorporationTaxMetadata(corporationId: string): Promise<CorporationTaxMetadata | null>
+
+	/**
+	 * Get synchronization health for corporation financial sources.
+	 */
+	getCorporationSyncHealth(corporationId: string): Promise<CorporationSyncHealth>
+
+	/**
+	 * Get configuration and director auth status for corporation API access.
+	 */
+	getCorporationAuthStatus(corporationId: string): Promise<CorporationAuthStatus>
 
 	/**
 	 * Get complete financial data

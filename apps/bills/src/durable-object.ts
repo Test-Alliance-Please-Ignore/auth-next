@@ -8,11 +8,14 @@ import { TemplateService } from './services/template.service'
 
 import type {
 	Bill,
+	BillExternalRef,
 	BillFilters,
+	BillIntegrationView,
 	Bills,
 	BillSchedule,
 	BillScheduleWithDetails,
 	BillStatistics,
+	BillStatusEvent,
 	BillTemplate,
 	BillTemplateWithDetails,
 	BillWithDetails,
@@ -99,12 +102,35 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 		}
 	}
 
+	async createBillFromExternalSource(
+		userId: string,
+		externalRef: BillExternalRef,
+		data: CreateBillInput
+	): Promise<Bill> {
+		return this.billService.createBillFromExternalSource(userId, externalRef, data)
+	}
+
 	async getBill(userId: string, billId: string): Promise<BillWithDetails | null> {
 		return this.billService.getBill(userId, billId)
 	}
 
+	async getBillIntegrationView(billId: string): Promise<BillIntegrationView | null> {
+		return this.billService.getBillIntegrationView(billId)
+	}
+
 	async listBills(userId: string, filters?: BillFilters): Promise<BillWithDetails[]> {
 		return this.billService.listBills(userId, filters)
+	}
+
+	async listBillsByExternalSource(
+		sourceType: string,
+		sourceIds: string[]
+	): Promise<BillIntegrationView[]> {
+		return this.billService.listBillsByExternalSource(sourceType, sourceIds)
+	}
+
+	async getBillTimeline(billId: string): Promise<BillStatusEvent[]> {
+		return this.billService.getBillTimeline(billId)
 	}
 
 	async updateBill(userId: string, billId: string, data: UpdateBillInput): Promise<Bill> {

@@ -30,12 +30,15 @@ import type {
 	CharacterLossData,
 	CharacterMarketOrderData,
 	CharacterMarketTransactionData,
+	CharacterMarketTransactionsWindowFilters,
 	CharacterPortraitData,
 	CharacterPublicData,
 	CharacterSensitiveData,
 	CharacterSkillsData,
 	CharacterSkillsResponse,
 	CharacterWalletJournalData,
+	CharacterWalletJournalWindowFilters,
+	CharacterWalletSyncHealth,
 	EsiCharacterAttributes,
 	EsiCharacterPortrait,
 	EsiCharacterPublicInfo,
@@ -1539,6 +1542,55 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		}))
 	}
 
+	async getWalletJournalWindow(
+		characterId: string,
+		filters: CharacterWalletJournalWindowFilters = {}
+	): Promise<CharacterWalletJournalData[]> {
+		const limit = Math.min(Math.max(filters.limit ?? 1000, 1), 10000)
+		const offset = Math.max(filters.offset ?? 0, 0)
+		const fetchSize = Math.min(limit + offset, 20000)
+
+		const rows = await this.getWalletJournal(characterId)
+		const filtered = rows
+			.sort((a, b) => b.date.getTime() - a.date.getTime())
+			.filter((row) => {
+				if (
+					filters.refTypes &&
+					filters.refTypes.length > 0 &&
+					!filters.refTypes.includes(row.refType)
+				) {
+					return false
+				}
+				if (filters.firstPartyId && row.firstPartyId !== filters.firstPartyId) {
+					return false
+				}
+				if (filters.secondPartyId && row.secondPartyId !== filters.secondPartyId) {
+					return false
+				}
+				if (filters.fromDate && row.date < filters.fromDate) {
+					return false
+				}
+				if (filters.toDate && row.date > filters.toDate) {
+					return false
+				}
+				if (filters.minAmount !== undefined) {
+					const amount = Number(row.amount ?? 0)
+					if (Number.isFinite(amount) && amount < Number(filters.minAmount)) {
+						return false
+					}
+				}
+				if (filters.maxAmount !== undefined) {
+					const amount = Number(row.amount ?? 0)
+					if (Number.isFinite(amount) && amount > Number(filters.maxAmount)) {
+						return false
+					}
+				}
+				return true
+			})
+
+		return filtered.slice(offset, Math.min(offset + limit, fetchSize))
+	}
+
 	/**
 	 * Get market transactions for a character
 	 */
@@ -1563,6 +1615,70 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			createdAt: r.createdAt,
 			updatedAt: r.updatedAt,
 		}))
+	}
+
+	async getMarketTransactionsWindow(
+		characterId: string,
+		filters: CharacterMarketTransactionsWindowFilters = {}
+	): Promise<CharacterMarketTransactionData[]> {
+		const limit = Math.min(Math.max(filters.limit ?? 1000, 1), 10000)
+		const offset = Math.max(filters.offset ?? 0, 0)
+		const fetchSize = Math.min(limit + offset, 20000)
+
+		const rows = await this.getMarketTransactions(characterId)
+		const filtered = rows
+			.sort((a, b) => b.date.getTime() - a.date.getTime())
+			.filter((row) => {
+				if (filters.clientId && row.clientId !== filters.clientId) {
+					return false
+				}
+				if (filters.typeId && row.typeId !== filters.typeId) {
+					return false
+				}
+				if (filters.journalRefId && row.journalRefId !== filters.journalRefId) {
+					return false
+				}
+				if (filters.fromDate && row.date < filters.fromDate) {
+					return false
+				}
+				if (filters.toDate && row.date > filters.toDate) {
+					return false
+				}
+				if (filters.minUnitPrice !== undefined) {
+					const unitPrice = Number(row.unitPrice)
+					if (Number.isFinite(unitPrice) && unitPrice < Number(filters.minUnitPrice)) {
+						return false
+					}
+				}
+				if (filters.maxUnitPrice !== undefined) {
+					const unitPrice = Number(row.unitPrice)
+					if (Number.isFinite(unitPrice) && unitPrice > Number(filters.maxUnitPrice)) {
+						return false
+					}
+				}
+				return true
+			})
+
+		return filtered.slice(offset, Math.min(offset + limit, fetchSize))
+	}
+
+	async getCharacterWalletSyncHealth(characterId: string): Promise<CharacterWalletSyncHealth> {
+		const [latestWalletJournal, latestMarketTransaction] = await Promise.all([
+			this.db.query.characterWalletJournal.findFirst({
+				where: eq(characterWalletJournal.characterId, characterId),
+				orderBy: desc(characterWalletJournal.updatedAt),
+			}),
+			this.db.query.characterMarketTransactions.findFirst({
+				where: eq(characterMarketTransactions.characterId, characterId),
+				orderBy: desc(characterMarketTransactions.updatedAt),
+			}),
+		])
+
+		return {
+			characterId: createEveCharacterId(characterId),
+			walletJournalLastUpdated: latestWalletJournal?.updatedAt ?? null,
+			marketTransactionsLastUpdated: latestMarketTransaction?.updatedAt ?? null,
+		}
 	}
 
 	/**
