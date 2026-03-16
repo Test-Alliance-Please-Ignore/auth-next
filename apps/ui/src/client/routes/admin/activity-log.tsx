@@ -8,6 +8,13 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from '@/components/ui/select'
+import {
 	Table,
 	TableBody,
 	TableCell,
@@ -202,15 +209,19 @@ export default function ActivityLogPage() {
 						{/* Page Size Selector */}
 						<div className="flex items-center gap-2">
 							<span className="text-sm text-muted-foreground">Show:</span>
-							<select
-								value={pageSize}
-								onChange={(e) => handlePageSizeChange(Number(e.target.value))}
-								className="h-9 rounded-md border border-input bg-background px-2 py-1 text-sm"
+							<Select
+								value={String(pageSize)}
+								onValueChange={(value) => handlePageSizeChange(Number(value))}
 							>
-								<option value={25}>25</option>
-								<option value={50}>50</option>
-								<option value={100}>100</option>
-							</select>
+								<SelectTrigger className="h-9 w-20">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="25">25</SelectItem>
+									<SelectItem value="50">50</SelectItem>
+									<SelectItem value="100">100</SelectItem>
+								</SelectContent>
+							</Select>
 						</div>
 					</div>
 				</CardHeader>

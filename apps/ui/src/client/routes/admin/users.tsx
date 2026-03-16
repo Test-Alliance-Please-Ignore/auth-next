@@ -6,7 +6,13 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Select } from '@/components/ui/select'
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from '@/components/ui/select'
 import {
 	Table,
 	TableBody,
@@ -150,18 +156,22 @@ export default function UsersPage() {
 
 						{/* Admin Filter */}
 						<div className="w-full md:w-48">
-							<select
+							<Select
 								value={adminFilter}
-								onChange={(e) => {
-									setAdminFilter(e.target.value)
+								onValueChange={(value) => {
+									setAdminFilter(value)
 									setPage(1)
 								}}
-								className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
 							>
-								<option value="all">All Users</option>
-								<option value="admin">Admins Only</option>
-								<option value="non-admin">Non-Admins</option>
-							</select>
+								<SelectTrigger className="w-full">
+									<SelectValue placeholder="All Users" />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="all">All Users</SelectItem>
+									<SelectItem value="admin">Admins Only</SelectItem>
+									<SelectItem value="non-admin">Non-Admins</SelectItem>
+								</SelectContent>
+							</Select>
 						</div>
 					</div>
 				</CardContent>
@@ -183,15 +193,19 @@ export default function UsersPage() {
 						{/* Page Size Selector */}
 						<div className="flex items-center gap-2">
 							<span className="text-sm text-muted-foreground">Show:</span>
-							<select
-								value={pageSize}
-								onChange={(e) => handlePageSizeChange(Number(e.target.value))}
-								className="h-9 rounded-md border border-input bg-background px-2 py-1 text-sm"
+							<Select
+								value={String(pageSize)}
+								onValueChange={(value) => handlePageSizeChange(Number(value))}
 							>
-								<option value={25}>25</option>
-								<option value={50}>50</option>
-								<option value={100}>100</option>
-							</select>
+								<SelectTrigger className="h-9 w-20">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="25">25</SelectItem>
+									<SelectItem value="50">50</SelectItem>
+									<SelectItem value="100">100</SelectItem>
+								</SelectContent>
+							</Select>
 						</div>
 					</div>
 				</CardHeader>

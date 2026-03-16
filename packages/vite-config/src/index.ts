@@ -3,8 +3,9 @@ import { dirname, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { cloudflare } from '@cloudflare/vite-plugin'
 import { parse as parseJsonc } from 'jsonc-parser'
-import type { ConfigEnv, UserConfig } from 'vite'
 import { defineConfig } from 'vite'
+
+import type { ConfigEnv, UserConfig } from 'vite'
 
 export type AuxiliaryWorkerConfig = {
 	configPath: string
@@ -134,10 +135,7 @@ export const findAuxiliaryWorkers = (currentDir: string): AuxiliaryWorkerConfig[
  * @param configPath - Optional path to wrangler.jsonc (defaults to currentDir/wrangler.jsonc)
  * @returns Vite UserConfig function that conditionally uses auxiliary worker discovery in dev mode
  */
-export const createViteConfig = (
-	currentDir: string,
-	configPath?: string,
-) => {
+export const createViteConfig = (currentDir: string, configPath?: string) => {
 	const wranglerConfigPath = configPath ?? resolve(currentDir, 'wrangler.jsonc')
 
 	return defineConfig(({ command }: ConfigEnv): UserConfig => {
@@ -150,6 +148,7 @@ export const createViteConfig = (
 					cloudflare({
 						configPath: wranglerConfigPath,
 						auxiliaryWorkers,
+						inspectorPort: false,
 					}),
 				],
 			}

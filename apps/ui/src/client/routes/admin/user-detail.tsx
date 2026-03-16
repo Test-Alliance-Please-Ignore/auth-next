@@ -42,6 +42,9 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
+import { AddHRNoteDialog } from '@/features/applications/components/add-hr-note-dialog'
+import { HRNoteCard } from '@/features/applications/components/hr-note-card'
+import { useHRNotes } from '@/features/applications/hooks'
 import {
 	useActivityLogs,
 	useAdminUser,
@@ -56,9 +59,6 @@ import {
 } from '@/hooks/useAdminUsers'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { api } from '@/lib/api'
-import { AddHRNoteDialog } from '@/features/applications/components/add-hr-note-dialog'
-import { HRNoteCard } from '@/features/applications/components/hr-note-card'
-import { useHRNotes } from '@/features/applications/hooks'
 import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
@@ -592,42 +592,44 @@ export default function UserDetailPage() {
 								<CardTitle>Discord Account</CardTitle>
 								<CardDescription>Linked Discord account information</CardDescription>
 							</div>
-							{!user.discord.authRevoked && (
-								<div className="flex items-center gap-2">
-									<Button
-										variant="outline"
-										onClick={handleUpdateDiscordAccess}
-										disabled={updateDiscordAccess.isPending}
-										size="sm"
-									>
-										<RefreshCw
-											className={cn(
-												'h-4 w-4 mr-2',
-												updateDiscordAccess.isPending && 'animate-spin'
-											)}
-										/>
-										Update Discord Access
-									</Button>
-									<DestructiveButton
-										onClick={() => setRevokeDiscordDialogOpen(true)}
-										disabled={revokeDiscord.isPending}
-										size="sm"
-										showIcon={false}
-									>
-										<XCircle className="h-4 w-4 mr-2" />
-										Revoke Authorization
-									</DestructiveButton>
-									<DestructiveButton
-										onClick={() => setUnlinkDiscordDialogOpen(true)}
-										disabled={unlinkDiscord.isPending}
-										size="sm"
-										showIcon={false}
-									>
-										<Trash2 className="h-4 w-4 mr-2" />
-										Unlink Discord Account
-									</DestructiveButton>
-								</div>
-							)}
+							<div className="flex items-center gap-2">
+								{!user.discord.authRevoked && (
+									<>
+										<Button
+											variant="outline"
+											onClick={handleUpdateDiscordAccess}
+											disabled={updateDiscordAccess.isPending}
+											size="sm"
+										>
+											<RefreshCw
+												className={cn(
+													'h-4 w-4 mr-2',
+													updateDiscordAccess.isPending && 'animate-spin'
+												)}
+											/>
+											Update Discord Access
+										</Button>
+										<DestructiveButton
+											onClick={() => setRevokeDiscordDialogOpen(true)}
+											disabled={revokeDiscord.isPending}
+											size="sm"
+											showIcon={false}
+										>
+											<XCircle className="h-4 w-4 mr-2" />
+											Revoke Authorization
+										</DestructiveButton>
+									</>
+								)}
+								<DestructiveButton
+									onClick={() => setUnlinkDiscordDialogOpen(true)}
+									disabled={unlinkDiscord.isPending}
+									size="sm"
+									showIcon={false}
+								>
+									<Trash2 className="h-4 w-4 mr-2" />
+									Unlink Discord Account
+								</DestructiveButton>
+							</div>
 						</div>
 					</CardHeader>
 					<CardContent>
@@ -1009,7 +1011,9 @@ export default function UserDetailPage() {
 								<li>Delete all Discord tokens</li>
 								<li>Remove them from all managed Discord servers</li>
 							</ul>
-							<strong className="block mt-2">They will need to re-link Discord from scratch.</strong>
+							<strong className="block mt-2">
+								They will need to re-link Discord from scratch.
+							</strong>
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
@@ -1076,7 +1080,10 @@ export default function UserDetailPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<CancelButton onClick={() => setSyncUserDialogOpen(false)} disabled={syncUser.isPending}>
+						<CancelButton
+							onClick={() => setSyncUserDialogOpen(false)}
+							disabled={syncUser.isPending}
+						>
 							Cancel
 						</CancelButton>
 						<ConfirmButton

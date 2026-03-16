@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { and, createDbClient, eq, inArray, isNull, like, or, sql } from '@repo/db-utils'
+import { and, createDbClient, eq, ilike, inArray, isNull, or, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
 // Import Core database schema for Discord server and role lookups
@@ -263,6 +263,9 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		userId: string,
 		isAdmin: boolean
 	): Promise<GroupWithDetails[]> {
+		const limit = filters.limit ?? 100
+		const offset = filters.offset ?? 0
+
 		// Build query conditions
 		const conditions = []
 
@@ -278,8 +281,9 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			conditions.push(eq(groups.joinMode, filters.joinMode))
 		}
 
-		if (filters.search) {
-			conditions.push(like(groups.name, `%${filters.search}%`))
+		const searchQuery = filters.search?.trim()
+		if (searchQuery) {
+			conditions.push(ilike(groups.name, `%${searchQuery}%`))
 		}
 
 		const whereClause = conditions.length > 0 ? and(...conditions) : undefined
@@ -291,6 +295,8 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 				category: true,
 			},
 			orderBy: (groups, { asc }) => [asc(groups.name)],
+			limit: filters.myGroups ? undefined : limit,
+			offset: filters.myGroups ? undefined : offset,
 		})
 
 		// Filter by user memberships if requested
@@ -302,6 +308,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			})
 			const memberGroupIds = new Set(userMemberships.map((m) => m.groupId))
 			groupsToCheck = allGroups.filter((g) => memberGroupIds.has(g.id))
+			groupsToCheck = groupsToCheck.slice(offset, offset + limit)
 		}
 
 		// Early return if no groups to check
@@ -892,7 +899,11 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		}))
 	}
 
-	async approveJoinRequest(requestId: string, adminUserId: string, isSiteAdmin = false): Promise<void> {
+	async approveJoinRequest(
+		requestId: string,
+		adminUserId: string,
+		isSiteAdmin = false
+	): Promise<void> {
 		const request = await this.db.query.groupJoinRequests.findFirst({
 			where: eq(groupJoinRequests.id, requestId),
 		})
@@ -953,7 +964,11 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		this.invalidateUserPermissionsCache(request.userId)
 	}
 
-	async rejectJoinRequest(requestId: string, adminUserId: string, isSiteAdmin = false): Promise<void> {
+	async rejectJoinRequest(
+		requestId: string,
+		adminUserId: string,
+		isSiteAdmin = false
+	): Promise<void> {
 		const request = await this.db.query.groupJoinRequests.findFirst({
 			where: eq(groupJoinRequests.id, requestId),
 		})

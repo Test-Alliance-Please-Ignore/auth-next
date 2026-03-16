@@ -40,6 +40,14 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
+import { SearchSelect } from '@/components/ui/search-select'
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useBreadcrumb } from '@/hooks/useBreadcrumb'
@@ -116,6 +124,7 @@ export default function CorporationDetailPage() {
 	// Discord UI state
 	const [showAddServerDialog, setShowAddServerDialog] = useState(false)
 	const [selectedServerId, setSelectedServerId] = useState('')
+	const [pendingRoleSelections, setPendingRoleSelections] = useState<Record<string, string>>({})
 	const [attachmentSettings, setAttachmentSettings] = useState({
 		autoInvite: false,
 		autoAssignRoles: false,
@@ -689,32 +698,42 @@ export default function CorporationDetailPage() {
 																)
 														).length > 0 && (
 															<div className="flex gap-2 items-center">
-																<select
-																	className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors"
-																	onChange={(e) => {
-																		if (e.target.value) {
-																			handleAssignRole(attachment.id, e.target.value)
-																			e.target.value = ''
-																		}
-																	}}
-																	defaultValue=""
-																>
-																	<option value="" disabled>
-																		Add role...
-																	</option>
-																	{attachment.discordServer.roles
+																<SearchSelect
+																	value={pendingRoleSelections[attachment.id] ?? ''}
+																	onValueChange={(value) =>
+																		setPendingRoleSelections((prev) => ({
+																			...prev,
+																			[attachment.id]: value,
+																		}))
+																	}
+																	options={attachment.discordServer.roles
 																		.filter(
 																			(role) =>
 																				!attachment.roles?.some(
 																					(ra) => ra.discordRole.roleId === role.roleId
 																				)
 																		)
-																		.map((role) => (
-																			<option key={role.id} value={role.id}>
-																				{role.roleName}
-																			</option>
-																		))}
-																</select>
+																		.map((role) => ({
+																			id: role.id,
+																			value: role.roleName,
+																			label: role.roleName,
+																		}))}
+																	filterMode="local"
+																	mode="dropdown"
+																	placeholder="Add role..."
+																	emptyText="No matching roles found"
+																	className="w-full"
+																	contentClassName="w-[min(90vw,36rem)]"
+																	inputClassName="h-9"
+																	onSelect={(option) => {
+																		void handleAssignRole(attachment.id, option.id).finally(() => {
+																			setPendingRoleSelections((prev) => {
+																				const { [attachment.id]: _, ...rest } = prev
+																				return rest
+																			})
+																		})
+																	}}
+																/>
 															</div>
 														)}
 													</div>
@@ -737,26 +756,25 @@ export default function CorporationDetailPage() {
 									<div className="space-y-4">
 										<div className="space-y-2">
 											<Label htmlFor="discord-server">Select Server</Label>
-											<select
-												id="discord-server"
-												className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors"
-												value={selectedServerId}
-												onChange={(e) => setSelectedServerId(e.target.value)}
-											>
-												<option value="">Choose a server...</option>
-												{discordServers
-													.filter(
-														(server) =>
-															!corporationDiscordServers.some(
-																(att) => att.discordServerId === server.id
-															)
-													)
-													.map((server) => (
-														<option key={server.id} value={server.id}>
-															{server.guildName}
-														</option>
-													))}
-											</select>
+											<Select value={selectedServerId} onValueChange={setSelectedServerId}>
+												<SelectTrigger id="discord-server" className="w-full">
+													<SelectValue placeholder="Choose a server..." />
+												</SelectTrigger>
+												<SelectContent>
+													{discordServers
+														.filter(
+															(server) =>
+																!corporationDiscordServers.some(
+																	(att) => att.discordServerId === server.id
+																)
+														)
+														.map((server) => (
+															<SelectItem key={server.id} value={server.id}>
+																{server.guildName}
+															</SelectItem>
+														))}
+												</SelectContent>
+											</Select>
 										</div>
 
 										<div className="space-y-3">
@@ -1048,23 +1066,22 @@ export default function CorporationDetailPage() {
 							<div className="space-y-4">
 								<div>
 									<Label htmlFor="permission">Permission</Label>
-									<select
-										id="permission"
-										className="mt-1.5 w-full rounded-md border border-input bg-background px-3 py-2"
-										value={selectedPermissionId}
-										onChange={(e) => setSelectedPermissionId(e.target.value)}
-									>
-										<option value="">Select a permission...</option>
-										{globalPermissions
-											.filter(
-												(gp) => !corporationPermissions.some((cp) => cp.permissionId === gp.id)
-											)
-											.map((perm) => (
-												<option key={perm.id} value={perm.id}>
-													{perm.name} ({perm.urn})
-												</option>
-											))}
-									</select>
+									<Select value={selectedPermissionId} onValueChange={setSelectedPermissionId}>
+										<SelectTrigger id="permission" className="mt-1.5 w-full">
+											<SelectValue placeholder="Select a permission..." />
+										</SelectTrigger>
+										<SelectContent>
+											{globalPermissions
+												.filter(
+													(gp) => !corporationPermissions.some((cp) => cp.permissionId === gp.id)
+												)
+												.map((perm) => (
+													<SelectItem key={perm.id} value={perm.id}>
+														{perm.name} ({perm.urn})
+													</SelectItem>
+												))}
+										</SelectContent>
+									</Select>
 								</div>
 							</div>
 							<DialogFooter>

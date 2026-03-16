@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 
 import { useLocationSearch } from '@/hooks/useLocationSearch'
 
 import { Badge } from './badge'
-import { Input } from './input'
+import { SearchSelect } from './search-select'
 import { Label } from './label'
 
 import type { EsiLocationSearchResult } from '@/lib/esi-api'
@@ -25,73 +25,20 @@ export function LocationSearch({
 	required = false,
 	error,
 }: LocationSearchProps) {
+	const inputId = `location-search-${label}`
 	const [query, setQuery] = useState('')
-	const [isOpen, setIsOpen] = useState(false)
-	const [selectedIndex, setSelectedIndex] = useState(-1)
-	const dropdownRef = useRef<HTMLDivElement>(null)
-	const inputRef = useRef<HTMLInputElement>(null)
+	const [hasInteracted, setHasInteracted] = useState(false)
 
-	const { data: results = [], isLoading } = useLocationSearch(query, isOpen)
-
-	// Close dropdown when clicking outside
-	useEffect(() => {
-		function handleClickOutside(event: MouseEvent) {
-			if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-				setIsOpen(false)
-			}
-		}
-
-		document.addEventListener('mousedown', handleClickOutside)
-		return () => document.removeEventListener('mousedown', handleClickOutside)
-	}, [])
-
-	// Reset selected index when results change
-	useEffect(() => {
-		setSelectedIndex(-1)
-	}, [results])
+	const { data: results = [], isLoading } = useLocationSearch(query, hasInteracted)
 
 	const handleSelect = (location: EsiLocationSearchResult) => {
 		onChange(location)
 		setQuery('')
-		setIsOpen(false)
 	}
 
 	const handleClear = () => {
 		onChange(null)
 		setQuery('')
-		setIsOpen(false)
-		inputRef.current?.focus()
-	}
-
-	const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-		if (!isOpen || results.length === 0) {
-			if (e.key === 'ArrowDown') {
-				setIsOpen(true)
-			}
-			return
-		}
-
-		switch (e.key) {
-			case 'ArrowDown':
-				e.preventDefault()
-				setSelectedIndex((prev) => (prev < results.length - 1 ? prev + 1 : prev))
-				break
-			case 'ArrowUp':
-				e.preventDefault()
-				setSelectedIndex((prev) => (prev > 0 ? prev - 1 : 0))
-				break
-			case 'Enter':
-				e.preventDefault()
-				if (selectedIndex >= 0 && selectedIndex < results.length) {
-					handleSelect(results[selectedIndex])
-				}
-				break
-			case 'Escape':
-				e.preventDefault()
-				setIsOpen(false)
-				setQuery('')
-				break
-		}
 	}
 
 	const getTypeBadgeVariant = (type: string) => {
@@ -108,8 +55,8 @@ export function LocationSearch({
 	}
 
 	return (
-		<div className="space-y-2" ref={dropdownRef}>
-			<Label htmlFor={`location-search-${label}`}>
+		<div className="space-y-2">
+			<Label htmlFor={inputId}>
 				{label}
 				{required && <span className="text-destructive ml-1">*</span>}
 			</Label>
@@ -132,57 +79,44 @@ export function LocationSearch({
 					</button>
 				</div>
 			) : (
-				<div className="relative">
-					<Input
-						ref={inputRef}
-						id={`location-search-${label}`}
-						type="text"
-						value={query}
-						onChange={(e) => {
-							setQuery(e.target.value)
-							setIsOpen(true)
-						}}
-						onFocus={() => setIsOpen(true)}
-						onKeyDown={handleKeyDown}
-						placeholder={placeholder}
-						className={error ? 'border-destructive' : ''}
-					/>
-
-					{isOpen && query.length >= 2 && (
-						<div className="absolute z-50 w-full mt-1 bg-background/95 backdrop-blur-sm border border-border rounded-md shadow-lg max-h-60 overflow-auto">
-							{isLoading ? (
-								<div className="p-3 text-sm text-muted-foreground">Searching...</div>
-							) : results.length === 0 ? (
-								<div className="p-3 text-sm text-muted-foreground">No locations found</div>
-							) : (
-								<div className="py-1">
-									{results.map((result, index) => (
-										<button
-											key={result.id}
-											type="button"
-											onClick={() => handleSelect(result)}
-											className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors ${
-												index === selectedIndex ? 'bg-accent' : ''
-											}`}
-										>
-											<div className="flex items-center justify-between gap-2">
-												<div className="flex-1 min-w-0">
-													<div className="font-medium truncate">{result.name}</div>
-													<div className="text-sm text-muted-foreground truncate">
-														{result.systemName} ({result.regionName})
-													</div>
-												</div>
-												<Badge variant={getTypeBadgeVariant(result.type)} className="shrink-0">
-													{result.type}
-												</Badge>
-											</div>
-										</button>
-									))}
-								</div>
-							)}
+				<SearchSelect
+					inputId={inputId}
+					value={query}
+					onValueChange={(nextQuery) => {
+						setQuery(nextQuery)
+						setHasInteracted(true)
+					}}
+					options={results.map((result) => ({
+						id: result.id,
+						value: result.name,
+						label: result.name,
+						description: `${result.systemName} (${result.regionName})`,
+						result,
+					}))}
+					onSelect={(option) => handleSelect(option.result)}
+					filterMode="server"
+					minQueryLength={2}
+					placeholder={placeholder}
+					loading={query.length >= 2 && isLoading}
+					inputClassName={error ? 'border-destructive' : ''}
+					minCharsText="Type at least 2 characters"
+					loadingText="Searching..."
+					emptyText="No locations found"
+					getSearchText={(option) =>
+						`${option.label} ${option.description ?? ''} ${option.result.type}`
+					}
+					renderOption={(option) => (
+						<div className="flex w-full items-center justify-between gap-2">
+							<div className="min-w-0 flex-1">
+								<div className="truncate font-medium">{option.label}</div>
+								<div className="truncate text-xs text-muted-foreground">{option.description}</div>
+							</div>
+							<Badge variant={getTypeBadgeVariant(option.result.type)} className="shrink-0">
+								{option.result.type}
+							</Badge>
 						</div>
 					)}
-				</div>
+				/>
 			)}
 
 			{error && <p className="text-sm text-destructive">{error}</p>}

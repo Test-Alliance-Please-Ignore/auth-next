@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
 
@@ -38,6 +38,7 @@ export function useGroups(filters?: GroupsFilters) {
 	return useQuery({
 		queryKey: groupKeys.list(filters),
 		queryFn: () => api.getGroups(filters),
+		placeholderData: keepPreviousData,
 		// Unfiltered lists can be cached longer since they're edge-cached
 		staleTime: isUserSpecific ? 1000 * 30 : 1000 * 60, // 30s for user-specific, 60s for general
 		gcTime: 1000 * 60 * 5, // Keep in cache for 5 minutes

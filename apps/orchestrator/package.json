@@ -26,8 +26,8 @@
 		"@repo/discord": "workspace:*",
 		"@repo/do-utils": "workspace:*",
 		"@repo/eve-corporation-data": "workspace:*",
-		"@repo/orchestrator": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
+		"@repo/orchestrator": "workspace:*",
 		"drizzle-orm": "0.44.7",
 		"hono": "4.10.6",
 		"workers-tagged-logger": "0.13.7"
@@ -44,6 +44,6 @@
 		"tsx": "4.20.6",
 		"vite": "7.2.2",
 		"vitest": "3.2.4",
-		"wrangler": "4.49.0"
+		"wrangler": "4.71.0"
 	}
 }

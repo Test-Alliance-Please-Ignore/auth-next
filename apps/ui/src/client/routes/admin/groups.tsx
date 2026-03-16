@@ -1,5 +1,5 @@
-import { Plus, Search, X } from 'lucide-react'
-import { useState } from 'react'
+import { Plus, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
 
 import { GroupForm } from '@/components/group-form'
 import { GroupList } from '@/components/group-list'
@@ -54,22 +54,31 @@ export default function GroupsPage() {
 		})
 	}
 
-	// Handle search
-	const handleSearch = () => {
-		updateFilter('search', searchInput || undefined)
-	}
-
-	const handleSearchKeyPress = (e: React.KeyboardEvent) => {
-		if (e.key === 'Enter') {
-			handleSearch()
-		}
-	}
-
 	// Clear all filters
 	const clearFilters = () => {
 		setFilters({})
 		setSearchInput('')
 	}
+
+	useEffect(() => {
+		const timer = setTimeout(() => {
+			const query = searchInput.trim()
+			setFilters((prev) => {
+				if (!query) {
+					const { search: _search, ...rest } = prev
+					return rest
+				}
+				return { ...prev, search: query }
+			})
+		}, 300)
+
+		return () => clearTimeout(timer)
+	}, [searchInput])
+
+	const optimisticSearch = searchInput.trim().toLowerCase()
+	const displayedGroups = (groups || []).filter((group) =>
+		optimisticSearch ? group.name.toLowerCase().includes(optimisticSearch) : true
+	)
 
 	const hasActiveFilters = Object.keys(filters).length > 0
 
@@ -144,13 +153,16 @@ export default function GroupsPage() {
 						<div className="space-y-2">
 							<Label>Category</Label>
 							<Select
-								value={filters.categoryId}
-								onValueChange={(value) => updateFilter('categoryId', value || undefined)}
+								value={filters.categoryId ?? 'all'}
+								onValueChange={(value) =>
+									updateFilter('categoryId', value === 'all' ? undefined : value)
+								}
 							>
 								<SelectTrigger>
 									<SelectValue placeholder="All categories" />
 								</SelectTrigger>
 								<SelectContent>
+									<SelectItem value="all">All categories</SelectItem>
 									{categories?.map((category) => (
 										<SelectItem key={category.id} value={category.id}>
 											{category.name}
@@ -164,13 +176,16 @@ export default function GroupsPage() {
 						<div className="space-y-2">
 							<Label>Visibility</Label>
 							<Select
-								value={filters.visibility}
-								onValueChange={(value) => updateFilter('visibility', value || undefined)}
+								value={filters.visibility ?? 'all'}
+								onValueChange={(value) =>
+									updateFilter('visibility', value === 'all' ? undefined : value)
+								}
 							>
 								<SelectTrigger>
 									<SelectValue placeholder="All visibilities" />
 								</SelectTrigger>
 								<SelectContent>
+									<SelectItem value="all">All visibilities</SelectItem>
 									<SelectItem value="public">Public</SelectItem>
 									<SelectItem value="hidden">Hidden</SelectItem>
 									<SelectItem value="system">System</SelectItem>
@@ -182,13 +197,16 @@ export default function GroupsPage() {
 						<div className="space-y-2">
 							<Label>Join Mode</Label>
 							<Select
-								value={filters.joinMode}
-								onValueChange={(value) => updateFilter('joinMode', value || undefined)}
+								value={filters.joinMode ?? 'all'}
+								onValueChange={(value) =>
+									updateFilter('joinMode', value === 'all' ? undefined : value)
+								}
 							>
 								<SelectTrigger>
 									<SelectValue placeholder="All join modes" />
 								</SelectTrigger>
 								<SelectContent>
+									<SelectItem value="all">All modes</SelectItem>
 									<SelectItem value="open">Open</SelectItem>
 									<SelectItem value="approval">Approval</SelectItem>
 									<SelectItem value="invitation_only">Invitation Only</SelectItem>
@@ -199,18 +217,12 @@ export default function GroupsPage() {
 						{/* Search Input */}
 						<div className="space-y-2">
 							<Label>Search</Label>
-							<div className="flex gap-2">
-								<Input
-									type="text"
-									placeholder="Search by name..."
-									value={searchInput}
-									onChange={(e) => setSearchInput((e.target as HTMLInputElement).value)}
-									onKeyPress={handleSearchKeyPress}
-								/>
-								<Button onClick={handleSearch} size="icon">
-									<Search className="h-4 w-4" />
-								</Button>
-							</div>
+							<Input
+								type="text"
+								placeholder="Search by name..."
+								value={searchInput}
+								onChange={(e) => setSearchInput((e.target as HTMLInputElement).value)}
+							/>
 						</div>
 					</div>
 				</CardContent>
@@ -221,7 +233,9 @@ export default function GroupsPage() {
 				<CardHeader>
 					<CardTitle>
 						Groups{' '}
-						{groups && <span className="text-muted-foreground font-normal">({groups.length})</span>}
+						{groups && (
+							<span className="text-muted-foreground font-normal">({displayedGroups.length})</span>
+						)}
 					</CardTitle>
 					<CardDescription>
 						{hasActiveFilters
@@ -230,7 +244,7 @@ export default function GroupsPage() {
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
-					<GroupList groups={groups || []} isLoading={groupsLoading} isAdminContext={true} />
+					<GroupList groups={displayedGroups} isLoading={groupsLoading} isAdminContext={true} />
 				</CardContent>
 			</Card>
 

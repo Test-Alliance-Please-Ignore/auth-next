@@ -27,11 +27,11 @@
 		"@repo/beancounter": "workspace:*",
 		"@repo/db-utils": "workspace:*",
 		"@repo/do-utils": "workspace:*",
+		"@repo/esi": "workspace:*",
 		"@repo/eve-corporation-data": "workspace:*",
 		"@repo/eve-token-store": "workspace:*",
-		"@repo/esi": "workspace:*",
-		"@repo/universe": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
+		"@repo/universe": "workspace:*",
 		"@repo/vite-config": "workspace:*",
 		"cli-table3": "0.6.5",
 		"commander": "14.0.2",
@@ -40,9 +40,9 @@
 		"workers-tagged-logger": "0.13.7"
 	},
 	"devDependencies": {
-		"@commander-js/extra-typings": "14.0.0",
 		"@cloudflare/vite-plugin": "1.15.0",
 		"@cloudflare/vitest-pool-workers": "0.10.8",
+		"@commander-js/extra-typings": "14.0.0",
 		"@repo/eslint-config": "workspace:*",
 		"@repo/tools": "workspace:*",
 		"@repo/typescript-config": "workspace:*",
@@ -52,6 +52,6 @@
 		"tsx": "4.20.6",
 		"vite": "7.2.2",
 		"vitest": "3.2.4",
-		"wrangler": "4.49.0"
+		"wrangler": "4.71.0"
 	}
 }
