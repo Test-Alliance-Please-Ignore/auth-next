@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm'
 
 import { createDb } from '../db'
 import { userCharacters } from '../db/schema'
+import { clearUserRolesCache } from '../lib/groups-cache'
 import { checkUserBlacklisted, disableBlacklistedUser } from './steps/check-user-blacklisted'
 import {
 	handleCharacterDeleted,
@@ -26,6 +27,7 @@ import type { WorkflowContext } from './context'
  */
 export interface WorkflowParams {
 	userId: string
+	refreshMode?: 'scheduled' | 'manual'
 }
 
 /**
@@ -41,17 +43,22 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams>
 	 * Create workflow context inside each step.
 	 * MUST be called inside step.do() callbacks since services don't survive hibernation.
 	 */
-	private createContext(userId: string, workflowInstanceId: string): WorkflowContext {
+	private createContext(
+		userId: string,
+		workflowInstanceId: string,
+		refreshMode: WorkflowParams['refreshMode'] = 'scheduled'
+	): WorkflowContext {
 		return {
 			env: this.env,
 			workflowInstanceId,
 			db: createDb(this.env.DATABASE_URL),
 			userId,
+			refreshMode,
 		}
 	}
 
 	async run(event: WorkflowEvent<WorkflowParams>, step: WorkflowStep) {
-		const { userId } = event.payload
+		const { userId, refreshMode = 'scheduled' } = event.payload
 		const workflowInstanceId = event.instanceId
 
 		const logContext = { userId, workflowInstanceId }
@@ -59,7 +66,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams>
 
 		// Step 1: Check if user is blacklisted
 		const checkUserBlacklistedResult = await step.do('check-user-blacklisted', () => {
-			const ctx = this.createContext(userId, workflowInstanceId)
+			const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
 			return checkUserBlacklisted(ctx)
 		})
 
@@ -71,7 +78,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams>
 		// Step 2: Disable user if blacklisted
 		if (checkUserBlacklistedResult.isBlacklisted) {
 			await step.do('disable-blacklisted-user', () => {
-				const ctx = this.createContext(userId, workflowInstanceId)
+				const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
 				return disableBlacklistedUser(ctx)
 			})
 
@@ -97,7 +104,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams>
 					timeout: '1 minute',
 				},
 				async () => {
-					const ctx = this.createContext(userId, workflowInstanceId)
+					const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
 					return updateCharacterPublicInfo(ctx, character.characterId)
 				}
 			)
@@ -107,12 +114,13 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams>
 					characterId: character.characterId,
 				})
 				await step.do(`handle-character-deleted-${character.characterId}`, () => {
-					const ctx = this.createContext(userId, workflowInstanceId)
+					const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
 					return handleCharacterDeleted(ctx, character.characterId)
 				})
 				console.log('[Workflow] Character marked as deleted', {
 					characterId: character.characterId,
 				})
+				continue
 			}
 
 			// Step: Try authenticated fetch
@@ -123,7 +131,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams>
 					timeout: '1 minute',
 				},
 				async () => {
-					const ctx = this.createContext(userId, workflowInstanceId)
+					const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
 					return tryCharacterAuthenticatedFetch(ctx, character.characterId)
 				}
 			)
@@ -139,7 +147,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams>
 
 		// Step 4: Get user role attachments
 		const getUserRoleAttachmentsResult = await step.do('get-user-role-attachments', () => {
-			const ctx = this.createContext(userId, workflowInstanceId)
+			const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
 			return getUserRoleAttachments(ctx)
 		})
 
@@ -150,7 +158,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams>
 
 		// Step 5: Attach user roles
 		const attachUserRolesResult = await step.do('attach-user-roles', () => {
-			const ctx = this.createContext(userId, workflowInstanceId)
+			const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
 			return attachUserRoles(ctx)
 		})
 
@@ -159,10 +167,11 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams>
 			corporationRoleAttachments: attachUserRolesResult.corporationRoleAttachments.length,
 			allianceRoleAttachments: attachUserRolesResult.allianceRoleAttachments.length,
 		})
+		clearUserRolesCache(userId)
 
 		// Step 6: Update completion timestamp
 		await step.do('update-completion-timestamp', () => {
-			const ctx = this.createContext(userId, workflowInstanceId)
+			const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
 			return updateCompletionTimestamp(ctx)
 		})
 

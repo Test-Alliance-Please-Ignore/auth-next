@@ -67,6 +67,10 @@ export * from './types'
 export * from './id-ranges'
 export * from './errors'
 
+export interface EsiRequestOptions {
+	cacheMode?: 'default' | 'no-store'
+}
+
 /**
  * Public RPC interface for Esi Durable Object
  *
@@ -86,9 +90,13 @@ export interface Esi {
 	// Character endpoints
 	fetchCharacterAffiliation(
 		characterId: string,
-		characterIds: string[]
+		characterIds: string[],
+		options?: EsiRequestOptions
 	): Promise<CharacterAffiliation[]>
-	fetchCharacterPublicInfo(characterId: string): Promise<CharacterPublicInfo>
+	fetchCharacterPublicInfo(
+		characterId: string,
+		options?: EsiRequestOptions
+	): Promise<CharacterPublicInfo>
 	fetchCharacterNotifications(characterId: string): Promise<CharacterNotification[]>
 	fetchCharacterAgentResearch(characterId: string): Promise<CharacterAgentResearch[]>
 	fetchCharacterAssets(characterId: string): Promise<CharacterAsset[]>

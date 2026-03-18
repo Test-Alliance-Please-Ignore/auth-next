@@ -109,6 +109,7 @@ import type {
 	CorporationWalletJournalEntry,
 	CorporationWalletTransaction,
 	Esi,
+	EsiRequestOptions,
 	EsiCharacterAgentResearch,
 	EsiCharacterAsset,
 	EsiCharacterAttributes,
@@ -176,6 +177,7 @@ import { UseCharacterAuth, UseCorporationAuth } from './lib/auth-decorators'
 // This ensures we detect changes (like name renames) without waiting for
 // full cache expiry.
 const REVALIDATE_15_MIN = 900 // 15 minutes - for frequently-changing public info
+const REVALIDATE_5_MIN = 300 // 5 minutes - for security-relevant affiliation lookups
 const REVALIDATE_1_HOUR = 3600 // 1 hour - for less frequent updates
 
 /**
@@ -206,23 +208,34 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	@UseCharacterAuth
 	async fetchCharacterAffiliation(
 		characterId: string,
-		characterIds: string[]
+		characterIds: string[],
+		options?: EsiRequestOptions
 	): Promise<CharacterAffiliation[]> {
+		const cacheMode = options?.cacheMode ?? 'no-store'
 		const result = await this.esiFetcher.fetchEsi<EsiCharacterAffiliation[], number[]>(
 			`/characters/affiliation`,
 			{
 				body: characterIds.map((id) => parseInt(id, 10)),
+				cacheMode,
+				maxLocalCacheTtl: cacheMode === 'no-store' ? undefined : REVALIDATE_5_MIN,
 				method: 'POST',
+				persistGlobalCache: false,
 			}
 		)
 		return transformCharacterAffiliation(result.data)
 	}
 
 	@UseCharacterAuth
-	async fetchCharacterPublicInfo(characterId: string): Promise<CharacterPublicInfo> {
+	async fetchCharacterPublicInfo(
+		characterId: string,
+		options?: EsiRequestOptions
+	): Promise<CharacterPublicInfo> {
 		const result = await this.esiFetcher.fetchEsi<EsiCharacterPublicInfo>(
 			`/characters/${characterId}`,
-			{ maxLocalCacheTtl: REVALIDATE_15_MIN }
+			{
+				cacheMode: options?.cacheMode ?? 'default',
+				maxLocalCacheTtl: REVALIDATE_15_MIN,
+			}
 		)
 
 		logger.info(`[fetchCharacterPublicInfo] Result: ${JSON.stringify(result)}`)

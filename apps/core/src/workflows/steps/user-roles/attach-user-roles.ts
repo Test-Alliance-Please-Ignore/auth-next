@@ -1,6 +1,5 @@
 import { ROLE_CORE_ALLIANCE_MEMBER, ROLE_CORE_CORP_MEMBER } from '@repo/core'
 import { getStub } from '@repo/do-utils'
-import { getEsiInstanceForCharacter, getEsiInstanceForCorporation } from '@repo/esi'
 import { ResourceType, RoleAttachmentType } from '@repo/groups'
 
 import { getWorkflowLogger } from '../../context'
@@ -20,12 +19,23 @@ export interface AttachUserRolesResult {
 interface CharacterInfo {
 	characterId: string
 	characterName: string
-	allianceId?: string
-	corporationId: string
+	allianceId?: string | null
+	corporationId?: string | null
 }
 
 /**
  * Attach user roles to the user
+ *
+ * Source of truth breakdown:
+ * - `user_characters` in core is the refresh-time source of truth for corporation and
+ *   alliance membership role derivation.
+ * - The refresh workflow is responsible for hydrating those fields from ESI before this
+ *   step runs.
+ * - Groups role attachments are the persisted authorization surface consumed by session
+ *   auth and route guards.
+ * - Live ESI affiliation lookup is intentionally not used here, to avoid divergence
+ *   between refresh-persisted character state and attached roles.
+ *
  * @param ctx - Workflow context
  * @returns User role attachments
  */
@@ -33,29 +43,21 @@ export async function attachUserRoles(ctx: WorkflowContext): Promise<AttachUserR
 	const logger = getWorkflowLogger(ctx, 'attach-user-roles')
 
 	const coreStub = getStub<Core>(ctx.env.CORE, 'default')
-
 	const characters = await coreStub.getUserCharacters(ctx.userId)
 
-	const characterInfoResults: CharacterInfo[] = await Promise.all(
-		characters.map(async (character) => {
-			logger.info('[Workflow] Fetching character public info', {
-				characterId: character.characterId,
-			})
-
-			const esiStub = getEsiInstanceForCharacter(ctx.env.ESI, character.characterId)
-			// First parameter is the character ID to authenticate with
-			// Second parameter is the list of character IDs to fetch affiliation for
-			const affiliation = await esiStub.fetchCharacterAffiliation(character.characterId, [
-				character.characterId,
-			])
-			return {
-				characterId: String(character.characterId),
-				characterName: character.characterName,
-				allianceId: affiliation[0].alliance_id,
-				corporationId: affiliation[0].corporation_id,
-			}
+	const characterInfoResults: CharacterInfo[] = characters.map((character) => ({
+		characterId: String(character.characterId),
+		characterName: character.characterName,
+		allianceId: character.allianceId ?? null,
+		corporationId: character.corporationId ?? null,
+	}))
+	for (const characterInfo of characterInfoResults) {
+		logger.info('[Workflow] Derived role source from refreshed character state', {
+			characterId: characterInfo.characterId,
+			corporationId: characterInfo.corporationId,
+			allianceId: characterInfo.allianceId,
 		})
-	)
+	}
 
 	type RoleAttachment = {
 		roleName: string
@@ -67,6 +69,10 @@ export async function attachUserRoles(ctx: WorkflowContext): Promise<AttachUserR
 
 	const roleAttachments: RoleAttachment[] = []
 	const buildCorporationRoleAttachment = (characterInfo: CharacterInfo) => {
+		if (!characterInfo.corporationId) {
+			return
+		}
+
 		logger.info('[Workflow] Attaching corporation roles', {
 			characterId: characterInfo.characterId,
 			corporationId: characterInfo.corporationId,
@@ -83,7 +89,7 @@ export async function attachUserRoles(ctx: WorkflowContext): Promise<AttachUserR
 
 	const buildAllianceRoleAttachment = (characterInfo: CharacterInfo) => {
 		if (!characterInfo.allianceId) {
-			return undefined
+			return
 		}
 
 		roleAttachments.push({
@@ -101,6 +107,32 @@ export async function attachUserRoles(ctx: WorkflowContext): Promise<AttachUserR
 	})
 
 	const groupsStub = getStub<Groups>(ctx.env.GROUPS, 'default')
+	const existingCoreMembershipRoles = await groupsStub.getRolesFor({
+		attachedToType: RoleAttachmentType.USER,
+		attachedToId: ctx.userId,
+	})
+	const rolesToDetach = new Map<string, string>()
+	for (const attachment of existingCoreMembershipRoles) {
+		if (
+			attachment.role.name === ROLE_CORE_CORP_MEMBER ||
+			attachment.role.name === ROLE_CORE_ALLIANCE_MEMBER
+		) {
+			rolesToDetach.set(attachment.role.id, attachment.role.name)
+		}
+	}
+	for (const [roleId, roleName] of rolesToDetach) {
+		logger.info('[Workflow] Detaching stale core membership role', {
+			userId: ctx.userId,
+			roleId,
+			roleName,
+		})
+		await groupsStub.detachRoleFrom({
+			roleId,
+			attachedToType: RoleAttachmentType.USER,
+			attachedToId: ctx.userId,
+		})
+	}
+
 	const attachedRoleAttachments = await groupsStub.batchAttachRolesTo({
 		roles: roleAttachments.map((r) => ({
 			roleName: r.roleName,

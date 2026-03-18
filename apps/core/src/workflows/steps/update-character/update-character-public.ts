@@ -14,7 +14,15 @@ import type { CharacterPublicInfo, EsiTypeResolver } from '@repo/esi'
 import type { WorkflowContext } from '../../context'
 
 /**
- * Update database to mark workflow as completed
+ * Refresh and persist the user's authoritative character affiliation state.
+ *
+ * Source of truth breakdown:
+ * - ESI public character info (`GET /characters/{id}`) is the source of truth for
+ *   `characterName`, `corporationId`, and `allianceId` during refresh.
+ * - `user_characters` is the persisted source of truth used by downstream core
+ *   workflows after this step completes.
+ * - Corporation/alliance display names are best-effort cached metadata and are not
+ *   allowed to block persistence of the affiliation IDs themselves.
  *
  * @param ctx - Workflow context
  */
@@ -25,7 +33,7 @@ export async function updateCharacterPublicInfo(
 	characterId: string
 	characterName: string
 	corporationId: string
-	corporationName: string
+	corporationName: string | null
 	allianceId: string | null
 	allianceName: string | null
 	isDeleted: boolean
@@ -35,7 +43,9 @@ export async function updateCharacterPublicInfo(
 	let characterInfo: CharacterPublicInfo | null = null
 	const esiStub = getEsiInstanceForCharacter(ctx.env.ESI, characterId)
 	try {
-		characterInfo = await esiStub.fetchCharacterPublicInfo(characterId)
+		characterInfo = await esiStub.fetchCharacterPublicInfo(characterId, {
+			cacheMode: ctx.refreshMode === 'manual' ? 'no-store' : 'default',
+		})
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : String(error)
 		logger.error('[Workflow] Failed to fetch character public info', {
@@ -54,41 +64,57 @@ export async function updateCharacterPublicInfo(
 				isDeleted: true,
 			}
 		}
+
+		throw error
 	}
 
 	if (!characterInfo) {
-		return {
-			characterId: characterId,
-			characterName: '',
-			corporationId: '',
-			corporationName: '',
-			allianceId: null,
-			allianceName: null,
-			isDeleted: true,
-		}
+		throw new Error(`No character public info found for character ID: ${characterId}`)
 	}
 
-	const typeResolver = getStub<EsiTypeResolver>(ctx.env.ESI_TYPE_RESOLVER, 'global')
-	const idsToResolve = [characterInfo.corporation_id]
-	if (characterInfo.alliance_id) {
-		idsToResolve.push(characterInfo.alliance_id)
-	}
-	const nameMap = await typeResolver.resolveIds(idsToResolve)
-	const corporationName = nameMap[characterInfo.corporation_id]
-	const allianceName = characterInfo.alliance_id ? String(nameMap[characterInfo.alliance_id]) : null
 	const allianceId = characterInfo.alliance_id ? String(characterInfo.alliance_id) : null
+
+	// Persist the authoritative affiliation IDs before any best-effort name resolution.
 	await ctx.db
 		.update(userCharacters)
 		.set({
 			characterName: characterInfo.name,
 			corporationId: characterInfo.corporation_id,
-			corporationName: corporationName,
-			allianceId: allianceId,
-			allianceName: allianceName,
+			allianceId,
 			lastCharacterRefresh: new Date(),
 			updatedAt: new Date(),
 		})
 		.where(eq(userCharacters.characterId, characterId))
+
+	const typeResolver = getStub<EsiTypeResolver>(ctx.env.ESI_TYPE_RESOLVER, 'global')
+	const idsToResolve = [characterInfo.corporation_id]
+	if (allianceId) {
+		idsToResolve.push(allianceId)
+	}
+
+	let corporationName: string | null = null
+	let allianceName: string | null = null
+	try {
+		const nameMap = await typeResolver.resolveIds(idsToResolve)
+		corporationName = nameMap[characterInfo.corporation_id] ?? null
+		allianceName = allianceId ? String(nameMap[allianceId] ?? '') || null : null
+
+		await ctx.db
+			.update(userCharacters)
+			.set({
+				corporationName,
+				allianceName,
+				updatedAt: new Date(),
+			})
+			.where(eq(userCharacters.characterId, characterId))
+	} catch (error) {
+		logger.warn('[Workflow] Failed to resolve character affiliation names', {
+			characterId,
+			error: error instanceof Error ? error.message : String(error),
+			corporationId: characterInfo.corporation_id,
+			allianceId,
+		})
+	}
 
 	logger.info('[Workflow] Updated character public info', {
 		characterId,
@@ -100,9 +126,9 @@ export async function updateCharacterPublicInfo(
 		characterId: characterId,
 		characterName: characterInfo.name,
 		corporationId: characterInfo.corporation_id,
-		corporationName: corporationName,
-		allianceId: allianceId,
-		allianceName: allianceName,
+		corporationName,
+		allianceId,
+		allianceName,
 		isDeleted: false,
 	}
 }

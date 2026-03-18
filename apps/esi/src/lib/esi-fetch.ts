@@ -35,6 +35,10 @@ export interface FetchEsiOptions<B = unknown> {
 	method?: 'GET' | 'POST'
 	/** Request body for POST requests */
 	body?: B
+	/** Cache policy for this request. Stateful/auth-sensitive endpoints should use `no-store`. */
+	cacheMode?: 'default' | 'no-store'
+	/** Whether cache writes should be mirrored to KV/global cache when caching is enabled. */
+	persistGlobalCache?: boolean
 	/** Override the default cache scope (defaults to authenticated scope or public) */
 	cacheScopeOverride?: CacheScopeContext
 	/**
@@ -284,7 +288,9 @@ export class EsiFetcher {
 		options?: FetchEsiOptions<B>
 	): Promise<EsiResponse<T>> {
 		const cacheScope = options?.cacheScopeOverride ?? this.getActiveCacheScope()
+		const cacheMode = options?.cacheMode ?? 'default'
 		const maxLocalCacheTtl = options?.maxLocalCacheTtl
+		const persistGlobalCache = options?.persistGlobalCache ?? true
 		const method = options?.method ?? 'GET'
 		const body = options?.body
 		const page = this.extractPageFromPath(path)
@@ -300,7 +306,10 @@ export class EsiFetcher {
 		}
 
 		// 1. Check cache for valid (non-expired) entries
-		let cached = await this.cache.getCachedResponse<T>(cacheScope, cachePath, cachePage, false)
+		let cached: EsiResponse<T> | null = null
+		if (cacheMode !== 'no-store') {
+			cached = await this.cache.getCachedResponse<T>(cacheScope, cachePath, cachePage, false)
+		}
 
 		if (cached) {
 			// If maxLocalCacheTtl is set, check if we should revalidate via ETag
@@ -331,7 +340,10 @@ export class EsiFetcher {
 
 		// 2. Get cache entry for ETag (either expired or stale for revalidation)
 		const expiredCached =
-			cached ?? (await this.cache.getCachedResponse<T>(cacheScope, cachePath, cachePage, true))
+			cacheMode === 'no-store'
+				? null
+				: (cached ??
+					(await this.cache.getCachedResponse<T>(cacheScope, cachePath, cachePage, true)))
 		const cachedEtag = expiredCached?.etag ?? null
 		const headers = await this.buildRequestHeaders(cachedEtag, method)
 
@@ -446,11 +458,16 @@ export class EsiFetcher {
 		}
 
 		// 8. Cache response
-		await this.cache.setCachedResponse(cacheScope, cachePath, esiResponse, cachePage)
+		if (cacheMode !== 'no-store') {
+			await this.cache.setCachedResponse(cacheScope, cachePath, esiResponse, cachePage, {
+				persistGlobal: persistGlobalCache,
+			})
+		}
 
 		logger.debug('[EsiFetcher] Successfully fetched and cached response', {
 			path,
 			cacheScope,
+			cacheMode,
 			hasEtag: !!etag,
 			pages,
 		})

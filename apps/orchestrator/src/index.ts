@@ -177,6 +177,7 @@ const app = new Hono<App>()
 				id: `user-refresh-${userId}-${now}-${index}`,
 				params: {
 					userId,
+					refreshMode: 'manual' as const,
 				},
 			}))
 

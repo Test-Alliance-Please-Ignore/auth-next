@@ -424,7 +424,7 @@ auth.get('/callback', async (c) => {
 
 						await c.env.USER_REFRESH_WORKFLOW.create({
 							id: `user-refresh-login-${user.id}-${Date.now()}`,
-							params: { userId: user.id },
+							params: { userId: user.id, refreshMode: 'manual' },
 						})
 					}
 				} catch (error) {
@@ -583,7 +583,7 @@ auth.post('/claim-main', async (c) => {
 
 				await c.env.USER_REFRESH_WORKFLOW.create({
 					id: `user-refresh-login-${user.id}-${Date.now()}`,
-					params: { userId: user.id },
+					params: { userId: user.id, refreshMode: 'manual' },
 				})
 			} catch (error) {
 				console.error('[Auth] Failed to trigger user refresh workflow:', toErrorMessage(error))
