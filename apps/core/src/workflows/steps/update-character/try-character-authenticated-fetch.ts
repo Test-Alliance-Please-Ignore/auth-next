@@ -1,15 +1,18 @@
 /**
- * Update database with workflow completion timestamp
+ * Validate authenticated character access for refresh-sensitive workflows.
  */
 
 import { eq } from 'drizzle-orm'
 
-import { getEsiInstanceForCharacter } from '@repo/esi'
+import { getStub } from '@repo/do-utils'
 
 import { userCharacters } from '../../../db/schema'
 import { getWorkflowLogger } from '../../context'
 
+import type { EveTokenStore, TokenValidationStatus } from '@repo/eve-token-store'
 import type { WorkflowContext } from '../../context'
+
+const NON_DEGRADING_TOKEN_STATUSES: TokenValidationStatus[] = ['transient_error']
 
 /**
  * Update database to mark workflow as completed
@@ -23,40 +26,44 @@ export async function tryCharacterAuthenticatedFetch(
 	characterId: string
 	success: boolean
 	error?: string
+	status?: TokenValidationStatus
 }> {
 	const logger = getWorkflowLogger(ctx, 'try-character-authenticated-fetch')
+	const eveTokenStore = getStub<EveTokenStore>(ctx.env.EVE_TOKEN_STORE, 'default')
 
-	const esiStub = getEsiInstanceForCharacter(ctx.env.ESI, characterId)
+	const existingCharacter = await ctx.db.query.userCharacters.findFirst({
+		where: eq(userCharacters.characterId, characterId),
+	})
 
-	let success = false
-	let errorMessage: string | undefined
-	try {
-		await esiStub.fetchCharacterLocation(characterId)
-		logger.info('[Workflow] Fetched character location', {
-			characterId,
-		})
-		success = true
-	} catch (error) {
-		errorMessage = error instanceof Error ? error.message : String(error)
-		logger.error('[Workflow] Failed to fetch character location', {
-			characterId,
-			error: errorMessage,
-		})
-		success = false
-	}
+	const previousHasValidToken = existingCharacter?.hasValidToken ?? null
+	const validation = await eveTokenStore.validateToken(characterId)
+
+	const shouldPreservePreviousState = NON_DEGRADING_TOKEN_STATUSES.includes(validation.status)
+	const nextHasValidToken = shouldPreservePreviousState ? previousHasValidToken : validation.isValid
+
+	logger.info('[Workflow] Evaluated character token validity', {
+		characterId,
+		missingScopes: validation.missingScopes,
+		previousHasValidToken,
+		refreshAttempted: validation.refreshAttempted,
+		refreshSucceeded: validation.refreshSucceeded,
+		scopeCount: validation.scopes.length,
+		status: validation.status,
+	})
 
 	await ctx.db
 		.update(userCharacters)
 		.set({
 			lastCharacterRefresh: new Date(),
 			updatedAt: new Date(),
-			hasValidToken: success,
+			hasValidToken: nextHasValidToken,
 		})
 		.where(eq(userCharacters.characterId, characterId))
 
 	return {
 		characterId: characterId,
-		success: success,
-		error: errorMessage,
+		error: validation.error,
+		status: validation.status,
+		success: validation.isValid,
 	}
 }
