@@ -638,6 +638,7 @@ app.post('/users/:userId/sync', requireAuth(), requireAdmin(), async (c) => {
 			userId,
 			source: `admin-sync-${user.id}`,
 			bypassThrottle: true,
+			refreshMode: 'manual',
 		})
 
 		logger.info('[Admin] User sync triggered by admin', {

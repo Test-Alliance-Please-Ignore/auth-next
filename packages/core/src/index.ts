@@ -10,7 +10,17 @@ export interface Core {
 	getUserCharacters(
 		userId: string,
 		includeDeleted?: boolean
-	): Promise<Array<{ characterId: string; characterName: string; isDeleted: boolean }>>
+	): Promise<
+		Array<{
+			characterId: string
+			characterName: string
+			isDeleted: boolean
+			corporationId?: string | null
+			corporationName?: string | null
+			allianceId?: string | null
+			allianceName?: string | null
+		}>
+	>
 	getUserCorporations(
 		userId: string
 	): Promise<Array<{ corporationId: string; corporationName: string }>>

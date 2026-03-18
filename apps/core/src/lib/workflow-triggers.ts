@@ -14,6 +14,7 @@ export interface TriggerUserRefreshOptions {
 	userId: string
 	source: string
 	bypassThrottle?: boolean
+	refreshMode?: 'scheduled' | 'manual'
 }
 
 /**
@@ -27,6 +28,7 @@ export async function triggerUserRefreshWorkflow({
 	userId,
 	source,
 	bypassThrottle = false,
+	refreshMode = 'scheduled',
 }: TriggerUserRefreshOptions): Promise<void> {
 	try {
 		const userRecord = await db.query.users.findFirst({
@@ -48,10 +50,15 @@ export async function triggerUserRefreshWorkflow({
 
 		await env.USER_REFRESH_WORKFLOW.create({
 			id: `user-refresh-${source}-${userId}-${Date.now()}`,
-			params: { userId },
+			params: { userId, refreshMode },
 		})
 
-		logger.info('[WorkflowTrigger] Triggered user refresh workflow', { userId, source, bypassThrottle })
+		logger.info('[WorkflowTrigger] Triggered user refresh workflow', {
+			userId,
+			source,
+			bypassThrottle,
+			refreshMode,
+		})
 	} catch (error) {
 		logger.error('[WorkflowTrigger] Failed to trigger user refresh workflow', {
 			userId,

@@ -88,7 +88,17 @@ export class CoreDO extends DurableObject<Env> implements Core {
 	async getUserCharacters(
 		userId: string,
 		includeDeleted: boolean = false
-	): Promise<Array<{ characterId: string; characterName: string; isDeleted: boolean }>> {
+	): Promise<
+		Array<{
+			characterId: string
+			characterName: string
+			isDeleted: boolean
+			corporationId?: string | null
+			corporationName?: string | null
+			allianceId?: string | null
+			allianceName?: string | null
+		}>
+	> {
 		const characters = await this.getDb().query.userCharacters.findMany({
 			where: and(eq(userCharacters.isDeleted, includeDeleted), eq(userCharacters.userId, userId)),
 		})
@@ -96,6 +106,10 @@ export class CoreDO extends DurableObject<Env> implements Core {
 			characterId: c.characterId,
 			characterName: c.characterName,
 			isDeleted: c.isDeleted,
+			corporationId: c.corporationId,
+			corporationName: c.corporationName,
+			allianceId: c.allianceId,
+			allianceName: c.allianceName,
 		}))
 	}
 
