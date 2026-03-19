@@ -1,18 +1,26 @@
-import { createDbClientWs } from '@repo/db-utils'
+import { createDbClient, createDbClientWs } from '@repo/db-utils'
 
 import * as schema from './schema'
 
-import type { DbClientWs } from '@repo/db-utils'
+import type { DbClient, DbClientWs } from '@repo/db-utils'
+
+type EveTokenStoreDbClient = DbClient<typeof schema> | DbClientWs<typeof schema>
 
 /**
- * Create a database client instance using WebSocket driver
- * For Durable Objects - provides connection reuse and full transaction support
+ * Create a database client instance.
+ * Production uses the Neon WebSocket driver. Local Vite dev can opt into the
+ * HTTP driver to avoid long-lived WebSocket pool behavior in local workerd.
  * @param databaseUrl - The Neon database connection URL
- * @returns A configured Drizzle database client with WebSocket Pool
+ * @param useWebSocket - Whether to use the Neon WebSocket driver
+ * @returns A configured Drizzle database client
  */
-export function createDb(databaseUrl: string): DbClientWs<typeof schema> {
-	return createDbClientWs(databaseUrl, schema)
+export function createDb(databaseUrl: string, useWebSocket = true): EveTokenStoreDbClient {
+	if (useWebSocket) {
+		return createDbClientWs(databaseUrl, schema)
+	}
+
+	return createDbClient(databaseUrl, schema)
 }
 
 export { schema }
-export type { DbClientWs as DbClient }
+export type { EveTokenStoreDbClient as DbClient }

@@ -47,6 +47,7 @@ yarn-error.log*
 # Misc
 .DS_Store
 *.pem
+/plans
 
 # Agents
 .claude/settings.local.json
