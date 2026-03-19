@@ -23,7 +23,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		super(state, env)
 
 		void this.state.blockConcurrencyWhile(async () => {
-			void this.ensureRolesExist()
+			await this.ensureRolesExist()
 		})
 	}
 
@@ -39,11 +39,24 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		})) as CreateRoleRequest[]
 
 		const groupsStub = getStub<Groups>(this.env.GROUPS, 'default')
-		try {
-			await groupsStub.batchCreateRoles({ roles })
-			this.logger.info('Groups roles created.', { roles })
-		} catch (_error) {
-			/* empty catch */
+		const maxAttempts = 5
+		for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+			try {
+				await groupsStub.batchCreateRoles({ roles })
+				this.logger.info('Groups roles created.', { roles, attempt })
+				return
+			} catch (error) {
+				this.logger.error('Failed to seed core roles.', {
+					attempt,
+					maxAttempts,
+					error: error instanceof Error ? error.message : String(error),
+				})
+				if (attempt === maxAttempts) {
+					throw error
+				}
+				const backoffMs = Math.min(250 * 2 ** (attempt - 1), 2000)
+				await new Promise((resolve) => setTimeout(resolve, backoffMs))
+			}
 		}
 	}
 

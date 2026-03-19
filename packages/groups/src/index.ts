@@ -25,6 +25,8 @@ import type {
 	CreateRoleRequest,
 	DetachRoleFromRequest,
 	GetRolesForRequest,
+	ReplaceCoreMembershipRolesForUserRequest,
+	ReplaceCoreMembershipRolesForUserResponse,
 	Role,
 	RoleAttachment,
 } from './roles'
@@ -639,6 +641,14 @@ export interface Groups {
 
 	/** Batch get roles for multiple objects */
 	batchGetRolesFor(request: BatchGetRolesForRequest): Promise<RoleAttachment[]>
+
+	/**
+	 * Replace core-managed membership roles for a user.
+	 * Only core membership role attachments are reconciled; non-core roles remain untouched.
+	 */
+	replaceCoreMembershipRolesForUser(
+		request: ReplaceCoreMembershipRolesForUserRequest
+	): Promise<ReplaceCoreMembershipRolesForUserResponse>
 }
 
 export * from './roles'

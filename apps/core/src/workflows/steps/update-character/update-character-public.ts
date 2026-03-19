@@ -5,7 +5,7 @@
 import { eq } from 'drizzle-orm'
 
 import { getStub } from '@repo/do-utils'
-import { getEsiInstanceForCharacter } from '@repo/esi'
+import { CharacterDeletedError, getEsiInstanceForCharacter } from '@repo/esi'
 
 import { userCharacters } from '../../../db/schema'
 import { getWorkflowLogger } from '../../context'
@@ -53,7 +53,12 @@ export async function updateCharacterPublicInfo(
 			error: errorMessage,
 		})
 
-		if (errorMessage.includes('Character has been deleted!')) {
+		const isDeletedCharacterError =
+			error instanceof CharacterDeletedError ||
+			errorMessage.includes('Character has been deleted!') ||
+			/character .* has been deleted/i.test(errorMessage)
+
+		if (isDeletedCharacterError) {
 			return {
 				characterId: characterId,
 				characterName: '',
@@ -81,6 +86,7 @@ export async function updateCharacterPublicInfo(
 			characterName: characterInfo.name,
 			corporationId: characterInfo.corporation_id,
 			allianceId,
+			isDeleted: false,
 			lastCharacterRefresh: new Date(),
 			updatedAt: new Date(),
 		})

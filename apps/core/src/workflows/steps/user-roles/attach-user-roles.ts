@@ -1,11 +1,10 @@
-import { ROLE_CORE_ALLIANCE_MEMBER, ROLE_CORE_CORP_MEMBER } from '@repo/core'
-import { getStub } from '@repo/do-utils'
-import { ResourceType, RoleAttachmentType } from '@repo/groups'
-
+import {
+	reconcileUserCoreMembershipRoles,
+	splitCoreRoleAttachments,
+} from '../../../services/core-role-reconciliation.service'
 import { getWorkflowLogger } from '../../context'
 
-import type { Core } from '@repo/core'
-import type { Groups, RoleAttachment } from '@repo/groups'
+import type { RoleAttachment } from '@repo/groups'
 import type { WorkflowContext } from '../../context'
 
 /**
@@ -14,13 +13,6 @@ import type { WorkflowContext } from '../../context'
 export interface AttachUserRolesResult {
 	corporationRoleAttachments: RoleAttachment[]
 	allianceRoleAttachments: RoleAttachment[]
-}
-
-interface CharacterInfo {
-	characterId: string
-	characterName: string
-	allianceId?: string | null
-	corporationId?: string | null
 }
 
 /**
@@ -42,113 +34,14 @@ interface CharacterInfo {
 export async function attachUserRoles(ctx: WorkflowContext): Promise<AttachUserRolesResult> {
 	const logger = getWorkflowLogger(ctx, 'attach-user-roles')
 
-	const coreStub = getStub<Core>(ctx.env.CORE, 'default')
-	const characters = await coreStub.getUserCharacters(ctx.userId)
-
-	const characterInfoResults: CharacterInfo[] = characters.map((character) => ({
-		characterId: String(character.characterId),
-		characterName: character.characterName,
-		allianceId: character.allianceId ?? null,
-		corporationId: character.corporationId ?? null,
-	}))
-	for (const characterInfo of characterInfoResults) {
-		logger.info('[Workflow] Derived role source from refreshed character state', {
-			characterId: characterInfo.characterId,
-			corporationId: characterInfo.corporationId,
-			allianceId: characterInfo.allianceId,
-		})
-	}
-
-	type RoleAttachment = {
-		roleName: string
-		attachedToType: RoleAttachmentType
-		attachedToId: string
-		resourceId: string
-		resourceType: ResourceType
-	}
-
-	const roleAttachments: RoleAttachment[] = []
-	const buildCorporationRoleAttachment = (characterInfo: CharacterInfo) => {
-		if (!characterInfo.corporationId) {
-			return
-		}
-
-		logger.info('[Workflow] Attaching corporation roles', {
-			characterId: characterInfo.characterId,
-			corporationId: characterInfo.corporationId,
-		})
-
-		roleAttachments.push({
-			roleName: ROLE_CORE_CORP_MEMBER,
-			attachedToType: RoleAttachmentType.USER,
-			attachedToId: ctx.userId,
-			resourceId: characterInfo.corporationId,
-			resourceType: ResourceType.CORPORATION,
-		})
-	}
-
-	const buildAllianceRoleAttachment = (characterInfo: CharacterInfo) => {
-		if (!characterInfo.allianceId) {
-			return
-		}
-
-		roleAttachments.push({
-			roleName: ROLE_CORE_ALLIANCE_MEMBER,
-			attachedToType: RoleAttachmentType.USER,
-			attachedToId: ctx.userId,
-			resourceId: characterInfo.allianceId,
-			resourceType: ResourceType.ALLIANCE,
-		})
-	}
-
-	characterInfoResults.forEach((characterInfo) => {
-		buildCorporationRoleAttachment(characterInfo)
-		buildAllianceRoleAttachment(characterInfo)
+	const reconcileResult = await reconcileUserCoreMembershipRoles(ctx.env, ctx.userId)
+	logger.info('[Workflow] Reconciled user core membership roles', {
+		userId: ctx.userId,
+		desiredCount: reconcileResult.desiredCount,
+		attachedCount: reconcileResult.attachedCount,
+		detachedCount: reconcileResult.detachedCount,
+		finalCount: reconcileResult.roleAttachments.length,
 	})
 
-	const groupsStub = getStub<Groups>(ctx.env.GROUPS, 'default')
-	const existingCoreMembershipRoles = await groupsStub.getRolesFor({
-		attachedToType: RoleAttachmentType.USER,
-		attachedToId: ctx.userId,
-	})
-	const rolesToDetach = new Map<string, string>()
-	for (const attachment of existingCoreMembershipRoles) {
-		if (
-			attachment.role.name === ROLE_CORE_CORP_MEMBER ||
-			attachment.role.name === ROLE_CORE_ALLIANCE_MEMBER
-		) {
-			rolesToDetach.set(attachment.role.id, attachment.role.name)
-		}
-	}
-	for (const [roleId, roleName] of rolesToDetach) {
-		logger.info('[Workflow] Detaching stale core membership role', {
-			userId: ctx.userId,
-			roleId,
-			roleName,
-		})
-		await groupsStub.detachRoleFrom({
-			roleId,
-			attachedToType: RoleAttachmentType.USER,
-			attachedToId: ctx.userId,
-		})
-	}
-
-	const attachedRoleAttachments = await groupsStub.batchAttachRolesTo({
-		roles: roleAttachments.map((r) => ({
-			roleName: r.roleName,
-			attachedToType: r.attachedToType,
-			attachedToId: r.attachedToId,
-			resourceId: r.resourceId,
-			resourceType: r.resourceType,
-		})),
-	})
-
-	return {
-		corporationRoleAttachments: attachedRoleAttachments.filter(
-			(r) => r.resourceType === ResourceType.CORPORATION
-		),
-		allianceRoleAttachments: attachedRoleAttachments.filter(
-			(r) => r.resourceType === ResourceType.ALLIANCE
-		),
-	}
+	return splitCoreRoleAttachments(reconcileResult.roleAttachments)
 }

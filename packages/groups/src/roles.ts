@@ -77,3 +77,21 @@ export interface BatchGetRolesForRequest {
 export interface BatchCreateRolesRequest {
 	roles: CreateRoleRequest[]
 }
+
+export interface ReplaceCoreMembershipRoleTarget {
+	roleName: string
+	resourceId: string
+	resourceType: ResourceType.CORPORATION | ResourceType.ALLIANCE
+}
+
+export interface ReplaceCoreMembershipRolesForUserRequest {
+	userId: string
+	roles: ReplaceCoreMembershipRoleTarget[]
+}
+
+export interface ReplaceCoreMembershipRolesForUserResponse {
+	roleAttachments: RoleAttachment[]
+	desiredCount: number
+	attachedCount: number
+	detachedCount: number
+}

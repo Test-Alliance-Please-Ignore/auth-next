@@ -97,6 +97,8 @@ import type {
 	PermissionTarget,
 	PermissionWithDetails,
 	RedeemInviteCodeResponse,
+	ReplaceCoreMembershipRolesForUserRequest,
+	ReplaceCoreMembershipRolesForUserResponse,
 	Role,
 	RoleAttachment,
 	UpdateCategoryRequest,
@@ -3306,6 +3308,12 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 	async batchGetRolesFor(request: BatchGetRolesForRequest): Promise<RoleAttachment[]> {
 		return this.roleService.batchGetRolesFor(request)
+	}
+
+	async replaceCoreMembershipRolesForUser(
+		request: ReplaceCoreMembershipRolesForUserRequest
+	): Promise<ReplaceCoreMembershipRolesForUserResponse> {
+		return this.roleService.replaceCoreMembershipRolesForUser(request)
 	}
 
 	/**
