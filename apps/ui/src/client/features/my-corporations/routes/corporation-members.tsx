@@ -14,7 +14,7 @@ import {
 	RefreshCw,
 	Settings,
 } from 'lucide-react'
-import { lazy, Suspense, useCallback, useMemo } from 'react'
+import { lazy, Suspense, useCallback, useMemo, useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 
 import {
@@ -33,6 +33,7 @@ import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { useHrRoles } from '../../hr'
+import { myCorporationsApi } from '../api'
 import {
 	useCanAccessCorporation,
 	useCorporationManager,
@@ -59,6 +60,7 @@ export default function CorporationMembers() {
 	const { data: members, isLoading: membersLoading, error } = useCorporationMembers(corporationId!)
 	const { data: hrRoles, isLoading: hrRolesLoading } = useHrRoles(corporationId!)
 	const { invalidateMembers } = useCorporationManager()
+	const [isRefreshing, setIsRefreshing] = useState(false)
 
 	// Check if current user can manage HR roles (CEOs and site admins)
 	const canManageHrRoles = useMemo(() => {
@@ -91,11 +93,15 @@ export default function CorporationMembers() {
 
 	// Handlers
 	const handleRefresh = useCallback(async () => {
+		setIsRefreshing(true)
 		try {
+			await myCorporationsApi.refreshCorporationMembers(corporationId!)
 			await invalidateMembers(corporationId!)
-			showSuccess('Member list refreshed')
+			showSuccess('Member data refreshed')
 		} catch (error) {
-			showError('Failed to refresh member list')
+			showError(error instanceof Error ? error.message : 'Failed to refresh member list')
+		} finally {
+			setIsRefreshing(false)
 		}
 	}, [corporationId, invalidateMembers, showSuccess, showError])
 
@@ -219,9 +225,9 @@ export default function CorporationMembers() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center space-y-4">
-						<Button variant="outline" onClick={handleRefresh}>
-							<RefreshCw className="mr-2 h-4 w-4" />
-							Try Again
+						<Button variant="outline" onClick={handleRefresh} disabled={isRefreshing}>
+							<RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+							{isRefreshing ? 'Refreshing...' : 'Try Again'}
 						</Button>
 						<div>
 							<Link to="/my-corporations">
@@ -274,9 +280,9 @@ export default function CorporationMembers() {
 						)}
 					</div>
 					<div className="flex gap-2">
-						<Button variant="outline" onClick={handleRefresh}>
-							<RefreshCw className="mr-2 h-4 w-4" />
-							Refresh
+						<Button variant="outline" onClick={handleRefresh} disabled={isRefreshing}>
+							<RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+							{isRefreshing ? 'Refreshing...' : 'Refresh'}
 						</Button>
 						<Button
 							variant="outline"
@@ -378,9 +384,9 @@ export default function CorporationMembers() {
 							<p className="text-sm text-muted-foreground mb-4">
 								Member data may need to be fetched from ESI.
 							</p>
-							<Button onClick={handleRefresh}>
-								<RefreshCw className="mr-2 h-4 w-4" />
-								Refresh Data
+							<Button onClick={handleRefresh} disabled={isRefreshing}>
+								<RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+								{isRefreshing ? 'Refreshing...' : 'Refresh Data'}
 							</Button>
 						</CardContent>
 					</Card>

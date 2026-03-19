@@ -1374,6 +1374,79 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 })
 
 /**
+ * POST /corporations/:corporationId/members/refresh
+ * Force refresh corporation core member data (requires CEO/director/admin access)
+ */
+app.post('/:corporationId/members/refresh', requireAuth(), async (c) => {
+	const corporationId = c.req.param('corporationId')
+	const user = c.get('user')!
+	const db = c.get('db')
+
+	if (!db) {
+		return c.json({ error: 'Database not available' }, 500)
+	}
+
+	logger.info('[Corporations] Refresh members request', { corporationId, userId: user.id })
+
+	try {
+		// Check if corporation is managed
+		const managedCorp = await db.query.managedCorporations.findFirst({
+			where: and(
+				eq(managedCorporations.corporationId, corporationId),
+				eq(managedCorporations.isActive, true)
+			),
+		})
+
+		if (!managedCorp) {
+			return c.json({ error: 'Corporation not found or not managed' }, 404)
+		}
+
+		// Ensure user has CEO/Director/Admin access
+		try {
+			await checkCorporationAccess(c, corporationId)
+		} catch (error) {
+			return c.json({ error: error instanceof Error ? error.message : 'Access denied' }, 403)
+		}
+
+		// Trigger a forced refresh of core data (members + member tracking)
+		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+		await stub.fetchCoreData(corporationId, true)
+
+		// Invalidate member response cache so next GET returns fresh data immediately
+		const cacheKey = getCorpMembersCacheKey(corporationId)
+		try {
+			await getCache().delete(cacheKey)
+		} catch (cacheError) {
+			logger.warn('[Corporations] Failed to invalidate members cache after refresh', {
+				corporationId,
+				cacheKey,
+				error: cacheError instanceof Error ? cacheError.message : String(cacheError),
+			})
+		}
+
+		// Update last sync timestamp for visibility in admin flows
+		await db
+			.update(managedCorporations)
+			.set({
+				lastSync: new Date(),
+				updatedAt: new Date(),
+			})
+			.where(eq(managedCorporations.corporationId, corporationId))
+
+		logger.info('[Corporations] Members refresh completed', { corporationId, userId: user.id })
+		return c.json({ success: true })
+	} catch (error) {
+		logger.error('[Corporations] Error refreshing corporation members', {
+			corporationId,
+			userId: user.id,
+			error: error instanceof Error ? error.message : String(error),
+			stack: error instanceof Error ? error.stack : undefined,
+		})
+		return c.json({ error: 'Failed to refresh corporation members' }, 500)
+	}
+})
+
+/**
  * PATCH /corporations/:corporationId/members/:characterId/status
  * Update a member's status (active/emeritus)
  * Requires CEO or admin access
@@ -1479,8 +1552,7 @@ app.patch('/:corporationId/members/:characterId/status', requireAuth(), async (c
 		// Invalidate cache to force refresh of member list
 		const cacheKey = getCorpMembersCacheKey(corporationId)
 		try {
-			// @ts-ignore
-			await caches.default.delete(cacheKey)
+			await getCache().delete(cacheKey)
 			logger.info('[Corporations] Invalidated members cache', { cacheKey })
 		} catch (error) {
 			logger.warn('[Corporations] Failed to invalidate cache', {

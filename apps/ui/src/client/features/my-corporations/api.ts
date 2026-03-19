@@ -112,6 +112,14 @@ export const myCorporationsApi = {
 	},
 
 	/**
+	 * Force refresh of corporation member data from ESI-backed core data
+	 * Requires CEO/director/admin access
+	 */
+	async refreshCorporationMembers(corporationId: string): Promise<{ success: boolean }> {
+		return apiClient.post(`/corporations/${corporationId}/members/refresh`)
+	},
+
+	/**
 	 * Update a member's status (active/emeritus)
 	 * Requires CEO or admin access
 	 */
