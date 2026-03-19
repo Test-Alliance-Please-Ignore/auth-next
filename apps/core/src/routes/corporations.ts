@@ -1415,7 +1415,7 @@ app.post('/:corporationId/members/refresh', requireAuth(), async (c) => {
 		// Invalidate member response cache so next GET returns fresh data immediately
 		const cacheKey = getCorpMembersCacheKey(corporationId)
 		try {
-			await caches.default.delete(cacheKey)
+			await getCache().delete(cacheKey)
 		} catch (cacheError) {
 			logger.warn('[Corporations] Failed to invalidate members cache after refresh', {
 				corporationId,
@@ -1552,8 +1552,7 @@ app.patch('/:corporationId/members/:characterId/status', requireAuth(), async (c
 		// Invalidate cache to force refresh of member list
 		const cacheKey = getCorpMembersCacheKey(corporationId)
 		try {
-			// @ts-ignore
-			await caches.default.delete(cacheKey)
+			await getCache().delete(cacheKey)
 			logger.info('[Corporations] Invalidated members cache', { cacheKey })
 		} catch (error) {
 			logger.warn('[Corporations] Failed to invalidate cache', {
