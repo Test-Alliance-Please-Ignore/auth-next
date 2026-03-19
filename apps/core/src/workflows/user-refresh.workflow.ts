@@ -3,7 +3,6 @@ import { eq } from 'drizzle-orm'
 
 import { createDb } from '../db'
 import { userCharacters } from '../db/schema'
-import { clearUserRolesCache } from '../lib/groups-cache'
 import { checkUserBlacklisted, disableBlacklistedUser } from './steps/check-user-blacklisted'
 import {
 	handleCharacterDeleted,
@@ -16,6 +15,74 @@ import { attachUserRoles, getUserRoleAttachments } from './steps/user-roles'
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
 import type { Env } from '../context'
 import type { WorkflowContext } from './context'
+
+const CHARACTER_REFRESH_CONCURRENCY = 5
+const CHARACTER_STEP_OPTIONS = {
+	retries: { limit: 5, delay: '10 seconds', backoff: 'exponential' as const },
+	timeout: '1 minute' as const,
+} as const
+const ROLE_STEP_OPTIONS = {
+	retries: { limit: 3, delay: '5 seconds', backoff: 'exponential' as const },
+	timeout: '30 seconds' as const,
+} as const
+
+type CharacterRefreshStatus =
+	| 'success'
+	| 'deleted'
+	| 'transient_failed_after_retries'
+	| 'permanent_failed'
+
+interface CharacterRefreshOutcome {
+	characterId: string
+	status: CharacterRefreshStatus
+	authenticatedSuccess?: boolean
+	error?: string
+}
+
+async function runWithConcurrencyLimit<T, R>(
+	items: T[],
+	limit: number,
+	worker: (item: T) => Promise<R>
+): Promise<R[]> {
+	if (items.length === 0) {
+		return []
+	}
+
+	const results = new Array<R>(items.length)
+	let index = 0
+	const workerCount = Math.max(1, Math.min(limit, items.length))
+
+	await Promise.all(
+		Array.from({ length: workerCount }, async () => {
+			while (true) {
+				const currentIndex = index
+				index++
+				if (currentIndex >= items.length) {
+					return
+				}
+				results[currentIndex] = await worker(items[currentIndex])
+			}
+		})
+	)
+
+	return results
+}
+
+function classifyCharacterRefreshError(error: unknown): CharacterRefreshStatus {
+	const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase()
+	if (
+		message.includes('timeout') ||
+		message.includes('timed out') ||
+		message.includes('rate limit') ||
+		message.includes('429') ||
+		message.includes('420') ||
+		message.includes('network') ||
+		message.includes('temporar')
+	) {
+		return 'transient_failed_after_retries'
+	}
+	return 'permanent_failed'
+}
 
 /**
  * User Refresh Workflow
@@ -57,6 +124,76 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams>
 		}
 	}
 
+	private async refreshCharacterWithIsolation(
+		step: WorkflowStep,
+		userId: string,
+		workflowInstanceId: string,
+		refreshMode: WorkflowParams['refreshMode'],
+		characterId: string
+	): Promise<CharacterRefreshOutcome> {
+		try {
+			const updateCharacterPublicInfoResult = await step.do(
+				`update-character-public-info-${characterId}`,
+				CHARACTER_STEP_OPTIONS,
+				async () => {
+					const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
+					return updateCharacterPublicInfo(ctx, characterId)
+				}
+			)
+
+			if (updateCharacterPublicInfoResult.isDeleted) {
+				await step.do(`handle-character-deleted-${characterId}`, CHARACTER_STEP_OPTIONS, () => {
+					const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
+					return handleCharacterDeleted(ctx, characterId)
+				})
+				return {
+					characterId,
+					status: 'deleted',
+				}
+			}
+
+			const authenticatedFetchResult = await step.do(
+				`try-character-authenticated-fetch-${characterId}`,
+				CHARACTER_STEP_OPTIONS,
+				async () => {
+					const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
+					return tryCharacterAuthenticatedFetch(ctx, characterId)
+				}
+			)
+
+			if (!authenticatedFetchResult.success) {
+				console.error('[Workflow] Failed character authenticated fetch', {
+					userId,
+					workflowInstanceId,
+					characterId,
+					error: authenticatedFetchResult.error,
+				})
+			}
+
+			return {
+				characterId,
+				status: 'success',
+				authenticatedSuccess: authenticatedFetchResult.success,
+				error: authenticatedFetchResult.error,
+			}
+		} catch (error) {
+			const status = classifyCharacterRefreshError(error)
+			const errorMessage = error instanceof Error ? error.message : String(error)
+			console.error('[Workflow] Character refresh failed after retries; continuing workflow', {
+				userId,
+				workflowInstanceId,
+				characterId,
+				status,
+				error: errorMessage,
+			})
+			return {
+				characterId,
+				status,
+				error: errorMessage,
+			}
+		}
+	}
+
 	async run(event: WorkflowEvent<WorkflowParams>, step: WorkflowStep) {
 		const { userId, refreshMode = 'scheduled' } = event.payload
 		const workflowInstanceId = event.instanceId
@@ -94,62 +231,57 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams>
 			})
 		})
 
-		// Process characters sequentially
-		for (const character of characters) {
-			// Step: Update character public info
-			const updateCharacterPublicInfoResult = await step.do(
-				`update-character-public-info-${character.characterId}`,
-				{
-					retries: { limit: 5, delay: '10 seconds', backoff: 'exponential' },
-					timeout: '1 minute',
-				},
-				async () => {
-					const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
-					return updateCharacterPublicInfo(ctx, character.characterId)
-				}
-			)
+		// Process characters in bounded parallel, isolating failures per character.
+		const characterOutcomes = await runWithConcurrencyLimit(
+			characters,
+			CHARACTER_REFRESH_CONCURRENCY,
+			(character) =>
+				this.refreshCharacterWithIsolation(
+					step,
+					userId,
+					workflowInstanceId,
+					refreshMode,
+					character.characterId
+				)
+		)
 
-			if (updateCharacterPublicInfoResult.isDeleted) {
-				console.log('[Workflow] Character is deleted', {
-					characterId: character.characterId,
-				})
-				await step.do(`handle-character-deleted-${character.characterId}`, () => {
-					const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
-					return handleCharacterDeleted(ctx, character.characterId)
-				})
-				console.log('[Workflow] Character marked as deleted', {
-					characterId: character.characterId,
-				})
-				continue
-			}
-
-			// Step: Try authenticated fetch
-			const authenticatedFetchResult = await step.do(
-				`try-character-authenticated-fetch-${character.characterId}`,
-				{
-					retries: { limit: 5, delay: '10 seconds', backoff: 'exponential' },
-					timeout: '1 minute',
-				},
-				async () => {
-					const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
-					return tryCharacterAuthenticatedFetch(ctx, character.characterId)
-				}
-			)
-
-			// Log failures
-			if (!authenticatedFetchResult.success) {
-				console.error('[Workflow] Failed to fetch character authenticated data', {
-					characterId: character.characterId,
-					error: authenticatedFetchResult.error,
-				})
-			}
+		const outcomeSummary = {
+			success: 0,
+			deleted: 0,
+			transient_failed_after_retries: 0,
+			permanent_failed: 0,
 		}
+		for (const outcome of characterOutcomes) {
+			outcomeSummary[outcome.status]++
+		}
+		console.log('[Workflow] Character refresh outcomes', {
+			...logContext,
+			totalCharacters: characters.length,
+			...outcomeSummary,
+		})
 
 		// Step 4: Get user role attachments
-		const getUserRoleAttachmentsResult = await step.do('get-user-role-attachments', () => {
-			const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
-			return getUserRoleAttachments(ctx)
-		})
+		let getUserRoleAttachmentsResult = {
+			roleAttachments: [] as Awaited<ReturnType<typeof getUserRoleAttachments>>['roleAttachments'],
+		}
+		try {
+			getUserRoleAttachmentsResult = await step.do(
+				'get-user-role-attachments',
+				ROLE_STEP_OPTIONS,
+				() => {
+					const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
+					return getUserRoleAttachments(ctx)
+				}
+			)
+		} catch (error) {
+			console.warn(
+				'[Workflow] Failed to fetch user role attachments before reconcile; continuing',
+				{
+					...logContext,
+					error: error instanceof Error ? error.message : String(error),
+				}
+			)
+		}
 
 		console.log('[Workflow] Got user role attachments', {
 			...logContext,
@@ -157,7 +289,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams>
 		})
 
 		// Step 5: Attach user roles
-		const attachUserRolesResult = await step.do('attach-user-roles', () => {
+		const attachUserRolesResult = await step.do('attach-user-roles', ROLE_STEP_OPTIONS, () => {
 			const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
 			return attachUserRoles(ctx)
 		})
@@ -167,7 +299,6 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams>
 			corporationRoleAttachments: attachUserRolesResult.corporationRoleAttachments.length,
 			allianceRoleAttachments: attachUserRolesResult.allianceRoleAttachments.length,
 		})
-		clearUserRolesCache(userId)
 
 		// Step 6: Update completion timestamp
 		await step.do('update-completion-timestamp', () => {

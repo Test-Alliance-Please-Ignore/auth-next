@@ -8,6 +8,11 @@ const fetchCharacterPublicInfo = vi.fn()
 const resolveIds = vi.fn()
 
 vi.mock('@repo/esi', () => ({
+	CharacterDeletedError: class CharacterDeletedError extends Error {
+		constructor(characterId: string) {
+			super(`Character ${characterId} has been deleted`)
+		}
+	},
 	getEsiInstanceForCharacter: vi.fn(() => ({
 		fetchCharacterPublicInfo,
 	})),
@@ -67,6 +72,30 @@ describe('updateCharacterPublicInfo', () => {
 
 		expect(result.isDeleted).toBe(true)
 		expect(recorder.update).not.toHaveBeenCalled()
+	})
+
+	it('resets deleted status on successful refresh persistence', async () => {
+		fetchCharacterPublicInfo.mockResolvedValue({
+			name: 'Recovered Capsuleer',
+			corporation_id: '99000002',
+			alliance_id: undefined,
+			birthday: '2026-01-01T00:00:00Z',
+			bloodline_id: '1',
+			gender: 'male',
+			race_id: '1',
+		})
+		resolveIds.mockResolvedValue({ '99000002': 'Example Corp' })
+		const recorder = createDbRecorder()
+
+		await updateCharacterPublicInfo(
+			createCtx(recorder.db as unknown as WorkflowContext['db']),
+			'99000124'
+		)
+
+		expect(recorder.updates[0]).toMatchObject({
+			corporationId: '99000002',
+			isDeleted: false,
+		})
 	})
 
 	it('rethrows non-deleted public info fetch failures', async () => {

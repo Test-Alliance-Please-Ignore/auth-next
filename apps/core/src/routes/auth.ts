@@ -14,6 +14,8 @@ import { extractClientIp, recordUserIpAddress } from '../lib/ip-tracking'
 import { requireAuth } from '../middleware/session'
 import { ActivityService } from '../services/activity.service'
 import { AuthService } from '../services/auth.service'
+import { hydrateCharacterAffiliation } from '../services/character-affiliation-hydration.service'
+import { reconcileUserCoreMembershipRoles } from '../services/core-role-reconciliation.service'
 import { autoRegisterDirectorCorporation } from '../services/corporation-auto-register.service'
 import { SessionService } from '../services/session.service'
 import { UserService } from '../services/user.service'
@@ -64,6 +66,47 @@ function enqueueIpRecording(
 			console.error('[Auth] Failed to record user IP:', toErrorMessage(error))
 		})
 	)
+}
+
+async function hydrateAndReconcileUserRoles(
+	c: Context<App>,
+	db: ReturnType<typeof createDb>,
+	userId: string,
+	characterId: string
+): Promise<void> {
+	try {
+		await hydrateCharacterAffiliation({
+			db,
+			env: c.env,
+			characterId,
+			cacheMode: 'no-store',
+			executionCtx: c.executionCtx,
+		})
+	} catch (error) {
+		console.error('[Auth] Failed to hydrate character affiliation at link-time', {
+			userId,
+			characterId,
+			error: toErrorMessage(error),
+		})
+	}
+
+	try {
+		const reconcileResult = await reconcileUserCoreMembershipRoles(c.env, userId)
+		console.log('[Auth] Reconciled core membership roles after link-time update', {
+			userId,
+			characterId,
+			desiredCount: reconcileResult.desiredCount,
+			attachedCount: reconcileResult.attachedCount,
+			detachedCount: reconcileResult.detachedCount,
+			finalCount: reconcileResult.roleAttachments.length,
+		})
+	} catch (error) {
+		console.error('[Auth] Failed to reconcile core membership roles at link-time', {
+			userId,
+			characterId,
+			error: toErrorMessage(error),
+		})
+	}
 }
 
 /**
@@ -231,6 +274,7 @@ auth.get('/callback', async (c) => {
 		const existingUser = await userService.getUserByCharacterId(characterId)
 		if (existingUser) {
 			if (existingUser.id === stateUserId) {
+				await hydrateAndReconcileUserRoles(c, db, stateUserId, characterId)
 				// Character already linked to this user - token has been updated, just return success
 				const existingCharacter = user.characters.find((char) => char.characterId === characterId)
 				return c.json({
@@ -274,6 +318,7 @@ auth.get('/callback', async (c) => {
 			characterId: characterInfo.characterId,
 			characterName: characterInfo.characterName,
 		})
+		await hydrateAndReconcileUserRoles(c, db, stateUserId, characterId)
 
 		// Update token validity cache (token was just received from SSO)
 		await db
@@ -300,6 +345,23 @@ auth.get('/callback', async (c) => {
 					// Log but don't fail the auth flow if character data fetch fails
 					console.error(
 						'[Auth] Failed to fetch character data after linking:',
+						toErrorMessage(error)
+					)
+				}
+
+				try {
+					await db
+						.update(users)
+						.set({ lastRefreshWorkflowAttempt: new Date() })
+						.where(eq(users.id, stateUserId))
+
+					await c.env.USER_REFRESH_WORKFLOW.create({
+						id: `user-refresh-link-${stateUserId}-${Date.now()}`,
+						params: { userId: stateUserId, refreshMode: 'manual' },
+					})
+				} catch (error) {
+					console.error(
+						'[Auth] Failed to trigger user refresh workflow after link:',
 						toErrorMessage(error)
 					)
 				}
@@ -535,6 +597,7 @@ auth.post('/claim-main', async (c) => {
 		characterId: tokenInfo.characterId,
 		characterName: tokenInfo.characterName,
 	})
+	await hydrateAndReconcileUserRoles(c, db, user.id, tokenInfo.characterId)
 
 	// Update token validity cache (token was just received from SSO)
 	await db
@@ -691,8 +754,30 @@ auth.post('/link-character', requireAuth(), async (c) => {
 		characterId: tokenInfo.characterId,
 		characterName: tokenInfo.characterName,
 	})
+	await hydrateAndReconcileUserRoles(c, db, user.id, tokenInfo.characterId)
 
 	await activityService.logCharacterLinked(user.id, tokenInfo.characterId, getRequestMetadata(c))
+
+	c.executionCtx.waitUntil(
+		(async () => {
+			try {
+				await db
+					.update(users)
+					.set({ lastRefreshWorkflowAttempt: new Date() })
+					.where(eq(users.id, user.id))
+
+				await c.env.USER_REFRESH_WORKFLOW.create({
+					id: `user-refresh-link-${user.id}-${Date.now()}`,
+					params: { userId: user.id, refreshMode: 'manual' },
+				})
+			} catch (error) {
+				console.error(
+					'[Auth] Failed to trigger user refresh workflow after link:',
+					toErrorMessage(error)
+				)
+			}
+		})()
+	)
 
 	return c.json({
 		character: linkedCharacter,
