@@ -1,10 +1,10 @@
 import { Hono } from 'hono'
 
-import { and, eq, or } from '@repo/db-utils'
+import { and, eq, ilike, inArray, or } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger, TimeCache } from '@repo/hono-helpers'
 
-import { discordServers, managedCorporations } from '../db/schema'
+import { discordServers, managedCorporations, userCharacters } from '../db/schema'
 import { requireAuth } from '../middleware/session'
 import {
 	canAuditTaxFeature,
@@ -1750,7 +1750,8 @@ app.get('/corporations/:corporationId/member-summary', requireAuth(), async (c) 
 	}
 
 	const corporationId = c.req.param('corporationId')
-	const characterId = c.req.query('characterId') || undefined
+	const characterQueryRaw = (c.req.query('character') ?? c.req.query('characterId') ?? '').trim()
+	const characterQuery = characterQueryRaw.length > 0 ? characterQueryRaw : undefined
 	const fromDate = parseDateQueryParam(c.req.query('fromDate'))
 	const toDate = parseDateQueryParam(c.req.query('toDate'))
 	const topRefTypesLimit = parseIntegerQueryParam(c.req.query('topRefTypesLimit'))
@@ -1764,8 +1765,8 @@ app.get('/corporations/:corporationId/member-summary', requireAuth(), async (c) 
 	if (fromDate && toDate && fromDate > toDate) {
 		return c.json({ error: 'fromDate must be before or equal to toDate' }, 400)
 	}
-	if (topRefTypesLimit !== undefined && (topRefTypesLimit < 1 || topRefTypesLimit > 20)) {
-		return c.json({ error: 'topRefTypesLimit must be an integer between 1 and 20' }, 400)
+	if (topRefTypesLimit !== undefined && topRefTypesLimit < 1) {
+		return c.json({ error: 'topRefTypesLimit must be an integer greater than or equal to 1' }, 400)
 	}
 
 	const canReadWithTaxScopes = await canReadTaxFeature(c.env, user, corporationId)
@@ -1783,13 +1784,45 @@ app.get('/corporations/:corporationId/member-summary', requireAuth(), async (c) 
 			return c.json({ error: 'Member summary is not enabled for this corporation' }, 403)
 		}
 
-		let targetCharacterIds: string[] = []
-		if (characterId) {
-			if (!canReadWithTaxScopes && !memberCharacterIds.includes(characterId)) {
+		let scopedCharacterIds: string[] = memberCharacterIds
+		if (canReadWithTaxScopes) {
+			const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+			const members = await corpStub.getMembers(corporationId)
+			scopedCharacterIds = members.map((member) => member.characterId)
+		}
+		const scopedCharacterIdSet = new Set(scopedCharacterIds)
+
+		let targetCharacterIds: string[] | undefined
+		if (characterQuery) {
+			const numericOnly = /^\d+$/.test(characterQuery)
+			if (numericOnly) {
+				targetCharacterIds = scopedCharacterIdSet.has(characterQuery) ? [characterQuery] : []
+			} else if (scopedCharacterIds.length > 0) {
+				const db = c.get('db')
+				if (!db) {
+					return c.json({ error: 'Database unavailable' }, 500)
+				}
+				const rows = await db
+					.select({
+						characterId: userCharacters.characterId,
+					})
+					.from(userCharacters)
+					.where(
+						and(
+							inArray(userCharacters.characterId, scopedCharacterIds),
+							ilike(userCharacters.characterName, `${characterQuery}%`)
+						)
+					)
+					.limit(100)
+				targetCharacterIds = rows.map((row) => row.characterId)
+			} else {
+				targetCharacterIds = []
+			}
+
+			if (!canReadWithTaxScopes && targetCharacterIds.length === 0) {
 				return c.json({ error: 'Forbidden' }, 403)
 			}
-			targetCharacterIds = [characterId]
-		} else {
+		} else if (!canReadWithTaxScopes) {
 			targetCharacterIds = memberCharacterIds
 		}
 

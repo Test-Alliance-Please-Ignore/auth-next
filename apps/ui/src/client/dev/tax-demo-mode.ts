@@ -448,18 +448,14 @@ function buildDemoState(seed: number) {
 		(_, index) => {
 			const corporation = corporations[index % corporations.length]!
 			const characterId = characters[index % characters.length]!.characterId
-			const taxDue = 860_000_000 + index * 175_000_000
-			const taxPaid = index % 3 === 0 ? taxDue - 92_000_000 : taxDue
+			const contributionIncome = 9_400_000_000 + index * 1_140_000_000
+			const taxableContributionIncome = contributionIncome * 0.72
 			return {
 				corporationId: corporation.corporationId,
 				characterId,
-				complianceStatus: (index % 3 === 0
-					? 'underpaid'
-					: 'paid') as TaxMemberSummary['complianceStatus'],
 				assessmentCount: 2 + index,
-				taxDue: amount(taxDue),
-				taxPaid: amount(taxPaid),
-				taxDelta: amount(taxDue - taxPaid),
+				contributionIncome: amount(contributionIncome),
+				taxableContributionIncome: amount(taxableContributionIncome),
 				lastAssessmentAt: addDays(demoStart, Math.max(0, demoDaySpan - 12 + (index % 10))),
 				topRefTypes: [
 					{
@@ -1051,11 +1047,20 @@ export const taxDemoApi = {
 	},
 	async getMemberSummary(
 		corporationId: string,
-		filters?: { characterId?: string; limit?: number }
+		filters?: { characterQuery?: string; limit?: number }
 	) {
+		const query = filters?.characterQuery?.trim()
 		const rows = ensureDemoState().memberSummary.filter((row) => {
 			if (row.corporationId !== corporationId) return false
-			if (filters?.characterId && row.characterId !== filters.characterId) return false
+			if (query) {
+				const isNumeric = /^\d+$/.test(query)
+				if (isNumeric) {
+					if (row.characterId !== query) return false
+				} else if (!row.characterId.startsWith('__')) {
+					const haystack = `${row.characterId}`.toLowerCase()
+					if (!haystack.startsWith(query.toLowerCase())) return false
+				}
+			}
 			return true
 		})
 		return withLatency(filters?.limit ? rows.slice(0, filters.limit) : rows)

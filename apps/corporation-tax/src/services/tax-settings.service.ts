@@ -161,6 +161,16 @@ export class TaxSettingsService {
 		}
 	}
 
+	async getCorporationMemberIds(corporationId: string): Promise<string[]> {
+		try {
+			const stub = getStub<EveCorporationData>(this.eveCorporationDataNamespace, corporationId)
+			const members = await stub.getMembers(corporationId)
+			return members.map((member) => member.characterId)
+		} catch (_error) {
+			return []
+		}
+	}
+
 	private toSettings(
 		row: typeof taxCorporationSettings.$inferSelect,
 		esiAuthStatus: TaxCorporationEsiAuthStatus | null

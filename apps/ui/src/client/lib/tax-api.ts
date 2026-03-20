@@ -75,7 +75,7 @@ export interface TaxReportFilters {
 }
 
 export interface TaxMemberSummaryFilters {
-	characterId?: string
+	characterQuery?: string
 	fromDate?: string
 	toDate?: string
 	topRefTypesLimit?: number
@@ -541,7 +541,7 @@ export class CorporationTaxApiClient extends ApiClient {
 	): Promise<TaxMemberSummary[]> {
 		if (this.shouldUseDemo()) return taxDemoApi.getMemberSummary(corporationId, filters)
 		const params = new URLSearchParams()
-		if (filters?.characterId) params.set('characterId', filters.characterId)
+		if (filters?.characterQuery) params.set('character', filters.characterQuery)
 		if (filters?.fromDate) params.set('fromDate', filters.fromDate)
 		if (filters?.toDate) params.set('toDate', filters.toDate)
 		if (filters?.topRefTypesLimit !== undefined)

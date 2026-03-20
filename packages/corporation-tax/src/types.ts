@@ -562,12 +562,8 @@ export interface TaxMemberSummary {
 	fromDate: Date | null
 	toDate: Date | null
 	assessmentCount: number
-	taxableIncome: string
-	nonTaxableIncome: string
-	taxDue: string
-	taxPaid: string
-	taxDelta: string
-	complianceStatus: TaxMemberComplianceStatus
+	contributionIncome: string
+	taxableContributionIncome: string
 	lastAssessmentAt: Date | null
 	topRefTypes: TaxMemberSummaryTopRefType[]
 }

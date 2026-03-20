@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
 
 import { TaxCorporationScopeSelector } from '@/components/tax-corporation-scope-selector'
-import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { DateRangeInput } from '@/components/ui/date-range-input'
@@ -21,18 +20,18 @@ import {
 	useTaxCapabilities,
 	useTaxCorporations,
 	useTaxMemberSummary,
+	useTaxSummaryReport,
 } from '@/hooks/useCorporationTax'
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { formatTaxDateTime, getCurrentMonthDateRange } from '@/lib/tax-date'
 import {
+	formatTaxIskCompact,
 	formatTaxIskFull,
 	formatTaxNumber,
 	formatTaxRefTypeLabel,
 	TaxEntityDisplay,
 } from '@/lib/tax-display'
-
-import type { TaxMemberComplianceStatus } from '@repo/corporation-tax'
 
 function parseIsk(value: string): number {
 	const parsed = Number(value)
@@ -40,20 +39,123 @@ function parseIsk(value: string): number {
 }
 
 const DEFAULT_MONTH_RANGE = getCurrentMonthDateRange()
+const UNATTRIBUTED_CHARACTER_ID = '__unattributed__'
+const TOP_SOURCE_COLORS = [
+	{ bgClass: 'bg-sky-500', hoverBgColor: '#38bdf8' },
+	{ bgClass: 'bg-emerald-500', hoverBgColor: '#34d399' },
+	{ bgClass: 'bg-amber-500', hoverBgColor: '#fbbf24' },
+	{ bgClass: 'bg-fuchsia-500', hoverBgColor: '#e879f9' },
+	{ bgClass: 'bg-rose-500', hoverBgColor: '#fb7185' },
+] as const
 
-function toStatusVariant(
-	status: TaxMemberComplianceStatus
-): 'default' | 'destructive' | 'secondary' | 'outline' {
-	if (status === 'underpaid') {
-		return 'destructive'
+function SourceSplitSegment({
+	colorClass,
+	hoverBgColor,
+	label,
+	amount,
+	share,
+	widthPercent,
+}: {
+	colorClass: string
+	hoverBgColor: string
+	label: string
+	amount: string
+	share: number
+	widthPercent: number
+}) {
+	const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number } | null>(null)
+
+	return (
+		<>
+			<div
+				className={colorClass}
+				style={{
+					width: `${widthPercent}%`,
+					minWidth: share > 0 && share < 2 ? '6px' : undefined,
+					backgroundColor: tooltipPosition ? hoverBgColor : undefined,
+					boxShadow: tooltipPosition ? 'inset 0 0 0 2px rgba(255, 255, 255, 0.28)' : undefined,
+				}}
+				onMouseEnter={(event) => setTooltipPosition({ x: event.clientX, y: event.clientY })}
+				onMouseMove={(event) => setTooltipPosition({ x: event.clientX, y: event.clientY })}
+				onMouseLeave={() => setTooltipPosition(null)}
+				aria-label={`${label} ${share.toFixed(1)}%`}
+				role="img"
+			/>
+			{tooltipPosition ? (
+				<div
+					className="pointer-events-none fixed z-50 min-w-[170px] rounded-md border border-border dropdown-surface px-3 py-2"
+					style={{
+						left: tooltipPosition.x,
+						top: tooltipPosition.y - 12,
+						transform: 'translate(-50%, -100%)',
+					}}
+				>
+					<div className="flex items-center gap-2 text-xs font-medium">
+						<span className={`inline-block h-2 w-2 rounded-full ${colorClass}`} />
+						<span>{label}</span>
+					</div>
+					<div className="text-xs text-muted-foreground">
+						{formatTaxIskFull(amount)} ({share.toFixed(1)}%)
+					</div>
+				</div>
+			) : null}
+		</>
+	)
+}
+
+function TopSourceBreakdown({
+	topRefTypes,
+}: {
+	topRefTypes: Array<{ refType: string; taxableAmount: string }>
+}) {
+	if (topRefTypes.length === 0) {
+		return <span>-</span>
 	}
-	if (status === 'overpaid') {
-		return 'secondary'
+
+	const totalTaxableAmount = topRefTypes.reduce(
+		(sum, source) => sum + parseIsk(source.taxableAmount),
+		0
+	)
+	if (totalTaxableAmount <= 0) {
+		return (
+			<div className="space-y-1">
+				{topRefTypes.map((source, index) => (
+					<div
+						key={`${source.refType}:${index}`}
+						className="flex items-center gap-1 text-[11px] text-muted-foreground"
+					>
+						<span
+							className={`inline-block h-2 w-2 rounded-sm ${TOP_SOURCE_COLORS[index % TOP_SOURCE_COLORS.length].bgClass}`}
+						/>
+						<span>{formatTaxRefTypeLabel(source.refType)}</span>
+					</div>
+				))}
+			</div>
+		)
 	}
-	if (status === 'paid') {
-		return 'default'
-	}
-	return 'outline'
+
+	return (
+		<div>
+			<div className="flex h-5 w-full overflow-hidden rounded bg-muted">
+				{topRefTypes.map((source, index) => {
+					const amount = parseIsk(source.taxableAmount)
+					const share = (amount / totalTaxableAmount) * 100
+					const label = formatTaxRefTypeLabel(source.refType)
+					return (
+						<SourceSplitSegment
+							key={`${source.refType}:${index}:segment`}
+							colorClass={TOP_SOURCE_COLORS[index % TOP_SOURCE_COLORS.length].bgClass}
+							hoverBgColor={TOP_SOURCE_COLORS[index % TOP_SOURCE_COLORS.length].hoverBgColor}
+							label={label}
+							amount={source.taxableAmount}
+							share={share}
+							widthPercent={share}
+						/>
+					)
+				})}
+			</div>
+		</div>
+	)
 }
 
 export default function TaxMemberSummaryPage() {
@@ -82,7 +184,7 @@ export default function TaxMemberSummaryPage() {
 	}, [corporationAccess?.corporations, corporationSettings])
 
 	const [selectedCorporationId, setSelectedCorporationId] = useState<string | undefined>(undefined)
-	const [characterId, setCharacterId] = useState('')
+	const [characterQuery, setCharacterQuery] = useState('')
 	const [fromDate, setFromDate] = useState(DEFAULT_MONTH_RANGE.fromDate)
 	const [toDate, setToDate] = useState(DEFAULT_MONTH_RANGE.toDate)
 
@@ -100,39 +202,51 @@ export default function TaxMemberSummaryPage() {
 		effectiveCorporationId,
 		Boolean(effectiveCorporationId)
 	)
-	const canChooseCharacter =
+	const canSearchCharacter =
 		canReadWithUrn ||
 		(scopedCapabilities?.scoped.canRead ?? false) ||
 		(corporationAccess?.hasAccess ?? false)
+
+	const fromDateIso = fromDate ? new Date(`${fromDate}T00:00:00.000Z`).toISOString() : undefined
+	const toDateIso = toDate ? new Date(`${toDate}T23:59:59.999Z`).toISOString() : undefined
 
 	const {
 		data: summaries = [],
 		isLoading,
 		error,
 	} = useTaxMemberSummary(effectiveCorporationId, {
-		characterId: canChooseCharacter ? characterId.trim() || undefined : undefined,
-		fromDate: fromDate ? new Date(`${fromDate}T00:00:00.000Z`).toISOString() : undefined,
-		toDate: toDate ? new Date(`${toDate}T23:59:59.999Z`).toISOString() : undefined,
-		topRefTypesLimit: 5,
+		characterQuery: canSearchCharacter ? characterQuery.trim() || undefined : undefined,
+		fromDate: fromDateIso,
+		toDate: toDateIso,
 		enabled: !!effectiveCorporationId,
+	})
+
+	const { data: summaryReport } = useTaxSummaryReport({
+		corporationId: effectiveCorporationId,
+		fromDate: fromDateIso,
+		toDate: toDateIso,
+		enabled: Boolean(effectiveCorporationId),
 	})
 
 	const totals = summaries.reduce(
 		(acc, row) => {
-			acc.taxDue += parseIsk(row.taxDue)
-			acc.taxPaid += parseIsk(row.taxPaid)
-			acc.taxDelta += parseIsk(row.taxDelta)
-			acc.assessments += row.assessmentCount
+			acc.totalIncome += parseIsk(row.contributionIncome)
+			acc.totalTaxableIncome += parseIsk(row.taxableContributionIncome)
+			if (row.characterId !== UNATTRIBUTED_CHARACTER_ID) {
+				acc.membersInView += 1
+			}
 			return acc
 		},
-		{ taxDue: 0, taxPaid: 0, taxDelta: 0, assessments: 0 }
+		{ totalIncome: 0, totalTaxableIncome: 0, membersInView: 0 }
 	)
 
 	const entityIds = useMemo(() => {
 		const ids = new Set<string>()
 		for (const row of summaries) {
 			ids.add(row.corporationId)
-			ids.add(row.characterId)
+			if (row.characterId !== UNATTRIBUTED_CHARACTER_ID) {
+				ids.add(row.characterId)
+			}
 		}
 		return [...ids]
 	}, [summaries])
@@ -145,7 +259,7 @@ export default function TaxMemberSummaryPage() {
 		<Container>
 			<PageHeader
 				title="Tax Member Summary"
-				description="View member-level tax totals and top taxable income sources for a corporation."
+				description="View member-attributed contribution into corporation wallet inflows and taxable contribution by source."
 			/>
 
 			<Section>
@@ -168,24 +282,30 @@ export default function TaxMemberSummaryPage() {
 					<CardHeader>
 						<CardTitle>Filters</CardTitle>
 						<CardDescription>
-							By default, results are limited to your member characters in the selected corporation.
+							Filter by period and optionally search members by character name prefix or exact ID.
 						</CardDescription>
 					</CardHeader>
-					<CardContent className="grid gap-3 md:grid-cols-3">
-						<DateRangeInput
-							value={{ fromDate, toDate }}
-							onChange={({ fromDate: nextFromDate, toDate: nextToDate }) => {
-								setFromDate(nextFromDate)
-								setToDate(nextToDate)
-							}}
-							placeholder="Date range"
-						/>
-						<Input
-							value={characterId}
-							onChange={(event) => setCharacterId(event.target.value)}
-							placeholder="Character ID (optional)"
-							disabled={!canChooseCharacter}
-						/>
+					<CardContent className="grid gap-3 md:grid-cols-2">
+						<div className="space-y-2">
+							<div className="text-sm font-medium">Date Range</div>
+							<DateRangeInput
+								value={{ fromDate, toDate }}
+								onChange={({ fromDate: nextFromDate, toDate: nextToDate }) => {
+									setFromDate(nextFromDate)
+									setToDate(nextToDate)
+								}}
+								placeholder="Date range"
+							/>
+						</div>
+						<div className="space-y-2">
+							<div className="text-sm font-medium">Character</div>
+							<Input
+								value={characterQuery}
+								onChange={(event) => setCharacterQuery(event.target.value)}
+								placeholder="Character name or ID"
+								disabled={!canSearchCharacter}
+							/>
+						</div>
 					</CardContent>
 				</Card>
 
@@ -194,39 +314,42 @@ export default function TaxMemberSummaryPage() {
 						<CardHeader className="pb-2">
 							<CardTitle className="text-sm">Members in View</CardTitle>
 						</CardHeader>
-						<CardContent className="text-2xl font-semibold">{summaries.length}</CardContent>
-					</Card>
-					<Card>
-						<CardHeader className="pb-2">
-							<CardTitle className="text-sm">Assessments</CardTitle>
-						</CardHeader>
 						<CardContent className="text-2xl font-semibold">
-							{formatTaxNumber(totals.assessments)}
+							{formatTaxNumber(totals.membersInView)}
 						</CardContent>
 					</Card>
 					<Card>
 						<CardHeader className="pb-2">
-							<CardTitle className="text-sm">Tax Due</CardTitle>
+							<CardTitle className="text-sm">Total Income</CardTitle>
 						</CardHeader>
 						<CardContent className="text-2xl font-semibold">
-							{formatTaxIskFull(totals.taxDue)}
+							{formatTaxIskCompact(totals.totalIncome)}
 						</CardContent>
 					</Card>
 					<Card>
 						<CardHeader className="pb-2">
-							<CardTitle className="text-sm">Tax Delta</CardTitle>
+							<CardTitle className="text-sm">Taxable Income Due</CardTitle>
 						</CardHeader>
 						<CardContent className="text-2xl font-semibold">
-							{formatTaxIskFull(totals.taxDelta)}
+							{formatTaxIskCompact(totals.totalTaxableIncome)}
+						</CardContent>
+					</Card>
+					<Card>
+						<CardHeader className="pb-2">
+							<CardTitle className="text-sm">Taxes Paid</CardTitle>
+						</CardHeader>
+						<CardContent className="text-2xl font-semibold">
+							{formatTaxIskCompact(summaryReport?.taxPaid ?? '0')}
 						</CardContent>
 					</Card>
 				</div>
 
 				<Card>
 					<CardHeader>
-						<CardTitle>Member Summaries</CardTitle>
+						<CardTitle>Member Contribution Summary</CardTitle>
 						<CardDescription>
-							Top income types are derived from member-scoped tax assessment lines.
+							Aggregated from corporation wallet entries attributed to members in the selected
+							period.
 						</CardDescription>
 					</CardHeader>
 					<CardContent>
@@ -242,47 +365,36 @@ export default function TaxMemberSummaryPage() {
 							</div>
 						) : summaries.length === 0 ? (
 							<div className="py-8 text-sm text-muted-foreground">
-								No member summary records were found for the selected scope and period.
+								No member contribution records were found for the selected scope and period.
 							</div>
 						) : (
 							<Table>
 								<TableHeader>
 									<TableRow>
 										<TableHead>Character</TableHead>
-										<TableHead>Status</TableHead>
+										<TableHead>Contribution</TableHead>
+										<TableHead>Taxable</TableHead>
 										<TableHead>Assessments</TableHead>
-										<TableHead>Tax Due</TableHead>
-										<TableHead>Tax Paid</TableHead>
-										<TableHead>Tax Delta</TableHead>
 										<TableHead>Last Assessment</TableHead>
-										<TableHead>Top Sources</TableHead>
+										<TableHead className="w-[15rem] min-w-[15rem]">Source Split</TableHead>
 									</TableRow>
 								</TableHeader>
 								<TableBody>
 									{summaries.map((row) => (
 										<TableRow key={`${row.corporationId}:${row.characterId}`}>
 											<TableCell>
-												<TaxEntityDisplay entityId={row.characterId} entityNames={entityNames} />
+												{row.characterId === UNATTRIBUTED_CHARACTER_ID ? (
+													<div className="font-medium">Unattributed</div>
+												) : (
+													<TaxEntityDisplay entityId={row.characterId} entityNames={entityNames} />
+												)}
 											</TableCell>
-											<TableCell>
-												<Badge variant={toStatusVariant(row.complianceStatus)}>
-													{row.complianceStatus}
-												</Badge>
-											</TableCell>
+											<TableCell>{formatTaxIskFull(row.contributionIncome)}</TableCell>
+											<TableCell>{formatTaxIskFull(row.taxableContributionIncome)}</TableCell>
 											<TableCell>{formatTaxNumber(row.assessmentCount)}</TableCell>
-											<TableCell>{formatTaxIskFull(row.taxDue)}</TableCell>
-											<TableCell>{formatTaxIskFull(row.taxPaid)}</TableCell>
-											<TableCell>{formatTaxIskFull(row.taxDelta)}</TableCell>
 											<TableCell>{formatTaxDateTime(row.lastAssessmentAt)}</TableCell>
-											<TableCell className="max-w-[360px] text-xs">
-												{row.topRefTypes.length === 0
-													? '-'
-													: row.topRefTypes
-															.map(
-																(item) =>
-																	`${formatTaxRefTypeLabel(item.refType)} (${formatTaxIskFull(item.taxableAmount)})`
-															)
-															.join(', ')}
+											<TableCell className="min-w-[15rem] text-xs">
+												<TopSourceBreakdown topRefTypes={row.topRefTypes} />
 											</TableCell>
 										</TableRow>
 									))}

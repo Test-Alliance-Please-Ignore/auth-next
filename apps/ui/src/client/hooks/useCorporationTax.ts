@@ -155,7 +155,7 @@ export const corporationTaxKeys = {
 	memberSummary: (
 		corporationId: string,
 		filters?: {
-			characterId?: string
+			characterQuery?: string
 			fromDate?: string
 			toDate?: string
 			topRefTypesLimit?: number
@@ -649,7 +649,7 @@ export function useTaxSummaryReport(filters?: TaxReportQueryOptions) {
 export function useTaxMemberSummary(
 	corporationId: string | undefined,
 	filters?: {
-		characterId?: string
+		characterQuery?: string
 		fromDate?: string
 		toDate?: string
 		topRefTypesLimit?: number

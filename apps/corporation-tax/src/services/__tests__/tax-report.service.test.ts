@@ -17,6 +17,9 @@ describe('TaxReportService inclusion scoping', () => {
 				taxAssessments: {
 					findMany: vi.fn(),
 				},
+				taxAssessmentLines: {
+					findMany: vi.fn(),
+				},
 				taxDiscrepancies: {
 					findMany: vi.fn(),
 				},
@@ -238,6 +241,144 @@ describe('TaxReportService inclusion scoping', () => {
 				taxDelta: '20.00',
 				lastAssessmentAt: new Date('2026-03-10T00:00:00.000Z'),
 			},
+		])
+	})
+
+	it('aggregates member summary from corporation-wallet attributed contributions', async () => {
+		mockDb.query.taxCorporationSettings.findFirst.mockResolvedValue({
+			corporationId: '3001',
+			included: true,
+		})
+		mockDb.query.taxAssessments.findMany.mockResolvedValue([
+			{
+				id: 'assessment-1',
+				corporationId: '3001',
+				assessmentScope: 'corporation',
+				taxPeriodEnd: new Date('2026-03-15T00:00:00.000Z'),
+				createdAt: new Date('2026-03-15T00:00:00.000Z'),
+			},
+		])
+		mockDb.query.taxAssessmentLines.findMany.mockResolvedValue([
+			{
+				assessmentId: 'assessment-1',
+				ledgerEntryId: 'ledger-1',
+				taxableAmount: '70.00',
+				taxAmount: '7.00',
+			},
+			{
+				assessmentId: 'assessment-1',
+				ledgerEntryId: 'ledger-2',
+				taxableAmount: '50.00',
+				taxAmount: '5.00',
+			},
+		])
+		mockDb.query.taxLedgerEntries.findMany.mockResolvedValue([
+			{
+				id: 'ledger-1',
+				sourceType: 'corporation_wallet_journal',
+				refType: 'bounty_prizes',
+				firstPartyId: '9001',
+				secondPartyId: '7000',
+				amount: '100.00',
+			},
+			{
+				id: 'ledger-2',
+				sourceType: 'corporation_wallet_transaction',
+				refType: 'market_transaction',
+				firstPartyId: null,
+				secondPartyId: '9999',
+				amount: '50.00',
+			},
+		])
+
+		const settingsService = {
+			getCorporationMemberIds: vi.fn().mockResolvedValue(['9001']),
+		}
+		const service = new TaxReportService(mockDb, settingsService as any)
+
+		const rows = await service.getMemberSummaryReport({
+			corporationId: '3001',
+		})
+
+		expect(rows).toEqual([
+			expect.objectContaining({
+				characterId: '__unattributed__',
+				contributionIncome: '50.00',
+				taxableContributionIncome: '50.00',
+				assessmentCount: 1,
+			}),
+			expect.objectContaining({
+				characterId: '9001',
+				contributionIncome: '100.00',
+				taxableContributionIncome: '70.00',
+				assessmentCount: 1,
+			}),
+		])
+	})
+
+	it('returns only requested member rows when character filter is provided', async () => {
+		mockDb.query.taxCorporationSettings.findFirst.mockResolvedValue({
+			corporationId: '3001',
+			included: true,
+		})
+		mockDb.query.taxAssessments.findMany.mockResolvedValue([
+			{
+				id: 'assessment-1',
+				corporationId: '3001',
+				assessmentScope: 'corporation',
+				taxPeriodEnd: new Date('2026-03-15T00:00:00.000Z'),
+				createdAt: new Date('2026-03-15T00:00:00.000Z'),
+			},
+		])
+		mockDb.query.taxAssessmentLines.findMany.mockResolvedValue([
+			{
+				assessmentId: 'assessment-1',
+				ledgerEntryId: 'ledger-1',
+				taxableAmount: '10.00',
+				taxAmount: '1.00',
+			},
+			{
+				assessmentId: 'assessment-1',
+				ledgerEntryId: 'ledger-2',
+				taxableAmount: '20.00',
+				taxAmount: '2.00',
+			},
+		])
+		mockDb.query.taxLedgerEntries.findMany.mockResolvedValue([
+			{
+				id: 'ledger-1',
+				sourceType: 'corporation_wallet_journal',
+				refType: 'bounty_prizes',
+				firstPartyId: '9001',
+				secondPartyId: null,
+				amount: '10.00',
+			},
+			{
+				id: 'ledger-2',
+				sourceType: 'corporation_wallet_journal',
+				refType: 'bounty_prizes',
+				firstPartyId: '9002',
+				secondPartyId: null,
+				amount: '20.00',
+			},
+		])
+
+		const settingsService = {
+			getCorporationMemberIds: vi.fn().mockResolvedValue(['9001', '9002']),
+		}
+		const service = new TaxReportService(mockDb, settingsService as any)
+
+		const rows = await service.getMemberSummaryReport({
+			corporationId: '3001',
+			characterIds: ['9002'],
+		})
+
+		expect(rows).toEqual([
+			expect.objectContaining({
+				characterId: '9002',
+				contributionIncome: '20.00',
+				taxableContributionIncome: '20.00',
+			}),
 		])
 	})
 })

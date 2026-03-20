@@ -148,7 +148,7 @@ export function formatTaxIskFull(amount: string | number | null | undefined): st
 		return '-'
 	}
 
-	return FULL_ISK_FORMATTER.format(numericAmount)
+	return `${FULL_ISK_FORMATTER.format(numericAmount)} ISK`
 }
 
 export function formatTaxIskCompact(amount: string | number | null | undefined): string {
@@ -162,7 +162,7 @@ export function formatTaxIskCompact(amount: string | number | null | undefined):
 	}
 
 	const formatted = COMPACT_ISK_FORMATTER.format(numericAmount)
-	return formatted.replace('K', 'K').replace('M', 'M').replace('B', 'B').replace('T', 'T')
+	return `${formatted.replace('K', 'K').replace('M', 'M').replace('B', 'B').replace('T', 'T')} ISK`
 }
 
 export function formatTaxNumber(value: string | number | null | undefined): string {
