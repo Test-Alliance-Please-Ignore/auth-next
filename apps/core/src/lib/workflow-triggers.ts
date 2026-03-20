@@ -15,6 +15,19 @@ export interface TriggerUserRefreshOptions {
 	source: string
 	bypassThrottle?: boolean
 	refreshMode?: 'scheduled' | 'manual'
+	throwOnError?: boolean
+}
+
+export function createUserRefreshWorkflowId(source: string, userId: string): string {
+	const sourceToken =
+		source
+			.toLowerCase()
+			.replace(/[^a-z0-9]/g, '')
+			.slice(0, 8) || 'manual'
+	const userToken = userId.replace(/-/g, '').slice(0, 12)
+	const timeToken = Date.now().toString(36)
+	const nonce = crypto.randomUUID().replace(/-/g, '').slice(0, 8)
+	return `ur-${sourceToken}-${userToken}-${timeToken}-${nonce}`
 }
 
 /**
@@ -29,6 +42,7 @@ export async function triggerUserRefreshWorkflow({
 	source,
 	bypassThrottle = false,
 	refreshMode = 'scheduled',
+	throwOnError = false,
 }: TriggerUserRefreshOptions): Promise<void> {
 	try {
 		const userRecord = await db.query.users.findFirst({
@@ -49,7 +63,7 @@ export async function triggerUserRefreshWorkflow({
 			.where(eq(users.id, userId))
 
 		await env.USER_REFRESH_WORKFLOW.create({
-			id: `user-refresh-${source}-${userId}-${Date.now()}`,
+			id: createUserRefreshWorkflowId(source, userId),
 			params: { userId, refreshMode },
 		})
 
@@ -65,5 +79,8 @@ export async function triggerUserRefreshWorkflow({
 			source,
 			error: error instanceof Error ? error.message : String(error),
 		})
+		if (throwOnError) {
+			throw error
+		}
 	}
 }
