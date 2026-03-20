@@ -958,10 +958,31 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Store wallet journal entries (workflow-friendly)
 	 */
-	async storeWalletJournal(corporationId: string, division: number, entries: any[]): Promise<void> {
+	async storeWalletJournal(
+		corporationId: string,
+		division: number,
+		entries: any[]
+	): Promise<{ persistedNewRows: number }> {
+		let persistedNewRows = 0
 		const BATCH_SIZE = 25
 		for (let i = 0; i < entries.length; i += BATCH_SIZE) {
 			const batch = entries.slice(i, i + BATCH_SIZE)
+			const batchJournalIds = batch.map((entry) => String(entry.id))
+			const existingRows =
+				batchJournalIds.length > 0
+					? await this.getDb().query.corporationWalletJournal.findMany({
+							where: and(
+								eq(corporationWalletJournal.corporationId, String(corporationId)),
+								eq(corporationWalletJournal.division, division),
+								inArray(corporationWalletJournal.journalId, batchJournalIds)
+							),
+							columns: {
+								journalId: true,
+							},
+						})
+					: []
+			const existingJournalIds = new Set(existingRows.map((row) => row.journalId))
+			persistedNewRows += batchJournalIds.filter((id) => !existingJournalIds.has(id)).length
 			const valuesToInsert = batch.map((entry) => ({
 				corporationId: String(corporationId),
 				division,
@@ -1002,6 +1023,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					},
 				})
 		}
+
+		return { persistedNewRows }
 	}
 
 	/**
@@ -1011,10 +1034,27 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		corporationId: string,
 		division: number,
 		transactions: any[]
-	): Promise<void> {
+	): Promise<{ persistedNewRows: number }> {
+		let persistedNewRows = 0
 		const BATCH_SIZE = 25
 		for (let i = 0; i < transactions.length; i += BATCH_SIZE) {
 			const batch = transactions.slice(i, i + BATCH_SIZE)
+			const batchTransactionIds = batch.map((tx) => String(tx.transaction_id))
+			const existingRows =
+				batchTransactionIds.length > 0
+					? await this.getDb().query.corporationWalletTransactions.findMany({
+							where: and(
+								eq(corporationWalletTransactions.corporationId, String(corporationId)),
+								eq(corporationWalletTransactions.division, division),
+								inArray(corporationWalletTransactions.transactionId, batchTransactionIds)
+							),
+							columns: {
+								transactionId: true,
+							},
+						})
+					: []
+			const existingTransactionIds = new Set(existingRows.map((row) => row.transactionId))
+			persistedNewRows += batchTransactionIds.filter((id) => !existingTransactionIds.has(id)).length
 			const valuesToInsert = batch.map((tx) => ({
 				corporationId: String(corporationId),
 				division,
@@ -1045,6 +1085,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					},
 				})
 		}
+
+		return { persistedNewRows }
 	}
 
 	/**

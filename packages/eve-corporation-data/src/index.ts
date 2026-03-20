@@ -280,6 +280,14 @@ export interface CorporationLastSyncData {
 	killmailsLastSync: Date | null
 }
 
+export interface WalletJournalStoreResult {
+	persistedNewRows: number
+}
+
+export interface WalletTransactionsStoreResult {
+	persistedNewRows: number
+}
+
 /**
  * Corporation configuration data
  */
@@ -936,7 +944,11 @@ export interface EveCorporationData {
 	 * @param division - Wallet division (1-7)
 	 * @param entries - Pre-fetched journal entries from ESI
 	 */
-	storeWalletJournal(corporationId: string, division: number, entries: any[]): Promise<void>
+	storeWalletJournal(
+		corporationId: string,
+		division: number,
+		entries: any[]
+	): Promise<WalletJournalStoreResult>
 
 	/**
 	 * Store wallet transactions (workflow-friendly)
@@ -948,7 +960,7 @@ export interface EveCorporationData {
 		corporationId: string,
 		division: number,
 		transactions: any[]
-	): Promise<void>
+	): Promise<WalletTransactionsStoreResult>
 
 	/**
 	 * Store assets (workflow-friendly)

@@ -1,7 +1,12 @@
 import { and, desc, eq, gte, lt, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
-import { taxDailyRollups, taxLedgerEntries, taxSyncCheckpoints } from '../db/schema'
+import {
+	taxDailyRollups,
+	taxLedgerEntries,
+	taxMemberSummaryVersions,
+	taxSyncCheckpoints,
+} from '../db/schema'
 
 import type {
 	IngestTaxLedgerWindowInput,
@@ -405,6 +410,10 @@ export class TaxLedgerService {
 				checkpointsUpdated += 1
 			}
 
+			if (values.length > 0) {
+				await this.bumpMemberSummaryProjectionVersion(corporationId, now)
+			}
+
 			return {
 				corporationId,
 				journalProcessed: journalRows.length + characterJournalRows.length,
@@ -427,6 +436,40 @@ export class TaxLedgerService {
 			)
 			throw error
 		}
+	}
+
+	private async bumpMemberSummaryProjectionVersion(
+		corporationId: string,
+		now: Date
+	): Promise<void> {
+		if (!this.supportsMemberSummaryVersioning()) {
+			return
+		}
+		await this.db
+			.insert(taxMemberSummaryVersions)
+			.values({
+				corporationId,
+				projectionVersion: 1,
+				finalizedVersion: 0,
+				projectionUpdatedAt: now,
+				updatedAt: now,
+			})
+			.onConflictDoUpdate({
+				target: taxMemberSummaryVersions.corporationId,
+				set: {
+					projectionVersion: sql`${taxMemberSummaryVersions.projectionVersion} + 1`,
+					projectionUpdatedAt: now,
+					updatedAt: now,
+				},
+			})
+	}
+
+	private supportsMemberSummaryVersioning(): boolean {
+		return Boolean(
+			this.db.query &&
+				(this.db.query as Record<string, unknown>).taxMemberSummaryVersions &&
+				typeof this.db.insert === 'function'
+		)
 	}
 
 	async listLedgerEntries(

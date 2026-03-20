@@ -1,9 +1,42 @@
 import { logger } from '@repo/hono-helpers'
 
-import { getGlobalCorporationDataStub } from '../../utils/services'
+import { getCorporationTaxStub, getGlobalCorporationDataStub } from '../../utils/services'
 
 import type { EveCorporationSyncDataType } from '@repo/eve-corporation-data'
 import type { Env } from '../../../context'
+
+type TaxWalletSourceWatermark = {
+	maxId: string | null
+	maxDate: Date | null
+	fetchedCount: number
+}
+
+type TriggerTaxProjectionRefreshInput = {
+	corporationId: string
+	upstreamRunId: string
+	triggeredAt: Date
+	walletJournal?: TaxWalletSourceWatermark | null
+	walletTransactions?: TaxWalletSourceWatermark | null
+	includeCharacterWallets?: boolean
+}
+
+type TriggerTaxProjectionRefreshResult = {
+	corporationId: string
+	triggered: boolean
+	reason: 'no_sources' | 'up_to_date' | 'ingested'
+}
+
+const TAX_PROJECTION_RETRY_KEY_PREFIX = 'tax-projection-retry-intent:'
+const TAX_PROJECTION_RETRY_TTL_SECONDS = 7 * 24 * 60 * 60
+
+type TaxProjectionRetryIntent = {
+	corporationId: string
+	actorUserId: string
+	input: TriggerTaxProjectionRefreshInput
+	lastError: string
+	recordedAt: string
+	retryCount: number
+}
 
 /**
  * Send HR cleanup messages for departed members
@@ -77,3 +110,108 @@ export async function updateCoreLastSync(env: Env, corporationId: string): Promi
 	await env.CORE.updateCorporationLastSync(corporationId)
 }
 
+/**
+ * Trigger tax projection refresh based on upstream wallet-sync watermarks.
+ */
+export async function triggerTaxProjectionRefresh(
+	env: Env,
+	actorUserId: string,
+	input: TriggerTaxProjectionRefreshInput
+): Promise<TriggerTaxProjectionRefreshResult> {
+	const taxStub = getCorporationTaxStub(env)
+	const result = await taxStub.triggerProjectionRefreshFromWalletSync(actorUserId, input)
+
+	logger.info('[CommonStep] Triggered tax projection refresh from wallet sync', {
+		corporationId: input.corporationId,
+		upstreamRunId: input.upstreamRunId,
+		triggered: result.triggered,
+		reason: result.reason,
+	})
+
+	return result
+}
+
+function getTaxProjectionRetryKey(corporationId: string): string {
+	return `${TAX_PROJECTION_RETRY_KEY_PREFIX}${corporationId}`
+}
+
+export async function recordTaxProjectionRetryIntent(
+	env: Env,
+	corporationId: string,
+	actorUserId: string,
+	input: TriggerTaxProjectionRefreshInput,
+	errorMessage: string
+): Promise<void> {
+	const key = getTaxProjectionRetryKey(corporationId)
+	const existingRaw = await env.CACHE.get(key)
+	const existing = existingRaw ? (JSON.parse(existingRaw) as TaxProjectionRetryIntent) : null
+	const retryCount = existing ? existing.retryCount + 1 : 1
+
+	const payload: TaxProjectionRetryIntent = {
+		corporationId,
+		actorUserId,
+		input,
+		lastError: errorMessage,
+		recordedAt: new Date().toISOString(),
+		retryCount,
+	}
+
+	await env.CACHE.put(key, JSON.stringify(payload), {
+		expirationTtl: TAX_PROJECTION_RETRY_TTL_SECONDS,
+	})
+
+	logger.warn('[CommonStep] Recorded tax projection retry intent', {
+		corporationId,
+		retryCount,
+	})
+}
+
+export async function clearTaxProjectionRetryIntent(
+	env: Env,
+	corporationId: string
+): Promise<void> {
+	await env.CACHE.delete(getTaxProjectionRetryKey(corporationId))
+}
+
+export async function replayTaxProjectionRetryIntent(
+	env: Env,
+	corporationId: string
+): Promise<{
+	replayed: boolean
+	succeeded: boolean
+	retryCount: number
+	reason: string
+}> {
+	const key = getTaxProjectionRetryKey(corporationId)
+	const raw = await env.CACHE.get(key)
+	if (!raw) {
+		return { replayed: false, succeeded: false, retryCount: 0, reason: 'none' }
+	}
+
+	const intent = JSON.parse(raw) as TaxProjectionRetryIntent
+	try {
+		const result = await triggerTaxProjectionRefresh(env, intent.actorUserId, intent.input)
+		await clearTaxProjectionRetryIntent(env, corporationId)
+		return {
+			replayed: true,
+			succeeded: true,
+			retryCount: intent.retryCount,
+			reason: result.reason,
+		}
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error)
+		await recordTaxProjectionRetryIntent(
+			env,
+			corporationId,
+			intent.actorUserId,
+			intent.input,
+			message
+		)
+		return {
+			replayed: true,
+			succeeded: false,
+			retryCount: intent.retryCount + 1,
+			reason: message,
+		}
+	}
+}

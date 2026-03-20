@@ -29,6 +29,14 @@ export interface SyncStats {
 	totalMembers?: number
 	departedMembers?: number
 	walletsCount?: number
+	walletJournalFetchedCount?: number
+	walletJournalPersistedNewRows?: number
+	walletJournalMaxId?: string | null
+	walletJournalMaxDate?: string | null
+	walletTransactionsFetchedCount?: number
+	walletTransactionsPersistedNewRows?: number
+	walletTransactionsMaxId?: string | null
+	walletTransactionsMaxDate?: string | null
 	assetsCount?: number
 	structuresCount?: number
 	ordersCount?: number
@@ -46,4 +54,3 @@ export interface EveCorporationSyncResult {
 	trigger: 'cron' | 'api'
 	stats: SyncStats
 }
-

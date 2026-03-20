@@ -1,4 +1,5 @@
-import { and, asc, desc, eq, gte, inArray, isNull, lte, sql } from '@repo/db-utils'
+import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, sql } from '@repo/db-utils'
+import { logger } from '@repo/hono-helpers'
 
 import {
 	taxAssessmentLines,
@@ -7,6 +8,9 @@ import {
 	taxDailyRollups,
 	taxDiscrepancies,
 	taxLedgerEntries,
+	taxMemberContributionFinalizedRollups,
+	taxMemberContributionProjectionRollups,
+	taxMemberSummaryVersions,
 } from '../db/schema'
 
 import type {
@@ -30,6 +34,22 @@ import type { CorporationTaxDb } from '../db'
 import type { TaxSettingsService } from './tax-settings.service'
 
 export class TaxReportService {
+	private readonly MEMBER_SUMMARY_CACHE_TTL_MS = 30 * 60 * 1000
+	private readonly MEMBER_SUMMARY_CACHE_MAX_ENTRIES = 500
+	private memberSummaryCacheHits = 0
+	private memberSummaryCacheMisses = 0
+	private memberSummaryCacheDeltaChecks = 0
+	private readonly memberSummaryCache = new Map<
+		string,
+		{
+			rows: TaxMemberSummary[]
+			cachedAtMs: number
+			expiresAtMs: number
+			projectionVersion: number
+			finalizedVersion: number
+		}
+	>()
+
 	constructor(
 		private db: CorporationTaxDb,
 		private settingsService: TaxSettingsService
@@ -568,11 +588,6 @@ export class TaxReportService {
 	async getMemberSummaryReport(
 		filters: TaxMemberSummaryReportFilters
 	): Promise<TaxMemberSummary[]> {
-		const corporationIds = await this.resolveIncludedCorporationIds(filters.corporationId)
-		if (corporationIds.length === 0) {
-			return []
-		}
-
 		const requestedCharacterIds = Array.from(
 			new Set((filters.characterIds ?? []).map((value) => value.trim()).filter(Boolean))
 		)
@@ -580,10 +595,86 @@ export class TaxReportService {
 			filters.corporationId
 		)
 		const memberIdSet = new Set(memberCharacterIds)
-		const scopedCharacterIds =
+		const scopedRequestedCharacterIds =
 			requestedCharacterIds.length > 0
 				? requestedCharacterIds.filter((characterId) => memberIdSet.has(characterId))
-				: memberCharacterIds
+				: []
+		const includeUnattributedRow = true
+
+		const cacheKey = this.toMemberSummaryCacheKey(filters)
+		const nowMs = Date.now()
+		const versions = await this.getMemberSummaryVersions(filters.corporationId)
+		const cached = this.memberSummaryCache.get(cacheKey)
+		if (cached) {
+			const sameVersions =
+				cached.projectionVersion === versions.projectionVersion &&
+				cached.finalizedVersion === versions.finalizedVersion
+			if (sameVersions) {
+				this.memberSummaryCacheHits += 1
+				if (cached.expiresAtMs <= nowMs) {
+					// Sliding expiration when upstream versions did not change.
+					this.setMemberSummaryCache(cacheKey, {
+						...cached,
+						expiresAtMs: nowMs + this.MEMBER_SUMMARY_CACHE_TTL_MS,
+					})
+				}
+				return this.filterMemberSummaryRowsForRequest(cached.rows, scopedRequestedCharacterIds)
+			}
+			this.memberSummaryCacheDeltaChecks += 1
+			const hasRollupUpdates = await this.hasMemberSummaryRollupUpdatesSince(
+				filters,
+				cached.cachedAtMs
+			)
+			if (!hasRollupUpdates) {
+				// Versions changed but not for this filtered window; keep cached result and update version stamps.
+				this.memberSummaryCacheHits += 1
+				this.setMemberSummaryCache(cacheKey, {
+					...cached,
+					cachedAtMs: nowMs,
+					expiresAtMs: nowMs + this.MEMBER_SUMMARY_CACHE_TTL_MS,
+					projectionVersion: versions.projectionVersion,
+					finalizedVersion: versions.finalizedVersion,
+				})
+				return this.filterMemberSummaryRowsForRequest(cached.rows, scopedRequestedCharacterIds)
+			}
+		}
+		this.memberSummaryCacheMisses += 1
+
+		const corporationIds = await this.resolveIncludedCorporationIds(filters.corporationId)
+		if (corporationIds.length === 0) {
+			return []
+		}
+
+		if (requestedCharacterIds.length > 0 && scopedRequestedCharacterIds.length === 0) {
+			return []
+		}
+
+		const scopedCharacterIds = memberCharacterIds
+		const topRefTypesLimit =
+			filters.topRefTypesLimit !== undefined ? Math.max(filters.topRefTypesLimit, 1) : null
+		const scopedCharacterIdSet = new Set(scopedCharacterIds)
+
+		if (this.supportsMemberSummaryRollupRead()) {
+			const rollupRows = await this.getMemberSummaryFromRollups({
+				corporationId: filters.corporationId,
+				fromDate: filters.fromDate,
+				toDate: filters.toDate,
+				scopedCharacterIds,
+				scopedCharacterIdSet,
+				includeUnattributedRow,
+				topRefTypesLimit,
+			})
+			if (rollupRows.length > 0) {
+				this.setMemberSummaryCache(cacheKey, {
+					rows: rollupRows,
+					cachedAtMs: nowMs,
+					expiresAtMs: nowMs + this.MEMBER_SUMMARY_CACHE_TTL_MS,
+					projectionVersion: versions.projectionVersion,
+					finalizedVersion: versions.finalizedVersion,
+				})
+				return this.filterMemberSummaryRowsForRequest(rollupRows, scopedRequestedCharacterIds)
+			}
+		}
 
 		const corporationAssessmentConditions = [
 			eq(taxAssessments.corporationId, filters.corporationId),
@@ -628,11 +719,6 @@ export class TaxReportService {
 		})
 
 		const ledgerById = new Map(ledgerRows.map((row) => [row.id, row]))
-		const topRefTypesLimit =
-			filters.topRefTypesLimit !== undefined ? Math.max(filters.topRefTypesLimit, 1) : null
-		const includeUnattributedRow = requestedCharacterIds.length === 0
-		const scopedCharacterIdSet = new Set(scopedCharacterIds)
-
 		const grouped = new Map<
 			string,
 			{
@@ -814,7 +900,372 @@ export class TaxReportService {
 			}
 		}
 
+		this.setMemberSummaryCache(cacheKey, {
+			rows,
+			cachedAtMs: nowMs,
+			expiresAtMs: nowMs + this.MEMBER_SUMMARY_CACHE_TTL_MS,
+			projectionVersion: versions.projectionVersion,
+			finalizedVersion: versions.finalizedVersion,
+		})
+
+		return this.filterMemberSummaryRowsForRequest(rows, scopedRequestedCharacterIds)
+	}
+
+	private async hasMemberSummaryRollupUpdatesSince(
+		filters: TaxMemberSummaryReportFilters,
+		cachedAtMs: number
+	): Promise<boolean> {
+		if (!this.supportsMemberSummaryRollupRead()) {
+			return true
+		}
+		const since = new Date(cachedAtMs)
+		const fromDay = filters.fromDate ? this.toUtcDay(filters.fromDate) : undefined
+		const toDay = filters.toDate ? this.toUtcDay(filters.toDate) : undefined
+		const currentMonthStart = this.startOfUtcMonth(new Date())
+		const finalizedConditions = [
+			eq(taxMemberContributionFinalizedRollups.corporationId, filters.corporationId),
+			lt(taxMemberContributionFinalizedRollups.periodEnd, currentMonthStart),
+		]
+		const projectionConditions = [
+			eq(taxMemberContributionProjectionRollups.corporationId, filters.corporationId),
+			gte(taxMemberContributionProjectionRollups.periodEnd, currentMonthStart),
+		]
+		finalizedConditions.push(gte(taxMemberContributionFinalizedRollups.updatedAt, since))
+		projectionConditions.push(gte(taxMemberContributionProjectionRollups.updatedAt, since))
+		if (fromDay) {
+			finalizedConditions.push(gte(taxMemberContributionFinalizedRollups.rollupDate, fromDay))
+			projectionConditions.push(gte(taxMemberContributionProjectionRollups.rollupDate, fromDay))
+		}
+		if (toDay) {
+			finalizedConditions.push(lte(taxMemberContributionFinalizedRollups.rollupDate, toDay))
+			projectionConditions.push(lte(taxMemberContributionProjectionRollups.rollupDate, toDay))
+		}
+		const [finalizedUpdate, projectionUpdate] = await Promise.all([
+			this.db.query.taxMemberContributionFinalizedRollups.findFirst({
+				where: and(...finalizedConditions),
+				columns: { id: true },
+			}),
+			this.db.query.taxMemberContributionProjectionRollups.findFirst({
+				where: and(...projectionConditions),
+				columns: { id: true },
+			}),
+		])
+		return Boolean(finalizedUpdate || projectionUpdate)
+	}
+
+	private async getMemberSummaryFromRollups(input: {
+		corporationId: string
+		fromDate?: Date
+		toDate?: Date
+		scopedCharacterIds: string[]
+		scopedCharacterIdSet: Set<string>
+		includeUnattributedRow: boolean
+		topRefTypesLimit: number | null
+	}): Promise<TaxMemberSummary[]> {
+		const fromDay = input.fromDate ? this.toUtcDay(input.fromDate) : undefined
+		const toDay = input.toDate ? this.toUtcDay(input.toDate) : undefined
+		const currentMonthStart = this.startOfUtcMonth(new Date())
+		const finalizedConditions = [
+			eq(taxMemberContributionFinalizedRollups.corporationId, input.corporationId),
+			lt(taxMemberContributionFinalizedRollups.periodEnd, currentMonthStart),
+		]
+		const projectionConditions = [
+			eq(taxMemberContributionProjectionRollups.corporationId, input.corporationId),
+			gte(taxMemberContributionProjectionRollups.periodEnd, currentMonthStart),
+		]
+		if (fromDay) {
+			finalizedConditions.push(gte(taxMemberContributionFinalizedRollups.rollupDate, fromDay))
+			projectionConditions.push(gte(taxMemberContributionProjectionRollups.rollupDate, fromDay))
+		}
+		if (toDay) {
+			finalizedConditions.push(lte(taxMemberContributionFinalizedRollups.rollupDate, toDay))
+			projectionConditions.push(lte(taxMemberContributionProjectionRollups.rollupDate, toDay))
+		}
+
+		const [fetchedFinalizedRows, fetchedProjectionRows] = await Promise.all([
+			this.db.query.taxMemberContributionFinalizedRollups.findMany({
+				where: and(...finalizedConditions),
+				limit: 200_000,
+			}),
+			this.db.query.taxMemberContributionProjectionRollups.findMany({
+				where: and(...projectionConditions),
+				limit: 200_000,
+			}),
+		])
+		const finalizedRows = fetchedFinalizedRows.filter((row) => row.periodEnd < currentMonthStart)
+		const projectionRows = fetchedProjectionRows.filter((row) => row.periodEnd >= currentMonthStart)
+		if (finalizedRows.length === 0 && projectionRows.length === 0) {
+			return []
+		}
+
+		const rolled = new Map<
+			string,
+			{
+				characterId: string
+				refType: string
+				contributionIncomeCenti: bigint
+				taxableContributionIncomeCenti: bigint
+				assessmentCount: number
+				lineCount: number
+				lastAssessmentAt: Date | null
+			}
+		>()
+		const putRow = (row: {
+			rollupDate: Date
+			characterId: string
+			refType: string
+			contributionIncome: string
+			taxableContributionIncome: string
+			assessmentCount: number
+			sourceRowCount: number
+			lastAssessmentAt: Date | null
+		}) => {
+			if (
+				row.characterId !== '__unattributed__' &&
+				input.scopedCharacterIdSet.size > 0 &&
+				!input.scopedCharacterIdSet.has(row.characterId)
+			) {
+				return
+			}
+			if (row.characterId === '__unattributed__' && !input.includeUnattributedRow) {
+				return
+			}
+			const key = `${row.characterId}:${row.refType}`
+			const current = rolled.get(key) ?? {
+				characterId: row.characterId,
+				refType: row.refType,
+				contributionIncomeCenti: 0n,
+				taxableContributionIncomeCenti: 0n,
+				assessmentCount: 0,
+				lineCount: 0,
+				lastAssessmentAt: null,
+			}
+			current.contributionIncomeCenti += this.parseDecimalToCenti(row.contributionIncome)
+			current.taxableContributionIncomeCenti += this.parseDecimalToCenti(
+				row.taxableContributionIncome
+			)
+			current.assessmentCount = Math.max(current.assessmentCount, row.assessmentCount)
+			current.lineCount += row.sourceRowCount
+			current.lastAssessmentAt =
+				!current.lastAssessmentAt ||
+				(row.lastAssessmentAt && row.lastAssessmentAt > current.lastAssessmentAt)
+					? row.lastAssessmentAt
+					: current.lastAssessmentAt
+			rolled.set(key, current)
+		}
+
+		for (const row of projectionRows) {
+			putRow(row)
+		}
+		for (const row of finalizedRows) {
+			putRow(row)
+		}
+
+		const byCharacter = new Map<
+			string,
+			{
+				assessmentCount: number
+				contributionIncomeCenti: bigint
+				taxableContributionIncomeCenti: bigint
+				lastAssessmentAt: Date | null
+				byRefType: Map<string, { lineCount: number; taxableContributionIncomeCenti: bigint }>
+			}
+		>()
+		for (const row of rolled.values()) {
+			const current = byCharacter.get(row.characterId) ?? {
+				assessmentCount: 0,
+				contributionIncomeCenti: 0n,
+				taxableContributionIncomeCenti: 0n,
+				lastAssessmentAt: null,
+				byRefType: new Map<string, { lineCount: number; taxableContributionIncomeCenti: bigint }>(),
+			}
+			current.assessmentCount = Math.max(current.assessmentCount, row.assessmentCount)
+			current.contributionIncomeCenti += row.contributionIncomeCenti
+			current.taxableContributionIncomeCenti += row.taxableContributionIncomeCenti
+			current.lastAssessmentAt =
+				!current.lastAssessmentAt ||
+				(row.lastAssessmentAt && row.lastAssessmentAt > current.lastAssessmentAt)
+					? row.lastAssessmentAt
+					: current.lastAssessmentAt
+			const ref = current.byRefType.get(row.refType) ?? {
+				lineCount: 0,
+				taxableContributionIncomeCenti: 0n,
+			}
+			ref.lineCount += row.lineCount
+			ref.taxableContributionIncomeCenti += row.taxableContributionIncomeCenti
+			current.byRefType.set(row.refType, ref)
+			byCharacter.set(row.characterId, current)
+		}
+
+		const characterIdsToReturn =
+			input.scopedCharacterIds.length > 0
+				? input.scopedCharacterIds
+				: Array.from(byCharacter.keys())
+						.filter((characterId) => characterId !== '__unattributed__')
+						.sort((a, b) => a.localeCompare(b))
+
+		const rows = characterIdsToReturn
+			.map((characterId) => {
+				const summary = byCharacter.get(characterId)
+				if (!summary) {
+					return null
+				}
+				const sortedTopRefTypes = Array.from(summary.byRefType.entries()).sort((a, b) => {
+					if (a[1].taxableContributionIncomeCenti === b[1].taxableContributionIncomeCenti) {
+						return a[0].localeCompare(b[0])
+					}
+					return a[1].taxableContributionIncomeCenti > b[1].taxableContributionIncomeCenti ? -1 : 1
+				})
+				const topRefTypes = (
+					input.topRefTypesLimit
+						? sortedTopRefTypes.slice(0, input.topRefTypesLimit)
+						: sortedTopRefTypes
+				).map(([refType, totals]) => ({
+					refType,
+					lineCount: totals.lineCount,
+					taxableAmount: this.formatCenti(totals.taxableContributionIncomeCenti),
+					taxAmount: '0',
+				}))
+				return {
+					corporationId: input.corporationId,
+					characterId,
+					fromDate: input.fromDate ?? null,
+					toDate: input.toDate ?? null,
+					assessmentCount: summary.assessmentCount,
+					contributionIncome: this.formatCenti(summary.contributionIncomeCenti),
+					taxableContributionIncome: this.formatCenti(summary.taxableContributionIncomeCenti),
+					lastAssessmentAt: summary.lastAssessmentAt,
+					topRefTypes,
+				}
+			})
+			.filter((row): row is TaxMemberSummary => row !== null)
+
+		if (input.includeUnattributedRow) {
+			const unattributed = byCharacter.get('__unattributed__')
+			if (unattributed) {
+				const sortedTopRefTypes = Array.from(unattributed.byRefType.entries()).sort((a, b) => {
+					if (a[1].taxableContributionIncomeCenti === b[1].taxableContributionIncomeCenti) {
+						return a[0].localeCompare(b[0])
+					}
+					return a[1].taxableContributionIncomeCenti > b[1].taxableContributionIncomeCenti ? -1 : 1
+				})
+				const topRefTypes = (
+					input.topRefTypesLimit
+						? sortedTopRefTypes.slice(0, input.topRefTypesLimit)
+						: sortedTopRefTypes
+				).map(([refType, totals]) => ({
+					refType,
+					lineCount: totals.lineCount,
+					taxableAmount: this.formatCenti(totals.taxableContributionIncomeCenti),
+					taxAmount: '0',
+				}))
+				rows.unshift({
+					corporationId: input.corporationId,
+					characterId: '__unattributed__',
+					fromDate: input.fromDate ?? null,
+					toDate: input.toDate ?? null,
+					assessmentCount: unattributed.assessmentCount,
+					contributionIncome: this.formatCenti(unattributed.contributionIncomeCenti),
+					taxableContributionIncome: this.formatCenti(unattributed.taxableContributionIncomeCenti),
+					lastAssessmentAt: unattributed.lastAssessmentAt,
+					topRefTypes,
+				})
+			}
+		}
+
 		return rows
+	}
+
+	private toUtcDay(date: Date): Date {
+		return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
+	}
+
+	private startOfUtcMonth(date: Date): Date {
+		return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1))
+	}
+
+	private toMemberSummaryCacheKey(filters: TaxMemberSummaryReportFilters): string {
+		return [
+			filters.corporationId,
+			filters.fromDate?.toISOString() ?? '',
+			filters.toDate?.toISOString() ?? '',
+			filters.topRefTypesLimit ?? '',
+		].join('|')
+	}
+
+	private filterMemberSummaryRowsForRequest(
+		rows: TaxMemberSummary[],
+		requestedCharacterIds: string[]
+	): TaxMemberSummary[] {
+		if (requestedCharacterIds.length === 0) {
+			return rows
+		}
+		const requestedSet = new Set(requestedCharacterIds)
+		return rows.filter((row) => requestedSet.has(row.characterId))
+	}
+
+	private async getMemberSummaryVersions(corporationId: string): Promise<{
+		projectionVersion: number
+		finalizedVersion: number
+	}> {
+		if (!this.supportsMemberSummaryVersioning()) {
+			return {
+				projectionVersion: 0,
+				finalizedVersion: 0,
+			}
+		}
+		const row = await this.db.query.taxMemberSummaryVersions.findFirst({
+			where: eq(taxMemberSummaryVersions.corporationId, corporationId),
+		})
+		return {
+			projectionVersion: row?.projectionVersion ?? 0,
+			finalizedVersion: row?.finalizedVersion ?? 0,
+		}
+	}
+
+	private supportsMemberSummaryVersioning(): boolean {
+		return Boolean(
+			this.db.query && (this.db.query as Record<string, unknown>).taxMemberSummaryVersions
+		)
+	}
+
+	private supportsMemberSummaryRollupRead(): boolean {
+		return Boolean(
+			this.db.query &&
+				(this.db.query as Record<string, unknown>).taxMemberContributionFinalizedRollups &&
+				(this.db.query as Record<string, unknown>).taxMemberContributionProjectionRollups
+		)
+	}
+
+	private setMemberSummaryCache(
+		cacheKey: string,
+		entry: {
+			rows: TaxMemberSummary[]
+			cachedAtMs: number
+			expiresAtMs: number
+			projectionVersion: number
+			finalizedVersion: number
+		}
+	): void {
+		if (this.memberSummaryCache.size >= this.MEMBER_SUMMARY_CACHE_MAX_ENTRIES) {
+			const oldestKey = this.memberSummaryCache.keys().next().value
+			if (oldestKey && oldestKey !== cacheKey) {
+				this.memberSummaryCache.delete(oldestKey)
+			}
+		}
+		this.memberSummaryCache.set(cacheKey, entry)
+		const totalCacheOps =
+			this.memberSummaryCacheHits +
+			this.memberSummaryCacheMisses +
+			this.memberSummaryCacheDeltaChecks
+		if (totalCacheOps > 0 && totalCacheOps % 200 === 0) {
+			logger.info('[TaxReportService] Member summary cache stats', {
+				cacheEntries: this.memberSummaryCache.size,
+				cacheHits: this.memberSummaryCacheHits,
+				cacheMisses: this.memberSummaryCacheMisses,
+				deltaChecks: this.memberSummaryCacheDeltaChecks,
+			})
+		}
 	}
 
 	private buildAssessmentWhere(

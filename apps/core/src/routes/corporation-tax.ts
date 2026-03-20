@@ -1167,6 +1167,65 @@ app.post('/corporations/:corporationId/assessments/run', requireAuth(), async (c
 })
 
 /**
+ * POST /corporation-tax/corporations/:corporationId/assessments/rebuild-finalized
+ * Explicitly rebuild closed-period finalized rollups for one corporation window.
+ */
+app.post('/corporations/:corporationId/assessments/rebuild-finalized', requireAuth(), async (c) => {
+	const user = c.get('user')
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	const corporationId = c.req.param('corporationId')
+	const canRun = await canManageTaxFeature(c.env, user, corporationId)
+	if (!canRun) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
+	let body: Record<string, unknown>
+	try {
+		body = await c.req.json()
+	} catch (_error) {
+		return c.json({ error: 'Invalid JSON payload' }, 400)
+	}
+
+	const periodStart = typeof body.periodStart === 'string' ? new Date(body.periodStart) : null
+	const periodEnd = typeof body.periodEnd === 'string' ? new Date(body.periodEnd) : null
+	if (!periodStart || Number.isNaN(periodStart.getTime())) {
+		return c.json({ error: 'periodStart must be a valid ISO date string' }, 400)
+	}
+	if (!periodEnd || Number.isNaN(periodEnd.getTime())) {
+		return c.json({ error: 'periodEnd must be a valid ISO date string' }, 400)
+	}
+	if (periodStart >= periodEnd) {
+		return c.json({ error: 'periodStart must be before periodEnd' }, 400)
+	}
+
+	try {
+		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
+		const result = await stub.rebuildFinalizedRollupsForPeriod(user.id, {
+			corporationId,
+			periodStart,
+			periodEnd,
+			includeCharacterWallets:
+				typeof body.includeCharacterWallets === 'boolean'
+					? body.includeCharacterWallets
+					: undefined,
+		})
+		return c.json(result)
+	} catch (error) {
+		if (
+			error instanceof Error &&
+			error.message === 'Finalized rollup rebuild requires a closed period'
+		) {
+			return c.json({ error: error.message }, 409)
+		}
+		logger.error('Error rebuilding finalized tax rollups for period:', error)
+		return c.json({ error: 'Failed to rebuild finalized tax rollups for period' }, 500)
+	}
+})
+
+/**
  * GET /corporation-tax/corporations/:corporationId/assessments/:assessmentId/lines
  * List line items for a computed assessment.
  */

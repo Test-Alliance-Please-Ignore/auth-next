@@ -85,6 +85,7 @@ function makeCorporationTaxStub() {
 		ingestCorporationLedgerWindow: vi.fn(),
 		listLedgerEntries: vi.fn(),
 		runAssessmentForPeriod: vi.fn(),
+		rebuildFinalizedRollupsForPeriod: vi.fn(),
 		createBillsForAssessment: vi.fn(),
 		syncAssessmentBillStatus: vi.fn(),
 		issueBillsForPeriod: vi.fn(),
@@ -681,6 +682,72 @@ describe('corporation-tax routes', () => {
 		expect(payload.periodStart.toISOString()).toBe('2026-03-01T00:00:00.000Z')
 		expect(payload.periodEnd).toBeInstanceOf(Date)
 		expect(payload.periodEnd.toISOString()).toBe('2026-03-31T00:00:00.000Z')
+	})
+
+	it('forwards rebuild-finalized payload as parsed dates', async () => {
+		const user = makeUser()
+		const app = createApp(user)
+		const corporationTaxStub = makeCorporationTaxStub()
+		const featuresStub = { checkFlag: vi.fn().mockResolvedValue(true) }
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:tax:admin' }] as any)
+		corporationTaxStub.rebuildFinalizedRollupsForPeriod.mockResolvedValue({
+			assessment: { id: 'assessment-closed-1' },
+		})
+		routeStubs({ corporationTaxStub, featuresStub })
+
+		const response = await app.request(
+			'/api/corporation-tax/corporations/4002/assessments/rebuild-finalized',
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					periodStart: '2026-02-01T00:00:00.000Z',
+					periodEnd: '2026-02-28T23:59:59.999Z',
+				}),
+			},
+			env
+		)
+
+		expect(response.status).toBe(200)
+		expect(await response.json()).toEqual({ assessment: { id: 'assessment-closed-1' } })
+		expect(corporationTaxStub.rebuildFinalizedRollupsForPeriod).toHaveBeenCalledTimes(1)
+
+		const [actorUserId, payload] = corporationTaxStub.rebuildFinalizedRollupsForPeriod.mock.calls[0]
+		expect(actorUserId).toBe(user.id)
+		expect(payload.corporationId).toBe('4002')
+		expect(payload.periodStart).toBeInstanceOf(Date)
+		expect(payload.periodStart.toISOString()).toBe('2026-02-01T00:00:00.000Z')
+		expect(payload.periodEnd).toBeInstanceOf(Date)
+		expect(payload.periodEnd.toISOString()).toBe('2026-02-28T23:59:59.999Z')
+	})
+
+	it('maps rebuild-finalized open-period error to 409', async () => {
+		const app = createApp(makeUser())
+		const corporationTaxStub = makeCorporationTaxStub()
+		const featuresStub = { checkFlag: vi.fn().mockResolvedValue(true) }
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:tax:admin' }] as any)
+		corporationTaxStub.rebuildFinalizedRollupsForPeriod.mockRejectedValue(
+			new Error('Finalized rollup rebuild requires a closed period')
+		)
+		routeStubs({ corporationTaxStub, featuresStub })
+
+		const response = await app.request(
+			'/api/corporation-tax/corporations/4002/assessments/rebuild-finalized',
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					periodStart: '2026-03-01T00:00:00.000Z',
+					periodEnd: '2026-03-31T23:59:59.999Z',
+				}),
+			},
+			env
+		)
+
+		expect(response.status).toBe(409)
+		expect(await response.json()).toEqual({
+			error: 'Finalized rollup rebuild requires a closed period',
+		})
 	})
 
 	it('validates ledger sourceTypes query values', async () => {

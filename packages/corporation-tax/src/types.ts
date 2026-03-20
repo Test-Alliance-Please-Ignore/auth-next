@@ -435,6 +435,28 @@ export interface TaxLedgerIngestionResult {
 	essMissingSourceKeys: string[]
 }
 
+export interface TaxWalletSourceWatermark {
+	maxId: string | null
+	maxDate: Date | null
+	fetchedCount: number
+}
+
+export interface TriggerTaxProjectionRefreshInput {
+	corporationId: string
+	upstreamRunId: string
+	triggeredAt: Date
+	walletJournal?: TaxWalletSourceWatermark | null
+	walletTransactions?: TaxWalletSourceWatermark | null
+	includeCharacterWallets?: boolean
+}
+
+export interface TriggerTaxProjectionRefreshResult {
+	corporationId: string
+	triggered: boolean
+	reason: 'no_sources' | 'up_to_date' | 'ingested'
+	ingestionResult?: TaxLedgerIngestionResult
+}
+
 export interface TaxLedgerRetentionResult {
 	corporationId: string
 	retentionDays: number

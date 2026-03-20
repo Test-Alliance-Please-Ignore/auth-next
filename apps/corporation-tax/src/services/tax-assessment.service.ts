@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNotNull, isNull, lte, or } from '@repo/db-utils'
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
 import {
@@ -7,6 +7,9 @@ import {
 	taxCorporationSettings,
 	taxDiscrepancies,
 	taxLedgerEntries,
+	taxMemberContributionFinalizedRollups,
+	taxMemberContributionProjectionRollups,
+	taxMemberSummaryVersions,
 	taxPeriods,
 	taxRuleSets,
 } from '../db/schema'
@@ -187,6 +190,21 @@ export class TaxAssessmentService {
 			})
 			.filter((rule): rule is NonNullable<typeof rule> => !!rule)
 
+		const memberIdSet = await this.getCorporationMemberIdSet(input.corporationId)
+		const unattributedKey = '__unattributed__'
+		const memberRollupMap = new Map<
+			string,
+			{
+				rollupDate: Date
+				characterId: string
+				refType: string
+				contributionIncomeCenti: bigint
+				taxableContributionIncomeCenti: bigint
+				sourceRowCount: number
+				lastLedgerEntryDate: Date | null
+			}
+		>()
+
 		const corporationTotals: MutableSummary = {
 			taxableIncomeCenti: 0n,
 			nonTaxableIncomeCenti: 0n,
@@ -255,6 +273,40 @@ export class TaxAssessmentService {
 			refTypeSummary.taxDueCenti += resolved.taxAmountCenti
 			refTypeSummary.taxPaidCenti += paidAmountCenti
 			refTypeSummaries.set(refTypeKey, refTypeSummary)
+
+			if (
+				row.sourceType === 'corporation_wallet_journal' ||
+				row.sourceType === 'corporation_wallet_transaction'
+			) {
+				const memberCandidateIds = [row.firstPartyId, row.secondPartyId].filter(
+					(value): value is string => Boolean(value)
+				)
+				const attributedCharacterId =
+					memberCandidateIds.find((characterId) => memberIdSet.has(characterId)) ?? unattributedKey
+				const rollupDate = this.toUtcDay(row.entryDate)
+				const rollupKey = [
+					rollupDate.toISOString().slice(0, 10),
+					attributedCharacterId,
+					row.refType,
+				].join(':')
+				const current = memberRollupMap.get(rollupKey) ?? {
+					rollupDate,
+					characterId: attributedCharacterId,
+					refType: row.refType,
+					contributionIncomeCenti: 0n,
+					taxableContributionIncomeCenti: 0n,
+					sourceRowCount: 0,
+					lastLedgerEntryDate: null,
+				}
+				current.contributionIncomeCenti += amountForTaxCenti
+				current.taxableContributionIncomeCenti += resolved.taxableAmountCenti
+				current.sourceRowCount += 1
+				current.lastLedgerEntryDate =
+					!current.lastLedgerEntryDate || row.entryDate > current.lastLedgerEntryDate
+						? row.entryDate
+						: current.lastLedgerEntryDate
+				memberRollupMap.set(rollupKey, current)
+			}
 
 			if (row.division !== null) {
 				const scoped = divisionAssessments.get(divisionKey) ?? {
@@ -543,6 +595,56 @@ export class TaxAssessmentService {
 				throw new Error('Failed to persist corporation assessment')
 			}
 
+			if (this.supportsMemberSummaryProjectionInfra()) {
+				const nowMonthStart = this.startOfUtcMonth(now)
+				const isClosedPeriod = input.periodEnd < nowMonthStart
+				const memberRollupValues = Array.from(memberRollupMap.values()).map((item) => ({
+					corporationId: input.corporationId,
+					periodStart: input.periodStart,
+					periodEnd: input.periodEnd,
+					rollupDate: item.rollupDate,
+					characterId: item.characterId,
+					refType: item.refType,
+					contributionIncome: this.formatCenti(item.contributionIncomeCenti),
+					taxableContributionIncome: this.formatCenti(item.taxableContributionIncomeCenti),
+					assessmentCount: 1,
+					sourceRowCount: item.sourceRowCount,
+					lastAssessmentAt: input.periodEnd,
+					lastLedgerEntryDate: item.lastLedgerEntryDate,
+					updatedAt: now,
+				}))
+
+				if (isClosedPeriod) {
+					await tx
+						.delete(taxMemberContributionProjectionRollups)
+						.where(
+							and(
+								eq(taxMemberContributionProjectionRollups.corporationId, input.corporationId),
+								eq(taxMemberContributionProjectionRollups.periodStart, input.periodStart),
+								eq(taxMemberContributionProjectionRollups.periodEnd, input.periodEnd)
+							)
+						)
+					await this.upsertAndReconcileFinalizedRollups(
+						tx,
+						input.corporationId,
+						input.periodStart,
+						input.periodEnd,
+						memberRollupValues.map((row) => ({
+							...row,
+							finalizedAssessmentId: corporationAssessment.id,
+						}))
+					)
+				} else {
+					await this.upsertAndReconcileProjectionRollups(
+						tx,
+						input.corporationId,
+						input.periodStart,
+						input.periodEnd,
+						memberRollupValues
+					)
+				}
+			}
+
 			return {
 				assessment: this.toAssessment(corporationAssessment),
 				period: this.toPeriod(period),
@@ -553,7 +655,249 @@ export class TaxAssessmentService {
 			}
 		})
 
+		if (this.supportsMemberSummaryProjectionInfra()) {
+			const nowMonthStart = this.startOfUtcMonth(new Date())
+			const isClosedPeriod = input.periodEnd < nowMonthStart
+			await this.bumpMemberSummaryVersion(
+				input.corporationId,
+				new Date(),
+				isClosedPeriod ? 'finalized' : 'projection'
+			)
+		}
+
 		return result
+	}
+
+	async rebuildFinalizedRollupsForPeriod(
+		input: RunTaxAssessmentForPeriodInput
+	): Promise<RunTaxAssessmentForPeriodResult> {
+		const nowMonthStart = this.startOfUtcMonth(new Date())
+		if (input.periodEnd >= nowMonthStart) {
+			throw new Error('Finalized rollup rebuild requires a closed period')
+		}
+
+		return this.runAssessmentForPeriod({
+			...input,
+			includeCharacterWallets: input.includeCharacterWallets ?? true,
+		})
+	}
+
+	private async bumpMemberSummaryVersion(
+		corporationId: string,
+		now: Date,
+		target: 'projection' | 'finalized'
+	): Promise<void> {
+		await this.db
+			.insert(taxMemberSummaryVersions)
+			.values({
+				corporationId,
+				projectionVersion: target === 'projection' ? 1 : 0,
+				finalizedVersion: target === 'finalized' ? 1 : 0,
+				projectionUpdatedAt: target === 'projection' ? now : null,
+				finalizedUpdatedAt: target === 'finalized' ? now : null,
+				updatedAt: now,
+			})
+			.onConflictDoUpdate({
+				target: taxMemberSummaryVersions.corporationId,
+				set: {
+					projectionVersion:
+						target === 'projection'
+							? sql`${taxMemberSummaryVersions.projectionVersion} + 1`
+							: taxMemberSummaryVersions.projectionVersion,
+					finalizedVersion:
+						target === 'finalized'
+							? sql`${taxMemberSummaryVersions.finalizedVersion} + 1`
+							: taxMemberSummaryVersions.finalizedVersion,
+					projectionUpdatedAt:
+						target === 'projection' ? now : taxMemberSummaryVersions.projectionUpdatedAt,
+					finalizedUpdatedAt:
+						target === 'finalized' ? now : taxMemberSummaryVersions.finalizedUpdatedAt,
+					updatedAt: now,
+				},
+			})
+	}
+
+	private async getCorporationMemberIdSet(corporationId: string): Promise<Set<string>> {
+		try {
+			const stub = getStub<EveCorporationData>(this.eveCorporationDataNamespace, corporationId)
+			const members = await stub.getMembers(corporationId)
+			return new Set(members.map((member) => member.characterId))
+		} catch (_error) {
+			return new Set<string>()
+		}
+	}
+
+	private toUtcDay(date: Date): Date {
+		return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
+	}
+
+	private startOfUtcMonth(date: Date): Date {
+		return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1))
+	}
+
+	private supportsMemberSummaryProjectionInfra(): boolean {
+		return Boolean(
+			this.db.query &&
+				(this.db.query as Record<string, unknown>).taxMemberSummaryVersions &&
+				(this.db.query as Record<string, unknown>).taxMemberContributionProjectionRollups &&
+				(this.db.query as Record<string, unknown>).taxMemberContributionFinalizedRollups &&
+				typeof this.db.insert === 'function'
+		)
+	}
+
+	private toMemberRollupKey(input: {
+		rollupDate: Date
+		characterId: string
+		refType: string
+	}): string {
+		return `${input.rollupDate.toISOString().slice(0, 10)}:${input.characterId}:${input.refType}`
+	}
+
+	private async upsertAndReconcileProjectionRollups(
+		tx: any,
+		corporationId: string,
+		periodStart: Date,
+		periodEnd: Date,
+		values: Array<typeof taxMemberContributionProjectionRollups.$inferInsert>
+	): Promise<void> {
+		if (values.length > 0) {
+			await tx
+				.insert(taxMemberContributionProjectionRollups)
+				.values(values)
+				.onConflictDoUpdate({
+					target: [
+						taxMemberContributionProjectionRollups.corporationId,
+						taxMemberContributionProjectionRollups.periodStart,
+						taxMemberContributionProjectionRollups.periodEnd,
+						taxMemberContributionProjectionRollups.rollupDate,
+						taxMemberContributionProjectionRollups.characterId,
+						taxMemberContributionProjectionRollups.refType,
+					],
+					set: {
+						contributionIncome: sql`excluded.contribution_income`,
+						taxableContributionIncome: sql`excluded.taxable_contribution_income`,
+						assessmentCount: sql`excluded.assessment_count`,
+						sourceRowCount: sql`excluded.source_row_count`,
+						lastAssessmentAt: sql`excluded.last_assessment_at`,
+						lastLedgerEntryDate: sql`excluded.last_ledger_entry_date`,
+						updatedAt: sql`excluded.updated_at`,
+					},
+				})
+		}
+
+		const existingRows = await tx.query.taxMemberContributionProjectionRollups.findMany({
+			where: and(
+				eq(taxMemberContributionProjectionRollups.corporationId, corporationId),
+				eq(taxMemberContributionProjectionRollups.periodStart, periodStart),
+				eq(taxMemberContributionProjectionRollups.periodEnd, periodEnd)
+			),
+			columns: {
+				id: true,
+				rollupDate: true,
+				characterId: true,
+				refType: true,
+			},
+		})
+		const desiredKeys = new Set(
+			values.map((row) =>
+				this.toMemberRollupKey({
+					rollupDate: row.rollupDate,
+					characterId: row.characterId,
+					refType: row.refType,
+				})
+			)
+		)
+		const staleIds = existingRows
+			.filter(
+				(row: { id: string; rollupDate: Date; characterId: string; refType: string }) =>
+					!desiredKeys.has(
+						this.toMemberRollupKey({
+							rollupDate: row.rollupDate,
+							characterId: row.characterId,
+							refType: row.refType,
+						})
+					)
+			)
+			.map((row: { id: string }) => row.id)
+		if (staleIds.length > 0) {
+			await tx
+				.delete(taxMemberContributionProjectionRollups)
+				.where(inArray(taxMemberContributionProjectionRollups.id, staleIds))
+		}
+	}
+
+	private async upsertAndReconcileFinalizedRollups(
+		tx: any,
+		corporationId: string,
+		periodStart: Date,
+		periodEnd: Date,
+		values: Array<typeof taxMemberContributionFinalizedRollups.$inferInsert>
+	): Promise<void> {
+		if (values.length > 0) {
+			await tx
+				.insert(taxMemberContributionFinalizedRollups)
+				.values(values)
+				.onConflictDoUpdate({
+					target: [
+						taxMemberContributionFinalizedRollups.corporationId,
+						taxMemberContributionFinalizedRollups.periodStart,
+						taxMemberContributionFinalizedRollups.periodEnd,
+						taxMemberContributionFinalizedRollups.rollupDate,
+						taxMemberContributionFinalizedRollups.characterId,
+						taxMemberContributionFinalizedRollups.refType,
+					],
+					set: {
+						contributionIncome: sql`excluded.contribution_income`,
+						taxableContributionIncome: sql`excluded.taxable_contribution_income`,
+						assessmentCount: sql`excluded.assessment_count`,
+						sourceRowCount: sql`excluded.source_row_count`,
+						finalizedAssessmentId: sql`excluded.finalized_assessment_id`,
+						lastAssessmentAt: sql`excluded.last_assessment_at`,
+						lastLedgerEntryDate: sql`excluded.last_ledger_entry_date`,
+						updatedAt: sql`excluded.updated_at`,
+					},
+				})
+		}
+
+		const existingRows = await tx.query.taxMemberContributionFinalizedRollups.findMany({
+			where: and(
+				eq(taxMemberContributionFinalizedRollups.corporationId, corporationId),
+				eq(taxMemberContributionFinalizedRollups.periodStart, periodStart),
+				eq(taxMemberContributionFinalizedRollups.periodEnd, periodEnd)
+			),
+			columns: {
+				id: true,
+				rollupDate: true,
+				characterId: true,
+				refType: true,
+			},
+		})
+		const desiredKeys = new Set(
+			values.map((row) =>
+				this.toMemberRollupKey({
+					rollupDate: row.rollupDate,
+					characterId: row.characterId,
+					refType: row.refType,
+				})
+			)
+		)
+		const staleIds = existingRows
+			.filter(
+				(row: { id: string; rollupDate: Date; characterId: string; refType: string }) =>
+					!desiredKeys.has(
+						this.toMemberRollupKey({
+							rollupDate: row.rollupDate,
+							characterId: row.characterId,
+							refType: row.refType,
+						})
+					)
+			)
+			.map((row: { id: string }) => row.id)
+		if (staleIds.length > 0) {
+			await tx
+				.delete(taxMemberContributionFinalizedRollups)
+				.where(inArray(taxMemberContributionFinalizedRollups.id, staleIds))
+		}
 	}
 
 	async listAssessmentLines(filters: ListTaxAssessmentLinesFilters): Promise<TaxAssessmentLine[]> {

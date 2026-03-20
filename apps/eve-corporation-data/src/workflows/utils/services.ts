@@ -7,6 +7,32 @@ import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Env } from '../../context'
 
+type CorporationTax = {
+	triggerProjectionRefreshFromWalletSync(
+		actorUserId: string,
+		input: {
+			corporationId: string
+			upstreamRunId: string
+			triggeredAt: Date
+			walletJournal?: {
+				maxId: string | null
+				maxDate: Date | null
+				fetchedCount: number
+			} | null
+			walletTransactions?: {
+				maxId: string | null
+				maxDate: Date | null
+				fetchedCount: number
+			} | null
+			includeCharacterWallets?: boolean
+		}
+	): Promise<{
+		corporationId: string
+		triggered: boolean
+		reason: 'no_sources' | 'up_to_date' | 'ingested'
+	}>
+}
+
 /**
  * Create a token store stub (shared across steps)
  */
@@ -37,3 +63,9 @@ export function getGlobalCorporationDataStub(env: Env): EveCorporationData {
 	return getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, 'default')
 }
 
+/**
+ * Get the global corporation-tax Durable Object stub.
+ */
+export function getCorporationTaxStub(env: Env): CorporationTax {
+	return getStub<CorporationTax>(env.CORPORATION_TAX, 'default')
+}

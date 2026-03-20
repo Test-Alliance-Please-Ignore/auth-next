@@ -79,7 +79,10 @@ import type {
 	TaxSyncCheckpoint,
 	TaxTopIncomeSourceRow,
 	TaxTotalTaxesByCorporationRow,
+	TaxWalletSourceWatermark,
 	TriggerTaxAlertInput,
+	TriggerTaxProjectionRefreshInput,
+	TriggerTaxProjectionRefreshResult,
 	UpsertTaxCorporationSettingsInput,
 	UpsertTaxNotificationDestinationInput,
 } from './types'
@@ -143,6 +146,14 @@ export interface CorporationTax {
 	 * Compute or recompute corporation tax assessment for a period.
 	 */
 	runAssessmentForPeriod(
+		actorUserId: string,
+		input: RunTaxAssessmentForPeriodInput
+	): Promise<RunTaxAssessmentForPeriodResult>
+
+	/**
+	 * Explicit closed-period finalized rollup rebuild/backfill command.
+	 */
+	rebuildFinalizedRollupsForPeriod(
 		actorUserId: string,
 		input: RunTaxAssessmentForPeriodInput
 	): Promise<RunTaxAssessmentForPeriodResult>
@@ -217,6 +228,14 @@ export interface CorporationTax {
 		corporationId: string,
 		input?: IngestTaxLedgerWindowInput
 	): Promise<TaxLedgerIngestionResult>
+
+	/**
+	 * Trigger an incremental projection refresh from upstream wallet sync watermarks.
+	 */
+	triggerProjectionRefreshFromWalletSync(
+		actorUserId: string,
+		input: TriggerTaxProjectionRefreshInput
+	): Promise<TriggerTaxProjectionRefreshResult>
 
 	/**
 	 * List tax ledger entries for a corporation.
@@ -455,6 +474,7 @@ export type {
 	TaxSummaryReport,
 	TaxTopIncomeSourceRow,
 	TaxTotalTaxesByCorporationRow,
+	TaxWalletSourceWatermark,
 	TaxEssPayoutRow,
 	TaxMissingEsiKeyRow,
 	TaxMemberSummary,
@@ -463,6 +483,8 @@ export type {
 	TaxExcludedCorporationRow,
 	TaxReportWindowFilters,
 	TaxMemberSummaryTopRefType,
+	TriggerTaxProjectionRefreshInput,
+	TriggerTaxProjectionRefreshResult,
 	TriggerTaxAlertInput,
 	UpsertTaxNotificationDestinationInput,
 	UpsertTaxCorporationSettingsInput,

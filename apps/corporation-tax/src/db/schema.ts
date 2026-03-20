@@ -430,6 +430,128 @@ export const taxDailyRollups = pgTable(
 	]
 )
 
+/**
+ * Incremental projection rollups for member contribution summaries.
+ * Mutable during open/inter-period windows and refreshed after ingest updates.
+ */
+export const taxMemberContributionProjectionRollups = pgTable(
+	'tax_member_contribution_projection_rollups',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		corporationId: text('corporation_id').notNull(),
+		periodStart: timestamp('period_start', { withTimezone: true }).notNull(),
+		periodEnd: timestamp('period_end', { withTimezone: true }).notNull(),
+		rollupDate: date('rollup_date', { mode: 'date' }).notNull(),
+		characterId: text('character_id').notNull(),
+		refType: text('ref_type').notNull(),
+		contributionIncome: text('contribution_income').notNull().default('0'),
+		taxableContributionIncome: text('taxable_contribution_income').notNull().default('0'),
+		assessmentCount: integer('assessment_count').notNull().default(0),
+		sourceRowCount: integer('source_row_count').notNull().default(0),
+		lastAssessmentAt: timestamp('last_assessment_at', { withTimezone: true }),
+		lastLedgerEntryDate: timestamp('last_ledger_entry_date', { withTimezone: true }),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		unique('tax_member_proj_rollups_unique').on(
+			table.corporationId,
+			table.periodStart,
+			table.periodEnd,
+			table.rollupDate,
+			table.characterId,
+			table.refType
+		),
+		index('tax_member_proj_rollups_corp_period_idx').on(
+			table.corporationId,
+			table.periodStart,
+			table.periodEnd
+		),
+		index('tax_member_proj_rollups_corp_char_period_idx').on(
+			table.corporationId,
+			table.characterId,
+			table.periodStart,
+			table.periodEnd
+		),
+		index('tax_member_proj_rollups_corp_ref_rollup_date_idx').on(
+			table.corporationId,
+			table.refType,
+			table.rollupDate
+		),
+	]
+)
+
+/**
+ * Immutable finalized rollups for closed periods derived from formal assessments.
+ */
+export const taxMemberContributionFinalizedRollups = pgTable(
+	'tax_member_contribution_finalized_rollups',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		corporationId: text('corporation_id').notNull(),
+		periodStart: timestamp('period_start', { withTimezone: true }).notNull(),
+		periodEnd: timestamp('period_end', { withTimezone: true }).notNull(),
+		rollupDate: date('rollup_date', { mode: 'date' }).notNull(),
+		characterId: text('character_id').notNull(),
+		refType: text('ref_type').notNull(),
+		contributionIncome: text('contribution_income').notNull().default('0'),
+		taxableContributionIncome: text('taxable_contribution_income').notNull().default('0'),
+		assessmentCount: integer('assessment_count').notNull().default(0),
+		sourceRowCount: integer('source_row_count').notNull().default(0),
+		finalizedAssessmentId: uuid('finalized_assessment_id').references(() => taxAssessments.id, {
+			onDelete: 'set null',
+		}),
+		lastAssessmentAt: timestamp('last_assessment_at', { withTimezone: true }),
+		lastLedgerEntryDate: timestamp('last_ledger_entry_date', { withTimezone: true }),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		unique('tax_member_final_rollups_unique').on(
+			table.corporationId,
+			table.periodStart,
+			table.periodEnd,
+			table.rollupDate,
+			table.characterId,
+			table.refType
+		),
+		index('tax_member_final_rollups_corp_period_idx').on(
+			table.corporationId,
+			table.periodStart,
+			table.periodEnd
+		),
+		index('tax_member_final_rollups_corp_char_period_idx').on(
+			table.corporationId,
+			table.characterId,
+			table.periodStart,
+			table.periodEnd
+		),
+		index('tax_member_final_rollups_corp_ref_rollup_date_idx').on(
+			table.corporationId,
+			table.refType,
+			table.rollupDate
+		),
+		index('tax_member_final_rollups_assessment_id_idx').on(table.finalizedAssessmentId),
+	]
+)
+
+/**
+ * Watermarks used to validate cache freshness for member summary reads.
+ */
+export const taxMemberSummaryVersions = pgTable(
+	'tax_member_summary_versions',
+	{
+		corporationId: text('corporation_id').primaryKey(),
+		projectionVersion: integer('projection_version').notNull().default(0),
+		finalizedVersion: integer('finalized_version').notNull().default(0),
+		projectionUpdatedAt: timestamp('projection_updated_at', { withTimezone: true }),
+		finalizedUpdatedAt: timestamp('finalized_updated_at', { withTimezone: true }),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [index('tax_member_summary_versions_updated_at_idx').on(table.updatedAt)]
+)
+
 export const taxRuleSets = pgTable(
 	'tax_rule_sets',
 	{
@@ -563,6 +685,9 @@ export const schema = {
 	taxLedgerEntries,
 	taxSyncCheckpoints,
 	taxDailyRollups,
+	taxMemberContributionProjectionRollups,
+	taxMemberContributionFinalizedRollups,
+	taxMemberSummaryVersions,
 	taxRuleSets,
 	taxRuleConditions,
 	taxRuleActions,

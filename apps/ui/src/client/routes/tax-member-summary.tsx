@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 
 import { TaxCorporationScopeSelector } from '@/components/tax-corporation-scope-selector'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { DateRangeInput } from '@/components/ui/date-range-input'
@@ -169,6 +170,17 @@ export default function TaxMemberSummaryPage() {
 		limit: 200,
 		enabled: canReadWithUrn,
 	})
+	const unresolvedCorporationIds = useMemo(() => {
+		const accessIdSet = new Set(
+			(corporationAccess?.corporations ?? []).map((corp) => corp.corporationId)
+		)
+		return corporationSettings
+			.map((setting) => setting.corporationId)
+			.filter((corporationId) => !accessIdSet.has(corporationId))
+	}, [corporationAccess?.corporations, corporationSettings])
+	const { data: resolvedCorporationNames = {} } = useEntityNames(unresolvedCorporationIds, {
+		enabled: unresolvedCorporationIds.length > 0,
+	})
 
 	const corporationOptions = useMemo(() => {
 		const map = new Map<string, string>()
@@ -177,11 +189,14 @@ export default function TaxMemberSummaryPage() {
 		}
 		for (const setting of corporationSettings) {
 			if (!map.has(setting.corporationId)) {
-				map.set(setting.corporationId, setting.corporationId)
+				map.set(
+					setting.corporationId,
+					resolvedCorporationNames[setting.corporationId] ?? setting.corporationId
+				)
 			}
 		}
 		return Array.from(map.entries()).map(([corporationId, name]) => ({ corporationId, name }))
-	}, [corporationAccess?.corporations, corporationSettings])
+	}, [corporationAccess?.corporations, corporationSettings, resolvedCorporationNames])
 
 	const [selectedCorporationId, setSelectedCorporationId] = useState<string | undefined>(undefined)
 	const [characterQuery, setCharacterQuery] = useState('')
@@ -213,6 +228,8 @@ export default function TaxMemberSummaryPage() {
 	const {
 		data: summaries = [],
 		isLoading,
+		isFetching,
+		refetch: refetchMemberSummary,
 		error,
 	} = useTaxMemberSummary(effectiveCorporationId, {
 		characterQuery: canSearchCharacter ? characterQuery.trim() || undefined : undefined,
@@ -221,12 +238,18 @@ export default function TaxMemberSummaryPage() {
 		enabled: !!effectiveCorporationId,
 	})
 
-	const { data: summaryReport } = useTaxSummaryReport({
+	const {
+		data: summaryReport,
+		isFetching: isSummaryReportFetching,
+		refetch: refetchSummaryReport,
+	} = useTaxSummaryReport({
 		corporationId: effectiveCorporationId,
 		fromDate: fromDateIso,
 		toDate: toDateIso,
 		enabled: Boolean(effectiveCorporationId),
 	})
+
+	const isRefreshing = isFetching || isSummaryReportFetching
 
 	const totals = summaries.reduce(
 		(acc, row) => {
@@ -285,7 +308,7 @@ export default function TaxMemberSummaryPage() {
 							Filter by period and optionally search members by character name prefix or exact ID.
 						</CardDescription>
 					</CardHeader>
-					<CardContent className="grid gap-3 md:grid-cols-2">
+					<CardContent className="grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
 						<div className="space-y-2">
 							<div className="text-sm font-medium">Date Range</div>
 							<DateRangeInput
@@ -305,6 +328,19 @@ export default function TaxMemberSummaryPage() {
 								placeholder="Character name or ID"
 								disabled={!canSearchCharacter}
 							/>
+						</div>
+						<div className="md:justify-self-end">
+							<Button
+								type="button"
+								variant="outline"
+								onClick={() => {
+									void refetchMemberSummary()
+									void refetchSummaryReport()
+								}}
+								disabled={isRefreshing}
+							>
+								{isRefreshing ? 'Refreshing…' : 'Refresh'}
+							</Button>
 						</div>
 					</CardContent>
 				</Card>

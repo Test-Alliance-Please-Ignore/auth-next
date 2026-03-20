@@ -1,9 +1,11 @@
 import { DurableObject } from 'cloudflare:workers'
 
 import { and, eq, inArray } from '@repo/db-utils'
+import { logger } from '@repo/hono-helpers'
 
 import { createDb } from './db'
 import { taxAssessments, taxCorporationSettings, taxLedgerEntries } from './db/schema'
+import { planProjectionRefreshFromWalletSync } from './services/projection-refresh-plan'
 import { TaxAlertService } from './services/tax-alert.service'
 import { TaxAssessmentService } from './services/tax-assessment.service'
 import { TaxAuditService } from './services/tax-audit.service'
@@ -71,6 +73,8 @@ import type {
 	TaxTopIncomeSourceRow,
 	TaxTotalTaxesByCorporationRow,
 	TriggerTaxAlertInput,
+	TriggerTaxProjectionRefreshInput,
+	TriggerTaxProjectionRefreshResult,
 	UpsertTaxCorporationSettingsInput,
 	UpsertTaxNotificationDestinationInput,
 } from '@repo/corporation-tax'
@@ -80,6 +84,7 @@ import type { CorporationTaxDb } from './db'
 const LEDGER_RETENTION_DAYS = 90
 const DEFAULT_ESS_ALERT_THRESHOLD_ISK = 1_000_000_000
 const SCHEDULED_CORPORATION_CONCURRENCY = 5
+const TRIGGERED_INGEST_OVERLAP_WINDOW_MS = 48 * 60 * 60 * 1000
 
 export class CorporationTaxDO extends DurableObject<Env, {}> implements CorporationTax {
 	private db: CorporationTaxDb
@@ -217,7 +222,73 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 
 		await this.triggerEssQualityAlerts(actorUserId, corporationId, input, result)
 
+		// Keep open-period member projections warm after successful ingest.
+		// This is best-effort and must not fail ingestion.
+		if (result.upsertedCount > 0) {
+			const currentMonthWindow = this.getCurrentMonthWindow(new Date())
+			try {
+				await this.runAssessmentForPeriod(actorUserId, {
+					corporationId,
+					periodStart: currentMonthWindow.periodStart,
+					periodEnd: currentMonthWindow.periodEnd,
+					includeCharacterWallets: true,
+				})
+			} catch (_error) {
+				// Best-effort follow-up only.
+			}
+		}
+
 		return result
+	}
+
+	async triggerProjectionRefreshFromWalletSync(
+		actorUserId: string,
+		input: TriggerTaxProjectionRefreshInput
+	): Promise<TriggerTaxProjectionRefreshResult> {
+		const startedAtMs = Date.now()
+		const includeJournal = Boolean(input.walletJournal)
+		const includeTransactions = Boolean(input.walletTransactions)
+		logger.info('[CorporationTaxDO] Projection refresh trigger received', {
+			corporationId: input.corporationId,
+			upstreamRunId: input.upstreamRunId,
+			includeJournal,
+			includeTransactions,
+		})
+		const health = await this.ledgerService.getIngestionHealth(input.corporationId)
+		const plan = planProjectionRefreshFromWalletSync(
+			input,
+			health,
+			TRIGGERED_INGEST_OVERLAP_WINDOW_MS
+		)
+		if (!plan.shouldTrigger) {
+			return {
+				corporationId: input.corporationId,
+				triggered: false,
+				reason: plan.reason,
+			}
+		}
+
+		const ingestionResult = await this.ingestCorporationLedgerWindow(
+			actorUserId,
+			input.corporationId,
+			plan.ingestInput
+		)
+
+		logger.info('[CorporationTaxDO] Projection refresh trigger completed', {
+			corporationId: input.corporationId,
+			upstreamRunId: input.upstreamRunId,
+			fromDate: plan.ingestInput.fromDate?.toISOString() ?? null,
+			upsertedCount: ingestionResult.upsertedCount,
+			checkpointsUpdated: ingestionResult.checkpointsUpdated,
+			durationMs: Date.now() - startedAtMs,
+		})
+
+		return {
+			corporationId: input.corporationId,
+			triggered: true,
+			reason: 'ingested',
+			ingestionResult,
+		}
 	}
 
 	async listLedgerEntries(
@@ -300,6 +371,30 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 				},
 			})
 		}
+
+		return result
+	}
+
+	async rebuildFinalizedRollupsForPeriod(
+		actorUserId: string,
+		input: RunTaxAssessmentForPeriodInput
+	): Promise<RunTaxAssessmentForPeriodResult> {
+		const result = await this.assessmentService.rebuildFinalizedRollupsForPeriod(input)
+
+		await this.auditService.logAction({
+			corporationId: input.corporationId,
+			actorUserId,
+			action: 'tax.assessment.finalized_rollups.rebuild',
+			before: null,
+			after: {
+				assessmentId: result.assessment.id,
+				periodStart: input.periodStart.toISOString(),
+				periodEnd: input.periodEnd.toISOString(),
+				lineCount: result.lineCount,
+				discrepancyCount: result.discrepancyCount,
+				status: result.assessment.status,
+			},
+		})
 
 		return result
 	}
@@ -859,6 +954,21 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 				59,
 				999
 			)
+		)
+
+		return {
+			periodStart,
+			periodEnd,
+		}
+	}
+
+	private getCurrentMonthWindow(asOf: Date): {
+		periodStart: Date
+		periodEnd: Date
+	} {
+		const periodStart = new Date(Date.UTC(asOf.getUTCFullYear(), asOf.getUTCMonth(), 1, 0, 0, 0, 0))
+		const periodEnd = new Date(
+			Date.UTC(asOf.getUTCFullYear(), asOf.getUTCMonth() + 1, 0, 23, 59, 59, 999)
 		)
 
 		return {

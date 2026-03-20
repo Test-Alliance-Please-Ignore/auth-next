@@ -381,4 +381,356 @@ describe('TaxReportService inclusion scoping', () => {
 			}),
 		])
 	})
+
+	it('merges finalized + projection rollups across period boundary without closed-period projection overlap', async () => {
+		const rollupDb: any = {
+			query: {
+				taxCorporationSettings: {
+					findFirst: vi.fn().mockResolvedValue({
+						corporationId: '3001',
+						included: true,
+					}),
+					findMany: vi.fn().mockResolvedValue([]),
+				},
+				taxMemberSummaryVersions: {
+					findFirst: vi.fn().mockResolvedValue({
+						corporationId: '3001',
+						projectionVersion: 2,
+						finalizedVersion: 3,
+					}),
+				},
+				taxMemberContributionFinalizedRollups: {
+					findFirst: vi.fn().mockResolvedValue({ id: 'f-hit' }),
+					findMany: vi.fn().mockResolvedValue([
+						{
+							corporationId: '3001',
+							periodStart: new Date('2026-02-01T00:00:00.000Z'),
+							periodEnd: new Date('2026-02-28T23:59:59.999Z'),
+							rollupDate: new Date('2026-02-20T00:00:00.000Z'),
+							characterId: '9001',
+							refType: 'bounty_prizes',
+							contributionIncome: '100.00',
+							taxableContributionIncome: '70.00',
+							assessmentCount: 1,
+							sourceRowCount: 1,
+							lastAssessmentAt: new Date('2026-02-28T23:59:59.999Z'),
+						},
+					]),
+				},
+				taxMemberContributionProjectionRollups: {
+					findFirst: vi.fn().mockResolvedValue({ id: 'p-hit' }),
+					findMany: vi.fn().mockResolvedValue([
+						{
+							corporationId: '3001',
+							periodStart: new Date('2026-02-01T00:00:00.000Z'),
+							periodEnd: new Date('2026-02-28T23:59:59.999Z'),
+							rollupDate: new Date('2026-02-20T00:00:00.000Z'),
+							characterId: '9001',
+							refType: 'bounty_prizes',
+							contributionIncome: '999.00',
+							taxableContributionIncome: '999.00',
+							assessmentCount: 1,
+							sourceRowCount: 1,
+							lastAssessmentAt: new Date('2026-02-28T23:59:59.999Z'),
+						},
+						{
+							corporationId: '3001',
+							periodStart: new Date('2026-03-01T00:00:00.000Z'),
+							periodEnd: new Date('2026-03-31T23:59:59.999Z'),
+							rollupDate: new Date('2026-03-10T00:00:00.000Z'),
+							characterId: '9001',
+							refType: 'bounty_prizes',
+							contributionIncome: '50.00',
+							taxableContributionIncome: '30.00',
+							assessmentCount: 1,
+							sourceRowCount: 1,
+							lastAssessmentAt: new Date('2026-03-31T23:59:59.999Z'),
+						},
+					]),
+				},
+			},
+		}
+
+		const settingsService = {
+			getCorporationMemberIds: vi.fn().mockResolvedValue(['9001']),
+		}
+		const service = new TaxReportService(rollupDb, settingsService as any)
+
+		const rows = await service.getMemberSummaryReport({
+			corporationId: '3001',
+			fromDate: new Date('2026-02-01T00:00:00.000Z'),
+			toDate: new Date('2026-03-31T23:59:59.999Z'),
+		})
+
+		expect(rows).toEqual([
+			expect.objectContaining({
+				characterId: '9001',
+				contributionIncome: '150.00',
+				taxableContributionIncome: '100.00',
+			}),
+		])
+	})
+
+	it('reuses corp-window cache across character filters and applies filtering post-cache', async () => {
+		const finalizedFindMany = vi.fn().mockResolvedValue([])
+		const projectionFindMany = vi.fn().mockResolvedValue([
+			{
+				corporationId: '3001',
+				periodStart: new Date('2026-03-01T00:00:00.000Z'),
+				periodEnd: new Date('2026-03-31T23:59:59.999Z'),
+				rollupDate: new Date('2026-03-10T00:00:00.000Z'),
+				characterId: '9001',
+				refType: 'bounty_prizes',
+				contributionIncome: '100.00',
+				taxableContributionIncome: '80.00',
+				assessmentCount: 1,
+				sourceRowCount: 1,
+				lastAssessmentAt: new Date('2026-03-31T23:59:59.999Z'),
+			},
+			{
+				corporationId: '3001',
+				periodStart: new Date('2026-03-01T00:00:00.000Z'),
+				periodEnd: new Date('2026-03-31T23:59:59.999Z'),
+				rollupDate: new Date('2026-03-11T00:00:00.000Z'),
+				characterId: '9002',
+				refType: 'market_transaction',
+				contributionIncome: '70.00',
+				taxableContributionIncome: '20.00',
+				assessmentCount: 1,
+				sourceRowCount: 1,
+				lastAssessmentAt: new Date('2026-03-31T23:59:59.999Z'),
+			},
+		])
+		const rollupDb: any = {
+			query: {
+				taxCorporationSettings: {
+					findFirst: vi.fn().mockResolvedValue({
+						corporationId: '3001',
+						included: true,
+					}),
+					findMany: vi.fn().mockResolvedValue([]),
+				},
+				taxMemberSummaryVersions: {
+					findFirst: vi.fn().mockResolvedValue({
+						corporationId: '3001',
+						projectionVersion: 1,
+						finalizedVersion: 1,
+					}),
+				},
+				taxMemberContributionFinalizedRollups: {
+					findFirst: vi.fn().mockResolvedValue(null),
+					findMany: finalizedFindMany,
+				},
+				taxMemberContributionProjectionRollups: {
+					findFirst: vi.fn().mockResolvedValue(null),
+					findMany: projectionFindMany,
+				},
+			},
+		}
+
+		const settingsService = {
+			getCorporationMemberIds: vi.fn().mockResolvedValue(['9001', '9002']),
+		}
+		const service = new TaxReportService(rollupDb, settingsService as any)
+
+		const fullRows = await service.getMemberSummaryReport({
+			corporationId: '3001',
+			fromDate: new Date('2026-03-01T00:00:00.000Z'),
+			toDate: new Date('2026-03-31T23:59:59.999Z'),
+		})
+		const filteredRows = await service.getMemberSummaryReport({
+			corporationId: '3001',
+			fromDate: new Date('2026-03-01T00:00:00.000Z'),
+			toDate: new Date('2026-03-31T23:59:59.999Z'),
+			characterIds: ['9002'],
+		})
+
+		expect(fullRows).toHaveLength(2)
+		expect(filteredRows).toEqual([
+			expect.objectContaining({
+				characterId: '9002',
+				contributionIncome: '70.00',
+				taxableContributionIncome: '20.00',
+			}),
+		])
+		expect(finalizedFindMany).toHaveBeenCalledTimes(1)
+		expect(projectionFindMany).toHaveBeenCalledTimes(1)
+	})
+
+	it('invalidates member-summary cache when versions bump and window has rollup updates', async () => {
+		const versionFindFirst = vi
+			.fn()
+			.mockResolvedValueOnce({
+				corporationId: '3001',
+				projectionVersion: 1,
+				finalizedVersion: 1,
+			})
+			.mockResolvedValueOnce({
+				corporationId: '3001',
+				projectionVersion: 2,
+				finalizedVersion: 1,
+			})
+		const projectionUpdateFindFirst = vi.fn().mockResolvedValue({ id: 'projection-update' })
+		const projectionFindMany = vi
+			.fn()
+			.mockResolvedValueOnce([
+				{
+					corporationId: '3001',
+					periodStart: new Date('2026-03-01T00:00:00.000Z'),
+					periodEnd: new Date('2026-03-31T23:59:59.999Z'),
+					rollupDate: new Date('2026-03-10T00:00:00.000Z'),
+					characterId: '9001',
+					refType: 'bounty_prizes',
+					contributionIncome: '100.00',
+					taxableContributionIncome: '80.00',
+					assessmentCount: 1,
+					sourceRowCount: 1,
+					lastAssessmentAt: new Date('2026-03-31T23:59:59.999Z'),
+				},
+			])
+			.mockResolvedValueOnce([
+				{
+					corporationId: '3001',
+					periodStart: new Date('2026-03-01T00:00:00.000Z'),
+					periodEnd: new Date('2026-03-31T23:59:59.999Z'),
+					rollupDate: new Date('2026-03-11T00:00:00.000Z'),
+					characterId: '9001',
+					refType: 'bounty_prizes',
+					contributionIncome: '120.00',
+					taxableContributionIncome: '95.00',
+					assessmentCount: 1,
+					sourceRowCount: 1,
+					lastAssessmentAt: new Date('2026-03-31T23:59:59.999Z'),
+				},
+			])
+		const rollupDb: any = {
+			query: {
+				taxCorporationSettings: {
+					findFirst: vi.fn().mockResolvedValue({
+						corporationId: '3001',
+						included: true,
+					}),
+					findMany: vi.fn().mockResolvedValue([]),
+				},
+				taxMemberSummaryVersions: {
+					findFirst: versionFindFirst,
+				},
+				taxMemberContributionFinalizedRollups: {
+					findFirst: vi.fn().mockResolvedValue(null),
+					findMany: vi.fn().mockResolvedValue([]),
+				},
+				taxMemberContributionProjectionRollups: {
+					findFirst: projectionUpdateFindFirst,
+					findMany: projectionFindMany,
+				},
+			},
+		}
+
+		const settingsService = {
+			getCorporationMemberIds: vi.fn().mockResolvedValue(['9001']),
+		}
+		const service = new TaxReportService(rollupDb, settingsService as any)
+
+		const firstRows = await service.getMemberSummaryReport({
+			corporationId: '3001',
+			fromDate: new Date('2026-03-01T00:00:00.000Z'),
+			toDate: new Date('2026-03-31T23:59:59.999Z'),
+		})
+		const secondRows = await service.getMemberSummaryReport({
+			corporationId: '3001',
+			fromDate: new Date('2026-03-01T00:00:00.000Z'),
+			toDate: new Date('2026-03-31T23:59:59.999Z'),
+		})
+
+		expect(firstRows).toEqual([
+			expect.objectContaining({
+				characterId: '9001',
+				contributionIncome: '100.00',
+				taxableContributionIncome: '80.00',
+			}),
+		])
+		expect(secondRows).toEqual([
+			expect.objectContaining({
+				characterId: '9001',
+				contributionIncome: '120.00',
+				taxableContributionIncome: '95.00',
+			}),
+		])
+		expect(projectionFindMany).toHaveBeenCalledTimes(2)
+	})
+
+	it('retains member-summary cache when versions bump but requested window has no updates', async () => {
+		const versionFindFirst = vi
+			.fn()
+			.mockResolvedValueOnce({
+				corporationId: '3001',
+				projectionVersion: 1,
+				finalizedVersion: 1,
+			})
+			.mockResolvedValueOnce({
+				corporationId: '3001',
+				projectionVersion: 2,
+				finalizedVersion: 1,
+			})
+		const projectionUpdateFindFirst = vi
+			.fn()
+			.mockResolvedValueOnce(null)
+			.mockResolvedValueOnce(null)
+		const projectionFindMany = vi.fn().mockResolvedValue([
+			{
+				corporationId: '3001',
+				periodStart: new Date('2026-03-01T00:00:00.000Z'),
+				periodEnd: new Date('2026-03-31T23:59:59.999Z'),
+				rollupDate: new Date('2026-03-10T00:00:00.000Z'),
+				characterId: '9001',
+				refType: 'bounty_prizes',
+				contributionIncome: '100.00',
+				taxableContributionIncome: '80.00',
+				assessmentCount: 1,
+				sourceRowCount: 1,
+				lastAssessmentAt: new Date('2026-03-31T23:59:59.999Z'),
+			},
+		])
+		const rollupDb: any = {
+			query: {
+				taxCorporationSettings: {
+					findFirst: vi.fn().mockResolvedValue({
+						corporationId: '3001',
+						included: true,
+					}),
+					findMany: vi.fn().mockResolvedValue([]),
+				},
+				taxMemberSummaryVersions: {
+					findFirst: versionFindFirst,
+				},
+				taxMemberContributionFinalizedRollups: {
+					findFirst: vi.fn().mockResolvedValue(null),
+					findMany: vi.fn().mockResolvedValue([]),
+				},
+				taxMemberContributionProjectionRollups: {
+					findFirst: projectionUpdateFindFirst,
+					findMany: projectionFindMany,
+				},
+			},
+		}
+
+		const settingsService = {
+			getCorporationMemberIds: vi.fn().mockResolvedValue(['9001']),
+		}
+		const service = new TaxReportService(rollupDb, settingsService as any)
+
+		const firstRows = await service.getMemberSummaryReport({
+			corporationId: '3001',
+			fromDate: new Date('2026-03-01T00:00:00.000Z'),
+			toDate: new Date('2026-03-31T23:59:59.999Z'),
+		})
+		const secondRows = await service.getMemberSummaryReport({
+			corporationId: '3001',
+			fromDate: new Date('2026-03-01T00:00:00.000Z'),
+			toDate: new Date('2026-03-31T23:59:59.999Z'),
+		})
+
+		expect(firstRows).toEqual(secondRows)
+		expect(projectionFindMany).toHaveBeenCalledTimes(1)
+	})
 })
