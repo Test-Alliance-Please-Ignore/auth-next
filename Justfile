@@ -72,6 +72,7 @@ dev-local-init:
     exit 1
   fi
   bun run --cwd apps/core db:migrate
+  bun run --cwd apps/admin db:migrate
   echo "Local init complete. Run: just dev-local"
 
 # =============================== #

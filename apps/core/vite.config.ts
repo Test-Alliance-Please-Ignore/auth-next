@@ -1,18 +1,21 @@
+import { dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { cloudflare } from '@cloudflare/vite-plugin'
 import { defineConfig } from 'vite'
+
+import { findAuxiliaryWorkers } from '@repo/vite-config'
+
+const currentDir = dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig(({ command }) => ({
 	plugins: [
 		command === 'serve'
 			? cloudflare({
+					configPath: 'wrangler.jsonc',
 					inspectorPort: false,
-					auxiliaryWorkers: [
-						{ configPath: '../eve-token-store/wrangler.jsonc' },
-						{ configPath: '../groups/wrangler.jsonc' },
-						{ configPath: '../hr/wrangler.jsonc' },
-					],
+					auxiliaryWorkers: findAuxiliaryWorkers(currentDir),
 				})
-			: cloudflare(),
+			: cloudflare({ configPath: 'wrangler.jsonc' }),
 	],
 	server: {
 		host: '127.0.0.1',

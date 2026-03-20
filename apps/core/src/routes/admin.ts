@@ -65,7 +65,16 @@ app.get('/users', requireAuth(), requireAdmin(), async (c) => {
 
 		return c.json(result)
 	} catch (error) {
-		logger.error('Error searching users:', error)
+		logger.error('[AdminRoute.searchUsers] Failed', {
+			error: error instanceof Error ? error.message : String(error),
+			name: error instanceof Error ? error.name : undefined,
+			cause:
+				error instanceof Error && error.cause
+					? error.cause instanceof Error
+						? error.cause.message
+						: String(error.cause)
+					: undefined,
+		})
 		return c.json({ error: 'Failed to search users' }, 500)
 	}
 })
