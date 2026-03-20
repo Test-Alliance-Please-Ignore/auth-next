@@ -46,12 +46,12 @@ const severityFilterOptions: Array<{ label: string; value?: TaxAlertSeverity }> 
 	{ label: 'Info', value: 'info' },
 ]
 
-function severityBadgeVariant(severity: TaxAlertSeverity): 'destructive' | 'secondary' | 'outline' {
+function severityBadgeVariant(severity: TaxAlertSeverity): 'destructive' | 'warning' | 'outline' {
 	if (severity === 'critical') {
 		return 'destructive'
 	}
 	if (severity === 'warning') {
-		return 'secondary'
+		return 'warning'
 	}
 	return 'outline'
 }

@@ -300,7 +300,7 @@ export default function TaxLedgerPage() {
 								}}
 								filterMode="local"
 								mode="dropdown"
-								listClassName="max-h-72"
+								listMaxHeight={420}
 								placeholder={
 									refTypesFilter ? formatTaxRefTypeLabel(refTypesFilter) : 'All income types'
 								}

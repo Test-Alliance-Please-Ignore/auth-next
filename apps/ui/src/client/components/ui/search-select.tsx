@@ -13,7 +13,7 @@ import {
 	popoverListViewportClass,
 } from './popover-list'
 
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 
 export interface SearchSelectOption {
 	id: string
@@ -41,6 +41,8 @@ interface SearchSelectProps<TOption extends SearchSelectOption> {
 	contentClassName?: string
 	inputClassName?: string
 	listClassName?: string
+	listMinHeight?: CSSProperties['minHeight']
+	listMaxHeight?: CSSProperties['maxHeight']
 	minCharsText?: string
 	loadingText?: string
 	emptyText?: string
@@ -64,6 +66,8 @@ export function SearchSelect<TOption extends SearchSelectOption>({
 	contentClassName,
 	inputClassName,
 	listClassName,
+	listMinHeight,
+	listMaxHeight,
 	minCharsText = 'Type more characters to search',
 	loadingText = 'Searching...',
 	emptyText = 'No results found',
@@ -293,6 +297,10 @@ export function SearchSelect<TOption extends SearchSelectOption>({
 						<CommandList
 							ref={listRef}
 							className={cn('max-h-60', popoverListViewportClass, listClassName)}
+							style={{
+								minHeight: listMinHeight,
+								maxHeight: listMaxHeight,
+							}}
 							onScroll={() => updateScrollButtons()}
 						>
 							{filterMode === 'server' && !queryMeetsMinimum ? (

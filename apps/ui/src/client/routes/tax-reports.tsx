@@ -1158,7 +1158,7 @@ export default function TaxReportsPage() {
 								filterMode="local"
 								mode="dropdown"
 								minQueryLength={0}
-								listClassName="max-h-72"
+								listMaxHeight={420}
 								placeholder={
 									refTypeFilter ? formatTaxRefTypeLabel(refTypeFilter) : 'All income types'
 								}
