@@ -368,97 +368,123 @@ export class RoleService {
 		}
 
 		try {
-			return await this.ctx.db.transaction(async (tx) => {
-				const coreRoles = await tx.query.roles.findMany({
-					where: inArray(roles.name, [ROLE_CORE_CORP_MEMBER, ROLE_CORE_ALLIANCE_MEMBER]),
-				})
-				const roleByName = new Map(coreRoles.map((role) => [role.name, role as Role]))
-
-				if (!roleByName.has(ROLE_CORE_CORP_MEMBER) || !roleByName.has(ROLE_CORE_ALLIANCE_MEMBER)) {
-					throw new Error('Core membership roles are missing. Seed roles before reconciliation.')
-				}
-
-				const coreRoleIds = [
-					roleByName.get(ROLE_CORE_CORP_MEMBER)!.id,
-					roleByName.get(ROLE_CORE_ALLIANCE_MEMBER)!.id,
-				]
-
-				const desiredRows = Array.from(dedupedDesiredRoles.values()).map((role) => ({
-					roleId: roleByName.get(role.roleName)!.id,
-					attachedToType: RoleAttachmentType.USER,
-					attachedToId: request.userId,
-					resourceId: role.resourceId,
-					resourceType: role.resourceType,
-				}))
-
-				const existingCoreAttachments = await tx.query.roleAttachments.findMany({
-					where: and(
-						eq(roleAttachments.attachedToType, RoleAttachmentType.USER),
-						eq(roleAttachments.attachedToId, request.userId),
-						inArray(roleAttachments.roleId, coreRoleIds)
-					),
-					with: {
-						role: true,
-					},
-				})
-
-				const makeKey = (entry: {
-					roleId: string
-					resourceId?: string | null
-					resourceType?: string | null
-				}) => `${entry.roleId}|${entry.resourceId || ''}|${entry.resourceType || ''}`
-
-				const existingKeys = new Set(
-					existingCoreAttachments.map((attachment) => makeKey(attachment))
-				)
-				const rowsToInsert = desiredRows.filter((row) => !existingKeys.has(makeKey(row)))
-
-				let insertedCount = 0
-				if (rowsToInsert.length > 0) {
-					const inserted = await tx
-						.insert(roleAttachments)
-						.values(rowsToInsert)
-						.onConflictDoNothing()
-						.returning({ id: roleAttachments.id })
-					insertedCount = inserted.length
-				}
-
-				const desiredKeys = new Set(desiredRows.map((row) => makeKey(row)))
-				const attachmentIdsToDelete = existingCoreAttachments
-					.filter((attachment) => !desiredKeys.has(makeKey(attachment)))
-					.map((attachment) => attachment.id)
-
-				if (attachmentIdsToDelete.length > 0) {
-					await tx.delete(roleAttachments).where(inArray(roleAttachments.id, attachmentIdsToDelete))
-				}
-
-				const finalCoreAttachments = await tx.query.roleAttachments.findMany({
-					where: and(
-						eq(roleAttachments.attachedToType, RoleAttachmentType.USER),
-						eq(roleAttachments.attachedToId, request.userId),
-						inArray(roleAttachments.roleId, coreRoleIds)
-					),
-					with: {
-						role: true,
-					},
-				})
-
-				return {
-					roleAttachments: finalCoreAttachments.map((attachment) => ({
-						id: attachment.id,
-						role: attachment.role as Role,
-						attachedToType: attachment.attachedToType as RoleAttachmentType,
-						attachedToId: attachment.attachedToId,
-						resourceId: attachment.resourceId as string | undefined,
-						resourceType: attachment.resourceType as ResourceType | undefined,
-						createdAt: attachment.createdAt,
-						updatedAt: attachment.updatedAt,
-					})),
-					desiredCount: desiredRows.length,
-					attachedCount: insertedCount,
-					detachedCount: attachmentIdsToDelete.length,
-				}
+			const coreRoles = await this.ctx.db.query.roles.findMany({
+				where: inArray(roles.name, [ROLE_CORE_CORP_MEMBER, ROLE_CORE_ALLIANCE_MEMBER]),
 			})
+			const roleByName = new Map(coreRoles.map((role) => [role.name, role as Role]))
+
+			if (!roleByName.has(ROLE_CORE_CORP_MEMBER) || !roleByName.has(ROLE_CORE_ALLIANCE_MEMBER)) {
+				throw new Error('Core membership roles are missing. Seed roles before reconciliation.')
+			}
+
+			const coreRoleIds = [
+				roleByName.get(ROLE_CORE_CORP_MEMBER)!.id,
+				roleByName.get(ROLE_CORE_ALLIANCE_MEMBER)!.id,
+			]
+
+			const desiredRows = Array.from(dedupedDesiredRoles.values()).map((role) => ({
+				roleId: roleByName.get(role.roleName)!.id,
+				attachedToType: RoleAttachmentType.USER,
+				attachedToId: request.userId,
+				resourceId: role.resourceId,
+				resourceType: role.resourceType,
+			}))
+
+			const existingCoreAttachments = await this.ctx.db.query.roleAttachments.findMany({
+				where: and(
+					eq(roleAttachments.attachedToType, RoleAttachmentType.USER),
+					eq(roleAttachments.attachedToId, request.userId),
+					inArray(roleAttachments.roleId, coreRoleIds)
+				),
+				with: {
+					role: true,
+				},
+			})
+
+			const makeKey = (entry: {
+				roleId: string
+				resourceId?: string | null
+				resourceType?: string | null
+			}) => `${entry.roleId}|${entry.resourceId || ''}|${entry.resourceType || ''}`
+
+			const existingKeys = new Set(existingCoreAttachments.map((attachment) => makeKey(attachment)))
+			const rowsToInsert = desiredRows.filter((row) => !existingKeys.has(makeKey(row)))
+
+			const desiredKeys = new Set(desiredRows.map((row) => makeKey(row)))
+			const attachmentIdsToDelete = existingCoreAttachments
+				.filter((attachment) => !desiredKeys.has(makeKey(attachment)))
+				.map((attachment) => attachment.id)
+
+			let attachedCount = 0
+			let detachedCount = 0
+			let insertedAttachmentIds: string[] = []
+
+			if (rowsToInsert.length > 0) {
+				const insertedRows = await this.ctx.db
+					.insert(roleAttachments)
+					.values(rowsToInsert)
+					.onConflictDoNothing()
+					.returning({ id: roleAttachments.id })
+				insertedAttachmentIds = insertedRows.map((row) => row.id)
+				attachedCount = insertedAttachmentIds.length
+			}
+
+			try {
+				if (attachmentIdsToDelete.length > 0) {
+					const deleteResult = await this.ctx.db
+						.delete(roleAttachments)
+						.where(inArray(roleAttachments.id, attachmentIdsToDelete))
+					detachedCount = deleteResult.rowCount ?? 0
+				}
+			} catch (deleteError) {
+				if (insertedAttachmentIds.length > 0) {
+					try {
+						await this.ctx.db
+							.delete(roleAttachments)
+							.where(inArray(roleAttachments.id, insertedAttachmentIds))
+					} catch (rollbackError) {
+						console.error(
+							'[RoleService.replaceCoreMembershipRolesForUser] Failed to rollback inserted rows after delete failure',
+							{
+								userId: request.userId,
+								insertedAttachmentIds,
+								deleteError:
+									deleteError instanceof Error ? deleteError.message : String(deleteError),
+								rollbackError:
+									rollbackError instanceof Error ? rollbackError.message : String(rollbackError),
+							}
+						)
+					}
+				}
+				throw deleteError
+			}
+
+			const finalCoreAttachments = await this.ctx.db.query.roleAttachments.findMany({
+				where: and(
+					eq(roleAttachments.attachedToType, RoleAttachmentType.USER),
+					eq(roleAttachments.attachedToId, request.userId),
+					inArray(roleAttachments.roleId, coreRoleIds)
+				),
+				with: {
+					role: true,
+				},
+			})
+
+			return {
+				roleAttachments: finalCoreAttachments.map((attachment) => ({
+					id: attachment.id,
+					role: attachment.role as Role,
+					attachedToType: attachment.attachedToType as RoleAttachmentType,
+					attachedToId: attachment.attachedToId,
+					resourceId: attachment.resourceId as string | undefined,
+					resourceType: attachment.resourceType as ResourceType | undefined,
+					createdAt: attachment.createdAt,
+					updatedAt: attachment.updatedAt,
+				})),
+				desiredCount: desiredRows.length,
+				attachedCount,
+				detachedCount,
+			}
 		} catch (error) {
 			console.error(
 				'[RoleService.replaceCoreMembershipRolesForUser] Failed to reconcile core membership roles',
