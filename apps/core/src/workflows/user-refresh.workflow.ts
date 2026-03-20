@@ -1,6 +1,8 @@
 import { WorkflowEntrypoint } from 'cloudflare:workers'
 import { eq } from 'drizzle-orm'
 
+import { ROLE_CORE_ALLIANCE_MEMBER, ROLE_CORE_CORP_MEMBER } from '@repo/core'
+
 import { createDb } from '../db'
 import { userCharacters } from '../db/schema'
 import { checkUserBlacklisted, disableBlacklistedUser } from './steps/check-user-blacklisted'
@@ -37,6 +39,13 @@ interface CharacterRefreshOutcome {
 	status: CharacterRefreshStatus
 	authenticatedSuccess?: boolean
 	error?: string
+}
+
+type CoreAttachmentSummary = {
+	key: string
+	roleName: string
+	resourceType: string | undefined
+	resourceId: string | undefined
 }
 
 async function runWithConcurrencyLimit<T, R>(
@@ -82,6 +91,54 @@ function classifyCharacterRefreshError(error: unknown): CharacterRefreshStatus {
 		return 'transient_failed_after_retries'
 	}
 	return 'permanent_failed'
+}
+
+function toCoreAttachmentSummaries(
+	attachments: Awaited<ReturnType<typeof getUserRoleAttachments>>['roleAttachments']
+): CoreAttachmentSummary[] {
+	return attachments
+		.filter(
+			(attachment) =>
+				attachment.role.name === ROLE_CORE_CORP_MEMBER ||
+				attachment.role.name === ROLE_CORE_ALLIANCE_MEMBER
+		)
+		.map((attachment) => ({
+			key: `${attachment.role.name}|${attachment.resourceType || ''}|${attachment.resourceId || ''}`,
+			roleName: attachment.role.name,
+			resourceType: attachment.resourceType,
+			resourceId: attachment.resourceId,
+		}))
+}
+
+function summarizeCoreAttachmentDelta(
+	before: Awaited<ReturnType<typeof getUserRoleAttachments>>['roleAttachments'],
+	after: Awaited<ReturnType<typeof getUserRoleAttachments>>['roleAttachments']
+) {
+	const beforeCore = toCoreAttachmentSummaries(before)
+	const afterCore = toCoreAttachmentSummaries(after)
+
+	const beforeKeys = new Set(beforeCore.map((entry) => entry.key))
+	const afterKeys = new Set(afterCore.map((entry) => entry.key))
+
+	const added = afterCore.filter((entry) => !beforeKeys.has(entry.key))
+	const removed = beforeCore.filter((entry) => !afterKeys.has(entry.key))
+
+	return {
+		beforeCoreCount: beforeCore.length,
+		afterCoreCount: afterCore.length,
+		addedCoreAttachments: added.length,
+		removedCoreAttachments: removed.length,
+		addedCoreAttachmentTargets: added.map((entry) => ({
+			roleName: entry.roleName,
+			resourceType: entry.resourceType,
+			resourceId: entry.resourceId,
+		})),
+		removedCoreAttachmentTargets: removed.map((entry) => ({
+			roleName: entry.roleName,
+			resourceType: entry.resourceType,
+			resourceId: entry.resourceId,
+		})),
+	}
 }
 
 /**
@@ -131,6 +188,12 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams>
 		refreshMode: WorkflowParams['refreshMode'],
 		characterId: string
 	): Promise<CharacterRefreshOutcome> {
+		console.log('[Workflow] Character refresh started', {
+			userId,
+			workflowInstanceId,
+			characterId,
+		})
+
 		try {
 			const updateCharacterPublicInfoResult = await step.do(
 				`update-character-public-info-${characterId}`,
@@ -191,6 +254,12 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams>
 				status,
 				error: errorMessage,
 			}
+		} finally {
+			console.log('[Workflow] Character refresh finished', {
+				userId,
+				workflowInstanceId,
+				characterId,
+			})
 		}
 	}
 
@@ -198,114 +267,151 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams>
 		const { userId, refreshMode = 'scheduled' } = event.payload
 		const workflowInstanceId = event.instanceId
 
-		const logContext = { userId, workflowInstanceId }
+		const logContext = { userId, workflowInstanceId, refreshMode }
 		console.log('[Workflow] Starting user refresh workflow', logContext)
-
-		// Step 1: Check if user is blacklisted
-		const checkUserBlacklistedResult = await step.do('check-user-blacklisted', () => {
-			const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
-			return checkUserBlacklisted(ctx)
-		})
-
-		console.log('[Workflow] Checked user blacklisted', {
-			...logContext,
-			isBlacklisted: checkUserBlacklistedResult.isBlacklisted,
-		})
-
-		// Step 2: Disable user if blacklisted
-		if (checkUserBlacklistedResult.isBlacklisted) {
-			await step.do('disable-blacklisted-user', () => {
-				const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
-				return disableBlacklistedUser(ctx)
-			})
-
-			console.log('[Workflow] Disabled user', logContext)
-		}
-
-		// Step 3: Fetch user's characters
-		// CRITICAL: Database query MUST be in a step to cache results across hibernation
-		const characters = await step.do('fetch-user-characters', async () => {
-			const db = createDb(this.env.DATABASE_URL)
-			return db.query.userCharacters.findMany({
-				where: eq(userCharacters.userId, userId),
-			})
-		})
-
-		// Process characters in bounded parallel, isolating failures per character.
-		const characterOutcomes = await runWithConcurrencyLimit(
-			characters,
-			CHARACTER_REFRESH_CONCURRENCY,
-			(character) =>
-				this.refreshCharacterWithIsolation(
-					step,
-					userId,
-					workflowInstanceId,
-					refreshMode,
-					character.characterId
-				)
-		)
-
-		const outcomeSummary = {
-			success: 0,
-			deleted: 0,
-			transient_failed_after_retries: 0,
-			permanent_failed: 0,
-		}
-		for (const outcome of characterOutcomes) {
-			outcomeSummary[outcome.status]++
-		}
-		console.log('[Workflow] Character refresh outcomes', {
-			...logContext,
-			totalCharacters: characters.length,
-			...outcomeSummary,
-		})
-
-		// Step 4: Get user role attachments
-		let getUserRoleAttachmentsResult = {
-			roleAttachments: [] as Awaited<ReturnType<typeof getUserRoleAttachments>>['roleAttachments'],
-		}
 		try {
-			getUserRoleAttachmentsResult = await step.do(
-				'get-user-role-attachments',
-				ROLE_STEP_OPTIONS,
-				() => {
+			// Step 1: Check if user is blacklisted
+			const checkUserBlacklistedResult = await step.do('check-user-blacklisted', () => {
+				const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
+				return checkUserBlacklisted(ctx)
+			})
+
+			console.log('[Workflow] Checked user blacklisted', {
+				...logContext,
+				isBlacklisted: checkUserBlacklistedResult.isBlacklisted,
+			})
+
+			// Step 2: Disable user if blacklisted
+			if (checkUserBlacklistedResult.isBlacklisted) {
+				await step.do('disable-blacklisted-user', () => {
 					const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
-					return getUserRoleAttachments(ctx)
-				}
+					return disableBlacklistedUser(ctx)
+				})
+
+				console.log('[Workflow] Disabled user', logContext)
+			}
+
+			// Step 3: Fetch user's characters
+			// CRITICAL: Database query MUST be in a step to cache results across hibernation
+			const characters = await step.do('fetch-user-characters', async () => {
+				const db = createDb(this.env.DATABASE_URL)
+				return db.query.userCharacters.findMany({
+					where: eq(userCharacters.userId, userId),
+				})
+			})
+			console.log('[Workflow] Fetched user characters', {
+				...logContext,
+				characterCount: characters.length,
+				characterIds: characters.map((character) => character.characterId),
+			})
+
+			// Process characters in bounded parallel, isolating failures per character.
+			const characterOutcomes = await runWithConcurrencyLimit(
+				characters,
+				CHARACTER_REFRESH_CONCURRENCY,
+				(character) =>
+					this.refreshCharacterWithIsolation(
+						step,
+						userId,
+						workflowInstanceId,
+						refreshMode,
+						character.characterId
+					)
 			)
+
+			const outcomeSummary = {
+				success: 0,
+				deleted: 0,
+				transient_failed_after_retries: 0,
+				permanent_failed: 0,
+			}
+			for (const outcome of characterOutcomes) {
+				outcomeSummary[outcome.status]++
+			}
+			console.log('[Workflow] Character refresh outcomes', {
+				...logContext,
+				totalCharacters: characters.length,
+				...outcomeSummary,
+				failedCharacters: characterOutcomes
+					.filter((outcome) => outcome.status !== 'success' && outcome.status !== 'deleted')
+					.map((outcome) => ({
+						characterId: outcome.characterId,
+						status: outcome.status,
+						error: outcome.error,
+					})),
+			})
+
+			// Step 4: Get user role attachments
+			let getUserRoleAttachmentsResult = {
+				roleAttachments: [] as Awaited<
+					ReturnType<typeof getUserRoleAttachments>
+				>['roleAttachments'],
+			}
+			try {
+				getUserRoleAttachmentsResult = await step.do(
+					'get-user-role-attachments',
+					ROLE_STEP_OPTIONS,
+					() => {
+						const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
+						return getUserRoleAttachments(ctx)
+					}
+				)
+			} catch (error) {
+				console.warn(
+					'[Workflow] Failed to fetch user role attachments before reconcile; continuing',
+					{
+						...logContext,
+						error: error instanceof Error ? error.message : String(error),
+					}
+				)
+			}
+
+			console.log('[Workflow] Got user role attachments', {
+				...logContext,
+				roleAttachments: getUserRoleAttachmentsResult.roleAttachments.length,
+				coreRoleAttachments: toCoreAttachmentSummaries(getUserRoleAttachmentsResult.roleAttachments)
+					.length,
+			})
+
+			// Step 5: Attach user roles
+			const attachUserRolesResult = await step.do('attach-user-roles', ROLE_STEP_OPTIONS, () => {
+				const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
+				return attachUserRoles(ctx)
+			})
+
+			console.log('[Workflow] Attached user roles', {
+				...logContext,
+				corporationRoleAttachments: attachUserRolesResult.corporationRoleAttachments.length,
+				allianceRoleAttachments: attachUserRolesResult.allianceRoleAttachments.length,
+			})
+
+			const coreAttachmentDelta = summarizeCoreAttachmentDelta(
+				getUserRoleAttachmentsResult.roleAttachments,
+				[
+					...attachUserRolesResult.corporationRoleAttachments,
+					...attachUserRolesResult.allianceRoleAttachments,
+				]
+			)
+			console.log('[Workflow] Core role attachment reconciliation delta', {
+				...logContext,
+				...coreAttachmentDelta,
+			})
+
+			// Step 6: Update completion timestamp
+			await step.do('update-completion-timestamp', () => {
+				const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
+				return updateCompletionTimestamp(ctx)
+			})
+
+			console.log('[Workflow] Updated completion timestamp', logContext)
+			console.log('[Workflow] User refresh workflow completed', logContext)
 		} catch (error) {
-			console.warn(
-				'[Workflow] Failed to fetch user role attachments before reconcile; continuing',
-				{
-					...logContext,
-					error: error instanceof Error ? error.message : String(error),
-				}
-			)
+			console.error('[Workflow] User refresh workflow failed', {
+				...logContext,
+				error: error instanceof Error ? error.message : String(error),
+				stack: error instanceof Error ? error.stack : undefined,
+			})
+			throw error
 		}
-
-		console.log('[Workflow] Got user role attachments', {
-			...logContext,
-			roleAttachments: getUserRoleAttachmentsResult.roleAttachments.length,
-		})
-
-		// Step 5: Attach user roles
-		const attachUserRolesResult = await step.do('attach-user-roles', ROLE_STEP_OPTIONS, () => {
-			const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
-			return attachUserRoles(ctx)
-		})
-
-		console.log('[Workflow] Attached user roles', {
-			...logContext,
-			corporationRoleAttachments: attachUserRolesResult.corporationRoleAttachments.length,
-			allianceRoleAttachments: attachUserRolesResult.allianceRoleAttachments.length,
-		})
-
-		// Step 6: Update completion timestamp
-		await step.do('update-completion-timestamp', () => {
-			const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
-			return updateCompletionTimestamp(ctx)
-		})
-
-		console.log('[Workflow] Updated completion timestamp', logContext)
 	}
 }
