@@ -25,17 +25,18 @@ import {
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { formatTaxDateTime, getCurrentMonthDateRange } from '@/lib/tax-date'
-import { formatTaxRefTypeLabel, TaxEntityDisplay } from '@/lib/tax-display'
+import {
+	formatTaxIskFull,
+	formatTaxNumber,
+	formatTaxRefTypeLabel,
+	TaxEntityDisplay,
+} from '@/lib/tax-display'
 
 import type { TaxMemberComplianceStatus } from '@repo/corporation-tax'
 
 function parseIsk(value: string): number {
 	const parsed = Number(value)
 	return Number.isFinite(parsed) ? parsed : 0
-}
-
-function formatIsk(value: number): string {
-	return value.toFixed(2)
 }
 
 const DEFAULT_MONTH_RANGE = getCurrentMonthDateRange()
@@ -199,20 +200,24 @@ export default function TaxMemberSummaryPage() {
 						<CardHeader className="pb-2">
 							<CardTitle className="text-sm">Assessments</CardTitle>
 						</CardHeader>
-						<CardContent className="text-2xl font-semibold">{totals.assessments}</CardContent>
+						<CardContent className="text-2xl font-semibold">
+							{formatTaxNumber(totals.assessments)}
+						</CardContent>
 					</Card>
 					<Card>
 						<CardHeader className="pb-2">
 							<CardTitle className="text-sm">Tax Due</CardTitle>
 						</CardHeader>
-						<CardContent className="text-2xl font-semibold">{formatIsk(totals.taxDue)}</CardContent>
+						<CardContent className="text-2xl font-semibold">
+							{formatTaxIskFull(totals.taxDue)}
+						</CardContent>
 					</Card>
 					<Card>
 						<CardHeader className="pb-2">
 							<CardTitle className="text-sm">Tax Delta</CardTitle>
 						</CardHeader>
 						<CardContent className="text-2xl font-semibold">
-							{formatIsk(totals.taxDelta)}
+							{formatTaxIskFull(totals.taxDelta)}
 						</CardContent>
 					</Card>
 				</div>
@@ -264,10 +269,10 @@ export default function TaxMemberSummaryPage() {
 													{row.complianceStatus}
 												</Badge>
 											</TableCell>
-											<TableCell>{row.assessmentCount}</TableCell>
-											<TableCell>{row.taxDue}</TableCell>
-											<TableCell>{row.taxPaid}</TableCell>
-											<TableCell>{row.taxDelta}</TableCell>
+											<TableCell>{formatTaxNumber(row.assessmentCount)}</TableCell>
+											<TableCell>{formatTaxIskFull(row.taxDue)}</TableCell>
+											<TableCell>{formatTaxIskFull(row.taxPaid)}</TableCell>
+											<TableCell>{formatTaxIskFull(row.taxDelta)}</TableCell>
 											<TableCell>{formatTaxDateTime(row.lastAssessmentAt)}</TableCell>
 											<TableCell className="max-w-[360px] text-xs">
 												{row.topRefTypes.length === 0
@@ -275,7 +280,7 @@ export default function TaxMemberSummaryPage() {
 													: row.topRefTypes
 															.map(
 																(item) =>
-																	`${formatTaxRefTypeLabel(item.refType)} (${item.taxableAmount})`
+																	`${formatTaxRefTypeLabel(item.refType)} (${formatTaxIskFull(item.taxableAmount)})`
 															)
 															.join(', ')}
 											</TableCell>

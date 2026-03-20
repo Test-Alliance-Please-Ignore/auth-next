@@ -5,6 +5,11 @@ const FULL_ISK_FORMATTER = new Intl.NumberFormat('en-US', {
 	minimumFractionDigits: 0,
 })
 
+const GROUPED_NUMBER_FORMATTER = new Intl.NumberFormat('en-US', {
+	maximumFractionDigits: 2,
+	minimumFractionDigits: 0,
+})
+
 const COMPACT_ISK_FORMATTER = new Intl.NumberFormat('en-US', {
 	maximumFractionDigits: 2,
 	minimumFractionDigits: 0,
@@ -158,6 +163,19 @@ export function formatTaxIskCompact(amount: string | number | null | undefined):
 
 	const formatted = COMPACT_ISK_FORMATTER.format(numericAmount)
 	return formatted.replace('K', 'K').replace('M', 'M').replace('B', 'B').replace('T', 'T')
+}
+
+export function formatTaxNumber(value: string | number | null | undefined): string {
+	if (value === null || value === undefined || value === '') {
+		return '-'
+	}
+
+	const numericValue = typeof value === 'string' ? Number(value) : value
+	if (!Number.isFinite(numericValue)) {
+		return '-'
+	}
+
+	return GROUPED_NUMBER_FORMATTER.format(numericValue)
 }
 
 export function TaxEntityDisplay({

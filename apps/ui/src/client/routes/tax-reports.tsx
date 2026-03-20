@@ -54,6 +54,7 @@ import {
 	formatTaxDivisionLabel,
 	formatTaxIskCompact,
 	formatTaxIskFull,
+	formatTaxNumber,
 	formatTaxRefTypeLabel,
 	formatTaxReportTypeLabel,
 	TAX_REF_TYPE_OPTIONS,
@@ -714,10 +715,27 @@ export default function TaxReportsPage() {
 					<TaxEntityDisplay entityId={row.original.corporationId} entityNames={entityNames} />
 				),
 			},
-			{ accessorKey: 'assessmentCount', header: 'Assessments', enableSorting: true },
-			{ accessorKey: 'underpaidCount', header: 'Underpaid' },
-			{ accessorKey: 'paidCount', header: 'Paid' },
-			{ accessorKey: 'overpaidCount', header: 'Overpaid' },
+			{
+				accessorKey: 'assessmentCount',
+				header: 'Assessments',
+				enableSorting: true,
+				Cell: ({ row }) => formatTaxNumber(row.original.assessmentCount),
+			},
+			{
+				accessorKey: 'underpaidCount',
+				header: 'Underpaid',
+				Cell: ({ row }) => formatTaxNumber(row.original.underpaidCount),
+			},
+			{
+				accessorKey: 'paidCount',
+				header: 'Paid',
+				Cell: ({ row }) => formatTaxNumber(row.original.paidCount),
+			},
+			{
+				accessorKey: 'overpaidCount',
+				header: 'Overpaid',
+				Cell: ({ row }) => formatTaxNumber(row.original.overpaidCount),
+			},
 			{
 				accessorKey: 'taxDue',
 				header: 'Tax Due',
@@ -747,8 +765,16 @@ export default function TaxReportsPage() {
 				header: 'Income Type',
 				Cell: ({ row }) => formatTaxRefTypeLabel(row.original.refType),
 			},
-			{ accessorKey: 'entryCount', header: 'Entries' },
-			{ accessorKey: 'essEntryCount', header: 'ESS Entries' },
+			{
+				accessorKey: 'entryCount',
+				header: 'Entries',
+				Cell: ({ row }) => formatTaxNumber(row.original.entryCount),
+			},
+			{
+				accessorKey: 'essEntryCount',
+				header: 'ESS Entries',
+				Cell: ({ row }) => formatTaxNumber(row.original.essEntryCount),
+			},
 			{
 				accessorKey: 'totalIncome',
 				header: 'Total Income',
@@ -857,7 +883,11 @@ export default function TaxReportsPage() {
 					</Badge>
 				),
 			},
-			{ accessorKey: 'assessmentCount', header: 'Assessments' },
+			{
+				accessorKey: 'assessmentCount',
+				header: 'Assessments',
+				Cell: ({ row }) => formatTaxNumber(row.original.assessmentCount),
+			},
 			{
 				accessorKey: 'taxDue',
 				header: 'Tax Due',
@@ -899,7 +929,11 @@ export default function TaxReportsPage() {
 				header: 'Delta',
 				Cell: ({ row }) => formatTaxIskFull(row.original.taxDelta),
 			},
-			{ accessorKey: 'entryCount', header: 'Entries' },
+			{
+				accessorKey: 'entryCount',
+				header: 'Entries',
+				Cell: ({ row }) => formatTaxNumber(row.original.entryCount),
+			},
 		],
 		[]
 	)
@@ -937,7 +971,8 @@ export default function TaxReportsPage() {
 				accessorKey: 'healthyDirectorCount',
 				header: 'Healthy Directors',
 				enableSorting: true,
-				Cell: ({ row }) => `${row.original.healthyDirectorCount}/${row.original.directorCount}`,
+				Cell: ({ row }) =>
+					`${formatTaxNumber(row.original.healthyDirectorCount)}/${formatTaxNumber(row.original.directorCount)}`,
 			},
 			{
 				accessorKey: 'lastVerified',
@@ -1013,7 +1048,7 @@ export default function TaxReportsPage() {
 			{
 				accessorKey: 'rowCount',
 				header: 'Rows',
-				Cell: ({ row }) => row.original.rowCount ?? '-',
+				Cell: ({ row }) => formatTaxNumber(row.original.rowCount),
 			},
 			{
 				accessorKey: 'completedAt',

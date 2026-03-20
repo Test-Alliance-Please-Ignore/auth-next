@@ -31,7 +31,7 @@ import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useTaxCorporationAccessScope } from '@/hooks/useTaxCorporationAccessScope'
 import { formatTaxDateTime, getCurrentMonthDateRange } from '@/lib/tax-date'
-import { TaxEntityDisplay } from '@/lib/tax-display'
+import { formatTaxIskFull, formatTaxNumber, TaxEntityDisplay } from '@/lib/tax-display'
 
 import type { TaxAssessmentScope, TaxBillStatus } from '@repo/corporation-tax'
 
@@ -121,19 +121,6 @@ export default function TaxBillsPage() {
 	const issuePeriodMutation = useIssueTaxBillsForPeriod()
 	const syncCorporationMutation = useSyncTaxCorporationBillStatuses()
 
-	if (!corporationAccessLoading && !scopedCapabilitiesLoading && !canView) {
-		return (
-			<Container>
-				<Card>
-					<CardHeader>
-						<CardTitle>Tax Billing</CardTitle>
-						<CardDescription>You do not have permission to view tax billing data.</CardDescription>
-					</CardHeader>
-				</Card>
-			</Container>
-		)
-	}
-
 	const totalAssessments = billStatusReport.reduce((sum, row) => sum + row.assessmentCount, 0)
 	const unbilledAssessmentCount = billStatusReport
 		.filter((row) => row.billStatus === 'unbilled')
@@ -172,6 +159,19 @@ export default function TaxBillsPage() {
 	}, [assessments, billHistory, billStatusReport])
 
 	const { data: entityNames = {} } = useEntityNames(entityIds, { enabled: canView })
+
+	if (!corporationAccessLoading && !scopedCapabilitiesLoading && !canView) {
+		return (
+			<Container>
+				<Card>
+					<CardHeader>
+						<CardTitle>Tax Billing</CardTitle>
+						<CardDescription>You do not have permission to view tax billing data.</CardDescription>
+					</CardHeader>
+				</Card>
+			</Container>
+		)
+	}
 
 	return (
 		<Container>
@@ -340,7 +340,7 @@ export default function TaxBillsPage() {
 										<TableRow key={assessment.id}>
 											<TableCell className="font-mono text-xs">{assessment.id}</TableCell>
 											<TableCell>{assessment.status}</TableCell>
-											<TableCell>{assessment.taxDue}</TableCell>
+											<TableCell>{formatTaxIskFull(assessment.taxDue)}</TableCell>
 											<TableCell>{formatTaxDateTime(assessment.taxPeriodEnd)}</TableCell>
 											<TableCell>
 												<Button
@@ -463,9 +463,9 @@ export default function TaxBillsPage() {
 														)}
 													</TableCell>
 													<TableCell>{assessment.status}</TableCell>
-													<TableCell>{assessment.taxDue}</TableCell>
-													<TableCell>{assessment.taxPaid}</TableCell>
-													<TableCell>{assessment.taxDelta}</TableCell>
+													<TableCell>{formatTaxIskFull(assessment.taxDue)}</TableCell>
+													<TableCell>{formatTaxIskFull(assessment.taxPaid)}</TableCell>
+													<TableCell>{formatTaxIskFull(assessment.taxDelta)}</TableCell>
 													<TableCell>{formatTaxDateTime(assessment.taxPeriodEnd)}</TableCell>
 												</TableRow>
 											))}
@@ -522,10 +522,10 @@ export default function TaxBillsPage() {
 													{row.billStatus}
 												</Badge>
 											</TableCell>
-											<TableCell>{row.assessmentCount}</TableCell>
-											<TableCell>{row.taxDue}</TableCell>
-											<TableCell>{row.taxPaid}</TableCell>
-											<TableCell>{row.taxDelta}</TableCell>
+											<TableCell>{formatTaxNumber(row.assessmentCount)}</TableCell>
+											<TableCell>{formatTaxIskFull(row.taxDue)}</TableCell>
+											<TableCell>{formatTaxIskFull(row.taxPaid)}</TableCell>
+											<TableCell>{formatTaxIskFull(row.taxDelta)}</TableCell>
 										</TableRow>
 									))}
 								</TableBody>
@@ -589,10 +589,10 @@ export default function TaxBillsPage() {
 													{row.assessment.billStatus ?? 'unbilled'}
 												</Badge>
 											</TableCell>
-											<TableCell>{row.assessment.taxDue}</TableCell>
-											<TableCell>{row.assessment.taxPaid}</TableCell>
+											<TableCell>{formatTaxIskFull(row.assessment.taxDue)}</TableCell>
+											<TableCell>{formatTaxIskFull(row.assessment.taxPaid)}</TableCell>
 											<TableCell>{formatTaxDateTime(row.assessment.taxPeriodEnd)}</TableCell>
-											<TableCell>{row.timeline.length}</TableCell>
+											<TableCell>{formatTaxNumber(row.timeline.length)}</TableCell>
 											<TableCell>{getLastTimelineDate(row.timeline)}</TableCell>
 											<TableCell>
 												<Button

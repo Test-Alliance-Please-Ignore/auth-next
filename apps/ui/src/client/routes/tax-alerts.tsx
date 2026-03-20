@@ -28,7 +28,12 @@ import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useTaxCorporationAccessScope } from '@/hooks/useTaxCorporationAccessScope'
 import { formatTaxDateTime } from '@/lib/tax-date'
-import { formatTaxAlertContext, formatTaxAlertTypeLabel, TaxEntityDisplay } from '@/lib/tax-display'
+import {
+	formatTaxAlertContext,
+	formatTaxAlertTypeLabel,
+	formatTaxNumber,
+	TaxEntityDisplay,
+} from '@/lib/tax-display'
 
 import type { TaxAlert, TaxAlertSeverity, TaxAlertStatus } from '@repo/corporation-tax'
 
@@ -298,7 +303,7 @@ export default function TaxAlertsPage() {
 													<div className="text-sm">
 														<div>{alert.discordDeliveryStatus}</div>
 														<div className="text-xs text-muted-foreground">
-															attempts: {alert.discordAttemptCount}
+															attempts: {formatTaxNumber(alert.discordAttemptCount)}
 														</div>
 													</div>
 												</TableCell>

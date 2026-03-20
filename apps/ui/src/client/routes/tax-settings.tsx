@@ -29,6 +29,7 @@ import {
 } from '@/hooks/useCorporationTax'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { formatTaxDateTime } from '@/lib/tax-date'
+import { formatTaxNumber } from '@/lib/tax-display'
 
 function toPercentText(bps: number): string {
 	return (bps / 100).toFixed(2)
@@ -504,9 +505,9 @@ export default function TaxSettingsPage() {
 										<TableRow key={rule.id}>
 											<TableCell className="font-medium">{rule.name}</TableCell>
 											<TableCell>{rule.isActive ? 'yes' : 'no'}</TableCell>
-											<TableCell>{rule.priority}</TableCell>
+											<TableCell>{formatTaxNumber(rule.priority)}</TableCell>
 											<TableCell>{formatTaxDateTime(rule.effectiveFrom)}</TableCell>
-											<TableCell>{rule.conditions.length}</TableCell>
+											<TableCell>{formatTaxNumber(rule.conditions.length)}</TableCell>
 											<TableCell>
 												{rule.actions.length > 0 ? toPercentText(rule.actions[0]!.taxRateBps) : '-'}
 												%

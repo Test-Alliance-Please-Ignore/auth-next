@@ -29,6 +29,7 @@ import { useTaxCorporationAccessScope } from '@/hooks/useTaxCorporationAccessSco
 import { formatTaxDateTime, getCurrentMonthDateRange } from '@/lib/tax-date'
 import {
 	formatTaxDivisionLabel,
+	formatTaxIskFull,
 	formatTaxLedgerSourceTypeLabel,
 	formatTaxRefTypeLabel,
 	TAX_LEDGER_SOURCE_TYPE_OPTIONS,
@@ -390,8 +391,8 @@ export default function TaxLedgerPage() {
 											<TableRow key={entry.id}>
 												<TableCell>{formatTaxDateTime(entry.entryDate)}</TableCell>
 												<TableCell>{formatTaxRefTypeLabel(entry.refType)}</TableCell>
-												<TableCell>{entry.amount}</TableCell>
-												<TableCell>{entry.division ?? '-'}</TableCell>
+												<TableCell>{formatTaxIskFull(entry.amount)}</TableCell>
+												<TableCell>{formatTaxDivisionLabel(entry.division)}</TableCell>
 												<TableCell>{formatTaxLedgerSourceTypeLabel(entry.sourceType)}</TableCell>
 												<TableCell>
 													<TaxEntityDisplay
