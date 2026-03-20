@@ -261,7 +261,22 @@ tail worker:
   #!/usr/bin/env bash
   set -euo pipefail
   [ -f .env ] && set -a && source .env && set +a
-  bun turbo -F {{worker}} tail
+  IFS=',' read -r -a workers <<< "{{worker}}"
+  turbo_filters=()
+  for worker_name in "${workers[@]}"; do
+    # trim leading/trailing whitespace
+    worker_name="${worker_name#"${worker_name%%[![:space:]]*}"}"
+    worker_name="${worker_name%"${worker_name##*[![:space:]]}"}"
+    [ -z "$worker_name" ] && continue
+    turbo_filters+=("-F" "$worker_name")
+  done
+
+  if [ "${#turbo_filters[@]}" -eq 0 ]; then
+    echo "No worker names provided. Usage: just tail core,groups" >&2
+    exit 1
+  fi
+
+  bun turbo "${turbo_filters[@]}" tail
 
 [group('5. utility')]
 tail-all *flags:
