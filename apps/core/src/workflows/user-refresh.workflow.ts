@@ -216,7 +216,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams>
 			}
 
 			const authenticatedFetchResult = await step.do(
-				`try-character-authenticated-fetch-${characterId}`,
+				`validate-character-token-${characterId}`,
 				CHARACTER_STEP_OPTIONS,
 				async () => {
 					const ctx = this.createContext(userId, workflowInstanceId, refreshMode)

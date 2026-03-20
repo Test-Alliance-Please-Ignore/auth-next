@@ -28,7 +28,7 @@ export async function tryCharacterAuthenticatedFetch(
 	error?: string
 	status?: TokenValidationStatus
 }> {
-	const logger = getWorkflowLogger(ctx, 'try-character-authenticated-fetch')
+	const logger = getWorkflowLogger(ctx, 'validate-character-token')
 	const eveTokenStore = getStub<EveTokenStore>(ctx.env.EVE_TOKEN_STORE, 'default')
 
 	const existingCharacter = await ctx.db.query.userCharacters.findFirst({
