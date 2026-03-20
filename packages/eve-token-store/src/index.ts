@@ -104,6 +104,42 @@ export interface TokenInfo {
 }
 
 /**
+ * Token validation outcome for refresh and auth-sensitive workflows.
+ *
+ * This is intentionally aligned to SSO/token state rather than success of a
+ * particular ESI gameplay endpoint.
+ */
+export type TokenValidationStatus =
+	| 'valid'
+	| 'token_missing'
+	| 'character_deleted'
+	| 'missing_scopes'
+	| 'invalid_token'
+	| 'transient_error'
+
+/**
+ * Structured token validation result.
+ */
+export interface TokenValidationResult {
+	/** High-level validation outcome */
+	status: TokenValidationStatus
+	/** True when the character token is currently suitable for the requested scopes */
+	isValid: boolean
+	/** Character ID being validated */
+	characterId: string
+	/** Required scopes that were missing, if any */
+	missingScopes: string[]
+	/** Scopes currently associated with the token */
+	scopes: string[]
+	/** Whether token refresh was attempted */
+	refreshAttempted: boolean
+	/** Whether token refresh succeeded */
+	refreshSucceeded: boolean
+	/** Optional diagnostic message */
+	error?: string
+}
+
+/**
  * Result of handling OAuth callback
  */
 export interface CallbackResult {
@@ -265,6 +301,18 @@ export interface EveTokenStore {
 	 * @returns Token info or null if not found
 	 */
 	getTokenInfo(characterId: string): Promise<TokenInfo | null>
+
+	/**
+	 * Validate that a character token is present, refreshable/verifiable, and
+	 * carries the required scopes for a downstream workflow.
+	 * @param characterId - EVE character ID
+	 * @param requiredScopes - Scopes required by the caller
+	 * @returns Structured token validity result
+	 */
+	validateToken(
+		characterId: string,
+		requiredScopes?: readonly string[]
+	): Promise<TokenValidationResult>
 
 	/**
 	 * Get access token for use (decrypted)

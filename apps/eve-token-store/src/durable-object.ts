@@ -17,6 +17,7 @@ import type {
 	EveTokenStore,
 	EveVerifyResponse,
 	TokenInfo,
+	TokenValidationResult,
 } from '@repo/eve-token-store'
 import type { EveCharacterId } from '@repo/eve-types'
 import type { Env } from './context'
@@ -98,7 +99,7 @@ const EVE_SCOPES_ALL = [
 	'esi-characters.read_fw_stats.v1',
 	'esi-corporations.read_fw_stats.v1',
 	'esi-corporations.read_projects.v1',
-]
+] as const
 
 /**
  * EveTokenStore Durable Object
@@ -366,6 +367,178 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			expiresAt: tokenRecord.expiresAt,
 			scopes,
 			isExpired,
+		}
+	}
+
+	/**
+	 * Validate token state for a downstream workflow using SSO token state rather
+	 * than an arbitrary authenticated ESI gameplay endpoint.
+	 */
+	async validateToken(
+		characterId: string,
+		requiredScopes: readonly string[] = EVE_SCOPES_ALL
+	): Promise<TokenValidationResult> {
+		const character = await this.db.query.eveCharacters.findFirst({
+			where: eq(eveCharacters.characterId, String(characterId)),
+		})
+
+		if (!character) {
+			return {
+				characterId,
+				error: 'Character not found in token store',
+				isValid: false,
+				missingScopes: [],
+				refreshAttempted: false,
+				refreshSucceeded: false,
+				scopes: [],
+				status: 'token_missing',
+			}
+		}
+
+		if (character.deletedAt) {
+			return {
+				characterId,
+				error: 'Character is marked deleted',
+				isValid: false,
+				missingScopes: [],
+				refreshAttempted: false,
+				refreshSucceeded: false,
+				scopes: [],
+				status: 'character_deleted',
+			}
+		}
+
+		const tokenRecord = await this.db.query.eveTokens.findFirst({
+			where: eq(eveTokens.characterId, character.id),
+		})
+
+		if (!tokenRecord) {
+			return {
+				characterId,
+				error: 'Token record not found',
+				isValid: false,
+				missingScopes: [],
+				refreshAttempted: false,
+				refreshSucceeded: false,
+				scopes: [],
+				status: 'token_missing',
+			}
+		}
+
+		let accessToken: string
+		let refreshAttempted = false
+		let refreshSucceeded = false
+
+		try {
+			const isExpired = tokenRecord.expiresAt < new Date()
+
+			if (isExpired) {
+				refreshAttempted = true
+				if (!tokenRecord.refreshToken) {
+					return {
+						characterId,
+						error: 'Token is expired and has no refresh token',
+						isValid: false,
+						missingScopes: [],
+						refreshAttempted,
+						refreshSucceeded: false,
+						scopes: [],
+						status: 'invalid_token',
+					}
+				}
+
+				const refreshToken = await this.decrypt(tokenRecord.refreshToken)
+				const refreshedToken = await this.refreshAccessToken(refreshToken)
+				refreshSucceeded = true
+
+				const expiresAt = new Date(Date.now() + refreshedToken.expires_in * 1000)
+				const encryptedAccessToken = await this.encrypt(refreshedToken.access_token)
+				const encryptedRefreshToken = refreshedToken.refresh_token
+					? await this.encrypt(refreshedToken.refresh_token)
+					: tokenRecord.refreshToken
+
+				await this.db
+					.update(eveTokens)
+					.set({
+						accessToken: encryptedAccessToken,
+						expiresAt,
+						refreshToken: encryptedRefreshToken,
+						updatedAt: new Date(),
+					})
+					.where(eq(eveTokens.id, tokenRecord.id))
+
+				accessToken = refreshedToken.access_token
+			} else {
+				accessToken = await this.decrypt(tokenRecord.accessToken)
+			}
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : String(error)
+			const status = this.classifySsoError(errorMessage)
+
+			return {
+				characterId,
+				error: errorMessage,
+				isValid: false,
+				missingScopes: [],
+				refreshAttempted,
+				refreshSucceeded: false,
+				scopes: [],
+				status,
+			}
+		}
+
+		try {
+			const verification = await this.verifyToken(accessToken)
+			const scopes = verification.Scopes ? verification.Scopes.split(' ') : []
+			const missingScopes = requiredScopes.filter((scope) => !scopes.includes(scope))
+
+			await this.db
+				.update(eveCharacters)
+				.set({
+					characterName: verification.CharacterName,
+					characterOwnerHash: verification.CharacterOwnerHash,
+					scopes: JSON.stringify(scopes),
+					updatedAt: new Date(),
+				})
+				.where(eq(eveCharacters.id, character.id))
+
+			if (missingScopes.length > 0) {
+				return {
+					characterId,
+					error: `Missing required scopes: ${missingScopes.join(', ')}`,
+					isValid: false,
+					missingScopes,
+					refreshAttempted,
+					refreshSucceeded,
+					scopes,
+					status: 'missing_scopes',
+				}
+			}
+
+			return {
+				characterId,
+				isValid: true,
+				missingScopes: [],
+				refreshAttempted,
+				refreshSucceeded,
+				scopes,
+				status: 'valid',
+			}
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : String(error)
+			const status = this.classifySsoError(errorMessage)
+			const scopes = JSON.parse(character.scopes) as string[]
+
+			return {
+				characterId,
+				error: errorMessage,
+				isValid: false,
+				missingScopes: [],
+				refreshAttempted,
+				refreshSucceeded,
+				scopes,
+				status,
+			}
 		}
 	}
 
@@ -1662,7 +1835,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	/**
 	 * Generate authorization URL for EVE SSO
 	 */
-	private generateAuthUrl(scopes: string[], state?: string): AuthorizationUrlResponse {
+	private generateAuthUrl(scopes: readonly string[], state?: string): AuthorizationUrlResponse {
 		const generatedState = state || crypto.randomUUID()
 
 		const params = new URLSearchParams({
@@ -1731,7 +1904,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				logger
 					.withTags({ operation: 'refreshAccessToken' })
 					.error('Token refresh request failed', { status: response.status, error })
-				throw new Error(`Token refresh failed: ${error}`)
+				throw new Error(`Token refresh failed (status: ${response.status}): ${error}`)
 			}
 
 			const tokenResponse = await response.json<EveTokenResponse>()
@@ -1756,10 +1929,26 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 		if (!response.ok) {
 			const error = await response.text()
-			throw new Error(`Token verification failed: ${error}`)
+			throw new Error(`Token verification failed (status: ${response.status}): ${error}`)
 		}
 
 		return response.json<EveVerifyResponse>()
+	}
+
+	private classifySsoError(errorMessage: string): TokenValidationResult['status'] {
+		const normalizedError = errorMessage.toLowerCase()
+
+		if (
+			normalizedError.includes('status: 400') ||
+			normalizedError.includes('status: 401') ||
+			normalizedError.includes('status: 403') ||
+			normalizedError.includes('invalid_grant') ||
+			normalizedError.includes('invalid token')
+		) {
+			return 'invalid_token'
+		}
+
+		return 'transient_error'
 	}
 
 	/**
