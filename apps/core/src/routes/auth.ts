@@ -357,7 +357,7 @@ auth.get('/callback', async (c) => {
 						.where(eq(users.id, stateUserId))
 
 					await c.env.USER_REFRESH_WORKFLOW.create({
-						id: `user-refresh-link-${stateUserId}-${Date.now()}`,
+						id: createUserRefreshWorkflowId('link', stateUserId),
 						params: { userId: stateUserId, refreshMode: 'manual' },
 					})
 				} catch (error) {
@@ -486,7 +486,7 @@ auth.get('/callback', async (c) => {
 							.where(eq(users.id, user.id))
 
 						await c.env.USER_REFRESH_WORKFLOW.create({
-							id: `user-refresh-login-${user.id}-${Date.now()}`,
+							id: createUserRefreshWorkflowId('login', user.id),
 							params: { userId: user.id, refreshMode: 'manual' },
 						})
 					}
@@ -646,7 +646,7 @@ auth.post('/claim-main', async (c) => {
 					.where(eq(users.id, user.id))
 
 				await c.env.USER_REFRESH_WORKFLOW.create({
-					id: `user-refresh-login-${user.id}-${Date.now()}`,
+					id: createUserRefreshWorkflowId('login', user.id),
 					params: { userId: user.id, refreshMode: 'manual' },
 				})
 			} catch (error) {
@@ -768,7 +768,7 @@ auth.post('/link-character', requireAuth(), async (c) => {
 					.where(eq(users.id, user.id))
 
 				await c.env.USER_REFRESH_WORKFLOW.create({
-					id: `user-refresh-link-${user.id}-${Date.now()}`,
+					id: createUserRefreshWorkflowId('link', user.id),
 					params: { userId: user.id, refreshMode: 'manual' },
 				})
 			} catch (error) {

@@ -19,15 +19,14 @@ export interface TriggerUserRefreshOptions {
 }
 
 export function createUserRefreshWorkflowId(source: string, userId: string): string {
-	const sourceToken =
-		source
-			.toLowerCase()
-			.replace(/[^a-z0-9]/g, '')
-			.slice(0, 8) || 'manual'
+	const normalizedSource = source
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, '-')
+		.replace(/^-+|-+$/g, '')
+	const sourceToken = (normalizedSource || 'manual').slice(0, 16)
 	const userToken = userId.replace(/-/g, '').slice(0, 12)
 	const timeToken = Date.now().toString(36)
-	const nonce = crypto.randomUUID().replace(/-/g, '').slice(0, 8)
-	return `ur-${sourceToken}-${userToken}-${timeToken}-${nonce}`
+	return `user-refresh-${sourceToken}-${userToken}-${timeToken}`
 }
 
 /**
@@ -62,7 +61,7 @@ export async function triggerUserRefreshWorkflow({
 			.set({ lastRefreshWorkflowAttempt: new Date() })
 			.where(eq(users.id, userId))
 
-		await env.USER_REFRESH_WORKFLOW.create({
+		const instance = await env.USER_REFRESH_WORKFLOW.create({
 			id: createUserRefreshWorkflowId(source, userId),
 			params: { userId, refreshMode },
 		})
@@ -72,6 +71,7 @@ export async function triggerUserRefreshWorkflow({
 			source,
 			bypassThrottle,
 			refreshMode,
+			workflowInstanceId: instance.id,
 		})
 	} catch (error) {
 		logger.error('[WorkflowTrigger] Failed to trigger user refresh workflow', {
