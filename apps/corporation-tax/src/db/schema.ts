@@ -546,92 +546,92 @@ export const taxMemberSummaryVersions = pgTable(
 		finalizedVersion: integer('finalized_version').notNull().default(0),
 		projectionUpdatedAt: timestamp('projection_updated_at', { withTimezone: true }),
 		finalizedUpdatedAt: timestamp('finalized_updated_at', { withTimezone: true }),
+		ruleMembershipMutatedAt: timestamp('rule_membership_mutated_at', { withTimezone: true }),
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
 	(table) => [index('tax_member_summary_versions_updated_at_idx').on(table.updatedAt)]
 )
 
-export const taxRuleSets = pgTable(
-	'tax_rule_sets',
+export const taxRuleGroups = pgTable(
+	'tax_rule_groups',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
-		corporationId: text('corporation_id'),
 		name: text('name').notNull(),
-		priority: integer('priority').notNull().default(0),
-		isActive: boolean('is_active').notNull().default(true),
-		effectiveFrom: timestamp('effective_from', { withTimezone: true }).notNull().defaultNow(),
-		effectiveTo: timestamp('effective_to', { withTimezone: true }),
+		description: text('description'),
+		isDefaultGlobal: boolean('is_default_global').notNull().default(false),
+		isSystem: boolean('is_system').notNull().default(false),
 		createdBy: text('created_by').notNull(),
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
 	(table) => [
-		index('tax_rule_sets_corporation_id_idx').on(table.corporationId),
+		index('tax_rule_groups_default_global_idx').on(table.isDefaultGlobal),
+		index('tax_rule_groups_name_idx').on(table.name),
+	]
+)
+
+export const taxRuleGroupAttachments = pgTable(
+	'tax_rule_group_attachments',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		ruleGroupId: uuid('rule_group_id')
+			.notNull()
+			.references(() => taxRuleGroups.id, { onDelete: 'cascade' }),
+		corporationId: text('corporation_id').notNull(),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		unique('tax_rule_group_attachments_unique').on(table.ruleGroupId, table.corporationId),
+		index('tax_rule_group_attachments_corporation_id_idx').on(table.corporationId),
+	]
+)
+
+export const taxRuleSets = pgTable(
+	'tax_rule_sets',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		ruleGroupId: uuid('rule_group_id')
+			.notNull()
+			.references(() => taxRuleGroups.id, { onDelete: 'cascade' }),
+		name: text('name').notNull(),
+		priority: integer('priority').notNull().default(0),
+		isActive: boolean('is_active').notNull().default(true),
+		effectiveFrom: timestamp('effective_from', { withTimezone: true }).notNull().defaultNow(),
+		effectiveTo: timestamp('effective_to', { withTimezone: true }),
+		appliesToRefType: text('applies_to_ref_type'),
+		partyType: text('party_type'),
+		taxRateBps: integer('tax_rate_bps').notNull().default(0),
+		label: text('label').notNull().default('Tax rule'),
+		createdBy: text('created_by').notNull(),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		index('tax_rule_sets_rule_group_id_idx').on(table.ruleGroupId),
 		index('tax_rule_sets_is_active_idx').on(table.isActive),
 		index('tax_rule_sets_priority_idx').on(table.priority),
+		index('tax_rule_sets_ref_type_idx').on(table.appliesToRefType),
 	]
 )
 
-export const taxRuleConditions = pgTable(
-	'tax_rule_conditions',
-	{
-		id: uuid('id').defaultRandom().primaryKey(),
-		ruleSetId: uuid('rule_set_id')
-			.notNull()
-			.references(() => taxRuleSets.id, { onDelete: 'cascade' }),
-		appliesToRefType: text('applies_to_ref_type'),
-		walletDivision: integer('wallet_division'),
-		partyType: text('party_type'),
-		minAmount: text('min_amount'),
-		maxAmount: text('max_amount'),
-		isEssOnly: boolean('is_ess_only').notNull().default(false),
-		essBankType: text('ess_bank_type'),
-		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-	},
-	(table) => [
-		index('tax_rule_conditions_rule_set_id_idx').on(table.ruleSetId),
-		index('tax_rule_conditions_ref_type_idx').on(table.appliesToRefType),
-		index('tax_rule_conditions_wallet_division_idx').on(table.walletDivision),
-	]
-)
-
-export const taxRuleActions = pgTable(
-	'tax_rule_actions',
-	{
-		id: uuid('id').defaultRandom().primaryKey(),
-		ruleSetId: uuid('rule_set_id')
-			.notNull()
-			.references(() => taxRuleSets.id, { onDelete: 'cascade' }),
-		taxRateBps: integer('tax_rate_bps').notNull(),
-		isTaxable: boolean('is_taxable').notNull().default(true),
-		label: text('label').notNull(),
-		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-	},
-	(table) => [
-		index('tax_rule_actions_rule_set_id_idx').on(table.ruleSetId),
-		index('tax_rule_actions_tax_rate_bps_idx').on(table.taxRateBps),
-	]
-)
-
-export const taxRuleSetsRelations = relations(taxRuleSets, ({ many }) => ({
-	conditions: many(taxRuleConditions),
-	actions: many(taxRuleActions),
+export const taxRuleGroupsRelations = relations(taxRuleGroups, ({ many }) => ({
+	ruleSets: many(taxRuleSets),
+	attachments: many(taxRuleGroupAttachments),
 }))
 
-export const taxRuleConditionsRelations = relations(taxRuleConditions, ({ one }) => ({
-	ruleSet: one(taxRuleSets, {
-		fields: [taxRuleConditions.ruleSetId],
-		references: [taxRuleSets.id],
+export const taxRuleGroupAttachmentsRelations = relations(taxRuleGroupAttachments, ({ one }) => ({
+	ruleGroup: one(taxRuleGroups, {
+		fields: [taxRuleGroupAttachments.ruleGroupId],
+		references: [taxRuleGroups.id],
 	}),
 }))
 
-export const taxRuleActionsRelations = relations(taxRuleActions, ({ one }) => ({
-	ruleSet: one(taxRuleSets, {
-		fields: [taxRuleActions.ruleSetId],
-		references: [taxRuleSets.id],
+export const taxRuleSetsRelations = relations(taxRuleSets, ({ one }) => ({
+	ruleGroup: one(taxRuleGroups, {
+		fields: [taxRuleSets.ruleGroupId],
+		references: [taxRuleGroups.id],
 	}),
 }))
 
@@ -688,14 +688,14 @@ export const schema = {
 	taxMemberContributionProjectionRollups,
 	taxMemberContributionFinalizedRollups,
 	taxMemberSummaryVersions,
+	taxRuleGroups,
+	taxRuleGroupAttachments,
 	taxRuleSets,
-	taxRuleConditions,
-	taxRuleActions,
 	taxAssessmentsRelations,
 	taxBillSyncEventsRelations,
 	taxAssessmentLinesRelations,
 	taxDiscrepanciesRelations,
+	taxRuleGroupsRelations,
+	taxRuleGroupAttachmentsRelations,
 	taxRuleSetsRelations,
-	taxRuleConditionsRelations,
-	taxRuleActionsRelations,
 }

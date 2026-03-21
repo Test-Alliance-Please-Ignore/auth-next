@@ -7,6 +7,7 @@
 import type {
 	CorporationTaxHealth,
 	CreateTaxExportScheduleInput,
+	CreateTaxRuleGroupInput,
 	CreateTaxRuleSetInput,
 	IngestTaxLedgerWindowInput,
 	IssueBillsForPeriodInput,
@@ -24,6 +25,7 @@ import type {
 	ListTaxExportsFilters,
 	ListTaxMissingEsiKeyReportFilters,
 	ListTaxNotificationDestinationsFilters,
+	ListTaxRuleGroupsFilters,
 	ListTaxRuleSetsFilters,
 	RequestTaxExportInput,
 	RunTaxAssessmentForPeriodInput,
@@ -73,6 +75,8 @@ import type {
 	TaxPeriodStatus,
 	TaxRefTypeAssessmentSummary,
 	TaxReportWindowFilters,
+	TaxRuleGroup,
+	TaxRuleGroupAttachment,
 	TaxRuleSet,
 	TaxScheduledOperationsResult,
 	TaxSummaryReport,
@@ -83,9 +87,18 @@ import type {
 	TriggerTaxAlertInput,
 	TriggerTaxProjectionRefreshInput,
 	TriggerTaxProjectionRefreshResult,
+	UpdateTaxRuleGroupInput,
+	UpdateTaxRuleSetInput,
 	UpsertTaxCorporationSettingsInput,
 	UpsertTaxNotificationDestinationInput,
 } from './types'
+
+export {
+	TAX_INCOME_REF_TYPES,
+	filterTaxIncomeRefTypes,
+	isTaxIncomeRefType,
+	type TaxIncomeRefType,
+} from './ref-types'
 
 /**
  * Public RPC interface for Corporation Tax Durable Object.
@@ -128,9 +141,70 @@ export interface CorporationTax {
 	listAuditLog(filters?: ListTaxAuditLogFilters): Promise<TaxAuditLogEntry[]>
 
 	/**
-	 * Create a taxation rule set with conditions and actions.
+	 * Create a tax rule group.
+	 */
+	createRuleGroup(actorUserId: string, input: CreateTaxRuleGroupInput): Promise<TaxRuleGroup>
+
+	/**
+	 * Update a tax rule group.
+	 */
+	updateRuleGroup(
+		actorUserId: string,
+		ruleGroupId: string,
+		input: UpdateTaxRuleGroupInput
+	): Promise<TaxRuleGroup>
+
+	/**
+	 * Delete a tax rule group.
+	 */
+	deleteRuleGroup(actorUserId: string, ruleGroupId: string): Promise<void>
+
+	/**
+	 * List tax rule groups.
+	 */
+	listRuleGroups(filters?: ListTaxRuleGroupsFilters): Promise<TaxRuleGroup[]>
+
+	/**
+	 * Attach a corporation to a rule group.
+	 */
+	attachCorporationToRuleGroup(
+		actorUserId: string,
+		ruleGroupId: string,
+		corporationId: string
+	): Promise<TaxRuleGroupAttachment>
+
+	/**
+	 * Detach a corporation from a rule group.
+	 */
+	detachCorporationFromRuleGroup(
+		actorUserId: string,
+		ruleGroupId: string,
+		corporationId: string
+	): Promise<void>
+
+	/**
+	 * List corporation attachments for a rule group.
+	 */
+	listRuleGroupAttachments(ruleGroupId: string): Promise<TaxRuleGroupAttachment[]>
+
+	/**
+	 * Create a taxation rule set.
 	 */
 	createRuleSet(actorUserId: string, input: CreateTaxRuleSetInput): Promise<TaxRuleSet>
+
+	/**
+	 * Update a tax rule set.
+	 */
+	updateRuleSet(
+		actorUserId: string,
+		ruleSetId: string,
+		input: UpdateTaxRuleSetInput
+	): Promise<TaxRuleSet>
+
+	/**
+	 * Delete a tax rule set.
+	 */
+	deleteRuleSet(actorUserId: string, ruleSetId: string): Promise<void>
 
 	/**
 	 * List taxation rule sets.
@@ -410,6 +484,7 @@ export interface CorporationTax {
 export type {
 	CorporationTaxHealth,
 	CreateTaxExportScheduleInput,
+	CreateTaxRuleGroupInput,
 	CreateTaxRuleSetInput,
 	IssueBillsForPeriodInput,
 	IssueBillsForPeriodResult,
@@ -426,6 +501,7 @@ export type {
 	ListTaxDailyRollupsFilters,
 	ListTaxAssessmentsFilters,
 	ListTaxRuleSetsFilters,
+	ListTaxRuleGroupsFilters,
 	ListTaxCorporationSettingsFilters,
 	ListTaxDiscrepanciesFilters,
 	RequestTaxExportInput,
@@ -468,6 +544,8 @@ export type {
 	TaxCompliancePoint,
 	TaxCorporationSettings,
 	TaxNotificationDestination,
+	TaxRuleGroup,
+	TaxRuleGroupAttachment,
 	TaxRuleSet,
 	TaxScheduledOperationsResult,
 	TaxSyncCheckpoint,
@@ -486,6 +564,8 @@ export type {
 	TriggerTaxProjectionRefreshInput,
 	TriggerTaxProjectionRefreshResult,
 	TriggerTaxAlertInput,
+	UpdateTaxRuleGroupInput,
+	UpdateTaxRuleSetInput,
 	UpsertTaxNotificationDestinationInput,
 	UpsertTaxCorporationSettingsInput,
 } from './types'

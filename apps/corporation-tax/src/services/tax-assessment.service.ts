@@ -11,6 +11,7 @@ import {
 	taxMemberContributionProjectionRollups,
 	taxMemberSummaryVersions,
 	taxPeriods,
+	taxRuleGroupAttachments,
 	taxRuleSets,
 } from '../db/schema'
 
@@ -35,20 +36,14 @@ import type { CorporationTaxDb } from '../db'
 
 type RuleCondition = {
 	appliesToRefType: string | null
-	walletDivision: number | null
 	partyType: string | null
-	minAmount: string | null
-	maxAmount: string | null
-	isEssOnly: boolean
-	essBankType: string | null
 }
 
 type CompiledRule = {
 	ruleSetId: string
 	label: string
 	taxRateBps: number
-	isTaxable: boolean
-	conditions: RuleCondition[]
+	condition: RuleCondition
 }
 
 type MutableSummary = {
@@ -152,43 +147,36 @@ export class TaxAssessmentService {
 			limit: 100_000,
 		})
 
-		const activeRuleSets = await this.db.query.taxRuleSets.findMany({
-			where: and(
-				eq(taxRuleSets.isActive, true),
-				or(eq(taxRuleSets.corporationId, input.corporationId), isNull(taxRuleSets.corporationId)),
-				lte(taxRuleSets.effectiveFrom, input.periodEnd),
-				or(isNull(taxRuleSets.effectiveTo), gte(taxRuleSets.effectiveTo, input.periodStart))
-			),
-			orderBy: [desc(taxRuleSets.priority), desc(taxRuleSets.createdAt)],
-			with: {
-				conditions: true,
-				actions: true,
+		const attachedRuleGroups = await this.db.query.taxRuleGroupAttachments.findMany({
+			where: eq(taxRuleGroupAttachments.corporationId, input.corporationId),
+			columns: {
+				ruleGroupId: true,
 			},
+			limit: 500,
 		})
+		const attachedRuleGroupIds = attachedRuleGroups.map((row) => row.ruleGroupId)
+		const activeRuleSets =
+			attachedRuleGroupIds.length === 0
+				? []
+				: await this.db.query.taxRuleSets.findMany({
+						where: and(
+							inArray(taxRuleSets.ruleGroupId, attachedRuleGroupIds),
+							eq(taxRuleSets.isActive, true),
+							lte(taxRuleSets.effectiveFrom, input.periodEnd),
+							or(isNull(taxRuleSets.effectiveTo), gte(taxRuleSets.effectiveTo, input.periodStart))
+						),
+						orderBy: [desc(taxRuleSets.priority), desc(taxRuleSets.createdAt)],
+					})
 
-		const compiledRules = activeRuleSets
-			.map((ruleSet) => {
-				const primaryAction = ruleSet.actions[0]
-				if (!primaryAction) {
-					return null
-				}
-				return {
-					ruleSetId: ruleSet.id,
-					label: primaryAction.label,
-					taxRateBps: primaryAction.taxRateBps,
-					isTaxable: primaryAction.isTaxable,
-					conditions: ruleSet.conditions.map((condition) => ({
-						appliesToRefType: condition.appliesToRefType,
-						walletDivision: condition.walletDivision,
-						partyType: condition.partyType,
-						minAmount: condition.minAmount,
-						maxAmount: condition.maxAmount,
-						isEssOnly: condition.isEssOnly,
-						essBankType: condition.essBankType,
-					})),
-				}
-			})
-			.filter((rule): rule is NonNullable<typeof rule> => !!rule)
+		const compiledRules = activeRuleSets.map((ruleSet) => ({
+			ruleSetId: ruleSet.id,
+			label: ruleSet.label,
+			taxRateBps: ruleSet.taxRateBps,
+			condition: {
+				appliesToRefType: ruleSet.appliesToRefType,
+				partyType: ruleSet.partyType,
+			},
+		}))
 
 		const memberIdSet = await this.getCorporationMemberIdSet(input.corporationId)
 		const unattributedKey = '__unattributed__'
@@ -982,12 +970,12 @@ export class TaxAssessmentService {
 		classification: string
 	} {
 		for (const rule of input.compiledRules) {
-			const matches = this.ruleMatches(rule.conditions, input.entry, input.amountCenti)
+			const matches = this.ruleMatches(rule.condition, input.entry, input.amountCenti)
 			if (!matches) {
 				continue
 			}
 
-			if (!rule.isTaxable) {
+			if (rule.taxRateBps === 0) {
 				return {
 					appliedRuleSetId: rule.ruleSetId,
 					taxRateBps: 0,
@@ -1018,47 +1006,20 @@ export class TaxAssessmentService {
 	}
 
 	private ruleMatches(
-		conditions: CompiledRule['conditions'],
+		condition: CompiledRule['condition'],
 		entry: typeof taxLedgerEntries.$inferSelect,
 		amountCenti: bigint
 	): boolean {
-		if (conditions.length === 0) {
-			return true
+		if (condition.appliesToRefType && condition.appliesToRefType !== entry.refType) {
+			return false
 		}
-
-		return conditions.some((condition) => {
-			if (condition.appliesToRefType && condition.appliesToRefType !== entry.refType) {
-				return false
-			}
-			if (condition.walletDivision !== null && condition.walletDivision !== entry.division) {
-				return false
-			}
-			if (condition.partyType === 'first_party' && !entry.firstPartyId) {
-				return false
-			}
-			if (condition.partyType === 'second_party' && !entry.secondPartyId) {
-				return false
-			}
-			if (
-				condition.minAmount !== null &&
-				amountCenti < this.parseDecimalToCenti(condition.minAmount)
-			) {
-				return false
-			}
-			if (
-				condition.maxAmount !== null &&
-				amountCenti > this.parseDecimalToCenti(condition.maxAmount)
-			) {
-				return false
-			}
-			if (condition.isEssOnly && !entry.isEss) {
-				return false
-			}
-			if (condition.essBankType !== null && condition.essBankType !== entry.essBankType) {
-				return false
-			}
-			return true
-		})
+		if (condition.partyType === 'first_party' && !entry.firstPartyId) {
+			return false
+		}
+		if (condition.partyType === 'second_party' && !entry.secondPartyId) {
+			return false
+		}
+		return true
 	}
 
 	private async getInGameTaxRateBps(corporationId: string): Promise<number | null> {

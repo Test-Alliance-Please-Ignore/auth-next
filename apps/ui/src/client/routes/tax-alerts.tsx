@@ -1,11 +1,12 @@
 import { RefreshCcw } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { TaxCorporationScopeSelector } from '@/components/tax-corporation-scope-selector'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
+import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
 import {
@@ -23,6 +24,8 @@ import {
 	useRetryFailedTaxAlertDeliveries,
 	useTaxAlerts,
 	useTaxCapabilities,
+	useTaxNotificationDestinations,
+	useUpsertTaxNotificationDestination,
 } from '@/hooks/useCorporationTax'
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
@@ -90,6 +93,9 @@ export default function TaxAlertsPage() {
 
 	const [statusFilter, setStatusFilter] = useState<TaxAlertStatus | undefined>('open')
 	const [severityFilter, setSeverityFilter] = useState<TaxAlertSeverity | undefined>(undefined)
+	const [guildId, setGuildId] = useState('')
+	const [channelId, setChannelId] = useState('')
+	const [destinationActive, setDestinationActive] = useState(true)
 
 	const { data: scopedCapabilities, isLoading: scopedCapabilitiesLoading } = useTaxCapabilities(
 		effectiveCorporationId,
@@ -113,6 +119,16 @@ export default function TaxAlertsPage() {
 		limit: 100,
 		enabled: canView,
 	})
+	const {
+		data: notificationDestinations = [],
+		isLoading: destinationLoading,
+		error: destinationError,
+	} = useTaxNotificationDestinations({
+		scope: 'corporation',
+		corporationId: effectiveCorporationId,
+		limit: 20,
+		enabled: canView && Boolean(effectiveCorporationId),
+	})
 
 	const corporationIds = alerts
 		.map((alert) => alert.corporationId)
@@ -123,6 +139,20 @@ export default function TaxAlertsPage() {
 	const acknowledgeMutation = useAcknowledgeTaxAlert()
 	const resolveMutation = useResolveTaxAlert()
 	const retryMutation = useRetryFailedTaxAlertDeliveries()
+	const upsertDestinationMutation = useUpsertTaxNotificationDestination()
+
+	useEffect(() => {
+		const first = notificationDestinations[0]
+		if (!first) {
+			setGuildId('')
+			setChannelId('')
+			setDestinationActive(true)
+			return
+		}
+		setGuildId(first.guildId)
+		setChannelId(first.channelId)
+		setDestinationActive(first.isActive)
+	}, [notificationDestinations])
 
 	if (!corporationAccessLoading && !scopedCapabilitiesLoading && !canView) {
 		return (
@@ -335,6 +365,98 @@ export default function TaxAlertsPage() {
 									))}
 								</TableBody>
 							</Table>
+						)}
+					</CardContent>
+				</Card>
+
+				<Card>
+					<CardHeader>
+						<CardTitle>Discord Alert Destination</CardTitle>
+						<CardDescription>
+							Configure the corporation destination channel used for tax alerts.
+						</CardDescription>
+					</CardHeader>
+					<CardContent className="space-y-4">
+						{!effectiveCorporationId ? (
+							<div className="text-sm text-muted-foreground">
+								Select a corporation scope to configure destination settings.
+							</div>
+						) : (
+							<>
+								<div className="grid gap-3 md:grid-cols-2">
+									<div className="space-y-1">
+										<label className="text-xs font-medium text-muted-foreground">Guild ID</label>
+										<Input value={guildId} onChange={(event) => setGuildId(event.target.value)} />
+									</div>
+									<div className="space-y-1">
+										<label className="text-xs font-medium text-muted-foreground">Channel ID</label>
+										<Input
+											value={channelId}
+											onChange={(event) => setChannelId(event.target.value)}
+										/>
+									</div>
+								</div>
+								<label className="flex items-center gap-2 text-sm">
+									<input
+										type="checkbox"
+										checked={destinationActive}
+										onChange={(event) => setDestinationActive(event.target.checked)}
+									/>
+									Destination active
+								</label>
+								<Button
+									disabled={upsertDestinationMutation.isPending}
+									onClick={() => {
+										if (!effectiveCorporationId || !guildId.trim() || !channelId.trim()) return
+										upsertDestinationMutation.mutate({
+											scope: 'corporation',
+											corporationId: effectiveCorporationId,
+											guildId: guildId.trim(),
+											channelId: channelId.trim(),
+											isActive: destinationActive,
+										})
+									}}
+								>
+									{upsertDestinationMutation.isPending
+										? 'Saving Destination...'
+										: 'Save Destination'}
+								</Button>
+
+								{destinationLoading ? (
+									<div className="text-sm text-muted-foreground">Loading destination...</div>
+								) : destinationError ? (
+									<div className="text-sm text-destructive">
+										{destinationError instanceof Error
+											? destinationError.message
+											: 'Failed to load destination'}
+									</div>
+								) : notificationDestinations.length === 0 ? (
+									<div className="text-sm text-muted-foreground">
+										No destination configured for this corporation.
+									</div>
+								) : (
+									<Table>
+										<TableHeader>
+											<TableRow>
+												<TableHead>Scope</TableHead>
+												<TableHead>Guild</TableHead>
+												<TableHead>Channel</TableHead>
+												<TableHead>Active</TableHead>
+											</TableRow>
+										</TableHeader>
+										<TableBody>
+											{notificationDestinations.map((destination) => (
+												<TableRow key={destination.id}>
+													<TableCell>{destination.scope}</TableCell>
+													<TableCell>{destination.guildId}</TableCell>
+													<TableCell>{destination.channelId}</TableCell>
+													<TableCell>{destination.isActive ? 'yes' : 'no'}</TableCell>
+												</TableRow>
+											))}
+										</TableBody>
+									</Table>
+								)}
+							</>
 						)}
 					</CardContent>
 				</Card>

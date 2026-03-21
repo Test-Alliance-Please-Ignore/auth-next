@@ -1,3 +1,5 @@
+import { TAX_INCOME_REF_TYPES } from '@repo/corporation-tax'
+
 import type { TaxAlert, TaxExportReportType } from '@repo/corporation-tax'
 
 const FULL_ISK_FORMATTER = new Intl.NumberFormat('en-US', {
@@ -17,18 +19,29 @@ const COMPACT_ISK_FORMATTER = new Intl.NumberFormat('en-US', {
 })
 
 const REF_TYPE_LABELS: Record<string, string> = {
-	bounty_prizes: 'Bounty Prizes',
-	market_transaction: 'Market Transaction',
-	player_donation: 'Player Donation',
+	agent_mission_reward_corporation_tax: 'Mission Reward Corp Tax',
+	agent_mission_time_bonus_reward_corporation_tax: 'Mission Time Bonus Corp Tax',
+	bounty_prize_corporation_tax: 'Bounty Corp Tax',
+	contract_price: 'Contract Price',
 	ess_escrow_transfer: 'ESS Escrow Transfer',
-	agent_mission_reward: 'Mission Reward',
-	agent_mission_time_bonus_reward: 'Mission Time Bonus',
-	corporation_tax: 'Corporation Tax',
+	external_trade_delivery: 'External Trade Delivery',
+	freelance_jobs_reward_corporation_tax: 'Freelance Job Reward Corp Tax',
+	industry_job_tax: 'Industry Job Tax',
+	market_transaction: 'Market Transaction',
+	mission_reward: 'Mission Reward',
+	office_rental_fee: 'Office Rental Fee',
+	planetary_export_tax: 'Planetary Export Tax',
+	planetary_import_tax: 'Planetary Import Tax',
+	player_donation: 'Player Donation',
+	project_discovery_tax: 'Project Discovery Tax',
+	project_discovery_reward: 'Project Discovery Reward',
+	reprocessing_tax: 'Reprocessing Tax',
+	structure_gate_jump: 'Structure Gate Jump',
 }
 
-export const TAX_REF_TYPE_OPTIONS = Object.entries(REF_TYPE_LABELS).map(([value, label]) => ({
+export const TAX_REF_TYPE_OPTIONS = TAX_INCOME_REF_TYPES.map((value) => ({
 	value,
-	label,
+	label: REF_TYPE_LABELS[value] ?? startCaseFromSnake(value),
 	id: value,
 }))
 
@@ -71,6 +84,7 @@ const ALERT_TYPE_LABELS: Record<string, string> = {
 	scheduled_export_failed: 'Scheduled Export Failed',
 	ess_duplicate_records_detected: 'Duplicate ESS Records Detected',
 	ess_missing_records_detected: 'Missing ESS Records Detected',
+	unexpected_income_ref_type_detected: 'Unexpected Income Ref Type Detected',
 }
 
 function startCaseFromSnake(value: string): string {

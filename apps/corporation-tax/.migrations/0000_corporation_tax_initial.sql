@@ -32,7 +32,6 @@ CREATE TABLE "tax_rule_actions" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"rule_set_id" uuid NOT NULL,
 	"tax_rate_bps" integer NOT NULL,
-	"is_taxable" boolean DEFAULT true NOT NULL,
 	"label" text NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
@@ -413,3 +412,208 @@ CREATE INDEX "tax_notification_destinations_corporation_id_idx" ON "tax_notifica
 CREATE INDEX "tax_notification_destinations_active_idx" ON "tax_notification_destinations" USING btree ("is_active");
 --> statement-breakpoint
 ALTER TABLE "tax_assessments" ADD CONSTRAINT "tax_assessments_scope_period_unique" UNIQUE("corporation_id","tax_period_start","tax_period_end","assessment_scope","scope_id");
+--> statement-breakpoint
+CREATE TABLE "tax_member_contribution_finalized_rollups" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"corporation_id" text NOT NULL,
+	"period_start" timestamp with time zone NOT NULL,
+	"period_end" timestamp with time zone NOT NULL,
+	"rollup_date" date NOT NULL,
+	"character_id" text NOT NULL,
+	"ref_type" text NOT NULL,
+	"contribution_income" text DEFAULT '0' NOT NULL,
+	"taxable_contribution_income" text DEFAULT '0' NOT NULL,
+	"assessment_count" integer DEFAULT 0 NOT NULL,
+	"source_row_count" integer DEFAULT 0 NOT NULL,
+	"finalized_assessment_id" uuid,
+	"last_assessment_at" timestamp with time zone,
+	"last_ledger_entry_date" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "tax_member_final_rollups_unique" UNIQUE("corporation_id","period_start","period_end","rollup_date","character_id","ref_type")
+);
+--> statement-breakpoint
+CREATE TABLE "tax_member_contribution_projection_rollups" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"corporation_id" text NOT NULL,
+	"period_start" timestamp with time zone NOT NULL,
+	"period_end" timestamp with time zone NOT NULL,
+	"rollup_date" date NOT NULL,
+	"character_id" text NOT NULL,
+	"ref_type" text NOT NULL,
+	"contribution_income" text DEFAULT '0' NOT NULL,
+	"taxable_contribution_income" text DEFAULT '0' NOT NULL,
+	"assessment_count" integer DEFAULT 0 NOT NULL,
+	"source_row_count" integer DEFAULT 0 NOT NULL,
+	"last_assessment_at" timestamp with time zone,
+	"last_ledger_entry_date" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "tax_member_proj_rollups_unique" UNIQUE("corporation_id","period_start","period_end","rollup_date","character_id","ref_type")
+);
+--> statement-breakpoint
+CREATE TABLE "tax_member_summary_versions" (
+	"corporation_id" text PRIMARY KEY NOT NULL,
+	"projection_version" integer DEFAULT 0 NOT NULL,
+	"finalized_version" integer DEFAULT 0 NOT NULL,
+	"projection_updated_at" timestamp with time zone,
+	"finalized_updated_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+ALTER TABLE "tax_member_contribution_finalized_rollups" ADD CONSTRAINT "tax_member_contribution_finalized_rollups_finalized_assessment_id_tax_assessments_id_fk" FOREIGN KEY ("finalized_assessment_id") REFERENCES "public"."tax_assessments"("id") ON DELETE set null ON UPDATE no action;
+--> statement-breakpoint
+CREATE INDEX "tax_member_final_rollups_corp_period_idx" ON "tax_member_contribution_finalized_rollups" USING btree ("corporation_id","period_start","period_end");
+--> statement-breakpoint
+CREATE INDEX "tax_member_final_rollups_corp_char_period_idx" ON "tax_member_contribution_finalized_rollups" USING btree ("corporation_id","character_id","period_start","period_end");
+--> statement-breakpoint
+CREATE INDEX "tax_member_final_rollups_corp_ref_rollup_date_idx" ON "tax_member_contribution_finalized_rollups" USING btree ("corporation_id","ref_type","rollup_date");
+--> statement-breakpoint
+CREATE INDEX "tax_member_final_rollups_assessment_id_idx" ON "tax_member_contribution_finalized_rollups" USING btree ("finalized_assessment_id");
+--> statement-breakpoint
+CREATE INDEX "tax_member_proj_rollups_corp_period_idx" ON "tax_member_contribution_projection_rollups" USING btree ("corporation_id","period_start","period_end");
+--> statement-breakpoint
+CREATE INDEX "tax_member_proj_rollups_corp_char_period_idx" ON "tax_member_contribution_projection_rollups" USING btree ("corporation_id","character_id","period_start","period_end");
+--> statement-breakpoint
+CREATE INDEX "tax_member_proj_rollups_corp_ref_rollup_date_idx" ON "tax_member_contribution_projection_rollups" USING btree ("corporation_id","ref_type","rollup_date");
+--> statement-breakpoint
+CREATE INDEX "tax_member_summary_versions_updated_at_idx" ON "tax_member_summary_versions" USING btree ("updated_at");
+--> statement-breakpoint
+CREATE TABLE "tax_rule_groups" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"name" text NOT NULL,
+	"description" text,
+	"is_default_global" boolean DEFAULT false NOT NULL,
+	"is_system" boolean DEFAULT false NOT NULL,
+	"created_by" text NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE INDEX "tax_rule_groups_default_global_idx" ON "tax_rule_groups" USING btree ("is_default_global");
+--> statement-breakpoint
+CREATE INDEX "tax_rule_groups_name_idx" ON "tax_rule_groups" USING btree ("name");
+--> statement-breakpoint
+CREATE UNIQUE INDEX "tax_rule_groups_single_default_global_idx" ON "tax_rule_groups" USING btree ("is_default_global") WHERE "is_default_global" = true;
+--> statement-breakpoint
+CREATE TABLE "tax_rule_group_attachments" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"rule_group_id" uuid NOT NULL,
+	"corporation_id" text NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "tax_rule_group_attachments_unique" UNIQUE("rule_group_id","corporation_id")
+);
+--> statement-breakpoint
+CREATE INDEX "tax_rule_group_attachments_corporation_id_idx" ON "tax_rule_group_attachments" USING btree ("corporation_id");
+--> statement-breakpoint
+ALTER TABLE "tax_rule_group_attachments" ADD CONSTRAINT "tax_rule_group_attachments_rule_group_id_tax_rule_groups_id_fk" FOREIGN KEY ("rule_group_id") REFERENCES "public"."tax_rule_groups"("id") ON DELETE cascade ON UPDATE no action;
+--> statement-breakpoint
+ALTER TABLE "tax_rule_sets" ADD COLUMN "rule_group_id" uuid;
+--> statement-breakpoint
+INSERT INTO "tax_rule_groups" (
+	"id",
+	"name",
+	"description",
+	"is_default_global",
+	"is_system",
+	"created_by"
+) VALUES (
+	'00000000-0000-0000-0000-000000000001'::uuid,
+	'Alliance Global (default)',
+	'System default alliance global rule group',
+	true,
+	true,
+	'system:migration'
+) ON CONFLICT ("id") DO NOTHING;
+--> statement-breakpoint
+UPDATE "tax_rule_sets"
+SET "rule_group_id" = '00000000-0000-0000-0000-000000000001'::uuid
+WHERE "rule_group_id" IS NULL;
+--> statement-breakpoint
+ALTER TABLE "tax_rule_sets" ALTER COLUMN "rule_group_id" SET NOT NULL;
+--> statement-breakpoint
+ALTER TABLE "tax_rule_sets" ADD CONSTRAINT "tax_rule_sets_rule_group_id_tax_rule_groups_id_fk" FOREIGN KEY ("rule_group_id") REFERENCES "public"."tax_rule_groups"("id") ON DELETE cascade ON UPDATE no action;
+--> statement-breakpoint
+DROP INDEX "tax_rule_sets_corporation_id_idx";
+--> statement-breakpoint
+ALTER TABLE "tax_rule_sets" DROP COLUMN "corporation_id";
+--> statement-breakpoint
+CREATE INDEX "tax_rule_sets_rule_group_id_idx" ON "tax_rule_sets" USING btree ("rule_group_id");
+--> statement-breakpoint
+INSERT INTO "tax_rule_group_attachments" (
+	"rule_group_id",
+	"corporation_id"
+)
+SELECT
+	'00000000-0000-0000-0000-000000000001'::uuid,
+	"corporation_id"
+FROM "tax_corporation_settings"
+WHERE "included" = true
+ON CONFLICT ("rule_group_id","corporation_id") DO NOTHING;
+--> statement-breakpoint
+ALTER TABLE "tax_rule_sets"
+	ADD COLUMN "applies_to_ref_type" text,
+	ADD COLUMN "party_type" text,
+	ADD COLUMN "tax_rate_bps" integer DEFAULT 0 NOT NULL,
+	ADD COLUMN "label" text DEFAULT 'Tax rule' NOT NULL;
+--> statement-breakpoint
+CREATE INDEX "tax_rule_sets_ref_type_idx" ON "tax_rule_sets" USING btree ("applies_to_ref_type");
+--> statement-breakpoint
+UPDATE "tax_rule_sets" rs
+SET
+	"applies_to_ref_type" = rc."applies_to_ref_type",
+	"party_type" = rc."party_type"
+FROM (
+	SELECT DISTINCT ON ("rule_set_id")
+		"rule_set_id",
+		"applies_to_ref_type",
+		"party_type"
+	FROM "tax_rule_conditions"
+	ORDER BY "rule_set_id", "updated_at" DESC, "created_at" DESC
+) rc
+WHERE rs."id" = rc."rule_set_id";
+--> statement-breakpoint
+UPDATE "tax_rule_sets" rs
+SET
+	"tax_rate_bps" = ra."tax_rate_bps",
+	"label" = COALESCE(NULLIF(BTRIM(ra."label"), ''), 'Tax rule')
+FROM (
+	SELECT DISTINCT ON ("rule_set_id")
+		"rule_set_id",
+		"tax_rate_bps",
+		"label"
+	FROM "tax_rule_actions"
+	ORDER BY "rule_set_id", "updated_at" DESC, "created_at" DESC
+) ra
+WHERE rs."id" = ra."rule_set_id";
+--> statement-breakpoint
+DROP TABLE "tax_rule_conditions";
+--> statement-breakpoint
+DROP TABLE "tax_rule_actions";
+--> statement-breakpoint
+INSERT INTO "tax_rule_sets" (
+	"id",
+	"rule_group_id",
+	"name",
+	"priority",
+	"is_active",
+	"created_by",
+	"applies_to_ref_type",
+	"tax_rate_bps",
+	"label"
+) VALUES (
+	'00000000-0000-0000-0000-000000000010'::uuid,
+	'00000000-0000-0000-0000-000000000001'::uuid,
+	'Alliance Default Tax',
+	0,
+	true,
+	'system:migration',
+	NULL,
+	500,
+	'Default 5% tax rule'
+) ON CONFLICT ("id") DO NOTHING;
+--> statement-breakpoint
+ALTER TABLE "tax_member_summary_versions"
+	ADD COLUMN "rule_membership_mutated_at" timestamp with time zone;

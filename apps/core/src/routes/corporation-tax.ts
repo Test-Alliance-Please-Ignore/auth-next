@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 
+import { isTaxIncomeRefType } from '@repo/corporation-tax'
 import { and, eq, ilike, inArray, or } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger, TimeCache } from '@repo/hono-helpers'
@@ -210,6 +211,12 @@ function parseReportWindowFiltersFromQuery(
 	}
 	if (division !== undefined && division < 1) {
 		return { error: 'division must be an integer >= 1' }
+	}
+	if (refType && !isTaxIncomeRefType(refType)) {
+		return { error: 'refType must be a valid tax income ref type' }
+	}
+	if (refTypes && refTypes.some((value) => !isTaxIncomeRefType(value))) {
+		return { error: 'refTypes must only include valid tax income ref types' }
 	}
 	if (
 		minAmount !== undefined &&
@@ -820,7 +827,7 @@ app.patch('/corporations/:corporationId/settings', requireAuth(), async (c) => {
 
 /**
  * GET /corporation-tax/corporations/:corporationId/rules
- * List tax rule sets for a corporation (optionally include global rules).
+ * List tax rule sets for a corporation.
  */
 app.get('/corporations/:corporationId/rules', requireAuth(), async (c) => {
 	const user = c.get('user')
@@ -834,8 +841,8 @@ app.get('/corporations/:corporationId/rules', requireAuth(), async (c) => {
 		return c.json({ error: 'Forbidden' }, 403)
 	}
 
-	const includeGlobal = parseBooleanQueryParam(c.req.query('includeGlobal'))
 	const onlyActive = parseBooleanQueryParam(c.req.query('onlyActive'))
+	const ruleGroupId = c.req.query('ruleGroupId') || undefined
 	const limit = parseIntegerQueryParam(c.req.query('limit'))
 	const offset = parseIntegerQueryParam(c.req.query('offset'))
 
@@ -843,7 +850,7 @@ app.get('/corporations/:corporationId/rules', requireAuth(), async (c) => {
 		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
 		const ruleSets = await stub.listRuleSets({
 			corporationId,
-			includeGlobal,
+			ruleGroupId,
 			onlyActive,
 			limit,
 			offset,
@@ -856,10 +863,80 @@ app.get('/corporations/:corporationId/rules', requireAuth(), async (c) => {
 })
 
 /**
- * POST /corporation-tax/rules
- * Create a global/default tax rule set (applies across corporations unless overridden).
+ * GET /corporation-tax/rules
+ * List tax rule sets scoped by rule group and/or corporation.
  */
-app.post('/rules', requireAuth(), async (c) => {
+app.get('/rules', requireAuth(), async (c) => {
+	const user = c.get('user')
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	const corporationId = c.req.query('corporationId') || undefined
+	const ruleGroupId = c.req.query('ruleGroupId') || undefined
+	const canManage = corporationId
+		? await canManageTaxFeature(c.env, user, corporationId)
+		: await canManageTaxFeature(c.env, user)
+	if (!canManage) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
+	const onlyActive = parseBooleanQueryParam(c.req.query('onlyActive'))
+	const limit = parseIntegerQueryParam(c.req.query('limit'))
+	const offset = parseIntegerQueryParam(c.req.query('offset'))
+
+	try {
+		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
+		const ruleSets = await stub.listRuleSets({
+			corporationId,
+			ruleGroupId,
+			onlyActive,
+			limit,
+			offset,
+		})
+		return c.json(ruleSets)
+	} catch (error) {
+		logger.error('Error listing tax rules:', error)
+		return c.json({ error: 'Failed to list tax rules' }, 500)
+	}
+})
+
+/**
+ * GET /corporation-tax/rule-groups
+ * List tax rule groups, optionally scoped to one corporation attachment view.
+ */
+app.get('/rule-groups', requireAuth(), async (c) => {
+	const user = c.get('user')
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	const corporationId = c.req.query('corporationId') || undefined
+	const canManage = corporationId
+		? await canManageTaxFeature(c.env, user, corporationId)
+		: await canManageTaxFeature(c.env, user)
+	if (!canManage) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
+	try {
+		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
+		const ruleGroups = await stub.listRuleGroups({
+			corporationId,
+			limit: 200,
+		})
+		return c.json(ruleGroups)
+	} catch (error) {
+		logger.error('Error listing corporation tax rule groups:', error)
+		return c.json({ error: 'Failed to list corporation tax rule groups' }, 500)
+	}
+})
+
+/**
+ * POST /corporation-tax/rule-groups
+ * Create a tax rule group.
+ */
+app.post('/rule-groups', requireAuth(), async (c) => {
 	const user = c.get('user')
 	if (!user) {
 		return c.json({ error: 'Unauthorized' }, 401)
@@ -881,184 +958,247 @@ app.post('/rules', requireAuth(), async (c) => {
 	if (!name) {
 		return c.json({ error: 'name is required' }, 400)
 	}
-
-	const priority =
-		typeof body.priority === 'number' && Number.isInteger(body.priority) ? body.priority : 0
-	const isActive = typeof body.isActive === 'boolean' ? body.isActive : true
-
-	const parseDateOrUndefined = (value: unknown): Date | undefined => {
-		if (typeof value !== 'string') {
-			return undefined
-		}
-		const parsed = new Date(value)
-		return Number.isNaN(parsed.getTime()) ? undefined : parsed
-	}
-
-	const effectiveFrom = parseDateOrUndefined(body.effectiveFrom)
-	const effectiveTo = parseDateOrUndefined(body.effectiveTo)
-
-	const conditionsRaw = Array.isArray(body.conditions) ? body.conditions : []
-	const actionsRaw = Array.isArray(body.actions) ? body.actions : []
-	if (actionsRaw.length === 0) {
-		return c.json({ error: 'At least one action is required' }, 400)
-	}
-
-	const conditions = conditionsRaw.map((condition) => {
-		const item = condition as Record<string, unknown>
-		return {
-			appliesToRefType:
-				typeof item.appliesToRefType === 'string' ? item.appliesToRefType : undefined,
-			walletDivision:
-				typeof item.walletDivision === 'number' && Number.isInteger(item.walletDivision)
-					? item.walletDivision
-					: undefined,
-			partyType: typeof item.partyType === 'string' ? item.partyType : undefined,
-			minAmount: typeof item.minAmount === 'string' ? item.minAmount : undefined,
-			maxAmount: typeof item.maxAmount === 'string' ? item.maxAmount : undefined,
-			isEssOnly: typeof item.isEssOnly === 'boolean' ? item.isEssOnly : undefined,
-			essBankType: typeof item.essBankType === 'string' ? item.essBankType : undefined,
-		}
-	})
-
-	const actions = actionsRaw.map((action) => {
-		const item = action as Record<string, unknown>
-		return {
-			taxRateBps:
-				typeof item.taxRateBps === 'number' && Number.isInteger(item.taxRateBps)
-					? item.taxRateBps
-					: -1,
-			isTaxable: typeof item.isTaxable === 'boolean' ? item.isTaxable : undefined,
-			label: typeof item.label === 'string' ? item.label : '',
-		}
-	})
-
-	if (actions.some((action) => action.taxRateBps < 0 || action.taxRateBps > 10_000)) {
-		return c.json({ error: 'Each action.taxRateBps must be an integer between 0 and 10000' }, 400)
-	}
-	if (actions.some((action) => !action.label.trim())) {
-		return c.json({ error: 'Each action.label is required' }, 400)
-	}
+	const description =
+		typeof body.description === 'string' ? body.description.trim() || null : undefined
 
 	try {
 		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
-		const created = await stub.createRuleSet(user.id, {
-			corporationId: null,
+		const created = await stub.createRuleGroup(user.id, {
 			name,
-			priority,
-			isActive,
-			effectiveFrom,
-			effectiveTo,
-			conditions,
-			actions,
+			description,
 		})
 		return c.json(created, 201)
 	} catch (error) {
-		logger.error('Error creating global corporation tax rule set:', error)
-		return c.json({ error: 'Failed to create global corporation tax rule set' }, 500)
+		logger.error('Error creating corporation tax rule group:', error)
+		return c.json({ error: 'Failed to create corporation tax rule group' }, 500)
 	}
 })
 
-/**
- * POST /corporation-tax/corporations/:corporationId/rules
- * Create a new corporation-scoped tax rule set.
- */
-app.post('/corporations/:corporationId/rules', requireAuth(), async (c) => {
+app.patch('/rule-groups/:ruleGroupId', requireAuth(), async (c) => {
 	const user = c.get('user')
-	if (!user) {
-		return c.json({ error: 'Unauthorized' }, 401)
-	}
+	if (!user) return c.json({ error: 'Unauthorized' }, 401)
+	const canWrite = await canManageTaxFeature(c.env, user)
+	if (!canWrite) return c.json({ error: 'Forbidden' }, 403)
 
-	const corporationId = c.req.param('corporationId')
-	const canWrite = await canManageTaxFeature(c.env, user, corporationId)
-	if (!canWrite) {
-		return c.json({ error: 'Forbidden' }, 403)
-	}
+	const ruleGroupId = c.req.param('ruleGroupId')
+	const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null
+	if (!body) return c.json({ error: 'Invalid JSON payload' }, 400)
 
-	let body: Record<string, unknown>
+	const input: { name?: string; description?: string | null } = {}
+	if ('name' in body) {
+		if (typeof body.name !== 'string') return c.json({ error: 'name must be a string' }, 400)
+		input.name = body.name
+	}
+	if ('description' in body) {
+		if (!(typeof body.description === 'string' || body.description === null)) {
+			return c.json({ error: 'description must be a string or null' }, 400)
+		}
+		input.description = body.description
+	}
 	try {
-		body = await c.req.json()
-	} catch (_error) {
-		return c.json({ error: 'Invalid JSON payload' }, 400)
+		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
+		return c.json(await stub.updateRuleGroup(user.id, ruleGroupId, input))
+	} catch (error) {
+		if (error instanceof Error && error.message.includes('cannot be updated')) {
+			return c.json({ error: error.message }, 409)
+		}
+		logger.error('Error updating tax rule group:', error)
+		return c.json({ error: 'Failed to update tax rule group' }, 500)
 	}
+})
 
-	const name = typeof body.name === 'string' ? body.name.trim() : ''
-	if (!name) {
-		return c.json({ error: 'name is required' }, 400)
+app.delete('/rule-groups/:ruleGroupId', requireAuth(), async (c) => {
+	const user = c.get('user')
+	if (!user) return c.json({ error: 'Unauthorized' }, 401)
+	const canWrite = await canManageTaxFeature(c.env, user)
+	if (!canWrite) return c.json({ error: 'Forbidden' }, 403)
+	const ruleGroupId = c.req.param('ruleGroupId')
+	try {
+		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
+		await stub.deleteRuleGroup(user.id, ruleGroupId)
+		return c.body(null, 204)
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error)
+		if (message.includes('cannot be deleted')) {
+			return c.json({ error: message }, 409)
+		}
+		logger.error('Error deleting tax rule group:', error)
+		return c.json({ error: 'Failed to delete tax rule group' }, 500)
 	}
+})
+
+app.get('/rule-groups/:ruleGroupId/attachments', requireAuth(), async (c) => {
+	const user = c.get('user')
+	if (!user) return c.json({ error: 'Unauthorized' }, 401)
+	const canRead = await canManageTaxFeature(c.env, user)
+	if (!canRead) return c.json({ error: 'Forbidden' }, 403)
+	const ruleGroupId = c.req.param('ruleGroupId')
+	try {
+		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
+		return c.json(await stub.listRuleGroupAttachments(ruleGroupId))
+	} catch (error) {
+		logger.error('Error listing tax rule group attachments:', error)
+		return c.json({ error: 'Failed to list tax rule group attachments' }, 500)
+	}
+})
+
+app.post('/rule-groups/:ruleGroupId/attachments', requireAuth(), async (c) => {
+	const user = c.get('user')
+	if (!user) return c.json({ error: 'Unauthorized' }, 401)
+	const canWrite = await canManageTaxFeature(c.env, user)
+	if (!canWrite) return c.json({ error: 'Forbidden' }, 403)
+	const ruleGroupId = c.req.param('ruleGroupId')
+	const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null
+	const corporationId = typeof body?.corporationId === 'string' ? body.corporationId.trim() : ''
+	if (!corporationId) return c.json({ error: 'corporationId is required' }, 400)
+	try {
+		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
+		const attached = await stub.attachCorporationToRuleGroup(user.id, ruleGroupId, corporationId)
+		return c.json(attached, 201)
+	} catch (error) {
+		logger.error('Error attaching corporation to tax rule group:', error)
+		return c.json({ error: 'Failed to attach corporation to tax rule group' }, 500)
+	}
+})
+
+app.delete('/rule-groups/:ruleGroupId/attachments/:corporationId', requireAuth(), async (c) => {
+	const user = c.get('user')
+	if (!user) return c.json({ error: 'Unauthorized' }, 401)
+	const canWrite = await canManageTaxFeature(c.env, user)
+	if (!canWrite) return c.json({ error: 'Forbidden' }, 403)
+	const ruleGroupId = c.req.param('ruleGroupId')
+	const corporationId = c.req.param('corporationId')
+	try {
+		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
+		await stub.detachCorporationFromRuleGroup(user.id, ruleGroupId, corporationId)
+		return c.body(null, 204)
+	} catch (error) {
+		logger.error('Error detaching corporation from tax rule group:', error)
+		return c.json({ error: 'Failed to detach corporation from tax rule group' }, 500)
+	}
+})
+
+app.post('/rules', requireAuth(), async (c) => {
+	const user = c.get('user')
+	if (!user) return c.json({ error: 'Unauthorized' }, 401)
+	const canWrite = await canManageTaxFeature(c.env, user)
+	if (!canWrite) return c.json({ error: 'Forbidden' }, 403)
+
+	const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null
+	if (!body) return c.json({ error: 'Invalid JSON payload' }, 400)
+	const ruleGroupId = typeof body.ruleGroupId === 'string' ? body.ruleGroupId : ''
+	const name = typeof body.name === 'string' ? body.name.trim() : ''
+	if (!ruleGroupId) return c.json({ error: 'ruleGroupId is required' }, 400)
+	if (!name) return c.json({ error: 'name is required' }, 400)
 
 	const priority =
 		typeof body.priority === 'number' && Number.isInteger(body.priority) ? body.priority : 0
 	const isActive = typeof body.isActive === 'boolean' ? body.isActive : true
-
 	const parseDateOrUndefined = (value: unknown): Date | undefined => {
-		if (typeof value !== 'string') {
-			return undefined
-		}
+		if (typeof value !== 'string') return undefined
 		const parsed = new Date(value)
 		return Number.isNaN(parsed.getTime()) ? undefined : parsed
 	}
-
 	const effectiveFrom = parseDateOrUndefined(body.effectiveFrom)
 	const effectiveTo = parseDateOrUndefined(body.effectiveTo)
-
-	const conditionsRaw = Array.isArray(body.conditions) ? body.conditions : []
-	const actionsRaw = Array.isArray(body.actions) ? body.actions : []
-	if (actionsRaw.length === 0) {
-		return c.json({ error: 'At least one action is required' }, 400)
+	const taxRateBps =
+		typeof body.taxRateBps === 'number' && Number.isInteger(body.taxRateBps) ? body.taxRateBps : -1
+	const label = typeof body.label === 'string' ? body.label : ''
+	if (taxRateBps < 0 || taxRateBps > 10_000) {
+		return c.json({ error: 'taxRateBps must be an integer between 0 and 10000' }, 400)
 	}
-
-	const conditions = conditionsRaw.map((condition) => {
-		const item = condition as Record<string, unknown>
-		return {
-			appliesToRefType:
-				typeof item.appliesToRefType === 'string' ? item.appliesToRefType : undefined,
-			walletDivision:
-				typeof item.walletDivision === 'number' && Number.isInteger(item.walletDivision)
-					? item.walletDivision
-					: undefined,
-			partyType: typeof item.partyType === 'string' ? item.partyType : undefined,
-			minAmount: typeof item.minAmount === 'string' ? item.minAmount : undefined,
-			maxAmount: typeof item.maxAmount === 'string' ? item.maxAmount : undefined,
-			isEssOnly: typeof item.isEssOnly === 'boolean' ? item.isEssOnly : undefined,
-			essBankType: typeof item.essBankType === 'string' ? item.essBankType : undefined,
-		}
-	})
-
-	const actions = actionsRaw.map((action) => {
-		const item = action as Record<string, unknown>
-		return {
-			taxRateBps:
-				typeof item.taxRateBps === 'number' && Number.isInteger(item.taxRateBps)
-					? item.taxRateBps
-					: -1,
-			isTaxable: typeof item.isTaxable === 'boolean' ? item.isTaxable : undefined,
-			label: typeof item.label === 'string' ? item.label : '',
-		}
-	})
-
-	if (actions.some((action) => action.taxRateBps < 0 || action.taxRateBps > 10_000)) {
-		return c.json({ error: 'Each action.taxRateBps must be an integer between 0 and 10000' }, 400)
+	if (!label.trim()) {
+		return c.json({ error: 'label is required' }, 400)
 	}
-	if (actions.some((action) => !action.label.trim())) {
-		return c.json({ error: 'Each action.label is required' }, 400)
+	const appliesToRefTypeRaw =
+		typeof body.appliesToRefType === 'string' ? body.appliesToRefType.trim() : undefined
+	const appliesToRefType = appliesToRefTypeRaw || undefined
+	if (appliesToRefType && !isTaxIncomeRefType(appliesToRefType)) {
+		return c.json({ error: 'appliesToRefType must be a valid tax income ref type' }, 400)
 	}
-
 	try {
 		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
 		const created = await stub.createRuleSet(user.id, {
-			corporationId,
+			ruleGroupId,
 			name,
 			priority,
 			isActive,
 			effectiveFrom,
 			effectiveTo,
-			conditions,
-			actions,
+			appliesToRefType,
+			partyType: typeof body.partyType === 'string' ? body.partyType : undefined,
+			taxRateBps,
+			label,
 		})
 		return c.json(created, 201)
 	} catch (error) {
-		logger.error('Error creating corporation tax rule set:', error)
-		return c.json({ error: 'Failed to create corporation tax rule set' }, 500)
+		logger.error('Error creating tax rule set:', error)
+		return c.json({ error: 'Failed to create tax rule set' }, 500)
+	}
+})
+
+app.patch('/rules/:ruleSetId', requireAuth(), async (c) => {
+	const user = c.get('user')
+	if (!user) return c.json({ error: 'Unauthorized' }, 401)
+	const canWrite = await canManageTaxFeature(c.env, user)
+	if (!canWrite) return c.json({ error: 'Forbidden' }, 403)
+	const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null
+	if (!body) return c.json({ error: 'Invalid JSON payload' }, 400)
+	const ruleSetId = c.req.param('ruleSetId')
+	const parseDateOrUndefined = (value: unknown): Date | undefined => {
+		if (typeof value !== 'string') return undefined
+		const parsed = new Date(value)
+		return Number.isNaN(parsed.getTime()) ? undefined : parsed
+	}
+	try {
+		const appliesToRefTypeRaw =
+			typeof body.appliesToRefType === 'string' ? body.appliesToRefType.trim() : undefined
+		const appliesToRefType = appliesToRefTypeRaw || undefined
+		if (appliesToRefType && !isTaxIncomeRefType(appliesToRefType)) {
+			return c.json({ error: 'appliesToRefType must be a valid tax income ref type' }, 400)
+		}
+
+		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
+		const updated = await stub.updateRuleSet(user.id, ruleSetId, {
+			isActive: typeof body.isActive === 'boolean' ? body.isActive : undefined,
+			name: typeof body.name === 'string' ? body.name : undefined,
+			priority:
+				typeof body.priority === 'number' && Number.isInteger(body.priority)
+					? body.priority
+					: undefined,
+			effectiveFrom: parseDateOrUndefined(body.effectiveFrom),
+			effectiveTo: parseDateOrUndefined(body.effectiveTo),
+			appliesToRefType,
+			partyType: typeof body.partyType === 'string' ? body.partyType : undefined,
+			taxRateBps:
+				typeof body.taxRateBps === 'number' && Number.isInteger(body.taxRateBps)
+					? body.taxRateBps
+					: undefined,
+			label: typeof body.label === 'string' ? body.label : undefined,
+		})
+		return c.json(updated)
+	} catch (error) {
+		logger.error('Error updating tax rule set:', error)
+		return c.json({ error: 'Failed to update tax rule set' }, 500)
+	}
+})
+
+app.delete('/rules/:ruleSetId', requireAuth(), async (c) => {
+	const user = c.get('user')
+	if (!user) return c.json({ error: 'Unauthorized' }, 401)
+	const canWrite = await canManageTaxFeature(c.env, user)
+	if (!canWrite) return c.json({ error: 'Forbidden' }, 403)
+	const ruleSetId = c.req.param('ruleSetId')
+	try {
+		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
+		await stub.deleteRuleSet(user.id, ruleSetId)
+		return c.body(null, 204)
+	} catch (error) {
+		if (error instanceof Error && error.message.includes('not found')) {
+			return c.json({ error: error.message }, 404)
+		}
+		logger.error('Error deleting tax rule set:', error)
+		return c.json({ error: 'Failed to delete tax rule set' }, 500)
 	}
 })
 
@@ -1335,6 +1475,13 @@ app.post('/corporations/:corporationId/ledger/ingest', requireAuth(), async (c) 
 
 	try {
 		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
+		const refTypes =
+			Array.isArray(body.refTypes) && body.refTypes.every((value) => typeof value === 'string')
+				? (body.refTypes as string[])
+				: undefined
+		if (refTypes && refTypes.some((value) => !isTaxIncomeRefType(value))) {
+			return c.json({ error: 'refTypes must only include valid tax income ref types' }, 400)
+		}
 		const result = await stub.ingestCorporationLedgerWindow(user.id, corporationId, {
 			includeJournal: typeof body.includeJournal === 'boolean' ? body.includeJournal : undefined,
 			includeTransactions:
@@ -1356,10 +1503,7 @@ app.post('/corporations/:corporationId/ledger/ingest', requireAuth(), async (c) 
 				typeof body.division === 'number' && Number.isInteger(body.division)
 					? body.division
 					: undefined,
-			refTypes:
-				Array.isArray(body.refTypes) && body.refTypes.every((value) => typeof value === 'string')
-					? (body.refTypes as string[])
-					: undefined,
+			refTypes,
 			firstPartyId: typeof body.firstPartyId === 'string' ? body.firstPartyId : undefined,
 			secondPartyId: typeof body.secondPartyId === 'string' ? body.secondPartyId : undefined,
 			fromDate,
@@ -1428,6 +1572,9 @@ app.get('/corporations/:corporationId/ledger/entries', requireAuth(), async (c) 
 			},
 			400
 		)
+	}
+	if (refTypes && refTypes.some((value) => !isTaxIncomeRefType(value))) {
+		return c.json({ error: 'refTypes must only include valid tax income ref types' }, 400)
 	}
 
 	try {
@@ -1516,6 +1663,9 @@ app.get('/corporations/:corporationId/rollups/daily', requireAuth(), async (c) =
 	}
 	if (toDate && Number.isNaN(toDate.getTime())) {
 		return c.json({ error: 'toDate must be a valid ISO date string' }, 400)
+	}
+	if (refType && !isTaxIncomeRefType(refType)) {
+		return c.json({ error: 'refType must be a valid tax income ref type' }, 400)
 	}
 
 	try {

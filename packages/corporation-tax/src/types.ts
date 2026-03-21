@@ -77,78 +77,90 @@ export interface ListTaxAuditLogFilters {
 	offset?: number
 }
 
-export interface TaxRuleCondition {
-	id: string
-	ruleSetId: string
-	appliesToRefType: string | null
-	walletDivision: number | null
-	partyType: string | null
-	minAmount: string | null
-	maxAmount: string | null
-	isEssOnly: boolean
-	essBankType: string | null
-	createdAt: Date
-	updatedAt: Date
-}
-
-export interface TaxRuleAction {
-	id: string
-	ruleSetId: string
-	taxRateBps: number
-	isTaxable: boolean
-	label: string
-	createdAt: Date
-	updatedAt: Date
-}
-
 export interface TaxRuleSet {
 	id: string
-	corporationId: string | null
+	ruleGroupId: string
 	name: string
 	priority: number
 	isActive: boolean
 	effectiveFrom: Date
 	effectiveTo: Date | null
+	appliesToRefType: string | null
+	partyType: string | null
+	taxRateBps: number
+	label: string
 	createdBy: string
 	createdAt: Date
 	updatedAt: Date
-	conditions: TaxRuleCondition[]
-	actions: TaxRuleAction[]
 }
 
-export interface CreateTaxRuleConditionInput {
-	appliesToRefType?: string | null
-	walletDivision?: number | null
-	partyType?: string | null
-	minAmount?: string | null
-	maxAmount?: string | null
-	isEssOnly?: boolean
-	essBankType?: string | null
+export interface TaxRuleGroup {
+	id: string
+	name: string
+	description: string | null
+	isDefaultGlobal: boolean
+	isSystem: boolean
+	createdBy: string
+	createdAt: Date
+	updatedAt: Date
 }
 
-export interface CreateTaxRuleActionInput {
-	taxRateBps: number
-	isTaxable?: boolean
-	label: string
+export interface TaxRuleGroupAttachment {
+	id: string
+	ruleGroupId: string
+	corporationId: string
+	createdAt: Date
+	updatedAt: Date
+}
+
+export interface CreateTaxRuleGroupInput {
+	name: string
+	description?: string | null
+}
+
+export interface UpdateTaxRuleGroupInput {
+	name?: string
+	description?: string | null
+}
+
+export interface ListTaxRuleGroupsFilters {
+	corporationId?: string
+	limit?: number
+	offset?: number
 }
 
 export interface CreateTaxRuleSetInput {
-	corporationId?: string | null
+	ruleGroupId: string
 	name: string
 	priority?: number
 	isActive?: boolean
 	effectiveFrom?: Date
 	effectiveTo?: Date | null
-	conditions: CreateTaxRuleConditionInput[]
-	actions: CreateTaxRuleActionInput[]
+	appliesToRefType?: string | null
+	partyType?: string | null
+	taxRateBps: number
+	label: string
 }
 
 export interface ListTaxRuleSetsFilters {
+	ruleGroupId?: string
 	corporationId?: string
 	includeGlobal?: boolean
 	onlyActive?: boolean
 	limit?: number
 	offset?: number
+}
+
+export interface UpdateTaxRuleSetInput {
+	name?: string
+	priority?: number
+	isActive?: boolean
+	effectiveFrom?: Date
+	effectiveTo?: Date | null
+	appliesToRefType?: string | null
+	partyType?: string | null
+	taxRateBps?: number
+	label?: string
 }
 
 export type TaxAssessmentScope = 'corporation' | 'division' | 'character'
@@ -433,6 +445,16 @@ export interface TaxLedgerIngestionResult {
 	essDuplicateSourceKeys: string[]
 	essMissingRecordCount: number
 	essMissingSourceKeys: string[]
+	unexpectedIncomeRefTypeCount: number
+	unexpectedIncomeEntryCount: number
+	unexpectedIncomeRefTypes: Array<{
+		refType: string
+		entryCount: number
+		sampleSourceType: TaxLedgerSourceType
+		sampleSourceKey: string
+		sampleAmount: string
+		sampleEntryDate: Date
+	}>
 }
 
 export interface TaxWalletSourceWatermark {
@@ -453,7 +475,7 @@ export interface TriggerTaxProjectionRefreshInput {
 export interface TriggerTaxProjectionRefreshResult {
 	corporationId: string
 	triggered: boolean
-	reason: 'no_sources' | 'up_to_date' | 'ingested'
+	reason: 'no_sources' | 'up_to_date' | 'ingested' | 'rule_mutation'
 	ingestionResult?: TaxLedgerIngestionResult
 }
 

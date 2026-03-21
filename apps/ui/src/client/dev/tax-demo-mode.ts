@@ -24,6 +24,8 @@ import type {
 	TaxMemberSummary,
 	TaxMissingEsiKeyRow,
 	TaxNotificationDestination,
+	TaxRuleGroup,
+	TaxRuleGroupAttachment,
 	TaxRuleSet,
 	TaxSummaryReport,
 	TaxTopIncomeSourceRow,
@@ -626,6 +628,91 @@ function buildDemoState(seed: number) {
 		},
 	] as TaxNotificationDestination[]
 
+	const defaultRuleGroupId = 'rule-group-default'
+	const corpOverrideRuleGroupId = `rule-group-${corporations[0]?.corporationId ?? '99010001'}`
+
+	const ruleGroups = [
+		{
+			id: defaultRuleGroupId,
+			name: 'Alliance Global (default)',
+			description: 'Default system alliance global group',
+			isDefaultGlobal: true,
+			isSystem: true,
+			createdBy: 'demo-admin',
+			createdAt: addDays(startOfMonth(), -30),
+			updatedAt: addDays(startOfMonth(), -1),
+		},
+		{
+			id: corpOverrideRuleGroupId,
+			name: 'Corporation Overrides',
+			description: 'Scoped overrides for selected corporation',
+			isDefaultGlobal: false,
+			isSystem: false,
+			createdBy: 'demo-admin',
+			createdAt: addDays(startOfMonth(), -14),
+			updatedAt: addDays(startOfMonth(), -1),
+		},
+	] as TaxRuleGroup[]
+
+	const ruleGroupAttachments = [
+		{
+			id: 'attach-1',
+			ruleGroupId: defaultRuleGroupId,
+			corporationId: corporations[0]?.corporationId ?? '99010001',
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		},
+		{
+			id: 'attach-2',
+			ruleGroupId: defaultRuleGroupId,
+			corporationId: corporations[1]?.corporationId ?? '99010002',
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		},
+		{
+			id: 'attach-3',
+			ruleGroupId: corpOverrideRuleGroupId,
+			corporationId: corporations[0]?.corporationId ?? '99010001',
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		},
+	] as TaxRuleGroupAttachment[]
+
+	const ruleSets = [
+		{
+			id: 'rule-1',
+			ruleGroupId: defaultRuleGroupId,
+			name: 'Default Alliance Tax',
+			priority: 0,
+			isActive: true,
+			effectiveFrom: addDays(startOfMonth(), -30),
+			effectiveTo: null,
+			appliesToRefType: null,
+			partyType: null,
+			taxRateBps: 500,
+			label: 'Base rate',
+			createdBy: 'demo-admin',
+			createdAt: addDays(startOfMonth(), -20),
+			updatedAt: addDays(startOfMonth(), -5),
+		},
+		{
+			id: 'rule-2',
+			ruleGroupId: corpOverrideRuleGroupId,
+			name: 'ESS Override',
+			priority: 50,
+			isActive: true,
+			effectiveFrom: addDays(startOfMonth(), -10),
+			effectiveTo: null,
+			appliesToRefType: 'ess_escrow_transfer',
+			partyType: null,
+			taxRateBps: 950,
+			label: 'ESS rate',
+			createdBy: 'demo-admin',
+			createdAt: addDays(startOfMonth(), -10),
+			updatedAt: addDays(startOfMonth(), -2),
+		},
+	] as TaxRuleSet[]
+
 	return {
 		seed,
 		entityNames,
@@ -648,6 +735,9 @@ function buildDemoState(seed: number) {
 		exports,
 		schedules,
 		notificationDestinations,
+		ruleGroups,
+		ruleGroupAttachments,
+		ruleSets,
 	}
 }
 
@@ -766,90 +856,229 @@ export const taxDemoApi = {
 		if (current) Object.assign(current, input, { updatedAt: new Date() })
 		return withLatency(current ?? state.settings[0]!)
 	},
-	async listRuleSets(corporationId: string) {
-		const settings = ensureDemoState().settings
-		const base = [
-			{
-				id: 'rule-1',
-				corporationId: null,
-				name: 'Default Alliance Tax',
-				priority: 100,
-				isActive: true,
-				effectiveFrom: addDays(startOfMonth(), -30),
-				effectiveTo: null,
-				createdBy: 'demo-admin',
-				createdAt: addDays(startOfMonth(), -20),
-				updatedAt: addDays(startOfMonth(), -5),
-				conditions: [],
-				actions: [
-					{
-						id: 'action-1',
-						ruleSetId: 'rule-1',
-						taxRateBps: 750,
-						isTaxable: true,
-						label: 'Base rate',
-						createdAt: new Date(),
-						updatedAt: new Date(),
-					},
-				],
-			},
-			{
-				id: 'rule-2',
-				corporationId,
-				name: `ESS Override ${settings.find((row) => row.corporationId === corporationId)?.corporationId ?? corporationId}`,
-				priority: 50,
-				isActive: true,
-				effectiveFrom: addDays(startOfMonth(), -10),
-				effectiveTo: null,
-				createdBy: 'demo-admin',
-				createdAt: addDays(startOfMonth(), -10),
-				updatedAt: addDays(startOfMonth(), -2),
-				conditions: [
-					{
-						id: 'cond-1',
-						ruleSetId: 'rule-2',
-						appliesToRefType: 'ess_escrow_transfer',
-						walletDivision: null,
-						partyType: null,
-						minAmount: null,
-						maxAmount: null,
-						isEssOnly: true,
-						essBankType: 'main',
-						createdAt: new Date(),
-						updatedAt: new Date(),
-					},
-				],
-				actions: [
-					{
-						id: 'action-2',
-						ruleSetId: 'rule-2',
-						taxRateBps: 950,
-						isTaxable: true,
-						label: 'ESS rate',
-						createdAt: new Date(),
-						updatedAt: new Date(),
-					},
-				],
-			},
-		] as TaxRuleSet[]
-		return withLatency(base)
+	async listRuleSets(filters?: { corporationId?: string; ruleGroupId?: string }) {
+		const state = ensureDemoState()
+		let filtered = [...state.ruleSets]
+		if (filters?.ruleGroupId) {
+			filtered = filtered.filter((rule) => rule.ruleGroupId === filters.ruleGroupId)
+		} else if (filters?.corporationId) {
+			const allowedRuleGroupIds = new Set(
+				state.ruleGroupAttachments
+					.filter((attachment) => attachment.corporationId === filters.corporationId)
+					.map((attachment) => attachment.ruleGroupId)
+			)
+			filtered = filtered.filter((rule) => allowedRuleGroupIds.has(rule.ruleGroupId))
+		}
+		return withLatency(filtered)
 	},
-	async createRuleSet(corporationId: string | undefined, input: { name: string }) {
+	async createRuleSet(
+		_corporationId: string | undefined,
+		input: {
+			name: string
+			ruleGroupId: string
+			priority?: number
+			isActive?: boolean
+			appliesToRefType?: string
+			taxRateBps: number
+			label: string
+		}
+	) {
+		const state = ensureDemoState()
 		const created = {
 			id: `rule-${Date.now()}`,
-			corporationId: corporationId ?? null,
+			ruleGroupId: input.ruleGroupId,
 			name: input.name,
-			priority: 100,
-			isActive: true,
+			priority: input.priority ?? 0,
+			isActive: input.isActive ?? true,
 			effectiveFrom: new Date(),
 			effectiveTo: null,
+			appliesToRefType: input.appliesToRefType ?? null,
+			partyType: null,
+			taxRateBps: input.taxRateBps,
+			label: input.label,
 			createdBy: 'demo-admin',
 			createdAt: new Date(),
 			updatedAt: new Date(),
-			conditions: [],
-			actions: [],
 		} as TaxRuleSet
+		state.ruleSets.unshift(created)
 		return withLatency(created)
+	},
+	async updateRuleSet(
+		ruleSetId: string,
+		input: {
+			isActive?: boolean
+			name?: string
+			priority?: number
+			appliesToRefType?: string | null
+			partyType?: string | null
+			taxRateBps?: number
+			label?: string
+		}
+	) {
+		const state = ensureDemoState()
+		const existing = state.ruleSets.find((row) => row.id === ruleSetId)
+		if (!existing) {
+			const fallback = {
+				id: ruleSetId,
+				ruleGroupId: 'rule-group-default',
+				name: input.name ?? 'Demo Rule',
+				priority: input.priority ?? 100,
+				isActive: input.isActive ?? true,
+				effectiveFrom: new Date(),
+				effectiveTo: null,
+				appliesToRefType: input.appliesToRefType ?? null,
+				partyType: input.partyType ?? null,
+				taxRateBps: input.taxRateBps ?? 750,
+				label: input.label ?? 'Demo rule',
+				createdBy: 'demo-admin',
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			} as TaxRuleSet
+			state.ruleSets.unshift(fallback)
+			return withLatency(fallback)
+		}
+
+		existing.name = input.name ?? existing.name
+		existing.priority = input.priority ?? existing.priority
+		existing.isActive = input.isActive ?? existing.isActive
+		if (input.appliesToRefType !== undefined) {
+			existing.appliesToRefType = input.appliesToRefType
+		}
+		if (input.partyType !== undefined) {
+			existing.partyType = input.partyType
+		}
+		existing.taxRateBps = input.taxRateBps ?? existing.taxRateBps
+		existing.label = input.label ?? existing.label
+		existing.updatedAt = new Date()
+
+		return withLatency(existing)
+	},
+	async deleteRuleSet(ruleSetId: string) {
+		const state = ensureDemoState()
+		state.ruleSets = state.ruleSets.filter((row) => row.id !== ruleSetId)
+		return withLatency(undefined)
+	},
+	async listRuleGroups(filters?: { corporationId?: string }) {
+		const state = ensureDemoState()
+		let rows = [...state.ruleGroups]
+		if (filters?.corporationId) {
+			const allowedRuleGroupIds = new Set(
+				state.ruleGroupAttachments
+					.filter((attachment) => attachment.corporationId === filters.corporationId)
+					.map((attachment) => attachment.ruleGroupId)
+			)
+			rows = rows.filter((group) => allowedRuleGroupIds.has(group.id))
+		}
+		return withLatency(rows)
+	},
+	async createRuleGroup(input: { name: string; description?: string | null }) {
+		const state = ensureDemoState()
+		const created: TaxRuleGroup = {
+			id: `rule-group-${Date.now()}`,
+			name: input.name,
+			description: input.description ?? null,
+			isDefaultGlobal: false,
+			isSystem: false,
+			createdBy: 'demo-admin',
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		}
+		state.ruleGroups.unshift(created)
+		return withLatency(created)
+	},
+	async updateRuleGroup(
+		ruleGroupId: string,
+		input: { name?: string; description?: string | null }
+	) {
+		const state = ensureDemoState()
+		const existing = state.ruleGroups.find((row) => row.id === ruleGroupId)
+		if (!existing) {
+			const fallback: TaxRuleGroup = {
+				id: ruleGroupId,
+				name: input.name ?? 'Updated Demo Rule Group',
+				description: input.description ?? null,
+				isDefaultGlobal: false,
+				isSystem: false,
+				createdBy: 'demo-admin',
+				createdAt: addDays(startOfMonth(), -10),
+				updatedAt: new Date(),
+			}
+			state.ruleGroups.unshift(fallback)
+			return withLatency(fallback)
+		}
+		if (existing.isDefaultGlobal || existing.isSystem) {
+			return withLatency(existing)
+		}
+		existing.name = input.name ?? existing.name
+		existing.description = input.description ?? existing.description
+		existing.updatedAt = new Date()
+		return withLatency(existing)
+	},
+	async deleteRuleGroup(ruleGroupId: string) {
+		const state = ensureDemoState()
+		const group = state.ruleGroups.find((row) => row.id === ruleGroupId)
+		if (group?.isDefaultGlobal || group?.isSystem) {
+			return withLatency(undefined)
+		}
+		state.ruleGroups = state.ruleGroups.filter((row) => row.id !== ruleGroupId)
+		state.ruleGroupAttachments = state.ruleGroupAttachments.filter(
+			(row) => row.ruleGroupId !== ruleGroupId
+		)
+		state.ruleSets = state.ruleSets.filter((row) => row.ruleGroupId !== ruleGroupId)
+		return withLatency(undefined)
+	},
+	async listRuleGroupAttachments(ruleGroupId: string) {
+		const state = ensureDemoState()
+		const rows = state.ruleGroupAttachments
+			.filter((row) => row.ruleGroupId === ruleGroupId)
+			.sort((left, right) => {
+				const leftTime = new Date(left.createdAt).getTime()
+				const rightTime = new Date(right.createdAt).getTime()
+				if (leftTime !== rightTime) return leftTime - rightTime
+				return left.corporationId.localeCompare(right.corporationId)
+			})
+		return withLatency(rows)
+	},
+	async attachCorporationToRuleGroup(ruleGroupId: string, corporationId: string) {
+		const state = ensureDemoState()
+		const existing = state.ruleGroupAttachments.find(
+			(row) => row.ruleGroupId === ruleGroupId && row.corporationId === corporationId
+		)
+		if (existing) return withLatency(existing)
+
+		if (!state.settings.some((row) => row.corporationId === corporationId)) {
+			const template = state.settings[0]
+			if (template) {
+				const now = new Date()
+				state.settings.unshift({
+					...template,
+					corporationId,
+					updatedAt: now,
+					createdAt: now,
+					exclusionReason: null,
+					included: true,
+				})
+			}
+			if (!(corporationId in state.walletDivisions)) {
+				state.walletDivisions[corporationId] = []
+			}
+		}
+		const row: TaxRuleGroupAttachment = {
+			id: `attach-${Date.now()}`,
+			ruleGroupId,
+			corporationId,
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		}
+		state.ruleGroupAttachments.unshift(row)
+		return withLatency(row)
+	},
+	async detachCorporationFromRuleGroup(ruleGroupId: string, corporationId: string) {
+		const state = ensureDemoState()
+		state.ruleGroupAttachments = state.ruleGroupAttachments.filter(
+			(row) => !(row.ruleGroupId === ruleGroupId && row.corporationId === corporationId)
+		)
+		return withLatency(undefined)
 	},
 	async listAssessments(
 		corporationId: string,

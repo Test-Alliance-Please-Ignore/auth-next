@@ -8,13 +8,6 @@
 			"when": 1773300000000,
 			"tag": "0000_corporation_tax_initial",
 			"breakpoints": true
-		},
-		{
-			"idx": 1,
-			"version": "7",
-			"when": 1773997759248,
-			"tag": "0001_member_summary_projection_rollups",
-			"breakpoints": true
 		}
 	]
 }

@@ -1,11 +1,13 @@
-import { and, desc, eq, isNull, or } from '@repo/db-utils'
+import { isTaxIncomeRefType } from '@repo/corporation-tax'
+import { and, asc, desc, eq, gte, inArray } from '@repo/db-utils'
 
-import { taxRuleActions, taxRuleConditions, taxRuleSets } from '../db/schema'
+import { taxRuleGroupAttachments, taxRuleGroups, taxRuleSets } from '../db/schema'
 
 import type {
 	CreateTaxRuleSetInput,
 	ListTaxRuleSetsFilters,
 	TaxRuleSet,
+	UpdateTaxRuleSetInput,
 } from '@repo/corporation-tax'
 import type { CorporationTaxDb } from '../db'
 
@@ -16,95 +18,146 @@ export class TaxRulesService {
 		if (!input.name.trim()) {
 			throw new Error('Rule set name is required')
 		}
-		if (!input.actions || input.actions.length === 0) {
-			throw new Error('At least one rule action is required')
+		if (!Number.isInteger(input.taxRateBps) || input.taxRateBps < 0 || input.taxRateBps > 10_000) {
+			throw new Error('Rule action taxRateBps must be an integer between 0 and 10000')
 		}
-
-		for (const action of input.actions) {
-			if (!Number.isInteger(action.taxRateBps) || action.taxRateBps < 0 || action.taxRateBps > 10_000) {
-				throw new Error('Rule action taxRateBps must be an integer between 0 and 10000')
-			}
-			if (!action.label.trim()) {
-				throw new Error('Rule action label is required')
-			}
+		if (!input.label.trim()) {
+			throw new Error('Rule action label is required')
+		}
+		if (input.appliesToRefType && !isTaxIncomeRefType(input.appliesToRefType)) {
+			throw new Error('Rule appliesToRefType must be a valid tax income ref type')
 		}
 
 		const now = new Date()
 
-		const created = await this.db.transaction(async (tx) => {
-			const [ruleSet] = await tx
-				.insert(taxRuleSets)
-				.values({
-					corporationId: input.corporationId ?? null,
-					name: input.name.trim(),
-					priority: input.priority ?? 0,
-					isActive: input.isActive ?? true,
-					effectiveFrom: input.effectiveFrom ?? now,
-					effectiveTo: input.effectiveTo ?? null,
-					createdBy: actorUserId,
-				})
-				.returning()
-
-			if (!ruleSet) {
-				throw new Error('Failed to create rule set')
-			}
-
-			if (input.conditions.length > 0) {
-				await tx.insert(taxRuleConditions).values(
-					input.conditions.map((condition) => ({
-						ruleSetId: ruleSet.id,
-						appliesToRefType: condition.appliesToRefType ?? null,
-						walletDivision: condition.walletDivision ?? null,
-						partyType: condition.partyType ?? null,
-						minAmount: condition.minAmount ?? null,
-						maxAmount: condition.maxAmount ?? null,
-						isEssOnly: condition.isEssOnly ?? false,
-						essBankType: condition.essBankType ?? null,
-					}))
-				)
-			}
-
-			await tx.insert(taxRuleActions).values(
-				input.actions.map((action) => ({
-					ruleSetId: ruleSet.id,
-					taxRateBps: action.taxRateBps,
-					isTaxable: action.isTaxable ?? true,
-					label: action.label.trim(),
-				}))
-			)
-
-			return ruleSet.id
+		const ruleGroup = await this.db.query.taxRuleGroups.findFirst({
+			where: eq(taxRuleGroups.id, input.ruleGroupId),
 		})
-
-		const ruleSet = await this.getRuleSetById(created)
-		if (!ruleSet) {
-			throw new Error('Failed to load created rule set')
+		if (!ruleGroup) {
+			throw new Error('Rule group not found')
 		}
 
+		const [ruleSet] = await this.db
+			.insert(taxRuleSets)
+			.values({
+				ruleGroupId: input.ruleGroupId,
+				name: input.name.trim(),
+				priority: input.priority ?? 0,
+				isActive: input.isActive ?? true,
+				effectiveFrom: input.effectiveFrom ?? now,
+				effectiveTo: input.effectiveTo ?? null,
+				appliesToRefType: input.appliesToRefType ?? null,
+				partyType: input.partyType ?? null,
+				taxRateBps: input.taxRateBps,
+				label: input.label.trim(),
+				createdBy: actorUserId,
+			})
+			.returning({ id: taxRuleSets.id })
+		if (!ruleSet) {
+			throw new Error('Failed to create rule set')
+		}
+
+		const created = await this.getRuleSetById(ruleSet.id)
+		if (!created) {
+			throw new Error('Failed to load created rule set')
+		}
+		return created
+	}
+
+	async updateRuleSet(ruleSetId: string, input: UpdateTaxRuleSetInput): Promise<TaxRuleSet> {
+		const updates: Partial<typeof taxRuleSets.$inferInsert> = {
+			updatedAt: new Date(),
+		}
+		if (input.name !== undefined) {
+			const name = input.name.trim()
+			if (!name) {
+				throw new Error('Rule set name is required')
+			}
+			updates.name = name
+		}
+		if (input.priority !== undefined) {
+			updates.priority = input.priority
+		}
+		if (input.isActive !== undefined) {
+			updates.isActive = input.isActive
+		}
+		if (input.effectiveFrom !== undefined) {
+			updates.effectiveFrom = input.effectiveFrom
+		}
+		if (input.effectiveTo !== undefined) {
+			updates.effectiveTo = input.effectiveTo
+		}
+		if (input.appliesToRefType !== undefined) {
+			if (input.appliesToRefType && !isTaxIncomeRefType(input.appliesToRefType)) {
+				throw new Error('Rule appliesToRefType must be a valid tax income ref type')
+			}
+			updates.appliesToRefType = input.appliesToRefType
+		}
+		if (input.partyType !== undefined) {
+			updates.partyType = input.partyType
+		}
+		if (input.taxRateBps !== undefined) {
+			if (
+				!Number.isInteger(input.taxRateBps) ||
+				input.taxRateBps < 0 ||
+				input.taxRateBps > 10_000
+			) {
+				throw new Error('Rule action taxRateBps must be an integer between 0 and 10000')
+			}
+			updates.taxRateBps = input.taxRateBps
+		}
+		if (input.label !== undefined) {
+			if (!input.label.trim()) {
+				throw new Error('Rule action label is required')
+			}
+			updates.label = input.label.trim()
+		}
+
+		const [updated] = await this.db
+			.update(taxRuleSets)
+			.set(updates)
+			.where(eq(taxRuleSets.id, ruleSetId))
+			.returning({ id: taxRuleSets.id })
+		if (!updated) {
+			throw new Error('Rule set not found')
+		}
+
+		const ruleSet = await this.getRuleSetById(ruleSetId)
+		if (!ruleSet) {
+			throw new Error('Rule set not found')
+		}
 		return ruleSet
+	}
+
+	async deleteRuleSet(ruleSetId: string): Promise<void> {
+		const [deleted] = await this.db
+			.delete(taxRuleSets)
+			.where(eq(taxRuleSets.id, ruleSetId))
+			.returning({ id: taxRuleSets.id })
+		if (!deleted) {
+			throw new Error('Rule set not found')
+		}
 	}
 
 	async listRuleSets(filters?: ListTaxRuleSetsFilters): Promise<TaxRuleSet[]> {
 		const limit = Math.min(Math.max(filters?.limit ?? 50, 1), 200)
 		const offset = Math.max(filters?.offset ?? 0, 0)
-		const includeGlobal = filters?.includeGlobal ?? true
-
-		const whereConditions = []
+		const whereConditions = [] as any[]
 		if (filters?.onlyActive !== undefined) {
 			whereConditions.push(eq(taxRuleSets.isActive, filters.onlyActive))
 		}
-
-		if (filters?.corporationId) {
-			if (includeGlobal) {
-				whereConditions.push(
-					or(
-						eq(taxRuleSets.corporationId, filters.corporationId),
-						isNull(taxRuleSets.corporationId)
-					)
-				)
-			} else {
-				whereConditions.push(eq(taxRuleSets.corporationId, filters.corporationId))
+		if (filters?.ruleGroupId) {
+			whereConditions.push(eq(taxRuleSets.ruleGroupId, filters.ruleGroupId))
+		} else if (filters?.corporationId) {
+			const attachmentRows = await this.db
+				.select({ ruleGroupId: taxRuleGroupAttachments.ruleGroupId })
+				.from(taxRuleGroupAttachments)
+				.where(eq(taxRuleGroupAttachments.corporationId, filters.corporationId))
+			const attachedGroupIds = attachmentRows.map((row) => row.ruleGroupId)
+			if (attachedGroupIds.length === 0) {
+				return []
 			}
+			whereConditions.push(inArray(taxRuleSets.ruleGroupId, attachedGroupIds))
 		}
 
 		const rows = await this.db.query.taxRuleSets.findMany({
@@ -112,66 +165,57 @@ export class TaxRulesService {
 			orderBy: [desc(taxRuleSets.priority), desc(taxRuleSets.createdAt)],
 			limit,
 			offset,
-			with: {
-				conditions: true,
-				actions: true,
-			},
 		})
 
 		return rows.map((row) => this.toRuleSet(row))
 	}
 
+	async getCorporationRuleGroupIds(corporationId: string): Promise<string[]> {
+		const rows = await this.db
+			.select({ ruleGroupId: taxRuleGroupAttachments.ruleGroupId })
+			.from(taxRuleGroupAttachments)
+			.where(eq(taxRuleGroupAttachments.corporationId, corporationId))
+			.orderBy(asc(taxRuleGroupAttachments.ruleGroupId))
+		return rows.map((row) => row.ruleGroupId)
+	}
+
+	async getEarliestRuleSetMutationAfter(corporationId: string, since: Date): Promise<Date | null> {
+		const groupIds = await this.getCorporationRuleGroupIds(corporationId)
+		if (groupIds.length === 0) {
+			return null
+		}
+		const earliestRule = await this.db.query.taxRuleSets.findFirst({
+			where: and(inArray(taxRuleSets.ruleGroupId, groupIds), gte(taxRuleSets.updatedAt, since)),
+			orderBy: [asc(taxRuleSets.updatedAt)],
+			columns: { updatedAt: true },
+		})
+		return earliestRule?.updatedAt ?? null
+	}
+
 	async getRuleSetById(ruleSetId: string): Promise<TaxRuleSet | null> {
 		const row = await this.db.query.taxRuleSets.findFirst({
 			where: eq(taxRuleSets.id, ruleSetId),
-			with: {
-				conditions: true,
-				actions: true,
-			},
 		})
 
 		return row ? this.toRuleSet(row) : null
 	}
 
-	private toRuleSet(
-		row: typeof taxRuleSets.$inferSelect & {
-			conditions: Array<typeof taxRuleConditions.$inferSelect>
-			actions: Array<typeof taxRuleActions.$inferSelect>
-		}
-	): TaxRuleSet {
+	private toRuleSet(row: typeof taxRuleSets.$inferSelect): TaxRuleSet {
 		return {
 			id: row.id,
-			corporationId: row.corporationId,
+			ruleGroupId: row.ruleGroupId,
 			name: row.name,
 			priority: row.priority,
 			isActive: row.isActive,
 			effectiveFrom: row.effectiveFrom,
 			effectiveTo: row.effectiveTo,
+			appliesToRefType: row.appliesToRefType,
+			partyType: row.partyType,
+			taxRateBps: row.taxRateBps,
+			label: row.label,
 			createdBy: row.createdBy,
 			createdAt: row.createdAt,
 			updatedAt: row.updatedAt,
-			conditions: row.conditions.map((condition) => ({
-				id: condition.id,
-				ruleSetId: condition.ruleSetId,
-				appliesToRefType: condition.appliesToRefType,
-				walletDivision: condition.walletDivision,
-				partyType: condition.partyType,
-				minAmount: condition.minAmount,
-				maxAmount: condition.maxAmount,
-				isEssOnly: condition.isEssOnly,
-				essBankType: condition.essBankType,
-				createdAt: condition.createdAt,
-				updatedAt: condition.updatedAt,
-			})),
-			actions: row.actions.map((action) => ({
-				id: action.id,
-				ruleSetId: action.ruleSetId,
-				taxRateBps: action.taxRateBps,
-				isTaxable: action.isTaxable,
-				label: action.label,
-				createdAt: action.createdAt,
-				updatedAt: action.updatedAt,
-			})),
 		}
 	}
 }

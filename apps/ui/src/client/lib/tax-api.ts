@@ -27,6 +27,8 @@ import type {
 	TaxMemberSummary,
 	TaxMissingEsiKeyRow,
 	TaxNotificationDestination,
+	TaxRuleGroup,
+	TaxRuleGroupAttachment,
 	TaxRuleSet,
 	TaxSummaryReport,
 	TaxTopIncomeSourceRow,
@@ -156,8 +158,15 @@ export interface UpdateTaxCorporationSettingsInput {
 }
 
 export interface ListTaxRuleSetsFilters {
-	includeGlobal?: boolean
+	corporationId?: string
+	ruleGroupId?: string
 	onlyActive?: boolean
+	limit?: number
+	offset?: number
+}
+
+export interface ListTaxRuleGroupsFilters {
+	corporationId?: string
 	limit?: number
 	offset?: number
 }
@@ -171,25 +180,21 @@ export interface ListTaxAssessmentsFilters {
 }
 
 export interface CreateTaxRuleSetInput {
+	ruleGroupId: string
 	name: string
 	priority?: number
 	isActive?: boolean
 	effectiveFrom?: string
 	effectiveTo?: string
-	conditions: Array<{
-		appliesToRefType?: string
-		walletDivision?: number
-		partyType?: string
-		minAmount?: string
-		maxAmount?: string
-		isEssOnly?: boolean
-		essBankType?: string
-	}>
-	actions: Array<{
-		taxRateBps: number
-		isTaxable?: boolean
-		label: string
-	}>
+	appliesToRefType?: string
+	partyType?: string
+	taxRateBps: number
+	label: string
+}
+
+export interface CreateTaxRuleGroupInput {
+	name: string
+	description?: string | null
 }
 
 export interface ListTaxAuditLogFilters {
@@ -286,32 +291,94 @@ export class CorporationTaxApiClient extends ApiClient {
 		return this.patch(`${TAX_API_BASE}/corporations/${corporationId}/settings`, input)
 	}
 
-	async listRuleSets(
-		corporationId: string,
-		filters?: ListTaxRuleSetsFilters
-	): Promise<TaxRuleSet[]> {
-		if (this.shouldUseDemo()) return taxDemoApi.listRuleSets(corporationId)
+	async listRuleSets(filters?: ListTaxRuleSetsFilters): Promise<TaxRuleSet[]> {
+		if (this.shouldUseDemo()) return taxDemoApi.listRuleSets(filters)
 		const params = new URLSearchParams()
-		if (filters?.includeGlobal !== undefined)
-			params.set('includeGlobal', String(filters.includeGlobal))
+		if (filters?.corporationId) params.set('corporationId', filters.corporationId)
+		if (filters?.ruleGroupId) params.set('ruleGroupId', filters.ruleGroupId)
 		if (filters?.onlyActive !== undefined) params.set('onlyActive', String(filters.onlyActive))
 		if (filters?.limit !== undefined) params.set('limit', String(filters.limit))
 		if (filters?.offset !== undefined) params.set('offset', String(filters.offset))
 		const query = params.toString()
-		return this.get(
-			`${TAX_API_BASE}/corporations/${corporationId}/rules${query ? `?${query}` : ''}`
-		)
+		return this.get(`${TAX_API_BASE}/rules${query ? `?${query}` : ''}`)
 	}
 
 	async createRuleSet(
-		corporationId: string | undefined,
+		_corporationId: string | undefined,
 		input: CreateTaxRuleSetInput
 	): Promise<TaxRuleSet> {
-		if (this.shouldUseDemo()) return taxDemoApi.createRuleSet(corporationId, input)
-		if (corporationId) {
-			return this.post(`${TAX_API_BASE}/corporations/${corporationId}/rules`, input)
-		}
+		if (this.shouldUseDemo()) return taxDemoApi.createRuleSet(undefined, input)
 		return this.post(`${TAX_API_BASE}/rules`, input)
+	}
+
+	async updateRuleSet(
+		ruleSetId: string,
+		input: {
+			isActive?: boolean
+			name?: string
+			priority?: number
+			appliesToRefType?: string | null
+			partyType?: string | null
+			taxRateBps?: number
+			label?: string
+		}
+	): Promise<TaxRuleSet> {
+		if (this.shouldUseDemo()) return taxDemoApi.updateRuleSet(ruleSetId, input)
+		return this.patch(`${TAX_API_BASE}/rules/${ruleSetId}`, input)
+	}
+
+	async deleteRuleSet(ruleSetId: string): Promise<void> {
+		if (this.shouldUseDemo()) return taxDemoApi.deleteRuleSet(ruleSetId)
+		await this.delete(`${TAX_API_BASE}/rules/${ruleSetId}`)
+	}
+
+	async listRuleGroups(filters?: ListTaxRuleGroupsFilters): Promise<TaxRuleGroup[]> {
+		if (this.shouldUseDemo()) return taxDemoApi.listRuleGroups(filters)
+		const params = new URLSearchParams()
+		if (filters?.corporationId) params.set('corporationId', filters.corporationId)
+		if (filters?.limit !== undefined) params.set('limit', String(filters.limit))
+		if (filters?.offset !== undefined) params.set('offset', String(filters.offset))
+		const query = params.toString()
+		return this.get(`${TAX_API_BASE}/rule-groups${query ? `?${query}` : ''}`)
+	}
+
+	async createRuleGroup(input: CreateTaxRuleGroupInput): Promise<TaxRuleGroup> {
+		if (this.shouldUseDemo()) return taxDemoApi.createRuleGroup(input)
+		return this.post(`${TAX_API_BASE}/rule-groups`, input)
+	}
+
+	async updateRuleGroup(
+		ruleGroupId: string,
+		input: { name?: string; description?: string | null }
+	): Promise<TaxRuleGroup> {
+		if (this.shouldUseDemo()) return taxDemoApi.updateRuleGroup(ruleGroupId, input)
+		return this.patch(`${TAX_API_BASE}/rule-groups/${ruleGroupId}`, input)
+	}
+
+	async deleteRuleGroup(ruleGroupId: string): Promise<void> {
+		if (this.shouldUseDemo()) return taxDemoApi.deleteRuleGroup(ruleGroupId)
+		await this.delete(`${TAX_API_BASE}/rule-groups/${ruleGroupId}`)
+	}
+
+	async listRuleGroupAttachments(ruleGroupId: string): Promise<TaxRuleGroupAttachment[]> {
+		if (this.shouldUseDemo()) return taxDemoApi.listRuleGroupAttachments(ruleGroupId)
+		return this.get(`${TAX_API_BASE}/rule-groups/${ruleGroupId}/attachments`)
+	}
+
+	async attachCorporationToRuleGroup(
+		ruleGroupId: string,
+		corporationId: string
+	): Promise<TaxRuleGroupAttachment> {
+		if (this.shouldUseDemo())
+			return taxDemoApi.attachCorporationToRuleGroup(ruleGroupId, corporationId)
+		return this.post(`${TAX_API_BASE}/rule-groups/${ruleGroupId}/attachments`, { corporationId })
+	}
+
+	async detachCorporationFromRuleGroup(ruleGroupId: string, corporationId: string): Promise<void> {
+		if (this.shouldUseDemo()) {
+			return taxDemoApi.detachCorporationFromRuleGroup(ruleGroupId, corporationId)
+		}
+		await this.delete(`${TAX_API_BASE}/rule-groups/${ruleGroupId}/attachments/${corporationId}`)
 	}
 
 	async listAssessments(

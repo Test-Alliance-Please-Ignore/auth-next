@@ -1,3 +1,4 @@
+import { filterTaxIncomeRefTypes, isTaxIncomeRefType } from '@repo/corporation-tax'
 import { and, desc, eq, gte, lt, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
@@ -98,6 +99,7 @@ export class TaxLedgerService {
 		corporationId: string,
 		input: IngestTaxLedgerWindowInput = {}
 	): Promise<TaxLedgerIngestionResult> {
+		const incomeRefTypesFilter = filterTaxIncomeRefTypes(input.refTypes)
 		const includeJournal = input.includeJournal ?? true
 		const includeTransactions = input.includeTransactions ?? true
 		const includeCharacterWallets = input.includeCharacterWallets ?? true
@@ -126,7 +128,7 @@ export class TaxLedgerService {
 				includeJournal
 					? corporationStub.getWalletJournalWindow(corporationId, {
 							division: input.division,
-							refTypes: input.refTypes,
+							refTypes: incomeRefTypesFilter,
 							firstPartyId: input.firstPartyId,
 							secondPartyId: input.secondPartyId,
 							fromDate: input.fromDate,
@@ -167,7 +169,7 @@ export class TaxLedgerService {
 						includeTransactions,
 						memberCharacterIds: input.memberCharacterIds,
 						maxMemberCharacters: input.maxMemberCharacters,
-						refTypes: input.refTypes,
+						refTypes: incomeRefTypesFilter,
 						firstPartyId: input.firstPartyId,
 						secondPartyId: input.secondPartyId,
 						fromDate: input.fromDate,
@@ -190,6 +192,9 @@ export class TaxLedgerService {
 			const now = new Date()
 
 			for (const row of journalRows) {
+				if (!isTaxIncomeRefType(row.refType)) {
+					continue
+				}
 				const amount = row.amount ?? '0'
 				const direction = this.toDirection(amount)
 				const isEss = row.refType === 'ess_escrow_transfer'
@@ -256,6 +261,9 @@ export class TaxLedgerService {
 			}
 
 			for (const item of characterJournalRows) {
+				if (!isTaxIncomeRefType(item.row.refType)) {
+					continue
+				}
 				const amount = item.row.amount ?? '0'
 				const direction = this.toDirection(amount)
 				const isEss = item.row.refType === 'ess_escrow_transfer'
@@ -326,6 +334,15 @@ export class TaxLedgerService {
 			}
 
 			const essQualitySignals = this.summarizeEssQualitySignals(values)
+			const unexpectedIncomeRefTypeSignals = this.summarizeUnexpectedPositiveRefTypeSignals(
+				corporationId,
+				journalRows,
+				characterJournalRows
+			)
+			const unexpectedIncomeEntryCount = unexpectedIncomeRefTypeSignals.reduce(
+				(total, signal) => total + signal.entryCount,
+				0
+			)
 
 			if (values.length > 0) {
 				await this.db
@@ -425,6 +442,9 @@ export class TaxLedgerService {
 				essDuplicateSourceKeys: essQualitySignals.duplicateSourceKeys,
 				essMissingRecordCount: essQualitySignals.missingRecordCount,
 				essMissingSourceKeys: essQualitySignals.missingSourceKeys,
+				unexpectedIncomeRefTypeCount: unexpectedIncomeRefTypeSignals.length,
+				unexpectedIncomeEntryCount,
+				unexpectedIncomeRefTypes: unexpectedIncomeRefTypeSignals,
 			}
 		} catch (error) {
 			await Promise.all(
@@ -860,6 +880,94 @@ export class TaxLedgerService {
 			missingRecordCount,
 			missingSourceKeys: Array.from(missingEssSourceKeys).slice(0, 25),
 		}
+	}
+
+	private summarizeUnexpectedPositiveRefTypeSignals(
+		corporationId: string,
+		corporationJournalRows: Array<{
+			division: number
+			journalId: string
+			refType: string
+			amount: string | null
+			date: Date
+		}>,
+		characterJournalRows: Array<{ characterId: string; row: CharacterWalletJournalRow }>
+	): Array<{
+		refType: string
+		entryCount: number
+		sampleSourceType: TaxLedgerSourceType
+		sampleSourceKey: string
+		sampleAmount: string
+		sampleEntryDate: Date
+	}> {
+		const byRefType = new Map<
+			string,
+			{
+				refType: string
+				entryCount: number
+				sampleSourceType: TaxLedgerSourceType
+				sampleSourceKey: string
+				sampleAmount: string
+				sampleEntryDate: Date
+			}
+		>()
+
+		const record = (
+			refType: string,
+			amount: string | null,
+			sampleSourceType: TaxLedgerSourceType,
+			sampleSourceKey: string,
+			sampleEntryDate: Date
+		) => {
+			if (isTaxIncomeRefType(refType) || !this.isPositiveAmount(amount)) {
+				return
+			}
+
+			const existing = byRefType.get(refType)
+			if (existing) {
+				existing.entryCount += 1
+				return
+			}
+
+			byRefType.set(refType, {
+				refType,
+				entryCount: 1,
+				sampleSourceType,
+				sampleSourceKey,
+				sampleAmount: amount ?? '0',
+				sampleEntryDate,
+			})
+		}
+
+		for (const row of corporationJournalRows) {
+			record(
+				row.refType,
+				row.amount,
+				'corporation_wallet_journal',
+				`${corporationId}:journal:${row.division}:${row.journalId}`,
+				row.date
+			)
+		}
+
+		for (const item of characterJournalRows) {
+			record(
+				item.row.refType,
+				item.row.amount,
+				'character_wallet_journal',
+				`${corporationId}:character-journal:${item.characterId}:${item.row.journalId}`,
+				item.row.date
+			)
+		}
+
+		return Array.from(byRefType.values()).sort((a, b) => a.refType.localeCompare(b.refType))
+	}
+
+	private isPositiveAmount(amount: string | null | undefined): boolean {
+		if (!amount) {
+			return false
+		}
+		const numeric = Number(amount)
+		return Number.isFinite(numeric) && numeric > 0
 	}
 
 	private async upsertCheckpoint(

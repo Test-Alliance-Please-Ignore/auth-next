@@ -103,7 +103,7 @@ const TaxBillsPage = lazy(() => import('./routes/tax-bills'))
 const TaxLedgerPage = lazy(() => import('./routes/tax-ledger'))
 const TaxMemberSummaryPage = lazy(() => import('./routes/tax-member-summary'))
 const TaxReportsPage = lazy(() => import('./routes/tax-reports'))
-const TaxSettingsPage = lazy(() => import('./routes/tax-settings'))
+const TaxRulesPage = lazy(() => import('./routes/tax-settings'))
 
 // Lazy load the SRP (Ship Replacement Program) feature for code splitting
 const SRPIndex = lazy(() => import('./features/srp/routes/index'))
@@ -429,11 +429,12 @@ export default function App() {
 									</Suspense>
 								}
 							/>
+							<Route path="/tax/settings" element={<Navigate to="/tax/rules" replace />} />
 							<Route
-								path="/tax/settings"
+								path="/tax/rules"
 								element={
 									<Suspense fallback={<LoadingPage />}>
-										<TaxSettingsPage />
+										<TaxRulesPage />
 									</Suspense>
 								}
 							/>

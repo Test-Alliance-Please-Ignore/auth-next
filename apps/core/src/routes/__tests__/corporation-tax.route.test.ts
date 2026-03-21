@@ -80,6 +80,7 @@ function makeCorporationTaxStub() {
 		listAuditLog: vi.fn(),
 		getCorporationSettings: vi.fn(),
 		upsertCorporationSettings: vi.fn(),
+		deleteRuleGroup: vi.fn(),
 		listRuleSets: vi.fn(),
 		createRuleSet: vi.fn(),
 		ingestCorporationLedgerWindow: vi.fn(),
@@ -589,7 +590,7 @@ describe('corporation-tax routes', () => {
 		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:tax:admin' }] as any)
 		corporationTaxStub.createRuleSet.mockResolvedValue({
 			id: 'rule-1',
-			corporationId: null,
+			ruleGroupId: 'group-default',
 			name: 'Global Rule',
 		})
 		routeStubs({ corporationTaxStub, featuresStub })
@@ -600,8 +601,9 @@ describe('corporation-tax routes', () => {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
+					ruleGroupId: 'group-default',
 					name: 'Global Rule',
-					actions: [{ taxRateBps: 750, label: 'Default tax rate' }],
+					action: { taxRateBps: 750, label: 'Default tax rate' },
 				}),
 			},
 			env
@@ -610,16 +612,38 @@ describe('corporation-tax routes', () => {
 		expect(response.status).toBe(201)
 		expect(await response.json()).toEqual({
 			id: 'rule-1',
-			corporationId: null,
+			ruleGroupId: 'group-default',
 			name: 'Global Rule',
 		})
 		expect(corporationTaxStub.createRuleSet).toHaveBeenCalledWith(
 			user.id,
 			expect.objectContaining({
-				corporationId: null,
+				ruleGroupId: 'group-default',
 				name: 'Global Rule',
 			})
 		)
+	})
+
+	it('returns 409 when deleting a protected default rule group', async () => {
+		const app = createApp(makeUser())
+		const corporationTaxStub = makeCorporationTaxStub()
+		const featuresStub = { checkFlag: vi.fn().mockResolvedValue(true) }
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:tax:admin' }] as any)
+		corporationTaxStub.deleteRuleGroup.mockRejectedValue(
+			new Error('Default global rule group cannot be deleted')
+		)
+		routeStubs({ corporationTaxStub, featuresStub })
+
+		const response = await app.request(
+			'/api/corporation-tax/rule-groups/group-default',
+			{ method: 'DELETE' },
+			env
+		)
+
+		expect(response.status).toBe(409)
+		expect(await response.json()).toEqual({
+			error: 'Default global rule group cannot be deleted',
+		})
 	})
 
 	it('validates assessment period ordering for run endpoint', async () => {

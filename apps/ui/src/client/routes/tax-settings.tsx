@@ -1,13 +1,26 @@
-import { useEffect, useMemo, useState } from 'react'
+import { NumberInput } from '@mantine/core'
+import { Pencil, Plus, Trash2, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { TaxCorporationScopeSelector } from '@/components/tax-corporation-scope-selector'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
+import { DestructiveButton } from '@/components/ui/destructive-button'
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
+import { SearchSelect } from '@/components/ui/search-select'
 import { Section } from '@/components/ui/section'
+import { Switch } from '@/components/ui/switch'
 import {
 	Table,
 	TableBody,
@@ -18,18 +31,39 @@ import {
 } from '@/components/ui/table'
 import { useCorporationAccess } from '@/features/my-corporations'
 import {
+	useAttachCorporationToRuleGroup,
+	useCreateTaxRuleGroup,
 	useCreateTaxRuleSet,
+	useDeleteTaxRuleGroup,
+	useDeleteTaxRuleSet,
+	useDetachCorporationFromRuleGroup,
 	useTaxCapabilities,
 	useTaxCorporations,
-	useTaxCorporationSettings,
-	useTaxNotificationDestinations,
+	useTaxRuleGroupAttachments,
+	useTaxRuleGroups,
 	useTaxRuleSets,
-	useUpdateTaxCorporationSettings,
-	useUpsertTaxNotificationDestination,
+	useUpdateTaxRuleGroup,
+	useUpdateTaxRuleSet,
 } from '@/hooks/useCorporationTax'
+import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import {
+	MANTINE_THEMED_NUMBER_INPUT_CLASS_NAMES,
+	MANTINE_THEMED_NUMBER_INPUT_STYLES,
+} from '@/lib/mantine-input-styles'
 import { formatTaxDateTime } from '@/lib/tax-date'
-import { formatTaxNumber } from '@/lib/tax-display'
+import { formatTaxRefTypeLabel, TAX_REF_TYPE_OPTIONS } from '@/lib/tax-display'
+
+import type { TaxRuleSet } from '@repo/corporation-tax'
+
+type RuleFormState = {
+	name: string
+	priorityText: string
+	rateText: string
+	refType: string
+	refTypeQuery: string
+	isActive: boolean
+}
 
 function toPercentText(bps: number): string {
 	return (bps / 100).toFixed(2)
@@ -37,151 +71,465 @@ function toPercentText(bps: number): string {
 
 function parsePercentToBps(input: string): number | null {
 	const parsed = Number(input)
-	if (!Number.isFinite(parsed)) {
-		return null
-	}
+	if (!Number.isFinite(parsed)) return null
 	const bps = Math.round(parsed * 100)
-	if (bps < 0 || bps > 10_000) {
-		return null
-	}
+	if (bps < 0 || bps > 10_000) return null
 	return bps
 }
 
-export default function TaxSettingsPage() {
-	usePageTitle('Tax Settings')
+function parsePriority(input: string): number | null {
+	const parsed = Number(input)
+	if (!Number.isInteger(parsed) || parsed < 0 || parsed > 100) return null
+	return parsed
+}
+
+function normalizeNumberInputValue(value: string | number): string {
+	if (typeof value === 'number') {
+		return Number.isFinite(value) ? String(value) : ''
+	}
+	return value
+}
+
+function isRuleFormValid(form: RuleFormState): boolean {
+	return (
+		Boolean(form.name.trim()) &&
+		parsePriority(form.priorityText) !== null &&
+		parsePercentToBps(form.rateText) !== null
+	)
+}
+
+function defaultRuleFormState(): RuleFormState {
+	return {
+		name: '',
+		priorityText: '0',
+		rateText: '0',
+		refType: '',
+		refTypeQuery: '',
+		isActive: true,
+	}
+}
+
+function ruleToFormState(rule: TaxRuleSet): RuleFormState {
+	return {
+		name: rule.name,
+		priorityText: String(rule.priority),
+		rateText: toPercentText(rule.taxRateBps),
+		refType: rule.appliesToRefType ?? '',
+		refTypeQuery: '',
+		isActive: rule.isActive,
+	}
+}
+
+function RuleFormFields({
+	form,
+	onChange,
+	disabled,
+}: {
+	form: RuleFormState
+	onChange: (next: RuleFormState) => void
+	disabled?: boolean
+}) {
+	const incomeTypeOptions = useMemo(
+		() => [
+			{
+				id: 'any-income-type',
+				value: '',
+				label: 'Any income type',
+			},
+			...TAX_REF_TYPE_OPTIONS,
+		],
+		[]
+	)
+
+	return (
+		<div className="grid gap-3 md:grid-cols-[25%_25%_15%_15%_15%]">
+			<div className="space-y-1">
+				<label className="text-xs font-medium text-muted-foreground">Rule name</label>
+				<Input
+					value={form.name}
+					onChange={(event) => onChange({ ...form, name: event.target.value })}
+					disabled={disabled}
+				/>
+			</div>
+			<div className="space-y-1">
+				<label className="text-xs font-medium text-muted-foreground">
+					Income source (optional)
+				</label>
+				<SearchSelect
+					value={form.refTypeQuery}
+					onValueChange={(value) => onChange({ ...form, refTypeQuery: value })}
+					options={incomeTypeOptions}
+					onSelect={(option) =>
+						onChange({
+							...form,
+							refType: option.value,
+							refTypeQuery: '',
+						})
+					}
+					filterMode="local"
+					mode="dropdown"
+					minQueryLength={0}
+					listMinHeight="14rem"
+					listMaxHeight="28rem"
+					placeholder={form.refType ? formatTaxRefTypeLabel(form.refType) : 'Any income type'}
+					disabled={disabled}
+				/>
+			</div>
+			<div className="space-y-1">
+				<label className="text-xs font-medium text-muted-foreground">Rate (%)</label>
+				<NumberInput
+					value={form.rateText}
+					onChange={(value) => onChange({ ...form, rateText: normalizeNumberInputValue(value) })}
+					classNames={MANTINE_THEMED_NUMBER_INPUT_CLASS_NAMES}
+					styles={MANTINE_THEMED_NUMBER_INPUT_STYLES}
+					clampBehavior="blur"
+					min={0}
+					max={100}
+					step={0.01}
+					decimalScale={2}
+					allowDecimal
+					allowNegative={false}
+					rightSection={<span className="text-xs text-muted-foreground">%</span>}
+					rightSectionWidth={18}
+					hideControls
+					disabled={disabled}
+				/>
+			</div>
+			<div className="space-y-1">
+				<label className="text-xs font-medium text-muted-foreground">Priority</label>
+				<NumberInput
+					value={form.priorityText}
+					onChange={(value) =>
+						onChange({ ...form, priorityText: normalizeNumberInputValue(value) })
+					}
+					classNames={MANTINE_THEMED_NUMBER_INPUT_CLASS_NAMES}
+					styles={MANTINE_THEMED_NUMBER_INPUT_STYLES}
+					clampBehavior="blur"
+					min={0}
+					max={100}
+					step={1}
+					allowDecimal={false}
+					allowNegative={false}
+					disabled={disabled}
+				/>
+			</div>
+			<div className="flex flex-col items-center space-y-1">
+				<label className="text-xs font-medium text-muted-foreground">Active</label>
+				<div className="flex h-10 items-center justify-center">
+					<Switch
+						checked={form.isActive}
+						onCheckedChange={(checked) => onChange({ ...form, isActive: checked })}
+						disabled={disabled}
+						aria-label="Rule active"
+					/>
+				</div>
+			</div>
+		</div>
+	)
+}
+
+function RuleRowEditor({
+	rule,
+	canManage,
+	isSaving,
+	onSave,
+	onDelete,
+}: {
+	rule: TaxRuleSet
+	canManage: boolean
+	isSaving: boolean
+	onSave: (
+		ruleSetId: string,
+		updates: {
+			name?: string
+			priority?: number
+			isActive?: boolean
+			appliesToRefType?: string | null
+			taxRateBps?: number
+			label?: string
+		}
+	) => void
+	onDelete: (ruleSetId: string) => void
+}) {
+	const [isEditing, setIsEditing] = useState(false)
+	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+	const [form, setForm] = useState<RuleFormState>(() => ruleToFormState(rule))
+	const [rowActive, setRowActive] = useState(rule.isActive)
+	const toggleTimeoutRef = useRef<number | null>(null)
+
+	const formValid = isRuleFormValid(form)
+
+	useEffect(() => {
+		setForm(ruleToFormState(rule))
+		setIsEditing(false)
+		setRowActive(rule.isActive)
+	}, [rule])
+
+	useEffect(
+		() => () => {
+			if (toggleTimeoutRef.current !== null) {
+				window.clearTimeout(toggleTimeoutRef.current)
+			}
+		},
+		[]
+	)
+
+	return (
+		<>
+			<TableRow>
+				<TableCell className="font-medium">{rule.name}</TableCell>
+				<TableCell>
+					{rule.appliesToRefType ? formatTaxRefTypeLabel(rule.appliesToRefType) : 'Any income type'}
+				</TableCell>
+				<TableCell>{toPercentText(rule.taxRateBps)}%</TableCell>
+				<TableCell>{rule.priority}</TableCell>
+				<TableCell>
+					<div className="flex items-center">
+						<Switch
+							checked={rowActive}
+							onCheckedChange={(checked) => {
+								setRowActive(checked)
+								if (toggleTimeoutRef.current !== null) {
+									window.clearTimeout(toggleTimeoutRef.current)
+								}
+								toggleTimeoutRef.current = window.setTimeout(() => {
+									onSave(rule.id, { isActive: checked })
+								}, 300)
+							}}
+							disabled={!canManage || isSaving}
+							aria-label="Toggle rule active state"
+						/>
+					</div>
+				</TableCell>
+				<TableCell>{formatTaxDateTime(rule.updatedAt)}</TableCell>
+				<TableCell>
+					<div className="flex items-center gap-3">
+						<button
+							type="button"
+							aria-label="Edit rule"
+							title="Edit rule"
+							disabled={!canManage || isSaving}
+							onClick={() => setIsEditing((current) => !current)}
+							className="text-muted-foreground hover:text-foreground disabled:opacity-50"
+						>
+							<Pencil className="h-4 w-4" />
+						</button>
+						<button
+							type="button"
+							aria-label="Delete rule"
+							title="Delete rule"
+							disabled={!canManage || isSaving}
+							onClick={() => setIsDeleteDialogOpen(true)}
+							className="text-destructive/80 hover:text-destructive disabled:opacity-50"
+						>
+							<Trash2 className="h-4 w-4" />
+						</button>
+					</div>
+				</TableCell>
+			</TableRow>
+			{isEditing ? (
+				<TableRow>
+					<TableCell colSpan={7} className="bg-muted/20">
+						<div className="space-y-3">
+							<RuleFormFields form={form} onChange={setForm} disabled={!canManage || isSaving} />
+							<div className="flex flex-wrap justify-end items-center gap-2">
+								<Button
+									size="sm"
+									disabled={!canManage || isSaving || !formValid}
+									onClick={() => {
+										const priority = parsePriority(form.priorityText)
+										const rateBps = parsePercentToBps(form.rateText)
+										if (!form.name.trim() || priority === null || rateBps === null) return
+										onSave(rule.id, {
+											name: form.name.trim(),
+											priority,
+											isActive: form.isActive,
+											appliesToRefType: form.refType || null,
+											taxRateBps: rateBps,
+											label: rule.label,
+										})
+										setIsEditing(false)
+									}}
+								>
+									Save
+								</Button>
+								<Button
+									size="sm"
+									variant="ghost"
+									disabled={!canManage || isSaving}
+									onClick={() => {
+										setForm(ruleToFormState(rule))
+										setIsEditing(false)
+									}}
+								>
+									Cancel
+								</Button>
+							</div>
+						</div>
+					</TableCell>
+				</TableRow>
+			) : null}
+			<Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Delete Rule</DialogTitle>
+						<DialogDescription>
+							Are you sure you want to delete "{rule.name}"? This action cannot be undone.
+						</DialogDescription>
+					</DialogHeader>
+					<DialogFooter>
+						<CancelButton onClick={() => setIsDeleteDialogOpen(false)} disabled={isSaving}>
+							Cancel
+						</CancelButton>
+						<DestructiveButton
+							loading={isSaving}
+							loadingText="Deleting..."
+							showIcon={false}
+							onClick={() => {
+								onDelete(rule.id)
+								setIsDeleteDialogOpen(false)
+							}}
+						>
+							Delete
+						</DestructiveButton>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+		</>
+	)
+}
+
+export default function TaxRulesPage() {
+	usePageTitle('Tax Rules')
 
 	const { data: globalCapabilities } = useTaxCapabilities()
-	const canReadWithUrn = globalCapabilities?.global.canManage ?? false
-	const canManageWithUrn = globalCapabilities?.global.canManage ?? false
-	const { data: corporationAccess, isLoading: corporationAccessLoading } = useCorporationAccess()
+	const canManage = globalCapabilities?.global.canManage ?? false
 
-	const { data: corporationSettings = [], isLoading: corporationsLoading } = useTaxCorporations({
-		limit: 200,
-		enabled: canReadWithUrn,
-	})
-
-	const corporationOptions = useMemo(() => {
-		const map = new Map<string, string>()
-		for (const corp of corporationAccess?.corporations ?? []) {
-			map.set(corp.corporationId, corp.name)
-		}
-		for (const setting of corporationSettings) {
-			if (!map.has(setting.corporationId)) {
-				map.set(setting.corporationId, setting.corporationId)
-			}
-		}
-		return Array.from(map.entries()).map(([corporationId, name]) => ({ corporationId, name }))
-	}, [corporationAccess?.corporations, corporationSettings])
-
-	const [selectedCorporationId, setSelectedCorporationId] = useState<string | undefined>(undefined)
-	const effectiveCorporationId = useMemo(() => {
-		if (selectedCorporationId) {
-			return selectedCorporationId
-		}
-		if (!canReadWithUrn && (corporationAccess?.corporations?.length ?? 0) > 0) {
-			return corporationAccess?.corporations?.[0]?.corporationId
-		}
-		return corporationOptions[0]?.corporationId
-	}, [selectedCorporationId, canReadWithUrn, corporationAccess?.corporations, corporationOptions])
-
-	const { data: scopedCapabilities, isLoading: scopedCapabilitiesLoading } = useTaxCapabilities(
-		effectiveCorporationId,
-		Boolean(effectiveCorporationId)
-	)
-	const canReadScoped = scopedCapabilities?.scoped.canManage ?? false
-	const canRead = canReadWithUrn || canReadScoped
-
-	const canManageSelectedCorporation =
-		canManageWithUrn || (scopedCapabilities?.scoped.canManage ?? false)
-
+	const { data: corporationAccess } = useCorporationAccess()
+	const { data: taxCorporations = [] } = useTaxCorporations({ limit: 300, enabled: canManage })
 	const {
-		data: settings,
-		isLoading: settingsLoading,
-		error: settingsError,
-	} = useTaxCorporationSettings(
-		effectiveCorporationId,
-		canRead && !corporationAccessLoading && !!effectiveCorporationId
+		data: ruleGroups = [],
+		isLoading: ruleGroupsLoading,
+		error: ruleGroupsError,
+	} = useTaxRuleGroups({ limit: 300, enabled: canManage })
+
+	const [selectedRuleGroupId, setSelectedRuleGroupId] = useState<string | undefined>(undefined)
+	const effectiveRuleGroupId = selectedRuleGroupId ?? ruleGroups[0]?.id
+	const selectedRuleGroup = useMemo(
+		() => ruleGroups.find((group) => group.id === effectiveRuleGroupId),
+		[ruleGroups, effectiveRuleGroupId]
 	)
 
+	const { data: attachments = [] } = useTaxRuleGroupAttachments(
+		effectiveRuleGroupId,
+		Boolean(effectiveRuleGroupId && canManage)
+	)
 	const {
 		data: ruleSets = [],
-		isLoading: rulesLoading,
-		error: rulesError,
-	} = useTaxRuleSets(effectiveCorporationId, {
-		includeGlobal: true,
+		isLoading: ruleSetsLoading,
+		error: ruleSetsError,
+	} = useTaxRuleSets({
+		ruleGroupId: effectiveRuleGroupId,
 		onlyActive: false,
-		limit: 100,
-		enabled: canRead && !corporationAccessLoading && !!effectiveCorporationId,
+		limit: 200,
+		enabled: Boolean(effectiveRuleGroupId && canManage),
 	})
 
-	const {
-		data: notificationDestinations = [],
-		isLoading: destinationLoading,
-		error: destinationError,
-	} = useTaxNotificationDestinations({
-		scope: 'corporation',
-		corporationId: effectiveCorporationId,
-		limit: 20,
-		enabled: canRead && !corporationAccessLoading && !!effectiveCorporationId,
+	const createRuleGroupMutation = useCreateTaxRuleGroup()
+	const updateRuleGroupMutation = useUpdateTaxRuleGroup()
+	const deleteRuleGroupMutation = useDeleteTaxRuleGroup()
+	const attachMutation = useAttachCorporationToRuleGroup()
+	const detachMutation = useDetachCorporationFromRuleGroup()
+	const createRuleMutation = useCreateTaxRuleSet()
+	const updateRuleMutation = useUpdateTaxRuleSet()
+	const deleteRuleMutation = useDeleteTaxRuleSet()
+
+	const [ruleGroupScopeQuery, setRuleGroupScopeQuery] = useState('')
+	const [newGroupName, setNewGroupName] = useState('')
+	const [groupName, setGroupName] = useState('')
+	const [groupDescription, setGroupDescription] = useState('')
+	const [deleteGroupDialogOpen, setDeleteGroupDialogOpen] = useState(false)
+
+	const [corpAttachQuery, setCorpAttachQuery] = useState('')
+	const [isCreateRuleOpen, setIsCreateRuleOpen] = useState(false)
+	const [createRuleForm, setCreateRuleForm] = useState<RuleFormState>(() => defaultRuleFormState())
+
+	useEffect(() => {
+		if (!effectiveRuleGroupId && ruleGroups.length > 0) {
+			const defaultGlobalGroup = ruleGroups.find((group) => group.isDefaultGlobal) ?? ruleGroups[0]
+			setSelectedRuleGroupId(defaultGlobalGroup?.id)
+		}
+	}, [effectiveRuleGroupId, ruleGroups])
+
+	useEffect(() => {
+		if (!selectedRuleGroup) return
+		setGroupName(selectedRuleGroup.name)
+		setGroupDescription(selectedRuleGroup.description ?? '')
+	}, [selectedRuleGroup])
+
+	const attachedIds = useMemo(
+		() => new Set(attachments.map((attachment) => attachment.corporationId)),
+		[attachments]
+	)
+
+	const corporationIdsForNameLookup = useMemo(() => {
+		const ids = new Set<string>()
+		for (const corp of corporationAccess?.corporations ?? []) ids.add(corp.corporationId)
+		for (const setting of taxCorporations) ids.add(setting.corporationId)
+		for (const attachment of attachments) ids.add(attachment.corporationId)
+		return Array.from(ids)
+	}, [corporationAccess?.corporations, taxCorporations, attachments])
+
+	const { data: entityNames = {} } = useEntityNames(corporationIdsForNameLookup, {
+		enabled: canManage && corporationIdsForNameLookup.length > 0,
 	})
 
-	const updateSettingsMutation = useUpdateTaxCorporationSettings()
-	const createRuleSetMutation = useCreateTaxRuleSet()
-	const upsertDestinationMutation = useUpsertTaxNotificationDestination()
-
-	const [included, setIncluded] = useState(false)
-	const [exclusionReason, setExclusionReason] = useState('')
-	const [defaultRateText, setDefaultRateText] = useState('0.00')
-	const [essRateText, setEssRateText] = useState('0.00')
-	const [discrepancyText, setDiscrepancyText] = useState('5.00')
-	const [memberSummaryEnabled, setMemberSummaryEnabled] = useState(false)
-	const [billingEnabled, setBillingEnabled] = useState(false)
-	const [billingDueDaysText, setBillingDueDaysText] = useState('14')
-
-	const [ruleName, setRuleName] = useState('Default Income Rule')
-	const [ruleRefType, setRuleRefType] = useState('')
-	const [ruleRateText, setRuleRateText] = useState('7.50')
-	const [ruleEssOnly, setRuleEssOnly] = useState(false)
-	const [ruleApplyGlobally, setRuleApplyGlobally] = useState(false)
-
-	const [guildId, setGuildId] = useState('')
-	const [channelId, setChannelId] = useState('')
-	const [destinationActive, setDestinationActive] = useState(true)
-
-	useEffect(() => {
-		if (!settings) {
-			return
+	const corporationNameById = useMemo(() => {
+		const map = new Map<string, string>()
+		for (const corp of corporationAccess?.corporations ?? []) map.set(corp.corporationId, corp.name)
+		for (const setting of taxCorporations) {
+			if (!map.has(setting.corporationId)) {
+				map.set(setting.corporationId, entityNames[setting.corporationId] ?? setting.corporationId)
+			}
 		}
-		setIncluded(settings.included)
-		setExclusionReason(settings.exclusionReason ?? '')
-		setDefaultRateText(toPercentText(settings.defaultRateBps))
-		setEssRateText(toPercentText(settings.essRateBps))
-		setDiscrepancyText(toPercentText(settings.discrepancyThresholdBps))
-		setMemberSummaryEnabled(settings.memberSummaryEnabled)
-		setBillingEnabled(settings.billingEnabled)
-		setBillingDueDaysText(String(settings.billingDueDays))
-	}, [settings])
-
-	useEffect(() => {
-		const firstDestination = notificationDestinations[0]
-		if (!firstDestination) {
-			setGuildId('')
-			setChannelId('')
-			setDestinationActive(true)
-			return
+		for (const [id, name] of Object.entries(entityNames)) {
+			if (!map.has(id)) map.set(id, name)
 		}
-		setGuildId(firstDestination.guildId)
-		setChannelId(firstDestination.channelId)
-		setDestinationActive(firstDestination.isActive)
-	}, [notificationDestinations])
+		return map
+	}, [corporationAccess?.corporations, taxCorporations, entityNames])
 
-	if (!corporationAccessLoading && !scopedCapabilitiesLoading && !canRead) {
+	const corporationSearchOptions = useMemo(
+		() =>
+			Array.from(corporationNameById.entries()).map(([corporationId, name]) => ({
+				id: corporationId,
+				value: corporationId,
+				label: name,
+				description: corporationId,
+			})),
+		[corporationNameById]
+	)
+
+	const ruleGroupScopeOptions = useMemo(
+		() =>
+			ruleGroups.map((group) => ({
+				id: group.id,
+				value: group.id,
+				label: group.isDefaultGlobal ? 'Alliance Global (default)' : group.name,
+				description: group.isDefaultGlobal ? group.name : (group.description ?? undefined),
+			})),
+		[ruleGroups]
+	)
+	const isImmutableGroup = Boolean(
+		selectedRuleGroup?.isDefaultGlobal || selectedRuleGroup?.isSystem
+	)
+
+	if (!canManage) {
 		return (
 			<Container>
 				<Card>
 					<CardHeader>
-						<CardTitle>Tax Settings</CardTitle>
-						<CardDescription>You do not have permission to view tax settings.</CardDescription>
+						<CardTitle>Tax Rules</CardTitle>
+						<CardDescription>You do not have permission to manage tax rules.</CardDescription>
 					</CardHeader>
 				</Card>
 			</Container>
@@ -191,157 +539,236 @@ export default function TaxSettingsPage() {
 	return (
 		<Container>
 			<PageHeader
-				title="Tax Settings"
-				description="Manage corporation inclusion, tax rates, rule sets, and Discord destination overrides."
+				title="Tax Rules"
+				description="Manage rule group scopes, attach corporations to those scopes, and maintain group-scoped tax rules."
 			/>
 
 			<Section>
-				{corporationsLoading ? (
-					<div className="py-2 text-sm text-muted-foreground">Loading corporations...</div>
-				) : corporationOptions.length === 0 ? (
-					<div className="py-2 text-sm text-muted-foreground">
-						No corporations are available for tax settings.
-					</div>
-				) : (
-					<TaxCorporationScopeSelector
-						corporations={corporationOptions}
-						effectiveCorporationId={effectiveCorporationId}
-						onSelect={setSelectedCorporationId}
-					/>
-				)}
-
 				<Card>
 					<CardHeader>
-						<CardTitle>Corporation Configuration</CardTitle>
+						<CardTitle>Rule Group Scope</CardTitle>
 						<CardDescription>
-							Set inclusion, rates, and billing defaults. Rates are entered as percentages.
+							Select the active rule group scope. Rules and corporation attachments below are always
+							for the selected group.
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="space-y-4">
-						{settingsLoading ? (
-							<div className="py-2 text-sm text-muted-foreground">Loading settings...</div>
-						) : settingsError ? (
-							<div className="py-2 text-sm text-destructive">
-								{settingsError instanceof Error ? settingsError.message : 'Failed to load settings'}
-							</div>
-						) : !settings ? (
-							<div className="py-2 text-sm text-muted-foreground">
-								No settings found for this corporation.
-							</div>
-						) : (
-							<>
-								<div className="grid gap-3 md:grid-cols-2">
-									<label className="flex items-center gap-2 text-sm">
-										<input
-											type="checkbox"
-											checked={included}
-											onChange={(event) => setIncluded(event.target.checked)}
-											disabled={!canManageSelectedCorporation}
-										/>
-										Included in taxation
-									</label>
-									<label className="flex items-center gap-2 text-sm">
-										<input
-											type="checkbox"
-											checked={memberSummaryEnabled}
-											onChange={(event) => setMemberSummaryEnabled(event.target.checked)}
-											disabled={!canManageSelectedCorporation}
-										/>
-										Member summary enabled
-									</label>
-									<label className="flex items-center gap-2 text-sm">
-										<input
-											type="checkbox"
-											checked={billingEnabled}
-											onChange={(event) => setBillingEnabled(event.target.checked)}
-											disabled={!canManageSelectedCorporation}
-										/>
-										Billing enabled
-									</label>
-								</div>
-
-								<div className="grid gap-3 md:grid-cols-2">
-									<Input
-										value={defaultRateText}
-										onChange={(event) => setDefaultRateText(event.target.value)}
-										placeholder="Default rate (%)"
-										disabled={!canManageSelectedCorporation}
-									/>
-									<Input
-										value={essRateText}
-										onChange={(event) => setEssRateText(event.target.value)}
-										placeholder="ESS rate (%)"
-										disabled={!canManageSelectedCorporation}
-									/>
-									<Input
-										value={discrepancyText}
-										onChange={(event) => setDiscrepancyText(event.target.value)}
-										placeholder="Discrepancy threshold (%)"
-										disabled={!canManageSelectedCorporation}
-									/>
-									<Input
-										value={billingDueDaysText}
-										onChange={(event) => setBillingDueDaysText(event.target.value)}
-										placeholder="Billing due days"
-										disabled={!canManageSelectedCorporation}
-									/>
-								</div>
-
-								{!included ? (
-									<Input
-										value={exclusionReason}
-										onChange={(event) => setExclusionReason(event.target.value)}
-										placeholder="Exclusion reason"
-										disabled={!canManageSelectedCorporation}
-									/>
-								) : null}
-
-								<Button
-									disabled={!canManageSelectedCorporation || updateSettingsMutation.isPending}
-									onClick={() => {
-										if (!effectiveCorporationId) {
-											return
-										}
-										const defaultRateBps = parsePercentToBps(defaultRateText)
-										const essRateBps = parsePercentToBps(essRateText)
-										const discrepancyThresholdBps = parsePercentToBps(discrepancyText)
-										const billingDueDays = Number(billingDueDaysText)
-										if (
-											defaultRateBps === null ||
-											essRateBps === null ||
-											discrepancyThresholdBps === null ||
-											!Number.isInteger(billingDueDays) ||
-											billingDueDays < 1 ||
-											billingDueDays > 120
-										) {
-											return
-										}
-
-										updateSettingsMutation.mutate({
-											corporationId: effectiveCorporationId,
-											updates: {
-												included,
-												exclusionReason: included ? null : exclusionReason || null,
-												defaultRateBps,
-												essRateBps,
-												discrepancyThresholdBps,
-												memberSummaryEnabled,
-												billingEnabled,
-												billingDueDays,
-											},
-										})
-									}}
-								>
-									{updateSettingsMutation.isPending ? 'Saving Settings...' : 'Save Settings'}
-								</Button>
-
-								{updateSettingsMutation.error ? (
+						<div className="grid gap-4 md:grid-cols-[1fr_auto_1fr] md:items-end">
+							<div className="space-y-1">
+								<label className="text-xs font-medium text-muted-foreground">Rule Group</label>
+								{ruleGroupsLoading ? (
+									<div className="text-sm text-muted-foreground">Loading rule groups...</div>
+								) : ruleGroupsError ? (
 									<div className="text-sm text-destructive">
-										{updateSettingsMutation.error instanceof Error
-											? updateSettingsMutation.error.message
-											: 'Failed to update settings'}
+										{ruleGroupsError instanceof Error
+											? ruleGroupsError.message
+											: 'Failed to load groups'}
+									</div>
+								) : (
+									<SearchSelect
+										value={ruleGroupScopeQuery}
+										onValueChange={setRuleGroupScopeQuery}
+										options={ruleGroupScopeOptions}
+										onSelect={(option) => {
+											setSelectedRuleGroupId(option.value)
+											setRuleGroupScopeQuery('')
+										}}
+										filterMode="local"
+										mode="dropdown"
+										minQueryLength={0}
+										placeholder={
+											selectedRuleGroup
+												? selectedRuleGroup.isDefaultGlobal
+													? 'Alliance Global (default)'
+													: selectedRuleGroup.name
+												: 'Select a rule group'
+										}
+									/>
+								)}
+							</div>
+							<div className="pb-2 text-center text-xs font-medium text-muted-foreground">
+								- or -
+							</div>
+							<div className="space-y-1">
+								<label className="text-xs font-medium text-muted-foreground">
+									Create Rule Group
+								</label>
+								<div className="flex items-center gap-2">
+									<Input
+										value={newGroupName}
+										onChange={(event) => setNewGroupName(event.target.value)}
+										placeholder="Enter a rule group name"
+									/>
+									<Button
+										disabled={createRuleGroupMutation.isPending}
+										onClick={() => {
+											const name = newGroupName.trim()
+											if (!name) return
+											createRuleGroupMutation.mutate(
+												{ name },
+												{
+													onSuccess: (created) => {
+														setSelectedRuleGroupId(created.id)
+														setNewGroupName('')
+													},
+												}
+											)
+										}}
+									>
+										{createRuleGroupMutation.isPending ? 'Creating...' : 'Create'}
+									</Button>
+								</div>
+							</div>
+						</div>
+
+						{selectedRuleGroup ? (
+							<div className="space-y-3 rounded-md border border-border p-3">
+								{isImmutableGroup ? (
+									<div className="text-xs text-muted-foreground">
+										Alliance Global (default) group metadata is system-managed and cannot be edited.
 									</div>
 								) : null}
+								<div className="grid gap-3 md:grid-cols-2">
+									<div className="space-y-1">
+										<label className="text-xs font-medium text-muted-foreground">Group name</label>
+										<Input
+											value={groupName}
+											onChange={(event) => setGroupName(event.target.value)}
+											disabled={isImmutableGroup}
+										/>
+									</div>
+									<div className="space-y-1">
+										<label className="text-xs font-medium text-muted-foreground">
+											Description (optional)
+										</label>
+										<Input
+											value={groupDescription}
+											onChange={(event) => setGroupDescription(event.target.value)}
+											disabled={isImmutableGroup}
+										/>
+									</div>
+								</div>
+								{!isImmutableGroup ? (
+									<div className="flex flex-wrap gap-2">
+										<Button
+											size="sm"
+											disabled={updateRuleGroupMutation.isPending || !groupName.trim()}
+											onClick={() =>
+												updateRuleGroupMutation.mutate({
+													ruleGroupId: selectedRuleGroup.id,
+													updates: {
+														name: groupName.trim(),
+														description: groupDescription.trim() || null,
+													},
+												})
+											}
+										>
+											{updateRuleGroupMutation.isPending ? 'Saving...' : 'Save Group'}
+										</Button>
+										<Button
+											size="sm"
+											variant="destructive"
+											disabled={deleteRuleGroupMutation.isPending}
+											onClick={() => setDeleteGroupDialogOpen(true)}
+										>
+											Delete Group
+										</Button>
+									</div>
+								) : null}
+							</div>
+						) : null}
+						<Dialog open={deleteGroupDialogOpen} onOpenChange={setDeleteGroupDialogOpen}>
+							<DialogContent>
+								<DialogHeader>
+									<DialogTitle>Delete Rule Group</DialogTitle>
+									<DialogDescription>
+										Are you sure you want to delete "{selectedRuleGroup?.name}"? This action cannot
+										be undone.
+									</DialogDescription>
+								</DialogHeader>
+								<DialogFooter>
+									<CancelButton
+										onClick={() => setDeleteGroupDialogOpen(false)}
+										disabled={deleteRuleGroupMutation.isPending}
+									>
+										Cancel
+									</CancelButton>
+									<DestructiveButton
+										loading={deleteRuleGroupMutation.isPending}
+										loadingText="Deleting..."
+										showIcon={false}
+										onClick={() => {
+											if (!selectedRuleGroup) return
+											deleteRuleGroupMutation.mutate(selectedRuleGroup.id, {
+												onSuccess: () => {
+													setDeleteGroupDialogOpen(false)
+													setSelectedRuleGroupId(undefined)
+												},
+											})
+										}}
+									>
+										Delete
+									</DestructiveButton>
+								</DialogFooter>
+							</DialogContent>
+						</Dialog>
+					</CardContent>
+				</Card>
+
+				<Card>
+					<CardHeader>
+						<CardTitle>Corporations In Scope</CardTitle>
+						<CardDescription>
+							Attach corporations to the selected rule group scope. Attached corporations inherit
+							this group&apos;s rules.
+						</CardDescription>
+					</CardHeader>
+					<CardContent className="space-y-3">
+						{!effectiveRuleGroupId ? (
+							<div className="text-sm text-muted-foreground">Select a rule group first.</div>
+						) : (
+							<>
+								<SearchSelect
+									value={corpAttachQuery}
+									onValueChange={setCorpAttachQuery}
+									options={corporationSearchOptions.filter(
+										(option) => !attachedIds.has(option.value)
+									)}
+									onSelect={(option) => {
+										setCorpAttachQuery('')
+										attachMutation.mutate({
+											ruleGroupId: effectiveRuleGroupId,
+											corporationId: option.value,
+										})
+									}}
+									filterMode="local"
+									mode="dropdown"
+									minQueryLength={0}
+									placeholder="Attach corporation by name or ID"
+									emptyText="No matching corporations"
+								/>
+								<div className="flex flex-wrap gap-2">
+									{attachments.map((attachment) => (
+										<Badge key={attachment.id} variant="secondary" className="gap-2">
+											{corporationNameById.get(attachment.corporationId) ??
+												entityNames[attachment.corporationId] ??
+												attachment.corporationId}
+											<Button
+												variant="ghost"
+												size="sm"
+												className="h-5 px-1"
+												onClick={() =>
+													detachMutation.mutate({
+														ruleGroupId: effectiveRuleGroupId,
+														corporationId: attachment.corporationId,
+													})
+												}
+											>
+												<X className="h-3 w-3" />
+											</Button>
+										</Badge>
+									))}
+								</div>
 							</>
 						)}
 					</CardContent>
@@ -349,266 +776,127 @@ export default function TaxSettingsPage() {
 
 				<Card>
 					<CardHeader>
-						<CardTitle>ESI Health</CardTitle>
+						<CardTitle>Rules In Scope</CardTitle>
 						<CardDescription>
-							Current auth and required scope status for inclusion validation.
-						</CardDescription>
-					</CardHeader>
-					<CardContent>
-						{!settings?.esiAuthStatus ? (
-							<div className="text-sm text-muted-foreground">
-								No ESI auth status is available for this corporation.
-							</div>
-						) : (
-							<div className="grid gap-2 text-sm md:grid-cols-2">
-								<div>
-									Required scopes:{' '}
-									<Badge
-										variant={settings.esiAuthStatus.hasRequiredScopes ? 'default' : 'destructive'}
-									>
-										{settings.esiAuthStatus.hasRequiredScopes ? 'satisfied' : 'missing'}
-									</Badge>
-								</div>
-								<div>
-									Director tokens: {settings.esiAuthStatus.healthyDirectorCount}/
-									{settings.esiAuthStatus.directorCount}
-								</div>
-								<div>Last verified: {formatTaxDateTime(settings.esiAuthStatus.lastVerified)}</div>
-								<div>
-									Missing scopes:{' '}
-									{settings.esiAuthStatus.missingRequiredScopes.length > 0
-										? settings.esiAuthStatus.missingRequiredScopes.join(', ')
-										: 'none'}
-								</div>
-							</div>
-						)}
-					</CardContent>
-				</Card>
-
-				<Card>
-					<CardHeader>
-						<CardTitle>Rule Sets</CardTitle>
-						<CardDescription>Create and review tax rule sets for this corporation.</CardDescription>
-					</CardHeader>
-					<CardContent className="space-y-4">
-						<div className="grid gap-3 md:grid-cols-3">
-							<Input
-								value={ruleName}
-								onChange={(event) => setRuleName(event.target.value)}
-								placeholder="Rule name"
-								disabled={!canManageSelectedCorporation}
-							/>
-							<Input
-								value={ruleRefType}
-								onChange={(event) => setRuleRefType(event.target.value)}
-								placeholder="Optional ref_type"
-								disabled={!canManageSelectedCorporation}
-							/>
-							<Input
-								value={ruleRateText}
-								onChange={(event) => setRuleRateText(event.target.value)}
-								placeholder="Tax rate (%)"
-								disabled={!canManageSelectedCorporation}
-							/>
-						</div>
-						<label className="flex items-center gap-2 text-sm">
-							<input
-								type="checkbox"
-								checked={ruleEssOnly}
-								onChange={(event) => setRuleEssOnly(event.target.checked)}
-								disabled={!canManageSelectedCorporation}
-							/>
-							ESS only
-						</label>
-						<label className="flex items-center gap-2 text-sm">
-							<input
-								type="checkbox"
-								checked={ruleApplyGlobally}
-								onChange={(event) => setRuleApplyGlobally(event.target.checked)}
-								disabled={!canManageWithUrn}
-							/>
-							Apply as global default rule
-						</label>
-						<Button
-							disabled={
-								createRuleSetMutation.isPending ||
-								(ruleApplyGlobally ? !canManageWithUrn : !canManageSelectedCorporation)
-							}
-							onClick={() => {
-								if (!ruleName.trim()) {
-									return
-								}
-								if (ruleApplyGlobally && !canManageWithUrn) {
-									return
-								}
-								const targetCorporationId = ruleApplyGlobally ? undefined : effectiveCorporationId
-								if (!targetCorporationId && !ruleApplyGlobally) {
-									return
-								}
-								const rateBps = parsePercentToBps(ruleRateText)
-								if (rateBps === null) {
-									return
-								}
-								createRuleSetMutation.mutate({
-									corporationId: targetCorporationId,
-									ruleSet: {
-										name: ruleName.trim(),
-										conditions: [
-											{
-												appliesToRefType: ruleRefType.trim() || undefined,
-												isEssOnly: ruleEssOnly || undefined,
-											},
-										],
-										actions: [
-											{
-												taxRateBps: rateBps,
-												isTaxable: true,
-												label: `${ruleName.trim()} action`,
-											},
-										],
-									},
-								})
-							}}
-						>
-							{createRuleSetMutation.isPending ? 'Creating Rule Set...' : 'Create Rule Set'}
-						</Button>
-						{createRuleSetMutation.error ? (
-							<div className="text-sm text-destructive">
-								{createRuleSetMutation.error instanceof Error
-									? createRuleSetMutation.error.message
-									: 'Failed to create rule set'}
-							</div>
-						) : null}
-
-						{rulesLoading ? (
-							<div className="py-2 text-sm text-muted-foreground">Loading rule sets...</div>
-						) : rulesError ? (
-							<div className="py-2 text-sm text-destructive">
-								{rulesError instanceof Error ? rulesError.message : 'Failed to load rule sets'}
-							</div>
-						) : ruleSets.length === 0 ? (
-							<div className="py-2 text-sm text-muted-foreground">No rule sets found.</div>
-						) : (
-							<Table>
-								<TableHeader>
-									<TableRow>
-										<TableHead>Name</TableHead>
-										<TableHead>Active</TableHead>
-										<TableHead>Priority</TableHead>
-										<TableHead>Effective From</TableHead>
-										<TableHead>Conditions</TableHead>
-										<TableHead>Primary Rate</TableHead>
-									</TableRow>
-								</TableHeader>
-								<TableBody>
-									{ruleSets.map((rule) => (
-										<TableRow key={rule.id}>
-											<TableCell className="font-medium">{rule.name}</TableCell>
-											<TableCell>{rule.isActive ? 'yes' : 'no'}</TableCell>
-											<TableCell>{formatTaxNumber(rule.priority)}</TableCell>
-											<TableCell>{formatTaxDateTime(rule.effectiveFrom)}</TableCell>
-											<TableCell>{formatTaxNumber(rule.conditions.length)}</TableCell>
-											<TableCell>
-												{rule.actions.length > 0 ? toPercentText(rule.actions[0]!.taxRateBps) : '-'}
-												%
-											</TableCell>
-										</TableRow>
-									))}
-								</TableBody>
-							</Table>
-						)}
-					</CardContent>
-				</Card>
-
-				<Card>
-					<CardHeader>
-						<CardTitle>Discord Destination Override</CardTitle>
-						<CardDescription>
-							Set a corporation-specific Discord channel override for tax alerts.
+							Review group rules, edit with the pencil action, and add new rules using the + action.
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="space-y-4">
-						<div className="grid gap-3 md:grid-cols-2">
-							<Input
-								value={guildId}
-								onChange={(event) => setGuildId(event.target.value)}
-								placeholder="Guild ID"
-								disabled={!canManageSelectedCorporation}
-							/>
-							<Input
-								value={channelId}
-								onChange={(event) => setChannelId(event.target.value)}
-								placeholder="Channel ID"
-								disabled={!canManageSelectedCorporation}
-							/>
-						</div>
-						<label className="flex items-center gap-2 text-sm">
-							<input
-								type="checkbox"
-								checked={destinationActive}
-								onChange={(event) => setDestinationActive(event.target.checked)}
-								disabled={!canManageSelectedCorporation}
-							/>
-							Destination active
-						</label>
-						<Button
-							disabled={!canManageSelectedCorporation || upsertDestinationMutation.isPending}
-							onClick={() => {
-								if (!effectiveCorporationId || !guildId.trim() || !channelId.trim()) {
-									return
-								}
-								upsertDestinationMutation.mutate({
-									scope: 'corporation',
-									corporationId: effectiveCorporationId,
-									guildId: guildId.trim(),
-									channelId: channelId.trim(),
-									isActive: destinationActive,
-								})
-							}}
-						>
-							{upsertDestinationMutation.isPending ? 'Saving Destination...' : 'Save Destination'}
-						</Button>
-						{upsertDestinationMutation.error ? (
+						{!effectiveRuleGroupId ? (
+							<div className="text-sm text-muted-foreground">Select a rule group first.</div>
+						) : ruleSetsLoading ? (
+							<div className="text-sm text-muted-foreground">Loading rules...</div>
+						) : ruleSetsError ? (
 							<div className="text-sm text-destructive">
-								{upsertDestinationMutation.error instanceof Error
-									? upsertDestinationMutation.error.message
-									: 'Failed to update destination'}
-							</div>
-						) : null}
-
-						{destinationLoading ? (
-							<div className="py-2 text-sm text-muted-foreground">Loading destination...</div>
-						) : destinationError ? (
-							<div className="py-2 text-sm text-destructive">
-								{destinationError instanceof Error
-									? destinationError.message
-									: 'Failed to load destination'}
-							</div>
-						) : notificationDestinations.length === 0 ? (
-							<div className="py-2 text-sm text-muted-foreground">
-								No corporation destination override configured.
+								{ruleSetsError instanceof Error ? ruleSetsError.message : 'Failed to load rules'}
 							</div>
 						) : (
-							<Table>
-								<TableHeader>
-									<TableRow>
-										<TableHead>Scope</TableHead>
-										<TableHead>Guild</TableHead>
-										<TableHead>Channel</TableHead>
-										<TableHead>Active</TableHead>
-									</TableRow>
-								</TableHeader>
-								<TableBody>
-									{notificationDestinations.map((destination) => (
-										<TableRow key={destination.id}>
-											<TableCell>{destination.scope}</TableCell>
-											<TableCell>{destination.guildId}</TableCell>
-											<TableCell>{destination.channelId}</TableCell>
-											<TableCell>{destination.isActive ? 'yes' : 'no'}</TableCell>
+							<>
+								<Table>
+									<TableHeader>
+										<TableRow>
+											<TableHead>Name</TableHead>
+											<TableHead>Income Type</TableHead>
+											<TableHead>Rate (%)</TableHead>
+											<TableHead>Priority</TableHead>
+											<TableHead>Active</TableHead>
+											<TableHead>Updated</TableHead>
+											<TableHead>Actions</TableHead>
 										</TableRow>
-									))}
-								</TableBody>
-							</Table>
+									</TableHeader>
+									<TableBody>
+										{ruleSets.length === 0 ? (
+											<TableRow>
+												<TableCell colSpan={7} className="text-sm text-muted-foreground">
+													No rules are attached to this group yet.
+												</TableCell>
+											</TableRow>
+										) : (
+											ruleSets.map((rule) => (
+												<RuleRowEditor
+													key={rule.id}
+													rule={rule}
+													canManage={canManage}
+													isSaving={updateRuleMutation.isPending || deleteRuleMutation.isPending}
+													onSave={(ruleSetId, updates) =>
+														updateRuleMutation.mutate({ ruleSetId, updates })
+													}
+													onDelete={(ruleSetId) => deleteRuleMutation.mutate(ruleSetId)}
+												/>
+											))
+										)}
+									</TableBody>
+								</Table>
+
+								{!isCreateRuleOpen ? (
+									<div className="flex justify-center">
+										<Button
+											variant="outline"
+											className="min-w-40"
+											onClick={() => setIsCreateRuleOpen(true)}
+											disabled={createRuleMutation.isPending}
+										>
+											<Plus className="mr-2 h-4 w-4" />
+											Add Rule
+										</Button>
+									</div>
+								) : null}
+
+								{isCreateRuleOpen ? (
+									<div className="space-y-3 rounded-md border border-border p-3">
+										<div className="text-sm font-medium">New Rule</div>
+										<RuleFormFields form={createRuleForm} onChange={setCreateRuleForm} />
+										<div className="flex items-center justify-end gap-2">
+											<Button
+												disabled={createRuleMutation.isPending || !isRuleFormValid(createRuleForm)}
+												onClick={() => {
+													if (!effectiveRuleGroupId) return
+													const rateBps = parsePercentToBps(createRuleForm.rateText)
+													const priority = parsePriority(createRuleForm.priorityText)
+													if (
+														!createRuleForm.name.trim() ||
+														rateBps === null ||
+														priority === null
+													) {
+														return
+													}
+													createRuleMutation.mutate(
+														{
+															ruleSet: {
+																ruleGroupId: effectiveRuleGroupId,
+																name: createRuleForm.name.trim(),
+																priority,
+																isActive: createRuleForm.isActive,
+																appliesToRefType: createRuleForm.refType || undefined,
+																taxRateBps: rateBps,
+																label: `${createRuleForm.name.trim()} rule`,
+															},
+														},
+														{
+															onSuccess: () => {
+																setIsCreateRuleOpen(false)
+																setCreateRuleForm(defaultRuleFormState())
+															},
+														}
+													)
+												}}
+											>
+												{createRuleMutation.isPending ? 'Creating...' : 'Create Rule'}
+											</Button>
+											<Button
+												variant="ghost"
+												disabled={createRuleMutation.isPending}
+												onClick={() => {
+													setIsCreateRuleOpen(false)
+													setCreateRuleForm(defaultRuleFormState())
+												}}
+											>
+												Cancel
+											</Button>
+										</div>
+									</div>
+								) : null}
+							</>
 						)}
 					</CardContent>
 				</Card>

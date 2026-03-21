@@ -56,6 +56,9 @@ describe('TaxAssessmentService', () => {
 				taxRuleSets: {
 					findMany: vi.fn().mockResolvedValue([]),
 				},
+				taxRuleGroupAttachments: {
+					findMany: vi.fn().mockResolvedValue([]),
+				},
 			},
 			transaction: vi.fn(async (callback: (tx: any) => Promise<unknown>) => {
 				let txInsertCall = 0
@@ -193,6 +196,474 @@ describe('TaxAssessmentService', () => {
 		expect(second.discrepancyCount).toBe(first.discrepancyCount)
 	})
 
+	it('applies higher-priority active rule when multiple rules match', async () => {
+		const insertedAssessmentLines: Array<any> = []
+		const localDb = {
+			query: {
+				taxCorporationSettings: {
+					findFirst: vi.fn().mockResolvedValue({
+						corporationId: '98000001',
+						included: true,
+						defaultRateBps: 1000,
+						essRateBps: 2000,
+						discrepancyThresholdBps: 500,
+					}),
+				},
+				taxLedgerEntries: {
+					findMany: vi.fn().mockResolvedValue([
+						{
+							id: 'ledger-1',
+							corporationId: '98000001',
+							refType: 'bounty_prizes',
+							amount: '1000',
+							division: null,
+							entryDate: new Date('2026-01-10T00:00:00.000Z'),
+							isEss: false,
+							essBankType: null,
+							firstPartyId: null,
+							secondPartyId: null,
+							rawPayload: { tax: '0' },
+						},
+					]),
+				},
+				taxRuleGroupAttachments: {
+					findMany: vi.fn().mockResolvedValue([{ ruleGroupId: 'group-1' }]),
+				},
+				taxRuleSets: {
+					findMany: vi.fn().mockResolvedValue([
+						{
+							id: 'rule-high',
+							ruleGroupId: 'group-1',
+							name: 'High Priority',
+							priority: 200,
+							isActive: true,
+							effectiveFrom: new Date('2026-01-01T00:00:00.000Z'),
+							effectiveTo: null,
+							appliesToRefType: 'bounty_prizes',
+							partyType: null,
+							taxRateBps: 2000,
+							label: 'High',
+							createdBy: 'admin-1',
+							createdAt: new Date('2026-01-05T00:00:00.000Z'),
+							updatedAt: new Date('2026-01-06T00:00:00.000Z'),
+						},
+						{
+							id: 'rule-low',
+							ruleGroupId: 'group-1',
+							name: 'Low Priority',
+							priority: 100,
+							isActive: true,
+							effectiveFrom: new Date('2026-01-01T00:00:00.000Z'),
+							effectiveTo: null,
+							appliesToRefType: 'bounty_prizes',
+							partyType: null,
+							taxRateBps: 500,
+							label: 'Low',
+							createdBy: 'admin-1',
+							createdAt: new Date('2026-01-04T00:00:00.000Z'),
+							updatedAt: new Date('2026-01-04T00:00:00.000Z'),
+						},
+					]),
+				},
+			},
+			insert: vi.fn(() => {
+				throw new Error('Unexpected db.insert table')
+			}),
+			transaction: vi.fn(async (callback: (tx: any) => Promise<unknown>) => {
+				const tx = {
+					insert: vi.fn((table: unknown) => {
+						if (table === taxPeriods) {
+							return {
+								values: vi.fn(() => ({
+									onConflictDoUpdate: vi.fn(() => ({
+										returning: vi.fn(() =>
+											Promise.resolve([
+												{
+													id: 'period-1',
+													corporationId: '98000001',
+													periodStart: new Date('2026-01-01T00:00:00.000Z'),
+													periodEnd: new Date('2026-01-31T00:00:00.000Z'),
+													status: 'assessed',
+													closedAt: new Date('2026-01-31T00:00:00.000Z'),
+													createdAt: new Date(),
+													updatedAt: new Date(),
+												},
+											])
+										),
+									})),
+								})),
+							}
+						}
+						if (table === taxAssessments) {
+							return {
+								values: vi.fn((value: any) => ({
+									returning: vi.fn(() =>
+										Promise.resolve([
+											{
+												id: 'assessment-1',
+												billId: null,
+												billStatus: null,
+												billStatusLastSyncedAt: null,
+												approvedBy: null,
+												approvedAt: null,
+												createdAt: new Date(),
+												updatedAt: new Date(),
+												...value,
+											},
+										])
+									),
+								})),
+							}
+						}
+						if (table === taxAssessmentLines) {
+							return {
+								values: vi.fn((values: any) => {
+									insertedAssessmentLines.push(...(values as Array<any>))
+									return Promise.resolve()
+								}),
+							}
+						}
+						if (table === taxDiscrepancies) {
+							return { values: vi.fn(() => Promise.resolve()) }
+						}
+						throw new Error('Unexpected tx.insert table')
+					}),
+					update: vi.fn(() => ({
+						set: vi.fn(() => ({
+							where: vi.fn(() => ({
+								returning: vi.fn(() => Promise.resolve([])),
+							})),
+						})),
+					})),
+					delete: vi.fn(() => ({
+						where: vi.fn(() => Promise.resolve()),
+					})),
+					query: {
+						taxAssessments: {
+							findMany: vi.fn().mockResolvedValue([]),
+						},
+					},
+				}
+				return callback(tx)
+			}),
+		}
+
+		const service = new TaxAssessmentService(localDb as any, {} as DurableObjectNamespace)
+		const result = await service.runAssessmentForPeriod({
+			corporationId: '98000001',
+			periodStart: new Date('2026-01-01T00:00:00.000Z'),
+			periodEnd: new Date('2026-01-31T00:00:00.000Z'),
+		})
+
+		expect(result.assessment.taxDue).toBe('200')
+		expect(insertedAssessmentLines[0]?.taxRateBps).toBe(2000)
+	})
+
+	it('ignores inactive higher-priority rule by relying on active-only rule query', async () => {
+		const insertedAssessmentLines: Array<any> = []
+		const findManyMock = vi.fn().mockResolvedValue([
+			{
+				id: 'rule-low-active',
+				ruleGroupId: 'group-1',
+				name: 'Low Priority Active',
+				priority: 100,
+				isActive: true,
+				effectiveFrom: new Date('2026-01-01T00:00:00.000Z'),
+				effectiveTo: null,
+				appliesToRefType: 'bounty_prizes',
+				partyType: null,
+				taxRateBps: 500,
+				label: 'Low Active',
+				createdBy: 'admin-1',
+				createdAt: new Date('2026-01-04T00:00:00.000Z'),
+				updatedAt: new Date('2026-01-04T00:00:00.000Z'),
+			},
+		])
+		const localDb = {
+			query: {
+				taxCorporationSettings: {
+					findFirst: vi.fn().mockResolvedValue({
+						corporationId: '98000001',
+						included: true,
+						defaultRateBps: 1000,
+						essRateBps: 2000,
+						discrepancyThresholdBps: 500,
+					}),
+				},
+				taxLedgerEntries: {
+					findMany: vi.fn().mockResolvedValue([
+						{
+							id: 'ledger-1',
+							corporationId: '98000001',
+							refType: 'bounty_prizes',
+							amount: '1000',
+							division: null,
+							entryDate: new Date('2026-01-10T00:00:00.000Z'),
+							isEss: false,
+							essBankType: null,
+							firstPartyId: null,
+							secondPartyId: null,
+							rawPayload: { tax: '0' },
+						},
+					]),
+				},
+				taxRuleGroupAttachments: {
+					findMany: vi.fn().mockResolvedValue([{ ruleGroupId: 'group-1' }]),
+				},
+				taxRuleSets: {
+					findMany: findManyMock,
+				},
+			},
+			insert: vi.fn(() => {
+				throw new Error('Unexpected db.insert table')
+			}),
+			transaction: vi.fn(async (callback: (tx: any) => Promise<unknown>) => {
+				const tx = {
+					insert: vi.fn((table: unknown) => {
+						if (table === taxPeriods) {
+							return {
+								values: vi.fn(() => ({
+									onConflictDoUpdate: vi.fn(() => ({
+										returning: vi.fn(() =>
+											Promise.resolve([
+												{
+													id: 'period-1',
+													corporationId: '98000001',
+													periodStart: new Date('2026-01-01T00:00:00.000Z'),
+													periodEnd: new Date('2026-01-31T00:00:00.000Z'),
+													status: 'assessed',
+													closedAt: new Date('2026-01-31T00:00:00.000Z'),
+													createdAt: new Date(),
+													updatedAt: new Date(),
+												},
+											])
+										),
+									})),
+								})),
+							}
+						}
+						if (table === taxAssessments) {
+							return {
+								values: vi.fn((value: any) => ({
+									returning: vi.fn(() =>
+										Promise.resolve([
+											{
+												id: 'assessment-1',
+												billId: null,
+												billStatus: null,
+												billStatusLastSyncedAt: null,
+												approvedBy: null,
+												approvedAt: null,
+												createdAt: new Date(),
+												updatedAt: new Date(),
+												...value,
+											},
+										])
+									),
+								})),
+							}
+						}
+						if (table === taxAssessmentLines) {
+							return {
+								values: vi.fn((values: any) => {
+									insertedAssessmentLines.push(...(values as Array<any>))
+									return Promise.resolve()
+								}),
+							}
+						}
+						if (table === taxDiscrepancies) {
+							return { values: vi.fn(() => Promise.resolve()) }
+						}
+						throw new Error('Unexpected tx.insert table')
+					}),
+					update: vi.fn(() => ({
+						set: vi.fn(() => ({
+							where: vi.fn(() => ({
+								returning: vi.fn(() => Promise.resolve([])),
+							})),
+						})),
+					})),
+					delete: vi.fn(() => ({
+						where: vi.fn(() => Promise.resolve()),
+					})),
+					query: {
+						taxAssessments: {
+							findMany: vi.fn().mockResolvedValue([]),
+						},
+					},
+				}
+				return callback(tx)
+			}),
+		}
+
+		const service = new TaxAssessmentService(localDb as any, {} as DurableObjectNamespace)
+		const result = await service.runAssessmentForPeriod({
+			corporationId: '98000001',
+			periodStart: new Date('2026-01-01T00:00:00.000Z'),
+			periodEnd: new Date('2026-01-31T00:00:00.000Z'),
+		})
+
+		expect(result.assessment.taxDue).toBe('50')
+		expect(insertedAssessmentLines[0]?.taxRateBps).toBe(500)
+		expect(findManyMock).toHaveBeenCalledTimes(1)
+		expect(findManyMock.mock.calls[0]?.[0]).toEqual(
+			expect.objectContaining({
+				where: expect.anything(),
+				orderBy: expect.any(Array),
+			})
+		)
+	})
+
+	it('treats a 0% rule as exempt income', async () => {
+		const insertedAssessmentLines: Array<any> = []
+		const localDb = {
+			query: {
+				taxCorporationSettings: {
+					findFirst: vi.fn().mockResolvedValue({
+						corporationId: '98000001',
+						included: true,
+						defaultRateBps: 1000,
+						essRateBps: 2000,
+						discrepancyThresholdBps: 500,
+					}),
+				},
+				taxLedgerEntries: {
+					findMany: vi.fn().mockResolvedValue([
+						{
+							id: 'ledger-1',
+							corporationId: '98000001',
+							refType: 'bounty_prizes',
+							amount: '1000',
+							division: null,
+							entryDate: new Date('2026-01-10T00:00:00.000Z'),
+							isEss: false,
+							essBankType: null,
+							firstPartyId: null,
+							secondPartyId: null,
+							rawPayload: { tax: '0' },
+						},
+					]),
+				},
+				taxRuleGroupAttachments: {
+					findMany: vi.fn().mockResolvedValue([{ ruleGroupId: 'group-1' }]),
+				},
+				taxRuleSets: {
+					findMany: vi.fn().mockResolvedValue([
+						{
+							id: 'rule-exempt',
+							ruleGroupId: 'group-1',
+							name: 'Exempt',
+							priority: 200,
+							isActive: true,
+							effectiveFrom: new Date('2026-01-01T00:00:00.000Z'),
+							effectiveTo: null,
+							appliesToRefType: 'bounty_prizes',
+							partyType: null,
+							taxRateBps: 0,
+							label: 'Exempt',
+							createdBy: 'admin-1',
+							createdAt: new Date('2026-01-05T00:00:00.000Z'),
+							updatedAt: new Date('2026-01-06T00:00:00.000Z'),
+						},
+					]),
+				},
+			},
+			insert: vi.fn(() => {
+				throw new Error('Unexpected db.insert table')
+			}),
+			transaction: vi.fn(async (callback: (tx: any) => Promise<unknown>) => {
+				const tx = {
+					insert: vi.fn((table: unknown) => {
+						if (table === taxPeriods) {
+							return {
+								values: vi.fn(() => ({
+									onConflictDoUpdate: vi.fn(() => ({
+										returning: vi.fn(() =>
+											Promise.resolve([
+												{
+													id: 'period-1',
+													corporationId: '98000001',
+													periodStart: new Date('2026-01-01T00:00:00.000Z'),
+													periodEnd: new Date('2026-01-31T00:00:00.000Z'),
+													status: 'assessed',
+													closedAt: new Date('2026-01-31T00:00:00.000Z'),
+													createdAt: new Date(),
+													updatedAt: new Date(),
+												},
+											])
+										),
+									})),
+								})),
+							}
+						}
+						if (table === taxAssessments) {
+							return {
+								values: vi.fn((value: any) => ({
+									returning: vi.fn(() =>
+										Promise.resolve([
+											{
+												id: 'assessment-1',
+												billId: null,
+												billStatus: null,
+												billStatusLastSyncedAt: null,
+												approvedBy: null,
+												approvedAt: null,
+												createdAt: new Date(),
+												updatedAt: new Date(),
+												...value,
+											},
+										])
+									),
+								})),
+							}
+						}
+						if (table === taxAssessmentLines) {
+							return {
+								values: vi.fn((values: any) => {
+									insertedAssessmentLines.push(...(values as Array<any>))
+									return Promise.resolve()
+								}),
+							}
+						}
+						if (table === taxDiscrepancies) {
+							return { values: vi.fn(() => Promise.resolve()) }
+						}
+						throw new Error('Unexpected tx.insert table')
+					}),
+					update: vi.fn(() => ({
+						set: vi.fn(() => ({
+							where: vi.fn(() => ({
+								returning: vi.fn(() => Promise.resolve([])),
+							})),
+						})),
+					})),
+					delete: vi.fn(() => ({
+						where: vi.fn(() => Promise.resolve()),
+					})),
+					query: {
+						taxAssessments: {
+							findMany: vi.fn().mockResolvedValue([]),
+						},
+					},
+				}
+				return callback(tx)
+			}),
+		}
+
+		const service = new TaxAssessmentService(localDb as any, {} as DurableObjectNamespace)
+		const result = await service.runAssessmentForPeriod({
+			corporationId: '98000001',
+			periodStart: new Date('2026-01-01T00:00:00.000Z'),
+			periodEnd: new Date('2026-01-31T00:00:00.000Z'),
+		})
+
+		expect(result.assessment.taxableIncome).toBe('0')
+		expect(result.assessment.nonTaxableIncome).toBe('1000')
+		expect(result.assessment.taxDue).toBe('0')
+		expect(insertedAssessmentLines[0]?.taxRateBps).toBe(0)
+		expect(insertedAssessmentLines[0]?.classification).toBe('rule_exempt:Exempt')
+	})
+
 	it('creates scoped assessments for division and character rollups', async () => {
 		const insertedAssessments: any[] = []
 		const insertedAssessmentLines: any[] = []
@@ -243,6 +714,9 @@ describe('TaxAssessmentService', () => {
 					]),
 				},
 				taxRuleSets: {
+					findMany: vi.fn().mockResolvedValue([]),
+				},
+				taxRuleGroupAttachments: {
 					findMany: vi.fn().mockResolvedValue([]),
 				},
 			},
@@ -451,6 +925,9 @@ describe('TaxAssessmentService', () => {
 					]),
 				},
 				taxRuleSets: {
+					findMany: vi.fn().mockResolvedValue([]),
+				},
+				taxRuleGroupAttachments: {
 					findMany: vi.fn().mockResolvedValue([]),
 				},
 				taxMemberSummaryVersions: {

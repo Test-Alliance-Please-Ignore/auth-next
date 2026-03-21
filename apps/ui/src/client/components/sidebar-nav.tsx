@@ -167,8 +167,8 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 				href: '/tax/ledger',
 			})
 			taxItems.push({
-				label: 'Settings',
-				href: '/tax/settings',
+				label: 'Rules',
+				href: '/tax/rules',
 			})
 			taxItems.push({
 				label: 'Audit Log',

@@ -1,11 +1,17 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { and, eq, inArray } from '@repo/db-utils'
+import { and, eq, inArray, sql } from '@repo/db-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from './db'
-import { taxAssessments, taxCorporationSettings, taxLedgerEntries } from './db/schema'
+import {
+	taxAssessments,
+	taxCorporationSettings,
+	taxLedgerEntries,
+	taxMemberSummaryVersions,
+} from './db/schema'
 import { planProjectionRefreshFromWalletSync } from './services/projection-refresh-plan'
+import { computeRuleMutationRecalcStart } from './services/projection-rule-freshness'
 import { TaxAlertService } from './services/tax-alert.service'
 import { TaxAssessmentService } from './services/tax-assessment.service'
 import { TaxAuditService } from './services/tax-audit.service'
@@ -13,6 +19,7 @@ import { TaxBillingService } from './services/tax-billing.service'
 import { TaxExportService } from './services/tax-export.service'
 import { TaxLedgerService } from './services/tax-ledger.service'
 import { TaxReportService } from './services/tax-report.service'
+import { TaxRuleGroupService } from './services/tax-rule-groups.service'
 import { TaxRulesService } from './services/tax-rules.service'
 import { TaxSettingsService } from './services/tax-settings.service'
 
@@ -20,6 +27,7 @@ import type {
 	CorporationTax,
 	CorporationTaxHealth,
 	CreateTaxExportScheduleInput,
+	CreateTaxRuleGroupInput,
 	CreateTaxRuleSetInput,
 	IngestTaxLedgerWindowInput,
 	IssueBillsForPeriodInput,
@@ -37,6 +45,7 @@ import type {
 	ListTaxExportsFilters,
 	ListTaxMissingEsiKeyReportFilters,
 	ListTaxNotificationDestinationsFilters,
+	ListTaxRuleGroupsFilters,
 	ListTaxRuleSetsFilters,
 	RequestTaxExportInput,
 	RunTaxAssessmentForPeriodInput,
@@ -67,6 +76,8 @@ import type {
 	TaxMissingEsiKeyRow,
 	TaxNotificationDestination,
 	TaxReportWindowFilters,
+	TaxRuleGroup,
+	TaxRuleGroupAttachment,
 	TaxRuleSet,
 	TaxScheduledOperationsResult,
 	TaxSummaryReport,
@@ -75,6 +86,8 @@ import type {
 	TriggerTaxAlertInput,
 	TriggerTaxProjectionRefreshInput,
 	TriggerTaxProjectionRefreshResult,
+	UpdateTaxRuleGroupInput,
+	UpdateTaxRuleSetInput,
 	UpsertTaxCorporationSettingsInput,
 	UpsertTaxNotificationDestinationInput,
 } from '@repo/corporation-tax'
@@ -96,6 +109,7 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 	private exportService: TaxExportService
 	private reportService: TaxReportService
 	private auditService: TaxAuditService
+	private ruleGroupService: TaxRuleGroupService
 	private rulesService: TaxRulesService
 
 	constructor(
@@ -117,6 +131,7 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		this.reportService = new TaxReportService(this.db, this.settingsService)
 		this.exportService = new TaxExportService(this.db, this.reportService)
 		this.auditService = new TaxAuditService(this.db)
+		this.ruleGroupService = new TaxRuleGroupService(this.db)
 		this.rulesService = new TaxRulesService(this.db)
 	}
 
@@ -171,24 +186,110 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		return this.auditService.listAuditLog(filters)
 	}
 
+	async createRuleGroup(
+		actorUserId: string,
+		input: CreateTaxRuleGroupInput
+	): Promise<TaxRuleGroup> {
+		await this.ruleGroupService.ensureDefaultGlobalGroup(actorUserId)
+		const created = await this.ruleGroupService.createRuleGroup(actorUserId, input)
+		await this.auditService.logAction({
+			corporationId: undefined,
+			actorUserId,
+			action: 'tax.rule-group.created',
+			before: null,
+			after: this.toAuditPayload(created),
+		})
+		return created
+	}
+
+	async updateRuleGroup(
+		actorUserId: string,
+		ruleGroupId: string,
+		input: UpdateTaxRuleGroupInput
+	): Promise<TaxRuleGroup> {
+		const updated = await this.ruleGroupService.updateRuleGroup(ruleGroupId, input)
+		await this.auditService.logAction({
+			corporationId: undefined,
+			actorUserId,
+			action: 'tax.rule-group.updated',
+			before: null,
+			after: this.toAuditPayload(updated),
+		})
+		return updated
+	}
+
+	async deleteRuleGroup(actorUserId: string, ruleGroupId: string): Promise<void> {
+		await this.ruleGroupService.deleteRuleGroup(ruleGroupId)
+		await this.auditService.logAction({
+			corporationId: undefined,
+			actorUserId,
+			action: 'tax.rule-group.deleted',
+			before: { ruleGroupId },
+			after: null,
+		})
+	}
+
+	async listRuleGroups(filters?: ListTaxRuleGroupsFilters): Promise<TaxRuleGroup[]> {
+		await this.ruleGroupService.ensureDefaultGlobalGroup('system:tax:rule-groups')
+		return this.ruleGroupService.listRuleGroups(filters)
+	}
+
+	async attachCorporationToRuleGroup(
+		actorUserId: string,
+		ruleGroupId: string,
+		corporationId: string
+	): Promise<TaxRuleGroupAttachment> {
+		const attached = await this.ruleGroupService.attachCorporation(ruleGroupId, corporationId)
+		await this.touchRuleMembershipMutation(corporationId)
+		await this.auditService.logAction({
+			corporationId,
+			actorUserId,
+			action: 'tax.rule-group.corporation.attached',
+			before: null,
+			after: this.toAuditPayload(attached),
+		})
+		return attached
+	}
+
+	async detachCorporationFromRuleGroup(
+		actorUserId: string,
+		ruleGroupId: string,
+		corporationId: string
+	): Promise<void> {
+		await this.ruleGroupService.detachCorporation(ruleGroupId, corporationId)
+		await this.touchRuleMembershipMutation(corporationId)
+		await this.auditService.logAction({
+			corporationId,
+			actorUserId,
+			action: 'tax.rule-group.corporation.detached',
+			before: { ruleGroupId, corporationId },
+			after: null,
+		})
+	}
+
+	async listRuleGroupAttachments(ruleGroupId: string): Promise<TaxRuleGroupAttachment[]> {
+		return this.ruleGroupService.listRuleGroupAttachments(ruleGroupId)
+	}
+
 	async createRuleSet(actorUserId: string, input: CreateTaxRuleSetInput): Promise<TaxRuleSet> {
 		const created = await this.rulesService.createRuleSet(actorUserId, input)
+		const affectedCorporationIds = await this.getCorporationIdsForRuleGroup(created.ruleGroupId)
 
 		await this.auditService.logAction({
-			corporationId: created.corporationId ?? undefined,
+			corporationId: affectedCorporationIds[0] ?? undefined,
 			actorUserId,
 			action: 'tax.ruleset.created',
 			before: null,
 			after: {
 				id: created.id,
-				corporationId: created.corporationId,
+				ruleGroupId: created.ruleGroupId,
 				name: created.name,
 				priority: created.priority,
 				isActive: created.isActive,
 				effectiveFrom: created.effectiveFrom.toISOString(),
 				effectiveTo: created.effectiveTo?.toISOString() ?? null,
-				conditionCount: created.conditions.length,
-				actionCount: created.actions.length,
+				appliesToRefType: created.appliesToRefType,
+				taxRateBps: created.taxRateBps,
 			},
 		})
 
@@ -197,6 +298,49 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 
 	async listRuleSets(filters?: ListTaxRuleSetsFilters): Promise<TaxRuleSet[]> {
 		return this.rulesService.listRuleSets(filters)
+	}
+
+	async updateRuleSet(
+		actorUserId: string,
+		ruleSetId: string,
+		input: UpdateTaxRuleSetInput
+	): Promise<TaxRuleSet> {
+		const updated = await this.rulesService.updateRuleSet(ruleSetId, input)
+		const affectedCorporationIds = await this.getCorporationIdsForRuleGroup(updated.ruleGroupId)
+		await this.auditService.logAction({
+			corporationId: affectedCorporationIds[0] ?? undefined,
+			actorUserId,
+			action: 'tax.ruleset.updated',
+			before: { ruleSetId },
+			after: {
+				id: updated.id,
+				ruleGroupId: updated.ruleGroupId,
+				name: updated.name,
+				priority: updated.priority,
+				isActive: updated.isActive,
+			},
+		})
+		return updated
+	}
+
+	async deleteRuleSet(actorUserId: string, ruleSetId: string): Promise<void> {
+		const existing = await this.rulesService.getRuleSetById(ruleSetId)
+		if (!existing) {
+			throw new Error('Rule set not found')
+		}
+		const affectedCorporationIds = await this.getCorporationIdsForRuleGroup(existing.ruleGroupId)
+		await this.rulesService.deleteRuleSet(ruleSetId)
+		await this.auditService.logAction({
+			corporationId: affectedCorporationIds[0] ?? undefined,
+			actorUserId,
+			action: 'tax.ruleset.deleted',
+			before: {
+				id: existing.id,
+				ruleGroupId: existing.ruleGroupId,
+				name: existing.name,
+			},
+			after: null,
+		})
 	}
 
 	async ingestCorporationLedgerWindow(
@@ -217,10 +361,13 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 				upsertedCount: result.upsertedCount,
 				essDuplicateRecordCount: result.essDuplicateRecordCount,
 				essMissingRecordCount: result.essMissingRecordCount,
+				unexpectedIncomeRefTypeCount: result.unexpectedIncomeRefTypeCount,
+				unexpectedIncomeEntryCount: result.unexpectedIncomeEntryCount,
 			},
 		})
 
 		await this.triggerEssQualityAlerts(actorUserId, corporationId, input, result)
+		await this.triggerUnexpectedIncomeRefTypeAlerts(actorUserId, corporationId, input, result)
 
 		// Keep open-period member projections warm after successful ingest.
 		// This is best-effort and must not fail ingestion.
@@ -261,6 +408,51 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 			TRIGGERED_INGEST_OVERLAP_WINDOW_MS
 		)
 		if (!plan.shouldTrigger) {
+			const currentMonthWindow = this.getCurrentMonthWindow(new Date())
+			const versionRow = await this.db.query.taxMemberSummaryVersions.findFirst({
+				where: eq(taxMemberSummaryVersions.corporationId, input.corporationId),
+				columns: {
+					projectionUpdatedAt: true,
+					ruleMembershipMutatedAt: true,
+				},
+			})
+			const projectionUpdatedAt = versionRow?.projectionUpdatedAt ?? new Date(0)
+			const earliestRuleSetMutationAt = await this.rulesService.getEarliestRuleSetMutationAfter(
+				input.corporationId,
+				projectionUpdatedAt
+			)
+			const membershipMutationAt = versionRow?.ruleMembershipMutatedAt ?? null
+			const recalcStart = computeRuleMutationRecalcStart({
+				projectionUpdatedAt,
+				openPeriodStart: currentMonthWindow.periodStart,
+				earliestRuleSetMutationAt,
+				membershipMutationAt,
+			})
+			if (recalcStart !== null) {
+				await this.runAssessmentForPeriod(actorUserId, {
+					corporationId: input.corporationId,
+					periodStart: recalcStart,
+					periodEnd: currentMonthWindow.periodEnd,
+					includeCharacterWallets: true,
+				})
+				await this.clearRuleMembershipMutation(input.corporationId)
+
+				logger.info('[CorporationTaxDO] Projection refresh triggered by rule mutation', {
+					corporationId: input.corporationId,
+					upstreamRunId: input.upstreamRunId,
+					earliestRuleSetMutationAt: earliestRuleSetMutationAt?.toISOString() ?? null,
+					membershipMutationAt: membershipMutationAt?.toISOString() ?? null,
+					recalcStart: recalcStart.toISOString(),
+					projectionUpdatedAt: projectionUpdatedAt.toISOString(),
+					durationMs: Date.now() - startedAtMs,
+				})
+
+				return {
+					corporationId: input.corporationId,
+					triggered: true,
+					reason: 'rule_mutation',
+				}
+			}
 			return {
 				corporationId: input.corporationId,
 				triggered: false,
@@ -899,6 +1091,42 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		await this.triggerEssThresholdAlert(actorUserId, corporationId, input, windowKey)
 	}
 
+	private async triggerUnexpectedIncomeRefTypeAlerts(
+		actorUserId: string,
+		corporationId: string,
+		input: IngestTaxLedgerWindowInput | undefined,
+		result: TaxLedgerIngestionResult
+	): Promise<void> {
+		if (result.unexpectedIncomeRefTypes.length === 0) {
+			return
+		}
+
+		const basePayload = {
+			corporationId,
+			fromDate: input?.fromDate?.toISOString() ?? null,
+			toDate: input?.toDate?.toISOString() ?? null,
+		}
+
+		for (const signal of result.unexpectedIncomeRefTypes) {
+			await this.triggerAlert(actorUserId, {
+				corporationId,
+				alertType: 'unexpected_income_ref_type_detected',
+				severity: 'warning',
+				// Deduped by corporation + ref type to avoid alert storms across recurring ingests.
+				dedupeKey: `unexpected-income-ref-type:${corporationId}:${signal.refType}`,
+				payload: {
+					...basePayload,
+					refType: signal.refType,
+					entryCountInBatch: signal.entryCount,
+					sampleSourceType: signal.sampleSourceType,
+					sampleSourceKey: signal.sampleSourceKey,
+					sampleAmount: signal.sampleAmount,
+					sampleEntryDate: signal.sampleEntryDate.toISOString(),
+				},
+			})
+		}
+	}
+
 	private toLedgerWindowDedupeKey(input?: IngestTaxLedgerWindowInput): string {
 		const fromDate = input?.fromDate?.toISOString() ?? 'none'
 		const toDate = input?.toDate?.toISOString() ?? 'none'
@@ -975,6 +1203,39 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 			periodStart,
 			periodEnd,
 		}
+	}
+
+	private async getCorporationIdsForRuleGroup(ruleGroupId: string): Promise<string[]> {
+		const rows = await this.ruleGroupService.listRuleGroupAttachments(ruleGroupId)
+		return rows.map((row) => row.corporationId)
+	}
+
+	private async touchRuleMembershipMutation(corporationId: string): Promise<void> {
+		const now = new Date()
+		await this.db
+			.insert(taxMemberSummaryVersions)
+			.values({
+				corporationId,
+				ruleMembershipMutatedAt: now,
+				updatedAt: now,
+			})
+			.onConflictDoUpdate({
+				target: taxMemberSummaryVersions.corporationId,
+				set: {
+					ruleMembershipMutatedAt: sql`coalesce(${taxMemberSummaryVersions.ruleMembershipMutatedAt}, ${now})`,
+					updatedAt: now,
+				},
+			})
+	}
+
+	private async clearRuleMembershipMutation(corporationId: string): Promise<void> {
+		await this.db
+			.update(taxMemberSummaryVersions)
+			.set({
+				ruleMembershipMutatedAt: null,
+				updatedAt: new Date(),
+			})
+			.where(eq(taxMemberSummaryVersions.corporationId, corporationId))
 	}
 
 	private async triggerSchedulerOperationFailureAlert(input: {
@@ -1232,15 +1493,17 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		return new Response('Corporation Tax Durable Object - Use RPC methods', { status: 200 })
 	}
 
-	private toAuditPayload(settings: TaxCorporationSettings | null): Record<string, unknown> | null {
-		if (!settings) {
+	private toAuditPayload(value: unknown): Record<string, unknown> | null {
+		if (!value || typeof value !== 'object') {
 			return null
 		}
-
-		return {
-			...settings,
-			createdAt: settings.createdAt.toISOString(),
-			updatedAt: settings.updatedAt.toISOString(),
+		const payload = { ...(value as Record<string, unknown>) }
+		for (const key of ['createdAt', 'updatedAt', 'effectiveFrom', 'effectiveTo']) {
+			const field = payload[key]
+			if (field instanceof Date) {
+				payload[key] = field.toISOString()
+			}
 		}
+		return payload
 	}
 }

@@ -2084,13 +2084,6 @@
 					"primaryKey": false,
 					"notNull": true
 				},
-				"is_taxable": {
-					"name": "is_taxable",
-					"type": "boolean",
-					"primaryKey": false,
-					"notNull": true,
-					"default": true
-				},
 				"label": {
 					"name": "label",
 					"type": "text",

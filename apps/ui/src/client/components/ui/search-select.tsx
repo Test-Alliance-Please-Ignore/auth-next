@@ -142,8 +142,31 @@ export function SearchSelect<TOption extends SearchSelectOption>({
 	}
 
 	useEffect(() => {
-		updateScrollButtons()
+		if (!open) {
+			setCanScrollUp(false)
+			setCanScrollDown(false)
+			return
+		}
+
+		// Measure after popover/layout commit so overflow chevrons are correct on first render.
+		const frame = requestAnimationFrame(() => updateScrollButtons())
+		return () => cancelAnimationFrame(frame)
 	}, [open, filteredOptions.length, loading, queryMeetsMinimum])
+
+	useEffect(() => {
+		if (!open) {
+			return
+		}
+
+		const listEl = listRef.current
+		if (!listEl || typeof ResizeObserver === 'undefined') {
+			return
+		}
+
+		const observer = new ResizeObserver(() => updateScrollButtons())
+		observer.observe(listEl)
+		return () => observer.disconnect()
+	}, [open])
 
 	useEffect(() => {
 		if (disabled && open) {
