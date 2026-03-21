@@ -35,6 +35,22 @@ function makeAssessment(overrides: Record<string, unknown> = {}) {
 	}
 }
 
+function makeBillingConfig(overrides: Record<string, unknown> = {}) {
+	return {
+		id: 'billing-config-1',
+		corporationId: '98000001',
+		isDefault: true,
+		billingEnabled: true,
+		billingIssuerUserId: '',
+		billingPayeeId: '90000001',
+		billingPayeeType: 'corporation',
+		billingDueDays: 14,
+		createdAt: new Date('2026-03-31T23:59:59.999Z'),
+		updatedAt: new Date('2026-03-31T23:59:59.999Z'),
+		...overrides,
+	}
+}
+
 describe('TaxBillingService scope guardrails', () => {
 	let mockDb: any
 
@@ -202,11 +218,7 @@ describe('TaxBillingService scope guardrails', () => {
 		})
 
 		mockDb.query.taxAssessments.findFirst.mockResolvedValue(current)
-		mockDb.query.taxCorporationBillingConfigs.findFirst.mockResolvedValue({
-			corporationId: '98000001',
-			billingEnabled: true,
-			billingIssuerUserId: null,
-		})
+		mockDb.query.taxCorporationBillingConfigs.findFirst.mockResolvedValue(makeBillingConfig())
 		mockDb.update.mockReturnValue({
 			set: vi.fn(() => ({
 				where: vi.fn(() => ({
@@ -229,5 +241,45 @@ describe('TaxBillingService scope guardrails', () => {
 		expect(billsStub.cancelBill).toHaveBeenCalledWith('actor-1', 'bill-1')
 		expect(result.billStatus).toBe('cancelled')
 		expect(mockDb.insert).toHaveBeenCalledTimes(1)
+	})
+
+	it('fails bill creation when default billing config is missing', async () => {
+		mockDb.query.taxAssessments.findFirst.mockResolvedValue(makeAssessment())
+		mockDb.query.taxCorporationBillingConfigs.findFirst.mockResolvedValue(null)
+
+		const service = new TaxBillingService(mockDb, {} as DurableObjectNamespace)
+
+		await expect(
+			service.createBillsForAssessment('actor-1', '98000001', 'assessment-1')
+		).rejects.toThrow('Default billing configuration not found for this corporation')
+	})
+
+	it('fails bill creation when default billing config is disabled', async () => {
+		mockDb.query.taxAssessments.findFirst.mockResolvedValue(makeAssessment())
+		mockDb.query.taxCorporationBillingConfigs.findFirst.mockResolvedValue(
+			makeBillingConfig({ billingEnabled: false })
+		)
+
+		const service = new TaxBillingService(mockDb, {} as DurableObjectNamespace)
+
+		await expect(
+			service.createBillsForAssessment('actor-1', '98000001', 'assessment-1')
+		).rejects.toThrow('Default billing configuration is disabled for this corporation')
+	})
+
+	it('fails bill creation when default billing config payee is incomplete', async () => {
+		mockDb.query.taxAssessments.findFirst.mockResolvedValue(makeAssessment())
+		mockDb.query.taxCorporationBillingConfigs.findFirst.mockResolvedValue(
+			makeBillingConfig({
+				billingPayeeId: '',
+				billingPayeeType: '',
+			})
+		)
+
+		const service = new TaxBillingService(mockDb, {} as DurableObjectNamespace)
+
+		await expect(
+			service.createBillsForAssessment('actor-1', '98000001', 'assessment-1')
+		).rejects.toThrow('Billing payee configuration is incomplete')
 	})
 })

@@ -1,16 +1,19 @@
-import { and, desc, eq, gte, isNotNull, lte } from '@repo/db-utils'
+import { and, asc, desc, eq, gte, isNotNull, lte, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
 import { taxAssessments, taxBillSyncEvents, taxCorporationBillingConfigs } from '../db/schema'
 
 import type { Bills } from '@repo/bills'
 import type {
+	CreateTaxCorporationBillingConfigInput,
 	IssueBillsForPeriodInput,
 	IssueBillsForPeriodResult,
 	SyncCorporationBillStatusesResult,
 	TaxAssessment,
 	TaxAssessmentWithBillHistory,
 	TaxBillStatus,
+	TaxCorporationBillingConfig,
+	UpdateTaxCorporationBillingConfigInput,
 } from '@repo/corporation-tax'
 import type { CorporationTaxDb } from '../db'
 
@@ -19,6 +22,186 @@ export class TaxBillingService {
 		private db: CorporationTaxDb,
 		private billsNamespace: DurableObjectNamespace
 	) {}
+
+	async listCorporationBillingConfigs(
+		corporationId: string
+	): Promise<TaxCorporationBillingConfig[]> {
+		const rows = await this.db.query.taxCorporationBillingConfigs.findMany({
+			where: eq(taxCorporationBillingConfigs.corporationId, corporationId),
+			orderBy: [
+				desc(taxCorporationBillingConfigs.isDefault),
+				asc(taxCorporationBillingConfigs.createdAt),
+			],
+		})
+		return rows.map((row) => this.toBillingConfig(row))
+	}
+
+	async createCorporationBillingConfig(
+		corporationId: string,
+		input: CreateTaxCorporationBillingConfigInput
+	): Promise<TaxCorporationBillingConfig> {
+		const payload = this.normalizeBillingConfigInput(input)
+		const existingCount = await this.db
+			.select({ count: sql<number>`count(*)::int` })
+			.from(taxCorporationBillingConfigs)
+			.where(eq(taxCorporationBillingConfigs.corporationId, corporationId))
+		const hasExisting = (existingCount[0]?.count ?? 0) > 0
+		const shouldBeDefault = payload.isDefault || !hasExisting
+		const now = new Date()
+
+		try {
+			if (shouldBeDefault) {
+				await this.db
+					.update(taxCorporationBillingConfigs)
+					.set({ isDefault: false, updatedAt: now })
+					.where(eq(taxCorporationBillingConfigs.corporationId, corporationId))
+			}
+
+			const [inserted] = await this.db
+				.insert(taxCorporationBillingConfigs)
+				.values({
+					corporationId,
+					isDefault: shouldBeDefault,
+					billingEnabled: payload.billingEnabled,
+					billingIssuerUserId: payload.billingIssuerUserId,
+					billingPayeeId: payload.billingPayeeId,
+					billingPayeeType: payload.billingPayeeType,
+					billingDueDays: payload.billingDueDays,
+					createdAt: now,
+					updatedAt: now,
+				})
+				.returning()
+
+			if (!inserted) {
+				throw new Error('Failed to create billing configuration')
+			}
+
+			return this.toBillingConfig(inserted)
+		} catch (error) {
+			this.rethrowBillingConfigConstraintErrors(error)
+		}
+	}
+
+	async updateCorporationBillingConfig(
+		corporationId: string,
+		configId: string,
+		input: UpdateTaxCorporationBillingConfigInput
+	): Promise<TaxCorporationBillingConfig> {
+		const existing = await this.db.query.taxCorporationBillingConfigs.findFirst({
+			where: and(
+				eq(taxCorporationBillingConfigs.id, configId),
+				eq(taxCorporationBillingConfigs.corporationId, corporationId)
+			),
+		})
+		if (!existing) {
+			throw new Error('Billing configuration not found')
+		}
+
+		const payload = this.normalizeBillingConfigInput(input)
+		const now = new Date()
+		const shouldBeDefault = input.isDefault === true
+
+		try {
+			if (shouldBeDefault) {
+				await this.db
+					.update(taxCorporationBillingConfigs)
+					.set({ isDefault: false, updatedAt: now })
+					.where(eq(taxCorporationBillingConfigs.corporationId, corporationId))
+			}
+
+			const [updated] = await this.db
+				.update(taxCorporationBillingConfigs)
+				.set({
+					isDefault: input.isDefault ?? existing.isDefault,
+					billingEnabled: payload.billingEnabled ?? existing.billingEnabled,
+					billingIssuerUserId: payload.billingIssuerUserId ?? existing.billingIssuerUserId,
+					billingPayeeId: payload.billingPayeeId ?? existing.billingPayeeId,
+					billingPayeeType: payload.billingPayeeType ?? existing.billingPayeeType,
+					billingDueDays: payload.billingDueDays ?? existing.billingDueDays,
+					updatedAt: now,
+				})
+				.where(eq(taxCorporationBillingConfigs.id, configId))
+				.returning()
+
+			if (!updated) {
+				throw new Error('Billing configuration not found')
+			}
+
+			if (updated.isDefault === false) {
+				const defaultRow = await this.db.query.taxCorporationBillingConfigs.findFirst({
+					where: and(
+						eq(taxCorporationBillingConfigs.corporationId, corporationId),
+						eq(taxCorporationBillingConfigs.isDefault, true)
+					),
+					columns: { id: true },
+				})
+				if (!defaultRow) {
+					throw new Error('A corporation must have a default billing configuration')
+				}
+			}
+
+			return this.toBillingConfig(updated)
+		} catch (error) {
+			this.rethrowBillingConfigConstraintErrors(error)
+		}
+	}
+
+	async deleteCorporationBillingConfig(corporationId: string, configId: string): Promise<void> {
+		const existing = await this.db.query.taxCorporationBillingConfigs.findFirst({
+			where: and(
+				eq(taxCorporationBillingConfigs.id, configId),
+				eq(taxCorporationBillingConfigs.corporationId, corporationId)
+			),
+		})
+		if (!existing) {
+			throw new Error('Billing configuration not found')
+		}
+
+		const countRows = await this.db
+			.select({ count: sql<number>`count(*)::int` })
+			.from(taxCorporationBillingConfigs)
+			.where(eq(taxCorporationBillingConfigs.corporationId, corporationId))
+		const count = countRows[0]?.count ?? 0
+		if (count <= 1) {
+			throw new Error('Cannot delete the only billing configuration for a corporation')
+		}
+		if (existing.isDefault) {
+			throw new Error('Cannot delete the default billing configuration')
+		}
+
+		await this.db
+			.delete(taxCorporationBillingConfigs)
+			.where(eq(taxCorporationBillingConfigs.id, configId))
+	}
+
+	async setDefaultCorporationBillingConfig(
+		corporationId: string,
+		configId: string
+	): Promise<TaxCorporationBillingConfig> {
+		const existing = await this.db.query.taxCorporationBillingConfigs.findFirst({
+			where: and(
+				eq(taxCorporationBillingConfigs.id, configId),
+				eq(taxCorporationBillingConfigs.corporationId, corporationId)
+			),
+		})
+		if (!existing) {
+			throw new Error('Billing configuration not found')
+		}
+		const now = new Date()
+		await this.db
+			.update(taxCorporationBillingConfigs)
+			.set({ isDefault: false, updatedAt: now })
+			.where(eq(taxCorporationBillingConfigs.corporationId, corporationId))
+		const [updated] = await this.db
+			.update(taxCorporationBillingConfigs)
+			.set({ isDefault: true, updatedAt: now })
+			.where(eq(taxCorporationBillingConfigs.id, configId))
+			.returning()
+		if (!updated) {
+			throw new Error('Billing configuration not found')
+		}
+		return this.toBillingConfig(updated)
+	}
 
 	async createBillsForAssessment(
 		actorUserId: string,
@@ -41,17 +224,15 @@ export class TaxBillingService {
 			throw new Error('Assessment must be finalized before billing')
 		}
 
-		const settings = await this.db.query.taxCorporationBillingConfigs.findFirst({
-			where: eq(taxCorporationBillingConfigs.corporationId, corporationId),
-		})
-		if (!settings || !settings.billingEnabled) {
-			throw new Error('Billing is not enabled for this corporation')
+		const settings = await this.getDefaultBillingConfig(corporationId)
+		if (!settings.billingEnabled) {
+			throw new Error('Default billing configuration is disabled for this corporation')
 		}
-		if (!settings.billingPayeeId || !settings.billingPayeeType) {
+		if (!settings.billingPayeeId.trim() || !settings.billingPayeeType.trim()) {
 			throw new Error('Billing payee configuration is incomplete')
 		}
 
-		const billIssuerUserId = settings.billingIssuerUserId ?? actorUserId
+		const billIssuerUserId = settings.billingIssuerUserId.trim() || actorUserId
 		const bills = getStub<Bills>(this.billsNamespace, 'default')
 		const dueDate = new Date(assessment.taxPeriodEnd)
 		dueDate.setUTCDate(dueDate.getUTCDate() + settings.billingDueDays)
@@ -111,14 +292,8 @@ export class TaxBillingService {
 		actorUserId: string,
 		input: IssueBillsForPeriodInput
 	): Promise<IssueBillsForPeriodResult> {
-		const settings = await this.db.query.taxCorporationBillingConfigs.findFirst({
-			where: eq(taxCorporationBillingConfigs.corporationId, input.corporationId),
-		})
-		if (!settings) {
-			throw new Error('Corporation settings not found')
-		}
-
-		const billIssuerUserId = settings.billingIssuerUserId ?? actorUserId
+		const settings = await this.getDefaultBillingConfig(input.corporationId)
+		const billIssuerUserId = settings.billingIssuerUserId.trim() || actorUserId
 		const bills = getStub<Bills>(this.billsNamespace, 'default')
 		const assessments = await this.db.query.taxAssessments.findMany({
 			where: and(
@@ -275,14 +450,12 @@ export class TaxBillingService {
 			throw new Error('Assessment has no linked bill')
 		}
 
-		const settings = await this.db.query.taxCorporationBillingConfigs.findFirst({
-			where: eq(taxCorporationBillingConfigs.corporationId, corporationId),
-		})
-		if (!settings || !settings.billingEnabled) {
-			throw new Error('Billing is not enabled for this corporation')
+		const settings = await this.getDefaultBillingConfig(corporationId)
+		if (!settings.billingEnabled) {
+			throw new Error('Default billing configuration is disabled for this corporation')
 		}
 
-		const billIssuerUserId = settings.billingIssuerUserId ?? actorUserId
+		const billIssuerUserId = settings.billingIssuerUserId.trim() || actorUserId
 		const bills = getStub<Bills>(this.billsNamespace, 'default')
 		const cancelledBill = await bills.cancelBill(billIssuerUserId, assessment.billId)
 
@@ -309,6 +482,89 @@ export class TaxBillingService {
 		})
 
 		return this.toAssessment(updated ?? assessment)
+	}
+
+	private async getDefaultBillingConfig(corporationId: string) {
+		const settings = await this.db.query.taxCorporationBillingConfigs.findFirst({
+			where: and(
+				eq(taxCorporationBillingConfigs.corporationId, corporationId),
+				eq(taxCorporationBillingConfigs.isDefault, true)
+			),
+		})
+
+		if (!settings) {
+			throw new Error('Default billing configuration not found for this corporation')
+		}
+
+		return settings
+	}
+
+	private normalizeBillingConfigInput(
+		input: CreateTaxCorporationBillingConfigInput | UpdateTaxCorporationBillingConfigInput
+	): {
+		isDefault: boolean
+		billingEnabled?: boolean
+		billingIssuerUserId?: string
+		billingPayeeId?: string
+		billingPayeeType?: '' | 'character' | 'corporation'
+		billingDueDays?: number
+	} {
+		if (
+			input.billingPayeeType !== undefined &&
+			input.billingPayeeType !== '' &&
+			input.billingPayeeType !== 'character' &&
+			input.billingPayeeType !== 'corporation'
+		) {
+			throw new Error("billingPayeeType must be '', 'character', or 'corporation'")
+		}
+		if (input.billingDueDays !== undefined) {
+			if (
+				!Number.isInteger(input.billingDueDays) ||
+				input.billingDueDays < 1 ||
+				input.billingDueDays > 90
+			) {
+				throw new Error('billingDueDays must be an integer between 1 and 90')
+			}
+		}
+
+		return {
+			isDefault: Boolean(input.isDefault),
+			billingEnabled: input.billingEnabled,
+			billingIssuerUserId: input.billingIssuerUserId?.trim(),
+			billingPayeeId: input.billingPayeeId?.trim(),
+			billingPayeeType: input.billingPayeeType,
+			billingDueDays: input.billingDueDays,
+		}
+	}
+
+	private rethrowBillingConfigConstraintErrors(error: unknown): never {
+		if (error instanceof Error) {
+			const message = error.message.toLowerCase()
+			if (
+				message.includes('tax_corporation_billing_configs_exact_tuple_unique') ||
+				message.includes('duplicate key value violates unique constraint')
+			) {
+				throw new Error('Duplicate billing configuration tuple for corporation')
+			}
+		}
+		throw error
+	}
+
+	private toBillingConfig(
+		row: typeof taxCorporationBillingConfigs.$inferSelect
+	): TaxCorporationBillingConfig {
+		return {
+			id: row.id,
+			corporationId: row.corporationId,
+			isDefault: row.isDefault,
+			billingEnabled: row.billingEnabled,
+			billingIssuerUserId: row.billingIssuerUserId,
+			billingPayeeId: row.billingPayeeId,
+			billingPayeeType: row.billingPayeeType as '' | 'character' | 'corporation',
+			billingDueDays: row.billingDueDays,
+			createdAt: row.createdAt,
+			updatedAt: row.updatedAt,
+		}
 	}
 
 	async getCorporationBillStatusHistory(

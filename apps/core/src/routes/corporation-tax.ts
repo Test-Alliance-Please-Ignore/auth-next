@@ -143,6 +143,68 @@ function parseIntegerQueryParam(value: string | undefined): number | undefined {
 	return Number.isInteger(parsed) ? parsed : undefined
 }
 
+async function validateBillingPayeeSelection(
+	db: App['Variables']['db'],
+	input: {
+		billingPayeeId?: string
+		billingPayeeType?: '' | 'character' | 'corporation'
+	},
+	options: { partial: boolean }
+): Promise<{ ok: true } | { ok: false; error: string }> {
+	const hasPayeeId = typeof input.billingPayeeId === 'string'
+	const hasPayeeType = typeof input.billingPayeeType === 'string'
+
+	if (options.partial) {
+		if (!hasPayeeId && !hasPayeeType) {
+			return { ok: true }
+		}
+		if (!hasPayeeId || !hasPayeeType) {
+			return { ok: false, error: 'billingPayeeId and billingPayeeType must be provided together' }
+		}
+	} else {
+		if (!hasPayeeId || !hasPayeeType) {
+			return { ok: false, error: 'billingPayeeId and billingPayeeType are required' }
+		}
+	}
+
+	const payeeId = input.billingPayeeId?.trim() ?? ''
+	const payeeType = input.billingPayeeType
+
+	if (!payeeId) {
+		return { ok: false, error: 'billingPayeeId must not be empty' }
+	}
+	if (payeeType !== 'character' && payeeType !== 'corporation') {
+		return { ok: false, error: "billingPayeeType must be 'character' or 'corporation'" }
+	}
+
+	if (!db) {
+		return { ok: false, error: 'Database unavailable' }
+	}
+
+	if (payeeType === 'character') {
+		const row = await db.query.userCharacters.findFirst({
+			where: eq(userCharacters.characterId, payeeId),
+			columns: { characterId: true },
+		})
+		if (!row) {
+			return { ok: false, error: 'Selected character payee was not found' }
+		}
+		return { ok: true }
+	}
+
+	const corpRow = await db.query.managedCorporations.findFirst({
+		where: and(
+			eq(managedCorporations.corporationId, payeeId),
+			eq(managedCorporations.isActive, true)
+		),
+		columns: { corporationId: true },
+	})
+	if (!corpRow) {
+		return { ok: false, error: 'Selected corporation payee was not found or is inactive' }
+	}
+	return { ok: true }
+}
+
 function parseDateQueryParam(value: string | undefined): Date | undefined | null {
 	if (!value) {
 		return undefined
@@ -275,6 +337,7 @@ function parseReportWindowFiltersFromQuery(
 }
 
 type TaxBillingHttpStatus = 400 | 404 | 409 | 500
+type TaxBillingConfigHttpStatus = 400 | 404 | 409 | 500
 
 function mapTaxBillingError(
 	error: unknown,
@@ -287,19 +350,45 @@ function mapTaxBillingError(
 	switch (error.message) {
 		case 'Assessment not found':
 		case 'Linked bill not found':
-		case 'Corporation settings not found':
+		case 'Default billing configuration not found for this corporation':
 		case 'Bill not found':
 			return { status: 404, message: error.message }
 		case 'Only corporation-scope assessments can be billed':
 			return { status: 400, message: error.message }
 		case 'Assessment must be finalized before billing':
 		case 'Billing is not enabled for this corporation':
+		case 'Default billing configuration is disabled for this corporation':
 		case 'Billing payee configuration is incomplete':
 		case 'Assessment has no linked bill':
 		case 'Only the issuer can cancel the bill':
 		case 'Cannot cancel a paid bill':
 		case 'Bill is already cancelled':
 			return { status: 409, message: error.message }
+		default:
+			return { status: 500, message: defaultMessage }
+	}
+}
+
+function mapTaxBillingConfigError(
+	error: unknown,
+	defaultMessage: string
+): { status: TaxBillingConfigHttpStatus; message: string } {
+	if (!(error instanceof Error)) {
+		return { status: 500, message: defaultMessage }
+	}
+
+	switch (error.message) {
+		case 'Billing configuration not found':
+		case 'Default billing configuration not found for this corporation':
+			return { status: 404, message: error.message }
+		case 'Cannot delete the only billing configuration for a corporation':
+		case 'Cannot delete the default billing configuration':
+		case 'Duplicate billing configuration tuple for corporation':
+		case 'A corporation must have a default billing configuration':
+			return { status: 409, message: error.message }
+		case "billingPayeeType must be '', 'character', or 'corporation'":
+		case 'billingDueDays must be an integer between 1 and 90':
+			return { status: 400, message: error.message }
 		default:
 			return { status: 500, message: defaultMessage }
 	}
@@ -584,13 +673,10 @@ app.get('/corporations', requireAuth(), async (c) => {
 		const managedCorps = await db.query.managedCorporations.findMany({
 			where: and(
 				eq(managedCorporations.isActive, true),
-				or(
-					eq(managedCorporations.isMemberCorporation, true),
-					eq(managedCorporations.isSpecialPurpose, true)
-				)
+				eq(managedCorporations.isMemberCorporation, true)
 			),
 			orderBy: [desc(managedCorporations.updatedAt)],
-			limit: 10_000,
+			limit: 500,
 		})
 
 		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
@@ -612,6 +698,59 @@ app.get('/corporations', requireAuth(), async (c) => {
 	} catch (error) {
 		logger.error('Error listing tax corporations:', error)
 		return c.json({ error: 'Failed to list tax corporations' }, 500)
+	}
+})
+
+/**
+ * GET /corporation-tax/corporations/:corporationId/payee-corporations/search?q=:query
+ * Search all active corporations for billing payee selection.
+ */
+app.get('/corporations/:corporationId/payee-corporations/search', requireAuth(), async (c) => {
+	const user = c.get('user')
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	const corporationId = c.req.param('corporationId')
+	const canManage = await canManageTaxFeature(c.env, user, corporationId)
+	if (!canManage) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
+	const query = c.req.query('q')?.trim()
+	if (!query || query.length < 2) {
+		return c.json({ error: 'q must be at least 2 characters' }, 400)
+	}
+
+	const db = c.get('db')
+	if (!db) {
+		return c.json({ error: 'Database unavailable' }, 500)
+	}
+
+	const isNumeric = /^[0-9]+$/.test(query)
+
+	try {
+		const rows = await db.query.managedCorporations.findMany({
+			where: and(
+				eq(managedCorporations.isActive, true),
+				isNumeric
+					? or(
+							eq(managedCorporations.corporationId, query),
+							ilike(managedCorporations.name, `%${query}%`)
+						)
+					: ilike(managedCorporations.name, `%${query}%`)
+			),
+			orderBy: [desc(managedCorporations.updatedAt)],
+			limit: 25,
+			columns: {
+				corporationId: true,
+				name: true,
+			},
+		})
+		return c.json(rows)
+	} catch (error) {
+		logger.error('Error searching active billing payee corporations:', error)
+		return c.json({ error: 'Failed to search active corporations' }, 500)
 	}
 })
 
@@ -1542,6 +1681,280 @@ app.post('/corporations/:corporationId/ledger/trim', requireAuth(), async (c) =>
 		return c.json({ error: 'Failed to trim tax ledger entries' }, 500)
 	}
 })
+
+/**
+ * GET /corporation-tax/corporations/:corporationId/billing-configs
+ * List corporation billing configurations.
+ */
+app.get('/corporations/:corporationId/billing-configs', requireAuth(), async (c) => {
+	const user = c.get('user')
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	const corporationId = c.req.param('corporationId')
+	const canRead = await canAuditTaxFeature(c.env, user, corporationId)
+	if (!canRead) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
+	try {
+		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
+		const rows = await stub.listCorporationBillingConfigs(corporationId)
+		return c.json(rows)
+	} catch (error) {
+		const mapped = mapTaxBillingConfigError(
+			error,
+			'Failed to list corporation billing configurations'
+		)
+		if (mapped.status >= 500) {
+			logger.error('Error listing corporation tax billing configurations:', error)
+		}
+		return c.json({ error: mapped.message }, mapped.status)
+	}
+})
+
+/**
+ * GET /corporation-tax/corporations/:corporationId/payee-characters/search?q=:query
+ * Search linked characters for billing payee selection.
+ */
+app.get('/corporations/:corporationId/payee-characters/search', requireAuth(), async (c) => {
+	const user = c.get('user')
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	const corporationId = c.req.param('corporationId')
+	const canManage = await canManageTaxFeature(c.env, user, corporationId)
+	if (!canManage) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
+	const query = c.req.query('q')?.trim()
+	if (!query || query.length < 2) {
+		return c.json({ error: 'q must be at least 2 characters' }, 400)
+	}
+
+	const db = c.get('db')
+	if (!db) {
+		return c.json({ error: 'Database unavailable' }, 500)
+	}
+
+	const isNumeric = /^[0-9]+$/.test(query)
+
+	try {
+		const rows = await db
+			.select({
+				characterId: userCharacters.characterId,
+				characterName: userCharacters.characterName,
+			})
+			.from(userCharacters)
+			.where(
+				isNumeric
+					? or(
+							eq(userCharacters.characterId, query),
+							ilike(userCharacters.characterName, `%${query}%`)
+						)
+					: ilike(userCharacters.characterName, `%${query}%`)
+			)
+			.limit(25)
+
+		return c.json(rows)
+	} catch (error) {
+		logger.error('Error searching billing payee characters:', error)
+		return c.json({ error: 'Failed to search characters' }, 500)
+	}
+})
+
+/**
+ * POST /corporation-tax/corporations/:corporationId/billing-configs
+ * Create one billing configuration row.
+ */
+app.post('/corporations/:corporationId/billing-configs', requireAuth(), async (c) => {
+	const user = c.get('user')
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	const corporationId = c.req.param('corporationId')
+	const canManage = await canManageTaxFeature(c.env, user, corporationId)
+	if (!canManage) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
+	const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null
+	if (!body) {
+		return c.json({ error: 'Invalid JSON payload' }, 400)
+	}
+
+	const input = {
+		isDefault: typeof body.isDefault === 'boolean' ? body.isDefault : undefined,
+		billingEnabled: typeof body.billingEnabled === 'boolean' ? body.billingEnabled : undefined,
+		billingIssuerUserId:
+			typeof body.billingIssuerUserId === 'string' ? body.billingIssuerUserId : undefined,
+		billingPayeeId: typeof body.billingPayeeId === 'string' ? body.billingPayeeId : undefined,
+		billingPayeeType:
+			typeof body.billingPayeeType === 'string'
+				? (body.billingPayeeType as '' | 'character' | 'corporation')
+				: undefined,
+		billingDueDays:
+			typeof body.billingDueDays === 'number' && Number.isInteger(body.billingDueDays)
+				? body.billingDueDays
+				: undefined,
+	}
+	const db = c.get('db')
+	if (!db) {
+		return c.json({ error: 'Database unavailable' }, 500)
+	}
+	const payeeValidation = await validateBillingPayeeSelection(db, input, { partial: false })
+	if (!payeeValidation.ok) {
+		return c.json({ error: payeeValidation.error }, 400)
+	}
+
+	try {
+		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
+		const created = await stub.createCorporationBillingConfig(user.id, corporationId, input)
+		return c.json(created, 201)
+	} catch (error) {
+		const mapped = mapTaxBillingConfigError(error, 'Failed to create billing configuration')
+		if (mapped.status >= 500) {
+			logger.error('Error creating corporation tax billing configuration:', error)
+		}
+		return c.json({ error: mapped.message }, mapped.status)
+	}
+})
+
+/**
+ * PATCH /corporation-tax/corporations/:corporationId/billing-configs/:configId
+ * Update one billing configuration row.
+ */
+app.patch('/corporations/:corporationId/billing-configs/:configId', requireAuth(), async (c) => {
+	const user = c.get('user')
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	const corporationId = c.req.param('corporationId')
+	const configId = c.req.param('configId')
+	const canManage = await canManageTaxFeature(c.env, user, corporationId)
+	if (!canManage) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
+	const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null
+	if (!body) {
+		return c.json({ error: 'Invalid JSON payload' }, 400)
+	}
+
+	const input = {
+		isDefault: typeof body.isDefault === 'boolean' ? body.isDefault : undefined,
+		billingEnabled: typeof body.billingEnabled === 'boolean' ? body.billingEnabled : undefined,
+		billingIssuerUserId:
+			typeof body.billingIssuerUserId === 'string' ? body.billingIssuerUserId : undefined,
+		billingPayeeId: typeof body.billingPayeeId === 'string' ? body.billingPayeeId : undefined,
+		billingPayeeType:
+			typeof body.billingPayeeType === 'string'
+				? (body.billingPayeeType as '' | 'character' | 'corporation')
+				: undefined,
+		billingDueDays:
+			typeof body.billingDueDays === 'number' && Number.isInteger(body.billingDueDays)
+				? body.billingDueDays
+				: undefined,
+	}
+	const db = c.get('db')
+	if (!db) {
+		return c.json({ error: 'Database unavailable' }, 500)
+	}
+	const payeeValidation = await validateBillingPayeeSelection(db, input, { partial: true })
+	if (!payeeValidation.ok) {
+		return c.json({ error: payeeValidation.error }, 400)
+	}
+
+	try {
+		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
+		const updated = await stub.updateCorporationBillingConfig(
+			user.id,
+			corporationId,
+			configId,
+			input
+		)
+		return c.json(updated)
+	} catch (error) {
+		const mapped = mapTaxBillingConfigError(error, 'Failed to update billing configuration')
+		if (mapped.status >= 500) {
+			logger.error('Error updating corporation tax billing configuration:', error)
+		}
+		return c.json({ error: mapped.message }, mapped.status)
+	}
+})
+
+/**
+ * DELETE /corporation-tax/corporations/:corporationId/billing-configs/:configId
+ * Delete one billing configuration row.
+ */
+app.delete('/corporations/:corporationId/billing-configs/:configId', requireAuth(), async (c) => {
+	const user = c.get('user')
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	const corporationId = c.req.param('corporationId')
+	const configId = c.req.param('configId')
+	const canManage = await canManageTaxFeature(c.env, user, corporationId)
+	if (!canManage) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
+	try {
+		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
+		await stub.deleteCorporationBillingConfig(user.id, corporationId, configId)
+		return c.body(null, 204)
+	} catch (error) {
+		const mapped = mapTaxBillingConfigError(error, 'Failed to delete billing configuration')
+		if (mapped.status >= 500) {
+			logger.error('Error deleting corporation tax billing configuration:', error)
+		}
+		return c.json({ error: mapped.message }, mapped.status)
+	}
+})
+
+/**
+ * POST /corporation-tax/corporations/:corporationId/billing-configs/:configId/default
+ * Mark one billing configuration row as default.
+ */
+app.post(
+	'/corporations/:corporationId/billing-configs/:configId/default',
+	requireAuth(),
+	async (c) => {
+		const user = c.get('user')
+		if (!user) {
+			return c.json({ error: 'Unauthorized' }, 401)
+		}
+
+		const corporationId = c.req.param('corporationId')
+		const configId = c.req.param('configId')
+		const canManage = await canManageTaxFeature(c.env, user, corporationId)
+		if (!canManage) {
+			return c.json({ error: 'Forbidden' }, 403)
+		}
+
+		try {
+			const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
+			const updated = await stub.setDefaultCorporationBillingConfig(
+				user.id,
+				corporationId,
+				configId
+			)
+			return c.json(updated)
+		} catch (error) {
+			const mapped = mapTaxBillingConfigError(error, 'Failed to set default billing configuration')
+			if (mapped.status >= 500) {
+				logger.error('Error setting default corporation tax billing configuration:', error)
+			}
+			return c.json({ error: mapped.message }, mapped.status)
+		}
+	}
+)
 
 /**
  * POST /corporation-tax/corporations/:corporationId/assessments/:assessmentId/bills

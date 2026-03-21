@@ -49,60 +49,65 @@ export default function TaxExclusionsPage() {
 	const [selectedCorporationQuery, setSelectedCorporationQuery] = useState('')
 	const [reason, setReason] = useState('')
 
-	const memberCorpIds = useMemo(
-		() =>
-			new Set(
-				(corporationAccess?.corporations ?? []).map((corporation) => corporation.corporationId)
-			),
-		[corporationAccess?.corporations]
-	)
-	const memberScopedCorporations = useMemo(() => {
-		if (memberCorpIds.size > 0) {
-			return taxCorporations.filter((corporation) => memberCorpIds.has(corporation.corporationId))
-		}
-		return taxCorporations
-	}, [memberCorpIds, taxCorporations])
 	const exclusionMap = useMemo(
 		() => new Map(exclusions.map((row) => [row.corporationId, row.reason ?? null] as const)),
 		[exclusions]
 	)
+	const allCorporationIds = useMemo(() => {
+		const ids = new Set<string>()
+		for (const corp of corporationAccess?.corporations ?? []) ids.add(corp.corporationId)
+		for (const corp of taxCorporations) ids.add(corp.corporationId)
+		for (const row of exclusions) ids.add(row.corporationId)
+		return Array.from(ids)
+	}, [corporationAccess?.corporations, taxCorporations, exclusions])
+
+	const unresolvedCorporationIds = useMemo(() => {
+		const accessIdSet = new Set(
+			(corporationAccess?.corporations ?? []).map((corp) => corp.corporationId)
+		)
+		return allCorporationIds.filter((corporationId) => !accessIdSet.has(corporationId))
+	}, [allCorporationIds, corporationAccess?.corporations])
+
+	const { data: resolvedCorporationNames = {} } = useEntityNames(unresolvedCorporationIds, {
+		enabled: canManage && unresolvedCorporationIds.length > 0,
+	})
+
+	const corporationNameById = useMemo(() => {
+		const map = new Map<string, string>()
+		for (const corp of corporationAccess?.corporations ?? []) {
+			map.set(corp.corporationId, corp.name)
+		}
+		for (const corporationId of allCorporationIds) {
+			if (!map.has(corporationId)) {
+				map.set(
+					corporationId,
+					resolvedCorporationNames[corporationId] ?? `Corporation ${corporationId}`
+				)
+			}
+		}
+		return map
+	}, [corporationAccess?.corporations, allCorporationIds, resolvedCorporationNames])
+
 	const excludedCorporations = useMemo(
 		() =>
-			memberScopedCorporations
-				.filter((corporation) => exclusionMap.has(corporation.corporationId))
-				.map((corporation) => ({
-					corporationId: corporation.corporationId,
-					exclusionReason: exclusionMap.get(corporation.corporationId) ?? null,
-				})),
-		[memberScopedCorporations, exclusionMap]
+			exclusions.map((row) => ({ corporationId: row.corporationId, exclusionReason: row.reason })),
+		[exclusions]
 	)
 	const selectableCorporations = useMemo(
 		() =>
-			memberScopedCorporations.filter(
-				(corporation) => !exclusionMap.has(corporation.corporationId)
-			),
-		[memberScopedCorporations, exclusionMap]
-	)
-	const excludedIds = useMemo(
-		() => excludedCorporations.map((corporation) => corporation.corporationId),
-		[excludedCorporations]
-	)
-	const selectableIds = useMemo(
-		() => selectableCorporations.map((corporation) => corporation.corporationId),
-		[selectableCorporations]
-	)
-	const { data: entityNames = {} } = useEntityNames(
-		[...new Set([...excludedIds, ...selectableIds])],
-		{
-			enabled: canManage,
-		}
+			allCorporationIds
+				.filter((corporationId) => !exclusionMap.has(corporationId))
+				.map((corporationId) => ({
+					corporationId,
+				})),
+		[allCorporationIds, exclusionMap]
 	)
 
 	const selectableOptions = useMemo(
 		() =>
 			selectableCorporations.map((corporation) => {
 				const corporationId = corporation.corporationId
-				const name = entityNames[corporationId] ?? `Corporation ${corporationId}`
+				const name = corporationNameById.get(corporationId) ?? `Corporation ${corporationId}`
 				return {
 					id: corporationId,
 					value: corporationId,
@@ -110,7 +115,7 @@ export default function TaxExclusionsPage() {
 					description: corporationId,
 				}
 			}),
-		[entityNames, selectableCorporations]
+		[corporationNameById, selectableCorporations]
 	)
 
 	if (!canManage) {
@@ -231,7 +236,7 @@ export default function TaxExclusionsPage() {
 											excludedCorporations.map((corporation) => {
 												const corporationId = corporation.corporationId
 												const corporationName =
-													entityNames[corporationId] ?? `Corporation ${corporationId}`
+													corporationNameById.get(corporationId) ?? `Corporation ${corporationId}`
 												return (
 													<TableRow key={corporationId}>
 														<TableCell>

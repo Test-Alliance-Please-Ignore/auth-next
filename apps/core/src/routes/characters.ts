@@ -1,4 +1,4 @@
-import { eq, ilike } from 'drizzle-orm'
+import { eq, ilike, or } from 'drizzle-orm'
 import { Hono } from 'hono'
 
 import { getStub } from '@repo/do-utils'
@@ -165,6 +165,15 @@ app.get('/search', requireAuth(), async (c) => {
 	}
 
 	try {
+		const trimmedQuery = query.trim()
+		const isNumericQuery = /^[0-9]+$/.test(trimmedQuery)
+		const whereClause = isNumericQuery
+			? or(
+					eq(userCharacters.characterId, trimmedQuery),
+					ilike(userCharacters.characterName, `%${trimmedQuery}%`)
+				)
+			: ilike(userCharacters.characterName, `%${trimmedQuery}%`)
+
 		// Search for main characters matching the query
 		const results = await db
 			.select({
@@ -173,7 +182,7 @@ app.get('/search', requireAuth(), async (c) => {
 				characterName: userCharacters.characterName,
 			})
 			.from(userCharacters)
-			.where(ilike(userCharacters.characterName, `%${query}%`))
+			.where(whereClause)
 			.limit(20) // Limit for autocomplete performance
 
 		return c.json(results)

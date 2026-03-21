@@ -6,6 +6,7 @@
 
 import type {
 	CorporationTaxHealth,
+	CreateTaxCorporationBillingConfigInput,
 	CreateTaxExportScheduleInput,
 	CreateTaxRuleGroupInput,
 	CreateTaxRuleSetInput,
@@ -43,6 +44,7 @@ import type {
 	TaxBillStatus,
 	TaxBillStatusReportRow,
 	TaxCompliancePoint,
+	TaxCorporationBillingConfig,
 	TaxCorporationEsiAuthStatus,
 	TaxCorporationExclusion,
 	TaxDailyRollup,
@@ -87,6 +89,7 @@ import type {
 	TriggerTaxAlertInput,
 	TriggerTaxProjectionRefreshInput,
 	TriggerTaxProjectionRefreshResult,
+	UpdateTaxCorporationBillingConfigInput,
 	UpdateTaxRuleGroupInput,
 	UpdateTaxRuleSetInput,
 	UpsertTaxCorporationExclusionInput,
@@ -304,6 +307,48 @@ export interface CorporationTax {
 	): Promise<SyncCorporationBillStatusesResult>
 
 	/**
+	 * List billing configurations for a corporation.
+	 */
+	listCorporationBillingConfigs(corporationId: string): Promise<TaxCorporationBillingConfig[]>
+
+	/**
+	 * Create a billing configuration for a corporation.
+	 */
+	createCorporationBillingConfig(
+		actorUserId: string,
+		corporationId: string,
+		input: CreateTaxCorporationBillingConfigInput
+	): Promise<TaxCorporationBillingConfig>
+
+	/**
+	 * Update one billing configuration row.
+	 */
+	updateCorporationBillingConfig(
+		actorUserId: string,
+		corporationId: string,
+		configId: string,
+		input: UpdateTaxCorporationBillingConfigInput
+	): Promise<TaxCorporationBillingConfig>
+
+	/**
+	 * Delete one billing configuration row.
+	 */
+	deleteCorporationBillingConfig(
+		actorUserId: string,
+		corporationId: string,
+		configId: string
+	): Promise<void>
+
+	/**
+	 * Mark one billing configuration row as the corporation default.
+	 */
+	setDefaultCorporationBillingConfig(
+		actorUserId: string,
+		corporationId: string,
+		configId: string
+	): Promise<TaxCorporationBillingConfig>
+
+	/**
 	 * Ingest corporation wallet ledger data into tax ledger entries.
 	 */
 	ingestCorporationLedgerWindow(
@@ -494,6 +539,7 @@ export interface CorporationTax {
 
 export type {
 	CorporationTaxHealth,
+	CreateTaxCorporationBillingConfigInput,
 	CreateTaxExportScheduleInput,
 	CreateTaxRuleGroupInput,
 	CreateTaxRuleSetInput,
@@ -552,6 +598,7 @@ export type {
 	TaxBillStatus,
 	TaxCorporationEsiAuthStatus,
 	TaxCompliancePoint,
+	TaxCorporationBillingConfig,
 	TaxCorporationExclusion,
 	TaxNotificationDestination,
 	TaxPagedResult,
@@ -575,6 +622,7 @@ export type {
 	TriggerTaxProjectionRefreshInput,
 	TriggerTaxProjectionRefreshResult,
 	TriggerTaxAlertInput,
+	UpdateTaxCorporationBillingConfigInput,
 	UpdateTaxRuleGroupInput,
 	UpdateTaxRuleSetInput,
 	UpsertTaxNotificationDestinationInput,

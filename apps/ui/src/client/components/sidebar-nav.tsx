@@ -25,6 +25,7 @@ import { useAuth, useLogout } from '@/hooks/useAuth'
 import { useTaxAlerts } from '@/hooks/useCorporationTax'
 import { usePendingInvitations } from '@/hooks/useGroups'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { extractCorporationIdFromTaxViewerScopedUrn } from '@/lib/tax-permissions'
 import { cn } from '@/lib/utils'
 
 import { Badge } from './ui/badge'
@@ -127,7 +128,10 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 
 	const canReadTaxFeature =
 		isSiteAdmin ||
-		hasAnyPermission('urn:tax:viewer', 'urn:tax:auditor', 'urn:tax:admin') ||
+		(user?.permissions ?? []).some(
+			(permission) => extractCorporationIdFromTaxViewerScopedUrn(permission.urn) !== null
+		) ||
+		hasAnyPermission('urn:tax:auditor', 'urn:tax:admin') ||
 		!!corporationAccess?.hasAccess
 	const canAuditTaxFeature = isSiteAdmin || hasAnyPermission('urn:tax:auditor', 'urn:tax:admin')
 	const canManageTaxFeature = isSiteAdmin || hasAnyPermission('urn:tax:admin')

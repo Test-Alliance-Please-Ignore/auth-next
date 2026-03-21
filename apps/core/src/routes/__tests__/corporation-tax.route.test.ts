@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getStub } from '@repo/do-utils'
 
 import { getCachedCharacterPermissions, getCachedUserPermissions } from '../../lib/groups-cache'
+import { buildTaxViewerScopedUrn } from '../../middleware/tax-permissions'
 import corporationTaxRoutes from '../corporation-tax'
 
 import type { SessionUser } from '../../context'
@@ -109,6 +110,11 @@ function makeCorporationTaxStub() {
 		getExportArtifact: vi.fn(),
 		createExportSchedule: vi.fn(),
 		listExportSchedules: vi.fn(),
+		listCorporationBillingConfigs: vi.fn(),
+		createCorporationBillingConfig: vi.fn(),
+		updateCorporationBillingConfig: vi.fn(),
+		deleteCorporationBillingConfig: vi.fn(),
+		setDefaultCorporationBillingConfig: vi.fn(),
 		listAlerts: vi.fn(),
 		acknowledgeAlert: vi.fn(),
 		resolveAlert: vi.fn(),
@@ -186,7 +192,9 @@ describe('corporation-tax routes', () => {
 	it('returns tax capabilities from URN permissions', async () => {
 		const app = createApp(makeUser())
 		const featuresStub = { checkFlag: vi.fn().mockResolvedValue(true) }
-		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:tax:viewer' }] as any)
+		getCachedUserPermissionsMock.mockResolvedValue([
+			{ urn: buildTaxViewerScopedUrn('4200') },
+		] as any)
 		routeStubs({ featuresStub })
 
 		const response = await app.request('/api/corporation-tax/capabilities', {}, env)
@@ -209,7 +217,7 @@ describe('corporation-tax routes', () => {
 
 	it.each([
 		{
-			urn: 'urn:tax:viewer',
+			urn: buildTaxViewerScopedUrn('4200'),
 			expected: { canRead: false, canAudit: false, canManage: false },
 		},
 		{
@@ -300,7 +308,9 @@ describe('corporation-tax routes', () => {
 			})
 		)
 		const featuresStub = { checkFlag: vi.fn().mockResolvedValue(true) }
-		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:tax:viewer' }] as any)
+		getCachedUserPermissionsMock.mockResolvedValue([
+			{ urn: buildTaxViewerScopedUrn('4200') },
+		] as any)
 		const characterDataStub = {
 			getCharacterInfo: vi.fn().mockResolvedValue({ corporationId: '4200' }),
 		}
@@ -434,6 +444,73 @@ describe('corporation-tax routes', () => {
 		expect(corporationTaxStub.listCorporationExclusions).toHaveBeenCalledWith({
 			limit: 10_000,
 		})
+	})
+
+	it('searches all active corporations for billing payee selection', async () => {
+		const db = {
+			query: {
+				managedCorporations: {
+					findMany: vi.fn().mockResolvedValue([
+						{ corporationId: '1001', name: 'Acme Logistics' },
+						{ corporationId: '1002', name: 'Stellar Forge' },
+					]),
+				},
+			},
+		}
+		const app = createApp(makeUser(), db)
+		const featuresStub = { checkFlag: vi.fn().mockResolvedValue(true) }
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:tax:admin' }] as any)
+		routeStubs({ featuresStub })
+
+		const response = await app.request(
+			'/api/corporation-tax/corporations/1001/payee-corporations/search?q=ac',
+			{},
+			env
+		)
+
+		expect(response.status).toBe(200)
+		expect(await response.json()).toEqual([
+			{ corporationId: '1001', name: 'Acme Logistics' },
+			{ corporationId: '1002', name: 'Stellar Forge' },
+		])
+		expect(db.query.managedCorporations.findMany).toHaveBeenCalledTimes(1)
+	})
+
+	it('rejects billing config create when character payee selection is invalid', async () => {
+		const db = {
+			query: {
+				userCharacters: {
+					findFirst: vi.fn().mockResolvedValue(undefined),
+				},
+				managedCorporations: {
+					findFirst: vi.fn(),
+				},
+			},
+		}
+		const app = createApp(makeUser(), db)
+		const corporationTaxStub = makeCorporationTaxStub()
+		const featuresStub = { checkFlag: vi.fn().mockResolvedValue(true) }
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:tax:admin' }] as any)
+		routeStubs({ corporationTaxStub, featuresStub })
+
+		const response = await app.request(
+			'/api/corporation-tax/corporations/1001/billing-configs',
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					billingEnabled: true,
+					billingPayeeType: 'character',
+					billingPayeeId: '99999999',
+					billingDueDays: 14,
+				}),
+			},
+			env
+		)
+
+		expect(response.status).toBe(400)
+		expect(await response.json()).toEqual({ error: 'Selected character payee was not found' })
+		expect(corporationTaxStub.createCorporationBillingConfig).not.toHaveBeenCalled()
 	})
 
 	it('validates exclusion upsert payload', async () => {
@@ -796,7 +873,7 @@ describe('corporation-tax routes', () => {
 		const corporationTaxStub = makeCorporationTaxStub()
 		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:tax:admin' }] as any)
 		corporationTaxStub.issueBillsForPeriod.mockRejectedValue(
-			new Error('Corporation settings not found')
+			new Error('Default billing configuration not found for this corporation')
 		)
 		routeStubs({ corporationTaxStub })
 
@@ -814,7 +891,9 @@ describe('corporation-tax routes', () => {
 		)
 
 		expect(response.status).toBe(404)
-		expect(await response.json()).toEqual({ error: 'Corporation settings not found' })
+		expect(await response.json()).toEqual({
+			error: 'Default billing configuration not found for this corporation',
+		})
 	})
 
 	it('validates bulk bill sync limit and forwards valid requests', async () => {
@@ -1629,7 +1708,9 @@ describe('corporation-tax routes', () => {
 	it('forbids audit log listing when user lacks tax admin permission', async () => {
 		const app = createApp(makeUser())
 		const corporationTaxStub = makeCorporationTaxStub()
-		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:tax:viewer' }] as any)
+		getCachedUserPermissionsMock.mockResolvedValue([
+			{ urn: buildTaxViewerScopedUrn('4200') },
+		] as any)
 		routeStubs({ corporationTaxStub })
 
 		const response = await app.request('/api/corporation-tax/audit-log', {}, env)

@@ -321,6 +321,39 @@ export interface SyncCorporationBillStatusesResult {
 	skippedAssessmentIds: string[]
 }
 
+export type TaxBillingPayeeType = 'character' | 'corporation'
+
+export interface TaxCorporationBillingConfig {
+	id: string
+	corporationId: string
+	isDefault: boolean
+	billingEnabled: boolean
+	billingIssuerUserId: string
+	billingPayeeId: string
+	billingPayeeType: TaxBillingPayeeType | ''
+	billingDueDays: number
+	createdAt: Date
+	updatedAt: Date
+}
+
+export interface CreateTaxCorporationBillingConfigInput {
+	isDefault?: boolean
+	billingEnabled?: boolean
+	billingIssuerUserId?: string
+	billingPayeeId?: string
+	billingPayeeType?: TaxBillingPayeeType | ''
+	billingDueDays?: number
+}
+
+export interface UpdateTaxCorporationBillingConfigInput {
+	isDefault?: boolean
+	billingEnabled?: boolean
+	billingIssuerUserId?: string
+	billingPayeeId?: string
+	billingPayeeType?: TaxBillingPayeeType | ''
+	billingDueDays?: number
+}
+
 export type TaxLedgerDirection = 'inflow' | 'outflow' | 'neutral'
 export type TaxLedgerSourceType =
 	| 'corporation_wallet_journal'

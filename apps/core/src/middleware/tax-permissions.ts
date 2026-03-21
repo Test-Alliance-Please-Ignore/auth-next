@@ -10,12 +10,35 @@ import type { App, SessionUser } from '../context'
 const corpSelfServiceCache = new TimeCache<boolean>(60_000)
 const corpMembershipCache = new TimeCache<boolean>(60_000)
 
-export const TAX_VIEWER_URN = 'urn:tax:viewer'
 export const TAX_AUDITOR_URN = 'urn:tax:auditor'
 export const TAX_ADMIN_URN = 'urn:tax:admin'
+export const TAX_VIEWER_SCOPED_URN_PREFIX = 'urn:corps:'
+export const TAX_VIEWER_SCOPED_URN_SUFFIX = ':tax:viewer'
 
 const TAX_AUDIT_URNS = [TAX_AUDITOR_URN, TAX_ADMIN_URN] as const
 const TAX_MANAGE_URNS = [TAX_ADMIN_URN] as const
+const TAX_VIEWER_SCOPED_URN_PATTERN = /^urn:corps:([0-9]+):tax:viewer$/
+
+type PermissionRecord = {
+	urn: string
+}
+
+export function buildTaxViewerScopedUrn(corporationId: string): string {
+	return `${TAX_VIEWER_SCOPED_URN_PREFIX}${corporationId}${TAX_VIEWER_SCOPED_URN_SUFFIX}`
+}
+
+export function extractCorporationIdFromTaxViewerScopedUrn(urn: string): string | null {
+	const match = TAX_VIEWER_SCOPED_URN_PATTERN.exec(urn)
+	return match?.[1] ?? null
+}
+
+function hasScopedViewerUrnForCorporation(
+	permissions: PermissionRecord[],
+	corporationId: string
+): boolean {
+	const expectedUrn = buildTaxViewerScopedUrn(corporationId)
+	return permissions.some((permission) => permission.urn === expectedUrn)
+}
 
 export function getTaxCharacterIds(user: SessionUser): string[] {
 	return user.characters.map((character) => character.characterId)
@@ -182,9 +205,25 @@ export async function canReadTaxFeature(
 		return false
 	}
 
-	const hasViewerUrn = await hasTaxPermission(env, user, [TAX_VIEWER_URN], undefined, {
-		allowCorporationSelfService: false,
-	})
+	const groupPermissions = await getCachedUserPermissions(env, user.id)
+	const hasGroupScopedViewerUrn = hasScopedViewerUrnForCorporation(
+		groupPermissions,
+		normalizedCorporationId
+	)
+
+	let hasCharacterScopedViewerUrn = false
+	if (!hasGroupScopedViewerUrn) {
+		const characterIds = getTaxCharacterIds(user)
+		for (const characterId of characterIds) {
+			const characterPermissions = await getCachedCharacterPermissions(env, characterId)
+			if (hasScopedViewerUrnForCorporation(characterPermissions, normalizedCorporationId)) {
+				hasCharacterScopedViewerUrn = true
+				break
+			}
+		}
+	}
+
+	const hasViewerUrn = hasGroupScopedViewerUrn || hasCharacterScopedViewerUrn
 	if (hasViewerUrn) {
 		const hasMembership = await hasCorporationMembershipAccess(env, user, normalizedCorporationId)
 		if (hasMembership) {

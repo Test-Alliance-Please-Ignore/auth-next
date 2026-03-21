@@ -3,6 +3,7 @@ import { isTaxDemoModeEnabled, taxDemoApi } from '@/dev/tax-demo-mode'
 import { ApiClient } from './api'
 
 import type {
+	CreateTaxCorporationBillingConfigInput,
 	IssueBillsForPeriodResult,
 	SyncCorporationBillStatusesResult,
 	TaxAlert,
@@ -13,6 +14,7 @@ import type {
 	TaxAuditLogEntry,
 	TaxBillStatusReportRow,
 	TaxCompliancePoint,
+	TaxCorporationBillingConfig,
 	TaxCorporationExclusion,
 	TaxDiscrepancy,
 	TaxEssPayoutRow,
@@ -34,6 +36,7 @@ import type {
 	TaxTopIncomeSourceMonthlyRow,
 	TaxTopIncomeSourceRow,
 	TaxTotalTaxesByCorporationRow,
+	UpdateTaxCorporationBillingConfigInput,
 } from '@repo/corporation-tax'
 
 const TAX_API_BASE = '/corporation-tax'
@@ -150,6 +153,16 @@ export interface ListTaxCorporationScopeFilters {
 	offset?: number
 }
 
+export interface TaxBillingPayeeCorporationSearchRow {
+	corporationId: string
+	name: string | null
+}
+
+export interface TaxBillingPayeeCharacterSearchRow {
+	characterId: string
+	characterName: string
+}
+
 export interface UpsertTaxExclusionInput {
 	reason: string | null
 }
@@ -219,6 +232,9 @@ export interface UpsertTaxNotificationDestinationInput {
 	isActive?: boolean
 }
 
+export interface CreateBillingConfigInput extends CreateTaxCorporationBillingConfigInput {}
+export interface UpdateBillingConfigInput extends UpdateTaxCorporationBillingConfigInput {}
+
 export class CorporationTaxApiClient extends ApiClient {
 	private shouldUseDemo(): boolean {
 		return isTaxDemoModeEnabled()
@@ -257,17 +273,97 @@ export class CorporationTaxApiClient extends ApiClient {
 	async listCorporations(
 		filters?: ListTaxCorporationScopeFilters
 	): Promise<TaxCorporationScopeRow[]> {
-		if (this.shouldUseDemo()) return taxDemoApi.listCorporations(filters)
 		const params = new URLSearchParams()
 		if (filters?.limit !== undefined) params.set('limit', String(filters.limit))
 		if (filters?.offset !== undefined) params.set('offset', String(filters.offset))
 		const query = params.toString()
-		return this.get(`${TAX_API_BASE}/corporations${query ? `?${query}` : ''}`)
+		const endpoint = `${TAX_API_BASE}/corporations${query ? `?${query}` : ''}`
+
+		if (!this.shouldUseDemo()) {
+			return this.get(endpoint)
+		}
+
+		const [demoRows, liveRows] = await Promise.all([
+			taxDemoApi.listCorporations(filters),
+			this.get<TaxCorporationScopeRow[]>(endpoint).catch(() => []),
+		])
+
+		const merged = new Map<string, TaxCorporationScopeRow>()
+		for (const row of liveRows) {
+			merged.set(row.corporationId, row)
+		}
+		for (const row of demoRows) {
+			if (!merged.has(row.corporationId)) {
+				merged.set(row.corporationId, row as TaxCorporationScopeRow)
+			}
+		}
+		return Array.from(merged.values())
 	}
 
 	async listWalletDivisions(corporationId: string): Promise<number[]> {
 		if (this.shouldUseDemo()) return taxDemoApi.listWalletDivisions(corporationId)
 		return this.get(`${TAX_API_BASE}/corporations/${corporationId}/divisions`)
+	}
+
+	async searchActivePayeeCorporations(
+		corporationId: string,
+		query: string
+	): Promise<TaxBillingPayeeCorporationSearchRow[]> {
+		const trimmed = query.trim()
+		if (!trimmed) {
+			return []
+		}
+
+		if (!this.shouldUseDemo()) {
+			return this.get(
+				`${TAX_API_BASE}/corporations/${corporationId}/payee-corporations/search?q=${encodeURIComponent(trimmed)}`
+			)
+		}
+
+		const [demoRows, liveRows] = await Promise.all([
+			taxDemoApi.listCorporations({ limit: 500, offset: 0 }),
+			this.get<TaxBillingPayeeCorporationSearchRow[]>(
+				`${TAX_API_BASE}/corporations/${corporationId}/payee-corporations/search?q=${encodeURIComponent(trimmed)}`
+			).catch(() => []),
+		])
+
+		const demoMatches: TaxBillingPayeeCorporationSearchRow[] = demoRows
+			.filter((row) => row.corporationId.includes(trimmed))
+			.map((row) => ({ corporationId: row.corporationId, name: row.corporationId }))
+
+		const merged = new Map<string, TaxBillingPayeeCorporationSearchRow>()
+		for (const row of liveRows) {
+			merged.set(row.corporationId, row)
+		}
+		for (const row of demoMatches) {
+			if (!merged.has(row.corporationId)) {
+				merged.set(row.corporationId, row)
+			}
+		}
+		return Array.from(merged.values())
+	}
+
+	async searchPayeeCharacters(
+		corporationId: string,
+		query: string
+	): Promise<TaxBillingPayeeCharacterSearchRow[]> {
+		const trimmed = query.trim()
+		if (!trimmed) {
+			return []
+		}
+
+		if (!this.shouldUseDemo()) {
+			return this.get(
+				`${TAX_API_BASE}/corporations/${corporationId}/payee-characters/search?q=${encodeURIComponent(trimmed)}`
+			)
+		}
+
+		const [liveRows] = await Promise.all([
+			this.get<TaxBillingPayeeCharacterSearchRow[]>(
+				`${TAX_API_BASE}/corporations/${corporationId}/payee-characters/search?q=${encodeURIComponent(trimmed)}`
+			).catch(() => []),
+		])
+		return liveRows
 	}
 
 	async listExclusions(filters?: {
@@ -439,6 +535,46 @@ export class CorporationTaxApiClient extends ApiClient {
 		if (this.shouldUseDemo()) return taxDemoApi.createBillForAssessment(corporationId, assessmentId)
 		return this.post(
 			`${TAX_API_BASE}/corporations/${corporationId}/assessments/${assessmentId}/bills`
+		)
+	}
+
+	async listBillingConfigs(corporationId: string): Promise<TaxCorporationBillingConfig[]> {
+		if (this.shouldUseDemo()) return taxDemoApi.listBillingConfigs(corporationId)
+		return this.get(`${TAX_API_BASE}/corporations/${corporationId}/billing-configs`)
+	}
+
+	async createBillingConfig(
+		corporationId: string,
+		input: CreateBillingConfigInput
+	): Promise<TaxCorporationBillingConfig> {
+		if (this.shouldUseDemo()) return taxDemoApi.createBillingConfig(corporationId, input)
+		return this.post(`${TAX_API_BASE}/corporations/${corporationId}/billing-configs`, input)
+	}
+
+	async updateBillingConfig(
+		corporationId: string,
+		configId: string,
+		input: UpdateBillingConfigInput
+	): Promise<TaxCorporationBillingConfig> {
+		if (this.shouldUseDemo()) return taxDemoApi.updateBillingConfig(corporationId, configId, input)
+		return this.patch(
+			`${TAX_API_BASE}/corporations/${corporationId}/billing-configs/${configId}`,
+			input
+		)
+	}
+
+	async deleteBillingConfig(corporationId: string, configId: string): Promise<void> {
+		if (this.shouldUseDemo()) return taxDemoApi.deleteBillingConfig(corporationId, configId)
+		await this.delete(`${TAX_API_BASE}/corporations/${corporationId}/billing-configs/${configId}`)
+	}
+
+	async setDefaultBillingConfig(
+		corporationId: string,
+		configId: string
+	): Promise<TaxCorporationBillingConfig> {
+		if (this.shouldUseDemo()) return taxDemoApi.setDefaultBillingConfig(corporationId, configId)
+		return this.post(
+			`${TAX_API_BASE}/corporations/${corporationId}/billing-configs/${configId}/default`
 		)
 	}
 

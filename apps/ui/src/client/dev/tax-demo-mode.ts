@@ -1,5 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query'
 import type {
+	CreateTaxCorporationBillingConfigInput,
 	IssueBillsForPeriodResult,
 	SyncCorporationBillStatusesResult,
 	TaxAlert,
@@ -11,6 +12,7 @@ import type {
 	TaxBillStatus,
 	TaxBillStatusReportRow,
 	TaxCompliancePoint,
+	TaxCorporationBillingConfig,
 	TaxCorporationExclusion,
 	TaxDiscrepancy,
 	TaxEssPayoutRow,
@@ -30,6 +32,7 @@ import type {
 	TaxTopIncomeSourceMonthlyRow,
 	TaxTopIncomeSourceRow,
 	TaxTotalTaxesByCorporationRow,
+	UpdateTaxCorporationBillingConfigInput,
 } from '@repo/corporation-tax'
 
 const ENABLED_STORAGE_KEY = 'auth-next.tax-demo.enabled'
@@ -747,6 +750,23 @@ function buildDemoState(seed: number) {
 		},
 	] as TaxRuleSet[]
 
+	const billingConfigs = corporations.map((corp, index) => {
+		const payeeType: '' | 'character' | 'corporation' =
+			index % 3 === 0 ? 'character' : 'corporation'
+		return {
+			id: `billing-config-${corp.corporationId}`,
+			corporationId: corp.corporationId,
+			isDefault: true,
+			billingEnabled: index % 8 !== 0,
+			billingIssuerUserId: '',
+			billingPayeeId: payeeType === 'character' ? '70000001' : corp.corporationId,
+			billingPayeeType: payeeType,
+			billingDueDays: 14,
+			createdAt: addDays(startOfMonth(), -14),
+			updatedAt: addDays(startOfMonth(), -2),
+		}
+	}) as TaxCorporationBillingConfig[]
+
 	return {
 		seed,
 		entityNames,
@@ -772,6 +792,7 @@ function buildDemoState(seed: number) {
 		ruleGroups,
 		ruleGroupAttachments,
 		ruleSets,
+		billingConfigs,
 	}
 }
 
@@ -1195,6 +1216,103 @@ export const taxDemoApi = {
 			return true
 		})
 		return withLatency(applyLimitOffset(rows, filters?.limit, filters?.offset))
+	},
+	async listBillingConfigs(corporationId: string) {
+		const rows = ensureDemoState()
+			.billingConfigs.filter((row) => row.corporationId === corporationId)
+			.sort((left, right) => {
+				if (left.isDefault !== right.isDefault) {
+					return left.isDefault ? -1 : 1
+				}
+				return new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime()
+			})
+		return withLatency(rows)
+	},
+	async createBillingConfig(corporationId: string, input: CreateTaxCorporationBillingConfigInput) {
+		const state = ensureDemoState()
+		const existing = state.billingConfigs.filter((row) => row.corporationId === corporationId)
+		const makeDefault = input.isDefault ?? existing.length === 0
+		if (makeDefault) {
+			for (const row of existing) {
+				row.isDefault = false
+				row.updatedAt = new Date()
+			}
+		}
+		const created: TaxCorporationBillingConfig = {
+			id: `billing-config-${Date.now()}`,
+			corporationId,
+			isDefault: makeDefault,
+			billingEnabled: input.billingEnabled ?? false,
+			billingIssuerUserId: input.billingIssuerUserId?.trim() ?? '',
+			billingPayeeId: input.billingPayeeId?.trim() ?? '',
+			billingPayeeType: input.billingPayeeType ?? '',
+			billingDueDays: input.billingDueDays ?? 14,
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		}
+		state.billingConfigs.unshift(created)
+		return withLatency(created)
+	},
+	async updateBillingConfig(
+		corporationId: string,
+		configId: string,
+		input: UpdateTaxCorporationBillingConfigInput
+	) {
+		const state = ensureDemoState()
+		const existing = state.billingConfigs.find(
+			(row) => row.id === configId && row.corporationId === corporationId
+		)
+		if (!existing) {
+			throw new Error('Billing configuration not found')
+		}
+		if (input.isDefault) {
+			for (const row of state.billingConfigs) {
+				if (row.corporationId === corporationId) {
+					row.isDefault = false
+				}
+			}
+		}
+		existing.isDefault = input.isDefault ?? existing.isDefault
+		existing.billingEnabled = input.billingEnabled ?? existing.billingEnabled
+		existing.billingIssuerUserId = input.billingIssuerUserId?.trim() ?? existing.billingIssuerUserId
+		existing.billingPayeeId = input.billingPayeeId?.trim() ?? existing.billingPayeeId
+		existing.billingPayeeType = input.billingPayeeType ?? existing.billingPayeeType
+		existing.billingDueDays = input.billingDueDays ?? existing.billingDueDays
+		existing.updatedAt = new Date()
+		return withLatency(existing)
+	},
+	async deleteBillingConfig(corporationId: string, configId: string) {
+		const state = ensureDemoState()
+		const existing = state.billingConfigs.find(
+			(row) => row.id === configId && row.corporationId === corporationId
+		)
+		if (!existing) {
+			throw new Error('Billing configuration not found')
+		}
+		state.billingConfigs = state.billingConfigs.filter((row) => row.id !== configId)
+		const remaining = state.billingConfigs.filter((row) => row.corporationId === corporationId)
+		if (remaining.length > 0 && !remaining.some((row) => row.isDefault)) {
+			remaining[0]!.isDefault = true
+			remaining[0]!.updatedAt = new Date()
+		}
+		return withLatency(undefined)
+	},
+	async setDefaultBillingConfig(corporationId: string, configId: string) {
+		const state = ensureDemoState()
+		const existing = state.billingConfigs.find(
+			(row) => row.id === configId && row.corporationId === corporationId
+		)
+		if (!existing) {
+			throw new Error('Billing configuration not found')
+		}
+		for (const row of state.billingConfigs) {
+			if (row.corporationId === corporationId) {
+				row.isDefault = false
+			}
+		}
+		existing.isDefault = true
+		existing.updatedAt = new Date()
+		return withLatency(existing)
 	},
 	async createBillForAssessment(corporationId: string, assessmentId: string) {
 		const assessment = ensureDemoState().assessments.find(

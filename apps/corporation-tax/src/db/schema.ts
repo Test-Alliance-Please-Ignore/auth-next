@@ -1,4 +1,4 @@
-import { relations } from 'drizzle-orm'
+import { relations, sql } from 'drizzle-orm'
 import {
 	boolean,
 	date,
@@ -10,6 +10,7 @@ import {
 	text,
 	timestamp,
 	unique,
+	uniqueIndex,
 	uuid,
 } from 'drizzle-orm/pg-core'
 
@@ -35,16 +36,33 @@ export const taxCorporationExclusions = pgTable(
 export const taxCorporationBillingConfigs = pgTable(
 	'tax_corporation_billing_configs',
 	{
-		corporationId: text('corporation_id').primaryKey(),
+		id: uuid('id').defaultRandom().primaryKey(),
+		corporationId: text('corporation_id').notNull(),
+		isDefault: boolean('is_default').notNull().default(false),
 		billingEnabled: boolean('billing_enabled').notNull().default(false),
-		billingIssuerUserId: text('billing_issuer_user_id'),
-		billingPayeeId: text('billing_payee_id'),
-		billingPayeeType: text('billing_payee_type'),
+		billingIssuerUserId: text('billing_issuer_user_id').notNull().default(''),
+		billingPayeeId: text('billing_payee_id').notNull().default(''),
+		billingPayeeType: text('billing_payee_type').notNull().default(''),
 		billingDueDays: integer('billing_due_days').notNull().default(14),
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
-	(table) => [index('tax_corporation_billing_configs_updated_at_idx').on(table.updatedAt)]
+	(table) => [
+		index('tax_corporation_billing_configs_corporation_id_idx').on(table.corporationId),
+		index('tax_corporation_billing_configs_updated_at_idx').on(table.updatedAt),
+		uniqueIndex('tax_corporation_billing_configs_one_default_per_corp')
+			.on(table.corporationId)
+			.where(sql`${table.isDefault} = true`),
+		unique('tax_corporation_billing_configs_exact_tuple_unique').on(
+			table.corporationId,
+			table.isDefault,
+			table.billingEnabled,
+			table.billingIssuerUserId,
+			table.billingPayeeId,
+			table.billingPayeeType,
+			table.billingDueDays
+		),
+	]
 )
 
 export const taxAssessmentScopeEnum = pgEnum('tax_assessment_scope', [

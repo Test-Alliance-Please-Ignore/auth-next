@@ -28,6 +28,7 @@ import { TaxRulesService } from './services/tax-rules.service'
 import type {
 	CorporationTax,
 	CorporationTaxHealth,
+	CreateTaxCorporationBillingConfigInput,
 	CreateTaxExportScheduleInput,
 	CreateTaxRuleGroupInput,
 	CreateTaxRuleSetInput,
@@ -59,6 +60,7 @@ import type {
 	TaxAuditLogEntry,
 	TaxBillStatusReportRow,
 	TaxCompliancePoint,
+	TaxCorporationBillingConfig,
 	TaxCorporationExclusion,
 	TaxDailyRollup,
 	TaxDiscrepancy,
@@ -88,6 +90,7 @@ import type {
 	TriggerTaxAlertInput,
 	TriggerTaxProjectionRefreshInput,
 	TriggerTaxProjectionRefreshResult,
+	UpdateTaxCorporationBillingConfigInput,
 	UpdateTaxRuleGroupInput,
 	UpdateTaxRuleSetInput,
 	UpsertTaxCorporationExclusionInput,
@@ -733,6 +736,89 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 			})
 			throw error
 		}
+	}
+
+	async listCorporationBillingConfigs(
+		corporationId: string
+	): Promise<TaxCorporationBillingConfig[]> {
+		return this.billingService.listCorporationBillingConfigs(corporationId)
+	}
+
+	async createCorporationBillingConfig(
+		actorUserId: string,
+		corporationId: string,
+		input: CreateTaxCorporationBillingConfigInput
+	): Promise<TaxCorporationBillingConfig> {
+		const created = await this.billingService.createCorporationBillingConfig(corporationId, input)
+		await this.auditService.logAction({
+			corporationId,
+			actorUserId,
+			action: 'tax.billing-config.created',
+			before: null,
+			after: this.toAuditPayload(created),
+		})
+		return created
+	}
+
+	async updateCorporationBillingConfig(
+		actorUserId: string,
+		corporationId: string,
+		configId: string,
+		input: UpdateTaxCorporationBillingConfigInput
+	): Promise<TaxCorporationBillingConfig> {
+		const beforeList = await this.billingService.listCorporationBillingConfigs(corporationId)
+		const before = beforeList.find((row) => row.id === configId) ?? null
+		const updated = await this.billingService.updateCorporationBillingConfig(
+			corporationId,
+			configId,
+			input
+		)
+		await this.auditService.logAction({
+			corporationId,
+			actorUserId,
+			action: 'tax.billing-config.updated',
+			before: this.toAuditPayload(before),
+			after: this.toAuditPayload(updated),
+		})
+		return updated
+	}
+
+	async deleteCorporationBillingConfig(
+		actorUserId: string,
+		corporationId: string,
+		configId: string
+	): Promise<void> {
+		const beforeList = await this.billingService.listCorporationBillingConfigs(corporationId)
+		const before = beforeList.find((row) => row.id === configId) ?? null
+		await this.billingService.deleteCorporationBillingConfig(corporationId, configId)
+		await this.auditService.logAction({
+			corporationId,
+			actorUserId,
+			action: 'tax.billing-config.deleted',
+			before: this.toAuditPayload(before),
+			after: null,
+		})
+	}
+
+	async setDefaultCorporationBillingConfig(
+		actorUserId: string,
+		corporationId: string,
+		configId: string
+	): Promise<TaxCorporationBillingConfig> {
+		const beforeList = await this.billingService.listCorporationBillingConfigs(corporationId)
+		const before = beforeList.find((row) => row.id === configId) ?? null
+		const updated = await this.billingService.setDefaultCorporationBillingConfig(
+			corporationId,
+			configId
+		)
+		await this.auditService.logAction({
+			corporationId,
+			actorUserId,
+			action: 'tax.billing-config.default-set',
+			before: this.toAuditPayload(before),
+			after: this.toAuditPayload(updated),
+		})
+		return updated
 	}
 
 	async getSummaryReport(filters?: TaxReportWindowFilters): Promise<TaxSummaryReport> {

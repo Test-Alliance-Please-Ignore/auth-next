@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { TaxCorporationScopeSelector } from '@/components/tax-corporation-scope-selector'
 import { Badge } from '@/components/ui/badge'
@@ -14,8 +14,19 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { PageHeader } from '@/components/ui/page-header'
+import { SearchSelect } from '@/components/ui/search-select'
 import { Section } from '@/components/ui/section'
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import {
 	Table,
 	TableBody,
@@ -26,14 +37,21 @@ import {
 } from '@/components/ui/table'
 import {
 	useCreateTaxBillForAssessment,
+	useCreateTaxBillingConfig,
+	useDeleteTaxBillingConfig,
 	useIssueTaxBillsForPeriod,
 	useRetractTaxAssessmentBill,
+	useSearchTaxBillingPayeeCharacters,
+	useSearchTaxBillingPayeeCorporations,
+	useSetDefaultTaxBillingConfig,
 	useSyncTaxAssessmentBillStatus,
 	useSyncTaxCorporationBillStatuses,
 	useTaxAssessments,
+	useTaxBillingConfigs,
 	useTaxBillStatusReport,
 	useTaxCapabilities,
 	useTaxCorporationBillHistory,
+	useUpdateTaxBillingConfig,
 } from '@/hooks/useCorporationTax'
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
@@ -95,6 +113,54 @@ export default function TaxBillsPage() {
 		'all' | TaxAssessmentScope
 	>('all')
 	const [retractingAssessmentId, setRetractingAssessmentId] = useState<string | null>(null)
+	const [editingBillingConfigId, setEditingBillingConfigId] = useState<string | null>(null)
+	const [billingEnabledInput, setBillingEnabledInput] = useState(false)
+	const [billingIssuerUserIdInput, setBillingIssuerUserIdInput] = useState('')
+	const [billingPayeeIdInput, setBillingPayeeIdInput] = useState('')
+	const [billingCharacterSearchInput, setBillingCharacterSearchInput] = useState('')
+	const [billingCharacterSearchDebounced, setBillingCharacterSearchDebounced] = useState('')
+	const [billingCorporationSearchInput, setBillingCorporationSearchInput] = useState('')
+	const [billingCorporationSearchDebounced, setBillingCorporationSearchDebounced] = useState('')
+	const [billingPayeeTypeInput, setBillingPayeeTypeInput] = useState<
+		'' | 'character' | 'corporation'
+	>('')
+	const [billingDueDaysInput, setBillingDueDaysInput] = useState('14')
+	const [billingIsDefaultInput, setBillingIsDefaultInput] = useState(false)
+	const [showBillingConfigForm, setShowBillingConfigForm] = useState(false)
+	const { data: billingCharacterSearchResults = [], isLoading: billingCharacterSearchLoading } =
+		useSearchTaxBillingPayeeCharacters(
+			effectiveCorporationId,
+			billingCharacterSearchDebounced,
+			billingPayeeTypeInput === 'character'
+		)
+	const { data: billingCorporationSearchResults = [], isLoading: billingCorporationSearchLoading } =
+		useSearchTaxBillingPayeeCorporations(
+			effectiveCorporationId,
+			billingCorporationSearchDebounced,
+			billingPayeeTypeInput === 'corporation'
+		)
+
+	useEffect(() => {
+		if (billingPayeeTypeInput !== 'character') {
+			setBillingCharacterSearchDebounced('')
+			return
+		}
+		const timer = setTimeout(() => {
+			setBillingCharacterSearchDebounced(billingCharacterSearchInput.trim())
+		}, 300)
+		return () => clearTimeout(timer)
+	}, [billingCharacterSearchInput, billingPayeeTypeInput])
+
+	useEffect(() => {
+		if (billingPayeeTypeInput !== 'corporation') {
+			setBillingCorporationSearchDebounced('')
+			return
+		}
+		const timer = setTimeout(() => {
+			setBillingCorporationSearchDebounced(billingCorporationSearchInput.trim())
+		}, 300)
+		return () => clearTimeout(timer)
+	}, [billingCorporationSearchInput, billingPayeeTypeInput])
 
 	const { data: scopedCapabilities, isLoading: scopedCapabilitiesLoading } = useTaxCapabilities(
 		effectiveCorporationId,
@@ -135,10 +201,19 @@ export default function TaxBillsPage() {
 	})
 
 	const createBillMutation = useCreateTaxBillForAssessment()
+	const createBillingConfigMutation = useCreateTaxBillingConfig()
+	const updateBillingConfigMutation = useUpdateTaxBillingConfig()
+	const deleteBillingConfigMutation = useDeleteTaxBillingConfig()
+	const setDefaultBillingConfigMutation = useSetDefaultTaxBillingConfig()
 	const syncAssessmentMutation = useSyncTaxAssessmentBillStatus()
 	const retractAssessmentMutation = useRetractTaxAssessmentBill()
 	const issuePeriodMutation = useIssueTaxBillsForPeriod()
 	const syncCorporationMutation = useSyncTaxCorporationBillStatuses()
+	const {
+		data: billingConfigs = [],
+		isLoading: billingConfigsLoading,
+		error: billingConfigsError,
+	} = useTaxBillingConfigs(effectiveCorporationId, canView)
 
 	const totalAssessments = billStatusReport.reduce((sum, row) => sum + row.assessmentCount, 0)
 	const unbilledAssessmentCount = billStatusReport
@@ -170,17 +245,35 @@ export default function TaxBillsPage() {
 		const ids = new Set<string>()
 		for (const row of billStatusReport) ids.add(row.corporationId)
 		for (const row of billHistory) ids.add(row.assessment.corporationId)
+		for (const config of billingConfigs) {
+			if (config.billingPayeeId) ids.add(config.billingPayeeId)
+		}
 		for (const assessment of assessments) {
 			ids.add(assessment.corporationId)
 			if (assessment.assessmentScope === 'character') ids.add(assessment.scopeId)
 		}
 		return [...ids]
-	}, [assessments, billHistory, billStatusReport])
+	}, [assessments, billHistory, billStatusReport, billingConfigs])
 
 	const { data: entityNames = {} } = useEntityNames(entityIds, { enabled: canView })
 	const retractableAssessment = billHistory.find(
 		(row) => row.assessment.id === retractingAssessmentId
 	)?.assessment
+
+	const resetBillingConfigForm = () => {
+		setEditingBillingConfigId(null)
+		setShowBillingConfigForm(false)
+		setBillingEnabledInput(false)
+		setBillingIssuerUserIdInput('')
+		setBillingPayeeIdInput('')
+		setBillingCharacterSearchInput('')
+		setBillingCharacterSearchDebounced('')
+		setBillingCorporationSearchInput('')
+		setBillingCorporationSearchDebounced('')
+		setBillingPayeeTypeInput('')
+		setBillingDueDaysInput('14')
+		setBillingIsDefaultInput(false)
+	}
 
 	if (!corporationAccessLoading && !scopedCapabilitiesLoading && !canView) {
 		return (
@@ -231,6 +324,374 @@ export default function TaxBillsPage() {
 						<CardContent className="text-2xl font-semibold">{overdueAssessments}</CardContent>
 					</Card>
 				</div>
+
+				<Card>
+					<CardHeader>
+						<CardTitle>Billing Configuration</CardTitle>
+						<CardDescription>
+							Configure issuer, payee, due days, and default billing profile for the selected
+							corporation.
+						</CardDescription>
+					</CardHeader>
+					<CardContent className="space-y-4">
+						{!effectiveCorporationId ? (
+							<div className="text-sm text-muted-foreground">
+								Select a corporation to configure billing.
+							</div>
+						) : (
+							<>
+								{billingConfigsLoading ? (
+									<div className="text-sm text-muted-foreground">Loading billing configs...</div>
+								) : billingConfigsError ? (
+									<div className="text-sm text-destructive">
+										{billingConfigsError instanceof Error
+											? billingConfigsError.message
+											: 'Failed to load billing configurations'}
+									</div>
+								) : (
+									<Table>
+										<TableHeader>
+											<TableRow>
+												<TableHead>Default</TableHead>
+												<TableHead>Enabled</TableHead>
+												<TableHead>Payee</TableHead>
+												<TableHead>Issuer</TableHead>
+												<TableHead>Due Days</TableHead>
+												{canIssue ? <TableHead>Actions</TableHead> : null}
+											</TableRow>
+										</TableHeader>
+										<TableBody>
+											{billingConfigs.length === 0 ? (
+												<TableRow>
+													<TableCell
+														colSpan={canIssue ? 6 : 5}
+														className="text-sm text-muted-foreground"
+													>
+														No billing configs yet. Create one below.
+													</TableCell>
+												</TableRow>
+											) : (
+												billingConfigs.map((config) => (
+													<TableRow key={config.id}>
+														<TableCell>
+															{config.isDefault ? <Badge variant="default">default</Badge> : '-'}
+														</TableCell>
+														<TableCell>{config.billingEnabled ? 'yes' : 'no'}</TableCell>
+														<TableCell>
+															{config.billingPayeeType && config.billingPayeeId ? (
+																<div className="space-y-1">
+																	<Badge variant="outline" className="capitalize">
+																		{config.billingPayeeType}
+																	</Badge>
+																	<TaxEntityDisplay
+																		entityId={config.billingPayeeId}
+																		entityNames={entityNames}
+																	/>
+																</div>
+															) : (
+																'-'
+															)}
+														</TableCell>
+														<TableCell>{config.billingIssuerUserId || '-'}</TableCell>
+														<TableCell>{config.billingDueDays}</TableCell>
+														{canIssue ? (
+															<TableCell>
+																<div className="flex items-center gap-2">
+																	<Button
+																		size="sm"
+																		variant="outline"
+																		disabled={!canIssue}
+																		onClick={() => {
+																			setShowBillingConfigForm(true)
+																			setEditingBillingConfigId(config.id)
+																			setBillingEnabledInput(config.billingEnabled)
+																			setBillingIssuerUserIdInput(config.billingIssuerUserId)
+																			setBillingPayeeIdInput(config.billingPayeeId)
+																			setBillingCharacterSearchInput(
+																				config.billingPayeeType === 'character'
+																					? (entityNames[config.billingPayeeId] ??
+																							config.billingPayeeId)
+																					: ''
+																			)
+																			setBillingCorporationSearchInput(
+																				config.billingPayeeType === 'corporation'
+																					? (entityNames[config.billingPayeeId] ??
+																							config.billingPayeeId)
+																					: ''
+																			)
+																			setBillingPayeeTypeInput(
+																				config.billingPayeeType as '' | 'character' | 'corporation'
+																			)
+																			setBillingDueDaysInput(String(config.billingDueDays))
+																			setBillingIsDefaultInput(config.isDefault)
+																		}}
+																	>
+																		Edit
+																	</Button>
+																	<Button
+																		size="sm"
+																		variant="outline"
+																		disabled={!canIssue || config.isDefault}
+																		onClick={() => {
+																			if (!effectiveCorporationId) return
+																			setDefaultBillingConfigMutation.mutate({
+																				corporationId: effectiveCorporationId,
+																				configId: config.id,
+																			})
+																		}}
+																	>
+																		Set Default
+																	</Button>
+																	<Button
+																		size="sm"
+																		variant="outline"
+																		disabled={!canIssue || config.isDefault}
+																		onClick={() => {
+																			if (!effectiveCorporationId) return
+																			deleteBillingConfigMutation.mutate({
+																				corporationId: effectiveCorporationId,
+																				configId: config.id,
+																			})
+																		}}
+																	>
+																		Delete
+																	</Button>
+																</div>
+															</TableCell>
+														) : null}
+													</TableRow>
+												))
+											)}
+										</TableBody>
+									</Table>
+								)}
+
+								{canIssue && !showBillingConfigForm ? (
+									<div className="flex justify-center pt-2">
+										<Button
+											variant="outline"
+											className="min-w-40"
+											onClick={() => {
+												resetBillingConfigForm()
+												setShowBillingConfigForm(true)
+											}}
+										>
+											Add Config
+										</Button>
+									</div>
+								) : null}
+								{canIssue && showBillingConfigForm ? (
+									<>
+										<div className="grid gap-3 md:grid-cols-2">
+											<div className="space-y-2">
+												<Label>Payee Type</Label>
+												<Select
+													value={billingPayeeTypeInput || undefined}
+													onValueChange={(value) => {
+														const nextType = value as '' | 'character' | 'corporation'
+														setBillingPayeeTypeInput(nextType)
+														if (nextType !== 'character') {
+															setBillingCharacterSearchInput('')
+														}
+														if (nextType !== 'corporation') {
+															setBillingCorporationSearchInput('')
+														}
+														setBillingPayeeIdInput('')
+													}}
+												>
+													<SelectTrigger>
+														<SelectValue placeholder="Select payee type" />
+													</SelectTrigger>
+													<SelectContent>
+														<SelectItem value="character">Character</SelectItem>
+														<SelectItem value="corporation">Corporation</SelectItem>
+													</SelectContent>
+												</Select>
+											</div>
+											<div className="space-y-2">
+												<Label>
+													{billingPayeeTypeInput === 'character'
+														? 'Character'
+														: billingPayeeTypeInput === 'corporation'
+															? 'Corporation'
+															: 'Payee'}
+												</Label>
+												{billingPayeeTypeInput === 'character' ? (
+													<SearchSelect
+														value={billingCharacterSearchInput}
+														onValueChange={(value) => {
+															setBillingCharacterSearchInput(value)
+															setBillingPayeeIdInput('')
+														}}
+														options={billingCharacterSearchResults.map((character) => ({
+															id: character.characterId,
+															value: character.characterName,
+															label: character.characterName,
+															description: character.characterId,
+														}))}
+														onSelect={(option) => {
+															setBillingCharacterSearchInput(option.label)
+															setBillingPayeeIdInput(option.id)
+														}}
+														filterMode="server"
+														minQueryLength={2}
+														placeholder="Character name or ID"
+														loading={
+															billingCharacterSearchInput.trim().length >= 2 &&
+															(billingCharacterSearchLoading ||
+																billingCharacterSearchInput.trim() !==
+																	billingCharacterSearchDebounced)
+														}
+														minCharsText="Type at least 2 characters"
+														loadingText="Searching characters..."
+														emptyText="No matching characters found"
+													/>
+												) : billingPayeeTypeInput === 'corporation' ? (
+													<SearchSelect
+														value={billingCorporationSearchInput}
+														onValueChange={(value) => {
+															setBillingCorporationSearchInput(value)
+															setBillingPayeeIdInput('')
+														}}
+														options={billingCorporationSearchResults.map((corporation) => ({
+															id: corporation.corporationId,
+															value: corporation.name ?? corporation.corporationId,
+															label: corporation.name ?? corporation.corporationId,
+															description: corporation.corporationId,
+														}))}
+														onSelect={(option) => {
+															setBillingCorporationSearchInput(option.label)
+															setBillingPayeeIdInput(option.id)
+														}}
+														filterMode="server"
+														minQueryLength={2}
+														placeholder="Corporation name or ID"
+														loading={
+															billingCorporationSearchInput.trim().length >= 2 &&
+															(billingCorporationSearchLoading ||
+																billingCorporationSearchInput.trim() !==
+																	billingCorporationSearchDebounced)
+														}
+														minCharsText="Type at least 2 characters"
+														loadingText="Searching corporations..."
+														emptyText="No matching corporations found"
+													/>
+												) : (
+													<Input value="" disabled placeholder="Select payee type first" />
+												)}
+											</div>
+											<div className="space-y-2">
+												<Label>Issuer User ID (optional)</Label>
+												<Input
+													value={billingIssuerUserIdInput}
+													onChange={(event) => setBillingIssuerUserIdInput(event.target.value)}
+													placeholder="Defaults to acting user"
+												/>
+											</div>
+											<div className="space-y-2">
+												<Label>Due Days</Label>
+												<Input
+													type="number"
+													min={1}
+													max={90}
+													value={billingDueDaysInput}
+													onChange={(event) => setBillingDueDaysInput(event.target.value)}
+												/>
+											</div>
+										</div>
+										<div className="flex flex-wrap items-center gap-6">
+											<div className="flex items-center gap-2">
+												<Switch
+													checked={billingEnabledInput}
+													onCheckedChange={setBillingEnabledInput}
+												/>
+												<Label>Billing enabled</Label>
+											</div>
+											<div className="flex items-center gap-2">
+												<Switch
+													checked={billingIsDefaultInput}
+													onCheckedChange={setBillingIsDefaultInput}
+												/>
+												<Label>Set as default</Label>
+											</div>
+										</div>
+										<div className="flex items-center justify-end gap-2">
+											<Button variant="outline" onClick={resetBillingConfigForm}>
+												Cancel
+											</Button>
+											<Button
+												disabled={
+													!canIssue ||
+													createBillingConfigMutation.isPending ||
+													updateBillingConfigMutation.isPending ||
+													!effectiveCorporationId ||
+													!billingPayeeTypeInput ||
+													!billingPayeeIdInput
+												}
+												onClick={() => {
+													if (!effectiveCorporationId) return
+													const dueDays = Number.parseInt(billingDueDaysInput, 10)
+													const payload = {
+														isDefault: billingIsDefaultInput,
+														billingEnabled: billingEnabledInput,
+														billingIssuerUserId: billingIssuerUserIdInput,
+														billingPayeeId: billingPayeeIdInput,
+														billingPayeeType: billingPayeeTypeInput,
+														billingDueDays: Number.isFinite(dueDays) ? dueDays : 14,
+													}
+													if (editingBillingConfigId) {
+														updateBillingConfigMutation.mutate(
+															{
+																corporationId: effectiveCorporationId,
+																configId: editingBillingConfigId,
+																updates: payload,
+															},
+															{ onSuccess: () => resetBillingConfigForm() }
+														)
+														return
+													}
+													createBillingConfigMutation.mutate(
+														{
+															corporationId: effectiveCorporationId,
+															config: payload,
+														},
+														{ onSuccess: () => resetBillingConfigForm() }
+													)
+												}}
+											>
+												{editingBillingConfigId
+													? updateBillingConfigMutation.isPending
+														? 'Saving...'
+														: 'Save Changes'
+													: createBillingConfigMutation.isPending
+														? 'Creating...'
+														: 'Save Config'}
+											</Button>
+										</div>
+										{createBillingConfigMutation.error ||
+										updateBillingConfigMutation.error ||
+										deleteBillingConfigMutation.error ||
+										setDefaultBillingConfigMutation.error ? (
+											<div className="text-sm text-destructive">
+												{(createBillingConfigMutation.error ||
+													updateBillingConfigMutation.error ||
+													deleteBillingConfigMutation.error ||
+													setDefaultBillingConfigMutation.error) instanceof Error
+													? (
+															createBillingConfigMutation.error ||
+															updateBillingConfigMutation.error ||
+															deleteBillingConfigMutation.error ||
+															setDefaultBillingConfigMutation.error
+														)?.message
+													: 'Billing configuration update failed'}
+											</div>
+										) : null}
+									</>
+								) : null}
+							</>
+						)}
+					</CardContent>
+				</Card>
 
 				<Card>
 					<CardHeader>

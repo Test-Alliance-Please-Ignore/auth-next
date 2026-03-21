@@ -20,6 +20,28 @@ CREATE TABLE "tax_corporation_settings" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "tax_corporation_billing_configs" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"corporation_id" text NOT NULL,
+	"is_default" boolean DEFAULT false NOT NULL,
+	"billing_enabled" boolean DEFAULT false NOT NULL,
+	"billing_issuer_user_id" text DEFAULT '' NOT NULL,
+	"billing_payee_id" text DEFAULT '' NOT NULL,
+	"billing_payee_type" text DEFAULT '' NOT NULL,
+	"billing_due_days" integer DEFAULT 14 NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "tax_corporation_billing_configs_exact_tuple_unique" UNIQUE(
+		"corporation_id",
+		"is_default",
+		"billing_enabled",
+		"billing_issuer_user_id",
+		"billing_payee_id",
+		"billing_payee_type",
+		"billing_due_days"
+	)
+);
+--> statement-breakpoint
 CREATE INDEX "tax_audit_log_corporation_id_idx" ON "tax_audit_log" USING btree ("corporation_id");
 --> statement-breakpoint
 CREATE INDEX "tax_audit_log_created_at_idx" ON "tax_audit_log" USING btree ("created_at");
@@ -27,6 +49,12 @@ CREATE INDEX "tax_audit_log_created_at_idx" ON "tax_audit_log" USING btree ("cre
 CREATE INDEX "tax_corporation_settings_included_idx" ON "tax_corporation_settings" USING btree ("included");
 --> statement-breakpoint
 CREATE INDEX "tax_corporation_settings_updated_at_idx" ON "tax_corporation_settings" USING btree ("updated_at");
+--> statement-breakpoint
+CREATE INDEX "tax_corporation_billing_configs_corporation_id_idx" ON "tax_corporation_billing_configs" USING btree ("corporation_id");
+--> statement-breakpoint
+CREATE INDEX "tax_corporation_billing_configs_updated_at_idx" ON "tax_corporation_billing_configs" USING btree ("updated_at");
+--> statement-breakpoint
+CREATE UNIQUE INDEX "tax_corporation_billing_configs_one_default_per_corp" ON "tax_corporation_billing_configs" USING btree ("corporation_id") WHERE "tax_corporation_billing_configs"."is_default" = true;
 --> statement-breakpoint
 CREATE TABLE "tax_rule_actions" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -125,14 +153,6 @@ CREATE TABLE "tax_bill_sync_events" (
 	"payload" jsonb,
 	"synced_at" timestamp with time zone DEFAULT now() NOT NULL
 );
---> statement-breakpoint
-ALTER TABLE "tax_corporation_settings" ADD COLUMN "billing_issuer_user_id" text;
---> statement-breakpoint
-ALTER TABLE "tax_corporation_settings" ADD COLUMN "billing_payee_id" text;
---> statement-breakpoint
-ALTER TABLE "tax_corporation_settings" ADD COLUMN "billing_payee_type" text;
---> statement-breakpoint
-ALTER TABLE "tax_corporation_settings" ADD COLUMN "billing_due_days" integer DEFAULT 14 NOT NULL;
 --> statement-breakpoint
 ALTER TABLE "tax_bill_sync_events" ADD CONSTRAINT "tax_bill_sync_events_assessment_id_tax_assessments_id_fk" FOREIGN KEY ("assessment_id") REFERENCES "public"."tax_assessments"("id") ON DELETE cascade ON UPDATE no action;
 --> statement-breakpoint

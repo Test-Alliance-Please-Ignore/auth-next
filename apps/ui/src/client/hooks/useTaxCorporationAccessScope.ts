@@ -8,7 +8,7 @@ export function useTaxCorporationAccessScope(allowGlobalScope: boolean) {
 	const { data: corporationAccess, isLoading: corporationAccessLoading } = useCorporationAccess()
 	const { data: taxCorporations = [], isLoading: taxCorporationsLoading } = useTaxCorporations({
 		limit: 200,
-		enabled: allowGlobalScope,
+		enabled: true,
 	})
 	const unresolvedCorporationIds = useMemo(() => {
 		const accessIdSet = new Set(

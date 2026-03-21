@@ -1,6 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMemo } from 'react'
 
+import { isTaxDemoModeEnabled, taxDemoApi } from '@/dev/tax-demo-mode'
+import { useCorporationAccess } from '@/features/my-corporations'
+import { useAuth } from '@/hooks/useAuth'
 import { corporationTaxApi } from '@/lib/tax-api'
+import { getScopedViewerCorporationIdsFromUrns } from '@/lib/tax-permissions'
 
 import type {
 	TaxAlertSeverity,
@@ -29,6 +34,61 @@ type TaxReportQueryFilters = {
 
 type TaxReportQueryOptions = TaxReportQueryFilters & {
 	enabled?: boolean
+}
+
+export type TaxCorporationScopeMode = 'global' | 'viewer' | 'self_service'
+
+type TaxCorporationScopeRow = {
+	corporationId: string
+	included: boolean
+	exclusionReason: string | null
+	createdAt: Date
+	updatedAt: Date
+}
+
+type CorporationAccessRow = {
+	corporationId: string
+}
+
+export function resolveTaxCorporationScopeRows(input: {
+	canManageGlobal: boolean
+	canAuditGlobal: boolean
+	hasScopedViewerPermissions: boolean
+	viewerCorporationIds: Set<string>
+	globalRows: TaxCorporationScopeRow[]
+	fallbackRows: TaxCorporationScopeRow[]
+	demoRows: TaxCorporationScopeRow[]
+}): {
+	scopeMode: TaxCorporationScopeMode
+	rows: TaxCorporationScopeRow[]
+} {
+	const scopeMode: TaxCorporationScopeMode =
+		input.canManageGlobal || input.canAuditGlobal
+			? 'global'
+			: input.hasScopedViewerPermissions
+				? 'viewer'
+				: 'self_service'
+
+	const baseRows =
+		scopeMode === 'global'
+			? input.globalRows
+			: scopeMode === 'viewer'
+				? input.fallbackRows.filter((row) => input.viewerCorporationIds.has(row.corporationId))
+				: input.fallbackRows
+	const merged = new Map<string, TaxCorporationScopeRow>()
+	for (const row of baseRows) {
+		merged.set(row.corporationId, row)
+	}
+	for (const row of input.demoRows) {
+		if (!merged.has(row.corporationId)) {
+			merged.set(row.corporationId, row)
+		}
+	}
+
+	return {
+		scopeMode,
+		rows: Array.from(merged.values()),
+	}
 }
 
 export const corporationTaxKeys = {
@@ -116,6 +176,12 @@ export const corporationTaxKeys = {
 	}) => [...corporationTaxKeys.missingEsiKeys(), filters] as const,
 	billHistory: (corporationId: string, filters?: { limit?: number; offset?: number }) =>
 		[...corporationTaxKeys.all, 'bill-history', corporationId, filters] as const,
+	billingConfigs: (corporationId: string) =>
+		[...corporationTaxKeys.all, 'billing-configs', corporationId] as const,
+	billingPayeeCorporationSearch: (corporationId: string, query: string) =>
+		[...corporationTaxKeys.all, 'billing-payee-corporation-search', corporationId, query] as const,
+	billingPayeeCharacterSearch: (corporationId: string, query: string) =>
+		[...corporationTaxKeys.all, 'billing-payee-character-search', corporationId, query] as const,
 	assessments: (
 		corporationId: string,
 		filters?: {
@@ -188,12 +254,96 @@ export function useTaxCorporations(filters?: {
 	offset?: number
 	enabled?: boolean
 }) {
-	return useQuery({
+	const enabled = filters?.enabled ?? true
+	const demoEnabled = isTaxDemoModeEnabled()
+	const { permissions } = useAuth()
+	const { data: globalCapabilities, isLoading: capabilitiesLoading } = useTaxCapabilities(
+		undefined,
+		enabled
+	)
+	const { data: corporationAccess, isLoading: corporationAccessLoading } = useCorporationAccess()
+	const canManageGlobal = globalCapabilities?.global.canManage ?? false
+	const canAuditGlobal = globalCapabilities?.global.canAudit ?? false
+	const viewerCorporationIds = useMemo(
+		() =>
+			getScopedViewerCorporationIdsFromUrns(
+				(permissions ?? []).map((permission) => permission.urn)
+			),
+		[permissions]
+	)
+	const hasScopedViewerPermissions = viewerCorporationIds.size > 0
+	const scopeMode: TaxCorporationScopeMode =
+		canManageGlobal || canAuditGlobal
+			? 'global'
+			: hasScopedViewerPermissions
+				? 'viewer'
+				: 'self_service'
+
+	const taxCorporationsQuery = useQuery({
 		queryKey: corporationTaxKeys.corporationList(filters),
 		queryFn: () => corporationTaxApi.listCorporations(filters),
 		staleTime: 1000 * 30,
-		enabled: filters?.enabled ?? true,
+		enabled: enabled && scopeMode === 'global',
 	})
+	const demoCorporationsQuery = useQuery({
+		queryKey: [...corporationTaxKeys.corporationList(filters), 'demo'],
+		queryFn: () => taxDemoApi.listCorporations(filters),
+		staleTime: 1000 * 30,
+		enabled: enabled && demoEnabled,
+	})
+
+	const fallbackRows: TaxCorporationScopeRow[] = useMemo(() => {
+		const fallbackDate = new Date(0)
+		return ((corporationAccess?.corporations ?? []) as CorporationAccessRow[]).map(
+			(corporation) => ({
+				corporationId: corporation.corporationId,
+				included: true,
+				exclusionReason: null as string | null,
+				createdAt: fallbackDate,
+				updatedAt: fallbackDate,
+			})
+		)
+	}, [corporationAccess?.corporations])
+
+	const resolvedScope = useMemo(
+		() =>
+			resolveTaxCorporationScopeRows({
+				canManageGlobal,
+				canAuditGlobal,
+				hasScopedViewerPermissions,
+				viewerCorporationIds,
+				globalRows: (taxCorporationsQuery.data ?? []) as TaxCorporationScopeRow[],
+				fallbackRows,
+				demoRows: (demoCorporationsQuery.data ?? []) as TaxCorporationScopeRow[],
+			}),
+		[
+			canManageGlobal,
+			canAuditGlobal,
+			hasScopedViewerPermissions,
+			viewerCorporationIds,
+			taxCorporationsQuery.data,
+			fallbackRows,
+			demoCorporationsQuery.data,
+		]
+	)
+
+	return {
+		...taxCorporationsQuery,
+		data: resolvedScope.rows,
+		scopeMode: resolvedScope.scopeMode,
+		isLoading:
+			enabled &&
+			(capabilitiesLoading ||
+				corporationAccessLoading ||
+				(resolvedScope.scopeMode === 'global' && taxCorporationsQuery.isLoading) ||
+				demoCorporationsQuery.isLoading),
+		isFetching:
+			enabled &&
+			(taxCorporationsQuery.isFetching ||
+				demoCorporationsQuery.isFetching ||
+				capabilitiesLoading ||
+				corporationAccessLoading),
+	}
 }
 
 export function useTaxWalletDivisions(corporationId: string | undefined, enabled = true) {
@@ -654,6 +804,46 @@ export function useTaxCorporationBillHistory(
 	})
 }
 
+export function useTaxBillingConfigs(corporationId: string | undefined, enabled = true) {
+	return useQuery({
+		queryKey: corporationTaxKeys.billingConfigs(corporationId ?? 'none'),
+		queryFn: () => corporationTaxApi.listBillingConfigs(corporationId!),
+		staleTime: 1000 * 30,
+		enabled: Boolean(corporationId) && enabled,
+	})
+}
+
+export function useSearchTaxBillingPayeeCorporations(
+	corporationId: string | undefined,
+	query: string,
+	enabled = true
+) {
+	const trimmedQuery = query.trim()
+	return useQuery({
+		queryKey: corporationTaxKeys.billingPayeeCorporationSearch(
+			corporationId ?? 'none',
+			trimmedQuery
+		),
+		queryFn: () => corporationTaxApi.searchActivePayeeCorporations(corporationId!, trimmedQuery),
+		staleTime: 1000 * 60 * 5,
+		enabled: Boolean(corporationId) && enabled && trimmedQuery.length >= 2,
+	})
+}
+
+export function useSearchTaxBillingPayeeCharacters(
+	corporationId: string | undefined,
+	query: string,
+	enabled = true
+) {
+	const trimmedQuery = query.trim()
+	return useQuery({
+		queryKey: corporationTaxKeys.billingPayeeCharacterSearch(corporationId ?? 'none', trimmedQuery),
+		queryFn: () => corporationTaxApi.searchPayeeCharacters(corporationId!, trimmedQuery),
+		staleTime: 1000 * 60 * 5,
+		enabled: Boolean(corporationId) && enabled && trimmedQuery.length >= 2,
+	})
+}
+
 export function useTaxAssessments(
 	corporationId: string | undefined,
 	filters?: {
@@ -797,6 +987,77 @@ export function useSyncTaxCorporationBillStatuses() {
 			})
 			void queryClient.invalidateQueries({
 				queryKey: corporationTaxKeys.assessments(variables.corporationId),
+			})
+		},
+	})
+}
+
+export function useCreateTaxBillingConfig() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: (input: {
+			corporationId: string
+			config: {
+				isDefault?: boolean
+				billingEnabled?: boolean
+				billingIssuerUserId?: string
+				billingPayeeId?: string
+				billingPayeeType?: '' | 'character' | 'corporation'
+				billingDueDays?: number
+			}
+		}) => corporationTaxApi.createBillingConfig(input.corporationId, input.config),
+		onSuccess: (_result, variables) => {
+			void queryClient.invalidateQueries({
+				queryKey: corporationTaxKeys.billingConfigs(variables.corporationId),
+			})
+		},
+	})
+}
+
+export function useUpdateTaxBillingConfig() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: (input: {
+			corporationId: string
+			configId: string
+			updates: {
+				isDefault?: boolean
+				billingEnabled?: boolean
+				billingIssuerUserId?: string
+				billingPayeeId?: string
+				billingPayeeType?: '' | 'character' | 'corporation'
+				billingDueDays?: number
+			}
+		}) => corporationTaxApi.updateBillingConfig(input.corporationId, input.configId, input.updates),
+		onSuccess: (_result, variables) => {
+			void queryClient.invalidateQueries({
+				queryKey: corporationTaxKeys.billingConfigs(variables.corporationId),
+			})
+		},
+	})
+}
+
+export function useDeleteTaxBillingConfig() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: (input: { corporationId: string; configId: string }) =>
+			corporationTaxApi.deleteBillingConfig(input.corporationId, input.configId),
+		onSuccess: (_result, variables) => {
+			void queryClient.invalidateQueries({
+				queryKey: corporationTaxKeys.billingConfigs(variables.corporationId),
+			})
+		},
+	})
+}
+
+export function useSetDefaultTaxBillingConfig() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: (input: { corporationId: string; configId: string }) =>
+			corporationTaxApi.setDefaultBillingConfig(input.corporationId, input.configId),
+		onSuccess: (_result, variables) => {
+			void queryClient.invalidateQueries({
+				queryKey: corporationTaxKeys.billingConfigs(variables.corporationId),
 			})
 		},
 	})
