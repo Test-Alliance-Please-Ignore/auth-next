@@ -61,7 +61,6 @@ export function useMultipleCharacterMastery(
 ) {
 	// Use individual queries for each character
 	const queries = characters.map((char) =>
-		// eslint-disable-next-line react-hooks/rules-of-hooks
 		useCharacterMastery(planId, char.characterId, char.characterName, char.hasValidToken)
 	)
 

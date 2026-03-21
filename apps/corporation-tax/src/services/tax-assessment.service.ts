@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from '@repo/db-utils'
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, or, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
 import {
@@ -64,6 +64,8 @@ type ScopedAssessmentComputation = {
 	lines: PendingAssessmentLine[]
 }
 
+type AssessmentWriteDb = Pick<CorporationTaxDb, 'insert' | 'update' | 'delete' | 'query'>
+
 export class TaxAssessmentService {
 	private readonly TAX_DELTA_DISCREPANCY_THRESHOLD_BPS = 500
 
@@ -127,26 +129,19 @@ export class TaxAssessmentService {
 		})
 		const isExcluded = Boolean(exclusion)
 
-		const assessmentSourceTypes =
-			input.includeCharacterWallets === false
-				? (['corporation_wallet_journal', 'corporation_wallet_transaction'] as const)
-				: ([
-						'corporation_wallet_journal',
-						'corporation_wallet_transaction',
-						'character_wallet_journal',
-						'character_wallet_transaction',
-					] as const)
+		// Static override: assessments are currently corporation-wallet only.
+		// Re-enable character wallet contribution by restoring input-driven source selection.
+		const assessmentSourceTypes = [
+			'corporation_wallet_journal',
+			'corporation_wallet_transaction',
+		] as const
 
-		const ledgerRows = await this.db.query.taxLedgerEntries.findMany({
-			where: and(
-				eq(taxLedgerEntries.corporationId, input.corporationId),
-				inArray(taxLedgerEntries.sourceType, assessmentSourceTypes),
-				gte(taxLedgerEntries.entryDate, input.periodStart),
-				lte(taxLedgerEntries.entryDate, input.periodEnd)
-			),
-			orderBy: [desc(taxLedgerEntries.entryDate)],
-			limit: 100_000,
-		})
+		const ledgerWhere = and(
+			eq(taxLedgerEntries.corporationId, input.corporationId),
+			inArray(taxLedgerEntries.sourceType, assessmentSourceTypes),
+			gte(taxLedgerEntries.entryDate, input.periodStart),
+			lte(taxLedgerEntries.entryDate, input.periodEnd)
+		)
 
 		const attachedRuleGroups = await this.db.query.taxRuleGroupAttachments.findMany({
 			where: eq(taxRuleGroupAttachments.corporationId, input.corporationId),
@@ -206,140 +201,158 @@ export class TaxAssessmentService {
 		const divisionSummaries = new Map<string, MutableSummary & { division: number | null }>()
 		const refTypeSummaries = new Map<string, MutableSummary & { refType: string }>()
 
-		for (const row of ledgerRows) {
-			const amountCenti = this.parseDecimalToCenti(row.amount)
-			const amountForTaxCenti = amountCenti > 0n ? amountCenti : 0n
-			if (amountForTaxCenti === 0n) {
-				continue
-			}
-
-			const resolved = this.resolveRuleForEntry({
-				entry: row,
-				amountCenti: amountForTaxCenti,
-				compiledRules,
+		const ledgerPageSize = 5_000
+		let ledgerOffset = 0
+		for (;;) {
+			const ledgerRows = await this.db.query.taxLedgerEntries.findMany({
+				where: ledgerWhere,
+				orderBy: [desc(taxLedgerEntries.entryDate), desc(taxLedgerEntries.id)],
+				limit: ledgerPageSize,
+				offset: ledgerOffset,
 			})
-			const lineValue: PendingAssessmentLine = {
-				ledgerEntryId: row.id,
-				appliedRuleSetId: resolved.appliedRuleSetId,
-				taxRateBps: resolved.taxRateBps,
-				taxableAmount: this.formatCenti(resolved.taxableAmountCenti),
-				taxAmount: this.formatCenti(resolved.taxAmountCenti),
-				classification: resolved.classification,
+			if (ledgerRows.length === 0) {
+				break
 			}
-			const paidAmountCenti = this.extractTaxPaidFromPayload(row.rawPayload)
+			for (const row of ledgerRows) {
+				const amountCenti = this.parseDecimalToCenti(row.amount)
+				const amountForTaxCenti = amountCenti > 0n ? amountCenti : 0n
+				if (amountForTaxCenti === 0n) {
+					continue
+				}
 
-			corporationTotals.taxableIncomeCenti += resolved.taxableAmountCenti
-			corporationTotals.nonTaxableIncomeCenti += amountForTaxCenti - resolved.taxableAmountCenti
-			corporationTotals.taxDueCenti += resolved.taxAmountCenti
-			corporationTotals.taxPaidCenti += paidAmountCenti
-			corporationLines.push(lineValue)
+				const resolved = this.resolveRuleForEntry({
+					entry: row,
+					amountCenti: amountForTaxCenti,
+					compiledRules,
+				})
+				const lineValue: PendingAssessmentLine = {
+					ledgerEntryId: row.id,
+					appliedRuleSetId: resolved.appliedRuleSetId,
+					taxRateBps: resolved.taxRateBps,
+					taxableAmount: this.formatCenti(resolved.taxableAmountCenti),
+					taxAmount: this.formatCenti(resolved.taxAmountCenti),
+					classification: resolved.classification,
+				}
+				const paidAmountCenti = this.extractTaxPaidFromPayload(row.rawPayload)
 
-			const divisionKey = row.division === null ? 'null' : `${row.division}`
-			const divisionSummary = divisionSummaries.get(divisionKey) ?? {
-				division: row.division,
-				taxableIncomeCenti: 0n,
-				nonTaxableIncomeCenti: 0n,
-				taxDueCenti: 0n,
-				taxPaidCenti: 0n,
-			}
-			divisionSummary.taxableIncomeCenti += resolved.taxableAmountCenti
-			divisionSummary.nonTaxableIncomeCenti += amountForTaxCenti - resolved.taxableAmountCenti
-			divisionSummary.taxDueCenti += resolved.taxAmountCenti
-			divisionSummary.taxPaidCenti += paidAmountCenti
-			divisionSummaries.set(divisionKey, divisionSummary)
+				corporationTotals.taxableIncomeCenti += resolved.taxableAmountCenti
+				corporationTotals.nonTaxableIncomeCenti += amountForTaxCenti - resolved.taxableAmountCenti
+				corporationTotals.taxDueCenti += resolved.taxAmountCenti
+				corporationTotals.taxPaidCenti += paidAmountCenti
+				corporationLines.push(lineValue)
 
-			const refTypeKey = row.refType
-			const refTypeSummary = refTypeSummaries.get(refTypeKey) ?? {
-				refType: row.refType,
-				taxableIncomeCenti: 0n,
-				nonTaxableIncomeCenti: 0n,
-				taxDueCenti: 0n,
-				taxPaidCenti: 0n,
-			}
-			refTypeSummary.taxableIncomeCenti += resolved.taxableAmountCenti
-			refTypeSummary.nonTaxableIncomeCenti += amountForTaxCenti - resolved.taxableAmountCenti
-			refTypeSummary.taxDueCenti += resolved.taxAmountCenti
-			refTypeSummary.taxPaidCenti += paidAmountCenti
-			refTypeSummaries.set(refTypeKey, refTypeSummary)
+				const divisionKey = row.division === null ? 'null' : `${row.division}`
+				const divisionSummary = divisionSummaries.get(divisionKey) ?? {
+					division: row.division,
+					taxableIncomeCenti: 0n,
+					nonTaxableIncomeCenti: 0n,
+					taxDueCenti: 0n,
+					taxPaidCenti: 0n,
+				}
+				divisionSummary.taxableIncomeCenti += resolved.taxableAmountCenti
+				divisionSummary.nonTaxableIncomeCenti += amountForTaxCenti - resolved.taxableAmountCenti
+				divisionSummary.taxDueCenti += resolved.taxAmountCenti
+				divisionSummary.taxPaidCenti += paidAmountCenti
+				divisionSummaries.set(divisionKey, divisionSummary)
 
-			if (
-				row.sourceType === 'corporation_wallet_journal' ||
-				row.sourceType === 'corporation_wallet_transaction'
-			) {
-				const memberCandidateIds = [row.firstPartyId, row.secondPartyId].filter(
-					(value): value is string => Boolean(value)
-				)
-				const attributedCharacterId =
-					memberCandidateIds.find((characterId) => memberIdSet.has(characterId)) ?? unattributedKey
-				const rollupDate = this.toUtcDay(row.entryDate)
-				const rollupKey = [
-					rollupDate.toISOString().slice(0, 10),
-					attributedCharacterId,
-					row.refType,
-				].join(':')
-				const current = memberRollupMap.get(rollupKey) ?? {
-					rollupDate,
-					characterId: attributedCharacterId,
+				const refTypeKey = row.refType
+				const refTypeSummary = refTypeSummaries.get(refTypeKey) ?? {
 					refType: row.refType,
-					contributionIncomeCenti: 0n,
-					taxableContributionIncomeCenti: 0n,
-					sourceRowCount: 0,
-					lastLedgerEntryDate: null,
+					taxableIncomeCenti: 0n,
+					nonTaxableIncomeCenti: 0n,
+					taxDueCenti: 0n,
+					taxPaidCenti: 0n,
 				}
-				current.contributionIncomeCenti += amountForTaxCenti
-				current.taxableContributionIncomeCenti += resolved.taxableAmountCenti
-				current.sourceRowCount += 1
-				current.lastLedgerEntryDate =
-					!current.lastLedgerEntryDate || row.entryDate > current.lastLedgerEntryDate
-						? row.entryDate
-						: current.lastLedgerEntryDate
-				memberRollupMap.set(rollupKey, current)
-			}
+				refTypeSummary.taxableIncomeCenti += resolved.taxableAmountCenti
+				refTypeSummary.nonTaxableIncomeCenti += amountForTaxCenti - resolved.taxableAmountCenti
+				refTypeSummary.taxDueCenti += resolved.taxAmountCenti
+				refTypeSummary.taxPaidCenti += paidAmountCenti
+				refTypeSummaries.set(refTypeKey, refTypeSummary)
 
-			if (row.division !== null) {
-				const scoped = divisionAssessments.get(divisionKey) ?? {
-					assessmentScope: 'division',
-					scopeId: divisionKey,
-					totals: {
-						taxableIncomeCenti: 0n,
-						nonTaxableIncomeCenti: 0n,
-						taxDueCenti: 0n,
-						taxPaidCenti: 0n,
-					},
-					inGameTaxRateBps: null,
-					portalTaxRateBps: 0,
-					lines: [],
+				if (
+					row.sourceType === 'corporation_wallet_journal' ||
+					row.sourceType === 'corporation_wallet_transaction'
+				) {
+					const memberCandidateIds = [row.firstPartyId, row.secondPartyId].filter(
+						(value): value is string => Boolean(value)
+					)
+					const attributedCharacterId =
+						memberCandidateIds.find((characterId) => memberIdSet.has(characterId)) ??
+						unattributedKey
+					const rollupDate = this.toUtcDay(row.entryDate)
+					const rollupKey = [
+						rollupDate.toISOString().slice(0, 10),
+						attributedCharacterId,
+						row.refType,
+					].join(':')
+					const current = memberRollupMap.get(rollupKey) ?? {
+						rollupDate,
+						characterId: attributedCharacterId,
+						refType: row.refType,
+						contributionIncomeCenti: 0n,
+						taxableContributionIncomeCenti: 0n,
+						sourceRowCount: 0,
+						lastLedgerEntryDate: null,
+					}
+					current.contributionIncomeCenti += amountForTaxCenti
+					current.taxableContributionIncomeCenti += resolved.taxableAmountCenti
+					current.sourceRowCount += 1
+					current.lastLedgerEntryDate =
+						!current.lastLedgerEntryDate || row.entryDate > current.lastLedgerEntryDate
+							? row.entryDate
+							: current.lastLedgerEntryDate
+					memberRollupMap.set(rollupKey, current)
 				}
-				scoped.totals.taxableIncomeCenti += resolved.taxableAmountCenti
-				scoped.totals.nonTaxableIncomeCenti += amountForTaxCenti - resolved.taxableAmountCenti
-				scoped.totals.taxDueCenti += resolved.taxAmountCenti
-				scoped.totals.taxPaidCenti += paidAmountCenti
-				scoped.lines.push(lineValue)
-				divisionAssessments.set(divisionKey, scoped)
-			}
 
-			const characterId = this.extractCharacterId(row)
-			if (characterId) {
-				const scoped = characterAssessments.get(characterId) ?? {
-					assessmentScope: 'character',
-					scopeId: characterId,
-					totals: {
-						taxableIncomeCenti: 0n,
-						nonTaxableIncomeCenti: 0n,
-						taxDueCenti: 0n,
-						taxPaidCenti: 0n,
-					},
-					inGameTaxRateBps: null,
-					portalTaxRateBps: 0,
-					lines: [],
+				if (row.division !== null) {
+					const scoped = divisionAssessments.get(divisionKey) ?? {
+						assessmentScope: 'division',
+						scopeId: divisionKey,
+						totals: {
+							taxableIncomeCenti: 0n,
+							nonTaxableIncomeCenti: 0n,
+							taxDueCenti: 0n,
+							taxPaidCenti: 0n,
+						},
+						inGameTaxRateBps: null,
+						portalTaxRateBps: 0,
+						lines: [],
+					}
+					scoped.totals.taxableIncomeCenti += resolved.taxableAmountCenti
+					scoped.totals.nonTaxableIncomeCenti += amountForTaxCenti - resolved.taxableAmountCenti
+					scoped.totals.taxDueCenti += resolved.taxAmountCenti
+					scoped.totals.taxPaidCenti += paidAmountCenti
+					scoped.lines.push(lineValue)
+					divisionAssessments.set(divisionKey, scoped)
 				}
-				scoped.totals.taxableIncomeCenti += resolved.taxableAmountCenti
-				scoped.totals.nonTaxableIncomeCenti += amountForTaxCenti - resolved.taxableAmountCenti
-				scoped.totals.taxDueCenti += resolved.taxAmountCenti
-				scoped.totals.taxPaidCenti += paidAmountCenti
-				scoped.lines.push(lineValue)
-				characterAssessments.set(characterId, scoped)
+
+				const characterId = this.extractCharacterId(row)
+				if (characterId) {
+					const scoped = characterAssessments.get(characterId) ?? {
+						assessmentScope: 'character',
+						scopeId: characterId,
+						totals: {
+							taxableIncomeCenti: 0n,
+							nonTaxableIncomeCenti: 0n,
+							taxDueCenti: 0n,
+							taxPaidCenti: 0n,
+						},
+						inGameTaxRateBps: null,
+						portalTaxRateBps: 0,
+						lines: [],
+					}
+					scoped.totals.taxableIncomeCenti += resolved.taxableAmountCenti
+					scoped.totals.nonTaxableIncomeCenti += amountForTaxCenti - resolved.taxableAmountCenti
+					scoped.totals.taxDueCenti += resolved.taxAmountCenti
+					scoped.totals.taxPaidCenti += paidAmountCenti
+					scoped.lines.push(lineValue)
+					characterAssessments.set(characterId, scoped)
+				}
 			}
+			if (ledgerRows.length < ledgerPageSize) {
+				break
+			}
+			ledgerOffset += ledgerRows.length
 		}
 
 		const inGameTaxRateBps = await this.getInGameTaxRateBps(input.corporationId)
@@ -396,7 +409,7 @@ export class TaxAssessmentService {
 			),
 		]
 
-		const result = await this.db.transaction(async (tx) => {
+		const result = await this.withAssessmentWriteClient(async (tx) => {
 			const now = new Date()
 
 			const [period] = await tx
@@ -650,7 +663,8 @@ export class TaxAssessmentService {
 
 		return this.runAssessmentForPeriod({
 			...input,
-			includeCharacterWallets: input.includeCharacterWallets ?? true,
+			// Static override: finalized rebuilds are corporation-wallet only for now.
+			includeCharacterWallets: false,
 		})
 	}
 
@@ -726,12 +740,24 @@ export class TaxAssessmentService {
 	}
 
 	private async upsertAndReconcileProjectionRollups(
-		tx: any,
+		tx: AssessmentWriteDb,
 		corporationId: string,
 		periodStart: Date,
 		periodEnd: Date,
 		values: Array<typeof taxMemberContributionProjectionRollups.$inferInsert>
 	): Promise<void> {
+		// Clean up stale open-period windows created with a mismatched periodStart (e.g. older
+		// mid-month rule-mutation runs) so the open period is represented by a single window.
+		await tx
+			.delete(taxMemberContributionProjectionRollups)
+			.where(
+				and(
+					eq(taxMemberContributionProjectionRollups.corporationId, corporationId),
+					eq(taxMemberContributionProjectionRollups.periodEnd, periodEnd),
+					ne(taxMemberContributionProjectionRollups.periodStart, periodStart)
+				)
+			)
+
 		if (values.length > 0) {
 			await tx
 				.insert(taxMemberContributionProjectionRollups)
@@ -799,7 +825,7 @@ export class TaxAssessmentService {
 	}
 
 	private async upsertAndReconcileFinalizedRollups(
-		tx: any,
+		tx: AssessmentWriteDb,
 		corporationId: string,
 		periodStart: Date,
 		periodEnd: Date,
@@ -870,6 +896,26 @@ export class TaxAssessmentService {
 				.delete(taxMemberContributionFinalizedRollups)
 				.where(inArray(taxMemberContributionFinalizedRollups.id, staleIds))
 		}
+	}
+
+	private async withAssessmentWriteClient<T>(
+		callback: (tx: AssessmentWriteDb) => Promise<T>
+	): Promise<T> {
+		const candidate = this.db as CorporationTaxDb & {
+			transaction?: (cb: (tx: AssessmentWriteDb) => Promise<T>) => Promise<T>
+		}
+		if (
+			typeof candidate.insert === 'function' &&
+			typeof candidate.update === 'function' &&
+			typeof candidate.delete === 'function' &&
+			typeof candidate.query === 'object'
+		) {
+			return callback(candidate)
+		}
+		if (typeof candidate.transaction === 'function') {
+			return candidate.transaction(async (tx) => callback(tx))
+		}
+		throw new Error('Assessment write client is not available')
 	}
 
 	async listAssessmentLines(filters: ListTaxAssessmentLinesFilters): Promise<TaxAssessmentLine[]> {

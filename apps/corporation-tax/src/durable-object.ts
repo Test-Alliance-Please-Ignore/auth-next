@@ -6,11 +6,12 @@ import { logger } from '@repo/hono-helpers'
 
 import { createDb } from './db'
 import {
+	managedCorporations,
 	taxAssessments,
 	taxCorporationExclusions,
 	taxLedgerEntries,
 	taxMemberSummaryVersions,
-	taxSyncCheckpoints,
+	taxRuleGroupAttachments,
 } from './db/schema'
 import { planProjectionRefreshFromWalletSync } from './services/projection-refresh-plan'
 import { computeRuleMutationRecalcStart } from './services/projection-rule-freshness'
@@ -117,6 +118,7 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 	private auditService: TaxAuditService
 	private ruleGroupService: TaxRuleGroupService
 	private rulesService: TaxRulesService
+	private corporationIngestLocks = new Map<string, Promise<void>>()
 
 	constructor(
 		public state: DurableObjectState,
@@ -364,44 +366,47 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		corporationId: string,
 		input?: IngestTaxLedgerWindowInput
 	): Promise<TaxLedgerIngestionResult> {
-		const result = await this.ledgerService.ingestCorporationLedgerWindow(corporationId, input)
+		return this.withCorporationIngestLock(corporationId, async () => {
+			const result = await this.ledgerService.ingestCorporationLedgerWindow(corporationId, input)
 
-		await this.auditService.logAction({
-			corporationId,
-			actorUserId,
-			action: 'tax.ledger.ingest',
-			before: null,
-			after: {
-				journalProcessed: result.journalProcessed,
-				transactionProcessed: result.transactionProcessed,
-				upsertedCount: result.upsertedCount,
-				essDuplicateRecordCount: result.essDuplicateRecordCount,
-				essMissingRecordCount: result.essMissingRecordCount,
-				unexpectedIncomeRefTypeCount: result.unexpectedIncomeRefTypeCount,
-				unexpectedIncomeEntryCount: result.unexpectedIncomeEntryCount,
-			},
-		})
+			await this.auditService.logAction({
+				corporationId,
+				actorUserId,
+				action: 'tax.ledger.ingest',
+				before: null,
+				after: {
+					journalProcessed: result.journalProcessed,
+					transactionProcessed: result.transactionProcessed,
+					upsertedCount: result.upsertedCount,
+					essDuplicateRecordCount: result.essDuplicateRecordCount,
+					essMissingRecordCount: result.essMissingRecordCount,
+					unexpectedIncomeRefTypeCount: result.unexpectedIncomeRefTypeCount,
+					unexpectedIncomeEntryCount: result.unexpectedIncomeEntryCount,
+				},
+			})
 
-		await this.triggerEssQualityAlerts(actorUserId, corporationId, input, result)
-		await this.triggerUnexpectedIncomeRefTypeAlerts(actorUserId, corporationId, input, result)
+			await this.triggerEssQualityAlerts(actorUserId, corporationId, input, result)
+			await this.triggerUnexpectedIncomeRefTypeAlerts(actorUserId, corporationId, input, result)
 
-		// Keep open-period member projections warm after successful ingest.
-		// This is best-effort and must not fail ingestion.
-		if (result.upsertedCount > 0) {
-			const currentMonthWindow = this.getCurrentMonthWindow(new Date())
-			try {
-				await this.runAssessmentForPeriod(actorUserId, {
-					corporationId,
-					periodStart: currentMonthWindow.periodStart,
-					periodEnd: currentMonthWindow.periodEnd,
-					includeCharacterWallets: true,
-				})
-			} catch (_error) {
-				// Best-effort follow-up only.
+			// Keep open-period member projections warm after successful ingest.
+			// This is best-effort and must not fail ingestion.
+			if (result.upsertedCount > 0) {
+				const currentMonthWindow = this.getCurrentMonthWindow(new Date())
+				try {
+					await this.runAssessmentForPeriod(actorUserId, {
+						corporationId,
+						periodStart: currentMonthWindow.periodStart,
+						periodEnd: currentMonthWindow.periodEnd,
+						// Static override: current projection refresh should ignore character wallets.
+						includeCharacterWallets: false,
+					})
+				} catch (_error) {
+					// Best-effort follow-up only.
+				}
 			}
-		}
 
-		return result
+			return result
+		})
 	}
 
 	async triggerProjectionRefreshFromWalletSync(
@@ -449,7 +454,8 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 					corporationId: input.corporationId,
 					periodStart: recalcStart,
 					periodEnd: currentMonthWindow.periodEnd,
-					includeCharacterWallets: true,
+					// Static override: rule-mutation projection rebuild is corporation-wallet only.
+					includeCharacterWallets: false,
 				})
 				await this.clearRuleMembershipMutation(input.corporationId)
 
@@ -959,9 +965,10 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 				const shouldIngest = await this.shouldRunDailyIngest(corporationId, runAt)
 				if (shouldIngest) {
 					try {
-						await this.ingestCorporationLedgerWindow(actorUserId, corporationId, {
-							includeCharacterWallets: true,
-						})
+						await this.triggerProjectionRefreshFromWalletSync(
+							actorUserId,
+							this.buildScheduledProjectionRefreshInput(corporationId, runAt)
+						)
 						dailyIngestCorporationsProcessed += 1
 					} catch (error) {
 						dailyIngestFailures += 1
@@ -993,7 +1000,8 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 							corporationId,
 							periodStart: previousMonthWindow.periodStart,
 							periodEnd: previousMonthWindow.periodEnd,
-							includeCharacterWallets: true,
+							// Static override: monthly assessments are corporation-wallet only.
+							includeCharacterWallets: false,
 						})
 						monthlyAssessmentCorporationsProcessed += 1
 					}
@@ -1258,28 +1266,35 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 	}
 
 	private async listProcessableCorporationIds(): Promise<string[]> {
-		const [checkpointRows, ledgerRows, assessmentRows, exclusionRows] = await Promise.all([
+		const [eligibleRows, attachedRuleRows, exclusionRows] = await Promise.all([
 			this.db
-				.select({ corporationId: taxSyncCheckpoints.corporationId })
-				.from(taxSyncCheckpoints)
-				.groupBy(taxSyncCheckpoints.corporationId),
+				.select({ corporationId: managedCorporations.corporationId })
+				.from(managedCorporations)
+				.where(
+					and(
+						eq(managedCorporations.isActive, true),
+						eq(managedCorporations.isMemberCorporation, true)
+					)
+				)
+				.groupBy(managedCorporations.corporationId),
 			this.db
-				.select({ corporationId: taxLedgerEntries.corporationId })
-				.from(taxLedgerEntries)
-				.groupBy(taxLedgerEntries.corporationId),
-			this.db
-				.select({ corporationId: taxAssessments.corporationId })
-				.from(taxAssessments)
-				.groupBy(taxAssessments.corporationId),
+				.select({ corporationId: taxRuleGroupAttachments.corporationId })
+				.from(taxRuleGroupAttachments)
+				.groupBy(taxRuleGroupAttachments.corporationId),
 			this.db.query.taxCorporationExclusions.findMany({
 				columns: { corporationId: true },
 				limit: 10_000,
 			}),
 		])
 		const excludedSet = new Set(exclusionRows.map((row) => row.corporationId))
+		const attachedSet = new Set(attachedRuleRows.map((row) => row.corporationId))
 		const ids = new Set<string>()
-		for (const row of [...checkpointRows, ...ledgerRows, ...assessmentRows]) {
-			if (row.corporationId && !excludedSet.has(row.corporationId)) {
+		for (const row of eligibleRows) {
+			if (
+				row.corporationId &&
+				attachedSet.has(row.corporationId) &&
+				!excludedSet.has(row.corporationId)
+			) {
 				ids.add(row.corporationId)
 			}
 		}
@@ -1302,6 +1317,52 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 			(checkpoint) =>
 				checkpoint.lastSuccessfulSyncAt === null || checkpoint.lastSuccessfulSyncAt < utcDayStart
 		)
+	}
+
+	private buildScheduledProjectionRefreshInput(
+		corporationId: string,
+		runAt: Date
+	): TriggerTaxProjectionRefreshInput {
+		const watermark = {
+			// Force checkpoint freshness evaluation against current scheduled run time.
+			// The projection planner will derive overlap from current checkpoint lastSeenAt.
+			maxId: null,
+			maxDate: runAt,
+			fetchedCount: 1,
+		}
+		return {
+			corporationId,
+			upstreamRunId: `scheduled-${corporationId}-${runAt.toISOString()}`,
+			triggeredAt: runAt,
+			walletJournal: watermark,
+			walletTransactions: watermark,
+			// Static override: scheduled projection ingest remains corporation-wallet only.
+			includeCharacterWallets: false,
+		}
+	}
+
+	private async withCorporationIngestLock<T>(
+		corporationId: string,
+		run: () => Promise<T>
+	): Promise<T> {
+		const previousTail = this.corporationIngestLocks.get(corporationId) ?? Promise.resolve()
+		let release: (() => void) | undefined
+		const gate = new Promise<void>((resolve) => {
+			release = resolve
+		})
+		const lockTail = previousTail.then(() => gate)
+		this.corporationIngestLocks.set(corporationId, lockTail)
+
+		await previousTail
+
+		try {
+			return await run()
+		} finally {
+			release?.()
+			if (this.corporationIngestLocks.get(corporationId) === lockTail) {
+				this.corporationIngestLocks.delete(corporationId)
+			}
+		}
 	}
 
 	private async getCorporationEsiAuthStatus(corporationId: string) {

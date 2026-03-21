@@ -3,35 +3,10 @@ import { getStub } from '@repo/do-utils'
 import { createDb } from '../../db'
 import { DirectorManager } from '../../services/director-manager'
 
+import type { CorporationTax } from '@repo/corporation-tax'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Env } from '../../context'
-
-type CorporationTax = {
-	triggerProjectionRefreshFromWalletSync(
-		actorUserId: string,
-		input: {
-			corporationId: string
-			upstreamRunId: string
-			triggeredAt: Date
-			walletJournal?: {
-				maxId: string | null
-				maxDate: Date | null
-				fetchedCount: number
-			} | null
-			walletTransactions?: {
-				maxId: string | null
-				maxDate: Date | null
-				fetchedCount: number
-			} | null
-			includeCharacterWallets?: boolean
-		}
-	): Promise<{
-		corporationId: string
-		triggered: boolean
-		reason: 'no_sources' | 'up_to_date' | 'ingested'
-	}>
-}
 
 /**
  * Create a token store stub (shared across steps)

@@ -30,6 +30,6 @@ describe('computeRuleMutationRecalcStart', () => {
 			earliestRuleSetMutationAt: null,
 			membershipMutationAt: new Date('2026-03-12T15:30:00.000Z'),
 		})
-		expect(result?.toISOString()).toBe('2026-03-12T15:30:00.000Z')
+		expect(result?.toISOString()).toBe('2026-03-01T00:00:00.000Z')
 	})
 })

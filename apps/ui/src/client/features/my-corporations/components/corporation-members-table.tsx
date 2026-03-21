@@ -169,17 +169,19 @@ export default function CorporationMembersTable({
 				case 'name':
 					comparison = a.characterName.localeCompare(b.characterName)
 					break
-				case 'role':
+				case 'role': {
 					const roleOrder = { CEO: 0, Director: 1, Member: 2 }
 					comparison = roleOrder[a.role] - roleOrder[b.role]
 					break
+				}
 				case 'auth':
 					comparison = (a.hasAuthAccount ? 0 : 1) - (b.hasAuthAccount ? 0 : 1)
 					break
-				case 'activity':
+				case 'activity': {
 					const activityOrder = { active: 0, inactive: 1, unknown: 2 }
 					comparison = activityOrder[a.activityStatus] - activityOrder[b.activityStatus]
 					break
+				}
 				case 'lastLogin':
 					comparison = (b.lastLogin || '').localeCompare(a.lastLogin || '')
 					break

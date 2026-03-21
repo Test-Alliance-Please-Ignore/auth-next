@@ -26,6 +26,7 @@ const env = {
 	CORPORATION_TAX: { name: 'CORPORATION_TAX' },
 	EVE_CORPORATION_DATA: { name: 'EVE_CORPORATION_DATA' },
 	EVE_CHARACTER_DATA: { name: 'EVE_CHARACTER_DATA' },
+	EVE_TOKEN_STORE: { name: 'EVE_TOKEN_STORE' },
 	GROUPS: { name: 'GROUPS' },
 	FEATURES: { name: 'FEATURES' },
 } as any
@@ -132,9 +133,13 @@ function routeStubs(params: {
 	corporationDataStub?: {
 		getCorporationInfo: ReturnType<typeof vi.fn>
 		getDirectors: ReturnType<typeof vi.fn>
+		getMembers?: ReturnType<typeof vi.fn>
 	}
 	characterDataStub?: {
 		getCharacterInfo: ReturnType<typeof vi.fn>
+	}
+	tokenStoreStub?: {
+		searchCharacter: ReturnType<typeof vi.fn>
 	}
 }) {
 	getStubMock.mockImplementation((binding: any) => {
@@ -149,6 +154,9 @@ function routeStubs(params: {
 		}
 		if (binding === env.EVE_CHARACTER_DATA) {
 			return params.characterDataStub
+		}
+		if (binding === env.EVE_TOKEN_STORE) {
+			return params.tokenStoreStub
 		}
 		throw new Error('Unexpected durable object binding in test')
 	})
@@ -1075,28 +1083,25 @@ describe('corporation-tax routes', () => {
 		const app = createApp(makeUser())
 		const corporationTaxStub = makeCorporationTaxStub()
 		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:tax:auditor' }] as any)
-		corporationTaxStub.getTopIncomeSourcesReport.mockResolvedValue([
-			{ refType: 'bounty_prize_corporation_tax' },
-		])
+		corporationTaxStub.getTopIncomeSourcesReport.mockResolvedValue([{ refType: 'bounty_prizes' }])
 		routeStubs({ corporationTaxStub })
 
 		const response = await app.request(
-			'/api/corporation-tax/reports/top-income?corporationId=7001&refType=bounty_prize_corporation_tax&division=3&firstPartyId=9001&secondPartyId=9002&minAmount=1000000&maxAmount=2000000',
+			'/api/corporation-tax/reports/top-income?corporationId=7001&refType=bounty_prizes&division=3&firstPartyId=9001&secondPartyId=9002&minAmount=1000000',
 			{},
 			env
 		)
 
 		expect(response.status).toBe(200)
-		expect(await response.json()).toEqual([{ refType: 'bounty_prize_corporation_tax' }])
+		expect(await response.json()).toEqual([{ refType: 'bounty_prizes' }])
 		expect(corporationTaxStub.getTopIncomeSourcesReport).toHaveBeenCalledWith(
 			expect.objectContaining({
 				corporationId: '7001',
-				refType: 'bounty_prize_corporation_tax',
+				refType: 'bounty_prizes',
 				division: 3,
 				firstPartyId: '9001',
 				secondPartyId: '9002',
 				minAmount: '1000000',
-				maxAmount: '2000000',
 			})
 		)
 	})
@@ -1106,50 +1111,30 @@ describe('corporation-tax routes', () => {
 		const corporationTaxStub = makeCorporationTaxStub()
 		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:tax:auditor' }] as any)
 		corporationTaxStub.getTopIncomeSourcesMonthlyReport.mockResolvedValue([
-			{ monthStart: '2026-03-01T00:00:00.000Z', refType: 'bounty_prize_corporation_tax' },
+			{ monthStart: '2026-03-01T00:00:00.000Z', refType: 'bounty_prizes' },
 		])
 		routeStubs({ corporationTaxStub })
 
 		const response = await app.request(
-			'/api/corporation-tax/reports/top-income-monthly?corporationId=7001&refType=bounty_prize_corporation_tax&division=3&firstPartyId=9001&secondPartyId=9002&minAmount=1000000&maxAmount=2000000',
+			'/api/corporation-tax/reports/top-income-monthly?corporationId=7001&refType=bounty_prizes&division=3&firstPartyId=9001&secondPartyId=9002&minAmount=1000000',
 			{},
 			env
 		)
 
 		expect(response.status).toBe(200)
 		expect(await response.json()).toEqual([
-			{ monthStart: '2026-03-01T00:00:00.000Z', refType: 'bounty_prize_corporation_tax' },
+			{ monthStart: '2026-03-01T00:00:00.000Z', refType: 'bounty_prizes' },
 		])
 		expect(corporationTaxStub.getTopIncomeSourcesMonthlyReport).toHaveBeenCalledWith(
 			expect.objectContaining({
 				corporationId: '7001',
-				refType: 'bounty_prize_corporation_tax',
+				refType: 'bounty_prizes',
 				division: 3,
 				firstPartyId: '9001',
 				secondPartyId: '9002',
 				minAmount: '1000000',
-				maxAmount: '2000000',
 			})
 		)
-	})
-
-	it('rejects report queries where minAmount exceeds maxAmount', async () => {
-		const app = createApp(makeUser())
-		const corporationTaxStub = makeCorporationTaxStub()
-		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:tax:auditor' }] as any)
-		routeStubs({ corporationTaxStub })
-
-		const response = await app.request(
-			'/api/corporation-tax/reports/top-income?minAmount=25&maxAmount=10',
-			{},
-			env
-		)
-
-		expect(response.status).toBe(400)
-		expect(await response.json()).toEqual({
-			error: 'minAmount must be less than or equal to maxAmount',
-		})
-		expect(corporationTaxStub.getTopIncomeSourcesReport).not.toHaveBeenCalled()
 	})
 
 	it('rejects invalid ESS report sort field', async () => {
@@ -1703,6 +1688,46 @@ describe('corporation-tax routes', () => {
 		expect(response.status).toBe(403)
 		expect(await response.json()).toEqual({ error: 'Forbidden' })
 		expect(corporationTaxStub.getMemberSummaryReport).not.toHaveBeenCalled()
+	})
+
+	it('resolves member summary character name search from corporation membership, including unlinked members', async () => {
+		const app = createApp(makeUser())
+		const corporationTaxStub = makeCorporationTaxStub()
+		const corporationDataStub = {
+			getCorporationInfo: vi.fn(),
+			getDirectors: vi.fn(),
+			getMembers: vi.fn().mockResolvedValue([{ characterId: '7001' }, { characterId: '81234567' }]),
+		}
+		const characterDataStub = {
+			getCharacterInfo: vi.fn().mockResolvedValue({ characterId: '7001', corporationId: '1234' }),
+		}
+		const tokenStoreStub = {
+			searchCharacter: vi.fn().mockResolvedValue(['81234567', '99999999']),
+		}
+		corporationTaxStub.getMemberSummaryReport.mockResolvedValue([
+			{ corporationId: '1234', characterId: '81234567', assessmentCount: 1 },
+		])
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:tax:admin' }] as any)
+		routeStubs({ corporationTaxStub, corporationDataStub, characterDataStub, tokenStoreStub })
+
+		const response = await app.request(
+			'/api/corporation-tax/corporations/1234/member-summary?character=zen',
+			{},
+			env
+		)
+
+		expect(response.status).toBe(200)
+		expect(await response.json()).toEqual([
+			{ corporationId: '1234', characterId: '81234567', assessmentCount: 1 },
+		])
+		expect(tokenStoreStub.searchCharacter).toHaveBeenCalledWith('zen', false)
+		expect(corporationTaxStub.getMemberSummaryReport).toHaveBeenCalledWith({
+			corporationId: '1234',
+			characterIds: ['81234567'],
+			fromDate: undefined,
+			toDate: undefined,
+			topRefTypesLimit: undefined,
+		})
 	})
 
 	it('forbids audit log listing when user lacks tax admin permission', async () => {

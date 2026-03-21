@@ -249,12 +249,18 @@ export class TaxExportService {
 		}> = []
 		for (const schedule of dueSchedules) {
 			try {
-				await this.requestExport(schedule.createdByUserId, {
+				const exportRecord = await this.requestExport(schedule.createdByUserId, {
 					corporationId: schedule.corporationId ?? undefined,
 					format: schedule.format,
 					reportType: schedule.reportType as RequestTaxExportInput['reportType'],
 					filters: schedule.filters,
 				})
+				if (exportRecord.status !== 'completed') {
+					throw new Error(
+						exportRecord.error ??
+							`Scheduled export failed with status "${exportRecord.status}" for export ${exportRecord.id}`
+					)
+				}
 
 				const nextRunBase = schedule.nextRunAt > asOf ? schedule.nextRunAt : asOf
 				await this.db
@@ -368,7 +374,6 @@ export class TaxExportService {
 			firstPartyId: this.readString(filters, 'firstPartyId'),
 			secondPartyId: this.readString(filters, 'secondPartyId'),
 			minAmount: this.readString(filters, 'minAmount'),
-			maxAmount: this.readString(filters, 'maxAmount'),
 			limit: this.readInteger(filters, 'limit'),
 			offset: this.readInteger(filters, 'offset'),
 			sortBy: this.readString(filters, 'sortBy'),

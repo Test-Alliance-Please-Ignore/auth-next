@@ -25,7 +25,6 @@ type TaxReportQueryFilters = {
 	firstPartyId?: string
 	secondPartyId?: string
 	minAmount?: string
-	maxAmount?: string
 	limit?: number
 	offset?: number
 	sortBy?: string

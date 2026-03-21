@@ -12,6 +12,7 @@ import {
 	unique,
 	uniqueIndex,
 	uuid,
+	varchar,
 } from 'drizzle-orm/pg-core'
 
 /**
@@ -28,6 +29,33 @@ export const taxCorporationExclusions = pgTable(
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
 	(table) => [index('tax_corporation_exclusions_updated_at_idx').on(table.updatedAt)]
+)
+
+/**
+ * Managed corporations (owned by core domain).
+ * Read-only in tax domain; used for authoritative corporation scope resolution.
+ */
+export const managedCorporations = pgTable(
+	'managed_corporations',
+	{
+		corporationId: text('corporation_id').primaryKey(),
+		name: varchar('name', { length: 255 }).notNull(),
+		isActive: boolean('is_active').default(true).notNull(),
+		isMemberCorporation: boolean('is_member_corporation').default(false).notNull(),
+		isSpecialPurpose: boolean('is_special_purpose').default(false).notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		index('managed_corporations_is_active_idx').on(table.isActive),
+		index('managed_corporations_corporation_id_is_member_idx').on(
+			table.corporationId,
+			table.isMemberCorporation
+		),
+		index('managed_corporations_corporation_id_is_special_purpose_idx').on(
+			table.corporationId,
+			table.isSpecialPurpose
+		),
+	]
 )
 
 /**

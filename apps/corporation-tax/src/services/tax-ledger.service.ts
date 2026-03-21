@@ -1,5 +1,5 @@
 import { filterTaxIncomeRefTypes, isTaxIncomeRefType } from '@repo/corporation-tax'
-import { and, desc, eq, gte, lt, sql } from '@repo/db-utils'
+import { and, desc, eq, gte, inArray, lt, lte, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
 import {
@@ -89,6 +89,8 @@ type EssQualitySignals = {
 }
 
 export class TaxLedgerService {
+	private readonly INGEST_WINDOW_PAGE_SIZE = 1000
+
 	constructor(
 		private db: CorporationTaxDb,
 		private eveCorporationDataNamespace: DurableObjectNamespace,
@@ -102,7 +104,9 @@ export class TaxLedgerService {
 		const incomeRefTypesFilter = filterTaxIncomeRefTypes(input.refTypes)
 		const includeJournal = input.includeJournal ?? true
 		const includeTransactions = input.includeTransactions ?? true
-		const includeCharacterWallets = input.includeCharacterWallets ?? true
+		// Static override: character wallet ingestion is intentionally disabled for now.
+		// Re-enable by switching this gate back to request-driven input handling.
+		const includeCharacterWallets = false
 		const attemptedSources: TaxLedgerSourceType[] = []
 
 		if (includeJournal) {
@@ -126,27 +130,41 @@ export class TaxLedgerService {
 		try {
 			const [journalRows, transactionRows] = await Promise.all([
 				includeJournal
-					? corporationStub.getWalletJournalWindow(corporationId, {
-							division: input.division,
-							refTypes: incomeRefTypesFilter,
-							firstPartyId: input.firstPartyId,
-							secondPartyId: input.secondPartyId,
-							fromDate: input.fromDate,
-							toDate: input.toDate,
-							minAmount: input.minAmount,
-							maxAmount: input.maxAmount,
-							limit: input.limit,
-							offset: input.offset,
-						})
+					? this.fetchWindowPages(
+							{
+								limit: input.limit,
+								offset: input.offset,
+							},
+							(page) =>
+								corporationStub.getWalletJournalWindow(corporationId, {
+									division: input.division,
+									refTypes: incomeRefTypesFilter,
+									firstPartyId: input.firstPartyId,
+									secondPartyId: input.secondPartyId,
+									fromDate: input.fromDate,
+									toDate: input.toDate,
+									minAmount: input.minAmount,
+									maxAmount: input.maxAmount,
+									limit: page.limit,
+									offset: page.offset,
+								})
+						)
 					: Promise.resolve([]),
 				includeTransactions
-					? corporationStub.getWalletTransactionsWindow(corporationId, {
-							division: input.division,
-							fromDate: input.fromDate,
-							toDate: input.toDate,
-							limit: input.limit,
-							offset: input.offset,
-						})
+					? this.fetchWindowPages(
+							{
+								limit: input.limit,
+								offset: input.offset,
+							},
+							(page) =>
+								corporationStub.getWalletTransactionsWindow(corporationId, {
+									division: input.division,
+									fromDate: input.fromDate,
+									toDate: input.toDate,
+									limit: page.limit,
+									offset: page.offset,
+								})
+						)
 					: Promise.resolve([]),
 			])
 
@@ -228,9 +246,7 @@ export class TaxLedgerService {
 			}
 
 			for (const row of transactionRows) {
-				const unitPrice = Number(row.unitPrice)
-				const total = Number.isFinite(unitPrice) ? unitPrice * row.quantity : 0
-				const signedTotal = row.isBuy ? -total : total
+				const signedTotal = this.toSignedTransactionAmount(row.unitPrice, row.quantity, row.isBuy)
 				values.push({
 					corporationId,
 					sourceType: 'corporation_wallet_transaction',
@@ -239,9 +255,9 @@ export class TaxLedgerService {
 					sourceKey: `${corporationId}:transaction:${row.division}:${row.transactionId}`,
 					division: row.division,
 					refType: 'market_transaction',
-					amount: signedTotal.toString(),
+					amount: signedTotal,
 					balance: null,
-					direction: this.toDirection(signedTotal.toString()),
+					direction: this.toDirection(signedTotal),
 					firstPartyId: null,
 					secondPartyId: row.clientId,
 					entryDate: row.date,
@@ -300,9 +316,11 @@ export class TaxLedgerService {
 			}
 
 			for (const item of characterTransactionRows) {
-				const unitPrice = Number(item.row.unitPrice)
-				const total = Number.isFinite(unitPrice) ? unitPrice * item.row.quantity : 0
-				const signedTotal = item.row.isBuy ? -total : total
+				const signedTotal = this.toSignedTransactionAmount(
+					item.row.unitPrice,
+					item.row.quantity,
+					item.row.isBuy
+				)
 				values.push({
 					corporationId,
 					sourceType: 'character_wallet_transaction',
@@ -311,9 +329,9 @@ export class TaxLedgerService {
 					sourceKey: `${corporationId}:character-transaction:${item.characterId}:${item.row.transactionId}`,
 					division: null,
 					refType: 'market_transaction',
-					amount: signedTotal.toString(),
+					amount: signedTotal,
 					balance: null,
-					direction: this.toDirection(signedTotal.toString()),
+					direction: this.toDirection(signedTotal),
 					firstPartyId: item.characterId,
 					secondPartyId: item.row.clientId,
 					entryDate: item.row.date,
@@ -498,63 +516,57 @@ export class TaxLedgerService {
 	): Promise<TaxLedgerEntry[]> {
 		const limit = Math.min(Math.max(filters.limit ?? 1000, 1), 10000)
 		const offset = Math.max(filters.offset ?? 0, 0)
-		const fetchSize = Math.min(limit + offset, 20000)
+		const conditions = [eq(taxLedgerEntries.corporationId, corporationId)]
+		if (filters.division !== undefined) {
+			conditions.push(eq(taxLedgerEntries.division, filters.division))
+		}
+		if (filters.sourceTypes && filters.sourceTypes.length > 0) {
+			conditions.push(inArray(taxLedgerEntries.sourceType, filters.sourceTypes))
+		}
+		if (filters.characterId) {
+			const characterCondition = and(
+				inArray(taxLedgerEntries.sourceType, [
+					'character_wallet_journal',
+					'character_wallet_transaction',
+				]),
+				eq(taxLedgerEntries.sourceSecondaryId, filters.characterId)
+			)
+			if (characterCondition) {
+				conditions.push(characterCondition)
+			}
+		}
+		if (filters.refTypes && filters.refTypes.length > 0) {
+			conditions.push(inArray(taxLedgerEntries.refType, filters.refTypes))
+		}
+		if (filters.firstPartyId) {
+			conditions.push(eq(taxLedgerEntries.firstPartyId, filters.firstPartyId))
+		}
+		if (filters.secondPartyId) {
+			conditions.push(eq(taxLedgerEntries.secondPartyId, filters.secondPartyId))
+		}
+		if (filters.fromDate) {
+			conditions.push(gte(taxLedgerEntries.entryDate, filters.fromDate))
+		}
+		if (filters.toDate) {
+			conditions.push(lte(taxLedgerEntries.entryDate, filters.toDate))
+		}
+		const minAmount = Number(filters.minAmount)
+		if (Number.isFinite(minAmount)) {
+			conditions.push(sql`CAST(${taxLedgerEntries.amount} AS numeric) >= ${minAmount}`)
+		}
+		const maxAmount = Number(filters.maxAmount)
+		if (Number.isFinite(maxAmount)) {
+			conditions.push(sql`CAST(${taxLedgerEntries.amount} AS numeric) <= ${maxAmount}`)
+		}
 
 		const rows = await this.db.query.taxLedgerEntries.findMany({
-			where: eq(taxLedgerEntries.corporationId, corporationId),
+			where: and(...conditions),
 			orderBy: [desc(taxLedgerEntries.entryDate)],
-			limit: fetchSize,
+			limit,
+			offset,
 		})
 
-		const filtered = rows.filter((row) => {
-			if (filters.division !== undefined && row.division !== filters.division) {
-				return false
-			}
-			if (
-				filters.sourceTypes &&
-				filters.sourceTypes.length > 0 &&
-				!filters.sourceTypes.includes(row.sourceType as TaxLedgerSourceType)
-			) {
-				return false
-			}
-			if (filters.characterId && this.extractCharacterId(row) !== filters.characterId) {
-				return false
-			}
-			if (
-				filters.refTypes &&
-				filters.refTypes.length > 0 &&
-				!filters.refTypes.includes(row.refType)
-			) {
-				return false
-			}
-			if (filters.firstPartyId && row.firstPartyId !== filters.firstPartyId) {
-				return false
-			}
-			if (filters.secondPartyId && row.secondPartyId !== filters.secondPartyId) {
-				return false
-			}
-			if (filters.fromDate && row.entryDate < filters.fromDate) {
-				return false
-			}
-			if (filters.toDate && row.entryDate > filters.toDate) {
-				return false
-			}
-			if (filters.minAmount !== undefined) {
-				const amount = Number(row.amount)
-				if (Number.isFinite(amount) && amount < Number(filters.minAmount)) {
-					return false
-				}
-			}
-			if (filters.maxAmount !== undefined) {
-				const amount = Number(row.amount)
-				if (Number.isFinite(amount) && amount > Number(filters.maxAmount)) {
-					return false
-				}
-			}
-			return true
-		})
-
-		return filtered.slice(offset, offset + limit).map((row) => ({
+		return rows.map((row) => ({
 			id: row.id,
 			corporationId: row.corporationId,
 			sourceType: row.sourceType,
@@ -602,31 +614,27 @@ export class TaxLedgerService {
 	): Promise<TaxDailyRollup[]> {
 		const limit = Math.min(Math.max(filters.limit ?? 1000, 1), 10000)
 		const offset = Math.max(filters.offset ?? 0, 0)
-		const fetchSize = Math.min(limit + offset, 20000)
-
+		const conditions = [eq(taxDailyRollups.corporationId, corporationId)]
+		if (filters.division !== undefined) {
+			conditions.push(eq(taxDailyRollups.division, filters.division))
+		}
+		if (filters.refType !== undefined) {
+			conditions.push(eq(taxDailyRollups.refType, filters.refType))
+		}
+		if (filters.fromDate) {
+			conditions.push(gte(taxDailyRollups.rollupDate, this.toUtcDay(filters.fromDate)))
+		}
+		if (filters.toDate) {
+			conditions.push(lte(taxDailyRollups.rollupDate, this.toUtcDay(filters.toDate)))
+		}
 		const rows = await this.db.query.taxDailyRollups.findMany({
-			where: eq(taxDailyRollups.corporationId, corporationId),
+			where: and(...conditions),
 			orderBy: [desc(taxDailyRollups.rollupDate)],
-			limit: fetchSize,
+			limit,
+			offset,
 		})
 
-		const filtered = rows.filter((row) => {
-			if (filters.division !== undefined && row.division !== filters.division) {
-				return false
-			}
-			if (filters.refType !== undefined && row.refType !== filters.refType) {
-				return false
-			}
-			if (filters.fromDate && row.rollupDate < this.toUtcDay(filters.fromDate)) {
-				return false
-			}
-			if (filters.toDate && row.rollupDate > this.toUtcDay(filters.toDate)) {
-				return false
-			}
-			return true
-		})
-
-		return filtered.slice(offset, offset + limit).map((row) => ({
+		return rows.map((row) => ({
 			id: row.id,
 			corporationId: row.corporationId,
 			rollupDate: row.rollupDate,
@@ -714,26 +722,40 @@ export class TaxLedgerService {
 			try {
 				const [journalRows, transactionRows] = await Promise.all([
 					input.includeJournal
-						? characterStub.getWalletJournalWindow(characterId, {
-								refTypes: input.refTypes,
-								firstPartyId: input.firstPartyId,
-								secondPartyId: input.secondPartyId,
-								fromDate: input.fromDate,
-								toDate: input.toDate,
-								minAmount: input.minAmount,
-								maxAmount: input.maxAmount,
-								limit: input.limit,
-								offset: input.offset,
-							})
+						? this.fetchWindowPages(
+								{
+									limit: input.limit,
+									offset: input.offset,
+								},
+								(page) =>
+									characterStub.getWalletJournalWindow(characterId, {
+										refTypes: input.refTypes,
+										firstPartyId: input.firstPartyId,
+										secondPartyId: input.secondPartyId,
+										fromDate: input.fromDate,
+										toDate: input.toDate,
+										minAmount: input.minAmount,
+										maxAmount: input.maxAmount,
+										limit: page.limit,
+										offset: page.offset,
+									})
+							)
 						: Promise.resolve([] as CharacterWalletJournalRow[]),
 					input.includeTransactions
-						? characterStub.getMarketTransactionsWindow(characterId, {
-								clientId: input.secondPartyId,
-								fromDate: input.fromDate,
-								toDate: input.toDate,
-								limit: input.limit,
-								offset: input.offset,
-							})
+						? this.fetchWindowPages(
+								{
+									limit: input.limit,
+									offset: input.offset,
+								},
+								(page) =>
+									characterStub.getMarketTransactionsWindow(characterId, {
+										clientId: input.secondPartyId,
+										fromDate: input.fromDate,
+										toDate: input.toDate,
+										limit: page.limit,
+										offset: page.offset,
+									})
+							)
 						: Promise.resolve([] as CharacterMarketTransactionRow[]),
 				])
 
@@ -789,7 +811,10 @@ export class TaxLedgerService {
 		memberCharacterIds?: string[],
 		maxMemberCharacters?: number
 	): Promise<string[]> {
-		const maxCharacters = Math.min(Math.max(Math.trunc(maxMemberCharacters ?? 250), 1), 1_000)
+		// Character wallet ingestion is currently disabled (see static override in ingest path),
+		// but keep this cap sane for when we re-enable it.
+		// TODO: Replace this static fallback with authoritative corp member counts from public corp data.
+		const maxCharacters = Math.min(Math.max(Math.trunc(maxMemberCharacters ?? 5_000), 1), 5_000)
 		const providedIds =
 			memberCharacterIds
 				?.map((value) => value.trim())
@@ -828,12 +853,84 @@ export class TaxLedgerService {
 		return results
 	}
 
+	private async fetchWindowPages<TRow>(
+		paging: { limit?: number; offset?: number },
+		fetchPage: (page: { limit: number; offset: number }) => Promise<TRow[]>
+	): Promise<TRow[]> {
+		const explicitPaging = typeof paging.limit === 'number' || typeof paging.offset === 'number'
+		if (explicitPaging) {
+			const limit = Math.min(
+				Math.max(Math.trunc(paging.limit ?? this.INGEST_WINDOW_PAGE_SIZE), 1),
+				10000
+			)
+			const offset = Math.max(Math.trunc(paging.offset ?? 0), 0)
+			return fetchPage({ limit, offset })
+		}
+
+		const pageSize = this.INGEST_WINDOW_PAGE_SIZE
+		const rows: TRow[] = []
+		let offset = 0
+		for (;;) {
+			const pageRows = await fetchPage({ limit: pageSize, offset })
+			if (pageRows.length === 0) {
+				break
+			}
+			rows.push(...pageRows)
+			if (pageRows.length < pageSize) {
+				break
+			}
+			offset += pageSize
+		}
+		return rows
+	}
+
 	private toDirection(amount: string): TaxLedgerDirection {
 		const parsed = Number(amount)
 		if (!Number.isFinite(parsed) || parsed === 0) {
 			return 'neutral'
 		}
 		return parsed > 0 ? 'inflow' : 'outflow'
+	}
+
+	private toSignedTransactionAmount(unitPrice: string, quantity: number, isBuy: boolean): string {
+		const unitPriceCenti = this.parseDecimalToCenti(unitPrice)
+		const normalizedQuantity = Number.isFinite(quantity) ? Math.trunc(quantity) : 0
+		const quantityInt = normalizedQuantity > 0 ? BigInt(normalizedQuantity) : 0n
+		const totalCenti = unitPriceCenti * quantityInt
+		const signedCenti = isBuy ? -totalCenti : totalCenti
+		return this.formatCenti(signedCenti)
+	}
+
+	private parseDecimalToCenti(value: string): bigint {
+		const trimmed = value.trim()
+		if (!trimmed) {
+			return 0n
+		}
+
+		const negative = trimmed.startsWith('-')
+		const normalized = negative ? trimmed.slice(1) : trimmed
+		const [wholePartRaw, fractionalRaw = ''] = normalized.split('.')
+		const wholePart = wholePartRaw.replace(/[^0-9]/g, '')
+		const fractional = fractionalRaw
+			.replace(/[^0-9]/g, '')
+			.padEnd(2, '0')
+			.slice(0, 2)
+		const whole = wholePart ? BigInt(wholePart) : 0n
+		const fraction = fractional ? BigInt(fractional) : 0n
+		const centi = whole * 100n + fraction
+		return negative ? -centi : centi
+	}
+
+	private formatCenti(value: bigint): string {
+		const negative = value < 0n
+		const absolute = negative ? -value : value
+		const whole = absolute / 100n
+		const fraction = absolute % 100n
+		const prefix = negative ? '-' : ''
+		if (fraction === 0n) {
+			return `${prefix}${whole.toString()}`
+		}
+		return `${prefix}${whole.toString()}.${fraction.toString().padStart(2, '0')}`
 	}
 
 	private detectEssBankType(description: string | null, reason: string | null): string | null {
@@ -984,10 +1081,14 @@ export class TaxLedgerService {
 		const set: Partial<typeof taxSyncCheckpoints.$inferInsert> = {
 			updatedAt: now,
 		}
-		if (update.cursor !== undefined) {
+		// Preserve existing cursor when the current source window is empty.
+		// We only advance cursor on observed data (non-null values).
+		if (update.cursor !== undefined && update.cursor !== null) {
 			set.cursor = update.cursor
 		}
-		if (update.lastSeenAt !== undefined) {
+		// Preserve existing lastSeenAt when the current source window is empty.
+		// We only advance lastSeenAt on observed data (non-null values).
+		if (update.lastSeenAt !== undefined && update.lastSeenAt !== null) {
 			set.lastSeenAt = update.lastSeenAt
 		}
 		if (update.lastSuccessfulSyncAt !== undefined) {
@@ -1028,16 +1129,6 @@ export class TaxLedgerService {
 			const dayEnd = new Date(dayStart)
 			dayEnd.setUTCDate(dayEnd.getUTCDate() + 1)
 
-			const entries = await this.db.query.taxLedgerEntries.findMany({
-				where: and(
-					eq(taxLedgerEntries.corporationId, corporationId),
-					gte(taxLedgerEntries.entryDate, dayStart),
-					lt(taxLedgerEntries.entryDate, dayEnd)
-				),
-				orderBy: [desc(taxLedgerEntries.entryDate)],
-				limit: 20_000,
-			})
-
 			type AggregatedRollup = {
 				division: number | null
 				refType: string | null
@@ -1047,27 +1138,48 @@ export class TaxLedgerService {
 			}
 
 			const aggregateMap = new Map<string, AggregatedRollup>()
-			for (const entry of entries) {
-				const key = `${entry.division ?? 'null'}:${entry.refType ?? 'null'}`
-				const existing = aggregateMap.get(key)
-				const amount = Number(entry.amount)
-				const safeAmount = Number.isFinite(amount) ? amount : 0
-				const taxableIncome = safeAmount > 0 ? safeAmount : 0
-				const essIncome = entry.isEss && safeAmount > 0 ? safeAmount : 0
-
-				if (existing) {
-					existing.taxableIncome += taxableIncome
-					existing.essIncome += essIncome
-					existing.entryCount += 1
-				} else {
-					aggregateMap.set(key, {
-						division: entry.division,
-						refType: entry.refType,
-						taxableIncome,
-						essIncome,
-						entryCount: 1,
-					})
+			const pageSize = 5_000
+			let offset = 0
+			for (;;) {
+				const entries = await this.db.query.taxLedgerEntries.findMany({
+					where: and(
+						eq(taxLedgerEntries.corporationId, corporationId),
+						gte(taxLedgerEntries.entryDate, dayStart),
+						lt(taxLedgerEntries.entryDate, dayEnd)
+					),
+					orderBy: [desc(taxLedgerEntries.entryDate)],
+					limit: pageSize,
+					offset,
+				})
+				if (entries.length === 0) {
+					break
 				}
+				for (const entry of entries) {
+					const key = `${entry.division ?? 'null'}:${entry.refType ?? 'null'}`
+					const existing = aggregateMap.get(key)
+					const amount = Number(entry.amount)
+					const safeAmount = Number.isFinite(amount) ? amount : 0
+					const taxableIncome = safeAmount > 0 ? safeAmount : 0
+					const essIncome = entry.isEss && safeAmount > 0 ? safeAmount : 0
+
+					if (existing) {
+						existing.taxableIncome += taxableIncome
+						existing.essIncome += essIncome
+						existing.entryCount += 1
+					} else {
+						aggregateMap.set(key, {
+							division: entry.division,
+							refType: entry.refType,
+							taxableIncome,
+							essIncome,
+							entryCount: 1,
+						})
+					}
+				}
+				if (entries.length < pageSize) {
+					break
+				}
+				offset += entries.length
 			}
 
 			await this.db

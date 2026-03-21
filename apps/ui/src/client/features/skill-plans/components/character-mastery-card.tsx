@@ -52,7 +52,7 @@ export function CharacterMasteryCard({
 					progressPercent: 100,
 				}
 			case 'insufficient':
-			default:
+			default: {
 				// Calculate color gradient based on actual progress percentage
 				let bgClass = 'bg-muted/20'
 				let borderColor = 'border-muted'
@@ -105,6 +105,7 @@ export function CharacterMasteryCard({
 					text: progressPercent === 0 ? 'Training Needed' : 'In Progress',
 					progressPercent,
 				}
+			}
 		}
 	}
 

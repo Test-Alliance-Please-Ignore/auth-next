@@ -17,6 +17,7 @@ import {
 import type { CorporationTax } from '@repo/corporation-tax'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
+import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Features } from '@repo/features'
 import type { App, SessionUser } from '../context'
 
@@ -241,7 +242,6 @@ function parseReportWindowFiltersFromQuery(
 		firstPartyId?: string
 		secondPartyId?: string
 		minAmount?: string
-		maxAmount?: string
 		limit?: number
 		offset?: number
 		sortBy?: string
@@ -262,7 +262,6 @@ function parseReportWindowFiltersFromQuery(
 	const firstPartyId = request.query('firstPartyId')?.trim() || undefined
 	const secondPartyId = request.query('secondPartyId')?.trim() || undefined
 	const minAmount = request.query('minAmount')?.trim() || undefined
-	const maxAmount = request.query('maxAmount')?.trim() || undefined
 	const limit = parseIntegerQueryParam(request.query('limit'))
 	const offset = parseIntegerQueryParam(request.query('offset'))
 	const sortBy = request.query('sortBy') || undefined
@@ -292,15 +291,6 @@ function parseReportWindowFiltersFromQuery(
 	) {
 		return { error: 'minAmount must be a numeric value' }
 	}
-	if (
-		maxAmount !== undefined &&
-		(!Number.isFinite(Number(maxAmount)) || Number.isNaN(Number(maxAmount)))
-	) {
-		return { error: 'maxAmount must be a numeric value' }
-	}
-	if (minAmount !== undefined && maxAmount !== undefined && Number(minAmount) > Number(maxAmount)) {
-		return { error: 'minAmount must be less than or equal to maxAmount' }
-	}
 	if (limit !== undefined && (limit < 1 || limit > 200)) {
 		return { error: 'limit must be an integer between 1 and 200' }
 	}
@@ -327,7 +317,6 @@ function parseReportWindowFiltersFromQuery(
 			firstPartyId,
 			secondPartyId,
 			minAmount,
-			maxAmount,
 			limit: limit ?? undefined,
 			offset: offset ?? undefined,
 			sortBy: sortBy ?? undefined,
@@ -1250,10 +1239,8 @@ app.post('/corporations/:corporationId/assessments/run', requireAuth(), async (c
 			corporationId,
 			periodStart,
 			periodEnd,
-			includeCharacterWallets:
-				typeof body.includeCharacterWallets === 'boolean'
-					? body.includeCharacterWallets
-					: undefined,
+			// Static override: keep assessments corporation-wallet only for now.
+			includeCharacterWallets: false,
 		})
 		return c.json(result)
 	} catch (error) {
@@ -1303,10 +1290,8 @@ app.post('/corporations/:corporationId/assessments/rebuild-finalized', requireAu
 			corporationId,
 			periodStart,
 			periodEnd,
-			includeCharacterWallets:
-				typeof body.includeCharacterWallets === 'boolean'
-					? body.includeCharacterWallets
-					: undefined,
+			// Static override: keep finalized rebuilds corporation-wallet only for now.
+			includeCharacterWallets: false,
 		})
 		return c.json(result)
 	} catch (error) {
@@ -1442,10 +1427,8 @@ app.post('/corporations/:corporationId/ledger/ingest', requireAuth(), async (c) 
 			includeJournal: typeof body.includeJournal === 'boolean' ? body.includeJournal : undefined,
 			includeTransactions:
 				typeof body.includeTransactions === 'boolean' ? body.includeTransactions : undefined,
-			includeCharacterWallets:
-				typeof body.includeCharacterWallets === 'boolean'
-					? body.includeCharacterWallets
-					: undefined,
+			// Static override: ingest only corporation wallet sources for now.
+			includeCharacterWallets: false,
 			memberCharacterIds:
 				Array.isArray(body.memberCharacterIds) &&
 				body.memberCharacterIds.every((value) => typeof value === 'string')
@@ -2270,23 +2253,48 @@ app.get('/corporations/:corporationId/member-summary', requireAuth(), async (c) 
 			if (numericOnly) {
 				targetCharacterIds = scopedCharacterIdSet.has(characterQuery) ? [characterQuery] : []
 			} else if (scopedCharacterIds.length > 0) {
-				const db = c.get('db')
-				if (!db) {
-					return c.json({ error: 'Database unavailable' }, 500)
-				}
-				const rows = await db
-					.select({
-						characterId: userCharacters.characterId,
+				const matchedCharacterIds = new Set<string>()
+
+				// Resolve name matches via ESI search and then scope to corporation members.
+				// This includes members that are not linked site users.
+				try {
+					const tokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+					const searchResultIds = await tokenStoreStub.searchCharacter(characterQuery, false)
+					for (const characterId of searchResultIds) {
+						if (scopedCharacterIdSet.has(characterId)) {
+							matchedCharacterIds.add(characterId)
+						}
+					}
+				} catch (error) {
+					logger.warn('[CorporationTax] Failed ESI character search for member summary', {
+						corporationId,
+						characterQuery,
+						error: error instanceof Error ? error.message : String(error),
 					})
-					.from(userCharacters)
-					.where(
-						and(
-							inArray(userCharacters.characterId, scopedCharacterIds),
-							ilike(userCharacters.characterName, `${characterQuery}%`)
+				}
+
+				// Keep local fallback for linked-user rows so name-prefix search still works
+				// when ESI search is unavailable in development/test paths.
+				const db = c.get('db')
+				if (db) {
+					const rows = await db
+						.select({
+							characterId: userCharacters.characterId,
+						})
+						.from(userCharacters)
+						.where(
+							and(
+								inArray(userCharacters.characterId, scopedCharacterIds),
+								ilike(userCharacters.characterName, `${characterQuery}%`)
+							)
 						)
-					)
-					.limit(100)
-				targetCharacterIds = rows.map((row) => row.characterId)
+						.limit(100)
+					for (const row of rows) {
+						matchedCharacterIds.add(row.characterId)
+					}
+				}
+
+				targetCharacterIds = Array.from(matchedCharacterIds)
 			} else {
 				targetCharacterIds = []
 			}

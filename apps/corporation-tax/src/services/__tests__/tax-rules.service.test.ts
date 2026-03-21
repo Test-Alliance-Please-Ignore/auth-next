@@ -152,7 +152,7 @@ describe('TaxRulesService', () => {
 
 		await expect(
 			service.updateRuleSet('rule-1', {
-				appliesToRefType: 'brokers_fee',
+				appliesToRefType: 'definitely_not_income',
 			})
 		).rejects.toThrow('Rule appliesToRefType must be a valid tax income ref type')
 		expect(mockDb.update).not.toHaveBeenCalled()

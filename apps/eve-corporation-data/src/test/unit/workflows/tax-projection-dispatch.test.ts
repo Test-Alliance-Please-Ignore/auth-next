@@ -3,33 +3,12 @@ import { describe, expect, it, vi } from 'vitest'
 import { dispatchTaxProjectionRefresh } from '../../../workflows/utils/tax-projection-dispatch'
 
 describe('dispatchTaxProjectionRefresh', () => {
-	it('skips downstream trigger when wallet sync persisted zero rows', async () => {
+	it('fires downstream projection trigger exactly once', async () => {
 		const trigger = vi.fn().mockResolvedValue(undefined)
 		const clearRetryIntent = vi.fn().mockResolvedValue(undefined)
 		const recordRetryIntent = vi.fn().mockResolvedValue(undefined)
 
 		const result = await dispatchTaxProjectionRefresh({
-			shouldTrigger: false,
-			deps: {
-				trigger,
-				clearRetryIntent,
-				recordRetryIntent,
-			},
-		})
-
-		expect(result).toEqual({ outcome: 'skipped' })
-		expect(trigger).not.toHaveBeenCalled()
-		expect(clearRetryIntent).not.toHaveBeenCalled()
-		expect(recordRetryIntent).not.toHaveBeenCalled()
-	})
-
-	it('fires downstream projection trigger exactly once when rows are persisted', async () => {
-		const trigger = vi.fn().mockResolvedValue(undefined)
-		const clearRetryIntent = vi.fn().mockResolvedValue(undefined)
-		const recordRetryIntent = vi.fn().mockResolvedValue(undefined)
-
-		const result = await dispatchTaxProjectionRefresh({
-			shouldTrigger: true,
 			deps: {
 				trigger,
 				clearRetryIntent,
@@ -49,7 +28,6 @@ describe('dispatchTaxProjectionRefresh', () => {
 		const recordRetryIntent = vi.fn().mockResolvedValue(undefined)
 
 		const result = await dispatchTaxProjectionRefresh({
-			shouldTrigger: true,
 			deps: {
 				trigger,
 				clearRetryIntent,

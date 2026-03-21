@@ -2,11 +2,16 @@ import { describe, expect, it } from 'vitest'
 
 import { planProjectionRefreshFromWalletSync } from '../projection-refresh-plan'
 
-import type { TaxLedgerIngestionHealth, TriggerTaxProjectionRefreshInput } from '@repo/corporation-tax'
+import type {
+	TaxLedgerIngestionHealth,
+	TriggerTaxProjectionRefreshInput,
+} from '@repo/corporation-tax'
 
 const OVERLAP_MS = 48 * 60 * 60 * 1000
 
-function createHealth(checkpoints: TaxLedgerIngestionHealth['checkpoints']): TaxLedgerIngestionHealth {
+function createHealth(
+	checkpoints: TaxLedgerIngestionHealth['checkpoints']
+): TaxLedgerIngestionHealth {
 	return {
 		ready: true,
 		lastEntryUpdatedAt: null,
@@ -97,7 +102,7 @@ describe('planProjectionRefreshFromWalletSync', () => {
 		if (result.shouldTrigger) {
 			expect(result.ingestInput.includeJournal).toBe(true)
 			expect(result.ingestInput.includeTransactions).toBe(false)
-			expect(result.ingestInput.includeCharacterWallets).toBe(true)
+			expect(result.ingestInput.includeCharacterWallets).toBe(false)
 			expect(result.ingestInput.fromDate?.toISOString()).toBe(
 				new Date(lastSeenAt.getTime() - OVERLAP_MS).toISOString()
 			)
@@ -153,6 +158,103 @@ describe('planProjectionRefreshFromWalletSync', () => {
 			)
 			expect(result.ingestInput.includeJournal).toBe(true)
 			expect(result.ingestInput.includeTransactions).toBe(true)
+		}
+	})
+
+	it('allows checkpoint overlap lookback to reach into previous month at boundary', () => {
+		const lastSeenAt = new Date('2026-03-01T06:00:00.000Z')
+		const result = planProjectionRefreshFromWalletSync(
+			baseInput({
+				triggeredAt: new Date('2026-03-20T00:00:00.000Z'),
+				walletJournal: {
+					fetchedCount: 3,
+					maxId: '900',
+					maxDate: new Date('2026-03-20T13:00:00.000Z'),
+				},
+			}),
+			createHealth([
+				{
+					id: 'cp-j',
+					corporationId: '98000001',
+					sourceType: 'corporation_wallet_journal',
+					cursor: '800',
+					lastSeenAt,
+					lastSuccessfulSyncAt: null,
+					lastError: null,
+					createdAt: new Date('2026-02-28T00:00:00.000Z'),
+					updatedAt: new Date('2026-03-01T06:00:00.000Z'),
+				},
+			]),
+			OVERLAP_MS
+		)
+		expect(result.shouldTrigger).toBe(true)
+		if (result.shouldTrigger) {
+			expect(result.ingestInput.fromDate?.toISOString()).toBe(
+				new Date(lastSeenAt.getTime() - OVERLAP_MS).toISOString()
+			)
+		}
+	})
+
+	it('defaults fromDate to start of current month when stale source has no checkpoint timestamp', () => {
+		const result = planProjectionRefreshFromWalletSync(
+			baseInput({
+				triggeredAt: new Date('2026-03-20T00:00:00.000Z'),
+				walletJournal: {
+					fetchedCount: 3,
+					maxId: '900',
+					maxDate: new Date('2026-03-20T13:00:00.000Z'),
+				},
+			}),
+			createHealth([
+				{
+					id: 'cp-j',
+					corporationId: '98000001',
+					sourceType: 'corporation_wallet_journal',
+					cursor: null,
+					lastSeenAt: null,
+					lastSuccessfulSyncAt: null,
+					lastError: null,
+					createdAt: new Date('2026-02-28T00:00:00.000Z'),
+					updatedAt: new Date('2026-03-01T00:00:00.000Z'),
+				},
+			]),
+			OVERLAP_MS
+		)
+		expect(result.shouldTrigger).toBe(true)
+		if (result.shouldTrigger) {
+			expect(result.ingestInput.fromDate?.toISOString()).toBe('2026-03-01T00:00:00.000Z')
+		}
+	})
+
+	it('clamps to current month start when stale checkpoint is older than boundary allowance', () => {
+		const lastSeenAt = new Date('2026-02-27T23:00:00.000Z')
+		const result = planProjectionRefreshFromWalletSync(
+			baseInput({
+				triggeredAt: new Date('2026-03-20T00:00:00.000Z'),
+				walletJournal: {
+					fetchedCount: 3,
+					maxId: '900',
+					maxDate: new Date('2026-03-20T13:00:00.000Z'),
+				},
+			}),
+			createHealth([
+				{
+					id: 'cp-j',
+					corporationId: '98000001',
+					sourceType: 'corporation_wallet_journal',
+					cursor: '800',
+					lastSeenAt,
+					lastSuccessfulSyncAt: null,
+					lastError: null,
+					createdAt: new Date('2026-02-27T23:00:00.000Z'),
+					updatedAt: new Date('2026-02-27T23:00:00.000Z'),
+				},
+			]),
+			OVERLAP_MS
+		)
+		expect(result.shouldTrigger).toBe(true)
+		if (result.shouldTrigger) {
+			expect(result.ingestInput.fromDate?.toISOString()).toBe('2026-03-01T00:00:00.000Z')
 		}
 	})
 })

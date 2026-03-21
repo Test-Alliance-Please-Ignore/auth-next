@@ -5,7 +5,6 @@ export interface TaxProjectionDispatchDependencies {
 }
 
 export type TaxProjectionDispatchResult =
-	| { outcome: 'skipped' }
 	| { outcome: 'triggered' }
 	| { outcome: 'trigger_failed'; errorMessage: string }
 
@@ -14,13 +13,8 @@ export type TaxProjectionDispatchResult =
  * Ensures exactly one trigger attempt for each dispatch call.
  */
 export async function dispatchTaxProjectionRefresh(args: {
-	shouldTrigger: boolean
 	deps: TaxProjectionDispatchDependencies
 }): Promise<TaxProjectionDispatchResult> {
-	if (!args.shouldTrigger) {
-		return { outcome: 'skipped' }
-	}
-
 	try {
 		await args.deps.trigger()
 		await args.deps.clearRetryIntent()

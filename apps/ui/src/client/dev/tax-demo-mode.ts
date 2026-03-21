@@ -65,7 +65,6 @@ type TaxReportFilters = {
 	firstPartyId?: string
 	secondPartyId?: string
 	minAmount?: string
-	maxAmount?: string
 	limit?: number
 	offset?: number
 	sortBy?: string
@@ -826,7 +825,6 @@ function filterLedgerEntries(rows: TaxLedgerEntry[], filters?: TaxReportFilters)
 		if (filters?.firstPartyId && row.firstPartyId !== filters.firstPartyId) return false
 		if (filters?.secondPartyId && row.secondPartyId !== filters.secondPartyId) return false
 		if (filters?.minAmount && parseAmount(row.amount) < parseAmount(filters.minAmount)) return false
-		if (filters?.maxAmount && parseAmount(row.amount) > parseAmount(filters.maxAmount)) return false
 		if (!matchesDate(row.entryDate, filters?.fromDate, filters?.toDate)) return false
 		return true
 	})

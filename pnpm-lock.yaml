@@ -941,6 +941,9 @@ importers:
       '@neondatabase/serverless':
         specifier: 1.0.2
         version: 1.0.2
+      '@repo/corporation-tax':
+        specifier: workspace:*
+        version: link:../../packages/corporation-tax
       '@repo/db-utils':
         specifier: workspace:*
         version: link:../../packages/db-utils
@@ -2153,13 +2156,13 @@ importers:
         specifier: 5.2.2
         version: 5.2.2(react-hook-form@7.66.1(react@19.2.0))
       '@mantine/core':
-        specifier: ^7.17.8
+        specifier: 7.17.8
         version: 7.17.8(@mantine/hooks@7.17.8(react@19.2.0))(@types/react@19.2.6)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
       '@mantine/dates':
-        specifier: ^7.17.8
+        specifier: 7.17.8
         version: 7.17.8(@mantine/core@7.17.8(@mantine/hooks@7.17.8(react@19.2.0))(@types/react@19.2.6)(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(@mantine/hooks@7.17.8(react@19.2.0))(dayjs@1.11.20)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
       '@mantine/hooks':
-        specifier: ^7.17.8
+        specifier: 7.17.8
         version: 7.17.8(react@19.2.0)
       '@radix-ui/react-accordion':
         specifier: 1.2.12
@@ -2201,7 +2204,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/srp
       '@tabler/icons-react':
-        specifier: ^3.40.0
+        specifier: 3.40.0
         version: 3.40.0(react@19.2.0)
       '@tanstack/react-query':
         specifier: 5.90.10
@@ -2213,7 +2216,7 @@ importers:
         specifier: 4.1.0
         version: 4.1.0
       dayjs:
-        specifier: ^1.11.20
+        specifier: 1.11.20
         version: 1.11.20
       hono:
         specifier: 4.10.6
@@ -4344,9 +4347,6 @@ packages:
     peerDependencies:
       react: '>=16.8.0'
       react-dom: '>=16.8.0'
-
-  '@floating-ui/utils@0.2.10':
-    resolution: {integrity: sha512-aGTxbpbg8/b5JfU1HXSrbH3wXZuLPJcNEcZQFMxLs3oSzgtVu6nFPkbbGGUvBcUjKV2YyB9Wxxabo+HEH9tcRQ==}
 
   '@floating-ui/utils@0.2.11':
     resolution: {integrity: sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg==}
@@ -9495,7 +9495,7 @@ snapshots:
 
   '@floating-ui/core@1.7.3':
     dependencies:
-      '@floating-ui/utils': 0.2.10
+      '@floating-ui/utils': 0.2.11
 
   '@floating-ui/core@1.7.5':
     dependencies:
@@ -9504,7 +9504,7 @@ snapshots:
   '@floating-ui/dom@1.7.4':
     dependencies:
       '@floating-ui/core': 1.7.3
-      '@floating-ui/utils': 0.2.10
+      '@floating-ui/utils': 0.2.11
 
   '@floating-ui/dom@1.7.6':
     dependencies:
@@ -9530,8 +9530,6 @@ snapshots:
       react: 19.2.0
       react-dom: 19.2.0(react@19.2.0)
       tabbable: 6.4.0
-
-  '@floating-ui/utils@0.2.10': {}
 
   '@floating-ui/utils@0.2.11': {}
 

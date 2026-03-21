@@ -50,18 +50,11 @@ export class TaxBillingService {
 		const now = new Date()
 
 		try {
-			if (shouldBeDefault) {
-				await this.db
-					.update(taxCorporationBillingConfigs)
-					.set({ isDefault: false, updatedAt: now })
-					.where(eq(taxCorporationBillingConfigs.corporationId, corporationId))
-			}
-
 			const [inserted] = await this.db
 				.insert(taxCorporationBillingConfigs)
 				.values({
 					corporationId,
-					isDefault: shouldBeDefault,
+					isDefault: false,
 					billingEnabled: payload.billingEnabled,
 					billingIssuerUserId: payload.billingIssuerUserId,
 					billingPayeeId: payload.billingPayeeId,
@@ -74,6 +67,10 @@ export class TaxBillingService {
 
 			if (!inserted) {
 				throw new Error('Failed to create billing configuration')
+			}
+
+			if (shouldBeDefault) {
+				return this.reconcileDefaultBillingConfig(corporationId, inserted.id, now)
 			}
 
 			return this.toBillingConfig(inserted)
@@ -102,17 +99,10 @@ export class TaxBillingService {
 		const shouldBeDefault = input.isDefault === true
 
 		try {
-			if (shouldBeDefault) {
-				await this.db
-					.update(taxCorporationBillingConfigs)
-					.set({ isDefault: false, updatedAt: now })
-					.where(eq(taxCorporationBillingConfigs.corporationId, corporationId))
-			}
-
 			const [updated] = await this.db
 				.update(taxCorporationBillingConfigs)
 				.set({
-					isDefault: input.isDefault ?? existing.isDefault,
+					isDefault: shouldBeDefault ? existing.isDefault : (input.isDefault ?? existing.isDefault),
 					billingEnabled: payload.billingEnabled ?? existing.billingEnabled,
 					billingIssuerUserId: payload.billingIssuerUserId ?? existing.billingIssuerUserId,
 					billingPayeeId: payload.billingPayeeId ?? existing.billingPayeeId,
@@ -125,6 +115,10 @@ export class TaxBillingService {
 
 			if (!updated) {
 				throw new Error('Billing configuration not found')
+			}
+
+			if (shouldBeDefault) {
+				return this.reconcileDefaultBillingConfig(corporationId, updated.id, now)
 			}
 
 			if (updated.isDefault === false) {
@@ -188,19 +182,7 @@ export class TaxBillingService {
 			throw new Error('Billing configuration not found')
 		}
 		const now = new Date()
-		await this.db
-			.update(taxCorporationBillingConfigs)
-			.set({ isDefault: false, updatedAt: now })
-			.where(eq(taxCorporationBillingConfigs.corporationId, corporationId))
-		const [updated] = await this.db
-			.update(taxCorporationBillingConfigs)
-			.set({ isDefault: true, updatedAt: now })
-			.where(eq(taxCorporationBillingConfigs.id, configId))
-			.returning()
-		if (!updated) {
-			throw new Error('Billing configuration not found')
-		}
-		return this.toBillingConfig(updated)
+		return this.reconcileDefaultBillingConfig(corporationId, configId, now)
 	}
 
 	async createBillsForAssessment(
@@ -548,6 +530,28 @@ export class TaxBillingService {
 			}
 		}
 		throw error
+	}
+
+	private async reconcileDefaultBillingConfig(
+		corporationId: string,
+		defaultConfigId: string,
+		now: Date
+	): Promise<TaxCorporationBillingConfig> {
+		const rows = await this.db
+			.update(taxCorporationBillingConfigs)
+			.set({
+				isDefault: sql`${taxCorporationBillingConfigs.id} = ${defaultConfigId}`,
+				updatedAt: now,
+			})
+			.where(eq(taxCorporationBillingConfigs.corporationId, corporationId))
+			.returning()
+
+		const selected = rows.find((row) => row.id === defaultConfigId)
+		if (!selected) {
+			throw new Error('Billing configuration not found')
+		}
+
+		return this.toBillingConfig(selected)
 	}
 
 	private toBillingConfig(

@@ -42,15 +42,6 @@ function normalizeToken(value: string, fallback: string): string {
 	return compact.length > 0 ? compact.toLowerCase().slice(0, 16) : fallback
 }
 
-export function shouldTriggerTaxProjectionRefresh(stats: WalletProjectionStats): boolean {
-	const walletJournalPersistedNewRows = Math.max(stats.walletJournalPersistedNewRows ?? 0, 0)
-	const walletTransactionsPersistedNewRows = Math.max(
-		stats.walletTransactionsPersistedNewRows ?? 0,
-		0
-	)
-	return walletJournalPersistedNewRows > 0 || walletTransactionsPersistedNewRows > 0
-}
-
 export function createTaxProjectionTriggerRunId(input: {
 	corporationId: string
 	stats: WalletProjectionStats

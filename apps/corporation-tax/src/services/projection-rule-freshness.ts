@@ -5,9 +5,7 @@ export type RuleFreshnessWindowInput = {
 	membershipMutationAt: Date | null
 }
 
-export function computeRuleMutationRecalcStart(
-	input: RuleFreshnessWindowInput
-): Date | null {
+export function computeRuleMutationRecalcStart(input: RuleFreshnessWindowInput): Date | null {
 	const projectionUpdatedAt = input.projectionUpdatedAt ?? new Date(0)
 	const earliestRelevantMutation = minDate(
 		input.earliestRuleSetMutationAt,
@@ -16,7 +14,8 @@ export function computeRuleMutationRecalcStart(
 	if (!earliestRelevantMutation || earliestRelevantMutation <= projectionUpdatedAt) {
 		return null
 	}
-	return maxDate(input.openPeriodStart, earliestRelevantMutation)
+	// Rule mutations invalidate the entire open-period projection window.
+	return input.openPeriodStart
 }
 
 function minDate(...dates: Array<Date | null | undefined>): Date | null {
@@ -28,15 +27,4 @@ function minDate(...dates: Array<Date | null | undefined>): Date | null {
 		}
 	}
 	return earliest
-}
-
-function maxDate(...dates: Array<Date | null | undefined>): Date {
-	let latest: Date | null = null
-	for (const value of dates) {
-		if (!value) continue
-		if (!latest || value > latest) {
-			latest = value
-		}
-	}
-	return latest ?? new Date(0)
 }

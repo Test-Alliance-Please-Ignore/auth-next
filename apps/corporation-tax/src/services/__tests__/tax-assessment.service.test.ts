@@ -864,8 +864,105 @@ describe('TaxAssessmentService', () => {
 			corporationId: '98000001',
 			periodStart: closedStart,
 			periodEnd: closedEnd,
-			includeCharacterWallets: true,
+			includeCharacterWallets: false,
 		})
+	})
+
+	it('runs without db.transaction when direct write methods are available', async () => {
+		const periodStart = new Date('2026-01-01T00:00:00.000Z')
+		const periodEnd = new Date('2026-01-31T23:59:59.999Z')
+		const now = new Date('2026-02-01T00:00:00.000Z')
+
+		const directDb = {
+			query: {
+				taxCorporationExclusions: {
+					findFirst: vi.fn().mockResolvedValue(null),
+				},
+				taxLedgerEntries: {
+					findMany: vi.fn().mockResolvedValue([]),
+				},
+				taxRuleGroupAttachments: {
+					findMany: vi.fn().mockResolvedValue([]),
+				},
+				taxRuleSets: {
+					findMany: vi.fn().mockResolvedValue([]),
+				},
+				taxAssessments: {
+					findMany: vi.fn().mockResolvedValue([]),
+				},
+			},
+			insert: vi.fn((table: unknown) => {
+				if (table === taxPeriods) {
+					return {
+						values: vi.fn(() => ({
+							onConflictDoUpdate: vi.fn(() => ({
+								returning: vi.fn(() =>
+									Promise.resolve([
+										{
+											id: 'period-direct-1',
+											corporationId: '98000001',
+											periodStart,
+											periodEnd,
+											status: 'assessed',
+											closedAt: now,
+											createdAt: now,
+											updatedAt: now,
+										},
+									])
+								),
+							})),
+						})),
+					}
+				}
+				if (table === taxAssessments) {
+					return {
+						values: vi.fn((value: any) => ({
+							returning: vi.fn(() =>
+								Promise.resolve([
+									{
+										id: 'assessment-direct-1',
+										billId: null,
+										billStatus: null,
+										billStatusLastSyncedAt: null,
+										approvedBy: null,
+										approvedAt: null,
+										createdAt: now,
+										updatedAt: now,
+										...value,
+									},
+								])
+							),
+						})),
+					}
+				}
+				if (table === taxAssessmentLines || table === taxDiscrepancies) {
+					return {
+						values: vi.fn(() => Promise.resolve()),
+					}
+				}
+				throw new Error('Unexpected directDb.insert table')
+			}),
+			update: vi.fn(() => ({
+				set: vi.fn(() => ({
+					where: vi.fn(() => ({
+						returning: vi.fn(() => Promise.resolve([])),
+					})),
+				})),
+			})),
+			delete: vi.fn(() => ({
+				where: vi.fn(() => Promise.resolve()),
+			})),
+		}
+
+		const service = new TaxAssessmentService(directDb as any, {} as DurableObjectNamespace)
+		const result = await service.runAssessmentForPeriod({
+			corporationId: '98000001',
+			periodStart,
+			periodEnd,
+		})
+
+		expect(result.assessment.id).toBe('assessment-direct-1')
+		expect(result.lineCount).toBe(0)
 	})
 
 	it('applies projection rollup delta idempotently across repeated open-period runs', async () => {
@@ -873,12 +970,38 @@ describe('TaxAssessmentService', () => {
 		const summaryVersionWrites: any[] = []
 		const openStart = new Date('2026-03-01T00:00:00.000Z')
 		const openEnd = new Date('2026-03-20T00:00:00.000Z')
+		const stalePeriodStart = new Date('2026-03-12T00:00:00.000Z')
 		const now = new Date('2026-03-20T00:00:00.000Z')
 
 		vi.useFakeTimers()
 		vi.setSystemTime(now)
 		const originalDateNow = Date.now
 		Date.now = () => now.getTime()
+		projectionRowsByKey.set(
+			[
+				'98000001',
+				stalePeriodStart.toISOString(),
+				openEnd.toISOString(),
+				new Date('2026-03-10T00:00:00.000Z').toISOString(),
+				'7001',
+				'bounty_prizes',
+			].join(':'),
+			{
+				corporationId: '98000001',
+				periodStart: stalePeriodStart,
+				periodEnd: openEnd,
+				rollupDate: new Date('2026-03-10T00:00:00.000Z'),
+				characterId: '7001',
+				refType: 'bounty_prizes',
+				contributionIncome: '9999',
+				taxableContributionIncome: '9999',
+				assessmentCount: 1,
+				sourceRowCount: 1,
+				lastAssessmentAt: openEnd,
+				lastLedgerEntryDate: new Date('2026-03-10T00:00:00.000Z'),
+				updatedAt: now,
+			}
+		)
 
 		const projectionDb = {
 			query: {
@@ -1019,8 +1142,21 @@ describe('TaxAssessmentService', () => {
 							})),
 						})),
 					})),
-					delete: vi.fn(() => ({
-						where: vi.fn(() => Promise.resolve()),
+					delete: vi.fn((table: unknown) => ({
+						where: vi.fn(() => {
+							if (table === taxMemberContributionProjectionRollups) {
+								for (const [key, row] of projectionRowsByKey.entries()) {
+									if (
+										row.corporationId === '98000001' &&
+										row.periodEnd.toISOString() === openEnd.toISOString() &&
+										row.periodStart.toISOString() !== openStart.toISOString()
+									) {
+										projectionRowsByKey.delete(key)
+									}
+								}
+							}
+							return Promise.resolve()
+						}),
 					})),
 					query: {
 						taxAssessments: {
@@ -1074,6 +1210,7 @@ describe('TaxAssessmentService', () => {
 		expect(stored.refType).toBe('bounty_prizes')
 		expect(stored.contributionIncome).toBe('1000')
 		expect(stored.taxableContributionIncome).toBe('0')
+		expect(stored.periodStart.toISOString()).toBe(openStart.toISOString())
 		expect(summaryVersionWrites.length).toBe(2)
 
 		Date.now = originalDateNow

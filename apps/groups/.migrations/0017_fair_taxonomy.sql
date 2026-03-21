@@ -1,30 +1,8 @@
 -- Seed taxation permission category and permission URNs
-WITH upsert_permission_category AS (
-	INSERT INTO permission_categories ("name", "description")
-	VALUES ('Taxation', 'Permissions for corporation taxation management')
-	ON CONFLICT ("name") DO UPDATE
-		SET "description" = EXCLUDED."description",
-			"updated_at" = now()
-	RETURNING "id"
-),
-resolved_permission_category AS (
-	SELECT "id" FROM upsert_permission_category
-	UNION ALL
-	SELECT "id" FROM permission_categories WHERE "name" = 'Taxation'
-	LIMIT 1
-)
-INSERT INTO permissions ("urn", "name", "description", "category_id", "created_by")
-SELECT
-	'urn:tax:viewer',
-	'Tax Viewer',
-	'Read-only access to corporation taxation dashboards, reports, and bill history',
-	"resolved_permission_category"."id",
-	'system'
-FROM resolved_permission_category
-ON CONFLICT ("urn") DO UPDATE
-	SET "name" = EXCLUDED."name",
-		"description" = EXCLUDED."description",
-		"category_id" = EXCLUDED."category_id",
+INSERT INTO permission_categories ("name", "description")
+VALUES ('Taxation', 'Permissions for corporation taxation management')
+ON CONFLICT ("name") DO UPDATE
+	SET "description" = EXCLUDED."description",
 		"updated_at" = now();
 --> statement-breakpoint
 WITH resolved_permission_category AS (
@@ -87,24 +65,6 @@ resolved_group_category AS (
 INSERT INTO groups ("category_id", "name", "description", "visibility", "join_mode", "owner_id")
 SELECT
 	"resolved_group_category"."id",
-	'Tax Viewer',
-	'System-managed group granting urn:tax:viewer',
-	'system',
-	'invitation_only',
-	'system'
-FROM resolved_group_category
-ON CONFLICT ("category_id", "name") DO UPDATE
-	SET "description" = EXCLUDED."description",
-		"visibility" = EXCLUDED."visibility",
-		"join_mode" = EXCLUDED."join_mode",
-		"updated_at" = now();
---> statement-breakpoint
-WITH resolved_group_category AS (
-	SELECT "id" FROM categories WHERE "name" = 'Taxation' LIMIT 1
-)
-INSERT INTO groups ("category_id", "name", "description", "visibility", "join_mode", "owner_id")
-SELECT
-	"resolved_group_category"."id",
 	'Tax Auditor',
 	'System-managed group granting urn:tax:auditor',
 	'system',
@@ -137,25 +97,6 @@ ON CONFLICT ("category_id", "name") DO UPDATE
 --> statement-breakpoint
 
 -- Attach seeded permissions to seeded groups for all group members
-WITH viewer_group AS (
-	SELECT g."id" AS "group_id"
-	FROM groups g
-	JOIN categories c ON c."id" = g."category_id"
-	WHERE c."name" = 'Taxation' AND g."name" = 'Tax Viewer'
-	LIMIT 1
-),
-viewer_permission AS (
-	SELECT p."id" AS "permission_id" FROM permissions p WHERE p."urn" = 'urn:tax:viewer' LIMIT 1
-)
-INSERT INTO group_permissions ("group_id", "permission_id", "target_type", "created_by")
-SELECT
-	viewer_group."group_id",
-	viewer_permission."permission_id",
-	'all_members',
-	'system'
-FROM viewer_group, viewer_permission
-ON CONFLICT ("group_id", "permission_id") DO NOTHING;
---> statement-breakpoint
 WITH auditor_group AS (
 	SELECT g."id" AS "group_id"
 	FROM groups g

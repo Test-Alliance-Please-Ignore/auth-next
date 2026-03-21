@@ -2,29 +2,12 @@ import { logger } from '@repo/hono-helpers'
 
 import { getCorporationTaxStub, getGlobalCorporationDataStub } from '../../utils/services'
 
+import type {
+	TriggerTaxProjectionRefreshInput,
+	TriggerTaxProjectionRefreshResult,
+} from '@repo/corporation-tax'
 import type { EveCorporationSyncDataType } from '@repo/eve-corporation-data'
 import type { Env } from '../../../context'
-
-type TaxWalletSourceWatermark = {
-	maxId: string | null
-	maxDate: Date | null
-	fetchedCount: number
-}
-
-type TriggerTaxProjectionRefreshInput = {
-	corporationId: string
-	upstreamRunId: string
-	triggeredAt: Date
-	walletJournal?: TaxWalletSourceWatermark | null
-	walletTransactions?: TaxWalletSourceWatermark | null
-	includeCharacterWallets?: boolean
-}
-
-type TriggerTaxProjectionRefreshResult = {
-	corporationId: string
-	triggered: boolean
-	reason: 'no_sources' | 'up_to_date' | 'ingested'
-}
 
 const TAX_PROJECTION_RETRY_KEY_PREFIX = 'tax-projection-retry-intent:'
 const TAX_PROJECTION_RETRY_TTL_SECONDS = 7 * 24 * 60 * 60

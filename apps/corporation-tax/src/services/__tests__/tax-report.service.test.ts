@@ -8,17 +8,34 @@ vi.mock('@repo/do-utils', () => ({
 	getStub: (...args: unknown[]) => getStubMock(...args),
 }))
 
-function createSelectMock(results: Array<Array<{ corporationId: string }> | Array<Record<string, unknown>>>) {
+function createSelectMock(
+	results: Array<Array<{ corporationId: string }> | Array<Record<string, unknown>>>
+) {
 	return vi.fn(() => {
 		const rows = results.shift() ?? []
 		const chain: {
 			from: ReturnType<typeof vi.fn>
 			where: ReturnType<typeof vi.fn>
 			groupBy: ReturnType<typeof vi.fn>
+			orderBy: ReturnType<typeof vi.fn>
+			limit: ReturnType<typeof vi.fn>
+			offset: ReturnType<typeof vi.fn>
+			then: <TResult1 = unknown, TResult2 = never>(
+				onfulfilled?:
+					| ((
+							value: Array<{ corporationId: string }> | Array<Record<string, unknown>>
+					  ) => TResult1 | PromiseLike<TResult1>)
+					| null,
+				onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
+			) => Promise<TResult1 | TResult2>
 		} = {
 			from: vi.fn(() => chain),
 			where: vi.fn(() => chain),
-			groupBy: vi.fn().mockResolvedValue(rows),
+			groupBy: vi.fn(() => chain),
+			orderBy: vi.fn(() => chain),
+			limit: vi.fn(() => chain),
+			offset: vi.fn(() => chain),
+			then: (onfulfilled, onrejected) => Promise.resolve(rows).then(onfulfilled, onrejected),
 		}
 		return chain
 	})
@@ -52,10 +69,7 @@ describe('TaxReportService report scoping', () => {
 		}
 	})
 
-	it('returns zeroed summary and skips dataset queries for excluded corporation scope', async () => {
-		mockDb.query.taxCorporationExclusions.findFirst.mockResolvedValue({
-			corporationId: '3002',
-		})
+	it('returns zeroed summary but still evaluates report datasets for excluded corporation scope', async () => {
 		mockDb.query.taxCorporationExclusions.findMany.mockResolvedValue([
 			{ corporationId: '3002', reason: 'maintenance' },
 		])
@@ -79,9 +93,7 @@ describe('TaxReportService report scoping', () => {
 			essIncome: '0.00',
 			essTransferCount: 0,
 		})
-		expect(mockDb.query.taxAssessments.findMany).not.toHaveBeenCalled()
-		expect(mockDb.query.taxDiscrepancies.findMany).not.toHaveBeenCalled()
-		expect(mockDb.query.taxLedgerEntries.findMany).not.toHaveBeenCalled()
+		expect(mockDb.select).toHaveBeenCalled()
 	})
 
 	it('returns empty top-income report when there is no data-backed corporation scope', async () => {
@@ -97,9 +109,9 @@ describe('TaxReportService report scoping', () => {
 
 	it('aggregates total taxes by corporation from data-backed scope and applies paging', async () => {
 		mockDb.select = createSelectMock([
-			[],
 			[{ corporationId: '1001' }],
-			[],
+			[{ corporationId: '1001' }],
+			[{ corporationId: '1001' }],
 			[
 				{
 					corporationId: '1001',
@@ -117,6 +129,7 @@ describe('TaxReportService report scoping', () => {
 					lastAssessmentAt: new Date('2026-03-10T00:00:00.000Z'),
 				},
 			],
+			[{ count: 1 }],
 		])
 		mockDb.query.taxCorporationExclusions.findMany.mockResolvedValue([])
 
@@ -138,5 +151,54 @@ describe('TaxReportService report scoping', () => {
 				taxDelta: '50.00',
 			}),
 		])
+	})
+
+	it('uses SQL-counted totalRows for ESS payouts with the same scoped filters', async () => {
+		mockDb.query.taxLedgerEntries.findMany.mockResolvedValue([
+			{
+				id: 'entry-1',
+				corporationId: '1001',
+				entryDate: new Date('2026-03-10T00:00:00.000Z'),
+				division: 1,
+				amount: '25.00',
+				essBankType: 'main',
+				sourceType: 'corporation_wallet_journal',
+				sourcePrimaryId: '100',
+				firstPartyId: '90000001',
+				secondPartyId: null,
+				refType: 'ess_escrow_transfer',
+				isEss: true,
+			},
+		])
+		mockDb.select = vi.fn(() => ({
+			from: vi.fn(() => ({
+				where: vi.fn().mockResolvedValue([{ count: 7 }]),
+			})),
+		}))
+
+		const service = new TaxReportService(mockDb, {} as any)
+		const report = await service.getEssPayoutReport({
+			corporationId: '1001',
+			limit: 1,
+			offset: 0,
+			sortBy: 'entryDate',
+			sortDirection: 'desc',
+		})
+
+		expect(report.totalRows).toBe(7)
+		expect(report.rows).toHaveLength(1)
+		expect(report.rows[0]).toEqual(
+			expect.objectContaining({
+				id: 'entry-1',
+				corporationId: '1001',
+				amount: '25.00',
+			})
+		)
+		expect(mockDb.query.taxLedgerEntries.findMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				limit: 1,
+				offset: 0,
+			})
+		)
 	})
 })

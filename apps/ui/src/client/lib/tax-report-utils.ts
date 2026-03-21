@@ -17,7 +17,7 @@ export function parseTaxAmount(value: string | number | null | undefined): numbe
 	if (typeof value === 'number') {
 		return Number.isFinite(value) ? value : 0
 	}
-	const normalized = value.trim().replace(/[^0-9+.\-]/g, '')
+	const normalized = value.trim().replace(/[^0-9+.-]/g, '')
 	const parsed = Number(normalized)
 	return Number.isFinite(parsed) ? parsed : 0
 }

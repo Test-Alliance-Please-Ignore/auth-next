@@ -30,7 +30,6 @@ import { dispatchTaxProjectionRefresh } from './utils/tax-projection-dispatch'
 import {
 	buildTaxProjectionRefreshInput,
 	createTaxProjectionTriggerRunId,
-	shouldTriggerTaxProjectionRefresh,
 } from './utils/tax-projection-trigger'
 
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
@@ -367,10 +366,6 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			walletJournalSync?.stats.walletJournalPersistedNewRows ?? 0
 		const walletTransactionsPersistedNewRows =
 			walletTransactionsSync?.stats.walletTransactionsPersistedNewRows ?? 0
-		const hasWalletRowsToPropagate = shouldTriggerTaxProjectionRefresh({
-			walletJournalPersistedNewRows,
-			walletTransactionsPersistedNewRows,
-		})
 		const taxProjectionTriggerRunId = createTaxProjectionTriggerRunId({
 			corporationId,
 			stats: {
@@ -399,7 +394,6 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 
 		if (walletJournalSync || walletTransactionsSync) {
 			const taxProjectionDispatch = await dispatchTaxProjectionRefresh({
-				shouldTrigger: hasWalletRowsToPropagate,
 				deps: {
 					trigger: async () => {
 						await step.do(
@@ -435,20 +429,6 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 					taxProjectionTriggerRunId,
 					error: taxProjectionDispatch.errorMessage,
 				})
-			}
-			if (taxProjectionDispatch.outcome === 'skipped') {
-				logger.info(
-					'[EveCorporationSyncWorkflow] Skipping tax projection trigger (no wallet rows)',
-					{
-						corporationId,
-						workflowInstanceId,
-						taxProjectionTriggerRunId,
-						walletJournalFetched,
-						walletTransactionsFetched,
-						walletJournalPersistedNewRows,
-						walletTransactionsPersistedNewRows,
-					}
-				)
 			}
 		} else {
 			logger.info('[EveCorporationSyncWorkflow] Skipping tax projection trigger (no wallet rows)', {

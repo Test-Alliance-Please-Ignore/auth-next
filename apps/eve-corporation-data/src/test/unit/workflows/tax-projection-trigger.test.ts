@@ -3,34 +3,9 @@ import { describe, expect, it } from 'vitest'
 import {
 	buildTaxProjectionRefreshInput,
 	createTaxProjectionTriggerRunId,
-	shouldTriggerTaxProjectionRefresh,
 } from '../../../workflows/utils/tax-projection-trigger'
 
 describe('tax-projection-trigger helpers', () => {
-	it('does not trigger when both wallet domains persisted zero rows', () => {
-		expect(
-			shouldTriggerTaxProjectionRefresh({
-				walletJournalPersistedNewRows: 0,
-				walletTransactionsPersistedNewRows: 0,
-			})
-		).toBe(false)
-	})
-
-	it('triggers when either wallet domain persisted rows', () => {
-		expect(
-			shouldTriggerTaxProjectionRefresh({
-				walletJournalPersistedNewRows: 3,
-				walletTransactionsPersistedNewRows: 0,
-			})
-		).toBe(true)
-		expect(
-			shouldTriggerTaxProjectionRefresh({
-				walletJournalPersistedNewRows: 0,
-				walletTransactionsPersistedNewRows: 2,
-			})
-		).toBe(true)
-	})
-
 	it('builds payload with only non-empty wallet source watermarks', () => {
 		const input = buildTaxProjectionRefreshInput({
 			corporationId: '98000001',

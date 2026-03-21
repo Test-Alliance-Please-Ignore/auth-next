@@ -55,10 +55,11 @@ export default function AdminBillsSchedulesNewPage() {
 				return new Date(baseDate.getTime() + 24 * 60 * 60 * 1000)
 			case 'weekly':
 				return new Date(baseDate.getTime() + 7 * 24 * 60 * 60 * 1000)
-			case 'monthly':
+			case 'monthly': {
 				const nextMonth = new Date(baseDate)
 				nextMonth.setMonth(nextMonth.getMonth() + 1)
 				return nextMonth
+			}
 			default:
 				return baseDate
 		}

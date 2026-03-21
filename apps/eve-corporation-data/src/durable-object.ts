@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { and, desc, eq, inArray, sql } from '@repo/db-utils'
+import { and, desc, eq, gte, inArray, lte, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
@@ -2805,45 +2805,60 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	): Promise<CorporationWalletJournalData[]> {
 		const limit = Math.min(Math.max(filters.limit ?? 1000, 1), 10000)
 		const offset = Math.max(filters.offset ?? 0, 0)
-		const fetchSize = Math.min(limit + offset, 20000)
+		const conditions: SQL[] = [eq(corporationWalletJournal.corporationId, corporationId)]
+		if (filters.division !== undefined) {
+			conditions.push(eq(corporationWalletJournal.division, filters.division))
+		}
+		if (filters.refTypes && filters.refTypes.length > 0) {
+			conditions.push(inArray(corporationWalletJournal.refType, filters.refTypes))
+		}
+		if (filters.firstPartyId) {
+			conditions.push(eq(corporationWalletJournal.firstPartyId, filters.firstPartyId))
+		}
+		if (filters.secondPartyId) {
+			conditions.push(eq(corporationWalletJournal.secondPartyId, filters.secondPartyId))
+		}
+		if (filters.fromDate) {
+			conditions.push(gte(corporationWalletJournal.date, filters.fromDate))
+		}
+		if (filters.toDate) {
+			conditions.push(lte(corporationWalletJournal.date, filters.toDate))
+		}
+		const minAmount = Number(filters.minAmount)
+		if (Number.isFinite(minAmount)) {
+			conditions.push(sql`CAST(${corporationWalletJournal.amount} AS numeric) >= ${minAmount}`)
+		}
+		const maxAmount = Number(filters.maxAmount)
+		if (Number.isFinite(maxAmount)) {
+			conditions.push(sql`CAST(${corporationWalletJournal.amount} AS numeric) <= ${maxAmount}`)
+		}
 
-		const rows = await this.getWalletJournal(corporationId, filters.division, fetchSize)
-		const filtered = rows.filter((row) => {
-			if (
-				filters.refTypes &&
-				filters.refTypes.length > 0 &&
-				!filters.refTypes.includes(row.refType)
-			) {
-				return false
-			}
-			if (filters.firstPartyId && row.firstPartyId !== filters.firstPartyId) {
-				return false
-			}
-			if (filters.secondPartyId && row.secondPartyId !== filters.secondPartyId) {
-				return false
-			}
-			if (filters.fromDate && row.date < filters.fromDate) {
-				return false
-			}
-			if (filters.toDate && row.date > filters.toDate) {
-				return false
-			}
-			if (filters.minAmount !== undefined) {
-				const amount = Number(row.amount ?? 0)
-				if (Number.isFinite(amount) && amount < Number(filters.minAmount)) {
-					return false
-				}
-			}
-			if (filters.maxAmount !== undefined) {
-				const amount = Number(row.amount ?? 0)
-				if (Number.isFinite(amount) && amount > Number(filters.maxAmount)) {
-					return false
-				}
-			}
-			return true
+		const rows = await this.getDb().query.corporationWalletJournal.findMany({
+			where: and(...conditions),
+			orderBy: [desc(corporationWalletJournal.date), desc(corporationWalletJournal.journalId)],
+			limit,
+			offset,
 		})
 
-		return filtered.slice(offset, offset + limit)
+		return rows.map((r) => ({
+			id: r.id,
+			corporationId: r.corporationId,
+			division: r.division,
+			journalId: r.journalId,
+			amount: r.amount,
+			balance: r.balance,
+			contextId: r.contextId,
+			contextIdType: r.contextIdType,
+			date: r.date,
+			description: r.description,
+			firstPartyId: r.firstPartyId,
+			reason: r.reason,
+			refType: r.refType,
+			secondPartyId: r.secondPartyId,
+			tax: r.tax,
+			taxReceiverId: r.taxReceiverId,
+			updatedAt: r.updatedAt,
+		}))
 	}
 
 	async getWalletTransactionsWindow(
@@ -2852,38 +2867,61 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	): Promise<CorporationWalletTransactionData[]> {
 		const limit = Math.min(Math.max(filters.limit ?? 1000, 1), 10000)
 		const offset = Math.max(filters.offset ?? 0, 0)
-		const fetchSize = Math.min(limit + offset, 20000)
+		const conditions: SQL[] = [eq(corporationWalletTransactions.corporationId, corporationId)]
+		if (filters.division !== undefined) {
+			conditions.push(eq(corporationWalletTransactions.division, filters.division))
+		}
+		if (filters.clientId) {
+			conditions.push(eq(corporationWalletTransactions.clientId, filters.clientId))
+		}
+		if (filters.journalRefId) {
+			conditions.push(eq(corporationWalletTransactions.journalRefId, filters.journalRefId))
+		}
+		if (filters.fromDate) {
+			conditions.push(gte(corporationWalletTransactions.date, filters.fromDate))
+		}
+		if (filters.toDate) {
+			conditions.push(lte(corporationWalletTransactions.date, filters.toDate))
+		}
+		const minUnitPrice = Number(filters.minUnitPrice)
+		if (Number.isFinite(minUnitPrice)) {
+			conditions.push(
+				sql`CAST(${corporationWalletTransactions.unitPrice} AS numeric) >= ${minUnitPrice}`
+			)
+		}
+		const maxUnitPrice = Number(filters.maxUnitPrice)
+		if (Number.isFinite(maxUnitPrice)) {
+			conditions.push(
+				sql`CAST(${corporationWalletTransactions.unitPrice} AS numeric) <= ${maxUnitPrice}`
+			)
+		}
 
-		const rows = await this.getWalletTransactions(corporationId, filters.division, fetchSize)
-		const filtered = rows.filter((row) => {
-			if (filters.clientId && row.clientId !== filters.clientId) {
-				return false
-			}
-			if (filters.journalRefId && row.journalRefId !== filters.journalRefId) {
-				return false
-			}
-			if (filters.fromDate && row.date < filters.fromDate) {
-				return false
-			}
-			if (filters.toDate && row.date > filters.toDate) {
-				return false
-			}
-			if (filters.minUnitPrice !== undefined) {
-				const unitPrice = Number(row.unitPrice)
-				if (Number.isFinite(unitPrice) && unitPrice < Number(filters.minUnitPrice)) {
-					return false
-				}
-			}
-			if (filters.maxUnitPrice !== undefined) {
-				const unitPrice = Number(row.unitPrice)
-				if (Number.isFinite(unitPrice) && unitPrice > Number(filters.maxUnitPrice)) {
-					return false
-				}
-			}
-			return true
+		const rows = await this.getDb().query.corporationWalletTransactions.findMany({
+			where: and(...conditions),
+			orderBy: [
+				desc(corporationWalletTransactions.date),
+				desc(corporationWalletTransactions.transactionId),
+			],
+			limit,
+			offset,
 		})
 
-		return filtered.slice(offset, offset + limit)
+		return rows.map((r) => ({
+			id: r.id,
+			corporationId: r.corporationId,
+			division: r.division,
+			transactionId: r.transactionId,
+			clientId: r.clientId,
+			date: r.date,
+			isBuy: r.isBuy,
+			isPersonal: r.isPersonal,
+			journalRefId: r.journalRefId,
+			locationId: r.locationId,
+			quantity: r.quantity,
+			typeId: r.typeId,
+			unitPrice: r.unitPrice,
+			updatedAt: r.updatedAt,
+		}))
 	}
 
 	async getWalletDivisions(corporationId: string): Promise<number[]> {

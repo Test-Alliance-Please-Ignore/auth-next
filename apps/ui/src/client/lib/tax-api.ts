@@ -73,7 +73,6 @@ export interface TaxReportFilters {
 	firstPartyId?: string
 	secondPartyId?: string
 	minAmount?: string
-	maxAmount?: string
 	limit?: number
 	offset?: number
 	sortBy?: string
@@ -255,7 +254,6 @@ export class CorporationTaxApiClient extends ApiClient {
 		if (filters.firstPartyId) params.set('firstPartyId', filters.firstPartyId)
 		if (filters.secondPartyId) params.set('secondPartyId', filters.secondPartyId)
 		if (filters.minAmount) params.set('minAmount', filters.minAmount)
-		if (filters.maxAmount) params.set('maxAmount', filters.maxAmount)
 		if (filters.limit !== undefined) params.set('limit', String(filters.limit))
 		if (filters.offset !== undefined) params.set('offset', String(filters.offset))
 		if (filters.sortBy) params.set('sortBy', filters.sortBy)

@@ -8,9 +8,6 @@
 // Re-export hooks for easy access
 export * from './hooks'
 
-// Explicitly export the quick access hook for the sidebar
-export { useHasCorporationAccess } from './hooks'
-
 // Re-export API types for use in other parts of the app
 export type { CorporationMember, MyCorporation, CorporationAccessResult } from './api'
 

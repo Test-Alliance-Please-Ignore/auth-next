@@ -19,7 +19,20 @@ export default [
 		},
 	},
 	{
+		files: ['src/client/dev/tax-demo-mode.ts'],
+		rules: {
+			// import.meta.env.DEV is a Vite built-in, not a Turbo env var
+			'turbo/no-undeclared-env-vars': 'off',
+		},
+	},
+	{
 		// Don't lint config files that aren't part of the main project
-		ignores: ['env.d.ts', 'vite.config.ts', 'vitest.config.ts', 'tailwind.config.ts'],
+		ignores: [
+			'env.d.ts',
+			'vite.config.ts',
+			'vite.client.config.ts',
+			'vitest.config.ts',
+			'vitest.unit.config.ts',
+		],
 	},
 ]
