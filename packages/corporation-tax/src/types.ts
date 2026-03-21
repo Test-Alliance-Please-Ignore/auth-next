@@ -4,24 +4,6 @@ export interface CorporationTaxHealth {
 	timestamp: string
 }
 
-export interface TaxCorporationSettings {
-	corporationId: string
-	included: boolean
-	exclusionReason: string | null
-	defaultRateBps: number
-	essRateBps: number
-	discrepancyThresholdBps: number
-	memberSummaryEnabled: boolean
-	billingEnabled: boolean
-	billingIssuerUserId: string | null
-	billingPayeeId: string | null
-	billingPayeeType: 'character' | 'corporation' | null
-	billingDueDays: number
-	esiAuthStatus: TaxCorporationEsiAuthStatus | null
-	createdAt: Date
-	updatedAt: Date
-}
-
 export interface TaxCorporationEsiAuthStatus {
 	isConfigured: boolean
 	isVerified: boolean
@@ -37,22 +19,20 @@ export interface TaxCorporationEsiAuthStatus {
 	grantedScopeCount: number
 }
 
-export interface UpsertTaxCorporationSettingsInput {
-	included?: boolean
-	exclusionReason?: string | null
-	defaultRateBps?: number
-	essRateBps?: number
-	discrepancyThresholdBps?: number
-	memberSummaryEnabled?: boolean
-	billingEnabled?: boolean
-	billingIssuerUserId?: string | null
-	billingPayeeId?: string | null
-	billingPayeeType?: 'character' | 'corporation' | null
-	billingDueDays?: number
+export interface TaxCorporationExclusion {
+	corporationId: string
+	reason: string | null
+	createdBy: string
+	updatedBy: string
+	createdAt: Date
+	updatedAt: Date
 }
 
-export interface ListTaxCorporationSettingsFilters {
-	included?: boolean
+export interface UpsertTaxCorporationExclusionInput {
+	reason?: string | null
+}
+
+export interface ListTaxCorporationExclusionsFilters {
 	limit?: number
 	offset?: number
 }
@@ -109,6 +89,8 @@ export interface TaxRuleGroupAttachment {
 	id: string
 	ruleGroupId: string
 	corporationId: string
+	isExcluded?: boolean
+	exclusionReason?: string | null
 	createdAt: Date
 	updatedAt: Date
 }
@@ -503,6 +485,11 @@ export interface TaxReportWindowFilters {
 	sortDirection?: 'asc' | 'desc'
 }
 
+export interface TaxPagedResult<TRow> {
+	rows: TRow[]
+	totalRows: number
+}
+
 export interface TaxSummaryReport {
 	corporationId: string | null
 	fromDate: Date | null
@@ -533,10 +520,21 @@ export interface TaxTotalTaxesByCorporationRow {
 	taxDue: string
 	taxPaid: string
 	taxDelta: string
+	taxDueCenti: string
+	taxPaidCenti: string
+	taxDeltaCenti: string
 	lastAssessmentAt: Date | null
 }
 
 export interface TaxTopIncomeSourceRow {
+	refType: string
+	entryCount: number
+	essEntryCount: number
+	totalIncome: string
+}
+
+export interface TaxTopIncomeSourceMonthlyRow {
+	monthStart: Date
 	refType: string
 	entryCount: number
 	essEntryCount: number
@@ -566,7 +564,6 @@ export interface TaxCompliancePoint {
 
 export interface TaxMissingEsiKeyRow {
 	corporationId: string
-	included: boolean
 	isConfigured: boolean
 	hasRequiredScopes: boolean
 	hasCorporationWalletScope: boolean
@@ -576,12 +573,6 @@ export interface TaxMissingEsiKeyRow {
 	lastVerified: Date | null
 }
 
-export interface TaxExcludedCorporationRow {
-	corporationId: string
-	exclusionReason: string | null
-	updatedAt: Date
-}
-
 export interface TaxBillStatusReportRow {
 	corporationId: string
 	billStatus: TaxBillStatus | 'unbilled'
@@ -589,6 +580,9 @@ export interface TaxBillStatusReportRow {
 	taxDue: string
 	taxPaid: string
 	taxDelta: string
+	taxDueCenti: string
+	taxPaidCenti: string
+	taxDeltaCenti: string
 }
 
 export type TaxMemberComplianceStatus = 'underpaid' | 'paid' | 'overpaid' | 'no_data'
@@ -632,14 +626,6 @@ export interface ListTaxDiscrepancyReportFilters {
 }
 
 export interface ListTaxMissingEsiKeyReportFilters {
-	includedOnly?: boolean
-	limit?: number
-	offset?: number
-	sortBy?: string
-	sortDirection?: 'asc' | 'desc'
-}
-
-export interface ListTaxExcludedCorporationsReportFilters {
 	limit?: number
 	offset?: number
 	sortBy?: string

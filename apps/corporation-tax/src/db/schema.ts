@@ -14,18 +14,28 @@ import {
 } from 'drizzle-orm/pg-core'
 
 /**
- * Corporation-level settings for tax behavior and enablement.
+ * Corporation exclusion list for tax engine/report scope overrides.
  */
-export const taxCorporationSettings = pgTable(
-	'tax_corporation_settings',
+export const taxCorporationExclusions = pgTable(
+	'tax_corporation_exclusions',
 	{
 		corporationId: text('corporation_id').primaryKey(),
-		included: boolean('included').notNull().default(false),
-		exclusionReason: text('exclusion_reason'),
-		defaultRateBps: integer('default_rate_bps').notNull().default(0),
-		essRateBps: integer('ess_rate_bps').notNull().default(0),
-		discrepancyThresholdBps: integer('discrepancy_threshold_bps').notNull().default(500),
-		memberSummaryEnabled: boolean('member_summary_enabled').notNull().default(false),
+		reason: text('reason'),
+		createdBy: text('created_by').notNull(),
+		updatedBy: text('updated_by').notNull(),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [index('tax_corporation_exclusions_updated_at_idx').on(table.updatedAt)]
+)
+
+/**
+ * Corporation-level billing configuration for issuing assessment bills.
+ */
+export const taxCorporationBillingConfigs = pgTable(
+	'tax_corporation_billing_configs',
+	{
+		corporationId: text('corporation_id').primaryKey(),
 		billingEnabled: boolean('billing_enabled').notNull().default(false),
 		billingIssuerUserId: text('billing_issuer_user_id'),
 		billingPayeeId: text('billing_payee_id'),
@@ -34,10 +44,7 @@ export const taxCorporationSettings = pgTable(
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
-	(table) => [
-		index('tax_corporation_settings_included_idx').on(table.included),
-		index('tax_corporation_settings_updated_at_idx').on(table.updatedAt),
-	]
+	(table) => [index('tax_corporation_billing_configs_updated_at_idx').on(table.updatedAt)]
 )
 
 export const taxAssessmentScopeEnum = pgEnum('tax_assessment_scope', [
@@ -671,7 +678,8 @@ export const taxDiscrepanciesRelations = relations(taxDiscrepancies, ({ one }) =
 }))
 
 export const schema = {
-	taxCorporationSettings,
+	taxCorporationExclusions,
+	taxCorporationBillingConfigs,
 	taxAuditLog,
 	taxAssessments,
 	taxPeriods,

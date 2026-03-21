@@ -313,23 +313,23 @@ export class TaxExportService {
 				return [this.toSerializableRecord(row)]
 			}
 			case 'total_taxes_by_corporation': {
-				const rows = await this.reportService.getTotalTaxesByCorporationReport(reportFilters)
-				return rows.map((row) => this.toSerializableRecord(row))
+				const report = await this.reportService.getTotalTaxesByCorporationReport(reportFilters)
+				return report.rows.map((row) => this.toSerializableRecord(row))
 			}
 			case 'top_income_sources': {
 				const rows = await this.reportService.getTopIncomeSourcesReport(reportFilters)
 				return rows.map((row) => this.toSerializableRecord(row))
 			}
 			case 'ess_payout': {
-				const rows = await this.reportService.getEssPayoutReport(reportFilters)
-				return rows.map((row) => this.toSerializableRecord(row))
+				const report = await this.reportService.getEssPayoutReport(reportFilters)
+				return report.rows.map((row) => this.toSerializableRecord(row))
 			}
 			case 'compliance_over_time': {
 				const rows = await this.reportService.getComplianceOverTimeReport(reportFilters)
 				return rows.map((row) => this.toSerializableRecord(row))
 			}
 			case 'discrepancies': {
-				const rows = await this.reportService.getTaxDiscrepancyReport({
+				const report = await this.reportService.getTaxDiscrepancyReport({
 					corporationId: reportFilters.corporationId,
 					fromDate: reportFilters.fromDate,
 					toDate: reportFilters.toDate,
@@ -337,7 +337,7 @@ export class TaxExportService {
 					limit: reportFilters.limit,
 					offset: reportFilters.offset,
 				})
-				return rows.map((row) => this.toSerializableRecord(row))
+				return report.rows.map((row) => this.toSerializableRecord(row))
 			}
 			case 'bill_status': {
 				const rows = await this.reportService.getBillStatusReport(reportFilters)

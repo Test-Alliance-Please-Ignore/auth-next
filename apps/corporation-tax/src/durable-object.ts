@@ -1,14 +1,16 @@
 import { DurableObject } from 'cloudflare:workers'
 
 import { and, eq, inArray, sql } from '@repo/db-utils'
+import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from './db'
 import {
 	taxAssessments,
-	taxCorporationSettings,
+	taxCorporationExclusions,
 	taxLedgerEntries,
 	taxMemberSummaryVersions,
+	taxSyncCheckpoints,
 } from './db/schema'
 import { planProjectionRefreshFromWalletSync } from './services/projection-refresh-plan'
 import { computeRuleMutationRecalcStart } from './services/projection-rule-freshness'
@@ -16,12 +18,12 @@ import { TaxAlertService } from './services/tax-alert.service'
 import { TaxAssessmentService } from './services/tax-assessment.service'
 import { TaxAuditService } from './services/tax-audit.service'
 import { TaxBillingService } from './services/tax-billing.service'
+import { TaxCorporationExclusionsService } from './services/tax-corporation-exclusions.service'
 import { TaxExportService } from './services/tax-export.service'
 import { TaxLedgerService } from './services/tax-ledger.service'
 import { TaxReportService } from './services/tax-report.service'
 import { TaxRuleGroupService } from './services/tax-rule-groups.service'
 import { TaxRulesService } from './services/tax-rules.service'
-import { TaxSettingsService } from './services/tax-settings.service'
 
 import type {
 	CorporationTax,
@@ -36,11 +38,10 @@ import type {
 	ListTaxAssessmentLinesFilters,
 	ListTaxAssessmentsFilters,
 	ListTaxAuditLogFilters,
-	ListTaxCorporationSettingsFilters,
+	ListTaxCorporationExclusionsFilters,
 	ListTaxDailyRollupsFilters,
 	ListTaxDiscrepanciesFilters,
 	ListTaxDiscrepancyReportFilters,
-	ListTaxExcludedCorporationsReportFilters,
 	ListTaxExportSchedulesFilters,
 	ListTaxExportsFilters,
 	ListTaxMissingEsiKeyReportFilters,
@@ -58,11 +59,10 @@ import type {
 	TaxAuditLogEntry,
 	TaxBillStatusReportRow,
 	TaxCompliancePoint,
-	TaxCorporationSettings,
+	TaxCorporationExclusion,
 	TaxDailyRollup,
 	TaxDiscrepancy,
 	TaxEssPayoutRow,
-	TaxExcludedCorporationRow,
 	TaxExportArtifact,
 	TaxExportRecord,
 	TaxExportSchedule,
@@ -75,12 +75,14 @@ import type {
 	TaxMemberSummaryReportFilters,
 	TaxMissingEsiKeyRow,
 	TaxNotificationDestination,
+	TaxPagedResult,
 	TaxReportWindowFilters,
 	TaxRuleGroup,
 	TaxRuleGroupAttachment,
 	TaxRuleSet,
 	TaxScheduledOperationsResult,
 	TaxSummaryReport,
+	TaxTopIncomeSourceMonthlyRow,
 	TaxTopIncomeSourceRow,
 	TaxTotalTaxesByCorporationRow,
 	TriggerTaxAlertInput,
@@ -88,9 +90,10 @@ import type {
 	TriggerTaxProjectionRefreshResult,
 	UpdateTaxRuleGroupInput,
 	UpdateTaxRuleSetInput,
-	UpsertTaxCorporationSettingsInput,
+	UpsertTaxCorporationExclusionInput,
 	UpsertTaxNotificationDestinationInput,
 } from '@repo/corporation-tax'
+import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { Env } from './context'
 import type { CorporationTaxDb } from './db'
 
@@ -101,7 +104,7 @@ const TRIGGERED_INGEST_OVERLAP_WINDOW_MS = 48 * 60 * 60 * 1000
 
 export class CorporationTaxDO extends DurableObject<Env, {}> implements CorporationTax {
 	private db: CorporationTaxDb
-	private settingsService: TaxSettingsService
+	private exclusionsService: TaxCorporationExclusionsService
 	private ledgerService: TaxLedgerService
 	private assessmentService: TaxAssessmentService
 	private alertService: TaxAlertService
@@ -119,7 +122,7 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		super(state, env)
 
 		this.db = createDb(env.DATABASE_URL)
-		this.settingsService = new TaxSettingsService(this.db, env.EVE_CORPORATION_DATA)
+		this.exclusionsService = new TaxCorporationExclusionsService(this.db)
 		this.ledgerService = new TaxLedgerService(
 			this.db,
 			env.EVE_CORPORATION_DATA,
@@ -128,7 +131,7 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		this.assessmentService = new TaxAssessmentService(this.db, env.EVE_CORPORATION_DATA)
 		this.alertService = new TaxAlertService(this.db, env.DISCORD)
 		this.billingService = new TaxBillingService(this.db, env.BILLS)
-		this.reportService = new TaxReportService(this.db, this.settingsService)
+		this.reportService = new TaxReportService(this.db, env.EVE_CORPORATION_DATA)
 		this.exportService = new TaxExportService(this.db, this.reportService)
 		this.auditService = new TaxAuditService(this.db)
 		this.ruleGroupService = new TaxRuleGroupService(this.db)
@@ -147,39 +150,49 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		}
 	}
 
-	async getCorporationSettings(corporationId: string): Promise<TaxCorporationSettings | null> {
-		return this.settingsService.getCorporationSettings(corporationId)
-	}
-
-	async upsertCorporationSettings(
+	async upsertCorporationExclusion(
 		actorUserId: string,
 		corporationId: string,
-		input: UpsertTaxCorporationSettingsInput
-	): Promise<TaxCorporationSettings> {
-		const result = await this.settingsService.upsertCorporationSettings(corporationId, input)
+		input: UpsertTaxCorporationExclusionInput
+	): Promise<TaxCorporationExclusion> {
+		const before = await this.exclusionsService.getExclusion(corporationId)
+		const after = await this.exclusionsService.upsertExclusion(actorUserId, corporationId, input)
 
 		await this.auditService.logAction({
 			corporationId,
 			actorUserId,
-			action: result.before ? 'tax.settings.updated' : 'tax.settings.created',
-			before: this.toAuditPayload(result.before),
-			after: this.toAuditPayload(result.after),
+			action: before ? 'tax.exclusion.updated' : 'tax.exclusion.created',
+			before: this.toAuditPayload(before),
+			after: this.toAuditPayload(after),
 		})
-		if (result.after.included) {
-			await this.triggerCorporationCoverageAlerts(actorUserId, corporationId)
-		}
-
-		return result.after
+		return after
 	}
 
-	async listCorporationSettings(
-		filters?: ListTaxCorporationSettingsFilters
-	): Promise<TaxCorporationSettings[]> {
-		return this.settingsService.listCorporationSettings(filters)
+	async deleteCorporationExclusion(actorUserId: string, corporationId: string): Promise<void> {
+		const before = await this.exclusionsService.getExclusion(corporationId)
+		await this.exclusionsService.deleteExclusion(corporationId)
+		await this.auditService.logAction({
+			corporationId,
+			actorUserId,
+			action: 'tax.exclusion.deleted',
+			before: this.toAuditPayload(before),
+			after: null,
+		})
+	}
+
+	async listCorporationExclusions(
+		filters?: ListTaxCorporationExclusionsFilters
+	): Promise<TaxCorporationExclusion[]> {
+		return this.exclusionsService.listExclusions(filters)
 	}
 
 	async listWalletDivisions(corporationId: string): Promise<number[]> {
-		return this.settingsService.getWalletDivisions(corporationId)
+		try {
+			const stub = getStub<EveCorporationData>(this.env.EVE_CORPORATION_DATA, corporationId)
+			return await stub.getWalletDivisions(corporationId)
+		} catch (_error) {
+			return []
+		}
 	}
 
 	async listAuditLog(filters?: ListTaxAuditLogFilters): Promise<TaxAuditLogEntry[]> {
@@ -662,6 +675,29 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		}
 	}
 
+	async retractAssessmentBill(
+		actorUserId: string,
+		corporationId: string,
+		assessmentId: string
+	): Promise<TaxAssessment> {
+		try {
+			return await this.billingService.retractAssessmentBill(
+				actorUserId,
+				corporationId,
+				assessmentId
+			)
+		} catch (error) {
+			await this.triggerBillSyncFailureAlert({
+				actorUserId,
+				corporationId,
+				assessmentId,
+				operation: 'retract_assessment_bill',
+				error,
+			})
+			throw error
+		}
+	}
+
 	async getCorporationBillStatusHistory(
 		corporationId: string,
 		limit?: number,
@@ -705,7 +741,7 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 
 	async getTotalTaxesByCorporationReport(
 		filters?: TaxReportWindowFilters
-	): Promise<TaxTotalTaxesByCorporationRow[]> {
+	): Promise<TaxPagedResult<TaxTotalTaxesByCorporationRow>> {
 		return this.reportService.getTotalTaxesByCorporationReport(filters)
 	}
 
@@ -715,7 +751,15 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		return this.reportService.getTopIncomeSourcesReport(filters)
 	}
 
-	async getEssPayoutReport(filters?: TaxReportWindowFilters): Promise<TaxEssPayoutRow[]> {
+	async getTopIncomeSourcesMonthlyReport(
+		filters?: TaxReportWindowFilters
+	): Promise<TaxTopIncomeSourceMonthlyRow[]> {
+		return this.reportService.getTopIncomeSourcesMonthlyReport(filters)
+	}
+
+	async getEssPayoutReport(
+		filters?: TaxReportWindowFilters
+	): Promise<TaxPagedResult<TaxEssPayoutRow>> {
 		return this.reportService.getEssPayoutReport(filters)
 	}
 
@@ -727,20 +771,14 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 
 	async getTaxDiscrepancyReport(
 		filters?: ListTaxDiscrepancyReportFilters
-	): Promise<TaxDiscrepancy[]> {
+	): Promise<TaxPagedResult<TaxDiscrepancy>> {
 		return this.reportService.getTaxDiscrepancyReport(filters)
 	}
 
 	async getMissingEsiKeysReport(
 		filters?: ListTaxMissingEsiKeyReportFilters
-	): Promise<TaxMissingEsiKeyRow[]> {
+	): Promise<TaxPagedResult<TaxMissingEsiKeyRow>> {
 		return this.reportService.getMissingEsiKeysReport(filters)
-	}
-
-	async getExcludedCorporationsReport(
-		filters?: ListTaxExcludedCorporationsReportFilters
-	): Promise<TaxExcludedCorporationRow[]> {
-		return this.reportService.getExcludedCorporationsReport(filters)
 	}
 
 	async getBillStatusReport(filters?: TaxReportWindowFilters): Promise<TaxBillStatusReportRow[]> {
@@ -817,7 +855,7 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		alertRetryLimit?: number
 	): Promise<TaxScheduledOperationsResult> {
 		const runAt = asOf ?? new Date()
-		const includedCorporationIds = await this.listIncludedCorporationIds()
+		const processingCorporationIds = await this.listProcessableCorporationIds()
 		let dailyIngestCorporationsProcessed = 0
 		let dailyIngestFailures = 0
 		let monthlyAssessmentCorporationsProcessed = 0
@@ -828,7 +866,7 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		const previousMonthWindow = this.getPreviousMonthWindow(runAt)
 
 		await this.runWithConcurrency(
-			includedCorporationIds,
+			processingCorporationIds,
 			SCHEDULED_CORPORATION_CONCURRENCY,
 			async (corporationId) => {
 				await this.triggerCorporationCoverageAlerts(actorUserId, corporationId)
@@ -926,7 +964,7 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 			before: null,
 			after: {
 				asOf: runAt.toISOString(),
-				includedCorporationCount: includedCorporationIds.length,
+				includedCorporationCount: processingCorporationIds.length,
 				dailyIngestCorporationsProcessed,
 				dailyIngestFailures,
 				monthlyAssessmentCorporationsProcessed,
@@ -942,7 +980,7 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 
 		return {
 			asOf: runAt,
-			includedCorporationCount: includedCorporationIds.length,
+			includedCorporationCount: processingCorporationIds.length,
 			dailyIngestCorporationsProcessed,
 			dailyIngestFailures,
 			monthlyAssessmentCorporationsProcessed,
@@ -1133,15 +1171,33 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		return `${fromDate}:${toDate}`
 	}
 
-	private async listIncludedCorporationIds(): Promise<string[]> {
-		const rows = await this.db.query.taxCorporationSettings.findMany({
-			where: eq(taxCorporationSettings.included, true),
-			columns: {
-				corporationId: true,
-			},
-			limit: 10_000,
-		})
-		return rows.map((row) => row.corporationId)
+	private async listProcessableCorporationIds(): Promise<string[]> {
+		const [checkpointRows, ledgerRows, assessmentRows, exclusionRows] = await Promise.all([
+			this.db
+				.select({ corporationId: taxSyncCheckpoints.corporationId })
+				.from(taxSyncCheckpoints)
+				.groupBy(taxSyncCheckpoints.corporationId),
+			this.db
+				.select({ corporationId: taxLedgerEntries.corporationId })
+				.from(taxLedgerEntries)
+				.groupBy(taxLedgerEntries.corporationId),
+			this.db
+				.select({ corporationId: taxAssessments.corporationId })
+				.from(taxAssessments)
+				.groupBy(taxAssessments.corporationId),
+			this.db.query.taxCorporationExclusions.findMany({
+				columns: { corporationId: true },
+				limit: 10_000,
+			}),
+		])
+		const excludedSet = new Set(exclusionRows.map((row) => row.corporationId))
+		const ids = new Set<string>()
+		for (const row of [...checkpointRows, ...ledgerRows, ...assessmentRows]) {
+			if (row.corporationId && !excludedSet.has(row.corporationId)) {
+				ids.add(row.corporationId)
+			}
+		}
+		return Array.from(ids)
 	}
 
 	private async shouldRunDailyIngest(corporationId: string, asOf: Date): Promise<boolean> {
@@ -1160,6 +1216,38 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 			(checkpoint) =>
 				checkpoint.lastSuccessfulSyncAt === null || checkpoint.lastSuccessfulSyncAt < utcDayStart
 		)
+	}
+
+	private async getCorporationEsiAuthStatus(corporationId: string) {
+		try {
+			const stub = getStub<EveCorporationData>(this.env.EVE_CORPORATION_DATA, corporationId)
+			const status = await stub.getCorporationAuthStatus(corporationId)
+			return {
+				isConfigured: status.isConfigured,
+				isVerified: status.isVerified,
+				lastVerified: status.lastVerified,
+				directorCount: status.directorCount,
+				healthyDirectorCount: status.healthyDirectorCount,
+				requiredScopes: status.requiredScopes,
+				missingRequiredScopes: status.missingRequiredScopes,
+				hasRequiredScopes: status.hasRequiredScopes,
+				hasCorporationWalletScope: status.hasCorporationWalletScope,
+				hasCharacterWalletScope: status.hasCharacterWalletScope,
+				hasCorporationMembershipScope: status.hasCorporationMembershipScope,
+				grantedScopeCount: status.grantedScopeCount,
+			}
+		} catch (_error) {
+			return null
+		}
+	}
+
+	private async getWalletDivisions(corporationId: string): Promise<number[]> {
+		try {
+			const stub = getStub<EveCorporationData>(this.env.EVE_CORPORATION_DATA, corporationId)
+			return await stub.getWalletDivisions(corporationId)
+		} catch (_error) {
+			return []
+		}
 	}
 
 	private getPreviousMonthWindow(asOf: Date): {
@@ -1291,7 +1379,7 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		actorUserId: string,
 		corporationId: string
 	): Promise<void> {
-		const status = await this.settingsService.getCorporationEsiAuthStatus(corporationId)
+		const status = await this.getCorporationEsiAuthStatus(corporationId)
 		if (!status || !status.isConfigured || status.healthyDirectorCount < 1) {
 			await this.alertService.triggerAlert(actorUserId, {
 				corporationId,
@@ -1322,7 +1410,7 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 			})
 		}
 
-		const divisions = await this.settingsService.getWalletDivisions(corporationId)
+		const divisions = await this.getWalletDivisions(corporationId)
 		if (divisions.length === 0) {
 			await this.alertService.triggerAlert(actorUserId, {
 				corporationId,

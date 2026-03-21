@@ -4,7 +4,7 @@ import { getStub } from '@repo/do-utils'
 import {
 	taxAssessmentLines,
 	taxAssessments,
-	taxCorporationSettings,
+	taxCorporationExclusions,
 	taxDiscrepancies,
 	taxLedgerEntries,
 	taxMemberContributionFinalizedRollups,
@@ -65,6 +65,8 @@ type ScopedAssessmentComputation = {
 }
 
 export class TaxAssessmentService {
+	private readonly TAX_DELTA_DISCREPANCY_THRESHOLD_BPS = 500
+
 	constructor(
 		private db: CorporationTaxDb,
 		private eveCorporationDataNamespace: DurableObjectNamespace
@@ -119,12 +121,11 @@ export class TaxAssessmentService {
 			throw new Error('periodStart must be before periodEnd')
 		}
 
-		const settings = await this.db.query.taxCorporationSettings.findFirst({
-			where: eq(taxCorporationSettings.corporationId, input.corporationId),
+		const exclusion = await this.db.query.taxCorporationExclusions.findFirst({
+			where: eq(taxCorporationExclusions.corporationId, input.corporationId),
+			columns: { corporationId: true },
 		})
-		if (!settings) {
-			throw new Error('Corporation tax settings not found')
-		}
+		const isExcluded = Boolean(exclusion)
 
 		const assessmentSourceTypes =
 			input.includeCharacterWallets === false
@@ -216,7 +217,6 @@ export class TaxAssessmentService {
 				entry: row,
 				amountCenti: amountForTaxCenti,
 				compiledRules,
-				defaultRateBps: row.isEss ? settings.essRateBps : settings.defaultRateBps,
 			})
 			const lineValue: PendingAssessmentLine = {
 				ledgerEntryId: row.id,
@@ -307,7 +307,7 @@ export class TaxAssessmentService {
 						taxPaidCenti: 0n,
 					},
 					inGameTaxRateBps: null,
-					portalTaxRateBps: settings.defaultRateBps,
+					portalTaxRateBps: 0,
 					lines: [],
 				}
 				scoped.totals.taxableIncomeCenti += resolved.taxableAmountCenti
@@ -330,7 +330,7 @@ export class TaxAssessmentService {
 						taxPaidCenti: 0n,
 					},
 					inGameTaxRateBps: null,
-					portalTaxRateBps: settings.defaultRateBps,
+					portalTaxRateBps: 0,
 					lines: [],
 				}
 				scoped.totals.taxableIncomeCenti += resolved.taxableAmountCenti
@@ -343,27 +343,11 @@ export class TaxAssessmentService {
 		}
 
 		const inGameTaxRateBps = await this.getInGameTaxRateBps(input.corporationId)
-		const portalTaxRateBps = settings.defaultRateBps
+		const portalTaxRateBps = 0
 		const taxDeltaCenti = corporationTotals.taxDueCenti - corporationTotals.taxPaidCenti
-		const discrepancyThresholdBps = settings.discrepancyThresholdBps
+		const taxDeltaThresholdBps = this.TAX_DELTA_DISCREPANCY_THRESHOLD_BPS
 
 		const discrepancyValues: Array<Omit<typeof taxDiscrepancies.$inferInsert, 'assessmentId'>> = []
-		if (
-			inGameTaxRateBps !== null &&
-			Math.abs(inGameTaxRateBps - portalTaxRateBps) > discrepancyThresholdBps
-		) {
-			discrepancyValues.push({
-				corporationId: input.corporationId,
-				discrepancyType: 'tax_rate_mismatch',
-				severity: 'warning',
-				details: {
-					inGameTaxRateBps,
-					portalTaxRateBps,
-					discrepancyBps: Math.abs(inGameTaxRateBps - portalTaxRateBps),
-					thresholdBps: discrepancyThresholdBps,
-				},
-			})
-		}
 
 		const taxDeltaAbsoluteCenti = taxDeltaCenti < 0n ? -taxDeltaCenti : taxDeltaCenti
 		let taxDeltaDiscrepancyBps: number | null = null
@@ -374,7 +358,7 @@ export class TaxAssessmentService {
 		} else if (taxDeltaAbsoluteCenti > 0n) {
 			taxDeltaDiscrepancyBps = 10_000
 		}
-		if (taxDeltaDiscrepancyBps !== null && taxDeltaDiscrepancyBps > discrepancyThresholdBps) {
+		if (taxDeltaDiscrepancyBps !== null && taxDeltaDiscrepancyBps > taxDeltaThresholdBps) {
 			discrepancyValues.push({
 				corporationId: input.corporationId,
 				discrepancyType: 'tax_delta_threshold_exceeded',
@@ -384,17 +368,17 @@ export class TaxAssessmentService {
 					taxPaid: this.formatCenti(corporationTotals.taxPaidCenti),
 					taxDelta: this.formatCenti(taxDeltaCenti),
 					discrepancyBps: taxDeltaDiscrepancyBps,
-					thresholdBps: discrepancyThresholdBps,
+					thresholdBps: taxDeltaThresholdBps,
 				},
 			})
 		}
 
 		const divisionSummaryOutput = Array.from(divisionSummaries.values())
 			.sort((a, b) => (a.division ?? -1) - (b.division ?? -1))
-			.map((item) => this.toDivisionSummary(item, settings.included))
+			.map((item) => this.toDivisionSummary(item, !isExcluded))
 		const refTypeSummaryOutput = Array.from(refTypeSummaries.values())
 			.sort((a, b) => a.refType.localeCompare(b.refType))
-			.map((item) => this.toRefTypeSummary(item, settings.included))
+			.map((item) => this.toRefTypeSummary(item, !isExcluded))
 		const scopeComputations: ScopedAssessmentComputation[] = [
 			{
 				assessmentScope: 'corporation',
@@ -475,7 +459,7 @@ export class TaxAssessmentService {
 			for (const scope of scopeComputations) {
 				const scopeKey = `${scope.assessmentScope}:${scope.scopeId}`
 				const scopeTaxDeltaCenti = scope.totals.taxDueCenti - scope.totals.taxPaidCenti
-				const scopeStatus = this.resolveAssessmentStatus(settings.included, scopeTaxDeltaCenti)
+				const scopeStatus = this.resolveAssessmentStatus(!isExcluded, scopeTaxDeltaCenti)
 				const existing = existingByScopeKey.get(scopeKey)
 
 				if (existing) {
@@ -961,7 +945,6 @@ export class TaxAssessmentService {
 		entry: typeof taxLedgerEntries.$inferSelect
 		amountCenti: bigint
 		compiledRules: CompiledRule[]
-		defaultRateBps: number
 	}): {
 		appliedRuleSetId: string | null
 		taxRateBps: number
@@ -995,13 +978,12 @@ export class TaxAssessmentService {
 			}
 		}
 
-		const taxAmountCenti = (input.amountCenti * BigInt(input.defaultRateBps)) / 10_000n
 		return {
 			appliedRuleSetId: null,
-			taxRateBps: input.defaultRateBps,
-			taxableAmountCenti: input.amountCenti,
-			taxAmountCenti,
-			classification: input.entry.isEss ? 'default_ess' : 'default',
+			taxRateBps: 0,
+			taxableAmountCenti: 0n,
+			taxAmountCenti: 0n,
+			classification: input.entry.isEss ? 'no_matching_rule_ess' : 'no_matching_rule',
 		}
 	}
 

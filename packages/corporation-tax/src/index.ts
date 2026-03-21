@@ -16,11 +16,10 @@ import type {
 	ListTaxAssessmentLinesFilters,
 	ListTaxAssessmentsFilters,
 	ListTaxAuditLogFilters,
-	ListTaxCorporationSettingsFilters,
+	ListTaxCorporationExclusionsFilters,
 	ListTaxDailyRollupsFilters,
 	ListTaxDiscrepanciesFilters,
 	ListTaxDiscrepancyReportFilters,
-	ListTaxExcludedCorporationsReportFilters,
 	ListTaxExportSchedulesFilters,
 	ListTaxExportsFilters,
 	ListTaxMissingEsiKeyReportFilters,
@@ -45,12 +44,11 @@ import type {
 	TaxBillStatusReportRow,
 	TaxCompliancePoint,
 	TaxCorporationEsiAuthStatus,
-	TaxCorporationSettings,
+	TaxCorporationExclusion,
 	TaxDailyRollup,
 	TaxDiscrepancy,
 	TaxDivisionAssessmentSummary,
 	TaxEssPayoutRow,
-	TaxExcludedCorporationRow,
 	TaxExportArtifact,
 	TaxExportFormat,
 	TaxExportFrequency,
@@ -71,6 +69,7 @@ import type {
 	TaxMemberSummaryTopRefType,
 	TaxMissingEsiKeyRow,
 	TaxNotificationDestination,
+	TaxPagedResult,
 	TaxPeriod,
 	TaxPeriodStatus,
 	TaxRefTypeAssessmentSummary,
@@ -81,6 +80,7 @@ import type {
 	TaxScheduledOperationsResult,
 	TaxSummaryReport,
 	TaxSyncCheckpoint,
+	TaxTopIncomeSourceMonthlyRow,
 	TaxTopIncomeSourceRow,
 	TaxTotalTaxesByCorporationRow,
 	TaxWalletSourceWatermark,
@@ -89,7 +89,7 @@ import type {
 	TriggerTaxProjectionRefreshResult,
 	UpdateTaxRuleGroupInput,
 	UpdateTaxRuleSetInput,
-	UpsertTaxCorporationSettingsInput,
+	UpsertTaxCorporationExclusionInput,
 	UpsertTaxNotificationDestinationInput,
 } from './types'
 
@@ -110,25 +110,25 @@ export interface CorporationTax {
 	getHealth(): Promise<CorporationTaxHealth>
 
 	/**
-	 * Get corporation taxation settings.
+	 * Upsert a corporation exclusion row.
 	 */
-	getCorporationSettings(corporationId: string): Promise<TaxCorporationSettings | null>
-
-	/**
-	 * Create or update corporation taxation settings.
-	 */
-	upsertCorporationSettings(
+	upsertCorporationExclusion(
 		actorUserId: string,
 		corporationId: string,
-		input: UpsertTaxCorporationSettingsInput
-	): Promise<TaxCorporationSettings>
+		input: UpsertTaxCorporationExclusionInput
+	): Promise<TaxCorporationExclusion>
 
 	/**
-	 * List corporation settings with optional filters.
+	 * Remove a corporation exclusion row.
 	 */
-	listCorporationSettings(
-		filters?: ListTaxCorporationSettingsFilters
-	): Promise<TaxCorporationSettings[]>
+	deleteCorporationExclusion(actorUserId: string, corporationId: string): Promise<void>
+
+	/**
+	 * List configured corporation exclusions.
+	 */
+	listCorporationExclusions(
+		filters?: ListTaxCorporationExclusionsFilters
+	): Promise<TaxCorporationExclusion[]>
 
 	/**
 	 * List known wallet divisions for a corporation.
@@ -269,6 +269,15 @@ export interface CorporationTax {
 	): Promise<TaxAssessment>
 
 	/**
+	 * Retract (cancel) one corporation-scope assessment's linked bill in bills domain.
+	 */
+	retractAssessmentBill(
+		actorUserId: string,
+		corporationId: string,
+		assessmentId: string
+	): Promise<TaxAssessment>
+
+	/**
 	 * Get bill status/timeline history for a corporation's corporation-scope assessments.
 	 */
 	getCorporationBillStatusHistory(
@@ -351,7 +360,7 @@ export interface CorporationTax {
 	 */
 	getTotalTaxesByCorporationReport(
 		filters?: TaxReportWindowFilters
-	): Promise<TaxTotalTaxesByCorporationRow[]>
+	): Promise<TaxPagedResult<TaxTotalTaxesByCorporationRow>>
 
 	/**
 	 * Top income sources grouped by ref_type.
@@ -359,9 +368,16 @@ export interface CorporationTax {
 	getTopIncomeSourcesReport(filters?: TaxReportWindowFilters): Promise<TaxTopIncomeSourceRow[]>
 
 	/**
+	 * Taxable inflow grouped by ref_type and month.
+	 */
+	getTopIncomeSourcesMonthlyReport(
+		filters?: TaxReportWindowFilters
+	): Promise<TaxTopIncomeSourceMonthlyRow[]>
+
+	/**
 	 * ESS transfer report.
 	 */
-	getEssPayoutReport(filters?: TaxReportWindowFilters): Promise<TaxEssPayoutRow[]>
+	getEssPayoutReport(filters?: TaxReportWindowFilters): Promise<TaxPagedResult<TaxEssPayoutRow>>
 
 	/**
 	 * Tax compliance trend points over time.
@@ -371,21 +387,16 @@ export interface CorporationTax {
 	/**
 	 * Tax discrepancy report with optional open-only filtering.
 	 */
-	getTaxDiscrepancyReport(filters?: ListTaxDiscrepancyReportFilters): Promise<TaxDiscrepancy[]>
+	getTaxDiscrepancyReport(
+		filters?: ListTaxDiscrepancyReportFilters
+	): Promise<TaxPagedResult<TaxDiscrepancy>>
 
 	/**
 	 * Corporations missing ESI key coverage or required scopes.
 	 */
 	getMissingEsiKeysReport(
 		filters?: ListTaxMissingEsiKeyReportFilters
-	): Promise<TaxMissingEsiKeyRow[]>
-
-	/**
-	 * Excluded corporations and exclusion reasons.
-	 */
-	getExcludedCorporationsReport(
-		filters?: ListTaxExcludedCorporationsReportFilters
-	): Promise<TaxExcludedCorporationRow[]>
+	): Promise<TaxPagedResult<TaxMissingEsiKeyRow>>
 
 	/**
 	 * Bill status rollup report for tax assessments.
@@ -494,7 +505,6 @@ export type {
 	ListTaxExportSchedulesFilters,
 	ListTaxExportsFilters,
 	ListTaxDiscrepancyReportFilters,
-	ListTaxExcludedCorporationsReportFilters,
 	ListTaxMissingEsiKeyReportFilters,
 	ListTaxNotificationDestinationsFilters,
 	ListTaxAssessmentLinesFilters,
@@ -502,7 +512,7 @@ export type {
 	ListTaxAssessmentsFilters,
 	ListTaxRuleSetsFilters,
 	ListTaxRuleGroupsFilters,
-	ListTaxCorporationSettingsFilters,
+	ListTaxCorporationExclusionsFilters,
 	ListTaxDiscrepanciesFilters,
 	RequestTaxExportInput,
 	RunTaxAssessmentForPeriodInput,
@@ -542,14 +552,16 @@ export type {
 	TaxBillStatus,
 	TaxCorporationEsiAuthStatus,
 	TaxCompliancePoint,
-	TaxCorporationSettings,
+	TaxCorporationExclusion,
 	TaxNotificationDestination,
+	TaxPagedResult,
 	TaxRuleGroup,
 	TaxRuleGroupAttachment,
 	TaxRuleSet,
 	TaxScheduledOperationsResult,
 	TaxSyncCheckpoint,
 	TaxSummaryReport,
+	TaxTopIncomeSourceMonthlyRow,
 	TaxTopIncomeSourceRow,
 	TaxTotalTaxesByCorporationRow,
 	TaxWalletSourceWatermark,
@@ -558,7 +570,6 @@ export type {
 	TaxMemberSummary,
 	TaxMemberSummaryReportFilters,
 	TaxMemberComplianceStatus,
-	TaxExcludedCorporationRow,
 	TaxReportWindowFilters,
 	TaxMemberSummaryTopRefType,
 	TriggerTaxProjectionRefreshInput,
@@ -567,5 +578,5 @@ export type {
 	UpdateTaxRuleGroupInput,
 	UpdateTaxRuleSetInput,
 	UpsertTaxNotificationDestinationInput,
-	UpsertTaxCorporationSettingsInput,
+	UpsertTaxCorporationExclusionInput,
 } from './types'

@@ -55,6 +55,8 @@ describe('TaxRuleGroupService', () => {
 			id: 'attach-1',
 			ruleGroupId: 'group-1',
 			corporationId: '98000001',
+			isExcluded: false,
+			exclusionReason: null,
 			createdAt: new Date('2026-03-20T00:00:00.000Z'),
 			updatedAt: new Date('2026-03-20T00:00:00.000Z'),
 		}
@@ -80,6 +82,8 @@ describe('TaxRuleGroupService', () => {
 			id: 'attach-1',
 			ruleGroupId: 'group-1',
 			corporationId: '98000001',
+			isExcluded: false,
+			exclusionReason: null,
 			createdAt: existing.createdAt,
 			updatedAt: existing.updatedAt,
 		})

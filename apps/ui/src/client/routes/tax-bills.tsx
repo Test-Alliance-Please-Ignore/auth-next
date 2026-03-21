@@ -6,7 +6,14 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { DateRangeInput } from '@/components/ui/date-range-input'
-import { Input } from '@/components/ui/input'
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from '@/components/ui/dialog'
 import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
 import {
@@ -20,6 +27,7 @@ import {
 import {
 	useCreateTaxBillForAssessment,
 	useIssueTaxBillsForPeriod,
+	useRetractTaxAssessmentBill,
 	useSyncTaxAssessmentBillStatus,
 	useSyncTaxCorporationBillStatuses,
 	useTaxAssessments,
@@ -47,12 +55,21 @@ function getLastTimelineDate(events: Array<{ createdAt: string | Date }>): strin
 }
 
 function billStatusBadgeVariant(
-	status: TaxBillStatus | 'unbilled'
-): 'default' | 'secondary' | 'outline' {
+	status: TaxBillStatus | 'unbilled' | 'underpaid' | 'overpaid'
+): 'default' | 'success' | 'warning' | 'destructive' | 'outline' {
 	if (status === 'overdue') {
-		return 'secondary'
+		return 'destructive'
 	}
 	if (status === 'paid') {
+		return 'success'
+	}
+	if (status === 'underpaid') {
+		return 'warning'
+	}
+	if (status === 'overpaid') {
+		return 'warning'
+	}
+	if (status === 'issued') {
 		return 'default'
 	}
 	return 'outline'
@@ -77,6 +94,7 @@ export default function TaxBillsPage() {
 	const [selectedAssessmentScope, setSelectedAssessmentScope] = useState<
 		'all' | TaxAssessmentScope
 	>('all')
+	const [retractingAssessmentId, setRetractingAssessmentId] = useState<string | null>(null)
 
 	const { data: scopedCapabilities, isLoading: scopedCapabilitiesLoading } = useTaxCapabilities(
 		effectiveCorporationId,
@@ -118,6 +136,7 @@ export default function TaxBillsPage() {
 
 	const createBillMutation = useCreateTaxBillForAssessment()
 	const syncAssessmentMutation = useSyncTaxAssessmentBillStatus()
+	const retractAssessmentMutation = useRetractTaxAssessmentBill()
 	const issuePeriodMutation = useIssueTaxBillsForPeriod()
 	const syncCorporationMutation = useSyncTaxCorporationBillStatuses()
 
@@ -159,6 +178,9 @@ export default function TaxBillsPage() {
 	}, [assessments, billHistory, billStatusReport])
 
 	const { data: entityNames = {} } = useEntityNames(entityIds, { enabled: canView })
+	const retractableAssessment = billHistory.find(
+		(row) => row.assessment.id === retractingAssessmentId
+	)?.assessment
 
 	if (!corporationAccessLoading && !scopedCapabilitiesLoading && !canView) {
 		return (
@@ -595,24 +617,42 @@ export default function TaxBillsPage() {
 											<TableCell>{formatTaxNumber(row.timeline.length)}</TableCell>
 											<TableCell>{getLastTimelineDate(row.timeline)}</TableCell>
 											<TableCell>
-												<Button
-													size="sm"
-													variant="outline"
-													disabled={
-														!canIssue || !row.assessment.billId || syncAssessmentMutation.isPending
-													}
-													onClick={() => {
-														if (!effectiveCorporationId) {
-															return
+												<div className="flex items-center gap-2">
+													<Button
+														size="sm"
+														variant="outline"
+														disabled={
+															!canIssue ||
+															!row.assessment.billId ||
+															syncAssessmentMutation.isPending
 														}
-														syncAssessmentMutation.mutate({
-															corporationId: effectiveCorporationId,
-															assessmentId: row.assessment.id,
-														})
-													}}
-												>
-													{syncAssessmentMutation.isPending ? 'Syncing...' : 'Sync'}
-												</Button>
+														onClick={() => {
+															if (!effectiveCorporationId) {
+																return
+															}
+															syncAssessmentMutation.mutate({
+																corporationId: effectiveCorporationId,
+																assessmentId: row.assessment.id,
+															})
+														}}
+													>
+														{syncAssessmentMutation.isPending ? 'Syncing...' : 'Sync'}
+													</Button>
+													<Button
+														size="sm"
+														variant="outline"
+														disabled={
+															!canIssue ||
+															!row.assessment.billId ||
+															row.assessment.billStatus === 'paid' ||
+															row.assessment.billStatus === 'cancelled' ||
+															retractAssessmentMutation.isPending
+														}
+														onClick={() => setRetractingAssessmentId(row.assessment.id)}
+													>
+														Retract
+													</Button>
+												</div>
 											</TableCell>
 										</TableRow>
 									))}
@@ -626,9 +666,72 @@ export default function TaxBillsPage() {
 									: 'Failed to sync assessment bill status'}
 							</div>
 						) : null}
+						{retractAssessmentMutation.error ? (
+							<div className="mt-3 text-sm text-destructive">
+								{retractAssessmentMutation.error instanceof Error
+									? retractAssessmentMutation.error.message
+									: 'Failed to retract assessment bill'}
+							</div>
+						) : null}
 					</CardContent>
 				</Card>
 			</Section>
+
+			<Dialog
+				open={Boolean(retractingAssessmentId)}
+				onOpenChange={(open) => {
+					if (!open) {
+						setRetractingAssessmentId(null)
+					}
+				}}
+			>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Retract Bill</DialogTitle>
+						<DialogDescription>
+							This will cancel the linked bill for assessment{' '}
+							<span className="font-mono text-xs">{retractingAssessmentId ?? '-'}</span>.
+						</DialogDescription>
+					</DialogHeader>
+					<DialogFooter>
+						<Button
+							variant="outline"
+							disabled={retractAssessmentMutation.isPending}
+							onClick={() => setRetractingAssessmentId(null)}
+						>
+							Cancel
+						</Button>
+						<Button
+							variant="destructive"
+							disabled={
+								!canIssue ||
+								!effectiveCorporationId ||
+								!retractingAssessmentId ||
+								!retractableAssessment?.billId ||
+								retractAssessmentMutation.isPending
+							}
+							onClick={() => {
+								if (!effectiveCorporationId || !retractingAssessmentId) {
+									return
+								}
+								retractAssessmentMutation.mutate(
+									{
+										corporationId: effectiveCorporationId,
+										assessmentId: retractingAssessmentId,
+									},
+									{
+										onSuccess: () => {
+											setRetractingAssessmentId(null)
+										},
+									}
+								)
+							}}
+						>
+							{retractAssessmentMutation.isPending ? 'Retracting...' : 'Retract Bill'}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 		</Container>
 	)
 }

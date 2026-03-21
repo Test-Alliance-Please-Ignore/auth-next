@@ -27,14 +27,8 @@ describe('TaxAssessmentService', () => {
 
 		mockDb = {
 			query: {
-				taxCorporationSettings: {
-					findFirst: vi.fn().mockResolvedValue({
-						corporationId: '98000001',
-						included: true,
-						defaultRateBps: 1000,
-						essRateBps: 2000,
-						discrepancyThresholdBps: 500,
-					}),
+				taxCorporationExclusions: {
+					findFirst: vi.fn().mockResolvedValue(null),
 				},
 				taxLedgerEntries: {
 					findMany: vi.fn().mockResolvedValue([
@@ -196,18 +190,28 @@ describe('TaxAssessmentService', () => {
 		expect(second.discrepancyCount).toBe(first.discrepancyCount)
 	})
 
+	it('marks summary statuses as excluded when corporation has an exclusion override', async () => {
+		mockDb.query.taxCorporationExclusions.findFirst.mockResolvedValue({
+			corporationId: '98000001',
+		})
+		const service = new TaxAssessmentService(mockDb, {} as DurableObjectNamespace)
+
+		const result = await service.runAssessmentForPeriod({
+			corporationId: '98000001',
+			periodStart: new Date('2026-01-01T00:00:00.000Z'),
+			periodEnd: new Date('2026-01-31T00:00:00.000Z'),
+		})
+
+		expect(result.divisionSummaries[0]?.status).toBe('excluded')
+		expect(result.refTypeSummaries[0]?.status).toBe('excluded')
+	})
+
 	it('applies higher-priority active rule when multiple rules match', async () => {
 		const insertedAssessmentLines: Array<any> = []
 		const localDb = {
 			query: {
-				taxCorporationSettings: {
-					findFirst: vi.fn().mockResolvedValue({
-						corporationId: '98000001',
-						included: true,
-						defaultRateBps: 1000,
-						essRateBps: 2000,
-						discrepancyThresholdBps: 500,
-					}),
+				taxCorporationExclusions: {
+					findFirst: vi.fn().mockResolvedValue(null),
 				},
 				taxLedgerEntries: {
 					findMany: vi.fn().mockResolvedValue([
@@ -381,14 +385,8 @@ describe('TaxAssessmentService', () => {
 		])
 		const localDb = {
 			query: {
-				taxCorporationSettings: {
-					findFirst: vi.fn().mockResolvedValue({
-						corporationId: '98000001',
-						included: true,
-						defaultRateBps: 1000,
-						essRateBps: 2000,
-						discrepancyThresholdBps: 500,
-					}),
+				taxCorporationExclusions: {
+					findFirst: vi.fn().mockResolvedValue(null),
 				},
 				taxLedgerEntries: {
 					findMany: vi.fn().mockResolvedValue([
@@ -518,14 +516,8 @@ describe('TaxAssessmentService', () => {
 		const insertedAssessmentLines: Array<any> = []
 		const localDb = {
 			query: {
-				taxCorporationSettings: {
-					findFirst: vi.fn().mockResolvedValue({
-						corporationId: '98000001',
-						included: true,
-						defaultRateBps: 1000,
-						essRateBps: 2000,
-						discrepancyThresholdBps: 500,
-					}),
+				taxCorporationExclusions: {
+					findFirst: vi.fn().mockResolvedValue(null),
 				},
 				taxLedgerEntries: {
 					findMany: vi.fn().mockResolvedValue([
@@ -670,14 +662,8 @@ describe('TaxAssessmentService', () => {
 
 		const scopedDb = {
 			query: {
-				taxCorporationSettings: {
-					findFirst: vi.fn().mockResolvedValue({
-						corporationId: '98000001',
-						included: true,
-						defaultRateBps: 1000,
-						essRateBps: 2000,
-						discrepancyThresholdBps: 500,
-					}),
+				taxCorporationExclusions: {
+					findFirst: vi.fn().mockResolvedValue(null),
 				},
 				taxLedgerEntries: {
 					findMany: vi.fn().mockResolvedValue([
@@ -896,14 +882,8 @@ describe('TaxAssessmentService', () => {
 
 		const projectionDb = {
 			query: {
-				taxCorporationSettings: {
-					findFirst: vi.fn().mockResolvedValue({
-						corporationId: '98000001',
-						included: true,
-						defaultRateBps: 1000,
-						essRateBps: 2000,
-						discrepancyThresholdBps: 500,
-					}),
+				taxCorporationExclusions: {
+					findFirst: vi.fn().mockResolvedValue(null),
 				},
 				taxLedgerEntries: {
 					findMany: vi.fn().mockResolvedValue([
@@ -1093,7 +1073,7 @@ describe('TaxAssessmentService', () => {
 		expect(stored.characterId).toBe('7001')
 		expect(stored.refType).toBe('bounty_prizes')
 		expect(stored.contributionIncome).toBe('1000')
-		expect(stored.taxableContributionIncome).toBe('1000')
+		expect(stored.taxableContributionIncome).toBe('0')
 		expect(summaryVersionWrites.length).toBe(2)
 
 		Date.now = originalDateNow

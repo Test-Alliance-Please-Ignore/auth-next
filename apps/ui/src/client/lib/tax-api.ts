@@ -13,10 +13,9 @@ import type {
 	TaxAuditLogEntry,
 	TaxBillStatusReportRow,
 	TaxCompliancePoint,
-	TaxCorporationSettings,
+	TaxCorporationExclusion,
 	TaxDiscrepancy,
 	TaxEssPayoutRow,
-	TaxExcludedCorporationRow,
 	TaxExportArtifact,
 	TaxExportFormat,
 	TaxExportRecord,
@@ -27,10 +26,12 @@ import type {
 	TaxMemberSummary,
 	TaxMissingEsiKeyRow,
 	TaxNotificationDestination,
+	TaxPagedResult,
 	TaxRuleGroup,
 	TaxRuleGroupAttachment,
 	TaxRuleSet,
 	TaxSummaryReport,
+	TaxTopIncomeSourceMonthlyRow,
 	TaxTopIncomeSourceRow,
 	TaxTotalTaxesByCorporationRow,
 } from '@repo/corporation-tax'
@@ -130,31 +131,27 @@ export interface ListTaxDiscrepancyReportFilters {
 }
 
 export interface ListTaxMissingEsiKeyReportFilters {
-	includedOnly?: boolean
 	limit?: number
 	offset?: number
 	sortBy?: string
 	sortDir?: 'asc' | 'desc'
 }
 
-export interface ListTaxCorporationSettingsFilters {
-	included?: boolean
+export interface TaxCorporationScopeRow {
+	corporationId: string
+	included: boolean
+	exclusionReason: string | null
+	createdAt: Date
+	updatedAt: Date
+}
+
+export interface ListTaxCorporationScopeFilters {
 	limit?: number
 	offset?: number
 }
 
-export interface UpdateTaxCorporationSettingsInput {
-	included?: boolean
-	exclusionReason?: string | null
-	defaultRateBps?: number
-	essRateBps?: number
-	discrepancyThresholdBps?: number
-	memberSummaryEnabled?: boolean
-	billingEnabled?: boolean
-	billingIssuerUserId?: string | null
-	billingPayeeId?: string | null
-	billingPayeeType?: 'character' | 'corporation' | null
-	billingDueDays?: number
+export interface UpsertTaxExclusionInput {
+	reason: string | null
 }
 
 export interface ListTaxRuleSetsFilters {
@@ -258,20 +255,14 @@ export class CorporationTaxApiClient extends ApiClient {
 	}
 
 	async listCorporations(
-		filters?: ListTaxCorporationSettingsFilters
-	): Promise<TaxCorporationSettings[]> {
+		filters?: ListTaxCorporationScopeFilters
+	): Promise<TaxCorporationScopeRow[]> {
 		if (this.shouldUseDemo()) return taxDemoApi.listCorporations(filters)
 		const params = new URLSearchParams()
-		if (filters?.included !== undefined) params.set('included', String(filters.included))
 		if (filters?.limit !== undefined) params.set('limit', String(filters.limit))
 		if (filters?.offset !== undefined) params.set('offset', String(filters.offset))
 		const query = params.toString()
 		return this.get(`${TAX_API_BASE}/corporations${query ? `?${query}` : ''}`)
-	}
-
-	async getCorporationSettings(corporationId: string): Promise<TaxCorporationSettings> {
-		if (this.shouldUseDemo()) return taxDemoApi.getCorporationSettings(corporationId)
-		return this.get(`${TAX_API_BASE}/corporations/${corporationId}/settings`)
 	}
 
 	async listWalletDivisions(corporationId: string): Promise<number[]> {
@@ -279,16 +270,29 @@ export class CorporationTaxApiClient extends ApiClient {
 		return this.get(`${TAX_API_BASE}/corporations/${corporationId}/divisions`)
 	}
 
-	async updateTaxCorporationSettings(
+	async listExclusions(filters?: {
+		limit?: number
+		offset?: number
+	}): Promise<TaxCorporationExclusion[]> {
+		if (this.shouldUseDemo()) return taxDemoApi.listExclusions(filters)
+		const params = new URLSearchParams()
+		if (filters?.limit !== undefined) params.set('limit', String(filters.limit))
+		if (filters?.offset !== undefined) params.set('offset', String(filters.offset))
+		const query = params.toString()
+		return this.get(`${TAX_API_BASE}/exclusions${query ? `?${query}` : ''}`)
+	}
+
+	async upsertExclusion(
 		corporationId: string,
-		input: UpdateTaxCorporationSettingsInput
-	): Promise<TaxCorporationSettings> {
-		if (this.shouldUseDemo())
-			return taxDemoApi.updateTaxCorporationSettings(
-				corporationId,
-				input as Partial<TaxCorporationSettings>
-			)
-		return this.patch(`${TAX_API_BASE}/corporations/${corporationId}/settings`, input)
+		input: UpsertTaxExclusionInput
+	): Promise<TaxCorporationExclusion> {
+		if (this.shouldUseDemo()) return taxDemoApi.upsertExclusion(corporationId, input)
+		return this.put(`${TAX_API_BASE}/exclusions/${corporationId}`, input)
+	}
+
+	async deleteExclusion(corporationId: string): Promise<void> {
+		if (this.shouldUseDemo()) return taxDemoApi.deleteExclusion(corporationId)
+		await this.delete(`${TAX_API_BASE}/exclusions/${corporationId}`)
 	}
 
 	async listRuleSets(filters?: ListTaxRuleSetsFilters): Promise<TaxRuleSet[]> {
@@ -449,6 +453,15 @@ export class CorporationTaxApiClient extends ApiClient {
 		)
 	}
 
+	async retractAssessmentBill(corporationId: string, assessmentId: string): Promise<TaxAssessment> {
+		if (this.shouldUseDemo()) {
+			return taxDemoApi.retractAssessmentBill(corporationId, assessmentId)
+		}
+		return this.post(
+			`${TAX_API_BASE}/corporations/${corporationId}/assessments/${assessmentId}/bills/retract`
+		)
+	}
+
 	async issueBillsForPeriod(
 		corporationId: string,
 		input: { periodStart: string; periodEnd: string }
@@ -524,7 +537,9 @@ export class CorporationTaxApiClient extends ApiClient {
 		return this.get(`${TAX_API_BASE}/reports/summary${query ? `?${query}` : ''}`)
 	}
 
-	async getTotalTaxesReport(filters?: TaxReportFilters): Promise<TaxTotalTaxesByCorporationRow[]> {
+	async getTotalTaxesReport(
+		filters?: TaxReportFilters
+	): Promise<TaxPagedResult<TaxTotalTaxesByCorporationRow>> {
 		if (this.shouldUseDemo()) return taxDemoApi.getTotalTaxesReport(filters)
 		const params = new URLSearchParams()
 		this.appendTaxReportFilters(params, filters)
@@ -540,7 +555,17 @@ export class CorporationTaxApiClient extends ApiClient {
 		return this.get(`${TAX_API_BASE}/reports/top-income${query ? `?${query}` : ''}`)
 	}
 
-	async getEssPayoutReport(filters?: TaxReportFilters): Promise<TaxEssPayoutRow[]> {
+	async getTopIncomeSourcesMonthlyReport(
+		filters?: TaxReportFilters
+	): Promise<TaxTopIncomeSourceMonthlyRow[]> {
+		if (this.shouldUseDemo()) return taxDemoApi.getTopIncomeSourcesMonthlyReport(filters)
+		const params = new URLSearchParams()
+		this.appendTaxReportFilters(params, filters)
+		const query = params.toString()
+		return this.get(`${TAX_API_BASE}/reports/top-income-monthly${query ? `?${query}` : ''}`)
+	}
+
+	async getEssPayoutReport(filters?: TaxReportFilters): Promise<TaxPagedResult<TaxEssPayoutRow>> {
 		if (this.shouldUseDemo()) return taxDemoApi.getEssPayoutReport(filters)
 		const params = new URLSearchParams()
 		this.appendTaxReportFilters(params, filters)
@@ -556,7 +581,9 @@ export class CorporationTaxApiClient extends ApiClient {
 		return this.get(`${TAX_API_BASE}/reports/compliance${query ? `?${query}` : ''}`)
 	}
 
-	async getDiscrepancyReport(filters?: ListTaxDiscrepancyReportFilters): Promise<TaxDiscrepancy[]> {
+	async getDiscrepancyReport(
+		filters?: ListTaxDiscrepancyReportFilters
+	): Promise<TaxPagedResult<TaxDiscrepancy>> {
 		if (this.shouldUseDemo()) return taxDemoApi.getDiscrepancyReport(filters)
 		const params = new URLSearchParams()
 		if (filters?.corporationId) params.set('corporationId', filters.corporationId)
@@ -573,33 +600,15 @@ export class CorporationTaxApiClient extends ApiClient {
 
 	async getMissingEsiKeysReport(
 		filters?: ListTaxMissingEsiKeyReportFilters
-	): Promise<TaxMissingEsiKeyRow[]> {
-		if (this.shouldUseDemo()) return taxDemoApi.getMissingEsiKeysReport()
+	): Promise<TaxPagedResult<TaxMissingEsiKeyRow>> {
+		if (this.shouldUseDemo()) return taxDemoApi.getMissingEsiKeysReport(filters)
 		const params = new URLSearchParams()
-		if (filters?.includedOnly !== undefined)
-			params.set('includedOnly', String(filters.includedOnly))
 		if (filters?.limit !== undefined) params.set('limit', String(filters.limit))
 		if (filters?.offset !== undefined) params.set('offset', String(filters.offset))
 		if (filters?.sortBy) params.set('sortBy', filters.sortBy)
 		if (filters?.sortDir) params.set('sortDir', filters.sortDir)
 		const query = params.toString()
 		return this.get(`${TAX_API_BASE}/reports/missing-esi-keys${query ? `?${query}` : ''}`)
-	}
-
-	async getExcludedCorporationsReport(filters?: {
-		limit?: number
-		offset?: number
-		sortBy?: string
-		sortDir?: 'asc' | 'desc'
-	}): Promise<TaxExcludedCorporationRow[]> {
-		if (this.shouldUseDemo()) return taxDemoApi.getExcludedCorporationsReport()
-		const params = new URLSearchParams()
-		if (filters?.limit !== undefined) params.set('limit', String(filters.limit))
-		if (filters?.offset !== undefined) params.set('offset', String(filters.offset))
-		if (filters?.sortBy) params.set('sortBy', filters.sortBy)
-		if (filters?.sortDir) params.set('sortDir', filters.sortDir)
-		const query = params.toString()
-		return this.get(`${TAX_API_BASE}/reports/excluded-corporations${query ? `?${query}` : ''}`)
 	}
 
 	async getMemberSummary(

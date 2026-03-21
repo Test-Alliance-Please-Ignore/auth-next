@@ -46,7 +46,7 @@ describe('TaxBillingService scope guardrails', () => {
 					findFirst: vi.fn(),
 					findMany: vi.fn(),
 				},
-				taxCorporationSettings: {
+				taxCorporationBillingConfigs: {
 					findFirst: vi.fn(),
 				},
 			},
@@ -93,6 +93,24 @@ describe('TaxBillingService scope guardrails', () => {
 
 		await expect(
 			service.syncAssessmentBillStatus('actor-1', '98000001', 'assessment-1')
+		).rejects.toThrow('Only corporation-scope assessments can be billed')
+		expect(getStubMock).not.toHaveBeenCalled()
+	})
+
+	it('rejects bill retraction for non-corporation assessment scope', async () => {
+		mockDb.query.taxAssessments.findFirst.mockResolvedValue(
+			makeAssessment({
+				assessmentScope: 'division',
+				scopeId: '1',
+				billId: 'bill-1',
+				billStatus: 'issued',
+			})
+		)
+
+		const service = new TaxBillingService(mockDb, {} as DurableObjectNamespace)
+
+		await expect(
+			service.retractAssessmentBill('actor-1', '98000001', 'assessment-1')
 		).rejects.toThrow('Only corporation-scope assessments can be billed')
 		expect(getStubMock).not.toHaveBeenCalled()
 	})
@@ -171,5 +189,45 @@ describe('TaxBillingService scope guardrails', () => {
 		expect(result.skippedAssessmentIds).toEqual(['assessment-char'])
 		expect(billsStub.getBillIntegrationView).toHaveBeenCalledTimes(1)
 		expect(billsStub.getBillIntegrationView).toHaveBeenCalledWith('bill-corp')
+	})
+
+	it('retracts linked bill and records sync event', async () => {
+		const current = makeAssessment({
+			billId: 'bill-1',
+			billStatus: 'issued',
+		})
+		const updated = makeAssessment({
+			billId: 'bill-1',
+			billStatus: 'cancelled',
+		})
+
+		mockDb.query.taxAssessments.findFirst.mockResolvedValue(current)
+		mockDb.query.taxCorporationBillingConfigs.findFirst.mockResolvedValue({
+			corporationId: '98000001',
+			billingEnabled: true,
+			billingIssuerUserId: null,
+		})
+		mockDb.update.mockReturnValue({
+			set: vi.fn(() => ({
+				where: vi.fn(() => ({
+					returning: vi.fn(() => Promise.resolve([updated])),
+				})),
+			})),
+		})
+
+		const billsStub = {
+			cancelBill: vi.fn().mockResolvedValue({
+				id: 'bill-1',
+				status: 'cancelled',
+			}),
+		}
+		getStubMock.mockReturnValue(billsStub)
+
+		const service = new TaxBillingService(mockDb, {} as DurableObjectNamespace)
+		const result = await service.retractAssessmentBill('actor-1', '98000001', 'assessment-1')
+
+		expect(billsStub.cancelBill).toHaveBeenCalledWith('actor-1', 'bill-1')
+		expect(result.billStatus).toBe('cancelled')
+		expect(mockDb.insert).toHaveBeenCalledTimes(1)
 	})
 })

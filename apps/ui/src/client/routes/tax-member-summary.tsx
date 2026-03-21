@@ -308,39 +308,51 @@ export default function TaxMemberSummaryPage() {
 							Filter by period and optionally search members by character name prefix or exact ID.
 						</CardDescription>
 					</CardHeader>
-					<CardContent className="grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
-						<div className="space-y-2">
+					<CardContent className="space-y-2">
+						<div className="hidden md:grid md:grid-cols-2 md:gap-3">
 							<div className="text-sm font-medium">Date Range</div>
-							<DateRangeInput
-								value={{ fromDate, toDate }}
-								onChange={({ fromDate: nextFromDate, toDate: nextToDate }) => {
-									setFromDate(nextFromDate)
-									setToDate(nextToDate)
-								}}
-								placeholder="Date range"
-							/>
+							<div className="grid grid-cols-[1fr_auto] gap-3">
+								<div className="text-sm font-medium">Character</div>
+								<div />
+							</div>
 						</div>
-						<div className="space-y-2">
-							<div className="text-sm font-medium">Character</div>
-							<Input
-								value={characterQuery}
-								onChange={(event) => setCharacterQuery(event.target.value)}
-								placeholder="Character name or ID"
-								disabled={!canSearchCharacter}
-							/>
-						</div>
-						<div className="md:justify-self-end">
-							<Button
-								type="button"
-								variant="outline"
-								onClick={() => {
-									void refetchMemberSummary()
-									void refetchSummaryReport()
-								}}
-								disabled={isRefreshing}
-							>
-								{isRefreshing ? 'Refreshing…' : 'Refresh'}
-							</Button>
+						<div className="grid gap-3 md:grid-cols-2">
+							<div className="space-y-2 md:space-y-0">
+								<div className="text-sm font-medium md:hidden">Date Range</div>
+								<DateRangeInput
+									value={{ fromDate, toDate }}
+									onChange={({ fromDate: nextFromDate, toDate: nextToDate }) => {
+										setFromDate(nextFromDate)
+										setToDate(nextToDate)
+									}}
+									placeholder="Date range"
+									className="[&_.themed-date-picker__input]:h-10"
+								/>
+							</div>
+							<div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
+								<div className="space-y-2 md:space-y-0">
+									<div className="text-sm font-medium md:hidden">Character</div>
+									<Input
+										value={characterQuery}
+										onChange={(event) => setCharacterQuery(event.target.value)}
+										placeholder="Character name or ID"
+										disabled={!canSearchCharacter}
+										className="h-10"
+									/>
+								</div>
+								<Button
+									type="button"
+									variant="outline"
+									onClick={() => {
+										void refetchMemberSummary()
+										void refetchSummaryReport()
+									}}
+									disabled={isRefreshing}
+									className="h-10"
+								>
+									{isRefreshing ? 'Refreshing…' : 'Refresh'}
+								</Button>
+							</div>
 						</div>
 					</CardContent>
 				</Card>

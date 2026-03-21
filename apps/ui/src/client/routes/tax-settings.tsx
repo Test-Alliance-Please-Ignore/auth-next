@@ -471,6 +471,15 @@ export default function TaxRulesPage() {
 		() => new Set(attachments.map((attachment) => attachment.corporationId)),
 		[attachments]
 	)
+	const excludedCorporationIdSet = useMemo(
+		() =>
+			new Set(
+				taxCorporations
+					.filter((corporation) => corporation.included === false)
+					.map((corporation) => corporation.corporationId)
+			),
+		[taxCorporations]
+	)
 
 	const corporationIdsForNameLookup = useMemo(() => {
 		const ids = new Set<string>()
@@ -500,13 +509,15 @@ export default function TaxRulesPage() {
 
 	const corporationSearchOptions = useMemo(
 		() =>
-			Array.from(corporationNameById.entries()).map(([corporationId, name]) => ({
-				id: corporationId,
-				value: corporationId,
-				label: name,
-				description: corporationId,
-			})),
-		[corporationNameById]
+			Array.from(corporationNameById.entries())
+				.filter(([corporationId]) => !excludedCorporationIdSet.has(corporationId))
+				.map(([corporationId, name]) => ({
+					id: corporationId,
+					value: corporationId,
+					label: name,
+					description: corporationId,
+				})),
+		[corporationNameById, excludedCorporationIdSet]
 	)
 
 	const ruleGroupScopeOptions = useMemo(
@@ -749,7 +760,16 @@ export default function TaxRulesPage() {
 								/>
 								<div className="flex flex-wrap gap-2">
 									{attachments.map((attachment) => (
-										<Badge key={attachment.id} variant="secondary" className="gap-2">
+										<Badge
+											key={attachment.id}
+											variant="secondary"
+											className={`gap-2 ${attachment.isExcluded ? 'opacity-50 grayscale' : ''}`}
+											title={
+												attachment.isExcluded
+													? `Excluded: ${attachment.exclusionReason ?? 'No reason provided'}`
+													: undefined
+											}
+										>
 											{corporationNameById.get(attachment.corporationId) ??
 												entityNames[attachment.corporationId] ??
 												attachment.corporationId}

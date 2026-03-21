@@ -36,10 +36,11 @@ export const corporationTaxKeys = {
 	capabilities: (corporationId?: string) =>
 		[...corporationTaxKeys.all, 'capabilities', corporationId ?? 'global'] as const,
 	corporations: () => [...corporationTaxKeys.all, 'corporations'] as const,
-	corporationList: (filters?: { included?: boolean; limit?: number; offset?: number }) =>
+	corporationList: (filters?: { limit?: number; offset?: number }) =>
 		[...corporationTaxKeys.corporations(), filters] as const,
-	corporationSettings: (corporationId: string) =>
-		[...corporationTaxKeys.all, 'corporation-settings', corporationId] as const,
+	exclusions: () => [...corporationTaxKeys.all, 'exclusions'] as const,
+	exclusionsList: (filters?: { limit?: number; offset?: number }) =>
+		[...corporationTaxKeys.exclusions(), filters] as const,
 	walletDivisions: (corporationId: string) =>
 		[...corporationTaxKeys.all, 'wallet-divisions', corporationId] as const,
 	rules: (filters?: {
@@ -86,6 +87,9 @@ export const corporationTaxKeys = {
 	topIncome: () => [...corporationTaxKeys.all, 'top-income'] as const,
 	topIncomeReport: (filters?: TaxReportQueryFilters) =>
 		[...corporationTaxKeys.topIncome(), filters] as const,
+	topIncomeMonthly: () => [...corporationTaxKeys.all, 'top-income-monthly'] as const,
+	topIncomeMonthlyReport: (filters?: TaxReportQueryFilters) =>
+		[...corporationTaxKeys.topIncomeMonthly(), filters] as const,
 	essPayout: () => [...corporationTaxKeys.all, 'ess-payout'] as const,
 	essPayoutReport: (filters?: TaxReportQueryFilters) =>
 		[...corporationTaxKeys.essPayout(), filters] as const,
@@ -105,19 +109,11 @@ export const corporationTaxKeys = {
 	}) => [...corporationTaxKeys.discrepancy(), filters] as const,
 	missingEsiKeys: () => [...corporationTaxKeys.all, 'missing-esi-keys'] as const,
 	missingEsiKeysReport: (filters?: {
-		includedOnly?: boolean
 		limit?: number
 		offset?: number
 		sortBy?: string
 		sortDir?: 'asc' | 'desc'
 	}) => [...corporationTaxKeys.missingEsiKeys(), filters] as const,
-	excludedCorporations: () => [...corporationTaxKeys.all, 'excluded-corporations'] as const,
-	excludedCorporationsReport: (filters?: {
-		limit?: number
-		offset?: number
-		sortBy?: string
-		sortDir?: 'asc' | 'desc'
-	}) => [...corporationTaxKeys.excludedCorporations(), filters] as const,
 	billHistory: (corporationId: string, filters?: { limit?: number; offset?: number }) =>
 		[...corporationTaxKeys.all, 'bill-history', corporationId, filters] as const,
 	assessments: (
@@ -188,7 +184,6 @@ export function useTaxCapabilities(corporationId?: string, enabled = true) {
 }
 
 export function useTaxCorporations(filters?: {
-	included?: boolean
 	limit?: number
 	offset?: number
 	enabled?: boolean
@@ -201,15 +196,6 @@ export function useTaxCorporations(filters?: {
 	})
 }
 
-export function useTaxCorporationSettings(corporationId: string | undefined, enabled = true) {
-	return useQuery({
-		queryKey: corporationTaxKeys.corporationSettings(corporationId ?? 'none'),
-		queryFn: () => corporationTaxApi.getCorporationSettings(corporationId!),
-		staleTime: 1000 * 30,
-		enabled: Boolean(corporationId) && enabled,
-	})
-}
-
 export function useTaxWalletDivisions(corporationId: string | undefined, enabled = true) {
 	return useQuery({
 		queryKey: corporationTaxKeys.walletDivisions(corporationId ?? 'none'),
@@ -219,31 +205,41 @@ export function useTaxWalletDivisions(corporationId: string | undefined, enabled
 	})
 }
 
-export function useUpdateTaxCorporationSettings() {
+export function useTaxExclusions(filters?: { limit?: number; offset?: number; enabled?: boolean }) {
+	return useQuery({
+		queryKey: corporationTaxKeys.exclusionsList(filters),
+		queryFn: () => corporationTaxApi.listExclusions(filters),
+		staleTime: 1000 * 30,
+		enabled: filters?.enabled ?? true,
+	})
+}
+
+export function useUpsertTaxExclusion() {
 	const queryClient = useQueryClient()
 	return useMutation({
-		mutationFn: (input: {
-			corporationId: string
-			updates: {
-				included?: boolean
-				exclusionReason?: string | null
-				defaultRateBps?: number
-				essRateBps?: number
-				discrepancyThresholdBps?: number
-				memberSummaryEnabled?: boolean
-				billingEnabled?: boolean
-				billingIssuerUserId?: string | null
-				billingPayeeId?: string | null
-				billingPayeeType?: 'character' | 'corporation' | null
-				billingDueDays?: number
-			}
-		}) => corporationTaxApi.updateTaxCorporationSettings(input.corporationId, input.updates),
-		onSuccess: (updated) => {
+		mutationFn: (input: { corporationId: string; reason: string | null }) =>
+			corporationTaxApi.upsertExclusion(input.corporationId, { reason: input.reason }),
+		onSuccess: () => {
 			void queryClient.invalidateQueries({
 				queryKey: corporationTaxKeys.corporations(),
 			})
 			void queryClient.invalidateQueries({
-				queryKey: corporationTaxKeys.corporationSettings(updated.corporationId),
+				queryKey: corporationTaxKeys.exclusions(),
+			})
+		},
+	})
+}
+
+export function useDeleteTaxExclusion() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: (corporationId: string) => corporationTaxApi.deleteExclusion(corporationId),
+		onSuccess: () => {
+			void queryClient.invalidateQueries({
+				queryKey: corporationTaxKeys.corporations(),
+			})
+			void queryClient.invalidateQueries({
+				queryKey: corporationTaxKeys.exclusions(),
 			})
 		},
 	})
@@ -581,6 +577,15 @@ export function useTaxTopIncomeSourcesReport(filters?: TaxReportQueryOptions) {
 	})
 }
 
+export function useTaxTopIncomeSourcesMonthlyReport(filters?: TaxReportQueryOptions) {
+	return useQuery({
+		queryKey: corporationTaxKeys.topIncomeMonthlyReport(filters),
+		queryFn: () => corporationTaxApi.getTopIncomeSourcesMonthlyReport(filters),
+		staleTime: 1000 * 30,
+		enabled: filters?.enabled ?? true,
+	})
+}
+
 export function useTaxEssPayoutReport(filters?: TaxReportQueryOptions) {
 	return useQuery({
 		queryKey: corporationTaxKeys.essPayoutReport(filters),
@@ -619,7 +624,6 @@ export function useTaxDiscrepancyReport(filters?: {
 }
 
 export function useTaxMissingEsiKeysReport(filters?: {
-	includedOnly?: boolean
 	limit?: number
 	offset?: number
 	sortBy?: string
@@ -629,21 +633,6 @@ export function useTaxMissingEsiKeysReport(filters?: {
 	return useQuery({
 		queryKey: corporationTaxKeys.missingEsiKeysReport(filters),
 		queryFn: () => corporationTaxApi.getMissingEsiKeysReport(filters),
-		staleTime: 1000 * 30,
-		enabled: filters?.enabled ?? true,
-	})
-}
-
-export function useTaxExcludedCorporationsReport(filters?: {
-	limit?: number
-	offset?: number
-	sortBy?: string
-	sortDir?: 'asc' | 'desc'
-	enabled?: boolean
-}) {
-	return useQuery({
-		queryKey: corporationTaxKeys.excludedCorporationsReport(filters),
-		queryFn: () => corporationTaxApi.getExcludedCorporationsReport(filters),
 		staleTime: 1000 * 30,
 		enabled: filters?.enabled ?? true,
 	})
@@ -739,6 +728,25 @@ export function useSyncTaxAssessmentBillStatus() {
 	return useMutation({
 		mutationFn: (input: { corporationId: string; assessmentId: string }) =>
 			corporationTaxApi.syncAssessmentBillStatus(input.corporationId, input.assessmentId),
+		onSuccess: (updated) => {
+			void queryClient.invalidateQueries({
+				queryKey: corporationTaxKeys.billStatus(),
+			})
+			void queryClient.invalidateQueries({
+				queryKey: corporationTaxKeys.billHistory(updated.corporationId),
+			})
+			void queryClient.invalidateQueries({
+				queryKey: corporationTaxKeys.assessments(updated.corporationId),
+			})
+		},
+	})
+}
+
+export function useRetractTaxAssessmentBill() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: (input: { corporationId: string; assessmentId: string }) =>
+			corporationTaxApi.retractAssessmentBill(input.corporationId, input.assessmentId),
 		onSuccess: (updated) => {
 			void queryClient.invalidateQueries({
 				queryKey: corporationTaxKeys.billStatus(),

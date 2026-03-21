@@ -171,6 +171,10 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 				href: '/tax/rules',
 			})
 			taxItems.push({
+				label: 'Exclusions',
+				href: '/tax/exclusions',
+			})
+			taxItems.push({
 				label: 'Audit Log',
 				href: '/tax/audit-log',
 			})

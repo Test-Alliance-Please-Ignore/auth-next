@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 
 import { isTaxIncomeRefType } from '@repo/corporation-tax'
-import { and, eq, ilike, inArray, or } from '@repo/db-utils'
+import { and, desc, eq, ilike, inArray, or } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger, TimeCache } from '@repo/hono-helpers'
 
@@ -63,12 +63,18 @@ const TAX_DISCREPANCY_SORT_FIELDS = [
 ] as const
 const TAX_MISSING_ESI_SORT_FIELDS = [
 	'corporationId',
-	'included',
 	'directorCount',
 	'healthyDirectorCount',
 	'lastVerified',
 ] as const
-const TAX_EXCLUDED_CORPS_SORT_FIELDS = ['updatedAt', 'corporationId'] as const
+const TAX_BILL_STATUS_SORT_FIELDS = [
+	'corporationId',
+	'billStatus',
+	'assessmentCount',
+	'taxDue',
+	'taxPaid',
+	'taxDelta',
+] as const
 const SNOWFLAKE_REGEX = /^\d{17,20}$/
 const SITE_ADMIN_ONLY_ALERT_TYPES = new Set([
 	'discord_delivery_failed',
@@ -282,6 +288,7 @@ function mapTaxBillingError(
 		case 'Assessment not found':
 		case 'Linked bill not found':
 		case 'Corporation settings not found':
+		case 'Bill not found':
 			return { status: 404, message: error.message }
 		case 'Only corporation-scope assessments can be billed':
 			return { status: 400, message: error.message }
@@ -289,6 +296,9 @@ function mapTaxBillingError(
 		case 'Billing is not enabled for this corporation':
 		case 'Billing payee configuration is incomplete':
 		case 'Assessment has no linked bill':
+		case 'Only the issuer can cancel the bill':
+		case 'Cannot cancel a paid bill':
+		case 'Bill is already cancelled':
 			return { status: 409, message: error.message }
 		default:
 			return { status: 500, message: defaultMessage }
@@ -412,61 +422,6 @@ async function getMemberCharacterIdsInCorporation(
 	})
 }
 
-type TaxCorporationSettingsRow = Awaited<
-	ReturnType<CorporationTax['listCorporationSettings']>
->[number]
-
-async function safeGetCorporationTaxEsiStatus(
-	env: App['Bindings'],
-	corporationId: string
-): Promise<TaxCorporationSettingsRow['esiAuthStatus']> {
-	try {
-		const stub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, corporationId)
-		const status = await stub.getCorporationAuthStatus(corporationId)
-		return {
-			isConfigured: status.isConfigured,
-			isVerified: status.isVerified,
-			lastVerified: status.lastVerified,
-			directorCount: status.directorCount,
-			healthyDirectorCount: status.healthyDirectorCount,
-			requiredScopes: status.requiredScopes,
-			missingRequiredScopes: status.missingRequiredScopes,
-			hasRequiredScopes: status.hasRequiredScopes,
-			hasCorporationWalletScope: status.hasCorporationWalletScope,
-			hasCharacterWalletScope: status.hasCharacterWalletScope,
-			hasCorporationMembershipScope: status.hasCorporationMembershipScope,
-			grantedScopeCount: status.grantedScopeCount,
-		}
-	} catch (_error) {
-		return null
-	}
-}
-
-function toDefaultTaxCorporationSettings(
-	corporationId: string,
-	createdAt: Date,
-	updatedAt: Date,
-	esiAuthStatus: TaxCorporationSettingsRow['esiAuthStatus']
-): TaxCorporationSettingsRow {
-	return {
-		corporationId,
-		included: false,
-		exclusionReason: null,
-		defaultRateBps: 0,
-		essRateBps: 0,
-		discrepancyThresholdBps: 500,
-		memberSummaryEnabled: false,
-		billingEnabled: false,
-		billingIssuerUserId: null,
-		billingPayeeId: null,
-		billingPayeeType: null,
-		billingDueDays: 14,
-		esiAuthStatus,
-		createdAt,
-		updatedAt,
-	}
-}
-
 /**
  * GET /corporation-tax/health
  * Temporary integration route for validating core <-> corporation-tax RPC wiring.
@@ -524,52 +479,106 @@ app.get('/capabilities', requireAuth(), async (c) => {
 })
 
 /**
- * GET /corporation-tax/corporations
- * List corporation tax settings.
- * Requires tax auditor/admin permission.
+ * GET /corporation-tax/exclusions
+ * List corporation exclusions.
  */
-app.get('/corporations', requireAuth(), async (c) => {
+app.get('/exclusions', requireAuth(), async (c) => {
 	const user = c.get('user')
-	if (!user) {
-		return c.json({ error: 'Unauthorized' }, 401)
-	}
+	if (!user) return c.json({ error: 'Unauthorized' }, 401)
+	const canRead = await canManageTaxFeature(c.env, user)
+	if (!canRead) return c.json({ error: 'Forbidden' }, 403)
 
-	const canRead = await canAuditTaxFeature(c.env, user)
-	if (!canRead) {
-		return c.json({ error: 'Forbidden' }, 403)
-	}
-
-	const included = parseBooleanQueryParam(c.req.query('included'))
 	const limit = parseIntegerQueryParam(c.req.query('limit'))
 	const offset = parseIntegerQueryParam(c.req.query('offset'))
-
-	if ((c.req.query('included') ?? '') !== '' && included === undefined) {
-		return c.json({ error: 'Invalid included filter. Use true/false.' }, 400)
-	}
 	if (limit !== undefined && (limit < 1 || limit > 200)) {
-		return c.json({ error: 'Invalid limit. Must be between 1 and 200.' }, 400)
+		return c.json({ error: 'limit must be between 1 and 200' }, 400)
 	}
 	if (offset !== undefined && offset < 0) {
-		return c.json({ error: 'Invalid offset. Must be >= 0.' }, 400)
+		return c.json({ error: 'offset must be >= 0' }, 400)
 	}
 
 	try {
 		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
-		const db = c.get('db')
-		const settings = await stub.listCorporationSettings(
-			db
-				? {
-						limit: 200,
-						offset: 0,
-					}
-				: {
-						included,
-						limit,
-						offset,
-					}
+		return c.json(await stub.listCorporationExclusions({ limit, offset }))
+	} catch (error) {
+		logger.error('Error listing corporation tax exclusions:', error)
+		return c.json({ error: 'Failed to list corporation tax exclusions' }, 500)
+	}
+})
+
+/**
+ * PUT /corporation-tax/exclusions/:corporationId
+ * Upsert corporation exclusion reason.
+ */
+app.put('/exclusions/:corporationId', requireAuth(), async (c) => {
+	const user = c.get('user')
+	if (!user) return c.json({ error: 'Unauthorized' }, 401)
+	const canWrite = await canManageTaxFeature(c.env, user)
+	if (!canWrite) return c.json({ error: 'Forbidden' }, 403)
+
+	const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null
+	if (!body) return c.json({ error: 'Invalid JSON payload' }, 400)
+	if (!('reason' in body)) return c.json({ error: 'reason is required' }, 400)
+	if (!(typeof body.reason === 'string' || body.reason === null)) {
+		return c.json({ error: 'reason must be a string or null' }, 400)
+	}
+
+	try {
+		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
+		return c.json(
+			await stub.upsertCorporationExclusion(user.id, c.req.param('corporationId'), {
+				reason: body.reason as string | null,
+			})
 		)
+	} catch (error) {
+		logger.error('Error upserting corporation tax exclusion:', error)
+		return c.json({ error: 'Failed to upsert corporation tax exclusion' }, 500)
+	}
+})
+
+/**
+ * DELETE /corporation-tax/exclusions/:corporationId
+ * Remove corporation exclusion.
+ */
+app.delete('/exclusions/:corporationId', requireAuth(), async (c) => {
+	const user = c.get('user')
+	if (!user) return c.json({ error: 'Unauthorized' }, 401)
+	const canWrite = await canManageTaxFeature(c.env, user)
+	if (!canWrite) return c.json({ error: 'Forbidden' }, 403)
+
+	try {
+		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
+		await stub.deleteCorporationExclusion(user.id, c.req.param('corporationId'))
+		return c.body(null, 204)
+	} catch (error) {
+		logger.error('Error deleting corporation tax exclusion:', error)
+		return c.json({ error: 'Failed to delete corporation tax exclusion' }, 500)
+	}
+})
+
+/**
+ * GET /corporation-tax/corporations
+ * List member/special-purpose corporations with exclusion flags.
+ */
+app.get('/corporations', requireAuth(), async (c) => {
+	const user = c.get('user')
+	if (!user) return c.json({ error: 'Unauthorized' }, 401)
+	const canRead = await canAuditTaxFeature(c.env, user)
+	if (!canRead) return c.json({ error: 'Forbidden' }, 403)
+
+	const limit = parseIntegerQueryParam(c.req.query('limit'))
+	const offset = parseIntegerQueryParam(c.req.query('offset'))
+	if (limit !== undefined && (limit < 1 || limit > 300)) {
+		return c.json({ error: 'limit must be between 1 and 300' }, 400)
+	}
+	if (offset !== undefined && offset < 0) {
+		return c.json({ error: 'offset must be >= 0' }, 400)
+	}
+
+	try {
+		const db = c.get('db')
 		if (!db) {
-			return c.json(settings)
+			return c.json({ error: 'Database unavailable' }, 500)
 		}
 
 		const managedCorps = await db.query.managedCorporations.findMany({
@@ -580,77 +589,29 @@ app.get('/corporations', requireAuth(), async (c) => {
 					eq(managedCorporations.isSpecialPurpose, true)
 				)
 			),
+			orderBy: [desc(managedCorporations.updatedAt)],
+			limit: 10_000,
 		})
-		const managedCorpIdSet = new Set(managedCorps.map((corporation) => corporation.corporationId))
 
-		const settingsByCorporationId = new Map(settings.map((item) => [item.corporationId, item]))
-		const merged: TaxCorporationSettingsRow[] = []
-
-		for (const corporation of managedCorps) {
-			const existing = settingsByCorporationId.get(corporation.corporationId)
-			if (existing) {
-				merged.push(existing)
-				continue
-			}
-
-			const esiAuthStatus = await safeGetCorporationTaxEsiStatus(c.env, corporation.corporationId)
-			merged.push(
-				toDefaultTaxCorporationSettings(
-					corporation.corporationId,
-					corporation.createdAt,
-					corporation.updatedAt,
-					esiAuthStatus
-				)
-			)
-		}
-
-		for (const item of settings) {
-			if (!managedCorpIdSet.has(item.corporationId)) {
-				merged.push(item)
-			}
-		}
-
-		const filtered =
-			included === undefined ? merged : merged.filter((item) => item.included === included)
-		const sorted = filtered.sort(
-			(left, right) => right.updatedAt.getTime() - left.updatedAt.getTime()
-		)
-		const boundedLimit = Math.min(Math.max(limit ?? 50, 1), 200)
-		const boundedOffset = Math.max(offset ?? 0, 0)
-		return c.json(sorted.slice(boundedOffset, boundedOffset + boundedLimit))
-	} catch (error) {
-		logger.error('Error listing corporation tax settings:', error)
-		return c.json({ error: 'Failed to list corporation tax settings' }, 500)
-	}
-})
-
-/**
- * GET /corporation-tax/corporations/:corporationId/settings
- * Read settings for one corporation.
- * Requires tax viewer+ permission, or CEO/director self-service access for that corporation.
- */
-app.get('/corporations/:corporationId/settings', requireAuth(), async (c) => {
-	const user = c.get('user')
-	if (!user) {
-		return c.json({ error: 'Unauthorized' }, 401)
-	}
-
-	const corporationId = c.req.param('corporationId')
-	const canManage = await canManageTaxFeature(c.env, user, corporationId)
-	if (!canManage) {
-		return c.json({ error: 'Forbidden' }, 403)
-	}
-
-	try {
 		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
-		const settings = await stub.getCorporationSettings(corporationId)
-		if (!settings) {
-			return c.json({ error: 'Settings not found' }, 404)
-		}
-		return c.json(settings)
+		const exclusions = await stub.listCorporationExclusions({ limit: 10_000 })
+		const exclusionMap = new Map(
+			exclusions.map((row) => [row.corporationId, row.reason ?? null] as const)
+		)
+
+		const rows = managedCorps.map((corp) => ({
+			corporationId: corp.corporationId,
+			included: !exclusionMap.has(corp.corporationId),
+			exclusionReason: exclusionMap.get(corp.corporationId) ?? null,
+			createdAt: corp.createdAt,
+			updatedAt: corp.updatedAt,
+		}))
+		const boundedLimit = Math.min(Math.max(limit ?? 200, 1), 300)
+		const boundedOffset = Math.max(offset ?? 0, 0)
+		return c.json(rows.slice(boundedOffset, boundedOffset + boundedLimit))
 	} catch (error) {
-		logger.error('Error fetching corporation tax settings:', error)
-		return c.json({ error: 'Failed to fetch corporation tax settings' }, 500)
+		logger.error('Error listing tax corporations:', error)
+		return c.json({ error: 'Failed to list tax corporations' }, 500)
 	}
 })
 
@@ -678,150 +639,6 @@ app.get('/corporations/:corporationId/divisions', requireAuth(), async (c) => {
 	} catch (error) {
 		logger.error('Error listing corporation tax wallet divisions:', error)
 		return c.json({ error: 'Failed to list wallet divisions' }, 500)
-	}
-})
-
-/**
- * PATCH /corporation-tax/corporations/:corporationId/settings
- * Update settings for one corporation.
- * Requires tax admin permission, or CEO/director self-service access for that corporation.
- */
-app.patch('/corporations/:corporationId/settings', requireAuth(), async (c) => {
-	const user = c.get('user')
-	if (!user) {
-		return c.json({ error: 'Unauthorized' }, 401)
-	}
-
-	const corporationId = c.req.param('corporationId')
-	const canWrite = await canManageTaxFeature(c.env, user, corporationId)
-	if (!canWrite) {
-		return c.json({ error: 'Forbidden' }, 403)
-	}
-
-	let body: Record<string, unknown>
-	try {
-		body = await c.req.json()
-	} catch (_error) {
-		return c.json({ error: 'Invalid JSON payload' }, 400)
-	}
-
-	const updates: {
-		included?: boolean
-		exclusionReason?: string | null
-		defaultRateBps?: number
-		essRateBps?: number
-		discrepancyThresholdBps?: number
-		memberSummaryEnabled?: boolean
-		billingEnabled?: boolean
-		billingIssuerUserId?: string | null
-		billingPayeeId?: string | null
-		billingPayeeType?: 'character' | 'corporation' | null
-		billingDueDays?: number
-	} = {}
-
-	if ('included' in body) {
-		if (typeof body.included !== 'boolean') {
-			return c.json({ error: 'included must be a boolean' }, 400)
-		}
-		updates.included = body.included
-	}
-	if ('exclusionReason' in body) {
-		if (!(typeof body.exclusionReason === 'string' || body.exclusionReason === null)) {
-			return c.json({ error: 'exclusionReason must be a string or null' }, 400)
-		}
-		updates.exclusionReason = body.exclusionReason
-	}
-	if ('defaultRateBps' in body) {
-		const defaultRateBps = body.defaultRateBps
-		if (typeof defaultRateBps !== 'number' || !Number.isInteger(defaultRateBps)) {
-			return c.json({ error: 'defaultRateBps must be an integer' }, 400)
-		}
-		if (defaultRateBps < 0 || defaultRateBps > 10_000) {
-			return c.json({ error: 'defaultRateBps must be between 0 and 10000' }, 400)
-		}
-		updates.defaultRateBps = defaultRateBps
-	}
-	if ('essRateBps' in body) {
-		const essRateBps = body.essRateBps
-		if (typeof essRateBps !== 'number' || !Number.isInteger(essRateBps)) {
-			return c.json({ error: 'essRateBps must be an integer' }, 400)
-		}
-		if (essRateBps < 0 || essRateBps > 10_000) {
-			return c.json({ error: 'essRateBps must be between 0 and 10000' }, 400)
-		}
-		updates.essRateBps = essRateBps
-	}
-	if ('discrepancyThresholdBps' in body) {
-		const discrepancyThresholdBps = body.discrepancyThresholdBps
-		if (typeof discrepancyThresholdBps !== 'number' || !Number.isInteger(discrepancyThresholdBps)) {
-			return c.json({ error: 'discrepancyThresholdBps must be an integer' }, 400)
-		}
-		if (discrepancyThresholdBps < 0 || discrepancyThresholdBps > 10_000) {
-			return c.json({ error: 'discrepancyThresholdBps must be between 0 and 10000' }, 400)
-		}
-		updates.discrepancyThresholdBps = discrepancyThresholdBps
-	}
-	if ('memberSummaryEnabled' in body) {
-		if (typeof body.memberSummaryEnabled !== 'boolean') {
-			return c.json({ error: 'memberSummaryEnabled must be a boolean' }, 400)
-		}
-		updates.memberSummaryEnabled = body.memberSummaryEnabled
-	}
-	if ('billingEnabled' in body) {
-		if (typeof body.billingEnabled !== 'boolean') {
-			return c.json({ error: 'billingEnabled must be a boolean' }, 400)
-		}
-		updates.billingEnabled = body.billingEnabled
-	}
-	if ('billingIssuerUserId' in body) {
-		if (!(typeof body.billingIssuerUserId === 'string' || body.billingIssuerUserId === null)) {
-			return c.json({ error: 'billingIssuerUserId must be a string or null' }, 400)
-		}
-		updates.billingIssuerUserId = body.billingIssuerUserId
-	}
-	if ('billingPayeeId' in body) {
-		if (!(typeof body.billingPayeeId === 'string' || body.billingPayeeId === null)) {
-			return c.json({ error: 'billingPayeeId must be a string or null' }, 400)
-		}
-		updates.billingPayeeId = body.billingPayeeId
-	}
-	if ('billingPayeeType' in body) {
-		const billingPayeeType = body.billingPayeeType
-		if (
-			!(
-				billingPayeeType === 'character' ||
-				billingPayeeType === 'corporation' ||
-				billingPayeeType === null
-			)
-		) {
-			return c.json({ error: "billingPayeeType must be 'character', 'corporation', or null" }, 400)
-		}
-		updates.billingPayeeType = billingPayeeType
-	}
-	if ('billingDueDays' in body) {
-		if (typeof body.billingDueDays !== 'number' || !Number.isInteger(body.billingDueDays)) {
-			return c.json({ error: 'billingDueDays must be an integer' }, 400)
-		}
-		if (body.billingDueDays < 1 || body.billingDueDays > 120) {
-			return c.json({ error: 'billingDueDays must be between 1 and 120' }, 400)
-		}
-		updates.billingDueDays = body.billingDueDays
-	}
-
-	if (Object.keys(updates).length === 0) {
-		return c.json({ error: 'No valid settings fields were provided' }, 400)
-	}
-
-	try {
-		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
-		const settings = await stub.upsertCorporationSettings(user.id, corporationId, updates)
-		return c.json(settings)
-	} catch (error) {
-		if (error instanceof Error && error.message.startsWith('INCLUSION_VALIDATION_FAILED:')) {
-			return c.json({ error: error.message.replace('INCLUSION_VALIDATION_FAILED: ', '') }, 400)
-		}
-		logger.error('Error updating corporation tax settings:', error)
-		return c.json({ error: 'Failed to update corporation tax settings' }, 500)
 	}
 })
 
@@ -1795,6 +1612,44 @@ app.post(
 )
 
 /**
+ * POST /corporation-tax/corporations/:corporationId/assessments/:assessmentId/bills/retract
+ * Retract (cancel) one assessment's linked bill in bills worker.
+ */
+app.post(
+	'/corporations/:corporationId/assessments/:assessmentId/bills/retract',
+	requireAuth(),
+	async (c) => {
+		const user = c.get('user')
+		if (!user) {
+			return c.json({ error: 'Unauthorized' }, 401)
+		}
+
+		const corporationId = c.req.param('corporationId')
+		const assessmentId = c.req.param('assessmentId')
+		const canManage = await canManageTaxFeature(c.env, user, corporationId)
+		if (!canManage) {
+			return c.json({ error: 'Forbidden' }, 403)
+		}
+
+		if (!corporationId || !assessmentId) {
+			return c.json({ error: 'corporationId and assessmentId are required' }, 400)
+		}
+
+		try {
+			const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
+			const updated = await stub.retractAssessmentBill(user.id, corporationId, assessmentId)
+			return c.json(updated)
+		} catch (error) {
+			const mapped = mapTaxBillingError(error, 'Failed to retract assessment bill')
+			if (mapped.status === 500) {
+				logger.error('Error retracting tax assessment bill:', error)
+			}
+			return c.json({ error: mapped.message }, mapped.status)
+		}
+	}
+)
+
+/**
  * POST /corporation-tax/corporations/:corporationId/periods/issue-bills
  * Issue bills for assessments in a period window.
  */
@@ -1988,11 +1843,6 @@ app.get('/corporations/:corporationId/member-summary', requireAuth(), async (c) 
 
 	try {
 		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
-		const settings = await stub.getCorporationSettings(corporationId)
-		if (!canReadWithTaxScopes && !settings?.memberSummaryEnabled) {
-			return c.json({ error: 'Member summary is not enabled for this corporation' }, 403)
-		}
-
 		let scopedCharacterIds: string[] = memberCharacterIds
 		if (canReadWithTaxScopes) {
 			const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
@@ -2107,7 +1957,14 @@ app.get('/reports/total-taxes', requireAuth(), async (c) => {
 		return c.json(report)
 	} catch (error) {
 		logger.error('Error fetching total taxes by corporation report:', error)
-		return c.json({ error: 'Failed to fetch total taxes by corporation report' }, 500)
+		const isNonProd = c.env.ENVIRONMENT !== 'production'
+		return c.json(
+			{
+				error: 'Failed to fetch total taxes by corporation report',
+				...(isNonProd ? { detail: error instanceof Error ? error.message : String(error) } : {}),
+			},
+			500
+		)
 	}
 })
 
@@ -2138,6 +1995,36 @@ app.get('/reports/top-income', requireAuth(), async (c) => {
 	} catch (error) {
 		logger.error('Error fetching top income sources report:', error)
 		return c.json({ error: 'Failed to fetch top income sources report' }, 500)
+	}
+})
+
+/**
+ * GET /corporation-tax/reports/top-income-monthly
+ * Taxable inflow grouped by income type and month.
+ */
+app.get('/reports/top-income-monthly', requireAuth(), async (c) => {
+	const user = c.get('user')
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	const parsed = parseReportWindowFiltersFromQuery(c.req)
+	if (parsed.error) {
+		return c.json({ error: parsed.error }, 400)
+	}
+
+	const canRead = await canAuditTaxFeature(c.env, user, parsed.filters?.corporationId)
+	if (!canRead) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
+	try {
+		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
+		const report = await stub.getTopIncomeSourcesMonthlyReport(parsed.filters)
+		return c.json(report)
+	} catch (error) {
+		logger.error('Error fetching monthly top income sources report:', error)
+		return c.json({ error: 'Failed to fetch monthly top income sources report' }, 500)
 	}
 })
 
@@ -2287,15 +2174,11 @@ app.get('/reports/missing-esi-keys', requireAuth(), async (c) => {
 		return c.json({ error: 'Unauthorized' }, 401)
 	}
 
-	const includedOnly = parseBooleanQueryParam(c.req.query('includedOnly'))
 	const limit = parseIntegerQueryParam(c.req.query('limit'))
 	const offset = parseIntegerQueryParam(c.req.query('offset'))
 	const sortBy = c.req.query('sortBy') || undefined
 	const sortDirection = parseSortDirectionQueryParam(c.req.query('sortDir'))
 
-	if ((c.req.query('includedOnly') ?? '') !== '' && includedOnly === undefined) {
-		return c.json({ error: 'includedOnly must be true/false' }, 400)
-	}
 	if (limit !== undefined && (limit < 1 || limit > 200)) {
 		return c.json({ error: 'limit must be an integer between 1 and 200' }, 400)
 	}
@@ -2323,7 +2206,6 @@ app.get('/reports/missing-esi-keys', requireAuth(), async (c) => {
 	try {
 		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
 		const report = await stub.getMissingEsiKeysReport({
-			includedOnly,
 			limit,
 			offset,
 			sortBy,
@@ -2337,61 +2219,6 @@ app.get('/reports/missing-esi-keys', requireAuth(), async (c) => {
 })
 
 /**
- * GET /corporation-tax/reports/excluded-corporations
- * Excluded corporations with reason.
- */
-app.get('/reports/excluded-corporations', requireAuth(), async (c) => {
-	const user = c.get('user')
-	if (!user) {
-		return c.json({ error: 'Unauthorized' }, 401)
-	}
-
-	const limit = parseIntegerQueryParam(c.req.query('limit'))
-	const offset = parseIntegerQueryParam(c.req.query('offset'))
-	const sortBy = c.req.query('sortBy') || undefined
-	const sortDirection = parseSortDirectionQueryParam(c.req.query('sortDir'))
-	if (limit !== undefined && (limit < 1 || limit > 200)) {
-		return c.json({ error: 'limit must be an integer between 1 and 200' }, 400)
-	}
-	if (offset !== undefined && offset < 0) {
-		return c.json({ error: 'offset must be an integer >= 0' }, 400)
-	}
-	if (sortDirection === null) {
-		return c.json({ error: "sortDir must be 'asc' or 'desc'" }, 400)
-	}
-	if (
-		sortBy &&
-		!TAX_EXCLUDED_CORPS_SORT_FIELDS.includes(
-			sortBy as (typeof TAX_EXCLUDED_CORPS_SORT_FIELDS)[number]
-		)
-	) {
-		return c.json(
-			{ error: `sortBy must be one of: ${TAX_EXCLUDED_CORPS_SORT_FIELDS.join(', ')}` },
-			400
-		)
-	}
-
-	const canRead = await canAuditTaxFeature(c.env, user)
-	if (!canRead) {
-		return c.json({ error: 'Forbidden' }, 403)
-	}
-
-	try {
-		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
-		const report = await stub.getExcludedCorporationsReport({
-			limit,
-			offset,
-			sortBy,
-			sortDirection: sortDirection ?? undefined,
-		})
-		return c.json(report)
-	} catch (error) {
-		logger.error('Error fetching excluded corporations report:', error)
-		return c.json({ error: 'Failed to fetch excluded corporations report' }, 500)
-	}
-})
-
-/**
  * GET /corporation-tax/reports/bill-status
  * Assessment bill status rollup report.
  */
@@ -2401,7 +2228,9 @@ app.get('/reports/bill-status', requireAuth(), async (c) => {
 		return c.json({ error: 'Unauthorized' }, 401)
 	}
 
-	const parsed = parseReportWindowFiltersFromQuery(c.req)
+	const parsed = parseReportWindowFiltersFromQuery(c.req, {
+		allowedSortFields: TAX_BILL_STATUS_SORT_FIELDS,
+	})
 	if (parsed.error) {
 		return c.json({ error: parsed.error }, 400)
 	}

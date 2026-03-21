@@ -102,6 +102,7 @@ const TaxAuditLogPage = lazy(() => import('./routes/tax-audit-log'))
 const TaxBillsPage = lazy(() => import('./routes/tax-bills'))
 const TaxLedgerPage = lazy(() => import('./routes/tax-ledger'))
 const TaxMemberSummaryPage = lazy(() => import('./routes/tax-member-summary'))
+const TaxExclusionsPage = lazy(() => import('./routes/tax-exclusions'))
 const TaxReportsPage = lazy(() => import('./routes/tax-reports'))
 const TaxRulesPage = lazy(() => import('./routes/tax-settings'))
 
@@ -429,7 +430,6 @@ export default function App() {
 									</Suspense>
 								}
 							/>
-							<Route path="/tax/settings" element={<Navigate to="/tax/rules" replace />} />
 							<Route
 								path="/tax/rules"
 								element={
@@ -459,6 +459,14 @@ export default function App() {
 								element={
 									<Suspense fallback={<LoadingPage />}>
 										<TaxLedgerPage />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/tax/exclusions"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<TaxExclusionsPage />
 									</Suspense>
 								}
 							/>

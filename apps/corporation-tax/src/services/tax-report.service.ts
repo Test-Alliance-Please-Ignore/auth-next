@@ -1,37 +1,38 @@
 import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, sql } from '@repo/db-utils'
+import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import {
 	taxAssessmentLines,
 	taxAssessments,
-	taxCorporationSettings,
-	taxDailyRollups,
+	taxCorporationExclusions,
 	taxDiscrepancies,
 	taxLedgerEntries,
 	taxMemberContributionFinalizedRollups,
 	taxMemberContributionProjectionRollups,
 	taxMemberSummaryVersions,
+	taxSyncCheckpoints,
 } from '../db/schema'
 
 import type {
 	ListTaxDiscrepancyReportFilters,
-	ListTaxExcludedCorporationsReportFilters,
 	ListTaxMissingEsiKeyReportFilters,
 	TaxBillStatusReportRow,
 	TaxCompliancePoint,
 	TaxDiscrepancy,
 	TaxEssPayoutRow,
-	TaxExcludedCorporationRow,
 	TaxMemberSummary,
 	TaxMemberSummaryReportFilters,
 	TaxMissingEsiKeyRow,
+	TaxPagedResult,
 	TaxReportWindowFilters,
 	TaxSummaryReport,
+	TaxTopIncomeSourceMonthlyRow,
 	TaxTopIncomeSourceRow,
 	TaxTotalTaxesByCorporationRow,
 } from '@repo/corporation-tax'
+import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { CorporationTaxDb } from '../db'
-import type { TaxSettingsService } from './tax-settings.service'
 
 export class TaxReportService {
 	private readonly MEMBER_SUMMARY_CACHE_TTL_MS = 30 * 60 * 1000
@@ -52,18 +53,14 @@ export class TaxReportService {
 
 	constructor(
 		private db: CorporationTaxDb,
-		private settingsService: TaxSettingsService
+		private eveCorporationDataNamespace: DurableObjectNamespace
 	) {}
 
 	async getSummaryReport(filters: TaxReportWindowFilters = {}): Promise<TaxSummaryReport> {
-		const [corporationIds, settingsRows] = await Promise.all([
-			this.resolveIncludedCorporationIds(filters.corporationId),
-			this.db.query.taxCorporationSettings.findMany({
-				where: filters.corporationId
-					? eq(taxCorporationSettings.corporationId, filters.corporationId)
-					: undefined,
-				limit: 10_000,
-			}),
+		const [corporationIds, knownCorporationIds, exclusions] = await Promise.all([
+			this.resolveReportCorporationIds(filters.corporationId),
+			this.listKnownCorporationIds(filters.corporationId),
+			this.listExclusions(filters.corporationId),
 		])
 
 		if (corporationIds.length === 0) {
@@ -73,8 +70,8 @@ export class TaxReportService {
 				toDate: filters.toDate ?? null,
 				assessmentCount: 0,
 				discrepancyOpenCount: 0,
-				includedCorporationCount: settingsRows.filter((row) => row.included).length,
-				excludedCorporationCount: settingsRows.filter((row) => !row.included).length,
+				includedCorporationCount: Math.max(knownCorporationIds.length - exclusions.length, 0),
+				excludedCorporationCount: exclusions.length,
 				billedAssessmentCount: 0,
 				taxableIncome: '0.00',
 				taxDue: '0.00',
@@ -139,8 +136,8 @@ export class TaxReportService {
 			toDate: filters.toDate ?? null,
 			assessmentCount: assessments.length,
 			discrepancyOpenCount: openDiscrepancies.length,
-			includedCorporationCount: settingsRows.filter((row) => row.included).length,
-			excludedCorporationCount: settingsRows.filter((row) => !row.included).length,
+			includedCorporationCount: Math.max(knownCorporationIds.length - exclusions.length, 0),
+			excludedCorporationCount: exclusions.length,
 			billedAssessmentCount,
 			taxableIncome: this.formatCenti(taxableIncomeCenti),
 			taxDue: this.formatCenti(taxDueCenti),
@@ -153,10 +150,10 @@ export class TaxReportService {
 
 	async getTotalTaxesByCorporationReport(
 		filters: TaxReportWindowFilters = {}
-	): Promise<TaxTotalTaxesByCorporationRow[]> {
-		const corporationIds = await this.resolveIncludedCorporationIds(filters.corporationId)
+	): Promise<TaxPagedResult<TaxTotalTaxesByCorporationRow>> {
+		const corporationIds = await this.resolveReportCorporationIds(filters.corporationId)
 		if (corporationIds.length === 0) {
-			return []
+			return { rows: [], totalRows: 0 }
 		}
 
 		const rows = await this.db
@@ -192,9 +189,13 @@ export class TaxReportService {
 			taxDue: this.formatCenti(this.parseDecimalToCenti(row.taxDue)),
 			taxPaid: this.formatCenti(this.parseDecimalToCenti(row.taxPaid)),
 			taxDelta: this.formatCenti(this.parseDecimalToCenti(row.taxDelta)),
+			taxDueCenti: this.parseDecimalToCenti(row.taxDue).toString(),
+			taxPaidCenti: this.parseDecimalToCenti(row.taxPaid).toString(),
+			taxDeltaCenti: this.parseDecimalToCenti(row.taxDelta).toString(),
 			lastAssessmentAt: row.lastAssessmentAt ? new Date(row.lastAssessmentAt) : null,
-			taxDueCenti: this.parseDecimalToCenti(row.taxDue),
-			sortKey: this.parseDecimalToCenti(row.taxDue),
+			sortDueCenti: this.parseDecimalToCenti(row.taxDue),
+			sortPaidCenti: this.parseDecimalToCenti(row.taxPaid),
+			sortDeltaCenti: this.parseDecimalToCenti(row.taxDelta),
 		}))
 
 		const offset = Math.max(filters.offset ?? 0, 0)
@@ -202,7 +203,7 @@ export class TaxReportService {
 		const sortBy = filters.sortBy ?? 'taxDue'
 		const sortDirection = this.toSortDirection(filters.sortDirection, 'desc')
 
-		return grouped
+		const sortedRows = grouped
 			.sort((a, b) => {
 				switch (sortBy) {
 					case 'corporationId':
@@ -210,32 +211,35 @@ export class TaxReportService {
 					case 'assessmentCount':
 						return this.compareNumbers(a.assessmentCount, b.assessmentCount, sortDirection)
 					case 'taxPaid':
-						return this.compareBigInts(
-							this.parseDecimalToCenti(a.taxPaid),
-							this.parseDecimalToCenti(b.taxPaid),
-							sortDirection
-						)
+						return this.compareBigInts(a.sortPaidCenti, b.sortPaidCenti, sortDirection)
 					case 'taxDelta':
-						return this.compareBigInts(
-							this.parseDecimalToCenti(a.taxDelta),
-							this.parseDecimalToCenti(b.taxDelta),
-							sortDirection
-						)
+						return this.compareBigInts(a.sortDeltaCenti, b.sortDeltaCenti, sortDirection)
 					case 'lastAssessmentAt':
 						return this.compareDatesNullable(a.lastAssessmentAt, b.lastAssessmentAt, sortDirection)
 					case 'taxDue':
 					default:
-						return this.compareBigInts(a.sortKey, b.sortKey, sortDirection)
+						return this.compareBigInts(a.sortDueCenti, b.sortDueCenti, sortDirection)
 				}
 			})
 			.slice(offset, offset + limit)
-			.map(({ taxDueCenti: _taxDueCenti, sortKey: _sortKey, ...row }) => row)
+			.map(
+				({
+					sortDueCenti: _sortDueCenti,
+					sortPaidCenti: _sortPaidCenti,
+					sortDeltaCenti: _sortDeltaCenti,
+					...row
+				}) => row
+			)
+		return {
+			rows: sortedRows,
+			totalRows: grouped.length,
+		}
 	}
 
 	async getTopIncomeSourcesReport(
 		filters: TaxReportWindowFilters = {}
 	): Promise<TaxTopIncomeSourceRow[]> {
-		const corporationIds = await this.resolveIncludedCorporationIds(filters.corporationId)
+		const corporationIds = await this.resolveReportCorporationIds(filters.corporationId)
 		if (corporationIds.length === 0) {
 			return []
 		}
@@ -287,10 +291,83 @@ export class TaxReportService {
 			}))
 	}
 
-	async getEssPayoutReport(filters: TaxReportWindowFilters = {}): Promise<TaxEssPayoutRow[]> {
-		const corporationIds = await this.resolveIncludedCorporationIds(filters.corporationId)
+	async getTopIncomeSourcesMonthlyReport(
+		filters: TaxReportWindowFilters = {}
+	): Promise<TaxTopIncomeSourceMonthlyRow[]> {
+		const corporationIds = await this.resolveReportCorporationIds(filters.corporationId)
 		if (corporationIds.length === 0) {
 			return []
+		}
+
+		const rows = await this.db.query.taxLedgerEntries.findMany({
+			where: this.buildLedgerWhere(filters, corporationIds),
+			orderBy: [asc(taxLedgerEntries.entryDate)],
+			limit: 50_000,
+		})
+
+		const grouped = new Map<
+			string,
+			{
+				monthStart: Date
+				refType: string
+				entryCount: number
+				essEntryCount: number
+				totalIncomeCenti: bigint
+			}
+		>()
+
+		for (const row of rows) {
+			if (!this.matchesAmountThreshold(row.amount, filters.minAmount, filters.maxAmount)) {
+				continue
+			}
+			const amountCenti = this.parseDecimalToCenti(row.amount)
+			if (amountCenti <= 0n) {
+				continue
+			}
+			const monthStart = new Date(
+				Date.UTC(row.entryDate.getUTCFullYear(), row.entryDate.getUTCMonth(), 1)
+			)
+			const monthKey = monthStart.toISOString().slice(0, 10)
+			const key = `${monthKey}:${row.refType}`
+			const current = grouped.get(key) ?? {
+				monthStart,
+				refType: row.refType,
+				entryCount: 0,
+				essEntryCount: 0,
+				totalIncomeCenti: 0n,
+			}
+			current.entryCount += 1
+			current.essEntryCount += row.isEss ? 1 : 0
+			current.totalIncomeCenti += amountCenti
+			grouped.set(key, current)
+		}
+
+		return Array.from(grouped.values())
+			.sort((a, b) => {
+				const monthDiff = a.monthStart.getTime() - b.monthStart.getTime()
+				if (monthDiff !== 0) {
+					return monthDiff
+				}
+				if (a.totalIncomeCenti !== b.totalIncomeCenti) {
+					return a.totalIncomeCenti > b.totalIncomeCenti ? -1 : 1
+				}
+				return a.refType.localeCompare(b.refType)
+			})
+			.map((item) => ({
+				monthStart: item.monthStart,
+				refType: item.refType,
+				entryCount: item.entryCount,
+				essEntryCount: item.essEntryCount,
+				totalIncome: this.formatCenti(item.totalIncomeCenti),
+			}))
+	}
+
+	async getEssPayoutReport(
+		filters: TaxReportWindowFilters = {}
+	): Promise<TaxPagedResult<TaxEssPayoutRow>> {
+		const corporationIds = await this.resolveReportCorporationIds(filters.corporationId)
+		if (corporationIds.length === 0) {
+			return { rows: [], totalRows: 0 }
 		}
 
 		const rows = await this.db.query.taxLedgerEntries.findMany({
@@ -307,7 +384,7 @@ export class TaxReportService {
 		const sortBy = filters.sortBy ?? 'entryDate'
 		const sortDirection = this.toSortDirection(filters.sortDirection, 'desc')
 
-		return filteredRows
+		const sortedRows = filteredRows
 			.sort((a, b) => {
 				switch (sortBy) {
 					case 'amount':
@@ -340,20 +417,24 @@ export class TaxReportService {
 				firstPartyId: row.firstPartyId,
 				secondPartyId: row.secondPartyId,
 			}))
+		return {
+			rows: sortedRows,
+			totalRows: filteredRows.length,
+		}
 	}
 
 	async getComplianceOverTimeReport(
 		filters: TaxReportWindowFilters = {}
 	): Promise<TaxCompliancePoint[]> {
-		const corporationIds = await this.resolveIncludedCorporationIds(filters.corporationId)
+		const corporationIds = await this.resolveReportCorporationIds(filters.corporationId)
 		if (corporationIds.length === 0) {
 			return []
 		}
 
-		const rows = await this.db.query.taxDailyRollups.findMany({
-			where: this.buildRollupWhere(filters, corporationIds),
-			orderBy: [desc(taxDailyRollups.rollupDate)],
-			limit: 20_000,
+		const rows = await this.db.query.taxAssessments.findMany({
+			where: this.buildAssessmentWhere(filters, corporationIds, 'corporation'),
+			orderBy: [desc(taxAssessments.taxPeriodEnd)],
+			limit: 10_000,
 		})
 
 		const grouped = new Map<
@@ -366,16 +447,16 @@ export class TaxReportService {
 			}
 		>()
 		for (const row of rows) {
-			const dateKey = row.rollupDate.toISOString().slice(0, 10)
+			const dateKey = row.taxPeriodEnd.toISOString().slice(0, 10)
 			const current = grouped.get(dateKey) ?? {
-				rollupDate: row.rollupDate,
+				rollupDate: row.taxPeriodEnd,
 				taxDueCenti: 0n,
 				taxPaidCenti: 0n,
 				entryCount: 0,
 			}
 			current.taxDueCenti += this.parseDecimalToCenti(row.taxDue)
 			current.taxPaidCenti += this.parseDecimalToCenti(row.taxPaid)
-			current.entryCount += row.entryCount
+			current.entryCount += 1
 			grouped.set(dateKey, current)
 		}
 
@@ -398,10 +479,10 @@ export class TaxReportService {
 
 	async getTaxDiscrepancyReport(
 		filters: ListTaxDiscrepancyReportFilters = {}
-	): Promise<TaxDiscrepancy[]> {
-		const corporationIds = await this.resolveIncludedCorporationIds(filters.corporationId)
+	): Promise<TaxPagedResult<TaxDiscrepancy>> {
+		const corporationIds = await this.resolveReportCorporationIds(filters.corporationId)
 		if (corporationIds.length === 0) {
-			return []
+			return { rows: [], totalRows: 0 }
 		}
 
 		const offset = Math.max(filters.offset ?? 0, 0)
@@ -426,38 +507,47 @@ export class TaxReportService {
 			}
 		})()
 
-		const rows = await this.db.query.taxDiscrepancies.findMany({
-			where: this.buildDiscrepancyWhere(filters, corporationIds),
-			orderBy,
-			limit,
-			offset,
-		})
+		const where = this.buildDiscrepancyWhere(filters, corporationIds)
+		const [rows, totalRowsResult] = await Promise.all([
+			this.db.query.taxDiscrepancies.findMany({
+				where,
+				orderBy,
+				limit,
+				offset,
+			}),
+			this.db
+				.select({
+					count: sql<number>`COUNT(*)`,
+				})
+				.from(taxDiscrepancies)
+				.where(where),
+		])
 
-		return rows.map((row) => ({
-			id: row.id,
-			corporationId: row.corporationId,
-			assessmentId: row.assessmentId,
-			discrepancyType: row.discrepancyType,
-			severity: row.severity,
-			details: row.details,
-			resolvedAt: row.resolvedAt,
-			createdAt: row.createdAt,
-			updatedAt: row.updatedAt,
-		}))
+		const totalRows = this.toInteger(totalRowsResult[0]?.count ?? 0)
+		return {
+			rows: rows.map((row) => ({
+				id: row.id,
+				corporationId: row.corporationId,
+				assessmentId: row.assessmentId,
+				discrepancyType: row.discrepancyType,
+				severity: row.severity,
+				details: row.details,
+				resolvedAt: row.resolvedAt,
+				createdAt: row.createdAt,
+				updatedAt: row.updatedAt,
+			})),
+			totalRows,
+		}
 	}
 
 	async getMissingEsiKeysReport(
 		filters: ListTaxMissingEsiKeyReportFilters = {}
-	): Promise<TaxMissingEsiKeyRow[]> {
-		const rows = await this.db.query.taxCorporationSettings.findMany({
-			where: filters.includedOnly === true ? eq(taxCorporationSettings.included, true) : undefined,
-			orderBy: [desc(taxCorporationSettings.updatedAt)],
-			limit: 1_000,
-		})
+	): Promise<TaxPagedResult<TaxMissingEsiKeyRow>> {
+		const corporationIds = await this.resolveReportCorporationIds()
 
 		const missingRows: TaxMissingEsiKeyRow[] = []
-		for (const row of rows) {
-			const status = await this.settingsService.getCorporationEsiAuthStatus(row.corporationId)
+		for (const corporationId of corporationIds) {
+			const status = await this.getCorporationEsiAuthStatus(corporationId)
 			const hasMissingCoverage =
 				!status ||
 				!status.isConfigured ||
@@ -471,8 +561,7 @@ export class TaxReportService {
 			}
 
 			missingRows.push({
-				corporationId: row.corporationId,
-				included: row.included,
+				corporationId,
 				isConfigured: status?.isConfigured ?? false,
 				hasRequiredScopes: status?.hasRequiredScopes ?? false,
 				hasCorporationWalletScope: status?.hasCorporationWalletScope ?? false,
@@ -487,7 +576,7 @@ export class TaxReportService {
 		const limit = Math.min(Math.max(filters.limit ?? 50, 1), 200)
 		const sortBy = filters.sortBy ?? 'lastVerified'
 		const sortDirection = this.toSortDirection(filters.sortDirection, 'desc')
-		return missingRows
+		const sortedRows = missingRows
 			.sort((a, b) => {
 				switch (sortBy) {
 					case 'corporationId':
@@ -500,48 +589,22 @@ export class TaxReportService {
 							b.healthyDirectorCount,
 							sortDirection
 						)
-					case 'included':
-						return this.compareBooleans(a.included, b.included, sortDirection)
 					case 'lastVerified':
 					default:
 						return this.compareDatesNullable(a.lastVerified, b.lastVerified, sortDirection)
 				}
 			})
 			.slice(offset, offset + limit)
-	}
-
-	async getExcludedCorporationsReport(
-		filters: ListTaxExcludedCorporationsReportFilters = {}
-	): Promise<TaxExcludedCorporationRow[]> {
-		const offset = Math.max(filters.offset ?? 0, 0)
-		const limit = Math.min(Math.max(filters.limit ?? 50, 1), 200)
-		const sortBy = filters.sortBy ?? 'updatedAt'
-		const sortDirection = this.toSortDirection(filters.sortDirection, 'desc')
-		const direction = sortDirection === 'asc' ? asc : desc
-		const orderBy =
-			sortBy === 'corporationId'
-				? [
-						direction(taxCorporationSettings.corporationId),
-						direction(taxCorporationSettings.updatedAt),
-					]
-				: [direction(taxCorporationSettings.updatedAt)]
-		const rows = await this.db.query.taxCorporationSettings.findMany({
-			where: eq(taxCorporationSettings.included, false),
-			orderBy,
-			limit,
-			offset,
-		})
-		return rows.map((row) => ({
-			corporationId: row.corporationId,
-			exclusionReason: row.exclusionReason,
-			updatedAt: row.updatedAt,
-		}))
+		return {
+			rows: sortedRows,
+			totalRows: missingRows.length,
+		}
 	}
 
 	async getBillStatusReport(
 		filters: TaxReportWindowFilters = {}
 	): Promise<TaxBillStatusReportRow[]> {
-		const corporationIds = await this.resolveIncludedCorporationIds(filters.corporationId)
+		const corporationIds = await this.resolveReportCorporationIds(filters.corporationId)
 		if (corporationIds.length === 0) {
 			return []
 		}
@@ -566,34 +629,54 @@ export class TaxReportService {
 			taxDue: this.formatCenti(this.parseDecimalToCenti(row.taxDue)),
 			taxPaid: this.formatCenti(this.parseDecimalToCenti(row.taxPaid)),
 			taxDelta: this.formatCenti(this.parseDecimalToCenti(row.taxDelta)),
+			taxDueCenti: this.parseDecimalToCenti(row.taxDue).toString(),
+			taxPaidCenti: this.parseDecimalToCenti(row.taxPaid).toString(),
+			taxDeltaCenti: this.parseDecimalToCenti(row.taxDelta).toString(),
 			sortDueCenti: this.parseDecimalToCenti(row.taxDue),
+			sortPaidCenti: this.parseDecimalToCenti(row.taxPaid),
+			sortDeltaCenti: this.parseDecimalToCenti(row.taxDelta),
 		}))
 
 		const offset = Math.max(filters.offset ?? 0, 0)
 		const limit = Math.min(Math.max(filters.limit ?? 50, 1), 200)
+		const sortBy = filters.sortBy ?? 'taxDue'
+		const sortDirection = this.toSortDirection(filters.sortDirection, 'desc')
 		return grouped
 			.sort((a, b) => {
-				if (a.sortDueCenti === b.sortDueCenti) {
-					if (a.corporationId === b.corporationId) {
-						return a.billStatus.localeCompare(b.billStatus)
-					}
-					return a.corporationId.localeCompare(b.corporationId)
+				switch (sortBy) {
+					case 'corporationId':
+						return this.compareStrings(a.corporationId, b.corporationId, sortDirection)
+					case 'billStatus':
+						return this.compareStrings(a.billStatus, b.billStatus, sortDirection)
+					case 'assessmentCount':
+						return this.compareNumbers(a.assessmentCount, b.assessmentCount, sortDirection)
+					case 'taxPaid':
+						return this.compareBigInts(a.sortPaidCenti, b.sortPaidCenti, sortDirection)
+					case 'taxDelta':
+						return this.compareBigInts(a.sortDeltaCenti, b.sortDeltaCenti, sortDirection)
+					case 'taxDue':
+					default:
+						return this.compareBigInts(a.sortDueCenti, b.sortDueCenti, sortDirection)
 				}
-				return a.sortDueCenti > b.sortDueCenti ? -1 : 1
 			})
 			.slice(offset, offset + limit)
-			.map(({ sortDueCenti: _sortDueCenti, ...row }) => row)
+			.map(
+				({
+					sortDueCenti: _sortDueCenti,
+					sortPaidCenti: _sortPaidCenti,
+					sortDeltaCenti: _sortDeltaCenti,
+					...row
+				}) => row
+			)
 	}
 
 	async getMemberSummaryReport(
 		filters: TaxMemberSummaryReportFilters
 	): Promise<TaxMemberSummary[]> {
 		const requestedCharacterIds = Array.from(
-			new Set((filters.characterIds ?? []).map((value) => value.trim()).filter(Boolean))
+			new Set<string>((filters.characterIds ?? []).map((value) => value.trim()).filter(Boolean))
 		)
-		const memberCharacterIds = await this.settingsService.getCorporationMemberIds(
-			filters.corporationId
-		)
+		const memberCharacterIds = await this.getCorporationMemberIds(filters.corporationId)
 		const memberIdSet = new Set(memberCharacterIds)
 		const scopedRequestedCharacterIds =
 			requestedCharacterIds.length > 0
@@ -640,7 +723,7 @@ export class TaxReportService {
 		}
 		this.memberSummaryCacheMisses += 1
 
-		const corporationIds = await this.resolveIncludedCorporationIds(filters.corporationId)
+		const corporationIds = await this.resolveReportCorporationIds(filters.corporationId)
 		if (corporationIds.length === 0) {
 			return []
 		}
@@ -1337,24 +1420,6 @@ export class TaxReportService {
 		return and(...conditions)
 	}
 
-	private buildRollupWhere(filters: TaxReportWindowFilters, corporationIds: string[]) {
-		const conditions = [inArray(taxDailyRollups.corporationId, corporationIds)]
-		if (filters.division !== undefined) {
-			conditions.push(eq(taxDailyRollups.division, filters.division))
-		}
-		const refTypes = this.toRefTypes(filters)
-		if (refTypes && refTypes.length > 0) {
-			conditions.push(inArray(taxDailyRollups.refType, refTypes))
-		}
-		if (filters.fromDate) {
-			conditions.push(gte(taxDailyRollups.rollupDate, filters.fromDate))
-		}
-		if (filters.toDate) {
-			conditions.push(lte(taxDailyRollups.rollupDate, filters.toDate))
-		}
-		return and(...conditions)
-	}
-
 	private buildDiscrepancyWhere(
 		filters: { corporationId?: string; fromDate?: Date; toDate?: Date; onlyOpen?: boolean },
 		corporationIds: string[]
@@ -1434,10 +1499,6 @@ export class TaxReportService {
 		return this.compareStrings(a, b, direction)
 	}
 
-	private compareBooleans(a: boolean, b: boolean, direction: 'asc' | 'desc'): number {
-		return this.compareNumbers(a ? 1 : 0, b ? 1 : 0, direction)
-	}
-
 	private compareDates(a: Date, b: Date, direction: 'asc' | 'desc'): number {
 		return this.compareNumbers(a.getTime(), b.getTime(), direction)
 	}
@@ -1498,7 +1559,9 @@ export class TaxReportService {
 		return true
 	}
 
-	private safeParseDecimalToCenti(value: string): bigint | null {
+	private safeParseDecimalToCenti(
+		value: string | number | bigint | null | undefined
+	): bigint | null {
 		try {
 			return this.parseDecimalToCenti(value)
 		} catch (_error) {
@@ -1506,23 +1569,114 @@ export class TaxReportService {
 		}
 	}
 
-	private async resolveIncludedCorporationIds(corporationId?: string): Promise<string[]> {
+	private async resolveReportCorporationIds(corporationId?: string): Promise<string[]> {
 		if (corporationId) {
-			const settings = await this.db.query.taxCorporationSettings.findFirst({
-				where: eq(taxCorporationSettings.corporationId, corporationId),
+			const excluded = await this.db.query.taxCorporationExclusions.findFirst({
+				where: eq(taxCorporationExclusions.corporationId, corporationId),
+				columns: { corporationId: true },
 			})
-			return settings?.included ? [corporationId] : []
+			return excluded ? [] : [corporationId]
 		}
 
-		const rows = await this.db.query.taxCorporationSettings.findMany({
-			where: eq(taxCorporationSettings.included, true),
-			limit: 10_000,
-		})
-		return rows.map((row) => row.corporationId)
+		const [knownIds, excludedIds] = await Promise.all([
+			this.listKnownCorporationIds(),
+			this.getExcludedCorporationIdSet(),
+		])
+		return knownIds.filter((id) => !excludedIds.has(id))
 	}
 
-	private parseDecimalToCenti(value: string): bigint {
-		const trimmed = value.trim()
+	private async listKnownCorporationIds(corporationId?: string): Promise<string[]> {
+		if (corporationId) {
+			return [corporationId]
+		}
+
+		const [assessmentRows, ledgerRows, checkpointRows] = await Promise.all([
+			this.db
+				.select({
+					corporationId: taxAssessments.corporationId,
+				})
+				.from(taxAssessments)
+				.groupBy(taxAssessments.corporationId),
+			this.db
+				.select({
+					corporationId: taxLedgerEntries.corporationId,
+				})
+				.from(taxLedgerEntries)
+				.groupBy(taxLedgerEntries.corporationId),
+			this.db
+				.select({
+					corporationId: taxSyncCheckpoints.corporationId,
+				})
+				.from(taxSyncCheckpoints)
+				.groupBy(taxSyncCheckpoints.corporationId),
+		])
+
+		const set = new Set<string>()
+		for (const row of [...assessmentRows, ...ledgerRows, ...checkpointRows]) {
+			if (row.corporationId) {
+				set.add(row.corporationId)
+			}
+		}
+		return Array.from(set)
+	}
+
+	private async listExclusions(corporationId?: string) {
+		return this.db.query.taxCorporationExclusions.findMany({
+			where: corporationId ? eq(taxCorporationExclusions.corporationId, corporationId) : undefined,
+			limit: 10_000,
+		})
+	}
+
+	private async getExcludedCorporationIdSet(): Promise<Set<string>> {
+		const rows = await this.db.query.taxCorporationExclusions.findMany({
+			columns: { corporationId: true },
+			limit: 10_000,
+		})
+		return new Set(rows.map((row) => row.corporationId))
+	}
+
+	private async getCorporationEsiAuthStatus(corporationId: string) {
+		try {
+			const stub = getStub<EveCorporationData>(this.eveCorporationDataNamespace, corporationId)
+			const status = await stub.getCorporationAuthStatus(corporationId)
+			return {
+				isConfigured: status.isConfigured,
+				isVerified: status.isVerified,
+				lastVerified: status.lastVerified,
+				directorCount: status.directorCount,
+				healthyDirectorCount: status.healthyDirectorCount,
+				requiredScopes: status.requiredScopes,
+				missingRequiredScopes: status.missingRequiredScopes,
+				hasRequiredScopes: status.hasRequiredScopes,
+				hasCorporationWalletScope: status.hasCorporationWalletScope,
+				hasCharacterWalletScope: status.hasCharacterWalletScope,
+				hasCorporationMembershipScope: status.hasCorporationMembershipScope,
+				grantedScopeCount: status.grantedScopeCount,
+			}
+		} catch (_error) {
+			return null
+		}
+	}
+
+	private async getCorporationMemberIds(corporationId: string): Promise<string[]> {
+		try {
+			const stub = getStub<EveCorporationData>(this.eveCorporationDataNamespace, corporationId)
+			const members = await stub.getMembers(corporationId)
+			return members.map((member) => member.characterId)
+		} catch (_error) {
+			return []
+		}
+	}
+
+	private parseDecimalToCenti(value: string | number | bigint | null | undefined): bigint {
+		if (value === null || value === undefined) {
+			return 0n
+		}
+		if (typeof value === 'bigint') {
+			return value * 100n
+		}
+		const normalized = typeof value === 'number' ? String(value) : value
+		const trimmed = normalized.trim()
 		if (!trimmed) {
 			return 0n
 		}

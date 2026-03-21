@@ -1,7 +1,7 @@
 import { and, desc, eq, gte, isNotNull, lte } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
-import { taxAssessments, taxBillSyncEvents, taxCorporationSettings } from '../db/schema'
+import { taxAssessments, taxBillSyncEvents, taxCorporationBillingConfigs } from '../db/schema'
 
 import type { Bills } from '@repo/bills'
 import type {
@@ -41,8 +41,8 @@ export class TaxBillingService {
 			throw new Error('Assessment must be finalized before billing')
 		}
 
-		const settings = await this.db.query.taxCorporationSettings.findFirst({
-			where: eq(taxCorporationSettings.corporationId, corporationId),
+		const settings = await this.db.query.taxCorporationBillingConfigs.findFirst({
+			where: eq(taxCorporationBillingConfigs.corporationId, corporationId),
 		})
 		if (!settings || !settings.billingEnabled) {
 			throw new Error('Billing is not enabled for this corporation')
@@ -111,8 +111,8 @@ export class TaxBillingService {
 		actorUserId: string,
 		input: IssueBillsForPeriodInput
 	): Promise<IssueBillsForPeriodResult> {
-		const settings = await this.db.query.taxCorporationSettings.findFirst({
-			where: eq(taxCorporationSettings.corporationId, input.corporationId),
+		const settings = await this.db.query.taxCorporationBillingConfigs.findFirst({
+			where: eq(taxCorporationBillingConfigs.corporationId, input.corporationId),
 		})
 		if (!settings) {
 			throw new Error('Corporation settings not found')
@@ -248,6 +248,63 @@ export class TaxBillingService {
 			payload: {
 				actorUserId,
 				billPaidAt: bill.paidAt ? bill.paidAt.toISOString() : null,
+			},
+		})
+
+		return this.toAssessment(updated ?? assessment)
+	}
+
+	async retractAssessmentBill(
+		actorUserId: string,
+		corporationId: string,
+		assessmentId: string
+	): Promise<TaxAssessment> {
+		const assessment = await this.db.query.taxAssessments.findFirst({
+			where: and(
+				eq(taxAssessments.id, assessmentId),
+				eq(taxAssessments.corporationId, corporationId)
+			),
+		})
+		if (!assessment) {
+			throw new Error('Assessment not found')
+		}
+		if (assessment.assessmentScope !== 'corporation') {
+			throw new Error('Only corporation-scope assessments can be billed')
+		}
+		if (!assessment.billId) {
+			throw new Error('Assessment has no linked bill')
+		}
+
+		const settings = await this.db.query.taxCorporationBillingConfigs.findFirst({
+			where: eq(taxCorporationBillingConfigs.corporationId, corporationId),
+		})
+		if (!settings || !settings.billingEnabled) {
+			throw new Error('Billing is not enabled for this corporation')
+		}
+
+		const billIssuerUserId = settings.billingIssuerUserId ?? actorUserId
+		const bills = getStub<Bills>(this.billsNamespace, 'default')
+		const cancelledBill = await bills.cancelBill(billIssuerUserId, assessment.billId)
+
+		const [updated] = await this.db
+			.update(taxAssessments)
+			.set({
+				billStatus: cancelledBill.status as TaxBillStatus,
+				billStatusLastSyncedAt: new Date(),
+				updatedAt: new Date(),
+			})
+			.where(eq(taxAssessments.id, assessment.id))
+			.returning()
+
+		await this.recordBillSyncEvent({
+			corporationId,
+			assessmentId: assessment.id,
+			billId: assessment.billId,
+			eventType: 'bill_retracted',
+			fromStatus: assessment.billStatus,
+			toStatus: cancelledBill.status,
+			payload: {
+				actorUserId,
 			},
 		})
 

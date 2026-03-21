@@ -1,6 +1,11 @@
 import { and, asc, eq } from '@repo/db-utils'
 
-import { taxRuleGroupAttachments, taxRuleGroups, taxRuleSets } from '../db/schema'
+import {
+	taxCorporationExclusions,
+	taxRuleGroupAttachments,
+	taxRuleGroups,
+	taxRuleSets,
+} from '../db/schema'
 
 import type {
 	CreateTaxRuleGroupInput,
@@ -202,11 +207,34 @@ export class TaxRuleGroupService {
 	}
 
 	async listRuleGroupAttachments(ruleGroupId: string): Promise<TaxRuleGroupAttachment[]> {
-		const rows = await this.db.query.taxRuleGroupAttachments.findMany({
-			where: eq(taxRuleGroupAttachments.ruleGroupId, ruleGroupId),
-			orderBy: [asc(taxRuleGroupAttachments.createdAt), asc(taxRuleGroupAttachments.corporationId)],
-		})
-		return rows.map((row) => this.toRuleGroupAttachment(row))
+		const rows = await this.db
+			.select({
+				id: taxRuleGroupAttachments.id,
+				ruleGroupId: taxRuleGroupAttachments.ruleGroupId,
+				corporationId: taxRuleGroupAttachments.corporationId,
+				createdAt: taxRuleGroupAttachments.createdAt,
+				updatedAt: taxRuleGroupAttachments.updatedAt,
+				exclusionReason: taxCorporationExclusions.reason,
+			})
+			.from(taxRuleGroupAttachments)
+			.leftJoin(
+				taxCorporationExclusions,
+				eq(taxCorporationExclusions.corporationId, taxRuleGroupAttachments.corporationId)
+			)
+			.where(eq(taxRuleGroupAttachments.ruleGroupId, ruleGroupId))
+			.orderBy(asc(taxRuleGroupAttachments.createdAt), asc(taxRuleGroupAttachments.corporationId))
+		return rows.map((row) =>
+			this.toRuleGroupAttachment(
+				{
+					id: row.id,
+					ruleGroupId: row.ruleGroupId,
+					corporationId: row.corporationId,
+					createdAt: row.createdAt,
+					updatedAt: row.updatedAt,
+				},
+				row.exclusionReason
+			)
+		)
 	}
 
 	async attachCorporation(
@@ -262,12 +290,15 @@ export class TaxRuleGroupService {
 	}
 
 	private toRuleGroupAttachment(
-		row: typeof taxRuleGroupAttachments.$inferSelect
+		row: typeof taxRuleGroupAttachments.$inferSelect,
+		exclusionReason: string | null = null
 	): TaxRuleGroupAttachment {
 		return {
 			id: row.id,
 			ruleGroupId: row.ruleGroupId,
 			corporationId: row.corporationId,
+			isExcluded: exclusionReason !== null,
+			exclusionReason,
 			createdAt: row.createdAt,
 			updatedAt: row.updatedAt,
 		}

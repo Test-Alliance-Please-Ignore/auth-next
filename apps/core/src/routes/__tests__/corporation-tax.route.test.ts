@@ -76,10 +76,10 @@ function makeUser(overrides: Partial<SessionUser> = {}): SessionUser {
 function makeCorporationTaxStub() {
 	return {
 		getHealth: vi.fn(),
-		listCorporationSettings: vi.fn(),
+		listCorporationExclusions: vi.fn(),
+		upsertCorporationExclusion: vi.fn(),
+		deleteCorporationExclusion: vi.fn(),
 		listAuditLog: vi.fn(),
-		getCorporationSettings: vi.fn(),
-		upsertCorporationSettings: vi.fn(),
 		deleteRuleGroup: vi.fn(),
 		listRuleSets: vi.fn(),
 		createRuleSet: vi.fn(),
@@ -96,11 +96,11 @@ function makeCorporationTaxStub() {
 		getSummaryReport: vi.fn(),
 		getTotalTaxesByCorporationReport: vi.fn(),
 		getTopIncomeSourcesReport: vi.fn(),
+		getTopIncomeSourcesMonthlyReport: vi.fn(),
 		getEssPayoutReport: vi.fn(),
 		getComplianceOverTimeReport: vi.fn(),
 		getTaxDiscrepancyReport: vi.fn(),
 		getMissingEsiKeysReport: vi.fn(),
-		getExcludedCorporationsReport: vi.fn(),
 		getBillStatusReport: vi.fn(),
 		getMemberSummaryReport: vi.fn(),
 		requestExport: vi.fn(),
@@ -341,7 +341,7 @@ describe('corporation-tax routes', () => {
 		expect(corporationTaxStub.getHealth).not.toHaveBeenCalled()
 	})
 
-	it('forbids corporation settings list when user lacks tax permissions', async () => {
+	it('forbids corporation list when user lacks tax permissions', async () => {
 		const app = createApp(makeUser())
 		const corporationTaxStub = makeCorporationTaxStub()
 		const featuresStub = { checkFlag: vi.fn().mockResolvedValue(true) }
@@ -351,67 +351,50 @@ describe('corporation-tax routes', () => {
 
 		expect(response.status).toBe(403)
 		expect(await response.json()).toEqual({ error: 'Forbidden' })
-		expect(corporationTaxStub.listCorporationSettings).not.toHaveBeenCalled()
+		expect(corporationTaxStub.listCorporationExclusions).not.toHaveBeenCalled()
 	})
 
-	it('validates invalid included query values for corporation settings list', async () => {
-		const app = createApp(makeUser())
+	it('validates corporation list pagination query values', async () => {
+		const db = {
+			query: {
+				managedCorporations: {
+					findMany: vi.fn(),
+				},
+			},
+		}
+		const app = createApp(makeUser(), db)
 		const corporationTaxStub = makeCorporationTaxStub()
 		const featuresStub = { checkFlag: vi.fn().mockResolvedValue(true) }
 		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:tax:admin' }] as any)
 		routeStubs({ corporationTaxStub, featuresStub })
 
-		const response = await app.request(
-			'/api/corporation-tax/corporations?included=not-boolean',
-			{},
-			env
-		)
+		const response = await app.request('/api/corporation-tax/corporations?limit=301', {}, env)
 
 		expect(response.status).toBe(400)
-		expect(await response.json()).toEqual({ error: 'Invalid included filter. Use true/false.' })
-		expect(corporationTaxStub.listCorporationSettings).not.toHaveBeenCalled()
+		expect(await response.json()).toEqual({ error: 'limit must be between 1 and 300' })
+		expect(corporationTaxStub.listCorporationExclusions).not.toHaveBeenCalled()
 	})
 
-	it('forwards corporation settings list filters to RPC', async () => {
-		const app = createApp(makeUser())
-		const corporationTaxStub = makeCorporationTaxStub()
-		const featuresStub = { checkFlag: vi.fn().mockResolvedValue(true) }
-		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:tax:admin' }] as any)
-		corporationTaxStub.listCorporationSettings.mockResolvedValue({
-			items: [{ corporationId: '1001' }],
-			total: 1,
-		})
-		routeStubs({ corporationTaxStub, featuresStub })
-
-		const response = await app.request(
-			'/api/corporation-tax/corporations?included=true&limit=50&offset=2',
-			{},
-			env
-		)
-
-		expect(response.status).toBe(200)
-		expect(await response.json()).toEqual({ items: [{ corporationId: '1001' }], total: 1 })
-		expect(corporationTaxStub.listCorporationSettings).toHaveBeenCalledWith({
-			included: true,
-			limit: 50,
-			offset: 2,
-		})
-	})
-
-	it('merges managed corporations into tax settings list when db context is available', async () => {
+	it('forwards corporation list request and overlays exclusions', async () => {
 		const db = {
 			query: {
 				managedCorporations: {
 					findMany: vi.fn().mockResolvedValue([
 						{
-							corporationId: '1001',
-							createdAt: new Date('2026-01-01T00:00:00.000Z'),
-							updatedAt: new Date('2026-03-10T00:00:00.000Z'),
-						},
-						{
 							corporationId: '1002',
+							isActive: true,
+							isMemberCorporation: true,
+							isSpecialPurpose: false,
 							createdAt: new Date('2026-01-02T00:00:00.000Z'),
 							updatedAt: new Date('2026-03-11T00:00:00.000Z'),
+						},
+						{
+							corporationId: '1001',
+							isActive: true,
+							isMemberCorporation: true,
+							isSpecialPurpose: false,
+							createdAt: new Date('2026-01-01T00:00:00.000Z'),
+							updatedAt: new Date('2026-03-10T00:00:00.000Z'),
 						},
 					]),
 				},
@@ -420,107 +403,40 @@ describe('corporation-tax routes', () => {
 		const app = createApp(makeUser(), db)
 		const corporationTaxStub = makeCorporationTaxStub()
 		const featuresStub = { checkFlag: vi.fn().mockResolvedValue(true) }
-		const corporationDataStub = {
-			getCorporationInfo: vi.fn(),
-			getDirectors: vi.fn(),
-			getCorporationAuthStatus: vi.fn().mockResolvedValue({
-				isConfigured: true,
-				isVerified: true,
-				lastVerified: new Date('2026-03-11T00:00:00.000Z'),
-				directorCount: 1,
-				healthyDirectorCount: 1,
-				requiredScopes: ['esi-wallet.read_corporation_wallets.v1'],
-				missingRequiredScopes: [],
-				hasRequiredScopes: true,
-				hasCorporationWalletScope: true,
-				hasCharacterWalletScope: true,
-				hasCorporationMembershipScope: true,
-				grantedScopeCount: 3,
-			}),
-		}
 		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:tax:admin' }] as any)
-		corporationTaxStub.listCorporationSettings.mockResolvedValue([
+		corporationTaxStub.listCorporationExclusions.mockResolvedValue([
 			{
+				corporationId: '1002',
+				reason: 'excluded for testing',
+			},
+		])
+		routeStubs({ corporationTaxStub, featuresStub })
+
+		const response = await app.request(
+			'/api/corporation-tax/corporations?limit=2&offset=0',
+			{},
+			env
+		)
+
+		expect(response.status).toBe(200)
+		expect(await response.json()).toEqual([
+			expect.objectContaining({
+				corporationId: '1002',
+				included: false,
+				exclusionReason: 'excluded for testing',
+			}),
+			expect.objectContaining({
 				corporationId: '1001',
 				included: true,
 				exclusionReason: null,
-				defaultRateBps: 750,
-				essRateBps: 750,
-				discrepancyThresholdBps: 500,
-				memberSummaryEnabled: false,
-				billingEnabled: false,
-				billingIssuerUserId: null,
-				billingPayeeId: null,
-				billingPayeeType: null,
-				billingDueDays: 14,
-				esiAuthStatus: null,
-				createdAt: new Date('2026-01-01T00:00:00.000Z'),
-				updatedAt: new Date('2026-03-10T00:00:00.000Z'),
-			},
+			}),
 		])
-		routeStubs({ corporationTaxStub, featuresStub, corporationDataStub })
-
-		const response = await app.request('/api/corporation-tax/corporations?limit=10', {}, env)
-		const payload = (await response.json()) as Array<Record<string, unknown>>
-
-		expect(response.status).toBe(200)
-		expect(payload).toHaveLength(2)
-		expect(payload.map((item) => item.corporationId)).toEqual(['1002', '1001'])
-		expect(payload[0]?.included).toBe(false)
-		expect(payload[0]?.esiAuthStatus).toMatchObject({
-			hasCorporationWalletScope: true,
-			healthyDirectorCount: 1,
-		})
-		expect(corporationTaxStub.listCorporationSettings).toHaveBeenCalledWith({
-			limit: 200,
-			offset: 0,
+		expect(corporationTaxStub.listCorporationExclusions).toHaveBeenCalledWith({
+			limit: 10_000,
 		})
 	})
 
-	it('forbids corporation settings read via director self-service without admin urn', async () => {
-		const app = createApp(
-			makeUser({
-				id: 'director-user',
-				characters: [
-					{
-						id: 'char-link-2',
-						characterOwnerHash: 'owner-hash-2',
-						characterId: '9001',
-						characterName: 'Director Pilot',
-						is_primary: true,
-						hasValidToken: true,
-					},
-				],
-			})
-		)
-		const corporationTaxStub = makeCorporationTaxStub()
-		corporationTaxStub.getCorporationSettings.mockResolvedValue({
-			corporationId: '2001',
-			defaultRateBps: 750,
-		})
-
-		const corporationDataStub = {
-			getCorporationInfo: vi.fn().mockResolvedValue({ ceoId: '9999' }),
-			getDirectors: vi.fn().mockResolvedValue([{ characterId: '9001' }]),
-		}
-		const characterDataStub = {
-			getCharacterInfo: vi.fn().mockResolvedValue({ corporationId: 2001 }),
-		}
-		const featuresStub = { checkFlag: vi.fn().mockResolvedValue(true) }
-
-		routeStubs({ corporationTaxStub, featuresStub, corporationDataStub, characterDataStub })
-
-		const response = await app.request('/api/corporation-tax/corporations/2001/settings', {}, env)
-
-		expect(response.status).toBe(403)
-		expect(await response.json()).toEqual({ error: 'Forbidden' })
-		expect(corporationTaxStub.getCorporationSettings).not.toHaveBeenCalled()
-		expect(corporationDataStub.getCorporationInfo).not.toHaveBeenCalled()
-		expect(corporationDataStub.getDirectors).not.toHaveBeenCalled()
-		expect(characterDataStub.getCharacterInfo).not.toHaveBeenCalled()
-	})
-
-	it('validates patch payload for discrepancy threshold', async () => {
+	it('validates exclusion upsert payload', async () => {
 		const app = createApp(makeUser())
 		const corporationTaxStub = makeCorporationTaxStub()
 		const featuresStub = { checkFlag: vi.fn().mockResolvedValue(true) }
@@ -528,42 +444,39 @@ describe('corporation-tax routes', () => {
 		routeStubs({ corporationTaxStub, featuresStub })
 
 		const response = await app.request(
-			'/api/corporation-tax/corporations/3001/settings',
+			'/api/corporation-tax/exclusions/3001',
 			{
-				method: 'PATCH',
+				method: 'PUT',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ discrepancyThresholdBps: '10' }),
+				body: JSON.stringify({}),
 			},
 			env
 		)
 
 		expect(response.status).toBe(400)
-		expect(await response.json()).toEqual({ error: 'discrepancyThresholdBps must be an integer' })
-		expect(corporationTaxStub.upsertCorporationSettings).not.toHaveBeenCalled()
+		expect(await response.json()).toEqual({ error: 'reason is required' })
+		expect(corporationTaxStub.upsertCorporationExclusion).not.toHaveBeenCalled()
 	})
 
-	it('forwards valid settings patch to RPC', async () => {
+	it('forwards valid exclusion upsert to RPC', async () => {
 		const user = makeUser()
 		const app = createApp(user)
 		const corporationTaxStub = makeCorporationTaxStub()
 		const featuresStub = { checkFlag: vi.fn().mockResolvedValue(true) }
 		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:tax:admin' }] as any)
-		corporationTaxStub.upsertCorporationSettings.mockResolvedValue({
+		corporationTaxStub.upsertCorporationExclusion.mockResolvedValue({
 			corporationId: '3002',
-			included: true,
-			discrepancyThresholdBps: 50,
+			reason: 'legacy carve-out',
 		})
 		routeStubs({ corporationTaxStub, featuresStub })
 
 		const response = await app.request(
-			'/api/corporation-tax/corporations/3002/settings',
+			'/api/corporation-tax/exclusions/3002',
 			{
-				method: 'PATCH',
+				method: 'PUT',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
-					included: true,
-					discrepancyThresholdBps: 50,
-					billingEnabled: true,
+					reason: 'legacy carve-out',
 				}),
 			},
 			env
@@ -572,13 +485,10 @@ describe('corporation-tax routes', () => {
 		expect(response.status).toBe(200)
 		expect(await response.json()).toEqual({
 			corporationId: '3002',
-			included: true,
-			discrepancyThresholdBps: 50,
+			reason: 'legacy carve-out',
 		})
-		expect(corporationTaxStub.upsertCorporationSettings).toHaveBeenCalledWith(user.id, '3002', {
-			included: true,
-			discrepancyThresholdBps: 50,
-			billingEnabled: true,
+		expect(corporationTaxStub.upsertCorporationExclusion).toHaveBeenCalledWith(user.id, '3002', {
+			reason: 'legacy carve-out',
 		})
 	})
 
@@ -603,7 +513,8 @@ describe('corporation-tax routes', () => {
 				body: JSON.stringify({
 					ruleGroupId: 'group-default',
 					name: 'Global Rule',
-					action: { taxRateBps: 750, label: 'Default tax rate' },
+					taxRateBps: 750,
+					label: 'Default tax rate',
 				}),
 			},
 			env
@@ -1085,21 +996,55 @@ describe('corporation-tax routes', () => {
 		const app = createApp(makeUser())
 		const corporationTaxStub = makeCorporationTaxStub()
 		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:tax:auditor' }] as any)
-		corporationTaxStub.getTopIncomeSourcesReport.mockResolvedValue([{ refType: 'bounty_prizes' }])
+		corporationTaxStub.getTopIncomeSourcesReport.mockResolvedValue([
+			{ refType: 'bounty_prize_corporation_tax' },
+		])
 		routeStubs({ corporationTaxStub })
 
 		const response = await app.request(
-			'/api/corporation-tax/reports/top-income?corporationId=7001&refType=bounty_prizes&division=3&firstPartyId=9001&secondPartyId=9002&minAmount=1000000&maxAmount=2000000',
+			'/api/corporation-tax/reports/top-income?corporationId=7001&refType=bounty_prize_corporation_tax&division=3&firstPartyId=9001&secondPartyId=9002&minAmount=1000000&maxAmount=2000000',
 			{},
 			env
 		)
 
 		expect(response.status).toBe(200)
-		expect(await response.json()).toEqual([{ refType: 'bounty_prizes' }])
+		expect(await response.json()).toEqual([{ refType: 'bounty_prize_corporation_tax' }])
 		expect(corporationTaxStub.getTopIncomeSourcesReport).toHaveBeenCalledWith(
 			expect.objectContaining({
 				corporationId: '7001',
-				refType: 'bounty_prizes',
+				refType: 'bounty_prize_corporation_tax',
+				division: 3,
+				firstPartyId: '9001',
+				secondPartyId: '9002',
+				minAmount: '1000000',
+				maxAmount: '2000000',
+			})
+		)
+	})
+
+	it('forwards extended report window filters to monthly top-income report', async () => {
+		const app = createApp(makeUser())
+		const corporationTaxStub = makeCorporationTaxStub()
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:tax:auditor' }] as any)
+		corporationTaxStub.getTopIncomeSourcesMonthlyReport.mockResolvedValue([
+			{ monthStart: '2026-03-01T00:00:00.000Z', refType: 'bounty_prize_corporation_tax' },
+		])
+		routeStubs({ corporationTaxStub })
+
+		const response = await app.request(
+			'/api/corporation-tax/reports/top-income-monthly?corporationId=7001&refType=bounty_prize_corporation_tax&division=3&firstPartyId=9001&secondPartyId=9002&minAmount=1000000&maxAmount=2000000',
+			{},
+			env
+		)
+
+		expect(response.status).toBe(200)
+		expect(await response.json()).toEqual([
+			{ monthStart: '2026-03-01T00:00:00.000Z', refType: 'bounty_prize_corporation_tax' },
+		])
+		expect(corporationTaxStub.getTopIncomeSourcesMonthlyReport).toHaveBeenCalledWith(
+			expect.objectContaining({
+				corporationId: '7001',
+				refType: 'bounty_prize_corporation_tax',
 				division: 3,
 				firstPartyId: '9001',
 				secondPartyId: '9002',
@@ -1252,7 +1197,7 @@ describe('corporation-tax routes', () => {
 		routeStubs({ corporationTaxStub })
 
 		const response = await app.request(
-			'/api/corporation-tax/reports/missing-esi-keys?includedOnly=true&limit=20&offset=1',
+			'/api/corporation-tax/reports/missing-esi-keys?limit=20&offset=1',
 			{},
 			env
 		)
@@ -1260,7 +1205,6 @@ describe('corporation-tax routes', () => {
 		expect(response.status).toBe(200)
 		expect(await response.json()).toEqual([{ corporationId: '8888', hasRequiredScopes: false }])
 		expect(corporationTaxStub.getMissingEsiKeysReport).toHaveBeenCalledWith({
-			includedOnly: true,
 			limit: 20,
 			offset: 1,
 			sortBy: undefined,
@@ -1284,7 +1228,6 @@ describe('corporation-tax routes', () => {
 		expect(response.status).toBe(200)
 		expect(await response.json()).toEqual([{ corporationId: '9999' }])
 		expect(corporationTaxStub.getMissingEsiKeysReport).toHaveBeenCalledWith({
-			includedOnly: undefined,
 			limit: 5,
 			offset: 10,
 			sortBy: 'directorCount',
@@ -1307,53 +1250,9 @@ describe('corporation-tax routes', () => {
 		expect(response.status).toBe(400)
 		expect(await response.json()).toEqual({
 			error:
-				'sortBy must be one of: corporationId, included, directorCount, healthyDirectorCount, lastVerified',
+				'sortBy must be one of: corporationId, directorCount, healthyDirectorCount, lastVerified',
 		})
 		expect(corporationTaxStub.getMissingEsiKeysReport).not.toHaveBeenCalled()
-	})
-
-	it('forwards excluded corporations report sort filters', async () => {
-		const app = createApp(makeUser())
-		const corporationTaxStub = makeCorporationTaxStub()
-		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:tax:auditor' }] as any)
-		corporationTaxStub.getExcludedCorporationsReport.mockResolvedValue([
-			{ corporationId: '7777' },
-		] as any)
-		routeStubs({ corporationTaxStub })
-
-		const response = await app.request(
-			'/api/corporation-tax/reports/excluded-corporations?sortBy=corporationId&sortDir=asc&limit=8&offset=2',
-			{},
-			env
-		)
-
-		expect(response.status).toBe(200)
-		expect(await response.json()).toEqual([{ corporationId: '7777' }])
-		expect(corporationTaxStub.getExcludedCorporationsReport).toHaveBeenCalledWith({
-			limit: 8,
-			offset: 2,
-			sortBy: 'corporationId',
-			sortDirection: 'asc',
-		})
-	})
-
-	it('rejects invalid excluded corporations sort direction', async () => {
-		const app = createApp(makeUser())
-		const corporationTaxStub = makeCorporationTaxStub()
-		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:tax:auditor' }] as any)
-		routeStubs({ corporationTaxStub })
-
-		const response = await app.request(
-			'/api/corporation-tax/reports/excluded-corporations?sortDir=sideways',
-			{},
-			env
-		)
-
-		expect(response.status).toBe(400)
-		expect(await response.json()).toEqual({
-			error: "sortDir must be 'asc' or 'desc'",
-		})
-		expect(corporationTaxStub.getExcludedCorporationsReport).not.toHaveBeenCalled()
 	})
 
 	it('rejects export requests with invalid format', async () => {
@@ -1648,16 +1547,12 @@ describe('corporation-tax routes', () => {
 		expect(corporationTaxStub.retryFailedAlertDeliveries).toHaveBeenCalledWith(user.id, 25)
 	})
 
-	it('returns member summary for in-corporation member when member summary is enabled', async () => {
+	it('returns member summary for in-corporation member', async () => {
 		const app = createApp(makeUser())
 		const corporationTaxStub = makeCorporationTaxStub()
 		const characterDataStub = {
 			getCharacterInfo: vi.fn().mockResolvedValue({ characterId: '7001', corporationId: '1234' }),
 		}
-		corporationTaxStub.getCorporationSettings.mockResolvedValue({
-			corporationId: '1234',
-			memberSummaryEnabled: true,
-		})
 		corporationTaxStub.getMemberSummaryReport.mockResolvedValue([
 			{ corporationId: '1234', characterId: '7001', assessmentCount: 1 },
 		])
@@ -1682,16 +1577,15 @@ describe('corporation-tax routes', () => {
 		})
 	})
 
-	it('forbids member summary for regular members when corporation member summary is disabled', async () => {
+	it('returns member summary for regular members without settings gate', async () => {
 		const app = createApp(makeUser())
 		const corporationTaxStub = makeCorporationTaxStub()
 		const characterDataStub = {
 			getCharacterInfo: vi.fn().mockResolvedValue({ characterId: '7001', corporationId: '1234' }),
 		}
-		corporationTaxStub.getCorporationSettings.mockResolvedValue({
-			corporationId: '1234',
-			memberSummaryEnabled: false,
-		})
+		corporationTaxStub.getMemberSummaryReport.mockResolvedValue([
+			{ corporationId: '1234', characterId: '7001', assessmentCount: 1 },
+		])
 		routeStubs({ corporationTaxStub, characterDataStub })
 
 		const response = await app.request(
@@ -1700,11 +1594,17 @@ describe('corporation-tax routes', () => {
 			env
 		)
 
-		expect(response.status).toBe(403)
-		expect(await response.json()).toEqual({
-			error: 'Member summary is not enabled for this corporation',
+		expect(response.status).toBe(200)
+		expect(await response.json()).toEqual([
+			{ corporationId: '1234', characterId: '7001', assessmentCount: 1 },
+		])
+		expect(corporationTaxStub.getMemberSummaryReport).toHaveBeenCalledWith({
+			corporationId: '1234',
+			characterIds: ['7001'],
+			fromDate: undefined,
+			toDate: undefined,
+			topRefTypesLimit: undefined,
 		})
-		expect(corporationTaxStub.getMemberSummaryReport).not.toHaveBeenCalled()
 	})
 
 	it('forbids member summary lookups for a different character without tax scope permissions', async () => {
@@ -1713,10 +1613,6 @@ describe('corporation-tax routes', () => {
 		const characterDataStub = {
 			getCharacterInfo: vi.fn().mockResolvedValue({ characterId: '7001', corporationId: '1234' }),
 		}
-		corporationTaxStub.getCorporationSettings.mockResolvedValue({
-			corporationId: '1234',
-			memberSummaryEnabled: true,
-		})
 		routeStubs({ corporationTaxStub, characterDataStub })
 
 		const response = await app.request(

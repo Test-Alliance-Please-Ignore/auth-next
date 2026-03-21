@@ -42,11 +42,12 @@ Current route inventory:
 | --- | --- | --- | --- |
 | `/tax` | Redirect | Redirects to member summary | Same access as `/tax/member-summary` |
 | `/tax/member-summary` | Tax Member Summary | Member-level tax due, paid, delta, compliance status, and top taxable income sources | Site admin, `urn:tax:admin`, `urn:tax:auditor`, `urn:tax:viewer` with corporation membership, CEO/director self-service for own corporation |
-| `/tax/reports` | Tax Reports | Summary KPIs, total taxes by corporation, top income sources, ESS payout reporting, compliance trends, discrepancies, missing ESI keys, excluded corporations, exports, and export schedules | Site admin, `urn:tax:admin`, `urn:tax:auditor` |
+| `/tax/reports` | Tax Reports | Summary KPIs, total taxes by corporation, top income sources, ESS payout reporting, compliance trends, discrepancies, missing ESI keys, exports, and export schedules | Site admin, `urn:tax:admin`, `urn:tax:auditor` |
 | `/tax/bills` | Tax Billing | Bill status rollups, bill history, assessment list, bill creation, bill issuance, and bill status sync | View: site admin, `urn:tax:admin`, `urn:tax:auditor`; mutate: site admin, `urn:tax:admin` |
 | `/tax/alerts` | Tax Alerts | Alert inbox, severity/status filtering, acknowledge/resolve actions, and Discord delivery telemetry | View/manage: site admin, `urn:tax:admin`; failed-delivery retry and delivery telemetry are site-admin only |
 | `/tax/ledger` | Tax Ledger | Normalized ledger explorer over corporation and character wallet data with detailed filters | Site admin, `urn:tax:admin` |
-| `/tax/settings` | Tax Settings | Corporation inclusion, rates, rule sets, billing defaults, member-summary toggle, and Discord notification destination overrides | Site admin, `urn:tax:admin` |
+| `/tax/rules` | Tax Rules | Rule groups, corporation attachments, and active tax rules used by assessment calculations | Site admin, `urn:tax:admin` |
+| `/tax/exclusions` | Tax Exclusions | Standalone corporation exclusion list with reason tracking | Site admin, `urn:tax:admin` |
 | `/tax/audit-log` | Tax Audit Log | Review configuration and operational audit entries | Site admin, `urn:tax:admin` |
 
 ## Current Navigation Matrix
@@ -60,9 +61,10 @@ The current sidebar is more restrictive than some direct-route access:
 | Billing | No | Yes | Yes | No |
 | Alerts | No | No | Yes | No |
 | Ledger | No | No | Yes | No |
-| Settings | No | No | Yes | No |
+| Rules | No | No | Yes | No |
+| Exclusions | No | No | Yes | No |
 | Audit Log | No | No | Yes | No |
 
 Known current-state notes:
 
-- Backend member-summary access also supports limited corporation-member self-read when member summary is enabled for that corporation, but the current UI primarily optimizes for viewer/auditor/admin and CEO/director access flows.
+- Backend member-summary access supports limited corporation-member self-read; UI primarily optimizes for viewer/auditor/admin and CEO/director access flows.

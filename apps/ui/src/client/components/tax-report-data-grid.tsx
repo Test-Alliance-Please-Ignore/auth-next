@@ -1,7 +1,5 @@
 import { MantineReactTable, useMantineReactTable } from 'mantine-react-table'
 
-import { Button } from '@/components/ui/button'
-
 import type { MRT_ColumnDef, MRT_SortingState } from 'mantine-react-table'
 
 interface TaxReportDataGridProps<Row extends object> {
@@ -12,10 +10,13 @@ interface TaxReportDataGridProps<Row extends object> {
 	emptyMessage: string
 	sorting?: MRT_SortingState
 	onSortingChange?: (sorting: MRT_SortingState) => void
-	page?: number
-	onPreviousPage?: () => void
-	onNextPage?: () => void
-	hasNextPage?: boolean
+	pagination?: {
+		pageIndex: number
+		pageSize: number
+	}
+	onPaginationChange?: (pagination: { pageIndex: number; pageSize: number }) => void
+	pageCount?: number
+	rowCount?: number
 }
 
 export function TaxReportDataGrid<Row extends object>({
@@ -26,11 +27,13 @@ export function TaxReportDataGrid<Row extends object>({
 	emptyMessage,
 	sorting = [],
 	onSortingChange,
-	page,
-	onPreviousPage,
-	onNextPage,
-	hasNextPage,
+	pagination,
+	onPaginationChange,
+	pageCount,
+	rowCount,
 }: TaxReportDataGridProps<Row>) {
+	const isServerSorted = Boolean(onSortingChange)
+	const isServerPaginated = Boolean(onPaginationChange && pagination)
 	const table = useMantineReactTable({
 		columns,
 		data: rows,
@@ -40,10 +43,18 @@ export function TaxReportDataGrid<Row extends object>({
 		enableFullScreenToggle: false,
 		enableGlobalFilter: false,
 		enableHiding: false,
-		enablePagination: false,
+		enablePagination: true,
 		enableStickyHeader: true,
 		enableTopToolbar: false,
-		manualSorting: Boolean(onSortingChange),
+		manualSorting: isServerSorted,
+		manualPagination: isServerPaginated,
+		pageCount: isServerPaginated ? pageCount : undefined,
+		rowCount: isServerPaginated ? rowCount : undefined,
+		paginationDisplayMode: 'pages',
+		mantinePaginationProps: {
+			showRowsPerPage: true,
+			rowsPerPageOptions: ['25', '50', '100', '200'],
+		},
 		mantinePaperProps: {
 			shadow: 'none',
 			radius: 'md',
@@ -110,16 +121,38 @@ export function TaxReportDataGrid<Row extends object>({
 			isLoading: loading,
 			showAlertBanner: Boolean(error),
 			showProgressBars: loading,
-			sorting,
+			...(isServerSorted ? { sorting } : {}),
+			...(isServerPaginated ? { pagination } : {}),
 		},
-		onSortingChange: (updater) => {
-			if (!onSortingChange) {
-				return
-			}
-
-			const nextSorting = typeof updater === 'function' ? updater(sorting) : updater
-			onSortingChange(nextSorting)
-		},
+		...(isServerSorted
+			? {
+					onSortingChange: (
+						updater: MRT_SortingState | ((old: MRT_SortingState) => MRT_SortingState)
+					) => {
+						const nextSorting = typeof updater === 'function' ? updater(sorting) : updater
+						onSortingChange!(nextSorting)
+					},
+				}
+			: {}),
+		...(isServerPaginated
+			? {
+					onPaginationChange: (
+						updater:
+							| { pageIndex: number; pageSize: number }
+							| ((old: { pageIndex: number; pageSize: number }) => {
+									pageIndex: number
+									pageSize: number
+							  })
+					) => {
+						const current = pagination!
+						const next = typeof updater === 'function' ? updater(current) : updater
+						onPaginationChange!({
+							pageIndex: Math.max(0, next.pageIndex),
+							pageSize: next.pageSize,
+						})
+					},
+				}
+			: {}),
 	})
 
 	return (
@@ -131,18 +164,6 @@ export function TaxReportDataGrid<Row extends object>({
 			) : null}
 
 			<MantineReactTable table={table} />
-
-			{page !== undefined && onPreviousPage && onNextPage ? (
-				<div className="flex items-center justify-end gap-2">
-					<Button size="sm" variant="outline" disabled={page === 0} onClick={onPreviousPage}>
-						Previous
-					</Button>
-					<div className="text-xs text-muted-foreground">Page {page + 1}</div>
-					<Button size="sm" variant="outline" disabled={!hasNextPage} onClick={onNextPage}>
-						Next
-					</Button>
-				</div>
-			) : null}
 		</div>
 	)
 }

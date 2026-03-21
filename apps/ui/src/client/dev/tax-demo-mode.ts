@@ -11,10 +11,9 @@ import type {
 	TaxBillStatus,
 	TaxBillStatusReportRow,
 	TaxCompliancePoint,
-	TaxCorporationSettings,
+	TaxCorporationExclusion,
 	TaxDiscrepancy,
 	TaxEssPayoutRow,
-	TaxExcludedCorporationRow,
 	TaxExportArtifact,
 	TaxExportFormat,
 	TaxExportRecord,
@@ -28,6 +27,7 @@ import type {
 	TaxRuleGroupAttachment,
 	TaxRuleSet,
 	TaxSummaryReport,
+	TaxTopIncomeSourceMonthlyRow,
 	TaxTopIncomeSourceRow,
 	TaxTotalTaxesByCorporationRow,
 } from '@repo/corporation-tax'
@@ -42,7 +42,7 @@ type DemoTaxConfig = {
 }
 
 const DEFAULT_DEMO_TAX_CONFIG: DemoTaxConfig = {
-	corporationCount: 20,
+	corporationCount: 50,
 	months: 3,
 }
 
@@ -62,6 +62,7 @@ type TaxReportFilters = {
 	firstPartyId?: string
 	secondPartyId?: string
 	minAmount?: string
+	maxAmount?: string
 	limit?: number
 	offset?: number
 	sortBy?: string
@@ -151,6 +152,12 @@ function startOfMonth(date = new Date()): Date {
 function addDays(date: Date, days: number): Date {
 	const copy = new Date(date)
 	copy.setUTCDate(copy.getUTCDate() + days)
+	return copy
+}
+
+function addMonths(date: Date, months: number): Date {
+	const copy = new Date(date)
+	copy.setUTCMonth(copy.getUTCMonth() + months)
 	return copy
 }
 
@@ -259,15 +266,6 @@ function buildDemoState(seed: number) {
 		corporationId: corp.corporationId,
 		included: index % 9 !== 3,
 		exclusionReason: index % 9 === 3 ? 'Manual exemption for trade corp.' : null,
-		defaultRateBps: 750,
-		essRateBps: 950,
-		discrepancyThresholdBps: 500,
-		memberSummaryEnabled: true,
-		billingEnabled: true,
-		billingIssuerUserId: 'demo-admin',
-		billingPayeeId: '80000001',
-		billingPayeeType: 'corporation',
-		billingDueDays: 14,
 		esiAuthStatus: {
 			isConfigured: true,
 			isVerified: true,
@@ -284,7 +282,27 @@ function buildDemoState(seed: number) {
 		},
 		createdAt: addDays(demoStart, index),
 		updatedAt: addDays(demoStart, Math.min(index * 2, demoDaySpan - 1)),
-	})) as TaxCorporationSettings[]
+	})) as Array<{
+		corporationId: string
+		included: boolean
+		exclusionReason: string | null
+		esiAuthStatus: {
+			isConfigured: boolean
+			isVerified: boolean
+			lastVerified: Date | null
+			directorCount: number
+			healthyDirectorCount: number
+			requiredScopes: string[]
+			missingRequiredScopes: string[]
+			hasRequiredScopes: boolean
+			hasCorporationWalletScope: boolean
+			hasCharacterWalletScope: boolean
+			hasCorporationMembershipScope: boolean
+			grantedScopeCount: number
+		}
+		createdAt: Date
+		updatedAt: Date
+	}>
 
 	const divisionProfiles = [
 		[1, 2, 3, 4],
@@ -385,13 +403,27 @@ function buildDemoState(seed: number) {
 			resolvedAt: null,
 		})) as unknown as TaxDiscrepancy[]
 
-	const compliance = Array.from({ length: demoDaySpan }).map((_, index) => ({
-		rollupDate: addDays(demoStart, index),
-		taxDue: amount(3_250_000_000 + index * 520_000_000),
-		taxPaid: amount(2_840_000_000 + index * 451_000_000),
-		taxDelta: amount(410_000_000 + index * 69_000_000),
-		entryCount: 18 + (index % 12),
-	})) as TaxCompliancePoint[]
+	const compliance = Array.from({ length: config.months }).map((_, index) => {
+		const monthStartForPoint = addMonths(demoStart, index)
+		const monthEnd = new Date(
+			Date.UTC(monthStartForPoint.getUTCFullYear(), monthStartForPoint.getUTCMonth() + 1, 0)
+		)
+		const due = 12_500_000_000 + index * 2_200_000_000
+		const paid = Math.max(
+			0,
+			due -
+				(index % 4 === 2
+					? 1_300_000_000 + Math.round(rng() * 300_000_000)
+					: 350_000_000 + Math.round(rng() * 220_000_000))
+		)
+		return {
+			rollupDate: monthEnd,
+			taxDue: amount(due),
+			taxPaid: amount(paid),
+			taxDelta: amount(due - paid),
+			entryCount: 22 + (index % 6),
+		}
+	}) as TaxCompliancePoint[]
 
 	const billStatus = corporations.map((corp, index) => ({
 		corporationId: corp.corporationId,
@@ -547,9 +579,9 @@ function buildDemoState(seed: number) {
 			id: 'audit-1',
 			corporationId: '99010001',
 			actorUserId: 'demo-admin',
-			action: 'tax.settings.updated',
-			before: { defaultRateBps: 700 },
-			after: { defaultRateBps: 750 },
+			action: 'tax.exclusion.updated',
+			before: { reason: null },
+			after: { reason: 'Manual exemption for trade corp.' },
 			createdAt: addDays(monthStart, 2),
 		},
 		{
@@ -567,7 +599,6 @@ function buildDemoState(seed: number) {
 		.filter((setting) => setting.esiAuthStatus && !setting.esiAuthStatus.hasRequiredScopes)
 		.map((setting) => ({
 			corporationId: setting.corporationId,
-			included: setting.included,
 			isConfigured: setting.esiAuthStatus?.isConfigured ?? false,
 			hasRequiredScopes: setting.esiAuthStatus?.hasRequiredScopes ?? false,
 			hasCorporationWalletScope: setting.esiAuthStatus?.hasCorporationWalletScope ?? false,
@@ -577,13 +608,16 @@ function buildDemoState(seed: number) {
 			lastVerified: setting.esiAuthStatus?.lastVerified ?? null,
 		})) as TaxMissingEsiKeyRow[]
 
-	const excluded = settings
+	const exclusions = settings
 		.filter((setting) => !setting.included)
 		.map((setting) => ({
 			corporationId: setting.corporationId,
-			exclusionReason: setting.exclusionReason,
+			reason: setting.exclusionReason,
+			createdBy: 'demo-admin',
+			updatedBy: 'demo-admin',
+			createdAt: setting.updatedAt,
 			updatedAt: setting.updatedAt,
-		})) as TaxExcludedCorporationRow[]
+		})) as TaxCorporationExclusion[]
 
 	const exports = [
 		{
@@ -731,7 +765,7 @@ function buildDemoState(seed: number) {
 		alerts,
 		auditLog,
 		missingEsi,
-		excluded,
+		exclusions,
 		exports,
 		schedules,
 		notificationDestinations,
@@ -771,6 +805,7 @@ function filterLedgerEntries(rows: TaxLedgerEntry[], filters?: TaxReportFilters)
 		if (filters?.firstPartyId && row.firstPartyId !== filters.firstPartyId) return false
 		if (filters?.secondPartyId && row.secondPartyId !== filters.secondPartyId) return false
 		if (filters?.minAmount && parseAmount(row.amount) < parseAmount(filters.minAmount)) return false
+		if (filters?.maxAmount && parseAmount(row.amount) > parseAmount(filters.maxAmount)) return false
 		if (!matchesDate(row.entryDate, filters?.fromDate, filters?.toDate)) return false
 		return true
 	})
@@ -785,7 +820,26 @@ function sortRows<T>(rows: T[], sortBy?: string, sortDir: 'asc' | 'desc' = 'asc'
 		if (a === b) return 0
 		if (a == null) return 1
 		if (b == null) return -1
-		return a > b ? direction : -direction
+
+		if (typeof a === 'number' && typeof b === 'number') {
+			return a > b ? direction : -direction
+		}
+
+		const aNum = Number(a)
+		const bNum = Number(b)
+		if (Number.isFinite(aNum) && Number.isFinite(bNum)) {
+			if (aNum === bNum) return 0
+			return aNum > bNum ? direction : -direction
+		}
+
+		const aDate = new Date(String(a)).getTime()
+		const bDate = new Date(String(b)).getTime()
+		if (Number.isFinite(aDate) && Number.isFinite(bDate)) {
+			if (aDate === bDate) return 0
+			return aDate > bDate ? direction : -direction
+		}
+
+		return String(a).localeCompare(String(b)) * direction
 	})
 }
 
@@ -832,29 +886,56 @@ export const taxDemoApi = {
 			scoped: { canRead: true, canAudit: true, canManage: true },
 		})
 	},
-	async listCorporations(filters?: { included?: boolean; limit?: number; offset?: number }) {
-		const rows = ensureDemoState().settings.filter((row) =>
-			filters?.included === undefined ? true : row.included === filters.included
-		)
+	async listCorporations(filters?: { limit?: number; offset?: number }) {
+		const rows = ensureDemoState().settings
 		return withLatency(applyLimitOffset(rows, filters?.limit, filters?.offset))
-	},
-	async getCorporationSettings(corporationId: string) {
-		return withLatency(
-			ensureDemoState().settings.find((row) => row.corporationId === corporationId) ??
-				ensureDemoState().settings[0]!
-		)
 	},
 	async listWalletDivisions(corporationId: string) {
 		return withLatency(ensureDemoState().walletDivisions[corporationId] ?? [])
 	},
-	async updateTaxCorporationSettings(
-		corporationId: string,
-		input: Partial<TaxCorporationSettings>
-	) {
+	async listExclusions(filters?: { limit?: number; offset?: number }) {
+		return withLatency(
+			applyLimitOffset(ensureDemoState().exclusions, filters?.limit, filters?.offset)
+		)
+	},
+	async upsertExclusion(corporationId: string, input: { reason: string | null }) {
 		const state = ensureDemoState()
-		const current = state.settings.find((row) => row.corporationId === corporationId)
-		if (current) Object.assign(current, input, { updatedAt: new Date() })
-		return withLatency(current ?? state.settings[0]!)
+		const now = new Date()
+		const existing = state.exclusions.find((row) => row.corporationId === corporationId)
+		if (existing) {
+			existing.reason = input.reason
+			existing.updatedAt = now
+			existing.updatedBy = 'demo-admin'
+		} else {
+			state.exclusions.push({
+				corporationId,
+				reason: input.reason,
+				createdBy: 'demo-admin',
+				updatedBy: 'demo-admin',
+				createdAt: now,
+				updatedAt: now,
+			})
+		}
+		const setting = state.settings.find((row) => row.corporationId === corporationId)
+		if (setting) {
+			setting.included = false
+			setting.exclusionReason = input.reason
+			setting.updatedAt = now
+		}
+		return withLatency(
+			state.exclusions.find((row) => row.corporationId === corporationId) ?? state.exclusions[0]!
+		)
+	},
+	async deleteExclusion(corporationId: string) {
+		const state = ensureDemoState()
+		state.exclusions = state.exclusions.filter((row) => row.corporationId !== corporationId)
+		const setting = state.settings.find((row) => row.corporationId === corporationId)
+		if (setting) {
+			setting.included = true
+			setting.exclusionReason = null
+			setting.updatedAt = new Date()
+		}
+		return withLatency(undefined)
 	},
 	async listRuleSets(filters?: { corporationId?: string; ruleGroupId?: string }) {
 		const state = ensureDemoState()
@@ -1137,6 +1218,15 @@ export const taxDemoApi = {
 		}
 		return withLatency(assessment ?? ensureDemoState().assessments[0]!)
 	},
+	async retractAssessmentBill(corporationId: string, assessmentId: string) {
+		const assessment = ensureDemoState().assessments.find(
+			(row) => row.id === assessmentId && row.corporationId === corporationId
+		)
+		if (assessment?.billId) {
+			assessment.billStatus = 'cancelled' as any
+		}
+		return withLatency(assessment ?? ensureDemoState().assessments[0]!)
+	},
 	async issueBillsForPeriod(corporationId: string): Promise<IssueBillsForPeriodResult> {
 		const issued = ensureDemoState()
 			.assessments.filter((row) => row.corporationId === corporationId && !row.billId)
@@ -1204,7 +1294,11 @@ export const taxDemoApi = {
 		})
 	},
 	async getBillStatusReport(filters?: TaxReportFilters) {
-		const rows = maybeFilterReportRows(ensureDemoState().billStatus, filters)
+		const rows = sortRows(
+			maybeFilterReportRows(ensureDemoState().billStatus, filters),
+			filters?.sortBy,
+			filters?.sortDir
+		)
 		return withLatency(rows)
 	},
 	async getCorporationBillHistory(
@@ -1228,12 +1322,66 @@ export const taxDemoApi = {
 	async getTotalTaxesReport(filters?: TaxReportFilters) {
 		let rows = maybeFilterReportRows(ensureDemoState().totalTaxes, filters)
 		rows = sortRows(rows, filters?.sortBy, filters?.sortDir)
-		return withLatency(applyLimitOffset(rows, filters?.limit, filters?.offset))
+		return withLatency({
+			rows: applyLimitOffset(rows, filters?.limit, filters?.offset),
+			totalRows: rows.length,
+		})
 	},
 	async getTopIncomeSourcesReport(filters?: TaxReportFilters) {
 		let rows = ensureDemoState().topIncome
 		if (filters?.refType) rows = rows.filter((row) => row.refType === filters.refType)
 		return withLatency(applyLimitOffset(rows, filters?.limit, filters?.offset))
+	},
+	async getTopIncomeSourcesMonthlyReport(filters?: TaxReportFilters) {
+		const rows = filterLedgerEntries(ensureDemoState().ledgerEntries, filters)
+		const grouped = new Map<
+			string,
+			{
+				monthStart: Date
+				refType: string
+				entryCount: number
+				essEntryCount: number
+				totalIncome: number
+			}
+		>()
+		for (const row of rows) {
+			const amount = parseAmount(row.amount)
+			if (amount <= 0) continue
+			const monthStart = new Date(
+				Date.UTC(row.entryDate.getUTCFullYear(), row.entryDate.getUTCMonth(), 1)
+			)
+			const monthKey = monthStart.toISOString().slice(0, 10)
+			const key = `${monthKey}:${row.refType}`
+			const current = grouped.get(key) ?? {
+				monthStart,
+				refType: row.refType,
+				entryCount: 0,
+				essEntryCount: 0,
+				totalIncome: 0,
+			}
+			current.entryCount += 1
+			current.essEntryCount += row.isEss ? 1 : 0
+			current.totalIncome += amount
+			grouped.set(key, current)
+		}
+		const result = Array.from(grouped.values())
+			.sort((a, b) => {
+				const monthDiff = a.monthStart.getTime() - b.monthStart.getTime()
+				if (monthDiff !== 0) return monthDiff
+				if (a.totalIncome !== b.totalIncome) return b.totalIncome - a.totalIncome
+				return a.refType.localeCompare(b.refType)
+			})
+			.map(
+				(row) =>
+					({
+						monthStart: row.monthStart,
+						refType: row.refType,
+						entryCount: row.entryCount,
+						essEntryCount: row.essEntryCount,
+						totalIncome: amount(row.totalIncome),
+					}) satisfies TaxTopIncomeSourceMonthlyRow
+			)
+		return withLatency(result)
 	},
 	async getEssPayoutReport(filters?: TaxReportFilters) {
 		let rows = filterLedgerEntries(
@@ -1241,7 +1389,10 @@ export const taxDemoApi = {
 			filters
 		) as any as TaxEssPayoutRow[]
 		rows = sortRows(rows as any, filters?.sortBy, filters?.sortDir) as TaxEssPayoutRow[]
-		return withLatency(applyLimitOffset(rows, filters?.limit, filters?.offset))
+		return withLatency({
+			rows: applyLimitOffset(rows, filters?.limit, filters?.offset),
+			totalRows: rows.length,
+		})
 	},
 	async getComplianceReport(filters?: TaxReportFilters) {
 		const rows = ensureDemoState().compliance.filter((row) =>
@@ -1266,13 +1417,23 @@ export const taxDemoApi = {
 			return true
 		})
 		rows = sortRows(rows as any, filters?.sortBy, filters?.sortDir) as TaxDiscrepancy[]
-		return withLatency(applyLimitOffset(rows, filters?.limit, filters?.offset))
+		return withLatency({
+			rows: applyLimitOffset(rows, filters?.limit, filters?.offset),
+			totalRows: rows.length,
+		})
 	},
-	async getMissingEsiKeysReport() {
-		return withLatency(ensureDemoState().missingEsi)
-	},
-	async getExcludedCorporationsReport() {
-		return withLatency(ensureDemoState().excluded)
+	async getMissingEsiKeysReport(filters?: {
+		limit?: number
+		offset?: number
+		sortBy?: string
+		sortDir?: 'asc' | 'desc'
+	}) {
+		let rows = ensureDemoState().missingEsi
+		rows = sortRows(rows as any, filters?.sortBy, filters?.sortDir) as typeof rows
+		return withLatency({
+			rows: applyLimitOffset(rows, filters?.limit, filters?.offset),
+			totalRows: rows.length,
+		})
 	},
 	async getMemberSummary(
 		corporationId: string,
