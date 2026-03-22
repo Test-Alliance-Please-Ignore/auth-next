@@ -423,6 +423,26 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		}
 	}
 
+	async getGroupMetadataByIds(ids: string[]): Promise<Array<{ id: string; name: string }>> {
+		const normalizedIds = [...new Set(ids.map((id) => id.trim()).filter(Boolean))]
+		if (normalizedIds.length === 0) {
+			return []
+		}
+
+		const rows = await this.db.query.groups.findMany({
+			where: inArray(groups.id, normalizedIds),
+			columns: {
+				id: true,
+				name: true,
+			},
+		})
+
+		return rows.map((row) => ({
+			id: row.id,
+			name: row.name,
+		}))
+	}
+
 	async updateGroup(
 		id: string,
 		data: UpdateGroupRequest,

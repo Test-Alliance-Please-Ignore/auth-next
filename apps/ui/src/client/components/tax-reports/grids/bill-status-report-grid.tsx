@@ -3,7 +3,9 @@ import { useMemo } from 'react'
 
 import { TaxReportDataGrid } from '@/components/tax-report-data-grid'
 import { Badge } from '@/components/ui/badge'
-import { formatTaxDateTime } from '@/lib/tax-date'
+import { DestructiveButton } from '@/components/ui/destructive-button'
+import { PrimaryButton } from '@/components/ui/primary-button'
+import { formatTaxDate } from '@/lib/tax-date'
 import { formatTaxIskFull, TaxEntityDisplay } from '@/lib/tax-display'
 
 import { billStatusBadgeVariant } from './shared'
@@ -25,6 +27,11 @@ export function BillStatusReportGrid(props: {
 	onPaginationChange: (pagination: { pageIndex: number; pageSize: number }) => void
 	pageCount: number
 	rowCount: number
+	canManage?: boolean
+	onSyncBillStatus?: (assessmentId: string) => void
+	onRetractBill?: (assessmentId: string) => void
+	syncBillPending?: boolean
+	retractBillPending?: boolean
 }) {
 	const columnHelper = createMRTColumnHelper<TaxBillStatusReportRow>()
 	const columns = useMemo<Array<MRT_ColumnDef<TaxBillStatusReportRow>>>(
@@ -48,22 +55,22 @@ export function BillStatusReportGrid(props: {
 			columnHelper.accessor('taxPeriodStart', {
 				header: 'Period Start',
 				enableSorting: true,
-				Cell: ({ row }) => formatTaxDateTime(row.original.taxPeriodStart),
+				Cell: ({ row }) => formatTaxDate(row.original.taxPeriodStart),
 			}),
 			columnHelper.accessor('taxPeriodEnd', {
 				header: 'Period End',
 				enableSorting: true,
-				Cell: ({ row }) => formatTaxDateTime(row.original.taxPeriodEnd),
+				Cell: ({ row }) => formatTaxDate(row.original.taxPeriodEnd),
 			}),
 			columnHelper.accessor('issueDate', {
 				header: 'Issue Date',
 				enableSorting: true,
-				Cell: ({ row }) => formatTaxDateTime(row.original.issueDate),
+				Cell: ({ row }) => formatTaxDate(row.original.issueDate),
 			}),
 			columnHelper.accessor('dueDate', {
 				header: 'Due Date',
 				enableSorting: true,
-				Cell: ({ row }) => formatTaxDateTime(row.original.dueDate),
+				Cell: ({ row }) => formatTaxDate(row.original.dueDate),
 			}),
 			columnHelper.accessor('taxDueCenti', {
 				id: 'taxDue',
@@ -83,8 +90,54 @@ export function BillStatusReportGrid(props: {
 				enableSorting: true,
 				Cell: ({ row }) => formatTaxIskFull(row.original.taxDelta),
 			}),
+			columnHelper.display({
+				id: 'actions',
+				header: 'Actions',
+				enableSorting: false,
+				Cell: ({ row }) => {
+					const billStatus = row.original.billStatus
+					const canSync = billStatus === 'issued' || billStatus === 'overdue'
+					const canRetract = billStatus === 'issued' || billStatus === 'overdue'
+					const busy = props.syncBillPending || props.retractBillPending
+					if (!props.canManage) {
+						return <span className="text-xs text-muted-foreground">-</span>
+					}
+					return (
+						<div className="flex items-center justify-end gap-2">
+							{canSync ? (
+								<PrimaryButton
+									size="sm"
+									disabled={Boolean(busy) || !props.onSyncBillStatus}
+									onClick={() => props.onSyncBillStatus?.(row.original.assessmentId)}
+								>
+									{props.syncBillPending ? 'Syncing...' : 'Sync'}
+								</PrimaryButton>
+							) : null}
+							{canRetract ? (
+								<DestructiveButton
+									size="sm"
+									showIcon={false}
+									disabled={Boolean(busy) || !props.onRetractBill}
+									onClick={() => props.onRetractBill?.(row.original.assessmentId)}
+								>
+									{props.retractBillPending ? 'Retracting...' : 'Retract'}
+								</DestructiveButton>
+							) : null}
+							{!canSync && !canRetract ? (
+								<span className="text-xs text-muted-foreground">No actions</span>
+							) : null}
+						</div>
+					)
+				},
+			}),
 		],
-		[columnHelper, props.entityNames]
+		[
+			columnHelper,
+			props.canManage,
+			props.entityNames,
+			props.retractBillPending,
+			props.syncBillPending,
+		]
 	)
 
 	return (
@@ -100,6 +153,7 @@ export function BillStatusReportGrid(props: {
 			onPaginationChange={props.onPaginationChange}
 			pageCount={props.pageCount}
 			rowCount={props.rowCount}
+			pinnedRightColumnIds={['actions']}
 		/>
 	)
 }

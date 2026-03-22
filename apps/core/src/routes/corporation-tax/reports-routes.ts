@@ -2,7 +2,7 @@ import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { requireAuth } from '../../middleware/session'
-import { canAuditTaxFeature } from '../../middleware/tax-permissions'
+import { canAuditTaxFeature, canReadTaxFeature } from '../../middleware/tax-permissions'
 import {
 	parseBooleanQueryParam,
 	parseDateQueryParam,

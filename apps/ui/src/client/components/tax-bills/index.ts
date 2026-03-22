@@ -1,4 +1,5 @@
 export { AssessmentSummaryCards } from './assessment-summary-cards'
+export { BillStatusTab } from './bill-status-tab'
 export { BillingConfigurationCard } from './billing-configuration-card'
 export { BillingOperationsCard } from './billing-operations-card'
 export { CorporationBillHistoryCard } from './corporation-bill-history-card'

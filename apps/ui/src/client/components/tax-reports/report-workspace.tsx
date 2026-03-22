@@ -1,3 +1,4 @@
+import { CalendarClock, Download } from 'lucide-react'
 import { useState } from 'react'
 
 import { TaxReportSelector } from '@/components/tax-reports/report-display'
@@ -15,7 +16,7 @@ import {
 	TopIncomeSourcesReportSection,
 	TotalTaxesReportSection,
 } from '@/components/tax-reports/report-sections'
-import { Button } from '@/components/ui/button'
+import { GhostButton } from '@/components/ui/ghost-button'
 
 import type { TaxExportFormat, TaxExportReportType } from '@repo/corporation-tax'
 import type { TaxRollupReportQueryFilters } from '@/hooks/corporation-tax'
@@ -102,20 +103,20 @@ export function TaxReportWorkspace({
 				description={selectedReportDescription}
 				actions={
 					<>
-						<Button
-							variant="outline"
+						<GhostButton
 							onClick={() => setExportModalOpen(true)}
 							disabled={!canExport || !activeReportIsExportable}
 						>
+							<Download className="mr-2 h-4 w-4" />
 							Export
-						</Button>
-						<Button
-							variant="outline"
+						</GhostButton>
+						<GhostButton
 							onClick={() => setScheduleModalOpen(true)}
 							disabled={!canCreateSchedule || !activeReportIsExportable}
 						>
+							<CalendarClock className="mr-2 h-4 w-4" />
 							Schedule
-						</Button>
+						</GhostButton>
 					</>
 				}
 				contentClassName="space-y-4"

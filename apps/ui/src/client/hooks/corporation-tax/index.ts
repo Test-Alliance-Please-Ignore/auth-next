@@ -55,6 +55,7 @@ export {
 	useSyncTaxCorporationBillStatuses,
 	useTaxAssessments,
 	useTaxBillingConfigs,
+	useTaxCorporationBillEventHistory,
 	useTaxCorporationBillHistory,
 	useTaxLedgerEntries,
 	useTaxLedgerParties,

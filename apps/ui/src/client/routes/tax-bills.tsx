@@ -4,18 +4,18 @@ import {
 	AssessmentSummaryCards,
 	BillingConfigurationCard,
 	BillingOperationsCard,
+	BillStatusTab,
 	CorporationBillHistoryCard,
 	RetractBillDialog,
 	ScopedAssessmentSnapshotCard,
 	UnbilledAssessmentsCard,
 } from '@/components/tax-bills'
 import { TaxCorporationScopeSelector } from '@/components/tax-corporation-scope-selector'
-import { BillStatusReportGrid } from '@/components/tax-reports/grids'
-import { useReportGridState } from '@/components/tax-reports/use-report-grid-state'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
 	useCreateTaxBillForAssessment,
 	useIssueTaxBillsForPeriod,
@@ -23,16 +23,12 @@ import {
 	useSyncTaxAssessmentBillStatus,
 	useSyncTaxCorporationBillStatuses,
 	useTaxAssessments,
-	useTaxBillStatusReport,
 	useTaxCapabilities,
-	useTaxCorporationBillHistory,
 } from '@/hooks/corporation-tax'
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useTaxCorporationAccessScope } from '@/hooks/useTaxCorporationAccessScope'
 import { getCurrentMonthDateRange } from '@/lib/tax-date'
-
-import type { TaxAssessmentScope } from '@repo/corporation-tax'
 
 const DEFAULT_MONTH_RANGE = getCurrentMonthDateRange()
 
@@ -50,9 +46,6 @@ export default function TaxBillsPage() {
 	} = useTaxCorporationAccessScope(canAdminScope)
 	const [periodStartDate, setPeriodStartDate] = useState(DEFAULT_MONTH_RANGE.fromDate)
 	const [periodEndDate, setPeriodEndDate] = useState(DEFAULT_MONTH_RANGE.toDate)
-	const [selectedAssessmentScope, setSelectedAssessmentScope] = useState<
-		'all' | TaxAssessmentScope
-	>('all')
 	const [retractingAssessmentId, setRetractingAssessmentId] = useState<string | null>(null)
 
 	const { data: scopedCapabilities, isLoading: scopedCapabilitiesLoading } = useTaxCapabilities(
@@ -64,34 +57,6 @@ export default function TaxBillsPage() {
 	const canIssue =
 		(globalCapabilities?.global.canManage ?? false) ||
 		(scopedCapabilities?.scoped.canManage ?? false)
-	const billStatusGrid = useReportGridState({
-		defaultSortBy: 'dueDate',
-		defaultSortDir: 'asc',
-		defaultPageSize: 25,
-		resetOn: { effectiveCorporationId },
-	})
-
-	const {
-		data: billStatusReportData,
-		isLoading: billStatusLoading,
-		error: billStatusError,
-	} = useTaxBillStatusReport({
-		corporationId: effectiveCorporationId,
-		limit: billStatusGrid.limit,
-		offset: billStatusGrid.offset,
-		sortBy: billStatusGrid.sortBy,
-		sortDir: billStatusGrid.sortDir,
-		enabled: canView,
-	})
-
-	const {
-		data: billHistory = [],
-		isLoading: billHistoryLoading,
-		error: billHistoryError,
-	} = useTaxCorporationBillHistory(effectiveCorporationId, {
-		limit: 50,
-		enabled: canView,
-	})
 
 	const {
 		data: assessments = [],
@@ -111,9 +76,6 @@ export default function TaxBillsPage() {
 	const corporationAssessments = assessments.filter(
 		(assessment) => assessment.assessmentScope === 'corporation'
 	)
-	const billStatusReportRows = billStatusReportData?.rows ?? []
-	const billStatusTotalRows = billStatusReportData?.totalRows ?? 0
-	const billStatusPageCount = billStatusGrid.pageCountFor(billStatusTotalRows)
 	const totalAssessments = corporationAssessments.length
 	const unbilledAssessmentRows = corporationAssessments.filter(
 		(assessment) =>
@@ -123,33 +85,18 @@ export default function TaxBillsPage() {
 	const overdueAssessments = corporationAssessments.filter(
 		(assessment) => assessment.billStatus === 'overdue'
 	).length
-	const scopeCounts = {
-		corporation: assessments.filter((assessment) => assessment.assessmentScope === 'corporation')
-			.length,
-		division: assessments.filter((assessment) => assessment.assessmentScope === 'division').length,
-		character: assessments.filter((assessment) => assessment.assessmentScope === 'character')
-			.length,
-	}
-	const scopedAssessmentRows =
-		selectedAssessmentScope === 'all'
-			? assessments
-			: assessments.filter((assessment) => assessment.assessmentScope === selectedAssessmentScope)
 
 	const entityIds = useMemo(() => {
 		const ids = new Set<string>()
-		for (const row of billStatusReportRows) ids.add(row.corporationId)
-		for (const row of billHistory) ids.add(row.assessment.corporationId)
 		for (const assessment of assessments) {
 			ids.add(assessment.corporationId)
 			if (assessment.assessmentScope === 'character') ids.add(assessment.scopeId)
 		}
 		return [...ids]
-	}, [assessments, billHistory, billStatusReportRows])
+	}, [assessments])
 
 	const { data: entityNames = {} } = useEntityNames(entityIds, { enabled: canView })
-	const retractableAssessment = billHistory.find(
-		(row) => row.assessment.id === retractingAssessmentId
-	)?.assessment
+	const retractableAssessment = assessments.find((row) => row.id === retractingAssessmentId)
 
 	if (!corporationAccessLoading && !scopedCapabilitiesLoading && !canView) {
 		return (
@@ -241,60 +188,63 @@ export default function TaxBillsPage() {
 					}}
 				/>
 
-				<ScopedAssessmentSnapshotCard
-					effectiveCorporationId={effectiveCorporationId ?? null}
-					assessmentsLoading={assessmentsLoading}
-					assessmentsError={assessmentsError}
-					assessments={assessments}
-					scopeCounts={scopeCounts}
-					selectedAssessmentScope={selectedAssessmentScope}
-					onSelectAssessmentScope={setSelectedAssessmentScope}
-					scopedAssessmentRows={scopedAssessmentRows}
-					entityNames={entityNames}
-				/>
+				<Tabs defaultValue="bill-status" className="space-y-2">
+					<Card>
+						<CardHeader>
+							<CardTitle>Billing Data</CardTitle>
+							<CardDescription>
+								Bill lifecycle, scoped assessments, and event history for the selected corporation.
+							</CardDescription>
+						</CardHeader>
+						<CardContent className="space-y-2">
+							<TabsList>
+								<TabsTrigger value="bill-status">Bill Status</TabsTrigger>
+								<TabsTrigger value="assessments">Assessments</TabsTrigger>
+								<TabsTrigger value="billing-history">Billing History</TabsTrigger>
+							</TabsList>
 
-				<Card>
-					<CardHeader>
-						<CardTitle>Bill Status</CardTitle>
-						<CardDescription>
-							Assessment-level bill lifecycle, period window, and payment totals.
-						</CardDescription>
-					</CardHeader>
-					<CardContent>
-						<BillStatusReportGrid
-							rows={billStatusReportRows}
-							loading={billStatusLoading}
-							error={billStatusError}
-							entityNames={entityNames}
-							sorting={billStatusGrid.sorting}
-							onSortingChange={billStatusGrid.onSortingChange}
-							pagination={billStatusGrid.pagination}
-							onPaginationChange={billStatusGrid.onPaginationChange}
-							pageCount={billStatusPageCount}
-							rowCount={billStatusTotalRows}
-						/>
-					</CardContent>
-				</Card>
+							<TabsContent value="bill-status" className="mt-2 space-y-3">
+								<BillStatusTab
+									effectiveCorporationId={effectiveCorporationId ?? null}
+									canView={canView}
+									canIssue={canIssue}
+									entityNames={entityNames}
+									syncBillPending={syncAssessmentMutation.isPending}
+									retractBillPending={retractAssessmentMutation.isPending}
+									onSyncBillStatus={(assessmentId) => {
+										if (!effectiveCorporationId) return
+										syncAssessmentMutation.mutate({
+											corporationId: effectiveCorporationId,
+											assessmentId,
+										})
+									}}
+									onRetractBill={(assessmentId) => {
+										setRetractingAssessmentId(assessmentId)
+									}}
+									syncBillError={syncAssessmentMutation.error}
+									retractBillError={retractAssessmentMutation.error}
+								/>
+							</TabsContent>
 
-				<CorporationBillHistoryCard
-					effectiveCorporationId={effectiveCorporationId ?? null}
-					billHistoryLoading={billHistoryLoading}
-					billHistoryError={billHistoryError}
-					billHistory={billHistory}
-					canIssue={canIssue}
-					syncAssessmentPending={syncAssessmentMutation.isPending}
-					syncAssessmentError={syncAssessmentMutation.error}
-					retractAssessmentPending={retractAssessmentMutation.isPending}
-					retractAssessmentError={retractAssessmentMutation.error}
-					onSyncAssessment={(assessmentId) => {
-						if (!effectiveCorporationId) return
-						syncAssessmentMutation.mutate({
-							corporationId: effectiveCorporationId,
-							assessmentId,
-						})
-					}}
-					onRequestRetract={setRetractingAssessmentId}
-				/>
+							<TabsContent value="assessments" className="mt-2">
+								<ScopedAssessmentSnapshotCard
+									effectiveCorporationId={effectiveCorporationId ?? null}
+									assessmentsLoading={assessmentsLoading}
+									assessmentsError={assessmentsError}
+									assessments={assessments}
+									entityNames={entityNames}
+								/>
+							</TabsContent>
+
+							<TabsContent value="billing-history" className="mt-2">
+								<CorporationBillHistoryCard
+									effectiveCorporationId={effectiveCorporationId ?? null}
+									canView={canView}
+								/>
+							</TabsContent>
+						</CardContent>
+					</Card>
+				</Tabs>
 			</Section>
 
 			<RetractBillDialog

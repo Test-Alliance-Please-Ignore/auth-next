@@ -10,6 +10,7 @@
  */
 
 export type BillStatus = 'draft' | 'issued' | 'paid' | 'cancelled' | 'overdue'
+export type BillStatusBadgeVariant = 'default' | 'secondary' | 'success' | 'warning' | 'destructive'
 export type BillStatusEventType =
 	| 'created'
 	| 'issued'
@@ -19,6 +20,7 @@ export type BillStatusEventType =
 	| 'overdue'
 	| 'payment_token_regenerated'
 export type EntityType = 'character' | 'corporation' | 'group'
+export type EntitySearchType = EntityType | 'user'
 export type PayeeType = 'character' | 'corporation'
 export type LateFeeType = 'none' | 'static' | 'percentage'
 export type LateFeeCompounding = 'none' | 'daily' | 'weekly' | 'monthly'
@@ -72,6 +74,29 @@ export interface BillStatusEvent {
 	actorUserId: string | null
 	metadata: BillMetadata | null
 	createdAt: Date
+}
+
+export interface BillStatusEventPageQuery {
+	billIds: string[]
+	limit: number
+	offset: number
+}
+
+export interface BillStatusEventPage {
+	rows: BillStatusEvent[]
+	rowCount: number
+}
+
+const BILL_STATUS_BADGE_VARIANT_MAP: Record<BillStatus, BillStatusBadgeVariant> = {
+	draft: 'secondary',
+	issued: 'default',
+	paid: 'success',
+	cancelled: 'warning',
+	overdue: 'destructive',
+}
+
+export function getBillStatusBadgeVariant(status: BillStatus): BillStatusBadgeVariant {
+	return BILL_STATUS_BADGE_VARIANT_MAP[status]
 }
 
 export interface BillTemplate {
@@ -138,6 +163,7 @@ export interface BillWithDetails extends Bill {
 	payments?: BillPayment[]
 	issuerName?: string
 	payerName?: string
+	payeeName?: string
 }
 
 export interface BillIntegrationView extends BillWithDetails {}
@@ -259,14 +285,64 @@ export interface UpdateScheduleInput {
 export interface BillFilters {
 	status?: BillStatus
 	payerId?: string
+	payeeId?: string
 	issuerId?: string
 	payerType?: EntityType
+	payeeType?: EntityType
 	dueAfter?: Date
 	dueBefore?: Date
 	createdAfter?: Date
 	createdBefore?: Date
 	templateId?: string
 	scheduleId?: string
+}
+
+export type BillListSortField = 'createdAt' | 'updatedAt' | 'dueDate' | 'amount' | 'status'
+export type BillListSortDirection = 'asc' | 'desc'
+
+export interface BillListScopeEntity {
+	entityId: string
+	entityType: EntityType
+}
+
+export type BillListScope =
+	| {
+			mode: 'all'
+	  }
+	| {
+			mode: 'my'
+			issuerIds: string[]
+			partyEntities: BillListScopeEntity[]
+	  }
+
+export interface BillListQuery {
+	scope: BillListScope
+	filters?: BillFilters
+	limit: number
+	offset: number
+	sortBy?: BillListSortField
+	sortDir?: BillListSortDirection
+}
+
+export interface BillListPage {
+	rows: BillWithDetails[]
+	rowCount: number
+}
+
+export type BillPartyDirection = 'payer' | 'payee' | 'any'
+
+export interface BillPartySearchQuery {
+	scope: BillListScope
+	direction?: BillPartyDirection
+	entityType?: EntityType
+	q?: string
+	limit?: number
+}
+
+export interface BillPartySearchRow {
+	entityId: string
+	entityType: EntityType
+	usageCount: number
 }
 
 export interface ScheduleFilters {
@@ -355,6 +431,12 @@ export interface Bills {
 	/** List bills with filters */
 	listBills(userId: string, filters?: BillFilters): Promise<BillWithDetails[]>
 
+	/** List bills page with explicit scope + filters + sorting + pagination */
+	listBillsPage(query: BillListQuery): Promise<BillListPage>
+
+	/** Search payer/payee entities present in scoped bills */
+	searchBillParties(query: BillPartySearchQuery): Promise<BillPartySearchRow[]>
+
 	/** List bills by external source references */
 	listBillsByExternalSource(sourceType: string, sourceIds: string[]): Promise<BillIntegrationView[]>
 
@@ -363,6 +445,9 @@ export interface Bills {
 
 	/** Get bill status timeline events for multiple bills in one call */
 	getBillTimelines(billIds: string[]): Promise<Record<string, BillStatusEvent[]>>
+
+	/** Get bill status timeline events for a bill set with pagination */
+	listBillStatusEventsPage(query: BillStatusEventPageQuery): Promise<BillStatusEventPage>
 
 	/** Update a bill (draft only, issuer only) */
 	updateBill(userId: string, billId: string, data: UpdateBillInput): Promise<Bill>

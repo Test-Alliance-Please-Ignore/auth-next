@@ -12,6 +12,7 @@ import type {
 	TaxAssessment,
 	TaxAssessmentWithBillHistory,
 	TaxAuditLogEntry,
+	TaxBillingEventHistoryRow,
 	TaxBillStatusReportRow,
 	TaxCompliancePoint,
 	TaxCorporationBillingConfig,
@@ -671,6 +672,22 @@ export class CorporationTaxApiClient extends ApiClient {
 
 		return this.get(
 			`${TAX_API_BASE}/corporations/${corporationId}/bills/history${query ? `?${query}` : ''}`
+		)
+	}
+
+	async getCorporationBillEventHistory(
+		corporationId: string,
+		filters?: { limit?: number; offset?: number }
+	): Promise<TaxPagedResult<TaxBillingEventHistoryRow>> {
+		if (this.shouldUseDemo())
+			return taxDemoApi.getCorporationBillEventHistory(corporationId, filters)
+		const params = new URLSearchParams()
+		if (filters?.limit !== undefined) params.set('limit', String(filters.limit))
+		if (filters?.offset !== undefined) params.set('offset', String(filters.offset))
+		const query = params.toString()
+
+		return this.get(
+			`${TAX_API_BASE}/corporations/${corporationId}/bills/history/events${query ? `?${query}` : ''}`
 		)
 	}
 

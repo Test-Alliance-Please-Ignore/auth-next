@@ -9,6 +9,7 @@ import type {
 	TaxAssessment,
 	TaxAssessmentWithBillHistory,
 	TaxAuditLogEntry,
+	TaxBillingEventHistoryRow,
 	TaxBillStatus,
 	TaxBillStatusReportRow,
 	TaxCompliancePoint,
@@ -172,6 +173,119 @@ function applyLimitOffset<T>(rows: T[], limit?: number, offset?: number): T[] {
 	return rows.slice(start, end)
 }
 
+function buildDemoTimelineForAssessment(
+	assessment: TaxAssessment,
+	sequenceSeed = 0
+): TaxAssessmentWithBillHistory['timeline'] {
+	if (!assessment.billId) return []
+
+	const billId = assessment.billId
+	const createdAt = new Date(assessment.createdAt)
+	const issuedAt = new Date(createdAt)
+	issuedAt.setUTCMinutes(issuedAt.getUTCMinutes() + 15)
+	const updatedAt = new Date(assessment.updatedAt)
+
+	const baseEvents: TaxAssessmentWithBillHistory['timeline'] = [
+		{
+			id: `${billId}-evt-${sequenceSeed}-created`,
+			billId,
+			eventType: 'created',
+			fromStatus: null,
+			toStatus: 'draft',
+			actorUserId: 'demo-admin',
+			metadata: null,
+			createdAt,
+		},
+		{
+			id: `${billId}-evt-${sequenceSeed}-issued`,
+			billId,
+			eventType: 'issued',
+			fromStatus: 'draft',
+			toStatus: 'issued',
+			actorUserId: 'demo-admin',
+			metadata: null,
+			createdAt: issuedAt,
+		},
+	]
+
+	if (assessment.billStatus === 'overdue') {
+		baseEvents.push({
+			id: `${billId}-evt-${sequenceSeed}-overdue`,
+			billId,
+			eventType: 'overdue',
+			fromStatus: 'issued',
+			toStatus: 'overdue',
+			actorUserId: null,
+			metadata: null,
+			createdAt: updatedAt,
+		})
+	}
+
+	if (assessment.billStatus === 'paid') {
+		const paymentAt = new Date(updatedAt)
+		paymentAt.setUTCMinutes(paymentAt.getUTCMinutes() - 5)
+		baseEvents.push({
+			id: `${billId}-evt-${sequenceSeed}-payment-recorded`,
+			billId,
+			eventType: 'payment_recorded',
+			fromStatus: null,
+			toStatus: null,
+			actorUserId: null,
+			metadata: {
+				amount: assessment.taxDue,
+			},
+			createdAt: paymentAt,
+		})
+		baseEvents.push({
+			id: `${billId}-evt-${sequenceSeed}-paid`,
+			billId,
+			eventType: 'paid',
+			fromStatus: 'issued',
+			toStatus: 'paid',
+			actorUserId: null,
+			metadata: null,
+			createdAt: updatedAt,
+		})
+	}
+
+	if (assessment.billStatus === 'cancelled') {
+		baseEvents.push({
+			id: `${billId}-evt-${sequenceSeed}-cancelled`,
+			billId,
+			eventType: 'cancelled',
+			fromStatus: 'issued',
+			toStatus: 'cancelled',
+			actorUserId: 'demo-admin',
+			metadata: null,
+			createdAt: updatedAt,
+		})
+	}
+
+	return baseEvents
+}
+
+function rebuildDemoBillHistory(state: DemoTaxState): void {
+	const billedByCorporation = new Map<string, TaxAssessment[]>()
+	for (const assessment of state.assessments) {
+		if (assessment.assessmentScope !== 'corporation' || !assessment.billId) continue
+		const list = billedByCorporation.get(assessment.corporationId) ?? []
+		list.push(assessment)
+		billedByCorporation.set(assessment.corporationId, list)
+	}
+
+	const billHistoryRows: TaxAssessment[] = []
+	const maxPerCorporation = 3
+	for (const setting of state.settings) {
+		const scoped = billedByCorporation.get(setting.corporationId) ?? []
+		billHistoryRows.push(...scoped.slice(0, maxPerCorporation))
+	}
+
+	state.billHistory = billHistoryRows.map((assessment, index) => ({
+		assessment,
+		timeline: buildDemoTimelineForAssessment(assessment, index),
+	}))
+}
+
 function maybeFilterReportRows<T extends { corporationId?: string | null }>(
 	rows: T[],
 	filters?: TaxReportFilters
@@ -224,7 +338,9 @@ function buildDemoState(seed: number) {
 	]
 	const corporations = Array.from({ length: config.corporationCount }).map((_, index) => ({
 		corporationId: `${99010001 + index}`,
-		name: `${corpNamePrefixes[index % corpNamePrefixes.length]} ${corpNameSuffixes[index % corpNameSuffixes.length]}`,
+		name: `${corpNamePrefixes[index % corpNamePrefixes.length]} ${
+			corpNameSuffixes[Math.floor(index / corpNamePrefixes.length) % corpNameSuffixes.length]
+		}`,
 	}))
 
 	const entityNames: Record<string, string> = Object.fromEntries(
@@ -405,6 +521,10 @@ function buildDemoState(seed: number) {
 		const due = 1_420_000_000 + index * 330_000_000
 		const paid = scope === 'corporation' ? due - 160_000_000 : due - 95_000_000
 		const billId = index % 5 === 0 ? null : `bill-${index}`
+		const status = billId
+			? ((index % 6 === 0 ? 'paid' : 'underpaid') as TaxAssessment['status'])
+			: ('underpaid' as TaxAssessment['status'])
+		const taxDelta = status === 'paid' ? 0 : due - Math.max(0, paid)
 		return {
 			id: `assess-${index}`,
 			corporationId: corporation.corporationId,
@@ -415,27 +535,105 @@ function buildDemoState(seed: number) {
 					: scope === 'character'
 						? characters[index % characters.length]!.characterId
 						: corporation.corporationId,
-			status: (billId ? 'underpaid' : 'paid') as TaxAssessment['status'],
+			status,
 			taxDue: amount(due),
-			taxDelta: amount(due - Math.max(0, paid)),
+			taxDelta: amount(taxDelta),
 			taxPeriodEnd: addDays(demoStart, Math.min(index % demoDaySpan, demoDaySpan - 1)),
 			taxPeriodStart: addDays(demoStart, Math.max(0, (index % demoDaySpan) - 29)),
 			billId,
-			billStatus: (billId ? 'issued' : null) as TaxAssessment['billStatus'],
+			billStatus: (billId
+				? status === 'paid'
+					? 'paid'
+					: 'issued'
+				: null) as TaxAssessment['billStatus'],
 			createdAt: addDays(demoStart, index % demoDaySpan),
 			updatedAt: addDays(demoStart, Math.min((index % demoDaySpan) + 2, demoDaySpan - 1)),
 		}
 	}) as TaxAssessment[]
 
+	// Keep unbilled demo rows in a consistent state for billing UX.
+	for (const row of assessments) {
+		if (!row.billId) {
+			row.status = 'underpaid'
+			row.billStatus = null
+		}
+	}
+
+	// Ensure every corporation has both:
+	// 1) at least one corporation-scope billed assessment (for bill history)
+	// 2) at least one corporation-scope unbilled finalized assessment (for unbilled table)
+	let nextAssessmentIndex = assessments.length
+	for (const corporation of corporations) {
+		const corporationAssessments = assessments.filter(
+			(row) =>
+				row.corporationId === corporation.corporationId && row.assessmentScope === 'corporation'
+		)
+		const hasBilled = corporationAssessments.some((row) => Boolean(row.billId))
+		const hasUnbilledFinalized = corporationAssessments.some(
+			(row) => !row.billId && row.status !== 'draft' && row.status !== 'excluded'
+		)
+
+		if (!hasBilled) {
+			const due = 1_900_000_000 + nextAssessmentIndex * 110_000_000
+			assessments.push({
+				id: `assess-${nextAssessmentIndex}`,
+				corporationId: corporation.corporationId,
+				assessmentScope: 'corporation',
+				scopeId: corporation.corporationId,
+				status: 'underpaid',
+				taxableIncome: amount(due * 12),
+				nonTaxableIncome: amount(due * 2),
+				taxDue: amount(due),
+				taxDelta: amount(due * 0.12),
+				inGameTaxRateBps: 500,
+				portalTaxRateBps: 500,
+				taxPeriodEnd: addDays(demoStart, Math.max(0, demoDaySpan - 6)),
+				taxPeriodStart: addDays(demoStart, Math.max(0, demoDaySpan - 36)),
+				billId: `bill-${nextAssessmentIndex}`,
+				billStatus: 'issued',
+				billStatusLastSyncedAt: addDays(demoStart, Math.max(0, demoDaySpan - 4)),
+				approvedBy: null,
+				approvedAt: null,
+				createdAt: addDays(demoStart, Math.max(0, demoDaySpan - 8)),
+				updatedAt: addDays(demoStart, Math.max(0, demoDaySpan - 4)),
+			})
+			nextAssessmentIndex += 1
+		}
+
+		if (!hasUnbilledFinalized) {
+			const due = 1_600_000_000 + nextAssessmentIndex * 95_000_000
+			assessments.push({
+				id: `assess-${nextAssessmentIndex}`,
+				corporationId: corporation.corporationId,
+				assessmentScope: 'corporation',
+				scopeId: corporation.corporationId,
+				status: 'underpaid',
+				taxableIncome: amount(due * 10),
+				nonTaxableIncome: amount(due * 1.5),
+				taxDue: amount(due),
+				taxDelta: amount(due * 0.04),
+				inGameTaxRateBps: 500,
+				portalTaxRateBps: 500,
+				taxPeriodEnd: addDays(demoStart, Math.max(0, demoDaySpan - 3)),
+				taxPeriodStart: addDays(demoStart, Math.max(0, demoDaySpan - 33)),
+				billId: null,
+				billStatus: null,
+				billStatusLastSyncedAt: null,
+				approvedBy: null,
+				approvedAt: null,
+				createdAt: addDays(demoStart, Math.max(0, demoDaySpan - 5)),
+				updatedAt: addDays(demoStart, Math.max(0, demoDaySpan - 2)),
+			})
+			nextAssessmentIndex += 1
+		}
+	}
+
 	const billHistory = assessments
-		.filter((assessment) => assessment.billId)
-		.slice(0, 8)
+		.filter((assessment) => assessment.assessmentScope === 'corporation' && assessment.billId)
+		.slice(0, Math.max(16, config.corporationCount))
 		.map((assessment, index) => ({
 			assessment,
-			timeline: [
-				{ createdAt: addDays(monthStart, 5 + index) },
-				{ createdAt: addDays(monthStart, 10 + index) },
-			],
+			timeline: buildDemoTimelineForAssessment(assessment, index),
 		})) as TaxAssessmentWithBillHistory[]
 
 	const alerts = [
@@ -943,27 +1141,29 @@ function deriveBillStatusRows(
 	state: DemoTaxState,
 	filters?: TaxReportFilters
 ): TaxBillStatusReportRow[] {
-	return filterAssessments(state.assessments, filters).map((row) => {
-		const taxDue = parseAmount(row.taxDue)
-		const taxDelta = parseAmount(row.taxDelta)
-		const taxPaid = taxDue - taxDelta
-		return {
-			assessmentId: row.id,
-			corporationId: row.corporationId,
-			taxPeriodStart: row.taxPeriodStart,
-			taxPeriodEnd: row.taxPeriodEnd,
-			billId: row.billId,
-			billStatus: row.billStatus ?? 'unbilled',
-			issueDate: row.billId ? row.createdAt : null,
-			dueDate: row.billId ? addDays(row.taxPeriodEnd, 14) : null,
-			taxDue: row.taxDue,
-			taxPaid: amount(taxPaid),
-			taxDelta: row.taxDelta,
-			taxDueCenti: String(Math.round(taxDue * 100)),
-			taxPaidCenti: String(Math.round(taxPaid * 100)),
-			taxDeltaCenti: String(Math.round(taxDelta * 100)),
-		}
-	})
+	return filterAssessments(state.assessments, filters)
+		.filter((row) => Boolean(row.billId))
+		.map((row) => {
+			const taxDue = parseAmount(row.taxDue)
+			const taxDelta = parseAmount(row.taxDelta)
+			const taxPaid = taxDue - taxDelta
+			return {
+				assessmentId: row.id,
+				corporationId: row.corporationId,
+				taxPeriodStart: row.taxPeriodStart,
+				taxPeriodEnd: row.taxPeriodEnd,
+				billId: row.billId,
+				billStatus: row.billStatus ?? 'draft',
+				issueDate: row.billId ? row.createdAt : null,
+				dueDate: row.billId ? addDays(row.taxPeriodEnd, 14) : null,
+				taxDue: row.taxDue,
+				taxPaid: amount(taxPaid),
+				taxDelta: row.taxDelta,
+				taxDueCenti: String(Math.round(taxDue * 100)),
+				taxPaidCenti: String(Math.round(taxPaid * 100)),
+				taxDeltaCenti: String(Math.round(taxDelta * 100)),
+			}
+		})
 }
 
 function buildSummary(
@@ -1489,17 +1689,20 @@ export const taxDemoApi = {
 		return withLatency(existing)
 	},
 	async createBillForAssessment(corporationId: string, assessmentId: string) {
-		const assessment = ensureDemoState().assessments.find(
+		const state = ensureDemoState()
+		const assessment = state.assessments.find(
 			(row) => row.id === assessmentId && row.corporationId === corporationId
 		)
 		if (assessment) {
 			assessment.billId = assessment.billId ?? `bill-${assessmentId}`
 			assessment.billStatus = 'issued' as any
 		}
+		rebuildDemoBillHistory(state)
 		return withLatency(assessment ?? ensureDemoState().assessments[0]!)
 	},
 	async syncAssessmentBillStatus(corporationId: string, assessmentId: string) {
-		const assessment = ensureDemoState().assessments.find(
+		const state = ensureDemoState()
+		const assessment = state.assessments.find(
 			(row) => row.id === assessmentId && row.corporationId === corporationId
 		)
 		if (assessment?.billId) {
@@ -1507,25 +1710,30 @@ export const taxDemoApi = {
 			assessment.taxDelta = amount(0)
 			assessment.status = 'paid' as any
 		}
+		rebuildDemoBillHistory(state)
 		return withLatency(assessment ?? ensureDemoState().assessments[0]!)
 	},
 	async retractAssessmentBill(corporationId: string, assessmentId: string) {
-		const assessment = ensureDemoState().assessments.find(
+		const state = ensureDemoState()
+		const assessment = state.assessments.find(
 			(row) => row.id === assessmentId && row.corporationId === corporationId
 		)
 		if (assessment?.billId) {
 			assessment.billStatus = 'cancelled' as any
 		}
+		rebuildDemoBillHistory(state)
 		return withLatency(assessment ?? ensureDemoState().assessments[0]!)
 	},
 	async issueBillsForPeriod(corporationId: string): Promise<IssueBillsForPeriodResult> {
-		const issued = ensureDemoState()
-			.assessments.filter((row) => row.corporationId === corporationId && !row.billId)
+		const state = ensureDemoState()
+		const issued = state.assessments
+			.filter((row) => row.corporationId === corporationId && !row.billId)
 			.map((row) => {
 				row.billId = `bill-${row.id}`
 				row.billStatus = 'issued' as any
 				return row.id
 			})
+		rebuildDemoBillHistory(state)
 		return withLatency({
 			corporationId,
 			periodStart: startOfMonth(),
@@ -1537,7 +1745,8 @@ export const taxDemoApi = {
 	async syncCorporationBillStatuses(
 		corporationId: string
 	): Promise<SyncCorporationBillStatusesResult> {
-		const rows = ensureDemoState().assessments.filter((row) => row.corporationId === corporationId)
+		const state = ensureDemoState()
+		const rows = state.assessments.filter((row) => row.corporationId === corporationId)
 		const updated = rows
 			.filter((row) => row.billId)
 			.slice(0, 2)
@@ -1546,6 +1755,7 @@ export const taxDemoApi = {
 				row.taxDelta = amount(0)
 				return row.id
 			})
+		rebuildDemoBillHistory(state)
 		return withLatency({
 			processedAssessmentIds: rows.map((row) => row.id),
 			updatedAssessmentIds: updated,
@@ -1603,12 +1813,39 @@ export const taxDemoApi = {
 		return withLatency(
 			applyLimitOffset(
 				ensureDemoState().billHistory.filter(
-					(row) => row.assessment.corporationId === corporationId
+					(row) => row.assessment?.corporationId === corporationId
 				),
 				filters?.limit,
 				filters?.offset
 			)
 		)
+	},
+	async getCorporationBillEventHistory(
+		corporationId: string,
+		filters?: { limit?: number; offset?: number }
+	): Promise<TaxPagedResult<TaxBillingEventHistoryRow>> {
+		const rows = ensureDemoState()
+			.billHistory.filter((row) => row.assessment?.corporationId === corporationId)
+			.flatMap((row) =>
+				(row.timeline ?? []).map((event) => ({
+					id: event.id,
+					billId: event.billId,
+					assessmentId: row.assessment.id,
+					eventType: event.eventType,
+					fromStatus: event.fromStatus,
+					toStatus: event.toStatus,
+					actorUserId: event.actorUserId,
+					metadata: event.metadata,
+					createdAt: event.createdAt,
+				}))
+			)
+			.sort(
+				(left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
+			)
+		return withLatency({
+			rows: applyLimitOffset(rows, filters?.limit, filters?.offset),
+			totalRows: rows.length,
+		})
 	},
 	async getSummaryReport(filters?: TaxReportFilters) {
 		const rows = deriveTotalTaxesRows(ensureDemoState(), filters)

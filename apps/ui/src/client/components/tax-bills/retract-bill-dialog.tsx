@@ -1,4 +1,5 @@
-import { Button } from '@/components/ui/button'
+import { CancelButton } from '@/components/ui/cancel-button'
+import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
 	Dialog,
 	DialogContent,
@@ -40,18 +41,18 @@ export function RetractBillDialog({
 					</DialogDescription>
 				</DialogHeader>
 				<DialogFooter>
-					<Button variant="outline" disabled={isPending} onClick={onClose}>
+					<CancelButton showIcon={false} disabled={isPending} onClick={onClose}>
 						Cancel
-					</Button>
-					<Button
-						variant="destructive"
+					</CancelButton>
+					<DestructiveButton
+						showIcon={false}
 						disabled={
 							!canIssue || !effectiveCorporationId || !assessmentId || !canRetract || isPending
 						}
 						onClick={onConfirm}
 					>
 						{isPending ? 'Retracting...' : 'Retract Bill'}
-					</Button>
+					</DestructiveButton>
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>

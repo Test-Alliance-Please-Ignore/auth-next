@@ -1,83 +1,137 @@
-import { FileText, Plus, Search, X } from 'lucide-react'
-import { useState } from 'react'
+import { Calendar, FileText, Plus } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
-import { BillStatusBadge } from '@/components/bills/bill-status-badge'
-import { ISKAmount } from '@/components/bills/isk-amount'
-import { Button } from '@/components/ui/button'
+import { BillListFilters } from '@/components/bills/bill-list-filters'
+import { BillListGrid } from '@/components/bills/bill-list-grid'
 import { CancelButton } from '@/components/ui/cancel-button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmButton } from '@/components/ui/confirm-button'
 import { DestructiveButton } from '@/components/ui/destructive-button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Progress } from '@/components/ui/progress'
+import { GhostButton } from '@/components/ui/ghost-button'
+import { PrimaryButton } from '@/components/ui/primary-button'
 import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from '@/components/ui/table'
-import { useBills, useCancelBill, useDeleteBill, useIssueBill } from '@/hooks/useBills'
+	useBillEntitySearch,
+	useBillPartySearch,
+	useBills,
+	useCancelBill,
+	useDeleteBill,
+	useIssueBill,
+} from '@/hooks/useBills'
+import { useDebounce } from '@/hooks/useDebounce'
 import { usePageTitle } from '@/hooks/usePageTitle'
-import { formatDueDate, formatEntityType } from '@/lib/bills-utils'
+
+import type { MRT_SortingState } from 'mantine-react-table'
+import type { BillListSortDirection, BillListSortField, BillStatus, EntityType } from '@repo/bills'
 
 export default function AdminBillsPage() {
 	usePageTitle('Admin - Bills Management')
-
-	// Filters
-	const [filters, setFilters] = useState<{
-		status?: string
-		payerType?: string
-		search?: string
-	}>({})
-
-	const [searchInput, setSearchInput] = useState('')
-
-	const { data: bills, isLoading } = useBills(filters)
+	const [status, setStatus] = useState<BillStatus | undefined>(undefined)
+	const [issuerId, setIssuerId] = useState<string | undefined>(undefined)
+	const [issuerQuery, setIssuerQuery] = useState('')
+	const [payerType, setPayerType] = useState<EntityType | undefined>(undefined)
+	const [payeeType, setPayeeType] = useState<EntityType | undefined>(undefined)
+	const [payerId, setPayerId] = useState<string | undefined>(undefined)
+	const [payeeId, setPayeeId] = useState<string | undefined>(undefined)
+	const [payerQuery, setPayerQuery] = useState('')
+	const [payeeQuery, setPayeeQuery] = useState('')
+	const [dueAfter, setDueAfter] = useState('')
+	const [dueBefore, setDueBefore] = useState('')
+	const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 25 })
+	const [sorting, setSorting] = useState<MRT_SortingState>([{ id: 'dueDate', desc: false }])
+	const debouncedPayerQuery = useDebounce(payerQuery, 300)
+	const debouncedPayeeQuery = useDebounce(payeeQuery, 300)
+	const debouncedIssuerQuery = useDebounce(issuerQuery, 300)
+	const sortBy = (sorting[0]?.id ?? 'dueDate') as BillListSortField
+	const sortDir: BillListSortDirection = sorting[0]?.desc ? 'desc' : 'asc'
+	const billsPage = useBills({
+		status,
+		issuerId,
+		payerType,
+		payeeType,
+		payerId,
+		payeeId,
+		dueAfter: dueAfter || undefined,
+		dueBefore: dueBefore || undefined,
+		limit: pagination.pageSize,
+		offset: pagination.pageIndex * pagination.pageSize,
+		sortBy,
+		sortDir,
+	})
+	const payerSearch = useBillPartySearch({
+		q: debouncedPayerQuery,
+		direction: 'payer',
+		entityType: payerType,
+		enabled: debouncedPayerQuery.trim().length >= 2,
+	})
+	const payeeSearch = useBillPartySearch({
+		q: debouncedPayeeQuery,
+		direction: 'payee',
+		entityType: payeeType,
+		enabled: debouncedPayeeQuery.trim().length >= 2,
+	})
+	const issuerSearch = useBillEntitySearch({
+		q: debouncedIssuerQuery,
+		entityType: 'user',
+		enabled: debouncedIssuerQuery.trim().length >= 2,
+	})
+	const issuerOptions = useMemo(() => {
+		const deduped = new Map<
+			string,
+			{ id: string; value: string; label: string; description: string }
+		>()
+		for (const row of issuerSearch.data ?? []) {
+			const key = row.entityId
+			if (deduped.has(key)) continue
+			deduped.set(key, {
+				id: key,
+				value: row.entityId,
+				label: row.name || row.entityId,
+				description: row.entityId,
+			})
+		}
+		return [...deduped.values()]
+	}, [issuerSearch.data])
+	const payerOptions = useMemo(() => {
+		const deduped = new Map<
+			string,
+			{ id: string; value: string; label: string; description: string }
+		>()
+		for (const row of payerSearch.data ?? []) {
+			const key = row.entityId
+			if (deduped.has(key)) continue
+			deduped.set(key, {
+				id: key,
+				value: row.entityId,
+				label: row.name || row.entityId,
+				description: row.entityId,
+			})
+		}
+		return [...deduped.values()]
+	}, [payerSearch.data])
+	const payeeOptions = useMemo(() => {
+		const deduped = new Map<
+			string,
+			{ id: string; value: string; label: string; description: string }
+		>()
+		for (const row of payeeSearch.data ?? []) {
+			const key = row.entityId
+			if (deduped.has(key)) continue
+			deduped.set(key, {
+				id: key,
+				value: row.entityId,
+				label: row.name || row.entityId,
+				description: row.entityId,
+			})
+		}
+		return [...deduped.values()]
+	}, [payeeSearch.data])
+	const pageCount = Math.max(
+		1,
+		Math.ceil((billsPage.data?.rowCount ?? 0) / Math.max(1, pagination.pageSize))
+	)
 	const issueBill = useIssueBill()
 	const cancelBill = useCancelBill()
 	const deleteBill = useDeleteBill()
-
-	// Update filter
-	const updateFilter = (key: 'status' | 'payerType', value: string | undefined) => {
-		setFilters((prev) => {
-			if (!value || value === 'all') {
-				const { [key]: _, ...rest } = prev
-				return rest
-			}
-			return { ...prev, [key]: value }
-		})
-	}
-
-	// Handle search
-	const handleSearch = () => {
-		// Note: Backend doesn't support text search yet, but we can add it later
-		// For now just refresh the list
-	}
-
-	const handleSearchKeyPress = (e: React.KeyboardEvent) => {
-		if (e.key === 'Enter') {
-			handleSearch()
-		}
-	}
-
-	// Clear all filters
-	const clearFilters = () => {
-		setFilters({})
-		setSearchInput('')
-	}
-
-	const hasActiveFilters = Object.keys(filters).length > 0
 
 	// Action handlers
 	const handleIssue = async (billId: string) => {
@@ -105,6 +159,21 @@ export default function AdminBillsPage() {
 			console.error('Failed to delete bill:', error)
 		}
 	}
+	const clearFilters = () => {
+		setStatus(undefined)
+		setIssuerId(undefined)
+		setIssuerQuery('')
+		setPayerType(undefined)
+		setPayeeType(undefined)
+		setPayerId(undefined)
+		setPayeeId(undefined)
+		setPayerQuery('')
+		setPayeeQuery('')
+		setDueAfter('')
+		setDueBefore('')
+		setPagination((prev) => ({ ...prev, pageIndex: 0 }))
+	}
+	const rows = billsPage.data?.rows ?? []
 
 	return (
 		<div className="space-y-6">
@@ -115,236 +184,134 @@ export default function AdminBillsPage() {
 					<p className="text-muted-foreground mt-1">View and manage all bills</p>
 				</div>
 				<div className="flex gap-2">
-					<Button variant="outline" asChild>
+					<GhostButton asChild>
 						<Link to="/admin/bills/templates">
 							<FileText className="mr-2 h-4 w-4" />
 							Templates
 						</Link>
-					</Button>
-					<Button variant="outline" asChild>
-						<Link to="/admin/bills/schedules">Schedules</Link>
-					</Button>
-					<Button asChild>
+					</GhostButton>
+					<GhostButton asChild>
+						<Link to="/admin/bills/schedules">
+							<Calendar className="mr-2 h-4 w-4" />
+							Schedules
+						</Link>
+					</GhostButton>
+					<PrimaryButton asChild>
 						<Link to="/admin/bills/new">
 							<Plus className="mr-2 h-4 w-4" />
 							Create Bill
 						</Link>
-					</Button>
+					</PrimaryButton>
 				</div>
 			</div>
-
-			{/* Filters */}
-			<Card>
-				<CardHeader>
-					<CardTitle>Filters</CardTitle>
-					<CardDescription>Filter bills by status, type, and search</CardDescription>
-				</CardHeader>
-				<CardContent className="space-y-4">
-					<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-						{/* Search Input */}
-						<div className="space-y-2">
-							<Label htmlFor="search">Search</Label>
-							<div className="flex gap-2">
-								<Input
-									id="search"
-									placeholder="Search bills..."
-									value={searchInput}
-									onChange={(e) => setSearchInput(e.target.value)}
-									onKeyPress={handleSearchKeyPress}
-								/>
-								<Button size="icon" onClick={handleSearch}>
-									<Search className="h-4 w-4" />
-								</Button>
-							</div>
-						</div>
-
-						{/* Status Filter */}
-						<div className="space-y-2">
-							<Label htmlFor="status">Status</Label>
-							<Select
-								value={filters.status || 'all'}
-								onValueChange={(value) => updateFilter('status', value)}
+			<BillListFilters
+				status={status}
+				issuerId={issuerId}
+				issuerQuery={issuerQuery}
+				setIssuerQuery={setIssuerQuery}
+				payerType={payerType}
+				payeeType={payeeType}
+				payerId={payerId}
+				payerQuery={payerQuery}
+				setPayerQuery={setPayerQuery}
+				payeeId={payeeId}
+				payeeQuery={payeeQuery}
+				setPayeeQuery={setPayeeQuery}
+				dueAfter={dueAfter}
+				dueBefore={dueBefore}
+				issuerOptions={issuerOptions}
+				payerOptions={payerOptions}
+				payeeOptions={payeeOptions}
+				issuerLoading={issuerSearch.isLoading}
+				payerLoading={payerSearch.isLoading}
+				payeeLoading={payeeSearch.isLoading}
+				onStatusChange={(value) => {
+					setStatus(value)
+					setPagination((prev) => ({ ...prev, pageIndex: 0 }))
+				}}
+				onPayerTypeChange={(value) => {
+					setPayerType(value)
+					setPayerId(undefined)
+					setPayerQuery('')
+					setPagination((prev) => ({ ...prev, pageIndex: 0 }))
+				}}
+				onPayeeTypeChange={(value) => {
+					setPayeeType(value)
+					setPayeeId(undefined)
+					setPayeeQuery('')
+					setPagination((prev) => ({ ...prev, pageIndex: 0 }))
+				}}
+				onIssuerIdChange={(value) => {
+					setIssuerId(value)
+					setPagination((prev) => ({ ...prev, pageIndex: 0 }))
+				}}
+				onPayerIdChange={(value) => {
+					setPayerId(value)
+					setPagination((prev) => ({ ...prev, pageIndex: 0 }))
+				}}
+				onPayeeIdChange={(value) => {
+					setPayeeId(value)
+					setPagination((prev) => ({ ...prev, pageIndex: 0 }))
+				}}
+				onDateRangeChange={(fromDate, toDate) => {
+					setDueAfter(fromDate)
+					setDueBefore(toDate)
+					setPagination((prev) => ({ ...prev, pageIndex: 0 }))
+				}}
+				onClear={clearFilters}
+			/>
+			<BillListGrid
+				rows={rows}
+				loading={billsPage.isLoading}
+				error={billsPage.error}
+				sorting={sorting}
+				onSortingChange={(nextSorting) => {
+					setSorting(nextSorting)
+					setPagination((prev) => ({ ...prev, pageIndex: 0 }))
+				}}
+				pagination={pagination}
+				onPaginationChange={setPagination}
+				pageCount={pageCount}
+				rowCount={billsPage.data?.rowCount ?? 0}
+				renderActions={(bill) => (
+					<div className="flex justify-end gap-2">
+						{bill.status === 'draft' && (
+							<ConfirmButton
+								size="sm"
+								showIcon={false}
+								onConfirm={() => handleIssue(bill.id)}
+								loading={issueBill.isPending}
 							>
-								<SelectTrigger id="status">
-									<SelectValue placeholder="All statuses" />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="all">All statuses</SelectItem>
-									<SelectItem value="draft">Draft</SelectItem>
-									<SelectItem value="issued">Issued</SelectItem>
-									<SelectItem value="paid">Paid</SelectItem>
-									<SelectItem value="cancelled">Cancelled</SelectItem>
-									<SelectItem value="overdue">Overdue</SelectItem>
-								</SelectContent>
-							</Select>
-						</div>
-
-						{/* Payer Type Filter */}
-						<div className="space-y-2">
-							<Label htmlFor="payerType">Payer Type</Label>
-							<Select
-								value={filters.payerType || 'all'}
-								onValueChange={(value) => updateFilter('payerType', value)}
+								Issue
+							</ConfirmButton>
+						)}
+						{bill.status === 'issued' && (
+							<CancelButton
+								size="sm"
+								showIcon={false}
+								onClick={() => void handleCancel(bill.id)}
+								loading={cancelBill.isPending}
 							>
-								<SelectTrigger id="payerType">
-									<SelectValue placeholder="All types" />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="all">All types</SelectItem>
-									<SelectItem value="character">Character</SelectItem>
-									<SelectItem value="corporation">Corporation</SelectItem>
-									<SelectItem value="group">Group</SelectItem>
-								</SelectContent>
-							</Select>
-						</div>
+								Cancel
+							</CancelButton>
+						)}
+						{bill.status === 'draft' && (
+							<DestructiveButton
+								size="sm"
+								showIcon={false}
+								onClick={() => void handleDelete(bill.id)}
+								loading={deleteBill.isPending}
+							>
+								Delete
+							</DestructiveButton>
+						)}
+						<PrimaryButton size="sm" asChild>
+							<Link to={`/admin/bills/${bill.id}`}>View</Link>
+						</PrimaryButton>
 					</div>
-
-					{/* Clear Filters */}
-					{hasActiveFilters && (
-						<div className="flex justify-end">
-							<Button variant="outline" size="sm" onClick={clearFilters}>
-								<X className="mr-2 h-4 w-4" />
-								Clear Filters
-							</Button>
-						</div>
-					)}
-				</CardContent>
-			</Card>
-
-			{/* Bills Table */}
-			<Card>
-				<CardHeader>
-					<CardTitle>All Bills</CardTitle>
-					<CardDescription>
-						{bills ? `${bills.length} bill(s) found` : 'Loading...'}
-					</CardDescription>
-				</CardHeader>
-				<CardContent>
-					{isLoading ? (
-						<div className="flex justify-center py-12">
-							<div className="text-muted-foreground">Loading bills...</div>
-						</div>
-					) : !bills || bills.length === 0 ? (
-						<div className="text-center py-12">
-							<FileText className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-							<h3 className="text-lg font-semibold mb-2">No bills found</h3>
-							<p className="text-muted-foreground mb-4">
-								{hasActiveFilters
-									? 'Try adjusting your filters'
-									: 'Create your first bill to get started'}
-							</p>
-							<Button asChild>
-								<Link to="/admin/bills/new">
-									<Plus className="mr-2 h-4 w-4" />
-									Create Bill
-								</Link>
-							</Button>
-						</div>
-					) : (
-						<div className="overflow-x-auto">
-							<Table>
-								<TableHeader>
-									<TableRow>
-										<TableHead>ID</TableHead>
-										<TableHead>Status</TableHead>
-										<TableHead>Payer</TableHead>
-										<TableHead>Amount</TableHead>
-										<TableHead>Due Date</TableHead>
-										<TableHead>Payment Progress</TableHead>
-										<TableHead className="text-right">Actions</TableHead>
-									</TableRow>
-								</TableHeader>
-								<TableBody>
-									{bills.map((bill) => (
-										<TableRow key={bill.id}>
-											<TableCell className="font-mono text-sm">
-												{bill.id.substring(0, 8)}...
-											</TableCell>
-											<TableCell>
-												<BillStatusBadge status={bill.status} />
-											</TableCell>
-											<TableCell>
-												<div>
-													<div className="font-medium">{bill.payerId}</div>
-													<div className="text-sm text-muted-foreground">
-														{formatEntityType(bill.payerType)}
-													</div>
-												</div>
-											</TableCell>
-											<TableCell>
-												<ISKAmount amount={bill.amount} className="font-semibold" />
-											</TableCell>
-											<TableCell>
-												<div className="text-sm">{formatDueDate(bill.dueDate)}</div>
-											</TableCell>
-											<TableCell>
-												{bill.status !== 'draft' ? (
-													(() => {
-														const totalDue = Number(bill.amount) + Number(bill.lateFee)
-														const totalPaid =
-															bill.payments?.reduce((sum, p) => sum + Number(p.amount), 0) ?? 0
-														const progress =
-															totalDue > 0
-																? Math.min(100, Math.floor((totalPaid / totalDue) * 100))
-																: 0
-														return (
-															<div className="space-y-1 min-w-[100px]">
-																<Progress value={progress} className="h-2" />
-																<div className="text-xs text-center text-muted-foreground">
-																	{progress}%
-																</div>
-															</div>
-														)
-													})()
-												) : (
-													<span className="text-xs text-muted-foreground">-</span>
-												)}
-											</TableCell>
-											<TableCell className="text-right">
-												<div className="flex justify-end gap-2">
-													{bill.status === 'draft' && (
-														<ConfirmButton
-															size="sm"
-															showIcon={false}
-															onConfirm={() => handleIssue(bill.id)}
-															loading={issueBill.isPending}
-														>
-															Issue
-														</ConfirmButton>
-													)}
-													{bill.status === 'issued' && (
-														<CancelButton
-															size="sm"
-															showIcon={false}
-															onClick={() => handleCancel(bill.id)}
-															loading={cancelBill.isPending}
-														>
-															Cancel
-														</CancelButton>
-													)}
-													{bill.status === 'draft' && (
-														<DestructiveButton
-															size="sm"
-															showIcon={false}
-															onClick={() => handleDelete(bill.id)}
-															loading={deleteBill.isPending}
-														>
-															Delete
-														</DestructiveButton>
-													)}
-													<Button size="sm" variant="outline" asChild>
-														<Link to={`/admin/bills/${bill.id}`}>View</Link>
-													</Button>
-												</div>
-											</TableCell>
-										</TableRow>
-									))}
-								</TableBody>
-							</Table>
-						</div>
-					)}
-				</CardContent>
-			</Card>
+				)}
+				emptyMessage="No bills found for the current filters."
+			/>
 		</div>
 	)
 }

@@ -20,6 +20,22 @@ export function useTaxCorporationBillHistory(
 	})
 }
 
+export function useTaxCorporationBillEventHistory(
+	corporationId: string | undefined,
+	filters?: {
+		limit?: number
+		offset?: number
+		enabled?: boolean
+	}
+) {
+	return useQuery({
+		queryKey: corporationTaxKeys.billEventHistory(corporationId ?? 'none', filters),
+		queryFn: () => corporationTaxApi.getCorporationBillEventHistory(corporationId!, filters),
+		staleTime: 1000 * 30,
+		enabled: Boolean(corporationId) && (filters?.enabled ?? true),
+	})
+}
+
 export function useTaxBillingConfigs(corporationId: string | undefined, enabled = true) {
 	return useQuery({
 		queryKey: corporationTaxKeys.billingConfigs(corporationId ?? 'none'),
@@ -142,6 +158,9 @@ export function useCreateTaxBillForAssessment() {
 				queryKey: corporationTaxKeys.billHistory(updated.corporationId),
 			})
 			void queryClient.invalidateQueries({
+				queryKey: corporationTaxKeys.billEventHistory(updated.corporationId),
+			})
+			void queryClient.invalidateQueries({
 				queryKey: corporationTaxKeys.assessments(updated.corporationId),
 			})
 		},
@@ -161,6 +180,9 @@ export function useSyncTaxAssessmentBillStatus() {
 				queryKey: corporationTaxKeys.billHistory(updated.corporationId),
 			})
 			void queryClient.invalidateQueries({
+				queryKey: corporationTaxKeys.billEventHistory(updated.corporationId),
+			})
+			void queryClient.invalidateQueries({
 				queryKey: corporationTaxKeys.assessments(updated.corporationId),
 			})
 		},
@@ -178,6 +200,9 @@ export function useRetractTaxAssessmentBill() {
 			})
 			void queryClient.invalidateQueries({
 				queryKey: corporationTaxKeys.billHistory(updated.corporationId),
+			})
+			void queryClient.invalidateQueries({
+				queryKey: corporationTaxKeys.billEventHistory(updated.corporationId),
 			})
 			void queryClient.invalidateQueries({
 				queryKey: corporationTaxKeys.assessments(updated.corporationId),
@@ -202,6 +227,9 @@ export function useIssueTaxBillsForPeriod() {
 				queryKey: corporationTaxKeys.billHistory(variables.corporationId),
 			})
 			void queryClient.invalidateQueries({
+				queryKey: corporationTaxKeys.billEventHistory(variables.corporationId),
+			})
+			void queryClient.invalidateQueries({
 				queryKey: corporationTaxKeys.assessments(variables.corporationId),
 			})
 		},
@@ -219,6 +247,9 @@ export function useSyncTaxCorporationBillStatuses() {
 			})
 			void queryClient.invalidateQueries({
 				queryKey: corporationTaxKeys.billHistory(variables.corporationId),
+			})
+			void queryClient.invalidateQueries({
+				queryKey: corporationTaxKeys.billEventHistory(variables.corporationId),
 			})
 			void queryClient.invalidateQueries({
 				queryKey: corporationTaxKeys.assessments(variables.corporationId),

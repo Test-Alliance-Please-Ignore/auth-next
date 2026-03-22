@@ -12,11 +12,17 @@ import type {
 	BillExternalRef,
 	BillFilters,
 	BillIntegrationView,
+	BillListPage,
+	BillListQuery,
+	BillPartySearchQuery,
+	BillPartySearchRow,
 	Bills,
 	BillSchedule,
 	BillScheduleWithDetails,
 	BillStatistics,
 	BillStatusEvent,
+	BillStatusEventPage,
+	BillStatusEventPageQuery,
 	BillTemplate,
 	BillTemplateWithDetails,
 	BillWithDetails,
@@ -120,6 +126,14 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 		return this.billService.listBills(userId, filters)
 	}
 
+	async listBillsPage(query: BillListQuery): Promise<BillListPage> {
+		return this.billService.listBillsPage(query)
+	}
+
+	async searchBillParties(query: BillPartySearchQuery): Promise<BillPartySearchRow[]> {
+		return this.billService.searchBillParties(query)
+	}
+
 	async listBillsByExternalSource(
 		sourceType: string,
 		sourceIds: string[]
@@ -133,6 +147,10 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 
 	async getBillTimelines(billIds: string[]): Promise<Record<string, BillStatusEvent[]>> {
 		return this.billService.getBillTimelines(billIds)
+	}
+
+	async listBillStatusEventsPage(query: BillStatusEventPageQuery): Promise<BillStatusEventPage> {
+		return this.billService.listBillStatusEventsPage(query)
 	}
 
 	async updateBill(userId: string, billId: string, data: UpdateBillInput): Promise<Bill> {

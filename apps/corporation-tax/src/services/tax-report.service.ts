@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, sql } from '@repo/db-utils'
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
@@ -532,7 +532,7 @@ export class TaxReportService {
 				taxPeriodStart: taxAssessments.taxPeriodStart,
 				taxPeriodEnd: taxAssessments.taxPeriodEnd,
 				billId: taxAssessments.billId,
-				billStatus: sql<string>`COALESCE(${taxAssessments.billStatus}, 'unbilled')`,
+				billStatus: sql<string>`COALESCE(${taxAssessments.billStatus}, 'draft')`,
 				issueDate: sql<Date | null>`(
 					SELECT MIN(bse.created_at)
 					FROM bill_status_events bse
@@ -549,7 +549,12 @@ export class TaxReportService {
 				taxDelta: sql<string>`(CAST(${taxAssessments.taxDue} AS numeric) - ${paidPerAssessmentExpr})::text`,
 			})
 			.from(taxAssessments)
-			.where(this.buildAssessmentWhere(filters, corporationIds, 'corporation'))
+			.where(
+				and(
+					this.buildAssessmentWhere(filters, corporationIds, 'corporation'),
+					isNotNull(taxAssessments.billId)
+				)
+			)
 
 		const grouped = rows.map((row) => ({
 			assessmentId: row.assessmentId,

@@ -14,7 +14,9 @@ export function PageHeader({ title, description, action, className }: PageHeader
 		<div className={cn('mb-section md:mb-10', className)}>
 			<div className="flex items-start justify-between gap-4">
 				<div className="space-y-3">
-					<h1 className="text-4xl md:text-5xl font-bold gradient-text">{title}</h1>
+					<h1 className="py-1 text-4xl md:text-5xl font-bold leading-[1.2] gradient-text">
+						{title}
+					</h1>
 					{description && <p className="text-muted-foreground text-lg">{description}</p>}
 				</div>
 				{action && <div className="flex-shrink-0">{action}</div>}

@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
 
-import { Button } from '@/components/ui/button'
 import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { DestructiveButton } from '@/components/ui/destructive-button'
@@ -13,6 +12,7 @@ import {
 	DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { PrimaryButton } from '@/components/ui/primary-button'
 import { SearchSelect } from '@/components/ui/search-select'
 
 import type { TaxRuleGroup } from '@repo/corporation-tax'
@@ -130,7 +130,7 @@ export function RuleGroupScopeCard({
 								onChange={(event) => setNewGroupName(event.target.value)}
 								placeholder="Enter a rule group name"
 							/>
-							<Button
+							<PrimaryButton
 								disabled={isCreating}
 								onClick={() => {
 									const name = newGroupName.trim()
@@ -139,7 +139,7 @@ export function RuleGroupScopeCard({
 								}}
 							>
 								{isCreating ? 'Creating...' : 'Create'}
-							</Button>
+							</PrimaryButton>
 						</div>
 					</div>
 				</div>
@@ -173,7 +173,7 @@ export function RuleGroupScopeCard({
 						</div>
 						{!isImmutableGroup ? (
 							<div className="flex flex-wrap gap-2">
-								<Button
+								<PrimaryButton
 									size="sm"
 									disabled={isUpdating || !groupName.trim()}
 									onClick={() =>
@@ -184,15 +184,15 @@ export function RuleGroupScopeCard({
 									}
 								>
 									{isUpdating ? 'Saving...' : 'Save Group'}
-								</Button>
-								<Button
+								</PrimaryButton>
+								<DestructiveButton
 									size="sm"
-									variant="destructive"
+									showIcon={false}
 									disabled={isDeleting}
 									onClick={() => setDeleteGroupDialogOpen(true)}
 								>
 									Delete Group
-								</Button>
+								</DestructiveButton>
 							</div>
 						) : null}
 					</div>

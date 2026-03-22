@@ -41,6 +41,7 @@ import type {
 	TaxAssessmentStatus,
 	TaxAssessmentWithBillHistory,
 	TaxAuditLogEntry,
+	TaxBillingEventHistoryRow,
 	TaxBillingPayeeType,
 	TaxBillStatus,
 	TaxBillStatusReportRow,
@@ -290,6 +291,15 @@ export interface CorporationTax {
 		limit?: number,
 		offset?: number
 	): Promise<TaxAssessmentWithBillHistory[]>
+
+	/**
+	 * Get billing-domain event history for a corporation's billed corporation-scope assessments.
+	 */
+	getCorporationBillEventHistory(
+		corporationId: string,
+		limit?: number,
+		offset?: number
+	): Promise<TaxPagedResult<TaxBillingEventHistoryRow>>
 
 	/**
 	 * Get bill status/timeline history for one corporation-scope assessment.
@@ -588,6 +598,7 @@ export type {
 	TaxLedgerRetentionResult,
 	TaxLedgerWindowFilters,
 	TaxAssessment,
+	TaxBillingEventHistoryRow,
 	TaxAssessmentScope,
 	TaxAssessmentStatus,
 	TaxAssessmentWithBillHistory,

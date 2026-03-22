@@ -87,6 +87,8 @@ export const corporationTaxKeys = {
 	}) => [...corporationTaxKeys.missingEsiKeys(), filters] as const,
 	billHistory: (corporationId: string, filters?: { limit?: number; offset?: number }) =>
 		[...corporationTaxKeys.all, 'bill-history', corporationId, filters] as const,
+	billEventHistory: (corporationId: string, filters?: { limit?: number; offset?: number }) =>
+		[...corporationTaxKeys.all, 'bill-event-history', corporationId, filters] as const,
 	billingConfigs: (corporationId: string) =>
 		[...corporationTaxKeys.all, 'billing-configs', corporationId] as const,
 	billingPayeeCorporationSearch: (corporationId: string, query: string) =>

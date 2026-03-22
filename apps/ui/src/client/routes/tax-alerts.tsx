@@ -5,7 +5,9 @@ import { toast } from 'sonner'
 import { TaxCorporationScopeSelector } from '@/components/tax-corporation-scope-selector'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { ConfirmButton } from '@/components/ui/confirm-button'
 import { Container } from '@/components/ui/container'
 import {
 	Dialog,
@@ -15,9 +17,11 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
+import { GhostButton } from '@/components/ui/ghost-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PageHeader } from '@/components/ui/page-header'
+import { PrimaryButton } from '@/components/ui/primary-button'
 import { Section } from '@/components/ui/section'
 import {
 	Table,
@@ -227,14 +231,13 @@ export default function TaxAlertsPage() {
 				description="Monitor discrepancy alerts and delivery status for corporation tax automation."
 				action={
 					canRetryFailedDeliveries ? (
-						<Button
-							variant="outline"
+						<GhostButton
 							onClick={() => retryMutation.mutate(100)}
 							disabled={retryMutation.isPending}
 						>
 							<RefreshCcw className="mr-2 h-4 w-4" />
 							Retry Failed Deliveries
-						</Button>
+						</GhostButton>
 					) : undefined
 				}
 			/>
@@ -284,8 +287,7 @@ export default function TaxAlertsPage() {
 												? `${currentDestination.name} • Guild ${currentDestination.guildId} • Channel ${currentDestination.channelId}`
 												: 'No Discord destination configured'}
 								</div>
-								<Button
-									variant="outline"
+								<GhostButton
 									onClick={() => {
 										setDestinationName(currentDestination?.name ?? '')
 										setGuildId(currentDestination?.guildId ?? '')
@@ -294,7 +296,7 @@ export default function TaxAlertsPage() {
 									}}
 								>
 									Edit Discord Destination
-								</Button>
+								</GhostButton>
 							</div>
 						) : null}
 					</CardHeader>
@@ -318,9 +320,7 @@ export default function TaxAlertsPage() {
 									{option.label}
 								</Button>
 							))}
-						</div>
-
-						<div className="flex flex-wrap gap-2">
+							<div className="mx-1 hidden h-6 w-px bg-border sm:block" />
 							{severityFilterOptions.map((option) => (
 								<Button
 									key={`severity-${option.label}`}
@@ -399,23 +399,23 @@ export default function TaxAlertsPage() {
 											<TableCell>
 												<div className="flex gap-2">
 													{canAcknowledge && alert.status === 'open' ? (
-														<Button
+														<PrimaryButton
 															size="sm"
-															variant="outline"
 															onClick={() => acknowledgeMutation.mutate(alert.id)}
 															disabled={acknowledgeMutation.isPending}
 														>
 															Acknowledge
-														</Button>
+														</PrimaryButton>
 													) : null}
 													{canResolve && alert.status !== 'resolved' ? (
-														<Button
+														<ConfirmButton
 															size="sm"
-															onClick={() => resolveMutation.mutate(alert.id)}
+															showIcon={false}
+															onConfirm={() => resolveMutation.mutate(alert.id)}
 															disabled={resolveMutation.isPending}
 														>
 															Resolve
-														</Button>
+														</ConfirmButton>
 													) : null}
 												</div>
 											</TableCell>
@@ -466,14 +466,14 @@ export default function TaxAlertsPage() {
 								</div>
 							</div>
 							<DialogFooter>
-								<Button
-									variant="outline"
+								<CancelButton
 									type="button"
+									showIcon={false}
 									onClick={() => setDestinationModalOpen(false)}
 								>
 									Cancel
-								</Button>
-								<Button
+								</CancelButton>
+								<PrimaryButton
 									type="button"
 									disabled={upsertDestinationMutation.isPending}
 									onClick={() => void handleSaveDestination()}
@@ -481,7 +481,7 @@ export default function TaxAlertsPage() {
 									{upsertDestinationMutation.isPending
 										? 'Saving Destination...'
 										: 'Save Destination'}
-								</Button>
+								</PrimaryButton>
 							</DialogFooter>
 						</DialogContent>
 					</Dialog>

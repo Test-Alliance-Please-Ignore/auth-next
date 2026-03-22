@@ -1,5 +1,7 @@
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { DestructiveButton } from '@/components/ui/destructive-button'
+import { GhostButton } from '@/components/ui/ghost-button'
+import { PrimaryButton } from '@/components/ui/primary-button'
 import {
 	Table,
 	TableBody,
@@ -55,7 +57,7 @@ export function BillingConfigurationTable({
 					<TableHead>Payee</TableHead>
 					<TableHead>Issuer</TableHead>
 					<TableHead>Due Days</TableHead>
-					{canIssue ? <TableHead>Actions</TableHead> : null}
+					{canIssue ? <TableHead className="text-center">Actions</TableHead> : null}
 				</TableRow>
 			</TableHeader>
 			<TableBody>
@@ -87,32 +89,30 @@ export function BillingConfigurationTable({
 							<TableCell>{config.billingIssuerUserId || '-'}</TableCell>
 							<TableCell>{config.billingDueDays}</TableCell>
 							{canIssue ? (
-								<TableCell>
-									<div className="flex items-center gap-2">
-										<Button
+								<TableCell className="text-right">
+									<div className="flex items-center justify-end gap-2">
+										<GhostButton
 											size="sm"
-											variant="outline"
 											disabled={actionsDisabled}
 											onClick={() => onEdit(config)}
 										>
 											Edit
-										</Button>
-										<Button
+										</GhostButton>
+										<PrimaryButton
 											size="sm"
-											variant="outline"
 											disabled={actionsDisabled || config.isDefault}
 											onClick={() => onSetDefault(config.id)}
 										>
 											Set Default
-										</Button>
-										<Button
+										</PrimaryButton>
+										<DestructiveButton
 											size="sm"
-											variant="outline"
+											showIcon={false}
 											disabled={actionsDisabled || config.isDefault}
 											onClick={() => onDelete(config.id)}
 										>
 											Delete
-										</Button>
+										</DestructiveButton>
 									</div>
 								</TableCell>
 							) : null}

@@ -1,13 +1,15 @@
 import { FileText } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { CancelButton } from '@/components/ui/cancel-button'
-import { ConfirmButton } from '@/components/ui/confirm-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { ConfirmButton } from '@/components/ui/confirm-button'
+import { GhostButton } from '@/components/ui/ghost-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { SearchSelect } from '@/components/ui/search-select'
 import {
 	Select,
 	SelectContent,
@@ -17,7 +19,8 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { useCreateBill } from '@/hooks/useBills'
+import { useBillEntitySearch, useCreateBill } from '@/hooks/useBills'
+import { useDebounce } from '@/hooks/useDebounce'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import type {
@@ -64,9 +67,67 @@ export default function AdminBillsNewPage() {
 
 	const [errors, setErrors] = useState<Record<string, string>>({})
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+	const [payerQuery, setPayerQuery] = useState('')
+	const [payeeQuery, setPayeeQuery] = useState('')
+	const debouncedPayerQuery = useDebounce(payerQuery, 300)
+	const debouncedPayeeQuery = useDebounce(payeeQuery, 300)
+	const payerEntitySearch = useBillEntitySearch({
+		q: debouncedPayerQuery,
+		entityType: formData.payerType,
+		enabled: debouncedPayerQuery.trim().length >= 2,
+	})
+	const payeeEntitySearch = useBillEntitySearch({
+		q: debouncedPayeeQuery,
+		entityType: formData.payeeType,
+		enabled: debouncedPayeeQuery.trim().length >= 2,
+	})
+	const payerOptions = useMemo(() => {
+		const deduped = new Map<
+			string,
+			{ id: string; value: string; label: string; description: string }
+		>()
+		for (const row of payerEntitySearch.data ?? []) {
+			const key = row.entityId
+			if (!deduped.has(key)) {
+				deduped.set(key, {
+					id: key,
+					value: row.entityId,
+					label: row.name || row.entityId,
+					description: row.entityId,
+				})
+			}
+		}
+		return [...deduped.values()]
+	}, [payerEntitySearch.data])
+	const payeeOptions = useMemo(() => {
+		const deduped = new Map<
+			string,
+			{ id: string; value: string; label: string; description: string }
+		>()
+		for (const row of payeeEntitySearch.data ?? []) {
+			const key = row.entityId
+			if (!deduped.has(key)) {
+				deduped.set(key, {
+					id: key,
+					value: row.entityId,
+					label: row.name || row.entityId,
+					description: row.entityId,
+				})
+			}
+		}
+		return [...deduped.values()]
+	}, [payeeEntitySearch.data])
 
 	const handleChange = (field: string, value: string | boolean) => {
 		setFormData((prev) => ({ ...prev, [field]: value }))
+		if (field === 'payerType') {
+			setPayerQuery('')
+			setFormData((prev) => ({ ...prev, payerId: '' }))
+		}
+		if (field === 'payeeType') {
+			setPayeeQuery('')
+			setFormData((prev) => ({ ...prev, payeeId: '' }))
+		}
 		// Clear error when field is edited
 		if (errors[field]) {
 			setErrors((prev) => {
@@ -82,11 +143,11 @@ export default function AdminBillsNewPage() {
 		const newErrors: Record<string, string> = {}
 
 		if (!formData.payerId.trim()) {
-			newErrors.payerId = 'Payer ID is required'
+			newErrors.payerId = 'Payer is required'
 		}
 
 		if (!formData.payeeId.trim()) {
-			newErrors.payeeId = 'Payee ID is required'
+			newErrors.payeeId = 'Payee is required'
 		}
 
 		if (!formData.title.trim()) {
@@ -174,12 +235,12 @@ export default function AdminBillsNewPage() {
 						Create a new bill for a character, corporation, or group
 					</p>
 				</div>
-				<Button variant="outline" asChild>
+				<GhostButton asChild>
 					<Link to="/admin/bills">
 						<FileText className="mr-2 h-4 w-4" />
 						Back to Bills
 					</Link>
-				</Button>
+				</GhostButton>
 			</div>
 
 			{/* Success/Error Message */}
@@ -229,24 +290,26 @@ export default function AdminBillsNewPage() {
 
 							<div className="space-y-2">
 								<Label htmlFor="payerId">
-									Payer ID <span className="text-destructive">*</span>
+									Payer <span className="text-destructive">*</span>
 								</Label>
-								<Input
-									id="payerId"
-									placeholder={`${
-										formData.payerType === 'character'
-											? 'Character'
-											: formData.payerType === 'corporation'
-												? 'Corporation'
-												: 'Group'
-									} ID`}
-									value={formData.payerId}
-									onChange={(e) => handleChange('payerId', e.target.value)}
-									className={errors.payerId ? 'border-destructive' : ''}
+								<SearchSelect
+									inputId="payerId"
+									value={payerQuery}
+									onValueChange={setPayerQuery}
+									options={payerOptions}
+									onSelect={(option) => {
+										handleChange('payerId', option.value)
+										setPayerQuery(option.label)
+									}}
+									loading={payerEntitySearch.isLoading}
+									placeholder={`Search ${formData.payerType} name or ID`}
+									minCharsText="Type at least 2 characters"
+									emptyText="No payer matches"
+									className={errors.payerId ? 'border-destructive rounded-md' : ''}
 								/>
 								{errors.payerId && <p className="text-sm text-destructive">{errors.payerId}</p>}
 								<p className="text-sm text-muted-foreground">
-									Enter the EVE Online {formData.payerType} ID or group ID
+									Selected ID: {formData.payerId || 'none'}
 								</p>
 							</div>
 						</div>
@@ -281,20 +344,26 @@ export default function AdminBillsNewPage() {
 
 							<div className="space-y-2">
 								<Label htmlFor="payeeId">
-									Payee ID <span className="text-destructive">*</span>
+									Payee <span className="text-destructive">*</span>
 								</Label>
-								<Input
-									id="payeeId"
-									placeholder={`${
-										formData.payeeType === 'character' ? 'Character' : 'Corporation'
-									} ID`}
-									value={formData.payeeId}
-									onChange={(e) => handleChange('payeeId', e.target.value)}
-									className={errors.payeeId ? 'border-destructive' : ''}
+								<SearchSelect
+									inputId="payeeId"
+									value={payeeQuery}
+									onValueChange={setPayeeQuery}
+									options={payeeOptions}
+									onSelect={(option) => {
+										handleChange('payeeId', option.value)
+										setPayeeQuery(option.label)
+									}}
+									loading={payeeEntitySearch.isLoading}
+									placeholder={`Search ${formData.payeeType} name or ID`}
+									minCharsText="Type at least 2 characters"
+									emptyText="No payee matches"
+									className={errors.payeeId ? 'border-destructive rounded-md' : ''}
 								/>
 								{errors.payeeId && <p className="text-sm text-destructive">{errors.payeeId}</p>}
 								<p className="text-sm text-muted-foreground">
-									Enter the EVE Online {formData.payeeType} ID to receive the payment
+									Selected ID: {formData.payeeId || 'none'}
 								</p>
 							</div>
 						</div>

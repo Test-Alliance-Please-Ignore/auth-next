@@ -1,5 +1,5 @@
-import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { PrimaryButton } from '@/components/ui/primary-button'
 import {
 	Table,
 	TableBody,
@@ -8,7 +8,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
-import { formatTaxDateTime } from '@/lib/tax-date'
+import { formatTaxDate } from '@/lib/tax-date'
 import { formatTaxIskFull } from '@/lib/tax-display'
 
 import type { TaxAssessment } from '@repo/corporation-tax'
@@ -65,27 +65,29 @@ export function UnbilledAssessmentsCard({
 						<TableHeader>
 							<TableRow>
 								<TableHead>Assessment</TableHead>
-								<TableHead>Status</TableHead>
 								<TableHead>Tax Due</TableHead>
+								<TableHead>Period Start</TableHead>
 								<TableHead>Period End</TableHead>
-								<TableHead>Action</TableHead>
+								<TableHead className="text-center">Action</TableHead>
 							</TableRow>
 						</TableHeader>
 						<TableBody>
 							{unbilledAssessmentRows.map((assessment) => (
 								<TableRow key={assessment.id}>
 									<TableCell className="font-mono text-xs">{assessment.id}</TableCell>
-									<TableCell>{assessment.status}</TableCell>
 									<TableCell>{formatTaxIskFull(assessment.taxDue)}</TableCell>
-									<TableCell>{formatTaxDateTime(assessment.taxPeriodEnd)}</TableCell>
-									<TableCell>
-										<Button
-											size="sm"
-											disabled={!canIssue || createBillPending}
-											onClick={() => onCreateBill(assessment.id)}
-										>
-											{createBillPending ? 'Creating...' : 'Create Bill'}
-										</Button>
+									<TableCell>{formatTaxDate(assessment.taxPeriodStart)}</TableCell>
+									<TableCell>{formatTaxDate(assessment.taxPeriodEnd)}</TableCell>
+									<TableCell className="text-center">
+										<div className="flex justify-end">
+											<PrimaryButton
+												size="sm"
+												disabled={!canIssue || createBillPending}
+												onClick={() => onCreateBill(assessment.id)}
+											>
+												{createBillPending ? 'Creating...' : 'Create Bill'}
+											</PrimaryButton>
+										</div>
 									</TableCell>
 								</TableRow>
 							))}

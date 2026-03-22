@@ -318,6 +318,9 @@ export interface Groups {
 	/** Get a specific group */
 	getGroup(id: string, userId: string, isAdmin: boolean): Promise<GroupWithDetails | null>
 
+	/** Get minimal group metadata by ID for internal cross-worker resolution. */
+	getGroupMetadataByIds(ids: string[]): Promise<Array<{ id: string; name: string }>>
+
 	/** Update a group (owner or site admin) */
 	updateGroup(
 		id: string,

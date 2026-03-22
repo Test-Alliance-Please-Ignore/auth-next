@@ -8,6 +8,7 @@ import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmButton } from '@/components/ui/confirm-button'
 import { DestructiveButton } from '@/components/ui/destructive-button'
+import { GhostButton } from '@/components/ui/ghost-button'
 import {
 	Table,
 	TableBody,
@@ -91,12 +92,12 @@ export default function BillsSchedulesPage() {
 					</p>
 				</div>
 				<div className="flex gap-2">
-					<Button variant="outline" asChild>
+					<GhostButton asChild>
 						<Link to="/admin/bills">
 							<FileText className="mr-2 h-4 w-4" />
 							Back to Bills
 						</Link>
-					</Button>
+					</GhostButton>
 					<Button asChild>
 						<Link to="/admin/bills/schedules/new">
 							<Plus className="mr-2 h-4 w-4" />

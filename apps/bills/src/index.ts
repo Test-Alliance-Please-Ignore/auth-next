@@ -4,10 +4,11 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
 import { BillsDO } from './durable-object'
+import { scheduledHandler } from './scheduled'
 import { BillPaymentStatusCheckWorkflow } from './workflows/bill-payment-status-check'
 import { BillScheduleExecutorWorkflow } from './workflows/bill-schedule-executor'
 
-import type { App } from './context'
+import type { App, Env } from './context'
 
 /**
  * Bills Worker
@@ -43,7 +44,12 @@ const app = new Hono<App>()
 		})
 	})
 
-export default app
+export default {
+	fetch: app.fetch.bind(app),
+	async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+		await scheduledHandler(event, env, ctx)
+	},
+}
 
 // Export the Durable Object class
 export { BillsDO as Bills }
@@ -53,4 +59,4 @@ export { BillScheduleExecutorWorkflow }
 export { BillPaymentStatusCheckWorkflow }
 
 // Export the scheduled handler
-export { scheduledHandler } from './scheduled'
+export { scheduledHandler }

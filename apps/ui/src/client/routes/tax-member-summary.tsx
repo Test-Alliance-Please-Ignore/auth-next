@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react'
 
 import { TaxCorporationScopeSelector } from '@/components/tax-corporation-scope-selector'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { DateRangeInput } from '@/components/ui/date-range-input'
+import { GhostButton } from '@/components/ui/ghost-button'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
@@ -334,9 +334,8 @@ export default function TaxMemberSummaryPage() {
 										className="h-10"
 									/>
 								</div>
-								<Button
+								<GhostButton
 									type="button"
-									variant="outline"
 									onClick={() => {
 										void refetchMemberSummary()
 										void refetchSummaryReport()
@@ -345,7 +344,7 @@ export default function TaxMemberSummaryPage() {
 									className="h-10"
 								>
 									{isRefreshing ? 'Refreshing…' : 'Refresh'}
-								</Button>
+								</GhostButton>
 							</div>
 						</div>
 					</CardContent>

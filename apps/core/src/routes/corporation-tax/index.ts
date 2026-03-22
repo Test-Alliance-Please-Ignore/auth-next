@@ -481,8 +481,8 @@ app.get('/corporations/:corporationId/payee-corporations/search', requireAuth(),
 	}
 
 	const corporationId = c.req.param('corporationId')
-	const canManage = await canManageTaxFeature(c.env, user, corporationId)
-	if (!canManage) {
+	const canRead = await canAuditTaxFeature(c.env, user, corporationId)
+	if (!canRead) {
 		return c.json({ error: 'Forbidden' }, 403)
 	}
 
@@ -535,7 +535,7 @@ app.get('/corporations/:corporationId/divisions', requireAuth(), async (c) => {
 	}
 
 	const corporationId = c.req.param('corporationId')
-	const canRead = await canReadTaxFeature(c.env, user, corporationId)
+	const canRead = await canAuditTaxFeature(c.env, user, corporationId)
 	if (!canRead) {
 		return c.json({ error: 'Forbidden' }, 403)
 	}
@@ -561,8 +561,8 @@ app.get('/corporations/:corporationId/rules', requireAuth(), async (c) => {
 	}
 
 	const corporationId = c.req.param('corporationId')
-	const canManage = await canManageTaxFeature(c.env, user, corporationId)
-	if (!canManage) {
+	const canRead = await canAuditTaxFeature(c.env, user, corporationId)
+	if (!canRead) {
 		return c.json({ error: 'Forbidden' }, 403)
 	}
 
@@ -1978,6 +1978,35 @@ app.get('/corporations/:corporationId/bills/history', requireAuth(), async (c) =
 	} catch (error) {
 		logger.error('Error fetching corporation tax bill history:', error)
 		return c.json({ error: 'Failed to fetch corporation tax bill history' }, 500)
+	}
+})
+
+/**
+ * GET /corporation-tax/corporations/:corporationId/bills/history/events
+ * Show paged billing-domain events for corporation-linked assessments.
+ */
+app.get('/corporations/:corporationId/bills/history/events', requireAuth(), async (c) => {
+	const user = c.get('user')
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	const corporationId = c.req.param('corporationId')
+	const canRead = await canAuditTaxFeature(c.env, user, corporationId)
+	if (!canRead) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
+	const limit = parseIntegerQueryParam(c.req.query('limit'))
+	const offset = parseIntegerQueryParam(c.req.query('offset'))
+
+	try {
+		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
+		const history = await stub.getCorporationBillEventHistory(corporationId, limit, offset)
+		return c.json(history)
+	} catch (error) {
+		logger.error('Error fetching corporation tax bill event history:', error)
+		return c.json({ error: 'Failed to fetch corporation tax bill event history' }, 500)
 	}
 })
 

@@ -5,6 +5,8 @@ import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { DestructiveButton } from '@/components/ui/destructive-button'
+import { GhostButton } from '@/components/ui/ghost-button'
+import { PrimaryButton } from '@/components/ui/primary-button'
 import {
 	Table,
 	TableBody,
@@ -79,18 +81,18 @@ export default function BillsTemplatesPage() {
 					</p>
 				</div>
 				<div className="flex gap-2">
-					<Button variant="outline" asChild>
+					<GhostButton asChild>
 						<Link to="/admin/bills">
 							<FileText className="mr-2 h-4 w-4" />
 							Back to Bills
 						</Link>
-					</Button>
-					<Button asChild>
+					</GhostButton>
+					<PrimaryButton asChild>
 						<Link to="/admin/bills/templates/new">
 							<Plus className="mr-2 h-4 w-4" />
 							Create Template
 						</Link>
-					</Button>
+					</PrimaryButton>
 				</div>
 			</div>
 
@@ -125,12 +127,12 @@ export default function BillsTemplatesPage() {
 							<p className="text-muted-foreground mb-4">
 								Create your first template to streamline bill creation
 							</p>
-							<Button asChild>
+							<PrimaryButton asChild>
 								<Link to="/admin/bills/templates/new">
 									<Plus className="mr-2 h-4 w-4" />
 									Create Template
 								</Link>
-							</Button>
+							</PrimaryButton>
 						</div>
 					) : (
 						<div className="overflow-x-auto">

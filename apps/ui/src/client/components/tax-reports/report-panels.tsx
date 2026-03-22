@@ -1,7 +1,7 @@
 import { TaxCorporationScopeSelector } from '@/components/tax-corporation-scope-selector'
 import { ExportHistoryGrid, ExportSchedulesGrid } from '@/components/tax-reports/grids'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { DateRangeInput } from '@/components/ui/date-range-input'
 import {
@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dialog'
 import { FilterField } from '@/components/ui/filter-field'
 import { Input } from '@/components/ui/input'
+import { PrimaryButton } from '@/components/ui/primary-button'
 import {
 	Select,
 	SelectContent,
@@ -76,7 +77,7 @@ interface TaxReportFiltersCardProps {
 export function TaxReportFiltersCard(props: TaxReportFiltersCardProps) {
 	return (
 		<TaxPanelCard
-			title="Report Filters"
+			title="Filters"
 			description="These filters apply to the active report and are persisted into export payloads."
 			contentClassName="grid gap-3 md:grid-cols-4"
 		>
@@ -293,15 +294,15 @@ export function TaxExportDialog(props: {
 					</div>
 				</div>
 				<DialogFooter>
-					<Button variant="outline" onClick={() => props.onOpenChange(false)}>
+					<CancelButton showIcon={false} onClick={() => props.onOpenChange(false)}>
 						Cancel
-					</Button>
-					<Button
+					</CancelButton>
+					<PrimaryButton
 						onClick={props.onSubmit}
 						disabled={!props.canExport || !props.canSubmit || props.submitting}
 					>
 						{props.submitting ? 'Requesting Export...' : 'Request Export'}
-					</Button>
+					</PrimaryButton>
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>
@@ -389,15 +390,15 @@ export function TaxScheduleDialog(props: {
 					</div>
 				</div>
 				<DialogFooter>
-					<Button variant="outline" onClick={() => props.onOpenChange(false)}>
+					<CancelButton showIcon={false} onClick={() => props.onOpenChange(false)}>
 						Cancel
-					</Button>
-					<Button
+					</CancelButton>
+					<PrimaryButton
 						onClick={props.onSubmit}
 						disabled={!props.canCreateSchedule || !props.canSubmit || props.submitting}
 					>
 						{props.submitting ? 'Creating Schedule...' : 'Create Schedule'}
-					</Button>
+					</PrimaryButton>
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>

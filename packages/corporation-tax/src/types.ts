@@ -287,6 +287,18 @@ export interface TaxAssessmentWithBillHistory {
 	timeline: TaxBillTimelineEvent[]
 }
 
+export interface TaxBillingEventHistoryRow {
+	id: string
+	billId: string
+	assessmentId: string
+	eventType: string
+	fromStatus: string | null
+	toStatus: string | null
+	actorUserId: string | null
+	metadata: Record<string, string | number | boolean | null> | null
+	createdAt: Date
+}
+
 export interface IssueBillsForPeriodInput {
 	corporationId: string
 	periodStart: Date

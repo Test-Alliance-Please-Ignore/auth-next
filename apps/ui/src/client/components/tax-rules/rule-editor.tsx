@@ -2,7 +2,6 @@ import { NumberInput } from '@mantine/core'
 import { Pencil, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { Button } from '@/components/ui/button'
 import { CancelButton } from '@/components/ui/cancel-button'
 import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
@@ -14,6 +13,7 @@ import {
 	DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { PrimaryButton } from '@/components/ui/primary-button'
 import { SearchSelect } from '@/components/ui/search-select'
 import { Switch } from '@/components/ui/switch'
 import { TableCell, TableRow } from '@/components/ui/table'
@@ -302,7 +302,7 @@ export function RuleRowEditor({
 						<div className="space-y-3">
 							<RuleFormFields form={form} onChange={setForm} disabled={!canManage || isSaving} />
 							<div className="flex flex-wrap items-center justify-end gap-2">
-								<Button
+								<PrimaryButton
 									size="sm"
 									disabled={!canManage || isSaving || !formValid}
 									onClick={() => {
@@ -320,10 +320,10 @@ export function RuleRowEditor({
 									}}
 								>
 									Save
-								</Button>
-								<Button
+								</PrimaryButton>
+								<CancelButton
 									size="sm"
-									variant="ghost"
+									showIcon={false}
 									disabled={!canManage || isSaving}
 									onClick={() => {
 										setForm(ruleToFormState(rule))
@@ -331,7 +331,7 @@ export function RuleRowEditor({
 									}}
 								>
 									Cancel
-								</Button>
+								</CancelButton>
 							</div>
 						</div>
 					</TableCell>

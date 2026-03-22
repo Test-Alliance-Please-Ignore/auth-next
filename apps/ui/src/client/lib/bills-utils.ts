@@ -2,6 +2,8 @@
  * Utility functions for bills management
  */
 
+import { getBillStatusBadgeVariant } from '@repo/bills'
+
 import type { Bill, BillStatus, LateFeeCompounding, LateFeeType } from '@repo/bills'
 
 /**
@@ -98,21 +100,8 @@ export function calculateLateFee(bill: Bill): number {
  */
 export function getBillStatusColor(
 	status: BillStatus
-): 'default' | 'secondary' | 'destructive' | 'outline' {
-	switch (status) {
-		case 'draft':
-			return 'secondary'
-		case 'issued':
-			return 'default'
-		case 'paid':
-			return 'outline' // Using outline for success-like appearance
-		case 'cancelled':
-			return 'destructive'
-		case 'overdue':
-			return 'destructive'
-		default:
-			return 'default'
-	}
+): 'default' | 'secondary' | 'success' | 'warning' | 'destructive' {
+	return getBillStatusBadgeVariant(status)
 }
 
 /**

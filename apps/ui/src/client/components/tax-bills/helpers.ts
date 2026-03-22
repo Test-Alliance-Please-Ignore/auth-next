@@ -1,3 +1,5 @@
+import { getBillStatusBadgeVariant } from '@repo/bills'
+
 import { formatTaxDateTime } from '@/lib/tax-date'
 
 import type { TaxBillStatus } from '@repo/corporation-tax'
@@ -15,21 +17,13 @@ export function getLastTimelineDate(events: Array<{ createdAt: string | Date }>)
 
 export function billStatusBadgeVariant(
 	status: TaxBillStatus | 'unbilled' | 'underpaid' | 'overpaid'
-): 'default' | 'success' | 'warning' | 'destructive' | 'outline' {
-	if (status === 'overdue') {
-		return 'destructive'
-	}
-	if (status === 'paid') {
-		return 'success'
-	}
+): 'default' | 'secondary' | 'success' | 'warning' | 'destructive' | 'outline' {
 	if (status === 'underpaid') {
 		return 'warning'
 	}
 	if (status === 'overpaid') {
 		return 'warning'
 	}
-	if (status === 'issued') {
-		return 'default'
-	}
+	if (status !== 'unbilled') return getBillStatusBadgeVariant(status)
 	return 'outline'
 }

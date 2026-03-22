@@ -11,8 +11,10 @@ import type {
 	SyncCorporationBillStatusesResult,
 	TaxAssessment,
 	TaxAssessmentWithBillHistory,
+	TaxBillingEventHistoryRow,
 	TaxBillStatus,
 	TaxCorporationBillingConfig,
+	TaxPagedResult,
 	UpdateTaxCorporationBillingConfigInput,
 } from '@repo/corporation-tax'
 import type { CorporationTaxDb } from '../db'
@@ -628,6 +630,66 @@ export class TaxBillingService {
 				createdAt: event.createdAt,
 			})),
 		}))
+	}
+
+	async getCorporationBillEventHistory(
+		corporationId: string,
+		limit = 25,
+		offset = 0
+	): Promise<TaxPagedResult<TaxBillingEventHistoryRow>> {
+		const boundedLimit = Math.min(Math.max(limit, 1), 200)
+		const boundedOffset = Math.max(offset, 0)
+		const billedAssessments = await this.db.query.taxAssessments.findMany({
+			where: and(
+				eq(taxAssessments.corporationId, corporationId),
+				eq(taxAssessments.assessmentScope, 'corporation'),
+				isNotNull(taxAssessments.billId)
+			),
+			columns: { id: true, billId: true },
+		})
+		if (billedAssessments.length === 0) {
+			return { rows: [], totalRows: 0 }
+		}
+
+		const assessmentIdByBillId = new Map<string, string>()
+		for (const assessment of billedAssessments) {
+			if (assessment.billId && !assessmentIdByBillId.has(assessment.billId)) {
+				assessmentIdByBillId.set(assessment.billId, assessment.id)
+			}
+		}
+		const billIds = [...assessmentIdByBillId.keys()]
+		if (billIds.length === 0) {
+			return { rows: [], totalRows: 0 }
+		}
+
+		const bills = getStub<Bills>(this.billsNamespace, 'default')
+		const page = await bills.listBillStatusEventsPage({
+			billIds,
+			limit: boundedLimit,
+			offset: boundedOffset,
+		})
+
+		const scopedRows: TaxBillingEventHistoryRow[] = []
+		for (const event of page.rows) {
+			const assessmentId = assessmentIdByBillId.get(event.billId)
+			if (!assessmentId) continue
+			scopedRows.push({
+				id: event.id,
+				billId: event.billId,
+				assessmentId,
+				eventType: event.eventType,
+				fromStatus: event.fromStatus,
+				toStatus: event.toStatus,
+				actorUserId: event.actorUserId,
+				metadata: event.metadata,
+				createdAt: event.createdAt,
+			})
+		}
+
+		return {
+			rows: scopedRows,
+			totalRows: page.rowCount,
+		}
 	}
 
 	async getAssessmentBillStatusHistory(

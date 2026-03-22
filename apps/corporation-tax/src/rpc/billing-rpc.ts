@@ -5,7 +5,9 @@ import type {
 	SyncCorporationBillStatusesResult,
 	TaxAssessment,
 	TaxAssessmentWithBillHistory,
+	TaxBillingEventHistoryRow,
 	TaxCorporationBillingConfig,
+	TaxPagedResult,
 	UpdateTaxCorporationBillingConfigInput,
 } from '@repo/corporation-tax'
 import type { TaxAuditService } from '../services/tax-audit.service'
@@ -121,6 +123,14 @@ export class TaxBillingRpc {
 		return this.ctx.billingService.getCorporationBillStatusHistory(corporationId, limit, offset)
 	}
 
+	async getCorporationBillEventHistory(
+		corporationId: string,
+		limit?: number,
+		offset?: number
+	): Promise<TaxPagedResult<TaxBillingEventHistoryRow>> {
+		return this.ctx.billingService.getCorporationBillEventHistory(corporationId, limit, offset)
+	}
+
 	async getAssessmentBillStatusHistory(
 		corporationId: string,
 		assessmentId: string
@@ -161,7 +171,10 @@ export class TaxBillingRpc {
 		corporationId: string,
 		input: CreateTaxCorporationBillingConfigInput
 	): Promise<TaxCorporationBillingConfig> {
-		const created = await this.ctx.billingService.createCorporationBillingConfig(corporationId, input)
+		const created = await this.ctx.billingService.createCorporationBillingConfig(
+			corporationId,
+			input
+		)
 		await this.ctx.auditService.logAction({
 			corporationId,
 			actorUserId,

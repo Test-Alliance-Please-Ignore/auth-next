@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Container } from '@/components/ui/container'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
+import { PrimaryButton } from '@/components/ui/primary-button'
 import { SearchSelect } from '@/components/ui/search-select'
 import { Section } from '@/components/ui/section'
 import {
@@ -175,7 +176,7 @@ export default function TaxExclusionsPage() {
 								disabled={!selectedCorporationId}
 							/>
 						</div>
-						<Button
+						<PrimaryButton
 							type="button"
 							onClick={() => {
 								if (!selectedCorporationId) return
@@ -196,7 +197,7 @@ export default function TaxExclusionsPage() {
 							disabled={!selectedCorporationId || upsertMutation.isPending}
 						>
 							Add
-						</Button>
+						</PrimaryButton>
 					</CardContent>
 				</Card>
 

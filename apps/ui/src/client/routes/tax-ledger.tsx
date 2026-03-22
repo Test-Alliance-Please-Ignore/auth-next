@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Container } from '@/components/ui/container'
 import { DateRangeInput } from '@/components/ui/date-range-input'
 import { FilterField } from '@/components/ui/filter-field'
+import { GhostButton } from '@/components/ui/ghost-button'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
 import { SearchSelect } from '@/components/ui/search-select'
@@ -348,6 +349,23 @@ export default function TaxLedgerPage() {
 		[entityNames]
 	)
 
+	const resetFilters = () => {
+		setFromDate(DEFAULT_MONTH_RANGE.fromDate)
+		setToDate(DEFAULT_MONTH_RANGE.toDate)
+		setDivisionFilter('')
+		setDivisionQuery('')
+		setRefTypesFilter('')
+		setRefTypeQuery('')
+		setSourceTypesFilter('')
+		setSourceTypeQuery('')
+		setFirstPartyIdFilter('')
+		setSecondPartyIdFilter('')
+		setFirstPartyQuery('')
+		setSecondPartyQuery('')
+		setMinAmountFilter('')
+		setPage(0)
+	}
+
 	if (!corporationAccessLoading && !scopedCapabilitiesLoading && !canView) {
 		return (
 			<Container>
@@ -388,7 +406,7 @@ export default function TaxLedgerPage() {
 
 				<Card>
 					<CardHeader>
-						<CardTitle>Ledger Filters</CardTitle>
+						<CardTitle>Filters</CardTitle>
 						<CardDescription>
 							Refine the ledger by date range, wallet division, income type, source type, and
 							parties.
@@ -527,6 +545,9 @@ export default function TaxLedgerPage() {
 								emptyText="No recipient matches found"
 							/>
 						</FilterField>
+						<div className="flex items-end md:justify-end">
+							<GhostButton onClick={resetFilters}>Clear Filters</GhostButton>
+						</div>
 					</CardContent>
 				</Card>
 

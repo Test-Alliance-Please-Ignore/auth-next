@@ -64,6 +64,7 @@ import type {
 	TaxAssessmentLine,
 	TaxAssessmentWithBillHistory,
 	TaxAuditLogEntry,
+	TaxBillingEventHistoryRow,
 	TaxBillStatusReportRow,
 	TaxCompliancePoint,
 	TaxCorporationBillingConfig,
@@ -411,6 +412,14 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		offset?: number
 	): Promise<TaxAssessmentWithBillHistory[]> {
 		return this.billingRpc.getCorporationBillStatusHistory(corporationId, limit, offset)
+	}
+
+	async getCorporationBillEventHistory(
+		corporationId: string,
+		limit?: number,
+		offset?: number
+	): Promise<TaxPagedResult<TaxBillingEventHistoryRow>> {
+		return this.billingRpc.getCorporationBillEventHistory(corporationId, limit, offset)
 	}
 
 	async getAssessmentBillStatusHistory(

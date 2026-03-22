@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 
 import { TaxReportDataGrid } from '@/components/tax-report-data-grid'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { GhostButton } from '@/components/ui/ghost-button'
 import { formatTaxDateTime } from '@/lib/tax-date'
 import { formatTaxNumber, TaxEntityDisplay } from '@/lib/tax-display'
 
@@ -79,14 +79,13 @@ export function ExportHistoryGrid(props: {
 				header: 'Download',
 				enableSorting: false,
 				Cell: ({ row }) => (
-					<Button
+					<GhostButton
 						size="sm"
-						variant="outline"
 						disabled={row.original.status !== 'completed' || props.downloading}
 						onClick={() => props.onDownload(row.original.id)}
 					>
 						{props.downloading ? 'Preparing...' : 'Download'}
-					</Button>
+					</GhostButton>
 				),
 			},
 		],

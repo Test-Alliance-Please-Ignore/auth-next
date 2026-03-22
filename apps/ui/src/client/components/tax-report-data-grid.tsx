@@ -17,6 +17,8 @@ interface TaxReportDataGridProps<Row extends object> {
 	onPaginationChange?: (pagination: { pageIndex: number; pageSize: number }) => void
 	pageCount?: number
 	rowCount?: number
+	pinnedRightColumnIds?: string[]
+	pinnedLeftColumnIds?: string[]
 }
 
 export function TaxReportDataGrid<Row extends object>({
@@ -31,6 +33,8 @@ export function TaxReportDataGrid<Row extends object>({
 	onPaginationChange,
 	pageCount,
 	rowCount,
+	pinnedRightColumnIds,
+	pinnedLeftColumnIds,
 }: TaxReportDataGridProps<Row>) {
 	const isServerSorted = Boolean(onSortingChange)
 	const isServerPaginated = Boolean(onPaginationChange && pagination)
@@ -43,6 +47,7 @@ export function TaxReportDataGrid<Row extends object>({
 		enableFullScreenToggle: false,
 		enableGlobalFilter: false,
 		enableHiding: false,
+		enableColumnPinning: true,
 		enablePagination: true,
 		enableStickyHeader: true,
 		enableTopToolbar: false,
@@ -123,6 +128,14 @@ export function TaxReportDataGrid<Row extends object>({
 			showProgressBars: loading,
 			...(isServerSorted ? { sorting } : {}),
 			...(isServerPaginated ? { pagination } : {}),
+			...(pinnedLeftColumnIds || pinnedRightColumnIds
+				? {
+						columnPinning: {
+							left: pinnedLeftColumnIds ?? [],
+							right: pinnedRightColumnIds ?? [],
+						},
+					}
+				: {}),
 		},
 		...(isServerSorted
 			? {
