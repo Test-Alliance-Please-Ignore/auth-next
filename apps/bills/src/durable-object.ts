@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { logger } from '@repo/hono-helpers'
+import { logger, toErrorLogDetails } from '@repo/hono-helpers'
 
 import { createDb } from './db'
 import { BillService } from './services/bill.service'
@@ -127,7 +127,20 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 	}
 
 	async listBillsPage(query: BillListQuery): Promise<BillListPage> {
-		return this.billService.listBillsPage(query)
+		try {
+			return await this.billService.listBillsPage(query)
+		} catch (error) {
+			this.logger.error('[BillsDO] listBillsPage failed', {
+				scopeMode: query.scope.mode,
+				limit: query.limit,
+				offset: query.offset,
+				sortBy: query.sortBy,
+				sortDir: query.sortDir,
+				hasFilters: Boolean(query.filters),
+				...toErrorLogDetails(error),
+			})
+			throw error
+		}
 	}
 
 	async searchBillParties(query: BillPartySearchQuery): Promise<BillPartySearchRow[]> {

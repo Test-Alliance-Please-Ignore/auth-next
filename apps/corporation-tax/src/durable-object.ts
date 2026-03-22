@@ -2,7 +2,7 @@ import { DurableObject } from 'cloudflare:workers'
 
 import { and, eq, inArray, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
-import { logger } from '@repo/hono-helpers'
+import { logger, toErrorLogDetails } from '@repo/hono-helpers'
 
 import { createDb } from './db'
 import {
@@ -112,8 +112,76 @@ const LEDGER_RETENTION_DAYS = 90
 const DEFAULT_ESS_ALERT_THRESHOLD_ISK = 1_000_000_000
 const SCHEDULED_CORPORATION_CONCURRENCY = 5
 const TRIGGERED_INGEST_OVERLAP_WINDOW_MS = 48 * 60 * 60 * 1000
+const RPC_METHOD_NAMES = [
+	'getHealth',
+	'upsertCorporationExclusion',
+	'deleteCorporationExclusion',
+	'listCorporationExclusions',
+	'listWalletDivisions',
+	'listAuditLog',
+	'createRuleGroup',
+	'updateRuleGroup',
+	'deleteRuleGroup',
+	'listRuleGroups',
+	'attachCorporationToRuleGroup',
+	'detachCorporationFromRuleGroup',
+	'listRuleGroupAttachments',
+	'createRuleSet',
+	'listRuleSets',
+	'updateRuleSet',
+	'deleteRuleSet',
+	'ingestCorporationLedgerWindow',
+	'triggerProjectionRefreshFromWalletSync',
+	'listLedgerEntries',
+	'listLedgerParties',
+	'getLedgerIngestionHealth',
+	'trimLedgerEntries',
+	'listAssessments',
+	'runAssessmentForPeriod',
+	'rebuildFinalizedRollupsForPeriod',
+	'listAssessmentLines',
+	'listDiscrepancies',
+	'createBillsForAssessment',
+	'issueBillsForPeriod',
+	'syncAssessmentBillStatus',
+	'retractAssessmentBill',
+	'getCorporationBillStatusHistory',
+	'getCorporationBillEventHistory',
+	'getAssessmentBillStatusHistory',
+	'syncCorporationBillStatuses',
+	'listCorporationBillingConfigs',
+	'createCorporationBillingConfig',
+	'updateCorporationBillingConfig',
+	'deleteCorporationBillingConfig',
+	'setDefaultCorporationBillingConfig',
+	'getSummaryReport',
+	'getTotalTaxesByCorporationReport',
+	'getTopIncomeSourcesReport',
+	'getTopIncomeSourcesMonthlyReport',
+	'getEssPayoutReport',
+	'getComplianceOverTimeReport',
+	'getTaxDiscrepancyReport',
+	'getMissingEsiKeysReport',
+	'getBillStatusReport',
+	'getMemberSummaryReport',
+	'requestExport',
+	'listExports',
+	'getExportById',
+	'getExportArtifact',
+	'createExportSchedule',
+	'listExportSchedules',
+	'runScheduledOperations',
+	'triggerAlert',
+	'listAlerts',
+	'acknowledgeAlert',
+	'resolveAlert',
+	'retryFailedAlertDeliveries',
+	'upsertNotificationDestination',
+	'listNotificationDestinations',
+] as const
 
 export class CorporationTaxDO extends DurableObject<Env, {}> implements CorporationTax {
+	private readonly logger = logger.withTags({ service: 'corporation-tax-durable-object' })
 	private db: CorporationTaxDb
 	private exclusionsService: TaxCorporationExclusionsService
 	private ledgerService: TaxLedgerService
@@ -205,6 +273,60 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 			getPreviousMonthWindow: this.getPreviousMonthWindow.bind(this),
 			runWithConcurrency: this.runWithConcurrency.bind(this),
 		})
+		this.installRpcErrorLogging()
+	}
+
+	private installRpcErrorLogging(): void {
+		for (const methodName of RPC_METHOD_NAMES) {
+			const original = (this as Record<string, unknown>)[methodName]
+			if (typeof original !== 'function') {
+				continue
+			}
+
+			;(this as Record<string, unknown>)[methodName] = (async (...args: unknown[]) => {
+				try {
+					return await (original as (...params: unknown[]) => Promise<unknown>).apply(this, args)
+				} catch (error) {
+					this.logger.error('[CorporationTaxDO] RPC method failed', {
+						method: methodName,
+						...toErrorLogDetails(error),
+						args: this.summarizeRpcArgs(args),
+					})
+					throw error
+				}
+			}) as unknown
+		}
+	}
+
+	private summarizeRpcArgs(args: unknown[]): unknown[] {
+		return args.map((arg) => this.summarizeRpcArg(arg))
+	}
+
+	private summarizeRpcArg(arg: unknown): unknown {
+		if (arg === null || arg === undefined) {
+			return arg
+		}
+		if (typeof arg === 'string' || typeof arg === 'number' || typeof arg === 'boolean') {
+			return arg
+		}
+		if (arg instanceof Date) {
+			return arg.toISOString()
+		}
+		if (Array.isArray(arg)) {
+			return { kind: 'array', length: arg.length }
+		}
+		if (typeof arg === 'object') {
+			const record = arg as Record<string, unknown>
+			const keys = Object.keys(record)
+			const summary: Record<string, unknown> = { kind: 'object', keys: keys.slice(0, 12) }
+			for (const key of ['corporationId', 'assessmentId', 'actorUserId', 'fromDate', 'toDate']) {
+				if (key in record) {
+					summary[key] = record[key]
+				}
+			}
+			return summary
+		}
+		return { kind: typeof arg }
 	}
 
 	async getHealth(): Promise<CorporationTaxHealth> {
