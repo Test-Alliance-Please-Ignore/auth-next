@@ -1,6 +1,7 @@
 import { HTTPException } from 'hono/http-exception'
 import { httpStatus } from 'http-codex/status'
 
+import { toErrorLogDetails } from '../helpers/errors'
 import { logger } from '../helpers/logger'
 import { captureException } from '../helpers/sentry'
 
@@ -29,7 +30,14 @@ export function withOnError<T extends HonoApp>() {
 						method: c.req.method,
 					},
 				})
-				logger.error(err)
+				logger.error('[HTTP] Request failed with server exception', {
+					status,
+					request: {
+						url: c.req.url,
+						method: c.req.method,
+					},
+					...toErrorLogDetails(err),
+				})
 			} else if (status === httpStatus.Unauthorized) {
 				body.error.message = 'unauthorized'
 			}
@@ -47,7 +55,14 @@ export function withOnError<T extends HonoApp>() {
 				method: c.req.method,
 			},
 		})
-		logger.error(err)
+		logger.error('[HTTP] Request failed with unhandled exception', {
+			status: 500,
+			request: {
+				url: c.req.url,
+				method: c.req.method,
+			},
+			...toErrorLogDetails(err),
+		})
 		return c.json(
 			{
 				success: false,
