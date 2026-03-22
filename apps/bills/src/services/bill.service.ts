@@ -363,11 +363,6 @@ export class BillService {
 			},
 			limit: normalizedLimit,
 			offset: normalizedOffset,
-			with: {
-				template: true,
-				schedule: true,
-				payments: true,
-			},
 		})
 		const updatedResults = await Promise.all(
 			results.map((bill) => this.updateLateFeeIfNeeded(bill))
