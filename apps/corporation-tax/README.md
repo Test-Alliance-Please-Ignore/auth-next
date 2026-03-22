@@ -25,23 +25,28 @@ just db-generate corporation-tax
 just db-migrate corporation-tax
 ```
 
+### Migration Notes
+
+- `drizzle.config.ts` intentionally points at `src/db/schema.migrations.ts` (migration-owned objects only).
+- Runtime reads can still use external/core-owned tables from `src/db/schema.ts` (for example `managed_corporations`), but those must not be part of generated migration DDL.
+
 ## Current UI Map
 
 The current tax UI is routed from the main app and uses three feature URNs plus
 corporation self-service resolution:
 
-- `urn:tax:viewer`: read access for member-summary style views within the user's corporation scope
+- `urn:corps:<eve-corp-id>:tax:viewer`: scoped read access for member-summary style views (still requires corporation membership)
+- `CEO/director`: read access for corporations where the user is a CEO/director (viewer-equivalent scope where supported)
 - `urn:tax:auditor`: read access to reports, exports, and billing visibility
 - `urn:tax:admin`: full tax access, including settings, alerts, ledger, billing operations, and audit log
 - `site admin`: full access everywhere
-- `CEO/director self-service`: read access for their own corporation where supported
 
 Current route inventory:
 
 | Route | Page | Function | Access |
 | --- | --- | --- | --- |
 | `/tax` | Redirect | Redirects to member summary | Same access as `/tax/member-summary` |
-| `/tax/member-summary` | Tax Member Summary | Member-level tax due, paid, delta, compliance status, and top taxable income sources | Site admin, `urn:tax:admin`, `urn:tax:auditor`, `urn:tax:viewer` with corporation membership, CEO/director self-service for own corporation |
+| `/tax/member-summary` | Tax Member Summary | Member-level tax due, paid, delta, compliance status, and top taxable income sources | Site admin, `urn:tax:admin`, `urn:tax:auditor`, `urn:corps:<eve-corp-id>:tax:viewer` with corporation membership, CEO/director self-service for own corporation |
 | `/tax/reports` | Tax Reports | Summary KPIs, total taxes by corporation, top income sources, ESS payout reporting, compliance trends, discrepancies, missing ESI keys, exports, and export schedules | Site admin, `urn:tax:admin`, `urn:tax:auditor` |
 | `/tax/bills` | Tax Billing | Bill status rollups, bill history, assessment list, bill creation, bill issuance, and bill status sync | View: site admin, `urn:tax:admin`, `urn:tax:auditor`; mutate: site admin, `urn:tax:admin` |
 | `/tax/alerts` | Tax Alerts | Alert inbox, severity/status filtering, acknowledge/resolve actions, and Discord delivery telemetry | View/manage: site admin, `urn:tax:admin`; failed-delivery retry and delivery telemetry are site-admin only |
@@ -64,7 +69,3 @@ The current sidebar is more restrictive than some direct-route access:
 | Rules | No | No | Yes | No |
 | Exclusions | No | No | Yes | No |
 | Audit Log | No | No | Yes | No |
-
-Known current-state notes:
-
-- Backend member-summary access supports limited corporation-member self-read; UI primarily optimizes for viewer/auditor/admin and CEO/director access flows.
