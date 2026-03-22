@@ -8,39 +8,6 @@ CREATE TYPE "public"."tax_export_format" AS ENUM('csv', 'xlsx');--> statement-br
 CREATE TYPE "public"."tax_export_frequency" AS ENUM('weekly', 'monthly');--> statement-breakpoint
 CREATE TYPE "public"."tax_export_status" AS ENUM('queued', 'running', 'completed', 'failed');--> statement-breakpoint
 CREATE TYPE "public"."tax_period_status" AS ENUM('open', 'assessed', 'closed');--> statement-breakpoint
-CREATE TABLE "managed_corporations" (
-	"corporation_id" text PRIMARY KEY NOT NULL,
-	"name" varchar(255) NOT NULL,
-	"is_active" boolean DEFAULT true NOT NULL,
-	"is_member_corporation" boolean DEFAULT false NOT NULL,
-	"is_special_purpose" boolean DEFAULT false NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
-);
---> statement-breakpoint
-CREATE TABLE "tax_alerts" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"corporation_id" text,
-	"alert_type" text NOT NULL,
-	"severity" "tax_alert_severity" NOT NULL,
-	"status" "tax_alert_status" DEFAULT 'open' NOT NULL,
-	"dedupe_key" text NOT NULL,
-	"payload" jsonb,
-	"first_triggered_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"last_triggered_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"acknowledged_at" timestamp with time zone,
-	"acknowledged_by_user_id" text,
-	"resolved_at" timestamp with time zone,
-	"resolved_by_user_id" text,
-	"discord_delivery_status" "tax_alert_discord_delivery_status" DEFAULT 'pending' NOT NULL,
-	"discord_attempt_count" integer DEFAULT 0 NOT NULL,
-	"discord_last_attempt_at" timestamp with time zone,
-	"discord_last_error" text,
-	"next_retry_at" timestamp with time zone,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "tax_alerts_dedupe_key_unique" UNIQUE("dedupe_key")
-);
---> statement-breakpoint
 CREATE TABLE "tax_assessment_lines" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"assessment_id" uuid NOT NULL,
@@ -314,14 +281,6 @@ ALTER TABLE "tax_discrepancies" ADD CONSTRAINT "tax_discrepancies_assessment_id_
 ALTER TABLE "tax_member_contribution_finalized_rollups" ADD CONSTRAINT "tax_member_contribution_finalized_rollups_finalized_assessment_id_tax_assessments_id_fk" FOREIGN KEY ("finalized_assessment_id") REFERENCES "public"."tax_assessments"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "tax_rule_group_attachments" ADD CONSTRAINT "tax_rule_group_attachments_rule_group_id_tax_rule_groups_id_fk" FOREIGN KEY ("rule_group_id") REFERENCES "public"."tax_rule_groups"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "tax_rule_sets" ADD CONSTRAINT "tax_rule_sets_rule_group_id_tax_rule_groups_id_fk" FOREIGN KEY ("rule_group_id") REFERENCES "public"."tax_rule_groups"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "managed_corporations_is_active_idx" ON "managed_corporations" USING btree ("is_active");--> statement-breakpoint
-CREATE INDEX "managed_corporations_corporation_id_is_member_idx" ON "managed_corporations" USING btree ("corporation_id","is_member_corporation");--> statement-breakpoint
-CREATE INDEX "managed_corporations_corporation_id_is_special_purpose_idx" ON "managed_corporations" USING btree ("corporation_id","is_special_purpose");--> statement-breakpoint
-CREATE INDEX "tax_alerts_corporation_id_idx" ON "tax_alerts" USING btree ("corporation_id");--> statement-breakpoint
-CREATE INDEX "tax_alerts_status_idx" ON "tax_alerts" USING btree ("status");--> statement-breakpoint
-CREATE INDEX "tax_alerts_severity_idx" ON "tax_alerts" USING btree ("severity");--> statement-breakpoint
-CREATE INDEX "tax_alerts_last_triggered_at_idx" ON "tax_alerts" USING btree ("last_triggered_at");--> statement-breakpoint
-CREATE INDEX "tax_alerts_discord_delivery_status_idx" ON "tax_alerts" USING btree ("discord_delivery_status");--> statement-breakpoint
 CREATE INDEX "tax_assessment_lines_assessment_id_idx" ON "tax_assessment_lines" USING btree ("assessment_id");--> statement-breakpoint
 CREATE INDEX "tax_assessment_lines_ledger_entry_id_idx" ON "tax_assessment_lines" USING btree ("ledger_entry_id");--> statement-breakpoint
 CREATE INDEX "tax_assessment_lines_applied_rule_set_id_idx" ON "tax_assessment_lines" USING btree ("applied_rule_set_id");--> statement-breakpoint
