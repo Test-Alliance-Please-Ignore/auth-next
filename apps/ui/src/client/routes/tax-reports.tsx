@@ -1,25 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 
-import { TaxReportSelector } from '@/components/tax-reports/report-display'
 import {
-	TaxExportDialog,
 	TaxExportHistoryPanel,
 	TaxExportSchedulesPanel,
-	TaxPanelCard,
 	TaxReportFiltersCard,
-	TaxScheduleDialog,
 	TaxSummaryCards,
 } from '@/components/tax-reports/report-panels'
-import {
-	BillStatusReportSection,
-	ComplianceOverTimeReportSection,
-	DiscrepancyReportSection,
-	EssPayoutReportSection,
-	MissingEsiKeysReportSection,
-	TopIncomeSourcesReportSection,
-	TotalTaxesReportSection,
-} from '@/components/tax-reports/report-sections'
-import { Button } from '@/components/ui/button'
+import { TaxReportWorkspace } from '@/components/tax-reports/report-workspace'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
@@ -33,7 +20,7 @@ import {
 	useTaxExportSchedules,
 	useTaxSummaryReport,
 	useTaxWalletDivisions,
-} from '@/hooks/useCorporationTax'
+} from '@/hooks/corporation-tax'
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useTaxCorporationAccessScope } from '@/hooks/useTaxCorporationAccessScope'
@@ -60,7 +47,7 @@ const reportViewOptions: Array<{
 	label: string
 	description: string
 	exportable: boolean
-	requiresGlobalScope?: boolean
+	requiresAdminScope?: boolean
 }> = [
 	{
 		value: 'total_taxes_by_corporation',
@@ -103,7 +90,7 @@ const reportViewOptions: Array<{
 		label: 'Missing ESI Keys',
 		description: 'Corporations with incomplete ESI key or scope coverage.',
 		exportable: false,
-		requiresGlobalScope: true,
+		requiresAdminScope: true,
 	},
 ]
 
@@ -135,24 +122,22 @@ export default function TaxReportsPage() {
 	usePageTitle('Tax Reports')
 
 	const { data: globalCapabilities } = useTaxCapabilities()
-	const canViewWithUrn = globalCapabilities?.global.canAudit ?? false
-	const canExportWithUrn = globalCapabilities?.global.canAudit ?? false
-	const canManageSchedulesWithUrn = globalCapabilities?.global.canAudit ?? false
+	const canAdminScope = globalCapabilities?.global.canAudit ?? false
+	const canAdminExport = globalCapabilities?.global.canAudit ?? false
+	const canAdminManageSchedules = globalCapabilities?.global.canAudit ?? false
 	const {
 		corporationAccessLoading,
 		accessibleCorporations,
 		selectedCorporationId,
 		setSelectedCorporationId,
 		effectiveCorporationId,
-	} = useTaxCorporationAccessScope(canViewWithUrn)
+	} = useTaxCorporationAccessScope(canAdminScope)
 
 	const [selectedReportView, setSelectedReportView] = useState<TaxReportView>(
 		'total_taxes_by_corporation'
 	)
 	const [reportSelectorQuery, setReportSelectorQuery] = useState('Total Taxes')
 	const [incomeTypeQuery, setIncomeTypeQuery] = useState('')
-	const [exportModalOpen, setExportModalOpen] = useState(false)
-	const [scheduleModalOpen, setScheduleModalOpen] = useState(false)
 	const [selectedExportFormat, setSelectedExportFormat] = useState<TaxExportFormat>('csv')
 	const [selectedScheduleFormat, setSelectedScheduleFormat] = useState<TaxExportFormat>('csv')
 	const [scheduleName, setScheduleName] = useState('Weekly Tax Summary')
@@ -193,13 +178,13 @@ export default function TaxReportsPage() {
 	)
 	const canAuditScoped = scopedCapabilities?.scoped.canAudit ?? false
 	const canManageScoped = canAuditScoped
-	const canView = canViewWithUrn || canAuditScoped
-	const canExport = canExportWithUrn || canAuditScoped
-	const canCreateSchedule = canManageSchedulesWithUrn || canManageScoped
+	const canView = canAdminScope || canAuditScoped
+	const canExport = canAdminExport || canAuditScoped
+	const canCreateSchedule = canAdminManageSchedules || canManageScoped
 
 	const visibleReportOptions = useMemo(
-		() => reportViewOptions.filter((option) => !option.requiresGlobalScope || canViewWithUrn),
-		[canViewWithUrn]
+		() => reportViewOptions.filter((option) => !option.requiresAdminScope || canAdminScope),
+		[canAdminScope]
 	)
 	const selectedReportOption =
 		visibleReportOptions.find((option) => option.value === selectedReportView) ??
@@ -443,7 +428,7 @@ export default function TaxReportsPage() {
 					accessibleCorporations={accessibleCorporations}
 					effectiveCorporationId={effectiveCorporationId}
 					selectedCorporationId={selectedCorporationId}
-					canViewWithUrn={canViewWithUrn}
+					canAdminScope={canAdminScope}
 					onSelectCorporation={setSelectedCorporationId}
 					incomeTypeQuery={incomeTypeQuery}
 					onIncomeTypeQueryChange={setIncomeTypeQuery}
@@ -476,81 +461,60 @@ export default function TaxReportsPage() {
 					error={summaryError}
 				/>
 
-				<TaxPanelCard
-					title="Report"
-					description={selectedReportOption?.description}
-					actions={
-						<>
-							<Button
-								variant="outline"
-								onClick={() => setExportModalOpen(true)}
-								disabled={!canExport || !activeReportIsExportable}
-							>
-								Export
-							</Button>
-							<Button
-								variant="outline"
-								onClick={() => setScheduleModalOpen(true)}
-								disabled={!canCreateSchedule || !activeReportIsExportable}
-							>
-								Schedule
-							</Button>
-						</>
+				<TaxReportWorkspace
+					selectedReportView={selectedReportView}
+					onSelectReportView={setSelectedReportView}
+					reportSelectorQuery={reportSelectorQuery}
+					onReportSelectorQueryChange={setReportSelectorQuery}
+					visibleReportOptions={visibleReportOptions}
+					selectedReportDescription={selectedReportOption?.description}
+					canView={canView}
+					canAdminScope={canAdminScope}
+					canExport={canExport}
+					canCreateSchedule={canCreateSchedule}
+					activeReportIsExportable={activeReportIsExportable}
+					activeExportReportType={activeExportReportType}
+					reportWindowFilters={reportWindowFilters}
+					onTotalTaxesSortChange={(sortBy, sortDir) => setTotalTaxesExportSort({ sortBy, sortDir })}
+					onEssSortChange={(sortBy, sortDir) => setEssExportSort({ sortBy, sortDir })}
+					onDiscrepancySortChange={(sortBy, sortDir) =>
+						setDiscrepancyExportSort({ sortBy, sortDir })
 					}
-					contentClassName="space-y-4"
-				>
-					<TaxReportSelector
-						selectedReportView={selectedReportView}
-						onSelectReportView={(value) => setSelectedReportView(value as TaxReportView)}
-						reportSelectorQuery={reportSelectorQuery}
-						onReportSelectorQueryChange={setReportSelectorQuery}
-						visibleReportOptions={visibleReportOptions}
-					/>
-
-					{selectedReportView === 'total_taxes_by_corporation' ? (
-						<TotalTaxesReportSection
-							filters={reportWindowFilters}
-							enabled={canView}
-							onSortChange={(sortBy, sortDir) => setTotalTaxesExportSort({ sortBy, sortDir })}
-						/>
-					) : null}
-
-					{selectedReportView === 'top_income_sources' ? (
-						<TopIncomeSourcesReportSection filters={reportWindowFilters} enabled={canView} />
-					) : null}
-
-					{selectedReportView === 'ess_payout' ? (
-						<EssPayoutReportSection
-							filters={reportWindowFilters}
-							enabled={canView}
-							onSortChange={(sortBy, sortDir) => setEssExportSort({ sortBy, sortDir })}
-						/>
-					) : null}
-
-					{selectedReportView === 'discrepancies' ? (
-						<DiscrepancyReportSection
-							filters={{
-								corporationId: reportWindowFilters.corporationId,
-								fromDate: reportWindowFilters.fromDate,
-								toDate: reportWindowFilters.toDate,
-							}}
-							enabled={canView}
-							onSortChange={(sortBy, sortDir) => setDiscrepancyExportSort({ sortBy, sortDir })}
-						/>
-					) : null}
-
-					{selectedReportView === 'bill_status' ? (
-						<BillStatusReportSection filters={reportWindowFilters} enabled={canView} />
-					) : null}
-
-					{selectedReportView === 'compliance_over_time' ? (
-						<ComplianceOverTimeReportSection filters={reportWindowFilters} enabled={canView} />
-					) : null}
-
-					{selectedReportView === 'missing_esi_keys' ? (
-						<MissingEsiKeysReportSection enabled={canViewWithUrn} />
-					) : null}
-				</TaxPanelCard>
+					selectedExportFormat={selectedExportFormat}
+					onSelectExportFormat={setSelectedExportFormat}
+					selectedScheduleFormat={selectedScheduleFormat}
+					onSelectScheduleFormat={setSelectedScheduleFormat}
+					scheduleName={scheduleName}
+					onScheduleNameChange={setScheduleName}
+					scheduleFrequency={scheduleFrequency}
+					onSelectScheduleFrequency={setScheduleFrequency}
+					exportFormatOptions={exportFormatOptions}
+					scheduleFrequencyOptions={scheduleFrequencyOptions}
+					exportFilterSummary={exportFilterSummary}
+					exportSubmitting={requestExportMutation.isPending}
+					scheduleSubmitting={createScheduleMutation.isPending}
+					onSubmitExport={async () => {
+						if (!activeExportReportType) return
+						await requestExportMutation.mutateAsync({
+							corporationId: effectiveCorporationId,
+							format: selectedExportFormat,
+							reportType: activeExportReportType,
+							filters: exportFilters,
+							sourceEsiVersion: 'esi-v1',
+						})
+					}}
+					onSubmitSchedule={async () => {
+						if (!activeExportReportType) return
+						await createScheduleMutation.mutateAsync({
+							name: scheduleName.trim() || 'Tax Export Schedule',
+							corporationId: effectiveCorporationId,
+							format: selectedScheduleFormat,
+							frequency: scheduleFrequency,
+							reportType: activeExportReportType,
+							filters: exportFilters,
+						})
+					}}
+				/>
 
 				<TaxExportHistoryPanel
 					rows={exportsList}
@@ -575,64 +539,6 @@ export default function TaxReportsPage() {
 					error={schedulesError}
 					entityNames={entityNames}
 					createScheduleError={createScheduleMutation.error}
-				/>
-
-				<TaxExportDialog
-					open={exportModalOpen}
-					onOpenChange={setExportModalOpen}
-					selectedReportLabel={selectedReportOption?.label}
-					filterSummary={exportFilterSummary}
-					selectedExportFormat={selectedExportFormat}
-					onSelectExportFormat={setSelectedExportFormat}
-					exportFormatOptions={exportFormatOptions}
-					canExport={canExport}
-					canSubmit={Boolean(activeExportReportType)}
-					submitting={requestExportMutation.isPending}
-					onSubmit={() => {
-						if (!activeExportReportType) return
-						requestExportMutation.mutate(
-							{
-								corporationId: effectiveCorporationId,
-								format: selectedExportFormat,
-								reportType: activeExportReportType,
-								filters: exportFilters,
-								sourceEsiVersion: 'esi-v1',
-							},
-							{ onSuccess: () => setExportModalOpen(false) }
-						)
-					}}
-				/>
-
-				<TaxScheduleDialog
-					open={scheduleModalOpen}
-					onOpenChange={setScheduleModalOpen}
-					selectedReportLabel={selectedReportOption?.label}
-					filterSummary={exportFilterSummary}
-					scheduleName={scheduleName}
-					onScheduleNameChange={setScheduleName}
-					selectedScheduleFormat={selectedScheduleFormat}
-					onSelectScheduleFormat={setSelectedScheduleFormat}
-					scheduleFrequency={scheduleFrequency}
-					onSelectScheduleFrequency={setScheduleFrequency}
-					exportFormatOptions={exportFormatOptions}
-					scheduleFrequencyOptions={scheduleFrequencyOptions}
-					canCreateSchedule={canCreateSchedule}
-					canSubmit={Boolean(activeExportReportType)}
-					submitting={createScheduleMutation.isPending}
-					onSubmit={() => {
-						if (!activeExportReportType) return
-						createScheduleMutation.mutate(
-							{
-								name: scheduleName.trim() || 'Tax Export Schedule',
-								corporationId: effectiveCorporationId,
-								format: selectedScheduleFormat,
-								frequency: scheduleFrequency,
-								reportType: activeExportReportType,
-								filters: exportFilters,
-							},
-							{ onSuccess: () => setScheduleModalOpen(false) }
-						)
-					}}
 				/>
 			</Section>
 		</Container>

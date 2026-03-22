@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { resolveTaxCorporationScopeRows } from '../../client/hooks/useCorporationTax'
+import { resolveTaxCorporationScopeRows } from '../../client/hooks/corporation-tax'
 
 function makeRow(corporationId: string) {
 	return {
@@ -44,15 +44,15 @@ describe('resolveTaxCorporationScopeRows', () => {
 			demoRows: [],
 		})
 
-		expect(siteAdmin.scopeMode).toBe('global')
-		expect(taxAdmin.scopeMode).toBe('global')
-		expect(taxAuditor.scopeMode).toBe('global')
+		expect(siteAdmin.scopeMode).toBe('admin')
+		expect(taxAdmin.scopeMode).toBe('admin')
+		expect(taxAuditor.scopeMode).toBe('admin')
 		expect(siteAdmin.rows.map((row) => row.corporationId)).toEqual(['1001', '1002', '1003'])
 		expect(taxAdmin.rows.map((row) => row.corporationId)).toEqual(['1001', '1002', '1003'])
 		expect(taxAuditor.rows.map((row) => row.corporationId)).toEqual(['1001', '1002', '1003'])
 	})
 
-	it('tax-viewer URN users only see fallback visibility corps (membership-scoped)', () => {
+	it('tax-viewer URN users resolve to auditor scope and only see fallback visibility corps', () => {
 		const result = resolveTaxCorporationScopeRows({
 			canManageGlobal: false,
 			canAuditGlobal: false,
@@ -63,11 +63,11 @@ describe('resolveTaxCorporationScopeRows', () => {
 			demoRows: [],
 		})
 
-		expect(result.scopeMode).toBe('viewer')
+		expect(result.scopeMode).toBe('auditor')
 		expect(result.rows.map((row) => row.corporationId)).toEqual(['2200'])
 	})
 
-	it('ceo/director without URNs only see fallback leadership corps (not all member corps)', () => {
+	it('ceo/director without URNs resolve to viewer scope and only see fallback leadership corps', () => {
 		const result = resolveTaxCorporationScopeRows({
 			canManageGlobal: false,
 			canAuditGlobal: false,
@@ -79,7 +79,7 @@ describe('resolveTaxCorporationScopeRows', () => {
 			demoRows: [],
 		})
 
-		expect(result.scopeMode).toBe('self_service')
+		expect(result.scopeMode).toBe('viewer')
 		expect(result.rows.map((row) => row.corporationId)).toEqual(['3300', '3302'])
 		expect(result.rows.map((row) => row.corporationId)).not.toContain('3301')
 	})
@@ -119,7 +119,7 @@ describe('resolveTaxCorporationScopeRows', () => {
 			demoRows: [],
 		})
 
-		expect(result.scopeMode).toBe('viewer')
+		expect(result.scopeMode).toBe('auditor')
 		expect(result.rows.map((row) => row.corporationId)).toEqual(['7100', '7102'])
 	})
 

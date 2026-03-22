@@ -1,12 +1,22 @@
 import { RefreshCcw } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
 
 import { TaxCorporationScopeSelector } from '@/components/tax-corporation-scope-selector'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
 import {
@@ -17,7 +27,6 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
-import { useAuth } from '@/hooks/useAuth'
 import {
 	useAcknowledgeTaxAlert,
 	useResolveTaxAlert,
@@ -26,7 +35,8 @@ import {
 	useTaxCapabilities,
 	useTaxNotificationDestinations,
 	useUpsertTaxNotificationDestination,
-} from '@/hooks/useCorporationTax'
+} from '@/hooks/corporation-tax'
+import { useAuth } from '@/hooks/useAuth'
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useTaxCorporationAccessScope } from '@/hooks/useTaxCorporationAccessScope'
@@ -80,7 +90,7 @@ export default function TaxAlertsPage() {
 	const { user } = useAuth()
 	const isSiteAdmin = user?.is_admin === true
 	const { data: globalCapabilities } = useTaxCapabilities()
-	const canViewWithUrn = globalCapabilities?.global.canManage ?? false
+	const canAdminScope = globalCapabilities?.global.canManage ?? false
 	const canRetryFailedDeliveries = isSiteAdmin
 	const showDeliveryTelemetry = isSiteAdmin
 	const {
@@ -89,13 +99,14 @@ export default function TaxAlertsPage() {
 		selectedCorporationId,
 		setSelectedCorporationId,
 		effectiveCorporationId,
-	} = useTaxCorporationAccessScope(canViewWithUrn)
+	} = useTaxCorporationAccessScope(canAdminScope)
 
 	const [statusFilter, setStatusFilter] = useState<TaxAlertStatus | undefined>('open')
 	const [severityFilter, setSeverityFilter] = useState<TaxAlertSeverity | undefined>(undefined)
+	const [destinationModalOpen, setDestinationModalOpen] = useState(false)
+	const [destinationName, setDestinationName] = useState('')
 	const [guildId, setGuildId] = useState('')
 	const [channelId, setChannelId] = useState('')
-	const [destinationActive, setDestinationActive] = useState(true)
 
 	const { data: scopedCapabilities, isLoading: scopedCapabilitiesLoading } = useTaxCapabilities(
 		effectiveCorporationId,
@@ -106,7 +117,8 @@ export default function TaxAlertsPage() {
 		(globalCapabilities?.global.canManage ?? false) ||
 		(scopedCapabilities?.scoped.canManage ?? false)
 	const canResolve = canAcknowledge
-	const canView = canViewWithUrn || canViewScoped
+	const canView = canAdminScope || canViewScoped
+	const canConfigureDestination = canAdminScope
 
 	const {
 		data: alerts = [],
@@ -124,10 +136,8 @@ export default function TaxAlertsPage() {
 		isLoading: destinationLoading,
 		error: destinationError,
 	} = useTaxNotificationDestinations({
-		scope: 'corporation',
-		corporationId: effectiveCorporationId,
 		limit: 20,
-		enabled: canView && Boolean(effectiveCorporationId),
+		enabled: canConfigureDestination,
 	})
 
 	const corporationIds = alerts
@@ -144,14 +154,14 @@ export default function TaxAlertsPage() {
 	useEffect(() => {
 		const first = notificationDestinations[0]
 		if (!first) {
+			setDestinationName('')
 			setGuildId('')
 			setChannelId('')
-			setDestinationActive(true)
 			return
 		}
+		setDestinationName(first.name)
 		setGuildId(first.guildId)
 		setChannelId(first.channelId)
-		setDestinationActive(first.isActive)
 	}, [notificationDestinations])
 
 	if (!corporationAccessLoading && !scopedCapabilitiesLoading && !canView) {
@@ -167,7 +177,7 @@ export default function TaxAlertsPage() {
 		)
 	}
 
-	if (!canViewWithUrn && !corporationAccessLoading && !effectiveCorporationId) {
+	if (!canAdminScope && !corporationAccessLoading && !effectiveCorporationId) {
 		return (
 			<Container>
 				<Card>
@@ -187,6 +197,28 @@ export default function TaxAlertsPage() {
 		(alert) => alert.discordDeliveryStatus === 'failed'
 	).length
 	const criticalCount = alerts.filter((alert) => alert.severity === 'critical').length
+	const currentDestination = notificationDestinations[0]
+
+	const handleSaveDestination = async () => {
+		const trimmedName = destinationName.trim()
+		const trimmedGuildId = guildId.trim()
+		const trimmedChannelId = channelId.trim()
+		if (!trimmedName || !trimmedGuildId || !trimmedChannelId) {
+			toast.error('Name, guild ID, and channel ID are required.')
+			return
+		}
+		try {
+			await upsertDestinationMutation.mutateAsync({
+				name: trimmedName,
+				guildId: trimmedGuildId,
+				channelId: trimmedChannelId,
+			})
+			toast.success('Discord alert destination saved.')
+			setDestinationModalOpen(false)
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : 'Failed to save Discord destination.')
+		}
+	}
 
 	return (
 		<Container>
@@ -234,18 +266,44 @@ export default function TaxAlertsPage() {
 				</div>
 
 				<Card>
-					<CardHeader>
-						<CardTitle>Alert Inbox</CardTitle>
-						<CardDescription>
-							Filter and manage alert lifecycle for tax discrepancy and ingestion events.
-						</CardDescription>
+					<CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
+						<div className="space-y-1">
+							<CardTitle>Alert Inbox</CardTitle>
+							<CardDescription>
+								Filter and manage alert lifecycle for tax discrepancy and ingestion events.
+							</CardDescription>
+						</div>
+						{canConfigureDestination ? (
+							<div className="flex flex-col items-start gap-2 sm:items-end">
+								<div className="text-xs text-muted-foreground sm:text-right">
+									{destinationLoading
+										? 'Loading destination...'
+										: destinationError
+											? 'Failed to load destination'
+											: currentDestination
+												? `${currentDestination.name} • Guild ${currentDestination.guildId} • Channel ${currentDestination.channelId}`
+												: 'No Discord destination configured'}
+								</div>
+								<Button
+									variant="outline"
+									onClick={() => {
+										setDestinationName(currentDestination?.name ?? '')
+										setGuildId(currentDestination?.guildId ?? '')
+										setChannelId(currentDestination?.channelId ?? '')
+										setDestinationModalOpen(true)
+									}}
+								>
+									Edit Discord Destination
+								</Button>
+							</div>
+						) : null}
 					</CardHeader>
 					<CardContent className="space-y-4">
 						<TaxCorporationScopeSelector
 							corporations={accessibleCorporations}
 							effectiveCorporationId={effectiveCorporationId}
 							selectedCorporationId={selectedCorporationId}
-							canSelectAll={canViewWithUrn}
+							canSelectAll={canAdminScope}
 							onSelect={setSelectedCorporationId}
 						/>
 
@@ -369,97 +427,65 @@ export default function TaxAlertsPage() {
 					</CardContent>
 				</Card>
 
-				<Card>
-					<CardHeader>
-						<CardTitle>Discord Alert Destination</CardTitle>
-						<CardDescription>
-							Configure the corporation destination channel used for tax alerts.
-						</CardDescription>
-					</CardHeader>
-					<CardContent className="space-y-4">
-						{!effectiveCorporationId ? (
-							<div className="text-sm text-muted-foreground">
-								Select a corporation scope to configure destination settings.
-							</div>
-						) : (
-							<>
-								<div className="grid gap-3 md:grid-cols-2">
-									<div className="space-y-1">
-										<label className="text-xs font-medium text-muted-foreground">Guild ID</label>
-										<Input value={guildId} onChange={(event) => setGuildId(event.target.value)} />
-									</div>
-									<div className="space-y-1">
-										<label className="text-xs font-medium text-muted-foreground">Channel ID</label>
-										<Input
-											value={channelId}
-											onChange={(event) => setChannelId(event.target.value)}
-										/>
-									</div>
-								</div>
-								<label className="flex items-center gap-2 text-sm">
-									<input
-										type="checkbox"
-										checked={destinationActive}
-										onChange={(event) => setDestinationActive(event.target.checked)}
+				{canConfigureDestination ? (
+					<Dialog open={destinationModalOpen} onOpenChange={setDestinationModalOpen}>
+						<DialogContent>
+							<DialogHeader>
+								<DialogTitle>Edit Discord Destination</DialogTitle>
+								<DialogDescription>
+									Set the global destination used for all tax alerts.
+								</DialogDescription>
+							</DialogHeader>
+							<div className="space-y-4">
+								<div className="space-y-1.5">
+									<Label htmlFor="tax-alert-destination-name">Destination Name</Label>
+									<Input
+										id="tax-alert-destination-name"
+										value={destinationName}
+										onChange={(event) => setDestinationName(event.target.value)}
+										placeholder="Alliance Tax Alerts"
 									/>
-									Destination active
-								</label>
+								</div>
+								<div className="space-y-1.5">
+									<Label htmlFor="tax-alert-destination-guild-id">Guild ID</Label>
+									<Input
+										id="tax-alert-destination-guild-id"
+										value={guildId}
+										onChange={(event) => setGuildId(event.target.value)}
+										placeholder="Discord guild ID"
+									/>
+								</div>
+								<div className="space-y-1.5">
+									<Label htmlFor="tax-alert-destination-channel-id">Channel ID</Label>
+									<Input
+										id="tax-alert-destination-channel-id"
+										value={channelId}
+										onChange={(event) => setChannelId(event.target.value)}
+										placeholder="Discord channel ID"
+									/>
+								</div>
+							</div>
+							<DialogFooter>
 								<Button
+									variant="outline"
+									type="button"
+									onClick={() => setDestinationModalOpen(false)}
+								>
+									Cancel
+								</Button>
+								<Button
+									type="button"
 									disabled={upsertDestinationMutation.isPending}
-									onClick={() => {
-										if (!effectiveCorporationId || !guildId.trim() || !channelId.trim()) return
-										upsertDestinationMutation.mutate({
-											scope: 'corporation',
-											corporationId: effectiveCorporationId,
-											guildId: guildId.trim(),
-											channelId: channelId.trim(),
-											isActive: destinationActive,
-										})
-									}}
+									onClick={() => void handleSaveDestination()}
 								>
 									{upsertDestinationMutation.isPending
 										? 'Saving Destination...'
 										: 'Save Destination'}
 								</Button>
-
-								{destinationLoading ? (
-									<div className="text-sm text-muted-foreground">Loading destination...</div>
-								) : destinationError ? (
-									<div className="text-sm text-destructive">
-										{destinationError instanceof Error
-											? destinationError.message
-											: 'Failed to load destination'}
-									</div>
-								) : notificationDestinations.length === 0 ? (
-									<div className="text-sm text-muted-foreground">
-										No destination configured for this corporation.
-									</div>
-								) : (
-									<Table>
-										<TableHeader>
-											<TableRow>
-												<TableHead>Scope</TableHead>
-												<TableHead>Guild</TableHead>
-												<TableHead>Channel</TableHead>
-												<TableHead>Active</TableHead>
-											</TableRow>
-										</TableHeader>
-										<TableBody>
-											{notificationDestinations.map((destination) => (
-												<TableRow key={destination.id}>
-													<TableCell>{destination.scope}</TableCell>
-													<TableCell>{destination.guildId}</TableCell>
-													<TableCell>{destination.channelId}</TableCell>
-													<TableCell>{destination.isActive ? 'yes' : 'no'}</TableCell>
-												</TableRow>
-											))}
-										</TableBody>
-									</Table>
-								)}
-							</>
-						)}
-					</CardContent>
-				</Card>
+							</DialogFooter>
+						</DialogContent>
+					</Dialog>
+				) : null}
 			</Section>
 		</Container>
 	)

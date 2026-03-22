@@ -213,18 +213,14 @@ export interface ListTaxAuditLogFilters {
 }
 
 export interface ListTaxNotificationDestinationsFilters {
-	scope?: 'global' | 'corporation'
-	corporationId?: string
 	limit?: number
 	offset?: number
 }
 
 export interface UpsertTaxNotificationDestinationInput {
-	scope: 'global' | 'corporation'
-	corporationId?: string
+	name: string
 	guildId: string
 	channelId: string
-	isActive?: boolean
 }
 
 export interface CreateBillingConfigInput extends CreateTaxCorporationBillingConfigInput {}
@@ -839,8 +835,6 @@ export class CorporationTaxApiClient extends ApiClient {
 	): Promise<TaxNotificationDestination[]> {
 		if (this.shouldUseDemo()) return taxDemoApi.listNotificationDestinations(filters)
 		const params = new URLSearchParams()
-		if (filters?.scope) params.set('scope', filters.scope)
-		if (filters?.corporationId) params.set('corporationId', filters.corporationId)
 		if (filters?.limit !== undefined) params.set('limit', String(filters.limit))
 		if (filters?.offset !== undefined) params.set('offset', String(filters.offset))
 		const query = params.toString()

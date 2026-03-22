@@ -14,6 +14,10 @@ import {
 	taxRuleGroupAttachments,
 	taxRuleSets,
 } from '../db/schema'
+import {
+	formatCenti as formatMoneyCenti,
+	parseDecimalToCenti as parseMoneyToCenti,
+} from './tax-money'
 
 import type {
 	ListTaxAssessmentLinesFilters,
@@ -1096,34 +1100,11 @@ export class TaxAssessmentService {
 	}
 
 	private parseDecimalToCenti(value: string): bigint {
-		const trimmed = value.trim()
-		if (!trimmed) {
-			return 0n
-		}
-		const negative = trimmed.startsWith('-')
-		const normalized = negative ? trimmed.slice(1) : trimmed
-		const [wholePartRaw, fractionalRaw = ''] = normalized.split('.')
-		const wholePart = wholePartRaw.replace(/[^0-9]/g, '')
-		const fractional = fractionalRaw
-			.replace(/[^0-9]/g, '')
-			.padEnd(2, '0')
-			.slice(0, 2)
-		const whole = wholePart ? BigInt(wholePart) : 0n
-		const fraction = fractional ? BigInt(fractional) : 0n
-		const centi = whole * 100n + fraction
-		return negative ? -centi : centi
+		return parseMoneyToCenti(value)
 	}
 
 	private formatCenti(value: bigint): string {
-		const negative = value < 0n
-		const absolute = negative ? -value : value
-		const whole = absolute / 100n
-		const fraction = absolute % 100n
-		const prefix = negative ? '-' : ''
-		if (fraction === 0n) {
-			return `${prefix}${whole.toString()}`
-		}
-		return `${prefix}${whole.toString()}.${fraction.toString().padStart(2, '0')}`
+		return formatMoneyCenti(value)
 	}
 
 	private toAssessment(row: typeof taxAssessments.$inferSelect): TaxAssessment {

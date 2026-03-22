@@ -175,26 +175,8 @@ export class TaxAlertService {
 		actorUserId: string,
 		input: UpsertTaxNotificationDestinationInput
 	): Promise<TaxNotificationDestination> {
-		if (input.scope === 'corporation' && !input.corporationId) {
-			throw new Error('corporationId is required when scope is corporation')
-		}
-		if (input.scope === 'global' && input.corporationId) {
-			throw new Error('corporationId must be null for global scope')
-		}
-
-		const corporationId = input.scope === 'corporation' ? input.corporationId! : null
-		const scopeWhere =
-			corporationId === null
-				? and(
-						eq(taxNotificationDestinations.scope, input.scope),
-						isNull(taxNotificationDestinations.corporationId)
-					)
-				: and(
-						eq(taxNotificationDestinations.scope, input.scope),
-						eq(taxNotificationDestinations.corporationId, corporationId)
-					)
 		const existing = await this.db.query.taxNotificationDestinations.findFirst({
-			where: scopeWhere,
+			orderBy: [desc(taxNotificationDestinations.updatedAt)],
 		})
 
 		const now = new Date()
@@ -202,9 +184,9 @@ export class TaxAlertService {
 			const [updated] = await this.db
 				.update(taxNotificationDestinations)
 				.set({
+					name: input.name,
 					guildId: input.guildId,
 					channelId: input.channelId,
-					isActive: input.isActive ?? existing.isActive,
 					updatedByUserId: actorUserId,
 					updatedAt: now,
 				})
@@ -221,11 +203,9 @@ export class TaxAlertService {
 		const [created] = await this.db
 			.insert(taxNotificationDestinations)
 			.values({
-				scope: input.scope,
-				corporationId,
+				name: input.name,
 				guildId: input.guildId,
 				channelId: input.channelId,
-				isActive: input.isActive ?? true,
 				createdByUserId: actorUserId,
 				updatedByUserId: actorUserId,
 			})
@@ -241,18 +221,9 @@ export class TaxAlertService {
 	async listNotificationDestinations(
 		filters: ListTaxNotificationDestinationsFilters = {}
 	): Promise<TaxNotificationDestination[]> {
-		const conditions = []
-		if (filters.scope) {
-			conditions.push(eq(taxNotificationDestinations.scope, filters.scope))
-		}
-		if (filters.corporationId) {
-			conditions.push(eq(taxNotificationDestinations.corporationId, filters.corporationId))
-		}
-
 		const limit = Math.min(Math.max(filters.limit ?? 50, 1), 200)
 		const offset = Math.max(filters.offset ?? 0, 0)
 		const rows = await this.db.query.taxNotificationDestinations.findMany({
-			where: conditions.length > 0 ? and(...conditions) : undefined,
 			orderBy: [desc(taxNotificationDestinations.updatedAt)],
 			limit,
 			offset,
@@ -261,31 +232,12 @@ export class TaxAlertService {
 		return rows.map((row) => this.toDestination(row))
 	}
 
-	private async getDiscordDestination(corporationId: string | null): Promise<{
+	private async getDiscordDestination(): Promise<{
 		guildId: string
 		channelId: string
 	} | null> {
-		if (corporationId) {
-			const corp = await this.db.query.taxNotificationDestinations.findFirst({
-				where: and(
-					eq(taxNotificationDestinations.scope, 'corporation'),
-					eq(taxNotificationDestinations.corporationId, corporationId),
-					eq(taxNotificationDestinations.isActive, true)
-				),
-			})
-			if (corp) {
-				return {
-					guildId: corp.guildId,
-					channelId: corp.channelId,
-				}
-			}
-		}
-
 		const global = await this.db.query.taxNotificationDestinations.findFirst({
-			where: and(
-				eq(taxNotificationDestinations.scope, 'global'),
-				eq(taxNotificationDestinations.isActive, true)
-			),
+			orderBy: [desc(taxNotificationDestinations.updatedAt)],
 		})
 		if (!global) {
 			return null
@@ -297,13 +249,13 @@ export class TaxAlertService {
 	}
 
 	private async attemptDiscordDispatch(alert: typeof taxAlerts.$inferSelect) {
-		const destination = await this.getDiscordDestination(alert.corporationId)
+		const destination = await this.getDiscordDestination()
 		if (!destination) {
 			const [updated] = await this.db
 				.update(taxAlerts)
 				.set({
 					discordDeliveryStatus: 'skipped',
-					discordLastError: 'No active Discord destination configured',
+					discordLastError: 'No Discord destination configured',
 					nextRetryAt: null,
 					updatedAt: new Date(),
 				})
@@ -406,11 +358,9 @@ export class TaxAlertService {
 	): TaxNotificationDestination {
 		return {
 			id: row.id,
-			scope: row.scope as 'global' | 'corporation',
-			corporationId: row.corporationId,
+			name: row.name,
 			guildId: row.guildId,
 			channelId: row.channelId,
-			isActive: row.isActive,
 			createdByUserId: row.createdByUserId,
 			updatedByUserId: row.updatedByUserId,
 			createdAt: row.createdAt,

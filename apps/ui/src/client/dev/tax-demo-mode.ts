@@ -661,11 +661,11 @@ function buildDemoState(seed: number) {
 	const notificationDestinations = [
 		{
 			id: 'destination-1',
-			scope: 'corporation',
-			corporationId: '99010001',
+			name: 'Alliance Tax Alerts',
 			guildId: '111111',
 			channelId: '222222',
-			isActive: true,
+			createdByUserId: 'demo-admin',
+			updatedByUserId: 'demo-admin',
 			createdAt: addDays(demoStart, Math.max(0, demoDaySpan - 20)),
 			updatedAt: addDays(demoStart, Math.max(0, demoDaySpan - 10)),
 		},
@@ -1659,40 +1659,30 @@ export const taxDemoApi = {
 		})
 		return withLatency(applyLimitOffset(rows, filters?.limit, filters?.offset))
 	},
-	async listNotificationDestinations(filters?: {
-		corporationId?: string
-		limit?: number
-		offset?: number
-	}) {
-		const rows = ensureDemoState().notificationDestinations.filter((row) => {
-			if (filters?.corporationId && row.corporationId !== filters.corporationId) return false
-			return true
-		})
+	async listNotificationDestinations(filters?: { limit?: number; offset?: number }) {
+		const rows = ensureDemoState().notificationDestinations
 		return withLatency(applyLimitOffset(rows, filters?.limit, filters?.offset))
 	},
 	async upsertNotificationDestination(
 		input: Partial<TaxNotificationDestination> & {
-			corporationId?: string
+			name: string
 			guildId: string
 			channelId: string
-			scope: 'global' | 'corporation'
 		}
 	) {
 		const state = ensureDemoState()
-		const existing = state.notificationDestinations.find(
-			(row) => row.corporationId === (input.corporationId ?? null) && row.scope === input.scope
-		)
+		const existing = state.notificationDestinations[0]
 		if (existing) {
 			Object.assign(existing, input, { updatedAt: new Date() })
 			return withLatency(existing)
 		}
 		const created = {
 			id: `destination-${Date.now()}`,
-			scope: input.scope,
-			corporationId: input.corporationId ?? null,
+			name: input.name,
 			guildId: input.guildId,
 			channelId: input.channelId,
-			isActive: input.isActive ?? true,
+			createdByUserId: 'demo-admin',
+			updatedByUserId: 'demo-admin',
 			createdAt: new Date(),
 			updatedAt: new Date(),
 		} as TaxNotificationDestination

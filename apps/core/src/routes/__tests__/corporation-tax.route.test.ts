@@ -1854,7 +1854,7 @@ describe('corporation-tax routes', () => {
 				method: 'PUT',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
-					scope: 'global',
+					name: 'Alliance Tax Alerts',
 					guildId: 'not-snowflake',
 					channelId: '123456789012345678',
 				}),

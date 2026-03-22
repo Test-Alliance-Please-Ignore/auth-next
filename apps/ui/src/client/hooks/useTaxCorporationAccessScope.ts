@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react'
 
 import { useCorporationAccess } from '@/features/my-corporations'
-import { useTaxCorporations } from '@/hooks/useCorporationTax'
+import { useTaxCorporations } from '@/hooks/corporation-tax'
 import { useEntityNames } from '@/hooks/useEntityNames'
 
-export function useTaxCorporationAccessScope(allowGlobalScope: boolean) {
+export function useTaxCorporationAccessScope(canUseAdminScope: boolean) {
 	const { data: corporationAccess, isLoading: corporationAccessLoading } = useCorporationAccess()
 	const { data: taxCorporations = [], isLoading: taxCorporationsLoading } = useTaxCorporations({
 		limit: 1000,
@@ -53,17 +53,17 @@ export function useTaxCorporationAccessScope(allowGlobalScope: boolean) {
 		if (selectedCorporationId) {
 			return selectedCorporationId
 		}
-		if (!allowGlobalScope && accessibleCorporations.length > 0) {
+		if (!canUseAdminScope && accessibleCorporations.length > 0) {
 			return accessibleCorporations[0]?.corporationId
 		}
 		return undefined
-	}, [selectedCorporationId, allowGlobalScope, accessibleCorporations])
+	}, [selectedCorporationId, canUseAdminScope, accessibleCorporations])
 
 	return {
 		corporationAccess,
 		corporationAccessLoading:
 			corporationAccessLoading ||
-			(allowGlobalScope && (taxCorporationsLoading || entityNamesLoading)),
+			(canUseAdminScope && (taxCorporationsLoading || entityNamesLoading)),
 		accessibleCorporations,
 		selectedCorporationId,
 		setSelectedCorporationId,

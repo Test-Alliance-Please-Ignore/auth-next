@@ -14,7 +14,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
-import { useTaxAuditLog, useTaxCapabilities } from '@/hooks/useCorporationTax'
+import { useTaxAuditLog, useTaxCapabilities } from '@/hooks/corporation-tax'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useTaxCorporationAccessScope } from '@/hooks/useTaxCorporationAccessScope'
 import { formatTaxDateTime } from '@/lib/tax-date'
@@ -23,14 +23,14 @@ export default function TaxAuditLogPage() {
 	usePageTitle('Tax Audit Log')
 
 	const { data: globalCapabilities } = useTaxCapabilities()
-	const canViewWithUrn = globalCapabilities?.global.canManage ?? false
+	const canAdminScope = globalCapabilities?.global.canManage ?? false
 	const {
 		corporationAccessLoading,
 		accessibleCorporations,
 		selectedCorporationId,
 		setSelectedCorporationId,
 		effectiveCorporationId,
-	} = useTaxCorporationAccessScope(canViewWithUrn)
+	} = useTaxCorporationAccessScope(canAdminScope)
 	const [actorUserIdFilter, setActorUserIdFilter] = useState('')
 	const [actionFilter, setActionFilter] = useState('')
 
@@ -39,7 +39,7 @@ export default function TaxAuditLogPage() {
 		Boolean(effectiveCorporationId)
 	)
 	const canViewScoped = scopedCapabilities?.scoped.canManage ?? false
-	const canView = canViewWithUrn || canViewScoped
+	const canView = canAdminScope || canViewScoped
 
 	const {
 		data: auditLog = [],
@@ -80,7 +80,7 @@ export default function TaxAuditLogPage() {
 					corporations={accessibleCorporations}
 					effectiveCorporationId={effectiveCorporationId}
 					selectedCorporationId={selectedCorporationId}
-					canSelectAll={canViewWithUrn}
+					canSelectAll={canAdminScope}
 					onSelect={setSelectedCorporationId}
 				/>
 

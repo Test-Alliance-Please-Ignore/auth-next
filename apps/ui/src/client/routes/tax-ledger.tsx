@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import { TaxCorporationScopeSelector } from '@/components/tax-corporation-scope-selector'
-import { Button } from '@/components/ui/button'
+import { TaxReportDataGrid } from '@/components/tax-report-data-grid'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { DateRangeInput } from '@/components/ui/date-range-input'
@@ -11,18 +11,10 @@ import { PageHeader } from '@/components/ui/page-header'
 import { SearchSelect } from '@/components/ui/search-select'
 import { Section } from '@/components/ui/section'
 import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from '@/components/ui/table'
-import {
 	useTaxCapabilities,
 	useTaxLedgerEntries,
 	useTaxWalletDivisions,
-} from '@/hooks/useCorporationTax'
+} from '@/hooks/corporation-tax'
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useTaxCorporationAccessScope } from '@/hooks/useTaxCorporationAccessScope'
@@ -36,6 +28,9 @@ import {
 	TAX_REF_TYPE_OPTIONS,
 	TaxEntityDisplay,
 } from '@/lib/tax-display'
+
+import type { MRT_ColumnDef } from 'mantine-react-table'
+import type { TaxLedgerEntry } from '@repo/corporation-tax'
 
 const PAGE_SIZE = 50
 const DEFAULT_MONTH_RANGE = getCurrentMonthDateRange()
@@ -79,7 +74,7 @@ export default function TaxLedgerPage() {
 	usePageTitle('Tax Ledger')
 
 	const { data: globalCapabilities } = useTaxCapabilities()
-	const canViewWithUrn = globalCapabilities?.global.canManage ?? false
+	const canAdminScope = globalCapabilities?.global.canManage ?? false
 	const {
 		corporationAccessLoading,
 		accessibleCorporations,
@@ -87,6 +82,7 @@ export default function TaxLedgerPage() {
 		setSelectedCorporationId,
 	} = useTaxCorporationAccessScope(false)
 	const [page, setPage] = useState(0)
+	const [pageSize, setPageSize] = useState(PAGE_SIZE)
 	const [fromDate, setFromDate] = useState(DEFAULT_MONTH_RANGE.fromDate)
 	const [toDate, setToDate] = useState(DEFAULT_MONTH_RANGE.toDate)
 	const [divisionFilter, setDivisionFilter] = useState('')
@@ -104,7 +100,7 @@ export default function TaxLedgerPage() {
 		Boolean(effectiveCorporationId)
 	)
 	const canViewScoped = scopedCapabilities?.scoped.canManage ?? false
-	const canView = canViewWithUrn || canViewScoped
+	const canView = canAdminScope || canViewScoped
 
 	useEffect(() => {
 		if (!effectiveCorporationId) {
@@ -196,10 +192,14 @@ export default function TaxLedgerPage() {
 		fromDate: fromDateIso,
 		toDate: toDateIso,
 		minAmount: minAmountValue,
-		limit: PAGE_SIZE,
-		offset: page * PAGE_SIZE,
+		limit: pageSize,
+		offset: page * pageSize,
 		enabled: canView && Boolean(effectiveCorporationId),
 	})
+
+	const hasNextPage = ledgerEntries.length === pageSize
+	const approximateRowCount = page * pageSize + ledgerEntries.length + (hasNextPage ? 1 : 0)
+	const pageCount = Math.max(1, Math.ceil(approximateRowCount / pageSize))
 
 	const ledgerEntityIds = useMemo(() => {
 		const ids = new Set<string>()
@@ -213,6 +213,58 @@ export default function TaxLedgerPage() {
 	}, [ledgerEntries])
 
 	const { data: entityNames = {} } = useEntityNames(ledgerEntityIds, { enabled: canView })
+
+	const ledgerColumns = useMemo<MRT_ColumnDef<TaxLedgerEntry>[]>(
+		() => [
+			{
+				accessorKey: 'entryDate',
+				header: 'Date',
+				enableSorting: false,
+				Cell: ({ row }) => formatTaxDateTime(row.original.entryDate),
+			},
+			{
+				accessorKey: 'refType',
+				header: 'Income Type',
+				enableSorting: false,
+				Cell: ({ row }) => formatTaxRefTypeLabel(row.original.refType),
+			},
+			{
+				accessorKey: 'amount',
+				header: 'Amount',
+				enableSorting: false,
+				Cell: ({ row }) => formatTaxIskFull(row.original.amount),
+			},
+			{
+				accessorKey: 'division',
+				header: 'Division',
+				enableSorting: false,
+				Cell: ({ row }) => formatTaxDivisionLabel(row.original.division),
+			},
+			{
+				accessorKey: 'sourceType',
+				header: 'Source',
+				enableSorting: false,
+				Cell: ({ row }) => formatTaxLedgerSourceTypeLabel(row.original.sourceType),
+			},
+			{
+				accessorKey: 'firstPartyId',
+				header: 'Sender',
+				enableSorting: false,
+				Cell: ({ row }) => (
+					<TaxEntityDisplay entityId={row.original.firstPartyId} entityNames={entityNames} />
+				),
+			},
+			{
+				accessorKey: 'secondPartyId',
+				header: 'Recipient',
+				enableSorting: false,
+				Cell: ({ row }) => (
+					<TaxEntityDisplay entityId={row.original.secondPartyId} entityNames={entityNames} />
+				),
+			},
+		],
+		[entityNames]
+	)
 
 	if (!corporationAccessLoading && !scopedCapabilitiesLoading && !canView) {
 		return (
@@ -370,66 +422,19 @@ export default function TaxLedgerPage() {
 									? ledgerError.message
 									: 'Failed to load ledger entries'}
 							</div>
-						) : ledgerEntries.length === 0 ? (
-							<div className="py-8 text-sm text-muted-foreground">No ledger entries found.</div>
 						) : (
-							<>
-								<Table>
-									<TableHeader>
-										<TableRow>
-											<TableHead>Date</TableHead>
-											<TableHead>Income Type</TableHead>
-											<TableHead>Amount</TableHead>
-											<TableHead>Division</TableHead>
-											<TableHead>Source</TableHead>
-											<TableHead>Sender</TableHead>
-											<TableHead>Recipient</TableHead>
-										</TableRow>
-									</TableHeader>
-									<TableBody>
-										{ledgerEntries.map((entry) => (
-											<TableRow key={entry.id}>
-												<TableCell>{formatTaxDateTime(entry.entryDate)}</TableCell>
-												<TableCell>{formatTaxRefTypeLabel(entry.refType)}</TableCell>
-												<TableCell>{formatTaxIskFull(entry.amount)}</TableCell>
-												<TableCell>{formatTaxDivisionLabel(entry.division)}</TableCell>
-												<TableCell>{formatTaxLedgerSourceTypeLabel(entry.sourceType)}</TableCell>
-												<TableCell>
-													<TaxEntityDisplay
-														entityId={entry.firstPartyId}
-														entityNames={entityNames}
-													/>
-												</TableCell>
-												<TableCell>
-													<TaxEntityDisplay
-														entityId={entry.secondPartyId}
-														entityNames={entityNames}
-													/>
-												</TableCell>
-											</TableRow>
-										))}
-									</TableBody>
-								</Table>
-								<div className="mt-3 flex items-center justify-end gap-2">
-									<Button
-										size="sm"
-										variant="outline"
-										disabled={page === 0}
-										onClick={() => setPage((current) => Math.max(current - 1, 0))}
-									>
-										Previous
-									</Button>
-									<div className="text-xs text-muted-foreground">Page {page + 1}</div>
-									<Button
-										size="sm"
-										variant="outline"
-										disabled={ledgerEntries.length < PAGE_SIZE}
-										onClick={() => setPage((current) => current + 1)}
-									>
-										Next
-									</Button>
-								</div>
-							</>
+							<TaxReportDataGrid
+								columns={ledgerColumns}
+								rows={ledgerEntries}
+								emptyMessage="No ledger entries found."
+								pagination={{ pageIndex: page, pageSize }}
+								onPaginationChange={(next) => {
+									setPageSize(next.pageSize)
+									setPage(next.pageSize === pageSize ? Math.max(0, next.pageIndex) : 0)
+								}}
+								pageCount={pageCount}
+								rowCount={approximateRowCount}
+							/>
 						)}
 					</CardContent>
 				</Card>

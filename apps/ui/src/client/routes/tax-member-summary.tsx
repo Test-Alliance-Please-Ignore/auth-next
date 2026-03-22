@@ -22,7 +22,7 @@ import {
 	useTaxCorporations,
 	useTaxMemberSummary,
 	useTaxSummaryReport,
-} from '@/hooks/useCorporationTax'
+} from '@/hooks/corporation-tax'
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { formatTaxDateTime, getCurrentMonthDateRange } from '@/lib/tax-date'

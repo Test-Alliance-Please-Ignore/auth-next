@@ -1157,17 +1157,15 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 	): Promise<TaxNotificationDestination> {
 		const destination = await this.alertService.upsertNotificationDestination(actorUserId, input)
 		await this.auditService.logAction({
-			corporationId: destination.corporationId ?? undefined,
+			corporationId: undefined,
 			actorUserId,
 			action: 'tax.notification_destination.upserted',
 			before: null,
 			after: {
 				destinationId: destination.id,
-				scope: destination.scope,
-				corporationId: destination.corporationId,
+				name: destination.name,
 				guildId: destination.guildId,
 				channelId: destination.channelId,
-				isActive: destination.isActive,
 			},
 		})
 		return destination

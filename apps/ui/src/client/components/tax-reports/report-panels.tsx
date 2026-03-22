@@ -1,5 +1,5 @@
 import { TaxCorporationScopeSelector } from '@/components/tax-corporation-scope-selector'
-import { ExportHistoryGrid, ExportSchedulesGrid } from '@/components/tax-reports/report-view-grids'
+import { ExportHistoryGrid, ExportSchedulesGrid } from '@/components/tax-reports/grids'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -75,7 +75,7 @@ interface TaxReportFiltersCardProps {
 	accessibleCorporations: Array<{ corporationId: string; name: string }>
 	effectiveCorporationId?: string
 	selectedCorporationId?: string
-	canViewWithUrn: boolean
+	canAdminScope: boolean
 	onSelectCorporation: (corporationId: string | undefined) => void
 	incomeTypeQuery: string
 	onIncomeTypeQueryChange: (value: string) => void
@@ -115,7 +115,7 @@ export function TaxReportFiltersCard(props: TaxReportFiltersCardProps) {
 					corporations={props.accessibleCorporations}
 					effectiveCorporationId={props.effectiveCorporationId}
 					selectedCorporationId={props.selectedCorporationId}
-					canSelectAll={props.canViewWithUrn}
+					canSelectAll={props.canAdminScope}
 					onSelect={props.onSelectCorporation}
 					showLabel={false}
 					className="sm:max-w-none"

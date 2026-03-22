@@ -8,6 +8,7 @@ import {
 	taxMemberSummaryVersions,
 	taxSyncCheckpoints,
 } from '../db/schema'
+import { formatCenti, parseDecimalToCenti } from './tax-money'
 
 import type {
 	IngestTaxLedgerWindowInput,
@@ -893,44 +894,12 @@ export class TaxLedgerService {
 	}
 
 	private toSignedTransactionAmount(unitPrice: string, quantity: number, isBuy: boolean): string {
-		const unitPriceCenti = this.parseDecimalToCenti(unitPrice)
+		const unitPriceCenti = parseDecimalToCenti(unitPrice)
 		const normalizedQuantity = Number.isFinite(quantity) ? Math.trunc(quantity) : 0
 		const quantityInt = normalizedQuantity > 0 ? BigInt(normalizedQuantity) : 0n
 		const totalCenti = unitPriceCenti * quantityInt
 		const signedCenti = isBuy ? -totalCenti : totalCenti
-		return this.formatCenti(signedCenti)
-	}
-
-	private parseDecimalToCenti(value: string): bigint {
-		const trimmed = value.trim()
-		if (!trimmed) {
-			return 0n
-		}
-
-		const negative = trimmed.startsWith('-')
-		const normalized = negative ? trimmed.slice(1) : trimmed
-		const [wholePartRaw, fractionalRaw = ''] = normalized.split('.')
-		const wholePart = wholePartRaw.replace(/[^0-9]/g, '')
-		const fractional = fractionalRaw
-			.replace(/[^0-9]/g, '')
-			.padEnd(2, '0')
-			.slice(0, 2)
-		const whole = wholePart ? BigInt(wholePart) : 0n
-		const fraction = fractional ? BigInt(fractional) : 0n
-		const centi = whole * 100n + fraction
-		return negative ? -centi : centi
-	}
-
-	private formatCenti(value: bigint): string {
-		const negative = value < 0n
-		const absolute = negative ? -value : value
-		const whole = absolute / 100n
-		const fraction = absolute % 100n
-		const prefix = negative ? '-' : ''
-		if (fraction === 0n) {
-			return `${prefix}${whole.toString()}`
-		}
-		return `${prefix}${whole.toString()}.${fraction.toString().padStart(2, '0')}`
+		return formatCenti(signedCenti)
 	}
 
 	private detectEssBankType(description: string | null, reason: string | null): string | null {

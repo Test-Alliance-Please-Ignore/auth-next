@@ -14,6 +14,20 @@ import {
 	taxMemberSummaryVersions,
 	taxRuleGroupAttachments,
 } from '../db/schema'
+import {
+	formatCenti as formatMoneyCenti,
+	matchesMinAmountThreshold,
+	parseDecimalToCenti as parseMoneyToCenti,
+	safeParseDecimalToCenti as safeParseMoneyToCenti,
+} from './tax-money'
+import {
+	billStatusSortComparators,
+	missingEsiSortComparators,
+	resolveDiscrepancyOrderBy,
+	resolveEssOrderBy,
+	resolveTotalTaxesOrderBy,
+} from './tax-report-ordering'
+import { toSortDirection } from './tax-report-sorting'
 
 import type {
 	ListTaxDiscrepancyReportFilters,
@@ -154,8 +168,7 @@ export class TaxReportService {
 		const offset = Math.max(filters.offset ?? 0, 0)
 		const limit = Math.min(Math.max(filters.limit ?? 50, 1), 200)
 		const sortBy = filters.sortBy ?? 'taxDue'
-		const sortDirection = this.toSortDirection(filters.sortDirection, 'desc')
-		const direction = sortDirection === 'asc' ? asc : desc
+		const sortDirection = toSortDirection(filters.sortDirection, 'desc')
 		const where = this.buildAssessmentWhere(filters, corporationIds, 'corporation')
 		const assessmentCountExpr = sql<number>`COUNT(*)`
 		const billedAssessmentCountExpr = sql<number>`SUM(CASE WHEN ${taxAssessments.billId} IS NOT NULL THEN 1 ELSE 0 END)`
@@ -169,46 +182,7 @@ export class TaxReportService {
 		const taxPaidExpr = sql<string>`COALESCE(SUM(CAST(${taxAssessments.taxPaid} AS numeric)), 0)::text`
 		const taxDeltaExpr = sql<string>`COALESCE(SUM(CAST(${taxAssessments.taxDelta} AS numeric)), 0)::text`
 		const lastAssessmentAtExpr = sql<Date | null>`MAX(${taxAssessments.taxPeriodEnd})`
-		const orderBy = (() => {
-			switch (sortBy) {
-				case 'corporationId':
-					return [direction(taxAssessments.corporationId)]
-				case 'assessmentCount':
-					return [
-						sortDirection === 'asc' ? sql`COUNT(*) ASC` : sql`COUNT(*) DESC`,
-						direction(taxAssessments.corporationId),
-					]
-				case 'taxPaid':
-					return [
-						sortDirection === 'asc'
-							? sql`COALESCE(SUM(CAST(${taxAssessments.taxPaid} AS numeric)), 0) ASC`
-							: sql`COALESCE(SUM(CAST(${taxAssessments.taxPaid} AS numeric)), 0) DESC`,
-						direction(taxAssessments.corporationId),
-					]
-				case 'taxDelta':
-					return [
-						sortDirection === 'asc'
-							? sql`COALESCE(SUM(CAST(${taxAssessments.taxDelta} AS numeric)), 0) ASC`
-							: sql`COALESCE(SUM(CAST(${taxAssessments.taxDelta} AS numeric)), 0) DESC`,
-						direction(taxAssessments.corporationId),
-					]
-				case 'lastAssessmentAt':
-					return [
-						sortDirection === 'asc'
-							? sql`MAX(${taxAssessments.taxPeriodEnd}) ASC`
-							: sql`MAX(${taxAssessments.taxPeriodEnd}) DESC`,
-						direction(taxAssessments.corporationId),
-					]
-				case 'taxDue':
-				default:
-					return [
-						sortDirection === 'asc'
-							? sql`COALESCE(SUM(CAST(${taxAssessments.taxDue} AS numeric)), 0) ASC`
-							: sql`COALESCE(SUM(CAST(${taxAssessments.taxDue} AS numeric)), 0) DESC`,
-						direction(taxAssessments.corporationId),
-					]
-			}
-		})()
+		const orderBy = resolveTotalTaxesOrderBy(sortBy, sortDirection)
 
 		const [rows, totalRowsResult] = await Promise.all([
 			this.db
@@ -352,29 +326,9 @@ export class TaxReportService {
 		const offset = Math.max(filters.offset ?? 0, 0)
 		const limit = Math.min(Math.max(filters.limit ?? 50, 1), 200)
 		const sortBy = filters.sortBy ?? 'entryDate'
-		const sortDirection = this.toSortDirection(filters.sortDirection, 'desc')
-		const direction = sortDirection === 'asc' ? asc : desc
+		const sortDirection = toSortDirection(filters.sortDirection, 'desc')
 		const where = this.buildEssLedgerWhere(filters, corporationIds)
-		const orderBy = (() => {
-			switch (sortBy) {
-				case 'amount':
-					return [
-						sortDirection === 'asc'
-							? sql`CAST(${taxLedgerEntries.amount} AS numeric) ASC`
-							: sql`CAST(${taxLedgerEntries.amount} AS numeric) DESC`,
-						direction(taxLedgerEntries.entryDate),
-					]
-				case 'corporationId':
-					return [direction(taxLedgerEntries.corporationId), direction(taxLedgerEntries.entryDate)]
-				case 'division':
-					return [direction(taxLedgerEntries.division), direction(taxLedgerEntries.entryDate)]
-				case 'essBankType':
-					return [direction(taxLedgerEntries.essBankType), direction(taxLedgerEntries.entryDate)]
-				case 'entryDate':
-				default:
-					return [direction(taxLedgerEntries.entryDate)]
-			}
-		})()
+		const orderBy = resolveEssOrderBy(sortBy, sortDirection)
 		const [rows, totalRowsResult] = await Promise.all([
 			this.db.query.taxLedgerEntries.findMany({
 				where,
@@ -458,24 +412,8 @@ export class TaxReportService {
 		const offset = Math.max(filters.offset ?? 0, 0)
 		const limit = Math.min(Math.max(filters.limit ?? 50, 1), 200)
 		const sortBy = filters.sortBy ?? 'createdAt'
-		const sortDirection = this.toSortDirection(filters.sortDirection, 'desc')
-		const direction = sortDirection === 'asc' ? asc : desc
-		const orderBy = (() => {
-			switch (sortBy) {
-				case 'corporationId':
-					return [direction(taxDiscrepancies.corporationId), direction(taxDiscrepancies.createdAt)]
-				case 'severity':
-					return [direction(taxDiscrepancies.severity), direction(taxDiscrepancies.createdAt)]
-				case 'discrepancyType':
-					return [
-						direction(taxDiscrepancies.discrepancyType),
-						direction(taxDiscrepancies.createdAt),
-					]
-				case 'createdAt':
-				default:
-					return [direction(taxDiscrepancies.createdAt)]
-			}
-		})()
+		const sortDirection = toSortDirection(filters.sortDirection, 'desc')
+		const orderBy = resolveDiscrepancyOrderBy(sortBy, sortDirection)
 
 		const where = this.buildDiscrepancyWhere(filters, corporationIds)
 		const [rows, totalRowsResult] = await Promise.all([
@@ -545,25 +483,12 @@ export class TaxReportService {
 		const offset = Math.max(filters.offset ?? 0, 0)
 		const limit = Math.min(Math.max(filters.limit ?? 50, 1), 200)
 		const sortBy = filters.sortBy ?? 'lastVerified'
-		const sortDirection = this.toSortDirection(filters.sortDirection, 'desc')
+		const sortDirection = toSortDirection(filters.sortDirection, 'desc')
+		const comparator =
+			missingEsiSortComparators[sortBy as keyof typeof missingEsiSortComparators] ??
+			missingEsiSortComparators.lastVerified
 		const sortedRows = missingRows
-			.sort((a, b) => {
-				switch (sortBy) {
-					case 'corporationId':
-						return this.compareStrings(a.corporationId, b.corporationId, sortDirection)
-					case 'directorCount':
-						return this.compareNumbers(a.directorCount, b.directorCount, sortDirection)
-					case 'healthyDirectorCount':
-						return this.compareNumbers(
-							a.healthyDirectorCount,
-							b.healthyDirectorCount,
-							sortDirection
-						)
-					case 'lastVerified':
-					default:
-						return this.compareDatesNullable(a.lastVerified, b.lastVerified, sortDirection)
-				}
-			})
+			.sort((a, b) => comparator(a, b, sortDirection))
 			.slice(offset, offset + limit)
 		return {
 			rows: sortedRows,
@@ -625,30 +550,12 @@ export class TaxReportService {
 		const offset = Math.max(filters.offset ?? 0, 0)
 		const limit = Math.min(Math.max(filters.limit ?? 50, 1), 200)
 		const sortBy = filters.sortBy ?? 'dueDate'
-		const sortDirection = this.toSortDirection(filters.sortDirection, 'asc')
+		const sortDirection = toSortDirection(filters.sortDirection, 'asc')
+		const comparator =
+			billStatusSortComparators[sortBy as keyof typeof billStatusSortComparators] ??
+			billStatusSortComparators.dueDate
 		const pagedRows = grouped
-			.sort((a, b) => {
-				switch (sortBy) {
-					case 'corporationId':
-						return this.compareStrings(a.corporationId, b.corporationId, sortDirection)
-					case 'billStatus':
-						return this.compareStrings(a.billStatus, b.billStatus, sortDirection)
-					case 'issueDate':
-						return this.compareDatesNullable(a.sortIssueDate, b.sortIssueDate, sortDirection)
-					case 'dueDate':
-						return this.compareDatesNullable(a.sortDueDate, b.sortDueDate, sortDirection)
-					case 'assessmentCount':
-						return this.compareNumbers(a.assessmentCount, b.assessmentCount, sortDirection)
-					case 'taxPaid':
-						return this.compareBigInts(a.sortPaidCenti, b.sortPaidCenti, sortDirection)
-					case 'taxDelta':
-						return this.compareBigInts(a.sortDeltaCenti, b.sortDeltaCenti, sortDirection)
-					case 'taxDue':
-						return this.compareBigInts(a.sortDueCenti, b.sortDueCenti, sortDirection)
-					default:
-						return this.compareDatesNullable(a.sortDueDate, b.sortDueDate, sortDirection)
-				}
-			})
+			.sort((a, b) => comparator(a, b, sortDirection))
 			.slice(offset, offset + limit)
 			.map(
 				({
@@ -1351,12 +1258,8 @@ export class TaxReportService {
 	private async fetchAllProjectionRollupRows(
 		where: ReturnType<typeof and>
 	): Promise<Array<typeof taxMemberContributionProjectionRollups.$inferSelect>> {
-		const allRows: Array<typeof taxMemberContributionProjectionRollups.$inferSelect> = []
-		const pageSize = 10_000
-		let offset = 0
-
-		for (;;) {
-			const rows = await this.db.query.taxMemberContributionProjectionRollups.findMany({
+		return this.fetchAllRowsByOffset((offset, limit) =>
+			this.db.query.taxMemberContributionProjectionRollups.findMany({
 				where,
 				orderBy: [
 					asc(taxMemberContributionProjectionRollups.rollupDate),
@@ -1365,30 +1268,17 @@ export class TaxReportService {
 					asc(taxMemberContributionProjectionRollups.periodStart),
 					asc(taxMemberContributionProjectionRollups.periodEnd),
 				],
-				limit: pageSize,
+				limit,
 				offset,
 			})
-			if (rows.length === 0) {
-				break
-			}
-			allRows.push(...rows)
-			if (rows.length < pageSize) {
-				break
-			}
-			offset += rows.length
-		}
-		return allRows
+		)
 	}
 
 	private async fetchAllFinalizedRollupRows(
 		where: ReturnType<typeof and>
 	): Promise<Array<typeof taxMemberContributionFinalizedRollups.$inferSelect>> {
-		const allRows: Array<typeof taxMemberContributionFinalizedRollups.$inferSelect> = []
-		const pageSize = 10_000
-		let offset = 0
-
-		for (;;) {
-			const rows = await this.db.query.taxMemberContributionFinalizedRollups.findMany({
+		return this.fetchAllRowsByOffset((offset, limit) =>
+			this.db.query.taxMemberContributionFinalizedRollups.findMany({
 				where,
 				orderBy: [
 					asc(taxMemberContributionFinalizedRollups.rollupDate),
@@ -1397,9 +1287,21 @@ export class TaxReportService {
 					asc(taxMemberContributionFinalizedRollups.periodStart),
 					asc(taxMemberContributionFinalizedRollups.periodEnd),
 				],
-				limit: pageSize,
+				limit,
 				offset,
 			})
+		)
+	}
+
+	private async fetchAllRowsByOffset<Row>(
+		fetchPage: (offset: number, limit: number) => Promise<Row[]>,
+		pageSize = 10_000
+	): Promise<Row[]> {
+		const allRows: Row[] = []
+		let offset = 0
+
+		for (;;) {
+			const rows = await fetchPage(offset, pageSize)
 			if (rows.length === 0) {
 				break
 			}
@@ -1409,6 +1311,7 @@ export class TaxReportService {
 			}
 			offset += rows.length
 		}
+
 		return allRows
 	}
 
@@ -1462,41 +1365,22 @@ export class TaxReportService {
 	}
 
 	private buildLedgerWhere(filters: TaxReportWindowFilters, corporationIds: string[]) {
-		const conditions = [inArray(taxLedgerEntries.corporationId, corporationIds)]
-		if (filters.division !== undefined) {
-			conditions.push(eq(taxLedgerEntries.division, filters.division))
-		}
-		const refTypes = this.toRefTypes(filters)
-		if (refTypes && refTypes.length > 0) {
-			conditions.push(inArray(taxLedgerEntries.refType, refTypes))
-		}
-		if (filters.firstPartyId) {
-			conditions.push(eq(taxLedgerEntries.firstPartyId, filters.firstPartyId))
-		}
-		if (filters.secondPartyId) {
-			conditions.push(eq(taxLedgerEntries.secondPartyId, filters.secondPartyId))
-		}
-		if (filters.fromDate) {
-			conditions.push(gte(taxLedgerEntries.entryDate, filters.fromDate))
-		}
-		if (filters.toDate) {
-			conditions.push(lte(taxLedgerEntries.entryDate, filters.toDate))
-		}
-		const minAmountCenti =
-			filters.minAmount !== undefined ? this.safeParseDecimalToCenti(filters.minAmount) : null
-		if (minAmountCenti !== null) {
-			conditions.push(
-				sql`CAST(${taxLedgerEntries.amount} AS numeric) >= CAST(${this.formatCenti(minAmountCenti)} AS numeric)`
-			)
-		}
-		return and(...conditions)
+		return this.buildLedgerWhereInternal(filters, corporationIds, { essOnly: false })
 	}
 
 	private buildEssLedgerWhere(filters: TaxReportWindowFilters, corporationIds: string[]) {
-		const conditions = [
-			eq(taxLedgerEntries.isEss, true),
-			inArray(taxLedgerEntries.corporationId, corporationIds),
-		]
+		return this.buildLedgerWhereInternal(filters, corporationIds, { essOnly: true })
+	}
+
+	private buildLedgerWhereInternal(
+		filters: TaxReportWindowFilters,
+		corporationIds: string[],
+		options: { essOnly: boolean }
+	) {
+		const conditions = [inArray(taxLedgerEntries.corporationId, corporationIds)]
+		if (options.essOnly) {
+			conditions.push(eq(taxLedgerEntries.isEss, true))
+		}
 		if (filters.division !== undefined) {
 			conditions.push(eq(taxLedgerEntries.division, filters.division))
 		}
@@ -1543,85 +1427,6 @@ export class TaxReportService {
 		return and(...conditions)
 	}
 
-	private toSortDirection(
-		input: 'asc' | 'desc' | undefined,
-		defaultDirection: 'asc' | 'desc'
-	): 'asc' | 'desc' {
-		return input === 'asc' || input === 'desc' ? input : defaultDirection
-	}
-
-	private compareBigInts(a: bigint, b: bigint, direction: 'asc' | 'desc'): number {
-		if (a === b) {
-			return 0
-		}
-		const order = a > b ? 1 : -1
-		return direction === 'asc' ? order : -order
-	}
-
-	private compareNumbers(a: number, b: number, direction: 'asc' | 'desc'): number {
-		if (a === b) {
-			return 0
-		}
-		const order = a > b ? 1 : -1
-		return direction === 'asc' ? order : -order
-	}
-
-	private compareNumbersNullable(
-		a: number | null,
-		b: number | null,
-		direction: 'asc' | 'desc'
-	): number {
-		if (a === b) {
-			return 0
-		}
-		if (a === null) {
-			return 1
-		}
-		if (b === null) {
-			return -1
-		}
-		return this.compareNumbers(a, b, direction)
-	}
-
-	private compareStrings(a: string, b: string, direction: 'asc' | 'desc'): number {
-		const order = a.localeCompare(b)
-		return direction === 'asc' ? order : -order
-	}
-
-	private compareStringsNullable(
-		a: string | null,
-		b: string | null,
-		direction: 'asc' | 'desc'
-	): number {
-		if (a === b) {
-			return 0
-		}
-		if (a === null) {
-			return 1
-		}
-		if (b === null) {
-			return -1
-		}
-		return this.compareStrings(a, b, direction)
-	}
-
-	private compareDates(a: Date, b: Date, direction: 'asc' | 'desc'): number {
-		return this.compareNumbers(a.getTime(), b.getTime(), direction)
-	}
-
-	private compareDatesNullable(a: Date | null, b: Date | null, direction: 'asc' | 'desc'): number {
-		if (a === b) {
-			return 0
-		}
-		if (a === null) {
-			return 1
-		}
-		if (b === null) {
-			return -1
-		}
-		return this.compareDates(a, b, direction)
-	}
-
 	private toDateOrNull(value: Date | string | null | undefined): Date | null {
 		if (!value) {
 			return null
@@ -1658,27 +1463,13 @@ export class TaxReportService {
 	}
 
 	private matchesAmountThreshold(amount: string, minAmount?: string): boolean {
-		const amountCenti = this.safeParseDecimalToCenti(amount)
-		if (amountCenti === null) {
-			return true
-		}
-
-		const minAmountCenti = minAmount !== undefined ? this.safeParseDecimalToCenti(minAmount) : null
-		if (minAmountCenti !== null && amountCenti < minAmountCenti) {
-			return false
-		}
-
-		return true
+		return matchesMinAmountThreshold(amount, minAmount)
 	}
 
 	private safeParseDecimalToCenti(
 		value: string | number | bigint | null | undefined
 	): bigint | null {
-		try {
-			return this.parseDecimalToCenti(value)
-		} catch (_error) {
-			return null
-		}
+		return safeParseMoneyToCenti(value)
 	}
 
 	private async resolveReportCorporationIds(corporationId?: string): Promise<string[]> {
@@ -1783,32 +1574,10 @@ export class TaxReportService {
 	}
 
 	private parseDecimalToCenti(value: string | number | bigint | null | undefined): bigint {
-		if (value === null || value === undefined) {
-			return 0n
-		}
-		if (typeof value === 'bigint') {
-			return value * 100n
-		}
-		const normalized = typeof value === 'number' ? String(value) : value
-		const trimmed = normalized.trim()
-		if (!trimmed) {
-			return 0n
-		}
-		const sign = trimmed.startsWith('-') ? -1n : 1n
-		const unsigned = trimmed.replace(/^[+-]/, '')
-		const [wholePartRaw, fractionalPartRaw = ''] = unsigned.split('.')
-		const wholePart = wholePartRaw === '' ? '0' : wholePartRaw
-		const fractionalNormalized = (fractionalPartRaw + '00').slice(0, 2)
-		const whole = BigInt(wholePart)
-		const fractional = BigInt(fractionalNormalized)
-		return sign * (whole * 100n + fractional)
+		return parseMoneyToCenti(value)
 	}
 
 	private formatCenti(value: bigint): string {
-		const sign = value < 0n ? '-' : ''
-		const absolute = value < 0n ? -value : value
-		const whole = absolute / 100n
-		const fractional = absolute % 100n
-		return `${sign}${whole.toString()}.${fractional.toString().padStart(2, '0')}`
+		return formatMoneyCenti(value, { fixedScale: true })
 	}
 }

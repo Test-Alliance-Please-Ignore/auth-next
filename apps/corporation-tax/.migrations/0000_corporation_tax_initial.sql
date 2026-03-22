@@ -261,16 +261,13 @@ CREATE TABLE "tax_member_summary_versions" (
 --> statement-breakpoint
 CREATE TABLE "tax_notification_destinations" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"scope" text NOT NULL,
-	"corporation_id" text,
+	"name" text NOT NULL,
 	"guild_id" text NOT NULL,
 	"channel_id" text NOT NULL,
-	"is_active" boolean DEFAULT true NOT NULL,
 	"created_by_user_id" text NOT NULL,
 	"updated_by_user_id" text NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "tax_notification_destinations_scope_corp_unique" UNIQUE("scope","corporation_id")
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "tax_periods" (
@@ -391,9 +388,7 @@ CREATE INDEX "tax_member_proj_rollups_corp_period_idx" ON "tax_member_contributi
 CREATE INDEX "tax_member_proj_rollups_corp_char_period_idx" ON "tax_member_contribution_projection_rollups" USING btree ("corporation_id","character_id","period_start","period_end");--> statement-breakpoint
 CREATE INDEX "tax_member_proj_rollups_corp_ref_rollup_date_idx" ON "tax_member_contribution_projection_rollups" USING btree ("corporation_id","ref_type","rollup_date");--> statement-breakpoint
 CREATE INDEX "tax_member_summary_versions_updated_at_idx" ON "tax_member_summary_versions" USING btree ("updated_at");--> statement-breakpoint
-CREATE INDEX "tax_notification_destinations_scope_idx" ON "tax_notification_destinations" USING btree ("scope");--> statement-breakpoint
-CREATE INDEX "tax_notification_destinations_corporation_id_idx" ON "tax_notification_destinations" USING btree ("corporation_id");--> statement-breakpoint
-CREATE INDEX "tax_notification_destinations_active_idx" ON "tax_notification_destinations" USING btree ("is_active");--> statement-breakpoint
+CREATE INDEX "tax_notification_destinations_updated_at_idx" ON "tax_notification_destinations" USING btree ("updated_at");--> statement-breakpoint
 CREATE INDEX "tax_periods_corporation_id_idx" ON "tax_periods" USING btree ("corporation_id");--> statement-breakpoint
 CREATE INDEX "tax_periods_period_start_idx" ON "tax_periods" USING btree ("period_start");--> statement-breakpoint
 CREATE INDEX "tax_periods_period_end_idx" ON "tax_periods" USING btree ("period_end");--> statement-breakpoint

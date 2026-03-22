@@ -806,11 +806,9 @@ export interface ListTaxAlertsFilters {
 
 export interface TaxNotificationDestination {
 	id: string
-	scope: 'global' | 'corporation'
-	corporationId: string | null
+	name: string
 	guildId: string
 	channelId: string
-	isActive: boolean
 	createdByUserId: string
 	updatedByUserId: string
 	createdAt: Date
@@ -818,16 +816,12 @@ export interface TaxNotificationDestination {
 }
 
 export interface UpsertTaxNotificationDestinationInput {
-	scope: 'global' | 'corporation'
-	corporationId?: string | null
+	name: string
 	guildId: string
 	channelId: string
-	isActive?: boolean
 }
 
 export interface ListTaxNotificationDestinationsFilters {
-	scope?: 'global' | 'corporation'
-	corporationId?: string
 	limit?: number
 	offset?: number
 }

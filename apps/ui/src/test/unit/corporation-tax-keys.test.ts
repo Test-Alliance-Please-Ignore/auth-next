@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 
-import { corporationTaxKeys } from '../../client/hooks/useCorporationTax'
+import { corporationTaxKeys } from '../../client/hooks/corporation-tax'
 
 it('member summary query key changes when filter tuple changes', () => {
 	const baseKey = corporationTaxKeys.memberSummary('1234', {

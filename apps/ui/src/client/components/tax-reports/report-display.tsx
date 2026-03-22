@@ -1,4 +1,4 @@
-import { ComplianceGrid } from '@/components/tax-reports/report-view-grids'
+import { ComplianceGrid } from '@/components/tax-reports/grids'
 import { SearchSelect } from '@/components/ui/search-select'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatTaxIskCompact } from '@/lib/tax-display'

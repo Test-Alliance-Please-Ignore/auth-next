@@ -341,22 +341,15 @@ export const taxNotificationDestinations = pgTable(
 	'tax_notification_destinations',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
-		scope: text('scope').notNull(),
-		corporationId: text('corporation_id'),
+		name: text('name').notNull(),
 		guildId: text('guild_id').notNull(),
 		channelId: text('channel_id').notNull(),
-		isActive: boolean('is_active').notNull().default(true),
 		createdByUserId: text('created_by_user_id').notNull(),
 		updatedByUserId: text('updated_by_user_id').notNull(),
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
-	(table) => [
-		unique('tax_notification_destinations_scope_corp_unique').on(table.scope, table.corporationId),
-		index('tax_notification_destinations_scope_idx').on(table.scope),
-		index('tax_notification_destinations_corporation_id_idx').on(table.corporationId),
-		index('tax_notification_destinations_active_idx').on(table.isActive),
-	]
+	(table) => [index('tax_notification_destinations_updated_at_idx').on(table.updatedAt)]
 )
 
 export const taxAlerts = pgTable(
