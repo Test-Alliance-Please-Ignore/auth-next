@@ -205,75 +205,87 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		public env: Env
 	) {
 		super(state, env)
-
-		this.db = createDb(env.DATABASE_URL)
-		this.exclusionsService = new TaxCorporationExclusionsService(this.db)
-		this.ledgerService = new TaxLedgerService(
-			this.db,
-			env.EVE_CORPORATION_DATA,
-			env.EVE_CHARACTER_DATA
-		)
-		this.assessmentService = new TaxAssessmentService(this.db, env.EVE_CORPORATION_DATA)
-		this.alertService = new TaxAlertService(this.db, env.DISCORD)
-		this.billingService = new TaxBillingService(this.db, env.BILLS)
-		this.reportService = new TaxReportService(this.db, env.EVE_CORPORATION_DATA)
-		this.exportService = new TaxExportService(this.db, this.reportService)
-		this.auditService = new TaxAuditService(this.db)
-		this.ruleGroupService = new TaxRuleGroupService(this.db)
-		this.rulesService = new TaxRulesService(this.db)
-		this.rulesRpc = new TaxRulesRpc({
-			env,
-			exclusionsService: this.exclusionsService,
-			auditService: this.auditService,
-			ruleGroupService: this.ruleGroupService,
-			rulesService: this.rulesService,
-			getCorporationIdsForRuleGroup: this.getCorporationIdsForRuleGroup.bind(this),
-			touchRuleMembershipMutation: this.touchRuleMembershipMutation.bind(this),
-			toAuditPayload: this.toAuditPayload.bind(this),
-		})
-		this.ledgerRpc = new TaxLedgerRpc({
-			db: this.db,
-			ledgerService: this.ledgerService,
-			assessmentService: this.assessmentService,
-			auditService: this.auditService,
-			alertService: this.alertService,
-			rulesService: this.rulesService,
-			triggerEssQualityAlerts: this.triggerEssQualityAlerts.bind(this),
-			triggerUnexpectedIncomeRefTypeAlerts: this.triggerUnexpectedIncomeRefTypeAlerts.bind(this),
-			getCurrentMonthWindow: this.getCurrentMonthWindow.bind(this),
-			runAssessmentForPeriod: this.runAssessmentForPeriod.bind(this),
-			clearRuleMembershipMutation: this.clearRuleMembershipMutation.bind(this),
-			withCorporationIngestLock: this.withCorporationIngestLock.bind(this),
-			triggeredIngestOverlapWindowMs: TRIGGERED_INGEST_OVERLAP_WINDOW_MS,
-		})
-		this.billingRpc = new TaxBillingRpc({
-			billingService: this.billingService,
-			auditService: this.auditService,
-			toAuditPayload: this.toAuditPayload.bind(this),
-			triggerBillSyncFailureAlert: this.triggerBillSyncFailureAlert.bind(this),
-		})
-		this.reportsRpc = new TaxReportsRpc({
-			reportService: this.reportService,
-		})
-		this.operationsRpc = new TaxOperationsRpc({
-			db: this.db,
-			ledgerService: this.ledgerService,
-			exportService: this.exportService,
-			alertService: this.alertService,
-			auditService: this.auditService,
-			listProcessableCorporationIds: this.listProcessableCorporationIds.bind(this),
-			shouldRunDailyIngest: this.shouldRunDailyIngest.bind(this),
-			triggerProjectionRefreshFromWalletSync:
-				this.triggerProjectionRefreshFromWalletSync.bind(this),
-			buildScheduledProjectionRefreshInput: this.buildScheduledProjectionRefreshInput.bind(this),
-			runAssessmentForPeriod: this.runAssessmentForPeriod.bind(this),
-			triggerSchedulerOperationFailureAlert: this.triggerSchedulerOperationFailureAlert.bind(this),
-			triggerScheduledExportFailureAlerts: this.triggerScheduledExportFailureAlerts.bind(this),
-			triggerCorporationCoverageAlerts: this.triggerCorporationCoverageAlerts.bind(this),
-			getPreviousMonthWindow: this.getPreviousMonthWindow.bind(this),
-			runWithConcurrency: this.runWithConcurrency.bind(this),
-		})
-		this.installRpcErrorLogging()
+		try {
+			this.db = createDb(env.DATABASE_URL)
+			this.exclusionsService = new TaxCorporationExclusionsService(this.db)
+			this.ledgerService = new TaxLedgerService(
+				this.db,
+				env.EVE_CORPORATION_DATA,
+				env.EVE_CHARACTER_DATA
+			)
+			this.assessmentService = new TaxAssessmentService(this.db, env.EVE_CORPORATION_DATA)
+			this.alertService = new TaxAlertService(this.db, env.DISCORD)
+			this.billingService = new TaxBillingService(this.db, env.BILLS)
+			this.reportService = new TaxReportService(this.db, env.EVE_CORPORATION_DATA)
+			this.exportService = new TaxExportService(this.db, this.reportService)
+			this.auditService = new TaxAuditService(this.db)
+			this.ruleGroupService = new TaxRuleGroupService(this.db)
+			this.rulesService = new TaxRulesService(this.db)
+			this.rulesRpc = new TaxRulesRpc({
+				env,
+				exclusionsService: this.exclusionsService,
+				auditService: this.auditService,
+				ruleGroupService: this.ruleGroupService,
+				rulesService: this.rulesService,
+				getCorporationIdsForRuleGroup: this.getCorporationIdsForRuleGroup.bind(this),
+				touchRuleMembershipMutation: this.touchRuleMembershipMutation.bind(this),
+				toAuditPayload: this.toAuditPayload.bind(this),
+			})
+			this.ledgerRpc = new TaxLedgerRpc({
+				db: this.db,
+				ledgerService: this.ledgerService,
+				assessmentService: this.assessmentService,
+				auditService: this.auditService,
+				alertService: this.alertService,
+				rulesService: this.rulesService,
+				triggerEssQualityAlerts: this.triggerEssQualityAlerts.bind(this),
+				triggerUnexpectedIncomeRefTypeAlerts: this.triggerUnexpectedIncomeRefTypeAlerts.bind(this),
+				getCurrentMonthWindow: this.getCurrentMonthWindow.bind(this),
+				runAssessmentForPeriod: this.runAssessmentForPeriod.bind(this),
+				clearRuleMembershipMutation: this.clearRuleMembershipMutation.bind(this),
+				withCorporationIngestLock: this.withCorporationIngestLock.bind(this),
+				triggeredIngestOverlapWindowMs: TRIGGERED_INGEST_OVERLAP_WINDOW_MS,
+			})
+			this.billingRpc = new TaxBillingRpc({
+				billingService: this.billingService,
+				auditService: this.auditService,
+				toAuditPayload: this.toAuditPayload.bind(this),
+				triggerBillSyncFailureAlert: this.triggerBillSyncFailureAlert.bind(this),
+			})
+			this.reportsRpc = new TaxReportsRpc({
+				reportService: this.reportService,
+			})
+			this.operationsRpc = new TaxOperationsRpc({
+				db: this.db,
+				ledgerService: this.ledgerService,
+				exportService: this.exportService,
+				alertService: this.alertService,
+				auditService: this.auditService,
+				listProcessableCorporationIds: this.listProcessableCorporationIds.bind(this),
+				shouldRunDailyIngest: this.shouldRunDailyIngest.bind(this),
+				triggerProjectionRefreshFromWalletSync:
+					this.triggerProjectionRefreshFromWalletSync.bind(this),
+				buildScheduledProjectionRefreshInput: this.buildScheduledProjectionRefreshInput.bind(this),
+				runAssessmentForPeriod: this.runAssessmentForPeriod.bind(this),
+				triggerSchedulerOperationFailureAlert:
+					this.triggerSchedulerOperationFailureAlert.bind(this),
+				triggerScheduledExportFailureAlerts: this.triggerScheduledExportFailureAlerts.bind(this),
+				triggerCorporationCoverageAlerts: this.triggerCorporationCoverageAlerts.bind(this),
+				getPreviousMonthWindow: this.getPreviousMonthWindow.bind(this),
+				runWithConcurrency: this.runWithConcurrency.bind(this),
+			})
+			this.installRpcErrorLogging()
+		} catch (error) {
+			this.logger.error('[CorporationTaxDO] constructor initialization failed', {
+				...toErrorLogDetails(error),
+				hasDatabaseUrl: Boolean(env.DATABASE_URL),
+				hasEveCorporationDataBinding: Boolean(env.EVE_CORPORATION_DATA),
+				hasEveCharacterDataBinding: Boolean(env.EVE_CHARACTER_DATA),
+				hasBillsBinding: Boolean(env.BILLS),
+				hasDiscordBinding: Boolean(env.DISCORD),
+			})
+			throw error
+		}
 	}
 
 	private installRpcErrorLogging(): void {
@@ -939,7 +951,11 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 				hasCorporationMembershipScope: status.hasCorporationMembershipScope,
 				grantedScopeCount: status.grantedScopeCount,
 			}
-		} catch (_error) {
+		} catch (error) {
+			this.logger.warn('[CorporationTaxDO] Failed to load corporation ESI auth status', {
+				corporationId,
+				...toErrorLogDetails(error),
+			})
 			return null
 		}
 	}
@@ -948,7 +964,11 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		try {
 			const stub = getStub<EveCorporationData>(this.env.EVE_CORPORATION_DATA, corporationId)
 			return await stub.getWalletDivisions(corporationId)
-		} catch (_error) {
+		} catch (error) {
+			this.logger.warn('[CorporationTaxDO] Failed to load wallet divisions', {
+				corporationId,
+				...toErrorLogDetails(error),
+			})
 			return []
 		}
 	}
@@ -1275,13 +1295,22 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 	}
 
 	async fetch(request: Request): Promise<Response> {
-		const url = new URL(request.url)
+		try {
+			const url = new URL(request.url)
 
-		if (url.pathname === '/health') {
-			return Response.json(await this.getHealth())
+			if (url.pathname === '/health') {
+				return Response.json(await this.getHealth())
+			}
+
+			return new Response('Corporation Tax Durable Object - Use RPC methods', { status: 200 })
+		} catch (error) {
+			this.logger.error('[CorporationTaxDO] fetch handler failed', {
+				...toErrorLogDetails(error),
+				requestUrl: request.url,
+				requestMethod: request.method,
+			})
+			throw error
 		}
-
-		return new Response('Corporation Tax Durable Object - Use RPC methods', { status: 200 })
 	}
 
 	private toAuditPayload(value: unknown): Record<string, unknown> | null {

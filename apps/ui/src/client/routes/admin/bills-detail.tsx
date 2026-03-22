@@ -158,6 +158,16 @@ export default function AdminBillsDetailPage() {
 						</div>
 
 						<div>
+							<h3 className="text-sm font-medium text-muted-foreground mb-1">Payee</h3>
+							<p className="text-lg">
+								{bill.payeeName ||
+									(bill.payeeId && bill.payeeType
+										? `${bill.payeeType.charAt(0).toUpperCase() + bill.payeeType.slice(1)} ${bill.payeeId}`
+										: '-')}
+							</p>
+						</div>
+
+						<div>
 							<h3 className="text-sm font-medium text-muted-foreground mb-1">Issuer</h3>
 							<p className="text-lg">{bill.issuerName || bill.issuerId}</p>
 						</div>

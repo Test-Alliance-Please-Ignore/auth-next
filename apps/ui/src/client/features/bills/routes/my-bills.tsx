@@ -5,6 +5,7 @@ import { BillListFilters } from '@/components/bills/bill-list-filters'
 import { BillListGrid } from '@/components/bills/bill-list-grid'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
+import { PrimaryButton } from '@/components/ui/primary-button'
 import { useDebounce } from '@/hooks/useDebounce'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
@@ -173,13 +174,9 @@ export default function MyBillsPage() {
 					pageCount={pageCount}
 					rowCount={billPage.data?.rowCount ?? 0}
 					renderActions={(bill) => (
-						<button
-							type="button"
-							onClick={() => navigate(`/my-bills/${bill.id}`)}
-							className="text-sm text-primary hover:underline"
-						>
+						<PrimaryButton size="sm" type="button" onClick={() => navigate(`/my-bills/${bill.id}`)}>
 							View
-						</button>
+						</PrimaryButton>
 					)}
 					emptyMessage="No bills found for the current filters."
 				/>
