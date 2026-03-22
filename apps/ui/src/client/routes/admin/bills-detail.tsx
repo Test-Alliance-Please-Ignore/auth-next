@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { GhostButton } from '@/components/ui/ghost-button'
 import { Progress } from '@/components/ui/progress'
 import {
 	Table,
@@ -28,12 +29,12 @@ export default function AdminBillsDetailPage() {
 					<div>
 						<h1 className="text-3xl font-bold gradient-text">Loading Bill...</h1>
 					</div>
-					<Button variant="outline" asChild>
+					<GhostButton asChild>
 						<Link to="/admin/bills">
 							<FileText className="mr-2 h-4 w-4" />
 							Back to Bills
 						</Link>
-					</Button>
+					</GhostButton>
 				</div>
 			</div>
 		)
@@ -49,12 +50,12 @@ export default function AdminBillsDetailPage() {
 							The bill you're looking for doesn't exist or you don't have permission to view it.
 						</p>
 					</div>
-					<Button variant="outline" asChild>
+					<GhostButton asChild>
 						<Link to="/admin/bills">
 							<FileText className="mr-2 h-4 w-4" />
 							Back to Bills
 						</Link>
-					</Button>
+					</GhostButton>
 				</div>
 			</div>
 		)
@@ -113,12 +114,12 @@ export default function AdminBillsDetailPage() {
 					<h1 className="text-3xl font-bold gradient-text">{bill.title}</h1>
 					<p className="text-muted-foreground mt-2">Bill ID: {bill.id}</p>
 				</div>
-				<Button variant="outline" asChild>
+				<GhostButton asChild>
 					<Link to="/admin/bills">
 						<FileText className="mr-2 h-4 w-4" />
 						Back to Bills
 					</Link>
-				</Button>
+				</GhostButton>
 			</div>
 
 			{/* Status Badge */}
@@ -318,9 +319,7 @@ export default function AdminBillsDetailPage() {
 						) : (
 							<div className="text-center py-8 text-muted-foreground">
 								<p>No payments have been made yet.</p>
-								<p className="text-sm mt-1">
-									Payments will appear here once they are processed.
-								</p>
+								<p className="text-sm mt-1">Payments will appear here once they are processed.</p>
 							</div>
 						)}
 					</CardContent>

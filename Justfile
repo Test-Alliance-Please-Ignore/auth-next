@@ -72,6 +72,8 @@ dev-local-init:
     exit 1
   fi
   bun run --cwd apps/core db:migrate
+  bun run --cwd apps/admin db:migrate
+  bun run --cwd apps/corporation-tax db:migrate
   echo "Local init complete. Run: just dev-local"
 
 # =============================== #
@@ -169,6 +171,7 @@ db-migrate-all:
   cd apps/fulcrum && bun run db:migrate
   cd apps/beancounter && bun run db:migrate
   cd apps/esi && bun run db:migrate
+  cd apps/corporation-tax && bun run db:migrate
   cd apps/donations && bun run db:migrate
   cd apps/postman && bun run db:migrate
   cd apps/mumble && bun run db:migrate

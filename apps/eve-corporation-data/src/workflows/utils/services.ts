@@ -3,6 +3,7 @@ import { getStub } from '@repo/do-utils'
 import { createDb } from '../../db'
 import { DirectorManager } from '../../services/director-manager'
 
+import type { CorporationTax } from '@repo/corporation-tax'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Env } from '../../context'
@@ -37,3 +38,9 @@ export function getGlobalCorporationDataStub(env: Env): EveCorporationData {
 	return getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, 'default')
 }
 
+/**
+ * Get the global corporation-tax Durable Object stub.
+ */
+export function getCorporationTaxStub(env: Env): CorporationTax {
+	return getStub<CorporationTax>(env.CORPORATION_TAX, 'default')
+}

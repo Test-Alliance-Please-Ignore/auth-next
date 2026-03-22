@@ -14,6 +14,7 @@ export type Env = SharedHonoEnv & {
 	/** Core worker service binding for RPC calls */
 	CORE: CoreWorker
 	EVE_CORPORATION_DATA: DurableObjectNamespace
+	CORPORATION_TAX: DurableObjectNamespace
 	EVE_TOKEN_STORE: DurableObjectNamespace
 	UNIVERSE: DurableObjectNamespace
 	/** KV cache for directors and other data */

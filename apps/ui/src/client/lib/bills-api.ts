@@ -7,6 +7,10 @@ import { ApiClient } from './api'
 
 import type {
 	Bill,
+	BillListPage,
+	BillListSortDirection,
+	BillListSortField,
+	BillPartyDirection,
 	BillSchedule,
 	BillStatistics,
 	BillTemplate,
@@ -15,6 +19,8 @@ import type {
 	CreateBillInput,
 	CreateScheduleInput,
 	CreateTemplateInput,
+	EntitySearchType,
+	EntityType,
 	ScheduleExecutionLog,
 	ScheduleStatistics,
 	UpdateBillInput,
@@ -34,21 +40,65 @@ export class BillsApiClient extends ApiClient {
 	async listBills(filters?: {
 		status?: string
 		payerId?: string
+		payeeId?: string
 		payerType?: string
+		payeeType?: string
 		issuerId?: string
+		dueAfter?: string
+		dueBefore?: string
+		createdAfter?: string
+		createdBefore?: string
+		sortBy?: BillListSortField
+		sortDir?: BillListSortDirection
 		limit?: number
 		offset?: number
-	}): Promise<BillWithDetails[]> {
+	}): Promise<BillListPage> {
 		const params = new URLSearchParams()
 		if (filters?.status) params.set('status', filters.status)
 		if (filters?.payerId) params.set('payerId', filters.payerId)
+		if (filters?.payeeId) params.set('payeeId', filters.payeeId)
 		if (filters?.payerType) params.set('payerType', filters.payerType)
+		if (filters?.payeeType) params.set('payeeType', filters.payeeType)
 		if (filters?.issuerId) params.set('issuerId', filters.issuerId)
+		if (filters?.dueAfter) params.set('dueAfter', filters.dueAfter)
+		if (filters?.dueBefore) params.set('dueBefore', filters.dueBefore)
+		if (filters?.createdAfter) params.set('createdAfter', filters.createdAfter)
+		if (filters?.createdBefore) params.set('createdBefore', filters.createdBefore)
+		if (filters?.sortBy) params.set('sortBy', filters.sortBy)
+		if (filters?.sortDir) params.set('sortDir', filters.sortDir)
 		if (filters?.limit) params.set('limit', String(filters.limit))
-		if (filters?.offset) params.set('offset', String(filters.offset))
+		if (filters?.offset !== undefined) params.set('offset', String(filters.offset))
 
 		const query = params.toString()
 		return this.get(`${BILLS_API_BASE}${query ? `?${query}` : ''}`)
+	}
+
+	async searchBillParties(params: {
+		q: string
+		direction?: BillPartyDirection
+		entityType?: EntityType
+		limit?: number
+	}): Promise<
+		Array<{ entityId: string; entityType: EntityType; usageCount: number; name: string | null }>
+	> {
+		const searchParams = new URLSearchParams()
+		searchParams.set('q', params.q)
+		if (params.direction) searchParams.set('direction', params.direction)
+		if (params.entityType) searchParams.set('entityType', params.entityType)
+		if (params.limit) searchParams.set('limit', String(params.limit))
+		return this.get(`${BILLS_API_BASE}/parties/search?${searchParams.toString()}`)
+	}
+
+	async searchEntities(params: {
+		q: string
+		entityType: EntitySearchType
+		limit?: number
+	}): Promise<Array<{ entityId: string; entityType: EntitySearchType; name: string | null }>> {
+		const searchParams = new URLSearchParams()
+		searchParams.set('q', params.q)
+		searchParams.set('entityType', params.entityType)
+		if (params.limit) searchParams.set('limit', String(params.limit))
+		return this.get(`${BILLS_API_BASE}/entities/search?${searchParams.toString()}`)
 	}
 
 	async createBill(data: CreateBillInput): Promise<Bill> {

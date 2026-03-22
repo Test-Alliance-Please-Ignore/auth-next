@@ -4,6 +4,9 @@ import { billsApi } from '@/lib/bills-api'
 
 import type {
 	Bill,
+	BillListSortDirection,
+	BillListSortField,
+	BillPartyDirection,
 	BillSchedule,
 	BillTemplate,
 	BillWithDetails,
@@ -11,6 +14,8 @@ import type {
 	CreateBillInput,
 	CreateScheduleInput,
 	CreateTemplateInput,
+	EntitySearchType,
+	EntityType,
 	UpdateBillInput,
 	UpdateScheduleInput,
 	UpdateTemplateInput,
@@ -51,8 +56,16 @@ export const scheduleKeys = {
 export function useBills(filters?: {
 	status?: string
 	payerId?: string
+	payeeId?: string
 	payerType?: string
+	payeeType?: string
 	issuerId?: string
+	dueAfter?: string
+	dueBefore?: string
+	createdAfter?: string
+	createdBefore?: string
+	sortBy?: BillListSortField
+	sortDir?: BillListSortDirection
 	limit?: number
 	offset?: number
 }) {
@@ -60,6 +73,46 @@ export function useBills(filters?: {
 		queryKey: billKeys.list(filters),
 		queryFn: () => billsApi.listBills(filters),
 		staleTime: 1000 * 30, // 30 seconds
+	})
+}
+
+export function useBillPartySearch(params: {
+	q: string
+	direction?: BillPartyDirection
+	entityType?: EntityType
+	limit?: number
+	enabled?: boolean
+}) {
+	return useQuery({
+		queryKey: [...billKeys.all, 'party-search', params] as const,
+		queryFn: () =>
+			billsApi.searchBillParties({
+				q: params.q,
+				direction: params.direction,
+				entityType: params.entityType,
+				limit: params.limit,
+			}),
+		enabled: params.enabled ?? params.q.trim().length >= 2,
+		staleTime: 1000 * 60 * 2,
+	})
+}
+
+export function useBillEntitySearch(params: {
+	q: string
+	entityType: EntitySearchType
+	limit?: number
+	enabled?: boolean
+}) {
+	return useQuery({
+		queryKey: [...billKeys.all, 'entity-search', params] as const,
+		queryFn: () =>
+			billsApi.searchEntities({
+				q: params.q,
+				entityType: params.entityType,
+				limit: params.limit,
+			}),
+		enabled: params.enabled ?? params.q.trim().length >= 2,
+		staleTime: 1000 * 60 * 2,
 	})
 }
 

@@ -4,7 +4,15 @@ import { NonRetryableError } from 'cloudflare:workflows'
 import { logger } from '@repo/hono-helpers'
 
 import { syncAssets } from './steps/assets'
-import { sendHrDepartedMessages, updateCoreLastSync, updateSyncTimestamps } from './steps/common'
+import {
+	clearTaxProjectionRetryIntent,
+	recordTaxProjectionRetryIntent,
+	replayTaxProjectionRetryIntent,
+	sendHrDepartedMessages,
+	triggerTaxProjectionRefresh,
+	updateCoreLastSync,
+	updateSyncTimestamps,
+} from './steps/common'
 import { fetchContracts, storeContracts } from './steps/contracts'
 import { recordDirectorSuccess, selectDirector } from './steps/directors'
 import { fetchIndustryJobs, storeIndustryJobs } from './steps/industry-jobs'
@@ -18,6 +26,11 @@ import { syncWalletJournal } from './steps/wallet-journal'
 import { syncWalletTransactions } from './steps/wallet-transactions'
 import { fetchWallets, storeWallets } from './steps/wallets'
 import { createShouldSyncPredicate } from './utils/should-sync'
+import { dispatchTaxProjectionRefresh } from './utils/tax-projection-dispatch'
+import {
+	buildTaxProjectionRefreshInput,
+	createTaxProjectionTriggerRunId,
+} from './utils/tax-projection-trigger'
 
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
 import type { EveCorporationSyncDataType } from '@repo/eve-corporation-data'
@@ -45,6 +58,7 @@ interface SyncStepResult<T extends EveCorporationSyncDataType> {
 export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorporationSyncParams> {
 	async run(event: WorkflowEvent<EveCorporationSyncParams>, step: WorkflowStep) {
 		const { corporationId, dataTypes, trigger } = event.payload
+		const workflowInstanceId = event.instanceId
 
 		logger.info('[EveCorporationSyncWorkflow] Starting sync', {
 			corporationId,
@@ -79,6 +93,19 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			characterId: directorCharacterId,
 			characterName: directorCharacterName,
 		} = director
+
+		await step.do('replay-tax-projection-retry-intent', { timeout: '30 seconds' }, async () => {
+			const replay = await replayTaxProjectionRetryIntent(this.env, corporationId)
+			if (replay.replayed) {
+				logger.info('[EveCorporationSyncWorkflow] Replay tax projection retry intent', {
+					corporationId,
+					succeeded: replay.succeeded,
+					retryCount: replay.retryCount,
+					reason: replay.reason,
+				})
+			}
+			return replay
+		})
 
 		// All step results - state is exclusively derived from step.do() returns
 		// to survive workflow hibernation
@@ -172,10 +199,19 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				'sync-wallet-journal',
 				{ ...STEP_RETRY_OPTIONS, timeout: '5 minutes' },
 				async () => {
-					await syncWalletJournal(this.env, corporationId, directorCharacterId)
+					const walletJournalResult = await syncWalletJournal(
+						this.env,
+						corporationId,
+						directorCharacterId
+					)
 					return {
 						dataType: 'wallet-journal' as const,
-						stats: {},
+						stats: {
+							walletJournalFetchedCount: walletJournalResult.totalEntries,
+							walletJournalPersistedNewRows: walletJournalResult.persistedNewRows,
+							walletJournalMaxId: walletJournalResult.maxJournalId,
+							walletJournalMaxDate: walletJournalResult.maxJournalDate,
+						},
 					}
 				}
 			)
@@ -186,10 +222,19 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				'sync-wallet-transactions',
 				{ ...STEP_RETRY_OPTIONS, timeout: '5 minutes' },
 				async () => {
-					await syncWalletTransactions(this.env, corporationId, directorCharacterId)
+					const walletTransactionsResult = await syncWalletTransactions(
+						this.env,
+						corporationId,
+						directorCharacterId
+					)
 					return {
 						dataType: 'wallet-transactions' as const,
-						stats: {},
+						stats: {
+							walletTransactionsFetchedCount: walletTransactionsResult.totalTransactions,
+							walletTransactionsPersistedNewRows: walletTransactionsResult.persistedNewRows,
+							walletTransactionsMaxId: walletTransactionsResult.maxTransactionId,
+							walletTransactionsMaxDate: walletTransactionsResult.maxTransactionDate,
+						},
 					}
 				}
 			)
@@ -314,6 +359,89 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			.filter((result): result is NonNullable<typeof result> => result !== null)
 			.reduce((acc, result) => ({ ...acc, ...result.stats }), {} as SyncStats)
 
+		const walletJournalFetched = walletJournalSync?.stats.walletJournalFetchedCount ?? 0
+		const walletTransactionsFetched =
+			walletTransactionsSync?.stats.walletTransactionsFetchedCount ?? 0
+		const walletJournalPersistedNewRows =
+			walletJournalSync?.stats.walletJournalPersistedNewRows ?? 0
+		const walletTransactionsPersistedNewRows =
+			walletTransactionsSync?.stats.walletTransactionsPersistedNewRows ?? 0
+		const taxProjectionTriggerRunId = createTaxProjectionTriggerRunId({
+			corporationId,
+			stats: {
+				walletJournalPersistedNewRows,
+				walletJournalMaxId: walletJournalSync?.stats.walletJournalMaxId ?? null,
+				walletJournalMaxDate: walletJournalSync?.stats.walletJournalMaxDate ?? null,
+				walletTransactionsPersistedNewRows,
+				walletTransactionsMaxId: walletTransactionsSync?.stats.walletTransactionsMaxId ?? null,
+				walletTransactionsMaxDate: walletTransactionsSync?.stats.walletTransactionsMaxDate ?? null,
+			},
+		})
+		const taxProjectionInput = buildTaxProjectionRefreshInput({
+			corporationId,
+			upstreamRunId: taxProjectionTriggerRunId,
+			triggeredAt: new Date(),
+			includeCharacterWallets: true,
+			stats: {
+				walletJournalPersistedNewRows,
+				walletJournalMaxId: walletJournalSync?.stats.walletJournalMaxId ?? null,
+				walletJournalMaxDate: walletJournalSync?.stats.walletJournalMaxDate ?? null,
+				walletTransactionsPersistedNewRows,
+				walletTransactionsMaxId: walletTransactionsSync?.stats.walletTransactionsMaxId ?? null,
+				walletTransactionsMaxDate: walletTransactionsSync?.stats.walletTransactionsMaxDate ?? null,
+			},
+		})
+
+		if (walletJournalSync || walletTransactionsSync) {
+			const taxProjectionDispatch = await dispatchTaxProjectionRefresh({
+				deps: {
+					trigger: async () => {
+						await step.do(
+							'trigger-tax-projection-refresh',
+							{
+								retries: { limit: 3, delay: '10 seconds', backoff: 'exponential' },
+								timeout: '1 minute',
+							},
+							() => triggerTaxProjectionRefresh(this.env, directorId, taxProjectionInput)
+						)
+					},
+					clearRetryIntent: () =>
+						step.do('clear-tax-projection-retry-intent', { timeout: '10 seconds' }, () =>
+							clearTaxProjectionRetryIntent(this.env, corporationId)
+						),
+					recordRetryIntent: (errorMessage) =>
+						step.do('record-tax-projection-retry-intent', { timeout: '30 seconds' }, () =>
+							recordTaxProjectionRetryIntent(
+								this.env,
+								corporationId,
+								directorId,
+								taxProjectionInput,
+								errorMessage
+							)
+						),
+				},
+			})
+
+			if (taxProjectionDispatch.outcome === 'trigger_failed') {
+				logger.error('[EveCorporationSyncWorkflow] Tax projection refresh trigger failed', {
+					corporationId,
+					workflowInstanceId,
+					taxProjectionTriggerRunId,
+					error: taxProjectionDispatch.errorMessage,
+				})
+			}
+		} else {
+			logger.info('[EveCorporationSyncWorkflow] Skipping tax projection trigger (no wallet rows)', {
+				corporationId,
+				workflowInstanceId,
+				taxProjectionTriggerRunId,
+				walletJournalFetched,
+				walletTransactionsFetched,
+				walletJournalPersistedNewRows,
+				walletTransactionsPersistedNewRows,
+			})
+		}
+
 		await step.do('update-sync-timestamps', {}, () =>
 			updateSyncTimestamps(this.env, corporationId, syncedDataTypes)
 		)
@@ -354,6 +482,9 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 		}
 		if (!this.env.EVE_CORPORATION_DATA) {
 			throw new NonRetryableError('EVE_CORPORATION_DATA binding is missing')
+		}
+		if (!this.env.CORPORATION_TAX) {
+			throw new NonRetryableError('CORPORATION_TAX binding is missing')
 		}
 		if (!this.env.CORE) {
 			throw new NonRetryableError('CORE service binding is missing')

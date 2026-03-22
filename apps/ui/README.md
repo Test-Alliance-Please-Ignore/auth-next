@@ -32,7 +32,6 @@ apps/ui/
 │   │       └── globals.css  # Tailwind & theme variables
 │   └── public/              # Static assets
 ├── index.html               # HTML entry point
-├── tailwind.config.ts       # Tailwind configuration
 ├── postcss.config.js        # PostCSS configuration
 ├── components.json          # shadcn/ui configuration
 └── wrangler.jsonc           # Cloudflare Workers config
@@ -131,7 +130,10 @@ The Cloudflare Workers Static Assets configuration automatically handles SPA rou
 
 ### Tailwind CSS v4
 
-This project uses Tailwind CSS v4 with CSS variables for theming. Customize the theme in `src/client/styles/globals.css`.
+This project uses Tailwind CSS v4 in CSS-first mode. Tailwind is loaded in
+`src/client/styles/globals.css` via `@import 'tailwindcss';`, and theme tokens are
+defined there with `@theme inline`.
+There is no `tailwind.config.ts` in this app.
 
 ### Theme Variables
 

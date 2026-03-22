@@ -1,5 +1,7 @@
 import { Component } from 'react'
 
+import { PrimaryButton } from '@/components/ui/primary-button'
+
 import type { ErrorInfo, ReactNode } from 'react'
 
 const RELOAD_COUNT_KEY = 'errorBoundary_reloadCount'
@@ -51,14 +53,14 @@ export class ErrorBoundary extends Component<Props, State> {
 			if (reloadCount >= MAX_RELOADS) {
 				console.error(
 					`ErrorBoundary: Max reload attempts (${MAX_RELOADS}) reached for chunk load error`,
-					error,
+					error
 				)
 				return
 			}
 
 			console.warn(
 				`ErrorBoundary caught chunk load error, reloading page (attempt ${reloadCount + 1}/${MAX_RELOADS})...`,
-				error,
+				error
 			)
 			sessionStorage.setItem(RELOAD_COUNT_KEY, String(reloadCount + 1))
 			window.location.reload()
@@ -93,12 +95,7 @@ export class ErrorBoundary extends Component<Props, State> {
 								We tried to reload the page automatically but the problem persists. This may be a
 								temporary network issue.
 							</p>
-							<button
-								onClick={this.handleManualReload}
-								className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-							>
-								Try Again
-							</button>
+							<PrimaryButton onClick={this.handleManualReload}>Try Again</PrimaryButton>
 						</div>
 					</div>
 				)
@@ -123,12 +120,7 @@ export class ErrorBoundary extends Component<Props, State> {
 						<p className="text-muted-foreground mb-4">
 							An unexpected error occurred. Please try refreshing the page.
 						</p>
-						<button
-							onClick={() => window.location.reload()}
-							className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-						>
-							Refresh Page
-						</button>
+						<PrimaryButton onClick={() => window.location.reload()}>Refresh Page</PrimaryButton>
 					</div>
 				</div>
 			)

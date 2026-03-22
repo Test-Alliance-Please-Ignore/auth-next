@@ -217,22 +217,33 @@ export class CoreDO extends DurableObject<Env> implements Core {
 			})
 		)
 
-		// Build result map
+		// Build per-user corporation lists from fetched character info.
 		for (const userId of userIds) {
-			const chars = charactersByUser.get(userId) || []
-			const corporations: Array<{ corporationId: string; corporationName: string }> = []
-
-			for (const char of chars) {
-				const info = characterInfoMap.get(char.characterId)
-				if (info) {
-					corporations.push({
-						corporationId: info.corporation_id,
+			const userCharactersForId = charactersByUser.get(userId) ?? []
+			const corporations = userCharactersForId
+				.map((char) => {
+					const info = characterInfoMap.get(char.characterId)
+					if (!info) {
+						return null
+					}
+					return {
+						corporationId: String(info.corporation_id),
 						corporationName: info.name,
-					})
-				}
-			}
+					}
+				})
+				.filter((corp): corp is NonNullable<typeof corp> => corp !== null)
 
-			result.set(userId, corporations)
+			// De-duplicate by corporation ID while preserving first-seen order.
+			const seen = new Set<string>()
+			const uniqueCorporations = corporations.filter((corp) => {
+				if (seen.has(corp.corporationId)) {
+					return false
+				}
+				seen.add(corp.corporationId)
+				return true
+			})
+
+			result.set(userId, uniqueCorporations)
 		}
 
 		return result

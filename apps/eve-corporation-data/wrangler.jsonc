@@ -35,6 +35,11 @@
 				"class_name": "EveCorporationData"
 			},
 			{
+				"name": "CORPORATION_TAX",
+				"class_name": "CorporationTax",
+				"script_name": "corporation-tax"
+			},
+			{
 				"name": "EVE_TOKEN_STORE",
 				"class_name": "EveTokenStore",
 				"script_name": "eve-token-store"

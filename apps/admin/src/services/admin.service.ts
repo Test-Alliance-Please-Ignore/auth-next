@@ -46,7 +46,7 @@ export class AdminService {
 		const result = await this.coreWorker.deleteUser(userId)
 
 		// 2. Log admin action
-		await this.logAdminAction(adminUserId, 'admin_user_deleted', {
+		await this.logAdminActionSafe(adminUserId, 'admin_user_deleted', {
 			targetUserId: userId,
 			characterIds: result.deletedCharacterIds,
 			tokensRevoked: result.tokensRevoked,
@@ -69,7 +69,7 @@ export class AdminService {
 		const result = await this.coreWorker.transferCharacterOwnership(characterId, newUserId)
 
 		// 2. Log admin action
-		await this.logAdminAction(adminUserId, 'admin_character_transferred', {
+		await this.logAdminActionSafe(adminUserId, 'admin_character_transferred', {
 			targetCharacterId: characterId,
 			targetUserId: newUserId,
 			oldUserId: result.oldUserId,
@@ -89,7 +89,7 @@ export class AdminService {
 		const result = await this.coreWorker.deleteCharacter(characterId)
 
 		// 2. Log admin action
-		await this.logAdminAction(adminUserId, 'admin_character_deleted', {
+		await this.logAdminActionSafe(adminUserId, 'admin_character_deleted', {
 			targetCharacterId: characterId,
 			targetUserId: result.userId,
 			tokensRevoked: result.tokensRevoked,
@@ -108,7 +108,7 @@ export class AdminService {
 		const result = await this.coreWorker.searchUsers(params)
 
 		// 2. Log admin view action
-		await this.logAdminAction(adminUserId, 'admin_user_viewed', {
+		await this.logAdminActionSafe(adminUserId, 'admin_user_viewed', {
 			search: params.search,
 			resultCount: result.users.length,
 		})
@@ -129,7 +129,7 @@ export class AdminService {
 		}
 
 		// 2. Log admin view action
-		await this.logAdminAction(adminUserId, 'admin_user_viewed', {
+		await this.logAdminActionSafe(adminUserId, 'admin_user_viewed', {
 			targetUserId: userId,
 		})
 
@@ -165,7 +165,7 @@ export class AdminService {
 		}
 
 		// 5. Log admin view action
-		await this.logAdminAction(adminUserId, 'admin_character_viewed', {
+		await this.logAdminActionSafe(adminUserId, 'admin_character_viewed', {
 			targetCharacterId: characterId,
 		})
 
@@ -280,5 +280,31 @@ export class AdminService {
 			ip: metadata.ip ?? null,
 			userAgent: metadata.userAgent ?? null,
 		})
+	}
+
+	/**
+	 * Best-effort audit logging.
+	 * Administrative operations should succeed even if the audit sink is temporarily unavailable.
+	 */
+	private async logAdminActionSafe(
+		adminUserId: string,
+		action: string,
+		metadata: {
+			targetUserId?: string
+			targetCharacterId?: string
+			ip?: string
+			userAgent?: string
+			[key: string]: unknown
+		}
+	): Promise<void> {
+		try {
+			await this.logAdminAction(adminUserId, action, metadata)
+		} catch (error) {
+			console.error('[AdminService] Failed to write admin audit log', {
+				adminUserId,
+				action,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
 	}
 }

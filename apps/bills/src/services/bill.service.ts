@@ -1,19 +1,31 @@
-import { and, eq, gte, lte, or, sql } from '@repo/db-utils'
+import { and, asc, desc, eq, gte, inArray, lte, or, sql } from '@repo/db-utils'
 
-import { billPayments, bills } from '../db/schema'
+import { billPayments, bills, billStatusEvents } from '../db/schema'
 import { calculateLateFee } from '../utils/late-fees'
 import { generatePaymentToken } from '../utils/token'
 import { generateUuidV7 } from '../utils/uuid'
 
+import type { SQL } from 'drizzle-orm'
 import type {
 	Bill,
+	BillExternalRef,
 	BillFilters,
+	BillIntegrationView,
+	BillListPage,
+	BillListQuery,
+	BillListScopeEntity,
+	BillMetadata,
+	BillPartySearchQuery,
+	BillPartySearchRow,
 	BillStatistics,
 	BillStatus,
+	BillStatusEvent,
+	BillStatusEventPage,
+	BillStatusEventPageQuery,
+	BillStatusEventType,
 	BillWithDetails,
 	CreateBillInput,
 	EntityType,
-	PaymentResponse,
 	RegenerateTokenResponse,
 	UpdateBillInput,
 } from '@repo/bills'
@@ -35,51 +47,195 @@ export class BillService {
 	 * Create a new bill
 	 */
 	async createBill(userId: string, data: CreateBillInput): Promise<Bill> {
-		console.log('[BillService.createBill] Starting bill creation', { userId, data })
+		return this.createBillInternal(userId, data)
+	}
+
+	/**
+	 * Create a bill from an external source idempotently.
+	 */
+	async createBillFromExternalSource(
+		userId: string,
+		externalRef: BillExternalRef,
+		data: CreateBillInput
+	): Promise<Bill> {
+		const sourceType = externalRef.sourceType.trim()
+		const sourceId = externalRef.sourceId.trim()
+		if (!sourceType || !sourceId) {
+			throw new Error('externalRef sourceType and sourceId are required')
+		}
+
+		const existing = await this.db.query.bills.findFirst({
+			where: and(eq(bills.externalSourceType, sourceType), eq(bills.externalSourceId, sourceId)),
+		})
+		if (existing) {
+			return this.toBillResponse(existing)
+		}
 
 		try {
-			const billId = generateUuidV7()
-			const paymentToken = generatePaymentToken()
-
-			console.log('[BillService.createBill] Generated IDs', { billId, paymentToken })
-
-			const insertData = {
-				id: billId,
-				issuerId: userId,
-				payerId: data.payerId,
-				payerType: data.payerType,
-				payeeId: data.payeeId,
-				payeeType: data.payeeType,
-				title: data.title,
-				description: data.description || null,
-				amount: data.amount,
-				lateFee: '0',
-				lateFeeType: data.lateFeeType || 'none',
-				lateFeeAmount: data.lateFeeAmount || '0',
-				lateFeeCompounding: data.lateFeeCompounding || 'none',
-				dueDate: typeof data.dueDate === 'string' ? new Date(data.dueDate) : data.dueDate,
-				status: 'draft' as const,
-				paymentToken,
-			}
-
-			console.log('[BillService.createBill] Insert data prepared', insertData)
-
-			const [bill] = await this.db.insert(bills).values(insertData).returning()
-
-			console.log('[BillService.createBill] Bill inserted successfully', { billId: bill.id })
-
-			const response = this.toBillResponse(bill)
-			console.log('[BillService.createBill] Returning response', { billId: response.id })
-
-			return response
-		} catch (error) {
-			console.error('[BillService.createBill] Error creating bill', {
-				error: error instanceof Error ? error.message : String(error),
-				stack: error instanceof Error ? error.stack : undefined,
-				userId,
-				data,
+			return await this.createBillInternal(userId, data, {
+				sourceType,
+				sourceId,
+				metadata: externalRef.metadata ?? null,
 			})
+		} catch (error) {
+			// Handle race conditions on unique external source key.
+			const raced = await this.db.query.bills.findFirst({
+				where: and(eq(bills.externalSourceType, sourceType), eq(bills.externalSourceId, sourceId)),
+			})
+			if (raced) {
+				return this.toBillResponse(raced)
+			}
 			throw error
+		}
+	}
+
+	async getBillIntegrationView(billId: string): Promise<BillIntegrationView | null> {
+		const bill = await this.db.query.bills.findFirst({
+			where: eq(bills.id, billId),
+			with: {
+				template: true,
+				schedule: true,
+				payments: true,
+			},
+		})
+		if (!bill) {
+			return null
+		}
+
+		const updatedBill = await this.updateLateFeeIfNeeded(bill)
+		return this.toBillWithDetailsResponse(updatedBill)
+	}
+
+	async listBillsByExternalSource(
+		sourceType: string,
+		sourceIds: string[]
+	): Promise<BillIntegrationView[]> {
+		const normalizedSourceType = sourceType.trim()
+		const normalizedSourceIds = sourceIds.map((sourceId) => sourceId.trim()).filter(Boolean)
+		if (!normalizedSourceType || normalizedSourceIds.length === 0) {
+			return []
+		}
+
+		const matchedBills = await this.db.query.bills.findMany({
+			where: and(
+				eq(bills.externalSourceType, normalizedSourceType),
+				inArray(bills.externalSourceId, normalizedSourceIds)
+			),
+			with: {
+				template: true,
+				schedule: true,
+				payments: true,
+			},
+			orderBy: (bills, { desc }) => [desc(bills.createdAt)],
+		})
+
+		const updatedResults = await Promise.all(
+			matchedBills.map((bill) => this.updateLateFeeIfNeeded(bill))
+		)
+		return updatedResults.map((bill) => this.toBillWithDetailsResponse(bill))
+	}
+
+	async getBillTimeline(billId: string): Promise<BillStatusEvent[]> {
+		const events = await this.db.query.billStatusEvents.findMany({
+			where: eq(billStatusEvents.billId, billId),
+			orderBy: (billStatusEvents, { asc }) => [asc(billStatusEvents.createdAt)],
+		})
+
+		return events.map((event) => ({
+			id: event.id,
+			billId: event.billId,
+			eventType: event.eventType,
+			fromStatus: event.fromStatus,
+			toStatus: event.toStatus,
+			actorUserId: event.actorUserId,
+			metadata: event.metadata ?? null,
+			createdAt: event.createdAt,
+		}))
+	}
+
+	async getBillTimelines(billIds: string[]): Promise<Record<string, BillStatusEvent[]>> {
+		const normalizedBillIds = Array.from(new Set(billIds.map((billId) => billId.trim()))).filter(
+			Boolean
+		)
+		if (normalizedBillIds.length === 0) {
+			return {}
+		}
+
+		const events = await this.db.query.billStatusEvents.findMany({
+			where: inArray(billStatusEvents.billId, normalizedBillIds),
+			orderBy: (billStatusEvents, { asc }) => [
+				asc(billStatusEvents.billId),
+				asc(billStatusEvents.createdAt),
+			],
+		})
+
+		const timelinesByBillId: Record<string, BillStatusEvent[]> = {}
+		for (const billId of normalizedBillIds) {
+			timelinesByBillId[billId] = []
+		}
+
+		for (const event of events) {
+			const bucket = timelinesByBillId[event.billId]
+			if (!bucket) {
+				continue
+			}
+			bucket.push({
+				id: event.id,
+				billId: event.billId,
+				eventType: event.eventType,
+				fromStatus: event.fromStatus,
+				toStatus: event.toStatus,
+				actorUserId: event.actorUserId,
+				metadata: event.metadata ?? null,
+				createdAt: event.createdAt,
+			})
+		}
+
+		return timelinesByBillId
+	}
+
+	async listBillStatusEventsPage(query: BillStatusEventPageQuery): Promise<BillStatusEventPage> {
+		const normalizedLimit = Number.isFinite(query.limit)
+			? Math.max(1, Math.min(200, Math.floor(query.limit)))
+			: 25
+		const normalizedOffset = Number.isFinite(query.offset)
+			? Math.max(0, Math.floor(query.offset))
+			: 0
+		const normalizedBillIds = [
+			...new Set(query.billIds.map((billId) => billId.trim()).filter(Boolean)),
+		]
+		if (normalizedBillIds.length === 0) {
+			return { rows: [], rowCount: 0 }
+		}
+
+		const countRows = await this.db
+			.select({ count: sql<number>`count(*)::int` })
+			.from(billStatusEvents)
+			.where(inArray(billStatusEvents.billId, normalizedBillIds))
+		const rowCount = countRows[0]?.count ?? 0
+		if (rowCount === 0) {
+			return { rows: [], rowCount }
+		}
+
+		const rows = await this.db.query.billStatusEvents.findMany({
+			where: inArray(billStatusEvents.billId, normalizedBillIds),
+			orderBy: (events, operators) => [operators.desc(events.createdAt), operators.desc(events.id)],
+			limit: normalizedLimit,
+			offset: normalizedOffset,
+		})
+
+		return {
+			rows: rows.map((event) => ({
+				id: event.id,
+				billId: event.billId,
+				eventType: event.eventType,
+				fromStatus: event.fromStatus,
+				toStatus: event.toStatus,
+				actorUserId: event.actorUserId,
+				metadata: event.metadata ?? null,
+				createdAt: event.createdAt,
+			})),
+			rowCount,
 		}
 	}
 
@@ -115,45 +271,17 @@ export class BillService {
 	 * List bills with filters
 	 */
 	async listBills(userId: string, filters: BillFilters = {}): Promise<BillWithDetails[]> {
-		const conditions = [
-			// User must be issuer or payer
-			or(eq(bills.issuerId, userId), eq(bills.payerId, userId)),
-		]
+		const conditions: SQL[] = []
+		const userAccessCondition = or(eq(bills.issuerId, userId), eq(bills.payerId, userId))
+		if (userAccessCondition) {
+			conditions.push(userAccessCondition)
+		}
 
-		// Apply filters
-		if (filters.status) {
-			conditions.push(eq(bills.status, filters.status))
-		}
-		if (filters.payerId) {
-			conditions.push(eq(bills.payerId, filters.payerId))
-		}
-		if (filters.issuerId) {
-			conditions.push(eq(bills.issuerId, filters.issuerId))
-		}
-		if (filters.payerType) {
-			conditions.push(eq(bills.payerType, filters.payerType))
-		}
-		if (filters.dueAfter) {
-			conditions.push(gte(bills.dueDate, filters.dueAfter))
-		}
-		if (filters.dueBefore) {
-			conditions.push(lte(bills.dueDate, filters.dueBefore))
-		}
-		if (filters.createdAfter) {
-			conditions.push(gte(bills.createdAt, filters.createdAfter))
-		}
-		if (filters.createdBefore) {
-			conditions.push(lte(bills.createdAt, filters.createdBefore))
-		}
-		if (filters.templateId) {
-			conditions.push(eq(bills.templateId, filters.templateId))
-		}
-		if (filters.scheduleId) {
-			conditions.push(eq(bills.scheduleId, filters.scheduleId))
-		}
+		conditions.push(...this.buildBillFilterConditions(filters))
+		const whereCondition = this.buildWhereCondition(conditions)
 
 		const results = await this.db.query.bills.findMany({
-			where: and(...conditions),
+			where: whereCondition,
 			orderBy: (bills, { desc }) => [desc(bills.createdAt)],
 			with: {
 				template: true,
@@ -168,6 +296,162 @@ export class BillService {
 		)
 
 		return updatedResults.map((bill) => this.toBillWithDetailsResponse(bill))
+	}
+
+	async listBillsPage(query: BillListQuery): Promise<BillListPage> {
+		const normalizedLimit = Number.isFinite(query.limit)
+			? Math.max(1, Math.min(200, Math.floor(query.limit)))
+			: 25
+		const normalizedOffset = Number.isFinite(query.offset)
+			? Math.max(0, Math.floor(query.offset))
+			: 0
+		const sortBy = query.sortBy ?? 'dueDate'
+		const sortDir = query.sortDir ?? 'asc'
+		const conditions: SQL[] = []
+
+		if (query.scope.mode === 'my') {
+			const scopeCondition = this.buildMyScopeCondition(
+				query.scope.issuerIds,
+				query.scope.partyEntities
+			)
+			conditions.push(scopeCondition)
+		}
+		conditions.push(...this.buildBillFilterConditions(query.filters ?? {}))
+		const whereCondition = this.buildWhereCondition(conditions)
+
+		const [countRow] = await this.db
+			.select({ rowCount: sql<number>`count(*)::int` })
+			.from(bills)
+			.where(whereCondition)
+		const rowCount = countRow?.rowCount ?? 0
+		if (rowCount === 0) {
+			return { rows: [], rowCount: 0 }
+		}
+
+		const results = await this.db.query.bills.findMany({
+			where: whereCondition,
+			orderBy: (table, ordering) => {
+				if (sortBy === 'createdAt') {
+					return [
+						sortDir === 'asc' ? ordering.asc(table.createdAt) : ordering.desc(table.createdAt),
+						ordering.desc(table.id),
+					]
+				}
+				if (sortBy === 'updatedAt') {
+					return [
+						sortDir === 'asc' ? ordering.asc(table.updatedAt) : ordering.desc(table.updatedAt),
+						ordering.desc(table.id),
+					]
+				}
+				if (sortBy === 'status') {
+					return [
+						sortDir === 'asc' ? ordering.asc(table.status) : ordering.desc(table.status),
+						ordering.desc(table.id),
+					]
+				}
+				if (sortBy === 'amount') {
+					const amountOrder =
+						sortDir === 'asc'
+							? asc(sql<number>`(${table.amount})::numeric`)
+							: desc(sql<number>`(${table.amount})::numeric`)
+					return [amountOrder, ordering.desc(table.id)]
+				}
+				return [
+					sortDir === 'asc' ? ordering.asc(table.dueDate) : ordering.desc(table.dueDate),
+					ordering.desc(table.id),
+				]
+			},
+			limit: normalizedLimit,
+			offset: normalizedOffset,
+			with: {
+				template: true,
+				schedule: true,
+				payments: true,
+			},
+		})
+		const updatedResults = await Promise.all(
+			results.map((bill) => this.updateLateFeeIfNeeded(bill))
+		)
+		return {
+			rows: updatedResults.map((bill) => this.toBillWithDetailsResponse(bill)),
+			rowCount,
+		}
+	}
+
+	async searchBillParties(query: BillPartySearchQuery): Promise<BillPartySearchRow[]> {
+		const normalizedLimit = Number.isFinite(query.limit)
+			? Math.max(1, Math.min(100, Math.floor(query.limit ?? 25)))
+			: 25
+		const direction = query.direction ?? 'any'
+		const normalizedEntityType = query.entityType
+		const normalizedQ = query.q?.trim()
+		const scopeConditions: SQL[] = []
+		if (query.scope.mode === 'my') {
+			scopeConditions.push(
+				this.buildMyScopeCondition(query.scope.issuerIds, query.scope.partyEntities)
+			)
+		}
+		const scopeWhere = this.buildSqlWhere(scopeConditions)
+
+		const payerSource = sql`
+			select
+				b.payer_id as entity_id,
+				b.payer_type::text as entity_type
+			from ${bills} b
+			${scopeWhere}
+			and b.payer_id is not null
+		`
+		const payeeSource = sql`
+			select
+				b.payee_id as entity_id,
+				b.payee_type::text as entity_type
+			from ${bills} b
+			${scopeWhere}
+			and b.payee_id is not null
+			and b.payee_type is not null
+		`
+		const partyRowsSql =
+			direction === 'payer'
+				? payerSource
+				: direction === 'payee'
+					? payeeSource
+					: sql`${payerSource} union all ${payeeSource}`
+
+		const postFilters: SQL[] = []
+		if (normalizedEntityType) {
+			postFilters.push(sql`entity_type = ${normalizedEntityType}`)
+		}
+		if (normalizedQ && normalizedQ.length > 0) {
+			postFilters.push(sql`entity_id ilike ${`%${normalizedQ}%`}`)
+		}
+		const postFilterSql = this.buildSqlWhere(postFilters)
+
+		const rows = await this.db.execute<{
+			entity_id: string
+			entity_type: string
+			usage_count: number
+		}>(sql`
+			with party_rows as (
+				${partyRowsSql}
+			)
+			select
+				entity_id,
+				entity_type,
+				count(*)::int as usage_count
+			from party_rows
+			${postFilterSql}
+			group by entity_id, entity_type
+			order by usage_count desc, entity_id asc
+			limit ${normalizedLimit}
+		`)
+
+		return rows.rows
+			.filter((row) => row.entity_id && row.entity_type)
+			.map((row) => ({
+				entityId: row.entity_id,
+				entityType: row.entity_type as BillPartySearchRow['entityType'],
+				usageCount: Number(row.usage_count || 0),
+			}))
 	}
 
 	/**
@@ -222,15 +506,23 @@ export class BillService {
 			throw new Error('Only draft bills can be issued')
 		}
 
-		const [updated] = await this.db
-			.update(bills)
-			.set({
-				status: 'issued',
-				updatedAt: new Date(),
-			})
-			.where(eq(bills.id, billId))
-			.returning()
+		const transitioned = await this.applyStatusTransitionAtomic({
+			billId,
+			fromStatus: bill.status,
+			toStatus: 'issued',
+			eventType: 'issued',
+			actorUserId: userId,
+		})
+		if (!transitioned) {
+			throw new Error('Bill status changed during issue; please retry')
+		}
 
+		const updated = await this.db.query.bills.findFirst({
+			where: eq(bills.id, billId),
+		})
+		if (!updated) {
+			throw new Error('Bill not found after issue')
+		}
 		return this.toBillResponse(updated)
 	}
 
@@ -258,15 +550,23 @@ export class BillService {
 			throw new Error('Bill is already cancelled')
 		}
 
-		const [updated] = await this.db
-			.update(bills)
-			.set({
-				status: 'cancelled',
-				updatedAt: new Date(),
-			})
-			.where(eq(bills.id, billId))
-			.returning()
+		const transitioned = await this.applyStatusTransitionAtomic({
+			billId,
+			fromStatus: bill.status,
+			toStatus: 'cancelled',
+			eventType: 'cancelled',
+			actorUserId: userId,
+		})
+		if (!transitioned) {
+			throw new Error('Bill status changed during cancel; please retry')
+		}
 
+		const updated = await this.db.query.bills.findFirst({
+			where: eq(bills.id, billId),
+		})
+		if (!updated) {
+			throw new Error('Bill not found after cancel')
+		}
 		return this.toBillResponse(updated)
 	}
 
@@ -331,6 +631,20 @@ export class BillService {
 			})
 			.returning()
 
+		await this.createStatusEvent({
+			billId: updatedBill.id,
+			eventType: 'payment_recorded',
+			fromStatus: null,
+			toStatus: null,
+			actorUserId: null,
+			metadata: {
+				amount: payment.amount,
+				paidById,
+				paidByType,
+				esiTransactionId: payment.esiTransactionId,
+			},
+		})
+
 		return payment
 	}
 
@@ -363,6 +677,14 @@ export class BillService {
 				updatedAt: new Date(),
 			})
 			.where(eq(bills.id, billId))
+
+		await this.createStatusEvent({
+			billId: bill.id,
+			eventType: 'payment_token_regenerated',
+			fromStatus: bill.status,
+			toStatus: bill.status,
+			actorUserId: userId,
+		})
 
 		return {
 			token: newToken,
@@ -413,33 +735,49 @@ export class BillService {
 	}
 
 	async markBillAsPaid(billId: string): Promise<void> {
-		await this.db
-			.update(bills)
-			.set({
-				status: 'paid',
-				updatedAt: new Date(),
+		const existingBill = await this.db.query.bills.findFirst({
+			where: eq(bills.id, billId),
+		})
+		if (!existingBill) {
+			throw new Error('Bill not found')
+		}
+		if (existingBill.status === 'paid') {
+			return
+		}
+
+		const transitioned = await this.applyStatusTransitionAtomic({
+			billId,
+			fromStatus: existingBill.status,
+			toStatus: 'paid',
+			eventType: 'paid',
+			actorUserId: null,
+			paidAt: new Date(),
+		})
+		if (!transitioned) {
+			const currentBill = await this.db.query.bills.findFirst({
+				where: eq(bills.id, billId),
 			})
-			.where(eq(bills.id, billId))
+			if (currentBill?.status === 'paid') {
+				return
+			}
+			throw new Error('Bill status changed during payment finalization; please retry')
+		}
 	}
 	/**
 	 * Get bill statistics for a user
 	 */
 	async getBillStatistics(userId: string, filters: BillFilters = {}): Promise<BillStatistics> {
-		const conditions = [or(eq(bills.issuerId, userId), eq(bills.payerId, userId))]
+		const conditions: SQL[] = []
+		const userAccessCondition = or(eq(bills.issuerId, userId), eq(bills.payerId, userId))
+		if (userAccessCondition) {
+			conditions.push(userAccessCondition)
+		}
 
-		// Apply filters
-		if (filters.status) {
-			conditions.push(eq(bills.status, filters.status))
-		}
-		if (filters.payerId) {
-			conditions.push(eq(bills.payerId, filters.payerId))
-		}
-		if (filters.issuerId) {
-			conditions.push(eq(bills.issuerId, filters.issuerId))
-		}
+		conditions.push(...this.buildBillFilterConditions(filters))
+		const whereCondition = this.buildWhereCondition(conditions)
 
 		const userBills = await this.db.query.bills.findMany({
-			where: and(...conditions),
+			where: whereCondition,
 		})
 
 		// Calculate statistics
@@ -484,6 +822,232 @@ export class BillService {
 		return stats
 	}
 
+	private async createBillInternal(
+		userId: string,
+		data: CreateBillInput,
+		externalRef?: {
+			sourceType: string
+			sourceId: string
+			metadata: BillMetadata | null
+		}
+	): Promise<Bill> {
+		const billId = generateUuidV7()
+		const paymentToken = generatePaymentToken()
+		const dueDate = typeof data.dueDate === 'string' ? new Date(data.dueDate) : data.dueDate
+
+		const [bill] = await this.db
+			.insert(bills)
+			.values({
+				id: billId,
+				issuerId: userId,
+				payerId: data.payerId,
+				payerType: data.payerType,
+				payeeId: data.payeeId,
+				payeeType: data.payeeType,
+				title: data.title,
+				description: data.description || null,
+				amount: data.amount,
+				lateFee: '0',
+				lateFeeType: data.lateFeeType || 'none',
+				lateFeeAmount: data.lateFeeAmount || '0',
+				lateFeeCompounding: data.lateFeeCompounding || 'none',
+				dueDate,
+				status: 'draft',
+				paymentToken,
+				externalSourceType: externalRef?.sourceType ?? null,
+				externalSourceId: externalRef?.sourceId ?? null,
+				externalMetadata: externalRef?.metadata ?? null,
+			})
+			.returning()
+
+		await this.createStatusEvent({
+			billId: bill.id,
+			eventType: 'created',
+			fromStatus: null,
+			toStatus: bill.status,
+			actorUserId: userId,
+			metadata: externalRef
+				? {
+						sourceType: externalRef.sourceType,
+						sourceId: externalRef.sourceId,
+					}
+				: null,
+		})
+
+		return this.toBillResponse(bill)
+	}
+
+	private buildWhereCondition(conditions: SQL[]): SQL | undefined {
+		if (conditions.length === 0) {
+			return undefined
+		}
+		if (conditions.length === 1) {
+			return conditions[0]
+		}
+		return and(...conditions)
+	}
+
+	private buildBillFilterConditions(filters: BillFilters): SQL[] {
+		const conditions: SQL[] = []
+		if (filters.status) {
+			conditions.push(eq(bills.status, filters.status))
+		}
+		if (filters.payerId) {
+			conditions.push(eq(bills.payerId, filters.payerId))
+		}
+		if (filters.payeeId) {
+			conditions.push(eq(bills.payeeId, filters.payeeId))
+		}
+		if (filters.issuerId) {
+			conditions.push(eq(bills.issuerId, filters.issuerId))
+		}
+		if (filters.payerType) {
+			conditions.push(eq(bills.payerType, filters.payerType))
+		}
+		if (filters.payeeType) {
+			conditions.push(eq(bills.payeeType, filters.payeeType))
+		}
+		if (filters.dueAfter) {
+			conditions.push(gte(bills.dueDate, filters.dueAfter))
+		}
+		if (filters.dueBefore) {
+			conditions.push(lte(bills.dueDate, filters.dueBefore))
+		}
+		if (filters.createdAfter) {
+			conditions.push(gte(bills.createdAt, filters.createdAfter))
+		}
+		if (filters.createdBefore) {
+			conditions.push(lte(bills.createdAt, filters.createdBefore))
+		}
+		if (filters.templateId) {
+			conditions.push(eq(bills.templateId, filters.templateId))
+		}
+		if (filters.scheduleId) {
+			conditions.push(eq(bills.scheduleId, filters.scheduleId))
+		}
+		return conditions
+	}
+
+	private buildMyScopeCondition(issuerIds: string[], partyEntities: BillListScopeEntity[]): SQL {
+		const normalizedIssuerIds = [...new Set(issuerIds.map((id) => id.trim()).filter(Boolean))]
+		const normalizedPartyEntities = partyEntities
+			.map((party) => ({ entityId: party.entityId.trim(), entityType: party.entityType }))
+			.filter((party) => party.entityId.length > 0)
+		const partyConditions: SQL[] = []
+		for (const party of normalizedPartyEntities) {
+			const payerMatch = and(
+				eq(bills.payerId, party.entityId),
+				eq(bills.payerType, party.entityType)
+			)
+			if (payerMatch) {
+				partyConditions.push(payerMatch)
+			}
+			// Group-scoped visibility only applies to payer entities.
+			if (party.entityType !== 'group') {
+				const payeeMatch = and(
+					eq(bills.payeeId, party.entityId),
+					eq(bills.payeeType, party.entityType)
+				)
+				if (payeeMatch) {
+					partyConditions.push(payeeMatch)
+				}
+			}
+		}
+		const accessConditions: SQL[] = []
+		if (normalizedIssuerIds.length > 0) {
+			accessConditions.push(inArray(bills.issuerId, normalizedIssuerIds))
+		}
+		accessConditions.push(...partyConditions)
+		if (accessConditions.length === 0) {
+			return sql`false`
+		}
+		const combined = or(...accessConditions)
+		return combined ?? sql`false`
+	}
+
+	private buildSqlWhere(conditions: SQL[]): SQL {
+		const normalized = conditions.filter(Boolean)
+		if (normalized.length === 0) {
+			return sql`where true`
+		}
+		return sql`where ${sql.join(normalized, sql` and `)}`
+	}
+
+	private async createStatusEvent(input: {
+		billId: string
+		eventType: BillStatusEventType
+		fromStatus: BillStatus | null
+		toStatus: BillStatus | null
+		actorUserId: string | null
+		metadata?: BillMetadata | null
+	}): Promise<void> {
+		await this.db.insert(billStatusEvents).values({
+			id: generateUuidV7(),
+			billId: input.billId,
+			eventType: input.eventType,
+			fromStatus: input.fromStatus,
+			toStatus: input.toStatus,
+			actorUserId: input.actorUserId,
+			metadata: input.metadata ?? null,
+		})
+	}
+
+	private async applyStatusTransitionAtomic(input: {
+		billId: string
+		fromStatus: BillStatus
+		toStatus: BillStatus
+		eventType: BillStatusEventType
+		actorUserId: string | null
+		metadata?: BillMetadata | null
+		paidAt?: Date
+		lateFee?: string
+	}): Promise<boolean> {
+		const transitionAt = new Date()
+		const paidAtSql = input.paidAt ? sql`, paid_at = ${input.paidAt}` : sql``
+		const lateFeeSql = input.lateFee !== undefined ? sql`, late_fee = ${input.lateFee}` : sql``
+		const metadataSql = input.metadata
+			? sql`${JSON.stringify(input.metadata)}::jsonb`
+			: sql`null::jsonb`
+
+		const result = await this.db.execute(sql`
+			with updated as (
+				update bills
+				set
+					status = ${input.toStatus}::bill_status,
+					updated_at = ${transitionAt}
+					${paidAtSql}
+					${lateFeeSql}
+				where id = ${input.billId}
+					and status = ${input.fromStatus}::bill_status
+				returning id
+			),
+			inserted as (
+				insert into bill_status_events (
+					id,
+					bill_id,
+					event_type,
+					from_status,
+					to_status,
+					actor_user_id,
+					metadata
+				)
+				select
+					${generateUuidV7()}::uuid,
+					u.id,
+					${input.eventType}::bill_status_event_type,
+					${input.fromStatus}::bill_status,
+					${input.toStatus}::bill_status,
+					${input.actorUserId},
+					${metadataSql}
+				from updated u
+			)
+			select id
+			from updated
+		`)
+
+		return result.rows.length > 0
+	}
+
 	/**
 	 * Update late fee if bill is overdue
 	 * Also updates status to 'overdue' if issued and past due date
@@ -502,17 +1066,30 @@ export class BillService {
 				lateFeeCompounding: bill.lateFeeCompounding,
 			})
 
-			const [updated] = await this.db
-				.update(bills)
-				.set({
-					status: 'overdue',
-					lateFee,
-					updatedAt: now,
+			const transitioned = await this.applyStatusTransitionAtomic({
+				billId: bill.id,
+				fromStatus: 'issued',
+				toStatus: 'overdue',
+				eventType: 'overdue',
+				actorUserId: null,
+				metadata: {
+					dueDate: bill.dueDate.toISOString(),
+				},
+				lateFee,
+			})
+			if (transitioned) {
+				const updated = await this.db.query.bills.findFirst({
+					where: eq(bills.id, bill.id),
 				})
-				.where(eq(bills.id, bill.id))
-				.returning()
+				if (updated) {
+					return updated
+				}
+			}
 
-			return updated
+			const current = await this.db.query.bills.findFirst({
+				where: eq(bills.id, bill.id),
+			})
+			return current ?? bill
 		}
 
 		// Update late fee for already overdue bills
@@ -567,6 +1144,9 @@ export class BillService {
 			status: bill.status,
 			paidAt: bill.paidAt,
 			paymentToken: bill.paymentToken,
+			externalSourceType: bill.externalSourceType,
+			externalSourceId: bill.externalSourceId,
+			externalMetadata: bill.externalMetadata ?? null,
 			createdAt: bill.createdAt,
 			updatedAt: bill.updatedAt,
 		}

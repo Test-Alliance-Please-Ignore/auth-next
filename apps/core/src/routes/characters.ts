@@ -1,4 +1,4 @@
-import { eq, ilike } from 'drizzle-orm'
+import { eq, ilike, or } from 'drizzle-orm'
 import { Hono } from 'hono'
 
 import { getStub } from '@repo/do-utils'
@@ -154,17 +154,26 @@ const app = new Hono<App>()
  */
 app.get('/search', requireAuth(), async (c) => {
 	const query = c.req.query('q')
+	const trimmedQuery = query?.trim() ?? ''
 	const db = c.get('db')
 
 	if (!db) {
 		return c.json({ error: 'Database not available' }, 500)
 	}
 
-	if (!query || query.length < 2) {
+	if (trimmedQuery.length < 2) {
 		return c.json({ error: 'Query must be at least 2 characters' }, 400)
 	}
 
 	try {
+		const isNumericQuery = /^[0-9]+$/.test(trimmedQuery)
+		const whereClause = isNumericQuery
+			? or(
+					eq(userCharacters.characterId, trimmedQuery),
+					ilike(userCharacters.characterName, `%${trimmedQuery}%`)
+				)
+			: ilike(userCharacters.characterName, `%${trimmedQuery}%`)
+
 		// Search for main characters matching the query
 		const results = await db
 			.select({
@@ -173,7 +182,7 @@ app.get('/search', requireAuth(), async (c) => {
 				characterName: userCharacters.characterName,
 			})
 			.from(userCharacters)
-			.where(ilike(userCharacters.characterName, `%${query}%`))
+			.where(whereClause)
 			.limit(20) // Limit for autocomplete performance
 
 		return c.json(results)

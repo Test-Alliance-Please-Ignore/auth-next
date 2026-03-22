@@ -7,9 +7,25 @@ import type { Env } from '../../../context'
 
 const WALLET_DIVISIONS = [1, 2, 3, 4, 5, 6, 7]
 
+function compareNumericStrings(left: string, right: string): number {
+	try {
+		const leftBigInt = BigInt(left)
+		const rightBigInt = BigInt(right)
+		if (leftBigInt === rightBigInt) {
+			return 0
+		}
+		return leftBigInt > rightBigInt ? 1 : -1
+	} catch {
+		return left.localeCompare(right, 'en')
+	}
+}
+
 export interface WalletTransactionsSyncResult {
 	divisionsProcessed: number
 	totalTransactions: number
+	persistedNewRows: number
+	maxTransactionId: string | null
+	maxTransactionDate: string | null
 }
 
 export async function syncWalletTransactions(
@@ -28,13 +44,71 @@ export async function syncWalletTransactions(
 				division,
 				directorCharacterId
 			)
-			await corpData.storeWalletTransactions(corporationId, division, transactions)
-			return { division, count: transactions.length }
+			const storeResult = await corpData.storeWalletTransactions(
+				corporationId,
+				division,
+				transactions
+			)
+			const maxTransactionId =
+				transactions.length > 0
+					? transactions.reduce(
+							(max, tx) =>
+								compareNumericStrings(String(tx.transaction_id), max) > 0
+									? String(tx.transaction_id)
+									: max,
+							String(transactions[0].transaction_id)
+						)
+					: null
+			const maxTransactionDate =
+				transactions.length > 0
+					? transactions
+							.reduce((max, tx) => {
+								const txDate = new Date(tx.date)
+								return txDate > max ? txDate : max
+							}, new Date(transactions[0].date))
+							.toISOString()
+					: null
+			return {
+				division,
+				count: transactions.length,
+				persistedNewRows: storeResult.persistedNewRows,
+				maxTransactionId,
+				maxTransactionDate,
+			}
 		})
 	)
 
-	const successful = results.filter((result): result is PromiseFulfilledResult<{ division: number; count: number }> => result.status === 'fulfilled')
+	const successful = results.filter(
+		(
+			result
+		): result is PromiseFulfilledResult<{
+			division: number
+			count: number
+			persistedNewRows: number
+			maxTransactionId: string | null
+			maxTransactionDate: string | null
+		}> => result.status === 'fulfilled'
+	)
 	const totalTransactions = successful.reduce((sum, { value }) => sum + value.count, 0)
+	const persistedNewRows = successful.reduce((sum, { value }) => sum + value.persistedNewRows, 0)
+	const maxTransactionId = successful
+		.map((result) => result.value.maxTransactionId)
+		.filter((id): id is string => Boolean(id))
+		.reduce<string | null>((max, current) => {
+			if (max === null) {
+				return current
+			}
+			return compareNumericStrings(current, max) > 0 ? current : max
+		}, null)
+	const maxTransactionDate = successful
+		.map((result) => result.value.maxTransactionDate)
+		.filter((date): date is string => Boolean(date))
+		.reduce<string | null>((max, current) => {
+			if (max === null) {
+				return current
+			}
+			return new Date(current) > new Date(max) ? current : max
+		}, null)
 
 	results.forEach((result, index) => {
 		if (result.status === 'rejected') {
@@ -50,11 +124,16 @@ export async function syncWalletTransactions(
 		corporationId,
 		divisionsProcessed: successful.length,
 		totalTransactions,
+		persistedNewRows,
+		maxTransactionId,
+		maxTransactionDate,
 	})
 
 	return {
 		divisionsProcessed: successful.length,
 		totalTransactions,
+		persistedNewRows,
+		maxTransactionId,
+		maxTransactionDate,
 	}
 }
-

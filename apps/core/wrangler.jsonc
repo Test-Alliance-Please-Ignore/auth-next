@@ -57,6 +57,11 @@
 				"script_name": "bills"
 			},
 			{
+				"name": "CORPORATION_TAX",
+				"class_name": "CorporationTax",
+				"script_name": "corporation-tax"
+			},
+			{
 				"name": "BROADCASTS",
 				"class_name": "Broadcasts",
 				"script_name": "broadcasts"
@@ -90,6 +95,11 @@
 				"name": "SRP",
 				"class_name": "Srp",
 				"script_name": "srp"
+			},
+			{
+				"name": "FEATURES",
+				"class_name": "Features",
+				"script_name": "features"
 			},
 			{
 				"name": "ESI",

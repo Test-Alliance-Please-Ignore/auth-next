@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { and, desc, eq, gte, ilike, sql } from '@repo/db-utils'
+import { and, desc, eq, gte, ilike, inArray, lte, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { EveCharacterDataInstance, killmailsSchema } from '@repo/eve-character-data'
 import { createEveAllianceId, createEveCharacterId, createEveCorporationId } from '@repo/eve-types'
@@ -30,12 +30,15 @@ import type {
 	CharacterLossData,
 	CharacterMarketOrderData,
 	CharacterMarketTransactionData,
+	CharacterMarketTransactionsWindowFilters,
 	CharacterPortraitData,
 	CharacterPublicData,
 	CharacterSensitiveData,
 	CharacterSkillsData,
 	CharacterSkillsResponse,
 	CharacterWalletJournalData,
+	CharacterWalletJournalWindowFilters,
+	CharacterWalletSyncHealth,
 	EsiCharacterAttributes,
 	EsiCharacterPortrait,
 	EsiCharacterPublicInfo,
@@ -1539,6 +1542,65 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		}))
 	}
 
+	async getWalletJournalWindow(
+		characterId: string,
+		filters: CharacterWalletJournalWindowFilters = {}
+	): Promise<CharacterWalletJournalData[]> {
+		const limit = Math.min(Math.max(filters.limit ?? 1000, 1), 10000)
+		const offset = Math.max(filters.offset ?? 0, 0)
+		const conditions = [eq(characterWalletJournal.characterId, characterId)]
+		if (filters.refTypes && filters.refTypes.length > 0) {
+			conditions.push(inArray(characterWalletJournal.refType, filters.refTypes))
+		}
+		if (filters.firstPartyId) {
+			conditions.push(eq(characterWalletJournal.firstPartyId, filters.firstPartyId))
+		}
+		if (filters.secondPartyId) {
+			conditions.push(eq(characterWalletJournal.secondPartyId, filters.secondPartyId))
+		}
+		if (filters.fromDate) {
+			conditions.push(gte(characterWalletJournal.date, filters.fromDate))
+		}
+		if (filters.toDate) {
+			conditions.push(lte(characterWalletJournal.date, filters.toDate))
+		}
+		const minAmount = Number(filters.minAmount)
+		if (Number.isFinite(minAmount)) {
+			conditions.push(sql`CAST(${characterWalletJournal.amount} AS numeric) >= ${minAmount}`)
+		}
+		const maxAmount = Number(filters.maxAmount)
+		if (Number.isFinite(maxAmount)) {
+			conditions.push(sql`CAST(${characterWalletJournal.amount} AS numeric) <= ${maxAmount}`)
+		}
+
+		const rows = await this.db.query.characterWalletJournal.findMany({
+			where: and(...conditions),
+			orderBy: [desc(characterWalletJournal.date), desc(characterWalletJournal.journalId)],
+			limit,
+			offset,
+		})
+
+		return rows.map((r) => ({
+			id: r.id,
+			characterId: createEveCharacterId(r.characterId),
+			journalId: String(r.journalId),
+			date: new Date(r.date),
+			refType: r.refType,
+			amount: r.amount,
+			balance: r.balance,
+			description: r.description,
+			firstPartyId: r.firstPartyId ?? undefined,
+			secondPartyId: r.secondPartyId ?? undefined,
+			reason: r.reason ?? undefined,
+			tax: r.tax ?? undefined,
+			taxReceiverId: r.taxReceiverId ?? undefined,
+			contextId: r.contextId ?? undefined,
+			contextIdType: r.contextIdType ?? undefined,
+			createdAt: r.createdAt,
+			updatedAt: r.updatedAt,
+		}))
+	}
+
 	/**
 	 * Get market transactions for a character
 	 */
@@ -1563,6 +1625,88 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			createdAt: r.createdAt,
 			updatedAt: r.updatedAt,
 		}))
+	}
+
+	async getMarketTransactionsWindow(
+		characterId: string,
+		filters: CharacterMarketTransactionsWindowFilters = {}
+	): Promise<CharacterMarketTransactionData[]> {
+		const limit = Math.min(Math.max(filters.limit ?? 1000, 1), 10000)
+		const offset = Math.max(filters.offset ?? 0, 0)
+		const conditions = [eq(characterMarketTransactions.characterId, characterId)]
+		if (filters.clientId) {
+			conditions.push(eq(characterMarketTransactions.clientId, filters.clientId))
+		}
+		if (filters.typeId) {
+			conditions.push(eq(characterMarketTransactions.typeId, filters.typeId))
+		}
+		if (filters.journalRefId) {
+			conditions.push(eq(characterMarketTransactions.journalRefId, filters.journalRefId))
+		}
+		if (filters.fromDate) {
+			conditions.push(gte(characterMarketTransactions.date, filters.fromDate))
+		}
+		if (filters.toDate) {
+			conditions.push(lte(characterMarketTransactions.date, filters.toDate))
+		}
+		const minUnitPrice = Number(filters.minUnitPrice)
+		if (Number.isFinite(minUnitPrice)) {
+			conditions.push(
+				sql`CAST(${characterMarketTransactions.unitPrice} AS numeric) >= ${minUnitPrice}`
+			)
+		}
+		const maxUnitPrice = Number(filters.maxUnitPrice)
+		if (Number.isFinite(maxUnitPrice)) {
+			conditions.push(
+				sql`CAST(${characterMarketTransactions.unitPrice} AS numeric) <= ${maxUnitPrice}`
+			)
+		}
+
+		const rows = await this.db.query.characterMarketTransactions.findMany({
+			where: and(...conditions),
+			orderBy: [
+				desc(characterMarketTransactions.date),
+				desc(characterMarketTransactions.transactionId),
+			],
+			limit,
+			offset,
+		})
+
+		return rows.map((r) => ({
+			id: r.id,
+			characterId: createEveCharacterId(r.characterId),
+			transactionId: String(r.transactionId),
+			date: new Date(r.date),
+			typeId: r.typeId,
+			quantity: r.quantity,
+			unitPrice: r.unitPrice,
+			clientId: r.clientId,
+			locationId: r.locationId,
+			isBuy: r.isBuy,
+			isPersonal: r.isPersonal,
+			journalRefId: r.journalRefId,
+			createdAt: r.createdAt,
+			updatedAt: r.updatedAt,
+		}))
+	}
+
+	async getCharacterWalletSyncHealth(characterId: string): Promise<CharacterWalletSyncHealth> {
+		const [latestWalletJournal, latestMarketTransaction] = await Promise.all([
+			this.db.query.characterWalletJournal.findFirst({
+				where: eq(characterWalletJournal.characterId, characterId),
+				orderBy: desc(characterWalletJournal.updatedAt),
+			}),
+			this.db.query.characterMarketTransactions.findFirst({
+				where: eq(characterMarketTransactions.characterId, characterId),
+				orderBy: desc(characterMarketTransactions.updatedAt),
+			}),
+		])
+
+		return {
+			characterId: createEveCharacterId(characterId),
+			walletJournalLastUpdated: latestWalletJournal?.updatedAt ?? null,
+			marketTransactionsLastUpdated: latestMarketTransaction?.updatedAt ?? null,
+		}
 	}
 
 	/**

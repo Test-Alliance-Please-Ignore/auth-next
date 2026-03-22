@@ -1,6 +1,6 @@
 import { and, eq, inArray, sql } from '@repo/db-utils'
 
-import { bills, billSchedules, billTemplates } from '../db/schema'
+import { bills, billSchedules, billStatusEvents, billTemplates } from '../db/schema'
 import { generatePaymentToken } from '../utils/token'
 import { generateUuidV7 } from '../utils/uuid'
 
@@ -315,6 +315,16 @@ export class TemplateService {
 			})
 			.returning()
 
+		await this.db.insert(billStatusEvents).values({
+			id: generateUuidV7(),
+			billId: bill.id,
+			eventType: 'created',
+			fromStatus: null,
+			toStatus: bill.status,
+			actorUserId: userId,
+			metadata: null,
+		})
+
 		return {
 			id: bill.id,
 			issuerId: bill.issuerId,
@@ -335,6 +345,9 @@ export class TemplateService {
 			status: bill.status,
 			paidAt: bill.paidAt,
 			paymentToken: bill.paymentToken,
+			externalSourceType: bill.externalSourceType,
+			externalSourceId: bill.externalSourceId,
+			externalMetadata: bill.externalMetadata ?? null,
 			createdAt: bill.createdAt,
 			updatedAt: bill.updatedAt,
 		}
