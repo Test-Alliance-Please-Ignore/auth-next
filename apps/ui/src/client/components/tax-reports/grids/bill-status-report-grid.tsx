@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { formatTaxDateTime } from '@/lib/tax-date'
 import { formatTaxIskFull, formatTaxNumber, TaxEntityDisplay } from '@/lib/tax-display'
 
-import { billStatusBadgeVariant, sortByCentiColumnValue } from './shared'
+import { billStatusBadgeVariant } from './shared'
 
 import type { MRT_ColumnDef, MRT_SortingState } from 'mantine-react-table'
 import type { TaxBillStatusReportRow } from '@repo/corporation-tax'
@@ -27,7 +27,7 @@ export function BillStatusReportGrid(props: {
 	rowCount: number
 }) {
 	const columnHelper = createMRTColumnHelper<TaxBillStatusReportRow>()
-	const columns = useMemo<MRT_ColumnDef<TaxBillStatusReportRow>[]>(
+	const columns = useMemo<Array<MRT_ColumnDef<TaxBillStatusReportRow>>>(
 		() => [
 			columnHelper.accessor('corporationId', {
 				header: 'Corporation',
@@ -64,21 +64,18 @@ export function BillStatusReportGrid(props: {
 				id: 'taxDue',
 				header: 'Tax Due',
 				enableSorting: true,
-				sortingFn: (rowA, rowB, columnId) => sortByCentiColumnValue(rowA, rowB, columnId),
 				Cell: ({ row }) => formatTaxIskFull(row.original.taxDue),
 			}),
 			columnHelper.accessor('taxPaidCenti', {
 				id: 'taxPaid',
 				header: 'Tax Paid',
 				enableSorting: true,
-				sortingFn: (rowA, rowB, columnId) => sortByCentiColumnValue(rowA, rowB, columnId),
 				Cell: ({ row }) => formatTaxIskFull(row.original.taxPaid),
 			}),
 			columnHelper.accessor('taxDeltaCenti', {
 				id: 'taxDelta',
 				header: 'Delta',
 				enableSorting: true,
-				sortingFn: (rowA, rowB, columnId) => sortByCentiColumnValue(rowA, rowB, columnId),
 				Cell: ({ row }) => formatTaxIskFull(row.original.taxDelta),
 			}),
 		],

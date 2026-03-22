@@ -7,7 +7,7 @@ export function toJsonPreview(value: unknown): string {
 	try {
 		const raw = JSON.stringify(value)
 		return raw.length > 140 ? `${raw.slice(0, 140)}...` : raw
-	} catch (_error) {
+	} catch {
 		return String(value)
 	}
 }
@@ -37,14 +37,6 @@ export function parseDecimalToCentiBigInt(value: string | number | null | undefi
 	const isWholeNumeric = /^\d+$/.test(wholePartRaw || '0')
 	const isFractionalNumeric = /^\d*$/.test(fractionalPartRaw)
 	if (!isWholeNumeric || !isFractionalNumeric) {
-		console.debug('[TaxSortDebug] Invalid decimal parse; coercing to 0n', {
-			input: value,
-			trimmed,
-			wholePartRaw,
-			fractionalPartRaw,
-			isWholeNumeric,
-			isFractionalNumeric,
-		})
 		return 0n
 	}
 	const wholePart = wholePartRaw === '' ? '0' : wholePartRaw
@@ -57,25 +49,4 @@ export function parseDecimalToCentiBigInt(value: string | number | null | undefi
 export function compareBigIntValues(left: bigint, right: bigint): number {
 	if (left === right) return 0
 	return left > right ? 1 : -1
-}
-
-export function sortByCentiColumnValue(
-	rowA: { getValue: (columnId: string) => unknown },
-	rowB: { getValue: (columnId: string) => unknown },
-	columnId: string
-): number {
-	const rawLeft = rowA.getValue(columnId) as string | number | null | undefined
-	const rawRight = rowB.getValue(columnId) as string | number | null | undefined
-	const left = parseDecimalToCentiBigInt(rawLeft)
-	const right = parseDecimalToCentiBigInt(rawRight)
-	const result = compareBigIntValues(left, right)
-	console.debug('[TaxSortDebug] Compare', {
-		columnId,
-		rawLeft,
-		rawRight,
-		left: left.toString(),
-		right: right.toString(),
-		result,
-	})
-	return result
 }

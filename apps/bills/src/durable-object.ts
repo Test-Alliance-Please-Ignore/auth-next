@@ -1,7 +1,8 @@
 import { DurableObject } from 'cloudflare:workers'
 
+import { logger } from '@repo/hono-helpers'
+
 import { createDb } from './db'
-import { billPayments } from './db/schema'
 import { BillService } from './services/bill.service'
 import { ScheduleService } from './services/schedule.service'
 import { TemplateService } from './services/template.service'
@@ -26,7 +27,6 @@ import type {
 	CreateScheduleInput,
 	CreateTemplateInput,
 	EntityType,
-	PaymentResponse,
 	RegenerateTokenResponse,
 	ScheduleExecutionLog,
 	ScheduleExecutionResult,
@@ -37,6 +37,7 @@ import type {
 	UpdateTemplateInput,
 } from '@repo/bills'
 import type { Env } from './context'
+import type { billPayments } from './db/schema'
 
 /**
  * Bills Durable Object
@@ -52,30 +53,27 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 	private billService: BillService
 	private templateService: TemplateService
 	private scheduleService: ScheduleService
+	private readonly logger = logger.withTags({ service: 'bills-durable-object' })
 
 	constructor(
 		public state: DurableObjectState,
 		public env: Env
 	) {
 		super(state, env)
-		console.log('[BillsDO.constructor] Initializing', {
-			hasDatabaseUrl: !!env.DATABASE_URL,
-			databaseUrlLength: env.DATABASE_URL?.length,
-		})
+		this.logger.info('[BillsDO] Initializing')
 
 		try {
 			this.db = createDb(env.DATABASE_URL)
-			console.log('[BillsDO.constructor] Database client created')
+			this.logger.info('[BillsDO] Database client created')
 
 			this.billService = new BillService(this.db)
 			this.templateService = new TemplateService(this.db)
 			this.scheduleService = new ScheduleService(this.db)
 
-			console.log('[BillsDO.constructor] All services initialized')
+			this.logger.info('[BillsDO] Services initialized')
 		} catch (error) {
-			console.error('[BillsDO.constructor] Initialization error', {
+			this.logger.error('[BillsDO] Initialization failed', {
 				error: error instanceof Error ? error.message : String(error),
-				stack: error instanceof Error ? error.stack : undefined,
 			})
 			throw error
 		}
@@ -88,15 +86,15 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 	 */
 
 	async createBill(userId: string, data: CreateBillInput): Promise<Bill> {
-		console.log('[BillsDO.createBill] Called', { userId, data })
+		this.logger.info('[BillsDO] createBill called', { userId })
 		try {
 			const result = await this.billService.createBill(userId, data)
-			console.log('[BillsDO.createBill] Success', { billId: result.id })
+			this.logger.info('[BillsDO] createBill succeeded', { billId: result.id, userId })
 			return result
 		} catch (error) {
-			console.error('[BillsDO.createBill] Error', {
+			this.logger.error('[BillsDO] createBill failed', {
 				error: error instanceof Error ? error.message : String(error),
-				stack: error instanceof Error ? error.stack : undefined,
+				userId,
 			})
 			throw error
 		}

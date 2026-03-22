@@ -1,4 +1,4 @@
-import { isTaxDemoModeEnabled, taxDemoApi } from '@/dev/tax-demo-mode'
+import { isTaxDemoModeEnabled, resolveDemoEntityNames, taxDemoApi } from '@/dev/tax-demo-mode'
 
 import { ApiClient } from './api'
 
@@ -320,10 +320,19 @@ export class CorporationTaxApiClient extends ApiClient {
 				`${TAX_API_BASE}/corporations/${corporationId}/payee-corporations/search?q=${encodeURIComponent(trimmed)}`
 			).catch(() => []),
 		])
+		const demoNames = resolveDemoEntityNames(demoRows.map((row) => row.corporationId))
+		const lowered = trimmed.toLowerCase()
 
 		const demoMatches: TaxBillingPayeeCorporationSearchRow[] = demoRows
-			.filter((row) => row.corporationId.includes(trimmed))
-			.map((row) => ({ corporationId: row.corporationId, name: row.corporationId }))
+			.filter((row) => {
+				if (row.corporationId.includes(trimmed)) return true
+				const resolvedName = demoNames[row.corporationId]
+				return resolvedName ? resolvedName.toLowerCase().includes(lowered) : false
+			})
+			.map((row) => ({
+				corporationId: row.corporationId,
+				name: demoNames[row.corporationId] ?? row.corporationId,
+			}))
 
 		const merged = new Map<string, TaxBillingPayeeCorporationSearchRow>()
 		for (const row of liveRows) {

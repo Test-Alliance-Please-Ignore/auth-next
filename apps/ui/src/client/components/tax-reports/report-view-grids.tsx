@@ -6,6 +6,5 @@ export {
 	ExportHistoryGrid,
 	ExportSchedulesGrid,
 	MissingEsiKeysGrid,
-	TopIncomeSourcesGrid,
 	TotalTaxesReportGrid,
 } from './grids'
