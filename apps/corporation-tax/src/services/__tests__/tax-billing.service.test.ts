@@ -19,7 +19,6 @@ function makeAssessment(overrides: Record<string, unknown> = {}) {
 		taxableIncome: '1000',
 		nonTaxableIncome: '0',
 		taxDue: '100',
-		taxPaid: '0',
 		taxDelta: '100',
 		status: 'underpaid',
 		inGameTaxRateBps: null,

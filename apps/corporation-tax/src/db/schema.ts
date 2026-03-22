@@ -158,7 +158,6 @@ export const taxAssessments = pgTable(
 		taxableIncome: text('taxable_income').notNull().default('0'),
 		nonTaxableIncome: text('non_taxable_income').notNull().default('0'),
 		taxDue: text('tax_due').notNull().default('0'),
-		taxPaid: text('tax_paid').notNull().default('0'),
 		taxDelta: text('tax_delta').notNull().default('0'),
 		status: taxAssessmentStatusEnum('status').notNull().default('draft'),
 		inGameTaxRateBps: integer('in_game_tax_rate_bps'),
@@ -439,35 +438,6 @@ export const taxSyncCheckpoints = pgTable(
 	]
 )
 
-export const taxDailyRollups = pgTable(
-	'tax_daily_rollups',
-	{
-		id: uuid('id').defaultRandom().primaryKey(),
-		corporationId: text('corporation_id').notNull(),
-		rollupDate: date('rollup_date', { mode: 'date' }).notNull(),
-		division: integer('division'),
-		refType: text('ref_type'),
-		taxableIncome: text('taxable_income').notNull().default('0'),
-		taxDue: text('tax_due').notNull().default('0'),
-		taxPaid: text('tax_paid').notNull().default('0'),
-		essIncome: text('ess_income').notNull().default('0'),
-		entryCount: integer('entry_count').notNull().default(0),
-		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-	},
-	(table) => [
-		unique('tax_daily_rollups_corp_date_division_ref_unique').on(
-			table.corporationId,
-			table.rollupDate,
-			table.division,
-			table.refType
-		),
-		index('tax_daily_rollups_corporation_id_idx').on(table.corporationId),
-		index('tax_daily_rollups_rollup_date_idx').on(table.rollupDate),
-		index('tax_daily_rollups_ref_type_idx').on(table.refType),
-	]
-)
-
 /**
  * Incremental projection rollups for member contribution summaries.
  * Mutable during open/inter-period windows and refreshed after ingest updates.
@@ -719,7 +689,6 @@ export const schema = {
 	taxAlerts,
 	taxLedgerEntries,
 	taxSyncCheckpoints,
-	taxDailyRollups,
 	taxMemberContributionProjectionRollups,
 	taxMemberContributionFinalizedRollups,
 	taxMemberSummaryVersions,

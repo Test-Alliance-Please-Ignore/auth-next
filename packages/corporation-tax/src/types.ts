@@ -393,30 +393,6 @@ export interface TaxLedgerIngestionHealth {
 	message: string
 }
 
-export interface TaxDailyRollup {
-	id: string
-	corporationId: string
-	rollupDate: Date
-	division: number | null
-	refType: string | null
-	taxableIncome: string
-	taxDue: string
-	taxPaid: string
-	essIncome: string
-	entryCount: number
-	createdAt: Date
-	updatedAt: Date
-}
-
-export interface ListTaxDailyRollupsFilters {
-	fromDate?: Date
-	toDate?: Date
-	division?: number
-	refType?: string
-	limit?: number
-	offset?: number
-}
-
 export interface TaxLedgerWindowFilters {
 	division?: number
 	sourceTypes?: TaxLedgerSourceType[]
@@ -452,7 +428,6 @@ export interface TaxLedgerIngestionResult {
 	transactionProcessed: number
 	upsertedCount: number
 	checkpointsUpdated: number
-	rollupDatesUpdated: number
 	essDuplicateRecordCount: number
 	essDuplicateSourceKeys: string[]
 	essMissingRecordCount: number

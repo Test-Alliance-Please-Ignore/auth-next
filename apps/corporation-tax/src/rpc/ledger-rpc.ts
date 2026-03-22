@@ -1,19 +1,17 @@
 import { eq } from '@repo/db-utils'
 import { logger } from '@repo/hono-helpers'
 
+import { taxMemberSummaryVersions } from '../db/schema'
 import { planProjectionRefreshFromWalletSync } from '../services/projection-refresh-plan'
 import { computeRuleMutationRecalcStart } from '../services/projection-rule-freshness'
-import { taxMemberSummaryVersions } from '../db/schema'
 
 import type {
 	IngestTaxLedgerWindowInput,
-	ListTaxDailyRollupsFilters,
 	ListTaxLedgerPartiesFilters,
 	RunTaxAssessmentForPeriodInput,
 	RunTaxAssessmentForPeriodResult,
 	TaxAssessment,
 	TaxAssessmentLine,
-	TaxDailyRollup,
 	TaxDiscrepancy,
 	TaxLedgerEntry,
 	TaxLedgerIngestionHealth,
@@ -69,7 +67,10 @@ export class TaxLedgerRpc {
 		input?: IngestTaxLedgerWindowInput
 	): Promise<TaxLedgerIngestionResult> {
 		return this.ctx.withCorporationIngestLock(corporationId, async () => {
-			const result = await this.ctx.ledgerService.ingestCorporationLedgerWindow(corporationId, input)
+			const result = await this.ctx.ledgerService.ingestCorporationLedgerWindow(
+				corporationId,
+				input
+			)
 
 			await this.ctx.auditService.logAction({
 				corporationId,
@@ -221,13 +222,6 @@ export class TaxLedgerRpc {
 		return this.ctx.ledgerService.getIngestionHealth(corporationId)
 	}
 
-	async listDailyRollups(
-		corporationId: string,
-		filters?: ListTaxDailyRollupsFilters
-	): Promise<TaxDailyRollup[]> {
-		return this.ctx.ledgerService.listDailyRollups(corporationId, filters)
-	}
-
 	async trimLedgerEntries(
 		actorUserId: string,
 		corporationId: string,
@@ -250,7 +244,9 @@ export class TaxLedgerRpc {
 		return result
 	}
 
-	async listAssessments(filters?: import('@repo/corporation-tax').ListTaxAssessmentsFilters): Promise<TaxAssessment[]> {
+	async listAssessments(
+		filters?: import('@repo/corporation-tax').ListTaxAssessmentsFilters
+	): Promise<TaxAssessment[]> {
 		return this.ctx.assessmentService.listAssessments(filters)
 	}
 

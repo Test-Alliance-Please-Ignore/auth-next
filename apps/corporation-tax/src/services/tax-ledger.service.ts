@@ -2,19 +2,12 @@ import { filterTaxIncomeRefTypes, isTaxIncomeRefType } from '@repo/corporation-t
 import { and, desc, eq, gte, inArray, isNotNull, lt, lte, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
-import {
-	taxDailyRollups,
-	taxLedgerEntries,
-	taxMemberSummaryVersions,
-	taxSyncCheckpoints,
-} from '../db/schema'
+import { taxLedgerEntries, taxMemberSummaryVersions, taxSyncCheckpoints } from '../db/schema'
 import { formatCenti, parseDecimalToCenti } from './tax-money'
 
 import type {
 	IngestTaxLedgerWindowInput,
-	ListTaxDailyRollupsFilters,
 	ListTaxLedgerPartiesFilters,
-	TaxDailyRollup,
 	TaxLedgerDirection,
 	TaxLedgerEntry,
 	TaxLedgerIngestionHealth,
@@ -330,8 +323,6 @@ export class TaxLedgerService {
 					})
 			}
 
-			const rollupDatesUpdated = await this.rebuildRollupsForEntries(corporationId, values)
-
 			let checkpointsUpdated = 0
 			if (includeJournal) {
 				await this.upsertCheckpoint(corporationId, 'corporation_wallet_journal', {
@@ -401,7 +392,6 @@ export class TaxLedgerService {
 				transactionProcessed: transactionRows.length + characterTransactionRows.length,
 				upsertedCount: values.length,
 				checkpointsUpdated,
-				rollupDatesUpdated,
 				essDuplicateRecordCount: essQualitySignals.duplicateRecordCount,
 				essDuplicateSourceKeys: essQualitySignals.duplicateSourceKeys,
 				essMissingRecordCount: essQualitySignals.missingRecordCount,
@@ -639,48 +629,6 @@ export class TaxLedgerService {
 			checkpoints: checkpoints.map((checkpoint) => this.toCheckpointDto(checkpoint)),
 			message: 'Ledger ingestion service ready',
 		}
-	}
-
-	async listDailyRollups(
-		corporationId: string,
-		filters: ListTaxDailyRollupsFilters = {}
-	): Promise<TaxDailyRollup[]> {
-		const limit = Math.min(Math.max(filters.limit ?? 1000, 1), 10000)
-		const offset = Math.max(filters.offset ?? 0, 0)
-		const conditions = [eq(taxDailyRollups.corporationId, corporationId)]
-		if (filters.division !== undefined) {
-			conditions.push(eq(taxDailyRollups.division, filters.division))
-		}
-		if (filters.refType !== undefined) {
-			conditions.push(eq(taxDailyRollups.refType, filters.refType))
-		}
-		if (filters.fromDate) {
-			conditions.push(gte(taxDailyRollups.rollupDate, this.toUtcDay(filters.fromDate)))
-		}
-		if (filters.toDate) {
-			conditions.push(lte(taxDailyRollups.rollupDate, this.toUtcDay(filters.toDate)))
-		}
-		const rows = await this.db.query.taxDailyRollups.findMany({
-			where: and(...conditions),
-			orderBy: [desc(taxDailyRollups.rollupDate)],
-			limit,
-			offset,
-		})
-
-		return rows.map((row) => ({
-			id: row.id,
-			corporationId: row.corporationId,
-			rollupDate: row.rollupDate,
-			division: row.division,
-			refType: row.refType,
-			taxableIncome: row.taxableIncome,
-			taxDue: row.taxDue,
-			taxPaid: row.taxPaid,
-			essIncome: row.essIncome,
-			entryCount: row.entryCount,
-			createdAt: row.createdAt,
-			updatedAt: row.updatedAt,
-		}))
 	}
 
 	async trimLedgerEntries(
@@ -1098,103 +1046,6 @@ export class TaxLedgerService {
 			})
 	}
 
-	private async rebuildRollupsForEntries(
-		corporationId: string,
-		values: Array<typeof taxLedgerEntries.$inferInsert>
-	): Promise<number> {
-		const affectedDays = new Set(values.map((value) => this.dayKey(value.entryDate)))
-		if (affectedDays.size === 0) {
-			return 0
-		}
-
-		for (const day of affectedDays) {
-			const dayStart = new Date(`${day}T00:00:00.000Z`)
-			const dayEnd = new Date(dayStart)
-			dayEnd.setUTCDate(dayEnd.getUTCDate() + 1)
-
-			type AggregatedRollup = {
-				division: number | null
-				refType: string | null
-				taxableIncome: number
-				essIncome: number
-				entryCount: number
-			}
-
-			const aggregateMap = new Map<string, AggregatedRollup>()
-			const pageSize = 5_000
-			let offset = 0
-			for (;;) {
-				const entries = await this.db.query.taxLedgerEntries.findMany({
-					where: and(
-						eq(taxLedgerEntries.corporationId, corporationId),
-						gte(taxLedgerEntries.entryDate, dayStart),
-						lt(taxLedgerEntries.entryDate, dayEnd)
-					),
-					orderBy: [desc(taxLedgerEntries.entryDate)],
-					limit: pageSize,
-					offset,
-				})
-				if (entries.length === 0) {
-					break
-				}
-				for (const entry of entries) {
-					const key = `${entry.division ?? 'null'}:${entry.refType ?? 'null'}`
-					const existing = aggregateMap.get(key)
-					const amount = Number(entry.amount)
-					const safeAmount = Number.isFinite(amount) ? amount : 0
-					const taxableIncome = safeAmount > 0 ? safeAmount : 0
-					const essIncome =
-						entry.refType === 'ess_escrow_transfer' && safeAmount > 0 ? safeAmount : 0
-
-					if (existing) {
-						existing.taxableIncome += taxableIncome
-						existing.essIncome += essIncome
-						existing.entryCount += 1
-					} else {
-						aggregateMap.set(key, {
-							division: entry.division,
-							refType: entry.refType,
-							taxableIncome,
-							essIncome,
-							entryCount: 1,
-						})
-					}
-				}
-				if (entries.length < pageSize) {
-					break
-				}
-				offset += entries.length
-			}
-
-			await this.db
-				.delete(taxDailyRollups)
-				.where(
-					and(
-						eq(taxDailyRollups.corporationId, corporationId),
-						eq(taxDailyRollups.rollupDate, dayStart)
-					)
-				)
-
-			if (aggregateMap.size > 0) {
-				await this.db.insert(taxDailyRollups).values(
-					Array.from(aggregateMap.values()).map((rollup) => ({
-						corporationId,
-						rollupDate: dayStart,
-						division: rollup.division,
-						refType: rollup.refType,
-						taxableIncome: rollup.taxableIncome.toString(),
-						taxDue: '0',
-						taxPaid: '0',
-						essIncome: rollup.essIncome.toString(),
-						entryCount: rollup.entryCount,
-					}))
-				)
-			}
-		}
-
-		return affectedDays.size
-	}
-
 	private resolveLatestDate(dates: Date[]): Date | null {
 		if (dates.length === 0) {
 			return null
@@ -1233,18 +1084,6 @@ export class TaxLedgerService {
 			createdAt: row.createdAt,
 			updatedAt: row.updatedAt,
 		}
-	}
-
-	private dayKey(value: Date): string {
-		const year = value.getUTCFullYear()
-		const month = `${value.getUTCMonth() + 1}`.padStart(2, '0')
-		const day = `${value.getUTCDate()}`.padStart(2, '0')
-		return `${year}-${month}-${day}`
-	}
-
-	private toUtcDay(value: Date): Date {
-		const key = this.dayKey(value)
-		return new Date(`${key}T00:00:00.000Z`)
 	}
 
 	private extractCharacterId(row: typeof taxLedgerEntries.$inferSelect): string | null {

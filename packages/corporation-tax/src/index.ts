@@ -18,7 +18,6 @@ import type {
 	ListTaxAssessmentsFilters,
 	ListTaxAuditLogFilters,
 	ListTaxCorporationExclusionsFilters,
-	ListTaxDailyRollupsFilters,
 	ListTaxDiscrepanciesFilters,
 	ListTaxDiscrepancyReportFilters,
 	ListTaxExportSchedulesFilters,
@@ -49,7 +48,6 @@ import type {
 	TaxCorporationBillingConfig,
 	TaxCorporationEsiAuthStatus,
 	TaxCorporationExclusion,
-	TaxDailyRollup,
 	TaxDiscrepancy,
 	TaxDivisionAssessmentSummary,
 	TaxEssPayoutRow,
@@ -391,14 +389,6 @@ export interface CorporationTax {
 	getLedgerIngestionHealth(corporationId: string): Promise<TaxLedgerIngestionHealth>
 
 	/**
-	 * Daily rollups generated from normalized ledger entries.
-	 */
-	listDailyRollups(
-		corporationId: string,
-		filters?: ListTaxDailyRollupsFilters
-	): Promise<TaxDailyRollup[]>
-
-	/**
 	 * Trim detailed ledger records older than the retention window.
 	 */
 	trimLedgerEntries(
@@ -568,7 +558,6 @@ export type {
 	ListTaxMissingEsiKeyReportFilters,
 	ListTaxNotificationDestinationsFilters,
 	ListTaxAssessmentLinesFilters,
-	ListTaxDailyRollupsFilters,
 	ListTaxLedgerPartiesFilters,
 	ListTaxAssessmentsFilters,
 	ListTaxRuleSetsFilters,
@@ -590,7 +579,6 @@ export type {
 	TaxRefTypeAssessmentSummary,
 	TaxPeriod,
 	TaxPeriodStatus,
-	TaxDailyRollup,
 	TaxLedgerEntry,
 	TaxLedgerParty,
 	TaxLedgerDirection,

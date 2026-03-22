@@ -46,7 +46,6 @@ import type {
 	ListTaxAssessmentsFilters,
 	ListTaxAuditLogFilters,
 	ListTaxCorporationExclusionsFilters,
-	ListTaxDailyRollupsFilters,
 	ListTaxDiscrepanciesFilters,
 	ListTaxDiscrepancyReportFilters,
 	ListTaxExportSchedulesFilters,
@@ -69,7 +68,6 @@ import type {
 	TaxCompliancePoint,
 	TaxCorporationBillingConfig,
 	TaxCorporationExclusion,
-	TaxDailyRollup,
 	TaxDiscrepancy,
 	TaxEssPayoutRow,
 	TaxExportArtifact,
@@ -340,13 +338,6 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 
 	async getLedgerIngestionHealth(corporationId: string): Promise<TaxLedgerIngestionHealth> {
 		return this.ledgerRpc.getLedgerIngestionHealth(corporationId)
-	}
-
-	async listDailyRollups(
-		corporationId: string,
-		filters?: ListTaxDailyRollupsFilters
-	): Promise<TaxDailyRollup[]> {
-		return this.ledgerRpc.listDailyRollups(corporationId, filters)
 	}
 
 	async trimLedgerEntries(

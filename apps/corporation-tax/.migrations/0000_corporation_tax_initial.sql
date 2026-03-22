@@ -65,7 +65,6 @@ CREATE TABLE "tax_assessments" (
 	"taxable_income" text DEFAULT '0' NOT NULL,
 	"non_taxable_income" text DEFAULT '0' NOT NULL,
 	"tax_due" text DEFAULT '0' NOT NULL,
-	"tax_paid" text DEFAULT '0' NOT NULL,
 	"tax_delta" text DEFAULT '0' NOT NULL,
 	"status" "tax_assessment_status" DEFAULT 'draft' NOT NULL,
 	"in_game_tax_rate_bps" integer,
@@ -123,22 +122,6 @@ CREATE TABLE "tax_corporation_exclusions" (
 	"updated_by" text NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
-);
---> statement-breakpoint
-CREATE TABLE "tax_daily_rollups" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"corporation_id" text NOT NULL,
-	"rollup_date" date NOT NULL,
-	"division" integer,
-	"ref_type" text,
-	"taxable_income" text DEFAULT '0' NOT NULL,
-	"tax_due" text DEFAULT '0' NOT NULL,
-	"tax_paid" text DEFAULT '0' NOT NULL,
-	"ess_income" text DEFAULT '0' NOT NULL,
-	"entry_count" integer DEFAULT 0 NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "tax_daily_rollups_corp_date_division_ref_unique" UNIQUE("corporation_id","rollup_date","division","ref_type")
 );
 --> statement-breakpoint
 CREATE TABLE "tax_discrepancies" (
@@ -358,9 +341,6 @@ CREATE INDEX "tax_corporation_billing_configs_corporation_id_idx" ON "tax_corpor
 CREATE INDEX "tax_corporation_billing_configs_updated_at_idx" ON "tax_corporation_billing_configs" USING btree ("updated_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "tax_corporation_billing_configs_one_default_per_corp" ON "tax_corporation_billing_configs" USING btree ("corporation_id") WHERE "tax_corporation_billing_configs"."is_default" = true;--> statement-breakpoint
 CREATE INDEX "tax_corporation_exclusions_updated_at_idx" ON "tax_corporation_exclusions" USING btree ("updated_at");--> statement-breakpoint
-CREATE INDEX "tax_daily_rollups_corporation_id_idx" ON "tax_daily_rollups" USING btree ("corporation_id");--> statement-breakpoint
-CREATE INDEX "tax_daily_rollups_rollup_date_idx" ON "tax_daily_rollups" USING btree ("rollup_date");--> statement-breakpoint
-CREATE INDEX "tax_daily_rollups_ref_type_idx" ON "tax_daily_rollups" USING btree ("ref_type");--> statement-breakpoint
 CREATE INDEX "tax_discrepancies_corporation_id_idx" ON "tax_discrepancies" USING btree ("corporation_id");--> statement-breakpoint
 CREATE INDEX "tax_discrepancies_assessment_id_idx" ON "tax_discrepancies" USING btree ("assessment_id");--> statement-breakpoint
 CREATE INDEX "tax_discrepancies_discrepancy_type_idx" ON "tax_discrepancies" USING btree ("discrepancy_type");--> statement-breakpoint

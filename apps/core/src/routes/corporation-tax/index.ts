@@ -1479,57 +1479,6 @@ app.get('/corporations/:corporationId/ledger/health', requireAuth(), async (c) =
 })
 
 /**
- * GET /corporation-tax/corporations/:corporationId/rollups/daily
- * List daily rollups generated from ledger entries.
- */
-app.get('/corporations/:corporationId/rollups/daily', requireAuth(), async (c) => {
-	const user = c.get('user')
-	if (!user) {
-		return c.json({ error: 'Unauthorized' }, 401)
-	}
-
-	const corporationId = c.req.param('corporationId')
-	const canManage = await canManageTaxFeature(c.env, user, corporationId)
-	if (!canManage) {
-		return c.json({ error: 'Forbidden' }, 403)
-	}
-
-	const division = parseIntegerQueryParam(c.req.query('division'))
-	const limit = parseIntegerQueryParam(c.req.query('limit'))
-	const offset = parseIntegerQueryParam(c.req.query('offset'))
-	const refType = c.req.query('refType') || undefined
-	const fromDateQuery = c.req.query('fromDate')
-	const toDateQuery = c.req.query('toDate')
-	const fromDate = fromDateQuery ? new Date(fromDateQuery) : undefined
-	const toDate = toDateQuery ? new Date(toDateQuery) : undefined
-	if (fromDate && Number.isNaN(fromDate.getTime())) {
-		return c.json({ error: 'fromDate must be a valid ISO date string' }, 400)
-	}
-	if (toDate && Number.isNaN(toDate.getTime())) {
-		return c.json({ error: 'toDate must be a valid ISO date string' }, 400)
-	}
-	if (refType && !isTaxIncomeRefType(refType)) {
-		return c.json({ error: 'refType must be a valid tax income ref type' }, 400)
-	}
-
-	try {
-		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
-		const rollups = await stub.listDailyRollups(corporationId, {
-			fromDate,
-			toDate,
-			division: division ?? undefined,
-			refType,
-			limit: limit ?? undefined,
-			offset: offset ?? undefined,
-		})
-		return c.json(rollups)
-	} catch (error) {
-		logger.error('Error listing corporation tax daily rollups:', error)
-		return c.json({ error: 'Failed to list tax daily rollups' }, 500)
-	}
-})
-
-/**
  * POST /corporation-tax/corporations/:corporationId/ledger/trim
  * Trim ledger detail rows older than the retention window.
  */
