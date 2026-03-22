@@ -14,7 +14,6 @@ import {
 } from '@/components/ui/dialog'
 import { FilterField } from '@/components/ui/filter-field'
 import { Input } from '@/components/ui/input'
-import { SearchSelect } from '@/components/ui/search-select'
 import {
 	Select,
 	SelectContent,
@@ -22,11 +21,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from '@/components/ui/select'
-import {
-	formatTaxDivisionLabel,
-	formatTaxIskCompact,
-	formatTaxRefTypeLabel,
-} from '@/lib/tax-display'
+import { formatTaxIskCompact } from '@/lib/tax-display'
 
 import type { ReactNode } from 'react'
 import type {
@@ -35,7 +30,6 @@ import type {
 	TaxExportSchedule,
 	TaxSummaryReport,
 } from '@repo/corporation-tax'
-import type { SearchSelectOption } from '@/components/ui/search-select'
 
 interface TaxPanelCardProps {
 	title: string
@@ -77,23 +71,6 @@ interface TaxReportFiltersCardProps {
 	selectedCorporationId?: string
 	canAdminScope: boolean
 	onSelectCorporation: (corporationId: string | undefined) => void
-	incomeTypeQuery: string
-	onIncomeTypeQueryChange: (value: string) => void
-	incomeTypeOptions: SearchSelectOption[]
-	refTypeFilter: string
-	onSelectRefType: (value: string) => void
-	divisionQuery: string
-	onDivisionQueryChange: (value: string) => void
-	divisionOptions: SearchSelectOption[]
-	divisionFilter: string
-	onSelectDivision: (value: string) => void
-	effectiveScopeCorporationId?: string
-	firstPartyIdFilter: string
-	onFirstPartyIdFilterChange: (value: string) => void
-	secondPartyIdFilter: string
-	onSecondPartyIdFilterChange: (value: string) => void
-	minAmountFilter: string
-	onMinAmountFilterChange: (value: string) => void
 }
 
 export function TaxReportFiltersCard(props: TaxReportFiltersCardProps) {
@@ -119,59 +96,6 @@ export function TaxReportFiltersCard(props: TaxReportFiltersCardProps) {
 					onSelect={props.onSelectCorporation}
 					showLabel={false}
 					className="sm:max-w-none"
-				/>
-			</FilterField>
-			<FilterField label="Income type">
-				<SearchSelect
-					value={props.incomeTypeQuery}
-					onValueChange={props.onIncomeTypeQueryChange}
-					options={props.incomeTypeOptions}
-					onSelect={(option) => props.onSelectRefType(option.value)}
-					filterMode="local"
-					mode="dropdown"
-					minQueryLength={0}
-					listMaxHeight={420}
-					placeholder={
-						props.refTypeFilter ? formatTaxRefTypeLabel(props.refTypeFilter) : 'All income types'
-					}
-					emptyText="No income types match"
-				/>
-			</FilterField>
-			<FilterField label="Division">
-				<SearchSelect
-					value={props.divisionQuery}
-					onValueChange={props.onDivisionQueryChange}
-					options={props.divisionOptions}
-					onSelect={(option) => props.onSelectDivision(option.value)}
-					filterMode="local"
-					mode="dropdown"
-					minQueryLength={0}
-					disabled={!props.effectiveScopeCorporationId}
-					placeholder={
-						props.divisionFilter ? formatTaxDivisionLabel(props.divisionFilter) : 'All divisions'
-					}
-					emptyText="No wallet divisions found"
-				/>
-			</FilterField>
-			<FilterField label="Sender">
-				<Input
-					value={props.firstPartyIdFilter}
-					onChange={(event) => props.onFirstPartyIdFilterChange(event.target.value)}
-					placeholder="Sender"
-				/>
-			</FilterField>
-			<FilterField label="Recipient">
-				<Input
-					value={props.secondPartyIdFilter}
-					onChange={(event) => props.onSecondPartyIdFilterChange(event.target.value)}
-					placeholder="Recipient"
-				/>
-			</FilterField>
-			<FilterField label="Min amount">
-				<Input
-					value={props.minAmountFilter}
-					onChange={(event) => props.onMinAmountFilterChange(event.target.value)}
-					placeholder="Min amount"
 				/>
 			</FilterField>
 		</TaxPanelCard>

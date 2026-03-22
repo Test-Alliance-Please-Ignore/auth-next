@@ -4,7 +4,7 @@ import { useMemo } from 'react'
 import { TaxReportDataGrid } from '@/components/tax-report-data-grid'
 import { Badge } from '@/components/ui/badge'
 import { formatTaxDateTime } from '@/lib/tax-date'
-import { formatTaxIskFull, formatTaxNumber, TaxEntityDisplay } from '@/lib/tax-display'
+import { formatTaxIskFull, TaxEntityDisplay } from '@/lib/tax-display'
 
 import { billStatusBadgeVariant } from './shared'
 
@@ -29,13 +29,6 @@ export function BillStatusReportGrid(props: {
 	const columnHelper = createMRTColumnHelper<TaxBillStatusReportRow>()
 	const columns = useMemo<Array<MRT_ColumnDef<TaxBillStatusReportRow>>>(
 		() => [
-			columnHelper.accessor('corporationId', {
-				header: 'Corporation',
-				enableSorting: true,
-				Cell: ({ row }) => (
-					<TaxEntityDisplay entityId={row.original.corporationId} entityNames={props.entityNames} />
-				),
-			}),
 			columnHelper.accessor('billStatus', {
 				header: 'Bill Status',
 				enableSorting: true,
@@ -44,6 +37,23 @@ export function BillStatusReportGrid(props: {
 						{row.original.billStatus}
 					</Badge>
 				),
+			}),
+			columnHelper.accessor('corporationId', {
+				header: 'Corporation',
+				enableSorting: true,
+				Cell: ({ row }) => (
+					<TaxEntityDisplay entityId={row.original.corporationId} entityNames={props.entityNames} />
+				),
+			}),
+			columnHelper.accessor('taxPeriodStart', {
+				header: 'Period Start',
+				enableSorting: true,
+				Cell: ({ row }) => formatTaxDateTime(row.original.taxPeriodStart),
+			}),
+			columnHelper.accessor('taxPeriodEnd', {
+				header: 'Period End',
+				enableSorting: true,
+				Cell: ({ row }) => formatTaxDateTime(row.original.taxPeriodEnd),
 			}),
 			columnHelper.accessor('issueDate', {
 				header: 'Issue Date',
@@ -54,11 +64,6 @@ export function BillStatusReportGrid(props: {
 				header: 'Due Date',
 				enableSorting: true,
 				Cell: ({ row }) => formatTaxDateTime(row.original.dueDate),
-			}),
-			columnHelper.accessor('assessmentCount', {
-				header: 'Assessments',
-				enableSorting: true,
-				Cell: ({ row }) => formatTaxNumber(row.original.assessmentCount),
 			}),
 			columnHelper.accessor('taxDueCenti', {
 				id: 'taxDue',

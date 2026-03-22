@@ -7,7 +7,7 @@ import {
 	parseBooleanQueryParam,
 	parseDateQueryParam,
 	parseIntegerQueryParam,
-	parseReportWindowFiltersFromQuery,
+	parseRollupReportFiltersFromQuery,
 	parseSortDirectionQueryParam,
 	TAX_BILL_STATUS_SORT_FIELDS,
 	TAX_DISCREPANCY_SORT_FIELDS,
@@ -34,7 +34,7 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 			return c.json({ error: 'Unauthorized' }, 401)
 		}
 
-		const parsed = parseReportWindowFiltersFromQuery(c.req)
+		const parsed = parseRollupReportFiltersFromQuery(c.req)
 		if (parsed.error) {
 			return c.json({ error: parsed.error }, 400)
 		}
@@ -64,7 +64,7 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 			return c.json({ error: 'Unauthorized' }, 401)
 		}
 
-		const parsed = parseReportWindowFiltersFromQuery(c.req, {
+		const parsed = parseRollupReportFiltersFromQuery(c.req, {
 			allowedSortFields: TAX_TOTAL_TAXES_SORT_FIELDS,
 		})
 		if (parsed.error) {
@@ -103,7 +103,7 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 			return c.json({ error: 'Unauthorized' }, 401)
 		}
 
-		const parsed = parseReportWindowFiltersFromQuery(c.req)
+		const parsed = parseRollupReportFiltersFromQuery(c.req)
 		if (parsed.error) {
 			return c.json({ error: parsed.error }, 400)
 		}
@@ -133,7 +133,7 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 			return c.json({ error: 'Unauthorized' }, 401)
 		}
 
-		const parsed = parseReportWindowFiltersFromQuery(c.req)
+		const parsed = parseRollupReportFiltersFromQuery(c.req)
 		if (parsed.error) {
 			return c.json({ error: parsed.error }, 400)
 		}
@@ -163,7 +163,7 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 			return c.json({ error: 'Unauthorized' }, 401)
 		}
 
-		const parsed = parseReportWindowFiltersFromQuery(c.req, {
+		const parsed = parseRollupReportFiltersFromQuery(c.req, {
 			allowedSortFields: TAX_ESS_REPORT_SORT_FIELDS,
 		})
 		if (parsed.error) {
@@ -195,7 +195,7 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 			return c.json({ error: 'Unauthorized' }, 401)
 		}
 
-		const parsed = parseReportWindowFiltersFromQuery(c.req)
+		const parsed = parseRollupReportFiltersFromQuery(c.req)
 		if (parsed.error) {
 			return c.json({ error: parsed.error }, 400)
 		}
@@ -345,7 +345,7 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 
 	/**
 	 * GET /corporation-tax/reports/bill-status
-	 * Assessment bill status rollup report.
+	 * Assessment-level bill status report.
 	 */
 	app.get('/reports/bill-status', requireAuth(), async (c) => {
 		const user = c.get('user')
@@ -353,7 +353,7 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 			return c.json({ error: 'Unauthorized' }, 401)
 		}
 
-		const parsed = parseReportWindowFiltersFromQuery(c.req, {
+		const parsed = parseRollupReportFiltersFromQuery(c.req, {
 			allowedSortFields: TAX_BILL_STATUS_SORT_FIELDS,
 		})
 		if (parsed.error) {

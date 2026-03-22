@@ -1,5 +1,5 @@
 import { filterTaxIncomeRefTypes, isTaxIncomeRefType } from '@repo/corporation-tax'
-import { and, desc, eq, gte, inArray, lt, lte, sql } from '@repo/db-utils'
+import { and, desc, eq, gte, inArray, isNotNull, lt, lte, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
 import {
@@ -13,11 +13,13 @@ import { formatCenti, parseDecimalToCenti } from './tax-money'
 import type {
 	IngestTaxLedgerWindowInput,
 	ListTaxDailyRollupsFilters,
+	ListTaxLedgerPartiesFilters,
 	TaxDailyRollup,
 	TaxLedgerDirection,
 	TaxLedgerEntry,
 	TaxLedgerIngestionHealth,
 	TaxLedgerIngestionResult,
+	TaxLedgerParty,
 	TaxLedgerRetentionResult,
 	TaxLedgerSourceType,
 	TaxLedgerWindowFilters,
@@ -216,8 +218,6 @@ export class TaxLedgerService {
 				}
 				const amount = row.amount ?? '0'
 				const direction = this.toDirection(amount)
-				const isEss = row.refType === 'ess_escrow_transfer'
-				const essBankType = isEss ? this.detectEssBankType(row.description, row.reason) : null
 				values.push({
 					corporationId,
 					sourceType: 'corporation_wallet_journal',
@@ -232,17 +232,6 @@ export class TaxLedgerService {
 					firstPartyId: row.firstPartyId,
 					secondPartyId: row.secondPartyId,
 					entryDate: row.date,
-					isEss,
-					essBankType,
-					rawPayload: {
-						journalId: row.journalId,
-						description: row.description,
-						contextId: row.contextId,
-						contextIdType: row.contextIdType,
-						reason: row.reason,
-						tax: row.tax,
-						taxReceiverId: row.taxReceiverId,
-					},
 				})
 			}
 
@@ -262,18 +251,6 @@ export class TaxLedgerService {
 					firstPartyId: null,
 					secondPartyId: row.clientId,
 					entryDate: row.date,
-					isEss: false,
-					essBankType: null,
-					rawPayload: {
-						transactionId: row.transactionId,
-						journalRefId: row.journalRefId,
-						typeId: row.typeId,
-						locationId: row.locationId,
-						quantity: row.quantity,
-						unitPrice: row.unitPrice,
-						isBuy: row.isBuy,
-						isPersonal: row.isPersonal,
-					},
 				})
 			}
 
@@ -283,10 +260,6 @@ export class TaxLedgerService {
 				}
 				const amount = item.row.amount ?? '0'
 				const direction = this.toDirection(amount)
-				const isEss = item.row.refType === 'ess_escrow_transfer'
-				const essBankType = isEss
-					? this.detectEssBankType(item.row.description, item.row.reason ?? null)
-					: null
 				values.push({
 					corporationId,
 					sourceType: 'character_wallet_journal',
@@ -301,18 +274,6 @@ export class TaxLedgerService {
 					firstPartyId: item.row.firstPartyId ?? null,
 					secondPartyId: item.row.secondPartyId ?? null,
 					entryDate: item.row.date,
-					isEss,
-					essBankType,
-					rawPayload: {
-						characterId: item.characterId,
-						journalId: item.row.journalId,
-						description: item.row.description,
-						contextId: item.row.contextId,
-						contextIdType: item.row.contextIdType,
-						reason: item.row.reason,
-						tax: item.row.tax,
-						taxReceiverId: item.row.taxReceiverId,
-					},
 				})
 			}
 
@@ -336,19 +297,6 @@ export class TaxLedgerService {
 					firstPartyId: item.characterId,
 					secondPartyId: item.row.clientId,
 					entryDate: item.row.date,
-					isEss: false,
-					essBankType: null,
-					rawPayload: {
-						characterId: item.characterId,
-						transactionId: item.row.transactionId,
-						journalRefId: item.row.journalRefId,
-						typeId: item.row.typeId,
-						locationId: item.row.locationId,
-						quantity: item.row.quantity,
-						unitPrice: item.row.unitPrice,
-						isBuy: item.row.isBuy,
-						isPersonal: item.row.isPersonal,
-					},
 				})
 			}
 
@@ -377,9 +325,6 @@ export class TaxLedgerService {
 							firstPartyId: sql`excluded.first_party_id`,
 							secondPartyId: sql`excluded.second_party_id`,
 							entryDate: sql`excluded.entry_date`,
-							isEss: sql`excluded.is_ess`,
-							essBankType: sql`excluded.ess_bank_type`,
-							rawPayload: sql`excluded.raw_payload`,
 							updatedAt: now,
 						},
 					})
@@ -582,12 +527,99 @@ export class TaxLedgerService {
 			firstPartyId: row.firstPartyId,
 			secondPartyId: row.secondPartyId,
 			entryDate: row.entryDate,
-			isEss: row.isEss,
-			essBankType: row.essBankType,
-			rawPayload: row.rawPayload ? JSON.stringify(row.rawPayload) : null,
 			createdAt: row.createdAt,
 			updatedAt: row.updatedAt,
 		}))
+	}
+
+	async listLedgerParties(
+		corporationId: string,
+		filters: ListTaxLedgerPartiesFilters = {}
+	): Promise<TaxLedgerParty[]> {
+		const limit = Math.min(Math.max(filters.limit ?? 500, 1), 2_000)
+		const baseConditions = [eq(taxLedgerEntries.corporationId, corporationId)]
+		if (filters.fromDate) {
+			baseConditions.push(gte(taxLedgerEntries.entryDate, filters.fromDate))
+		}
+		if (filters.toDate) {
+			baseConditions.push(lte(taxLedgerEntries.entryDate, filters.toDate))
+		}
+
+		const maxSenderSeenExpr = sql<Date>`max(${taxLedgerEntries.entryDate})`
+		const maxRecipientSeenExpr = sql<Date>`max(${taxLedgerEntries.entryDate})`
+		const senderRows = await this.db
+			.select({
+				entityId: taxLedgerEntries.firstPartyId,
+				senderCount: sql<number>`count(*)`,
+				lastSeenAt: maxSenderSeenExpr,
+			})
+			.from(taxLedgerEntries)
+			.where(and(...baseConditions, isNotNull(taxLedgerEntries.firstPartyId)))
+			.groupBy(taxLedgerEntries.firstPartyId)
+			.orderBy(desc(maxSenderSeenExpr))
+			.limit(limit)
+
+		const recipientRows = await this.db
+			.select({
+				entityId: taxLedgerEntries.secondPartyId,
+				recipientCount: sql<number>`count(*)`,
+				lastSeenAt: maxRecipientSeenExpr,
+			})
+			.from(taxLedgerEntries)
+			.where(and(...baseConditions, isNotNull(taxLedgerEntries.secondPartyId)))
+			.groupBy(taxLedgerEntries.secondPartyId)
+			.orderBy(desc(maxRecipientSeenExpr))
+			.limit(limit)
+
+		const merged = new Map<string, TaxLedgerParty>()
+		for (const row of senderRows) {
+			const entityId = row.entityId
+			if (!entityId || !row.lastSeenAt) continue
+			const senderCount = Number(row.senderCount ?? 0)
+			const current = merged.get(entityId)
+			if (!current) {
+				merged.set(entityId, {
+					entityId,
+					senderCount,
+					recipientCount: 0,
+					lastSeenAt: row.lastSeenAt,
+				})
+				continue
+			}
+			current.senderCount += senderCount
+			if (row.lastSeenAt > current.lastSeenAt) {
+				current.lastSeenAt = row.lastSeenAt
+			}
+		}
+		for (const row of recipientRows) {
+			const entityId = row.entityId
+			if (!entityId || !row.lastSeenAt) continue
+			const recipientCount = Number(row.recipientCount ?? 0)
+			const current = merged.get(entityId)
+			if (!current) {
+				merged.set(entityId, {
+					entityId,
+					senderCount: 0,
+					recipientCount,
+					lastSeenAt: row.lastSeenAt,
+				})
+				continue
+			}
+			current.recipientCount += recipientCount
+			if (row.lastSeenAt > current.lastSeenAt) {
+				current.lastSeenAt = row.lastSeenAt
+			}
+		}
+
+		return Array.from(merged.values())
+			.sort((left, right) => {
+				const byLastSeen = right.lastSeenAt.getTime() - left.lastSeenAt.getTime()
+				if (byLastSeen !== 0) {
+					return byLastSeen
+				}
+				return right.senderCount + right.recipientCount - (left.senderCount + left.recipientCount)
+			})
+			.slice(0, limit)
 	}
 
 	async getIngestionHealth(corporationId: string): Promise<TaxLedgerIngestionHealth> {
@@ -902,28 +934,15 @@ export class TaxLedgerService {
 		return formatCenti(signedCenti)
 	}
 
-	private detectEssBankType(description: string | null, reason: string | null): string | null {
-		const value = `${description ?? ''} ${reason ?? ''}`.toLowerCase()
-		if (value.includes('reserve')) {
-			return 'reserve'
-		}
-		if (value.includes('main')) {
-			return 'main'
-		}
-		return null
-	}
-
 	private summarizeEssQualitySignals(
 		values: Array<typeof taxLedgerEntries.$inferInsert>
 	): EssQualitySignals {
 		const seenEssSourceKeys = new Set<string>()
 		const duplicateEssSourceKeys = new Set<string>()
-		const missingEssSourceKeys = new Set<string>()
 		let duplicateRecordCount = 0
-		let missingRecordCount = 0
 
 		for (const row of values) {
-			if (!row.isEss) {
+			if (row.refType !== 'ess_escrow_transfer') {
 				continue
 			}
 
@@ -933,18 +952,13 @@ export class TaxLedgerService {
 			} else {
 				seenEssSourceKeys.add(row.sourceKey)
 			}
-
-			if (row.essBankType === null) {
-				missingRecordCount += 1
-				missingEssSourceKeys.add(row.sourceKey)
-			}
 		}
 
 		return {
 			duplicateRecordCount,
 			duplicateSourceKeys: Array.from(duplicateEssSourceKeys).slice(0, 25),
-			missingRecordCount,
-			missingSourceKeys: Array.from(missingEssSourceKeys).slice(0, 25),
+			missingRecordCount: 0,
+			missingSourceKeys: [],
 		}
 	}
 
@@ -1129,7 +1143,8 @@ export class TaxLedgerService {
 					const amount = Number(entry.amount)
 					const safeAmount = Number.isFinite(amount) ? amount : 0
 					const taxableIncome = safeAmount > 0 ? safeAmount : 0
-					const essIncome = entry.isEss && safeAmount > 0 ? safeAmount : 0
+					const essIncome =
+						entry.refType === 'ess_escrow_transfer' && safeAmount > 0 ? safeAmount : 0
 
 					if (existing) {
 						existing.taxableIncome += taxableIncome

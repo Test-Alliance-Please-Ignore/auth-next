@@ -39,11 +39,8 @@ describe('TaxAssessmentService', () => {
 							amount: '1000',
 							division: null,
 							entryDate: new Date('2026-01-10T00:00:00.000Z'),
-							isEss: false,
-							essBankType: null,
 							firstPartyId: null,
 							secondPartyId: null,
-							rawPayload: { tax: '5' },
 						},
 					]),
 				},
@@ -93,8 +90,8 @@ describe('TaxAssessmentService', () => {
 											taxableIncome: '1000',
 											nonTaxableIncome: '0',
 											taxDue: '100',
-											taxPaid: '5',
-											taxDelta: '95',
+											taxPaid: '0',
+											taxDelta: '100',
 											status: 'underpaid',
 											inGameTaxRateBps: 1200,
 											portalTaxRateBps: 1000,
@@ -156,11 +153,10 @@ describe('TaxAssessmentService', () => {
 
 		expect(result.assessment.corporationId).toBe('98000001')
 		expect(result.assessment.taxDue).toBe('100')
-		expect(result.assessment.taxPaid).toBe('5')
-		expect(result.assessment.taxDelta).toBe('95')
+		expect(result.assessment.taxDelta).toBe('100')
 		expect(result.assessment.status).toBe('underpaid')
 		expect(result.lineCount).toBe(1)
-		expect(result.discrepancyCount).toBe(1)
+		expect(result.discrepancyCount).toBe(0)
 		expect(result.divisionSummaries).toHaveLength(1)
 		expect(result.divisionSummaries[0]?.division).toBe(null)
 		expect(result.refTypeSummaries).toHaveLength(1)
@@ -182,7 +178,6 @@ describe('TaxAssessmentService', () => {
 		})
 
 		expect(second.assessment.taxDue).toBe(first.assessment.taxDue)
-		expect(second.assessment.taxPaid).toBe(first.assessment.taxPaid)
 		expect(second.assessment.taxDelta).toBe(first.assessment.taxDelta)
 		expect(second.assessment.status).toBe(first.assessment.status)
 		expect(second.divisionSummaries).toEqual(first.divisionSummaries)
@@ -222,11 +217,8 @@ describe('TaxAssessmentService', () => {
 							amount: '1000',
 							division: null,
 							entryDate: new Date('2026-01-10T00:00:00.000Z'),
-							isEss: false,
-							essBankType: null,
 							firstPartyId: null,
 							secondPartyId: null,
-							rawPayload: { tax: '0' },
 						},
 					]),
 				},
@@ -385,11 +377,8 @@ describe('TaxAssessmentService', () => {
 							amount: '1000',
 							division: null,
 							entryDate: new Date('2026-01-10T00:00:00.000Z'),
-							isEss: false,
-							essBankType: null,
 							firstPartyId: null,
 							secondPartyId: null,
-							rawPayload: { tax: '0' },
 						},
 					]),
 				},
@@ -516,11 +505,8 @@ describe('TaxAssessmentService', () => {
 							amount: '1000',
 							division: null,
 							entryDate: new Date('2026-01-10T00:00:00.000Z'),
-							isEss: false,
-							essBankType: null,
 							firstPartyId: null,
 							secondPartyId: null,
-							rawPayload: { tax: '0' },
 						},
 					]),
 				},
@@ -662,11 +648,8 @@ describe('TaxAssessmentService', () => {
 							amount: '1000',
 							division: 1,
 							entryDate: new Date('2026-01-10T00:00:00.000Z'),
-							isEss: false,
-							essBankType: null,
 							firstPartyId: null,
 							secondPartyId: null,
-							rawPayload: { tax: '0' },
 						},
 						{
 							id: 'ledger-char-1',
@@ -677,11 +660,8 @@ describe('TaxAssessmentService', () => {
 							amount: '500',
 							division: null,
 							entryDate: new Date('2026-01-11T00:00:00.000Z'),
-							isEss: false,
-							essBankType: null,
 							firstPartyId: '7001',
 							secondPartyId: null,
-							rawPayload: { tax: '0' },
 						},
 					]),
 				},
@@ -1005,11 +985,8 @@ describe('TaxAssessmentService', () => {
 							amount: '1000',
 							division: 1,
 							entryDate: new Date('2026-03-10T00:00:00.000Z'),
-							isEss: false,
-							essBankType: null,
 							firstPartyId: '7001',
 							secondPartyId: null,
-							rawPayload: { tax: '0' },
 						},
 					]),
 				},

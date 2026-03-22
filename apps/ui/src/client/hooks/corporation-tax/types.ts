@@ -2,12 +2,6 @@ export type TaxReportQueryFilters = {
 	corporationId?: string
 	fromDate?: string
 	toDate?: string
-	division?: number
-	refType?: string
-	refTypes?: string[]
-	firstPartyId?: string
-	secondPartyId?: string
-	minAmount?: string
 	limit?: number
 	offset?: number
 	sortBy?: string

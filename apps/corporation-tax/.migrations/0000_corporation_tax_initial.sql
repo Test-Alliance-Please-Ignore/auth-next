@@ -201,9 +201,6 @@ CREATE TABLE "tax_ledger_entries" (
 	"first_party_id" text,
 	"second_party_id" text,
 	"entry_date" timestamp with time zone NOT NULL,
-	"is_ess" boolean DEFAULT false NOT NULL,
-	"ess_bank_type" text,
-	"raw_payload" jsonb,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "tax_ledger_entries_source_key_unique" UNIQUE("source_key")
@@ -379,7 +376,6 @@ CREATE INDEX "tax_exports_requested_at_idx" ON "tax_exports" USING btree ("reque
 CREATE INDEX "tax_ledger_entries_corporation_id_idx" ON "tax_ledger_entries" USING btree ("corporation_id");--> statement-breakpoint
 CREATE INDEX "tax_ledger_entries_ref_type_idx" ON "tax_ledger_entries" USING btree ("ref_type");--> statement-breakpoint
 CREATE INDEX "tax_ledger_entries_entry_date_idx" ON "tax_ledger_entries" USING btree ("entry_date");--> statement-breakpoint
-CREATE INDEX "tax_ledger_entries_is_ess_idx" ON "tax_ledger_entries" USING btree ("is_ess");--> statement-breakpoint
 CREATE INDEX "tax_member_final_rollups_corp_period_idx" ON "tax_member_contribution_finalized_rollups" USING btree ("corporation_id","period_start","period_end");--> statement-breakpoint
 CREATE INDEX "tax_member_final_rollups_corp_char_period_idx" ON "tax_member_contribution_finalized_rollups" USING btree ("corporation_id","character_id","period_start","period_end");--> statement-breakpoint
 CREATE INDEX "tax_member_final_rollups_corp_ref_rollup_date_idx" ON "tax_member_contribution_finalized_rollups" USING btree ("corporation_id","ref_type","rollup_date");--> statement-breakpoint

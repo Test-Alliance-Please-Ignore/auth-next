@@ -110,6 +110,25 @@ export function useTaxLedgerEntries(
 	})
 }
 
+export function useTaxLedgerParties(
+	corporationId: string | undefined,
+	filters?: {
+		fromDate?: string
+		toDate?: string
+		limit?: number
+		q?: string
+		direction?: 'any' | 'sender' | 'recipient'
+		enabled?: boolean
+	}
+) {
+	return useQuery({
+		queryKey: corporationTaxKeys.ledgerParties(corporationId ?? 'none', filters),
+		queryFn: () => corporationTaxApi.getLedgerParties(corporationId!, filters),
+		staleTime: 1000 * 60 * 15,
+		enabled: Boolean(corporationId) && (filters?.enabled ?? true),
+	})
+}
+
 export function useCreateTaxBillForAssessment() {
 	const queryClient = useQueryClient()
 	return useMutation({

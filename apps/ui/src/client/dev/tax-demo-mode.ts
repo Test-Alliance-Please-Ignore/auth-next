@@ -328,6 +328,7 @@ function buildDemoState(seed: number) {
 			due - (index % 6 === 2 ? 540_000_000 : 95_000_000 + Math.round(rng() * 120_000_000))
 		return {
 			corporationId: corp.corporationId,
+			taxableItemCount: 240 + (index % 7) * 36 + Math.round(rng() * 24),
 			assessmentCount: 18 + (index % 6) * 4,
 			billedAssessmentCount: 14 + (index % 5) * 3,
 			underpaidCount: index % 6 === 2 ? 4 : 1,
@@ -380,7 +381,6 @@ function buildDemoState(seed: number) {
 			corporationId: corporation.corporationId,
 			entryDate: addDays(demoStart, index % demoDaySpan),
 			division: divisionList[index % divisionList.length] ?? 1,
-			essBankType: index % 2 === 0 ? 'main' : 'reserve',
 			amount: amount(1_850_000_000 + index * 420_000_000),
 			sourceType: 'corporation_wallet_journal',
 			sourcePrimaryId: `journal-${index}`,
@@ -431,15 +431,21 @@ function buildDemoState(seed: number) {
 	const billStatus = corporations.map((corp, index) => {
 		const issueDate = addDays(demoStart, 8 + index * 2)
 		const dueDate = addDays(issueDate, index === 2 ? -4 : 10 + index)
+		const taxPeriodStart = addDays(demoStart, Math.max(0, index * 2))
+		const taxPeriodEnd = addDays(taxPeriodStart, 29)
+		const taxDue = 1_350_000_000 + index * 420_000_000
+		const taxPaid = index === 2 ? 610_000_000 : 1_180_000_000 + index * 340_000_000
 		return {
+			assessmentId: `assessment-bill-${index}`,
 			corporationId: corp.corporationId,
+			taxPeriodStart,
+			taxPeriodEnd,
 			billStatus: (index === 2 ? 'overdue' : index === 1 ? 'paid' : 'issued') as TaxBillStatus,
 			issueDate,
 			dueDate,
-			assessmentCount: 4 + index,
-			taxDue: amount(1_350_000_000 + index * 420_000_000),
-			taxPaid: amount(index === 2 ? 610_000_000 : 1_180_000_000 + index * 340_000_000),
-			taxDelta: amount(index === 2 ? 740_000_000 : 170_000_000 + index * 80_000_000),
+			taxDue: amount(taxDue),
+			taxPaid: amount(taxPaid),
+			taxDelta: amount(taxDue - taxPaid),
 		}
 	}) as TaxBillStatusReportRow[]
 
@@ -478,10 +484,6 @@ function buildDemoState(seed: number) {
 			sourceSecondaryId: `${divisionList[index % divisionList.length] ?? 1}`,
 			sourceKey: `demo:${index}`,
 			balance: amount(96_000_000_000 - index * 1_450_000_000),
-			isEss: refType === 'ess_escrow_transfer',
-			essBankType:
-				refType === 'ess_escrow_transfer' ? (index % 2 === 0 ? 'main' : 'reserve') : null,
-			rawPayload: JSON.stringify({ refType, sourceType }),
 			createdAt: addDays(demoStart, index % demoDaySpan),
 			updatedAt: addDays(demoStart, index % demoDaySpan),
 		}
@@ -538,7 +540,6 @@ function buildDemoState(seed: number) {
 						: corporation.corporationId,
 			status: (billId ? 'underpaid' : 'paid') as TaxAssessment['status'],
 			taxDue: amount(due),
-			taxPaid: amount(Math.max(0, paid)),
 			taxDelta: amount(due - Math.max(0, paid)),
 			taxPeriodEnd: addDays(demoStart, Math.min(index % demoDaySpan, demoDaySpan - 1)),
 			taxPeriodStart: addDays(demoStart, Math.max(0, (index % demoDaySpan) - 29)),
@@ -1198,6 +1199,90 @@ export const taxDemoApi = {
 		})
 		return withLatency(applyLimitOffset(rows, filters?.limit, filters?.offset))
 	},
+	async getLedgerParties(
+		corporationId: string,
+		filters?: {
+			fromDate?: string
+			toDate?: string
+			limit?: number
+			q?: string
+			direction?: 'any' | 'sender' | 'recipient'
+		}
+	) {
+		const scoped = filterLedgerEntries(
+			ensureDemoState().ledgerEntries.filter((row) => row.corporationId === corporationId),
+			{
+				fromDate: filters?.fromDate,
+				toDate: filters?.toDate,
+			}
+		)
+		const byId = new Map<
+			string,
+			{
+				entityId: string
+				entityName: string | null
+				senderCount: number
+				recipientCount: number
+				lastSeenAt: Date
+			}
+		>()
+		const entityNames = ensureDemoState().entityNames
+
+		for (const row of scoped) {
+			const seenAt = new Date(row.entryDate)
+			const senderId = row.firstPartyId ?? undefined
+			const recipientId = row.secondPartyId ?? undefined
+
+			if (senderId) {
+				const current = byId.get(senderId) ?? {
+					entityId: senderId,
+					entityName: entityNames[senderId] ?? null,
+					senderCount: 0,
+					recipientCount: 0,
+					lastSeenAt: seenAt,
+				}
+				current.senderCount += 1
+				if (seenAt > current.lastSeenAt) current.lastSeenAt = seenAt
+				byId.set(senderId, current)
+			}
+			if (recipientId) {
+				const current = byId.get(recipientId) ?? {
+					entityId: recipientId,
+					entityName: entityNames[recipientId] ?? null,
+					senderCount: 0,
+					recipientCount: 0,
+					lastSeenAt: seenAt,
+				}
+				current.recipientCount += 1
+				if (seenAt > current.lastSeenAt) current.lastSeenAt = seenAt
+				byId.set(recipientId, current)
+			}
+		}
+
+		const query = filters?.q?.trim().toLowerCase()
+		const direction = filters?.direction ?? 'any'
+		const rows = Array.from(byId.values())
+			.filter((row) => {
+				if (direction === 'sender') return row.senderCount > 0
+				if (direction === 'recipient') return row.recipientCount > 0
+				return true
+			})
+			.filter((row) => {
+				if (!query) return true
+				return (
+					row.entityId.toLowerCase().includes(query) ||
+					row.entityName?.toLowerCase().includes(query)
+				)
+			})
+			.sort((left, right) => right.lastSeenAt.getTime() - left.lastSeenAt.getTime())
+			.map((row) => ({
+				entityId: row.entityId,
+				entityName: row.entityName,
+				lastSeenAt: row.lastSeenAt,
+			}))
+
+		return withLatency(rows.slice(0, filters?.limit ?? 500))
+	},
 	async listBillingConfigs(corporationId: string) {
 		const rows = ensureDemoState()
 			.billingConfigs.filter((row) => row.corporationId === corporationId)
@@ -1311,7 +1396,6 @@ export const taxDemoApi = {
 		)
 		if (assessment?.billId) {
 			assessment.billStatus = 'paid' as any
-			assessment.taxPaid = assessment.taxDue
 			assessment.taxDelta = amount(0)
 			assessment.status = 'paid' as any
 		}
@@ -1351,7 +1435,6 @@ export const taxDemoApi = {
 			.slice(0, 2)
 			.map((row) => {
 				row.billStatus = 'paid' as any
-				row.taxPaid = row.taxDue
 				row.taxDelta = amount(0)
 				return row.id
 			})
@@ -1464,7 +1547,7 @@ export const taxDemoApi = {
 				totalIncome: 0,
 			}
 			current.entryCount += 1
-			current.essEntryCount += row.isEss ? 1 : 0
+			current.essEntryCount += row.refType === 'ess_escrow_transfer' ? 1 : 0
 			current.totalIncome += amount
 			grouped.set(key, current)
 		}

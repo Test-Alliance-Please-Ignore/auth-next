@@ -28,6 +28,7 @@ export const TAX_LEDGER_SOURCE_TYPES = new Set([
 ])
 export const TAX_TOTAL_TAXES_SORT_FIELDS = [
 	'corporationId',
+	'taxableItemCount',
 	'assessmentCount',
 	'taxDue',
 	'taxPaid',
@@ -39,7 +40,6 @@ export const TAX_ESS_REPORT_SORT_FIELDS = [
 	'amount',
 	'corporationId',
 	'division',
-	'essBankType',
 ] as const
 export const TAX_DISCREPANCY_SORT_FIELDS = [
 	'createdAt',
@@ -54,11 +54,13 @@ export const TAX_MISSING_ESI_SORT_FIELDS = [
 	'lastVerified',
 ] as const
 export const TAX_BILL_STATUS_SORT_FIELDS = [
+	'assessmentId',
 	'corporationId',
+	'taxPeriodStart',
+	'taxPeriodEnd',
 	'billStatus',
 	'issueDate',
 	'dueDate',
-	'assessmentCount',
 	'taxDue',
 	'taxPaid',
 	'taxDelta',
@@ -211,6 +213,66 @@ export function parseReportWindowFiltersFromQuery(
 			firstPartyId,
 			secondPartyId,
 			minAmount,
+			limit: limit ?? undefined,
+			offset: offset ?? undefined,
+			sortBy: sortBy ?? undefined,
+			sortDirection: sortDirection ?? undefined,
+		},
+	}
+}
+
+export function parseRollupReportFiltersFromQuery(
+	request: {
+		query: (key: string) => string | undefined
+	},
+	options?: { allowedSortFields?: readonly string[] }
+): {
+	filters?: {
+		corporationId?: string
+		fromDate?: Date
+		toDate?: Date
+		limit?: number
+		offset?: number
+		sortBy?: string
+		sortDirection?: 'asc' | 'desc'
+	}
+	error?: string
+} {
+	const corporationId = request.query('corporationId') || undefined
+	const fromDate = parseDateQueryParam(request.query('fromDate'))
+	const toDate = parseDateQueryParam(request.query('toDate'))
+	const limit = parseIntegerQueryParam(request.query('limit'))
+	const offset = parseIntegerQueryParam(request.query('offset'))
+	const sortBy = request.query('sortBy') || undefined
+	const sortDirection = parseSortDirectionQueryParam(request.query('sortDir'))
+
+	if (fromDate === null) {
+		return { error: 'fromDate must be a valid ISO date string' }
+	}
+	if (toDate === null) {
+		return { error: 'toDate must be a valid ISO date string' }
+	}
+	if (fromDate && toDate && fromDate > toDate) {
+		return { error: 'fromDate must be before or equal to toDate' }
+	}
+	if (limit !== undefined && (limit < 1 || limit > 200)) {
+		return { error: 'limit must be an integer between 1 and 200' }
+	}
+	if (offset !== undefined && offset < 0) {
+		return { error: 'offset must be an integer >= 0' }
+	}
+	if (sortDirection === null) {
+		return { error: "sortDir must be 'asc' or 'desc'" }
+	}
+	if (sortBy && options?.allowedSortFields && !options.allowedSortFields.includes(sortBy)) {
+		return { error: `sortBy must be one of: ${options.allowedSortFields.join(', ')}` }
+	}
+
+	return {
+		filters: {
+			corporationId,
+			fromDate: fromDate ?? undefined,
+			toDate: toDate ?? undefined,
 			limit: limit ?? undefined,
 			offset: offset ?? undefined,
 			sortBy: sortBy ?? undefined,

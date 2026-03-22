@@ -27,11 +27,6 @@ interface TaxReportFilters {
 	corporationId?: string
 	fromDate?: string
 	toDate?: string
-	division?: number
-	refType?: string
-	firstPartyId?: string
-	secondPartyId?: string
-	minAmount?: string
 }
 
 const REPORT_PAGE_SIZE_DEFAULT = 25
@@ -42,8 +37,8 @@ export function TotalTaxesReportSection(props: {
 	onSortChange?: (sortBy: string, sortDir: SortDirection) => void
 }) {
 	const gridState = useReportGridState({
-		defaultSortBy: 'dueDate',
-		defaultSortDir: 'asc',
+		defaultSortBy: 'taxDue',
+		defaultSortDir: 'desc',
 		defaultPageSize: REPORT_PAGE_SIZE_DEFAULT,
 		resetOn: props.filters,
 		onSortChange: props.onSortChange,

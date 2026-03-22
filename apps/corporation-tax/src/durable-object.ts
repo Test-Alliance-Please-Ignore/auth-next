@@ -46,6 +46,7 @@ import type {
 	ListTaxDiscrepancyReportFilters,
 	ListTaxExportSchedulesFilters,
 	ListTaxExportsFilters,
+	ListTaxLedgerPartiesFilters,
 	ListTaxMissingEsiKeyReportFilters,
 	ListTaxNotificationDestinationsFilters,
 	ListTaxRuleGroupsFilters,
@@ -72,6 +73,7 @@ import type {
 	TaxLedgerEntry,
 	TaxLedgerIngestionHealth,
 	TaxLedgerIngestionResult,
+	TaxLedgerParty,
 	TaxLedgerRetentionResult,
 	TaxLedgerWindowFilters,
 	TaxMemberSummary,
@@ -80,6 +82,7 @@ import type {
 	TaxNotificationDestination,
 	TaxPagedResult,
 	TaxReportWindowFilters,
+	TaxRollupReportFilters,
 	TaxRuleGroup,
 	TaxRuleGroupAttachment,
 	TaxRuleSet,
@@ -510,6 +513,13 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		return this.ledgerService.listLedgerEntries(corporationId, filters)
 	}
 
+	async listLedgerParties(
+		corporationId: string,
+		filters?: ListTaxLedgerPartiesFilters
+	): Promise<TaxLedgerParty[]> {
+		return this.ledgerService.listLedgerParties(corporationId, filters)
+	}
+
 	async getLedgerIngestionHealth(corporationId: string): Promise<TaxLedgerIngestionHealth> {
 		return this.ledgerService.getIngestionHealth(corporationId)
 	}
@@ -825,36 +835,36 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		return updated
 	}
 
-	async getSummaryReport(filters?: TaxReportWindowFilters): Promise<TaxSummaryReport> {
+	async getSummaryReport(filters?: TaxRollupReportFilters): Promise<TaxSummaryReport> {
 		return this.reportService.getSummaryReport(filters)
 	}
 
 	async getTotalTaxesByCorporationReport(
-		filters?: TaxReportWindowFilters
+		filters?: TaxRollupReportFilters
 	): Promise<TaxPagedResult<TaxTotalTaxesByCorporationRow>> {
 		return this.reportService.getTotalTaxesByCorporationReport(filters)
 	}
 
 	async getTopIncomeSourcesReport(
-		filters?: TaxReportWindowFilters
+		filters?: TaxRollupReportFilters
 	): Promise<TaxTopIncomeSourceRow[]> {
 		return this.reportService.getTopIncomeSourcesReport(filters)
 	}
 
 	async getTopIncomeSourcesMonthlyReport(
-		filters?: TaxReportWindowFilters
+		filters?: TaxRollupReportFilters
 	): Promise<TaxTopIncomeSourceMonthlyRow[]> {
 		return this.reportService.getTopIncomeSourcesMonthlyReport(filters)
 	}
 
 	async getEssPayoutReport(
-		filters?: TaxReportWindowFilters
+		filters?: TaxRollupReportFilters
 	): Promise<TaxPagedResult<TaxEssPayoutRow>> {
 		return this.reportService.getEssPayoutReport(filters)
 	}
 
 	async getComplianceOverTimeReport(
-		filters?: TaxReportWindowFilters
+		filters?: TaxRollupReportFilters
 	): Promise<TaxCompliancePoint[]> {
 		return this.reportService.getComplianceOverTimeReport(filters)
 	}
@@ -872,7 +882,7 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 	}
 
 	async getBillStatusReport(
-		filters?: TaxReportWindowFilters
+		filters?: TaxRollupReportFilters
 	): Promise<TaxPagedResult<TaxBillStatusReportRow>> {
 		return this.reportService.getBillStatusReport(filters)
 	}

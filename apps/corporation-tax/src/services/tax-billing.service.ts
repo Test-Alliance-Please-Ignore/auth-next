@@ -776,7 +776,6 @@ export class TaxBillingService {
 			taxableIncome: row.taxableIncome,
 			nonTaxableIncome: row.nonTaxableIncome,
 			taxDue: row.taxDue,
-			taxPaid: row.taxPaid,
 			taxDelta: row.taxDelta,
 			status: row.status,
 			inGameTaxRateBps: row.inGameTaxRateBps,

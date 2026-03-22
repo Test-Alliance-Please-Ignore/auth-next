@@ -407,9 +407,6 @@ export const taxLedgerEntries = pgTable(
 		firstPartyId: text('first_party_id'),
 		secondPartyId: text('second_party_id'),
 		entryDate: timestamp('entry_date', { withTimezone: true }).notNull(),
-		isEss: boolean('is_ess').notNull().default(false),
-		essBankType: text('ess_bank_type'),
-		rawPayload: jsonb('raw_payload').$type<Record<string, unknown> | null>(),
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
@@ -418,7 +415,6 @@ export const taxLedgerEntries = pgTable(
 		index('tax_ledger_entries_corporation_id_idx').on(table.corporationId),
 		index('tax_ledger_entries_ref_type_idx').on(table.refType),
 		index('tax_ledger_entries_entry_date_idx').on(table.entryDate),
-		index('tax_ledger_entries_is_ess_idx').on(table.isEss),
 	]
 )
 

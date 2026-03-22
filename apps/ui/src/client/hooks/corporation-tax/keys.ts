@@ -125,6 +125,16 @@ export const corporationTaxKeys = {
 			offset?: number
 		}
 	) => [...corporationTaxKeys.all, 'ledger-entries', corporationId, filters] as const,
+	ledgerParties: (
+		corporationId: string,
+		filters?: {
+			fromDate?: string
+			toDate?: string
+			limit?: number
+			q?: string
+			direction?: 'any' | 'sender' | 'recipient'
+		}
+	) => [...corporationTaxKeys.all, 'ledger-parties', corporationId, filters] as const,
 	summary: (filters?: TaxReportQueryFilters) =>
 		[...corporationTaxKeys.all, 'summary', filters] as const,
 	memberSummary: (

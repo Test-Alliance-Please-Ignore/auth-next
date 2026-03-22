@@ -106,7 +106,6 @@ export function ScopedAssessmentSnapshotCard({
 										<TableHead>Scope ID</TableHead>
 										<TableHead>Status</TableHead>
 										<TableHead>Tax Due</TableHead>
-										<TableHead>Tax Paid</TableHead>
 										<TableHead>Delta</TableHead>
 										<TableHead>Period End</TableHead>
 									</TableRow>
@@ -118,14 +117,16 @@ export function ScopedAssessmentSnapshotCard({
 											<TableCell>{assessment.assessmentScope}</TableCell>
 											<TableCell>
 												{assessment.assessmentScope === 'character' ? (
-													<TaxEntityDisplay entityId={assessment.scopeId} entityNames={entityNames} />
+													<TaxEntityDisplay
+														entityId={assessment.scopeId}
+														entityNames={entityNames}
+													/>
 												) : (
 													assessment.scopeId
 												)}
 											</TableCell>
 											<TableCell>{assessment.status}</TableCell>
 											<TableCell>{formatTaxIskFull(assessment.taxDue)}</TableCell>
-											<TableCell>{formatTaxIskFull(assessment.taxPaid)}</TableCell>
 											<TableCell>{formatTaxIskFull(assessment.taxDelta)}</TableCell>
 											<TableCell>{formatTaxDateTime(assessment.taxPeriodEnd)}</TableCell>
 										</TableRow>

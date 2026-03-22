@@ -115,6 +115,7 @@ describe('TaxReportService report scoping', () => {
 			[
 				{
 					corporationId: '1001',
+					taxableItemCount: 137,
 					assessmentCount: 4,
 					billedAssessmentCount: 2,
 					underpaidCount: 1,
@@ -145,6 +146,7 @@ describe('TaxReportService report scoping', () => {
 		expect(report.rows).toEqual([
 			expect.objectContaining({
 				corporationId: '1001',
+				taxableItemCount: 137,
 				assessmentCount: 4,
 				taxDue: '500.00',
 				taxPaid: '450.00',
@@ -161,13 +163,11 @@ describe('TaxReportService report scoping', () => {
 				entryDate: new Date('2026-03-10T00:00:00.000Z'),
 				division: 1,
 				amount: '25.00',
-				essBankType: 'main',
 				sourceType: 'corporation_wallet_journal',
 				sourcePrimaryId: '100',
 				firstPartyId: '90000001',
 				secondPartyId: null,
 				refType: 'ess_escrow_transfer',
-				isEss: true,
 			},
 		])
 		mockDb.select = vi.fn(() => ({
@@ -200,5 +200,47 @@ describe('TaxReportService report scoping', () => {
 				offset: 0,
 			})
 		)
+	})
+
+	it('returns assessment-level bill status rows with bill-derived paid totals', async () => {
+		mockDb.select = createSelectMock([
+			[
+				{
+					assessmentId: 'assessment-1',
+					corporationId: '1001',
+					taxPeriodStart: new Date('2026-03-01T00:00:00.000Z'),
+					taxPeriodEnd: new Date('2026-03-31T23:59:59.999Z'),
+					billId: 'bill-1',
+					billStatus: 'issued',
+					issueDate: new Date('2026-04-01T00:00:00.000Z'),
+					dueDate: new Date('2026-04-14T00:00:00.000Z'),
+					taxDue: '500.00',
+					taxPaid: '250.00',
+					taxDelta: '250.00',
+				},
+			],
+		])
+
+		const service = new TaxReportService(mockDb, {} as any)
+		const report = await service.getBillStatusReport({
+			corporationId: '1001',
+			sortBy: 'dueDate',
+			sortDirection: 'asc',
+			limit: 25,
+			offset: 0,
+		})
+
+		expect(report.totalRows).toBe(1)
+		expect(report.rows).toEqual([
+			expect.objectContaining({
+				assessmentId: 'assessment-1',
+				corporationId: '1001',
+				billId: 'bill-1',
+				billStatus: 'issued',
+				taxDue: '500.00',
+				taxPaid: '250.00',
+				taxDelta: '250.00',
+			}),
+		])
 	})
 })

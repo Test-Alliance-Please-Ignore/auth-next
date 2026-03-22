@@ -148,7 +148,6 @@ export interface TaxAssessment {
 	taxableIncome: string
 	nonTaxableIncome: string
 	taxDue: string
-	taxPaid: string
 	taxDelta: string
 	status: TaxAssessmentStatus
 	inGameTaxRateBps: number | null
@@ -364,11 +363,15 @@ export interface TaxLedgerEntry {
 	firstPartyId: string | null
 	secondPartyId: string | null
 	entryDate: Date
-	isEss: boolean
-	essBankType: string | null
-	rawPayload: string | null
 	createdAt: Date
 	updatedAt: Date
+}
+
+export interface TaxLedgerParty {
+	entityId: string
+	senderCount: number
+	recipientCount: number
+	lastSeenAt: Date
 }
 
 export interface TaxSyncCheckpoint {
@@ -427,6 +430,12 @@ export interface TaxLedgerWindowFilters {
 	maxAmount?: string
 	limit?: number
 	offset?: number
+}
+
+export interface ListTaxLedgerPartiesFilters {
+	fromDate?: Date
+	toDate?: Date
+	limit?: number
 }
 
 export interface IngestTaxLedgerWindowInput extends TaxLedgerWindowFilters {
@@ -505,6 +514,16 @@ export interface TaxReportWindowFilters {
 	sortDirection?: 'asc' | 'desc'
 }
 
+export interface TaxRollupReportFilters {
+	corporationId?: string
+	fromDate?: Date
+	toDate?: Date
+	limit?: number
+	offset?: number
+	sortBy?: string
+	sortDirection?: 'asc' | 'desc'
+}
+
 export interface TaxPagedResult<TRow> {
 	rows: TRow[]
 	totalRows: number
@@ -529,6 +548,7 @@ export interface TaxSummaryReport {
 
 export interface TaxTotalTaxesByCorporationRow {
 	corporationId: string
+	taxableItemCount: number
 	assessmentCount: number
 	billedAssessmentCount: number
 	underpaidCount: number
@@ -567,7 +587,6 @@ export interface TaxEssPayoutRow {
 	entryDate: Date
 	division: number | null
 	amount: string
-	essBankType: string | null
 	sourceType: string
 	sourcePrimaryId: string
 	firstPartyId: string | null
@@ -594,11 +613,14 @@ export interface TaxMissingEsiKeyRow {
 }
 
 export interface TaxBillStatusReportRow {
+	assessmentId: string
 	corporationId: string
+	taxPeriodStart: Date
+	taxPeriodEnd: Date
+	billId: string | null
 	billStatus: TaxBillStatus | 'unbilled'
 	issueDate: Date | null
 	dueDate: Date | null
-	assessmentCount: number
 	taxDue: string
 	taxPaid: string
 	taxDelta: string

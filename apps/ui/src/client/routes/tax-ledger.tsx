@@ -13,8 +13,10 @@ import { Section } from '@/components/ui/section'
 import {
 	useTaxCapabilities,
 	useTaxLedgerEntries,
+	useTaxLedgerParties,
 	useTaxWalletDivisions,
 } from '@/hooks/corporation-tax'
+import { useDebounce } from '@/hooks/useDebounce'
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useTaxCorporationAccessScope } from '@/hooks/useTaxCorporationAccessScope'
@@ -24,6 +26,7 @@ import {
 	formatTaxIskFull,
 	formatTaxLedgerSourceTypeLabel,
 	formatTaxRefTypeLabel,
+	getTaxRefTypeColor,
 	TAX_LEDGER_SOURCE_TYPE_OPTIONS,
 	TAX_REF_TYPE_OPTIONS,
 	TaxEntityDisplay,
@@ -93,6 +96,8 @@ export default function TaxLedgerPage() {
 	const [sourceTypeQuery, setSourceTypeQuery] = useState('')
 	const [firstPartyIdFilter, setFirstPartyIdFilter] = useState('')
 	const [secondPartyIdFilter, setSecondPartyIdFilter] = useState('')
+	const [firstPartyQuery, setFirstPartyQuery] = useState('')
+	const [secondPartyQuery, setSecondPartyQuery] = useState('')
 	const [minAmountFilter, setMinAmountFilter] = useState('')
 
 	const { data: scopedCapabilities, isLoading: scopedCapabilitiesLoading } = useTaxCapabilities(
@@ -165,6 +170,36 @@ export default function TaxLedgerPage() {
 	const secondPartyIdValue = secondPartyIdFilter.trim() || undefined
 	const minAmountValue = minAmountFilter.trim() || undefined
 
+	const debouncedFirstPartyQuery = useDebounce(firstPartyQuery, 300)
+	const debouncedSecondPartyQuery = useDebounce(secondPartyQuery, 300)
+	const normalizedFirstPartyQuery = debouncedFirstPartyQuery.trim()
+	const normalizedSecondPartyQuery = debouncedSecondPartyQuery.trim()
+	const firstPartySearchPending = firstPartyQuery !== debouncedFirstPartyQuery
+	const secondPartySearchPending = secondPartyQuery !== debouncedSecondPartyQuery
+
+	const { data: senderPartyRows = [], isLoading: senderPartiesLoading } = useTaxLedgerParties(
+		effectiveCorporationId,
+		{
+			fromDate: fromDateIso,
+			toDate: toDateIso,
+			limit: 100,
+			q: normalizedFirstPartyQuery || undefined,
+			direction: 'sender',
+			enabled: canView && Boolean(effectiveCorporationId) && normalizedFirstPartyQuery.length >= 2,
+		}
+	)
+	const { data: recipientPartyRows = [], isLoading: recipientPartiesLoading } = useTaxLedgerParties(
+		effectiveCorporationId,
+		{
+			fromDate: fromDateIso,
+			toDate: toDateIso,
+			limit: 100,
+			q: normalizedSecondPartyQuery || undefined,
+			direction: 'recipient',
+			enabled: canView && Boolean(effectiveCorporationId) && normalizedSecondPartyQuery.length >= 2,
+		}
+	)
+
 	useEffect(() => {
 		setPage(0)
 	}, [
@@ -209,10 +244,49 @@ export default function TaxLedgerPage() {
 			if (entry.secondPartyId) ids.add(entry.secondPartyId)
 			if (entry.characterId) ids.add(entry.characterId)
 		}
+		for (const party of senderPartyRows) {
+			ids.add(party.entityId)
+		}
+		for (const party of recipientPartyRows) {
+			ids.add(party.entityId)
+		}
+		if (firstPartyIdFilter) ids.add(firstPartyIdFilter)
+		if (secondPartyIdFilter) ids.add(secondPartyIdFilter)
 		return [...ids]
-	}, [ledgerEntries])
+	}, [ledgerEntries, senderPartyRows, recipientPartyRows, firstPartyIdFilter, secondPartyIdFilter])
 
 	const { data: entityNames = {} } = useEntityNames(ledgerEntityIds, { enabled: canView })
+
+	const senderPartyOptions = useMemo(
+		() =>
+			senderPartyRows.map((party) => ({
+				id: party.entityId,
+				value: party.entityId,
+				label: party.entityName ?? entityNames[party.entityId] ?? party.entityId,
+				description: party.entityId,
+			})),
+		[entityNames, senderPartyRows]
+	)
+	const recipientPartyOptions = useMemo(
+		() =>
+			recipientPartyRows.map((party) => ({
+				id: party.entityId,
+				value: party.entityId,
+				label: party.entityName ?? entityNames[party.entityId] ?? party.entityId,
+				description: party.entityId,
+			})),
+		[entityNames, recipientPartyRows]
+	)
+	const partyNameById = useMemo(
+		() =>
+			new Map(
+				[...senderPartyOptions, ...recipientPartyOptions].map((option) => [
+					option.value,
+					option.label,
+				])
+			),
+		[senderPartyOptions, recipientPartyOptions]
+	)
 
 	const ledgerColumns = useMemo<MRT_ColumnDef<TaxLedgerEntry>[]>(
 		() => [
@@ -226,7 +300,15 @@ export default function TaxLedgerPage() {
 				accessorKey: 'refType',
 				header: 'Income Type',
 				enableSorting: false,
-				Cell: ({ row }) => formatTaxRefTypeLabel(row.original.refType),
+				Cell: ({ row }) => (
+					<div className="flex items-center gap-2">
+						<span
+							className="h-2.5 w-2.5 rounded-full"
+							style={{ backgroundColor: getTaxRefTypeColor(row.original.refType) }}
+						/>
+						<span>{formatTaxRefTypeLabel(row.original.refType)}</span>
+					</div>
+				),
 			},
 			{
 				accessorKey: 'amount',
@@ -388,17 +470,61 @@ export default function TaxLedgerPage() {
 							/>
 						</FilterField>
 						<FilterField label="Sender">
-							<Input
-								value={firstPartyIdFilter}
-								onChange={(event) => setFirstPartyIdFilter(event.target.value)}
-								placeholder="Sender"
+							<SearchSelect
+								value={firstPartyQuery}
+								onValueChange={(value) => {
+									setFirstPartyQuery(value)
+									if (!value.trim()) {
+										setFirstPartyIdFilter('')
+										return
+									}
+									setFirstPartyIdFilter('')
+								}}
+								options={senderPartyOptions}
+								onSelect={(option) => {
+									setFirstPartyIdFilter(option.value)
+									setFirstPartyQuery('')
+								}}
+								filterMode="server"
+								mode="search"
+								minQueryLength={2}
+								loading={senderPartiesLoading || firstPartySearchPending}
+								minCharsText="Type at least 2 characters to search senders"
+								placeholder={
+									firstPartyIdFilter
+										? (partyNameById.get(firstPartyIdFilter) ?? firstPartyIdFilter)
+										: 'Sender name or ID'
+								}
+								emptyText="No sender matches found"
 							/>
 						</FilterField>
 						<FilterField label="Recipient">
-							<Input
-								value={secondPartyIdFilter}
-								onChange={(event) => setSecondPartyIdFilter(event.target.value)}
-								placeholder="Recipient"
+							<SearchSelect
+								value={secondPartyQuery}
+								onValueChange={(value) => {
+									setSecondPartyQuery(value)
+									if (!value.trim()) {
+										setSecondPartyIdFilter('')
+										return
+									}
+									setSecondPartyIdFilter('')
+								}}
+								options={recipientPartyOptions}
+								onSelect={(option) => {
+									setSecondPartyIdFilter(option.value)
+									setSecondPartyQuery('')
+								}}
+								filterMode="server"
+								mode="search"
+								minQueryLength={2}
+								loading={recipientPartiesLoading || secondPartySearchPending}
+								minCharsText="Type at least 2 characters to search recipients"
+								placeholder={
+									secondPartyIdFilter
+										? (partyNameById.get(secondPartyIdFilter) ?? secondPartyIdFilter)
+										: 'Recipient name or ID'
+								}
+								emptyText="No recipient matches found"
 							/>
 						</FilterField>
 					</CardContent>

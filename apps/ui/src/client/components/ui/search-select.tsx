@@ -353,9 +353,14 @@ export function SearchSelect<TOption extends SearchSelectOption>({
 												renderOption(option)
 											) : (
 												<div className="min-w-0">
-													<div className="font-medium">{option.label}</div>
+													<div className="truncate font-medium" title={option.label}>
+														{option.label}
+													</div>
 													{option.description && (
-														<div className="truncate text-xs text-muted-foreground">
+														<div
+															className="truncate text-xs text-muted-foreground"
+															title={option.description}
+														>
 															{option.description}
 														</div>
 													)}

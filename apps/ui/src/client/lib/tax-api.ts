@@ -67,12 +67,6 @@ export interface TaxReportFilters {
 	corporationId?: string
 	fromDate?: string
 	toDate?: string
-	division?: number
-	refType?: string
-	refTypes?: string[]
-	firstPartyId?: string
-	secondPartyId?: string
-	minAmount?: string
 	limit?: number
 	offset?: number
 	sortBy?: string
@@ -104,6 +98,20 @@ export interface TaxLedgerFilters {
 	maxAmount?: string
 	limit?: number
 	offset?: number
+}
+
+export interface TaxLedgerPartySearchFilters {
+	fromDate?: string
+	toDate?: string
+	limit?: number
+	q?: string
+	direction?: 'any' | 'sender' | 'recipient'
+}
+
+export interface TaxLedgerPartySearchRow {
+	entityId: string
+	entityName: string | null
+	lastSeenAt: Date
 }
 
 export interface ListTaxExportsFilters {
@@ -238,14 +246,6 @@ export class CorporationTaxApiClient extends ApiClient {
 		if (filters.corporationId) params.set('corporationId', filters.corporationId)
 		if (filters.fromDate) params.set('fromDate', filters.fromDate)
 		if (filters.toDate) params.set('toDate', filters.toDate)
-		if (filters.division !== undefined) params.set('division', String(filters.division))
-		if (filters.refType) params.set('refType', filters.refType)
-		if (filters.refTypes && filters.refTypes.length > 0) {
-			params.set('refTypes', filters.refTypes.join(','))
-		}
-		if (filters.firstPartyId) params.set('firstPartyId', filters.firstPartyId)
-		if (filters.secondPartyId) params.set('secondPartyId', filters.secondPartyId)
-		if (filters.minAmount) params.set('minAmount', filters.minAmount)
 		if (filters.limit !== undefined) params.set('limit', String(filters.limit))
 		if (filters.offset !== undefined) params.set('offset', String(filters.offset))
 		if (filters.sortBy) params.set('sortBy', filters.sortBy)
@@ -522,6 +522,23 @@ export class CorporationTaxApiClient extends ApiClient {
 		const query = params.toString()
 		return this.get(
 			`${TAX_API_BASE}/corporations/${corporationId}/ledger/entries${query ? `?${query}` : ''}`
+		)
+	}
+
+	async getLedgerParties(
+		corporationId: string,
+		filters?: TaxLedgerPartySearchFilters
+	): Promise<TaxLedgerPartySearchRow[]> {
+		if (this.shouldUseDemo()) return taxDemoApi.getLedgerParties(corporationId, filters as any)
+		const params = new URLSearchParams()
+		if (filters?.fromDate) params.set('fromDate', filters.fromDate)
+		if (filters?.toDate) params.set('toDate', filters.toDate)
+		if (filters?.limit !== undefined) params.set('limit', String(filters.limit))
+		if (filters?.q) params.set('q', filters.q)
+		if (filters?.direction) params.set('direction', filters.direction)
+		const query = params.toString()
+		return this.get(
+			`${TAX_API_BASE}/corporations/${corporationId}/ledger/parties${query ? `?${query}` : ''}`
 		)
 	}
 

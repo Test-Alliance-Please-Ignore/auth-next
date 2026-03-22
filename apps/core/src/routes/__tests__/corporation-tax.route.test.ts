@@ -88,6 +88,7 @@ function makeCorporationTaxStub() {
 		updateRuleSet: vi.fn(),
 		ingestCorporationLedgerWindow: vi.fn(),
 		listLedgerEntries: vi.fn(),
+		listLedgerParties: vi.fn(),
 		runAssessmentForPeriod: vi.fn(),
 		rebuildFinalizedRollupsForPeriod: vi.fn(),
 		createBillsForAssessment: vi.fn(),
@@ -141,6 +142,7 @@ function routeStubs(params: {
 	}
 	tokenStoreStub?: {
 		searchCharacter: ReturnType<typeof vi.fn>
+		resolveIds?: ReturnType<typeof vi.fn>
 	}
 }) {
 	getStubMock.mockImplementation((binding: any) => {
@@ -387,10 +389,10 @@ describe('corporation-tax routes', () => {
 		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:tax:admin' }] as any)
 		routeStubs({ corporationTaxStub, featuresStub })
 
-		const response = await app.request('/api/corporation-tax/corporations?limit=301', {}, env)
+		const response = await app.request('/api/corporation-tax/corporations?limit=1001', {}, env)
 
 		expect(response.status).toBe(400)
-		expect(await response.json()).toEqual({ error: 'limit must be between 1 and 300' })
+		expect(await response.json()).toEqual({ error: 'limit must be between 1 and 1000' })
 		expect(corporationTaxStub.listCorporationExclusions).not.toHaveBeenCalled()
 	})
 
@@ -451,7 +453,8 @@ describe('corporation-tax routes', () => {
 			}),
 		])
 		expect(corporationTaxStub.listCorporationExclusions).toHaveBeenCalledWith({
-			limit: 10_000,
+			limit: 500,
+			offset: 0,
 		})
 	})
 
@@ -880,6 +883,127 @@ describe('corporation-tax routes', () => {
 		})
 	})
 
+	it('validates ledger parties date bounds', async () => {
+		const app = createApp(makeUser())
+		const corporationTaxStub = makeCorporationTaxStub()
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:tax:admin' }] as any)
+		routeStubs({ corporationTaxStub })
+
+		const response = await app.request(
+			'/api/corporation-tax/corporations/4002/ledger/parties?fromDate=2026-03-31T23:59:59.999Z&toDate=2026-03-01T00:00:00.000Z',
+			{},
+			env
+		)
+
+		expect(response.status).toBe(400)
+		expect(await response.json()).toEqual({
+			error: 'fromDate must be before or equal to toDate',
+		})
+		expect(corporationTaxStub.listLedgerParties).not.toHaveBeenCalled()
+	})
+
+	it('returns ledger parties with resolved names', async () => {
+		const app = createApp(makeUser())
+		const corporationTaxStub = makeCorporationTaxStub()
+		const tokenStoreStub = {
+			searchCharacter: vi.fn(),
+			resolveIds: vi.fn().mockResolvedValue({
+				'9001': 'Ariadne Voss',
+				'9002': 'Talon Mere',
+			}),
+		}
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:tax:admin' }] as any)
+		corporationTaxStub.listLedgerParties.mockResolvedValue([
+			{
+				entityId: '9001',
+				senderCount: 3,
+				recipientCount: 1,
+				lastSeenAt: new Date('2026-03-20T00:00:00.000Z'),
+			},
+			{
+				entityId: '9002',
+				senderCount: 0,
+				recipientCount: 4,
+				lastSeenAt: new Date('2026-03-19T00:00:00.000Z'),
+			},
+		])
+		routeStubs({ corporationTaxStub, tokenStoreStub })
+
+		const response = await app.request(
+			'/api/corporation-tax/corporations/4002/ledger/parties?fromDate=2026-03-01T00:00:00.000Z&toDate=2026-03-31T23:59:59.999Z&limit=25',
+			{},
+			env
+		)
+
+		expect(response.status).toBe(200)
+		expect(await response.json()).toEqual([
+			{
+				entityId: '9001',
+				entityName: 'Ariadne Voss',
+				lastSeenAt: '2026-03-20T00:00:00.000Z',
+			},
+			{
+				entityId: '9002',
+				entityName: 'Talon Mere',
+				lastSeenAt: '2026-03-19T00:00:00.000Z',
+			},
+		])
+		expect(corporationTaxStub.listLedgerParties).toHaveBeenCalledWith('4002', {
+			fromDate: new Date('2026-03-01T00:00:00.000Z'),
+			toDate: new Date('2026-03-31T23:59:59.999Z'),
+			limit: 2000,
+		})
+		expect(tokenStoreStub.resolveIds).toHaveBeenCalledWith(['9001', '9002'])
+	})
+
+	it('filters ledger parties by query using resolved names', async () => {
+		const app = createApp(makeUser())
+		const corporationTaxStub = makeCorporationTaxStub()
+		const tokenStoreStub = {
+			searchCharacter: vi.fn(),
+			resolveIds: vi.fn().mockResolvedValue({
+				'9001': 'Ariadne Voss',
+				'9002': 'Talon Mere',
+			}),
+		}
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:tax:admin' }] as any)
+		corporationTaxStub.listLedgerParties.mockResolvedValue([
+			{
+				entityId: '9001',
+				senderCount: 3,
+				recipientCount: 1,
+				lastSeenAt: new Date('2026-03-20T00:00:00.000Z'),
+			},
+			{
+				entityId: '9002',
+				senderCount: 0,
+				recipientCount: 4,
+				lastSeenAt: new Date('2026-03-19T00:00:00.000Z'),
+			},
+		])
+		routeStubs({ corporationTaxStub, tokenStoreStub })
+
+		const response = await app.request(
+			'/api/corporation-tax/corporations/4002/ledger/parties?q=tal&limit=10',
+			{},
+			env
+		)
+
+		expect(response.status).toBe(200)
+		expect(await response.json()).toEqual([
+			{
+				entityId: '9002',
+				entityName: 'Talon Mere',
+				lastSeenAt: '2026-03-19T00:00:00.000Z',
+			},
+		])
+		expect(corporationTaxStub.listLedgerParties).toHaveBeenCalledWith('4002', {
+			fromDate: undefined,
+			toDate: undefined,
+			limit: 2000,
+		})
+	})
+
 	it('returns corporation bill history for auditor role', async () => {
 		const app = createApp(makeUser())
 		const corporationTaxStub = makeCorporationTaxStub()
@@ -1105,7 +1229,7 @@ describe('corporation-tax routes', () => {
 		expect(response.status).toBe(400)
 		expect(await response.json()).toEqual({
 			error:
-				'sortBy must be one of: corporationId, assessmentCount, taxDue, taxPaid, taxDelta, lastAssessmentAt',
+				'sortBy must be one of: corporationId, taxableItemCount, assessmentCount, taxDue, taxPaid, taxDelta, lastAssessmentAt',
 		})
 		expect(corporationTaxStub.getTotalTaxesByCorporationReport).not.toHaveBeenCalled()
 	})
@@ -1138,7 +1262,7 @@ describe('corporation-tax routes', () => {
 		)
 	})
 
-	it('forwards extended report window filters to top-income report', async () => {
+	it('forwards rollup-focused report filters to top-income report', async () => {
 		const app = createApp(makeUser())
 		const corporationTaxStub = makeCorporationTaxStub()
 		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:tax:auditor' }] as any)
@@ -1146,7 +1270,7 @@ describe('corporation-tax routes', () => {
 		routeStubs({ corporationTaxStub })
 
 		const response = await app.request(
-			'/api/corporation-tax/reports/top-income?corporationId=7001&refType=bounty_prizes&division=3&firstPartyId=9001&secondPartyId=9002&minAmount=1000000',
+			'/api/corporation-tax/reports/top-income?corporationId=7001&fromDate=2026-03-01T00:00:00.000Z&toDate=2026-03-31T23:59:59.000Z',
 			{},
 			env
 		)
@@ -1156,16 +1280,13 @@ describe('corporation-tax routes', () => {
 		expect(corporationTaxStub.getTopIncomeSourcesReport).toHaveBeenCalledWith(
 			expect.objectContaining({
 				corporationId: '7001',
-				refType: 'bounty_prizes',
-				division: 3,
-				firstPartyId: '9001',
-				secondPartyId: '9002',
-				minAmount: '1000000',
+				fromDate: new Date('2026-03-01T00:00:00.000Z'),
+				toDate: new Date('2026-03-31T23:59:59.000Z'),
 			})
 		)
 	})
 
-	it('forwards extended report window filters to monthly top-income report', async () => {
+	it('forwards rollup-focused report filters to monthly top-income report', async () => {
 		const app = createApp(makeUser())
 		const corporationTaxStub = makeCorporationTaxStub()
 		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:tax:auditor' }] as any)
@@ -1175,7 +1296,7 @@ describe('corporation-tax routes', () => {
 		routeStubs({ corporationTaxStub })
 
 		const response = await app.request(
-			'/api/corporation-tax/reports/top-income-monthly?corporationId=7001&refType=bounty_prizes&division=3&firstPartyId=9001&secondPartyId=9002&minAmount=1000000',
+			'/api/corporation-tax/reports/top-income-monthly?corporationId=7001&fromDate=2026-03-01T00:00:00.000Z&toDate=2026-03-31T23:59:59.000Z',
 			{},
 			env
 		)
@@ -1187,11 +1308,8 @@ describe('corporation-tax routes', () => {
 		expect(corporationTaxStub.getTopIncomeSourcesMonthlyReport).toHaveBeenCalledWith(
 			expect.objectContaining({
 				corporationId: '7001',
-				refType: 'bounty_prizes',
-				division: 3,
-				firstPartyId: '9001',
-				secondPartyId: '9002',
-				minAmount: '1000000',
+				fromDate: new Date('2026-03-01T00:00:00.000Z'),
+				toDate: new Date('2026-03-31T23:59:59.000Z'),
 			})
 		)
 	})
@@ -1206,7 +1324,7 @@ describe('corporation-tax routes', () => {
 
 		expect(response.status).toBe(400)
 		expect(await response.json()).toEqual({
-			error: 'sortBy must be one of: entryDate, amount, corporationId, division, essBankType',
+			error: 'sortBy must be one of: entryDate, amount, corporationId, division',
 		})
 		expect(corporationTaxStub.getEssPayoutReport).not.toHaveBeenCalled()
 	})

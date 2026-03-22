@@ -23,6 +23,7 @@ import type {
 	ListTaxDiscrepancyReportFilters,
 	ListTaxExportSchedulesFilters,
 	ListTaxExportsFilters,
+	ListTaxLedgerPartiesFilters,
 	ListTaxMissingEsiKeyReportFilters,
 	ListTaxNotificationDestinationsFilters,
 	ListTaxRuleGroupsFilters,
@@ -63,6 +64,7 @@ import type {
 	TaxLedgerEntry,
 	TaxLedgerIngestionHealth,
 	TaxLedgerIngestionResult,
+	TaxLedgerParty,
 	TaxLedgerRetentionResult,
 	TaxLedgerSourceType,
 	TaxLedgerWindowFilters,
@@ -77,6 +79,7 @@ import type {
 	TaxPeriodStatus,
 	TaxRefTypeAssessmentSummary,
 	TaxReportWindowFilters,
+	TaxRollupReportFilters,
 	TaxRuleGroup,
 	TaxRuleGroupAttachment,
 	TaxRuleSet,
@@ -375,6 +378,14 @@ export interface CorporationTax {
 	): Promise<TaxLedgerEntry[]>
 
 	/**
+	 * List distinct sender/recipient entity IDs present in ledger entries.
+	 */
+	listLedgerParties(
+		corporationId: string,
+		filters?: ListTaxLedgerPartiesFilters
+	): Promise<TaxLedgerParty[]>
+
+	/**
 	 * Ledger ingestion and checkpoint health for a corporation.
 	 */
 	getLedgerIngestionHealth(corporationId: string): Promise<TaxLedgerIngestionHealth>
@@ -399,36 +410,36 @@ export interface CorporationTax {
 	/**
 	 * Summary dashboard report for selected scope and window.
 	 */
-	getSummaryReport(filters?: TaxReportWindowFilters): Promise<TaxSummaryReport>
+	getSummaryReport(filters?: TaxRollupReportFilters): Promise<TaxSummaryReport>
 
 	/**
 	 * Aggregate taxes due/paid by corporation.
 	 */
 	getTotalTaxesByCorporationReport(
-		filters?: TaxReportWindowFilters
+		filters?: TaxRollupReportFilters
 	): Promise<TaxPagedResult<TaxTotalTaxesByCorporationRow>>
 
 	/**
 	 * Top income sources grouped by ref_type.
 	 */
-	getTopIncomeSourcesReport(filters?: TaxReportWindowFilters): Promise<TaxTopIncomeSourceRow[]>
+	getTopIncomeSourcesReport(filters?: TaxRollupReportFilters): Promise<TaxTopIncomeSourceRow[]>
 
 	/**
 	 * Taxable inflow grouped by ref_type and month.
 	 */
 	getTopIncomeSourcesMonthlyReport(
-		filters?: TaxReportWindowFilters
+		filters?: TaxRollupReportFilters
 	): Promise<TaxTopIncomeSourceMonthlyRow[]>
 
 	/**
 	 * ESS transfer report.
 	 */
-	getEssPayoutReport(filters?: TaxReportWindowFilters): Promise<TaxPagedResult<TaxEssPayoutRow>>
+	getEssPayoutReport(filters?: TaxRollupReportFilters): Promise<TaxPagedResult<TaxEssPayoutRow>>
 
 	/**
 	 * Tax compliance trend points over time.
 	 */
-	getComplianceOverTimeReport(filters?: TaxReportWindowFilters): Promise<TaxCompliancePoint[]>
+	getComplianceOverTimeReport(filters?: TaxRollupReportFilters): Promise<TaxCompliancePoint[]>
 
 	/**
 	 * Tax discrepancy report with optional open-only filtering.
@@ -448,7 +459,7 @@ export interface CorporationTax {
 	 * Bill status rollup report for tax assessments.
 	 */
 	getBillStatusReport(
-		filters?: TaxReportWindowFilters
+		filters?: TaxRollupReportFilters
 	): Promise<TaxPagedResult<TaxBillStatusReportRow>>
 
 	/**
@@ -558,6 +569,7 @@ export type {
 	ListTaxNotificationDestinationsFilters,
 	ListTaxAssessmentLinesFilters,
 	ListTaxDailyRollupsFilters,
+	ListTaxLedgerPartiesFilters,
 	ListTaxAssessmentsFilters,
 	ListTaxRuleSetsFilters,
 	ListTaxRuleGroupsFilters,
@@ -580,6 +592,7 @@ export type {
 	TaxPeriodStatus,
 	TaxDailyRollup,
 	TaxLedgerEntry,
+	TaxLedgerParty,
 	TaxLedgerDirection,
 	TaxLedgerSourceType,
 	TaxLedgerIngestionHealth,
@@ -621,6 +634,7 @@ export type {
 	TaxMemberSummary,
 	TaxMemberSummaryReportFilters,
 	TaxMemberComplianceStatus,
+	TaxRollupReportFilters,
 	TaxReportWindowFilters,
 	TaxMemberSummaryTopRefType,
 	TriggerTaxProjectionRefreshInput,

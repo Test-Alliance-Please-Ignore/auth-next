@@ -1,17 +1,18 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import {
 	AssessmentSummaryCards,
 	BillingConfigurationCard,
 	BillingOperationsCard,
-	BillStatusRollupCard,
 	CorporationBillHistoryCard,
 	RetractBillDialog,
 	ScopedAssessmentSnapshotCard,
 	UnbilledAssessmentsCard,
 } from '@/components/tax-bills'
 import { TaxCorporationScopeSelector } from '@/components/tax-corporation-scope-selector'
-import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { BillStatusReportGrid } from '@/components/tax-reports/grids'
+import { useReportGridState } from '@/components/tax-reports/use-report-grid-state'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
@@ -34,7 +35,6 @@ import { getCurrentMonthDateRange } from '@/lib/tax-date'
 import type { TaxAssessmentScope } from '@repo/corporation-tax'
 
 const DEFAULT_MONTH_RANGE = getCurrentMonthDateRange()
-const BILL_STATUS_PAGE_SIZE_DEFAULT = 25
 
 export default function TaxBillsPage() {
 	usePageTitle('Tax Billing')
@@ -50,8 +50,6 @@ export default function TaxBillsPage() {
 	} = useTaxCorporationAccessScope(canAdminScope)
 	const [periodStartDate, setPeriodStartDate] = useState(DEFAULT_MONTH_RANGE.fromDate)
 	const [periodEndDate, setPeriodEndDate] = useState(DEFAULT_MONTH_RANGE.toDate)
-	const [billStatusPage, setBillStatusPage] = useState(0)
-	const [billStatusPageSize, setBillStatusPageSize] = useState(BILL_STATUS_PAGE_SIZE_DEFAULT)
 	const [selectedAssessmentScope, setSelectedAssessmentScope] = useState<
 		'all' | TaxAssessmentScope
 	>('all')
@@ -66,6 +64,12 @@ export default function TaxBillsPage() {
 	const canIssue =
 		(globalCapabilities?.global.canManage ?? false) ||
 		(scopedCapabilities?.scoped.canManage ?? false)
+	const billStatusGrid = useReportGridState({
+		defaultSortBy: 'dueDate',
+		defaultSortDir: 'asc',
+		defaultPageSize: 25,
+		resetOn: { effectiveCorporationId },
+	})
 
 	const {
 		data: billStatusReportData,
@@ -73,10 +77,10 @@ export default function TaxBillsPage() {
 		error: billStatusError,
 	} = useTaxBillStatusReport({
 		corporationId: effectiveCorporationId,
-		limit: billStatusPageSize,
-		offset: billStatusPage * billStatusPageSize,
-		sortBy: 'dueDate',
-		sortDir: 'asc',
+		limit: billStatusGrid.limit,
+		offset: billStatusGrid.offset,
+		sortBy: billStatusGrid.sortBy,
+		sortDir: billStatusGrid.sortDir,
 		enabled: canView,
 	})
 
@@ -109,7 +113,7 @@ export default function TaxBillsPage() {
 	)
 	const billStatusReportRows = billStatusReportData?.rows ?? []
 	const billStatusTotalRows = billStatusReportData?.totalRows ?? 0
-	const billStatusPageCount = Math.max(1, Math.ceil(billStatusTotalRows / billStatusPageSize))
+	const billStatusPageCount = billStatusGrid.pageCountFor(billStatusTotalRows)
 	const totalAssessments = corporationAssessments.length
 	const unbilledAssessmentRows = corporationAssessments.filter(
 		(assessment) =>
@@ -142,10 +146,6 @@ export default function TaxBillsPage() {
 		return [...ids]
 	}, [assessments, billHistory, billStatusReportRows])
 
-	useEffect(() => {
-		setBillStatusPage(0)
-	}, [effectiveCorporationId])
-
 	const { data: entityNames = {} } = useEntityNames(entityIds, { enabled: canView })
 	const retractableAssessment = billHistory.find(
 		(row) => row.assessment.id === retractingAssessmentId
@@ -168,7 +168,7 @@ export default function TaxBillsPage() {
 		<Container>
 			<PageHeader
 				title="Tax Billing"
-				description="View tax assessment bill status rollups and bill timeline history by corporation."
+				description="View assessment-level bill status, period windows, and bill timeline history by corporation."
 			/>
 
 			<Section>
@@ -253,24 +253,28 @@ export default function TaxBillsPage() {
 					entityNames={entityNames}
 				/>
 
-				<BillStatusRollupCard
-					billStatusLoading={billStatusLoading}
-					billStatusError={billStatusError}
-					billStatusReportRows={billStatusReportRows}
-					entityNames={entityNames}
-					billStatusPage={billStatusPage}
-					billStatusPageCount={billStatusPageCount}
-					billStatusTotalRows={billStatusTotalRows}
-					billStatusPageSize={billStatusPageSize}
-					onChangePageSize={(nextSize) => {
-						setBillStatusPageSize(nextSize)
-						setBillStatusPage(0)
-					}}
-					onPreviousPage={() => setBillStatusPage((value) => Math.max(0, value - 1))}
-					onNextPage={() =>
-						setBillStatusPage((value) => Math.min(Math.max(0, billStatusPageCount - 1), value + 1))
-					}
-				/>
+				<Card>
+					<CardHeader>
+						<CardTitle>Bill Status</CardTitle>
+						<CardDescription>
+							Assessment-level bill lifecycle, period window, and payment totals.
+						</CardDescription>
+					</CardHeader>
+					<CardContent>
+						<BillStatusReportGrid
+							rows={billStatusReportRows}
+							loading={billStatusLoading}
+							error={billStatusError}
+							entityNames={entityNames}
+							sorting={billStatusGrid.sorting}
+							onSortingChange={billStatusGrid.onSortingChange}
+							pagination={billStatusGrid.pagination}
+							onPaginationChange={billStatusGrid.onPaginationChange}
+							pageCount={billStatusPageCount}
+							rowCount={billStatusTotalRows}
+						/>
+					</CardContent>
+				</Card>
 
 				<CorporationBillHistoryCard
 					effectiveCorporationId={effectiveCorporationId ?? null}

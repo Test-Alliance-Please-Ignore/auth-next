@@ -21,22 +21,33 @@ export type BillStatusSortableRow = TaxBillStatusReportRow & {
 
 export function resolveTotalTaxesOrderBy(sortBy: string, sortDirection: SortDirection) {
 	const direction = sortDirection === 'asc' ? asc : desc
+	const paidPerAssessmentExpr = sql`COALESCE((
+		SELECT SUM(CAST(bp.amount AS numeric))
+		FROM bill_payments bp
+		WHERE bp.bill_id = ${taxAssessments.billId}
+	), 0)`
 	const builders = {
 		corporationId: () => [direction(taxAssessments.corporationId)],
+		taxableItemCount: () => [
+			sortDirection === 'asc'
+				? sql`COALESCE(SUM((SELECT COUNT(*) FROM tax_assessment_lines tal WHERE tal.assessment_id = ${taxAssessments.id})), 0) ASC`
+				: sql`COALESCE(SUM((SELECT COUNT(*) FROM tax_assessment_lines tal WHERE tal.assessment_id = ${taxAssessments.id})), 0) DESC`,
+			direction(taxAssessments.corporationId),
+		],
 		assessmentCount: () => [
 			sortDirection === 'asc' ? sql`COUNT(*) ASC` : sql`COUNT(*) DESC`,
 			direction(taxAssessments.corporationId),
 		],
 		taxPaid: () => [
 			sortDirection === 'asc'
-				? sql`COALESCE(SUM(CAST(${taxAssessments.taxPaid} AS numeric)), 0) ASC`
-				: sql`COALESCE(SUM(CAST(${taxAssessments.taxPaid} AS numeric)), 0) DESC`,
+				? sql`COALESCE(SUM(${paidPerAssessmentExpr}), 0) ASC`
+				: sql`COALESCE(SUM(${paidPerAssessmentExpr}), 0) DESC`,
 			direction(taxAssessments.corporationId),
 		],
 		taxDelta: () => [
 			sortDirection === 'asc'
-				? sql`COALESCE(SUM(CAST(${taxAssessments.taxDelta} AS numeric)), 0) ASC`
-				: sql`COALESCE(SUM(CAST(${taxAssessments.taxDelta} AS numeric)), 0) DESC`,
+				? sql`COALESCE(SUM(CAST(${taxAssessments.taxDue} AS numeric) - ${paidPerAssessmentExpr}), 0) ASC`
+				: sql`COALESCE(SUM(CAST(${taxAssessments.taxDue} AS numeric) - ${paidPerAssessmentExpr}), 0) DESC`,
 			direction(taxAssessments.corporationId),
 		],
 		lastAssessmentAt: () => [
@@ -71,10 +82,6 @@ export function resolveEssOrderBy(sortBy: string, sortDirection: SortDirection) 
 			direction(taxLedgerEntries.entryDate),
 		],
 		division: () => [direction(taxLedgerEntries.division), direction(taxLedgerEntries.entryDate)],
-		essBankType: () => [
-			direction(taxLedgerEntries.essBankType),
-			direction(taxLedgerEntries.entryDate),
-		],
 		entryDate: () => [direction(taxLedgerEntries.entryDate)],
 	} as const
 
@@ -116,16 +123,20 @@ export const missingEsiSortComparators = {
 } as const
 
 export const billStatusSortComparators = {
+	assessmentId: (a: BillStatusSortableRow, b: BillStatusSortableRow, direction: SortDirection) =>
+		compareStrings(a.assessmentId, b.assessmentId, direction),
 	corporationId: (a: BillStatusSortableRow, b: BillStatusSortableRow, direction: SortDirection) =>
 		compareStrings(a.corporationId, b.corporationId, direction),
+	taxPeriodStart: (a: BillStatusSortableRow, b: BillStatusSortableRow, direction: SortDirection) =>
+		compareDatesNullable(a.taxPeriodStart, b.taxPeriodStart, direction),
+	taxPeriodEnd: (a: BillStatusSortableRow, b: BillStatusSortableRow, direction: SortDirection) =>
+		compareDatesNullable(a.taxPeriodEnd, b.taxPeriodEnd, direction),
 	billStatus: (a: BillStatusSortableRow, b: BillStatusSortableRow, direction: SortDirection) =>
 		compareStrings(a.billStatus, b.billStatus, direction),
 	issueDate: (a: BillStatusSortableRow, b: BillStatusSortableRow, direction: SortDirection) =>
 		compareDatesNullable(a.sortIssueDate, b.sortIssueDate, direction),
 	dueDate: (a: BillStatusSortableRow, b: BillStatusSortableRow, direction: SortDirection) =>
 		compareDatesNullable(a.sortDueDate, b.sortDueDate, direction),
-	assessmentCount: (a: BillStatusSortableRow, b: BillStatusSortableRow, direction: SortDirection) =>
-		compareNumbers(a.assessmentCount, b.assessmentCount, direction),
 	taxPaid: (a: BillStatusSortableRow, b: BillStatusSortableRow, direction: SortDirection) =>
 		compareBigInts(a.sortPaidCenti, b.sortPaidCenti, direction),
 	taxDelta: (a: BillStatusSortableRow, b: BillStatusSortableRow, direction: SortDirection) =>

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 
-import { formatTaxIskCompact, formatTaxRefTypeLabel } from '@/lib/tax-display'
+import { formatTaxIskCompact, formatTaxRefTypeLabel, getTaxRefTypeColor } from '@/lib/tax-display'
 import { parseTaxAmount } from '@/lib/tax-report-utils'
 
 import type { TaxTopIncomeSourceMonthlyRow } from '@repo/corporation-tax'
@@ -8,18 +8,6 @@ import type { TaxTopIncomeSourceMonthlyRow } from '@repo/corporation-tax'
 const MONTHLY_INCOME_CHART_HEIGHT = 260
 const MONTHLY_BAR_WIDTH = 48
 const MONTHLY_BAR_GAP = 18
-const MONTHLY_INCOME_COLORS = [
-	'#38bdf8',
-	'#22d3ee',
-	'#34d399',
-	'#f59e0b',
-	'#f97316',
-	'#ef4444',
-	'#a78bfa',
-	'#f472b6',
-	'#84cc16',
-	'#06b6d4',
-]
 const STACK_SEGMENT_RADIUS = 3
 
 function brightenHex(hex: string, amount = 0.16): string {
@@ -85,11 +73,7 @@ function getStackSegmentPath(input: {
 	].join(' ')
 }
 
-export function TopIncomeSourcesMonthlyChart({
-	rows,
-}: {
-	rows: TaxTopIncomeSourceMonthlyRow[]
-}) {
+export function TopIncomeSourcesMonthlyChart({ rows }: { rows: TaxTopIncomeSourceMonthlyRow[] }) {
 	const [hoveredSegment, setHoveredSegment] = useState<{
 		key: string
 		x: number
@@ -143,10 +127,7 @@ export function TopIncomeSourcesMonthlyChart({
 	const maxTotal = Math.max(chartData.maxMonthTotal, 1)
 	const formatter = new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' })
 	const colorMap = new Map<string, string>(
-		chartData.refTypes.map((refType, index) => [
-			refType,
-			MONTHLY_INCOME_COLORS[index % MONTHLY_INCOME_COLORS.length]!,
-		])
+		chartData.refTypes.map((refType) => [refType, getTaxRefTypeColor(refType)])
 	)
 
 	return (
@@ -229,7 +210,7 @@ export function TopIncomeSourcesMonthlyChart({
 																	label: formatTaxRefTypeLabel(segment.refType),
 																	value: segment.value,
 																	share,
-															  }
+																}
 													)
 												}
 												onMouseLeave={() =>

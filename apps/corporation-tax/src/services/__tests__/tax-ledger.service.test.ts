@@ -17,18 +17,18 @@ describe('TaxLedgerService ESS quality signals', () => {
 		)
 
 		const result = (service as any).summarizeEssQualitySignals([
-			{ isEss: true, sourceKey: 'ess-1', essBankType: 'main' },
-			{ isEss: true, sourceKey: 'ess-1', essBankType: 'main' },
-			{ isEss: true, sourceKey: 'ess-2', essBankType: null },
-			{ isEss: true, sourceKey: 'ess-2', essBankType: null },
-			{ isEss: false, sourceKey: 'non-ess-1', essBankType: null },
+			{ refType: 'ess_escrow_transfer', sourceKey: 'ess-1' },
+			{ refType: 'ess_escrow_transfer', sourceKey: 'ess-1' },
+			{ refType: 'ess_escrow_transfer', sourceKey: 'ess-2' },
+			{ refType: 'ess_escrow_transfer', sourceKey: 'ess-2' },
+			{ refType: 'bounty_prizes', sourceKey: 'non-ess-1' },
 		])
 
 		expect(result).toEqual({
 			duplicateRecordCount: 2,
 			duplicateSourceKeys: ['ess-1', 'ess-2'],
-			missingRecordCount: 2,
-			missingSourceKeys: ['ess-2'],
+			missingRecordCount: 0,
+			missingSourceKeys: [],
 		})
 	})
 
@@ -40,8 +40,8 @@ describe('TaxLedgerService ESS quality signals', () => {
 		)
 
 		const result = (service as any).summarizeEssQualitySignals([
-			{ isEss: true, sourceKey: 'ess-clean', essBankType: 'reserve' },
-			{ isEss: false, sourceKey: 'non-ess-1', essBankType: null },
+			{ refType: 'ess_escrow_transfer', sourceKey: 'ess-clean' },
+			{ refType: 'bounty_prizes', sourceKey: 'non-ess-1' },
 		])
 
 		expect(result).toEqual({

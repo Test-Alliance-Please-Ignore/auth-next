@@ -16,9 +16,7 @@ import {
 } from '../db/schema'
 import {
 	formatCenti as formatMoneyCenti,
-	matchesMinAmountThreshold,
 	parseDecimalToCenti as parseMoneyToCenti,
-	safeParseDecimalToCenti as safeParseMoneyToCenti,
 } from './tax-money'
 import {
 	billStatusSortComparators,
@@ -41,6 +39,7 @@ import type {
 	TaxMissingEsiKeyRow,
 	TaxPagedResult,
 	TaxReportWindowFilters,
+	TaxRollupReportFilters,
 	TaxSummaryReport,
 	TaxTopIncomeSourceMonthlyRow,
 	TaxTopIncomeSourceRow,
@@ -71,7 +70,7 @@ export class TaxReportService {
 		private eveCorporationDataNamespace: DurableObjectNamespace
 	) {}
 
-	async getSummaryReport(filters: TaxReportWindowFilters = {}): Promise<TaxSummaryReport> {
+	async getSummaryReport(filters: TaxRollupReportFilters = {}): Promise<TaxSummaryReport> {
 		const [corporationIds, knownCorporationIds, exclusions] = await Promise.all([
 			this.resolveReportCorporationIds(filters.corporationId),
 			this.listKnownCorporationIds(filters.corporationId),
@@ -106,6 +105,11 @@ export class TaxReportService {
 			corporationIds
 		)
 		const essWhere = this.buildEssLedgerWhere(filters, corporationIds)
+		const paidPerAssessmentExpr = sql`COALESCE((
+			SELECT SUM(CAST(bp.amount AS numeric))
+			FROM bill_payments bp
+			WHERE bp.bill_id = ${taxAssessments.billId}
+		), 0)`
 
 		const [assessmentTotals, openDiscrepanciesResult, essTotals] = await Promise.all([
 			this.db
@@ -114,8 +118,8 @@ export class TaxReportService {
 					billedAssessmentCount: sql<number>`SUM(CASE WHEN ${taxAssessments.billId} IS NOT NULL THEN 1 ELSE 0 END)`,
 					taxableIncome: sql<string>`COALESCE(SUM(CAST(${taxAssessments.taxableIncome} AS numeric)), 0)::text`,
 					taxDue: sql<string>`COALESCE(SUM(CAST(${taxAssessments.taxDue} AS numeric)), 0)::text`,
-					taxPaid: sql<string>`COALESCE(SUM(CAST(${taxAssessments.taxPaid} AS numeric)), 0)::text`,
-					taxDelta: sql<string>`COALESCE(SUM(CAST(${taxAssessments.taxDelta} AS numeric)), 0)::text`,
+					taxPaid: sql<string>`COALESCE(SUM(${paidPerAssessmentExpr}), 0)::text`,
+					taxDelta: sql<string>`COALESCE(SUM(CAST(${taxAssessments.taxDue} AS numeric) - ${paidPerAssessmentExpr}), 0)::text`,
 				})
 				.from(taxAssessments)
 				.where(assessmentWhere),
@@ -158,7 +162,7 @@ export class TaxReportService {
 	}
 
 	async getTotalTaxesByCorporationReport(
-		filters: TaxReportWindowFilters = {}
+		filters: TaxRollupReportFilters = {}
 	): Promise<TaxPagedResult<TaxTotalTaxesByCorporationRow>> {
 		const corporationIds = await this.resolveReportCorporationIds(filters.corporationId)
 		if (corporationIds.length === 0) {
@@ -170,6 +174,7 @@ export class TaxReportService {
 		const sortBy = filters.sortBy ?? 'taxDue'
 		const sortDirection = toSortDirection(filters.sortDirection, 'desc')
 		const where = this.buildAssessmentWhere(filters, corporationIds, 'corporation')
+		const taxableItemCountExpr = sql<number>`COALESCE(SUM((SELECT COUNT(*) FROM tax_assessment_lines tal WHERE tal.assessment_id = ${taxAssessments.id})), 0)`
 		const assessmentCountExpr = sql<number>`COUNT(*)`
 		const billedAssessmentCountExpr = sql<number>`SUM(CASE WHEN ${taxAssessments.billId} IS NOT NULL THEN 1 ELSE 0 END)`
 		const underpaidCountExpr = sql<number>`SUM(CASE WHEN ${taxAssessments.status} = 'underpaid' THEN 1 ELSE 0 END)`
@@ -179,8 +184,13 @@ export class TaxReportService {
 		const excludedCountExpr = sql<number>`SUM(CASE WHEN ${taxAssessments.status} = 'excluded' THEN 1 ELSE 0 END)`
 		const taxableIncomeExpr = sql<string>`COALESCE(SUM(CAST(${taxAssessments.taxableIncome} AS numeric)), 0)::text`
 		const taxDueExpr = sql<string>`COALESCE(SUM(CAST(${taxAssessments.taxDue} AS numeric)), 0)::text`
-		const taxPaidExpr = sql<string>`COALESCE(SUM(CAST(${taxAssessments.taxPaid} AS numeric)), 0)::text`
-		const taxDeltaExpr = sql<string>`COALESCE(SUM(CAST(${taxAssessments.taxDelta} AS numeric)), 0)::text`
+		const paidPerAssessmentExpr = sql`COALESCE((
+			SELECT SUM(CAST(bp.amount AS numeric))
+			FROM bill_payments bp
+			WHERE bp.bill_id = ${taxAssessments.billId}
+		), 0)`
+		const taxPaidExpr = sql<string>`COALESCE(SUM(${paidPerAssessmentExpr}), 0)::text`
+		const taxDeltaExpr = sql<string>`COALESCE(SUM(CAST(${taxAssessments.taxDue} AS numeric) - ${paidPerAssessmentExpr}), 0)::text`
 		const lastAssessmentAtExpr = sql<Date | null>`MAX(${taxAssessments.taxPeriodEnd})`
 		const orderBy = resolveTotalTaxesOrderBy(sortBy, sortDirection)
 
@@ -188,6 +198,7 @@ export class TaxReportService {
 			this.db
 				.select({
 					corporationId: taxAssessments.corporationId,
+					taxableItemCount: taxableItemCountExpr,
 					assessmentCount: assessmentCountExpr,
 					billedAssessmentCount: billedAssessmentCountExpr,
 					underpaidCount: underpaidCountExpr,
@@ -217,6 +228,7 @@ export class TaxReportService {
 
 		const mappedRows = rows.map((row) => ({
 			corporationId: row.corporationId,
+			taxableItemCount: this.toInteger(row.taxableItemCount),
 			assessmentCount: this.toInteger(row.assessmentCount),
 			billedAssessmentCount: this.toInteger(row.billedAssessmentCount),
 			underpaidCount: this.toInteger(row.underpaidCount),
@@ -240,7 +252,7 @@ export class TaxReportService {
 	}
 
 	async getTopIncomeSourcesReport(
-		filters: TaxReportWindowFilters = {}
+		filters: TaxRollupReportFilters = {}
 	): Promise<TaxTopIncomeSourceRow[]> {
 		const corporationIds = await this.resolveReportCorporationIds(filters.corporationId)
 		if (corporationIds.length === 0) {
@@ -257,7 +269,7 @@ export class TaxReportService {
 			.select({
 				refType: taxLedgerEntries.refType,
 				entryCount: sql<number>`COUNT(*)`,
-				essEntryCount: sql<number>`SUM(CASE WHEN ${taxLedgerEntries.isEss} THEN 1 ELSE 0 END)`,
+				essEntryCount: sql<number>`SUM(CASE WHEN ${taxLedgerEntries.refType} = 'ess_escrow_transfer' THEN 1 ELSE 0 END)`,
 				totalIncome: sql<string>`COALESCE(SUM(CAST(${taxLedgerEntries.amount} AS numeric)), 0)::text`,
 			})
 			.from(taxLedgerEntries)
@@ -278,7 +290,7 @@ export class TaxReportService {
 	}
 
 	async getTopIncomeSourcesMonthlyReport(
-		filters: TaxReportWindowFilters = {}
+		filters: TaxRollupReportFilters = {}
 	): Promise<TaxTopIncomeSourceMonthlyRow[]> {
 		const corporationIds = await this.resolveReportCorporationIds(filters.corporationId)
 		if (corporationIds.length === 0) {
@@ -295,7 +307,7 @@ export class TaxReportService {
 				monthStart: monthStartExpr,
 				refType: taxLedgerEntries.refType,
 				entryCount: sql<number>`COUNT(*)`,
-				essEntryCount: sql<number>`SUM(CASE WHEN ${taxLedgerEntries.isEss} THEN 1 ELSE 0 END)`,
+				essEntryCount: sql<number>`SUM(CASE WHEN ${taxLedgerEntries.refType} = 'ess_escrow_transfer' THEN 1 ELSE 0 END)`,
 				totalIncome: sql<string>`COALESCE(SUM(CAST(${taxLedgerEntries.amount} AS numeric)), 0)::text`,
 			})
 			.from(taxLedgerEntries)
@@ -316,7 +328,7 @@ export class TaxReportService {
 	}
 
 	async getEssPayoutReport(
-		filters: TaxReportWindowFilters = {}
+		filters: TaxRollupReportFilters = {}
 	): Promise<TaxPagedResult<TaxEssPayoutRow>> {
 		const corporationIds = await this.resolveReportCorporationIds(filters.corporationId)
 		if (corporationIds.length === 0) {
@@ -351,7 +363,6 @@ export class TaxReportService {
 			entryDate: row.entryDate,
 			division: row.division,
 			amount: row.amount,
-			essBankType: row.essBankType,
 			sourceType: row.sourceType,
 			sourcePrimaryId: row.sourcePrimaryId,
 			firstPartyId: row.firstPartyId,
@@ -364,7 +375,7 @@ export class TaxReportService {
 	}
 
 	async getComplianceOverTimeReport(
-		filters: TaxReportWindowFilters = {}
+		filters: TaxRollupReportFilters = {}
 	): Promise<TaxCompliancePoint[]> {
 		const corporationIds = await this.resolveReportCorporationIds(filters.corporationId)
 		if (corporationIds.length === 0) {
@@ -374,12 +385,17 @@ export class TaxReportService {
 		const offset = Math.max(filters.offset ?? 0, 0)
 		const limit = Math.min(Math.max(filters.limit ?? 180, 1), 3650)
 		const rollupDateExpr = sql<Date>`date_trunc('day', ${taxAssessments.taxPeriodEnd})`
+		const paidPerAssessmentExpr = sql`COALESCE((
+			SELECT SUM(CAST(bp.amount AS numeric))
+			FROM bill_payments bp
+			WHERE bp.bill_id = ${taxAssessments.billId}
+		), 0)`
 		const rows = await this.db
 			.select({
 				rollupDate: rollupDateExpr,
 				entryCount: sql<number>`COUNT(*)`,
 				taxDue: sql<string>`COALESCE(SUM(CAST(${taxAssessments.taxDue} AS numeric)), 0)::text`,
-				taxPaid: sql<string>`COALESCE(SUM(CAST(${taxAssessments.taxPaid} AS numeric)), 0)::text`,
+				taxPaid: sql<string>`COALESCE(SUM(${paidPerAssessmentExpr}), 0)::text`,
 			})
 			.from(taxAssessments)
 			.where(this.buildAssessmentWhere(filters, corporationIds, 'corporation'))
@@ -497,43 +513,53 @@ export class TaxReportService {
 	}
 
 	async getBillStatusReport(
-		filters: TaxReportWindowFilters = {}
+		filters: TaxRollupReportFilters = {}
 	): Promise<TaxPagedResult<TaxBillStatusReportRow>> {
 		const corporationIds = await this.resolveReportCorporationIds(filters.corporationId)
 		if (corporationIds.length === 0) {
 			return { rows: [], totalRows: 0 }
 		}
+		const paidPerAssessmentExpr = sql`COALESCE((
+			SELECT SUM(CAST(bp.amount AS numeric))
+			FROM bill_payments bp
+			WHERE bp.bill_id = ${taxAssessments.billId}
+		), 0)`
 
 		const rows = await this.db
 			.select({
+				assessmentId: taxAssessments.id,
 				corporationId: taxAssessments.corporationId,
+				taxPeriodStart: taxAssessments.taxPeriodStart,
+				taxPeriodEnd: taxAssessments.taxPeriodEnd,
+				billId: taxAssessments.billId,
 				billStatus: sql<string>`COALESCE(${taxAssessments.billStatus}, 'unbilled')`,
-				issueDate: sql<Date | null>`MIN((
+				issueDate: sql<Date | null>`(
 					SELECT MIN(bse.created_at)
 					FROM bill_status_events bse
 					WHERE bse.bill_id = ${taxAssessments.billId}
 						AND bse.event_type = 'issued'
-				))`,
-				dueDate: sql<Date | null>`MIN((
+				)`,
+				dueDate: sql<Date | null>`(
 					SELECT b.due_date
 					FROM bills b
 					WHERE b.id = ${taxAssessments.billId}
-				))`,
-				assessmentCount: sql<number>`COUNT(*)`,
-				taxDue: sql<string>`COALESCE(SUM(CAST(${taxAssessments.taxDue} AS numeric)), 0)::text`,
-				taxPaid: sql<string>`COALESCE(SUM(CAST(${taxAssessments.taxPaid} AS numeric)), 0)::text`,
-				taxDelta: sql<string>`COALESCE(SUM(CAST(${taxAssessments.taxDelta} AS numeric)), 0)::text`,
+				)`,
+				taxDue: taxAssessments.taxDue,
+				taxPaid: sql<string>`${paidPerAssessmentExpr}::text`,
+				taxDelta: sql<string>`(CAST(${taxAssessments.taxDue} AS numeric) - ${paidPerAssessmentExpr})::text`,
 			})
 			.from(taxAssessments)
 			.where(this.buildAssessmentWhere(filters, corporationIds, 'corporation'))
-			.groupBy(taxAssessments.corporationId, taxAssessments.billStatus)
 
 		const grouped = rows.map((row) => ({
+			assessmentId: row.assessmentId,
 			corporationId: row.corporationId,
+			taxPeriodStart: new Date(row.taxPeriodStart),
+			taxPeriodEnd: new Date(row.taxPeriodEnd),
+			billId: row.billId,
 			billStatus: row.billStatus as TaxBillStatusReportRow['billStatus'],
 			issueDate: this.toDateOrNull(row.issueDate),
 			dueDate: this.toDateOrNull(row.dueDate),
-			assessmentCount: this.toInteger(row.assessmentCount),
 			taxDue: this.formatCenti(this.parseDecimalToCenti(row.taxDue)),
 			taxPaid: this.formatCenti(this.parseDecimalToCenti(row.taxPaid)),
 			taxDelta: this.formatCenti(this.parseDecimalToCenti(row.taxDelta)),
@@ -1347,7 +1373,7 @@ export class TaxReportService {
 	}
 
 	private buildAssessmentWhere(
-		filters: TaxReportWindowFilters,
+		filters: TaxRollupReportFilters,
 		corporationIds: string[],
 		assessmentScope?: 'corporation' | 'division' | 'character'
 	) {
@@ -1364,48 +1390,28 @@ export class TaxReportService {
 		return and(...conditions)
 	}
 
-	private buildLedgerWhere(filters: TaxReportWindowFilters, corporationIds: string[]) {
+	private buildLedgerWhere(filters: TaxRollupReportFilters, corporationIds: string[]) {
 		return this.buildLedgerWhereInternal(filters, corporationIds, { essOnly: false })
 	}
 
-	private buildEssLedgerWhere(filters: TaxReportWindowFilters, corporationIds: string[]) {
+	private buildEssLedgerWhere(filters: TaxRollupReportFilters, corporationIds: string[]) {
 		return this.buildLedgerWhereInternal(filters, corporationIds, { essOnly: true })
 	}
 
 	private buildLedgerWhereInternal(
-		filters: TaxReportWindowFilters,
+		filters: TaxRollupReportFilters,
 		corporationIds: string[],
 		options: { essOnly: boolean }
 	) {
 		const conditions = [inArray(taxLedgerEntries.corporationId, corporationIds)]
 		if (options.essOnly) {
-			conditions.push(eq(taxLedgerEntries.isEss, true))
-		}
-		if (filters.division !== undefined) {
-			conditions.push(eq(taxLedgerEntries.division, filters.division))
-		}
-		const refTypes = this.toRefTypes(filters)
-		if (refTypes && refTypes.length > 0) {
-			conditions.push(inArray(taxLedgerEntries.refType, refTypes))
-		}
-		if (filters.firstPartyId) {
-			conditions.push(eq(taxLedgerEntries.firstPartyId, filters.firstPartyId))
-		}
-		if (filters.secondPartyId) {
-			conditions.push(eq(taxLedgerEntries.secondPartyId, filters.secondPartyId))
+			conditions.push(eq(taxLedgerEntries.refType, 'ess_escrow_transfer'))
 		}
 		if (filters.fromDate) {
 			conditions.push(gte(taxLedgerEntries.entryDate, filters.fromDate))
 		}
 		if (filters.toDate) {
 			conditions.push(lte(taxLedgerEntries.entryDate, filters.toDate))
-		}
-		const minAmountCenti =
-			filters.minAmount !== undefined ? this.safeParseDecimalToCenti(filters.minAmount) : null
-		if (minAmountCenti !== null) {
-			conditions.push(
-				sql`CAST(${taxLedgerEntries.amount} AS numeric) >= CAST(${this.formatCenti(minAmountCenti)} AS numeric)`
-			)
 		}
 		return and(...conditions)
 	}
@@ -1450,26 +1456,6 @@ export class TaxReportService {
 		}
 		const parsed = Number(value)
 		return Number.isFinite(parsed) ? parsed : 0
-	}
-
-	private toRefTypes(filters: TaxReportWindowFilters): string[] | undefined {
-		const values = [...(filters.refTypes ?? []), ...(filters.refType ? [filters.refType] : [])]
-			.map((value) => value.trim())
-			.filter(Boolean)
-		if (values.length === 0) {
-			return undefined
-		}
-		return Array.from(new Set(values))
-	}
-
-	private matchesAmountThreshold(amount: string, minAmount?: string): boolean {
-		return matchesMinAmountThreshold(amount, minAmount)
-	}
-
-	private safeParseDecimalToCenti(
-		value: string | number | bigint | null | undefined
-	): bigint | null {
-		return safeParseMoneyToCenti(value)
 	}
 
 	private async resolveReportCorporationIds(corporationId?: string): Promise<string[]> {

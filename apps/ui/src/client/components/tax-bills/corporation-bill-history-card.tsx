@@ -76,7 +76,6 @@ export function CorporationBillHistoryCard({
 								<TableHead>Bill</TableHead>
 								<TableHead>Status</TableHead>
 								<TableHead>Tax Due</TableHead>
-								<TableHead>Tax Paid</TableHead>
 								<TableHead>Period End</TableHead>
 								<TableHead>Timeline Events</TableHead>
 								<TableHead>Last Event</TableHead>
@@ -87,7 +86,9 @@ export function CorporationBillHistoryCard({
 							{billHistory.map((row) => (
 								<TableRow key={row.assessment.id}>
 									<TableCell className="font-mono text-xs">{row.assessment.id}</TableCell>
-									<TableCell className="font-mono text-xs">{row.assessment.billId ?? '-'}</TableCell>
+									<TableCell className="font-mono text-xs">
+										{row.assessment.billId ?? '-'}
+									</TableCell>
 									<TableCell>
 										<Badge
 											variant={billStatusBadgeVariant(
@@ -98,7 +99,6 @@ export function CorporationBillHistoryCard({
 										</Badge>
 									</TableCell>
 									<TableCell>{formatTaxIskFull(row.assessment.taxDue)}</TableCell>
-									<TableCell>{formatTaxIskFull(row.assessment.taxPaid)}</TableCell>
 									<TableCell>{formatTaxDateTime(row.assessment.taxPeriodEnd)}</TableCell>
 									<TableCell>{formatTaxNumber(row.timeline.length)}</TableCell>
 									<TableCell>{getLastTimelineDate(row.timeline)}</TableCell>

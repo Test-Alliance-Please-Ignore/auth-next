@@ -44,7 +44,6 @@ export function EssPayoutGrid(props: {
 				enableSorting: true,
 				Cell: ({ row }) => formatTaxDivisionLabel(row.original.division),
 			},
-			{ accessorKey: 'essBankType', header: 'Bank Type', enableSorting: true },
 			{
 				accessorKey: 'amount',
 				header: 'Amount',

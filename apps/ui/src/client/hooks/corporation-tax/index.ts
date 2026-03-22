@@ -57,6 +57,7 @@ export {
 	useTaxBillingConfigs,
 	useTaxCorporationBillHistory,
 	useTaxLedgerEntries,
+	useTaxLedgerParties,
 	useUpdateTaxBillingConfig,
 } from './billing'
 export {

@@ -19,23 +19,12 @@ import {
 	useTaxExports,
 	useTaxExportSchedules,
 	useTaxSummaryReport,
-	useTaxWalletDivisions,
 } from '@/hooks/corporation-tax'
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useTaxCorporationAccessScope } from '@/hooks/useTaxCorporationAccessScope'
 import { getCurrentMonthDateRange } from '@/lib/tax-date'
-import {
-	formatTaxDivisionLabel,
-	formatTaxRefTypeLabel,
-	TAX_REF_TYPE_OPTIONS,
-} from '@/lib/tax-display'
-import {
-	downloadBase64File,
-	toEndOfDayIso,
-	toSearchOptions,
-	toStartOfDayIso,
-} from '@/lib/tax-report-utils'
+import { downloadBase64File, toEndOfDayIso, toStartOfDayIso } from '@/lib/tax-report-utils'
 
 import type { TaxExportFormat, TaxExportReportType } from '@repo/corporation-tax'
 import type { SortDirection } from '@/lib/tax-report-utils'
@@ -52,7 +41,7 @@ const reportViewOptions: Array<{
 	{
 		value: 'total_taxes_by_corporation',
 		label: 'Total Taxes',
-		description: 'Corporation-level due, paid, delta, and compliance counts.',
+		description: 'Corporation-level due, paid, and delta for the selected filter period.',
 		exportable: true,
 	},
 	{
@@ -82,7 +71,7 @@ const reportViewOptions: Array<{
 	{
 		value: 'bill_status',
 		label: 'Bill Status',
-		description: 'Assessment bill status rollups for the selected reporting window.',
+		description: 'Assessment-level bill lifecycle, period window, and payment totals.',
 		exportable: true,
 	},
 	{
@@ -98,18 +87,6 @@ const exportFormatOptions: Array<{ value: TaxExportFormat; label: string }> = [
 	{ value: 'csv', label: 'CSV' },
 	{ value: 'xlsx', label: 'XLSX' },
 ]
-
-const ALL_DIVISIONS_OPTION = {
-	id: '__all_divisions__',
-	value: '',
-	label: 'All divisions',
-} as const
-
-const ALL_INCOME_TYPES_OPTION = {
-	id: '__all_income_types__',
-	value: '',
-	label: 'All income types',
-} as const
 
 const DEFAULT_MONTH_RANGE = getCurrentMonthDateRange()
 
@@ -137,19 +114,12 @@ export default function TaxReportsPage() {
 		'total_taxes_by_corporation'
 	)
 	const [reportSelectorQuery, setReportSelectorQuery] = useState('Total Taxes')
-	const [incomeTypeQuery, setIncomeTypeQuery] = useState('')
 	const [selectedExportFormat, setSelectedExportFormat] = useState<TaxExportFormat>('csv')
 	const [selectedScheduleFormat, setSelectedScheduleFormat] = useState<TaxExportFormat>('csv')
 	const [scheduleName, setScheduleName] = useState('Weekly Tax Summary')
 	const [scheduleFrequency, setScheduleFrequency] = useState<'weekly' | 'monthly'>('weekly')
 	const [fromDate, setFromDate] = useState(DEFAULT_MONTH_RANGE.fromDate)
 	const [toDate, setToDate] = useState(DEFAULT_MONTH_RANGE.toDate)
-	const [refTypeFilter, setRefTypeFilter] = useState('')
-	const [divisionFilter, setDivisionFilter] = useState('')
-	const [divisionQuery, setDivisionQuery] = useState('')
-	const [firstPartyIdFilter, setFirstPartyIdFilter] = useState('')
-	const [secondPartyIdFilter, setSecondPartyIdFilter] = useState('')
-	const [minAmountFilter, setMinAmountFilter] = useState('')
 	const [totalTaxesExportSort, setTotalTaxesExportSort] = useState<{
 		sortBy: string
 		sortDir: SortDirection
@@ -204,82 +174,16 @@ export default function TaxReportsPage() {
 		setReportSelectorQuery('')
 	}, [selectedReportOption?.label])
 
-	useEffect(() => {
-		setIncomeTypeQuery('')
-	}, [refTypeFilter])
-
-	useEffect(() => {
-		if (!effectiveCorporationId) {
-			setDivisionFilter('')
-			setDivisionQuery('')
-		}
-	}, [effectiveCorporationId])
-
-	useEffect(() => {
-		setDivisionQuery('')
-	}, [divisionFilter])
-
-	const { data: walletDivisions = [] } = useTaxWalletDivisions(effectiveCorporationId, canView)
-
-	const divisionOptions = useMemo(
-		() => [
-			ALL_DIVISIONS_OPTION,
-			...walletDivisions.map((division) => ({
-				id: String(division),
-				value: String(division),
-				label: formatTaxDivisionLabel(division),
-			})),
-		],
-		[walletDivisions]
-	)
-
-	const incomeTypeOptions = useMemo(
-		() => [ALL_INCOME_TYPES_OPTION, ...toSearchOptions(TAX_REF_TYPE_OPTIONS)],
-		[]
-	)
-
-	useEffect(() => {
-		if (!divisionFilter) {
-			return
-		}
-		if (!walletDivisions.includes(Number(divisionFilter))) {
-			setDivisionFilter('')
-			setDivisionQuery('')
-		}
-	}, [divisionFilter, walletDivisions])
-
 	const fromDateIso = fromDate ? toStartOfDayIso(fromDate) : undefined
 	const toDateIso = toDate ? toEndOfDayIso(toDate) : undefined
-	const divisionValue =
-		divisionFilter.trim() !== '' && Number.isInteger(Number(divisionFilter))
-			? Number(divisionFilter)
-			: undefined
-	const refTypeValue = refTypeFilter.trim() || undefined
-	const firstPartyIdValue = firstPartyIdFilter.trim() || undefined
-	const secondPartyIdValue = secondPartyIdFilter.trim() || undefined
-	const minAmountValue = minAmountFilter.trim() || undefined
 
 	const reportWindowFilters = useMemo(
 		() => ({
 			corporationId: effectiveCorporationId,
 			fromDate: fromDateIso,
 			toDate: toDateIso,
-			division: divisionValue,
-			refType: refTypeValue,
-			firstPartyId: firstPartyIdValue,
-			secondPartyId: secondPartyIdValue,
-			minAmount: minAmountValue,
 		}),
-		[
-			divisionValue,
-			effectiveCorporationId,
-			firstPartyIdValue,
-			fromDateIso,
-			minAmountValue,
-			refTypeValue,
-			secondPartyIdValue,
-			toDateIso,
-		]
+		[effectiveCorporationId, fromDateIso, toDateIso]
 	)
 
 	const {
@@ -322,11 +226,6 @@ export default function TaxReportsPage() {
 		if (effectiveCorporationId) filters.corporationId = effectiveCorporationId
 		if (fromDateIso) filters.fromDate = fromDateIso
 		if (toDateIso) filters.toDate = toDateIso
-		if (refTypeValue) filters.refType = refTypeValue
-		if (divisionValue !== undefined) filters.division = divisionValue
-		if (minAmountValue) filters.minAmount = minAmountValue
-		if (firstPartyIdValue) filters.firstPartyId = firstPartyIdValue
-		if (secondPartyIdValue) filters.secondPartyId = secondPartyIdValue
 
 		switch (activeExportReportType) {
 			case 'total_taxes_by_corporation':
@@ -348,15 +247,10 @@ export default function TaxReportsPage() {
 		return Object.keys(filters).length > 0 ? filters : null
 	}, [
 		activeExportReportType,
-		divisionValue,
 		discrepancyExportSort,
 		essExportSort,
 		effectiveCorporationId,
-		firstPartyIdValue,
 		fromDateIso,
-		minAmountValue,
-		refTypeValue,
-		secondPartyIdValue,
 		toDateIso,
 		totalTaxesExportSort,
 	])
@@ -368,22 +262,8 @@ export default function TaxReportsPage() {
 		)
 		if (fromDate) items.push(`From ${fromDate}`)
 		if (toDate) items.push(`To ${toDate}`)
-		if (refTypeValue) items.push(`Income type ${formatTaxRefTypeLabel(refTypeValue)}`)
-		if (divisionValue !== undefined) items.push(`Division ${divisionValue}`)
-		if (minAmountValue) items.push(`Min amount ${minAmountValue}`)
-		if (firstPartyIdValue) items.push(`Sender ${firstPartyIdValue}`)
-		if (secondPartyIdValue) items.push(`Recipient ${secondPartyIdValue}`)
 		return items
-	}, [
-		divisionValue,
-		effectiveCorporationId,
-		firstPartyIdValue,
-		fromDate,
-		minAmountValue,
-		refTypeValue,
-		secondPartyIdValue,
-		toDate,
-	])
+	}, [effectiveCorporationId, fromDate, toDate])
 
 	const reportEntityIds = useMemo(() => {
 		const ids = new Set<string>()
@@ -430,29 +310,6 @@ export default function TaxReportsPage() {
 					selectedCorporationId={selectedCorporationId}
 					canAdminScope={canAdminScope}
 					onSelectCorporation={setSelectedCorporationId}
-					incomeTypeQuery={incomeTypeQuery}
-					onIncomeTypeQueryChange={setIncomeTypeQuery}
-					incomeTypeOptions={incomeTypeOptions}
-					refTypeFilter={refTypeFilter}
-					onSelectRefType={(value) => {
-						setIncomeTypeQuery('')
-						setRefTypeFilter(value)
-					}}
-					divisionQuery={divisionQuery}
-					onDivisionQueryChange={setDivisionQuery}
-					divisionOptions={divisionOptions}
-					divisionFilter={divisionFilter}
-					onSelectDivision={(value) => {
-						setDivisionFilter(value)
-						setDivisionQuery('')
-					}}
-					effectiveScopeCorporationId={effectiveCorporationId}
-					firstPartyIdFilter={firstPartyIdFilter}
-					onFirstPartyIdFilterChange={setFirstPartyIdFilter}
-					secondPartyIdFilter={secondPartyIdFilter}
-					onSecondPartyIdFilterChange={setSecondPartyIdFilter}
-					minAmountFilter={minAmountFilter}
-					onMinAmountFilterChange={setMinAmountFilter}
 				/>
 
 				<TaxSummaryCards

@@ -228,12 +228,10 @@ export class TaxAssessmentService {
 					taxAmount: this.formatCenti(resolved.taxAmountCenti),
 					classification: resolved.classification,
 				}
-				const paidAmountCenti = this.extractTaxPaidFromPayload(row.rawPayload)
 
 				corporationTotals.taxableIncomeCenti += resolved.taxableAmountCenti
 				corporationTotals.nonTaxableIncomeCenti += amountForTaxCenti - resolved.taxableAmountCenti
 				corporationTotals.taxDueCenti += resolved.taxAmountCenti
-				corporationTotals.taxPaidCenti += paidAmountCenti
 				corporationLines.push(lineValue)
 
 				const divisionKey = row.division === null ? 'null' : `${row.division}`
@@ -247,7 +245,6 @@ export class TaxAssessmentService {
 				divisionSummary.taxableIncomeCenti += resolved.taxableAmountCenti
 				divisionSummary.nonTaxableIncomeCenti += amountForTaxCenti - resolved.taxableAmountCenti
 				divisionSummary.taxDueCenti += resolved.taxAmountCenti
-				divisionSummary.taxPaidCenti += paidAmountCenti
 				divisionSummaries.set(divisionKey, divisionSummary)
 
 				const refTypeKey = row.refType
@@ -261,7 +258,6 @@ export class TaxAssessmentService {
 				refTypeSummary.taxableIncomeCenti += resolved.taxableAmountCenti
 				refTypeSummary.nonTaxableIncomeCenti += amountForTaxCenti - resolved.taxableAmountCenti
 				refTypeSummary.taxDueCenti += resolved.taxAmountCenti
-				refTypeSummary.taxPaidCenti += paidAmountCenti
 				refTypeSummaries.set(refTypeKey, refTypeSummary)
 
 				if (
@@ -316,7 +312,6 @@ export class TaxAssessmentService {
 					scoped.totals.taxableIncomeCenti += resolved.taxableAmountCenti
 					scoped.totals.nonTaxableIncomeCenti += amountForTaxCenti - resolved.taxableAmountCenti
 					scoped.totals.taxDueCenti += resolved.taxAmountCenti
-					scoped.totals.taxPaidCenti += paidAmountCenti
 					scoped.lines.push(lineValue)
 					divisionAssessments.set(divisionKey, scoped)
 				}
@@ -339,7 +334,6 @@ export class TaxAssessmentService {
 					scoped.totals.taxableIncomeCenti += resolved.taxableAmountCenti
 					scoped.totals.nonTaxableIncomeCenti += amountForTaxCenti - resolved.taxableAmountCenti
 					scoped.totals.taxDueCenti += resolved.taxAmountCenti
-					scoped.totals.taxPaidCenti += paidAmountCenti
 					scoped.lines.push(lineValue)
 					characterAssessments.set(characterId, scoped)
 				}
@@ -1075,20 +1069,6 @@ export class TaxAssessmentService {
 		return 'paid'
 	}
 
-	private extractTaxPaidFromPayload(payload: Record<string, unknown> | null): bigint {
-		if (!payload || typeof payload !== 'object') {
-			return 0n
-		}
-		const value = payload.tax
-		if (typeof value === 'string') {
-			return this.parseDecimalToCenti(value)
-		}
-		if (typeof value === 'number' && Number.isFinite(value)) {
-			return this.parseDecimalToCenti(value.toString())
-		}
-		return 0n
-	}
-
 	private extractCharacterId(row: typeof taxLedgerEntries.$inferSelect): string | null {
 		if (
 			row.sourceType === 'character_wallet_journal' ||
@@ -1118,7 +1098,6 @@ export class TaxAssessmentService {
 			taxableIncome: row.taxableIncome,
 			nonTaxableIncome: row.nonTaxableIncome,
 			taxDue: row.taxDue,
-			taxPaid: row.taxPaid,
 			taxDelta: row.taxDelta,
 			status: row.status as TaxAssessmentStatus,
 			inGameTaxRateBps: row.inGameTaxRateBps,

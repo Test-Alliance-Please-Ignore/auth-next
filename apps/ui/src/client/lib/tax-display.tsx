@@ -25,7 +25,7 @@ const REF_TYPE_LABELS: Record<string, string> = {
 	brokers_fee: 'Broker Fee',
 	contract_collateral_payout: 'Contract Collateral Payout',
 	contract_price: 'Contract Price',
-	contract_price_payment_corp: 'Contract Price Payment (Corp)',
+	contract_price_payment_corp: 'Contract Price (Corp)',
 	contract_reward: 'Contract Reward',
 	corporate_reward_payout: 'Corporate Reward Payout',
 	daily_goal_payouts: 'Daily Goal Payouts',
@@ -53,6 +53,26 @@ export const TAX_REF_TYPE_OPTIONS = TAX_INCOME_REF_TYPES.map((value) => ({
 	label: REF_TYPE_LABELS[value] ?? startCaseFromSnake(value),
 	id: value,
 }))
+
+const TAX_REF_TYPE_COLOR_PALETTE = [
+	'#38bdf8',
+	'#22d3ee',
+	'#34d399',
+	'#f59e0b',
+	'#f97316',
+	'#ef4444',
+	'#a78bfa',
+	'#f472b6',
+	'#84cc16',
+	'#06b6d4',
+]
+
+const TAX_REF_TYPE_COLOR_MAP = new Map<string, string>(
+	TAX_INCOME_REF_TYPES.map((refType, index) => [
+		refType,
+		TAX_REF_TYPE_COLOR_PALETTE[index % TAX_REF_TYPE_COLOR_PALETTE.length]!,
+	])
+)
 
 const LEDGER_SOURCE_TYPE_LABELS: Record<string, string> = {
 	corporation_wallet_journal: 'Corporation Wallet Journal',
@@ -110,6 +130,13 @@ export function formatTaxRefTypeLabel(refType: string | null | undefined): strin
 	}
 
 	return REF_TYPE_LABELS[refType] ?? startCaseFromSnake(refType)
+}
+
+export function getTaxRefTypeColor(refType: string | null | undefined): string {
+	if (!refType) {
+		return '#38bdf8'
+	}
+	return TAX_REF_TYPE_COLOR_MAP.get(refType) ?? '#38bdf8'
 }
 
 export function formatTaxLedgerSourceTypeLabel(sourceType: string | null | undefined): string {

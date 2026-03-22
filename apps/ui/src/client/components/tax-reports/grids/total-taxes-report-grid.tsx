@@ -32,25 +32,10 @@ export function TotalTaxesReportGrid(props: {
 					<TaxEntityDisplay entityId={row.original.corporationId} entityNames={props.entityNames} />
 				),
 			}),
-			columnHelper.accessor('assessmentCount', {
-				header: 'Assessments',
+			columnHelper.accessor('taxableItemCount', {
+				header: 'Taxable Items',
 				enableSorting: true,
-				Cell: ({ row }) => formatTaxNumber(row.original.assessmentCount),
-			}),
-			columnHelper.accessor('underpaidCount', {
-				header: 'Underpaid',
-				enableSorting: false,
-				Cell: ({ row }) => formatTaxNumber(row.original.underpaidCount),
-			}),
-			columnHelper.accessor('paidCount', {
-				header: 'Paid',
-				enableSorting: false,
-				Cell: ({ row }) => formatTaxNumber(row.original.paidCount),
-			}),
-			columnHelper.accessor('overpaidCount', {
-				header: 'Overpaid',
-				enableSorting: false,
-				Cell: ({ row }) => formatTaxNumber(row.original.overpaidCount),
+				Cell: ({ row }) => formatTaxNumber(row.original.taxableItemCount),
 			}),
 			columnHelper.accessor('taxDueCenti', {
 				id: 'taxDue',

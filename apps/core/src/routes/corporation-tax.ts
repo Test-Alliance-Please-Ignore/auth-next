@@ -37,6 +37,71 @@ import type { App, SessionUser } from '../context'
 
 const app = new Hono<App>()
 const corpMembershipCache = new TimeCache<string[]>(60_000)
+const ledgerPartiesCache = new TimeCache<
+	Array<{
+		entityId: string
+		entityName: string | null
+		senderCount: number
+		recipientCount: number
+		lastSeenAt: Date
+	}>
+>(60_000)
+
+function normalizeLedgerPartySearchText(value: string): string {
+	return value
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, ' ')
+		.trim()
+}
+
+function isSubsequenceMatch(haystack: string, needle: string): boolean {
+	if (!haystack || !needle) {
+		return false
+	}
+	let cursor = 0
+	for (const char of haystack) {
+		if (char === needle[cursor]) {
+			cursor += 1
+			if (cursor === needle.length) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+function rankLedgerPartyMatch(entityId: string, entityName: string | null, query: string): number {
+	const normalizedQuery = normalizeLedgerPartySearchText(query)
+	if (!normalizedQuery) {
+		return 1
+	}
+
+	const normalizedId = normalizeLedgerPartySearchText(entityId)
+	const normalizedName = normalizeLedgerPartySearchText(entityName ?? '')
+
+	if (normalizedId === normalizedQuery || normalizedName === normalizedQuery) {
+		return 120
+	}
+	if (
+		normalizedId.startsWith(normalizedQuery) ||
+		normalizedName.startsWith(normalizedQuery) ||
+		normalizedName.split(' ').some((segment) => segment.startsWith(normalizedQuery))
+	) {
+		return 100
+	}
+	if (normalizedId.includes(normalizedQuery) || normalizedName.includes(normalizedQuery)) {
+		return 70
+	}
+	if (
+		normalizedQuery.length >= 2 &&
+		(isSubsequenceMatch(normalizedId, normalizedQuery) ||
+			isSubsequenceMatch(normalizedName.replace(/ /g, ''), normalizedQuery.replace(/ /g, '')))
+	) {
+		return 40
+	}
+
+	return 0
+}
 
 async function isTaxFeatureEnabled(env: App['Bindings']): Promise<boolean> {
 	const featuresNamespace = env.FEATURES
@@ -1178,6 +1243,126 @@ app.post('/corporations/:corporationId/ledger/ingest', requireAuth(), async (c) 
 	} catch (error) {
 		logger.error('Error ingesting corporation tax ledger window:', error)
 		return c.json({ error: 'Failed to ingest tax ledger window' }, 500)
+	}
+})
+
+/**
+ * GET /corporation-tax/corporations/:corporationId/ledger/parties
+ * List distinct sender/recipient entities for ledger filtering, with resolved names.
+ */
+app.get('/corporations/:corporationId/ledger/parties', requireAuth(), async (c) => {
+	const user = c.get('user')
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	const corporationId = c.req.param('corporationId')
+	const canManage = await canManageTaxFeature(c.env, user, corporationId)
+	if (!canManage) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
+	const limit = parseIntegerQueryParam(c.req.query('limit'))
+	const query = c.req.query('q')?.trim() ?? ''
+	const directionQuery = c.req.query('direction')?.trim().toLowerCase()
+	const direction: 'any' | 'sender' | 'recipient' =
+		directionQuery === 'sender' || directionQuery === 'recipient' ? directionQuery : 'any'
+	const fromDate = parseDateQueryParam(c.req.query('fromDate'))
+	const toDate = parseDateQueryParam(c.req.query('toDate'))
+	if (fromDate === null) {
+		return c.json({ error: 'fromDate must be a valid ISO date string' }, 400)
+	}
+	if (toDate === null) {
+		return c.json({ error: 'toDate must be a valid ISO date string' }, 400)
+	}
+	if (fromDate && toDate && fromDate > toDate) {
+		return c.json({ error: 'fromDate must be before or equal to toDate' }, 400)
+	}
+	if (limit !== undefined && (limit < 1 || limit > 2000)) {
+		return c.json({ error: 'limit must be an integer between 1 and 2000' }, 400)
+	}
+	if (
+		directionQuery !== undefined &&
+		directionQuery !== 'any' &&
+		directionQuery !== 'sender' &&
+		directionQuery !== 'recipient'
+	) {
+		return c.json({ error: "direction must be one of: 'any', 'sender', 'recipient'" }, 400)
+	}
+
+	const requestedLimit = limit ?? 100
+	const fetchLimit = 2000
+
+	try {
+		const cacheKey = `${corporationId}:${fromDate?.toISOString() ?? 'none'}:${toDate?.toISOString() ?? 'none'}`
+		const hydratedRows = await ledgerPartiesCache.getOrSet(cacheKey, async () => {
+			const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
+			const rows = await stub.listLedgerParties(corporationId, {
+				fromDate: fromDate ?? undefined,
+				toDate: toDate ?? undefined,
+				limit: fetchLimit,
+			})
+
+			const entityIds = rows.map((row) => row.entityId)
+			let resolvedNames: Record<string, string> = {}
+			if (entityIds.length > 0) {
+				try {
+					const tokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+					resolvedNames = await tokenStoreStub.resolveIds(entityIds)
+				} catch (error) {
+					logger.warn('[CorporationTax] Failed to resolve ledger party entity names', {
+						corporationId,
+						error: error instanceof Error ? error.message : String(error),
+					})
+				}
+			}
+
+			return rows.map((row) => ({
+				entityId: row.entityId,
+				entityName: resolvedNames[row.entityId] ?? null,
+				senderCount: row.senderCount,
+				recipientCount: row.recipientCount,
+				lastSeenAt: row.lastSeenAt,
+			}))
+		})
+		const directionRows =
+			direction === 'sender'
+				? hydratedRows.filter((row) => row.senderCount > 0)
+				: direction === 'recipient'
+					? hydratedRows.filter((row) => row.recipientCount > 0)
+					: hydratedRows
+		const responseRows = query
+			? directionRows
+					.map((row) => ({
+						...row,
+						matchScore: rankLedgerPartyMatch(row.entityId, row.entityName, query),
+					}))
+					.filter((row) => row.matchScore > 0)
+					.sort((left, right) => {
+						if (right.matchScore !== left.matchScore) {
+							return right.matchScore - left.matchScore
+						}
+						if (right.lastSeenAt.getTime() !== left.lastSeenAt.getTime()) {
+							return right.lastSeenAt.getTime() - left.lastSeenAt.getTime()
+						}
+						return (
+							right.senderCount + right.recipientCount - (left.senderCount + left.recipientCount)
+						)
+					})
+					.slice(0, requestedLimit)
+					.map(({ matchScore: _matchScore, ...row }) => row)
+			: directionRows.slice(0, requestedLimit)
+
+		return c.json(
+			responseRows.map((row) => ({
+				entityId: row.entityId,
+				entityName: row.entityName,
+				lastSeenAt: row.lastSeenAt,
+			}))
+		)
+	} catch (error) {
+		logger.error('Error listing corporation tax ledger parties:', error)
+		return c.json({ error: 'Failed to list tax ledger parties' }, 500)
 	}
 })
 
