@@ -4,7 +4,7 @@ import type {
 	TaxExportFormat,
 	TaxExportStatus,
 } from '@repo/corporation-tax'
-import type { TaxReportQueryFilters } from './types'
+import type { TaxRollupReportQueryFilters } from './types'
 
 export const corporationTaxKeys = {
 	all: ['corporation-tax'] as const,
@@ -50,22 +50,22 @@ export const corporationTaxKeys = {
 		offset?: number
 	}) => [...corporationTaxKeys.alerts(), filters] as const,
 	billStatus: () => [...corporationTaxKeys.all, 'bill-status'] as const,
-	billStatusReport: (filters?: TaxReportQueryFilters) =>
+	billStatusReport: (filters?: TaxRollupReportQueryFilters) =>
 		[...corporationTaxKeys.billStatus(), filters] as const,
 	totalTaxes: () => [...corporationTaxKeys.all, 'total-taxes'] as const,
-	totalTaxesReport: (filters?: TaxReportQueryFilters) =>
+	totalTaxesReport: (filters?: TaxRollupReportQueryFilters) =>
 		[...corporationTaxKeys.totalTaxes(), filters] as const,
 	topIncome: () => [...corporationTaxKeys.all, 'top-income'] as const,
-	topIncomeReport: (filters?: TaxReportQueryFilters) =>
+	topIncomeReport: (filters?: TaxRollupReportQueryFilters) =>
 		[...corporationTaxKeys.topIncome(), filters] as const,
 	topIncomeMonthly: () => [...corporationTaxKeys.all, 'top-income-monthly'] as const,
-	topIncomeMonthlyReport: (filters?: TaxReportQueryFilters) =>
+	topIncomeMonthlyReport: (filters?: TaxRollupReportQueryFilters) =>
 		[...corporationTaxKeys.topIncomeMonthly(), filters] as const,
 	essPayout: () => [...corporationTaxKeys.all, 'ess-payout'] as const,
-	essPayoutReport: (filters?: TaxReportQueryFilters) =>
+	essPayoutReport: (filters?: TaxRollupReportQueryFilters) =>
 		[...corporationTaxKeys.essPayout(), filters] as const,
 	compliance: () => [...corporationTaxKeys.all, 'compliance'] as const,
-	complianceReport: (filters?: TaxReportQueryFilters) =>
+	complianceReport: (filters?: TaxRollupReportQueryFilters) =>
 		[...corporationTaxKeys.compliance(), filters] as const,
 	discrepancy: () => [...corporationTaxKeys.all, 'discrepancy'] as const,
 	discrepancyReport: (filters?: {
@@ -135,7 +135,7 @@ export const corporationTaxKeys = {
 			direction?: 'any' | 'sender' | 'recipient'
 		}
 	) => [...corporationTaxKeys.all, 'ledger-parties', corporationId, filters] as const,
-	summary: (filters?: TaxReportQueryFilters) =>
+	summary: (filters?: TaxRollupReportQueryFilters) =>
 		[...corporationTaxKeys.all, 'summary', filters] as const,
 	memberSummary: (
 		corporationId: string,

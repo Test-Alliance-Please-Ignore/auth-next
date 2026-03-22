@@ -5,16 +5,16 @@ import { and, desc, eq, ilike, inArray, or } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger, TimeCache } from '@repo/hono-helpers'
 
-import { discordServers, managedCorporations, userCharacters } from '../db/schema'
-import { requireAuth } from '../middleware/session'
+import { discordServers, managedCorporations, userCharacters } from '../../db/schema'
+import { requireAuth } from '../../middleware/session'
 import {
 	canAuditTaxFeature,
 	canManageTaxFeature,
 	canReadTaxFeature,
 	getTaxCharacterIds,
-} from '../middleware/tax-permissions'
-import { registerCorporationTaxAlertsRoutes } from './corporation-tax-alerts-routes'
-import { registerCorporationTaxReportsRoutes } from './corporation-tax-reports-routes'
+} from '../../middleware/tax-permissions'
+import { registerCorporationTaxAlertsRoutes } from './alerts-routes'
+import { registerCorporationTaxReportsRoutes } from './reports-routes'
 import {
 	mapTaxBillingConfigError,
 	mapTaxBillingError,
@@ -26,14 +26,14 @@ import {
 	TAX_LEDGER_SOURCE_TYPES,
 	TAX_RULE_PRIORITY_MAX,
 	TAX_RULE_PRIORITY_MIN,
-} from './corporation-tax-shared'
+} from './shared'
 
 import type { CorporationTax } from '@repo/corporation-tax'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Features } from '@repo/features'
-import type { App, SessionUser } from '../context'
+import type { App, SessionUser } from '../../context'
 
 const app = new Hono<App>()
 const corpMembershipCache = new TimeCache<string[]>(60_000)

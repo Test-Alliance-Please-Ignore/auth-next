@@ -1,8 +1,8 @@
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
-import { requireAuth } from '../middleware/session'
-import { canAuditTaxFeature } from '../middleware/tax-permissions'
+import { requireAuth } from '../../middleware/session'
+import { canAuditTaxFeature } from '../../middleware/tax-permissions'
 import {
 	parseBooleanQueryParam,
 	parseDateQueryParam,
@@ -17,11 +17,11 @@ import {
 	TAX_EXPORT_SCHEDULE_FREQUENCIES,
 	TAX_MISSING_ESI_SORT_FIELDS,
 	TAX_TOTAL_TAXES_SORT_FIELDS,
-} from './corporation-tax-shared'
+} from './shared'
 
 import type { Hono } from 'hono'
 import type { CorporationTax } from '@repo/corporation-tax'
-import type { App } from '../context'
+import type { App } from '../../context'
 
 export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 	/**

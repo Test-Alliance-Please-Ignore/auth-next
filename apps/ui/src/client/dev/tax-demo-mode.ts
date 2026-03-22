@@ -35,6 +35,7 @@ import type {
 	TaxTotalTaxesByCorporationRow,
 	UpdateTaxCorporationBillingConfigInput,
 } from '@repo/corporation-tax'
+import type { TaxRollupReportQueryFilters } from '@/lib/tax-report-types'
 
 const ENABLED_STORAGE_KEY = 'auth-next.tax-demo.enabled'
 const SEED_STORAGE_KEY = 'auth-next.tax-demo.seed'
@@ -56,21 +57,7 @@ type TaxCapabilitiesResponse = {
 	scoped: { canRead: boolean; canAudit: boolean; canManage: boolean }
 }
 
-type TaxReportFilters = {
-	corporationId?: string
-	fromDate?: string
-	toDate?: string
-	division?: number
-	refType?: string
-	refTypes?: string[]
-	firstPartyId?: string
-	secondPartyId?: string
-	minAmount?: string
-	limit?: number
-	offset?: number
-	sortBy?: string
-	sortDir?: 'asc' | 'desc'
-}
+type TaxReportFilters = TaxRollupReportQueryFilters
 
 type DemoTaxState = ReturnType<typeof buildDemoState>
 
@@ -322,73 +309,6 @@ function buildDemoState(seed: number) {
 		])
 	) as Record<string, number[]>
 
-	const totalTaxes = corporations.map((corp, index) => {
-		const due = 2_400_000_000 + index * 650_000_000 + Math.round(rng() * 220_000_000)
-		const paid =
-			due - (index % 6 === 2 ? 540_000_000 : 95_000_000 + Math.round(rng() * 120_000_000))
-		return {
-			corporationId: corp.corporationId,
-			taxableItemCount: 240 + (index % 7) * 36 + Math.round(rng() * 24),
-			assessmentCount: 18 + (index % 6) * 4,
-			billedAssessmentCount: 14 + (index % 5) * 3,
-			underpaidCount: index % 6 === 2 ? 4 : 1,
-			paidCount: 11 + (index % 8),
-			overpaidCount: index % 5 === 1 ? 1 : 0,
-			draftCount: index % 8 === 0 ? 1 : 0,
-			excludedCount: index % 9 === 3 ? 2 : 0,
-			taxableIncome: amount(due * 10.8),
-			taxDue: amount(due),
-			taxPaid: amount(Math.max(0, paid)),
-			taxDelta: amount(due - Math.max(0, paid)),
-			lastAssessmentAt: addDays(demoStart, Math.max(0, demoDaySpan - 8 + (index % 6))),
-		}
-	}) as TaxTotalTaxesByCorporationRow[]
-
-	const topIncome = [
-		{
-			refType: 'bounty_prizes',
-			entryCount: 124 * Math.max(1, Math.ceil(config.corporationCount / 4)),
-			essEntryCount: 0,
-			totalIncome: amount(18_400_000_000 * Math.max(1, Math.ceil(config.corporationCount / 4))),
-		},
-		{
-			refType: 'ess_escrow_transfer',
-			entryCount: 18 * Math.max(1, Math.ceil(config.corporationCount / 5)),
-			essEntryCount: 18 * Math.max(1, Math.ceil(config.corporationCount / 5)),
-			totalIncome: amount(7_200_000_000 * Math.max(1, Math.ceil(config.corporationCount / 5))),
-		},
-		{
-			refType: 'market_transaction',
-			entryCount: 42 * Math.max(1, Math.ceil(config.corporationCount / 4)),
-			essEntryCount: 0,
-			totalIncome: amount(3_850_000_000 * Math.max(1, Math.ceil(config.corporationCount / 4))),
-		},
-		{
-			refType: 'player_donation',
-			entryCount: 7 * Math.max(1, Math.ceil(config.corporationCount / 6)),
-			essEntryCount: 0,
-			totalIncome: amount(620_000_000 * Math.max(1, Math.ceil(config.corporationCount / 6))),
-		},
-	] as TaxTopIncomeSourceRow[]
-
-	const essRows = Array.from({
-		length: Math.max(config.corporationCount * config.months * 3, 24),
-	}).map((_, index) => {
-		const corporation = corporations[index % corporations.length]!
-		const divisionList = walletDivisions[corporation.corporationId]!
-		return {
-			id: `ess-${index}`,
-			corporationId: corporation.corporationId,
-			entryDate: addDays(demoStart, index % demoDaySpan),
-			division: divisionList[index % divisionList.length] ?? 1,
-			amount: amount(1_850_000_000 + index * 420_000_000),
-			sourceType: 'corporation_wallet_journal',
-			sourcePrimaryId: `journal-${index}`,
-			firstPartyId: '80000002',
-			secondPartyId: '80000001',
-		}
-	}) as TaxEssPayoutRow[]
-
 	const discrepancies = corporations
 		.filter((_, index) => index % 4 === 1 || index % 7 === 2)
 		.map((corp, index) => ({
@@ -405,49 +325,6 @@ function buildDemoState(seed: number) {
 					: { missingTransfers: 3 + (index % 4) },
 			resolvedAt: null,
 		})) as unknown as TaxDiscrepancy[]
-
-	const compliance = Array.from({ length: config.months }).map((_, index) => {
-		const monthStartForPoint = addMonths(demoStart, index)
-		const monthEnd = new Date(
-			Date.UTC(monthStartForPoint.getUTCFullYear(), monthStartForPoint.getUTCMonth() + 1, 0)
-		)
-		const due = 12_500_000_000 + index * 2_200_000_000
-		const paid = Math.max(
-			0,
-			due -
-				(index % 4 === 2
-					? 1_300_000_000 + Math.round(rng() * 300_000_000)
-					: 350_000_000 + Math.round(rng() * 220_000_000))
-		)
-		return {
-			rollupDate: monthEnd,
-			taxDue: amount(due),
-			taxPaid: amount(paid),
-			taxDelta: amount(due - paid),
-			entryCount: 22 + (index % 6),
-		}
-	}) as TaxCompliancePoint[]
-
-	const billStatus = corporations.map((corp, index) => {
-		const issueDate = addDays(demoStart, 8 + index * 2)
-		const dueDate = addDays(issueDate, index === 2 ? -4 : 10 + index)
-		const taxPeriodStart = addDays(demoStart, Math.max(0, index * 2))
-		const taxPeriodEnd = addDays(taxPeriodStart, 29)
-		const taxDue = 1_350_000_000 + index * 420_000_000
-		const taxPaid = index === 2 ? 610_000_000 : 1_180_000_000 + index * 340_000_000
-		return {
-			assessmentId: `assessment-bill-${index}`,
-			corporationId: corp.corporationId,
-			taxPeriodStart,
-			taxPeriodEnd,
-			billStatus: (index === 2 ? 'overdue' : index === 1 ? 'paid' : 'issued') as TaxBillStatus,
-			issueDate,
-			dueDate,
-			taxDue: amount(taxDue),
-			taxPaid: amount(taxPaid),
-			taxDelta: amount(taxDue - taxPaid),
-		}
-	}) as TaxBillStatusReportRow[]
 
 	const ledgerEntries = Array.from({
 		length: Math.max(config.corporationCount * config.months * 12, 120),
@@ -770,12 +647,7 @@ function buildDemoState(seed: number) {
 		entityNames,
 		settings,
 		walletDivisions,
-		totalTaxes,
-		topIncome,
-		essRows,
 		discrepancies,
-		compliance,
-		billStatus,
 		ledgerEntries,
 		memberSummary,
 		assessments,
@@ -819,11 +691,6 @@ function updateDemoConfig(input?: Partial<DemoTaxConfig> | null): DemoTaxConfig 
 function filterLedgerEntries(rows: TaxLedgerEntry[], filters?: TaxReportFilters): TaxLedgerEntry[] {
 	return rows.filter((row) => {
 		if (filters?.corporationId && row.corporationId !== filters.corporationId) return false
-		if (filters?.division !== undefined && row.division !== filters.division) return false
-		if (filters?.refType && row.refType !== filters.refType) return false
-		if (filters?.firstPartyId && row.firstPartyId !== filters.firstPartyId) return false
-		if (filters?.secondPartyId && row.secondPartyId !== filters.secondPartyId) return false
-		if (filters?.minAmount && parseAmount(row.amount) < parseAmount(filters.minAmount)) return false
 		if (!matchesDate(row.entryDate, filters?.fromDate, filters?.toDate)) return false
 		return true
 	})
@@ -861,14 +728,255 @@ function sortRows<T>(rows: T[], sortBy?: string, sortDir: 'asc' | 'desc' = 'asc'
 	})
 }
 
-function buildSummary(rows: TaxTotalTaxesByCorporationRow[]): TaxSummaryReport {
+function filterAssessments(rows: TaxAssessment[], filters?: TaxReportFilters): TaxAssessment[] {
+	return rows.filter((row) => {
+		if (filters?.corporationId && row.corporationId !== filters.corporationId) return false
+		if (!matchesDate(row.taxPeriodEnd, filters?.fromDate, filters?.toDate)) return false
+		return true
+	})
+}
+
+function deriveTotalTaxesRows(
+	state: DemoTaxState,
+	filters?: TaxReportFilters
+): TaxTotalTaxesByCorporationRow[] {
+	const ledgerRows = filterLedgerEntries(state.ledgerEntries, filters).filter(
+		(row) => parseAmount(row.amount) > 0
+	)
+	const assessments = filterAssessments(state.assessments, filters)
+	const ledgerByCorporation = new Map<
+		string,
+		{
+			taxableItemCount: number
+			taxableIncome: number
+		}
+	>()
+	for (const row of ledgerRows) {
+		const current = ledgerByCorporation.get(row.corporationId) ?? {
+			taxableItemCount: 0,
+			taxableIncome: 0,
+		}
+		current.taxableItemCount += 1
+		current.taxableIncome += parseAmount(row.amount)
+		ledgerByCorporation.set(row.corporationId, current)
+	}
+
+	const grouped = new Map<
+		string,
+		{
+			taxableItemCount: number
+			assessmentCount: number
+			billedAssessmentCount: number
+			underpaidCount: number
+			paidCount: number
+			overpaidCount: number
+			draftCount: number
+			excludedCount: number
+			taxableIncome: number
+			taxDue: number
+			taxPaid: number
+			taxDelta: number
+			lastAssessmentAt: Date | null
+		}
+	>()
+
+	for (const row of assessments) {
+		const ledger = ledgerByCorporation.get(row.corporationId)
+		const current = grouped.get(row.corporationId) ?? {
+			taxableItemCount: ledger?.taxableItemCount ?? 0,
+			assessmentCount: 0,
+			billedAssessmentCount: 0,
+			underpaidCount: 0,
+			paidCount: 0,
+			overpaidCount: 0,
+			draftCount: 0,
+			excludedCount: 0,
+			taxableIncome: ledger?.taxableIncome ?? 0,
+			taxDue: 0,
+			taxPaid: 0,
+			taxDelta: 0,
+			lastAssessmentAt: null,
+		}
+		current.assessmentCount += 1
+		current.billedAssessmentCount += row.billId ? 1 : 0
+		current.underpaidCount += row.status === 'underpaid' ? 1 : 0
+		current.paidCount += row.status === 'paid' ? 1 : 0
+		current.overpaidCount += row.status === 'overpaid' ? 1 : 0
+		current.draftCount += row.status === 'draft' ? 1 : 0
+		current.excludedCount += row.status === 'excluded' ? 1 : 0
+		current.taxDue += parseAmount(row.taxDue)
+		current.taxDelta += parseAmount(row.taxDelta)
+		current.taxPaid += parseAmount(row.taxDue) - parseAmount(row.taxDelta)
+		if (!current.lastAssessmentAt || row.taxPeriodEnd > current.lastAssessmentAt) {
+			current.lastAssessmentAt = row.taxPeriodEnd
+		}
+		grouped.set(row.corporationId, current)
+	}
+
+	for (const [corporationId, ledger] of ledgerByCorporation.entries()) {
+		if (!grouped.has(corporationId)) {
+			grouped.set(corporationId, {
+				taxableItemCount: ledger.taxableItemCount,
+				assessmentCount: 0,
+				billedAssessmentCount: 0,
+				underpaidCount: 0,
+				paidCount: 0,
+				overpaidCount: 0,
+				draftCount: 0,
+				excludedCount: 0,
+				taxableIncome: ledger.taxableIncome,
+				taxDue: 0,
+				taxPaid: 0,
+				taxDelta: 0,
+				lastAssessmentAt: null,
+			})
+		}
+	}
+
+	return Array.from(grouped.entries()).map(([corporationId, row]) => ({
+		corporationId,
+		taxableItemCount: row.taxableItemCount,
+		assessmentCount: row.assessmentCount,
+		billedAssessmentCount: row.billedAssessmentCount,
+		underpaidCount: row.underpaidCount,
+		paidCount: row.paidCount,
+		overpaidCount: row.overpaidCount,
+		draftCount: row.draftCount,
+		excludedCount: row.excludedCount,
+		taxableIncome: amount(row.taxableIncome),
+		taxDue: amount(row.taxDue),
+		taxPaid: amount(row.taxPaid),
+		taxDelta: amount(row.taxDelta),
+		taxDueCenti: String(Math.round(row.taxDue * 100)),
+		taxPaidCenti: String(Math.round(row.taxPaid * 100)),
+		taxDeltaCenti: String(Math.round(row.taxDelta * 100)),
+		lastAssessmentAt: row.lastAssessmentAt,
+	}))
+}
+
+function deriveTopIncomeRows(
+	state: DemoTaxState,
+	filters?: TaxReportFilters
+): TaxTopIncomeSourceRow[] {
+	const grouped = new Map<
+		string,
+		{ refType: string; entryCount: number; essEntryCount: number; totalIncome: number }
+	>()
+	for (const row of filterLedgerEntries(state.ledgerEntries, filters)) {
+		const amountValue = parseAmount(row.amount)
+		if (amountValue <= 0) continue
+		const current = grouped.get(row.refType) ?? {
+			refType: row.refType,
+			entryCount: 0,
+			essEntryCount: 0,
+			totalIncome: 0,
+		}
+		current.entryCount += 1
+		current.essEntryCount += row.refType === 'ess_escrow_transfer' ? 1 : 0
+		current.totalIncome += amountValue
+		grouped.set(row.refType, current)
+	}
+	return Array.from(grouped.values())
+		.sort((a, b) => b.totalIncome - a.totalIncome)
+		.map((row) => ({
+			refType: row.refType,
+			entryCount: row.entryCount,
+			essEntryCount: row.essEntryCount,
+			totalIncome: amount(row.totalIncome),
+		}))
+}
+
+function deriveEssRows(state: DemoTaxState, filters?: TaxReportFilters): TaxEssPayoutRow[] {
+	return filterLedgerEntries(state.ledgerEntries, filters)
+		.filter((row) => row.refType === 'ess_escrow_transfer')
+		.map((row) => ({
+			id: row.id,
+			corporationId: row.corporationId,
+			entryDate: row.entryDate,
+			division: row.division,
+			amount: row.amount,
+			sourceType: row.sourceType,
+			sourcePrimaryId: row.sourcePrimaryId,
+			firstPartyId: row.firstPartyId,
+			secondPartyId: row.secondPartyId,
+		}))
+}
+
+function deriveComplianceRows(
+	state: DemoTaxState,
+	filters?: TaxReportFilters
+): TaxCompliancePoint[] {
+	const grouped = new Map<
+		string,
+		{ rollupDate: Date; taxDue: number; taxPaid: number; taxDelta: number; entryCount: number }
+	>()
+	for (const row of filterAssessments(state.assessments, filters)) {
+		const rollupDate = new Date(
+			Date.UTC(row.taxPeriodEnd.getUTCFullYear(), row.taxPeriodEnd.getUTCMonth(), 1)
+		)
+		const key = rollupDate.toISOString()
+		const current = grouped.get(key) ?? {
+			rollupDate,
+			taxDue: 0,
+			taxPaid: 0,
+			taxDelta: 0,
+			entryCount: 0,
+		}
+		current.taxDue += parseAmount(row.taxDue)
+		current.taxDelta += parseAmount(row.taxDelta)
+		current.taxPaid += parseAmount(row.taxDue) - parseAmount(row.taxDelta)
+		current.entryCount += 1
+		grouped.set(key, current)
+	}
+	return Array.from(grouped.values())
+		.sort((a, b) => a.rollupDate.getTime() - b.rollupDate.getTime())
+		.map((row) => ({
+			rollupDate: row.rollupDate,
+			taxDue: amount(row.taxDue),
+			taxPaid: amount(row.taxPaid),
+			taxDelta: amount(row.taxDelta),
+			entryCount: row.entryCount,
+		}))
+}
+
+function deriveBillStatusRows(
+	state: DemoTaxState,
+	filters?: TaxReportFilters
+): TaxBillStatusReportRow[] {
+	return filterAssessments(state.assessments, filters).map((row) => {
+		const taxDue = parseAmount(row.taxDue)
+		const taxDelta = parseAmount(row.taxDelta)
+		const taxPaid = taxDue - taxDelta
+		return {
+			assessmentId: row.id,
+			corporationId: row.corporationId,
+			taxPeriodStart: row.taxPeriodStart,
+			taxPeriodEnd: row.taxPeriodEnd,
+			billId: row.billId,
+			billStatus: row.billStatus ?? 'unbilled',
+			issueDate: row.billId ? row.createdAt : null,
+			dueDate: row.billId ? addDays(row.taxPeriodEnd, 14) : null,
+			taxDue: row.taxDue,
+			taxPaid: amount(taxPaid),
+			taxDelta: row.taxDelta,
+			taxDueCenti: String(Math.round(taxDue * 100)),
+			taxPaidCenti: String(Math.round(taxPaid * 100)),
+			taxDeltaCenti: String(Math.round(taxDelta * 100)),
+		}
+	})
+}
+
+function buildSummary(
+	rows: TaxTotalTaxesByCorporationRow[],
+	filters?: TaxReportFilters
+): TaxSummaryReport {
 	const taxDue = rows.reduce((sum, row) => sum + parseAmount(row.taxDue), 0)
 	const taxPaid = rows.reduce((sum, row) => sum + parseAmount(row.taxPaid), 0)
 	const assessments = rows.reduce((sum, row) => sum + row.assessmentCount, 0)
 	return {
 		corporationId: rows.length === 1 ? rows[0]!.corporationId : null,
-		fromDate: startOfMonth(),
-		toDate: addDays(startOfMonth(), 29),
+		fromDate: filters?.fromDate ? new Date(filters.fromDate) : startOfMonth(),
+		toDate: filters?.toDate ? new Date(filters.toDate) : addDays(startOfMonth(), 29),
 		taxDue: amount(taxDue),
 		taxPaid: amount(taxPaid),
 		taxDelta: amount(taxDue - taxPaid),
@@ -1479,7 +1587,7 @@ export const taxDemoApi = {
 		filters?: TaxReportFilters
 	): Promise<TaxPagedResult<TaxBillStatusReportRow>> {
 		const rows = sortRows(
-			maybeFilterReportRows(ensureDemoState().billStatus, filters),
+			deriveBillStatusRows(ensureDemoState(), filters),
 			filters?.sortBy,
 			filters?.sortDir
 		)
@@ -1503,11 +1611,11 @@ export const taxDemoApi = {
 		)
 	},
 	async getSummaryReport(filters?: TaxReportFilters) {
-		const rows = maybeFilterReportRows(ensureDemoState().totalTaxes, filters)
-		return withLatency(buildSummary(rows))
+		const rows = deriveTotalTaxesRows(ensureDemoState(), filters)
+		return withLatency(buildSummary(rows, filters))
 	},
 	async getTotalTaxesReport(filters?: TaxReportFilters) {
-		let rows = maybeFilterReportRows(ensureDemoState().totalTaxes, filters)
+		let rows = deriveTotalTaxesRows(ensureDemoState(), filters)
 		rows = sortRows(rows, filters?.sortBy, filters?.sortDir)
 		return withLatency({
 			rows: applyLimitOffset(rows, filters?.limit, filters?.offset),
@@ -1515,8 +1623,7 @@ export const taxDemoApi = {
 		})
 	},
 	async getTopIncomeSourcesReport(filters?: TaxReportFilters) {
-		let rows = ensureDemoState().topIncome
-		if (filters?.refType) rows = rows.filter((row) => row.refType === filters.refType)
+		const rows = deriveTopIncomeRows(ensureDemoState(), filters)
 		return withLatency(applyLimitOffset(rows, filters?.limit, filters?.offset))
 	},
 	async getTopIncomeSourcesMonthlyReport(filters?: TaxReportFilters) {
@@ -1571,10 +1678,7 @@ export const taxDemoApi = {
 		return withLatency(result)
 	},
 	async getEssPayoutReport(filters?: TaxReportFilters) {
-		let rows = filterLedgerEntries(
-			ensureDemoState().essRows as any,
-			filters
-		) as any as TaxEssPayoutRow[]
+		let rows = deriveEssRows(ensureDemoState(), filters)
 		rows = sortRows(rows as any, filters?.sortBy, filters?.sortDir) as TaxEssPayoutRow[]
 		return withLatency({
 			rows: applyLimitOffset(rows, filters?.limit, filters?.offset),
@@ -1582,9 +1686,7 @@ export const taxDemoApi = {
 		})
 	},
 	async getComplianceReport(filters?: TaxReportFilters) {
-		const rows = ensureDemoState().compliance.filter((row) =>
-			matchesDate(row.rollupDate, filters?.fromDate, filters?.toDate)
-		)
+		const rows = deriveComplianceRows(ensureDemoState(), filters)
 		return withLatency(applyLimitOffset(rows, filters?.limit, filters?.offset))
 	},
 	async getDiscrepancyReport(filters?: {

@@ -72,6 +72,6 @@ export type {
 	CorporationAccessRow,
 	TaxCorporationScopeMode,
 	TaxCorporationScopeRow,
-	TaxReportQueryFilters,
-	TaxReportQueryOptions,
+	TaxRollupReportQueryFilters,
+	TaxRollupReportQueryOptions,
 } from './types'

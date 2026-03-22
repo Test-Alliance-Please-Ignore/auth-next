@@ -1,17 +1,17 @@
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
-import { requireAuth } from '../middleware/session'
-import { canManageTaxFeature } from '../middleware/tax-permissions'
+import { requireAuth } from '../../middleware/session'
+import { canManageTaxFeature } from '../../middleware/tax-permissions'
 import {
 	filterAlertsForUser,
 	parseAuditLogFiltersFromQuery,
 	parseIntegerQueryParam,
-} from './corporation-tax-shared'
+} from './shared'
 
 import type { Hono } from 'hono'
 import type { CorporationTax } from '@repo/corporation-tax'
-import type { App } from '../context'
+import type { App } from '../../context'
 
 export function registerCorporationTaxAlertsRoutes(
 	app: Hono<App>,

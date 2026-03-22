@@ -18,7 +18,7 @@ import {
 import { Button } from '@/components/ui/button'
 
 import type { TaxExportFormat, TaxExportReportType } from '@repo/corporation-tax'
-import type { TaxReportQueryFilters } from '@/hooks/corporation-tax'
+import type { TaxRollupReportQueryFilters } from '@/hooks/corporation-tax'
 import type { SortDirection } from '@/lib/tax-report-utils'
 
 export type TaxReportView = TaxExportReportType | 'missing_esi_keys'
@@ -68,7 +68,7 @@ export function TaxReportWorkspace({
 	canCreateSchedule: boolean
 	activeReportIsExportable: boolean
 	activeExportReportType: TaxExportReportType | null
-	reportWindowFilters: TaxReportQueryFilters
+	reportWindowFilters: TaxRollupReportQueryFilters
 	onTotalTaxesSortChange: (sortBy: string, sortDir: SortDirection) => void
 	onEssSortChange: (sortBy: string, sortDir: SortDirection) => void
 	onDiscrepancySortChange: (sortBy: string, sortDir: SortDirection) => void

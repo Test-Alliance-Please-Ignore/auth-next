@@ -31,6 +31,7 @@ import {
 	formatTaxIskFull,
 	formatTaxNumber,
 	formatTaxRefTypeLabel,
+	getTaxRefTypeColor,
 	TaxEntityDisplay,
 } from '@/lib/tax-display'
 
@@ -41,24 +42,14 @@ function parseIsk(value: string): number {
 
 const DEFAULT_MONTH_RANGE = getCurrentMonthDateRange()
 const UNATTRIBUTED_CHARACTER_ID = '__unattributed__'
-const TOP_SOURCE_COLORS = [
-	{ bgClass: 'bg-sky-500', hoverBgColor: '#38bdf8' },
-	{ bgClass: 'bg-emerald-500', hoverBgColor: '#34d399' },
-	{ bgClass: 'bg-amber-500', hoverBgColor: '#fbbf24' },
-	{ bgClass: 'bg-fuchsia-500', hoverBgColor: '#e879f9' },
-	{ bgClass: 'bg-rose-500', hoverBgColor: '#fb7185' },
-] as const
-
 function SourceSplitSegment({
-	colorClass,
-	hoverBgColor,
+	color,
 	label,
 	amount,
 	share,
 	widthPercent,
 }: {
-	colorClass: string
-	hoverBgColor: string
+	color: string
 	label: string
 	amount: string
 	share: number
@@ -69,12 +60,12 @@ function SourceSplitSegment({
 	return (
 		<>
 			<div
-				className={colorClass}
 				style={{
 					width: `${widthPercent}%`,
 					minWidth: share > 0 && share < 2 ? '6px' : undefined,
-					backgroundColor: tooltipPosition ? hoverBgColor : undefined,
-					boxShadow: tooltipPosition ? 'inset 0 0 0 2px rgba(255, 255, 255, 0.28)' : undefined,
+					backgroundColor: color,
+					filter: tooltipPosition ? 'brightness(1.12)' : undefined,
+					boxShadow: tooltipPosition ? 'inset 0 0 0 1px rgba(255, 255, 255, 0.24)' : undefined,
 				}}
 				onMouseEnter={(event) => setTooltipPosition({ x: event.clientX, y: event.clientY })}
 				onMouseMove={(event) => setTooltipPosition({ x: event.clientX, y: event.clientY })}
@@ -92,7 +83,10 @@ function SourceSplitSegment({
 					}}
 				>
 					<div className="flex items-center gap-2 text-xs font-medium">
-						<span className={`inline-block h-2 w-2 rounded-full ${colorClass}`} />
+						<span
+							className="inline-block h-2 w-2 rounded-full"
+							style={{ backgroundColor: color }}
+						/>
 						<span>{label}</span>
 					</div>
 					<div className="text-xs text-muted-foreground">
@@ -126,7 +120,8 @@ function TopSourceBreakdown({
 						className="flex items-center gap-1 text-[11px] text-muted-foreground"
 					>
 						<span
-							className={`inline-block h-2 w-2 rounded-sm ${TOP_SOURCE_COLORS[index % TOP_SOURCE_COLORS.length].bgClass}`}
+							className="inline-block h-2 w-2 rounded-sm"
+							style={{ backgroundColor: getTaxRefTypeColor(source.refType) }}
 						/>
 						<span>{formatTaxRefTypeLabel(source.refType)}</span>
 					</div>
@@ -145,8 +140,7 @@ function TopSourceBreakdown({
 					return (
 						<SourceSplitSegment
 							key={`${source.refType}:${index}:segment`}
-							colorClass={TOP_SOURCE_COLORS[index % TOP_SOURCE_COLORS.length].bgClass}
-							hoverBgColor={TOP_SOURCE_COLORS[index % TOP_SOURCE_COLORS.length].hoverBgColor}
+							color={getTaxRefTypeColor(source.refType)}
 							label={label}
 							amount={source.taxableAmount}
 							share={share}

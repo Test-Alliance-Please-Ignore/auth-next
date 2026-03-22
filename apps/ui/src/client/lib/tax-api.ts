@@ -38,6 +38,7 @@ import type {
 	TaxTotalTaxesByCorporationRow,
 	UpdateTaxCorporationBillingConfigInput,
 } from '@repo/corporation-tax'
+import type { TaxRollupReportQueryFilters } from '@/lib/tax-report-types'
 
 const TAX_API_BASE = '/corporation-tax'
 
@@ -63,15 +64,7 @@ export interface TaxCapabilitiesResponse {
 	}
 }
 
-export interface TaxReportFilters {
-	corporationId?: string
-	fromDate?: string
-	toDate?: string
-	limit?: number
-	offset?: number
-	sortBy?: string
-	sortDir?: 'asc' | 'desc'
-}
+export type TaxReportFilters = TaxRollupReportQueryFilters
 
 export interface TaxMemberSummaryFilters {
 	characterQuery?: string

@@ -1,16 +1,9 @@
-export type TaxReportQueryFilters = {
-	corporationId?: string
-	fromDate?: string
-	toDate?: string
-	limit?: number
-	offset?: number
-	sortBy?: string
-	sortDir?: 'asc' | 'desc'
-}
+import type {
+	TaxRollupReportQueryFilters,
+	TaxRollupReportQueryOptions,
+} from '@/lib/tax-report-types'
 
-export type TaxReportQueryOptions = TaxReportQueryFilters & {
-	enabled?: boolean
-}
+export type { TaxRollupReportQueryFilters, TaxRollupReportQueryOptions }
 
 export type TaxCorporationScopeMode = 'admin' | 'auditor' | 'viewer'
 

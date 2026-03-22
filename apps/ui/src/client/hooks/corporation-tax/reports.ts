@@ -4,9 +4,9 @@ import { corporationTaxApi } from '@/lib/tax-api'
 
 import { corporationTaxKeys } from './keys'
 
-import type { TaxReportQueryOptions } from './types'
+import type { TaxRollupReportQueryOptions } from './types'
 
-export function useTaxBillStatusReport(filters?: TaxReportQueryOptions) {
+export function useTaxBillStatusReport(filters?: TaxRollupReportQueryOptions) {
 	return useQuery({
 		queryKey: corporationTaxKeys.billStatusReport(filters),
 		queryFn: () => corporationTaxApi.getBillStatusReport(filters),
@@ -15,7 +15,7 @@ export function useTaxBillStatusReport(filters?: TaxReportQueryOptions) {
 	})
 }
 
-export function useTaxTotalTaxesReport(filters?: TaxReportQueryOptions) {
+export function useTaxTotalTaxesReport(filters?: TaxRollupReportQueryOptions) {
 	return useQuery({
 		queryKey: corporationTaxKeys.totalTaxesReport(filters),
 		queryFn: () => corporationTaxApi.getTotalTaxesReport(filters),
@@ -24,7 +24,7 @@ export function useTaxTotalTaxesReport(filters?: TaxReportQueryOptions) {
 	})
 }
 
-export function useTaxTopIncomeSourcesReport(filters?: TaxReportQueryOptions) {
+export function useTaxTopIncomeSourcesReport(filters?: TaxRollupReportQueryOptions) {
 	return useQuery({
 		queryKey: corporationTaxKeys.topIncomeReport(filters),
 		queryFn: () => corporationTaxApi.getTopIncomeSourcesReport(filters),
@@ -33,7 +33,7 @@ export function useTaxTopIncomeSourcesReport(filters?: TaxReportQueryOptions) {
 	})
 }
 
-export function useTaxTopIncomeSourcesMonthlyReport(filters?: TaxReportQueryOptions) {
+export function useTaxTopIncomeSourcesMonthlyReport(filters?: TaxRollupReportQueryOptions) {
 	return useQuery({
 		queryKey: corporationTaxKeys.topIncomeMonthlyReport(filters),
 		queryFn: () => corporationTaxApi.getTopIncomeSourcesMonthlyReport(filters),
@@ -42,7 +42,7 @@ export function useTaxTopIncomeSourcesMonthlyReport(filters?: TaxReportQueryOpti
 	})
 }
 
-export function useTaxEssPayoutReport(filters?: TaxReportQueryOptions) {
+export function useTaxEssPayoutReport(filters?: TaxRollupReportQueryOptions) {
 	return useQuery({
 		queryKey: corporationTaxKeys.essPayoutReport(filters),
 		queryFn: () => corporationTaxApi.getEssPayoutReport(filters),
@@ -51,7 +51,7 @@ export function useTaxEssPayoutReport(filters?: TaxReportQueryOptions) {
 	})
 }
 
-export function useTaxComplianceReport(filters?: TaxReportQueryOptions) {
+export function useTaxComplianceReport(filters?: TaxRollupReportQueryOptions) {
 	return useQuery({
 		queryKey: corporationTaxKeys.complianceReport(filters),
 		queryFn: () => corporationTaxApi.getComplianceReport(filters),
@@ -94,7 +94,7 @@ export function useTaxMissingEsiKeysReport(filters?: {
 	})
 }
 
-export function useTaxSummaryReport(filters?: TaxReportQueryOptions) {
+export function useTaxSummaryReport(filters?: TaxRollupReportQueryOptions) {
 	return useQuery({
 		queryKey: corporationTaxKeys.summary(filters),
 		queryFn: () => corporationTaxApi.getSummaryReport(filters),

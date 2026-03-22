@@ -67,10 +67,30 @@ const TAX_REF_TYPE_COLOR_PALETTE = [
 	'#06b6d4',
 ]
 
+function buildGeneratedRefTypeColor(index: number, total: number): string {
+	const hue = Math.round((index / Math.max(total, 1)) * 360)
+	const saturation = index % 2 === 0 ? 72 : 66
+	const lightness = index % 3 === 0 ? 58 : index % 3 === 1 ? 52 : 46
+	return `hsl(${hue} ${saturation}% ${lightness}%)`
+}
+
+function buildFallbackRefTypeColor(refType: string): string {
+	let hash = 0
+	for (let index = 0; index < refType.length; index += 1) {
+		hash = (hash * 31 + refType.charCodeAt(index)) >>> 0
+	}
+	const hue = hash % 360
+	const saturation = 64 + (hash % 12)
+	const lightness = 46 + (hash % 10)
+	return `hsl(${hue} ${saturation}% ${lightness}%)`
+}
+
 const TAX_REF_TYPE_COLOR_MAP = new Map<string, string>(
 	TAX_INCOME_REF_TYPES.map((refType, index) => [
 		refType,
-		TAX_REF_TYPE_COLOR_PALETTE[index % TAX_REF_TYPE_COLOR_PALETTE.length]!,
+		index < TAX_REF_TYPE_COLOR_PALETTE.length
+			? TAX_REF_TYPE_COLOR_PALETTE[index]!
+			: buildGeneratedRefTypeColor(index, TAX_INCOME_REF_TYPES.length),
 	])
 )
 
@@ -136,7 +156,7 @@ export function getTaxRefTypeColor(refType: string | null | undefined): string {
 	if (!refType) {
 		return '#38bdf8'
 	}
-	return TAX_REF_TYPE_COLOR_MAP.get(refType) ?? '#38bdf8'
+	return TAX_REF_TYPE_COLOR_MAP.get(refType) ?? buildFallbackRefTypeColor(refType)
 }
 
 export function formatTaxLedgerSourceTypeLabel(sourceType: string | null | undefined): string {

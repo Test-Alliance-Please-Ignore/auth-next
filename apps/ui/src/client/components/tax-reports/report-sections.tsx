@@ -21,18 +21,13 @@ import {
 } from '@/hooks/corporation-tax'
 import { useEntityNames } from '@/hooks/useEntityNames'
 
+import type { TaxRollupReportQueryFilters } from '@/lib/tax-report-types'
 import type { SortDirection } from '@/lib/tax-report-utils'
-
-interface TaxReportFilters {
-	corporationId?: string
-	fromDate?: string
-	toDate?: string
-}
 
 const REPORT_PAGE_SIZE_DEFAULT = 25
 
 export function TotalTaxesReportSection(props: {
-	filters: TaxReportFilters
+	filters: TaxRollupReportQueryFilters
 	enabled: boolean
 	onSortChange?: (sortBy: string, sortDir: SortDirection) => void
 }) {
@@ -75,7 +70,7 @@ export function TotalTaxesReportSection(props: {
 }
 
 export function TopIncomeSourcesReportSection(props: {
-	filters: TaxReportFilters
+	filters: TaxRollupReportQueryFilters
 	enabled: boolean
 }) {
 	const {
@@ -102,7 +97,7 @@ export function TopIncomeSourcesReportSection(props: {
 }
 
 export function EssPayoutReportSection(props: {
-	filters: TaxReportFilters
+	filters: TaxRollupReportQueryFilters
 	enabled: boolean
 	onSortChange?: (sortBy: string, sortDir: SortDirection) => void
 }) {
@@ -153,7 +148,7 @@ export function EssPayoutReportSection(props: {
 }
 
 export function DiscrepancyReportSection(props: {
-	filters: Pick<TaxReportFilters, 'corporationId' | 'fromDate' | 'toDate'>
+	filters: Pick<TaxRollupReportQueryFilters, 'corporationId' | 'fromDate' | 'toDate'>
 	enabled: boolean
 	onSortChange?: (sortBy: string, sortDir: SortDirection) => void
 }) {
@@ -199,7 +194,7 @@ export function DiscrepancyReportSection(props: {
 }
 
 export function BillStatusReportSection(props: {
-	filters: TaxReportFilters
+	filters: TaxRollupReportQueryFilters
 	enabled: boolean
 	onSortChange?: (sortBy: string, sortDir: SortDirection) => void
 }) {
@@ -242,7 +237,7 @@ export function BillStatusReportSection(props: {
 }
 
 export function ComplianceOverTimeReportSection(props: {
-	filters: TaxReportFilters
+	filters: TaxRollupReportQueryFilters
 	enabled: boolean
 }) {
 	const {

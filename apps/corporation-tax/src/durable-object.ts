@@ -13,6 +13,11 @@ import {
 	taxMemberSummaryVersions,
 	taxRuleGroupAttachments,
 } from './db/schema'
+import { TaxBillingRpc } from './rpc/billing-rpc'
+import { TaxLedgerRpc } from './rpc/ledger-rpc'
+import { TaxOperationsRpc } from './rpc/operations-rpc'
+import { TaxReportsRpc } from './rpc/reports-rpc'
+import { TaxRulesRpc } from './rpc/rules-rpc'
 import { planProjectionRefreshFromWalletSync } from './services/projection-refresh-plan'
 import { computeRuleMutationRecalcStart } from './services/projection-rule-freshness'
 import { TaxAlertService } from './services/tax-alert.service'
@@ -121,6 +126,11 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 	private auditService: TaxAuditService
 	private ruleGroupService: TaxRuleGroupService
 	private rulesService: TaxRulesService
+	private rulesRpc: TaxRulesRpc
+	private ledgerRpc: TaxLedgerRpc
+	private billingRpc: TaxBillingRpc
+	private reportsRpc: TaxReportsRpc
+	private operationsRpc: TaxOperationsRpc
 	private corporationIngestLocks = new Map<string, Promise<void>>()
 
 	constructor(
@@ -144,6 +154,58 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		this.auditService = new TaxAuditService(this.db)
 		this.ruleGroupService = new TaxRuleGroupService(this.db)
 		this.rulesService = new TaxRulesService(this.db)
+		this.rulesRpc = new TaxRulesRpc({
+			env,
+			exclusionsService: this.exclusionsService,
+			auditService: this.auditService,
+			ruleGroupService: this.ruleGroupService,
+			rulesService: this.rulesService,
+			getCorporationIdsForRuleGroup: this.getCorporationIdsForRuleGroup.bind(this),
+			touchRuleMembershipMutation: this.touchRuleMembershipMutation.bind(this),
+			toAuditPayload: this.toAuditPayload.bind(this),
+		})
+		this.ledgerRpc = new TaxLedgerRpc({
+			db: this.db,
+			ledgerService: this.ledgerService,
+			assessmentService: this.assessmentService,
+			auditService: this.auditService,
+			alertService: this.alertService,
+			rulesService: this.rulesService,
+			triggerEssQualityAlerts: this.triggerEssQualityAlerts.bind(this),
+			triggerUnexpectedIncomeRefTypeAlerts: this.triggerUnexpectedIncomeRefTypeAlerts.bind(this),
+			getCurrentMonthWindow: this.getCurrentMonthWindow.bind(this),
+			runAssessmentForPeriod: this.runAssessmentForPeriod.bind(this),
+			clearRuleMembershipMutation: this.clearRuleMembershipMutation.bind(this),
+			withCorporationIngestLock: this.withCorporationIngestLock.bind(this),
+			triggeredIngestOverlapWindowMs: TRIGGERED_INGEST_OVERLAP_WINDOW_MS,
+		})
+		this.billingRpc = new TaxBillingRpc({
+			billingService: this.billingService,
+			auditService: this.auditService,
+			toAuditPayload: this.toAuditPayload.bind(this),
+			triggerBillSyncFailureAlert: this.triggerBillSyncFailureAlert.bind(this),
+		})
+		this.reportsRpc = new TaxReportsRpc({
+			reportService: this.reportService,
+		})
+		this.operationsRpc = new TaxOperationsRpc({
+			db: this.db,
+			ledgerService: this.ledgerService,
+			exportService: this.exportService,
+			alertService: this.alertService,
+			auditService: this.auditService,
+			listProcessableCorporationIds: this.listProcessableCorporationIds.bind(this),
+			shouldRunDailyIngest: this.shouldRunDailyIngest.bind(this),
+			triggerProjectionRefreshFromWalletSync:
+				this.triggerProjectionRefreshFromWalletSync.bind(this),
+			buildScheduledProjectionRefreshInput: this.buildScheduledProjectionRefreshInput.bind(this),
+			runAssessmentForPeriod: this.runAssessmentForPeriod.bind(this),
+			triggerSchedulerOperationFailureAlert: this.triggerSchedulerOperationFailureAlert.bind(this),
+			triggerScheduledExportFailureAlerts: this.triggerScheduledExportFailureAlerts.bind(this),
+			triggerCorporationCoverageAlerts: this.triggerCorporationCoverageAlerts.bind(this),
+			getPreviousMonthWindow: this.getPreviousMonthWindow.bind(this),
+			runWithConcurrency: this.runWithConcurrency.bind(this),
+		})
 	}
 
 	async getHealth(): Promise<CorporationTaxHealth> {
@@ -163,64 +225,32 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		corporationId: string,
 		input: UpsertTaxCorporationExclusionInput
 	): Promise<TaxCorporationExclusion> {
-		const before = await this.exclusionsService.getExclusion(corporationId)
-		const after = await this.exclusionsService.upsertExclusion(actorUserId, corporationId, input)
-
-		await this.auditService.logAction({
-			corporationId,
-			actorUserId,
-			action: before ? 'tax.exclusion.updated' : 'tax.exclusion.created',
-			before: this.toAuditPayload(before),
-			after: this.toAuditPayload(after),
-		})
-		return after
+		return this.rulesRpc.upsertCorporationExclusion(actorUserId, corporationId, input)
 	}
 
 	async deleteCorporationExclusion(actorUserId: string, corporationId: string): Promise<void> {
-		const before = await this.exclusionsService.getExclusion(corporationId)
-		await this.exclusionsService.deleteExclusion(corporationId)
-		await this.auditService.logAction({
-			corporationId,
-			actorUserId,
-			action: 'tax.exclusion.deleted',
-			before: this.toAuditPayload(before),
-			after: null,
-		})
+		return this.rulesRpc.deleteCorporationExclusion(actorUserId, corporationId)
 	}
 
 	async listCorporationExclusions(
 		filters?: ListTaxCorporationExclusionsFilters
 	): Promise<TaxCorporationExclusion[]> {
-		return this.exclusionsService.listExclusions(filters)
+		return this.rulesRpc.listCorporationExclusions(filters)
 	}
 
 	async listWalletDivisions(corporationId: string): Promise<number[]> {
-		try {
-			const stub = getStub<EveCorporationData>(this.env.EVE_CORPORATION_DATA, corporationId)
-			return await stub.getWalletDivisions(corporationId)
-		} catch (_error) {
-			return []
-		}
+		return this.rulesRpc.listWalletDivisions(corporationId)
 	}
 
 	async listAuditLog(filters?: ListTaxAuditLogFilters): Promise<TaxAuditLogEntry[]> {
-		return this.auditService.listAuditLog(filters)
+		return this.rulesRpc.listAuditLog(filters)
 	}
 
 	async createRuleGroup(
 		actorUserId: string,
 		input: CreateTaxRuleGroupInput
 	): Promise<TaxRuleGroup> {
-		await this.ruleGroupService.ensureDefaultGlobalGroup(actorUserId)
-		const created = await this.ruleGroupService.createRuleGroup(actorUserId, input)
-		await this.auditService.logAction({
-			corporationId: undefined,
-			actorUserId,
-			action: 'tax.rule-group.created',
-			before: null,
-			after: this.toAuditPayload(created),
-		})
-		return created
+		return this.rulesRpc.createRuleGroup(actorUserId, input)
 	}
 
 	async updateRuleGroup(
@@ -228,31 +258,15 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		ruleGroupId: string,
 		input: UpdateTaxRuleGroupInput
 	): Promise<TaxRuleGroup> {
-		const updated = await this.ruleGroupService.updateRuleGroup(ruleGroupId, input)
-		await this.auditService.logAction({
-			corporationId: undefined,
-			actorUserId,
-			action: 'tax.rule-group.updated',
-			before: null,
-			after: this.toAuditPayload(updated),
-		})
-		return updated
+		return this.rulesRpc.updateRuleGroup(actorUserId, ruleGroupId, input)
 	}
 
 	async deleteRuleGroup(actorUserId: string, ruleGroupId: string): Promise<void> {
-		await this.ruleGroupService.deleteRuleGroup(ruleGroupId)
-		await this.auditService.logAction({
-			corporationId: undefined,
-			actorUserId,
-			action: 'tax.rule-group.deleted',
-			before: { ruleGroupId },
-			after: null,
-		})
+		return this.rulesRpc.deleteRuleGroup(actorUserId, ruleGroupId)
 	}
 
 	async listRuleGroups(filters?: ListTaxRuleGroupsFilters): Promise<TaxRuleGroup[]> {
-		await this.ruleGroupService.ensureDefaultGlobalGroup('system:tax:rule-groups')
-		return this.ruleGroupService.listRuleGroups(filters)
+		return this.rulesRpc.listRuleGroups(filters)
 	}
 
 	async attachCorporationToRuleGroup(
@@ -260,16 +274,7 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		ruleGroupId: string,
 		corporationId: string
 	): Promise<TaxRuleGroupAttachment> {
-		const attached = await this.ruleGroupService.attachCorporation(ruleGroupId, corporationId)
-		await this.touchRuleMembershipMutation(corporationId)
-		await this.auditService.logAction({
-			corporationId,
-			actorUserId,
-			action: 'tax.rule-group.corporation.attached',
-			before: null,
-			after: this.toAuditPayload(attached),
-		})
-		return attached
+		return this.rulesRpc.attachCorporationToRuleGroup(actorUserId, ruleGroupId, corporationId)
 	}
 
 	async detachCorporationFromRuleGroup(
@@ -277,46 +282,19 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		ruleGroupId: string,
 		corporationId: string
 	): Promise<void> {
-		await this.ruleGroupService.detachCorporation(ruleGroupId, corporationId)
-		await this.touchRuleMembershipMutation(corporationId)
-		await this.auditService.logAction({
-			corporationId,
-			actorUserId,
-			action: 'tax.rule-group.corporation.detached',
-			before: { ruleGroupId, corporationId },
-			after: null,
-		})
+		return this.rulesRpc.detachCorporationFromRuleGroup(actorUserId, ruleGroupId, corporationId)
 	}
 
 	async listRuleGroupAttachments(ruleGroupId: string): Promise<TaxRuleGroupAttachment[]> {
-		return this.ruleGroupService.listRuleGroupAttachments(ruleGroupId)
+		return this.rulesRpc.listRuleGroupAttachments(ruleGroupId)
 	}
 
 	async createRuleSet(actorUserId: string, input: CreateTaxRuleSetInput): Promise<TaxRuleSet> {
-		const created = await this.rulesService.createRuleSet(actorUserId, input)
-		const affectedCorporationIds = await this.getCorporationIdsForRuleGroup(created.ruleGroupId)
-
-		await this.auditService.logAction({
-			corporationId: affectedCorporationIds[0] ?? undefined,
-			actorUserId,
-			action: 'tax.ruleset.created',
-			before: null,
-			after: {
-				id: created.id,
-				ruleGroupId: created.ruleGroupId,
-				name: created.name,
-				priority: created.priority,
-				isActive: created.isActive,
-				appliesToRefType: created.appliesToRefType,
-				taxRateBps: created.taxRateBps,
-			},
-		})
-
-		return created
+		return this.rulesRpc.createRuleSet(actorUserId, input)
 	}
 
 	async listRuleSets(filters?: ListTaxRuleSetsFilters): Promise<TaxRuleSet[]> {
-		return this.rulesService.listRuleSets(filters)
+		return this.rulesRpc.listRuleSets(filters)
 	}
 
 	async updateRuleSet(
@@ -324,42 +302,11 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		ruleSetId: string,
 		input: UpdateTaxRuleSetInput
 	): Promise<TaxRuleSet> {
-		const updated = await this.rulesService.updateRuleSet(ruleSetId, input)
-		const affectedCorporationIds = await this.getCorporationIdsForRuleGroup(updated.ruleGroupId)
-		await this.auditService.logAction({
-			corporationId: affectedCorporationIds[0] ?? undefined,
-			actorUserId,
-			action: 'tax.ruleset.updated',
-			before: { ruleSetId },
-			after: {
-				id: updated.id,
-				ruleGroupId: updated.ruleGroupId,
-				name: updated.name,
-				priority: updated.priority,
-				isActive: updated.isActive,
-			},
-		})
-		return updated
+		return this.rulesRpc.updateRuleSet(actorUserId, ruleSetId, input)
 	}
 
 	async deleteRuleSet(actorUserId: string, ruleSetId: string): Promise<void> {
-		const existing = await this.rulesService.getRuleSetById(ruleSetId)
-		if (!existing) {
-			throw new Error('Rule set not found')
-		}
-		const affectedCorporationIds = await this.getCorporationIdsForRuleGroup(existing.ruleGroupId)
-		await this.rulesService.deleteRuleSet(ruleSetId)
-		await this.auditService.logAction({
-			corporationId: affectedCorporationIds[0] ?? undefined,
-			actorUserId,
-			action: 'tax.ruleset.deleted',
-			before: {
-				id: existing.id,
-				ruleGroupId: existing.ruleGroupId,
-				name: existing.name,
-			},
-			after: null,
-		})
+		return this.rulesRpc.deleteRuleSet(actorUserId, ruleSetId)
 	}
 
 	async ingestCorporationLedgerWindow(
@@ -367,168 +314,39 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		corporationId: string,
 		input?: IngestTaxLedgerWindowInput
 	): Promise<TaxLedgerIngestionResult> {
-		return this.withCorporationIngestLock(corporationId, async () => {
-			const result = await this.ledgerService.ingestCorporationLedgerWindow(corporationId, input)
-
-			await this.auditService.logAction({
-				corporationId,
-				actorUserId,
-				action: 'tax.ledger.ingest',
-				before: null,
-				after: {
-					journalProcessed: result.journalProcessed,
-					transactionProcessed: result.transactionProcessed,
-					upsertedCount: result.upsertedCount,
-					essDuplicateRecordCount: result.essDuplicateRecordCount,
-					essMissingRecordCount: result.essMissingRecordCount,
-					unexpectedIncomeRefTypeCount: result.unexpectedIncomeRefTypeCount,
-					unexpectedIncomeEntryCount: result.unexpectedIncomeEntryCount,
-				},
-			})
-
-			await this.triggerEssQualityAlerts(actorUserId, corporationId, input, result)
-			await this.triggerUnexpectedIncomeRefTypeAlerts(actorUserId, corporationId, input, result)
-
-			// Keep open-period member projections warm after successful ingest.
-			// This is best-effort and must not fail ingestion.
-			if (result.upsertedCount > 0) {
-				const currentMonthWindow = this.getCurrentMonthWindow(new Date())
-				try {
-					await this.runAssessmentForPeriod(actorUserId, {
-						corporationId,
-						periodStart: currentMonthWindow.periodStart,
-						periodEnd: currentMonthWindow.periodEnd,
-						// Static override: current projection refresh should ignore character wallets.
-						includeCharacterWallets: false,
-					})
-				} catch (_error) {
-					// Best-effort follow-up only.
-				}
-			}
-
-			return result
-		})
+		return this.ledgerRpc.ingestCorporationLedgerWindow(actorUserId, corporationId, input)
 	}
 
 	async triggerProjectionRefreshFromWalletSync(
 		actorUserId: string,
 		input: TriggerTaxProjectionRefreshInput
 	): Promise<TriggerTaxProjectionRefreshResult> {
-		const startedAtMs = Date.now()
-		const includeJournal = Boolean(input.walletJournal)
-		const includeTransactions = Boolean(input.walletTransactions)
-		logger.info('[CorporationTaxDO] Projection refresh trigger received', {
-			corporationId: input.corporationId,
-			upstreamRunId: input.upstreamRunId,
-			includeJournal,
-			includeTransactions,
-		})
-		const health = await this.ledgerService.getIngestionHealth(input.corporationId)
-		const plan = planProjectionRefreshFromWalletSync(
-			input,
-			health,
-			TRIGGERED_INGEST_OVERLAP_WINDOW_MS
-		)
-		if (!plan.shouldTrigger) {
-			const currentMonthWindow = this.getCurrentMonthWindow(new Date())
-			const versionRow = await this.db.query.taxMemberSummaryVersions.findFirst({
-				where: eq(taxMemberSummaryVersions.corporationId, input.corporationId),
-				columns: {
-					projectionUpdatedAt: true,
-					ruleMembershipMutatedAt: true,
-				},
-			})
-			const projectionUpdatedAt = versionRow?.projectionUpdatedAt ?? new Date(0)
-			const earliestRuleSetMutationAt = await this.rulesService.getEarliestRuleSetMutationAfter(
-				input.corporationId,
-				projectionUpdatedAt
-			)
-			const membershipMutationAt = versionRow?.ruleMembershipMutatedAt ?? null
-			const recalcStart = computeRuleMutationRecalcStart({
-				projectionUpdatedAt,
-				openPeriodStart: currentMonthWindow.periodStart,
-				earliestRuleSetMutationAt,
-				membershipMutationAt,
-			})
-			if (recalcStart !== null) {
-				await this.runAssessmentForPeriod(actorUserId, {
-					corporationId: input.corporationId,
-					periodStart: recalcStart,
-					periodEnd: currentMonthWindow.periodEnd,
-					// Static override: rule-mutation projection rebuild is corporation-wallet only.
-					includeCharacterWallets: false,
-				})
-				await this.clearRuleMembershipMutation(input.corporationId)
-
-				logger.info('[CorporationTaxDO] Projection refresh triggered by rule mutation', {
-					corporationId: input.corporationId,
-					upstreamRunId: input.upstreamRunId,
-					earliestRuleSetMutationAt: earliestRuleSetMutationAt?.toISOString() ?? null,
-					membershipMutationAt: membershipMutationAt?.toISOString() ?? null,
-					recalcStart: recalcStart.toISOString(),
-					projectionUpdatedAt: projectionUpdatedAt.toISOString(),
-					durationMs: Date.now() - startedAtMs,
-				})
-
-				return {
-					corporationId: input.corporationId,
-					triggered: true,
-					reason: 'rule_mutation',
-				}
-			}
-			return {
-				corporationId: input.corporationId,
-				triggered: false,
-				reason: plan.reason,
-			}
-		}
-
-		const ingestionResult = await this.ingestCorporationLedgerWindow(
-			actorUserId,
-			input.corporationId,
-			plan.ingestInput
-		)
-
-		logger.info('[CorporationTaxDO] Projection refresh trigger completed', {
-			corporationId: input.corporationId,
-			upstreamRunId: input.upstreamRunId,
-			fromDate: plan.ingestInput.fromDate?.toISOString() ?? null,
-			upsertedCount: ingestionResult.upsertedCount,
-			checkpointsUpdated: ingestionResult.checkpointsUpdated,
-			durationMs: Date.now() - startedAtMs,
-		})
-
-		return {
-			corporationId: input.corporationId,
-			triggered: true,
-			reason: 'ingested',
-			ingestionResult,
-		}
+		return this.ledgerRpc.triggerProjectionRefreshFromWalletSync(actorUserId, input)
 	}
 
 	async listLedgerEntries(
 		corporationId: string,
 		filters?: TaxLedgerWindowFilters
 	): Promise<TaxLedgerEntry[]> {
-		return this.ledgerService.listLedgerEntries(corporationId, filters)
+		return this.ledgerRpc.listLedgerEntries(corporationId, filters)
 	}
 
 	async listLedgerParties(
 		corporationId: string,
 		filters?: ListTaxLedgerPartiesFilters
 	): Promise<TaxLedgerParty[]> {
-		return this.ledgerService.listLedgerParties(corporationId, filters)
+		return this.ledgerRpc.listLedgerParties(corporationId, filters)
 	}
 
 	async getLedgerIngestionHealth(corporationId: string): Promise<TaxLedgerIngestionHealth> {
-		return this.ledgerService.getIngestionHealth(corporationId)
+		return this.ledgerRpc.getLedgerIngestionHealth(corporationId)
 	}
 
 	async listDailyRollups(
 		corporationId: string,
 		filters?: ListTaxDailyRollupsFilters
 	): Promise<TaxDailyRollup[]> {
-		return this.ledgerService.listDailyRollups(corporationId, filters)
+		return this.ledgerRpc.listDailyRollups(corporationId, filters)
 	}
 
 	async trimLedgerEntries(
@@ -536,97 +354,33 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		corporationId: string,
 		retentionDays?: number
 	): Promise<TaxLedgerRetentionResult> {
-		const result = await this.ledgerService.trimLedgerEntries(corporationId, retentionDays)
-
-		await this.auditService.logAction({
-			corporationId,
-			actorUserId,
-			action: 'tax.ledger.trim',
-			before: null,
-			after: {
-				retentionDays: result.retentionDays,
-				cutoffDate: result.cutoffDate.toISOString(),
-				deletedEntryCount: result.deletedEntryCount,
-			},
-		})
-
-		return result
+		return this.ledgerRpc.trimLedgerEntries(actorUserId, corporationId, retentionDays)
 	}
 
 	async listAssessments(filters?: ListTaxAssessmentsFilters): Promise<TaxAssessment[]> {
-		return this.assessmentService.listAssessments(filters)
+		return this.ledgerRpc.listAssessments(filters)
 	}
 
 	async runAssessmentForPeriod(
 		actorUserId: string,
 		input: RunTaxAssessmentForPeriodInput
 	): Promise<RunTaxAssessmentForPeriodResult> {
-		const result = await this.assessmentService.runAssessmentForPeriod(input)
-
-		await this.auditService.logAction({
-			corporationId: input.corporationId,
-			actorUserId,
-			action: 'tax.assessment.period.run',
-			before: null,
-			after: {
-				assessmentId: result.assessment.id,
-				periodStart: input.periodStart.toISOString(),
-				periodEnd: input.periodEnd.toISOString(),
-				lineCount: result.lineCount,
-				discrepancyCount: result.discrepancyCount,
-				status: result.assessment.status,
-			},
-		})
-
-		if (result.discrepancyCount > 0) {
-			await this.alertService.triggerAlert(actorUserId, {
-				corporationId: input.corporationId,
-				alertType: 'tax_discrepancy_threshold_exceeded',
-				severity: 'warning',
-				dedupeKey: `tax-discrepancy:${input.corporationId}:${input.periodStart.toISOString()}:${input.periodEnd.toISOString()}`,
-				payload: {
-					corporationId: input.corporationId,
-					periodStart: input.periodStart.toISOString(),
-					periodEnd: input.periodEnd.toISOString(),
-					discrepancyCount: result.discrepancyCount,
-					assessmentId: result.assessment.id,
-				},
-			})
-		}
-
-		return result
+		return this.ledgerRpc.runAssessmentForPeriod(actorUserId, input)
 	}
 
 	async rebuildFinalizedRollupsForPeriod(
 		actorUserId: string,
 		input: RunTaxAssessmentForPeriodInput
 	): Promise<RunTaxAssessmentForPeriodResult> {
-		const result = await this.assessmentService.rebuildFinalizedRollupsForPeriod(input)
-
-		await this.auditService.logAction({
-			corporationId: input.corporationId,
-			actorUserId,
-			action: 'tax.assessment.finalized_rollups.rebuild',
-			before: null,
-			after: {
-				assessmentId: result.assessment.id,
-				periodStart: input.periodStart.toISOString(),
-				periodEnd: input.periodEnd.toISOString(),
-				lineCount: result.lineCount,
-				discrepancyCount: result.discrepancyCount,
-				status: result.assessment.status,
-			},
-		})
-
-		return result
+		return this.ledgerRpc.rebuildFinalizedRollupsForPeriod(actorUserId, input)
 	}
 
 	async listAssessmentLines(filters: ListTaxAssessmentLinesFilters): Promise<TaxAssessmentLine[]> {
-		return this.assessmentService.listAssessmentLines(filters)
+		return this.ledgerRpc.listAssessmentLines(filters)
 	}
 
 	async listDiscrepancies(filters: ListTaxDiscrepanciesFilters): Promise<TaxDiscrepancy[]> {
-		return this.assessmentService.listDiscrepancies(filters)
+		return this.ledgerRpc.listDiscrepancies(filters)
 	}
 
 	async createBillsForAssessment(
@@ -634,39 +388,14 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		corporationId: string,
 		assessmentId: string
 	): Promise<TaxAssessment> {
-		try {
-			return await this.billingService.createBillsForAssessment(
-				actorUserId,
-				corporationId,
-				assessmentId
-			)
-		} catch (error) {
-			await this.triggerBillSyncFailureAlert({
-				actorUserId,
-				corporationId,
-				assessmentId,
-				operation: 'create_bill',
-				error,
-			})
-			throw error
-		}
+		return this.billingRpc.createBillsForAssessment(actorUserId, corporationId, assessmentId)
 	}
 
 	async issueBillsForPeriod(
 		actorUserId: string,
 		input: IssueBillsForPeriodInput
 	): Promise<IssueBillsForPeriodResult> {
-		try {
-			return await this.billingService.issueBillsForPeriod(actorUserId, input)
-		} catch (error) {
-			await this.triggerBillSyncFailureAlert({
-				actorUserId,
-				corporationId: input.corporationId,
-				operation: 'issue_bills_for_period',
-				error,
-			})
-			throw error
-		}
+		return this.billingRpc.issueBillsForPeriod(actorUserId, input)
 	}
 
 	async syncAssessmentBillStatus(
@@ -674,22 +403,7 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		corporationId: string,
 		assessmentId: string
 	): Promise<TaxAssessment> {
-		try {
-			return await this.billingService.syncAssessmentBillStatus(
-				actorUserId,
-				corporationId,
-				assessmentId
-			)
-		} catch (error) {
-			await this.triggerBillSyncFailureAlert({
-				actorUserId,
-				corporationId,
-				assessmentId,
-				operation: 'sync_assessment_bill_status',
-				error,
-			})
-			throw error
-		}
+		return this.billingRpc.syncAssessmentBillStatus(actorUserId, corporationId, assessmentId)
 	}
 
 	async retractAssessmentBill(
@@ -697,22 +411,7 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		corporationId: string,
 		assessmentId: string
 	): Promise<TaxAssessment> {
-		try {
-			return await this.billingService.retractAssessmentBill(
-				actorUserId,
-				corporationId,
-				assessmentId
-			)
-		} catch (error) {
-			await this.triggerBillSyncFailureAlert({
-				actorUserId,
-				corporationId,
-				assessmentId,
-				operation: 'retract_assessment_bill',
-				error,
-			})
-			throw error
-		}
+		return this.billingRpc.retractAssessmentBill(actorUserId, corporationId, assessmentId)
 	}
 
 	async getCorporationBillStatusHistory(
@@ -720,14 +419,14 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		limit?: number,
 		offset?: number
 	): Promise<TaxAssessmentWithBillHistory[]> {
-		return this.billingService.getCorporationBillStatusHistory(corporationId, limit, offset)
+		return this.billingRpc.getCorporationBillStatusHistory(corporationId, limit, offset)
 	}
 
 	async getAssessmentBillStatusHistory(
 		corporationId: string,
 		assessmentId: string
 	): Promise<TaxAssessmentWithBillHistory | null> {
-		return this.billingService.getAssessmentBillStatusHistory(corporationId, assessmentId)
+		return this.billingRpc.getAssessmentBillStatusHistory(corporationId, assessmentId)
 	}
 
 	async syncCorporationBillStatuses(
@@ -735,27 +434,13 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		corporationId: string,
 		limit?: number
 	): Promise<SyncCorporationBillStatusesResult> {
-		try {
-			return await this.billingService.syncCorporationBillStatuses(
-				actorUserId,
-				corporationId,
-				limit
-			)
-		} catch (error) {
-			await this.triggerBillSyncFailureAlert({
-				actorUserId,
-				corporationId,
-				operation: 'sync_corporation_bill_statuses',
-				error,
-			})
-			throw error
-		}
+		return this.billingRpc.syncCorporationBillStatuses(actorUserId, corporationId, limit)
 	}
 
 	async listCorporationBillingConfigs(
 		corporationId: string
 	): Promise<TaxCorporationBillingConfig[]> {
-		return this.billingService.listCorporationBillingConfigs(corporationId)
+		return this.billingRpc.listCorporationBillingConfigs(corporationId)
 	}
 
 	async createCorporationBillingConfig(
@@ -763,15 +448,7 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		corporationId: string,
 		input: CreateTaxCorporationBillingConfigInput
 	): Promise<TaxCorporationBillingConfig> {
-		const created = await this.billingService.createCorporationBillingConfig(corporationId, input)
-		await this.auditService.logAction({
-			corporationId,
-			actorUserId,
-			action: 'tax.billing-config.created',
-			before: null,
-			after: this.toAuditPayload(created),
-		})
-		return created
+		return this.billingRpc.createCorporationBillingConfig(actorUserId, corporationId, input)
 	}
 
 	async updateCorporationBillingConfig(
@@ -780,21 +457,12 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		configId: string,
 		input: UpdateTaxCorporationBillingConfigInput
 	): Promise<TaxCorporationBillingConfig> {
-		const beforeList = await this.billingService.listCorporationBillingConfigs(corporationId)
-		const before = beforeList.find((row) => row.id === configId) ?? null
-		const updated = await this.billingService.updateCorporationBillingConfig(
+		return this.billingRpc.updateCorporationBillingConfig(
+			actorUserId,
 			corporationId,
 			configId,
 			input
 		)
-		await this.auditService.logAction({
-			corporationId,
-			actorUserId,
-			action: 'tax.billing-config.updated',
-			before: this.toAuditPayload(before),
-			after: this.toAuditPayload(updated),
-		})
-		return updated
 	}
 
 	async deleteCorporationBillingConfig(
@@ -802,16 +470,7 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		corporationId: string,
 		configId: string
 	): Promise<void> {
-		const beforeList = await this.billingService.listCorporationBillingConfigs(corporationId)
-		const before = beforeList.find((row) => row.id === configId) ?? null
-		await this.billingService.deleteCorporationBillingConfig(corporationId, configId)
-		await this.auditService.logAction({
-			corporationId,
-			actorUserId,
-			action: 'tax.billing-config.deleted',
-			before: this.toAuditPayload(before),
-			after: null,
-		})
+		return this.billingRpc.deleteCorporationBillingConfig(actorUserId, corporationId, configId)
 	}
 
 	async setDefaultCorporationBillingConfig(
@@ -819,135 +478,92 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		corporationId: string,
 		configId: string
 	): Promise<TaxCorporationBillingConfig> {
-		const beforeList = await this.billingService.listCorporationBillingConfigs(corporationId)
-		const before = beforeList.find((row) => row.id === configId) ?? null
-		const updated = await this.billingService.setDefaultCorporationBillingConfig(
-			corporationId,
-			configId
-		)
-		await this.auditService.logAction({
-			corporationId,
-			actorUserId,
-			action: 'tax.billing-config.default-set',
-			before: this.toAuditPayload(before),
-			after: this.toAuditPayload(updated),
-		})
-		return updated
+		return this.billingRpc.setDefaultCorporationBillingConfig(actorUserId, corporationId, configId)
 	}
 
 	async getSummaryReport(filters?: TaxRollupReportFilters): Promise<TaxSummaryReport> {
-		return this.reportService.getSummaryReport(filters)
+		return this.reportsRpc.getSummaryReport(filters)
 	}
 
 	async getTotalTaxesByCorporationReport(
 		filters?: TaxRollupReportFilters
 	): Promise<TaxPagedResult<TaxTotalTaxesByCorporationRow>> {
-		return this.reportService.getTotalTaxesByCorporationReport(filters)
+		return this.reportsRpc.getTotalTaxesByCorporationReport(filters)
 	}
 
 	async getTopIncomeSourcesReport(
 		filters?: TaxRollupReportFilters
 	): Promise<TaxTopIncomeSourceRow[]> {
-		return this.reportService.getTopIncomeSourcesReport(filters)
+		return this.reportsRpc.getTopIncomeSourcesReport(filters)
 	}
 
 	async getTopIncomeSourcesMonthlyReport(
 		filters?: TaxRollupReportFilters
 	): Promise<TaxTopIncomeSourceMonthlyRow[]> {
-		return this.reportService.getTopIncomeSourcesMonthlyReport(filters)
+		return this.reportsRpc.getTopIncomeSourcesMonthlyReport(filters)
 	}
 
 	async getEssPayoutReport(
 		filters?: TaxRollupReportFilters
 	): Promise<TaxPagedResult<TaxEssPayoutRow>> {
-		return this.reportService.getEssPayoutReport(filters)
+		return this.reportsRpc.getEssPayoutReport(filters)
 	}
 
 	async getComplianceOverTimeReport(
 		filters?: TaxRollupReportFilters
 	): Promise<TaxCompliancePoint[]> {
-		return this.reportService.getComplianceOverTimeReport(filters)
+		return this.reportsRpc.getComplianceOverTimeReport(filters)
 	}
 
 	async getTaxDiscrepancyReport(
 		filters?: ListTaxDiscrepancyReportFilters
 	): Promise<TaxPagedResult<TaxDiscrepancy>> {
-		return this.reportService.getTaxDiscrepancyReport(filters)
+		return this.reportsRpc.getTaxDiscrepancyReport(filters)
 	}
 
 	async getMissingEsiKeysReport(
 		filters?: ListTaxMissingEsiKeyReportFilters
 	): Promise<TaxPagedResult<TaxMissingEsiKeyRow>> {
-		return this.reportService.getMissingEsiKeysReport(filters)
+		return this.reportsRpc.getMissingEsiKeysReport(filters)
 	}
 
 	async getBillStatusReport(
 		filters?: TaxRollupReportFilters
 	): Promise<TaxPagedResult<TaxBillStatusReportRow>> {
-		return this.reportService.getBillStatusReport(filters)
+		return this.reportsRpc.getBillStatusReport(filters)
 	}
 
 	async getMemberSummaryReport(
 		filters: TaxMemberSummaryReportFilters
 	): Promise<TaxMemberSummary[]> {
-		return this.reportService.getMemberSummaryReport(filters)
+		return this.reportsRpc.getMemberSummaryReport(filters)
 	}
 
 	async requestExport(actorUserId: string, input: RequestTaxExportInput): Promise<TaxExportRecord> {
-		const created = await this.exportService.requestExport(actorUserId, input)
-		await this.auditService.logAction({
-			corporationId: created.corporationId ?? undefined,
-			actorUserId,
-			action: 'tax.export.requested',
-			before: null,
-			after: {
-				exportId: created.id,
-				reportType: created.reportType,
-				format: created.format,
-				status: created.status,
-				rowCount: created.rowCount,
-			},
-		})
-		return created
+		return this.operationsRpc.requestExport(actorUserId, input)
 	}
 
 	async listExports(filters?: ListTaxExportsFilters): Promise<TaxExportRecord[]> {
-		return this.exportService.listExports(filters)
+		return this.operationsRpc.listExports(filters)
 	}
 
 	async getExportById(exportId: string): Promise<TaxExportRecord | null> {
-		return this.exportService.getExportById(exportId)
+		return this.operationsRpc.getExportById(exportId)
 	}
 
 	async getExportArtifact(exportId: string): Promise<TaxExportArtifact> {
-		return this.exportService.getExportArtifact(exportId)
+		return this.operationsRpc.getExportArtifact(exportId)
 	}
 
 	async createExportSchedule(
 		actorUserId: string,
 		input: CreateTaxExportScheduleInput
 	): Promise<TaxExportSchedule> {
-		const schedule = await this.exportService.createExportSchedule(actorUserId, input)
-		await this.auditService.logAction({
-			corporationId: schedule.corporationId ?? undefined,
-			actorUserId,
-			action: 'tax.export.schedule.created',
-			before: null,
-			after: {
-				scheduleId: schedule.id,
-				name: schedule.name,
-				frequency: schedule.frequency,
-				reportType: schedule.reportType,
-				format: schedule.format,
-				isActive: schedule.isActive,
-				nextRunAt: schedule.nextRunAt.toISOString(),
-			},
-		})
-		return schedule
+		return this.operationsRpc.createExportSchedule(actorUserId, input)
 	}
 
 	async listExportSchedules(filters?: ListTaxExportSchedulesFilters): Promise<TaxExportSchedule[]> {
-		return this.exportService.listExportSchedules(filters)
+		return this.operationsRpc.listExportSchedules(filters)
 	}
 
 	async runScheduledOperations(
@@ -956,235 +572,45 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		exportScheduleLimit?: number,
 		alertRetryLimit?: number
 	): Promise<TaxScheduledOperationsResult> {
-		const runAt = asOf ?? new Date()
-		const processingCorporationIds = await this.listProcessableCorporationIds()
-		let dailyIngestCorporationsProcessed = 0
-		let dailyIngestFailures = 0
-		let monthlyAssessmentCorporationsProcessed = 0
-		let monthlyAssessmentFailures = 0
-		let ledgerRetentionCorporationsProcessed = 0
-		let ledgerRetentionFailures = 0
-		let ledgerRetentionEntriesDeleted = 0
-		const previousMonthWindow = this.getPreviousMonthWindow(runAt)
-
-		await this.runWithConcurrency(
-			processingCorporationIds,
-			SCHEDULED_CORPORATION_CONCURRENCY,
-			async (corporationId) => {
-				await this.triggerCorporationCoverageAlerts(actorUserId, corporationId)
-				const shouldIngest = await this.shouldRunDailyIngest(corporationId, runAt)
-				if (shouldIngest) {
-					try {
-						await this.triggerProjectionRefreshFromWalletSync(
-							actorUserId,
-							this.buildScheduledProjectionRefreshInput(corporationId, runAt)
-						)
-						dailyIngestCorporationsProcessed += 1
-					} catch (error) {
-						dailyIngestFailures += 1
-						await this.triggerSchedulerOperationFailureAlert({
-							actorUserId,
-							corporationId,
-							operation: 'daily_ingest',
-							asOf: runAt,
-							error,
-						})
-					}
-				}
-
-				try {
-					const existingMonthlyAssessment = await this.db.query.taxAssessments.findFirst({
-						where: and(
-							eq(taxAssessments.corporationId, corporationId),
-							eq(taxAssessments.assessmentScope, 'corporation'),
-							eq(taxAssessments.taxPeriodStart, previousMonthWindow.periodStart),
-							eq(taxAssessments.taxPeriodEnd, previousMonthWindow.periodEnd)
-						),
-						columns: {
-							id: true,
-						},
-					})
-
-					if (!existingMonthlyAssessment) {
-						await this.runAssessmentForPeriod(actorUserId, {
-							corporationId,
-							periodStart: previousMonthWindow.periodStart,
-							periodEnd: previousMonthWindow.periodEnd,
-							// Static override: monthly assessments are corporation-wallet only.
-							includeCharacterWallets: false,
-						})
-						monthlyAssessmentCorporationsProcessed += 1
-					}
-				} catch (error) {
-					monthlyAssessmentFailures += 1
-					await this.triggerSchedulerOperationFailureAlert({
-						actorUserId,
-						corporationId,
-						operation: 'monthly_assessment',
-						asOf: runAt,
-						error,
-					})
-				}
-
-				try {
-					const retentionResult = await this.ledgerService.trimLedgerEntries(
-						corporationId,
-						LEDGER_RETENTION_DAYS
-					)
-					ledgerRetentionCorporationsProcessed += 1
-					ledgerRetentionEntriesDeleted += retentionResult.deletedEntryCount
-				} catch (error) {
-					ledgerRetentionFailures += 1
-					await this.triggerSchedulerOperationFailureAlert({
-						actorUserId,
-						corporationId,
-						operation: 'ledger_retention',
-						asOf: runAt,
-						error,
-					})
-				}
-			}
-		)
-
-		const exportScheduleResult = await this.exportService.runDueExportSchedules(
-			runAt,
-			exportScheduleLimit
-		)
-		const dueExportSchedulesProcessed = exportScheduleResult.processed
-		await this.triggerScheduledExportFailureAlerts(
+		return this.operationsRpc.runScheduledOperations(
 			actorUserId,
-			runAt,
-			exportScheduleResult.failures
-		)
-		const failedAlertDeliveriesRetried = await this.alertService.retryFailedAlertDeliveries(
-			actorUserId,
+			asOf,
+			exportScheduleLimit,
 			alertRetryLimit
 		)
-
-		await this.auditService.logAction({
-			corporationId: undefined,
-			actorUserId,
-			action: 'tax.scheduled.operations.run',
-			before: null,
-			after: {
-				asOf: runAt.toISOString(),
-				includedCorporationCount: processingCorporationIds.length,
-				dailyIngestCorporationsProcessed,
-				dailyIngestFailures,
-				monthlyAssessmentCorporationsProcessed,
-				monthlyAssessmentFailures,
-				ledgerRetentionCorporationsProcessed,
-				ledgerRetentionFailures,
-				ledgerRetentionEntriesDeleted,
-				dueExportSchedulesProcessed,
-				dueExportScheduleFailures: exportScheduleResult.failures.length,
-				failedAlertDeliveriesRetried,
-			},
-		})
-
-		return {
-			asOf: runAt,
-			includedCorporationCount: processingCorporationIds.length,
-			dailyIngestCorporationsProcessed,
-			dailyIngestFailures,
-			monthlyAssessmentCorporationsProcessed,
-			monthlyAssessmentFailures,
-			ledgerRetentionCorporationsProcessed,
-			ledgerRetentionFailures,
-			ledgerRetentionEntriesDeleted,
-			dueExportSchedulesProcessed,
-			failedAlertDeliveriesRetried,
-		}
 	}
 
 	async triggerAlert(actorUserId: string, input: TriggerTaxAlertInput): Promise<TaxAlert> {
-		const alert = await this.alertService.triggerAlert(actorUserId, input)
-		await this.auditService.logAction({
-			corporationId: alert.corporationId ?? undefined,
-			actorUserId,
-			action: 'tax.alert.triggered',
-			before: null,
-			after: {
-				alertId: alert.id,
-				alertType: alert.alertType,
-				severity: alert.severity,
-				status: alert.status,
-				dedupeKey: alert.dedupeKey,
-			},
-		})
-		return alert
+		return this.operationsRpc.triggerAlert(actorUserId, input)
 	}
 
 	async listAlerts(filters?: ListTaxAlertsFilters): Promise<TaxAlert[]> {
-		return this.alertService.listAlerts(filters)
+		return this.operationsRpc.listAlerts(filters)
 	}
 
 	async acknowledgeAlert(actorUserId: string, alertId: string): Promise<TaxAlert> {
-		const alert = await this.alertService.acknowledgeAlert(actorUserId, alertId)
-		await this.auditService.logAction({
-			corporationId: alert.corporationId ?? undefined,
-			actorUserId,
-			action: 'tax.alert.acknowledged',
-			before: null,
-			after: {
-				alertId: alert.id,
-			},
-		})
-		return alert
+		return this.operationsRpc.acknowledgeAlert(actorUserId, alertId)
 	}
 
 	async resolveAlert(actorUserId: string, alertId: string): Promise<TaxAlert> {
-		const alert = await this.alertService.resolveAlert(actorUserId, alertId)
-		await this.auditService.logAction({
-			corporationId: alert.corporationId ?? undefined,
-			actorUserId,
-			action: 'tax.alert.resolved',
-			before: null,
-			after: {
-				alertId: alert.id,
-			},
-		})
-		return alert
+		return this.operationsRpc.resolveAlert(actorUserId, alertId)
 	}
 
 	async retryFailedAlertDeliveries(actorUserId: string, limit?: number): Promise<number> {
-		const retried = await this.alertService.retryFailedAlertDeliveries(actorUserId, limit)
-		await this.auditService.logAction({
-			corporationId: undefined,
-			actorUserId,
-			action: 'tax.alert.retry_failed_deliveries',
-			before: null,
-			after: {
-				retried,
-			},
-		})
-		return retried
+		return this.operationsRpc.retryFailedAlertDeliveries(actorUserId, limit)
 	}
 
 	async upsertNotificationDestination(
 		actorUserId: string,
 		input: UpsertTaxNotificationDestinationInput
 	): Promise<TaxNotificationDestination> {
-		const destination = await this.alertService.upsertNotificationDestination(actorUserId, input)
-		await this.auditService.logAction({
-			corporationId: undefined,
-			actorUserId,
-			action: 'tax.notification_destination.upserted',
-			before: null,
-			after: {
-				destinationId: destination.id,
-				name: destination.name,
-				guildId: destination.guildId,
-				channelId: destination.channelId,
-			},
-		})
-		return destination
+		return this.operationsRpc.upsertNotificationDestination(actorUserId, input)
 	}
 
 	async listNotificationDestinations(
 		filters?: ListTaxNotificationDestinationsFilters
 	): Promise<TaxNotificationDestination[]> {
-		return this.alertService.listNotificationDestinations(filters)
+		return this.operationsRpc.listNotificationDestinations(filters)
 	}
 
 	private async triggerEssQualityAlerts(
