@@ -1,5 +1,5 @@
 import { getStub } from '@repo/do-utils'
-import { logger } from '@repo/hono-helpers'
+import { logger, toErrorLogDetails } from '@repo/hono-helpers'
 
 import { requireAuth } from '../../middleware/session'
 import { canAuditTaxFeature, canReadTaxFeature } from '../../middleware/tax-permissions'
@@ -22,6 +22,22 @@ import {
 import type { Hono } from 'hono'
 import type { CorporationTax } from '@repo/corporation-tax'
 import type { App } from '../../context'
+
+function logTaxReportsRouteError(
+	c: { req: { method: string; path: string; url: string } },
+	message: string,
+	error: unknown,
+	context?: Record<string, unknown>
+): void {
+	const url = new URL(c.req.url)
+	logger.error(message, {
+		...toErrorLogDetails(error),
+		method: c.req.method,
+		path: c.req.path,
+		query: Object.fromEntries(url.searchParams.entries()),
+		...context,
+	})
+}
 
 export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 	/**
@@ -49,7 +65,10 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 			const summary = await stub.getSummaryReport(parsed.filters)
 			return c.json(summary)
 		} catch (error) {
-			logger.error('Error fetching corporation tax summary report:', error)
+			logTaxReportsRouteError(c, 'Error fetching corporation tax summary report', error, {
+				userId: user.id,
+				corporationId: parsed.filters?.corporationId,
+			})
 			return c.json({ error: 'Failed to fetch summary report' }, 500)
 		}
 	})
@@ -81,7 +100,10 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 			const report = await stub.getTotalTaxesByCorporationReport(parsed.filters)
 			return c.json(report)
 		} catch (error) {
-			logger.error('Error fetching total taxes by corporation report:', error)
+			logTaxReportsRouteError(c, 'Error fetching total taxes by corporation report', error, {
+				userId: user.id,
+				corporationId: parsed.filters?.corporationId,
+			})
 			const isNonProd = c.env.ENVIRONMENT !== 'production'
 			return c.json(
 				{
@@ -118,7 +140,10 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 			const report = await stub.getTopIncomeSourcesReport(parsed.filters)
 			return c.json(report)
 		} catch (error) {
-			logger.error('Error fetching top income sources report:', error)
+			logTaxReportsRouteError(c, 'Error fetching top income sources report', error, {
+				userId: user.id,
+				corporationId: parsed.filters?.corporationId,
+			})
 			return c.json({ error: 'Failed to fetch top income sources report' }, 500)
 		}
 	})
@@ -148,7 +173,10 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 			const report = await stub.getTopIncomeSourcesMonthlyReport(parsed.filters)
 			return c.json(report)
 		} catch (error) {
-			logger.error('Error fetching monthly top income sources report:', error)
+			logTaxReportsRouteError(c, 'Error fetching monthly top income sources report', error, {
+				userId: user.id,
+				corporationId: parsed.filters?.corporationId,
+			})
 			return c.json({ error: 'Failed to fetch monthly top income sources report' }, 500)
 		}
 	})
@@ -180,7 +208,10 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 			const report = await stub.getEssPayoutReport(parsed.filters)
 			return c.json(report)
 		} catch (error) {
-			logger.error('Error fetching ESS payout report:', error)
+			logTaxReportsRouteError(c, 'Error fetching ESS payout report', error, {
+				userId: user.id,
+				corporationId: parsed.filters?.corporationId,
+			})
 			return c.json({ error: 'Failed to fetch ESS payout report' }, 500)
 		}
 	})
@@ -210,7 +241,10 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 			const report = await stub.getComplianceOverTimeReport(parsed.filters)
 			return c.json(report)
 		} catch (error) {
-			logger.error('Error fetching tax compliance report:', error)
+			logTaxReportsRouteError(c, 'Error fetching tax compliance report', error, {
+				userId: user.id,
+				corporationId: parsed.filters?.corporationId,
+			})
 			return c.json({ error: 'Failed to fetch tax compliance report' }, 500)
 		}
 	})
@@ -284,7 +318,10 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 			})
 			return c.json(report)
 		} catch (error) {
-			logger.error('Error fetching tax discrepancy report:', error)
+			logTaxReportsRouteError(c, 'Error fetching tax discrepancy report', error, {
+				userId: user.id,
+				corporationId,
+			})
 			return c.json({ error: 'Failed to fetch tax discrepancy report' }, 500)
 		}
 	})
@@ -338,7 +375,9 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 			})
 			return c.json(report)
 		} catch (error) {
-			logger.error('Error fetching missing ESI keys report:', error)
+			logTaxReportsRouteError(c, 'Error fetching missing ESI keys report', error, {
+				userId: user.id,
+			})
 			return c.json({ error: 'Failed to fetch missing ESI keys report' }, 500)
 		}
 	})
@@ -370,7 +409,10 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 			const report = await stub.getBillStatusReport(parsed.filters)
 			return c.json(report)
 		} catch (error) {
-			logger.error('Error fetching corporation tax bill status report:', error)
+			logTaxReportsRouteError(c, 'Error fetching corporation tax bill status report', error, {
+				userId: user.id,
+				corporationId: parsed.filters?.corporationId,
+			})
 			return c.json({ error: 'Failed to fetch bill status report' }, 500)
 		}
 	})
@@ -450,7 +492,11 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 			})
 			return c.json(created, 201)
 		} catch (error) {
-			logger.error('Error requesting corporation tax export:', error)
+			logTaxReportsRouteError(c, 'Error requesting corporation tax export', error, {
+				userId: user.id,
+				corporationId,
+				reportType,
+			})
 			return c.json({ error: 'Failed to request export' }, 500)
 		}
 	})
@@ -509,7 +555,10 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 			})
 			return c.json(exportsList)
 		} catch (error) {
-			logger.error('Error listing corporation tax exports:', error)
+			logTaxReportsRouteError(c, 'Error listing corporation tax exports', error, {
+				userId: user.id,
+				corporationId,
+			})
 			return c.json({ error: 'Failed to list exports' }, 500)
 		}
 	})
@@ -547,7 +596,10 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 			if (error instanceof Error && error.message.includes('Export not found')) {
 				return c.json({ error: 'Export not found' }, 404)
 			}
-			logger.error('Error fetching tax export artifact:', error)
+			logTaxReportsRouteError(c, 'Error fetching tax export artifact', error, {
+				userId: user.id,
+				exportId,
+			})
 			return c.json({ error: 'Failed to fetch export artifact' }, 500)
 		}
 	})
@@ -636,7 +688,11 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 			})
 			return c.json(schedule, 201)
 		} catch (error) {
-			logger.error('Error creating corporation tax export schedule:', error)
+			logTaxReportsRouteError(c, 'Error creating corporation tax export schedule', error, {
+				userId: user.id,
+				corporationId,
+				reportType,
+			})
 			return c.json({ error: 'Failed to create export schedule' }, 500)
 		}
 	})
@@ -681,7 +737,10 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 			})
 			return c.json(schedules)
 		} catch (error) {
-			logger.error('Error listing corporation tax export schedules:', error)
+			logTaxReportsRouteError(c, 'Error listing corporation tax export schedules', error, {
+				userId: user.id,
+				corporationId,
+			})
 			return c.json({ error: 'Failed to list export schedules' }, 500)
 		}
 	})

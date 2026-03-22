@@ -1,5 +1,5 @@
 import { FileText } from 'lucide-react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, Navigate, useParams } from 'react-router-dom'
 
 import { BillStatusBadge } from '@/components/bills/bill-status-badge'
 import { Button } from '@/components/ui/button'
@@ -15,15 +15,21 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { useBill } from '../hooks'
 
 export default function BillDetailPage() {
 	const { billId } = useParams<{ billId: string }>()
+	const { user } = useAuth()
 	const { data: bill, isLoading, error } = useBill(billId!)
 
 	usePageTitle(bill ? `Bill - ${bill.title}` : 'Bill Details')
+
+	if (user?.is_admin && billId) {
+		return <Navigate to={`/admin/bills/${billId}`} replace />
+	}
 
 	if (isLoading) {
 		return (
@@ -145,6 +151,16 @@ export default function BillDetailPage() {
 						</div>
 
 						<div>
+							<h3 className="text-sm font-medium text-muted-foreground mb-1">Payee</h3>
+							<p className="text-lg">
+								{bill.payeeName ||
+									(bill.payeeId && bill.payeeType
+										? `${bill.payeeType.charAt(0).toUpperCase() + bill.payeeType.slice(1)} ${bill.payeeId}`
+										: '-')}
+							</p>
+						</div>
+
+						<div>
 							<h3 className="text-sm font-medium text-muted-foreground mb-1">Issuer</h3>
 							<p className="text-lg">{bill.issuerName || bill.issuerId}</p>
 						</div>
@@ -243,9 +259,7 @@ export default function BillDetailPage() {
 											{payment.paidByName ||
 												`${payment.paidByType.charAt(0).toUpperCase() + payment.paidByType.slice(1)} ${payment.paidById}`}
 										</TableCell>
-										<TableCell className="font-mono text-sm">
-											{payment.esiTransactionId}
-										</TableCell>
+										<TableCell className="font-mono text-sm">{payment.esiTransactionId}</TableCell>
 									</TableRow>
 								))}
 							</TableBody>
@@ -253,9 +267,7 @@ export default function BillDetailPage() {
 					) : (
 						<div className="text-center py-8 text-muted-foreground">
 							<p>No payments have been made yet.</p>
-							<p className="text-sm mt-1">
-								Payments will appear here once they are processed.
-							</p>
+							<p className="text-sm mt-1">Payments will appear here once they are processed.</p>
 						</div>
 					)}
 				</CardContent>
