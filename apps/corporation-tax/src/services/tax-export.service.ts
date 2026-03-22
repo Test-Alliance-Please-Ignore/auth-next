@@ -346,8 +346,8 @@ export class TaxExportService {
 				return report.rows.map((row) => this.toSerializableRecord(row))
 			}
 			case 'bill_status': {
-				const rows = await this.reportService.getBillStatusReport(reportFilters)
-				return rows.map((row) => this.toSerializableRecord(row))
+				const report = await this.reportService.getBillStatusReport(reportFilters)
+				return report.rows.map((row) => this.toSerializableRecord(row))
 			}
 			default:
 				return []

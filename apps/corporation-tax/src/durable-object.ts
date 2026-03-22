@@ -304,8 +304,6 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 				name: created.name,
 				priority: created.priority,
 				isActive: created.isActive,
-				effectiveFrom: created.effectiveFrom.toISOString(),
-				effectiveTo: created.effectiveTo?.toISOString() ?? null,
 				appliesToRefType: created.appliesToRefType,
 				taxRateBps: created.taxRateBps,
 			},
@@ -873,7 +871,9 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		return this.reportService.getMissingEsiKeysReport(filters)
 	}
 
-	async getBillStatusReport(filters?: TaxReportWindowFilters): Promise<TaxBillStatusReportRow[]> {
+	async getBillStatusReport(
+		filters?: TaxReportWindowFilters
+	): Promise<TaxPagedResult<TaxBillStatusReportRow>> {
 		return this.reportService.getBillStatusReport(filters)
 	}
 
@@ -1733,7 +1733,7 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 			return null
 		}
 		const payload = { ...(value as Record<string, unknown>) }
-		for (const key of ['createdAt', 'updatedAt', 'effectiveFrom', 'effectiveTo']) {
+		for (const key of ['createdAt', 'updatedAt']) {
 			const field = payload[key]
 			if (field instanceof Date) {
 				payload[key] = field.toISOString()

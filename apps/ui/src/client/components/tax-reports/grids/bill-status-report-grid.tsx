@@ -3,6 +3,7 @@ import { useMemo } from 'react'
 
 import { TaxReportDataGrid } from '@/components/tax-report-data-grid'
 import { Badge } from '@/components/ui/badge'
+import { formatTaxDateTime } from '@/lib/tax-date'
 import { formatTaxIskFull, formatTaxNumber, TaxEntityDisplay } from '@/lib/tax-display'
 
 import { billStatusBadgeVariant, sortByCentiColumnValue } from './shared'
@@ -17,6 +18,13 @@ export function BillStatusReportGrid(props: {
 	entityNames: Record<string, string>
 	sorting: MRT_SortingState
 	onSortingChange: (sorting: MRT_SortingState) => void
+	pagination: {
+		pageIndex: number
+		pageSize: number
+	}
+	onPaginationChange: (pagination: { pageIndex: number; pageSize: number }) => void
+	pageCount: number
+	rowCount: number
 }) {
 	const columnHelper = createMRTColumnHelper<TaxBillStatusReportRow>()
 	const columns = useMemo<MRT_ColumnDef<TaxBillStatusReportRow>[]>(
@@ -36,6 +44,16 @@ export function BillStatusReportGrid(props: {
 						{row.original.billStatus}
 					</Badge>
 				),
+			}),
+			columnHelper.accessor('issueDate', {
+				header: 'Issue Date',
+				enableSorting: true,
+				Cell: ({ row }) => formatTaxDateTime(row.original.issueDate),
+			}),
+			columnHelper.accessor('dueDate', {
+				header: 'Due Date',
+				enableSorting: true,
+				Cell: ({ row }) => formatTaxDateTime(row.original.dueDate),
 			}),
 			columnHelper.accessor('assessmentCount', {
 				header: 'Assessments',
@@ -76,6 +94,10 @@ export function BillStatusReportGrid(props: {
 			emptyMessage="No bill status rows found."
 			sorting={props.sorting}
 			onSortingChange={props.onSortingChange}
+			pagination={props.pagination}
+			onPaginationChange={props.onPaginationChange}
+			pageCount={props.pageCount}
+			rowCount={props.rowCount}
 		/>
 	)
 }

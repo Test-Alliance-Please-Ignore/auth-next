@@ -193,12 +193,8 @@ export interface CreateTaxRuleSetInput {
 	name: string
 	priority?: number
 	isActive?: boolean
-	effectiveFrom?: string
-	effectiveTo?: string
 	appliesToRefType?: string
-	partyType?: string
 	taxRateBps: number
-	label: string
 }
 
 export interface CreateTaxRuleGroupInput {
@@ -416,9 +412,7 @@ export class CorporationTaxApiClient extends ApiClient {
 			name?: string
 			priority?: number
 			appliesToRefType?: string | null
-			partyType?: string | null
 			taxRateBps?: number
-			label?: string
 		}
 	): Promise<TaxRuleSet> {
 		if (this.shouldUseDemo()) return taxDemoApi.updateRuleSet(ruleSetId, input)
@@ -640,7 +634,9 @@ export class CorporationTaxApiClient extends ApiClient {
 		return this.post(`${TAX_API_BASE}/alerts/retry-failed-deliveries`, { limit })
 	}
 
-	async getBillStatusReport(filters?: TaxReportFilters): Promise<TaxBillStatusReportRow[]> {
+	async getBillStatusReport(
+		filters?: TaxReportFilters
+	): Promise<TaxPagedResult<TaxBillStatusReportRow>> {
 		if (this.shouldUseDemo()) return taxDemoApi.getBillStatusReport(filters)
 		const params = new URLSearchParams()
 		this.appendTaxReportFilters(params, filters)

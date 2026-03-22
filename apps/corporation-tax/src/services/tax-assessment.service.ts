@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, or, sql } from '@repo/db-utils'
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
 import {
@@ -34,16 +34,11 @@ import type {
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { CorporationTaxDb } from '../db'
 
-type RuleCondition = {
-	appliesToRefType: string | null
-	partyType: string | null
-}
-
 type CompiledRule = {
 	ruleSetId: string
-	label: string
+	name: string
 	taxRateBps: number
-	condition: RuleCondition
+	appliesToRefType: string | null
 }
 
 type MutableSummary = {
@@ -68,6 +63,7 @@ type AssessmentWriteDb = Pick<CorporationTaxDb, 'insert' | 'update' | 'delete' |
 
 export class TaxAssessmentService {
 	private readonly TAX_DELTA_DISCREPANCY_THRESHOLD_BPS = 500
+	private readonly CLASSIFICATION_RULE_NAME_MAX_LENGTH = 48
 
 	constructor(
 		private db: CorporationTaxDb,
@@ -157,21 +153,16 @@ export class TaxAssessmentService {
 				: await this.db.query.taxRuleSets.findMany({
 						where: and(
 							inArray(taxRuleSets.ruleGroupId, attachedRuleGroupIds),
-							eq(taxRuleSets.isActive, true),
-							lte(taxRuleSets.effectiveFrom, input.periodEnd),
-							or(isNull(taxRuleSets.effectiveTo), gte(taxRuleSets.effectiveTo, input.periodStart))
+							eq(taxRuleSets.isActive, true)
 						),
 						orderBy: [desc(taxRuleSets.priority), desc(taxRuleSets.createdAt)],
 					})
 
 		const compiledRules = activeRuleSets.map((ruleSet) => ({
 			ruleSetId: ruleSet.id,
-			label: ruleSet.label,
+			name: ruleSet.name,
 			taxRateBps: ruleSet.taxRateBps,
-			condition: {
-				appliesToRefType: ruleSet.appliesToRefType,
-				partyType: ruleSet.partyType,
-			},
+			appliesToRefType: ruleSet.appliesToRefType,
 		}))
 
 		const memberIdSet = await this.getCorporationMemberIdSet(input.corporationId)
@@ -999,10 +990,11 @@ export class TaxAssessmentService {
 		classification: string
 	} {
 		for (const rule of input.compiledRules) {
-			const matches = this.ruleMatches(rule.condition, input.entry, input.amountCenti)
+			const matches = this.ruleMatches(rule, input.entry, input.amountCenti)
 			if (!matches) {
 				continue
 			}
+			const ruleNameToken = this.toClassificationRuleNameToken(rule.name)
 
 			if (rule.taxRateBps === 0) {
 				return {
@@ -1010,7 +1002,7 @@ export class TaxAssessmentService {
 					taxRateBps: 0,
 					taxableAmountCenti: 0n,
 					taxAmountCenti: 0n,
-					classification: `rule_exempt:${rule.label}`,
+					classification: `rule_exempt:${ruleNameToken}`,
 				}
 			}
 
@@ -1020,7 +1012,7 @@ export class TaxAssessmentService {
 				taxRateBps: rule.taxRateBps,
 				taxableAmountCenti: input.amountCenti,
 				taxAmountCenti,
-				classification: `rule_taxable:${rule.label}`,
+				classification: `rule_taxable:${ruleNameToken}`,
 			}
 		}
 
@@ -1029,22 +1021,28 @@ export class TaxAssessmentService {
 			taxRateBps: 0,
 			taxableAmountCenti: 0n,
 			taxAmountCenti: 0n,
-			classification: input.entry.isEss ? 'no_matching_rule_ess' : 'no_matching_rule',
+			classification: 'no_matching_rule',
 		}
 	}
 
+	private toClassificationRuleNameToken(name: string): string {
+		const normalized = name
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, '_')
+			.replace(/^_+|_+$/g, '')
+			.replace(/_+/g, '_')
+		const truncated = normalized.slice(0, this.CLASSIFICATION_RULE_NAME_MAX_LENGTH)
+		const cleaned = truncated.replace(/^_+|_+$/g, '')
+		return cleaned || 'rule'
+	}
+
 	private ruleMatches(
-		condition: CompiledRule['condition'],
+		rule: CompiledRule,
 		entry: typeof taxLedgerEntries.$inferSelect,
 		amountCenti: bigint
 	): boolean {
-		if (condition.appliesToRefType && condition.appliesToRefType !== entry.refType) {
-			return false
-		}
-		if (condition.partyType === 'first_party' && !entry.firstPartyId) {
-			return false
-		}
-		if (condition.partyType === 'second_party' && !entry.secondPartyId) {
+		void amountCenti
+		if (rule.appliesToRefType && rule.appliesToRefType !== entry.refType) {
 			return false
 		}
 		return true

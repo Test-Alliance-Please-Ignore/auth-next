@@ -133,6 +133,10 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 		return this.billService.getBillTimeline(billId)
 	}
 
+	async getBillTimelines(billIds: string[]): Promise<Record<string, BillStatusEvent[]>> {
+		return this.billService.getBillTimelines(billIds)
+	}
+
 	async updateBill(userId: string, billId: string, data: UpdateBillInput): Promise<Bill> {
 		return this.billService.updateBill(userId, billId, data)
 	}

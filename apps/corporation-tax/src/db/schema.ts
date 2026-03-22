@@ -81,14 +81,10 @@ export const taxCorporationBillingConfigs = pgTable(
 		uniqueIndex('tax_corporation_billing_configs_one_default_per_corp')
 			.on(table.corporationId)
 			.where(sql`${table.isDefault} = true`),
-		unique('tax_corporation_billing_configs_exact_tuple_unique').on(
+		unique('tax_corporation_billing_configs_payee_tuple_unique').on(
 			table.corporationId,
-			table.isDefault,
-			table.billingEnabled,
-			table.billingIssuerUserId,
-			table.billingPayeeId,
 			table.billingPayeeType,
-			table.billingDueDays
+			table.billingPayeeId
 		),
 	]
 )
@@ -651,12 +647,8 @@ export const taxRuleSets = pgTable(
 		name: text('name').notNull(),
 		priority: integer('priority').notNull().default(0),
 		isActive: boolean('is_active').notNull().default(true),
-		effectiveFrom: timestamp('effective_from', { withTimezone: true }).notNull().defaultNow(),
-		effectiveTo: timestamp('effective_to', { withTimezone: true }),
 		appliesToRefType: text('applies_to_ref_type'),
-		partyType: text('party_type'),
 		taxRateBps: integer('tax_rate_bps').notNull().default(0),
-		label: text('label').notNull().default('Tax rule'),
 		createdBy: text('created_by').notNull(),
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

@@ -3,6 +3,45 @@ import { describe, expect, it, vi } from 'vitest'
 import { TaxRulesService } from '../tax-rules.service'
 
 describe('TaxRulesService', () => {
+	it('rejects createRuleSet when priority is out of bounds', async () => {
+		const mockDb = {
+			query: {
+				taxRuleGroups: {
+					findFirst: vi.fn(),
+				},
+			},
+		} as any
+
+		const service = new TaxRulesService(mockDb)
+
+		await expect(
+			service.createRuleSet('user-1', {
+				ruleGroupId: 'group-1',
+				name: 'Rule One',
+				priority: 101,
+				isActive: true,
+				appliesToRefType: undefined,
+				taxRateBps: 500,
+			})
+		).rejects.toThrow('Rule priority must be an integer between 0 and 100')
+		expect(mockDb.query.taxRuleGroups.findFirst).not.toHaveBeenCalled()
+	})
+
+	it('rejects updateRuleSet when priority is out of bounds', async () => {
+		const mockDb = {
+			update: vi.fn(),
+		} as any
+
+		const service = new TaxRulesService(mockDb)
+
+		await expect(
+			service.updateRuleSet('rule-1', {
+				priority: -1,
+			})
+		).rejects.toThrow('Rule priority must be an integer between 0 and 100')
+		expect(mockDb.update).not.toHaveBeenCalled()
+	})
+
 	it('returns earliest rule mutation after projection timestamp', async () => {
 		const expected = new Date('2026-03-20T10:00:00.000Z')
 		const mockDb = {
@@ -63,12 +102,8 @@ describe('TaxRulesService', () => {
 			name: 'Rule One',
 			priority: 100,
 			isActive: true,
-			effectiveFrom: new Date('2026-03-01T00:00:00.000Z'),
-			effectiveTo: null,
 			appliesToRefType: 'market_transaction',
-			partyType: null,
 			taxRateBps: 750,
-			label: 'Base Rule',
 			createdBy: 'user-1',
 			createdAt: new Date('2026-03-01T00:00:00.000Z'),
 			updatedAt: new Date('2026-03-10T00:00:00.000Z'),
@@ -110,12 +145,8 @@ describe('TaxRulesService', () => {
 			name: 'Rule One',
 			priority: 100,
 			isActive: false,
-			effectiveFrom: new Date('2026-03-01T00:00:00.000Z'),
-			effectiveTo: null,
 			appliesToRefType: null,
-			partyType: null,
 			taxRateBps: 750,
-			label: 'Base Rule',
 			createdBy: 'user-1',
 			createdAt: new Date('2026-03-01T00:00:00.000Z'),
 			updatedAt: new Date('2026-03-10T00:00:00.000Z'),

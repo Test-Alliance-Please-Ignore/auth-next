@@ -41,6 +41,9 @@ export class TaxBillingService {
 		input: CreateTaxCorporationBillingConfigInput
 	): Promise<TaxCorporationBillingConfig> {
 		const payload = this.normalizeBillingConfigInput(input)
+		if (!payload.billingPayeeId?.trim() || !payload.billingPayeeType) {
+			throw new Error('billingPayeeId and billingPayeeType are required')
+		}
 		const existingCount = await this.db
 			.select({ count: sql<number>`count(*)::int` })
 			.from(taxCorporationBillingConfigs)
@@ -95,6 +98,11 @@ export class TaxBillingService {
 		}
 
 		const payload = this.normalizeBillingConfigInput(input)
+		const hasPayeeId = input.billingPayeeId !== undefined
+		const hasPayeeType = input.billingPayeeType !== undefined
+		if (hasPayeeId !== hasPayeeType) {
+			throw new Error('billingPayeeId and billingPayeeType must be provided together')
+		}
 		const now = new Date()
 		const shouldBeDefault = input.isDefault === true
 
@@ -210,8 +218,11 @@ export class TaxBillingService {
 		if (!settings.billingEnabled) {
 			throw new Error('Default billing configuration is disabled for this corporation')
 		}
-		if (!settings.billingPayeeId.trim() || !settings.billingPayeeType.trim()) {
+		if (!settings.billingPayeeId.trim()) {
 			throw new Error('Billing payee configuration is incomplete')
+		}
+		if (settings.billingPayeeType !== 'character' && settings.billingPayeeType !== 'corporation') {
+			throw new Error("billingPayeeType must be 'character' or 'corporation'")
 		}
 
 		const billIssuerUserId = settings.billingIssuerUserId.trim() || actorUserId
@@ -234,7 +245,7 @@ export class TaxBillingService {
 				payerId: corporationId,
 				payerType: 'corporation',
 				payeeId: settings.billingPayeeId,
-				payeeType: settings.billingPayeeType as 'character' | 'corporation',
+				payeeType: settings.billingPayeeType,
 				title: `Tax Assessment ${assessment.taxPeriodStart.toISOString().slice(0, 10)} - ${assessment.taxPeriodEnd
 					.toISOString()
 					.slice(0, 10)}`,
@@ -488,16 +499,18 @@ export class TaxBillingService {
 		billingEnabled?: boolean
 		billingIssuerUserId?: string
 		billingPayeeId?: string
-		billingPayeeType?: '' | 'character' | 'corporation'
+		billingPayeeType?: 'character' | 'corporation'
 		billingDueDays?: number
 	} {
 		if (
 			input.billingPayeeType !== undefined &&
-			input.billingPayeeType !== '' &&
 			input.billingPayeeType !== 'character' &&
 			input.billingPayeeType !== 'corporation'
 		) {
-			throw new Error("billingPayeeType must be '', 'character', or 'corporation'")
+			throw new Error("billingPayeeType must be 'character' or 'corporation'")
+		}
+		if (input.billingPayeeId !== undefined && input.billingPayeeId.trim().length === 0) {
+			throw new Error('billingPayeeId must not be empty')
 		}
 		if (input.billingDueDays !== undefined) {
 			if (
@@ -523,7 +536,7 @@ export class TaxBillingService {
 		if (error instanceof Error) {
 			const message = error.message.toLowerCase()
 			if (
-				message.includes('tax_corporation_billing_configs_exact_tuple_unique') ||
+				message.includes('tax_corporation_billing_configs_payee_tuple_unique') ||
 				message.includes('duplicate key value violates unique constraint')
 			) {
 				throw new Error('Duplicate billing configuration tuple for corporation')
@@ -557,6 +570,9 @@ export class TaxBillingService {
 	private toBillingConfig(
 		row: typeof taxCorporationBillingConfigs.$inferSelect
 	): TaxCorporationBillingConfig {
+		if (row.billingPayeeType !== 'character' && row.billingPayeeType !== 'corporation') {
+			throw new Error("billingPayeeType must be 'character' or 'corporation'")
+		}
 		return {
 			id: row.id,
 			corporationId: row.corporationId,
@@ -564,7 +580,7 @@ export class TaxBillingService {
 			billingEnabled: row.billingEnabled,
 			billingIssuerUserId: row.billingIssuerUserId,
 			billingPayeeId: row.billingPayeeId,
-			billingPayeeType: row.billingPayeeType as '' | 'character' | 'corporation',
+			billingPayeeType: row.billingPayeeType,
 			billingDueDays: row.billingDueDays,
 			createdAt: row.createdAt,
 			updatedAt: row.updatedAt,
@@ -596,26 +612,22 @@ export class TaxBillingService {
 		}
 
 		const bills = getStub<Bills>(this.billsNamespace, 'default')
-		const results: TaxAssessmentWithBillHistory[] = []
+		const billIds = billedAssessments.map((assessment) => assessment.billId!)
+		const timelinesByBillId = await bills.getBillTimelines(billIds)
 
-		for (const assessment of billedAssessments) {
-			const timeline = await bills.getBillTimeline(assessment.billId!)
-			results.push({
-				assessment: this.toAssessment(assessment),
-				timeline: timeline.map((event) => ({
-					id: event.id,
-					billId: event.billId,
-					eventType: event.eventType,
-					fromStatus: event.fromStatus,
-					toStatus: event.toStatus,
-					actorUserId: event.actorUserId,
-					metadata: event.metadata,
-					createdAt: event.createdAt,
-				})),
-			})
-		}
-
-		return results
+		return billedAssessments.map((assessment) => ({
+			assessment: this.toAssessment(assessment),
+			timeline: (timelinesByBillId[assessment.billId!] ?? []).map((event) => ({
+				id: event.id,
+				billId: event.billId,
+				eventType: event.eventType,
+				fromStatus: event.fromStatus,
+				toStatus: event.toStatus,
+				actorUserId: event.actorUserId,
+				metadata: event.metadata,
+				createdAt: event.createdAt,
+			})),
+		}))
 	}
 
 	async getAssessmentBillStatusHistory(

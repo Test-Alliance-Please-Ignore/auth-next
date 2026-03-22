@@ -85,6 +85,7 @@ function makeCorporationTaxStub() {
 		deleteRuleGroup: vi.fn(),
 		listRuleSets: vi.fn(),
 		createRuleSet: vi.fn(),
+		updateRuleSet: vi.fn(),
 		ingestCorporationLedgerWindow: vi.fn(),
 		listLedgerEntries: vi.fn(),
 		runAssessmentForPeriod: vi.fn(),
@@ -618,6 +619,64 @@ describe('corporation-tax routes', () => {
 				name: 'Global Rule',
 			})
 		)
+	})
+
+	it('rejects create rule when priority is out of bounds', async () => {
+		const user = makeUser()
+		const app = createApp(user)
+		const corporationTaxStub = makeCorporationTaxStub()
+		const featuresStub = { checkFlag: vi.fn().mockResolvedValue(true) }
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:tax:admin' }] as any)
+		routeStubs({ corporationTaxStub, featuresStub })
+
+		const response = await app.request(
+			'/api/corporation-tax/rules',
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					ruleGroupId: 'group-default',
+					name: 'Global Rule',
+					priority: 101,
+					taxRateBps: 750,
+					label: 'Default tax rate',
+				}),
+			},
+			env
+		)
+
+		expect(response.status).toBe(400)
+		expect(await response.json()).toEqual({
+			error: 'priority must be an integer between 0 and 100',
+		})
+		expect(corporationTaxStub.createRuleSet).not.toHaveBeenCalled()
+	})
+
+	it('rejects update rule when priority is out of bounds', async () => {
+		const user = makeUser()
+		const app = createApp(user)
+		const corporationTaxStub = makeCorporationTaxStub()
+		const featuresStub = { checkFlag: vi.fn().mockResolvedValue(true) }
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:tax:admin' }] as any)
+		routeStubs({ corporationTaxStub, featuresStub })
+
+		const response = await app.request(
+			'/api/corporation-tax/rules/rule-1',
+			{
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					priority: -1,
+				}),
+			},
+			env
+		)
+
+		expect(response.status).toBe(400)
+		expect(await response.json()).toEqual({
+			error: 'priority must be an integer between 0 and 100',
+		})
+		expect(corporationTaxStub.updateRuleSet).not.toHaveBeenCalled()
 	})
 
 	it('returns 409 when deleting a protected default rule group', async () => {

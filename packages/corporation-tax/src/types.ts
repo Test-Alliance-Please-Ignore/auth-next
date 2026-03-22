@@ -63,12 +63,8 @@ export interface TaxRuleSet {
 	name: string
 	priority: number
 	isActive: boolean
-	effectiveFrom: Date
-	effectiveTo: Date | null
 	appliesToRefType: string | null
-	partyType: string | null
 	taxRateBps: number
-	label: string
 	createdBy: string
 	createdAt: Date
 	updatedAt: Date
@@ -116,12 +112,8 @@ export interface CreateTaxRuleSetInput {
 	name: string
 	priority?: number
 	isActive?: boolean
-	effectiveFrom?: Date
-	effectiveTo?: Date | null
 	appliesToRefType?: string | null
-	partyType?: string | null
 	taxRateBps: number
-	label: string
 }
 
 export interface ListTaxRuleSetsFilters {
@@ -137,12 +129,8 @@ export interface UpdateTaxRuleSetInput {
 	name?: string
 	priority?: number
 	isActive?: boolean
-	effectiveFrom?: Date
-	effectiveTo?: Date | null
 	appliesToRefType?: string | null
-	partyType?: string | null
 	taxRateBps?: number
-	label?: string
 }
 
 export type TaxAssessmentScope = 'corporation' | 'division' | 'character'
@@ -330,7 +318,7 @@ export interface TaxCorporationBillingConfig {
 	billingEnabled: boolean
 	billingIssuerUserId: string
 	billingPayeeId: string
-	billingPayeeType: TaxBillingPayeeType | ''
+	billingPayeeType: TaxBillingPayeeType
 	billingDueDays: number
 	createdAt: Date
 	updatedAt: Date
@@ -341,7 +329,7 @@ export interface CreateTaxCorporationBillingConfigInput {
 	billingEnabled?: boolean
 	billingIssuerUserId?: string
 	billingPayeeId?: string
-	billingPayeeType?: TaxBillingPayeeType | ''
+	billingPayeeType?: TaxBillingPayeeType
 	billingDueDays?: number
 }
 
@@ -350,7 +338,7 @@ export interface UpdateTaxCorporationBillingConfigInput {
 	billingEnabled?: boolean
 	billingIssuerUserId?: string
 	billingPayeeId?: string
-	billingPayeeType?: TaxBillingPayeeType | ''
+	billingPayeeType?: TaxBillingPayeeType
 	billingDueDays?: number
 }
 
@@ -608,6 +596,8 @@ export interface TaxMissingEsiKeyRow {
 export interface TaxBillStatusReportRow {
 	corporationId: string
 	billStatus: TaxBillStatus | 'unbilled'
+	issueDate: Date | null
+	dueDate: Date | null
 	assessmentCount: number
 	taxDue: string
 	taxPaid: string

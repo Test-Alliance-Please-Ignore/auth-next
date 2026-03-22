@@ -154,18 +154,18 @@ const app = new Hono<App>()
  */
 app.get('/search', requireAuth(), async (c) => {
 	const query = c.req.query('q')
+	const trimmedQuery = query?.trim() ?? ''
 	const db = c.get('db')
 
 	if (!db) {
 		return c.json({ error: 'Database not available' }, 500)
 	}
 
-	if (!query || query.length < 2) {
+	if (trimmedQuery.length < 2) {
 		return c.json({ error: 'Query must be at least 2 characters' }, 400)
 	}
 
 	try {
-		const trimmedQuery = query.trim()
 		const isNumericQuery = /^[0-9]+$/.test(trimmedQuery)
 		const whereClause = isNumericQuery
 			? or(

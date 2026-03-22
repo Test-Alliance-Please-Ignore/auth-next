@@ -13,6 +13,10 @@ export class MockBills extends DurableObject {
 		return []
 	}
 
+	async getBillTimelines(): Promise<Record<string, unknown[]>> {
+		return {}
+	}
+
 	async listBillsByExternalSource(): Promise<unknown[]> {
 		return []
 	}

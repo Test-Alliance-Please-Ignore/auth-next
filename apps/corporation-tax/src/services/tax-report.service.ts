@@ -573,16 +573,27 @@ export class TaxReportService {
 
 	async getBillStatusReport(
 		filters: TaxReportWindowFilters = {}
-	): Promise<TaxBillStatusReportRow[]> {
+	): Promise<TaxPagedResult<TaxBillStatusReportRow>> {
 		const corporationIds = await this.resolveReportCorporationIds(filters.corporationId)
 		if (corporationIds.length === 0) {
-			return []
+			return { rows: [], totalRows: 0 }
 		}
 
 		const rows = await this.db
 			.select({
 				corporationId: taxAssessments.corporationId,
 				billStatus: sql<string>`COALESCE(${taxAssessments.billStatus}, 'unbilled')`,
+				issueDate: sql<Date | null>`MIN((
+					SELECT MIN(bse.created_at)
+					FROM bill_status_events bse
+					WHERE bse.bill_id = ${taxAssessments.billId}
+						AND bse.event_type = 'issued'
+				))`,
+				dueDate: sql<Date | null>`MIN((
+					SELECT b.due_date
+					FROM bills b
+					WHERE b.id = ${taxAssessments.billId}
+				))`,
 				assessmentCount: sql<number>`COUNT(*)`,
 				taxDue: sql<string>`COALESCE(SUM(CAST(${taxAssessments.taxDue} AS numeric)), 0)::text`,
 				taxPaid: sql<string>`COALESCE(SUM(CAST(${taxAssessments.taxPaid} AS numeric)), 0)::text`,
@@ -595,6 +606,8 @@ export class TaxReportService {
 		const grouped = rows.map((row) => ({
 			corporationId: row.corporationId,
 			billStatus: row.billStatus as TaxBillStatusReportRow['billStatus'],
+			issueDate: this.toDateOrNull(row.issueDate),
+			dueDate: this.toDateOrNull(row.dueDate),
 			assessmentCount: this.toInteger(row.assessmentCount),
 			taxDue: this.formatCenti(this.parseDecimalToCenti(row.taxDue)),
 			taxPaid: this.formatCenti(this.parseDecimalToCenti(row.taxPaid)),
@@ -605,19 +618,25 @@ export class TaxReportService {
 			sortDueCenti: this.parseDecimalToCenti(row.taxDue),
 			sortPaidCenti: this.parseDecimalToCenti(row.taxPaid),
 			sortDeltaCenti: this.parseDecimalToCenti(row.taxDelta),
+			sortIssueDate: this.toDateOrNull(row.issueDate),
+			sortDueDate: this.toDateOrNull(row.dueDate),
 		}))
 
 		const offset = Math.max(filters.offset ?? 0, 0)
 		const limit = Math.min(Math.max(filters.limit ?? 50, 1), 200)
-		const sortBy = filters.sortBy ?? 'taxDue'
-		const sortDirection = this.toSortDirection(filters.sortDirection, 'desc')
-		return grouped
+		const sortBy = filters.sortBy ?? 'dueDate'
+		const sortDirection = this.toSortDirection(filters.sortDirection, 'asc')
+		const pagedRows = grouped
 			.sort((a, b) => {
 				switch (sortBy) {
 					case 'corporationId':
 						return this.compareStrings(a.corporationId, b.corporationId, sortDirection)
 					case 'billStatus':
 						return this.compareStrings(a.billStatus, b.billStatus, sortDirection)
+					case 'issueDate':
+						return this.compareDatesNullable(a.sortIssueDate, b.sortIssueDate, sortDirection)
+					case 'dueDate':
+						return this.compareDatesNullable(a.sortDueDate, b.sortDueDate, sortDirection)
 					case 'assessmentCount':
 						return this.compareNumbers(a.assessmentCount, b.assessmentCount, sortDirection)
 					case 'taxPaid':
@@ -625,8 +644,9 @@ export class TaxReportService {
 					case 'taxDelta':
 						return this.compareBigInts(a.sortDeltaCenti, b.sortDeltaCenti, sortDirection)
 					case 'taxDue':
-					default:
 						return this.compareBigInts(a.sortDueCenti, b.sortDueCenti, sortDirection)
+					default:
+						return this.compareDatesNullable(a.sortDueDate, b.sortDueDate, sortDirection)
 				}
 			})
 			.slice(offset, offset + limit)
@@ -635,9 +655,15 @@ export class TaxReportService {
 					sortDueCenti: _sortDueCenti,
 					sortPaidCenti: _sortPaidCenti,
 					sortDeltaCenti: _sortDeltaCenti,
+					sortIssueDate: _sortIssueDate,
+					sortDueDate: _sortDueDate,
 					...row
 				}) => row
 			)
+		return {
+			rows: pagedRows,
+			totalRows: grouped.length,
+		}
 	}
 
 	async getMemberSummaryReport(
@@ -1594,6 +1620,17 @@ export class TaxReportService {
 			return -1
 		}
 		return this.compareDates(a, b, direction)
+	}
+
+	private toDateOrNull(value: Date | string | null | undefined): Date | null {
+		if (!value) {
+			return null
+		}
+		if (value instanceof Date) {
+			return Number.isNaN(value.getTime()) ? null : value
+		}
+		const parsed = new Date(value)
+		return Number.isNaN(parsed.getTime()) ? null : parsed
 	}
 
 	private toInteger(value: number | string | bigint | null | undefined): number {

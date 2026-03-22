@@ -71,11 +71,15 @@ const TAX_MISSING_ESI_SORT_FIELDS = [
 const TAX_BILL_STATUS_SORT_FIELDS = [
 	'corporationId',
 	'billStatus',
+	'issueDate',
+	'dueDate',
 	'assessmentCount',
 	'taxDue',
 	'taxPaid',
 	'taxDelta',
 ] as const
+const TAX_RULE_PRIORITY_MIN = 0
+const TAX_RULE_PRIORITY_MAX = 100
 const SNOWFLAKE_REGEX = /^\d{17,20}$/
 const SITE_ADMIN_ONLY_ALERT_TYPES = new Set([
 	'discord_delivery_failed',
@@ -148,7 +152,7 @@ async function validateBillingPayeeSelection(
 	db: App['Variables']['db'],
 	input: {
 		billingPayeeId?: string
-		billingPayeeType?: '' | 'character' | 'corporation'
+		billingPayeeType?: 'character' | 'corporation'
 	},
 	options: { partial: boolean }
 ): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -184,7 +188,11 @@ async function validateBillingPayeeSelection(
 
 	if (payeeType === 'character') {
 		const row = await db.query.userCharacters.findFirst({
-			where: eq(userCharacters.characterId, payeeId),
+			where: and(
+				eq(userCharacters.characterId, payeeId),
+				eq(userCharacters.status, 'active'),
+				eq(userCharacters.isDeleted, false)
+			),
 			columns: { characterId: true },
 		})
 		if (!row) {
@@ -348,6 +356,7 @@ function mapTaxBillingError(
 		case 'Billing is not enabled for this corporation':
 		case 'Default billing configuration is disabled for this corporation':
 		case 'Billing payee configuration is incomplete':
+		case "billingPayeeType must be 'character' or 'corporation'":
 		case 'Assessment has no linked bill':
 		case 'Only the issuer can cancel the bill':
 		case 'Cannot cancel a paid bill':
@@ -375,7 +384,10 @@ function mapTaxBillingConfigError(
 		case 'Duplicate billing configuration tuple for corporation':
 		case 'A corporation must have a default billing configuration':
 			return { status: 409, message: error.message }
-		case "billingPayeeType must be '', 'character', or 'corporation'":
+		case "billingPayeeType must be 'character' or 'corporation'":
+		case 'billingPayeeId and billingPayeeType are required':
+		case 'billingPayeeId and billingPayeeType must be provided together':
+		case 'billingPayeeId must not be empty':
 		case 'billingDueDays must be an integer between 1 and 90':
 			return { status: 400, message: error.message }
 		default:
@@ -646,8 +658,8 @@ app.get('/corporations', requireAuth(), async (c) => {
 
 	const limit = parseIntegerQueryParam(c.req.query('limit'))
 	const offset = parseIntegerQueryParam(c.req.query('offset'))
-	if (limit !== undefined && (limit < 1 || limit > 300)) {
-		return c.json({ error: 'limit must be between 1 and 300' }, 400)
+	if (limit !== undefined && (limit < 1 || limit > 1000)) {
+		return c.json({ error: 'limit must be between 1 and 1000' }, 400)
 	}
 	if (offset !== undefined && offset < 0) {
 		return c.json({ error: 'offset must be >= 0' }, 400)
@@ -659,20 +671,35 @@ app.get('/corporations', requireAuth(), async (c) => {
 			return c.json({ error: 'Database unavailable' }, 500)
 		}
 
+		const boundedLimit = Math.min(Math.max(limit ?? 200, 1), 1000)
+		const boundedOffset = Math.max(offset ?? 0, 0)
 		const managedCorps = await db.query.managedCorporations.findMany({
 			where: and(
 				eq(managedCorporations.isActive, true),
 				eq(managedCorporations.isMemberCorporation, true)
 			),
 			orderBy: [desc(managedCorporations.updatedAt)],
-			limit: 500,
+			limit: boundedLimit,
+			offset: boundedOffset,
 		})
 
 		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
-		const exclusions = await stub.listCorporationExclusions({ limit: 10_000 })
-		const exclusionMap = new Map(
-			exclusions.map((row) => [row.corporationId, row.reason ?? null] as const)
-		)
+		const exclusionMap = new Map<string, string | null>()
+		let exclusionOffset = 0
+		const exclusionPageSize = 500
+		while (true) {
+			const page = await stub.listCorporationExclusions({
+				limit: exclusionPageSize,
+				offset: exclusionOffset,
+			})
+			for (const row of page) {
+				exclusionMap.set(row.corporationId, row.reason ?? null)
+			}
+			if (page.length < exclusionPageSize) {
+				break
+			}
+			exclusionOffset += page.length
+		}
 
 		const rows = managedCorps.map((corp) => ({
 			corporationId: corp.corporationId,
@@ -681,9 +708,7 @@ app.get('/corporations', requireAuth(), async (c) => {
 			createdAt: corp.createdAt,
 			updatedAt: corp.updatedAt,
 		}))
-		const boundedLimit = Math.min(Math.max(limit ?? 200, 1), 300)
-		const boundedOffset = Math.max(offset ?? 0, 0)
-		return c.json(rows.slice(boundedOffset, boundedOffset + boundedLimit))
+		return c.json(rows)
 	} catch (error) {
 		logger.error('Error listing tax corporations:', error)
 		return c.json({ error: 'Failed to list tax corporations' }, 500)
@@ -1036,24 +1061,27 @@ app.post('/rules', requireAuth(), async (c) => {
 	if (!ruleGroupId) return c.json({ error: 'ruleGroupId is required' }, 400)
 	if (!name) return c.json({ error: 'name is required' }, 400)
 
-	const priority =
-		typeof body.priority === 'number' && Number.isInteger(body.priority) ? body.priority : 0
-	const isActive = typeof body.isActive === 'boolean' ? body.isActive : true
-	const parseDateOrUndefined = (value: unknown): Date | undefined => {
-		if (typeof value !== 'string') return undefined
-		const parsed = new Date(value)
-		return Number.isNaN(parsed.getTime()) ? undefined : parsed
+	if (body.priority !== undefined) {
+		if (
+			typeof body.priority !== 'number' ||
+			!Number.isInteger(body.priority) ||
+			body.priority < TAX_RULE_PRIORITY_MIN ||
+			body.priority > TAX_RULE_PRIORITY_MAX
+		) {
+			return c.json(
+				{
+					error: `priority must be an integer between ${TAX_RULE_PRIORITY_MIN} and ${TAX_RULE_PRIORITY_MAX}`,
+				},
+				400
+			)
+		}
 	}
-	const effectiveFrom = parseDateOrUndefined(body.effectiveFrom)
-	const effectiveTo = parseDateOrUndefined(body.effectiveTo)
+	const priority = typeof body.priority === 'number' ? body.priority : 0
+	const isActive = typeof body.isActive === 'boolean' ? body.isActive : true
 	const taxRateBps =
 		typeof body.taxRateBps === 'number' && Number.isInteger(body.taxRateBps) ? body.taxRateBps : -1
-	const label = typeof body.label === 'string' ? body.label : ''
 	if (taxRateBps < 0 || taxRateBps > 10_000) {
 		return c.json({ error: 'taxRateBps must be an integer between 0 and 10000' }, 400)
-	}
-	if (!label.trim()) {
-		return c.json({ error: 'label is required' }, 400)
 	}
 	const appliesToRefTypeRaw =
 		typeof body.appliesToRefType === 'string' ? body.appliesToRefType.trim() : undefined
@@ -1068,12 +1096,8 @@ app.post('/rules', requireAuth(), async (c) => {
 			name,
 			priority,
 			isActive,
-			effectiveFrom,
-			effectiveTo,
 			appliesToRefType,
-			partyType: typeof body.partyType === 'string' ? body.partyType : undefined,
 			taxRateBps,
-			label,
 		})
 		return c.json(created, 201)
 	} catch (error) {
@@ -1090,11 +1114,6 @@ app.patch('/rules/:ruleSetId', requireAuth(), async (c) => {
 	const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null
 	if (!body) return c.json({ error: 'Invalid JSON payload' }, 400)
 	const ruleSetId = c.req.param('ruleSetId')
-	const parseDateOrUndefined = (value: unknown): Date | undefined => {
-		if (typeof value !== 'string') return undefined
-		const parsed = new Date(value)
-		return Number.isNaN(parsed.getTime()) ? undefined : parsed
-	}
 	try {
 		const appliesToRefTypeRaw =
 			typeof body.appliesToRefType === 'string' ? body.appliesToRefType.trim() : undefined
@@ -1102,24 +1121,35 @@ app.patch('/rules/:ruleSetId', requireAuth(), async (c) => {
 		if (appliesToRefType && !isTaxIncomeRefType(appliesToRefType)) {
 			return c.json({ error: 'appliesToRefType must be a valid tax income ref type' }, 400)
 		}
+		const hasPriority = Object.prototype.hasOwnProperty.call(body, 'priority')
+		let priority: number | undefined
+		if (hasPriority) {
+			if (
+				typeof body.priority !== 'number' ||
+				!Number.isInteger(body.priority) ||
+				body.priority < TAX_RULE_PRIORITY_MIN ||
+				body.priority > TAX_RULE_PRIORITY_MAX
+			) {
+				return c.json(
+					{
+						error: `priority must be an integer between ${TAX_RULE_PRIORITY_MIN} and ${TAX_RULE_PRIORITY_MAX}`,
+					},
+					400
+				)
+			}
+			priority = body.priority
+		}
 
 		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
 		const updated = await stub.updateRuleSet(user.id, ruleSetId, {
 			isActive: typeof body.isActive === 'boolean' ? body.isActive : undefined,
 			name: typeof body.name === 'string' ? body.name : undefined,
-			priority:
-				typeof body.priority === 'number' && Number.isInteger(body.priority)
-					? body.priority
-					: undefined,
-			effectiveFrom: parseDateOrUndefined(body.effectiveFrom),
-			effectiveTo: parseDateOrUndefined(body.effectiveTo),
+			priority,
 			appliesToRefType,
-			partyType: typeof body.partyType === 'string' ? body.partyType : undefined,
 			taxRateBps:
 				typeof body.taxRateBps === 'number' && Number.isInteger(body.taxRateBps)
 					? body.taxRateBps
 					: undefined,
-			label: typeof body.label === 'string' ? body.label : undefined,
 		})
 		return c.json(updated)
 	} catch (error) {
@@ -1733,12 +1763,16 @@ app.get('/corporations/:corporationId/payee-characters/search', requireAuth(), a
 			})
 			.from(userCharacters)
 			.where(
-				isNumeric
-					? or(
-							eq(userCharacters.characterId, query),
-							ilike(userCharacters.characterName, `%${query}%`)
-						)
-					: ilike(userCharacters.characterName, `%${query}%`)
+				and(
+					isNumeric
+						? or(
+								eq(userCharacters.characterId, query),
+								ilike(userCharacters.characterName, `%${query}%`)
+							)
+						: ilike(userCharacters.characterName, `%${query}%`),
+					eq(userCharacters.status, 'active'),
+					eq(userCharacters.isDeleted, false)
+				)
 			)
 			.limit(25)
 
@@ -1778,7 +1812,7 @@ app.post('/corporations/:corporationId/billing-configs', requireAuth(), async (c
 		billingPayeeId: typeof body.billingPayeeId === 'string' ? body.billingPayeeId : undefined,
 		billingPayeeType:
 			typeof body.billingPayeeType === 'string'
-				? (body.billingPayeeType as '' | 'character' | 'corporation')
+				? (body.billingPayeeType as 'character' | 'corporation')
 				: undefined,
 		billingDueDays:
 			typeof body.billingDueDays === 'number' && Number.isInteger(body.billingDueDays)
@@ -1837,7 +1871,7 @@ app.patch('/corporations/:corporationId/billing-configs/:configId', requireAuth(
 		billingPayeeId: typeof body.billingPayeeId === 'string' ? body.billingPayeeId : undefined,
 		billingPayeeType:
 			typeof body.billingPayeeType === 'string'
-				? (body.billingPayeeType as '' | 'character' | 'corporation')
+				? (body.billingPayeeType as 'character' | 'corporation')
 				: undefined,
 		billingDueDays:
 			typeof body.billingDueDays === 'number' && Number.isInteger(body.billingDueDays)

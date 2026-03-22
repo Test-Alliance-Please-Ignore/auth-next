@@ -25,6 +25,7 @@ import type {
 	TaxMemberSummary,
 	TaxMissingEsiKeyRow,
 	TaxNotificationDestination,
+	TaxPagedResult,
 	TaxRuleGroup,
 	TaxRuleGroupAttachment,
 	TaxRuleSet,
@@ -427,14 +428,20 @@ function buildDemoState(seed: number) {
 		}
 	}) as TaxCompliancePoint[]
 
-	const billStatus = corporations.map((corp, index) => ({
-		corporationId: corp.corporationId,
-		billStatus: (index === 2 ? 'overdue' : index === 1 ? 'paid' : 'issued') as TaxBillStatus,
-		assessmentCount: 4 + index,
-		taxDue: amount(1_350_000_000 + index * 420_000_000),
-		taxPaid: amount(index === 2 ? 610_000_000 : 1_180_000_000 + index * 340_000_000),
-		taxDelta: amount(index === 2 ? 740_000_000 : 170_000_000 + index * 80_000_000),
-	})) as TaxBillStatusReportRow[]
+	const billStatus = corporations.map((corp, index) => {
+		const issueDate = addDays(demoStart, 8 + index * 2)
+		const dueDate = addDays(issueDate, index === 2 ? -4 : 10 + index)
+		return {
+			corporationId: corp.corporationId,
+			billStatus: (index === 2 ? 'overdue' : index === 1 ? 'paid' : 'issued') as TaxBillStatus,
+			issueDate,
+			dueDate,
+			assessmentCount: 4 + index,
+			taxDue: amount(1_350_000_000 + index * 420_000_000),
+			taxPaid: amount(index === 2 ? 610_000_000 : 1_180_000_000 + index * 340_000_000),
+			taxDelta: amount(index === 2 ? 740_000_000 : 170_000_000 + index * 80_000_000),
+		}
+	}) as TaxBillStatusReportRow[]
 
 	const ledgerEntries = Array.from({
 		length: Math.max(config.corporationCount * config.months * 12, 120),
@@ -721,12 +728,8 @@ function buildDemoState(seed: number) {
 			name: 'Default Alliance Tax',
 			priority: 0,
 			isActive: true,
-			effectiveFrom: addDays(startOfMonth(), -30),
-			effectiveTo: null,
 			appliesToRefType: null,
-			partyType: null,
 			taxRateBps: 500,
-			label: 'Base rate',
 			createdBy: 'demo-admin',
 			createdAt: addDays(startOfMonth(), -20),
 			updatedAt: addDays(startOfMonth(), -5),
@@ -737,12 +740,8 @@ function buildDemoState(seed: number) {
 			name: 'ESS Override',
 			priority: 50,
 			isActive: true,
-			effectiveFrom: addDays(startOfMonth(), -10),
-			effectiveTo: null,
 			appliesToRefType: 'ess_escrow_transfer',
-			partyType: null,
 			taxRateBps: 950,
-			label: 'ESS rate',
 			createdBy: 'demo-admin',
 			createdAt: addDays(startOfMonth(), -10),
 			updatedAt: addDays(startOfMonth(), -2),
@@ -750,8 +749,7 @@ function buildDemoState(seed: number) {
 	] as TaxRuleSet[]
 
 	const billingConfigs = corporations.map((corp, index) => {
-		const payeeType: '' | 'character' | 'corporation' =
-			index % 3 === 0 ? 'character' : 'corporation'
+		const payeeType: 'character' | 'corporation' = index % 3 === 0 ? 'character' : 'corporation'
 		return {
 			id: `billing-config-${corp.corporationId}`,
 			corporationId: corp.corporationId,
@@ -980,7 +978,6 @@ export const taxDemoApi = {
 			isActive?: boolean
 			appliesToRefType?: string
 			taxRateBps: number
-			label: string
 		}
 	) {
 		const state = ensureDemoState()
@@ -990,12 +987,8 @@ export const taxDemoApi = {
 			name: input.name,
 			priority: input.priority ?? 0,
 			isActive: input.isActive ?? true,
-			effectiveFrom: new Date(),
-			effectiveTo: null,
 			appliesToRefType: input.appliesToRefType ?? null,
-			partyType: null,
 			taxRateBps: input.taxRateBps,
-			label: input.label,
 			createdBy: 'demo-admin',
 			createdAt: new Date(),
 			updatedAt: new Date(),
@@ -1010,9 +1003,7 @@ export const taxDemoApi = {
 			name?: string
 			priority?: number
 			appliesToRefType?: string | null
-			partyType?: string | null
 			taxRateBps?: number
-			label?: string
 		}
 	) {
 		const state = ensureDemoState()
@@ -1024,12 +1015,8 @@ export const taxDemoApi = {
 				name: input.name ?? 'Demo Rule',
 				priority: input.priority ?? 100,
 				isActive: input.isActive ?? true,
-				effectiveFrom: new Date(),
-				effectiveTo: null,
 				appliesToRefType: input.appliesToRefType ?? null,
-				partyType: input.partyType ?? null,
 				taxRateBps: input.taxRateBps ?? 750,
-				label: input.label ?? 'Demo rule',
 				createdBy: 'demo-admin',
 				createdAt: new Date(),
 				updatedAt: new Date(),
@@ -1044,11 +1031,7 @@ export const taxDemoApi = {
 		if (input.appliesToRefType !== undefined) {
 			existing.appliesToRefType = input.appliesToRefType
 		}
-		if (input.partyType !== undefined) {
-			existing.partyType = input.partyType
-		}
 		existing.taxRateBps = input.taxRateBps ?? existing.taxRateBps
-		existing.label = input.label ?? existing.label
 		existing.updatedAt = new Date()
 
 		return withLatency(existing)
@@ -1243,7 +1226,7 @@ export const taxDemoApi = {
 			billingEnabled: input.billingEnabled ?? false,
 			billingIssuerUserId: input.billingIssuerUserId?.trim() ?? '',
 			billingPayeeId: input.billingPayeeId?.trim() ?? '',
-			billingPayeeType: input.billingPayeeType ?? '',
+			billingPayeeType: input.billingPayeeType ?? 'corporation',
 			billingDueDays: input.billingDueDays ?? 14,
 			createdAt: new Date(),
 			updatedAt: new Date(),
@@ -1409,13 +1392,18 @@ export const taxDemoApi = {
 				.length,
 		})
 	},
-	async getBillStatusReport(filters?: TaxReportFilters) {
+	async getBillStatusReport(
+		filters?: TaxReportFilters
+	): Promise<TaxPagedResult<TaxBillStatusReportRow>> {
 		const rows = sortRows(
 			maybeFilterReportRows(ensureDemoState().billStatus, filters),
 			filters?.sortBy,
 			filters?.sortDir
 		)
-		return withLatency(rows)
+		return withLatency({
+			rows: applyLimitOffset(rows, filters?.limit, filters?.offset),
+			totalRows: rows.length,
+		})
 	},
 	async getCorporationBillHistory(
 		corporationId: string,

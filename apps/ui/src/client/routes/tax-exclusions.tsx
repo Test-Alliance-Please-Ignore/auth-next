@@ -33,15 +33,15 @@ export default function TaxExclusionsPage() {
 	const { data: globalCapabilities } = useTaxCapabilities()
 	const canManage = globalCapabilities?.global.canManage ?? false
 	const { data: corporationAccess } = useCorporationAccess()
-	const {
-		data: taxCorporations = [],
-		isLoading,
-		error,
-	} = useTaxCorporations({
-		limit: 300,
+	const { data: taxCorporations = [] } = useTaxCorporations({
+		limit: 1000,
 		enabled: canManage,
 	})
-	const { data: exclusions = [] } = useTaxExclusions({ limit: 500, enabled: canManage })
+	const {
+		data: exclusions = [],
+		isLoading: exclusionsLoading,
+		error: exclusionsError,
+	} = useTaxExclusions({ limit: 500, enabled: canManage })
 	const upsertMutation = useUpsertTaxExclusion()
 	const deleteMutation = useDeleteTaxExclusion()
 
@@ -209,11 +209,13 @@ export default function TaxExclusionsPage() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent>
-						{isLoading ? (
+						{exclusionsLoading ? (
 							<div className="text-sm text-muted-foreground">Loading exclusions...</div>
-						) : error ? (
+						) : exclusionsError ? (
 							<div className="text-sm text-destructive">
-								{error instanceof Error ? error.message : 'Failed to load exclusions'}
+								{exclusionsError instanceof Error
+									? exclusionsError.message
+									: 'Failed to load exclusions'}
 							</div>
 						) : (
 							<div className="rounded-md border">

@@ -59,7 +59,7 @@ import { useTaxCorporationAccessScope } from '@/hooks/useTaxCorporationAccessSco
 import { formatTaxDateTime, getCurrentMonthDateRange } from '@/lib/tax-date'
 import { formatTaxIskFull, formatTaxNumber, TaxEntityDisplay } from '@/lib/tax-display'
 
-import type { TaxAssessmentScope, TaxBillStatus } from '@repo/corporation-tax'
+import type { TaxAssessmentScope, TaxBillingPayeeType, TaxBillStatus } from '@repo/corporation-tax'
 
 function getLastTimelineDate(events: Array<{ createdAt: string | Date }>): string {
 	if (events.length === 0) {
@@ -94,6 +94,7 @@ function billStatusBadgeVariant(
 }
 
 const DEFAULT_MONTH_RANGE = getCurrentMonthDateRange()
+const BILL_STATUS_PAGE_SIZE_DEFAULT = 25
 
 export default function TaxBillsPage() {
 	usePageTitle('Tax Billing')
@@ -109,6 +110,8 @@ export default function TaxBillsPage() {
 	} = useTaxCorporationAccessScope(canViewWithUrn)
 	const [periodStartDate, setPeriodStartDate] = useState(DEFAULT_MONTH_RANGE.fromDate)
 	const [periodEndDate, setPeriodEndDate] = useState(DEFAULT_MONTH_RANGE.toDate)
+	const [billStatusPage, setBillStatusPage] = useState(0)
+	const [billStatusPageSize, setBillStatusPageSize] = useState(BILL_STATUS_PAGE_SIZE_DEFAULT)
 	const [selectedAssessmentScope, setSelectedAssessmentScope] = useState<
 		'all' | TaxAssessmentScope
 	>('all')
@@ -121,11 +124,12 @@ export default function TaxBillsPage() {
 	const [billingCharacterSearchDebounced, setBillingCharacterSearchDebounced] = useState('')
 	const [billingCorporationSearchInput, setBillingCorporationSearchInput] = useState('')
 	const [billingCorporationSearchDebounced, setBillingCorporationSearchDebounced] = useState('')
-	const [billingPayeeTypeInput, setBillingPayeeTypeInput] = useState<
-		'' | 'character' | 'corporation'
-	>('')
+	const [billingPayeeTypeInput, setBillingPayeeTypeInput] = useState<TaxBillingPayeeType>()
 	const [billingDueDaysInput, setBillingDueDaysInput] = useState('14')
 	const [billingIsDefaultInput, setBillingIsDefaultInput] = useState(false)
+	const [billingConfigValidationError, setBillingConfigValidationError] = useState<string | null>(
+		null
+	)
 	const [showBillingConfigForm, setShowBillingConfigForm] = useState(false)
 	const { data: billingCharacterSearchResults = [], isLoading: billingCharacterSearchLoading } =
 		useSearchTaxBillingPayeeCharacters(
@@ -173,12 +177,15 @@ export default function TaxBillsPage() {
 		(scopedCapabilities?.scoped.canManage ?? false)
 
 	const {
-		data: billStatusReport = [],
+		data: billStatusReportData,
 		isLoading: billStatusLoading,
 		error: billStatusError,
 	} = useTaxBillStatusReport({
 		corporationId: effectiveCorporationId,
-		limit: 100,
+		limit: billStatusPageSize,
+		offset: billStatusPage * billStatusPageSize,
+		sortBy: 'dueDate',
+		sortDir: 'asc',
 		enabled: canView,
 	})
 
@@ -215,20 +222,21 @@ export default function TaxBillsPage() {
 		error: billingConfigsError,
 	} = useTaxBillingConfigs(effectiveCorporationId, canView)
 
-	const totalAssessments = billStatusReport.reduce((sum, row) => sum + row.assessmentCount, 0)
-	const unbilledAssessmentCount = billStatusReport
-		.filter((row) => row.billStatus === 'unbilled')
-		.reduce((sum, row) => sum + row.assessmentCount, 0)
-	const overdueAssessments = billStatusReport
-		.filter((row) => row.billStatus === 'overdue')
-		.reduce((sum, row) => sum + row.assessmentCount, 0)
 	const corporationAssessments = assessments.filter(
 		(assessment) => assessment.assessmentScope === 'corporation'
 	)
+	const billStatusReportRows = billStatusReportData?.rows ?? []
+	const billStatusTotalRows = billStatusReportData?.totalRows ?? 0
+	const billStatusPageCount = Math.max(1, Math.ceil(billStatusTotalRows / billStatusPageSize))
+	const totalAssessments = corporationAssessments.length
 	const unbilledAssessmentRows = corporationAssessments.filter(
 		(assessment) =>
 			!assessment.billId && assessment.status !== 'draft' && assessment.status !== 'excluded'
 	)
+	const unbilledAssessmentCount = unbilledAssessmentRows.length
+	const overdueAssessments = corporationAssessments.filter(
+		(assessment) => assessment.billStatus === 'overdue'
+	).length
 	const scopeCounts = {
 		corporation: assessments.filter((assessment) => assessment.assessmentScope === 'corporation')
 			.length,
@@ -243,7 +251,7 @@ export default function TaxBillsPage() {
 
 	const entityIds = useMemo(() => {
 		const ids = new Set<string>()
-		for (const row of billStatusReport) ids.add(row.corporationId)
+		for (const row of billStatusReportRows) ids.add(row.corporationId)
 		for (const row of billHistory) ids.add(row.assessment.corporationId)
 		for (const config of billingConfigs) {
 			if (config.billingPayeeId) ids.add(config.billingPayeeId)
@@ -253,12 +261,36 @@ export default function TaxBillsPage() {
 			if (assessment.assessmentScope === 'character') ids.add(assessment.scopeId)
 		}
 		return [...ids]
-	}, [assessments, billHistory, billStatusReport, billingConfigs])
+	}, [assessments, billHistory, billStatusReportRows, billingConfigs])
+
+	useEffect(() => {
+		setBillStatusPage(0)
+	}, [effectiveCorporationId])
 
 	const { data: entityNames = {} } = useEntityNames(entityIds, { enabled: canView })
 	const retractableAssessment = billHistory.find(
 		(row) => row.assessment.id === retractingAssessmentId
 	)?.assessment
+	const isCreatingFirstBillingConfig =
+		showBillingConfigForm &&
+		!editingBillingConfigId &&
+		Boolean(effectiveCorporationId) &&
+		billingConfigs.length === 0
+	const parsedBillingDueDays = Number.parseInt(billingDueDaysInput, 10)
+	const isBillingDueDaysValid =
+		billingDueDaysInput.trim().length > 0 &&
+		Number.isInteger(parsedBillingDueDays) &&
+		parsedBillingDueDays >= 1 &&
+		parsedBillingDueDays <= 90
+	const isBillingPayeeSelectionValid = Boolean(
+		billingPayeeTypeInput && billingPayeeIdInput.trim().length > 0
+	)
+
+	useEffect(() => {
+		if (isCreatingFirstBillingConfig) {
+			setBillingIsDefaultInput(true)
+		}
+	}, [isCreatingFirstBillingConfig])
 
 	const resetBillingConfigForm = () => {
 		setEditingBillingConfigId(null)
@@ -270,9 +302,10 @@ export default function TaxBillsPage() {
 		setBillingCharacterSearchDebounced('')
 		setBillingCorporationSearchInput('')
 		setBillingCorporationSearchDebounced('')
-		setBillingPayeeTypeInput('')
+		setBillingPayeeTypeInput(undefined)
 		setBillingDueDaysInput('14')
 		setBillingIsDefaultInput(false)
+		setBillingConfigValidationError(null)
 	}
 
 	if (!corporationAccessLoading && !scopedCapabilitiesLoading && !canView) {
@@ -402,6 +435,7 @@ export default function TaxBillsPage() {
 																		variant="outline"
 																		disabled={!canIssue}
 																		onClick={() => {
+																			setBillingConfigValidationError(null)
 																			setShowBillingConfigForm(true)
 																			setEditingBillingConfigId(config.id)
 																			setBillingEnabledInput(config.billingEnabled)
@@ -419,9 +453,7 @@ export default function TaxBillsPage() {
 																							config.billingPayeeId)
 																					: ''
 																			)
-																			setBillingPayeeTypeInput(
-																				config.billingPayeeType as '' | 'character' | 'corporation'
-																			)
+																			setBillingPayeeTypeInput(config.billingPayeeType)
 																			setBillingDueDaysInput(String(config.billingDueDays))
 																			setBillingIsDefaultInput(config.isDefault)
 																		}}
@@ -484,11 +516,14 @@ export default function TaxBillsPage() {
 									<>
 										<div className="grid gap-3 md:grid-cols-2">
 											<div className="space-y-2">
-												<Label>Payee Type</Label>
+												<Label>
+													Payee Type <span className="text-destructive">*</span>
+												</Label>
 												<Select
-													value={billingPayeeTypeInput || undefined}
+													value={billingPayeeTypeInput}
 													onValueChange={(value) => {
-														const nextType = value as '' | 'character' | 'corporation'
+														const nextType = value as TaxBillingPayeeType
+														setBillingConfigValidationError(null)
 														setBillingPayeeTypeInput(nextType)
 														if (nextType !== 'character') {
 															setBillingCharacterSearchInput('')
@@ -514,12 +549,14 @@ export default function TaxBillsPage() {
 														? 'Character'
 														: billingPayeeTypeInput === 'corporation'
 															? 'Corporation'
-															: 'Payee'}
+															: 'Payee'}{' '}
+													<span className="text-destructive">*</span>
 												</Label>
 												{billingPayeeTypeInput === 'character' ? (
 													<SearchSelect
 														value={billingCharacterSearchInput}
 														onValueChange={(value) => {
+															setBillingConfigValidationError(null)
 															setBillingCharacterSearchInput(value)
 															setBillingPayeeIdInput('')
 														}}
@@ -530,6 +567,7 @@ export default function TaxBillsPage() {
 															description: character.characterId,
 														}))}
 														onSelect={(option) => {
+															setBillingConfigValidationError(null)
 															setBillingCharacterSearchInput(option.label)
 															setBillingPayeeIdInput(option.id)
 														}}
@@ -550,6 +588,7 @@ export default function TaxBillsPage() {
 													<SearchSelect
 														value={billingCorporationSearchInput}
 														onValueChange={(value) => {
+															setBillingConfigValidationError(null)
 															setBillingCorporationSearchInput(value)
 															setBillingPayeeIdInput('')
 														}}
@@ -560,6 +599,7 @@ export default function TaxBillsPage() {
 															description: corporation.corporationId,
 														}))}
 														onSelect={(option) => {
+															setBillingConfigValidationError(null)
 															setBillingCorporationSearchInput(option.label)
 															setBillingPayeeIdInput(option.id)
 														}}
@@ -589,14 +629,25 @@ export default function TaxBillsPage() {
 												/>
 											</div>
 											<div className="space-y-2">
-												<Label>Due Days</Label>
+												<Label>
+													Due Days <span className="text-destructive">*</span>
+												</Label>
 												<Input
 													type="number"
 													min={1}
 													max={90}
+													required
 													value={billingDueDaysInput}
-													onChange={(event) => setBillingDueDaysInput(event.target.value)}
+													onChange={(event) => {
+														setBillingConfigValidationError(null)
+														setBillingDueDaysInput(event.target.value)
+													}}
 												/>
+												{!isBillingDueDaysValid ? (
+													<div className="text-xs text-destructive">
+														Due days is required and must be an integer between 1 and 90.
+													</div>
+												) : null}
 											</div>
 										</div>
 										<div className="flex flex-wrap items-center gap-6">
@@ -609,12 +660,21 @@ export default function TaxBillsPage() {
 											</div>
 											<div className="flex items-center gap-2">
 												<Switch
-													checked={billingIsDefaultInput}
+													checked={isCreatingFirstBillingConfig ? true : billingIsDefaultInput}
+													disabled={isCreatingFirstBillingConfig}
 													onCheckedChange={setBillingIsDefaultInput}
 												/>
-												<Label>Set as default</Label>
+												<Label>Set as default payee</Label>
 											</div>
 										</div>
+										{billingConfigValidationError ? (
+											<div className="text-xs text-destructive">{billingConfigValidationError}</div>
+										) : null}
+										{isCreatingFirstBillingConfig ? (
+											<div className="text-xs text-muted-foreground">
+												First billing config for this corporation is automatically set as default.
+											</div>
+										) : null}
 										<div className="flex items-center justify-end gap-2">
 											<Button variant="outline" onClick={resetBillingConfigForm}>
 												Cancel
@@ -625,19 +685,37 @@ export default function TaxBillsPage() {
 													createBillingConfigMutation.isPending ||
 													updateBillingConfigMutation.isPending ||
 													!effectiveCorporationId ||
-													!billingPayeeTypeInput ||
-													!billingPayeeIdInput
+													!isBillingPayeeSelectionValid ||
+													!isBillingDueDaysValid
 												}
 												onClick={() => {
 													if (!effectiveCorporationId) return
-													const dueDays = Number.parseInt(billingDueDaysInput, 10)
+													if (!billingPayeeTypeInput) {
+														setBillingConfigValidationError('Payee type is required.')
+														return
+													}
+													if (!billingPayeeIdInput.trim()) {
+														setBillingConfigValidationError(
+															billingPayeeTypeInput === 'character'
+																? 'Please select a character payee.'
+																: 'Please select a corporation payee.'
+														)
+														return
+													}
+													if (!isBillingDueDaysValid) {
+														setBillingConfigValidationError(
+															'Due days is required and must be an integer between 1 and 90.'
+														)
+														return
+													}
+													setBillingConfigValidationError(null)
 													const payload = {
-														isDefault: billingIsDefaultInput,
+														isDefault: isCreatingFirstBillingConfig ? true : billingIsDefaultInput,
 														billingEnabled: billingEnabledInput,
 														billingIssuerUserId: billingIssuerUserIdInput,
 														billingPayeeId: billingPayeeIdInput,
 														billingPayeeType: billingPayeeTypeInput,
-														billingDueDays: Number.isFinite(dueDays) ? dueDays : 14,
+														billingDueDays: parsedBillingDueDays,
 													}
 													if (editingBillingConfigId) {
 														updateBillingConfigMutation.mutate(
@@ -978,41 +1056,99 @@ export default function TaxBillsPage() {
 									? billStatusError.message
 									: 'Failed to load bill status report'}
 							</div>
-						) : billStatusReport.length === 0 ? (
+						) : billStatusReportRows.length === 0 ? (
 							<div className="py-8 text-sm text-muted-foreground">
 								No bill status data matched the current scope.
 							</div>
 						) : (
-							<Table>
-								<TableHeader>
-									<TableRow>
-										<TableHead>Corporation</TableHead>
-										<TableHead>Status</TableHead>
-										<TableHead>Assessments</TableHead>
-										<TableHead>Tax Due</TableHead>
-										<TableHead>Tax Paid</TableHead>
-										<TableHead>Delta</TableHead>
-									</TableRow>
-								</TableHeader>
-								<TableBody>
-									{billStatusReport.map((row) => (
-										<TableRow key={`${row.corporationId}-${row.billStatus}`}>
-											<TableCell className="font-medium">
-												<TaxEntityDisplay entityId={row.corporationId} entityNames={entityNames} />
-											</TableCell>
-											<TableCell>
-												<Badge variant={billStatusBadgeVariant(row.billStatus)}>
-													{row.billStatus}
-												</Badge>
-											</TableCell>
-											<TableCell>{formatTaxNumber(row.assessmentCount)}</TableCell>
-											<TableCell>{formatTaxIskFull(row.taxDue)}</TableCell>
-											<TableCell>{formatTaxIskFull(row.taxPaid)}</TableCell>
-											<TableCell>{formatTaxIskFull(row.taxDelta)}</TableCell>
+							<div className="space-y-3">
+								<Table>
+									<TableHeader>
+										<TableRow>
+											<TableHead>Corporation</TableHead>
+											<TableHead>Status</TableHead>
+											<TableHead>Issue Date</TableHead>
+											<TableHead>Due Date</TableHead>
+											<TableHead>Assessments</TableHead>
+											<TableHead>Tax Due</TableHead>
+											<TableHead>Tax Paid</TableHead>
+											<TableHead>Delta</TableHead>
 										</TableRow>
-									))}
-								</TableBody>
-							</Table>
+									</TableHeader>
+									<TableBody>
+										{billStatusReportRows.map((row) => (
+											<TableRow key={`${row.corporationId}-${row.billStatus}`}>
+												<TableCell className="font-medium">
+													<TaxEntityDisplay
+														entityId={row.corporationId}
+														entityNames={entityNames}
+													/>
+												</TableCell>
+												<TableCell>
+													<Badge variant={billStatusBadgeVariant(row.billStatus)}>
+														{row.billStatus}
+													</Badge>
+												</TableCell>
+												<TableCell>{formatTaxDateTime(row.issueDate)}</TableCell>
+												<TableCell>{formatTaxDateTime(row.dueDate)}</TableCell>
+												<TableCell>{formatTaxNumber(row.assessmentCount)}</TableCell>
+												<TableCell>{formatTaxIskFull(row.taxDue)}</TableCell>
+												<TableCell>{formatTaxIskFull(row.taxPaid)}</TableCell>
+												<TableCell>{formatTaxIskFull(row.taxDelta)}</TableCell>
+											</TableRow>
+										))}
+									</TableBody>
+								</Table>
+								<div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
+									<div>
+										Page {billStatusPage + 1} of {billStatusPageCount} (
+										{formatTaxNumber(billStatusTotalRows)} rows)
+									</div>
+									<div className="flex items-center gap-2">
+										<Select
+											value={String(billStatusPageSize)}
+											onValueChange={(value) => {
+												const parsed = Number.parseInt(value, 10)
+												if (!Number.isFinite(parsed)) return
+												setBillStatusPageSize(parsed)
+												setBillStatusPage(0)
+											}}
+										>
+											<SelectTrigger className="h-9 w-[110px]">
+												<SelectValue />
+											</SelectTrigger>
+											<SelectContent>
+												<SelectItem value="25">25 / page</SelectItem>
+												<SelectItem value="50">50 / page</SelectItem>
+												<SelectItem value="100">100 / page</SelectItem>
+												<SelectItem value="200">200 / page</SelectItem>
+											</SelectContent>
+										</Select>
+										<Button
+											type="button"
+											variant="outline"
+											size="sm"
+											onClick={() => setBillStatusPage((value) => Math.max(0, value - 1))}
+											disabled={billStatusPage === 0}
+										>
+											Previous
+										</Button>
+										<Button
+											type="button"
+											variant="outline"
+											size="sm"
+											onClick={() =>
+												setBillStatusPage((value) =>
+													Math.min(Math.max(0, billStatusPageCount - 1), value + 1)
+												)
+											}
+											disabled={billStatusPage + 1 >= billStatusPageCount}
+										>
+											Next
+										</Button>
+									</div>
+								</div>
+							</div>
 						)}
 					</CardContent>
 				</Card>

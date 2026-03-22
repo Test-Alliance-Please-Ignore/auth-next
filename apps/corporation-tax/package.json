@@ -10,7 +10,6 @@
 		"check:types": "run-tsc",
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "tsx ./src/scripts/migrate.ts",
-		"db:push": "drizzle-kit push",
 		"db:studio": "drizzle-kit studio",
 		"deploy": "run-wrangler-deploy",
 		"dev": "run-vite-dev",

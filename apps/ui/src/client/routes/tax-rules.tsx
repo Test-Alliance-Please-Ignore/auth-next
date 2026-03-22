@@ -246,7 +246,6 @@ function RuleRowEditor({
 			isActive?: boolean
 			appliesToRefType?: string | null
 			taxRateBps?: number
-			label?: string
 		}
 	) => void
 	onDelete: (ruleSetId: string) => void
@@ -346,7 +345,6 @@ function RuleRowEditor({
 											isActive: form.isActive,
 											appliesToRefType: form.refType || null,
 											taxRateBps: rateBps,
-											label: rule.label,
 										})
 										setIsEditing(false)
 									}}
@@ -406,7 +404,7 @@ export default function TaxRulesPage() {
 	const canManage = globalCapabilities?.global.canManage ?? false
 
 	const { data: corporationAccess } = useCorporationAccess()
-	const { data: taxCorporations = [] } = useTaxCorporations({ limit: 300, enabled: canManage })
+	const { data: taxCorporations = [] } = useTaxCorporations({ limit: 1000, enabled: canManage })
 	const {
 		data: ruleGroups = [],
 		isLoading: ruleGroupsLoading,
@@ -889,7 +887,6 @@ export default function TaxRulesPage() {
 																isActive: createRuleForm.isActive,
 																appliesToRefType: createRuleForm.refType || undefined,
 																taxRateBps: rateBps,
-																label: `${createRuleForm.name.trim()} rule`,
 															},
 														},
 														{

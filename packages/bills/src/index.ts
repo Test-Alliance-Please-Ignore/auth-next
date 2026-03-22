@@ -361,6 +361,9 @@ export interface Bills {
 	/** Get bill status timeline events */
 	getBillTimeline(billId: string): Promise<BillStatusEvent[]>
 
+	/** Get bill status timeline events for multiple bills in one call */
+	getBillTimelines(billIds: string[]): Promise<Record<string, BillStatusEvent[]>>
+
 	/** Update a bill (draft only, issuer only) */
 	updateBill(userId: string, billId: string, data: UpdateBillInput): Promise<Bill>
 

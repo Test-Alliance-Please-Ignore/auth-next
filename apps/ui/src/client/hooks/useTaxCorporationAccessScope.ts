@@ -7,7 +7,7 @@ import { useEntityNames } from '@/hooks/useEntityNames'
 export function useTaxCorporationAccessScope(allowGlobalScope: boolean) {
 	const { data: corporationAccess, isLoading: corporationAccessLoading } = useCorporationAccess()
 	const { data: taxCorporations = [], isLoading: taxCorporationsLoading } = useTaxCorporations({
-		limit: 200,
+		limit: 1000,
 		enabled: true,
 	})
 	const unresolvedCorporationIds = useMemo(() => {

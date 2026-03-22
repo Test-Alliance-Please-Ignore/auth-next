@@ -421,12 +421,8 @@ export function useCreateTaxRuleSet() {
 				ruleGroupId: string
 				priority?: number
 				isActive?: boolean
-				effectiveFrom?: string
-				effectiveTo?: string
 				appliesToRefType?: string
-				partyType?: string
 				taxRateBps: number
-				label: string
 			}
 		}) => corporationTaxApi.createRuleSet(input.corporationId, input.ruleSet),
 		onSuccess: () => {
@@ -447,9 +443,7 @@ export function useUpdateTaxRuleSet() {
 				name?: string
 				priority?: number
 				appliesToRefType?: string | null
-				partyType?: string | null
 				taxRateBps?: number
-				label?: string
 			}
 		}) => corporationTaxApi.updateRuleSet(input.ruleSetId, input.updates),
 		onSuccess: () => {
@@ -1001,7 +995,7 @@ export function useCreateTaxBillingConfig() {
 				billingEnabled?: boolean
 				billingIssuerUserId?: string
 				billingPayeeId?: string
-				billingPayeeType?: '' | 'character' | 'corporation'
+				billingPayeeType?: 'character' | 'corporation'
 				billingDueDays?: number
 			}
 		}) => corporationTaxApi.createBillingConfig(input.corporationId, input.config),
@@ -1024,7 +1018,7 @@ export function useUpdateTaxBillingConfig() {
 				billingEnabled?: boolean
 				billingIssuerUserId?: string
 				billingPayeeId?: string
-				billingPayeeType?: '' | 'character' | 'corporation'
+				billingPayeeType?: 'character' | 'corporation'
 				billingDueDays?: number
 			}
 		}) => corporationTaxApi.updateBillingConfig(input.corporationId, input.configId, input.updates),

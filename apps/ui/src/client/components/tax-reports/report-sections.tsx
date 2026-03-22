@@ -68,8 +68,8 @@ export function TotalTaxesReportSection(props: {
 }) {
 	const [page, setPage] = useState(0)
 	const [pageSize, setPageSize] = useState(REPORT_PAGE_SIZE_DEFAULT)
-	const [sortBy, setSortBy] = useState('taxDue')
-	const [sortDir, setSortDir] = useState<SortDirection>('desc')
+	const [sortBy, setSortBy] = useState('dueDate')
+	const [sortDir, setSortDir] = useState<SortDirection>('asc')
 	useResetPageOnFilterChange(setPage, props.filters)
 
 	useEffect(() => {
@@ -98,7 +98,7 @@ export function TotalTaxesReportSection(props: {
 			entityNames={entityNames}
 			sorting={toSorting(sortBy, sortDir)}
 			onSortingChange={(sorting) =>
-				applySorting(sorting, 'taxDue', 'desc', setSortBy, setSortDir, () => setPage(0))
+				applySorting(sorting, 'dueDate', 'asc', setSortBy, setSortDir, () => setPage(0))
 			}
 			pagination={{ pageIndex: page, pageSize }}
 			onPaginationChange={(next) => {
@@ -393,24 +393,27 @@ export function BillStatusReportSection(props: {
 	enabled: boolean
 	onSortChange?: (sortBy: string, sortDir: SortDirection) => void
 }) {
-	const [sortBy, setSortBy] = useState('taxDue')
-	const [sortDir, setSortDir] = useState<SortDirection>('desc')
+	const [page, setPage] = useState(0)
+	const [pageSize, setPageSize] = useState(REPORT_PAGE_SIZE_DEFAULT)
+	const [sortBy, setSortBy] = useState('dueDate')
+	const [sortDir, setSortDir] = useState<SortDirection>('asc')
+	useResetPageOnFilterChange(setPage, props.filters)
 
 	useEffect(() => {
 		props.onSortChange?.(sortBy, sortDir)
 	}, [sortBy, sortDir])
 
-	const {
-		data: rows = [],
-		isLoading,
-		error,
-	} = useTaxBillStatusReport({
+	const { data, isLoading, error } = useTaxBillStatusReport({
 		...props.filters,
-		limit: 100,
+		limit: pageSize,
+		offset: page * pageSize,
 		sortBy,
 		sortDir,
 		enabled: props.enabled,
 	})
+	const rows = data?.rows ?? []
+	const totalRows = data?.totalRows ?? 0
+	const pageCount = Math.max(1, Math.ceil(totalRows / pageSize))
 	const entityIds = useMemo(() => rows.map((row) => row.corporationId), [rows])
 	const { data: entityNames = {} } = useEntityNames(entityIds, { enabled: props.enabled })
 
@@ -421,7 +424,16 @@ export function BillStatusReportSection(props: {
 			error={error}
 			entityNames={entityNames}
 			sorting={toSorting(sortBy, sortDir)}
-			onSortingChange={(sorting) => applySorting(sorting, 'taxDue', 'desc', setSortBy, setSortDir)}
+			onSortingChange={(sorting) =>
+				applySorting(sorting, 'dueDate', 'asc', setSortBy, setSortDir, () => setPage(0))
+			}
+			pagination={{ pageIndex: page, pageSize }}
+			onPaginationChange={(next) => {
+				setPageSize(next.pageSize)
+				setPage(next.pageSize === pageSize ? Math.max(0, next.pageIndex) : 0)
+			}}
+			pageCount={pageCount}
+			rowCount={totalRows}
 		/>
 	)
 }

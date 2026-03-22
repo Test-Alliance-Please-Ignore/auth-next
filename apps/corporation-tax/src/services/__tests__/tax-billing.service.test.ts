@@ -148,18 +148,20 @@ describe('TaxBillingService scope guardrails', () => {
 		])
 
 		const billsStub = {
-			getBillTimeline: vi.fn().mockResolvedValue([
-				{
-					id: 'event-1',
-					billId: 'bill-corp',
-					eventType: 'issued',
-					fromStatus: 'draft',
-					toStatus: 'issued',
-					actorUserId: 'actor-1',
-					metadata: null,
-					createdAt: new Date('2026-04-01T00:00:00.000Z'),
-				},
-			]),
+			getBillTimelines: vi.fn().mockResolvedValue({
+				'bill-corp': [
+					{
+						id: 'event-1',
+						billId: 'bill-corp',
+						eventType: 'issued',
+						fromStatus: 'draft',
+						toStatus: 'issued',
+						actorUserId: 'actor-1',
+						metadata: null,
+						createdAt: new Date('2026-04-01T00:00:00.000Z'),
+					},
+				],
+			}),
 		}
 		getStubMock.mockReturnValue(billsStub)
 
@@ -168,8 +170,8 @@ describe('TaxBillingService scope guardrails', () => {
 
 		expect(result).toHaveLength(1)
 		expect(result[0]?.assessment.id).toBe('assessment-corp')
-		expect(billsStub.getBillTimeline).toHaveBeenCalledTimes(1)
-		expect(billsStub.getBillTimeline).toHaveBeenCalledWith('bill-corp')
+		expect(billsStub.getBillTimelines).toHaveBeenCalledTimes(1)
+		expect(billsStub.getBillTimelines).toHaveBeenCalledWith(['bill-corp'])
 	})
 
 	it('skips non-corporation rows during bulk status sync', async () => {

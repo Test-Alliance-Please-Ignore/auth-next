@@ -167,7 +167,7 @@ export default function TaxMemberSummaryPage() {
 	const { data: corporationAccess } = useCorporationAccess()
 
 	const { data: corporationSettings = [] } = useTaxCorporations({
-		limit: 200,
+		limit: 1000,
 		enabled: canReadWithUrn,
 	})
 	const unresolvedCorporationIds = useMemo(() => {

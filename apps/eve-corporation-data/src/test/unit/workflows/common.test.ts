@@ -94,21 +94,26 @@ describe('workflow common tax projection retry utilities', () => {
 		const store = new Map<string, string>()
 		const env = createEnv(store)
 		const input = createInput()
+		const triggerProjectionRefreshFromWalletSync = vi.fn().mockResolvedValue({
+			corporationId: input.corporationId,
+			triggered: false,
+			reason: 'up_to_date',
+		})
 
 		await recordTaxProjectionRetryIntent(env, input.corporationId, 'director-1', input, 'boom')
 
 		getCorporationTaxStubMock.mockReturnValue({
-			triggerProjectionRefreshFromWalletSync: vi.fn().mockResolvedValue({
-				corporationId: input.corporationId,
-				triggered: false,
-				reason: 'up_to_date',
-			}),
+			triggerProjectionRefreshFromWalletSync,
 		})
 
 		const replay = await replayTaxProjectionRetryIntent(env, input.corporationId)
 		expect(replay.replayed).toBe(true)
 		expect(replay.succeeded).toBe(true)
 		expect(replay.reason).toBe('up_to_date')
+		expect(triggerProjectionRefreshFromWalletSync).toHaveBeenCalledTimes(1)
+		const replayedInput = triggerProjectionRefreshFromWalletSync.mock.calls[0]?.[1]
+		expect(replayedInput.triggeredAt).toBeInstanceOf(Date)
+		expect(replayedInput.walletJournal?.maxDate).toBeInstanceOf(Date)
 		expect(store.has(`tax-projection-retry-intent:${input.corporationId}`)).toBe(false)
 	})
 

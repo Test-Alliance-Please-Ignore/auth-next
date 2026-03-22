@@ -11,6 +11,9 @@ import type {
 } from '@repo/corporation-tax'
 import type { CorporationTaxDb } from '../db'
 
+const RULE_PRIORITY_MIN = 0
+const RULE_PRIORITY_MAX = 100
+
 export class TaxRulesService {
 	constructor(private db: CorporationTaxDb) {}
 
@@ -18,17 +21,23 @@ export class TaxRulesService {
 		if (!input.name.trim()) {
 			throw new Error('Rule set name is required')
 		}
+		if (input.priority !== undefined) {
+			if (
+				!Number.isInteger(input.priority) ||
+				input.priority < RULE_PRIORITY_MIN ||
+				input.priority > RULE_PRIORITY_MAX
+			) {
+				throw new Error(
+					`Rule priority must be an integer between ${RULE_PRIORITY_MIN} and ${RULE_PRIORITY_MAX}`
+				)
+			}
+		}
 		if (!Number.isInteger(input.taxRateBps) || input.taxRateBps < 0 || input.taxRateBps > 10_000) {
 			throw new Error('Rule action taxRateBps must be an integer between 0 and 10000')
-		}
-		if (!input.label.trim()) {
-			throw new Error('Rule action label is required')
 		}
 		if (input.appliesToRefType && !isTaxIncomeRefType(input.appliesToRefType)) {
 			throw new Error('Rule appliesToRefType must be a valid tax income ref type')
 		}
-
-		const now = new Date()
 
 		const ruleGroup = await this.db.query.taxRuleGroups.findFirst({
 			where: eq(taxRuleGroups.id, input.ruleGroupId),
@@ -44,12 +53,8 @@ export class TaxRulesService {
 				name: input.name.trim(),
 				priority: input.priority ?? 0,
 				isActive: input.isActive ?? true,
-				effectiveFrom: input.effectiveFrom ?? now,
-				effectiveTo: input.effectiveTo ?? null,
 				appliesToRefType: input.appliesToRefType ?? null,
-				partyType: input.partyType ?? null,
 				taxRateBps: input.taxRateBps,
-				label: input.label.trim(),
 				createdBy: actorUserId,
 			})
 			.returning({ id: taxRuleSets.id })
@@ -76,25 +81,25 @@ export class TaxRulesService {
 			updates.name = name
 		}
 		if (input.priority !== undefined) {
+			if (
+				!Number.isInteger(input.priority) ||
+				input.priority < RULE_PRIORITY_MIN ||
+				input.priority > RULE_PRIORITY_MAX
+			) {
+				throw new Error(
+					`Rule priority must be an integer between ${RULE_PRIORITY_MIN} and ${RULE_PRIORITY_MAX}`
+				)
+			}
 			updates.priority = input.priority
 		}
 		if (input.isActive !== undefined) {
 			updates.isActive = input.isActive
-		}
-		if (input.effectiveFrom !== undefined) {
-			updates.effectiveFrom = input.effectiveFrom
-		}
-		if (input.effectiveTo !== undefined) {
-			updates.effectiveTo = input.effectiveTo
 		}
 		if (input.appliesToRefType !== undefined) {
 			if (input.appliesToRefType && !isTaxIncomeRefType(input.appliesToRefType)) {
 				throw new Error('Rule appliesToRefType must be a valid tax income ref type')
 			}
 			updates.appliesToRefType = input.appliesToRefType
-		}
-		if (input.partyType !== undefined) {
-			updates.partyType = input.partyType
 		}
 		if (input.taxRateBps !== undefined) {
 			if (
@@ -105,12 +110,6 @@ export class TaxRulesService {
 				throw new Error('Rule action taxRateBps must be an integer between 0 and 10000')
 			}
 			updates.taxRateBps = input.taxRateBps
-		}
-		if (input.label !== undefined) {
-			if (!input.label.trim()) {
-				throw new Error('Rule action label is required')
-			}
-			updates.label = input.label.trim()
 		}
 
 		const [updated] = await this.db
@@ -207,12 +206,8 @@ export class TaxRulesService {
 			name: row.name,
 			priority: row.priority,
 			isActive: row.isActive,
-			effectiveFrom: row.effectiveFrom,
-			effectiveTo: row.effectiveTo,
 			appliesToRefType: row.appliesToRefType,
-			partyType: row.partyType,
 			taxRateBps: row.taxRateBps,
-			label: row.label,
 			createdBy: row.createdBy,
 			createdAt: row.createdAt,
 			updatedAt: row.updatedAt,

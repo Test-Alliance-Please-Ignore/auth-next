@@ -15,10 +15,101 @@ const TAX_PROJECTION_RETRY_TTL_SECONDS = 7 * 24 * 60 * 60
 type TaxProjectionRetryIntent = {
 	corporationId: string
 	actorUserId: string
-	input: TriggerTaxProjectionRefreshInput
+	input: SerializedTaxProjectionRefreshInput
 	lastError: string
 	recordedAt: string
 	retryCount: number
+}
+
+type SerializedTaxWalletSourceWatermark = {
+	maxId: string | null
+	maxDate: string | null
+	fetchedCount: number
+}
+
+type SerializedTaxProjectionRefreshInput = Omit<
+	TriggerTaxProjectionRefreshInput,
+	'triggeredAt' | 'walletJournal' | 'walletTransactions'
+> & {
+	triggeredAt: string
+	walletJournal?: SerializedTaxWalletSourceWatermark | null
+	walletTransactions?: SerializedTaxWalletSourceWatermark | null
+}
+
+function toIsoDateString(value: Date | string | null | undefined): string | null {
+	if (value === null || value === undefined) {
+		return null
+	}
+	const parsed = value instanceof Date ? value : new Date(value)
+	return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString()
+}
+
+function toDate(value: Date | string | null | undefined): Date | null {
+	if (value === null || value === undefined) {
+		return null
+	}
+	const parsed = value instanceof Date ? value : new Date(value)
+	return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+function serializeTaxProjectionRefreshInput(
+	input: TriggerTaxProjectionRefreshInput
+): SerializedTaxProjectionRefreshInput {
+	const triggeredAt = toIsoDateString(input.triggeredAt)
+	if (!triggeredAt) {
+		throw new Error('Invalid tax projection retry input: triggeredAt is not a valid date')
+	}
+
+	return {
+		corporationId: input.corporationId,
+		upstreamRunId: input.upstreamRunId,
+		triggeredAt,
+		walletJournal: input.walletJournal
+			? {
+					fetchedCount: input.walletJournal.fetchedCount,
+					maxId: input.walletJournal.maxId,
+					maxDate: toIsoDateString(input.walletJournal.maxDate),
+				}
+			: (input.walletJournal ?? null),
+		walletTransactions: input.walletTransactions
+			? {
+					fetchedCount: input.walletTransactions.fetchedCount,
+					maxId: input.walletTransactions.maxId,
+					maxDate: toIsoDateString(input.walletTransactions.maxDate),
+				}
+			: (input.walletTransactions ?? null),
+		includeCharacterWallets: input.includeCharacterWallets,
+	}
+}
+
+function hydrateTaxProjectionRefreshInput(
+	input: SerializedTaxProjectionRefreshInput
+): TriggerTaxProjectionRefreshInput {
+	const triggeredAt = toDate(input.triggeredAt)
+	if (!triggeredAt) {
+		throw new Error('Invalid tax projection retry input: triggeredAt is not a valid date')
+	}
+
+	return {
+		corporationId: input.corporationId,
+		upstreamRunId: input.upstreamRunId,
+		triggeredAt,
+		walletJournal: input.walletJournal
+			? {
+					fetchedCount: input.walletJournal.fetchedCount,
+					maxId: input.walletJournal.maxId,
+					maxDate: toDate(input.walletJournal.maxDate),
+				}
+			: (input.walletJournal ?? null),
+		walletTransactions: input.walletTransactions
+			? {
+					fetchedCount: input.walletTransactions.fetchedCount,
+					maxId: input.walletTransactions.maxId,
+					maxDate: toDate(input.walletTransactions.maxDate),
+				}
+			: (input.walletTransactions ?? null),
+		includeCharacterWallets: input.includeCharacterWallets,
+	}
 }
 
 /**
@@ -133,7 +224,7 @@ export async function recordTaxProjectionRetryIntent(
 	const payload: TaxProjectionRetryIntent = {
 		corporationId,
 		actorUserId,
-		input,
+		input: serializeTaxProjectionRefreshInput(input),
 		lastError: errorMessage,
 		recordedAt: new Date().toISOString(),
 		retryCount,
@@ -172,8 +263,9 @@ export async function replayTaxProjectionRetryIntent(
 	}
 
 	const intent = JSON.parse(raw) as TaxProjectionRetryIntent
+	const hydratedInput = hydrateTaxProjectionRefreshInput(intent.input)
 	try {
-		const result = await triggerTaxProjectionRefresh(env, intent.actorUserId, intent.input)
+		const result = await triggerTaxProjectionRefresh(env, intent.actorUserId, hydratedInput)
 		await clearTaxProjectionRetryIntent(env, corporationId)
 		return {
 			replayed: true,
@@ -187,7 +279,7 @@ export async function replayTaxProjectionRetryIntent(
 			env,
 			corporationId,
 			intent.actorUserId,
-			intent.input,
+			hydratedInput,
 			message
 		)
 		return {

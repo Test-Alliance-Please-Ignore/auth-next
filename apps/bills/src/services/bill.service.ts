@@ -145,6 +145,47 @@ export class BillService {
 		}))
 	}
 
+	async getBillTimelines(billIds: string[]): Promise<Record<string, BillStatusEvent[]>> {
+		const normalizedBillIds = Array.from(new Set(billIds.map((billId) => billId.trim()))).filter(
+			Boolean
+		)
+		if (normalizedBillIds.length === 0) {
+			return {}
+		}
+
+		const events = await this.db.query.billStatusEvents.findMany({
+			where: inArray(billStatusEvents.billId, normalizedBillIds),
+			orderBy: (billStatusEvents, { asc }) => [
+				asc(billStatusEvents.billId),
+				asc(billStatusEvents.createdAt),
+			],
+		})
+
+		const timelinesByBillId: Record<string, BillStatusEvent[]> = {}
+		for (const billId of normalizedBillIds) {
+			timelinesByBillId[billId] = []
+		}
+
+		for (const event of events) {
+			const bucket = timelinesByBillId[event.billId]
+			if (!bucket) {
+				continue
+			}
+			bucket.push({
+				id: event.id,
+				billId: event.billId,
+				eventType: event.eventType,
+				fromStatus: event.fromStatus,
+				toStatus: event.toStatus,
+				actorUserId: event.actorUserId,
+				metadata: event.metadata ?? null,
+				createdAt: event.createdAt,
+			})
+		}
+
+		return timelinesByBillId
+	}
+
 	/**
 	 * Get a specific bill with authorization check
 	 */
@@ -284,23 +325,23 @@ export class BillService {
 			throw new Error('Only draft bills can be issued')
 		}
 
-		const [updated] = await this.db
-			.update(bills)
-			.set({
-				status: 'issued',
-				updatedAt: new Date(),
-			})
-			.where(eq(bills.id, billId))
-			.returning()
-
-		await this.createStatusEvent({
-			billId: updated.id,
-			eventType: 'issued',
+		const transitioned = await this.applyStatusTransitionAtomic({
+			billId,
 			fromStatus: bill.status,
-			toStatus: updated.status,
+			toStatus: 'issued',
+			eventType: 'issued',
 			actorUserId: userId,
 		})
+		if (!transitioned) {
+			throw new Error('Bill status changed during issue; please retry')
+		}
 
+		const updated = await this.db.query.bills.findFirst({
+			where: eq(bills.id, billId),
+		})
+		if (!updated) {
+			throw new Error('Bill not found after issue')
+		}
 		return this.toBillResponse(updated)
 	}
 
@@ -328,23 +369,23 @@ export class BillService {
 			throw new Error('Bill is already cancelled')
 		}
 
-		const [updated] = await this.db
-			.update(bills)
-			.set({
-				status: 'cancelled',
-				updatedAt: new Date(),
-			})
-			.where(eq(bills.id, billId))
-			.returning()
-
-		await this.createStatusEvent({
-			billId: updated.id,
-			eventType: 'cancelled',
+		const transitioned = await this.applyStatusTransitionAtomic({
+			billId,
 			fromStatus: bill.status,
-			toStatus: updated.status,
+			toStatus: 'cancelled',
+			eventType: 'cancelled',
 			actorUserId: userId,
 		})
+		if (!transitioned) {
+			throw new Error('Bill status changed during cancel; please retry')
+		}
 
+		const updated = await this.db.query.bills.findFirst({
+			where: eq(bills.id, billId),
+		})
+		if (!updated) {
+			throw new Error('Bill not found after cancel')
+		}
 		return this.toBillResponse(updated)
 	}
 
@@ -523,22 +564,23 @@ export class BillService {
 			return
 		}
 
-		await this.db
-			.update(bills)
-			.set({
-				status: 'paid',
-				paidAt: new Date(),
-				updatedAt: new Date(),
-			})
-			.where(eq(bills.id, billId))
-
-		await this.createStatusEvent({
+		const transitioned = await this.applyStatusTransitionAtomic({
 			billId,
-			eventType: 'paid',
 			fromStatus: existingBill.status,
 			toStatus: 'paid',
+			eventType: 'paid',
 			actorUserId: null,
+			paidAt: new Date(),
 		})
+		if (!transitioned) {
+			const currentBill = await this.db.query.bills.findFirst({
+				where: eq(bills.id, billId),
+			})
+			if (currentBill?.status === 'paid') {
+				return
+			}
+			throw new Error('Bill status changed during payment finalization; please retry')
+		}
 	}
 	/**
 	 * Get bill statistics for a user
@@ -677,6 +719,62 @@ export class BillService {
 		})
 	}
 
+	private async applyStatusTransitionAtomic(input: {
+		billId: string
+		fromStatus: BillStatus
+		toStatus: BillStatus
+		eventType: BillStatusEventType
+		actorUserId: string | null
+		metadata?: BillMetadata | null
+		paidAt?: Date
+		lateFee?: string
+	}): Promise<boolean> {
+		const transitionAt = new Date()
+		const paidAtSql = input.paidAt ? sql`, paid_at = ${input.paidAt}` : sql``
+		const lateFeeSql = input.lateFee !== undefined ? sql`, late_fee = ${input.lateFee}` : sql``
+		const metadataSql = input.metadata
+			? sql`${JSON.stringify(input.metadata)}::jsonb`
+			: sql`null::jsonb`
+
+		const result = await this.db.execute(sql`
+			with updated as (
+				update bills
+				set
+					status = ${input.toStatus}::bill_status,
+					updated_at = ${transitionAt}
+					${paidAtSql}
+					${lateFeeSql}
+				where id = ${input.billId}
+					and status = ${input.fromStatus}::bill_status
+				returning id
+			),
+			inserted as (
+				insert into bill_status_events (
+					id,
+					bill_id,
+					event_type,
+					from_status,
+					to_status,
+					actor_user_id,
+					metadata
+				)
+				select
+					${generateUuidV7()}::uuid,
+					u.id,
+					${input.eventType}::bill_status_event_type,
+					${input.fromStatus}::bill_status,
+					${input.toStatus}::bill_status,
+					${input.actorUserId},
+					${metadataSql}
+				from updated u
+			)
+			select id
+			from updated
+		`)
+
+		return result.rows.length > 0
+	}
+
 	/**
 	 * Update late fee if bill is overdue
 	 * Also updates status to 'overdue' if issued and past due date
@@ -695,28 +793,24 @@ export class BillService {
 				lateFeeCompounding: bill.lateFeeCompounding,
 			})
 
-			const [updated] = await this.db
-				.update(bills)
-				.set({
-					status: 'overdue',
-					lateFee,
-					updatedAt: now,
+			const transitioned = await this.applyStatusTransitionAtomic({
+				billId: bill.id,
+				fromStatus: 'issued',
+				toStatus: 'overdue',
+				eventType: 'overdue',
+				actorUserId: null,
+				metadata: {
+					dueDate: bill.dueDate.toISOString(),
+				},
+				lateFee,
+			})
+			if (transitioned) {
+				const updated = await this.db.query.bills.findFirst({
+					where: eq(bills.id, bill.id),
 				})
-				.where(and(eq(bills.id, bill.id), eq(bills.status, 'issued')))
-				.returning()
-
-			if (updated) {
-				await this.createStatusEvent({
-					billId: updated.id,
-					eventType: 'overdue',
-					fromStatus: 'issued',
-					toStatus: 'overdue',
-					actorUserId: null,
-					metadata: {
-						dueDate: bill.dueDate.toISOString(),
-					},
-				})
-				return updated
+				if (updated) {
+					return updated
+				}
 			}
 
 			const current = await this.db.query.bills.findFirst({

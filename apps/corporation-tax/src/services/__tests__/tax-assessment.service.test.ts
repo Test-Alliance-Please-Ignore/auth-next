@@ -241,12 +241,8 @@ describe('TaxAssessmentService', () => {
 							name: 'High Priority',
 							priority: 200,
 							isActive: true,
-							effectiveFrom: new Date('2026-01-01T00:00:00.000Z'),
-							effectiveTo: null,
 							appliesToRefType: 'bounty_prizes',
-							partyType: null,
 							taxRateBps: 2000,
-							label: 'High',
 							createdBy: 'admin-1',
 							createdAt: new Date('2026-01-05T00:00:00.000Z'),
 							updatedAt: new Date('2026-01-06T00:00:00.000Z'),
@@ -257,12 +253,8 @@ describe('TaxAssessmentService', () => {
 							name: 'Low Priority',
 							priority: 100,
 							isActive: true,
-							effectiveFrom: new Date('2026-01-01T00:00:00.000Z'),
-							effectiveTo: null,
 							appliesToRefType: 'bounty_prizes',
-							partyType: null,
 							taxRateBps: 500,
-							label: 'Low',
 							createdBy: 'admin-1',
 							createdAt: new Date('2026-01-04T00:00:00.000Z'),
 							updatedAt: new Date('2026-01-04T00:00:00.000Z'),
@@ -372,12 +364,8 @@ describe('TaxAssessmentService', () => {
 				name: 'Low Priority Active',
 				priority: 100,
 				isActive: true,
-				effectiveFrom: new Date('2026-01-01T00:00:00.000Z'),
-				effectiveTo: null,
 				appliesToRefType: 'bounty_prizes',
-				partyType: null,
 				taxRateBps: 500,
-				label: 'Low Active',
 				createdBy: 'admin-1',
 				createdAt: new Date('2026-01-04T00:00:00.000Z'),
 				updatedAt: new Date('2026-01-04T00:00:00.000Z'),
@@ -544,15 +532,11 @@ describe('TaxAssessmentService', () => {
 						{
 							id: 'rule-exempt',
 							ruleGroupId: 'group-1',
-							name: 'Exempt',
+							name: 'Exempt Rule!!! 2026 with REALLY REALLY REALLY LONG NAME ***',
 							priority: 200,
 							isActive: true,
-							effectiveFrom: new Date('2026-01-01T00:00:00.000Z'),
-							effectiveTo: null,
 							appliesToRefType: 'bounty_prizes',
-							partyType: null,
 							taxRateBps: 0,
-							label: 'Exempt',
 							createdBy: 'admin-1',
 							createdAt: new Date('2026-01-05T00:00:00.000Z'),
 							updatedAt: new Date('2026-01-06T00:00:00.000Z'),
@@ -653,7 +637,9 @@ describe('TaxAssessmentService', () => {
 		expect(result.assessment.nonTaxableIncome).toBe('1000')
 		expect(result.assessment.taxDue).toBe('0')
 		expect(insertedAssessmentLines[0]?.taxRateBps).toBe(0)
-		expect(insertedAssessmentLines[0]?.classification).toBe('rule_exempt:Exempt')
+		expect(insertedAssessmentLines[0]?.classification).toBe(
+			'rule_exempt:exempt_rule_2026_with_really_really_really_long'
+		)
 	})
 
 	it('creates scoped assessments for division and character rollups', async () => {

@@ -41,6 +41,7 @@ import type {
 	TaxAssessmentStatus,
 	TaxAssessmentWithBillHistory,
 	TaxAuditLogEntry,
+	TaxBillingPayeeType,
 	TaxBillStatus,
 	TaxBillStatusReportRow,
 	TaxCompliancePoint,
@@ -446,7 +447,9 @@ export interface CorporationTax {
 	/**
 	 * Bill status rollup report for tax assessments.
 	 */
-	getBillStatusReport(filters?: TaxReportWindowFilters): Promise<TaxBillStatusReportRow[]>
+	getBillStatusReport(
+		filters?: TaxReportWindowFilters
+	): Promise<TaxPagedResult<TaxBillStatusReportRow>>
 
 	/**
 	 * Member-level tax summary for one corporation.
@@ -596,6 +599,7 @@ export type {
 	TaxExportStatus,
 	TaxBillStatusReportRow,
 	TaxBillStatus,
+	TaxBillingPayeeType,
 	TaxCorporationEsiAuthStatus,
 	TaxCompliancePoint,
 	TaxCorporationBillingConfig,
