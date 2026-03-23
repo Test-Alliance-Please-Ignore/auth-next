@@ -1,8 +1,12 @@
-import { and, desc, eq, gte, lte } from '@repo/db-utils'
+import { and, desc, eq, gte, lte, sql } from '@repo/db-utils'
 
 import { taxAuditLog } from '../db/schema'
 
-import type { ListTaxAuditLogFilters, TaxAuditLogEntry } from '@repo/corporation-tax'
+import type {
+	ListTaxAuditLogFilters,
+	TaxAuditLogEntry,
+	TaxPagedResult,
+} from '@repo/corporation-tax'
 import type { CorporationTaxDb } from '../db'
 
 export class TaxAuditService {
@@ -24,7 +28,9 @@ export class TaxAuditService {
 		})
 	}
 
-	async listAuditLog(filters: ListTaxAuditLogFilters = {}): Promise<TaxAuditLogEntry[]> {
+	async listAuditLog(
+		filters: ListTaxAuditLogFilters = {}
+	): Promise<TaxPagedResult<TaxAuditLogEntry>> {
 		const conditions = []
 
 		if (filters.corporationId) {
@@ -45,21 +51,31 @@ export class TaxAuditService {
 
 		const limit = Math.min(Math.max(filters.limit ?? 50, 1), 200)
 		const offset = Math.max(filters.offset ?? 0, 0)
-		const rows = await this.db.query.taxAuditLog.findMany({
-			where: conditions.length > 0 ? and(...conditions) : undefined,
-			orderBy: [desc(taxAuditLog.createdAt)],
-			limit,
-			offset,
-		})
+		const where = conditions.length > 0 ? and(...conditions) : undefined
+		const [rows, countRows] = await Promise.all([
+			this.db.query.taxAuditLog.findMany({
+				where,
+				orderBy: [desc(taxAuditLog.createdAt)],
+				limit,
+				offset,
+			}),
+			this.db
+				.select({ count: sql<number>`count(*)` })
+				.from(taxAuditLog)
+				.where(where),
+		])
 
-		return rows.map((row) => ({
-			id: row.id,
-			corporationId: row.corporationId,
-			actorUserId: row.actorUserId,
-			action: row.action,
-			before: row.before,
-			after: row.after,
-			createdAt: row.createdAt,
-		}))
+		return {
+			rows: rows.map((row) => ({
+				id: row.id,
+				corporationId: row.corporationId,
+				actorUserId: row.actorUserId,
+				action: row.action,
+				before: row.before,
+				after: row.after,
+				createdAt: row.createdAt,
+			})),
+			totalRows: Number(countRows[0]?.count ?? 0),
+		}
 	}
 }

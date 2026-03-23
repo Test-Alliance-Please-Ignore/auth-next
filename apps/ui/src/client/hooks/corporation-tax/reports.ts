@@ -110,6 +110,15 @@ export function useTaxMemberSummary(
 		fromDate?: string
 		toDate?: string
 		topRefTypesLimit?: number
+		limit?: number
+		offset?: number
+		sortBy?:
+			| 'characterId'
+			| 'contributionIncome'
+			| 'taxableContributionIncome'
+			| 'assessmentCount'
+			| 'lastAssessmentAt'
+		sortDir?: 'asc' | 'desc'
 		enabled?: boolean
 	}
 ) {

@@ -144,7 +144,7 @@ export interface CorporationTax {
 	/**
 	 * List audit log records for taxation operations.
 	 */
-	listAuditLog(filters?: ListTaxAuditLogFilters): Promise<TaxAuditLogEntry[]>
+	listAuditLog(filters?: ListTaxAuditLogFilters): Promise<TaxPagedResult<TaxAuditLogEntry>>
 
 	/**
 	 * Create a tax rule group.
@@ -465,7 +465,9 @@ export interface CorporationTax {
 	/**
 	 * Member-level tax summary for one corporation.
 	 */
-	getMemberSummaryReport(filters: TaxMemberSummaryReportFilters): Promise<TaxMemberSummary[]>
+	getMemberSummaryReport(
+		filters: TaxMemberSummaryReportFilters
+	): Promise<TaxPagedResult<TaxMemberSummary>>
 
 	/**
 	 * Request a tax report export run.

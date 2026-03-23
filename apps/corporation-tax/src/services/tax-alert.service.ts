@@ -325,7 +325,47 @@ export class TaxAlertService {
 
 	private buildDiscordContent(alert: typeof taxAlerts.$inferSelect): string {
 		const scope = alert.corporationId ? `Corporation ${alert.corporationId}` : 'Global'
-		return `[Tax Alert] ${scope} | ${alert.severity.toUpperCase()} | ${alert.alertType}`
+		const details = this.buildDiscordAlertDetails(alert)
+		return `[Tax Alert] ${scope} | ${alert.severity.toUpperCase()} | ${alert.alertType}${details}`
+	}
+
+	private buildDiscordAlertDetails(alert: typeof taxAlerts.$inferSelect): string {
+		const payload = this.toPayloadObject(alert.payload)
+		if (!payload) {
+			return ''
+		}
+
+		if (alert.alertType === 'unexpected_income_ref_type_detected') {
+			const refType =
+				typeof payload.refType === 'string' && payload.refType.trim().length > 0
+					? payload.refType.trim()
+					: null
+			const entryCountRaw = payload.entryCountInBatch
+			const entryCount =
+				typeof entryCountRaw === 'number'
+					? entryCountRaw
+					: typeof entryCountRaw === 'string'
+						? Number(entryCountRaw)
+						: null
+
+			const refDetail = refType ? `refType=${refType}` : null
+			const countDetail =
+				entryCount !== null && Number.isFinite(entryCount)
+					? `entryCount=${Math.trunc(entryCount)}`
+					: null
+			const detailText = [refDetail, countDetail].filter(Boolean).join(', ')
+
+			return detailText.length > 0 ? ` | ${detailText}` : ''
+		}
+
+		return ''
+	}
+
+	private toPayloadObject(payload: unknown): Record<string, unknown> | null {
+		if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+			return null
+		}
+		return payload as Record<string, unknown>
 	}
 
 	private toAlert(row: typeof taxAlerts.$inferSelect): TaxAlert {

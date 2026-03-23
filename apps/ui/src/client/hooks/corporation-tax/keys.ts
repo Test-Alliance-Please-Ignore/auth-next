@@ -145,6 +145,15 @@ export const corporationTaxKeys = {
 			fromDate?: string
 			toDate?: string
 			topRefTypesLimit?: number
+			limit?: number
+			offset?: number
+			sortBy?:
+				| 'characterId'
+				| 'contributionIncome'
+				| 'taxableContributionIncome'
+				| 'assessmentCount'
+				| 'lastAssessmentAt'
+			sortDir?: 'asc' | 'desc'
 		}
 	) => [...corporationTaxKeys.all, 'member-summary', corporationId, filters] as const,
 	exports: (filters?: {

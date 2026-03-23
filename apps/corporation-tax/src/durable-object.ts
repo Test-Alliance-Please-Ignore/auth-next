@@ -346,7 +346,7 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		)
 	}
 
-	async listAuditLog(filters?: ListTaxAuditLogFilters): Promise<TaxAuditLogEntry[]> {
+	async listAuditLog(filters?: ListTaxAuditLogFilters): Promise<TaxPagedResult<TaxAuditLogEntry>> {
 		return this.rulesRpc.listAuditLog(filters)
 	}
 
@@ -678,7 +678,7 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 
 	async getMemberSummaryReport(
 		filters: TaxMemberSummaryReportFilters
-	): Promise<TaxMemberSummary[]> {
+	): Promise<TaxPagedResult<TaxMemberSummary>> {
 		return this.rpcGuard('getMemberSummaryReport', { filters: this.summarizeForLog(filters) }, () =>
 			this.reportsRpc.getMemberSummaryReport(filters)
 		)

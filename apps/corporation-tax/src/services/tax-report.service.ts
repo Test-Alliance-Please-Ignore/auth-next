@@ -71,11 +71,13 @@ export class TaxReportService {
 	) {}
 
 	async getSummaryReport(filters: TaxRollupReportFilters = {}): Promise<TaxSummaryReport> {
-		const [corporationIds, knownCorporationIds, exclusions] = await Promise.all([
-			this.resolveReportCorporationIds(filters.corporationId),
-			this.listKnownCorporationIds(filters.corporationId),
-			this.listExclusions(filters.corporationId),
-		])
+		const corporationIds = await this.resolveReportCorporationIds(filters.corporationId)
+		const [knownCorporationIds, exclusions] = filters.corporationId
+			? await Promise.all([
+					this.listKnownCorporationIds(filters.corporationId),
+					this.listExclusions(filters.corporationId),
+				])
+			: [corporationIds, []]
 
 		if (corporationIds.length === 0) {
 			return {
@@ -467,7 +469,7 @@ export class TaxReportService {
 	async getMissingEsiKeysReport(
 		filters: ListTaxMissingEsiKeyReportFilters = {}
 	): Promise<TaxPagedResult<TaxMissingEsiKeyRow>> {
-		const corporationIds = await this.resolveReportCorporationIds()
+		const corporationIds = await this.listKnownCorporationIds()
 
 		const missingRows: TaxMissingEsiKeyRow[] = []
 		for (const corporationId of corporationIds) {
@@ -606,7 +608,7 @@ export class TaxReportService {
 
 	async getMemberSummaryReport(
 		filters: TaxMemberSummaryReportFilters
-	): Promise<TaxMemberSummary[]> {
+	): Promise<TaxPagedResult<TaxMemberSummary>> {
 		const requestedCharacterIds = Array.from(
 			new Set<string>((filters.characterIds ?? []).map((value) => value.trim()).filter(Boolean))
 		)
@@ -635,7 +637,10 @@ export class TaxReportService {
 						expiresAtMs: nowMs + this.MEMBER_SUMMARY_CACHE_TTL_MS,
 					})
 				}
-				return this.filterMemberSummaryRowsForRequest(cached.rows, scopedRequestedCharacterIds)
+				return this.toPagedMemberSummaryResult(
+					this.filterMemberSummaryRowsForRequest(cached.rows, scopedRequestedCharacterIds),
+					filters
+				)
 			}
 			this.memberSummaryCacheDeltaChecks += 1
 			const hasRollupUpdates = await this.hasMemberSummaryRollupUpdatesSince(
@@ -652,18 +657,21 @@ export class TaxReportService {
 					projectionVersion: versions.projectionVersion,
 					finalizedVersion: versions.finalizedVersion,
 				})
-				return this.filterMemberSummaryRowsForRequest(cached.rows, scopedRequestedCharacterIds)
+				return this.toPagedMemberSummaryResult(
+					this.filterMemberSummaryRowsForRequest(cached.rows, scopedRequestedCharacterIds),
+					filters
+				)
 			}
 		}
 		this.memberSummaryCacheMisses += 1
 
-		const corporationIds = await this.resolveReportCorporationIds(filters.corporationId)
+		const corporationIds = await this.listKnownCorporationIds(filters.corporationId)
 		if (corporationIds.length === 0) {
-			return []
+			return { rows: [], totalRows: 0 }
 		}
 
 		if (requestedCharacterIds.length > 0 && scopedRequestedCharacterIds.length === 0) {
-			return []
+			return { rows: [], totalRows: 0 }
 		}
 
 		const scopedCharacterIds = memberCharacterIds
@@ -689,7 +697,10 @@ export class TaxReportService {
 					projectionVersion: versions.projectionVersion,
 					finalizedVersion: versions.finalizedVersion,
 				})
-				return this.filterMemberSummaryRowsForRequest(rollupRows, scopedRequestedCharacterIds)
+				return this.toPagedMemberSummaryResult(
+					this.filterMemberSummaryRowsForRequest(rollupRows, scopedRequestedCharacterIds),
+					filters
+				)
 			}
 		}
 
@@ -729,7 +740,7 @@ export class TaxReportService {
 		)
 		const corporationAssessmentIds = corporationAssessments.map((row) => row.id)
 		if (corporationAssessmentIds.length === 0) {
-			return []
+			return { rows: [], totalRows: 0 }
 		}
 
 		const corporationLineRows: Array<typeof taxAssessmentLines.$inferSelect> = []
@@ -755,12 +766,12 @@ export class TaxReportService {
 			}
 		}
 		if (corporationLineRows.length === 0) {
-			return []
+			return { rows: [], totalRows: 0 }
 		}
 
 		const ledgerEntryIds = Array.from(new Set(corporationLineRows.map((row) => row.ledgerEntryId)))
 		if (ledgerEntryIds.length === 0) {
-			return []
+			return { rows: [], totalRows: 0 }
 		}
 
 		const ledgerRows: Array<typeof taxLedgerEntries.$inferSelect> = []
@@ -783,7 +794,12 @@ export class TaxReportService {
 				lastAssessmentAt: Date | null
 				topRefTypeTotals: Map<
 					string,
-					{ lineCount: number; taxableAmountCenti: bigint; taxAmountCenti: bigint }
+					{
+						lineCount: number
+						contributionAmountCenti: bigint
+						taxableAmountCenti: bigint
+						taxAmountCenti: bigint
+					}
 				>
 			}
 		>()
@@ -803,7 +819,12 @@ export class TaxReportService {
 				lastAssessmentAt: null,
 				topRefTypeTotals: new Map<
 					string,
-					{ lineCount: number; taxableAmountCenti: bigint; taxAmountCenti: bigint }
+					{
+						lineCount: number
+						contributionAmountCenti: bigint
+						taxableAmountCenti: bigint
+						taxAmountCenti: bigint
+					}
 				>(),
 			}
 			grouped.set(characterId, created)
@@ -872,10 +893,12 @@ export class TaxReportService {
 			const refType = ledgerRow.refType || 'unknown'
 			const topTotals = summary.topRefTypeTotals.get(refType) ?? {
 				lineCount: 0,
+				contributionAmountCenti: 0n,
 				taxableAmountCenti: 0n,
 				taxAmountCenti: 0n,
 			}
 			topTotals.lineCount += 1
+			topTotals.contributionAmountCenti += amountCenti
 			topTotals.taxableAmountCenti += taxableAmountCenti
 			topTotals.taxAmountCenti += taxAmountCenti
 			summary.topRefTypeTotals.set(refType, topTotals)
@@ -887,22 +910,23 @@ export class TaxReportService {
 				: Array.from(attributedCharacterIds).sort((a, b) => a.localeCompare(b))
 
 		const rows = characterIdsToReturn
-			.map((characterId) => {
+			.map((characterId): TaxMemberSummary | null => {
 				const summary = grouped.get(characterId)
 				if (!summary) {
 					return null
 				}
 				const sortedTopRefTypes = Array.from(summary.topRefTypeTotals.entries()).sort((a, b) => {
-					if (a[1].taxableAmountCenti === b[1].taxableAmountCenti) {
+					if (a[1].contributionAmountCenti === b[1].contributionAmountCenti) {
 						return a[0].localeCompare(b[0])
 					}
-					return a[1].taxableAmountCenti > b[1].taxableAmountCenti ? -1 : 1
+					return a[1].contributionAmountCenti > b[1].contributionAmountCenti ? -1 : 1
 				})
 				const topRefTypes = (
 					topRefTypesLimit ? sortedTopRefTypes.slice(0, topRefTypesLimit) : sortedTopRefTypes
 				).map(([refType, totals]) => ({
 					refType,
 					lineCount: totals.lineCount,
+					contributionAmount: this.formatCenti(totals.contributionAmountCenti),
 					taxableAmount: this.formatCenti(totals.taxableAmountCenti),
 					taxAmount: this.formatCenti(totals.taxAmountCenti),
 				}))
@@ -919,17 +943,17 @@ export class TaxReportService {
 					topRefTypes,
 				}
 			})
-			.filter((row): row is TaxMemberSummary => row !== null)
+			.filter((row): row is NonNullable<typeof row> => row !== null)
 
 		if (includeUnattributedRow) {
 			const unattributed = grouped.get(unattributedKey)
 			if (unattributed) {
 				const sortedTopRefTypes = Array.from(unattributed.topRefTypeTotals.entries()).sort(
 					(a, b) => {
-						if (a[1].taxableAmountCenti === b[1].taxableAmountCenti) {
+						if (a[1].contributionAmountCenti === b[1].contributionAmountCenti) {
 							return a[0].localeCompare(b[0])
 						}
-						return a[1].taxableAmountCenti > b[1].taxableAmountCenti ? -1 : 1
+						return a[1].contributionAmountCenti > b[1].contributionAmountCenti ? -1 : 1
 					}
 				)
 				const topRefTypes = (
@@ -937,6 +961,7 @@ export class TaxReportService {
 				).map(([refType, totals]) => ({
 					refType,
 					lineCount: totals.lineCount,
+					contributionAmount: this.formatCenti(totals.contributionAmountCenti),
 					taxableAmount: this.formatCenti(totals.taxableAmountCenti),
 					taxAmount: this.formatCenti(totals.taxAmountCenti),
 				}))
@@ -963,7 +988,10 @@ export class TaxReportService {
 			finalizedVersion: versions.finalizedVersion,
 		})
 
-		return this.filterMemberSummaryRowsForRequest(rows, scopedRequestedCharacterIds)
+		return this.toPagedMemberSummaryResult(
+			this.filterMemberSummaryRowsForRequest(rows, scopedRequestedCharacterIds),
+			filters
+		)
 	}
 
 	private async hasMemberSummaryRollupUpdatesSince(
@@ -1117,7 +1145,14 @@ export class TaxReportService {
 				contributionIncomeCenti: bigint
 				taxableContributionIncomeCenti: bigint
 				lastAssessmentAt: Date | null
-				byRefType: Map<string, { lineCount: number; taxableContributionIncomeCenti: bigint }>
+				byRefType: Map<
+					string,
+					{
+						lineCount: number
+						contributionIncomeCenti: bigint
+						taxableContributionIncomeCenti: bigint
+					}
+				>
 			}
 		>()
 		for (const row of rolled.values()) {
@@ -1126,7 +1161,14 @@ export class TaxReportService {
 				contributionIncomeCenti: 0n,
 				taxableContributionIncomeCenti: 0n,
 				lastAssessmentAt: null,
-				byRefType: new Map<string, { lineCount: number; taxableContributionIncomeCenti: bigint }>(),
+				byRefType: new Map<
+					string,
+					{
+						lineCount: number
+						contributionIncomeCenti: bigint
+						taxableContributionIncomeCenti: bigint
+					}
+				>(),
 			}
 			current.assessmentCount = Math.max(current.assessmentCount, row.assessmentCount)
 			current.contributionIncomeCenti += row.contributionIncomeCenti
@@ -1138,9 +1180,11 @@ export class TaxReportService {
 					: current.lastAssessmentAt
 			const ref = current.byRefType.get(row.refType) ?? {
 				lineCount: 0,
+				contributionIncomeCenti: 0n,
 				taxableContributionIncomeCenti: 0n,
 			}
 			ref.lineCount += row.lineCount
+			ref.contributionIncomeCenti += row.contributionIncomeCenti
 			ref.taxableContributionIncomeCenti += row.taxableContributionIncomeCenti
 			current.byRefType.set(row.refType, ref)
 			byCharacter.set(row.characterId, current)
@@ -1154,16 +1198,16 @@ export class TaxReportService {
 						.sort((a, b) => a.localeCompare(b))
 
 		const rows = characterIdsToReturn
-			.map((characterId) => {
+			.map((characterId): TaxMemberSummary | null => {
 				const summary = byCharacter.get(characterId)
 				if (!summary) {
 					return null
 				}
 				const sortedTopRefTypes = Array.from(summary.byRefType.entries()).sort((a, b) => {
-					if (a[1].taxableContributionIncomeCenti === b[1].taxableContributionIncomeCenti) {
+					if (a[1].contributionIncomeCenti === b[1].contributionIncomeCenti) {
 						return a[0].localeCompare(b[0])
 					}
-					return a[1].taxableContributionIncomeCenti > b[1].taxableContributionIncomeCenti ? -1 : 1
+					return a[1].contributionIncomeCenti > b[1].contributionIncomeCenti ? -1 : 1
 				})
 				const topRefTypes = (
 					input.topRefTypesLimit
@@ -1172,6 +1216,7 @@ export class TaxReportService {
 				).map(([refType, totals]) => ({
 					refType,
 					lineCount: totals.lineCount,
+					contributionAmount: this.formatCenti(totals.contributionIncomeCenti),
 					taxableAmount: this.formatCenti(totals.taxableContributionIncomeCenti),
 					taxAmount: '0',
 				}))
@@ -1187,16 +1232,16 @@ export class TaxReportService {
 					topRefTypes,
 				}
 			})
-			.filter((row): row is TaxMemberSummary => row !== null)
+			.filter((row): row is NonNullable<typeof row> => row !== null)
 
 		if (input.includeUnattributedRow) {
 			const unattributed = byCharacter.get('__unattributed__')
 			if (unattributed) {
 				const sortedTopRefTypes = Array.from(unattributed.byRefType.entries()).sort((a, b) => {
-					if (a[1].taxableContributionIncomeCenti === b[1].taxableContributionIncomeCenti) {
+					if (a[1].contributionIncomeCenti === b[1].contributionIncomeCenti) {
 						return a[0].localeCompare(b[0])
 					}
-					return a[1].taxableContributionIncomeCenti > b[1].taxableContributionIncomeCenti ? -1 : 1
+					return a[1].contributionIncomeCenti > b[1].contributionIncomeCenti ? -1 : 1
 				})
 				const topRefTypes = (
 					input.topRefTypesLimit
@@ -1205,6 +1250,7 @@ export class TaxReportService {
 				).map(([refType, totals]) => ({
 					refType,
 					lineCount: totals.lineCount,
+					contributionAmount: this.formatCenti(totals.contributionIncomeCenti),
 					taxableAmount: this.formatCenti(totals.taxableContributionIncomeCenti),
 					taxAmount: '0',
 				}))
@@ -1251,6 +1297,68 @@ export class TaxReportService {
 		}
 		const requestedSet = new Set(requestedCharacterIds)
 		return rows.filter((row) => requestedSet.has(row.characterId))
+	}
+
+	private toPagedMemberSummaryResult(
+		rows: TaxMemberSummary[],
+		filters: TaxMemberSummaryReportFilters
+	): TaxPagedResult<TaxMemberSummary> {
+		const limit = Math.min(Math.max(filters.limit ?? 50, 1), 200)
+		const offset = Math.max(filters.offset ?? 0, 0)
+		const sortBy = filters.sortBy ?? 'contributionIncome'
+		const sortDirection = toSortDirection(filters.sortDirection, 'desc')
+		const sorted = [...rows].sort((left, right) =>
+			this.compareMemberSummaryRows(left, right, sortBy, sortDirection)
+		)
+		return {
+			rows: sorted.slice(offset, offset + limit),
+			totalRows: sorted.length,
+		}
+	}
+
+	private compareMemberSummaryRows(
+		left: TaxMemberSummary,
+		right: TaxMemberSummary,
+		sortBy: NonNullable<TaxMemberSummaryReportFilters['sortBy']>,
+		sortDirection: 'asc' | 'desc'
+	): number {
+		const direction = sortDirection === 'asc' ? 1 : -1
+		switch (sortBy) {
+			case 'characterId': {
+				return left.characterId.localeCompare(right.characterId) * direction
+			}
+			case 'assessmentCount': {
+				if (left.assessmentCount !== right.assessmentCount) {
+					return (left.assessmentCount - right.assessmentCount) * direction
+				}
+				return left.characterId.localeCompare(right.characterId) * direction
+			}
+			case 'lastAssessmentAt': {
+				const leftTime = left.lastAssessmentAt ? left.lastAssessmentAt.getTime() : 0
+				const rightTime = right.lastAssessmentAt ? right.lastAssessmentAt.getTime() : 0
+				if (leftTime !== rightTime) {
+					return (leftTime - rightTime) * direction
+				}
+				return left.characterId.localeCompare(right.characterId) * direction
+			}
+			case 'taxableContributionIncome': {
+				const leftValue = this.parseDecimalToCenti(left.taxableContributionIncome)
+				const rightValue = this.parseDecimalToCenti(right.taxableContributionIncome)
+				if (leftValue !== rightValue) {
+					return leftValue > rightValue ? direction : -direction
+				}
+				return left.characterId.localeCompare(right.characterId) * direction
+			}
+			case 'contributionIncome':
+			default: {
+				const leftValue = this.parseDecimalToCenti(left.contributionIncome)
+				const rightValue = this.parseDecimalToCenti(right.contributionIncome)
+				if (leftValue !== rightValue) {
+					return leftValue > rightValue ? direction : -direction
+				}
+				return left.characterId.localeCompare(right.characterId) * direction
+			}
+		}
 	}
 
 	private async getMemberSummaryVersions(corporationId: string): Promise<{
@@ -1467,13 +1575,38 @@ export class TaxReportService {
 		if (corporationId) {
 			return [corporationId]
 		}
+		return this.listDataBackedCorporationIds()
+	}
 
-		const [knownCorporationIds, exclusions] = await Promise.all([
-			this.listKnownCorporationIds(),
-			this.listExclusions(),
+	private async listDataBackedCorporationIds(): Promise<string[]> {
+		const [assessmentRows, ledgerRows, discrepancyRows] = await Promise.all([
+			this.db
+				.select({
+					corporationId: taxAssessments.corporationId,
+				})
+				.from(taxAssessments)
+				.groupBy(taxAssessments.corporationId),
+			this.db
+				.select({
+					corporationId: taxLedgerEntries.corporationId,
+				})
+				.from(taxLedgerEntries)
+				.groupBy(taxLedgerEntries.corporationId),
+			this.db
+				.select({
+					corporationId: taxDiscrepancies.corporationId,
+				})
+				.from(taxDiscrepancies)
+				.groupBy(taxDiscrepancies.corporationId),
 		])
-		const excludedSet = new Set(exclusions.map((row) => row.corporationId))
-		return knownCorporationIds.filter((id) => !excludedSet.has(id))
+
+		return Array.from(
+			new Set([
+				...assessmentRows.map((row) => row.corporationId),
+				...ledgerRows.map((row) => row.corporationId),
+				...discrepancyRows.map((row) => row.corporationId),
+			])
+		).sort((a, b) => a.localeCompare(b))
 	}
 
 	private async listKnownCorporationIds(corporationId?: string): Promise<string[]> {
@@ -1486,12 +1619,7 @@ export class TaxReportService {
 				corporationId: managedCorporations.corporationId,
 			})
 			.from(managedCorporations)
-			.where(
-				and(
-					eq(managedCorporations.isActive, true),
-					eq(managedCorporations.isMemberCorporation, true)
-				)
-			)
+			.where(eq(managedCorporations.isActive, true))
 			.groupBy(managedCorporations.corporationId)
 		return rows.map((row) => row.corporationId)
 	}

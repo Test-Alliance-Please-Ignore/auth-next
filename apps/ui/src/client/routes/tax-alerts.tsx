@@ -47,6 +47,7 @@ import { useTaxCorporationAccessScope } from '@/hooks/useTaxCorporationAccessSco
 import { formatTaxDateTime } from '@/lib/tax-date'
 import {
 	formatTaxAlertContext,
+	formatTaxAlertPayloadSummary,
 	formatTaxAlertTypeLabel,
 	formatTaxNumber,
 	TaxEntityDisplay,
@@ -357,70 +358,76 @@ export default function TaxAlertsPage() {
 									</TableRow>
 								</TableHeader>
 								<TableBody>
-									{alerts.map((alert: TaxAlert) => (
-										<TableRow key={alert.id}>
-											<TableCell className="font-medium">
-												<div className="space-y-1">
-													<div>{formatTaxAlertTypeLabel(alert.alertType)}</div>
-													<div className="text-xs text-muted-foreground">
-														{formatTaxAlertContext(alert, entityNames)}
-													</div>
-												</div>
-											</TableCell>
-											<TableCell>
-												<Badge variant={severityBadgeVariant(alert.severity)}>
-													{alert.severity}
-												</Badge>
-											</TableCell>
-											<TableCell>
-												<Badge variant={statusBadgeVariant(alert.status)}>{alert.status}</Badge>
-											</TableCell>
-											<TableCell>
-												{alert.corporationId ? (
-													<TaxEntityDisplay
-														entityId={alert.corporationId}
-														entityNames={entityNames}
-													/>
-												) : (
-													'Global'
-												)}
-											</TableCell>
-											<TableCell>{formatTaxDateTime(alert.lastTriggeredAt)}</TableCell>
-											{showDeliveryTelemetry ? (
-												<TableCell>
-													<div className="text-sm">
-														<div>{alert.discordDeliveryStatus}</div>
+									{alerts.map((alert: TaxAlert) => {
+										const payloadSummary = formatTaxAlertPayloadSummary(alert)
+										return (
+											<TableRow key={alert.id}>
+												<TableCell className="font-medium">
+													<div className="space-y-1">
+														<div>{formatTaxAlertTypeLabel(alert.alertType)}</div>
 														<div className="text-xs text-muted-foreground">
-															attempts: {formatTaxNumber(alert.discordAttemptCount)}
+															{formatTaxAlertContext(alert, entityNames)}
 														</div>
+														{payloadSummary ? (
+															<div className="text-xs text-muted-foreground">{payloadSummary}</div>
+														) : null}
 													</div>
 												</TableCell>
-											) : null}
-											<TableCell>
-												<div className="flex gap-2">
-													{canAcknowledge && alert.status === 'open' ? (
-														<PrimaryButton
-															size="sm"
-															onClick={() => acknowledgeMutation.mutate(alert.id)}
-															disabled={acknowledgeMutation.isPending}
-														>
-															Acknowledge
-														</PrimaryButton>
-													) : null}
-													{canResolve && alert.status !== 'resolved' ? (
-														<ConfirmButton
-															size="sm"
-															showIcon={false}
-															onConfirm={() => resolveMutation.mutate(alert.id)}
-															disabled={resolveMutation.isPending}
-														>
-															Resolve
-														</ConfirmButton>
-													) : null}
-												</div>
-											</TableCell>
-										</TableRow>
-									))}
+												<TableCell>
+													<Badge variant={severityBadgeVariant(alert.severity)}>
+														{alert.severity}
+													</Badge>
+												</TableCell>
+												<TableCell>
+													<Badge variant={statusBadgeVariant(alert.status)}>{alert.status}</Badge>
+												</TableCell>
+												<TableCell>
+													{alert.corporationId ? (
+														<TaxEntityDisplay
+															entityId={alert.corporationId}
+															entityNames={entityNames}
+														/>
+													) : (
+														'Global'
+													)}
+												</TableCell>
+												<TableCell>{formatTaxDateTime(alert.lastTriggeredAt)}</TableCell>
+												{showDeliveryTelemetry ? (
+													<TableCell>
+														<div className="text-sm">
+															<div>{alert.discordDeliveryStatus}</div>
+															<div className="text-xs text-muted-foreground">
+																attempts: {formatTaxNumber(alert.discordAttemptCount)}
+															</div>
+														</div>
+													</TableCell>
+												) : null}
+												<TableCell>
+													<div className="flex gap-2">
+														{canAcknowledge && alert.status === 'open' ? (
+															<PrimaryButton
+																size="sm"
+																onClick={() => acknowledgeMutation.mutate(alert.id)}
+																disabled={acknowledgeMutation.isPending}
+															>
+																Acknowledge
+															</PrimaryButton>
+														) : null}
+														{canResolve && alert.status !== 'resolved' ? (
+															<ConfirmButton
+																size="sm"
+																showIcon={false}
+																onConfirm={() => resolveMutation.mutate(alert.id)}
+																disabled={resolveMutation.isPending}
+															>
+																Resolve
+															</ConfirmButton>
+														) : null}
+													</div>
+												</TableCell>
+											</TableRow>
+										)
+									})}
 								</TableBody>
 							</Table>
 						)}
