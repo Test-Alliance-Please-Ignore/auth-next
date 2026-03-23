@@ -45,6 +45,7 @@ const SuccessButton = React.forwardRef<HTMLButtonElement, SuccessButtonProps>(
 					'focus-visible:ring-2 focus-visible:ring-success focus-visible:ring-offset-2',
 					// Smooth transitions
 					'transition-all duration-200',
+					'cursor-pointer disabled:cursor-not-allowed',
 					className
 				)}
 				{...props}

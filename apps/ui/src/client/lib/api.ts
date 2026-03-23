@@ -655,6 +655,18 @@ export interface AdminUser {
 	characterCount: number
 	is_admin: boolean
 	discordUserId: string | null
+	discordUsername: string | null
+	matchedCharacterId: string | null
+	matchedCharacterName: string | null
+	matchedBy:
+		| 'main_character_name'
+		| 'character_name'
+		| 'character_id'
+		| 'user_id'
+		| 'discord_user_id'
+		| 'discord_username'
+		| 'legacy_auth_username'
+		| null
 	createdAt: string
 	updatedAt: string
 }
@@ -685,6 +697,12 @@ export interface AdminUserDetail {
 	discordUserId: string | null
 	discord: AdminDiscordStatus | null
 	characters: AdminUserCharacter[]
+	groupMemberships: Array<{
+		groupId: string
+		groupName: string
+		membershipLevel: 'member' | 'admin' | 'owner'
+		joinedAt: string
+	}>
 	createdAt: string
 	updatedAt: string
 }

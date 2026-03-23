@@ -26,7 +26,20 @@ export interface ConfirmButtonProps extends Omit<ButtonProps, 'variant' | 'onCli
  * Use for primary confirmation actions: Create, Attach, Transfer, Make Admin, etc.
  */
 const ConfirmButton = React.forwardRef<HTMLButtonElement, ConfirmButtonProps>(
-	({ className, children, loading, loadingText, disabled, showIcon = true, onConfirm, confirmText, ...props }, ref) => {
+	(
+		{
+			className,
+			children,
+			loading,
+			loadingText,
+			disabled,
+			showIcon = true,
+			onConfirm,
+			confirmText,
+			...props
+		},
+		ref
+	) => {
 		const isDisabled = disabled || loading
 
 		const handleClick = async () => {
@@ -59,6 +72,7 @@ const ConfirmButton = React.forwardRef<HTMLButtonElement, ConfirmButtonProps>(
 					'focus-visible:ring-2 focus-visible:ring-[hsl(var(--confirm))] focus-visible:ring-offset-2',
 					// Smooth transitions
 					'transition-all duration-200',
+					'cursor-pointer disabled:cursor-not-allowed',
 					className
 				)}
 				{...props}

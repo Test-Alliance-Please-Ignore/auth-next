@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button'
 import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmButton } from '@/components/ui/confirm-button'
+import { DangerButton } from '@/components/ui/danger-button'
 import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
 	Dialog,
@@ -31,8 +32,10 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
+import { GhostButton } from '@/components/ui/ghost-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { PrimaryButton } from '@/components/ui/primary-button'
 import {
 	Table,
 	TableBody,
@@ -151,10 +154,10 @@ export default function UserDetailPage() {
 		return (
 			<div className="space-y-6">
 				<div className="flex items-center gap-4">
-					<Button variant="ghost" onClick={() => navigate('/admin/users')}>
+					<GhostButton onClick={() => navigate('/admin/users')}>
 						<ArrowLeft className="h-4 w-4 mr-2" />
 						Back
-					</Button>
+					</GhostButton>
 				</div>
 				<div className="text-center py-8 text-muted-foreground">Loading user details...</div>
 			</div>
@@ -165,10 +168,10 @@ export default function UserDetailPage() {
 		return (
 			<div className="space-y-6">
 				<div className="flex items-center gap-4">
-					<Button variant="ghost" onClick={() => navigate('/admin/users')}>
+					<GhostButton onClick={() => navigate('/admin/users')}>
 						<ArrowLeft className="h-4 w-4 mr-2" />
 						Back
-					</Button>
+					</GhostButton>
 				</div>
 				<div className="text-center py-8 text-muted-foreground">User not found</div>
 			</div>
@@ -408,13 +411,13 @@ export default function UserDetailPage() {
 		<div className="space-y-6">
 			{/* Back Button */}
 			<div className="flex items-center gap-4">
-				<Button variant="ghost" onClick={() => navigate('/admin/users')}>
+				<GhostButton onClick={() => navigate('/admin/users')}>
 					<ArrowLeft className="h-4 w-4 mr-2" />
 					Back to Users
-				</Button>
-				<Button variant="ghost" size="sm" onClick={() => refetch()}>
+				</GhostButton>
+				<GhostButton size="sm" onClick={() => refetch()}>
 					<RefreshCw className="h-4 w-4" />
-				</Button>
+				</GhostButton>
 			</div>
 
 			{/* Success/Error Message */}
@@ -446,18 +449,20 @@ export default function UserDetailPage() {
 						<div className="flex-1">
 							<div className="flex items-start justify-between">
 								<div>
-									<h2 className="text-2xl font-bold">
-										{user.characters.find((c) => c.is_primary)?.characterName || 'Unknown'}
-									</h2>
+									<div className="flex items-center justify-between gap-2">
+										<h2 className="text-2xl font-bold">
+											{user.characters.find((c) => c.is_primary)?.characterName || 'Unknown'}
+										</h2>
+										{user.is_admin && (
+											<Badge variant="default" className="bg-primary/20 text-primary">
+												<Shield className="h-3 w-3 mr-1" />
+												Admin
+											</Badge>
+										)}
+									</div>
 									<p className="text-sm text-muted-foreground mt-1">User ID: {user.id}</p>
 								</div>
 								<div className="flex items-center gap-2">
-									{user.is_admin && (
-										<Badge variant="default" className="bg-primary/20 text-primary">
-											<Shield className="h-3 w-3 mr-1" />
-											Admin
-										</Badge>
-									)}
 									{activeBlacklist && (
 										<Badge variant="default" className="bg-red-500/20 text-red-500">
 											<ShieldBan className="h-3 w-3 mr-1" />
@@ -465,15 +470,15 @@ export default function UserDetailPage() {
 										</Badge>
 									)}
 									{user.is_admin ? (
-										<Button
-											variant="destructive"
-											size="sm"
+										<DestructiveButton
 											onClick={() => setAdminDialogOpen(true)}
 											disabled={setUserAdmin.isPending}
+											size="sm"
+											showIcon={false}
 										>
 											<ShieldOff className="h-4 w-4 mr-2" />
 											Revoke Admin
-										</Button>
+										</DestructiveButton>
 									) : (
 										<DestructiveButton
 											onClick={() => setAdminDialogOpen(true)}
@@ -496,15 +501,31 @@ export default function UserDetailPage() {
 											Remove from Blacklist
 										</Button>
 									) : (
-										<DestructiveButton
+										<DangerButton
 											onClick={() => setBlacklistDialogOpen(true)}
 											disabled={createBlacklist.isPending}
 											size="sm"
 											showIcon={false}
-											className="bg-red-800 hover:bg-red-900 text-white border-red-900"
+											className="
+												bg-[#7a1a1a]
+												!border-2
+												!border-black
+												hover:bg-[#8a2020]
+												hover:!border-[#c2410c]
+												bg-[repeating-linear-gradient(45deg,transparent_0,transparent_6px,rgba(0,0,0,0.6)_6px,rgba(0,0,0,0.6)_12px)]
+												text-white
+											"
 										>
-											💩 Blacklist User
-										</DestructiveButton>
+											<span
+												className="font-semibold text-white"
+												style={{
+													textShadow:
+														'0 1px 8px rgba(220, 38, 38, 1), 0 1px 3px rgba(248, 113, 113, 0.95)',
+												}}
+											>
+												💩 Blacklist User
+											</span>
+										</DangerButton>
 									)}
 									<DestructiveButton
 										onClick={() => setClearSessionsDialogOpen(true)}
@@ -515,8 +536,7 @@ export default function UserDetailPage() {
 										<LogOut className="h-4 w-4 mr-2" />
 										Clear Sessions
 									</DestructiveButton>
-									<Button
-										variant="outline"
+									<PrimaryButton
 										onClick={() => setSyncUserDialogOpen(true)}
 										disabled={syncUser.isPending}
 										size="sm"
@@ -525,7 +545,7 @@ export default function UserDetailPage() {
 											className={cn('h-4 w-4 mr-2', syncUser.isPending && 'animate-spin')}
 										/>
 										Sync User
-									</Button>
+									</PrimaryButton>
 								</div>
 							</div>
 
@@ -595,8 +615,7 @@ export default function UserDetailPage() {
 							<div className="flex items-center gap-2">
 								{!user.discord.authRevoked && (
 									<>
-										<Button
-											variant="outline"
+										<PrimaryButton
 											onClick={handleUpdateDiscordAccess}
 											disabled={updateDiscordAccess.isPending}
 											size="sm"
@@ -608,7 +627,7 @@ export default function UserDetailPage() {
 												)}
 											/>
 											Update Discord Access
-										</Button>
+										</PrimaryButton>
 										<DestructiveButton
 											onClick={() => setRevokeDiscordDialogOpen(true)}
 											disabled={revokeDiscord.isPending}
@@ -867,6 +886,67 @@ export default function UserDetailPage() {
 				</CardContent>
 			</Card>
 
+			{/* Group Memberships */}
+			<Card variant="interactive">
+				<CardHeader>
+					<CardTitle>Group Memberships</CardTitle>
+					<CardDescription>Groups this user belongs to and membership level</CardDescription>
+				</CardHeader>
+				<CardContent>
+					{(user.groupMemberships?.length ?? 0) === 0 ? (
+						<div className="text-center py-4 text-muted-foreground">No group memberships</div>
+					) : (
+						<Table>
+							<TableHeader>
+								<TableRow>
+									<TableHead>Group</TableHead>
+									<TableHead>Level</TableHead>
+									<TableHead>Joined</TableHead>
+								</TableRow>
+							</TableHeader>
+							<TableBody>
+								{(user.groupMemberships ?? []).map((membership) => (
+									<TableRow key={membership.groupId}>
+										<TableCell>
+											<Link
+												to={`/admin/groups/${membership.groupId}`}
+												className="font-medium hover:text-primary transition-colors"
+											>
+												{membership.groupName}
+											</Link>
+											<div className="text-xs text-muted-foreground">{membership.groupId}</div>
+										</TableCell>
+										<TableCell>
+											<Badge
+												variant="default"
+												className={
+													membership.membershipLevel === 'owner'
+														? 'bg-primary/20 text-primary'
+														: membership.membershipLevel === 'admin'
+															? 'bg-blue-500/20 text-blue-500'
+															: 'bg-muted/50 text-muted-foreground'
+												}
+											>
+												{membership.membershipLevel === 'owner'
+													? 'Owner'
+													: membership.membershipLevel === 'admin'
+														? 'Admin'
+														: 'Member'}
+											</Badge>
+										</TableCell>
+										<TableCell>
+											<div className="text-sm" title={formatDateTime(membership.joinedAt)}>
+												{formatRelativeTime(membership.joinedAt)}
+											</div>
+										</TableCell>
+									</TableRow>
+								))}
+							</TableBody>
+						</Table>
+					)}
+				</CardContent>
+			</Card>
+
 			{/* Recent Activity */}
 			<Card variant="interactive">
 				<CardHeader>
@@ -876,10 +956,10 @@ export default function UserDetailPage() {
 							<CardDescription>Last 10 activity log entries for this user</CardDescription>
 						</div>
 						<Link to={`/admin/activity-log?userId=${user.id}`}>
-							<Button variant="outline" size="sm">
+							<GhostButton size="sm">
 								View All
 								<ExternalLink className="h-4 w-4 ml-2" />
-							</Button>
+							</GhostButton>
 						</Link>
 					</div>
 				</CardHeader>

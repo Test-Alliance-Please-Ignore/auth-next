@@ -35,6 +35,7 @@ const DangerButton = React.forwardRef<HTMLButtonElement, DangerButtonProps>(
 					'hover:border-[hsl(var(--destructive))]/70',
 					'focus-visible:ring-2 focus-visible:ring-[hsl(var(--destructive))] focus-visible:ring-offset-2',
 					'transition-all duration-200',
+					'cursor-pointer disabled:cursor-not-allowed',
 					className
 				)}
 				{...props}

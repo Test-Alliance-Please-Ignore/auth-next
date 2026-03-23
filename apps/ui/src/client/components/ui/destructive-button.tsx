@@ -46,6 +46,7 @@ const DestructiveButton = React.forwardRef<HTMLButtonElement, DestructiveButtonP
 					'focus-visible:ring-2 focus-visible:ring-[hsl(var(--destructive-alt))] focus-visible:ring-offset-2',
 					// Smooth transitions
 					'transition-all duration-200',
+					'cursor-pointer disabled:cursor-not-allowed',
 					className
 				)}
 				{...props}

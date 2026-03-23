@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { and, eq, isNotNull, sql } from '@repo/db-utils'
+import { and, eq, ilike, isNotNull, sql } from '@repo/db-utils'
 import { DiscordAPIError, DiscordFetch, DiscordRoutes } from '@repo/discord'
 import { generateShardKey } from '@repo/hazmat'
 import { logger } from '@repo/hono-helpers'
@@ -141,6 +141,33 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 	}
 
 	// ==================== PUBLIC RPC METHODS ====================
+
+	async searchCoreUsersByUsername(
+		usernameQuery: string,
+		limit = 50
+	): Promise<Array<{ coreUserId: string; discordUserId: string; username: string }>> {
+		const q = usernameQuery.trim()
+		if (q.length === 0) {
+			return []
+		}
+
+		const cappedLimit = Math.max(1, Math.min(200, Math.floor(limit)))
+		const rows = await this.db
+			.select({
+				coreUserId: discordUsers.coreUserId,
+				discordUserId: discordUsers.userId,
+				username: discordUsers.username,
+			})
+			.from(discordUsers)
+			.where(and(isNotNull(discordUsers.coreUserId), ilike(discordUsers.username, `%${q}%`)))
+			.limit(cappedLimit)
+
+		return rows.map((row) => ({
+			coreUserId: row.coreUserId!,
+			discordUserId: row.discordUserId,
+			username: row.username,
+		}))
+	}
 
 	/**
 	 * Get Discord profile by core user ID

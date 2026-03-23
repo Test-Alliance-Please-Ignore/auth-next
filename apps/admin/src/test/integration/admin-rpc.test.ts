@@ -341,6 +341,69 @@ describe('Admin Worker RPC', () => {
 				await cleanupTestUser(db, userId)
 			}
 		})
+
+		it('should match users by character ID', async () => {
+			const userId = await createTestUser(db)
+			const characterId = await createTestCharacter(db, userId)
+
+			const result = await worker.searchUsers({ search: characterId }, adminUserId)
+
+			expect(result.users.some((u) => u.id === userId)).toBe(true)
+			const matched = result.users.find((u) => u.id === userId)
+			expect(matched?.matchedCharacterId).toBe(characterId)
+			expect(matched?.matchedBy).toBe('character_id')
+
+			await cleanupTestUser(db, userId)
+		})
+
+		it('should match users by user ID', async () => {
+			const userId = await createTestUser(db)
+
+			const result = await worker.searchUsers({ search: userId }, adminUserId)
+
+			expect(result.users.some((u) => u.id === userId)).toBe(true)
+			const matched = result.users.find((u) => u.id === userId)
+			expect(matched?.matchedBy).toBe('user_id')
+
+			await cleanupTestUser(db, userId)
+		})
+
+		it('should match users by Discord user ID', async () => {
+			const userId = await createTestUser(db)
+			const discordUserId = `${Math.floor(Math.random() * 1_000_000_000)}`
+			const { users } = await import('../../../../core/src/db/schema')
+			const { eq } = await import('@repo/db-utils')
+
+			await db.update(users).set({ discordUserId }).where(eq(users.id, userId))
+
+			const result = await worker.searchUsers({ search: discordUserId }, adminUserId)
+
+			expect(result.users.some((u) => u.id === userId)).toBe(true)
+			const matched = result.users.find((u) => u.id === userId)
+			expect(matched?.matchedBy).toBe('discord_user_id')
+
+			await cleanupTestUser(db, userId)
+		})
+
+		it('should match users by legacy auth username', async () => {
+			const userId = await createTestUser(db)
+			const legacyAuthUsername = `legacy-user-${Date.now()}`
+			const { users } = await import('../../../../core/src/db/schema')
+			const { eq } = await import('@repo/db-utils')
+
+			await db
+				.update(users)
+				.set({ legacyAuthUserUsername: legacyAuthUsername })
+				.where(eq(users.id, userId))
+
+			const result = await worker.searchUsers({ search: legacyAuthUsername }, adminUserId)
+
+			expect(result.users.some((u) => u.id === userId)).toBe(true)
+			const matched = result.users.find((u) => u.id === userId)
+			expect(matched?.matchedBy).toBe('legacy_auth_username')
+
+			await cleanupTestUser(db, userId)
+		})
 	})
 
 	describe('getUserDetails', () => {
@@ -355,6 +418,7 @@ describe('Admin Worker RPC', () => {
 			expect(result!.mainCharacterId).toBeDefined()
 			expect(result!.is_admin).toBe(false)
 			expect(result!.characters).toHaveLength(2) // main + 1
+			expect(Array.isArray(result!.groupMemberships)).toBe(true)
 			expect(result!.createdAt).toBeDefined()
 			expect(result!.updatedAt).toBeDefined()
 

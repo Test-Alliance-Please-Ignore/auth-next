@@ -153,6 +153,22 @@ export interface SendMessageResult {
 
 export interface Discord {
 	/**
+	 * Search linked core users by Discord username (case-insensitive, partial match)
+	 * @param usernameQuery - Discord username search string
+	 * @param limit - Maximum rows to return (default: 50, max: 200)
+	 */
+	searchCoreUsersByUsername(
+		usernameQuery: string,
+		limit?: number
+	): Promise<
+		Array<{
+			coreUserId: string
+			discordUserId: string
+			username: string
+		}>
+	>
+
+	/**
 	 * Get Discord profile by core user ID
 	 * @param coreUserId - Core user ID
 	 * @returns Discord profile or null if not found

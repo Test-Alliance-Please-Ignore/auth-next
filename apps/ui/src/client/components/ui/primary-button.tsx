@@ -34,6 +34,7 @@ const PrimaryButton = React.forwardRef<HTMLButtonElement, PrimaryButtonProps>(
 					'hover:border-primary/70',
 					'focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
 					'transition-all duration-200',
+					'cursor-pointer disabled:cursor-not-allowed',
 					className
 				)}
 				{...props}

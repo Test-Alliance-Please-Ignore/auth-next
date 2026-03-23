@@ -36,6 +36,7 @@ const GhostButton = React.forwardRef<HTMLButtonElement, GhostButtonProps>(
 					'hover:shadow-xl hover:shadow-[hsl(var(--border-strong))]/45',
 					'focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2',
 					'transition-all duration-200',
+					'cursor-pointer disabled:cursor-not-allowed',
 					className
 				)}
 				{...props}
