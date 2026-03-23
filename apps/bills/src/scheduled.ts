@@ -1,4 +1,4 @@
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNull, lte, or } from 'drizzle-orm'
 
 import { logger } from '@repo/hono-helpers'
 
@@ -19,32 +19,46 @@ import type { Env } from './context'
  * Uses Cloudflare Workflows createBatch API for efficient bulk creation.
  * createBatch is limited to 100 instances per call or 1MiB RPC limit.
  */
-async function refreshBillPayments(env: Env): Promise<void> {
+async function refreshBillPayments(env: Env, options: { scheduledTimeMs: number }): Promise<void> {
 	const startTime = Date.now()
 	const refreshLogger = logger.withTags({ component: 'bills-payment-refresh' })
+	const recheckBefore = new Date(options.scheduledTimeMs - 25 * 60 * 1000)
 
 	refreshLogger.info('[Bills] Starting bill payment status refresh batch')
 
 	try {
 		const db = createDb(env.DATABASE_URL)
-		const openBills = await db.query.bills.findMany({
-			where: and(eq(bills.status, 'issued'), isNull(bills.paidAt)),
-		})
 
-		refreshLogger.info('[Bills] Found open bills needing payment check', {
+		const openBills = await db.query.bills.findMany({
+			where: and(
+				inArray(bills.status, ['issued', 'overdue']),
+				isNull(bills.paidAt),
+				or(isNull(bills.paymentLastCheckedAt), lte(bills.paymentLastCheckedAt, recheckBefore))
+			),
+		})
+		const selectedStatusCounts = openBills.reduce<Record<string, number>>((acc, bill) => {
+			acc[bill.status] = (acc[bill.status] ?? 0) + 1
+			return acc
+		}, {})
+
+		if (openBills.length === 0) {
+			refreshLogger.info('[Bills] No unpaid issued/overdue bills need payment refresh', {
+				recheckBefore: recheckBefore.toISOString(),
+				selectedStatusCounts,
+			})
+			return
+		}
+		refreshLogger.info('[Bills] Found unpaid issued/overdue bills needing payment refresh', {
 			count: openBills.length,
+			recheckBefore: recheckBefore.toISOString(),
+			selectedStatusCounts,
 			billIds: openBills.map((bill) => bill.id),
 		})
 
-		if (openBills.length === 0) {
-			refreshLogger.info('[Bills] No open bills to check, exiting')
-			return
-		}
-
 		// Prepare workflow creation options for all bills
-		// Generate unique workflow IDs using billId to ensure idempotency
+		// Use a run-scoped workflow id so recurring cron checks can re-run for the same bill.
 		const workflowOptions = openBills.map((bill) => ({
-			id: `bill-payment-check-${bill.id}`,
+			id: `bill-payment-check-${bill.id}-${options.scheduledTimeMs}`,
 			params: { billId: bill.id } as { billId: string },
 		}))
 
@@ -159,7 +173,7 @@ export async function scheduledHandler(
 		scheduledTime: new Date(event.scheduledTime).toISOString(),
 		cron: event.cron,
 	})
-	await refreshBillPayments(env)
+	await refreshBillPayments(env, { scheduledTimeMs: event.scheduledTime })
 
 	const duration = Date.now() - start
 	scheduledLogger.info('[Scheduled] Scheduled refresh via workflows complete', {

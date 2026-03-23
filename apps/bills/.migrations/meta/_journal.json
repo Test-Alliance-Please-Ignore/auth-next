@@ -33,8 +33,15 @@
 		{
 			"idx": 4,
 			"version": "7",
-			"when": 1774223100000,
+			"when": 1774229000000,
 			"tag": "0004_prod_external_source_reconcile",
+			"breakpoints": true
+		},
+		{
+			"idx": 5,
+			"version": "7",
+			"when": 1774232000000,
+			"tag": "0005_prod_status_events_reconcile",
 			"breakpoints": true
 		}
 	]

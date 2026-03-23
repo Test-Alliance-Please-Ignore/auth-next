@@ -39,6 +39,44 @@ function logTaxReportsRouteError(
 	})
 }
 
+function isRpcMethodMissingError(error: unknown): boolean {
+	if (!(error instanceof Error)) {
+		return false
+	}
+	return (
+		error.message.includes('RPC receiver does not implement the method') ||
+		error.message.includes('does not implement the method')
+	)
+}
+
+function buildReportErrorResponse(
+	c: {
+		env: { ENVIRONMENT: string }
+		json: (body: unknown, status?: 200 | 500 | 503) => Response
+	},
+	error: unknown,
+	defaultMessage: string
+): Response {
+	if (isRpcMethodMissingError(error)) {
+		return c.json(
+			{
+				error:
+					'Tax service is temporarily unavailable due to a deploy version mismatch. Please retry shortly.',
+			},
+			503
+		)
+	}
+
+	const isNonProd = c.env.ENVIRONMENT !== 'production'
+	return c.json(
+		{
+			error: defaultMessage,
+			...(isNonProd ? { detail: error instanceof Error ? error.message : String(error) } : {}),
+		},
+		500
+	)
+}
+
 export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 	/**
 	 * GET /corporation-tax/reports/summary
@@ -69,7 +107,7 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 				userId: user.id,
 				corporationId: parsed.filters?.corporationId,
 			})
-			return c.json({ error: 'Failed to fetch summary report' }, 500)
+			return buildReportErrorResponse(c, error, 'Failed to fetch summary report')
 		}
 	})
 
@@ -104,14 +142,7 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 				userId: user.id,
 				corporationId: parsed.filters?.corporationId,
 			})
-			const isNonProd = c.env.ENVIRONMENT !== 'production'
-			return c.json(
-				{
-					error: 'Failed to fetch total taxes by corporation report',
-					...(isNonProd ? { detail: error instanceof Error ? error.message : String(error) } : {}),
-				},
-				500
-			)
+			return buildReportErrorResponse(c, error, 'Failed to fetch total taxes by corporation report')
 		}
 	})
 

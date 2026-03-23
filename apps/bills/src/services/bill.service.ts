@@ -976,15 +976,36 @@ export class BillService {
 		actorUserId: string | null
 		metadata?: BillMetadata | null
 	}): Promise<void> {
-		await this.db.insert(billStatusEvents).values({
-			id: generateUuidV7(),
-			billId: input.billId,
-			eventType: input.eventType,
-			fromStatus: input.fromStatus,
-			toStatus: input.toStatus,
-			actorUserId: input.actorUserId,
-			metadata: input.metadata ?? null,
-		})
+		const fromStatusSql = input.fromStatus
+			? sql`${input.fromStatus}::bill_status`
+			: sql`null::bill_status`
+		const toStatusSql = input.toStatus
+			? sql`${input.toStatus}::bill_status`
+			: sql`null::bill_status`
+		const metadataSql = input.metadata
+			? sql`${JSON.stringify(input.metadata)}::jsonb`
+			: sql`null::jsonb`
+
+		await this.db.execute(sql`
+			insert into bill_status_events (
+				id,
+				bill_id,
+				event_type,
+				from_status,
+				to_status,
+				actor_user_id,
+				metadata
+			)
+			values (
+				${generateUuidV7()}::uuid,
+				${input.billId}::uuid,
+				${input.eventType}::bill_status_event_type,
+				${fromStatusSql},
+				${toStatusSql},
+				${input.actorUserId},
+				${metadataSql}
+			)
+		`)
 	}
 
 	private async applyStatusTransitionAtomic(input: {

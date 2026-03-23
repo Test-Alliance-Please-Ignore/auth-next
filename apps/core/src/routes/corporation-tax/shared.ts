@@ -1,4 +1,5 @@
 import { isTaxIncomeRefType } from '@repo/corporation-tax'
+import { logger, toErrorLogDetails } from '@repo/hono-helpers'
 
 const SITE_ADMIN_ONLY_ALERT_TYPES = new Set([
 	'discord_delivery_failed',
@@ -71,6 +72,47 @@ export const SNOWFLAKE_REGEX = /^\d{17,20}$/
 
 export type TaxBillingHttpStatus = 400 | 404 | 409 | 500
 export type TaxBillingConfigHttpStatus = 400 | 404 | 409 | 500
+
+export function logTaxRouteError(
+	c: { req: { method: string; path: string; url: string } },
+	message: string,
+	error: unknown,
+	context?: Record<string, unknown>
+): void {
+	const url = new URL(c.req.url)
+	logger.error(message, {
+		...toErrorLogDetails(error),
+		method: c.req.method,
+		path: c.req.path,
+		query: Object.fromEntries(url.searchParams.entries()),
+		...context,
+	})
+}
+
+export function disposeRpcStub(stub: unknown): void {
+	if (!stub || typeof stub !== 'object') {
+		return
+	}
+
+	const symbolDispose = (stub as { [Symbol.dispose]?: () => void })[Symbol.dispose]
+	if (typeof symbolDispose === 'function') {
+		try {
+			symbolDispose.call(stub)
+		} catch {
+			// Best effort only.
+		}
+		return
+	}
+
+	const dispose = (stub as { dispose?: () => void }).dispose
+	if (typeof dispose === 'function') {
+		try {
+			dispose.call(stub)
+		} catch {
+			// Best effort only.
+		}
+	}
+}
 
 export function filterAlertsForUser<T extends { alertType: string }>(
 	user: { is_admin: boolean },
