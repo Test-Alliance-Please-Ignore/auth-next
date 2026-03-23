@@ -454,7 +454,36 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		actorUserId: string,
 		input: TriggerTaxProjectionRefreshInput
 	): Promise<TriggerTaxProjectionRefreshResult> {
-		return this.ledgerRpc.triggerProjectionRefreshFromWalletSync(actorUserId, input)
+		this.logger.info('[CorporationTaxDO] triggerProjectionRefreshFromWalletSync started', {
+			actorUserId,
+			corporationId: input.corporationId,
+			upstreamRunId: input.upstreamRunId,
+			triggeredAt: input.triggeredAt,
+			hasWalletJournalWatermark: Boolean(input.walletJournal),
+			hasWalletTransactionsWatermark: Boolean(input.walletTransactions),
+			includeCharacterWallets: input.includeCharacterWallets ?? false,
+		})
+
+		try {
+			const result = await this.ledgerRpc.triggerProjectionRefreshFromWalletSync(actorUserId, input)
+			this.logger.info('[CorporationTaxDO] triggerProjectionRefreshFromWalletSync completed', {
+				actorUserId,
+				corporationId: input.corporationId,
+				upstreamRunId: input.upstreamRunId,
+				resultReason: result.reason,
+				triggered: result.triggered,
+				ingestionUpsertedCount: result.ingestionResult?.upsertedCount ?? 0,
+			})
+			return result
+		} catch (error) {
+			this.logger.error('[CorporationTaxDO] triggerProjectionRefreshFromWalletSync failed', {
+				actorUserId,
+				corporationId: input.corporationId,
+				upstreamRunId: input.upstreamRunId,
+				...toErrorLogDetails(error),
+			})
+			throw error
+		}
 	}
 
 	async listLedgerEntries(
