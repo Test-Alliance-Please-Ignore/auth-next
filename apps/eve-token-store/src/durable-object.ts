@@ -719,6 +719,45 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		return xPages ? parseInt(xPages, 10) : undefined
 	}
 
+	private parseHeaderSeconds(headers: Headers, headerName: string): number | undefined {
+		const raw = headers.get(headerName)
+		if (!raw) {
+			return undefined
+		}
+
+		const parsed = Number.parseInt(raw, 10)
+		if (!Number.isFinite(parsed) || parsed < 0) {
+			return undefined
+		}
+
+		return parsed
+	}
+
+	private buildEsiRequestError(path: string, response: Response, errorText: string): Error {
+		// For 429, Retry-After is the canonical ESI retry window. Some routes may still expose
+		// legacy error-limit windows via X-ESI-Error-Limit-Reset.
+		const retryAfterSeconds = this.parseHeaderSeconds(response.headers, 'Retry-After')
+		const errorLimitResetSeconds = this.parseHeaderSeconds(
+			response.headers,
+			'X-ESI-Error-Limit-Reset'
+		)
+		const errorLimitRemain = this.parseHeaderSeconds(response.headers, 'X-ESI-Error-Limit-Remain')
+		const rateLimitRemaining = this.parseHeaderSeconds(response.headers, 'X-Ratelimit-Remaining')
+
+		const metadata = JSON.stringify({
+			status: response.status,
+			path,
+			retryAfterSeconds,
+			errorLimitResetSeconds,
+			errorLimitRemain,
+			rateLimitRemaining,
+		})
+
+		return new Error(
+			`ESI request failed: ${response.status} ${response.statusText} - ${errorText} | metadata=${metadata}`
+		)
+	}
+
 	/**
 	 * Fetch data from ESI (ESI Gateway)
 	 * Automatically handles authentication if token is available for the character
@@ -821,9 +860,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 		if (!response.ok) {
 			const errorText = await response.text()
-			throw new Error(
-				`ESI request failed: ${response.status} ${response.statusText} - ${errorText}`
-			)
+			throw this.buildEsiRequestError(path, response, errorText)
 		}
 
 		// 4. Parse and cache response
@@ -948,9 +985,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 		if (!response.ok) {
 			const errorText = await response.text()
-			throw new Error(
-				`ESI request failed: ${response.status} ${response.statusText} - ${errorText}`
-			)
+			throw this.buildEsiRequestError(path, response, errorText)
 		}
 
 		// 3. Parse and cache response

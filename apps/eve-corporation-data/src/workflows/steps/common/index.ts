@@ -193,16 +193,28 @@ export async function triggerTaxProjectionRefresh(
 	input: TriggerTaxProjectionRefreshInput
 ): Promise<TriggerTaxProjectionRefreshResult> {
 	const taxStub = getCorporationTaxStub(env)
-	const result = await taxStub.triggerProjectionRefreshFromWalletSync(actorUserId, input)
+	try {
+		const result = await taxStub.triggerProjectionRefreshFromWalletSync(actorUserId, input)
 
-	logger.info('[CommonStep] Triggered tax projection refresh from wallet sync', {
-		corporationId: input.corporationId,
-		upstreamRunId: input.upstreamRunId,
-		triggered: result.triggered,
-		reason: result.reason,
-	})
+		logger.info('[CommonStep] Triggered tax projection refresh from wallet sync', {
+			corporationId: input.corporationId,
+			upstreamRunId: input.upstreamRunId,
+			actorUserId,
+			triggered: result.triggered,
+			reason: result.reason,
+		})
 
-	return result
+		return result
+	} catch (error) {
+		const errorMessage = error instanceof Error ? error.message : String(error)
+		logger.error('[CommonStep] Tax projection refresh RPC failed', {
+			corporationId: input.corporationId,
+			upstreamRunId: input.upstreamRunId,
+			actorUserId,
+			error: errorMessage,
+		})
+		throw error
+	}
 }
 
 function getTaxProjectionRetryKey(corporationId: string): string {
