@@ -48,6 +48,18 @@ export interface UserSummary {
 	characterCount: number
 	is_admin: boolean
 	discordUserId: string | null
+	discordUsername: string | null
+	matchedCharacterId: string | null
+	matchedCharacterName: string | null
+	matchedBy:
+		| 'main_character_name'
+		| 'character_name'
+		| 'character_id'
+		| 'user_id'
+		| 'discord_user_id'
+		| 'discord_username'
+		| 'legacy_auth_username'
+		| null
 	createdAt: Date
 	updatedAt: Date
 }
@@ -96,6 +108,15 @@ export interface DiscordStatus {
 	lastSuccessfulAuth: Date | null
 }
 
+export type UserGroupMembershipLevel = 'member' | 'admin' | 'owner'
+
+export interface UserGroupMembershipSummary {
+	groupId: string
+	groupName: string
+	membershipLevel: UserGroupMembershipLevel
+	joinedAt: Date
+}
+
 /**
  * User details with all characters
  */
@@ -106,6 +127,7 @@ export interface UserDetails {
 	discordUserId: string | null
 	discord: DiscordStatus | null
 	characters: CharacterSummary[]
+	groupMemberships: UserGroupMembershipSummary[]
 	createdAt: Date
 	updatedAt: Date
 }

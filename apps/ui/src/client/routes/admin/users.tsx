@@ -1,11 +1,12 @@
-import { ExternalLink, Filter, Search, UserCircle, Users } from 'lucide-react'
+import { ExternalLink, Search, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { GhostButton } from '@/components/ui/ghost-button'
 import { Input } from '@/components/ui/input'
+import { PrimaryButton } from '@/components/ui/primary-button'
 import {
 	Select,
 	SelectContent,
@@ -26,7 +27,6 @@ import { useAdminUsers } from '@/hooks/useAdminUsers'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { api } from '@/lib/api'
 import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'
-import { cn } from '@/lib/utils'
 
 export default function UsersPage() {
 	usePageTitle('Admin - Users')
@@ -112,12 +112,14 @@ export default function UsersPage() {
 			<div className="flex items-center justify-between">
 				<div>
 					<h1 className="text-3xl font-bold gradient-text">User Management</h1>
-					<p className="text-muted-foreground mt-1">Manage user accounts and permissions</p>
+					<p className="text-muted-foreground mt-1">
+						Search by character/user/discord identity and manage account access
+					</p>
 				</div>
-				<Button onClick={() => setSearchDialogOpen(true)}>
+				<PrimaryButton onClick={() => setSearchDialogOpen(true)}>
 					<Search className="mr-2 h-4 w-4" />
 					Quick Search
-				</Button>
+				</PrimaryButton>
 			</div>
 
 			{/* Success/Error Message */}
@@ -146,7 +148,7 @@ export default function UsersPage() {
 							<div className="relative">
 								<Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
 								<Input
-									placeholder="Search by username or character..."
+									placeholder="Search by character name/ID, user ID, Discord ID, or Discord username..."
 									value={searchQuery}
 									onChange={(e) => setSearchQuery(e.target.value)}
 									className="pl-9"
@@ -233,22 +235,48 @@ export default function UsersPage() {
 										<TableRow key={user.id}>
 											<TableCell>
 												<div className="flex items-center gap-3">
-													<img
-														src={`/images/characters/${user.mainCharacterId}/portrait?size=64`}
-														alt={user.mainCharacterName || 'Unknown Character'}
-														className="h-10 w-10 rounded-full"
-													/>
-													<div>
-														<Link
-															to={`/admin/users/${user.id}`}
-															className="font-medium hover:text-primary transition-colors"
-														>
-															{user.mainCharacterName || 'Unknown Character'}
-														</Link>
-														<div className="text-xs text-muted-foreground">
-															ID: {user.id.slice(0, 8)}...
-														</div>
-													</div>
+													{(() => {
+														const portraitCharacterId =
+															user.matchedCharacterId || user.mainCharacterId
+														const isAltMatch =
+															!!user.matchedCharacterId &&
+															user.matchedCharacterId !== user.mainCharacterId &&
+															!!user.matchedCharacterName
+														const displayName = isAltMatch
+															? `${user.matchedCharacterName}${user.mainCharacterName ? ` (${user.mainCharacterName})` : ''}`
+															: user.mainCharacterName ||
+																user.matchedCharacterName ||
+																'Unknown Character'
+
+														return (
+															<>
+																<img
+																	src={`/images/characters/${portraitCharacterId}/portrait?size=64`}
+																	alt={displayName}
+																	className="h-10 w-10 rounded-full"
+																/>
+																<div>
+																	<Link
+																		to={`/admin/users/${user.id}`}
+																		className="inline-flex items-center gap-2 font-medium hover:text-primary transition-colors"
+																	>
+																		{displayName}
+																		{isAltMatch && (
+																			<Badge
+																				variant="default"
+																				className="bg-blue-500/20 text-blue-500"
+																			>
+																				Alt
+																			</Badge>
+																		)}
+																	</Link>
+																	<div className="text-xs text-muted-foreground">
+																		ID: {user.id.slice(0, 8)}...
+																	</div>
+																</div>
+															</>
+														)
+													})()}
 												</div>
 											</TableCell>
 											<TableCell>
@@ -258,17 +286,23 @@ export default function UsersPage() {
 											</TableCell>
 											<TableCell>
 												{user.discordUserId ? (
-													<div className="flex items-center gap-2">
-														<span className="font-mono text-xs">{user.discordUserId}</span>
-														<Button
-															variant="ghost"
+													<div className="flex items-center justify-between gap-2">
+														<div className="min-w-0">
+															<div className="text-sm font-medium truncate">
+																{user.discordUsername || 'Discord Linked'}
+															</div>
+															<div className="font-mono text-xs text-muted-foreground truncate">
+																{user.discordUserId}
+															</div>
+														</div>
+														<GhostButton
 															size="sm"
 															onClick={() => handleDiscordJoin(user.id)}
 															disabled={joiningUserId === user.id}
 															title="Refresh Discord roles"
 														>
 															<Users className="h-4 w-4" />
-														</Button>
+														</GhostButton>
 													</div>
 												) : (
 													<span className="text-sm text-muted-foreground">Not linked</span>
@@ -293,9 +327,9 @@ export default function UsersPage() {
 											</TableCell>
 											<TableCell className="text-right">
 												<Link to={`/admin/users/${user.id}`}>
-													<Button variant="ghost" size="sm">
+													<GhostButton size="sm">
 														<ExternalLink className="h-4 w-4" />
-													</Button>
+													</GhostButton>
 												</Link>
 											</TableCell>
 										</TableRow>
@@ -310,22 +344,20 @@ export default function UsersPage() {
 										Page {pagination.page} of {pagination.totalPages}
 									</div>
 									<div className="flex gap-2">
-										<Button
-											variant="outline"
+										<GhostButton
 											size="sm"
 											disabled={pagination.page === 1}
 											onClick={() => setPage(page - 1)}
 										>
 											Previous
-										</Button>
-										<Button
-											variant="outline"
+										</GhostButton>
+										<GhostButton
 											size="sm"
 											disabled={pagination.page === pagination.totalPages}
 											onClick={() => setPage(page + 1)}
 										>
 											Next
-										</Button>
+										</GhostButton>
 									</div>
 								</div>
 							)}

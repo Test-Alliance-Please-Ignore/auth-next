@@ -47,6 +47,7 @@ const CancelButton = React.forwardRef<HTMLButtonElement, CancelButtonProps>(
 					'focus-visible:ring-2 focus-visible:ring-[hsl(var(--cancel))] focus-visible:ring-offset-2',
 					// Smooth transitions
 					'transition-all duration-200',
+					'cursor-pointer disabled:cursor-not-allowed',
 					className
 				)}
 				{...props}
