@@ -3,6 +3,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 
 import { useAuth } from '@/hooks/useAuth'
+import { useLayoutContainerSize } from '@/hooks/useLayoutContainerSize'
+import { cn } from '@/lib/utils'
 
 import { SidebarNav } from './sidebar-nav'
 import { Button } from './ui/button'
@@ -11,6 +13,7 @@ import { LoadingSpinner } from './ui/loading'
 export default function Layout() {
 	const { isAuthenticated, isLoading } = useAuth()
 	const [sidebarOpen, setSidebarOpen] = useState(false)
+	const layoutContainerSize = useLayoutContainerSize('default')
 	const location = useLocation()
 
 	// Redirect to login if not authenticated, preserving the intended destination
@@ -77,7 +80,14 @@ export default function Layout() {
 
 				{/* Page Content */}
 				<main className="flex-1 relative z-10 p-4 md:p-6 lg:p-8">
-					<div className="max-w-7xl mx-auto">
+					<div
+						className={cn(
+							'w-full mx-auto',
+							layoutContainerSize === 'default' && 'max-w-7xl',
+							layoutContainerSize === 'wide' && 'max-w-[85rem]',
+							layoutContainerSize === 'full' && 'max-w-full'
+						)}
+					>
 						<Outlet />
 					</div>
 				</main>

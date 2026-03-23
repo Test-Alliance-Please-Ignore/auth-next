@@ -72,6 +72,15 @@ export interface TaxMemberSummaryFilters {
 	fromDate?: string
 	toDate?: string
 	topRefTypesLimit?: number
+	limit?: number
+	offset?: number
+	sortBy?:
+		| 'characterId'
+		| 'contributionIncome'
+		| 'taxableContributionIncome'
+		| 'assessmentCount'
+		| 'lastAssessmentAt'
+	sortDir?: 'asc' | 'desc'
 }
 
 export interface TaxLedgerFilters {
@@ -774,7 +783,7 @@ export class CorporationTaxApiClient extends ApiClient {
 	async getMemberSummary(
 		corporationId: string,
 		filters?: TaxMemberSummaryFilters
-	): Promise<TaxMemberSummary[]> {
+	): Promise<TaxPagedResult<TaxMemberSummary>> {
 		if (this.shouldUseDemo()) return taxDemoApi.getMemberSummary(corporationId, filters)
 		const params = new URLSearchParams()
 		if (filters?.characterQuery) params.set('character', filters.characterQuery)
@@ -782,6 +791,10 @@ export class CorporationTaxApiClient extends ApiClient {
 		if (filters?.toDate) params.set('toDate', filters.toDate)
 		if (filters?.topRefTypesLimit !== undefined)
 			params.set('topRefTypesLimit', String(filters.topRefTypesLimit))
+		if (filters?.limit !== undefined) params.set('limit', String(filters.limit))
+		if (filters?.offset !== undefined) params.set('offset', String(filters.offset))
+		if (filters?.sortBy) params.set('sortBy', filters.sortBy)
+		if (filters?.sortDir) params.set('sortDir', filters.sortDir)
 		const query = params.toString()
 		return this.get(
 			`${TAX_API_BASE}/corporations/${corporationId}/member-summary${query ? `?${query}` : ''}`
@@ -841,7 +854,7 @@ export class CorporationTaxApiClient extends ApiClient {
 		return this.get(`${TAX_API_BASE}/export-schedules${query ? `?${query}` : ''}`)
 	}
 
-	async listAuditLog(filters?: ListTaxAuditLogFilters): Promise<TaxAuditLogEntry[]> {
+	async listAuditLog(filters?: ListTaxAuditLogFilters): Promise<TaxPagedResult<TaxAuditLogEntry>> {
 		if (this.shouldUseDemo()) return taxDemoApi.listAuditLog(filters)
 		const params = new URLSearchParams()
 		if (filters?.corporationId) params.set('corporationId', filters.corporationId)

@@ -68,6 +68,7 @@ type AssessmentWriteDb = Pick<CorporationTaxDb, 'insert' | 'update' | 'delete' |
 export class TaxAssessmentService {
 	private readonly TAX_DELTA_DISCREPANCY_THRESHOLD_BPS = 500
 	private readonly CLASSIFICATION_RULE_NAME_MAX_LENGTH = 48
+	private readonly ASSESSMENT_LINE_INSERT_BATCH_SIZE = 50
 
 	constructor(
 		private db: CorporationTaxDb,
@@ -546,7 +547,17 @@ export class TaxAssessmentService {
 			}
 
 			if (scopedLineValues.length > 0) {
-				await tx.insert(taxAssessmentLines).values(scopedLineValues)
+				for (
+					let start = 0;
+					start < scopedLineValues.length;
+					start += this.ASSESSMENT_LINE_INSERT_BATCH_SIZE
+				) {
+					const batch = scopedLineValues.slice(
+						start,
+						start + this.ASSESSMENT_LINE_INSERT_BATCH_SIZE
+					)
+					await tx.insert(taxAssessmentLines).values(batch)
+				}
 			}
 
 			if (discrepancyValues.length > 0) {

@@ -279,7 +279,7 @@ export default function TaxReportsPage() {
 
 	if (!corporationAccessLoading && !scopedCapabilitiesLoading && !canView) {
 		return (
-			<Container size="wide" className="xl:max-w-[92rem]">
+			<Container size="wide">
 				<Card>
 					<CardHeader>
 						<CardTitle>Tax Reports</CardTitle>
@@ -291,7 +291,7 @@ export default function TaxReportsPage() {
 	}
 
 	return (
-		<Container size="wide" className="xl:max-w-[92rem]">
+		<Container size="wide">
 			<PageHeader
 				title="Tax Reports"
 				description="Review tax reports through a single active report view, then export or schedule the output."

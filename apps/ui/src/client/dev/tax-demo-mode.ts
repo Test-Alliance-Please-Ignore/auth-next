@@ -1963,10 +1963,21 @@ export const taxDemoApi = {
 	},
 	async getMemberSummary(
 		corporationId: string,
-		filters?: { characterQuery?: string; limit?: number }
+		filters?: {
+			characterQuery?: string
+			limit?: number
+			offset?: number
+			sortBy?:
+				| 'characterId'
+				| 'contributionIncome'
+				| 'taxableContributionIncome'
+				| 'assessmentCount'
+				| 'lastAssessmentAt'
+			sortDir?: 'asc' | 'desc'
+		}
 	) {
 		const query = filters?.characterQuery?.trim()
-		const rows = ensureDemoState().memberSummary.filter((row) => {
+		let rows = ensureDemoState().memberSummary.filter((row) => {
 			if (row.corporationId !== corporationId) return false
 			if (query) {
 				const isNumeric = /^\d+$/.test(query)
@@ -1979,7 +1990,11 @@ export const taxDemoApi = {
 			}
 			return true
 		})
-		return withLatency(filters?.limit ? rows.slice(0, filters.limit) : rows)
+		rows = sortRows(rows as any, filters?.sortBy, filters?.sortDir ?? 'desc') as TaxMemberSummary[]
+		return withLatency({
+			rows: applyLimitOffset(rows, filters?.limit, filters?.offset),
+			totalRows: rows.length,
+		})
 	},
 	async requestExport(input: {
 		corporationId?: string
@@ -2070,6 +2085,8 @@ export const taxDemoApi = {
 		corporationId?: string
 		actorUserId?: string
 		action?: string
+		fromDate?: string
+		toDate?: string
 		limit?: number
 		offset?: number
 	}) {
@@ -2077,9 +2094,14 @@ export const taxDemoApi = {
 			if (filters?.corporationId && row.corporationId !== filters.corporationId) return false
 			if (filters?.actorUserId && row.actorUserId !== filters.actorUserId) return false
 			if (filters?.action && row.action !== filters.action) return false
+			if (filters?.fromDate && row.createdAt < new Date(filters.fromDate)) return false
+			if (filters?.toDate && row.createdAt > new Date(filters.toDate)) return false
 			return true
 		})
-		return withLatency(applyLimitOffset(rows, filters?.limit, filters?.offset))
+		return withLatency({
+			rows: applyLimitOffset(rows, filters?.limit, filters?.offset),
+			totalRows: rows.length,
+		})
 	},
 	async listNotificationDestinations(filters?: { limit?: number; offset?: number }) {
 		const rows = ensureDemoState().notificationDestinations

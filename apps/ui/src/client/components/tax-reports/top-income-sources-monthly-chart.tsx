@@ -9,6 +9,7 @@ const MONTHLY_INCOME_CHART_HEIGHT = 260
 const MONTHLY_BAR_WIDTH = 48
 const MONTHLY_BAR_GAP = 18
 const STACK_SEGMENT_RADIUS = 3
+const MIN_STACK_SEGMENT_HOVER_HEIGHT = 8
 
 function brightenHex(hex: string, amount = 0.16): string {
 	const normalized = hex.replace('#', '')
@@ -82,6 +83,12 @@ export function TopIncomeSourcesMonthlyChart({ rows }: { rows: TaxTopIncomeSourc
 		label: string
 		value: number
 		share: number
+		details?: Array<{
+			color: string
+			label: string
+			value: number
+			share: number
+		}>
 	} | null>(null)
 
 	const chartData = useMemo(() => {
@@ -158,71 +165,161 @@ export function TopIncomeSourcesMonthlyChart({ rows }: { rows: TaxTopIncomeSourc
 								.map((refType) => ({ refType, value: month.values.get(refType) ?? 0 }))
 								.filter((segment) => segment.value > 0)
 							let currentY = baselineY
+							const laidOutSegments = segments.map((segment, segmentIndex) => {
+								const height = (segment.value / maxTotal) * drawableHeight
+								currentY -= height
+								return {
+									...segment,
+									height,
+									y: currentY,
+									isBottom: segmentIndex === 0,
+									isTop: segmentIndex === segments.length - 1,
+								}
+							})
+							const tinySegments = laidOutSegments.filter(
+								(segment) => segment.height < MIN_STACK_SEGMENT_HOVER_HEIGHT
+							)
+							const tinyTotalValue = tinySegments.reduce((sum, segment) => sum + segment.value, 0)
+							const totalStackHeight = laidOutSegments.reduce(
+								(sum, segment) => sum + segment.height,
+								0
+							)
+							const stackTopY = baselineY - totalStackHeight
+							const tinyTotalHeight = tinySegments.reduce((sum, segment) => sum + segment.height, 0)
+							const tinyOverlayHeight =
+								tinySegments.length > 0
+									? Math.max(MIN_STACK_SEGMENT_HOVER_HEIGHT, tinyTotalHeight)
+									: 0
+							const tinyOverlayPath =
+								tinySegments.length > 0
+									? getStackSegmentPath({
+											x,
+											y: stackTopY,
+											width: MONTHLY_BAR_WIDTH,
+											height: tinyOverlayHeight,
+											radius: STACK_SEGMENT_RADIUS,
+											roundTop: true,
+											roundBottom: false,
+										})
+									: null
 							return (
 								<g key={month.monthStart.toISOString()}>
-									{segments.map((segment, segmentIndex) => {
-										const height = (segment.value / maxTotal) * drawableHeight
-										currentY -= height
+									{laidOutSegments.map((segment) => {
 										const color = colorMap.get(segment.refType) ?? '#38bdf8'
 										const segmentKey = `${month.monthStart.toISOString()}-${segment.refType}`
 										const isHovered = hoveredSegment?.key === segmentKey
 										const share = monthTotal > 0 ? (segment.value / monthTotal) * 100 : 0
-										const isBottom = segmentIndex === 0
-										const isTop = segmentIndex === segments.length - 1
+										const visibleHeight = Math.max(1, segment.height)
 										const segmentPath = getStackSegmentPath({
 											x,
-											y: currentY,
+											y: segment.y,
 											width: MONTHLY_BAR_WIDTH,
-											height: Math.max(1, height),
+											height: visibleHeight,
 											radius: STACK_SEGMENT_RADIUS,
-											roundTop: isTop,
-											roundBottom: isBottom,
+											roundTop: segment.isTop,
+											roundBottom: segment.isBottom,
 										})
+										const isTiny = segment.height < MIN_STACK_SEGMENT_HOVER_HEIGHT
 
 										return (
-											<path
-												key={segmentKey}
-												d={segmentPath}
-												fill={isHovered ? brightenHex(color) : color}
-												stroke={isHovered ? hexToRgba(color, 0.55) : 'transparent'}
-												strokeWidth={isHovered ? 1.5 : 0}
-												style={{ cursor: 'default' }}
-												onMouseEnter={(event) =>
-													setHoveredSegment({
-														key: segmentKey,
-														x: event.clientX,
-														y: event.clientY,
-														color,
-														label: formatTaxRefTypeLabel(segment.refType),
-														value: segment.value,
-														share,
-													})
-												}
-												onMouseMove={(event) =>
-													setHoveredSegment((current) =>
-														current?.key === segmentKey
-															? { ...current, x: event.clientX, y: event.clientY }
-															: {
-																	key: segmentKey,
-																	x: event.clientX,
-																	y: event.clientY,
-																	color,
-																	label: formatTaxRefTypeLabel(segment.refType),
-																	value: segment.value,
-																	share,
-																}
-													)
-												}
-												onMouseLeave={() =>
-													setHoveredSegment((current) =>
-														current?.key === segmentKey ? null : current
-													)
-												}
-												aria-label={`${formatTaxRefTypeLabel(segment.refType)} ${share.toFixed(1)}%`}
-												role="img"
-											/>
+											<g key={segmentKey}>
+												<path
+													d={segmentPath}
+													fill={isHovered ? brightenHex(color) : color}
+													stroke={isHovered ? hexToRgba(color, 0.55) : 'transparent'}
+													strokeWidth={isHovered ? 1.5 : 0}
+													pointerEvents={isTiny ? 'none' : 'auto'}
+													style={{ cursor: isTiny ? 'auto' : 'default' }}
+													onMouseEnter={
+														isTiny
+															? undefined
+															: (event) =>
+																	setHoveredSegment({
+																		key: segmentKey,
+																		x: event.clientX,
+																		y: event.clientY,
+																		color,
+																		label: formatTaxRefTypeLabel(segment.refType),
+																		value: segment.value,
+																		share,
+																	})
+													}
+													onMouseMove={
+														isTiny
+															? undefined
+															: (event) =>
+																	setHoveredSegment((current) =>
+																		current?.key === segmentKey
+																			? { ...current, x: event.clientX, y: event.clientY }
+																			: {
+																					key: segmentKey,
+																					x: event.clientX,
+																					y: event.clientY,
+																					color,
+																					label: formatTaxRefTypeLabel(segment.refType),
+																					value: segment.value,
+																					share,
+																				}
+																	)
+													}
+													onMouseLeave={
+														isTiny
+															? undefined
+															: () =>
+																	setHoveredSegment((current) =>
+																		current?.key === segmentKey ? null : current
+																	)
+													}
+													aria-label={`${formatTaxRefTypeLabel(segment.refType)} ${share.toFixed(1)}%`}
+													role="img"
+												/>
+											</g>
 										)
 									})}
+									{tinyOverlayPath && tinyTotalValue > 0 ? (
+										<path
+											d={tinyOverlayPath}
+											fill="transparent"
+											style={{ cursor: 'default' }}
+											onMouseEnter={(event) =>
+												setHoveredSegment({
+													key: `${month.monthStart.toISOString()}-tiny`,
+													x: event.clientX,
+													y: event.clientY,
+													color: '#94a3b8',
+													label:
+														tinySegments.length === 1
+															? formatTaxRefTypeLabel(tinySegments[0]!.refType)
+															: `Small sources (${tinySegments.length})`,
+													value: tinyTotalValue,
+													share: monthTotal > 0 ? (tinyTotalValue / monthTotal) * 100 : 0,
+													details: tinySegments.map((tiny) => ({
+														color: colorMap.get(tiny.refType) ?? '#38bdf8',
+														label: formatTaxRefTypeLabel(tiny.refType),
+														value: tiny.value,
+														share: monthTotal > 0 ? (tiny.value / monthTotal) * 100 : 0,
+													})),
+												})
+											}
+											onMouseMove={(event) =>
+												setHoveredSegment((current) =>
+													current?.key === `${month.monthStart.toISOString()}-tiny`
+														? { ...current, x: event.clientX, y: event.clientY }
+														: current
+												)
+											}
+											onMouseLeave={() =>
+												setHoveredSegment((current) =>
+													current?.key === `${month.monthStart.toISOString()}-tiny` ? null : current
+												)
+											}
+											aria-label={`Small sources ${(monthTotal > 0
+												? (tinyTotalValue / monthTotal) * 100
+												: 0
+											).toFixed(1)}%`}
+											role="img"
+										/>
+									) : null}
 									<text
 										x={x + MONTHLY_BAR_WIDTH / 2}
 										y={baselineY + 14}
@@ -262,9 +359,29 @@ export function TopIncomeSourcesMonthlyChart({ rows }: { rows: TaxTopIncomeSourc
 							/>
 							<span>{hoveredSegment.label}</span>
 						</div>
-						<div className="text-xs text-muted-foreground">
-							{formatTaxIskCompact(hoveredSegment.value)} ({hoveredSegment.share.toFixed(1)}%)
-						</div>
+						{hoveredSegment.details && hoveredSegment.details.length > 0 ? (
+							<div className="mt-1 space-y-1 text-xs text-muted-foreground">
+								{hoveredSegment.details.map((detail) => (
+									<div
+										key={`${hoveredSegment.key}:${detail.label}`}
+										className="flex items-center gap-2"
+									>
+										<span
+											className="inline-block h-2 w-2 rounded-full"
+											style={{ backgroundColor: detail.color }}
+										/>
+										<span>
+											{detail.label}: {formatTaxIskCompact(detail.value)} ({detail.share.toFixed(1)}
+											%)
+										</span>
+									</div>
+								))}
+							</div>
+						) : (
+							<div className="text-xs text-muted-foreground">
+								{formatTaxIskCompact(hoveredSegment.value)} ({hoveredSegment.share.toFixed(1)}%)
+							</div>
+						)}
 					</div>
 				) : null}
 				<div className="mt-3 flex flex-wrap gap-3 text-xs text-muted-foreground">

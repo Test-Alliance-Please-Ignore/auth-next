@@ -208,6 +208,34 @@ export function formatTaxAlertContext(
 	return 'Global'
 }
 
+export function formatTaxAlertPayloadSummary(
+	alert: Pick<TaxAlert, 'alertType' | 'payload'>
+): string | null {
+	if (alert.alertType !== 'unexpected_income_ref_type_detected') {
+		return null
+	}
+
+	const refType =
+		typeof alert.payload?.refType === 'string' && alert.payload.refType.trim().length > 0
+			? alert.payload.refType.trim()
+			: null
+
+	const countValue = alert.payload?.entryCountInBatch
+	const count =
+		typeof countValue === 'number'
+			? countValue
+			: typeof countValue === 'string'
+				? Number(countValue)
+				: null
+
+	const refLabel = refType ? formatTaxRefTypeLabel(refType) : null
+	const countLabel =
+		count !== null && Number.isFinite(count) ? `${Math.trunc(count)} entries` : null
+	const detail = [refLabel, countLabel].filter(Boolean).join(' · ')
+
+	return detail.length > 0 ? detail : null
+}
+
 export function formatTaxIskFull(amount: string | number | null | undefined): string {
 	if (amount === null || amount === undefined || amount === '') {
 		return '-'

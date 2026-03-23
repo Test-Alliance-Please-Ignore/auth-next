@@ -23,6 +23,7 @@ import {
 	parseBooleanQueryParam,
 	parseDateQueryParam,
 	parseIntegerQueryParam,
+	parseSortDirectionQueryParam,
 	SNOWFLAKE_REGEX,
 	TAX_FEATURE_FLAG_KEY,
 	TAX_LEDGER_SOURCE_TYPES,
@@ -2182,6 +2183,10 @@ app.get('/corporations/:corporationId/member-summary', requireAuth(), async (c) 
 	const fromDate = parseDateQueryParam(c.req.query('fromDate'))
 	const toDate = parseDateQueryParam(c.req.query('toDate'))
 	const topRefTypesLimit = parseIntegerQueryParam(c.req.query('topRefTypesLimit'))
+	const limit = parseIntegerQueryParam(c.req.query('limit'))
+	const offset = parseIntegerQueryParam(c.req.query('offset'))
+	const sortBy = c.req.query('sortBy')
+	const sortDir = parseSortDirectionQueryParam(c.req.query('sortDir'))
 
 	if (fromDate === null) {
 		return c.json({ error: 'fromDate must be a valid ISO date string' }, 400)
@@ -2194,6 +2199,15 @@ app.get('/corporations/:corporationId/member-summary', requireAuth(), async (c) 
 	}
 	if (topRefTypesLimit !== undefined && topRefTypesLimit < 1) {
 		return c.json({ error: 'topRefTypesLimit must be an integer greater than or equal to 1' }, 400)
+	}
+	if (limit !== undefined && limit < 1) {
+		return c.json({ error: 'limit must be an integer greater than or equal to 1' }, 400)
+	}
+	if (offset !== undefined && offset < 0) {
+		return c.json({ error: 'offset must be an integer greater than or equal to 0' }, 400)
+	}
+	if (sortDir === null) {
+		return c.json({ error: 'sortDir must be "asc" or "desc"' }, 400)
 	}
 
 	const canReadWithTaxScopes = await canReadTaxFeature(c.env, user, corporationId)
@@ -2282,14 +2296,25 @@ app.get('/corporations/:corporationId/member-summary', requireAuth(), async (c) 
 		}
 
 		try {
-			const rows = await stub.getMemberSummaryReport({
+			const result = await stub.getMemberSummaryReport({
 				corporationId,
 				characterIds: targetCharacterIds,
 				fromDate: fromDate ?? undefined,
 				toDate: toDate ?? undefined,
 				topRefTypesLimit: topRefTypesLimit ?? undefined,
+				limit: limit ?? undefined,
+				offset: offset ?? undefined,
+				sortBy:
+					(sortBy as
+						| 'characterId'
+						| 'contributionIncome'
+						| 'taxableContributionIncome'
+						| 'assessmentCount'
+						| 'lastAssessmentAt'
+						| undefined) ?? undefined,
+				sortDirection: sortDir ?? undefined,
 			})
-			return c.json(rows)
+			return c.json(result)
 		} finally {
 			disposeRpcStub(stub)
 		}

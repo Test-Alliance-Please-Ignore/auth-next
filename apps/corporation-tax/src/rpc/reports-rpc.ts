@@ -44,9 +44,7 @@ export class TaxReportsRpc {
 		return this.ctx.reportService.getTopIncomeSourcesMonthlyReport(filters)
 	}
 
-	getEssPayoutReport(
-		filters?: TaxRollupReportFilters
-	): Promise<TaxPagedResult<TaxEssPayoutRow>> {
+	getEssPayoutReport(filters?: TaxRollupReportFilters): Promise<TaxPagedResult<TaxEssPayoutRow>> {
 		return this.ctx.reportService.getEssPayoutReport(filters)
 	}
 
@@ -72,7 +70,9 @@ export class TaxReportsRpc {
 		return this.ctx.reportService.getBillStatusReport(filters)
 	}
 
-	getMemberSummaryReport(filters: TaxMemberSummaryReportFilters): Promise<TaxMemberSummary[]> {
+	getMemberSummaryReport(
+		filters: TaxMemberSummaryReportFilters
+	): Promise<TaxPagedResult<TaxMemberSummary>> {
 		return this.ctx.reportService.getMemberSummaryReport(filters)
 	}
 }

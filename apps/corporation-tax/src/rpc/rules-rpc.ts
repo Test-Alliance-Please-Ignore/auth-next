@@ -9,6 +9,7 @@ import type {
 	ListTaxRuleSetsFilters,
 	TaxAuditLogEntry,
 	TaxCorporationExclusion,
+	TaxPagedResult,
 	TaxRuleGroup,
 	TaxRuleGroupAttachment,
 	TaxRuleSet,
@@ -43,7 +44,11 @@ export class TaxRulesRpc {
 		input: UpsertTaxCorporationExclusionInput
 	): Promise<TaxCorporationExclusion> {
 		const before = await this.ctx.exclusionsService.getExclusion(corporationId)
-		const after = await this.ctx.exclusionsService.upsertExclusion(actorUserId, corporationId, input)
+		const after = await this.ctx.exclusionsService.upsertExclusion(
+			actorUserId,
+			corporationId,
+			input
+		)
 
 		await this.ctx.auditService.logAction({
 			corporationId,
@@ -82,7 +87,7 @@ export class TaxRulesRpc {
 		}
 	}
 
-	async listAuditLog(filters?: ListTaxAuditLogFilters): Promise<TaxAuditLogEntry[]> {
+	async listAuditLog(filters?: ListTaxAuditLogFilters): Promise<TaxPagedResult<TaxAuditLogEntry>> {
 		return this.ctx.auditService.listAuditLog(filters)
 	}
 
@@ -226,7 +231,9 @@ export class TaxRulesRpc {
 		if (!existing) {
 			throw new Error('Rule set not found')
 		}
-		const affectedCorporationIds = await this.ctx.getCorporationIdsForRuleGroup(existing.ruleGroupId)
+		const affectedCorporationIds = await this.ctx.getCorporationIdsForRuleGroup(
+			existing.ruleGroupId
+		)
 		await this.ctx.rulesService.deleteRuleSet(ruleSetId)
 		await this.ctx.auditService.logAction({
 			corporationId: affectedCorporationIds[0] ?? undefined,
