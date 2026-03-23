@@ -112,74 +112,6 @@ const LEDGER_RETENTION_DAYS = 90
 const DEFAULT_ESS_ALERT_THRESHOLD_ISK = 1_000_000_000
 const SCHEDULED_CORPORATION_CONCURRENCY = 5
 const TRIGGERED_INGEST_OVERLAP_WINDOW_MS = 48 * 60 * 60 * 1000
-const RPC_METHOD_NAMES = [
-	'getHealth',
-	'upsertCorporationExclusion',
-	'deleteCorporationExclusion',
-	'listCorporationExclusions',
-	'listWalletDivisions',
-	'listAuditLog',
-	'createRuleGroup',
-	'updateRuleGroup',
-	'deleteRuleGroup',
-	'listRuleGroups',
-	'attachCorporationToRuleGroup',
-	'detachCorporationFromRuleGroup',
-	'listRuleGroupAttachments',
-	'createRuleSet',
-	'listRuleSets',
-	'updateRuleSet',
-	'deleteRuleSet',
-	'ingestCorporationLedgerWindow',
-	'triggerProjectionRefreshFromWalletSync',
-	'listLedgerEntries',
-	'listLedgerParties',
-	'getLedgerIngestionHealth',
-	'trimLedgerEntries',
-	'listAssessments',
-	'runAssessmentForPeriod',
-	'rebuildFinalizedRollupsForPeriod',
-	'listAssessmentLines',
-	'listDiscrepancies',
-	'createBillsForAssessment',
-	'issueBillsForPeriod',
-	'syncAssessmentBillStatus',
-	'retractAssessmentBill',
-	'getCorporationBillStatusHistory',
-	'getCorporationBillEventHistory',
-	'getAssessmentBillStatusHistory',
-	'syncCorporationBillStatuses',
-	'listCorporationBillingConfigs',
-	'createCorporationBillingConfig',
-	'updateCorporationBillingConfig',
-	'deleteCorporationBillingConfig',
-	'setDefaultCorporationBillingConfig',
-	'getSummaryReport',
-	'getTotalTaxesByCorporationReport',
-	'getTopIncomeSourcesReport',
-	'getTopIncomeSourcesMonthlyReport',
-	'getEssPayoutReport',
-	'getComplianceOverTimeReport',
-	'getTaxDiscrepancyReport',
-	'getMissingEsiKeysReport',
-	'getBillStatusReport',
-	'getMemberSummaryReport',
-	'requestExport',
-	'listExports',
-	'getExportById',
-	'getExportArtifact',
-	'createExportSchedule',
-	'listExportSchedules',
-	'runScheduledOperations',
-	'triggerAlert',
-	'listAlerts',
-	'acknowledgeAlert',
-	'resolveAlert',
-	'retryFailedAlertDeliveries',
-	'upsertNotificationDestination',
-	'listNotificationDestinations',
-] as const
-
 export class CorporationTaxDO extends DurableObject<Env, {}> implements CorporationTax {
 	private readonly logger = logger.withTags({ service: 'corporation-tax-durable-object' })
 	private db: CorporationTaxDb
@@ -274,7 +206,6 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 				getPreviousMonthWindow: this.getPreviousMonthWindow.bind(this),
 				runWithConcurrency: this.runWithConcurrency.bind(this),
 			})
-			this.installRpcErrorLogging()
 		} catch (error) {
 			this.logger.error('[CorporationTaxDO] constructor initialization failed', {
 				...toErrorLogDetails(error),
@@ -288,57 +219,48 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		}
 	}
 
-	private installRpcErrorLogging(): void {
-		for (const methodName of RPC_METHOD_NAMES) {
-			const original = (this as Record<string, unknown>)[methodName]
-			if (typeof original !== 'function') {
-				continue
-			}
-
-			;(this as Record<string, unknown>)[methodName] = (async (...args: unknown[]) => {
-				try {
-					return await (original as (...params: unknown[]) => Promise<unknown>).apply(this, args)
-				} catch (error) {
-					this.logger.error('[CorporationTaxDO] RPC method failed', {
-						method: methodName,
-						...toErrorLogDetails(error),
-						args: this.summarizeRpcArgs(args),
-					})
-					throw error
-				}
-			}) as unknown
+	private async rpcGuard<T>(
+		method: string,
+		context: Record<string, unknown>,
+		fn: () => Promise<T>
+	): Promise<T> {
+		try {
+			return await fn()
+		} catch (error) {
+			this.logger.error('[CorporationTaxDO] RPC method failed', {
+				method,
+				...toErrorLogDetails(error),
+				...context,
+			})
+			throw error
 		}
 	}
 
-	private summarizeRpcArgs(args: unknown[]): unknown[] {
-		return args.map((arg) => this.summarizeRpcArg(arg))
-	}
-
-	private summarizeRpcArg(arg: unknown): unknown {
-		if (arg === null || arg === undefined) {
-			return arg
+	private summarizeForLog(value: unknown): unknown {
+		if (value === null || value === undefined) {
+			return value
 		}
-		if (typeof arg === 'string' || typeof arg === 'number' || typeof arg === 'boolean') {
-			return arg
+		if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+			return value
 		}
-		if (arg instanceof Date) {
-			return arg.toISOString()
+		if (value instanceof Date) {
+			return value.toISOString()
 		}
-		if (Array.isArray(arg)) {
-			return { kind: 'array', length: arg.length }
+		if (Array.isArray(value)) {
+			return { kind: 'array', length: value.length }
 		}
-		if (typeof arg === 'object') {
-			const record = arg as Record<string, unknown>
+		if (typeof value === 'object') {
+			const record = value as Record<string, unknown>
 			const keys = Object.keys(record)
 			const summary: Record<string, unknown> = { kind: 'object', keys: keys.slice(0, 12) }
 			for (const key of ['corporationId', 'assessmentId', 'actorUserId', 'fromDate', 'toDate']) {
 				if (key in record) {
-					summary[key] = record[key]
+					summary[key] = this.summarizeForLog(record[key])
 				}
 			}
 			return summary
 		}
-		return { kind: typeof arg }
+		return { kind: typeof value }
 	}
 
 	async getHealth(): Promise<CorporationTaxHealth> {
@@ -368,11 +290,17 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 	async listCorporationExclusions(
 		filters?: ListTaxCorporationExclusionsFilters
 	): Promise<TaxCorporationExclusion[]> {
-		return this.rulesRpc.listCorporationExclusions(filters)
+		return this.rpcGuard(
+			'listCorporationExclusions',
+			{ filters: this.summarizeForLog(filters) },
+			() => this.rulesRpc.listCorporationExclusions(filters)
+		)
 	}
 
 	async listWalletDivisions(corporationId: string): Promise<number[]> {
-		return this.rulesRpc.listWalletDivisions(corporationId)
+		return this.rpcGuard('listWalletDivisions', { corporationId }, () =>
+			this.rulesRpc.listWalletDivisions(corporationId)
+		)
 	}
 
 	async listAuditLog(filters?: ListTaxAuditLogFilters): Promise<TaxAuditLogEntry[]> {
@@ -490,7 +418,14 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		corporationId: string,
 		filters?: TaxLedgerWindowFilters
 	): Promise<TaxLedgerEntry[]> {
-		return this.ledgerRpc.listLedgerEntries(corporationId, filters)
+		return this.rpcGuard(
+			'listLedgerEntries',
+			{
+				corporationId,
+				filters: this.summarizeForLog(filters),
+			},
+			() => this.ledgerRpc.listLedgerEntries(corporationId, filters)
+		)
 	}
 
 	async listLedgerParties(
@@ -645,7 +580,9 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 	}
 
 	async getSummaryReport(filters?: TaxRollupReportFilters): Promise<TaxSummaryReport> {
-		return this.reportsRpc.getSummaryReport(filters)
+		return this.rpcGuard('getSummaryReport', { filters: this.summarizeForLog(filters) }, () =>
+			this.reportsRpc.getSummaryReport(filters)
+		)
 	}
 
 	async getTotalTaxesByCorporationReport(
@@ -699,7 +636,9 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 	async getMemberSummaryReport(
 		filters: TaxMemberSummaryReportFilters
 	): Promise<TaxMemberSummary[]> {
-		return this.reportsRpc.getMemberSummaryReport(filters)
+		return this.rpcGuard('getMemberSummaryReport', { filters: this.summarizeForLog(filters) }, () =>
+			this.reportsRpc.getMemberSummaryReport(filters)
+		)
 	}
 
 	async requestExport(actorUserId: string, input: RequestTaxExportInput): Promise<TaxExportRecord> {
@@ -748,7 +687,9 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 	}
 
 	async listAlerts(filters?: ListTaxAlertsFilters): Promise<TaxAlert[]> {
-		return this.operationsRpc.listAlerts(filters)
+		return this.rpcGuard('listAlerts', { filters: this.summarizeForLog(filters) }, () =>
+			this.operationsRpc.listAlerts(filters)
+		)
 	}
 
 	async acknowledgeAlert(actorUserId: string, alertId: string): Promise<TaxAlert> {
