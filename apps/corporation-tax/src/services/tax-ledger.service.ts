@@ -86,6 +86,7 @@ type EssQualitySignals = {
 
 export class TaxLedgerService {
 	private readonly INGEST_WINDOW_PAGE_SIZE = 1000
+	private readonly LEDGER_UPSERT_BATCH_SIZE = 50
 
 	constructor(
 		private db: CorporationTaxDb,
@@ -305,22 +306,7 @@ export class TaxLedgerService {
 			)
 
 			if (values.length > 0) {
-				await this.db
-					.insert(taxLedgerEntries)
-					.values(values)
-					.onConflictDoUpdate({
-						target: taxLedgerEntries.sourceKey,
-						set: {
-							refType: sql`excluded.ref_type`,
-							amount: sql`excluded.amount`,
-							balance: sql`excluded.balance`,
-							direction: sql`excluded.direction`,
-							firstPartyId: sql`excluded.first_party_id`,
-							secondPartyId: sql`excluded.second_party_id`,
-							entryDate: sql`excluded.entry_date`,
-							updatedAt: now,
-						},
-					})
+				await this.upsertLedgerEntriesInBatches(values, now)
 			}
 
 			let checkpointsUpdated = 0
@@ -1044,6 +1030,31 @@ export class TaxLedgerService {
 				target: [taxSyncCheckpoints.corporationId, taxSyncCheckpoints.sourceType],
 				set,
 			})
+	}
+
+	private async upsertLedgerEntriesInBatches(
+		values: Array<typeof taxLedgerEntries.$inferInsert>,
+		updatedAt: Date
+	): Promise<void> {
+		for (let index = 0; index < values.length; index += this.LEDGER_UPSERT_BATCH_SIZE) {
+			const batch = values.slice(index, index + this.LEDGER_UPSERT_BATCH_SIZE)
+			await this.db
+				.insert(taxLedgerEntries)
+				.values(batch)
+				.onConflictDoUpdate({
+					target: taxLedgerEntries.sourceKey,
+					set: {
+						refType: sql`excluded.ref_type`,
+						amount: sql`excluded.amount`,
+						balance: sql`excluded.balance`,
+						direction: sql`excluded.direction`,
+						firstPartyId: sql`excluded.first_party_id`,
+						secondPartyId: sql`excluded.second_party_id`,
+						entryDate: sql`excluded.entry_date`,
+						updatedAt,
+					},
+				})
+		}
 	}
 
 	private resolveLatestDate(dates: Date[]): Date | null {

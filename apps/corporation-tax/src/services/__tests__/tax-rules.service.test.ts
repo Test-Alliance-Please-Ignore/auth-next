@@ -125,7 +125,6 @@ describe('TaxRulesService', () => {
 		const service = new TaxRulesService(mockDb)
 		const result = await service.listRuleSets({
 			corporationId: '98000001',
-			onlyActive: true,
 		})
 
 		expect(result).toHaveLength(1)

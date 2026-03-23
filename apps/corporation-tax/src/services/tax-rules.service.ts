@@ -142,9 +142,6 @@ export class TaxRulesService {
 		const limit = Math.min(Math.max(filters?.limit ?? 50, 1), 200)
 		const offset = Math.max(filters?.offset ?? 0, 0)
 		const whereConditions = [] as any[]
-		if (filters?.onlyActive !== undefined) {
-			whereConditions.push(eq(taxRuleSets.isActive, filters.onlyActive))
-		}
 		if (filters?.ruleGroupId) {
 			whereConditions.push(eq(taxRuleSets.ruleGroupId, filters.ruleGroupId))
 		} else if (filters?.corporationId) {

@@ -7,7 +7,6 @@ import { corporationTaxKeys } from './keys'
 export function useTaxRuleSets(filters?: {
 	corporationId?: string
 	ruleGroupId?: string
-	onlyActive?: boolean
 	limit?: number
 	offset?: number
 	enabled?: boolean

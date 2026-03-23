@@ -584,7 +584,6 @@ app.get('/corporations/:corporationId/rules', requireAuth(), async (c) => {
 		return c.json({ error: 'Forbidden' }, 403)
 	}
 
-	const onlyActive = parseBooleanQueryParam(c.req.query('onlyActive'))
 	const ruleGroupId = c.req.query('ruleGroupId') || undefined
 	const limit = parseIntegerQueryParam(c.req.query('limit'))
 	const offset = parseIntegerQueryParam(c.req.query('offset'))
@@ -594,7 +593,6 @@ app.get('/corporations/:corporationId/rules', requireAuth(), async (c) => {
 		const ruleSets = await stub.listRuleSets({
 			corporationId,
 			ruleGroupId,
-			onlyActive,
 			limit,
 			offset,
 		})
@@ -627,7 +625,6 @@ app.get('/rules', requireAuth(), async (c) => {
 		return c.json({ error: 'Forbidden' }, 403)
 	}
 
-	const onlyActive = parseBooleanQueryParam(c.req.query('onlyActive'))
 	const limit = parseIntegerQueryParam(c.req.query('limit'))
 	const offset = parseIntegerQueryParam(c.req.query('offset'))
 
@@ -636,7 +633,6 @@ app.get('/rules', requireAuth(), async (c) => {
 		const ruleSets = await stub.listRuleSets({
 			corporationId,
 			ruleGroupId,
-			onlyActive,
 			limit,
 			offset,
 		})
