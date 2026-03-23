@@ -71,11 +71,13 @@ export class TaxReportService {
 	) {}
 
 	async getSummaryReport(filters: TaxRollupReportFilters = {}): Promise<TaxSummaryReport> {
-		const [corporationIds, knownCorporationIds, exclusions] = await Promise.all([
-			this.listKnownCorporationIds(filters.corporationId),
-			this.listKnownCorporationIds(filters.corporationId),
-			this.listExclusions(filters.corporationId),
-		])
+		const corporationIds = await this.resolveReportCorporationIds(filters.corporationId)
+		const [knownCorporationIds, exclusions] = filters.corporationId
+			? await Promise.all([
+					this.listKnownCorporationIds(filters.corporationId),
+					this.listExclusions(filters.corporationId),
+				])
+			: [corporationIds, []]
 
 		if (corporationIds.length === 0) {
 			return {
@@ -164,7 +166,7 @@ export class TaxReportService {
 	async getTotalTaxesByCorporationReport(
 		filters: TaxRollupReportFilters = {}
 	): Promise<TaxPagedResult<TaxTotalTaxesByCorporationRow>> {
-		const corporationIds = await this.listKnownCorporationIds(filters.corporationId)
+		const corporationIds = await this.resolveReportCorporationIds(filters.corporationId)
 		if (corporationIds.length === 0) {
 			return { rows: [], totalRows: 0 }
 		}
@@ -254,7 +256,7 @@ export class TaxReportService {
 	async getTopIncomeSourcesReport(
 		filters: TaxRollupReportFilters = {}
 	): Promise<TaxTopIncomeSourceRow[]> {
-		const corporationIds = await this.listKnownCorporationIds(filters.corporationId)
+		const corporationIds = await this.resolveReportCorporationIds(filters.corporationId)
 		if (corporationIds.length === 0) {
 			return []
 		}
@@ -292,7 +294,7 @@ export class TaxReportService {
 	async getTopIncomeSourcesMonthlyReport(
 		filters: TaxRollupReportFilters = {}
 	): Promise<TaxTopIncomeSourceMonthlyRow[]> {
-		const corporationIds = await this.listKnownCorporationIds(filters.corporationId)
+		const corporationIds = await this.resolveReportCorporationIds(filters.corporationId)
 		if (corporationIds.length === 0) {
 			return []
 		}
@@ -330,7 +332,7 @@ export class TaxReportService {
 	async getEssPayoutReport(
 		filters: TaxRollupReportFilters = {}
 	): Promise<TaxPagedResult<TaxEssPayoutRow>> {
-		const corporationIds = await this.listKnownCorporationIds(filters.corporationId)
+		const corporationIds = await this.resolveReportCorporationIds(filters.corporationId)
 		if (corporationIds.length === 0) {
 			return { rows: [], totalRows: 0 }
 		}
@@ -377,7 +379,7 @@ export class TaxReportService {
 	async getComplianceOverTimeReport(
 		filters: TaxRollupReportFilters = {}
 	): Promise<TaxCompliancePoint[]> {
-		const corporationIds = await this.listKnownCorporationIds(filters.corporationId)
+		const corporationIds = await this.resolveReportCorporationIds(filters.corporationId)
 		if (corporationIds.length === 0) {
 			return []
 		}
@@ -420,7 +422,7 @@ export class TaxReportService {
 	async getTaxDiscrepancyReport(
 		filters: ListTaxDiscrepancyReportFilters = {}
 	): Promise<TaxPagedResult<TaxDiscrepancy>> {
-		const corporationIds = await this.listKnownCorporationIds(filters.corporationId)
+		const corporationIds = await this.resolveReportCorporationIds(filters.corporationId)
 		if (corporationIds.length === 0) {
 			return { rows: [], totalRows: 0 }
 		}
@@ -515,7 +517,7 @@ export class TaxReportService {
 	async getBillStatusReport(
 		filters: TaxRollupReportFilters = {}
 	): Promise<TaxPagedResult<TaxBillStatusReportRow>> {
-		const corporationIds = await this.listKnownCorporationIds(filters.corporationId)
+		const corporationIds = await this.resolveReportCorporationIds(filters.corporationId)
 		if (corporationIds.length === 0) {
 			return { rows: [], totalRows: 0 }
 		}
@@ -1567,6 +1569,44 @@ export class TaxReportService {
 		}
 		const parsed = Number(value)
 		return Number.isFinite(parsed) ? parsed : 0
+	}
+
+	private async resolveReportCorporationIds(corporationId?: string): Promise<string[]> {
+		if (corporationId) {
+			return [corporationId]
+		}
+		return this.listDataBackedCorporationIds()
+	}
+
+	private async listDataBackedCorporationIds(): Promise<string[]> {
+		const [assessmentRows, ledgerRows, discrepancyRows] = await Promise.all([
+			this.db
+				.select({
+					corporationId: taxAssessments.corporationId,
+				})
+				.from(taxAssessments)
+				.groupBy(taxAssessments.corporationId),
+			this.db
+				.select({
+					corporationId: taxLedgerEntries.corporationId,
+				})
+				.from(taxLedgerEntries)
+				.groupBy(taxLedgerEntries.corporationId),
+			this.db
+				.select({
+					corporationId: taxDiscrepancies.corporationId,
+				})
+				.from(taxDiscrepancies)
+				.groupBy(taxDiscrepancies.corporationId),
+		])
+
+		return Array.from(
+			new Set([
+				...assessmentRows.map((row) => row.corporationId),
+				...ledgerRows.map((row) => row.corporationId),
+				...discrepancyRows.map((row) => row.corporationId),
+			])
+		).sort((a, b) => a.localeCompare(b))
 	}
 
 	private async listKnownCorporationIds(corporationId?: string): Promise<string[]> {
