@@ -171,7 +171,6 @@ export interface UpsertTaxExclusionInput {
 export interface ListTaxRuleSetsFilters {
 	corporationId?: string
 	ruleGroupId?: string
-	onlyActive?: boolean
 	limit?: number
 	offset?: number
 }
@@ -389,7 +388,6 @@ export class CorporationTaxApiClient extends ApiClient {
 		const params = new URLSearchParams()
 		if (filters?.corporationId) params.set('corporationId', filters.corporationId)
 		if (filters?.ruleGroupId) params.set('ruleGroupId', filters.ruleGroupId)
-		if (filters?.onlyActive !== undefined) params.set('onlyActive', String(filters.onlyActive))
 		if (filters?.limit !== undefined) params.set('limit', String(filters.limit))
 		if (filters?.offset !== undefined) params.set('offset', String(filters.offset))
 		const query = params.toString()

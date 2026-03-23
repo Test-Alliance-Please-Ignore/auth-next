@@ -120,7 +120,6 @@ export interface ListTaxRuleSetsFilters {
 	ruleGroupId?: string
 	corporationId?: string
 	includeGlobal?: boolean
-	onlyActive?: boolean
 	limit?: number
 	offset?: number
 }

@@ -208,7 +208,7 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 			})
 		} catch (error) {
 			this.logger.error('[CorporationTaxDO] constructor initialization failed', {
-				...toErrorLogDetails(error),
+				...this.toSafeErrorLogDetails(error),
 				hasDatabaseUrl: Boolean(env.DATABASE_URL),
 				hasEveCorporationDataBinding: Boolean(env.EVE_CORPORATION_DATA),
 				hasEveCharacterDataBinding: Boolean(env.EVE_CHARACTER_DATA),
@@ -229,11 +229,54 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		} catch (error) {
 			this.logger.error('[CorporationTaxDO] RPC method failed', {
 				method,
-				...toErrorLogDetails(error),
+				...this.toSafeErrorLogDetails(error),
 				...context,
 			})
 			throw error
 		}
+	}
+
+	private toSafeErrorLogDetails(error: unknown): Record<string, unknown> {
+		const details = toErrorLogDetails(error) as unknown as Record<string, unknown>
+		const safe: Record<string, unknown> = {}
+		for (const [key, value] of Object.entries(details)) {
+			if (typeof value === 'string') {
+				safe[key] = this.sanitizeErrorText(value, key === 'stack' ? 1600 : 800)
+				continue
+			}
+			safe[key] = value
+		}
+		return safe
+	}
+
+	private sanitizeErrorText(value: string, maxLength: number): string {
+		let next = value
+		next = this.sanitizeParamsSection(next)
+		next = next.replace(/values\s*\(([\s\S]{200,}?)\)/gi, 'values(<redacted>)')
+		if (next.length > maxLength) {
+			return `${next.slice(0, maxLength)}…[truncated]`
+		}
+		return next
+	}
+
+	private sanitizeParamsSection(value: string): string {
+		const marker = '\nparams:'
+		const markerIndex = value.toLowerCase().indexOf(marker)
+		if (markerIndex < 0) {
+			return value
+		}
+
+		const paramsStart = markerIndex + marker.length
+		const paramsRaw = value.slice(paramsStart).trim()
+		const commaSeparated = paramsRaw.length > 0 ? paramsRaw.split(',') : []
+		const valueCount = commaSeparated.length
+		const shouldSummarizeList = valueCount > 10 || paramsRaw.length > 240
+
+		if (!shouldSummarizeList) {
+			return value
+		}
+
+		return `${value.slice(0, paramsStart)} [ ... (${valueCount} values) ... ]`
 	}
 
 	private summarizeForLog(value: unknown): unknown {
@@ -408,7 +451,7 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 				actorUserId,
 				corporationId: input.corporationId,
 				upstreamRunId: input.upstreamRunId,
-				...toErrorLogDetails(error),
+				...this.toSafeErrorLogDetails(error),
 			})
 			throw error
 		}
@@ -924,7 +967,7 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		} catch (error) {
 			this.logger.warn('[CorporationTaxDO] Failed to load corporation ESI auth status', {
 				corporationId,
-				...toErrorLogDetails(error),
+				...this.toSafeErrorLogDetails(error),
 			})
 			return null
 		}
@@ -937,7 +980,7 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		} catch (error) {
 			this.logger.warn('[CorporationTaxDO] Failed to load wallet divisions', {
 				corporationId,
-				...toErrorLogDetails(error),
+				...this.toSafeErrorLogDetails(error),
 			})
 			return []
 		}
@@ -1275,7 +1318,7 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 			return new Response('Corporation Tax Durable Object - Use RPC methods', { status: 200 })
 		} catch (error) {
 			this.logger.error('[CorporationTaxDO] fetch handler failed', {
-				...toErrorLogDetails(error),
+				...this.toSafeErrorLogDetails(error),
 				requestUrl: request.url,
 				requestMethod: request.method,
 			})

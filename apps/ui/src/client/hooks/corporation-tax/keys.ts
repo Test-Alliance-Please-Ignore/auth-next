@@ -21,7 +21,6 @@ export const corporationTaxKeys = {
 	rules: (filters?: {
 		corporationId?: string
 		ruleGroupId?: string
-		onlyActive?: boolean
 		limit?: number
 		offset?: number
 	}) => [...corporationTaxKeys.all, 'rules', filters] as const,

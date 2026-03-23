@@ -1,5 +1,5 @@
 import { getStub } from '@repo/do-utils'
-import { logger, toErrorLogDetails } from '@repo/hono-helpers'
+import { logger } from '@repo/hono-helpers'
 
 import { requireAuth } from '../../middleware/session'
 import { canAuditTaxFeature, canReadTaxFeature } from '../../middleware/tax-permissions'
@@ -9,6 +9,7 @@ import {
 	parseIntegerQueryParam,
 	parseRollupReportFiltersFromQuery,
 	parseSortDirectionQueryParam,
+	sanitizeTaxErrorDetails,
 	TAX_BILL_STATUS_SORT_FIELDS,
 	TAX_DISCREPANCY_SORT_FIELDS,
 	TAX_ESS_REPORT_SORT_FIELDS,
@@ -31,7 +32,7 @@ function logTaxReportsRouteError(
 ): void {
 	const url = new URL(c.req.url)
 	logger.error(message, {
-		...toErrorLogDetails(error),
+		...sanitizeTaxErrorDetails(error),
 		method: c.req.method,
 		path: c.req.path,
 		query: Object.fromEntries(url.searchParams.entries()),

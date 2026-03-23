@@ -57,7 +57,6 @@ export default function TaxRulesPage() {
 		error: ruleSetsError,
 	} = useTaxRuleSets({
 		ruleGroupId: effectiveRuleGroupId,
-		onlyActive: false,
 		limit: 200,
 		enabled: Boolean(effectiveRuleGroupId && canManage),
 	})

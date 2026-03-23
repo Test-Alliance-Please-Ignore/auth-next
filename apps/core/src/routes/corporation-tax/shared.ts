@@ -73,6 +73,49 @@ export const SNOWFLAKE_REGEX = /^\d{17,20}$/
 export type TaxBillingHttpStatus = 400 | 404 | 409 | 500
 export type TaxBillingConfigHttpStatus = 400 | 404 | 409 | 500
 
+function sanitizeErrorText(value: string, maxLength: number): string {
+	let next = value
+	next = sanitizeParamsSection(next)
+	next = next.replace(/values\s*\(([\s\S]{200,}?)\)/gi, 'values(<redacted>)')
+	if (next.length > maxLength) {
+		return `${next.slice(0, maxLength)}…[truncated]`
+	}
+	return next
+}
+
+function sanitizeParamsSection(value: string): string {
+	const marker = '\nparams:'
+	const markerIndex = value.toLowerCase().indexOf(marker)
+	if (markerIndex < 0) {
+		return value
+	}
+
+	const paramsStart = markerIndex + marker.length
+	const paramsRaw = value.slice(paramsStart).trim()
+	const commaSeparated = paramsRaw.length > 0 ? paramsRaw.split(',') : []
+	const valueCount = commaSeparated.length
+	const shouldSummarizeList = valueCount > 10 || paramsRaw.length > 240
+
+	if (!shouldSummarizeList) {
+		return value
+	}
+
+	return `${value.slice(0, paramsStart)} [ ... (${valueCount} values) ... ]`
+}
+
+export function sanitizeTaxErrorDetails(error: unknown): Record<string, unknown> {
+	const details = toErrorLogDetails(error) as unknown as Record<string, unknown>
+	const safe: Record<string, unknown> = {}
+	for (const [key, value] of Object.entries(details)) {
+		if (typeof value === 'string') {
+			safe[key] = sanitizeErrorText(value, key === 'stack' ? 1600 : 800)
+			continue
+		}
+		safe[key] = value
+	}
+	return safe
+}
+
 export function logTaxRouteError(
 	c: { req: { method: string; path: string; url: string } },
 	message: string,
@@ -81,7 +124,7 @@ export function logTaxRouteError(
 ): void {
 	const url = new URL(c.req.url)
 	logger.error(message, {
-		...toErrorLogDetails(error),
+		...sanitizeTaxErrorDetails(error),
 		method: c.req.method,
 		path: c.req.path,
 		query: Object.fromEntries(url.searchParams.entries()),
