@@ -4,7 +4,9 @@ import { logger } from '@repo/hono-helpers'
 import { requireAuth } from '../../middleware/session'
 import { canManageTaxFeature } from '../../middleware/tax-permissions'
 import {
+	disposeRpcStub,
 	filterAlertsForUser,
+	logTaxRouteError,
 	parseAuditLogFiltersFromQuery,
 	parseIntegerQueryParam,
 } from './shared'
@@ -69,16 +71,23 @@ export function registerCorporationTaxAlertsRoutes(
 
 		try {
 			const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
-			const alerts = await stub.listAlerts({
-				corporationId,
-				status: status as 'open' | 'acknowledged' | 'resolved' | undefined,
-				severity: severity as 'critical' | 'warning' | 'info' | undefined,
-				limit,
-				offset,
-			})
-			return c.json(filterAlertsForUser(user, alerts))
+			try {
+				const alerts = await stub.listAlerts({
+					corporationId,
+					status: status as 'open' | 'acknowledged' | 'resolved' | undefined,
+					severity: severity as 'critical' | 'warning' | 'info' | undefined,
+					limit,
+					offset,
+				})
+				return c.json(filterAlertsForUser(user, alerts))
+			} finally {
+				disposeRpcStub(stub)
+			}
 		} catch (error) {
-			logger.error('Error listing corporation tax alerts:', error)
+			logTaxRouteError(c, 'Error listing corporation tax alerts', error, {
+				userId: user.id,
+				corporationId: corporationId ?? null,
+			})
 			return c.json({ error: 'Failed to list alerts' }, 500)
 		}
 	})
@@ -129,16 +138,23 @@ export function registerCorporationTaxAlertsRoutes(
 
 		try {
 			const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
-			const alerts = await stub.listAlerts({
-				corporationId,
-				status: status as 'open' | 'acknowledged' | 'resolved' | undefined,
-				severity: severity as 'critical' | 'warning' | 'info' | undefined,
-				limit,
-				offset,
-			})
-			return c.json(filterAlertsForUser(user, alerts))
+			try {
+				const alerts = await stub.listAlerts({
+					corporationId,
+					status: status as 'open' | 'acknowledged' | 'resolved' | undefined,
+					severity: severity as 'critical' | 'warning' | 'info' | undefined,
+					limit,
+					offset,
+				})
+				return c.json(filterAlertsForUser(user, alerts))
+			} finally {
+				disposeRpcStub(stub)
+			}
 		} catch (error) {
-			logger.error('Error listing corporation-scoped tax alerts:', error)
+			logTaxRouteError(c, 'Error listing corporation-scoped tax alerts', error, {
+				userId: user.id,
+				corporationId,
+			})
 			return c.json({ error: 'Failed to list corporation alerts' }, 500)
 		}
 	})
@@ -166,7 +182,7 @@ export function registerCorporationTaxAlertsRoutes(
 			if (error instanceof Error && error.message === 'Alert not found') {
 				return c.json({ error: 'Alert not found' }, 404)
 			}
-			logger.error('Error acknowledging tax alert:', error)
+			logTaxRouteError(c, 'Error acknowledging tax alert', error, { userId: user.id })
 			return c.json({ error: 'Failed to acknowledge alert' }, 500)
 		}
 	})
@@ -194,7 +210,7 @@ export function registerCorporationTaxAlertsRoutes(
 			if (error instanceof Error && error.message === 'Alert not found') {
 				return c.json({ error: 'Alert not found' }, 404)
 			}
-			logger.error('Error resolving tax alert:', error)
+			logTaxRouteError(c, 'Error resolving tax alert', error, { userId: user.id })
 			return c.json({ error: 'Failed to resolve alert' }, 500)
 		}
 	})
@@ -230,7 +246,9 @@ export function registerCorporationTaxAlertsRoutes(
 			const retried = await stub.retryFailedAlertDeliveries(user.id, limit)
 			return c.json({ retried })
 		} catch (error) {
-			logger.error('Error retrying failed tax alert deliveries:', error)
+			logTaxRouteError(c, 'Error retrying failed tax alert deliveries', error, {
+				userId: user.id,
+			})
 			return c.json({ error: 'Failed to retry alert deliveries' }, 500)
 		}
 	})
@@ -286,7 +304,9 @@ export function registerCorporationTaxAlertsRoutes(
 			})
 			return c.json(destination)
 		} catch (error) {
-			logger.error('Error upserting tax notification destination:', error)
+			logTaxRouteError(c, 'Error upserting tax notification destination', error, {
+				userId: user.id,
+			})
 			return c.json({ error: 'Failed to upsert notification destination' }, 500)
 		}
 	})
@@ -324,7 +344,9 @@ export function registerCorporationTaxAlertsRoutes(
 			})
 			return c.json(destinations)
 		} catch (error) {
-			logger.error('Error listing tax notification destinations:', error)
+			logTaxRouteError(c, 'Error listing tax notification destinations', error, {
+				userId: user.id,
+			})
 			return c.json({ error: 'Failed to list notification destinations' }, 500)
 		}
 	})
@@ -355,7 +377,7 @@ export function registerCorporationTaxAlertsRoutes(
 			const entries = await stub.listAuditLog(filters)
 			return c.json(entries)
 		} catch (error) {
-			logger.error('Error listing tax audit log:', error)
+			logTaxRouteError(c, 'Error listing tax audit log', error, { userId: user.id })
 			return c.json({ error: 'Failed to list tax audit log' }, 500)
 		}
 	})

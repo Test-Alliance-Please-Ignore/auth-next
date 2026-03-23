@@ -1,107 +1,122 @@
-import {
-	CharacterWalletJournalEntry,
-	CorporationWalletJournalEntry,
-	getEsiInstanceForCharacter,
-	getEsiInstanceForCorporation,
-} from '@repo/esi'
+import { sql } from '@repo/db-utils'
 
 import { getWorkflowLogger } from '../../context'
 
 import type { bills } from '../../../db/schema'
 import type { WorkflowContext } from '../../context'
 
-export interface FoundPaymentTransactionsResult {
-	paymentTransactions: CharacterWalletJournalEntry[] | CorporationWalletJournalEntry[] | null
-	paymentTransactionDestination: 'character' | 'corporation' | null
+type CorporationWalletPaymentRow = {
+	journalId: string
+	amount: string
+	firstPartyId: string | null
+	entryDate: Date
 }
 
-async function findPaymentTransactionsForCharacter(
-	ctx: WorkflowContext,
-	billData: typeof bills.$inferSelect
-): Promise<FoundPaymentTransactionsResult> {
-	const logger = getWorkflowLogger(ctx, 'find-payment-transaction-for-character')
+type CharacterWalletPaymentRow = {
+	journalId: string
+	amount: string
+	firstPartyId: string | null
+	entryDate: Date
+}
 
-	const characterId = billData.payeeId
-
-	logger.info('[Workflow] Finding payment transaction in character wallet journal', {
-		billId: ctx.billId,
-		workflowInstanceId: ctx.workflowInstanceId,
-		characterId: characterId,
-		paymentToken: billData.paymentToken,
-	})
-
-	if (!characterId) {
-		throw new Error('Character ID is required')
+function parseAmountToBigInt(rawAmount: string): bigint | null {
+	const normalized = rawAmount.trim()
+	if (!normalized) {
+		return null
 	}
 
-	const esiStub = getEsiInstanceForCharacter(ctx.env.ESI, characterId)
-	const walletTransactions = await esiStub.fetchCharacterWalletJournal(characterId)
-	const paymentTransactions = walletTransactions.filter((transaction) =>
-		transaction.reason?.toLowerCase().includes(billData.paymentToken.toLowerCase())
-	)
-
-	if (paymentTransactions.length === 0) {
-		return {
-			paymentTransactions: null,
-			paymentTransactionDestination: null,
-		}
+	if (!/^-?\d+(\.\d+)?$/.test(normalized)) {
+		return null
 	}
 
-	return {
-		paymentTransactions: paymentTransactions,
-		paymentTransactionDestination: 'character',
+	const integerPart = normalized.split('.')[0]
+	if (!/^-?\d+$/.test(integerPart)) {
+		return null
+	}
+
+	try {
+		return BigInt(integerPart)
+	} catch {
+		return null
 	}
 }
 
-async function findPaymentTransactionsForCorporation(
+async function findPaymentTransactionsForCorporationFromDb(
 	ctx: WorkflowContext,
 	billData: typeof bills.$inferSelect
-): Promise<FoundPaymentTransactionsResult> {
-	const logger = getWorkflowLogger(ctx, 'find-payment-transaction-for-corporation')
+): Promise<CorporationWalletPaymentRow[]> {
+	const logger = getWorkflowLogger(ctx, 'find-payment-transaction-for-corporation-db')
 
 	const corporationId = billData.payeeId
 
-	logger.info('[Workflow] Finding payment transaction in corporation wallet journal', {
+	logger.info('[Workflow] Finding payment transaction in persisted corporation wallet journal', {
 		billId: ctx.billId,
 		workflowInstanceId: ctx.workflowInstanceId,
 		corporationId: corporationId,
 		paymentToken: billData.paymentToken,
+		fromDate: billData.createdAt,
 	})
 
 	if (!corporationId) {
 		throw new Error('Corporation ID is required')
 	}
 
-	const esiStub = getEsiInstanceForCorporation(ctx.env.ESI, corporationId)
+	const tokenNeedle = `%${billData.paymentToken.toLowerCase()}%`
+	const results = await ctx.db.execute<CorporationWalletPaymentRow>(
+		sql`select
+			journal_id::text as "journalId",
+			amount as "amount",
+			first_party_id as "firstPartyId",
+			date as "entryDate"
+		from corporation_wallet_journal
+		where corporation_id = ${corporationId}
+			and date >= ${billData.createdAt}
+			and amount::numeric > 0
+			and reason is not null
+			and lower(reason) like ${tokenNeedle}
+		order by date asc
+		limit 500`
+	)
+	return results.rows ?? []
+}
 
-	const paymentTransactions: CorporationWalletJournalEntry[] = []
-	for (const division of Array.from({ length: 7 }, (_, i) => i + 1)) {
-		const walletTransactions = await esiStub.fetchCorporationWalletJournal(corporationId, division)
-		logger.info('[Workflow] Found payment transactions for corporation', {
-			billId: ctx.billId,
-			workflowInstanceId: ctx.workflowInstanceId,
-			corporationId: corporationId,
-			division: division,
-			walletTransactions: walletTransactions.length,
-		})
-		paymentTransactions.push(
-			...walletTransactions.filter((transaction) =>
-				transaction.reason?.toLowerCase().includes(billData.paymentToken.toLowerCase())
-			)
-		)
+async function findPaymentTransactionsForCharacterFromDb(
+	ctx: WorkflowContext,
+	billData: typeof bills.$inferSelect
+): Promise<CharacterWalletPaymentRow[]> {
+	const logger = getWorkflowLogger(ctx, 'find-payment-transaction-for-character-db')
+
+	const characterId = billData.payeeId
+
+	logger.info('[Workflow] Finding payment transaction in persisted character wallet journal', {
+		billId: ctx.billId,
+		workflowInstanceId: ctx.workflowInstanceId,
+		characterId,
+		paymentToken: billData.paymentToken,
+		fromDate: billData.createdAt,
+	})
+
+	if (!characterId) {
+		throw new Error('Character ID is required')
 	}
 
-	if (paymentTransactions.length === 0) {
-		return {
-			paymentTransactions: null,
-			paymentTransactionDestination: null,
-		}
-	}
-
-	return {
-		paymentTransactions: paymentTransactions,
-		paymentTransactionDestination: 'corporation',
-	}
+	const tokenNeedle = `%${billData.paymentToken.toLowerCase()}%`
+	const results = await ctx.db.execute<CharacterWalletPaymentRow>(
+		sql`select
+			journal_id::text as "journalId",
+			amount as "amount",
+			first_party_id as "firstPartyId",
+			date as "entryDate"
+		from character_wallet_journal
+		where character_id = ${characterId}
+			and date >= ${billData.createdAt}
+			and amount::numeric > 0
+			and reason is not null
+			and lower(reason) like ${tokenNeedle}
+		order by date asc
+		limit 500`
+	)
+	return results.rows ?? []
 }
 
 export async function findPaymentsForBill(
@@ -117,52 +132,111 @@ export async function findPaymentsForBill(
 		payeeType: billData.payeeType,
 	})
 
-	const payeeId = billData.payeeId
 	const payeeType = billData.payeeType
 
-	if (!payeeId || !payeeType) {
-		throw new Error('Payee ID and type are required')
+	if (!payeeType) {
+		throw new Error('Payee type is required')
 	}
 
-	if (payeeType === 'character') {
-		const result = await findPaymentTransactionsForCharacter(ctx, billData)
-		if (!result.paymentTransactions) {
-			logger.info('[Workflow] No payment transactions found for character', {
-				billId: ctx.billId,
-				workflowInstanceId: ctx.workflowInstanceId,
-				characterId: billData.payeeId,
-				paymentToken: billData.paymentToken,
-			})
-			return
-		}
-		for (const paymentTransaction of result.paymentTransactions) {
-			await ctx.billService.payBill(billData.paymentToken, {
-				amount: BigInt(paymentTransaction.amount!),
-				paidById: paymentTransaction.first_party_id!,
-				paidByType: 'character',
-				esiTransactionId: paymentTransaction.id,
-			})
-		}
-	} else if (payeeType === 'corporation') {
-		const result = await findPaymentTransactionsForCorporation(ctx, billData)
-		if (!result.paymentTransactions) {
-			logger.info('[Workflow] No payment transactions found for corporation', {
+	if (payeeType === 'corporation') {
+		const paymentTransactions = await findPaymentTransactionsForCorporationFromDb(ctx, billData)
+		if (paymentTransactions.length === 0) {
+			logger.info('[Workflow] No payment transactions found for corporation in persisted data', {
 				billId: ctx.billId,
 				workflowInstanceId: ctx.workflowInstanceId,
 				corporationId: billData.payeeId,
 				paymentToken: billData.paymentToken,
+				fromDate: billData.createdAt,
 			})
 			return
 		}
-		for (const paymentTransaction of result.paymentTransactions) {
+		for (const paymentTransaction of paymentTransactions) {
+			const amount = parseAmountToBigInt(paymentTransaction.amount)
+			if (amount === null || amount <= 0n) {
+				logger.warn('[Workflow] Skipping corporation payment transaction with invalid amount', {
+					billId: ctx.billId,
+					workflowInstanceId: ctx.workflowInstanceId,
+					journalId: paymentTransaction.journalId,
+					amount: paymentTransaction.amount,
+				})
+				continue
+			}
+			if (!paymentTransaction.firstPartyId) {
+				logger.warn('[Workflow] Skipping corporation payment transaction with missing payer id', {
+					billId: ctx.billId,
+					workflowInstanceId: ctx.workflowInstanceId,
+					journalId: paymentTransaction.journalId,
+				})
+				continue
+			}
 			await ctx.billService.payBill(billData.paymentToken, {
-				amount: BigInt(paymentTransaction.amount!),
-				paidById: paymentTransaction.first_party_id!,
+				amount,
+				paidById: paymentTransaction.firstPartyId,
 				paidByType: 'corporation',
-				esiTransactionId: paymentTransaction.id,
+				esiTransactionId: paymentTransaction.journalId,
 			})
 		}
+		logger.info('[Workflow] Processed corporation payment transactions from persisted data', {
+			billId: ctx.billId,
+			workflowInstanceId: ctx.workflowInstanceId,
+			corporationId: billData.payeeId,
+			count: paymentTransactions.length,
+		})
+		return
+	}
+
+	if (payeeType === 'character') {
+		const paymentTransactions = await findPaymentTransactionsForCharacterFromDb(ctx, billData)
+		if (paymentTransactions.length === 0) {
+			logger.info('[Workflow] No payment transactions found for character in persisted data', {
+				billId: ctx.billId,
+				workflowInstanceId: ctx.workflowInstanceId,
+				characterId: billData.payeeId,
+				paymentToken: billData.paymentToken,
+				fromDate: billData.createdAt,
+			})
+			return
+		}
+
+		for (const paymentTransaction of paymentTransactions) {
+			const amount = parseAmountToBigInt(paymentTransaction.amount)
+			if (amount === null || amount <= 0n) {
+				logger.warn('[Workflow] Skipping character payment transaction with invalid amount', {
+					billId: ctx.billId,
+					workflowInstanceId: ctx.workflowInstanceId,
+					journalId: paymentTransaction.journalId,
+					amount: paymentTransaction.amount,
+				})
+				continue
+			}
+			if (!paymentTransaction.firstPartyId) {
+				logger.warn('[Workflow] Skipping character payment transaction with missing payer id', {
+					billId: ctx.billId,
+					workflowInstanceId: ctx.workflowInstanceId,
+					journalId: paymentTransaction.journalId,
+				})
+				continue
+			}
+			await ctx.billService.payBill(billData.paymentToken, {
+				amount,
+				paidById: paymentTransaction.firstPartyId,
+				paidByType: billData.payerType ?? 'character',
+				esiTransactionId: paymentTransaction.journalId,
+			})
+		}
+
+		logger.info('[Workflow] Processed character payment transactions from persisted data', {
+			billId: ctx.billId,
+			workflowInstanceId: ctx.workflowInstanceId,
+			characterId: billData.payeeId,
+			count: paymentTransactions.length,
+		})
+		return
 	} else {
-		throw new Error('Invalid payee type')
+		logger.info('[Workflow] Skipping payment transaction lookup for unsupported payee type', {
+			billId: ctx.billId,
+			workflowInstanceId: ctx.workflowInstanceId,
+			payeeType,
+		})
 	}
 }

@@ -815,11 +815,22 @@ app.delete('/:billId', requireAuth(), requireAdmin(), async (c) => {
 
 	try {
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		await stub.deleteBill(user.id, billId)
+		const bill = await stub.getBillIntegrationView(billId)
+		if (!bill) {
+			return c.json({ error: 'Bill not found' }, 404)
+		}
+
+		// Admins can delete draft bills regardless of who issued them.
+		// BillService still enforces draft-only deletion.
+		await stub.deleteBill(bill.issuerId, billId)
 
 		return c.json({ success: true })
 	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error)
 		logger.error('Error deleting bill:', error)
+		if (message.includes('Only draft bills can be deleted')) {
+			return c.json({ error: 'Only draft bills can be deleted' }, 400)
+		}
 		return c.json({ error: 'Failed to delete bill' }, 500)
 	}
 })

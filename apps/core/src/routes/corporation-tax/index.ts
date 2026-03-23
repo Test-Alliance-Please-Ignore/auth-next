@@ -16,6 +16,8 @@ import {
 import { registerCorporationTaxAlertsRoutes } from './alerts-routes'
 import { registerCorporationTaxReportsRoutes } from './reports-routes'
 import {
+	disposeRpcStub,
+	logTaxRouteError,
 	mapTaxBillingConfigError,
 	mapTaxBillingError,
 	parseBooleanQueryParam,
@@ -277,7 +279,7 @@ app.get('/health', requireAuth(), async (c) => {
 		const health = await stub.getHealth()
 		return c.json(health)
 	} catch (error) {
-		logger.error('Error fetching corporation-tax health:', error)
+		logTaxRouteError(c, 'Error fetching corporation-tax health', error)
 		return c.json({ error: 'Failed to fetch corporation-tax health' }, 500)
 	}
 })
@@ -346,7 +348,7 @@ app.get('/exclusions', requireAuth(), async (c) => {
 		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
 		return c.json(await stub.listCorporationExclusions({ limit, offset }))
 	} catch (error) {
-		logger.error('Error listing corporation tax exclusions:', error)
+		logTaxRouteError(c, 'Error listing corporation tax exclusions', error, { userId: user.id })
 		return c.json({ error: 'Failed to list corporation tax exclusions' }, 500)
 	}
 })
@@ -376,7 +378,7 @@ app.put('/exclusions/:corporationId', requireAuth(), async (c) => {
 			})
 		)
 	} catch (error) {
-		logger.error('Error upserting corporation tax exclusion:', error)
+		logTaxRouteError(c, 'Error upserting corporation tax exclusion', error, { userId: user.id })
 		return c.json({ error: 'Failed to upsert corporation tax exclusion' }, 500)
 	}
 })
@@ -396,7 +398,7 @@ app.delete('/exclusions/:corporationId', requireAuth(), async (c) => {
 		await stub.deleteCorporationExclusion(user.id, c.req.param('corporationId'))
 		return c.body(null, 204)
 	} catch (error) {
-		logger.error('Error deleting corporation tax exclusion:', error)
+		logTaxRouteError(c, 'Error deleting corporation tax exclusion', error, { userId: user.id })
 		return c.json({ error: 'Failed to delete corporation tax exclusion' }, 500)
 	}
 })
@@ -440,20 +442,24 @@ app.get('/corporations', requireAuth(), async (c) => {
 
 		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
 		const exclusionMap = new Map<string, string | null>()
-		let exclusionOffset = 0
-		const exclusionPageSize = 500
-		while (true) {
-			const page = await stub.listCorporationExclusions({
-				limit: exclusionPageSize,
-				offset: exclusionOffset,
-			})
-			for (const row of page) {
-				exclusionMap.set(row.corporationId, row.reason ?? null)
+		try {
+			let exclusionOffset = 0
+			const exclusionPageSize = 500
+			while (true) {
+				const page = await stub.listCorporationExclusions({
+					limit: exclusionPageSize,
+					offset: exclusionOffset,
+				})
+				for (const row of page) {
+					exclusionMap.set(row.corporationId, row.reason ?? null)
+				}
+				if (page.length < exclusionPageSize) {
+					break
+				}
+				exclusionOffset += page.length
 			}
-			if (page.length < exclusionPageSize) {
-				break
-			}
-			exclusionOffset += page.length
+		} finally {
+			disposeRpcStub(stub)
 		}
 
 		const rows = managedCorps.map((corp) => ({
@@ -465,7 +471,9 @@ app.get('/corporations', requireAuth(), async (c) => {
 		}))
 		return c.json(rows)
 	} catch (error) {
-		logger.error('Error listing tax corporations:', error)
+		logTaxRouteError(c, 'Error listing tax corporations', error, {
+			userId: user.id,
+		})
 		return c.json({ error: 'Failed to list tax corporations' }, 500)
 	}
 })
@@ -518,7 +526,10 @@ app.get('/corporations/:corporationId/payee-corporations/search', requireAuth(),
 		})
 		return c.json(rows)
 	} catch (error) {
-		logger.error('Error searching active billing payee corporations:', error)
+		logTaxRouteError(c, 'Error searching active billing payee corporations', error, {
+			userId: user.id,
+			corporationId,
+		})
 		return c.json({ error: 'Failed to search active corporations' }, 500)
 	}
 })
@@ -542,10 +553,17 @@ app.get('/corporations/:corporationId/divisions', requireAuth(), async (c) => {
 
 	try {
 		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
-		const divisions = await stub.listWalletDivisions(corporationId)
-		return c.json(divisions.sort((left, right) => left - right))
+		try {
+			const divisions = await stub.listWalletDivisions(corporationId)
+			return c.json(divisions.sort((left, right) => left - right))
+		} finally {
+			disposeRpcStub(stub)
+		}
 	} catch (error) {
-		logger.error('Error listing corporation tax wallet divisions:', error)
+		logTaxRouteError(c, 'Error listing corporation tax wallet divisions', error, {
+			userId: user.id,
+			corporationId,
+		})
 		return c.json({ error: 'Failed to list wallet divisions' }, 500)
 	}
 })
@@ -582,7 +600,10 @@ app.get('/corporations/:corporationId/rules', requireAuth(), async (c) => {
 		})
 		return c.json(ruleSets)
 	} catch (error) {
-		logger.error('Error listing corporation tax rules:', error)
+		logTaxRouteError(c, 'Error listing corporation tax rules', error, {
+			userId: user.id,
+			corporationId,
+		})
 		return c.json({ error: 'Failed to list corporation tax rules' }, 500)
 	}
 })
@@ -621,7 +642,7 @@ app.get('/rules', requireAuth(), async (c) => {
 		})
 		return c.json(ruleSets)
 	} catch (error) {
-		logger.error('Error listing tax rules:', error)
+		logTaxRouteError(c, 'Error listing tax rules', error, { userId: user.id })
 		return c.json({ error: 'Failed to list tax rules' }, 500)
 	}
 })
@@ -652,7 +673,7 @@ app.get('/rule-groups', requireAuth(), async (c) => {
 		})
 		return c.json(ruleGroups)
 	} catch (error) {
-		logger.error('Error listing corporation tax rule groups:', error)
+		logTaxRouteError(c, 'Error listing corporation tax rule groups', error, { userId: user.id })
 		return c.json({ error: 'Failed to list corporation tax rule groups' }, 500)
 	}
 })
@@ -694,7 +715,7 @@ app.post('/rule-groups', requireAuth(), async (c) => {
 		})
 		return c.json(created, 201)
 	} catch (error) {
-		logger.error('Error creating corporation tax rule group:', error)
+		logTaxRouteError(c, 'Error creating corporation tax rule group', error, { userId: user.id })
 		return c.json({ error: 'Failed to create corporation tax rule group' }, 500)
 	}
 })
@@ -727,7 +748,7 @@ app.patch('/rule-groups/:ruleGroupId', requireAuth(), async (c) => {
 		if (error instanceof Error && error.message.includes('cannot be updated')) {
 			return c.json({ error: error.message }, 409)
 		}
-		logger.error('Error updating tax rule group:', error)
+		logTaxRouteError(c, 'Error updating tax rule group', error, { userId: user.id })
 		return c.json({ error: 'Failed to update tax rule group' }, 500)
 	}
 })
@@ -747,7 +768,7 @@ app.delete('/rule-groups/:ruleGroupId', requireAuth(), async (c) => {
 		if (message.includes('cannot be deleted')) {
 			return c.json({ error: message }, 409)
 		}
-		logger.error('Error deleting tax rule group:', error)
+		logTaxRouteError(c, 'Error deleting tax rule group', error, { userId: user.id })
 		return c.json({ error: 'Failed to delete tax rule group' }, 500)
 	}
 })
@@ -762,7 +783,7 @@ app.get('/rule-groups/:ruleGroupId/attachments', requireAuth(), async (c) => {
 		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
 		return c.json(await stub.listRuleGroupAttachments(ruleGroupId))
 	} catch (error) {
-		logger.error('Error listing tax rule group attachments:', error)
+		logTaxRouteError(c, 'Error listing tax rule group attachments', error, { userId: user.id })
 		return c.json({ error: 'Failed to list tax rule group attachments' }, 500)
 	}
 })
@@ -781,7 +802,9 @@ app.post('/rule-groups/:ruleGroupId/attachments', requireAuth(), async (c) => {
 		const attached = await stub.attachCorporationToRuleGroup(user.id, ruleGroupId, corporationId)
 		return c.json(attached, 201)
 	} catch (error) {
-		logger.error('Error attaching corporation to tax rule group:', error)
+		logTaxRouteError(c, 'Error attaching corporation to tax rule group', error, {
+			userId: user.id,
+		})
 		return c.json({ error: 'Failed to attach corporation to tax rule group' }, 500)
 	}
 })
@@ -798,7 +821,9 @@ app.delete('/rule-groups/:ruleGroupId/attachments/:corporationId', requireAuth()
 		await stub.detachCorporationFromRuleGroup(user.id, ruleGroupId, corporationId)
 		return c.body(null, 204)
 	} catch (error) {
-		logger.error('Error detaching corporation from tax rule group:', error)
+		logTaxRouteError(c, 'Error detaching corporation from tax rule group', error, {
+			userId: user.id,
+		})
 		return c.json({ error: 'Failed to detach corporation from tax rule group' }, 500)
 	}
 })
@@ -856,7 +881,7 @@ app.post('/rules', requireAuth(), async (c) => {
 		})
 		return c.json(created, 201)
 	} catch (error) {
-		logger.error('Error creating tax rule set:', error)
+		logTaxRouteError(c, 'Error creating tax rule set', error, { userId: user.id })
 		return c.json({ error: 'Failed to create tax rule set' }, 500)
 	}
 })
@@ -908,7 +933,7 @@ app.patch('/rules/:ruleSetId', requireAuth(), async (c) => {
 		})
 		return c.json(updated)
 	} catch (error) {
-		logger.error('Error updating tax rule set:', error)
+		logTaxRouteError(c, 'Error updating tax rule set', error, { userId: user.id })
 		return c.json({ error: 'Failed to update tax rule set' }, 500)
 	}
 })
@@ -927,7 +952,7 @@ app.delete('/rules/:ruleSetId', requireAuth(), async (c) => {
 		if (error instanceof Error && error.message.includes('not found')) {
 			return c.json({ error: error.message }, 404)
 		}
-		logger.error('Error deleting tax rule set:', error)
+		logTaxRouteError(c, 'Error deleting tax rule set', error, { userId: user.id })
 		return c.json({ error: 'Failed to delete tax rule set' }, 500)
 	}
 })
@@ -978,7 +1003,10 @@ app.get('/corporations/:corporationId/assessments', requireAuth(), async (c) => 
 		})
 		return c.json(assessments)
 	} catch (error) {
-		logger.error('Error listing corporation tax assessments:', error)
+		logTaxRouteError(c, 'Error listing corporation tax assessments', error, {
+			userId: user.id,
+			corporationId,
+		})
 		return c.json({ error: 'Failed to list tax assessments' }, 500)
 	}
 })
@@ -1029,7 +1057,7 @@ app.post('/corporations/:corporationId/assessments/run', requireAuth(), async (c
 		})
 		return c.json(result)
 	} catch (error) {
-		logger.error('Error running tax assessment for period:', error)
+		logTaxRouteError(c, 'Error running tax assessment for period', error, { userId: user.id })
 		return c.json({ error: 'Failed to run tax assessment for period' }, 500)
 	}
 })
@@ -1086,7 +1114,9 @@ app.post('/corporations/:corporationId/assessments/rebuild-finalized', requireAu
 		) {
 			return c.json({ error: error.message }, 409)
 		}
-		logger.error('Error rebuilding finalized tax rollups for period:', error)
+		logTaxRouteError(c, 'Error rebuilding finalized tax rollups for period', error, {
+			userId: user.id,
+		})
 		return c.json({ error: 'Failed to rebuild finalized tax rollups for period' }, 500)
 	}
 })
@@ -1124,7 +1154,7 @@ app.get(
 			})
 			return c.json(lines)
 		} catch (error) {
-			logger.error('Error listing tax assessment lines:', error)
+			logTaxRouteError(c, 'Error listing tax assessment lines', error, { userId: user.id })
 			return c.json({ error: 'Failed to list tax assessment lines' }, 500)
 		}
 	}
@@ -1162,7 +1192,10 @@ app.get('/corporations/:corporationId/discrepancies', requireAuth(), async (c) =
 		})
 		return c.json(discrepancies)
 	} catch (error) {
-		logger.error('Error listing tax discrepancies:', error)
+		logTaxRouteError(c, 'Error listing tax discrepancies', error, {
+			userId: user.id,
+			corporationId,
+		})
 		return c.json({ error: 'Failed to list tax discrepancies' }, 500)
 	}
 })
@@ -1241,7 +1274,10 @@ app.post('/corporations/:corporationId/ledger/ingest', requireAuth(), async (c) 
 		})
 		return c.json(result)
 	} catch (error) {
-		logger.error('Error ingesting corporation tax ledger window:', error)
+		logTaxRouteError(c, 'Error ingesting corporation tax ledger window', error, {
+			userId: user.id,
+			corporationId,
+		})
 		return c.json({ error: 'Failed to ingest tax ledger window' }, 500)
 	}
 })
@@ -1361,7 +1397,10 @@ app.get('/corporations/:corporationId/ledger/parties', requireAuth(), async (c) 
 			}))
 		)
 	} catch (error) {
-		logger.error('Error listing corporation tax ledger parties:', error)
+		logTaxRouteError(c, 'Error listing corporation tax ledger parties', error, {
+			userId: user.id,
+			corporationId,
+		})
 		return c.json({ error: 'Failed to list tax ledger parties' }, 500)
 	}
 })
@@ -1423,31 +1462,38 @@ app.get('/corporations/:corporationId/ledger/entries', requireAuth(), async (c) 
 
 	try {
 		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
-		const entries = await stub.listLedgerEntries(corporationId, {
-			division: division ?? undefined,
-			sourceTypes:
-				sourceTypes && sourceTypes.length > 0
-					? (sourceTypes as Array<
-							| 'corporation_wallet_journal'
-							| 'corporation_wallet_transaction'
-							| 'character_wallet_journal'
-							| 'character_wallet_transaction'
-						>)
-					: undefined,
-			characterId: characterId || undefined,
-			refTypes: refTypes && refTypes.length > 0 ? refTypes : undefined,
-			firstPartyId: firstPartyId || undefined,
-			secondPartyId: secondPartyId || undefined,
-			fromDate,
-			toDate,
-			minAmount: c.req.query('minAmount') || undefined,
-			maxAmount: c.req.query('maxAmount') || undefined,
-			limit: limit ?? undefined,
-			offset: offset ?? undefined,
-		})
-		return c.json(entries)
+		try {
+			const entries = await stub.listLedgerEntries(corporationId, {
+				division: division ?? undefined,
+				sourceTypes:
+					sourceTypes && sourceTypes.length > 0
+						? (sourceTypes as Array<
+								| 'corporation_wallet_journal'
+								| 'corporation_wallet_transaction'
+								| 'character_wallet_journal'
+								| 'character_wallet_transaction'
+							>)
+						: undefined,
+				characterId: characterId || undefined,
+				refTypes: refTypes && refTypes.length > 0 ? refTypes : undefined,
+				firstPartyId: firstPartyId || undefined,
+				secondPartyId: secondPartyId || undefined,
+				fromDate,
+				toDate,
+				minAmount: c.req.query('minAmount') || undefined,
+				maxAmount: c.req.query('maxAmount') || undefined,
+				limit: limit ?? undefined,
+				offset: offset ?? undefined,
+			})
+			return c.json(entries)
+		} finally {
+			disposeRpcStub(stub)
+		}
 	} catch (error) {
-		logger.error('Error listing corporation tax ledger entries:', error)
+		logTaxRouteError(c, 'Error listing corporation tax ledger entries', error, {
+			userId: user.id,
+			corporationId,
+		})
 		return c.json({ error: 'Failed to list tax ledger entries' }, 500)
 	}
 })
@@ -1473,7 +1519,10 @@ app.get('/corporations/:corporationId/ledger/health', requireAuth(), async (c) =
 		const health = await stub.getLedgerIngestionHealth(corporationId)
 		return c.json(health)
 	} catch (error) {
-		logger.error('Error fetching corporation tax ingestion health:', error)
+		logTaxRouteError(c, 'Error fetching corporation tax ingestion health', error, {
+			userId: user.id,
+			corporationId,
+		})
 		return c.json({ error: 'Failed to fetch tax ingestion health' }, 500)
 	}
 })
@@ -1514,7 +1563,10 @@ app.post('/corporations/:corporationId/ledger/trim', requireAuth(), async (c) =>
 		const result = await stub.trimLedgerEntries(user.id, corporationId, retentionDays)
 		return c.json(result)
 	} catch (error) {
-		logger.error('Error trimming corporation tax ledger entries:', error)
+		logTaxRouteError(c, 'Error trimming corporation tax ledger entries', error, {
+			userId: user.id,
+			corporationId,
+		})
 		return c.json({ error: 'Failed to trim tax ledger entries' }, 500)
 	}
 })
@@ -1545,7 +1597,10 @@ app.get('/corporations/:corporationId/billing-configs', requireAuth(), async (c)
 			'Failed to list corporation billing configurations'
 		)
 		if (mapped.status >= 500) {
-			logger.error('Error listing corporation tax billing configurations:', error)
+			logTaxRouteError(c, 'Error listing corporation tax billing configurations', error, {
+				userId: user.id,
+				corporationId,
+			})
 		}
 		return c.json({ error: mapped.message }, mapped.status)
 	}
@@ -1602,7 +1657,10 @@ app.get('/corporations/:corporationId/payee-characters/search', requireAuth(), a
 
 		return c.json(rows)
 	} catch (error) {
-		logger.error('Error searching billing payee characters:', error)
+		logTaxRouteError(c, 'Error searching billing payee characters', error, {
+			userId: user.id,
+			corporationId,
+		})
 		return c.json({ error: 'Failed to search characters' }, 500)
 	}
 })
@@ -1659,7 +1717,10 @@ app.post('/corporations/:corporationId/billing-configs', requireAuth(), async (c
 	} catch (error) {
 		const mapped = mapTaxBillingConfigError(error, 'Failed to create billing configuration')
 		if (mapped.status >= 500) {
-			logger.error('Error creating corporation tax billing configuration:', error)
+			logTaxRouteError(c, 'Error creating corporation tax billing configuration', error, {
+				userId: user.id,
+				corporationId,
+			})
 		}
 		return c.json({ error: mapped.message }, mapped.status)
 	}
@@ -1723,7 +1784,10 @@ app.patch('/corporations/:corporationId/billing-configs/:configId', requireAuth(
 	} catch (error) {
 		const mapped = mapTaxBillingConfigError(error, 'Failed to update billing configuration')
 		if (mapped.status >= 500) {
-			logger.error('Error updating corporation tax billing configuration:', error)
+			logTaxRouteError(c, 'Error updating corporation tax billing configuration', error, {
+				userId: user.id,
+				corporationId,
+			})
 		}
 		return c.json({ error: mapped.message }, mapped.status)
 	}
@@ -1753,7 +1817,10 @@ app.delete('/corporations/:corporationId/billing-configs/:configId', requireAuth
 	} catch (error) {
 		const mapped = mapTaxBillingConfigError(error, 'Failed to delete billing configuration')
 		if (mapped.status >= 500) {
-			logger.error('Error deleting corporation tax billing configuration:', error)
+			logTaxRouteError(c, 'Error deleting corporation tax billing configuration', error, {
+				userId: user.id,
+				corporationId,
+			})
 		}
 		return c.json({ error: mapped.message }, mapped.status)
 	}
@@ -1790,7 +1857,10 @@ app.post(
 		} catch (error) {
 			const mapped = mapTaxBillingConfigError(error, 'Failed to set default billing configuration')
 			if (mapped.status >= 500) {
-				logger.error('Error setting default corporation tax billing configuration:', error)
+				logTaxRouteError(c, 'Error setting default corporation tax billing configuration', error, {
+					userId: user.id,
+					corporationId,
+				})
 			}
 			return c.json({ error: mapped.message }, mapped.status)
 		}
@@ -1824,7 +1894,7 @@ app.post(
 		} catch (error) {
 			const mapped = mapTaxBillingError(error, 'Failed to create bill for assessment')
 			if (mapped.status >= 500) {
-				logger.error('Error creating bill for tax assessment:', error)
+				logTaxRouteError(c, 'Error creating bill for tax assessment', error, { userId: user.id })
 			}
 			return c.json({ error: mapped.message }, mapped.status)
 		}
@@ -1858,7 +1928,9 @@ app.post(
 		} catch (error) {
 			const mapped = mapTaxBillingError(error, 'Failed to sync assessment bill status')
 			if (mapped.status >= 500) {
-				logger.error('Error syncing tax assessment bill status:', error)
+				logTaxRouteError(c, 'Error syncing tax assessment bill status', error, {
+					userId: user.id,
+				})
 			}
 			return c.json({ error: mapped.message }, mapped.status)
 		}
@@ -1896,7 +1968,7 @@ app.post(
 		} catch (error) {
 			const mapped = mapTaxBillingError(error, 'Failed to retract assessment bill')
 			if (mapped.status === 500) {
-				logger.error('Error retracting tax assessment bill:', error)
+				logTaxRouteError(c, 'Error retracting tax assessment bill', error, { userId: user.id })
 			}
 			return c.json({ error: mapped.message }, mapped.status)
 		}
@@ -1946,7 +2018,7 @@ app.post('/corporations/:corporationId/periods/issue-bills', requireAuth(), asyn
 	} catch (error) {
 		const mapped = mapTaxBillingError(error, 'Failed to issue bills for period')
 		if (mapped.status >= 500) {
-			logger.error('Error issuing bills for period:', error)
+			logTaxRouteError(c, 'Error issuing bills for period', error, { userId: user.id })
 		}
 		return c.json({ error: mapped.message }, mapped.status)
 	}
@@ -1976,7 +2048,10 @@ app.get('/corporations/:corporationId/bills/history', requireAuth(), async (c) =
 		const history = await stub.getCorporationBillStatusHistory(corporationId, limit, offset)
 		return c.json(history)
 	} catch (error) {
-		logger.error('Error fetching corporation tax bill history:', error)
+		logTaxRouteError(c, 'Error fetching corporation tax bill history', error, {
+			userId: user.id,
+			corporationId,
+		})
 		return c.json({ error: 'Failed to fetch corporation tax bill history' }, 500)
 	}
 })
@@ -2005,7 +2080,10 @@ app.get('/corporations/:corporationId/bills/history/events', requireAuth(), asyn
 		const history = await stub.getCorporationBillEventHistory(corporationId, limit, offset)
 		return c.json(history)
 	} catch (error) {
-		logger.error('Error fetching corporation tax bill event history:', error)
+		logTaxRouteError(c, 'Error fetching corporation tax bill event history', error, {
+			userId: user.id,
+			corporationId,
+		})
 		return c.json({ error: 'Failed to fetch corporation tax bill event history' }, 500)
 	}
 })
@@ -2038,7 +2116,10 @@ app.get(
 			}
 			return c.json(history)
 		} catch (error) {
-			logger.error('Error fetching tax assessment bill history:', error)
+			logTaxRouteError(c, 'Error fetching tax assessment bill history', error, {
+				userId: user.id,
+				corporationId,
+			})
 			return c.json({ error: 'Failed to fetch tax assessment bill history' }, 500)
 		}
 	}
@@ -2080,7 +2161,10 @@ app.post('/corporations/:corporationId/bills/sync', requireAuth(), async (c) => 
 	} catch (error) {
 		const mapped = mapTaxBillingError(error, 'Failed to sync corporation tax bill statuses')
 		if (mapped.status >= 500) {
-			logger.error('Error syncing corporation tax bill statuses:', error)
+			logTaxRouteError(c, 'Error syncing corporation tax bill statuses', error, {
+				userId: user.id,
+				corporationId,
+			})
 		}
 		return c.json({ error: mapped.message }, mapped.status)
 	}
@@ -2129,8 +2213,12 @@ app.get('/corporations/:corporationId/member-summary', requireAuth(), async (c) 
 		let scopedCharacterIds: string[] = memberCharacterIds
 		if (canReadWithTaxScopes) {
 			const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
-			const members = await corpStub.getMembers(corporationId)
-			scopedCharacterIds = members.map((member) => member.characterId)
+			try {
+				const members = await corpStub.getMembers(corporationId)
+				scopedCharacterIds = members.map((member) => member.characterId)
+			} finally {
+				disposeRpcStub(corpStub)
+			}
 		}
 		const scopedCharacterIdSet = new Set(scopedCharacterIds)
 
@@ -2146,11 +2234,15 @@ app.get('/corporations/:corporationId/member-summary', requireAuth(), async (c) 
 				// This includes members that are not linked site users.
 				try {
 					const tokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
-					const searchResultIds = await tokenStoreStub.searchCharacter(characterQuery, false)
-					for (const characterId of searchResultIds) {
-						if (scopedCharacterIdSet.has(characterId)) {
-							matchedCharacterIds.add(characterId)
+					try {
+						const searchResultIds = await tokenStoreStub.searchCharacter(characterQuery, false)
+						for (const characterId of searchResultIds) {
+							if (scopedCharacterIdSet.has(characterId)) {
+								matchedCharacterIds.add(characterId)
+							}
 						}
+					} finally {
+						disposeRpcStub(tokenStoreStub)
 					}
 				} catch (error) {
 					logger.warn('[CorporationTax] Failed ESI character search for member summary', {
@@ -2193,16 +2285,23 @@ app.get('/corporations/:corporationId/member-summary', requireAuth(), async (c) 
 			targetCharacterIds = memberCharacterIds
 		}
 
-		const rows = await stub.getMemberSummaryReport({
-			corporationId,
-			characterIds: targetCharacterIds,
-			fromDate: fromDate ?? undefined,
-			toDate: toDate ?? undefined,
-			topRefTypesLimit: topRefTypesLimit ?? undefined,
-		})
-		return c.json(rows)
+		try {
+			const rows = await stub.getMemberSummaryReport({
+				corporationId,
+				characterIds: targetCharacterIds,
+				fromDate: fromDate ?? undefined,
+				toDate: toDate ?? undefined,
+				topRefTypesLimit: topRefTypesLimit ?? undefined,
+			})
+			return c.json(rows)
+		} finally {
+			disposeRpcStub(stub)
+		}
 	} catch (error) {
-		logger.error('Error fetching corporation tax member summary:', error)
+		logTaxRouteError(c, 'Error fetching corporation tax member summary', error, {
+			userId: user.id,
+			corporationId,
+		})
 		return c.json({ error: 'Failed to fetch member summary' }, 500)
 	}
 })
