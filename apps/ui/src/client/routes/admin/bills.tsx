@@ -9,6 +9,7 @@ import { ConfirmButton } from '@/components/ui/confirm-button'
 import { DestructiveButton } from '@/components/ui/destructive-button'
 import { GhostButton } from '@/components/ui/ghost-button'
 import { PrimaryButton } from '@/components/ui/primary-button'
+import { SecondaryButton } from '@/components/ui/secondary-button'
 import {
 	useBillEntitySearch,
 	useBillPartySearch,
@@ -18,6 +19,7 @@ import {
 	useIssueBill,
 	useRevertBillToDraft,
 } from '@/hooks/useBills'
+import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { useDebounce } from '@/hooks/useDebounce'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
@@ -147,6 +149,7 @@ export default function AdminBillsPage() {
 	const cancelBill = useCancelBill()
 	const deleteBill = useDeleteBill()
 	const revertBillToDraft = useRevertBillToDraft()
+	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
 
 	// Action handlers
 	const handleIssue = async (billId: string) => {
@@ -158,29 +161,53 @@ export default function AdminBillsPage() {
 	}
 
 	const handleCancel = async (billId: string) => {
-		if (!confirm('Are you sure you want to cancel this bill?')) return
-		try {
-			await cancelBill.mutateAsync(billId)
-		} catch (error) {
-			console.error('Failed to cancel bill:', error)
-		}
+		requestConfirmation({
+			title: 'Cancel Bill',
+			description: 'Are you sure you want to cancel this bill?',
+			confirmLabel: 'Cancel Bill',
+			intent: 'confirm',
+			onConfirm: async () => {
+				try {
+					await cancelBill.mutateAsync(billId)
+				} catch (error) {
+					console.error('Failed to cancel bill:', error)
+					throw error
+				}
+			},
+		})
 	}
 
 	const handleDelete = async (billId: string) => {
-		if (!confirm('Are you sure you want to delete this bill? This action cannot be undone.')) return
-		try {
-			await deleteBill.mutateAsync(billId)
-		} catch (error) {
-			console.error('Failed to delete bill:', error)
-		}
+		requestConfirmation({
+			title: 'Delete Bill',
+			description: 'Are you sure you want to delete this bill? This action cannot be undone.',
+			confirmLabel: 'Delete Bill',
+			intent: 'destructive',
+			onConfirm: async () => {
+				try {
+					await deleteBill.mutateAsync(billId)
+				} catch (error) {
+					console.error('Failed to delete bill:', error)
+					throw error
+				}
+			},
+		})
 	}
 	const handleRevertToDraft = async (billId: string) => {
-		if (!confirm('Move this bill back to draft?')) return
-		try {
-			await revertBillToDraft.mutateAsync(billId)
-		} catch (error) {
-			console.error('Failed to revert bill to draft:', error)
-		}
+		requestConfirmation({
+			title: 'Move Bill To Draft',
+			description: 'Move this bill back to draft?',
+			confirmLabel: 'To Draft',
+			intent: 'secondary',
+			onConfirm: async () => {
+				try {
+					await revertBillToDraft.mutateAsync(billId)
+				} catch (error) {
+					console.error('Failed to revert bill to draft:', error)
+					throw error
+				}
+			},
+		})
 	}
 	const resetFilters = () => {
 		setStatus(undefined)
@@ -319,13 +346,13 @@ export default function AdminBillsPage() {
 							</CancelButton>
 						)}
 						{bill.status !== 'draft' && bill.status !== 'paid' && (
-							<GhostButton
+							<SecondaryButton
 								size="sm"
 								onClick={() => void handleRevertToDraft(bill.id)}
 								disabled={revertBillToDraft.isPending}
 							>
 								To Draft
-							</GhostButton>
+							</SecondaryButton>
 						)}
 						{bill.status === 'draft' && (
 							<DestructiveButton
@@ -344,6 +371,7 @@ export default function AdminBillsPage() {
 				)}
 				emptyMessage="No bills found for the current filters."
 			/>
+			{confirmationDialog}
 		</div>
 	)
 }

@@ -512,12 +512,11 @@ export interface Bills {
 	updateTemplate(
 		userId: string,
 		templateId: string,
-		data: UpdateTemplateInput,
-		scope?: OwnershipScope
+		data: UpdateTemplateInput
 	): Promise<BillTemplate>
 
-	/** Delete a template (owner only, no active schedules) */
-	deleteTemplate(userId: string, templateId: string, scope?: OwnershipScope): Promise<void>
+	/** Delete a template (no active schedules) */
+	deleteTemplate(userId: string, templateId: string): Promise<void>
 
 	/** Clone an existing template */
 	cloneTemplate(userId: string, data: CloneTemplateInput): Promise<BillTemplate>
@@ -549,22 +548,21 @@ export interface Bills {
 		scope?: OwnershipScope
 	): Promise<BillScheduleWithDetails[]>
 
-	/** Update a schedule (owner only) */
+	/** Update a schedule */
 	updateSchedule(
 		userId: string,
 		scheduleId: string,
-		data: UpdateScheduleInput,
-		scope?: OwnershipScope
+		data: UpdateScheduleInput
 	): Promise<BillSchedule>
 
-	/** Pause a schedule (owner only) */
+	/** Pause a schedule */
 	pauseSchedule(userId: string, scheduleId: string): Promise<BillSchedule>
 
-	/** Resume a schedule (owner only) */
+	/** Resume a schedule */
 	resumeSchedule(userId: string, scheduleId: string): Promise<BillSchedule>
 
-	/** Delete a schedule (owner only) */
-	deleteSchedule(userId: string, scheduleId: string, scope?: OwnershipScope): Promise<void>
+	/** Delete a schedule */
+	deleteSchedule(userId: string, scheduleId: string): Promise<void>
 
 	/** Get schedule execution history */
 	getScheduleExecutionLogs(
@@ -574,8 +572,8 @@ export interface Bills {
 		scope?: OwnershipScope
 	): Promise<ScheduleExecutionLog[]>
 
-	/** Get schedule statistics for a user */
-	getScheduleStatistics(userId: string): Promise<ScheduleStatistics>
+	/** Get schedule statistics for a user or all schedules when scope=all */
+	getScheduleStatistics(userId: string, scope?: OwnershipScope): Promise<ScheduleStatistics>
 
 	/**
 	 * Internal workflow methods (called by Cloudflare Workflows)

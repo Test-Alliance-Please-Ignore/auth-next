@@ -10,7 +10,7 @@ Complete bills management system for EVE Online corporations, groups, and charac
 - **Recurring Bills**: Automated bill generation using Cloudflare Workflows
 - **Schedule Management**: Daily, weekly, or monthly recurring bills
 - **Secure Payments**: 12-character cryptographically secure payment tokens (fits in EVE wallet reason field)
-- **Authorization**: Role-based access control (issuer vs. payer permissions)
+- **Authorization**: Route-level permissions in `apps/core` with domain-level lifecycle invariants in this worker
 
 ## Architecture
 
@@ -173,25 +173,69 @@ Example: 1M ISK bill, 5% daily late fee, 3 days overdue:
 Late Fee = 1,000,000 × 0.05 × 3 = 150,000 ISK
 ```
 
-## Authorization Model
+## Permission And Action Matrix
 
-### Bill Operations
+This section documents the current user-facing permission model implemented in `apps/core/src/routes/bills-admin.ts` and `apps/core/src/routes/bills-user.ts`.
 
-- **Create**: Any user
-- **Update/Delete**: Issuer only, draft status only
-- **Issue/Cancel**: Issuer only
-- **View**: Issuer or payer
-- **Pay**: Anyone with payment token
+### Core User-Facing Endpoints
 
-### Template Operations
+| Endpoint Prefix | Audience | Notes |
+|---|---|---|
+| `/api/admin/bills/*` | Site admin only (`requireAdmin`) | Full visibility and all bill/template/schedule actions. |
+| `/api/bills/my-bills*` | Billing viewers | Allowed for site admins or users with `ROLE_CORE_ALLIANCE_MEMBER`. |
 
-- **Create/Update/Delete**: Owner only
-- **View/Clone**: Owner only
-- **Use**: Owner only
+### View Matrix
 
-### Schedule Operations
+| Route | Site Admin | Non-Admin Entity Owner / Party |
+|---|---|---|
+| `GET /api/admin/bills` | ✅ all bills | ❌ |
+| `GET /api/admin/bills/:billId` | ✅ all bills | ❌ |
+| `GET /api/admin/bills/templates*` | ✅ all templates | ❌ |
+| `GET /api/admin/bills/schedules*` | ✅ all schedules | ❌ |
+| `GET /api/bills/my-bills` | ✅ (scope = `all`) | ✅ (scope = `my`: issuer + allowed parties) |
+| `GET /api/bills/my-bills/:billId` | ✅ (integration-view override) | ✅ if issuer/party-scoped and allowed by draft rule; otherwise `404` |
+| `GET /api/bills/my-bills/parties/search` | ✅ (scope = `all`) | ✅ (scope = `my`) |
 
-- **All operations**: Owner only
+### Action Matrix
+
+Current state: all user-facing mutation routes are admin-routes.
+
+| Action | Route | Site Admin | Non-Admin Entity Owner |
+|---|---|---|---|
+| Create bill | `POST /api/admin/bills` | ✅ | ❌ |
+| Update bill | `PUT /api/admin/bills/:billId` | ✅ | ❌ |
+| Delete bill | `DELETE /api/admin/bills/:billId` | ✅ | ❌ |
+| Issue bill | `POST /api/admin/bills/:billId/issue` | ✅ | ❌ |
+| Cancel bill | `POST /api/admin/bills/:billId/cancel` | ✅ | ❌ |
+| Revert bill to draft | `POST /api/admin/bills/:billId/revert-to-draft` | ✅ | ❌ |
+| Regenerate token | `POST /api/admin/bills/:billId/regenerate-token` | ✅ | ❌ |
+| Create/update/delete template | `/api/admin/bills/templates*` | ✅ | ❌ |
+| Create/update/delete/pause/resume schedule | `/api/admin/bills/schedules*` | ✅ | ❌ |
+
+### Domain Lifecycle Invariants (enforced in Bills worker)
+
+Route permissions do not bypass lifecycle rules in `BillService`.
+
+| Operation | Domain Rule |
+|---|---|
+| `updateBill` | blocked when bill is `paid` or has any recorded payment |
+| `deleteBill` | draft-only |
+| `issueBill` | draft-only transition |
+| `cancelBill` | blocked when `paid`; no-op protection for already `cancelled` |
+| `revertBillToDraft` | blocked when `paid` or has any recorded payment |
+| `regeneratePaymentToken` | blocked when `paid`, `cancelled`, or has any recorded payment |
+| `payBill` | blocked when `draft`, `cancelled`, or already `paid` |
+
+### Ownership Scope In RPC Contracts
+
+- `owner/all` scope is retained for read/list style methods (e.g. list/get/logs/statistics).
+- Mutating RPC methods rely on route-layer authorization and actor attribution; they do not enforce owner-vs-admin permissions in the bills DO layer.
+
+### Current Test Coverage
+
+- `apps/core/src/routes/__tests__/bills-user.scope.test.ts`: my-bills scope/entity matrix.
+- `apps/core/src/routes/__tests__/bills-user.route.test.ts`: user-facing read access matrix + site-admin override on my-bills routes.
+- `apps/core/src/routes/__tests__/bills-admin.route.test.ts`: admin action access matrix across bills/templates/schedules with non-admin denial.
 
 ## Environment Variables
 

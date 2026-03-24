@@ -131,13 +131,12 @@ export class TemplateService {
 	}
 
 	/**
-	 * Update a template (owner only)
+	 * Update a template
 	 */
 	async updateTemplate(
-		userId: string,
+		_userId: string,
 		templateId: string,
-		data: UpdateTemplateInput,
-		scope: OwnershipScope = 'owned'
+		data: UpdateTemplateInput
 	): Promise<BillTemplate> {
 		const template = await this.db.query.billTemplates.findFirst({
 			where: eq(billTemplates.id, templateId),
@@ -145,10 +144,6 @@ export class TemplateService {
 
 		if (!template) {
 			throw new Error('Template not found')
-		}
-
-		if (scope !== 'all' && template.ownerId !== userId) {
-			throw new Error('Only the owner can update the template')
 		}
 
 		const [updated] = await this.db
@@ -164,23 +159,15 @@ export class TemplateService {
 	}
 
 	/**
-	 * Delete a template (owner only, no active schedules)
+	 * Delete a template (no active schedules)
 	 */
-	async deleteTemplate(
-		userId: string,
-		templateId: string,
-		scope: OwnershipScope = 'owned'
-	): Promise<void> {
+	async deleteTemplate(_userId: string, templateId: string): Promise<void> {
 		const template = await this.db.query.billTemplates.findFirst({
 			where: eq(billTemplates.id, templateId),
 		})
 
 		if (!template) {
 			throw new Error('Template not found')
-		}
-
-		if (scope !== 'all' && template.ownerId !== userId) {
-			throw new Error('Only the owner can delete the template')
 		}
 
 		// Check for active schedules
@@ -207,10 +194,6 @@ export class TemplateService {
 
 		if (!sourceTemplate) {
 			throw new Error('Source template not found')
-		}
-
-		if (sourceTemplate.ownerId !== userId) {
-			throw new Error('Not authorized to clone this template')
 		}
 
 		const newTemplateId = generateUuidV7()
@@ -247,10 +230,6 @@ export class TemplateService {
 			throw new Error('Source bill not found')
 		}
 
-		if (sourceBill.issuerId !== userId) {
-			throw new Error('Not authorized to clone this bill')
-		}
-
 		const newTemplateId = generateUuidV7()
 
 		const [template] = await this.db
@@ -283,10 +262,6 @@ export class TemplateService {
 
 		if (!template) {
 			throw new Error('Template not found')
-		}
-
-		if (template.ownerId !== userId) {
-			throw new Error('Not authorized to use this template')
 		}
 
 		// Apply template parameters

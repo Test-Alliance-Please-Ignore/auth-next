@@ -248,18 +248,13 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 	async updateTemplate(
 		userId: string,
 		templateId: string,
-		data: UpdateTemplateInput,
-		scope: OwnershipScope = 'owned'
+		data: UpdateTemplateInput
 	): Promise<BillTemplate> {
-		return this.templateService.updateTemplate(userId, templateId, data, scope)
+		return this.templateService.updateTemplate(userId, templateId, data)
 	}
 
-	async deleteTemplate(
-		userId: string,
-		templateId: string,
-		scope: OwnershipScope = 'owned'
-	): Promise<void> {
-		return this.templateService.deleteTemplate(userId, templateId, scope)
+	async deleteTemplate(userId: string, templateId: string): Promise<void> {
+		return this.templateService.deleteTemplate(userId, templateId)
 	}
 
 	async cloneTemplate(userId: string, data: CloneTemplateInput): Promise<BillTemplate> {
@@ -303,10 +298,9 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 	async updateSchedule(
 		userId: string,
 		scheduleId: string,
-		data: UpdateScheduleInput,
-		scope: OwnershipScope = 'owned'
+		data: UpdateScheduleInput
 	): Promise<BillSchedule> {
-		return this.scheduleService.updateSchedule(userId, scheduleId, data, scope)
+		return this.scheduleService.updateSchedule(userId, scheduleId, data)
 	}
 
 	async pauseSchedule(userId: string, scheduleId: string): Promise<BillSchedule> {
@@ -317,12 +311,8 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 		return this.scheduleService.resumeSchedule(userId, scheduleId)
 	}
 
-	async deleteSchedule(
-		userId: string,
-		scheduleId: string,
-		scope: OwnershipScope = 'owned'
-	): Promise<void> {
-		return this.scheduleService.deleteSchedule(userId, scheduleId, scope)
+	async deleteSchedule(userId: string, scheduleId: string): Promise<void> {
+		return this.scheduleService.deleteSchedule(userId, scheduleId)
 	}
 
 	async getScheduleExecutionLogs(
@@ -334,8 +324,11 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 		return this.scheduleService.getScheduleExecutionLogs(userId, scheduleId, limit, scope)
 	}
 
-	async getScheduleStatistics(userId: string): Promise<ScheduleStatistics> {
-		return this.scheduleService.getScheduleStatistics(userId)
+	async getScheduleStatistics(
+		userId: string,
+		scope: OwnershipScope = 'owned'
+	): Promise<ScheduleStatistics> {
+		return this.scheduleService.getScheduleStatistics(userId, scope)
 	}
 
 	/**

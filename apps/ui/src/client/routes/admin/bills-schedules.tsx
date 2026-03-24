@@ -29,7 +29,7 @@ import { formatScheduleFrequency } from '@/lib/bills-utils'
 export default function BillsSchedulesPage() {
 	usePageTitle('Admin - Bill Schedules')
 
-	const { data: schedules, isLoading } = useSchedules()
+	const { data: schedules, isLoading, isError, error } = useSchedules()
 	const pauseSchedule = usePauseSchedule()
 	const resumeSchedule = useResumeSchedule()
 	const deleteSchedule = useDeleteSchedule()
@@ -122,14 +122,18 @@ export default function BillsSchedulesPage() {
 			<Card>
 				<CardHeader>
 					<CardTitle>All Schedules</CardTitle>
-					<CardDescription>
-						{schedules ? `${schedules.length} schedule(s) found` : 'Loading...'}
-					</CardDescription>
 				</CardHeader>
 				<CardContent>
 					{isLoading ? (
 						<div className="flex justify-center py-12">
 							<div className="text-muted-foreground">Loading schedules...</div>
+						</div>
+					) : isError ? (
+						<div className="text-center py-12">
+							<h3 className="text-lg font-semibold mb-2">Failed to load schedules</h3>
+							<p className="text-muted-foreground mb-4">
+								{error instanceof Error ? error.message : 'Unexpected error'}
+							</p>
 						</div>
 					) : !schedules || schedules.length === 0 ? (
 						<div className="text-center py-12">
