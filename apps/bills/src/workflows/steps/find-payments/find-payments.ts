@@ -1,5 +1,6 @@
-import { sql } from '@repo/db-utils'
+import { eq, sql } from '@repo/db-utils'
 
+import { billPayments } from '../../../db/schema'
 import { getWorkflowLogger } from '../../context'
 
 import type { bills } from '../../../db/schema'
@@ -122,8 +123,9 @@ async function findPaymentTransactionsForCharacterFromDb(
 export async function findPaymentsForBill(
 	ctx: WorkflowContext,
 	billData: typeof bills.$inferSelect
-): Promise<void> {
+): Promise<{ newPaymentsRecorded: number }> {
 	const logger = getWorkflowLogger(ctx, 'check-character-payment-status')
+	let newPaymentsRecorded = 0
 
 	logger.info('[Workflow] Checking payment status for bill', {
 		billId: ctx.billId,
@@ -148,9 +150,12 @@ export async function findPaymentsForBill(
 				paymentToken: billData.paymentToken,
 				fromDate: billData.createdAt,
 			})
-			return
+			return { newPaymentsRecorded }
 		}
 		for (const paymentTransaction of paymentTransactions) {
+			const existingPayment = await ctx.db.query.billPayments.findFirst({
+				where: eq(billPayments.esiTransactionId, paymentTransaction.journalId),
+			})
 			const amount = parseAmountToBigInt(paymentTransaction.amount)
 			if (amount === null || amount <= 0n) {
 				logger.warn('[Workflow] Skipping corporation payment transaction with invalid amount', {
@@ -175,6 +180,9 @@ export async function findPaymentsForBill(
 				paidByType: 'corporation',
 				esiTransactionId: paymentTransaction.journalId,
 			})
+			if (!existingPayment) {
+				newPaymentsRecorded += 1
+			}
 		}
 		logger.info('[Workflow] Processed corporation payment transactions from persisted data', {
 			billId: ctx.billId,
@@ -182,7 +190,7 @@ export async function findPaymentsForBill(
 			corporationId: billData.payeeId,
 			count: paymentTransactions.length,
 		})
-		return
+		return { newPaymentsRecorded }
 	}
 
 	if (payeeType === 'character') {
@@ -195,10 +203,13 @@ export async function findPaymentsForBill(
 				paymentToken: billData.paymentToken,
 				fromDate: billData.createdAt,
 			})
-			return
+			return { newPaymentsRecorded }
 		}
 
 		for (const paymentTransaction of paymentTransactions) {
+			const existingPayment = await ctx.db.query.billPayments.findFirst({
+				where: eq(billPayments.esiTransactionId, paymentTransaction.journalId),
+			})
 			const amount = parseAmountToBigInt(paymentTransaction.amount)
 			if (amount === null || amount <= 0n) {
 				logger.warn('[Workflow] Skipping character payment transaction with invalid amount', {
@@ -223,6 +234,9 @@ export async function findPaymentsForBill(
 				paidByType: billData.payerType ?? 'character',
 				esiTransactionId: paymentTransaction.journalId,
 			})
+			if (!existingPayment) {
+				newPaymentsRecorded += 1
+			}
 		}
 
 		logger.info('[Workflow] Processed character payment transactions from persisted data', {
@@ -231,7 +245,7 @@ export async function findPaymentsForBill(
 			characterId: billData.payeeId,
 			count: paymentTransactions.length,
 		})
-		return
+		return { newPaymentsRecorded }
 	} else {
 		logger.info('[Workflow] Skipping payment transaction lookup for unsupported payee type', {
 			billId: ctx.billId,
@@ -239,4 +253,6 @@ export async function findPaymentsForBill(
 			payeeType,
 		})
 	}
+
+	return { newPaymentsRecorded }
 }

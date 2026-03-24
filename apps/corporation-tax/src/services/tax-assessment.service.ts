@@ -59,7 +59,6 @@ type ScopedAssessmentComputation = {
 	scopeId: string
 	totals: MutableSummary
 	inGameTaxRateBps: number | null
-	portalTaxRateBps: number
 	lines: PendingAssessmentLine[]
 }
 
@@ -287,7 +286,7 @@ export class TaxAssessmentService {
 						lastLedgerEntryDate: null,
 					}
 					current.contributionIncomeCenti += amountForTaxCenti
-					current.taxableContributionIncomeCenti += resolved.taxableAmountCenti
+					current.taxableContributionIncomeCenti += resolved.taxAmountCenti
 					current.sourceRowCount += 1
 					current.lastLedgerEntryDate =
 						!current.lastLedgerEntryDate || row.entryDate > current.lastLedgerEntryDate
@@ -307,7 +306,6 @@ export class TaxAssessmentService {
 							taxPaidCenti: 0n,
 						},
 						inGameTaxRateBps: null,
-						portalTaxRateBps: 0,
 						lines: [],
 					}
 					scoped.totals.taxableIncomeCenti += resolved.taxableAmountCenti
@@ -329,7 +327,6 @@ export class TaxAssessmentService {
 							taxPaidCenti: 0n,
 						},
 						inGameTaxRateBps: null,
-						portalTaxRateBps: 0,
 						lines: [],
 					}
 					scoped.totals.taxableIncomeCenti += resolved.taxableAmountCenti
@@ -346,7 +343,9 @@ export class TaxAssessmentService {
 		}
 
 		const inGameTaxRateBps = await this.getInGameTaxRateBps(input.corporationId)
-		const portalTaxRateBps = 0
+		const now = new Date()
+		const nowMonthStart = this.startOfUtcMonth(now)
+		const isClosedPeriod = input.periodEnd < nowMonthStart
 		const taxDeltaCenti = corporationTotals.taxDueCenti - corporationTotals.taxPaidCenti
 		const taxDeltaThresholdBps = this.TAX_DELTA_DISCREPANCY_THRESHOLD_BPS
 
@@ -361,7 +360,11 @@ export class TaxAssessmentService {
 		} else if (taxDeltaAbsoluteCenti > 0n) {
 			taxDeltaDiscrepancyBps = 10_000
 		}
-		if (taxDeltaDiscrepancyBps !== null && taxDeltaDiscrepancyBps > taxDeltaThresholdBps) {
+		if (
+			isClosedPeriod &&
+			taxDeltaDiscrepancyBps !== null &&
+			taxDeltaDiscrepancyBps > taxDeltaThresholdBps
+		) {
 			discrepancyValues.push({
 				corporationId: input.corporationId,
 				discrepancyType: 'tax_delta_threshold_exceeded',
@@ -388,7 +391,6 @@ export class TaxAssessmentService {
 				scopeId: input.corporationId,
 				totals: corporationTotals,
 				inGameTaxRateBps,
-				portalTaxRateBps,
 				lines: corporationLines,
 			},
 			...Array.from(divisionAssessments.values()).sort(
@@ -400,8 +402,6 @@ export class TaxAssessmentService {
 		]
 
 		const result = await this.withAssessmentWriteClient(async (tx) => {
-			const now = new Date()
-
 			const [period] = await tx
 				.insert(taxPeriods)
 				.values({
@@ -475,7 +475,6 @@ export class TaxAssessmentService {
 							taxDelta: this.formatCenti(scopeTaxDeltaCenti),
 							status: scopeStatus,
 							inGameTaxRateBps: scope.inGameTaxRateBps,
-							portalTaxRateBps: scope.portalTaxRateBps,
 							updatedAt: now,
 						})
 						.where(eq(taxAssessments.id, existing.id))
@@ -502,7 +501,6 @@ export class TaxAssessmentService {
 						taxDelta: this.formatCenti(scopeTaxDeltaCenti),
 						status: scopeStatus,
 						inGameTaxRateBps: scope.inGameTaxRateBps,
-						portalTaxRateBps: scope.portalTaxRateBps,
 					})
 					.returning()
 
@@ -579,8 +577,6 @@ export class TaxAssessmentService {
 			}
 
 			if (this.supportsMemberSummaryProjectionInfra()) {
-				const nowMonthStart = this.startOfUtcMonth(now)
-				const isClosedPeriod = input.periodEnd < nowMonthStart
 				const memberRollupValues = Array.from(memberRollupMap.values()).map((item) => ({
 					corporationId: input.corporationId,
 					periodStart: input.periodStart,
@@ -1110,7 +1106,6 @@ export class TaxAssessmentService {
 			taxDelta: row.taxDelta,
 			status: row.status as TaxAssessmentStatus,
 			inGameTaxRateBps: row.inGameTaxRateBps,
-			portalTaxRateBps: row.portalTaxRateBps,
 			billId: row.billId,
 			billStatus: row.billStatus,
 			billStatusLastSyncedAt: row.billStatusLastSyncedAt,

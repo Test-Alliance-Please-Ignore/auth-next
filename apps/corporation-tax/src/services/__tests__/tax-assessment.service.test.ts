@@ -93,7 +93,6 @@ describe('TaxAssessmentService', () => {
 											taxDelta: '100',
 											status: 'underpaid',
 											inGameTaxRateBps: 1200,
-											portalTaxRateBps: 1000,
 											billId: null,
 											billStatus: null,
 											billStatusLastSyncedAt: null,
@@ -141,6 +140,132 @@ describe('TaxAssessmentService', () => {
 		})
 	})
 
+	const createDiscrepancyAssessmentDb = () => {
+		const insertedDiscrepancies: Array<any> = []
+		const localDb = {
+			query: {
+				taxCorporationExclusions: {
+					findFirst: vi.fn().mockResolvedValue(null),
+				},
+				taxLedgerEntries: {
+					findMany: vi.fn().mockResolvedValue([
+						{
+							id: 'ledger-1',
+							corporationId: '98000001',
+							sourceType: 'corporation_wallet_journal',
+							sourceSecondaryId: '1',
+							refType: 'bounty_prizes',
+							amount: '1000',
+							division: null,
+							entryDate: new Date('2026-03-10T00:00:00.000Z'),
+							firstPartyId: null,
+							secondPartyId: null,
+						},
+					]),
+				},
+				taxRuleGroupAttachments: {
+					findMany: vi.fn().mockResolvedValue([{ ruleGroupId: 'group-1' }]),
+				},
+				taxRuleSets: {
+					findMany: vi.fn().mockResolvedValue([
+						{
+							id: 'rule-5pct',
+							ruleGroupId: 'group-1',
+							name: 'Alliance Default Tax',
+							priority: 100,
+							isActive: true,
+							appliesToRefType: null,
+							taxRateBps: 500,
+							createdBy: 'system:migration',
+							createdAt: new Date('2026-01-01T00:00:00.000Z'),
+							updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+						},
+					]),
+				},
+			},
+			transaction: vi.fn(async (callback: (tx: any) => Promise<unknown>) => {
+				const tx = {
+					insert: vi.fn((table: unknown) => {
+						if (table === taxPeriods) {
+							return {
+								values: vi.fn(() => ({
+									onConflictDoUpdate: vi.fn(() => ({
+										returning: vi.fn(() =>
+											Promise.resolve([
+												{
+													id: 'period-1',
+													corporationId: '98000001',
+													periodStart: new Date('2026-03-01T00:00:00.000Z'),
+													periodEnd: new Date('2026-03-31T00:00:00.000Z'),
+													status: 'assessed',
+													closedAt: new Date('2026-03-31T00:00:00.000Z'),
+													createdAt: new Date('2026-03-31T00:00:00.000Z'),
+													updatedAt: new Date('2026-03-31T00:00:00.000Z'),
+												},
+											])
+										),
+									})),
+								})),
+							}
+						}
+						if (table === taxAssessments) {
+							return {
+								values: vi.fn((value: any) => ({
+									returning: vi.fn(() =>
+										Promise.resolve([
+											{
+												id: 'assessment-1',
+												billId: null,
+												billStatus: null,
+												billStatusLastSyncedAt: null,
+												approvedBy: null,
+												approvedAt: null,
+												createdAt: new Date(),
+												updatedAt: new Date(),
+												...value,
+											},
+										])
+									),
+								})),
+							}
+						}
+						if (table === taxAssessmentLines) {
+							return {
+								values: vi.fn(() => Promise.resolve()),
+							}
+						}
+						if (table === taxDiscrepancies) {
+							return {
+								values: vi.fn((values: Array<any>) => {
+									insertedDiscrepancies.push(...values)
+									return Promise.resolve()
+								}),
+							}
+						}
+						throw new Error('Unexpected tx.insert table')
+					}),
+					update: vi.fn(() => ({
+						set: vi.fn(() => ({
+							where: vi.fn(() => ({
+								returning: vi.fn(() => Promise.resolve([])),
+							})),
+						})),
+					})),
+					delete: vi.fn(() => ({
+						where: vi.fn(() => Promise.resolve()),
+					})),
+					query: {
+						taxAssessments: {
+							findMany: vi.fn().mockResolvedValue([]),
+						},
+					},
+				}
+				return callback(tx)
+			}),
+		}
+		return { localDb, insertedDiscrepancies }
+	}
+
 	it('computes deterministic period assessment and writes discrepancy metadata', async () => {
 		const service = new TaxAssessmentService(mockDb, {} as DurableObjectNamespace)
 
@@ -182,6 +307,77 @@ describe('TaxAssessmentService', () => {
 		expect(second.divisionSummaries).toEqual(first.divisionSummaries)
 		expect(second.refTypeSummaries).toEqual(first.refTypeSummaries)
 		expect(second.discrepancyCount).toBe(first.discrepancyCount)
+	})
+
+	it('does not create discrepancy records for open periods', async () => {
+		const now = new Date('2026-03-23T00:00:00.000Z')
+		vi.useFakeTimers()
+		try {
+			vi.setSystemTime(now)
+
+			const { localDb, insertedDiscrepancies } = createDiscrepancyAssessmentDb()
+			getStubMock.mockReturnValue({
+				getMembers: vi.fn().mockResolvedValue([]),
+				getCorporationTaxMetadata: vi.fn().mockResolvedValue({
+					corporationId: '98000001',
+					inGameTaxRateBps: 1200,
+					ceoId: null,
+					memberCount: null,
+					allianceId: null,
+					updatedAt: null,
+				}),
+			})
+
+			const service = new TaxAssessmentService(localDb as any, {} as DurableObjectNamespace)
+			const result = await service.runAssessmentForPeriod({
+				corporationId: '98000001',
+				periodStart: new Date('2026-03-01T00:00:00.000Z'),
+				periodEnd: new Date('2026-03-20T00:00:00.000Z'),
+			})
+
+			expect(result.assessment.taxDue).toBe('50')
+			expect(result.assessment.taxDelta).toBe('50')
+			expect(result.discrepancyCount).toBe(0)
+			expect(insertedDiscrepancies).toHaveLength(0)
+		} finally {
+			vi.useRealTimers()
+		}
+	})
+
+	it('creates discrepancy records for closed periods when threshold is exceeded', async () => {
+		const now = new Date('2026-03-23T00:00:00.000Z')
+		vi.useFakeTimers()
+		try {
+			vi.setSystemTime(now)
+
+			const { localDb, insertedDiscrepancies } = createDiscrepancyAssessmentDb()
+			getStubMock.mockReturnValue({
+				getMembers: vi.fn().mockResolvedValue([]),
+				getCorporationTaxMetadata: vi.fn().mockResolvedValue({
+					corporationId: '98000001',
+					inGameTaxRateBps: 1200,
+					ceoId: null,
+					memberCount: null,
+					allianceId: null,
+					updatedAt: null,
+				}),
+			})
+
+			const service = new TaxAssessmentService(localDb as any, {} as DurableObjectNamespace)
+			const result = await service.runAssessmentForPeriod({
+				corporationId: '98000001',
+				periodStart: new Date('2026-02-01T00:00:00.000Z'),
+				periodEnd: new Date('2026-02-28T23:59:59.999Z'),
+			})
+
+			expect(result.assessment.taxDue).toBe('50')
+			expect(result.assessment.taxDelta).toBe('50')
+			expect(result.discrepancyCount).toBe(1)
+			expect(insertedDiscrepancies).toHaveLength(1)
+			expect(insertedDiscrepancies[0]?.discrepancyType).toBe('tax_delta_threshold_exceeded')
+		} finally {
+			vi.useRealTimers()
+		}
 	})
 
 	it('marks summary statuses as excluded when corporation has an exclusion override', async () => {
@@ -1174,6 +1370,218 @@ describe('TaxAssessmentService', () => {
 		expect(stored.taxableContributionIncome).toBe('0')
 		expect(stored.periodStart.toISOString()).toBe(openStart.toISOString())
 		expect(summaryVersionWrites.length).toBe(2)
+
+		Date.now = originalDateNow
+		vi.useRealTimers()
+	})
+
+	it('stores member-summary taxable contribution as tax owed for a 5% rule', async () => {
+		const projectionRowsByKey = new Map<string, any>()
+		const openStart = new Date('2026-03-01T00:00:00.000Z')
+		const openEnd = new Date('2026-03-20T00:00:00.000Z')
+		const now = new Date('2026-03-20T00:00:00.000Z')
+
+		vi.useFakeTimers()
+		vi.setSystemTime(now)
+		const originalDateNow = Date.now
+		Date.now = () => now.getTime()
+
+		const projectionDb = {
+			query: {
+				taxCorporationExclusions: {
+					findFirst: vi.fn().mockResolvedValue(null),
+				},
+				taxLedgerEntries: {
+					findMany: vi.fn().mockResolvedValue([
+						{
+							id: 'ledger-corp-1',
+							corporationId: '98000001',
+							sourceType: 'corporation_wallet_journal',
+							sourceSecondaryId: '1',
+							refType: 'bounty_prizes',
+							amount: '1000',
+							division: 1,
+							entryDate: new Date('2026-03-10T00:00:00.000Z'),
+							firstPartyId: '7001',
+							secondPartyId: null,
+						},
+					]),
+				},
+				taxRuleGroupAttachments: {
+					findMany: vi.fn().mockResolvedValue([{ ruleGroupId: 'group-1' }]),
+				},
+				taxRuleSets: {
+					findMany: vi.fn().mockResolvedValue([
+						{
+							id: 'rule-5pct',
+							ruleGroupId: 'group-1',
+							name: 'Alliance Default Tax',
+							priority: 100,
+							isActive: true,
+							appliesToRefType: null,
+							taxRateBps: 500,
+							createdBy: 'system:migration',
+							createdAt: new Date('2026-01-01T00:00:00.000Z'),
+							updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+						},
+					]),
+				},
+				taxMemberSummaryVersions: {
+					findFirst: vi.fn().mockResolvedValue({
+						corporationId: '98000001',
+						projectionVersion: 0,
+						finalizedVersion: 0,
+					}),
+				},
+				taxMemberContributionProjectionRollups: {
+					findMany: vi
+						.fn()
+						.mockImplementation(() => Promise.resolve(Array.from(projectionRowsByKey.values()))),
+				},
+				taxMemberContributionFinalizedRollups: {
+					findMany: vi.fn().mockResolvedValue([]),
+				},
+			},
+			insert: vi.fn((table: unknown) => {
+				if (table === taxMemberSummaryVersions) {
+					return {
+						values: vi.fn(() => ({
+							onConflictDoUpdate: vi.fn(() => Promise.resolve()),
+						})),
+					}
+				}
+				throw new Error('Unexpected db.insert table')
+			}),
+			transaction: vi.fn(async (callback: (tx: any) => Promise<unknown>) => {
+				const tx = {
+					insert: vi.fn((table: unknown) => {
+						if (table === taxPeriods) {
+							return {
+								values: vi.fn(() => ({
+									onConflictDoUpdate: vi.fn(() => ({
+										returning: vi.fn(() =>
+											Promise.resolve([
+												{
+													id: 'period-open-1',
+													corporationId: '98000001',
+													periodStart: openStart,
+													periodEnd: openEnd,
+													status: 'assessed',
+													closedAt: openEnd,
+													createdAt: now,
+													updatedAt: now,
+												},
+											])
+										),
+									})),
+								})),
+							}
+						}
+						if (table === taxAssessments) {
+							return {
+								values: vi.fn((value: any) => ({
+									returning: vi.fn(() =>
+										Promise.resolve([
+											{
+												id: 'assessment-open-1',
+												billId: null,
+												billStatus: null,
+												billStatusLastSyncedAt: null,
+												approvedBy: null,
+												approvedAt: null,
+												createdAt: now,
+												updatedAt: now,
+												...value,
+											},
+										])
+									),
+								})),
+							}
+						}
+						if (table === taxAssessmentLines || table === taxDiscrepancies) {
+							return {
+								values: vi.fn(() => Promise.resolve()),
+							}
+						}
+						if (table === taxMemberContributionProjectionRollups) {
+							return {
+								values: vi.fn((values: Array<any>) => ({
+									onConflictDoUpdate: vi.fn(() => {
+										for (const row of values) {
+											const key = [
+												row.corporationId,
+												row.periodStart.toISOString(),
+												row.periodEnd.toISOString(),
+												row.rollupDate.toISOString(),
+												row.characterId,
+												row.refType,
+											].join(':')
+											projectionRowsByKey.set(key, row)
+										}
+										return Promise.resolve()
+									}),
+								})),
+							}
+						}
+						throw new Error('Unexpected tx.insert table')
+					}),
+					update: vi.fn(() => ({
+						set: vi.fn(() => ({
+							where: vi.fn(() => ({
+								returning: vi.fn(() => Promise.resolve([])),
+							})),
+						})),
+					})),
+					delete: vi.fn(() => ({
+						where: vi.fn(() => Promise.resolve()),
+					})),
+					query: {
+						taxAssessments: {
+							findMany: vi.fn().mockResolvedValue([]),
+						},
+						taxMemberContributionProjectionRollups: {
+							findMany: vi
+								.fn()
+								.mockImplementation(() =>
+									Promise.resolve(Array.from(projectionRowsByKey.values()))
+								),
+						},
+					},
+				}
+				return callback(tx)
+			}),
+		}
+
+		getStubMock.mockReturnValue({
+			getCorporationTaxMetadata: vi.fn().mockResolvedValue({
+				corporationId: '98000001',
+				inGameTaxRateBps: 1200,
+				ceoId: null,
+				memberCount: null,
+				allianceId: null,
+				updatedAt: null,
+			}),
+			getMembers: vi.fn().mockResolvedValue([
+				{
+					characterId: '7001',
+					corporationId: '98000001',
+				},
+			]),
+		})
+
+		const service = new TaxAssessmentService(projectionDb as any, {} as DurableObjectNamespace)
+		await service.runAssessmentForPeriod({
+			corporationId: '98000001',
+			periodStart: openStart,
+			periodEnd: openEnd,
+		})
+
+		expect(projectionRowsByKey.size).toBe(1)
+		const [stored] = Array.from(projectionRowsByKey.values())
+		expect(stored.characterId).toBe('7001')
+		expect(stored.refType).toBe('bounty_prizes')
+		expect(stored.contributionIncome).toBe('1000')
+		expect(stored.taxableContributionIncome).toBe('50')
 
 		Date.now = originalDateNow
 		vi.useRealTimers()

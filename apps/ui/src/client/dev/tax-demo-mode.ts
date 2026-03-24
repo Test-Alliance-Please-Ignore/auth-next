@@ -586,7 +586,6 @@ function buildDemoState(seed: number) {
 				taxDue: amount(due),
 				taxDelta: amount(due * 0.12),
 				inGameTaxRateBps: 500,
-				portalTaxRateBps: 500,
 				taxPeriodEnd: addDays(demoStart, Math.max(0, demoDaySpan - 6)),
 				taxPeriodStart: addDays(demoStart, Math.max(0, demoDaySpan - 36)),
 				billId: `bill-${nextAssessmentIndex}`,
@@ -613,7 +612,6 @@ function buildDemoState(seed: number) {
 				taxDue: amount(due),
 				taxDelta: amount(due * 0.04),
 				inGameTaxRateBps: 500,
-				portalTaxRateBps: 500,
 				taxPeriodEnd: addDays(demoStart, Math.max(0, demoDaySpan - 3)),
 				taxPeriodStart: addDays(demoStart, Math.max(0, demoDaySpan - 33)),
 				billId: null,
@@ -2093,7 +2091,8 @@ export const taxDemoApi = {
 		const rows = ensureDemoState().auditLog.filter((row) => {
 			if (filters?.corporationId && row.corporationId !== filters.corporationId) return false
 			if (filters?.actorUserId && row.actorUserId !== filters.actorUserId) return false
-			if (filters?.action && row.action !== filters.action) return false
+			if (filters?.action && !row.action.toLowerCase().includes(filters.action.toLowerCase()))
+				return false
 			if (filters?.fromDate && row.createdAt < new Date(filters.fromDate)) return false
 			if (filters?.toDate && row.createdAt > new Date(filters.toDate)) return false
 			return true
@@ -2102,6 +2101,34 @@ export const taxDemoApi = {
 			rows: applyLimitOffset(rows, filters?.limit, filters?.offset),
 			totalRows: rows.length,
 		})
+	},
+	async searchAuditActors(filters?: {
+		corporationId?: string
+		q?: string
+		ids?: string[]
+		limit?: number
+	}) {
+		const rows = ensureDemoState()
+			.auditLog.filter(
+				(row) => !filters?.corporationId || row.corporationId === filters.corporationId
+			)
+			.map((row) => ({
+				userId: row.actorUserId,
+				name: row.actorUserId === 'demo-admin' ? 'Demo Admin' : row.actorUserId,
+			}))
+		const deduped = Array.from(new Map(rows.map((row) => [row.userId, row])).values())
+		const q = filters?.q?.trim().toLowerCase()
+		const idSet = new Set((filters?.ids ?? []).map((id) => id.trim()).filter(Boolean))
+		const filtered = deduped.filter((row) => {
+			if (idSet.size > 0 && !idSet.has(row.userId)) {
+				return false
+			}
+			if (!q) {
+				return true
+			}
+			return row.userId.toLowerCase().includes(q) || (row.name ?? '').toLowerCase().includes(q)
+		})
+		return withLatency(filtered.slice(0, Math.max(1, Math.min(filters?.limit ?? 25, 100))))
 	},
 	async listNotificationDestinations(filters?: { limit?: number; offset?: number }) {
 		const rows = ensureDemoState().notificationDestinations

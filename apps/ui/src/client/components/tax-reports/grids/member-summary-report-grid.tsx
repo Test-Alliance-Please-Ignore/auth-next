@@ -1,5 +1,5 @@
-import { useState } from 'react'
 import { createMRTColumnHelper } from 'mantine-react-table'
+import { useState } from 'react'
 
 import { TaxReportDataGrid } from '@/components/tax-report-data-grid'
 import { formatTaxDateTime } from '@/lib/tax-date'
@@ -11,8 +11,8 @@ import {
 	TaxEntityDisplay,
 } from '@/lib/tax-display'
 
-import type { TaxMemberSummary } from '@repo/corporation-tax'
 import type { MRT_ColumnDef, MRT_SortingState } from 'mantine-react-table'
+import type { TaxMemberSummary } from '@repo/corporation-tax'
 
 const UNATTRIBUTED_CHARACTER_ID = '__unattributed__'
 

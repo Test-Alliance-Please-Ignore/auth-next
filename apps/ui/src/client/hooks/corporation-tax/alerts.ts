@@ -66,6 +66,21 @@ export function useTaxAuditLog(filters?: {
 	})
 }
 
+export function useTaxAuditActors(filters?: {
+	corporationId?: string
+	q?: string
+	ids?: string[]
+	limit?: number
+	enabled?: boolean
+}) {
+	return useQuery({
+		queryKey: corporationTaxKeys.auditActorSearch(filters),
+		queryFn: () => corporationTaxApi.searchAuditActors(filters),
+		staleTime: 1000 * 30,
+		enabled: filters?.enabled ?? true,
+	})
+}
+
 export function useAcknowledgeTaxAlert() {
 	const queryClient = useQueryClient()
 	return useMutation({

@@ -1,5 +1,7 @@
 import { WorkflowEntrypoint, WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
 
+import { getStub } from '@repo/do-utils'
+
 import { createDb } from '../db'
 import { BillService } from '../services/bill.service'
 import { checkPaymentStatus } from './steps/check-payment-status'
@@ -7,8 +9,23 @@ import { fetchBillData } from './steps/fetch-bill-data'
 import { findPaymentsForBill } from './steps/find-payments/find-payments'
 import { updateCheckTimestamp } from './steps/update-check-timestamp'
 
+import type { BillStatus } from '@repo/bills'
 import type { Env } from '../context'
 import type { WorkflowContext } from './context'
+
+const TAX_SYNC_ACTOR = 'system:bills:payment-status-check'
+type CorporationTaxSyncStub = {
+	syncBillStatus(
+		actorUserId: string,
+		billState: { id: string; status: BillStatus }
+	): Promise<{
+		processedBillIds: string[]
+		processedAssessmentIds: string[]
+		updatedAssessmentIds: string[]
+		skippedAssessmentIds: string[]
+		corporationIds: string[]
+	}>
+}
 
 /**
  * Bill Payment Status Check Workflow
@@ -92,7 +109,7 @@ export class BillPaymentStatusCheckWorkflow extends WorkflowEntrypoint<Env, Work
 		})
 
 		// Step 2: Find payments
-		await step.do(
+		const paymentLookupResult = await step.do(
 			'find-and-post-payments',
 			{
 				retries: {
@@ -108,8 +125,32 @@ export class BillPaymentStatusCheckWorkflow extends WorkflowEntrypoint<Env, Work
 			}
 		)
 
-		// Step 3: Check payment status
-		await step.do(
+		// Step 3: If no new payment was recorded in this run, explicitly normalize overdue state.
+		const overdueRefreshResult =
+			paymentLookupResult.newPaymentsRecorded === 0
+				? await step.do(
+						'refresh-overdue-status',
+						{
+							retries: {
+								limit: 3,
+								delay: 1000,
+								backoff: 'exponential',
+							},
+							timeout: '30 seconds',
+						},
+						() => {
+							const ctx = this.createContext(billId, workflowInstanceId)
+							return ctx.billService.refreshBillLifecycleStatus(ctx.billId)
+						}
+					)
+				: {
+						overdueMarked: false,
+						lateFeeChanged: false,
+						billStatus: fetchBillDataResult.bill.status,
+					}
+
+		// Step 4: Check payment status
+		const paymentStatusResult = await step.do(
 			'check-payment-status',
 			{
 				retries: {
@@ -121,11 +162,38 @@ export class BillPaymentStatusCheckWorkflow extends WorkflowEntrypoint<Env, Work
 			},
 			() => {
 				const ctx = this.createContext(billId, workflowInstanceId)
-				return checkPaymentStatus(ctx, fetchBillDataResult.bill)
+				return checkPaymentStatus(ctx)
 			}
 		)
 
 		console.log('[Workflow] Checked payment status', logContext)
+
+		// Step 3.5: Sync tax assessment bill status if this run changed payment data/status.
+		const shouldSyncTaxAssessment =
+			fetchBillDataResult.bill.externalSourceType === 'corporation_tax_assessment' &&
+			(paymentLookupResult.newPaymentsRecorded > 0 ||
+				paymentStatusResult.markedPaid ||
+				overdueRefreshResult.overdueMarked)
+		if (shouldSyncTaxAssessment) {
+			await step.do(
+				'sync-tax-assessment-bill-status',
+				{
+					retries: {
+						limit: 3,
+						delay: 1000,
+						backoff: 'exponential',
+					},
+					timeout: '30 seconds',
+				},
+				async () => {
+					const taxStub = getStub<CorporationTaxSyncStub>(this.env.CORPORATION_TAX, 'default')
+					return taxStub.syncBillStatus(TAX_SYNC_ACTOR, {
+						id: billId,
+						status: paymentStatusResult.statusAfter as BillStatus,
+					})
+				}
+			)
+		}
 
 		// Step 4: Update last checked timestamp even if no status change
 		await step.do('update-check-timestamp', () => {

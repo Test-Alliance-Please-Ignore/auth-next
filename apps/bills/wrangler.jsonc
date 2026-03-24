@@ -29,6 +29,11 @@
 				"name": "ESI_TYPE_RESOLVER",
 				"class_name": "EsiTypeResolver",
 				"script_name": "esi"
+			},
+			{
+				"name": "CORPORATION_TAX",
+				"class_name": "CorporationTax",
+				"script_name": "corporation-tax"
 			}
 		]
 	},

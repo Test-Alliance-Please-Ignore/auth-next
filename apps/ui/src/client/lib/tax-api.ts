@@ -65,6 +65,18 @@ export interface TaxCapabilitiesResponse {
 	}
 }
 
+export interface TaxAuditActorSearchFilters {
+	corporationId?: string
+	q?: string
+	ids?: string[]
+	limit?: number
+}
+
+export interface TaxAuditActorSearchRow {
+	userId: string
+	name: string | null
+}
+
 export type TaxReportFilters = TaxRollupReportQueryFilters
 
 export interface TaxMemberSummaryFilters {
@@ -866,6 +878,17 @@ export class CorporationTaxApiClient extends ApiClient {
 		if (filters?.offset !== undefined) params.set('offset', String(filters.offset))
 		const query = params.toString()
 		return this.get(`${TAX_API_BASE}/audit-log${query ? `?${query}` : ''}`)
+	}
+
+	async searchAuditActors(filters?: TaxAuditActorSearchFilters): Promise<TaxAuditActorSearchRow[]> {
+		if (this.shouldUseDemo()) return taxDemoApi.searchAuditActors(filters)
+		const params = new URLSearchParams()
+		if (filters?.corporationId) params.set('corporationId', filters.corporationId)
+		if (filters?.q) params.set('q', filters.q)
+		if (filters?.ids && filters.ids.length > 0) params.set('ids', filters.ids.join(','))
+		if (filters?.limit !== undefined) params.set('limit', String(filters.limit))
+		const query = params.toString()
+		return this.get(`${TAX_API_BASE}/audit-actors${query ? `?${query}` : ''}`)
 	}
 
 	async listNotificationDestinations(

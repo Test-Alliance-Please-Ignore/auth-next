@@ -58,6 +58,7 @@ import type {
 	RequestTaxExportInput,
 	RunTaxAssessmentForPeriodInput,
 	RunTaxAssessmentForPeriodResult,
+	SyncBillStatusesByBillIdsResult,
 	SyncCorporationBillStatusesResult,
 	TaxAlert,
 	TaxAssessment,
@@ -65,6 +66,7 @@ import type {
 	TaxAssessmentWithBillHistory,
 	TaxAuditLogEntry,
 	TaxBillingEventHistoryRow,
+	TaxBillStateSyncInput,
 	TaxBillStatusReportRow,
 	TaxCompliancePoint,
 	TaxCorporationBillingConfig,
@@ -576,6 +578,13 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		limit?: number
 	): Promise<SyncCorporationBillStatusesResult> {
 		return this.billingRpc.syncCorporationBillStatuses(actorUserId, corporationId, limit)
+	}
+
+	async syncBillStatus(
+		actorUserId: string,
+		billState: TaxBillStateSyncInput
+	): Promise<SyncBillStatusesByBillIdsResult> {
+		return this.billingRpc.syncBillStatus(actorUserId, billState)
 	}
 
 	async listCorporationBillingConfigs(

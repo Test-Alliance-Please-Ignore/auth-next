@@ -28,11 +28,15 @@ export function TaxCorporationScopeSelector({
 	onSelect,
 }: TaxCorporationScopeSelectorProps) {
 	const options = useMemo(() => {
-		const baseOptions = corporations.map((corp) => ({
-			id: corp.corporationId,
-			value: corp.corporationId,
-			label: corp.name,
-		}))
+		const baseOptions = [...corporations]
+			.sort((left, right) =>
+				left.name.localeCompare(right.name, undefined, { sensitivity: 'base' })
+			)
+			.map((corp) => ({
+				id: corp.corporationId,
+				value: corp.corporationId,
+				label: corp.name,
+			}))
 
 		if (!canSelectAll) {
 			return baseOptions

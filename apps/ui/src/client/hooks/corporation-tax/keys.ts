@@ -31,6 +31,7 @@ export const corporationTaxKeys = {
 	notificationDestinations: (filters?: { limit?: number; offset?: number }) =>
 		[...corporationTaxKeys.all, 'notification-destinations', filters] as const,
 	auditLog: () => [...corporationTaxKeys.all, 'audit-log'] as const,
+	auditActors: () => [...corporationTaxKeys.all, 'audit-actors'] as const,
 	auditLogList: (filters?: {
 		corporationId?: string
 		actorUserId?: string
@@ -40,6 +41,12 @@ export const corporationTaxKeys = {
 		limit?: number
 		offset?: number
 	}) => [...corporationTaxKeys.auditLog(), filters] as const,
+	auditActorSearch: (filters?: {
+		corporationId?: string
+		q?: string
+		ids?: string[]
+		limit?: number
+	}) => [...corporationTaxKeys.auditActors(), filters] as const,
 	alerts: () => [...corporationTaxKeys.all, 'alerts'] as const,
 	alertList: (filters?: {
 		corporationId?: string

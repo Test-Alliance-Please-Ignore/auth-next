@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, isNotNull, lte, sql } from '@repo/db-utils'
+import { and, asc, desc, eq, gte, inArray, isNotNull, lte, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
 import { taxAssessments, taxBillSyncEvents, taxCorporationBillingConfigs } from '../db/schema'
@@ -8,10 +8,12 @@ import type {
 	CreateTaxCorporationBillingConfigInput,
 	IssueBillsForPeriodInput,
 	IssueBillsForPeriodResult,
+	SyncBillStatusesByBillIdsResult,
 	SyncCorporationBillStatusesResult,
 	TaxAssessment,
 	TaxAssessmentWithBillHistory,
 	TaxBillingEventHistoryRow,
+	TaxBillStateSyncInput,
 	TaxBillStatus,
 	TaxCorporationBillingConfig,
 	TaxPagedResult,
@@ -807,6 +809,103 @@ export class TaxBillingService {
 		}
 	}
 
+	async syncBillStatus(
+		actorUserId: string,
+		billState: TaxBillStateSyncInput
+	): Promise<SyncBillStatusesByBillIdsResult> {
+		const normalizedBillStates =
+			billState.id.trim().length > 0
+				? [
+						{
+							id: billState.id.trim(),
+							status: billState.status,
+						},
+					]
+				: []
+		const normalizedBillIds = normalizedBillStates.map((billState) => billState.id)
+		if (normalizedBillIds.length === 0) {
+			return {
+				processedBillIds: [],
+				processedAssessmentIds: [],
+				updatedAssessmentIds: [],
+				skippedAssessmentIds: [],
+				corporationIds: [],
+			}
+		}
+
+		const assessments = await this.db.query.taxAssessments.findMany({
+			where: and(
+				eq(taxAssessments.assessmentScope, 'corporation'),
+				inArray(taxAssessments.billId, normalizedBillIds)
+			),
+			orderBy: [desc(taxAssessments.updatedAt)],
+		})
+
+		const processedAssessmentIds: string[] = []
+		const updatedAssessmentIds: string[] = []
+		const skippedAssessmentIds: string[] = []
+		const corporationIds = new Set<string>()
+		const billStateById = new Map(
+			normalizedBillStates.map((billState) => [billState.id, billState])
+		)
+
+		for (const assessment of assessments) {
+			processedAssessmentIds.push(assessment.id)
+			corporationIds.add(assessment.corporationId)
+			if (!assessment.billId) {
+				skippedAssessmentIds.push(assessment.id)
+				continue
+			}
+
+			const billState = billStateById.get(assessment.billId)
+			if (!billState) {
+				skippedAssessmentIds.push(assessment.id)
+				continue
+			}
+
+			const shouldUpdate =
+				assessment.billStatus !== billState.status ||
+				(billState.status === 'paid' && assessment.status !== 'paid')
+			if (!shouldUpdate) {
+				skippedAssessmentIds.push(assessment.id)
+				continue
+			}
+
+			const nextAssessmentStatus = billState.status === 'paid' ? 'paid' : assessment.status
+			await this.db
+				.update(taxAssessments)
+				.set({
+					billStatus: billState.status as TaxBillStatus,
+					billStatusLastSyncedAt: new Date(),
+					status: nextAssessmentStatus,
+					updatedAt: new Date(),
+				})
+				.where(eq(taxAssessments.id, assessment.id))
+
+			await this.recordBillSyncEvent({
+				corporationId: assessment.corporationId,
+				assessmentId: assessment.id,
+				billId: assessment.billId,
+				eventType: 'bill_state_targeted_synced',
+				fromStatus: assessment.billStatus,
+				toStatus: billState.status,
+				payload: {
+					actorUserId,
+				},
+			})
+
+			updatedAssessmentIds.push(assessment.id)
+		}
+
+		return {
+			processedBillIds: normalizedBillIds,
+			processedAssessmentIds,
+			updatedAssessmentIds,
+			skippedAssessmentIds,
+			corporationIds: [...corporationIds],
+		}
+	}
+
 	private async recordBillSyncEvent(input: {
 		corporationId: string
 		assessmentId: string
@@ -841,7 +940,6 @@ export class TaxBillingService {
 			taxDelta: row.taxDelta,
 			status: row.status,
 			inGameTaxRateBps: row.inGameTaxRateBps,
-			portalTaxRateBps: row.portalTaxRateBps,
 			billId: row.billId,
 			billStatus: row.billStatus,
 			billStatusLastSyncedAt: row.billStatusLastSyncedAt,
