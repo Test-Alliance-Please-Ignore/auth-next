@@ -2,7 +2,6 @@ import { Copy, FileText, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
-import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { DestructiveButton } from '@/components/ui/destructive-button'
 import { GhostButton } from '@/components/ui/ghost-button'
@@ -188,14 +187,13 @@ export default function BillsTemplatesPage() {
 											</TableCell>
 											<TableCell className="text-right">
 												<div className="flex justify-end gap-2">
-													<Button
+													<GhostButton
 														size="sm"
-														variant="outline"
 														onClick={() => handleClone(template.id, template.name)}
 														disabled={cloneTemplate.isPending}
 													>
 														<Copy className="h-4 w-4" />
-													</Button>
+													</GhostButton>
 													<DestructiveButton
 														size="sm"
 														showIcon={false}
@@ -204,9 +202,9 @@ export default function BillsTemplatesPage() {
 													>
 														<Trash2 className="h-4 w-4 mr-0" />
 													</DestructiveButton>
-													<Button size="sm" variant="outline" asChild>
+													<GhostButton size="sm" asChild>
 														<Link to={`/admin/bills/templates/${template.id}`}>Edit</Link>
-													</Button>
+													</GhostButton>
 												</div>
 											</TableCell>
 										</TableRow>

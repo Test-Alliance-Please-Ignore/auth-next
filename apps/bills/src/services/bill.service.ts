@@ -450,9 +450,9 @@ export class BillService {
 	}
 
 	/**
-	 * Update a bill (draft only, issuer only)
+	 * Update a bill (permissions enforced by caller route; blocked when paid or when payments exist)
 	 */
-	async updateBill(userId: string, billId: string, data: UpdateBillInput): Promise<Bill> {
+	async updateBill(actorUserId: string, billId: string, data: UpdateBillInput): Promise<Bill> {
 		const bill = await this.db.query.bills.findFirst({
 			where: eq(bills.id, billId),
 		})
@@ -461,12 +461,12 @@ export class BillService {
 			throw new Error('Bill not found')
 		}
 
-		if (bill.issuerId !== userId) {
-			throw new Error('Only the issuer can update the bill')
+		if (bill.status === 'paid') {
+			throw new Error('Cannot update a paid bill')
 		}
 
-		if (bill.status !== 'draft') {
-			throw new Error('Only draft bills can be updated')
+		if (await this.hasPayments(billId)) {
+			throw new Error('Cannot update a bill that has payments')
 		}
 
 		const [updated] = await this.db
@@ -484,17 +484,13 @@ export class BillService {
 	/**
 	 * Issue a bill (change status from draft to issued)
 	 */
-	async issueBill(userId: string, billId: string): Promise<Bill> {
+	async issueBill(actorUserId: string, billId: string): Promise<Bill> {
 		const bill = await this.db.query.bills.findFirst({
 			where: eq(bills.id, billId),
 		})
 
 		if (!bill) {
 			throw new Error('Bill not found')
-		}
-
-		if (bill.issuerId !== userId) {
-			throw new Error('Only the issuer can issue the bill')
 		}
 
 		if (bill.status !== 'draft') {
@@ -506,7 +502,7 @@ export class BillService {
 			fromStatus: bill.status,
 			toStatus: 'issued',
 			eventType: 'issued',
-			actorUserId: userId,
+			actorUserId,
 		})
 		if (!transitioned) {
 			throw new Error('Bill status changed during issue; please retry')
@@ -522,19 +518,15 @@ export class BillService {
 	}
 
 	/**
-	 * Cancel a bill (issuer only)
+	 * Cancel a bill (permissions enforced by caller route)
 	 */
-	async cancelBill(userId: string, billId: string): Promise<Bill> {
+	async cancelBill(actorUserId: string, billId: string): Promise<Bill> {
 		const bill = await this.db.query.bills.findFirst({
 			where: eq(bills.id, billId),
 		})
 
 		if (!bill) {
 			throw new Error('Bill not found')
-		}
-
-		if (bill.issuerId !== userId) {
-			throw new Error('Only the issuer can cancel the bill')
 		}
 
 		if (bill.status === 'paid') {
@@ -550,7 +542,7 @@ export class BillService {
 			fromStatus: bill.status,
 			toStatus: 'cancelled',
 			eventType: 'cancelled',
-			actorUserId: userId,
+			actorUserId,
 		})
 		if (!transitioned) {
 			throw new Error('Bill status changed during cancel; please retry')
@@ -561,6 +553,54 @@ export class BillService {
 		})
 		if (!updated) {
 			throw new Error('Bill not found after cancel')
+		}
+		return this.toBillResponse(updated)
+	}
+
+	/**
+	 * Revert a bill to draft (permissions enforced by caller route; blocked when paid or when payments exist)
+	 */
+	async revertBillToDraft(actorUserId: string, billId: string): Promise<Bill> {
+		const bill = await this.db.query.bills.findFirst({
+			where: eq(bills.id, billId),
+		})
+
+		if (!bill) {
+			throw new Error('Bill not found')
+		}
+
+		if (bill.status === 'draft') {
+			return this.toBillResponse(bill)
+		}
+
+		if (bill.status === 'paid') {
+			throw new Error('Cannot revert a paid bill to draft')
+		}
+
+		if (await this.hasPayments(billId)) {
+			throw new Error('Cannot revert a bill with payments to draft')
+		}
+
+		// Keep event type within existing enum while tracking the explicit target status.
+		const transitioned = await this.applyStatusTransitionAtomic({
+			billId,
+			fromStatus: bill.status,
+			toStatus: 'draft',
+			eventType: 'created',
+			actorUserId,
+			metadata: {
+				reason: 'reverted_to_draft',
+			},
+		})
+		if (!transitioned) {
+			throw new Error('Bill status changed during draft revert; please retry')
+		}
+
+		const updated = await this.db.query.bills.findFirst({
+			where: eq(bills.id, billId),
+		})
+		if (!updated) {
+			throw new Error('Bill not found after draft revert')
 		}
 		return this.toBillResponse(updated)
 	}
@@ -644,9 +684,12 @@ export class BillService {
 	}
 
 	/**
-	 * Regenerate payment token for a bill (issuer only)
+	 * Regenerate payment token for a bill (permissions enforced by caller route)
 	 */
-	async regeneratePaymentToken(userId: string, billId: string): Promise<RegenerateTokenResponse> {
+	async regeneratePaymentToken(
+		actorUserId: string,
+		billId: string
+	): Promise<RegenerateTokenResponse> {
 		const bill = await this.db.query.bills.findFirst({
 			where: eq(bills.id, billId),
 		})
@@ -655,12 +698,12 @@ export class BillService {
 			throw new Error('Bill not found')
 		}
 
-		if (bill.issuerId !== userId) {
-			throw new Error('Only the issuer can regenerate the payment token')
-		}
-
 		if (bill.status === 'paid' || bill.status === 'cancelled') {
 			throw new Error('Cannot regenerate token for paid or cancelled bills')
+		}
+
+		if (await this.hasPayments(billId)) {
+			throw new Error('Cannot regenerate token for a bill that has payments')
 		}
 
 		const newToken = generatePaymentToken()
@@ -678,7 +721,7 @@ export class BillService {
 			eventType: 'payment_token_regenerated',
 			fromStatus: bill.status,
 			toStatus: bill.status,
-			actorUserId: userId,
+			actorUserId,
 		})
 
 		return {
@@ -687,20 +730,24 @@ export class BillService {
 		}
 	}
 
+	private async hasPayments(billId: string): Promise<boolean> {
+		const existingPayment = await this.db.query.billPayments.findFirst({
+			where: eq(billPayments.billId, billId),
+			columns: { id: true },
+		})
+		return Boolean(existingPayment)
+	}
+
 	/**
-	 * Delete a bill (draft only, issuer only)
+	 * Delete a bill (draft only)
 	 */
-	async deleteBill(userId: string, billId: string): Promise<void> {
+	async deleteBill(_actorUserId: string, billId: string): Promise<void> {
 		const bill = await this.db.query.bills.findFirst({
 			where: eq(bills.id, billId),
 		})
 
 		if (!bill) {
 			throw new Error('Bill not found')
-		}
-
-		if (bill.issuerId !== userId) {
-			throw new Error('Only the issuer can delete the bill')
 		}
 
 		if (bill.status !== 'draft') {

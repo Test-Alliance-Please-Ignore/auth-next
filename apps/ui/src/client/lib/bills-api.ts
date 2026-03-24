@@ -121,6 +121,10 @@ export class BillsApiClient extends ApiClient {
 		return this.post(`${BILLS_API_BASE}/${billId}/cancel`)
 	}
 
+	async revertBillToDraft(billId: string): Promise<Bill> {
+		return this.post(`${BILLS_API_BASE}/${billId}/revert-to-draft`)
+	}
+
 	async payBill(paymentToken: string): Promise<Bill> {
 		return this.post(`${BILLS_API_BASE}/pay`, { paymentToken })
 	}

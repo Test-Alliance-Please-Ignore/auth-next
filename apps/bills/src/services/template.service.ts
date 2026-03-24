@@ -12,6 +12,7 @@ import type {
 	CloneTemplateInput,
 	CreateBillFromTemplateInput,
 	CreateTemplateInput,
+	OwnershipScope,
 	UpdateTemplateInput,
 } from '@repo/bills'
 import type { BillsDb } from '../db'
@@ -56,7 +57,11 @@ export class TemplateService {
 	/**
 	 * Get a specific template
 	 */
-	async getTemplate(userId: string, templateId: string): Promise<BillTemplateWithDetails | null> {
+	async getTemplate(
+		userId: string,
+		templateId: string,
+		scope: OwnershipScope = 'owned'
+	): Promise<BillTemplateWithDetails | null> {
 		const template = await this.db.query.billTemplates.findFirst({
 			where: eq(billTemplates.id, templateId),
 		})
@@ -65,8 +70,8 @@ export class TemplateService {
 			return null
 		}
 
-		// Authorization: User must be owner
-		if (template.ownerId !== userId) {
+		// Authorization: non-admin scope requires ownership
+		if (scope !== 'all' && template.ownerId !== userId) {
 			throw new Error('Not authorized to view this template')
 		}
 
@@ -87,9 +92,12 @@ export class TemplateService {
 	/**
 	 * List templates owned by user
 	 */
-	async listTemplates(userId: string): Promise<BillTemplateWithDetails[]> {
+	async listTemplates(
+		userId: string,
+		scope: OwnershipScope = 'owned'
+	): Promise<BillTemplateWithDetails[]> {
 		const templates = await this.db.query.billTemplates.findMany({
-			where: eq(billTemplates.ownerId, userId),
+			where: scope === 'all' ? undefined : eq(billTemplates.ownerId, userId),
 			orderBy: (billTemplates, { desc }) => [desc(billTemplates.createdAt)],
 		})
 
@@ -128,7 +136,8 @@ export class TemplateService {
 	async updateTemplate(
 		userId: string,
 		templateId: string,
-		data: UpdateTemplateInput
+		data: UpdateTemplateInput,
+		scope: OwnershipScope = 'owned'
 	): Promise<BillTemplate> {
 		const template = await this.db.query.billTemplates.findFirst({
 			where: eq(billTemplates.id, templateId),
@@ -138,7 +147,7 @@ export class TemplateService {
 			throw new Error('Template not found')
 		}
 
-		if (template.ownerId !== userId) {
+		if (scope !== 'all' && template.ownerId !== userId) {
 			throw new Error('Only the owner can update the template')
 		}
 
@@ -157,7 +166,11 @@ export class TemplateService {
 	/**
 	 * Delete a template (owner only, no active schedules)
 	 */
-	async deleteTemplate(userId: string, templateId: string): Promise<void> {
+	async deleteTemplate(
+		userId: string,
+		templateId: string,
+		scope: OwnershipScope = 'owned'
+	): Promise<void> {
 		const template = await this.db.query.billTemplates.findFirst({
 			where: eq(billTemplates.id, templateId),
 		})
@@ -166,7 +179,7 @@ export class TemplateService {
 			throw new Error('Template not found')
 		}
 
-		if (template.ownerId !== userId) {
+		if (scope !== 'all' && template.ownerId !== userId) {
 			throw new Error('Only the owner can delete the template')
 		}
 
@@ -277,8 +290,14 @@ export class TemplateService {
 		}
 
 		// Apply template parameters
-		const params = data.templateParams || {}
-		params.amount = data.amount
+		const params = data.templateParams ? { ...data.templateParams } : {}
+		params.amount = params.amount ?? data.amount
+		params.payer = params.payer ?? data.payerId
+		params.payee = params.payee ?? data.payeeId
+		params.payerType = params.payerType ?? data.payerType
+		params.payeeType = params.payeeType ?? data.payeeType
+		params.payerName = params.payerName ?? data.payerId
+		params.payeeName = params.payeeName ?? data.payeeId
 
 		const title = this.applyTemplateParams(template.titleTemplate, params)
 		const description = template.descriptionTemplate

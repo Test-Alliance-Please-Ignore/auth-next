@@ -2,9 +2,10 @@ import { FileText, Info } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
-import { Button } from '@/components/ui/button'
 import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { ConfirmButton } from '@/components/ui/confirm-button'
+import { GhostButton } from '@/components/ui/ghost-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -147,12 +148,12 @@ export default function AdminBillsTemplatesNewPage() {
 						Create a reusable template for generating bills
 					</p>
 				</div>
-				<Button variant="outline" asChild>
+				<GhostButton asChild>
 					<Link to="/admin/bills/templates">
 						<FileText className="mr-2 h-4 w-4" />
 						Back to Templates
 					</Link>
-				</Button>
+				</GhostButton>
 			</div>
 
 			{/* Success/Error Message */}
@@ -228,6 +229,10 @@ export default function AdminBillsTemplatesNewPage() {
 									{' - Payer name, '}
 									<code className="text-xs bg-background px-1 py-0.5 rounded">{'{payerType}'}</code>
 									{' - Payer type, '}
+									<code className="text-xs bg-background px-1 py-0.5 rounded">{'{payeeName}'}</code>
+									{' - Payee name, '}
+									<code className="text-xs bg-background px-1 py-0.5 rounded">{'{payeeType}'}</code>
+									{' - Payee type, '}
 									<code className="text-xs bg-background px-1 py-0.5 rounded">{'{dueDate}'}</code>
 									{' - Due date'}
 								</div>
@@ -387,9 +392,9 @@ export default function AdminBillsTemplatesNewPage() {
 
 				{/* Actions */}
 				<div className="flex gap-3">
-					<Button type="submit" disabled={createTemplate.isPending}>
+					<ConfirmButton type="submit" loading={createTemplate.isPending}>
 						{createTemplate.isPending ? 'Creating Template...' : 'Create Template'}
-					</Button>
+					</ConfirmButton>
 					<CancelButton type="button" onClick={() => navigate('/admin/bills/templates')}>
 						Cancel
 					</CancelButton>

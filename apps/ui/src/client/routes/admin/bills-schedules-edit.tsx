@@ -2,10 +2,11 @@ import { Calendar, Clock, Pause, Play, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
+import { BillEntityPicker } from '@/components/bills/bill-entity-picker'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { ConfirmButton } from '@/components/ui/confirm-button'
 import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
 	Dialog,
@@ -15,6 +16,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
+import { GhostButton } from '@/components/ui/ghost-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
@@ -34,6 +36,7 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import {
+	useBillEntitySearch,
 	useDeleteSchedule,
 	usePauseSchedule,
 	useResumeSchedule,
@@ -42,10 +45,11 @@ import {
 	useTemplates,
 	useUpdateSchedule,
 } from '@/hooks/useBills'
+import { useDebounce } from '@/hooks/useDebounce'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { formatScheduleFrequency } from '@/lib/bills-utils'
 
-import type { EntityType, ScheduleFrequency, UpdateScheduleInput } from '@repo/bills'
+import type { EntityType, PayeeType, ScheduleFrequency, UpdateScheduleInput } from '@repo/bills'
 
 export default function AdminBillsSchedulesEditPage() {
 	const { id } = useParams<{ id: string }>()
@@ -63,16 +67,74 @@ export default function AdminBillsSchedulesEditPage() {
 
 	const [formData, setFormData] = useState<{
 		templateId: string
+		payerId: string
+		payerType: EntityType
+		payeeId: string
+		payeeType: PayeeType
 		frequency: ScheduleFrequency
 		amount: string
 	}>({
 		templateId: '',
+		payerId: '',
+		payerType: 'character',
+		payeeId: '',
+		payeeType: 'character',
 		frequency: 'monthly',
 		amount: '',
 	})
 
 	const [errors, setErrors] = useState<Record<string, string>>({})
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+	const [payerQuery, setPayerQuery] = useState('')
+	const [payeeQuery, setPayeeQuery] = useState('')
+	const debouncedPayerQuery = useDebounce(payerQuery, 300)
+	const debouncedPayeeQuery = useDebounce(payeeQuery, 300)
+	const payerEntitySearch = useBillEntitySearch({
+		q: debouncedPayerQuery,
+		entityType: formData.payerType,
+		enabled: debouncedPayerQuery.trim().length >= 2,
+	})
+	const payeeEntitySearch = useBillEntitySearch({
+		q: debouncedPayeeQuery,
+		entityType: formData.payeeType,
+		enabled: debouncedPayeeQuery.trim().length >= 2,
+	})
+	const payerOptions = useMemo(() => {
+		const deduped = new Map<
+			string,
+			{ id: string; value: string; label: string; description: string }
+		>()
+		for (const row of payerEntitySearch.data ?? []) {
+			const key = row.entityId
+			if (!deduped.has(key)) {
+				deduped.set(key, {
+					id: key,
+					value: row.entityId,
+					label: row.name || row.entityId,
+					description: row.entityId,
+				})
+			}
+		}
+		return [...deduped.values()]
+	}, [payerEntitySearch.data])
+	const payeeOptions = useMemo(() => {
+		const deduped = new Map<
+			string,
+			{ id: string; value: string; label: string; description: string }
+		>()
+		for (const row of payeeEntitySearch.data ?? []) {
+			const key = row.entityId
+			if (!deduped.has(key)) {
+				deduped.set(key, {
+					id: key,
+					value: row.entityId,
+					label: row.name || row.entityId,
+					description: row.entityId,
+				})
+			}
+		}
+		return [...deduped.values()]
+	}, [payeeEntitySearch.data])
 
 	// Dialog states
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -84,9 +146,15 @@ export default function AdminBillsSchedulesEditPage() {
 		if (schedule) {
 			setFormData({
 				templateId: schedule.templateId,
+				payerId: schedule.payerId,
+				payerType: schedule.payerType,
+				payeeId: schedule.payeeId ?? '',
+				payeeType: (schedule.payeeType ?? 'character') as PayeeType,
 				frequency: schedule.frequency,
 				amount: schedule.amount,
 			})
+			setPayerQuery('')
+			setPayeeQuery('')
 		}
 	}, [schedule])
 
@@ -98,6 +166,14 @@ export default function AdminBillsSchedulesEditPage() {
 
 	const handleChange = (field: string, value: string) => {
 		setFormData((prev) => ({ ...prev, [field]: value }))
+		if (field === 'payerType') {
+			setPayerQuery('')
+			setFormData((prev) => ({ ...prev, payerId: '' }))
+		}
+		if (field === 'payeeType') {
+			setPayeeQuery('')
+			setFormData((prev) => ({ ...prev, payeeId: '' }))
+		}
 		// Clear error when field is edited
 		if (errors[field]) {
 			setErrors((prev) => {
@@ -121,6 +197,12 @@ export default function AdminBillsSchedulesEditPage() {
 		} else if (isNaN(Number(formData.amount)) || Number(formData.amount) <= 0) {
 			newErrors.amount = 'Amount must be a positive number'
 		}
+		if (!formData.payerId.trim()) {
+			newErrors.payerId = 'Payer is required'
+		}
+		if (!formData.payeeId.trim()) {
+			newErrors.payeeId = 'Payee is required'
+		}
 
 		setErrors(newErrors)
 		return Object.keys(newErrors).length === 0
@@ -136,6 +218,10 @@ export default function AdminBillsSchedulesEditPage() {
 		try {
 			const input: UpdateScheduleInput = {
 				templateId: formData.templateId,
+				payerId: formData.payerId.trim(),
+				payerType: formData.payerType,
+				payeeId: formData.payeeId.trim(),
+				payeeType: formData.payeeType,
 				frequency: formData.frequency,
 				amount: formData.amount.trim(),
 			}
@@ -215,9 +301,9 @@ export default function AdminBillsSchedulesEditPage() {
 						<p className="text-destructive">Schedule not found</p>
 					</CardContent>
 				</Card>
-				<Button variant="outline" asChild>
+				<GhostButton asChild>
 					<Link to="/admin/bills/schedules">Back to Schedules</Link>
-				</Button>
+				</GhostButton>
 			</div>
 		)
 	}
@@ -243,10 +329,10 @@ export default function AdminBillsSchedulesEditPage() {
 							Pause Schedule
 						</CancelButton>
 					) : (
-						<Button size="sm" variant="outline" onClick={() => setResumeDialogOpen(true)}>
+						<GhostButton size="sm" onClick={() => setResumeDialogOpen(true)}>
 							<Play className="mr-2 h-4 w-4" />
 							Resume Schedule
-						</Button>
+						</GhostButton>
 					)}
 					<DestructiveButton
 						size="sm"
@@ -256,12 +342,12 @@ export default function AdminBillsSchedulesEditPage() {
 						<Trash2 className="mr-2 h-4 w-4" />
 						Delete
 					</DestructiveButton>
-					<Button variant="outline" asChild>
+					<GhostButton asChild>
 						<Link to="/admin/bills/schedules">
 							<Calendar className="mr-2 h-4 w-4" />
 							Back to Schedules
 						</Link>
-					</Button>
+					</GhostButton>
 				</div>
 			</div>
 
@@ -343,6 +429,15 @@ export default function AdminBillsSchedulesEditPage() {
 								{schedule.payerType}: {schedule.payerId}
 							</div>
 						</div>
+						<div>
+							<Label className="text-muted-foreground">Payee</Label>
+							<div className="mt-1 text-sm">
+								{schedule.payeeType ?? 'character'}: {schedule.payeeId ?? '—'}
+							</div>
+						</div>
+					</div>
+
+					<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 						<div>
 							<Label className="text-muted-foreground">Created</Label>
 							<div className="mt-1 text-sm">
@@ -440,14 +535,45 @@ export default function AdminBillsSchedulesEditPage() {
 								{errors.amount && <p className="text-sm text-destructive">{errors.amount}</p>}
 							</div>
 						</div>
+
+						<BillEntityPicker
+							roleLabel="Payer"
+							typeFieldId="payerType"
+							entityFieldId="payerId"
+							entityType={formData.payerType}
+							allowedEntityTypes={['character', 'corporation', 'group']}
+							onEntityTypeChange={(value) => handleChange('payerType', value)}
+							query={payerQuery}
+							onQueryChange={setPayerQuery}
+							options={payerOptions}
+							onEntitySelect={(entityId) => handleChange('payerId', entityId)}
+							loading={payerEntitySearch.isLoading}
+							selectedEntityId={formData.payerId}
+							error={errors.payerId}
+						/>
+						<BillEntityPicker
+							roleLabel="Payee"
+							typeFieldId="payeeType"
+							entityFieldId="payeeId"
+							entityType={formData.payeeType}
+							allowedEntityTypes={['character', 'corporation']}
+							onEntityTypeChange={(value) => handleChange('payeeType', value)}
+							query={payeeQuery}
+							onQueryChange={setPayeeQuery}
+							options={payeeOptions}
+							onEntitySelect={(entityId) => handleChange('payeeId', entityId)}
+							loading={payeeEntitySearch.isLoading}
+							selectedEntityId={formData.payeeId}
+							error={errors.payeeId}
+						/>
 					</CardContent>
 				</Card>
 
 				{/* Actions */}
 				<div className="flex gap-3 mb-6">
-					<Button type="submit" disabled={updateSchedule.isPending}>
+					<ConfirmButton type="submit" loading={updateSchedule.isPending}>
 						{updateSchedule.isPending ? 'Saving Changes...' : 'Save Changes'}
-					</Button>
+					</ConfirmButton>
 					<CancelButton type="button" onClick={() => navigate('/admin/bills/schedules')}>
 						Cancel
 					</CancelButton>
@@ -534,9 +660,9 @@ export default function AdminBillsSchedulesEditPage() {
 					</DialogHeader>
 					<DialogFooter>
 						<CancelButton onClick={() => setPauseDialogOpen(false)}>Cancel</CancelButton>
-						<Button onClick={handlePause} disabled={pauseSchedule.isPending}>
+						<ConfirmButton onConfirm={handlePause} loading={pauseSchedule.isPending}>
 							{pauseSchedule.isPending ? 'Pausing...' : 'Pause Schedule'}
-						</Button>
+						</ConfirmButton>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
@@ -553,9 +679,9 @@ export default function AdminBillsSchedulesEditPage() {
 					</DialogHeader>
 					<DialogFooter>
 						<CancelButton onClick={() => setResumeDialogOpen(false)}>Cancel</CancelButton>
-						<Button onClick={handleResume} disabled={resumeSchedule.isPending}>
+						<ConfirmButton onConfirm={handleResume} loading={resumeSchedule.isPending}>
 							{resumeSchedule.isPending ? 'Resuming...' : 'Resume Schedule'}
-						</Button>
+						</ConfirmButton>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
