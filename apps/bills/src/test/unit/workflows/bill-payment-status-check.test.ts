@@ -108,7 +108,7 @@ function createWorkflowAndContext() {
 	})
 
 	const workflow = new BillPaymentStatusCheckWorkflow(
-		{} as DurableObjectState,
+		{} as ExecutionContext<unknown>,
 		{
 			DATABASE_URL: 'postgresql://test',
 			CORPORATION_TAX: {} as DurableObjectNamespace,
