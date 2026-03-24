@@ -161,7 +161,9 @@ export default function BillsSchedulesPage() {
 										<TableHead>Frequency</TableHead>
 										<TableHead>Next Run</TableHead>
 										<TableHead>Failures</TableHead>
-										<TableHead className="text-right">Actions</TableHead>
+										<TableHead className="sticky right-0 z-20 bg-card text-center">
+											Actions
+										</TableHead>
 									</TableRow>
 								</TableHeader>
 								<TableBody>
@@ -194,7 +196,7 @@ export default function BillsSchedulesPage() {
 													{schedule.consecutiveFailures}
 												</Badge>
 											</TableCell>
-											<TableCell className="text-right">
+											<TableCell className="sticky right-0 z-10 bg-card text-right">
 												<div className="flex justify-end gap-2">
 													{schedule.isActive ? (
 														<CancelButton
@@ -225,9 +227,9 @@ export default function BillsSchedulesPage() {
 													>
 														Delete
 													</DestructiveButton>
-													<GhostButton size="sm" asChild>
+													<PrimaryButton size="sm" asChild>
 														<Link to={`/admin/bills/schedules/${schedule.id}`}>View</Link>
-													</GhostButton>
+													</PrimaryButton>
 												</div>
 											</TableCell>
 										</TableRow>

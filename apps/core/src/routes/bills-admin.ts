@@ -710,7 +710,17 @@ app.get('/schedules', requireAuth(), requireAdmin(), async (c) => {
 
 		return c.json(schedules)
 	} catch (error) {
-		logger.error('Error listing schedules:', error)
+		const cause = (error as { cause?: unknown })?.cause as
+			| { message?: string; code?: string; detail?: string; hint?: string }
+			| undefined
+		logger.error('[bills-admin] Error listing schedules:', {
+			error: error instanceof Error ? error.message : String(error),
+			stack: error instanceof Error ? error.stack : undefined,
+			causeMessage: cause?.message,
+			causeCode: cause?.code,
+			causeDetail: cause?.detail,
+			causeHint: cause?.hint,
+		})
 		return c.json({ error: 'Failed to list schedules' }, 500)
 	}
 })
