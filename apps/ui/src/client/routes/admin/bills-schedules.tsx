@@ -175,13 +175,24 @@ export default function BillsSchedulesPage() {
 												</Badge>
 											</TableCell>
 											<TableCell>
-												<div className="font-medium">{schedule.templateId}</div>
+												<div className="font-medium">
+													{schedule.template?.name ?? schedule.templateId}
+												</div>
+												<div className="text-xs text-muted-foreground">{schedule.templateId}</div>
 											</TableCell>
 											<TableCell>
-												<div className="text-sm">{schedule.payerId}</div>
+												<div className="text-sm">{schedule.payerName ?? schedule.payerId}</div>
+												<div className="text-xs text-muted-foreground">
+													{schedule.payerType}: {schedule.payerId}
+												</div>
 											</TableCell>
 											<TableCell>
-												<div className="text-sm">{schedule.payeeId ?? '—'}</div>
+												<div className="text-sm">
+													{schedule.payeeName ?? schedule.payeeId ?? '—'}
+												</div>
+												<div className="text-xs text-muted-foreground">
+													{schedule.payeeType ?? 'character'}: {schedule.payeeId ?? '—'}
+												</div>
 											</TableCell>
 											<TableCell>{formatScheduleFrequency(schedule.frequency)}</TableCell>
 											<TableCell>

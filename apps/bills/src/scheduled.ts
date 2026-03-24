@@ -3,7 +3,7 @@ import { and, eq, inArray, isNull, lte, or } from 'drizzle-orm'
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from './db'
-import { bills } from './db/schema'
+import { bills, billSchedules } from './db/schema'
 
 import type { Env } from './context'
 
@@ -162,6 +162,108 @@ async function refreshBillPayments(env: Env, options: { scheduledTimeMs: number 
 	}
 }
 
+/**
+ * Enqueue execution workflows for all active schedules whose next generation time is due.
+ */
+async function enqueueDueSchedules(env: Env, options: { scheduledTimeMs: number }): Promise<void> {
+	const startTime = Date.now()
+	const scheduleLogger = logger.withTags({ component: 'bills-schedule-refresh' })
+
+	scheduleLogger.info('[Bills] Starting due schedule refresh batch')
+
+	try {
+		const db = createDb(env.DATABASE_URL)
+		const dueAt = new Date(options.scheduledTimeMs)
+		const dueSchedules = await db.query.billSchedules.findMany({
+			where: and(eq(billSchedules.isActive, true), lte(billSchedules.nextGenerationTime, dueAt)),
+		})
+
+		if (dueSchedules.length === 0) {
+			scheduleLogger.info('[Bills] No due active schedules found', {
+				dueAt: dueAt.toISOString(),
+			})
+			return
+		}
+
+		scheduleLogger.info('[Bills] Found due active schedules', {
+			count: dueSchedules.length,
+			dueAt: dueAt.toISOString(),
+			scheduleIds: dueSchedules.map((schedule) => schedule.id),
+		})
+
+		const workflowOptions = dueSchedules.map((schedule) => ({
+			id: `bill-schedule-exec-${schedule.id}-${options.scheduledTimeMs}`,
+			params: { scheduleId: schedule.id } as { scheduleId: string },
+		}))
+
+		const BATCH_SIZE = 100
+		const batches: Array<typeof workflowOptions> = []
+		for (let i = 0; i < workflowOptions.length; i += BATCH_SIZE) {
+			batches.push(workflowOptions.slice(i, i + BATCH_SIZE))
+		}
+
+		const batchResults = await Promise.allSettled(
+			batches.map(async (batch, batchIndex) => {
+				try {
+					const instances = await env.BILLS_SCHEDULE_EXECUTOR.createBatch(batch)
+					scheduleLogger.info('[Bills] Created schedule workflow batch', {
+						batchIndex: batchIndex + 1,
+						totalBatches: batches.length,
+						instancesCreated: instances.length,
+					})
+					return {
+						success: true,
+						instancesCreated: instances.length,
+						batchSize: batch.length,
+					}
+				} catch (error) {
+					scheduleLogger.error('[Bills] Failed to create schedule workflow batch', {
+						batchIndex: batchIndex + 1,
+						totalBatches: batches.length,
+						batchSize: batch.length,
+						errorMessage: error instanceof Error ? error.message : String(error),
+						errorStack: error instanceof Error ? error.stack : undefined,
+					})
+					return {
+						success: false,
+						instancesCreated: 0,
+						batchSize: batch.length,
+					}
+				}
+			})
+		)
+
+		let created = 0
+		let failed = 0
+		batchResults.forEach((result, index) => {
+			if (result.status === 'fulfilled') {
+				if (result.value.success) {
+					created += result.value.instancesCreated
+				} else {
+					failed += result.value.batchSize
+				}
+			} else {
+				// Unexpected batch-level rejection. Conservative failed count fallback.
+				failed += batches[index]?.length ?? 0
+			}
+		})
+
+		scheduleLogger.info('[Bills] Due schedule refresh batch complete', {
+			totalDue: dueSchedules.length,
+			workflowsCreated: created,
+			failed,
+			durationMs: Date.now() - startTime,
+		})
+	} catch (error) {
+		scheduleLogger.error('[Bills] Unexpected error during due schedule refresh', {
+			error: error instanceof Error ? error.message : String(error),
+			errorStack: error instanceof Error ? error.stack : undefined,
+			durationMs: Date.now() - startTime,
+		})
+		throw error
+	}
+}
+
 export async function scheduledHandler(
 	event: ScheduledEvent,
 	env: Env,
@@ -173,6 +275,7 @@ export async function scheduledHandler(
 		scheduledTime: new Date(event.scheduledTime).toISOString(),
 		cron: event.cron,
 	})
+	await enqueueDueSchedules(env, { scheduledTimeMs: event.scheduledTime })
 	await refreshBillPayments(env, { scheduledTimeMs: event.scheduledTime })
 
 	const duration = Date.now() - start

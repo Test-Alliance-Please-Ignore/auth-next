@@ -707,8 +707,41 @@ app.get('/schedules', requireAuth(), requireAdmin(), async (c) => {
 			},
 			'all'
 		)
+		const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
+		const esiIdsToResolve = [
+			...new Set(
+				schedules
+					.flatMap((schedule) => [
+						schedule.payerType !== 'group' ? schedule.payerId : null,
+						schedule.payeeId ?? null,
+					])
+					.filter(Boolean)
+			),
+		] as string[]
+		const groupIdsToResolve = [
+			...new Set(
+				schedules
+					.flatMap((schedule) => [schedule.payerType === 'group' ? schedule.payerId : null])
+					.filter(Boolean)
+			),
+		] as string[]
+		const nameMap =
+			esiIdsToResolve.length > 0
+				? await resolver.resolveIds(esiIdsToResolve)
+				: ({} as Record<string, string>)
+		const groupNames = await resolveGroupNames(c.env, groupIdsToResolve)
+		const enrichedSchedules = schedules.map((schedule) => ({
+			...schedule,
+			payerName:
+				schedule.payerType === 'group'
+					? (groupNames.get(schedule.payerId) ?? schedule.payerName)
+					: (nameMap[schedule.payerId] ?? schedule.payerName),
+			payeeName: schedule.payeeId
+				? (nameMap[schedule.payeeId] ?? schedule.payeeName)
+				: schedule.payeeName,
+		}))
 
-		return c.json(schedules)
+		return c.json(enrichedSchedules)
 	} catch (error) {
 		const cause = (error as { cause?: unknown })?.cause as
 			| { message?: string; code?: string; detail?: string; hint?: string }

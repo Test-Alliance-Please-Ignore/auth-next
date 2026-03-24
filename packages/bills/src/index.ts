@@ -179,6 +179,7 @@ export interface BillScheduleWithDetails extends BillSchedule {
 	template: BillTemplate
 	ownerName?: string
 	payerName?: string
+	payeeName?: string
 	lastExecution?: ScheduleExecutionLog | null
 }
 
