@@ -80,11 +80,15 @@ describe('bills-admin routes action access matrix', () => {
 
 	it('returns 401 for unauthenticated admin-bills action request', async () => {
 		const app = createApp()
-		const response = await app.request('/api/admin/bills', {
-			method: 'POST',
-			body: JSON.stringify({}),
-			headers: { 'content-type': 'application/json' },
-		}, env)
+		const response = await app.request(
+			'/api/admin/bills',
+			{
+				method: 'POST',
+				body: JSON.stringify({}),
+				headers: { 'content-type': 'application/json' },
+			},
+			env
+		)
 		expect(response.status).toBe(401)
 		expect(await response.json()).toEqual({ error: 'Unauthorized' })
 	})
@@ -143,11 +147,19 @@ describe('bills-admin routes action access matrix', () => {
 		expect(billsStub.getBillIntegrationView).toHaveBeenCalledWith('bill-1')
 		expect(billsStub.updateBill).toHaveBeenCalledWith('admin-1', 'bill-1', { title: 'updated' })
 
-		const issueResponse = await app.request('/api/admin/bills/bill-1/issue', { method: 'POST' }, env)
+		const issueResponse = await app.request(
+			'/api/admin/bills/bill-1/issue',
+			{ method: 'POST' },
+			env
+		)
 		expect(issueResponse.status).toBe(200)
 		expect(billsStub.issueBill).toHaveBeenCalledWith('admin-1', 'bill-1')
 
-		const cancelResponse = await app.request('/api/admin/bills/bill-1/cancel', { method: 'POST' }, env)
+		const cancelResponse = await app.request(
+			'/api/admin/bills/bill-1/cancel',
+			{ method: 'POST' },
+			env
+		)
 		expect(cancelResponse.status).toBe(200)
 		expect(billsStub.cancelBill).toHaveBeenCalledWith('admin-1', 'bill-1')
 

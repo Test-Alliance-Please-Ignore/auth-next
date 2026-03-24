@@ -678,6 +678,44 @@ app.delete('/templates/:templateId', requireAuth(), requireAdmin(), async (c) =>
 })
 
 /**
+ * GET /bills/schedules
+ * List schedules
+ */
+app.get('/schedules', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		const frequency = c.req.query('frequency')
+		const isActive =
+			c.req.query('isActive') === 'true'
+				? true
+				: c.req.query('isActive') === 'false'
+					? false
+					: undefined
+		const templateId = c.req.query('templateId')
+
+		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		const schedules = await stub.listSchedules(
+			user.id,
+			{
+				frequency: frequency as any,
+				isActive,
+				templateId,
+			},
+			'all'
+		)
+
+		return c.json(schedules)
+	} catch (error) {
+		logger.error('Error listing schedules:', error)
+		return c.json({ error: 'Failed to list schedules' }, 500)
+	}
+})
+
+/**
  * GET /bills/:billId
  * Get a specific bill
  */
@@ -947,44 +985,6 @@ app.post('/:billId/regenerate-token', requireAuth(), requireAdmin(), async (c) =
 })
 
 // ===== Schedule Routes =====
-
-/**
- * GET /bills/schedules
- * List schedules
- */
-app.get('/schedules', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')
-	if (!user) {
-		return c.json({ error: 'Unauthorized' }, 401)
-	}
-
-	try {
-		const frequency = c.req.query('frequency')
-		const isActive =
-			c.req.query('isActive') === 'true'
-				? true
-				: c.req.query('isActive') === 'false'
-					? false
-					: undefined
-		const templateId = c.req.query('templateId')
-
-		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		const schedules = await stub.listSchedules(
-			user.id,
-			{
-				frequency: frequency as any,
-				isActive,
-				templateId,
-			},
-			'all'
-		)
-
-		return c.json(schedules)
-	} catch (error) {
-		logger.error('Error listing schedules:', error)
-		return c.json({ error: 'Failed to list schedules' }, 500)
-	}
-})
 
 /**
  * POST /bills/schedules
