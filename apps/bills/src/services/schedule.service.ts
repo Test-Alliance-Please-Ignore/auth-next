@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from '@repo/db-utils'
+import { and, desc, eq, inArray, sql } from '@repo/db-utils'
 
 import { billSchedules, billTemplates, scheduleExecutionLogs } from '../db/schema'
 import { calculateInitialGenerationTime, calculateNextGenerationTime } from '../utils/schedule'
@@ -148,7 +148,7 @@ export class ScheduleService {
 		const lastExecutions = await this.db
 			.select()
 			.from(scheduleExecutionLogs)
-			.where(sql`${scheduleExecutionLogs.scheduleId} = ANY(${scheduleIds})`)
+			.where(inArray(scheduleExecutionLogs.scheduleId, scheduleIds))
 			.orderBy(desc(scheduleExecutionLogs.executedAt))
 
 		const executionMap = new Map<string, ScheduleExecutionLog>()
