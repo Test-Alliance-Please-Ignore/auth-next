@@ -8,14 +8,16 @@
 import { eq, inArray } from 'drizzle-orm'
 import { Hono } from 'hono'
 
+import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
 import { userCharacters, users } from '../db/schema'
 import { validatePagination } from '../lib/validation'
-import { requireAllianceMember } from '../middleware/session'
+import { requireAuth } from '../middleware/session'
 
+import type { MiddlewareHandler } from 'hono'
 import type {
 	BillFilters,
 	BillListScopeEntity,
@@ -41,6 +43,19 @@ const BILL_SORT_FIELDS = new Set<BillListSortField>([
 ])
 const ENTITY_TYPES = new Set<EntityType>(['character', 'corporation', 'group'])
 const PAYEE_ENTITY_TYPES = new Set<EntityType>(['character', 'corporation'])
+
+const requireBillingViewer = (): MiddlewareHandler<App> => {
+	return async (c, next) => {
+		const user = c.get('user')
+		if (!user) {
+			return c.json({ error: 'Unauthorized' }, 401)
+		}
+		if (!user.is_admin && !user.roles.includes(ROLE_CORE_ALLIANCE_MEMBER)) {
+			return c.json({ error: 'Forbidden' }, 403)
+		}
+		return next()
+	}
+}
 
 async function resolveGroupNames(
 	c: App['Bindings'],
@@ -88,7 +103,7 @@ export function buildMyBillListScope(
  * List bills where the current user is the payer
  * (via their character IDs or corporations where they have CEO/Director roles)
  */
-app.get('/my-bills', requireAllianceMember(), async (c) => {
+app.get('/my-bills', requireAuth(), requireBillingViewer(), async (c) => {
 	const user = c.get('user')
 	if (!user) {
 		return c.json({ error: 'Unauthorized' }, 401)
@@ -104,10 +119,12 @@ app.get('/my-bills', requireAllianceMember(), async (c) => {
 		const sortDirQuery = c.req.query('sortDir')?.trim() as BillListSortDirection | undefined
 		const sortBy = sortByQuery && BILL_SORT_FIELDS.has(sortByQuery) ? sortByQuery : 'dueDate'
 		const sortDir: BillListSortDirection = sortDirQuery === 'desc' ? 'desc' : 'asc'
-		const scope = await getUserBillScope(c.env, user.id)
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		const scope = user.is_admin
+			? ({ mode: 'all' } as const)
+			: buildMyBillListScope(user.id, await getUserBillScope(c.env, user.id))
 		const page = await stub.listBillsPage({
-			scope: buildMyBillListScope(user.id, scope),
+			scope,
 			filters,
 			limit: pagination.data.limit,
 			offset: pagination.data.offset,
@@ -170,7 +187,7 @@ app.get('/my-bills', requireAllianceMember(), async (c) => {
 	}
 })
 
-app.get('/my-bills/parties/search', requireAllianceMember(), async (c) => {
+app.get('/my-bills/parties/search', requireAuth(), requireBillingViewer(), async (c) => {
 	const user = c.get('user')
 	if (!user) {
 		return c.json({ error: 'Unauthorized' }, 401)
@@ -189,10 +206,12 @@ app.get('/my-bills/parties/search', requireAllianceMember(), async (c) => {
 			entityTypeQuery && ENTITY_TYPES.has(entityTypeQuery as EntityType)
 				? (entityTypeQuery as EntityType)
 				: undefined
-		const scope = await getUserBillScope(c.env, user.id)
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		const scope = user.is_admin
+			? ({ mode: 'all' } as const)
+			: buildMyBillListScope(user.id, await getUserBillScope(c.env, user.id))
 		const rows = await stub.searchBillParties({
-			scope: buildMyBillListScope(user.id, scope),
+			scope,
 			direction,
 			entityType,
 			q: /^\d+$/.test(q) ? q : undefined,
@@ -242,7 +261,7 @@ app.get('/my-bills/parties/search', requireAllianceMember(), async (c) => {
  * GET /bills/my-bills/:billId
  * Get a single bill if the current user is the payer
  */
-app.get('/my-bills/:billId', requireAllianceMember(), async (c) => {
+app.get('/my-bills/:billId', requireAuth(), requireBillingViewer(), async (c) => {
 	const user = c.get('user')
 	if (!user) {
 		return c.json({ error: 'Unauthorized' }, 401)
@@ -252,34 +271,38 @@ app.get('/my-bills/:billId', requireAllianceMember(), async (c) => {
 
 	try {
 		logger.info('[bills-user] Fetching single bill for user', { userId: user.id, billId })
-		const scope = await getUserBillScope(c.env, user.id)
-		const allowedPartyKeys = new Set(
-			scope.partyEntities.map((party) => `${party.entityType}:${party.entityId}`)
-		)
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		const bill = await stub.getBill(user.id, billId)
+		const bill = user.is_admin
+			? await stub.getBillIntegrationView(billId)
+			: await stub.getBill(user.id, billId)
 
 		if (!bill) {
 			return c.json({ error: 'Bill not found' }, 404)
 		}
 
-		const hasIssuerAccess = bill.issuerId === user.id
-		const payerKey = `${bill.payerType}:${bill.payerId}`
-		const payeeKey = bill.payeeId && bill.payeeType ? `${bill.payeeType}:${bill.payeeId}` : null
-		const hasPayerAccess = allowedPartyKeys.has(payerKey)
-		const hasPayeeAccess = payeeKey ? allowedPartyKeys.has(payeeKey) : false
-		const hasPartyAccess = hasPayerAccess || hasPayeeAccess
-		if (!hasIssuerAccess && !hasPartyAccess) {
-			logger.warn('[bills-user] User not authorized to view bill', {
-				userId: user.id,
-				billId,
-				issuerId: bill.issuerId,
-			})
-			return c.json({ error: 'Bill not found' }, 404)
+		if (!user.is_admin) {
+			const scope = await getUserBillScope(c.env, user.id)
+			const allowedPartyKeys = new Set(
+				scope.partyEntities.map((party) => `${party.entityType}:${party.entityId}`)
+			)
+			const hasIssuerAccess = bill.issuerId === user.id
+			const payerKey = `${bill.payerType}:${bill.payerId}`
+			const payeeKey = bill.payeeId && bill.payeeType ? `${bill.payeeType}:${bill.payeeId}` : null
+			const hasPayerAccess = allowedPartyKeys.has(payerKey)
+			const hasPayeeAccess = payeeKey ? allowedPartyKeys.has(payeeKey) : false
+			const hasPartyAccess = hasPayerAccess || hasPayeeAccess
+			if (!hasIssuerAccess && !hasPartyAccess) {
+				logger.warn('[bills-user] User not authorized to view bill', {
+					userId: user.id,
+					billId,
+					issuerId: bill.issuerId,
+				})
+				return c.json({ error: 'Bill not found' }, 404)
+			}
 		}
 
 		// Keep draft visibility limited to issuer.
-		if (bill.status === 'draft' && bill.issuerId !== user.id) {
+		if (!user.is_admin && bill.status === 'draft' && bill.issuerId !== user.id) {
 			return c.json({ error: 'Bill not found' }, 404)
 		}
 

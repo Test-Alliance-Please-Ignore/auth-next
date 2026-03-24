@@ -645,7 +645,7 @@ app.put('/templates/:templateId', requireAuth(), requireAdmin(), async (c) => {
 	try {
 		const data = await c.req.json()
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		const template = await stub.updateTemplate(user.id, templateId, data, 'all')
+		const template = await stub.updateTemplate(user.id, templateId, data)
 
 		return c.json(template)
 	} catch (error) {
@@ -668,7 +668,7 @@ app.delete('/templates/:templateId', requireAuth(), requireAdmin(), async (c) =>
 
 	try {
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		await stub.deleteTemplate(user.id, templateId, 'all')
+		await stub.deleteTemplate(user.id, templateId)
 
 		return c.json({ success: true })
 	} catch (error) {
@@ -1020,7 +1020,7 @@ app.get('/schedules/statistics', requireAuth(), requireAdmin(), async (c) => {
 
 	try {
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		const stats = await stub.getScheduleStatistics(user.id)
+		const stats = await stub.getScheduleStatistics(user.id, 'all')
 
 		return c.json(stats)
 	} catch (error) {
@@ -1105,7 +1105,7 @@ app.put('/schedules/:scheduleId', requireAuth(), requireAdmin(), async (c) => {
 	try {
 		const data = await c.req.json()
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		const schedule = await stub.updateSchedule(user.id, scheduleId, data, 'all')
+		const schedule = await stub.updateSchedule(user.id, scheduleId, data)
 
 		return c.json(schedule)
 	} catch (error) {
@@ -1128,7 +1128,7 @@ app.delete('/schedules/:scheduleId', requireAuth(), requireAdmin(), async (c) =>
 
 	try {
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		await stub.deleteSchedule(user.id, scheduleId, 'all')
+		await stub.deleteSchedule(user.id, scheduleId)
 
 		return c.json({ success: true })
 	} catch (error) {

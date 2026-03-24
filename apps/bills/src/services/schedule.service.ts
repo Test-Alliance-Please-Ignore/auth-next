@@ -41,10 +41,6 @@ export class ScheduleService {
 			throw new Error('Template not found')
 		}
 
-		if (template.ownerId !== userId) {
-			throw new Error('Not authorized to use this template')
-		}
-
 		const scheduleId = generateUuidV7()
 		const nextGenerationTime = calculateInitialGenerationTime(data.frequency, data.startDate)
 		if (!data.payeeId.trim()) {
@@ -132,9 +128,10 @@ export class ScheduleService {
 		if (filters.templateId) {
 			conditions.push(eq(billSchedules.templateId, filters.templateId))
 		}
+		const whereClause = conditions.length > 0 ? and(...conditions) : undefined
 
 		const schedules = await this.db.query.billSchedules.findMany({
-			where: and(...conditions),
+			where: whereClause,
 			orderBy: (billSchedules, { desc }) => [desc(billSchedules.createdAt)],
 			with: {
 				template: true,
@@ -169,13 +166,12 @@ export class ScheduleService {
 	}
 
 	/**
-	 * Update a schedule (owner only)
+	 * Update a schedule
 	 */
 	async updateSchedule(
-		userId: string,
+		_userId: string,
 		scheduleId: string,
-		data: UpdateScheduleInput,
-		scope: OwnershipScope = 'owned'
+		data: UpdateScheduleInput
 	): Promise<BillSchedule> {
 		const schedule = await this.db.query.billSchedules.findFirst({
 			where: eq(billSchedules.id, scheduleId),
@@ -185,9 +181,6 @@ export class ScheduleService {
 			throw new Error('Schedule not found')
 		}
 
-		if (scope !== 'all' && schedule.ownerId !== userId) {
-			throw new Error('Only the owner can update the schedule')
-		}
 		if ((data.payerId && !data.payerType) || (!data.payerId && data.payerType)) {
 			throw new Error('payerId and payerType must be provided together')
 		}
@@ -222,19 +215,15 @@ export class ScheduleService {
 	}
 
 	/**
-	 * Pause a schedule (owner only)
+	 * Pause a schedule
 	 */
-	async pauseSchedule(userId: string, scheduleId: string): Promise<BillSchedule> {
+	async pauseSchedule(_userId: string, scheduleId: string): Promise<BillSchedule> {
 		const schedule = await this.db.query.billSchedules.findFirst({
 			where: eq(billSchedules.id, scheduleId),
 		})
 
 		if (!schedule) {
 			throw new Error('Schedule not found')
-		}
-
-		if (schedule.ownerId !== userId) {
-			throw new Error('Only the owner can pause the schedule')
 		}
 
 		if (!schedule.isActive) {
@@ -254,19 +243,15 @@ export class ScheduleService {
 	}
 
 	/**
-	 * Resume a schedule (owner only)
+	 * Resume a schedule
 	 */
-	async resumeSchedule(userId: string, scheduleId: string): Promise<BillSchedule> {
+	async resumeSchedule(_userId: string, scheduleId: string): Promise<BillSchedule> {
 		const schedule = await this.db.query.billSchedules.findFirst({
 			where: eq(billSchedules.id, scheduleId),
 		})
 
 		if (!schedule) {
 			throw new Error('Schedule not found')
-		}
-
-		if (schedule.ownerId !== userId) {
-			throw new Error('Only the owner can resume the schedule')
 		}
 
 		if (schedule.isActive) {
@@ -294,23 +279,15 @@ export class ScheduleService {
 	}
 
 	/**
-	 * Delete a schedule (owner only)
+	 * Delete a schedule
 	 */
-	async deleteSchedule(
-		userId: string,
-		scheduleId: string,
-		scope: OwnershipScope = 'owned'
-	): Promise<void> {
+	async deleteSchedule(_userId: string, scheduleId: string): Promise<void> {
 		const schedule = await this.db.query.billSchedules.findFirst({
 			where: eq(billSchedules.id, scheduleId),
 		})
 
 		if (!schedule) {
 			throw new Error('Schedule not found')
-		}
-
-		if (scope !== 'all' && schedule.ownerId !== userId) {
-			throw new Error('Only the owner can delete the schedule')
 		}
 
 		// Execution logs will be cascade deleted due to foreign key
@@ -350,9 +327,12 @@ export class ScheduleService {
 	/**
 	 * Get schedule statistics for a user
 	 */
-	async getScheduleStatistics(userId: string): Promise<ScheduleStatistics> {
+	async getScheduleStatistics(
+		userId: string,
+		scope: OwnershipScope = 'owned'
+	): Promise<ScheduleStatistics> {
 		const userSchedules = await this.db.query.billSchedules.findMany({
-			where: eq(billSchedules.ownerId, userId),
+			where: scope === 'all' ? undefined : eq(billSchedules.ownerId, userId),
 		})
 
 		const stats: ScheduleStatistics = {
