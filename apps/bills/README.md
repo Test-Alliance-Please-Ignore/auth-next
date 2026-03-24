@@ -306,8 +306,6 @@ const bills = await stub.listBills(userId)
 - [ ] Notification integration for bill events
 - [ ] Bulk bill operations
 - [ ] Bill attachments/receipts
-- [ ] Payment history tracking
 - [ ] Multi-currency support
-- [ ] Partial payments
 - [ ] Payment plans
 - [ ] Bill disputes/refunds
