@@ -2,6 +2,7 @@ import { FileText } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
+import { BillEntityPicker } from '@/components/bills/bill-entity-picker'
 import { Button } from '@/components/ui/button'
 import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -9,7 +10,6 @@ import { ConfirmButton } from '@/components/ui/confirm-button'
 import { GhostButton } from '@/components/ui/ghost-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { SearchSelect } from '@/components/ui/search-select'
 import {
 	Select,
 	SelectContent,
@@ -268,51 +268,21 @@ export default function AdminBillsNewPage() {
 						<CardDescription>Who is responsible for paying this bill?</CardDescription>
 					</CardHeader>
 					<CardContent className="space-y-4">
-						<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-							<div className="space-y-2">
-								<Label htmlFor="payerType">
-									Payer Type <span className="text-destructive">*</span>
-								</Label>
-								<Select
-									value={formData.payerType}
-									onValueChange={(value) => handleChange('payerType', value)}
-								>
-									<SelectTrigger id="payerType">
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value="character">Character</SelectItem>
-										<SelectItem value="corporation">Corporation</SelectItem>
-										<SelectItem value="group">Group</SelectItem>
-									</SelectContent>
-								</Select>
-							</div>
-
-							<div className="space-y-2">
-								<Label htmlFor="payerId">
-									Payer <span className="text-destructive">*</span>
-								</Label>
-								<SearchSelect
-									inputId="payerId"
-									value={payerQuery}
-									onValueChange={setPayerQuery}
-									options={payerOptions}
-									onSelect={(option) => {
-										handleChange('payerId', option.value)
-										setPayerQuery(option.label)
-									}}
-									loading={payerEntitySearch.isLoading}
-									placeholder={`Search ${formData.payerType} name or ID`}
-									minCharsText="Type at least 2 characters"
-									emptyText="No payer matches"
-									className={errors.payerId ? 'border-destructive rounded-md' : ''}
-								/>
-								{errors.payerId && <p className="text-sm text-destructive">{errors.payerId}</p>}
-								<p className="text-sm text-muted-foreground">
-									Selected ID: {formData.payerId || 'none'}
-								</p>
-							</div>
-						</div>
+						<BillEntityPicker
+							roleLabel="Payer"
+							typeFieldId="payerType"
+							entityFieldId="payerId"
+							entityType={formData.payerType}
+							allowedEntityTypes={['character', 'corporation', 'group']}
+							onEntityTypeChange={(value) => handleChange('payerType', value)}
+							query={payerQuery}
+							onQueryChange={setPayerQuery}
+							options={payerOptions}
+							onEntitySelect={(entityId) => handleChange('payerId', entityId)}
+							loading={payerEntitySearch.isLoading}
+							selectedEntityId={formData.payerId}
+							error={errors.payerId}
+						/>
 					</CardContent>
 				</Card>
 
@@ -323,50 +293,21 @@ export default function AdminBillsNewPage() {
 						<CardDescription>Who will receive the payment?</CardDescription>
 					</CardHeader>
 					<CardContent className="space-y-4">
-						<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-							<div className="space-y-2">
-								<Label htmlFor="payeeType">
-									Payee Type <span className="text-destructive">*</span>
-								</Label>
-								<Select
-									value={formData.payeeType}
-									onValueChange={(value) => handleChange('payeeType', value)}
-								>
-									<SelectTrigger id="payeeType">
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value="character">Character</SelectItem>
-										<SelectItem value="corporation">Corporation</SelectItem>
-									</SelectContent>
-								</Select>
-							</div>
-
-							<div className="space-y-2">
-								<Label htmlFor="payeeId">
-									Payee <span className="text-destructive">*</span>
-								</Label>
-								<SearchSelect
-									inputId="payeeId"
-									value={payeeQuery}
-									onValueChange={setPayeeQuery}
-									options={payeeOptions}
-									onSelect={(option) => {
-										handleChange('payeeId', option.value)
-										setPayeeQuery(option.label)
-									}}
-									loading={payeeEntitySearch.isLoading}
-									placeholder={`Search ${formData.payeeType} name or ID`}
-									minCharsText="Type at least 2 characters"
-									emptyText="No payee matches"
-									className={errors.payeeId ? 'border-destructive rounded-md' : ''}
-								/>
-								{errors.payeeId && <p className="text-sm text-destructive">{errors.payeeId}</p>}
-								<p className="text-sm text-muted-foreground">
-									Selected ID: {formData.payeeId || 'none'}
-								</p>
-							</div>
-						</div>
+						<BillEntityPicker
+							roleLabel="Payee"
+							typeFieldId="payeeType"
+							entityFieldId="payeeId"
+							entityType={formData.payeeType}
+							allowedEntityTypes={['character', 'corporation']}
+							onEntityTypeChange={(value) => handleChange('payeeType', value)}
+							query={payeeQuery}
+							onQueryChange={setPayeeQuery}
+							options={payeeOptions}
+							onEntitySelect={(entityId) => handleChange('payeeId', entityId)}
+							loading={payeeEntitySearch.isLoading}
+							selectedEntityId={formData.payeeId}
+							error={errors.payeeId}
+						/>
 					</CardContent>
 				</Card>
 

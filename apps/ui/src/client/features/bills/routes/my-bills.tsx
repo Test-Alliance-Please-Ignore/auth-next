@@ -95,7 +95,7 @@ export default function MyBillsPage() {
 		1,
 		Math.ceil((billPage.data?.rowCount ?? 0) / Math.max(1, pagination.pageSize))
 	)
-	const clearFilters = () => {
+	const resetFilters = () => {
 		setStatus(undefined)
 		setPayerType(undefined)
 		setPayeeType(undefined)
@@ -158,7 +158,7 @@ export default function MyBillsPage() {
 						setDueBefore(toDate)
 						setPagination((prev) => ({ ...prev, pageIndex: 0 }))
 					}}
-					onClear={clearFilters}
+					onReset={resetFilters}
 				/>
 				<BillListGrid
 					rows={rows}

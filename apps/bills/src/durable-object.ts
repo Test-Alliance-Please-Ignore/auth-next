@@ -33,6 +33,7 @@ import type {
 	CreateScheduleInput,
 	CreateTemplateInput,
 	EntityType,
+	OwnershipScope,
 	RegenerateTokenResponse,
 	ScheduleExecutionLog,
 	ScheduleExecutionResult,
@@ -166,16 +167,20 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 		return this.billService.listBillStatusEventsPage(query)
 	}
 
-	async updateBill(userId: string, billId: string, data: UpdateBillInput): Promise<Bill> {
-		return this.billService.updateBill(userId, billId, data)
+	async updateBill(actorUserId: string, billId: string, data: UpdateBillInput): Promise<Bill> {
+		return this.billService.updateBill(actorUserId, billId, data)
 	}
 
-	async issueBill(userId: string, billId: string): Promise<Bill> {
-		return this.billService.issueBill(userId, billId)
+	async issueBill(actorUserId: string, billId: string): Promise<Bill> {
+		return this.billService.issueBill(actorUserId, billId)
 	}
 
-	async cancelBill(userId: string, billId: string): Promise<Bill> {
-		return this.billService.cancelBill(userId, billId)
+	async cancelBill(actorUserId: string, billId: string): Promise<Bill> {
+		return this.billService.cancelBill(actorUserId, billId)
+	}
+
+	async revertBillToDraft(actorUserId: string, billId: string): Promise<Bill> {
+		return this.billService.revertBillToDraft(actorUserId, billId)
 	}
 
 	async payBill(
@@ -200,12 +205,15 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 		})
 	}
 
-	async regeneratePaymentToken(userId: string, billId: string): Promise<RegenerateTokenResponse> {
-		return this.billService.regeneratePaymentToken(userId, billId)
+	async regeneratePaymentToken(
+		actorUserId: string,
+		billId: string
+	): Promise<RegenerateTokenResponse> {
+		return this.billService.regeneratePaymentToken(actorUserId, billId)
 	}
 
-	async deleteBill(userId: string, billId: string): Promise<void> {
-		return this.billService.deleteBill(userId, billId)
+	async deleteBill(actorUserId: string, billId: string): Promise<void> {
+		return this.billService.deleteBill(actorUserId, billId)
 	}
 
 	async getBillStatistics(userId: string, filters?: BillFilters): Promise<BillStatistics> {
@@ -222,24 +230,36 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 		return this.templateService.createTemplate(userId, data)
 	}
 
-	async getTemplate(userId: string, templateId: string): Promise<BillTemplateWithDetails | null> {
-		return this.templateService.getTemplate(userId, templateId)
+	async getTemplate(
+		userId: string,
+		templateId: string,
+		scope: OwnershipScope = 'owned'
+	): Promise<BillTemplateWithDetails | null> {
+		return this.templateService.getTemplate(userId, templateId, scope)
 	}
 
-	async listTemplates(userId: string): Promise<BillTemplateWithDetails[]> {
-		return this.templateService.listTemplates(userId)
+	async listTemplates(
+		userId: string,
+		scope: OwnershipScope = 'owned'
+	): Promise<BillTemplateWithDetails[]> {
+		return this.templateService.listTemplates(userId, scope)
 	}
 
 	async updateTemplate(
 		userId: string,
 		templateId: string,
-		data: UpdateTemplateInput
+		data: UpdateTemplateInput,
+		scope: OwnershipScope = 'owned'
 	): Promise<BillTemplate> {
-		return this.templateService.updateTemplate(userId, templateId, data)
+		return this.templateService.updateTemplate(userId, templateId, data, scope)
 	}
 
-	async deleteTemplate(userId: string, templateId: string): Promise<void> {
-		return this.templateService.deleteTemplate(userId, templateId)
+	async deleteTemplate(
+		userId: string,
+		templateId: string,
+		scope: OwnershipScope = 'owned'
+	): Promise<void> {
+		return this.templateService.deleteTemplate(userId, templateId, scope)
 	}
 
 	async cloneTemplate(userId: string, data: CloneTemplateInput): Promise<BillTemplate> {
@@ -264,23 +284,29 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 		return this.scheduleService.createSchedule(userId, data)
 	}
 
-	async getSchedule(userId: string, scheduleId: string): Promise<BillScheduleWithDetails | null> {
-		return this.scheduleService.getSchedule(userId, scheduleId)
+	async getSchedule(
+		userId: string,
+		scheduleId: string,
+		scope: OwnershipScope = 'owned'
+	): Promise<BillScheduleWithDetails | null> {
+		return this.scheduleService.getSchedule(userId, scheduleId, scope)
 	}
 
 	async listSchedules(
 		userId: string,
-		filters?: ScheduleFilters
+		filters?: ScheduleFilters,
+		scope: OwnershipScope = 'owned'
 	): Promise<BillScheduleWithDetails[]> {
-		return this.scheduleService.listSchedules(userId, filters)
+		return this.scheduleService.listSchedules(userId, filters, scope)
 	}
 
 	async updateSchedule(
 		userId: string,
 		scheduleId: string,
-		data: UpdateScheduleInput
+		data: UpdateScheduleInput,
+		scope: OwnershipScope = 'owned'
 	): Promise<BillSchedule> {
-		return this.scheduleService.updateSchedule(userId, scheduleId, data)
+		return this.scheduleService.updateSchedule(userId, scheduleId, data, scope)
 	}
 
 	async pauseSchedule(userId: string, scheduleId: string): Promise<BillSchedule> {
@@ -291,16 +317,21 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 		return this.scheduleService.resumeSchedule(userId, scheduleId)
 	}
 
-	async deleteSchedule(userId: string, scheduleId: string): Promise<void> {
-		return this.scheduleService.deleteSchedule(userId, scheduleId)
+	async deleteSchedule(
+		userId: string,
+		scheduleId: string,
+		scope: OwnershipScope = 'owned'
+	): Promise<void> {
+		return this.scheduleService.deleteSchedule(userId, scheduleId, scope)
 	}
 
 	async getScheduleExecutionLogs(
 		userId: string,
 		scheduleId: string,
-		limit?: number
+		limit?: number,
+		scope: OwnershipScope = 'owned'
 	): Promise<ScheduleExecutionLog[]> {
-		return this.scheduleService.getScheduleExecutionLogs(userId, scheduleId, limit)
+		return this.scheduleService.getScheduleExecutionLogs(userId, scheduleId, limit, scope)
 	}
 
 	async getScheduleStatistics(userId: string): Promise<ScheduleStatistics> {

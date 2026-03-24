@@ -3,12 +3,12 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmButton } from '@/components/ui/confirm-button'
 import { DestructiveButton } from '@/components/ui/destructive-button'
 import { GhostButton } from '@/components/ui/ghost-button'
+import { PrimaryButton } from '@/components/ui/primary-button'
 import {
 	Table,
 	TableBody,
@@ -98,12 +98,12 @@ export default function BillsSchedulesPage() {
 							Back to Bills
 						</Link>
 					</GhostButton>
-					<Button asChild>
+					<PrimaryButton asChild>
 						<Link to="/admin/bills/schedules/new">
 							<Plus className="mr-2 h-4 w-4" />
 							Create Schedule
 						</Link>
-					</Button>
+					</PrimaryButton>
 				</div>
 			</div>
 
@@ -138,12 +138,12 @@ export default function BillsSchedulesPage() {
 							<p className="text-muted-foreground mb-4">
 								Create your first schedule to automate recurring bills
 							</p>
-							<Button asChild>
+							<PrimaryButton asChild>
 								<Link to="/admin/bills/schedules/new">
 									<Plus className="mr-2 h-4 w-4" />
 									Create Schedule
 								</Link>
-							</Button>
+							</PrimaryButton>
 						</div>
 					) : (
 						<div className="overflow-x-auto">
@@ -153,6 +153,7 @@ export default function BillsSchedulesPage() {
 										<TableHead>Status</TableHead>
 										<TableHead>Template</TableHead>
 										<TableHead>Payer</TableHead>
+										<TableHead>Payee</TableHead>
 										<TableHead>Frequency</TableHead>
 										<TableHead>Next Run</TableHead>
 										<TableHead>Failures</TableHead>
@@ -172,6 +173,9 @@ export default function BillsSchedulesPage() {
 											</TableCell>
 											<TableCell>
 												<div className="text-sm">{schedule.payerId}</div>
+											</TableCell>
+											<TableCell>
+												<div className="text-sm">{schedule.payeeId ?? '—'}</div>
 											</TableCell>
 											<TableCell>{formatScheduleFrequency(schedule.frequency)}</TableCell>
 											<TableCell>
@@ -217,9 +221,9 @@ export default function BillsSchedulesPage() {
 													>
 														Delete
 													</DestructiveButton>
-													<Button size="sm" variant="outline" asChild>
+													<GhostButton size="sm" asChild>
 														<Link to={`/admin/bills/schedules/${schedule.id}`}>View</Link>
-													</Button>
+													</GhostButton>
 												</div>
 											</TableCell>
 										</TableRow>

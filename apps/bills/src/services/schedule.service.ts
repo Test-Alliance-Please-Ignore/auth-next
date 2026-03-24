@@ -8,6 +8,7 @@ import type {
 	BillSchedule,
 	BillScheduleWithDetails,
 	CreateScheduleInput,
+	OwnershipScope,
 	ScheduleExecutionLog,
 	ScheduleFilters,
 	ScheduleStatistics,
@@ -46,6 +47,9 @@ export class ScheduleService {
 
 		const scheduleId = generateUuidV7()
 		const nextGenerationTime = calculateInitialGenerationTime(data.frequency, data.startDate)
+		if (!data.payeeId.trim()) {
+			throw new Error('Payee is required')
+		}
 
 		const [schedule] = await this.db
 			.insert(billSchedules)
@@ -55,6 +59,8 @@ export class ScheduleService {
 				templateId: data.templateId,
 				payerId: data.payerId,
 				payerType: data.payerType,
+				payeeId: data.payeeId,
+				payeeType: data.payeeType,
 				frequency: data.frequency,
 				amount: data.amount,
 				nextGenerationTime,
@@ -69,7 +75,11 @@ export class ScheduleService {
 	/**
 	 * Get a specific schedule
 	 */
-	async getSchedule(userId: string, scheduleId: string): Promise<BillScheduleWithDetails | null> {
+	async getSchedule(
+		userId: string,
+		scheduleId: string,
+		scope: OwnershipScope = 'owned'
+	): Promise<BillScheduleWithDetails | null> {
 		const schedule = await this.db.query.billSchedules.findFirst({
 			where: eq(billSchedules.id, scheduleId),
 			with: {
@@ -81,8 +91,8 @@ export class ScheduleService {
 			return null
 		}
 
-		// Authorization: User must be owner
-		if (schedule.ownerId !== userId) {
+		// Authorization: non-admin scope requires ownership
+		if (scope !== 'all' && schedule.ownerId !== userId) {
 			throw new Error('Not authorized to view this schedule')
 		}
 
@@ -104,9 +114,10 @@ export class ScheduleService {
 	 */
 	async listSchedules(
 		userId: string,
-		filters: ScheduleFilters = {}
+		filters: ScheduleFilters = {},
+		scope: OwnershipScope = 'owned'
 	): Promise<BillScheduleWithDetails[]> {
-		const conditions = [eq(billSchedules.ownerId, userId)]
+		const conditions = scope === 'all' ? [] : [eq(billSchedules.ownerId, userId)]
 
 		// Apply filters
 		if (filters.isActive !== undefined) {
@@ -163,7 +174,8 @@ export class ScheduleService {
 	async updateSchedule(
 		userId: string,
 		scheduleId: string,
-		data: UpdateScheduleInput
+		data: UpdateScheduleInput,
+		scope: OwnershipScope = 'owned'
 	): Promise<BillSchedule> {
 		const schedule = await this.db.query.billSchedules.findFirst({
 			where: eq(billSchedules.id, scheduleId),
@@ -173,8 +185,17 @@ export class ScheduleService {
 			throw new Error('Schedule not found')
 		}
 
-		if (schedule.ownerId !== userId) {
+		if (scope !== 'all' && schedule.ownerId !== userId) {
 			throw new Error('Only the owner can update the schedule')
+		}
+		if ((data.payerId && !data.payerType) || (!data.payerId && data.payerType)) {
+			throw new Error('payerId and payerType must be provided together')
+		}
+		if ((data.payeeId && !data.payeeType) || (!data.payeeId && data.payeeType)) {
+			throw new Error('payeeId and payeeType must be provided together')
+		}
+		if (data.payeeId !== undefined && !data.payeeId.trim()) {
+			throw new Error('Payee is required')
 		}
 
 		// If frequency is changing, recalculate next generation time
@@ -190,6 +211,7 @@ export class ScheduleService {
 			.update(billSchedules)
 			.set({
 				...data,
+				payeeId: data.payeeId?.trim(),
 				nextGenerationTime,
 				updatedAt: new Date(),
 			})
@@ -274,7 +296,11 @@ export class ScheduleService {
 	/**
 	 * Delete a schedule (owner only)
 	 */
-	async deleteSchedule(userId: string, scheduleId: string): Promise<void> {
+	async deleteSchedule(
+		userId: string,
+		scheduleId: string,
+		scope: OwnershipScope = 'owned'
+	): Promise<void> {
 		const schedule = await this.db.query.billSchedules.findFirst({
 			where: eq(billSchedules.id, scheduleId),
 		})
@@ -283,7 +309,7 @@ export class ScheduleService {
 			throw new Error('Schedule not found')
 		}
 
-		if (schedule.ownerId !== userId) {
+		if (scope !== 'all' && schedule.ownerId !== userId) {
 			throw new Error('Only the owner can delete the schedule')
 		}
 
@@ -297,7 +323,8 @@ export class ScheduleService {
 	async getScheduleExecutionLogs(
 		userId: string,
 		scheduleId: string,
-		limit = 50
+		limit = 50,
+		scope: OwnershipScope = 'owned'
 	): Promise<ScheduleExecutionLog[]> {
 		const schedule = await this.db.query.billSchedules.findFirst({
 			where: eq(billSchedules.id, scheduleId),
@@ -307,7 +334,7 @@ export class ScheduleService {
 			throw new Error('Schedule not found')
 		}
 
-		if (schedule.ownerId !== userId) {
+		if (scope !== 'all' && schedule.ownerId !== userId) {
 			throw new Error('Not authorized to view execution logs')
 		}
 
@@ -435,6 +462,8 @@ export class ScheduleService {
 			templateId: schedule.templateId,
 			payerId: schedule.payerId,
 			payerType: schedule.payerType,
+			payeeId: schedule.payeeId,
+			payeeType: schedule.payeeType,
 			frequency: schedule.frequency,
 			amount: schedule.amount,
 			nextGenerationTime: schedule.nextGenerationTime,

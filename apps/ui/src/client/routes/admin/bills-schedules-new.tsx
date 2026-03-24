@@ -1,10 +1,12 @@
-import { Calendar, Clock, FileText } from 'lucide-react'
+import { Calendar, Clock } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
-import { Button } from '@/components/ui/button'
+import { BillEntityPicker } from '@/components/bills/bill-entity-picker'
 import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { ConfirmButton } from '@/components/ui/confirm-button'
+import { GhostButton } from '@/components/ui/ghost-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -14,11 +16,12 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from '@/components/ui/select'
-import { useCreateSchedule, useTemplates } from '@/hooks/useBills'
+import { useBillEntitySearch, useCreateSchedule, useTemplates } from '@/hooks/useBills'
+import { useDebounce } from '@/hooks/useDebounce'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { formatScheduleFrequency } from '@/lib/bills-utils'
 
-import type { CreateScheduleInput, EntityType, ScheduleFrequency } from '@repo/bills'
+import type { CreateScheduleInput, EntityType, PayeeType, ScheduleFrequency } from '@repo/bills'
 
 export default function AdminBillsSchedulesNewPage() {
 	usePageTitle('Admin - Create Bill Schedule')
@@ -31,6 +34,8 @@ export default function AdminBillsSchedulesNewPage() {
 		templateId: string
 		payerId: string
 		payerType: EntityType
+		payeeId: string
+		payeeType: PayeeType
 		frequency: ScheduleFrequency
 		amount: string
 		startDate: string
@@ -38,6 +43,8 @@ export default function AdminBillsSchedulesNewPage() {
 		templateId: '',
 		payerId: '',
 		payerType: 'character',
+		payeeId: '',
+		payeeType: 'character',
 		frequency: 'monthly',
 		amount: '',
 		startDate: '',
@@ -45,6 +52,56 @@ export default function AdminBillsSchedulesNewPage() {
 
 	const [errors, setErrors] = useState<Record<string, string>>({})
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+	const [payerQuery, setPayerQuery] = useState('')
+	const [payeeQuery, setPayeeQuery] = useState('')
+	const debouncedPayerQuery = useDebounce(payerQuery, 300)
+	const debouncedPayeeQuery = useDebounce(payeeQuery, 300)
+	const payerEntitySearch = useBillEntitySearch({
+		q: debouncedPayerQuery,
+		entityType: formData.payerType,
+		enabled: debouncedPayerQuery.trim().length >= 2,
+	})
+	const payeeEntitySearch = useBillEntitySearch({
+		q: debouncedPayeeQuery,
+		entityType: formData.payeeType,
+		enabled: debouncedPayeeQuery.trim().length >= 2,
+	})
+	const payerOptions = useMemo(() => {
+		const deduped = new Map<
+			string,
+			{ id: string; value: string; label: string; description: string }
+		>()
+		for (const row of payerEntitySearch.data ?? []) {
+			const key = row.entityId
+			if (!deduped.has(key)) {
+				deduped.set(key, {
+					id: key,
+					value: row.entityId,
+					label: row.name || row.entityId,
+					description: row.entityId,
+				})
+			}
+		}
+		return [...deduped.values()]
+	}, [payerEntitySearch.data])
+	const payeeOptions = useMemo(() => {
+		const deduped = new Map<
+			string,
+			{ id: string; value: string; label: string; description: string }
+		>()
+		for (const row of payeeEntitySearch.data ?? []) {
+			const key = row.entityId
+			if (!deduped.has(key)) {
+				deduped.set(key, {
+					id: key,
+					value: row.entityId,
+					label: row.name || row.entityId,
+					description: row.entityId,
+				})
+			}
+		}
+		return [...deduped.values()]
+	}, [payeeEntitySearch.data])
 
 	// Calculate next generation time preview
 	const nextGenerationTime = useMemo(() => {
@@ -67,6 +124,14 @@ export default function AdminBillsSchedulesNewPage() {
 
 	const handleChange = (field: string, value: string) => {
 		setFormData((prev) => ({ ...prev, [field]: value }))
+		if (field === 'payerType') {
+			setPayerQuery('')
+			setFormData((prev) => ({ ...prev, payerId: '' }))
+		}
+		if (field === 'payeeType') {
+			setPayeeQuery('')
+			setFormData((prev) => ({ ...prev, payeeId: '' }))
+		}
 		// Clear error when field is edited
 		if (errors[field]) {
 			setErrors((prev) => {
@@ -87,6 +152,9 @@ export default function AdminBillsSchedulesNewPage() {
 
 		if (!formData.payerId.trim()) {
 			newErrors.payerId = 'Payer ID is required'
+		}
+		if (!formData.payeeId.trim()) {
+			newErrors.payeeId = 'Payee ID is required'
 		}
 
 		if (!formData.amount.trim()) {
@@ -120,6 +188,8 @@ export default function AdminBillsSchedulesNewPage() {
 				templateId: formData.templateId,
 				payerId: formData.payerId.trim(),
 				payerType: formData.payerType,
+				payeeId: formData.payeeId.trim(),
+				payeeType: formData.payeeType,
 				frequency: formData.frequency,
 				amount: formData.amount.trim(),
 				startDate: formData.startDate ? new Date(formData.startDate) : undefined,
@@ -149,12 +219,12 @@ export default function AdminBillsSchedulesNewPage() {
 					<h1 className="text-3xl font-bold gradient-text">Create Bill Schedule</h1>
 					<p className="text-muted-foreground mt-2">Set up automated recurring bill generation</p>
 				</div>
-				<Button variant="outline" asChild>
+				<GhostButton asChild>
 					<Link to="/admin/bills/schedules">
 						<Calendar className="mr-2 h-4 w-4" />
 						Back to Schedules
 					</Link>
-				</Button>
+				</GhostButton>
 			</div>
 
 			{/* Success/Error Message */}
@@ -285,56 +355,43 @@ export default function AdminBillsSchedulesNewPage() {
 					</CardContent>
 				</Card>
 
-				{/* Payer Information */}
+				{/* Payer/Payee Information */}
 				<Card variant="interactive" className="mb-6">
 					<CardHeader>
-						<CardTitle>Payer Information</CardTitle>
-						<CardDescription>Who will receive these recurring bills?</CardDescription>
+						<CardTitle>Parties</CardTitle>
+						<CardDescription>Set payer and payee for generated schedule bills</CardDescription>
 					</CardHeader>
 					<CardContent className="space-y-4">
-						<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-							<div className="space-y-2">
-								<Label htmlFor="payerType">
-									Payer Type <span className="text-destructive">*</span>
-								</Label>
-								<Select
-									value={formData.payerType}
-									onValueChange={(value) => handleChange('payerType', value)}
-								>
-									<SelectTrigger id="payerType">
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value="character">Character</SelectItem>
-										<SelectItem value="corporation">Corporation</SelectItem>
-										<SelectItem value="group">Group</SelectItem>
-									</SelectContent>
-								</Select>
-							</div>
-
-							<div className="space-y-2">
-								<Label htmlFor="payerId">
-									Payer ID <span className="text-destructive">*</span>
-								</Label>
-								<Input
-									id="payerId"
-									placeholder={`${
-										formData.payerType === 'character'
-											? 'Character'
-											: formData.payerType === 'corporation'
-												? 'Corporation'
-												: 'Group'
-									} ID`}
-									value={formData.payerId}
-									onChange={(e) => handleChange('payerId', e.target.value)}
-									className={errors.payerId ? 'border-destructive' : ''}
-								/>
-								{errors.payerId && <p className="text-sm text-destructive">{errors.payerId}</p>}
-								<p className="text-sm text-muted-foreground">
-									Enter the EVE Online {formData.payerType} ID or group ID
-								</p>
-							</div>
-						</div>
+						<BillEntityPicker
+							roleLabel="Payer"
+							typeFieldId="payerType"
+							entityFieldId="payerId"
+							entityType={formData.payerType}
+							allowedEntityTypes={['character', 'corporation', 'group']}
+							onEntityTypeChange={(value) => handleChange('payerType', value)}
+							query={payerQuery}
+							onQueryChange={setPayerQuery}
+							options={payerOptions}
+							onEntitySelect={(entityId) => handleChange('payerId', entityId)}
+							loading={payerEntitySearch.isLoading}
+							selectedEntityId={formData.payerId}
+							error={errors.payerId}
+						/>
+						<BillEntityPicker
+							roleLabel="Payee"
+							typeFieldId="payeeType"
+							entityFieldId="payeeId"
+							entityType={formData.payeeType}
+							allowedEntityTypes={['character', 'corporation']}
+							onEntityTypeChange={(value) => handleChange('payeeType', value)}
+							query={payeeQuery}
+							onQueryChange={setPayeeQuery}
+							options={payeeOptions}
+							onEntitySelect={(entityId) => handleChange('payeeId', entityId)}
+							loading={payeeEntitySearch.isLoading}
+							selectedEntityId={formData.payeeId}
+							error={errors.payeeId}
+						/>
 					</CardContent>
 				</Card>
 
@@ -368,9 +425,9 @@ export default function AdminBillsSchedulesNewPage() {
 
 				{/* Actions */}
 				<div className="flex gap-3">
-					<Button type="submit" disabled={createSchedule.isPending}>
+					<ConfirmButton type="submit" loading={createSchedule.isPending}>
 						{createSchedule.isPending ? 'Creating Schedule...' : 'Create Schedule'}
-					</Button>
+					</ConfirmButton>
 					<CancelButton type="button" onClick={() => navigate('/admin/bills/schedules')}>
 						Cancel
 					</CancelButton>

@@ -121,6 +121,8 @@ export interface BillSchedule {
 	templateId: string
 	payerId: string
 	payerType: EntityType
+	payeeId: string | null
+	payeeType: PayeeType | null
 	frequency: ScheduleFrequency
 	amount: string // Amount to use when generating bills
 	nextGenerationTime: Date
@@ -266,6 +268,8 @@ export interface CreateScheduleInput {
 	templateId: string
 	payerId: string
 	payerType: EntityType
+	payeeId: string
+	payeeType: PayeeType
 	frequency: ScheduleFrequency
 	amount: string
 	startDate?: Date
@@ -273,6 +277,10 @@ export interface CreateScheduleInput {
 
 export interface UpdateScheduleInput {
 	templateId?: string
+	payerId?: string
+	payerType?: EntityType
+	payeeId?: string
+	payeeType?: PayeeType
 	amount?: string
 	frequency?: ScheduleFrequency
 	isActive?: boolean
@@ -373,6 +381,8 @@ export interface ScheduleExecutionResult {
 	error?: string
 }
 
+export type OwnershipScope = 'owned' | 'all'
+
 /**
  * Statistics and summary types
  */
@@ -449,14 +459,17 @@ export interface Bills {
 	/** Get bill status timeline events for a bill set with pagination */
 	listBillStatusEventsPage(query: BillStatusEventPageQuery): Promise<BillStatusEventPage>
 
-	/** Update a bill (draft only, issuer only) */
-	updateBill(userId: string, billId: string, data: UpdateBillInput): Promise<Bill>
+	/** Update a bill (permissions enforced by caller route; blocked when paid or any payments exist) */
+	updateBill(actorUserId: string, billId: string, data: UpdateBillInput): Promise<Bill>
 
-	/** Issue a bill (change status from draft to issued) */
-	issueBill(userId: string, billId: string): Promise<Bill>
+	/** Issue a bill (permissions enforced by caller route; draft-only transition) */
+	issueBill(actorUserId: string, billId: string): Promise<Bill>
 
-	/** Cancel a bill (issuer only) */
-	cancelBill(userId: string, billId: string): Promise<Bill>
+	/** Cancel a bill (permissions enforced by caller route) */
+	cancelBill(actorUserId: string, billId: string): Promise<Bill>
+
+	/** Revert a bill to draft (permissions enforced by caller route; blocked when paid or any payments exist) */
+	revertBillToDraft(actorUserId: string, billId: string): Promise<Bill>
 
 	/** Pay a bill using payment token */
 	payBill(
@@ -469,11 +482,11 @@ export interface Bills {
 		}: { amount: bigint; paidById: string; paidByType: EntityType; esiTransactionId: string }
 	): Promise<any>
 
-	/** Regenerate payment token for a bill (issuer only) */
-	regeneratePaymentToken(userId: string, billId: string): Promise<RegenerateTokenResponse>
+	/** Regenerate payment token for a bill (permissions enforced by caller route) */
+	regeneratePaymentToken(actorUserId: string, billId: string): Promise<RegenerateTokenResponse>
 
-	/** Delete a bill (draft only, issuer only) */
-	deleteBill(userId: string, billId: string): Promise<void>
+	/** Delete a bill (permissions enforced by caller route; draft-only invariant) */
+	deleteBill(actorUserId: string, billId: string): Promise<void>
 
 	/** Get bill statistics for a user */
 	getBillStatistics(userId: string, filters?: BillFilters): Promise<BillStatistics>
@@ -486,20 +499,25 @@ export interface Bills {
 	createTemplate(userId: string, data: CreateTemplateInput): Promise<BillTemplate>
 
 	/** Get a specific template */
-	getTemplate(userId: string, templateId: string): Promise<BillTemplateWithDetails | null>
+	getTemplate(
+		userId: string,
+		templateId: string,
+		scope?: OwnershipScope
+	): Promise<BillTemplateWithDetails | null>
 
 	/** List templates owned by user */
-	listTemplates(userId: string): Promise<BillTemplateWithDetails[]>
+	listTemplates(userId: string, scope?: OwnershipScope): Promise<BillTemplateWithDetails[]>
 
 	/** Update a template (owner only) */
 	updateTemplate(
 		userId: string,
 		templateId: string,
-		data: UpdateTemplateInput
+		data: UpdateTemplateInput,
+		scope?: OwnershipScope
 	): Promise<BillTemplate>
 
 	/** Delete a template (owner only, no active schedules) */
-	deleteTemplate(userId: string, templateId: string): Promise<void>
+	deleteTemplate(userId: string, templateId: string, scope?: OwnershipScope): Promise<void>
 
 	/** Clone an existing template */
 	cloneTemplate(userId: string, data: CloneTemplateInput): Promise<BillTemplate>
@@ -518,16 +536,25 @@ export interface Bills {
 	createSchedule(userId: string, data: CreateScheduleInput): Promise<BillSchedule>
 
 	/** Get a specific schedule */
-	getSchedule(userId: string, scheduleId: string): Promise<BillScheduleWithDetails | null>
+	getSchedule(
+		userId: string,
+		scheduleId: string,
+		scope?: OwnershipScope
+	): Promise<BillScheduleWithDetails | null>
 
 	/** List schedules owned by user */
-	listSchedules(userId: string, filters?: ScheduleFilters): Promise<BillScheduleWithDetails[]>
+	listSchedules(
+		userId: string,
+		filters?: ScheduleFilters,
+		scope?: OwnershipScope
+	): Promise<BillScheduleWithDetails[]>
 
 	/** Update a schedule (owner only) */
 	updateSchedule(
 		userId: string,
 		scheduleId: string,
-		data: UpdateScheduleInput
+		data: UpdateScheduleInput,
+		scope?: OwnershipScope
 	): Promise<BillSchedule>
 
 	/** Pause a schedule (owner only) */
@@ -537,13 +564,14 @@ export interface Bills {
 	resumeSchedule(userId: string, scheduleId: string): Promise<BillSchedule>
 
 	/** Delete a schedule (owner only) */
-	deleteSchedule(userId: string, scheduleId: string): Promise<void>
+	deleteSchedule(userId: string, scheduleId: string, scope?: OwnershipScope): Promise<void>
 
 	/** Get schedule execution history */
 	getScheduleExecutionLogs(
 		userId: string,
 		scheduleId: string,
-		limit?: number
+		limit?: number,
+		scope?: OwnershipScope
 	): Promise<ScheduleExecutionLog[]>
 
 	/** Get schedule statistics for a user */

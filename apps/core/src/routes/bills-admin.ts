@@ -528,7 +528,7 @@ app.get('/templates', requireAuth(), requireAdmin(), async (c) => {
 
 	try {
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		const templates = await stub.listTemplates(user.id)
+		const templates = await stub.listTemplates(user.id, 'all')
 
 		return c.json(templates)
 	} catch (error) {
@@ -617,7 +617,7 @@ app.get('/templates/:templateId', requireAuth(), requireAdmin(), async (c) => {
 
 	try {
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		const template = await stub.getTemplate(user.id, templateId)
+		const template = await stub.getTemplate(user.id, templateId, 'all')
 
 		if (!template) {
 			return c.json({ error: 'Template not found' }, 404)
@@ -645,7 +645,7 @@ app.put('/templates/:templateId', requireAuth(), requireAdmin(), async (c) => {
 	try {
 		const data = await c.req.json()
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		const template = await stub.updateTemplate(user.id, templateId, data)
+		const template = await stub.updateTemplate(user.id, templateId, data, 'all')
 
 		return c.json(template)
 	} catch (error) {
@@ -668,7 +668,7 @@ app.delete('/templates/:templateId', requireAuth(), requireAdmin(), async (c) =>
 
 	try {
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		await stub.deleteTemplate(user.id, templateId)
+		await stub.deleteTemplate(user.id, templateId, 'all')
 
 		return c.json({ success: true })
 	} catch (error) {
@@ -792,6 +792,10 @@ app.put('/:billId', requireAuth(), requireAdmin(), async (c) => {
 	try {
 		const data = await c.req.json()
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		const billRecord = await stub.getBillIntegrationView(billId)
+		if (!billRecord) {
+			return c.json({ error: 'Bill not found' }, 404)
+		}
 		const bill = await stub.updateBill(user.id, billId, data)
 
 		return c.json(bill)
@@ -820,9 +824,8 @@ app.delete('/:billId', requireAuth(), requireAdmin(), async (c) => {
 			return c.json({ error: 'Bill not found' }, 404)
 		}
 
-		// Admins can delete draft bills regardless of who issued them.
-		// BillService still enforces draft-only deletion.
-		await stub.deleteBill(bill.issuerId, billId)
+		// Admin route enforces permission scope; bills domain enforces invariants.
+		await stub.deleteBill(user.id, billId)
 
 		return c.json({ success: true })
 	} catch (error) {
@@ -849,6 +852,10 @@ app.post('/:billId/issue', requireAuth(), requireAdmin(), async (c) => {
 
 	try {
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		const billRecord = await stub.getBillIntegrationView(billId)
+		if (!billRecord) {
+			return c.json({ error: 'Bill not found' }, 404)
+		}
 		const bill = await stub.issueBill(user.id, billId)
 
 		return c.json(bill)
@@ -872,12 +879,43 @@ app.post('/:billId/cancel', requireAuth(), requireAdmin(), async (c) => {
 
 	try {
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		const billRecord = await stub.getBillIntegrationView(billId)
+		if (!billRecord) {
+			return c.json({ error: 'Bill not found' }, 404)
+		}
 		const bill = await stub.cancelBill(user.id, billId)
 
 		return c.json(bill)
 	} catch (error) {
 		logger.error('Error cancelling bill:', error)
 		return c.json({ error: 'Failed to cancel bill' }, 500)
+	}
+})
+
+/**
+ * POST /bills/:billId/revert-to-draft
+ * Revert a bill status back to draft
+ */
+app.post('/:billId/revert-to-draft', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	const billId = c.req.param('billId')
+
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		const billRecord = await stub.getBillIntegrationView(billId)
+		if (!billRecord) {
+			return c.json({ error: 'Bill not found' }, 404)
+		}
+		const bill = await stub.revertBillToDraft(user.id, billId)
+
+		return c.json(bill)
+	} catch (error) {
+		logger.error('Error reverting bill to draft:', error)
+		return c.json({ error: 'Failed to revert bill to draft' }, 500)
 	}
 })
 
@@ -895,6 +933,10 @@ app.post('/:billId/regenerate-token', requireAuth(), requireAdmin(), async (c) =
 
 	try {
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		const billRecord = await stub.getBillIntegrationView(billId)
+		if (!billRecord) {
+			return c.json({ error: 'Bill not found' }, 404)
+		}
 		const result = await stub.regeneratePaymentToken(user.id, billId)
 
 		return c.json(result)
@@ -927,11 +969,15 @@ app.get('/schedules', requireAuth(), requireAdmin(), async (c) => {
 		const templateId = c.req.query('templateId')
 
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		const schedules = await stub.listSchedules(user.id, {
-			frequency: frequency as any,
-			isActive,
-			templateId,
-		})
+		const schedules = await stub.listSchedules(
+			user.id,
+			{
+				frequency: frequency as any,
+				isActive,
+				templateId,
+			},
+			'all'
+		)
 
 		return c.json(schedules)
 	} catch (error) {
@@ -1003,7 +1049,12 @@ app.get('/schedules/:scheduleId/logs', requireAuth(), requireAdmin(), async (c) 
 		}
 
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		const logs = await stub.getScheduleExecutionLogs(user.id, scheduleId, pagination.data.limit)
+		const logs = await stub.getScheduleExecutionLogs(
+			user.id,
+			scheduleId,
+			pagination.data.limit,
+			'all'
+		)
 
 		return c.json(logs)
 	} catch (error) {
@@ -1026,7 +1077,7 @@ app.get('/schedules/:scheduleId', requireAuth(), requireAdmin(), async (c) => {
 
 	try {
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		const schedule = await stub.getSchedule(user.id, scheduleId)
+		const schedule = await stub.getSchedule(user.id, scheduleId, 'all')
 
 		if (!schedule) {
 			return c.json({ error: 'Schedule not found' }, 404)
@@ -1054,7 +1105,7 @@ app.put('/schedules/:scheduleId', requireAuth(), requireAdmin(), async (c) => {
 	try {
 		const data = await c.req.json()
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		const schedule = await stub.updateSchedule(user.id, scheduleId, data)
+		const schedule = await stub.updateSchedule(user.id, scheduleId, data, 'all')
 
 		return c.json(schedule)
 	} catch (error) {
@@ -1077,7 +1128,7 @@ app.delete('/schedules/:scheduleId', requireAuth(), requireAdmin(), async (c) =>
 
 	try {
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		await stub.deleteSchedule(user.id, scheduleId)
+		await stub.deleteSchedule(user.id, scheduleId, 'all')
 
 		return c.json({ success: true })
 	} catch (error) {

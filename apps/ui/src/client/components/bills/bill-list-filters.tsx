@@ -64,7 +64,7 @@ export function BillListFilters(props: {
 	onPayerIdChange: (value?: string) => void
 	onPayeeIdChange: (value?: string) => void
 	onDateRangeChange: (fromDate: string, toDate: string) => void
-	onClear: () => void
+	onReset: () => void
 }) {
 	return (
 		<Card>
@@ -201,7 +201,7 @@ export function BillListFilters(props: {
 						</div>
 					) : null}
 					<div className="flex items-end justify-end">
-						<GhostButton onClick={props.onClear}>Clear Filters</GhostButton>
+						<GhostButton onClick={props.onReset}>Reset Filters</GhostButton>
 					</div>
 				</div>
 			</CardContent>

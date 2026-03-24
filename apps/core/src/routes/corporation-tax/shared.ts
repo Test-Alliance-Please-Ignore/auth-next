@@ -388,7 +388,6 @@ export function mapTaxBillingError(
 		case 'Billing payee configuration is incomplete':
 		case "billingPayeeType must be 'character' or 'corporation'":
 		case 'Assessment has no linked bill':
-		case 'Only the issuer can cancel the bill':
 		case 'Cannot cancel a paid bill':
 		case 'Bill is already cancelled':
 			return { status: 409, message: error.message }

@@ -16,12 +16,26 @@ import {
 	useCancelBill,
 	useDeleteBill,
 	useIssueBill,
+	useRevertBillToDraft,
 } from '@/hooks/useBills'
 import { useDebounce } from '@/hooks/useDebounce'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import type { MRT_SortingState } from 'mantine-react-table'
 import type { BillListSortDirection, BillListSortField, BillStatus, EntityType } from '@repo/bills'
+
+function toDateInputValue(date: Date): string {
+	const year = date.getFullYear()
+	const month = String(date.getMonth() + 1).padStart(2, '0')
+	const day = String(date.getDate()).padStart(2, '0')
+	return `${year}-${month}-${day}`
+}
+
+function getDefaultDueAfter(): string {
+	const date = new Date()
+	date.setDate(date.getDate() - 30)
+	return toDateInputValue(date)
+}
 
 export default function AdminBillsPage() {
 	usePageTitle('Admin - Bills Management')
@@ -34,7 +48,7 @@ export default function AdminBillsPage() {
 	const [payeeId, setPayeeId] = useState<string | undefined>(undefined)
 	const [payerQuery, setPayerQuery] = useState('')
 	const [payeeQuery, setPayeeQuery] = useState('')
-	const [dueAfter, setDueAfter] = useState('')
+	const [dueAfter, setDueAfter] = useState(() => getDefaultDueAfter())
 	const [dueBefore, setDueBefore] = useState('')
 	const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 25 })
 	const [sorting, setSorting] = useState<MRT_SortingState>([{ id: 'dueDate', desc: false }])
@@ -132,6 +146,7 @@ export default function AdminBillsPage() {
 	const issueBill = useIssueBill()
 	const cancelBill = useCancelBill()
 	const deleteBill = useDeleteBill()
+	const revertBillToDraft = useRevertBillToDraft()
 
 	// Action handlers
 	const handleIssue = async (billId: string) => {
@@ -159,7 +174,15 @@ export default function AdminBillsPage() {
 			console.error('Failed to delete bill:', error)
 		}
 	}
-	const clearFilters = () => {
+	const handleRevertToDraft = async (billId: string) => {
+		if (!confirm('Move this bill back to draft?')) return
+		try {
+			await revertBillToDraft.mutateAsync(billId)
+		} catch (error) {
+			console.error('Failed to revert bill to draft:', error)
+		}
+	}
+	const resetFilters = () => {
 		setStatus(undefined)
 		setIssuerId(undefined)
 		setIssuerQuery('')
@@ -169,7 +192,7 @@ export default function AdminBillsPage() {
 		setPayeeId(undefined)
 		setPayerQuery('')
 		setPayeeQuery('')
-		setDueAfter('')
+		setDueAfter(getDefaultDueAfter())
 		setDueBefore('')
 		setPagination((prev) => ({ ...prev, pageIndex: 0 }))
 	}
@@ -258,7 +281,7 @@ export default function AdminBillsPage() {
 					setDueBefore(toDate)
 					setPagination((prev) => ({ ...prev, pageIndex: 0 }))
 				}}
-				onClear={clearFilters}
+				onReset={resetFilters}
 			/>
 			<BillListGrid
 				rows={rows}
@@ -285,7 +308,7 @@ export default function AdminBillsPage() {
 								Issue
 							</ConfirmButton>
 						)}
-						{bill.status === 'issued' && (
+						{bill.status !== 'paid' && bill.status !== 'cancelled' && (
 							<CancelButton
 								size="sm"
 								showIcon={false}
@@ -294,6 +317,15 @@ export default function AdminBillsPage() {
 							>
 								Cancel
 							</CancelButton>
+						)}
+						{bill.status !== 'draft' && bill.status !== 'paid' && (
+							<GhostButton
+								size="sm"
+								onClick={() => void handleRevertToDraft(bill.id)}
+								disabled={revertBillToDraft.isPending}
+							>
+								To Draft
+							</GhostButton>
 						)}
 						{bill.status === 'draft' && (
 							<DestructiveButton

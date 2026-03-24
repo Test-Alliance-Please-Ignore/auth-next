@@ -207,6 +207,22 @@ export function useCancelBill() {
 }
 
 /**
+ * Revert a bill back to draft
+ */
+export function useRevertBillToDraft() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: (id: string) => billsApi.revertBillToDraft(id),
+		onSuccess: (updatedBill) => {
+			void queryClient.invalidateQueries({ queryKey: billKeys.lists() })
+			void queryClient.invalidateQueries({ queryKey: billKeys.statistics() })
+			queryClient.setQueryData(billKeys.detail(updatedBill.id), updatedBill)
+		},
+	})
+}
+
+/**
  * Pay a bill using payment token
  */
 export function usePayBill() {

@@ -2,9 +2,9 @@ import { Copy, FileText, Info, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
-import { Button } from '@/components/ui/button'
 import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { ConfirmButton } from '@/components/ui/confirm-button'
 import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
 	Dialog,
@@ -14,6 +14,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
+import { GhostButton } from '@/components/ui/ghost-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
@@ -233,9 +234,9 @@ export default function AdminBillsTemplatesEditPage() {
 						<p className="text-destructive">Template not found</p>
 					</CardContent>
 				</Card>
-				<Button variant="outline" asChild>
+				<GhostButton asChild>
 					<Link to="/admin/bills/templates">Back to Templates</Link>
-				</Button>
+				</GhostButton>
 			</div>
 		)
 	}
@@ -249,8 +250,7 @@ export default function AdminBillsTemplatesEditPage() {
 					<p className="text-muted-foreground mt-2">Modify template: {template.name}</p>
 				</div>
 				<div className="flex gap-2">
-					<Button
-						variant="outline"
+					<GhostButton
 						size="sm"
 						onClick={() => {
 							setCloneName(`${template.name} (Copy)`)
@@ -259,7 +259,7 @@ export default function AdminBillsTemplatesEditPage() {
 					>
 						<Copy className="mr-2 h-4 w-4" />
 						Clone
-					</Button>
+					</GhostButton>
 					<DestructiveButton
 						size="sm"
 						onClick={() => setDeleteDialogOpen(true)}
@@ -268,12 +268,12 @@ export default function AdminBillsTemplatesEditPage() {
 						<Trash2 className="mr-2 h-4 w-4" />
 						Delete
 					</DestructiveButton>
-					<Button variant="outline" asChild>
+					<GhostButton asChild>
 						<Link to="/admin/bills/templates">
 							<FileText className="mr-2 h-4 w-4" />
 							Back to Templates
 						</Link>
-					</Button>
+					</GhostButton>
 				</div>
 			</div>
 
@@ -350,6 +350,10 @@ export default function AdminBillsTemplatesEditPage() {
 									{' - Payer name, '}
 									<code className="text-xs bg-background px-1 py-0.5 rounded">{'{payerType}'}</code>
 									{' - Payer type, '}
+									<code className="text-xs bg-background px-1 py-0.5 rounded">{'{payeeName}'}</code>
+									{' - Payee name, '}
+									<code className="text-xs bg-background px-1 py-0.5 rounded">{'{payeeType}'}</code>
+									{' - Payee type, '}
 									<code className="text-xs bg-background px-1 py-0.5 rounded">{'{dueDate}'}</code>
 									{' - Due date'}
 								</div>
@@ -509,9 +513,9 @@ export default function AdminBillsTemplatesEditPage() {
 
 				{/* Actions */}
 				<div className="flex gap-3">
-					<Button type="submit" disabled={updateTemplate.isPending}>
+					<ConfirmButton type="submit" loading={updateTemplate.isPending}>
 						{updateTemplate.isPending ? 'Saving Changes...' : 'Save Changes'}
-					</Button>
+					</ConfirmButton>
 					<CancelButton type="button" onClick={() => navigate('/admin/bills/templates')}>
 						Cancel
 					</CancelButton>
@@ -538,9 +542,13 @@ export default function AdminBillsTemplatesEditPage() {
 					</div>
 					<DialogFooter>
 						<CancelButton onClick={() => setCloneDialogOpen(false)}>Cancel</CancelButton>
-						<Button onClick={handleClone} disabled={!cloneName.trim() || cloneTemplate.isPending}>
+						<ConfirmButton
+							onConfirm={handleClone}
+							disabled={!cloneName.trim() || cloneTemplate.isPending}
+							loading={cloneTemplate.isPending}
+						>
 							{cloneTemplate.isPending ? 'Cloning...' : 'Clone Template'}
-						</Button>
+						</ConfirmButton>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
