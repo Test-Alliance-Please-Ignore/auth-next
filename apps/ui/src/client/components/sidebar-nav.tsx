@@ -1,11 +1,14 @@
 import {
+	BookMarked,
 	BookOpen,
 	Building2,
 	ChevronDown,
 	ChevronRight,
 	CircleDollarSign,
+	ExternalLink,
 	FileText,
 	FolderHeart,
+	Globe,
 	LayoutDashboard,
 	LogOut,
 	Mail,
@@ -15,6 +18,8 @@ import {
 	Scale,
 	Settings,
 	Shield,
+	Timer,
+	Truck,
 	Users,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -40,6 +45,7 @@ interface SidebarNavItem {
 	href: string
 	icon?: any
 	badge?: number
+	external?: boolean
 	children?: SidebarNavItem[]
 }
 
@@ -55,11 +61,18 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 	const mainCharacter = user?.characters.find((c) => c.characterId === user.mainCharacterId)
 	const isSiteAdmin = user?.is_admin === true
 	const isTaxRoute = location.pathname === '/tax' || location.pathname.startsWith('/tax/')
-	const [taxMenuOpen, setTaxMenuOpen] = useState(isTaxRoute)
+	const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({
+		'/tax': isTaxRoute,
+		'#external': true,
+	})
+
+	const toggleMenu = (href: string) => {
+		setOpenMenus((prev) => ({ ...prev, [href]: !prev[href] }))
+	}
 
 	useEffect(() => {
 		if (isTaxRoute) {
-			setTaxMenuOpen(true)
+			setOpenMenus((prev) => ({ ...prev, '/tax': true }))
 		}
 	}, [isTaxRoute])
 
@@ -92,8 +105,9 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 		},
 		{
 			label: 'SRP',
-			href: '/srp',
+			href: 'https://reimbursement.pleaseignore.com/',
 			icon: CircleDollarSign,
+			external: true,
 		},
 		{
 			label: 'My Bills',
@@ -110,6 +124,11 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 			href: '/join',
 			icon: Building2,
 		},
+		{
+			label: 'Freight',
+			href: '/freight',
+			icon: Truck,
+		},
 	]
 
 	// Continue with other nav items
@@ -124,6 +143,33 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 		label: 'Inventory Parser',
 		href: '/inventory-parser',
 		icon: Package,
+	})
+
+	// External links section
+	navItems.push({
+		label: 'External',
+		href: '#external',
+		icon: ExternalLink,
+		children: [
+			{
+				label: 'Timerboard',
+				href: 'https://timers.pleaseignore.app/',
+				icon: Timer,
+				external: true,
+			},
+			{
+				label: 'Wiki',
+				href: 'https://wiki.pleaseignore.com/start',
+				icon: BookMarked,
+				external: true,
+			},
+			{
+				label: 'WinterCo Services',
+				href: 'https://auth.wintercoalition.space/',
+				icon: Globe,
+				external: true,
+			},
+		],
 	})
 
 	const canReadTaxFeature =
@@ -229,7 +275,8 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 				{navItems.map((item) => {
 					const childActive = (item.children ?? []).some(
 						(child) =>
-							location.pathname === child.href || location.pathname.startsWith(child.href + '/')
+							!child.external &&
+							(location.pathname === child.href || location.pathname.startsWith(child.href + '/'))
 					)
 					const isActive =
 						childActive ||
@@ -242,8 +289,8 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 							<div key={item.href} className="space-y-1">
 								<button
 									type="button"
-									onClick={() => setTaxMenuOpen((open) => !open)}
-									aria-expanded={taxMenuOpen}
+								onClick={() => toggleMenu(item.href)}
+								aria-expanded={!!openMenus[item.href]}
 									className={cn(
 										'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all',
 										'hover:bg-accent/50 hover:text-accent-foreground',
@@ -257,19 +304,45 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 										<Icon className={cn('h-5 w-5 flex-shrink-0', isActive && 'text-primary')} />
 									) : null}
 									<span className="flex-1 text-left">{item.label}</span>
-									{taxMenuOpen ? (
+									{openMenus[item.href] ? (
 										<ChevronDown className="h-4 w-4 opacity-70" />
 									) : (
 										<ChevronRight className="h-4 w-4 opacity-70" />
 									)}
 								</button>
 
-								{taxMenuOpen ? (
+								{openMenus[item.href] ? (
 									<div className="ml-6 space-y-1 border-l border-border/60 pl-2">
 										{item.children.map((child) => {
 											const childIsActive =
-												location.pathname === child.href ||
-												location.pathname.startsWith(child.href + '/')
+												!child.external &&
+												(location.pathname === child.href ||
+													location.pathname.startsWith(child.href + '/'))
+
+											if (child.external) {
+												const ChildIcon = child.icon
+												return (
+													<a
+														key={child.href}
+														href={child.href}
+														target="_blank"
+														rel="noopener noreferrer"
+														onClick={onNavigate}
+														className={cn(
+															'flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all',
+															'hover:bg-accent/50 hover:text-accent-foreground',
+															'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+															'text-muted-foreground'
+														)}
+													>
+														{ChildIcon ? (
+															<ChildIcon className="h-4 w-4 flex-shrink-0" />
+														) : null}
+														<span className="flex-1">{child.label}</span>
+														<ExternalLink className="h-3 w-3 text-muted-foreground" />
+													</a>
+												)
+											}
 
 											return (
 												<Link
@@ -299,6 +372,30 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 									</div>
 								) : null}
 							</div>
+						)
+					}
+
+					if (item.external) {
+						return (
+							<a
+								key={item.href}
+								href={item.href}
+								target="_blank"
+								rel="noopener noreferrer"
+								onClick={onNavigate}
+								className={cn(
+									'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all',
+									'hover:bg-accent/50 hover:text-accent-foreground relative group',
+									'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+									'text-muted-foreground border-l-4 border-transparent'
+								)}
+							>
+								{Icon ? (
+									<Icon className="h-5 w-5 flex-shrink-0" />
+								) : null}
+								<span className="flex-1">{item.label}</span>
+								<ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+							</a>
 						)
 					}
 
@@ -342,7 +439,7 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 							alt={`${mainCharacter.characterName}'s portrait`}
 							loading="lazy"
 							onError={(e) => {
-								;(e.currentTarget as HTMLImageElement).src =
+								; (e.currentTarget as HTMLImageElement).src =
 									'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"%3E%3Crect fill="%23404040" width="64" height="64"/%3E%3Ctext x="50%25" y="50%25" font-family="Arial" font-size="24" fill="%23bfbfbf" text-anchor="middle" dominant-baseline="middle"%3E?%3C/text%3E%3C/svg%3E'
 							}}
 							className="w-10 h-10 rounded-full border-2 border-primary/50"
