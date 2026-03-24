@@ -262,9 +262,14 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			logger
 				.withTags({ operation: 'handleCallback', state })
 				.error('Callback handling failed', error)
+			const errMsg = error instanceof Error ? error.message : 'Unknown error'
+			const causeMsg =
+				error instanceof Error && error.cause instanceof Error
+					? error.cause.message
+					: undefined
 			return {
 				success: false,
-				error: error instanceof Error ? error.message : 'Unknown error',
+				error: causeMsg ? `${errMsg} | Cause: ${causeMsg}` : errMsg,
 			}
 		}
 	}

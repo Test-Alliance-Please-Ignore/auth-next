@@ -5,11 +5,11 @@
 	"compatibility_date": "2025-04-28",
 	"compatibility_flags": ["nodejs_compat"],
 	"routes": [
-		"pleaseignore.app/api/*",
-		"pleaseignore.app/images/*",
-		"pleaseignore.app/invite/*",
-		"pleaseignore.app/login*",
-		"pleaseignore.app/fleets/*"
+		"testauth.evecore.app/api/*",
+		"testauth.evecore.app/images/*",
+		"testauth.evecore.app/invite/*",
+		"testauth.evecore.app/login*",
+		"testauth.evecore.app/fleets/*"
 	],
 	"logpush": true,
 	"observability": {
@@ -22,7 +22,7 @@
 		"ENVIRONMENT": "production",
 		"SENTRY_RELEASE": "unknown",
 		"SENTRY_DSN": "https://8a3d31a3a18e448f97e19e3d9930547d@app.glitchtip.com/13711",
-		"LEGACY_AUTH_CALLBACK_URL": "https://pleaseignore.app/api/auth/legacy-auth/callback"
+		"LEGACY_AUTH_CALLBACK_URL": "https://testauth.evecore.app/api/auth/legacy-auth/callback"
 	},
 	"durable_objects": {
 		"bindings": [

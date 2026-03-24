@@ -5,7 +5,7 @@
 	"compatibility_date": "2025-04-28",
 	"compatibility_flags": ["nodejs_compat"],
 	"workers_dev": false,
-	"routes": ["pleaseignore.app/*"],
+	"routes": ["testauth.evecore.app/*"],
 	"logpush": false,
 	"observability": {
 		"enabled": true,
