@@ -12,6 +12,7 @@ import type {
 	BillListSortField,
 	BillPartyDirection,
 	BillSchedule,
+	BillScheduleWithDetails,
 	BillStatistics,
 	BillTemplate,
 	BillWithDetails,
@@ -189,7 +190,7 @@ export class BillsApiClient extends ApiClient {
 
 	// ===== Schedules API Methods =====
 
-	async getSchedule(scheduleId: string): Promise<BillSchedule> {
+	async getSchedule(scheduleId: string): Promise<BillScheduleWithDetails> {
 		return this.get(`${BILLS_API_BASE}/schedules/${scheduleId}`)
 	}
 
@@ -197,7 +198,7 @@ export class BillsApiClient extends ApiClient {
 		frequency?: string
 		isActive?: boolean
 		templateId?: string
-	}): Promise<BillSchedule[]> {
+	}): Promise<BillScheduleWithDetails[]> {
 		const params = new URLSearchParams()
 		if (filters?.frequency) params.set('frequency', filters.frequency)
 		if (filters?.isActive !== undefined) params.set('isActive', String(filters.isActive))
