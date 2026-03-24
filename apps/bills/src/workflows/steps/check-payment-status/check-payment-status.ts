@@ -1,6 +1,5 @@
 import { eq } from 'drizzle-orm'
 
-import { bills } from '../../../db/schema'
 import { getWorkflowLogger } from '../../context'
 
 import type { WorkflowContext } from '../../context'
@@ -13,16 +12,19 @@ import type { WorkflowContext } from '../../context'
  * @returns Payment status check result
  */
 export async function checkPaymentStatus(
-	ctx: WorkflowContext,
-	billData: typeof bills.$inferSelect
-): Promise<void> {
+	ctx: WorkflowContext
+): Promise<{ markedPaid: boolean; statusBefore: string; statusAfter: string }> {
 	const logger = getWorkflowLogger(ctx, 'check-payment-status')
+	const currentBill = await ctx.billService.getBillIntegrationView(ctx.billId)
+	if (!currentBill) {
+		throw new Error('Bill not found')
+	}
 
 	// TODO: Implement actual payment status checking logic
 	logger.info('[Workflow] Checking payment status', {
 		billId: ctx.billId,
 		workflowInstanceId: ctx.workflowInstanceId,
-		currentStatus: billData.status,
+		currentStatus: currentBill.status,
 	})
 
 	const isPaid = await ctx.billService.checkBillBalancePaid(ctx.billId)
@@ -32,14 +34,29 @@ export async function checkPaymentStatus(
 			workflowInstanceId: ctx.workflowInstanceId,
 		})
 		await ctx.billService.markBillAsPaid(ctx.billId)
+		const finalBill = await ctx.billService.getBillIntegrationView(ctx.billId)
+		const statusAfter = finalBill?.status ?? currentBill.status
 		logger.info('[Workflow] Bill marked as paid', {
 			billId: ctx.billId,
 			workflowInstanceId: ctx.workflowInstanceId,
+			statusBefore: currentBill.status,
+			statusAfter,
 		})
-	} else {
-		logger.info('[Workflow] Bill is not paid', {
-			billId: ctx.billId,
-			workflowInstanceId: ctx.workflowInstanceId,
-		})
+		return {
+			markedPaid: currentBill.status !== 'paid' && statusAfter === 'paid',
+			statusBefore: currentBill.status,
+			statusAfter,
+		}
+	}
+
+	logger.info('[Workflow] Bill is not paid', {
+		billId: ctx.billId,
+		workflowInstanceId: ctx.workflowInstanceId,
+	})
+
+	return {
+		markedPaid: false,
+		statusBefore: currentBill.status,
+		statusAfter: currentBill.status,
 	}
 }

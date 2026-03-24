@@ -25,6 +25,7 @@ export {
 	useAcknowledgeTaxAlert,
 	useResolveTaxAlert,
 	useRetryFailedTaxAlertDeliveries,
+	useTaxAuditActors,
 	useTaxAlerts,
 	useTaxAuditLog,
 	useTaxNotificationDestinations,

@@ -1,8 +1,10 @@
+import { and, asc, eq, ilike, inArray, or } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
+import { userCharacters, users } from '../../db/schema'
 import { requireAuth } from '../../middleware/session'
-import { canManageTaxFeature } from '../../middleware/tax-permissions'
+import { canManageTaxFeature, canReadTaxFeature } from '../../middleware/tax-permissions'
 import {
 	disposeRpcStub,
 	filterAlertsForUser,
@@ -14,6 +16,8 @@ import {
 import type { Hono } from 'hono'
 import type { CorporationTax } from '@repo/corporation-tax'
 import type { App } from '../../context'
+
+const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 export function registerCorporationTaxAlertsRoutes(
 	app: Hono<App>,
@@ -379,6 +383,98 @@ export function registerCorporationTaxAlertsRoutes(
 		} catch (error) {
 			logTaxRouteError(c, 'Error listing tax audit log', error, { userId: user.id })
 			return c.json({ error: 'Failed to list tax audit log' }, 500)
+		}
+	})
+
+	/**
+	 * GET /corporation-tax/audit-actors
+	 * Resolve actor user IDs to display names and support actor search.
+	 */
+	app.get('/audit-actors', requireAuth(), async (c) => {
+		const user = c.get('user')
+		if (!user) {
+			return c.json({ error: 'Unauthorized' }, 401)
+		}
+
+		const corporationId = c.req.query('corporationId') || undefined
+		const canRead = await canReadTaxFeature(c.env, user, corporationId)
+		if (!canRead) {
+			return c.json({ error: 'Forbidden' }, 403)
+		}
+
+		const db = c.get('db')
+		if (!db) {
+			return c.json({ error: 'Database unavailable' }, 500)
+		}
+
+		const q = c.req.query('q')?.trim()
+		const idsParam = c.req.query('ids')?.trim()
+		const limit = parseIntegerQueryParam(c.req.query('limit'))
+		if (limit !== undefined && (limit < 1 || limit > 100)) {
+			return c.json({ error: 'limit must be an integer between 1 and 100' }, 400)
+		}
+
+		const ids = Array.from(
+			new Set(
+				(idsParam ?? '')
+					.split(',')
+					.map((value) => value.trim())
+					.filter(Boolean)
+			)
+		)
+
+		if (!q && ids.length === 0) {
+			return c.json([])
+		}
+		if (q && q.length < 2 && ids.length === 0) {
+			return c.json({ error: 'q must be at least 2 characters when ids are not provided' }, 400)
+		}
+
+		const conditions = []
+		if (ids.length > 0) {
+			conditions.push(inArray(users.id, ids))
+		}
+		if (q) {
+			const qConditions = [ilike(userCharacters.characterName, `%${q}%`)]
+			if (UUID_V4_REGEX.test(q)) {
+				qConditions.push(eq(users.id, q))
+			}
+			conditions.push(or(...qConditions))
+		}
+
+		const where = conditions.length > 0 ? and(...conditions) : undefined
+
+		try {
+			const rows = await db
+				.select({
+					userId: users.id,
+					mainCharacterName: userCharacters.characterName,
+				})
+				.from(users)
+				.leftJoin(
+					userCharacters,
+					and(
+						eq(userCharacters.userId, users.id),
+						eq(userCharacters.is_primary, true),
+						eq(userCharacters.isDeleted, false)
+					)
+				)
+				.where(where)
+				.orderBy(asc(userCharacters.characterName), asc(users.id))
+				.limit(limit ?? (ids.length > 0 ? Math.min(ids.length, 100) : 25))
+
+			return c.json(
+				rows.map((row) => ({
+					userId: row.userId,
+					name: row.mainCharacterName ?? null,
+				}))
+			)
+		} catch (error) {
+			logTaxRouteError(c, 'Error searching tax audit actors', error, {
+				userId: user.id,
+				corporationId: corporationId ?? null,
+			})
+			return c.json({ error: 'Failed to search tax audit actors' }, 500)
 		}
 	})
 }

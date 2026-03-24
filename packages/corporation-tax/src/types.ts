@@ -150,7 +150,6 @@ export interface TaxAssessment {
 	taxDelta: string
 	status: TaxAssessmentStatus
 	inGameTaxRateBps: number | null
-	portalTaxRateBps: number
 	billId: string | null
 	billStatus: TaxBillStatus | null
 	billStatusLastSyncedAt: Date | null
@@ -319,6 +318,19 @@ export interface SyncCorporationBillStatusesResult {
 	skippedAssessmentIds: string[]
 }
 
+export interface TaxBillStateSyncInput {
+	id: string
+	status: TaxBillStatus
+}
+
+export interface SyncBillStatusesByBillIdsResult {
+	processedBillIds: string[]
+	processedAssessmentIds: string[]
+	updatedAssessmentIds: string[]
+	skippedAssessmentIds: string[]
+	corporationIds: string[]
+}
+
 export type TaxBillingPayeeType = 'character' | 'corporation'
 
 export interface TaxCorporationBillingConfig {
@@ -473,7 +485,7 @@ export interface TriggerTaxProjectionRefreshInput {
 export interface TriggerTaxProjectionRefreshResult {
 	corporationId: string
 	triggered: boolean
-	reason: 'no_sources' | 'up_to_date' | 'ingested' | 'rule_mutation'
+	reason: 'no_sources' | 'up_to_date' | 'ingested' | 'rule_mutation' | 'not_processable'
 	ingestionResult?: TaxLedgerIngestionResult
 }
 

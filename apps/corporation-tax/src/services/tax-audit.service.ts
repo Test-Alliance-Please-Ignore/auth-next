@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lte, sql } from '@repo/db-utils'
+import { and, desc, eq, gte, ilike, lte, sql } from '@repo/db-utils'
 
 import { taxAuditLog } from '../db/schema'
 
@@ -40,7 +40,7 @@ export class TaxAuditService {
 			conditions.push(eq(taxAuditLog.actorUserId, filters.actorUserId))
 		}
 		if (filters.action) {
-			conditions.push(eq(taxAuditLog.action, filters.action))
+			conditions.push(ilike(taxAuditLog.action, `%${filters.action}%`))
 		}
 		if (filters.fromDate) {
 			conditions.push(gte(taxAuditLog.createdAt, filters.fromDate))

@@ -22,7 +22,6 @@ function makeAssessment(overrides: Record<string, unknown> = {}) {
 		taxDelta: '100',
 		status: 'underpaid',
 		inGameTaxRateBps: null,
-		portalTaxRateBps: 1000,
 		billId: null,
 		billStatus: null,
 		billStatusLastSyncedAt: null,

@@ -758,6 +758,33 @@ export class BillService {
 			throw new Error('Bill status changed during payment finalization; please retry')
 		}
 	}
+
+	/**
+	 * Re-evaluate bill lifecycle status for overdue/late-fee transitions.
+	 * Returns transition flags so callers can trigger downstream sync only when needed.
+	 */
+	async refreshBillLifecycleStatus(billId: string): Promise<{
+		overdueMarked: boolean
+		lateFeeChanged: boolean
+		billStatus: BillStatus
+	}> {
+		const bill = await this.db.query.bills.findFirst({
+			where: eq(bills.id, billId),
+		})
+		if (!bill) {
+			throw new Error('Bill not found')
+		}
+
+		const previousStatus = bill.status
+		const previousLateFee = bill.lateFee
+		const updatedBill = await this.updateLateFeeIfNeeded(bill)
+
+		return {
+			overdueMarked: previousStatus !== 'overdue' && updatedBill.status === 'overdue',
+			lateFeeChanged: previousLateFee !== updatedBill.lateFee,
+			billStatus: updatedBill.status,
+		}
+	}
 	/**
 	 * Get bill statistics for a user
 	 */

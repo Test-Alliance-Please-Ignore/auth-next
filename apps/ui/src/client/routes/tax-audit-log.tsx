@@ -1,4 +1,3 @@
-import { useQueries } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 
 import { TaxCorporationScopeSelector } from '@/components/tax-corporation-scope-selector'
@@ -8,12 +7,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Container } from '@/components/ui/container'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
+import { SearchSelect } from '@/components/ui/search-select'
 import { Section } from '@/components/ui/section'
-import { useTaxAuditLog, useTaxCapabilities } from '@/hooks/corporation-tax'
+import { useTaxAuditActors, useTaxAuditLog, useTaxCapabilities } from '@/hooks/corporation-tax'
+import { useDebounce } from '@/hooks/useDebounce'
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useTaxCorporationAccessScope } from '@/hooks/useTaxCorporationAccessScope'
-import { api } from '@/lib/api'
 
 export default function TaxAuditLogPage() {
 	usePageTitle('Tax Audit Log')
@@ -28,7 +28,11 @@ export default function TaxAuditLogPage() {
 		effectiveCorporationId,
 	} = useTaxCorporationAccessScope(canAdminScope)
 	const [actorUserIdFilter, setActorUserIdFilter] = useState('')
+	const [actorUserQuery, setActorUserQuery] = useState('')
 	const [actionFilter, setActionFilter] = useState('')
+	const debouncedActorUserQuery = useDebounce(actorUserQuery, 300)
+	const normalizedActorQuery = debouncedActorUserQuery.trim()
+	const actorSearchPending = actorUserQuery !== debouncedActorUserQuery
 	const grid = useReportGridState({
 		defaultSortBy: 'createdAt',
 		defaultSortDir: 'desc',
@@ -79,35 +83,46 @@ export default function TaxAuditLogPage() {
 	})
 
 	const actorIds = useMemo(
-		() => Array.from(new Set(auditLogRows.map((entry) => entry.actorUserId).filter(Boolean))),
-		[auditLogRows]
+		() =>
+			Array.from(
+				new Set(
+					[
+						...auditLogRows.map((entry) => entry.actorUserId).filter(Boolean),
+						actorUserIdFilter || null,
+					].filter(Boolean)
+				)
+			) as string[],
+		[auditLogRows, actorUserIdFilter]
 	)
-	const actorNameQueries = useQueries({
-		queries: actorIds.map((actorUserId) => ({
-			queryKey: ['admin', 'users', 'audit-actor', actorUserId],
-			queryFn: async () => {
-				const result = await api.getAdminUsers({
-					search: actorUserId,
-					page: 1,
-					pageSize: 1,
-				})
-				const exact = result.data.find((user) => user.id === actorUserId)
-				return exact?.mainCharacterName || null
-			},
-			enabled: canAdminScope,
-			staleTime: 1000 * 60 * 5,
-		})),
+	const { data: resolvedActors = [] } = useTaxAuditActors({
+		corporationId: effectiveCorporationId,
+		ids: actorIds,
+		limit: Math.max(actorIds.length, 1),
+		enabled: canView && actorIds.length > 0,
+	})
+	const { data: actorSearchResults = [], isLoading: actorSearchLoading } = useTaxAuditActors({
+		corporationId: effectiveCorporationId,
+		q: normalizedActorQuery,
+		limit: 25,
+		enabled: canView && normalizedActorQuery.length >= 2,
 	})
 	const actorDisplayNames = useMemo(() => {
 		const next: Record<string, string> = {}
-		for (const [index, actorUserId] of actorIds.entries()) {
-			const actorName = actorNameQueries[index]?.data
-			if (actorName) {
-				next[actorUserId] = actorName
-			}
+		for (const actor of resolvedActors) {
+			if (actor.name) next[actor.userId] = actor.name
 		}
 		return next
-	}, [actorIds, actorNameQueries])
+	}, [resolvedActors])
+	const actorSearchOptions = useMemo(
+		() =>
+			actorSearchResults.map((actor) => ({
+				id: actor.userId,
+				value: actor.userId,
+				label: actor.name ?? actor.userId,
+				description: actor.name ? actor.userId : undefined,
+			})),
+		[actorSearchResults]
+	)
 
 	if (!corporationAccessLoading && !scopedCapabilitiesLoading && !canView) {
 		return (
@@ -121,8 +136,6 @@ export default function TaxAuditLogPage() {
 			</Container>
 		)
 	}
-
-	const changeCount = auditLogRows.filter((entry) => entry.before || entry.after).length
 
 	return (
 		<Container>
@@ -140,36 +153,43 @@ export default function TaxAuditLogPage() {
 					onSelect={setSelectedCorporationId}
 				/>
 
-				<div className="grid gap-4 md:grid-cols-2">
-					<Card>
-						<CardHeader className="pb-2">
-							<CardTitle className="text-sm">Visible Entries</CardTitle>
-						</CardHeader>
-						<CardContent className="text-2xl font-semibold">{totalRows}</CardContent>
-					</Card>
-					<Card>
-						<CardHeader className="pb-2">
-							<CardTitle className="text-sm">Entries With Change Payload</CardTitle>
-						</CardHeader>
-						<CardContent className="text-2xl font-semibold">{changeCount}</CardContent>
-					</Card>
-				</div>
-
 				<Card>
 					<CardHeader>
 						<CardTitle>Filters</CardTitle>
-						<CardDescription>Filter by actor user ID and exact action key.</CardDescription>
+						<CardDescription>Filter by actor and action key (partial match).</CardDescription>
 					</CardHeader>
 					<CardContent className="grid gap-3 md:grid-cols-2">
-						<Input
-							value={actorUserIdFilter}
-							onChange={(event) => setActorUserIdFilter(event.target.value)}
-							placeholder="Actor user ID"
+						<SearchSelect
+							value={actorUserQuery}
+							onValueChange={(value) => {
+								setActorUserQuery(value)
+								if (!value.trim()) {
+									setActorUserIdFilter('')
+									return
+								}
+								setActorUserIdFilter('')
+							}}
+							options={actorSearchOptions}
+							onSelect={(option) => {
+								setActorUserIdFilter(option.value)
+								setActorUserQuery('')
+							}}
+							filterMode="server"
+							mode="search"
+							minQueryLength={2}
+							loading={actorSearchLoading || actorSearchPending}
+							minCharsText="Type at least 2 characters to search actors"
+							placeholder={
+								actorUserIdFilter
+									? (actorDisplayNames[actorUserIdFilter] ?? actorUserIdFilter)
+									: 'Actor name or user ID'
+							}
+							emptyText="No actors found"
 						/>
 						<Input
 							value={actionFilter}
 							onChange={(event) => setActionFilter(event.target.value)}
-							placeholder="Action (example: tax.settings.updated)"
+							placeholder="Action contains (example: settings)"
 						/>
 					</CardContent>
 				</Card>

@@ -30,6 +30,7 @@ import type {
 	RequestTaxExportInput,
 	RunTaxAssessmentForPeriodInput,
 	RunTaxAssessmentForPeriodResult,
+	SyncBillStatusesByBillIdsResult,
 	SyncCorporationBillStatusesResult,
 	TaxAlert,
 	TaxAlertDiscordDeliveryStatus,
@@ -43,6 +44,7 @@ import type {
 	TaxAuditLogEntry,
 	TaxBillingEventHistoryRow,
 	TaxBillingPayeeType,
+	TaxBillStateSyncInput,
 	TaxBillStatus,
 	TaxBillStatusReportRow,
 	TaxCompliancePoint,
@@ -319,6 +321,14 @@ export interface CorporationTax {
 	): Promise<SyncCorporationBillStatusesResult>
 
 	/**
+	 * Sync assessment bill status for a targeted bill state.
+	 */
+	syncBillStatus(
+		actorUserId: string,
+		billState: TaxBillStateSyncInput
+	): Promise<SyncBillStatusesByBillIdsResult>
+
+	/**
 	 * List billing configurations for a corporation.
 	 */
 	listCorporationBillingConfigs(corporationId: string): Promise<TaxCorporationBillingConfig[]>
@@ -579,6 +589,8 @@ export type {
 	RequestTaxExportInput,
 	RunTaxAssessmentForPeriodInput,
 	RunTaxAssessmentForPeriodResult,
+	TaxBillStateSyncInput,
+	SyncBillStatusesByBillIdsResult,
 	SyncCorporationBillStatusesResult,
 	TaxAlert,
 	TaxAuditLogEntry,

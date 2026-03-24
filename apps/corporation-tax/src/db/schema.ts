@@ -161,7 +161,6 @@ export const taxAssessments = pgTable(
 		taxDelta: text('tax_delta').notNull().default('0'),
 		status: taxAssessmentStatusEnum('status').notNull().default('draft'),
 		inGameTaxRateBps: integer('in_game_tax_rate_bps'),
-		portalTaxRateBps: integer('portal_tax_rate_bps').notNull().default(0),
 		billId: uuid('bill_id'),
 		billStatus: taxBillStatusEnum('bill_status'),
 		billStatusLastSyncedAt: timestamp('bill_status_last_synced_at', { withTimezone: true }),

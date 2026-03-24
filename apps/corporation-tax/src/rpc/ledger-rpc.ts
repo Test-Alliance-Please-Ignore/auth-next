@@ -1,7 +1,12 @@
-import { eq } from '@repo/db-utils'
+import { and, eq } from '@repo/db-utils'
 import { logger } from '@repo/hono-helpers'
 
-import { taxMemberSummaryVersions } from '../db/schema'
+import {
+	managedCorporations,
+	taxCorporationExclusions,
+	taxMemberSummaryVersions,
+	taxRuleGroupAttachments,
+} from '../db/schema'
 import { planProjectionRefreshFromWalletSync } from '../services/projection-refresh-plan'
 import { computeRuleMutationRecalcStart } from '../services/projection-rule-freshness'
 
@@ -66,6 +71,8 @@ export class TaxLedgerRpc {
 		corporationId: string,
 		input?: IngestTaxLedgerWindowInput
 	): Promise<TaxLedgerIngestionResult> {
+		await this.assertCorporationProcessable(corporationId)
+
 		return this.ctx.withCorporationIngestLock(corporationId, async () => {
 			const result = await this.ctx.ledgerService.ingestCorporationLedgerWindow(
 				corporationId,
@@ -113,6 +120,19 @@ export class TaxLedgerRpc {
 		actorUserId: string,
 		input: TriggerTaxProjectionRefreshInput
 	): Promise<TriggerTaxProjectionRefreshResult> {
+		const isProcessable = await this.isCorporationProcessable(input.corporationId)
+		if (!isProcessable) {
+			logger.info('[CorporationTaxDO] Projection refresh skipped for ineligible corporation', {
+				corporationId: input.corporationId,
+				upstreamRunId: input.upstreamRunId,
+			})
+			return {
+				corporationId: input.corporationId,
+				triggered: false,
+				reason: 'not_processable',
+			}
+		}
+
 		const startedAtMs = Date.now()
 		const includeJournal = Boolean(input.walletJournal)
 		const includeTransactions = Boolean(input.walletTransactions)
@@ -254,6 +274,8 @@ export class TaxLedgerRpc {
 		actorUserId: string,
 		input: RunTaxAssessmentForPeriodInput
 	): Promise<RunTaxAssessmentForPeriodResult> {
+		await this.assertCorporationProcessable(input.corporationId)
+
 		const result = await this.ctx.assessmentService.runAssessmentForPeriod(input)
 
 		await this.ctx.auditService.logAction({
@@ -294,6 +316,8 @@ export class TaxLedgerRpc {
 		actorUserId: string,
 		input: RunTaxAssessmentForPeriodInput
 	): Promise<RunTaxAssessmentForPeriodResult> {
+		await this.assertCorporationProcessable(input.corporationId)
+
 		const result = await this.ctx.assessmentService.rebuildFinalizedRollupsForPeriod(input)
 
 		await this.ctx.auditService.logAction({
@@ -324,5 +348,37 @@ export class TaxLedgerRpc {
 		filters: import('@repo/corporation-tax').ListTaxDiscrepanciesFilters
 	): Promise<TaxDiscrepancy[]> {
 		return this.ctx.assessmentService.listDiscrepancies(filters)
+	}
+
+	private async isCorporationProcessable(corporationId: string): Promise<boolean> {
+		const [managedCorp, attachedRuleGroup, exclusion] = await Promise.all([
+			this.ctx.db.query.managedCorporations.findFirst({
+				where: and(
+					eq(managedCorporations.corporationId, corporationId),
+					eq(managedCorporations.isActive, true),
+					eq(managedCorporations.isMemberCorporation, true)
+				),
+				columns: { corporationId: true },
+			}),
+			this.ctx.db.query.taxRuleGroupAttachments.findFirst({
+				where: eq(taxRuleGroupAttachments.corporationId, corporationId),
+				columns: { corporationId: true },
+			}),
+			this.ctx.db.query.taxCorporationExclusions.findFirst({
+				where: eq(taxCorporationExclusions.corporationId, corporationId),
+				columns: { corporationId: true },
+			}),
+		])
+
+		return Boolean(managedCorp && attachedRuleGroup && !exclusion)
+	}
+
+	private async assertCorporationProcessable(corporationId: string): Promise<void> {
+		const isProcessable = await this.isCorporationProcessable(corporationId)
+		if (!isProcessable) {
+			throw new Error(
+				`Corporation ${corporationId} is not eligible for tax sync or assessment operations`
+			)
+		}
 	}
 }

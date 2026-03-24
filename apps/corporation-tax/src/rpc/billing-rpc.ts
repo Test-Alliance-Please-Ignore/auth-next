@@ -2,10 +2,12 @@ import type {
 	CreateTaxCorporationBillingConfigInput,
 	IssueBillsForPeriodInput,
 	IssueBillsForPeriodResult,
+	SyncBillStatusesByBillIdsResult,
 	SyncCorporationBillStatusesResult,
 	TaxAssessment,
 	TaxAssessmentWithBillHistory,
 	TaxBillingEventHistoryRow,
+	TaxBillStateSyncInput,
 	TaxCorporationBillingConfig,
 	TaxPagedResult,
 	UpdateTaxCorporationBillingConfigInput,
@@ -154,6 +156,23 @@ export class TaxBillingRpc {
 				actorUserId,
 				corporationId,
 				operation: 'sync_corporation_bill_statuses',
+				error,
+			})
+			throw error
+		}
+	}
+
+	async syncBillStatus(
+		actorUserId: string,
+		billState: TaxBillStateSyncInput
+	): Promise<SyncBillStatusesByBillIdsResult> {
+		try {
+			return await this.ctx.billingService.syncBillStatus(actorUserId, billState)
+		} catch (error) {
+			await this.ctx.triggerBillSyncFailureAlert({
+				actorUserId,
+				corporationId: 'unknown',
+				operation: 'sync_bill_status',
 				error,
 			})
 			throw error

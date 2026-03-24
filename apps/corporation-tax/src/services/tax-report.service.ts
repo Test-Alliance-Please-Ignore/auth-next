@@ -859,7 +859,6 @@ export class TaxReportService {
 				continue
 			}
 
-			const taxableAmountCenti = this.parseDecimalToCenti(line.taxableAmount)
 			const taxAmountCenti = this.parseDecimalToCenti(line.taxAmount)
 
 			let groupKey: string | null = attributedCharacterId
@@ -884,7 +883,7 @@ export class TaxReportService {
 			const summary = getSummary(groupKey)
 			summary.assessmentIds.add(line.assessmentId)
 			summary.contributionIncomeCenti += amountCenti
-			summary.taxableContributionIncomeCenti += taxableAmountCenti
+			summary.taxableContributionIncomeCenti += taxAmountCenti
 			summary.lastAssessmentAt =
 				!summary.lastAssessmentAt || assessment.taxPeriodEnd > summary.lastAssessmentAt
 					? assessment.taxPeriodEnd
@@ -899,7 +898,7 @@ export class TaxReportService {
 			}
 			topTotals.lineCount += 1
 			topTotals.contributionAmountCenti += amountCenti
-			topTotals.taxableAmountCenti += taxableAmountCenti
+			topTotals.taxableAmountCenti += taxAmountCenti
 			topTotals.taxAmountCenti += taxAmountCenti
 			summary.topRefTypeTotals.set(refType, topTotals)
 		}
@@ -1218,7 +1217,7 @@ export class TaxReportService {
 					lineCount: totals.lineCount,
 					contributionAmount: this.formatCenti(totals.contributionIncomeCenti),
 					taxableAmount: this.formatCenti(totals.taxableContributionIncomeCenti),
-					taxAmount: '0',
+					taxAmount: this.formatCenti(totals.taxableContributionIncomeCenti),
 				}))
 				return {
 					corporationId: input.corporationId,
@@ -1252,7 +1251,7 @@ export class TaxReportService {
 					lineCount: totals.lineCount,
 					contributionAmount: this.formatCenti(totals.contributionIncomeCenti),
 					taxableAmount: this.formatCenti(totals.taxableContributionIncomeCenti),
-					taxAmount: '0',
+					taxAmount: this.formatCenti(totals.taxableContributionIncomeCenti),
 				}))
 				rows.unshift({
 					corporationId: input.corporationId,
