@@ -9,13 +9,7 @@ import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { SearchSelect } from '@/components/ui/search-select'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { PERMISSIONS, useUserPermissions } from '@/hooks/useUserPermissions'
 
@@ -49,6 +43,18 @@ export default function FreightCalculatorPage() {
 	const [selectedRouteId, setSelectedRouteId] = useState<string>('')
 	const [volume, setVolume] = useState('')
 	const [collateral, setCollateral] = useState('')
+	const [routeQuery, setRouteQuery] = useState('')
+
+	const routeOptions = useMemo(
+		() =>
+			(routes ?? []).map((route) => ({
+				id: route.id,
+				value: route.id,
+				label: `${route.pickupName} → ${route.destinationName}`,
+				description: `${formatNumber(route.iskPerVolumeUnit)} ISK/m³`,
+			})),
+		[routes]
+	)
 
 	// Auto-select the first route (highest priority by sortOrder)
 	useEffect(() => {
@@ -147,18 +153,25 @@ export default function FreightCalculatorPage() {
 						{/* Route Selection */}
 						<div className="space-y-2">
 							<Label htmlFor="route">Route</Label>
-							<Select value={selectedRouteId} onValueChange={setSelectedRouteId}>
-								<SelectTrigger id="route">
-									<SelectValue placeholder="Select a route..." />
-								</SelectTrigger>
-								<SelectContent>
-									{routes.map((route) => (
-										<SelectItem key={route.id} value={route.id}>
-											<RouteLabel route={route} />
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
+						<SearchSelect
+							inputId="route"
+							value={routeQuery}
+							onValueChange={setRouteQuery}
+							options={routeOptions}
+							onSelect={(option) => {
+								setSelectedRouteId(option.id)
+								setRouteQuery('')
+							}}
+							filterMode="local"
+							mode="dropdown"
+							minQueryLength={0}
+							placeholder={
+								selectedRoute
+									? `${selectedRoute.pickupName} → ${selectedRoute.destinationName} — ${formatNumber(selectedRoute.iskPerVolumeUnit)} ISK/m³`
+									: 'Select a route...'
+							}
+							emptyText="No routes found"
+						/>
 							{selectedRoute?.notes && (
 								<p className="text-sm text-muted-foreground">
 									{selectedRoute.notes}
@@ -294,18 +307,6 @@ export default function FreightCalculatorPage() {
 				)}
 			</div>
 		</Container>
-	)
-}
-
-function RouteLabel({ route }: { route: FreightRoute }) {
-	return (
-		<span className="flex items-center gap-1.5">
-			{route.pickupName}
-			<span className="text-muted-foreground">→</span>
-			{route.destinationName}
-			<span className="text-muted-foreground">—</span>
-			<span>{formatNumber(route.iskPerVolumeUnit)} ISK/m³</span>
-		</span>
 	)
 }
 

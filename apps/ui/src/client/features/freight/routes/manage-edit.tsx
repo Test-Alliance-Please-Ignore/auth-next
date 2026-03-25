@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
@@ -14,10 +14,12 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from '@/components/ui/select'
+import { SearchSelect } from '@/components/ui/search-select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { useFreightRoute, useUpdateFreightRoute } from '@/hooks/useFreightRoutes'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useSystemSearch } from '@/hooks/useLocationSearch'
 
 import type { FreightRouteStatus, UpdateFreightRouteInput } from '@repo/freight'
 
@@ -57,6 +59,33 @@ export default function FreightManageEditPage() {
 
 	const [errors, setErrors] = useState<Record<string, string>>({})
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+	const [pickupSystemId, setPickupSystemId] = useState<string | null>(null)
+	const [destinationSystemId, setDestinationSystemId] = useState<string | null>(null)
+
+	const pickupSearch = useSystemSearch(formData.pickupName)
+	const destinationSearch = useSystemSearch(formData.destinationName)
+
+	const pickupOptions = useMemo(
+		() =>
+			(pickupSearch.data ?? []).map((system) => ({
+				id: String(system.systemId),
+				value: system.systemName,
+				label: system.systemName,
+				description: system.regionName,
+			})),
+		[pickupSearch.data]
+	)
+
+	const destinationOptions = useMemo(
+		() =>
+			(destinationSearch.data ?? []).map((system) => ({
+				id: String(system.systemId),
+				value: system.systemName,
+				label: system.systemName,
+				description: system.regionName,
+			})),
+		[destinationSearch.data]
+	)
 
 	// Populate form when route loads
 	useEffect(() => {
@@ -77,10 +106,15 @@ export default function FreightManageEditPage() {
 			sortOrder: route.sortOrder?.toString() || '0',
 			status: route.status,
 		})
+		setPickupSystemId(route.pickupSystemId || null)
+		setDestinationSystemId(route.destinationSystemId || null)
 	}, [route])
 
 	const handleChange = (field: string, value: string) => {
 		setFormData((prev) => ({ ...prev, [field]: value }))
+		// Clear system ID when user types manually (forces re-selection)
+		if (field === 'pickupName') setPickupSystemId(null)
+		if (field === 'destinationName') setDestinationSystemId(null)
 		if (errors[field]) {
 			setErrors((prev) => {
 				const { [field]: _, ...rest } = prev
@@ -95,10 +129,14 @@ export default function FreightManageEditPage() {
 
 		if (!formData.pickupName.trim()) {
 			newErrors.pickupName = 'Pickup location is required'
+		} else if (!pickupSystemId) {
+			newErrors.pickupName = 'Please select a system from the search results'
 		}
 
 		if (!formData.destinationName.trim()) {
 			newErrors.destinationName = 'Destination location is required'
+		} else if (!destinationSystemId) {
+			newErrors.destinationName = 'Please select a system from the search results'
 		}
 
 		if (
@@ -156,6 +194,8 @@ export default function FreightManageEditPage() {
 			const input: UpdateFreightRouteInput = {
 				pickupName: formData.pickupName.trim(),
 				destinationName: formData.destinationName.trim(),
+				pickupSystemId: pickupSystemId || undefined,
+				destinationSystemId: destinationSystemId || undefined,
 				iskPerVolumeUnit: formData.iskPerVolumeUnit.trim(),
 				minReward: formData.minReward.trim() || undefined,
 				maxVolume: formData.maxVolume.trim() || undefined,
@@ -255,18 +295,27 @@ export default function FreightManageEditPage() {
 								Pickup Location
 								<span className="text-destructive ml-1">*</span>
 							</Label>
-							<Input
-								id="pickupName"
+							<SearchSelect
+								inputId="pickupName"
 								value={formData.pickupName}
-								onChange={(e) => handleChange('pickupName', e.target.value)}
-								placeholder="e.g. Jita 4-4 CNAP or BWF-ZZ Fortizar"
-								className={errors.pickupName ? 'border-destructive' : ''}
+								onValueChange={(value) => handleChange('pickupName', value)}
+								options={pickupOptions}
+						onSelect={(option) => {
+							handleChange('pickupName', option.label)
+							setPickupSystemId(option.id)
+						}}
+								filterMode="server"
+								minQueryLength={3}
+								placeholder="Search for a solar system..."
+								loading={pickupSearch.isFetching || pickupSearch.isPending}
+								emptyText="No systems found"
+								inputClassName={errors.pickupName ? 'border-destructive' : ''}
 							/>
 							{errors.pickupName && (
 								<p className="text-sm text-destructive">{errors.pickupName}</p>
 							)}
 							<p className="text-sm text-muted-foreground">
-								The pickup location name as it should appear to customers
+								Search for and select the pickup solar system
 							</p>
 						</div>
 
@@ -276,18 +325,27 @@ export default function FreightManageEditPage() {
 								Destination Location
 								<span className="text-destructive ml-1">*</span>
 							</Label>
-							<Input
-								id="destinationName"
+							<SearchSelect
+								inputId="destinationName"
 								value={formData.destinationName}
-								onChange={(e) => handleChange('destinationName', e.target.value)}
-								placeholder="e.g. Jita 4-4 CNAP or BWF-ZZ Fortizar"
-								className={errors.destinationName ? 'border-destructive' : ''}
+								onValueChange={(value) => handleChange('destinationName', value)}
+								options={destinationOptions}
+						onSelect={(option) => {
+							handleChange('destinationName', option.label)
+							setDestinationSystemId(option.id)
+						}}
+								filterMode="server"
+								minQueryLength={3}
+								placeholder="Search for a solar system..."
+								loading={destinationSearch.isFetching || destinationSearch.isPending}
+								emptyText="No systems found"
+								inputClassName={errors.destinationName ? 'border-destructive' : ''}
 							/>
 							{errors.destinationName && (
 								<p className="text-sm text-destructive">{errors.destinationName}</p>
 							)}
 							<p className="text-sm text-muted-foreground">
-								The destination location name as it should appear to customers
+								Search for and select the destination solar system
 							</p>
 						</div>
 
