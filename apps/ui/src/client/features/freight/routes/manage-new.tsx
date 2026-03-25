@@ -12,6 +12,8 @@ import { useCreateFreightRoute } from '@/hooks/useFreightRoutes'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useSystemSearch } from '@/hooks/useLocationSearch'
 
+import { formatInputNumber, parseFormattedNumber } from '../utils'
+
 import type { CreateFreightRouteInput, FreightRouteStatus } from '@repo/freight'
 
 export default function FreightManageNewPage() {
@@ -77,7 +79,13 @@ export default function FreightManageNewPage() {
 	)
 
 	const handleChange = (field: string, value: string) => {
-		setFormData((prev) => ({ ...prev, [field]: value }))
+		// For ISK fields, store raw number but display formatted
+		if (field === 'iskPerVolumeUnit' || field === 'minReward' || field === 'maxVolume') {
+			const raw = parseFormattedNumber(value)
+			setFormData((prev) => ({ ...prev, [field]: raw }))
+		} else {
+			setFormData((prev) => ({ ...prev, [field]: value }))
+		}
 		// Clear system ID when user types manually (forces re-selection)
 		if (field === 'pickupName') setPickupSystemId(null)
 		if (field === 'destinationName') setDestinationSystemId(null)
@@ -291,11 +299,9 @@ export default function FreightManageNewPage() {
 							</Label>
 							<Input
 								id="iskPerVolumeUnit"
-								type="number"
-								step="0.01"
-								value={formData.iskPerVolumeUnit}
+								value={formData.iskPerVolumeUnit ? formatInputNumber(formData.iskPerVolumeUnit) : ''}
 								onChange={(e) => handleChange('iskPerVolumeUnit', e.target.value)}
-								placeholder="1000"
+								placeholder="1,000"
 								className={errors.iskPerVolumeUnit ? 'border-destructive' : ''}
 							/>
 							{errors.iskPerVolumeUnit && (
@@ -311,9 +317,7 @@ export default function FreightManageNewPage() {
 							<Label htmlFor="minReward">Minimum Reward (ISK)</Label>
 							<Input
 								id="minReward"
-								type="number"
-								step="0.01"
-								value={formData.minReward}
+								value={formData.minReward ? formatInputNumber(formData.minReward) : ''}
 								onChange={(e) => handleChange('minReward', e.target.value)}
 								placeholder="Optional - minimum contract reward"
 								className={errors.minReward ? 'border-destructive' : ''}
@@ -329,9 +333,7 @@ export default function FreightManageNewPage() {
 							<Label htmlFor="maxVolume">Maximum Volume (m³)</Label>
 							<Input
 								id="maxVolume"
-								type="number"
-								step="0.01"
-								value={formData.maxVolume}
+								value={formData.maxVolume ? formatInputNumber(formData.maxVolume) : ''}
 								onChange={(e) => handleChange('maxVolume', e.target.value)}
 								placeholder="Optional - leave empty for unlimited"
 								className={errors.maxVolume ? 'border-destructive' : ''}
