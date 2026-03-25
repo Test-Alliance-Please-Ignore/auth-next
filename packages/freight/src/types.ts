@@ -27,6 +27,9 @@ export interface FreightRoute {
 	dropoffLocation: FreightLocation
 	iskPerVolumeUnit: string // ISK per m³, stored as string to avoid BigInt issues
 	maxVolume?: string // Optional maximum volume (m³) per contract
+	collateralFeeRate?: string // Collateral fee as decimal (e.g. "0.01" = 1%)
+	expiration?: number // Days until contract expires (e.g. 7)
+	daysToComplete?: number // Days for hauler to complete (e.g. 3)
 	notes?: string // Admin notes about route restrictions, risks, or special handling
 	status: FreightRouteStatus
 	createdAt: Date
@@ -41,6 +44,9 @@ export interface CreateFreightRouteInput {
 	dropoffLocation: FreightLocation
 	iskPerVolumeUnit: string
 	maxVolume?: string
+	collateralFeeRate?: string
+	expiration?: number
+	daysToComplete?: number
 	notes?: string
 	status?: FreightRouteStatus // Defaults to 'active' if not specified
 }
@@ -54,6 +60,9 @@ export interface UpdateFreightRouteInput {
 	dropoffLocation?: FreightLocation
 	iskPerVolumeUnit?: string
 	maxVolume?: string
+	collateralFeeRate?: string
+	expiration?: number
+	daysToComplete?: number
 	notes?: string
 	status?: FreightRouteStatus
 }

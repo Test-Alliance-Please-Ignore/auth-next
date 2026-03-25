@@ -18,6 +18,22 @@ import type { App } from '../context'
 const app = new Hono<App>()
 
 /**
+ * GET /freight/routes/active
+ * List active freight routes (available to all authenticated users)
+ */
+app.get('/routes/active', requireAuth(), async (c) => {
+	try {
+		const stub = getStub<Freight>(c.env.FREIGHT, 'default')
+		const routes = await stub.listRoutes({ status: 'active' })
+
+		return c.json(routes)
+	} catch (error) {
+		logger.error('Error listing active freight routes:', error)
+		return c.json({ error: 'Failed to list freight routes' }, 500)
+	}
+})
+
+/**
  * GET /freight/routes
  * List all freight routes with optional status filter
  */

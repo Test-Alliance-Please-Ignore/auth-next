@@ -45,6 +45,9 @@ export class RouteService {
 				destinationConstellationId: data.dropoffLocation.constellationId || null,
 				iskPerVolumeUnit: data.iskPerVolumeUnit,
 				maxVolume: data.maxVolume || null,
+				collateralFeeRate: data.collateralFeeRate || null,
+				expiration: data.expiration || null,
+				daysToComplete: data.daysToComplete || null,
 				notes: data.notes || null,
 				status: data.status || ('active' as const),
 			}
@@ -153,6 +156,18 @@ export class RouteService {
 			updateData.notes = data.notes
 		}
 
+		if (data.collateralFeeRate !== undefined) {
+			updateData.collateralFeeRate = data.collateralFeeRate
+		}
+
+		if (data.expiration !== undefined) {
+			updateData.expiration = data.expiration
+		}
+
+		if (data.daysToComplete !== undefined) {
+			updateData.daysToComplete = data.daysToComplete
+		}
+
 		if (data.status !== undefined) {
 			updateData.status = data.status
 		}
@@ -206,6 +221,9 @@ export class RouteService {
 			},
 			iskPerVolumeUnit: route.iskPerVolumeUnit,
 			maxVolume: route.maxVolume || undefined,
+			collateralFeeRate: route.collateralFeeRate || undefined,
+			expiration: route.expiration || undefined,
+			daysToComplete: route.daysToComplete || undefined,
 			notes: route.notes || undefined,
 			status: route.status,
 			createdAt: route.createdAt,

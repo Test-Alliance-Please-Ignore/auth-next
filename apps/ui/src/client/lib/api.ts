@@ -2,6 +2,8 @@
  * API client for making requests to the core worker
  */
 
+import type { FreightRoute } from '@repo/freight'
+
 const API_BASE_URL =
 	import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? '/api' : 'http://localhost:8787/api')
 
@@ -2559,6 +2561,15 @@ export class ApiClient {
 	 */
 	async resetServicePassword(slug: string): Promise<ResetServicePasswordResponse> {
 		return this.post(`/services/${slug}/reset`)
+	}
+
+	// ===== Freight API Methods =====
+
+	/**
+	 * Get active freight routes (available to all authenticated users)
+	 */
+	async getActiveFreightRoutes(): Promise<FreightRoute[]> {
+		return this.get('/freight/routes/active')
 	}
 }
 

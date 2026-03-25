@@ -15,6 +15,7 @@ import {
 	Scale,
 	Settings,
 	Shield,
+	Truck,
 	Users,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -109,6 +110,11 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 			label: 'Join Corporations',
 			href: '/join',
 			icon: Building2,
+		},
+		{
+			label: 'Freight',
+			href: '/freight',
+			icon: Truck,
 		},
 	]
 

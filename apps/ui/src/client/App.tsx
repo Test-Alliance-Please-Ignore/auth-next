@@ -82,6 +82,9 @@ const FittingCreate = lazy(() => import('./features/doctrines/routes/fitting-cre
 const FittingDetail = lazy(() => import('./features/doctrines/routes/fitting-detail'))
 const FittingEdit = lazy(() => import('./features/doctrines/routes/fitting-edit'))
 
+// Lazy load the Freight Calculator feature for code splitting
+const FreightCalculator = lazy(() => import('./features/freight/routes/index'))
+
 // Create a client
 const queryClient = new QueryClient({
 	defaultOptions: {
@@ -416,6 +419,16 @@ export default function App() {
 								element={
 									<Suspense fallback={<LoadingPage />}>
 										<FittingEdit />
+									</Suspense>
+								}
+							/>
+
+							{/* Freight Calculator route (lazy loaded) */}
+							<Route
+								path="/freight"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<FreightCalculator />
 									</Suspense>
 								}
 							/>

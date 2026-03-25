@@ -1,4 +1,4 @@
-import { index, pgEnum, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { index, integer, pgEnum, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 
 /**
  * Freight route status enum
@@ -38,6 +38,11 @@ export const freightRoutes = pgTable(
 		// Pricing and constraints
 		iskPerVolumeUnit: text('isk_per_volume_unit').notNull(), // ISK per m³, stored as text to avoid BigInt issues
 		maxVolume: text('max_volume'), // Optional maximum volume (m³) per contract
+		collateralFeeRate: text('collateral_fee_rate'), // Collateral fee as decimal (e.g. "0.01" = 1%)
+
+		// Contract defaults
+		expiration: integer('expiration'), // Days until contract expires (e.g. 7)
+		daysToComplete: integer('days_to_complete'), // Days for hauler to complete (e.g. 3)
 
 		// Metadata
 		notes: text('notes'), // Admin notes about route restrictions, risks, or special handling
