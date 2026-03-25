@@ -19,8 +19,8 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 
 import type { CreateFreightRouteInput, FreightRouteStatus } from '@repo/freight'
 
-export default function AdminFreightRoutesNewPage() {
-	usePageTitle('Admin - Create Freight Route')
+export default function FreightManageNewPage() {
+	usePageTitle('Create Freight Route')
 
 	const navigate = useNavigate()
 	const createRoute = useCreateFreightRoute()
@@ -29,6 +29,7 @@ export default function AdminFreightRoutesNewPage() {
 		pickupName: string
 		destinationName: string
 		iskPerVolumeUnit: string
+		minReward: string
 		maxVolume: string
 		collateralFeeRate: string
 		expiration: string
@@ -39,6 +40,7 @@ export default function AdminFreightRoutesNewPage() {
 		pickupName: '',
 		destinationName: '',
 		iskPerVolumeUnit: '',
+		minReward: '',
 		maxVolume: '',
 		collateralFeeRate: '',
 		expiration: '7',
@@ -87,6 +89,13 @@ export default function AdminFreightRoutesNewPage() {
 		}
 
 		if (
+			formData.minReward.trim() &&
+			(isNaN(Number(formData.minReward)) || Number(formData.minReward) <= 0)
+		) {
+			newErrors.minReward = 'Minimum reward must be a positive number'
+		}
+
+		if (
 			formData.maxVolume.trim() &&
 			(isNaN(Number(formData.maxVolume)) || Number(formData.maxVolume) <= 0)
 		) {
@@ -121,6 +130,7 @@ export default function AdminFreightRoutesNewPage() {
 				pickupName: formData.pickupName.trim(),
 				destinationName: formData.destinationName.trim(),
 				iskPerVolumeUnit: formData.iskPerVolumeUnit.trim(),
+				minReward: formData.minReward.trim() || undefined,
 				maxVolume: formData.maxVolume.trim() || undefined,
 				collateralFeeRate: formData.collateralFeeRate.trim()
 					? (Number(formData.collateralFeeRate) / 100).toString()
@@ -139,7 +149,7 @@ export default function AdminFreightRoutesNewPage() {
 
 			setMessage({ type: 'success', text: 'Freight route created successfully!' })
 			setTimeout(() => {
-				navigate('/admin/freight-routes')
+				navigate('/freight/manage')
 			}, 1000)
 		} catch (error) {
 			console.error('Error creating route:', error)
@@ -239,6 +249,24 @@ export default function AdminFreightRoutesNewPage() {
 							)}
 							<p className="text-sm text-muted-foreground">
 								The cost per cubic meter for this route
+							</p>
+						</div>
+
+						{/* Minimum Reward */}
+						<div className="space-y-2">
+							<Label htmlFor="minReward">Minimum Reward (ISK)</Label>
+							<Input
+								id="minReward"
+								type="number"
+								step="0.01"
+								value={formData.minReward}
+								onChange={(e) => handleChange('minReward', e.target.value)}
+								placeholder="Optional - minimum contract reward"
+								className={errors.minReward ? 'border-destructive' : ''}
+							/>
+							{errors.minReward && <p className="text-sm text-destructive">{errors.minReward}</p>}
+							<p className="text-sm text-muted-foreground">
+								Minimum ISK reward for a contract on this route, regardless of volume (optional)
 							</p>
 						</div>
 
@@ -355,7 +383,7 @@ export default function AdminFreightRoutesNewPage() {
 
 				{/* Form Actions */}
 				<div className="flex justify-end gap-3 mt-6">
-					<CancelButton type="button" onClick={() => navigate('/admin/freight-routes')}>
+					<CancelButton type="button" onClick={() => navigate('/freight/manage')}>
 						Cancel
 					</CancelButton>
 					<ConfirmButton type="submit" loading={createRoute.isPending} loadingText="Creating...">

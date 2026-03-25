@@ -64,5 +64,6 @@ export const PERMISSIONS = {
 	TEST_ALLIANCE: 'urn:eve:alliance:test-alliance',
 	SRP_REVIEWER: 'urn:srp:reviewer',
 	SRP_PAYER: 'urn:srp:payer',
+	FREIGHT_MANAGER: 'urn:freight:manager',
 	ADMIN: 'urn:admin',
 } as const

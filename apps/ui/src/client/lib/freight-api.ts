@@ -60,6 +60,12 @@ export class FreightApiClient extends ApiClient {
 	async deactivateRoute(routeId: string): Promise<FreightRoute> {
 		return this.post(`${FREIGHT_API_BASE}/routes/${routeId}/deactivate`)
 	}
+	/**
+	 * Delete a freight route
+	 */
+	async deleteRoute(routeId: string): Promise<void> {
+		return this.delete(`${FREIGHT_API_BASE}/routes/${routeId}`)
+	}
 }
 
 // Export singleton instance

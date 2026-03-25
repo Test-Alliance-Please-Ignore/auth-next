@@ -1,6 +1,7 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 
+import { Button } from '@/components/ui/button'
 import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmButton } from '@/components/ui/confirm-button'
@@ -13,22 +14,26 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from '@/components/ui/select'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
-import { useCreateFreightRoute } from '@/hooks/useFreightRoutes'
+import { useFreightRoute, useUpdateFreightRoute } from '@/hooks/useFreightRoutes'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
-import type { CreateFreightRouteInput, FreightRouteStatus } from '@repo/freight'
+import type { FreightRouteStatus, UpdateFreightRouteInput } from '@repo/freight'
 
-export default function AdminFreightRoutesNewPage() {
-	usePageTitle('Admin - Create Freight Route')
-
+export default function FreightManageEditPage() {
+	const { id } = useParams<{ id: string }>()
 	const navigate = useNavigate()
-	const createRoute = useCreateFreightRoute()
+	const { data: route, isLoading } = useFreightRoute(id!)
+	const updateRoute = useUpdateFreightRoute()
+
+	usePageTitle(route ? `Edit Route - ${route.pickupName || 'Unnamed'}` : 'Edit Freight Route')
 
 	const [formData, setFormData] = useState<{
 		pickupName: string
 		destinationName: string
 		iskPerVolumeUnit: string
+		minReward: string
 		maxVolume: string
 		collateralFeeRate: string
 		expiration: string
@@ -39,16 +44,37 @@ export default function AdminFreightRoutesNewPage() {
 		pickupName: '',
 		destinationName: '',
 		iskPerVolumeUnit: '',
+		minReward: '',
 		maxVolume: '',
 		collateralFeeRate: '',
-		expiration: '7',
-		daysToComplete: '3',
+		expiration: '',
+		daysToComplete: '',
 		notes: '',
 		status: 'active',
 	})
 
 	const [errors, setErrors] = useState<Record<string, string>>({})
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+	// Populate form when route loads
+	useEffect(() => {
+		if (!route) return
+
+		setFormData({
+			pickupName: route.pickupName,
+			destinationName: route.destinationName,
+			iskPerVolumeUnit: route.iskPerVolumeUnit,
+			minReward: route.minReward || '',
+			maxVolume: route.maxVolume || '',
+			collateralFeeRate: route.collateralFeeRate
+				? (parseFloat(route.collateralFeeRate) * 100).toString()
+				: '',
+			expiration: route.expiration?.toString() || '',
+			daysToComplete: route.daysToComplete?.toString() || '',
+			notes: route.notes || '',
+			status: route.status,
+		})
+	}, [route])
 
 	const handleChange = (field: string, value: string) => {
 		setFormData((prev) => ({ ...prev, [field]: value }))
@@ -87,6 +113,13 @@ export default function AdminFreightRoutesNewPage() {
 		}
 
 		if (
+			formData.minReward.trim() &&
+			(isNaN(Number(formData.minReward)) || Number(formData.minReward) <= 0)
+		) {
+			newErrors.minReward = 'Minimum reward must be a positive number'
+		}
+
+		if (
 			formData.maxVolume.trim() &&
 			(isNaN(Number(formData.maxVolume)) || Number(formData.maxVolume) <= 0)
 		) {
@@ -112,15 +145,16 @@ export default function AdminFreightRoutesNewPage() {
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault()
 
-		if (!validate()) {
+		if (!validate() || !id) {
 			return
 		}
 
 		try {
-			const input: CreateFreightRouteInput = {
+			const input: UpdateFreightRouteInput = {
 				pickupName: formData.pickupName.trim(),
 				destinationName: formData.destinationName.trim(),
 				iskPerVolumeUnit: formData.iskPerVolumeUnit.trim(),
+				minReward: formData.minReward.trim() || undefined,
 				maxVolume: formData.maxVolume.trim() || undefined,
 				collateralFeeRate: formData.collateralFeeRate.trim()
 					? (Number(formData.collateralFeeRate) / 100).toString()
@@ -135,26 +169,58 @@ export default function AdminFreightRoutesNewPage() {
 				status: formData.status,
 			}
 
-			await createRoute.mutateAsync(input)
+			await updateRoute.mutateAsync({ id, data: input })
 
-			setMessage({ type: 'success', text: 'Freight route created successfully!' })
+			setMessage({ type: 'success', text: 'Freight route updated successfully!' })
 			setTimeout(() => {
-				navigate('/admin/freight-routes')
+				navigate('/freight/manage')
 			}, 1000)
 		} catch (error) {
-			console.error('Error creating route:', error)
-			setMessage({ type: 'error', text: 'Failed to create freight route. Please try again.' })
+			console.error('Error updating route:', error)
+			setMessage({ type: 'error', text: 'Failed to update freight route. Please try again.' })
 		}
+	}
+
+	if (isLoading) {
+		return (
+			<div className="space-y-6 max-w-4xl">
+				<Skeleton className="h-12 w-64" />
+				<Card>
+					<CardHeader>
+						<Skeleton className="h-6 w-32" />
+						<Skeleton className="h-4 w-64" />
+					</CardHeader>
+					<CardContent className="space-y-6">
+						{[...Array(5)].map((_, i) => (
+							<Skeleton key={i} className="h-20 w-full" />
+						))}
+					</CardContent>
+				</Card>
+			</div>
+		)
+	}
+
+	if (!route) {
+		return (
+			<div className="space-y-6 max-w-4xl">
+				<Card>
+					<CardContent className="pt-6">
+						<p className="text-destructive">Freight route not found</p>
+						<Button className="mt-4" onClick={() => navigate('/freight/manage')}>
+							Back to Routes
+						</Button>
+					</CardContent>
+				</Card>
+			</div>
+		)
 	}
 
 	return (
 		<div className="space-y-6 max-w-4xl">
 			{/* Page Header */}
 			<div>
-				<h1 className="text-3xl font-bold gradient-text">Create Freight Route</h1>
-				<p className="text-muted-foreground mt-1">
-					Define a new official freight route with pricing
-				</p>
+				<h1 className="text-3xl font-bold gradient-text">Edit Freight Route</h1>
+				<p className="text-muted-foreground mt-1">Update route details and pricing</p>
 			</div>
 
 			<form onSubmit={handleSubmit}>
@@ -239,6 +305,24 @@ export default function AdminFreightRoutesNewPage() {
 							)}
 							<p className="text-sm text-muted-foreground">
 								The cost per cubic meter for this route
+							</p>
+						</div>
+
+						{/* Minimum Reward */}
+						<div className="space-y-2">
+							<Label htmlFor="minReward">Minimum Reward (ISK)</Label>
+							<Input
+								id="minReward"
+								type="number"
+								step="0.01"
+								value={formData.minReward}
+								onChange={(e) => handleChange('minReward', e.target.value)}
+								placeholder="Optional - minimum contract reward"
+								className={errors.minReward ? 'border-destructive' : ''}
+							/>
+							{errors.minReward && <p className="text-sm text-destructive">{errors.minReward}</p>}
+							<p className="text-sm text-muted-foreground">
+								Minimum ISK reward for a contract on this route, regardless of volume (optional)
 							</p>
 						</div>
 
@@ -333,7 +417,7 @@ export default function AdminFreightRoutesNewPage() {
 
 						{/* Status */}
 						<div className="space-y-2">
-							<Label htmlFor="status">Initial Status</Label>
+							<Label htmlFor="status">Status</Label>
 							<Select
 								value={formData.status}
 								onValueChange={(value) => handleChange('status', value as FreightRouteStatus)}
@@ -355,11 +439,11 @@ export default function AdminFreightRoutesNewPage() {
 
 				{/* Form Actions */}
 				<div className="flex justify-end gap-3 mt-6">
-					<CancelButton type="button" onClick={() => navigate('/admin/freight-routes')}>
+					<CancelButton type="button" onClick={() => navigate('/freight/manage')}>
 						Cancel
 					</CancelButton>
-					<ConfirmButton type="submit" loading={createRoute.isPending} loadingText="Creating...">
-						Create Route
+					<ConfirmButton type="submit" loading={updateRoute.isPending} loadingText="Saving...">
+						Save Changes
 					</ConfirmButton>
 				</div>
 			</form>

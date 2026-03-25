@@ -25,9 +25,6 @@ import AdminDkpAwardsPage from '@/routes/admin/dkp-awards'
 import AdminDkpDashboardPage from '@/routes/admin/dkp-dashboard'
 import AdminDkpHistoryPage from '@/routes/admin/dkp-history'
 import AdminDkpLeaderboardsPage from '@/routes/admin/dkp-leaderboards'
-import AdminFreightRoutesPage from '@/routes/admin/freight-routes'
-import AdminFreightRoutesEditPage from '@/routes/admin/freight-routes-edit'
-import AdminFreightRoutesNewPage from '@/routes/admin/freight-routes-new'
 import AdminGroupDetailPage from '@/routes/admin/group-detail'
 import AdminGroupsPage from '@/routes/admin/groups'
 import AdminLayout from '@/routes/admin/layout'
@@ -97,10 +94,6 @@ export const adminRouteElements = (
 		<Route path="dkp/awards" element={<AdminDkpAwardsPage />} />
 		<Route path="dkp/leaderboards" element={<AdminDkpLeaderboardsPage />} />
 		<Route path="dkp/history" element={<AdminDkpHistoryPage />} />
-
-		<Route path="freight-routes" element={<AdminFreightRoutesPage />} />
-		<Route path="freight-routes/new" element={<AdminFreightRoutesNewPage />} />
-		<Route path="freight-routes/:id/edit" element={<AdminFreightRoutesEditPage />} />
 
 		<Route
 			path="industry-providers"

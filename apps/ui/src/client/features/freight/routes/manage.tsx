@@ -32,8 +32,8 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 
 import type { FreightRouteStatus } from '@repo/freight'
 
-export default function AdminFreightRoutesPage() {
-	usePageTitle('Admin - Freight Routes')
+export default function FreightManagePage() {
+	usePageTitle('Manage Freight Routes')
 
 	const [statusFilter, setStatusFilter] = useState<FreightRouteStatus | 'all'>('all')
 
@@ -84,7 +84,7 @@ export default function AdminFreightRoutesPage() {
 					<p className="text-muted-foreground mt-1">Manage official freight routes and pricing</p>
 				</div>
 				<Button asChild>
-					<Link to="/admin/freight-routes/new">
+					<Link to="/freight/manage/new">
 						<Plus className="mr-2 h-4 w-4" />
 						Create Route
 					</Link>
@@ -143,7 +143,7 @@ export default function AdminFreightRoutesPage() {
 						<div className="text-center py-12">
 							<p className="text-muted-foreground mb-4">No freight routes found</p>
 							<Button asChild>
-								<Link to="/admin/freight-routes/new">
+								<Link to="/freight/manage/new">
 									<Plus className="mr-2 h-4 w-4" />
 									Create Your First Route
 								</Link>
@@ -189,7 +189,7 @@ export default function AdminFreightRoutesPage() {
 											<TableCell className="text-right">
 												<div className="flex justify-end gap-2">
 													<Button variant="outline" size="sm" asChild>
-														<Link to={`/admin/freight-routes/${route.id}/edit`}>
+														<Link to={`/freight/manage/${route.id}/edit`}>
 															<Edit className="h-4 w-4" />
 														</Link>
 													</Button>
