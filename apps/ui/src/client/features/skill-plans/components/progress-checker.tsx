@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle2, Filter, XCircle } from 'lucide-react'
+import { AlertCircle, CheckCircle2, ClipboardCopy, Filter, XCircle } from 'lucide-react'
 import { useState } from 'react'
 
 import { Badge } from '../../../components/ui/badge'
@@ -18,10 +18,51 @@ import { useAuth } from '../../../hooks/useAuth'
 import { cn } from '../../../lib/utils'
 import { useCharacterProgress } from '../hooks'
 
+import type { CharacterSkillProgress } from '../types'
+
 interface ProgressCheckerProps {
 	planId: string
 	planName?: string
 	initialCharacterId?: string
+}
+
+const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V']
+
+/**
+ * Build EVE-importable skill list for missing skills.
+ * Each missing level gets its own line: "Skill Name I", "Skill Name II", etc.
+ */
+function buildMissingSkillText(
+	skills: CharacterSkillProgress[],
+	mode: 'required' | 'recommended'
+): string {
+	const lines: string[] = []
+	for (const skill of skills) {
+		const targetLevel = mode === 'required' ? skill.requiredLevel : skill.recommendedLevel
+		const startLevel = skill.currentLevel + 1
+		for (let lvl = startLevel; lvl <= targetLevel; lvl++) {
+			lines.push(`${skill.skillName} ${ROMAN[lvl]}`)
+		}
+	}
+	return lines.join('\n')
+}
+
+async function copyMissingSkills(
+	skills: CharacterSkillProgress[],
+	mode: 'required' | 'recommended'
+) {
+	const missing = skills.filter((s) =>
+		mode === 'required' ? !s.meetsRequired : !s.meetsRecommended
+	)
+	const text = buildMissingSkillText(missing, mode)
+	if (!text) return
+	const { success, error } = await import('../../../lib/toast')
+	try {
+		await navigator.clipboard.writeText(text)
+		success(`Copied ${missing.length} missing skills to clipboard`)
+	} catch {
+		error('Failed to copy to clipboard')
+	}
 }
 
 export function ProgressChecker({ planId, planName, initialCharacterId }: ProgressCheckerProps) {
@@ -66,26 +107,55 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 							<CardTitle>Overall Progress</CardTitle>
 						</CardHeader>
 						<CardContent className="space-y-4">
-							<div className="space-y-2">
-								<div className="flex justify-between text-sm">
-									<span>Required Skills</span>
-									<span className="font-medium">
-										{progress.completedRequired || 0} / {progress.totalSkills || 0} completed
-									</span>
+								<div className="space-y-1.5">
+									<div className="flex justify-between text-sm">
+										<span>Required Skills</span>
+										<div className="flex items-center gap-2">
+											<span className="font-medium">
+												{progress.completedRequired || 0} / {progress.totalSkills || 0} completed
+											</span>
+											{(progress.completedRequired || 0) < (progress.totalSkills || 0) && (
+												<Button
+													variant="outline"
+													size="sm"
+													className="h-7 px-2 text-xs gap-1"
+													onClick={() => copyMissingSkills(progress.skills || [], 'required')}
+													title="Copy missing required skills for EVE import"
+												>
+													<ClipboardCopy className="h-3 w-3" />
+													Copy Missing to EVE
+												</Button>
+											)}
+										</div>
+									</div>
+									<Progress value={progress.percentageRequired || 0} className="h-2" />
+									<p className="text-xs text-muted-foreground">
+										{(progress.percentageRequired || 0).toFixed(1)}% of required skills met
+									</p>
 								</div>
-								<Progress value={progress.percentageRequired || 0} className="h-2" />
-								<p className="text-xs text-muted-foreground">
-									{(progress.percentageRequired || 0).toFixed(1)}% of required skills met
-								</p>
-							</div>
 
-							<div className="space-y-2">
-								<div className="flex justify-between text-sm">
-									<span>Recommended Skills</span>
-									<span className="font-medium">
-										{progress.completedRecommended || 0} / {progress.totalSkills || 0} completed
-									</span>
-								</div>
+								<div className="space-y-1.5">
+									<div className="flex justify-between text-sm">
+										<span>Recommended Skills</span>
+										<div className="flex items-center gap-2">
+											<span className="font-medium">
+												{progress.completedRecommended || 0} / {progress.totalSkills || 0} completed
+											</span>
+											{(progress.completedRecommended || 0) < (progress.totalSkills || 0) && (
+												<Button
+													variant="outline"
+													size="sm"
+													className="h-7 px-2 text-xs gap-1"
+													onClick={() =>
+														copyMissingSkills(progress.skills || [], 'recommended')
+													}
+													title="Copy missing recommended skills for EVE import"
+												>
+													<ClipboardCopy className="h-3 w-3" />
+													Copy Missing to EVE
+												</Button>
+											)}
+										</div>
 								<Progress value={progress.percentageRecommended || 0} className="h-2" />
 								<p className="text-xs text-muted-foreground">
 									{(progress.percentageRecommended || 0).toFixed(1)}% of recommended skills met
