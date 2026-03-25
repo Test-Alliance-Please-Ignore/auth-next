@@ -44,6 +44,7 @@ export class RouteService {
 				expiration: data.expiration || null,
 				daysToComplete: data.daysToComplete || null,
 				notes: data.notes || null,
+				sortOrder: data.sortOrder ?? 0,
 				status: data.status || ('active' as const),
 			}
 
@@ -95,7 +96,7 @@ export class RouteService {
 
 		const results = await this.db.query.freightRoutes.findMany({
 			where: conditions.length > 0 ? and(...conditions) : undefined,
-			orderBy: (freightRoutes, { desc }) => [desc(freightRoutes.createdAt)],
+			orderBy: (freightRoutes, { asc, desc }) => [asc(freightRoutes.sortOrder), desc(freightRoutes.createdAt)],
 		})
 
 		return results.map((route) => this.toFreightRouteResponse(route))
@@ -159,6 +160,10 @@ export class RouteService {
 
 		if (data.daysToComplete !== undefined) {
 			updateData.daysToComplete = data.daysToComplete
+		}
+
+		if (data.sortOrder !== undefined) {
+			updateData.sortOrder = data.sortOrder
 		}
 
 		if (data.status !== undefined) {
@@ -228,6 +233,7 @@ export class RouteService {
 			expiration: route.expiration || undefined,
 			daysToComplete: route.daysToComplete || undefined,
 			notes: route.notes || undefined,
+			sortOrder: route.sortOrder,
 			status: route.status,
 			createdAt: route.createdAt,
 			updatedAt: route.updatedAt,

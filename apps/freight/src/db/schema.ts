@@ -45,6 +45,7 @@ export const freightRoutes = pgTable(
 
 		// Metadata
 		notes: text('notes'), // Admin notes about route restrictions, risks, or special handling
+		sortOrder: integer('sort_order').notNull().default(0), // Display order (lower numbers appear first)
 		status: freightRouteStatusEnum('status').notNull().default('active'),
 
 		// Timestamps

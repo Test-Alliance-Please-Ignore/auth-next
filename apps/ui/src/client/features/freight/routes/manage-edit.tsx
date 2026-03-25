@@ -39,6 +39,7 @@ export default function FreightManageEditPage() {
 		expiration: string
 		daysToComplete: string
 		notes: string
+		sortOrder: string
 		status: FreightRouteStatus
 	}>({
 		pickupName: '',
@@ -50,6 +51,7 @@ export default function FreightManageEditPage() {
 		expiration: '',
 		daysToComplete: '',
 		notes: '',
+		sortOrder: '0',
 		status: 'active',
 	})
 
@@ -72,6 +74,7 @@ export default function FreightManageEditPage() {
 			expiration: route.expiration?.toString() || '',
 			daysToComplete: route.daysToComplete?.toString() || '',
 			notes: route.notes || '',
+			sortOrder: route.sortOrder?.toString() || '0',
 			status: route.status,
 		})
 	}, [route])
@@ -166,6 +169,9 @@ export default function FreightManageEditPage() {
 					? Number(formData.daysToComplete)
 					: undefined,
 				notes: formData.notes.trim() || undefined,
+				sortOrder: formData.sortOrder.trim()
+					? Number(formData.sortOrder)
+					: 0,
 				status: formData.status,
 			}
 
@@ -412,6 +418,22 @@ export default function FreightManageEditPage() {
 							/>
 							<p className="text-sm text-muted-foreground">
 								Admin notes about this route (visible to customers)
+							</p>
+						</div>
+
+						{/* Sort Order */}
+						<div className="space-y-2">
+							<Label htmlFor="sortOrder">Sort Order</Label>
+							<Input
+								id="sortOrder"
+								type="number"
+								step="1"
+								value={formData.sortOrder}
+								onChange={(e) => handleChange('sortOrder', e.target.value)}
+								placeholder="0"
+							/>
+							<p className="text-sm text-muted-foreground">
+								Lower numbers appear first in the dropdown. The first route is selected by default.
 							</p>
 						</div>
 

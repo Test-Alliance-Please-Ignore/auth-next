@@ -29,6 +29,7 @@ export interface FreightRoute {
 	expiration?: number // Days until contract expires (e.g. 7)
 	daysToComplete?: number // Days for hauler to complete (e.g. 3)
 	notes?: string // Admin notes about route restrictions, risks, or special handling
+	sortOrder: number // Display order (lower numbers appear first)
 	status: FreightRouteStatus
 	createdAt: Date
 	updatedAt: Date
@@ -47,6 +48,7 @@ export interface CreateFreightRouteInput {
 	expiration?: number
 	daysToComplete?: number
 	notes?: string
+	sortOrder?: number // Display order (lower numbers appear first, default 0)
 	status?: FreightRouteStatus // Defaults to 'active' if not specified
 }
 
@@ -64,5 +66,6 @@ export interface UpdateFreightRouteInput {
 	expiration?: number
 	daysToComplete?: number
 	notes?: string
+	sortOrder?: number
 	status?: FreightRouteStatus
 }
