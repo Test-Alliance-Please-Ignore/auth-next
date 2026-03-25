@@ -1,4 +1,4 @@
-import { Edit, Plus, Power, PowerOff } from 'lucide-react'
+import { Edit, Plus, Power, PowerOff, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
@@ -6,7 +6,6 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
-import { LocationDisplay } from '@/components/ui/location-display'
 import {
 	Select,
 	SelectContent,
@@ -26,6 +25,7 @@ import {
 import {
 	useActivateFreightRoute,
 	useDeactivateFreightRoute,
+	useDeleteFreightRoute,
 	useFreightRoutes,
 } from '@/hooks/useFreightRoutes'
 import { usePageTitle } from '@/hooks/usePageTitle'
@@ -41,6 +41,7 @@ export default function AdminFreightRoutesPage() {
 	const { data: routes, isLoading } = useFreightRoutes(filters)
 	const activateRoute = useActivateFreightRoute()
 	const deactivateRoute = useDeactivateFreightRoute()
+	const deleteRoute = useDeleteFreightRoute()
 
 	const handleActivate = async (routeId: string) => {
 		if (!confirm('Are you sure you want to activate this route?')) return
@@ -57,6 +58,15 @@ export default function AdminFreightRoutesPage() {
 			await deactivateRoute.mutateAsync(routeId)
 		} catch (error) {
 			console.error('Failed to deactivate route:', error)
+		}
+	}
+
+	const handleDelete = async (routeId: string) => {
+		if (!confirm('Are you sure you want to permanently delete this route? This cannot be undone.')) return
+		try {
+			await deleteRoute.mutateAsync(routeId)
+		} catch (error) {
+			console.error('Failed to delete route:', error)
 		}
 	}
 
@@ -156,10 +166,10 @@ export default function AdminFreightRoutesPage() {
 									{routes.map((route) => (
 										<TableRow key={route.id}>
 											<TableCell>
-												<LocationDisplay location={route.pickupLocation} />
+												{route.pickupName || 'Unnamed'}
 											</TableCell>
 											<TableCell>
-												<LocationDisplay location={route.dropoffLocation} />
+												{route.destinationName || 'Unnamed'}
 											</TableCell>
 											<TableCell className="text-right font-mono">
 												{formatISK(route.iskPerVolumeUnit)}
@@ -202,6 +212,15 @@ export default function AdminFreightRoutesPage() {
 															<Power className="h-4 w-4" />
 														</Button>
 													)}
+													<Button
+														variant="outline"
+														size="sm"
+														onClick={() => handleDelete(route.id)}
+														disabled={deleteRoute.isPending}
+														className="text-destructive hover:text-destructive"
+													>
+														<Trash2 className="h-4 w-4" />
+													</Button>
 												</div>
 											</TableCell>
 										</TableRow>

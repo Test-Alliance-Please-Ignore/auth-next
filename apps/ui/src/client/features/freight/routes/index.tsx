@@ -5,7 +5,6 @@ import { Container } from '@/components/ui/container'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
-import { LocationDisplay } from '@/components/ui/location-display'
 import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
 import {
@@ -18,7 +17,7 @@ import {
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { useActiveFreightRoutes } from '../hooks'
-import { formatNumber } from '../utils'
+import { formatIsk, formatInputNumber, formatNumber, parseFormattedNumber } from '../utils'
 
 import type { FreightRoute } from '@repo/freight'
 
@@ -41,6 +40,16 @@ export default function FreightCalculatorPage() {
 	const [selectedRouteId, setSelectedRouteId] = useState<string>('')
 	const [volume, setVolume] = useState('')
 	const [collateral, setCollateral] = useState('')
+
+	const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+		const raw = parseFormattedNumber(e.target.value)
+		if (raw === '' || /^\d+$/.test(raw)) setVolume(raw)
+	}
+
+	const handleCollateralChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+		const raw = parseFormattedNumber(e.target.value)
+		if (raw === '' || /^\d+$/.test(raw)) setCollateral(raw)
+	}
 
 	const selectedRoute = useMemo(
 		() => routes?.find((r) => r.id === selectedRouteId),
@@ -82,6 +91,22 @@ export default function FreightCalculatorPage() {
 		)
 	}
 
+	if (!routes || routes.length === 0) {
+		return (
+			<Container size="narrow">
+				<PageHeader
+					title="Freight Calculator"
+					description="Calculate your shipping cost and get the contract details to enter in-game"
+				/>
+				<Section>
+					<div className="text-center text-muted-foreground py-8">
+						No freight routes are currently available.
+					</div>
+				</Section>
+			</Container>
+		)
+	}
+
 	return (
 		<Container size="narrow">
 			<PageHeader
@@ -99,23 +124,22 @@ export default function FreightCalculatorPage() {
 						{/* Route Selection */}
 						<div className="space-y-2">
 							<Label htmlFor="route">Route</Label>
-							{!routes || routes.length === 0 ? (
+							<Select value={selectedRouteId} onValueChange={setSelectedRouteId}>
+								<SelectTrigger id="route">
+									<SelectValue placeholder="Select a route..." />
+								</SelectTrigger>
+								<SelectContent>
+									{routes.map((route) => (
+										<SelectItem key={route.id} value={route.id}>
+											<RouteLabel route={route} />
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+							{selectedRoute?.notes && (
 								<p className="text-sm text-muted-foreground">
-									No freight routes are currently available.
+									{selectedRoute.notes}
 								</p>
-							) : (
-								<Select value={selectedRouteId} onValueChange={setSelectedRouteId}>
-									<SelectTrigger id="route">
-										<SelectValue placeholder="Select a route..." />
-									</SelectTrigger>
-									<SelectContent>
-										{routes.map((route) => (
-											<SelectItem key={route.id} value={route.id}>
-												<RouteLabel route={route} />
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
 							)}
 						</div>
 
@@ -124,12 +148,11 @@ export default function FreightCalculatorPage() {
 							<Label htmlFor="volume">Volume (m³)</Label>
 							<Input
 								id="volume"
-								type="number"
-								min="0"
-								step="1"
+								type="text"
+								inputMode="numeric"
 								placeholder="Enter cargo volume..."
-								value={volume}
-								onChange={(e) => setVolume(e.target.value)}
+								value={volume ? formatInputNumber(volume) : ''}
+								onChange={handleVolumeChange}
 							/>
 							{volumeExceedsMax && (
 								<p className="text-sm text-destructive">
@@ -143,12 +166,11 @@ export default function FreightCalculatorPage() {
 							<Label htmlFor="collateral">Collateral (ISK)</Label>
 							<Input
 								id="collateral"
-								type="number"
-								min="0"
-								step="1"
+								type="text"
+								inputMode="numeric"
 								placeholder="Enter total cargo value..."
-								value={collateral}
-								onChange={(e) => setCollateral(e.target.value)}
+								value={collateral ? formatInputNumber(collateral) : ''}
+								onChange={handleCollateralChange}
 							/>
 							{selectedRoute?.collateralFeeRate && (
 								<p className="text-sm text-muted-foreground">
@@ -170,12 +192,12 @@ export default function FreightCalculatorPage() {
 							</CardHeader>
 							<CardContent>
 								<p className="text-3xl font-bold tabular-nums">
-									{formatNumber(reward.total.toFixed(2))} ISK
+									{formatIsk(reward.total)} ISK
 								</p>
 								{selectedRoute.collateralFeeRate && reward.collateralFee > 0 && (
 									<p className="text-sm text-muted-foreground mt-1">
-										{formatNumber(reward.shippingCost.toFixed(2))} shipping +{' '}
-										{formatNumber(reward.collateralFee.toFixed(2))} collateral fee
+										{formatIsk(reward.shippingCost)} shipping +{' '}
+										{formatIsk(reward.collateralFee)} collateral fee
 									</p>
 								)}
 							</CardContent>
@@ -195,17 +217,17 @@ export default function FreightCalculatorPage() {
 									<ContractRow label="Availability" value="My Alliance" />
 									<ContractRow
 										label="Ship To"
-										value={<LocationDisplay location={selectedRoute.dropoffLocation} />}
+										value={selectedRoute.destinationName}
 									/>
 									<ContractRow
 										label="Reward"
-										value={`${formatNumber(reward.total.toFixed(2))} ISK`}
+										value={`${formatIsk(reward.total)} ISK`}
 									/>
 									<ContractRow
 										label="Collateral"
 										value={
 											collateralNum > 0
-												? `${formatNumber(collateralNum.toFixed(2))} ISK`
+												? `${formatIsk(collateralNum)} ISK`
 												: 'None'
 										}
 									/>
@@ -245,9 +267,11 @@ export default function FreightCalculatorPage() {
 function RouteLabel({ route }: { route: FreightRoute }) {
 	return (
 		<span className="flex items-center gap-1.5">
-			<LocationDisplay location={route.pickupLocation} />
+			{route.pickupName}
 			<span className="text-muted-foreground">→</span>
-			<LocationDisplay location={route.dropoffLocation} />
+			{route.destinationName}
+			<span className="text-muted-foreground">—</span>
+			<span>{formatNumber(route.iskPerVolumeUnit)} ISK/m³</span>
 		</span>
 	)
 }

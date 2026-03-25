@@ -35,14 +35,8 @@ export class RouteService {
 
 			const insertData = {
 				id: routeId,
-				pickupSystemId: data.pickupLocation.solarSystemId,
-				pickupRegionId: data.pickupLocation.regionId,
-				pickupStructureId: data.pickupLocation.structureId,
-				pickupConstellationId: data.pickupLocation.constellationId || null,
-				destinationSystemId: data.dropoffLocation.solarSystemId,
-				destinationRegionId: data.dropoffLocation.regionId,
-				destinationStructureId: data.dropoffLocation.structureId,
-				destinationConstellationId: data.dropoffLocation.constellationId || null,
+				pickupName: data.pickupName,
+				destinationName: data.destinationName,
 				iskPerVolumeUnit: data.iskPerVolumeUnit,
 				maxVolume: data.maxVolume || null,
 				collateralFeeRate: data.collateralFeeRate || null,
@@ -130,18 +124,12 @@ export class RouteService {
 			updatedAt: new Date(),
 		}
 
-		if (data.pickupLocation) {
-			updateData.pickupSystemId = data.pickupLocation.solarSystemId
-			updateData.pickupRegionId = data.pickupLocation.regionId
-			updateData.pickupStructureId = data.pickupLocation.structureId
-			updateData.pickupConstellationId = data.pickupLocation.constellationId || null
+		if (data.pickupName !== undefined) {
+			updateData.pickupName = data.pickupName
 		}
 
-		if (data.dropoffLocation) {
-			updateData.destinationSystemId = data.dropoffLocation.solarSystemId
-			updateData.destinationRegionId = data.dropoffLocation.regionId
-			updateData.destinationStructureId = data.dropoffLocation.structureId
-			updateData.destinationConstellationId = data.dropoffLocation.constellationId || null
+		if (data.destinationName !== undefined) {
+			updateData.destinationName = data.destinationName
 		}
 
 		if (data.iskPerVolumeUnit !== undefined) {
@@ -202,23 +190,32 @@ export class RouteService {
 	}
 
 	/**
+	 * Delete a freight route
+	 */
+	async deleteRoute(_adminId: string, routeId: string): Promise<void> {
+		console.log('[RouteService.deleteRoute] Deleting route', { routeId })
+
+		const existingRoute = await this.db.query.freightRoutes.findFirst({
+			where: eq(freightRoutes.id, routeId),
+		})
+
+		if (!existingRoute) {
+			throw new Error('Route not found')
+		}
+
+		await this.db.delete(freightRoutes).where(eq(freightRoutes.id, routeId))
+
+		console.log('[RouteService.deleteRoute] Route deleted successfully', { routeId })
+	}
+
+	/**
 	 * Convert database record to FreightRoute response type
 	 */
 	private toFreightRouteResponse(route: typeof freightRoutes.$inferSelect): FreightRoute {
 		return {
 			id: route.id,
-			pickupLocation: {
-				solarSystemId: route.pickupSystemId as any,
-				regionId: route.pickupRegionId as any,
-				structureId: route.pickupStructureId as any,
-				constellationId: route.pickupConstellationId as any,
-			},
-			dropoffLocation: {
-				solarSystemId: route.destinationSystemId as any,
-				regionId: route.destinationRegionId as any,
-				structureId: route.destinationStructureId as any,
-				constellationId: route.destinationConstellationId as any,
-			},
+			pickupName: route.pickupName,
+			destinationName: route.destinationName,
 			iskPerVolumeUnit: route.iskPerVolumeUnit,
 			maxVolume: route.maxVolume || undefined,
 			collateralFeeRate: route.collateralFeeRate || undefined,

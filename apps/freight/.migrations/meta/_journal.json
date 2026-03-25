@@ -15,6 +15,13 @@
       "when": 1774436231386,
       "tag": "0001_smooth_aqueduct",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1774443669599,
+      "tag": "0002_nifty_masque",
+      "breakpoints": true
     }
   ]
 }

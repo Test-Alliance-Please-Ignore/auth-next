@@ -195,4 +195,32 @@ app.post('/routes/:routeId/deactivate', requireAuth(), requireAdmin(), async (c)
 	}
 })
 
+/**
+ * DELETE /freight/routes/:routeId
+ * Delete a freight route
+ */
+app.delete('/routes/:routeId', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	const routeId = c.req.param('routeId')
+
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		const stub = getStub<Freight>(c.env.FREIGHT, 'default')
+		await stub.deleteRoute(user.id, routeId)
+
+		return c.json({ success: true })
+	} catch (error) {
+		logger.error('Error deleting freight route:', error)
+
+		if (error instanceof Error && error.message === 'Route not found') {
+			return c.json({ error: 'Route not found' }, 404)
+		}
+
+		return c.json({ error: 'Failed to delete freight route' }, 500)
+	}
+})
+
 export default app

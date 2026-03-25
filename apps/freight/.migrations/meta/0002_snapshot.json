@@ -1,0 +1,229 @@
+{
+  "id": "692dbe53-d210-498d-9e9e-74f354257649",
+  "prevId": "4de68276-26d6-4be3-af62-a6f91928264c",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.freight_routes": {
+      "name": "freight_routes",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "pickup_name": {
+          "name": "pickup_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "destination_name": {
+          "name": "destination_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "pickup_system_id": {
+          "name": "pickup_system_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pickup_region_id": {
+          "name": "pickup_region_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pickup_structure_id": {
+          "name": "pickup_structure_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pickup_constellation_id": {
+          "name": "pickup_constellation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "destination_system_id": {
+          "name": "destination_system_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "destination_region_id": {
+          "name": "destination_region_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "destination_structure_id": {
+          "name": "destination_structure_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "destination_constellation_id": {
+          "name": "destination_constellation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "isk_per_volume_unit": {
+          "name": "isk_per_volume_unit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "max_volume": {
+          "name": "max_volume",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "collateral_fee_rate": {
+          "name": "collateral_fee_rate",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expiration": {
+          "name": "expiration",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "days_to_complete": {
+          "name": "days_to_complete",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "freight_route_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "freight_routes_status_idx": {
+          "name": "freight_routes_status_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "freight_routes_pickup_system_id_idx": {
+          "name": "freight_routes_pickup_system_id_idx",
+          "columns": [
+            {
+              "expression": "pickup_system_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "freight_routes_destination_system_id_idx": {
+          "name": "freight_routes_destination_system_id_idx",
+          "columns": [
+            {
+              "expression": "destination_system_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "freight_routes_created_at_idx": {
+          "name": "freight_routes_created_at_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {
+    "public.freight_route_status": {
+      "name": "freight_route_status",
+      "schema": "public",
+      "values": [
+        "active",
+        "inactive"
+      ]
+    }
+  },
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

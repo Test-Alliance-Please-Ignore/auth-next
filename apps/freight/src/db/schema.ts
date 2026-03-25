@@ -12,27 +12,25 @@ export const freightRouteStatusEnum = pgEnum('freight_route_status', ['active', 
  * Freight Routes table
  *
  * Admin-defined official freight routes with pickup/destination locations and pricing.
- *
- * Note: Location names are fetched from ESI dynamically using the stored IDs.
- * - Systems: /universe/systems/{system_id}/
- * - Structures: /universe/structures/{structure_id}/
- * - Regions: /universe/regions/{region_id}/
+ * Location names are stored as free text set by admins.
  */
 export const freightRoutes = pgTable(
 	'freight_routes',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
 
-		// Pickup location
-		pickupSystemId: text('pickup_system_id').notNull(),
-		pickupRegionId: text('pickup_region_id').notNull(),
-		pickupStructureId: text('pickup_structure_id').notNull(),
-		pickupConstellationId: text('pickup_constellation_id'),
+		// Location names (admin-set free text)
+		pickupName: text('pickup_name').notNull().default(''),
+		destinationName: text('destination_name').notNull().default(''),
 
-		// Destination location
-		destinationSystemId: text('destination_system_id').notNull(),
-		destinationRegionId: text('destination_region_id').notNull(),
-		destinationStructureId: text('destination_structure_id').notNull(),
+		// Legacy location IDs (nullable, kept for backward compatibility)
+		pickupSystemId: text('pickup_system_id'),
+		pickupRegionId: text('pickup_region_id'),
+		pickupStructureId: text('pickup_structure_id'),
+		pickupConstellationId: text('pickup_constellation_id'),
+		destinationSystemId: text('destination_system_id'),
+		destinationRegionId: text('destination_region_id'),
+		destinationStructureId: text('destination_structure_id'),
 		destinationConstellationId: text('destination_constellation_id'),
 
 		// Pricing and constraints
