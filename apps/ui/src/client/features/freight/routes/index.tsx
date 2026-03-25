@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
@@ -49,6 +49,13 @@ export default function FreightCalculatorPage() {
 	const [selectedRouteId, setSelectedRouteId] = useState<string>('')
 	const [volume, setVolume] = useState('')
 	const [collateral, setCollateral] = useState('')
+
+	// Auto-select the first route (highest priority by sortOrder)
+	useEffect(() => {
+		if (routes && routes.length > 0 && !selectedRouteId) {
+			setSelectedRouteId(routes[0].id)
+		}
+	}, [routes, selectedRouteId])
 
 	const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 		const raw = parseFormattedNumber(e.target.value)

@@ -35,6 +35,7 @@ export default function FreightManageNewPage() {
 		expiration: string
 		daysToComplete: string
 		notes: string
+		sortOrder: string
 		status: FreightRouteStatus
 	}>({
 		pickupName: '',
@@ -46,6 +47,7 @@ export default function FreightManageNewPage() {
 		expiration: '7',
 		daysToComplete: '3',
 		notes: '',
+		sortOrder: '0',
 		status: 'active',
 	})
 
@@ -142,6 +144,9 @@ export default function FreightManageNewPage() {
 					? Number(formData.daysToComplete)
 					: undefined,
 				notes: formData.notes.trim() || undefined,
+				sortOrder: formData.sortOrder.trim()
+					? Number(formData.sortOrder)
+					: 0,
 				status: formData.status,
 			}
 
@@ -356,6 +361,22 @@ export default function FreightManageNewPage() {
 							/>
 							<p className="text-sm text-muted-foreground">
 								Admin notes about this route (visible to customers)
+							</p>
+						</div>
+
+						{/* Sort Order */}
+						<div className="space-y-2">
+							<Label htmlFor="sortOrder">Sort Order</Label>
+							<Input
+								id="sortOrder"
+								type="number"
+								step="1"
+								value={formData.sortOrder}
+								onChange={(e) => handleChange('sortOrder', e.target.value)}
+								placeholder="0"
+							/>
+							<p className="text-sm text-muted-foreground">
+								Lower numbers appear first in the dropdown. The first route is selected by default.
 							</p>
 						</div>
 
