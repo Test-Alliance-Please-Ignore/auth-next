@@ -17,6 +17,7 @@ import { useActiveFreightRoutes } from '../hooks'
 import { formatIsk, formatInputNumber, formatNumber, parseFormattedNumber } from '../utils'
 
 import type { FreightRoute } from '@repo/freight'
+import { Check, Copy } from 'lucide-react'
 
 function calculateReward(route: FreightRoute, volume: number, collateral: number) {
 	const rate = parseFloat(route.iskPerVolumeUnit)
@@ -268,6 +269,7 @@ export default function FreightCalculatorPage() {
 									<ContractRow
 										label="Reward"
 										value={`${formatIsk(reward.total)} ISK`}
+										copyValue={formatIsk(reward.total)}
 									/>
 									<ContractRow
 										label="Collateral"
@@ -276,6 +278,7 @@ export default function FreightCalculatorPage() {
 												? `${formatIsk(collateralNum)} ISK`
 												: 'None'
 										}
+										copyValue={collateralNum > 0 ? formatIsk(collateralNum) : undefined}
 									/>
 									<ContractRow
 										label="Expiration"
@@ -310,11 +313,33 @@ export default function FreightCalculatorPage() {
 	)
 }
 
-function ContractRow({ label, value }: { label: string; value: React.ReactNode }) {
+function ContractRow({ label, value, copyValue }: { label: string; value: React.ReactNode; copyValue?: string }) {
+	const [copied, setCopied] = useState(false)
+
+	const handleCopy = async () => {
+		if (!copyValue) return
+		await navigator.clipboard.writeText(copyValue)
+		setCopied(true)
+		setTimeout(() => setCopied(false), 2000)
+	}
+
 	return (
 		<div className="flex items-center justify-between border-b border-border/50 pb-2 last:border-0 last:pb-0">
 			<dt className="text-sm text-muted-foreground">{label}</dt>
-			<dd className="text-sm font-medium">{value}</dd>
+			<dd className="text-sm font-medium flex items-center gap-1">
+				{value}
+				{copyValue && (
+					<Button
+						variant="ghost"
+						size="icon"
+						className="h-6 w-6 text-muted-foreground hover:text-foreground"
+						onClick={handleCopy}
+						title={copied ? 'Copied!' : `Copy ${label}`}
+					>
+						{copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+					</Button>
+				)}
+			</dd>
 		</div>
 	)
 }
