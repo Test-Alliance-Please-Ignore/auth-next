@@ -156,11 +156,12 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 												</Button>
 											)}
 										</div>
-								<Progress value={progress.percentageRecommended || 0} className="h-2" />
-								<p className="text-xs text-muted-foreground">
-									{(progress.percentageRecommended || 0).toFixed(1)}% of recommended skills met
-								</p>
-							</div>
+									</div>
+									<Progress value={progress.percentageRecommended || 0} className="h-2" />
+									<p className="text-xs text-muted-foreground">
+										{(progress.percentageRecommended || 0).toFixed(1)}% of recommended skills met
+									</p>
+								</div>
 
 							{/* Status badge */}
 							<div className="flex items-center gap-2 pt-2">
