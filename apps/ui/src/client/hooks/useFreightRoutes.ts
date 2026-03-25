@@ -100,3 +100,17 @@ export function useDeactivateFreightRoute() {
 		},
 	})
 }
+
+/**
+ * Delete a freight route
+ */
+export function useDeleteFreightRoute() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: (id: string) => freightApi.deleteRoute(id),
+		onSuccess: () => {
+			void queryClient.invalidateQueries({ queryKey: freightRouteKeys.lists() })
+		},
+	})
+}

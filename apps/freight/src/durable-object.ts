@@ -68,6 +68,10 @@ export class FreightDO extends DurableObject<Env, {}> implements Freight {
 		return this.routeService.deactivateRoute(adminId, routeId)
 	}
 
+	async deleteRoute(adminId: string, routeId: string): Promise<void> {
+		return this.routeService.deleteRoute(adminId, routeId)
+	}
+
 	/**
 	 * Fetch handler for HTTP requests to the Durable Object
 	 */
