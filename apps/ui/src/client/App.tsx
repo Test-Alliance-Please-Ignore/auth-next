@@ -84,6 +84,9 @@ const FittingEdit = lazy(() => import('./features/doctrines/routes/fitting-edit'
 
 // Lazy load the Freight Calculator feature for code splitting
 const FreightCalculator = lazy(() => import('./features/freight/routes/index'))
+const FreightManage = lazy(() => import('./features/freight/routes/manage'))
+const FreightManageNew = lazy(() => import('./features/freight/routes/manage-new'))
+const FreightManageEdit = lazy(() => import('./features/freight/routes/manage-edit'))
 
 // Create a client
 const queryClient = new QueryClient({
@@ -429,6 +432,30 @@ export default function App() {
 								element={
 									<Suspense fallback={<LoadingPage />}>
 										<FreightCalculator />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/freight/manage"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<FreightManage />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/freight/manage/new"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<FreightManageNew />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/freight/manage/:id/edit"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<FreightManageEdit />
 									</Suspense>
 								}
 							/>

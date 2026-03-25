@@ -1,5 +1,7 @@
 import { useState, useMemo } from 'react'
+import { Link } from 'react-router-dom'
 
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { Input } from '@/components/ui/input'
@@ -15,6 +17,7 @@ import {
 	SelectValue,
 } from '@/components/ui/select'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { PERMISSIONS, useUserPermissions } from '@/hooks/useUserPermissions'
 
 import { useActiveFreightRoutes } from '../hooks'
 import { formatIsk, formatInputNumber, formatNumber, parseFormattedNumber } from '../utils'
@@ -36,6 +39,8 @@ function calculateReward(route: FreightRoute, volume: number, collateral: number
 export default function FreightCalculatorPage() {
 	usePageTitle('Freight Calculator')
 	const { data: routes, isLoading, error } = useActiveFreightRoutes()
+	const { hasPermission } = useUserPermissions()
+	const canManage = hasPermission(PERMISSIONS.FREIGHT_MANAGER)
 
 	const [selectedRouteId, setSelectedRouteId] = useState<string>('')
 	const [volume, setVolume] = useState('')
@@ -112,6 +117,13 @@ export default function FreightCalculatorPage() {
 			<PageHeader
 				title="Freight Calculator"
 				description="Calculate your shipping cost and get the contract details to enter in-game"
+				action={
+					canManage ? (
+						<Button asChild variant="outline">
+							<Link to="/freight/manage">Manage Routes</Link>
+						</Button>
+					) : undefined
+				}
 			/>
 
 			<div className="space-y-6">

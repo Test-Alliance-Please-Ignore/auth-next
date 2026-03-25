@@ -11,7 +11,6 @@ import {
 	ScrollText,
 	ShieldBan,
 	Target,
-	Truck,
 	UserCircle,
 	Users,
 } from 'lucide-react'
@@ -72,11 +71,6 @@ export function AdminNav() {
 			label: 'DKP',
 			href: '/admin/dkp',
 			icon: Coins,
-		},
-		{
-			label: 'Freight Routes',
-			href: '/admin/freight-routes',
-			icon: Truck,
 		},
 		{
 			label: 'Industry Providers',

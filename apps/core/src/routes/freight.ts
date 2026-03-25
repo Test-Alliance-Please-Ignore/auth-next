@@ -8,12 +8,37 @@
 import { Hono } from 'hono'
 
 import { getStub } from '@repo/do-utils'
-import { logger } from '@repo/hono-helpers'
+import { TimeCache, logger } from '@repo/hono-helpers'
 
-import { requireAdmin, requireAuth } from '../middleware/session'
+import { getCachedUserPermissions } from '../lib/groups-cache'
+import { requireAuth } from '../middleware/session'
 
 import type { Freight } from '@repo/freight'
 import type { App } from '../context'
+
+const FREIGHT_MANAGER_URN = 'urn:freight:manager'
+
+/**
+ * Permission check cache - 15 second TTL
+ */
+const permissionCache = new TimeCache<boolean>(15000)
+
+/**
+ * Check if a user has the freight manager permission
+ */
+async function isFreightManager(
+	env: { GROUPS: DurableObjectNamespace },
+	userId: string,
+	isAdmin: boolean
+): Promise<boolean> {
+	if (isAdmin) return true
+
+	const cacheKey = `${userId}:${FREIGHT_MANAGER_URN}`
+	return permissionCache.getOrSet(cacheKey, async () => {
+		const permissions = await getCachedUserPermissions(env, userId)
+		return permissions.some((p) => p.urn === FREIGHT_MANAGER_URN)
+	})
+}
 
 const app = new Hono<App>()
 
@@ -35,12 +60,12 @@ app.get('/routes/active', requireAuth(), async (c) => {
 
 /**
  * GET /freight/routes
- * List all freight routes with optional status filter
+ * List all freight routes with optional status filter (requires freight:manager permission)
  */
-app.get('/routes', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')
-	if (!user) {
-		return c.json({ error: 'Unauthorized' }, 401)
+app.get('/routes', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	if (!(await isFreightManager(c.env, user.id, user.is_admin))) {
+		return c.json({ error: 'Forbidden' }, 403)
 	}
 
 	try {
@@ -60,12 +85,12 @@ app.get('/routes', requireAuth(), requireAdmin(), async (c) => {
 
 /**
  * POST /freight/routes
- * Create a new freight route
+ * Create a new freight route (requires freight:manager permission)
  */
-app.post('/routes', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')
-	if (!user) {
-		return c.json({ error: 'Unauthorized' }, 401)
+app.post('/routes', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	if (!(await isFreightManager(c.env, user.id, user.is_admin))) {
+		return c.json({ error: 'Forbidden' }, 403)
 	}
 
 	try {
@@ -83,14 +108,14 @@ app.post('/routes', requireAuth(), requireAdmin(), async (c) => {
 
 /**
  * GET /freight/routes/:routeId
- * Get a specific freight route
+ * Get a specific freight route (requires freight:manager permission)
  */
-app.get('/routes/:routeId', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')
+app.get('/routes/:routeId', requireAuth(), async (c) => {
+	const user = c.get('user')!
 	const routeId = c.req.param('routeId')
 
-	if (!user) {
-		return c.json({ error: 'Unauthorized' }, 401)
+	if (!(await isFreightManager(c.env, user.id, user.is_admin))) {
+		return c.json({ error: 'Forbidden' }, 403)
 	}
 
 	try {
@@ -110,14 +135,14 @@ app.get('/routes/:routeId', requireAuth(), requireAdmin(), async (c) => {
 
 /**
  * PUT /freight/routes/:routeId
- * Update an existing freight route
+ * Update an existing freight route (requires freight:manager permission)
  */
-app.put('/routes/:routeId', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')
+app.put('/routes/:routeId', requireAuth(), async (c) => {
+	const user = c.get('user')!
 	const routeId = c.req.param('routeId')
 
-	if (!user) {
-		return c.json({ error: 'Unauthorized' }, 401)
+	if (!(await isFreightManager(c.env, user.id, user.is_admin))) {
+		return c.json({ error: 'Forbidden' }, 403)
 	}
 
 	try {
@@ -130,7 +155,6 @@ app.put('/routes/:routeId', requireAuth(), requireAdmin(), async (c) => {
 	} catch (error) {
 		logger.error('Error updating freight route:', error)
 
-		// Check for specific error messages
 		if (error instanceof Error && error.message === 'Route not found') {
 			return c.json({ error: 'Route not found' }, 404)
 		}
@@ -141,14 +165,14 @@ app.put('/routes/:routeId', requireAuth(), requireAdmin(), async (c) => {
 
 /**
  * POST /freight/routes/:routeId/activate
- * Activate a freight route (set status to active)
+ * Activate a freight route (requires freight:manager permission)
  */
-app.post('/routes/:routeId/activate', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')
+app.post('/routes/:routeId/activate', requireAuth(), async (c) => {
+	const user = c.get('user')!
 	const routeId = c.req.param('routeId')
 
-	if (!user) {
-		return c.json({ error: 'Unauthorized' }, 401)
+	if (!(await isFreightManager(c.env, user.id, user.is_admin))) {
+		return c.json({ error: 'Forbidden' }, 403)
 	}
 
 	try {
@@ -169,14 +193,14 @@ app.post('/routes/:routeId/activate', requireAuth(), requireAdmin(), async (c) =
 
 /**
  * POST /freight/routes/:routeId/deactivate
- * Deactivate a freight route (set status to inactive)
+ * Deactivate a freight route (requires freight:manager permission)
  */
-app.post('/routes/:routeId/deactivate', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')
+app.post('/routes/:routeId/deactivate', requireAuth(), async (c) => {
+	const user = c.get('user')!
 	const routeId = c.req.param('routeId')
 
-	if (!user) {
-		return c.json({ error: 'Unauthorized' }, 401)
+	if (!(await isFreightManager(c.env, user.id, user.is_admin))) {
+		return c.json({ error: 'Forbidden' }, 403)
 	}
 
 	try {
@@ -197,14 +221,14 @@ app.post('/routes/:routeId/deactivate', requireAuth(), requireAdmin(), async (c)
 
 /**
  * DELETE /freight/routes/:routeId
- * Delete a freight route
+ * Delete a freight route (requires freight:manager permission)
  */
-app.delete('/routes/:routeId', requireAuth(), requireAdmin(), async (c) => {
-	const user = c.get('user')
+app.delete('/routes/:routeId', requireAuth(), async (c) => {
+	const user = c.get('user')!
 	const routeId = c.req.param('routeId')
 
-	if (!user) {
-		return c.json({ error: 'Unauthorized' }, 401)
+	if (!(await isFreightManager(c.env, user.id, user.is_admin))) {
+		return c.json({ error: 'Forbidden' }, 403)
 	}
 
 	try {
