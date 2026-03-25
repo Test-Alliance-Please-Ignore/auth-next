@@ -28,6 +28,7 @@ import {
 	useDeleteFreightRoute,
 	useFreightRoutes,
 } from '@/hooks/useFreightRoutes'
+import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import type { FreightRouteStatus } from '@repo/freight'
@@ -42,32 +43,57 @@ export default function FreightManagePage() {
 	const activateRoute = useActivateFreightRoute()
 	const deactivateRoute = useDeactivateFreightRoute()
 	const deleteRoute = useDeleteFreightRoute()
+	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
 
-	const handleActivate = async (routeId: string) => {
-		if (!confirm('Are you sure you want to activate this route?')) return
-		try {
-			await activateRoute.mutateAsync(routeId)
-		} catch (error) {
-			console.error('Failed to activate route:', error)
-		}
+	const handleActivate = (routeId: string) => {
+		requestConfirmation({
+			title: 'Activate Route',
+			description: 'Are you sure you want to activate this route?',
+			confirmLabel: 'Activate',
+			intent: 'confirm',
+			onConfirm: async () => {
+				try {
+					await activateRoute.mutateAsync(routeId)
+				} catch (error) {
+					console.error('Failed to activate route:', error)
+					throw error
+				}
+			},
+		})
 	}
 
-	const handleDeactivate = async (routeId: string) => {
-		if (!confirm('Are you sure you want to deactivate this route?')) return
-		try {
-			await deactivateRoute.mutateAsync(routeId)
-		} catch (error) {
-			console.error('Failed to deactivate route:', error)
-		}
+	const handleDeactivate = (routeId: string) => {
+		requestConfirmation({
+			title: 'Deactivate Route',
+			description: 'Are you sure you want to deactivate this route?',
+			confirmLabel: 'Deactivate',
+			intent: 'secondary',
+			onConfirm: async () => {
+				try {
+					await deactivateRoute.mutateAsync(routeId)
+				} catch (error) {
+					console.error('Failed to deactivate route:', error)
+					throw error
+				}
+			},
+		})
 	}
 
-	const handleDelete = async (routeId: string) => {
-		if (!confirm('Are you sure you want to permanently delete this route? This cannot be undone.')) return
-		try {
-			await deleteRoute.mutateAsync(routeId)
-		} catch (error) {
-			console.error('Failed to delete route:', error)
-		}
+	const handleDelete = (routeId: string) => {
+		requestConfirmation({
+			title: 'Delete Route',
+			description: 'Are you sure you want to permanently delete this route? This cannot be undone.',
+			confirmLabel: 'Delete Route',
+			intent: 'destructive',
+			onConfirm: async () => {
+				try {
+					await deleteRoute.mutateAsync(routeId)
+				} catch (error) {
+					console.error('Failed to delete route:', error)
+					throw error
+				}
+			},
+		})
 	}
 
 	const formatISK = (amount: string) => {
@@ -231,6 +257,8 @@ export default function FreightManagePage() {
 					)}
 				</CardContent>
 			</Card>
+
+			{confirmationDialog}
 		</div>
 	)
 }
