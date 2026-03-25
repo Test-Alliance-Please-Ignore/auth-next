@@ -37,6 +37,8 @@ export class RouteService {
 				id: routeId,
 				pickupName: data.pickupName,
 				destinationName: data.destinationName,
+				pickupSystemId: data.pickupSystemId || null,
+				destinationSystemId: data.destinationSystemId || null,
 				iskPerVolumeUnit: data.iskPerVolumeUnit,
 				minReward: data.minReward || null,
 				maxVolume: data.maxVolume || null,
@@ -134,6 +136,14 @@ export class RouteService {
 			updateData.destinationName = data.destinationName
 		}
 
+		if (data.pickupSystemId !== undefined) {
+			updateData.pickupSystemId = data.pickupSystemId || null
+		}
+
+		if (data.destinationSystemId !== undefined) {
+			updateData.destinationSystemId = data.destinationSystemId || null
+		}
+
 		if (data.iskPerVolumeUnit !== undefined) {
 			updateData.iskPerVolumeUnit = data.iskPerVolumeUnit
 		}
@@ -226,6 +236,8 @@ export class RouteService {
 			id: route.id,
 			pickupName: route.pickupName,
 			destinationName: route.destinationName,
+			pickupSystemId: route.pickupSystemId || undefined,
+			destinationSystemId: route.destinationSystemId || undefined,
 			iskPerVolumeUnit: route.iskPerVolumeUnit,
 			minReward: route.minReward || undefined,
 			maxVolume: route.maxVolume || undefined,

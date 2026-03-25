@@ -22,6 +22,8 @@ export interface FreightRoute {
 	id: string
 	pickupName: string
 	destinationName: string
+	pickupSystemId?: string
+	destinationSystemId?: string
 	iskPerVolumeUnit: string // ISK per m³, stored as string to avoid BigInt issues
 	minReward?: string // Minimum contract reward (ISK), stored as string
 	maxVolume?: string // Optional maximum volume (m³) per contract
@@ -41,6 +43,8 @@ export interface FreightRoute {
 export interface CreateFreightRouteInput {
 	pickupName: string
 	destinationName: string
+	pickupSystemId?: string
+	destinationSystemId?: string
 	iskPerVolumeUnit: string
 	minReward?: string
 	maxVolume?: string
@@ -59,6 +63,8 @@ export interface CreateFreightRouteInput {
 export interface UpdateFreightRouteInput {
 	pickupName?: string
 	destinationName?: string
+	pickupSystemId?: string
+	destinationSystemId?: string
 	iskPerVolumeUnit?: string
 	minReward?: string
 	maxVolume?: string
