@@ -7,13 +7,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ConfirmButton } from '@/components/ui/confirm-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
 import { SearchSelect } from '@/components/ui/search-select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
@@ -498,18 +491,19 @@ export default function FreightManageEditPage() {
 						{/* Status */}
 						<div className="space-y-2">
 							<Label htmlFor="status">Status</Label>
-							<Select
-								value={formData.status}
-								onValueChange={(value) => handleChange('status', value as FreightRouteStatus)}
-							>
-								<SelectTrigger id="status">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="active">Active (available for use)</SelectItem>
-									<SelectItem value="inactive">Inactive (not available)</SelectItem>
-								</SelectContent>
-							</Select>
+							<SearchSelect
+								inputId="status"
+								value={formData.status === 'active' ? 'Active (available for use)' : 'Inactive (not available)'}
+								onValueChange={() => {}}
+								options={[
+									{ id: 'active', value: 'active', label: 'Active (available for use)' },
+									{ id: 'inactive', value: 'inactive', label: 'Inactive (not available)' },
+								]}
+								onSelect={(option) => handleChange('status', option.value)}
+								filterMode="local"
+								mode="dropdown"
+								placeholder="Select status..."
+							/>
 							<p className="text-sm text-muted-foreground">
 								Set route status - only active routes are available to customers
 							</p>

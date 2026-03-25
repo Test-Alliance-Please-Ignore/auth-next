@@ -6,13 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { SearchSelect } from '@/components/ui/search-select'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
 	Table,
@@ -127,19 +121,20 @@ export default function FreightManagePage() {
 					<div className="flex items-center gap-4">
 						<div className="w-full md:w-64 space-y-2">
 							<Label htmlFor="status">Status</Label>
-							<Select
-								value={statusFilter}
-								onValueChange={(value) => setStatusFilter(value as FreightRouteStatus | 'all')}
-							>
-								<SelectTrigger id="status">
-									<SelectValue placeholder="All statuses" />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="all">All Statuses</SelectItem>
-									<SelectItem value="active">Active</SelectItem>
-									<SelectItem value="inactive">Inactive</SelectItem>
-								</SelectContent>
-							</Select>
+							<SearchSelect
+								inputId="status"
+								value={statusFilter === 'all' ? 'All Statuses' : statusFilter === 'active' ? 'Active' : 'Inactive'}
+								onValueChange={() => {}}
+								options={[
+									{ id: 'all', value: 'all', label: 'All Statuses' },
+									{ id: 'active', value: 'active', label: 'Active' },
+									{ id: 'inactive', value: 'inactive', label: 'Inactive' },
+								]}
+								onSelect={(option) => setStatusFilter(option.value as FreightRouteStatus | 'all')}
+								filterMode="local"
+								mode="dropdown"
+								placeholder="All statuses"
+							/>
 						</div>
 						{statusFilter !== 'all' && (
 							<Button variant="outline" onClick={() => setStatusFilter('all')} className="mt-8">
