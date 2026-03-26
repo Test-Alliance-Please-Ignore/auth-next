@@ -6,7 +6,7 @@ import { withNotFound, withOnError, withSentry } from '@repo/hono-helpers'
 
 import { createDb } from './db'
 import { CoreDO } from './durable-object'
-import { triggerUserRefreshWorkflow } from './lib/workflow-triggers'
+import { triggerDiscordRefreshWorkflow, triggerUserRefreshWorkflow } from './lib/workflow-triggers'
 import { csrfProtection } from './middleware/csrf'
 import { sessionMiddleware } from './middleware/session'
 import adminRoutes from './routes/admin'
@@ -418,6 +418,51 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	}
 
 	/**
+	 * Trigger a Discord refresh workflow for a single user.
+	 * Used by event-driven callers (group join/leave/remove, invitation acceptance, etc.)
+	 * to sync Discord roles without blocking the request.
+	 */
+	async triggerUserDiscordRefresh(
+		userId: string,
+		options?: {
+			source?: string
+			allowRemoval?: boolean
+		}
+	): Promise<{
+		success: boolean
+		userId: string
+		status: 'triggered' | 'failed'
+		triggered: boolean
+		workflowInstanceId?: string
+		error?: string
+	}> {
+		try {
+			const result = await triggerDiscordRefreshWorkflow({
+				env: this.env,
+				userId,
+				source: options?.source ?? 'core-rpc',
+				allowRemoval: options?.allowRemoval ?? false,
+			})
+			return {
+				success: result.triggered,
+				userId,
+				status: result.status,
+				triggered: result.triggered,
+				workflowInstanceId: result.workflowInstanceId,
+				error: result.error,
+			}
+		} catch (error) {
+			return {
+				success: false,
+				userId,
+				status: 'failed',
+				triggered: false,
+				error: error instanceof Error ? error.message : String(error),
+			}
+		}
+	}
+
+	/**
 	 * Trigger user refresh workflow from internal callers (for example orchestrator)
 	 */
 	async triggerUserRefresh(
@@ -472,3 +517,4 @@ export { CoreDO as Core }
 
 // Export Workflow class
 export { UserRefreshWorkflow } from './workflows/user-refresh.workflow'
+export { UserDiscordRefreshWorkflow } from './workflows/user-discord-refresh.workflow'

@@ -7,8 +7,8 @@ import { getStub } from '@repo/do-utils'
 
 import { createDb } from '../db'
 import { clearUserCache, getCachedGroup, getCachedUserMemberships } from '../lib/groups-cache'
+import { triggerDiscordRefreshWorkflow } from '../lib/workflow-triggers'
 import { requireAdmin, requireAuth } from '../middleware/session'
-import { syncUserDiscordAccess } from '../services/discord.service'
 
 import type { Discord } from '@repo/discord'
 import type { Groups } from '@repo/groups'
@@ -344,13 +344,9 @@ groups.post(
 			clearUserCache(user.id)
 
 			// Sync Discord roles — accepting an invitation grants group membership which may grant new roles via Discord attachments
-			syncUserDiscordAccess(c.env, user.id, false).catch((err) => {
-				console.error('[Groups] Failed to sync Discord roles after invitation acceptance', {
-					userId: user.id,
-					invitationId,
-					error: err instanceof Error ? err.message : String(err),
-				})
-			})
+			c.executionCtx.waitUntil(
+				triggerDiscordRefreshWorkflow({ env: c.env, userId: user.id, source: 'group-invitation-accepted' })
+			)
 
 			return c.json({ success: true }, 200)
 		} catch (error) {
@@ -518,9 +514,9 @@ groups.post(
 
 			if (result.success) {
 				// Sync Discord roles — redeeming an invite code grants group membership
-				syncUserDiscordAccess(c.env, user.id, false).catch((err) => {
-					console.error('Failed to sync Discord access after invite code redemption:', err)
-				})
+				c.executionCtx.waitUntil(
+					triggerDiscordRefreshWorkflow({ env: c.env, userId: user.id, source: 'group-invite-code-redeemed' })
+				)
 			}
 
 			return c.json(result, 200)
@@ -551,13 +547,9 @@ groups.post(
 			clearUserCache(approvedUserId)
 
 			// Sync Discord roles — approval grants group membership which may grant new roles via Discord attachments
-			syncUserDiscordAccess(c.env, approvedUserId, false).catch((err) => {
-				console.error('[Groups] Failed to sync Discord roles after join request approval', {
-					approvedUserId,
-					requestId,
-					error: err instanceof Error ? err.message : String(err),
-				})
-			})
+			c.executionCtx.waitUntil(
+				triggerDiscordRefreshWorkflow({ env: c.env, userId: approvedUserId, source: 'group-join-request-approved' })
+			)
 
 			return c.json({ success: true }, 200)
 		} catch (error) {
@@ -1277,13 +1269,9 @@ groups.delete(
 			await groupsDO.removeMember(groupId, user.id, memberUserId)
 
 			// Sync Discord roles with removal allowed — removing a member may revoke roles granted by the group's Discord attachment
-			syncUserDiscordAccess(c.env, memberUserId, true).catch((err) => {
-				console.error('[Groups] Failed to sync Discord roles after member removal', {
-					removedUserId: memberUserId,
-					groupId,
-					error: err instanceof Error ? err.message : String(err),
-				})
-			})
+			c.executionCtx.waitUntil(
+				triggerDiscordRefreshWorkflow({ env: c.env, userId: memberUserId, source: 'group-member-removed', allowRemoval: true })
+			)
 
 			return c.json({ success: true }, 200)
 		} catch (error) {
@@ -1380,13 +1368,9 @@ groups.post('/:id/join', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), asyn
 		clearUserCache(user.id)
 
 		// Sync Discord roles — joining a group may grant new roles via Discord attachments
-		syncUserDiscordAccess(c.env, user.id, false).catch((err) => {
-			console.error('[Groups] Failed to sync Discord roles after group join', {
-				userId: user.id,
-				groupId,
-				error: err instanceof Error ? err.message : String(err),
-			})
-		})
+		c.executionCtx.waitUntil(
+			triggerDiscordRefreshWorkflow({ env: c.env, userId: user.id, source: 'group-joined' })
+		)
 
 		return c.json({ success: true }, 200)
 	} catch (error) {
@@ -1413,13 +1397,9 @@ groups.post('/:id/leave', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), asy
 		clearUserCache(user.id)
 
 		// Sync Discord roles with removal allowed — leaving a group may revoke roles granted by its Discord attachment
-		syncUserDiscordAccess(c.env, user.id, true).catch((err) => {
-			console.error('[Groups] Failed to sync Discord roles after group leave', {
-				userId: user.id,
-				groupId,
-				error: err instanceof Error ? err.message : String(err),
-			})
-		})
+		c.executionCtx.waitUntil(
+			triggerDiscordRefreshWorkflow({ env: c.env, userId: user.id, source: 'group-left', allowRemoval: true })
+		)
 
 		return c.json({ success: true }, 200)
 	} catch (error) {

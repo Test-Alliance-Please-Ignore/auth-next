@@ -690,6 +690,39 @@ export interface AdminDiscordStatus {
 	lastSuccessfulAuth: string | null
 }
 
+export interface AdminDiscordRoleInspectionItem {
+	roleId: string
+	roleName: string | null
+	nameSource: 'discord' | 'configured' | 'unknown'
+}
+
+export interface AdminDiscordGuildInspection {
+	guildId: string
+	guildName: string
+	isMember: boolean
+	membershipError?: string
+	expectedManagedRoles: AdminDiscordRoleInspectionItem[]
+	currentManagedRoles: AdminDiscordRoleInspectionItem[]
+	currentUnmanagedRoles: AdminDiscordRoleInspectionItem[]
+	missingExpectedManagedRoles: AdminDiscordRoleInspectionItem[]
+	unexpectedManagedRoles: AdminDiscordRoleInspectionItem[]
+}
+
+export interface AdminDiscordAccessInspection {
+	userId: string
+	discordUserId: string
+	inspectedAt: string
+	guilds: AdminDiscordGuildInspection[]
+	summary: {
+		guildsInspected: number
+		memberGuilds: number
+		guildsWithDrift: number
+		totalMissingExpectedManagedRoles: number
+		totalUnexpectedManagedRoles: number
+		totalUnmanagedCurrentRoles: number
+	}
+}
+
 export interface AdminUserDetail {
 	id: string
 	mainCharacterId: string
@@ -1959,6 +1992,10 @@ export class ApiClient {
 		totalFailed: number
 	}> {
 		return this.post(`/admin/users/${userId}/discord/join-servers`)
+	}
+
+	async inspectDiscordAccess(userId: string): Promise<AdminDiscordAccessInspection> {
+		return this.get(`/admin/users/${userId}/discord/inspect`)
 	}
 
 	// ===== Admin Blacklist Management API Methods =====

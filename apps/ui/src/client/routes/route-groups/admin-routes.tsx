@@ -33,7 +33,10 @@ import AdminGroupsPage from '@/routes/admin/groups'
 import AdminLayout from '@/routes/admin/layout'
 import AdminPermissionCategoriesPage from '@/routes/admin/permissions/categories'
 import AdminGlobalPermissionsPage from '@/routes/admin/permissions/global'
+import AdminUserActivityPage from '@/routes/admin/user-activity'
 import AdminUserDetailPage from '@/routes/admin/user-detail'
+import AdminUserDiscordAccessPage from '@/routes/admin/user-discord-access'
+import AdminUserGroupsPage from '@/routes/admin/user-groups'
 import AdminUsersPage from '@/routes/admin/users'
 
 const UserHrNotes = lazy(() => import('@/features/applications/routes/user-hr-notes'))
@@ -61,6 +64,9 @@ export const adminRouteElements = (
 		<Route path="permissions/global" element={<AdminGlobalPermissionsPage />} />
 		<Route path="users" element={<AdminUsersPage />} />
 		<Route path="users/:userId" element={<AdminUserDetailPage />} />
+		<Route path="users/:userId/discord-access" element={<AdminUserDiscordAccessPage />} />
+		<Route path="users/:userId/groups" element={<AdminUserGroupsPage />} />
+		<Route path="users/:userId/activity" element={<AdminUserActivityPage />} />
 		<Route
 			path="users/:userId/hr-notes"
 			element={

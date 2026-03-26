@@ -475,6 +475,34 @@ app.post('/users/:userId/discord/join-servers', requireAuth(), requireAdmin(), a
 })
 
 /**
+ * GET /admin/users/:userId/discord/inspect
+ * Inspect Discord access drift for a specific user (admin action)
+ *
+ * Returns per-guild membership, expected managed roles, and current role deltas.
+ */
+app.get('/users/:userId/discord/inspect', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	const userId = c.req.param('userId')
+
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		const result = await discordService.inspectUserDiscordAccess(c.env, userId)
+		return c.json(result)
+	} catch (error) {
+		logger.error('Error inspecting user Discord access:', error)
+		return c.json(
+			{
+				error: error instanceof Error ? error.message : 'Failed to inspect Discord access',
+			},
+			500
+		)
+	}
+})
+
+/**
  * POST /admin/users/:userId/discord/revoke
  * Manually revoke a user's Discord authorization (admin action)
  *

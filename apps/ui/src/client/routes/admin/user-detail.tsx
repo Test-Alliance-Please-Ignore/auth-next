@@ -2,8 +2,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
 	AlertTriangle,
 	ArrowLeft,
+	Bot,
 	CheckCircle,
 	ExternalLink,
+	History,
 	LogOut,
 	MessageSquare,
 	Plus,
@@ -12,6 +14,7 @@ import {
 	ShieldBan,
 	ShieldOff,
 	Trash2,
+	Users,
 	XCircle,
 } from 'lucide-react'
 import { useState } from 'react'
@@ -49,7 +52,6 @@ import { AddHRNoteDialog } from '@/features/applications/components/add-hr-note-
 import { HRNoteCard } from '@/features/applications/components/hr-note-card'
 import { useHRNotes } from '@/features/applications/hooks'
 import {
-	useActivityLogs,
 	useAdminUser,
 	useClearUserSessions,
 	useDeleteUserCharacter,
@@ -136,14 +138,6 @@ export default function UserDetailPage() {
 
 	// Message state
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
-
-	// Fetch recent activity for this user
-	const { data: activityData } = useActivityLogs({
-		userId: userId!,
-		pageSize: 10,
-	})
-
-	const recentActivity = activityData?.data || []
 
 	// Fetch HR notes for this user
 	const { data: hrNotes = [], isLoading: notesLoading } = useHRNotes({
@@ -409,15 +403,43 @@ export default function UserDetailPage() {
 
 	return (
 		<div className="space-y-6">
-			{/* Back Button */}
-			<div className="flex items-center gap-4">
-				<GhostButton onClick={() => navigate('/admin/users')}>
-					<ArrowLeft className="h-4 w-4 mr-2" />
-					Back to Users
-				</GhostButton>
-				<GhostButton size="sm" onClick={() => refetch()}>
-					<RefreshCw className="h-4 w-4" />
-				</GhostButton>
+			{/* Top Row Actions */}
+			<div className="flex items-center justify-between">
+				<div className="flex items-center gap-4">
+					<GhostButton onClick={() => navigate('/admin/users')}>
+						<ArrowLeft className="h-4 w-4 mr-2" />
+						Back to Users
+					</GhostButton>
+					<GhostButton size="sm" onClick={() => refetch()}>
+						<RefreshCw className="h-4 w-4" />
+					</GhostButton>
+				</div>
+				<div className="flex gap-2">
+					<GhostButton asChild>
+						<Link to={`/admin/users/${user.id}/discord-access`}>
+							<Bot className="mr-2 h-4 w-4" />
+							Discord Access
+						</Link>
+					</GhostButton>
+					<GhostButton asChild>
+						<Link to={`/admin/users/${user.id}/groups`}>
+							<Users className="mr-2 h-4 w-4" />
+							Group Memberships
+						</Link>
+					</GhostButton>
+					<GhostButton asChild>
+						<Link to={`/admin/users/${user.id}/activity`}>
+							<History className="mr-2 h-4 w-4" />
+							Activity Log
+						</Link>
+					</GhostButton>
+				</div>
+			</div>
+
+			{/* Page Header */}
+			<div>
+				<h1 className="text-3xl font-bold gradient-text">User Details</h1>
+				<p className="text-muted-foreground mt-1">Inspect user account, access, and activity</p>
 			</div>
 
 			{/* Success/Error Message */}
@@ -883,121 +905,6 @@ export default function UserDetailPage() {
 							))}
 						</TableBody>
 					</Table>
-				</CardContent>
-			</Card>
-
-			{/* Group Memberships */}
-			<Card variant="interactive">
-				<CardHeader>
-					<CardTitle>Group Memberships</CardTitle>
-					<CardDescription>Groups this user belongs to and membership level</CardDescription>
-				</CardHeader>
-				<CardContent>
-					{(user.groupMemberships?.length ?? 0) === 0 ? (
-						<div className="text-center py-4 text-muted-foreground">No group memberships</div>
-					) : (
-						<Table>
-							<TableHeader>
-								<TableRow>
-									<TableHead>Group</TableHead>
-									<TableHead>Level</TableHead>
-									<TableHead>Joined</TableHead>
-								</TableRow>
-							</TableHeader>
-							<TableBody>
-								{(user.groupMemberships ?? []).map((membership) => (
-									<TableRow key={membership.groupId}>
-										<TableCell>
-											<Link
-												to={`/admin/groups/${membership.groupId}`}
-												className="font-medium hover:text-primary transition-colors"
-											>
-												{membership.groupName}
-											</Link>
-											<div className="text-xs text-muted-foreground">{membership.groupId}</div>
-										</TableCell>
-										<TableCell>
-											<Badge
-												variant="default"
-												className={
-													membership.membershipLevel === 'owner'
-														? 'bg-primary/20 text-primary'
-														: membership.membershipLevel === 'admin'
-															? 'bg-blue-500/20 text-blue-500'
-															: 'bg-muted/50 text-muted-foreground'
-												}
-											>
-												{membership.membershipLevel === 'owner'
-													? 'Owner'
-													: membership.membershipLevel === 'admin'
-														? 'Admin'
-														: 'Member'}
-											</Badge>
-										</TableCell>
-										<TableCell>
-											<div className="text-sm" title={formatDateTime(membership.joinedAt)}>
-												{formatRelativeTime(membership.joinedAt)}
-											</div>
-										</TableCell>
-									</TableRow>
-								))}
-							</TableBody>
-						</Table>
-					)}
-				</CardContent>
-			</Card>
-
-			{/* Recent Activity */}
-			<Card variant="interactive">
-				<CardHeader>
-					<div className="flex items-center justify-between">
-						<div>
-							<CardTitle>Recent Activity</CardTitle>
-							<CardDescription>Last 10 activity log entries for this user</CardDescription>
-						</div>
-						<Link to={`/admin/activity-log?userId=${user.id}`}>
-							<GhostButton size="sm">
-								View All
-								<ExternalLink className="h-4 w-4 ml-2" />
-							</GhostButton>
-						</Link>
-					</div>
-				</CardHeader>
-				<CardContent>
-					{recentActivity.length === 0 ? (
-						<div className="text-center py-8 text-muted-foreground">No recent activity</div>
-					) : (
-						<div className="space-y-3">
-							{recentActivity.map((log) => (
-								<div
-									key={log.id}
-									className="flex items-start gap-3 p-3 rounded-md border border-border bg-muted/30"
-								>
-									<div className="flex-1">
-										<div className="flex items-center gap-2">
-											<Badge
-												variant="outline"
-												className={cn(
-													log.action.includes('login') && 'border-green-500 text-green-500',
-													log.action.includes('create') && 'border-blue-500 text-blue-500',
-													log.action.includes('delete') && 'border-red-500 text-red-500',
-													log.action.includes('update') && 'border-yellow-500 text-yellow-500'
-												)}
-											>
-												{log.action}
-											</Badge>
-											<span className="text-sm text-muted-foreground">
-												{formatRelativeTime(log.createdAt)}
-											</span>
-										</div>
-										{log.characterName && (
-											<div className="text-sm mt-1">Character: {log.characterName}</div>
-										)}
-									</div>
-								</div>
-							))}
-						</div>
-					)}
 				</CardContent>
 			</Card>
 

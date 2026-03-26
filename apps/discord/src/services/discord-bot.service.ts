@@ -2,6 +2,7 @@ import { generateShardKey } from '@repo/hazmat'
 import { logger } from '@repo/hono-helpers'
 
 import type {
+	APIRole,
 	RESTGetAPIGuildMemberResult,
 	RESTPutAPIGuildMemberJSONBody,
 } from 'discord-api-types/v10'
@@ -28,13 +29,34 @@ class DiscordAPIError extends Error {
  * Generate a dynamic HTTPS proxy URL using rotating ports
  * Uses generateShardKey for cryptographically secure random port selection
  */
-function getDiscordProxyUrl(env: Env): string {
+function getDiscordProxyUrl(env: Env): string | null {
+	const host = env.DISCORD_PROXY_HOST?.trim()
+	const username = env.DISCORD_PROXY_USERNAME?.trim()
+	const password = env.DISCORD_PROXY_PASSWORD?.trim()
 	const portStart = Number(env.DISCORD_PROXY_PORT_START)
 	const portCount = Number(env.DISCORD_PROXY_PORT_COUNT)
+
+	const hasValidPortRange =
+		Number.isInteger(portStart) && Number.isInteger(portCount) && portCount > 0
+	const hasCredentials = Boolean(host && username && password)
+
+	if (!hasValidPortRange || !hasCredentials) {
+		logger.warn(
+			'[DiscordBotService] Proxy config invalid or incomplete, using direct Discord API',
+			{
+				hasHost: Boolean(host),
+				hasUsername: Boolean(username),
+				hasPassword: Boolean(password),
+				portStartRaw: env.DISCORD_PROXY_PORT_START,
+				portCountRaw: env.DISCORD_PROXY_PORT_COUNT,
+			}
+		)
+		return null
+	}
+
 	const portEnd = portStart + portCount - 1
 	const port = generateShardKey(portStart, portEnd)
-
-	return `https://${env.DISCORD_PROXY_USERNAME}:${env.DISCORD_PROXY_PASSWORD}@${env.DISCORD_PROXY_HOST}:${port}`
+	return `https://${username}:${password}@${host}:${port}`
 }
 
 /**
@@ -122,7 +144,7 @@ export class DiscordBotService {
 				headers: {
 					Authorization: `Bot ${this.env.DISCORD_BOT_TOKEN}`,
 				},
-				proxy: proxyUrl,
+				...(proxyUrl ? { proxy: proxyUrl } : {}),
 			})
 
 			if (response.status === 404) {
@@ -142,6 +164,33 @@ export class DiscordBotService {
 			}
 			throw error
 		}
+	}
+
+	/**
+	 * Get all roles for a guild
+	 * Uses the "Get Guild Roles" endpoint
+	 *
+	 * @param guildId - Discord guild/server ID
+	 * @returns Array of guild roles with ID and name
+	 */
+	async getGuildRoles(guildId: string): Promise<Array<{ id: string; name: string }>> {
+		const proxyUrl = getDiscordProxyUrl(this.env)
+		const url = `${this.baseUrl}/guilds/${guildId}/roles`
+		const response = await fetchWithRetry(url, {
+			method: 'GET',
+			headers: {
+				Authorization: `Bot ${this.env.DISCORD_BOT_TOKEN}`,
+			},
+			...(proxyUrl ? { proxy: proxyUrl } : {}),
+		})
+
+		if (!response.ok) {
+			const errorData = await response.json().catch(() => ({}))
+			throw new DiscordAPIError(response.status, errorData)
+		}
+
+		const roles = (await response.json()) as APIRole[]
+		return roles.map((role) => ({ id: role.id, name: role.name }))
 	}
 
 	/**
@@ -168,7 +217,7 @@ export class DiscordBotService {
 				headers: {
 					Authorization: `Bot ${this.env.DISCORD_BOT_TOKEN}`,
 				},
-				proxy: proxyUrl,
+				...(proxyUrl ? { proxy: proxyUrl } : {}),
 			})
 
 			if (response.status === 404) {
@@ -267,7 +316,7 @@ export class DiscordBotService {
 					'Content-Type': 'application/json',
 				},
 				body: JSON.stringify(body),
-				proxy: proxyUrl,
+				...(proxyUrl ? { proxy: proxyUrl } : {}),
 			})
 
 			if (!response.ok) {
@@ -357,7 +406,7 @@ export class DiscordBotService {
 					'Content-Type': 'application/json',
 				},
 				body: JSON.stringify(body),
-				proxy: proxyUrl,
+				...(proxyUrl ? { proxy: proxyUrl } : {}),
 			})
 
 			// 204 No Content = user was already a member

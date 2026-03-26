@@ -144,6 +144,11 @@
 			"name": "user-refresh-workflow",
 			"binding": "USER_REFRESH_WORKFLOW",
 			"class_name": "UserRefreshWorkflow"
+		},
+		{
+			"name": "user-discord-refresh-workflow",
+			"binding": "USER_DISCORD_REFRESH_WORKFLOW",
+			"class_name": "UserDiscordRefreshWorkflow"
 		}
 	]
 }
