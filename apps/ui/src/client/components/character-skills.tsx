@@ -1,17 +1,16 @@
 import { GraduationCap } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 
-import { formatSkillPoints, formatSkillWithLevel, toRomanLevel } from '@repo/eve-types'
+import { formatSkillPoints, toRomanLevel } from '@repo/eve-types'
 
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion'
+import { cn } from '../lib/utils'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 
-interface Skill {
+interface TrainedSkill {
 	activeSkillLevel: number
 	skillId: number
 	skillpointsInSkill: number
 	trainedSkillLevel: number
-	// Enriched fields from backend
 	skillName?: string
 	skillGroup?: string
 	skillCategory?: string
@@ -19,78 +18,202 @@ interface Skill {
 	description?: string
 }
 
+interface CatalogSkill {
+	id: number
+	skillId: number
+	name: string
+	description: string
+	rank: number
+	primaryAttribute: string | null
+	secondaryAttribute: string | null
+	published: boolean
+	canNotBeTrained: boolean
+	groupId: number
+	groupName: string
+}
+
+/** Merged skill: full catalog entry + character training data */
+interface MergedSkill {
+	skillId: number
+	skillName: string
+	rank: number
+	groupName: string
+	trainedSkillLevel: number
+	activeSkillLevel: number
+	skillpointsInSkill: number
+	isTrained: boolean
+}
+
 interface CharacterSkillsProps {
 	skills: {
-		skills: Skill[]
+		skills: TrainedSkill[]
 		totalSp: number
 		unallocatedSp?: number
 	}
+	allSkills?: CatalogSkill[]
 	characterId: string
 	showProgress?: boolean
 }
 
-// Skill points required per level
+// Skill points required per level (multiplied by rank)
 const SKILL_POINTS_PER_LEVEL = [0, 250, 1414, 8000, 45255, 256000]
 
-function calculateSkillProgress(skill: Skill, skillRank: number = 1): number {
-	if (skill.trainedSkillLevel === 5) return 100
-
-	const currentLevel = skill.trainedSkillLevel
-	const nextLevel = currentLevel + 1
-
-	const spForCurrentLevel = SKILL_POINTS_PER_LEVEL[currentLevel] * skillRank
-	const spForNextLevel = SKILL_POINTS_PER_LEVEL[nextLevel] * skillRank
+function calculateSkillProgress(trainedLevel: number, sp: number, rank: number): number {
+	if (trainedLevel === 5) return 100
+	const nextLevel = trainedLevel + 1
+	const spForCurrentLevel = SKILL_POINTS_PER_LEVEL[trainedLevel] * rank
+	const spForNextLevel = SKILL_POINTS_PER_LEVEL[nextLevel] * rank
 	const spNeeded = spForNextLevel - spForCurrentLevel
-	const spProgress = skill.skillpointsInSkill - spForCurrentLevel
-
+	const spProgress = sp - spForCurrentLevel
 	return Math.min(100, Math.max(0, (spProgress / spNeeded) * 100))
 }
 
-export function CharacterSkills({ skills, showProgress = false }: CharacterSkillsProps) {
-	const [expandedCategories, setExpandedCategories] = useState<string[]>([])
+/** Estimate training time to next level in seconds */
+function estimateTrainingTime(trainedLevel: number, sp: number, rank: number): number {
+	if (trainedLevel === 5) return 0
+	const nextLevel = trainedLevel + 1
+	const spForNextLevel = SKILL_POINTS_PER_LEVEL[nextLevel] * rank
+	const spRemaining = spForNextLevel - sp
+	// Assume ~30 SP/min as a rough average (varies with attributes)
+	return Math.max(0, Math.round((spRemaining / 30) * 60))
+}
 
-	// Skills now come enriched from the backend, no need for separate metadata fetch
+function formatTrainingTime(seconds: number): string {
+	if (seconds <= 0) return ''
+	const days = Math.floor(seconds / 86400)
+	const hours = Math.floor((seconds % 86400) / 3600)
+	const mins = Math.floor((seconds % 3600) / 60)
+	if (days > 0) return `${days}d ${hours}h`
+	if (hours > 0) return `${hours}h ${mins}m`
+	return `${mins}m`
+}
 
-	// Group skills by category
-	type CategorizedSkillGroup = {
-		categoryName: string
-		totalSP: number
-		trainedSkills: number
-		totalSkills: number
-		skills: Skill[]
-	}
+type SkillGroup = {
+	groupName: string
+	totalSP: number
+	trainedCount: number
+	totalCount: number
+	skills: MergedSkill[]
+}
 
-	const categorizedSkills = skills.skills.reduce((acc: CategorizedSkillGroup[], skill) => {
-		const categoryName = skill.skillCategory || 'Uncategorized'
+/** EVE-style level pips: 5 boxes that fill based on trained level */
+function SkillLevelPips({
+	level,
+	progress,
+	className,
+}: {
+	level: number
+	progress?: number
+	className?: string
+}) {
+	return (
+		<div className={cn('flex gap-0.5', className)}>
+			{[1, 2, 3, 4, 5].map((pip) => {
+				const isFilled = pip <= level
+				const isPartial = !isFilled && pip === level + 1 && progress !== undefined && progress > 0
 
-		// Find or create category
-		let category = acc.find((c) => c.categoryName === categoryName)
-		if (!category) {
-			category = {
-				categoryName,
-				totalSP: 0,
-				trainedSkills: 0,
-				totalSkills: 0,
-				skills: [],
-			}
-			acc.push(category)
-		}
-
-		// Add skill to category
-		category.skills.push(skill)
-		category.totalSP += skill.skillpointsInSkill
-		category.totalSkills++
-		if (skill.trainedSkillLevel > 0) {
-			category.trainedSkills++
-		}
-
-		return acc
-	}, [])
-
-	// Sort categories by total SP (highest first)
-	categorizedSkills.sort(
-		(a: CategorizedSkillGroup, b: CategorizedSkillGroup) => b.totalSP - a.totalSP
+				return (
+					<div
+						key={pip}
+						className={cn(
+							'h-2.5 w-3 border',
+							isFilled
+								? 'bg-sky-500 border-sky-400'
+								: isPartial
+									? 'border-muted-foreground/40 overflow-hidden'
+									: 'bg-muted/30 border-muted-foreground/20'
+						)}
+					>
+						{isPartial && (
+							<div
+								className="h-full bg-sky-500/60"
+								style={{ width: `${progress}%` }}
+							/>
+						)}
+					</div>
+				)
+			})}
+		</div>
 	)
+}
+
+export function CharacterSkills({ skills, allSkills, showProgress = false }: CharacterSkillsProps) {
+	const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
+
+	const groups = useMemo(() => {
+		// Build a map of trained skills by ID (coerce to string for consistent matching)
+		const trainedMap = new Map<string, TrainedSkill>()
+		for (const skill of skills.skills) {
+			trainedMap.set(String(skill.skillId), skill)
+		}
+
+		// If we have the full catalog, use it; otherwise fall back to trained-only
+		const mergedByGroup = new Map<string, SkillGroup>()
+
+		if (allSkills && allSkills.length > 0) {
+			// Full catalog mode: show all skills, trained or not
+			for (const catalogSkill of allSkills) {
+				if (catalogSkill.canNotBeTrained) continue
+
+				const groupName = catalogSkill.groupName || 'Unknown'
+				let group = mergedByGroup.get(groupName)
+				if (!group) {
+					group = { groupName, totalSP: 0, trainedCount: 0, totalCount: 0, skills: [] }
+					mergedByGroup.set(groupName, group)
+				}
+
+				const trained = trainedMap.get(String(catalogSkill.id ?? catalogSkill.skillId))
+				const merged: MergedSkill = {
+					skillId: catalogSkill.id ?? catalogSkill.skillId,
+					skillName: catalogSkill.name,
+					rank: catalogSkill.rank,
+					groupName,
+					trainedSkillLevel: trained?.trainedSkillLevel ?? 0,
+					activeSkillLevel: trained?.activeSkillLevel ?? 0,
+					skillpointsInSkill: trained?.skillpointsInSkill ?? 0,
+					isTrained: !!trained,
+				}
+
+				group.skills.push(merged)
+				group.totalCount++
+				if (trained) {
+					group.trainedCount++
+					group.totalSP += trained.skillpointsInSkill
+				}
+			}
+		} else {
+			// Fallback: trained skills only
+			for (const skill of skills.skills) {
+				const groupName = skill.skillGroup || skill.skillCategory || 'Uncategorized'
+				let group = mergedByGroup.get(groupName)
+				if (!group) {
+					group = { groupName, totalSP: 0, trainedCount: 0, totalCount: 0, skills: [] }
+					mergedByGroup.set(groupName, group)
+				}
+
+				group.skills.push({
+					skillId: Number(skill.skillId),
+					skillName: skill.skillName || `Skill ${skill.skillId}`,
+					rank: skill.rank || 1,
+					groupName,
+					trainedSkillLevel: skill.trainedSkillLevel,
+					activeSkillLevel: skill.activeSkillLevel,
+					skillpointsInSkill: skill.skillpointsInSkill,
+					isTrained: true,
+				})
+				group.totalCount++
+				group.trainedCount++
+				group.totalSP += skill.skillpointsInSkill
+			}
+		}
+
+		// Sort groups alphabetically (like in-game)
+		return Array.from(mergedByGroup.values()).sort((a, b) =>
+			a.groupName.localeCompare(b.groupName)
+		)
+	}, [skills.skills, allSkills])
+
+	const activeGroup = groups.find((g) => g.groupName === selectedGroup)
 
 	return (
 		<Card>
@@ -101,101 +224,131 @@ export function CharacterSkills({ skills, showProgress = false }: CharacterSkill
 						Skills
 					</div>
 					<div className="text-sm font-normal text-muted-foreground">
-						Total SP: {formatSkillPoints(skills.totalSp)}
-						{skills.unallocatedSp && skills.unallocatedSp > 0 && (
-							<span className="ml-2">• Unallocated: {formatSkillPoints(skills.unallocatedSp)}</span>
+						{formatSkillPoints(skills.totalSp)} Total
+						{skills.unallocatedSp != null && skills.unallocatedSp > 0 && (
+							<span className="ml-2">
+								• {formatSkillPoints(skills.unallocatedSp)} Unallocated
+							</span>
 						)}
 					</div>
 				</CardTitle>
 			</CardHeader>
-			<CardContent>
-				{categorizedSkills.length === 0 ? (
-					<p className="text-sm text-muted-foreground">No skills trained</p>
+			<CardContent className="space-y-4">
+				{groups.length === 0 ? (
+					<p className="text-sm text-muted-foreground">No skills data available</p>
 				) : (
-					<Accordion
-						type="multiple"
-						value={expandedCategories}
-						onValueChange={setExpandedCategories}
-						className="space-y-2"
-					>
-						{categorizedSkills.map((category: CategorizedSkillGroup) => (
-							<AccordionItem
-								key={category.categoryName}
-								value={`category-${category.categoryName}`}
-							>
-								<AccordionTrigger className="hover:no-underline">
-									<div className="flex items-center justify-between w-full pr-2">
-										<div className="flex items-center gap-2">
-											<span className="font-medium">{category.categoryName}</span>
-											<span className="text-xs text-muted-foreground">
-												{category.trainedSkills}/{category.totalSkills} skills
-											</span>
-										</div>
-										<span className="text-sm text-muted-foreground">
-											{formatSkillPoints(category.totalSP)} SP
+					<>
+						{/* Skill Group Grid */}
+						<div className="grid grid-cols-3 gap-1.5">
+							{groups.map((group) => {
+								const pct = group.totalCount > 0
+									? (group.trainedCount / group.totalCount) * 100
+									: 0
+								const isSelected = selectedGroup === group.groupName
+
+								return (
+									<button
+										key={group.groupName}
+										type="button"
+										onClick={() =>
+											setSelectedGroup(
+												isSelected ? null : group.groupName
+											)
+										}
+										className={cn(
+											'relative flex items-center justify-between rounded px-2.5 py-1.5 text-left transition-colors overflow-hidden',
+											'hover:brightness-125',
+											isSelected
+												? 'bg-sky-500/10 text-sky-300'
+												: 'bg-muted/40 text-foreground'
+										)}
+									>
+										{/* Progress bar fill */}
+										<div
+											className={cn(
+												'absolute inset-y-0 left-0 rounded transition-colors',
+												isSelected ? 'bg-sky-500/30' : 'bg-muted-foreground/20'
+											)}
+											style={{ width: `${pct}%` }}
+										/>
+										<span className="relative text-sm truncate">{group.groupName}</span>
+										<span className="relative text-sm tabular-nums text-muted-foreground ml-2 shrink-0">
+											{group.trainedCount}
 										</span>
-									</div>
-								</AccordionTrigger>
-								<AccordionContent>
-									<div className="space-y-3 pt-2">
-										{category.skills
-											.sort((a: Skill, b: Skill) => b.skillpointsInSkill - a.skillpointsInSkill)
-											.map((skill: Skill) => {
-												const progress = showProgress
-													? calculateSkillProgress(skill, skill.rank || 1)
+									</button>
+								)
+							})}
+						</div>
+
+						{/* Selected Group Detail */}
+						{activeGroup && (
+							<div className="border rounded-md">
+								<div className="flex items-center justify-between px-4 py-2.5 border-b bg-muted/30">
+									<h4 className="text-sm font-semibold">{activeGroup.groupName}</h4>
+									<span className="text-xs text-muted-foreground">
+										{activeGroup.trainedCount}/{activeGroup.totalCount} trained
+										{' • '}
+										{formatSkillPoints(activeGroup.totalSP)}
+									</span>
+								</div>
+								<div className="grid grid-cols-2 gap-x-4 px-4 py-1">
+									{activeGroup.skills
+										.sort((a, b) => a.skillName.localeCompare(b.skillName))
+										.map((skill) => {
+											const progress =
+												skill.trainedSkillLevel > 0 && skill.trainedSkillLevel < 5
+													? calculateSkillProgress(
+															skill.trainedSkillLevel,
+															skill.skillpointsInSkill,
+															skill.rank
+														)
+													: 0
+											const trainingTime =
+												skill.trainedSkillLevel < 5
+													? estimateTrainingTime(
+															skill.trainedSkillLevel,
+															skill.skillpointsInSkill,
+															skill.rank
+														)
 													: 0
 
-												return (
-													<div key={skill.skillId} className="space-y-1">
-														<div className="flex items-center justify-between">
-															<div className="flex-1">
-																<div className="flex items-center gap-2">
-																	<span className="text-sm font-medium">
-																		{formatSkillWithLevel(
-																			skill.skillName || `Unknown Skill (${skill.skillId})`,
-																			skill.trainedSkillLevel
-																		)}
-																	</span>
-																	{skill.rank && (
-																		<span className="text-xs text-muted-foreground">
-																			Rank {skill.rank}
-																		</span>
-																	)}
-																</div>
-																{skill.skillGroup && (
-																	<p className="text-xs text-muted-foreground">
-																		{skill.skillGroup}
-																	</p>
-																)}
-															</div>
-															<div className="text-right">
-																<p className="text-sm font-medium">
-																	{formatSkillPoints(skill.skillpointsInSkill)}
-																</p>
-																{skill.trainedSkillLevel < 5 && (
-																	<p className="text-xs text-muted-foreground">
-																		{Math.round(progress)}% to Level{' '}
-																		{toRomanLevel(skill.trainedSkillLevel + 1)}
-																	</p>
-																)}
-															</div>
-														</div>
-														{showProgress && skill.trainedSkillLevel < 5 && (
-															<div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-																<div
-																	className="h-full bg-blue-500 transition-all"
-																	style={{ width: `${progress}%` }}
-																/>
-															</div>
-														)}
+											return (
+												<div
+													key={skill.skillId}
+													className={cn(
+														'flex items-center justify-between py-1',
+														!skill.isTrained && 'opacity-40'
+													)}
+												>
+													<div className="flex items-center gap-2 min-w-0">
+														<SkillLevelPips
+															level={skill.trainedSkillLevel}
+															progress={
+																showProgress && skill.trainedSkillLevel < 5
+																	? progress
+																	: undefined
+															}
+														/>
+														<span className="text-sm truncate">
+															{skill.skillName}
+														</span>
 													</div>
-												)
-											})}
-									</div>
-								</AccordionContent>
-							</AccordionItem>
-						))}
-					</Accordion>
+													<div className="text-right shrink-0 ml-1">
+														{skill.trainedSkillLevel === 5 ? (
+															<span className="text-xs text-green-500">✓</span>
+														) : trainingTime > 0 ? (
+															<span className="text-xs text-muted-foreground tabular-nums">
+																{formatTrainingTime(trainingTime)}
+															</span>
+														) : null}
+													</div>
+												</div>
+											)
+										})}
+								</div>
+							</div>
+						)}
+					</>
 				)}
 			</CardContent>
 		</Card>

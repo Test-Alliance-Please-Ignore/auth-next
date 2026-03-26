@@ -241,6 +241,7 @@ export default function CharacterDetailPage() {
 				<CharacterSkills
 					characterId={characterId || ''}
 					skills={character.public.skills}
+					allSkills={character.public.allSkills}
 					showProgress={character.isOwner}
 				/>
 			) : character.isOwner ? (
