@@ -12,6 +12,7 @@ import { calculateRoleChanges } from './utils/role-calculation'
 
 import type {
 	Discord,
+	DiscordGuildMembershipDetail,
 	DiscordTokenResponse,
 	MessageContent,
 	SendMessageResult,
@@ -56,6 +57,72 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 		}
 
 		return user
+	}
+
+	/**
+	 * Build proxy URL for Discord API requests when proxy env vars are valid.
+	 * Returns null when proxy config is missing/invalid so callers can fallback to direct requests.
+	 */
+	private getDiscordProxyUrl(): string | null {
+		const host = this.env.DISCORD_PROXY_HOST?.trim()
+		const username = this.env.DISCORD_PROXY_USERNAME?.trim()
+		const password = this.env.DISCORD_PROXY_PASSWORD?.trim()
+		const portStart = Number(this.env.DISCORD_PROXY_PORT_START)
+		const portCount = Number(this.env.DISCORD_PROXY_PORT_COUNT)
+
+		const hasValidPortRange =
+			Number.isInteger(portStart) && Number.isInteger(portCount) && portCount > 0
+		const hasCredentials = Boolean(host && username && password)
+
+		if (!hasValidPortRange || !hasCredentials) {
+			logger.warn('[DiscordDO] Proxy config invalid or incomplete, using direct Discord API', {
+				hasHost: Boolean(host),
+				hasUsername: Boolean(username),
+				hasPassword: Boolean(password),
+				portStartRaw: this.env.DISCORD_PROXY_PORT_START,
+				portCountRaw: this.env.DISCORD_PROXY_PORT_COUNT,
+			})
+			return null
+		}
+
+		const portEnd = portStart + portCount - 1
+		const port = generateShardKey(portStart, portEnd)
+		return `https://${username}:${password}@${host}:${port}`
+	}
+
+	/**
+	 * Build DiscordFetch proxy config when env vars are valid.
+	 */
+	private getDiscordFetchProxy():
+		| {
+				host: string
+				port: number
+				username: string
+				password: string
+		  }
+		| undefined {
+		const host = this.env.DISCORD_PROXY_HOST?.trim()
+		const username = this.env.DISCORD_PROXY_USERNAME?.trim()
+		const password = this.env.DISCORD_PROXY_PASSWORD?.trim()
+		const portStart = Number(this.env.DISCORD_PROXY_PORT_START)
+		const portCount = Number(this.env.DISCORD_PROXY_PORT_COUNT)
+
+		const hasValidPortRange =
+			Number.isInteger(portStart) && Number.isInteger(portCount) && portCount > 0
+		const hasCredentials = Boolean(host && username && password)
+
+		if (!hasValidPortRange || !hasCredentials) {
+			return undefined
+		}
+
+		const portEnd = portStart + portCount - 1
+		const port = generateShardKey(portStart, portEnd)
+		return {
+			host: host!,
+			port,
+			username: username!,
+			password: password!,
+		}
 	}
 
 	/**
@@ -528,12 +595,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 		username?: string
 	}> {
 		try {
-			// Generate proxy URL for request
-			const portStart = Number(this.env.DISCORD_PROXY_PORT_START)
-			const portCount = Number(this.env.DISCORD_PROXY_PORT_COUNT)
-			const portEnd = portStart + portCount - 1
-			const port = generateShardKey(portStart, portEnd)
-			const proxyUrl = `https://${this.env.DISCORD_PROXY_USERNAME}:${this.env.DISCORD_PROXY_PASSWORD}@${this.env.DISCORD_PROXY_HOST}:${port}`
+			const proxyUrl = this.getDiscordProxyUrl()
 
 			// Fetch user info from Discord
 			const userInfoResponse = await fetchWithRetry(this.env.DISCORD_USER_INFO_URL, {
@@ -542,7 +604,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 					Authorization: `Bearer ${accessToken}`,
 					'User-Agent': 'DiscordBot (https://pleaseignore.app, 1.0.0)',
 				},
-				proxy: proxyUrl,
+				...(proxyUrl ? { proxy: proxyUrl } : {}),
 			})
 
 			if (!userInfoResponse.ok) {
@@ -707,6 +769,103 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 				error: String(error),
 			})
 			return []
+		}
+	}
+
+	/**
+	 * Get detailed membership and role state for a user across guilds using bot token.
+	 */
+	async getUserGuildMembershipDetails(
+		coreUserId: string,
+		guildIds: string[]
+	): Promise<DiscordGuildMembershipDetail[]> {
+		try {
+			const user = await this.getUserByCoreUserId(coreUserId)
+			if (!user) {
+				return guildIds.map((guildId) => ({
+					guildId,
+					isMember: false,
+					currentRoleIds: [],
+					currentRoles: [],
+					errorMessage: 'Discord account not linked',
+				}))
+			}
+
+			const discordUserId = user.userId
+			const botService = new DiscordBotService(this.env)
+
+			const membershipDetails = await Promise.all(
+				guildIds.map(async (guildId) => {
+					try {
+						const member = await botService.getGuildMember(guildId, discordUserId)
+
+						if (!member) {
+							return {
+								guildId,
+								isMember: false,
+								currentRoleIds: [],
+								currentRoles: [],
+							}
+						}
+
+						const currentRoleIds = member.roles || []
+						const currentRoles = currentRoleIds.map((roleId) => ({
+							roleId,
+							roleName: null as string | null,
+						}))
+
+						if (currentRoleIds.length > 0) {
+							try {
+								const guildRoles = await botService.getGuildRoles(guildId)
+								const roleNameById = new Map(guildRoles.map((role) => [role.id, role.name]))
+								for (const role of currentRoles) {
+									role.roleName = roleNameById.get(role.roleId) || null
+								}
+							} catch (error) {
+								logger.warn('[DiscordDO] Failed to resolve guild role names', {
+									coreUserId,
+									guildId,
+									error: String(error),
+								})
+							}
+						}
+
+						return {
+							guildId,
+							isMember: true,
+							currentRoleIds,
+							currentRoles,
+						}
+					} catch (error) {
+						logger.error('[DiscordDO] Error getting guild membership details', {
+							coreUserId,
+							guildId,
+							error: String(error),
+						})
+						return {
+							guildId,
+							isMember: false,
+							currentRoleIds: [],
+							currentRoles: [],
+							errorMessage: error instanceof Error ? error.message : 'Unknown error',
+						}
+					}
+				})
+			)
+
+			return membershipDetails
+		} catch (error) {
+			logger.error('[DiscordDO] Error in getUserGuildMembershipDetails', {
+				coreUserId,
+				error: String(error),
+			})
+			return guildIds.map((guildId) => ({
+				guildId,
+				isMember: false,
+				currentRoleIds: [],
+				currentRoles: [],
+				errorMessage: error instanceof Error ? error.message : 'Unknown error',
+			}))
 		}
 	}
 
@@ -945,13 +1104,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 		message: MessageContent
 	): Promise<SendMessageResult> {
 		try {
-			// Generate dynamic proxy URL using rotating ports
-			const portStart = Number(this.env.DISCORD_PROXY_PORT_START)
-			const portCount = Number(this.env.DISCORD_PROXY_PORT_COUNT)
-			const portEnd = portStart + portCount - 1
-			const port = generateShardKey(portStart, portEnd)
-
-			const proxyUrl = `https://${this.env.DISCORD_PROXY_USERNAME}:${this.env.DISCORD_PROXY_PASSWORD}@${this.env.DISCORD_PROXY_HOST}:${port}`
+			const proxyUrl = this.getDiscordProxyUrl()
 
 			// Build the message payload
 			const payload: any = {
@@ -988,7 +1141,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 					'Content-Type': 'application/json',
 				},
 				body: JSON.stringify(payload),
-				proxy: proxyUrl,
+				...(proxyUrl ? { proxy: proxyUrl } : {}),
 			})
 
 			if (!response.ok) {
@@ -1170,21 +1323,12 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 	 * @returns Configured DiscordFetch client instance
 	 */
 	private createDiscordClient(): DiscordFetch {
-		// Generate dynamic proxy port using rotating ports
-		const portStart = Number(this.env.DISCORD_PROXY_PORT_START)
-		const portCount = Number(this.env.DISCORD_PROXY_PORT_COUNT)
-		const portEnd = portStart + portCount - 1
-		const port = generateShardKey(portStart, portEnd)
+		const proxy = this.getDiscordFetchProxy()
 
 		return new DiscordFetch({
 			token: this.env.DISCORD_BOT_TOKEN,
 			tokenType: 'Bot',
-			proxy: {
-				host: this.env.DISCORD_PROXY_HOST,
-				port,
-				username: this.env.DISCORD_PROXY_USERNAME,
-				password: this.env.DISCORD_PROXY_PASSWORD,
-			},
+			...(proxy ? { proxy } : {}),
 			maxRetries: 3,
 		})
 	}
@@ -1216,13 +1360,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 
 			const decryptedRefreshToken = await this.decrypt(token.refreshToken)
 
-			// Generate dynamic proxy URL
-			const portStart = Number(this.env.DISCORD_PROXY_PORT_START)
-			const portCount = Number(this.env.DISCORD_PROXY_PORT_COUNT)
-			const portEnd = portStart + portCount - 1
-			const port = generateShardKey(portStart, portEnd)
-
-			const proxyUrl = `https://${this.env.DISCORD_PROXY_USERNAME}:${this.env.DISCORD_PROXY_PASSWORD}@${this.env.DISCORD_PROXY_HOST}:${port}`
+			const proxyUrl = this.getDiscordProxyUrl()
 
 			// Prepare the token refresh request
 			const params = new URLSearchParams({
@@ -1237,7 +1375,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 					Authorization: `Basic ${btoa(`${this.env.DISCORD_CLIENT_ID}:${this.env.DISCORD_CLIENT_SECRET}`)}`,
 				},
 				body: params.toString(),
-				proxy: proxyUrl,
+				...(proxyUrl ? { proxy: proxyUrl } : {}),
 			})
 
 			if (!response.ok) {

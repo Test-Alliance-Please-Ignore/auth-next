@@ -5,6 +5,7 @@ import { users } from '../db/schema'
 
 import type { Env } from '../context'
 import type { createDb } from '../db'
+import type { UserDiscordRefreshWorkflowParams } from '../workflows/user-discord-refresh.workflow'
 
 const THROTTLE_MS = 5 * 60 * 1000 // 5 minutes
 
@@ -33,6 +34,76 @@ export function createUserRefreshWorkflowId(source: string, userId: string): str
 	const userToken = userId.replace(/-/g, '').slice(0, 12)
 	const timeToken = Date.now().toString(36)
 	return `user-refresh-${sourceToken}-${userToken}-${timeToken}`
+}
+
+export interface TriggerDiscordRefreshOptions {
+	env: Env
+	userId: string
+	/** Source identifier for observability (e.g. 'group-joined', 'group-left', 'admin-manual') */
+	source: string
+	/** Whether Discord role removal is permitted. False for join/add events, true for leave/remove events. */
+	allowRemoval?: boolean
+}
+
+export interface TriggerDiscordRefreshResult {
+	status: 'triggered' | 'failed'
+	triggered: boolean
+	workflowInstanceId?: string
+	error?: string
+}
+
+export function createDiscordRefreshWorkflowId(source: string, userId: string): string {
+	const normalizedSource = source
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, '-')
+		.replace(/^-+|-+$/g, '')
+	const sourceToken = (normalizedSource || 'unknown').slice(0, 20)
+	const userToken = userId.replace(/-/g, '').slice(0, 12)
+	const timeToken = Date.now().toString(36)
+	return `discord-refresh-${sourceToken}-${userToken}-${timeToken}`
+}
+
+/**
+ * Trigger a Discord refresh workflow for a single user.
+ * Returns immediately — does not block on workflow creation.
+ * Logs errors but does not throw.
+ */
+export async function triggerDiscordRefreshWorkflow({
+	env,
+	userId,
+	source,
+	allowRemoval = false,
+}: TriggerDiscordRefreshOptions): Promise<TriggerDiscordRefreshResult> {
+	try {
+		const params: UserDiscordRefreshWorkflowParams = { userId, source, allowRemoval }
+		const instance = await env.USER_DISCORD_REFRESH_WORKFLOW.create({
+			id: createDiscordRefreshWorkflowId(source, userId),
+			params,
+		})
+
+		logger.info('[WorkflowTrigger] Triggered Discord refresh workflow', {
+			userId,
+			source,
+			allowRemoval,
+			workflowInstanceId: instance.id,
+		})
+		return {
+			status: 'triggered',
+			triggered: true,
+			workflowInstanceId: instance.id,
+		}
+	} catch (error) {
+		logger.error('[WorkflowTrigger] Failed to trigger Discord refresh workflow', {
+			userId,
+			source,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return {
+			status: 'failed',
+			triggered: false,
+			error: error instanceof Error ? error.message : String(error),
+		}
+	}
 }
 
 /**

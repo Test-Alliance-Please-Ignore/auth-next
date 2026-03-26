@@ -11,6 +11,21 @@ export type Env = SharedHonoEnv & {
 
 	// Service bindings
 	CORE: Fetcher & {
+		triggerUserDiscordRefresh(
+			userId: string,
+			options?: {
+				source?: string
+				allowRemoval?: boolean
+			}
+		): Promise<{
+			success: boolean
+			userId: string
+			status: 'triggered' | 'failed'
+			triggered: boolean
+			workflowInstanceId?: string
+			error?: string
+		}>
+
 		getUsersForDiscordRefresh(
 			limit?: number,
 			refreshIntervalMinutes?: number

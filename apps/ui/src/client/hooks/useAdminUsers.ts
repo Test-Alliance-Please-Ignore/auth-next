@@ -4,6 +4,7 @@ import { api } from '@/lib/api'
 
 import type {
 	AdminActivityLogFilters,
+	AdminDiscordAccessInspection,
 	AdminUser,
 	AdminUserDetail,
 	AdminUsersFilters,
@@ -17,6 +18,8 @@ export const adminUserKeys = {
 	list: (filters?: AdminUsersFilters) => [...adminUserKeys.lists(), filters] as const,
 	details: () => [...adminUserKeys.all, 'detail'] as const,
 	detail: (userId: string) => [...adminUserKeys.details(), userId] as const,
+	discordInspection: (userId: string) =>
+		[...adminUserKeys.detail(userId), 'discord-inspection'] as const,
 	activityLogs: () => ['admin', 'activity-logs'] as const,
 	activityLog: (filters?: AdminActivityLogFilters) =>
 		[...adminUserKeys.activityLogs(), filters] as const,
@@ -45,6 +48,18 @@ export function useAdminUser(userId: string) {
 		queryFn: () => api.getAdminUser(userId),
 		enabled: !!userId,
 		staleTime: 1000 * 60 * 2, // 2 minutes
+	})
+}
+
+/**
+ * Fetch Discord access inspection details for a specific user (on-demand)
+ */
+export function useAdminDiscordInspection(userId: string, enabled: boolean) {
+	return useQuery<AdminDiscordAccessInspection>({
+		queryKey: adminUserKeys.discordInspection(userId),
+		queryFn: () => api.inspectDiscordAccess(userId),
+		enabled: !!userId && enabled,
+		staleTime: 1000 * 30, // 30 seconds
 	})
 }
 

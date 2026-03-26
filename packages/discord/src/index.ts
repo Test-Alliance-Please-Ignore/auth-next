@@ -151,6 +151,26 @@ export interface SendMessageResult {
 	retryAfter?: number
 }
 
+export interface DiscordGuildRoleDetail {
+	/** Discord role ID */
+	roleId: string
+	/** Discord role name (if resolvable) */
+	roleName: string | null
+}
+
+export interface DiscordGuildMembershipDetail {
+	/** Discord guild/server ID */
+	guildId: string
+	/** Whether the user is currently a guild member */
+	isMember: boolean
+	/** Current role IDs assigned to the user in this guild */
+	currentRoleIds: string[]
+	/** Current roles with best-effort role-name resolution */
+	currentRoles: DiscordGuildRoleDetail[]
+	/** Error message if membership inspection failed for this guild */
+	errorMessage?: string
+}
+
 export interface Discord {
 	/**
 	 * Search linked core users by Discord username (case-insensitive, partial match)
@@ -314,6 +334,18 @@ export interface Discord {
 	 * @returns Array of guild IDs the user is a member of
 	 */
 	checkGuildMembershipWithBot(coreUserId: string, guildIds: string[]): Promise<string[]>
+
+	/**
+	 * Get detailed guild membership and current role assignments for a user
+	 * Uses bot token and does not modify guild state.
+	 * @param coreUserId - Core user ID
+	 * @param guildIds - Array of guild IDs to inspect
+	 * @returns Array of per-guild membership and role details
+	 */
+	getUserGuildMembershipDetails(
+		coreUserId: string,
+		guildIds: string[]
+	): Promise<DiscordGuildMembershipDetail[]>
 
 	/**
 	 * Update Discord roles for a user who is already a member of servers

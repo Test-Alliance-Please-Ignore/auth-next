@@ -171,7 +171,7 @@ function summarizeCoreAttachmentDelta(
 /**
  * Workflow parameters
  */
-export interface WorkflowParams {
+export interface UserRefreshWorkflowParams {
 	userId: string
 	refreshMode?: 'scheduled' | 'event' | 'manual'
 }
@@ -184,7 +184,7 @@ export interface WorkflowParams {
  * Services (db) must be recreated inside each step using createContext().
  * Database queries MUST be wrapped in step.do() to cache results across hibernation.
  */
-export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams> {
+export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWorkflowParams> {
 	/**
 	 * Create workflow context inside each step.
 	 * MUST be called inside step.do() callbacks since services don't survive hibernation.
@@ -192,7 +192,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams>
 	private createContext(
 		userId: string,
 		workflowInstanceId: string,
-		refreshMode: WorkflowParams['refreshMode'] = 'scheduled'
+		refreshMode: UserRefreshWorkflowParams['refreshMode'] = 'scheduled'
 	): WorkflowContext {
 		return {
 			env: this.env,
@@ -207,7 +207,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams>
 		step: WorkflowStep,
 		userId: string,
 		workflowInstanceId: string,
-		refreshMode: WorkflowParams['refreshMode'],
+		refreshMode: UserRefreshWorkflowParams['refreshMode'],
 		characterId: string
 	): Promise<CharacterRefreshOutcome> {
 		console.log('[Workflow] Character refresh started', {
@@ -286,7 +286,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams>
 	}
 
 	async run(
-		event: WorkflowEvent<WorkflowParams>,
+		event: WorkflowEvent<UserRefreshWorkflowParams>,
 		step: WorkflowStep
 	): Promise<UserRefreshWorkflowResult> {
 		const { userId, refreshMode = 'scheduled' } = event.payload
