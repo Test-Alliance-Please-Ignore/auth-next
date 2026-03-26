@@ -1,5 +1,5 @@
 import { formatDistanceToNow } from 'date-fns'
-import { Building2, Calendar } from 'lucide-react'
+import { Calendar } from 'lucide-react'
 
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 
@@ -37,7 +37,11 @@ export function CharacterCorporationHistory({ history }: CharacterCorporationHis
 								className="flex items-start justify-between py-2 border-b last:border-0"
 							>
 								<div className="flex items-start gap-2">
-									<Building2 className="h-4 w-4 text-muted-foreground mt-0.5" />
+									<img
+										src={`https://images.evetech.net/corporations/${entry.corporationId}/logo?size=32`}
+										alt={entry.corporationName || `Corporation #${entry.corporationId}`}
+										className="h-6 w-6 rounded mt-0.5"
+									/>
 									<div>
 										<p className="text-sm font-medium">
 											{entry.corporationName ? (

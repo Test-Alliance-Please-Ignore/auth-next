@@ -470,8 +470,12 @@ app.get('/:characterId', requireAuth(), async (c) => {
 				)
 			: []
 
-		// Enrich skills with metadata
-		const enrichedSkills = await transformAndEnrichSkillsData(skills, c.env)
+		// Enrich skills with metadata and fetch full skill catalog
+		const skillsStub = getStub<any>(c.env.SKILLS, 'default')
+		const [enrichedSkills, allSkills] = await Promise.all([
+			transformAndEnrichSkillsData(skills, c.env),
+			skillsStub.getAllSkills().catch(() => []),
+		])
 
 		// Build response with public data
 		const response: any = {
@@ -485,6 +489,7 @@ app.get('/:characterId', requireAuth(), async (c) => {
 				portrait,
 				corporationHistory: enrichedCorporationHistory,
 				skills: enrichedSkills,
+				allSkills,
 				attributes,
 			},
 			lastUpdated,

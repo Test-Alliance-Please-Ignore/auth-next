@@ -1,5 +1,3 @@
-import { Brain, Eye, HardDrive, Heart, Zap } from 'lucide-react'
-
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 
 interface CharacterAttributesProps {
@@ -15,12 +13,13 @@ interface CharacterAttributesProps {
 	}
 }
 
-const attributeIcons = {
-	intelligence: Brain,
-	perception: Eye,
-	memory: HardDrive,
-	willpower: Zap,
-	charisma: Heart,
+/** EVE Online implant type IDs used as attribute icons (Basic attribute implants) */
+const attributeTypeIds: Record<string, number> = {
+	charisma: 9956, // Social Adaptation Chip - Basic
+	intelligence: 9943, // Cybernetic Subprocessor - Basic
+	memory: 9941, // Memory Augmentation - Basic
+	perception: 9899, // Ocular Filter - Basic
+	willpower: 9942, // Neural Boost - Basic
 }
 
 export function CharacterAttributes({ attributes }: CharacterAttributesProps) {
@@ -38,11 +37,15 @@ export function CharacterAttributes({ attributes }: CharacterAttributesProps) {
 						Willpower: attributes.willpower,
 						Charisma: attributes.charisma,
 					}).map(([name, value]) => {
-						const IconComponent = attributeIcons[name.toLowerCase() as keyof typeof attributeIcons]
+						const typeId = attributeTypeIds[name.toLowerCase()]
 						return (
 							<div key={name} className="flex items-center justify-between">
 								<div className="flex items-center gap-2">
-									<IconComponent className="h-4 w-4 text-muted-foreground" />
+									<img
+										src={`https://images.evetech.net/types/${typeId}/icon?size=32`}
+										alt={name}
+										className="h-5 w-5"
+									/>
 									<span className="text-sm font-medium">{name}</span>
 								</div>
 								<span className="text-sm font-bold">{value}</span>
