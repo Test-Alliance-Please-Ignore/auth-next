@@ -358,7 +358,7 @@ auth.get('/callback', async (c) => {
 
 					await c.env.USER_REFRESH_WORKFLOW.create({
 						id: createUserRefreshWorkflowId('link', stateUserId),
-						params: { userId: stateUserId, refreshMode: 'manual' },
+						params: { userId: stateUserId, refreshMode: 'event' },
 					})
 				} catch (error) {
 					console.error(
@@ -487,7 +487,7 @@ auth.get('/callback', async (c) => {
 
 						await c.env.USER_REFRESH_WORKFLOW.create({
 							id: createUserRefreshWorkflowId('login', user.id),
-							params: { userId: user.id, refreshMode: 'manual' },
+							params: { userId: user.id, refreshMode: 'event' },
 						})
 					}
 				} catch (error) {
@@ -647,7 +647,7 @@ auth.post('/claim-main', async (c) => {
 
 				await c.env.USER_REFRESH_WORKFLOW.create({
 					id: createUserRefreshWorkflowId('login', user.id),
-					params: { userId: user.id, refreshMode: 'manual' },
+					params: { userId: user.id, refreshMode: 'event' },
 				})
 			} catch (error) {
 				console.error('[Auth] Failed to trigger user refresh workflow:', toErrorMessage(error))
@@ -769,7 +769,7 @@ auth.post('/link-character', requireAuth(), async (c) => {
 
 				await c.env.USER_REFRESH_WORKFLOW.create({
 					id: createUserRefreshWorkflowId('link', user.id),
-					params: { userId: user.id, refreshMode: 'manual' },
+					params: { userId: user.id, refreshMode: 'event' },
 				})
 			} catch (error) {
 				console.error(

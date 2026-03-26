@@ -14,8 +14,14 @@ export interface TriggerUserRefreshOptions {
 	userId: string
 	source: string
 	bypassThrottle?: boolean
-	refreshMode?: 'scheduled' | 'manual'
-	throwOnError?: boolean
+	refreshMode?: 'scheduled' | 'event' | 'manual'
+}
+
+export interface TriggerUserRefreshResult {
+	status: 'triggered' | 'throttled' | 'failed'
+	triggered: boolean
+	workflowInstanceId?: string
+	error?: string
 }
 
 export function createUserRefreshWorkflowId(source: string, userId: string): string {
@@ -23,7 +29,7 @@ export function createUserRefreshWorkflowId(source: string, userId: string): str
 		.toLowerCase()
 		.replace(/[^a-z0-9]+/g, '-')
 		.replace(/^-+|-+$/g, '')
-	const sourceToken = (normalizedSource || 'manual').slice(0, 16)
+	const sourceToken = (normalizedSource || 'unknown').slice(0, 16)
 	const userToken = userId.replace(/-/g, '').slice(0, 12)
 	const timeToken = Date.now().toString(36)
 	return `user-refresh-${sourceToken}-${userToken}-${timeToken}`
@@ -41,8 +47,7 @@ export async function triggerUserRefreshWorkflow({
 	source,
 	bypassThrottle = false,
 	refreshMode = 'scheduled',
-	throwOnError = false,
-}: TriggerUserRefreshOptions): Promise<void> {
+}: TriggerUserRefreshOptions): Promise<TriggerUserRefreshResult> {
 	try {
 		const userRecord = await db.query.users.findFirst({
 			where: eq(users.id, userId),
@@ -54,7 +59,9 @@ export async function triggerUserRefreshWorkflow({
 			!userRecord?.lastRefreshWorkflowAttempt ||
 			Date.now() - userRecord.lastRefreshWorkflowAttempt.getTime() > THROTTLE_MS
 
-		if (!shouldTrigger) return
+		if (!shouldTrigger) {
+			return { status: 'throttled', triggered: false }
+		}
 
 		await db
 			.update(users)
@@ -73,14 +80,21 @@ export async function triggerUserRefreshWorkflow({
 			refreshMode,
 			workflowInstanceId: instance.id,
 		})
+		return {
+			status: 'triggered',
+			triggered: true,
+			workflowInstanceId: instance.id,
+		}
 	} catch (error) {
 		logger.error('[WorkflowTrigger] Failed to trigger user refresh workflow', {
 			userId,
 			source,
 			error: error instanceof Error ? error.message : String(error),
 		})
-		if (throwOnError) {
-			throw error
+		return {
+			status: 'failed',
+			triggered: false,
+			error: error instanceof Error ? error.message : String(error),
 		}
 	}
 }

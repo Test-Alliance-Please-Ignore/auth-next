@@ -641,22 +641,39 @@ app.post('/users/:userId/sync', requireAuth(), requireAdmin(), async (c) => {
 		}
 
 		// Trigger user refresh workflow, bypassing throttle for admin action
-		await triggerUserRefreshWorkflow({
+		const triggerResult = await triggerUserRefreshWorkflow({
 			db,
 			env: c.env,
 			userId,
 			source: `admin-sync-${user.id}`,
 			bypassThrottle: true,
 			refreshMode: 'manual',
-			throwOnError: true,
 		})
+		if (triggerResult.status === 'failed') {
+			return c.json(
+				{
+					error: triggerResult.error || 'Failed to trigger user sync',
+				},
+				500
+			)
+		}
 
 		logger.info('[Admin] User sync triggered by admin', {
 			adminUserId: user.id,
 			targetUserId: userId,
+			workflowStatus: triggerResult.status,
+			workflowInstanceId: triggerResult.workflowInstanceId,
 		})
 
-		return c.json({ success: true, message: 'User sync workflow triggered' })
+		return c.json({
+			success: true,
+			message:
+				triggerResult.status === 'triggered'
+					? 'User sync workflow triggered'
+					: 'User sync request accepted (throttled)',
+			status: triggerResult.status,
+			workflowInstanceId: triggerResult.workflowInstanceId,
+		})
 	} catch (error) {
 		logger.error('Error triggering user sync:', error)
 		return c.json(

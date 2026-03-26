@@ -11,7 +11,7 @@ export interface WorkflowContext {
 	env: Env
 	workflowInstanceId: string
 	userId: string
-	refreshMode: 'scheduled' | 'manual'
+	refreshMode: 'scheduled' | 'event' | 'manual'
 }
 
 /**

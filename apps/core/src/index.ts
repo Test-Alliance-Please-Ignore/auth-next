@@ -6,6 +6,7 @@ import { withNotFound, withOnError, withSentry } from '@repo/hono-helpers'
 
 import { createDb } from './db'
 import { CoreDO } from './durable-object'
+import { triggerUserRefreshWorkflow } from './lib/workflow-triggers'
 import { csrfProtection } from './middleware/csrf'
 import { sessionMiddleware } from './middleware/session'
 import adminRoutes from './routes/admin'
@@ -215,15 +216,69 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 		userId: string,
 		action: string,
 		metadata?: Record<string, any>
-	): Promise<void> {
-		return this.getService().logUserActivity(userId, action, metadata)
+	): Promise<{
+		ok: boolean
+		rpcRequestId: string
+		method: 'logUserActivity'
+		durationMs: number
+		error?: { message: string; name?: string }
+	}> {
+		const rpcRequestId = crypto.randomUUID()
+		const startedAt = Date.now()
+		try {
+			await this.getService().logUserActivity(userId, action, metadata)
+			return {
+				ok: true,
+				rpcRequestId,
+				method: 'logUserActivity',
+				durationMs: Date.now() - startedAt,
+			}
+		} catch (error) {
+			return {
+				ok: false,
+				rpcRequestId,
+				method: 'logUserActivity',
+				durationMs: Date.now() - startedAt,
+				error: {
+					message: error instanceof Error ? error.message : String(error),
+					name: error instanceof Error ? error.name : undefined,
+				},
+			}
+		}
 	}
 
 	/**
 	 * Update the last Discord refresh timestamp for a user
 	 */
-	async updateUserDiscordRefreshTimestamp(userId: string): Promise<void> {
-		return this.getService().updateUserDiscordRefreshTimestamp(userId)
+	async updateUserDiscordRefreshTimestamp(userId: string): Promise<{
+		ok: boolean
+		rpcRequestId: string
+		method: 'updateUserDiscordRefreshTimestamp'
+		durationMs: number
+		error?: { message: string; name?: string }
+	}> {
+		const rpcRequestId = crypto.randomUUID()
+		const startedAt = Date.now()
+		try {
+			await this.getService().updateUserDiscordRefreshTimestamp(userId)
+			return {
+				ok: true,
+				rpcRequestId,
+				method: 'updateUserDiscordRefreshTimestamp',
+				durationMs: Date.now() - startedAt,
+			}
+		} catch (error) {
+			return {
+				ok: false,
+				rpcRequestId,
+				method: 'updateUserDiscordRefreshTimestamp',
+				durationMs: Date.now() - startedAt,
+				error: {
+					message: error instanceof Error ? error.message : String(error),
+					name: error instanceof Error ? error.name : undefined,
+				},
+			}
+		}
 	}
 
 	/**
@@ -234,22 +289,51 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	 * - Updates nicknames if enabled
 	 */
 	async syncUserDiscordAccess(userId: string): Promise<{
-		results: Array<{
-			guildId: string
-			guildName: string
-			corporationName?: string
-			groupName?: string
-			success: boolean
-			errorMessage?: string
-			alreadyMember?: boolean
-			type?: 'corporation' | 'group'
-			operation?: 'invite' | 'update'
-		}>
-		totalInvited: number
-		totalUpdated: number
-		totalFailed: number
+		ok: boolean
+		rpcRequestId: string
+		method: 'syncUserDiscordAccess'
+		durationMs: number
+		result?: {
+			results: Array<{
+				guildId: string
+				guildName: string
+				corporationName?: string
+				groupName?: string
+				success: boolean
+				errorMessage?: string
+				alreadyMember?: boolean
+				type?: 'corporation' | 'group'
+				operation?: 'invite' | 'update'
+			}>
+			totalInvited: number
+			totalUpdated: number
+			totalFailed: number
+		}
+		error?: { message: string; name?: string }
 	}> {
-		return this.getService().syncUserDiscordAccess(userId)
+		const rpcRequestId = crypto.randomUUID()
+		const startedAt = Date.now()
+		try {
+			const result = await this.getService().syncUserDiscordAccess(userId)
+			return {
+				ok: true,
+				rpcRequestId,
+				method: 'syncUserDiscordAccess',
+				durationMs: Date.now() - startedAt,
+				result,
+			}
+		} catch (error) {
+			return {
+				ok: false,
+				rpcRequestId,
+				method: 'syncUserDiscordAccess',
+				durationMs: Date.now() - startedAt,
+				error: {
+					message: error instanceof Error ? error.message : String(error),
+					name: error instanceof Error ? error.name : undefined,
+				},
+			}
+		}
 	}
 
 	/**
@@ -331,6 +415,53 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	 */
 	async getUserMainCharacterName(userId: string): Promise<string | null> {
 		return this.getService().getUserMainCharacterName(userId)
+	}
+
+	/**
+	 * Trigger user refresh workflow from internal callers (for example orchestrator)
+	 */
+	async triggerUserRefresh(
+		userId: string,
+		options?: {
+			source?: string
+			bypassThrottle?: boolean
+			refreshMode?: 'scheduled' | 'event' | 'manual'
+		}
+	): Promise<{
+		success: boolean
+		userId: string
+		status: 'triggered' | 'throttled' | 'failed'
+		triggered: boolean
+		workflowInstanceId?: string
+		error?: string
+	}> {
+		const db = createDb(this.env.DATABASE_URL)
+		try {
+			const result = await triggerUserRefreshWorkflow({
+				db,
+				env: this.env,
+				userId,
+				source: options?.source ?? 'core-rpc',
+				bypassThrottle: options?.bypassThrottle ?? false,
+				refreshMode: options?.refreshMode ?? 'scheduled',
+			})
+			return {
+				success: result.status !== 'failed',
+				userId,
+				status: result.status,
+				triggered: result.triggered,
+				workflowInstanceId: result.workflowInstanceId,
+				error: result.error,
+			}
+		} catch (error) {
+			return {
+				success: false,
+				userId,
+				status: 'failed',
+				triggered: false,
+				error: error instanceof Error ? error.message : String(error),
+			}
+		}
 	}
 }
 
