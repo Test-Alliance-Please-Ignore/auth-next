@@ -238,8 +238,11 @@ export function CharacterSkills({ skills, allSkills, showProgress = false }: Cha
 					<p className="text-sm text-muted-foreground">No skills data available</p>
 				) : (
 					<>
-						{/* Skill Group Grid */}
-						<div className="grid grid-cols-3 gap-1.5">
+						{/* Skill Group Grid — column-first fill */}
+						<div
+							className="grid grid-flow-col gap-1.5"
+							style={{ gridTemplateRows: `repeat(${Math.ceil(groups.length / 3)}, minmax(0, 1fr))` }}
+						>
 							{groups.map((group) => {
 								const pct = group.totalCount > 0
 									? (group.trainedCount / group.totalCount) * 100
@@ -273,7 +276,7 @@ export function CharacterSkills({ skills, allSkills, showProgress = false }: Cha
 										/>
 										<span className="relative text-sm truncate">{group.groupName}</span>
 										<span className="relative text-sm tabular-nums text-muted-foreground ml-2 shrink-0">
-											{group.trainedCount}
+											{group.totalCount}
 										</span>
 									</button>
 								)
@@ -291,7 +294,7 @@ export function CharacterSkills({ skills, allSkills, showProgress = false }: Cha
 										{formatSkillPoints(activeGroup.totalSP)}
 									</span>
 								</div>
-								<div className="grid grid-cols-2 gap-x-4 px-4 py-1">
+								<div className="columns-2 gap-x-4 px-4 py-1">
 									{activeGroup.skills
 										.sort((a, b) => a.skillName.localeCompare(b.skillName))
 										.map((skill) => {
@@ -316,7 +319,7 @@ export function CharacterSkills({ skills, allSkills, showProgress = false }: Cha
 												<div
 													key={skill.skillId}
 													className={cn(
-														'flex items-center justify-between py-1',
+														'flex items-center justify-between py-1 break-inside-avoid',
 														!skill.isTrained && 'opacity-40'
 													)}
 												>
