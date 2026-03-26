@@ -1294,6 +1294,7 @@ export class ApiClient {
 			portrait: any
 			corporationHistory: any[]
 			skills: any
+			allSkills: any
 			attributes: any
 		}
 		private?: {
