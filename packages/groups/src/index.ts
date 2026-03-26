@@ -287,36 +287,35 @@ export interface Groups {
 	 */
 
 	/** Create a new category (admin only) */
-	createCategory(data: CreateCategoryRequest, adminUserId: string): Promise<Category>
+	createCategory(data: CreateCategoryRequest, actorId: string): Promise<Category>
 
 	/** List categories visible to the user */
-	listCategories(userId: string, isAdmin: boolean): Promise<Category[]>
+	listCategories(actorId: string): Promise<Category[]>
 
 	/** Get a specific category */
-	getCategory(id: string, userId: string, isAdmin: boolean): Promise<CategoryWithGroups | null>
+	getCategory(id: string, actorId: string): Promise<CategoryWithGroups | null>
 
 	/** Update a category (admin only) */
-	updateCategory(id: string, data: UpdateCategoryRequest, adminUserId: string): Promise<Category>
+	updateCategory(id: string, data: UpdateCategoryRequest, actorId: string): Promise<Category>
 
 	/** Delete a category (admin only) */
-	deleteCategory(id: string, adminUserId: string): Promise<void>
+	deleteCategory(id: string, actorId: string): Promise<void>
 
 	/**
 	 * Group Operations
 	 */
 
 	/** Create a new group */
-	createGroup(data: CreateGroupRequest, userId: string, isAdmin: boolean): Promise<Group>
+	createGroup(data: CreateGroupRequest, actorId: string): Promise<Group>
 
 	/** List groups with filters */
 	listGroups(
 		filters: ListGroupsFilters,
-		userId: string,
-		isAdmin: boolean
+		actorId: string
 	): Promise<GroupWithDetails[]>
 
 	/** Get a specific group */
-	getGroup(id: string, userId: string, isAdmin: boolean): Promise<GroupWithDetails | null>
+	getGroup(id: string, actorId: string): Promise<GroupWithDetails | null>
 
 	/** Get minimal group metadata by ID for internal cross-worker resolution. */
 	getGroupMetadataByIds(ids: string[]): Promise<Array<{ id: string; name: string }>>
@@ -325,19 +324,17 @@ export interface Groups {
 	updateGroup(
 		id: string,
 		data: UpdateGroupRequest,
-		userId: string,
-		isAdmin?: boolean
+		actorId: string
 	): Promise<Group>
 
 	/** Delete a group (owner or site admin) */
-	deleteGroup(id: string, userId: string, isAdmin?: boolean): Promise<void>
+	deleteGroup(id: string, actorId: string): Promise<void>
 
 	/** Transfer group ownership (owner or admin) */
 	transferOwnership(
 		groupId: string,
-		requestingUserId: string,
-		newOwnerId: string,
-		isAdmin?: boolean
+		actorId: string,
+		newOwnerId: string
 	): Promise<void>
 
 	/**
@@ -345,16 +342,16 @@ export interface Groups {
 	 */
 
 	/** Join an open group */
-	joinGroup(groupId: string, userId: string): Promise<void>
+	joinGroup(groupId: string, actorId: string): Promise<void>
 
 	/** Leave a group */
-	leaveGroup(groupId: string, userId: string): Promise<void>
+	leaveGroup(groupId: string, actorId: string): Promise<void>
 
 	/** Remove a member (admin only) */
-	removeMember(groupId: string, adminUserId: string, targetUserId: string): Promise<void>
+	removeMember(groupId: string, actorId: string, targetUserId: string): Promise<void>
 
 	/** Get group members */
-	getGroupMembers(groupId: string, userId: string, isAdmin: boolean): Promise<GroupMember[]>
+	getGroupMembers(groupId: string, actorId: string): Promise<GroupMember[]>
 
 	/** Get user's group memberships */
 	getUserMemberships(userId: string): Promise<GroupMembershipSummary[]>
@@ -364,10 +361,10 @@ export interface Groups {
 	 */
 
 	/** Add a group admin (owner only) */
-	addAdmin(groupId: string, ownerId: string, targetUserId: string): Promise<void>
+	addAdmin(groupId: string, actorId: string, targetUserId: string): Promise<void>
 
 	/** Remove a group admin (owner only) */
-	removeAdmin(groupId: string, ownerId: string, targetUserId: string): Promise<void>
+	removeAdmin(groupId: string, actorId: string, targetUserId: string): Promise<void>
 
 	/** Check if user is a group admin */
 	isGroupAdmin(groupId: string, userId: string): Promise<boolean>
@@ -377,43 +374,44 @@ export interface Groups {
 	 */
 
 	/** Create a join request */
-	createJoinRequest(data: CreateJoinRequestRequest, userId: string): Promise<GroupJoinRequest>
+	createJoinRequest(data: CreateJoinRequestRequest, actorId: string): Promise<GroupJoinRequest>
 
 	/** List join requests for a group (owner, group admin, or site admin) */
 	listJoinRequests(
 		groupId: string,
-		adminUserId: string,
-		isSiteAdmin?: boolean
+		actorId: string
 	): Promise<GroupJoinRequestWithDetails[]>
 
 	/** Approve a join request (owner, group admin, or site admin) */
-	approveJoinRequest(requestId: string, adminUserId: string, isSiteAdmin?: boolean): Promise<void>
+	approveJoinRequest(requestId: string, actorId: string): Promise<{ userId: string }>
 
 	/** Reject a join request (owner, group admin, or site admin) */
-	rejectJoinRequest(requestId: string, adminUserId: string, isSiteAdmin?: boolean): Promise<void>
+	rejectJoinRequest(requestId: string, actorId: string): Promise<void>
 
 	/**
 	 * Invitation Operations
 	 */
 
 	/** Create a direct invitation */
-	createInvitation(data: CreateInvitationRequest, inviterId: string): Promise<GroupInvitation>
+	createInvitation(data: CreateInvitationRequest, actorId: string): Promise<GroupInvitation>
 
 	/** List pending invitations for a user */
-	listPendingInvitations(userId: string): Promise<GroupInvitationWithDetails[]>
+	listPendingInvitations(actorId: string): Promise<GroupInvitationWithDetails[]>
 
 	/** Get all pending invitations for a group (admin only) */
 	getGroupInvitations(
 		groupId: string,
-		userId: string,
-		isAdmin: boolean
+		actorId: string
 	): Promise<GroupInvitationWithDetails[]>
 
 	/** Accept an invitation */
-	acceptInvitation(invitationId: string, userId: string): Promise<void>
+	acceptInvitation(invitationId: string, actorId: string): Promise<void>
 
 	/** Decline an invitation */
-	declineInvitation(invitationId: string, userId: string): Promise<void>
+	declineInvitation(invitationId: string, actorId: string): Promise<void>
+
+	/** Cancel an invitation (inviter, group owner/admin, or site admin) */
+	cancelInvitation(invitationId: string, actorId: string): Promise<void>
 
 	/**
 	 * Invite Code Operations
@@ -422,22 +420,20 @@ export interface Groups {
 	/** Create an invite code (owner only) */
 	createInviteCode(
 		data: CreateInviteCodeRequest,
-		userId: string,
-		isAdmin?: boolean
+		actorId: string
 	): Promise<CreateInviteCodeResponse>
 
 	/** List invite codes for a group (owner/admin/global admin only) */
 	listInviteCodes(
 		groupId: string,
-		userId: string,
-		isGlobalAdmin?: boolean
+		actorId: string
 	): Promise<GroupInviteCode[]>
 
 	/** Revoke an invite code (owner/global admin only) */
-	revokeInviteCode(codeId: string, userId: string, isAdmin?: boolean): Promise<void>
+	revokeInviteCode(codeId: string, actorId: string): Promise<void>
 
 	/** Redeem an invite code */
-	redeemInviteCode(code: string, userId: string): Promise<RedeemInviteCodeResponse>
+	redeemInviteCode(code: string, actorId: string): Promise<RedeemInviteCodeResponse>
 
 	/** Get group information by invite code (for preview/landing page) */
 	getGroupByInviteCode(code: string, userId?: string): Promise<GroupByInviteCodeResponse | null>
@@ -506,7 +502,7 @@ export interface Groups {
 	/** Create a permission category (admin only) */
 	createPermissionCategory(
 		data: CreatePermissionCategoryRequest,
-		adminUserId: string
+		actorId: string
 	): Promise<PermissionCategory>
 
 	/** List all permission categories */
@@ -516,18 +512,18 @@ export interface Groups {
 	updatePermissionCategory(
 		id: string,
 		data: UpdatePermissionCategoryRequest,
-		adminUserId: string
+		actorId: string
 	): Promise<PermissionCategory>
 
 	/** Delete a permission category (admin only) */
-	deletePermissionCategory(id: string, adminUserId: string): Promise<void>
+	deletePermissionCategory(id: string, actorId: string): Promise<void>
 
 	/**
 	 * Global Permission Operations
 	 */
 
 	/** Create a global permission (admin only) */
-	createPermission(data: CreatePermissionRequest, adminUserId: string): Promise<Permission>
+	createPermission(data: CreatePermissionRequest, actorId: string): Promise<Permission>
 
 	/** List all global permissions */
 	listPermissions(categoryId?: string): Promise<PermissionWithDetails[]>
@@ -539,11 +535,11 @@ export interface Groups {
 	updatePermission(
 		id: string,
 		data: UpdatePermissionRequest,
-		adminUserId: string
+		actorId: string
 	): Promise<Permission>
 
 	/** Delete a global permission (admin only) */
-	deletePermission(id: string, adminUserId: string): Promise<void>
+	deletePermission(id: string, actorId: string): Promise<void>
 
 	/**
 	 * Group Permission Operations
@@ -552,27 +548,27 @@ export interface Groups {
 	/** Attach a global permission to a group (admin only) */
 	attachPermissionToGroup(
 		data: AttachPermissionRequest,
-		adminUserId: string
+		actorId: string
 	): Promise<GroupPermissionWithDetails>
 
 	/** Create a group-scoped permission (admin only) */
 	createGroupScopedPermission(
 		data: CreateGroupScopedPermissionRequest,
-		adminUserId: string
+		actorId: string
 	): Promise<GroupPermissionWithDetails>
 
 	/** List permissions attached to a group (admin only) */
-	listGroupPermissions(groupId: string, adminUserId: string): Promise<GroupPermissionWithDetails[]>
+	listGroupPermissions(groupId: string, actorId: string): Promise<GroupPermissionWithDetails[]>
 
 	/** Update a group permission (admin only) */
 	updateGroupPermission(
 		groupPermissionId: string,
 		data: UpdateGroupPermissionRequest,
-		adminUserId: string
+		actorId: string
 	): Promise<GroupPermissionWithDetails>
 
 	/** Remove a permission from a group (admin only) */
-	removePermissionFromGroup(groupPermissionId: string, adminUserId: string): Promise<void>
+	removePermissionFromGroup(groupPermissionId: string, actorId: string): Promise<void>
 
 	/**
 	 * Permission Query Operations
@@ -596,7 +592,7 @@ export interface Groups {
 	/** Attach a global permission to a corporation (admin only) */
 	attachPermissionToCorporation(
 		data: AttachPermissionToCorporationRequest,
-		adminUserId: string
+		actorId: string
 	): Promise<CorporationPermissionWithDetails>
 
 	/** List permissions attached to a corporation */
@@ -605,7 +601,7 @@ export interface Groups {
 	/** Remove a permission from a corporation (admin only) */
 	removePermissionFromCorporation(
 		corporationPermissionId: string,
-		adminUserId: string
+		actorId: string
 	): Promise<void>
 
 	/** Get all permissions for a character based on their corporation membership */

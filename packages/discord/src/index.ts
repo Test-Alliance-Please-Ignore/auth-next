@@ -328,7 +328,8 @@ export interface Discord {
 			guildId: string
 			roleIds: string[]
 			managedRoleIds?: string[] // All system-managed role IDs for this guild
-		}>
+		}>,
+		allowRemoval?: boolean // When true, overrides add-only mode and removes managed roles the user no longer qualifies for
 	): Promise<
 		Array<{
 			guildId: string

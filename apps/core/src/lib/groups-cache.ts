@@ -30,7 +30,7 @@ const permissionsCache = new TimeCache<UserPermission[]>(PERMISSIONS_TTL)
 // Membership cache: userId -> GroupMembershipSummary[]
 const membershipsCache = new TimeCache<GroupMembershipSummary[]>(MEMBERSHIPS_TTL)
 
-// Group cache: groupId:userId:isAdmin -> GroupWithDetails | null
+// Group cache: groupId:userId -> GroupWithDetails | null
 const groupsCache = new TimeCache<GroupWithDetails | null>(GROUPS_TTL)
 
 // Character permissions cache: characterId -> UserPermission[]
@@ -80,13 +80,12 @@ export async function getCachedUserMemberships(
 export async function getCachedGroup(
 	env: GroupsEnv,
 	groupId: string,
-	userId: string,
-	isAdmin: boolean
+	userId: string
 ): Promise<GroupWithDetails | null> {
-	const cacheKey = `group:${groupId}:${userId}:${isAdmin}`
+	const cacheKey = `group:${groupId}:${userId}`
 	return groupsCache.getOrSet(cacheKey, async () => {
 		const groupsStub = getStub<Groups>(env.GROUPS, 'default')
-		return await groupsStub.getGroup(groupId, userId, isAdmin)
+		return await groupsStub.getGroup(groupId, userId)
 	})
 }
 

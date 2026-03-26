@@ -374,8 +374,7 @@ app.get('/entities/search', requireAuth(), requireAdmin(), async (c) => {
 					limit,
 					offset: 0,
 				},
-				user.id,
-				true
+				user.id
 			)
 			const deduped = new Map<
 				string,
@@ -395,7 +394,7 @@ app.get('/entities/search', requireAuth(), requireAdmin(), async (c) => {
 				/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(q)
 			if (isUuidQuery) {
 				try {
-					const exact = await groupsStub.getGroup(q, user.id, true)
+					const exact = await groupsStub.getGroup(q, user.id)
 					if (exact) {
 						const key = `${entityType}:${exact.id}`
 						if (!deduped.has(key)) {

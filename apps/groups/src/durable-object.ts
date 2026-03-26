@@ -190,32 +190,33 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	 * ============================================
 	 */
 
-	async createCategory(data: CreateCategoryRequest, adminUserId: string): Promise<Category> {
-		return this.categoryService.createCategory(data, adminUserId)
+	async createCategory(data: CreateCategoryRequest, actorId: string): Promise<Category> {
+		return this.categoryService.createCategory(data, actorId)
 	}
 
-	async listCategories(userId: string, isAdmin: boolean): Promise<Category[]> {
-		return this.categoryService.listCategories(userId, isAdmin)
+	async listCategories(actorId: string): Promise<Category[]> {
+		const isSiteAdmin = await this.isUserSiteAdmin(actorId)
+		return this.categoryService.listCategories(actorId, isSiteAdmin)
 	}
 
 	async getCategory(
 		id: string,
-		userId: string,
-		isAdmin: boolean
+		actorId: string
 	): Promise<CategoryWithGroups | null> {
-		return this.categoryService.getCategory(id, userId, isAdmin)
+		const isSiteAdmin = await this.isUserSiteAdmin(actorId)
+		return this.categoryService.getCategory(id, actorId, isSiteAdmin)
 	}
 
 	async updateCategory(
 		id: string,
 		data: UpdateCategoryRequest,
-		adminUserId: string
+		actorId: string
 	): Promise<Category> {
-		return this.categoryService.updateCategory(id, data, adminUserId)
+		return this.categoryService.updateCategory(id, data, actorId)
 	}
 
-	async deleteCategory(id: string, adminUserId: string): Promise<void> {
-		return this.categoryService.deleteCategory(id, adminUserId)
+	async deleteCategory(id: string, actorId: string): Promise<void> {
+		return this.categoryService.deleteCategory(id, actorId)
 	}
 
 	/**
@@ -224,17 +225,20 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	 * ============================================
 	 */
 
-	async createGroup(data: CreateGroupRequest, userId: string, isAdmin: boolean): Promise<Group> {
+	async createGroup(data: CreateGroupRequest, actorId: string): Promise<Group> {
 		// Validate category exists and user can create groups in it
-		const category = await this.db.query.categories.findFirst({
-			where: eq(categories.id, data.categoryId),
-		})
+		const [category, isSiteAdmin] = await Promise.all([
+			this.db.query.categories.findFirst({
+				where: eq(categories.id, data.categoryId),
+			}),
+			this.isUserSiteAdmin(actorId),
+		])
 
 		if (!category) {
 			throw new Error('Category not found')
 		}
 
-		if (!canCreateGroupInCategory(category, userId, isAdmin)) {
+		if (!canCreateGroupInCategory(category, actorId, isSiteAdmin)) {
 			throw new Error('Not allowed to create groups in this category')
 		}
 
@@ -247,14 +251,14 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 				description: data.description || null,
 				visibility: data.visibility || 'public',
 				joinMode: data.joinMode || 'open',
-				ownerId: userId,
+				ownerId: actorId,
 			})
 			.returning()
 
 		// Automatically add the owner as a member
 		await this.db.insert(groupMembers).values({
 			groupId: group.id,
-			userId: userId,
+			userId: actorId,
 		})
 
 		return this.mapGroup(group)
@@ -262,8 +266,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 	async listGroups(
 		filters: ListGroupsFilters,
-		userId: string,
-		isAdmin: boolean
+		actorId: string
 	): Promise<GroupWithDetails[]> {
 		const limit = filters.limit ?? 100
 		const offset = filters.offset ?? 0
@@ -306,12 +309,15 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 		if (filters.myGroups) {
 			const userMemberships = await this.db.query.groupMembers.findMany({
-				where: eq(groupMembers.userId, userId),
+				where: eq(groupMembers.userId, actorId),
 			})
 			const memberGroupIds = new Set(userMemberships.map((m) => m.groupId))
 			groupsToCheck = allGroups.filter((g) => memberGroupIds.has(g.id))
 			groupsToCheck = groupsToCheck.slice(offset, offset + limit)
 		}
+
+		// Resolve site admin status once for filtering
+		const isSiteAdmin = await this.isUserSiteAdmin(actorId)
 
 		// Early return if no groups to check
 		if (groupsToCheck.length === 0) {
@@ -323,13 +329,13 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 		// Batch query 1: Get all memberships for this user across all groups
 		const userMemberships = await this.db.query.groupMembers.findMany({
-			where: and(inArray(groupMembers.groupId, groupIds), eq(groupMembers.userId, userId)),
+			where: and(inArray(groupMembers.groupId, groupIds), eq(groupMembers.userId, actorId)),
 		})
 		const memberGroupIds = new Set(userMemberships.map((m) => m.groupId))
 
 		// Batch query 2: Get all admin designations for this user
 		const userAdminRoles = await this.db.query.groupAdmins.findMany({
-			where: and(inArray(groupAdmins.groupId, groupIds), eq(groupAdmins.userId, userId)),
+			where: and(inArray(groupAdmins.groupId, groupIds), eq(groupAdmins.userId, actorId)),
 		})
 		const adminGroupIds = new Set(userAdminRoles.map((a) => a.groupId))
 
@@ -351,8 +357,8 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		for (const group of groupsToCheck) {
 			const isMember = memberGroupIds.has(group.id)
 
-			if (canViewGroup(group, userId, isAdmin, isMember)) {
-				const isOwner = group.ownerId === userId
+			if (canViewGroup(group, actorId, isSiteAdmin, isMember)) {
+				const isOwner = group.ownerId === actorId
 				const isAdminOfGroup = adminGroupIds.has(group.id)
 				const memberCount = memberCountMap.get(group.id) || 0
 
@@ -370,7 +376,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		return result
 	}
 
-	async getGroup(id: string, userId: string, isAdmin: boolean): Promise<GroupWithDetails | null> {
+	async getGroup(id: string, actorId: string): Promise<GroupWithDetails | null> {
 		const group = await this.db.query.groups.findFirst({
 			where: eq(groups.id, id),
 			with: {
@@ -380,18 +386,21 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 		if (!group) return null
 
-		const isMember = await this.isUserMember(id, userId)
+		const [isMember, isSiteAdmin] = await Promise.all([
+			this.isUserMember(id, actorId),
+			this.isUserSiteAdmin(actorId),
+		])
 
-		if (!canViewGroup(group, userId, isAdmin, isMember)) {
+		if (!canViewGroup(group, actorId, isSiteAdmin, isMember)) {
 			return null
 		}
 
-		const isOwner = group.ownerId === userId
+		const isOwner = group.ownerId === actorId
 
 		// Parallelize independent queries for better performance
 		const [isAdminOfGroup, memberCount, admins, characterNames, pendingRequest] = await Promise.all(
 			[
-				this.isUserGroupAdmin(id, userId),
+				this.isUserGroupAdmin(id, actorId),
 				this.getGroupMemberCount(id),
 				this.db.query.groupAdmins.findMany({
 					where: eq(groupAdmins.groupId, id),
@@ -400,7 +409,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 				this.db.query.groupJoinRequests.findFirst({
 					where: and(
 						eq(groupJoinRequests.groupId, id),
-						eq(groupJoinRequests.userId, userId),
+						eq(groupJoinRequests.userId, actorId),
 						eq(groupJoinRequests.status, 'pending')
 					),
 				}),
@@ -446,8 +455,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	async updateGroup(
 		id: string,
 		data: UpdateGroupRequest,
-		userId: string,
-		isAdmin = false
+		actorId: string
 	): Promise<Group> {
 		const group = await this.db.query.groups.findFirst({
 			where: eq(groups.id, id),
@@ -457,8 +465,8 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Group not found')
 		}
 
-		// Site admins can update any group, otherwise must be the owner
-		if (!isAdmin && !canManageGroup(group, userId)) {
+		const isSiteAdmin = await this.isUserSiteAdmin(actorId)
+		if (!canManageGroup(group, actorId, isSiteAdmin)) {
 			throw new Error('Only the group owner or site admins can update the group')
 		}
 
@@ -492,7 +500,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		return this.mapGroup(updated)
 	}
 
-	async deleteGroup(id: string, userId: string, isAdmin = false): Promise<void> {
+	async deleteGroup(id: string, actorId: string): Promise<void> {
 		const group = await this.db.query.groups.findFirst({
 			where: eq(groups.id, id),
 		})
@@ -501,8 +509,8 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Group not found')
 		}
 
-		// Site admins can delete any group, otherwise must be the owner
-		if (!isAdmin && !canManageGroup(group, userId)) {
+		const isSiteAdmin = await this.isUserSiteAdmin(actorId)
+		if (!canManageGroup(group, actorId, isSiteAdmin)) {
 			throw new Error('Only the group owner or site admins can delete the group')
 		}
 
@@ -512,21 +520,23 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 	async transferOwnership(
 		groupId: string,
-		requestingUserId: string,
-		newOwnerId: string,
-		isAdmin: boolean = false
+		actorId: string,
+		newOwnerId: string
 	): Promise<void> {
-		const group = await this.db.query.groups.findFirst({
-			where: eq(groups.id, groupId),
-		})
+		const [group, isSiteAdmin] = await Promise.all([
+			this.db.query.groups.findFirst({
+				where: eq(groups.id, groupId),
+			}),
+			this.isUserSiteAdmin(actorId),
+		])
 
 		if (!group) {
 			throw new Error('Group not found')
 		}
 
 		// Allow transfer if: requesting user is current owner OR requesting user is app admin
-		const isCurrentOwner = group.ownerId === requestingUserId
-		if (!isCurrentOwner && !isAdmin) {
+		const isCurrentOwner = group.ownerId === actorId
+		if (!isCurrentOwner && !isSiteAdmin) {
 			throw new Error('Only the current owner or app admins can transfer ownership')
 		}
 
@@ -572,7 +582,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	 * ============================================
 	 */
 
-	async joinGroup(groupId: string, userId: string): Promise<void> {
+	async joinGroup(groupId: string, actorId: string): Promise<void> {
 		const group = await this.db.query.groups.findFirst({
 			where: eq(groups.id, groupId),
 		})
@@ -587,7 +597,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		}
 
 		// Check if already a member
-		const isMember = await this.isUserMember(groupId, userId)
+		const isMember = await this.isUserMember(groupId, actorId)
 		if (isMember) {
 			throw new Error('Already a member of this group')
 		}
@@ -595,21 +605,21 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		// Add as member
 		await this.db.insert(groupMembers).values({
 			groupId,
-			userId,
+			userId: actorId,
 		})
 
 		// Cancel any pending join requests from this user for this group
-		await this.cancelPendingJoinRequests(groupId, userId)
+		await this.cancelPendingJoinRequests(groupId, actorId)
 		// Cancel any pending invitations for this user to this group
-		await this.cancelPendingInvitations(groupId, userId)
+		await this.cancelPendingInvitations(groupId, actorId)
 
 		// Invalidate group members cache
 		this.invalidateGroupMembersCache(groupId)
 		// Invalidate user's permissions cache (they now have new permissions from this group)
-		this.invalidateUserPermissionsCache(userId)
+		this.invalidateUserPermissionsCache(actorId)
 	}
 
-	async leaveGroup(groupId: string, userId: string): Promise<void> {
+	async leaveGroup(groupId: string, actorId: string): Promise<void> {
 		const group = await this.db.query.groups.findFirst({
 			where: eq(groups.id, groupId),
 		})
@@ -619,12 +629,12 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		}
 
 		// Owner cannot leave (must transfer ownership first)
-		if (group.ownerId === userId) {
+		if (group.ownerId === actorId) {
 			throw new Error('Group owner cannot leave. Transfer ownership first.')
 		}
 
 		// Verify user is actually a member before attempting to remove
-		const isMember = await this.isUserMember(groupId, userId)
+		const isMember = await this.isUserMember(groupId, actorId)
 		if (!isMember) {
 			throw new Error('You are not a member of this group')
 		}
@@ -632,20 +642,20 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		// Remove from admins if they are one
 		await this.db
 			.delete(groupAdmins)
-			.where(and(eq(groupAdmins.groupId, groupId), eq(groupAdmins.userId, userId)))
+			.where(and(eq(groupAdmins.groupId, groupId), eq(groupAdmins.userId, actorId)))
 
 		// Remove from members
 		await this.db
 			.delete(groupMembers)
-			.where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)))
+			.where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, actorId)))
 
 		// Invalidate group members cache
 		this.invalidateGroupMembersCache(groupId)
 		// Invalidate user's permissions cache (they lost permissions from this group)
-		this.invalidateUserPermissionsCache(userId)
+		this.invalidateUserPermissionsCache(actorId)
 	}
 
-	async removeMember(groupId: string, adminUserId: string, targetUserId: string): Promise<void> {
+	async removeMember(groupId: string, actorId: string, targetUserId: string): Promise<void> {
 		const group = await this.db.query.groups.findFirst({
 			where: eq(groups.id, groupId),
 		})
@@ -654,9 +664,12 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Group not found')
 		}
 
-		const isAdmin = await this.isUserGroupAdmin(groupId, adminUserId)
+		const [isGroupAdmin, isSiteAdmin] = await Promise.all([
+			this.isUserGroupAdmin(groupId, actorId),
+			this.isUserSiteAdmin(actorId),
+		])
 
-		if (!canModerateGroup(group, adminUserId, isAdmin)) {
+		if (!canModerateGroup(group, actorId, isGroupAdmin, isSiteAdmin)) {
 			throw new Error('Only group owner or admins can remove members')
 		}
 
@@ -681,7 +694,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		this.invalidateUserPermissionsCache(targetUserId)
 	}
 
-	async getGroupMembers(groupId: string, userId: string, isAdmin: boolean): Promise<GroupMember[]> {
+	async getGroupMembers(groupId: string, actorId: string): Promise<GroupMember[]> {
 		const group = await this.db.query.groups.findFirst({
 			where: eq(groups.id, groupId),
 		})
@@ -690,11 +703,14 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Group not found')
 		}
 
-		const isMember = await this.isUserMember(groupId, userId)
+		const [isMember, isSiteAdmin] = await Promise.all([
+			this.isUserMember(groupId, actorId),
+			this.isUserSiteAdmin(actorId),
+		])
 		const isGroupOwnerOrAdmin =
-			group.ownerId === userId || (await this.isUserGroupAdmin(groupId, userId))
+			group.ownerId === actorId || (await this.isUserGroupAdmin(groupId, actorId))
 
-		if (!canViewGroupMembers(group, userId, isAdmin, isMember, isGroupOwnerOrAdmin)) {
+		if (!canViewGroupMembers(group, actorId, isSiteAdmin, isMember, isGroupOwnerOrAdmin)) {
 			throw new Error('Not authorized to view group members')
 		}
 
@@ -759,7 +775,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 	async addAdmin(
 		groupId: string,
-		ownerId: string,
+		actorId: string,
 		targetUserId: string,
 		isGlobalAdmin: boolean = false
 	): Promise<void> {
@@ -771,7 +787,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Group not found')
 		}
 
-		if (!canManageGroup(group, ownerId, isGlobalAdmin)) {
+		if (!canManageGroup(group, actorId, isGlobalAdmin)) {
 			throw new Error('Only the group owner or site admins can add admins')
 		}
 
@@ -799,7 +815,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 	async removeAdmin(
 		groupId: string,
-		ownerId: string,
+		actorId: string,
 		targetUserId: string,
 		isGlobalAdmin: boolean = false
 	): Promise<void> {
@@ -811,7 +827,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Group not found')
 		}
 
-		if (!canManageGroup(group, ownerId, isGlobalAdmin)) {
+		if (!canManageGroup(group, actorId, isGlobalAdmin)) {
 			throw new Error('Only the group owner or site admins can remove admins')
 		}
 
@@ -835,7 +851,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 	async createJoinRequest(
 		data: CreateJoinRequestRequest,
-		userId: string
+		actorId: string
 	): Promise<GroupJoinRequest> {
 		const group = await this.db.query.groups.findFirst({
 			where: eq(groups.id, data.groupId),
@@ -851,7 +867,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		}
 
 		// Check if already a member
-		const isMember = await this.isUserMember(data.groupId, userId)
+		const isMember = await this.isUserMember(data.groupId, actorId)
 		if (isMember) {
 			throw new Error('Already a member of this group')
 		}
@@ -860,7 +876,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		const existingRequest = await this.db.query.groupJoinRequests.findFirst({
 			where: and(
 				eq(groupJoinRequests.groupId, data.groupId),
-				eq(groupJoinRequests.userId, userId),
+				eq(groupJoinRequests.userId, actorId),
 				eq(groupJoinRequests.status, 'pending')
 			),
 		})
@@ -873,7 +889,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			.insert(groupJoinRequests)
 			.values({
 				groupId: data.groupId,
-				userId,
+				userId: actorId,
 				reason: data.reason || null,
 				status: 'pending',
 			})
@@ -884,8 +900,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 	async listJoinRequests(
 		groupId: string,
-		adminUserId: string,
-		isSiteAdmin = false
+		actorId: string
 	): Promise<GroupJoinRequestWithDetails[]> {
 		const group = await this.db.query.groups.findFirst({
 			where: eq(groups.id, groupId),
@@ -895,9 +910,12 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Group not found')
 		}
 
-		const isGroupAdmin = await this.isUserGroupAdmin(groupId, adminUserId)
+		const [isGroupAdmin, isSiteAdmin] = await Promise.all([
+			this.isUserGroupAdmin(groupId, actorId),
+			this.isUserSiteAdmin(actorId),
+		])
 
-		if (!canModerateGroup(group, adminUserId, isGroupAdmin, isSiteAdmin)) {
+		if (!canModerateGroup(group, actorId, isGroupAdmin, isSiteAdmin)) {
 			throw new Error('Only group owner or admins can view join requests')
 		}
 
@@ -923,9 +941,8 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 	async approveJoinRequest(
 		requestId: string,
-		adminUserId: string,
-		isSiteAdmin = false
-	): Promise<void> {
+		actorId: string
+	): Promise<{ userId: string }> {
 		const request = await this.db.query.groupJoinRequests.findFirst({
 			where: eq(groupJoinRequests.id, requestId),
 		})
@@ -942,9 +959,12 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Group not found')
 		}
 
-		const isGroupAdmin = await this.isUserGroupAdmin(request.groupId, adminUserId)
+		const [isGroupAdmin, isSiteAdmin] = await Promise.all([
+			this.isUserGroupAdmin(request.groupId, actorId),
+			this.isUserSiteAdmin(actorId),
+		])
 
-		if (!canModerateGroup(group, adminUserId, isGroupAdmin, isSiteAdmin)) {
+		if (!canModerateGroup(group, actorId, isGroupAdmin, isSiteAdmin)) {
 			throw new Error('Only group owner or admins can approve join requests')
 		}
 
@@ -970,7 +990,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			.set({
 				status: 'approved',
 				respondedAt: new Date(),
-				respondedBy: adminUserId,
+				respondedBy: actorId,
 			})
 			.where(eq(groupJoinRequests.id, requestId))
 
@@ -984,12 +1004,13 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		this.invalidateGroupMembersCache(request.groupId)
 		// Invalidate user's permissions cache (they now have permissions from this group)
 		this.invalidateUserPermissionsCache(request.userId)
+
+		return { userId: request.userId }
 	}
 
 	async rejectJoinRequest(
 		requestId: string,
-		adminUserId: string,
-		isSiteAdmin = false
+		actorId: string
 	): Promise<void> {
 		const request = await this.db.query.groupJoinRequests.findFirst({
 			where: eq(groupJoinRequests.id, requestId),
@@ -1007,9 +1028,12 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Group not found')
 		}
 
-		const isGroupAdmin = await this.isUserGroupAdmin(request.groupId, adminUserId)
+		const [isGroupAdmin, isSiteAdmin] = await Promise.all([
+			this.isUserGroupAdmin(request.groupId, actorId),
+			this.isUserSiteAdmin(actorId),
+		])
 
-		if (!canModerateGroup(group, adminUserId, isGroupAdmin, isSiteAdmin)) {
+		if (!canModerateGroup(group, actorId, isGroupAdmin, isSiteAdmin)) {
 			throw new Error('Only group owner or admins can reject join requests')
 		}
 
@@ -1023,7 +1047,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			.set({
 				status: 'rejected',
 				respondedAt: new Date(),
-				respondedBy: adminUserId,
+				respondedBy: actorId,
 			})
 			.where(eq(groupJoinRequests.id, requestId))
 	}
@@ -1036,7 +1060,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 	async createInvitation(
 		data: CreateInvitationRequest,
-		inviterId: string
+		actorId: string
 	): Promise<GroupInvitation> {
 		const group = await this.db.query.groups.findFirst({
 			where: eq(groups.id, data.groupId),
@@ -1046,9 +1070,12 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Group not found')
 		}
 
-		const isAdmin = await this.isUserGroupAdmin(data.groupId, inviterId)
+		const [isGroupAdmin, isSiteAdmin] = await Promise.all([
+			this.isUserGroupAdmin(data.groupId, actorId),
+			this.isUserSiteAdmin(actorId),
+		])
 
-		if (!canModerateGroup(group, inviterId, isAdmin)) {
+		if (!canModerateGroup(group, actorId, isGroupAdmin, isSiteAdmin)) {
 			throw new Error('Only group owner or admins can invite users')
 		}
 
@@ -1074,18 +1101,34 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			),
 		})
 
-		if (existingInvitation) {
-			throw new Error(`User '${data.characterName}' already has a pending invitation`)
-		}
-
 		const expiresAt = new Date()
 		expiresAt.setDate(expiresAt.getDate() + 7) // 7 days from now
+
+		if (existingInvitation) {
+			if (existingInvitation.expiresAt > new Date()) {
+				throw new Error(`User '${data.characterName}' already has a pending invitation`)
+			}
+
+			// Invitation exists but has expired — refresh it rather than creating a duplicate
+			const [updated] = await this.db
+				.update(groupInvitations)
+				.set({
+					inviterId: actorId,
+					inviteeMainCharacterId: userLookup.characterId,
+					expiresAt,
+					respondedAt: null,
+				})
+				.where(eq(groupInvitations.id, existingInvitation.id))
+				.returning()
+
+			return this.mapGroupInvitation(updated)
+		}
 
 		const [invitation] = await this.db
 			.insert(groupInvitations)
 			.values({
 				groupId: data.groupId,
-				inviterId,
+				inviterId: actorId,
 				inviteeMainCharacterId: userLookup.characterId,
 				inviteeUserId: userLookup.userId,
 				status: 'pending',
@@ -1096,10 +1139,10 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		return this.mapGroupInvitation(invitation)
 	}
 
-	async listPendingInvitations(userId: string): Promise<GroupInvitationWithDetails[]> {
+	async listPendingInvitations(actorId: string): Promise<GroupInvitationWithDetails[]> {
 		const invitations = await this.db.query.groupInvitations.findMany({
 			where: and(
-				eq(groupInvitations.inviteeUserId, userId),
+				eq(groupInvitations.inviteeUserId, actorId),
 				eq(groupInvitations.status, 'pending')
 			),
 			with: {
@@ -1124,7 +1167,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			}))
 	}
 
-	async acceptInvitation(invitationId: string, userId: string): Promise<void> {
+	async acceptInvitation(invitationId: string, actorId: string): Promise<void> {
 		const invitation = await this.db.query.groupInvitations.findFirst({
 			where: eq(groupInvitations.id, invitationId),
 		})
@@ -1133,7 +1176,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Invitation not found')
 		}
 
-		if (invitation.inviteeUserId !== userId) {
+		if (invitation.inviteeUserId !== actorId) {
 			throw new Error('This invitation is not for you')
 		}
 
@@ -1151,7 +1194,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		}
 
 		// Check if already a member
-		const isMember = await this.isUserMember(invitation.groupId, userId)
+		const isMember = await this.isUserMember(invitation.groupId, actorId)
 		if (isMember) {
 			throw new Error('Already a member of this group')
 		}
@@ -1159,11 +1202,11 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		// Add as member
 		await this.db.insert(groupMembers).values({
 			groupId: invitation.groupId,
-			userId,
+			userId: actorId,
 		})
 
 		// Cancel any pending join requests from this user for this group
-		await this.cancelPendingJoinRequests(invitation.groupId, userId)
+		await this.cancelPendingJoinRequests(invitation.groupId, actorId)
 
 		// Update invitation status
 		await this.db
@@ -1177,10 +1220,10 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		// Invalidate group members cache
 		this.invalidateGroupMembersCache(invitation.groupId)
 		// Invalidate user's permissions cache (they now have permissions from this group)
-		this.invalidateUserPermissionsCache(userId)
+		this.invalidateUserPermissionsCache(actorId)
 	}
 
-	async declineInvitation(invitationId: string, userId: string): Promise<void> {
+	async declineInvitation(invitationId: string, actorId: string): Promise<void> {
 		const invitation = await this.db.query.groupInvitations.findFirst({
 			where: eq(groupInvitations.id, invitationId),
 		})
@@ -1189,7 +1232,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Invitation not found')
 		}
 
-		if (invitation.inviteeUserId !== userId) {
+		if (invitation.inviteeUserId !== actorId) {
 			throw new Error('This invitation is not for you')
 		}
 
@@ -1207,10 +1250,43 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			.where(eq(groupInvitations.id, invitationId))
 	}
 
+	async cancelInvitation(
+		invitationId: string,
+		actorId: string
+	): Promise<void> {
+		const invitation = await this.db.query.groupInvitations.findFirst({
+			where: eq(groupInvitations.id, invitationId),
+			with: { group: true },
+		})
+
+		if (!invitation) {
+			throw new Error('Invitation not found')
+		}
+
+		if (invitation.status !== 'pending') {
+			throw new Error(`Invitation cannot be cancelled (status: ${invitation.status})`)
+		}
+
+		const [isGroupAdmin, isSiteAdmin] = await Promise.all([
+			this.isUserGroupAdmin(invitation.groupId, actorId),
+			this.isUserSiteAdmin(actorId),
+		])
+		if (!canModerateGroup(invitation.group, actorId, isGroupAdmin, isSiteAdmin)) {
+			throw new Error('Only the inviter, group owner, group admins, or site admins can cancel an invitation')
+		}
+
+		await this.db
+			.update(groupInvitations)
+			.set({
+				status: 'cancelled',
+				respondedAt: new Date(),
+			})
+			.where(eq(groupInvitations.id, invitationId))
+	}
+
 	async getGroupInvitations(
 		groupId: string,
-		userId: string,
-		isAdmin: boolean
+		actorId: string
 	): Promise<GroupInvitationWithDetails[]> {
 		const group = await this.db.query.groups.findFirst({
 			where: eq(groups.id, groupId),
@@ -1220,9 +1296,12 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Group not found')
 		}
 
-		const isGroupAdmin = await this.isUserGroupAdmin(groupId, userId)
+		const [isGroupAdmin, isSiteAdmin] = await Promise.all([
+			this.isUserGroupAdmin(groupId, actorId),
+			this.isUserSiteAdmin(actorId),
+		])
 
-		if (!canModerateGroup(group, userId, isGroupAdmin) && !isAdmin) {
+		if (!canModerateGroup(group, actorId, isGroupAdmin, isSiteAdmin)) {
 			throw new Error('Only group owner, admins, or system admins can view invitations')
 		}
 
@@ -1262,8 +1341,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 	async createInviteCode(
 		data: CreateInviteCodeRequest,
-		userId: string,
-		isAdmin = false
+		actorId: string
 	): Promise<CreateInviteCodeResponse> {
 		const group = await this.db.query.groups.findFirst({
 			where: eq(groups.id, data.groupId),
@@ -1273,9 +1351,12 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Group not found')
 		}
 
-		const isGroupAdmin = await this.isUserGroupAdmin(data.groupId, userId)
+		const [isGroupAdmin, isSiteAdmin] = await Promise.all([
+			this.isUserGroupAdmin(data.groupId, actorId),
+			this.isUserSiteAdmin(actorId),
+		])
 
-		if (!canModerateGroup(group, userId, isGroupAdmin)) {
+		if (!canModerateGroup(group, actorId, isGroupAdmin, isSiteAdmin)) {
 			throw new Error('Only group owner or group admins can create invite codes')
 		}
 
@@ -1308,7 +1389,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			.values({
 				groupId: data.groupId,
 				code,
-				createdBy: userId,
+				createdBy: actorId,
 				maxUses: data.maxUses || null,
 				currentUses: 0,
 				expiresAt,
@@ -1322,8 +1403,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 	async listInviteCodes(
 		groupId: string,
-		userId: string,
-		isGlobalAdmin = false
+		actorId: string
 	): Promise<GroupInviteCode[]> {
 		const group = await this.db.query.groups.findFirst({
 			where: eq(groups.id, groupId),
@@ -1333,10 +1413,12 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Group not found')
 		}
 
-		const isGroupAdmin = await this.isUserGroupAdmin(groupId, userId)
+		const [isGroupAdmin, isSiteAdmin] = await Promise.all([
+			this.isUserGroupAdmin(groupId, actorId),
+			this.isUserSiteAdmin(actorId),
+		])
 
-		// Global admins, group owner, or group admins can view invite codes
-		if (!isGlobalAdmin && !canModerateGroup(group, userId, isGroupAdmin)) {
+		if (!canModerateGroup(group, actorId, isGroupAdmin, isSiteAdmin)) {
 			throw new Error('Only group owner, group admins, or global admins can view invite codes')
 		}
 
@@ -1348,7 +1430,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		return codes.map(this.mapGroupInviteCode)
 	}
 
-	async revokeInviteCode(codeId: string, userId: string, isAdmin = false): Promise<void> {
+	async revokeInviteCode(codeId: string, actorId: string): Promise<void> {
 		const inviteCode = await this.db.query.groupInviteCodes.findFirst({
 			where: eq(groupInviteCodes.id, codeId),
 			with: {
@@ -1360,9 +1442,12 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Invite code not found')
 		}
 
-		const isGroupAdmin = await this.isUserGroupAdmin(inviteCode.groupId, userId)
+		const [isGroupAdmin, isSiteAdmin] = await Promise.all([
+			this.isUserGroupAdmin(inviteCode.groupId, actorId),
+			this.isUserSiteAdmin(actorId),
+		])
 
-		if (!canModerateGroup(inviteCode.group, userId, isGroupAdmin)) {
+		if (!canModerateGroup(inviteCode.group, actorId, isGroupAdmin, isSiteAdmin)) {
 			throw new Error('Only group owner or group admins can revoke invite codes')
 		}
 
@@ -1474,7 +1559,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		}
 	}
 
-	async redeemInviteCode(code: string, userId: string): Promise<RedeemInviteCodeResponse> {
+	async redeemInviteCode(code: string, actorId: string): Promise<RedeemInviteCodeResponse> {
 		const inviteCode = await this.db.query.groupInviteCodes.findFirst({
 			where: eq(groupInviteCodes.code, code),
 			with: {
@@ -1505,7 +1590,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		const existingRedemption = await this.db.query.groupInviteCodeRedemptions.findFirst({
 			where: and(
 				eq(groupInviteCodeRedemptions.inviteCodeId, inviteCode.id),
-				eq(groupInviteCodeRedemptions.userId, userId)
+				eq(groupInviteCodeRedemptions.userId, actorId)
 			),
 		})
 
@@ -1514,7 +1599,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		}
 
 		// Check if already a member
-		const isMember = await this.isUserMember(inviteCode.groupId, userId)
+		const isMember = await this.isUserMember(inviteCode.groupId, actorId)
 		if (isMember) {
 			throw new Error('Already a member of this group')
 		}
@@ -1522,13 +1607,13 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		// Add as member
 		await this.db.insert(groupMembers).values({
 			groupId: inviteCode.groupId,
-			userId,
+			userId: actorId,
 		})
 
 		// Track redemption
 		await this.db.insert(groupInviteCodeRedemptions).values({
 			inviteCodeId: inviteCode.id,
-			userId,
+			userId: actorId,
 		})
 
 		// Increment usage count
@@ -1540,7 +1625,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		// Invalidate group members cache
 		this.invalidateGroupMembersCache(inviteCode.groupId)
 		// Invalidate user's permissions cache (they now have permissions from this group)
-		this.invalidateUserPermissionsCache(userId)
+		this.invalidateUserPermissionsCache(actorId)
 
 		return {
 			success: true,
@@ -2133,7 +2218,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 	async createPermissionCategory(
 		data: CreatePermissionCategoryRequest,
-		adminUserId: string
+		actorId: string
 	): Promise<PermissionCategory> {
 		// Admin-only operation - validation should happen before calling this
 
@@ -2176,7 +2261,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	async updatePermissionCategory(
 		id: string,
 		data: UpdatePermissionCategoryRequest,
-		adminUserId: string
+		actorId: string
 	): Promise<PermissionCategory> {
 		// Admin-only operation
 
@@ -2200,7 +2285,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		return this.mapPermissionCategory(updated)
 	}
 
-	async deletePermissionCategory(id: string, adminUserId: string): Promise<void> {
+	async deletePermissionCategory(id: string, actorId: string): Promise<void> {
 		// Admin-only operation
 		// SET NULL will update permissions that reference this category
 		await this.db.delete(permissionCategories).where(eq(permissionCategories.id, id))
@@ -2212,7 +2297,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	 * ============================================
 	 */
 
-	async createPermission(data: CreatePermissionRequest, adminUserId: string): Promise<Permission> {
+	async createPermission(data: CreatePermissionRequest, actorId: string): Promise<Permission> {
 		// Admin-only operation
 
 		const [permission] = await this.db
@@ -2222,7 +2307,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 				name: data.name,
 				description: data.description || null,
 				categoryId: data.categoryId || null,
-				createdBy: adminUserId,
+				createdBy: actorId,
 			})
 			.returning()
 
@@ -2283,7 +2368,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	async updatePermission(
 		id: string,
 		data: UpdatePermissionRequest,
-		adminUserId: string
+		actorId: string
 	): Promise<Permission> {
 		// Admin-only operation
 
@@ -2312,7 +2397,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		return this.mapPermission(updated)
 	}
 
-	async deletePermission(id: string, adminUserId: string): Promise<void> {
+	async deletePermission(id: string, actorId: string): Promise<void> {
 		// Admin-only operation
 		// CASCADE will delete all group_permissions that reference this
 		await this.db.delete(permissions).where(eq(permissions.id, id))
@@ -2329,7 +2414,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 	async attachPermissionToGroup(
 		data: AttachPermissionRequest,
-		adminUserId: string
+		actorId: string
 	): Promise<GroupPermissionWithDetails> {
 		// Admin-only operation
 
@@ -2372,7 +2457,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 				groupId: data.groupId,
 				permissionId: data.permissionId,
 				targetType: data.targetType,
-				createdBy: adminUserId,
+				createdBy: actorId,
 			})
 			.returning() // Invalidate permissions cache for all members of this group
 		this.invalidateGroupMemberPermissionsCache(data.groupId)
@@ -2392,7 +2477,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 	async createGroupScopedPermission(
 		data: CreateGroupScopedPermissionRequest,
-		adminUserId: string
+		actorId: string
 	): Promise<GroupPermissionWithDetails> {
 		// Admin-only operation
 
@@ -2426,7 +2511,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 				customName: data.name,
 				customDescription: data.description || null,
 				targetType: data.targetType,
-				createdBy: adminUserId,
+				createdBy: actorId,
 			})
 			.returning()
 
@@ -2445,7 +2530,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 	async listGroupPermissions(
 		groupId: string,
-		adminUserId: string
+		actorId: string
 	): Promise<GroupPermissionWithDetails[]> {
 		// Admin-only operation
 
@@ -2482,7 +2567,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	async updateGroupPermission(
 		groupPermissionId: string,
 		data: UpdateGroupPermissionRequest,
-		adminUserId: string
+		actorId: string
 	): Promise<GroupPermissionWithDetails> {
 		// Admin-only operation
 
@@ -2543,7 +2628,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		}
 	}
 
-	async removePermissionFromGroup(groupPermissionId: string, adminUserId: string): Promise<void> {
+	async removePermissionFromGroup(groupPermissionId: string, actorId: string): Promise<void> {
 		// Admin-only operation
 
 		const groupPerm = await this.db.query.groupPermissions.findFirst({
@@ -2568,7 +2653,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 	async attachPermissionToCorporation(
 		data: AttachPermissionToCorporationRequest,
-		adminUserId: string
+		actorId: string
 	): Promise<CorporationPermissionWithDetails> {
 		// Admin-only operation
 
@@ -2601,7 +2686,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			.values({
 				corporationId: data.corporationId,
 				permissionId: data.permissionId,
-				createdBy: adminUserId,
+				createdBy: actorId,
 			})
 			.returning()
 
@@ -2653,7 +2738,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 	async removePermissionFromCorporation(
 		corporationPermissionId: string,
-		adminUserId: string
+		actorId: string
 	): Promise<void> {
 		// Admin-only operation
 
@@ -3408,6 +3493,14 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			where: and(eq(groupAdmins.groupId, groupId), eq(groupAdmins.userId, userId)),
 		})
 		return !!admin
+	}
+
+	private async isUserSiteAdmin(userId: string): Promise<boolean> {
+		const user = await this.coreDb.query.users.findFirst({
+			where: eq(coreSchema.users.id, userId),
+			columns: { is_admin: true },
+		})
+		return user?.is_admin ?? false
 	}
 
 	private async getGroupMemberCount(groupId: string): Promise<number> {

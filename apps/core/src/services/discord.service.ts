@@ -1046,7 +1046,8 @@ export async function inviteUserToDiscordServers(
 export async function updateUserDiscordRoles(
 	env: Env,
 	userId: string,
-	guildIds?: string[]
+	guildIds?: string[],
+	allowRemoval?: boolean
 ): Promise<{
 	results: Array<{
 		guildId: string
@@ -1328,7 +1329,7 @@ export async function updateUserDiscordRoles(
 	// === CALL DISCORD DO - UPDATE ROLES ONLY ===
 
 	const discordStub = getDiscordStub(env)
-	const updateResults = await discordStub.updateUserRoles(userId, updateRequests)
+	const updateResults = await discordStub.updateUserRoles(userId, updateRequests, allowRemoval)
 
 	// Build final results
 	const results = updateResults.map((result: any) => {
@@ -1362,7 +1363,8 @@ export async function updateUserDiscordRoles(
  */
 export async function syncUserDiscordAccess(
 	env: Env,
-	userId: string
+	userId: string,
+	allowRemoval?: boolean
 ): Promise<{
 	results: Array<{
 		guildId: string
@@ -1424,7 +1426,7 @@ export async function syncUserDiscordAccess(
 
 	// Then update roles on all servers
 	logger.info('[Discord] syncUserDiscordAccess: Starting role update process', { userId })
-	const updateResult = await updateUserDiscordRoles(env, userId)
+	const updateResult = await updateUserDiscordRoles(env, userId, undefined, allowRemoval)
 	logger.info('[Discord] syncUserDiscordAccess: Role update process completed', {
 		userId,
 		totalUpdated: updateResult.totalUpdated,
