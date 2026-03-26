@@ -461,7 +461,7 @@ app.post('/users/:userId/discord/join-servers', requireAuth(), requireAdmin(), a
 	}
 
 	try {
-		const result = await discordService.syncUserDiscordAccess(c.env, userId)
+		const result = await discordService.syncUserDiscordAccess(c.env, userId, true)
 		return c.json(result)
 	} catch (error) {
 		logger.error('Error joining user to Discord servers:', error)

@@ -8,6 +8,7 @@ import { getStub } from '@repo/do-utils'
 import { createDb } from '../db'
 import { clearUserCache, getCachedGroup, getCachedUserMemberships } from '../lib/groups-cache'
 import { requireAdmin, requireAuth } from '../middleware/session'
+import { syncUserDiscordAccess } from '../services/discord.service'
 
 import type { Discord } from '@repo/discord'
 import type { Groups } from '@repo/groups'
@@ -37,7 +38,7 @@ groups.get('/categories', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), asy
 	const user = c.get('user')!
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-	const categories = await groupsDO.listCategories(user.id, user.is_admin)
+	const categories = await groupsDO.listCategories(user.id)
 
 	// Cache categories for 5 minutes at edge (with 10 minute stale-while-revalidate)
 	c.header('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600')
@@ -56,7 +57,7 @@ groups.get('/categories/:id', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
-		const category = await groupsDO.getCategory(categoryId, user.id, user.is_admin)
+		const category = await groupsDO.getCategory(categoryId, user.id)
 		return c.json(category)
 	} catch (error) {
 		if (error instanceof Error && error.message.includes('not found')) {
@@ -183,7 +184,7 @@ groups.get('/', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), async (c) => 
 		offset: queryValidation.data.offset,
 	}
 
-	const groupsList = await groupsDO.listGroups(filters, user.id, user.is_admin)
+	const groupsList = await groupsDO.listGroups(filters, user.id)
 
 	// Hide sensitive information from non-members in list view
 	// Members and admins can see everything
@@ -225,7 +226,7 @@ groups.post('/', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), requireAdmin
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
-		const group = await groupsDO.createGroup(body, user.id, user.is_admin)
+		const group = await groupsDO.createGroup(body, user.id)
 		return c.json(group, 201)
 	} catch (error) {
 		if (error instanceof Error) {
@@ -278,7 +279,7 @@ groups.get(
 		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 		try {
-			const invitations = await groupsDO.getGroupInvitations(groupId, user.id, user.is_admin)
+			const invitations = await groupsDO.getGroupInvitations(groupId, user.id)
 			return c.json(invitations)
 		} catch (error) {
 			if (error instanceof Error) {
@@ -340,8 +341,17 @@ groups.post(
 
 		try {
 			await groupsDO.acceptInvitation(invitationId, user.id)
-			// Invalidate user cache after accepting invitation
 			clearUserCache(user.id)
+
+			// Sync Discord roles — accepting an invitation grants group membership which may grant new roles via Discord attachments
+			syncUserDiscordAccess(c.env, user.id, false).catch((err) => {
+				console.error('[Groups] Failed to sync Discord roles after invitation acceptance', {
+					userId: user.id,
+					invitationId,
+					error: err instanceof Error ? err.message : String(err),
+				})
+			})
+
 			return c.json({ success: true }, 200)
 		} catch (error) {
 			if (error instanceof Error) {
@@ -378,6 +388,32 @@ groups.post(
 )
 
 /**
+ * DELETE /invitations/:id
+ *
+ * Cancel an invitation (inviter, group owner/admin, or site admin)
+ * Works on both active and expired pending invitations
+ */
+groups.delete(
+	'/invitations/:id',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	async (c) => {
+		const user = c.get('user')!
+		const invitationId = c.req.param('id')
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+
+		try {
+			await groupsDO.cancelInvitation(invitationId, user.id)
+			return c.json({ success: true }, 200)
+		} catch (error) {
+			if (error instanceof Error) {
+				return c.json({ error: error.message }, 400)
+			}
+			throw error
+		}
+	}
+)
+
+/**
  * POST /:groupId/invite-codes
  *
  * Create an invite code for a group (owner or global admin)
@@ -398,8 +434,7 @@ groups.post(
 					maxUses: body.maxUses ?? null,
 					expiresInDays: body.expiresInDays ?? 7,
 				},
-				user.id,
-				user.is_admin
+				user.id
 			)
 			return c.json(result, 201)
 		} catch (error) {
@@ -425,7 +460,7 @@ groups.get(
 		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 		try {
-			const codes = await groupsDO.listInviteCodes(groupId, user.id, user.is_admin)
+			const codes = await groupsDO.listInviteCodes(groupId, user.id)
 			return c.json(codes)
 		} catch (error) {
 			if (error instanceof Error) {
@@ -450,7 +485,7 @@ groups.delete(
 		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 		try {
-			await groupsDO.revokeInviteCode(codeId, user.id, user.is_admin)
+			await groupsDO.revokeInviteCode(codeId, user.id)
 			return c.json({ success: true }, 200)
 		} catch (error) {
 			if (error instanceof Error) {
@@ -480,6 +515,14 @@ groups.post(
 
 		try {
 			const result = await groupsDO.redeemInviteCode(body.code, user.id)
+
+			if (result.success) {
+				// Sync Discord roles — redeeming an invite code grants group membership
+				syncUserDiscordAccess(c.env, user.id, false).catch((err) => {
+					console.error('Failed to sync Discord access after invite code redemption:', err)
+				})
+			}
+
 			return c.json(result, 200)
 		} catch (error) {
 			if (error instanceof Error) {
@@ -504,9 +547,18 @@ groups.post(
 		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 		try {
-			await groupsDO.approveJoinRequest(requestId, user.id, user.is_admin)
-			// Invalidate caches - the approved user's memberships changed
-			// Note: We don't have the approved user's ID here, so we rely on TTL expiration
+			const { userId: approvedUserId } = await groupsDO.approveJoinRequest(requestId, user.id)
+			clearUserCache(approvedUserId)
+
+			// Sync Discord roles — approval grants group membership which may grant new roles via Discord attachments
+			syncUserDiscordAccess(c.env, approvedUserId, false).catch((err) => {
+				console.error('[Groups] Failed to sync Discord roles after join request approval', {
+					approvedUserId,
+					requestId,
+					error: err instanceof Error ? err.message : String(err),
+				})
+			})
+
 			return c.json({ success: true }, 200)
 		} catch (error) {
 			if (error instanceof Error) {
@@ -531,7 +583,7 @@ groups.post(
 		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 		try {
-			await groupsDO.rejectJoinRequest(requestId, user.id, user.is_admin)
+			await groupsDO.rejectJoinRequest(requestId, user.id)
 			return c.json({ success: true }, 200)
 		} catch (error) {
 			if (error instanceof Error) {
@@ -1089,7 +1141,7 @@ groups.get('/:id', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), async (c) 
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
-		const group = await getCachedGroup(c.env, groupId, user.id, user.is_admin)
+		const group = await getCachedGroup(c.env, groupId, user.id)
 
 		if (!group) {
 			return c.json({ error: 'Group not found' }, 404)
@@ -1135,7 +1187,7 @@ groups.patch(
 		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 		try {
-			const group = await groupsDO.updateGroup(groupId, body, user.id, user.is_admin)
+			const group = await groupsDO.updateGroup(groupId, body, user.id)
 			return c.json(group)
 		} catch (error) {
 			if (error instanceof Error) {
@@ -1164,7 +1216,7 @@ groups.delete(
 		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 		try {
-			await groupsDO.deleteGroup(groupId, user.id, user.is_admin)
+			await groupsDO.deleteGroup(groupId, user.id)
 			return c.json({ success: true }, 200)
 		} catch (error) {
 			if (error instanceof Error) {
@@ -1192,7 +1244,7 @@ groups.get('/:groupId/members', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
-		const members = await groupsDO.getGroupMembers(groupId, user.id, user.is_admin)
+		const members = await groupsDO.getGroupMembers(groupId, user.id)
 		return c.json(members)
 	} catch (error) {
 		if (error instanceof Error) {
@@ -1223,6 +1275,16 @@ groups.delete(
 
 		try {
 			await groupsDO.removeMember(groupId, user.id, memberUserId)
+
+			// Sync Discord roles with removal allowed — removing a member may revoke roles granted by the group's Discord attachment
+			syncUserDiscordAccess(c.env, memberUserId, true).catch((err) => {
+				console.error('[Groups] Failed to sync Discord roles after member removal', {
+					removedUserId: memberUserId,
+					groupId,
+					error: err instanceof Error ? err.message : String(err),
+				})
+			})
+
 			return c.json({ success: true }, 200)
 		} catch (error) {
 			if (error instanceof Error) {
@@ -1316,6 +1378,16 @@ groups.post('/:id/join', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), asyn
 		await groupsDO.joinGroup(groupId, user.id)
 		// Invalidate user cache after joining group
 		clearUserCache(user.id)
+
+		// Sync Discord roles — joining a group may grant new roles via Discord attachments
+		syncUserDiscordAccess(c.env, user.id, false).catch((err) => {
+			console.error('[Groups] Failed to sync Discord roles after group join', {
+				userId: user.id,
+				groupId,
+				error: err instanceof Error ? err.message : String(err),
+			})
+		})
+
 		return c.json({ success: true }, 200)
 	} catch (error) {
 		if (error instanceof Error) {
@@ -1339,6 +1411,16 @@ groups.post('/:id/leave', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), asy
 		await groupsDO.leaveGroup(groupId, user.id)
 		// Invalidate user cache after leaving group
 		clearUserCache(user.id)
+
+		// Sync Discord roles with removal allowed — leaving a group may revoke roles granted by its Discord attachment
+		syncUserDiscordAccess(c.env, user.id, true).catch((err) => {
+			console.error('[Groups] Failed to sync Discord roles after group leave', {
+				userId: user.id,
+				groupId,
+				error: err instanceof Error ? err.message : String(err),
+			})
+		})
+
 		return c.json({ success: true }, 200)
 	} catch (error) {
 		if (error instanceof Error) {
@@ -1364,7 +1446,7 @@ groups.post('/:id/transfer', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), 
 	}
 
 	try {
-		await groupsDO.transferOwnership(groupId, user.id, body.newOwnerId, user.is_admin)
+		await groupsDO.transferOwnership(groupId, user.id, body.newOwnerId)
 		return c.json({ success: true }, 200)
 	} catch (error) {
 		if (error instanceof Error) {
@@ -1415,7 +1497,7 @@ groups.get('/:id/join-requests', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] 
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
-		const requests = await groupsDO.listJoinRequests(groupId, user.id, user.is_admin)
+		const requests = await groupsDO.listJoinRequests(groupId, user.id)
 		return c.json(requests)
 	} catch (error) {
 		if (error instanceof Error) {
@@ -1683,13 +1765,13 @@ groups.post(
 						continue
 					}
 
-					// Then update roles
+					// Then update roles — admin-initiated refresh allows removal of roles no longer granted
 					const results = await discordDO.updateUserRoles(user.id, [
 						{
 							guildId: config.guildId,
 							roleIds: config.roleIds,
 						},
-					])
+					], true)
 
 					if (results[0]?.success) {
 						successCount++

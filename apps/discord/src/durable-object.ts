@@ -715,7 +715,8 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 	 */
 	async updateUserRoles(
 		coreUserId: string,
-		updateRequests: Array<{ guildId: string; roleIds: string[]; managedRoleIds?: string[] }>
+		updateRequests: Array<{ guildId: string; roleIds: string[]; managedRoleIds?: string[] }>,
+		allowRemoval?: boolean
 	): Promise<
 		Array<{
 			guildId: string
@@ -726,8 +727,9 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 		}>
 	> {
 		try {
-			// Check if add-only mode is enabled (default: true)
-			const isAddOnlyMode = this.env.DISCORD_ROLE_ADD_ONLY_MODE !== 'false'
+			// Check if add-only mode is enabled (default: true).
+			// allowRemoval overrides the env var when explicitly set to true.
+			const isAddOnlyMode = allowRemoval ? false : this.env.DISCORD_ROLE_ADD_ONLY_MODE !== 'false'
 
 			// Get user from database
 			const user = await this.getUserByCoreUserId(coreUserId)

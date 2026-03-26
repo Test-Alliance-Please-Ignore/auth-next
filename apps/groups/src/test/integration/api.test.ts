@@ -62,7 +62,7 @@ describe('Groups Durable Object - Categories', () => {
 			ADMIN_USER_ID
 		)
 
-		const categories = await stub.listCategories(USER_1_ID, false)
+		const categories = await stub.listCategories(USER_1_ID)
 
 		expect(Array.isArray(categories)).toBe(true)
 		expect(categories.length).toBeGreaterThan(0)
@@ -80,7 +80,7 @@ describe('Groups Durable Object - Categories', () => {
 			ADMIN_USER_ID
 		)
 
-		const retrieved = await stub.getCategory(category.id, USER_1_ID, false)
+		const retrieved = await stub.getCategory(category.id, USER_1_ID)
 
 		expect(retrieved).toBeDefined()
 		expect(retrieved?.name).toBe('Gaming Category')
@@ -124,7 +124,7 @@ describe('Groups Durable Object - Categories', () => {
 
 		await stub.deleteCategory(category.id, ADMIN_USER_ID)
 
-		const retrieved = await stub.getCategory(category.id, ADMIN_USER_ID, true)
+		const retrieved = await stub.getCategory(category.id, ADMIN_USER_ID)
 		expect(retrieved).toBeNull()
 	})
 })
@@ -149,8 +149,7 @@ describe('Groups Durable Object - Groups', () => {
 				visibility: 'public',
 				joinMode: 'open',
 			},
-			USER_1_ID,
-			false
+			USER_1_ID
 		)
 
 		expect(group).toBeDefined()
@@ -175,8 +174,7 @@ describe('Groups Durable Object - Groups', () => {
 				categoryId: category.id,
 				name: 'Group 1',
 			},
-			USER_1_ID,
-			false
+			USER_1_ID
 		)
 
 		await stub.createGroup(
@@ -184,11 +182,10 @@ describe('Groups Durable Object - Groups', () => {
 				categoryId: category.id,
 				name: 'Group 2',
 			},
-			USER_2_ID,
-			false
+			USER_2_ID
 		)
 
-		const groups = await stub.listGroups({}, USER_1_ID, false)
+		const groups = await stub.listGroups({}, USER_1_ID)
 
 		expect(Array.isArray(groups)).toBe(true)
 		expect(groups.length).toBeGreaterThanOrEqual(2)
@@ -210,11 +207,10 @@ describe('Groups Durable Object - Groups', () => {
 				categoryId: category.id,
 				name: 'Detailed Group',
 			},
-			USER_1_ID,
-			false
+			USER_1_ID
 		)
 
-		const retrieved = await stub.getGroup(group.id, USER_1_ID, false)
+		const retrieved = await stub.getGroup(group.id, USER_1_ID)
 
 		expect(retrieved).toBeDefined()
 		expect(retrieved?.name).toBe('Detailed Group')
@@ -239,8 +235,7 @@ describe('Groups Durable Object - Groups', () => {
 				categoryId: category.id,
 				name: 'Original Group Name',
 			},
-			USER_1_ID,
-			false
+			USER_1_ID
 		)
 
 		const updated = await stub.updateGroup(
@@ -272,13 +267,12 @@ describe('Groups Durable Object - Groups', () => {
 				categoryId: category.id,
 				name: 'Group to Delete',
 			},
-			USER_1_ID,
-			false
+			USER_1_ID
 		)
 
 		await stub.deleteGroup(group.id, USER_1_ID)
 
-		const retrieved = await stub.getGroup(group.id, USER_1_ID, false)
+		const retrieved = await stub.getGroup(group.id, USER_1_ID)
 		expect(retrieved).toBeNull()
 	})
 })
@@ -301,13 +295,12 @@ describe('Groups Durable Object - Membership', () => {
 				name: 'Open Group',
 				joinMode: 'open',
 			},
-			USER_1_ID,
-			false
+			USER_1_ID
 		)
 
 		await stub.joinGroup(group.id, USER_2_ID)
 
-		const members = await stub.getGroupMembers(group.id, USER_1_ID, false)
+		const members = await stub.getGroupMembers(group.id, USER_1_ID)
 		expect(members.length).toBe(2) // Owner + new member
 		expect(members.some((m: { userId: string }) => m.userId === USER_2_ID)).toBe(true)
 	})
@@ -329,14 +322,13 @@ describe('Groups Durable Object - Membership', () => {
 				name: 'Leave Group',
 				joinMode: 'open',
 			},
-			USER_1_ID,
-			false
+			USER_1_ID
 		)
 
 		await stub.joinGroup(group.id, USER_2_ID)
 		await stub.leaveGroup(group.id, USER_2_ID)
 
-		const members = await stub.getGroupMembers(group.id, USER_1_ID, false)
+		const members = await stub.getGroupMembers(group.id, USER_1_ID)
 		expect(members.length).toBe(1) // Only owner remains
 		expect(members.some((m: { userId: string }) => m.userId === USER_2_ID)).toBe(false)
 	})
@@ -358,14 +350,13 @@ describe('Groups Durable Object - Membership', () => {
 				name: 'Remove Group',
 				joinMode: 'open',
 			},
-			USER_1_ID,
-			false
+			USER_1_ID
 		)
 
 		await stub.joinGroup(group.id, USER_2_ID)
 		await stub.removeMember(group.id, USER_1_ID, USER_2_ID)
 
-		const members = await stub.getGroupMembers(group.id, USER_1_ID, false)
+		const members = await stub.getGroupMembers(group.id, USER_1_ID)
 		expect(members.length).toBe(1) // Only owner remains
 	})
 
@@ -385,8 +376,7 @@ describe('Groups Durable Object - Membership', () => {
 				categoryId: category.id,
 				name: 'User Group 1',
 			},
-			USER_1_ID,
-			false
+			USER_1_ID
 		)
 
 		await stub.createGroup(
@@ -394,8 +384,7 @@ describe('Groups Durable Object - Membership', () => {
 				categoryId: category.id,
 				name: 'User Group 2',
 			},
-			USER_1_ID,
-			false
+			USER_1_ID
 		)
 
 		const memberships = await stub.getUserMemberships(USER_1_ID)
@@ -426,8 +415,7 @@ describe('Groups Durable Object - Invitations', () => {
 				categoryId: category.id,
 				name: 'Invite Group',
 			},
-			USER_1_ID,
-			false
+			USER_1_ID
 		)
 
 		await expect(
@@ -467,8 +455,7 @@ describe('Groups Durable Object - Invite Codes', () => {
 				categoryId: category.id,
 				name: 'Code Group',
 			},
-			USER_1_ID,
-			false
+			USER_1_ID
 		)
 
 		const result = await stub.createInviteCode(
@@ -501,8 +488,7 @@ describe('Groups Durable Object - Invite Codes', () => {
 				categoryId: category.id,
 				name: 'Code List Group',
 			},
-			USER_1_ID,
-			false
+			USER_1_ID
 		)
 
 		await stub.createInviteCode(
@@ -535,8 +521,7 @@ describe('Groups Durable Object - Invite Codes', () => {
 				categoryId: category.id,
 				name: 'Redeem Group',
 			},
-			USER_1_ID,
-			false
+			USER_1_ID
 		)
 
 		const { code } = await stub.createInviteCode(
@@ -554,7 +539,7 @@ describe('Groups Durable Object - Invite Codes', () => {
 		if (!result.group) throw new Error('Group not found')
 		expect(result.group.id).toBe(group.id)
 
-		const members = await stub.getGroupMembers(group.id, USER_1_ID, false)
+		const members = await stub.getGroupMembers(group.id, USER_1_ID)
 		expect(members.some((m: { userId: string }) => m.userId === USER_2_ID)).toBe(true)
 	})
 
@@ -574,8 +559,7 @@ describe('Groups Durable Object - Invite Codes', () => {
 				categoryId: category.id,
 				name: 'Revoke Group',
 			},
-			USER_1_ID,
-			false
+			USER_1_ID
 		)
 
 		const { code } = await stub.createInviteCode(
@@ -610,8 +594,7 @@ describe('Groups Durable Object - Join Requests', () => {
 				name: 'Approval Group',
 				joinMode: 'approval',
 			},
-			USER_1_ID,
-			false
+			USER_1_ID
 		)
 
 		const request = await stub.createJoinRequest(
@@ -644,8 +627,7 @@ describe('Groups Durable Object - Join Requests', () => {
 				name: 'List Requests Group',
 				joinMode: 'approval',
 			},
-			USER_1_ID,
-			false
+			USER_1_ID
 		)
 
 		await stub.createJoinRequest(
@@ -678,8 +660,7 @@ describe('Groups Durable Object - Join Requests', () => {
 				name: 'Approve Request Group',
 				joinMode: 'approval',
 			},
-			USER_1_ID,
-			false
+			USER_1_ID
 		)
 
 		const request = await stub.createJoinRequest(
@@ -691,7 +672,7 @@ describe('Groups Durable Object - Join Requests', () => {
 
 		await stub.approveJoinRequest(request.id, USER_1_ID)
 
-		const members = await stub.getGroupMembers(group.id, USER_1_ID, false)
+		const members = await stub.getGroupMembers(group.id, USER_1_ID)
 		expect(members.some((m: { userId: string }) => m.userId === USER_2_ID)).toBe(true)
 	})
 
@@ -712,8 +693,7 @@ describe('Groups Durable Object - Join Requests', () => {
 				name: 'Reject Request Group',
 				joinMode: 'approval',
 			},
-			USER_1_ID,
-			false
+			USER_1_ID
 		)
 
 		const request = await stub.createJoinRequest(
@@ -725,7 +705,7 @@ describe('Groups Durable Object - Join Requests', () => {
 
 		await stub.rejectJoinRequest(request.id, USER_1_ID)
 
-		const members = await stub.getGroupMembers(group.id, USER_1_ID, false)
+		const members = await stub.getGroupMembers(group.id, USER_1_ID)
 		expect(members.some((m: { userId: string }) => m.userId === USER_3_ID)).toBe(false)
 	})
 })

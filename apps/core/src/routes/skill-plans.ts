@@ -29,14 +29,13 @@ async function resolveMaintainerName(
 	maintainerId: string,
 	currentUserId: string,
 	env: { GROUPS: DurableObjectNamespace },
-	db: ReturnType<typeof createDb>,
-	isAdmin: boolean
+	db: ReturnType<typeof createDb>
 ): Promise<string> {
 	if (maintainerId.startsWith('group:')) {
 		// Get group name
 		const groupId = maintainerId.replace('group:', '')
 		try {
-			const group = await getCachedGroup(env, groupId, currentUserId, isAdmin)
+			const group = await getCachedGroup(env, groupId, currentUserId)
 			return group?.name || groupId
 		} catch (error) {
 			console.error('Failed to fetch group name:', error)
@@ -228,8 +227,7 @@ const skillPlansRoutes = new Hono<App>()
 									plan.maintainerId,
 									user.id,
 									c.env,
-									db,
-									user.is_admin
+									db
 								)
 							: 'System'
 						return {
@@ -305,7 +303,7 @@ const skillPlansRoutes = new Hono<App>()
 						? ('group' as const)
 						: ('user' as const)
 					const maintainerName = plan.maintainerId
-						? await resolveMaintainerName(plan.maintainerId, user.id, c.env, db, user.is_admin)
+						? await resolveMaintainerName(plan.maintainerId, user.id, c.env, db)
 						: 'System'
 					return {
 						...plan,
@@ -602,7 +600,7 @@ const skillPlansRoutes = new Hono<App>()
 			? ('group' as const)
 			: ('user' as const)
 		const maintainerName = plan.maintainerId
-			? await resolveMaintainerName(plan.maintainerId, user.id, c.env, db, user.is_admin)
+			? await resolveMaintainerName(plan.maintainerId, user.id, c.env, db)
 			: 'System'
 
 		return c.json({
