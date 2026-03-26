@@ -1,3 +1,4 @@
+import { WorkerEntrypoint } from 'cloudflare:workers'
 import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
@@ -47,6 +48,87 @@ export default {
 
 // Export the Durable Object class
 export { EveCorporationDataDO as EveCorporationData }
+
+/**
+ * Eve Corporation Data Worker RPC service
+ * Exposes workflow dispatch methods for orchestrator and other callers.
+ */
+export class EveCorporationDataWorker extends WorkerEntrypoint<Env> {
+	/**
+	 * Trigger corporation sync workflows in batches.
+	 */
+	async triggerCorporationSyncBatch(
+		corporationIds: string[],
+		trigger: 'cron' | 'api' = 'cron'
+	): Promise<{
+		total: number
+		created: number
+		failed: number
+		workflows: Array<{
+			corporationId: string
+			success: boolean
+			workflowId?: string
+			error?: string
+		}>
+	}> {
+		if (corporationIds.length === 0) {
+			return {
+				total: 0,
+				created: 0,
+				failed: 0,
+				workflows: [],
+			}
+		}
+
+		const workflowOptions = corporationIds.map((corporationId) => ({
+			id: `${corporationId}-${crypto.randomUUID()}`,
+			params: {
+				corporationId,
+				trigger,
+			},
+		}))
+
+		const BATCH_SIZE = 75
+		const workflows: Array<{
+			corporationId: string
+			success: boolean
+			workflowId?: string
+			error?: string
+		}> = []
+
+		for (let i = 0; i < workflowOptions.length; i += BATCH_SIZE) {
+			const batch = workflowOptions.slice(i, i + BATCH_SIZE)
+			try {
+				const instances = await this.env.EVE_CORPORATION_SYNC.createBatch(batch)
+				for (const [index, instance] of instances.entries()) {
+					workflows.push({
+						corporationId: batch[index]!.params.corporationId,
+						success: true,
+						workflowId: instance.id,
+					})
+				}
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : String(error)
+				for (const item of batch) {
+					workflows.push({
+						corporationId: item.params.corporationId,
+						success: false,
+						error: errorMessage,
+					})
+				}
+			}
+		}
+
+		const created = workflows.filter((workflow) => workflow.success).length
+
+		return {
+			total: corporationIds.length,
+			created,
+			failed: workflows.length - created,
+			workflows,
+		}
+	}
+}
 
 // Export the Workflow class
 export { EveCorporationSyncWorkflow }

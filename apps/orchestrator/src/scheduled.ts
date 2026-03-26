@@ -1,6 +1,7 @@
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
+import type { Core } from '@repo/core'
 import type { Discord } from '@repo/discord'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { Env } from './context'
@@ -28,8 +29,8 @@ export async function scheduleCorpDataRefresh(event: ScheduledEvent, env: Env): 
 	const batchStartTime = Date.now()
 
 	try {
-		const uniqueID = env.EVE_CORPORATION_DATA.newUniqueId()
-		const corpStub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, uniqueID)
+		const uniqueID = env.EVE_CORPORATION_DATA_DO.newUniqueId()
+		const corpStub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA_DO, uniqueID)
 
 		logger.info('[Orchestrator] Starting corporation data refresh batch', {
 			scheduledTime: new Date(event.scheduledTime).toISOString(),
@@ -48,110 +49,41 @@ export async function scheduleCorpDataRefresh(event: ScheduledEvent, env: Env): 
 			return
 		}
 
-		// Prepare workflow creation options for all corporations
-		// Generate unique workflow IDs with UUID to allow multiple concurrent workflows
-		const workflowOptions = corporationIds.map((corporationId) => ({
-			id: `${corporationId}-${crypto.randomUUID()}`,
-			params: {
-				corporationId,
-				trigger: 'cron' as const,
-			},
-		}))
-
-		// createBatch is limited to 100 instances per call, using 75 for safety margin
-		const BATCH_SIZE = 75
-		const batches: Array<typeof workflowOptions> = []
-
-		for (let i = 0; i < workflowOptions.length; i += BATCH_SIZE) {
-			batches.push(workflowOptions.slice(i, i + BATCH_SIZE))
-		}
-
-		logger.info('[Orchestrator] Creating workflows in batches', {
-			totalCorporations: corporationIds.length,
-			batchCount: batches.length,
-			batchSize: BATCH_SIZE,
-		})
-
-		// Create workflows in batches
-		const batchResults = await Promise.allSettled(
-			batches.map(async (batch, batchIndex) => {
-				try {
-					const instances = await env.EVE_CORPORATION_SYNC.createBatch(batch)
-
-					logger.info('[Orchestrator] Created workflow batch', {
-						batchIndex: batchIndex + 1,
-						totalBatches: batches.length,
-						instancesCreated: instances.length,
-					})
-
-					return {
-						success: true,
-						instancesCreated: instances.length,
-						batchIndex,
-						batchSize: batch.length,
-					}
-				} catch (error) {
-					logger.error('[Orchestrator] Failed to create workflow batch', {
-						batchIndex: batchIndex + 1,
-						totalBatches: batches.length,
-						batchSize: batch.length,
-						errorMessage: error instanceof Error ? error.message : String(error),
-						errorStack: error instanceof Error ? error.stack : undefined,
-					})
-
-					return {
-						success: false,
-						instancesCreated: 0,
-						batchIndex,
-						batchSize: batch.length,
-						error: error instanceof Error ? error.message : String(error),
-					}
-				}
-			})
+		const rpcStartedAt = Date.now()
+		const result = await env.EVE_CORPORATION_DATA.triggerCorporationSyncBatch(
+			corporationIds,
+			'cron'
 		)
-
-		// Count created and failed workflows
-		const stats = {
-			total: corporationIds.length,
-			created: 0,
-			failed: 0,
-			batchesSucceeded: 0,
-			batchesFailed: 0,
-		}
-
-		batchResults.forEach((result, index) => {
-			if (result.status === 'fulfilled') {
-				if (result.value.success) {
-					stats.created += result.value.instancesCreated
-					stats.batchesSucceeded++
-				} else {
-					stats.failed += result.value.batchSize
-					stats.batchesFailed++
-				}
-			} else {
-				// For rejected promises, estimate failed count based on batch size
-				const batchSize = batches[index]?.length ?? 0
-				stats.failed += batchSize
-				stats.batchesFailed++
-			}
-		})
+		const rpcDurationMs = Date.now() - rpcStartedAt
 
 		const duration = Date.now() - batchStartTime
 
 		logger.info('[Orchestrator] Corporation data refresh batch complete', {
-			totalCorporations: stats.total,
-			workflowsCreated: stats.created,
-			failed: stats.failed,
-			batchesSucceeded: stats.batchesSucceeded,
-			batchesFailed: stats.batchesFailed,
-			totalBatches: batches.length,
+			totalCorporations: result.total,
+			workflowsCreated: result.created,
+			failed: result.failed,
+			rpcMethod: 'EVE_CORPORATION_DATA.triggerCorporationSyncBatch',
+			rpcDurationMs,
 			durationMs: duration,
 		})
+
+		if (result.failed > 0) {
+			logger.error('[Orchestrator] Some corporation sync workflows failed to dispatch', {
+				failed: result.failed,
+				errors: result.workflows
+					.filter((workflow) => !workflow.success)
+					.map((workflow) => ({
+						corporationId: workflow.corporationId,
+						error: workflow.error ?? 'Unknown error',
+					})),
+			})
+		}
 	} catch (error) {
 		const duration = Date.now() - batchStartTime
 		logger.error('[Orchestrator] Unexpected error during corporation data refresh', {
 			errorMessage: error instanceof Error ? error.message : String(error),
 			errorStack: error instanceof Error ? error.stack : undefined,
+			rpcMethod: 'EVE_CORPORATION_DATA.triggerCorporationSyncBatch',
 			durationMs: duration,
 		})
 
@@ -293,6 +225,96 @@ export async function scheduleDiscordRefresh(event: ScheduledEvent, env: Env): P
 	}
 }
 
+export async function scheduleUserRefresh(event: ScheduledEvent, env: Env): Promise<void> {
+	const batchStartTime = Date.now()
+
+	try {
+		logger.info('[Orchestrator] Starting user refresh batch', {
+			scheduledTime: new Date(event.scheduledTime).toISOString(),
+			cron: event.cron,
+		})
+
+		const stub = getStub<Core>(env.CORE_DO, 'default')
+		const userIds = await stub.listUsersNeedingRefresh(50)
+
+		if (userIds.length === 0) {
+			logger.info('[Orchestrator] No users need refresh at this time')
+			return
+		}
+
+		const triggerResults = await Promise.allSettled(
+			userIds.map(async (userId) =>
+				env.CORE.triggerUserRefresh(userId, {
+					source: 'orchestrator-scheduled-batch',
+					bypassThrottle: true,
+					refreshMode: 'scheduled',
+				})
+			)
+		)
+
+		const workflows = triggerResults.map((result, index) => {
+			if (result.status === 'fulfilled') {
+				return {
+					userId: userIds[index],
+					dispatched: result.value.status === 'triggered',
+					status: result.value.status,
+					triggered: result.value.triggered,
+					workflowInstanceId: result.value.workflowInstanceId,
+					error: result.value.error,
+					errorName: undefined as string | undefined,
+				}
+			}
+
+			const errorMessage =
+				result.reason instanceof Error ? result.reason.message : String(result.reason)
+			return {
+				userId: userIds[index],
+				dispatched: false,
+				status: 'failed' as const,
+				triggered: false,
+				workflowInstanceId: undefined as string | undefined,
+				error: errorMessage,
+				errorName: result.reason instanceof Error ? result.reason.name : undefined,
+			}
+		})
+
+		const dispatchedCount = workflows.filter((workflow) => workflow.dispatched).length
+		const failedCount = workflows.length - dispatchedCount
+
+		logger.info('[Orchestrator] User refresh batch complete', {
+			total: workflows.length,
+			dispatched: dispatchedCount,
+			failed: failedCount,
+			durationMs: Date.now() - batchStartTime,
+		})
+
+		if (failedCount > 0) {
+			logger.error('[Orchestrator] Some user refresh workflows failed to dispatch', {
+				total: workflows.length,
+				dispatched: dispatchedCount,
+				failed: failedCount,
+				failures: workflows
+					.filter((workflow) => !workflow.dispatched)
+					.map((workflow) => ({
+						userId: workflow.userId,
+						status: workflow.status,
+						triggered: workflow.triggered,
+						error: workflow.error,
+						errorName: workflow.errorName,
+					})),
+			})
+		}
+	} catch (error) {
+		logger.error('[Orchestrator] Scheduled user refresh batch failed', {
+			errorMessage: error instanceof Error ? error.message : String(error),
+			errorStack: error instanceof Error ? error.stack : undefined,
+			errorName: error instanceof Error ? error.name : undefined,
+			durationMs: Date.now() - batchStartTime,
+		})
+		throw error
+	}
+}
+
 export async function scheduled(
 	event: ScheduledEvent,
 	env: Env,
@@ -302,6 +324,10 @@ export async function scheduled(
 
 	if (env.SHOULD_REFRESH_USER_DISCORD) {
 		promises.push(scheduleDiscordRefresh(event, env))
+	}
+
+	if (env.SHOULD_REFRESH_USER_REFRESH) {
+		promises.push(scheduleUserRefresh(event, env))
 	}
 
 	if (env.SHOULD_REFRESH_CORPORATION_DATA) {

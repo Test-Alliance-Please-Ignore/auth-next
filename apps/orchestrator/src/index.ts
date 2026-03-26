@@ -160,7 +160,7 @@ const app = new Hono<App>()
 		const limit = Math.min(parsedBatchSize, 100)
 
 		try {
-			const stub = getStub<Core>(c.env.CORE_DURABLE_OBJECT, 'default')
+			const stub = getStub<Core>(c.env.CORE_DO, 'default')
 			const userIds = await stub.listUsersNeedingRefresh(limit)
 
 			if (userIds.length === 0) {
@@ -172,25 +172,66 @@ const app = new Hono<App>()
 				})
 			}
 
-			const now = Date.now()
-			const batchPayload = userIds.map((userId, index) => ({
-				id: `user-refresh-${userId}-${now}-${index}`,
-				params: {
-					userId,
-					refreshMode: 'manual' as const,
-				},
-			}))
+			const triggerResults = await Promise.allSettled(
+				userIds.map(async (userId) =>
+					c.env.CORE.triggerUserRefresh(userId, {
+						source: 'orchestrator-test-batch',
+						bypassThrottle: true,
+						refreshMode: 'manual',
+					})
+				)
+			)
 
-			const instances = await c.env.USER_REFRESH_WORKFLOW.createBatch(batchPayload)
+			const workflows = triggerResults.map((result, index) => {
+				if (result.status === 'fulfilled') {
+					return {
+						userId: userIds[index],
+						dispatched: result.value.status === 'triggered',
+						status: result.value.status,
+						triggered: result.value.triggered,
+						workflowInstanceId: result.value.workflowInstanceId,
+						rpcMethod: 'CORE.triggerUserRefresh',
+						error: result.value.error,
+					}
+				}
+				const errorMessage =
+					result.reason instanceof Error ? result.reason.message : String(result.reason)
+				return {
+					userId: userIds[index],
+					dispatched: false,
+					rpcMethod: 'CORE.triggerUserRefresh',
+					error: errorMessage,
+					errorName: result.reason instanceof Error ? result.reason.name : undefined,
+				}
+			})
+
+			const dispatchedCount = workflows.filter((entry) => entry.dispatched).length
+			if (dispatchedCount !== userIds.length) {
+				console.error('[Orchestrator] User refresh RPC dispatch failures', {
+					total: userIds.length,
+					dispatched: dispatchedCount,
+					failed: userIds.length - dispatchedCount,
+					failures: workflows
+						.filter((workflow) => !workflow.dispatched)
+						.map((workflow) => ({
+							userId: workflow.userId,
+							rpcMethod: workflow.rpcMethod,
+							error: workflow.error,
+							errorName: workflow.errorName,
+						})),
+				})
+			}
 
 			return c.json({
-				success: true,
-				message: 'User refresh workflows created',
+				success: dispatchedCount === userIds.length,
+				message:
+					dispatchedCount === userIds.length
+						? 'User refresh workflows dispatched'
+						: 'Some user refresh workflows failed to dispatch',
 				userCount: userIds.length,
-				workflows: instances.map((instance, index) => ({
-					workflowId: instance.id,
-					userId: userIds[index],
-				})),
+				dispatchedCount,
+				failedCount: userIds.length - dispatchedCount,
+				workflows,
 			})
 		} catch (error) {
 			return c.json(

@@ -41,6 +41,28 @@ interface CharacterRefreshOutcome {
 	error?: string
 }
 
+type WorkflowStepStatus = 'ok' | 'failed' | 'skipped'
+
+export interface UserRefreshWorkflowResult {
+	status: 'completed' | 'completed_with_errors' | 'failed'
+	userId: string
+	workflowInstanceId: string
+	refreshMode: 'scheduled' | 'event' | 'manual'
+	steps: Record<string, WorkflowStepStatus>
+	characterOutcomes: CharacterRefreshOutcome[]
+	summary: {
+		characterCount: number
+		success: number
+		deleted: number
+		transientFailedAfterRetries: number
+		permanentFailed: number
+	}
+	error?: {
+		message: string
+		stack?: string
+	}
+}
+
 type CoreAttachmentSummary = {
 	key: string
 	roleName: string
@@ -151,7 +173,7 @@ function summarizeCoreAttachmentDelta(
  */
 export interface WorkflowParams {
 	userId: string
-	refreshMode?: 'scheduled' | 'manual'
+	refreshMode?: 'scheduled' | 'event' | 'manual'
 }
 
 /**
@@ -263,11 +285,28 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams>
 		}
 	}
 
-	async run(event: WorkflowEvent<WorkflowParams>, step: WorkflowStep) {
+	async run(
+		event: WorkflowEvent<WorkflowParams>,
+		step: WorkflowStep
+	): Promise<UserRefreshWorkflowResult> {
 		const { userId, refreshMode = 'scheduled' } = event.payload
 		const workflowInstanceId = event.instanceId
 
 		const logContext = { userId, workflowInstanceId, refreshMode }
+		const steps: Record<string, WorkflowStepStatus> = {}
+		let characterOutcomes: CharacterRefreshOutcome[] = []
+		let characterCount = 0
+
+		await step.do('init-workflow', async () => {
+			return {
+				userId,
+				workflowInstanceId,
+				refreshMode,
+				startedAt: new Date().toISOString(),
+			}
+		})
+		steps['init-workflow'] = 'ok'
+
 		console.log('[Workflow] Starting user refresh workflow', logContext)
 		try {
 			// Step 1: Check if user is blacklisted
@@ -275,6 +314,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams>
 				const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
 				return checkUserBlacklisted(ctx)
 			})
+			steps['check-user-blacklisted'] = 'ok'
 
 			console.log('[Workflow] Checked user blacklisted', {
 				...logContext,
@@ -287,8 +327,11 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams>
 					const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
 					return disableBlacklistedUser(ctx)
 				})
+				steps['disable-blacklisted-user'] = 'ok'
 
 				console.log('[Workflow] Disabled user', logContext)
+			} else {
+				steps['disable-blacklisted-user'] = 'skipped'
 			}
 
 			// Step 3: Fetch user's characters
@@ -299,6 +342,8 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams>
 					where: eq(userCharacters.userId, userId),
 				})
 			})
+			steps['fetch-user-characters'] = 'ok'
+			characterCount = characters.length
 			console.log('[Workflow] Fetched user characters', {
 				...logContext,
 				characterCount: characters.length,
@@ -306,7 +351,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams>
 			})
 
 			// Process characters in bounded parallel, isolating failures per character.
-			const characterOutcomes = await runWithConcurrencyLimit(
+			characterOutcomes = await runWithConcurrencyLimit(
 				characters,
 				CHARACTER_REFRESH_CONCURRENCY,
 				(character) =>
@@ -318,6 +363,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams>
 						character.characterId
 					)
 			)
+			steps['refresh-characters'] = 'ok'
 
 			const outcomeSummary = {
 				success: 0,
@@ -356,7 +402,9 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams>
 						return getUserRoleAttachments(ctx)
 					}
 				)
+				steps['get-user-role-attachments'] = 'ok'
 			} catch (error) {
+				steps['get-user-role-attachments'] = 'failed'
 				console.warn(
 					'[Workflow] Failed to fetch user role attachments before reconcile; continuing',
 					{
@@ -378,6 +426,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams>
 				const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
 				return attachUserRoles(ctx)
 			})
+			steps['attach-user-roles'] = 'ok'
 
 			console.log('[Workflow] Attached user roles', {
 				...logContext,
@@ -402,16 +451,67 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, WorkflowParams>
 				const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
 				return updateCompletionTimestamp(ctx)
 			})
+			steps['update-completion-timestamp'] = 'ok'
 
 			console.log('[Workflow] Updated completion timestamp', logContext)
 			console.log('[Workflow] User refresh workflow completed', logContext)
+
+			const summary = {
+				characterCount,
+				success: characterOutcomes.filter((outcome) => outcome.status === 'success').length,
+				deleted: characterOutcomes.filter((outcome) => outcome.status === 'deleted').length,
+				transientFailedAfterRetries: characterOutcomes.filter(
+					(outcome) => outcome.status === 'transient_failed_after_retries'
+				).length,
+				permanentFailed: characterOutcomes.filter(
+					(outcome) => outcome.status === 'permanent_failed'
+				).length,
+			}
+			const hasStepFailures = Object.values(steps).includes('failed')
+			const hasCharacterFailures =
+				summary.transientFailedAfterRetries > 0 || summary.permanentFailed > 0
+
+			return {
+				status: hasStepFailures || hasCharacterFailures ? 'completed_with_errors' : 'completed',
+				userId,
+				workflowInstanceId,
+				refreshMode,
+				steps,
+				characterOutcomes,
+				summary,
+			}
 		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : String(error)
+			steps['workflow'] = 'failed'
 			console.error('[Workflow] User refresh workflow failed', {
 				...logContext,
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage,
 				stack: error instanceof Error ? error.stack : undefined,
 			})
-			throw error
+
+			return {
+				status: 'failed',
+				userId,
+				workflowInstanceId,
+				refreshMode,
+				steps,
+				characterOutcomes,
+				summary: {
+					characterCount,
+					success: characterOutcomes.filter((outcome) => outcome.status === 'success').length,
+					deleted: characterOutcomes.filter((outcome) => outcome.status === 'deleted').length,
+					transientFailedAfterRetries: characterOutcomes.filter(
+						(outcome) => outcome.status === 'transient_failed_after_retries'
+					).length,
+					permanentFailed: characterOutcomes.filter(
+						(outcome) => outcome.status === 'permanent_failed'
+					).length,
+				},
+				error: {
+					message: errorMessage,
+					stack: error instanceof Error ? error.stack : undefined,
+				},
+			}
 		}
 	}
 }

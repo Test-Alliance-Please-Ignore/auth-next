@@ -7,6 +7,7 @@ export type Env = SharedHonoEnv & {
 
 	SHOULD_REFRESH_CORPORATION_DATA: boolean
 	SHOULD_REFRESH_USER_DISCORD: boolean
+	SHOULD_REFRESH_USER_REFRESH: boolean
 
 	// Service bindings
 	CORE: Fetcher & {
@@ -20,35 +21,87 @@ export type Env = SharedHonoEnv & {
 				lastDiscordRefresh: Date | null
 			}>
 		>
-		logUserActivity(userId: string, action: string, metadata?: Record<string, any>): Promise<void>
-		updateUserDiscordRefreshTimestamp(userId: string): Promise<void>
+		logUserActivity(
+			userId: string,
+			action: string,
+			metadata?: Record<string, any>
+		): Promise<{
+			ok: boolean
+			rpcRequestId: string
+			method: 'logUserActivity'
+			durationMs: number
+			error?: { message: string; name?: string }
+		}>
+		updateUserDiscordRefreshTimestamp(userId: string): Promise<{
+			ok: boolean
+			rpcRequestId: string
+			method: 'updateUserDiscordRefreshTimestamp'
+			durationMs: number
+			error?: { message: string; name?: string }
+		}>
 		syncUserDiscordAccess(userId: string): Promise<{
-			results: Array<{
-				guildId: string
-				guildName: string
-				corporationName?: string
-				groupName?: string
+			ok: boolean
+			rpcRequestId: string
+			method: 'syncUserDiscordAccess'
+			durationMs: number
+			result?: {
+				results: Array<{
+					guildId: string
+					guildName: string
+					corporationName?: string
+					groupName?: string
+					success: boolean
+					errorMessage?: string
+					alreadyMember?: boolean
+					type?: 'corporation' | 'group'
+					operation?: 'invite' | 'update'
+				}>
+				totalInvited: number
+				totalUpdated: number
+				totalFailed: number
+			}
+			error?: { message: string; name?: string }
+		}>
+		triggerUserRefresh(
+			userId: string,
+			options?: {
+				source?: string
+				bypassThrottle?: boolean
+				refreshMode?: 'scheduled' | 'event' | 'manual'
+			}
+		): Promise<{
+			success: boolean
+			userId: string
+			status: 'triggered' | 'throttled' | 'failed'
+			triggered: boolean
+			workflowInstanceId?: string
+			error?: string
+		}>
+	}
+	EVE_CORPORATION_DATA: Fetcher & {
+		triggerCorporationSyncBatch(
+			corporationIds: string[],
+			trigger?: 'cron' | 'api'
+		): Promise<{
+			total: number
+			created: number
+			failed: number
+			workflows: Array<{
+				corporationId: string
 				success: boolean
-				errorMessage?: string
-				alreadyMember?: boolean
-				type?: 'corporation' | 'group'
-				operation?: 'invite' | 'update'
+				workflowId?: string
+				error?: string
 			}>
-			totalInvited: number
-			totalUpdated: number
-			totalFailed: number
 		}>
 	}
 
 	// Durable Object bindings
 	DISCORD: DurableObjectNamespace
-	EVE_CORPORATION_DATA: DurableObjectNamespace
+	EVE_CORPORATION_DATA_DO: DurableObjectNamespace
 
 	// Workflow bindings
 	USER_DISCORD_REFRESH: Workflow
-	EVE_CORPORATION_SYNC: Workflow
-	USER_REFRESH_WORKFLOW: Workflow
-	CORE_DURABLE_OBJECT: DurableObjectNamespace
+	CORE_DO: DurableObjectNamespace
 }
 
 /** Variables can be extended */
