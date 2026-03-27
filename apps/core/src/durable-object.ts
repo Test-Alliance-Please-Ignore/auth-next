@@ -26,6 +26,9 @@ export class CoreDO extends DurableObject<Env> implements Core {
 	 *   expires is a no-op, whether or not it has already been processed.
 	 * - The cron picks up processed=false entries, marks them processed=true,
 	 *   then triggers workflows. Subsequent cron runs skip already-processed entries.
+	 * - If a user is pre-checked as not having linked Discord, that user is
+	 *   evicted from the pending set immediately after user-refresh completion
+	 *   (no TTL wait).
 	 * - Expired entries are pruned on each cron run.
 	 * - State is persisted to DO storage so it survives evictions and redeploys.
 	 *   The in-memory map is the working copy; storage is the source of truth on cold start.
@@ -397,6 +400,67 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		return { pendingCount: this.pendingDiscordRefreshes.size }
 	}
 
+	private async evictPendingDiscordRefresh(userId: string, reason: string): Promise<void> {
+		this.pendingDiscordRefreshes.delete(userId)
+		await this.state.storage.delete(`${CoreDO.STORAGE_PREFIX}${userId}`)
+		this.logger.info('[CoreDO] Evicted pending Discord refresh entry', { userId, reason })
+	}
+
+	private async waitForUserRefreshWorkflowCompletion(
+		workflowInstanceId: string
+	): Promise<'completed' | 'completed_with_errors' | 'failed' | 'unknown'> {
+		const POLL_INTERVAL_MS = 1500
+		const MAX_WAIT_MS = 60 * 1000
+		const startedAt = Date.now()
+
+		try {
+			const instance = await this.env.USER_REFRESH_WORKFLOW.get(workflowInstanceId)
+			while (Date.now() - startedAt < MAX_WAIT_MS) {
+				const status = await instance.status()
+				const runState = status.status
+				if (runState === 'running' || runState === 'queued' || runState === 'waiting') {
+					await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))
+					continue
+				}
+
+				const outputStatus =
+					status.output && typeof status.output === 'object' && 'status' in status.output
+						? (status.output as { status?: string }).status
+						: undefined
+
+				if (
+					outputStatus === 'completed' ||
+					outputStatus === 'completed_with_errors' ||
+					outputStatus === 'failed'
+				) {
+					return outputStatus
+				}
+
+				if (runState === 'complete' && outputStatus === undefined) {
+					return 'unknown'
+				}
+
+				if (runState === 'errored') {
+					return 'failed'
+				}
+
+				return 'unknown'
+			}
+		} catch (error) {
+			this.logger.warn('[CoreDO] Failed while waiting for user refresh workflow completion', {
+				workflowInstanceId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+			return 'unknown'
+		}
+
+		this.logger.warn('[CoreDO] Timed out waiting for user refresh workflow completion', {
+			workflowInstanceId,
+			maxWaitMs: MAX_WAIT_MS,
+		})
+		return 'unknown'
+	}
+
 	/**
 	 * Drain the pending set and trigger Discord refresh + user refresh workflows.
 	 * Processes in staggered chunks to avoid overwhelming the Discord API.
@@ -452,27 +516,71 @@ export class CoreDO extends DurableObject<Env> implements Core {
 
 		const results = await Promise.allSettled(
 			userIds.map(async (userId) => {
+				const preRefreshUser = await db.query.users.findFirst({
+					where: eq(users.id, userId),
+					columns: { discordUserId: true },
+				})
+				const hadLinkedDiscordBeforeRefresh = !!preRefreshUser?.discordUserId
+
+				const userRefreshResult = await triggerUserRefreshWorkflow({
+					db,
+					env: this.env,
+					userId,
+					source: 'corp-membership-changed',
+					bypassThrottle: true,
+					refreshMode: 'event',
+				})
+
+				if (userRefreshResult.status === 'failed' || !userRefreshResult.triggered) {
+					return {
+						userId,
+						userRefreshResult,
+						discordResult: null,
+						skippedNoDiscord: false,
+						precheckedNoDiscord: !hadLinkedDiscordBeforeRefresh,
+					}
+				}
+
+				let userRefreshCompletionStatus:
+					| 'completed'
+					| 'completed_with_errors'
+					| 'failed'
+					| 'unknown' = 'unknown'
+				if (userRefreshResult.workflowInstanceId) {
+					userRefreshCompletionStatus = await this.waitForUserRefreshWorkflowCompletion(
+						userRefreshResult.workflowInstanceId
+					)
+				}
+
+				if (!hadLinkedDiscordBeforeRefresh) {
+					await this.evictPendingDiscordRefresh(userId, 'no-linked-discord-after-user-refresh')
+					return {
+						userId,
+						userRefreshResult,
+						discordResult: null,
+						skippedNoDiscord: true,
+						precheckedNoDiscord: true,
+						userRefreshCompletionStatus,
+					}
+				}
+
 				const jitterDelaySeconds = Math.floor(Math.random() * JITTER_MAX_SECONDS)
+				const discordResult = await triggerDiscordRefreshWorkflow({
+					env: this.env,
+					userId,
+					source: 'corp-membership-changed',
+					allowRemoval: true,
+					jitterDelaySeconds,
+				})
 
-				const [discordResult, userRefreshResult] = await Promise.allSettled([
-					triggerDiscordRefreshWorkflow({
-						env: this.env,
-						userId,
-						source: 'corp-membership-changed',
-						allowRemoval: true,
-						jitterDelaySeconds,
-					}),
-					triggerUserRefreshWorkflow({
-						db,
-						env: this.env,
-						userId,
-						source: 'corp-membership-changed',
-						bypassThrottle: true,
-						refreshMode: 'event',
-					}),
-				])
-
-				return { userId, discordResult, userRefreshResult }
+				return {
+					userId,
+					userRefreshResult,
+					discordResult,
+					skippedNoDiscord: false,
+					precheckedNoDiscord: false,
+					userRefreshCompletionStatus,
+				}
 			})
 		)
 
@@ -484,28 +592,31 @@ export class CoreDO extends DurableObject<Env> implements Core {
 				// Unexpected — the per-user async fn should not throw
 				failedCount++
 				this.logger.error('[CoreDO] Unexpected error triggering workflows for user', {
-					error:
-						result.reason instanceof Error
-							? result.reason.message
-							: String(result.reason),
+					error: result.reason instanceof Error ? result.reason.message : String(result.reason),
 				})
 				continue
 			}
-			const { userId, discordResult, userRefreshResult } = result.value
-			const discordOk = discordResult.status === 'fulfilled' && discordResult.value.triggered
-			const refreshOk =
-				userRefreshResult.status === 'fulfilled' && userRefreshResult.value.triggered
+			const {
+				userId,
+				discordResult,
+				userRefreshResult,
+				skippedNoDiscord,
+				precheckedNoDiscord,
+				userRefreshCompletionStatus,
+			} = result.value
+			const refreshOk = userRefreshResult.triggered
+			const discordOk = !!discordResult?.triggered
 			if (discordOk || refreshOk) {
 				triggeredCount++
 			} else {
 				failedCount++
 				this.logger.error('[CoreDO] Failed to trigger workflows for user', {
 					userId,
-					discord: discordResult.status === 'fulfilled' ? discordResult.value.status : 'rejected',
-					userRefresh:
-						userRefreshResult.status === 'fulfilled'
-							? userRefreshResult.value.status
-							: 'rejected',
+					discord: discordResult?.status ?? 'skipped',
+					userRefresh: userRefreshResult.status,
+					skippedNoDiscord,
+					precheckedNoDiscord,
+					userRefreshCompletionStatus,
 				})
 			}
 		}

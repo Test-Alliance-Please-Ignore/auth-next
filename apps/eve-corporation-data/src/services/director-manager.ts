@@ -187,15 +187,44 @@ export class DirectorManager {
 			return null
 		}
 
-		// Round-robin: Select the least-recently-used director
-		// Already sorted by priority, then lastUsed (nulls first)
-		const selected = healthyDirectors[0]
+		// Round-robin candidate order is already sorted by priority, then lastUsed (nulls first).
+		// Validate token presence/freshness before returning a director so authenticated workflow
+		// steps do not run with a director that cannot produce credentials.
+		for (const candidate of healthyDirectors) {
+			try {
+				const tokenInfo = await this.tokenStore.getTokenInfo(candidate.characterId)
+				if (!tokenInfo) {
+					await this.recordFailure(candidate.directorId, 'No token available for director')
+					continue
+				}
 
-		return {
-			directorId: selected.directorId,
-			characterId: String(selected.characterId),
-			characterName: selected.characterName,
+				if (tokenInfo.isExpired) {
+					const refreshSucceeded = await this.tokenStore.refreshToken(candidate.characterId)
+					if (!refreshSucceeded) {
+						await this.recordFailure(
+							candidate.directorId,
+							'Director token expired and refresh failed'
+						)
+						continue
+					}
+				}
+
+				return {
+					directorId: candidate.directorId,
+					characterId: String(candidate.characterId),
+					characterName: candidate.characterName,
+				}
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error)
+				await this.recordFailure(candidate.directorId, `Token validation failed: ${message}`)
+			}
 		}
+
+		console.error('[DirectorManager] No directors with valid tokens available', {
+			corporationId: this.corporationId,
+			candidatesChecked: healthyDirectors.length,
+		})
+		return null
 	}
 
 	/**
