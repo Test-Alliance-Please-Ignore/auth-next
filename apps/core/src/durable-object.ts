@@ -33,7 +33,10 @@ export class CoreDO extends DurableObject<Env> implements Core {
 	 * - State is persisted to DO storage so it survives evictions and redeploys.
 	 *   The in-memory map is the working copy; storage is the source of truth on cold start.
 	 */
-	private pendingDiscordRefreshes = new Map<string, { expiresAt: number; processed: boolean }>()
+	private pendingDiscordRefreshes = new Map<
+		string,
+		{ expiresAt: number; processed: boolean; source?: string }
+	>()
 	private static readonly PENDING_TTL_MS = 15 * 60 * 1000 // 15 minutes
 	private static readonly STORAGE_PREFIX = 'pending-discord:'
 
@@ -49,12 +52,20 @@ export class CoreDO extends DurableObject<Env> implements Core {
 	}
 
 	private async loadPendingDiscordRefreshes(): Promise<void> {
-		const stored = await this.state.storage.list<{ expiresAt: number; processed: boolean }>({
+		const stored = await this.state.storage.list<{
+			expiresAt: number
+			processed: boolean
+			source?: string
+		}>({
 			prefix: CoreDO.STORAGE_PREFIX,
 		})
 		for (const [key, value] of stored) {
 			const userId = key.slice(CoreDO.STORAGE_PREFIX.length)
-			this.pendingDiscordRefreshes.set(userId, value)
+			this.pendingDiscordRefreshes.set(userId, {
+				expiresAt: value.expiresAt,
+				processed: value.processed,
+				source: value.source,
+			})
 		}
 		this.logger.info('[CoreDO] Loaded pending Discord refreshes from storage', {
 			count: this.pendingDiscordRefreshes.size,
@@ -369,10 +380,14 @@ export class CoreDO extends DurableObject<Env> implements Core {
 	 * If a userId already has a non-expired entry (processed or not), it is skipped —
 	 * the TTL window acts as the deduplication guard.
 	 */
-	async addPendingDiscordRefreshes(userIds: string[]): Promise<{ pendingCount: number }> {
+	async addPendingDiscordRefreshes(
+		userIds: string[],
+		options?: { source?: string }
+	): Promise<{ pendingCount: number }> {
 		const now = Date.now()
 		const expiresAt = now + CoreDO.PENDING_TTL_MS
-		const toStore: Record<string, { expiresAt: number; processed: boolean }> = {}
+		const source = options?.source ?? 'corp-membership-changed'
+		const toStore: Record<string, { expiresAt: number; processed: boolean; source?: string }> = {}
 		let added = 0
 
 		for (const userId of userIds) {
@@ -381,7 +396,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 				// Still within TTL window — skip
 				continue
 			}
-			const entry = { expiresAt, processed: false }
+			const entry = { expiresAt, processed: false, source }
 			this.pendingDiscordRefreshes.set(userId, entry)
 			toStore[`${CoreDO.STORAGE_PREFIX}${userId}`] = entry
 			added++
@@ -394,6 +409,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		this.logger.info('[CoreDO] Added pending Discord refreshes', {
 			added,
 			skipped: userIds.length - added,
+			source,
 			pendingCount: this.pendingDiscordRefreshes.size,
 		})
 
@@ -489,11 +505,13 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		// Persist the processed flag to storage first so that if the DO is evicted
 		// mid-run, a cold-start won't re-trigger the same workflows on the next cron.
 		const toProcess: string[] = []
-		const toStore: Record<string, { expiresAt: number; processed: boolean }> = {}
+		const toStore: Record<string, { expiresAt: number; processed: boolean; source?: string }> = {}
+		const sourceByUserId = new Map<string, string>()
 		for (const [userId, entry] of this.pendingDiscordRefreshes) {
 			if (!entry.processed) {
 				entry.processed = true
 				toProcess.push(userId)
+				sourceByUserId.set(userId, entry.source ?? 'corp-membership-changed')
 				toStore[`${CoreDO.STORAGE_PREFIX}${userId}`] = entry
 			}
 		}
@@ -526,7 +544,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 					db,
 					env: this.env,
 					userId,
-					source: 'corp-membership-changed',
+					source: sourceByUserId.get(userId) ?? 'corp-membership-changed',
 					bypassThrottle: true,
 					refreshMode: 'event',
 				})
@@ -568,7 +586,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 				const discordResult = await triggerDiscordRefreshWorkflow({
 					env: this.env,
 					userId,
-					source: 'corp-membership-changed',
+					source: sourceByUserId.get(userId) ?? 'corp-membership-changed',
 					allowRemoval: true,
 					jitterDelaySeconds,
 				})

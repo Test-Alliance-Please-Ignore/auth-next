@@ -2,10 +2,9 @@ import { WorkerEntrypoint } from 'cloudflare:workers'
 import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
+import { inArray } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { withNotFound, withOnError, withSentry } from '@repo/hono-helpers'
-
-import { inArray } from '@repo/db-utils'
 
 import { createDb } from './db'
 import { userCharacters } from './db/schema'
@@ -123,11 +122,7 @@ const sentryApp = withSentry(app)
 
 export default {
 	fetch: sentryApp.fetch.bind(sentryApp),
-	async scheduled(
-		_event: ScheduledEvent,
-		env: Env,
-		_ctx: ExecutionContext
-	): Promise<void> {
+	async scheduled(_event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
 		const coreStub = getStub<Core>(env.CORE, 'default')
 		const result = await coreStub.processPendingDiscordRefreshes()
 		if (result.processed > 0) {
@@ -558,7 +553,9 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 		}
 
 		const coreStub = getStub<Core>(this.env.CORE, 'default')
-		const result = await coreStub.addPendingDiscordRefreshes(uniqueUserIds)
+		const result = await coreStub.addPendingDiscordRefreshes(uniqueUserIds, {
+			source: 'corp-membership-changed',
+		})
 
 		return { usersQueued: uniqueUserIds.length, pendingCount: result.pendingCount }
 	}

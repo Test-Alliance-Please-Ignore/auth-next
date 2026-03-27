@@ -166,7 +166,18 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				timeout: '30 seconds',
 			},
 			async () => {
-				return selectDirector(this.env, corporationId)
+				try {
+					return await selectDirector(this.env, corporationId)
+				} catch (error) {
+					logger.error(
+						'[EveCorporationSyncWorkflow] select-director step failed; continuing without director',
+						{
+							corporationId,
+							error: error instanceof Error ? error.message : String(error),
+						}
+					)
+					return null
+				}
 			}
 		)
 
