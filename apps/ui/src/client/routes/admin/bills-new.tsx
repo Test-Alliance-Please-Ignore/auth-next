@@ -69,6 +69,8 @@ export default function AdminBillsNewPage() {
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 	const [payerQuery, setPayerQuery] = useState('')
 	const [payeeQuery, setPayeeQuery] = useState('')
+	const [payerName, setPayerName] = useState('')
+	const [payeeName, setPayeeName] = useState('')
 	const debouncedPayerQuery = useDebounce(payerQuery, 300)
 	const debouncedPayeeQuery = useDebounce(payeeQuery, 300)
 	const payerEntitySearch = useBillEntitySearch({
@@ -122,10 +124,12 @@ export default function AdminBillsNewPage() {
 		setFormData((prev) => ({ ...prev, [field]: value }))
 		if (field === 'payerType') {
 			setPayerQuery('')
+			setPayerName('')
 			setFormData((prev) => ({ ...prev, payerId: '' }))
 		}
 		if (field === 'payeeType') {
 			setPayeeQuery('')
+			setPayeeName('')
 			setFormData((prev) => ({ ...prev, payeeId: '' }))
 		}
 		// Clear error when field is edited
@@ -163,7 +167,10 @@ export default function AdminBillsNewPage() {
 		if (!formData.dueDate) {
 			newErrors.dueDate = 'Due date is required'
 		} else {
-			const dueDate = new Date(formData.dueDate)
+			// Append T00:00:00 so the date is interpreted as local midnight rather than UTC midnight.
+			// Without this, new Date("2026-03-26") is UTC midnight which falls before local midnight
+			// for users west of UTC, causing today's date to be incorrectly rejected.
+			const dueDate = new Date(formData.dueDate + 'T00:00:00')
 			const today = new Date()
 			today.setHours(0, 0, 0, 0)
 			if (dueDate < today) {
@@ -278,9 +285,13 @@ export default function AdminBillsNewPage() {
 							query={payerQuery}
 							onQueryChange={setPayerQuery}
 							options={payerOptions}
-							onEntitySelect={(entityId) => handleChange('payerId', entityId)}
+							onEntitySelect={(entityId, name) => {
+								handleChange('payerId', entityId)
+								setPayerName(name)
+							}}
 							loading={payerEntitySearch.isLoading}
 							selectedEntityId={formData.payerId}
+							selectedEntityName={payerName}
 							error={errors.payerId}
 						/>
 					</CardContent>
@@ -303,9 +314,13 @@ export default function AdminBillsNewPage() {
 							query={payeeQuery}
 							onQueryChange={setPayeeQuery}
 							options={payeeOptions}
-							onEntitySelect={(entityId) => handleChange('payeeId', entityId)}
+							onEntitySelect={(entityId, name) => {
+								handleChange('payeeId', entityId)
+								setPayeeName(name)
+							}}
 							loading={payeeEntitySearch.isLoading}
 							selectedEntityId={formData.payeeId}
+							selectedEntityName={payeeName}
 							error={errors.payeeId}
 						/>
 					</CardContent>

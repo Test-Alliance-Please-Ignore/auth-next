@@ -185,7 +185,7 @@ export function SearchSelect<TOption extends SearchSelectOption>({
 		if (disabled) {
 			return
 		}
-		if (filterMode === 'local' && mode === 'search') {
+		if (mode === 'search') {
 			// Search mode keeps the chosen label in the input; dropdown mode should fall back to
 			// placeholder-based selection display so reopening does not self-filter the list.
 			onValueChange(option.label)

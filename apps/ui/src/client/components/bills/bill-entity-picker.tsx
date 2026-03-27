@@ -30,9 +30,10 @@ type BillEntityPickerProps = {
 	query: string
 	onQueryChange: (query: string) => void
 	options: SearchSelectOption[]
-	onEntitySelect: (entityId: string) => void
+	onEntitySelect: (entityId: string, name: string) => void
 	loading: boolean
 	selectedEntityId: string
+	selectedEntityName?: string
 	error?: string
 	emptyText?: string
 }
@@ -74,7 +75,7 @@ export function BillEntityPicker(props: BillEntityPickerProps) {
 					value={props.query}
 					onValueChange={props.onQueryChange}
 					options={props.options}
-					onSelect={(option) => props.onEntitySelect(option.value)}
+					onSelect={(option) => props.onEntitySelect(option.value, option.label)}
 					loading={props.loading}
 					placeholder={`Search ${placeholderTypeLabel.toLowerCase()} name or ID`}
 					minCharsText="Type at least 2 characters to search"
@@ -82,9 +83,19 @@ export function BillEntityPicker(props: BillEntityPickerProps) {
 					className={props.error ? 'border-destructive rounded-md' : ''}
 				/>
 				{props.error && <p className="text-sm text-destructive">{props.error}</p>}
-				<p className="text-sm text-muted-foreground">
-					Selected ID: {props.selectedEntityId || 'none'}
-				</p>
+				{props.selectedEntityId && (
+					<p className="text-sm text-muted-foreground">
+						Selected {props.roleLabel}:{' '}
+						{props.selectedEntityName ? (
+							<>
+								<span className="text-foreground">{props.selectedEntityName}</span>{' '}
+								<span className="text-muted-foreground/70">(ID: {props.selectedEntityId})</span>
+							</>
+						) : (
+							props.selectedEntityId
+						)}
+					</p>
+				)}
 			</div>
 		</div>
 	)

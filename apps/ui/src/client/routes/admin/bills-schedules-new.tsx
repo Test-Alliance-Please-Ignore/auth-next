@@ -54,6 +54,8 @@ export default function AdminBillsSchedulesNewPage() {
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 	const [payerQuery, setPayerQuery] = useState('')
 	const [payeeQuery, setPayeeQuery] = useState('')
+	const [payerName, setPayerName] = useState('')
+	const [payeeName, setPayeeName] = useState('')
 	const debouncedPayerQuery = useDebounce(payerQuery, 300)
 	const debouncedPayeeQuery = useDebounce(payeeQuery, 300)
 	const payerEntitySearch = useBillEntitySearch({
@@ -105,6 +107,8 @@ export default function AdminBillsSchedulesNewPage() {
 
 	// Calculate next generation time preview
 	const nextGenerationTime = useMemo(() => {
+		// Bill schedules fire at midnight UTC. Bare YYYY-MM-DD strings parse as UTC midnight,
+		// which is the correct scheduled time.
 		const baseDate = formData.startDate ? new Date(formData.startDate) : new Date()
 
 		switch (formData.frequency) {
@@ -113,8 +117,11 @@ export default function AdminBillsSchedulesNewPage() {
 			case 'weekly':
 				return new Date(baseDate.getTime() + 7 * 24 * 60 * 60 * 1000)
 			case 'monthly': {
+				// Use UTC methods so month arithmetic stays in UTC regardless of the
+				// browser's local timezone. setMonth/getMonth operate in local time and
+				// would produce the wrong UTC date for users west of UTC.
 				const nextMonth = new Date(baseDate)
-				nextMonth.setMonth(nextMonth.getMonth() + 1)
+				nextMonth.setUTCMonth(nextMonth.getUTCMonth() + 1)
 				return nextMonth
 			}
 			default:
@@ -126,10 +133,12 @@ export default function AdminBillsSchedulesNewPage() {
 		setFormData((prev) => ({ ...prev, [field]: value }))
 		if (field === 'payerType') {
 			setPayerQuery('')
+			setPayerName('')
 			setFormData((prev) => ({ ...prev, payerId: '' }))
 		}
 		if (field === 'payeeType') {
 			setPayeeQuery('')
+			setPayeeName('')
 			setFormData((prev) => ({ ...prev, payeeId: '' }))
 		}
 		// Clear error when field is edited
@@ -164,7 +173,10 @@ export default function AdminBillsSchedulesNewPage() {
 		}
 
 		if (formData.startDate) {
-			const startDate = new Date(formData.startDate)
+			// Append T00:00:00 so the date is interpreted as local midnight rather than UTC midnight.
+			// Without this, new Date("2026-03-26") is UTC midnight which falls before local midnight
+			// for users west of UTC, causing today's date to be incorrectly rejected.
+			const startDate = new Date(formData.startDate + 'T00:00:00')
 			const now = new Date()
 			now.setHours(0, 0, 0, 0)
 			if (startDate < now) {
@@ -342,7 +354,9 @@ export default function AdminBillsSchedulesNewPage() {
 										{nextGenerationTime.toLocaleString('en-US', {
 											dateStyle: 'full',
 											timeStyle: 'short',
-										})}
+											timeZone: 'UTC',
+										})}{' '}
+										UTC
 									</p>
 									<p className="text-muted-foreground mt-1">
 										Bills will be generated{' '}
@@ -372,9 +386,13 @@ export default function AdminBillsSchedulesNewPage() {
 							query={payerQuery}
 							onQueryChange={setPayerQuery}
 							options={payerOptions}
-							onEntitySelect={(entityId) => handleChange('payerId', entityId)}
+							onEntitySelect={(entityId, name) => {
+								handleChange('payerId', entityId)
+								setPayerName(name)
+							}}
 							loading={payerEntitySearch.isLoading}
 							selectedEntityId={formData.payerId}
+							selectedEntityName={payerName}
 							error={errors.payerId}
 						/>
 						<BillEntityPicker
@@ -387,9 +405,13 @@ export default function AdminBillsSchedulesNewPage() {
 							query={payeeQuery}
 							onQueryChange={setPayeeQuery}
 							options={payeeOptions}
-							onEntitySelect={(entityId) => handleChange('payeeId', entityId)}
+							onEntitySelect={(entityId, name) => {
+								handleChange('payeeId', entityId)
+								setPayeeName(name)
+							}}
 							loading={payeeEntitySearch.isLoading}
 							selectedEntityId={formData.payeeId}
+							selectedEntityName={payeeName}
 							error={errors.payeeId}
 						/>
 					</CardContent>
