@@ -30,7 +30,10 @@ export interface Core {
 	getUserAlliances(userId: string): Promise<Array<{ allianceId: string; allianceName: string }>>
 	getUserDiscordUserId(userId: string): Promise<string | null>
 	listUsersNeedingRefresh(limit: number): Promise<string[]>
-	addPendingDiscordRefreshes(userIds: string[]): Promise<{ pendingCount: number }>
+	addPendingDiscordRefreshes(
+		userIds: string[],
+		options?: { source?: string }
+	): Promise<{ pendingCount: number }>
 	processPendingDiscordRefreshes(): Promise<{
 		processed: number
 		triggered: number

@@ -178,53 +178,77 @@ export class DirectorManager {
 	 * Returns null if no healthy directors available
 	 */
 	async selectDirector(): Promise<SelectedDirector | null> {
-		const healthyDirectors = await this.getHealthyDirectors()
+		try {
+			const healthyDirectors = await this.getHealthyDirectors()
 
-		if (healthyDirectors.length === 0) {
-			console.error('[DirectorManager] No healthy directors available', {
-				corporationId: this.corporationId,
-			})
-			return null
-		}
+			if (healthyDirectors.length === 0) {
+				console.error('[DirectorManager] No healthy directors available', {
+					corporationId: this.corporationId,
+				})
+				return null
+			}
 
-		// Round-robin candidate order is already sorted by priority, then lastUsed (nulls first).
-		// Validate token presence/freshness before returning a director so authenticated workflow
-		// steps do not run with a director that cannot produce credentials.
-		for (const candidate of healthyDirectors) {
-			try {
-				const tokenInfo = await this.tokenStore.getTokenInfo(candidate.characterId)
-				if (!tokenInfo) {
-					await this.recordFailure(candidate.directorId, 'No token available for director')
-					continue
-				}
-
-				if (tokenInfo.isExpired) {
-					const refreshSucceeded = await this.tokenStore.refreshToken(candidate.characterId)
-					if (!refreshSucceeded) {
-						await this.recordFailure(
-							candidate.directorId,
-							'Director token expired and refresh failed'
-						)
+			// Round-robin candidate order is already sorted by priority, then lastUsed (nulls first).
+			// Validate token presence/freshness before returning a director so authenticated workflow
+			// steps do not run with a director that cannot produce credentials.
+			for (const candidate of healthyDirectors) {
+				try {
+					const tokenInfo = await this.tokenStore.getTokenInfo(candidate.characterId)
+					if (!tokenInfo) {
+						await this.safeRecordFailure(candidate.directorId, 'No token available for director')
 						continue
 					}
-				}
 
-				return {
-					directorId: candidate.directorId,
-					characterId: String(candidate.characterId),
-					characterName: candidate.characterName,
+					if (tokenInfo.isExpired) {
+						const refreshSucceeded = await this.tokenStore.refreshToken(candidate.characterId)
+						if (!refreshSucceeded) {
+							await this.safeRecordFailure(
+								candidate.directorId,
+								'Director token expired and refresh failed'
+							)
+							continue
+						}
+					}
+
+					return {
+						directorId: candidate.directorId,
+						characterId: String(candidate.characterId),
+						characterName: candidate.characterName,
+					}
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error)
+					await this.safeRecordFailure(candidate.directorId, `Token validation failed: ${message}`)
 				}
-			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error)
-				await this.recordFailure(candidate.directorId, `Token validation failed: ${message}`)
 			}
-		}
 
-		console.error('[DirectorManager] No directors with valid tokens available', {
-			corporationId: this.corporationId,
-			candidatesChecked: healthyDirectors.length,
-		})
-		return null
+			console.error('[DirectorManager] No directors with valid tokens available', {
+				corporationId: this.corporationId,
+				candidatesChecked: healthyDirectors.length,
+			})
+			return null
+		} catch (error) {
+			console.error(
+				'[DirectorManager] Director selection failed; falling back to unauthenticated sync',
+				{
+					corporationId: this.corporationId,
+					error: error instanceof Error ? error.message : String(error),
+				}
+			)
+			return null
+		}
+	}
+
+	private async safeRecordFailure(directorId: string, reason: string): Promise<void> {
+		try {
+			await this.recordFailure(directorId, reason)
+		} catch (error) {
+			console.error('[DirectorManager] Failed to record director failure', {
+				corporationId: this.corporationId,
+				directorId,
+				reason,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
 	}
 
 	/**

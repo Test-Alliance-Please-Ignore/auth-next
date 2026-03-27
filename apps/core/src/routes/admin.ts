@@ -1184,13 +1184,13 @@ app.post(
 
 			if (lastRefresh) {
 				const retryAfterMs =
-					CORP_DISCORD_REFRESH_COOLDOWN_MS -
-					(Date.now() - lastRefresh.timestamp.getTime())
+					CORP_DISCORD_REFRESH_COOLDOWN_MS - (Date.now() - lastRefresh.timestamp.getTime())
 				const retryAfterSeconds = Math.ceil(retryAfterMs / 1000)
 
 				return c.json(
 					{
-						error: 'Corporation Discord refresh was recently triggered. Please wait before retrying.',
+						error:
+							'Corporation Discord refresh was recently triggered. Please wait before retrying.',
 						retryAfterSeconds,
 					},
 					429
@@ -1218,7 +1218,9 @@ app.post(
 
 			// Add to Core DO's pending Discord refresh set
 			const coreStub = getStub<Core>(c.env.CORE, 'default')
-			const result = await coreStub.addPendingDiscordRefreshes(uniqueUserIds)
+			const result = await coreStub.addPendingDiscordRefreshes(uniqueUserIds, {
+				source: 'corp-admin-refresh',
+			})
 
 			// Log the action for throttle tracking
 			await db.insert(userActivityLog).values({
