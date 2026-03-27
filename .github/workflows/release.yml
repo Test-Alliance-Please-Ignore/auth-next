@@ -34,7 +34,7 @@ jobs:
           pnpm -F ui build
           node scripts/ci/validate-ui-build-env-injection.mjs
       - name: Check & Test
-        run: bun runx ci check-and-test
+        run: bun turbo check:ci
       - name: Deploy
         run: bun turbo deploy
         env:
