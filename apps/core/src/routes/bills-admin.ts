@@ -1040,6 +1040,11 @@ app.post('/schedules', requireAuth(), requireAdmin(), async (c) => {
 
 	try {
 		const data = await c.req.json()
+		// JSON deserialization produces ISO strings for Date fields; coerce back to Date so
+		// downstream services receive the correct type for timestamp calculations.
+		if (data.startDate) {
+			data.startDate = new Date(data.startDate)
+		}
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
 		const schedule = await stub.createSchedule(user.id, data)
 

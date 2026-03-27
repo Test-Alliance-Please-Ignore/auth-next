@@ -25,14 +25,14 @@ export function calculateNextGenerationTime(params: CalculateNextGenerationTimeP
 	const baseTime = lastGenerationTime || startDate || new Date()
 	const nextTime = new Date(baseTime.getTime())
 
-	// Add time based on frequency
+	// Add time based on frequency. Use UTC methods so arithmetic is always relative
+	// to UTC midnight regardless of the runtime's local timezone.
 	if (frequency === 'daily') {
-		nextTime.setDate(nextTime.getDate() + 1)
+		nextTime.setUTCDate(nextTime.getUTCDate() + 1)
 	} else if (frequency === 'weekly') {
-		nextTime.setDate(nextTime.getDate() + 7)
+		nextTime.setUTCDate(nextTime.getUTCDate() + 7)
 	} else if (frequency === 'monthly') {
-		// Add one month (handles different month lengths correctly)
-		nextTime.setMonth(nextTime.getMonth() + 1)
+		nextTime.setUTCMonth(nextTime.getUTCMonth() + 1)
 	}
 
 	return nextTime
