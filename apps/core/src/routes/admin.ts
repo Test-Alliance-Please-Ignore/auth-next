@@ -8,12 +8,12 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 
-import { and, eq } from '@repo/db-utils'
+import { and, desc, eq, gt } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
-import { userCharacters, users } from '../db/schema'
+import { userActivityLog, userCharacters, users } from '../db/schema'
 import { validatePagination } from '../lib/validation'
 import { triggerUserRefreshWorkflow } from '../lib/workflow-triggers'
 import { requireAdmin, requireAuth } from '../middleware/session'
@@ -21,6 +21,7 @@ import * as discordService from '../services/discord.service'
 import { SessionService } from '../services/session.service'
 import { UserService } from '../services/user.service'
 
+import type { Core } from '@repo/core'
 import type { Discord } from '@repo/discord'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Hr } from '@repo/hr'
@@ -1120,5 +1121,142 @@ app.delete('/blacklist/:id', requireAuth(), requireAdmin(), async (c) => {
 		return c.json({ error: 'Failed to remove blacklist entry' }, 500)
 	}
 })
+
+/**
+ * POST /admin/corporations/:corporationId/discord/refresh
+ * Add all users with characters in a corporation to the pending Discord refresh set.
+ *
+ * Users are added to the Core DO's in-memory set and processed on the next
+ * cron tick with staggered workflow creation.
+ *
+ * Throttled to one request per corporation per 5 minutes.
+ *
+ * Body: {
+ *   allowRemoval?: boolean  - Whether to allow role removal (default: true)
+ * }
+ */
+const CORP_DISCORD_REFRESH_COOLDOWN_MS = 5 * 60 * 1000 // 5 minutes
+
+app.post(
+	'/corporations/:corporationId/discord/refresh',
+	requireAuth(),
+	requireAdmin(),
+	async (c) => {
+		const user = c.get('user')
+		const corporationId = c.req.param('corporationId')
+
+		if (!user) {
+			return c.json({ error: 'Unauthorized' }, 401)
+		}
+
+		// Validate corporationId is a numeric string (EVE corporation IDs are numeric)
+		if (!/^\d+$/.test(corporationId)) {
+			return c.json({ error: 'Invalid corporation ID format' }, 400)
+		}
+
+		try {
+			const body = await c.req.json().catch(() => ({}))
+			const allowRemoval = body.allowRemoval !== false // default true
+
+			const db = createDb(c.env.DATABASE_URL)
+
+			// Throttle: check for recent bulk refresh for this corporation
+			const cooldownThreshold = new Date(Date.now() - CORP_DISCORD_REFRESH_COOLDOWN_MS)
+			const recentRefreshes = await db
+				.select({
+					timestamp: userActivityLog.timestamp,
+					metadata: userActivityLog.metadata,
+				})
+				.from(userActivityLog)
+				.where(
+					and(
+						eq(userActivityLog.action, 'admin-corp-discord-refresh'),
+						gt(userActivityLog.timestamp, cooldownThreshold)
+					)
+				)
+				.orderBy(desc(userActivityLog.timestamp))
+				.limit(10)
+
+			// Filter by corporationId in metadata (jsonb, so filter in JS)
+			const lastRefresh = recentRefreshes.find(
+				(r) => (r.metadata as Record<string, unknown>)?.corporationId === corporationId
+			)
+
+			if (lastRefresh) {
+				const retryAfterMs =
+					CORP_DISCORD_REFRESH_COOLDOWN_MS -
+					(Date.now() - lastRefresh.timestamp.getTime())
+				const retryAfterSeconds = Math.ceil(retryAfterMs / 1000)
+
+				return c.json(
+					{
+						error: 'Corporation Discord refresh was recently triggered. Please wait before retrying.',
+						retryAfterSeconds,
+					},
+					429
+				)
+			}
+
+			// Find all users with characters in this corporation (deduplicated)
+			const characters = await db
+				.select({
+					userId: userCharacters.userId,
+				})
+				.from(userCharacters)
+				.where(eq(userCharacters.corporationId, corporationId))
+
+			// Deduplicate userIds
+			const uniqueUserIds = [...new Set(characters.map((c) => c.userId))]
+
+			if (uniqueUserIds.length === 0) {
+				return c.json({
+					success: true,
+					message: 'No users found with characters in this corporation',
+					usersQueued: 0,
+				})
+			}
+
+			// Add to Core DO's pending Discord refresh set
+			const coreStub = getStub<Core>(c.env.CORE, 'default')
+			const result = await coreStub.addPendingDiscordRefreshes(uniqueUserIds)
+
+			// Log the action for throttle tracking
+			await db.insert(userActivityLog).values({
+				userId: user.id,
+				action: 'admin-corp-discord-refresh',
+				metadata: {
+					corporationId,
+					allowRemoval,
+					userCount: uniqueUserIds.length,
+				},
+			})
+
+			logger.info('[Admin] Corporation Discord refresh queued', {
+				adminUserId: user.id,
+				corporationId,
+				allowRemoval,
+				userCount: uniqueUserIds.length,
+				pendingCount: result.pendingCount,
+			})
+
+			return c.json({
+				success: true,
+				message: `Discord refresh queued for ${uniqueUserIds.length} users`,
+				usersQueued: uniqueUserIds.length,
+			})
+		} catch (error) {
+			logger.error('Error triggering corporation Discord refresh:', error)
+			return c.json(
+				{
+					error:
+						error instanceof Error
+							? error.message
+							: 'Failed to trigger corporation Discord refresh',
+				},
+				500
+			)
+		}
+	}
+)
 
 export default app

@@ -2,9 +2,13 @@ import { WorkerEntrypoint } from 'cloudflare:workers'
 import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
+import { getStub } from '@repo/do-utils'
 import { withNotFound, withOnError, withSentry } from '@repo/hono-helpers'
 
+import { inArray } from '@repo/db-utils'
+
 import { createDb } from './db'
+import { userCharacters } from './db/schema'
 import { CoreDO } from './durable-object'
 import { triggerDiscordRefreshWorkflow, triggerUserRefreshWorkflow } from './lib/workflow-triggers'
 import { csrfProtection } from './middleware/csrf'
@@ -50,6 +54,7 @@ import type {
 	TransferCharacterResult,
 	UserDetails,
 } from '@repo/admin'
+import type { Core } from '@repo/core'
 import type { App, Env } from './context'
 
 const app = new Hono<App>()
@@ -112,9 +117,24 @@ const app = new Hono<App>()
 	.route('/api/bills', billsUserRoutes)
 	.route('/api/session', sessionRoutes)
 
-// Export Hono app as default export (HTTP handler)
-// Wrapped with Sentry for automatic error tracking
-export default withSentry(app)
+// Export worker with HTTP and scheduled handlers
+// HTTP handler is wrapped with Sentry for automatic error tracking
+const sentryApp = withSentry(app)
+
+export default {
+	fetch: sentryApp.fetch.bind(sentryApp),
+	async scheduled(
+		_event: ScheduledEvent,
+		env: Env,
+		_ctx: ExecutionContext
+	): Promise<void> {
+		const coreStub = getStub<Core>(env.CORE, 'default')
+		const result = await coreStub.processPendingDiscordRefreshes()
+		if (result.processed > 0) {
+			console.log('[Core:Scheduled] Processed pending Discord refreshes', result)
+		}
+	},
+}
 
 /**
  * Core Worker RPC Service
@@ -507,6 +527,40 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 				error: error instanceof Error ? error.message : String(error),
 			}
 		}
+	}
+
+	/**
+	 * Ingest character IDs for pending Discord refresh.
+	 * Resolves characterIds → userIds, deduplicates, and adds to the Core DO's
+	 * in-memory pending set. Processing happens on the next cron tick.
+	 *
+	 * Called by eve-corporation-data when corp membership changes are detected.
+	 */
+	async addPendingDiscordRefreshesForCharacters(
+		characterIds: string[]
+	): Promise<{ usersQueued: number; pendingCount: number }> {
+		if (characterIds.length === 0) {
+			return { usersQueued: 0, pendingCount: 0 }
+		}
+
+		const db = createDb(this.env.DATABASE_URL)
+
+		// Batch resolve characterId → userId
+		const characterUserMappings = await db
+			.select({ userId: userCharacters.userId })
+			.from(userCharacters)
+			.where(inArray(userCharacters.characterId, characterIds))
+
+		const uniqueUserIds = [...new Set(characterUserMappings.map((m) => m.userId))]
+
+		if (uniqueUserIds.length === 0) {
+			return { usersQueued: 0, pendingCount: 0 }
+		}
+
+		const coreStub = getStub<Core>(this.env.CORE, 'default')
+		const result = await coreStub.addPendingDiscordRefreshes(uniqueUserIds)
+
+		return { usersQueued: uniqueUserIds.length, pendingCount: result.pendingCount }
 	}
 }
 

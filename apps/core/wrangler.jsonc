@@ -17,6 +17,11 @@
 		"head_sampling_rate": 1
 	},
 	"workers_dev": false,
+	"triggers": {
+		// Runs 3 minutes after the orchestrator's corp-data-refresh cron (*/5),
+		// giving corp sync time to detect departures and enqueue pending refreshes.
+		"crons": ["3-58/5 * * * *"]
+	},
 	"vars": {
 		"NAME": "core",
 		"ENVIRONMENT": "production",

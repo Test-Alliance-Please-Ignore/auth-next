@@ -1999,6 +1999,19 @@ export class ApiClient {
 		return this.get(`/admin/users/${userId}/discord/inspect`)
 	}
 
+	async refreshCorporationDiscord(
+		corporationId: string,
+		options?: { allowRemoval?: boolean }
+	): Promise<{
+		success: boolean
+		message: string
+		usersQueued: number
+	}> {
+		return this.post(`/admin/corporations/${corporationId}/discord/refresh`, {
+			allowRemoval: options?.allowRemoval ?? true,
+		})
+	}
+
 	// ===== Admin Blacklist Management API Methods =====
 
 	async createUserBlacklist(request: CreateUserBlacklistRequest): Promise<{

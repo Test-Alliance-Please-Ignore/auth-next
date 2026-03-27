@@ -906,9 +906,12 @@ export interface EveCorporationData {
 	 * Handles member additions, updates, and departures
 	 * @param corporationId - The corporation ID
 	 * @param memberIds - Array of member character IDs
-	 * @returns Object with departed member IDs for HR processing
+	 * @returns Object with departed and added member IDs for downstream processing
 	 */
-	storeMembers(corporationId: string, memberIds: string[]): Promise<{ departedMemberIds: string[] }>
+	storeMembers(
+		corporationId: string,
+		memberIds: string[]
+	): Promise<{ departedMemberIds: string[]; addedMemberIds: string[] }>
 
 	/**
 	 * Store member tracking data (workflow-friendly)

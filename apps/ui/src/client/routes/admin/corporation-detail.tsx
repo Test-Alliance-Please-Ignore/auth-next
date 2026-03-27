@@ -57,6 +57,7 @@ import {
 	useCorporationDataSummary,
 	useCorporationPermissions,
 	useFetchCorporationData,
+	useRefreshCorporationDiscord,
 	useRemoveCorporationPermission,
 	useUpdateCorporation,
 	useVerifyCorporationAccess,
@@ -90,6 +91,7 @@ export default function CorporationDetailPage() {
 	const fetchData = useFetchCorporationData()
 
 	// Discord hooks
+	const refreshCorporationDiscord = useRefreshCorporationDiscord()
 	const { data: discordServers = [] } = useDiscordServers()
 	const { data: corporationDiscordServers = [] } = useCorporationDiscordServers(corpId)
 	const attachServer = useAttachDiscordServer()
@@ -581,14 +583,44 @@ export default function CorporationDetailPage() {
 										members. Each server can be configured independently with role assignments.
 									</CardDescription>
 								</div>
-								<Button
-									onClick={() => setShowAddServerDialog(true)}
-									disabled={discordServers.length === 0}
-									size="sm"
-								>
-									<Plus className="mr-2 h-4 w-4" />
-									Attach Server
-								</Button>
+								<div className="flex items-center gap-2">
+									<Button
+										variant="outline"
+										size="sm"
+										disabled={refreshCorporationDiscord.isPending}
+										onClick={() => {
+											refreshCorporationDiscord.mutate(
+												{ corporationId: corpId, allowRemoval: true },
+												{
+													onSuccess: (data) =>
+														showSuccess(
+															data.message ||
+																`Discord refresh queued for ${data.usersQueued} users`
+														),
+													onError: (error) =>
+														showError(
+															error instanceof Error
+																? error.message
+																: 'Failed to refresh Discord'
+														),
+												}
+											)
+										}}
+									>
+										<RefreshCw
+											className={`mr-2 h-4 w-4 ${refreshCorporationDiscord.isPending ? 'animate-spin' : ''}`}
+										/>
+										Refresh All Members
+									</Button>
+									<Button
+										onClick={() => setShowAddServerDialog(true)}
+										disabled={discordServers.length === 0}
+										size="sm"
+									>
+										<Plus className="mr-2 h-4 w-4" />
+										Attach Server
+									</Button>
+								</div>
 							</div>
 						</CardHeader>
 						<CardContent>

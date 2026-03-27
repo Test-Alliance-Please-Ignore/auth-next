@@ -10,6 +10,7 @@ export type MemberIds = Awaited<ReturnType<typeof esiFetch.fetchMembers>>
 export interface StoreMembersResult {
 	stored: number
 	departedMemberIds: string[]
+	addedMemberIds: string[]
 }
 
 export async function fetchMembers(
@@ -37,11 +38,32 @@ export async function storeMembers(
 		corporationId,
 		total: memberIds.length,
 		departed: result.departedMemberIds.length,
+		added: result.addedMemberIds.length,
 	})
 
 	return {
 		stored: memberIds.length,
 		departedMemberIds: result.departedMemberIds,
+		addedMemberIds: result.addedMemberIds,
 	}
+}
+
+/**
+ * Notify Core worker of members that need Discord refresh.
+ */
+export async function sendMembershipChangedMessages(
+	env: Env,
+	_corporationId: string,
+	memberIds: string[]
+): Promise<void> {
+	if (memberIds.length === 0) {
+		return
+	}
+
+	await env.CORE.addPendingDiscordRefreshesForCharacters(memberIds)
+
+	logger.info('[MembersStep] Members sent to Core for Discord refresh', {
+		count: memberIds.length,
+	})
 }
 
