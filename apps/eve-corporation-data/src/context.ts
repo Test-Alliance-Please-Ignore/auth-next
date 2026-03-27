@@ -7,6 +7,9 @@ import type { EveCorporationSyncParams } from './workflows/types'
 export interface CoreWorker {
 	getCorporationsForBackgroundRefresh(): Promise<Array<{ corporationId: string; name: string }>>
 	updateCorporationLastSync(corporationId: string): Promise<void>
+	addPendingDiscordRefreshesForCharacters(
+		characterIds: string[]
+	): Promise<{ usersQueued: number; pendingCount: number }>
 }
 
 export type Env = SharedHonoEnv & {

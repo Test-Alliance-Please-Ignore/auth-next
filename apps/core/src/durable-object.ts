@@ -8,6 +8,7 @@ import { logger } from '@repo/hono-helpers'
 
 import { createDb } from './db'
 import { userCharacters, users } from './db/schema'
+import { triggerDiscordRefreshWorkflow, triggerUserRefreshWorkflow } from './lib/workflow-triggers'
 
 import type { Core } from '@repo/core'
 import type { CharacterPublicInfo } from '@repo/esi'
@@ -16,6 +17,23 @@ import type { Env } from './context'
 
 export class CoreDO extends DurableObject<Env> implements Core {
 	private readonly logger = logger.withTags({ service: 'core-durable-object' })
+
+	/**
+	 * In-memory map of userIds pending Discord refresh.
+	 *
+	 * - Entries are added with processed=false and a 15-minute TTL.
+	 * - The TTL acts as a deduplication window: re-adding a userId before it
+	 *   expires is a no-op, whether or not it has already been processed.
+	 * - The cron picks up processed=false entries, marks them processed=true,
+	 *   then triggers workflows. Subsequent cron runs skip already-processed entries.
+	 * - Expired entries are pruned on each cron run.
+	 * - State is persisted to DO storage so it survives evictions and redeploys.
+	 *   The in-memory map is the working copy; storage is the source of truth on cold start.
+	 */
+	private pendingDiscordRefreshes = new Map<string, { expiresAt: number; processed: boolean }>()
+	private static readonly PENDING_TTL_MS = 15 * 60 * 1000 // 15 minutes
+	private static readonly STORAGE_PREFIX = 'pending-discord:'
+
 	constructor(
 		public state: DurableObjectState,
 		public env: Env
@@ -23,7 +41,20 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		super(state, env)
 
 		void this.state.blockConcurrencyWhile(async () => {
-			await this.ensureRolesExist()
+			await Promise.all([this.ensureRolesExist(), this.loadPendingDiscordRefreshes()])
+		})
+	}
+
+	private async loadPendingDiscordRefreshes(): Promise<void> {
+		const stored = await this.state.storage.list<{ expiresAt: number; processed: boolean }>({
+			prefix: CoreDO.STORAGE_PREFIX,
+		})
+		for (const [key, value] of stored) {
+			const userId = key.slice(CoreDO.STORAGE_PREFIX.length)
+			this.pendingDiscordRefreshes.set(userId, value)
+		}
+		this.logger.info('[CoreDO] Loaded pending Discord refreshes from storage', {
+			count: this.pendingDiscordRefreshes.size,
 		})
 	}
 
@@ -328,5 +359,163 @@ export class CoreDO extends DurableObject<Env> implements Core {
 			.where(inArray(users.id, userIds))
 
 		return userIds
+	}
+
+	/**
+	 * Add userIds to the pending Discord refresh map.
+	 * If a userId already has a non-expired entry (processed or not), it is skipped —
+	 * the TTL window acts as the deduplication guard.
+	 */
+	async addPendingDiscordRefreshes(userIds: string[]): Promise<{ pendingCount: number }> {
+		const now = Date.now()
+		const expiresAt = now + CoreDO.PENDING_TTL_MS
+		const toStore: Record<string, { expiresAt: number; processed: boolean }> = {}
+		let added = 0
+
+		for (const userId of userIds) {
+			const existing = this.pendingDiscordRefreshes.get(userId)
+			if (existing && existing.expiresAt > now) {
+				// Still within TTL window — skip
+				continue
+			}
+			const entry = { expiresAt, processed: false }
+			this.pendingDiscordRefreshes.set(userId, entry)
+			toStore[`${CoreDO.STORAGE_PREFIX}${userId}`] = entry
+			added++
+		}
+
+		if (added > 0) {
+			await this.state.storage.put(toStore)
+		}
+
+		this.logger.info('[CoreDO] Added pending Discord refreshes', {
+			added,
+			skipped: userIds.length - added,
+			pendingCount: this.pendingDiscordRefreshes.size,
+		})
+
+		return { pendingCount: this.pendingDiscordRefreshes.size }
+	}
+
+	/**
+	 * Drain the pending set and trigger Discord refresh + user refresh workflows.
+	 * Processes in staggered chunks to avoid overwhelming the Discord API.
+	 * Called by the scheduled handler (cron).
+	 */
+	async processPendingDiscordRefreshes(): Promise<{
+		processed: number
+		triggered: number
+		failed: number
+	}> {
+		const now = Date.now()
+
+		// Prune expired entries from both in-memory map and storage
+		const expiredKeys: string[] = []
+		for (const [userId, entry] of this.pendingDiscordRefreshes) {
+			if (entry.expiresAt <= now) {
+				this.pendingDiscordRefreshes.delete(userId)
+				expiredKeys.push(`${CoreDO.STORAGE_PREFIX}${userId}`)
+			}
+		}
+		if (expiredKeys.length > 0) {
+			await this.state.storage.delete(expiredKeys)
+		}
+
+		// Collect unprocessed entries and mark them processed before triggering.
+		// Persist the processed flag to storage first so that if the DO is evicted
+		// mid-run, a cold-start won't re-trigger the same workflows on the next cron.
+		const toProcess: string[] = []
+		const toStore: Record<string, { expiresAt: number; processed: boolean }> = {}
+		for (const [userId, entry] of this.pendingDiscordRefreshes) {
+			if (!entry.processed) {
+				entry.processed = true
+				toProcess.push(userId)
+				toStore[`${CoreDO.STORAGE_PREFIX}${userId}`] = entry
+			}
+		}
+
+		if (toProcess.length === 0) {
+			return { processed: 0, triggered: 0, failed: 0 }
+		}
+
+		await this.state.storage.put(toStore)
+
+		this.logger.info('[CoreDO] Processing pending Discord refreshes', { count: toProcess.length })
+
+		const userIds = toProcess
+
+		const db = this.getDb()
+		// Spread workflows across a 10-minute window using per-workflow jitter,
+		// matching the orchestrator's approach. All workflows are created immediately;
+		// each sleeps for its own random duration before executing.
+		const JITTER_MAX_SECONDS = 600
+
+		const results = await Promise.allSettled(
+			userIds.map(async (userId) => {
+				const jitterDelaySeconds = Math.floor(Math.random() * JITTER_MAX_SECONDS)
+
+				const [discordResult, userRefreshResult] = await Promise.allSettled([
+					triggerDiscordRefreshWorkflow({
+						env: this.env,
+						userId,
+						source: 'corp-membership-changed',
+						allowRemoval: true,
+						jitterDelaySeconds,
+					}),
+					triggerUserRefreshWorkflow({
+						db,
+						env: this.env,
+						userId,
+						source: 'corp-membership-changed',
+						bypassThrottle: true,
+						refreshMode: 'event',
+					}),
+				])
+
+				return { userId, discordResult, userRefreshResult }
+			})
+		)
+
+		let triggeredCount = 0
+		let failedCount = 0
+
+		for (const result of results) {
+			if (result.status === 'rejected') {
+				// Unexpected — the per-user async fn should not throw
+				failedCount++
+				this.logger.error('[CoreDO] Unexpected error triggering workflows for user', {
+					error:
+						result.reason instanceof Error
+							? result.reason.message
+							: String(result.reason),
+				})
+				continue
+			}
+			const { userId, discordResult, userRefreshResult } = result.value
+			const discordOk = discordResult.status === 'fulfilled' && discordResult.value.triggered
+			const refreshOk =
+				userRefreshResult.status === 'fulfilled' && userRefreshResult.value.triggered
+			if (discordOk || refreshOk) {
+				triggeredCount++
+			} else {
+				failedCount++
+				this.logger.error('[CoreDO] Failed to trigger workflows for user', {
+					userId,
+					discord: discordResult.status === 'fulfilled' ? discordResult.value.status : 'rejected',
+					userRefresh:
+						userRefreshResult.status === 'fulfilled'
+							? userRefreshResult.value.status
+							: 'rejected',
+				})
+			}
+		}
+
+		this.logger.info('[CoreDO] Pending Discord refreshes complete', {
+			processed: userIds.length,
+			triggered: triggeredCount,
+			failed: failedCount,
+		})
+
+		return { processed: userIds.length, triggered: triggeredCount, failed: failedCount }
 	}
 }

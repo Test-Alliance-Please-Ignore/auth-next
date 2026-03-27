@@ -770,7 +770,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	async storeMembers(
 		corporationId: string,
 		memberIds: string[]
-	): Promise<{ departedMemberIds: string[] }> {
+	): Promise<{ departedMemberIds: string[]; addedMemberIds: string[] }> {
 		// Fetch existing members to identify departures
 		const existingMembers = await this.getDb()
 			.select({ characterId: corporationMembers.characterId })
@@ -835,18 +835,18 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			// Invalidate cache
 			await this.invalidateMembersCache(corporationId)
 
-			// Log summary of changes
-			const addedCount = memberIds.filter((id) => !existingMemberIds.has(id)).length
-			if (addedCount > 0 || departedMemberIds.length > 0) {
+			// Identify added members
+			const addedMemberIds = memberIds.filter((id) => !existingMemberIds.has(id))
+			if (addedMemberIds.length > 0 || departedMemberIds.length > 0) {
 				logger.debug('[storeMembers] Member sync completed:', {
 					corporationId,
-					added: addedCount,
+					added: addedMemberIds.length,
 					removed: departedMemberIds.length,
 					total: memberIds.length,
 				})
 			}
 
-			return { departedMemberIds }
+			return { departedMemberIds, addedMemberIds }
 		} catch (error) {
 			logger.error('[storeMembers] Database operation failed:', {
 				error,

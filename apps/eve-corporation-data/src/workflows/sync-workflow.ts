@@ -18,7 +18,7 @@ import { recordDirectorSuccess, selectDirector } from './steps/directors'
 import { fetchIndustryJobs, storeIndustryJobs } from './steps/industry-jobs'
 import { fetchKillmails, storeKillmails } from './steps/killmails'
 import { fetchMemberTracking, storeMemberTracking } from './steps/member-tracking'
-import { fetchMembers, storeMembers } from './steps/members'
+import { fetchMembers, sendMembershipChangedMessages, storeMembers } from './steps/members'
 import { fetchOrders, storeOrders } from './steps/orders'
 import { fetchPublicInfo, storePublicInfo } from './steps/public-info'
 import { fetchStructures, storeStructures } from './steps/structures'
@@ -159,28 +159,30 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 
 		const shouldSync = createShouldSyncPredicate(dataTypes)
 
-		const director: DirectorInfo = await step.do(
+		const director: DirectorInfo | null = await step.do(
 			'select-director',
 			{
 				retries: { limit: 3, delay: '2 seconds', backoff: 'exponential' },
 				timeout: '30 seconds',
 			},
 			async () => {
-				const selected = await selectDirector(this.env, corporationId)
-
-				if (!selected) {
-					throw new Error('No healthy directors available for corporation')
-				}
-
-				return selected
+				return selectDirector(this.env, corporationId)
 			}
 		)
 
-		const {
-			directorId,
-			characterId: directorCharacterId,
-			characterName: directorCharacterName,
-		} = director
+		if (!director) {
+			logger.warn(
+				'[EveCorporationSyncWorkflow] No director available, skipping director-dependent steps',
+				{ corporationId }
+			)
+		}
+
+		const directorId = director?.directorId ?? null
+		const directorCharacterId = director?.characterId ?? null
+		const directorCharacterName = director?.characterName ?? null
+
+		const shouldSyncAuthenticated = (type: EveCorporationSyncDataType) =>
+			directorCharacterId !== null && shouldSync(type)
 
 		// All step results - state is exclusively derived from step.do() returns
 		// to survive workflow hibernation
@@ -216,13 +218,13 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			})
 		}
 
-		if (shouldSync('members')) {
+		if (shouldSyncAuthenticated('members')) {
 			const members = await step.do(
 				'fetch-members',
 				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
 				() =>
 					this.withEsiRetryClassification('fetch-members', () =>
-						fetchMembers(this.env, corporationId, directorCharacterId)
+						fetchMembers(this.env, corporationId, directorCharacterId!)
 					)
 			)
 
@@ -233,23 +235,33 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 					await sendHrDepartedMessages(this.env, corporationId, memberResult.departedMemberIds)
 				}
 
+				// Notify Core worker of membership changes for Discord refresh + role reconciliation
+				if (memberResult.departedMemberIds.length > 0) {
+					await sendMembershipChangedMessages(
+						this.env,
+						corporationId,
+						memberResult.departedMemberIds // only departed members need refresh
+					)
+				}
+
 				return {
 					dataType: 'members' as const,
 					stats: {
 						totalMembers: members.length,
 						departedMembers: memberResult.departedMemberIds.length,
+						addedMembers: memberResult.addedMemberIds.length,
 					},
 				}
 			})
 		}
 
-		if (shouldSync('member-tracking')) {
+		if (shouldSyncAuthenticated('member-tracking')) {
 			const trackingData = await step.do(
 				'fetch-member-tracking',
 				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
 				() =>
 					this.withEsiRetryClassification('fetch-member-tracking', () =>
-						fetchMemberTracking(this.env, corporationId, directorCharacterId)
+						fetchMemberTracking(this.env, corporationId, directorCharacterId!)
 					)
 			)
 
@@ -262,13 +274,13 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			})
 		}
 
-		if (shouldSync('wallets')) {
+		if (shouldSyncAuthenticated('wallets')) {
 			const wallets = await step.do(
 				'fetch-wallets',
 				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
 				() =>
 					this.withEsiRetryClassification('fetch-wallets', () =>
-						fetchWallets(this.env, corporationId, directorCharacterId)
+						fetchWallets(this.env, corporationId, directorCharacterId!)
 					)
 			)
 
@@ -281,14 +293,14 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			})
 		}
 
-		if (shouldSync('wallet-journal')) {
+		if (shouldSyncAuthenticated('wallet-journal')) {
 			walletJournalSync = await step.do(
 				'sync-wallet-journal',
 				{ ...STEP_RETRY_OPTIONS, timeout: '5 minutes' },
 				async () => {
 					const walletJournalResult = await this.withEsiRetryClassification(
 						'sync-wallet-journal',
-						() => syncWalletJournal(this.env, corporationId, directorCharacterId)
+						() => syncWalletJournal(this.env, corporationId, directorCharacterId!)
 					)
 					return {
 						dataType: 'wallet-journal' as const,
@@ -303,14 +315,14 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			)
 		}
 
-		if (shouldSync('wallet-transactions')) {
+		if (shouldSyncAuthenticated('wallet-transactions')) {
 			walletTransactionsSync = await step.do(
 				'sync-wallet-transactions',
 				{ ...STEP_RETRY_OPTIONS, timeout: '5 minutes' },
 				async () => {
 					const walletTransactionsResult = await this.withEsiRetryClassification(
 						'sync-wallet-transactions',
-						() => syncWalletTransactions(this.env, corporationId, directorCharacterId)
+						() => syncWalletTransactions(this.env, corporationId, directorCharacterId!)
 					)
 					return {
 						dataType: 'wallet-transactions' as const,
@@ -325,13 +337,13 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			)
 		}
 
-		if (shouldSync('assets')) {
+		if (shouldSyncAuthenticated('assets')) {
 			assetsSync = await step.do(
 				'sync-assets',
 				{ ...STEP_RETRY_OPTIONS, timeout: '10 minutes' },
 				async () => {
 					const result = await this.withEsiRetryClassification('sync-assets', () =>
-						syncAssets(this.env, corporationId, directorCharacterId)
+						syncAssets(this.env, corporationId, directorCharacterId!)
 					)
 					return {
 						dataType: 'assets' as const,
@@ -341,13 +353,13 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			)
 		}
 
-		if (shouldSync('structures')) {
+		if (shouldSyncAuthenticated('structures')) {
 			const structures = await step.do(
 				'fetch-structures',
 				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
 				() =>
 					this.withEsiRetryClassification('fetch-structures', () =>
-						fetchStructures(this.env, corporationId, directorCharacterId)
+						fetchStructures(this.env, corporationId, directorCharacterId!)
 					)
 			)
 
@@ -360,13 +372,13 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			})
 		}
 
-		if (shouldSync('orders')) {
+		if (shouldSyncAuthenticated('orders')) {
 			const orders = await step.do(
 				'fetch-orders',
 				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
 				() =>
 					this.withEsiRetryClassification('fetch-orders', () =>
-						fetchOrders(this.env, corporationId, directorCharacterId)
+						fetchOrders(this.env, corporationId, directorCharacterId!)
 					)
 			)
 
@@ -379,13 +391,13 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			})
 		}
 
-		if (shouldSync('contracts')) {
+		if (shouldSyncAuthenticated('contracts')) {
 			const contracts = await step.do(
 				'fetch-contracts',
 				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
 				() =>
 					this.withEsiRetryClassification('fetch-contracts', () =>
-						fetchContracts(this.env, corporationId, directorCharacterId)
+						fetchContracts(this.env, corporationId, directorCharacterId!)
 					)
 			)
 
@@ -398,13 +410,13 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			})
 		}
 
-		if (shouldSync('industry-jobs')) {
+		if (shouldSyncAuthenticated('industry-jobs')) {
 			const industryJobs = await step.do(
 				'fetch-industry-jobs',
 				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
 				() =>
 					this.withEsiRetryClassification('fetch-industry-jobs', () =>
-						fetchIndustryJobs(this.env, corporationId, directorCharacterId)
+						fetchIndustryJobs(this.env, corporationId, directorCharacterId!)
 					)
 			)
 
@@ -417,13 +429,13 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			})
 		}
 
-		if (shouldSync('killmails')) {
+		if (shouldSyncAuthenticated('killmails')) {
 			const killmails = await step.do(
 				'fetch-killmails',
 				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
 				() =>
 					this.withEsiRetryClassification('fetch-killmails', () =>
-						fetchKillmails(this.env, corporationId, directorCharacterId)
+						fetchKillmails(this.env, corporationId, directorCharacterId!)
 					)
 			)
 
@@ -500,9 +512,11 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 
 		await step.do('update-last-sync', {}, () => updateCoreLastSync(this.env, corporationId))
 
-		await step.do('record-director-success', {}, () =>
-			recordDirectorSuccess(this.env, corporationId, directorId)
-		)
+		if (directorId) {
+			await step.do('record-director-success', {}, () =>
+				recordDirectorSuccess(this.env, corporationId, directorId)
+			)
+		}
 
 		await step.do('replay-tax-projection-retry-intent', { timeout: '30 seconds' }, async () => {
 			const replay = await replayTaxProjectionRetryIntent(this.env, corporationId)
@@ -518,7 +532,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			return replay
 		})
 
-		if (walletJournalSync || walletTransactionsSync) {
+		if ((walletJournalSync || walletTransactionsSync) && directorId) {
 			const taxProjectionDispatch = await dispatchTaxProjectionRefresh({
 				deps: {
 					trigger: async () => {
@@ -571,11 +585,14 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 		logger.info('[EveCorporationSyncWorkflow] Full sync completed successfully', {
 			corporationId,
 			trigger,
-			director: {
-				directorId,
-				characterId: directorCharacterId,
-				characterName: directorCharacterName,
-			},
+			director: director
+				? {
+						directorId,
+						characterId: directorCharacterId,
+						characterName: directorCharacterName,
+					}
+				: null,
+			syncedDataTypes,
 			stats,
 		})
 

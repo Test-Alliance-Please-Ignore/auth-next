@@ -450,3 +450,18 @@ export function useRemoveCorporationPermission() {
 		},
 	})
 }
+
+/**
+ * Trigger Discord refresh for all users in a corporation
+ */
+export function useRefreshCorporationDiscord() {
+	return useMutation({
+		mutationFn: ({
+			corporationId,
+			allowRemoval,
+		}: {
+			corporationId: string
+			allowRemoval?: boolean
+		}) => api.refreshCorporationDiscord(corporationId, { allowRemoval }),
+	})
+}

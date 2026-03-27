@@ -43,6 +43,8 @@ export interface TriggerDiscordRefreshOptions {
 	source: string
 	/** Whether Discord role removal is permitted. False for join/add events, true for leave/remove events. */
 	allowRemoval?: boolean
+	/** Optional jitter delay (seconds) to stagger batch runs. Passed through to the workflow's sleep step. */
+	jitterDelaySeconds?: number
 }
 
 export interface TriggerDiscordRefreshResult {
@@ -73,9 +75,10 @@ export async function triggerDiscordRefreshWorkflow({
 	userId,
 	source,
 	allowRemoval = false,
+	jitterDelaySeconds,
 }: TriggerDiscordRefreshOptions): Promise<TriggerDiscordRefreshResult> {
 	try {
-		const params: UserDiscordRefreshWorkflowParams = { userId, source, allowRemoval }
+		const params: UserDiscordRefreshWorkflowParams = { userId, source, allowRemoval, jitterDelaySeconds }
 		const instance = await env.USER_DISCORD_REFRESH_WORKFLOW.create({
 			id: createDiscordRefreshWorkflowId(source, userId),
 			params,

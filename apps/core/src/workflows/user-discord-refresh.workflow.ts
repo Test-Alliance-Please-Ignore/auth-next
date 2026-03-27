@@ -14,6 +14,8 @@ export interface UserDiscordRefreshWorkflowParams {
 	source: string
 	/** Whether Discord role removal is permitted. False for join/add events, true for leave/remove events. */
 	allowRemoval?: boolean
+	/** Optional delay before executing the refresh, used to stagger batch runs (0–600 seconds). */
+	jitterDelaySeconds?: number
 }
 
 type WorkflowStepStatus = 'ok' | 'failed' | 'skipped'
@@ -54,7 +56,7 @@ export class UserDiscordRefreshWorkflow extends WorkflowEntrypoint<
 		event: WorkflowEvent<UserDiscordRefreshWorkflowParams>,
 		step: WorkflowStep
 	): Promise<UserDiscordRefreshWorkflowResult> {
-		const { userId, source, allowRemoval = false } = event.payload
+		const { userId, source, allowRemoval = false, jitterDelaySeconds = 0 } = event.payload
 		const workflowInstanceId = event.instanceId
 		const steps: Record<string, WorkflowStepStatus> = {}
 		const logContext = { userId, source, allowRemoval, workflowInstanceId }
@@ -67,6 +69,11 @@ export class UserDiscordRefreshWorkflow extends WorkflowEntrypoint<
 			startedAt: new Date().toISOString(),
 		}))
 		steps['init-workflow'] = 'ok'
+
+		if (jitterDelaySeconds > 0) {
+			await step.sleep('apply-jitter', `${jitterDelaySeconds} seconds`)
+			steps['apply-jitter'] = 'ok'
+		}
 
 		console.log('[UserDiscordRefreshWorkflow] Starting', logContext)
 
