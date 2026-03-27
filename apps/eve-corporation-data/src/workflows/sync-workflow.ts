@@ -111,12 +111,17 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 
 	private isPermanentEsiAuthFailure(message: string): boolean {
 		const normalized = message.toLowerCase()
-		if (!normalized.includes('esi request failed: 401')) {
+		const isBadRequest = normalized.includes('esi request failed: 400')
+		const isAuthUnauthorized = normalized.includes('esi request failed: 401')
+		const isAuthForbidden = normalized.includes('esi request failed: 403')
+		if (!isBadRequest && !isAuthUnauthorized && !isAuthForbidden) {
 			return false
 		}
 
 		return (
+			normalized.includes('bad request') ||
 			normalized.includes('unauthorized') ||
+			normalized.includes('forbidden') ||
 			normalized.includes('no token provided') ||
 			normalized.includes('invalid token') ||
 			normalized.includes('token expired')
