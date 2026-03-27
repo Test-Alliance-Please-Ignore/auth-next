@@ -575,16 +575,17 @@ app.get('/:characterId', requireAuth(), async (c) => {
 /**
  * POST /characters/:characterId/refresh
  * Refresh character data from ESI
- * Only available to character owner
+ * Available to character owner and site admins
  */
 app.post('/:characterId/refresh', requireAuth(), async (c) => {
 	const characterIdStr = c.req.param('characterId')
 	const characterId = createEveCharacterId(characterIdStr)
 	const user = c.get('user')!
+	const isAdmin = user.is_admin
 
-	// Check if user owns this character
+	// Check if user owns this character or is an admin
 	const character = user.characters.find((char) => char.characterId.toString() === characterIdStr)
-	if (!character) {
+	if (!character && !isAdmin) {
 		return c.json({ error: 'Character not found or not owned by user' }, 403)
 	}
 
@@ -687,35 +688,37 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 			// Don't throw here, just set to null and continue
 		}
 
-		// Check and update director status (fire and forget)
-		c.executionCtx.waitUntil(
-			(async () => {
-				try {
-					logger.info('[CharacterRefresh] Checking director status for character', {
-						characterId: characterIdStr,
-					})
+		// Check and update director status (fire and forget) — only for owned characters
+		if (character) {
+			c.executionCtx.waitUntil(
+				(async () => {
+					try {
+						logger.info('[CharacterRefresh] Checking director status for character', {
+							characterId: characterIdStr,
+						})
 
-					await checkAndUpdateDirectorStatus(
-						characterIdStr,
-						character.characterName,
-						user.id,
-						db!,
-						c.env.EVE_CHARACTER_DATA,
-						c.env.EVE_TOKEN_STORE,
-						c.env.EVE_CORPORATION_DATA
-					)
+						await checkAndUpdateDirectorStatus(
+							characterIdStr,
+							character.characterName,
+							user.id,
+							db!,
+							c.env.EVE_CHARACTER_DATA,
+							c.env.EVE_TOKEN_STORE,
+							c.env.EVE_CORPORATION_DATA
+						)
 
-					logger.info('[CharacterRefresh] Director status check completed', {
-						characterId: characterIdStr,
-					})
-				} catch (error) {
-					logger.error('[CharacterRefresh] Failed to check director status', {
-						characterId: characterIdStr,
-						error: error instanceof Error ? error.message : String(error),
-					})
-				}
-			})()
-		)
+						logger.info('[CharacterRefresh] Director status check completed', {
+							characterId: characterIdStr,
+						})
+					} catch (error) {
+						logger.error('[CharacterRefresh] Failed to check director status', {
+							characterId: characterIdStr,
+							error: error instanceof Error ? error.message : String(error),
+						})
+					}
+				})()
+			)
+		}
 
 		return c.json({
 			success: true,

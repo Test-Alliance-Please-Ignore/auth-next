@@ -143,38 +143,53 @@ export default function CharacterDetailPage() {
 				<CardHeader className="flex flex-row items-center justify-between">
 					<div className="flex items-center gap-4">
 						<img
-							src={character.public.portrait?.px128x128 || '/placeholder.png'}
+							src={`https://images.evetech.net/characters/${characterId}/portrait?size=128`}
 							alt={character.public.info?.name}
 							className="w-24 h-24 rounded"
 						/>
 						<div>
 							<CardTitle className="text-2xl">{character.public.info?.name}</CardTitle>
-							<CardDescription>
-								{character.public.info?.corporationName ? (
-									<span title={`Corporation ID: ${character.public.info.corporationId}`}>
-										{character.public.info.corporationName}
-									</span>
-								) : (
-									character.public.info?.corporationId && (
-										<span>Corporation ID: {character.public.info.corporationId}</span>
-									)
+							<div className="mt-1 space-y-0.5">
+								{(character.public.info?.corporationName ||
+									character.public.info?.corporationId) && (
+									<div className="flex items-center gap-1.5">
+										<img
+											src={`https://images.evetech.net/corporations/${character.public.info.corporationId}/logo?size=32`}
+											alt=""
+											className="h-4 w-4 rounded"
+										/>
+										<span
+											className="text-sm font-medium"
+											title={`Corporation ID: ${character.public.info.corporationId}`}
+										>
+											{character.public.info.corporationName ||
+												`Corporation #${character.public.info.corporationId}`}
+										</span>
+									</div>
 								)}
-								{character.public.info?.allianceName ? (
-									<span title={`Alliance ID: ${character.public.info.allianceId}`}>
-										{' '}
-										• {character.public.info.allianceName}
-									</span>
-								) : (
-									character.public.info?.allianceId && (
-										<span> • Alliance ID: {character.public.info.allianceId}</span>
-									)
+								{(character.public.info?.allianceName ||
+									character.public.info?.allianceId) && (
+									<div className="flex items-center gap-1.5">
+										<img
+											src={`https://images.evetech.net/alliances/${character.public.info.allianceId}/logo?size=32`}
+											alt=""
+											className="h-4 w-4 rounded"
+										/>
+										<span
+											className="text-sm text-muted-foreground"
+											title={`Alliance ID: ${character.public.info.allianceId}`}
+										>
+											{character.public.info.allianceName ||
+												`Alliance #${character.public.info.allianceId}`}
+										</span>
+									</div>
 								)}
-							</CardDescription>
-							<p className="text-sm text-muted-foreground mt-1">{lastUpdatedText}</p>
+							</div>
+							<p className="text-xs text-muted-foreground mt-1">{lastUpdatedText}</p>
 						</div>
 					</div>
 					<div className="flex items-center gap-2">
-						{character.isOwner && !character.viewedAsAdmin && (
+						{(character.isOwner || character.viewedAsAdmin) && (
 							<Button
 								onClick={handleRefresh}
 								size="sm"

@@ -1,0 +1,30 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "eve-character-data",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-04-28",
+	"compatibility_flags": ["nodejs_compat"],
+	"workers_dev": false,
+	"routes": [],
+	"logpush": false,
+	"observability": {
+		"enabled": true
+	},
+	"vars": {
+		"NAME": "eve-character-data"
+	},
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "EVE_CHARACTER_DATA",
+				"class_name": "EveCharacterData"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["EveCharacterData"]
+		}
+	]
+}

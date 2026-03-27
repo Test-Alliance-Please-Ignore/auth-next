@@ -10,6 +10,7 @@ import { CharacterDeletedError, getEsiInstanceForCharacter } from '@repo/esi'
 import { userCharacters } from '../../../db/schema'
 import { getWorkflowLogger } from '../../context'
 
+import type { EveCharacterData } from '@repo/eve-character-data'
 import type { CharacterPublicInfo, EsiTypeResolver } from '@repo/esi'
 import type { WorkflowContext } from '../../context'
 
@@ -119,6 +120,24 @@ export async function updateCharacterPublicInfo(
 			error: error instanceof Error ? error.message : String(error),
 			corporationId: characterInfo.corporation_id,
 			allianceId,
+		})
+	}
+
+	// Sync to eve-character-data store (drives character detail page).
+	// Non-blocking: failure here must not prevent the workflow from continuing.
+	try {
+		const eveCharDataStub = getStub<EveCharacterData>(ctx.env.EVE_CHARACTER_DATA, characterId)
+		await Promise.all([
+			eveCharDataStub.storePublicInfo(characterId, characterInfo),
+			eveCharDataStub.fetchCorporationHistory(characterId),
+		])
+		logger.info('[Workflow] Synced character public data to eve-character-data', {
+			characterId,
+		})
+	} catch (error) {
+		logger.warn('[Workflow] Failed to sync to eve-character-data; continuing', {
+			characterId,
+			error: error instanceof Error ? error.message : String(error),
 		})
 	}
 

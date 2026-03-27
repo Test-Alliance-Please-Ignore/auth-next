@@ -3,6 +3,9 @@ name: Branches
 on:
   push:
     branches-ignore: ['main']
+  pull_request:
+    branches: ['main']
+  merge_group:
 
 env:
   FORCE_COLOR: 1
