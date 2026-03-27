@@ -3,6 +3,9 @@ name: Branches
 on:
   push:
     branches-ignore: ['main']
+  pull_request:
+    branches: ['main']
+  merge_group:
 
 env:
   FORCE_COLOR: 1
@@ -33,4 +36,4 @@ jobs:
           pnpm -F ui build
           node scripts/ci/validate-ui-build-env-injection.mjs
       - name: Check & Test
-        run: bun runx ci check
+        run: bun runx ci check-and-test

@@ -338,6 +338,41 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	}
 
 	/**
+	 * Store pre-fetched public info without making an ESI call.
+	 * Used by the user-refresh workflow which already has the data.
+	 * Accepts string or number IDs to work with both @repo/esi and raw ESI response shapes.
+	 */
+	async storePublicInfo(characterId: string, data: EsiCharacterPublicInfo): Promise<void> {
+		const values = {
+			characterId,
+			name: data.name,
+			corporationId: String(data.corporation_id),
+			allianceId: data.alliance_id ? String(data.alliance_id) : null,
+			birthday: data.birthday,
+			raceId: String(data.race_id),
+			bloodlineId: String(data.bloodline_id),
+			securityStatus: data.security_status ? Number(data.security_status) : undefined,
+			description: data.description,
+			gender: data.gender,
+			factionId: data.faction_id ? String(data.faction_id) : null,
+			title: data.title,
+			updatedAt: new Date(),
+		}
+
+		await this.db.insert(characterPublicInfo).values(values).onConflictDoUpdate({
+			target: characterPublicInfo.characterId,
+			set: values,
+		})
+	}
+
+	/**
+	 * Fetch and store corporation history from ESI (public method).
+	 */
+	async fetchCorporationHistory(characterId: string): Promise<void> {
+		await this.fetchAndStoreCorporationHistory(characterId)
+	}
+
+	/**
 	 * Fetch and store authenticated character data
 	 */
 	async fetchAuthenticatedData(characterId: string, forceRefresh = false): Promise<void> {
@@ -530,7 +565,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 				birthday: data.birthday,
 				raceId: String(data.race_id),
 				bloodlineId: String(data.bloodline_id),
-				securityStatus: data.security_status,
+				securityStatus: data.security_status ? Number(data.security_status) : undefined,
 				description: data.description,
 				gender: data.gender,
 				factionId: data.faction_id ? String(data.faction_id) : null,
@@ -546,7 +581,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 					birthday: data.birthday,
 					raceId: String(data.race_id),
 					bloodlineId: String(data.bloodline_id),
-					securityStatus: data.security_status,
+					securityStatus: data.security_status ? Number(data.security_status) : undefined,
 					description: data.description,
 					gender: data.gender,
 					factionId: data.faction_id ? String(data.faction_id) : null,

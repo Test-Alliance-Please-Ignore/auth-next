@@ -1,34 +1,25 @@
 import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:test'
 import { describe, expect, it } from 'vitest'
 
-import { getStub } from '@repo/do-utils'
-
 import worker from '../../index'
 
-import type { EveCharacterData } from '@repo/eve-character-data'
-
 describe('EveCharacterData Worker', () => {
-	it('responds to root endpoint', async () => {
+	it('returns 404 for root endpoint when no HTTP routes are defined', async () => {
 		const request = new Request('http://example.com/')
 		const ctx = createExecutionContext()
 		const response = await worker.fetch(request, env, ctx)
 		await waitOnExecutionContext(ctx)
 
-		expect(response.status).toBe(200)
-		const text = await response.text()
-		expect(text).toContain('EveCharacterData')
+		expect(response.status).toBe(404)
 	})
 
-	it('can call Durable Object via example endpoint', async () => {
+	it('returns 404 for unknown endpoints', async () => {
 		const request = new Request('http://example.com/example?id=test-1')
 		const ctx = createExecutionContext()
 		const response = await worker.fetch(request, env, ctx)
 		await waitOnExecutionContext(ctx)
 
-		expect(response.status).toBe(200)
-		const data = await response.json()
-		expect(data).toHaveProperty('id', 'test-1')
-		expect(data).toHaveProperty('result')
+		expect(response.status).toBe(404)
 	})
 })
 

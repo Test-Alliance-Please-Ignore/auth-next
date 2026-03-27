@@ -20,3 +20,10 @@ ciCmd
 	.action(async () => {
 		await $(opts())`bun turbo check:ci`
 	})
+
+ciCmd
+	.command('check-and-test')
+	.description('Run CI checks and tests')
+	.action(async () => {
+		await $(opts())`bun turbo check:ci test:ci`
+	})
