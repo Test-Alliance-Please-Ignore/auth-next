@@ -5,6 +5,7 @@ import { updateCharacterPublicInfo } from './update-character-public'
 import type { WorkflowContext } from '../../context'
 
 const fetchCharacterPublicInfo = vi.fn()
+const fetchCharacterAffiliation = vi.fn()
 const resolveIds = vi.fn()
 
 vi.mock('@repo/esi', () => ({
@@ -15,12 +16,15 @@ vi.mock('@repo/esi', () => ({
 	},
 	getEsiInstanceForCharacter: vi.fn(() => ({
 		fetchCharacterPublicInfo,
+		fetchCharacterAffiliation,
 	})),
 }))
 
 vi.mock('@repo/do-utils', () => ({
 	getStub: vi.fn(() => ({
 		resolveIds,
+		storePublicInfo: vi.fn().mockResolvedValue(undefined),
+		fetchCorporationHistory: vi.fn().mockResolvedValue(undefined),
 	})),
 }))
 
@@ -48,6 +52,7 @@ function createCtx(db: WorkflowContext['db']): WorkflowContext {
 		env: {
 			ESI: {} as DurableObjectNamespace,
 			ESI_TYPE_RESOLVER: {} as DurableObjectNamespace,
+			EVE_CHARACTER_DATA: {} as DurableObjectNamespace,
 		} as WorkflowContext['env'],
 		userId: 'user-1',
 		workflowInstanceId: 'workflow-1',
@@ -62,6 +67,7 @@ describe('updateCharacterPublicInfo', () => {
 
 	it('returns isDeleted true only for explicit deleted-character responses', async () => {
 		fetchCharacterPublicInfo.mockRejectedValue(new Error('Character has been deleted!'))
+		fetchCharacterAffiliation.mockResolvedValue([])
 		resolveIds.mockResolvedValue({})
 		const recorder = createDbRecorder()
 
@@ -84,6 +90,9 @@ describe('updateCharacterPublicInfo', () => {
 			gender: 'male',
 			race_id: '1',
 		})
+		fetchCharacterAffiliation.mockResolvedValue([
+			{ character_id: '99000124', corporation_id: '99000002', alliance_id: undefined },
+		])
 		resolveIds.mockResolvedValue({ '99000002': 'Example Corp' })
 		const recorder = createDbRecorder()
 
@@ -100,6 +109,7 @@ describe('updateCharacterPublicInfo', () => {
 
 	it('rethrows non-deleted public info fetch failures', async () => {
 		fetchCharacterPublicInfo.mockRejectedValue(new Error('upstream timeout'))
+		fetchCharacterAffiliation.mockResolvedValue([])
 		resolveIds.mockResolvedValue({})
 		const recorder = createDbRecorder()
 
@@ -120,6 +130,9 @@ describe('updateCharacterPublicInfo', () => {
 			gender: 'male',
 			race_id: '1',
 		})
+		fetchCharacterAffiliation.mockResolvedValue([
+			{ character_id: '99000123', corporation_id: '99000001', alliance_id: '99000010' },
+		])
 		resolveIds.mockRejectedValue(new Error('resolver unavailable'))
 		const recorder = createDbRecorder()
 
@@ -139,5 +152,85 @@ describe('updateCharacterPublicInfo', () => {
 			corporationId: '99000001',
 			allianceId: '99000010',
 		})
+	})
+
+	it('prefers affiliation corporation over public info when they differ', async () => {
+		fetchCharacterPublicInfo.mockResolvedValue({
+			name: 'Moving Capsuleer',
+			corporation_id: '99000001',
+			alliance_id: undefined,
+			birthday: '2026-01-01T00:00:00Z',
+			bloodline_id: '1',
+			gender: 'male',
+			race_id: '1',
+		})
+		fetchCharacterAffiliation.mockResolvedValue([
+			{ character_id: '99000123', corporation_id: '99000002', alliance_id: '99000010' },
+		])
+		resolveIds.mockResolvedValue({ '99000002': 'New Corp', '99000010': 'Some Alliance' })
+		const recorder = createDbRecorder()
+
+		const result = await updateCharacterPublicInfo(
+			createCtx(recorder.db as unknown as WorkflowContext['db']),
+			'99000123'
+		)
+
+		expect(result.corporationId).toBe('99000002')
+		expect(result.allianceId).toBe('99000010')
+		expect(recorder.updates[0]).toMatchObject({
+			corporationId: '99000002',
+			allianceId: '99000010',
+		})
+	})
+
+	it('falls back to public info corporation when affiliation fetch fails', async () => {
+		fetchCharacterPublicInfo.mockResolvedValue({
+			name: 'Test Capsuleer',
+			corporation_id: '99000001',
+			alliance_id: '99000010',
+			birthday: '2026-01-01T00:00:00Z',
+			bloodline_id: '1',
+			gender: 'male',
+			race_id: '1',
+		})
+		fetchCharacterAffiliation.mockRejectedValue(new Error('affiliation unavailable'))
+		resolveIds.mockResolvedValue({ '99000001': 'Fallback Corp', '99000010': 'Some Alliance' })
+		const recorder = createDbRecorder()
+
+		const result = await updateCharacterPublicInfo(
+			createCtx(recorder.db as unknown as WorkflowContext['db']),
+			'99000123'
+		)
+
+		expect(result.corporationId).toBe('99000001')
+		expect(result.allianceId).toBe('99000010')
+		expect(recorder.updates[0]).toMatchObject({
+			corporationId: '99000001',
+			allianceId: '99000010',
+		})
+	})
+
+	it('falls back to public info when affiliation response does not include the character', async () => {
+		fetchCharacterPublicInfo.mockResolvedValue({
+			name: 'Test Capsuleer',
+			corporation_id: '99000001',
+			alliance_id: undefined,
+			birthday: '2026-01-01T00:00:00Z',
+			bloodline_id: '1',
+			gender: 'male',
+			race_id: '1',
+		})
+		fetchCharacterAffiliation.mockResolvedValue([
+			{ character_id: '99999999', corporation_id: '99000002' },
+		])
+		resolveIds.mockResolvedValue({ '99000001': 'Fallback Corp' })
+		const recorder = createDbRecorder()
+
+		const result = await updateCharacterPublicInfo(
+			createCtx(recorder.db as unknown as WorkflowContext['db']),
+			'99000123'
+		)
+
+		expect(result.corporationId).toBe('99000001')
 	})
 })

@@ -527,22 +527,39 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		_forceRefresh = false
 	): Promise<CharacterPublicData> {
 		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		// ESI returns numbers for IDs, but we need strings
-		const response = await tokenStoreStub.fetchEsi<{
-			alliance_id?: number
-			birthday: string
-			bloodline_id: number
-			corporation_id: number
-			description?: string
-			faction_id?: number
-			gender: 'male' | 'female'
-			name: string
-			race_id: number
-			security_status?: number
-			title?: string
-		}>(`/characters/${String(characterId)}`, String(characterId))
 
-		const rawData = response.data
+		// Fetch public info and affiliation in parallel. Affiliation has a shorter ESI
+		// cache (~1h vs 24h) so we prefer it for corporation_id/alliance_id when available.
+		const [publicInfoResponse, affiliationResponse] = await Promise.allSettled([
+			tokenStoreStub.fetchEsi<{
+				alliance_id?: number
+				birthday: string
+				bloodline_id: number
+				corporation_id: number
+				description?: string
+				faction_id?: number
+				gender: 'male' | 'female'
+				name: string
+				race_id: number
+				security_status?: number
+				title?: string
+			}>(`/characters/${String(characterId)}`, String(characterId)),
+			fetch('https://esi.evetech.net/latest/characters/affiliation/', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify([parseInt(characterId, 10)]),
+			}).then((r) =>
+				r.ok
+					? (r.json() as Promise<Array<{ character_id: number; corporation_id: number; alliance_id?: number }>>)
+					: Promise.reject(new Error(`Affiliation fetch failed: ${r.status}`))
+			),
+		])
+
+		if (publicInfoResponse.status === 'rejected') {
+			throw publicInfoResponse.reason
+		}
+
+		const rawData = publicInfoResponse.value.data
 
 		// Convert numeric IDs to strings
 		const data: EsiCharacterPublicInfo = {
@@ -554,14 +571,26 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			race_id: rawData.race_id,
 		}
 
+		// Prefer affiliation data for corporation/alliance — shorter ESI cache means fresher data.
+		let corporationId = String(data.corporation_id)
+		let allianceId = data.alliance_id ? String(data.alliance_id) : null
+
+		if (affiliationResponse.status === 'fulfilled') {
+			const affiliation = affiliationResponse.value.find((a) => a.character_id === parseInt(characterId, 10))
+			if (affiliation) {
+				corporationId = String(affiliation.corporation_id)
+				allianceId = affiliation.alliance_id ? String(affiliation.alliance_id) : null
+			}
+		}
+
 		// Upsert to database
 		await this.db
 			.insert(characterPublicInfo)
 			.values({
 				characterId,
 				name: data.name,
-				corporationId: String(data.corporation_id),
-				allianceId: data.alliance_id ? String(data.alliance_id) : null,
+				corporationId,
+				allianceId,
 				birthday: data.birthday,
 				raceId: String(data.race_id),
 				bloodlineId: String(data.bloodline_id),
@@ -576,8 +605,8 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 				target: characterPublicInfo.characterId,
 				set: {
 					name: data.name,
-					corporationId: String(data.corporation_id),
-					allianceId: data.alliance_id ? String(data.alliance_id) : null,
+					corporationId,
+					allianceId,
 					birthday: data.birthday,
 					raceId: String(data.race_id),
 					bloodlineId: String(data.bloodline_id),

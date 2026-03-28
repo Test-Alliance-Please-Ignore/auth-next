@@ -43,11 +43,17 @@ export async function updateCharacterPublicInfo(
 
 	let characterInfo: CharacterPublicInfo | null = null
 	const esiStub = getEsiInstanceForCharacter(ctx.env.ESI, characterId)
-	try {
-		characterInfo = await esiStub.fetchCharacterPublicInfo(characterId, {
-			cacheMode: ctx.refreshMode === 'manual' ? 'no-store' : 'default',
-		})
-	} catch (error) {
+	const cacheMode = ctx.refreshMode === 'manual' ? 'no-store' : 'default'
+
+	// Fetch public info and affiliation in parallel. Affiliation has a shorter ESI
+	// cache (~1h vs 24h) so we prefer it for corporation_id/alliance_id when available.
+	const [publicInfoResult, affiliationResult] = await Promise.allSettled([
+		esiStub.fetchCharacterPublicInfo(characterId, { cacheMode }),
+		esiStub.fetchCharacterAffiliation(characterId, [characterId], { cacheMode: 'no-store' }),
+	])
+
+	if (publicInfoResult.status === 'rejected') {
+		const error = publicInfoResult.reason
 		const errorMessage = error instanceof Error ? error.message : String(error)
 		logger.error('[Workflow] Failed to fetch character public info', {
 			characterId,
@@ -74,18 +80,42 @@ export async function updateCharacterPublicInfo(
 		throw error
 	}
 
+	characterInfo = publicInfoResult.value
+
 	if (!characterInfo) {
 		throw new Error(`No character public info found for character ID: ${characterId}`)
 	}
 
-	const allianceId = characterInfo.alliance_id ? String(characterInfo.alliance_id) : null
+	// Prefer affiliation data for corporation/alliance — shorter ESI cache means fresher data.
+	// Fall back to public info if affiliation failed.
+	let affiliationCorporationId = characterInfo.corporation_id
+	let affiliationAllianceId = characterInfo.alliance_id
+
+	if (affiliationResult.status === 'fulfilled') {
+		const affiliation = affiliationResult.value.find((a) => a.character_id === characterId)
+		if (affiliation) {
+			affiliationCorporationId = affiliation.corporation_id
+			affiliationAllianceId = affiliation.alliance_id
+		} else {
+			logger.warn('[Workflow] Character not found in affiliation response, falling back to public info', {
+				characterId,
+			})
+		}
+	} else {
+		logger.warn('[Workflow] Failed to fetch character affiliation, falling back to public info', {
+			characterId,
+			error: affiliationResult.reason instanceof Error ? affiliationResult.reason.message : String(affiliationResult.reason),
+		})
+	}
+
+	const allianceId = affiliationAllianceId ? String(affiliationAllianceId) : null
 
 	// Persist the authoritative affiliation IDs before any best-effort name resolution.
 	await ctx.db
 		.update(userCharacters)
 		.set({
 			characterName: characterInfo.name,
-			corporationId: characterInfo.corporation_id,
+			corporationId: affiliationCorporationId,
 			allianceId,
 			isDeleted: false,
 			lastCharacterRefresh: new Date(),
@@ -94,7 +124,7 @@ export async function updateCharacterPublicInfo(
 		.where(eq(userCharacters.characterId, characterId))
 
 	const typeResolver = getStub<EsiTypeResolver>(ctx.env.ESI_TYPE_RESOLVER, 'global')
-	const idsToResolve = [characterInfo.corporation_id]
+	const idsToResolve = [affiliationCorporationId]
 	if (allianceId) {
 		idsToResolve.push(allianceId)
 	}
@@ -103,7 +133,7 @@ export async function updateCharacterPublicInfo(
 	let allianceName: string | null = null
 	try {
 		const nameMap = await typeResolver.resolveIds(idsToResolve)
-		corporationName = nameMap[characterInfo.corporation_id] ?? null
+		corporationName = nameMap[affiliationCorporationId] ?? null
 		allianceName = allianceId ? String(nameMap[allianceId] ?? '') || null : null
 
 		await ctx.db
@@ -118,7 +148,7 @@ export async function updateCharacterPublicInfo(
 		logger.warn('[Workflow] Failed to resolve character affiliation names', {
 			characterId,
 			error: error instanceof Error ? error.message : String(error),
-			corporationId: characterInfo.corporation_id,
+			corporationId: affiliationCorporationId,
 			allianceId,
 		})
 	}
@@ -128,7 +158,11 @@ export async function updateCharacterPublicInfo(
 	try {
 		const eveCharDataStub = getStub<EveCharacterData>(ctx.env.EVE_CHARACTER_DATA, characterId)
 		await Promise.all([
-			eveCharDataStub.storePublicInfo(characterId, characterInfo),
+			eveCharDataStub.storePublicInfo(characterId, {
+				...characterInfo,
+				corporation_id: affiliationCorporationId,
+				alliance_id: affiliationAllianceId,
+			}),
 			eveCharDataStub.fetchCorporationHistory(characterId),
 		])
 		logger.info('[Workflow] Synced character public data to eve-character-data', {
@@ -150,7 +184,7 @@ export async function updateCharacterPublicInfo(
 	return {
 		characterId: characterId,
 		characterName: characterInfo.name,
-		corporationId: characterInfo.corporation_id,
+		corporationId: affiliationCorporationId,
 		corporationName,
 		allianceId,
 		allianceName,
