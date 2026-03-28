@@ -18,6 +18,7 @@ import { GhostButton } from '@/components/ui/ghost-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
+import { NumberInput } from '@/components/ui/number-input'
 import {
 	Select,
 	SelectContent,
@@ -132,8 +133,10 @@ export default function AdminBillsTemplatesEditPage() {
 		if (formData.enableLateFee) {
 			if (!formData.lateFeeAmount.trim()) {
 				newErrors.lateFeeAmount = 'Late fee amount is required when late fees are enabled'
-			} else if (isNaN(Number(formData.lateFeeAmount)) || Number(formData.lateFeeAmount) < 0) {
-				newErrors.lateFeeAmount = 'Late fee amount must be a non-negative number'
+			} else if (isNaN(Number(formData.lateFeeAmount)) || Number(formData.lateFeeAmount) <= 0) {
+				newErrors.lateFeeAmount = 'Late fee amount must be a positive number'
+			} else if (formData.lateFeeType === 'percentage' && Number(formData.lateFeeAmount) > 100) {
+				newErrors.lateFeeAmount = 'Late fee percentage cannot exceed 100.00%'
 			}
 		}
 
@@ -473,14 +476,30 @@ export default function AdminBillsTemplatesEditPage() {
 										Late Fee Amount {formData.lateFeeType === 'percentage' ? '(%)' : '(ISK)'}{' '}
 										<span className="text-destructive">*</span>
 									</Label>
-									<Input
-										id="lateFeeAmount"
-										type="text"
-										placeholder={formData.lateFeeType === 'percentage' ? '5' : '10000'}
-										value={formData.lateFeeAmount}
-										onChange={(e) => handleChange('lateFeeAmount', e.target.value)}
-										className={errors.lateFeeAmount ? 'border-destructive' : ''}
-									/>
+									{formData.lateFeeType === 'percentage' ? (
+										<NumberInput
+											id="lateFeeAmount"
+											min={0}
+											max={100}
+											decimalScale={2}
+											fixedDecimalScale
+											suffix="%"
+											placeholder="5.00"
+											value={formData.lateFeeAmount}
+											onChange={(value) => handleChange('lateFeeAmount', value)}
+											error={!!errors.lateFeeAmount}
+										/>
+									) : (
+										<NumberInput
+											id="lateFeeAmount"
+											min={0}
+											suffix=" ISK"
+											placeholder="10000"
+											value={formData.lateFeeAmount}
+											onChange={(value) => handleChange('lateFeeAmount', value)}
+											error={!!errors.lateFeeAmount}
+										/>
+									)}
 									{errors.lateFeeAmount && (
 										<p className="text-sm text-destructive">{errors.lateFeeAmount}</p>
 									)}

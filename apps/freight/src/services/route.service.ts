@@ -212,8 +212,8 @@ export class RouteService {
 	/**
 	 * Delete a freight route
 	 */
-	async deleteRoute(_adminId: string, routeId: string): Promise<void> {
-		console.log('[RouteService.deleteRoute] Deleting route', { routeId })
+	async deleteRoute(adminId: string, routeId: string): Promise<void> {
+		console.log('[RouteService.deleteRoute] Deleting route', { adminId, routeId })
 
 		const existingRoute = await this.db.query.freightRoutes.findFirst({
 			where: eq(freightRoutes.id, routeId),
@@ -225,7 +225,7 @@ export class RouteService {
 
 		await this.db.delete(freightRoutes).where(eq(freightRoutes.id, routeId))
 
-		console.log('[RouteService.deleteRoute] Route deleted successfully', { routeId })
+		console.log('[RouteService.deleteRoute] Route deleted successfully', { adminId, routeId })
 	}
 
 	/**
@@ -242,8 +242,8 @@ export class RouteService {
 			minReward: route.minReward || undefined,
 			maxVolume: route.maxVolume || undefined,
 			collateralFeeRate: route.collateralFeeRate || undefined,
-			expiration: route.expiration || undefined,
-			daysToComplete: route.daysToComplete || undefined,
+			expiration: route.expiration ?? undefined,
+			daysToComplete: route.daysToComplete ?? undefined,
 			notes: route.notes || undefined,
 			sortOrder: route.sortOrder,
 			status: route.status,

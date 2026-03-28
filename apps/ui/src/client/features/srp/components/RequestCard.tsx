@@ -36,13 +36,13 @@ export function RequestCard({ request, showActions = true }: RequestCardProps) {
 				<div className="grid grid-cols-2 gap-4 text-sm">
 					<div>
 						<div className="text-muted-foreground">Ship Value</div>
-						<div className="font-medium tabular-nums">{formatISK(request.shipValue)} ISK</div>
+						<div className="font-medium tabular-nums">{formatISK(request.shipValue)}</div>
 					</div>
 					{request.requestedAmount && (
 						<div>
 							<div className="text-muted-foreground">Requested</div>
 							<div className="font-medium tabular-nums">
-								{formatISK(request.requestedAmount)} ISK
+								{formatISK(request.requestedAmount)}
 							</div>
 						</div>
 					)}
@@ -50,7 +50,7 @@ export function RequestCard({ request, showActions = true }: RequestCardProps) {
 						<div>
 							<div className="text-muted-foreground">Approved</div>
 							<div className="font-medium tabular-nums">
-								{formatISK(request.approvedAmount)} ISK
+								{formatISK(request.approvedAmount)}
 								{difference !== 0 && (
 									<span className={difference > 0 ? 'text-green-500' : 'text-red-500'}>
 										{' '}

@@ -102,7 +102,7 @@ export function useSystemSearch(query: string, enabled = true) {
 	})
 
 	// True when input meets minimum length but the debounce timer hasn't fired yet
-	const isPending = query.trim().length >= 3 && query !== debouncedQuery
+	const isDebouncing = query.trim().length >= 3 && query !== debouncedQuery
 
-	return { ...result, isPending }
+	return { ...result, isPending: isDebouncing, isDebouncing }
 }

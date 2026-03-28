@@ -4,10 +4,12 @@ import { Link } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import { Container } from '@/components/ui/container'
+import { GhostButton } from '@/components/ui/ghost-button'
 import { Label } from '@/components/ui/label'
+import { PrimaryButton } from '@/components/ui/primary-button'
 import { SearchSelect } from '@/components/ui/search-select'
-import { Skeleton } from '@/components/ui/skeleton'
 import {
 	Table,
 	TableBody,
@@ -16,14 +18,16 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import {
 	useActivateFreightRoute,
 	useDeactivateFreightRoute,
 	useDeleteFreightRoute,
 	useFreightRoutes,
 } from '@/hooks/useFreightRoutes'
-import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { usePageTitle } from '@/hooks/usePageTitle'
+
+import { formatISK, formatNumber } from '../utils'
 
 import type { FreightRouteStatus } from '@repo/freight'
 
@@ -90,40 +94,40 @@ export default function FreightManagePage() {
 		})
 	}
 
-	const formatISK = (amount: string) => {
-		const num = parseFloat(amount)
-		return new Intl.NumberFormat('en-US').format(num)
-	}
-
 	return (
-		<div className="space-y-6">
-			{/* Page Header */}
-			<div className="flex items-center justify-between">
+		<Container size="wide">
+			<div className="mb-section md:mb-10 flex flex-wrap items-center justify-between gap-4">
 				<div>
 					<h1 className="text-3xl font-bold gradient-text">Freight Routes</h1>
 					<p className="text-muted-foreground mt-1">Manage official freight routes and pricing</p>
 				</div>
-				<Button asChild>
-					<Link to="/freight/manage/new">
-						<Plus className="mr-2 h-4 w-4" />
-						Create Route
-					</Link>
-				</Button>
+				<div className="flex gap-2">
+					<GhostButton asChild>
+						<Link to="/freight">Back to Calculator</Link>
+					</GhostButton>
+					<PrimaryButton asChild>
+						<Link to="/freight/manage/new">
+							<Plus className="mr-2 h-4 w-4" />
+							Create Route
+						</Link>
+					</PrimaryButton>
+				</div>
 			</div>
 
-			{/* Filters */}
 			<Card>
 				<CardHeader>
-					<CardTitle>Filters</CardTitle>
-					<CardDescription>Filter routes by status</CardDescription>
-				</CardHeader>
-				<CardContent>
-					<div className="flex items-center gap-4">
-						<div className="w-full md:w-64 space-y-2">
+					<div className="flex items-end justify-between">
+						<div className="w-64 space-y-2">
 							<Label htmlFor="status">Status</Label>
 							<SearchSelect
 								inputId="status"
-								value={statusFilter === 'all' ? 'All Statuses' : statusFilter === 'active' ? 'Active' : 'Inactive'}
+								value={
+									statusFilter === 'all'
+										? 'All Statuses'
+										: statusFilter === 'active'
+											? 'Active'
+											: 'Inactive'
+								}
 								onValueChange={() => {}}
 								options={[
 									{ id: 'all', value: 'all', label: 'All Statuses' },
@@ -136,32 +140,29 @@ export default function FreightManagePage() {
 								placeholder="All statuses"
 							/>
 						</div>
-						{statusFilter !== 'all' && (
-							<Button variant="outline" onClick={() => setStatusFilter('all')} className="mt-8">
-								Clear Filter
-							</Button>
-						)}
+						<div className="flex items-center gap-3">
+							{statusFilter !== 'all' && (
+								<Button variant="outline" size="sm" onClick={() => setStatusFilter('all')}>
+									Clear Filter
+								</Button>
+							)}
+							{!isLoading && routes && (
+								<span className="text-sm text-muted-foreground">
+									{routes.length} route{routes.length !== 1 ? 's' : ''}
+								</span>
+							)}
+						</div>
 					</div>
-				</CardContent>
-			</Card>
-
-			{/* Routes Table */}
-			<Card>
-				<CardHeader>
-					<CardTitle>Routes</CardTitle>
-					<CardDescription>
-						{routes?.length || 0} route{routes?.length !== 1 ? 's' : ''}
-					</CardDescription>
 				</CardHeader>
 				<CardContent>
 					{isLoading ? (
-						<div className="space-y-3">
+						<div className="space-y-4">
 							{[...Array(5)].map((_, i) => (
-								<Skeleton key={i} className="h-16 w-full" />
+								<div key={i} className="h-16 animate-pulse rounded-md bg-muted" />
 							))}
 						</div>
 					) : !routes || routes.length === 0 ? (
-						<div className="text-center py-12">
+						<div className="rounded-lg border border-dashed p-12 text-center">
 							<p className="text-muted-foreground mb-4">No freight routes found</p>
 							<Button asChild>
 								<Link to="/freight/manage/new">
@@ -171,33 +172,29 @@ export default function FreightManagePage() {
 							</Button>
 						</div>
 					) : (
-						<div className="rounded-md border">
+						<div className="overflow-hidden rounded-md border">
 							<Table>
 								<TableHeader>
-									<TableRow>
-										<TableHead>Pickup</TableHead>
-										<TableHead>Destination</TableHead>
-										<TableHead className="text-right">Price (ISK/m³)</TableHead>
-										<TableHead className="text-right">Max Volume</TableHead>
-										<TableHead>Status</TableHead>
-										<TableHead className="text-right">Actions</TableHead>
+									<TableRow className="bg-muted/50">
+										<TableHead className="font-semibold">Pickup</TableHead>
+										<TableHead className="font-semibold">Destination</TableHead>
+										<TableHead className="text-right font-semibold">Price (ISK/m³)</TableHead>
+										<TableHead className="text-right font-semibold">Max Volume</TableHead>
+										<TableHead className="font-semibold">Status</TableHead>
+										<TableHead className="text-right font-semibold">Actions</TableHead>
 									</TableRow>
 								</TableHeader>
 								<TableBody>
 									{routes.map((route) => (
 										<TableRow key={route.id}>
-											<TableCell>
-												{route.pickupName || 'Unnamed'}
-											</TableCell>
-											<TableCell>
-												{route.destinationName || 'Unnamed'}
-											</TableCell>
+											<TableCell>{route.pickupName || 'Unnamed'}</TableCell>
+											<TableCell>{route.destinationName || 'Unnamed'}</TableCell>
 											<TableCell className="text-right font-mono">
 												{formatISK(route.iskPerVolumeUnit)}
 											</TableCell>
 											<TableCell className="text-right">
 												{route.maxVolume ? (
-													`${formatISK(route.maxVolume)} m³`
+													`${formatNumber(route.maxVolume)} m³`
 												) : (
 													<span className="text-muted-foreground">Unlimited</span>
 												)}
@@ -254,6 +251,6 @@ export default function FreightManagePage() {
 			</Card>
 
 			{confirmationDialog}
-		</div>
+		</Container>
 	)
 }

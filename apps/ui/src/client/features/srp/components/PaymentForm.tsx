@@ -100,7 +100,7 @@ export function PaymentForm({ request, onSuccess, onCancel }: PaymentFormProps) 
 				<div>
 					<span className="text-muted-foreground">Approved Amount:</span>{' '}
 					<span className="font-medium tabular-nums">
-						{formatISK(request.approvedAmount || '0')} ISK
+						{formatISK(request.approvedAmount || '0')}
 					</span>
 				</div>
 			</div>

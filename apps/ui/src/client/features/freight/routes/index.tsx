@@ -1,23 +1,21 @@
-import { useState, useMemo, useEffect } from 'react'
+import { Check, Copy } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
-import { Input } from '@/components/ui/input'
+import { GhostButton } from '@/components/ui/ghost-button'
 import { Label } from '@/components/ui/label'
-import { LoadingSpinner } from '@/components/ui/loading'
-import { PageHeader } from '@/components/ui/page-header'
-import { Section } from '@/components/ui/section'
+import { NumberInput } from '@/components/ui/number-input'
 import { SearchSelect } from '@/components/ui/search-select'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { PERMISSIONS, useUserPermissions } from '@/hooks/useUserPermissions'
 
 import { useActiveFreightRoutes } from '../hooks'
-import { formatIsk, formatInputNumber, formatNumber, parseFormattedNumber } from '../utils'
+import { formatISK, formatNumber } from '../utils'
 
 import type { FreightRoute } from '@repo/freight'
-import { Check, Copy } from 'lucide-react'
 
 function calculateReward(route: FreightRoute, volume: number, collateral: number) {
 	const rate = parseFloat(route.iskPerVolumeUnit)
@@ -52,7 +50,7 @@ export default function FreightCalculatorPage() {
 				id: route.id,
 				value: route.id,
 				label: `${route.pickupName} → ${route.destinationName}`,
-				description: `${formatNumber(route.iskPerVolumeUnit)} ISK/m³`,
+				description: `${formatISK(route.iskPerVolumeUnit)}/m³`,
 			})),
 		[routes]
 	)
@@ -64,15 +62,8 @@ export default function FreightCalculatorPage() {
 		}
 	}, [routes, selectedRouteId])
 
-	const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-		const raw = parseFormattedNumber(e.target.value)
-		if (raw === '' || /^\d+$/.test(raw)) setVolume(raw)
-	}
-
-	const handleCollateralChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-		const raw = parseFormattedNumber(e.target.value)
-		if (raw === '' || /^\d+$/.test(raw)) setCollateral(raw)
-	}
+	const handleVolumeChange = (val: string) => setVolume(val)
+	const handleCollateralChange = (val: string) => setCollateral(val)
 
 	const selectedRoute = useMemo(
 		() => routes?.find((r) => r.id === selectedRouteId),
@@ -90,26 +81,44 @@ export default function FreightCalculatorPage() {
 	const volumeExceedsMax =
 		selectedRoute?.maxVolume && volumeNum > parseFloat(selectedRoute.maxVolume)
 
+	const pageHeader = (
+		<div className="mb-section md:mb-10 flex flex-wrap items-center justify-between gap-4">
+			<div>
+				<h1 className="text-3xl font-bold gradient-text">Freight Calculator</h1>
+				<p className="text-muted-foreground mt-1">
+					Calculate your shipping cost and get the contract details to enter in-game
+				</p>
+			</div>
+			{canManage ? (
+				<GhostButton asChild>
+					<Link to="/freight/manage">Manage Routes</Link>
+				</GhostButton>
+			) : null}
+		</div>
+	)
+
 	if (isLoading) {
 		return (
-			<Container>
-				<PageHeader title="Freight Calculator" description="Calculate shipping costs" />
-				<Section>
-					<LoadingSpinner />
-				</Section>
+			<Container size="narrow">
+				{pageHeader}
+				<div className="space-y-4">
+					{[...Array(3)].map((_, i) => (
+						<div key={i} className="h-16 animate-pulse rounded-md bg-muted" />
+					))}
+				</div>
 			</Container>
 		)
 	}
 
 	if (error) {
 		return (
-			<Container>
-				<PageHeader title="Freight Calculator" description="Calculate shipping costs" />
-				<Section>
-					<div className="text-center text-destructive">
+			<Container size="narrow">
+				{pageHeader}
+				<div className="rounded-lg border border-red-500/50 bg-red-500/10 p-6 text-center">
+					<p className="text-sm text-red-500">
 						Failed to load freight routes. Please try again later.
-					</div>
-				</Section>
+					</p>
+				</div>
 			</Container>
 		)
 	}
@@ -117,32 +126,17 @@ export default function FreightCalculatorPage() {
 	if (!routes || routes.length === 0) {
 		return (
 			<Container size="narrow">
-				<PageHeader
-					title="Freight Calculator"
-					description="Calculate your shipping cost and get the contract details to enter in-game"
-				/>
-				<Section>
-					<div className="text-center text-muted-foreground py-8">
-						No freight routes are currently available.
-					</div>
-				</Section>
+				{pageHeader}
+				<div className="rounded-lg border border-dashed p-12 text-center">
+					<p className="text-muted-foreground">No freight routes are currently available.</p>
+				</div>
 			</Container>
 		)
 	}
 
 	return (
 		<Container size="narrow">
-			<PageHeader
-				title="Freight Calculator"
-				description="Calculate your shipping cost and get the contract details to enter in-game"
-				action={
-					canManage ? (
-						<Button asChild variant="outline">
-							<Link to="/freight/manage">Manage Routes</Link>
-						</Button>
-					) : undefined
-				}
-			/>
+			{pageHeader}
 
 			<div className="space-y-6">
 				{/* Calculator Inputs */}
@@ -154,41 +148,38 @@ export default function FreightCalculatorPage() {
 						{/* Route Selection */}
 						<div className="space-y-2">
 							<Label htmlFor="route">Route</Label>
-						<SearchSelect
-							inputId="route"
-							value={routeQuery}
-							onValueChange={setRouteQuery}
-							options={routeOptions}
-							onSelect={(option) => {
-								setSelectedRouteId(option.id)
-								setRouteQuery('')
-							}}
-							filterMode="local"
-							mode="dropdown"
-							minQueryLength={0}
-							placeholder={
-								selectedRoute
-									? `${selectedRoute.pickupName} → ${selectedRoute.destinationName} — ${formatNumber(selectedRoute.iskPerVolumeUnit)} ISK/m³`
-									: 'Select a route...'
-							}
-							emptyText="No routes found"
-						/>
+							<SearchSelect
+								inputId="route"
+								value={routeQuery}
+								onValueChange={setRouteQuery}
+								options={routeOptions}
+								onSelect={(option) => {
+									setSelectedRouteId(option.id)
+									setRouteQuery('')
+								}}
+								filterMode="local"
+								mode="dropdown"
+								minQueryLength={0}
+								placeholder={
+									selectedRoute
+										? `${selectedRoute.pickupName} → ${selectedRoute.destinationName} — ${formatISK(selectedRoute.iskPerVolumeUnit)}/m³`
+										: 'Select a route...'
+								}
+								emptyText="No routes found"
+							/>
 							{selectedRoute?.notes && (
-								<p className="text-sm text-muted-foreground">
-									{selectedRoute.notes}
-								</p>
+								<p className="text-sm text-muted-foreground">{selectedRoute.notes}</p>
 							)}
 						</div>
 
 						{/* Volume */}
 						<div className="space-y-2">
 							<Label htmlFor="volume">Volume (m³)</Label>
-							<Input
+							<NumberInput
 								id="volume"
-								type="text"
-								inputMode="numeric"
+								min={0}
 								placeholder="Enter cargo volume..."
-								value={volume ? formatInputNumber(volume) : ''}
+								value={volume}
 								onChange={handleVolumeChange}
 							/>
 							{volumeExceedsMax && (
@@ -201,23 +192,22 @@ export default function FreightCalculatorPage() {
 						{/* Collateral */}
 						<div className="space-y-2">
 							<Label htmlFor="collateral">Collateral (ISK)</Label>
-							<Input
+							<NumberInput
 								id="collateral"
-								type="text"
-								inputMode="numeric"
+								min={0}
 								placeholder="Enter total cargo value..."
-								value={collateral ? formatInputNumber(collateral) : ''}
+								value={collateral}
 								onChange={handleCollateralChange}
 							/>
 							{selectedRoute?.collateralFeeRate && (
 								<p className="text-sm text-muted-foreground">
-									Collateral fee: {parseFloat(selectedRoute.collateralFeeRate) * 100}% of collateral
-									value
+									Collateral fee: {(parseFloat(selectedRoute.collateralFeeRate) * 100).toFixed(2)}%
+									of collateral value
 								</p>
 							)}
 							{selectedRoute?.minReward && (
 								<p className="text-sm text-muted-foreground">
-									Minimum reward: {formatIsk(parseFloat(selectedRoute.minReward))} ISK
+									Minimum reward: {formatISK(parseFloat(selectedRoute.minReward))}
 								</p>
 							)}
 						</div>
@@ -233,20 +223,20 @@ export default function FreightCalculatorPage() {
 								<CardTitle>Total Reward</CardTitle>
 							</CardHeader>
 							<CardContent>
-								<p className="text-3xl font-bold tabular-nums">
-									{formatIsk(reward.total)} ISK
-								</p>
+								<p className="text-3xl font-bold tabular-nums">{formatISK(reward.total)}</p>
 								{reward.minApplied && (
 									<p className="text-sm text-muted-foreground mt-1">
-										Minimum reward of {formatIsk(parseFloat(selectedRoute.minReward!))} ISK applied
+										Minimum reward of {formatISK(parseFloat(selectedRoute.minReward!))} applied
 									</p>
 								)}
-								{!reward.minApplied && selectedRoute.collateralFeeRate && reward.collateralFee > 0 && (
-									<p className="text-sm text-muted-foreground mt-1">
-										{formatIsk(reward.shippingCost)} shipping +{' '}
-										{formatIsk(reward.collateralFee)} collateral fee
-									</p>
-								)}
+								{!reward.minApplied &&
+									selectedRoute.collateralFeeRate &&
+									reward.collateralFee > 0 && (
+										<p className="text-sm text-muted-foreground mt-1">
+											{formatISK(reward.shippingCost)} shipping + {formatISK(reward.collateralFee)}{' '}
+											collateral fee
+										</p>
+									)}
 							</CardContent>
 						</Card>
 
@@ -262,31 +252,20 @@ export default function FreightCalculatorPage() {
 								<dl className="space-y-3">
 									<ContractRow label="Contract Type" value="Courier" />
 									<ContractRow label="Availability" value="My Alliance" />
-									<ContractRow
-										label="Ship To"
-										value={selectedRoute.destinationName}
-									/>
+									<ContractRow label="Ship To" value={selectedRoute.destinationName} />
 									<ContractRow
 										label="Reward"
-										value={`${formatIsk(reward.total)} ISK`}
-										copyValue={formatIsk(reward.total)}
+										value={`${formatISK(reward.total)}`}
+										copyValue={Math.round(reward.total).toString()}
 									/>
 									<ContractRow
 										label="Collateral"
-										value={
-											collateralNum > 0
-												? `${formatIsk(collateralNum)} ISK`
-												: 'None'
-										}
-										copyValue={collateralNum > 0 ? formatIsk(collateralNum) : undefined}
+										value={collateralNum > 0 ? formatISK(collateralNum) : 'None'}
+										copyValue={collateralNum > 0 ? Math.round(collateralNum).toString() : undefined}
 									/>
 									<ContractRow
 										label="Expiration"
-										value={
-											selectedRoute.expiration
-												? `${selectedRoute.expiration} Days`
-												: '7 Days'
-										}
+										value={selectedRoute.expiration ? `${selectedRoute.expiration} Days` : '7 Days'}
 									/>
 									<ContractRow
 										label="Days to Complete"
@@ -313,7 +292,15 @@ export default function FreightCalculatorPage() {
 	)
 }
 
-function ContractRow({ label, value, copyValue }: { label: string; value: React.ReactNode; copyValue?: string }) {
+function ContractRow({
+	label,
+	value,
+	copyValue,
+}: {
+	label: string
+	value: React.ReactNode
+	copyValue?: string
+}) {
 	const [copied, setCopied] = useState(false)
 
 	const handleCopy = async () => {

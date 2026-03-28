@@ -1,20 +1,30 @@
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
+import { Button } from '@/components/ui/button'
 import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmButton } from '@/components/ui/confirm-button'
+import { Container } from '@/components/ui/container'
+import { GhostButton } from '@/components/ui/ghost-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { NumberInput } from '@/components/ui/number-input'
 import { SearchSelect } from '@/components/ui/search-select'
 import { Textarea } from '@/components/ui/textarea'
 import { useCreateFreightRoute } from '@/hooks/useFreightRoutes'
-import { usePageTitle } from '@/hooks/usePageTitle'
 import { useSystemSearch } from '@/hooks/useLocationSearch'
-
-import { formatInputNumber, parseFormattedNumber } from '../utils'
+import { usePageTitle } from '@/hooks/usePageTitle'
 
 import type { CreateFreightRouteInput, FreightRouteStatus } from '@repo/freight'
+
+const EXPIRATION_OPTIONS = [
+	{ id: '1', value: '1', label: '1 day' },
+	{ id: '3', value: '3', label: '3 days' },
+	{ id: '7', value: '7', label: '1 week' },
+	{ id: '14', value: '14', label: '2 weeks' },
+	{ id: '28', value: '28', label: '4 weeks' },
+]
 
 export default function FreightManageNewPage() {
 	usePageTitle('Create Freight Route')
@@ -42,7 +52,7 @@ export default function FreightManageNewPage() {
 		maxVolume: '',
 		collateralFeeRate: '',
 		expiration: '7',
-		daysToComplete: '3',
+		daysToComplete: '',
 		notes: '',
 		sortOrder: '0',
 		status: 'active',
@@ -79,13 +89,7 @@ export default function FreightManageNewPage() {
 	)
 
 	const handleChange = (field: string, value: string) => {
-		// For ISK fields, store raw number but display formatted
-		if (field === 'iskPerVolumeUnit' || field === 'minReward' || field === 'maxVolume') {
-			const raw = parseFormattedNumber(value)
-			setFormData((prev) => ({ ...prev, [field]: raw }))
-		} else {
-			setFormData((prev) => ({ ...prev, [field]: value }))
-		}
+		setFormData((prev) => ({ ...prev, [field]: value }))
 		// Clear system ID when user types manually (forces re-selection)
 		if (field === 'pickupName') setPickupSystemId(null)
 		if (field === 'destinationName') setDestinationSystemId(null)
@@ -141,16 +145,15 @@ export default function FreightManageNewPage() {
 			newErrors.maxVolume = 'Max volume must be a positive number'
 		}
 
-		if (!formData.expiration.trim()) {
-			newErrors.expiration = 'Contract expiration is required'
-		} else if (isNaN(Number(formData.expiration)) || Number(formData.expiration) < 1) {
-			newErrors.expiration = 'Expiration must be at least 1 day'
+		if (formData.expiration && !EXPIRATION_OPTIONS.some((o) => o.value === formData.expiration)) {
+			newErrors.expiration = 'Please select a valid expiration period'
 		}
 
-		if (!formData.daysToComplete.trim()) {
-			newErrors.daysToComplete = 'Days to complete is required'
-		} else if (isNaN(Number(formData.daysToComplete)) || Number(formData.daysToComplete) < 1) {
-			newErrors.daysToComplete = 'Days to complete must be at least 1 day'
+		if (formData.daysToComplete.trim()) {
+			const days = Number(formData.daysToComplete)
+			if (isNaN(days) || days < 1 || days > 365) {
+				newErrors.daysToComplete = 'Days to complete must be between 1 and 365'
+			}
 		}
 
 		setErrors(newErrors)
@@ -176,16 +179,12 @@ export default function FreightManageNewPage() {
 				collateralFeeRate: formData.collateralFeeRate.trim()
 					? (Number(formData.collateralFeeRate) / 100).toString()
 					: undefined,
-				expiration: formData.expiration.trim()
-					? Number(formData.expiration)
-					: undefined,
+				expiration: formData.expiration.trim() ? Number(formData.expiration) : undefined,
 				daysToComplete: formData.daysToComplete.trim()
 					? Number(formData.daysToComplete)
 					: undefined,
 				notes: formData.notes.trim() || undefined,
-				sortOrder: formData.sortOrder.trim()
-					? Number(formData.sortOrder)
-					: 0,
+				sortOrder: formData.sortOrder.trim() ? Number(formData.sortOrder) : 0,
 				status: formData.status,
 			}
 
@@ -202,13 +201,17 @@ export default function FreightManageNewPage() {
 	}
 
 	return (
-		<div className="space-y-6 max-w-4xl">
-			{/* Page Header */}
-			<div>
-				<h1 className="text-3xl font-bold gradient-text">Create Freight Route</h1>
-				<p className="text-muted-foreground mt-1">
-					Define a new official freight route with pricing
-				</p>
+		<Container size="narrow">
+			<div className="mb-section md:mb-10 flex flex-wrap items-center justify-between gap-4">
+				<div>
+					<h1 className="text-3xl font-bold gradient-text">Create Freight Route</h1>
+					<p className="text-muted-foreground mt-1">
+						Define a new official freight route with pricing
+					</p>
+				</div>
+				<GhostButton asChild>
+					<Link to="/freight/manage">Back to Routes</Link>
+				</GhostButton>
 			</div>
 
 			<form onSubmit={handleSubmit}>
@@ -242,10 +245,10 @@ export default function FreightManageNewPage() {
 								value={formData.pickupName}
 								onValueChange={(value) => handleChange('pickupName', value)}
 								options={pickupOptions}
-						onSelect={(option) => {
-							handleChange('pickupName', option.label)
-							setPickupSystemId(option.id)
-						}}
+								onSelect={(option) => {
+									handleChange('pickupName', option.label)
+									setPickupSystemId(option.id)
+								}}
 								filterMode="server"
 								minQueryLength={3}
 								placeholder="Search for a solar system..."
@@ -253,9 +256,7 @@ export default function FreightManageNewPage() {
 								emptyText="No systems found"
 								inputClassName={errors.pickupName ? 'border-destructive' : ''}
 							/>
-							{errors.pickupName && (
-								<p className="text-sm text-destructive">{errors.pickupName}</p>
-							)}
+							{errors.pickupName && <p className="text-sm text-destructive">{errors.pickupName}</p>}
 							<p className="text-sm text-muted-foreground">
 								Search for and select the pickup solar system
 							</p>
@@ -272,10 +273,10 @@ export default function FreightManageNewPage() {
 								value={formData.destinationName}
 								onValueChange={(value) => handleChange('destinationName', value)}
 								options={destinationOptions}
-						onSelect={(option) => {
-							handleChange('destinationName', option.label)
-							setDestinationSystemId(option.id)
-						}}
+								onSelect={(option) => {
+									handleChange('destinationName', option.label)
+									setDestinationSystemId(option.id)
+								}}
 								filterMode="server"
 								minQueryLength={3}
 								placeholder="Search for a solar system..."
@@ -297,12 +298,13 @@ export default function FreightManageNewPage() {
 								Price (ISK per m³)
 								<span className="text-destructive ml-1">*</span>
 							</Label>
-							<Input
+							<NumberInput
 								id="iskPerVolumeUnit"
-								value={formData.iskPerVolumeUnit ? formatInputNumber(formData.iskPerVolumeUnit) : ''}
-								onChange={(e) => handleChange('iskPerVolumeUnit', e.target.value)}
+								min={0}
 								placeholder="1,000"
-								className={errors.iskPerVolumeUnit ? 'border-destructive' : ''}
+								value={formData.iskPerVolumeUnit}
+								onChange={(val) => handleChange('iskPerVolumeUnit', val)}
+								error={!!errors.iskPerVolumeUnit}
 							/>
 							{errors.iskPerVolumeUnit && (
 								<p className="text-sm text-destructive">{errors.iskPerVolumeUnit}</p>
@@ -315,12 +317,13 @@ export default function FreightManageNewPage() {
 						{/* Minimum Reward */}
 						<div className="space-y-2">
 							<Label htmlFor="minReward">Minimum Reward (ISK)</Label>
-							<Input
+							<NumberInput
 								id="minReward"
-								value={formData.minReward ? formatInputNumber(formData.minReward) : ''}
-								onChange={(e) => handleChange('minReward', e.target.value)}
+								min={0}
 								placeholder="Optional - minimum contract reward"
-								className={errors.minReward ? 'border-destructive' : ''}
+								value={formData.minReward}
+								onChange={(val) => handleChange('minReward', val)}
+								error={!!errors.minReward}
 							/>
 							{errors.minReward && <p className="text-sm text-destructive">{errors.minReward}</p>}
 							<p className="text-sm text-muted-foreground">
@@ -331,12 +334,13 @@ export default function FreightManageNewPage() {
 						{/* Max Volume */}
 						<div className="space-y-2">
 							<Label htmlFor="maxVolume">Maximum Volume (m³)</Label>
-							<Input
+							<NumberInput
 								id="maxVolume"
-								value={formData.maxVolume ? formatInputNumber(formData.maxVolume) : ''}
-								onChange={(e) => handleChange('maxVolume', e.target.value)}
+								min={0}
 								placeholder="Optional - leave empty for unlimited"
-								className={errors.maxVolume ? 'border-destructive' : ''}
+								value={formData.maxVolume}
+								onChange={(val) => handleChange('maxVolume', val)}
+								error={!!errors.maxVolume}
 							/>
 							{errors.maxVolume && <p className="text-sm text-destructive">{errors.maxVolume}</p>}
 							<p className="text-sm text-muted-foreground">
@@ -362,39 +366,40 @@ export default function FreightManageNewPage() {
 
 						{/* Expiration */}
 						<div className="space-y-2">
-							<Label htmlFor="expiration">
-								Contract Expiration (days)
-								<span className="text-destructive ml-1">*</span>
-							</Label>
-							<Input
-								id="expiration"
-								type="number"
-								step="1"
-								min="1"
-								value={formData.expiration}
-								onChange={(e) => handleChange('expiration', e.target.value)}
-								placeholder="Optional - days until contract expires"
+							<Label htmlFor="expiration">Contract Expiration</Label>
+							<SearchSelect
+								inputId="expiration"
+								value={EXPIRATION_OPTIONS.find((o) => o.value === formData.expiration)?.label ?? ''}
+								onValueChange={() => {}}
+								options={EXPIRATION_OPTIONS}
+								onSelect={(option) => handleChange('expiration', option.value)}
+								filterMode="local"
+								mode="dropdown"
+								placeholder="Optional - select expiration period"
+								inputClassName={errors.expiration ? 'border-destructive' : ''}
 							/>
+							{errors.expiration && <p className="text-sm text-destructive">{errors.expiration}</p>}
 							<p className="text-sm text-muted-foreground">
-								How many days the courier contract should be available before expiring (optional)
+								How long the courier contract is available before expiring (optional)
 							</p>
 						</div>
 
 						{/* Days to Complete */}
 						<div className="space-y-2">
-							<Label htmlFor="daysToComplete">
-								Days to Complete
-								<span className="text-destructive ml-1">*</span>
-							</Label>
-							<Input
+							<Label htmlFor="daysToComplete">Days to Complete</Label>
+							<NumberInput
 								id="daysToComplete"
-								type="number"
-								step="1"
-								min="1"
-								value={formData.daysToComplete}
-								onChange={(e) => handleChange('daysToComplete', e.target.value)}
+								min={1}
+								max={365}
+								step={1}
 								placeholder="Optional - days allowed to complete delivery"
+								value={formData.daysToComplete}
+								onChange={(val) => handleChange('daysToComplete', val)}
+								error={!!errors.daysToComplete}
 							/>
+							{errors.daysToComplete && (
+								<p className="text-sm text-destructive">{errors.daysToComplete}</p>
+							)}
 							<p className="text-sm text-muted-foreground">
 								How many days the courier has to complete the delivery after accepting (optional)
 							</p>
@@ -436,7 +441,11 @@ export default function FreightManageNewPage() {
 							<Label htmlFor="status">Initial Status</Label>
 							<SearchSelect
 								inputId="status"
-								value={formData.status === 'active' ? 'Active (available for use)' : 'Inactive (not available)'}
+								value={
+									formData.status === 'active'
+										? 'Active (available for use)'
+										: 'Inactive (not available)'
+								}
 								onValueChange={() => {}}
 								options={[
 									{ id: 'active', value: 'active', label: 'Active (available for use)' },
@@ -464,6 +473,6 @@ export default function FreightManageNewPage() {
 					</ConfirmButton>
 				</div>
 			</form>
-		</div>
+		</Container>
 	)
 }

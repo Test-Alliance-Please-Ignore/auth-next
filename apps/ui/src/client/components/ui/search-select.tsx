@@ -33,6 +33,14 @@ interface SearchSelectProps<TOption extends SearchSelectOption> {
 	onSelect: (option: TOption) => void
 	filterMode?: FilterMode
 	mode?: SearchSelectMode
+	/**
+	 * A pre-confirmed value loaded from external state (e.g. an existing record being edited).
+	 * While `value === initialValue`, the component suppresses search behaviour: it will not
+	 * open on focus, will not treat the displayed text as a live query, and will not
+	 * self-filter a local option list. Normal search/filter behaviour resumes the moment
+	 * the user modifies the input.
+	 */
+	initialValue?: string
 	minQueryLength?: number
 	placeholder?: string
 	loading?: boolean
@@ -58,6 +66,7 @@ export function SearchSelect<TOption extends SearchSelectOption>({
 	onSelect,
 	filterMode = 'server',
 	mode = 'search',
+	initialValue,
 	minQueryLength = 2,
 	placeholder = 'Search...',
 	loading = false,
@@ -83,7 +92,15 @@ export function SearchSelect<TOption extends SearchSelectOption>({
 	const [canScrollDown, setCanScrollDown] = useState(false)
 
 	const trimmedQuery = value.trim()
-	const queryMeetsMinimum = trimmedQuery.length >= minQueryLength
+
+	// When value matches a pre-loaded initialValue the user hasn't modified the input yet.
+	// Suppress search/filter behaviour until they do.
+	const isConfirmed = initialValue !== undefined && value === initialValue
+
+	// In confirmed state treat the query as empty so local lists aren't self-filtered and
+	// server mode doesn't consider the minimum-length threshold met.
+	const effectiveQuery = isConfirmed ? '' : trimmedQuery
+	const queryMeetsMinimum = effectiveQuery.length >= minQueryLength
 
 	const filteredOptions = useMemo(() => {
 		if (filterMode === 'server') {
@@ -91,23 +108,24 @@ export function SearchSelect<TOption extends SearchSelectOption>({
 			return options
 		}
 
-		if (!trimmedQuery) {
+		if (!effectiveQuery) {
 			return options
 		}
 
-		const q = trimmedQuery.toLowerCase()
+		const q = effectiveQuery.toLowerCase()
 		return options.filter((opt) => {
 			const defaultSearch = `${opt.label} ${opt.value} ${opt.description ?? ''}`
 			const searchText = getSearchText ? getSearchText(opt) : defaultSearch
 			return searchText.toLowerCase().includes(q)
 		})
-	}, [filterMode, getSearchText, options, trimmedQuery])
+	}, [filterMode, getSearchText, options, effectiveQuery])
 
 	const canShowOptions =
 		!(filterMode === 'server' && !queryMeetsMinimum) && filteredOptions.length > 0
 
-	const shouldOpenOnFocus =
-		mode === 'dropdown' ? true : trimmedQuery.length > 0 || filteredOptions.length > 0
+	const shouldOpenOnFocus = isConfirmed
+		? mode === 'dropdown' // confirmed value: only auto-open if explicitly in dropdown mode
+		: mode === 'dropdown' ? true : trimmedQuery.length > 0 || filteredOptions.length > 0
 
 	useEffect(() => {
 		if (!canShowOptions) {

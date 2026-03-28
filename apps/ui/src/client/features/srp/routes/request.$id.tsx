@@ -92,7 +92,7 @@ export default function RequestDetails() {
 							</div>
 							<div>
 								<div className="text-sm text-muted-foreground">Ship Value</div>
-								<div className="font-medium tabular-nums">{formatISK(request.shipValue)} ISK</div>
+								<div className="font-medium tabular-nums">{formatISK(request.shipValue)}</div>
 							</div>
 							<div>
 								<div className="text-sm text-muted-foreground">Character</div>
@@ -194,7 +194,7 @@ export default function RequestDetails() {
 								<div>
 									<div className="text-sm text-muted-foreground">Requested</div>
 									<div className="font-medium tabular-nums">
-										{formatISK(request.requestedAmount)} ISK
+										{formatISK(request.requestedAmount)}
 									</div>
 								</div>
 							)}
@@ -202,7 +202,7 @@ export default function RequestDetails() {
 								<div>
 									<div className="text-sm text-muted-foreground">Approved</div>
 									<div className="font-medium tabular-nums">
-										{formatISK(request.approvedAmount)} ISK
+										{formatISK(request.approvedAmount)}
 									</div>
 								</div>
 							)}

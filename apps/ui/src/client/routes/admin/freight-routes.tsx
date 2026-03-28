@@ -29,6 +29,8 @@ import {
 	useFreightRoutes,
 } from '@/hooks/useFreightRoutes'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { formatISK } from '@/lib/format-utils'
+import { formatNumber } from '@/features/freight/utils'
 
 import type { FreightRouteStatus } from '@repo/freight'
 
@@ -68,11 +70,6 @@ export default function AdminFreightRoutesPage() {
 		} catch (error) {
 			console.error('Failed to delete route:', error)
 		}
-	}
-
-	const formatISK = (amount: string) => {
-		const num = parseFloat(amount)
-		return new Intl.NumberFormat('en-US').format(num)
 	}
 
 	return (
@@ -172,11 +169,11 @@ export default function AdminFreightRoutesPage() {
 												{route.destinationName || 'Unnamed'}
 											</TableCell>
 											<TableCell className="text-right font-mono">
-												{formatISK(route.iskPerVolumeUnit)}
+												{`${formatISK(route.iskPerVolumeUnit)}/m³`}
 											</TableCell>
 											<TableCell className="text-right">
 												{route.maxVolume ? (
-													`${formatISK(route.maxVolume)} m³`
+													`${formatNumber(route.maxVolume)} m³`
 												) : (
 													<span className="text-muted-foreground">Unlimited</span>
 												)}

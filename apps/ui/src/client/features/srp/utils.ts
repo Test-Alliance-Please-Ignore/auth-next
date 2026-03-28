@@ -1,39 +1,8 @@
+import { formatISK, formatISKShort } from '@/lib/format-utils'
+
 import type { PaymentStatus, RequestStatus } from './types'
 
-/**
- * Format ISK amount with commas and 2 decimal places
- */
-export function formatISK(value: string | number): string {
-	const num = typeof value === 'string' ? parseFloat(value) : value
-	if (isNaN(num)) return '0.00'
-
-	return new Intl.NumberFormat('en-US', {
-		minimumFractionDigits: 2,
-		maximumFractionDigits: 2,
-	}).format(num)
-}
-
-/**
- * Format ISK amount in short form (1.2M, 45.3B)
- */
-export function formatISKShort(value: string | number): string {
-	const num = typeof value === 'string' ? parseFloat(value) : value
-	if (isNaN(num)) return '0'
-
-	if (num >= 1_000_000_000_000) {
-		return `${(num / 1_000_000_000_000).toFixed(2)}T`
-	}
-	if (num >= 1_000_000_000) {
-		return `${(num / 1_000_000_000).toFixed(2)}B`
-	}
-	if (num >= 1_000_000) {
-		return `${(num / 1_000_000).toFixed(2)}M`
-	}
-	if (num >= 1_000) {
-		return `${(num / 1_000).toFixed(2)}K`
-	}
-	return num.toFixed(2)
-}
+export { formatISK, formatISKShort }
 
 /**
  * Format date as relative time (2h ago, 3 days ago)

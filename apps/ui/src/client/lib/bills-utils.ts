@@ -4,31 +4,11 @@
 
 import { getBillStatusBadgeVariant } from '@repo/bills'
 
+import { formatISK, formatISKShort } from '@/lib/format-utils'
+
 import type { Bill, BillStatus, LateFeeCompounding, LateFeeType } from '@repo/bills'
 
-/**
- * Format ISK amounts for display
- * Converts large numbers to human-readable format (5.5B ISK, 125M ISK, 1.25T ISK)
- */
-export function formatISK(amount: string | number): string {
-	const num = typeof amount === 'string' ? parseFloat(amount) : amount
-
-	if (Number.isNaN(num)) return '0 ISK'
-
-	if (num >= 1_000_000_000_000) {
-		return `${(num / 1_000_000_000_000).toFixed(2)}T ISK`
-	}
-	if (num >= 1_000_000_000) {
-		return `${(num / 1_000_000_000).toFixed(2)}B ISK`
-	}
-	if (num >= 1_000_000) {
-		return `${(num / 1_000_000).toFixed(0)}M ISK`
-	}
-	if (num >= 1_000) {
-		return `${(num / 1_000).toFixed(0)}K ISK`
-	}
-	return `${num.toLocaleString()} ISK`
-}
+export { formatISK, formatISKShort }
 
 /**
  * Calculate late fee for a bill

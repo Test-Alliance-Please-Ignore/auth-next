@@ -10,9 +10,16 @@ export interface FreightRoute {
 	id: string
 	pickupName: string
 	destinationName: string
+	pickupSystemId?: string
+	destinationSystemId?: string
 	iskPerVolumeUnit: string
+	minReward?: string
 	maxVolume?: string
+	collateralFeeRate?: string
+	expiration?: number
+	daysToComplete?: number
 	notes?: string
+	sortOrder: number
 	status: FreightRouteStatus
 	createdAt: Date
 	updatedAt: Date
@@ -24,9 +31,16 @@ export interface FreightRoute {
 export interface CreateFreightRouteInput {
 	pickupName: string
 	destinationName: string
+	pickupSystemId?: string
+	destinationSystemId?: string
 	iskPerVolumeUnit: string
+	minReward?: string
 	maxVolume?: string
+	collateralFeeRate?: string
+	expiration?: number
+	daysToComplete?: number
 	notes?: string
+	sortOrder?: number
 	status?: FreightRouteStatus
 }
 
@@ -37,8 +51,15 @@ export interface CreateFreightRouteInput {
 export interface UpdateFreightRouteInput {
 	pickupName?: string
 	destinationName?: string
+	pickupSystemId?: string
+	destinationSystemId?: string
 	iskPerVolumeUnit?: string
+	minReward?: string
 	maxVolume?: string
+	collateralFeeRate?: string
+	expiration?: number
+	daysToComplete?: number
 	notes?: string
+	sortOrder?: number
 	status?: FreightRouteStatus
 }
