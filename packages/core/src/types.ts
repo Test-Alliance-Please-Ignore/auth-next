@@ -1,33 +1,25 @@
-import type { EveConstellationId, EveRegionId, EveStructureId, EveSystemId } from '@repo/eve-types'
-
 /**
  * Freight route status
  */
 export type FreightRouteStatus = 'active' | 'inactive'
 
 /**
- * Freight location
- *
- * Note: Location names are fetched from ESI dynamically.
- * Use /universe/systems/{systemId}/, /universe/structures/{structureId}/, etc.
- */
-export interface FreightLocation {
-	solarSystemId: EveSystemId
-	regionId: EveRegionId
-	structureId: EveStructureId
-	constellationId?: EveConstellationId
-}
-
-/**
  * Freight route with full database fields
  */
 export interface FreightRoute {
 	id: string
-	pickupLocation: FreightLocation
-	dropoffLocation: FreightLocation
-	iskPerVolumeUnit: string // ISK per m³, stored as string to avoid BigInt issues
-	maxVolume?: string // Optional maximum volume (m³) per contract
-	notes?: string // Admin notes about route restrictions, risks, or special handling
+	pickupName: string
+	destinationName: string
+	pickupSystemId?: string
+	destinationSystemId?: string
+	iskPerVolumeUnit: string
+	minReward?: string
+	maxVolume?: string
+	collateralFeeRate?: string
+	expiration?: number
+	daysToComplete?: number
+	notes?: string
+	sortOrder: number
 	status: FreightRouteStatus
 	createdAt: Date
 	updatedAt: Date
@@ -37,12 +29,19 @@ export interface FreightRoute {
  * Input for creating a new freight route (admin action)
  */
 export interface CreateFreightRouteInput {
-	pickupLocation: FreightLocation
-	dropoffLocation: FreightLocation
+	pickupName: string
+	destinationName: string
+	pickupSystemId?: string
+	destinationSystemId?: string
 	iskPerVolumeUnit: string
+	minReward?: string
 	maxVolume?: string
+	collateralFeeRate?: string
+	expiration?: number
+	daysToComplete?: number
 	notes?: string
-	status?: FreightRouteStatus // Defaults to 'active' if not specified
+	sortOrder?: number
+	status?: FreightRouteStatus
 }
 
 /**
@@ -50,10 +49,17 @@ export interface CreateFreightRouteInput {
  * All fields are optional - only provided fields will be updated
  */
 export interface UpdateFreightRouteInput {
-	pickupLocation?: FreightLocation
-	dropoffLocation?: FreightLocation
+	pickupName?: string
+	destinationName?: string
+	pickupSystemId?: string
+	destinationSystemId?: string
 	iskPerVolumeUnit?: string
+	minReward?: string
 	maxVolume?: string
+	collateralFeeRate?: string
+	expiration?: number
+	daysToComplete?: number
 	notes?: string
+	sortOrder?: number
 	status?: FreightRouteStatus
 }

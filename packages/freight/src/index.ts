@@ -61,6 +61,11 @@ export interface Freight {
 	 * Deactivate a freight route (admin only)
 	 */
 	deactivateRoute(adminId: string, routeId: string): Promise<FreightRoute>
+
+	/**
+	 * Delete a freight route (admin only)
+	 */
+	deleteRoute(adminId: string, routeId: string): Promise<void>
 }
 
 /**

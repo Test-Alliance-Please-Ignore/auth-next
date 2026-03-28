@@ -1,0 +1,1 @@
+ALTER TABLE "freight_routes" ADD COLUMN "sort_order" integer DEFAULT 0 NOT NULL;

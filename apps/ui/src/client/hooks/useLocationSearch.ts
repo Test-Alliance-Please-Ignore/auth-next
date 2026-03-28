@@ -70,3 +70,39 @@ export function useStructureDetails(structureId: string | undefined) {
 		staleTime: 1000 * 60 * 5, // 5 minutes - structures can be renamed
 	})
 }
+
+// Query keys for system-only search
+export const systemSearchKeys = {
+	all: ['system-search'] as const,
+	search: (query: string) => [...systemSearchKeys.all, 'search', query] as const,
+}
+
+/**
+ * Debounced system search hook
+ * Searches solar systems only (not stations or structures)
+ * ESI search requires a minimum of 3 characters.
+ * Returns `isPending` when the query is debouncing but hasn't fired yet.
+ */
+export function useSystemSearch(query: string, enabled = true) {
+	const [debouncedQuery, setDebouncedQuery] = useState(query)
+
+	useEffect(() => {
+		const timer = setTimeout(() => {
+			setDebouncedQuery(query)
+		}, 500)
+
+		return () => clearTimeout(timer)
+	}, [query])
+
+	const result = useQuery({
+		queryKey: systemSearchKeys.search(debouncedQuery),
+		queryFn: () => esiApi.searchSystems(debouncedQuery),
+		enabled: enabled && debouncedQuery.length >= 3,
+		staleTime: 1000 * 60 * 5, // 5 minutes - system names don't change
+	})
+
+	// True when input meets minimum length but the debounce timer hasn't fired yet
+	const isDebouncing = query.trim().length >= 3 && query !== debouncedQuery
+
+	return { ...result, isPending: isDebouncing, isDebouncing }
+}

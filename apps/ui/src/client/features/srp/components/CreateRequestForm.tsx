@@ -85,7 +85,7 @@ export function CreateRequestForm({
 						</div>
 						<div>
 							<div className="text-muted-foreground">Loss Value</div>
-							<div className="font-medium tabular-nums">{formatISK(shipValue)} ISK</div>
+							<div className="font-medium tabular-nums">{formatISK(shipValue)}</div>
 						</div>
 						<div>
 							<div className="text-muted-foreground">Loss Date</div>

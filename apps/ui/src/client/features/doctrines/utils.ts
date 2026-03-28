@@ -2,7 +2,11 @@
  * Utility Functions for Doctrines Feature
  */
 
+import { formatISK } from '@/lib/format-utils'
+
 import type { Doctrine, DoctrinesByCategory, ParsedEFT } from './types'
+
+export { formatISK }
 
 /**
  * Group doctrines by category
@@ -75,21 +79,6 @@ export function parseEFTPreview(eftString: string): ParsedEFT | null {
 	} catch {
 		return null
 	}
-}
-
-/**
- * Format ISK values with thousand separators
- */
-export function formatISK(value: string | number): string {
-	const num = typeof value === 'string' ? parseFloat(value) : value
-	if (isNaN(num)) return '0 ISK'
-
-	return (
-		num.toLocaleString('en-US', {
-			minimumFractionDigits: 0,
-			maximumFractionDigits: 0,
-		}) + ' ISK'
-	)
 }
 
 /**

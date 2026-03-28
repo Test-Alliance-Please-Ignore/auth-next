@@ -20,6 +20,7 @@ import { GhostButton } from '@/components/ui/ghost-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
+import { NumberInput } from '@/components/ui/number-input'
 import {
 	Select,
 	SelectContent,
@@ -524,13 +525,14 @@ export default function AdminBillsSchedulesEditPage() {
 								<Label htmlFor="amount">
 									Amount (ISK) <span className="text-destructive">*</span>
 								</Label>
-								<Input
+								<NumberInput
 									id="amount"
-									type="text"
+									min={0}
+									suffix=" ISK"
 									placeholder="1000000"
 									value={formData.amount}
-									onChange={(e) => handleChange('amount', e.target.value)}
-									className={errors.amount ? 'border-destructive' : ''}
+									onChange={(value) => handleChange('amount', value)}
+									error={!!errors.amount}
 								/>
 								{errors.amount && <p className="text-sm text-destructive">{errors.amount}</p>}
 							</div>

@@ -1,26 +1,33 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useMemo, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 
+import { Button } from '@/components/ui/button'
 import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmButton } from '@/components/ui/confirm-button'
+import { Container } from '@/components/ui/container'
+import { GhostButton } from '@/components/ui/ghost-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { NumberInput } from '@/components/ui/number-input'
+import { SearchSelect } from '@/components/ui/search-select'
 import { Textarea } from '@/components/ui/textarea'
 import { useCreateFreightRoute } from '@/hooks/useFreightRoutes'
+import { useSystemSearch } from '@/hooks/useLocationSearch'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import type { CreateFreightRouteInput, FreightRouteStatus } from '@repo/freight'
 
-export default function AdminFreightRoutesNewPage() {
-	usePageTitle('Admin - Create Freight Route')
+const EXPIRATION_OPTIONS = [
+	{ id: '1', value: '1', label: '1 day' },
+	{ id: '3', value: '3', label: '3 days' },
+	{ id: '7', value: '7', label: '1 week' },
+	{ id: '14', value: '14', label: '2 weeks' },
+	{ id: '28', value: '28', label: '4 weeks' },
+]
+
+export default function FreightManageNewPage() {
+	usePageTitle('Create Freight Route')
 
 	const navigate = useNavigate()
 	const createRoute = useCreateFreightRoute()
@@ -29,29 +36,63 @@ export default function AdminFreightRoutesNewPage() {
 		pickupName: string
 		destinationName: string
 		iskPerVolumeUnit: string
+		minReward: string
 		maxVolume: string
 		collateralFeeRate: string
 		expiration: string
 		daysToComplete: string
 		notes: string
+		sortOrder: string
 		status: FreightRouteStatus
 	}>({
 		pickupName: '',
 		destinationName: '',
 		iskPerVolumeUnit: '',
+		minReward: '',
 		maxVolume: '',
 		collateralFeeRate: '',
 		expiration: '7',
-		daysToComplete: '3',
+		daysToComplete: '',
 		notes: '',
+		sortOrder: '0',
 		status: 'active',
 	})
 
 	const [errors, setErrors] = useState<Record<string, string>>({})
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+	const [pickupSystemId, setPickupSystemId] = useState<string | null>(null)
+	const [destinationSystemId, setDestinationSystemId] = useState<string | null>(null)
+
+	const pickupSearch = useSystemSearch(formData.pickupName)
+	const destinationSearch = useSystemSearch(formData.destinationName)
+
+	const pickupOptions = useMemo(
+		() =>
+			(pickupSearch.data ?? []).map((system) => ({
+				id: String(system.systemId),
+				value: system.systemName,
+				label: system.systemName,
+				description: system.regionName,
+			})),
+		[pickupSearch.data]
+	)
+
+	const destinationOptions = useMemo(
+		() =>
+			(destinationSearch.data ?? []).map((system) => ({
+				id: String(system.systemId),
+				value: system.systemName,
+				label: system.systemName,
+				description: system.regionName,
+			})),
+		[destinationSearch.data]
+	)
 
 	const handleChange = (field: string, value: string) => {
 		setFormData((prev) => ({ ...prev, [field]: value }))
+		// Clear system ID when user types manually (forces re-selection)
+		if (field === 'pickupName') setPickupSystemId(null)
+		if (field === 'destinationName') setDestinationSystemId(null)
 		if (errors[field]) {
 			setErrors((prev) => {
 				const { [field]: _, ...rest } = prev
@@ -66,10 +107,14 @@ export default function AdminFreightRoutesNewPage() {
 
 		if (!formData.pickupName.trim()) {
 			newErrors.pickupName = 'Pickup location is required'
+		} else if (!pickupSystemId) {
+			newErrors.pickupName = 'Please select a system from the search results'
 		}
 
 		if (!formData.destinationName.trim()) {
 			newErrors.destinationName = 'Destination location is required'
+		} else if (!destinationSystemId) {
+			newErrors.destinationName = 'Please select a system from the search results'
 		}
 
 		if (
@@ -87,22 +132,28 @@ export default function AdminFreightRoutesNewPage() {
 		}
 
 		if (
+			formData.minReward.trim() &&
+			(isNaN(Number(formData.minReward)) || Number(formData.minReward) <= 0)
+		) {
+			newErrors.minReward = 'Minimum reward must be a positive number'
+		}
+
+		if (
 			formData.maxVolume.trim() &&
 			(isNaN(Number(formData.maxVolume)) || Number(formData.maxVolume) <= 0)
 		) {
 			newErrors.maxVolume = 'Max volume must be a positive number'
 		}
 
-		if (!formData.expiration.trim()) {
-			newErrors.expiration = 'Contract expiration is required'
-		} else if (isNaN(Number(formData.expiration)) || Number(formData.expiration) < 1) {
-			newErrors.expiration = 'Expiration must be at least 1 day'
+		if (formData.expiration && !EXPIRATION_OPTIONS.some((o) => o.value === formData.expiration)) {
+			newErrors.expiration = 'Please select a valid expiration period'
 		}
 
-		if (!formData.daysToComplete.trim()) {
-			newErrors.daysToComplete = 'Days to complete is required'
-		} else if (isNaN(Number(formData.daysToComplete)) || Number(formData.daysToComplete) < 1) {
-			newErrors.daysToComplete = 'Days to complete must be at least 1 day'
+		if (formData.daysToComplete.trim()) {
+			const days = Number(formData.daysToComplete)
+			if (isNaN(days) || days < 1 || days > 365) {
+				newErrors.daysToComplete = 'Days to complete must be between 1 and 365'
+			}
 		}
 
 		setErrors(newErrors)
@@ -120,18 +171,20 @@ export default function AdminFreightRoutesNewPage() {
 			const input: CreateFreightRouteInput = {
 				pickupName: formData.pickupName.trim(),
 				destinationName: formData.destinationName.trim(),
+				pickupSystemId: pickupSystemId || undefined,
+				destinationSystemId: destinationSystemId || undefined,
 				iskPerVolumeUnit: formData.iskPerVolumeUnit.trim(),
+				minReward: formData.minReward.trim() || undefined,
 				maxVolume: formData.maxVolume.trim() || undefined,
 				collateralFeeRate: formData.collateralFeeRate.trim()
 					? (Number(formData.collateralFeeRate) / 100).toString()
 					: undefined,
-				expiration: formData.expiration.trim()
-					? Number(formData.expiration)
-					: undefined,
+				expiration: formData.expiration.trim() ? Number(formData.expiration) : undefined,
 				daysToComplete: formData.daysToComplete.trim()
 					? Number(formData.daysToComplete)
 					: undefined,
 				notes: formData.notes.trim() || undefined,
+				sortOrder: formData.sortOrder.trim() ? Number(formData.sortOrder) : 0,
 				status: formData.status,
 			}
 
@@ -139,7 +192,7 @@ export default function AdminFreightRoutesNewPage() {
 
 			setMessage({ type: 'success', text: 'Freight route created successfully!' })
 			setTimeout(() => {
-				navigate('/admin/freight-routes')
+				navigate('/freight/manage')
 			}, 1000)
 		} catch (error) {
 			console.error('Error creating route:', error)
@@ -148,13 +201,17 @@ export default function AdminFreightRoutesNewPage() {
 	}
 
 	return (
-		<div className="space-y-6 max-w-4xl">
-			{/* Page Header */}
-			<div>
-				<h1 className="text-3xl font-bold gradient-text">Create Freight Route</h1>
-				<p className="text-muted-foreground mt-1">
-					Define a new official freight route with pricing
-				</p>
+		<Container size="narrow">
+			<div className="mb-section md:mb-10 flex flex-wrap items-center justify-between gap-4">
+				<div>
+					<h1 className="text-3xl font-bold gradient-text">Create Freight Route</h1>
+					<p className="text-muted-foreground mt-1">
+						Define a new official freight route with pricing
+					</p>
+				</div>
+				<GhostButton asChild>
+					<Link to="/freight/manage">Back to Routes</Link>
+				</GhostButton>
 			</div>
 
 			<form onSubmit={handleSubmit}>
@@ -183,18 +240,25 @@ export default function AdminFreightRoutesNewPage() {
 								Pickup Location
 								<span className="text-destructive ml-1">*</span>
 							</Label>
-							<Input
-								id="pickupName"
+							<SearchSelect
+								inputId="pickupName"
 								value={formData.pickupName}
-								onChange={(e) => handleChange('pickupName', e.target.value)}
-								placeholder="e.g. Jita 4-4 CNAP or BWF-ZZ Fortizar"
-								className={errors.pickupName ? 'border-destructive' : ''}
+								onValueChange={(value) => handleChange('pickupName', value)}
+								options={pickupOptions}
+								onSelect={(option) => {
+									handleChange('pickupName', option.label)
+									setPickupSystemId(option.id)
+								}}
+								filterMode="server"
+								minQueryLength={3}
+								placeholder="Search for a solar system..."
+								loading={pickupSearch.isFetching || pickupSearch.isPending}
+								emptyText="No systems found"
+								inputClassName={errors.pickupName ? 'border-destructive' : ''}
 							/>
-							{errors.pickupName && (
-								<p className="text-sm text-destructive">{errors.pickupName}</p>
-							)}
+							{errors.pickupName && <p className="text-sm text-destructive">{errors.pickupName}</p>}
 							<p className="text-sm text-muted-foreground">
-								The pickup location name as it should appear to customers
+								Search for and select the pickup solar system
 							</p>
 						</div>
 
@@ -204,18 +268,27 @@ export default function AdminFreightRoutesNewPage() {
 								Destination Location
 								<span className="text-destructive ml-1">*</span>
 							</Label>
-							<Input
-								id="destinationName"
+							<SearchSelect
+								inputId="destinationName"
 								value={formData.destinationName}
-								onChange={(e) => handleChange('destinationName', e.target.value)}
-								placeholder="e.g. Jita 4-4 CNAP or BWF-ZZ Fortizar"
-								className={errors.destinationName ? 'border-destructive' : ''}
+								onValueChange={(value) => handleChange('destinationName', value)}
+								options={destinationOptions}
+								onSelect={(option) => {
+									handleChange('destinationName', option.label)
+									setDestinationSystemId(option.id)
+								}}
+								filterMode="server"
+								minQueryLength={3}
+								placeholder="Search for a solar system..."
+								loading={destinationSearch.isFetching || destinationSearch.isPending}
+								emptyText="No systems found"
+								inputClassName={errors.destinationName ? 'border-destructive' : ''}
 							/>
 							{errors.destinationName && (
 								<p className="text-sm text-destructive">{errors.destinationName}</p>
 							)}
 							<p className="text-sm text-muted-foreground">
-								The destination location name as it should appear to customers
+								Search for and select the destination solar system
 							</p>
 						</div>
 
@@ -225,14 +298,13 @@ export default function AdminFreightRoutesNewPage() {
 								Price (ISK per m³)
 								<span className="text-destructive ml-1">*</span>
 							</Label>
-							<Input
+							<NumberInput
 								id="iskPerVolumeUnit"
-								type="number"
-								step="0.01"
+								min={0}
+								placeholder="1,000"
 								value={formData.iskPerVolumeUnit}
-								onChange={(e) => handleChange('iskPerVolumeUnit', e.target.value)}
-								placeholder="1000"
-								className={errors.iskPerVolumeUnit ? 'border-destructive' : ''}
+								onChange={(val) => handleChange('iskPerVolumeUnit', val)}
+								error={!!errors.iskPerVolumeUnit}
 							/>
 							{errors.iskPerVolumeUnit && (
 								<p className="text-sm text-destructive">{errors.iskPerVolumeUnit}</p>
@@ -242,17 +314,33 @@ export default function AdminFreightRoutesNewPage() {
 							</p>
 						</div>
 
+						{/* Minimum Reward */}
+						<div className="space-y-2">
+							<Label htmlFor="minReward">Minimum Reward (ISK)</Label>
+							<NumberInput
+								id="minReward"
+								min={0}
+								placeholder="Optional - minimum contract reward"
+								value={formData.minReward}
+								onChange={(val) => handleChange('minReward', val)}
+								error={!!errors.minReward}
+							/>
+							{errors.minReward && <p className="text-sm text-destructive">{errors.minReward}</p>}
+							<p className="text-sm text-muted-foreground">
+								Minimum ISK reward for a contract on this route, regardless of volume (optional)
+							</p>
+						</div>
+
 						{/* Max Volume */}
 						<div className="space-y-2">
 							<Label htmlFor="maxVolume">Maximum Volume (m³)</Label>
-							<Input
+							<NumberInput
 								id="maxVolume"
-								type="number"
-								step="0.01"
-								value={formData.maxVolume}
-								onChange={(e) => handleChange('maxVolume', e.target.value)}
+								min={0}
 								placeholder="Optional - leave empty for unlimited"
-								className={errors.maxVolume ? 'border-destructive' : ''}
+								value={formData.maxVolume}
+								onChange={(val) => handleChange('maxVolume', val)}
+								error={!!errors.maxVolume}
 							/>
 							{errors.maxVolume && <p className="text-sm text-destructive">{errors.maxVolume}</p>}
 							<p className="text-sm text-muted-foreground">
@@ -278,39 +366,40 @@ export default function AdminFreightRoutesNewPage() {
 
 						{/* Expiration */}
 						<div className="space-y-2">
-							<Label htmlFor="expiration">
-								Contract Expiration (days)
-								<span className="text-destructive ml-1">*</span>
-							</Label>
-							<Input
-								id="expiration"
-								type="number"
-								step="1"
-								min="1"
-								value={formData.expiration}
-								onChange={(e) => handleChange('expiration', e.target.value)}
-								placeholder="Optional - days until contract expires"
+							<Label htmlFor="expiration">Contract Expiration</Label>
+							<SearchSelect
+								inputId="expiration"
+								value={EXPIRATION_OPTIONS.find((o) => o.value === formData.expiration)?.label ?? ''}
+								onValueChange={() => {}}
+								options={EXPIRATION_OPTIONS}
+								onSelect={(option) => handleChange('expiration', option.value)}
+								filterMode="local"
+								mode="dropdown"
+								placeholder="Optional - select expiration period"
+								inputClassName={errors.expiration ? 'border-destructive' : ''}
 							/>
+							{errors.expiration && <p className="text-sm text-destructive">{errors.expiration}</p>}
 							<p className="text-sm text-muted-foreground">
-								How many days the courier contract should be available before expiring (optional)
+								How long the courier contract is available before expiring (optional)
 							</p>
 						</div>
 
 						{/* Days to Complete */}
 						<div className="space-y-2">
-							<Label htmlFor="daysToComplete">
-								Days to Complete
-								<span className="text-destructive ml-1">*</span>
-							</Label>
-							<Input
+							<Label htmlFor="daysToComplete">Days to Complete</Label>
+							<NumberInput
 								id="daysToComplete"
-								type="number"
-								step="1"
-								min="1"
-								value={formData.daysToComplete}
-								onChange={(e) => handleChange('daysToComplete', e.target.value)}
+								min={1}
+								max={365}
+								step={1}
 								placeholder="Optional - days allowed to complete delivery"
+								value={formData.daysToComplete}
+								onChange={(val) => handleChange('daysToComplete', val)}
+								error={!!errors.daysToComplete}
 							/>
+							{errors.daysToComplete && (
+								<p className="text-sm text-destructive">{errors.daysToComplete}</p>
+							)}
 							<p className="text-sm text-muted-foreground">
 								How many days the courier has to complete the delivery after accepting (optional)
 							</p>
@@ -331,21 +420,42 @@ export default function AdminFreightRoutesNewPage() {
 							</p>
 						</div>
 
+						{/* Sort Order */}
+						<div className="space-y-2">
+							<Label htmlFor="sortOrder">Sort Order</Label>
+							<Input
+								id="sortOrder"
+								type="number"
+								step="1"
+								value={formData.sortOrder}
+								onChange={(e) => handleChange('sortOrder', e.target.value)}
+								placeholder="0"
+							/>
+							<p className="text-sm text-muted-foreground">
+								Lower numbers appear first in the dropdown. The first route is selected by default.
+							</p>
+						</div>
+
 						{/* Status */}
 						<div className="space-y-2">
 							<Label htmlFor="status">Initial Status</Label>
-							<Select
-								value={formData.status}
-								onValueChange={(value) => handleChange('status', value as FreightRouteStatus)}
-							>
-								<SelectTrigger id="status">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="active">Active (available for use)</SelectItem>
-									<SelectItem value="inactive">Inactive (not available)</SelectItem>
-								</SelectContent>
-							</Select>
+							<SearchSelect
+								inputId="status"
+								value={
+									formData.status === 'active'
+										? 'Active (available for use)'
+										: 'Inactive (not available)'
+								}
+								onValueChange={() => {}}
+								options={[
+									{ id: 'active', value: 'active', label: 'Active (available for use)' },
+									{ id: 'inactive', value: 'inactive', label: 'Inactive (not available)' },
+								]}
+								onSelect={(option) => handleChange('status', option.value)}
+								filterMode="local"
+								mode="dropdown"
+								placeholder="Select status..."
+							/>
 							<p className="text-sm text-muted-foreground">
 								Set route status - only active routes are available to customers
 							</p>
@@ -355,7 +465,7 @@ export default function AdminFreightRoutesNewPage() {
 
 				{/* Form Actions */}
 				<div className="flex justify-end gap-3 mt-6">
-					<CancelButton type="button" onClick={() => navigate('/admin/freight-routes')}>
+					<CancelButton type="button" onClick={() => navigate('/freight/manage')}>
 						Cancel
 					</CancelButton>
 					<ConfirmButton type="submit" loading={createRoute.isPending} loadingText="Creating...">
@@ -363,6 +473,6 @@ export default function AdminFreightRoutesNewPage() {
 					</ConfirmButton>
 				</div>
 			</form>
-		</div>
+		</Container>
 	)
 }
