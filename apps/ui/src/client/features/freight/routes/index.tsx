@@ -46,7 +46,8 @@ export default function FreightCalculatorPage() {
 
 	const routeOptions = useMemo(
 		() =>
-			(routes ?? []).map((route) => ({ value: route.id,
+			(routes ?? []).map((route) => ({
+				value: route.id,
 				label: `${route.pickupName} → ${route.destinationName}`,
 				description: `${formatISK(route.iskPerVolumeUnit)}/m³`,
 			})),
@@ -190,7 +191,8 @@ export default function FreightCalculatorPage() {
 							<NumberInput
 								id="collateral"
 								min={0}
-								placeholder="Enter total cargo value..."
+								suffix=" ISK"
+								placeholder="1,000,000 ISK"
 								value={collateral}
 								onChange={handleCollateralChange}
 							/>

@@ -73,7 +73,8 @@ export default function FreightManageEditPage() {
 
 	const pickupOptions = useMemo(
 		() =>
-			(pickupSearch.data ?? []).map((system) => ({ value: String(system.systemId),
+			(pickupSearch.data ?? []).map((system) => ({
+				value: String(system.systemId),
 				label: system.systemName,
 				description: system.regionName,
 			})),
@@ -82,7 +83,8 @@ export default function FreightManageEditPage() {
 
 	const destinationOptions = useMemo(
 		() =>
-			(destinationSearch.data ?? []).map((system) => ({ value: String(system.systemId),
+			(destinationSearch.data ?? []).map((system) => ({
+				value: String(system.systemId),
 				label: system.systemName,
 				description: system.regionName,
 			})),
@@ -373,7 +375,8 @@ export default function FreightManageEditPage() {
 							<NumberInput
 								id="iskPerVolumeUnit"
 								min={0}
-								placeholder="1,000"
+								suffix=" ISK"
+								placeholder="1,000 ISK"
 								value={formData.iskPerVolumeUnit}
 								onChange={(val) => handleChange('iskPerVolumeUnit', val)}
 								error={!!errors.iskPerVolumeUnit}
@@ -392,7 +395,8 @@ export default function FreightManageEditPage() {
 							<NumberInput
 								id="minReward"
 								min={0}
-								placeholder="Optional - minimum contract reward"
+								suffix=" ISK"
+								placeholder="1,000,000 ISK"
 								value={formData.minReward}
 								onChange={(val) => handleChange('minReward', val)}
 								error={!!errors.minReward}

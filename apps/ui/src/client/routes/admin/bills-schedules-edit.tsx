@@ -502,7 +502,7 @@ export default function AdminBillsSchedulesEditPage() {
 									id="amount"
 									min={0}
 									suffix=" ISK"
-									placeholder="1000000"
+									placeholder="1,000,000 ISK"
 									value={formData.amount}
 									onChange={(value) => handleChange('amount', value)}
 									error={!!errors.amount}

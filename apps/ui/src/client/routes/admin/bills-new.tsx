@@ -359,7 +359,7 @@ export default function AdminBillsNewPage() {
 									id="amount"
 									min={0}
 									suffix=" ISK"
-									placeholder="1000000"
+									placeholder="1,000,000 ISK"
 									value={formData.amount}
 									onChange={(value) => handleChange('amount', value)}
 									error={!!errors.amount}
@@ -443,7 +443,7 @@ export default function AdminBillsNewPage() {
 											id="lateFeeAmount"
 											min={0}
 											suffix=" ISK"
-											placeholder="10000"
+											placeholder="1,000,000 ISK"
 											value={formData.lateFeeAmount}
 											onChange={(value) => handleChange('lateFeeAmount', value)}
 											error={!!errors.lateFeeAmount}

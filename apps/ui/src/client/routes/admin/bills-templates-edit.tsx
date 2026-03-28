@@ -456,12 +456,8 @@ export default function AdminBillsTemplatesEditPage() {
 										value={formData.lateFeeType}
 										onValueChange={(value) => handleChange('lateFeeType', value)}
 										options={[
-											{ value: 'static',
-												label: 'Static Amount (Fixed ISK)',
-											},
-											{ value: 'percentage',
-												label: 'Percentage (% of bill amount)',
-											},
+											{ value: 'static', label: 'Static Amount (Fixed ISK)' },
+											{ value: 'percentage', label: 'Percentage (% of bill amount)' },
 										]}
 									/>
 								</div>
@@ -489,7 +485,7 @@ export default function AdminBillsTemplatesEditPage() {
 											id="lateFeeAmount"
 											min={0}
 											suffix=" ISK"
-											placeholder="10000"
+											placeholder="1,000,000 ISK"
 											value={formData.lateFeeAmount}
 											onChange={(value) => handleChange('lateFeeAmount', value)}
 											error={!!errors.lateFeeAmount}
@@ -508,15 +504,9 @@ export default function AdminBillsTemplatesEditPage() {
 										onValueChange={(value) => handleChange('lateFeeCompounding', value)}
 										options={[
 											{ value: 'none', label: 'None (One-time fee)' },
-											{ value: 'daily',
-												label: 'Daily (Compounds every day)',
-											},
-											{ value: 'weekly',
-												label: 'Weekly (Compounds every week)',
-											},
-											{ value: 'monthly',
-												label: 'Monthly (Compounds every month)',
-											},
+											{ value: 'daily', label: 'Daily (Compounds every day)' },
+											{ value: 'weekly', label: 'Weekly (Compounds every week)' },
+											{ value: 'monthly', label: 'Monthly (Compounds every month)' },
 										]}
 									/>
 									<p className="text-sm text-muted-foreground">
