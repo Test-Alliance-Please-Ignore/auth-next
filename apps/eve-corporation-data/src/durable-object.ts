@@ -33,6 +33,7 @@ import type {
 	CorporationAuthStatus,
 	CorporationConfigData,
 	CorporationContractData,
+	CourierLeaderboardEntry,
 	CorporationCoreData,
 	CorporationFinancialData,
 	CorporationIndustryJobData,
@@ -546,11 +547,11 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 		const verifiedRoles = rolesData
 			? [
-					...(rolesData.roles || []),
-					...(rolesData.rolesAtHq || []),
-					...(rolesData.rolesAtBase || []),
-					...(rolesData.rolesAtOther || []),
-				]
+				...(rolesData.roles || []),
+				...(rolesData.rolesAtHq || []),
+				...(rolesData.rolesAtBase || []),
+				...(rolesData.rolesAtOther || []),
+			]
 			: []
 
 		return {
@@ -971,15 +972,15 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			const existingRows =
 				batchJournalIds.length > 0
 					? await this.getDb().query.corporationWalletJournal.findMany({
-							where: and(
-								eq(corporationWalletJournal.corporationId, String(corporationId)),
-								eq(corporationWalletJournal.division, division),
-								inArray(corporationWalletJournal.journalId, batchJournalIds)
-							),
-							columns: {
-								journalId: true,
-							},
-						})
+						where: and(
+							eq(corporationWalletJournal.corporationId, String(corporationId)),
+							eq(corporationWalletJournal.division, division),
+							inArray(corporationWalletJournal.journalId, batchJournalIds)
+						),
+						columns: {
+							journalId: true,
+						},
+					})
 					: []
 			const existingJournalIds = new Set(existingRows.map((row) => row.journalId))
 			persistedNewRows += batchJournalIds.filter((id) => !existingJournalIds.has(id)).length
@@ -1043,15 +1044,15 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			const existingRows =
 				batchTransactionIds.length > 0
 					? await this.getDb().query.corporationWalletTransactions.findMany({
-							where: and(
-								eq(corporationWalletTransactions.corporationId, String(corporationId)),
-								eq(corporationWalletTransactions.division, division),
-								inArray(corporationWalletTransactions.transactionId, batchTransactionIds)
-							),
-							columns: {
-								transactionId: true,
-							},
-						})
+						where: and(
+							eq(corporationWalletTransactions.corporationId, String(corporationId)),
+							eq(corporationWalletTransactions.division, division),
+							inArray(corporationWalletTransactions.transactionId, batchTransactionIds)
+						),
+						columns: {
+							transactionId: true,
+						},
+					})
 					: []
 			const existingTransactionIds = new Set(existingRows.map((row) => row.transactionId))
 			persistedNewRows += batchTransactionIds.filter((id) => !existingTransactionIds.has(id)).length
@@ -2696,14 +2697,14 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	async getWallets(corporationId: string, division?: number): Promise<CorporationWalletData[]> {
 		const results = division
 			? await this.getDb().query.corporationWallets.findMany({
-					where: and(
-						eq(corporationWallets.corporationId, corporationId),
-						eq(corporationWallets.division, division)
-					),
-				})
+				where: and(
+					eq(corporationWallets.corporationId, corporationId),
+					eq(corporationWallets.division, division)
+				),
+			})
 			: await this.getDb().query.corporationWallets.findMany({
-					where: eq(corporationWallets.corporationId, corporationId),
-				})
+				where: eq(corporationWallets.corporationId, corporationId),
+			})
 
 		return results.map((r) => ({
 			id: r.id,
@@ -2724,18 +2725,18 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	): Promise<CorporationWalletJournalData[]> {
 		const results = division
 			? await this.getDb().query.corporationWalletJournal.findMany({
-					where: and(
-						eq(corporationWalletJournal.corporationId, corporationId),
-						eq(corporationWalletJournal.division, division)
-					),
-					orderBy: desc(corporationWalletJournal.date),
-					limit,
-				})
+				where: and(
+					eq(corporationWalletJournal.corporationId, corporationId),
+					eq(corporationWalletJournal.division, division)
+				),
+				orderBy: desc(corporationWalletJournal.date),
+				limit,
+			})
 			: await this.getDb().query.corporationWalletJournal.findMany({
-					where: eq(corporationWalletJournal.corporationId, corporationId),
-					orderBy: desc(corporationWalletJournal.date),
-					limit,
-				})
+				where: eq(corporationWalletJournal.corporationId, corporationId),
+				orderBy: desc(corporationWalletJournal.date),
+				limit,
+			})
 
 		return results.map((r) => ({
 			id: r.id,
@@ -2768,18 +2769,18 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	): Promise<CorporationWalletTransactionData[]> {
 		const results = division
 			? await this.getDb().query.corporationWalletTransactions.findMany({
-					where: and(
-						eq(corporationWalletTransactions.corporationId, corporationId),
-						eq(corporationWalletTransactions.division, division)
-					),
-					orderBy: desc(corporationWalletTransactions.date),
-					limit,
-				})
+				where: and(
+					eq(corporationWalletTransactions.corporationId, corporationId),
+					eq(corporationWalletTransactions.division, division)
+				),
+				orderBy: desc(corporationWalletTransactions.date),
+				limit,
+			})
 			: await this.getDb().query.corporationWalletTransactions.findMany({
-					where: eq(corporationWalletTransactions.corporationId, corporationId),
-					orderBy: desc(corporationWalletTransactions.date),
-					limit,
-				})
+				where: eq(corporationWalletTransactions.corporationId, corporationId),
+				orderBy: desc(corporationWalletTransactions.date),
+				limit,
+			})
 
 		return results.map((r) => ({
 			id: r.id,
@@ -3310,14 +3311,14 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	async getContracts(corporationId: string, status?: string): Promise<CorporationContractData[]> {
 		const results = status
 			? await this.getDb().query.corporationContracts.findMany({
-					where: and(
-						eq(corporationContracts.corporationId, corporationId),
-						eq(corporationContracts.status, status)
-					),
-				})
+				where: and(
+					eq(corporationContracts.corporationId, corporationId),
+					eq(corporationContracts.status, status)
+				),
+			})
 			: await this.getDb().query.corporationContracts.findMany({
-					where: eq(corporationContracts.corporationId, corporationId),
-				})
+				where: eq(corporationContracts.corporationId, corporationId),
+			})
 
 		return results.map((r) => ({
 			id: r.id,
@@ -3349,6 +3350,93 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	}
 
 	/**
+	 * Get alliance courier contracts by assignee ID
+	 */
+	async getAllianceCourierContracts(
+		allianceId: string,
+		status?: string
+	): Promise<CorporationContractData[]> {
+		const conditions: SQL[] = [
+			eq(corporationContracts.assigneeId, allianceId),
+			eq(corporationContracts.type, 'courier'),
+			eq(corporationContracts.availability, 'alliance'),
+		]
+		if (status) {
+			conditions.push(eq(corporationContracts.status, status))
+		}
+
+		const results = await this.getDb().query.corporationContracts.findMany({
+			where: and(...conditions),
+			orderBy: [desc(corporationContracts.dateIssued)],
+		})
+
+		return results.map((r) => ({
+			id: r.id,
+			corporationId: r.corporationId,
+			contractId: r.contractId,
+			acceptorId: r.acceptorId,
+			assigneeId: r.assigneeId,
+			availability: r.availability,
+			buyout: r.buyout,
+			collateral: r.collateral,
+			dateAccepted: r.dateAccepted,
+			dateCompleted: r.dateCompleted,
+			dateExpired: r.dateExpired,
+			dateIssued: r.dateIssued,
+			daysToComplete: r.daysToComplete,
+			endLocationId: r.endLocationId,
+			forCorporation: r.forCorporation,
+			issuerCorporationId: r.issuerCorporationId,
+			issuerId: r.issuerId,
+			price: r.price,
+			reward: r.reward,
+			startLocationId: r.startLocationId,
+			status: r.status,
+			title: r.title,
+			type: r.type,
+			volume: r.volume,
+			updatedAt: r.updatedAt,
+		}))
+	}
+
+	/**
+	 * Get leaderboard for completed courier contracts assigned to an alliance
+	 */
+	async getCourierLeaderboard(allianceId: string): Promise<CourierLeaderboardEntry[]> {
+		const results = await this.getDb()
+			.select({
+				acceptorId: corporationContracts.acceptorId,
+				contractsCompleted: sql<number>`count(*)`.as('contracts_completed'),
+				totalVolume: sql<number>`coalesce(sum(cast(${corporationContracts.volume} as numeric)), 0)`.as(
+					'total_volume'
+				),
+				totalReward: sql<number>`coalesce(sum(cast(${corporationContracts.reward} as numeric)), 0)`.as(
+					'total_reward'
+				),
+			})
+			.from(corporationContracts)
+			.where(
+				and(
+					eq(corporationContracts.assigneeId, allianceId),
+					eq(corporationContracts.type, 'courier'),
+					eq(corporationContracts.availability, 'alliance'),
+					eq(corporationContracts.status, 'finished')
+				)
+			)
+			.groupBy(corporationContracts.acceptorId)
+			.orderBy(sql`count(*) desc`)
+
+		return results
+			.filter((r) => r.acceptorId !== null)
+			.map((r) => ({
+				acceptorId: r.acceptorId!,
+				contractsCompleted: Number(r.contractsCompleted),
+				totalVolume: Number(r.totalVolume),
+				totalReward: Number(r.totalReward),
+			}))
+	}
+
+	/**
 	 * Get corporation industry jobs
 	 */
 	async getIndustryJobs(
@@ -3357,14 +3445,14 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	): Promise<CorporationIndustryJobData[]> {
 		const results = status
 			? await this.getDb().query.corporationIndustryJobs.findMany({
-					where: and(
-						eq(corporationIndustryJobs.corporationId, corporationId),
-						eq(corporationIndustryJobs.status, status)
-					),
-				})
+				where: and(
+					eq(corporationIndustryJobs.corporationId, corporationId),
+					eq(corporationIndustryJobs.status, status)
+				),
+			})
 			: await this.getDb().query.corporationIndustryJobs.findMany({
-					where: eq(corporationIndustryJobs.corporationId, corporationId),
-				})
+				where: eq(corporationIndustryJobs.corporationId, corporationId),
+			})
 
 		return results.map((r) => ({
 			id: r.id,

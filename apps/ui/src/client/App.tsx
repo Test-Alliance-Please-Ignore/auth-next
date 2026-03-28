@@ -88,6 +88,8 @@ const FreightCalculator = lazy(() => import('./features/freight/routes/index'))
 const FreightManage = lazy(() => import('./features/freight/routes/manage'))
 const FreightManageNew = lazy(() => import('./features/freight/routes/manage-new'))
 const FreightManageEdit = lazy(() => import('./features/freight/routes/manage-edit'))
+const FreightContracts = lazy(() => import('./features/freight/routes/contracts'))
+const FreightLeaderboard = lazy(() => import('./features/freight/routes/leaderboard'))
 
 // Create a client
 const queryClient = new QueryClient({
@@ -465,6 +467,22 @@ export default function App() {
 								element={
 									<Suspense fallback={<LoadingPage />}>
 										<FreightManageEdit />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/freight/contracts"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<FreightContracts />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/freight/leaderboard"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<FreightLeaderboard />
 									</Suspense>
 								}
 							/>

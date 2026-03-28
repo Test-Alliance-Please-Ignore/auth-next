@@ -63,8 +63,10 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 	const mainCharacter = user?.characters.find((c) => c.characterId === user.mainCharacterId)
 	const isSiteAdmin = user?.is_admin === true
 	const isTaxRoute = location.pathname === '/tax' || location.pathname.startsWith('/tax/')
+	const isFreightRoute = location.pathname === '/freight' || location.pathname.startsWith('/freight/')
 	const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({
 		'/tax': isTaxRoute,
+		'/freight': isFreightRoute,
 		'#external': true,
 	})
 
@@ -77,6 +79,12 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 			setOpenMenus((prev) => ({ ...prev, '/tax': true }))
 		}
 	}, [isTaxRoute])
+
+	useEffect(() => {
+		if (isFreightRoute) {
+			setOpenMenus((prev) => ({ ...prev, '/freight': true }))
+		}
+	}, [isFreightRoute])
 
 	const navItems: SidebarNavItem[] = [
 		{
@@ -130,6 +138,14 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 			label: 'Freight',
 			href: '/freight',
 			icon: Truck,
+			children: [
+				{ label: 'Calculator', href: '/freight' },
+				{ label: 'Open Contracts', href: '/freight/contracts' },
+				{ label: 'Leaderboard', href: '/freight/leaderboard' },
+				...(isSiteAdmin || hasAnyPermission('urn:freight:manager')
+					? [{ label: 'Manage Routes', href: '/freight/manage' }]
+					: []),
+			],
 		},
 	]
 
@@ -327,7 +343,9 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 										{item.children.map((child) => {
 											const childIsActive =
 												!child.external &&
-												(location.pathname === child.href ||
+												(child.href === item.href
+													? location.pathname === child.href
+													: location.pathname === child.href ||
 													location.pathname.startsWith(child.href + '/'))
 
 											if (child.external) {

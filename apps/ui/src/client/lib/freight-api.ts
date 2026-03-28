@@ -14,6 +14,52 @@ import type {
 
 const FREIGHT_API_BASE = '/freight'
 
+/**
+ * Enriched contract data returned by the API (with resolved names)
+ */
+export interface FreightContract {
+	id: string
+	corporationId: string
+	contractId: string
+	acceptorId: string | null
+	assigneeId: string
+	availability: string
+	buyout: string | null
+	collateral: string | null
+	dateAccepted: string | null
+	dateCompleted: string | null
+	dateExpired: string
+	dateIssued: string
+	daysToComplete: number | null
+	endLocationId: string | null
+	forCorporation: boolean
+	issuerCorporationId: string
+	issuerId: string
+	price: string | null
+	reward: string | null
+	startLocationId: string | null
+	status: string
+	title: string | null
+	type: string
+	volume: string | null
+	updatedAt: string
+	issuerName: string | null
+	acceptorName: string | null
+	startLocationName: string | null
+	endLocationName: string | null
+}
+
+/**
+ * Leaderboard entry returned by the API (with resolved names)
+ */
+export interface FreightLeaderboardEntry {
+	acceptorId: string
+	acceptorName: string | null
+	contractsCompleted: number
+	totalVolume: number
+	totalReward: number
+}
+
 export class FreightApiClient extends ApiClient {
 	/**
 	 * List all freight routes
@@ -65,6 +111,23 @@ export class FreightApiClient extends ApiClient {
 	 */
 	async deleteRoute(routeId: string): Promise<void> {
 		return this.delete(`${FREIGHT_API_BASE}/routes/${routeId}`)
+	}
+
+	/**
+	 * List alliance courier contracts
+	 */
+	async listContracts(filters?: { status?: string }): Promise<FreightContract[]> {
+		const params = new URLSearchParams()
+		if (filters?.status) params.set('status', filters.status)
+		const query = params.toString()
+		return this.get(`${FREIGHT_API_BASE}/contracts${query ? `?${query}` : ''}`)
+	}
+
+	/**
+	 * Get courier contract leaderboard
+	 */
+	async getLeaderboard(): Promise<FreightLeaderboardEntry[]> {
+		return this.get(`${FREIGHT_API_BASE}/leaderboard`)
 	}
 }
 
