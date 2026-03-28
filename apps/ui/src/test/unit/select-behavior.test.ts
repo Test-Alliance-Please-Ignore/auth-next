@@ -18,6 +18,18 @@ describe('select behavior invariants', () => {
 		).toBe('Amarr Navy')
 	})
 
+	it('keeps selected label visible in non-searchable mode even while focused/open', () => {
+		expect(
+			resolveSelectInputValue({
+				searchable: false,
+				queryValue: 'typing',
+				selectedOptionLabel: 'Amarr Navy',
+				open: true,
+				focused: true,
+			})
+		).toBe('Amarr Navy')
+	})
+
 	it('shows selected label in searchable mode when idle', () => {
 		expect(
 			resolveSelectInputValue({
@@ -66,6 +78,18 @@ describe('select behavior invariants', () => {
 		).toBe('ama')
 	})
 
+	it('falls back to raw query when no selected label is available', () => {
+		expect(
+			resolveSelectInputValue({
+				searchable: true,
+				queryValue: '',
+				selectedOptionLabel: null,
+				open: false,
+				focused: false,
+			})
+		).toBe('')
+	})
+
 	it('clears query on select only when searchable query text exists', () => {
 		expect(
 			shouldClearSelectQueryOnSelect({
@@ -83,6 +107,12 @@ describe('select behavior invariants', () => {
 			shouldClearSelectQueryOnSelect({
 				searchable: false,
 				queryValue: 'search term',
+			})
+		).toBe(false)
+		expect(
+			shouldClearSelectQueryOnSelect({
+				searchable: true,
+				queryValue: '   ',
 			})
 		).toBe(false)
 	})

@@ -13,8 +13,22 @@ import {
 	popoverListViewportClass,
 } from './popover-list'
 import { resolveSelectInputValue, shouldClearSelectQueryOnSelect } from './select-behavior'
+import {
+	buildKnownSelectOptions,
+	buildRenderedSelectOptions,
+	filterSelectOptions,
+	isSelectAllInternalOption,
+	resolveBaseOptions,
+	resolveCanShowSelectOptions,
+	resolveSelectedLabel,
+	resolveSelectedOption,
+	resolveSelectInputPlaceholder,
+	resolveSelectSearchFlags,
+	resolveShouldOpenSelectOnFocus,
+} from './select-logic'
 
 import type { CSSProperties, ReactNode } from 'react'
+import type { InternalSelectOption } from './select-logic'
 
 export interface SelectOption {
 	value: string
@@ -62,15 +76,6 @@ export interface SelectProps<TOption extends SelectOption> {
 	getOptionSearchText?: (option: TOption) => string
 	showValueHint?: boolean
 	selectAllOption?: SelectAllOption
-}
-
-type SelectAllInternalOption = SelectOption & { __selectAll: true }
-type InternalOption<TOption extends SelectOption> = TOption | SelectAllInternalOption
-
-function isSelectAllInternalOption<TOption extends SelectOption>(
-	option: InternalOption<TOption>
-): option is SelectAllInternalOption {
-	return '__selectAll' in option && option.__selectAll === true
 }
 
 export function Select<TOption extends SelectOption>({
@@ -136,10 +141,12 @@ export function Select<TOption extends SelectOption>({
 		? (controlledQueryOverride ?? queryValue)
 		: queryValue
 	const trimmedQuery = effectiveQueryValue.trim()
-	const hasSearchDelegate = searchable && typeof searchDelegate === 'function'
-	const queryMeetsMinimum = trimmedQuery.length >= minQueryLength
-	const queryTooShort =
-		searchable && hasSearchDelegate && trimmedQuery.length > 0 && !queryMeetsMinimum
+	const { hasSearchDelegate, queryMeetsMinimum, queryTooShort } = resolveSelectSearchFlags({
+		searchable,
+		searchDelegate,
+		trimmedQuery,
+		minQueryLength,
+	})
 	const resolvedQueryHintText =
 		queryHintText ?? `Type at least ${minQueryLength} characters to search`
 
@@ -224,25 +231,15 @@ export function Select<TOption extends SelectOption>({
 		return () => clearTimeout(timer)
 	}, [debounceMs, hasSearchDelegate, queryMeetsMinimum, searchDelegate, trimmedQuery])
 
-	const getSearchTextForFilter = (option: TOption) => {
-		const defaultSearchText = `${option.label} ${option.value} ${option.description ?? ''}`
-		return getOptionSearchText ? getOptionSearchText(option) : defaultSearchText
-	}
-
 	const baseOptions = useMemo(() => {
-		if (!hasSearchDelegate) {
-			return options
-		}
-
-		if (isCommitted || trimmedQuery.length === 0) {
-			return [] as TOption[]
-		}
-
-		if (!queryMeetsMinimum) {
-			return [] as TOption[]
-		}
-
-		return delegateOptions
+		return resolveBaseOptions({
+			hasSearchDelegate,
+			options,
+			isCommitted,
+			trimmedQuery,
+			queryMeetsMinimum,
+			delegateOptions,
+		})
 	}, [
 		delegateOptions,
 		hasSearchDelegate,
@@ -253,69 +250,37 @@ export function Select<TOption extends SelectOption>({
 	])
 
 	const filteredOptions = useMemo(() => {
-		if (!searchable) {
-			return baseOptions
-		}
+		return filterSelectOptions({
+			searchable,
+			hasSearchDelegate,
+			baseOptions,
+			trimmedQuery,
+			getOptionSearchText,
+		})
+	}, [baseOptions, getOptionSearchText, hasSearchDelegate, searchable, trimmedQuery])
 
-		if (hasSearchDelegate) {
-			return baseOptions
-		}
-
-		if (!trimmedQuery) {
-			return baseOptions
-		}
-
-		const normalizedQuery = trimmedQuery.toLowerCase()
-		return baseOptions.filter((option) =>
-			getSearchTextForFilter(option).toLowerCase().includes(normalizedQuery)
-		)
-	}, [baseOptions, hasSearchDelegate, searchable, trimmedQuery])
-
-	const selectAllInternalOption = useMemo<SelectAllInternalOption | null>(() => {
-		if (!selectAllOption) {
-			return null
-		}
-
-		return {
-			value: selectAllOption.value,
-			label: selectAllOption.label,
-			description: selectAllOption.description,
-			__selectAll: true,
-		}
-	}, [selectAllOption])
-
-	const renderedOptions = useMemo<Array<InternalOption<TOption>>>(() => {
-		if (!selectAllInternalOption) {
-			return filteredOptions
-		}
-
-		return [selectAllInternalOption, ...filteredOptions]
-	}, [filteredOptions, selectAllInternalOption])
+	const renderedOptions = useMemo<Array<InternalSelectOption<TOption>>>(
+		() =>
+			buildRenderedSelectOptions({
+				filteredOptions,
+				selectAllOption,
+			}),
+		[filteredOptions, selectAllOption]
+	)
 
 	const knownOptions = useMemo(() => {
-		const optionByValue = new Map<string, TOption>()
-		for (const option of options) {
-			optionByValue.set(option.value, option)
-		}
-		for (const option of delegateOptions) {
-			optionByValue.set(option.value, option)
-		}
-		for (const option of filteredOptions) {
-			optionByValue.set(option.value, option)
-		}
-		return [...optionByValue.values()]
+		return buildKnownSelectOptions({
+			options,
+			delegateOptions,
+			filteredOptions,
+		})
 	}, [delegateOptions, filteredOptions, options])
 
 	const selectedOption = useMemo(() => {
-		if (!selectedValue) {
-			return null
-		}
-
-		return (
-			knownOptions.find((option) => option.value === selectedValue) ??
-			knownOptions.find((option) => option.label === selectedValue) ??
-			null
-		)
+		return resolveSelectedOption({
+			knownOptions,
+			selectedValue,
+		})
 	}, [knownOptions, selectedValue])
 
 	useEffect(() => {
@@ -324,18 +289,28 @@ export function Select<TOption extends SelectOption>({
 		}
 	}, [knownOptions])
 
-	const selectedLabel = useMemo(() => {
-		if (!selectedValue) {
-			return null
-		}
-		return selectedOption?.label ?? selectedLabelByValueRef.current.get(selectedValue) ?? null
-	}, [selectedOption, selectedValue])
+	const selectedLabel = useMemo(
+		() =>
+			resolveSelectedLabel({
+				selectedValue,
+				selectedOptionLabel: selectedOption?.label ?? null,
+				cachedSelectedLabel: selectedLabelByValueRef.current.get(selectedValue) ?? null,
+			}),
+		[selectedOption, selectedValue]
+	)
 
 	const minQueryBlocked = queryTooShort
 	const isLoading = loading || delegateLoading
-	const canShowOptions = !minQueryBlocked && renderedOptions.length > 0
-	const shouldOpenOnFocus =
-		!searchable || (!isCommitted && trimmedQuery.length > 0) || renderedOptions.length > 0
+	const canShowOptions = resolveCanShowSelectOptions({
+		minQueryBlocked,
+		renderedOptionsLength: renderedOptions.length,
+	})
+	const shouldOpenOnFocus = resolveShouldOpenSelectOnFocus({
+		searchable,
+		isCommitted,
+		trimmedQuery,
+		renderedOptionsLength: renderedOptions.length,
+	})
 	const inputValue = resolveSelectInputValue({
 		searchable,
 		queryValue: effectiveQueryValue,
@@ -343,10 +318,12 @@ export function Select<TOption extends SelectOption>({
 		open,
 		focused: isInputFocused,
 	})
-	const inputPlaceholder =
-		searchable && effectiveQueryValue.length === 0 && selectedLabel !== null
-			? selectedLabel
-			: placeholder
+	const inputPlaceholder = resolveSelectInputPlaceholder({
+		searchable,
+		effectiveQueryValue,
+		selectedLabel,
+		placeholder,
+	})
 
 	useEffect(() => {
 		if (!canShowOptions) {
@@ -444,7 +421,7 @@ export function Select<TOption extends SelectOption>({
 		setQueryText('', { silent: true })
 	}
 
-	const selectOption = (option: InternalOption<TOption>) => {
+	const selectOption = (option: InternalSelectOption<TOption>) => {
 		if (disabled) return
 		setIsCommitted(true)
 

@@ -33,5 +33,5 @@ export function shouldClearSelectQueryOnSelect({
 	searchable,
 	queryValue,
 }: ShouldClearQueryOnSelectParams): boolean {
-	return searchable && queryValue.length > 0
+	return searchable && queryValue.trim().length > 0
 }
