@@ -8,14 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui
 import { Container } from '../../../components/ui/container'
 import { LoadingPage } from '../../../components/ui/loading'
 import { PageHeader } from '../../../components/ui/page-header'
+import { Select } from '../../../components/ui/select'
 import { Section } from '../../../components/ui/section'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '../../../components/ui/select'
 import {
 	Table,
 	TableBody,
@@ -270,19 +264,12 @@ export default function SkillPlanEdit() {
 															onValueChange={(value) =>
 																handleUpdateSkillLevel(skill.skillId, 'requiredLevel', value)
 															}
+															options={[1, 2, 3, 4, 5].map((level) => ({ value: String(level),
+																label: String(level),
+															}))}
+															className="w-20 mx-auto"
 															disabled={updateSkillLevels.isPending}
-														>
-															<SelectTrigger className="w-20 mx-auto">
-																<SelectValue />
-															</SelectTrigger>
-															<SelectContent>
-																{[1, 2, 3, 4, 5].map((level) => (
-																	<SelectItem key={level} value={String(level)}>
-																		{level}
-																	</SelectItem>
-																))}
-															</SelectContent>
-														</Select>
+														/>
 													</TableCell>
 													<TableCell className="text-center">
 														<Select
@@ -290,23 +277,14 @@ export default function SkillPlanEdit() {
 															onValueChange={(value) =>
 																handleUpdateSkillLevel(skill.skillId, 'recommendedLevel', value)
 															}
+															options={[1, 2, 3, 4, 5]
+																.filter((level) => level >= skill.requiredLevel)
+																.map((level) => ({ value: String(level),
+																	label: String(level),
+																}))}
+															className="w-20 mx-auto"
 															disabled={updateSkillLevels.isPending}
-														>
-															<SelectTrigger className="w-20 mx-auto">
-																<SelectValue />
-															</SelectTrigger>
-															<SelectContent>
-																{[1, 2, 3, 4, 5].map((level) => (
-																	<SelectItem
-																		key={level}
-																		value={String(level)}
-																		disabled={level < skill.requiredLevel}
-																	>
-																		{level}
-																	</SelectItem>
-																))}
-															</SelectContent>
-														</Select>
+														/>
 													</TableCell>
 													<TableCell>
 														<Button

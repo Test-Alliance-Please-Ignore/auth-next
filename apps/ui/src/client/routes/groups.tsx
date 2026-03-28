@@ -10,14 +10,8 @@ import { Container } from '@/components/ui/container'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PageHeader } from '@/components/ui/page-header'
+import { Select } from '@/components/ui/select'
 import { Section } from '@/components/ui/section'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
 import { useCategories } from '@/hooks/useCategories'
 import { useGroups } from '@/hooks/useGroups'
 import { usePageTitle } from '@/hooks/usePageTitle'
@@ -114,19 +108,14 @@ export default function GroupsPage() {
 									onValueChange={(value) =>
 										updateFilter('categoryId', value === 'all' ? undefined : value)
 									}
-								>
-									<SelectTrigger>
-										<SelectValue placeholder="All categories" />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value="all">All categories</SelectItem>
-										{categories?.map((category) => (
-											<SelectItem key={category.id} value={category.id}>
-												{category.name}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
+									options={[
+										{ value: 'all', label: 'All categories' },
+										...(categories?.map((category) => ({ value: category.id,
+											label: category.name,
+										})) ?? []),
+									]}
+									placeholder="All categories"
+								/>
 							</div>
 
 							{/* Join Mode Filter */}
@@ -137,17 +126,16 @@ export default function GroupsPage() {
 									onValueChange={(value) =>
 										updateFilter('joinMode', value === 'all' ? undefined : value)
 									}
-								>
-									<SelectTrigger>
-										<SelectValue placeholder="All join modes" />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value="all">All join modes</SelectItem>
-										<SelectItem value="open">Open</SelectItem>
-										<SelectItem value="approval">Approval</SelectItem>
-										<SelectItem value="invitation_only">Invitation Only</SelectItem>
-									</SelectContent>
-								</Select>
+									options={[
+										{ value: 'all', label: 'All join modes' },
+										{ value: 'open', label: 'Open' },
+										{ value: 'approval', label: 'Approval' },
+										{ value: 'invitation_only',
+											label: 'Invitation Only',
+										},
+									]}
+									placeholder="All join modes"
+								/>
 							</div>
 
 							{/* Search Input */}

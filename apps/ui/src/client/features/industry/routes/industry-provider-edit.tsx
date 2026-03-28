@@ -8,13 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ConfirmButton } from '@/components/ui/confirm-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { usePageTitle } from '@/hooks/usePageTitle'
@@ -201,18 +195,14 @@ export default function IndustryProviderEditPage() {
 						<div className="grid gap-4 md:grid-cols-2">
 							<div className="space-y-2">
 								<Label>Owner Type</Label>
-								<Select value={provider.ownerEntityType} disabled>
-									<SelectTrigger>
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										{Object.entries(ENTITY_TYPE_LABELS).map(([value, label]) => (
-											<SelectItem key={value} value={value}>
-												{label}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
+								<Select
+									value={provider.ownerEntityType}
+									options={Object.entries(ENTITY_TYPE_LABELS).map(([value, label]) => ({
+										value,
+										label,
+									}))}
+									disabled
+								/>
 								<p className="text-xs text-muted-foreground">
 									Owner type cannot be changed after creation
 								</p>

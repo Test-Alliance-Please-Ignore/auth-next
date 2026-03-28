@@ -4,13 +4,7 @@ import { CancelButton } from '@/components/ui/cancel-button'
 import { ConfirmButton } from '@/components/ui/confirm-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 
 import type { Category, CategoryPermission, CreateCategoryRequest, Visibility } from '@/lib/api'
 
@@ -98,37 +92,37 @@ export function CategoryForm({ category, onSubmit, onCancel, isSubmitting }: Cat
 				<Label htmlFor="visibility">Visibility</Label>
 				<Select
 					value={formData.visibility}
-					onValueChange={(value: Visibility) => setFormData({ ...formData, visibility: value })}
+					onValueChange={(value) => setFormData({ ...formData, visibility: value as Visibility })}
+					inputId="visibility"
+					options={[
+						{ value: 'public', label: 'Public - Visible to all users' },
+						{ value: 'hidden', label: 'Hidden - Only visible to members' },
+						{ value: 'system', label: 'System - Only visible to admins' },
+					]}
+					placeholder="Select visibility"
 					disabled={isSubmitting}
-				>
-					<SelectTrigger id="visibility">
-						<SelectValue placeholder="Select visibility" />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value="public">Public - Visible to all users</SelectItem>
-						<SelectItem value="hidden">Hidden - Only visible to members</SelectItem>
-						<SelectItem value="system">System - Only visible to admins</SelectItem>
-					</SelectContent>
-				</Select>
+				/>
 			</div>
 
 			<div className="space-y-2">
 				<Label htmlFor="allowGroupCreation">Group Creation Permission</Label>
 				<Select
 					value={formData.allowGroupCreation}
-					onValueChange={(value: CategoryPermission) =>
-						setFormData({ ...formData, allowGroupCreation: value })
+					onValueChange={(value) =>
+						setFormData({ ...formData, allowGroupCreation: value as CategoryPermission })
 					}
+					inputId="allowGroupCreation"
+					options={[
+						{ value: 'anyone',
+							label: 'Anyone - All users can create groups',
+						},
+						{ value: 'admin_only',
+							label: 'Admin Only - Only admins can create groups',
+						},
+					]}
+					placeholder="Select permission"
 					disabled={isSubmitting}
-				>
-					<SelectTrigger id="allowGroupCreation">
-						<SelectValue placeholder="Select permission" />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value="anyone">Anyone - All users can create groups</SelectItem>
-						<SelectItem value="admin_only">Admin Only - Only admins can create groups</SelectItem>
-					</SelectContent>
-				</Select>
+				/>
 			</div>
 
 			<div className="flex justify-end gap-2 pt-4">

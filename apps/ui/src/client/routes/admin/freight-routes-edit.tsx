@@ -7,13 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ConfirmButton } from '@/components/ui/confirm-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { useFreightRoute, useUpdateFreightRoute } from '@/hooks/useFreightRoutes'
@@ -148,9 +142,7 @@ export default function AdminFreightRoutesEditPage() {
 				collateralFeeRate: formData.collateralFeeRate.trim()
 					? (Number(formData.collateralFeeRate) / 100).toString()
 					: undefined,
-				expiration: formData.expiration.trim()
-					? Number(formData.expiration)
-					: undefined,
+				expiration: formData.expiration.trim() ? Number(formData.expiration) : undefined,
 				daysToComplete: formData.daysToComplete.trim()
 					? Number(formData.daysToComplete)
 					: undefined,
@@ -245,9 +237,7 @@ export default function AdminFreightRoutesEditPage() {
 								placeholder="e.g. Jita 4-4 CNAP or BWF-ZZ Fortizar"
 								className={errors.pickupName ? 'border-destructive' : ''}
 							/>
-							{errors.pickupName && (
-								<p className="text-sm text-destructive">{errors.pickupName}</p>
-							)}
+							{errors.pickupName && <p className="text-sm text-destructive">{errors.pickupName}</p>}
 							<p className="text-sm text-muted-foreground">
 								The pickup location name as it should appear to customers
 							</p>
@@ -392,15 +382,16 @@ export default function AdminFreightRoutesEditPage() {
 							<Select
 								value={formData.status}
 								onValueChange={(value) => handleChange('status', value as FreightRouteStatus)}
-							>
-								<SelectTrigger id="status">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="active">Active (available for use)</SelectItem>
-									<SelectItem value="inactive">Inactive (not available)</SelectItem>
-								</SelectContent>
-							</Select>
+								inputId="status"
+								options={[
+									{ value: 'active',
+										label: 'Active (available for use)',
+									},
+									{ value: 'inactive',
+										label: 'Inactive (not available)',
+									},
+								]}
+							/>
 							<p className="text-sm text-muted-foreground">
 								Set route status - only active routes are available to customers
 							</p>

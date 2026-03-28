@@ -22,13 +22,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useMessage } from '@/hooks/useMessage'
 import { cn } from '@/lib/utils'
@@ -257,11 +251,7 @@ export function ManageTemplatesDialog({
 															onClick={() => handleDelete(template.id)}
 															disabled={deleteMutation.isPending}
 														>
-															{deleteMutation.isPending ? (
-																<LoadingSpinner size="sm" />
-															) : (
-																'Confirm'
-															)}
+															{deleteMutation.isPending ? <LoadingSpinner size="sm" /> : 'Confirm'}
 														</Button>
 														<Button
 															variant="ghost"
@@ -360,20 +350,20 @@ export function ManageTemplatesDialog({
 								<Label htmlFor="status">Status</Label>
 								<Select
 									value={formData.status}
-									onValueChange={(value: 'draft' | 'active' | 'inactive') =>
-										setFormData((prev) => ({ ...prev, status: value }))
+									onValueChange={(value) =>
+										setFormData((prev) => ({
+											...prev,
+											status: value as 'draft' | 'active' | 'inactive',
+										}))
 									}
+									inputId="status"
+									options={[
+										{ value: 'active', label: 'Active' },
+										{ value: 'draft', label: 'Draft' },
+										{ value: 'inactive', label: 'Inactive' },
+									]}
 									disabled={isSaving}
-								>
-									<SelectTrigger id="status">
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value="active">Active</SelectItem>
-										<SelectItem value="draft">Draft</SelectItem>
-										<SelectItem value="inactive">Inactive</SelectItem>
-									</SelectContent>
-								</Select>
+								/>
 								<p className="text-xs text-muted-foreground">
 									Only active templates appear in the template selector.
 								</p>

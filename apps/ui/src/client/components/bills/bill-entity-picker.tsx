@@ -1,17 +1,10 @@
 import { useMemo } from 'react'
 
 import { Label } from '@/components/ui/label'
-import { SearchSelect } from '@/components/ui/search-select'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 
-import type { SearchSelectOption } from '@/components/ui/search-select'
 import type { EntitySearchType } from '@repo/bills'
+import type { SelectOption } from '@/components/ui/select'
 
 const ENTITY_TYPE_LABELS: Record<EntitySearchType, string> = {
 	character: 'Character',
@@ -29,7 +22,7 @@ type BillEntityPickerProps = {
 	onEntityTypeChange: (nextType: EntitySearchType) => void
 	query: string
 	onQueryChange: (query: string) => void
-	options: SearchSelectOption[]
+	options: SelectOption[]
 	onEntitySelect: (entityId: string, name: string) => void
 	loading: boolean
 	selectedEntityId: string
@@ -53,32 +46,35 @@ export function BillEntityPicker(props: BillEntityPickerProps) {
 				<Select
 					value={props.entityType}
 					onValueChange={(value) => props.onEntityTypeChange(value as EntitySearchType)}
-				>
-					<SelectTrigger id={props.typeFieldId}>
-						<SelectValue />
-					</SelectTrigger>
-					<SelectContent>
-						{props.allowedEntityTypes.map((entityType) => (
-							<SelectItem key={entityType} value={entityType}>
-								{ENTITY_TYPE_LABELS[entityType]}
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
+					inputId={props.typeFieldId}
+					options={props.allowedEntityTypes.map((entityType) => ({ value: entityType,
+						label: ENTITY_TYPE_LABELS[entityType],
+					}))}
+				/>
 			</div>
 			<div className="space-y-2">
 				<Label htmlFor={props.entityFieldId}>
 					{props.roleLabel} <span className="text-destructive">*</span>
 				</Label>
-				<SearchSelect
+				<Select
 					inputId={props.entityFieldId}
-					value={props.query}
-					onValueChange={props.onQueryChange}
+					value={props.selectedEntityId}
+					onValueChange={(nextValue, option) => {
+						if (!option) {
+							return
+						}
+						props.onEntitySelect(nextValue, option.label)
+					}}
+					query={props.query}
+					onQueryChange={props.onQueryChange}
+					searchable
+					searchDelegate={() => props.options}
 					options={props.options}
-					onSelect={(option) => props.onEntitySelect(option.value, option.label)}
 					loading={props.loading}
 					placeholder={`Search ${placeholderTypeLabel.toLowerCase()} name or ID`}
-					minCharsText="Type at least 2 characters to search"
+					queryHintText="Type at least 2 characters to search"
+					minQueryLength={2}
+					debounceMs={0}
 					emptyText={props.emptyText ?? `No ${props.roleLabel.toLowerCase()} matches`}
 					className={props.error ? 'border-destructive rounded-md' : ''}
 				/>

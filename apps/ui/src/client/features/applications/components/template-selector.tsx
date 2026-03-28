@@ -5,22 +5,15 @@
  * and insert its content into the message textarea.
  */
 
-import { FileText, Settings } from 'lucide-react'
+import { Settings } from 'lucide-react'
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { LoadingSpinner } from '@/components/ui/loading'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 
 import { useTemplates } from '../hooks'
-
 import { ManageTemplatesDialog } from './manage-templates-dialog'
 
 import type { MessageTemplate } from '../api'
@@ -85,41 +78,26 @@ export function TemplateSelector({
 	return (
 		<>
 			<div className={cn('flex items-center gap-2', className)}>
-				<Select value={selectedValue} onValueChange={handleValueChange}>
-					<SelectTrigger className="w-[200px] h-8 text-xs">
-						<FileText className="h-3 w-3 mr-1.5 text-muted-foreground" />
-						<SelectValue placeholder="Use template..." />
-					</SelectTrigger>
-					<SelectContent>
-						{templates && templates.length > 0 ? (
-							<>
-								{templates.map((template) => (
-									<SelectItem key={template.id} value={template.id} className="text-xs">
-										<div className="flex flex-col">
-											<span className="font-medium">{template.templateName}</span>
-											{template.description && (
-												<span className="text-muted-foreground text-xs truncate max-w-[180px]">
-													{template.description}
-												</span>
-											)}
-										</div>
-									</SelectItem>
-								))}
-								<div className="border-t my-1" />
-							</>
-						) : (
-							<div className="px-2 py-1.5 text-xs text-muted-foreground">
-								No templates available
-							</div>
-						)}
-						<SelectItem value="__manage__" className="text-xs">
-							<div className="flex items-center gap-1.5">
-								<Settings className="h-3 w-3" />
-								<span>Manage templates...</span>
-							</div>
-						</SelectItem>
-					</SelectContent>
-				</Select>
+				<div className="h-8 w-[200px]">
+					<Select
+						value={selectedValue}
+						onValueChange={handleValueChange}
+						options={[
+							...(templates?.map((template) => ({ value: template.id,
+								label: template.templateName,
+								description: template.description ?? undefined,
+							})) ?? []),
+							{ value: '__manage__',
+								label: 'Manage templates...',
+							},
+						]}
+						placeholder="Use template..."
+						className="text-xs"
+						inputClassName="h-8 text-xs"
+						contentClassName="text-xs"
+						emptyText="No templates available"
+					/>
+				</div>
 
 				<Button
 					variant="ghost"

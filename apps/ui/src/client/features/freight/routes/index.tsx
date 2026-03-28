@@ -8,7 +8,7 @@ import { Container } from '@/components/ui/container'
 import { GhostButton } from '@/components/ui/ghost-button'
 import { Label } from '@/components/ui/label'
 import { NumberInput } from '@/components/ui/number-input'
-import { SearchSelect } from '@/components/ui/search-select'
+import { Select } from '@/components/ui/select'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { PERMISSIONS, useUserPermissions } from '@/hooks/useUserPermissions'
 
@@ -47,7 +47,6 @@ export default function FreightCalculatorPage() {
 	const routeOptions = useMemo(
 		() =>
 			(routes ?? []).map((route) => ({
-				id: route.id,
 				value: route.id,
 				label: `${route.pickupName} → ${route.destinationName}`,
 				description: `${formatISK(route.iskPerVolumeUnit)}/m³`,
@@ -148,17 +147,14 @@ export default function FreightCalculatorPage() {
 						{/* Route Selection */}
 						<div className="space-y-2">
 							<Label htmlFor="route">Route</Label>
-							<SearchSelect
+							<Select
 								inputId="route"
-								value={routeQuery}
-								onValueChange={setRouteQuery}
+								value={selectedRouteId}
+								onValueChange={(nextValue) => setSelectedRouteId(nextValue)}
+								query={routeQuery}
+								onQueryChange={setRouteQuery}
 								options={routeOptions}
-								onSelect={(option) => {
-									setSelectedRouteId(option.id)
-									setRouteQuery('')
-								}}
-								filterMode="local"
-								mode="dropdown"
+								searchable
 								minQueryLength={0}
 								placeholder={
 									selectedRoute
@@ -195,7 +191,8 @@ export default function FreightCalculatorPage() {
 							<NumberInput
 								id="collateral"
 								min={0}
-								placeholder="Enter total cargo value..."
+								suffix=" ISK"
+								placeholder="1,000,000 ISK"
 								value={collateral}
 								onChange={handleCollateralChange}
 							/>

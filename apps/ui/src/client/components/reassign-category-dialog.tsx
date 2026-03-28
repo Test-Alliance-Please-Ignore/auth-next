@@ -12,13 +12,7 @@ import {
 	DialogTitle,
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import { useCategories } from '@/hooks/useCategories'
 import { useUpdateGroup } from '@/hooks/useGroups'
 
@@ -91,19 +85,13 @@ export function ReassignCategoryDialog({
 						<Select
 							value={selectedCategoryId}
 							onValueChange={setSelectedCategoryId}
+							inputId="category-select"
+							options={categories.map((category) => ({ value: category.id,
+								label: category.name,
+							}))}
+							placeholder="Select a category"
 							disabled={categoriesLoading || updateGroup.isPending}
-						>
-							<SelectTrigger id="category-select">
-								<SelectValue placeholder="Select a category" />
-							</SelectTrigger>
-							<SelectContent>
-								{categories.map((category) => (
-									<SelectItem key={category.id} value={category.id}>
-										{category.name}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
+						/>
 					</div>
 
 					{/* Preview of Change */}

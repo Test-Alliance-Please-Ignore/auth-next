@@ -15,13 +15,7 @@ import {
 import { FilterField } from '@/components/ui/filter-field'
 import { Input } from '@/components/ui/input'
 import { PrimaryButton } from '@/components/ui/primary-button'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import { formatTaxIskCompact } from '@/lib/tax-display'
 
 import type { ReactNode } from 'react'
@@ -279,18 +273,11 @@ export function TaxExportDialog(props: {
 						<Select
 							value={props.selectedExportFormat}
 							onValueChange={(value) => props.onSelectExportFormat(value as TaxExportFormat)}
-						>
-							<SelectTrigger>
-								<SelectValue placeholder="Format" />
-							</SelectTrigger>
-							<SelectContent>
-								{props.exportFormatOptions.map((option) => (
-									<SelectItem key={option.value} value={option.value}>
-										{option.label}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
+							options={props.exportFormatOptions.map((option) => ({ value: option.value,
+								label: option.label,
+							}))}
+							placeholder="Format"
+						/>
 					</div>
 				</div>
 				<DialogFooter>
@@ -348,35 +335,21 @@ export function TaxScheduleDialog(props: {
 						<Select
 							value={props.selectedScheduleFormat}
 							onValueChange={(value) => props.onSelectScheduleFormat(value as TaxExportFormat)}
-						>
-							<SelectTrigger>
-								<SelectValue placeholder="Format" />
-							</SelectTrigger>
-							<SelectContent>
-								{props.exportFormatOptions.map((option) => (
-									<SelectItem key={option.value} value={option.value}>
-										{option.label}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
+							options={props.exportFormatOptions.map((option) => ({ value: option.value,
+								label: option.label,
+							}))}
+							placeholder="Format"
+						/>
 						<Select
 							value={props.scheduleFrequency}
 							onValueChange={(value) =>
 								props.onSelectScheduleFrequency(value as 'weekly' | 'monthly')
 							}
-						>
-							<SelectTrigger>
-								<SelectValue placeholder="Frequency" />
-							</SelectTrigger>
-							<SelectContent>
-								{props.scheduleFrequencyOptions.map((option) => (
-									<SelectItem key={option.value} value={option.value}>
-										{option.label}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
+							options={props.scheduleFrequencyOptions.map((option) => ({ value: option.value,
+								label: option.label,
+							}))}
+							placeholder="Frequency"
+						/>
 					</div>
 					<div className="space-y-1 text-sm">
 						<div className="font-medium text-foreground">Applied Filters</div>

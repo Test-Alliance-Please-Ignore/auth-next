@@ -14,13 +14,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import { useCategories } from '@/hooks/useCategories'
 import { useCreateGroup, useGroups } from '@/hooks/useGroups'
 import { usePageTitle } from '@/hooks/usePageTitle'
@@ -157,19 +151,14 @@ export default function GroupsPage() {
 								onValueChange={(value) =>
 									updateFilter('categoryId', value === 'all' ? undefined : value)
 								}
-							>
-								<SelectTrigger>
-									<SelectValue placeholder="All categories" />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="all">All categories</SelectItem>
-									{categories?.map((category) => (
-										<SelectItem key={category.id} value={category.id}>
-											{category.name}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
+								options={[
+									{ value: 'all', label: 'All categories' },
+									...(categories?.map((category) => ({ value: category.id,
+										label: category.name,
+									})) ?? []),
+								]}
+								placeholder="All categories"
+							/>
 						</div>
 
 						{/* Visibility Filter */}
@@ -180,17 +169,14 @@ export default function GroupsPage() {
 								onValueChange={(value) =>
 									updateFilter('visibility', value === 'all' ? undefined : value)
 								}
-							>
-								<SelectTrigger>
-									<SelectValue placeholder="All visibilities" />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="all">All visibilities</SelectItem>
-									<SelectItem value="public">Public</SelectItem>
-									<SelectItem value="hidden">Hidden</SelectItem>
-									<SelectItem value="system">System</SelectItem>
-								</SelectContent>
-							</Select>
+								options={[
+									{ value: 'all', label: 'All visibilities' },
+									{ value: 'public', label: 'Public' },
+									{ value: 'hidden', label: 'Hidden' },
+									{ value: 'system', label: 'System' },
+								]}
+								placeholder="All visibilities"
+							/>
 						</div>
 
 						{/* Join Mode Filter */}
@@ -201,17 +187,14 @@ export default function GroupsPage() {
 								onValueChange={(value) =>
 									updateFilter('joinMode', value === 'all' ? undefined : value)
 								}
-							>
-								<SelectTrigger>
-									<SelectValue placeholder="All join modes" />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="all">All modes</SelectItem>
-									<SelectItem value="open">Open</SelectItem>
-									<SelectItem value="approval">Approval</SelectItem>
-									<SelectItem value="invitation_only">Invitation Only</SelectItem>
-								</SelectContent>
-							</Select>
+								options={[
+									{ value: 'all', label: 'All modes' },
+									{ value: 'open', label: 'Open' },
+									{ value: 'approval', label: 'Approval' },
+									{ value: 'invitation_only', label: 'Invitation Only' },
+								]}
+								placeholder="All join modes"
+							/>
 						</div>
 
 						{/* Search Input */}

@@ -20,13 +20,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
 	Table,
@@ -271,47 +265,44 @@ export default function BlacklistPage() {
 
 						<div className="space-y-2">
 							<Label htmlFor="targetType">Target Type</Label>
-							<Select value={targetTypeFilter} onValueChange={(v: any) => setTargetTypeFilter(v)}>
-								<SelectTrigger id="targetType">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="all">All Types</SelectItem>
-									<SelectItem value="user">User</SelectItem>
-									<SelectItem value="character">Character</SelectItem>
-								</SelectContent>
-							</Select>
+							<Select
+								inputId="targetType"
+								value={targetTypeFilter}
+								onValueChange={(v) => setTargetTypeFilter(v as BlacklistTargetType | 'all')}
+								options={[
+									{ value: 'all', label: 'All Types' },
+									{ value: 'user', label: 'User' },
+									{ value: 'character', label: 'Character' },
+								]}
+							/>
 						</div>
 
 						<div className="space-y-2">
 							<Label htmlFor="autoBlacklist">Auto-Blacklist</Label>
 							<Select
 								value={autoBlacklistFilter}
-								onValueChange={(v: any) => setAutoBlacklistFilter(v)}
-							>
-								<SelectTrigger id="autoBlacklist">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="all">All</SelectItem>
-									<SelectItem value="true">Auto Only</SelectItem>
-									<SelectItem value="false">Manual Only</SelectItem>
-								</SelectContent>
-							</Select>
+								onValueChange={(v) => setAutoBlacklistFilter(v as 'all' | 'true' | 'false')}
+								inputId="autoBlacklist"
+								options={[
+									{ value: 'all', label: 'All' },
+									{ value: 'true', label: 'Auto Only' },
+									{ value: 'false', label: 'Manual Only' },
+								]}
+							/>
 						</div>
 
 						<div className="space-y-2">
 							<Label htmlFor="pageSize">Page Size</Label>
-							<Select value={String(pageSize)} onValueChange={(v) => setPageSize(Number(v))}>
-								<SelectTrigger id="pageSize">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="25">25</SelectItem>
-									<SelectItem value="50">50</SelectItem>
-									<SelectItem value="100">100</SelectItem>
-								</SelectContent>
-							</Select>
+							<Select
+								inputId="pageSize"
+								value={String(pageSize)}
+								onValueChange={(v) => setPageSize(Number(v))}
+								options={[
+									{ value: '25', label: '25' },
+									{ value: '50', label: '50' },
+									{ value: '100', label: '100' },
+								]}
+							/>
 						</div>
 					</div>
 
@@ -482,20 +473,17 @@ export default function BlacklistPage() {
 								<Label htmlFor="targetType">Target Type</Label>
 								<Select
 									value={formData.targetType}
-									onValueChange={(v: 'user' | 'character') =>
-										setFormData({ ...formData, targetType: v })
+									onValueChange={(v) =>
+										setFormData({ ...formData, targetType: v as 'user' | 'character' })
 									}
-								>
-									<SelectTrigger id="targetType">
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value="user">User</SelectItem>
-										<SelectItem value="character">
-											Character (Auto-blacklists linked users)
-										</SelectItem>
-									</SelectContent>
-								</Select>
+									inputId="targetType"
+									options={[
+										{ value: 'user', label: 'User' },
+										{ value: 'character',
+											label: 'Character (Auto-blacklists linked users)',
+										},
+									]}
+								/>
 							</div>
 
 							{formData.targetType === 'user' ? (

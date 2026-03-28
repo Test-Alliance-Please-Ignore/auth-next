@@ -28,7 +28,7 @@ import {
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
-import type { SearchSelectOption } from '@/components/ui/search-select'
+import type { SelectOption } from '@/components/ui/select'
 
 export default function TaxRulesPage() {
 	usePageTitle('Tax Rules')
@@ -112,7 +112,7 @@ export default function TaxRulesPage() {
 		return map
 	}, [corporationAccess?.corporations, taxCorporations, entityNames])
 
-	const corporationSearchOptions = useMemo<SearchSelectOption[]>(
+	const corporationSearchOptions = useMemo<SelectOption[]>(
 		() =>
 			Array.from(corporationNameById.entries())
 				.filter(([corporationId]) => !excludedCorporationIdSet.has(corporationId))

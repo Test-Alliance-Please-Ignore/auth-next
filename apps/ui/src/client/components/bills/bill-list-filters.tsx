@@ -2,17 +2,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { DateRangeInput } from '@/components/ui/date-range-input'
 import { FilterField } from '@/components/ui/filter-field'
 import { GhostButton } from '@/components/ui/ghost-button'
-import { SearchSelect } from '@/components/ui/search-select'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 
 import type { BillStatus, EntityType } from '@repo/bills'
-import type { SearchSelectOption } from '@/components/ui/search-select'
+import type { SelectOption } from '@/components/ui/select'
 
 const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
 	{ value: 'all', label: 'All statuses' },
@@ -51,9 +44,9 @@ export function BillListFilters(props: {
 	setPayeeQuery: (value: string) => void
 	dueAfter?: string
 	dueBefore?: string
-	issuerOptions?: SearchSelectOption[]
-	payerOptions: SearchSelectOption[]
-	payeeOptions: SearchSelectOption[]
+	issuerOptions?: SelectOption[]
+	payerOptions: SelectOption[]
+	payeeOptions: SelectOption[]
 	issuerLoading?: boolean
 	payerLoading?: boolean
 	payeeLoading?: boolean
@@ -82,18 +75,11 @@ export function BillListFilters(props: {
 							onValueChange={(value) =>
 								props.onStatusChange(value === 'all' ? undefined : (value as BillStatus))
 							}
-						>
-							<SelectTrigger>
-								<SelectValue placeholder="All statuses" />
-							</SelectTrigger>
-							<SelectContent>
-								{STATUS_OPTIONS.map((option) => (
-									<SelectItem key={option.value} value={option.value}>
-										{option.label}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
+							options={STATUS_OPTIONS.map((option) => ({ value: option.value,
+								label: option.label,
+							}))}
+							placeholder="All statuses"
+						/>
 					</FilterField>
 					<FilterField label="Payer Type">
 						<Select
@@ -101,18 +87,11 @@ export function BillListFilters(props: {
 							onValueChange={(value) =>
 								props.onPayerTypeChange(value === 'all' ? undefined : (value as EntityType))
 							}
-						>
-							<SelectTrigger>
-								<SelectValue placeholder="All types" />
-							</SelectTrigger>
-							<SelectContent>
-								{ENTITY_TYPE_OPTIONS.map((option) => (
-									<SelectItem key={option.value} value={option.value}>
-										{option.label}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
+							options={ENTITY_TYPE_OPTIONS.map((option) => ({ value: option.value,
+								label: option.label,
+							}))}
+							placeholder="All types"
+						/>
 					</FilterField>
 					<FilterField label="Payee Type">
 						<Select
@@ -120,18 +99,11 @@ export function BillListFilters(props: {
 							onValueChange={(value) =>
 								props.onPayeeTypeChange(value === 'all' ? undefined : (value as EntityType))
 							}
-						>
-							<SelectTrigger>
-								<SelectValue placeholder="All types" />
-							</SelectTrigger>
-							<SelectContent>
-								{PAYEE_TYPE_OPTIONS.map((option) => (
-									<SelectItem key={option.value} value={option.value}>
-										{option.label}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
+							options={PAYEE_TYPE_OPTIONS.map((option) => ({ value: option.value,
+								label: option.label,
+							}))}
+							placeholder="All types"
+						/>
 					</FilterField>
 					<FilterField label="Due Date Range">
 						<DateRangeInput
@@ -152,50 +124,62 @@ export function BillListFilters(props: {
 				>
 					<div>
 						<label className="text-sm text-muted-foreground">Payer</label>
-						<SearchSelect
-							value={props.payerQuery}
-							onValueChange={props.setPayerQuery}
-							options={props.payerOptions}
-							onSelect={(option) => {
-								props.onPayerIdChange(option.value)
-								props.setPayerQuery(option.label)
+						<Select
+							value={props.payerId ?? ''}
+							onValueChange={(nextValue) => {
+								props.onPayerIdChange(nextValue || undefined)
 							}}
+							query={props.payerQuery}
+							onQueryChange={props.setPayerQuery}
+							searchable
+							searchDelegate={() => props.payerOptions}
+							options={props.payerOptions}
 							loading={props.payerLoading}
 							placeholder="Search payer name or ID"
-							minCharsText="Type at least 2 characters"
+							queryHintText="Type at least 2 characters"
+							minQueryLength={2}
+							debounceMs={0}
 							emptyText="No payer matches"
 						/>
 					</div>
 					<div>
 						<label className="text-sm text-muted-foreground">Payee</label>
-						<SearchSelect
-							value={props.payeeQuery}
-							onValueChange={props.setPayeeQuery}
-							options={props.payeeOptions}
-							onSelect={(option) => {
-								props.onPayeeIdChange(option.value)
-								props.setPayeeQuery(option.label)
+						<Select
+							value={props.payeeId ?? ''}
+							onValueChange={(nextValue) => {
+								props.onPayeeIdChange(nextValue || undefined)
 							}}
+							query={props.payeeQuery}
+							onQueryChange={props.setPayeeQuery}
+							searchable
+							searchDelegate={() => props.payeeOptions}
+							options={props.payeeOptions}
 							loading={props.payeeLoading}
 							placeholder="Search payee name or ID"
-							minCharsText="Type at least 2 characters"
+							queryHintText="Type at least 2 characters"
+							minQueryLength={2}
+							debounceMs={0}
 							emptyText="No payee matches"
 						/>
 					</div>
 					{props.onIssuerIdChange && props.setIssuerQuery ? (
 						<div>
 							<label className="text-sm text-muted-foreground">Issuer</label>
-							<SearchSelect
-								value={props.issuerQuery ?? ''}
-								onValueChange={props.setIssuerQuery}
-								options={props.issuerOptions ?? []}
-								onSelect={(option) => {
-									props.onIssuerIdChange?.(option.value)
-									props.setIssuerQuery?.(option.label)
+							<Select
+								value={props.issuerId ?? ''}
+								onValueChange={(nextValue) => {
+									props.onIssuerIdChange?.(nextValue || undefined)
 								}}
+								query={props.issuerQuery ?? ''}
+								onQueryChange={props.setIssuerQuery}
+								searchable
+								searchDelegate={() => props.issuerOptions ?? []}
+								options={props.issuerOptions ?? []}
 								loading={props.issuerLoading}
 								placeholder="Search issuer name or user ID"
-								minCharsText="Type at least 2 characters"
+								queryHintText="Type at least 2 characters"
+								minQueryLength={2}
+								debounceMs={0}
 								emptyText="No issuer matches"
 							/>
 						</div>

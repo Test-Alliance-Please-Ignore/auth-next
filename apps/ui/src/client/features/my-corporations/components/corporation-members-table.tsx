@@ -28,13 +28,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import {
 	Table,
 	TableBody,
@@ -344,40 +338,40 @@ export default function CorporationMembersTable({
 						className="flex-1"
 					/>
 
-					<Select value={authFilter} onValueChange={(v: any) => setAuthFilter(v)}>
-						<SelectTrigger className="w-[140px]">
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="all">All Auth</SelectItem>
-							<SelectItem value="linked">Linked</SelectItem>
-							<SelectItem value="unlinked">Unlinked</SelectItem>
-						</SelectContent>
-					</Select>
+					<Select
+						value={authFilter}
+						onValueChange={(v) => setAuthFilter(v as typeof authFilter)}
+						options={[
+							{ value: 'all', label: 'All Auth' },
+							{ value: 'linked', label: 'Linked' },
+							{ value: 'unlinked', label: 'Unlinked' },
+						]}
+						className="w-[140px]"
+					/>
 
-					<Select value={activityFilter} onValueChange={(v: any) => setActivityFilter(v)}>
-						<SelectTrigger className="w-[140px]">
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="all">All Activity</SelectItem>
-							<SelectItem value="active">Active</SelectItem>
-							<SelectItem value="inactive">Inactive</SelectItem>
-							<SelectItem value="unknown">Unknown</SelectItem>
-						</SelectContent>
-					</Select>
+					<Select
+						value={activityFilter}
+						onValueChange={(v) => setActivityFilter(v as typeof activityFilter)}
+						options={[
+							{ value: 'all', label: 'All Activity' },
+							{ value: 'active', label: 'Active' },
+							{ value: 'inactive', label: 'Inactive' },
+							{ value: 'unknown', label: 'Unknown' },
+						]}
+						className="w-[140px]"
+					/>
 
-					<Select value={roleFilter} onValueChange={(v: any) => setRoleFilter(v)}>
-						<SelectTrigger className="w-[140px]">
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="all">All Roles</SelectItem>
-							<SelectItem value="CEO">CEOs</SelectItem>
-							<SelectItem value="Director">Directors</SelectItem>
-							<SelectItem value="Member">Members</SelectItem>
-						</SelectContent>
-					</Select>
+					<Select
+						value={roleFilter}
+						onValueChange={(v) => setRoleFilter(v as typeof roleFilter)}
+						options={[
+							{ value: 'all', label: 'All Roles' },
+							{ value: 'CEO', label: 'CEOs' },
+							{ value: 'Director', label: 'Directors' },
+							{ value: 'Member', label: 'Members' },
+						]}
+						className="w-[140px]"
+					/>
 				</div>
 			</Card>
 

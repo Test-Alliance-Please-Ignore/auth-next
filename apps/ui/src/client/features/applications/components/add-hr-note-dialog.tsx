@@ -23,13 +23,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useMessage } from '@/hooks/useMessage'
 import { cn } from '@/lib/utils'
@@ -350,18 +344,15 @@ export function AddHRNoteDialog({
 						<Label htmlFor="priority">
 							Priority <span className="text-destructive">*</span>
 						</Label>
-						<Select value={priority} onValueChange={(v) => setPriority(v as HRNotePriority)}>
-							<SelectTrigger id="priority">
-								<SelectValue placeholder="Select priority" />
-							</SelectTrigger>
-							<SelectContent>
-								{PRIORITY_OPTIONS.map((option) => (
-									<SelectItem key={option.value} value={option.value}>
-										{option.label}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
+						<Select
+							inputId="priority"
+							value={priority}
+							onValueChange={(v) => setPriority(v as HRNotePriority)}
+							options={PRIORITY_OPTIONS.map((option) => ({ value: option.value,
+								label: option.label,
+							}))}
+							placeholder="Select priority"
+						/>
 					</div>
 
 					{/* Note Text */}

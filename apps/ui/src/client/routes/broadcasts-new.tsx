@@ -9,14 +9,8 @@ import { Container } from '@/components/ui/container'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PageHeader } from '@/components/ui/page-header'
+import { Select } from '@/components/ui/select'
 import { Section } from '@/components/ui/section'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import {
 	useBroadcastTargets,
@@ -162,19 +156,19 @@ export default function NewBroadcastPage() {
 							{/* Target Selection */}
 							<div className="space-y-2">
 								<Label htmlFor="target">Target *</Label>
-								<Select value={selectedTargetId} onValueChange={setSelectedTargetId}>
-									<SelectTrigger id="target">
-										<SelectValue placeholder="Select a broadcast target" />
-									</SelectTrigger>
-									<SelectContent>
-										{targets?.map((target) => (
-											<SelectItem key={target.id} value={target.id}>
-												{target.name}
-												{target.description && ` - ${target.description}`}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
+								<Select
+									inputId="target"
+									value={selectedTargetId}
+									onValueChange={setSelectedTargetId}
+									options={
+										targets?.map((target) => ({ value: target.id,
+											label: `${target.name}${
+												target.description ? ` - ${target.description}` : ''
+											}`,
+										})) ?? []
+									}
+									placeholder="Select a broadcast target"
+								/>
 								<p className="text-xs text-muted-foreground">
 									Choose where this broadcast should be sent
 								</p>
@@ -186,20 +180,16 @@ export default function NewBroadcastPage() {
 								<Select
 									value={selectedTemplateId}
 									onValueChange={handleTemplateChange}
+									inputId="template"
+									options={[
+										{ value: 'custom', label: 'Custom Message' },
+										...(templates?.map((template) => ({ value: template.id,
+											label: template.name,
+										})) ?? []),
+									]}
+									placeholder="Custom message"
 									disabled={!selectedTargetId}
-								>
-									<SelectTrigger id="template">
-										<SelectValue placeholder="Custom message" />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value="custom">Custom Message</SelectItem>
-										{templates?.map((template) => (
-											<SelectItem key={template.id} value={template.id}>
-												{template.name}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
+								/>
 								<p className="text-xs text-muted-foreground">
 									{!selectedTargetId
 										? 'Select a target first'
@@ -210,16 +200,16 @@ export default function NewBroadcastPage() {
 							{/* Mention Level Selection */}
 							<div className="space-y-2">
 								<Label htmlFor="mentions">Mentions</Label>
-								<Select value={mentionLevel} onValueChange={(value: any) => setMentionLevel(value)}>
-									<SelectTrigger id="mentions">
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value="none">No mention</SelectItem>
-										<SelectItem value="here">@here</SelectItem>
-										<SelectItem value="everyone">@everyone</SelectItem>
-									</SelectContent>
-								</Select>
+								<Select
+									inputId="mentions"
+									value={mentionLevel}
+									onValueChange={(value) => setMentionLevel(value as typeof mentionLevel)}
+									options={[
+										{ value: 'none', label: 'No mention' },
+										{ value: 'here', label: '@here' },
+										{ value: 'everyone', label: '@everyone' },
+									]}
+								/>
 								<p className="text-xs text-muted-foreground">
 									Add a mention to the beginning of the broadcast
 								</p>

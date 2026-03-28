@@ -4,7 +4,7 @@ import { useCreateInvitation, useSearchCharacters } from '@/hooks/useGroups'
 
 import { Button } from './ui/button'
 import { Card } from './ui/card'
-import { SearchSelect } from './ui/search-select'
+import { Select } from './ui/select'
 
 interface InviteMemberFormProps {
 	groupId: string
@@ -30,9 +30,9 @@ export function InviteMemberForm({ groupId, onSuccess }: InviteMemberFormProps) 
 		return () => clearTimeout(timer)
 	}, [searchQuery])
 
-	const handleSelectCharacter = (character: { characterId: string; characterName: string }) => {
-		setSearchQuery(character.characterName)
-		setSelectedCharacter(character.characterName)
+	const handleSelectCharacter = (characterName: string) => {
+		setSearchQuery(characterName)
+		setSelectedCharacter(characterName)
 		setErrorMessage(null)
 	}
 
@@ -79,21 +79,36 @@ export function InviteMemberForm({ groupId, onSuccess }: InviteMemberFormProps) 
 
 			<form onSubmit={handleSubmit} className="space-y-3">
 				<div className="flex gap-2">
-					<SearchSelect
+					<Select
 						className="flex-1"
-						value={searchQuery}
-						onValueChange={handleSearchValueChange}
+						value={selectedCharacter}
+						onValueChange={(nextValue, option) => {
+							if (!option) {
+								return
+							}
+							handleSelectCharacter(option.label)
+							setSelectedCharacter(nextValue)
+						}}
+						query={searchQuery}
+						onQueryChange={handleSearchValueChange}
+						searchable
+						searchDelegate={() =>
+							(searchResults || []).map((character) => ({
+								value: character.characterName,
+								label: character.characterName,
+							}))
+						}
 						options={(searchResults || []).map((character) => ({
-							id: character.characterId,
 							value: character.characterName,
 							label: character.characterName,
 						}))}
-						onSelect={(option) => handleSelectCharacter({ characterId: option.id, characterName: option.label })}
-						filterMode="server"
 						minQueryLength={2}
+						debounceMs={0}
 						placeholder="Enter main character name..."
-						loading={searchQuery.length >= 2 && (isSearching || searchQuery !== debouncedSearchQuery)}
-						minCharsText="Type at least 2 characters"
+						loading={
+							searchQuery.length >= 2 && (isSearching || searchQuery !== debouncedSearchQuery)
+						}
+						queryHintText="Type at least 2 characters"
 						loadingText="Searching..."
 						emptyText="No characters found"
 					/>

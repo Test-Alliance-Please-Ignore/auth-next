@@ -91,15 +91,11 @@ export default function AdminBillsPage() {
 		enabled: debouncedIssuerQuery.trim().length >= 2,
 	})
 	const issuerOptions = useMemo(() => {
-		const deduped = new Map<
-			string,
-			{ id: string; value: string; label: string; description: string }
-		>()
+		const deduped = new Map<string, { value: string; label: string; description: string }>()
 		for (const row of issuerSearch.data ?? []) {
 			const key = row.entityId
 			if (deduped.has(key)) continue
 			deduped.set(key, {
-				id: key,
 				value: row.entityId,
 				label: row.name || row.entityId,
 				description: row.entityId,
@@ -108,15 +104,11 @@ export default function AdminBillsPage() {
 		return [...deduped.values()]
 	}, [issuerSearch.data])
 	const payerOptions = useMemo(() => {
-		const deduped = new Map<
-			string,
-			{ id: string; value: string; label: string; description: string }
-		>()
+		const deduped = new Map<string, { value: string; label: string; description: string }>()
 		for (const row of payerSearch.data ?? []) {
 			const key = row.entityId
 			if (deduped.has(key)) continue
 			deduped.set(key, {
-				id: key,
 				value: row.entityId,
 				label: row.name || row.entityId,
 				description: row.entityId,
@@ -125,15 +117,11 @@ export default function AdminBillsPage() {
 		return [...deduped.values()]
 	}, [payerSearch.data])
 	const payeeOptions = useMemo(() => {
-		const deduped = new Map<
-			string,
-			{ id: string; value: string; label: string; description: string }
-		>()
+		const deduped = new Map<string, { value: string; label: string; description: string }>()
 		for (const row of payeeSearch.data ?? []) {
 			const key = row.entityId
 			if (deduped.has(key)) continue
 			deduped.set(key, {
-				id: key,
 				value: row.entityId,
 				label: row.name || row.entityId,
 				description: row.entityId,

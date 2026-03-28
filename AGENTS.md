@@ -945,8 +945,7 @@ const queries = useQueries({
 
 - **Do not use native `<select>` in UI routes/components** unless explicitly requested for a very specific platform behavior.
 - **Use shared UI primitives**:
-  - `Select` from `apps/ui/src/client/components/ui/select.tsx` for standard dropdowns
-  - `SearchSelect` from `apps/ui/src/client/components/ui/search-select.tsx` for searchable/async lookup dropdowns
+  - `Select` from `apps/ui/src/client/components/ui/select.tsx` for both standard dropdowns and searchable/async lookup dropdowns (`searchable` + `searchDelegate` when needed)
 - **Keep popover list behavior/styling consistent** by relying on shared popover list styles/components in `apps/ui/src/client/components/ui/popover-list.tsx` (scroll buttons, item active/hover states, viewport).
 - When migrating existing forms, prefer converting native selects to these shared components rather than introducing new one-off dropdown implementations.
 

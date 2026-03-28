@@ -9,7 +9,7 @@ import { FilterField } from '@/components/ui/filter-field'
 import { GhostButton } from '@/components/ui/ghost-button'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
-import { SearchSelect } from '@/components/ui/search-select'
+import { Select } from '@/components/ui/select'
 import { Section } from '@/components/ui/section'
 import {
 	useTaxCapabilities,
@@ -38,14 +38,11 @@ import type { TaxLedgerEntry } from '@repo/corporation-tax'
 
 const PAGE_SIZE = 50
 const DEFAULT_MONTH_RANGE = getCurrentMonthDateRange()
-const ALL_DIVISIONS_OPTION = {
-	id: '__all_divisions__',
-	value: '',
-	label: 'All divisions',
-} as const
+const ALL_DIVISIONS_VALUE = '__all_divisions__'
+const ALL_INCOME_TYPES_VALUE = '__all_income_types__'
+const ALL_DIVISIONS_OPTION = { value: ALL_DIVISIONS_VALUE, label: 'All divisions' } as const
 const ALL_INCOME_TYPES_OPTION = {
-	id: '__all_income_types__',
-	value: '',
+	value: ALL_INCOME_TYPES_VALUE,
 	label: 'All income types',
 } as const
 const LEDGER_SOURCE_TYPES = new Set([
@@ -70,7 +67,7 @@ function parseCsv(value: string): string[] {
 		.filter(Boolean)
 }
 
-function toSearchOptions(options: Array<{ id: string; value: string; label: string }>) {
+function toSearchOptions(options: Array<{ value: string; label: string }>) {
 	return options
 }
 
@@ -89,9 +86,9 @@ export default function TaxLedgerPage() {
 	const [pageSize, setPageSize] = useState(PAGE_SIZE)
 	const [fromDate, setFromDate] = useState(DEFAULT_MONTH_RANGE.fromDate)
 	const [toDate, setToDate] = useState(DEFAULT_MONTH_RANGE.toDate)
-	const [divisionFilter, setDivisionFilter] = useState('')
+	const [divisionFilter, setDivisionFilter] = useState(ALL_DIVISIONS_VALUE)
 	const [divisionQuery, setDivisionQuery] = useState('')
-	const [refTypesFilter, setRefTypesFilter] = useState('')
+	const [refTypesFilter, setRefTypesFilter] = useState(ALL_INCOME_TYPES_VALUE)
 	const [refTypeQuery, setRefTypeQuery] = useState('')
 	const [sourceTypesFilter, setSourceTypesFilter] = useState('')
 	const [sourceTypeQuery, setSourceTypeQuery] = useState('')
@@ -110,7 +107,7 @@ export default function TaxLedgerPage() {
 
 	useEffect(() => {
 		if (!effectiveCorporationId) {
-			setDivisionFilter('')
+			setDivisionFilter(ALL_DIVISIONS_VALUE)
 			setDivisionQuery('')
 		}
 	}, [effectiveCorporationId])
@@ -125,7 +122,6 @@ export default function TaxLedgerPage() {
 		() => [
 			ALL_DIVISIONS_OPTION,
 			...walletDivisions.map((division) => ({
-				id: String(division),
 				value: String(division),
 				label: formatTaxDivisionLabel(division),
 			})),
@@ -139,20 +135,23 @@ export default function TaxLedgerPage() {
 	)
 
 	useEffect(() => {
-		if (!divisionFilter) {
+		if (divisionFilter === ALL_DIVISIONS_VALUE) {
 			return
 		}
 		if (!walletDivisions.includes(Number(divisionFilter))) {
-			setDivisionFilter('')
+			setDivisionFilter(ALL_DIVISIONS_VALUE)
 			setDivisionQuery('')
 		}
 	}, [divisionFilter, walletDivisions])
 
 	const divisionValue =
-		divisionFilter.trim() !== '' && Number.isInteger(Number(divisionFilter))
+		divisionFilter !== ALL_DIVISIONS_VALUE && Number.isInteger(Number(divisionFilter))
 			? Number(divisionFilter)
 			: undefined
-	const refTypesValue = useMemo(() => parseCsv(refTypesFilter), [refTypesFilter])
+	const refTypesValue = useMemo(
+		() => (refTypesFilter === ALL_INCOME_TYPES_VALUE ? [] : parseCsv(refTypesFilter)),
+		[refTypesFilter]
+	)
 	const sourceTypesValue = useMemo(
 		() =>
 			parseCsv(sourceTypesFilter).filter((sourceType) =>
@@ -261,7 +260,6 @@ export default function TaxLedgerPage() {
 	const senderPartyOptions = useMemo(
 		() =>
 			senderPartyRows.map((party) => ({
-				id: party.entityId,
 				value: party.entityId,
 				label: party.entityName ?? entityNames[party.entityId] ?? party.entityId,
 				description: party.entityId,
@@ -271,7 +269,6 @@ export default function TaxLedgerPage() {
 	const recipientPartyOptions = useMemo(
 		() =>
 			recipientPartyRows.map((party) => ({
-				id: party.entityId,
 				value: party.entityId,
 				label: party.entityName ?? entityNames[party.entityId] ?? party.entityId,
 				description: party.entityId,
@@ -352,9 +349,9 @@ export default function TaxLedgerPage() {
 	const resetFilters = () => {
 		setFromDate(DEFAULT_MONTH_RANGE.fromDate)
 		setToDate(DEFAULT_MONTH_RANGE.toDate)
-		setDivisionFilter('')
+		setDivisionFilter(ALL_DIVISIONS_VALUE)
 		setDivisionQuery('')
-		setRefTypesFilter('')
+		setRefTypesFilter(ALL_INCOME_TYPES_VALUE)
 		setRefTypeQuery('')
 		setSourceTypesFilter('')
 		setSourceTypeQuery('')
@@ -424,53 +421,56 @@ export default function TaxLedgerPage() {
 							/>
 						</FilterField>
 						<FilterField label="Division">
-							<SearchSelect
-								value={divisionQuery}
-								onValueChange={setDivisionQuery}
-								options={toSearchOptions(divisionOptions)}
-								onSelect={(option) => {
-									setDivisionFilter(option.value)
+							<Select
+								value={divisionFilter}
+								onValueChange={(nextValue) => {
+									setDivisionFilter(nextValue)
 									setDivisionQuery('')
 								}}
-								filterMode="local"
-								mode="dropdown"
-								minQueryLength={0}
+								query={divisionQuery}
+								onQueryChange={setDivisionQuery}
+								searchable
+								options={toSearchOptions(divisionOptions)}
 								disabled={!effectiveCorporationId}
 								placeholder={
-									divisionFilter ? formatTaxDivisionLabel(divisionFilter) : 'All divisions'
+									divisionFilter === ALL_DIVISIONS_VALUE
+										? 'All divisions'
+										: formatTaxDivisionLabel(divisionFilter)
 								}
 								emptyText="No wallet divisions found"
 							/>
 						</FilterField>
 						<FilterField label="Income type">
-							<SearchSelect
-								value={refTypeQuery}
-								onValueChange={setRefTypeQuery}
-								options={incomeTypeOptions}
-								onSelect={(option) => {
-									setRefTypesFilter(option.value)
+							<Select
+								value={refTypesFilter}
+								onValueChange={(nextValue) => {
+									setRefTypesFilter(nextValue)
 									setRefTypeQuery('')
 								}}
-								filterMode="local"
-								mode="dropdown"
+								query={refTypeQuery}
+								onQueryChange={setRefTypeQuery}
+								searchable
+								options={incomeTypeOptions}
 								listMaxHeight={420}
 								placeholder={
-									refTypesFilter ? formatTaxRefTypeLabel(refTypesFilter) : 'All income types'
+									refTypesFilter === ALL_INCOME_TYPES_VALUE
+										? 'All income types'
+										: formatTaxRefTypeLabel(refTypesFilter)
 								}
 								emptyText="No income types found"
 							/>
 						</FilterField>
 						<FilterField label="Source type">
-							<SearchSelect
-								value={sourceTypeQuery}
-								onValueChange={setSourceTypeQuery}
-								options={toSearchOptions(TAX_LEDGER_SOURCE_TYPE_OPTIONS)}
-								onSelect={(option) => {
-									setSourceTypesFilter(option.value)
+							<Select
+								value={sourceTypesFilter}
+								onValueChange={(nextValue) => {
+									setSourceTypesFilter(nextValue)
 									setSourceTypeQuery('')
 								}}
-								filterMode="local"
-								mode="dropdown"
+								query={sourceTypeQuery}
+								onQueryChange={setSourceTypeQuery}
+								searchable
+								options={toSearchOptions(TAX_LEDGER_SOURCE_TYPE_OPTIONS)}
 								listClassName="max-h-72"
 								placeholder={
 									sourceTypesFilter
@@ -488,9 +488,13 @@ export default function TaxLedgerPage() {
 							/>
 						</FilterField>
 						<FilterField label="Sender">
-							<SearchSelect
-								value={firstPartyQuery}
-								onValueChange={(value) => {
+							<Select
+								value={firstPartyIdFilter}
+								onValueChange={(nextValue) => {
+									setFirstPartyIdFilter(nextValue)
+								}}
+								query={firstPartyQuery}
+								onQueryChange={(value) => {
 									setFirstPartyQuery(value)
 									if (!value.trim()) {
 										setFirstPartyIdFilter('')
@@ -498,16 +502,13 @@ export default function TaxLedgerPage() {
 									}
 									setFirstPartyIdFilter('')
 								}}
+								searchable
+								searchDelegate={() => senderPartyOptions}
 								options={senderPartyOptions}
-								onSelect={(option) => {
-									setFirstPartyIdFilter(option.value)
-									setFirstPartyQuery('')
-								}}
-								filterMode="server"
-								mode="search"
 								minQueryLength={2}
+								debounceMs={0}
 								loading={senderPartiesLoading || firstPartySearchPending}
-								minCharsText="Type at least 2 characters to search senders"
+								queryHintText="Type at least 2 characters to search senders"
 								placeholder={
 									firstPartyIdFilter
 										? (partyNameById.get(firstPartyIdFilter) ?? firstPartyIdFilter)
@@ -517,9 +518,13 @@ export default function TaxLedgerPage() {
 							/>
 						</FilterField>
 						<FilterField label="Recipient">
-							<SearchSelect
-								value={secondPartyQuery}
-								onValueChange={(value) => {
+							<Select
+								value={secondPartyIdFilter}
+								onValueChange={(nextValue) => {
+									setSecondPartyIdFilter(nextValue)
+								}}
+								query={secondPartyQuery}
+								onQueryChange={(value) => {
 									setSecondPartyQuery(value)
 									if (!value.trim()) {
 										setSecondPartyIdFilter('')
@@ -527,16 +532,13 @@ export default function TaxLedgerPage() {
 									}
 									setSecondPartyIdFilter('')
 								}}
+								searchable
+								searchDelegate={() => recipientPartyOptions}
 								options={recipientPartyOptions}
-								onSelect={(option) => {
-									setSecondPartyIdFilter(option.value)
-									setSecondPartyQuery('')
-								}}
-								filterMode="server"
-								mode="search"
 								minQueryLength={2}
+								debounceMs={0}
 								loading={recipientPartiesLoading || secondPartySearchPending}
-								minCharsText="Type at least 2 characters to search recipients"
+								queryHintText="Type at least 2 characters to search recipients"
 								placeholder={
 									secondPartyIdFilter
 										? (partyNameById.get(secondPartyIdFilter) ?? secondPartyIdFilter)

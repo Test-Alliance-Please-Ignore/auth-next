@@ -4,13 +4,7 @@ import { useState } from 'react'
 import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
 import { Label } from '../../../components/ui/label'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '../../../components/ui/select'
+import { Select } from '../../../components/ui/select'
 import { Skeleton } from '../../../components/ui/skeleton'
 import { useSkillPlanCategories } from '../hooks'
 
@@ -66,19 +60,13 @@ export function CategorySelector({ value = [], onChange, disabled }: CategorySel
 					<Select
 						value={selectedCategoryId}
 						onValueChange={setSelectedCategoryId}
+						options={availableCategories.map((category) => ({ value: category.id,
+							label: category.name,
+						}))}
+						placeholder="Select a category to add"
+						className="flex-1"
 						disabled={disabled}
-					>
-						<SelectTrigger className="flex-1">
-							<SelectValue placeholder="Select a category to add" />
-						</SelectTrigger>
-						<SelectContent>
-							{availableCategories.map((category) => (
-								<SelectItem key={category.id} value={category.id}>
-									{category.name}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
+					/>
 					<Button
 						type="button"
 						onClick={handleAddCategory}

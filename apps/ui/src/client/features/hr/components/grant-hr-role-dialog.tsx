@@ -11,13 +11,7 @@ import {
 	DialogTitle,
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 
 import { HR_ROLE_DESCRIPTIONS, HR_ROLE_NAMES } from '../api'
 import { HrRoleBadge } from './hr-role-badge'
@@ -111,20 +105,11 @@ export function GrantHrRoleDialog({
 						<Select
 							value={selectedRole}
 							onValueChange={(value) => setSelectedRole(value as HrRoleType)}
-						>
-							<SelectTrigger id="hr-role">
-								<SelectValue />
-							</SelectTrigger>
-							<SelectContent>
-								{HR_ROLES.map((role) => (
-									<SelectItem key={role} value={role}>
-										<div className="flex items-center gap-2">
-											<span>{HR_ROLE_NAMES[role]}</span>
-										</div>
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
+							inputId="hr-role"
+							options={HR_ROLES.map((role) => ({ value: role,
+								label: HR_ROLE_NAMES[role],
+							}))}
+						/>
 						<p className="text-xs text-muted-foreground">
 							Select the HR role to grant to this member
 						</p>

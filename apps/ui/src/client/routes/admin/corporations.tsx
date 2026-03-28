@@ -29,13 +29,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import {
 	Table,
@@ -97,7 +91,8 @@ export default function CorporationsPage() {
 		const query = searchQuery.trim().toLowerCase()
 		const filtered = query
 			? corporations.filter(
-					(corp) => corp.name.toLowerCase().includes(query) || corp.ticker.toLowerCase().includes(query)
+					(corp) =>
+						corp.name.toLowerCase().includes(query) || corp.ticker.toLowerCase().includes(query)
 				)
 			: corporations
 
@@ -291,18 +286,16 @@ export default function CorporationsPage() {
 													: (value as 'member' | 'alt' | 'special' | 'other'),
 										})
 									}}
-								>
-									<SelectTrigger id="corporation-type-filter">
-										<SelectValue placeholder="All Corporations" />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value="all">All Corporations</SelectItem>
-										<SelectItem value="member">Member Corps</SelectItem>
-										<SelectItem value="alt">Alt Corps</SelectItem>
-										<SelectItem value="special">Special Purpose Corps</SelectItem>
-										<SelectItem value="other">Other Corps</SelectItem>
-									</SelectContent>
-								</Select>
+									inputId="corporation-type-filter"
+									options={[
+										{ value: 'all', label: 'All Corporations' },
+										{ value: 'member', label: 'Member Corps' },
+										{ value: 'alt', label: 'Alt Corps' },
+										{ value: 'special', label: 'Special Purpose Corps' },
+										{ value: 'other', label: 'Other Corps' },
+									]}
+									placeholder="All Corporations"
+								/>
 							</div>
 						</div>
 					</div>

@@ -6,13 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
 	Table,
@@ -22,6 +16,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { formatNumber } from '@/features/freight/utils'
 import {
 	useActivateFreightRoute,
 	useDeactivateFreightRoute,
@@ -30,7 +25,6 @@ import {
 } from '@/hooks/useFreightRoutes'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { formatISK } from '@/lib/format-utils'
-import { formatNumber } from '@/features/freight/utils'
 
 import type { FreightRouteStatus } from '@repo/freight'
 
@@ -64,7 +58,8 @@ export default function AdminFreightRoutesPage() {
 	}
 
 	const handleDelete = async (routeId: string) => {
-		if (!confirm('Are you sure you want to permanently delete this route? This cannot be undone.')) return
+		if (!confirm('Are you sure you want to permanently delete this route? This cannot be undone.'))
+			return
 		try {
 			await deleteRoute.mutateAsync(routeId)
 		} catch (error) {
@@ -101,16 +96,14 @@ export default function AdminFreightRoutesPage() {
 							<Select
 								value={statusFilter}
 								onValueChange={(value) => setStatusFilter(value as FreightRouteStatus | 'all')}
-							>
-								<SelectTrigger id="status">
-									<SelectValue placeholder="All statuses" />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="all">All Statuses</SelectItem>
-									<SelectItem value="active">Active</SelectItem>
-									<SelectItem value="inactive">Inactive</SelectItem>
-								</SelectContent>
-							</Select>
+								inputId="status"
+								options={[
+									{ value: 'all', label: 'All Statuses' },
+									{ value: 'active', label: 'Active' },
+									{ value: 'inactive', label: 'Inactive' },
+								]}
+								placeholder="All statuses"
+							/>
 						</div>
 						{statusFilter !== 'all' && (
 							<Button variant="outline" onClick={() => setStatusFilter('all')} className="mt-8">
@@ -162,12 +155,8 @@ export default function AdminFreightRoutesPage() {
 								<TableBody>
 									{routes.map((route) => (
 										<TableRow key={route.id}>
-											<TableCell>
-												{route.pickupName || 'Unnamed'}
-											</TableCell>
-											<TableCell>
-												{route.destinationName || 'Unnamed'}
-											</TableCell>
+											<TableCell>{route.pickupName || 'Unnamed'}</TableCell>
+											<TableCell>{route.destinationName || 'Unnamed'}</TableCell>
 											<TableCell className="text-right font-mono">
 												{`${formatISK(route.iskPerVolumeUnit)}/m³`}
 											</TableCell>

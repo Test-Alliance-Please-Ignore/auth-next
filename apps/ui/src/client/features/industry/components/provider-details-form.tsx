@@ -1,12 +1,6 @@
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 
@@ -35,10 +29,7 @@ export function ProviderDetailsForm({
 	errors,
 	disabled,
 }: ProviderDetailsFormProps) {
-	const handleChange = <K extends keyof ProviderFormData>(
-		field: K,
-		value: ProviderFormData[K]
-	) => {
+	const handleChange = <K extends keyof ProviderFormData>(field: K, value: ProviderFormData[K]) => {
 		onChange({ ...data, [field]: value })
 	}
 
@@ -81,22 +72,15 @@ export function ProviderDetailsForm({
 					</Label>
 					<Select
 						value={data.ownerEntityType}
-						onValueChange={(value) =>
-							handleChange('ownerEntityType', value as IndustryEntityType)
-						}
+						onValueChange={(value) => handleChange('ownerEntityType', value as IndustryEntityType)}
+						inputId="ownerEntityType"
+						options={Object.entries(ENTITY_TYPE_LABELS).map(([value, label]) => ({
+							value,
+							label,
+						}))}
+						placeholder="Select owner type"
 						disabled={disabled}
-					>
-						<SelectTrigger id="ownerEntityType">
-							<SelectValue placeholder="Select owner type" />
-						</SelectTrigger>
-						<SelectContent>
-							{Object.entries(ENTITY_TYPE_LABELS).map(([value, label]) => (
-								<SelectItem key={value} value={value}>
-									{label}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
+					/>
 					{errors.ownerEntityType && (
 						<p className="text-sm text-destructive">{errors.ownerEntityType}</p>
 					)}
@@ -160,8 +144,7 @@ export function validateProviderForm(
 		errors.ownerEntityId = 'Owner ID is required'
 	} else {
 		// Basic UUID validation
-		const uuidRegex =
-			/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+		const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 		if (!uuidRegex.test(data.ownerEntityId.trim())) {
 			errors.ownerEntityId = 'Owner ID must be a valid UUID'
 		}

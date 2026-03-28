@@ -27,13 +27,7 @@ import {
 	DialogTitle,
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
 	Table,
@@ -56,12 +50,7 @@ import {
 	useSetProviderAcceptingOrders,
 	useUpdateProviderServiceStatus,
 } from '../hooks'
-import {
-	SERVICE_STATUS_LABELS,
-	SERVICE_TYPE_LABELS,
-	ServiceStatus,
-	ServiceType,
-} from '../types'
+import { SERVICE_STATUS_LABELS, SERVICE_TYPE_LABELS, ServiceStatus, ServiceType } from '../types'
 
 import type { ProviderServiceDTO } from '../types'
 
@@ -71,11 +60,7 @@ export default function IndustryProviderDetailPage() {
 	const navigate = useNavigate()
 
 	// Queries
-	const {
-		data: provider,
-		isLoading: isLoadingProvider,
-		refetch,
-	} = useIndustryProvider(providerId)
+	const { data: provider, isLoading: isLoadingProvider, refetch } = useIndustryProvider(providerId)
 	const { data: services, isLoading: isLoadingServices } = useProviderServices(providerId)
 
 	// Mutations
@@ -179,10 +164,7 @@ export default function IndustryProviderDetailPage() {
 		}
 	}
 
-	const handleUpdateServiceStatus = async (
-		serviceType: ServiceType,
-		newStatus: ServiceStatus
-	) => {
+	const handleUpdateServiceStatus = async (serviceType: ServiceType, newStatus: ServiceStatus) => {
 		if (!providerId) return
 		try {
 			await updateServiceStatus.mutateAsync({
@@ -348,7 +330,10 @@ export default function IndustryProviderDetailPage() {
 								{services?.length || 0} service{services?.length !== 1 ? 's' : ''} offered
 							</CardDescription>
 						</div>
-						<Button onClick={() => setAddServiceDialogOpen(true)} disabled={availableServiceTypes.length === 0}>
+						<Button
+							onClick={() => setAddServiceDialogOpen(true)}
+							disabled={availableServiceTypes.length === 0}
+						>
 							<Plus className="h-4 w-4 mr-2" />
 							Add Service
 						</Button>
@@ -390,25 +375,14 @@ export default function IndustryProviderDetailPage() {
 												<Select
 													value={service.status}
 													onValueChange={(value) =>
-														handleUpdateServiceStatus(
-															service.serviceType,
-															value as ServiceStatus
-														)
+														handleUpdateServiceStatus(service.serviceType, value as ServiceStatus)
 													}
-												>
-													<SelectTrigger className="w-32">
-														<SelectValue />
-													</SelectTrigger>
-													<SelectContent>
-														{Object.entries(SERVICE_STATUS_LABELS).map(
-															([value, label]) => (
-																<SelectItem key={value} value={value}>
-																	{label}
-																</SelectItem>
-															)
-														)}
-													</SelectContent>
-												</Select>
+													options={Object.entries(SERVICE_STATUS_LABELS).map(([value, label]) => ({
+														value,
+														label,
+													}))}
+													className="w-32"
+												/>
 											</TableCell>
 											<TableCell className="text-sm text-muted-foreground">
 												{formatDateTime(service.createdAt)}
@@ -469,18 +443,14 @@ export default function IndustryProviderDetailPage() {
 						<Select
 							value={newServiceType}
 							onValueChange={(value) => setNewServiceType(value as ServiceType)}
-						>
-							<SelectTrigger id="serviceType" className="mt-2">
-								<SelectValue placeholder="Select a service type" />
-							</SelectTrigger>
-							<SelectContent>
-								{availableServiceTypes.map((type) => (
-									<SelectItem key={type} value={type}>
-										{SERVICE_TYPE_LABELS[type]}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
+							inputId="serviceType"
+							options={availableServiceTypes.map((type) => ({
+								value: type,
+								label: SERVICE_TYPE_LABELS[type],
+							}))}
+							placeholder="Select a service type"
+							className="mt-2"
+						/>
 					</div>
 					<DialogFooter>
 						<CancelButton onClick={() => setAddServiceDialogOpen(false)}>Cancel</CancelButton>

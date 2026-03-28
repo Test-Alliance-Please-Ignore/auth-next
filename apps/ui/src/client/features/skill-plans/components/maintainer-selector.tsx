@@ -1,14 +1,7 @@
-import { User, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { Label } from '../../../components/ui/label'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '../../../components/ui/select'
+import { Select } from '../../../components/ui/select'
 import { useAuth } from '../../../hooks/useAuth'
 import { useGroups } from '../../../hooks/useGroups'
 
@@ -61,8 +54,6 @@ export function MaintainerSelector({
 		setOptions(maintainerOptions)
 	}, [user, groups])
 
-	const selectedOption = options.find((opt) => opt.id === value)
-
 	return (
 		<div className="space-y-2">
 			<Label htmlFor="maintainer">
@@ -71,47 +62,18 @@ export function MaintainerSelector({
 			<Select
 				value={value || 'none'}
 				onValueChange={(val) => onChange(val === 'none' ? null : val)}
+				inputId="maintainer"
+				options={[
+					...(!required ? [{ value: 'none', label: 'No maintainer' }] : []),
+					...options.map((option) => ({
+						value: option.id,
+						label: option.name,
+						description: option.type === 'group' ? 'Group' : 'User',
+					})),
+				]}
+				placeholder="Select maintainer..."
 				disabled={disabled || groupsLoading}
-			>
-				<SelectTrigger id="maintainer">
-					<SelectValue>
-						{selectedOption ? (
-							<div className="flex items-center gap-2">
-								{selectedOption.type === 'group' ? (
-									<Users className="h-4 w-4" />
-								) : (
-									<User className="h-4 w-4" />
-								)}
-								<span>{selectedOption.name}</span>
-							</div>
-						) : (
-							'Select maintainer...'
-						)}
-					</SelectValue>
-				</SelectTrigger>
-				<SelectContent>
-					{!required && (
-						<SelectItem value="none">
-							<div className="flex items-center gap-2">
-								<User className="h-4 w-4 opacity-50" />
-								<span>No maintainer</span>
-							</div>
-						</SelectItem>
-					)}
-					{options.map((option) => (
-						<SelectItem key={option.id} value={option.id}>
-							<div className="flex items-center gap-2">
-								{option.type === 'group' ? (
-									<Users className="h-4 w-4" />
-								) : (
-									<User className="h-4 w-4" />
-								)}
-								<span>{option.name}</span>
-							</div>
-						</SelectItem>
-					))}
-				</SelectContent>
-			</Select>
+			/>
 			<p className="text-sm text-muted-foreground">
 				The maintainer can edit and delete this plan. Groups allow any member to maintain the plan.
 			</p>

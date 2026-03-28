@@ -17,13 +17,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { usePermissionCategories } from '@/hooks/usePermissionCategories'
 import {
@@ -210,20 +204,16 @@ export default function GlobalPermissionsPage() {
 								onValueChange={(value) =>
 									setSelectedCategoryId(value === 'all' ? undefined : value)
 								}
-							>
-								<SelectTrigger id="category-filter">
-									<SelectValue placeholder="All categories" />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="all">All categories</SelectItem>
-									<SelectItem value="uncategorized">Uncategorized</SelectItem>
-									{categories?.map((category) => (
-										<SelectItem key={category.id} value={category.id}>
-											{category.name}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
+								inputId="category-filter"
+								options={[
+									{ value: 'all', label: 'All categories' },
+									{ value: 'uncategorized', label: 'Uncategorized' },
+									...(categories?.map((category) => ({ value: category.id,
+										label: category.name,
+									})) ?? []),
+								]}
+								placeholder="All categories"
+							/>
 						</div>
 					</div>
 				</CardContent>

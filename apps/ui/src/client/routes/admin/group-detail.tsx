@@ -48,14 +48,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { SearchSelect } from '@/components/ui/search-select'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { useAuth } from '@/hooks/useAuth'
 import { useBreadcrumb } from '@/hooks/useBreadcrumb'
@@ -992,14 +985,27 @@ export default function GroupDetailPage() {
 													!attachment.roles?.some((ra) => ra.discordRole.roleId === role.roleId)
 											).length > 0 && (
 												<div className="flex gap-2 items-center">
-													<SearchSelect
-														value={pendingRoleSelections[attachment.id] ?? ''}
-														onValueChange={(value) =>
+													<Select
+														value=""
+														onValueChange={(nextValue) => {
+															if (!nextValue) {
+																return
+															}
+															void handleAssignRole(attachment.id, nextValue).finally(() => {
+																setPendingRoleSelections((prev) => {
+																	const { [attachment.id]: _, ...rest } = prev
+																	return rest
+																})
+															})
+														}}
+														query={pendingRoleSelections[attachment.id] ?? ''}
+														onQueryChange={(value) =>
 															setPendingRoleSelections((prev) => ({
 																...prev,
 																[attachment.id]: value,
 															}))
 														}
+														searchable
 														options={attachment.discordServer.roles
 															.filter(
 																(role) =>
@@ -1007,26 +1013,14 @@ export default function GroupDetailPage() {
 																		(ra) => ra.discordRole.roleId === role.roleId
 																	)
 															)
-															.map((role) => ({
-																id: role.id,
-																value: role.roleName,
+															.map((role) => ({ value: role.id,
 																label: role.roleName,
 															}))}
-														filterMode="local"
-														mode="dropdown"
 														placeholder="Add role..."
 														emptyText="No matching roles found"
 														className="w-full"
 														contentClassName="w-[min(90vw,36rem)]"
 														inputClassName="h-9"
-														onSelect={(option) => {
-															void handleAssignRole(attachment.id, option.id).finally(() => {
-																setPendingRoleSelections((prev) => {
-																	const { [attachment.id]: _, ...rest } = prev
-																	return rest
-																})
-															})
-														}}
 													/>
 												</div>
 											)}
@@ -1050,23 +1044,21 @@ export default function GroupDetailPage() {
 							<div className="space-y-4">
 								<div className="space-y-2">
 									<Label htmlFor="discord-server">Select Server</Label>
-									<Select value={selectedServerId} onValueChange={setSelectedServerId}>
-										<SelectTrigger id="discord-server" className="w-full">
-											<SelectValue placeholder="Choose a server..." />
-										</SelectTrigger>
-										<SelectContent>
-											{discordServers
-												.filter(
-													(server) =>
-														!groupDiscordServers.some((att) => att.discordServerId === server.id)
-												)
-												.map((server) => (
-													<SelectItem key={server.id} value={server.id}>
-														{server.guildName}
-													</SelectItem>
-												))}
-										</SelectContent>
-									</Select>
+									<Select
+										inputId="discord-server"
+										value={selectedServerId}
+										onValueChange={setSelectedServerId}
+										options={discordServers
+											.filter(
+												(server) =>
+													!groupDiscordServers.some((att) => att.discordServerId === server.id)
+											)
+											.map((server) => ({ value: server.id,
+												label: server.guildName,
+											}))}
+										placeholder="Choose a server..."
+										className="w-full"
+									/>
 								</div>
 
 								<div className="space-y-3">

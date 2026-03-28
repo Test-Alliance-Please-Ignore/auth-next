@@ -5,13 +5,7 @@ import { Button } from '../../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '../../../components/ui/select'
+import { Select } from '../../../components/ui/select'
 import { useAvailableSkills, useSearchSkills } from '../hooks'
 
 import type { AddSkillRequest, AvailableSkill } from '../types'
@@ -144,20 +138,16 @@ export function SkillSelector({
 					<Select
 						value={selectedGroup}
 						onValueChange={setSelectedGroup}
+						inputId="skill-group"
+						options={[
+							{ value: 'all', label: 'All groups' },
+							...skillGroups.map((group) => ({ value: group,
+								label: group,
+							})),
+						]}
+						placeholder="All groups"
 						disabled={isLoading || isSubmitting}
-					>
-						<SelectTrigger id="skill-group">
-							<SelectValue placeholder="All groups" />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="all">All groups</SelectItem>
-							{skillGroups.map((group) => (
-								<SelectItem key={group} value={group}>
-									{group}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
+					/>
 				</div>
 			</div>
 
@@ -184,25 +174,16 @@ export function SkillSelector({
 									const skill = filteredSkills.find((s) => s.skillId === value)
 									setSelectedSkill(skill || null)
 								}}
+								inputId="skill-select"
+								options={filteredSkills.map((skill) => ({ value: skill.skillId,
+									label: `${skill.name} (${skill.group})`,
+								}))}
+								placeholder="Choose a skill to add..."
+								emptyText={
+									searchTerm ? 'No skills found matching your search' : 'No skills available'
+								}
 								disabled={isLoading || isSubmitting}
-							>
-								<SelectTrigger id="skill-select">
-									<SelectValue placeholder="Choose a skill to add..." />
-								</SelectTrigger>
-								<SelectContent>
-									{filteredSkills.length > 0 ? (
-										filteredSkills.map((skill) => (
-											<SelectItem key={skill.skillId} value={skill.skillId}>
-												{skill.name} ({skill.group})
-											</SelectItem>
-										))
-									) : (
-										<div className="py-2 px-3 text-sm text-muted-foreground">
-											{searchTerm ? 'No skills found matching your search' : 'No skills available'}
-										</div>
-									)}
-								</SelectContent>
-							</Select>
+							/>
 							{filteredSkills.length > 0 && (
 								<p className="text-xs text-muted-foreground">
 									Found {filteredSkills.length} skill{filteredSkills.length !== 1 ? 's' : ''}
@@ -229,19 +210,12 @@ export function SkillSelector({
 												setRecommendedLevel(level)
 											}
 										}}
+										inputId="required-level"
+										options={[1, 2, 3, 4, 5].map((level) => ({ value: String(level),
+											label: `Level ${level}`,
+										}))}
 										disabled={isSubmitting}
-									>
-										<SelectTrigger id="required-level">
-											<SelectValue />
-										</SelectTrigger>
-										<SelectContent>
-											{[1, 2, 3, 4, 5].map((level) => (
-												<SelectItem key={level} value={String(level)}>
-													Level {level}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
+									/>
 									<p className="text-xs text-muted-foreground">Minimum level needed for the plan</p>
 								</div>
 
@@ -250,23 +224,14 @@ export function SkillSelector({
 									<Select
 										value={String(recommendedLevel)}
 										onValueChange={(value) => setRecommendedLevel(parseInt(value))}
+										inputId="recommended-level"
+										options={[1, 2, 3, 4, 5]
+											.filter((level) => level >= requiredLevel)
+											.map((level) => ({ value: String(level),
+												label: `Level ${level}`,
+											}))}
 										disabled={isSubmitting}
-									>
-										<SelectTrigger id="recommended-level">
-											<SelectValue />
-										</SelectTrigger>
-										<SelectContent>
-											{[1, 2, 3, 4, 5].map((level) => (
-												<SelectItem
-													key={level}
-													value={String(level)}
-													disabled={level < requiredLevel}
-												>
-													Level {level}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
+									/>
 									<p className="text-xs text-muted-foreground">
 										Ideal level for full effectiveness
 									</p>

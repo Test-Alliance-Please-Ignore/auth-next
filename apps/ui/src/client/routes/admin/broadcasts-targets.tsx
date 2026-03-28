@@ -16,13 +16,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import {
 	Table,
 	TableBody,
@@ -281,20 +275,14 @@ export default function BroadcastTargetsPage() {
 						<div>
 							<Label htmlFor="group">Group *</Label>
 							<Select
+								inputId="group"
 								value={formData.groupId}
 								onValueChange={(value) => setFormData({ ...formData, groupId: value })}
-							>
-								<SelectTrigger id="group">
-									<SelectValue placeholder="Select a group" />
-								</SelectTrigger>
-								<SelectContent>
-									{groups?.map((group) => (
-										<SelectItem key={group.id} value={group.id}>
-											{group.name}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
+								placeholder="Select a group"
+								options={(groups ?? []).map((group) => ({ value: group.id,
+									label: group.name,
+								}))}
+							/>
 						</div>
 						<div>
 							<Label htmlFor="guildId">Discord Guild ID *</Label>

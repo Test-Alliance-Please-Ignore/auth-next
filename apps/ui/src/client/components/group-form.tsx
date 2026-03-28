@@ -4,13 +4,7 @@ import { CancelButton } from '@/components/ui/cancel-button'
 import { ConfirmButton } from '@/components/ui/confirm-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 
 import type { Category, CreateGroupRequest } from '@/lib/api'
@@ -71,19 +65,13 @@ export function GroupForm({ categories, onSubmit, onCancel, isSubmitting }: Grou
 				<Select
 					value={formData.categoryId}
 					onValueChange={(value) => setFormData({ ...formData, categoryId: value })}
+					inputId="categoryId"
+					options={categories.map((category) => ({ value: category.id,
+						label: category.name,
+					}))}
+					placeholder="Select a category"
 					disabled={isSubmitting}
-				>
-					<SelectTrigger id="categoryId">
-						<SelectValue placeholder="Select a category" />
-					</SelectTrigger>
-					<SelectContent>
-						{categories.map((category) => (
-							<SelectItem key={category.id} value={category.id}>
-								{category.name}
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
+				/>
 				{errors.categoryId && <p className="text-sm text-destructive">{errors.categoryId}</p>}
 			</div>
 
@@ -123,20 +111,23 @@ export function GroupForm({ categories, onSubmit, onCancel, isSubmitting }: Grou
 				<Label htmlFor="visibility">Visibility</Label>
 				<Select
 					value={formData.visibility}
-					onValueChange={(value: 'public' | 'hidden' | 'system') =>
-						setFormData({ ...formData, visibility: value })
+					onValueChange={(value) =>
+						setFormData({ ...formData, visibility: value as 'public' | 'hidden' | 'system' })
 					}
+					inputId="visibility"
+					options={[
+						{ value: 'public',
+							label: 'Public (visible to all logged-in users)',
+						},
+						{ value: 'hidden',
+							label: "Hidden (members know they're in it)",
+						},
+						{ value: 'system',
+							label: 'System (invisible to members)',
+						},
+					]}
 					disabled={isSubmitting}
-				>
-					<SelectTrigger id="visibility">
-						<SelectValue />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value="public">Public (visible to all logged-in users)</SelectItem>
-						<SelectItem value="hidden">Hidden (members know they're in it)</SelectItem>
-						<SelectItem value="system">System (invisible to members)</SelectItem>
-					</SelectContent>
-				</Select>
+				/>
 			</div>
 
 			{/* Join Mode Select */}
@@ -144,20 +135,24 @@ export function GroupForm({ categories, onSubmit, onCancel, isSubmitting }: Grou
 				<Label htmlFor="joinMode">Join Mode</Label>
 				<Select
 					value={formData.joinMode}
-					onValueChange={(value: 'open' | 'approval' | 'invitation_only') =>
-						setFormData({ ...formData, joinMode: value })
+					onValueChange={(value) =>
+						setFormData({
+							...formData,
+							joinMode: value as 'open' | 'approval' | 'invitation_only',
+						})
 					}
+					inputId="joinMode"
+					options={[
+						{ value: 'open', label: 'Open (anyone can join)' },
+						{ value: 'approval',
+							label: 'Approval (requires admin approval)',
+						},
+						{ value: 'invitation_only',
+							label: 'Invitation Only (invite required)',
+						},
+					]}
 					disabled={isSubmitting}
-				>
-					<SelectTrigger id="joinMode">
-						<SelectValue />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value="open">Open (anyone can join)</SelectItem>
-						<SelectItem value="approval">Approval (requires admin approval)</SelectItem>
-						<SelectItem value="invitation_only">Invitation Only (invite required)</SelectItem>
-					</SelectContent>
-				</Select>
+				/>
 			</div>
 
 			{/* Form Actions */}
