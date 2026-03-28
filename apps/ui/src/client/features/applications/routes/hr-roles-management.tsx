@@ -9,6 +9,7 @@ import { AlertCircle, ArrowLeft, Shield } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 
+import { MemberAvatar } from '@/components/member-avatar'
 import {
 	Breadcrumb,
 	BreadcrumbItem,
@@ -17,8 +18,8 @@ import {
 	BreadcrumbPage,
 	BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { GhostButton } from '@/components/ui/ghost-button'
 import { LoadingSpinner } from '@/components/ui/loading'
 import {
 	Table,
@@ -40,7 +41,11 @@ import { useAuth } from '@/hooks/useAuth'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
-import { useCanAccessCorporation, useMyCorporation } from '../../my-corporations/hooks'
+import {
+	useCanAccessCorporation,
+	useCorporationMembers,
+	useMyCorporation,
+} from '../../my-corporations/hooks'
 
 import type { GrantHrRoleRequest, HrRoleGrant, RevokeHrRoleRequest } from '@/features/hr'
 import type { CorporationMember } from '../../my-corporations'
@@ -55,6 +60,7 @@ export default function HrRolesManagement() {
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
 	const { canAccess, userRole } = useCanAccessCorporation(corporationId!)
 	const { data: corporation, isLoading: corpLoading } = useMyCorporation(corporationId!)
+	const { data: members, isLoading: membersLoading } = useCorporationMembers(corporationId!)
 	const { data: hrRoles, isLoading: hrRolesLoading, error } = useHrRoles(corporationId!)
 
 	const [grantDialogMember, setGrantDialogMember] = useState<CorporationMember | null>(null)
@@ -68,6 +74,22 @@ export default function HrRolesManagement() {
 	const canManageHrRoles = useMemo(() => {
 		return userRole === 'CEO' || userRole === 'admin'
 	}, [userRole])
+
+	const memberByUserId = useMemo(() => {
+		const map = new Map<string, CorporationMember>()
+		for (const member of members || []) {
+			if (!member.authUserId) continue
+			const existing = map.get(member.authUserId)
+			if (!existing) {
+				map.set(member.authUserId, member)
+				continue
+			}
+			if (member.mainCharacterName && !existing.mainCharacterName) {
+				map.set(member.authUserId, member)
+			}
+		}
+		return map
+	}, [members])
 
 	// Set page title
 	usePageTitle(corporation ? `${corporation.name} HR Roles | HR Management` : 'HR Roles Management')
@@ -83,7 +105,7 @@ export default function HrRolesManagement() {
 	}
 
 	// Loading state
-	if (corpLoading || hrRolesLoading) {
+	if (corpLoading || hrRolesLoading || membersLoading) {
 		return (
 			<div className="container mx-auto max-w-7xl px-4 py-8">
 				<div className="flex items-center justify-center min-h-[400px]">
@@ -107,9 +129,12 @@ export default function HrRolesManagement() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<Link to="/my-corporations">
-							<Button variant="outline">Return to My Corporations</Button>
-						</Link>
+						<GhostButton asChild>
+							<Link to="/my-corporations">
+								<ArrowLeft className="mr-2 h-4 w-4" />
+								Return to My Corporations
+							</Link>
+						</GhostButton>
 					</CardContent>
 				</Card>
 			</div>
@@ -131,9 +156,12 @@ export default function HrRolesManagement() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<Link to={`/corporations/${corporationId}/hr/dashboard`}>
-							<Button variant="outline">Return to HR Dashboard</Button>
-						</Link>
+						<GhostButton asChild>
+							<Link to={`/my-corporations/${corporationId}/members`}>
+								<ArrowLeft className="mr-2 h-4 w-4" />
+								Return to Manage Corporation
+							</Link>
+						</GhostButton>
 					</CardContent>
 				</Card>
 			</div>
@@ -162,10 +190,19 @@ export default function HrRolesManagement() {
 	}
 
 	const handleRevokeClick = (role: HrRoleGrant) => {
+		const linkedMember = memberByUserId.get(role.userId)
+		if (linkedMember) {
+			setRevokeDialogMember({
+				...linkedMember,
+				hrRole: role,
+			})
+			return
+		}
+
 		// Convert HrRoleGrant to CorporationMember format for the dialog
 		const member: CorporationMember = {
 			characterId: role.characterId,
-			characterName: role.characterName,
+			characterName: role.characterName || role.userId,
 			corporationId: role.corporationId,
 			corporationName: corporation?.name || '',
 			authUserId: role.userId,
@@ -193,8 +230,8 @@ export default function HrRolesManagement() {
 					</BreadcrumbItem>
 					<BreadcrumbSeparator />
 					<BreadcrumbItem>
-						<BreadcrumbLink to={`/corporations/${corporationId}/hr/dashboard`}>
-							HR Dashboard
+						<BreadcrumbLink to={`/my-corporations/${corporationId}/members`}>
+							{corporation?.name || 'Manage Corporation'}
 						</BreadcrumbLink>
 					</BreadcrumbItem>
 					<BreadcrumbSeparator />
@@ -222,12 +259,12 @@ export default function HrRolesManagement() {
 							</p>
 						)}
 					</div>
-					<Link to={`/corporations/${corporationId}/hr/dashboard`}>
-						<Button variant="ghost">
+					<GhostButton asChild>
+						<Link to={`/my-corporations/${corporationId}/members`}>
 							<ArrowLeft className="mr-2 h-4 w-4" />
-							Back
-						</Button>
-					</Link>
+							Back to Manage Corporation
+						</Link>
+					</GhostButton>
 				</div>
 			</div>
 
@@ -255,21 +292,38 @@ export default function HrRolesManagement() {
 							<TableBody>
 								{hrRoles.map((role) => (
 									<TableRow key={role.id}>
-										<TableCell>
-											<div className="flex items-center gap-3">
-												<img
-													src={`/images/characters/${role.characterId}/portrait?size=64`}
-													alt={role.characterName}
-													className="w-10 h-10 rounded-full border-2 border-border"
-												/>
-												<div>
-													<div className="font-medium">{role.characterName}</div>
-													<div className="text-xs text-muted-foreground">
-														ID: {role.characterId}
+										{(() => {
+											const linkedMember = memberByUserId.get(role.userId)
+											const resolvedName =
+												linkedMember?.mainCharacterName ||
+												linkedMember?.characterName ||
+												role.characterName ||
+												role.userId
+											const resolvedCharacterId = linkedMember?.characterId
+											return (
+												<TableCell>
+													<div className="flex items-center gap-3">
+														<MemberAvatar
+															characterId={resolvedCharacterId}
+															characterName={resolvedName}
+															size="sm"
+														/>
+														<div>
+															<div className="font-medium">{resolvedName}</div>
+															{resolvedCharacterId ? (
+																<div className="text-xs text-muted-foreground">
+																	ID: {resolvedCharacterId}
+																</div>
+															) : (
+																<div className="text-xs text-muted-foreground">
+																	Character not resolved from corporation members
+																</div>
+															)}
+														</div>
 													</div>
-												</div>
-											</div>
-										</TableCell>
+												</TableCell>
+											)
+										})()}
 										<TableCell>
 											<HrRoleBadge role={role.role} />
 										</TableCell>
@@ -285,14 +339,13 @@ export default function HrRolesManagement() {
 											)}
 										</TableCell>
 										<TableCell className="text-right">
-											<Button
-												variant="outline"
+											<GhostButton
 												size="sm"
 												onClick={() => handleRevokeClick(role)}
 												disabled={!role.isActive}
 											>
-												Revoke
-											</Button>
+												Revoke HR Role
+											</GhostButton>
 										</TableCell>
 									</TableRow>
 								))}

@@ -184,12 +184,17 @@ export class HrRoleService {
 	 */
 
 	async getUserRoles(userId: string, corporationId?: string): Promise<HrRole[]> {
+		const viewerRole = await this.getRoleForType(ROLE_HR_VIEWER)
+		const reviewerRole = await this.getRoleForType(ROLE_HR_REVIEWER)
+		const adminRole = await this.getRoleForType(ROLE_HR_ADMIN)
+
 		const groupsStub = getStub<Groups>(this.ctx.env.GROUPS, 'default')
 		const roleAttachments = await groupsStub.getRolesFor({
 			attachedToType: RoleAttachmentType.USER,
 			attachedToId: userId,
 			resourceId: corporationId,
 			resourceType: ResourceType.CORPORATION,
+			roleIds: [viewerRole.id, reviewerRole.id, adminRole.id],
 		})
 		try {
 			return roleAttachments.map((roleAttachment) => {
@@ -275,12 +280,21 @@ export class HrRoleService {
 		requiredRole: HrRoleType
 	): Promise<boolean> {
 		const roles = await this.getUserRoles(userId, corporationId)
+		if (roles.length === 0) return false
 
-		if (roles.length === 0) {
-			return false
+		const roleHierarchy: Record<HrRoleType, number> = {
+			hr_admin: 3,
+			hr_reviewer: 2,
+			hr_viewer: 1,
 		}
 
-		return roles.some((role) => role.role === requiredRole)
+		const requiredLevel = roleHierarchy[requiredRole]
+		const highestUserLevel = roles.reduce((highest, role) => {
+			const level = roleHierarchy[role.role]
+			return level > highest ? level : highest
+		}, 0)
+
+		return highestUserLevel >= requiredLevel
 	}
 
 	/**

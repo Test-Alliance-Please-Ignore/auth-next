@@ -38,7 +38,7 @@ const statusConfig: Record<
 	pending: {
 		label: 'Pending',
 		icon: Clock,
-		colorClasses: 'bg-accent/20 text-accent border-accent/50',
+		colorClasses: 'bg-warning/15 text-warning border-warning/40',
 	},
 	under_review: {
 		label: 'Under Review',

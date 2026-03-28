@@ -6,6 +6,7 @@ import type {
 	CheckHrPermissionRequest,
 	CheckHrPermissionResult,
 	GrantHrRoleRequest,
+	HrAccessibleCorporation,
 	HrRoleGrant,
 	RevokeHrRoleRequest,
 } from './api'
@@ -18,6 +19,7 @@ export const hrKeys = {
 	all: ['hr'] as const,
 	roles: (corporationId: string) => [...hrKeys.all, 'roles', corporationId] as const,
 	permission: (corporationId: string) => [...hrKeys.all, 'permission', corporationId] as const,
+	corporations: () => [...hrKeys.all, 'corporations'] as const,
 }
 
 /**
@@ -46,6 +48,17 @@ export function useHrPermissionCheck(request: CheckHrPermissionRequest | null) {
 		},
 		enabled: !!request,
 		staleTime: 10 * 60 * 1000, // 10 minutes (HR roles change infrequently)
+	})
+}
+
+/**
+ * Hook to list corporations where current user has HR access
+ */
+export function useHrAccessibleCorporations() {
+	return useQuery<HrAccessibleCorporation[]>({
+		queryKey: hrKeys.corporations(),
+		queryFn: () => hrApi.listAccessibleCorporations(),
+		staleTime: 5 * 60 * 1000,
 	})
 }
 

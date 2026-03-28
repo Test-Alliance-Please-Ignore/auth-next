@@ -1,12 +1,12 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 
-import { eq } from '@repo/db-utils'
+import { and, eq, inArray, or } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 import { APPLICATION_STATUSES } from '@repo/hr'
 
-import { userCharacters } from '../db/schema'
+import { managedCorporations, userCharacters } from '../db/schema'
 import { requireAdmin, requireAuth } from '../middleware/session'
 
 import type { Context } from 'hono'
@@ -440,6 +440,113 @@ app.get('/applications/:applicationId/messages/count', requireAuth(), async (c) 
 })
 
 // ==================== Message Template Routes ====================
+
+/**
+ * GET /api/hr/corporations
+ * List corporations where the current authenticated user has HR role access.
+ * Returns corporation metadata with the highest effective HR role for each corporation.
+ */
+app.get('/corporations', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const db = c.get('db')
+
+	if (!db) {
+		return c.json({ error: 'Database not available' }, 500)
+	}
+
+	try {
+		if (user.is_admin) {
+			const corporations = await db.query.managedCorporations.findMany({
+				where: and(
+					eq(managedCorporations.isActive, true),
+					or(
+						eq(managedCorporations.isMemberCorporation, true),
+						eq(managedCorporations.isSpecialPurpose, true)
+					)
+				),
+				columns: {
+					corporationId: true,
+					name: true,
+					ticker: true,
+				},
+			})
+
+			return c.json(
+				corporations
+					.map((corp) => ({
+						corporationId: corp.corporationId,
+						name: corp.name,
+						ticker: corp.ticker,
+						currentRole: 'hr_admin' as const,
+					}))
+					.sort((a, b) => a.name.localeCompare(b.name))
+			)
+		}
+
+		const hr = getHrStub(c)
+		const corporationIds = await hr.getUserHrCorporations(user.id)
+		const uniqueCorporationIds = [...new Set(corporationIds)]
+
+		if (uniqueCorporationIds.length === 0) {
+			return c.json([])
+		}
+
+		const corporations = await db.query.managedCorporations.findMany({
+			where: inArray(managedCorporations.corporationId, uniqueCorporationIds),
+			columns: {
+				corporationId: true,
+				name: true,
+				ticker: true,
+			},
+		})
+		const corporationMap = new Map(corporations.map((corp) => [corp.corporationId, corp]))
+
+		const roleHierarchy: Record<'hr_viewer' | 'hr_reviewer' | 'hr_admin', number> = {
+			hr_admin: 3,
+			hr_reviewer: 2,
+			hr_viewer: 1,
+		}
+
+		const results = await Promise.all(
+			uniqueCorporationIds.map(async (corporationId) => {
+				const roles = await hr.getUserRoles(user.id, corporationId)
+				const activeRoles = roles.filter((r) => r.isActive)
+				if (activeRoles.length === 0) {
+					return null
+				}
+
+				const highestRole = activeRoles.reduce((highest, role) => {
+					const highestLevel = roleHierarchy[highest.role]
+					const currentLevel = roleHierarchy[role.role]
+					return currentLevel > highestLevel ? role : highest
+				}, activeRoles[0])
+
+				const corporation = corporationMap.get(corporationId)
+				return {
+					corporationId,
+					name: corporation?.name ?? `Corporation ${corporationId}`,
+					ticker: corporation?.ticker ?? '',
+					currentRole: highestRole.role,
+				}
+			})
+		)
+
+		return c.json(
+			results
+				.filter((row): row is NonNullable<typeof row> => row !== null)
+				.sort((a, b) => a.name.localeCompare(b.name))
+		)
+	} catch (error) {
+		logger.error('[HR Roles] Failed to list accessible HR corporations', {
+			userId: user.id,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to list HR corporations' },
+			500
+		)
+	}
+})
 
 /**
  * POST /api/hr/:corporationId/templates

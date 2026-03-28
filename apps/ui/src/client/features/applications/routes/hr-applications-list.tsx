@@ -5,7 +5,7 @@
  * Requires HR Viewer role minimum.
  */
 
-import { AlertCircle, Users } from 'lucide-react'
+import { AlertCircle, ArrowLeft, Users } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 
@@ -17,8 +17,8 @@ import {
 	BreadcrumbPage,
 	BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { GhostButton } from '@/components/ui/ghost-button'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { useAuth } from '@/hooks/useAuth'
@@ -26,6 +26,7 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 import { cn } from '@/lib/utils'
 
 import { useHrPermissionCheck } from '../../hr/hooks'
+import { useCanAccessCorporation } from '../../my-corporations/hooks'
 import { ApplicationStatsCard } from '../components/application-stats-card'
 import { ApplicationsTable } from '../components/applications-table'
 import { useApplications } from '../hooks'
@@ -66,6 +67,8 @@ export default function HrApplicationsList() {
 	const { corporationId } = useParams<{ corporationId: string }>()
 	const navigate = useNavigate()
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
+	const { canAccess: hasCorporationAccess, isLoading: corporationAccessLoading } =
+		useCanAccessCorporation(corporationId ?? '')
 
 	// Local state
 	const [activeFilter, setActiveFilter] = useState<FilterTab>('all')
@@ -128,6 +131,10 @@ export default function HrApplicationsList() {
 		}
 	}
 
+	const useMyCorporationsRoot = user?.is_admin || hasCorporationAccess
+	const rootCorporationsPath = useMyCorporationsRoot ? '/my-corporations' : '/hr'
+	const rootCorporationsLabel = useMyCorporationsRoot ? 'My Corporations' : 'HR Corporations'
+
 	// Check authentication
 	if (!authLoading && !isAuthenticated) {
 		return <Navigate to="/login" replace />
@@ -135,11 +142,11 @@ export default function HrApplicationsList() {
 
 	// Check corporation ID
 	if (!corporationId) {
-		return <Navigate to="/my-corporations" replace />
+		return <Navigate to="/hr" replace />
 	}
 
 	// Loading state
-	if (authLoading || permissionLoading || applicationsLoading) {
+	if (authLoading || permissionLoading || applicationsLoading || corporationAccessLoading) {
 		return (
 			<div className="container mx-auto max-w-7xl px-4 py-8">
 				<div className="flex items-center justify-center min-h-[400px]">
@@ -164,9 +171,10 @@ export default function HrApplicationsList() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<Button variant="outline" onClick={() => navigate('/my-corporations')}>
-							Back to My Corporations
-						</Button>
+						<GhostButton onClick={() => navigate(rootCorporationsPath)}>
+							<ArrowLeft className="mr-2 h-4 w-4" />
+							Back to {rootCorporationsLabel}
+						</GhostButton>
 					</CardContent>
 				</Card>
 			</div>
@@ -190,9 +198,7 @@ export default function HrApplicationsList() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<Button variant="outline" onClick={() => window.location.reload()}>
-							Try Again
-						</Button>
+						<GhostButton onClick={() => window.location.reload()}>Try Again</GhostButton>
 					</CardContent>
 				</Card>
 			</div>
@@ -206,7 +212,7 @@ export default function HrApplicationsList() {
 			<Breadcrumb className="mb-6">
 				<BreadcrumbList>
 					<BreadcrumbItem>
-						<BreadcrumbLink to="/my-corporations">My Corporations</BreadcrumbLink>
+						<BreadcrumbLink to={rootCorporationsPath}>{rootCorporationsLabel}</BreadcrumbLink>
 					</BreadcrumbItem>
 					<BreadcrumbSeparator />
 					<BreadcrumbItem>
@@ -225,6 +231,12 @@ export default function HrApplicationsList() {
 			<PageHeader
 				title="HR Applications"
 				description="Review and manage job applications to your corporation"
+				action={
+					<GhostButton onClick={() => navigate(`/corporations/${corporationId}/hr/dashboard`)}>
+						<ArrowLeft className="mr-2 h-4 w-4" />
+						Back to HR Dashboard
+					</GhostButton>
+				}
 			/>
 
 			{/* Statistics Cards */}

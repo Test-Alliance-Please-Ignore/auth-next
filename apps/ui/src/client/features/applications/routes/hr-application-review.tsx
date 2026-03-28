@@ -20,8 +20,8 @@ import {
 	BreadcrumbPage,
 	BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { GhostButton } from '@/components/ui/ghost-button'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -29,6 +29,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { useHrPermissionCheck } from '../../hr/hooks'
+import { useCanAccessCorporation } from '../../my-corporations/hooks'
 import { AddHRNoteDialog } from '../components/add-hr-note-dialog'
 import { ApplicationActionPanel } from '../components/application-action-panel'
 import { ApplicationStatusBadge } from '../components/application-status-badge'
@@ -59,6 +60,8 @@ export default function HrApplicationReview() {
 	}>()
 	const navigate = useNavigate()
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
+	const { canAccess: hasCorporationAccess, isLoading: corporationAccessLoading } =
+		useCanAccessCorporation(corporationId ?? '')
 
 	// Dialog state for HR Notes
 	const [addNoteDialogOpen, setAddNoteDialogOpen] = useState(false)
@@ -115,6 +118,10 @@ export default function HrApplicationReview() {
 		// Refetch is handled by React Query cache invalidation
 	}
 
+	const useMyCorporationsRoot = user?.is_admin || hasCorporationAccess
+	const rootCorporationsPath = useMyCorporationsRoot ? '/my-corporations' : '/hr'
+	const rootCorporationsLabel = useMyCorporationsRoot ? 'My Corporations' : 'HR Corporations'
+
 	// Check authentication
 	if (!authLoading && !isAuthenticated) {
 		return <Navigate to="/login" replace />
@@ -122,11 +129,11 @@ export default function HrApplicationReview() {
 
 	// Check required params
 	if (!corporationId || !applicationId) {
-		return <Navigate to="/my-corporations" replace />
+		return <Navigate to="/hr" replace />
 	}
 
 	// Loading state
-	if (authLoading || permissionLoading || applicationLoading) {
+	if (authLoading || permissionLoading || applicationLoading || corporationAccessLoading) {
 		return (
 			<div className="container mx-auto max-w-5xl px-4 py-8">
 				<div className="flex items-center justify-center min-h-[400px]">
@@ -151,9 +158,10 @@ export default function HrApplicationReview() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<Button variant="outline" onClick={() => navigate('/my-corporations')}>
-							Back to My Corporations
-						</Button>
+						<GhostButton onClick={() => navigate(rootCorporationsPath)}>
+							<ArrowLeft className="mr-2 h-4 w-4" />
+							Back to {rootCorporationsLabel}
+						</GhostButton>
 					</CardContent>
 				</Card>
 			</div>
@@ -177,10 +185,10 @@ export default function HrApplicationReview() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<Button variant="outline" onClick={handleBackClick}>
+						<GhostButton onClick={handleBackClick}>
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to Applications
-						</Button>
+						</GhostButton>
 					</CardContent>
 				</Card>
 			</div>
@@ -198,10 +206,10 @@ export default function HrApplicationReview() {
 						<CardDescription>This application doesn't exist or has been removed.</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<Button variant="outline" onClick={handleBackClick}>
+						<GhostButton onClick={handleBackClick}>
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to Applications
-						</Button>
+						</GhostButton>
 					</CardContent>
 				</Card>
 			</div>
@@ -223,10 +231,10 @@ export default function HrApplicationReview() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<Button variant="outline" onClick={handleBackClick}>
+						<GhostButton onClick={handleBackClick}>
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to Applications
-						</Button>
+						</GhostButton>
 					</CardContent>
 				</Card>
 			</div>
@@ -237,29 +245,36 @@ export default function HrApplicationReview() {
 	return (
 		<div className="container mx-auto max-w-5xl px-4 py-8">
 			{/* Breadcrumb Navigation */}
-			<Breadcrumb className="mb-6">
-				<BreadcrumbList>
-					<BreadcrumbItem>
-						<BreadcrumbLink to="/my-corporations">My Corporations</BreadcrumbLink>
-					</BreadcrumbItem>
-					<BreadcrumbSeparator />
-					<BreadcrumbItem>
-						<BreadcrumbLink to={`/corporations/${corporationId}/hr/dashboard`}>
-							HR Dashboard
-						</BreadcrumbLink>
-					</BreadcrumbItem>
-					<BreadcrumbSeparator />
-					<BreadcrumbItem>
-						<BreadcrumbLink to={`/corporations/${corporationId}/hr/applications`}>
-							Applications
-						</BreadcrumbLink>
-					</BreadcrumbItem>
-					<BreadcrumbSeparator />
-					<BreadcrumbItem>
-						<BreadcrumbPage>{application.characterName}</BreadcrumbPage>
-					</BreadcrumbItem>
-				</BreadcrumbList>
-			</Breadcrumb>
+			<div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+				<Breadcrumb>
+					<BreadcrumbList>
+						<BreadcrumbItem>
+							<BreadcrumbLink to={rootCorporationsPath}>{rootCorporationsLabel}</BreadcrumbLink>
+						</BreadcrumbItem>
+						<BreadcrumbSeparator />
+						<BreadcrumbItem>
+							<BreadcrumbLink to={`/corporations/${corporationId}/hr/dashboard`}>
+								HR Dashboard
+							</BreadcrumbLink>
+						</BreadcrumbItem>
+						<BreadcrumbSeparator />
+						<BreadcrumbItem>
+							<BreadcrumbLink to={`/corporations/${corporationId}/hr/applications`}>
+								Applications
+							</BreadcrumbLink>
+						</BreadcrumbItem>
+						<BreadcrumbSeparator />
+						<BreadcrumbItem>
+							<BreadcrumbPage>{application.characterName}</BreadcrumbPage>
+						</BreadcrumbItem>
+					</BreadcrumbList>
+				</Breadcrumb>
+
+				<GhostButton onClick={handleBackClick}>
+					<ArrowLeft className="mr-2 h-4 w-4" />
+					Back to Applications
+				</GhostButton>
+			</div>
 
 			{/* Header Card */}
 			<Card className="mb-6">
@@ -465,14 +480,6 @@ export default function HrApplicationReview() {
 					</Card>
 				</TabsContent>
 			</Tabs>
-
-			{/* Back Button */}
-			<div className="mt-8">
-				<Button variant="outline" onClick={handleBackClick}>
-					<ArrowLeft className="mr-2 h-4 w-4" />
-					Back to Applications List
-				</Button>
-			</div>
 
 			{/* HR Notes Dialogs */}
 			{user?.is_admin && (

@@ -614,6 +614,13 @@ export interface Hr extends DurableObject {
 	getUserRoles(userId: string, corporationId?: string): Promise<HrRole[]>
 
 	/**
+	 * Get corporation IDs where a user has any HR role
+	 * @param userId - User to check
+	 * @returns Array of corporation IDs
+	 */
+	getUserHrCorporations(userId: string): Promise<string[]>
+
+	/**
 	 * Get all HR roles for a corporation
 	 * @param corporationId - Corporation ID to get roles for
 	 * @param activeOnly - Whether to only return active roles (default: true)
