@@ -2,20 +2,12 @@ import { CancelButton } from '@/components/ui/cancel-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PrimaryButton } from '@/components/ui/primary-button'
-import { SearchSelect } from '@/components/ui/search-select'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 
 import type { TaxBillingPayeeType } from '@repo/corporation-tax'
 
 type BillingPayeeSearchResult = {
-	id: string
 	value: string
 	label: string
 	description: string
@@ -30,6 +22,7 @@ type BillingConfigurationFormProps = {
 	billingCorporationSearchInput: string
 	billingCorporationSearchDebounced: string
 	billingPayeeTypeInput: TaxBillingPayeeType | undefined
+	billingPayeeIdInput: string
 	billingDueDaysInput: string
 	billingIsDefaultInput: boolean
 	billingConfigValidationError: string | null
@@ -65,6 +58,7 @@ export function BillingConfigurationForm({
 	billingCorporationSearchInput,
 	billingCorporationSearchDebounced,
 	billingPayeeTypeInput,
+	billingPayeeIdInput,
 	billingDueDaysInput,
 	billingIsDefaultInput,
 	billingConfigValidationError,
@@ -104,15 +98,12 @@ export function BillingConfigurationForm({
 							onValidationErrorChange(null)
 							onBillingPayeeTypeChange(nextType)
 						}}
-					>
-						<SelectTrigger>
-							<SelectValue placeholder="Select payee type" />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="character">Character</SelectItem>
-							<SelectItem value="corporation">Corporation</SelectItem>
-						</SelectContent>
-					</Select>
+						options={[
+							{ value: 'character', label: 'Character' },
+							{ value: 'corporation', label: 'Corporation' },
+						]}
+						placeholder="Select payee type"
+					/>
 				</div>
 				<div className="space-y-2">
 					<Label>
@@ -124,54 +115,66 @@ export function BillingConfigurationForm({
 						<span className="text-destructive">*</span>
 					</Label>
 					{billingPayeeTypeInput === 'character' ? (
-						<SearchSelect
-							value={billingCharacterSearchInput}
-							onValueChange={(value) => {
+						<Select
+							value={billingPayeeIdInput}
+							onValueChange={(nextValue, option) => {
+								if (!option) {
+									return
+								}
+								onValidationErrorChange(null)
+								onBillingCharacterSearchInputChange(option.label)
+								onBillingPayeeIdChange(nextValue)
+							}}
+							query={billingCharacterSearchInput}
+							onQueryChange={(value) => {
 								onValidationErrorChange(null)
 								onBillingCharacterSearchInputChange(value)
 								onBillingPayeeIdChange('')
 							}}
+							searchable
+							searchDelegate={() => billingCharacterSearchResults}
 							options={billingCharacterSearchResults}
-							onSelect={(option) => {
-								onValidationErrorChange(null)
-								onBillingCharacterSearchInputChange(option.label)
-								onBillingPayeeIdChange(option.id)
-							}}
-							filterMode="server"
 							minQueryLength={2}
+							debounceMs={0}
 							placeholder="Character name or ID"
 							loading={
 								billingCharacterSearchInput.trim().length >= 2 &&
 								(billingCharacterSearchLoading ||
 									billingCharacterSearchInput.trim() !== billingCharacterSearchDebounced)
 							}
-							minCharsText="Type at least 2 characters"
+							queryHintText="Type at least 2 characters"
 							loadingText="Searching characters..."
 							emptyText="No matching characters found"
 						/>
 					) : billingPayeeTypeInput === 'corporation' ? (
-						<SearchSelect
-							value={billingCorporationSearchInput}
-							onValueChange={(value) => {
+						<Select
+							value={billingPayeeIdInput}
+							onValueChange={(nextValue, option) => {
+								if (!option) {
+									return
+								}
+								onValidationErrorChange(null)
+								onBillingCorporationSearchInputChange(option.label)
+								onBillingPayeeIdChange(nextValue)
+							}}
+							query={billingCorporationSearchInput}
+							onQueryChange={(value) => {
 								onValidationErrorChange(null)
 								onBillingCorporationSearchInputChange(value)
 								onBillingPayeeIdChange('')
 							}}
+							searchable
+							searchDelegate={() => billingCorporationSearchResults}
 							options={billingCorporationSearchResults}
-							onSelect={(option) => {
-								onValidationErrorChange(null)
-								onBillingCorporationSearchInputChange(option.label)
-								onBillingPayeeIdChange(option.id)
-							}}
-							filterMode="server"
 							minQueryLength={2}
+							debounceMs={0}
 							placeholder="Corporation name or ID"
 							loading={
 								billingCorporationSearchInput.trim().length >= 2 &&
 								(billingCorporationSearchLoading ||
 									billingCorporationSearchInput.trim() !== billingCorporationSearchDebounced)
 							}
-							minCharsText="Type at least 2 characters"
+							queryHintText="Type at least 2 characters"
 							loadingText="Searching corporations..."
 							emptyText="No matching corporations found"
 						/>

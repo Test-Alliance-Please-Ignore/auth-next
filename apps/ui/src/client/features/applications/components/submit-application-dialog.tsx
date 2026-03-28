@@ -20,13 +20,7 @@ import {
 	DialogTitle,
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/hooks/useAuth'
 import { useMessage } from '@/hooks/useMessage'
@@ -146,25 +140,17 @@ export function SubmitApplicationDialog({
 						<Label htmlFor="character" className="text-sm font-medium">
 							Character <span className="text-destructive">*</span>
 						</Label>
-						<Select value={selectedCharacterId} onValueChange={setSelectedCharacterId}>
-							<SelectTrigger id="character">
-								<SelectValue placeholder="Select a character" />
-							</SelectTrigger>
-							<SelectContent>
-								{characters.map(
-									(char: {
-										characterId: string
-										characterName: string
-										hasValidToken: boolean
-									}) => (
-										<SelectItem key={char.characterId} value={char.characterId}>
-											{char.characterName}
-											{!char.hasValidToken && ' (No valid token)'}
-										</SelectItem>
-									)
-								)}
-							</SelectContent>
-						</Select>
+						<Select
+							inputId="character"
+							value={selectedCharacterId}
+							onValueChange={setSelectedCharacterId}
+							options={characters.map(
+								(char: { characterId: string; characterName: string; hasValidToken: boolean }) => ({ value: char.characterId,
+									label: `${char.characterName}${!char.hasValidToken ? ' (No valid token)' : ''}`,
+								})
+							)}
+							placeholder="Select a character"
+						/>
 						{characters.length === 0 && (
 							<p className="text-xs text-muted-foreground">
 								You don't have any characters linked to your account.

@@ -7,7 +7,7 @@ import { Container } from '@/components/ui/container'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
 import { PrimaryButton } from '@/components/ui/primary-button'
-import { SearchSelect } from '@/components/ui/search-select'
+import { Select } from '@/components/ui/select'
 import { Section } from '@/components/ui/section'
 import {
 	Table,
@@ -109,9 +109,7 @@ export default function TaxExclusionsPage() {
 			selectableCorporations.map((corporation) => {
 				const corporationId = corporation.corporationId
 				const name = corporationNameById.get(corporationId) ?? `Corporation ${corporationId}`
-				return {
-					id: corporationId,
-					value: corporationId,
+				return { value: corporationId,
 					label: name,
 					description: corporationId,
 				}
@@ -150,17 +148,15 @@ export default function TaxExclusionsPage() {
 					<CardContent className="grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
 						<div className="space-y-2">
 							<div className="text-sm font-medium">Corporation</div>
-							<SearchSelect
-								value={selectedCorporationQuery}
-								onValueChange={setSelectedCorporationQuery}
-								options={selectableOptions}
-								onSelect={(option) => {
-									setSelectedCorporationId(option.id)
-									setSelectedCorporationQuery(option.label)
+							<Select
+								value={selectedCorporationId}
+								onValueChange={(nextValue) => {
+									setSelectedCorporationId(nextValue)
 								}}
-								filterMode="local"
-								mode="dropdown"
-								minQueryLength={0}
+								query={selectedCorporationQuery}
+								onQueryChange={setSelectedCorporationQuery}
+								searchable
+								options={selectableOptions}
 								placeholder="Search corporation"
 								emptyText="No corporations available"
 								listMinHeight="10rem"

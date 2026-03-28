@@ -9,13 +9,7 @@ import { GhostButton } from '@/components/ui/ghost-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { NumberInput } from '@/components/ui/number-input'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useCreateTemplate } from '@/hooks/useBills'
@@ -337,17 +331,18 @@ export default function AdminBillsTemplatesNewPage() {
 								<div className="space-y-2">
 									<Label htmlFor="lateFeeType">Late Fee Type</Label>
 									<Select
+										inputId="lateFeeType"
 										value={formData.lateFeeType}
 										onValueChange={(value) => handleChange('lateFeeType', value)}
-									>
-										<SelectTrigger id="lateFeeType">
-											<SelectValue />
-										</SelectTrigger>
-										<SelectContent>
-											<SelectItem value="static">Static Amount (Fixed ISK)</SelectItem>
-											<SelectItem value="percentage">Percentage (% of bill amount)</SelectItem>
-										</SelectContent>
-									</Select>
+										options={[
+											{ value: 'static',
+												label: 'Static Amount (Fixed ISK)',
+											},
+											{ value: 'percentage',
+												label: 'Percentage (% of bill amount)',
+											},
+										]}
+									/>
 								</div>
 
 								<div className="space-y-2">
@@ -387,19 +382,22 @@ export default function AdminBillsTemplatesNewPage() {
 								<div className="space-y-2">
 									<Label htmlFor="lateFeeCompounding">Late Fee Compounding</Label>
 									<Select
+										inputId="lateFeeCompounding"
 										value={formData.lateFeeCompounding}
 										onValueChange={(value) => handleChange('lateFeeCompounding', value)}
-									>
-										<SelectTrigger id="lateFeeCompounding">
-											<SelectValue />
-										</SelectTrigger>
-										<SelectContent>
-											<SelectItem value="none">None (One-time fee)</SelectItem>
-											<SelectItem value="daily">Daily (Compounds every day)</SelectItem>
-											<SelectItem value="weekly">Weekly (Compounds every week)</SelectItem>
-											<SelectItem value="monthly">Monthly (Compounds every month)</SelectItem>
-										</SelectContent>
-									</Select>
+										options={[
+											{ value: 'none', label: 'None (One-time fee)' },
+											{ value: 'daily',
+												label: 'Daily (Compounds every day)',
+											},
+											{ value: 'weekly',
+												label: 'Weekly (Compounds every week)',
+											},
+											{ value: 'monthly',
+												label: 'Monthly (Compounds every month)',
+											},
+										]}
+									/>
 									<p className="text-sm text-muted-foreground">
 										How often the late fee should be applied after the due date
 									</p>

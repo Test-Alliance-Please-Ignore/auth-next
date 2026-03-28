@@ -278,6 +278,7 @@ export function BillingConfigurationCard({
 								billingCorporationSearchInput={billingCorporationSearchInput}
 								billingCorporationSearchDebounced={billingCorporationSearchDebounced}
 								billingPayeeTypeInput={billingPayeeTypeInput}
+								billingPayeeIdInput={billingPayeeIdInput}
 								billingDueDaysInput={billingDueDaysInput}
 								billingIsDefaultInput={billingIsDefaultInput}
 								billingConfigValidationError={billingConfigValidationError}
@@ -288,14 +289,14 @@ export function BillingConfigurationCard({
 								billingCorporationSearchLoading={billingCorporationSearchLoading}
 								billingCharacterSearchResults={billingCharacterSearchResults.map((character) => ({
 									id: character.characterId,
-									value: character.characterName,
+									value: character.characterId,
 									label: character.characterName,
 									description: character.characterId,
 								}))}
 								billingCorporationSearchResults={billingCorporationSearchResults.map(
 									(corporation) => ({
 										id: corporation.corporationId,
-										value: corporation.name ?? corporation.corporationId,
+										value: corporation.corporationId,
 										label: corporation.name ?? corporation.corporationId,
 										description: corporation.corporationId,
 									})

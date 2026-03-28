@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 
-import { SearchSelect } from '@/components/ui/search-select'
+import { Select } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 
 interface TaxCorporationScopeSelectorProps {
@@ -33,7 +33,6 @@ export function TaxCorporationScopeSelector({
 				left.name.localeCompare(right.name, undefined, { sensitivity: 'base' })
 			)
 			.map((corp) => ({
-				id: corp.corporationId,
 				value: corp.corporationId,
 				label: corp.name,
 			}))
@@ -44,7 +43,6 @@ export function TaxCorporationScopeSelector({
 
 		return [
 			{
-				id: '__all__',
 				value: '__all__',
 				label: allLabel,
 			},
@@ -53,7 +51,7 @@ export function TaxCorporationScopeSelector({
 	}, [allLabel, canSelectAll, corporations])
 
 	const selectedId = selectedCorporationId ?? (canSelectAll ? '__all__' : effectiveCorporationId)
-	const selectedOption = options.find((option) => option.id === selectedId)
+	const selectedOption = options.find((option) => option.value === selectedId)
 	const [query, setQuery] = useState('')
 
 	useEffect(() => {
@@ -69,17 +67,16 @@ export function TaxCorporationScopeSelector({
 			{showLabel ? (
 				<div className="text-sm font-medium text-foreground">Corporation Scope</div>
 			) : null}
-			<SearchSelect
-				value={query}
-				onValueChange={setQuery}
-				options={options}
-				onSelect={(option) => {
+			<Select
+				value={selectedId}
+				onValueChange={(nextValue) => {
 					setQuery('')
-					onSelect(option.id === '__all__' ? undefined : option.id)
+					onSelect(nextValue === '__all__' ? undefined : nextValue)
 				}}
-				filterMode="local"
-				mode="dropdown"
-				minQueryLength={0}
+				query={query}
+				onQueryChange={setQuery}
+				searchable
+				options={options}
 				placeholder={selectedOption?.label ?? 'Select corporation scope'}
 				emptyText="No corporations match"
 			/>

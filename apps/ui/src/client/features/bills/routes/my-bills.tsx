@@ -58,15 +58,11 @@ export default function MyBillsPage() {
 		enabled: debouncedPayeeQuery.trim().length >= 2,
 	})
 	const payerOptions = useMemo(() => {
-		const deduped = new Map<
-			string,
-			{ id: string; value: string; label: string; description: string }
-		>()
+		const deduped = new Map<string, { value: string; label: string; description: string }>()
 		for (const row of payerSearch.data ?? []) {
 			const key = row.entityId
 			if (deduped.has(key)) continue
 			deduped.set(key, {
-				id: key,
 				value: row.entityId,
 				label: row.name || row.entityId,
 				description: row.entityId,
@@ -75,15 +71,11 @@ export default function MyBillsPage() {
 		return [...deduped.values()]
 	}, [payerSearch.data])
 	const payeeOptions = useMemo(() => {
-		const deduped = new Map<
-			string,
-			{ id: string; value: string; label: string; description: string }
-		>()
+		const deduped = new Map<string, { value: string; label: string; description: string }>()
 		for (const row of payeeSearch.data ?? []) {
 			const key = row.entityId
 			if (deduped.has(key)) continue
 			deduped.set(key, {
-				id: key,
 				value: row.entityId,
 				label: row.name || row.entityId,
 				description: row.entityId,

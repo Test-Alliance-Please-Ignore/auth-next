@@ -1,5 +1,5 @@
 import { ComplianceGrid } from '@/components/tax-reports/grids'
-import { SearchSelect } from '@/components/ui/search-select'
+import { Select } from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatTaxIskCompact } from '@/lib/tax-display'
 import { parseTaxAmount } from '@/lib/tax-report-utils'
@@ -18,21 +18,18 @@ export function TaxReportSelector(props: TaxReportSelectorProps) {
 	return (
 		<>
 			<div className="md:hidden">
-				<SearchSelect
-					value={props.reportSelectorQuery}
-					onValueChange={props.onReportSelectorQueryChange}
-					options={props.visibleReportOptions.map((option) => ({
-						id: option.value,
-						value: option.value,
+				<Select
+					value={props.selectedReportView}
+					onValueChange={(nextValue) => {
+						props.onReportSelectorQueryChange('')
+						props.onSelectReportView(nextValue)
+					}}
+					query={props.reportSelectorQuery}
+					onQueryChange={props.onReportSelectorQueryChange}
+					searchable
+					options={props.visibleReportOptions.map((option) => ({ value: option.value,
 						label: option.label,
 					}))}
-					onSelect={(option) => {
-						props.onReportSelectorQueryChange('')
-						props.onSelectReportView(option.id)
-					}}
-					filterMode="local"
-					mode="dropdown"
-					minQueryLength={0}
 					placeholder="Choose report"
 					emptyText="No reports match"
 				/>

@@ -9,14 +9,8 @@ import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import { LoadingPage } from '../../../components/ui/loading'
 import { PageHeader } from '../../../components/ui/page-header'
+import { Select } from '../../../components/ui/select'
 import { Section } from '../../../components/ui/section'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '../../../components/ui/select'
 import { useAuth } from '../../../hooks/useAuth'
 import { usePageTitle } from '../../../hooks/usePageTitle'
 import { CategorySectionHeader } from '../components/category-section-header'
@@ -154,19 +148,15 @@ export default function SkillPlansList() {
 									onValueChange={(value) =>
 										setFilters({ ...filters, categoryId: value === 'all' ? undefined : value })
 									}
-								>
-									<SelectTrigger id="category">
-										<SelectValue placeholder="All categories" />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value="all">All categories</SelectItem>
-										{categories?.map((category) => (
-											<SelectItem key={category.id} value={category.id}>
-												{category.name}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
+									inputId="category"
+									options={[
+										{ value: 'all', label: 'All categories' },
+										...(categories?.map((category) => ({ value: category.id,
+											label: category.name,
+										})) ?? []),
+									]}
+									placeholder="All categories"
+								/>
 							</div>
 
 							{/* Status filter */}
@@ -180,16 +170,14 @@ export default function SkillPlansList() {
 											published: value === 'all' ? undefined : value === 'true',
 										})
 									}
-								>
-									<SelectTrigger id="status">
-										<SelectValue placeholder="All statuses" />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value="all">All statuses</SelectItem>
-										<SelectItem value="true">Published</SelectItem>
-										<SelectItem value="false">Draft</SelectItem>
-									</SelectContent>
-								</Select>
+									inputId="status"
+									options={[
+										{ value: 'all', label: 'All statuses' },
+										{ value: 'true', label: 'Published' },
+										{ value: 'false', label: 'Draft' },
+									]}
+									placeholder="All statuses"
+								/>
 							</div>
 
 							{/* Maintainer type filter */}
@@ -197,17 +185,20 @@ export default function SkillPlansList() {
 								<Label htmlFor="maintainer">Maintainer</Label>
 								<Select
 									value={filters.maintainerType}
-									onValueChange={(value: any) => setFilters({ ...filters, maintainerType: value })}
-								>
-									<SelectTrigger id="maintainer">
-										<SelectValue placeholder="All maintainers" />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value="all">All maintainers</SelectItem>
-										<SelectItem value="user">User maintained</SelectItem>
-										<SelectItem value="group">Group maintained</SelectItem>
-									</SelectContent>
-								</Select>
+									onValueChange={(value) =>
+										setFilters({
+											...filters,
+											maintainerType: value as SkillPlansFilter['maintainerType'],
+										})
+									}
+									inputId="maintainer"
+									options={[
+										{ value: 'all', label: 'All maintainers' },
+										{ value: 'user', label: 'User maintained' },
+										{ value: 'group', label: 'Group maintained' },
+									]}
+									placeholder="All maintainers"
+								/>
 							</div>
 						</div>
 

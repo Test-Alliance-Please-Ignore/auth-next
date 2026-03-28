@@ -10,13 +10,7 @@ import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { LoadingSpinner } from '@/components/ui/loading'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import { useAuth } from '@/hooks/useAuth'
 
 import { useHRNotes } from '../hooks'
@@ -129,31 +123,23 @@ export function HRNotesList({
 
 			{/* Filters */}
 			<div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-				<Select value={noteTypeFilter} onValueChange={setNoteTypeFilter}>
-					<SelectTrigger>
-						<SelectValue placeholder="Filter by type" />
-					</SelectTrigger>
-					<SelectContent>
-						{NOTE_TYPE_OPTIONS.map((option) => (
-							<SelectItem key={option.value} value={option.value}>
-								{option.label}
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
+				<Select
+					value={noteTypeFilter}
+					onValueChange={setNoteTypeFilter}
+					options={NOTE_TYPE_OPTIONS.map((option) => ({ value: option.value,
+						label: option.label,
+					}))}
+					placeholder="Filter by type"
+				/>
 
-				<Select value={priorityFilter} onValueChange={setPriorityFilter}>
-					<SelectTrigger>
-						<SelectValue placeholder="Filter by priority" />
-					</SelectTrigger>
-					<SelectContent>
-						{PRIORITY_OPTIONS.map((option) => (
-							<SelectItem key={option.value} value={option.value}>
-								{option.label}
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
+				<Select
+					value={priorityFilter}
+					onValueChange={setPriorityFilter}
+					options={PRIORITY_OPTIONS.map((option) => ({ value: option.value,
+						label: option.label,
+					}))}
+					placeholder="Filter by priority"
+				/>
 			</div>
 
 			{/* Loading State */}

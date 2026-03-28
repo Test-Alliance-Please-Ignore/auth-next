@@ -18,13 +18,7 @@ import {
 	DialogTitle,
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/hooks/useAuth'
@@ -201,8 +195,7 @@ export function AddRecommendationDialog({
 	const selectedCharacter = user?.characters.find(
 		(char: { characterId: string }) => char.characterId === characterId
 	)
-	const isSelfRecommendation =
-		selectedCharacter && user?.id === applicationUserId && !isEditMode
+	const isSelfRecommendation = selectedCharacter && user?.id === applicationUserId && !isEditMode
 
 	const isFormValid = characterId && sentiment && isTextValid && !isSelfRecommendation
 
@@ -278,33 +271,32 @@ export function AddRecommendationDialog({
 						<Label htmlFor="character">
 							Character <span className="text-destructive">*</span>
 						</Label>
-						<Select value={characterId} onValueChange={setCharacterId} disabled={isPending}>
-							<SelectTrigger id="character">
-								<SelectValue placeholder="Select character" />
-							</SelectTrigger>
-							<SelectContent>
-								{user?.characters.map(
+						<Select
+							inputId="character"
+							value={characterId}
+							onValueChange={setCharacterId}
+							disabled={isPending}
+							options={
+								user?.characters.map(
 									(char: {
 										characterId: string
 										characterName: string
 										hasValidToken: boolean
-									}) => (
-										<SelectItem key={char.characterId} value={char.characterId}>
-											{char.characterName}
-											{!char.hasValidToken && ' (Token expired)'}
-										</SelectItem>
-									)
-								)}
-							</SelectContent>
-						</Select>
+									}) => ({ value: char.characterId,
+										label: `${char.characterName}${!char.hasValidToken ? ' (Token expired)' : ''}`,
+									})
+								) ?? []
+							}
+							placeholder="Select character"
+						/>
 
 						{/* Self-recommendation warning */}
 						{isSelfRecommendation && (
 							<div className="mt-2 flex items-start gap-2 p-3 rounded-md bg-destructive/10 border border-destructive/30 text-destructive">
 								<AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
 								<p className="text-sm">
-									You cannot recommend your own application. Please select a different character
-									or ask someone else to provide a recommendation.
+									You cannot recommend your own application. Please select a different character or
+									ask someone else to provide a recommendation.
 								</p>
 							</div>
 						)}

@@ -3,13 +3,7 @@ import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
 	Table,
@@ -84,17 +78,13 @@ function UserLeaderboard() {
 									setPeriod(val as DkpPeriod)
 									setPage(0)
 								}}
-							>
-								<SelectTrigger>
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="all">All Time</SelectItem>
-									<SelectItem value="7d">Last 7 Days</SelectItem>
-									<SelectItem value="30d">Last 30 Days</SelectItem>
-									<SelectItem value="90d">Last 90 Days</SelectItem>
-								</SelectContent>
-							</Select>
+								options={[
+									{ value: 'all', label: 'All Time' },
+									{ value: '7d', label: 'Last 7 Days' },
+									{ value: '30d', label: 'Last 30 Days' },
+									{ value: '90d', label: 'Last 90 Days' },
+								]}
+							/>
 						</div>
 					</div>
 				</CardContent>
@@ -243,17 +233,13 @@ function CorporationLeaderboard() {
 									setPeriod(val as DkpPeriod)
 									setPage(0)
 								}}
-							>
-								<SelectTrigger>
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="all">All Time</SelectItem>
-									<SelectItem value="7d">Last 7 Days</SelectItem>
-									<SelectItem value="30d">Last 30 Days</SelectItem>
-									<SelectItem value="90d">Last 90 Days</SelectItem>
-								</SelectContent>
-							</Select>
+								options={[
+									{ value: 'all', label: 'All Time' },
+									{ value: '7d', label: 'Last 7 Days' },
+									{ value: '30d', label: 'Last 30 Days' },
+									{ value: '90d', label: 'Last 90 Days' },
+								]}
+							/>
 						</div>
 					</div>
 				</CardContent>

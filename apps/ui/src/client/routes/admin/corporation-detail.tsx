@@ -40,14 +40,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
-import { SearchSelect } from '@/components/ui/search-select'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useBreadcrumb } from '@/hooks/useBreadcrumb'
@@ -594,14 +587,11 @@ export default function CorporationDetailPage() {
 												{
 													onSuccess: (data) =>
 														showSuccess(
-															data.message ||
-																`Discord refresh queued for ${data.usersQueued} users`
+															data.message || `Discord refresh queued for ${data.usersQueued} users`
 														),
 													onError: (error) =>
 														showError(
-															error instanceof Error
-																? error.message
-																: 'Failed to refresh Discord'
+															error instanceof Error ? error.message : 'Failed to refresh Discord'
 														),
 												}
 											)
@@ -730,14 +720,27 @@ export default function CorporationDetailPage() {
 																)
 														).length > 0 && (
 															<div className="flex gap-2 items-center">
-																<SearchSelect
-																	value={pendingRoleSelections[attachment.id] ?? ''}
-																	onValueChange={(value) =>
+																<Select
+																	value=""
+																	onValueChange={(nextValue) => {
+																		if (!nextValue) {
+																			return
+																		}
+																		void handleAssignRole(attachment.id, nextValue).finally(() => {
+																			setPendingRoleSelections((prev) => {
+																				const { [attachment.id]: _, ...rest } = prev
+																				return rest
+																			})
+																		})
+																	}}
+																	query={pendingRoleSelections[attachment.id] ?? ''}
+																	onQueryChange={(value) =>
 																		setPendingRoleSelections((prev) => ({
 																			...prev,
 																			[attachment.id]: value,
 																		}))
 																	}
+																	searchable
 																	options={attachment.discordServer.roles
 																		.filter(
 																			(role) =>
@@ -745,26 +748,14 @@ export default function CorporationDetailPage() {
 																					(ra) => ra.discordRole.roleId === role.roleId
 																				)
 																		)
-																		.map((role) => ({
-																			id: role.id,
-																			value: role.roleName,
+																		.map((role) => ({ value: role.id,
 																			label: role.roleName,
 																		}))}
-																	filterMode="local"
-																	mode="dropdown"
 																	placeholder="Add role..."
 																	emptyText="No matching roles found"
 																	className="w-full"
 																	contentClassName="w-[min(90vw,36rem)]"
 																	inputClassName="h-9"
-																	onSelect={(option) => {
-																		void handleAssignRole(attachment.id, option.id).finally(() => {
-																			setPendingRoleSelections((prev) => {
-																				const { [attachment.id]: _, ...rest } = prev
-																				return rest
-																			})
-																		})
-																	}}
 																/>
 															</div>
 														)}
@@ -788,25 +779,23 @@ export default function CorporationDetailPage() {
 									<div className="space-y-4">
 										<div className="space-y-2">
 											<Label htmlFor="discord-server">Select Server</Label>
-											<Select value={selectedServerId} onValueChange={setSelectedServerId}>
-												<SelectTrigger id="discord-server" className="w-full">
-													<SelectValue placeholder="Choose a server..." />
-												</SelectTrigger>
-												<SelectContent>
-													{discordServers
-														.filter(
-															(server) =>
-																!corporationDiscordServers.some(
-																	(att) => att.discordServerId === server.id
-																)
-														)
-														.map((server) => (
-															<SelectItem key={server.id} value={server.id}>
-																{server.guildName}
-															</SelectItem>
-														))}
-												</SelectContent>
-											</Select>
+											<Select
+												inputId="discord-server"
+												value={selectedServerId}
+												onValueChange={setSelectedServerId}
+												options={discordServers
+													.filter(
+														(server) =>
+															!corporationDiscordServers.some(
+																(att) => att.discordServerId === server.id
+															)
+													)
+													.map((server) => ({ value: server.id,
+														label: server.guildName,
+													}))}
+												placeholder="Choose a server..."
+												className="w-full"
+											/>
 										</div>
 
 										<div className="space-y-3">
@@ -1098,22 +1087,20 @@ export default function CorporationDetailPage() {
 							<div className="space-y-4">
 								<div>
 									<Label htmlFor="permission">Permission</Label>
-									<Select value={selectedPermissionId} onValueChange={setSelectedPermissionId}>
-										<SelectTrigger id="permission" className="mt-1.5 w-full">
-											<SelectValue placeholder="Select a permission..." />
-										</SelectTrigger>
-										<SelectContent>
-											{globalPermissions
-												.filter(
-													(gp) => !corporationPermissions.some((cp) => cp.permissionId === gp.id)
-												)
-												.map((perm) => (
-													<SelectItem key={perm.id} value={perm.id}>
-														{perm.name} ({perm.urn})
-													</SelectItem>
-												))}
-										</SelectContent>
-									</Select>
+									<Select
+										inputId="permission"
+										value={selectedPermissionId}
+										onValueChange={setSelectedPermissionId}
+										options={globalPermissions
+											.filter(
+												(gp) => !corporationPermissions.some((cp) => cp.permissionId === gp.id)
+											)
+											.map((perm) => ({ value: perm.id,
+												label: `${perm.name} (${perm.urn})`,
+											}))}
+										placeholder="Select a permission..."
+										className="mt-1.5 w-full"
+									/>
 								</div>
 							</div>
 							<DialogFooter>

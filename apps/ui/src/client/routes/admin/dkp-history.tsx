@@ -6,13 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
 	Table,
@@ -158,19 +152,17 @@ export default function DkpHistory() {
 							<Select
 								value={tempFilters.sourceType}
 								onValueChange={(val) => setTempFilters({ ...tempFilters, sourceType: val })}
-							>
-								<SelectTrigger id="sourceType">
-									<SelectValue placeholder="All types" />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="all">All Types</SelectItem>
-									<SelectItem value="fleet">Fleet</SelectItem>
-									<SelectItem value="market">Market</SelectItem>
-									<SelectItem value="mining">Mining</SelectItem>
-									<SelectItem value="manual">Manual</SelectItem>
-									<SelectItem value="adjustment">Adjustment</SelectItem>
-								</SelectContent>
-							</Select>
+								inputId="sourceType"
+								options={[
+									{ value: 'all', label: 'All Types' },
+									{ value: 'fleet', label: 'Fleet' },
+									{ value: 'market', label: 'Market' },
+									{ value: 'mining', label: 'Mining' },
+									{ value: 'manual', label: 'Manual' },
+									{ value: 'adjustment', label: 'Adjustment' },
+								]}
+								placeholder="All types"
+							/>
 						</div>
 
 						<div className="space-y-2">

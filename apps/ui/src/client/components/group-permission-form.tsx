@@ -6,13 +6,7 @@ import { CancelButton } from '@/components/ui/cancel-button'
 import { ConfirmButton } from '@/components/ui/confirm-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 
 import type {
@@ -206,18 +200,17 @@ export function GroupPermissionForm({
 					onValueChange={(value) =>
 						setFormData({ ...formData, targetType: value as PermissionTarget })
 					}
+					inputId="target-type"
+					options={[
+						{ value: 'all_members', label: 'All Members' },
+						{ value: 'all_admins', label: 'All Admins' },
+						{ value: 'owner_only', label: 'Owner Only' },
+						{ value: 'owner_and_admins',
+							label: 'Owner & Admins',
+						},
+					]}
 					disabled={isSubmitting}
-				>
-					<SelectTrigger id="target-type">
-						<SelectValue />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value="all_members">All Members</SelectItem>
-						<SelectItem value="all_admins">All Admins</SelectItem>
-						<SelectItem value="owner_only">Owner Only</SelectItem>
-						<SelectItem value="owner_and_admins">Owner & Admins</SelectItem>
-					</SelectContent>
-				</Select>
+				/>
 				<p className="text-xs text-muted-foreground">
 					Who in the group should receive this permission?
 				</p>

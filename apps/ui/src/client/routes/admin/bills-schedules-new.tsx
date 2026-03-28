@@ -10,13 +10,7 @@ import { GhostButton } from '@/components/ui/ghost-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { NumberInput } from '@/components/ui/number-input'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import { useBillEntitySearch, useCreateSchedule, useTemplates } from '@/hooks/useBills'
 import { useDebounce } from '@/hooks/useDebounce'
 import { usePageTitle } from '@/hooks/usePageTitle'
@@ -70,15 +64,11 @@ export default function AdminBillsSchedulesNewPage() {
 		enabled: debouncedPayeeQuery.trim().length >= 2,
 	})
 	const payerOptions = useMemo(() => {
-		const deduped = new Map<
-			string,
-			{ id: string; value: string; label: string; description: string }
-		>()
+		const deduped = new Map<string, { value: string; label: string; description: string }>()
 		for (const row of payerEntitySearch.data ?? []) {
 			const key = row.entityId
 			if (!deduped.has(key)) {
 				deduped.set(key, {
-					id: key,
 					value: row.entityId,
 					label: row.name || row.entityId,
 					description: row.entityId,
@@ -88,15 +78,11 @@ export default function AdminBillsSchedulesNewPage() {
 		return [...deduped.values()]
 	}, [payerEntitySearch.data])
 	const payeeOptions = useMemo(() => {
-		const deduped = new Map<
-			string,
-			{ id: string; value: string; label: string; description: string }
-		>()
+		const deduped = new Map<string, { value: string; label: string; description: string }>()
 		for (const row of payeeEntitySearch.data ?? []) {
 			const key = row.entityId
 			if (!deduped.has(key)) {
 				deduped.set(key, {
-					id: key,
 					value: row.entityId,
 					label: row.name || row.entityId,
 					description: row.entityId,
@@ -270,33 +256,23 @@ export default function AdminBillsSchedulesNewPage() {
 								Bill Template <span className="text-destructive">*</span>
 							</Label>
 							<Select
+								inputId="templateId"
 								value={formData.templateId}
 								onValueChange={(value) => handleChange('templateId', value)}
-							>
-								<SelectTrigger
-									id="templateId"
-									className={errors.templateId ? 'border-destructive' : ''}
-								>
-									<SelectValue placeholder="Select a template..." />
-								</SelectTrigger>
-								<SelectContent>
-									{isLoadingTemplates ? (
-										<SelectItem value="__loading__" disabled>
-											Loading templates...
-										</SelectItem>
-									) : !templates || templates.length === 0 ? (
-										<SelectItem value="__none__" disabled>
-											No templates available
-										</SelectItem>
-									) : (
-										templates.map((template) => (
-											<SelectItem key={template.id} value={template.id}>
-												{template.name}
-											</SelectItem>
-										))
-									)}
-								</SelectContent>
-							</Select>
+								placeholder={
+									isLoadingTemplates
+										? 'Loading templates...'
+										: !templates || templates.length === 0
+											? 'No templates available'
+											: 'Select a template...'
+								}
+								disabled={isLoadingTemplates || !templates || templates.length === 0}
+								inputClassName={errors.templateId ? 'border-destructive' : undefined}
+								options={(templates ?? []).map((template) => ({
+									value: template.id,
+									label: template.name,
+								}))}
+							/>
 							{errors.templateId && <p className="text-sm text-destructive">{errors.templateId}</p>}
 							{selectedTemplate && (
 								<div className="text-sm text-muted-foreground">
@@ -314,18 +290,15 @@ export default function AdminBillsSchedulesNewPage() {
 									Frequency <span className="text-destructive">*</span>
 								</Label>
 								<Select
+									inputId="frequency"
 									value={formData.frequency}
 									onValueChange={(value) => handleChange('frequency', value)}
-								>
-									<SelectTrigger id="frequency">
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value="daily">Daily</SelectItem>
-										<SelectItem value="weekly">Weekly</SelectItem>
-										<SelectItem value="monthly">Monthly</SelectItem>
-									</SelectContent>
-								</Select>
+									options={[
+										{ value: 'daily', label: 'Daily' },
+										{ value: 'weekly', label: 'Weekly' },
+										{ value: 'monthly', label: 'Monthly' },
+									]}
+								/>
 								<p className="text-sm text-muted-foreground">How often bills should be generated</p>
 							</div>
 

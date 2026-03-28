@@ -5,13 +5,7 @@ import { CancelButton } from '@/components/ui/cancel-button'
 import { ConfirmButton } from '@/components/ui/confirm-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 
 import type {
@@ -192,20 +186,16 @@ export function PermissionFormDialog({
 					onValueChange={(value) =>
 						setFormData({ ...formData, categoryId: value === 'none' ? undefined : value })
 					}
+					inputId="category"
+					options={[
+						{ value: 'none', label: 'No category' },
+						...categories.map((category) => ({ value: category.id,
+							label: category.name,
+						})),
+					]}
+					placeholder="Select a category"
 					disabled={isSubmitting}
-				>
-					<SelectTrigger id="category">
-						<SelectValue placeholder="Select a category" />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value="none">No category</SelectItem>
-						{categories.map((category) => (
-							<SelectItem key={category.id} value={category.id}>
-								{category.name}
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
+				/>
 			</div>
 
 			<div className="space-y-2">

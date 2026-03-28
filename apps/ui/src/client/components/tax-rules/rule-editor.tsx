@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { PrimaryButton } from '@/components/ui/primary-button'
-import { SearchSelect } from '@/components/ui/search-select'
+import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { TableCell, TableRow } from '@/components/ui/table'
 import {
@@ -25,6 +25,8 @@ import { formatTaxDateTime } from '@/lib/tax-date'
 import { formatTaxRefTypeLabel, TAX_REF_TYPE_OPTIONS } from '@/lib/tax-display'
 
 import type { TaxRuleSet } from '@repo/corporation-tax'
+
+const ANY_INCOME_TYPE_VALUE = '__any_income_type__'
 
 export type RuleFormState = {
 	name: string
@@ -73,7 +75,7 @@ export function defaultRuleFormState(): RuleFormState {
 		name: '',
 		priorityText: '0',
 		rateText: '0',
-		refType: '',
+		refType: ANY_INCOME_TYPE_VALUE,
 		refTypeQuery: '',
 		isActive: true,
 	}
@@ -84,7 +86,7 @@ function ruleToFormState(rule: TaxRuleSet): RuleFormState {
 		name: rule.name,
 		priorityText: String(rule.priority),
 		rateText: toPercentText(rule.taxRateBps),
-		refType: rule.appliesToRefType ?? '',
+		refType: rule.appliesToRefType ?? ANY_INCOME_TYPE_VALUE,
 		refTypeQuery: '',
 		isActive: rule.isActive,
 	}
@@ -101,9 +103,7 @@ export function RuleFormFields({
 }) {
 	const incomeTypeOptions = useMemo(
 		() => [
-			{
-				id: 'any-income-type',
-				value: '',
+			{ value: ANY_INCOME_TYPE_VALUE,
 				label: 'Any income type',
 			},
 			...TAX_REF_TYPE_OPTIONS,
@@ -125,23 +125,26 @@ export function RuleFormFields({
 				<label className="text-xs font-medium text-muted-foreground">
 					Income source (optional)
 				</label>
-				<SearchSelect
-					value={form.refTypeQuery}
-					onValueChange={(value) => onChange({ ...form, refTypeQuery: value })}
-					options={incomeTypeOptions}
-					onSelect={(option) =>
+				<Select
+					value={form.refType}
+					onValueChange={(nextValue) =>
 						onChange({
 							...form,
-							refType: option.value,
+							refType: nextValue,
 							refTypeQuery: '',
 						})
 					}
-					filterMode="local"
-					mode="dropdown"
-					minQueryLength={0}
+					query={form.refTypeQuery}
+					onQueryChange={(nextQuery) => onChange({ ...form, refTypeQuery: nextQuery })}
+					searchable
+					options={incomeTypeOptions}
 					listMinHeight="14rem"
 					listMaxHeight="28rem"
-					placeholder={form.refType ? formatTaxRefTypeLabel(form.refType) : 'Any income type'}
+					placeholder={
+						form.refType === ANY_INCOME_TYPE_VALUE
+							? 'Any income type'
+							: formatTaxRefTypeLabel(form.refType)
+					}
 					disabled={disabled}
 				/>
 			</div>
@@ -313,7 +316,8 @@ export function RuleRowEditor({
 											name: form.name.trim(),
 											priority,
 											isActive: form.isActive,
-											appliesToRefType: form.refType || null,
+											appliesToRefType:
+												form.refType === ANY_INCOME_TYPE_VALUE ? null : form.refType,
 											taxRateBps: rateBps,
 										})
 										setIsEditing(false)

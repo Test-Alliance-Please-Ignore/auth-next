@@ -6,13 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
 	Table,
@@ -25,11 +19,7 @@ import {
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { EntityTypeBadge, StatsDashboard } from '../components'
-import {
-	useIndustryProviders,
-	useIndustryStats,
-	useSetProviderAcceptingOrders,
-} from '../hooks'
+import { useIndustryProviders, useIndustryStats, useSetProviderAcceptingOrders } from '../hooks'
 import { ENTITY_TYPE_LABELS, IndustryEntityType } from '../types'
 
 import type { IndustryProviderFilters } from '../types'
@@ -108,41 +98,32 @@ export default function IndustryProvidersPage() {
 							<Label htmlFor="entityType">Owner Type</Label>
 							<Select
 								value={entityTypeFilter}
-								onValueChange={(value) =>
-									setEntityTypeFilter(value as IndustryEntityType | 'all')
-								}
-							>
-								<SelectTrigger id="entityType">
-									<SelectValue placeholder="All types" />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="all">All Types</SelectItem>
-									{Object.entries(ENTITY_TYPE_LABELS).map(([value, label]) => (
-										<SelectItem key={value} value={value}>
-											{label}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
+								onValueChange={(value) => setEntityTypeFilter(value as IndustryEntityType | 'all')}
+								inputId="entityType"
+								options={[
+									{ value: 'all', label: 'All Types' },
+									...Object.entries(ENTITY_TYPE_LABELS).map(([value, label]) => ({
+										value,
+										label,
+									})),
+								]}
+								placeholder="All types"
+							/>
 						</div>
 
 						<div className="w-full md:w-48 space-y-2">
 							<Label htmlFor="acceptingOrders">Accepting Orders</Label>
 							<Select
 								value={acceptingOrdersFilter}
-								onValueChange={(value) =>
-									setAcceptingOrdersFilter(value as 'all' | 'yes' | 'no')
-								}
-							>
-								<SelectTrigger id="acceptingOrders">
-									<SelectValue placeholder="All" />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="all">All</SelectItem>
-									<SelectItem value="yes">Yes</SelectItem>
-									<SelectItem value="no">No</SelectItem>
-								</SelectContent>
-							</Select>
+								onValueChange={(value) => setAcceptingOrdersFilter(value as 'all' | 'yes' | 'no')}
+								inputId="acceptingOrders"
+								options={[
+									{ value: 'all', label: 'All' },
+									{ value: 'yes', label: 'Yes' },
+									{ value: 'no', label: 'No' },
+								]}
+								placeholder="All"
+							/>
 						</div>
 
 						{hasActiveFilters && (
@@ -228,10 +209,7 @@ export default function IndustryProvidersPage() {
 														variant="ghost"
 														size="sm"
 														onClick={() =>
-															handleToggleAcceptingOrders(
-																provider.id,
-																provider.acceptingOrders
-															)
+															handleToggleAcceptingOrders(provider.id, provider.acceptingOrders)
 														}
 														disabled={setAcceptingOrders.isPending}
 														title={
@@ -247,9 +225,7 @@ export default function IndustryProvidersPage() {
 														)}
 													</Button>
 													<Button variant="ghost" size="sm" asChild>
-														<Link
-															to={`/admin/industry-providers/${provider.id}`}
-														>
+														<Link to={`/admin/industry-providers/${provider.id}`}>
 															<Edit className="h-4 w-4" />
 														</Link>
 													</Button>

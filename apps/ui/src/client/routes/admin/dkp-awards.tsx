@@ -5,13 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { useAwardDkp, useAwardDkpBulk } from '@/features/dkp'
@@ -160,20 +154,17 @@ function SingleAwardForm() {
 								Source Type <span className="text-destructive">*</span>
 							</Label>
 							<Select
+								inputId="sourceType"
 								value={sourceType}
 								onValueChange={(val) => setSourceType(val as DkpSourceType)}
-							>
-								<SelectTrigger id="sourceType">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="manual">Manual</SelectItem>
-									<SelectItem value="fleet">Fleet</SelectItem>
-									<SelectItem value="market">Market</SelectItem>
-									<SelectItem value="mining">Mining</SelectItem>
-									<SelectItem value="adjustment">Adjustment</SelectItem>
-								</SelectContent>
-							</Select>
+								options={[
+									{ value: 'manual', label: 'Manual' },
+									{ value: 'fleet', label: 'Fleet' },
+									{ value: 'market', label: 'Market' },
+									{ value: 'mining', label: 'Mining' },
+									{ value: 'adjustment', label: 'Adjustment' },
+								]}
+							/>
 						</div>
 					</div>
 
@@ -346,17 +337,14 @@ function BulkAwardForm() {
 								Source Type <span className="text-destructive">*</span>
 							</Label>
 							<Select
+								inputId="bulkSourceType"
 								value={sourceType}
 								onValueChange={(val) => setSourceType(val as 'fleet' | 'manual')}
-							>
-								<SelectTrigger id="bulkSourceType">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="manual">Manual</SelectItem>
-									<SelectItem value="fleet">Fleet</SelectItem>
-								</SelectContent>
-							</Select>
+								options={[
+									{ value: 'manual', label: 'Manual' },
+									{ value: 'fleet', label: 'Fleet' },
+								]}
+							/>
 						</div>
 					</div>
 

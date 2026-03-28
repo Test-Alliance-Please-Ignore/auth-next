@@ -9,7 +9,7 @@ import { Container } from '@/components/ui/container'
 import { GhostButton } from '@/components/ui/ghost-button'
 import { Label } from '@/components/ui/label'
 import { PrimaryButton } from '@/components/ui/primary-button'
-import { SearchSelect } from '@/components/ui/search-select'
+import { Select } from '@/components/ui/select'
 import {
 	Table,
 	TableBody,
@@ -119,25 +119,24 @@ export default function FreightManagePage() {
 					<div className="flex items-end justify-between">
 						<div className="w-64 space-y-2">
 							<Label htmlFor="status">Status</Label>
-							<SearchSelect
+							<Select
 								inputId="status"
-								value={
+								value={statusFilter}
+								onValueChange={(nextValue) =>
+									setStatusFilter(nextValue as FreightRouteStatus | 'all')
+								}
+								options={[
+									{ value: 'all', label: 'All Statuses' },
+									{ value: 'active', label: 'Active' },
+									{ value: 'inactive', label: 'Inactive' },
+								]}
+								placeholder={
 									statusFilter === 'all'
 										? 'All Statuses'
 										: statusFilter === 'active'
 											? 'Active'
 											: 'Inactive'
 								}
-								onValueChange={() => {}}
-								options={[
-									{ id: 'all', value: 'all', label: 'All Statuses' },
-									{ id: 'active', value: 'active', label: 'Active' },
-									{ id: 'inactive', value: 'inactive', label: 'Inactive' },
-								]}
-								onSelect={(option) => setStatusFilter(option.value as FreightRouteStatus | 'all')}
-								filterMode="local"
-								mode="dropdown"
-								placeholder="All statuses"
 							/>
 						</div>
 						<div className="flex items-center gap-3">

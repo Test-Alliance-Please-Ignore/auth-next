@@ -14,13 +14,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import {
 	Table,
 	TableBody,
@@ -140,19 +134,16 @@ export default function AdminBroadcastsPage() {
 							<Select
 								value={statusFilter}
 								onValueChange={(value) => setStatusFilter(value as BroadcastStatus | 'all')}
-							>
-								<SelectTrigger>
-									<SelectValue placeholder="Filter by status" />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="all">All Statuses</SelectItem>
-									<SelectItem value="draft">Draft</SelectItem>
-									<SelectItem value="scheduled">Scheduled</SelectItem>
-									<SelectItem value="sending">Sending</SelectItem>
-									<SelectItem value="sent">Sent</SelectItem>
-									<SelectItem value="failed">Failed</SelectItem>
-								</SelectContent>
-							</Select>
+								options={[
+									{ value: 'all', label: 'All Statuses' },
+									{ value: 'draft', label: 'Draft' },
+									{ value: 'scheduled', label: 'Scheduled' },
+									{ value: 'sending', label: 'Sending' },
+									{ value: 'sent', label: 'Sent' },
+									{ value: 'failed', label: 'Failed' },
+								]}
+								placeholder="Filter by status"
+							/>
 						</div>
 					</div>
 				</CardContent>

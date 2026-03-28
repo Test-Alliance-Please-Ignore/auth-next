@@ -4,10 +4,10 @@ import { useMemo, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { SearchSelect } from '@/components/ui/search-select'
+import { Select } from '@/components/ui/select'
 
 import type { TaxRuleGroupAttachment } from '@repo/corporation-tax'
-import type { SearchSelectOption } from '@/components/ui/search-select'
+import type { SelectOption } from '@/components/ui/select'
 
 export function RuleGroupCorporationAttachmentsCard({
 	effectiveRuleGroupId,
@@ -21,7 +21,7 @@ export function RuleGroupCorporationAttachmentsCard({
 }: {
 	effectiveRuleGroupId?: string
 	attachments: TaxRuleGroupAttachment[]
-	corporationSearchOptions: SearchSelectOption[]
+	corporationSearchOptions: SelectOption[]
 	resolveCorporationName: (corporationId: string) => string
 	isAttaching: boolean
 	isDetaching: boolean
@@ -53,20 +53,19 @@ export function RuleGroupCorporationAttachmentsCard({
 					<div className="text-sm text-muted-foreground">Select a rule group first.</div>
 				) : (
 					<>
-						<SearchSelect
-							value={corpAttachQuery}
-							onValueChange={setCorpAttachQuery}
-							options={attachableCorporationOptions}
-							onSelect={(option) => {
+						<Select
+							value=""
+							onValueChange={(nextValue) => {
 								setCorpAttachQuery('')
 								void onAttach({
 									ruleGroupId: effectiveRuleGroupId,
-									corporationId: option.value,
+									corporationId: nextValue,
 								})
 							}}
-							filterMode="local"
-							mode="dropdown"
-							minQueryLength={0}
+							query={corpAttachQuery}
+							onQueryChange={setCorpAttachQuery}
+							searchable
+							options={attachableCorporationOptions}
 							placeholder="Attach corporation by name or ID"
 							emptyText="No matching corporations"
 							disabled={isAttaching}

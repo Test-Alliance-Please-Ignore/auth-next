@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Container } from '@/components/ui/container'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
-import { SearchSelect } from '@/components/ui/search-select'
+import { Select } from '@/components/ui/select'
 import { Section } from '@/components/ui/section'
 import { useTaxAuditActors, useTaxAuditLog, useTaxCapabilities } from '@/hooks/corporation-tax'
 import { useDebounce } from '@/hooks/useDebounce'
@@ -115,9 +115,7 @@ export default function TaxAuditLogPage() {
 	}, [resolvedActors])
 	const actorSearchOptions = useMemo(
 		() =>
-			actorSearchResults.map((actor) => ({
-				id: actor.userId,
-				value: actor.userId,
+			actorSearchResults.map((actor) => ({ value: actor.userId,
 				label: actor.name ?? actor.userId,
 				description: actor.name ? actor.userId : undefined,
 			})),
@@ -159,9 +157,13 @@ export default function TaxAuditLogPage() {
 						<CardDescription>Filter by actor and action key (partial match).</CardDescription>
 					</CardHeader>
 					<CardContent className="grid gap-3 md:grid-cols-2">
-						<SearchSelect
-							value={actorUserQuery}
-							onValueChange={(value) => {
+						<Select
+							value={actorUserIdFilter}
+							onValueChange={(nextValue) => {
+								setActorUserIdFilter(nextValue)
+							}}
+							query={actorUserQuery}
+							onQueryChange={(value) => {
 								setActorUserQuery(value)
 								if (!value.trim()) {
 									setActorUserIdFilter('')
@@ -169,16 +171,13 @@ export default function TaxAuditLogPage() {
 								}
 								setActorUserIdFilter('')
 							}}
+							searchable
+							searchDelegate={() => actorSearchOptions}
 							options={actorSearchOptions}
-							onSelect={(option) => {
-								setActorUserIdFilter(option.value)
-								setActorUserQuery('')
-							}}
-							filterMode="server"
-							mode="search"
 							minQueryLength={2}
+							debounceMs={0}
 							loading={actorSearchLoading || actorSearchPending}
-							minCharsText="Type at least 2 characters to search actors"
+							queryHintText="Type at least 2 characters to search actors"
 							placeholder={
 								actorUserIdFilter
 									? (actorDisplayNames[actorUserIdFilter] ?? actorUserIdFilter)

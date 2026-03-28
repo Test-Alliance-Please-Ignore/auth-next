@@ -10,7 +10,7 @@ import { GhostButton } from '@/components/ui/ghost-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { NumberInput } from '@/components/ui/number-input'
-import { SearchSelect } from '@/components/ui/search-select'
+import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useCreateFreightRoute } from '@/hooks/useFreightRoutes'
 import { useSystemSearch } from '@/hooks/useLocationSearch'
@@ -19,11 +19,11 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 import type { CreateFreightRouteInput, FreightRouteStatus } from '@repo/freight'
 
 const EXPIRATION_OPTIONS = [
-	{ id: '1', value: '1', label: '1 day' },
-	{ id: '3', value: '3', label: '3 days' },
-	{ id: '7', value: '7', label: '1 week' },
-	{ id: '14', value: '14', label: '2 weeks' },
-	{ id: '28', value: '28', label: '4 weeks' },
+	{ value: '1', label: '1 day' },
+	{ value: '3', label: '3 days' },
+	{ value: '7', label: '1 week' },
+	{ value: '14', label: '2 weeks' },
+	{ value: '28', label: '4 weeks' },
 ]
 
 export default function FreightManageNewPage() {
@@ -62,15 +62,15 @@ export default function FreightManageNewPage() {
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 	const [pickupSystemId, setPickupSystemId] = useState<string | null>(null)
 	const [destinationSystemId, setDestinationSystemId] = useState<string | null>(null)
+	const [pickupQuery, setPickupQuery] = useState('')
+	const [destinationQuery, setDestinationQuery] = useState('')
 
-	const pickupSearch = useSystemSearch(formData.pickupName)
-	const destinationSearch = useSystemSearch(formData.destinationName)
+	const pickupSearch = useSystemSearch(pickupQuery)
+	const destinationSearch = useSystemSearch(destinationQuery)
 
 	const pickupOptions = useMemo(
 		() =>
-			(pickupSearch.data ?? []).map((system) => ({
-				id: String(system.systemId),
-				value: system.systemName,
+			(pickupSearch.data ?? []).map((system) => ({ value: String(system.systemId),
 				label: system.systemName,
 				description: system.regionName,
 			})),
@@ -79,9 +79,7 @@ export default function FreightManageNewPage() {
 
 	const destinationOptions = useMemo(
 		() =>
-			(destinationSearch.data ?? []).map((system) => ({
-				id: String(system.systemId),
-				value: system.systemName,
+			(destinationSearch.data ?? []).map((system) => ({ value: String(system.systemId),
 				label: system.systemName,
 				description: system.regionName,
 			})),
@@ -240,17 +238,27 @@ export default function FreightManageNewPage() {
 								Pickup Location
 								<span className="text-destructive ml-1">*</span>
 							</Label>
-							<SearchSelect
+							<Select
 								inputId="pickupName"
-								value={formData.pickupName}
-								onValueChange={(value) => handleChange('pickupName', value)}
-								options={pickupOptions}
-								onSelect={(option) => {
+								value={pickupSystemId ?? ''}
+								onValueChange={(nextValue, option) => {
+									if (!option) {
+										return
+									}
+									setPickupSystemId(nextValue)
+									setPickupQuery('')
 									handleChange('pickupName', option.label)
-									setPickupSystemId(option.id)
 								}}
-								filterMode="server"
+								query={pickupQuery}
+								onQueryChange={(nextQuery) => {
+									setPickupQuery(nextQuery)
+									handleChange('pickupName', nextQuery)
+								}}
+								searchable
+								searchDelegate={() => pickupOptions}
+								options={pickupOptions}
 								minQueryLength={3}
+								debounceMs={0}
 								placeholder="Search for a solar system..."
 								loading={pickupSearch.isFetching || pickupSearch.isPending}
 								emptyText="No systems found"
@@ -268,17 +276,27 @@ export default function FreightManageNewPage() {
 								Destination Location
 								<span className="text-destructive ml-1">*</span>
 							</Label>
-							<SearchSelect
+							<Select
 								inputId="destinationName"
-								value={formData.destinationName}
-								onValueChange={(value) => handleChange('destinationName', value)}
-								options={destinationOptions}
-								onSelect={(option) => {
+								value={destinationSystemId ?? ''}
+								onValueChange={(nextValue, option) => {
+									if (!option) {
+										return
+									}
+									setDestinationSystemId(nextValue)
+									setDestinationQuery('')
 									handleChange('destinationName', option.label)
-									setDestinationSystemId(option.id)
 								}}
-								filterMode="server"
+								query={destinationQuery}
+								onQueryChange={(nextQuery) => {
+									setDestinationQuery(nextQuery)
+									handleChange('destinationName', nextQuery)
+								}}
+								searchable
+								searchDelegate={() => destinationOptions}
+								options={destinationOptions}
 								minQueryLength={3}
+								debounceMs={0}
 								placeholder="Search for a solar system..."
 								loading={destinationSearch.isFetching || destinationSearch.isPending}
 								emptyText="No systems found"
@@ -367,15 +385,15 @@ export default function FreightManageNewPage() {
 						{/* Expiration */}
 						<div className="space-y-2">
 							<Label htmlFor="expiration">Contract Expiration</Label>
-							<SearchSelect
+							<Select
 								inputId="expiration"
-								value={EXPIRATION_OPTIONS.find((o) => o.value === formData.expiration)?.label ?? ''}
-								onValueChange={() => {}}
+								value={formData.expiration}
+								onValueChange={(nextValue) => handleChange('expiration', nextValue)}
 								options={EXPIRATION_OPTIONS}
-								onSelect={(option) => handleChange('expiration', option.value)}
-								filterMode="local"
-								mode="dropdown"
-								placeholder="Optional - select expiration period"
+								placeholder={
+									EXPIRATION_OPTIONS.find((o) => o.value === formData.expiration)?.label ??
+									'Optional - select expiration period'
+								}
 								inputClassName={errors.expiration ? 'border-destructive' : ''}
 							/>
 							{errors.expiration && <p className="text-sm text-destructive">{errors.expiration}</p>}
@@ -439,22 +457,19 @@ export default function FreightManageNewPage() {
 						{/* Status */}
 						<div className="space-y-2">
 							<Label htmlFor="status">Initial Status</Label>
-							<SearchSelect
+							<Select
 								inputId="status"
-								value={
+								value={formData.status}
+								onValueChange={(nextValue) => handleChange('status', nextValue)}
+								options={[
+									{ value: 'active', label: 'Active (available for use)' },
+									{ value: 'inactive', label: 'Inactive (not available)' },
+								]}
+								placeholder={
 									formData.status === 'active'
 										? 'Active (available for use)'
 										: 'Inactive (not available)'
 								}
-								onValueChange={() => {}}
-								options={[
-									{ id: 'active', value: 'active', label: 'Active (available for use)' },
-									{ id: 'inactive', value: 'inactive', label: 'Inactive (not available)' },
-								]}
-								onSelect={(option) => handleChange('status', option.value)}
-								filterMode="local"
-								mode="dropdown"
-								placeholder="Select status..."
 							/>
 							<p className="text-sm text-muted-foreground">
 								Set route status - only active routes are available to customers

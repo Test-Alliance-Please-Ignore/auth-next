@@ -11,13 +11,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import { useTransferOwnership } from '@/hooks/useGroups'
 
 import type { GroupMember, GroupWithDetails } from '@/lib/api'
@@ -100,18 +94,14 @@ export function TransferOwnershipDialog({
 					{/* Member Selection */}
 					<div className="space-y-2">
 						<label className="text-sm font-medium">New Owner</label>
-						<Select value={selectedUserId} onValueChange={setSelectedUserId}>
-							<SelectTrigger>
-								<SelectValue placeholder="Select a member..." />
-							</SelectTrigger>
-							<SelectContent>
-								{eligibleMembers.map((member) => (
-									<SelectItem key={member.userId} value={member.userId}>
-										{member.mainCharacterName || 'Unknown User'}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
+						<Select
+							value={selectedUserId}
+							onValueChange={setSelectedUserId}
+							options={eligibleMembers.map((member) => ({ value: member.userId,
+								label: member.mainCharacterName || 'Unknown User',
+							}))}
+							placeholder="Select a member..."
+						/>
 					</div>
 
 					{/* Error Message */}

@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { PrimaryButton } from '@/components/ui/primary-button'
-import { SearchSelect } from '@/components/ui/search-select'
+import { Select } from '@/components/ui/select'
 
 import type { TaxRuleGroup } from '@repo/corporation-tax'
 
@@ -69,9 +69,7 @@ export function RuleGroupScopeCard({
 
 	const ruleGroupScopeOptions = useMemo(
 		() =>
-			ruleGroups.map((group) => ({
-				id: group.id,
-				value: group.id,
+			ruleGroups.map((group) => ({ value: group.id,
 				label: group.isDefaultGlobal ? 'Alliance Global (default)' : group.name,
 				description: group.isDefaultGlobal ? group.name : (group.description ?? undefined),
 			})),
@@ -100,17 +98,16 @@ export function RuleGroupScopeCard({
 									: 'Failed to load groups'}
 							</div>
 						) : (
-							<SearchSelect
-								value={ruleGroupScopeQuery}
-								onValueChange={setRuleGroupScopeQuery}
-								options={ruleGroupScopeOptions}
-								onSelect={(option) => {
-									onSelectRuleGroup(option.value)
+							<Select
+								value={selectedRuleGroup?.id ?? ''}
+								onValueChange={(nextValue) => {
+									onSelectRuleGroup(nextValue)
 									setRuleGroupScopeQuery('')
 								}}
-								filterMode="local"
-								mode="dropdown"
-								minQueryLength={0}
+								query={ruleGroupScopeQuery}
+								onQueryChange={setRuleGroupScopeQuery}
+								searchable
+								options={ruleGroupScopeOptions}
 								placeholder={
 									selectedRuleGroup
 										? selectedRuleGroup.isDefaultGlobal

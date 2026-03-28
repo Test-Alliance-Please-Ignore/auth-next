@@ -7,13 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import {
 	Table,
 	TableBody,
@@ -212,16 +206,14 @@ export default function ActivityLogPage() {
 							<Select
 								value={String(pageSize)}
 								onValueChange={(value) => handlePageSizeChange(Number(value))}
-							>
-								<SelectTrigger className="h-9 w-20">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="25">25</SelectItem>
-									<SelectItem value="50">50</SelectItem>
-									<SelectItem value="100">100</SelectItem>
-								</SelectContent>
-							</Select>
+								options={[
+									{ value: '25', label: '25' },
+									{ value: '50', label: '50' },
+									{ value: '100', label: '100' },
+								]}
+								className="h-9 w-20"
+								inputClassName="h-9"
+							/>
 						</div>
 					</div>
 				</CardHeader>

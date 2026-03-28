@@ -3,8 +3,8 @@ import { useState } from 'react'
 import { useLocationSearch } from '@/hooks/useLocationSearch'
 
 import { Badge } from './badge'
-import { SearchSelect } from './search-select'
 import { Label } from './label'
+import { Select } from './select'
 
 import type { EsiLocationSearchResult } from '@/lib/esi-api'
 
@@ -79,30 +79,42 @@ export function LocationSearch({
 					</button>
 				</div>
 			) : (
-				<SearchSelect
+				<Select
 					inputId={inputId}
-					value={query}
-					onValueChange={(nextQuery) => {
+					value=""
+					onValueChange={(_nextValue, option) => {
+						if (!option) {
+							return
+						}
+						handleSelect(option.result)
+					}}
+					query={query}
+					onQueryChange={(nextQuery) => {
 						setQuery(nextQuery)
 						setHasInteracted(true)
 					}}
-					options={results.map((result) => ({
-						id: result.id,
-						value: result.name,
+					searchable
+					searchDelegate={() =>
+						results.map((result) => ({ value: result.id,
+							label: result.name,
+							description: `${result.systemName} (${result.regionName})`,
+							result,
+						}))
+					}
+					options={results.map((result) => ({ value: result.id,
 						label: result.name,
 						description: `${result.systemName} (${result.regionName})`,
 						result,
 					}))}
-					onSelect={(option) => handleSelect(option.result)}
-					filterMode="server"
 					minQueryLength={2}
+					debounceMs={0}
 					placeholder={placeholder}
 					loading={query.length >= 2 && isLoading}
 					inputClassName={error ? 'border-destructive' : ''}
-					minCharsText="Type at least 2 characters"
+					queryHintText="Type at least 2 characters"
 					loadingText="Searching..."
 					emptyText="No locations found"
-					getSearchText={(option) =>
+					getOptionSearchText={(option) =>
 						`${option.label} ${option.description ?? ''} ${option.result.type}`
 					}
 					renderOption={(option) => (
