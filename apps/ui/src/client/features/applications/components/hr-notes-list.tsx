@@ -8,8 +8,8 @@
 import { Lock, Plus } from 'lucide-react'
 import { useState } from 'react'
 
-import { Button } from '@/components/ui/button'
 import { LoadingSpinner } from '@/components/ui/loading'
+import { PrimaryButton } from '@/components/ui/primary-button'
 import { Select } from '@/components/ui/select'
 import { useAuth } from '@/hooks/useAuth'
 
@@ -114,10 +114,10 @@ export function HRNotesList({
 					<h3 className="font-semibold">HR Notes</h3>
 				</div>
 				{onAddNote && (
-					<Button onClick={onAddNote} size="sm" variant="outline" className="gap-1.5">
+					<PrimaryButton onClick={onAddNote} size="sm" className="gap-1.5">
 						<Plus className="h-4 w-4" />
 						Add Note
-					</Button>
+					</PrimaryButton>
 				)}
 			</div>
 
@@ -126,7 +126,8 @@ export function HRNotesList({
 				<Select
 					value={noteTypeFilter}
 					onValueChange={setNoteTypeFilter}
-					options={NOTE_TYPE_OPTIONS.map((option) => ({ value: option.value,
+					options={NOTE_TYPE_OPTIONS.map((option) => ({
+						value: option.value,
 						label: option.label,
 					}))}
 					placeholder="Filter by type"
@@ -135,9 +136,7 @@ export function HRNotesList({
 				<Select
 					value={priorityFilter}
 					onValueChange={setPriorityFilter}
-					options={PRIORITY_OPTIONS.map((option) => ({ value: option.value,
-						label: option.label,
-					}))}
+					options={PRIORITY_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
 					placeholder="Filter by priority"
 				/>
 			</div>
@@ -172,10 +171,10 @@ export function HRNotesList({
 						)}
 					</div>
 					{onAddNote && (
-						<Button onClick={onAddNote} variant="outline" size="sm" className="mt-4">
+						<PrimaryButton onClick={onAddNote} size="sm" className="mt-4">
 							<Plus className="h-4 w-4 mr-1.5" />
 							Add First Note
-						</Button>
+						</PrimaryButton>
 					)}
 				</div>
 			)}

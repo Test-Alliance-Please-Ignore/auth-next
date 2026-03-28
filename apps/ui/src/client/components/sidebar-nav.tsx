@@ -25,6 +25,7 @@ import {
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 
+import { useHrAccessibleCorporations } from '@/features/hr'
 import { useHasCorporationAccess } from '@/features/my-corporations'
 import { useTaxAlerts } from '@/hooks/corporation-tax'
 import { useAuth, useLogout } from '@/hooks/useAuth'
@@ -55,6 +56,7 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 	const logout = useLogout()
 	const { data: invitations } = usePendingInvitations()
 	const { data: corporationAccess } = useHasCorporationAccess()
+	const { data: hrCorporations } = useHrAccessibleCorporations()
 	const { hasAnyPermission } = useUserPermissions()
 
 	const pendingCount = invitations?.length || 0
@@ -247,6 +249,15 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 		})
 	}
 
+	// Add HR nav item near Manage Corporation when user has HR access
+	if ((hrCorporations?.length ?? 0) > 0) {
+		navItems.push({
+			label: 'HR',
+			href: '/hr',
+			icon: Users,
+		})
+	}
+
 	// Add admin nav item if user is admin (bottom)
 	if (user?.is_admin) {
 		navItems.push({
@@ -289,8 +300,8 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 							<div key={item.href} className="space-y-1">
 								<button
 									type="button"
-								onClick={() => toggleMenu(item.href)}
-								aria-expanded={!!openMenus[item.href]}
+									onClick={() => toggleMenu(item.href)}
+									aria-expanded={!!openMenus[item.href]}
 									className={cn(
 										'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all',
 										'hover:bg-accent/50 hover:text-accent-foreground',
@@ -335,9 +346,7 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 															'text-muted-foreground'
 														)}
 													>
-														{ChildIcon ? (
-															<ChildIcon className="h-4 w-4 flex-shrink-0" />
-														) : null}
+														{ChildIcon ? <ChildIcon className="h-4 w-4 flex-shrink-0" /> : null}
 														<span className="flex-1">{child.label}</span>
 														<ExternalLink className="h-3 w-3 text-muted-foreground" />
 													</a>
@@ -390,9 +399,7 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 									'text-muted-foreground border-l-4 border-transparent'
 								)}
 							>
-								{Icon ? (
-									<Icon className="h-5 w-5 flex-shrink-0" />
-								) : null}
+								{Icon ? <Icon className="h-5 w-5 flex-shrink-0" /> : null}
 								<span className="flex-1">{item.label}</span>
 								<ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
 							</a>
@@ -439,7 +446,7 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 							alt={`${mainCharacter.characterName}'s portrait`}
 							loading="lazy"
 							onError={(e) => {
-								; (e.currentTarget as HTMLImageElement).src =
+								;(e.currentTarget as HTMLImageElement).src =
 									'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"%3E%3Crect fill="%23404040" width="64" height="64"/%3E%3Ctext x="50%25" y="50%25" font-family="Arial" font-size="24" fill="%23bfbfbf" text-anchor="middle" dominant-baseline="middle"%3E?%3C/text%3E%3C/svg%3E'
 							}}
 							className="w-10 h-10 rounded-full border-2 border-primary/50"

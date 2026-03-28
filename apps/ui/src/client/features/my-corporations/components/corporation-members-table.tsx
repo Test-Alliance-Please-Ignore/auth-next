@@ -27,7 +27,10 @@ import { useCallback, useMemo, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { DestructiveButton } from '@/components/ui/destructive-button'
+import { GhostButton } from '@/components/ui/ghost-button'
 import { Input } from '@/components/ui/input'
+import { PrimaryButton } from '@/components/ui/primary-button'
 import { Select } from '@/components/ui/select'
 import {
 	Table,
@@ -546,38 +549,33 @@ export default function CorporationMembersTable({
 									<TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
 										<div className="flex justify-end gap-2">
 											{!member.hasAuthAccount && onLinkAccount && (
-												<Button size="sm" variant="outline" onClick={() => onLinkAccount(member)}>
+												<GhostButton size="sm" onClick={() => onLinkAccount(member)}>
 													<Link2 className="h-3 w-3 mr-1" />
 													Link
-												</Button>
+												</GhostButton>
 											)}
 											{canManageHrRoles && member.hasAuthAccount && !member.hrRole && (
-												<Button
-													size="sm"
-													variant="outline"
-													onClick={() => setGrantDialogMember(member)}
-												>
+												<PrimaryButton size="sm" onClick={() => setGrantDialogMember(member)}>
 													<Shield className="h-3 w-3 mr-1" />
 													Grant HR Role
-												</Button>
+												</PrimaryButton>
 											)}
 											{canManageHrRoles && member.hrRole && (
-												<Button
+												<DestructiveButton
 													size="sm"
-													variant="outline"
+													showIcon={false}
 													onClick={() => setRevokeDialogMember(member)}
 												>
 													<ShieldOff className="h-3 w-3 mr-1" />
-													Revoke Role
-												</Button>
+													Revoke HR Role
+												</DestructiveButton>
 											)}
 											{canManageHrRoles &&
 												member.hasAuthAccount &&
 												member.role !== 'CEO' &&
 												member.status !== 'emeritus' && (
-													<Button
+													<GhostButton
 														size="sm"
-														variant="outline"
 														onClick={() => {
 															setEmeritusAction('mark')
 															setEmeritusDialogMember(member)
@@ -585,12 +583,11 @@ export default function CorporationMembersTable({
 													>
 														<Heart className="h-3 w-3 mr-1" />
 														Mark Emeritus
-													</Button>
+													</GhostButton>
 												)}
 											{canManageHrRoles && member.status === 'emeritus' && (
-												<Button
+												<GhostButton
 													size="sm"
-													variant="outline"
 													onClick={() => {
 														setEmeritusAction('remove')
 														setEmeritusDialogMember(member)
@@ -598,11 +595,11 @@ export default function CorporationMembersTable({
 												>
 													<Heart className="h-3 w-3 mr-1" />
 													Remove Emeritus
-												</Button>
+												</GhostButton>
 											)}
-											<Button size="sm" variant="ghost" onClick={() => onMemberClick?.(member)}>
+											<GhostButton size="sm" onClick={() => onMemberClick?.(member)}>
 												<ExternalLink className="h-3 w-3" />
-											</Button>
+											</GhostButton>
 										</div>
 									</TableCell>
 								)}

@@ -4,7 +4,7 @@
  * Main page showing all corporations where the user has CEO/director access.
  */
 
-import { AlertCircle, Building2, Settings, Shield, Star, Users } from 'lucide-react'
+import { AlertCircle, ArrowLeft, Building2, Settings, Shield, Star, Users } from 'lucide-react'
 import { useEffect } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 
@@ -15,8 +15,9 @@ import {
 	AccordionTrigger,
 } from '@/components/ui/accordion'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { GhostButton } from '@/components/ui/ghost-button'
+import { PrimaryButton } from '@/components/ui/primary-button'
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/hooks/useAuth'
@@ -80,9 +81,12 @@ export default function MyCorporationsList() {
 							</li>
 						</ul>
 						<div className="mt-6">
-							<Link to="/dashboard">
-								<Button variant="outline">Return to Dashboard</Button>
-							</Link>
+							<GhostButton asChild>
+								<Link to="/dashboard">
+									<ArrowLeft className="mr-2 h-4 w-4" />
+									Return to Dashboard
+								</Link>
+							</GhostButton>
 						</div>
 					</CardContent>
 				</Card>
@@ -126,9 +130,7 @@ export default function MyCorporationsList() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<Button variant="outline" onClick={() => window.location.reload()}>
-							Try Again
-						</Button>
+						<GhostButton onClick={() => window.location.reload()}>Try Again</GhostButton>
 					</CardContent>
 				</Card>
 			</div>
@@ -258,15 +260,15 @@ export default function MyCorporationsList() {
 
 										{/* Action Buttons */}
 										<div>
-											<Link to={`/my-corporations/${corporation.corporationId}/members`}>
-												<Button
-													className="w-full bg-[hsl(220_10%_40%)] text-white border-2 border-[hsl(220_10%_40%)]/70 shadow-lg shadow-[hsl(220_10%_40%)]/25 hover:bg-[hsl(220_10%_32%)] hover:shadow-xl hover:shadow-[hsl(220_10%_32%)]/40 hover:border-[hsl(220_10%_32%)]/70 focus-visible:ring-2 focus-visible:ring-[hsl(220_10%_40%)] focus-visible:ring-offset-2 transition-all duration-200"
-													variant="default"
-												>
+											<PrimaryButton
+												asChild
+												className="w-full bg-[hsl(220_10%_40%)] text-white border-2 border-[hsl(220_10%_40%)]/70 shadow-lg shadow-[hsl(220_10%_40%)]/25 hover:bg-[hsl(220_10%_32%)] hover:shadow-xl hover:shadow-[hsl(220_10%_32%)]/40 hover:border-[hsl(220_10%_32%)]/70 focus-visible:ring-2 focus-visible:ring-[hsl(220_10%_40%)] focus-visible:ring-offset-2 transition-all duration-200"
+											>
+												<Link to={`/my-corporations/${corporation.corporationId}/members`}>
 													<Settings className="mr-2 h-4 w-4" />
 													Manage Corporation
-												</Button>
-											</Link>
+												</Link>
+											</PrimaryButton>
 										</div>
 									</div>
 								</AccordionContent>

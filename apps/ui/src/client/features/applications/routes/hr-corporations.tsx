@@ -1,0 +1,149 @@
+import { useQueries } from '@tanstack/react-query'
+import { AlertCircle, Building2, FileText, LayoutDashboard } from 'lucide-react'
+import { Link, Navigate } from 'react-router-dom'
+
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { GhostButton } from '@/components/ui/ghost-button'
+import { LoadingSpinner } from '@/components/ui/loading'
+import { PageHeader } from '@/components/ui/page-header'
+import { PrimaryButton } from '@/components/ui/primary-button'
+import { useHrAccessibleCorporations } from '@/features/hr'
+import { HrRoleBadge } from '@/features/hr/components/hr-role-badge'
+import { useAuth } from '@/hooks/useAuth'
+import { usePageTitle } from '@/hooks/usePageTitle'
+
+import { applicationsApi } from '../api'
+
+export default function HrCorporationsPage() {
+	const { isAuthenticated, isLoading: authLoading } = useAuth()
+	const {
+		data: corporations = [],
+		isLoading: corporationsLoading,
+		error,
+	} = useHrAccessibleCorporations()
+	const applicationQueries = useQueries({
+		queries: corporations.map((corporation) => ({
+			queryKey: ['hr', 'corporation-application-counts', corporation.corporationId],
+			queryFn: () => applicationsApi.getApplications({ corporationId: corporation.corporationId }),
+			staleTime: 1000 * 30, // 30s
+			gcTime: 1000 * 60 * 2, // 2m
+			enabled: !!corporation.corporationId,
+		})),
+	})
+
+	usePageTitle('HR')
+
+	if (!authLoading && !isAuthenticated) {
+		return <Navigate to="/login" replace />
+	}
+
+	if (authLoading || corporationsLoading) {
+		return (
+			<div className="container mx-auto max-w-7xl px-4 py-8">
+				<div className="flex items-center justify-center min-h-[320px]">
+					<LoadingSpinner size="lg" />
+				</div>
+			</div>
+		)
+	}
+
+	if (error) {
+		return (
+			<div className="container mx-auto max-w-6xl px-4 py-8">
+				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
+					<CardHeader className="text-center">
+						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
+						<CardTitle className="text-2xl text-red-900 dark:text-red-100">
+							Failed to Load HR Corporations
+						</CardTitle>
+						<CardDescription className="mt-2 text-red-700 dark:text-red-300">
+							{error instanceof Error ? error.message : 'An unexpected error occurred'}
+						</CardDescription>
+					</CardHeader>
+					<CardContent className="text-center">
+						<GhostButton onClick={() => window.location.reload()}>Try Again</GhostButton>
+					</CardContent>
+				</Card>
+			</div>
+		)
+	}
+
+	if (corporations.length === 0) {
+		return (
+			<div className="container mx-auto max-w-6xl px-4 py-8">
+				<Card className="max-w-2xl mx-auto">
+					<CardHeader className="text-center">
+						<Building2 className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
+						<CardTitle className="text-2xl">No HR Corporation Access</CardTitle>
+						<CardDescription className="mt-2">
+							You do not currently have HR Viewer/Reviewer/Admin access for any corporation.
+						</CardDescription>
+					</CardHeader>
+				</Card>
+			</div>
+		)
+	}
+
+	return (
+		<div className="container mx-auto max-w-7xl px-4 py-8">
+			<PageHeader
+				title="HR Corporations"
+				description="Select a corporation to access its HR dashboard and application review tools"
+			/>
+
+			<div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+				{corporations.map((corporation, index) => {
+					const applicationQuery = applicationQueries[index]
+					const applications = applicationQuery?.data ?? []
+					const pendingCount = applications.filter(
+						(application) => application.status === 'pending'
+					).length
+					const underReviewCount = applications.filter(
+						(application) => application.status === 'under_review'
+					).length
+					const hasVisibleCounts = pendingCount > 0 || underReviewCount > 0
+
+					return (
+						<Card key={corporation.corporationId}>
+							<CardHeader>
+								<CardTitle className="flex items-center justify-between gap-3">
+									<span>
+										{corporation.name}
+										{corporation.ticker ? ` [${corporation.ticker}]` : ''}
+									</span>
+									<HrRoleBadge role={corporation.currentRole} showTooltip={false} />
+								</CardTitle>
+								<CardDescription>Corporation ID: {corporation.corporationId}</CardDescription>
+							</CardHeader>
+							<CardContent className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+								<div className="flex flex-wrap gap-2">
+									<PrimaryButton asChild>
+										<Link to={`/corporations/${corporation.corporationId}/hr/dashboard`}>
+											<LayoutDashboard className="mr-2 h-4 w-4" />
+											Dashboard
+										</Link>
+									</PrimaryButton>
+									<GhostButton asChild>
+										<Link to={`/corporations/${corporation.corporationId}/hr/applications`}>
+											<FileText className="mr-2 h-4 w-4" />
+											Applications
+										</Link>
+									</GhostButton>
+								</div>
+								{hasVisibleCounts && (
+									<div className="flex flex-wrap items-center gap-2 sm:justify-end">
+										{pendingCount > 0 && <Badge variant="warning">Pending: {pendingCount}</Badge>}
+										{underReviewCount > 0 && (
+											<Badge variant="secondary">Under Review: {underReviewCount}</Badge>
+										)}
+									</div>
+								)}
+							</CardContent>
+						</Card>
+					)
+				})}
+			</div>
+		</div>
+	)
+}

@@ -25,9 +25,10 @@ import {
 	BreadcrumbPage,
 	BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { GhostButton } from '@/components/ui/ghost-button'
 import { LoadingSpinner } from '@/components/ui/loading'
+import { PrimaryButton } from '@/components/ui/primary-button'
 import { useAuth } from '@/hooks/useAuth'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
@@ -201,9 +202,12 @@ export default function CorporationMembers() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<Link to="/my-corporations">
-							<Button variant="outline">Return to My Corporations</Button>
-						</Link>
+						<GhostButton asChild>
+							<Link to="/my-corporations">
+								<ArrowLeft className="mr-2 h-4 w-4" />
+								Return to My Corporations
+							</Link>
+						</GhostButton>
 					</CardContent>
 				</Card>
 			</div>
@@ -225,14 +229,17 @@ export default function CorporationMembers() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center space-y-4">
-						<Button variant="outline" onClick={handleRefresh} disabled={isRefreshing}>
+						<GhostButton onClick={handleRefresh} disabled={isRefreshing}>
 							<RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
 							{isRefreshing ? 'Refreshing...' : 'Try Again'}
-						</Button>
+						</GhostButton>
 						<div>
-							<Link to="/my-corporations">
-								<Button variant="ghost">Return to My Corporations</Button>
-							</Link>
+							<GhostButton asChild>
+								<Link to="/my-corporations">
+									<ArrowLeft className="mr-2 h-4 w-4" />
+									Return to My Corporations
+								</Link>
+							</GhostButton>
 						</div>
 					</CardContent>
 				</Card>
@@ -280,24 +287,23 @@ export default function CorporationMembers() {
 						)}
 					</div>
 					<div className="flex gap-2">
-						<Button variant="outline" onClick={handleRefresh} disabled={isRefreshing}>
+						<GhostButton onClick={handleRefresh} disabled={isRefreshing}>
 							<RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
 							{isRefreshing ? 'Refreshing...' : 'Refresh'}
-						</Button>
-						<Button
-							variant="outline"
+						</GhostButton>
+						<GhostButton
 							onClick={handleExport}
 							disabled={!membersWithHrRoles || membersWithHrRoles.length === 0}
 						>
 							<Download className="mr-2 h-4 w-4" />
 							Export CSV
-						</Button>
-						<Link to="/my-corporations">
-							<Button variant="ghost">
+						</GhostButton>
+						<GhostButton asChild>
+							<Link to="/my-corporations">
 								<ArrowLeft className="mr-2 h-4 w-4" />
 								Back
-							</Button>
-						</Link>
+							</Link>
+						</GhostButton>
 					</div>
 				</div>
 			</div>
@@ -320,31 +326,31 @@ export default function CorporationMembers() {
 					</CardHeader>
 					<CardContent>
 						<div className="flex flex-wrap gap-2">
-							<Link to={`/corporations/${corporationId}/hr/dashboard`}>
-								<Button variant="default">
+							<PrimaryButton asChild>
+								<Link to={`/corporations/${corporationId}/hr/dashboard`}>
 									<LayoutDashboard className="mr-2 h-4 w-4" />
 									HR Dashboard
-								</Button>
-							</Link>
-							<Link to={`/corporations/${corporationId}/hr/applications`}>
-								<Button variant="default">
+								</Link>
+							</PrimaryButton>
+							<PrimaryButton asChild>
+								<Link to={`/corporations/${corporationId}/hr/applications`}>
 									<FileText className="mr-2 h-4 w-4" />
 									Review Applications
-								</Button>
-							</Link>
-							<Link to={`/corporations/${corporationId}/hr/roles`}>
-								<Button variant="outline">
+								</Link>
+							</PrimaryButton>
+							<GhostButton asChild>
+								<Link to={`/corporations/${corporationId}/hr/roles`}>
 									<Settings className="mr-2 h-4 w-4" />
 									Manage HR Roles
-								</Button>
-							</Link>
+								</Link>
+							</GhostButton>
 							{canManageHrRoles && (
-								<Link to={`/my-corporations/${corporationId}/settings`}>
-									<Button variant="outline">
+								<GhostButton asChild>
+									<Link to={`/my-corporations/${corporationId}/settings`}>
 										<Settings className="mr-2 h-4 w-4" />
 										Corporation Settings
-									</Button>
-								</Link>
+									</Link>
+								</GhostButton>
 							)}
 						</div>
 					</CardContent>
@@ -384,10 +390,10 @@ export default function CorporationMembers() {
 							<p className="text-sm text-muted-foreground mb-4">
 								Member data may need to be fetched from ESI.
 							</p>
-							<Button onClick={handleRefresh} disabled={isRefreshing}>
+							<PrimaryButton onClick={handleRefresh} disabled={isRefreshing}>
 								<RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
 								{isRefreshing ? 'Refreshing...' : 'Refresh Data'}
-							</Button>
+							</PrimaryButton>
 						</CardContent>
 					</Card>
 				)}

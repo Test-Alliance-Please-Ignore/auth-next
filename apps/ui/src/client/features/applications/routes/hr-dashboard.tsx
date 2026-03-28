@@ -5,19 +5,29 @@
  * Requires HR Viewer role minimum.
  */
 
-import { AlertCircle, ArrowRight, Briefcase, Users } from 'lucide-react'
+import { AlertCircle, ArrowLeft, ArrowRight, Briefcase, Users } from 'lucide-react'
 import { useMemo } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 
-import { Button } from '@/components/ui/button'
+import {
+	Breadcrumb,
+	BreadcrumbItem,
+	BreadcrumbLink,
+	BreadcrumbList,
+	BreadcrumbPage,
+	BreadcrumbSeparator,
+} from '@/components/ui/breadcrumb'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { GhostButton } from '@/components/ui/ghost-button'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
+import { PrimaryButton } from '@/components/ui/primary-button'
 import { Separator } from '@/components/ui/separator'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { useHrPermissionCheck } from '../../hr/hooks'
+import { useCanAccessCorporation } from '../../my-corporations/hooks'
 import { ApplicationCard } from '../components/application-card'
 import { ApplicationStatsCard } from '../components/application-stats-card'
 import { useApplications } from '../hooks'
@@ -33,6 +43,8 @@ export default function HrDashboard() {
 	const { corporationId } = useParams<{ corporationId: string }>()
 	const navigate = useNavigate()
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
+	const { canAccess: hasCorporationAccess, isLoading: corporationAccessLoading } =
+		useCanAccessCorporation(corporationId ?? '')
 
 	// Check HR permission (userId derived from authenticated session)
 	const { data: permission, isLoading: permissionLoading } = useHrPermissionCheck(
@@ -100,6 +112,10 @@ export default function HrDashboard() {
 		navigate(`/corporations/${corporationId}/hr/applications/${applicationId}`)
 	}
 
+	const useMyCorporationsRoot = user?.is_admin || hasCorporationAccess
+	const rootCorporationsPath = useMyCorporationsRoot ? '/my-corporations' : '/hr'
+	const rootCorporationsLabel = useMyCorporationsRoot ? 'My Corporations' : 'HR Corporations'
+
 	// Check authentication
 	if (!authLoading && !isAuthenticated) {
 		return <Navigate to="/login" replace />
@@ -107,11 +123,11 @@ export default function HrDashboard() {
 
 	// Check corporation ID
 	if (!corporationId) {
-		return <Navigate to="/my-corporations" replace />
+		return <Navigate to="/hr" replace />
 	}
 
 	// Loading state
-	if (authLoading || permissionLoading || applicationsLoading) {
+	if (authLoading || permissionLoading || applicationsLoading || corporationAccessLoading) {
 		return (
 			<div className="container mx-auto max-w-7xl px-4 py-8">
 				<div className="flex items-center justify-center min-h-[400px]">
@@ -136,9 +152,10 @@ export default function HrDashboard() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<Button variant="outline" onClick={() => navigate('/my-corporations')}>
-							Back to My Corporations
-						</Button>
+						<GhostButton onClick={() => navigate(rootCorporationsPath)}>
+							<ArrowLeft className="mr-2 h-4 w-4" />
+							Back to {rootCorporationsLabel}
+						</GhostButton>
 					</CardContent>
 				</Card>
 			</div>
@@ -162,9 +179,7 @@ export default function HrDashboard() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<Button variant="outline" onClick={() => window.location.reload()}>
-							Try Again
-						</Button>
+						<GhostButton onClick={() => window.location.reload()}>Try Again</GhostButton>
 					</CardContent>
 				</Card>
 			</div>
@@ -174,10 +189,29 @@ export default function HrDashboard() {
 	// Main content
 	return (
 		<div className="container mx-auto max-w-7xl px-4 py-8">
+			{/* Breadcrumb Navigation */}
+			<Breadcrumb className="mb-6">
+				<BreadcrumbList>
+					<BreadcrumbItem>
+						<BreadcrumbLink to={rootCorporationsPath}>{rootCorporationsLabel}</BreadcrumbLink>
+					</BreadcrumbItem>
+					<BreadcrumbSeparator />
+					<BreadcrumbItem>
+						<BreadcrumbPage>HR Dashboard</BreadcrumbPage>
+					</BreadcrumbItem>
+				</BreadcrumbList>
+			</Breadcrumb>
+
 			{/* Header */}
 			<PageHeader
 				title="HR Dashboard"
 				description="Overview of job applications and recruitment activity"
+				action={
+					<GhostButton onClick={() => navigate(rootCorporationsPath)}>
+						<ArrowLeft className="mr-2 h-4 w-4" />
+						Back to {rootCorporationsLabel}
+					</GhostButton>
+				}
 			/>
 
 			{/* Key Metrics */}
@@ -208,10 +242,10 @@ export default function HrDashboard() {
 						<h2 className="text-2xl font-bold text-foreground">Recent Applications</h2>
 						<p className="text-muted-foreground">Latest submissions from applicants</p>
 					</div>
-					<Button variant="outline" onClick={handleViewAllClick}>
+					<GhostButton onClick={handleViewAllClick}>
 						View All
 						<ArrowRight className="ml-2 h-4 w-4" />
-					</Button>
+					</GhostButton>
 				</div>
 
 				{recentApplications.length > 0 ? (
@@ -253,7 +287,9 @@ export default function HrDashboard() {
 							</CardDescription>
 						</CardHeader>
 						<CardContent>
-							<Button onClick={handleViewAllClick}>Review Pending Applications</Button>
+							<PrimaryButton onClick={handleViewAllClick}>
+								Review Pending Applications
+							</PrimaryButton>
 						</CardContent>
 					</Card>
 				</>

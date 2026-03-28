@@ -471,6 +471,13 @@ export class HrDO extends DurableObject<Env> implements Hr {
 	}
 
 	/**
+	 * Get corporation IDs where a user has any HR role
+	 */
+	async getUserHrCorporations(userId: string): Promise<string[]> {
+		return await this.hrRoleService.getUserHrCorporations(userId)
+	}
+
+	/**
 	 * Get all HR roles for a corporation (cached)
 	 */
 	async getCorporationRoles(corporationId: string, activeOnly = true): Promise<HrRole[]> {

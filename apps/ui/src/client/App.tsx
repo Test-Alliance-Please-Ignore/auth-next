@@ -44,6 +44,7 @@ const CorporationDetail = lazy(() => import('./routes/corporation-detail'))
 const MyApplicationsList = lazy(() => import('./features/applications/routes/my-applications-list'))
 const ApplicationDetail = lazy(() => import('./features/applications/routes/application-detail'))
 const HrDashboard = lazy(() => import('./features/applications/routes/hr-dashboard'))
+const HrCorporationsPage = lazy(() => import('./features/applications/routes/hr-corporations'))
 const HrApplicationsList = lazy(() => import('./features/applications/routes/hr-applications-list'))
 const HrApplicationReview = lazy(
 	() => import('./features/applications/routes/hr-application-review')
@@ -193,6 +194,14 @@ export default function App() {
 							/>
 
 							{/* Application routes - HR views (lazy loaded) */}
+							<Route
+								path="/hr"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<HrCorporationsPage />
+									</Suspense>
+								}
+							/>
 							<Route
 								path="/corporations/:corporationId/hr/dashboard"
 								element={

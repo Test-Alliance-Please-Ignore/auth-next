@@ -60,6 +60,16 @@ export interface CheckHrPermissionResult {
 }
 
 /**
+ * Corporation where the current user has HR access
+ */
+export interface HrAccessibleCorporation {
+	corporationId: string
+	name: string
+	ticker: string
+	currentRole: HrRoleType
+}
+
+/**
  * HR Role capabilities for UI display
  */
 export const HR_ROLE_DESCRIPTIONS: Record<HrRoleType, string> = {
@@ -117,5 +127,12 @@ export const hrApi = {
 			params.append('requiredRole', requiredRole)
 		}
 		return apiClient.get(`/hr/roles/check?${params.toString()}`)
+	},
+
+	/**
+	 * List corporations where the current user has at least HR Viewer access
+	 */
+	async listAccessibleCorporations(): Promise<HrAccessibleCorporation[]> {
+		return apiClient.get('/hr/corporations')
 	},
 }

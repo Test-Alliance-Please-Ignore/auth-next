@@ -206,7 +206,7 @@ export function useCorporationMemberStats(corporationId: string) {
  * Hook to check if user can access a specific corporation
  */
 export function useCanAccessCorporation(corporationId: string) {
-	const { data: access } = useCorporationAccess()
+	const { data: access, isLoading, isFetching } = useCorporationAccess()
 
 	const canAccess = useMemo(() => {
 		if (!access) return false
@@ -219,5 +219,5 @@ export function useCanAccessCorporation(corporationId: string) {
 		return corp?.userRole
 	}, [access, corporationId])
 
-	return { canAccess, userRole }
+	return { canAccess, userRole, isLoading, isFetching }
 }

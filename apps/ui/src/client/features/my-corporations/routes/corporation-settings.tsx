@@ -6,7 +6,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertCircle, Save } from 'lucide-react'
+import { AlertCircle, ArrowLeft, Save } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 
@@ -18,11 +18,12 @@ import {
 	BreadcrumbPage,
 	BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { GhostButton } from '@/components/ui/ghost-button'
 import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
+import { PrimaryButton } from '@/components/ui/primary-button'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/hooks/useAuth'
@@ -158,9 +159,10 @@ export default function CorporationSettings() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<Button variant="outline" onClick={() => navigate('/my-corporations')}>
+						<GhostButton onClick={() => navigate('/my-corporations')}>
+							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to My Corporations
-						</Button>
+						</GhostButton>
 					</CardContent>
 				</Card>
 			</div>
@@ -196,6 +198,12 @@ export default function CorporationSettings() {
 			<PageHeader
 				title="Recruiting Settings"
 				description={`Configure how ${corporation.name} appears to applicants`}
+				action={
+					<GhostButton onClick={() => navigate(`/my-corporations/${corporationId}/members`)}>
+						<ArrowLeft className="mr-2 h-4 w-4" />
+						Back to Manage Corporation
+					</GhostButton>
+				}
 			/>
 
 			{/* Settings Form */}
@@ -283,7 +291,7 @@ export default function CorporationSettings() {
 
 				{/* Actions */}
 				<div className="flex items-center gap-4">
-					<Button
+					<PrimaryButton
 						type="submit"
 						disabled={updateSettings.isPending || !hasChanges || !!shortDescError}
 						className="w-full sm:w-auto"
@@ -299,14 +307,13 @@ export default function CorporationSettings() {
 								Save Settings
 							</>
 						)}
-					</Button>
-					<Button
+					</PrimaryButton>
+					<GhostButton
 						type="button"
-						variant="outline"
 						onClick={() => navigate(`/my-corporations/${corporationId}/members`)}
 					>
 						Cancel
-					</Button>
+					</GhostButton>
 				</div>
 			</form>
 		</div>
