@@ -89,7 +89,7 @@ export class HrRoleService {
 				resourceType: ResourceType.CORPORATION,
 			})
 			return {
-				id: roleAttachment.role.id,
+				id: roleAttachment.id,
 				corporationId: corporationId,
 				userId: userId,
 				characterId: userId,
@@ -115,35 +115,54 @@ export class HrRoleService {
 	}
 
 	/**
-	 * Revoke an HR role
+	 * Revoke an HR role by its attachment ID
 	 */
-	async revokeRole(roleId: string): Promise<void> {
-		// Get the role to verify it exists
-		const role = await this.ctx.db.query.hrRoles.findFirst({
-			where: eq(hrRoles.id, roleId),
-		})
+	async revokeRole(attachmentId: string): Promise<void> {
+		const groupsStub = getStub<Groups>(this.ctx.env.GROUPS, 'default')
 
-		if (!role) {
+		const success = await groupsStub.deleteRoleAttachment(attachmentId)
+
+		if (!success) {
 			throw new Error('HR role not found')
 		}
-
-		// Delete the role
-		await this.ctx.db.delete(hrRoles).where(eq(hrRoles.id, roleId))
 	}
 
 	/**
-	 * Get a single HR role by ID
+	 * Get a single HR role by its attachment ID
 	 */
-	async getRole(roleId: string): Promise<HrRole | null> {
-		const role = await this.ctx.db.query.hrRoles.findFirst({
-			where: eq(hrRoles.id, roleId),
-		})
+	async getRole(attachmentId: string): Promise<HrRole | null> {
+		const viewerRole = await this.getRoleForType(ROLE_HR_VIEWER)
+		const reviewerRole = await this.getRoleForType(ROLE_HR_REVIEWER)
+		const adminRole = await this.getRoleForType(ROLE_HR_ADMIN)
 
-		if (!role) {
+		const groupsStub = getStub<Groups>(this.ctx.env.GROUPS, 'default')
+
+		// Look up the attachment in Groups DO, scoped to HR roles only
+		const attachments = await groupsStub.getRolesFor({
+			attachedToType: RoleAttachmentType.USER,
+			resourceType: ResourceType.CORPORATION,
+			roleIds: [viewerRole.id, reviewerRole.id, adminRole.id],
+		})
+		const attachment = attachments.find((a) => a.id === attachmentId)
+
+		if (!attachment) {
 			return null
 		}
 
-		return this.mapToHrRole(role)
+		return {
+			id: attachment.id,
+			corporationId: attachment.resourceId ?? '',
+			userId: attachment.attachedToId,
+			characterId: attachment.attachedToId,
+			characterName: attachment.attachedToId,
+			role: this.getHrRoleTypeForRole(attachment.role),
+			grantedBy: attachment.role.ownedBy,
+			grantedAt: attachment.createdAt,
+			expiresAt: null,
+			isActive: true,
+			createdAt: attachment.createdAt,
+			updatedAt: attachment.updatedAt,
+		}
 	}
 
 	private async getRoleForType(roleType: HrRoleUrn): Promise<Role> {

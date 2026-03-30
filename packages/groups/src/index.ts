@@ -635,6 +635,9 @@ export interface Groups {
 	/** Detach a role from a specific object */
 	detachRoleFrom(request: DetachRoleFromRequest): Promise<boolean>
 
+	/** Delete a role attachment by its ID */
+	deleteRoleAttachment(attachmentId: string): Promise<boolean>
+
 	/** Get roles for a specific object */
 	getRolesFor(request: GetRolesForRequest): Promise<RoleAttachment[]>
 

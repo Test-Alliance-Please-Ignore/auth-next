@@ -981,6 +981,17 @@ app.get('/roles/check', requireAuth(), async (c) => {
 	// SECURITY: ALWAYS use the authenticated user's ID from session, NEVER from query params
 	const userId = user.id
 
+	// Site admins always have full HR admin access
+	if (user.is_admin) {
+		logger.info('[HR Roles] Permission check - site admin bypass', {
+			corporationId,
+			userId,
+			currentRole: 'hr_admin',
+			hasPermission: true,
+		})
+		return c.json({ hasPermission: true, currentRole: 'hr_admin' })
+	}
+
 	try {
 		const hr = getHrStub(c)
 		const roles = await hr.getUserRoles(userId, corporationId)

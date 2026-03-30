@@ -346,6 +346,22 @@ export class RoleService {
 		}
 	}
 
+	async deleteRoleAttachment(attachmentId: string): Promise<boolean> {
+		try {
+			const result = await this.ctx.db
+				.delete(roleAttachments)
+				.where(eq(roleAttachments.id, attachmentId))
+			return (result.rowCount ?? 0) > 0
+		} catch (error) {
+			console.error('[RoleService.deleteRoleAttachment] Failed to delete role attachment', {
+				error: error instanceof Error ? error.message : String(error),
+				stack: error instanceof Error ? error.stack : undefined,
+				attachmentId,
+			})
+			throw error
+		}
+	}
+
 	async replaceCoreMembershipRolesForUser(
 		request: ReplaceCoreMembershipRolesForUserRequest
 	): Promise<ReplaceCoreMembershipRolesForUserResponse> {
