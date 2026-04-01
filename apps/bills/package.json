@@ -25,6 +25,7 @@
 		"@repo/db-utils": "workspace:*",
 		"@repo/do-utils": "workspace:*",
 		"@repo/esi": "workspace:*",
+		"@repo/groups": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
 		"drizzle-orm": "0.44.7",
 		"hono": "4.10.6",

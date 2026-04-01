@@ -1,0 +1,1 @@
+ALTER TABLE "bill_schedules" ADD COLUMN "group_bill_target_mask" integer DEFAULT 7 NOT NULL;

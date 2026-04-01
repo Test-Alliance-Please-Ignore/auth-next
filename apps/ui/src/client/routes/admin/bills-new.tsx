@@ -1,4 +1,4 @@
-import { FileText } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
@@ -19,6 +19,7 @@ import { useDebounce } from '@/hooks/useDebounce'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import type {
+	Bill,
 	CreateBillInput,
 	EntityType,
 	LateFeeCompounding,
@@ -58,6 +59,12 @@ export default function AdminBillsNewPage() {
 		lateFeeType: 'static',
 		lateFeeAmount: '',
 		lateFeeCompounding: 'none',
+	})
+
+	const [groupBillOptions, setGroupBillOptions] = useState({
+		includeOwner: true,
+		includeAdmins: true,
+		includeMembers: true,
 	})
 
 	const [errors, setErrors] = useState<Record<string, string>>({})
@@ -165,6 +172,16 @@ export default function AdminBillsNewPage() {
 			}
 		}
 
+		if (formData.payerType === 'group') {
+			if (
+				!groupBillOptions.includeOwner &&
+				!groupBillOptions.includeAdmins &&
+				!groupBillOptions.includeMembers
+			) {
+				newErrors.groupBillOptions = 'At least one member role must be selected'
+			}
+		}
+
 		if (formData.enableLateFee) {
 			if (!formData.lateFeeAmount.trim()) {
 				newErrors.lateFeeAmount = 'Late fee amount is required when late fees are enabled'
@@ -187,7 +204,13 @@ export default function AdminBillsNewPage() {
 		}
 
 		try {
-			const input: CreateBillInput = {
+			const input: CreateBillInput & {
+				groupBillOptions?: {
+					includeOwner: boolean
+					includeAdmins: boolean
+					includeMembers: boolean
+				}
+			} = {
 				payerId: formData.payerId.trim(),
 				payerType: formData.payerType,
 				payeeId: formData.payeeId.trim(),
@@ -205,13 +228,27 @@ export default function AdminBillsNewPage() {
 					formData.enableLateFee && formData.lateFeeType !== 'none'
 						? formData.lateFeeCompounding
 						: undefined,
+				...(formData.payerType === 'group' && { groupBillOptions }),
 			}
 
-			await createBill.mutateAsync(input)
-			setMessage({ type: 'success', text: 'Bill created successfully!' })
-			setTimeout(() => {
-				navigate('/admin/bills')
-			}, 1500)
+			const result = await createBill.mutateAsync(input)
+
+			// Group bill returns { groupBillId, bills, billCount }; navigate to first bill
+			if ('bills' in result) {
+				const groupResult = result as { groupBillId: string; bills: Bill[]; billCount: number }
+				setMessage({
+					type: 'success',
+					text: `Group bill created — ${groupResult.billCount} individual bills issued.`,
+				})
+				setTimeout(() => {
+					navigate(`/admin/bills/${groupResult.bills[0].id}`)
+				}, 1500)
+			} else {
+				setMessage({ type: 'success', text: 'Bill created successfully!' })
+				setTimeout(() => {
+					navigate('/admin/bills')
+				}, 1500)
+			}
 		} catch (error) {
 			console.error('Failed to create bill:', error)
 			setMessage({
@@ -233,7 +270,7 @@ export default function AdminBillsNewPage() {
 				</div>
 				<GhostButton asChild>
 					<Link to="/admin/bills">
-						<FileText className="mr-2 h-4 w-4" />
+						<ArrowLeft className="mr-2 h-4 w-4" />
 						Back to Bills
 					</Link>
 				</GhostButton>
@@ -285,6 +322,64 @@ export default function AdminBillsNewPage() {
 						/>
 					</CardContent>
 				</Card>
+
+				{/* Group Bill Options — shown only when payer type is group */}
+				{formData.payerType === 'group' && (
+					<Card variant="interactive" className="mb-6">
+						<CardHeader>
+							<CardTitle>Group Bill Options</CardTitle>
+							<CardDescription>
+								Select which member roles to issue individual bills to
+							</CardDescription>
+						</CardHeader>
+						<CardContent className="space-y-4">
+							<div className="flex items-center justify-between">
+								<div className="space-y-0.5">
+									<Label htmlFor="includeOwner">Include Group Owner</Label>
+									<p className="text-sm text-muted-foreground">Issue a bill to the group owner</p>
+								</div>
+								<Switch
+									id="includeOwner"
+									checked={groupBillOptions.includeOwner}
+									onCheckedChange={(checked) =>
+										setGroupBillOptions((prev) => ({ ...prev, includeOwner: checked }))
+									}
+								/>
+							</div>
+							<div className="flex items-center justify-between">
+								<div className="space-y-0.5">
+									<Label htmlFor="includeAdmins">Include Group Admins</Label>
+									<p className="text-sm text-muted-foreground">Issue bills to all group admins</p>
+								</div>
+								<Switch
+									id="includeAdmins"
+									checked={groupBillOptions.includeAdmins}
+									onCheckedChange={(checked) =>
+										setGroupBillOptions((prev) => ({ ...prev, includeAdmins: checked }))
+									}
+								/>
+							</div>
+							<div className="flex items-center justify-between">
+								<div className="space-y-0.5">
+									<Label htmlFor="includeMembers">Include Group Members</Label>
+									<p className="text-sm text-muted-foreground">
+										Issue bills to all regular group members
+									</p>
+								</div>
+								<Switch
+									id="includeMembers"
+									checked={groupBillOptions.includeMembers}
+									onCheckedChange={(checked) =>
+										setGroupBillOptions((prev) => ({ ...prev, includeMembers: checked }))
+									}
+								/>
+							</div>
+							{errors.groupBillOptions && (
+								<p className="text-sm text-destructive">{errors.groupBillOptions}</p>
+							)}
+						</CardContent>
+					</Card>
+				)}
 
 				{/* Payee Information */}
 				<Card variant="interactive" className="mb-6">

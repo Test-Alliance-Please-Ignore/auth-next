@@ -1,48 +1,62 @@
 {
-	"version": "7",
-	"dialect": "postgresql",
-	"entries": [
-		{
-			"idx": 0,
-			"version": "7",
-			"when": 1764030194111,
-			"tag": "0000_swift_skullbuster",
-			"breakpoints": true
-		},
-		{
-			"idx": 1,
-			"version": "7",
-			"when": 1764032262534,
-			"tag": "0001_nostalgic_gressill",
-			"breakpoints": true
-		},
-		{
-			"idx": 2,
-			"version": "7",
-			"when": 1764034792397,
-			"tag": "0002_lonely_magik",
-			"breakpoints": true
-		},
-		{
-			"idx": 3,
-			"version": "7",
-			"when": 1773213810902,
-			"tag": "0003_dashing_iron_lad",
-			"breakpoints": true
-		},
-		{
-			"idx": 4,
-			"version": "7",
-			"when": 1774229000000,
-			"tag": "0004_prod_external_source_reconcile",
-			"breakpoints": true
-		},
-		{
-			"idx": 5,
-			"version": "7",
-			"when": 1774232000000,
-			"tag": "0005_prod_status_events_reconcile",
-			"breakpoints": true
-		}
-	]
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1764030194111,
+      "tag": "0000_swift_skullbuster",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1764032262534,
+      "tag": "0001_nostalgic_gressill",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1764034792397,
+      "tag": "0002_lonely_magik",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1773213810902,
+      "tag": "0003_dashing_iron_lad",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1774229000000,
+      "tag": "0004_prod_external_source_reconcile",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1774232000000,
+      "tag": "0005_prod_status_events_reconcile",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1774946550078,
+      "tag": "0006_lethal_oracle",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1774962707175,
+      "tag": "0007_tiresome_hercules",
+      "breakpoints": true
+    }
+  ]
 }

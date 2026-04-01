@@ -55,6 +55,7 @@ export interface Bill {
 	externalSourceType: string | null
 	externalSourceId: string | null
 	externalMetadata: BillMetadata | null
+	groupBillId: string | null // links all sub-bills of a group bill together
 	createdAt: Date
 	updatedAt: Date
 }
@@ -129,6 +130,9 @@ export interface BillSchedule {
 	lastGenerationTime: Date | null
 	isActive: boolean
 	consecutiveFailures: number
+	groupBillIncludeOwner: boolean
+	groupBillIncludeAdmins: boolean
+	groupBillIncludeMembers: boolean
 	createdAt: Date
 	updatedAt: Date
 }
@@ -166,6 +170,10 @@ export interface BillWithDetails extends Bill {
 	issuerName?: string
 	payerName?: string
 	payeeName?: string
+	// Populated on coalesced group bill list entries (count > 1 in scope)
+	groupBillTotalCount?: number
+	groupBillPaidCount?: number
+	groupBillMixed?: boolean // true when sub-bills don't all share the same status
 }
 
 export interface BillIntegrationView extends BillWithDetails {}
@@ -199,6 +207,42 @@ export interface CreateBillInput {
 	lateFeeType?: LateFeeType
 	lateFeeAmount?: string
 	lateFeeCompounding?: LateFeeCompounding
+	groupBillId?: string // set when this bill is a sub-bill of a group bill
+	externalMetadata?: Record<string, string | number | boolean | null>
+}
+
+export interface GroupBillEntry {
+	billId: string
+	payerId: string // mainCharacterId of the group member
+	payerName?: string
+	status: BillStatus
+	amount: string
+	lateFee: string
+	totalDue: string
+	totalPaid: string
+	paidAt: Date | null
+}
+
+export interface GroupBillAggregate {
+	groupBillId: string
+	groupId: string // original group payer ID (from externalMetadata)
+	groupName?: string
+	issuerId: string
+	issuerName?: string
+	title: string
+	description: string | null
+	amount: string // per-bill amount (same for all sub-bills)
+	dueDate: Date
+	createdAt: Date
+	totalBills: number
+	paidBills: number
+	bills: GroupBillEntry[]
+}
+
+export interface GroupBillOperationResult {
+	succeeded: number
+	skipped: number
+	bills: Bill[]
 }
 
 export interface UpdateBillInput {
@@ -219,6 +263,8 @@ export interface CreateBillFromTemplateInput {
 	payeeType: PayeeType
 	amount: string
 	templateParams?: Record<string, string>
+	groupBillId?: string
+	externalMetadata?: Record<string, string | number | boolean | null>
 }
 
 /**
@@ -274,6 +320,9 @@ export interface CreateScheduleInput {
 	frequency: ScheduleFrequency
 	amount: string
 	startDate?: Date
+	groupBillIncludeOwner?: boolean
+	groupBillIncludeAdmins?: boolean
+	groupBillIncludeMembers?: boolean
 }
 
 export interface UpdateScheduleInput {
@@ -285,6 +334,9 @@ export interface UpdateScheduleInput {
 	amount?: string
 	frequency?: ScheduleFrequency
 	isActive?: boolean
+	groupBillIncludeOwner?: boolean
+	groupBillIncludeAdmins?: boolean
+	groupBillIncludeMembers?: boolean
 }
 
 /**
@@ -379,6 +431,8 @@ export interface RegenerateTokenResponse {
 export interface ScheduleExecutionResult {
 	success: boolean
 	billId?: string
+	groupBillId?: string
+	billCount?: number
 	error?: string
 }
 
@@ -439,6 +493,9 @@ export interface Bills {
 	/** Get an integration-safe bill view without user auth filtering */
 	getBillIntegrationView(billId: string): Promise<BillIntegrationView | null>
 
+	/** Get aggregate view of all sub-bills sharing a groupBillId */
+	getGroupBillAggregate(groupBillId: string): Promise<GroupBillAggregate | null>
+
 	/** List bills with filters */
 	listBills(userId: string, filters?: BillFilters): Promise<BillWithDetails[]>
 
@@ -488,6 +545,25 @@ export interface Bills {
 
 	/** Delete a bill (permissions enforced by caller route; draft-only invariant) */
 	deleteBill(actorUserId: string, billId: string): Promise<void>
+
+	/** Issue all eligible (draft) sub-bills sharing a groupBillId */
+	issueGroupBill(actorUserId: string, groupBillId: string): Promise<GroupBillOperationResult>
+
+	/** Cancel all eligible sub-bills sharing a groupBillId */
+	cancelGroupBill(actorUserId: string, groupBillId: string): Promise<GroupBillOperationResult>
+
+	/** Revert all eligible sub-bills sharing a groupBillId to draft */
+	revertGroupBillToDraft(actorUserId: string, groupBillId: string): Promise<GroupBillOperationResult>
+
+	/** Delete all eligible (draft) sub-bills sharing a groupBillId */
+	deleteGroupBill(actorUserId: string, groupBillId: string): Promise<GroupBillOperationResult>
+
+	/** Update shared fields on all eligible sub-bills sharing a groupBillId */
+	updateGroupBill(
+		actorUserId: string,
+		groupBillId: string,
+		data: UpdateBillInput
+	): Promise<GroupBillOperationResult>
 
 	/** Get bill statistics for a user */
 	getBillStatistics(userId: string, filters?: BillFilters): Promise<BillStatistics>

@@ -1,12 +1,19 @@
+import { Users } from 'lucide-react'
 import { createMRTColumnHelper } from 'mantine-react-table'
 import { useMemo } from 'react'
 
 import { BillStatusBadge } from '@/components/bills/bill-status-badge'
 import { ISKAmount } from '@/components/bills/isk-amount'
+import { Badge } from '@/components/ui/badge'
 import { TaxReportDataGrid } from '@/components/tax-report-data-grid'
 import { formatDueDate } from '@/lib/bills-utils'
 
-import type { MRT_ColumnDef, MRT_SortingState } from 'mantine-react-table'
+import type {
+	MRT_ColumnDef,
+	MRT_Row,
+	MRT_SortingState,
+	MRT_TableOptions,
+} from 'mantine-react-table'
 import type { ReactNode } from 'react'
 import type { BillWithDetails } from '@repo/bills'
 
@@ -35,7 +42,8 @@ export function BillListGrid(props: {
 	onPaginationChange: (pagination: { pageIndex: number; pageSize: number }) => void
 	pageCount: number
 	rowCount: number
-	renderActions?: (bill: BillWithDetails) => ReactNode
+	renderActions?: (bill: BillWithDetails, row: MRT_Row<BillWithDetails>) => ReactNode
+	renderExpandedGroupBill?: (bill: BillWithDetails) => ReactNode
 	emptyMessage?: string
 }) {
 	const columnHelper = createMRTColumnHelper<BillWithDetails>()
@@ -45,23 +53,49 @@ export function BillListGrid(props: {
 				id: 'status',
 				header: 'Status',
 				enableSorting: true,
-				Cell: ({ row }) => <BillStatusBadge status={row.original.status} />,
+				Cell: ({ row }) =>
+					row.original.groupBillMixed ? (
+						<Badge variant="outline">Mixed</Badge>
+					) : (
+						<BillStatusBadge status={row.original.status} />
+					),
 			}),
 			columnHelper.accessor('title', {
 				id: 'title',
 				header: 'Title',
 				enableSorting: false,
+				Cell: ({ row }) => (
+					<div className="flex items-center gap-2">
+						<span>{row.original.title}</span>
+						{row.original.groupBillTotalCount != null && (
+							<span
+								className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-500"
+								title={`Group bill: ${row.original.groupBillPaidCount ?? 0}/${row.original.groupBillTotalCount} paid`}
+							>
+								<Users className="h-3 w-3" />
+								{row.original.groupBillPaidCount ?? 0}/{row.original.groupBillTotalCount}
+							</span>
+						)}
+					</div>
+				),
 			}),
 			columnHelper.accessor((row) => row.payerName || row.payerId, {
 				id: 'payerId',
 				header: 'Payer',
 				enableSorting: false,
-				Cell: ({ row }) => (
-					<div className="flex flex-col">
-						<span>{row.original.payerName || row.original.payerId}</span>
-						<span className="text-xs text-muted-foreground">{row.original.payerId}</span>
-					</div>
-				),
+				Cell: ({ row }) => {
+					const isGroup = row.original.payerType === 'group'
+					const displayName = row.original.payerName || (isGroup ? 'Group' : row.original.payerId)
+					return (
+						<div className="flex flex-col">
+							<div className="flex items-center gap-1.5">
+								{isGroup && <Users className="h-3 w-3 shrink-0 text-blue-400" />}
+								<span>{displayName}</span>
+							</div>
+							<span className="text-xs text-muted-foreground">{row.original.payerId}</span>
+						</div>
+					)
+				},
 			}),
 			columnHelper.accessor((row) => row.payeeName || row.payeeId || '-', {
 				id: 'payeeId',
@@ -112,13 +146,27 @@ export function BillListGrid(props: {
 							id: 'actions',
 							header: 'Actions',
 							enableSorting: false,
-							Cell: ({ row }) => props.renderActions!(row.original),
+							Cell: ({ row }) => props.renderActions!(row.original, row),
 						}),
 					]
 				: []),
 		],
 		[columnHelper, props.renderActions]
 	)
+
+	const renderDetailPanel = props.renderExpandedGroupBill
+		? ({ row }: { row: MRT_Row<BillWithDetails> }) =>
+				row.original.groupBillTotalCount != null
+					? props.renderExpandedGroupBill!(row.original)
+					: null
+		: undefined
+
+	const mantineExpandButtonProps: MRT_TableOptions<BillWithDetails>['mantineExpandButtonProps'] =
+		props.renderExpandedGroupBill
+			? ({ row }) => ({
+					style: row.original.groupBillTotalCount == null ? { visibility: 'hidden' } : undefined,
+				})
+			: undefined
 
 	return (
 		<TaxReportDataGrid
@@ -134,6 +182,8 @@ export function BillListGrid(props: {
 			pageCount={props.pageCount}
 			rowCount={props.rowCount}
 			pinnedRightColumnIds={props.renderActions ? ['actions'] : undefined}
+			renderDetailPanel={renderDetailPanel}
+			mantineExpandButtonProps={mantineExpandButtonProps}
 		/>
 	)
 }

@@ -34,6 +34,11 @@
 				"name": "CORPORATION_TAX",
 				"class_name": "CorporationTax",
 				"script_name": "corporation-tax"
+			},
+			{
+				"name": "GROUPS",
+				"class_name": "Groups",
+				"script_name": "groups"
 			}
 		]
 	},

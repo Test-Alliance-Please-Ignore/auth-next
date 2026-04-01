@@ -80,6 +80,7 @@ export const bills = pgTable(
 			string,
 			string | number | boolean | null
 		> | null>(),
+		groupBillId: uuid('group_bill_id'), // nullable — links all sub-bills of a group bill together
 		createdAt: timestamp('created_at').notNull().defaultNow(),
 		updatedAt: timestamp('updated_at').notNull().defaultNow(),
 		paymentLastCheckedAt: timestamp('payment_last_checked_at', { withTimezone: true }),
@@ -96,6 +97,7 @@ export const bills = pgTable(
 		index('bills_payment_token_idx').on(table.paymentToken),
 		index('bills_external_source_type_idx').on(table.externalSourceType),
 		index('bills_external_source_id_idx').on(table.externalSourceId),
+		index('bills_group_bill_id_idx').on(table.groupBillId),
 		unique('bills_external_source_unique').on(table.externalSourceType, table.externalSourceId),
 	]
 )
@@ -197,6 +199,9 @@ export const billSchedules = pgTable(
 		lastGenerationTime: timestamp('last_generation_time'),
 		isActive: boolean('is_active').notNull().default(true),
 		consecutiveFailures: integer('consecutive_failures').notNull().default(0),
+		// Group bill fan-out target mask (only relevant when payerType = 'group')
+		// Bitmask: 1 = include owner, 2 = include admins, 4 = include members (default 7 = all)
+		groupBillTargetMask: integer('group_bill_target_mask').notNull().default(7),
 		createdAt: timestamp('created_at').notNull().defaultNow(),
 		updatedAt: timestamp('updated_at').notNull().defaultNow(),
 	},

@@ -157,10 +157,23 @@ app.get('/my-bills', requireAuth(), requireBillingViewer(), async (c) => {
 		].filter(Boolean) as string[]
 		const names = esiIdsToResolve.length > 0 ? await resolver.resolveIds(esiIdsToResolve) : {}
 		const groupIds = [
-			...new Set(page.rows.flatMap((bill) => [bill.payerType === 'group' ? bill.payerId : null])),
+			...new Set(
+				page.rows.flatMap((bill) => {
+					const ids: string[] = []
+					if (bill.payerType === 'group') ids.push(bill.payerId)
+					const metaGroupId =
+						bill.groupBillId &&
+						bill.externalMetadata &&
+						typeof (bill.externalMetadata as Record<string, unknown>).groupId === 'string'
+							? ((bill.externalMetadata as Record<string, unknown>).groupId as string)
+							: null
+					if (metaGroupId) ids.push(metaGroupId)
+					return ids
+				})
+			),
 		].filter(Boolean) as string[]
 		const groupNames = await resolveGroupNames(c.env, groupIds)
-		const rows = page.rows.map((bill) => ({
+		const enrichedRows = page.rows.map((bill) => ({
 			...bill,
 			payerName:
 				bill.payerType === 'group'
@@ -172,6 +185,54 @@ app.get('/my-bills', requireAuth(), requireBillingViewer(), async (c) => {
 			})(),
 			payeeName: bill.payeeId ? (names[bill.payeeId] ?? undefined) : undefined,
 		}))
+
+		// Coalesce group sub-bills on the server side to avoid pagination skew.
+		// If the current page contains >1 bill for the same groupBillId the user
+		// is the issuer/payee — coalesce with indicator counts.
+		// If exactly 1 appears the user is the pure payer — render as individual.
+		const groupBillMap = new Map<string, (typeof enrichedRows)[0]>()
+		const groupBillStatuses = new Map<string, Set<string>>()
+		const nonGroupRows: (typeof enrichedRows)[0][] = []
+		for (const row of enrichedRows) {
+			if (row.groupBillId) {
+				if (!groupBillMap.has(row.groupBillId)) {
+					const metaGroupId =
+						row.externalMetadata &&
+						typeof (row.externalMetadata as Record<string, unknown>).groupId === 'string'
+							? ((row.externalMetadata as Record<string, unknown>).groupId as string)
+							: null
+					groupBillMap.set(row.groupBillId, {
+						...row,
+						...(metaGroupId && {
+							payerId: metaGroupId,
+							payerType: 'group' as const,
+							payerName: groupNames.get(metaGroupId),
+						}),
+						groupBillTotalCount: 0,
+						groupBillPaidCount: 0,
+					})
+					groupBillStatuses.set(row.groupBillId, new Set())
+				}
+				const rep = groupBillMap.get(row.groupBillId)!
+				rep.groupBillTotalCount = (rep.groupBillTotalCount ?? 0) + 1
+				if (row.status === 'paid') rep.groupBillPaidCount = (rep.groupBillPaidCount ?? 0) + 1
+				groupBillStatuses.get(row.groupBillId)!.add(row.status)
+			} else {
+				nonGroupRows.push(row)
+			}
+		}
+		for (const [groupBillId, rep] of groupBillMap) {
+			const statuses = groupBillStatuses.get(groupBillId)!
+			if (statuses.size > 1) rep.groupBillMixed = true
+		}
+		const rows = [
+			...nonGroupRows,
+			...Array.from(groupBillMap.values()).map((rep) =>
+				// Pure payer (only 1 sub-bill visible) — strip group context
+				rep.groupBillTotalCount === 1 ? { ...rep, groupBillId: null } : rep
+			),
+		]
+
 		logger.info('[bills-user] Bills fetched successfully', {
 			userId: user.id,
 			count: rows.length,

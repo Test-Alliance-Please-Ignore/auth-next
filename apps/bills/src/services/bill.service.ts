@@ -26,6 +26,9 @@ import type {
 	BillWithDetails,
 	CreateBillInput,
 	EntityType,
+	GroupBillAggregate,
+	GroupBillEntry,
+	GroupBillOperationResult,
 	RegenerateTokenResponse,
 	UpdateBillInput,
 } from '@repo/bills'
@@ -104,6 +107,53 @@ export class BillService {
 
 		const updatedBill = await this.updateLateFeeIfNeeded(bill)
 		return this.toBillWithDetailsResponse(updatedBill)
+	}
+
+	async getGroupBillAggregate(groupBillId: string): Promise<GroupBillAggregate | null> {
+		const rows = await this.db.query.bills.findMany({
+			where: eq(bills.groupBillId, groupBillId),
+			with: { payments: true },
+			orderBy: (bills, { asc }) => [asc(bills.createdAt)],
+		})
+
+		if (rows.length === 0) {
+			return null
+		}
+
+		const first = rows[0]
+		const groupId =
+			(first.externalMetadata as Record<string, unknown> | null)?.groupId as string | undefined
+
+		const billEntries: GroupBillEntry[] = rows.map((b) => {
+			const totalDue = Number(b.amount) + Number(b.lateFee)
+			const totalPaid = (b.payments ?? []).reduce((s, p) => s + Number(p.amount), 0)
+			return {
+				billId: b.id,
+				payerId: b.payerId,
+				status: b.status as import('@repo/bills').BillStatus,
+				amount: b.amount,
+				lateFee: b.lateFee,
+				totalDue: totalDue.toString(),
+				totalPaid: totalPaid.toString(),
+				paidAt: b.paidAt,
+			}
+		})
+
+		const paidBills = rows.filter((b) => b.status === 'paid').length
+
+		return {
+			groupBillId,
+			groupId: groupId ?? '',
+			issuerId: first.issuerId,
+			title: first.title,
+			description: first.description,
+			amount: first.amount,
+			dueDate: first.dueDate,
+			createdAt: first.createdAt,
+			totalBills: rows.length,
+			paidBills,
+			bills: billEntries,
+		}
 	}
 
 	async listBillsByExternalSource(
@@ -757,6 +807,120 @@ export class BillService {
 		await this.db.delete(bills).where(eq(bills.id, billId))
 	}
 
+	/**
+	 * Issue all eligible (draft) sub-bills sharing a groupBillId
+	 */
+	async issueGroupBill(actorUserId: string, groupBillId: string): Promise<GroupBillOperationResult> {
+		const subBills = await this.db.query.bills.findMany({
+			where: eq(bills.groupBillId, groupBillId),
+		})
+		const result: GroupBillOperationResult = { succeeded: 0, skipped: 0, bills: [] }
+		for (const bill of subBills) {
+			if (bill.status !== 'draft') {
+				result.skipped++
+				continue
+			}
+			const updated = await this.issueBill(actorUserId, bill.id)
+			result.succeeded++
+			result.bills.push(updated)
+		}
+		return result
+	}
+
+	/**
+	 * Cancel all eligible sub-bills sharing a groupBillId
+	 */
+	async cancelGroupBill(actorUserId: string, groupBillId: string): Promise<GroupBillOperationResult> {
+		const subBills = await this.db.query.bills.findMany({
+			where: eq(bills.groupBillId, groupBillId),
+		})
+		const result: GroupBillOperationResult = { succeeded: 0, skipped: 0, bills: [] }
+		for (const bill of subBills) {
+			if (bill.status === 'paid' || bill.status === 'cancelled') {
+				result.skipped++
+				continue
+			}
+			const updated = await this.cancelBill(actorUserId, bill.id)
+			result.succeeded++
+			result.bills.push(updated)
+		}
+		return result
+	}
+
+	/**
+	 * Revert all eligible sub-bills sharing a groupBillId to draft
+	 */
+	async revertGroupBillToDraft(
+		actorUserId: string,
+		groupBillId: string
+	): Promise<GroupBillOperationResult> {
+		const subBills = await this.db.query.bills.findMany({
+			where: eq(bills.groupBillId, groupBillId),
+		})
+		const result: GroupBillOperationResult = { succeeded: 0, skipped: 0, bills: [] }
+		for (const bill of subBills) {
+			if (bill.status === 'draft' || bill.status === 'paid') {
+				result.skipped++
+				continue
+			}
+			if (await this.hasPayments(bill.id)) {
+				result.skipped++
+				continue
+			}
+			const updated = await this.revertBillToDraft(actorUserId, bill.id)
+			result.succeeded++
+			result.bills.push(updated)
+		}
+		return result
+	}
+
+	/**
+	 * Delete all eligible (draft) sub-bills sharing a groupBillId
+	 */
+	async deleteGroupBill(actorUserId: string, groupBillId: string): Promise<GroupBillOperationResult> {
+		const subBills = await this.db.query.bills.findMany({
+			where: eq(bills.groupBillId, groupBillId),
+		})
+		const result: GroupBillOperationResult = { succeeded: 0, skipped: 0, bills: [] }
+		for (const bill of subBills) {
+			if (bill.status !== 'draft') {
+				result.skipped++
+				continue
+			}
+			await this.deleteBill(actorUserId, bill.id)
+			result.succeeded++
+		}
+		return result
+	}
+
+	/**
+	 * Update shared fields on all eligible sub-bills sharing a groupBillId
+	 */
+	async updateGroupBill(
+		actorUserId: string,
+		groupBillId: string,
+		data: UpdateBillInput
+	): Promise<GroupBillOperationResult> {
+		const subBills = await this.db.query.bills.findMany({
+			where: eq(bills.groupBillId, groupBillId),
+		})
+		const result: GroupBillOperationResult = { succeeded: 0, skipped: 0, bills: [] }
+		for (const bill of subBills) {
+			if (bill.status === 'paid') {
+				result.skipped++
+				continue
+			}
+			if (await this.hasPayments(bill.id)) {
+				result.skipped++
+				continue
+			}
+			const updated = await this.updateBill(actorUserId, bill.id, data)
+			result.succeeded++
+			result.bills.push(updated)
+		}
+		return result
+	}
+
 	async checkBillBalancePaid(billId: string): Promise<boolean> {
 		const bill = await this.db.query.bills.findFirst({
 			where: eq(bills.id, billId),
@@ -925,7 +1089,8 @@ export class BillService {
 				paymentToken,
 				externalSourceType: externalRef?.sourceType ?? null,
 				externalSourceId: externalRef?.sourceId ?? null,
-				externalMetadata: externalRef?.metadata ?? null,
+				externalMetadata: data.externalMetadata ?? externalRef?.metadata ?? null,
+				groupBillId: data.groupBillId ?? null,
 			})
 			.returning()
 
@@ -1237,6 +1402,7 @@ export class BillService {
 			externalSourceType: bill.externalSourceType,
 			externalSourceId: bill.externalSourceId,
 			externalMetadata: bill.externalMetadata ?? null,
+			groupBillId: bill.groupBillId ?? null,
 			createdAt: bill.createdAt,
 			updatedAt: bill.updatedAt,
 		}

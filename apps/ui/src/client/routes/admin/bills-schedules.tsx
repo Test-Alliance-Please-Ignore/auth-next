@@ -1,4 +1,4 @@
-import { Calendar, FileText, Pause, Play, Plus } from 'lucide-react'
+import { ArrowLeft, Calendar, Pause, Play, Plus } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
@@ -94,7 +94,7 @@ export default function BillsSchedulesPage() {
 				<div className="flex gap-2">
 					<GhostButton asChild>
 						<Link to="/admin/bills">
-							<FileText className="mr-2 h-4 w-4" />
+							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to Bills
 						</Link>
 					</GhostButton>

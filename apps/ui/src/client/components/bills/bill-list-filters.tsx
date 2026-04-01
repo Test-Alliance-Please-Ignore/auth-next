@@ -1,3 +1,5 @@
+import { Layers, LayoutList } from 'lucide-react'
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { DateRangeInput } from '@/components/ui/date-range-input'
 import { FilterField } from '@/components/ui/filter-field'
@@ -58,6 +60,9 @@ export function BillListFilters(props: {
 	onPayeeIdChange: (value?: string) => void
 	onDateRangeChange: (fromDate: string, toDate: string) => void
 	onReset: () => void
+	coalesced?: boolean
+	hasGroupBills?: boolean
+	onCoalescedToggle?: () => void
 }) {
 	return (
 		<Card>
@@ -184,7 +189,29 @@ export function BillListFilters(props: {
 							/>
 						</div>
 					) : null}
-					<div className="flex items-end justify-end">
+					<div className="flex items-end justify-end gap-2">
+						{props.onCoalescedToggle && props.hasGroupBills !== false && (
+							<GhostButton
+								onClick={props.onCoalescedToggle}
+								title={
+									props.coalesced
+										? 'Show individual sub-bills'
+										: 'Show coalesced group rows'
+								}
+							>
+								{props.coalesced ? (
+									<>
+										<LayoutList className="mr-2 h-4 w-4" />
+										Uncoalesced
+									</>
+								) : (
+									<>
+										<Layers className="mr-2 h-4 w-4" />
+										Coalesced
+									</>
+								)}
+							</GhostButton>
+						)}
 						<GhostButton onClick={props.onReset}>Reset Filters</GhostButton>
 					</div>
 				</div>
