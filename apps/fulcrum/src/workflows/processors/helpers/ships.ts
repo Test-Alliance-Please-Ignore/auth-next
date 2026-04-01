@@ -20,6 +20,7 @@ export interface FittedShip {
 	locationName: string
 	locationFlag: string
 	locationType: 'station' | 'solar_system' | 'item' | 'other'
+	estimatedValue?: number
 	rigs: FittedShipItem[]
 	highs: FittedShipItem[]
 	meds: FittedShipItem[]

@@ -8,6 +8,7 @@ export type AlertType =
     | 'sp-plausibility'
     | 'ship-name-crossmatch'
     | 'plex-injector-trading'
+    | 'large-isk-transfer'
     | 'data-fetch-failure'
     | 'corp-hopper'
 

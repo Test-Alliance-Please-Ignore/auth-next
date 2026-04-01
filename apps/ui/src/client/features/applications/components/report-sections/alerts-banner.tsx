@@ -69,10 +69,15 @@ const SEVERITY_BORDER: Record<AlertSeverity, string> = {
 
 function AlertItem({ alert }: { alert: ReportAlert }) {
     const [expanded, setExpanded] = useState(false)
+    const hasDetails = alert.details && Object.keys(alert.details).length > 0
 
     return (
         <div
-            className={`border-l-4 ${SEVERITY_BORDER[alert.severity]} rounded-r-md bg-card px-4 py-3`}
+            role={hasDetails ? 'button' : undefined}
+            tabIndex={hasDetails ? 0 : undefined}
+            onClick={hasDetails ? () => setExpanded(!expanded) : undefined}
+            onKeyDown={hasDetails ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpanded(!expanded) } } : undefined}
+            className={`border-l-4 ${SEVERITY_BORDER[alert.severity]} rounded-r-md bg-card px-4 py-3 ${hasDetails ? 'cursor-pointer hover:bg-muted/50 transition-colors' : ''}`}
         >
             <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
@@ -84,13 +89,10 @@ function AlertItem({ alert }: { alert: ReportAlert }) {
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground">{alert.description}</p>
                 </div>
-                {alert.details && Object.keys(alert.details).length > 0 && (
-                    <button
-                        onClick={() => setExpanded(!expanded)}
-                        className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
-                    >
+                {hasDetails && (
+                    <span className="shrink-0 text-xs text-muted-foreground">
                         {expanded ? 'Hide' : 'Details'}
-                    </button>
+                    </span>
                 )}
             </div>
 
@@ -115,6 +117,8 @@ function AlertDetails({ alert }: { alert: ReportAlert }) {
             return <ShipNameDetails details={alert.details} />
         case 'plex-injector-trading':
             return <PlexInjectorDetails details={alert.details} />
+        case 'large-isk-transfer':
+            return <LargeIskTransferDetails details={alert.details} />
         case 'data-fetch-failure':
             return <DataFetchFailureDetails details={alert.details} />
         case 'corp-hopper':
@@ -290,6 +294,57 @@ function CorpHopperDetails({ details }: { details: Record<string, unknown> }) {
                     </div>
                 ))}
             </div>
+        </div>
+    )
+}
+
+function LargeIskTransferDetails({ details }: { details: Record<string, unknown> }) {
+    const totalIncoming = details.totalIncoming as number | undefined
+    const totalOutgoing = details.totalOutgoing as number | undefined
+    const transfers = details.transfers as Array<{
+        date: string
+        amount: number
+        otherPartyName: string
+        refTypeLabel: string
+        direction: 'incoming' | 'outgoing'
+    }> | undefined
+
+    return (
+        <div className="space-y-3 text-sm">
+            <div className="grid grid-cols-2 gap-x-6 gap-y-1">
+                {totalIncoming != null && totalIncoming > 0 && (
+                    <>
+                        <span className="text-muted-foreground">Total Incoming</span>
+                        <span className="text-green-400">{formatIsk(totalIncoming)}</span>
+                    </>
+                )}
+                {totalOutgoing != null && totalOutgoing > 0 && (
+                    <>
+                        <span className="text-muted-foreground">Total Outgoing</span>
+                        <span className="text-red-400">{formatIsk(totalOutgoing)}</span>
+                    </>
+                )}
+            </div>
+            {transfers && transfers.length > 0 && (
+                <div>
+                    <span className="text-muted-foreground">Top transfers:</span>
+                    <div className="mt-1 space-y-1">
+                        {transfers.map((t, i) => (
+                            <div key={i} className="flex items-center justify-between gap-4">
+                                <div className="min-w-0">
+                                    <span className="font-medium">{t.otherPartyName}</span>
+                                    <span className="ml-2 text-xs text-muted-foreground">
+                                        {t.refTypeLabel} · {new Date(t.date).toLocaleDateString()}
+                                    </span>
+                                </div>
+                                <span className={`shrink-0 font-mono ${t.direction === 'incoming' ? 'text-green-400' : 'text-red-400'}`}>
+                                    {t.direction === 'incoming' ? '+' : '-'}{formatIsk(t.amount)}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
         </div>
     )
 }

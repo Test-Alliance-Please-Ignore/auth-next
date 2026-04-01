@@ -10,6 +10,7 @@ import {
     checkSpPlausibility,
     checkShipNameCrossmatch,
     checkPlexInjectorTrading,
+    checkLargeIskTransfer,
     checkDataFetchFailures,
     checkCorpHopper,
     collectCustomShipNames,
@@ -24,6 +25,7 @@ import type { ProcessedWalletTransaction } from '../../processors/helpers/wallet
 import type { ProcessedContract } from '../../processors/helpers/contracts'
 import type { FittedShip } from '../../processors/helpers/ships'
 import type { ProcessedCorpHistoryEntry } from '../../processors/helpers/corp-history'
+import type { ProcessedWalletJournalEntry } from '../../processors/helpers/wallet-journal'
 import type { AssetNameMap } from '../assets/fetch-asset-names'
 import type { ReportAlert, ReportAlerts, ResolvedCharacter } from '../../processors/alerts'
 
@@ -141,7 +143,7 @@ export async function generateAlerts(
             }
         }
 
-        const [publicInfo, skills, rawTransactions, contracts, fittedShips, assetNameMap, corpHistory] =
+        const [publicInfo, skills, rawTransactions, contracts, fittedShips, assetNameMap, corpHistory, walletJournal] =
             await Promise.all([
                 safeRetrieve<ProcessedPublicInfo>('process-public-info'),
                 safeRetrieve<ProcessedSkillsData>('process-skills'),
@@ -150,6 +152,7 @@ export async function generateAlerts(
                 safeRetrieve<FittedShip[]>('process-fitted-ships'),
                 safeRetrieve<AssetNameMap>('fetch-asset-names'),
                 safeRetrieve<ProcessedCorpHistoryEntry[]>('process-corp-history'),
+                safeRetrieve<ProcessedWalletJournalEntry[]>('process-wallet-journal'),
             ])
 
         if (Object.keys(retrievalErrors).length > 0) {
@@ -210,6 +213,12 @@ export async function generateAlerts(
         if (corpHistory) {
             const corpHopperAlert = checkCorpHopper(corpHistory)
             if (corpHopperAlert) alerts.push(corpHopperAlert)
+        }
+
+        // Alert 5: Large ISK Transfers
+        if (walletJournal) {
+            const iskAlert = checkLargeIskTransfer(walletJournal)
+            if (iskAlert) alerts.push(iskAlert)
         }
 
         const result = {

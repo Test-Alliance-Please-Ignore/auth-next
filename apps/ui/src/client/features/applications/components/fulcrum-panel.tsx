@@ -7,7 +7,7 @@
  */
 
 import { formatDistanceToNow } from 'date-fns'
-import { AlertCircle, Clock, ExternalLink, FileText, Loader2, RefreshCw } from 'lucide-react'
+import { AlertCircle, Clock, ExternalLink, FileText, Loader2, RefreshCw, Users } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { MemberAvatar } from '@/components/member-avatar'
@@ -222,8 +222,33 @@ export function FulcrumPanel({ applicationId }: FulcrumPanelProps) {
 		)
 	}
 
+	const requestableCharacters = characters.filter((c) => canRequestNewReport(c.reports))
+
+	const handleRequestAll = () => {
+		for (const character of requestableCharacters) {
+			requestReport.mutate({ applicationId, characterId: character.characterId })
+		}
+	}
+
 	return (
 		<div className="space-y-3">
+			{requestableCharacters.length > 1 && (
+				<div className="flex justify-end">
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={handleRequestAll}
+						disabled={requestReport.isPending}
+					>
+						{requestReport.isPending ? (
+							<Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+						) : (
+							<Users className="mr-1.5 h-3.5 w-3.5" />
+						)}
+						Generate All Reports
+					</Button>
+				</div>
+			)}
 			{characters.map((character) => (
 				<CharacterReportCard
 					key={character.characterId}

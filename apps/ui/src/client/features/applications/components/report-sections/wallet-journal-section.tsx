@@ -33,6 +33,9 @@ const columns: MRT_ColumnDef<ProcessedWalletJournalEntry>[] = [
 		header: 'Type',
 		filterVariant: 'multi-select',
 		enableColumnFilter: true,
+		mantineFilterMultiSelectProps: {
+			comboboxProps: { withinPortal: true },
+		},
 		Cell: ({ row }) => row.original.refTypeLabel || '-',
 	},
 	{

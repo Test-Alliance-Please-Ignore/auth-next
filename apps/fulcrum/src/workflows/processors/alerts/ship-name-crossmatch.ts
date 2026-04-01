@@ -20,6 +20,19 @@ export interface ResolvedCharacter {
 }
 
 /**
+ * Check if the "ship" part of a custom name relates to the actual ship type.
+ * Returns true if any significant word (3+ chars) from the candidate part
+ * appears in the ship type name or vice versa.
+ */
+function shipPartMatchesType(shipPart: string, shipTypeName: string): boolean {
+    const shipPartWords = shipPart.toLowerCase().split(/\s+/)
+    const typeWords = shipTypeName.toLowerCase().split(/\s+/)
+    return shipPartWords.some((w) =>
+        w.length >= 3 && typeWords.some((tw) => tw.length >= 3 && (tw.startsWith(w) || w.startsWith(tw))),
+    )
+}
+
+/**
  * Collect unique custom ship names from fitted ships and the asset name map.
  * Filters out names that match the ship type name (i.e. not actually renamed).
  */
@@ -60,12 +73,9 @@ export function collectCustomShipNames(
  * common naming patterns that indicate a ship was named after a character:
  *
  * - "<ShipType> - <CharacterName>" (dash separator, e.g. "Minmatar Shuttle - Vespida")
- *   Only when the candidate after the dash is multi-word (character names are typically
- *   "FirstName LastName") to avoid false positives from functional labels like "Falcon - Cyno"
- * - "<CharacterName>'s <ShipType>" (possessive, e.g. "Anya's Naglfar")
- *
- * Single-word labels after a dash (like "Cyno", "Scout", "Links") are ignored
- * because they're almost always functional/role labels, not character references.
+ *   The part before the dash must match the actual ship type name.
+ * - "<CharacterName>'s <ShipType>" (possessive, e.g. "Jericho StormCloud's Reaper")
+ *   The part after the 's must match the actual ship type name.
  */
 export function extractCandidateCharacterNames(
     customNames: Map<string, { shipTypeName: string; customName: string }>,
@@ -78,13 +88,12 @@ export function extractCandidateCharacterNames(
         const name = info.customName.trim()
 
         // Pattern 1: "<ShipType> - <CharacterName>" (dash separator)
-        // Only consider multi-word candidates after the dash to avoid functional labels
-        // like "Falcon - Cyno", "Sabre - Dictor", "Loki - Links"
-        const dashMatch = name.match(/^.+\s+-\s+(.+)$/)
+        // The left side must relate to the actual ship type name
+        const dashMatch = name.match(/^(.+?)\s+-\s+(.+)$/)
         if (dashMatch) {
-            const candidate = dashMatch[1].trim()
-            // Must be multi-word (EVE character names are typically "FirstName LastName")
-            if (candidate.includes(' ') && candidate.length >= 3) {
+            const shipPart = dashMatch[1].trim()
+            const candidate = dashMatch[2].trim()
+            if (candidate.length >= 3 && shipPartMatchesType(shipPart, info.shipTypeName)) {
                 namesToResolve.add(candidate)
                 candidateToCustomName.set(candidate.toLowerCase(), customNameLower)
             }
@@ -92,10 +101,12 @@ export function extractCandidateCharacterNames(
         }
 
         // Pattern 2: "<CharacterName>'s <ShipType>" (possessive with straight or curly apostrophe)
-        const possessiveMatch = name.match(/^(.+?)[''\u2019]s\s+.+$/i)
+        // The right side must relate to the actual ship type name
+        const possessiveMatch = name.match(/^(.+?)[''\u2019]s\s+(.+)$/i)
         if (possessiveMatch) {
             const candidate = possessiveMatch[1].trim()
-            if (candidate.length >= 2) {
+            const shipPart = possessiveMatch[2].trim()
+            if (candidate.length >= 2 && shipPartMatchesType(shipPart, info.shipTypeName)) {
                 namesToResolve.add(candidate)
                 candidateToCustomName.set(candidate.toLowerCase(), customNameLower)
             }

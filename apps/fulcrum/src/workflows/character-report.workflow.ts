@@ -369,6 +369,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 				applyMarketPrices(
 					getBucket,
 					processAssetsResult,
+					processFittedShipsResult,
 				),
 			)
 

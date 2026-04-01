@@ -1,12 +1,13 @@
 /**
- * Fetch ESI market prices and apply estimated values to processed assets
+ * Fetch ESI market prices and apply estimated values to processed assets and fitted ships
  * Uses the public /markets/prices/ endpoint (unauthenticated) to get CCP average prices
- * Then merges averagePrice into already-processed assets in R2
+ * Then merges averagePrice into already-processed assets and ships in R2
  */
 
 import { retrieveData, storeInR2 } from '../../utils/storage'
 
 import type { ProcessedAsset } from '../../processors/helpers/assets'
+import type { FittedShip } from '../../processors/helpers/ships'
 import type { StepResult } from '../../utils/storage'
 
 interface EsiMarketPrice {
@@ -16,13 +17,14 @@ interface EsiMarketPrice {
 }
 
 /**
- * Fetch market prices from ESI and apply to processed assets
- * Updates the R2 object in-place so the persist step reads the enriched version
+ * Fetch market prices from ESI and apply to processed assets and fitted ships
+ * Updates the R2 objects in-place so the persist step reads the enriched version
  */
 export async function applyMarketPrices(
 	getBucket: (name: string) => R2Bucket,
 	processAssetsResult: StepResult,
-): Promise<{ applied: number; totalValue: number; warning?: string }> {
+	processFittedShipsResult?: StepResult,
+): Promise<{ applied: number; totalValue: number; shipsEnriched?: number; warning?: string }> {
 	try {
 		if (!processAssetsResult.success || processAssetsResult.source !== 'r2') {
 			return { applied: 0, totalValue: 0 }
@@ -81,14 +83,48 @@ export async function applyMarketPrices(
 		const assetBucket = getBucket(processAssetsResult.r2Bucket)
 		await storeInR2(assetBucket, processAssetsResult.r2Key, assets)
 
+		// Enrich fitted ships if result provided
+		let shipsEnriched = 0
+		if (processFittedShipsResult?.success && processFittedShipsResult.source === 'r2') {
+			const ships = (await retrieveData(getBucket, processFittedShipsResult)) as FittedShip[] | null
+			if (ships && Array.isArray(ships)) {
+				for (const ship of ships) {
+					let shipValue = 0
+					// Hull price
+					const hullPrice = priceMap.get(ship.shipTypeId)
+					if (hullPrice != null) shipValue += hullPrice
+					// Module prices
+					const allSlots = [
+						ship.highs, ship.meds, ship.lows, ship.rigs,
+						ship.subsystems, ship.drones, ship.cargo, ship.fuel,
+						ship.fighters ?? [], ship.fighterBay ?? [],
+						ship.shipsInSmb ?? [], ship.fleetHangar ?? [],
+					]
+					for (const items of allSlots) {
+						for (const item of items) {
+							const itemPrice = priceMap.get(item.typeId)
+							if (itemPrice != null) shipValue += itemPrice * item.quantity
+						}
+					}
+					if (shipValue > 0) {
+						ship.estimatedValue = Math.round(shipValue)
+						shipsEnriched++
+					}
+				}
+				const shipBucket = getBucket(processFittedShipsResult.r2Bucket)
+				await storeInR2(shipBucket, processFittedShipsResult.r2Key, ships)
+			}
+		}
+
 		console.log('[applyMarketPrices] Applied prices', {
 			priceMapSize: priceMap.size,
 			assetsCount: assets.length,
 			applied,
+			shipsEnriched,
 			totalValue: Math.round(totalValue),
 		})
 
-		return { applied, totalValue: Math.round(totalValue) }
+		return { applied, totalValue: Math.round(totalValue), shipsEnriched }
 	} catch (error) {
 		const msg = error instanceof Error ? error.message : String(error)
 		console.error('[applyMarketPrices] Non-critical enrichment failed:', { error: msg })

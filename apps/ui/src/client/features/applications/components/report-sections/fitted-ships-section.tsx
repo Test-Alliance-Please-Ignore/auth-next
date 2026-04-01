@@ -21,6 +21,7 @@ interface FittedShip {
 	shipTypeId: string
 	customName?: string
 	locationName: string
+	estimatedValue?: number
 	highs: FittedShipItem[]
 	meds: FittedShipItem[]
 	lows: FittedShipItem[]
@@ -34,6 +35,14 @@ interface FittedShip {
 interface LocationGroup {
 	locationName: string
 	ships: FittedShip[]
+	estimatedValue: number
+}
+
+function formatIsk(value: number): string {
+	if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(2)}B ISK`
+	if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M ISK`
+	if (value >= 1_000) return `${(value / 1_000).toFixed(0)}K ISK`
+	return `${value.toLocaleString()} ISK`
 }
 
 function ShipIcon({ typeId }: { typeId: string }) {
@@ -118,6 +127,11 @@ function ShipCard({
 						{totalModules} module{totalModules !== 1 ? 's' : ''} fitted
 					</span>
 				</div>
+				{ship.estimatedValue != null && ship.estimatedValue > 0 && (
+					<span className="text-xs font-medium text-amber-400 shrink-0">
+						{formatIsk(ship.estimatedValue)}
+					</span>
+				)}
 			</button>
 
 			{isExpanded && (
@@ -171,6 +185,7 @@ export function FittedShipsSection({ data }: { data: FittedShip[] }) {
 			result.push({
 				locationName,
 				ships: ships.sort((a, b) => a.shipName.localeCompare(b.shipName)),
+				estimatedValue: ships.reduce((sum, s) => sum + (s.estimatedValue ?? 0), 0),
 			})
 		}
 		return result.sort((a, b) => b.ships.length - a.ships.length)
@@ -210,6 +225,12 @@ export function FittedShipsSection({ data }: { data: FittedShip[] }) {
 				<p className="text-sm text-muted-foreground">
 					{data.length} fitted ship{data.length !== 1 ? 's' : ''} across {groups.length} location
 					{groups.length !== 1 ? 's' : ''}
+					{(() => {
+						const total = groups.reduce((sum, g) => sum + g.estimatedValue, 0)
+						return total > 0 ? (
+							<span className="text-amber-400 font-medium"> — {formatIsk(total)} total</span>
+						) : null
+					})()}
 				</p>
 				<div className="relative w-64">
 					<Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -243,6 +264,11 @@ export function FittedShipsSection({ data }: { data: FittedShip[] }) {
 								<span className="text-xs text-muted-foreground">
 									{group.ships.length} ship{group.ships.length !== 1 ? 's' : ''}
 								</span>
+								{group.estimatedValue > 0 && (
+									<span className="text-xs font-medium text-amber-400">
+										{formatIsk(group.estimatedValue)}
+									</span>
+								)}
 							</button>
 
 							{isExpanded && (

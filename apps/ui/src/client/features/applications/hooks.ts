@@ -17,6 +17,7 @@ import type {
 	ApplicationActivityLogEntry,
 	ApplicationMessage,
 	ApplicationsParams,
+	CharacterReportMetadata,
 	CreateTemplateRequest,
 	FulcrumCharacterData,
 	HRNote,
@@ -731,7 +732,45 @@ export function useRequestFulcrumReport() {
 			applicationId: string
 			characterId: string
 		}) => fulcrumApi.requestReport(applicationId, characterId),
-		onSuccess: (_, variables) => {
+		onMutate: async (variables) => {
+			const queryKey = applicationKeys.fulcrum(variables.applicationId)
+			await queryClient.cancelQueries({ queryKey })
+
+			const previous = queryClient.getQueryData<FulcrumCharacterData[]>(queryKey)
+
+			if (previous) {
+				queryClient.setQueryData(queryKey, previous.map((c) =>
+					c.characterId === variables.characterId
+						? {
+								...c,
+								reports: [
+									...c.reports,
+									{
+										id: 'optimistic-' + Date.now(),
+										characterId: variables.characterId,
+										status: 'pending',
+										requestorUserId: '',
+										requestorCorporationId: '',
+										createdAt: new Date().toISOString(),
+										updatedAt: new Date().toISOString(),
+									} satisfies CharacterReportMetadata,
+								],
+							}
+						: c,
+				))
+			}
+
+			return { previous }
+		},
+		onError: (_err, variables, context) => {
+			if (context?.previous) {
+				queryClient.setQueryData(
+					applicationKeys.fulcrum(variables.applicationId),
+					context.previous,
+				)
+			}
+		},
+		onSettled: (_, __, variables) => {
 			queryClient.invalidateQueries({
 				queryKey: applicationKeys.fulcrum(variables.applicationId),
 			})
