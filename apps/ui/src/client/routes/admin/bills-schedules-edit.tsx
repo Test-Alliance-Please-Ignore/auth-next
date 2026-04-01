@@ -88,6 +88,8 @@ export default function AdminBillsSchedulesEditPage() {
 	})
 	const [payerQuery, setPayerQuery] = useState('')
 	const [payeeQuery, setPayeeQuery] = useState('')
+	const [payerName, setPayerName] = useState('')
+	const [payeeName, setPayeeName] = useState('')
 	const debouncedPayerQuery = useDebounce(payerQuery, 300)
 	const debouncedPayeeQuery = useDebounce(payeeQuery, 300)
 	const payerEntitySearch = useBillEntitySearch({
@@ -153,6 +155,8 @@ export default function AdminBillsSchedulesEditPage() {
 			})
 			setPayerQuery('')
 			setPayeeQuery('')
+			if (schedule.payerName) setPayerName(schedule.payerName)
+			if (schedule.payeeName) setPayeeName(schedule.payeeName)
 		}
 	}, [schedule])
 
@@ -547,9 +551,10 @@ export default function AdminBillsSchedulesEditPage() {
 							query={payerQuery}
 							onQueryChange={setPayerQuery}
 							options={payerOptions}
-							onEntitySelect={(entityId) => handleChange('payerId', entityId)}
+							onEntitySelect={(entityId, name) => { handleChange('payerId', entityId); setPayerName(name) }}
 							loading={payerEntitySearch.isLoading}
 							selectedEntityId={formData.payerId}
+							selectedEntityName={payerName}
 							error={errors.payerId}
 						/>
 						<BillEntityPicker
@@ -562,9 +567,10 @@ export default function AdminBillsSchedulesEditPage() {
 							query={payeeQuery}
 							onQueryChange={setPayeeQuery}
 							options={payeeOptions}
-							onEntitySelect={(entityId) => handleChange('payeeId', entityId)}
+							onEntitySelect={(entityId, name) => { handleChange('payeeId', entityId); setPayeeName(name) }}
 							loading={payeeEntitySearch.isLoading}
 							selectedEntityId={formData.payeeId}
+							selectedEntityName={payeeName}
 							error={errors.payeeId}
 						/>
 
