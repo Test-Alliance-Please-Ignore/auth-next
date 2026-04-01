@@ -81,6 +81,8 @@ export interface ApplicationMessage {
 	id: string
 	applicationId: string
 	senderId: string
+	senderCharacterId: string | null
+	senderCharacterName: string | null
 	recipientId: string
 	message: string
 	createdAt: string
@@ -90,7 +92,7 @@ export interface ApplicationMessage {
  * Request body for sending a message
  */
 export interface SendMessageRequest {
-	recipientId: string
+	recipientId?: string
 	message: string
 }
 
@@ -363,7 +365,7 @@ export const applicationsApi = {
 		// The backend embeds activity in the application detail
 		// This is a convenience method that extracts it
 		const application = await this.getApplication(applicationId)
-		return (application as any).activity || []
+		return (application as any).activityLog || []
 	},
 
 	// ==================== Messages ====================

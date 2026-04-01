@@ -72,6 +72,7 @@ export interface Application {
 	applicationText: string
 	status: ApplicationStatus
 	reviewedBy: string | null
+	reviewedByCharacterName: string | null
 	reviewedAt: Date | null
 	reviewNotes: string | null
 	createdAt: Date
@@ -124,6 +125,8 @@ export interface ApplicationMessage {
 	id: string
 	applicationId: string
 	senderId: string
+	senderCharacterId: string | null
+	senderCharacterName: string | null
 	recipientId: string
 	message: string
 	createdAt: Date
@@ -346,6 +349,7 @@ export interface Hr extends DurableObject {
 		status: ApplicationStatus,
 		userId: string,
 		characterId: string,
+		characterName: string,
 		reviewNotes?: string
 	): Promise<void>
 
@@ -432,9 +436,10 @@ export interface Hr extends DurableObject {
 	sendMessage(
 		applicationId: string,
 		senderId: string,
-		recipientId: string,
+		recipientId: string | null,
 		message: string,
 		characterId: string,
+		characterName: string,
 		isAdmin: boolean
 	): Promise<ApplicationMessage>
 

@@ -46,6 +46,40 @@ function getCharacterName(user: Context<App>['var']['user'], characterId: string
 }
 
 /**
+ * Check if the current user has any active HR role across any corporation.
+ * Returns true for site admins, corp CEOs, HR admins, and HR reviewers.
+ */
+async function hasAnyHrAccess(c: Context<App>): Promise<boolean> {
+	const user = c.get('user')!
+
+	// Site admins always have access
+	if (user.is_admin) return true
+
+	// Check if user has any active HR role
+	const hr = getHrStub(c)
+	const db = c.get('db')
+	if (!db) return false
+
+	// Get all corporations user might have roles for
+	const userChars = await db.query.userCharacters.findMany({
+		where: eq(userCharacters.userId, user.id),
+	})
+
+	if (userChars.length === 0) return false
+
+	// Get managed corporations to check roles against
+	const corps = await db.query.managedCorporations.findMany()
+
+	for (const corp of corps) {
+		const roles = await hr.getUserRoles(user.id, corp.corporationId)
+		const hasActive = roles.some((r) => r.isActive)
+		if (hasActive) return true
+	}
+
+	return false
+}
+
+/**
  * Check if the current user has CEO or site admin access to manage HR roles
  * Throws an error with 403 status if user is neither admin nor CEO
  */
@@ -213,8 +247,9 @@ app.patch('/applications/:id', requireAuth(), async (c) => {
 	const characterId = primaryCharacter?.characterId || user.mainCharacterId
 
 	try {
+		const characterName = getCharacterName(user, characterId)
 		const hr = getHrStub(c)
-		await hr.updateApplicationStatus(applicationId, status, user.id, characterId, reviewNotes)
+		await hr.updateApplicationStatus(applicationId, status, user.id, characterId, characterName, reviewNotes)
 
 		return c.json({ success: true })
 	} catch (error) {
@@ -380,15 +415,17 @@ app.post('/applications/:applicationId/messages', requireAuth(), async (c) => {
 	// Get primary character for logging
 	const primaryCharacter = user.characters.find((char) => char.is_primary)
 	const characterId = primaryCharacter?.characterId || user.mainCharacterId
+	const characterName = primaryCharacter?.characterName || 'Unknown'
 
 	try {
 		const hr = getHrStub(c)
 		const result = await hr.sendMessage(
 			applicationId,
 			user.id,
-			recipientId,
+			recipientId || null,
 			message,
 			characterId,
+			characterName,
 			user.is_admin
 		)
 
@@ -738,14 +775,19 @@ app.delete('/templates/:templateId', requireAuth(), async (c) => {
 	}
 })
 
-// ==================== HR Notes Routes (Admin Only) ====================
+// ==================== HR Notes Routes ====================
 
 /**
  * POST /api/hr/notes
- * Create an HR note about a user (admin only)
+ * Create an HR note about a user
+ * Access: Site admins, HR admins, HR reviewers
  */
-app.post('/notes', requireAdmin(), async (c) => {
+app.post('/notes', requireAuth(), async (c) => {
 	const user = c.get('user')!
+
+	if (!(await hasAnyHrAccess(c))) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
 	const { subjectUserId, subjectCharacterId, noteText, noteType, priority, metadata } =
 		await c.req.json()
 
@@ -776,9 +818,14 @@ app.post('/notes', requireAdmin(), async (c) => {
 
 /**
  * GET /api/hr/notes
- * List HR notes with optional filters (admin only)
+ * List HR notes with optional filters
+ * Access: Site admins, HR admins, HR reviewers
  */
-app.get('/notes', requireAdmin(), async (c) => {
+app.get('/notes', requireAuth(), async (c) => {
+	if (!(await hasAnyHrAccess(c))) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
 	// Parse query params
 	const filters: NoteFilters = {
 		subjectUserId: c.req.query('subjectUserId'),
@@ -800,9 +847,14 @@ app.get('/notes', requireAdmin(), async (c) => {
 
 /**
  * GET /api/hr/notes/user/:userId
- * Get all HR notes for a specific user (admin only)
+ * Get all HR notes for a specific user
+ * Access: Site admins, HR admins, HR reviewers
  */
-app.get('/notes/user/:userId', requireAdmin(), async (c) => {
+app.get('/notes/user/:userId', requireAuth(), async (c) => {
+	if (!(await hasAnyHrAccess(c))) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
 	const subjectUserId = c.req.param('userId')
 
 	try {
@@ -820,9 +872,14 @@ app.get('/notes/user/:userId', requireAdmin(), async (c) => {
 
 /**
  * PATCH /api/hr/notes/:id
- * Update an HR note (admin only)
+ * Update an HR note
+ * Access: Site admins, HR admins, HR reviewers
  */
-app.patch('/notes/:id', requireAdmin(), async (c) => {
+app.patch('/notes/:id', requireAuth(), async (c) => {
+	if (!(await hasAnyHrAccess(c))) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
 	const noteId = c.req.param('id')
 	const updates = await c.req.json()
 
@@ -838,9 +895,32 @@ app.patch('/notes/:id', requireAdmin(), async (c) => {
 
 /**
  * DELETE /api/hr/notes/:id
- * Delete an HR note (admin only)
+ * Delete an HR note
+ * Access: Site admins, HR admins only (not reviewers)
  */
-app.delete('/notes/:id', requireAdmin(), async (c) => {
+app.delete('/notes/:id', requireAuth(), async (c) => {
+	const user = c.get('user')!
+
+	// Delete restricted to site admins and HR admins (not reviewers)
+	if (!user.is_admin) {
+		const hr = getHrStub(c)
+		const db = c.get('db')
+		if (!db) return c.json({ error: 'Forbidden' }, 403)
+
+		const corps = await db.query.managedCorporations.findMany()
+		let isHrAdmin = false
+		for (const corp of corps) {
+			const roles = await hr.getUserRoles(user.id, corp.corporationId)
+			if (roles.some((r) => r.isActive && r.role === 'hr_admin')) {
+				isHrAdmin = true
+				break
+			}
+		}
+		if (!isHrAdmin) {
+			return c.json({ error: 'Forbidden - only HR Admins can delete notes' }, 403)
+		}
+	}
+
 	const noteId = c.req.param('id')
 
 	try {

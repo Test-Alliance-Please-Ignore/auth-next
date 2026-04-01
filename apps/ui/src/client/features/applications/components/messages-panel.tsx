@@ -9,6 +9,7 @@ import { MessageSquare, Send } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { ConfirmationDialog } from '@/components/ui/confirmation-dialog'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
@@ -65,6 +66,7 @@ export function MessagesPanel({
 	className,
 }: MessagesPanelProps) {
 	const [messageText, setMessageText] = useState('')
+	const [pendingTemplate, setPendingTemplate] = useState<MessageTemplate | null>(null)
 	const messagesEndRef = useRef<HTMLDivElement>(null)
 	const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -81,7 +83,7 @@ export function MessagesPanel({
 
 	// Handle send
 	const handleSend = async () => {
-		if (!recipientId || !messageText.trim() || messageText.length < MIN_MESSAGE_LENGTH) {
+		if (!messageText.trim() || messageText.length < MIN_MESSAGE_LENGTH) {
 			return
 		}
 
@@ -89,7 +91,7 @@ export function MessagesPanel({
 			await sendMutation.mutateAsync({
 				applicationId,
 				data: {
-					recipientId,
+					...(recipientId ? { recipientId } : {}),
 					message: messageText.trim(),
 				},
 			})
@@ -109,16 +111,27 @@ export function MessagesPanel({
 
 	// Handle template selection - insert template content into message
 	const handleSelectTemplate = (template: MessageTemplate) => {
-		setMessageText(template.messageTemplate)
-		// Focus the textarea after inserting
-		textareaRef.current?.focus()
+		if (messageText.trim().length > 0) {
+			setPendingTemplate(template)
+		} else {
+			setMessageText(template.messageTemplate)
+			textareaRef.current?.focus()
+		}
+	}
+
+	const handleConfirmTemplate = () => {
+		if (pendingTemplate) {
+			setMessageText(pendingTemplate.messageTemplate)
+			setPendingTemplate(null)
+			textareaRef.current?.focus()
+		}
 	}
 
 	// Validation
 	const isValidMessage =
 		messageText.trim().length >= MIN_MESSAGE_LENGTH &&
 		messageText.length <= MAX_MESSAGE_LENGTH
-	const canSubmit = isValidMessage && !!recipientId && !sendMutation.isPending
+	const canSubmit = isValidMessage && !sendMutation.isPending
 
 	// Loading state
 	if (isLoading) {
@@ -143,7 +156,7 @@ export function MessagesPanel({
 	return (
 		<div className={cn('space-y-4', className)}>
 			{/* Message List */}
-			<div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
+			<div className="space-y-3 max-h-[500px] overflow-y-auto overflow-x-hidden pr-2">
 				{messages && messages.length > 0 ? (
 					<>
 						{messages.map((msg) => (
@@ -151,7 +164,7 @@ export function MessagesPanel({
 								key={msg.id}
 								message={msg}
 								currentUserId={currentUserId}
-								senderName={msg.senderId === currentUserId ? 'You' : 'HR'}
+
 							/>
 						))}
 						<div ref={messagesEndRef} />
@@ -241,6 +254,17 @@ export function MessagesPanel({
 					This application is closed. Messages can no longer be sent.
 				</div>
 			)}
+
+			{/* Template overwrite confirmation */}
+			<ConfirmationDialog
+				open={pendingTemplate !== null}
+				title="Replace message?"
+				description="Your current message will be replaced with the template content. This cannot be undone."
+				confirmLabel="Replace"
+				intent="secondary"
+				onCancel={() => setPendingTemplate(null)}
+				onConfirm={handleConfirmTemplate}
+			/>
 		</div>
 	)
 }

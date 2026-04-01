@@ -68,8 +68,8 @@ const columns: MRT_ColumnDef<ProcessedWalletJournalEntry>[] = [
 		Cell: ({ row }) => (
 			<div
 				className={`text-right font-mono font-medium ${row.original.amount != null && row.original.amount < 0
-						? 'text-red-400'
-						: 'text-green-400'
+					? 'text-red-400'
+					: 'text-green-400'
 					}`}
 			>
 				{row.original.amountFormatted || '-'}

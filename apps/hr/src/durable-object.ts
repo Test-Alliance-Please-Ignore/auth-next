@@ -169,6 +169,7 @@ export class HrDO extends DurableObject<Env> implements Hr {
 		status: ApplicationStatus,
 		userId: string,
 		characterId: string,
+		characterName: string,
 		reviewNotes?: string
 	): Promise<void> {
 		const application = await this.applicationService.getApplicationById(applicationId)
@@ -196,6 +197,7 @@ export class HrDO extends DurableObject<Env> implements Hr {
 			status,
 			userId,
 			characterId,
+			characterName,
 			reviewNotes
 		)
 	}
@@ -287,9 +289,10 @@ export class HrDO extends DurableObject<Env> implements Hr {
 	async sendMessage(
 		applicationId: string,
 		senderId: string,
-		recipientId: string,
+		recipientId: string | null,
 		message: string,
 		characterId: string,
+		characterName: string,
 		isAdmin: boolean
 	): Promise<ApplicationMessage> {
 		// Get sender's HR corporations for authorization
@@ -305,9 +308,10 @@ export class HrDO extends DurableObject<Env> implements Hr {
 
 		const isSenderApplicant = application.userId === senderId
 
-		// If sender is applicant, get recipient's HR corporations to validate they have access
+		// If sender is applicant with a specific recipient, validate recipient has HR access
+		// If no recipient specified, applicant is messaging HR as a group
 		let recipientHrCorporations: string[] = []
-		if (isSenderApplicant) {
+		if (isSenderApplicant && recipientId) {
 			recipientHrCorporations = await this.hrRoleService.getUserHrCorporations(recipientId)
 		}
 
@@ -317,6 +321,7 @@ export class HrDO extends DurableObject<Env> implements Hr {
 			recipientId,
 			message,
 			characterId,
+			characterName,
 			isSenderApplicant,
 			senderHrCorporations,
 			recipientHrCorporations

@@ -11,7 +11,7 @@ import type { ServiceContext } from './context'
  * Handles all business logic for application messages between HR reviewers and applicants.
  */
 export class MessageService {
-	constructor(private ctx: ServiceContext) {}
+	constructor(private ctx: ServiceContext) { }
 
 	/**
 	 * Send a message from HR reviewer to applicant or vice versa
@@ -19,9 +19,10 @@ export class MessageService {
 	async sendMessage(
 		applicationId: string,
 		senderId: string,
-		recipientId: string,
+		recipientId: string | null,
 		message: string,
 		characterId: string,
+		characterName: string,
 		isSenderApplicant: boolean,
 		senderHrCorporations: string[] = [],
 		recipientHrCorporations: string[] = []
@@ -40,14 +41,18 @@ export class MessageService {
 			throw new Error('Messages can only be sent for applications that are pending or under review')
 		}
 
+		// Resolve the effective recipientId for storage
+		// Applicants message HR as a group — use senderId as placeholder if no specific recipient
+		const effectiveRecipientId = recipientId ?? senderId
+
 		// Validate sender authorization
 		if (isSenderApplicant) {
 			// Applicant sending: must own the application
 			if (application.userId !== senderId) {
 				throw new Error('You can only send messages for your own applications')
 			}
-			// Recipient must be an HR user with access to this application's corporation
-			if (!recipientHrCorporations.includes(application.corporationId)) {
+			// If a specific recipient was provided, validate they have HR access
+			if (recipientId && !recipientHrCorporations.includes(application.corporationId)) {
 				throw new Error('Invalid recipient: recipient must have HR access to this application')
 			}
 		} else {
@@ -72,7 +77,9 @@ export class MessageService {
 			.values({
 				applicationId,
 				senderId,
-				recipientId,
+				senderCharacterId: characterId,
+				senderCharacterName: characterName,
+				recipientId: effectiveRecipientId,
 				message: message.trim(),
 			})
 			.returning()
@@ -89,7 +96,7 @@ export class MessageService {
 			action: 'message_sent',
 			previousValue: null,
 			newValue: null,
-			metadata: { messageId: messageRecord.id, senderId, recipientId },
+			metadata: { messageId: messageRecord.id, senderId, recipientId: effectiveRecipientId },
 		})
 
 		return this.mapToApplicationMessage(messageRecord)
@@ -174,6 +181,8 @@ export class MessageService {
 			id: msg.id,
 			applicationId: msg.applicationId,
 			senderId: msg.senderId,
+			senderCharacterId: msg.senderCharacterId,
+			senderCharacterName: msg.senderCharacterName,
 			recipientId: msg.recipientId,
 			message: msg.message,
 			createdAt: msg.createdAt,

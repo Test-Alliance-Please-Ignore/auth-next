@@ -1,0 +1,1 @@
+ALTER TABLE "applications" ADD COLUMN "reviewed_by_character_name" varchar(255);

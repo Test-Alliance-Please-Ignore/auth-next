@@ -351,58 +351,59 @@ export default function HrApplicationReview() {
 							</CardDescription>
 						</CardHeader>
 						<CardContent>
-							<p className="text-foreground whitespace-pre-wrap leading-relaxed">
+							<p className="text-foreground whitespace-pre-wrap break-words leading-relaxed">
 								{application.applicationText}
 							</p>
 						</CardContent>
 					</Card>
 
-					{/* Review Information (if reviewed) */}
-					{application.reviewedAt && (
-						<Card>
-							<CardHeader>
-								<CardTitle>Review Information</CardTitle>
-								<CardDescription>Details about the application review</CardDescription>
-							</CardHeader>
-							<CardContent className="space-y-3">
-								<div>
-									<p className="text-sm font-medium text-muted-foreground">Reviewed By</p>
-									<p className="text-foreground">
-										{application.reviewedByCharacterName || 'Unknown'}
-									</p>
-								</div>
-								<Separator />
-								<div>
-									<p className="text-sm font-medium text-muted-foreground">Reviewed At</p>
-									<p className="text-foreground">
-										{formatDistanceToNow(new Date(application.reviewedAt), { addSuffix: true })}
-									</p>
-								</div>
-								{application.reviewNotes && (
-									<>
-										<Separator />
-										<div>
-											<p className="text-sm font-medium text-muted-foreground">Review Notes</p>
-											<p className="text-foreground whitespace-pre-wrap mt-1 italic">
-												"{application.reviewNotes}"
-											</p>
-										</div>
-									</>
-								)}
-							</CardContent>
-						</Card>
-					)}
+					{/* Review Information (only for final decisions) */}
+					{application.reviewedAt &&
+						(application.status === 'accepted' || application.status === 'rejected') && (
+							<Card>
+								<CardHeader>
+									<CardTitle>Review Information</CardTitle>
+									<CardDescription>Details about the application review</CardDescription>
+								</CardHeader>
+								<CardContent className="space-y-3">
+									<div>
+										<p className="text-sm font-medium text-muted-foreground">Reviewed By</p>
+										<p className="text-foreground">
+											{application.reviewedByCharacterName || 'Unknown'}
+										</p>
+									</div>
+									<Separator />
+									<div>
+										<p className="text-sm font-medium text-muted-foreground">Reviewed At</p>
+										<p className="text-foreground">
+											{formatDistanceToNow(new Date(application.reviewedAt), { addSuffix: true })}
+										</p>
+									</div>
+									{application.reviewNotes && (
+										<>
+											<Separator />
+											<div>
+												<p className="text-sm font-medium text-muted-foreground">Review Notes</p>
+												<p className="text-foreground whitespace-pre-wrap mt-1 italic">
+													"{application.reviewNotes}"
+												</p>
+											</div>
+										</>
+									)}
+								</CardContent>
+							</Card>
+						)}
 
-					{/* HR Notes Section (ADMIN ONLY) */}
-					{user?.is_admin && (
+					{/* HR Notes Section */}
+					{(user?.is_admin || permission?.hasPermission) && (
 						<Card className="border-warning/30 bg-warning/5">
 							<CardHeader>
 								<div className="flex items-center gap-2">
 									<Lock className="h-4 w-4 text-warning" />
-									<CardTitle className="text-lg">HR Notes (Admin Only)</CardTitle>
+									<CardTitle className="text-lg">HR Notes</CardTitle>
 								</div>
 								<CardDescription>
-									Private internal notes about this applicant. Only visible to site administrators.
+									Private internal notes about this applicant. Only visible to HR staff.
 								</CardDescription>
 							</CardHeader>
 							<CardContent>
@@ -410,6 +411,7 @@ export default function HrApplicationReview() {
 									subjectUserId={application.userId}
 									subjectCharacterName={application.characterName}
 									onAddNote={handleAddNote}
+									hasAccess
 								/>
 							</CardContent>
 						</Card>
@@ -439,7 +441,7 @@ export default function HrApplicationReview() {
 							<RecommendationList
 								applicationId={applicationId!}
 								currentUserId={user?.id}
-								// HR cannot add recommendations, only view them
+							// HR cannot add recommendations, only view them
 							/>
 						</CardContent>
 					</Card>

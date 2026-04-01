@@ -742,20 +742,20 @@ export function useRequestFulcrumReport() {
 				queryClient.setQueryData(queryKey, previous.map((c) =>
 					c.characterId === variables.characterId
 						? {
-								...c,
-								reports: [
-									...c.reports,
-									{
-										id: 'optimistic-' + Date.now(),
-										characterId: variables.characterId,
-										status: 'pending',
-										requestorUserId: '',
-										requestorCorporationId: '',
-										createdAt: new Date().toISOString(),
-										updatedAt: new Date().toISOString(),
-									} satisfies CharacterReportMetadata,
-								],
-							}
+							...c,
+							reports: [
+								...c.reports,
+								{
+									id: 'optimistic-' + Date.now(),
+									characterId: variables.characterId,
+									status: 'pending',
+									requestorUserId: '',
+									requestorCorporationId: '',
+									createdAt: new Date().toISOString(),
+									updatedAt: new Date().toISOString(),
+								} satisfies CharacterReportMetadata,
+							],
+						}
 						: c,
 				))
 			}

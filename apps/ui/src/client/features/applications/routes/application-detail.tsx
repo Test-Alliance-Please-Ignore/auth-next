@@ -324,46 +324,47 @@ export default function ApplicationDetail() {
 							</CardDescription>
 						</CardHeader>
 						<CardContent>
-							<p className="text-foreground whitespace-pre-wrap leading-relaxed">
+							<p className="text-foreground whitespace-pre-wrap break-words leading-relaxed">
 								{application.applicationText}
 							</p>
 						</CardContent>
 					</Card>
 
-					{/* Review Information (if reviewed) */}
-					{application.reviewedAt && (
-						<Card>
-							<CardHeader>
-								<CardTitle>Review Information</CardTitle>
-							</CardHeader>
-							<CardContent className="space-y-3">
-								<div>
-									<p className="text-sm font-medium text-muted-foreground">Reviewed By</p>
-									<p className="text-foreground">
-										{application.reviewedByCharacterName || 'Unknown'}
-									</p>
-								</div>
-								<Separator />
-								<div>
-									<p className="text-sm font-medium text-muted-foreground">Reviewed At</p>
-									<p className="text-foreground">
-										{formatDistanceToNow(new Date(application.reviewedAt), { addSuffix: true })}
-									</p>
-								</div>
-								{application.reviewNotes && (
-									<>
-										<Separator />
-										<div>
-											<p className="text-sm font-medium text-muted-foreground">Review Notes</p>
-											<p className="text-foreground whitespace-pre-wrap mt-1 italic">
-												"{application.reviewNotes}"
-											</p>
-										</div>
-									</>
-								)}
-							</CardContent>
-						</Card>
-					)}
+					{/* Review Information (only for final decisions) */}
+					{application.reviewedAt &&
+						(application.status === 'accepted' || application.status === 'rejected') && (
+							<Card>
+								<CardHeader>
+									<CardTitle>Review Information</CardTitle>
+								</CardHeader>
+								<CardContent className="space-y-3">
+									<div>
+										<p className="text-sm font-medium text-muted-foreground">Reviewed By</p>
+										<p className="text-foreground">
+											{application.reviewedByCharacterName || 'Unknown'}
+										</p>
+									</div>
+									<Separator />
+									<div>
+										<p className="text-sm font-medium text-muted-foreground">Reviewed At</p>
+										<p className="text-foreground">
+											{formatDistanceToNow(new Date(application.reviewedAt), { addSuffix: true })}
+										</p>
+									</div>
+									{application.reviewNotes && (
+										<>
+											<Separator />
+											<div>
+												<p className="text-sm font-medium text-muted-foreground">Review Notes</p>
+												<p className="text-foreground whitespace-pre-wrap mt-1 italic">
+													"{application.reviewNotes}"
+												</p>
+											</div>
+										</>
+									)}
+								</CardContent>
+							</Card>
+						)}
 
 					{/* Withdraw Button */}
 					{canWithdraw && (
@@ -432,8 +433,8 @@ export default function ApplicationDetail() {
 							<MessagesPanel
 								applicationId={applicationId!}
 								currentUserId={user!.id}
-								recipientId={undefined}
 								canSend={canWithdraw}
+
 							/>
 						</CardContent>
 					</Card>

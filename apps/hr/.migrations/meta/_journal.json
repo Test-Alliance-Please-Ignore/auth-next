@@ -36,6 +36,20 @@
       "when": 1763752496230,
       "tag": "0004_milky_wong",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1775073276509,
+      "tag": "0005_pretty_the_captain",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1775074522355,
+      "tag": "0006_long_randall_flagg",
+      "breakpoints": true
     }
   ]
 }

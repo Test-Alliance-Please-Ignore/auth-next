@@ -27,6 +27,8 @@ export interface HRNotesListProps {
 	subjectCharacterName?: string
 	onAddNote?: () => void
 	className?: string
+	/** Override access check (defaults to user.is_admin) */
+	hasAccess?: boolean
 }
 
 // ============================================================================
@@ -72,13 +74,14 @@ export function HRNotesList({
 	subjectCharacterName,
 	onAddNote,
 	className,
+	hasAccess,
 }: HRNotesListProps) {
 	const { user } = useAuth()
 	const [noteTypeFilter, setNoteTypeFilter] = useState<string>('all')
 	const [priorityFilter, setPriorityFilter] = useState<string>('all')
 
-	// Security check: Only render for admins
-	if (!user?.is_admin) {
+	// Security check: Only render for users with HR access
+	if (!(hasAccess ?? user?.is_admin)) {
 		return null
 	}
 

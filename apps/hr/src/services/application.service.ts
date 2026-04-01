@@ -17,7 +17,7 @@ import type { ServiceContext } from './context'
  * Handles all business logic for corporation membership applications.
  */
 export class ApplicationService {
-	constructor(private ctx: ServiceContext) {}
+	constructor(private ctx: ServiceContext) { }
 
 	/**
 	 * Get raw application record by ID
@@ -146,10 +146,10 @@ export class ApplicationService {
 			orderBy: [desc(applicationRecommendations.createdAt)],
 		})
 
-		// Get activity log if requested (HR only)
+		// Get activity log if requested (HR, admin, or application owner)
 		let activityLog: (typeof applicationActivityLog.$inferSelect)[] | undefined
 
-		if (includeActivityLog && (hasHrAccess || isAdmin)) {
+		if (includeActivityLog && (hasHrAccess || isAdmin || isOwner)) {
 			activityLog = await this.ctx.db.query.applicationActivityLog.findMany({
 				where: eq(applicationActivityLog.applicationId, applicationId),
 				orderBy: [desc(applicationActivityLog.timestamp)],
@@ -192,6 +192,7 @@ export class ApplicationService {
 		status: ApplicationStatus,
 		userId: string,
 		characterId: string,
+		characterName: string,
 		reviewNotes?: string
 	): Promise<void> {
 		if (!isApplicationStatus(status)) {
@@ -207,14 +208,22 @@ export class ApplicationService {
 
 		const previousStatus = application.status
 
+		// Only set reviewer info on final decisions
+		const isFinalDecision = status === 'accepted' || status === 'rejected'
+
 		// Update the application
 		await this.ctx.db
 			.update(applications)
 			.set({
 				status: status as ApplicationStatus,
-				reviewedBy: userId,
-				reviewedAt: new Date(),
-				reviewNotes,
+				...(isFinalDecision
+					? {
+						reviewedBy: userId,
+						reviewedByCharacterName: characterName,
+						reviewedAt: new Date(),
+						reviewNotes,
+					}
+					: {}),
 				updatedAt: new Date(),
 			})
 			.where(eq(applications.id, applicationId))
@@ -351,6 +360,7 @@ export class ApplicationService {
 			applicationText: app.applicationText,
 			status: app.status as Application['status'],
 			reviewedBy: app.reviewedBy,
+			reviewedByCharacterName: app.reviewedByCharacterName,
 			reviewedAt: app.reviewedAt,
 			reviewNotes: app.reviewNotes,
 			createdAt: app.createdAt,
