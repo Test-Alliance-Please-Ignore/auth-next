@@ -125,6 +125,11 @@
 				"name": "INDUSTRY",
 				"class_name": "Industry",
 				"script_name": "industry"
+			},
+			{
+				"name": "FULCRUM",
+				"class_name": "Fulcrum",
+				"script_name": "fulcrum"
 			}
 		]
 	},
