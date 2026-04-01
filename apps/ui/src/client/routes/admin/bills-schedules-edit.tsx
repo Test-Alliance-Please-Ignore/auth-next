@@ -22,6 +22,7 @@ import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { NumberInput } from '@/components/ui/number-input'
 import { Select } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import {
 	Table,
 	TableBody,
@@ -80,6 +81,11 @@ export default function AdminBillsSchedulesEditPage() {
 
 	const [errors, setErrors] = useState<Record<string, string>>({})
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+	const [groupBillOptions, setGroupBillOptions] = useState({
+		includeOwner: true,
+		includeAdmins: true,
+		includeMembers: true,
+	})
 	const [payerQuery, setPayerQuery] = useState('')
 	const [payeeQuery, setPayeeQuery] = useState('')
 	const debouncedPayerQuery = useDebounce(payerQuery, 300)
@@ -140,6 +146,11 @@ export default function AdminBillsSchedulesEditPage() {
 				frequency: schedule.frequency,
 				amount: schedule.amount,
 			})
+			setGroupBillOptions({
+				includeOwner: schedule.groupBillIncludeOwner,
+				includeAdmins: schedule.groupBillIncludeAdmins,
+				includeMembers: schedule.groupBillIncludeMembers,
+			})
 			setPayerQuery('')
 			setPayeeQuery('')
 		}
@@ -191,6 +202,16 @@ export default function AdminBillsSchedulesEditPage() {
 			newErrors.payeeId = 'Payee is required'
 		}
 
+		if (formData.payerType === 'group') {
+			if (
+				!groupBillOptions.includeOwner &&
+				!groupBillOptions.includeAdmins &&
+				!groupBillOptions.includeMembers
+			) {
+				newErrors.groupBillOptions = 'At least one member role must be selected'
+			}
+		}
+
 		setErrors(newErrors)
 		return Object.keys(newErrors).length === 0
 	}
@@ -211,6 +232,11 @@ export default function AdminBillsSchedulesEditPage() {
 				payeeType: formData.payeeType,
 				frequency: formData.frequency,
 				amount: formData.amount.trim(),
+				...(formData.payerType === 'group' && {
+					groupBillIncludeOwner: groupBillOptions.includeOwner,
+					groupBillIncludeAdmins: groupBillOptions.includeAdmins,
+					groupBillIncludeMembers: groupBillOptions.includeMembers,
+				}),
 			}
 
 			await updateSchedule.mutateAsync({ id, data: input })
@@ -541,6 +567,51 @@ export default function AdminBillsSchedulesEditPage() {
 							selectedEntityId={formData.payeeId}
 							error={errors.payeeId}
 						/>
+
+						{/* Group Bill Options */}
+						{formData.payerType === 'group' && (
+							<div className="space-y-3 pt-2">
+								<div>
+									<h3 className="text-sm font-medium">Group Bill Options</h3>
+									<p className="text-sm text-muted-foreground">
+										Select which member roles to issue individual bills to on each execution
+									</p>
+									{errors.groupBillOptions && (
+										<p className="text-sm text-destructive mt-1">{errors.groupBillOptions}</p>
+									)}
+								</div>
+								<div className="flex items-center justify-between">
+									<Label htmlFor="edit-includeOwner">Include Group Owner</Label>
+									<Switch
+										id="edit-includeOwner"
+										checked={groupBillOptions.includeOwner}
+										onCheckedChange={(checked) =>
+											setGroupBillOptions((prev) => ({ ...prev, includeOwner: checked }))
+										}
+									/>
+								</div>
+								<div className="flex items-center justify-between">
+									<Label htmlFor="edit-includeAdmins">Include Group Admins</Label>
+									<Switch
+										id="edit-includeAdmins"
+										checked={groupBillOptions.includeAdmins}
+										onCheckedChange={(checked) =>
+											setGroupBillOptions((prev) => ({ ...prev, includeAdmins: checked }))
+										}
+									/>
+								</div>
+								<div className="flex items-center justify-between">
+									<Label htmlFor="edit-includeMembers">Include Group Members</Label>
+									<Switch
+										id="edit-includeMembers"
+										checked={groupBillOptions.includeMembers}
+										onCheckedChange={(checked) =>
+											setGroupBillOptions((prev) => ({ ...prev, includeMembers: checked }))
+										}
+									/>
+								</div>
+							</div>
+						)}
 					</CardContent>
 				</Card>
 

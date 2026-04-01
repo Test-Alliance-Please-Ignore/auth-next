@@ -1,30 +1,43 @@
-import { Calendar, FileText, Plus } from 'lucide-react'
+import { Calendar, ChevronDown, Edit, FileText, Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
+import { Link, useNavigate } from 'react-router-dom'
 
 import { BillListFilters } from '@/components/bills/bill-list-filters'
 import { BillListGrid } from '@/components/bills/bill-list-grid'
-import { CancelButton } from '@/components/ui/cancel-button'
-import { ConfirmButton } from '@/components/ui/confirm-button'
-import { DestructiveButton } from '@/components/ui/destructive-button'
+import { BillStatusBadge } from '@/components/bills/bill-status-badge'
+import { ISKAmount } from '@/components/bills/isk-amount'
 import { GhostButton } from '@/components/ui/ghost-button'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { PrimaryButton } from '@/components/ui/primary-button'
-import { SecondaryButton } from '@/components/ui/secondary-button'
 import {
+	groupBillKeys,
 	useBillEntitySearch,
 	useBillPartySearch,
 	useBills,
 	useCancelBill,
+	useCancelGroupBill,
 	useDeleteBill,
+	useDeleteGroupBill,
+	useGroupBillAggregate,
 	useIssueBill,
+	useIssueGroupBill,
 	useRevertBillToDraft,
+	useRevertGroupBillToDraft,
 } from '@/hooks/useBills'
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { useDebounce } from '@/hooks/useDebounce'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { cn } from '@/lib/utils'
 
-import type { MRT_SortingState } from 'mantine-react-table'
-import type { BillListSortDirection, BillListSortField, BillStatus, EntityType } from '@repo/bills'
+import type { MRT_Row, MRT_SortingState } from 'mantine-react-table'
+import type {
+	BillListSortDirection,
+	BillListSortField,
+	BillStatus,
+	BillWithDetails,
+	EntityType,
+} from '@repo/bills'
 
 function toDateInputValue(date: Date): string {
 	const year = date.getFullYear()
@@ -54,6 +67,7 @@ export default function AdminBillsPage() {
 	const [dueBefore, setDueBefore] = useState('')
 	const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 25 })
 	const [sorting, setSorting] = useState<MRT_SortingState>([{ id: 'dueDate', desc: false }])
+	const [coalesced, setCoalesced] = useState(true)
 	const debouncedPayerQuery = useDebounce(payerQuery, 300)
 	const debouncedPayeeQuery = useDebounce(payeeQuery, 300)
 	const debouncedIssuerQuery = useDebounce(issuerQuery, 300)
@@ -72,6 +86,7 @@ export default function AdminBillsPage() {
 		offset: pagination.pageIndex * pagination.pageSize,
 		sortBy,
 		sortDir,
+		coalesced,
 	})
 	const payerSearch = useBillPartySearch({
 		q: debouncedPayerQuery,
@@ -137,9 +152,13 @@ export default function AdminBillsPage() {
 	const cancelBill = useCancelBill()
 	const deleteBill = useDeleteBill()
 	const revertBillToDraft = useRevertBillToDraft()
+	const issueGroupBill = useIssueGroupBill()
+	const cancelGroupBill = useCancelGroupBill()
+	const deleteGroupBill = useDeleteGroupBill()
+	const revertGroupBillToDraft = useRevertGroupBillToDraft()
 	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
 
-	// Action handlers
+	// Individual bill action handlers
 	const handleIssue = async (billId: string) => {
 		try {
 			await issueBill.mutateAsync(billId)
@@ -181,6 +200,7 @@ export default function AdminBillsPage() {
 			},
 		})
 	}
+
 	const handleRevertToDraft = async (billId: string) => {
 		requestConfirmation({
 			title: 'Move Bill To Draft',
@@ -197,6 +217,67 @@ export default function AdminBillsPage() {
 			},
 		})
 	}
+
+	// Group bill bulk action handlers
+	const handleGroupIssue = async (groupBillId: string) => {
+		try {
+			await issueGroupBill.mutateAsync(groupBillId)
+		} catch (error) {
+			console.error('Failed to issue group bill:', error)
+		}
+	}
+
+	const handleGroupCancel = async (groupBillId: string) => {
+		requestConfirmation({
+			title: 'Cancel Group Bill',
+			description: 'Cancel all eligible bills in this group?',
+			confirmLabel: 'Cancel All',
+			intent: 'confirm',
+			onConfirm: async () => {
+				try {
+					await cancelGroupBill.mutateAsync(groupBillId)
+				} catch (error) {
+					console.error('Failed to cancel group bill:', error)
+					throw error
+				}
+			},
+		})
+	}
+
+	const handleGroupDelete = async (groupBillId: string) => {
+		requestConfirmation({
+			title: 'Delete Group Bill',
+			description: 'Delete all draft bills in this group? This cannot be undone.',
+			confirmLabel: 'Delete All',
+			intent: 'destructive',
+			onConfirm: async () => {
+				try {
+					await deleteGroupBill.mutateAsync(groupBillId)
+				} catch (error) {
+					console.error('Failed to delete group bill:', error)
+					throw error
+				}
+			},
+		})
+	}
+
+	const handleGroupRevertToDraft = async (groupBillId: string) => {
+		requestConfirmation({
+			title: 'Revert Group Bill to Draft',
+			description: 'Move all eligible bills in this group back to draft?',
+			confirmLabel: 'To Draft',
+			intent: 'secondary',
+			onConfirm: async () => {
+				try {
+					await revertGroupBillToDraft.mutateAsync(groupBillId)
+				} catch (error) {
+					console.error('Failed to revert group bill to draft:', error)
+					throw error
+				}
+			},
+		})
+	}
+
 	const resetFilters = () => {
 		setStatus(undefined)
 		setIssuerId(undefined)
@@ -212,6 +293,15 @@ export default function AdminBillsPage() {
 		setPagination((prev) => ({ ...prev, pageIndex: 0 }))
 	}
 	const rows = billsPage.data?.rows ?? []
+	const hasGroupBills = coalesced
+		? rows.some((r) => r.groupBillTotalCount != null)
+		: rows.some((r) => r.groupBillId != null)
+
+	// Renders the expanded sub-bills panel for a coalesced group row
+	const renderExpandedGroupBill = (bill: BillWithDetails) => {
+		if (!bill.groupBillId) return null
+		return <GroupBillSubRows groupBillId={bill.groupBillId} />
+	}
 
 	return (
 		<div className="space-y-6">
@@ -297,6 +387,12 @@ export default function AdminBillsPage() {
 					setPagination((prev) => ({ ...prev, pageIndex: 0 }))
 				}}
 				onReset={resetFilters}
+				coalesced={coalesced}
+				hasGroupBills={hasGroupBills}
+				onCoalescedToggle={() => {
+					setCoalesced((prev) => !prev)
+					setPagination((prev) => ({ ...prev, pageIndex: 0 }))
+				}}
 			/>
 			<BillListGrid
 				rows={rows}
@@ -311,55 +407,316 @@ export default function AdminBillsPage() {
 				onPaginationChange={setPagination}
 				pageCount={pageCount}
 				rowCount={billsPage.data?.rowCount ?? 0}
-				renderActions={(bill) => (
-					<div className="flex justify-end gap-2">
-						{bill.status === 'draft' && (
-							<ConfirmButton
-								size="sm"
-								showIcon={false}
-								onConfirm={() => handleIssue(bill.id)}
-								loading={issueBill.isPending}
-							>
-								Issue
-							</ConfirmButton>
-						)}
-						{bill.status !== 'paid' && bill.status !== 'cancelled' && (
-							<CancelButton
-								size="sm"
-								showIcon={false}
-								onClick={() => void handleCancel(bill.id)}
-								loading={cancelBill.isPending}
-							>
-								Cancel
-							</CancelButton>
-						)}
-						{bill.status !== 'draft' && bill.status !== 'paid' && (
-							<SecondaryButton
-								size="sm"
-								onClick={() => void handleRevertToDraft(bill.id)}
-								disabled={revertBillToDraft.isPending}
-							>
-								To Draft
-							</SecondaryButton>
-						)}
-						{bill.status === 'draft' && (
-							<DestructiveButton
-								size="sm"
-								showIcon={false}
-								onClick={() => void handleDelete(bill.id)}
-								loading={deleteBill.isPending}
-							>
-								Delete
-							</DestructiveButton>
-						)}
-						<PrimaryButton size="sm" asChild>
-							<Link to={`/admin/bills/${bill.id}`}>View</Link>
-						</PrimaryButton>
-					</div>
-				)}
+				renderActions={(bill, row) => {
+					// Coalesced group aggregate row — show bulk actions menu
+					if (bill.groupBillTotalCount != null && bill.groupBillId) {
+						const groupBillId = bill.groupBillId
+						return (
+							<ActionsMenu
+								items={[
+									{
+										label: 'View',
+										intent: 'primary',
+										href: `/admin/bills/${bill.id}`,
+									},
+									{
+										label: 'Edit',
+										intent: 'secondary',
+										hidden: bill.status !== 'draft',
+										href: `/admin/bills/group/${groupBillId}/edit`,
+									},
+									{
+										label: 'To Draft',
+										intent: 'secondary',
+										hidden: bill.status === 'draft' || bill.status === 'paid',
+										loading: revertGroupBillToDraft.isPending,
+										onClick: () => void handleGroupRevertToDraft(groupBillId),
+									},
+									{
+										label: 'Issue All',
+										intent: 'confirm',
+										hidden: bill.status !== 'draft',
+										loading: issueGroupBill.isPending,
+										onClick: () => void handleGroupIssue(groupBillId),
+									},
+									{
+										label: 'Cancel All',
+										intent: 'muted',
+										hidden: bill.status === 'paid' || bill.status === 'cancelled',
+										loading: cancelGroupBill.isPending,
+										onClick: () => void handleGroupCancel(groupBillId),
+									},
+									{
+										label: 'Delete All',
+										intent: 'destructive',
+										hidden: bill.status !== 'draft',
+										loading: deleteGroupBill.isPending,
+										onClick: () => void handleGroupDelete(groupBillId),
+									},
+								]}
+							/>
+						)
+					}
+
+					// Individual bill row
+					return (
+						<ActionsMenu
+							items={[
+								{
+									label: 'View',
+									intent: 'primary',
+									href: `/admin/bills/${bill.id}`,
+								},
+								{
+									label: 'Edit',
+									intent: 'secondary',
+									hidden: bill.status !== 'draft',
+									href: `/admin/bills/${bill.id}/edit`,
+								},
+								{
+									label: 'To Draft',
+									intent: 'secondary',
+									hidden: bill.status === 'draft' || bill.status === 'paid',
+									loading: revertBillToDraft.isPending,
+									onClick: () => void handleRevertToDraft(bill.id),
+								},
+								{
+									label: 'Issue',
+									intent: 'confirm',
+									hidden: bill.status !== 'draft',
+									loading: issueBill.isPending,
+									onClick: () => void handleIssue(bill.id),
+								},
+								{
+									label: 'Cancel',
+									intent: 'muted',
+									hidden: bill.status === 'paid' || bill.status === 'cancelled',
+									loading: cancelBill.isPending,
+									onClick: () => void handleCancel(bill.id),
+								},
+								{
+									label: 'Delete',
+									intent: 'destructive',
+									hidden: bill.status !== 'draft',
+									loading: deleteBill.isPending,
+									onClick: () => void handleDelete(bill.id),
+								},
+							]}
+						/>
+					)
+				}}
+				renderExpandedGroupBill={coalesced ? renderExpandedGroupBill : undefined}
 				emptyMessage="No bills found for the current filters."
 			/>
 			{confirmationDialog}
 		</div>
+	)
+}
+
+// Inline sub-bills panel rendered when a coalesced group row is expanded
+function GroupBillSubRows(props: { groupBillId: string }) {
+	const { data: aggregate, isLoading } = useGroupBillAggregate(props.groupBillId)
+	const queryClient = useQueryClient()
+	const issueBill = useIssueBill()
+	const cancelBill = useCancelBill()
+	const deleteBill = useDeleteBill()
+	const revertBillToDraft = useRevertBillToDraft()
+	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
+
+	const invalidateAggregate = () =>
+		queryClient.invalidateQueries({ queryKey: groupBillKeys.aggregate(props.groupBillId) })
+
+	if (isLoading) {
+		return <div className="px-4 py-3 text-sm text-muted-foreground">Loading sub-bills...</div>
+	}
+
+	if (!aggregate) {
+		return <div className="px-4 py-3 text-sm text-destructive">Failed to load sub-bills.</div>
+	}
+
+	return (
+		<div className="px-4 py-3 space-y-2">
+			{confirmationDialog}
+			<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+				Sub-bills ({aggregate.bills.length})
+			</p>
+			<table className="text-sm">
+				<thead>
+					<tr className="text-left text-xs text-muted-foreground border-b border-border">
+						<th className="pb-1 pr-4 font-medium whitespace-nowrap">Status</th>
+						<th className="pb-1 pr-4 font-medium whitespace-nowrap">Payer</th>
+						<th className="pb-1 pr-4 font-medium whitespace-nowrap">Amount</th>
+						<th className="pb-1 font-medium whitespace-nowrap">Actions</th>
+					</tr>
+				</thead>
+				<tbody>
+					{aggregate.bills.map((subBill) => (
+						<tr key={subBill.billId} className="border-b border-border/50 last:border-0">
+							<td className="py-1.5 pr-4">
+								<BillStatusBadge status={subBill.status} />
+							</td>
+							<td className="py-1.5 pr-4 whitespace-nowrap">
+								<span className="text-foreground">{subBill.payerName ?? subBill.payerId}</span>
+							</td>
+							<td className="py-1.5 pr-4 whitespace-nowrap">
+								<ISKAmount amount={subBill.amount} />
+							</td>
+							<td className="py-1.5">
+								<ActionsMenu
+									items={[
+										{
+											label: 'View',
+											intent: 'primary',
+											href: `/admin/bills/${subBill.billId}`,
+										},
+										{
+											label: 'Edit',
+											intent: 'secondary',
+											hidden: subBill.status !== 'draft',
+											href: `/admin/bills/${subBill.billId}/edit`,
+										},
+										{
+											label: 'To Draft',
+											intent: 'secondary',
+											hidden: subBill.status === 'draft' || subBill.status === 'paid',
+											loading: revertBillToDraft.isPending,
+											onClick: () => {
+												requestConfirmation({
+													title: 'Move Bill To Draft',
+													description: 'Move this bill back to draft?',
+													confirmLabel: 'To Draft',
+													intent: 'secondary',
+													onConfirm: async () => {
+														await revertBillToDraft.mutateAsync(subBill.billId)
+														invalidateAggregate()
+													},
+												})
+											},
+										},
+										{
+											label: 'Issue',
+											intent: 'confirm',
+											hidden: subBill.status !== 'draft',
+											loading: issueBill.isPending,
+											onClick: () => {
+												requestConfirmation({
+													title: 'Issue Bill',
+													description: 'Issue this bill?',
+													confirmLabel: 'Issue',
+													intent: 'confirm',
+													onConfirm: async () => {
+														await issueBill.mutateAsync(subBill.billId)
+														invalidateAggregate()
+													},
+												})
+											},
+										},
+										{
+											label: 'Cancel',
+											intent: 'muted',
+											hidden: subBill.status === 'paid' || subBill.status === 'cancelled',
+											loading: cancelBill.isPending,
+											onClick: () => {
+												requestConfirmation({
+													title: 'Cancel Bill',
+													description: 'Cancel this bill?',
+													confirmLabel: 'Cancel',
+													intent: 'confirm',
+													onConfirm: async () => {
+														await cancelBill.mutateAsync(subBill.billId)
+														invalidateAggregate()
+													},
+												})
+											},
+										},
+										{
+											label: 'Delete',
+											intent: 'destructive',
+											hidden: subBill.status !== 'draft',
+											loading: deleteBill.isPending,
+											onClick: () => {
+												requestConfirmation({
+													title: 'Delete Bill',
+													description: 'Delete this bill? This cannot be undone.',
+													confirmLabel: 'Delete',
+													intent: 'destructive',
+													onConfirm: async () => {
+														await deleteBill.mutateAsync(subBill.billId)
+														invalidateAggregate()
+													},
+												})
+											},
+										},
+									]}
+								/>
+							</td>
+						</tr>
+					))}
+				</tbody>
+			</table>
+		</div>
+	)
+}
+
+type ActionIntent = 'confirm' | 'secondary' | 'muted' | 'destructive' | 'primary'
+
+interface ActionItem {
+	label: string
+	intent: ActionIntent
+	hidden?: boolean
+	loading?: boolean
+	onClick?: () => void
+	href?: string
+}
+
+const intentBg: Record<ActionIntent, string> = {
+	confirm: 'bg-[hsl(var(--confirm))]/45 hover:bg-[hsl(var(--confirm))]/65',
+	destructive: 'bg-[hsl(var(--destructive-alt))]/45 hover:bg-[hsl(var(--destructive-alt))]/65',
+	// neutral white tint so it's always visibly distinct from the popover backdrop
+	muted: 'bg-white/15 hover:bg-[hsl(var(--cancel-hover))]/65',
+	secondary: 'bg-[hsl(var(--secondary))]/45 hover:bg-[hsl(var(--secondary))]/65',
+	primary: 'bg-[hsl(var(--primary))]/45 hover:bg-[hsl(var(--primary))]/65',
+}
+
+function ActionsMenu(props: { items: ActionItem[] }) {
+	const [open, setOpen] = useState(false)
+	const navigate = useNavigate()
+	const visible = props.items.filter((item) => !item.hidden)
+
+	if (visible.length === 0) return null
+
+	// All items render as <button> so font-size is identical across every row.
+	// (<a> and <button> compute inherited font-size differently in some browsers.)
+	const baseClass =
+		'w-full cursor-pointer px-3 py-2 text-left text-sm font-medium text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 first:rounded-t last:rounded-b'
+
+	return (
+		<Popover open={open} onOpenChange={setOpen}>
+			<PopoverTrigger asChild>
+				<GhostButton size="sm">
+					Actions <ChevronDown className="ml-1 h-3 w-3" />
+				</GhostButton>
+			</PopoverTrigger>
+			<PopoverContent align="end" className="w-44 p-1">
+				{visible.map((item) => (
+					<button
+						key={item.label}
+						type="button"
+						disabled={item.loading}
+						className={cn(baseClass, intentBg[item.intent])}
+						onClick={() => {
+							setOpen(false)
+							if (item.href) {
+								void navigate(item.href)
+							} else {
+								item.onClick?.()
+							}
+						}}
+					>
+						{item.loading ? 'Loading...' : item.label}
+					</button>
+				))}
+			</PopoverContent>
+		</Popover>
 	)
 }

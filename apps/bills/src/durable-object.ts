@@ -1,5 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
+import { getStub } from '@repo/do-utils'
 import { logger, toErrorLogDetails } from '@repo/hono-helpers'
 
 import { createDb } from './db'
@@ -33,6 +34,8 @@ import type {
 	CreateScheduleInput,
 	CreateTemplateInput,
 	EntityType,
+	GroupBillAggregate,
+	GroupBillOperationResult,
 	OwnershipScope,
 	RegenerateTokenResponse,
 	ScheduleExecutionLog,
@@ -43,6 +46,7 @@ import type {
 	UpdateScheduleInput,
 	UpdateTemplateInput,
 } from '@repo/bills'
+import type { Groups } from '@repo/groups'
 import type { Env } from './context'
 import type { billPayments } from './db/schema'
 
@@ -121,6 +125,10 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 
 	async getBillIntegrationView(billId: string): Promise<BillIntegrationView | null> {
 		return this.billService.getBillIntegrationView(billId)
+	}
+
+	async getGroupBillAggregate(groupBillId: string): Promise<GroupBillAggregate | null> {
+		return this.billService.getGroupBillAggregate(groupBillId)
 	}
 
 	async listBills(userId: string, filters?: BillFilters): Promise<BillWithDetails[]> {
@@ -214,6 +222,33 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 
 	async deleteBill(actorUserId: string, billId: string): Promise<void> {
 		return this.billService.deleteBill(actorUserId, billId)
+	}
+
+	async issueGroupBill(actorUserId: string, groupBillId: string): Promise<GroupBillOperationResult> {
+		return this.billService.issueGroupBill(actorUserId, groupBillId)
+	}
+
+	async cancelGroupBill(actorUserId: string, groupBillId: string): Promise<GroupBillOperationResult> {
+		return this.billService.cancelGroupBill(actorUserId, groupBillId)
+	}
+
+	async revertGroupBillToDraft(
+		actorUserId: string,
+		groupBillId: string
+	): Promise<GroupBillOperationResult> {
+		return this.billService.revertGroupBillToDraft(actorUserId, groupBillId)
+	}
+
+	async deleteGroupBill(actorUserId: string, groupBillId: string): Promise<GroupBillOperationResult> {
+		return this.billService.deleteGroupBill(actorUserId, groupBillId)
+	}
+
+	async updateGroupBill(
+		actorUserId: string,
+		groupBillId: string,
+		data: UpdateBillInput
+	): Promise<GroupBillOperationResult> {
+		return this.billService.updateGroupBill(actorUserId, groupBillId, data)
 	}
 
 	async getBillStatistics(userId: string, filters?: BillFilters): Promise<BillStatistics> {
@@ -368,7 +403,62 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 				}
 			}
 
-			// Create bill from template
+			// Group schedule fan-out
+			if (scheduleResult.payerType === 'group') {
+				const groupBillId = crypto.randomUUID()
+				const groupsStub = getStub<Groups>(this.env.GROUPS, 'default')
+				const [group, members] = await Promise.all([
+					groupsStub.getGroup(scheduleResult.payerId, scheduleResult.ownerId),
+					groupsStub.getGroupMembers(scheduleResult.payerId, scheduleResult.ownerId),
+				])
+
+				if (!group) {
+					return { success: false, error: 'Group not found' }
+				}
+
+				const mask = scheduleResult.groupBillTargetMask ?? 7
+				const includeOwner = (mask & 1) !== 0
+				const includeAdmins = (mask & 2) !== 0
+				const includeMembers = (mask & 4) !== 0
+				const adminUserIds = new Set(group.adminUserIds ?? [])
+				const qualifyingMembers = members.filter((member) => {
+					if (!member.mainCharacterId) return false
+					const isOwner = member.userId === group.ownerId
+					const isAdmin = adminUserIds.has(member.userId)
+					if (isOwner) return includeOwner
+					if (isAdmin) return includeAdmins
+					return includeMembers
+				})
+
+				if (qualifyingMembers.length === 0) {
+					return { success: false, error: 'No qualifying group members with a main character' }
+				}
+
+				const createdBills: Bill[] = []
+				for (const member of qualifyingMembers) {
+					const billData: CreateBillFromTemplateInput = {
+						templateId: scheduleResult.templateId,
+						payerId: member.mainCharacterId!,
+						payerType: 'character',
+						payeeId: scheduleResult.payeeId ?? '',
+						payeeType: (scheduleResult.payeeType as 'character' | 'corporation') ?? 'character',
+						amount: scheduleResult.amount,
+						groupBillId,
+						externalMetadata: { groupId: scheduleResult.payerId },
+					}
+					const bill = await this.templateService.createBillFromTemplate(
+						scheduleResult.ownerId,
+						billData
+					)
+					await this.billService.issueBill(scheduleResult.ownerId, bill.id)
+					createdBills.push(bill)
+				}
+
+				await this.scheduleService.updateScheduleAfterExecution(scheduleId, groupBillId, true)
+				return { success: true, groupBillId, billCount: createdBills.length }
+			}
+
+			// Single-payer bill
 			const billData: CreateBillFromTemplateInput = {
 				templateId: scheduleResult.templateId,
 				payerId: scheduleResult.payerId,

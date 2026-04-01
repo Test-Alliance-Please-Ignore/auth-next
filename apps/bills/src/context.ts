@@ -8,6 +8,7 @@ export type Env = SharedHonoEnv & {
 	ESI: DurableObjectNamespace
 	ESI_TYPE_RESOLVER: DurableObjectNamespace
 	CORPORATION_TAX: DurableObjectNamespace
+	GROUPS: DurableObjectNamespace
 	BILLS_SCHEDULE_EXECUTOR: Workflow<{ scheduleId: string }>
 	BILL_PAYMENT_STATUS_CHECK: Workflow<{ billId: string }>
 }

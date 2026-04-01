@@ -22,6 +22,8 @@ import type {
 	CreateTemplateInput,
 	EntitySearchType,
 	EntityType,
+	GroupBillAggregate,
+	GroupBillOperationResult,
 	ScheduleExecutionLog,
 	ScheduleStatistics,
 	UpdateBillInput,
@@ -53,6 +55,7 @@ export class BillsApiClient extends ApiClient {
 		sortDir?: BillListSortDirection
 		limit?: number
 		offset?: number
+		coalesced?: boolean
 	}): Promise<BillListPage> {
 		const params = new URLSearchParams()
 		if (filters?.status) params.set('status', filters.status)
@@ -69,6 +72,7 @@ export class BillsApiClient extends ApiClient {
 		if (filters?.sortDir) params.set('sortDir', filters.sortDir)
 		if (filters?.limit) params.set('limit', String(filters.limit))
 		if (filters?.offset !== undefined) params.set('offset', String(filters.offset))
+		if (filters?.coalesced === false) params.set('coalesced', 'false')
 
 		const query = params.toString()
 		return this.get(`${BILLS_API_BASE}${query ? `?${query}` : ''}`)
@@ -102,8 +106,39 @@ export class BillsApiClient extends ApiClient {
 		return this.get(`${BILLS_API_BASE}/entities/search?${searchParams.toString()}`)
 	}
 
-	async createBill(data: CreateBillInput): Promise<Bill> {
+	async createBill(
+		data: CreateBillInput & {
+			groupBillOptions?: { includeOwner: boolean; includeAdmins: boolean; includeMembers: boolean }
+		}
+	): Promise<Bill | { groupBillId: string; bills: Bill[]; billCount: number }> {
 		return this.post(`${BILLS_API_BASE}`, data)
+	}
+
+	async getGroupBillAggregate(groupBillId: string): Promise<GroupBillAggregate> {
+		return this.get(`${BILLS_API_BASE}/group/${groupBillId}`)
+	}
+
+	async issueGroupBill(groupBillId: string): Promise<GroupBillOperationResult> {
+		return this.post(`${BILLS_API_BASE}/group/${groupBillId}/issue`)
+	}
+
+	async cancelGroupBill(groupBillId: string): Promise<GroupBillOperationResult> {
+		return this.post(`${BILLS_API_BASE}/group/${groupBillId}/cancel`)
+	}
+
+	async revertGroupBillToDraft(groupBillId: string): Promise<GroupBillOperationResult> {
+		return this.post(`${BILLS_API_BASE}/group/${groupBillId}/revert-to-draft`)
+	}
+
+	async deleteGroupBill(groupBillId: string): Promise<GroupBillOperationResult> {
+		return this.delete(`${BILLS_API_BASE}/group/${groupBillId}`)
+	}
+
+	async updateGroupBill(
+		groupBillId: string,
+		data: UpdateBillInput
+	): Promise<GroupBillOperationResult> {
+		return this.put(`${BILLS_API_BASE}/group/${groupBillId}`, data)
 	}
 
 	async updateBill(billId: string, data: UpdateBillInput): Promise<Bill> {

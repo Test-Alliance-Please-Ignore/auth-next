@@ -57,15 +57,23 @@ export class BillScheduleExecutorWorkflow extends WorkflowEntrypoint<Env, { sche
 
 		// Step 3: Handle success
 		await step.do('handle-success', async () => {
-			console.log(`Schedule ${scheduleId} executed successfully, created bill ${result.billId}`)
+			if (result.groupBillId) {
+				console.log(
+					`Schedule ${scheduleId} executed successfully, created group bill ${result.groupBillId} with ${result.billCount} sub-bills`
+				)
+			} else {
+				console.log(`Schedule ${scheduleId} executed successfully, created bill ${result.billId}`)
+			}
 
-			return { billId: result.billId }
+			return { billId: result.billId, groupBillId: result.groupBillId, billCount: result.billCount }
 		})
 
 		return {
 			success: true,
 			scheduleId,
 			billId: result.billId,
+			groupBillId: result.groupBillId,
+			billCount: result.billCount,
 		}
 	}
 }

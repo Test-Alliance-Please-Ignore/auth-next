@@ -24,6 +24,7 @@ import type {
 	Bills,
 	EntitySearchType,
 	EntityType,
+	GroupBillAggregate,
 } from '@repo/bills'
 import type { EsiTypeResolver } from '@repo/esi'
 import type { Groups } from '@repo/groups'
@@ -111,6 +112,7 @@ app.get('/', requireAuth(), requireAdmin(), async (c) => {
 		}
 
 		const filters = parseBillFilters(c)
+		const coalesced = c.req.query('coalesced') !== 'false'
 		const sortByQuery = c.req.query('sortBy')?.trim() as BillListSortField | undefined
 		const sortDirQuery = c.req.query('sortDir')?.trim() as BillListSortDirection | undefined
 		const sortBy = sortByQuery && BILL_SORT_FIELDS.has(sortByQuery) ? sortByQuery : 'dueDate'
@@ -145,7 +147,19 @@ app.get('/', requireAuth(), requireAdmin(), async (c) => {
 		] as string[]
 		const groupIds = [
 			...new Set(
-				page.rows.flatMap((row) => [row.payerType === 'group' ? row.payerId : null].filter(Boolean))
+				page.rows.flatMap((row) => {
+					const ids: string[] = []
+					if (row.payerType === 'group') ids.push(row.payerId)
+					// Sub-bills from group schedules have payerType='character' but store groupId in externalMetadata
+					const metaGroupId =
+						row.groupBillId &&
+						row.externalMetadata &&
+						typeof (row.externalMetadata as Record<string, unknown>).groupId === 'string'
+							? ((row.externalMetadata as Record<string, unknown>).groupId as string)
+							: null
+					if (metaGroupId) ids.push(metaGroupId)
+					return ids
+				})
 			),
 		] as string[]
 		const issuerUsers =
@@ -184,12 +198,60 @@ app.get('/', requireAuth(), requireAdmin(), async (c) => {
 			}
 		})
 
+		if (!coalesced) {
+			logger.info('[bills-admin] Bills fetched successfully (uncoalesced)', {
+				count: rows.length,
+				rowCount: page.rowCount,
+				userId: user.id,
+			})
+			return c.json({ rows, rowCount: page.rowCount })
+		}
+
+		// Coalesce group sub-bills: keep one representative per groupBillId with aggregate counts
+		// For sub-bills created from a group schedule, override payer with the originating group
+		const groupBillMap = new Map<string, (typeof rows)[0]>()
+		const groupBillStatuses = new Map<string, Set<string>>()
+		const nonGroupRows: (typeof rows)[0][] = []
+		for (const row of rows) {
+			if (row.groupBillId) {
+				if (!groupBillMap.has(row.groupBillId)) {
+					const metaGroupId =
+						row.externalMetadata &&
+						typeof (row.externalMetadata as Record<string, unknown>).groupId === 'string'
+							? ((row.externalMetadata as Record<string, unknown>).groupId as string)
+							: null
+					groupBillMap.set(row.groupBillId, {
+						...row,
+						...(metaGroupId && {
+							payerId: metaGroupId,
+							payerType: 'group' as const,
+							payerName: groupNames.get(metaGroupId),
+						}),
+						groupBillTotalCount: 0,
+						groupBillPaidCount: 0,
+					})
+					groupBillStatuses.set(row.groupBillId, new Set())
+				}
+				const rep = groupBillMap.get(row.groupBillId)!
+				rep.groupBillTotalCount = (rep.groupBillTotalCount ?? 0) + 1
+				if (row.status === 'paid') rep.groupBillPaidCount = (rep.groupBillPaidCount ?? 0) + 1
+				groupBillStatuses.get(row.groupBillId)!.add(row.status)
+			} else {
+				nonGroupRows.push(row)
+			}
+		}
+		for (const [groupBillId, rep] of groupBillMap) {
+			const statuses = groupBillStatuses.get(groupBillId)!
+			if (statuses.size > 1) rep.groupBillMixed = true
+		}
+		const coalescedRows = [...nonGroupRows, ...groupBillMap.values()]
+
 		logger.info('[bills-admin] Bills fetched successfully', {
-			count: rows.length,
+			count: coalescedRows.length,
 			rowCount: page.rowCount,
 			userId: user.id,
 		})
-		return c.json({ rows, rowCount: page.rowCount })
+		return c.json({ rows: coalescedRows, rowCount: page.rowCount })
 	} catch (error) {
 		const cause = (error as { cause?: unknown })?.cause as
 			| { message?: string; code?: string; detail?: string; hint?: string }
@@ -758,6 +820,207 @@ app.get('/schedules', requireAuth(), requireAdmin(), async (c) => {
 })
 
 /**
+ * GET /bills/group/:groupBillId
+ * Get the aggregate view of a group bill (all sub-bills sharing a groupBillId).
+ * Only the issuer or a site admin can access this.
+ * MUST be defined before /:billId to prevent param collision.
+ */
+app.get('/group/:groupBillId', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	const groupBillId = c.req.param('groupBillId')
+
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		const aggregate = await stub.getGroupBillAggregate(groupBillId)
+
+		if (!aggregate) {
+			return c.json({ error: 'Group bill not found' }, 404)
+		}
+
+		// Only the issuer or a site admin can view the aggregate
+		if (aggregate.issuerId !== user.id && !user.is_admin) {
+			return c.json({ error: 'Forbidden' }, 403)
+		}
+
+		// Resolve character names for all payers
+		const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
+		const payerIds = [...new Set(aggregate.bills.map((b) => b.payerId).filter(Boolean))]
+		const nameMap = payerIds.length > 0 ? await resolver.resolveIds(payerIds) : {}
+
+		// Resolve group name
+		const groupNames = aggregate.groupId
+			? await resolveGroupNames(c.env, [aggregate.groupId])
+			: new Map<string, string>()
+
+		// Resolve issuer name
+		const db = createDb(c.env.DATABASE_URL)
+		const issuerUser = await db.query.users.findFirst({
+			where: eq(users.id, aggregate.issuerId),
+			columns: { mainCharacterId: true },
+		})
+		const issuerEsiIds = issuerUser?.mainCharacterId ? [issuerUser.mainCharacterId] : []
+		const issuerNames = issuerEsiIds.length > 0 ? await resolver.resolveIds(issuerEsiIds) : {}
+
+		const result: GroupBillAggregate = {
+			...aggregate,
+			groupName: aggregate.groupId ? groupNames.get(aggregate.groupId) : undefined,
+			issuerName: issuerUser?.mainCharacterId
+				? (issuerNames[issuerUser.mainCharacterId] ?? undefined)
+				: undefined,
+			bills: aggregate.bills.map((b) => ({
+				...b,
+				payerName: nameMap[b.payerId] ?? undefined,
+			})),
+		}
+
+		return c.json(result)
+	} catch (error) {
+		logger.error('[bills-admin] Error getting group bill aggregate:', error)
+		return c.json({ error: 'Failed to get group bill aggregate' }, 500)
+	}
+})
+
+/**
+ * POST /bills/group/:groupBillId/issue
+ * Issue all draft sub-bills in a group bill at once.
+ */
+app.post('/group/:groupBillId/issue', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	const groupBillId = c.req.param('groupBillId')
+
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		const aggregate = await stub.getGroupBillAggregate(groupBillId)
+		if (!aggregate) {
+			return c.json({ error: 'Group bill not found' }, 404)
+		}
+
+		const result = await stub.issueGroupBill(user.id, groupBillId)
+		return c.json(result)
+	} catch (error) {
+		logger.error('[bills-admin] Error issuing group bill:', error)
+		return c.json({ error: 'Failed to issue group bill' }, 500)
+	}
+})
+
+/**
+ * POST /bills/group/:groupBillId/cancel
+ * Cancel all eligible sub-bills in a group bill at once.
+ */
+app.post('/group/:groupBillId/cancel', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	const groupBillId = c.req.param('groupBillId')
+
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		const aggregate = await stub.getGroupBillAggregate(groupBillId)
+		if (!aggregate) {
+			return c.json({ error: 'Group bill not found' }, 404)
+		}
+
+		const result = await stub.cancelGroupBill(user.id, groupBillId)
+		return c.json(result)
+	} catch (error) {
+		logger.error('[bills-admin] Error cancelling group bill:', error)
+		return c.json({ error: 'Failed to cancel group bill' }, 500)
+	}
+})
+
+/**
+ * POST /bills/group/:groupBillId/revert-to-draft
+ * Revert all eligible sub-bills in a group bill back to draft.
+ */
+app.post('/group/:groupBillId/revert-to-draft', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	const groupBillId = c.req.param('groupBillId')
+
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		const aggregate = await stub.getGroupBillAggregate(groupBillId)
+		if (!aggregate) {
+			return c.json({ error: 'Group bill not found' }, 404)
+		}
+
+		const result = await stub.revertGroupBillToDraft(user.id, groupBillId)
+		return c.json(result)
+	} catch (error) {
+		logger.error('[bills-admin] Error reverting group bill to draft:', error)
+		return c.json({ error: 'Failed to revert group bill to draft' }, 500)
+	}
+})
+
+/**
+ * DELETE /bills/group/:groupBillId
+ * Delete all draft sub-bills in a group bill at once.
+ */
+app.delete('/group/:groupBillId', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	const groupBillId = c.req.param('groupBillId')
+
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		const aggregate = await stub.getGroupBillAggregate(groupBillId)
+		if (!aggregate) {
+			return c.json({ error: 'Group bill not found' }, 404)
+		}
+
+		const result = await stub.deleteGroupBill(user.id, groupBillId)
+		return c.json(result)
+	} catch (error) {
+		logger.error('[bills-admin] Error deleting group bill:', error)
+		return c.json({ error: 'Failed to delete group bill' }, 500)
+	}
+})
+
+/**
+ * PUT /bills/group/:groupBillId
+ * Update all eligible sub-bills in a group bill at once.
+ */
+app.put('/group/:groupBillId', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	const groupBillId = c.req.param('groupBillId')
+
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		const data = await c.req.json()
+		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		const aggregate = await stub.getGroupBillAggregate(groupBillId)
+		if (!aggregate) {
+			return c.json({ error: 'Group bill not found' }, 404)
+		}
+
+		const result = await stub.updateGroupBill(user.id, groupBillId, data)
+		return c.json(result)
+	} catch (error) {
+		logger.error('[bills-admin] Error updating group bill:', error)
+		return c.json({ error: 'Failed to update group bill' }, 500)
+	}
+})
+
+/**
  * GET /bills/:billId
  * Get a specific bill
  */
@@ -831,7 +1094,8 @@ app.get('/:billId', requireAuth(), requireAdmin(), async (c) => {
 
 /**
  * POST /bills
- * Create a new bill
+ * Create a new bill. When payerType is 'group', fans out to individual character bills
+ * for each qualifying group member and returns { groupBillId, bills, billCount }.
  */
 app.post('/', requireAuth(), requireAdmin(), async (c) => {
 	const user = c.get('user')
@@ -840,12 +1104,73 @@ app.post('/', requireAuth(), requireAdmin(), async (c) => {
 	}
 
 	try {
-		const data = await c.req.json()
-		logger.info('[bills-admin] Creating bill', { userId: user.id, data })
+		const body = await c.req.json()
+		const { groupBillOptions, ...data } = body
+
+		logger.info('[bills-admin] Creating bill', { userId: user.id, payerType: data.payerType })
 
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		const bill = await stub.createBill(user.id, data)
 
+		// Group bill fan-out
+		if (data.payerType === 'group') {
+			const opts = groupBillOptions ?? {
+				includeOwner: true,
+				includeAdmins: true,
+				includeMembers: true,
+			}
+
+			if (!opts.includeOwner && !opts.includeAdmins && !opts.includeMembers) {
+				return c.json({ error: 'At least one member role must be selected for group bills' }, 400)
+			}
+
+			const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+			const [group, members] = await Promise.all([
+				groupsStub.getGroup(data.payerId, user.id),
+				groupsStub.getGroupMembers(data.payerId, user.id),
+			])
+
+			if (!group) {
+				return c.json({ error: 'Group not found' }, 404)
+			}
+
+			const adminUserIds = new Set(group.adminUserIds ?? [])
+			const groupBillId = crypto.randomUUID()
+			const createdBills = []
+
+			for (const member of members) {
+				if (!member.mainCharacterId) continue
+
+				const isOwner = member.userId === group.ownerId
+				const isAdmin = adminUserIds.has(member.userId)
+				const isMember = !isOwner && !isAdmin
+
+				if (isOwner && !opts.includeOwner) continue
+				if (isAdmin && !opts.includeAdmins) continue
+				if (isMember && !opts.includeMembers) continue
+
+				const bill = await stub.createBill(user.id, {
+					...data,
+					payerType: 'character',
+					payerId: member.mainCharacterId,
+					groupBillId,
+					externalMetadata: { groupId: data.payerId },
+				})
+				createdBills.push(bill)
+			}
+
+			if (createdBills.length === 0) {
+				return c.json({ error: 'No qualifying group members with a main character found' }, 400)
+			}
+
+			logger.info('[bills-admin] Group bill created', {
+				groupBillId,
+				billCount: createdBills.length,
+			})
+			return c.json({ groupBillId, bills: createdBills, billCount: createdBills.length }, 201)
+		}
+
+		// Standard single bill
+		const bill = await stub.createBill(user.id, data)
 		logger.info('[bills-admin] Bill created successfully', { billId: bill.id })
 		return c.json(bill, 201)
 	} catch (error) {

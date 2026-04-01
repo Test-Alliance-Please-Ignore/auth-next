@@ -4,6 +4,20 @@ import { billSchedules, billTemplates, scheduleExecutionLogs } from '../db/schem
 import { calculateInitialGenerationTime, calculateNextGenerationTime } from '../utils/schedule'
 import { generateUuidV7 } from '../utils/uuid'
 
+/** Encode owner/admins/members booleans into a single bitmask integer (1=owner, 2=admins, 4=members) */
+function encodeGroupBillMask(
+	includeOwner: boolean,
+	includeAdmins: boolean,
+	includeMembers: boolean
+): number {
+	return (includeOwner ? 1 : 0) | (includeAdmins ? 2 : 0) | (includeMembers ? 4 : 0)
+}
+
+/** Decode bitmask into [includeOwner, includeAdmins, includeMembers] */
+function decodeGroupBillMask(mask: number): [boolean, boolean, boolean] {
+	return [(mask & 1) !== 0, (mask & 2) !== 0, (mask & 4) !== 0]
+}
+
 import type {
 	BillSchedule,
 	BillScheduleWithDetails,
@@ -62,6 +76,11 @@ export class ScheduleService {
 				nextGenerationTime,
 				isActive: true,
 				consecutiveFailures: 0,
+				groupBillTargetMask: encodeGroupBillMask(
+					data.groupBillIncludeOwner ?? true,
+					data.groupBillIncludeAdmins ?? true,
+					data.groupBillIncludeMembers ?? true
+				),
 			})
 			.returning()
 
@@ -200,10 +219,29 @@ export class ScheduleService {
 			})
 		}
 
+		// Extract group bill booleans before spreading (DB uses bitmask column instead)
+		const { groupBillIncludeOwner, groupBillIncludeAdmins, groupBillIncludeMembers, ...restData } =
+			data
+
+		// Recompute mask if any group option is being updated
+		const hasGroupOptions =
+			groupBillIncludeOwner !== undefined ||
+			groupBillIncludeAdmins !== undefined ||
+			groupBillIncludeMembers !== undefined
+		const [curOwner, curAdmins, curMembers] = decodeGroupBillMask(schedule.groupBillTargetMask ?? 7)
+		const groupBillTargetMask = hasGroupOptions
+			? encodeGroupBillMask(
+					groupBillIncludeOwner ?? curOwner,
+					groupBillIncludeAdmins ?? curAdmins,
+					groupBillIncludeMembers ?? curMembers
+				)
+			: undefined
+
 		const [updated] = await this.db
 			.update(billSchedules)
 			.set({
-				...data,
+				...restData,
+				...(groupBillTargetMask !== undefined && { groupBillTargetMask }),
 				payeeId: data.payeeId?.trim(),
 				nextGenerationTime,
 				updatedAt: new Date(),
@@ -436,6 +474,9 @@ export class ScheduleService {
 	 * Convert database record to BillSchedule response
 	 */
 	private toScheduleResponse(schedule: any): BillSchedule {
+		const [includeOwner, includeAdmins, includeMembers] = decodeGroupBillMask(
+			schedule.groupBillTargetMask ?? 7
+		)
 		return {
 			id: schedule.id,
 			ownerId: schedule.ownerId,
@@ -450,6 +491,9 @@ export class ScheduleService {
 			lastGenerationTime: schedule.lastGenerationTime,
 			isActive: schedule.isActive,
 			consecutiveFailures: schedule.consecutiveFailures,
+			groupBillIncludeOwner: includeOwner,
+			groupBillIncludeAdmins: includeAdmins,
+			groupBillIncludeMembers: includeMembers,
 			createdAt: schedule.createdAt,
 			updatedAt: schedule.updatedAt,
 		}

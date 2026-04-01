@@ -242,6 +242,9 @@ importers:
       '@repo/esi':
         specifier: workspace:*
         version: link:../../packages/esi
+      '@repo/groups':
+        specifier: workspace:*
+        version: link:../../packages/groups
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers

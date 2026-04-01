@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { NumberInput } from '@/components/ui/number-input'
 import { Select } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { useBillEntitySearch, useCreateSchedule, useTemplates } from '@/hooks/useBills'
 import { useDebounce } from '@/hooks/useDebounce'
 import { usePageTitle } from '@/hooks/usePageTitle'
@@ -47,6 +48,11 @@ export default function AdminBillsSchedulesNewPage() {
 
 	const [errors, setErrors] = useState<Record<string, string>>({})
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+	const [groupBillOptions, setGroupBillOptions] = useState({
+		includeOwner: true,
+		includeAdmins: true,
+		includeMembers: true,
+	})
 	const [payerQuery, setPayerQuery] = useState('')
 	const [payeeQuery, setPayeeQuery] = useState('')
 	const [payerName, setPayerName] = useState('')
@@ -171,6 +177,16 @@ export default function AdminBillsSchedulesNewPage() {
 			}
 		}
 
+		if (formData.payerType === 'group') {
+			if (
+				!groupBillOptions.includeOwner &&
+				!groupBillOptions.includeAdmins &&
+				!groupBillOptions.includeMembers
+			) {
+				newErrors.groupBillOptions = 'At least one member role must be selected'
+			}
+		}
+
 		setErrors(newErrors)
 		return Object.keys(newErrors).length === 0
 	}
@@ -192,6 +208,11 @@ export default function AdminBillsSchedulesNewPage() {
 				frequency: formData.frequency,
 				amount: formData.amount.trim(),
 				startDate: formData.startDate ? new Date(formData.startDate) : undefined,
+				...(formData.payerType === 'group' && {
+					groupBillIncludeOwner: groupBillOptions.includeOwner,
+					groupBillIncludeAdmins: groupBillOptions.includeAdmins,
+					groupBillIncludeMembers: groupBillOptions.includeMembers,
+				}),
 			}
 
 			await createSchedule.mutateAsync(input)
@@ -390,6 +411,64 @@ export default function AdminBillsSchedulesNewPage() {
 						/>
 					</CardContent>
 				</Card>
+
+				{/* Group Bill Options */}
+				{formData.payerType === 'group' && (
+					<Card variant="interactive" className="mb-6">
+						<CardHeader>
+							<CardTitle>Group Bill Options</CardTitle>
+							<CardDescription>
+								Select which member roles to issue individual bills to on each execution
+							</CardDescription>
+						</CardHeader>
+						<CardContent className="space-y-4">
+							{errors.groupBillOptions && (
+								<p className="text-sm text-destructive">{errors.groupBillOptions}</p>
+							)}
+							<div className="flex items-center justify-between">
+								<div className="space-y-0.5">
+									<Label htmlFor="sched-includeOwner">Include Group Owner</Label>
+									<p className="text-sm text-muted-foreground">Issue a bill to the group owner</p>
+								</div>
+								<Switch
+									id="sched-includeOwner"
+									checked={groupBillOptions.includeOwner}
+									onCheckedChange={(checked) =>
+										setGroupBillOptions((prev) => ({ ...prev, includeOwner: checked }))
+									}
+								/>
+							</div>
+							<div className="flex items-center justify-between">
+								<div className="space-y-0.5">
+									<Label htmlFor="sched-includeAdmins">Include Group Admins</Label>
+									<p className="text-sm text-muted-foreground">Issue bills to all group admins</p>
+								</div>
+								<Switch
+									id="sched-includeAdmins"
+									checked={groupBillOptions.includeAdmins}
+									onCheckedChange={(checked) =>
+										setGroupBillOptions((prev) => ({ ...prev, includeAdmins: checked }))
+									}
+								/>
+							</div>
+							<div className="flex items-center justify-between">
+								<div className="space-y-0.5">
+									<Label htmlFor="sched-includeMembers">Include Group Members</Label>
+									<p className="text-sm text-muted-foreground">
+										Issue bills to regular group members
+									</p>
+								</div>
+								<Switch
+									id="sched-includeMembers"
+									checked={groupBillOptions.includeMembers}
+									onCheckedChange={(checked) =>
+										setGroupBillOptions((prev) => ({ ...prev, includeMembers: checked }))
+									}
+								/>
+							</div>
+						</CardContent>
+					</Card>
+				)}
 
 				{/* Bill Amount */}
 				<Card variant="interactive" className="mb-6">

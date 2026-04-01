@@ -1,6 +1,13 @@
 import { MantineReactTable, useMantineReactTable } from 'mantine-react-table'
 
-import type { MRT_ColumnDef, MRT_SortingState } from 'mantine-react-table'
+import type {
+	MRT_ColumnDef,
+	MRT_Row,
+	MRT_SortingState,
+	MRT_TableInstance,
+	MRT_TableOptions,
+} from 'mantine-react-table'
+import type { ReactNode } from 'react'
 
 interface TaxReportDataGridProps<Row extends object> {
 	columns: MRT_ColumnDef<Row>[]
@@ -19,6 +26,8 @@ interface TaxReportDataGridProps<Row extends object> {
 	rowCount?: number
 	pinnedRightColumnIds?: string[]
 	pinnedLeftColumnIds?: string[]
+	renderDetailPanel?: (props: { row: MRT_Row<Row>; table: MRT_TableInstance<Row> }) => ReactNode
+	mantineExpandButtonProps?: MRT_TableOptions<Row>['mantineExpandButtonProps']
 }
 
 export function TaxReportDataGrid<Row extends object>({
@@ -35,12 +44,16 @@ export function TaxReportDataGrid<Row extends object>({
 	rowCount,
 	pinnedRightColumnIds,
 	pinnedLeftColumnIds,
+	renderDetailPanel,
+	mantineExpandButtonProps,
 }: TaxReportDataGridProps<Row>) {
 	const isServerSorted = Boolean(onSortingChange)
 	const isServerPaginated = Boolean(onPaginationChange && pagination)
+	const hasDetailPanel = Boolean(renderDetailPanel)
 	const table = useMantineReactTable({
 		columns,
 		data: rows,
+		enableExpanding: hasDetailPanel,
 		enableColumnActions: false,
 		enableColumnFilters: false,
 		enableDensityToggle: false,
@@ -166,6 +179,8 @@ export function TaxReportDataGrid<Row extends object>({
 					},
 				}
 			: {}),
+		...(renderDetailPanel ? { renderDetailPanel } : {}),
+		...(mantineExpandButtonProps ? { mantineExpandButtonProps } : {}),
 	})
 
 	return (

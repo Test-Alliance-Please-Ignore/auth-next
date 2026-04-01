@@ -306,6 +306,8 @@ export class TemplateService {
 				dueDate,
 				status: 'draft',
 				paymentToken,
+				groupBillId: data.groupBillId ?? null,
+				externalMetadata: data.externalMetadata ?? null,
 			})
 			.returning()
 
@@ -342,6 +344,7 @@ export class TemplateService {
 			externalSourceType: bill.externalSourceType,
 			externalSourceId: bill.externalSourceId,
 			externalMetadata: bill.externalMetadata ?? null,
+			groupBillId: bill.groupBillId ?? null,
 			createdAt: bill.createdAt,
 			updatedAt: bill.updatedAt,
 		}
