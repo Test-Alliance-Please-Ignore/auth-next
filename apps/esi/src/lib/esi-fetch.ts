@@ -57,6 +57,7 @@ export class EsiFetcher {
 	private characterId: string | null = null
 	private cache: EsiCache
 	private cacheScope: CacheScopeContext | null = null
+	private defaultCacheMode: 'default' | 'no-store' = 'default'
 
 	private static readonly PUBLIC_SCOPE: CacheScopeContext = {
 		scope: 'public',
@@ -68,6 +69,10 @@ export class EsiFetcher {
 		private env: Env
 	) {
 		this.cache = new EsiCache(this.state, this.env.ESI_GLOBAL_CACHE)
+	}
+
+	setDefaultCacheMode(mode: 'default' | 'no-store'): void {
+		this.defaultCacheMode = mode
 	}
 
 	async clearAuthentication(): Promise<void> {
@@ -288,7 +293,7 @@ export class EsiFetcher {
 		options?: FetchEsiOptions<B>
 	): Promise<EsiResponse<T>> {
 		const cacheScope = options?.cacheScopeOverride ?? this.getActiveCacheScope()
-		const cacheMode = options?.cacheMode ?? 'default'
+		const cacheMode = options?.cacheMode ?? this.defaultCacheMode
 		const maxLocalCacheTtl = options?.maxLocalCacheTtl
 		const persistGlobalCache = options?.persistGlobalCache ?? true
 		const method = options?.method ?? 'GET'

@@ -534,3 +534,113 @@ export function canWithdrawApplication(application: Application): boolean {
 export function canReviewApplication(application: Application): boolean {
 	return ['pending', 'under_review'].includes(application.status)
 }
+
+// ============================================================================
+// Fulcrum (Character Reports) Types & API
+// ============================================================================
+
+/**
+ * Report metadata returned by the Fulcrum system
+ */
+export interface CharacterReportMetadata {
+	id: string
+	characterId: string
+	characterName?: string
+	status: string
+	requestorUserId: string
+	requestorCorporationId: string
+	workflowInstanceId?: string
+	createdAt: string
+	updatedAt: string
+	expiresAt?: string
+	viewedAt?: string
+	errorMessage?: string
+}
+
+/**
+ * A character with their associated Fulcrum reports
+ */
+export interface FulcrumCharacterData {
+	characterId: string
+	characterName: string
+	corporationId?: string | null
+	corporationName?: string | null
+	reports: CharacterReportMetadata[]
+}
+
+/**
+ * Valid section names for character reports
+ */
+export type ReportSectionName =
+	| 'public-info'
+	| 'assets'
+	| 'fitted-ships'
+	| 'wallet-transactions'
+	| 'wallet-journal'
+	| 'mails'
+	| 'contacts'
+	| 'corp-history'
+	| 'skills'
+	| 'contracts'
+	| 'notifications'
+	| 'clones'
+	| 'alerts'
+
+/**
+ * Report manifest listing available sections
+ */
+export interface ReportManifest {
+	reportId: string
+	characterId: string
+	sections: ReportSectionName[]
+	createdAt: string
+}
+
+/**
+ * Fulcrum API methods (under HR applications)
+ */
+export const fulcrumApi = {
+	/**
+	 * Get all applicant characters with their Fulcrum report status
+	 */
+	async getApplicationFulcrumData(applicationId: string): Promise<FulcrumCharacterData[]> {
+		return apiClient.get(`/hr/applications/${applicationId}/fulcrum`)
+	},
+
+	/**
+	 * Request a new Fulcrum report for a character
+	 */
+	async requestReport(
+		applicationId: string,
+		characterId: string,
+	): Promise<{ reportId: string; status: string }> {
+		return apiClient.post(`/hr/applications/${applicationId}/fulcrum/reports`, { characterId })
+	},
+
+	/**
+	 * Get report section manifest (list of available sections)
+	 */
+	async getReportSections(reportId: string): Promise<ReportManifest> {
+		return apiClient.get(`/hr/fulcrum/reports/${reportId}/sections`)
+	},
+
+	/**
+	 * Get processed data for a specific report section
+	 */
+	async getReportSectionData<T = unknown>(
+		reportId: string,
+		section: ReportSectionName,
+	): Promise<T> {
+		return apiClient.get(`/hr/fulcrum/reports/${reportId}/sections/${section}`)
+	},
+
+	/**
+	 * Fetch a single mail's content on-demand from ESI
+	 */
+	async fetchMailContent(
+		reportId: string,
+		mailId: string,
+	): Promise<{ body: string }> {
+		return apiClient.get(`/hr/fulcrum/reports/${reportId}/mails/${mailId}/content`)
+	},
+}

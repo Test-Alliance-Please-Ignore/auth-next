@@ -9,7 +9,7 @@
 import { formatDistanceToNow } from 'date-fns'
 import { AlertCircle, ArrowLeft, Briefcase, Lock } from 'lucide-react'
 import { useState } from 'react'
-import { Navigate, useNavigate, useParams } from 'react-router-dom'
+import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { MemberAvatar } from '@/components/member-avatar'
 import {
@@ -34,6 +34,7 @@ import { ApplicationActionPanel } from '../components/application-action-panel'
 import { ApplicationStatusBadge } from '../components/application-status-badge'
 import { ApplicationTimeline } from '../components/application-timeline'
 import { DeleteHRNoteDialog } from '../components/delete-hr-note-dialog'
+import { FulcrumPanel } from '../components/fulcrum-panel'
 import { HRNotesList } from '../components/hr-notes-list'
 import { MessagesPanel } from '../components/messages-panel'
 import { Button } from '@/components/ui/button'
@@ -59,6 +60,8 @@ export default function HrApplicationReview() {
 		applicationId: string
 	}>()
 	const navigate = useNavigate()
+	const [searchParams] = useSearchParams()
+	const initialTab = searchParams.get('tab') || 'details'
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
 	const { canAccess: hasCorporationAccess, isLoading: corporationAccessLoading } =
 		useCanAccessCorporation(corporationId ?? '')
@@ -310,7 +313,7 @@ export default function HrApplicationReview() {
 			</Card>
 
 			{/* Tabbed Content */}
-			<Tabs defaultValue="details" className="space-y-6">
+			<Tabs defaultValue={initialTab} className="space-y-6">
 				<TabsList className="w-full sm:w-auto">
 					<TabsTrigger value="details" className="flex-1 sm:flex-none">
 						Details
@@ -330,6 +333,11 @@ export default function HrApplicationReview() {
 							<span className="ml-1.5 text-xs opacity-70">({messageCount})</span>
 						)}
 					</TabsTrigger>
+					{permission?.currentRole && ['hr_admin', 'hr_reviewer'].includes(permission.currentRole) && (
+						<TabsTrigger value="fulcrum" className="flex-1 sm:flex-none">
+							Fulcrum
+						</TabsTrigger>
+					)}
 				</TabsList>
 
 				{/* Details Tab */}
@@ -479,6 +487,23 @@ export default function HrApplicationReview() {
 						</CardContent>
 					</Card>
 				</TabsContent>
+
+				{/* Fulcrum (Character Reports) Tab */}
+				{permission?.currentRole && ['hr_admin', 'hr_reviewer'].includes(permission.currentRole) && (
+					<TabsContent value="fulcrum">
+						<Card>
+							<CardHeader>
+								<CardTitle>Character Reports</CardTitle>
+								<CardDescription>
+									Generate detailed background reports for the applicant's linked characters
+								</CardDescription>
+							</CardHeader>
+							<CardContent>
+								<FulcrumPanel applicationId={applicationId!} />
+							</CardContent>
+						</Card>
+					</TabsContent>
+				)}
 			</Tabs>
 
 			{/* HR Notes Dialogs */}

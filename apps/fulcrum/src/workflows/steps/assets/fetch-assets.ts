@@ -37,6 +37,7 @@ export async function fetchAssets(
 	try {
 		// Get character-specific ESI stub for caching
 		const stub = getEsiInstanceForCharacter(esiBinding, characterId)
+		stub.setDefaultCacheMode('no-store')
 
 		// Fetch assets from ESI
 		const data = await fetchAssetsFromEsi(stub, characterId)

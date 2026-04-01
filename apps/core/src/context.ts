@@ -59,6 +59,8 @@ export type Env = SharedHonoEnv & {
 	ESI_TYPE_RESOLVER: DurableObjectNamespace
 	/** Industry Durable Object binding */
 	INDUSTRY: DurableObjectNamespace
+	/** Fulcrum (Character Reports) Durable Object binding */
+	FULCRUM: DurableObjectNamespace
 	/** Legacy Auth OAuth Client ID (set as Wrangler secret) */
 	LEGACY_AUTH_CLIENT_ID: string
 	/** Legacy Auth OAuth Client Secret (set as Wrangler secret) */

@@ -35,6 +35,34 @@ export interface ListReportsFilters {
 }
 
 /**
+ * Valid section names for character reports
+ */
+export type ReportSectionName =
+	| 'public-info'
+	| 'assets'
+	| 'fitted-ships'
+	| 'wallet-transactions'
+	| 'wallet-journal'
+	| 'mails'
+	| 'contacts'
+	| 'corp-history'
+	| 'skills'
+	| 'contracts'
+	| 'notifications'
+	| 'clones'
+	| 'alerts'
+
+/**
+ * Report manifest listing available sections
+ */
+export interface ReportManifest {
+	reportId: string
+	characterId: string
+	sections: ReportSectionName[]
+	createdAt: string
+}
+
+/**
  * Public RPC interface for Fulcrum Durable Object
  *
  * All public methods defined here will be available to call via RPC
@@ -112,4 +140,28 @@ export interface Fulcrum extends DurableObject {
 	 * @returns true if the report status is 'cancelled', false otherwise
 	 */
 	isReportCancelled(reportId: string): Promise<boolean>
+
+	/**
+	 * Get the manifest of available sections for a report
+	 * @param reportId - Report UUID
+	 * @returns Report manifest or null if not found
+	 */
+	getReportSections(reportId: string): Promise<ReportManifest | null>
+
+	/**
+	 * Get processed data for a specific report section
+	 * @param reportId - Report UUID
+	 * @param section - Section name
+	 * @returns Section JSON data or null if not found
+	 */
+	getReportSectionData(reportId: string, section: ReportSectionName): Promise<unknown | null>
+
+	/**
+	 * Fetch a single mail's content on-demand from ESI and update the R2 section.
+	 * Used when the initial report only fetched content for the most recent N mails.
+	 * @param reportId - Report UUID
+	 * @param mailId - EVE mail ID
+	 * @returns The mail body text (HTML) or null if not found
+	 */
+	fetchMailContent(reportId: string, mailId: string): Promise<string | null>
 }

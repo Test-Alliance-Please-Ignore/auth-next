@@ -5,12 +5,18 @@ import type {
 	CharacterAttributes,
 	CharacterBlueprint,
 	CharacterCalendar,
+	CharacterClones,
 	CharacterContact,
 	CharacterContract,
+	CharacterContractItem,
 	CharacterFitting,
+	CharacterImplants,
 	CharacterKillmailBasic,
 	CharacterLocation,
 	CharacterMail,
+	MailContent,
+	MailingList,
+	MailLabelsResponse,
 	CharacterMarketOrder,
 	CharacterMarketTransaction,
 	CharacterMiningLedger,
@@ -53,12 +59,18 @@ import type {
 	EsiCharacterAttributes,
 	EsiCharacterBlueprint,
 	EsiCharacterCalendar,
+	EsiCharacterClones,
 	EsiCharacterContact,
 	EsiCharacterContract,
+	EsiContractItem,
 	EsiCharacterFitting,
+	EsiCharacterImplants,
 	EsiCharacterKillmail,
 	EsiCharacterLocation,
 	EsiCharacterMail,
+	EsiMailContent,
+	EsiMailingList,
+	EsiMailLabelsResponse,
 	EsiCharacterMarketOrder,
 	EsiCharacterMarketTransaction,
 	EsiCharacterMiningLedger,
@@ -95,9 +107,7 @@ import type {
 	EsiCorporationWallet,
 	EsiCorporationWalletJournalEntry,
 	EsiCorporationWalletTransaction,
-	EsiMailContent,
 	EsiStructureInfo,
-	MailContent,
 	StructureInfo,
 } from '@repo/esi'
 
@@ -393,6 +403,15 @@ export function transformCharacterAsset(assets: EsiCharacterAsset[]): CharacterA
 	}))
 }
 
+export function transformCharacterAssetNames(
+	names: EsiCharacterAssetName[]
+): CharacterAssetName[] {
+	return names.map((entry) => ({
+		item_id: String(entry.item_id),
+		name: entry.name,
+	}))
+}
+
 export function transformCharacterAttributes(data: EsiCharacterAttributes): CharacterAttributes {
 	return { ...data }
 }
@@ -436,6 +455,14 @@ export function transformCharacterContract(contracts: EsiCharacterContract[]): C
 	}))
 }
 
+export function transformContractItems(items: EsiContractItem[]): CharacterContractItem[] {
+	return items.map((item) => ({
+		...item,
+		record_id: String(item.record_id),
+		type_id: String(item.type_id),
+	}))
+}
+
 export function transformCharacterFitting(fittings: EsiCharacterFitting[]): CharacterFitting[] {
 	return fittings.map((fitting) => ({
 		...fitting,
@@ -475,6 +502,25 @@ export function transformMailContent(content: EsiMailContent): MailContent {
 		...content,
 		from: content.from ? String(content.from) : undefined,
 		labels: content.labels?.map(String),
+	}
+}
+
+export function transformMailingLists(lists: EsiMailingList[]): MailingList[] {
+	return lists.map((list) => ({
+		mailing_list_id: String(list.mailing_list_id),
+		name: list.name,
+	}))
+}
+
+export function transformMailLabels(data: EsiMailLabelsResponse): MailLabelsResponse {
+	return {
+		labels: data.labels?.map((label) => ({
+			color: label.color,
+			label_id: String(label.label_id),
+			name: label.name,
+			unread_count: label.unread_count,
+		})),
+		total_unread_count: data.total_unread_count,
 	}
 }
 
@@ -604,4 +650,28 @@ export function transformStructureInfo(data: EsiStructureInfo): StructureInfo {
 		solar_system_id: String(data.solar_system_id),
 		type_id: String(data.type_id),
 	}
+}
+
+export function transformCharacterClones(data: EsiCharacterClones): CharacterClones {
+	return {
+		home_location: data.home_location
+			? {
+				location_id: String(data.home_location.location_id),
+				location_type: data.home_location.location_type,
+			}
+			: undefined,
+		jump_clones: data.jump_clones.map((clone) => ({
+			implants: clone.implants.map(String),
+			jump_clone_id: String(clone.jump_clone_id),
+			location_id: String(clone.location_id),
+			location_type: clone.location_type,
+			name: clone.name,
+		})),
+		last_clone_jump_date: data.last_clone_jump_date,
+		last_station_change_date: data.last_station_change_date,
+	}
+}
+
+export function transformCharacterImplants(data: EsiCharacterImplants): CharacterImplants {
+	return data.map(String)
 }

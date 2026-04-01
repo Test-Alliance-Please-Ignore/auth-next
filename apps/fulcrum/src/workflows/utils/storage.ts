@@ -72,10 +72,10 @@ export async function storeOrReturn<T>(
 export async function retrieveFromR2<T>(
 	bucket: R2Bucket,
 	key: string,
-): Promise<T> {
+): Promise<T | null> {
 	const obj = await bucket.get(key)
 	if (!obj) {
-		throw new Error(`Object not found in R2: ${key}`)
+		return null
 	}
 	const json = await obj.text()
 	return safeJsonParse<T>(json)
@@ -102,8 +102,16 @@ export async function retrieveData<T>(
 	}
 
 	if (result.source === 'r2') {
-		const bucket = getBucket(result.r2Bucket)
-		return await retrieveFromR2<T>(bucket, result.r2Key)
+		try {
+			const bucket = getBucket(result.r2Bucket)
+			return await retrieveFromR2<T>(bucket, result.r2Key)
+		} catch (error) {
+			console.error(`[retrieveData] Failed to retrieve from R2 key '${result.r2Key}':`, {
+				error: error instanceof Error ? error.message : String(error),
+				bucket: result.r2Bucket,
+			})
+			return null
+		}
 	}
 
 	return null

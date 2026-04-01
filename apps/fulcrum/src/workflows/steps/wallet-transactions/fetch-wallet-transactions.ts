@@ -1,31 +1,58 @@
 /**
- * Fetch character wallet transactions from ESI
+ * Fetch character wallet transactions from ESI with from_id pagination
  */
 
 import { getEsiInstanceForCharacter } from '@repo/esi'
 
 import { storeOrReturn } from '../../utils/storage'
 
-import type { Esi } from '@repo/esi'
+import type { CharacterMarketTransaction, Esi } from '@repo/esi'
 import type { StepResult } from '../../utils/storage'
 
+/** Max pages to fetch (char-wallet rate limit: 150 tokens/15min, 2 per call = 75 max) */
+const MAX_PAGES = 10
+
 /**
- * Fetch wallet transactions from ESI stub
- * Separated for testability
+ * Fetch all wallet transactions using from_id cursor pagination.
+ * ESI returns up to 2500 per call; we follow the cursor backward by
+ * setting from_id to the minimum transaction_id of the previous page.
  */
-export async function fetchWalletTransactionsFromEsi(esiStub: Esi, characterId: string) {
-	return await esiStub.fetchCharacterMarketTransactions(characterId)
+export async function fetchWalletTransactionsFromEsi(
+	esiStub: Esi,
+	characterId: string
+): Promise<{ transactions: CharacterMarketTransaction[]; truncated: boolean }> {
+	const allTransactions: CharacterMarketTransaction[] = []
+	let fromId: string | undefined
+	let truncated = false
+
+	for (let page = 0; page < MAX_PAGES; page++) {
+		const pageData = await esiStub.fetchCharacterMarketTransactionsPage(characterId, fromId)
+
+		if (pageData.length === 0) break
+
+		allTransactions.push(...pageData)
+
+		// If we got fewer than 2500 results, there are no more pages
+		if (pageData.length < 2500) break
+
+		// Use the smallest transaction_id as the cursor for the next page
+		const minId = pageData.reduce(
+			(min, tx) => (BigInt(tx.transaction_id) < BigInt(min) ? tx.transaction_id : min),
+			pageData[0].transaction_id,
+		)
+		fromId = minId
+
+		// Check if we're at the page limit
+		if (page === MAX_PAGES - 1) {
+			truncated = true
+		}
+	}
+
+	return { transactions: allTransactions, truncated }
 }
 
 /**
  * Fetch character wallet transactions from ESI and store in R2
- *
- * @param esiBinding - ESI Durable Object namespace
- * @param bucket - R2 bucket for storage
- * @param bucketName - Name of R2 bucket
- * @param characterId - EVE character ID
- * @param workflowInstanceId - Workflow instance ID for R2 key generation
- * @returns StepResult with R2 location reference
  */
 export async function fetchWalletTransactions(
 	esiBinding: DurableObjectNamespace,
@@ -35,19 +62,16 @@ export async function fetchWalletTransactions(
 	workflowInstanceId: string
 ): Promise<StepResult> {
 	try {
-		// Get character-specific ESI stub for caching
 		const stub = getEsiInstanceForCharacter(esiBinding, characterId)
+		stub.setDefaultCacheMode('no-store')
+		const { transactions, truncated } = await fetchWalletTransactionsFromEsi(stub, characterId)
 
-		// Fetch wallet transactions from ESI
-		const data = await fetchWalletTransactionsFromEsi(stub, characterId)
-
-		// Store in R2
 		return await storeOrReturn(
 			bucket,
 			bucketName,
 			workflowInstanceId,
 			'fetch-wallet-transactions',
-			data
+			{ transactions, truncated }
 		)
 	} catch (error) {
 		return {

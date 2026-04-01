@@ -7,7 +7,8 @@ import type { ProcessedPublicInfo } from '../../workflows/processors/helpers/pub
 import type { ProcessedAssets } from '../../workflows/processors/helpers/assets'
 import type { ProcessedWalletTransactions } from '../../workflows/processors/helpers/wallet-transactions'
 import type { ProcessedWalletJournalEntries } from '../../workflows/processors/helpers/wallet-journal'
-import type { ProcessedMails } from '../../workflows/processors/helpers/mails'
+import type { EnrichedMailData } from '../../workflows/processors/helpers/mails'
+import type { EnrichedNotificationData } from '../../workflows/processors/helpers/notifications'
 import type { ProcessedContacts } from '../../workflows/processors/helpers/contacts'
 import type { FittedShip } from '../../workflows/processors/helpers/ships'
 import { PublicInfoSection } from './PublicInfoSection'
@@ -46,6 +47,7 @@ export function Report({ results }: ReportProps) {
 					return 'unknown-array'
 				}
 				if (typeof r === 'object' && 'characterName' in r) return 'public-info'
+				if (typeof r === 'object' && 'mails' in r) return 'enriched-mail-data'
 				return 'unknown'
 			}),
 		})
@@ -99,17 +101,26 @@ export function Report({ results }: ReportProps) {
 			'id' in r[0],
 	) as ProcessedWalletJournalEntries | undefined
 
-	const mails = results.find(
-		(r): r is ProcessedMails =>
+	const mailData = results.find(
+		(r): r is EnrichedMailData =>
 			r !== null &&
 			r !== undefined &&
-			Array.isArray(r) &&
-			r.length > 0 &&
-			typeof r[0] === 'object' &&
-			r[0] !== null &&
-			'mail_id' in r[0] &&
-			('subject' in r[0] || 'from' in r[0]),
-	) as ProcessedMails | undefined
+			!Array.isArray(r) &&
+			typeof r === 'object' &&
+			'mails' in r &&
+			Array.isArray((r as EnrichedMailData).mails),
+	) as EnrichedMailData | undefined
+	const mails = mailData?.mails
+
+	const notificationData = results.find(
+		(r): r is EnrichedNotificationData =>
+			r !== null &&
+			r !== undefined &&
+			!Array.isArray(r) &&
+			typeof r === 'object' &&
+			'notifications' in r &&
+			Array.isArray((r as EnrichedNotificationData).notifications),
+	) as EnrichedNotificationData | undefined
 
 	const contacts = results.find(
 		(r): r is ProcessedContacts =>
@@ -157,18 +168,18 @@ export function Report({ results }: ReportProps) {
 				matches,
 				firstElement: first
 					? {
-							type: typeof first,
-							hasShipName: 'shipName' in first,
-							hasShipTypeId: 'shipTypeId' in first,
-							hasLocationId: 'locationId' in first,
-							hasLocationFlag: 'locationFlag' in first,
-							hasLocationType: 'locationType' in first,
-							rigsIsArray: Array.isArray(first.rigs),
-							highsIsArray: Array.isArray(first.highs),
-							medsIsArray: Array.isArray(first.meds),
-							lowsIsArray: Array.isArray(first.lows),
-							allKeys: Object.keys(first),
-						}
+						type: typeof first,
+						hasShipName: 'shipName' in first,
+						hasShipTypeId: 'shipTypeId' in first,
+						hasLocationId: 'locationId' in first,
+						hasLocationFlag: 'locationFlag' in first,
+						hasLocationType: 'locationType' in first,
+						rigsIsArray: Array.isArray(first.rigs),
+						highsIsArray: Array.isArray(first.highs),
+						medsIsArray: Array.isArray(first.meds),
+						lowsIsArray: Array.isArray(first.lows),
+						allKeys: Object.keys(first),
+					}
 					: null,
 			})
 		}
@@ -254,12 +265,35 @@ export function Report({ results }: ReportProps) {
 		})
 	}
 
-	if (mails) {
+	if (mails || (notificationData && notificationData.notifications.length > 0)) {
+		const mailCount = mails?.length ?? 0
+		const notifCount = notificationData?.notifications?.length ?? 0
 		tabs.push({
-			id: 'mails',
-			label: 'Mail',
-			count: mails.length,
-			content: <MailList data={mails} />,
+			id: 'communications',
+			label: 'Communications',
+			count: mailCount + notifCount,
+			content: (
+				<div>
+					{mails && mails.length > 0 && (
+						<div>
+							<h3 style={{ margin: '8px 0' }}>Mails ({mails.length})</h3>
+							<MailList data={mails} />
+						</div>
+					)}
+					{notificationData && notificationData.notifications.length > 0 && (
+						<div>
+							<h3 style={{ margin: '8px 0' }}>Notifications ({notificationData.notifications.length})</h3>
+							{notificationData.notifications.map((n, i) => (
+								<div key={i} style={{ padding: '4px 0', borderBottom: '1px solid #333' }}>
+									<strong>{n.type}</strong> — {n.senderName || 'Unknown'}
+									<br />
+									<small>{n.timestamp}</small>
+								</div>
+							))}
+						</div>
+					)}
+				</div>
+			),
 		})
 	}
 

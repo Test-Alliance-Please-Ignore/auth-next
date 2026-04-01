@@ -41,6 +41,7 @@
 		"@repo/features": "workspace:*",
 		"@repo/fleets": "workspace:*",
 		"@repo/freight": "workspace:*",
+		"@repo/fulcrum": "workspace:*",
 		"@repo/groups": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
 		"@repo/hr": "workspace:*",

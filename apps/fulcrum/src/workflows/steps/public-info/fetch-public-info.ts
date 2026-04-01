@@ -37,6 +37,7 @@ export async function fetchPublicInfo(
 	try {
 		// Get character-specific ESI stub for caching
 		const stub = getEsiInstanceForCharacter(esiBinding, characterId)
+		stub.setDefaultCacheMode('no-store')
 
 		// Fetch public info from ESI
 		const data = await fetchFromEsi(stub, characterId)

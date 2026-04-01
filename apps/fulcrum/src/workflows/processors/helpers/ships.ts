@@ -12,8 +12,10 @@ export interface FittedShipItem {
 }
 
 export interface FittedShip {
+	itemId: string
 	shipName: string
 	shipTypeId: string
+	customName?: string
 	locationId: string
 	locationName: string
 	locationFlag: string
@@ -132,6 +134,7 @@ export async function findShipItems(
 	const resolvedSubsystems = resolveItems(subsystems)
 
 	return {
+		itemId: ship.item_id,
 		shipName,
 		shipTypeId: ship.type_id,
 		locationId: ship.location_id,

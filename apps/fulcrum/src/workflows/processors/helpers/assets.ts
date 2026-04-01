@@ -18,6 +18,9 @@ export interface ProcessedAsset extends CharacterAsset {
 	locationName?: string
 	marketGroupName?: string | null
 	categoryName?: string
+	customName?: string
+	averagePrice?: number
+	estimatedValue?: number
 	processedAt: string
 }
 

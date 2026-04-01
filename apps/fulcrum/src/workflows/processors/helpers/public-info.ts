@@ -42,7 +42,8 @@ export interface ProcessedPublicInfo {
  */
 export async function enrichPublicInfo(
 	env: { ESI_TYPE_RESOLVER: DurableObjectNamespace },
-	data: CharacterPublicInfo
+	data: CharacterPublicInfo,
+	characterId: string,
 ): Promise<ProcessedPublicInfo> {
 	// Collect all IDs that need resolution
 	const idsToResolve: string[] = [data.corporation_id]
@@ -71,7 +72,7 @@ export async function enrichPublicInfo(
 
 	// Build enriched data with resolved names
 	return {
-		characterId: data.name, // ESI doesn't return character_id in public info
+		characterId,
 		characterName: data.name,
 		birthday: data.birthday,
 		corporationId: data.corporation_id,

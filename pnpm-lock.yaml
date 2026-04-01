@@ -427,6 +427,9 @@ importers:
       '@repo/freight':
         specifier: workspace:*
         version: link:../../packages/freight
+      '@repo/fulcrum':
+        specifier: workspace:*
+        version: link:../../packages/fulcrum
       '@repo/groups':
         specifier: workspace:*
         version: link:../../packages/groups

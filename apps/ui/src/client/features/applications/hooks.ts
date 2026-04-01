@@ -8,7 +8,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
 
-import { applicationsApi } from './api'
+import { applicationsApi, fulcrumApi } from './api'
 
 import type {
 	AddHRNoteRequest,
@@ -18,11 +18,14 @@ import type {
 	ApplicationMessage,
 	ApplicationsParams,
 	CreateTemplateRequest,
+	FulcrumCharacterData,
 	HRNote,
 	HRNotesParams,
 	MessageTemplate,
 	MessageTemplateStatus,
 	Recommendation,
+	ReportManifest,
+	ReportSectionName,
 	SendMessageRequest,
 	SubmitApplicationRequest,
 	UpdateApplicationStatusRequest,
@@ -58,6 +61,12 @@ export const applicationKeys = {
 	templatesList: (corporationId: string, status?: string) =>
 		[...applicationKeys.templates(), corporationId, status || 'all'] as const,
 	templateDetail: (templateId: string) => [...applicationKeys.templates(), 'detail', templateId] as const,
+	// Fulcrum (Character Reports)
+	fulcrum: (applicationId: string) => [...applicationKeys.detail(applicationId), 'fulcrum'] as const,
+	fulcrumReportSections: (reportId: string) =>
+		[...applicationKeys.all, 'fulcrum-report', reportId, 'sections'] as const,
+	fulcrumReportSection: (reportId: string, section: ReportSectionName) =>
+		[...applicationKeys.all, 'fulcrum-report', reportId, 'section', section] as const,
 }
 
 // ============================================================================
@@ -679,6 +688,90 @@ export function useDeleteTemplate() {
 			queryClient.removeQueries({
 				queryKey: applicationKeys.templateDetail(variables.templateId),
 			})
+		},
+	})
+}
+
+// ============================================================================
+// Fulcrum (Character Reports) Hooks
+// ============================================================================
+
+/**
+ * Hook to fetch applicant's characters with their Fulcrum report status
+ */
+export function useApplicationFulcrum(applicationId: string, enabled = true) {
+	return useQuery<FulcrumCharacterData[]>({
+		queryKey: applicationKeys.fulcrum(applicationId),
+		queryFn: () => fulcrumApi.getApplicationFulcrumData(applicationId),
+		staleTime: 1000 * 30,
+		gcTime: 1000 * 60 * 3,
+		enabled: !!applicationId && enabled,
+		refetchInterval: (query) => {
+			// Poll every 10 seconds while any report is in progress
+			const data = query.state.data
+			const hasInProgress = data?.some((ch) =>
+				ch.reports.some((r) => r.status === 'pending' || r.status === 'processing'),
+			)
+			return hasInProgress ? 10_000 : false
+		},
+	})
+}
+
+/**
+ * Hook to request a new Fulcrum report for a character
+ */
+export function useRequestFulcrumReport() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: ({
+			applicationId,
+			characterId,
+		}: {
+			applicationId: string
+			characterId: string
+		}) => fulcrumApi.requestReport(applicationId, characterId),
+		onSuccess: (_, variables) => {
+			queryClient.invalidateQueries({
+				queryKey: applicationKeys.fulcrum(variables.applicationId),
+			})
+		},
+	})
+}
+
+/**
+ * Hook to fetch report section manifest (list of available sections)
+ */
+export function useReportSections(reportId: string, enabled = true) {
+	return useQuery<ReportManifest>({
+		queryKey: applicationKeys.fulcrumReportSections(reportId),
+		queryFn: () => fulcrumApi.getReportSections(reportId),
+		staleTime: 1000 * 60 * 5,
+		gcTime: 1000 * 60 * 10,
+		enabled: !!reportId && enabled,
+		retry: 2,
+	})
+}
+
+/**
+ * Hook to fetch a specific report section's data (lazy-loaded per tab)
+ */
+export function useReportSectionData<T = unknown>(
+	reportId: string,
+	section: ReportSectionName,
+	enabled = true,
+) {
+	return useQuery<T>({
+		queryKey: applicationKeys.fulcrumReportSection(reportId, section),
+		queryFn: () => fulcrumApi.getReportSectionData<T>(reportId, section),
+		staleTime: 1000 * 60 * 5,
+		gcTime: 1000 * 60 * 10,
+		enabled: !!reportId && enabled,
+		retry: (failureCount, error) => {
+			// Don't retry on 404 (section genuinely missing)
+			if (error instanceof Error && error.message.includes('404')) return false
+			// Retry transient failures up to 2 times
+			return failureCount < 2
 		},
 	})
 }

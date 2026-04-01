@@ -1,8 +1,16 @@
 import { DurableObject } from 'cloudflare:workers'
 
 import { logger } from '@repo/hono-helpers'
-import type { CharacterReportMetadata, Fulcrum, ListReportsFilters } from '@repo/fulcrum'
+import { getEsiInstanceForCharacter } from '@repo/esi'
+import type {
+	CharacterReportMetadata,
+	Fulcrum,
+	ListReportsFilters,
+	ReportManifest,
+	ReportSectionName,
+} from '@repo/fulcrum'
 import { createDb } from './db'
+import { stripHtmlToPlainText } from './workflows/processors/helpers/html-stripper'
 import type { DbClient } from './db/queries'
 import * as queries from './db/queries'
 import { sendReportStartedDM } from './lib/discord-webhook'
@@ -94,10 +102,24 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 			reportId,
 			characterId,
 		}
-		await this.env.CHARACTER_REPORT_WORKFLOW.create({
-			id: `${characterId}-${reportId}-${Date.now()}`,
-			params: workflowParams,
-		})
+		try {
+			await this.env.CHARACTER_REPORT_WORKFLOW.create({
+				id: `${characterId}-${reportId}-${Date.now()}`,
+				params: workflowParams,
+			})
+		} catch (error) {
+			// Mark report as failed so it doesn't stay stuck as "pending"
+			logger.error('[Fulcrum DO] Failed to create workflow', {
+				reportId,
+				characterId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+			const db = this.getDb()
+			await queries.updateReportStatus(db, reportId, 'failed', {
+				errorMessage: `Failed to start workflow: ${error instanceof Error ? error.message : String(error)}`,
+			})
+			throw error
+		}
 
 		return reportId
 	}
@@ -253,6 +275,132 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 
 		// Check if report exists and is cancelled
 		return report?.status === 'cancelled'
+	}
+
+	/**
+	 * RPC: Get the manifest of available sections for a report
+	 * Returns the list of sections that were successfully generated
+	 */
+	async getReportSections(reportId: string): Promise<ReportManifest | null> {
+		const db = this.getDb()
+		const report = await queries.getReport(db, reportId)
+
+		if (!report || report.status !== 'completed') {
+			return null
+		}
+
+		if (report.expiresAt && new Date() > report.expiresAt) {
+			return null
+		}
+
+		if (!report.r2Key) {
+			return null
+		}
+
+		// Fetch manifest from R2
+		const manifestKey = `${report.r2Key}/manifest.json`
+		const r2Object = await this.env.CHARACTER_REPORTS.get(manifestKey)
+		if (!r2Object) {
+			return null
+		}
+
+		return await r2Object.json<ReportManifest>()
+	}
+
+	/**
+	 * RPC: Get processed data for a specific report section
+	 * Returns the section's JSON data or null if not found
+	 */
+	async getReportSectionData(
+		reportId: string,
+		section: ReportSectionName,
+	): Promise<unknown | null> {
+		const db = this.getDb()
+		const report = await queries.getReport(db, reportId)
+
+		if (!report || report.status !== 'completed') {
+			return null
+		}
+
+		if (report.expiresAt && new Date() > report.expiresAt) {
+			return null
+		}
+
+		if (!report.r2Key) {
+			return null
+		}
+
+		const sectionKey = `${report.r2Key}/sections/${section}.json`
+		const r2Object = await this.env.CHARACTER_REPORTS.get(sectionKey)
+		if (!r2Object) {
+			return null
+		}
+
+		return await r2Object.json()
+	}
+
+	/**
+	 * RPC: Fetch a single mail's content on-demand from ESI.
+	 * Updates the mails section in R2 so future reads include the body.
+	 * Returns the plain-text body for immediate display.
+	 */
+	async fetchMailContent(reportId: string, mailId: string): Promise<string | null> {
+		const db = this.getDb()
+		const report = await queries.getReport(db, reportId)
+
+		if (!report || report.status !== 'completed') {
+			return null
+		}
+
+		if (report.expiresAt && new Date() > report.expiresAt) {
+			return null
+		}
+
+		if (!report.r2Key) {
+			return null
+		}
+
+		// Fetch mail content from ESI
+		const esiStub = getEsiInstanceForCharacter(this.env.ESI, report.characterId)
+		let body: string
+		let bodyPlainText: string | undefined
+		try {
+			const content = await esiStub.fetchMailContent(report.characterId, mailId)
+			if (!content?.body) return null
+			body = content.body
+			bodyPlainText = stripHtmlToPlainText(body)
+		} catch (error) {
+			this.logger.error('Failed to fetch mail content from ESI', {
+				reportId,
+				mailId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+			return null
+		}
+
+		// Update the mail in the R2 mails section so future reads include the body
+		const sectionKey = `${report.r2Key}/sections/mails.json`
+		try {
+			const r2Object = await this.env.CHARACTER_REPORTS.get(sectionKey)
+			if (r2Object) {
+				const sectionData = await r2Object.json<{ mails: Array<{ mail_id?: string; body?: string; bodyPlainText?: string }> }>()
+				const mail = sectionData.mails.find((m) => String(m.mail_id) === String(mailId))
+				if (mail) {
+					mail.body = body
+					mail.bodyPlainText = bodyPlainText
+					await this.env.CHARACTER_REPORTS.put(sectionKey, JSON.stringify(sectionData))
+				}
+			}
+		} catch (error) {
+			// Non-fatal: the body is still returned to the caller even if R2 update fails
+			this.logger.error('Failed to update R2 mails section', {
+				reportId,
+				mailId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+
+		return bodyPlainText ?? body
 	}
 
 	/**

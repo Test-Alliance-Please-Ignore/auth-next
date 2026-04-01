@@ -12,6 +12,7 @@ import { requireAdmin, requireAuth } from '../middleware/session'
 import type { Context } from 'hono'
 import type { Core } from '@repo/core'
 import type { Esi } from '@repo/esi'
+import type { Fulcrum, ReportSectionName } from '@repo/fulcrum'
 import type { ApplicationFilters, Hr, NoteFilters, RoleFilters } from '@repo/hr'
 import type { App } from '../context'
 
@@ -1116,6 +1117,336 @@ app.delete('/:corporationId/roles/:roleId', requireAuth(), async (c) => {
 			error: error instanceof Error ? error.message : String(error),
 		})
 		return c.json({ error: error instanceof Error ? error.message : 'Failed to revoke role' }, 500)
+	}
+})
+
+// ============================================================================
+// Fulcrum (Character Reports) Endpoints
+// ============================================================================
+
+/**
+ * Helper to get Fulcrum Durable Object stub
+ */
+function getFulcrumStub(c: Context<App>): Fulcrum {
+	return getStub<Fulcrum>(c.env.FULCRUM, 'default')
+}
+
+/**
+ * GET /api/hr/applications/:applicationId/fulcrum
+ * Get applicant's linked characters with their Fulcrum report status
+ * REQUIRES: HR reviewer or admin role for the application's corporation
+ */
+app.get('/applications/:applicationId/fulcrum', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const applicationId = c.req.param('applicationId')
+
+	try {
+		const hr = getHrStub(c)
+		const application = await hr.getApplication(applicationId, user.id, user.is_admin)
+
+		// Check HR permission (at least reviewer)
+		const hasPermission = await hr.checkPermission(user.id, application.corporationId, 'hr_reviewer')
+		if (!hasPermission && !user.is_admin) {
+			return c.json({ error: 'HR reviewer or admin role required' }, 403)
+		}
+
+		// Get all characters linked to the applicant's account
+		const coreStub = getCoreStub(c)
+		const characters = await coreStub.getUserCharacters(application.userId)
+
+		// Get existing reports for each character
+		const fulcrum = getFulcrumStub(c)
+		const charactersWithReports = await Promise.all(
+			characters.map(async (char) => {
+				const reports = await fulcrum.listReports({ characterId: char.characterId }, 10)
+				return {
+					characterId: char.characterId,
+					characterName: char.characterName,
+					corporationId: char.corporationId,
+					corporationName: char.corporationName,
+					reports,
+				}
+			}),
+		)
+
+		return c.json(charactersWithReports)
+	} catch (error) {
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to get Fulcrum data' },
+			error instanceof Error && error.message.includes('permission') ? 403 : 500,
+		)
+	}
+})
+
+/**
+ * POST /api/hr/applications/:applicationId/fulcrum/reports
+ * Request a new Fulcrum character report
+ * REQUIRES: HR reviewer or admin role for the application's corporation
+ */
+app.post('/applications/:applicationId/fulcrum/reports', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const applicationId = c.req.param('applicationId')
+	const { characterId } = await c.req.json<{ characterId: string }>()
+
+	if (!characterId) {
+		return c.json({ error: 'characterId is required' }, 400)
+	}
+
+	try {
+		const hr = getHrStub(c)
+		const application = await hr.getApplication(applicationId, user.id, user.is_admin)
+
+		// Check HR permission (at least reviewer)
+		const hasPermission = await hr.checkPermission(user.id, application.corporationId, 'hr_reviewer')
+		if (!hasPermission && !user.is_admin) {
+			return c.json({ error: 'HR reviewer or admin role required' }, 403)
+		}
+
+		// Validate the character belongs to the applicant
+		const coreStub = getCoreStub(c)
+		const characters = await coreStub.getUserCharacters(application.userId)
+		const isApplicantCharacter = characters.some((ch) => ch.characterId === characterId)
+		if (!isApplicantCharacter) {
+			return c.json({ error: 'Character does not belong to applicant' }, 400)
+		}
+
+		// Request the report
+		const fulcrum = getFulcrumStub(c)
+		const reportId = await fulcrum.createCharacterReport(
+			characterId,
+			user.id,
+			application.corporationId,
+		)
+
+		logger.info('[HR Fulcrum] Report requested', {
+			reportId,
+			characterId,
+			applicationId,
+			requestedBy: user.id,
+		})
+
+		return c.json({ reportId, status: 'pending' }, 201)
+	} catch (error) {
+		logger.error('[HR Fulcrum] Failed to request report', {
+			applicationId,
+			characterId,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to request report' },
+			500,
+		)
+	}
+})
+
+/**
+ * GET /api/hr/fulcrum/reports/:reportId/html
+ * Get the HTML content of a Fulcrum report
+ * REQUIRES: HR reviewer or admin role
+ */
+app.get('/fulcrum/reports/:reportId/html', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const reportId = c.req.param('reportId')
+
+	try {
+		const fulcrum = getFulcrumStub(c)
+		const report = await fulcrum.getReportStatus(reportId)
+
+		if (!report) {
+			return c.json({ error: 'Report not found' }, 404)
+		}
+
+		if (report.status === 'expired') {
+			return c.json({ error: 'Report has expired' }, 410)
+		}
+
+		if (report.status !== 'completed') {
+			return c.json({ error: 'Report not ready', status: report.status }, 400)
+		}
+
+		// Check HR permission for the report's corporation
+		const hr = getHrStub(c)
+		const hasPermission = await hr.checkPermission(
+			user.id,
+			report.requestorCorporationId,
+			'hr_reviewer',
+		)
+		if (!hasPermission && !user.is_admin) {
+			return c.json({ error: 'HR reviewer or admin role required' }, 403)
+		}
+
+		const html = await fulcrum.getReportHtml(reportId)
+		if (!html) {
+			return c.json({ error: 'Report HTML not found' }, 404)
+		}
+
+		return c.html(html)
+	} catch (error) {
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to get report' },
+			500,
+		)
+	}
+})
+
+/**
+ * Valid section names for validation
+ */
+const VALID_SECTIONS: ReportSectionName[] = [
+	'public-info',
+	'assets',
+	'fitted-ships',
+	'wallet-transactions',
+	'wallet-journal',
+	'mails',
+	'contacts',
+	'corp-history',
+	'skills',
+	'contracts',
+	'notifications',
+	'clones',
+	'alerts',
+]
+
+/**
+ * GET /api/hr/fulcrum/reports/:reportId/sections
+ * Get the manifest of available sections for a report
+ * REQUIRES: HR reviewer or admin role
+ */
+app.get('/fulcrum/reports/:reportId/sections', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const reportId = c.req.param('reportId')
+
+	try {
+		const fulcrum = getFulcrumStub(c)
+		const report = await fulcrum.getReportStatus(reportId)
+
+		if (!report) {
+			return c.json({ error: 'Report not found' }, 404)
+		}
+
+		if (report.status !== 'completed') {
+			return c.json({ error: 'Report not ready', status: report.status }, 400)
+		}
+
+		const hr = getHrStub(c)
+		const hasPermission = await hr.checkPermission(
+			user.id,
+			report.requestorCorporationId,
+			'hr_reviewer',
+		)
+		if (!hasPermission && !user.is_admin) {
+			return c.json({ error: 'HR reviewer or admin role required' }, 403)
+		}
+
+		const manifest = await fulcrum.getReportSections(reportId)
+		if (!manifest) {
+			return c.json({ error: 'Report manifest not found' }, 404)
+		}
+
+		return c.json(manifest)
+	} catch (error) {
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to get report sections' },
+			500,
+		)
+	}
+})
+
+/**
+ * GET /api/hr/fulcrum/reports/:reportId/sections/:section
+ * Get processed data for a specific report section
+ * REQUIRES: HR reviewer or admin role
+ */
+app.get('/fulcrum/reports/:reportId/sections/:section', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const reportId = c.req.param('reportId')
+	const section = c.req.param('section') as ReportSectionName
+
+	// Validate section name
+	if (!VALID_SECTIONS.includes(section)) {
+		return c.json({ error: 'Invalid section name' }, 400)
+	}
+
+	try {
+		const fulcrum = getFulcrumStub(c)
+		const report = await fulcrum.getReportStatus(reportId)
+
+		if (!report) {
+			return c.json({ error: 'Report not found' }, 404)
+		}
+
+		if (report.status !== 'completed') {
+			return c.json({ error: 'Report not ready', status: report.status }, 400)
+		}
+
+		const hr = getHrStub(c)
+		const hasPermission = await hr.checkPermission(
+			user.id,
+			report.requestorCorporationId,
+			'hr_reviewer',
+		)
+		if (!hasPermission && !user.is_admin) {
+			return c.json({ error: 'HR reviewer or admin role required' }, 403)
+		}
+
+		const data = await fulcrum.getReportSectionData(reportId, section)
+		if (!data) {
+			return c.json({ error: 'Section data not found' }, 404)
+		}
+
+		return c.json(data)
+	} catch (error) {
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to get section data' },
+			500,
+		)
+	}
+})
+
+/**
+ * GET /api/hr/fulcrum/reports/:reportId/mails/:mailId/content
+ * Fetch a single mail's content on-demand from ESI
+ * REQUIRES: HR reviewer or admin role
+ */
+app.get('/fulcrum/reports/:reportId/mails/:mailId/content', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const reportId = c.req.param('reportId')
+	const mailId = c.req.param('mailId')
+
+	try {
+		const fulcrum = getFulcrumStub(c)
+		const report = await fulcrum.getReportStatus(reportId)
+
+		if (!report) {
+			return c.json({ error: 'Report not found' }, 404)
+		}
+
+		if (report.status !== 'completed') {
+			return c.json({ error: 'Report not ready', status: report.status }, 400)
+		}
+
+		const hr = getHrStub(c)
+		const hasPermission = await hr.checkPermission(
+			user.id,
+			report.requestorCorporationId,
+			'hr_reviewer',
+		)
+		if (!hasPermission && !user.is_admin) {
+			return c.json({ error: 'HR reviewer or admin role required' }, 403)
+		}
+
+		const body = await fulcrum.fetchMailContent(reportId, mailId)
+		if (!body) {
+			return c.json({ error: 'Mail content not available' }, 404)
+		}
+
+		return c.json({ body })
+	} catch (error) {
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to fetch mail content' },
+			500,
+		)
 	}
 })
 

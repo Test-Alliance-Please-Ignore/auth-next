@@ -53,9 +53,16 @@ export async function processWalletTransactions(
 			}
 		}
 
-		// Validate data structure
-		const transactions = data as CharacterMarketTransaction[]
-		if (!Array.isArray(transactions)) {
+		// Validate data structure - support both old format (array) and new format ({transactions, truncated})
+		let transactions: CharacterMarketTransaction[]
+		let truncated = false
+		if (Array.isArray(data)) {
+			transactions = data as CharacterMarketTransaction[]
+		} else if (data && typeof data === 'object' && 'transactions' in data) {
+			const wrapper = data as { transactions: CharacterMarketTransaction[]; truncated?: boolean }
+			transactions = wrapper.transactions
+			truncated = wrapper.truncated ?? false
+		} else {
 			return {
 				source: 'none',
 				success: false,
@@ -68,10 +75,10 @@ export async function processWalletTransactions(
 			transactionCount: transactions.length,
 			sampleTransaction: transactions[0]
 				? {
-						typeId: transactions[0].type_id,
-						clientId: transactions[0].client_id,
-						locationId: transactions[0].location_id,
-					}
+					typeId: transactions[0].type_id,
+					clientId: transactions[0].client_id,
+					locationId: transactions[0].location_id,
+				}
 				: null,
 		})
 
@@ -81,24 +88,24 @@ export async function processWalletTransactions(
 			enrichedCount: enrichedData.length,
 			sampleEnriched: enrichedData[0]
 				? {
-						typeId: enrichedData[0].type_id,
-						typeName: enrichedData[0].typeName,
-						clientId: enrichedData[0].client_id,
-						clientName: enrichedData[0].clientName,
-						locationId: enrichedData[0].location_id,
-						locationName: enrichedData[0].locationName,
-						totalValue: enrichedData[0].totalValue,
-					}
+					typeId: enrichedData[0].type_id,
+					typeName: enrichedData[0].typeName,
+					clientId: enrichedData[0].client_id,
+					clientName: enrichedData[0].clientName,
+					locationId: enrichedData[0].location_id,
+					locationName: enrichedData[0].locationName,
+					totalValue: enrichedData[0].totalValue,
+				}
 				: null,
 		})
 
-		// Store in R2
+		// Store in R2 - include truncated flag so the UI can show a note
 		const result = await storeOrReturn(
 			bucket,
 			bucketName,
 			workflowInstanceId,
 			'process-wallet-transactions',
-			enrichedData,
+			{ transactions: enrichedData, truncated },
 		)
 
 		console.log('[processWalletTransactions] Storage result', {

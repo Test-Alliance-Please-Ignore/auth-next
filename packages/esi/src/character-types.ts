@@ -121,19 +121,32 @@ export interface EsiCharacterContract {
 	reward?: number
 	start_location_id?: number
 	status:
-		| 'outstanding'
-		| 'in_progress'
-		| 'finished_issuer'
-		| 'finished_contractor'
-		| 'finished'
-		| 'cancelled'
-		| 'rejected'
-		| 'failed'
-		| 'deleted'
-		| 'reversed'
+	| 'outstanding'
+	| 'in_progress'
+	| 'finished_issuer'
+	| 'finished_contractor'
+	| 'finished'
+	| 'cancelled'
+	| 'rejected'
+	| 'failed'
+	| 'deleted'
+	| 'reversed'
 	title?: string
 	type: 'unknown' | 'item_exchange' | 'auction' | 'courier' | 'loan'
 	volume?: number
+}
+
+/**
+ * Contract items from ESI
+ * GET /characters/{character_id}/contracts/{contract_id}/items
+ */
+export interface EsiContractItem {
+	is_included: boolean
+	is_singleton: boolean
+	quantity: number
+	raw_quantity?: number
+	record_id: number
+	type_id: number
 }
 
 /**
@@ -190,6 +203,35 @@ export interface EsiMailContent {
 	read?: boolean
 	subject?: string
 	timestamp?: string
+}
+
+/**
+ * Mailing list from ESI
+ * GET /characters/{character_id}/mail/lists
+ */
+export interface EsiMailingList {
+	mailing_list_id: number
+	name: string
+}
+
+/**
+ * Mail label from ESI
+ * GET /characters/{character_id}/mail/labels
+ */
+export interface EsiMailLabel {
+	color?: string
+	label_id: number
+	name?: string
+	unread_count?: number
+}
+
+/**
+ * Mail labels response from ESI
+ * GET /characters/{character_id}/mail/labels
+ */
+export interface EsiMailLabelsResponse {
+	labels?: EsiMailLabel[]
+	total_unread_count?: number
 }
 
 /**
@@ -408,6 +450,34 @@ export interface EsiCharacterKillmail {
 	killmail_hash: string
 }
 
+/**
+ * Character clones from ESI
+ * GET /characters/{character_id}/clones
+ */
+export interface EsiCharacterClones {
+	home_location?: {
+		location_id: number
+		location_type: 'station' | 'structure'
+	}
+	jump_clones: EsiJumpClone[]
+	last_clone_jump_date?: string
+	last_station_change_date?: string
+}
+
+export interface EsiJumpClone {
+	implants: number[]
+	jump_clone_id: number
+	location_id: number
+	location_type: 'station' | 'structure'
+	name?: string
+}
+
+/**
+ * Character active implants from ESI
+ * GET /characters/{character_id}/implants
+ */
+export type EsiCharacterImplants = number[]
+
 // ============================================================================
 // CHARACTER TYPES - TRANSFORMED
 // ============================================================================
@@ -459,6 +529,23 @@ export interface CharacterAsset {
 	location_type: 'station' | 'solar_system' | 'item' | 'other'
 	quantity: number
 	type_id: string
+}
+
+/**
+ * ESI asset name response
+ * POST /characters/{character_id}/assets/names/
+ */
+export interface EsiCharacterAssetName {
+	item_id: number
+	name: string
+}
+
+/**
+ * Transformed asset name (IDs as strings)
+ */
+export interface CharacterAssetName {
+	item_id: string
+	name: string
 }
 
 export interface CharacterAttributes {
@@ -520,19 +607,28 @@ export interface CharacterContract {
 	reward?: number
 	start_location_id?: string
 	status:
-		| 'outstanding'
-		| 'in_progress'
-		| 'finished_issuer'
-		| 'finished_contractor'
-		| 'finished'
-		| 'cancelled'
-		| 'rejected'
-		| 'failed'
-		| 'deleted'
-		| 'reversed'
+	| 'outstanding'
+	| 'in_progress'
+	| 'finished_issuer'
+	| 'finished_contractor'
+	| 'finished'
+	| 'cancelled'
+	| 'rejected'
+	| 'failed'
+	| 'deleted'
+	| 'reversed'
 	title?: string
 	type: 'unknown' | 'item_exchange' | 'auction' | 'courier' | 'loan'
 	volume?: number
+}
+
+export interface CharacterContractItem {
+	is_included: boolean
+	is_singleton: boolean
+	quantity: number
+	raw_quantity?: number
+	record_id: string
+	type_id: string
 }
 
 export interface CharacterFitting {
@@ -573,6 +669,23 @@ export interface MailContent {
 	read?: boolean
 	subject?: string
 	timestamp?: string
+}
+
+export interface MailingList {
+	mailing_list_id: string
+	name: string
+}
+
+export interface MailLabel {
+	color?: string
+	label_id: string
+	name?: string
+	unread_count?: number
+}
+
+export interface MailLabelsResponse {
+	labels?: MailLabel[]
+	total_unread_count?: number
 }
 
 export interface CharacterMiningLedger {
@@ -702,3 +815,23 @@ export interface CharacterKillmailBasic {
 	killmail_id: string
 	killmail_hash: string
 }
+
+export interface CharacterClones {
+	home_location?: {
+		location_id: string
+		location_type: 'station' | 'structure'
+	}
+	jump_clones: JumpClone[]
+	last_clone_jump_date?: string
+	last_station_change_date?: string
+}
+
+export interface JumpClone {
+	implants: string[]
+	jump_clone_id: string
+	location_id: string
+	location_type: 'station' | 'structure'
+	name?: string
+}
+
+export type CharacterImplants = string[]

@@ -51,6 +51,7 @@ const HrApplicationReview = lazy(
 	() => import('./features/applications/routes/hr-application-review')
 )
 const HrRolesManagement = lazy(() => import('./features/applications/routes/hr-roles-management'))
+const FulcrumReport = lazy(() => import('./features/applications/routes/fulcrum-report'))
 
 // Lazy load the Skill Plans feature for code splitting
 const SkillPlansList = lazy(() => import('./features/skill-plans/routes/skill-plans-list'))
@@ -234,6 +235,14 @@ export default function App() {
 								element={
 									<Suspense fallback={<LoadingPage />}>
 										<HrRolesManagement />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/corporations/:corporationId/hr/applications/:applicationId/report/:reportId"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<FulcrumReport />
 									</Suspense>
 								}
 							/>
