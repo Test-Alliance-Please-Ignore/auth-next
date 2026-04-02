@@ -74,7 +74,8 @@ export class ApplicationService {
 		filters: ApplicationFilters,
 		userId: string,
 		isAdmin: boolean,
-		userHrCorporations: string[] = []
+		userHrCorporations: string[] = [],
+		userHrAdminCorporations: string[] = []
 	): Promise<Application[]> {
 		const conditions: ReturnType<typeof and>[] = []
 
@@ -97,7 +98,34 @@ export class ApplicationService {
 			const authConditions = [eq(applications.userId, userId)]
 
 			if (userHrCorporations.length > 0) {
-				authConditions.push(inArray(applications.corporationId, userHrCorporations))
+				// Non-admin HR corps (viewer/reviewer) can only see pending/under_review
+				const nonAdminHrCorps = userHrCorporations.filter(
+					(corpId) => !userHrAdminCorporations.includes(corpId)
+				)
+
+				const corpConditions = []
+
+				// HR admin corps: see all statuses
+				if (userHrAdminCorporations.length > 0) {
+					corpConditions.push(
+						inArray(applications.corporationId, userHrAdminCorporations)
+					)
+				}
+
+				// Non-admin HR corps: only pending/under_review
+				if (nonAdminHrCorps.length > 0) {
+					const nonAdminCondition = and(
+						inArray(applications.corporationId, nonAdminHrCorps),
+						inArray(applications.status, ['pending', 'under_review'])
+					)
+					if (nonAdminCondition) {
+						corpConditions.push(nonAdminCondition)
+					}
+				}
+
+				if (corpConditions.length > 0) {
+					authConditions.push(...corpConditions)
+				}
 			}
 
 			conditions.push(or(...authConditions))
@@ -124,7 +152,8 @@ export class ApplicationService {
 		userId: string,
 		isAdmin: boolean,
 		userHrCorporations: string[] = [],
-		includeActivityLog = false
+		includeActivityLog = false,
+		userHrAdminCorporations: string[] = []
 	): Promise<ApplicationDetail> {
 		// Get the application
 		const application = await this.ctx.db.query.applications.findFirst({
@@ -138,9 +167,18 @@ export class ApplicationService {
 		// Check authorization
 		const isOwner = application.userId === userId
 		const hasHrAccess = userHrCorporations.includes(application.corporationId)
+		const isHrAdmin = userHrAdminCorporations.includes(application.corporationId)
 
 		if (!isOwner && !hasHrAccess && !isAdmin) {
 			throw new Error('You do not have permission to view this application')
+		}
+
+		// Non-admin HR (viewer/reviewer) can only see pending/under_review applications
+		const activeStatuses = ['pending', 'under_review']
+		if (hasHrAccess && !isHrAdmin && !isAdmin && !isOwner) {
+			if (!activeStatuses.includes(application.status)) {
+				throw new Error('You do not have permission to view this application')
+			}
 		}
 
 		// Get recommendations

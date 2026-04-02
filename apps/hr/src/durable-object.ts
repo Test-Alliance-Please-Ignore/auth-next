@@ -134,12 +134,14 @@ export class HrDO extends DurableObject<Env> implements Hr {
 	): Promise<Application[]> {
 		// Get user's HR corporations for authorization
 		const userHrCorporations = await this.hrRoleService.getUserHrCorporations(userId)
+		const userHrAdminCorporations = isAdmin ? [] : await this.hrRoleService.getUserHrAdminCorporations(userId)
 
 		return await this.applicationService.listApplications(
 			filters,
 			userId,
 			isAdmin,
-			userHrCorporations
+			userHrCorporations,
+			userHrAdminCorporations
 		)
 	}
 
@@ -153,13 +155,15 @@ export class HrDO extends DurableObject<Env> implements Hr {
 	): Promise<ApplicationDetail> {
 		// Get user's HR corporations for authorization
 		const userHrCorporations = await this.hrRoleService.getUserHrCorporations(userId)
+		const userHrAdminCorporations = isAdmin ? [] : await this.hrRoleService.getUserHrAdminCorporations(userId)
 
 		return await this.applicationService.getApplication(
 			applicationId,
 			userId,
 			isAdmin,
 			userHrCorporations,
-			true // Include activity log for HR/admin
+			true, // Include activity log for HR/admin
+			userHrAdminCorporations
 		)
 	}
 

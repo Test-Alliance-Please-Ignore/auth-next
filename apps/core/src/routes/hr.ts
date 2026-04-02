@@ -467,19 +467,33 @@ app.delete('/applications/:applicationId/recommendations/:id', requireAuth(), as
 /**
  * POST /api/hr/applications/:applicationId/messages
  * Send a message (applicant → HR or HR → applicant)
+ * Applicants can always message on their own applications.
+ * HR staff require at least hr_reviewer role to send messages.
  */
 app.post('/applications/:applicationId/messages', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const applicationId = c.req.param('applicationId')
 	const { recipientId, message } = await c.req.json()
 
-	// Get primary character for logging
-	const primaryCharacter = user.characters.find((char) => char.is_primary)
-	const characterId = primaryCharacter?.characterId || user.mainCharacterId
-	const characterName = primaryCharacter?.characterName || 'Unknown'
-
 	try {
 		const hr = getHrStub(c)
+
+		// Check if sender is the applicant — if not, require hr_reviewer
+		const application = await hr.getApplication(applicationId, user.id, user.is_admin)
+		const isApplicant = application.userId === user.id
+
+		if (!isApplicant && !user.is_admin) {
+			const hasPermission = await hr.checkPermission(user.id, application.corporationId, 'hr_reviewer')
+			if (!hasPermission) {
+				return c.json({ error: 'HR reviewer or admin role required to send messages' }, 403)
+			}
+		}
+
+		// Get primary character for logging
+		const primaryCharacter = user.characters.find((char) => char.is_primary)
+		const characterId = primaryCharacter?.characterId || user.mainCharacterId
+		const characterName = primaryCharacter?.characterName || 'Unknown'
+
 		const result = await hr.sendMessage(
 			applicationId,
 			user.id,
@@ -1275,7 +1289,7 @@ function getFulcrumStub(c: Context<App>): Fulcrum {
 /**
  * GET /api/hr/applications/:applicationId/fulcrum
  * Get applicant's linked characters with their Fulcrum report status
- * REQUIRES: HR reviewer or admin role for the application's corporation
+ * REQUIRES: HR viewer or higher role for the application's corporation
  */
 app.get('/applications/:applicationId/fulcrum', requireAuth(), async (c) => {
 	const user = c.get('user')!
@@ -1285,10 +1299,10 @@ app.get('/applications/:applicationId/fulcrum', requireAuth(), async (c) => {
 		const hr = getHrStub(c)
 		const application = await hr.getApplication(applicationId, user.id, user.is_admin)
 
-		// Check HR permission (at least reviewer)
-		const hasPermission = await hr.checkPermission(user.id, application.corporationId, 'hr_reviewer')
+		// Check HR permission (at least viewer)
+		const hasPermission = await hr.checkPermission(user.id, application.corporationId, 'hr_viewer')
 		if (!hasPermission && !user.is_admin) {
-			return c.json({ error: 'HR reviewer or admin role required' }, 403)
+			return c.json({ error: 'HR role required' }, 403)
 		}
 
 		// Get all characters linked to the applicant's account
@@ -1383,7 +1397,7 @@ app.post('/applications/:applicationId/fulcrum/reports', requireAuth(), async (c
 /**
  * GET /api/hr/fulcrum/reports/:reportId/html
  * Get the HTML content of a Fulcrum report
- * REQUIRES: HR reviewer or admin role
+ * REQUIRES: HR viewer or higher role
  */
 app.get('/fulcrum/reports/:reportId/html', requireAuth(), async (c) => {
 	const user = c.get('user')!
@@ -1410,10 +1424,10 @@ app.get('/fulcrum/reports/:reportId/html', requireAuth(), async (c) => {
 		const hasPermission = await hr.checkPermission(
 			user.id,
 			report.requestorCorporationId,
-			'hr_reviewer',
+			'hr_viewer',
 		)
 		if (!hasPermission && !user.is_admin) {
-			return c.json({ error: 'HR reviewer or admin role required' }, 403)
+			return c.json({ error: 'HR role required' }, 403)
 		}
 
 		const html = await fulcrum.getReportHtml(reportId)
@@ -1452,7 +1466,7 @@ const VALID_SECTIONS: ReportSectionName[] = [
 /**
  * GET /api/hr/fulcrum/reports/:reportId/sections
  * Get the manifest of available sections for a report
- * REQUIRES: HR reviewer or admin role
+ * REQUIRES: HR viewer or higher role
  */
 app.get('/fulcrum/reports/:reportId/sections', requireAuth(), async (c) => {
 	const user = c.get('user')!
@@ -1474,10 +1488,10 @@ app.get('/fulcrum/reports/:reportId/sections', requireAuth(), async (c) => {
 		const hasPermission = await hr.checkPermission(
 			user.id,
 			report.requestorCorporationId,
-			'hr_reviewer',
+			'hr_viewer',
 		)
 		if (!hasPermission && !user.is_admin) {
-			return c.json({ error: 'HR reviewer or admin role required' }, 403)
+			return c.json({ error: 'HR role required' }, 403)
 		}
 
 		const manifest = await fulcrum.getReportSections(reportId)
@@ -1497,7 +1511,7 @@ app.get('/fulcrum/reports/:reportId/sections', requireAuth(), async (c) => {
 /**
  * GET /api/hr/fulcrum/reports/:reportId/sections/:section
  * Get processed data for a specific report section
- * REQUIRES: HR reviewer or admin role
+ * REQUIRES: HR viewer or higher role
  */
 app.get('/fulcrum/reports/:reportId/sections/:section', requireAuth(), async (c) => {
 	const user = c.get('user')!
@@ -1525,10 +1539,10 @@ app.get('/fulcrum/reports/:reportId/sections/:section', requireAuth(), async (c)
 		const hasPermission = await hr.checkPermission(
 			user.id,
 			report.requestorCorporationId,
-			'hr_reviewer',
+			'hr_viewer',
 		)
 		if (!hasPermission && !user.is_admin) {
-			return c.json({ error: 'HR reviewer or admin role required' }, 403)
+			return c.json({ error: 'HR role required' }, 403)
 		}
 
 		const data = await fulcrum.getReportSectionData(reportId, section)
@@ -1548,7 +1562,7 @@ app.get('/fulcrum/reports/:reportId/sections/:section', requireAuth(), async (c)
 /**
  * GET /api/hr/fulcrum/reports/:reportId/mails/:mailId/content
  * Fetch a single mail's content on-demand from ESI
- * REQUIRES: HR reviewer or admin role
+ * REQUIRES: HR viewer or higher role
  */
 app.get('/fulcrum/reports/:reportId/mails/:mailId/content', requireAuth(), async (c) => {
 	const user = c.get('user')!
@@ -1571,10 +1585,10 @@ app.get('/fulcrum/reports/:reportId/mails/:mailId/content', requireAuth(), async
 		const hasPermission = await hr.checkPermission(
 			user.id,
 			report.requestorCorporationId,
-			'hr_reviewer',
+			'hr_viewer',
 		)
 		if (!hasPermission && !user.is_admin) {
-			return c.json({ error: 'HR reviewer or admin role required' }, 403)
+			return c.json({ error: 'HR role required' }, 403)
 		}
 
 		const body = await fulcrum.fetchMailContent(reportId, mailId)

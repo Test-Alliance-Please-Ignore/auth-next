@@ -336,6 +336,23 @@ export class HrRoleService {
 	}
 
 	/**
+	 * Get corporations where user has HR admin access
+	 */
+	async getUserHrAdminCorporations(userId: string): Promise<string[]> {
+		const adminRole = await this.getRoleForType(ROLE_HR_ADMIN)
+		const groupsStub = getStub<Groups>(this.ctx.env.GROUPS, 'default')
+
+		const roleAttachments = await groupsStub.getRolesFor({
+			attachedToType: RoleAttachmentType.USER,
+			attachedToId: userId,
+			resourceType: ResourceType.CORPORATION,
+			roleIds: [adminRole.id],
+		})
+
+		return roleAttachments.map((roleAttachment) => roleAttachment.resourceId as string)
+	}
+
+	/**
 	 * Find expired roles (for cleanup job)
 	 */
 	async findExpiredRoles(): Promise<HrRole[]> {
