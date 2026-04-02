@@ -71,10 +71,10 @@ export async function fetchMailsFromEsi(esiStub: Esi, characterId: string): Prom
 
 	console.log(`[fetchMails] Fetched ${allMails.length} mail headers`)
 
-	// Only fetch content for the most recent 50 mails during initial report generation.
+	// Only fetch content for the most recent 100 mails during initial report generation.
 	// Older mail content can be loaded on-demand by the reviewer via the UI.
 	// This keeps us well within the ESI char-social rate limit (600 tokens / 15min, 2 tokens per 2xx).
-	const maxContentFetches = 50
+	const maxContentFetches = 100
 	const mailsToFetchContent = allMails.slice(0, maxContentFetches)
 	const mailsSkipped = allMails.slice(maxContentFetches)
 

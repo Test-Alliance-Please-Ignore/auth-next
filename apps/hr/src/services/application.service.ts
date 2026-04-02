@@ -8,6 +8,9 @@ import type {
 	ApplicationDetail,
 	ApplicationFilters,
 	ApplicationStatus,
+	RecommendableApplication,
+	RecommendationSentiment,
+	RecommenderApplicationDetail,
 } from '@repo/hr'
 import type { ServiceContext } from './context'
 
@@ -166,6 +169,7 @@ export class ApplicationService {
 				characterName: rec.characterName,
 				recommendationText: rec.recommendationText,
 				sentiment: rec.sentiment as 'positive' | 'neutral' | 'negative',
+				isPublic: rec.isPublic,
 				createdAt: rec.createdAt,
 				updatedAt: rec.updatedAt,
 			})),
@@ -322,6 +326,145 @@ export class ApplicationService {
 			)
 
 		return result[0]?.count ?? 0
+	}
+
+	/**
+	 * List pending/under_review applications for given corporations.
+	 * Returns lightweight info for the recommendations discovery page.
+	 */
+	async listCorpApplicationsForRecommendation(
+		corporationIds: string[],
+		userId: string
+	): Promise<RecommendableApplication[]> {
+		if (corporationIds.length === 0) return []
+
+		// Get applications that are pending or under_review for the user's corporations
+		const results = await this.ctx.db.query.applications.findMany({
+			where: and(
+				inArray(applications.corporationId, corporationIds),
+				inArray(applications.status, ['pending', 'under_review']),
+				// Exclude user's own applications
+				sql`${applications.userId} != ${userId}`
+			),
+			orderBy: [desc(applications.createdAt)],
+		})
+
+		// Get recommendation counts and user's own recommendations in one query
+		const appIds = results.map((a) => a.id)
+		if (appIds.length === 0) return []
+
+		const recCounts = await this.ctx.db
+			.select({
+				applicationId: applicationRecommendations.applicationId,
+				count: sql<number>`cast(count(*) as integer)`,
+				userRecommended: sql<number>`cast(sum(case when ${applicationRecommendations.userId} = ${userId} then 1 else 0 end) as integer)`,
+			})
+			.from(applicationRecommendations)
+			.where(inArray(applicationRecommendations.applicationId, appIds))
+			.groupBy(applicationRecommendations.applicationId)
+
+		const recMap = new Map(recCounts.map((r) => [r.applicationId, r]))
+
+		// Fetch the user's own recommendations for these applications
+		const userRecs = await this.ctx.db.query.applicationRecommendations.findMany({
+			where: and(
+				inArray(applicationRecommendations.applicationId, appIds),
+				eq(applicationRecommendations.userId, userId)
+			),
+		})
+		const userRecMap = new Map(userRecs.map((r) => [r.applicationId, r]))
+
+		return results.map((app) => {
+			const rec = recMap.get(app.id)
+			const userRec = userRecMap.get(app.id)
+			return {
+				id: app.id,
+				corporationId: app.corporationId,
+				characterId: app.characterId,
+				characterName: app.characterName,
+				status: app.status as ApplicationStatus,
+				createdAt: app.createdAt,
+				recommendationCount: rec?.count ?? 0,
+				userHasRecommended: (rec?.userRecommended ?? 0) > 0,
+				userRecommendation: userRec
+					? {
+						id: userRec.id,
+						characterId: userRec.characterId,
+						sentiment: userRec.sentiment as RecommendationSentiment,
+						recommendationText: userRec.recommendationText,
+						isPublic: userRec.isPublic,
+					}
+					: null,
+			}
+		})
+	}
+
+	/**
+	 * Get an application for a corp member to view and recommend.
+	 * Returns limited info (no HR-internal data).
+	 */
+	async getApplicationForRecommender(
+		applicationId: string,
+		userId: string,
+		userCorporationIds: string[]
+	): Promise<RecommenderApplicationDetail> {
+		const application = await this.ctx.db.query.applications.findFirst({
+			where: eq(applications.id, applicationId),
+		})
+
+		if (!application) {
+			throw new Error('Application not found')
+		}
+
+		// Verify the user is in the same corporation
+		if (!userCorporationIds.includes(application.corporationId)) {
+			throw new Error('You do not have permission to view this application')
+		}
+
+		// Cannot recommend own application
+		if (application.userId === userId) {
+			throw new Error('You cannot view your own application for recommendation')
+		}
+
+		// Must be pending or under_review
+		if (!['pending', 'under_review'].includes(application.status)) {
+			throw new Error('This application is no longer accepting recommendations')
+		}
+
+		// Get recommendations
+		const recommendations = await this.ctx.db.query.applicationRecommendations.findMany({
+			where: eq(applicationRecommendations.applicationId, applicationId),
+			orderBy: [desc(applicationRecommendations.createdAt)],
+		})
+
+		const mappedRecs = recommendations.map((rec) => ({
+			id: rec.id,
+			applicationId: rec.applicationId,
+			userId: rec.userId,
+			characterId: rec.characterId,
+			characterName: rec.characterName,
+			recommendationText: rec.recommendationText,
+			sentiment: rec.sentiment as 'positive' | 'neutral' | 'negative',
+			isPublic: rec.isPublic,
+			createdAt: rec.createdAt,
+			updatedAt: rec.updatedAt,
+		}))
+
+		// Corp members only see their own recommendation
+		const userRecommendation = mappedRecs.find((r) => r.userId === userId) ?? null
+
+		return {
+			id: application.id,
+			corporationId: application.corporationId,
+			characterId: application.characterId,
+			characterName: application.characterName,
+			applicationText: application.applicationText,
+			status: application.status as ApplicationStatus,
+			createdAt: application.createdAt,
+			recommendations: [userRecommendation].filter(Boolean) as typeof mappedRecs,
+			recommendationCount: mappedRecs.length,
+			userRecommendation,
+		}
 	}
 
 	/**

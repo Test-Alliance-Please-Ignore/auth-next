@@ -37,7 +37,6 @@ export {
 	useAddRecommendation,
 	useApplication,
 	useApplicationActivity,
-	useApplicationManager,
 	useApplications,
 	useDeleteHRNote,
 	useDeleteRecommendation,

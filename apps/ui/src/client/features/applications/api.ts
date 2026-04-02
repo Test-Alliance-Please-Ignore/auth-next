@@ -245,6 +245,43 @@ export interface UpdateHRNoteRequest {
 	metadata?: Record<string, unknown>
 }
 
+/**
+ * Lightweight application info for the recommendations discovery page
+ */
+export interface RecommendableApplication {
+	id: string
+	corporationId: string
+	characterId: string
+	characterName: string
+	status: ApplicationStatus
+	createdAt: string
+	recommendationCount: number
+	userHasRecommended: boolean
+	userRecommendation: {
+		id: string
+		characterId: string
+		sentiment: RecommendationSentiment
+		recommendationText: string
+		isPublic: boolean
+	} | null
+}
+
+/**
+ * Limited application detail for corp members writing recommendations
+ */
+export interface RecommenderApplicationDetail {
+	id: string
+	corporationId: string
+	characterId: string
+	characterName: string
+	applicationText: string
+	status: ApplicationStatus
+	createdAt: string
+	recommendations: Recommendation[]
+	recommendationCount: number
+	userRecommendation: Recommendation | null
+}
+
 // ============================================================================
 // API Client Methods
 // ============================================================================
@@ -490,6 +527,22 @@ export const applicationsApi = {
 	 */
 	async deleteTemplate(templateId: string): Promise<{ success: boolean }> {
 		return apiClient.delete(`/hr/templates/${templateId}`)
+	},
+
+	// ==================== Recommendations Discovery (Corp Members) ====================
+
+	/**
+	 * Get pending applications for the user's corporations (for recommending)
+	 */
+	async getPendingRecommendations(): Promise<RecommendableApplication[]> {
+		return apiClient.get('/hr/recommendations/pending')
+	},
+
+	/**
+	 * Get application detail for recommendation (limited info for corp members)
+	 */
+	async getApplicationForRecommender(applicationId: string): Promise<RecommenderApplicationDetail> {
+		return apiClient.get(`/hr/recommendations/applications/${applicationId}`)
 	},
 }
 

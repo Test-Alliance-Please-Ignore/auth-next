@@ -89,6 +89,44 @@ export interface ApplicationDetail extends Application {
 }
 
 /**
+ * Lightweight application info for the recommendations discovery page
+ */
+export interface RecommendableApplication {
+	id: string
+	corporationId: string
+	characterId: string
+	characterName: string
+	status: ApplicationStatus
+	createdAt: Date
+	recommendationCount: number
+	userHasRecommended: boolean
+	userRecommendation: {
+		id: string
+		characterId: string
+		sentiment: RecommendationSentiment
+		recommendationText: string
+		isPublic: boolean
+	} | null
+}
+
+/**
+ * Limited application detail for corp members writing recommendations
+ * No HR-internal data (no review notes, messages, activity log)
+ */
+export interface RecommenderApplicationDetail {
+	id: string
+	corporationId: string
+	characterId: string
+	characterName: string
+	applicationText: string
+	status: ApplicationStatus
+	createdAt: Date
+	recommendations: Recommendation[]
+	recommendationCount: number
+	userRecommendation: Recommendation | null
+}
+
+/**
  * Recommendation data transfer object
  */
 export interface Recommendation {
@@ -99,6 +137,7 @@ export interface Recommendation {
 	characterName: string
 	recommendationText: string
 	sentiment: RecommendationSentiment
+	isPublic: boolean
 	createdAt: Date
 	updatedAt: Date
 }
@@ -370,6 +409,26 @@ export interface Hr extends DurableObject {
 	// ==================== Recommendation Methods ====================
 
 	/**
+	 * List pending/under_review applications for given corporation IDs
+	 * Used for line members to discover applications they can recommend.
+	 * Returns basic application info with recommendation count and whether the user already recommended.
+	 */
+	listCorpApplicationsForRecommendation(
+		corporationIds: string[],
+		userId: string
+	): Promise<RecommendableApplication[]>
+
+	/**
+	 * Get an application for a corp member to view and recommend.
+	 * Returns limited info (no HR-internal data).
+	 */
+	getApplicationForRecommender(
+		applicationId: string,
+		userId: string,
+		userCorporationIds: string[]
+	): Promise<RecommenderApplicationDetail>
+
+	/**
 	 * Add a recommendation for an application
 	 * @param applicationId - Application to recommend for
 	 * @param userId - ID of the user adding recommendation
@@ -385,7 +444,8 @@ export interface Hr extends DurableObject {
 		characterId: string,
 		characterName: string,
 		recommendationText: string,
-		sentiment: RecommendationSentiment
+		sentiment: RecommendationSentiment,
+		isPublic: boolean
 	): Promise<Recommendation>
 
 	/**
@@ -403,6 +463,7 @@ export interface Hr extends DurableObject {
 		characterId: string,
 		recommendationText: string,
 		sentiment: RecommendationSentiment,
+		isPublic: boolean,
 		isAdmin: boolean
 	): Promise<void>
 

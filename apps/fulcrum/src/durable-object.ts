@@ -378,28 +378,7 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 			return null
 		}
 
-		// Update the mail in the R2 mails section so future reads include the body
-		const sectionKey = `${report.r2Key}/sections/mails.json`
-		try {
-			const r2Object = await this.env.CHARACTER_REPORTS.get(sectionKey)
-			if (r2Object) {
-				const sectionData = await r2Object.json<{ mails: Array<{ mail_id?: string; body?: string; bodyPlainText?: string }> }>()
-				const mail = sectionData.mails.find((m) => String(m.mail_id) === String(mailId))
-				if (mail) {
-					mail.body = body
-					mail.bodyPlainText = bodyPlainText
-					await this.env.CHARACTER_REPORTS.put(sectionKey, JSON.stringify(sectionData))
-				}
-			}
-		} catch (error) {
-			// Non-fatal: the body is still returned to the caller even if R2 update fails
-			this.logger.error('Failed to update R2 mails section', {
-				reportId,
-				mailId,
-				error: error instanceof Error ? error.message : String(error),
-			})
-		}
-
+		// Return the content without persisting — R2 sections are immutable after generation
 		return bodyPlainText ?? body
 	}
 

@@ -46,7 +46,7 @@ export interface AddRecommendationDialogProps {
 // Constants
 // ============================================================================
 
-const MIN_LENGTH = 50
+const MIN_LENGTH = 10
 const MAX_LENGTH = 500
 
 const SENTIMENT_OPTIONS: Array<{
@@ -56,38 +56,37 @@ const SENTIMENT_OPTIONS: Array<{
 	description: string
 	colorClass: string
 }> = [
-	{
-		value: 'positive',
-		label: 'Positive',
-		icon: ThumbsUp,
-		description: 'Recommend this applicant',
-		colorClass:
-			'border-success/30 bg-success/10 hover:bg-success/20 data-[state=checked]:border-success',
-	},
-	{
-		value: 'neutral',
-		label: 'Neutral',
-		icon: Minus,
-		description: 'No strong opinion',
-		colorClass:
-			'border-primary/30 bg-primary/10 hover:bg-primary/20 data-[state=checked]:border-primary',
-	},
-	{
-		value: 'negative',
-		label: 'Negative',
-		icon: ThumbsDown,
-		description: 'Do not recommend',
-		colorClass:
-			'border-warning/30 bg-warning/10 hover:bg-warning/20 data-[state=checked]:border-warning',
-	},
-]
+		{
+			value: 'positive',
+			label: 'Positive',
+			icon: ThumbsUp,
+			description: 'Recommend this applicant',
+			colorClass:
+				'border-success/30 bg-success/10 hover:bg-success/20 data-[state=checked]:border-success',
+		},
+		{
+			value: 'neutral',
+			label: 'Neutral',
+			icon: Minus,
+			description: 'No strong opinion',
+			colorClass:
+				'border-primary/30 bg-primary/10 hover:bg-primary/20 data-[state=checked]:border-primary',
+		},
+		{
+			value: 'negative',
+			label: 'Negative',
+			icon: ThumbsDown,
+			description: 'Do not recommend',
+			colorClass:
+				'border-warning/30 bg-warning/10 hover:bg-warning/20 data-[state=checked]:border-warning',
+		},
+	]
 
 // ============================================================================
 // Sentiment Radio Button Component
 // ============================================================================
 
 interface SentimentButtonProps {
-	value: RecommendationSentiment
 	label: string
 	description: string
 	icon: typeof ThumbsUp
@@ -97,7 +96,6 @@ interface SentimentButtonProps {
 }
 
 function SentimentButton({
-	value,
 	label,
 	description,
 	icon: Icon,
@@ -159,7 +157,7 @@ export function AddRecommendationDialog({
 	const [characterId, setCharacterId] = useState('')
 	const [sentiment, setSentiment] = useState<RecommendationSentiment>('positive')
 	const [recommendationText, setRecommendationText] = useState('')
-	const [isPublic, setIsPublic] = useState(true)
+	const [isPublic, setIsPublic] = useState(false)
 
 	// Mutations
 	const addMutation = useAddRecommendation()
@@ -182,7 +180,7 @@ export function AddRecommendationDialog({
 				setCharacterId(user?.mainCharacterId || '')
 				setSentiment('positive')
 				setRecommendationText('')
-				setIsPublic(true)
+				setIsPublic(false)
 			}
 		}
 	}, [open, existingRecommendation, user])
@@ -282,7 +280,8 @@ export function AddRecommendationDialog({
 										characterId: string
 										characterName: string
 										hasValidToken: boolean
-									}) => ({ value: char.characterId,
+									}) => ({
+										value: char.characterId,
 										label: `${char.characterName}${!char.hasValidToken ? ' (Token expired)' : ''}`,
 									})
 								) ?? []
@@ -311,7 +310,6 @@ export function AddRecommendationDialog({
 							{SENTIMENT_OPTIONS.map((option) => (
 								<SentimentButton
 									key={option.value}
-									value={option.value}
 									label={option.label}
 									description={option.description}
 									icon={option.icon}

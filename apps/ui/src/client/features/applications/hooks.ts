@@ -6,7 +6,6 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback } from 'react'
 
 import { applicationsApi, fulcrumApi } from './api'
 
@@ -24,7 +23,9 @@ import type {
 	HRNotesParams,
 	MessageTemplate,
 	MessageTemplateStatus,
+	RecommendableApplication,
 	Recommendation,
+	RecommenderApplicationDetail,
 	ReportManifest,
 	ReportSectionName,
 	SendMessageRequest,
@@ -68,6 +69,10 @@ export const applicationKeys = {
 		[...applicationKeys.all, 'fulcrum-report', reportId, 'sections'] as const,
 	fulcrumReportSection: (reportId: string, section: ReportSectionName) =>
 		[...applicationKeys.all, 'fulcrum-report', reportId, 'section', section] as const,
+	// Recommendations discovery (corp members)
+	recommendationsPending: () => [...applicationKeys.all, 'recommendations-pending'] as const,
+	recommendationsDetail: (id: string) =>
+		[...applicationKeys.all, 'recommendations-detail', id] as const,
 }
 
 // ============================================================================
@@ -155,6 +160,31 @@ export function useMessageCount(applicationId: string) {
 		queryFn: () => applicationsApi.getMessageCount(applicationId),
 		staleTime: 1000 * 30, // 30 seconds (more frequent for counts)
 		gcTime: 1000 * 60 * 2, // 2 minutes
+		enabled: !!applicationId,
+	})
+}
+
+/**
+ * Hook to fetch pending applications for recommendation (corp members)
+ */
+export function usePendingRecommendations() {
+	return useQuery<RecommendableApplication[]>({
+		queryKey: applicationKeys.recommendationsPending(),
+		queryFn: () => applicationsApi.getPendingRecommendations(),
+		staleTime: 1000 * 60 * 2, // 2 minutes
+		gcTime: 1000 * 60 * 5, // 5 minutes
+	})
+}
+
+/**
+ * Hook to fetch application detail for writing a recommendation
+ */
+export function useApplicationForRecommender(applicationId: string) {
+	return useQuery<RecommenderApplicationDetail>({
+		queryKey: applicationKeys.recommendationsDetail(applicationId),
+		queryFn: () => applicationsApi.getApplicationForRecommender(applicationId),
+		staleTime: 1000 * 60, // 1 minute
+		gcTime: 1000 * 60 * 3, // 3 minutes
 		enabled: !!applicationId,
 	})
 }
@@ -276,6 +306,11 @@ export function useAddRecommendation() {
 			queryClient.invalidateQueries({
 				queryKey: applicationKeys.activity(variables.applicationId),
 			})
+
+			// Invalidate the recommendations list page
+			queryClient.invalidateQueries({
+				queryKey: applicationKeys.recommendationsPending(),
+			})
 		},
 	})
 }
@@ -303,9 +338,19 @@ export function useUpdateRecommendation() {
 				queryKey: applicationKeys.recommendations(variables.applicationId),
 			})
 
+			// Invalidate the application detail (to update recommendation count)
+			queryClient.invalidateQueries({
+				queryKey: applicationKeys.detail(variables.applicationId),
+			})
+
 			// Invalidate activity log
 			queryClient.invalidateQueries({
 				queryKey: applicationKeys.activity(variables.applicationId),
+			})
+
+			// Invalidate the recommendations list page
+			queryClient.invalidateQueries({
+				queryKey: applicationKeys.recommendationsPending(),
 			})
 		},
 	})
@@ -340,6 +385,11 @@ export function useDeleteRecommendation() {
 			// Invalidate activity log
 			queryClient.invalidateQueries({
 				queryKey: applicationKeys.activity(variables.applicationId),
+			})
+
+			// Invalidate the recommendations list page
+			queryClient.invalidateQueries({
+				queryKey: applicationKeys.recommendationsPending(),
 			})
 		},
 	})
@@ -381,75 +431,6 @@ export function useSendMessage() {
 
 // ============================================================================
 // Manager Hook for Cache Invalidation
-// ============================================================================
-
-/**
- * Hook to manage application data with cache invalidation utilities
- * Provides methods for invalidating specific parts of the cache
- */
-export function useApplicationManager() {
-	const queryClient = useQueryClient()
-
-	const invalidateApplications = useCallback(() => {
-		return queryClient.invalidateQueries({
-			queryKey: applicationKeys.lists(),
-		})
-	}, [queryClient])
-
-	const invalidateApplication = useCallback(
-		(applicationId: string) => {
-			return queryClient.invalidateQueries({
-				queryKey: applicationKeys.detail(applicationId),
-			})
-		},
-		[queryClient]
-	)
-
-	const invalidateRecommendations = useCallback(
-		(applicationId: string) => {
-			return queryClient.invalidateQueries({
-				queryKey: applicationKeys.recommendations(applicationId),
-			})
-		},
-		[queryClient]
-	)
-
-	const invalidateActivity = useCallback(
-		(applicationId: string) => {
-			return queryClient.invalidateQueries({
-				queryKey: applicationKeys.activity(applicationId),
-			})
-		},
-		[queryClient]
-	)
-
-	const invalidateAll = useCallback(() => {
-		return queryClient.invalidateQueries({
-			queryKey: applicationKeys.all,
-		})
-	}, [queryClient])
-
-	const prefetchApplication = useCallback(
-		(applicationId: string) => {
-			return queryClient.prefetchQuery({
-				queryKey: applicationKeys.detail(applicationId),
-				queryFn: () => applicationsApi.getApplication(applicationId),
-				staleTime: 1000 * 60, // 1 minute
-			})
-		},
-		[queryClient]
-	)
-
-	return {
-		invalidateApplications,
-		invalidateApplication,
-		invalidateRecommendations,
-		invalidateActivity,
-		invalidateAll,
-		prefetchApplication,
-	}
-}
-
 // ============================================================================
 // HR Notes Query Hooks (ADMIN ONLY)
 // ============================================================================

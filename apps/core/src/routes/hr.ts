@@ -311,13 +311,72 @@ app.delete('/applications/:id', requireAdmin(), async (c) => {
 // ==================== Recommendation Routes ====================
 
 /**
+ * GET /api/hr/recommendations/pending
+ * List pending/under_review applications for the user's corporations
+ * Used by corp members to discover applications they can recommend
+ */
+app.get('/recommendations/pending', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const db = c.get('db')!
+
+	// Resolve corporation IDs from the database (session user doesn't carry corporationId)
+	const userChars = await db.query.userCharacters.findMany({
+		where: and(eq(userCharacters.userId, user.id), eq(userCharacters.isDeleted, false)),
+	})
+	const corporationIds = [...new Set(userChars.map((ch) => ch.corporationId).filter(Boolean))] as string[]
+
+	if (corporationIds.length === 0) {
+		return c.json([])
+	}
+
+	try {
+		const hr = getHrStub(c)
+		const applications = await hr.listCorpApplicationsForRecommendation(corporationIds, user.id)
+		return c.json(applications)
+	} catch (error) {
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to list applications' },
+			500
+		)
+	}
+})
+
+/**
+ * GET /api/hr/recommendations/applications/:id
+ * Get application detail for a corp member to write a recommendation
+ * Returns limited info (no HR-internal data)
+ */
+app.get('/recommendations/applications/:id', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const applicationId = c.req.param('id')
+	const db = c.get('db')!
+
+	// Resolve corporation IDs from the database (session user doesn't carry corporationId)
+	const userChars = await db.query.userCharacters.findMany({
+		where: and(eq(userCharacters.userId, user.id), eq(userCharacters.isDeleted, false)),
+	})
+	const corporationIds = [...new Set(userChars.map((ch) => ch.corporationId).filter(Boolean))] as string[]
+
+	try {
+		const hr = getHrStub(c)
+		const application = await hr.getApplicationForRecommender(applicationId, user.id, corporationIds)
+		return c.json(application)
+	} catch (error) {
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to get application' },
+			error instanceof Error && error.message.includes('permission') ? 403 : 400
+		)
+	}
+})
+
+/**
  * POST /api/hr/applications/:applicationId/recommendations
  * Add a recommendation for an application
  */
 app.post('/applications/:applicationId/recommendations', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const applicationId = c.req.param('applicationId')
-	const { characterId, recommendationText, sentiment } = await c.req.json()
+	const { characterId, recommendationText, sentiment, isPublic } = await c.req.json()
 
 	// Validate character ownership
 	const ownsCharacter = user.characters.some((char) => char.characterId === characterId)
@@ -335,7 +394,8 @@ app.post('/applications/:applicationId/recommendations', requireAuth(), async (c
 			characterId,
 			characterName,
 			recommendationText,
-			sentiment
+			sentiment,
+			isPublic ?? true
 		)
 
 		return c.json(recommendation, 201)
@@ -354,7 +414,7 @@ app.post('/applications/:applicationId/recommendations', requireAuth(), async (c
 app.patch('/applications/:applicationId/recommendations/:id', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const recommendationId = c.req.param('id')
-	const { characterId, recommendationText, sentiment } = await c.req.json()
+	const { characterId, recommendationText, sentiment, isPublic } = await c.req.json()
 
 	try {
 		const hr = getHrStub(c)
@@ -364,6 +424,7 @@ app.patch('/applications/:applicationId/recommendations/:id', requireAuth(), asy
 			characterId || user.mainCharacterId,
 			recommendationText,
 			sentiment,
+			isPublic ?? true,
 			user.is_admin
 		)
 

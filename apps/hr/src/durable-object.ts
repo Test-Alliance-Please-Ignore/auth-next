@@ -27,8 +27,10 @@ import type {
 	HrRole,
 	HrRoleType,
 	NoteFilters,
+	RecommendableApplication,
 	Recommendation,
 	RecommendationSentiment,
+	RecommenderApplicationDetail,
 } from '@repo/hr'
 import type { Env } from './context'
 import type { MessageTemplate } from './services/template.service'
@@ -223,6 +225,34 @@ export class HrDO extends DurableObject<Env> implements Hr {
 	// ==================== Recommendation Methods ====================
 
 	/**
+	 * List pending/under_review applications for corp members to recommend
+	 */
+	async listCorpApplicationsForRecommendation(
+		corporationIds: string[],
+		userId: string
+	): Promise<RecommendableApplication[]> {
+		return await this.applicationService.listCorpApplicationsForRecommendation(
+			corporationIds,
+			userId
+		)
+	}
+
+	/**
+	 * Get an application for a corp member to view and recommend
+	 */
+	async getApplicationForRecommender(
+		applicationId: string,
+		userId: string,
+		userCorporationIds: string[]
+	): Promise<RecommenderApplicationDetail> {
+		return await this.applicationService.getApplicationForRecommender(
+			applicationId,
+			userId,
+			userCorporationIds
+		)
+	}
+
+	/**
 	 * Add a recommendation for an application
 	 */
 	async addRecommendation(
@@ -231,7 +261,8 @@ export class HrDO extends DurableObject<Env> implements Hr {
 		characterId: string,
 		characterName: string,
 		recommendationText: string,
-		sentiment: RecommendationSentiment
+		sentiment: RecommendationSentiment,
+		isPublic: boolean
 	): Promise<Recommendation> {
 		return await this.recommendationService.addRecommendation(
 			applicationId,
@@ -239,7 +270,8 @@ export class HrDO extends DurableObject<Env> implements Hr {
 			characterId,
 			characterName,
 			recommendationText,
-			sentiment
+			sentiment,
+			isPublic
 		)
 	}
 
@@ -252,6 +284,7 @@ export class HrDO extends DurableObject<Env> implements Hr {
 		characterId: string,
 		recommendationText: string,
 		sentiment: RecommendationSentiment,
+		isPublic: boolean,
 		isAdmin: boolean
 	): Promise<void> {
 		await this.recommendationService.updateRecommendation(
@@ -260,6 +293,7 @@ export class HrDO extends DurableObject<Env> implements Hr {
 			characterId,
 			recommendationText,
 			sentiment,
+			isPublic,
 			isAdmin
 		)
 	}

@@ -96,6 +96,8 @@ export const applicationRecommendations = pgTable(
 		recommendationText: text('recommendation_text').notNull(),
 		/** Sentiment: positive, neutral, negative */
 		sentiment: varchar('sentiment', { length: 20 }).notNull(),
+		/** Whether the recommendation is visible to the applicant */
+		isPublic: boolean('is_public').notNull().default(false),
 		createdAt: timestamp('created_at').defaultNow().notNull(),
 		updatedAt: timestamp('updated_at').defaultNow().notNull(),
 	},

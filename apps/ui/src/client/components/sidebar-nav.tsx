@@ -1,6 +1,7 @@
 import {
 	BookMarked,
 	BookOpen,
+	Briefcase,
 	Building2,
 	ChevronDown,
 	ChevronRight,
@@ -65,9 +66,20 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 	const isTaxRoute = location.pathname === '/tax' || location.pathname.startsWith('/tax/')
 	const isFreightRoute =
 		location.pathname === '/freight' || location.pathname.startsWith('/freight/')
+	const isHrRoute =
+		location.pathname === '/my-applications' ||
+		location.pathname.startsWith('/my-applications/') ||
+		location.pathname === '/join' ||
+		location.pathname.startsWith('/join/') ||
+		location.pathname === '/hr' ||
+		location.pathname.startsWith('/hr/') ||
+		location.pathname === '/recommendations' ||
+		location.pathname.startsWith('/recommendations/') ||
+		/^\/corporations\/\d+\/hr/.test(location.pathname)
 	const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({
 		'/tax': isTaxRoute,
 		'/freight': isFreightRoute,
+		'#hr': isHrRoute,
 		'#external': true,
 	})
 
@@ -86,6 +98,12 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 			setOpenMenus((prev) => ({ ...prev, '/freight': true }))
 		}
 	}, [isFreightRoute])
+
+	useEffect(() => {
+		if (isHrRoute) {
+			setOpenMenus((prev) => ({ ...prev, '#hr': true }))
+		}
+	}, [isHrRoute])
 
 	const navItems: SidebarNavItem[] = [
 		{
@@ -109,6 +127,41 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 			href: '/groups',
 			icon: Users,
 		},
+	]
+
+	// HR section - always visible with at least My Applications and Join
+	{
+		const hrItems: SidebarNavItem[] = [
+			{
+				label: 'My Applications',
+				href: '/my-applications',
+			},
+			{
+				label: 'Join Corporations',
+				href: '/join',
+			},
+			{
+				label: 'Recommendations',
+				href: '/recommendations',
+			},
+		]
+
+		if ((hrCorporations?.length ?? 0) > 0) {
+			hrItems.push({
+				label: 'Review Applications',
+				href: '/hr',
+			})
+		}
+
+		navItems.push({
+			label: 'HR',
+			href: '#hr',
+			icon: Briefcase,
+			children: hrItems,
+		})
+	}
+
+	navItems.push(
 		{
 			label: 'Skill Plans',
 			href: '/skill-plans',
@@ -125,16 +178,7 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 			href: '/my-bills',
 			icon: Receipt,
 		},
-		{
-			label: 'My Applications',
-			href: '/my-applications',
-			icon: FileText,
-		},
-		{
-			label: 'Join Corporations',
-			href: '/join',
-			icon: Building2,
-		},
+
 		{
 			label: 'Freight',
 			href: '/freight',
@@ -148,7 +192,7 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 					: []),
 			],
 		},
-	]
+	)
 
 	// Continue with other nav items
 	navItems.push({
@@ -263,15 +307,6 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 			label: 'Manage Corporation',
 			href: '/my-corporations',
 			icon: Settings,
-		})
-	}
-
-	// Add HR nav item near Manage Corporation when user has HR access
-	if ((hrCorporations?.length ?? 0) > 0) {
-		navItems.push({
-			label: 'HR',
-			href: '/hr',
-			icon: Users,
 		})
 	}
 
@@ -465,7 +500,7 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 							alt={`${mainCharacter.characterName}'s portrait`}
 							loading="lazy"
 							onError={(e) => {
-								;(e.currentTarget as HTMLImageElement).src =
+								; (e.currentTarget as HTMLImageElement).src =
 									'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"%3E%3Crect fill="%23404040" width="64" height="64"/%3E%3Ctext x="50%25" y="50%25" font-family="Arial" font-size="24" fill="%23bfbfbf" text-anchor="middle" dominant-baseline="middle"%3E?%3C/text%3E%3C/svg%3E'
 							}}
 							className="w-10 h-10 rounded-full border-2 border-primary/50"
