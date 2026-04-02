@@ -19,6 +19,7 @@ import type { Freight } from '@repo/freight'
 import type { App } from '../context'
 
 const FREIGHT_MANAGER_URN = 'urn:freight:manager'
+const ALLIANCE_MEMBER_URN = 'urn:eve:alliance:test-alliance'
 
 /**
  * Hardcoded TEST Alliance Please Ignore alliance ID
@@ -44,6 +45,23 @@ async function isFreightManager(
 	return permissionCache.getOrSet(cacheKey, async () => {
 		const permissions = await getCachedUserPermissions(env, userId)
 		return permissions.some((p) => p.urn === FREIGHT_MANAGER_URN)
+	})
+}
+
+/**
+ * Check if a user is a TEST alliance member
+ */
+async function isAllianceMember(
+	env: { GROUPS: DurableObjectNamespace },
+	userId: string,
+	isAdmin: boolean
+): Promise<boolean> {
+	if (isAdmin) return true
+
+	const cacheKey = `${userId}:${ALLIANCE_MEMBER_URN}`
+	return permissionCache.getOrSet(cacheKey, async () => {
+		const permissions = await getCachedUserPermissions(env, userId)
+		return permissions.some((p) => p.urn === ALLIANCE_MEMBER_URN)
 	})
 }
 
@@ -341,9 +359,14 @@ app.delete('/routes/:routeId', requireAuth(), async (c) => {
 
 /**
  * GET /freight/contracts
- * List alliance courier contracts with optional status filter (available to all authenticated users)
+ * List alliance courier contracts with optional status filter (requires alliance membership)
  */
 app.get('/contracts', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	if (!(await isAllianceMember(c.env, user.id, user.is_admin))) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
 	try {
 		const status = c.req.query('status')
 		const corpDataStub = getStub<EveCorporationData>(
@@ -401,9 +424,14 @@ app.get('/contracts', requireAuth(), async (c) => {
 
 /**
  * GET /freight/leaderboard
- * Get leaderboard of completed courier contracts (available to all authenticated users)
+ * Get leaderboard of completed courier contracts (requires alliance membership)
  */
 app.get('/leaderboard', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	if (!(await isAllianceMember(c.env, user.id, user.is_admin))) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
 	try {
 		const corpDataStub = getStub<EveCorporationData>(
 			c.env.EVE_CORPORATION_DATA,
