@@ -9,6 +9,7 @@ import { useState } from 'react'
 
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { cn } from '@/lib/utils'
 
 import { useReportSectionData, useReportSections } from '../hooks'
 
@@ -24,6 +25,7 @@ import {
 	PublicInfoCard,
 	PublicInfoHeader,
 	PublicInfoSection,
+	SkillPlansProgressSection,
 	SkillsSection,
 	WalletJournalSection,
 	WalletTransactionsSection,
@@ -178,16 +180,67 @@ function OverviewContent({
 // Section Content (lazy-loads data when tab is active)
 // ============================================================================
 
+function SkillsContentWithSubTabs({
+	reportId,
+	characterId,
+	skillsData,
+}: {
+	reportId: string
+	characterId: string
+	skillsData: unknown
+}) {
+	const [subTab, setSubTab] = useState<'skills' | 'skill-plans'>('skills')
+
+	return (
+		<div className="space-y-4">
+			<div className="flex gap-1 rounded-lg border p-1 w-fit">
+				<button
+					type="button"
+					className={cn(
+						'px-3 py-1.5 rounded-md text-sm font-medium transition-colors',
+						subTab === 'skills'
+							? 'bg-primary text-primary-foreground'
+							: 'text-muted-foreground hover:text-foreground',
+					)}
+					onClick={() => setSubTab('skills')}
+				>
+					Skills
+				</button>
+				<button
+					type="button"
+					className={cn(
+						'px-3 py-1.5 rounded-md text-sm font-medium transition-colors',
+						subTab === 'skill-plans'
+							? 'bg-primary text-primary-foreground'
+							: 'text-muted-foreground hover:text-foreground',
+					)}
+					onClick={() => setSubTab('skill-plans')}
+				>
+					Skill Plans
+				</button>
+			</div>
+
+			{subTab === 'skills' ? (
+				<SkillsSection data={skillsData as any} />
+			) : (
+				<SkillPlansProgressSection characterId={characterId} />
+			)}
+		</div>
+	)
+}
+
 function SectionContent({
 	reportId,
 	section,
 	isActive,
 	availableSections,
+	characterId,
 }: {
 	reportId: string
 	section: ReportSectionName
 	isActive: boolean
 	availableSections: ReportSectionName[]
+	characterId: string
 }) {
 	// Communications and Overview tabs manage their own data fetching — skip the standard fetch
 	const isCommunications = section === 'mails'
@@ -238,7 +291,7 @@ function SectionContent({
 	const d = data as any
 	switch (section) {
 		case 'skills':
-			return <SkillsSection data={d} />
+			return <SkillsContentWithSubTabs reportId={reportId} characterId={characterId} skillsData={d} />
 		case 'assets':
 			return <AssetsSection data={d} />
 		case 'fitted-ships':
@@ -348,6 +401,7 @@ export function FulcrumReportViewer({ reportId }: FulcrumReportViewerProps) {
 						section={tab.name}
 						isActive={effectiveTab === tab.name}
 						availableSections={manifest.sections}
+						characterId={manifest.characterId}
 					/>
 				</TabsContent>
 			))}

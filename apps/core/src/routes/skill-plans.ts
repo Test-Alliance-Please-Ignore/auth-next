@@ -13,6 +13,7 @@ import { getCachedGroup, getCachedUserMemberships } from '../lib/groups-cache'
 import { requireAllianceMember } from '../middleware/session'
 
 import type { EveCharacterData } from '@repo/eve-character-data'
+import type { Hr } from '@repo/hr'
 import type {
 	AddSkillToPlanInput,
 	CreateSkillPlanInput,
@@ -224,11 +225,11 @@ const skillPlansRoutes = new Hono<App>()
 							: ('user' as const)
 						const maintainerName = plan.maintainerId
 							? await resolveMaintainerName(
-									plan.maintainerId,
-									user.id,
-									c.env,
-									db
-								)
+								plan.maintainerId,
+								user.id,
+								c.env,
+								db
+							)
 							: 'System'
 						return {
 							...plan,
@@ -368,11 +369,15 @@ const skillPlansRoutes = new Hono<App>()
 		const db = createDb(c.env.DATABASE_URL)
 
 		// Check if user can check this character's progress
-		const allowed = await canCheckCharacterProgress(
-			characterId,
-			user.id,
-			db
-		)
+		let allowed = await canCheckCharacterProgress(characterId, user.id, db)
+
+		// Fallback: allow HR reviewers to check any character's progress
+		if (!allowed) {
+			const hrStub = getStub<Hr>(c.env.HR, 'default')
+			const hrCorps = await hrStub.getUserHrCorporations(user.id)
+			allowed = hrCorps.length > 0
+		}
+
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -1162,11 +1167,15 @@ const skillPlansRoutes = new Hono<App>()
 		const db = createDb(c.env.DATABASE_URL)
 
 		// Check if user can check this character's progress
-		const allowed = await canCheckCharacterProgress(
-			characterId,
-			user.id,
-			db
-		)
+		let allowed = await canCheckCharacterProgress(characterId, user.id, db)
+
+		// Fallback: allow HR reviewers to check any character's progress
+		if (!allowed) {
+			const hrStub = getStub<Hr>(c.env.HR, 'default')
+			const hrCorps = await hrStub.getUserHrCorporations(user.id)
+			allowed = hrCorps.length > 0
+		}
+
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -1272,11 +1281,15 @@ const skillPlansRoutes = new Hono<App>()
 		const db = createDb(c.env.DATABASE_URL)
 
 		// Check if user can check this character's progress
-		const allowed = await canCheckCharacterProgress(
-			characterId,
-			user.id,
-			db
-		)
+		let allowed = await canCheckCharacterProgress(characterId, user.id, db)
+
+		// Fallback: allow HR reviewers to check any character's progress
+		if (!allowed) {
+			const hrStub = getStub<Hr>(c.env.HR, 'default')
+			const hrCorps = await hrStub.getUserHrCorporations(user.id)
+			allowed = hrCorps.length > 0
+		}
+
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
