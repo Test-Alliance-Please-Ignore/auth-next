@@ -1,5 +1,5 @@
 import { ExternalLink, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
@@ -51,22 +51,42 @@ const statusLabels: Record<BroadcastStatus, string> = {
 
 export default function AdminBroadcastsPage() {
 	usePageTitle('Admin - Broadcasts')
+
+	const pageSize = 25
 	const [statusFilter, setStatusFilter] = useState<BroadcastStatus | 'all'>('all')
-	const { data: broadcasts, isLoading } = useBroadcasts(
+	const [page, setPage] = useState(0)
+
+	const { data: broadcastsPage, isLoading } = useBroadcasts(
 		undefined,
-		statusFilter === 'all' ? undefined : statusFilter
+		statusFilter === 'all' ? undefined : statusFilter,
+		{
+			limit: pageSize,
+			offset: page * pageSize,
+		}
 	)
 	const { data: groups } = useGroups()
 	const { data: targets } = useBroadcastTargets()
 	const { data: templates } = useBroadcastTemplates()
 	const deleteBroadcast = useDeleteBroadcast()
 
-	// Dialog state
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 	const [selectedBroadcast, setSelectedBroadcast] = useState<Broadcast | null>(null)
-
-	// Message state
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+	const broadcasts = broadcastsPage?.rows ?? []
+	const rowCount = broadcastsPage?.rowCount ?? 0
+	const totalPages = Math.max(1, Math.ceil(rowCount / pageSize))
+	const maxPage = Math.max(totalPages - 1, 0)
+
+	useEffect(() => {
+		setPage(0)
+	}, [statusFilter])
+
+	useEffect(() => {
+		if (page > maxPage) {
+			setPage(maxPage)
+		}
+	}, [page, maxPage])
 
 	const handleDeleteClick = (broadcast: Broadcast) => {
 		setSelectedBroadcast(broadcast)
@@ -97,7 +117,6 @@ export default function AdminBroadcastsPage() {
 
 	return (
 		<div className="space-y-6">
-			{/* Page Header */}
 			<div className="flex items-center justify-between">
 				<div>
 					<h1 className="text-3xl font-bold gradient-text">All Broadcasts</h1>
@@ -105,7 +124,6 @@ export default function AdminBroadcastsPage() {
 				</div>
 			</div>
 
-			{/* Success/Error Message */}
 			{message && (
 				<Card
 					className={
@@ -122,8 +140,7 @@ export default function AdminBroadcastsPage() {
 				</Card>
 			)}
 
-			{/* Filters */}
-			<Card variant="interactive">
+			<Card variant="elevated">
 				<CardHeader>
 					<CardTitle>Filters</CardTitle>
 				</CardHeader>
@@ -148,8 +165,7 @@ export default function AdminBroadcastsPage() {
 				</CardContent>
 			</Card>
 
-			{/* Broadcasts List */}
-			<Card variant="interactive">
+			<Card variant="elevated">
 				<CardHeader>
 					<CardTitle>Broadcasts</CardTitle>
 					<CardDescription>All broadcasts in the system</CardDescription>
@@ -157,77 +173,102 @@ export default function AdminBroadcastsPage() {
 				<CardContent>
 					{isLoading ? (
 						<p className="text-muted-foreground">Loading broadcasts...</p>
-					) : !broadcasts || broadcasts.length === 0 ? (
+					) : broadcasts.length === 0 ? (
 						<p className="text-muted-foreground">No broadcasts found.</p>
 					) : (
-						<Table>
-							<TableHeader>
-								<TableRow>
-									<TableHead>Status</TableHead>
-									<TableHead>Group</TableHead>
-									<TableHead>Target</TableHead>
-									<TableHead>Template</TableHead>
-									<TableHead>Created By</TableHead>
-									<TableHead>Created</TableHead>
-									<TableHead>Scheduled</TableHead>
-									<TableHead className="text-right">Actions</TableHead>
-								</TableRow>
-							</TableHeader>
-							<TableBody>
-								{broadcasts.map((broadcast) => {
-									const group = groups?.find((g) => g.id === broadcast.groupId)
-									const target = targets?.find((t) => t.id === broadcast.targetId)
-									const template = broadcast.templateId
-										? templates?.find((t) => t.id === broadcast.templateId)
-										: null
-									return (
-										<TableRow key={broadcast.id}>
-											<TableCell>
-												<Badge className={statusColors[broadcast.status]}>
-													{statusLabels[broadcast.status]}
-												</Badge>
-											</TableCell>
-											<TableCell>{group?.name || broadcast.groupId}</TableCell>
-											<TableCell className="font-medium">
-												{target?.name || broadcast.targetId}
-											</TableCell>
-											<TableCell>{template?.name || 'Custom'}</TableCell>
-											<TableCell className="text-sm text-muted-foreground">
-												{broadcast.createdBy}
-											</TableCell>
-											<TableCell className="text-sm text-muted-foreground">
-												{formatDate(broadcast.createdAt)}
-											</TableCell>
-											<TableCell className="text-sm text-muted-foreground">
-												{broadcast.scheduledFor ? formatDate(broadcast.scheduledFor) : '-'}
-											</TableCell>
-											<TableCell className="text-right">
-												<div className="flex items-center justify-end gap-2">
-													<Link to={`/admin/broadcasts/${broadcast.id}`}>
-														<Button variant="ghost" size="sm" title="Show details">
-															<ExternalLink className="h-4 w-4" />
+						<>
+							<Table>
+								<TableHeader>
+									<TableRow>
+										<TableHead>Status</TableHead>
+										<TableHead>Group</TableHead>
+										<TableHead>Target</TableHead>
+										<TableHead>Template</TableHead>
+										<TableHead>Created By</TableHead>
+										<TableHead>Created</TableHead>
+										<TableHead>Scheduled</TableHead>
+										<TableHead className="sticky right-0 z-20 bg-card border-l border-border/50 text-right">
+											Actions
+										</TableHead>
+									</TableRow>
+								</TableHeader>
+								<TableBody>
+									{broadcasts.map((broadcast) => {
+										const group = groups?.find((g) => g.id === broadcast.groupId)
+										const target = targets?.find((t) => t.id === broadcast.targetId)
+										const template = broadcast.templateId
+											? templates?.find((t) => t.id === broadcast.templateId)
+											: null
+
+										return (
+											<TableRow key={broadcast.id}>
+												<TableCell>
+													<Badge className={statusColors[broadcast.status]}>
+														{statusLabels[broadcast.status]}
+													</Badge>
+												</TableCell>
+												<TableCell>{group?.name || broadcast.groupId}</TableCell>
+												<TableCell className="font-medium">
+													{target?.name || broadcast.targetId}
+												</TableCell>
+												<TableCell>{template?.name || 'Custom'}</TableCell>
+												<TableCell className="text-sm text-muted-foreground">
+													{broadcast.createdByCharacterName || broadcast.createdBy}
+												</TableCell>
+												<TableCell className="text-sm text-muted-foreground">
+													{formatDate(broadcast.createdAt)}
+												</TableCell>
+												<TableCell className="text-sm text-muted-foreground">
+													{broadcast.scheduledFor ? formatDate(broadcast.scheduledFor) : '-'}
+												</TableCell>
+												<TableCell className="sticky right-0 z-10 bg-card border-l border-border/50 text-right">
+													<div className="flex items-center justify-end gap-2">
+														<Link to={`/admin/broadcasts/${broadcast.id}`}>
+															<Button variant="ghost" size="sm" title="Show details">
+																<ExternalLink className="h-4 w-4" />
+															</Button>
+														</Link>
+														<Button
+															variant="ghost"
+															size="sm"
+															onClick={() => handleDeleteClick(broadcast)}
+															title="Delete broadcast"
+														>
+															<Trash2 className="h-4 w-4 text-destructive" />
 														</Button>
-													</Link>
-													<Button
-														variant="ghost"
-														size="sm"
-														onClick={() => handleDeleteClick(broadcast)}
-														title="Delete broadcast"
-													>
-														<Trash2 className="h-4 w-4 text-destructive" />
-													</Button>
-												</div>
-											</TableCell>
-										</TableRow>
-									)
-								})}
-							</TableBody>
-						</Table>
+													</div>
+												</TableCell>
+											</TableRow>
+										)
+									})}
+								</TableBody>
+							</Table>
+							<div className="mt-4 flex items-center justify-between gap-2">
+								<p className="text-sm text-muted-foreground">
+									Showing {Math.min(page * pageSize + 1, rowCount)}-
+									{Math.min((page + 1) * pageSize, rowCount)} of {rowCount}
+								</p>
+								<div className="flex items-center gap-2">
+									<Button variant="ghost" disabled={page === 0} onClick={() => setPage(page - 1)}>
+										Previous
+									</Button>
+									<p className="text-sm text-muted-foreground">
+										Page {page + 1} of {totalPages}
+									</p>
+									<Button
+										variant="ghost"
+										disabled={page >= maxPage}
+										onClick={() => setPage(page + 1)}
+									>
+										Next
+									</Button>
+								</div>
+							</div>
+						</>
 					)}
 				</CardContent>
 			</Card>
 
-			{/* Delete Confirmation Dialog */}
 			<Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
 				<DialogContent>
 					<DialogHeader>

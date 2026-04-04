@@ -4,6 +4,7 @@ import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
 import { getStub } from '@repo/do-utils'
 
 import { getCachedUserMemberships, getCachedUserPermissions } from '../lib/groups-cache'
+import { validatePagination } from '../lib/validation'
 import { requireAuth } from '../middleware/session'
 
 import type { Broadcasts } from '@repo/broadcasts'
@@ -363,6 +364,12 @@ broadcasts.get('/', async (c) => {
 	const user = c.get('user')!
 	const groupId = c.req.query('groupId')
 	const status = c.req.query('status') as any
+	const mine = c.req.query('mine') === 'true'
+	const pagination = validatePagination(c.req.query('limit'), c.req.query('offset'))
+
+	if (!pagination.success) {
+		return c.json({ error: pagination.error }, pagination.status)
+	}
 
 	// Get user's group memberships (admins can see all)
 	const memberships = user.is_admin ? [] : await getCachedUserMemberships(c.env, user.id)
@@ -375,16 +382,21 @@ broadcasts.get('/', async (c) => {
 		}
 	}
 
+	if (!user.is_admin && !groupId && userGroupIds.length === 0) {
+		return c.json({ rows: [], rowCount: 0 })
+	}
+
 	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
-	const broadcastList = await broadcastsStub.listBroadcasts(user.id, { groupId, status })
+	const page = await broadcastsStub.listBroadcasts(user.id, {
+		groupId,
+		groupIds: user.is_admin || groupId ? undefined : userGroupIds,
+		status,
+		createdBy: mine ? user.id : undefined,
+		limit: pagination.data.limit,
+		offset: pagination.data.offset,
+	})
 
-	// Filter broadcasts to only include those from groups the user is a member of
-	// Admins can see all broadcasts
-	const filteredBroadcasts = user.is_admin
-		? broadcastList
-		: broadcastList.filter((broadcast) => userGroupIds.includes(broadcast.groupId))
-
-	return c.json(filteredBroadcasts)
+	return c.json(page)
 })
 
 /**

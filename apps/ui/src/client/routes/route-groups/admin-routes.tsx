@@ -16,6 +16,7 @@ import AdminBillsTemplatesPage from '@/routes/admin/bills-templates'
 import AdminBillsTemplatesEditPage from '@/routes/admin/bills-templates-edit'
 import AdminBillsTemplatesNewPage from '@/routes/admin/bills-templates-new'
 import AdminBlacklistPage from '@/routes/admin/blacklist'
+import AdminBroadcastDetailPage from '@/routes/admin/broadcast-detail'
 import AdminBroadcastsPage from '@/routes/admin/broadcasts'
 import AdminBroadcastTargetsPage from '@/routes/admin/broadcasts-targets'
 import AdminBroadcastTemplatesPage from '@/routes/admin/broadcasts-templates'
@@ -91,6 +92,7 @@ export const adminRouteElements = (
 		<Route path="bills/:billId" element={<AdminBillsDetailPage />} />
 
 		<Route path="broadcasts" element={<AdminBroadcastsPage />} />
+		<Route path="broadcasts/:broadcastId" element={<AdminBroadcastDetailPage />} />
 		<Route path="broadcasts-targets" element={<AdminBroadcastTargetsPage />} />
 		<Route path="broadcasts-templates" element={<AdminBroadcastTemplatesPage />} />
 

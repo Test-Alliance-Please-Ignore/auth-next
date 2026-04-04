@@ -901,6 +901,11 @@ export interface BroadcastDelivery {
 	target?: BroadcastTarget
 }
 
+export interface BroadcastListResponse {
+	rows: Broadcast[]
+	rowCount: number
+}
+
 export interface CreateBroadcastTargetRequest {
 	name: string
 	description?: string
@@ -2131,10 +2136,17 @@ export class ApiClient {
 	}
 
 	// Broadcasts
-	async getBroadcasts(groupId?: string, status?: BroadcastStatus): Promise<BroadcastWithDetails[]> {
+	async getBroadcasts(
+		groupId?: string,
+		status?: BroadcastStatus,
+		options?: { limit?: number; offset?: number; mine?: boolean }
+	): Promise<BroadcastListResponse> {
 		const params = new URLSearchParams()
 		if (groupId) params.set('groupId', groupId)
 		if (status) params.set('status', status)
+		if (options?.limit !== undefined) params.set('limit', String(options.limit))
+		if (options?.offset !== undefined) params.set('offset', String(options.offset))
+		if (options?.mine) params.set('mine', 'true')
 		const query = params.toString()
 		return this.get(`/broadcasts${query ? `?${query}` : ''}`)
 	}
