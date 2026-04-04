@@ -184,7 +184,7 @@ function renderMarkdownText(text: string, keyPrefix: string): ReactNode {
 
 		if (content.startsWith('### ')) {
 			renderedLines.push(
-				<div key={lineKey} className="text-base font-semibold">
+				<div key={lineKey} className="text-2xl font-semibold">
 					{renderInline(content.slice(4), lineKey)}
 				</div>
 			)
@@ -193,7 +193,7 @@ function renderMarkdownText(text: string, keyPrefix: string): ReactNode {
 
 		if (content.startsWith('## ')) {
 			renderedLines.push(
-				<div key={lineKey} className="text-lg font-semibold">
+				<div key={lineKey} className="text-3xl font-semibold">
 					{renderInline(content.slice(3), lineKey)}
 				</div>
 			)
@@ -202,7 +202,7 @@ function renderMarkdownText(text: string, keyPrefix: string): ReactNode {
 
 		if (content.startsWith('# ')) {
 			renderedLines.push(
-				<div key={lineKey} className="text-xl font-semibold">
+				<div key={lineKey} className="text-4xl font-semibold">
 					{renderInline(content.slice(2), lineKey)}
 				</div>
 			)
