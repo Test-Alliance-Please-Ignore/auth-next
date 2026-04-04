@@ -543,6 +543,16 @@ export interface CorporationContractData {
 }
 
 /**
+ * Leaderboard entry for courier contracts
+ */
+export interface CourierLeaderboardEntry {
+	acceptorId: string
+	contractsCompleted: number
+	totalVolume: number
+	totalReward: number
+}
+
+/**
  * Corporation industry job data
  */
 export interface CorporationIndustryJobData {
@@ -1263,6 +1273,24 @@ export interface EveCorporationData {
 	 * @returns Array of contract data
 	 */
 	getContracts(corporationId: string, status?: string): Promise<CorporationContractData[]>
+
+	/**
+	 * Get alliance courier contracts by assignee ID
+	 * @param allianceId - The alliance ID (assignee_id on the contract)
+	 * @param status - Filter by contract status
+	 * @returns Array of courier contract data assigned to the alliance
+	 */
+	getAllianceCourierContracts(
+		allianceId: string,
+		status?: string
+	): Promise<CorporationContractData[]>
+
+	/**
+	 * Get leaderboard for completed courier contracts assigned to an alliance
+	 * @param allianceId - The alliance ID
+	 * @returns Leaderboard entries sorted by contracts completed descending
+	 */
+	getCourierLeaderboard(allianceId: string): Promise<CourierLeaderboardEntry[]>
 
 	/**
 	 * Get corporation industry jobs

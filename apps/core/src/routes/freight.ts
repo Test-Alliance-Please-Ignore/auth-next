@@ -11,12 +11,19 @@ import { getStub } from '@repo/do-utils'
 import { TimeCache, logger } from '@repo/hono-helpers'
 
 import { getCachedUserPermissions } from '../lib/groups-cache'
-import { requireAuth } from '../middleware/session'
+import { requireAllianceMember, requireAuth } from '../middleware/session'
 
+import type { EsiTypeResolver } from '@repo/esi'
+import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { Freight } from '@repo/freight'
 import type { App } from '../context'
 
 const FREIGHT_MANAGER_URN = 'urn:freight:manager'
+
+/**
+ * Hardcoded TEST Alliance Please Ignore alliance ID
+ */
+const ALLIANCE_ID = '498125261'
 
 /**
  * Permission check cache - 15 second TTL
@@ -329,6 +336,108 @@ app.delete('/routes/:routeId', requireAuth(), async (c) => {
 		}
 
 		return c.json({ error: 'Failed to delete freight route' }, 500)
+	}
+})
+
+/**
+ * GET /freight/contracts
+ * List alliance courier contracts with optional status filter (requires alliance membership)
+ */
+app.get('/contracts', requireAuth(), requireAllianceMember(), async (c) => {
+	try {
+		const status = c.req.query('status')
+		const corpDataStub = getStub<EveCorporationData>(
+			c.env.EVE_CORPORATION_DATA,
+			'alliance-queries'
+		)
+
+		const contracts = await corpDataStub.getAllianceCourierContracts(
+			ALLIANCE_ID,
+			status || undefined
+		)
+
+		// Collect all unique IDs that need name resolution
+		const idsToResolve = new Set<string>()
+		for (const contract of contracts) {
+			if (contract.issuerId) idsToResolve.add(contract.issuerId)
+			if (contract.acceptorId) idsToResolve.add(contract.acceptorId)
+			if (contract.startLocationId) idsToResolve.add(contract.startLocationId)
+			if (contract.endLocationId) idsToResolve.add(contract.endLocationId)
+		}
+
+		let names: Record<string, string> = {}
+		if (idsToResolve.size > 0) {
+			try {
+				const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
+				names = await resolver.resolveIds([...idsToResolve])
+			} catch (error) {
+				logger.error('Error resolving ESI IDs for freight contracts:', {
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
+		}
+
+		const enriched = contracts.map((contract) => ({
+			...contract,
+			issuerName: contract.issuerId ? (names[contract.issuerId] ?? null) : null,
+			acceptorName: contract.acceptorId ? (names[contract.acceptorId] ?? null) : null,
+			startLocationName: contract.startLocationId
+				? (names[contract.startLocationId] ?? null)
+				: null,
+			endLocationName: contract.endLocationId
+				? (names[contract.endLocationId] ?? null)
+				: null,
+		}))
+
+		return c.json(enriched)
+	} catch (error) {
+		logger.error('Error listing freight contracts:', {
+			error: error instanceof Error ? error.message : String(error),
+			stack: error instanceof Error ? error.stack : undefined,
+		})
+		return c.json({ error: 'Failed to list freight contracts' }, 500)
+	}
+})
+
+/**
+ * GET /freight/leaderboard
+ * Get leaderboard of completed courier contracts (requires alliance membership)
+ */
+app.get('/leaderboard', requireAuth(), requireAllianceMember(), async (c) => {
+	try {
+		const corpDataStub = getStub<EveCorporationData>(
+			c.env.EVE_CORPORATION_DATA,
+			'alliance-queries'
+		)
+
+		const leaderboard = await corpDataStub.getCourierLeaderboard(ALLIANCE_ID)
+
+		// Resolve acceptor names
+		const idsToResolve = leaderboard.map((entry) => entry.acceptorId)
+		let names: Record<string, string> = {}
+		if (idsToResolve.length > 0) {
+			try {
+				const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
+				names = await resolver.resolveIds(idsToResolve)
+			} catch (error) {
+				logger.error('Error resolving ESI IDs for leaderboard:', {
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
+		}
+
+		const enriched = leaderboard.map((entry) => ({
+			...entry,
+			acceptorName: names[entry.acceptorId] ?? null,
+		}))
+
+		return c.json(enriched)
+	} catch (error) {
+		logger.error('Error fetching freight leaderboard:', {
+			error: error instanceof Error ? error.message : String(error),
+			stack: error instanceof Error ? error.stack : undefined,
+		})
+		return c.json({ error: 'Failed to fetch leaderboard' }, 500)
 	}
 })
 

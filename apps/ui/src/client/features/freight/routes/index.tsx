@@ -1,16 +1,13 @@
 import { Check, Copy } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
-import { GhostButton } from '@/components/ui/ghost-button'
 import { Label } from '@/components/ui/label'
 import { NumberInput } from '@/components/ui/number-input'
 import { Select } from '@/components/ui/select'
 import { usePageTitle } from '@/hooks/usePageTitle'
-import { PERMISSIONS, useUserPermissions } from '@/hooks/useUserPermissions'
 
 import { useActiveFreightRoutes } from '../hooks'
 import { formatISK, formatNumber } from '../utils'
@@ -36,8 +33,6 @@ function calculateReward(route: FreightRoute, volume: number, collateral: number
 export default function FreightCalculatorPage() {
 	usePageTitle('Freight Calculator')
 	const { data: routes, isLoading, error } = useActiveFreightRoutes()
-	const { hasPermission } = useUserPermissions()
-	const canManage = hasPermission(PERMISSIONS.FREIGHT_MANAGER)
 
 	const [selectedRouteId, setSelectedRouteId] = useState<string>('')
 	const [volume, setVolume] = useState('')
@@ -81,18 +76,11 @@ export default function FreightCalculatorPage() {
 		selectedRoute?.maxVolume && volumeNum > parseFloat(selectedRoute.maxVolume)
 
 	const pageHeader = (
-		<div className="mb-section md:mb-10 flex flex-wrap items-center justify-between gap-4">
-			<div>
-				<h1 className="text-3xl font-bold gradient-text">Freight Calculator</h1>
-				<p className="text-muted-foreground mt-1">
-					Calculate your shipping cost and get the contract details to enter in-game
-				</p>
-			</div>
-			{canManage ? (
-				<GhostButton asChild>
-					<Link to="/freight/manage">Manage Routes</Link>
-				</GhostButton>
-			) : null}
+		<div className="mb-section md:mb-10">
+			<h1 className="text-3xl font-bold gradient-text">Freight Calculator</h1>
+			<p className="text-muted-foreground mt-1">
+				Calculate your shipping cost and get the contract details to enter in-game
+			</p>
 		</div>
 	)
 

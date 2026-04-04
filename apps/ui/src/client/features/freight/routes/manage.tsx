@@ -6,7 +6,6 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
-import { GhostButton } from '@/components/ui/ghost-button'
 import { Label } from '@/components/ui/label'
 import { PrimaryButton } from '@/components/ui/primary-button'
 import { Select } from '@/components/ui/select'
@@ -102,9 +101,6 @@ export default function FreightManagePage() {
 					<p className="text-muted-foreground mt-1">Manage official freight routes and pricing</p>
 				</div>
 				<div className="flex gap-2">
-					<GhostButton asChild>
-						<Link to="/freight">Back to Calculator</Link>
-					</GhostButton>
 					<PrimaryButton asChild>
 						<Link to="/freight/manage/new">
 							<Plus className="mr-2 h-4 w-4" />
