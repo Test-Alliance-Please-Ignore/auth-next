@@ -16,7 +16,7 @@ import {
 	BreadcrumbPage,
 	BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
-import { GhostButton } from '@/components/ui/ghost-button'
+import { Button } from '@/components/ui/button'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { FulcrumReportViewer } from '../components/fulcrum-report-viewer'
@@ -61,10 +61,10 @@ export default function FulcrumReportPage() {
 					</BreadcrumbList>
 				</Breadcrumb>
 
-				<GhostButton onClick={() => navigate(backPath)}>
+				<Button variant="ghost" onClick={() => navigate(backPath)}>
 					<ArrowLeft className="mr-2 h-4 w-4" />
 					Back to Application
-				</GhostButton>
+				</Button>
 			</div>
 
 			{/* Report Viewer */}

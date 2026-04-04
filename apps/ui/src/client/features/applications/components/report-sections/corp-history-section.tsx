@@ -29,7 +29,7 @@ export function CorpHistorySection({ data }: { data: ProcessedCorpHistoryEntry[]
 	}
 
 	return (
-		<div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-border/30 bg-card shadow-flat">
+		<div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-border/30">
 			<table className="w-full caption-bottom text-sm">
 				<thead className="sticky top-0 z-10 bg-card [&_tr]:border-b">
 					<tr className="border-b">

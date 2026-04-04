@@ -7,6 +7,7 @@
 
 import { useState } from 'react'
 
+import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
@@ -122,38 +123,52 @@ function OverviewContent({
 
 			{/* Character Header - full width */}
 			{loadingPublic ? (
-				<div className="space-y-3">
-					<Skeleton className="h-6 w-48" />
-					<Skeleton className="h-40 w-full" />
-				</div>
+				<Card>
+					<CardContent className="pt-6">
+						<div className="space-y-3">
+							<Skeleton className="h-6 w-48" />
+							<Skeleton className="h-40 w-full" />
+						</div>
+					</CardContent>
+				</Card>
 			) : publicInfo ? (
 				<>
-					<PublicInfoHeader data={publicInfo as any} />
+					<Card>
+						<CardContent className="pt-6">
+							<PublicInfoHeader data={publicInfo as any} />
+						</CardContent>
+					</Card>
 
 					{/* Info card (left) + Corp History (right) */}
 					<div className={`grid gap-6 ${hasCorpHistory ? 'lg:grid-cols-[1fr_2fr]' : ''}`}>
 						<div className="space-y-4">
-							<div className="space-y-2">
-								<h3 className="text-sm font-semibold text-foreground">Character Details</h3>
-								<PublicInfoCard data={publicInfo as any} />
-							</div>
-							<div className="space-y-2">
-								<h3 className="text-sm font-semibold text-foreground">External Links</h3>
-								<ExternalLinksCard data={publicInfo as any} />
-							</div>
+							<Card>
+								<CardContent className="pt-6">
+									<div className="space-y-2">
+										<h3 className="text-sm font-semibold text-foreground">Character Details</h3>
+										<PublicInfoCard data={publicInfo as any} />
+									</div>
+									<div className="mt-4 space-y-2">
+										<h3 className="text-sm font-semibold text-foreground">External Links</h3>
+										<ExternalLinksCard data={publicInfo as any} />
+									</div>
+								</CardContent>
+							</Card>
 						</div>
 
 						{hasCorpHistory && (
-							<div className="flex h-0 min-h-full flex-col gap-2">
-								<h3 className="shrink-0 text-sm font-semibold text-foreground">Corporation History</h3>
-								{loadingCorpHistory ? (
-									<Skeleton className="h-32 w-full" />
-								) : corpHistory ? (
-									<CorpHistorySection data={corpHistory as any} />
-								) : (
-									<p className="text-sm text-muted-foreground">No corporation history available.</p>
-								)}
-							</div>
+							<Card className="flex h-0 min-h-full flex-col">
+								<CardContent className="flex min-h-0 flex-1 flex-col gap-2 pt-6">
+									<h3 className="shrink-0 text-sm font-semibold text-foreground">Corporation History</h3>
+									{loadingCorpHistory ? (
+										<Skeleton className="h-32 w-full" />
+									) : corpHistory ? (
+										<CorpHistorySection data={corpHistory as any} />
+									) : (
+										<p className="text-sm text-muted-foreground">No corporation history available.</p>
+									)}
+								</CardContent>
+							</Card>
 						)}
 					</div>
 				</>
@@ -161,16 +176,18 @@ function OverviewContent({
 
 			{/* Full-width: Clones & Implants */}
 			{hasClones && (
-				<div className="space-y-2 border-t border-border pt-6">
-					<h3 className="text-sm font-semibold text-foreground">Clones &amp; Implants</h3>
-					{loadingClones ? (
-						<Skeleton className="h-32 w-full" />
-					) : clones ? (
-						<ClonesSection data={clones as any} />
-					) : (
-						<p className="text-sm text-muted-foreground">No clone data available.</p>
-					)}
-				</div>
+				<Card>
+					<CardContent className="pt-6">
+						<h3 className="mb-2 text-sm font-semibold text-foreground">Clones &amp; Implants</h3>
+						{loadingClones ? (
+							<Skeleton className="h-32 w-full" />
+						) : clones ? (
+							<ClonesSection data={clones as any} />
+						) : (
+							<p className="text-sm text-muted-foreground">No clone data available.</p>
+						)}
+					</CardContent>
+				</Card>
 			)}
 		</div>
 	)
@@ -255,7 +272,13 @@ function SectionContent({
 
 	// Communications section handles its own loading/error states
 	if (isCommunications) {
-		return <CommunicationsSection reportId={reportId} />
+		return (
+			<Card>
+				<CardContent className="pt-6">
+					<CommunicationsSection reportId={reportId} />
+				</CardContent>
+			</Card>
+		)
 	}
 
 	// Overview handles its own data fetching for multiple sections
@@ -265,48 +288,72 @@ function SectionContent({
 
 	if (isLoading) {
 		return (
-			<div className="space-y-3">
-				<Skeleton className="h-6 w-48" />
-				<Skeleton className="h-40 w-full" />
-				<Skeleton className="h-20 w-full" />
-			</div>
+			<Card>
+				<CardContent className="pt-6">
+					<div className="space-y-3">
+						<Skeleton className="h-6 w-48" />
+						<Skeleton className="h-40 w-full" />
+						<Skeleton className="h-20 w-full" />
+					</div>
+				</CardContent>
+			</Card>
 		)
 	}
 
 	if (error) {
 		return (
-			<p className="text-sm text-destructive">
-				Failed to load section: {error.message}
-			</p>
+			<Card>
+				<CardContent className="pt-6">
+					<p className="text-sm text-destructive">
+						Failed to load section: {error.message}
+					</p>
+				</CardContent>
+			</Card>
 		)
 	}
 
 	if (!data) {
-		return <p className="text-sm text-muted-foreground">No data available for this section.</p>
+		return (
+			<Card>
+				<CardContent className="pt-6">
+					<p className="text-sm text-muted-foreground">No data available for this section.</p>
+				</CardContent>
+			</Card>
+		)
 	}
 
 	// Render the appropriate section component
 	// Data comes from R2 JSON, so we cast through unknown → expected type
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const d = data as any
-	switch (section) {
-		case 'skills':
-			return <SkillsContentWithSubTabs reportId={reportId} characterId={characterId} skillsData={d} />
-		case 'assets':
-			return <AssetsSection data={d} />
-		case 'fitted-ships':
-			return <FittedShipsSection data={d} />
-		case 'contracts':
-			return <ContractsSection data={d} />
-		case 'wallet-transactions':
-			return <WalletTransactionsSection data={d} />
-		case 'wallet-journal':
-			return <WalletJournalSection data={d} />
-		case 'contacts':
-			return <ContactsSection data={d} />
-		default:
-			return <p className="text-sm text-muted-foreground">Unknown section.</p>
-	}
+	const content = (() => {
+		switch (section) {
+			case 'skills':
+				return <SkillsContentWithSubTabs reportId={reportId} characterId={characterId} skillsData={d} />
+			case 'assets':
+				return <AssetsSection data={d} />
+			case 'fitted-ships':
+				return <FittedShipsSection data={d} />
+			case 'contracts':
+				return <ContractsSection data={d} />
+			case 'wallet-transactions':
+				return <WalletTransactionsSection data={d} />
+			case 'wallet-journal':
+				return <WalletJournalSection data={d} />
+			case 'contacts':
+				return <ContactsSection data={d} />
+			default:
+				return <p className="text-sm text-muted-foreground">Unknown section.</p>
+		}
+	})()
+
+	return (
+		<Card>
+			<CardContent className="pt-6">
+				{content}
+			</CardContent>
+		</Card>
+	)
 }
 
 // ============================================================================
