@@ -17,6 +17,7 @@ interface CallbackResponse {
 		characterName: string
 	}
 	characterLinked?: boolean
+	tokenUpdated?: boolean
 	character?: {
 		id: string
 		characterId: number
@@ -59,8 +60,10 @@ export default function AuthCallbackPage() {
 				)
 
 				if (response.characterLinked) {
-					// Character was successfully linked - redirect to dashboard
-					void navigate('/dashboard')
+					// Character was successfully linked. If this was an existing character token update,
+					// flag dashboard to refetch auth/session immediately.
+					const destination = response.tokenUpdated ? '/dashboard?tokenUpdated=1' : '/dashboard'
+					void navigate(destination)
 				} else if (response.requiresClaimMain && response.characterInfo) {
 					// New user - redirect to claim-main page
 					void navigate('/claim-main', {
