@@ -122,7 +122,7 @@ export default function FittingDetailPage() {
 							</Button>
 						)}
 						{canDelete && (
-							<Button variant="danger"
+							<Button variant="destructive"
 								onClick={handleDelete}
 								loading={deleteMutation.isPending}
 								loadingText="Deleting..."

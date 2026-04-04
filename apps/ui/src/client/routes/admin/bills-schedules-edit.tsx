@@ -348,7 +348,7 @@ export default function AdminBillsSchedulesEditPage() {
 							Resume Schedule
 						</Button>
 					)}
-					<Button variant="danger"
+					<Button variant="destructive"
 						size="sm"
 						onClick={() => setDeleteDialogOpen(true)}
 						loading={deleteSchedule.isPending}
@@ -747,7 +747,7 @@ export default function AdminBillsSchedulesEditPage() {
 					</DialogHeader>
 					<DialogFooter>
 						<Button variant="cancel" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
-						<Button variant="danger" onClick={handleDelete} loading={deleteSchedule.isPending}>
+						<Button variant="destructive" onClick={handleDelete} loading={deleteSchedule.isPending}>
 							Delete Schedule
 						</Button>
 					</DialogFooter>

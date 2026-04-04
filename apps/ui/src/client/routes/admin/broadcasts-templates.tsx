@@ -221,7 +221,7 @@ export default function BroadcastTemplatesPage() {
 												<Button size="sm" variant="ghost" onClick={() => handleEdit(template)}>
 													Edit
 												</Button>
-												<Button variant="danger"
+												<Button variant="destructive"
 													size="sm"
 													onClick={() => handleDeleteClick(template)}
 													showIcon={false}
@@ -387,7 +387,7 @@ export default function BroadcastTemplatesPage() {
 						>
 							Cancel
 						</Button>
-						<Button variant="danger"
+						<Button variant="destructive"
 							onClick={handleDeleteConfirm}
 							loading={deleteTemplate.isPending}
 							loadingText="Deleting..."

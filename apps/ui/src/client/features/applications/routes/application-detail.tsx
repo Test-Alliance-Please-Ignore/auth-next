@@ -368,7 +368,7 @@ export default function ApplicationDetail() {
 					{/* Withdraw Button */}
 					{canWithdraw && (
 						<div className="flex justify-end">
-							<Button variant="danger" onClick={handleWithdrawClick}>
+							<Button variant="destructive" onClick={handleWithdrawClick}>
 								Withdraw Application
 							</Button>
 						</div>
@@ -459,7 +459,7 @@ export default function ApplicationDetail() {
 						>
 							Cancel
 						</Button>
-						<Button variant="danger"
+						<Button variant="destructive"
 							onClick={handleWithdrawConfirm}
 							loading={withdrawMutation.isPending}
 							loadingText="Withdrawing..."

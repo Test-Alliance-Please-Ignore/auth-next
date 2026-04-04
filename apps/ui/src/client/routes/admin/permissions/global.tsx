@@ -308,7 +308,7 @@ export default function GlobalPermissionsPage() {
 											<Button variant="ghost" size="sm" onClick={() => openEditDialog(permission)}>
 												Edit
 											</Button>
-											<Button variant="danger" size="sm" onClick={() => openDeleteDialog(permission)}>
+											<Button variant="destructive" size="sm" onClick={() => openDeleteDialog(permission)}>
 												<Trash2 className="h-4 w-4" />
 											</Button>
 										</div>
@@ -379,7 +379,7 @@ export default function GlobalPermissionsPage() {
 						>
 							Cancel
 						</Button>
-						<Button variant="danger" onClick={handleDelete} loading={deletePermission.isPending}>
+						<Button variant="destructive" onClick={handleDelete} loading={deletePermission.isPending}>
 							Delete Permission
 						</Button>
 					</DialogFooter>

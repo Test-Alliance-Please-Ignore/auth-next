@@ -1,4 +1,4 @@
-import { Plus, Trash2 } from 'lucide-react'
+import { Edit, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -222,17 +222,25 @@ export default function BroadcastTargetsPage() {
 											<TableCell className="text-sm text-muted-foreground">
 												{config.channelId && `Channel: ${config.channelId}`}
 											</TableCell>
-											<TableCell className="text-right space-x-2">
-												<Button size="sm" variant="ghost" onClick={() => handleEdit(target)}>
-													Edit
-												</Button>
-												<Button variant="danger"
-													size="sm"
-													onClick={() => handleDeleteClick(target)}
-													showIcon={false}
-												>
-													Delete
-												</Button>
+											<TableCell className="text-right">
+												<div className="flex items-center justify-end gap-2">
+													<Button
+														size="sm"
+														variant="ghost"
+														onClick={() => handleEdit(target)}
+														title="Edit target"
+													>
+														<Edit className="h-4 w-4" />
+													</Button>
+													<Button
+														variant="ghost"
+														size="sm"
+														onClick={() => handleDeleteClick(target)}
+														title="Delete target"
+													>
+														<Trash2 className="h-4 w-4 text-destructive" />
+													</Button>
+												</div>
 											</TableCell>
 										</TableRow>
 									)
@@ -276,9 +284,7 @@ export default function BroadcastTargetsPage() {
 								value={formData.groupId}
 								onValueChange={(value) => setFormData({ ...formData, groupId: value })}
 								placeholder="Select a group"
-								options={(groups ?? []).map((group) => ({ value: group.id,
-									label: group.name,
-								}))}
+								options={(groups ?? []).map((group) => ({ value: group.id, label: group.name }))}
 							/>
 						</div>
 						<div>
@@ -313,7 +319,8 @@ export default function BroadcastTargetsPage() {
 							<Button variant="cancel" onClick={() => setCreateDialogOpen(false)} type="button">
 								Cancel
 							</Button>
-							<Button variant="confirm"
+							<Button
+								variant="confirm"
 								type="submit"
 								loading={createTarget.isPending}
 								loadingText="Creating..."
@@ -380,7 +387,8 @@ export default function BroadcastTargetsPage() {
 							/>
 						</div>
 						<DialogFooter>
-							<Button variant="cancel"
+							<Button
+								variant="cancel"
 								onClick={() => {
 									setEditDialogOpen(false)
 									setSelectedTarget(null)
@@ -390,7 +398,8 @@ export default function BroadcastTargetsPage() {
 							>
 								Cancel
 							</Button>
-							<Button variant="confirm"
+							<Button
+								variant="confirm"
 								type="submit"
 								loading={updateTarget.isPending}
 								loadingText="Updating..."
@@ -413,7 +422,8 @@ export default function BroadcastTargetsPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<Button variant="cancel"
+						<Button
+							variant="cancel"
 							onClick={() => {
 								setDeleteDialogOpen(false)
 								setSelectedTarget(null)
@@ -422,7 +432,8 @@ export default function BroadcastTargetsPage() {
 						>
 							Cancel
 						</Button>
-						<Button variant="danger"
+						<Button
+							variant="destructive"
 							onClick={handleDeleteConfirm}
 							loading={deleteTarget.isPending}
 							loadingText="Deleting..."

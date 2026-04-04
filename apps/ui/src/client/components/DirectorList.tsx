@@ -276,7 +276,7 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 					</DialogHeader>
 					<DialogFooter>
 						<Button variant="cancel" onClick={() => setRemoveDialogOpen(false)}>Cancel</Button>
-						<Button variant="danger"
+						<Button variant="destructive"
 							onClick={handleRemove}
 							loading={removeDirector.isPending}
 							loadingText="Removing..."

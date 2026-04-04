@@ -558,12 +558,12 @@ export default function GroupDetailPage() {
 			<Card className="border-destructive bg-destructive/10">
 				<CardContent className="py-8 text-center">
 					<p className="text-destructive font-medium">Group not found</p>
-					<Link to="/admin/groups">
-						<Button variant="ghost" className="mt-4">
+					<Button variant="ghost" className="mt-4" asChild>
+						<Link to="/admin/groups">
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to Groups
-						</Button>
-					</Link>
+						</Link>
+					</Button>
 				</CardContent>
 			</Card>
 		)
@@ -576,12 +576,12 @@ export default function GroupDetailPage() {
 	return (
 		<div className="space-y-6">
 			{/* Back Button */}
-			<Link to="/admin/groups">
-				<Button variant="ghost" size="sm">
+			<Button variant="ghost" size="sm" asChild>
+				<Link to="/admin/groups">
 					<ArrowLeft className="mr-2 h-4 w-4" />
 					Back to Groups
-				</Button>
-			</Link>
+				</Link>
+			</Button>
 
 			{/* Success/Error Message */}
 			{message && (
@@ -823,7 +823,8 @@ export default function GroupDetailPage() {
 							</div>
 
 							<DialogFooter>
-								<Button variant="cancel"
+								<Button
+									variant="cancel"
 									onClick={() => {
 										setShowCreateInviteCodeDialog(false)
 										setInviteCodeSettings({ maxUses: null, expiresInDays: 7 })
@@ -831,7 +832,8 @@ export default function GroupDetailPage() {
 								>
 									Cancel
 								</Button>
-								<Button variant="confirm"
+								<Button
+									variant="confirm"
 									onClick={handleCreateInviteCode}
 									loading={createInviteCode.isPending}
 									loadingText="Creating..."
@@ -1010,9 +1012,7 @@ export default function GroupDetailPage() {
 																		(ra) => ra.discordRole.roleId === role.roleId
 																	)
 															)
-															.map((role) => ({ value: role.id,
-																label: role.roleName,
-															}))}
+															.map((role) => ({ value: role.id, label: role.roleName }))}
 														placeholder="Add role..."
 														emptyText="No matching roles found"
 														className="w-full"
@@ -1050,9 +1050,7 @@ export default function GroupDetailPage() {
 												(server) =>
 													!groupDiscordServers.some((att) => att.discordServerId === server.id)
 											)
-											.map((server) => ({ value: server.id,
-												label: server.guildName,
-											}))}
+											.map((server) => ({ value: server.id, label: server.guildName }))}
 										placeholder="Choose a server..."
 										className="w-full"
 									/>
@@ -1088,8 +1086,11 @@ export default function GroupDetailPage() {
 							</div>
 
 							<DialogFooter>
-								<Button variant="cancel" onClick={() => setShowAddServerDialog(false)}>Cancel</Button>
-								<Button variant="confirm"
+								<Button variant="cancel" onClick={() => setShowAddServerDialog(false)}>
+									Cancel
+								</Button>
+								<Button
+									variant="confirm"
 									onClick={handleAttachServer}
 									disabled={!selectedServerId}
 									showIcon={false}
@@ -1196,7 +1197,8 @@ export default function GroupDetailPage() {
 								</DialogDescription>
 							</DialogHeader>
 							<DialogFooter>
-								<Button variant="cancel"
+								<Button
+									variant="cancel"
 									onClick={() => {
 										setRemovePermissionDialogOpen(false)
 										setSelectedPermission(null)
@@ -1205,7 +1207,8 @@ export default function GroupDetailPage() {
 								>
 									Cancel
 								</Button>
-								<Button variant="danger"
+								<Button
+									variant="danger"
 									onClick={handleRemovePermission}
 									loading={removePermission.isPending}
 									loadingText="Removing..."
@@ -1267,7 +1270,8 @@ export default function GroupDetailPage() {
 									<li>All permissions</li>
 								</ul>
 							</div>
-							<Button variant="danger"
+							<Button
+								variant="danger"
 								onClick={() => {
 									setDeleteConfirmationText('')
 									setDeleteGroupDialogOpen(true)
@@ -1293,7 +1297,8 @@ export default function GroupDetailPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<Button variant="cancel"
+						<Button
+							variant="cancel"
 							onClick={() => {
 								setRemoveDialogOpen(false)
 								setSelectedUserId(null)
@@ -1302,7 +1307,8 @@ export default function GroupDetailPage() {
 						>
 							Cancel
 						</Button>
-						<Button variant="danger"
+						<Button
+							variant="danger"
 							onClick={handleRemoveMemberConfirm}
 							loading={removeMember.isPending}
 							loadingText="Removing..."
@@ -1327,7 +1333,8 @@ export default function GroupDetailPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<Button variant="cancel"
+						<Button
+							variant="cancel"
 							onClick={() => {
 								setAdminDialogOpen(false)
 								setSelectedUserId(null)
@@ -1337,7 +1344,8 @@ export default function GroupDetailPage() {
 							Cancel
 						</Button>
 						{selectedUserIsAdmin ? (
-							<Button variant="danger"
+							<Button
+								variant="danger"
 								onClick={handleToggleAdminConfirm}
 								loading={toggleAdmin.isPending}
 								loadingText="Removing..."
@@ -1347,7 +1355,8 @@ export default function GroupDetailPage() {
 								Remove Admin
 							</Button>
 						) : (
-							<Button variant="confirm"
+							<Button
+								variant="confirm"
 								onClick={handleToggleAdminConfirm}
 								loading={toggleAdmin.isPending}
 								loadingText="Promoting..."
@@ -1468,7 +1477,8 @@ export default function GroupDetailPage() {
 						</div>
 					</div>
 					<DialogFooter>
-						<Button variant="cancel"
+						<Button
+							variant="cancel"
 							onClick={() => {
 								setDeleteGroupDialogOpen(false)
 								setDeleteConfirmationText('')
@@ -1477,7 +1487,8 @@ export default function GroupDetailPage() {
 						>
 							Cancel
 						</Button>
-						<Button variant="danger"
+						<Button
+							variant="danger"
 							onClick={handleDeleteGroup}
 							disabled={deleteConfirmationText !== group?.name}
 							loading={deleteGroup.isPending}

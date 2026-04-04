@@ -454,7 +454,7 @@ export default function GroupDetailPage() {
 						</DialogHeader>
 						<DialogFooter>
 							<Button variant="cancel" onClick={() => setRemoveMemberDialogOpen(false)}>Cancel</Button>
-							<Button variant="danger"
+							<Button variant="destructive"
 								onClick={handleConfirmRemove}
 								loading={removeMember.isPending}
 								loadingText="Removing..."

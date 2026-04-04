@@ -124,7 +124,7 @@ export function DeleteHRNoteDialog({
 					<Button variant="ghost" onClick={handleCancel} disabled={isPending}>
 						Cancel
 					</Button>
-					<Button variant="danger" onClick={handleDelete} disabled={isPending}>
+					<Button variant="destructive" onClick={handleDelete} disabled={isPending}>
 						{isPending ? 'Deleting...' : 'Delete Note'}
 					</Button>
 				</DialogFooter>

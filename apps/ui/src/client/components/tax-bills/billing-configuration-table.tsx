@@ -103,7 +103,7 @@ export function BillingConfigurationTable({
 										>
 											Set Default
 										</Button>
-										<Button variant="danger"
+										<Button variant="destructive"
 											size="sm"
 											showIcon={false}
 											disabled={actionsDisabled || config.isDefault}

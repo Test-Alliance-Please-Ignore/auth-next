@@ -180,7 +180,7 @@ export function RuleGroupScopeCard({
 								>
 									{isUpdating ? 'Saving...' : 'Save Group'}
 								</Button>
-								<Button variant="danger"
+								<Button variant="destructive"
 									size="sm"
 									showIcon={false}
 									disabled={isDeleting}
@@ -205,7 +205,7 @@ export function RuleGroupScopeCard({
 							<Button variant="cancel" onClick={() => setDeleteGroupDialogOpen(false)} disabled={isDeleting}>
 								Cancel
 							</Button>
-							<Button variant="danger"
+							<Button variant="destructive"
 								loading={isDeleting}
 								loadingText="Deleting..."
 								showIcon={false}

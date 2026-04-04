@@ -192,7 +192,7 @@ export default function BillsTemplatesPage() {
 													>
 														<Copy className="h-4 w-4" />
 													</Button>
-													<Button variant="danger"
+													<Button variant="destructive"
 														size="sm"
 														showIcon={false}
 														onClick={() => handleDelete(template.id, template.name)}

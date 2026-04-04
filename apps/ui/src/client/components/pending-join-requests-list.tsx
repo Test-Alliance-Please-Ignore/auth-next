@@ -136,7 +136,7 @@ export function PendingJoinRequestsList({ groupId }: PendingJoinRequestsListProp
 										<Check className="h-4 w-4 mr-1" />
 										Approve
 									</Button>
-									<Button variant="danger"
+									<Button variant="destructive"
 										size="sm"
 										disabled={processingId === request.id}
 										loading={processingId === request.id && rejectRequest.isPending}

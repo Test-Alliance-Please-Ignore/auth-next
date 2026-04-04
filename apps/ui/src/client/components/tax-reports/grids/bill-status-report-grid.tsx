@@ -113,7 +113,7 @@ export function BillStatusReportGrid(props: {
 								</Button>
 							) : null}
 							{canRetract ? (
-								<Button variant="danger"
+								<Button variant="destructive"
 									size="sm"
 									showIcon={false}
 									disabled={Boolean(busy) || !props.onRetractBill}

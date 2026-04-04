@@ -144,7 +144,7 @@ export default function SkillPlanDetail() {
 							</>
 						)}
 						{plan.canDelete && (
-							<Button variant="danger" onClick={handleDelete}>
+							<Button variant="destructive" onClick={handleDelete}>
 								<Trash2 className="h-4 w-4 mr-2" />
 								Delete
 							</Button>

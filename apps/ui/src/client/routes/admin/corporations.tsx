@@ -527,7 +527,7 @@ export default function CorporationsPage() {
 					</DialogHeader>
 					<DialogFooter>
 						<Button variant="cancel" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
-						<Button variant="danger"
+						<Button variant="destructive"
 							onClick={handleDelete}
 							loading={deleteCorporation.isPending}
 							loadingText="Removing..."

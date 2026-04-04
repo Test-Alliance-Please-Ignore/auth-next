@@ -226,7 +226,7 @@ export default function BillsSchedulesPage() {
 															Resume
 														</Button>
 													)}
-													<Button variant="danger"
+													<Button variant="destructive"
 														size="sm"
 														showIcon={false}
 														onClick={() => handleDelete(schedule.id)}

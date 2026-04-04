@@ -208,7 +208,7 @@ export default function PermissionCategoriesPage() {
 											<Button variant="ghost" size="sm" onClick={() => openEditDialog(category)}>
 												Edit
 											</Button>
-											<Button variant="danger" size="sm" onClick={() => openDeleteDialog(category)}>
+											<Button variant="destructive" size="sm" onClick={() => openDeleteDialog(category)}>
 												<Trash2 className="h-4 w-4" />
 											</Button>
 										</div>
@@ -277,7 +277,7 @@ export default function PermissionCategoriesPage() {
 						>
 							Cancel
 						</Button>
-						<Button variant="danger" onClick={handleDelete} loading={deleteCategory.isPending}>
+						<Button variant="destructive" onClick={handleDelete} loading={deleteCategory.isPending}>
 							Delete Category
 						</Button>
 					</DialogFooter>

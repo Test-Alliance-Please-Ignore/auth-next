@@ -555,7 +555,7 @@ export default function BlacklistPage() {
 					</DialogHeader>
 					<DialogFooter>
 						<Button variant="cancel" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
-						<Button variant="danger" onClick={handleDelete} loading={removeBlacklist.isPending}>
+						<Button variant="destructive" onClick={handleDelete} loading={removeBlacklist.isPending}>
 							Remove from Blacklist
 						</Button>
 					</DialogFooter>

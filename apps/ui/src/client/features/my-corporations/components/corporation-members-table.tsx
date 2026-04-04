@@ -558,7 +558,7 @@ export default function CorporationMembersTable({
 												</Button>
 											)}
 											{canManageHrRoles && member.hrRole && (
-												<Button variant="danger"
+												<Button variant="destructive"
 													size="sm"
 													showIcon={false}
 													onClick={() => setRevokeDialogMember(member)}

@@ -54,7 +54,7 @@ export function LeaveButton({ group, onSuccess }: LeaveButtonProps) {
 
 	return (
 		<>
-			<Button variant="danger" onClick={() => setConfirmOpen(true)}>
+			<Button variant="destructive" onClick={() => setConfirmOpen(true)}>
 				<LogOut className="mr-2 h-4 w-4" />
 				Leave Group
 			</Button>
@@ -77,7 +77,7 @@ export function LeaveButton({ group, onSuccess }: LeaveButtonProps) {
 						<Button variant="cancel" onClick={() => setConfirmOpen(false)} disabled={leaveGroup.isPending}>
 							Cancel
 						</Button>
-						<Button variant="danger"
+						<Button variant="destructive"
 							onClick={handleLeave}
 							loading={leaveGroup.isPending}
 							loadingText="Leaving..."

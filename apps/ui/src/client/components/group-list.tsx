@@ -1,4 +1,4 @@
-import { Eye, UserPlus, Users } from 'lucide-react'
+import { ExternalLink, UserPlus, Users } from 'lucide-react'
 import { memo, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 
@@ -81,10 +81,9 @@ const GroupRow = memo(
 								{isJoining ? 'Joining...' : 'Quick Join'}
 							</Button>
 						)}
-						<Button variant="ghost" size="sm" asChild>
+						<Button variant="ghost" size="sm" asChild title="View details">
 							<Link to={groupDetailUrl}>
-								<Eye className="mr-2 h-4 w-4" />
-								View Details
+								<ExternalLink className="h-4 w-4" />
 							</Link>
 						</Button>
 					</div>
@@ -210,10 +209,9 @@ export const GroupList = memo(function GroupList({
 												{joinGroup.isPending ? 'Joining...' : 'Quick Join'}
 											</Button>
 										) : (
-											<Button variant="ghost" size="sm" asChild>
+											<Button variant="ghost" size="sm" asChild title="View details">
 												<Link to={groupDetailUrl}>
-													<Eye className="mr-2 h-4 w-4" />
-													View Details
+													<ExternalLink className="h-4 w-4" />
 												</Link>
 											</Button>
 										)}

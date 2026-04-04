@@ -351,7 +351,7 @@ export function RuleRowEditor({
 						<Button variant="cancel" onClick={() => setIsDeleteDialogOpen(false)} disabled={isSaving}>
 							Cancel
 						</Button>
-						<Button variant="danger"
+						<Button variant="destructive"
 							loading={isSaving}
 							loadingText="Deleting..."
 							showIcon={false}

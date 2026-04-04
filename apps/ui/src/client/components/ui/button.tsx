@@ -46,11 +46,11 @@ const buttonVariants = cva(
 					'cursor-pointer disabled:cursor-not-allowed',
 				],
 				destructive: [
-					'bg-destructive-alt text-destructive-alt-foreground',
-					'border-2 border-destructive-alt/70',
-					'shadow-lg shadow-destructive-alt/25',
-					'hover:bg-destructive-alt-hover hover:shadow-xl hover:shadow-destructive-alt-hover/40 hover:border-destructive-alt-hover/70',
-					'focus-visible:ring-destructive-alt',
+					'bg-warning text-warning-foreground',
+					'border-2 border-warning/70',
+					'shadow-lg shadow-warning/25',
+					'hover:bg-warning/90 hover:shadow-xl hover:shadow-warning/40 hover:border-warning/70',
+					'focus-visible:ring-warning',
 					'cursor-pointer disabled:cursor-not-allowed',
 				],
 				danger: [

@@ -78,7 +78,7 @@ export function GroupPermissionCard({
 							</Button>
 						)}
 						{onRemove && (
-							<Button variant="danger" size="sm" onClick={() => onRemove(permission)}>
+							<Button variant="destructive" size="sm" onClick={() => onRemove(permission)}>
 								<Trash2 className="h-4 w-4" />
 							</Button>
 						)}

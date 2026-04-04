@@ -245,7 +245,7 @@ export function ManageTemplatesDialog({
 												{deleteConfirmId === template.id ? (
 													<div className="flex items-center gap-1">
 														<Button
-															variant="danger"
+															variant="destructive"
 															size="sm"
 															className="h-8 px-2 text-xs"
 															onClick={() => handleDelete(template.id)}

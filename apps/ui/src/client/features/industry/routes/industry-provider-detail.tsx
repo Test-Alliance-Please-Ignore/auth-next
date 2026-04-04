@@ -228,7 +228,7 @@ export default function IndustryProviderDetailPage() {
 							Edit
 						</Link>
 					</Button>
-					<Button variant="danger" onClick={() => setDeleteDialogOpen(true)}>
+					<Button variant="destructive" onClick={() => setDeleteDialogOpen(true)}>
 						<Trash2 className="h-4 w-4 mr-2" />
 						Delete
 					</Button>
@@ -417,7 +417,7 @@ export default function IndustryProviderDetailPage() {
 					</DialogHeader>
 					<DialogFooter>
 						<Button variant="cancel" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
-						<Button variant="danger"
+						<Button variant="destructive"
 							onClick={handleDeleteProvider}
 							loading={deleteProvider.isPending}
 							loadingText="Deleting..."
@@ -483,7 +483,7 @@ export default function IndustryProviderDetailPage() {
 						>
 							Cancel
 						</Button>
-						<Button variant="danger"
+						<Button variant="destructive"
 							onClick={handleRemoveService}
 							loading={removeService.isPending}
 							loadingText="Removing..."

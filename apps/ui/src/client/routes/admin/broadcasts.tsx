@@ -1,8 +1,9 @@
-import { Trash2 } from 'lucide-react'
+import { ExternalLink, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
 	Dialog,
@@ -31,7 +32,6 @@ import { useGroups } from '@/hooks/useGroups'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import type { Broadcast, BroadcastStatus } from '@/lib/api'
-import { Button } from '@/components/ui/button'
 
 const statusColors: Record<BroadcastStatus, string> = {
 	draft: 'bg-gray-500',
@@ -201,20 +201,22 @@ export default function AdminBroadcastsPage() {
 											<TableCell className="text-sm text-muted-foreground">
 												{broadcast.scheduledFor ? formatDate(broadcast.scheduledFor) : '-'}
 											</TableCell>
-											<TableCell className="text-right space-x-2">
-												<Link
-													to={`/admin/broadcasts/${broadcast.id}`}
-													className="text-sm text-primary hover:underline"
-												>
-													View Details
-												</Link>
-												<Button variant="danger"
-													size="sm"
-													onClick={() => handleDeleteClick(broadcast)}
-													showIcon={false}
-												>
-													Delete
-												</Button>
+											<TableCell className="text-right">
+												<div className="flex items-center justify-end gap-2">
+													<Link to={`/admin/broadcasts/${broadcast.id}`}>
+														<Button variant="ghost" size="sm" title="Show details">
+															<ExternalLink className="h-4 w-4" />
+														</Button>
+													</Link>
+													<Button
+														variant="ghost"
+														size="sm"
+														onClick={() => handleDeleteClick(broadcast)}
+														title="Delete broadcast"
+													>
+														<Trash2 className="h-4 w-4 text-destructive" />
+													</Button>
+												</div>
 											</TableCell>
 										</TableRow>
 									)
@@ -235,7 +237,8 @@ export default function AdminBroadcastsPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<Button variant="cancel"
+						<Button
+							variant="cancel"
 							onClick={() => {
 								setDeleteDialogOpen(false)
 								setSelectedBroadcast(null)
@@ -244,7 +247,8 @@ export default function AdminBroadcastsPage() {
 						>
 							Cancel
 						</Button>
-						<Button variant="danger"
+						<Button
+							variant="destructive"
 							onClick={handleDeleteConfirm}
 							loading={deleteBroadcast.isPending}
 							loadingText="Deleting..."

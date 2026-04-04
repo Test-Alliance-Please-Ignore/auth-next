@@ -269,7 +269,7 @@ export function ApplicationActionPanel({
 
 					{/* Reject - Admin Only */}
 					{canReject && (
-						<Button variant="danger"
+						<Button variant="destructive"
 							onClick={handleRejectClick}
 							disabled={disabled || updateStatusMutation.isPending}
 							className="flex-1"
@@ -373,7 +373,7 @@ export function ApplicationActionPanel({
 						>
 							Cancel
 						</Button>
-						<Button variant="danger"
+						<Button variant="destructive"
 							onClick={handleRejectConfirm}
 							loading={updateStatusMutation.isPending}
 							loadingText="Rejecting..."

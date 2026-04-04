@@ -202,7 +202,7 @@ export default function CategoriesPage() {
 						>
 							Cancel
 						</Button>
-						<Button variant="danger"
+						<Button variant="destructive"
 							onClick={handleDeleteConfirm}
 							loading={deleteCategory.isPending}
 							loadingText="Deleting..."

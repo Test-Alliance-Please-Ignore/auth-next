@@ -114,7 +114,7 @@ export function EmeritusConfirmationDialog({
 						<Button variant="cancel" type="button" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
 							Cancel
 						</Button>
-						<Button variant="danger"
+						<Button variant="destructive"
 							type="submit"
 							loading={isSubmitting}
 							loadingText={

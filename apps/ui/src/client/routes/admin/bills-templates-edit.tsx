@@ -254,7 +254,7 @@ export default function AdminBillsTemplatesEditPage() {
 						<Copy className="mr-2 h-4 w-4" />
 						Clone
 					</Button>
-					<Button variant="danger"
+					<Button variant="destructive"
 						size="sm"
 						onClick={() => setDeleteDialogOpen(true)}
 						loading={deleteTemplate.isPending}
@@ -568,7 +568,7 @@ export default function AdminBillsTemplatesEditPage() {
 					</DialogHeader>
 					<DialogFooter>
 						<Button variant="cancel" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
-						<Button variant="danger" onClick={handleDelete} loading={deleteTemplate.isPending}>
+						<Button variant="destructive" onClick={handleDelete} loading={deleteTemplate.isPending}>
 							Delete Template
 						</Button>
 					</DialogFooter>

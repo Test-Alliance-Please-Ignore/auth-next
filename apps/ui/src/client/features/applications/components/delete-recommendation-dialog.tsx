@@ -107,7 +107,7 @@ export function DeleteRecommendationDialog({
 					<Button variant="ghost" onClick={handleCancel} disabled={deleteMutation.isPending}>
 						Cancel
 					</Button>
-					<Button variant="danger"
+					<Button variant="destructive"
 						onClick={handleDelete}
 						loading={deleteMutation.isPending}
 						loadingText="Deleting..."

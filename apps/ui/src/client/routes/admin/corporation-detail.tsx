@@ -1061,7 +1061,7 @@ export default function CorporationDetailPage() {
 													</p>
 												</div>
 												<Button
-													variant="danger"
+													variant="destructive"
 													size="sm"
 													showIcon={false}
 													onClick={() =>

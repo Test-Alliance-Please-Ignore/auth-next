@@ -116,7 +116,7 @@ export function ServiceDialog({
 					<Button
 						onClick={handleReset}
 						disabled={isResetting || !service.enabled}
-						variant="danger"
+						variant="destructive"
 						className="w-full"
 					>
 						<RefreshCw className={`mr-2 h-4 w-4 ${isResetting ? 'animate-spin' : ''}`} />

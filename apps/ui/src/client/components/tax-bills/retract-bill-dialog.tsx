@@ -43,7 +43,7 @@ export function RetractBillDialog({
 					<Button variant="cancel" showIcon={false} disabled={isPending} onClick={onClose}>
 						Cancel
 					</Button>
-					<Button variant="danger"
+					<Button variant="destructive"
 						showIcon={false}
 						disabled={
 							!canIssue || !effectiveCorporationId || !assessmentId || !canRetract || isPending

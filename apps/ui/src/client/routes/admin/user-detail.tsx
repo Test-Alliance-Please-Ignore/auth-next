@@ -486,7 +486,7 @@ export default function UserDetailPage() {
 										</Badge>
 									)}
 									{user.is_admin ? (
-										<Button variant="danger"
+										<Button variant="destructive"
 											onClick={() => setAdminDialogOpen(true)}
 											disabled={setUserAdmin.isPending}
 											size="sm"
@@ -496,7 +496,7 @@ export default function UserDetailPage() {
 											Revoke Admin
 										</Button>
 									) : (
-										<Button variant="danger"
+										<Button variant="destructive"
 											onClick={() => setAdminDialogOpen(true)}
 											disabled={setUserAdmin.isPending}
 											size="sm"
@@ -517,7 +517,7 @@ export default function UserDetailPage() {
 											Remove from Blacklist
 										</Button>
 									) : (
-										<Button variant="danger"
+										<Button variant="destructive"
 											onClick={() => setBlacklistDialogOpen(true)}
 											disabled={createBlacklist.isPending}
 											size="sm"
@@ -543,7 +543,7 @@ export default function UserDetailPage() {
 											</span>
 										</Button>
 									)}
-									<Button variant="danger"
+									<Button variant="destructive"
 										onClick={() => setClearSessionsDialogOpen(true)}
 										disabled={clearSessions.isPending}
 										size="sm"
@@ -644,7 +644,7 @@ export default function UserDetailPage() {
 											/>
 											Update Discord Access
 										</Button>
-										<Button variant="danger"
+										<Button variant="destructive"
 											onClick={() => setRevokeDiscordDialogOpen(true)}
 											disabled={revokeDiscord.isPending}
 											size="sm"
@@ -655,7 +655,7 @@ export default function UserDetailPage() {
 										</Button>
 									</>
 								)}
-								<Button variant="danger"
+								<Button variant="destructive"
 									onClick={() => setUnlinkDiscordDialogOpen(true)}
 									disabled={unlinkDiscord.isPending}
 									size="sm"
@@ -923,7 +923,7 @@ export default function UserDetailPage() {
 							Cancel
 						</Button>
 						{user.is_admin ? (
-							<Button variant="danger"
+							<Button variant="destructive"
 								onClick={handleToggleAdmin}
 								loading={setUserAdmin.isPending}
 								showIcon={false}
@@ -965,7 +965,7 @@ export default function UserDetailPage() {
 						>
 							Cancel
 						</Button>
-						<Button variant="danger"
+						<Button variant="destructive"
 							onClick={handleRevokeDiscordConfirm}
 							loading={revokeDiscord.isPending}
 							loadingText="Revoking..."
@@ -1004,7 +1004,7 @@ export default function UserDetailPage() {
 						>
 							Cancel
 						</Button>
-						<Button variant="danger"
+						<Button variant="destructive"
 							onClick={handleUnlinkDiscordConfirm}
 							loading={unlinkDiscord.isPending}
 							loadingText="Unlinking..."
@@ -1035,7 +1035,7 @@ export default function UserDetailPage() {
 						>
 							Cancel
 						</Button>
-						<Button variant="danger"
+						<Button variant="destructive"
 							onClick={handleClearSessionsConfirm}
 							loading={clearSessions.isPending}
 							loadingText="Clearing..."
@@ -1106,7 +1106,7 @@ export default function UserDetailPage() {
 						>
 							Cancel
 						</Button>
-						<Button variant="danger"
+						<Button variant="destructive"
 							onClick={handleDeleteCharacterConfirm}
 							loading={deleteCharacter.isPending}
 							loadingText="Deleting..."
@@ -1275,7 +1275,7 @@ export default function UserDetailPage() {
 						>
 							Cancel
 						</Button>
-						<Button variant="danger"
+						<Button variant="destructive"
 							onClick={handleBlacklistConfirm}
 							loading={createBlacklist.isPending}
 							loadingText="Blacklisting..."

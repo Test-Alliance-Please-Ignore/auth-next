@@ -95,7 +95,7 @@ export default function DoctrineDetailPage() {
 							</Button>
 						)}
 						{canDelete && (
-							<Button variant="danger"
+							<Button variant="destructive"
 								onClick={handleDelete}
 								loading={deleteMutation.isPending}
 								loadingText="Deleting..."
