@@ -307,38 +307,42 @@ export default function DashboardPage() {
 												</Button>
 											</Link>
 										</div>
-										{/* Admin-only fleet invite button */}
-										{user?.is_admin && (
+										<div className="absolute top-4 right-4 flex items-center gap-2">
+											{/* Admin-only fleet invite button */}
+											{user?.is_admin && (
+												<Button
+													size="icon"
+													variant="ghost"
+													className="h-11 w-11"
+													onClick={() => handleCreateFleetInvite(mainCharacter.characterId)}
+													disabled={creatingInvites.has(mainCharacter.characterId)}
+													aria-label={`Create fleet invite for ${mainCharacter.characterName}`}
+													title="Create fleet invite for this character"
+												>
+													<UserPlus
+														className={`h-4 w-4 ${
+															creatingInvites.has(mainCharacter.characterId) ? 'animate-pulse' : ''
+														}`}
+													/>
+												</Button>
+											)}
 											<Button
 												size="icon"
 												variant="ghost"
-												className="absolute top-4 right-16 hover:bg-primary/10 h-11 w-11"
-												onClick={() => handleCreateFleetInvite(mainCharacter.characterId)}
-												disabled={creatingInvites.has(mainCharacter.characterId)}
-												aria-label={`Create fleet invite for ${mainCharacter.characterName}`}
-												title="Create fleet invite for this character"
+												className="h-11 w-11"
+												onClick={() => handleRefreshCharacter(mainCharacter.characterId)}
+												disabled={refreshingCharacters.has(mainCharacter.characterId)}
+												aria-label={`Refresh ${mainCharacter.characterName} character data`}
 											>
-												<UserPlus
+												<RefreshCw
 													className={`h-4 w-4 ${
-														creatingInvites.has(mainCharacter.characterId) ? 'animate-pulse' : ''
+														refreshingCharacters.has(mainCharacter.characterId)
+															? 'animate-spin'
+															: ''
 													}`}
 												/>
 											</Button>
-										)}
-										<Button
-											size="icon"
-											variant="ghost"
-											className="absolute top-4 right-4 hover:bg-primary/10 h-11 w-11"
-											onClick={() => handleRefreshCharacter(mainCharacter.characterId)}
-											disabled={refreshingCharacters.has(mainCharacter.characterId)}
-											aria-label={`Refresh ${mainCharacter.characterName} character data`}
-										>
-											<RefreshCw
-												className={`h-4 w-4 ${
-													refreshingCharacters.has(mainCharacter.characterId) ? 'animate-spin' : ''
-												}`}
-											/>
-										</Button>
+										</div>
 									</>
 								) : (
 									<p className="text-muted-foreground">No main character found</p>
@@ -455,12 +459,12 @@ export default function DashboardPage() {
 								<CardDescription>All your authenticated EVE Online characters</CardDescription>
 							</div>
 							<Button
-								variant="ghost"
-								className="glow-hover border-border/50 bg-muted/50 hover:bg-muted"
+								variant="primary"
+								className="whitespace-nowrap"
 								onClick={handleLinkCharacter}
 								disabled={isLinkingCharacter}
 							>
-								{isLinkingCharacter ? 'Redirecting...' : 'Link New Character'}
+								{isLinkingCharacter ? 'Redirecting...' : 'Link Character'}
 							</Button>
 						</div>
 					</CardHeader>
@@ -526,38 +530,40 @@ export default function DashboardPage() {
 													: 'Re-authorize token'}
 											</Button>
 										)}
-										{/* Admin-only fleet invite button */}
-										{user?.is_admin && (
+										<div className="absolute top-2 right-2 flex items-center gap-2">
+											{/* Admin-only fleet invite button */}
+											{user?.is_admin && (
+												<Button
+													size="icon"
+													variant="ghost"
+													className="h-11 w-11"
+													onClick={() => handleCreateFleetInvite(character.characterId)}
+													disabled={creatingInvites.has(character.characterId)}
+													aria-label={`Create fleet invite for ${character.characterName}`}
+													title="Create fleet invite for this character"
+												>
+													<UserPlus
+														className={`h-4 w-4 ${
+															creatingInvites.has(character.characterId) ? 'animate-pulse' : ''
+														}`}
+													/>
+												</Button>
+											)}
 											<Button
 												size="icon"
 												variant="ghost"
-												className="absolute top-2 right-12 h-11 w-11 hover:bg-primary/10"
-												onClick={() => handleCreateFleetInvite(character.characterId)}
-												disabled={creatingInvites.has(character.characterId)}
-												aria-label={`Create fleet invite for ${character.characterName}`}
-												title="Create fleet invite for this character"
+												className="h-11 w-11"
+												onClick={() => handleRefreshCharacter(character.characterId)}
+												disabled={refreshingCharacters.has(character.characterId)}
+												aria-label={`Refresh ${character.characterName} character data`}
 											>
-												<UserPlus
+												<RefreshCw
 													className={`h-4 w-4 ${
-														creatingInvites.has(character.characterId) ? 'animate-pulse' : ''
+														refreshingCharacters.has(character.characterId) ? 'animate-spin' : ''
 													}`}
 												/>
 											</Button>
-										)}
-										<Button
-											size="icon"
-											variant="ghost"
-											className="absolute top-2 right-2 h-11 w-11 hover:bg-primary/10"
-											onClick={() => handleRefreshCharacter(character.characterId)}
-											disabled={refreshingCharacters.has(character.characterId)}
-											aria-label={`Refresh ${character.characterName} character data`}
-										>
-											<RefreshCw
-												className={`h-4 w-4 ${
-													refreshingCharacters.has(character.characterId) ? 'animate-spin' : ''
-												}`}
-											/>
-										</Button>
+										</div>
 									</CardContent>
 								</Card>
 							))}
