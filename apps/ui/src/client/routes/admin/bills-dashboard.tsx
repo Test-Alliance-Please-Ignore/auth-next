@@ -133,13 +133,13 @@ export default function BillsDashboardPage() {
 							<Button asChild>
 								<Link to="/admin/bills/new">Create New Bill</Link>
 							</Button>
-							<Button variant="outline" asChild>
+							<Button variant="ghost" asChild>
 								<Link to="/admin/bills/templates">Manage Templates</Link>
 							</Button>
-							<Button variant="outline" asChild>
+							<Button variant="ghost" asChild>
 								<Link to="/admin/bills/schedules">Manage Schedules</Link>
 							</Button>
-							<Button variant="outline" asChild>
+							<Button variant="ghost" asChild>
 								<Link to="/admin/bills?status=overdue">View Overdue Bills</Link>
 							</Button>
 						</CardContent>

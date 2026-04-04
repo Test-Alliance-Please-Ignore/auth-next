@@ -8,10 +8,7 @@ import {
 	AccordionTrigger,
 } from '@/components/ui/accordion'
 import { Button } from '@/components/ui/button'
-import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent } from '@/components/ui/card'
-import { ConfirmButton } from '@/components/ui/confirm-button'
-import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
 	Dialog,
 	DialogContent,
@@ -385,7 +382,7 @@ export default function DiscordServersPage() {
 										</div>
 										<div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
 											<Button
-												variant="outline"
+												variant="ghost"
 												size="sm"
 												onClick={() => openEditServerDialog(server)}
 											>
@@ -408,7 +405,7 @@ export default function DiscordServersPage() {
 											<div className="flex gap-2">
 												<Button
 													size="sm"
-													variant="outline"
+													variant="ghost"
 													onClick={() => handleRefreshMembers(server.id)}
 													disabled={refreshingServerId === server.id}
 												>
@@ -426,7 +423,7 @@ export default function DiscordServersPage() {
 												</Button>
 												<Button
 													size="sm"
-													variant="outline"
+													variant="ghost"
 													onClick={() => openCreateRoleDialog(server)}
 												>
 													<Plus className="mr-2 h-3 w-3" />
@@ -575,12 +572,12 @@ export default function DiscordServersPage() {
 						</div>
 
 						<DialogFooter>
-							<CancelButton type="button" onClick={() => setCreateServerDialogOpen(false)}>
+							<Button variant="cancel" type="button" onClick={() => setCreateServerDialogOpen(false)}>
 								Cancel
-							</CancelButton>
-							<ConfirmButton type="submit" loading={createServer.isPending} loadingText="Adding...">
+							</Button>
+							<Button variant="confirm" type="submit" loading={createServer.isPending} loadingText="Adding...">
 								Add Server
-							</ConfirmButton>
+							</Button>
 						</DialogFooter>
 					</form>
 				</DialogContent>
@@ -651,16 +648,16 @@ export default function DiscordServersPage() {
 						</div>
 
 						<DialogFooter>
-							<CancelButton type="button" onClick={() => setEditServerDialogOpen(false)}>
+							<Button variant="cancel" type="button" onClick={() => setEditServerDialogOpen(false)}>
 								Cancel
-							</CancelButton>
-							<ConfirmButton
+							</Button>
+							<Button variant="confirm"
 								type="submit"
 								loading={updateServer.isPending}
 								loadingText="Updating..."
 							>
 								Update Server
-							</ConfirmButton>
+							</Button>
 						</DialogFooter>
 					</form>
 				</DialogContent>
@@ -677,14 +674,14 @@ export default function DiscordServersPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<CancelButton onClick={() => setDeleteServerDialogOpen(false)}>Cancel</CancelButton>
-						<DestructiveButton
+						<Button variant="cancel" onClick={() => setDeleteServerDialogOpen(false)}>Cancel</Button>
+						<Button variant="danger"
 							onClick={handleDeleteServer}
 							loading={deleteServer.isPending}
 							loadingText="Deleting..."
 						>
 							Delete
-						</DestructiveButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
@@ -753,12 +750,12 @@ export default function DiscordServersPage() {
 						</p>
 
 						<DialogFooter>
-							<CancelButton type="button" onClick={() => setCreateRoleDialogOpen(false)}>
+							<Button variant="cancel" type="button" onClick={() => setCreateRoleDialogOpen(false)}>
 								Cancel
-							</CancelButton>
-							<ConfirmButton type="submit" loading={createRole.isPending} loadingText="Adding...">
+							</Button>
+							<Button variant="confirm" type="submit" loading={createRole.isPending} loadingText="Adding...">
 								Add Role
-							</ConfirmButton>
+							</Button>
 						</DialogFooter>
 					</form>
 				</DialogContent>
@@ -828,12 +825,12 @@ export default function DiscordServersPage() {
 						</p>
 
 						<DialogFooter>
-							<CancelButton type="button" onClick={() => setEditRoleDialogOpen(false)}>
+							<Button variant="cancel" type="button" onClick={() => setEditRoleDialogOpen(false)}>
 								Cancel
-							</CancelButton>
-							<ConfirmButton type="submit" loading={updateRole.isPending} loadingText="Updating...">
+							</Button>
+							<Button variant="confirm" type="submit" loading={updateRole.isPending} loadingText="Updating...">
 								Update Role
-							</ConfirmButton>
+							</Button>
 						</DialogFooter>
 					</form>
 				</DialogContent>
@@ -850,14 +847,14 @@ export default function DiscordServersPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<CancelButton onClick={() => setDeleteRoleDialogOpen(false)}>Cancel</CancelButton>
-						<DestructiveButton
+						<Button variant="cancel" onClick={() => setDeleteRoleDialogOpen(false)}>Cancel</Button>
+						<Button variant="danger"
 							onClick={handleDeleteRole}
 							loading={deleteRole.isPending}
 							loadingText="Deleting..."
 						>
 							Delete
-						</DestructiveButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>

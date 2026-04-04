@@ -127,7 +127,7 @@ export default function IndustryProvidersPage() {
 						</div>
 
 						{hasActiveFilters && (
-							<Button variant="outline" onClick={clearFilters}>
+							<Button variant="ghost" onClick={clearFilters}>
 								Clear Filters
 							</Button>
 						)}

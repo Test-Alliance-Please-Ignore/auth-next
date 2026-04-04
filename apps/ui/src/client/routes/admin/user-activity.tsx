@@ -3,11 +3,11 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { GhostButton } from '@/components/ui/ghost-button'
 import { useActivityLogs, useAdminUser } from '@/hooks/useAdminUsers'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
 
 export default function AdminUserActivityPage() {
 	usePageTitle('Admin - User Activity')
@@ -25,16 +25,16 @@ export default function AdminUserActivityPage() {
 	return (
 		<div className="space-y-6">
 			<div className="flex items-center gap-4">
-				<GhostButton onClick={() => navigate(`/admin/users/${userId}`)}>
+				<Button variant="ghost" onClick={() => navigate(`/admin/users/${userId}`)}>
 					<ArrowLeft className="h-4 w-4 mr-2" />
 					Back to User
-				</GhostButton>
-				<GhostButton asChild size="sm">
+				</Button>
+				<Button variant="ghost" asChild size="sm">
 					<Link to={`/admin/activity-log?userId=${userId}`}>
 						Open Global Activity Log View
 						<ExternalLink className="h-4 w-4 ml-2" />
 					</Link>
-				</GhostButton>
+				</Button>
 			</div>
 
 			<div className="space-y-1">

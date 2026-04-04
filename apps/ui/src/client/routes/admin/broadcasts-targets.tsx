@@ -2,10 +2,7 @@ import { Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ConfirmButton } from '@/components/ui/confirm-button'
-import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
 	Dialog,
 	DialogContent,
@@ -226,16 +223,16 @@ export default function BroadcastTargetsPage() {
 												{config.channelId && `Channel: ${config.channelId}`}
 											</TableCell>
 											<TableCell className="text-right space-x-2">
-												<Button size="sm" variant="outline" onClick={() => handleEdit(target)}>
+												<Button size="sm" variant="ghost" onClick={() => handleEdit(target)}>
 													Edit
 												</Button>
-												<DestructiveButton
+												<Button variant="danger"
 													size="sm"
 													onClick={() => handleDeleteClick(target)}
 													showIcon={false}
 												>
 													Delete
-												</DestructiveButton>
+												</Button>
 											</TableCell>
 										</TableRow>
 									)
@@ -313,16 +310,16 @@ export default function BroadcastTargetsPage() {
 							/>
 						</div>
 						<DialogFooter>
-							<CancelButton onClick={() => setCreateDialogOpen(false)} type="button">
+							<Button variant="cancel" onClick={() => setCreateDialogOpen(false)} type="button">
 								Cancel
-							</CancelButton>
-							<ConfirmButton
+							</Button>
+							<Button variant="confirm"
 								type="submit"
 								loading={createTarget.isPending}
 								loadingText="Creating..."
 							>
 								Create Target
-							</ConfirmButton>
+							</Button>
 						</DialogFooter>
 					</form>
 				</DialogContent>
@@ -383,7 +380,7 @@ export default function BroadcastTargetsPage() {
 							/>
 						</div>
 						<DialogFooter>
-							<CancelButton
+							<Button variant="cancel"
 								onClick={() => {
 									setEditDialogOpen(false)
 									setSelectedTarget(null)
@@ -392,14 +389,14 @@ export default function BroadcastTargetsPage() {
 								type="button"
 							>
 								Cancel
-							</CancelButton>
-							<ConfirmButton
+							</Button>
+							<Button variant="confirm"
 								type="submit"
 								loading={updateTarget.isPending}
 								loadingText="Updating..."
 							>
 								Update Target
-							</ConfirmButton>
+							</Button>
 						</DialogFooter>
 					</form>
 				</DialogContent>
@@ -416,7 +413,7 @@ export default function BroadcastTargetsPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<CancelButton
+						<Button variant="cancel"
 							onClick={() => {
 								setDeleteDialogOpen(false)
 								setSelectedTarget(null)
@@ -424,8 +421,8 @@ export default function BroadcastTargetsPage() {
 							disabled={deleteTarget.isPending}
 						>
 							Cancel
-						</CancelButton>
-						<DestructiveButton
+						</Button>
+						<Button variant="danger"
 							onClick={handleDeleteConfirm}
 							loading={deleteTarget.isPending}
 							loadingText="Deleting..."
@@ -433,7 +430,7 @@ export default function BroadcastTargetsPage() {
 						>
 							<Trash2 className="mr-2 h-4 w-4" />
 							Delete
-						</DestructiveButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>

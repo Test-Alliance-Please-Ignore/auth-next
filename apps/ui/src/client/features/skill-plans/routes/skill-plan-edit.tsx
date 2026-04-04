@@ -167,7 +167,7 @@ export default function SkillPlanEdit() {
 			<Section>
 				{/* Navigation buttons */}
 				<div className="flex justify-between items-center mb-6">
-					<Button variant="outline" asChild>
+					<Button variant="ghost" asChild>
 						<Link to={`/skill-plans/${id}`}>
 							<ArrowLeft className="h-4 w-4 mr-2" />
 							Back to Plan
@@ -214,7 +214,7 @@ export default function SkillPlanEdit() {
 								<CardHeader className="flex flex-row items-center justify-between">
 									<CardTitle>Add Skills to Plan</CardTitle>
 									<Button
-										variant="outline"
+										variant="ghost"
 										onClick={() => setShowImporter(true)}
 										disabled={addSkill.isPending}
 									>

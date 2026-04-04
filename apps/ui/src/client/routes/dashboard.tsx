@@ -301,7 +301,7 @@ export default function DashboardPage() {
 												)}
 											</div>
 											<Link to={`/character/${mainCharacter.characterId}`}>
-												<Button size="sm" variant="outline" className="gap-2">
+												<Button size="sm" variant="ghost" className="gap-2">
 													View Details
 													<ExternalLink className="h-3 w-3" />
 												</Button>
@@ -421,7 +421,7 @@ export default function DashboardPage() {
 										</p>
 									</div>
 									<Button
-										variant="outline"
+										variant="ghost"
 										className="glow-hover border-border/50 bg-muted/50 hover:bg-muted whitespace-nowrap"
 										onClick={handleLinkLegacyAuth}
 										disabled={isLinkingLegacyAuth}
@@ -455,7 +455,7 @@ export default function DashboardPage() {
 								<CardDescription>All your authenticated EVE Online characters</CardDescription>
 							</div>
 							<Button
-								variant="outline"
+								variant="ghost"
 								className="glow-hover border-border/50 bg-muted/50 hover:bg-muted"
 								onClick={handleLinkCharacter}
 								disabled={isLinkingCharacter}
@@ -516,7 +516,7 @@ export default function DashboardPage() {
 										{!character.hasValidToken && (
 											<Button
 												size="sm"
-												variant="outline"
+												variant="ghost"
 												className="mt-2 h-7 px-2 text-xs"
 												onClick={() => handleReauthorizeCharacter(character.characterId)}
 												disabled={reauthorizingCharacters.has(character.characterId)}

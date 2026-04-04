@@ -1,9 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ConfirmButton } from '@/components/ui/confirm-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
@@ -12,6 +10,7 @@ import { useCreateFreightRoute } from '@/hooks/useFreightRoutes'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import type { CreateFreightRouteInput, FreightRouteStatus } from '@repo/freight'
+import { Button } from '@/components/ui/button'
 
 export default function AdminFreightRoutesNewPage() {
 	usePageTitle('Admin - Create Freight Route')
@@ -346,12 +345,12 @@ export default function AdminFreightRoutesNewPage() {
 
 				{/* Form Actions */}
 				<div className="flex justify-end gap-3 mt-6">
-					<CancelButton type="button" onClick={() => navigate('/admin/freight-routes')}>
+					<Button variant="cancel" type="button" onClick={() => navigate('/admin/freight-routes')}>
 						Cancel
-					</CancelButton>
-					<ConfirmButton type="submit" loading={createRoute.isPending} loadingText="Creating...">
+					</Button>
+					<Button variant="confirm" type="submit" loading={createRoute.isPending} loadingText="Creating...">
 						Create Route
-					</ConfirmButton>
+					</Button>
 				</div>
 			</form>
 		</div>

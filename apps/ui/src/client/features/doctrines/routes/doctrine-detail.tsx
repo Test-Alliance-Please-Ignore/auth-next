@@ -9,7 +9,6 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { Container } from '@/components/ui/container'
-import { DestructiveButton } from '@/components/ui/destructive-button'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
@@ -61,7 +60,7 @@ export default function DoctrineDetailPage() {
 						<p className="text-muted-foreground mb-4">
 							The doctrine you're looking for doesn't exist or you don't have permission to view it.
 						</p>
-						<Button asChild variant="outline">
+						<Button asChild variant="ghost">
 							<Link to="/doctrines">
 								<ArrowLeft className="h-4 w-4 mr-2" />
 								Back to Doctrines
@@ -88,7 +87,7 @@ export default function DoctrineDetailPage() {
 				action={
 					<div className="flex gap-2">
 						{canEdit && (
-							<Button asChild variant="outline">
+							<Button asChild variant="ghost">
 								<Link to={`/doctrines/${id}/edit`}>
 									<Edit className="h-4 w-4 mr-2" />
 									Edit
@@ -96,14 +95,14 @@ export default function DoctrineDetailPage() {
 							</Button>
 						)}
 						{canDelete && (
-							<DestructiveButton
+							<Button variant="danger"
 								onClick={handleDelete}
 								loading={deleteMutation.isPending}
 								loadingText="Deleting..."
 							>
 								<Trash2 className="h-4 w-4 mr-2" />
 								Delete
-							</DestructiveButton>
+							</Button>
 						)}
 					</div>
 				}
@@ -114,7 +113,7 @@ export default function DoctrineDetailPage() {
 					<div className="text-center py-12">
 						<p className="text-muted-foreground mb-4">No fittings added yet.</p>
 						{canEdit && (
-							<Button asChild variant="outline">
+							<Button asChild variant="ghost">
 								<Link to="/doctrines/fittings/create">
 									<Plus className="h-4 w-4 mr-2" />
 									Add Fitting

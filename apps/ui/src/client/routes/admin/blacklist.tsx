@@ -5,10 +5,7 @@ import { Link } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ConfirmButton } from '@/components/ui/confirm-button'
-import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
 	Dialog,
 	DialogContent,
@@ -435,7 +432,7 @@ export default function BlacklistPage() {
 									</p>
 									<div className="flex gap-2">
 										<Button
-											variant="outline"
+											variant="ghost"
 											size="sm"
 											onClick={() => setPage(page - 1)}
 											disabled={page === 1}
@@ -443,7 +440,7 @@ export default function BlacklistPage() {
 											Previous
 										</Button>
 										<Button
-											variant="outline"
+											variant="ghost"
 											size="sm"
 											onClick={() => setPage(page + 1)}
 											disabled={page === data.pagination.totalPages}
@@ -529,13 +526,13 @@ export default function BlacklistPage() {
 							</div>
 						</div>
 						<DialogFooter className="mt-6">
-							<CancelButton onClick={() => setAddDialogOpen(false)}>Cancel</CancelButton>
-							<ConfirmButton
+							<Button variant="cancel" onClick={() => setAddDialogOpen(false)}>Cancel</Button>
+							<Button variant="confirm"
 								loading={createUserBlacklist.isPending || createCharacterBlacklist.isPending}
 								loadingText="Adding..."
 							>
 								Add to Blacklist
-							</ConfirmButton>
+							</Button>
 						</DialogFooter>
 					</form>
 				</DialogContent>
@@ -557,10 +554,10 @@ export default function BlacklistPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<CancelButton onClick={() => setDeleteDialogOpen(false)}>Cancel</CancelButton>
-						<DestructiveButton onClick={handleDelete} loading={removeBlacklist.isPending}>
+						<Button variant="cancel" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+						<Button variant="danger" onClick={handleDelete} loading={removeBlacklist.isPending}>
 							Remove from Blacklist
-						</DestructiveButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>

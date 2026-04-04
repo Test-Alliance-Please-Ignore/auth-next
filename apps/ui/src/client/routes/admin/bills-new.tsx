@@ -4,10 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 
 import { BillEntityPicker } from '@/components/bills/bill-entity-picker'
 import { Button } from '@/components/ui/button'
-import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ConfirmButton } from '@/components/ui/confirm-button'
-import { GhostButton } from '@/components/ui/ghost-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { NumberInput } from '@/components/ui/number-input'
@@ -268,12 +265,12 @@ export default function AdminBillsNewPage() {
 						Create a new bill for a character, corporation, or group
 					</p>
 				</div>
-				<GhostButton asChild>
+				<Button variant="ghost" asChild>
 					<Link to="/admin/bills">
 						<ArrowLeft className="mr-2 h-4 w-4" />
 						Back to Bills
 					</Link>
-				</GhostButton>
+				</Button>
 			</div>
 
 			{/* Success/Error Message */}
@@ -573,12 +570,12 @@ export default function AdminBillsNewPage() {
 
 				{/* Actions */}
 				<div className="flex gap-3">
-					<ConfirmButton type="submit" loading={createBill.isPending}>
+					<Button variant="confirm" type="submit" loading={createBill.isPending}>
 						Create Bill
-					</ConfirmButton>
-					<CancelButton type="button" onClick={() => navigate('/admin/bills')}>
+					</Button>
+					<Button variant="cancel" type="button" onClick={() => navigate('/admin/bills')}>
 						Cancel
-					</CancelButton>
+					</Button>
 				</div>
 			</form>
 		</div>

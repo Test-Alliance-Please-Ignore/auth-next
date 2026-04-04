@@ -1,11 +1,10 @@
 import { Check, XCircle } from 'lucide-react'
 import { useState } from 'react'
 
-import { CancelButton } from '@/components/ui/cancel-button'
-import { ConfirmButton } from '@/components/ui/confirm-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 import type {
@@ -215,12 +214,12 @@ export function PermissionFormDialog({
 			</div>
 
 			<div className="flex justify-end gap-2 pt-4">
-				<CancelButton type="button" onClick={onCancel} disabled={isSubmitting}>
+				<Button variant="cancel" type="button" onClick={onCancel} disabled={isSubmitting}>
 					Cancel
-				</CancelButton>
-				<ConfirmButton type="submit" loading={isSubmitting} loadingText="Saving...">
+				</Button>
+				<Button variant="confirm" type="submit" loading={isSubmitting} loadingText="Saving...">
 					{isEditing ? 'Update Permission' : 'Create Permission'}
-				</ConfirmButton>
+				</Button>
 			</div>
 		</form>
 	)

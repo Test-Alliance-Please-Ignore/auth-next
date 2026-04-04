@@ -258,7 +258,7 @@ export function ApplicationsTable({
 				<CardContent className="py-12 text-center">
 					<p className="text-muted-foreground">No applications match your search or filters</p>
 					{searchTerm && (
-						<Button variant="outline" className="mt-4" onClick={() => handleSearchChange('')}>
+						<Button variant="ghost" className="mt-4" onClick={() => handleSearchChange('')}>
 							Clear Search
 						</Button>
 					)}
@@ -431,7 +431,7 @@ export function ApplicationsTable({
 					</p>
 					<div className="flex items-center gap-2">
 						<Button
-							variant="outline"
+							variant="ghost"
 							size="sm"
 							onClick={handlePrevPage}
 							disabled={currentPage === 1}
@@ -440,7 +440,7 @@ export function ApplicationsTable({
 							Previous
 						</Button>
 						<Button
-							variant="outline"
+							variant="ghost"
 							size="sm"
 							onClick={handleNextPage}
 							disabled={currentPage === totalPages}

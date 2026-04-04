@@ -10,8 +10,6 @@ import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ConfirmButton } from '@/components/ui/confirm-button'
-import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
 	Dialog,
 	DialogContent,
@@ -249,7 +247,7 @@ export function ApplicationActionPanel({
 					{/* Mark Under Review - Available to Reviewers and Admins */}
 					{canMarkUnderReview && application.status === 'pending' && (
 						<Button
-							variant="outline"
+							variant="ghost"
 							onClick={handleMarkUnderReview}
 							disabled={disabled || updateStatusMutation.isPending}
 							className="flex-1"
@@ -260,24 +258,24 @@ export function ApplicationActionPanel({
 
 					{/* Accept - Admin Only */}
 					{canAccept && (
-						<ConfirmButton
-							onConfirm={handleAcceptClick}
+						<Button variant="confirm"
+							onClick={handleAcceptClick}
 							disabled={disabled || updateStatusMutation.isPending}
 							className="flex-1"
 						>
 							Accept Application
-						</ConfirmButton>
+						</Button>
 					)}
 
 					{/* Reject - Admin Only */}
 					{canReject && (
-						<DestructiveButton
+						<Button variant="danger"
 							onClick={handleRejectClick}
 							disabled={disabled || updateStatusMutation.isPending}
 							className="flex-1"
 						>
 							Reject Application
-						</DestructiveButton>
+						</Button>
 					)}
 				</div>
 
@@ -307,19 +305,19 @@ export function ApplicationActionPanel({
 					</DialogHeader>
 					<DialogFooter>
 						<Button
-							variant="outline"
+							variant="ghost"
 							onClick={() => setShowAcceptDialog(false)}
 							disabled={updateStatusMutation.isPending}
 						>
 							Cancel
 						</Button>
-						<ConfirmButton
-							onConfirm={handleAcceptConfirm}
+						<Button variant="confirm"
+							onClick={handleAcceptConfirm}
 							loading={updateStatusMutation.isPending}
 							loadingText="Accepting..."
 						>
 							Accept Application
-						</ConfirmButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
@@ -365,7 +363,7 @@ export function ApplicationActionPanel({
 
 					<DialogFooter>
 						<Button
-							variant="outline"
+							variant="ghost"
 							onClick={() => {
 								setShowRejectDialog(false)
 								setRejectNotes('')
@@ -375,13 +373,13 @@ export function ApplicationActionPanel({
 						>
 							Cancel
 						</Button>
-						<DestructiveButton
+						<Button variant="danger"
 							onClick={handleRejectConfirm}
 							loading={updateStatusMutation.isPending}
 							loadingText="Rejecting..."
 						>
 							Reject Application
-						</DestructiveButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>

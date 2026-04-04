@@ -3,9 +3,6 @@ import { useMemo, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { CancelButton } from '@/components/ui/cancel-button'
-import { ConfirmButton } from '@/components/ui/confirm-button'
-import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
 	Dialog,
 	DialogContent,
@@ -151,7 +148,7 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 				<div className="flex gap-2">
 					{totalCount > 0 && (
 						<Button
-							variant="outline"
+							variant="ghost"
 							size="sm"
 							onClick={handleVerifyAll}
 							disabled={verifyAllDirectors.isPending}
@@ -162,7 +159,7 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 							Verify All
 						</Button>
 					)}
-					<Button variant="default" size="sm" onClick={() => setAddDialogOpen(true)}>
+					<Button variant="primary" size="sm" onClick={() => setAddDialogOpen(true)}>
 						<Plus className="mr-2 h-4 w-4" />
 						Add Director
 					</Button>
@@ -175,7 +172,7 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 					<p className="text-sm text-muted-foreground mb-4">
 						No directors assigned. Add a director character to manage corporation data.
 					</p>
-					<Button variant="outline" onClick={() => setAddDialogOpen(true)}>
+					<Button variant="ghost" onClick={() => setAddDialogOpen(true)}>
 						<Plus className="mr-2 h-4 w-4" />
 						Add First Director
 					</Button>
@@ -278,14 +275,14 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<CancelButton onClick={() => setRemoveDialogOpen(false)}>Cancel</CancelButton>
-						<DestructiveButton
+						<Button variant="cancel" onClick={() => setRemoveDialogOpen(false)}>Cancel</Button>
+						<Button variant="danger"
 							onClick={handleRemove}
 							loading={removeDirector.isPending}
 							loadingText="Removing..."
 						>
 							Remove Director
-						</DestructiveButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
@@ -320,16 +317,16 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 							</div>
 						</div>
 						<DialogFooter className="mt-6">
-							<CancelButton type="button" onClick={() => setPriorityDialogOpen(false)}>
+							<Button variant="cancel" type="button" onClick={() => setPriorityDialogOpen(false)}>
 								Cancel
-							</CancelButton>
-							<ConfirmButton
+							</Button>
+							<Button variant="confirm"
 								type="submit"
 								loading={updatePriority.isPending}
 								loadingText="Updating..."
 							>
 								Update Priority
-							</ConfirmButton>
+							</Button>
 						</DialogFooter>
 					</form>
 				</DialogContent>

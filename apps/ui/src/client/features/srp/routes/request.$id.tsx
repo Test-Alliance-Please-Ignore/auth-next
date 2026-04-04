@@ -57,7 +57,7 @@ export default function RequestDetails() {
 					<p className="text-xs text-muted-foreground">
 						{error instanceof Error ? error.message : 'Request not found'}
 					</p>
-					<Button variant="outline" className="mt-4" asChild>
+					<Button variant="ghost" className="mt-4" asChild>
 						<Link to="/srp">Back to Dashboard</Link>
 					</Button>
 				</div>
@@ -107,7 +107,7 @@ export default function RequestDetails() {
 								<div className="font-medium">{formatFullDate(request.lossDate)}</div>
 							</div>
 							<div>
-								<Button variant="outline" size="sm" asChild>
+								<Button variant="ghost" size="sm" asChild>
 									<a
 										href={getKillmailUrl(request.killmailId)}
 										target="_blank"
@@ -217,7 +217,7 @@ export default function RequestDetails() {
 								<div className="rounded-md border bg-muted/50 p-3 font-mono text-sm">
 									{request.paymentToken}
 								</div>
-								<Button variant="outline" size="sm" className="w-full" onClick={copyToken}>
+								<Button variant="ghost" size="sm" className="w-full" onClick={copyToken}>
 									<Copy className="mr-2 h-4 w-4" />
 									Copy Token
 								</Button>

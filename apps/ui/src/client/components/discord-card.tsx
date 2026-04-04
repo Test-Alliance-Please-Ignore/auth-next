@@ -123,7 +123,7 @@ export function DiscordCard({ user }: DiscordCardProps) {
 									onClick={handleJoinServers}
 									disabled={isJoiningServers}
 									size="sm"
-									variant="outline"
+									variant="ghost"
 									className="w-full gap-2"
 								>
 									<Shield className="h-4 w-4" />

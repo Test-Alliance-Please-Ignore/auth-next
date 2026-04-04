@@ -2,9 +2,7 @@ import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
-import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ConfirmButton } from '@/components/ui/confirm-button'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { apiClient } from '@/lib/api'
 
@@ -104,20 +102,20 @@ export default function ClaimMainPage() {
 					)}
 
 					{/* Action Button */}
-					<ConfirmButton
-						onConfirm={handleClaimMain}
+					<Button variant="confirm"
+						onClick={handleClaimMain}
 						loading={isLoading}
 						loadingText="Creating Account..."
 						className="w-full font-semibold"
 						size="lg"
 					>
 						Claim as Main Character
-					</ConfirmButton>
+					</Button>
 
 					{/* Cancel */}
-					<CancelButton onClick={() => navigate('/')} disabled={isLoading} className="w-full">
+					<Button variant="cancel" onClick={() => navigate('/')} disabled={isLoading} className="w-full">
 						Cancel
-					</CancelButton>
+					</Button>
 				</CardContent>
 			</Card>
 		</div>

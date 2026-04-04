@@ -211,13 +211,13 @@ export function ReviewRequestForm({ request, onSuccess }: ReviewRequestFormProps
 
 				{/* Submit Buttons */}
 				<div className="flex gap-2">
-					<Button type="button" variant="outline" onClick={() => onSuccess()} disabled={isPending}>
+					<Button type="button" variant="ghost" onClick={() => onSuccess()} disabled={isPending}>
 						Cancel
 					</Button>
 					<Button
 						type="submit"
 						disabled={isPending}
-						variant={action === 'reject' ? 'destructive' : 'default'}
+						variant={action === 'reject' ? 'danger' : 'primary'}
 					>
 						{isPending ? 'Processing...' : showConfirm ? 'Confirm Rejection' : 'Submit Review'}
 					</Button>

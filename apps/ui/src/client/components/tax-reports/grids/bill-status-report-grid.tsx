@@ -3,8 +3,6 @@ import { useMemo } from 'react'
 
 import { TaxReportDataGrid } from '@/components/tax-report-data-grid'
 import { Badge } from '@/components/ui/badge'
-import { DestructiveButton } from '@/components/ui/destructive-button'
-import { PrimaryButton } from '@/components/ui/primary-button'
 import { formatTaxDate } from '@/lib/tax-date'
 import { formatTaxIskFull, TaxEntityDisplay } from '@/lib/tax-display'
 
@@ -12,6 +10,7 @@ import { billStatusBadgeVariant } from './shared'
 
 import type { MRT_ColumnDef, MRT_SortingState } from 'mantine-react-table'
 import type { TaxBillStatusReportRow } from '@repo/corporation-tax'
+import { Button } from '@/components/ui/button'
 
 export function BillStatusReportGrid(props: {
 	rows: TaxBillStatusReportRow[]
@@ -105,23 +104,23 @@ export function BillStatusReportGrid(props: {
 					return (
 						<div className="flex items-center justify-end gap-2">
 							{canSync ? (
-								<PrimaryButton
+								<Button variant="primary"
 									size="sm"
 									disabled={Boolean(busy) || !props.onSyncBillStatus}
 									onClick={() => props.onSyncBillStatus?.(row.original.assessmentId)}
 								>
 									{props.syncBillPending ? 'Syncing...' : 'Sync'}
-								</PrimaryButton>
+								</Button>
 							) : null}
 							{canRetract ? (
-								<DestructiveButton
+								<Button variant="danger"
 									size="sm"
 									showIcon={false}
 									disabled={Boolean(busy) || !props.onRetractBill}
 									onClick={() => props.onRetractBill?.(row.original.assessmentId)}
 								>
 									{props.retractBillPending ? 'Retracting...' : 'Retract'}
-								</DestructiveButton>
+								</Button>
 							) : null}
 							{!canSync && !canRetract ? (
 								<span className="text-xs text-muted-foreground">No actions</span>

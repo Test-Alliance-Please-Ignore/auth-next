@@ -98,14 +98,14 @@ export default function SkillPlansList() {
 					{user && (
 						<div className="flex gap-2">
 							{user.is_admin && (
-								<Button variant="outline" asChild>
+								<Button variant="ghost" asChild>
 									<Link to="/skill-plans/categories/manage">
 										<Settings className="h-4 w-4 mr-2" />
 										Manage Categories
 									</Link>
 								</Button>
 							)}
-							<Button variant="outline" asChild>
+							<Button variant="ghost" asChild>
 								<Link to="/skill-plans/my">My Plans</Link>
 							</Button>
 							<Button asChild>

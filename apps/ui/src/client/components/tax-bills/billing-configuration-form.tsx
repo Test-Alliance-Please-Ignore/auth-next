@@ -1,11 +1,10 @@
-import { CancelButton } from '@/components/ui/cancel-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { PrimaryButton } from '@/components/ui/primary-button'
 import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 
 import type { TaxBillingPayeeType } from '@repo/corporation-tax'
+import { Button } from '@/components/ui/button'
 
 type BillingPayeeSearchResult = {
 	value: string
@@ -235,10 +234,10 @@ export function BillingConfigurationForm({
 				</div>
 			) : null}
 			<div className="flex items-center justify-end gap-2">
-				<CancelButton showIcon={false} onClick={onCancel}>
+				<Button variant="cancel" showIcon={false} onClick={onCancel}>
 					Cancel
-				</CancelButton>
-				<PrimaryButton
+				</Button>
+				<Button variant="primary"
 					disabled={
 						!canIssue ||
 						isCreatePending ||
@@ -255,7 +254,7 @@ export function BillingConfigurationForm({
 						: isCreatePending
 							? 'Creating...'
 							: 'Save Config'}
-				</PrimaryButton>
+				</Button>
 			</div>
 		</>
 	)

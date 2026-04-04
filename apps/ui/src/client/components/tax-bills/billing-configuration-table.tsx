@@ -1,7 +1,4 @@
 import { Badge } from '@/components/ui/badge'
-import { DestructiveButton } from '@/components/ui/destructive-button'
-import { GhostButton } from '@/components/ui/ghost-button'
-import { PrimaryButton } from '@/components/ui/primary-button'
 import {
 	Table,
 	TableBody,
@@ -13,6 +10,7 @@ import {
 import { TaxEntityDisplay } from '@/lib/tax-display'
 
 import type { TaxCorporationBillingConfig } from '@repo/corporation-tax'
+import { Button } from '@/components/ui/button'
 
 type BillingConfigurationTableProps = {
 	canIssue: boolean
@@ -91,28 +89,28 @@ export function BillingConfigurationTable({
 							{canIssue ? (
 								<TableCell className="text-right">
 									<div className="flex items-center justify-end gap-2">
-										<GhostButton
+										<Button variant="ghost"
 											size="sm"
 											disabled={actionsDisabled}
 											onClick={() => onEdit(config)}
 										>
 											Edit
-										</GhostButton>
-										<PrimaryButton
+										</Button>
+										<Button variant="primary"
 											size="sm"
 											disabled={actionsDisabled || config.isDefault}
 											onClick={() => onSetDefault(config.id)}
 										>
 											Set Default
-										</PrimaryButton>
-										<DestructiveButton
+										</Button>
+										<Button variant="danger"
 											size="sm"
 											showIcon={false}
 											disabled={actionsDisabled || config.isDefault}
 											onClick={() => onDelete(config.id)}
 										>
 											Delete
-										</DestructiveButton>
+										</Button>
 									</div>
 								</TableCell>
 							) : null}

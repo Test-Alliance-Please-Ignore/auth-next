@@ -9,8 +9,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import { CancelButton } from '@/components/ui/cancel-button'
-import { ConfirmButton } from '@/components/ui/confirm-button'
 import {
 	Dialog,
 	DialogContent,
@@ -27,6 +25,7 @@ import { useMessage } from '@/hooks/useMessage'
 import { cn } from '@/lib/utils'
 
 import { useSubmitApplication } from '../hooks'
+import { Button } from '@/components/ui/button'
 
 // ============================================================================
 // Types
@@ -201,17 +200,17 @@ export function SubmitApplicationDialog({
 				</div>
 
 				<DialogFooter>
-					<CancelButton onClick={handleCancel} disabled={submitMutation.isPending}>
+					<Button variant="cancel" onClick={handleCancel} disabled={submitMutation.isPending}>
 						Cancel
-					</CancelButton>
-					<ConfirmButton
-						onConfirm={handleSubmit}
+					</Button>
+					<Button variant="confirm"
+						onClick={handleSubmit}
 						disabled={!isFormValid}
 						loading={submitMutation.isPending}
 						loadingText="Submitting..."
 					>
 						Submit Application
-					</ConfirmButton>
+					</Button>
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>

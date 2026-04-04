@@ -9,11 +9,11 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
-import { GhostButton } from '@/components/ui/ghost-button'
 import { formatTaxDateTime } from '@/lib/tax-date'
 
 import type { MRT_ColumnDef } from 'mantine-react-table'
 import type { TaxAuditLogEntry } from '@repo/corporation-tax'
+import { Button } from '@/components/ui/button'
 
 type TaxAuditLogGridProps = {
 	rows: TaxAuditLogEntry[]
@@ -250,13 +250,13 @@ export function TaxAuditLogGrid(props: TaxAuditLogGridProps) {
 			header: 'Actions',
 			enableSorting: false,
 			Cell: ({ row }) => (
-				<GhostButton
+				<Button variant="ghost"
 					type="button"
 					className="h-8 px-3"
 					onClick={() => setSelectedEntry(row.original)}
 				>
 					View
-				</GhostButton>
+				</Button>
 			),
 		}),
 	]

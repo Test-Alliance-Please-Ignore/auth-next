@@ -8,7 +8,6 @@
 import { AlertTriangle } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
 	Dialog,
 	DialogContent,
@@ -105,16 +104,16 @@ export function DeleteRecommendationDialog({
 				)}
 
 				<DialogFooter>
-					<Button variant="outline" onClick={handleCancel} disabled={deleteMutation.isPending}>
+					<Button variant="ghost" onClick={handleCancel} disabled={deleteMutation.isPending}>
 						Cancel
 					</Button>
-					<DestructiveButton
+					<Button variant="danger"
 						onClick={handleDelete}
 						loading={deleteMutation.isPending}
 						loadingText="Deleting..."
 					>
 						Delete Recommendation
-					</DestructiveButton>
+					</Button>
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>

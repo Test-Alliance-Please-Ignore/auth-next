@@ -371,7 +371,7 @@ export function AddRecommendationDialog({
 				</div>
 
 				<DialogFooter>
-					<Button variant="outline" onClick={handleCancel} disabled={isPending}>
+					<Button variant="ghost" onClick={handleCancel} disabled={isPending}>
 						Cancel
 					</Button>
 					<Button onClick={handleSubmit} disabled={!isFormValid || isPending}>

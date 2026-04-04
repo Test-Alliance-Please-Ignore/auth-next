@@ -1,7 +1,5 @@
 import { useState } from 'react'
 
-import { CancelButton } from '@/components/ui/cancel-button'
-import { ConfirmButton } from '@/components/ui/confirm-button'
 import {
 	Dialog,
 	DialogContent,
@@ -13,6 +11,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAddDirector } from '@/hooks/useCorporations'
+import { Button } from '@/components/ui/button'
 
 interface AddDirectorDialogProps {
 	corporationId: string
@@ -115,12 +114,12 @@ export function AddDirectorDialog({ corporationId, open, onOpenChange }: AddDire
 						</div>
 					</div>
 					<DialogFooter className="mt-6">
-						<CancelButton type="button" onClick={handleClose}>
+						<Button variant="cancel" type="button" onClick={handleClose}>
 							Cancel
-						</CancelButton>
-						<ConfirmButton type="submit" loading={addDirector.isPending} loadingText="Adding...">
+						</Button>
+						<Button variant="confirm" type="submit" loading={addDirector.isPending} loadingText="Adding...">
 							Add Director
-						</ConfirmButton>
+						</Button>
 					</DialogFooter>
 				</form>
 			</DialogContent>

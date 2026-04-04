@@ -114,7 +114,7 @@ function ErrorState({ error, onRetry }: ErrorStateProps) {
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
-					<Button variant="outline" onClick={onRetry}>
+					<Button variant="ghost" onClick={onRetry}>
 						Try Again
 					</Button>
 				</CardContent>
@@ -202,7 +202,7 @@ export function RecommendationList({
 					Recommendations ({sortedRecommendations.length})
 				</h3>
 				{canAddRecommendation && (
-					<Button onClick={onAddRecommendation} size="sm" variant="outline">
+					<Button onClick={onAddRecommendation} size="sm" variant="ghost">
 						<Plus className="h-4 w-4 mr-2" />
 						Add Recommendation
 					</Button>

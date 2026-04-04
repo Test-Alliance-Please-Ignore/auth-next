@@ -35,7 +35,7 @@ export default function PaymentsQueue() {
 				title="Pending Payments"
 				description="Process approved ship replacement payments"
 				action={
-					<Button variant="outline" onClick={() => refetch()}>
+					<Button variant="ghost" onClick={() => refetch()}>
 						Refresh
 					</Button>
 				}
@@ -47,7 +47,7 @@ export default function PaymentsQueue() {
 					<p className="text-xs text-muted-foreground">
 						{error instanceof Error ? error.message : 'Unknown error'}
 					</p>
-					<Button variant="outline" className="mt-4" onClick={() => refetch()}>
+					<Button variant="ghost" className="mt-4" onClick={() => refetch()}>
 						Retry
 					</Button>
 				</div>
@@ -57,7 +57,7 @@ export default function PaymentsQueue() {
 					<p className="text-sm text-muted-foreground">
 						No payments pending. All requests have been processed.
 					</p>
-					<Button variant="outline" className="mt-4" asChild>
+					<Button variant="ghost" className="mt-4" asChild>
 						<Link to="/srp">Back to Dashboard</Link>
 					</Button>
 				</div>

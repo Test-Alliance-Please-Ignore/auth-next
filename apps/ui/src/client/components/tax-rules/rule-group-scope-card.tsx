@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 
-import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
 	Dialog,
 	DialogContent,
@@ -12,10 +10,10 @@ import {
 	DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { PrimaryButton } from '@/components/ui/primary-button'
 import { Select } from '@/components/ui/select'
 
 import type { TaxRuleGroup } from '@repo/corporation-tax'
+import { Button } from '@/components/ui/button'
 
 type RuleGroupUpdate = {
 	name?: string
@@ -127,7 +125,7 @@ export function RuleGroupScopeCard({
 								onChange={(event) => setNewGroupName(event.target.value)}
 								placeholder="Enter a rule group name"
 							/>
-							<PrimaryButton
+							<Button variant="primary"
 								disabled={isCreating}
 								onClick={() => {
 									const name = newGroupName.trim()
@@ -136,7 +134,7 @@ export function RuleGroupScopeCard({
 								}}
 							>
 								{isCreating ? 'Creating...' : 'Create'}
-							</PrimaryButton>
+							</Button>
 						</div>
 					</div>
 				</div>
@@ -170,7 +168,7 @@ export function RuleGroupScopeCard({
 						</div>
 						{!isImmutableGroup ? (
 							<div className="flex flex-wrap gap-2">
-								<PrimaryButton
+								<Button variant="primary"
 									size="sm"
 									disabled={isUpdating || !groupName.trim()}
 									onClick={() =>
@@ -181,15 +179,15 @@ export function RuleGroupScopeCard({
 									}
 								>
 									{isUpdating ? 'Saving...' : 'Save Group'}
-								</PrimaryButton>
-								<DestructiveButton
+								</Button>
+								<Button variant="danger"
 									size="sm"
 									showIcon={false}
 									disabled={isDeleting}
 									onClick={() => setDeleteGroupDialogOpen(true)}
 								>
 									Delete Group
-								</DestructiveButton>
+								</Button>
 							</div>
 						) : null}
 					</div>
@@ -204,10 +202,10 @@ export function RuleGroupScopeCard({
 							</DialogDescription>
 						</DialogHeader>
 						<DialogFooter>
-							<CancelButton onClick={() => setDeleteGroupDialogOpen(false)} disabled={isDeleting}>
+							<Button variant="cancel" onClick={() => setDeleteGroupDialogOpen(false)} disabled={isDeleting}>
 								Cancel
-							</CancelButton>
-							<DestructiveButton
+							</Button>
+							<Button variant="danger"
 								loading={isDeleting}
 								loadingText="Deleting..."
 								showIcon={false}
@@ -219,7 +217,7 @@ export function RuleGroupScopeCard({
 								}}
 							>
 								Delete
-							</DestructiveButton>
+							</Button>
 						</DialogFooter>
 					</DialogContent>
 				</Dialog>

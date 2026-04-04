@@ -2,8 +2,6 @@ import { NumberInput } from '@mantine/core'
 import { Pencil, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { CancelButton } from '@/components/ui/cancel-button'
-import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
 	Dialog,
 	DialogContent,
@@ -13,7 +11,6 @@ import {
 	DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { PrimaryButton } from '@/components/ui/primary-button'
 import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { TableCell, TableRow } from '@/components/ui/table'
@@ -25,6 +22,7 @@ import { formatTaxDateTime } from '@/lib/tax-date'
 import { formatTaxRefTypeLabel, TAX_REF_TYPE_OPTIONS } from '@/lib/tax-display'
 
 import type { TaxRuleSet } from '@repo/corporation-tax'
+import { Button } from '@/components/ui/button'
 
 const ANY_INCOME_TYPE_VALUE = '__any_income_type__'
 
@@ -305,7 +303,7 @@ export function RuleRowEditor({
 						<div className="space-y-3">
 							<RuleFormFields form={form} onChange={setForm} disabled={!canManage || isSaving} />
 							<div className="flex flex-wrap items-center justify-end gap-2">
-								<PrimaryButton
+								<Button variant="primary"
 									size="sm"
 									disabled={!canManage || isSaving || !formValid}
 									onClick={() => {
@@ -324,8 +322,8 @@ export function RuleRowEditor({
 									}}
 								>
 									Save
-								</PrimaryButton>
-								<CancelButton
+								</Button>
+								<Button variant="cancel"
 									size="sm"
 									showIcon={false}
 									disabled={!canManage || isSaving}
@@ -335,7 +333,7 @@ export function RuleRowEditor({
 									}}
 								>
 									Cancel
-								</CancelButton>
+								</Button>
 							</div>
 						</div>
 					</TableCell>
@@ -350,10 +348,10 @@ export function RuleRowEditor({
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<CancelButton onClick={() => setIsDeleteDialogOpen(false)} disabled={isSaving}>
+						<Button variant="cancel" onClick={() => setIsDeleteDialogOpen(false)} disabled={isSaving}>
 							Cancel
-						</CancelButton>
-						<DestructiveButton
+						</Button>
+						<Button variant="danger"
 							loading={isSaving}
 							loadingText="Deleting..."
 							showIcon={false}
@@ -363,7 +361,7 @@ export function RuleRowEditor({
 							}}
 						>
 							Delete
-						</DestructiveButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>

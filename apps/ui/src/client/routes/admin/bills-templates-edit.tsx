@@ -2,10 +2,7 @@ import { Copy, FileText, Info, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
-import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ConfirmButton } from '@/components/ui/confirm-button'
-import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
 	Dialog,
 	DialogContent,
@@ -14,7 +11,6 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
-import { GhostButton } from '@/components/ui/ghost-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
@@ -31,6 +27,7 @@ import {
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import type { LateFeeCompounding, LateFeeType, UpdateTemplateInput } from '@repo/bills'
+import { Button } from '@/components/ui/button'
 
 export default function AdminBillsTemplatesEditPage() {
 	const { id } = useParams<{ id: string }>()
@@ -231,9 +228,9 @@ export default function AdminBillsTemplatesEditPage() {
 						<p className="text-destructive">Template not found</p>
 					</CardContent>
 				</Card>
-				<GhostButton asChild>
+				<Button variant="ghost" asChild>
 					<Link to="/admin/bills/templates">Back to Templates</Link>
-				</GhostButton>
+				</Button>
 			</div>
 		)
 	}
@@ -247,7 +244,7 @@ export default function AdminBillsTemplatesEditPage() {
 					<p className="text-muted-foreground mt-2">Modify template: {template.name}</p>
 				</div>
 				<div className="flex gap-2">
-					<GhostButton
+					<Button variant="ghost"
 						size="sm"
 						onClick={() => {
 							setCloneName(`${template.name} (Copy)`)
@@ -256,21 +253,21 @@ export default function AdminBillsTemplatesEditPage() {
 					>
 						<Copy className="mr-2 h-4 w-4" />
 						Clone
-					</GhostButton>
-					<DestructiveButton
+					</Button>
+					<Button variant="danger"
 						size="sm"
 						onClick={() => setDeleteDialogOpen(true)}
 						loading={deleteTemplate.isPending}
 					>
 						<Trash2 className="mr-2 h-4 w-4" />
 						Delete
-					</DestructiveButton>
-					<GhostButton asChild>
+					</Button>
+					<Button variant="ghost" asChild>
 						<Link to="/admin/bills/templates">
 							<FileText className="mr-2 h-4 w-4" />
 							Back to Templates
 						</Link>
-					</GhostButton>
+					</Button>
 				</div>
 			</div>
 
@@ -520,12 +517,12 @@ export default function AdminBillsTemplatesEditPage() {
 
 				{/* Actions */}
 				<div className="flex gap-3">
-					<ConfirmButton type="submit" loading={updateTemplate.isPending}>
+					<Button variant="confirm" type="submit" loading={updateTemplate.isPending}>
 						{updateTemplate.isPending ? 'Saving Changes...' : 'Save Changes'}
-					</ConfirmButton>
-					<CancelButton type="button" onClick={() => navigate('/admin/bills/templates')}>
+					</Button>
+					<Button variant="cancel" type="button" onClick={() => navigate('/admin/bills/templates')}>
 						Cancel
-					</CancelButton>
+					</Button>
 				</div>
 			</form>
 
@@ -548,14 +545,14 @@ export default function AdminBillsTemplatesEditPage() {
 						</div>
 					</div>
 					<DialogFooter>
-						<CancelButton onClick={() => setCloneDialogOpen(false)}>Cancel</CancelButton>
-						<ConfirmButton
-							onConfirm={handleClone}
+						<Button variant="cancel" onClick={() => setCloneDialogOpen(false)}>Cancel</Button>
+						<Button variant="confirm"
+							onClick={handleClone}
 							disabled={!cloneName.trim() || cloneTemplate.isPending}
 							loading={cloneTemplate.isPending}
 						>
 							{cloneTemplate.isPending ? 'Cloning...' : 'Clone Template'}
-						</ConfirmButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
@@ -570,10 +567,10 @@ export default function AdminBillsTemplatesEditPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<CancelButton onClick={() => setDeleteDialogOpen(false)}>Cancel</CancelButton>
-						<DestructiveButton onClick={handleDelete} loading={deleteTemplate.isPending}>
+						<Button variant="cancel" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+						<Button variant="danger" onClick={handleDelete} loading={deleteTemplate.isPending}>
 							Delete Template
-						</DestructiveButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>

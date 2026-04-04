@@ -108,7 +108,7 @@ export function CommentForm({
 
 			<div className="flex gap-2">
 				{onCancel && (
-					<Button type="button" variant="outline" onClick={onCancel} disabled={isPending}>
+					<Button type="button" variant="ghost" onClick={onCancel} disabled={isPending}>
 						Cancel
 					</Button>
 				)}

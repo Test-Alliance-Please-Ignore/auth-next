@@ -2,7 +2,6 @@ import { Plus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { PrimaryButton } from '@/components/ui/primary-button'
 import {
 	useCreateTaxBillingConfig,
 	useDeleteTaxBillingConfig,
@@ -18,6 +17,7 @@ import { BillingConfigurationForm } from './billing-configuration-form'
 import { BillingConfigurationTable } from './billing-configuration-table'
 
 import type { TaxBillingPayeeType, TaxCorporationBillingConfig } from '@repo/corporation-tax'
+import { Button } from '@/components/ui/button'
 
 type BillingConfigurationCardProps = {
 	effectiveCorporationId: string | undefined
@@ -255,7 +255,7 @@ export function BillingConfigurationCard({
 
 						{canIssue && !showBillingConfigForm ? (
 							<div className="flex justify-center pt-2">
-								<PrimaryButton
+								<Button variant="primary"
 									className="min-w-44"
 									onClick={() => {
 										resetBillingConfigForm()
@@ -264,7 +264,7 @@ export function BillingConfigurationCard({
 								>
 									<Plus className="mr-2 h-4 w-4" />
 									Add Config
-								</PrimaryButton>
+								</Button>
 							</div>
 						) : null}
 

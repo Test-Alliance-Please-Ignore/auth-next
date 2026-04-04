@@ -4,9 +4,7 @@ import { useState } from 'react'
 import { CategoryForm } from '@/components/category-form'
 import { CategoryList } from '@/components/category-list'
 import { Button } from '@/components/ui/button'
-import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
 	Dialog,
 	DialogContent,
@@ -195,7 +193,7 @@ export default function CategoriesPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<CancelButton
+						<Button variant="cancel"
 							onClick={() => {
 								setDeleteDialogOpen(false)
 								setSelectedCategory(null)
@@ -203,8 +201,8 @@ export default function CategoriesPage() {
 							disabled={deleteCategory.isPending}
 						>
 							Cancel
-						</CancelButton>
-						<DestructiveButton
+						</Button>
+						<Button variant="danger"
 							onClick={handleDeleteConfirm}
 							loading={deleteCategory.isPending}
 							loadingText="Deleting..."
@@ -212,7 +210,7 @@ export default function CategoriesPage() {
 						>
 							<Trash2 className="mr-2 h-4 w-4" />
 							Delete
-						</DestructiveButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>

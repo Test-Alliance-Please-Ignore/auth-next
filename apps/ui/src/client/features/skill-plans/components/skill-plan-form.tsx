@@ -1,8 +1,6 @@
 import { useState } from 'react'
 
 import { Button } from '../../../components/ui/button'
-import { CancelButton } from '../../../components/ui/cancel-button'
-import { ConfirmButton } from '../../../components/ui/confirm-button'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import { Switch } from '../../../components/ui/switch'
@@ -163,12 +161,12 @@ export function SkillPlanForm({
 
 			{/* Form actions */}
 			<div className="flex justify-end gap-2 pt-4">
-				<CancelButton onClick={onCancel} disabled={isSubmitting}>
+				<Button variant="cancel" onClick={onCancel} disabled={isSubmitting}>
 					Cancel
-				</CancelButton>
-				<ConfirmButton type="submit" loading={isSubmitting}>
+				</Button>
+				<Button variant="confirm" type="submit" loading={isSubmitting}>
 					{mode === 'create' ? 'Create Plan' : 'Save Changes'}
-				</ConfirmButton>
+				</Button>
 			</div>
 		</form>
 	)

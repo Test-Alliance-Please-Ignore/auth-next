@@ -2,8 +2,6 @@ import { LogOut } from 'lucide-react'
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { CancelButton } from '@/components/ui/cancel-button'
-import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
 	Dialog,
 	DialogContent,
@@ -48,7 +46,7 @@ export function LeaveButton({ group, onSuccess }: LeaveButtonProps) {
 
 	if (group.isOwner) {
 		return (
-			<Button disabled variant="outline">
+			<Button disabled variant="ghost">
 				You are the owner
 			</Button>
 		)
@@ -56,7 +54,7 @@ export function LeaveButton({ group, onSuccess }: LeaveButtonProps) {
 
 	return (
 		<>
-			<Button variant="destructive" onClick={() => setConfirmOpen(true)}>
+			<Button variant="danger" onClick={() => setConfirmOpen(true)}>
 				<LogOut className="mr-2 h-4 w-4" />
 				Leave Group
 			</Button>
@@ -76,16 +74,16 @@ export function LeaveButton({ group, onSuccess }: LeaveButtonProps) {
 						</div>
 					)}
 					<DialogFooter>
-						<CancelButton onClick={() => setConfirmOpen(false)} disabled={leaveGroup.isPending}>
+						<Button variant="cancel" onClick={() => setConfirmOpen(false)} disabled={leaveGroup.isPending}>
 							Cancel
-						</CancelButton>
-						<DestructiveButton
+						</Button>
+						<Button variant="danger"
 							onClick={handleLeave}
 							loading={leaveGroup.isPending}
 							loadingText="Leaving..."
 						>
 							Leave Group
-						</DestructiveButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>

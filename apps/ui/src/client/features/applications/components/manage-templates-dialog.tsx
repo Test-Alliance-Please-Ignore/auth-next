@@ -245,7 +245,7 @@ export function ManageTemplatesDialog({
 												{deleteConfirmId === template.id ? (
 													<div className="flex items-center gap-1">
 														<Button
-															variant="destructive"
+															variant="danger"
 															size="sm"
 															className="h-8 px-2 text-xs"
 															onClick={() => handleDelete(template.id)}
@@ -287,7 +287,7 @@ export function ManageTemplatesDialog({
 							)}
 						</div>
 						<DialogFooter>
-							<Button variant="outline" onClick={handleClose}>
+							<Button variant="ghost" onClick={handleClose}>
 								Close
 							</Button>
 							<Button onClick={handleCreate}>
@@ -370,7 +370,7 @@ export function ManageTemplatesDialog({
 							</div>
 						</div>
 						<DialogFooter>
-							<Button variant="outline" onClick={handleCancel} disabled={isSaving}>
+							<Button variant="ghost" onClick={handleCancel} disabled={isSaving}>
 								Cancel
 							</Button>
 							<Button onClick={handleSave} disabled={isSaving}>

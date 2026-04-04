@@ -1,8 +1,6 @@
 import { ArrowRight } from 'lucide-react'
 import { useState } from 'react'
 
-import { CancelButton } from '@/components/ui/cancel-button'
-import { ConfirmButton } from '@/components/ui/confirm-button'
 import {
 	Dialog,
 	DialogContent,
@@ -17,6 +15,7 @@ import { useCategories } from '@/hooks/useCategories'
 import { useUpdateGroup } from '@/hooks/useGroups'
 
 import type { GroupWithDetails } from '@/lib/api'
+import { Button } from '@/components/ui/button'
 
 interface ReassignCategoryDialogProps {
 	group: GroupWithDetails
@@ -107,17 +106,17 @@ export function ReassignCategoryDialog({
 				</div>
 
 				<DialogFooter>
-					<CancelButton onClick={handleCancel} disabled={updateGroup.isPending}>
+					<Button variant="cancel" onClick={handleCancel} disabled={updateGroup.isPending}>
 						Cancel
-					</CancelButton>
-					<ConfirmButton
-						onConfirm={handleReassign}
+					</Button>
+					<Button variant="confirm"
+						onClick={handleReassign}
 						loading={updateGroup.isPending}
 						loadingText="Reassigning..."
 						disabled={isSameCategory}
 					>
 						Reassign Category
-					</ConfirmButton>
+					</Button>
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>

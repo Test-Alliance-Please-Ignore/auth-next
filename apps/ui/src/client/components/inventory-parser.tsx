@@ -9,8 +9,8 @@ import { useState } from 'react'
 
 import { useParseInventory } from '../hooks/useInventoryParser'
 import { JsonViewer } from './json-viewer'
+import { Button } from './ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
-import { ConfirmButton } from './ui/confirm-button'
 import { Label } from './ui/label'
 import { Textarea } from './ui/textarea'
 
@@ -86,13 +86,13 @@ export function InventoryParser({
 					</div>
 
 					<div className="flex items-center gap-4">
-						<ConfirmButton
-							onConfirm={handleParse}
+						<Button variant="confirm"
+							onClick={handleParse}
 							disabled={!inventoryText.trim() || isLoading}
 							loading={isLoading}
 						>
 							Parse Inventory
-						</ConfirmButton>
+						</Button>
 
 						{hasError && (
 							<p className="text-sm text-destructive">

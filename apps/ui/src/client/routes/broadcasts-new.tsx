@@ -2,9 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
-import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ConfirmButton } from '@/components/ui/confirm-button'
 import { Container } from '@/components/ui/container'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -122,9 +120,9 @@ export default function NewBroadcastPage() {
 				title="New Broadcast"
 				description="Send a message to a broadcast target"
 				action={
-					<CancelButton onClick={() => navigate('/broadcasts')} size="default">
+					<Button variant="cancel" onClick={() => navigate('/broadcasts')} size="default">
 						Cancel
-					</CancelButton>
+					</Button>
 				}
 			/>
 
@@ -278,17 +276,17 @@ export default function NewBroadcastPage() {
 
 							{/* Submit Button */}
 							<div className="flex justify-end gap-3 pt-4">
-								<CancelButton type="button" onClick={() => navigate('/broadcasts')}>
+								<Button variant="cancel" type="button" onClick={() => navigate('/broadcasts')}>
 									Cancel
-								</CancelButton>
-								<ConfirmButton
+								</Button>
+								<Button variant="confirm"
 									type="submit"
 									disabled={!canSubmit || isSubmitting}
 									loading={isSubmitting}
 									loadingText="Sending..."
 								>
 									Send Broadcast
-								</ConfirmButton>
+								</Button>
 							</div>
 						</form>
 					</CardContent>

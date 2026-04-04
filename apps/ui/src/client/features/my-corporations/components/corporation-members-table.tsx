@@ -27,10 +27,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { DestructiveButton } from '@/components/ui/destructive-button'
-import { GhostButton } from '@/components/ui/ghost-button'
 import { Input } from '@/components/ui/input'
-import { PrimaryButton } from '@/components/ui/primary-button'
 import { Select } from '@/components/ui/select'
 import {
 	Table,
@@ -549,32 +546,32 @@ export default function CorporationMembersTable({
 									<TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
 										<div className="flex justify-end gap-2">
 											{!member.hasAuthAccount && onLinkAccount && (
-												<GhostButton size="sm" onClick={() => onLinkAccount(member)}>
+												<Button variant="ghost" size="sm" onClick={() => onLinkAccount(member)}>
 													<Link2 className="h-3 w-3 mr-1" />
 													Link
-												</GhostButton>
+												</Button>
 											)}
 											{canManageHrRoles && member.hasAuthAccount && !member.hrRole && (
-												<PrimaryButton size="sm" onClick={() => setGrantDialogMember(member)}>
+												<Button variant="primary" size="sm" onClick={() => setGrantDialogMember(member)}>
 													<Shield className="h-3 w-3 mr-1" />
 													Grant HR Role
-												</PrimaryButton>
+												</Button>
 											)}
 											{canManageHrRoles && member.hrRole && (
-												<DestructiveButton
+												<Button variant="danger"
 													size="sm"
 													showIcon={false}
 													onClick={() => setRevokeDialogMember(member)}
 												>
 													<ShieldOff className="h-3 w-3 mr-1" />
 													Revoke HR Role
-												</DestructiveButton>
+												</Button>
 											)}
 											{canManageHrRoles &&
 												member.hasAuthAccount &&
 												member.role !== 'CEO' &&
 												member.status !== 'emeritus' && (
-													<GhostButton
+													<Button variant="ghost"
 														size="sm"
 														onClick={() => {
 															setEmeritusAction('mark')
@@ -583,10 +580,10 @@ export default function CorporationMembersTable({
 													>
 														<Heart className="h-3 w-3 mr-1" />
 														Mark Emeritus
-													</GhostButton>
+													</Button>
 												)}
 											{canManageHrRoles && member.status === 'emeritus' && (
-												<GhostButton
+												<Button variant="ghost"
 													size="sm"
 													onClick={() => {
 														setEmeritusAction('remove')
@@ -595,11 +592,11 @@ export default function CorporationMembersTable({
 												>
 													<Heart className="h-3 w-3 mr-1" />
 													Remove Emeritus
-												</GhostButton>
+												</Button>
 											)}
-											<GhostButton size="sm" onClick={() => onMemberClick?.(member)}>
+											<Button variant="ghost" size="sm" onClick={() => onMemberClick?.(member)}>
 												<ExternalLink className="h-3 w-3" />
-											</GhostButton>
+											</Button>
 										</div>
 									</TableCell>
 								)}
@@ -619,7 +616,7 @@ export default function CorporationMembersTable({
 						<div className="flex gap-2">
 							<Button
 								size="sm"
-								variant="outline"
+								variant="ghost"
 								disabled={currentPage === 1}
 								onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
 							>
@@ -632,7 +629,7 @@ export default function CorporationMembersTable({
 										<Button
 											key={pageNum}
 											size="sm"
-											variant={currentPage === pageNum ? 'default' : 'outline'}
+											variant={currentPage === pageNum ? 'primary' : 'ghost'}
 											onClick={() => setCurrentPage(pageNum)}
 										>
 											{pageNum}
@@ -643,7 +640,7 @@ export default function CorporationMembersTable({
 								{totalPages > 5 && (
 									<Button
 										size="sm"
-										variant={currentPage === totalPages ? 'default' : 'outline'}
+										variant={currentPage === totalPages ? 'primary' : 'ghost'}
 										onClick={() => setCurrentPage(totalPages)}
 									>
 										{totalPages}
@@ -652,7 +649,7 @@ export default function CorporationMembersTable({
 							</div>
 							<Button
 								size="sm"
-								variant="outline"
+								variant="ghost"
 								disabled={currentPage === totalPages}
 								onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
 							>

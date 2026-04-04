@@ -1,7 +1,5 @@
 import { Heart } from 'lucide-react'
 
-import { CancelButton } from '@/components/ui/cancel-button'
-import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
 	Dialog,
 	DialogContent,
@@ -11,6 +9,7 @@ import {
 } from '@/components/ui/dialog'
 
 import type { CorporationMember } from '../api'
+import { Button } from '@/components/ui/button'
 
 interface EmeritusConfirmationDialogProps {
 	member: CorporationMember | null
@@ -112,10 +111,10 @@ export function EmeritusConfirmationDialog({
 
 					{/* Action Buttons */}
 					<div className="flex justify-end gap-2 pt-4">
-						<CancelButton type="button" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
+						<Button variant="cancel" type="button" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
 							Cancel
-						</CancelButton>
-						<DestructiveButton
+						</Button>
+						<Button variant="danger"
 							type="submit"
 							loading={isSubmitting}
 							loadingText={
@@ -125,7 +124,7 @@ export function EmeritusConfirmationDialog({
 						>
 							<Heart className="mr-2 h-4 w-4" />
 							{isMarkingEmeritus ? 'Mark as Emeritus' : 'Remove Emeritus Status'}
-						</DestructiveButton>
+						</Button>
 					</div>
 				</form>
 			</DialogContent>

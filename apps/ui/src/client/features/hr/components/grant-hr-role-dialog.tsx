@@ -1,8 +1,6 @@
 import { Shield } from 'lucide-react'
 import { useState } from 'react'
 
-import { CancelButton } from '@/components/ui/cancel-button'
-import { ConfirmButton } from '@/components/ui/confirm-button'
 import {
 	Dialog,
 	DialogContent,
@@ -18,6 +16,7 @@ import { HrRoleBadge } from './hr-role-badge'
 
 import type { CorporationMember } from '../../my-corporations/api'
 import type { GrantHrRoleRequest, HrRoleType } from '../api'
+import { Button } from '@/components/ui/button'
 
 interface GrantHrRoleDialogProps {
 	member: CorporationMember | null
@@ -136,10 +135,10 @@ export function GrantHrRoleDialog({
 
 					{/* Action Buttons */}
 					<div className="flex justify-end gap-2 pt-4">
-						<CancelButton type="button" onClick={handleCancel} disabled={isSubmitting}>
+						<Button variant="cancel" type="button" onClick={handleCancel} disabled={isSubmitting}>
 							Cancel
-						</CancelButton>
-						<ConfirmButton
+						</Button>
+						<Button variant="confirm"
 							type="submit"
 							loading={isSubmitting}
 							loadingText="Granting Role..."
@@ -147,7 +146,7 @@ export function GrantHrRoleDialog({
 						>
 							<Shield className="mr-2 h-4 w-4" />
 							Grant Role
-						</ConfirmButton>
+						</Button>
 					</div>
 				</form>
 			</DialogContent>

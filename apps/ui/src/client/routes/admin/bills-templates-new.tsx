@@ -2,10 +2,7 @@ import { FileText, Info } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
-import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ConfirmButton } from '@/components/ui/confirm-button'
-import { GhostButton } from '@/components/ui/ghost-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { NumberInput } from '@/components/ui/number-input'
@@ -16,6 +13,7 @@ import { useCreateTemplate } from '@/hooks/useBills'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import type { CreateTemplateInput, LateFeeCompounding, LateFeeType } from '@repo/bills'
+import { Button } from '@/components/ui/button'
 
 export default function AdminBillsTemplatesNewPage() {
 	usePageTitle('Admin - Create Bill Template')
@@ -145,12 +143,12 @@ export default function AdminBillsTemplatesNewPage() {
 						Create a reusable template for generating bills
 					</p>
 				</div>
-				<GhostButton asChild>
+				<Button variant="ghost" asChild>
 					<Link to="/admin/bills/templates">
 						<FileText className="mr-2 h-4 w-4" />
 						Back to Templates
 					</Link>
-				</GhostButton>
+				</Button>
 			</div>
 
 			{/* Success/Error Message */}
@@ -399,12 +397,12 @@ export default function AdminBillsTemplatesNewPage() {
 
 				{/* Actions */}
 				<div className="flex gap-3">
-					<ConfirmButton type="submit" loading={createTemplate.isPending}>
+					<Button variant="confirm" type="submit" loading={createTemplate.isPending}>
 						{createTemplate.isPending ? 'Creating Template...' : 'Create Template'}
-					</ConfirmButton>
-					<CancelButton type="button" onClick={() => navigate('/admin/bills/templates')}>
+					</Button>
+					<Button variant="cancel" type="button" onClick={() => navigate('/admin/bills/templates')}>
 						Cancel
-					</CancelButton>
+					</Button>
 				</div>
 			</form>
 		</div>

@@ -9,7 +9,6 @@ import { Lock, Plus } from 'lucide-react'
 import { useState } from 'react'
 
 import { LoadingSpinner } from '@/components/ui/loading'
-import { PrimaryButton } from '@/components/ui/primary-button'
 import { Select } from '@/components/ui/select'
 import { useAuth } from '@/hooks/useAuth'
 
@@ -17,6 +16,7 @@ import { useHRNotes } from '../hooks'
 import { HRNoteCard } from './hr-note-card'
 
 import type { HRNotePriority, HRNoteType } from '../api'
+import { Button } from '@/components/ui/button'
 
 // ============================================================================
 // Types
@@ -114,10 +114,10 @@ export function HRNotesList({
 					<h3 className="font-semibold">HR Notes</h3>
 				</div>
 				{onAddNote && (
-					<PrimaryButton onClick={onAddNote} size="sm" className="gap-1.5">
+					<Button variant="primary" onClick={onAddNote} size="sm" className="gap-1.5">
 						<Plus className="h-4 w-4" />
 						Add Note
-					</PrimaryButton>
+					</Button>
 				)}
 			</div>
 
@@ -171,10 +171,10 @@ export function HRNotesList({
 						)}
 					</div>
 					{onAddNote && (
-						<PrimaryButton onClick={onAddNote} size="sm" className="mt-4">
+						<Button variant="primary" onClick={onAddNote} size="sm" className="mt-4">
 							<Plus className="h-4 w-4 mr-1.5" />
 							Add First Note
-						</PrimaryButton>
+						</Button>
 					)}
 				</div>
 			)}

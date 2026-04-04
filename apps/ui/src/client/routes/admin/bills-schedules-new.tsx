@@ -3,10 +3,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import { BillEntityPicker } from '@/components/bills/bill-entity-picker'
-import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ConfirmButton } from '@/components/ui/confirm-button'
-import { GhostButton } from '@/components/ui/ghost-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { NumberInput } from '@/components/ui/number-input'
@@ -18,6 +15,7 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 import { formatScheduleFrequency } from '@/lib/bills-utils'
 
 import type { CreateScheduleInput, EntityType, PayeeType, ScheduleFrequency } from '@repo/bills'
+import { Button } from '@/components/ui/button'
 
 export default function AdminBillsSchedulesNewPage() {
 	usePageTitle('Admin - Create Bill Schedule')
@@ -239,12 +237,12 @@ export default function AdminBillsSchedulesNewPage() {
 					<h1 className="text-3xl font-bold gradient-text">Create Bill Schedule</h1>
 					<p className="text-muted-foreground mt-2">Set up automated recurring bill generation</p>
 				</div>
-				<GhostButton asChild>
+				<Button variant="ghost" asChild>
 					<Link to="/admin/bills/schedules">
 						<Calendar className="mr-2 h-4 w-4" />
 						Back to Schedules
 					</Link>
-				</GhostButton>
+				</Button>
 			</div>
 
 			{/* Success/Error Message */}
@@ -501,12 +499,12 @@ export default function AdminBillsSchedulesNewPage() {
 
 				{/* Actions */}
 				<div className="flex gap-3">
-					<ConfirmButton type="submit" loading={createSchedule.isPending}>
+					<Button variant="confirm" type="submit" loading={createSchedule.isPending}>
 						{createSchedule.isPending ? 'Creating Schedule...' : 'Create Schedule'}
-					</ConfirmButton>
-					<CancelButton type="button" onClick={() => navigate('/admin/bills/schedules')}>
+					</Button>
+					<Button variant="cancel" type="button" onClick={() => navigate('/admin/bills/schedules')}>
 						Cancel
-					</CancelButton>
+					</Button>
 				</div>
 			</form>
 		</div>

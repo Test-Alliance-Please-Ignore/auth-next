@@ -134,7 +134,7 @@ export default function MyApplicationsList() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<Button variant="outline" onClick={() => window.location.reload()}>
+						<Button variant="ghost" onClick={() => window.location.reload()}>
 							Try Again
 						</Button>
 					</CardContent>
@@ -225,7 +225,7 @@ export default function MyApplicationsList() {
 								: 'Try selecting a different filter to view other applications.'}
 						</p>
 						{activeFilter !== 'all' && (
-							<Button variant="outline" onClick={() => setActiveFilter('all')}>
+							<Button variant="ghost" onClick={() => setActiveFilter('all')}>
 								View All Applications
 							</Button>
 						)}

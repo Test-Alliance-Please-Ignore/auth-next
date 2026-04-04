@@ -477,7 +477,7 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 				)}
 
 				<Button
-					variant="outline"
+					variant="ghost"
 					size="sm"
 					onClick={() => logout.mutate()}
 					disabled={logout.isPending}

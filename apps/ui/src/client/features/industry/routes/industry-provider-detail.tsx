@@ -14,10 +14,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ConfirmButton } from '@/components/ui/confirm-button'
-import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
 	Dialog,
 	DialogContent,
@@ -225,16 +222,16 @@ export default function IndustryProviderDetailPage() {
 					</Button>
 				</div>
 				<div className="flex items-center gap-2">
-					<Button variant="outline" asChild>
+					<Button variant="ghost" asChild>
 						<Link to={`/admin/industry-providers/${provider.id}/edit`}>
 							<Edit className="h-4 w-4 mr-2" />
 							Edit
 						</Link>
 					</Button>
-					<DestructiveButton onClick={() => setDeleteDialogOpen(true)}>
+					<Button variant="danger" onClick={() => setDeleteDialogOpen(true)}>
 						<Trash2 className="h-4 w-4 mr-2" />
 						Delete
-					</DestructiveButton>
+					</Button>
 				</div>
 			</div>
 
@@ -266,7 +263,7 @@ export default function IndustryProviderDetailPage() {
 							)}
 						</div>
 						<Button
-							variant={provider.acceptingOrders ? 'outline' : 'default'}
+							variant={provider.acceptingOrders ? 'ghost' : 'primary'}
 							onClick={handleToggleAcceptingOrders}
 							disabled={setAcceptingOrders.isPending}
 						>
@@ -419,14 +416,14 @@ export default function IndustryProviderDetailPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<CancelButton onClick={() => setDeleteDialogOpen(false)}>Cancel</CancelButton>
-						<DestructiveButton
+						<Button variant="cancel" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+						<Button variant="danger"
 							onClick={handleDeleteProvider}
 							loading={deleteProvider.isPending}
 							loadingText="Deleting..."
 						>
 							Delete Provider
-						</DestructiveButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
@@ -453,15 +450,15 @@ export default function IndustryProviderDetailPage() {
 						/>
 					</div>
 					<DialogFooter>
-						<CancelButton onClick={() => setAddServiceDialogOpen(false)}>Cancel</CancelButton>
-						<ConfirmButton
-							onConfirm={handleAddService}
+						<Button variant="cancel" onClick={() => setAddServiceDialogOpen(false)}>Cancel</Button>
+						<Button variant="confirm"
+							onClick={handleAddService}
 							loading={addService.isPending}
 							loadingText="Adding..."
 							disabled={!newServiceType}
 						>
 							Add Service
-						</ConfirmButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
@@ -478,21 +475,21 @@ export default function IndustryProviderDetailPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<CancelButton
+						<Button variant="cancel"
 							onClick={() => {
 								setRemoveServiceDialogOpen(false)
 								setSelectedService(null)
 							}}
 						>
 							Cancel
-						</CancelButton>
-						<DestructiveButton
+						</Button>
+						<Button variant="danger"
 							onClick={handleRemoveService}
 							loading={removeService.isPending}
 							loadingText="Removing..."
 						>
 							Remove Service
-						</DestructiveButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>

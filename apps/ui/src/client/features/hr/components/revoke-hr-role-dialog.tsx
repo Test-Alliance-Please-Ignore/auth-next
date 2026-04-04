@@ -1,7 +1,5 @@
 import { ShieldOff } from 'lucide-react'
 
-import { CancelButton } from '@/components/ui/cancel-button'
-import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
 	Dialog,
 	DialogContent,
@@ -14,6 +12,7 @@ import { HrRoleBadge } from './hr-role-badge'
 
 import type { CorporationMember } from '../../my-corporations/api'
 import type { HrRoleGrant, RevokeHrRoleRequest } from '../api'
+import { Button } from '@/components/ui/button'
 
 interface RevokeHrRoleDialogProps {
 	member: CorporationMember | null
@@ -95,10 +94,10 @@ export function RevokeHrRoleDialog({
 
 					{/* Action Buttons */}
 					<div className="flex justify-end gap-2 pt-4">
-						<CancelButton type="button" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
+						<Button variant="cancel" type="button" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
 							Cancel
-						</CancelButton>
-						<DestructiveButton
+						</Button>
+						<Button variant="danger"
 							type="submit"
 							loading={isSubmitting}
 							loadingText="Revoking Role..."
@@ -106,7 +105,7 @@ export function RevokeHrRoleDialog({
 						>
 							<ShieldOff className="mr-2 h-4 w-4" />
 							Revoke Role
-						</DestructiveButton>
+						</Button>
 					</div>
 				</form>
 			</DialogContent>

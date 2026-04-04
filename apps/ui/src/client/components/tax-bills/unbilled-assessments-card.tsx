@@ -1,5 +1,4 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { PrimaryButton } from '@/components/ui/primary-button'
 import {
 	Table,
 	TableBody,
@@ -12,6 +11,7 @@ import { formatTaxDate } from '@/lib/tax-date'
 import { formatTaxIskFull } from '@/lib/tax-display'
 
 import type { TaxAssessment } from '@repo/corporation-tax'
+import { Button } from '@/components/ui/button'
 
 type UnbilledAssessmentsCardProps = {
 	effectiveCorporationId: string | null
@@ -80,13 +80,13 @@ export function UnbilledAssessmentsCard({
 									<TableCell>{formatTaxDate(assessment.taxPeriodEnd)}</TableCell>
 									<TableCell className="text-center">
 										<div className="flex justify-end">
-											<PrimaryButton
+											<Button variant="primary"
 												size="sm"
 												disabled={!canIssue || createBillPending}
 												onClick={() => onCreateBill(assessment.id)}
 											>
 												{createBillPending ? 'Creating...' : 'Create Bill'}
-											</PrimaryButton>
+											</Button>
 										</div>
 									</TableCell>
 								</TableRow>

@@ -3,7 +3,6 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { GhostButton } from '@/components/ui/ghost-button'
 import {
 	Table,
 	TableBody,
@@ -15,6 +14,7 @@ import {
 import { useAdminUser } from '@/hooks/useAdminUsers'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'
+import { Button } from '@/components/ui/button'
 
 export default function AdminUserGroupsPage() {
 	usePageTitle('Admin - User Group Memberships')
@@ -35,10 +35,10 @@ export default function AdminUserGroupsPage() {
 	return (
 		<div className="space-y-6">
 			<div className="flex items-center gap-4">
-				<GhostButton onClick={() => navigate(`/admin/users/${userId}`)}>
+				<Button variant="ghost" onClick={() => navigate(`/admin/users/${userId}`)}>
 					<ArrowLeft className="h-4 w-4 mr-2" />
 					Back to User
-				</GhostButton>
+				</Button>
 			</div>
 
 			<div className="space-y-1">

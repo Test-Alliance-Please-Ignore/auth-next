@@ -3,7 +3,6 @@ import { AlertCircle, CheckCircle2 } from 'lucide-react'
 import { formatSkillLevel } from '../lib/evemon-parser'
 import { Button } from './ui/button'
 import { Card, CardContent } from './ui/card'
-import { ConfirmButton } from './ui/confirm-button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table'
 
 import type { ParsedEvemonSkill } from '../lib/evemon-parser'
@@ -90,18 +89,18 @@ export function EvemonSkillPreview({
 			</Card>
 
 			<div className="flex justify-end gap-2">
-				<Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
+				<Button type="button" variant="ghost" onClick={onCancel} disabled={isLoading}>
 					Cancel
 				</Button>
-				<ConfirmButton
+				<Button variant="confirm"
 					type="button"
-					onConfirm={onConfirm}
+					onClick={onConfirm}
 					loading={isLoading}
 					loadingText="Importing..."
 					showIcon={!isLoading}
 				>
 					{`Import ${totalSkills} Skill${totalSkills !== 1 ? 's' : ''}`}
-				</ConfirmButton>
+				</Button>
 			</div>
 		</div>
 	)

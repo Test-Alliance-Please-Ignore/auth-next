@@ -1,13 +1,12 @@
 import { Calendar, Check, X } from 'lucide-react'
 
-import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { SuccessButton } from '@/components/ui/success-button'
 import { useAcceptInvitation, useDeclineInvitation } from '@/hooks/useGroups'
 
 import { VisibilityBadge } from './visibility-badge'
 
 import type { GroupInvitationWithDetails } from '@/lib/api'
+import { Button } from '@/components/ui/button'
 
 interface InvitationCardProps {
 	invitation: GroupInvitationWithDetails
@@ -60,7 +59,7 @@ export function InvitationCard({ invitation, onActionComplete }: InvitationCardP
 				</div>
 
 				<div className="flex gap-2">
-					<SuccessButton
+					<Button variant="success"
 						onClick={handleAccept}
 						disabled={isLoading}
 						loading={acceptInvitation.isPending}
@@ -70,8 +69,8 @@ export function InvitationCard({ invitation, onActionComplete }: InvitationCardP
 					>
 						<Check className="mr-2 h-4 w-4" />
 						Accept
-					</SuccessButton>
-					<CancelButton
+					</Button>
+					<Button variant="cancel"
 						onClick={handleDecline}
 						disabled={isLoading}
 						loading={declineInvitation.isPending}
@@ -81,7 +80,7 @@ export function InvitationCard({ invitation, onActionComplete }: InvitationCardP
 					>
 						<X className="mr-2 h-4 w-4" />
 						Decline
-					</CancelButton>
+					</Button>
 				</div>
 			</CardContent>
 		</Card>

@@ -173,7 +173,7 @@ export function PaymentForm({ request, onSuccess, onCancel }: PaymentFormProps) 
 
 			{/* Submit Buttons */}
 			<div className="flex gap-2">
-				<Button type="button" variant="outline" onClick={onCancel} disabled={isPending}>
+				<Button type="button" variant="ghost" onClick={onCancel} disabled={isPending}>
 					Cancel
 				</Button>
 				<Button type="submit" disabled={isPending || !isTokenFormatValid}>

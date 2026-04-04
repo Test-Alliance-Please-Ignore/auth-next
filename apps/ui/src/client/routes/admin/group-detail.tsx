@@ -34,10 +34,7 @@ import { PendingJoinRequestsList } from '@/components/pending-join-requests-list
 import { ReassignCategoryDialog } from '@/components/reassign-category-dialog'
 import { TransferOwnershipDialog } from '@/components/transfer-ownership-dialog'
 import { Button } from '@/components/ui/button'
-import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ConfirmButton } from '@/components/ui/confirm-button'
-import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
 	Dialog,
 	DialogContent,
@@ -562,7 +559,7 @@ export default function GroupDetailPage() {
 				<CardContent className="py-8 text-center">
 					<p className="text-destructive font-medium">Group not found</p>
 					<Link to="/admin/groups">
-						<Button variant="outline" className="mt-4">
+						<Button variant="ghost" className="mt-4">
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to Groups
 						</Button>
@@ -614,19 +611,19 @@ export default function GroupDetailPage() {
 				</CardHeader>
 				<CardContent>
 					<div className="flex flex-wrap gap-2">
-						<Button variant="default" size="sm" onClick={() => setEditGroupDialogOpen(true)}>
+						<Button variant="primary" size="sm" onClick={() => setEditGroupDialogOpen(true)}>
 							<Settings className="mr-2 h-4 w-4" />
 							Edit Group
 						</Button>
-						<Button variant="outline" size="sm" onClick={() => setEditNameDialogOpen(true)}>
+						<Button variant="ghost" size="sm" onClick={() => setEditNameDialogOpen(true)}>
 							<Pencil className="mr-2 h-4 w-4" />
 							Edit Name
 						</Button>
-						<Button variant="outline" size="sm" onClick={() => setEditDescriptionDialogOpen(true)}>
+						<Button variant="ghost" size="sm" onClick={() => setEditDescriptionDialogOpen(true)}>
 							<Pencil className="mr-2 h-4 w-4" />
 							Edit Description
 						</Button>
-						<Button variant="outline" size="sm" onClick={() => setReassignCategoryDialogOpen(true)}>
+						<Button variant="ghost" size="sm" onClick={() => setReassignCategoryDialogOpen(true)}>
 							<FolderEdit className="mr-2 h-4 w-4" />
 							Reassign Category
 						</Button>
@@ -826,21 +823,21 @@ export default function GroupDetailPage() {
 							</div>
 
 							<DialogFooter>
-								<CancelButton
+								<Button variant="cancel"
 									onClick={() => {
 										setShowCreateInviteCodeDialog(false)
 										setInviteCodeSettings({ maxUses: null, expiresInDays: 7 })
 									}}
 								>
 									Cancel
-								</CancelButton>
-								<ConfirmButton
-									onConfirm={handleCreateInviteCode}
+								</Button>
+								<Button variant="confirm"
+									onClick={handleCreateInviteCode}
 									loading={createInviteCode.isPending}
 									loadingText="Creating..."
 								>
 									Create Code
-								</ConfirmButton>
+								</Button>
 							</DialogFooter>
 						</DialogContent>
 					</Dialog>
@@ -1091,15 +1088,15 @@ export default function GroupDetailPage() {
 							</div>
 
 							<DialogFooter>
-								<CancelButton onClick={() => setShowAddServerDialog(false)}>Cancel</CancelButton>
-								<ConfirmButton
-									onConfirm={handleAttachServer}
+								<Button variant="cancel" onClick={() => setShowAddServerDialog(false)}>Cancel</Button>
+								<Button variant="confirm"
+									onClick={handleAttachServer}
 									disabled={!selectedServerId}
 									showIcon={false}
 								>
 									<Plus className="mr-2 h-4 w-4" />
 									Attach
-								</ConfirmButton>
+								</Button>
 							</DialogFooter>
 						</DialogContent>
 					</Dialog>
@@ -1123,7 +1120,7 @@ export default function GroupDetailPage() {
 							<Button
 								onClick={() => setShowCreateCustomPermissionDialog(true)}
 								size="sm"
-								variant="outline"
+								variant="ghost"
 							>
 								<Plus className="mr-2 h-4 w-4" />
 								Custom
@@ -1199,7 +1196,7 @@ export default function GroupDetailPage() {
 								</DialogDescription>
 							</DialogHeader>
 							<DialogFooter>
-								<CancelButton
+								<Button variant="cancel"
 									onClick={() => {
 										setRemovePermissionDialogOpen(false)
 										setSelectedPermission(null)
@@ -1207,14 +1204,14 @@ export default function GroupDetailPage() {
 									disabled={removePermission.isPending}
 								>
 									Cancel
-								</CancelButton>
-								<DestructiveButton
+								</Button>
+								<Button variant="danger"
 									onClick={handleRemovePermission}
 									loading={removePermission.isPending}
 									loadingText="Removing..."
 								>
 									Remove Permission
-								</DestructiveButton>
+								</Button>
 							</DialogFooter>
 						</DialogContent>
 					</Dialog>
@@ -1270,7 +1267,7 @@ export default function GroupDetailPage() {
 									<li>All permissions</li>
 								</ul>
 							</div>
-							<DestructiveButton
+							<Button variant="danger"
 								onClick={() => {
 									setDeleteConfirmationText('')
 									setDeleteGroupDialogOpen(true)
@@ -1279,7 +1276,7 @@ export default function GroupDetailPage() {
 							>
 								<Trash2 className="mr-2 h-4 w-4" />
 								Delete Group
-							</DestructiveButton>
+							</Button>
 						</div>
 					</div>
 				</CardContent>
@@ -1296,7 +1293,7 @@ export default function GroupDetailPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<CancelButton
+						<Button variant="cancel"
 							onClick={() => {
 								setRemoveDialogOpen(false)
 								setSelectedUserId(null)
@@ -1304,8 +1301,8 @@ export default function GroupDetailPage() {
 							disabled={removeMember.isPending}
 						>
 							Cancel
-						</CancelButton>
-						<DestructiveButton
+						</Button>
+						<Button variant="danger"
 							onClick={handleRemoveMemberConfirm}
 							loading={removeMember.isPending}
 							loadingText="Removing..."
@@ -1313,7 +1310,7 @@ export default function GroupDetailPage() {
 						>
 							<UserMinus className="mr-2 h-4 w-4" />
 							Remove Member
-						</DestructiveButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
@@ -1330,7 +1327,7 @@ export default function GroupDetailPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<CancelButton
+						<Button variant="cancel"
 							onClick={() => {
 								setAdminDialogOpen(false)
 								setSelectedUserId(null)
@@ -1338,9 +1335,9 @@ export default function GroupDetailPage() {
 							disabled={toggleAdmin.isPending}
 						>
 							Cancel
-						</CancelButton>
+						</Button>
 						{selectedUserIsAdmin ? (
-							<DestructiveButton
+							<Button variant="danger"
 								onClick={handleToggleAdminConfirm}
 								loading={toggleAdmin.isPending}
 								loadingText="Removing..."
@@ -1348,17 +1345,17 @@ export default function GroupDetailPage() {
 							>
 								<ShieldOff className="mr-2 h-4 w-4" />
 								Remove Admin
-							</DestructiveButton>
+							</Button>
 						) : (
-							<ConfirmButton
-								onConfirm={handleToggleAdminConfirm}
+							<Button variant="confirm"
+								onClick={handleToggleAdminConfirm}
 								loading={toggleAdmin.isPending}
 								loadingText="Promoting..."
 								showIcon={false}
 							>
 								<Shield className="mr-2 h-4 w-4" />
 								Make Admin
-							</ConfirmButton>
+							</Button>
 						)}
 					</DialogFooter>
 				</DialogContent>
@@ -1471,7 +1468,7 @@ export default function GroupDetailPage() {
 						</div>
 					</div>
 					<DialogFooter>
-						<CancelButton
+						<Button variant="cancel"
 							onClick={() => {
 								setDeleteGroupDialogOpen(false)
 								setDeleteConfirmationText('')
@@ -1479,15 +1476,15 @@ export default function GroupDetailPage() {
 							disabled={deleteGroup.isPending}
 						>
 							Cancel
-						</CancelButton>
-						<DestructiveButton
+						</Button>
+						<Button variant="danger"
 							onClick={handleDeleteGroup}
 							disabled={deleteConfirmationText !== group?.name}
 							loading={deleteGroup.isPending}
 							loadingText="Deleting..."
 						>
 							Delete Group Permanently
-						</DestructiveButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>

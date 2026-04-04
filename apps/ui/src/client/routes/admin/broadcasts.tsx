@@ -3,9 +3,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
-import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
 	Dialog,
 	DialogContent,
@@ -33,6 +31,7 @@ import { useGroups } from '@/hooks/useGroups'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import type { Broadcast, BroadcastStatus } from '@/lib/api'
+import { Button } from '@/components/ui/button'
 
 const statusColors: Record<BroadcastStatus, string> = {
 	draft: 'bg-gray-500',
@@ -209,13 +208,13 @@ export default function AdminBroadcastsPage() {
 												>
 													View Details
 												</Link>
-												<DestructiveButton
+												<Button variant="danger"
 													size="sm"
 													onClick={() => handleDeleteClick(broadcast)}
 													showIcon={false}
 												>
 													Delete
-												</DestructiveButton>
+												</Button>
 											</TableCell>
 										</TableRow>
 									)
@@ -236,7 +235,7 @@ export default function AdminBroadcastsPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<CancelButton
+						<Button variant="cancel"
 							onClick={() => {
 								setDeleteDialogOpen(false)
 								setSelectedBroadcast(null)
@@ -244,8 +243,8 @@ export default function AdminBroadcastsPage() {
 							disabled={deleteBroadcast.isPending}
 						>
 							Cancel
-						</CancelButton>
-						<DestructiveButton
+						</Button>
+						<Button variant="danger"
 							onClick={handleDeleteConfirm}
 							loading={deleteBroadcast.isPending}
 							loadingText="Deleting..."
@@ -253,7 +252,7 @@ export default function AdminBroadcastsPage() {
 						>
 							<Trash2 className="mr-2 h-4 w-4" />
 							Delete
-						</DestructiveButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>

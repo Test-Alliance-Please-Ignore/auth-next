@@ -3,9 +3,6 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { DestructiveButton } from '@/components/ui/destructive-button'
-import { GhostButton } from '@/components/ui/ghost-button'
-import { PrimaryButton } from '@/components/ui/primary-button'
 import {
 	Table,
 	TableBody,
@@ -17,6 +14,7 @@ import {
 import { useCloneTemplate, useDeleteTemplate, useTemplates } from '@/hooks/useBills'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { formatLateFeeCompounding, formatLateFeeType } from '@/lib/bills-utils'
+import { Button } from '@/components/ui/button'
 
 export default function BillsTemplatesPage() {
 	usePageTitle('Admin - Bill Templates')
@@ -80,18 +78,18 @@ export default function BillsTemplatesPage() {
 					</p>
 				</div>
 				<div className="flex gap-2">
-					<GhostButton asChild>
+					<Button variant="ghost" asChild>
 						<Link to="/admin/bills">
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to Bills
 						</Link>
-					</GhostButton>
-					<PrimaryButton asChild>
+					</Button>
+					<Button variant="primary" asChild>
 						<Link to="/admin/bills/templates/new">
 							<Plus className="mr-2 h-4 w-4" />
 							Create Template
 						</Link>
-					</PrimaryButton>
+					</Button>
 				</div>
 			</div>
 
@@ -126,12 +124,12 @@ export default function BillsTemplatesPage() {
 							<p className="text-muted-foreground mb-4">
 								Create your first template to streamline bill creation
 							</p>
-							<PrimaryButton asChild>
+							<Button variant="primary" asChild>
 								<Link to="/admin/bills/templates/new">
 									<Plus className="mr-2 h-4 w-4" />
 									Create Template
 								</Link>
-							</PrimaryButton>
+							</Button>
 						</div>
 					) : (
 						<div className="overflow-x-auto">
@@ -187,24 +185,24 @@ export default function BillsTemplatesPage() {
 											</TableCell>
 											<TableCell className="text-right">
 												<div className="flex justify-end gap-2">
-													<GhostButton
+													<Button variant="ghost"
 														size="sm"
 														onClick={() => handleClone(template.id, template.name)}
 														disabled={cloneTemplate.isPending}
 													>
 														<Copy className="h-4 w-4" />
-													</GhostButton>
-													<DestructiveButton
+													</Button>
+													<Button variant="danger"
 														size="sm"
 														showIcon={false}
 														onClick={() => handleDelete(template.id, template.name)}
 														loading={deleteTemplate.isPending}
 													>
 														<Trash2 className="h-4 w-4 mr-0" />
-													</DestructiveButton>
-													<GhostButton size="sm" asChild>
+													</Button>
+													<Button variant="ghost" size="sm" asChild>
 														<Link to={`/admin/bills/templates/${template.id}`}>Edit</Link>
-													</GhostButton>
+													</Button>
 												</div>
 											</TableCell>
 										</TableRow>

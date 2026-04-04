@@ -3,7 +3,6 @@ import { Link, useParams, useSearchParams } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { GhostButton } from '@/components/ui/ghost-button'
 import { Progress } from '@/components/ui/progress'
 import {
 	Table,
@@ -36,12 +35,12 @@ export default function AdminBillsDetailPage() {
 					<div>
 						<h1 className="text-3xl font-bold gradient-text">Loading Bill...</h1>
 					</div>
-					<GhostButton asChild>
+					<Button variant="ghost" asChild>
 						<Link to="/admin/bills">
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to Bills
 						</Link>
-					</GhostButton>
+					</Button>
 				</div>
 			</div>
 		)
@@ -57,12 +56,12 @@ export default function AdminBillsDetailPage() {
 							The bill you're looking for doesn't exist or you don't have permission to view it.
 						</p>
 					</div>
-					<GhostButton asChild>
+					<Button variant="ghost" asChild>
 						<Link to="/admin/bills">
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to Bills
 						</Link>
-					</GhostButton>
+					</Button>
 				</div>
 			</div>
 		)
@@ -122,12 +121,12 @@ export default function AdminBillsDetailPage() {
 						<div>
 							<h1 className="text-3xl font-bold gradient-text">Loading Group Bill...</h1>
 						</div>
-						<GhostButton asChild>
+						<Button variant="ghost" asChild>
 							<Link to="/admin/bills">
 								<ArrowLeft className="mr-2 h-4 w-4" />
 								Back to Bills
 							</Link>
-						</GhostButton>
+						</Button>
 					</div>
 				</div>
 			)
@@ -149,18 +148,18 @@ export default function AdminBillsDetailPage() {
 						</p>
 					</div>
 					<div className="flex gap-2">
-						<GhostButton asChild>
+						<Button variant="ghost" asChild>
 							<Link to={`/admin/bills/group/${bill.groupBillId}/edit`}>
 								<Edit className="mr-2 h-4 w-4" />
 								Edit Group
 							</Link>
-						</GhostButton>
-						<GhostButton asChild>
+						</Button>
+						<Button variant="ghost" asChild>
 							<Link to="/admin/bills">
 								<ArrowLeft className="mr-2 h-4 w-4" />
 								Back to Bills
 							</Link>
-						</GhostButton>
+						</Button>
 					</div>
 				</div>
 
@@ -256,9 +255,9 @@ export default function AdminBillsDetailPage() {
 										</TableCell>
 										<TableCell>{entry.paidAt ? formatDateTime(entry.paidAt) : '—'}</TableCell>
 										<TableCell>
-											<GhostButton asChild>
+											<Button variant="ghost" asChild>
 												<Link to={`/admin/bills/${entry.billId}?view=individual`}>View Bill</Link>
-											</GhostButton>
+											</Button>
 										</TableCell>
 									</TableRow>
 								))}
@@ -280,19 +279,19 @@ export default function AdminBillsDetailPage() {
 				</div>
 				<div className="flex gap-2">
 					{bill.status === 'draft' && (
-						<GhostButton asChild>
+						<Button variant="ghost" asChild>
 							<Link to={`/admin/bills/${bill.id}/edit`}>
 								<Edit className="mr-2 h-4 w-4" />
 								Edit
 							</Link>
-						</GhostButton>
+						</Button>
 					)}
-					<GhostButton asChild>
+					<Button variant="ghost" asChild>
 						<Link to="/admin/bills">
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to Bills
 						</Link>
-					</GhostButton>
+					</Button>
 				</div>
 			</div>
 

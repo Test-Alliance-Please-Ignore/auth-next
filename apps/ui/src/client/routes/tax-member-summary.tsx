@@ -5,7 +5,6 @@ import { MemberSummaryGridCard } from '@/components/tax-member-summary/member-su
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { DateRangeInput } from '@/components/ui/date-range-input'
-import { GhostButton } from '@/components/ui/ghost-button'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
@@ -19,6 +18,7 @@ import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { getCurrentMonthDateRange } from '@/lib/tax-date'
 import { formatTaxIskCompact, formatTaxNumber } from '@/lib/tax-display'
+import { Button } from '@/components/ui/button'
 
 const DEFAULT_MONTH_RANGE = getCurrentMonthDateRange()
 export default function TaxMemberSummaryPage() {
@@ -180,7 +180,7 @@ export default function TaxMemberSummaryPage() {
 										className="h-10"
 									/>
 								</div>
-								<GhostButton
+								<Button variant="ghost"
 									type="button"
 									onClick={() => {
 										void refetchSummaryReport()
@@ -190,7 +190,7 @@ export default function TaxMemberSummaryPage() {
 									className="h-10"
 								>
 									{isRefreshing ? 'Refreshing…' : 'Refresh'}
-								</GhostButton>
+								</Button>
 							</div>
 						</div>
 					</CardContent>

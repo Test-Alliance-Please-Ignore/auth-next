@@ -5,7 +5,6 @@ import { Link } from 'react-router-dom'
 import { PermissionCategoryForm } from '@/components/permission-category-form'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
 	Dialog,
 	DialogContent,
@@ -125,13 +124,13 @@ export default function PermissionCategoriesPage() {
 
 				{/* Sub Navigation */}
 				<div className="flex gap-2">
-					<Button variant="default" asChild>
+					<Button variant="primary" asChild>
 						<Link to="/admin/permissions/categories">
 							<FolderOpen className="mr-2 h-4 w-4" />
 							Categories
 						</Link>
 					</Button>
-					<Button variant="outline" asChild>
+					<Button variant="ghost" asChild>
 						<Link to="/admin/permissions/global">
 							<FileKey className="mr-2 h-4 w-4" />
 							Global Permissions
@@ -209,9 +208,9 @@ export default function PermissionCategoriesPage() {
 											<Button variant="ghost" size="sm" onClick={() => openEditDialog(category)}>
 												Edit
 											</Button>
-											<DestructiveButton size="sm" onClick={() => openDeleteDialog(category)}>
+											<Button variant="danger" size="sm" onClick={() => openDeleteDialog(category)}>
 												<Trash2 className="h-4 w-4" />
-											</DestructiveButton>
+											</Button>
 										</div>
 									</div>
 								</Card>
@@ -269,7 +268,7 @@ export default function PermissionCategoriesPage() {
 					</DialogHeader>
 					<DialogFooter>
 						<Button
-							variant="outline"
+							variant="ghost"
 							onClick={() => {
 								setDeleteDialogOpen(false)
 								setSelectedCategory(null)
@@ -278,9 +277,9 @@ export default function PermissionCategoriesPage() {
 						>
 							Cancel
 						</Button>
-						<DestructiveButton onClick={handleDelete} loading={deleteCategory.isPending}>
+						<Button variant="danger" onClick={handleDelete} loading={deleteCategory.isPending}>
 							Delete Category
-						</DestructiveButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>

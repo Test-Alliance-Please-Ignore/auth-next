@@ -193,7 +193,7 @@ function SingleAwardForm() {
 						</Button>
 						<Button
 							type="button"
-							variant="outline"
+							variant="ghost"
 							onClick={() => {
 								setCharacterId('')
 								setCorporationId('')
@@ -359,7 +359,7 @@ function BulkAwardForm() {
 						</Button>
 						<Button
 							type="button"
-							variant="outline"
+							variant="ghost"
 							onClick={() => {
 								setBulkInput('')
 								setGlobalReason('')

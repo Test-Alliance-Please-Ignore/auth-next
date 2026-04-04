@@ -2,10 +2,7 @@ import { ArrowLeft, Users } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
-import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ConfirmButton } from '@/components/ui/confirm-button'
-import { GhostButton } from '@/components/ui/ghost-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { NumberInput } from '@/components/ui/number-input'
@@ -16,6 +13,7 @@ import { useGroupBillAggregate, useUpdateGroupBill } from '@/hooks/useBills'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import type { LateFeeCompounding, LateFeeType, UpdateBillInput } from '@repo/bills'
+import { Button } from '@/components/ui/button'
 
 export default function AdminBillsGroupEditPage() {
 	const { groupBillId } = useParams<{ groupBillId: string }>()
@@ -127,12 +125,12 @@ export default function AdminBillsGroupEditPage() {
 			<div className="space-y-6">
 				<div className="flex items-center justify-between">
 					<h1 className="text-3xl font-bold gradient-text">Loading...</h1>
-					<GhostButton asChild>
+					<Button variant="ghost" asChild>
 						<Link to="/admin/bills">
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to Bills
 						</Link>
-					</GhostButton>
+					</Button>
 				</div>
 			</div>
 		)
@@ -149,12 +147,12 @@ export default function AdminBillsGroupEditPage() {
 							it.
 						</p>
 					</div>
-					<GhostButton asChild>
+					<Button variant="ghost" asChild>
 						<Link to="/admin/bills">
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to Bills
 						</Link>
-					</GhostButton>
+					</Button>
 				</div>
 			</div>
 		)
@@ -174,12 +172,12 @@ export default function AdminBillsGroupEditPage() {
 						{aggregate.title} — {eligibleCount} eligible bill(s) will be updated
 					</p>
 				</div>
-				<GhostButton asChild>
+				<Button variant="ghost" asChild>
 					<Link to="/admin/bills">
 						<ArrowLeft className="mr-2 h-4 w-4" />
 						Back to Bills
 					</Link>
-				</GhostButton>
+				</Button>
 			</div>
 
 			<Card className="border-muted bg-muted/20">
@@ -348,12 +346,12 @@ export default function AdminBillsGroupEditPage() {
 				</Card>
 
 				<div className="flex gap-3">
-					<ConfirmButton type="submit" loading={updateGroupBill.isPending}>
+					<Button variant="confirm" type="submit" loading={updateGroupBill.isPending}>
 						Apply to All Eligible Bills
-					</ConfirmButton>
-					<CancelButton type="button" onClick={() => navigate('/admin/bills')}>
+					</Button>
+					<Button variant="cancel" type="button" onClick={() => navigate('/admin/bills')}>
 						Cancel
-					</CancelButton>
+					</Button>
 				</div>
 			</form>
 		</div>

@@ -107,7 +107,7 @@ export default function UserHrNotes() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<Button variant="outline" onClick={() => navigate('/')}>
+						<Button variant="ghost" onClick={() => navigate('/')}>
 							Back to Home
 						</Button>
 					</CardContent>
@@ -202,7 +202,7 @@ export default function UserHrNotes() {
 
 			{/* Back Button */}
 			<div className="mt-8">
-				<Button variant="outline" onClick={handleBackClick}>
+				<Button variant="ghost" onClick={handleBackClick}>
 					<ArrowLeft className="mr-2 h-4 w-4" />
 					Back to Users
 				</Button>

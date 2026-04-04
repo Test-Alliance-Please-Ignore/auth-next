@@ -59,7 +59,7 @@ export default function FittingEditPage() {
 						<p className="text-muted-foreground mb-4">
 							The fitting you're trying to edit doesn't exist.
 						</p>
-						<Button asChild variant="outline">
+						<Button asChild variant="ghost">
 							<Link to="/doctrines">
 								<ArrowLeft className="h-4 w-4 mr-2" />
 								Back to Doctrines

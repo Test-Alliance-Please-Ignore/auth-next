@@ -112,7 +112,7 @@ export default function SkillPlanDetail() {
 			<Section>
 				{/* Action buttons */}
 				<div className="flex justify-between items-center mb-6">
-					<Button variant="outline" asChild>
+					<Button variant="ghost" asChild>
 						<Link to="/skill-plans">
 							<ArrowLeft className="h-4 w-4 mr-2" />
 							Back to Plans
@@ -122,7 +122,7 @@ export default function SkillPlanDetail() {
 					<div className="flex gap-2">
 						{plan.canModify && (
 							<>
-								<Button variant="outline" onClick={handlePublish}>
+								<Button variant="ghost" onClick={handlePublish}>
 									{plan.isPublished ? (
 										<>
 											<Lock className="h-4 w-4 mr-2" />
@@ -135,7 +135,7 @@ export default function SkillPlanDetail() {
 										</>
 									)}
 								</Button>
-								<Button variant="outline" asChild>
+								<Button variant="ghost" asChild>
 									<Link to={`/skill-plans/${id}/edit`}>
 										<Edit2 className="h-4 w-4 mr-2" />
 										Edit
@@ -144,7 +144,7 @@ export default function SkillPlanDetail() {
 							</>
 						)}
 						{plan.canDelete && (
-							<Button variant="destructive" onClick={handleDelete}>
+							<Button variant="danger" onClick={handleDelete}>
 								<Trash2 className="h-4 w-4 mr-2" />
 								Delete
 							</Button>

@@ -11,8 +11,6 @@ import { AlertOctagon, AlertTriangle, CheckCircle, Info, Lock, X } from 'lucide-
 import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { CancelButton } from '@/components/ui/cancel-button'
-import { ConfirmButton } from '@/components/ui/confirm-button'
 import {
 	Dialog,
 	DialogContent,
@@ -402,7 +400,7 @@ export function AddHRNoteDialog({
 							/>
 							<Button
 								type="button"
-								variant="outline"
+								variant="ghost"
 								size="sm"
 								onClick={handleAddTag}
 								disabled={!tagInput.trim() || isPending}
@@ -434,17 +432,17 @@ export function AddHRNoteDialog({
 				</div>
 
 				<DialogFooter>
-					<CancelButton onClick={handleCancel} disabled={isPending}>
+					<Button variant="cancel" onClick={handleCancel} disabled={isPending}>
 						Cancel
-					</CancelButton>
-					<ConfirmButton
-						onConfirm={handleSubmit}
+					</Button>
+					<Button variant="confirm"
+						onClick={handleSubmit}
 						disabled={!isFormValid}
 						loading={isPending}
 						loadingText={isEditMode ? 'Updating...' : 'Saving...'}
 					>
 						{isEditMode ? 'Update Note' : 'Save Note'}
-					</ConfirmButton>
+					</Button>
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>

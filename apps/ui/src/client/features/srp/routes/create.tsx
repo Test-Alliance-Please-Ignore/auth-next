@@ -49,7 +49,7 @@ export default function CreateRequest() {
 						This killmail was not found in your recent losses. It may be too old or not belong to
 						your character.
 					</p>
-					<Button variant="outline" className="mt-4" asChild>
+					<Button variant="ghost" className="mt-4" asChild>
 						<Link to="/srp">Back to Dashboard</Link>
 					</Button>
 				</div>
@@ -67,7 +67,7 @@ export default function CreateRequest() {
 					<p className="text-xs text-muted-foreground">
 						You've already submitted an SRP request for this loss.
 					</p>
-					<Button variant="outline" className="mt-4" asChild>
+					<Button variant="ghost" className="mt-4" asChild>
 						<Link to={`/srp/request/${loss.srpRequestId}`}>View Request</Link>
 					</Button>
 				</div>
