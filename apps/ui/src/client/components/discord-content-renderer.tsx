@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import {
 	formatDiscordTimestamp,
 	formatFullTimestampTooltip,
@@ -20,23 +20,21 @@ function TimestampChip({
 
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
-			<PopoverTrigger asChild>
+			<PopoverAnchor asChild>
 				<span
-					className="inline-block rounded border border-border/80 bg-accent px-1.5 py-0.5 text-[0.875em] leading-none align-baseline cursor-help transition-colors hover:bg-accent/90"
+					className="inline-block rounded bg-accent px-1.5 py-0.5 text-[0.875em] leading-none align-baseline cursor-help transition-colors hover:bg-accent/90"
 					onMouseEnter={() => setOpen(true)}
 					onMouseLeave={() => setOpen(false)}
-					onFocus={() => setOpen(true)}
-					onBlur={() => setOpen(false)}
-					tabIndex={0}
 				>
 					{displayText}
 				</span>
-			</PopoverTrigger>
+			</PopoverAnchor>
 			<PopoverContent
 				side="top"
 				align="center"
 				sideOffset={6}
 				className="w-max max-w-[28rem] px-2 py-1 text-xs"
+				onOpenAutoFocus={(event) => event.preventDefault()}
 				onMouseEnter={() => setOpen(true)}
 				onMouseLeave={() => setOpen(false)}
 			>
