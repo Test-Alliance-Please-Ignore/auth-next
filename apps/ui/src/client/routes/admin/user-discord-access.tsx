@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 
 function renderRolePills(
 	roles: Array<{ roleId: string; roleName: string | null }>,
-	variant: 'secondary' | 'outline',
+	variant: 'secondary' | 'ghost',
 	extraClassName?: string
 ) {
 	if (roles.length === 0) {
@@ -145,7 +145,7 @@ export default function AdminUserDiscordAccessPage() {
 											</div>
 											<div className="flex items-center gap-2">
 												<Badge
-													variant="outline"
+													variant="ghost"
 													className={
 														guild.isMember
 															? 'border-green-600 text-green-700'
@@ -155,7 +155,7 @@ export default function AdminUserDiscordAccessPage() {
 													{guild.isMember ? 'Member' : 'Not a Member'}
 												</Badge>
 												<Badge
-													variant="outline"
+													variant="ghost"
 													className={
 														hasDrift
 															? 'border-amber-600 text-amber-700'
@@ -190,7 +190,7 @@ export default function AdminUserDiscordAccessPage() {
 												</p>
 												{renderRolePills(
 													guild.missingExpectedManagedRoles,
-													'outline',
+													'ghost',
 													'border-amber-500/40 text-amber-700'
 												)}
 											</div>
@@ -200,7 +200,7 @@ export default function AdminUserDiscordAccessPage() {
 												</p>
 												{renderRolePills(
 													guild.unexpectedManagedRoles,
-													'outline',
+													'ghost',
 													'border-red-500/40 text-red-700'
 												)}
 											</div>
@@ -210,7 +210,7 @@ export default function AdminUserDiscordAccessPage() {
 											<p className="text-xs font-medium text-muted-foreground">
 												Unmanaged ({guild.currentUnmanagedRoles.length})
 											</p>
-											{renderRolePills(guild.currentUnmanagedRoles, 'outline')}
+											{renderRolePills(guild.currentUnmanagedRoles, 'ghost')}
 										</div>
 									</CardContent>
 								</Card>

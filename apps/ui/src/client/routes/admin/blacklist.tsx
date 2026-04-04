@@ -399,7 +399,7 @@ export default function BlacklistPage() {
 											</TableCell>
 											<TableCell>
 												{entry.isAutoBlacklist ? (
-													<Badge variant="outline" className="gap-1">
+													<Badge variant="ghost" className="gap-1">
 														<AlertTriangle className="h-3 w-3" />
 														Auto
 													</Badge>

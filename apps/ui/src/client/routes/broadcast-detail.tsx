@@ -36,20 +36,21 @@ import { useGroups } from '@/hooks/useGroups'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { formatDateTimeLocal } from '@/lib/discord-time'
 
+import type { BadgeVariant } from '@/components/ui/badge'
 import type { BroadcastStatus, DeliveryStatus } from '@/lib/api'
 
-const statusColors: Record<BroadcastStatus, string> = {
-	draft: 'bg-gray-500',
-	scheduled: 'bg-blue-500',
-	sending: 'bg-yellow-500',
-	sent: 'bg-green-500',
-	failed: 'bg-red-500',
+const statusVariants: Record<BroadcastStatus, BadgeVariant> = {
+	draft: 'secondary',
+	scheduled: 'default',
+	sending: 'warning',
+	sent: 'success',
+	failed: 'destructive',
 }
 
-const deliveryStatusColors: Record<DeliveryStatus, string> = {
-	pending: 'bg-gray-500',
-	sent: 'bg-green-500',
-	failed: 'bg-red-500',
+const deliveryStatusVariants: Record<DeliveryStatus, BadgeVariant> = {
+	pending: 'ghost',
+	sent: 'success',
+	failed: 'destructive',
 }
 
 export default function BroadcastDetailPage() {
@@ -211,7 +212,7 @@ export default function BroadcastDetailPage() {
 									<CardTitle>Broadcast Details</CardTitle>
 									<CardDescription>ID: {broadcast.id}</CardDescription>
 								</div>
-								<Badge className={statusColors[broadcast.status]}>{broadcast.status}</Badge>
+								<Badge variant={statusVariants[broadcast.status]}>{broadcast.status}</Badge>
 							</div>
 						</CardHeader>
 						<CardContent className="grid gap-4 md:grid-cols-2">
@@ -293,7 +294,7 @@ export default function BroadcastDetailPage() {
 										{deliveries.map((delivery) => (
 											<TableRow key={delivery.id}>
 												<TableCell>
-													<Badge className={deliveryStatusColors[delivery.status]}>
+													<Badge variant={deliveryStatusVariants[delivery.status]}>
 														{delivery.status}
 													</Badge>
 												</TableCell>

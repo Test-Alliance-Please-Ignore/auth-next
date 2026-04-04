@@ -187,7 +187,7 @@ export default function SkillPlanDetail() {
 										<h3 className="font-semibold mb-2">Categories</h3>
 										<div className="flex flex-wrap gap-2">
 											{plan.categories.map((category) => (
-												<Badge key={category.id} variant="outline">
+												<Badge key={category.id} variant="ghost">
 													{category.name}
 												</Badge>
 											))}

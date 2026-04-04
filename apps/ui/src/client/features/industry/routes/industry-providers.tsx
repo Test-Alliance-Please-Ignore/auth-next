@@ -192,12 +192,12 @@ export default function IndustryProvidersPage() {
 											</TableCell>
 											<TableCell>
 												{provider.acceptingOrders ? (
-													<Badge className="bg-green-500/10 text-green-500 border-green-500/20">
+													<Badge  variant="success">
 														<CheckCircle className="mr-1 h-3 w-3" />
 														Yes
 													</Badge>
 												) : (
-													<Badge className="bg-red-500/10 text-red-500 border-red-500/20">
+													<Badge  variant="destructive">
 														<XCircle className="mr-1 h-3 w-3" />
 														No
 													</Badge>

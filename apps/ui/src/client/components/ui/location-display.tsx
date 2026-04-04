@@ -35,7 +35,7 @@ export function LocationDisplay({ location, showBadge = false }: LocationDisplay
 				)}
 			</span>
 			{showBadge && (
-				<Badge variant={type === 'structure' ? 'outline' : 'default'} className="text-xs">
+				<Badge variant={type === 'structure' ? 'ghost' : 'default'} className="text-xs">
 					{type}
 				</Badge>
 			)}

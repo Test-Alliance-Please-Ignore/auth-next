@@ -65,7 +65,7 @@ export function PendingInvitationsList({ groupId }: PendingInvitationsListProps)
 									Expires: {new Date(invitation.expiresAt).toLocaleDateString()}
 								</div>
 							</div>
-							<Badge variant="outline" className="ml-2">
+							<Badge variant="ghost" className="ml-2">
 								{invitation.status}
 							</Badge>
 						</div>

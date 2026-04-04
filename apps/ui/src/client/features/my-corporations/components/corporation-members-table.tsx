@@ -23,11 +23,13 @@ import {
 	XCircle,
 } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select } from '@/components/ui/select'
 import {
 	Table,
@@ -69,6 +71,64 @@ interface CorporationMembersTableProps {
 
 type SortField = 'name' | 'role' | 'auth' | 'activity' | 'lastLogin' | 'joinDate'
 type SortOrder = 'asc' | 'desc'
+
+// ─── Actions popover (same pattern as bills page) ────────────────────────────
+
+type ActionIntent = 'confirm' | 'secondary' | 'muted' | 'destructive' | 'primary'
+
+interface ActionItem {
+	label: string
+	intent: ActionIntent
+	hidden?: boolean
+	loading?: boolean
+	onClick?: () => void
+}
+
+const intentBg: Record<ActionIntent, string> = {
+	confirm: 'bg-[hsl(var(--confirm))]/45 hover:bg-[hsl(var(--confirm))]/65',
+	destructive: 'bg-[hsl(var(--destructive-alt))]/45 hover:bg-[hsl(var(--destructive-alt))]/65',
+	muted: 'bg-white/15 hover:bg-[hsl(var(--cancel-hover))]/65',
+	secondary: 'bg-[hsl(var(--secondary))]/45 hover:bg-[hsl(var(--secondary))]/65',
+	primary: 'bg-[hsl(var(--primary))]/45 hover:bg-[hsl(var(--primary))]/65',
+}
+
+function ActionsMenu({ items }: { items: ActionItem[] }) {
+	const [open, setOpen] = useState(false)
+	const visible = items.filter((item) => !item.hidden)
+
+	if (visible.length === 0) return null
+
+	const baseClass =
+		'w-full cursor-pointer px-3 py-2 text-left text-sm font-medium text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 first:rounded-t last:rounded-b'
+
+	return (
+		<Popover open={open} onOpenChange={setOpen}>
+			<PopoverTrigger asChild>
+				<Button variant="ghost" size="sm">
+					Actions <ChevronDown className="ml-1 h-3 w-3" />
+				</Button>
+			</PopoverTrigger>
+			<PopoverContent align="end" className="w-48 p-1">
+				{visible.map((item) => (
+					<button
+						key={item.label}
+						type="button"
+						disabled={item.loading}
+						className={cn(baseClass, intentBg[item.intent])}
+						onClick={() => {
+							setOpen(false)
+							item.onClick?.()
+						}}
+					>
+						{item.loading ? 'Loading…' : item.label}
+					</button>
+				))}
+			</PopoverContent>
+		</Popover>
+	)
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
 
 export default function CorporationMembersTable({
 	members,
@@ -123,7 +183,6 @@ export default function CorporationMembersTable({
 			return myCorporationsApi.updateMemberStatus(corporationId, characterId, status)
 		},
 		onSuccess: () => {
-			// Invalidate queries to refresh member list and statistics
 			queryClient.invalidateQueries({ queryKey: ['corporation-members', corporationId] })
 			queryClient.invalidateQueries({ queryKey: ['my-corporations'] })
 		},
@@ -133,7 +192,6 @@ export default function CorporationMembersTable({
 	const filteredAndSortedMembers = useMemo(() => {
 		let filtered = [...members]
 
-		// Apply search filter
 		if (searchQuery) {
 			const query = searchQuery.toLowerCase()
 			filtered = filtered.filter(
@@ -144,18 +202,13 @@ export default function CorporationMembersTable({
 			)
 		}
 
-		// Apply auth filter
 		filtered = filterMembersByAuthStatus(filtered, authFilter)
-
-		// Apply activity filter
 		filtered = filterMembersByActivity(filtered, activityFilter)
 
-		// Apply role filter
 		if (roleFilter !== 'all') {
 			filtered = filtered.filter((m) => m.role === roleFilter)
 		}
 
-		// Sort
 		filtered.sort((a, b) => {
 			let comparison = 0
 
@@ -190,7 +243,6 @@ export default function CorporationMembersTable({
 		return filtered
 	}, [members, searchQuery, authFilter, activityFilter, roleFilter, sortField, sortOrder])
 
-	// Pagination
 	const paginatedMembers = useMemo(() => {
 		const startIndex = (currentPage - 1) * itemsPerPage
 		return filteredAndSortedMembers.slice(startIndex, startIndex + itemsPerPage)
@@ -198,7 +250,6 @@ export default function CorporationMembersTable({
 
 	const totalPages = Math.ceil(filteredAndSortedMembers.length / itemsPerPage)
 
-	// Handlers
 	const handleSort = useCallback(
 		(field: SortField) => {
 			if (sortField === field) {
@@ -211,7 +262,6 @@ export default function CorporationMembersTable({
 		[sortField, sortOrder]
 	)
 
-	// HR role management handlers
 	const handleGrantHrRole = useCallback(
 		async (request: Parameters<typeof grantMutation.mutateAsync>[0]) => {
 			try {
@@ -240,7 +290,6 @@ export default function CorporationMembersTable({
 		[revokeMutation, showSuccess, showError]
 	)
 
-	// Emeritus status management handler
 	const handleEmeritusStatusUpdate = useCallback(
 		async (characterId: string, status: 'active' | 'emeritus') => {
 			try {
@@ -281,13 +330,12 @@ export default function CorporationMembersTable({
 		)
 	}
 
-	// Statistics
 	const stats = useMemo(() => {
 		return {
 			total: filteredAndSortedMembers.length,
 			linked: filteredAndSortedMembers.filter((m) => m.hasAuthAccount).length,
 			active: filteredAndSortedMembers.filter((m) => m.activityStatus === 'active').length,
-			ceos: filteredAndSortedMembers.filter((m) => m.role === 'CEO').length,
+			inactive: filteredAndSortedMembers.filter((m) => m.activityStatus === 'inactive').length,
 			directors: filteredAndSortedMembers.filter((m) => m.role === 'Director').length,
 		}
 	}, [filteredAndSortedMembers])
@@ -312,15 +360,15 @@ export default function CorporationMembersTable({
 				</Card>
 				<Card className="p-3">
 					<div className="text-sm text-muted-foreground">Linked</div>
-					<div className="text-2xl font-bold text-green-500">{stats.linked}</div>
+					<div className="text-2xl font-bold text-success">{stats.linked}</div>
 				</Card>
 				<Card className="p-3">
 					<div className="text-sm text-muted-foreground">Active</div>
-					<div className="text-2xl font-bold text-blue-500">{stats.active}</div>
+					<div className="text-2xl font-bold text-primary">{stats.active}</div>
 				</Card>
 				<Card className="p-3">
-					<div className="text-sm text-muted-foreground">CEOs</div>
-					<div className="text-2xl font-bold text-yellow-500">{stats.ceos}</div>
+					<div className="text-sm text-muted-foreground">Inactive</div>
+					<div className="text-2xl font-bold text-warning">{stats.inactive}</div>
 				</Card>
 				<Card className="p-3">
 					<div className="text-sm text-muted-foreground">Directors</div>
@@ -423,7 +471,11 @@ export default function CorporationMembersTable({
 								Join Date
 								<SortIcon field="joinDate" />
 							</TableHead>
-							{showActions && <TableHead className="text-right">Actions</TableHead>}
+							{showActions && (
+								<TableHead className="sticky right-0 z-20 bg-card text-right">
+									Actions
+								</TableHead>
+							)}
 						</TableRow>
 					</TableHeader>
 					<TableBody>
@@ -459,34 +511,19 @@ export default function CorporationMembersTable({
 								<TableCell>
 									<div className="flex gap-2 flex-wrap">
 										{member.role === 'CEO' && (
-											<Badge variant="default" className="bg-yellow-500">
-												<Star className="mr-1 h-3 w-3" />
-												CEO
-											</Badge>
+											<Badge variant="destructive" icon={Star}>CEO</Badge>
 										)}
 										{member.role === 'Director' && (
-											<Badge variant="secondary">
-												<Shield className="mr-1 h-3 w-3" />
-												Director
-											</Badge>
+											<Badge variant="warning" icon={Shield}>Director</Badge>
 										)}
 										{member.role === 'Member' && (
-											<Badge variant="outline">
-												<User className="mr-1 h-3 w-3" />
-												Member
-											</Badge>
+											<Badge variant="ghost" icon={User}>Member</Badge>
 										)}
 										{member.status === 'emeritus' && (
-											<Badge variant="default" className="bg-purple-500/20 text-purple-500">
-												<Heart className="h-3 w-3 mr-1" />
-												Emeritus
-											</Badge>
+											<Badge variant="special" icon={Heart}>Emeritus</Badge>
 										)}
 										{member.isBlacklisted && (
-											<Badge variant="default" className="bg-red-500/20 text-red-500">
-												<ShieldBan className="h-3 w-3 mr-1" />
-												Blacklisted
-											</Badge>
+											<Badge variant="destructive" icon={ShieldBan}>Blacklisted</Badge>
 										)}
 									</div>
 								</TableCell>
@@ -502,10 +539,7 @@ export default function CorporationMembersTable({
 								<TableCell>
 									{member.hasAuthAccount ? (
 										<div className="space-y-1">
-											<Badge variant="outline" className="text-green-500">
-												<CheckCircle className="mr-1 h-3 w-3" />
-												Linked
-											</Badge>
+											<Badge variant="success" icon={CheckCircle}>Linked</Badge>
 											{member.mainCharacterName && (
 												<div className="text-xs text-muted-foreground">
 													{member.mainCharacterName}
@@ -513,27 +547,18 @@ export default function CorporationMembersTable({
 											)}
 										</div>
 									) : (
-										<Badge variant="outline" className="text-yellow-500">
-											<AlertCircle className="mr-1 h-3 w-3" />
-											Not Linked
-										</Badge>
+										<Badge variant="warning" icon={AlertCircle}>Not Linked</Badge>
 									)}
 								</TableCell>
 								<TableCell>
 									{member.activityStatus === 'active' && (
-										<Badge variant="outline" className="text-green-500">
-											Active
-										</Badge>
+										<Badge variant="success">Active</Badge>
 									)}
 									{member.activityStatus === 'inactive' && (
-										<Badge variant="outline" className="text-orange-500">
-											Inactive
-										</Badge>
+										<Badge variant="warning">Inactive</Badge>
 									)}
 									{member.activityStatus === 'unknown' && (
-										<Badge variant="outline" className="text-gray-500">
-											Unknown
-										</Badge>
+										<Badge variant="ghost">Unknown</Badge>
 									)}
 								</TableCell>
 								<TableCell>
@@ -543,61 +568,59 @@ export default function CorporationMembersTable({
 									<div className="text-sm">{formatDate(member.joinDate)}</div>
 								</TableCell>
 								{showActions && (
-									<TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-										<div className="flex justify-end gap-2">
-											{!member.hasAuthAccount && onLinkAccount && (
-												<Button variant="ghost" size="sm" onClick={() => onLinkAccount(member)}>
-													<Link2 className="h-3 w-3 mr-1" />
-													Link
-												</Button>
-											)}
-											{canManageHrRoles && member.hasAuthAccount && !member.hrRole && (
-												<Button variant="primary" size="sm" onClick={() => setGrantDialogMember(member)}>
-													<Shield className="h-3 w-3 mr-1" />
-													Grant HR Role
-												</Button>
-											)}
-											{canManageHrRoles && member.hrRole && (
-												<Button variant="destructive"
-													size="sm"
-													showIcon={false}
-													onClick={() => setRevokeDialogMember(member)}
-												>
-													<ShieldOff className="h-3 w-3 mr-1" />
-													Revoke HR Role
-												</Button>
-											)}
-											{canManageHrRoles &&
-												member.hasAuthAccount &&
-												member.role !== 'CEO' &&
-												member.status !== 'emeritus' && (
-													<Button variant="ghost"
-														size="sm"
-														onClick={() => {
-															setEmeritusAction('mark')
-															setEmeritusDialogMember(member)
-														}}
-													>
-														<Heart className="h-3 w-3 mr-1" />
-														Mark Emeritus
-													</Button>
-												)}
-											{canManageHrRoles && member.status === 'emeritus' && (
-												<Button variant="ghost"
-													size="sm"
-													onClick={() => {
+									<TableCell
+										className="sticky right-0 z-10 bg-card text-right"
+										onClick={(e) => e.stopPropagation()}
+									>
+										<ActionsMenu
+											items={[
+												{
+													label: 'View Profile',
+													intent: 'muted',
+													onClick: () => onMemberClick?.(member),
+												},
+												{
+													label: 'Link Account',
+													intent: 'primary',
+													hidden: member.hasAuthAccount || !onLinkAccount,
+													onClick: () => onLinkAccount?.(member),
+												},
+												{
+													label: 'Grant HR Role',
+													intent: 'confirm',
+													hidden: !canManageHrRoles || !member.hasAuthAccount || !!member.hrRole,
+													onClick: () => setGrantDialogMember(member),
+												},
+												{
+													label: 'Revoke HR Role',
+													intent: 'destructive',
+													hidden: !canManageHrRoles || !member.hrRole,
+													onClick: () => setRevokeDialogMember(member),
+												},
+												{
+													label: 'Mark as Emeritus',
+													intent: 'secondary',
+													hidden:
+														!canManageHrRoles ||
+														!member.hasAuthAccount ||
+														member.role === 'CEO' ||
+														member.status === 'emeritus',
+													onClick: () => {
+														setEmeritusAction('mark')
+														setEmeritusDialogMember(member)
+													},
+												},
+												{
+													label: 'Remove Emeritus',
+													intent: 'secondary',
+													hidden: !canManageHrRoles || member.status !== 'emeritus',
+													onClick: () => {
 														setEmeritusAction('remove')
 														setEmeritusDialogMember(member)
-													}}
-												>
-													<Heart className="h-3 w-3 mr-1" />
-													Remove Emeritus
-												</Button>
-											)}
-											<Button variant="ghost" size="sm" onClick={() => onMemberClick?.(member)}>
-												<ExternalLink className="h-3 w-3" />
-											</Button>
-										</div>
+													},
+												},
+											]}
+										/>
 									</TableCell>
 								)}
 							</TableRow>

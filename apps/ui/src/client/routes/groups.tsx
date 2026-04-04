@@ -83,7 +83,7 @@ export default function GroupsPage() {
 				/>
 
 				{/* Filters */}
-				<Card variant="interactive">
+				<Card variant="default">
 					<CardHeader>
 						<div className="flex items-center justify-between">
 							<div>
@@ -153,7 +153,7 @@ export default function GroupsPage() {
 				</Card>
 
 				{/* Groups List */}
-				<Card variant="interactive">
+				<Card variant="default">
 					<CardHeader>
 						<CardTitle>
 							Available Groups{' '}

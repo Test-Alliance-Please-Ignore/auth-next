@@ -46,7 +46,7 @@ export default function InvitationsPage() {
 					</div>
 				) : (
 					/* Empty State */
-					<Card variant="interactive">
+					<Card variant="default">
 						<CardContent className="py-16 text-center">
 							<div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-muted mb-6">
 								<Mail className="h-10 w-10 text-muted-foreground" />

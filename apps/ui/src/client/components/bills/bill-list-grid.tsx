@@ -55,7 +55,7 @@ export function BillListGrid(props: {
 				enableSorting: true,
 				Cell: ({ row }) =>
 					row.original.groupBillMixed ? (
-						<Badge variant="outline">Mixed</Badge>
+						<Badge variant="ghost">Mixed</Badge>
 					) : (
 						<BillStatusBadge status={row.original.status} />
 					),

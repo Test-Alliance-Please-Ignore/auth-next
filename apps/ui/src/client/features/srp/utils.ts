@@ -80,22 +80,24 @@ export function getPaymentStatusText(status: PaymentStatus): string {
 }
 
 /**
- * Get color class for request status badge
+ * Get badge variant for request status
  */
-export function getRequestStatusColor(status: RequestStatus): string {
+export function getRequestStatusVariant(
+	status: RequestStatus
+): 'warning' | 'default' | 'success' | 'destructive' | 'ghost' {
 	switch (status) {
 		case 'pending':
-			return 'bg-yellow-500/20 text-yellow-500 border-yellow-500/50'
+			return 'warning'
 		case 'in_review':
-			return 'bg-blue-500/20 text-blue-500 border-blue-500/50'
+			return 'default'
 		case 'approved':
-			return 'bg-green-500/20 text-green-500 border-green-500/50'
+			return 'success'
 		case 'partially_approved':
-			return 'bg-green-500/20 text-green-400 border-green-500/50'
+			return 'success'
 		case 'rejected':
-			return 'bg-red-500/20 text-red-500 border-red-500/50'
+			return 'destructive'
 		default:
-			return 'bg-muted/50 text-muted-foreground border-muted'
+			return 'ghost'
 	}
 }
 

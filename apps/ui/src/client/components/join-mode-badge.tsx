@@ -18,7 +18,7 @@ export function JoinModeBadge({ joinMode, className }: JoinModeBadgeProps) {
 			label: 'Approval Required',
 		},
 		invitation_only: {
-			variant: 'outline' as const,
+			variant: 'ghost' as const,
 			label: 'Invitation Only',
 		},
 	}

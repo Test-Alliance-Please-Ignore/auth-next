@@ -75,7 +75,7 @@ export function BillingConfigurationTable({
 							<TableCell>
 								{config.billingPayeeType && config.billingPayeeId ? (
 									<div className="space-y-1">
-										<Badge variant="outline" className="capitalize">
+										<Badge variant="ghost" className="capitalize">
 											{config.billingPayeeType}
 										</Badge>
 										<TaxEntityDisplay entityId={config.billingPayeeId} entityNames={entityNames} />

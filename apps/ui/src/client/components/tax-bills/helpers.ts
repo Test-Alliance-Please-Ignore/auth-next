@@ -17,7 +17,7 @@ export function getLastTimelineDate(events: Array<{ createdAt: string | Date }>)
 
 export function billStatusBadgeVariant(
 	status: TaxBillStatus | 'unbilled' | 'underpaid' | 'overpaid'
-): 'default' | 'secondary' | 'success' | 'warning' | 'destructive' | 'outline' {
+): 'default' | 'secondary' | 'success' | 'warning' | 'destructive' | 'ghost' {
 	if (status === 'underpaid') {
 		return 'warning'
 	}
@@ -25,5 +25,5 @@ export function billStatusBadgeVariant(
 		return 'warning'
 	}
 	if (status !== 'unbilled') return getBillStatusBadgeVariant(status)
-	return 'outline'
+	return 'ghost'
 }

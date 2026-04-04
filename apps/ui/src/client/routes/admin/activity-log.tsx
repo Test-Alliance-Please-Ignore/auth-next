@@ -235,7 +235,7 @@ export default function ActivityLogPage() {
 													<div className="flex-1 min-w-0">
 														<div className="flex items-center gap-2 mb-2">
 															<Badge
-																variant="outline"
+																variant="ghost"
 																className={cn(getActionBadgeClass(log.action))}
 															>
 																{log.action}

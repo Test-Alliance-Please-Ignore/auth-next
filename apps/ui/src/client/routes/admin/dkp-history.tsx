@@ -19,14 +19,15 @@ import {
 import { useTransactionHistory } from '@/features/dkp'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
+import type { BadgeVariant } from '@/components/ui/badge'
 import type { DkpFilters, DkpSourceType } from '@/features/dkp'
 
-const SOURCE_TYPE_COLORS: Record<DkpSourceType, string> = {
-	fleet: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
-	market: 'bg-green-500/10 text-green-500 border-green-500/20',
-	mining: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
-	manual: 'bg-purple-500/10 text-purple-500 border-purple-500/20',
-	adjustment: 'bg-red-500/10 text-red-500 border-red-500/20',
+const SOURCE_TYPE_VARIANTS: Record<DkpSourceType, BadgeVariant> = {
+	fleet: 'default',
+	market: 'success',
+	mining: 'warning',
+	manual: 'special',
+	adjustment: 'destructive',
 }
 
 export default function DkpHistory() {
@@ -258,7 +259,7 @@ export default function DkpHistory() {
 													</span>
 												</TableCell>
 												<TableCell>
-													<Badge variant="outline" className={SOURCE_TYPE_COLORS[tx.sourceType]}>
+													<Badge variant={SOURCE_TYPE_VARIANTS[tx.sourceType]}>
 														{tx.sourceType}
 													</Badge>
 												</TableCell>

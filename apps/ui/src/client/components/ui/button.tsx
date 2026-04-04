@@ -77,6 +77,14 @@ const buttonVariants = cva(
 					'focus-visible:ring-secondary',
 					'cursor-pointer disabled:cursor-not-allowed',
 				],
+				special: [
+					'bg-purple-500 text-white',
+					'border-2 border-purple-500/70',
+					'shadow-lg shadow-purple-500/25',
+					'hover:bg-purple-500/90 hover:shadow-xl hover:shadow-purple-500/40 hover:border-purple-500/70',
+					'focus-visible:ring-purple-500',
+					'cursor-pointer disabled:cursor-not-allowed',
+				],
 				// --- Lightweight variant ---
 				link: 'text-primary underline-offset-4 hover:underline focus-visible:ring-ring',
 			},

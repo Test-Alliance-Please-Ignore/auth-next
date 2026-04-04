@@ -177,7 +177,7 @@ export default function CorporationsPage() {
 	const getVerificationBadge = useCallback((corp: any) => {
 		if (!corp.assignedCharacterId) {
 			return (
-				<Badge variant="outline" className="gap-1">
+				<Badge variant="ghost" className="gap-1">
 					<ShieldAlert className="h-3 w-3" />
 					No Director
 				</Badge>
@@ -185,7 +185,7 @@ export default function CorporationsPage() {
 		}
 		if (corp.isVerified) {
 			return (
-				<Badge variant="default" className="gap-1 bg-green-600">
+				<Badge variant="success" className="gap-1">
 					<ShieldCheck className="h-3 w-3" />
 					Verified
 				</Badge>

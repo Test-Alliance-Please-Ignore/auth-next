@@ -41,9 +41,11 @@ function CorporationCard({ corporation, onClick }: CorporationCardProps) {
 		<Card variant="elevated" className="transition-all hover:border-primary/50 hover:shadow-lg">
 			<CardHeader className="pb-4">
 				<div className="flex items-start gap-4">
-					<div className="p-3 bg-primary/10 rounded-lg">
-						<Building2 className="h-12 w-12 text-primary" />
-					</div>
+					<img
+						src={`https://images.evetech.net/corporations/${corporation.corporationId}/logo?size=64`}
+						alt={corporation.name}
+						className="h-16 w-16 rounded-lg bg-muted/30"
+					/>
 					<div className="flex-1 min-w-0">
 						<CardTitle className="text-lg font-semibold mb-1 truncate">
 							{corporation.name}

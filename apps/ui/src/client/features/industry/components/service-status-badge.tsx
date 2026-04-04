@@ -1,24 +1,17 @@
 import { CheckCircle, PauseCircle, XCircle } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
-import { cn } from '@/lib/utils'
 
 import { SERVICE_STATUS_LABELS, ServiceStatus } from '../types'
 
-const STATUS_VARIANTS: Record<ServiceStatus, { icon: typeof CheckCircle; className: string }> = {
-	[ServiceStatus.ACTIVE]: {
-		icon: CheckCircle,
-		className: 'bg-green-500/10 text-green-500 border-green-500/20',
-	},
-	[ServiceStatus.INACTIVE]: {
-		icon: PauseCircle,
-		className: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
-	},
-	[ServiceStatus.CLOSED]: {
-		icon: XCircle,
-		className: 'bg-red-500/10 text-red-500 border-red-500/20',
-	},
-}
+import type { BadgeVariant } from '@/components/ui/badge'
+
+const STATUS_VARIANTS: Record<ServiceStatus, { icon: typeof CheckCircle; variant: BadgeVariant }> =
+	{
+		[ServiceStatus.ACTIVE]: { icon: CheckCircle, variant: 'success' },
+		[ServiceStatus.INACTIVE]: { icon: PauseCircle, variant: 'warning' },
+		[ServiceStatus.CLOSED]: { icon: XCircle, variant: 'destructive' },
+	}
 
 interface ServiceStatusBadgeProps {
 	status: ServiceStatus
@@ -31,11 +24,11 @@ export function ServiceStatusBadge({
 	showIcon = true,
 	className,
 }: ServiceStatusBadgeProps) {
-	const { icon: Icon, className: variantClassName } = STATUS_VARIANTS[status]
+	const { icon: Icon, variant } = STATUS_VARIANTS[status]
 	const label = SERVICE_STATUS_LABELS[status]
 
 	return (
-		<Badge variant="outline" className={cn(variantClassName, className)}>
+		<Badge variant={variant} className={className}>
 			{showIcon && <Icon className="mr-1 h-3 w-3" />}
 			{label}
 		</Badge>

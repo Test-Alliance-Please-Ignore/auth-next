@@ -10,6 +10,7 @@ import { AlertOctagon, AlertTriangle, CheckCircle, Info, Shield } from 'lucide-r
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 
+import type { BadgeVariant } from '@/components/ui/badge'
 import type { HRNoteType } from '../api'
 
 // ============================================================================
@@ -32,33 +33,33 @@ const noteTypeConfig: Record<
 	{
 		label: string
 		icon: typeof Info
-		colorClasses: string
+		variant: BadgeVariant
 	}
 > = {
 	general: {
 		label: 'General',
 		icon: Info,
-		colorClasses: 'text-muted-foreground bg-muted/20 border-muted',
+		variant: 'ghost',
 	},
 	warning: {
 		label: 'Warning',
 		icon: AlertTriangle,
-		colorClasses: 'text-warning bg-warning/10 border-warning/30',
+		variant: 'warning',
 	},
 	positive: {
 		label: 'Positive',
 		icon: CheckCircle,
-		colorClasses: 'text-success bg-success/10 border-success/30',
+		variant: 'success',
 	},
 	incident: {
 		label: 'Incident',
 		icon: AlertOctagon,
-		colorClasses: 'text-destructive bg-destructive/10 border-destructive/30',
+		variant: 'destructive',
 	},
 	background_check: {
 		label: 'Background Check',
 		icon: Shield,
-		colorClasses: 'text-primary bg-primary/10 border-primary/30',
+		variant: 'default',
 	},
 }
 
@@ -98,12 +99,8 @@ export function HRNoteTypeBadge({
 
 	return (
 		<Badge
-			className={cn(
-				'inline-flex items-center gap-1.5 font-medium border',
-				config.colorClasses,
-				sizeClasses[size],
-				className
-			)}
+			variant={config.variant}
+			className={cn('inline-flex items-center gap-1.5 font-medium', sizeClasses[size], className)}
 		>
 			{showIcon && <Icon className={iconSizeClasses[size]} />}
 			<span>{config.label}</span>

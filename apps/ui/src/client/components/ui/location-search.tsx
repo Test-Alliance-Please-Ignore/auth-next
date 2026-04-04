@@ -48,7 +48,7 @@ export function LocationSearch({
 			case 'station':
 				return 'secondary'
 			case 'structure':
-				return 'outline'
+				return 'ghost'
 			default:
 				return 'default'
 		}

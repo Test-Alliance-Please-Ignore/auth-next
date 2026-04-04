@@ -10,14 +10,13 @@ const badgeVariants = cva(
 	{
 		variants: {
 			variant: {
-				default: 'border-transparent bg-primary text-primary-foreground hover:bg-primary/80',
-				secondary:
-					'border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80',
-				success: 'border-transparent bg-success text-success-foreground hover:bg-success/80',
-				warning: 'border-transparent bg-warning text-warning-foreground hover:bg-warning/80',
-				destructive:
-					'border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80',
-				outline: 'text-foreground',
+				default: 'bg-primary/20 text-primary border-primary/30',
+				secondary: 'bg-secondary/20 text-secondary border-secondary/30',
+				success: 'bg-success/20 text-success border-success/30',
+				warning: 'bg-warning/20 text-warning border-warning/30',
+				destructive: 'bg-destructive/20 text-destructive border-destructive/30',
+				ghost: 'bg-muted/50 text-muted-foreground border-border',
+				special: 'bg-purple-500/20 text-purple-500 border-purple-500/30',
 			},
 		},
 		defaultVariants: {
@@ -26,12 +25,23 @@ const badgeVariants = cva(
 	}
 )
 
+export type BadgeVariant = VariantProps<typeof badgeVariants>['variant']
+
 export interface BadgeProps
 	extends React.HTMLAttributes<HTMLDivElement>,
-		VariantProps<typeof badgeVariants> {}
+		VariantProps<typeof badgeVariants> {
+	icon?: React.ComponentType<{ className?: string }>
+	iconPosition?: 'left' | 'right'
+}
 
-function Badge({ className, variant, ...props }: BadgeProps) {
-	return <div className={cn(badgeVariants({ variant }), className)} {...props} />
+function Badge({ className, variant, icon: Icon, iconPosition = 'left', children, ...props }: BadgeProps) {
+	return (
+		<div className={cn(badgeVariants({ variant }), Icon && 'gap-1', className)} {...props}>
+			{Icon && iconPosition === 'left' && <Icon className="h-3 w-3 shrink-0" />}
+			{children}
+			{Icon && iconPosition === 'right' && <Icon className="h-3 w-3 shrink-0" />}
+		</div>
+	)
 }
 
 export { Badge, badgeVariants }

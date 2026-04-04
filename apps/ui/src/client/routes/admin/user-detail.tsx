@@ -470,7 +470,7 @@ export default function UserDetailPage() {
 											{user.characters.find((c) => c.is_primary)?.characterName || 'Unknown'}
 										</h2>
 										{user.is_admin && (
-											<Badge variant="default" className="bg-primary/20 text-primary">
+											<Badge variant="default">
 												<Shield className="h-3 w-3 mr-1" />
 												Admin
 											</Badge>
@@ -480,7 +480,7 @@ export default function UserDetailPage() {
 								</div>
 								<div className="flex items-center gap-2">
 									{activeBlacklist && (
-										<Badge variant="default" className="bg-red-500/20 text-red-500">
+										<Badge variant="destructive">
 											<ShieldBan className="h-3 w-3 mr-1" />
 											Blacklisted
 										</Badge>
@@ -704,11 +704,11 @@ export default function UserDetailPage() {
 									<div className="text-sm text-muted-foreground">Authorization Status</div>
 									<div className="text-sm font-medium">
 										{user.discord.authRevoked ? (
-											<Badge variant="default" className="bg-red-500/20 text-red-500">
+											<Badge variant="destructive">
 												Revoked
 											</Badge>
 										) : (
-											<Badge variant="default" className="bg-green-500/20 text-green-500">
+											<Badge variant="success">
 												Active
 											</Badge>
 										)}
@@ -765,7 +765,7 @@ export default function UserDetailPage() {
 												Auto-Blacklisted
 											</Badge>
 										) : (
-											<Badge variant="default" className="bg-red-500/20 text-red-500">
+											<Badge variant="destructive">
 												Manual Blacklist
 											</Badge>
 										)}
@@ -834,12 +834,12 @@ export default function UserDetailPage() {
 									<TableCell>
 										<div className="flex gap-2">
 											{character.is_primary && (
-												<Badge variant="default" className="bg-blue-500/20 text-blue-500">
+												<Badge variant="default">
 													Primary
 												</Badge>
 											)}
 											{character.isBlacklisted && (
-												<Badge variant="default" className="bg-red-500/20 text-red-500">
+												<Badge variant="destructive">
 													<ShieldBan className="h-3 w-3 mr-1" />
 													Blacklisted
 												</Badge>
@@ -849,11 +849,11 @@ export default function UserDetailPage() {
 									<TableCell>
 										<div className="text-sm">
 											{character.hasValidToken ? (
-												<Badge variant="default" className="bg-green-500/20 text-green-500">
+												<Badge variant="success">
 													Valid
 												</Badge>
 											) : (
-												<Badge variant="default" className="bg-red-500/20 text-red-500">
+												<Badge variant="destructive">
 													Invalid
 												</Badge>
 											)}
@@ -1210,7 +1210,7 @@ export default function UserDetailPage() {
 													)}
 												</div>
 												<Badge
-													variant="outline"
+													variant="ghost"
 													className={
 														result.success
 															? 'border-green-500 text-green-500'

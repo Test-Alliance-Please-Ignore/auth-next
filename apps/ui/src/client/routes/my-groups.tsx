@@ -34,7 +34,7 @@ export default function MyGroupsPage() {
 			<Section>
 				{/* Stats */}
 				<div className="grid gap-4 md:grid-cols-3">
-					<Card variant="interactive">
+					<Card variant="default">
 						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
 							<CardTitle className="text-sm font-medium">Total Groups</CardTitle>
 							<Users className="h-4 w-4 text-muted-foreground" />
@@ -44,7 +44,7 @@ export default function MyGroupsPage() {
 						</CardContent>
 					</Card>
 
-					<Card variant="interactive">
+					<Card variant="default">
 						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
 							<CardTitle className="text-sm font-medium">Owned</CardTitle>
 							<Crown className="h-4 w-4 text-muted-foreground" />
@@ -54,7 +54,7 @@ export default function MyGroupsPage() {
 						</CardContent>
 					</Card>
 
-					<Card variant="interactive">
+					<Card variant="default">
 						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
 							<CardTitle className="text-sm font-medium">Admin Roles</CardTitle>
 							<Shield className="h-4 w-4 text-muted-foreground" />
@@ -67,7 +67,7 @@ export default function MyGroupsPage() {
 
 				{/* Owned Groups */}
 				{ownedGroups.length > 0 && (
-					<Card variant="interactive">
+					<Card variant="default">
 						<CardHeader>
 							<CardTitle>Owned Groups</CardTitle>
 							<CardDescription>Groups you created and manage</CardDescription>
@@ -86,7 +86,7 @@ export default function MyGroupsPage() {
 
 				{/* Admin Groups */}
 				{adminGroups.length > 0 && (
-					<Card variant="interactive">
+					<Card variant="default">
 						<CardHeader>
 							<CardTitle>Admin Roles</CardTitle>
 							<CardDescription>Groups where you are an administrator</CardDescription>
@@ -105,7 +105,7 @@ export default function MyGroupsPage() {
 
 				{/* Member Groups */}
 				{memberGroups.length > 0 && (
-					<Card variant="interactive">
+					<Card variant="default">
 						<CardHeader>
 							<CardTitle>Member Groups</CardTitle>
 							<CardDescription>Groups you are a member of</CardDescription>
@@ -124,7 +124,7 @@ export default function MyGroupsPage() {
 
 				{/* Empty State */}
 				{memberships?.length === 0 && (
-					<Card variant="interactive">
+					<Card variant="default">
 						<CardContent className="py-16 text-center">
 							<div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-muted mb-6">
 								<Users className="h-10 w-10 text-muted-foreground" />

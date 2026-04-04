@@ -252,9 +252,7 @@ export default function UsersPage() {
 																		{displayName}
 																		{isAltMatch && (
 																			<Badge
-																				variant="default"
-																				className="bg-blue-500/20 text-blue-500"
-																			>
+																				variant="default">
 																				Alt
 																			</Badge>
 																		)}
@@ -299,7 +297,7 @@ export default function UsersPage() {
 											</TableCell>
 											<TableCell>
 												{user.is_admin && (
-													<Badge variant="default" className="bg-primary/20 text-primary">
+													<Badge variant="default">
 														Admin
 													</Badge>
 												)}

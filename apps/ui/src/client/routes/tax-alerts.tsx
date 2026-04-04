@@ -65,24 +65,24 @@ const severityFilterOptions: Array<{ label: string; value?: TaxAlertSeverity }> 
 	{ label: 'Info', value: 'info' },
 ]
 
-function severityBadgeVariant(severity: TaxAlertSeverity): 'destructive' | 'warning' | 'outline' {
+function severityBadgeVariant(severity: TaxAlertSeverity): 'destructive' | 'warning' | 'ghost' {
 	if (severity === 'critical') {
 		return 'destructive'
 	}
 	if (severity === 'warning') {
 		return 'warning'
 	}
-	return 'outline'
+	return 'ghost'
 }
 
-function statusBadgeVariant(status: TaxAlertStatus): 'default' | 'secondary' | 'outline' {
+function statusBadgeVariant(status: TaxAlertStatus): 'default' | 'secondary' | 'ghost' {
 	if (status === 'open') {
 		return 'default'
 	}
 	if (status === 'acknowledged') {
 		return 'secondary'
 	}
-	return 'outline'
+	return 'ghost'
 }
 
 export default function TaxAlertsPage() {

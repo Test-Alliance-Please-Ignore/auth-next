@@ -1,7 +1,6 @@
 import { Badge } from '@/components/ui/badge'
-import { cn } from '@/lib/utils'
 
-import { getRequestStatusColor, getRequestStatusText } from '../utils'
+import { getRequestStatusText, getRequestStatusVariant } from '../utils'
 
 import type { RequestStatus } from '../types'
 
@@ -12,7 +11,7 @@ interface RequestStatusBadgeProps {
 
 export function RequestStatusBadge({ status, className }: RequestStatusBadgeProps) {
 	return (
-		<Badge className={cn('border', getRequestStatusColor(status), className)}>
+		<Badge variant={getRequestStatusVariant(status)} className={className}>
 			{getRequestStatusText(status)}
 		</Badge>
 	)

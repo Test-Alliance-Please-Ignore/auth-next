@@ -42,7 +42,7 @@ export function LegacyCharacterCard({ character, onLink, isLinking }: LegacyChar
 							{character.characterName}
 						</h3>
 						<div className="flex items-center gap-2 mt-1">
-							<Badge variant="default" className="text-xs bg-amber-500/20 text-amber-500">
+							<Badge variant="warning" className="text-xs">
 								{isLinking ? 'Linking...' : 'Needs Linking'}
 							</Badge>
 						</div>

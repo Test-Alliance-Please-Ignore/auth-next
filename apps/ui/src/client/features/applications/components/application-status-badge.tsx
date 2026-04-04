@@ -10,6 +10,7 @@ import { AlertCircle, CheckCircle, Clock, Eye, Minus, XCircle } from 'lucide-rea
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 
+import type { BadgeVariant } from '@/components/ui/badge'
 import type { ApplicationStatus } from '../api'
 
 // ============================================================================
@@ -32,40 +33,40 @@ const statusConfig: Record<
 	{
 		label: string
 		icon: typeof Clock
-		colorClasses: string
+		variant: BadgeVariant
 	}
 > = {
 	pending: {
 		label: 'Pending',
 		icon: Clock,
-		colorClasses: 'bg-warning/15 text-warning border-warning/40',
+		variant: 'warning',
 	},
 	under_review: {
 		label: 'Under Review',
 		icon: Eye,
-		colorClasses: 'bg-primary/20 text-primary border-primary/50',
+		variant: 'default',
 	},
 	accepted: {
 		label: 'Accepted',
 		icon: CheckCircle,
-		colorClasses: 'bg-success/20 text-success border-success/50',
+		variant: 'success',
 	},
 	rejected: {
 		label: 'Rejected',
 		icon: XCircle,
-		colorClasses: 'bg-destructive/20 text-destructive border-destructive/50',
+		variant: 'destructive',
 	},
 	withdrawn: {
 		label: 'Withdrawn',
 		icon: Minus,
-		colorClasses: 'bg-muted/20 text-muted-foreground border-muted/50',
+		variant: 'ghost',
 	},
 }
 
 const unknownStatusConfig = {
 	label: 'Unknown Status',
 	icon: AlertCircle,
-	colorClasses: 'bg-muted/20 text-muted-foreground border-muted/50',
+	variant: 'ghost' as BadgeVariant,
 }
 
 const sizeClasses = {
@@ -104,12 +105,8 @@ export function ApplicationStatusBadge({
 
 	return (
 		<Badge
-			className={cn(
-				'inline-flex items-center gap-1.5 font-medium border',
-				config.colorClasses,
-				sizeClasses[size],
-				className
-			)}
+			variant={config.variant}
+			className={cn('inline-flex items-center gap-1.5 font-medium', sizeClasses[size], className)}
 		>
 			{showIcon && <Icon className={iconSizeClasses[size]} />}
 			<span>{config.label}</span>

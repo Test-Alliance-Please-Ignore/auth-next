@@ -42,7 +42,7 @@ export function InviteCodeRedemption({ onSuccess }: InviteCodeRedemptionProps) {
 	}
 
 	return (
-		<Card variant="interactive">
+		<Card variant="default">
 			<CardHeader>
 				<CardTitle className="flex items-center gap-2">
 					<Ticket className="h-5 w-5" />
