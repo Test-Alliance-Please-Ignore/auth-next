@@ -283,7 +283,7 @@ export default function DashboardPage() {
 				<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
 					{/* Main Character Card - 75% width on desktop */}
 					<div className="md:col-span-2 lg:col-span-3">
-						<Card variant="elevated" className="h-full">
+						<Card variant="default" className="h-full">
 							<CardHeader>
 								<CardTitle className="text-xl md:text-2xl">Main Character</CardTitle>
 								<CardDescription>Your primary EVE Online character</CardDescription>
@@ -398,7 +398,7 @@ export default function DashboardPage() {
 						}
 					>
 						<Card
-							variant="elevated"
+							variant="default"
 							className="h-full"
 							style={
 								legacyCardGrowth !== null
@@ -472,7 +472,7 @@ export default function DashboardPage() {
 
 			<Section>
 				{/* Linked Characters */}
-				<Card variant="elevated">
+				<Card variant="default">
 					<CardHeader>
 						<div className="flex justify-between items-center">
 							<div>
