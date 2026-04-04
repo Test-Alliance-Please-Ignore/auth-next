@@ -24,6 +24,7 @@ export default function DashboardPage() {
 	const [isLinkingCharacter, setIsLinkingCharacter] = useState(false)
 	const [isLinkingLegacyAuth, setIsLinkingLegacyAuth] = useState(false)
 	const [linkingLegacyCharacters, setLinkingLegacyCharacters] = useState<Set<string>>(new Set())
+	const [reauthorizingCharacters, setReauthorizingCharacters] = useState<Set<string>>(new Set())
 	const [refreshingCharacters, setRefreshingCharacters] = useState<Set<string>>(new Set())
 	const [mainCharacterDetails, setMainCharacterDetails] = useState<any>(null)
 	const [creatingInvites, setCreatingInvites] = useState<Set<string>>(new Set())
@@ -71,6 +72,12 @@ export default function DashboardPage() {
 			const result = await apiClient.refreshCharacterById(characterId)
 
 			if (result.success) {
+				// If token is still invalid after refresh attempt, immediately start OAuth re-authorization
+				if (!result.hasValidToken) {
+					await handleReauthorizeCharacter(characterId)
+					return
+				}
+
 				// Refresh user data to get updated character info
 				await refetch()
 				console.log('Character refreshed successfully')
@@ -145,6 +152,27 @@ export default function DashboardPage() {
 				return next
 			})
 			// TODO: Show error toast
+		}
+	}
+
+	const handleReauthorizeCharacter = async (characterId: string) => {
+		if (reauthorizingCharacters.has(characterId)) return
+
+		setReauthorizingCharacters((prev) => new Set(prev).add(characterId))
+
+		try {
+			const response = await apiClient.post<{ authorizationUrl: string; state: string }>(
+				'/auth/character/start',
+				{ characterId }
+			)
+			window.location.href = response.authorizationUrl
+		} catch (error) {
+			console.error('Failed to start character re-authorization flow:', error)
+			setReauthorizingCharacters((prev) => {
+				const next = new Set(prev)
+				next.delete(characterId)
+				return next
+			})
 		}
 	}
 
@@ -485,6 +513,19 @@ export default function DashboardPage() {
 												</div>
 											</div>
 										</Link>
+										{!character.hasValidToken && (
+											<Button
+												size="sm"
+												variant="outline"
+												className="mt-2 h-7 px-2 text-xs"
+												onClick={() => handleReauthorizeCharacter(character.characterId)}
+												disabled={reauthorizingCharacters.has(character.characterId)}
+											>
+												{reauthorizingCharacters.has(character.characterId)
+													? 'Redirecting...'
+													: 'Re-authorize token'}
+											</Button>
+										)}
 										{/* Admin-only fleet invite button */}
 										{user?.is_admin && (
 											<Button
