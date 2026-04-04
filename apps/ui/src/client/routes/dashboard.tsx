@@ -514,22 +514,22 @@ export default function DashboardPage() {
 														{character.characterId === user.mainCharacterId && (
 															<Badge
 																variant="default"
-																className="text-xs bg-primary/20 text-primary"
+																className="text-xs"
 															>
 																Main
 															</Badge>
 														)}
 														{character.hasValidToken ? (
 															<Badge
-																variant="default"
-																className="text-xs bg-green-500/20 text-green-500"
+																variant="success"
+																className="text-xs"
 															>
 																Valid
 															</Badge>
 														) : (
 															<Badge
-																variant="default"
-																className="text-xs bg-red-500/20 text-red-500"
+																variant="destructive"
+																className="text-xs"
 															>
 																Please refresh
 															</Badge>

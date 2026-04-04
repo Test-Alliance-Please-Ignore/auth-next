@@ -187,7 +187,7 @@ export default function MyCorporationsList() {
 														{corporation.name} [{corporation.ticker}]
 													</span>
 													{corporation.userRole === 'CEO' && (
-														<Badge variant="default" className="bg-yellow-500">
+														<Badge variant="warning">
 															<Star className="mr-1 h-3 w-3" />
 															CEO
 														</Badge>
@@ -200,7 +200,7 @@ export default function MyCorporationsList() {
 													)}
 													{corporation.userRole === 'Both' && (
 														<>
-															<Badge variant="default" className="bg-yellow-500">
+															<Badge variant="warning">
 																<Star className="mr-1 h-3 w-3" />
 																CEO
 															</Badge>

@@ -19,7 +19,7 @@ export const DirectorStatusBadge = memo(function DirectorStatusBadge({
 	// Never checked - needs verification
 	if (!lastHealthCheck) {
 		return (
-			<Badge variant="outline" className="gap-1">
+			<Badge variant="ghost" className="gap-1">
 				<Clock className="h-3 w-3" />
 				<span>Needs Verification</span>
 			</Badge>
@@ -29,7 +29,7 @@ export const DirectorStatusBadge = memo(function DirectorStatusBadge({
 	// Healthy director
 	if (isHealthy) {
 		return (
-			<Badge variant="default" className="gap-1 bg-green-600 hover:bg-green-700">
+			<Badge variant="success" className="gap-1">
 				<CheckCircle className="h-3 w-3" />
 				<span>Healthy</span>
 			</Badge>

@@ -38,7 +38,7 @@ export function GroupPermissionCard({
 						<h4 className="font-medium">{name}</h4>
 						<PermissionTargetBadge target={permission.targetType} size="sm" />
 						{isGlobalPermission && (
-							<Badge variant="outline" className="text-xs gap-1">
+							<Badge variant="ghost" className="text-xs gap-1">
 								<Globe className="w-3 h-3" />
 								Global
 							</Badge>

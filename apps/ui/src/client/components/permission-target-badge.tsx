@@ -30,7 +30,7 @@ const targetConfig = {
 	},
 	owner_and_admins: {
 		label: 'Owner & Admins',
-		variant: 'outline' as const,
+		variant: 'ghost' as const,
 		icon: ShieldCheck,
 		description: 'Group owner and all admins',
 	},

@@ -14,12 +14,12 @@ export function toJsonPreview(value: unknown): string {
 
 export function billStatusBadgeVariant(
 	status: TaxBillStatusReportRow['billStatus'] | 'underpaid' | 'overpaid'
-): 'default' | 'success' | 'warning' | 'destructive' | 'outline' {
+): 'default' | 'success' | 'warning' | 'destructive' | 'ghost' {
 	if (status === 'overdue') return 'destructive'
 	if (status === 'paid') return 'success'
 	if (status === 'underpaid' || status === 'overpaid') return 'warning'
 	if (status === 'issued') return 'default'
-	return 'outline'
+	return 'ghost'
 }
 
 export function parseDecimalToCentiBigInt(value: string | number | null | undefined): bigint {

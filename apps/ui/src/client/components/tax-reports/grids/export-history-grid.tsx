@@ -53,7 +53,7 @@ export function ExportHistoryGrid(props: {
 				header: 'Status',
 				enableSorting: true,
 				Cell: ({ row }) => (
-					<Badge variant={row.original.status === 'failed' ? 'destructive' : 'outline'}>
+					<Badge variant={row.original.status === 'failed' ? 'destructive' : 'ghost'}>
 						{row.original.status}
 					</Badge>
 				),

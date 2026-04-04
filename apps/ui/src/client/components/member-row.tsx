@@ -49,7 +49,7 @@ export function MemberRow({
 				<div className="flex gap-2">
 					{isOwner && <Badge>Owner</Badge>}
 					{isAdmin && !isOwner && <Badge variant="secondary">Admin</Badge>}
-					{!isOwner && !isAdmin && <Badge variant="outline">Member</Badge>}
+					{!isOwner && !isAdmin && <Badge variant="ghost">Member</Badge>}
 				</div>
 			</TableCell>
 

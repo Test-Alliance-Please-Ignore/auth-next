@@ -66,7 +66,7 @@ export default function AdminUserActivityPage() {
 									<div className="flex-1">
 										<div className="flex items-center gap-2 flex-wrap">
 											<Badge
-												variant="outline"
+												variant="ghost"
 												className={cn(
 													log.action.includes('login') && 'border-green-500 text-green-500',
 													log.action.includes('create') && 'border-blue-500 text-blue-500',

@@ -148,7 +148,7 @@ export default function CategoriesManagement() {
 									{sortedCategories.map((category) => (
 										<TableRow key={category.id}>
 											<TableCell>
-												<Badge variant="outline">{category.displayOrder}</Badge>
+												<Badge variant="ghost">{category.displayOrder}</Badge>
 											</TableCell>
 											<TableCell className="font-medium">{category.name}</TableCell>
 											<TableCell className="text-muted-foreground">

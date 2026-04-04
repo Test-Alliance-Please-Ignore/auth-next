@@ -3,6 +3,7 @@ import { Navigate, Route } from 'react-router-dom'
 
 import { LoadingPage } from '@/components/ui/loading'
 import AdminActivityLogPage from '@/routes/admin/activity-log'
+import DevComponentsPage from '@/routes/admin/dev-components'
 import AdminBillsPage from '@/routes/admin/bills'
 import AdminBillsDashboardPage from '@/routes/admin/bills-dashboard'
 import AdminBillsDetailPage from '@/routes/admin/bills-detail'
@@ -77,6 +78,7 @@ export const adminRouteElements = (
 		/>
 		<Route path="blacklist" element={<AdminBlacklistPage />} />
 		<Route path="activity-log" element={<AdminActivityLogPage />} />
+		<Route path="dev/components" element={<DevComponentsPage />} />
 
 		<Route path="bills" element={<AdminBillsPage />} />
 		<Route path="bills/new" element={<AdminBillsNewPage />} />

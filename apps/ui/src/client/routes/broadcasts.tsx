@@ -35,14 +35,15 @@ import {
 import { useGroups } from '@/hooks/useGroups'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
+import type { BadgeVariant } from '@/components/ui/badge'
 import type { Broadcast, BroadcastStatus } from '@/lib/api'
 
-const statusColors: Record<BroadcastStatus, string> = {
-	draft: 'bg-gray-500',
-	scheduled: 'bg-blue-500',
-	sending: 'bg-yellow-500',
-	sent: 'bg-green-500',
-	failed: 'bg-red-500',
+const statusVariants: Record<BroadcastStatus, BadgeVariant> = {
+	draft: 'secondary',
+	scheduled: 'default',
+	sending: 'warning',
+	sent: 'success',
+	failed: 'destructive',
 }
 
 const statusLabels: Record<BroadcastStatus, string> = {
@@ -230,7 +231,7 @@ export default function BroadcastsPage() {
 										return (
 											<TableRow key={broadcast.id}>
 												<TableCell>
-													<Badge className={statusColors[broadcast.status]}>
+													<Badge variant={statusVariants[broadcast.status]}>
 														{statusLabels[broadcast.status]}
 													</Badge>
 												</TableCell>
