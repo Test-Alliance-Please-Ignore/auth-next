@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
+import { renderDiscordContentValue } from '@/components/discord-content-renderer'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
@@ -34,6 +35,7 @@ export default function NewBroadcastPage() {
 	const [templateFields, setTemplateFields] = useState<Record<string, string>>({})
 	const [mentionLevel, setMentionLevel] = useState<'none' | 'here' | 'everyone'>('none')
 	const [isSubmitting, setIsSubmitting] = useState(false)
+	const [showPreview, setShowPreview] = useState(false)
 
 	// Fetch all broadcast targets available to the user
 	const { data: targets } = useBroadcastTargets()
@@ -144,7 +146,7 @@ export default function NewBroadcastPage() {
 					</Card>
 				)}
 
-				<Card variant="interactive">
+				<Card>
 					<CardHeader>
 						<CardTitle>Broadcast Details</CardTitle>
 						<CardDescription>Configure your broadcast message</CardDescription>
@@ -216,15 +218,45 @@ export default function NewBroadcastPage() {
 							{/* Custom Message or Template Fields */}
 							{selectedTemplateId === 'custom' ? (
 								<div className="space-y-2">
-									<Label htmlFor="message">Message *</Label>
-									<Textarea
-										id="message"
-										value={customMessage}
-										onChange={(e) => setCustomMessage(e.target.value)}
-										rows={6}
-										placeholder="Enter your broadcast message..."
-										required
-									/>
+									<div className="flex items-center justify-between">
+										<Label htmlFor="message">Message *</Label>
+										<Button
+											type="button"
+											variant="ghost"
+											size="sm"
+											onClick={() => setShowPreview((v) => !v)}
+										>
+											{showPreview ? 'Hide Preview' : 'Show Preview'}
+										</Button>
+									</div>
+									{showPreview ? (
+										<div className="grid grid-cols-2 gap-4">
+											<Textarea
+												id="message"
+												value={customMessage}
+												onChange={(e) => setCustomMessage(e.target.value)}
+												rows={10}
+												placeholder="Enter your broadcast message..."
+												required
+												className="resize-none"
+											/>
+											<div className="rounded-md border border-border bg-muted/20 p-3 text-sm overflow-y-auto min-h-[160px]">
+												{customMessage.trim()
+													? renderDiscordContentValue(customMessage, 'preview')
+													: <span className="text-muted-foreground italic">Preview will appear here…</span>
+												}
+											</div>
+										</div>
+									) : (
+										<Textarea
+											id="message"
+											value={customMessage}
+											onChange={(e) => setCustomMessage(e.target.value)}
+											rows={6}
+											placeholder="Enter your broadcast message..."
+											required
+										/>
+									)}
 									<p className="text-xs text-muted-foreground">
 										Write your custom message. Supports Discord markdown formatting.
 									</p>
