@@ -264,6 +264,10 @@ export class TemplateService {
 			throw new Error('Template not found')
 		}
 
+		// Calculate due date
+		const dueDate = new Date()
+		dueDate.setDate(dueDate.getDate() + template.daysUntilDue)
+
 		// Apply template parameters
 		const params = data.templateParams ? { ...data.templateParams } : {}
 		params.amount = params.amount ?? data.amount
@@ -273,15 +277,12 @@ export class TemplateService {
 		params.payeeType = params.payeeType ?? data.payeeType
 		params.payerName = params.payerName ?? data.payerId
 		params.payeeName = params.payeeName ?? data.payeeId
+		params.dueDate = params.dueDate ?? dueDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 
 		const title = this.applyTemplateParams(template.titleTemplate, params)
 		const description = template.descriptionTemplate
 			? this.applyTemplateParams(template.descriptionTemplate, params)
 			: null
-
-		// Calculate due date
-		const dueDate = new Date()
-		dueDate.setDate(dueDate.getDate() + template.daysUntilDue)
 
 		const billId = generateUuidV7()
 		const paymentToken = generatePaymentToken()
