@@ -22,7 +22,7 @@ function TimestampChip({
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
 				<span
-					className="inline-block rounded border border-border/70 bg-accent/70 px-1.5 py-0.5 text-[0.875em] leading-none align-baseline cursor-help"
+					className="inline-block rounded border border-border/80 bg-accent px-1.5 py-0.5 text-[0.875em] leading-none align-baseline cursor-help transition-colors hover:bg-accent/90"
 					onMouseEnter={() => setOpen(true)}
 					onMouseLeave={() => setOpen(false)}
 					onFocus={() => setOpen(true)}

@@ -55,11 +55,17 @@ const statusLabels: Record<BroadcastStatus, string> = {
 
 export default function BroadcastsPage() {
 	usePageTitle('My Broadcasts')
-	const pageSize = 20
+
+	const pageSize = 25
 	const navigate = useNavigate()
 	const { user, permissions } = useAuth()
-	const [page, setPage] = useState(1)
-	const { data: broadcasts, isLoading } = useBroadcasts()
+	const [page, setPage] = useState(0)
+
+	const { data: broadcastsPage, isLoading } = useBroadcasts(undefined, undefined, {
+		mine: true,
+		limit: pageSize,
+		offset: page * pageSize,
+	})
 	const { data: groups } = useGroups()
 	const { data: targets } = useBroadcastTargets()
 	const { data: templates } = useBroadcastTemplates()
@@ -68,12 +74,16 @@ export default function BroadcastsPage() {
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 	const [selectedBroadcast, setSelectedBroadcast] = useState<Broadcast | null>(null)
 
-	// Filter broadcasts to only show user's own
-	const myBroadcasts = broadcasts?.filter((b) => b.createdBy === user?.id) || []
-	const totalItems = myBroadcasts.length
-	const totalPages = Math.max(1, Math.ceil(totalItems / pageSize))
-	const startIndex = (page - 1) * pageSize
-	const paginatedBroadcasts = myBroadcasts.slice(startIndex, startIndex + pageSize)
+	const myBroadcasts = broadcastsPage?.rows ?? []
+	const rowCount = broadcastsPage?.rowCount ?? 0
+	const totalPages = Math.max(1, Math.ceil(rowCount / pageSize))
+	const maxPage = Math.max(totalPages - 1, 0)
+
+	useEffect(() => {
+		if (page > maxPage) {
+			setPage(maxPage)
+		}
+	}, [page, maxPage])
 
 	const formatDate = (dateString: string) => {
 		return new Date(dateString).toLocaleString()
@@ -103,12 +113,6 @@ export default function BroadcastsPage() {
 		}
 	}
 
-	useEffect(() => {
-		if (page > totalPages) {
-			setPage(totalPages)
-		}
-	}, [page, totalPages])
-
 	if (isLoading) {
 		return (
 			<Container>
@@ -133,14 +137,13 @@ export default function BroadcastsPage() {
 			/>
 
 			<Section>
-				{/* Stats */}
 				<div className="grid gap-4 md:grid-cols-4">
 					<Card variant="elevated">
 						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
 							<CardTitle className="text-sm font-medium">Total</CardTitle>
 						</CardHeader>
 						<CardContent>
-							<div className="text-2xl font-bold">{myBroadcasts.length}</div>
+							<div className="text-2xl font-bold">{rowCount}</div>
 						</CardContent>
 					</Card>
 
@@ -178,8 +181,7 @@ export default function BroadcastsPage() {
 					</Card>
 				</div>
 
-				{/* Broadcasts List */}
-				{myBroadcasts.length === 0 ? (
+				{rowCount === 0 ? (
 					<Card variant="elevated">
 						<CardContent className="py-16 text-center">
 							<div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-muted mb-6">
@@ -218,12 +220,13 @@ export default function BroadcastsPage() {
 									</TableRow>
 								</TableHeader>
 								<TableBody>
-									{paginatedBroadcasts.map((broadcast) => {
+									{myBroadcasts.map((broadcast) => {
 										const group = groups?.find((g) => g.id === broadcast.groupId)
 										const target = targets?.find((t) => t.id === broadcast.targetId)
 										const template = broadcast.templateId
 											? templates?.find((t) => t.id === broadcast.templateId)
 											: null
+
 										return (
 											<TableRow key={broadcast.id}>
 												<TableCell>
@@ -289,31 +292,27 @@ export default function BroadcastsPage() {
 									})}
 								</TableBody>
 							</Table>
-							{totalItems > 0 && (
-								<div className="mt-4 flex items-center justify-between border-t border-border pt-4">
-									<div className="text-sm text-muted-foreground">
-										Page {page} of {totalPages}
-									</div>
-									<div className="flex items-center gap-2">
-										<Button
-											variant="ghost"
-											size="sm"
-											disabled={page === 1}
-											onClick={() => setPage(page - 1)}
-										>
-											Previous
-										</Button>
-										<Button
-											variant="ghost"
-											size="sm"
-											disabled={page === totalPages}
-											onClick={() => setPage(page + 1)}
-										>
-											Next
-										</Button>
-									</div>
+							<div className="mt-4 flex items-center justify-between gap-2">
+								<p className="text-sm text-muted-foreground">
+									Showing {Math.min(page * pageSize + 1, rowCount)}-
+									{Math.min((page + 1) * pageSize, rowCount)} of {rowCount}
+								</p>
+								<div className="flex items-center gap-2">
+									<Button variant="ghost" disabled={page === 0} onClick={() => setPage(page - 1)}>
+										Previous
+									</Button>
+									<p className="text-sm text-muted-foreground">
+										Page {page + 1} of {totalPages}
+									</p>
+									<Button
+										variant="ghost"
+										disabled={page >= maxPage}
+										onClick={() => setPage(page + 1)}
+									>
+										Next
+									</Button>
 								</div>
-							)}
+							</div>
 						</CardContent>
 					</Card>
 				)}

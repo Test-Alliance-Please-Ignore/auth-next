@@ -88,6 +88,11 @@ export interface BroadcastWithDetails extends Broadcast {
 	deliveries: BroadcastDelivery[]
 }
 
+export interface BroadcastPage {
+	rows: Broadcast[]
+	rowCount: number
+}
+
 /**
  * Broadcast Delivery - Tracks delivery status per target
  */
@@ -302,13 +307,20 @@ export interface Broadcasts {
 	/**
 	 * List broadcasts with optional filters
 	 * @param userId - User ID making the request
-	 * @param filters - Optional filters (groupId, status)
-	 * @returns Array of broadcasts
+	 * @param filters - Optional filters (groupId/groupIds, status, limit, offset)
+	 * @returns Paginated broadcasts
 	 */
 	listBroadcasts(
 		userId: string,
-		filters?: { groupId?: string; status?: BroadcastStatus }
-	): Promise<Broadcast[]>
+		filters?: {
+			groupId?: string
+			groupIds?: string[]
+			status?: BroadcastStatus
+			createdBy?: string
+			limit?: number
+			offset?: number
+		}
+	): Promise<BroadcastPage>
 
 	/**
 	 * Get a single broadcast with full details

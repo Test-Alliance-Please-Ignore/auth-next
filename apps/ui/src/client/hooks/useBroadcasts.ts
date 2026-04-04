@@ -24,6 +24,21 @@ export const broadcastKeys = {
 	template: (id: string) => [...broadcastKeys.templates(), id] as const,
 	templatesByGroup: (groupId: string) => [...broadcastKeys.templates(), 'group', groupId] as const,
 	broadcasts: () => [...broadcastKeys.all, 'list'] as const,
+	broadcastsPage: (
+		groupId: string | undefined,
+		status: BroadcastStatus | undefined,
+		mine: boolean | undefined,
+		limit: number,
+		offset: number
+	) =>
+		[
+			...broadcastKeys.broadcasts(),
+			groupId ?? 'all',
+			status ?? 'all',
+			mine ? 'mine' : 'all',
+			limit,
+			offset,
+		] as const,
 	broadcast: (id: string) => [...broadcastKeys.all, id] as const,
 	broadcastsByGroup: (groupId: string, status?: BroadcastStatus) =>
 		[...broadcastKeys.broadcasts(), 'group', groupId, status] as const,
@@ -189,12 +204,18 @@ export function useDeleteBroadcastTemplate() {
 /**
  * Fetch all broadcasts, optionally filtered by group and status
  */
-export function useBroadcasts(groupId?: string, status?: BroadcastStatus) {
+export function useBroadcasts(
+	groupId?: string,
+	status?: BroadcastStatus,
+	options?: { limit?: number; offset?: number; mine?: boolean }
+) {
+	const limit = options?.limit ?? 25
+	const offset = options?.offset ?? 0
+	const mine = options?.mine ?? false
+
 	return useQuery({
-		queryKey: groupId
-			? broadcastKeys.broadcastsByGroup(groupId, status)
-			: broadcastKeys.broadcasts(),
-		queryFn: () => api.getBroadcasts(groupId, status),
+		queryKey: broadcastKeys.broadcastsPage(groupId, status, mine, limit, offset),
+		queryFn: () => api.getBroadcasts(groupId, status, { limit, offset, mine }),
 		staleTime: 1000 * 30, // 30 seconds
 	})
 }

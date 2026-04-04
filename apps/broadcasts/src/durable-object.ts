@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { and, desc, eq } from '@repo/db-utils'
+import { and, desc, eq, inArray, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
 import { createDb } from './db'
@@ -10,6 +10,7 @@ import { convertUnixTimestamps } from './utils/timestamp-converter'
 import type {
 	Broadcast,
 	BroadcastDelivery,
+	BroadcastPage,
 	Broadcasts,
 	BroadcastStatus,
 	BroadcastTarget,
@@ -248,31 +249,62 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 
 	async listBroadcasts(
 		userId: string,
-		filters?: { groupId?: string; status?: BroadcastStatus }
-	): Promise<Broadcast[]> {
+		filters?: {
+			groupId?: string
+			groupIds?: string[]
+			status?: BroadcastStatus
+			createdBy?: string
+			limit?: number
+			offset?: number
+		}
+	): Promise<BroadcastPage> {
 		let whereConditions = []
 
 		if (filters?.groupId) {
 			whereConditions.push(eq(broadcasts.groupId, filters.groupId))
+		} else if (filters?.groupIds) {
+			if (filters.groupIds.length === 0) {
+				return { rows: [], rowCount: 0 }
+			}
+			whereConditions.push(inArray(broadcasts.groupId, filters.groupIds))
 		}
 
 		if (filters?.status) {
 			whereConditions.push(eq(broadcasts.status, filters.status))
 		}
+		if (filters?.createdBy) {
+			whereConditions.push(eq(broadcasts.createdBy, filters.createdBy))
+		}
 
-		const broadcastList = await this.db.query.broadcasts.findMany({
-			where: whereConditions.length > 0 ? and(...whereConditions) : undefined,
-			orderBy: desc(broadcasts.createdAt),
-		})
+		const whereClause = whereConditions.length > 0 ? and(...whereConditions) : undefined
+		const limit = filters?.limit ?? 50
+		const offset = filters?.offset ?? 0
 
-		return broadcastList.map((b) => ({
-			...b,
-			content: b.content as Record<string, unknown>,
-			scheduledFor: b.scheduledFor ? b.scheduledFor.toISOString() : null,
-			sentAt: b.sentAt ? b.sentAt.toISOString() : null,
-			createdAt: b.createdAt.toISOString(),
-			updatedAt: b.updatedAt.toISOString(),
-		}))
+		const [totalResult, broadcastList] = await Promise.all([
+			this.db
+				.select({ count: sql<number>`count(*)` })
+				.from(broadcasts)
+				.where(whereClause)
+				.then((rows) => rows[0]),
+			this.db.query.broadcasts.findMany({
+				where: whereClause,
+				orderBy: desc(broadcasts.createdAt),
+				limit,
+				offset,
+			}),
+		])
+
+		return {
+			rows: broadcastList.map((b) => ({
+				...b,
+				content: b.content as Record<string, unknown>,
+				scheduledFor: b.scheduledFor ? b.scheduledFor.toISOString() : null,
+				sentAt: b.sentAt ? b.sentAt.toISOString() : null,
+				createdAt: b.createdAt.toISOString(),
+				updatedAt: b.updatedAt.toISOString(),
+			})),
+			rowCount: Number(totalResult?.count ?? 0),
+		}
 	}
 
 	async getBroadcast(broadcastId: string, userId: string): Promise<BroadcastWithDetails | null> {
