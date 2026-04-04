@@ -1,6 +1,6 @@
 import { ExternalLink, RefreshCw, UserPlus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { DiscordCard } from '@/components/discord-card'
 import { LegacyCharacterCard } from '@/components/legacy-character-card'
@@ -21,6 +21,7 @@ export default function DashboardPage() {
 	usePageTitle('Dashboard')
 	const { user, isLoading, refetch } = useAuth()
 	const navigate = useNavigate()
+	const [searchParams, setSearchParams] = useSearchParams()
 	const [isLinkingCharacter, setIsLinkingCharacter] = useState(false)
 	const [isLinkingLegacyAuth, setIsLinkingLegacyAuth] = useState(false)
 	const [linkingLegacyCharacters, setLinkingLegacyCharacters] = useState<Set<string>>(new Set())
@@ -60,6 +61,26 @@ export default function DashboardPage() {
 		}
 		void fetchMainCharacterDetails()
 	}, [user?.mainCharacterId])
+
+	// Force immediate auth/session refresh after OAuth token update callback.
+	useEffect(() => {
+		if (searchParams.get('tokenUpdated') !== '1') return
+
+		void (async () => {
+			try {
+				await refetch()
+			} finally {
+				setSearchParams(
+					(prev) => {
+						const next = new URLSearchParams(prev)
+						next.delete('tokenUpdated')
+						return next
+					},
+					{ replace: true }
+				)
+			}
+		})()
+	}, [searchParams, refetch, setSearchParams])
 
 	const handleRefreshCharacter = async (characterId: string) => {
 		// Prevent multiple refreshes for the same character
