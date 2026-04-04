@@ -92,7 +92,7 @@ export function CreateRequestForm({
 							<div className="font-medium">{new Date(lossDate).toLocaleString()}</div>
 						</div>
 					</div>
-					<Button variant="outline" size="sm" asChild>
+					<Button variant="ghost" size="sm" asChild>
 						<a href={getKillmailUrl(killmailId)} target="_blank" rel="noopener noreferrer">
 							View Full Killmail →
 						</a>
@@ -139,7 +139,7 @@ export function CreateRequestForm({
 					<div className="flex gap-2">
 						<Button
 							type="button"
-							variant="outline"
+							variant="ghost"
 							onClick={() => navigate('/srp')}
 							disabled={createMutation.isPending}
 						>

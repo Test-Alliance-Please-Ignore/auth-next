@@ -38,7 +38,7 @@ export default function BillDetailPage() {
 					<div>
 						<h1 className="text-3xl font-bold gradient-text">Loading Bill...</h1>
 					</div>
-					<Button variant="outline" asChild>
+					<Button variant="ghost" asChild>
 						<Link to="/my-bills">
 							<FileText className="mr-2 h-4 w-4" />
 							Back to My Bills
@@ -59,7 +59,7 @@ export default function BillDetailPage() {
 							The bill you're looking for doesn't exist or you don't have permission to view it.
 						</p>
 					</div>
-					<Button variant="outline" asChild>
+					<Button variant="ghost" asChild>
 						<Link to="/my-bills">
 							<FileText className="mr-2 h-4 w-4" />
 							Back to My Bills
@@ -105,7 +105,7 @@ export default function BillDetailPage() {
 				title={bill.title}
 				description={`Bill ID: ${bill.id}`}
 				action={
-					<Button variant="outline" asChild>
+					<Button variant="ghost" asChild>
 						<Link to="/my-bills">
 							<FileText className="mr-2 h-4 w-4" />
 							Back to My Bills

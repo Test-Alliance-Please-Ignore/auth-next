@@ -20,7 +20,6 @@ import {
 } from '@/components/ui/breadcrumb'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ConfirmButton } from '@/components/ui/confirm-button'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { Separator } from '@/components/ui/separator'
 import { SubmitApplicationDialog } from '@/features/applications'
@@ -88,7 +87,7 @@ export default function CorporationDetail() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<Button variant="outline" onClick={() => navigate('/join')}>
+						<Button variant="ghost" onClick={() => navigate('/join')}>
 							Back to Browse Corporations
 						</Button>
 					</CardContent>
@@ -173,13 +172,13 @@ export default function CorporationDetail() {
 					<CardDescription>Submit your application to join {corporation.name}</CardDescription>
 				</CardHeader>
 				<CardContent>
-					<ConfirmButton
+					<Button variant="confirm"
 						size="lg"
-						onConfirm={() => setShowApplicationDialog(true)}
+						onClick={() => setShowApplicationDialog(true)}
 						className="w-full sm:w-auto"
 					>
 						Apply to Join {corporation.name}
-					</ConfirmButton>
+					</Button>
 				</CardContent>
 			</Card>
 

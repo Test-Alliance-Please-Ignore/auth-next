@@ -4,9 +4,8 @@ import { useState } from 'react'
 import { useApproveJoinRequest, useJoinRequests, useRejectJoinRequest } from '@/hooks/useGroups'
 
 import { Badge } from './ui/badge'
+import { Button } from './ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
-import { ConfirmButton } from './ui/confirm-button'
-import { DestructiveButton } from './ui/destructive-button'
 
 interface PendingJoinRequestsListProps {
 	groupId: string
@@ -126,18 +125,18 @@ export function PendingJoinRequestsList({ groupId }: PendingJoinRequestsListProp
 									</div>
 								</div>
 								<div className="flex gap-2">
-									<ConfirmButton
+									<Button variant="confirm"
 										size="sm"
 										disabled={processingId === request.id}
 										loading={processingId === request.id && approveRequest.isPending}
 										loadingText="Approving..."
-										onConfirm={() => handleApprove(request.id)}
+										onClick={() => handleApprove(request.id)}
 										showIcon={false}
 									>
 										<Check className="h-4 w-4 mr-1" />
 										Approve
-									</ConfirmButton>
-									<DestructiveButton
+									</Button>
+									<Button variant="destructive"
 										size="sm"
 										disabled={processingId === request.id}
 										loading={processingId === request.id && rejectRequest.isPending}
@@ -147,7 +146,7 @@ export function PendingJoinRequestsList({ groupId }: PendingJoinRequestsListProp
 									>
 										<X className="h-4 w-4 mr-1" />
 										Reject
-									</DestructiveButton>
+									</Button>
 								</div>
 							</div>
 						</div>

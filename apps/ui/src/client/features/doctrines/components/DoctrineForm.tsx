@@ -6,13 +6,12 @@
 
 import { useState } from 'react'
 
-import { CancelButton } from '@/components/ui/cancel-button'
-import { ConfirmButton } from '@/components/ui/confirm-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 
 import type { CreateDoctrineRequest, Doctrine, UpdateDoctrineRequest } from '../types'
+import { Button } from '@/components/ui/button'
 
 interface DoctrineFormProps {
 	doctrine?: Doctrine
@@ -87,17 +86,17 @@ export function DoctrineForm({ doctrine, onSubmit, onCancel, isSubmitting }: Doc
 
 			{/* Actions */}
 			<div className="flex justify-end gap-2">
-				<CancelButton onClick={onCancel} type="button">
+				<Button variant="cancel" onClick={onCancel} type="button">
 					Cancel
-				</CancelButton>
-				<ConfirmButton
+				</Button>
+				<Button variant="confirm"
 					type="submit"
 					loading={isSubmitting}
 					loadingText={doctrine ? 'Updating...' : 'Creating...'}
 					disabled={!canSubmit || isSubmitting}
 				>
 					{doctrine ? 'Update Doctrine' : 'Create Doctrine'}
-				</ConfirmButton>
+				</Button>
 			</div>
 		</form>
 	)

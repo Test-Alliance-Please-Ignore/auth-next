@@ -202,7 +202,7 @@ export default function IndustryProviderNewPage() {
 
 						<div className="flex justify-end gap-2 mt-6 pt-4 border-t">
 							<Button
-								variant="outline"
+								variant="ghost"
 								onClick={() => navigate('/admin/industry-providers')}
 								disabled={isProcessing}
 							>

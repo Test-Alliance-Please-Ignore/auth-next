@@ -24,7 +24,7 @@ export default function ReviewQueue() {
 				title="Review Queue"
 				description="Review and approve ship replacement requests"
 				action={
-					<Button variant="outline" onClick={() => refetch()}>
+					<Button variant="ghost" onClick={() => refetch()}>
 						Refresh
 					</Button>
 				}
@@ -36,7 +36,7 @@ export default function ReviewQueue() {
 					<p className="text-xs text-muted-foreground">
 						{error instanceof Error ? error.message : 'Unknown error'}
 					</p>
-					<Button variant="outline" className="mt-4" onClick={() => refetch()}>
+					<Button variant="ghost" className="mt-4" onClick={() => refetch()}>
 						Retry
 					</Button>
 				</div>
@@ -44,7 +44,7 @@ export default function ReviewQueue() {
 				<div className="rounded-lg border border-dashed p-12 text-center">
 					<h3 className="mb-2 font-semibold">All caught up!</h3>
 					<p className="text-sm text-muted-foreground">No requests pending review. Great work!</p>
-					<Button variant="outline" className="mt-4" asChild>
+					<Button variant="ghost" className="mt-4" asChild>
 						<Link to="/srp">Back to Dashboard</Link>
 					</Button>
 				</div>

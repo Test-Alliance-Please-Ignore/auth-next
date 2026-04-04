@@ -2,8 +2,6 @@ import { Clock, Send, UserPlus } from 'lucide-react'
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { CancelButton } from '@/components/ui/cancel-button'
-import { ConfirmButton } from '@/components/ui/confirm-button'
 import {
 	Dialog,
 	DialogContent,
@@ -69,7 +67,7 @@ export function JoinButton({ group, onSuccess }: JoinButtonProps) {
 
 	if (group.hasPendingJoinRequest) {
 		return (
-			<Button disabled variant="outline">
+			<Button disabled variant="ghost">
 				<Clock className="mr-2 h-4 w-4" />
 				Request Pending
 			</Button>
@@ -78,7 +76,7 @@ export function JoinButton({ group, onSuccess }: JoinButtonProps) {
 
 	if (group.joinMode === 'invitation_only') {
 		return (
-			<Button disabled variant="outline">
+			<Button disabled variant="ghost">
 				Invitation Only
 			</Button>
 		)
@@ -113,11 +111,11 @@ export function JoinButton({ group, onSuccess }: JoinButtonProps) {
 						</div>
 					</div>
 					<DialogFooter>
-						<CancelButton onClick={() => setDialogOpen(false)} disabled={isLoading}>
+						<Button variant="cancel" onClick={() => setDialogOpen(false)} disabled={isLoading}>
 							Cancel
-						</CancelButton>
-						<ConfirmButton
-							onConfirm={handleSubmitRequest}
+						</Button>
+						<Button variant="confirm"
+							onClick={handleSubmitRequest}
 							disabled={isLoading}
 							loading={isLoading}
 							loadingText="Sending..."
@@ -125,7 +123,7 @@ export function JoinButton({ group, onSuccess }: JoinButtonProps) {
 						>
 							<Send className="mr-2 h-4 w-4" />
 							Send Request
-						</ConfirmButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>

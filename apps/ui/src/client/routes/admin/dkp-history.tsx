@@ -189,7 +189,7 @@ export default function DkpHistory() {
 					<div className="flex gap-2 mt-4">
 						<Button onClick={applyFilters}>Apply Filters</Button>
 						{hasActiveFilters && (
-							<Button variant="outline" onClick={clearFilters}>
+							<Button variant="ghost" onClick={clearFilters}>
 								Clear
 							</Button>
 						)}
@@ -286,7 +286,7 @@ export default function DkpHistory() {
 									</p>
 									<div className="flex gap-2">
 										<Button
-											variant="outline"
+											variant="ghost"
 											size="sm"
 											onClick={() =>
 												setFilters({ ...filters, offset: Math.max(0, (filters.offset || 0) - 50) })
@@ -297,7 +297,7 @@ export default function DkpHistory() {
 											Previous
 										</Button>
 										<Button
-											variant="outline"
+											variant="ghost"
 											size="sm"
 											onClick={() => setFilters({ ...filters, offset: (filters.offset || 0) + 50 })}
 											disabled={page >= totalPages - 1}

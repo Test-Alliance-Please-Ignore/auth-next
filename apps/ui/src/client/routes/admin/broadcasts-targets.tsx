@@ -1,11 +1,8 @@
-import { Plus, Trash2 } from 'lucide-react'
+import { Edit, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ConfirmButton } from '@/components/ui/confirm-button'
-import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
 	Dialog,
 	DialogContent,
@@ -225,17 +222,25 @@ export default function BroadcastTargetsPage() {
 											<TableCell className="text-sm text-muted-foreground">
 												{config.channelId && `Channel: ${config.channelId}`}
 											</TableCell>
-											<TableCell className="text-right space-x-2">
-												<Button size="sm" variant="outline" onClick={() => handleEdit(target)}>
-													Edit
-												</Button>
-												<DestructiveButton
-													size="sm"
-													onClick={() => handleDeleteClick(target)}
-													showIcon={false}
-												>
-													Delete
-												</DestructiveButton>
+											<TableCell className="text-right">
+												<div className="flex items-center justify-end gap-2">
+													<Button
+														size="sm"
+														variant="ghost"
+														onClick={() => handleEdit(target)}
+														title="Edit target"
+													>
+														<Edit className="h-4 w-4" />
+													</Button>
+													<Button
+														variant="ghost"
+														size="sm"
+														onClick={() => handleDeleteClick(target)}
+														title="Delete target"
+													>
+														<Trash2 className="h-4 w-4 text-destructive" />
+													</Button>
+												</div>
 											</TableCell>
 										</TableRow>
 									)
@@ -279,9 +284,7 @@ export default function BroadcastTargetsPage() {
 								value={formData.groupId}
 								onValueChange={(value) => setFormData({ ...formData, groupId: value })}
 								placeholder="Select a group"
-								options={(groups ?? []).map((group) => ({ value: group.id,
-									label: group.name,
-								}))}
+								options={(groups ?? []).map((group) => ({ value: group.id, label: group.name }))}
 							/>
 						</div>
 						<div>
@@ -313,16 +316,17 @@ export default function BroadcastTargetsPage() {
 							/>
 						</div>
 						<DialogFooter>
-							<CancelButton onClick={() => setCreateDialogOpen(false)} type="button">
+							<Button variant="cancel" onClick={() => setCreateDialogOpen(false)} type="button">
 								Cancel
-							</CancelButton>
-							<ConfirmButton
+							</Button>
+							<Button
+								variant="confirm"
 								type="submit"
 								loading={createTarget.isPending}
 								loadingText="Creating..."
 							>
 								Create Target
-							</ConfirmButton>
+							</Button>
 						</DialogFooter>
 					</form>
 				</DialogContent>
@@ -383,7 +387,8 @@ export default function BroadcastTargetsPage() {
 							/>
 						</div>
 						<DialogFooter>
-							<CancelButton
+							<Button
+								variant="cancel"
 								onClick={() => {
 									setEditDialogOpen(false)
 									setSelectedTarget(null)
@@ -392,14 +397,15 @@ export default function BroadcastTargetsPage() {
 								type="button"
 							>
 								Cancel
-							</CancelButton>
-							<ConfirmButton
+							</Button>
+							<Button
+								variant="confirm"
 								type="submit"
 								loading={updateTarget.isPending}
 								loadingText="Updating..."
 							>
 								Update Target
-							</ConfirmButton>
+							</Button>
 						</DialogFooter>
 					</form>
 				</DialogContent>
@@ -416,7 +422,8 @@ export default function BroadcastTargetsPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<CancelButton
+						<Button
+							variant="cancel"
 							onClick={() => {
 								setDeleteDialogOpen(false)
 								setSelectedTarget(null)
@@ -424,8 +431,9 @@ export default function BroadcastTargetsPage() {
 							disabled={deleteTarget.isPending}
 						>
 							Cancel
-						</CancelButton>
-						<DestructiveButton
+						</Button>
+						<Button
+							variant="destructive"
 							onClick={handleDeleteConfirm}
 							loading={deleteTarget.isPending}
 							loadingText="Deleting..."
@@ -433,7 +441,7 @@ export default function BroadcastTargetsPage() {
 						>
 							<Trash2 className="mr-2 h-4 w-4" />
 							Delete
-						</DestructiveButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>

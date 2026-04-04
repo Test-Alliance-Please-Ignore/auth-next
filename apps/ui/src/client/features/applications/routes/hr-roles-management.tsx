@@ -19,7 +19,6 @@ import {
 	BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { GhostButton } from '@/components/ui/ghost-button'
 import { LoadingSpinner } from '@/components/ui/loading'
 import {
 	Table,
@@ -49,6 +48,7 @@ import {
 
 import type { GrantHrRoleRequest, HrRoleGrant, RevokeHrRoleRequest } from '@/features/hr'
 import type { CorporationMember } from '../../my-corporations'
+import { Button } from '@/components/ui/button'
 
 /**
  * Main HR Roles Management Component
@@ -129,12 +129,12 @@ export default function HrRolesManagement() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<GhostButton asChild>
+						<Button variant="ghost" asChild>
 							<Link to="/my-corporations">
 								<ArrowLeft className="mr-2 h-4 w-4" />
 								Return to My Corporations
 							</Link>
-						</GhostButton>
+						</Button>
 					</CardContent>
 				</Card>
 			</div>
@@ -156,12 +156,12 @@ export default function HrRolesManagement() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<GhostButton asChild>
+						<Button variant="ghost" asChild>
 							<Link to={`/my-corporations/${corporationId}/members`}>
 								<ArrowLeft className="mr-2 h-4 w-4" />
 								Return to Manage Corporation
 							</Link>
-						</GhostButton>
+						</Button>
 					</CardContent>
 				</Card>
 			</div>
@@ -259,12 +259,12 @@ export default function HrRolesManagement() {
 							</p>
 						)}
 					</div>
-					<GhostButton asChild>
+					<Button variant="ghost" asChild>
 						<Link to={`/my-corporations/${corporationId}/members`}>
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to Manage Corporation
 						</Link>
-					</GhostButton>
+					</Button>
 				</div>
 			</div>
 
@@ -339,13 +339,13 @@ export default function HrRolesManagement() {
 											)}
 										</TableCell>
 										<TableCell className="text-right">
-											<GhostButton
+											<Button variant="ghost"
 												size="sm"
 												onClick={() => handleRevokeClick(role)}
 												disabled={!role.isActive}
 											>
 												Revoke HR Role
-											</GhostButton>
+											</Button>
 										</TableCell>
 									</TableRow>
 								))}

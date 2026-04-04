@@ -6,8 +6,6 @@
 
 import { useState } from 'react'
 
-import { CancelButton } from '@/components/ui/cancel-button'
-import { ConfirmButton } from '@/components/ui/confirm-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
@@ -17,6 +15,7 @@ import { validateEFT } from '../utils'
 import { EftPreview } from './EftPreview'
 
 import type { CreateFittingRequest, Fitting, UpdateFittingRequest } from '../types'
+import { Button } from '@/components/ui/button'
 
 interface FittingFormProps {
 	fitting?: Fitting
@@ -166,17 +165,17 @@ export function FittingForm({ fitting, onSubmit, onCancel, isSubmitting }: Fitti
 
 			{/* Actions */}
 			<div className="flex justify-end gap-2">
-				<CancelButton onClick={onCancel} type="button">
+				<Button variant="cancel" onClick={onCancel} type="button">
 					Cancel
-				</CancelButton>
-				<ConfirmButton
+				</Button>
+				<Button variant="confirm"
 					type="submit"
 					loading={isSubmitting}
 					loadingText={fitting ? 'Updating...' : 'Creating...'}
 					disabled={!canSubmit || isSubmitting}
 				>
 					{fitting ? 'Update Fitting' : 'Create Fitting'}
-				</ConfirmButton>
+				</Button>
 			</div>
 		</form>
 	)

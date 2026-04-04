@@ -127,7 +127,7 @@ export default function ActivityLogPage() {
 							</CardDescription>
 						</div>
 						{hasActiveFilters && (
-							<Button variant="outline" size="sm" onClick={handleClearFilters}>
+							<Button variant="ghost" size="sm" onClick={handleClearFilters}>
 								Clear Filters
 							</Button>
 						)}
@@ -328,7 +328,7 @@ export default function ActivityLogPage() {
 									</div>
 									<div className="flex gap-2">
 										<Button
-											variant="outline"
+											variant="ghost"
 											size="sm"
 											disabled={pagination.page === 1}
 											onClick={() => setPage(page - 1)}
@@ -336,7 +336,7 @@ export default function ActivityLogPage() {
 											Previous
 										</Button>
 										<Button
-											variant="outline"
+											variant="ghost"
 											size="sm"
 											disabled={pagination.page === pagination.totalPages}
 											onClick={() => setPage(page + 1)}

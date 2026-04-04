@@ -2,10 +2,7 @@ import { ArrowLeft } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
-import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ConfirmButton } from '@/components/ui/confirm-button'
-import { GhostButton } from '@/components/ui/ghost-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { NumberInput } from '@/components/ui/number-input'
@@ -16,6 +13,7 @@ import { useBill, useUpdateBill } from '@/hooks/useBills'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import type { LateFeeCompounding, LateFeeType, UpdateBillInput } from '@repo/bills'
+import { Button } from '@/components/ui/button'
 
 export default function AdminBillsEditPage() {
 	const { billId } = useParams<{ billId: string }>()
@@ -147,12 +145,12 @@ export default function AdminBillsEditPage() {
 			<div className="space-y-6">
 				<div className="flex items-center justify-between">
 					<h1 className="text-3xl font-bold gradient-text">Loading...</h1>
-					<GhostButton asChild>
+					<Button variant="ghost" asChild>
 						<Link to="/admin/bills">
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to Bills
 						</Link>
-					</GhostButton>
+					</Button>
 				</div>
 			</div>
 		)
@@ -168,12 +166,12 @@ export default function AdminBillsEditPage() {
 							The bill you're looking for doesn't exist or you don't have permission to view it.
 						</p>
 					</div>
-					<GhostButton asChild>
+					<Button variant="ghost" asChild>
 						<Link to="/admin/bills">
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to Bills
 						</Link>
-					</GhostButton>
+					</Button>
 				</div>
 			</div>
 		)
@@ -189,12 +187,12 @@ export default function AdminBillsEditPage() {
 							Only draft bills can be edited. This bill has status: <strong>{bill.status}</strong>.
 						</p>
 					</div>
-					<GhostButton asChild>
+					<Button variant="ghost" asChild>
 						<Link to={`/admin/bills/${billId}`}>
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to Bill
 						</Link>
-					</GhostButton>
+					</Button>
 				</div>
 			</div>
 		)
@@ -207,12 +205,12 @@ export default function AdminBillsEditPage() {
 					<h1 className="text-3xl font-bold gradient-text">Edit Bill</h1>
 					<p className="text-muted-foreground mt-2">{bill.title}</p>
 				</div>
-				<GhostButton asChild>
+				<Button variant="ghost" asChild>
 					<Link to={`/admin/bills/${billId}`}>
 						<ArrowLeft className="mr-2 h-4 w-4" />
 						Back to Bill
 					</Link>
-				</GhostButton>
+				</Button>
 			</div>
 
 			{message && (
@@ -381,12 +379,12 @@ export default function AdminBillsEditPage() {
 				</Card>
 
 				<div className="flex gap-3">
-					<ConfirmButton type="submit" loading={updateBill.isPending}>
+					<Button variant="confirm" type="submit" loading={updateBill.isPending}>
 						Save Changes
-					</ConfirmButton>
-					<CancelButton type="button" onClick={() => navigate(`/admin/bills/${billId}`)}>
+					</Button>
+					<Button variant="cancel" type="button" onClick={() => navigate(`/admin/bills/${billId}`)}>
 						Cancel
-					</CancelButton>
+					</Button>
 				</div>
 			</form>
 		</div>

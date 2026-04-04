@@ -302,19 +302,19 @@ export default function DkpDashboard() {
 				</CardHeader>
 				<CardContent>
 					<div className="grid gap-2 md:grid-cols-3">
-						<Button variant="outline" className="justify-start" asChild>
+						<Button variant="ghost" className="justify-start" asChild>
 							<Link to="/admin/dkp/awards">
 								<Award className="mr-2 h-4 w-4" />
 								Award DKP
 							</Link>
 						</Button>
-						<Button variant="outline" className="justify-start" asChild>
+						<Button variant="ghost" className="justify-start" asChild>
 							<Link to="/admin/dkp/leaderboards">
 								<TrendingUp className="mr-2 h-4 w-4" />
 								View Leaderboards
 							</Link>
 						</Button>
-						<Button variant="outline" className="justify-start" asChild>
+						<Button variant="ghost" className="justify-start" asChild>
 							<Link to="/admin/dkp/history">
 								<Coins className="mr-2 h-4 w-4" />
 								Transaction History

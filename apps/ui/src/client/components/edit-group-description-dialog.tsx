@@ -1,7 +1,5 @@
 import { useState } from 'react'
 
-import { CancelButton } from '@/components/ui/cancel-button'
-import { ConfirmButton } from '@/components/ui/confirm-button'
 import {
 	Dialog,
 	DialogContent,
@@ -15,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useUpdateGroup } from '@/hooks/useGroups'
 
 import type { GroupWithDetails } from '@/lib/api'
+import { Button } from '@/components/ui/button'
 
 interface EditGroupDescriptionDialogProps {
 	group: GroupWithDetails
@@ -86,17 +85,17 @@ export function EditGroupDescriptionDialog({
 				</div>
 
 				<DialogFooter>
-					<CancelButton onClick={handleCancel} disabled={updateGroup.isPending}>
+					<Button variant="cancel" onClick={handleCancel} disabled={updateGroup.isPending}>
 						Cancel
-					</CancelButton>
-					<ConfirmButton
-						onConfirm={handleSave}
+					</Button>
+					<Button variant="confirm"
+						onClick={handleSave}
 						loading={updateGroup.isPending}
 						loadingText="Saving..."
 						disabled={isUnchanged}
 					>
 						Save Changes
-					</ConfirmButton>
+					</Button>
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>

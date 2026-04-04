@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { Label } from '@/components/ui/label'
-import { PrimaryButton } from '@/components/ui/primary-button'
 import { Select } from '@/components/ui/select'
 import {
 	Table,
@@ -101,12 +100,12 @@ export default function FreightManagePage() {
 					<p className="text-muted-foreground mt-1">Manage official freight routes and pricing</p>
 				</div>
 				<div className="flex gap-2">
-					<PrimaryButton asChild>
+					<Button variant="primary" asChild>
 						<Link to="/freight/manage/new">
 							<Plus className="mr-2 h-4 w-4" />
 							Create Route
 						</Link>
-					</PrimaryButton>
+					</Button>
 				</div>
 			</div>
 
@@ -137,7 +136,7 @@ export default function FreightManagePage() {
 						</div>
 						<div className="flex items-center gap-3">
 							{statusFilter !== 'all' && (
-								<Button variant="outline" size="sm" onClick={() => setStatusFilter('all')}>
+								<Button variant="ghost" size="sm" onClick={() => setStatusFilter('all')}>
 									Clear Filter
 								</Button>
 							)}
@@ -201,14 +200,14 @@ export default function FreightManagePage() {
 											</TableCell>
 											<TableCell className="text-right">
 												<div className="flex justify-end gap-2">
-													<Button variant="outline" size="sm" asChild>
+													<Button variant="ghost" size="sm" asChild>
 														<Link to={`/freight/manage/${route.id}/edit`}>
 															<Edit className="h-4 w-4" />
 														</Link>
 													</Button>
 													{route.status === 'active' ? (
 														<Button
-															variant="outline"
+															variant="ghost"
 															size="sm"
 															onClick={() => handleDeactivate(route.id)}
 															disabled={deactivateRoute.isPending}
@@ -217,7 +216,7 @@ export default function FreightManagePage() {
 														</Button>
 													) : (
 														<Button
-															variant="outline"
+															variant="ghost"
 															size="sm"
 															onClick={() => handleActivate(route.id)}
 															disabled={activateRoute.isPending}
@@ -226,7 +225,7 @@ export default function FreightManagePage() {
 														</Button>
 													)}
 													<Button
-														variant="outline"
+														variant="ghost"
 														size="sm"
 														onClick={() => handleDelete(route.id)}
 														disabled={deleteRoute.isPending}

@@ -4,16 +4,15 @@ import { Link, Navigate } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { GhostButton } from '@/components/ui/ghost-button'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
-import { PrimaryButton } from '@/components/ui/primary-button'
 import { useHrAccessibleCorporations } from '@/features/hr'
 import { HrRoleBadge } from '@/features/hr/components/hr-role-badge'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { applicationsApi } from '../api'
+import { Button } from '@/components/ui/button'
 
 export default function HrCorporationsPage() {
 	const { isAuthenticated, isLoading: authLoading } = useAuth()
@@ -62,7 +61,7 @@ export default function HrCorporationsPage() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<GhostButton onClick={() => window.location.reload()}>Try Again</GhostButton>
+						<Button variant="ghost" onClick={() => window.location.reload()}>Try Again</Button>
 					</CardContent>
 				</Card>
 			</div>
@@ -118,18 +117,18 @@ export default function HrCorporationsPage() {
 							</CardHeader>
 							<CardContent className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
 								<div className="flex flex-wrap gap-2">
-									<PrimaryButton asChild>
+									<Button variant="primary" asChild>
 										<Link to={`/corporations/${corporation.corporationId}/hr/dashboard`}>
 											<LayoutDashboard className="mr-2 h-4 w-4" />
 											Dashboard
 										</Link>
-									</PrimaryButton>
-									<GhostButton asChild>
+									</Button>
+									<Button variant="ghost" asChild>
 										<Link to={`/corporations/${corporation.corporationId}/hr/applications`}>
 											<FileText className="mr-2 h-4 w-4" />
 											Applications
 										</Link>
-									</GhostButton>
+									</Button>
 								</div>
 								{hasVisibleCounts && (
 									<div className="flex flex-wrap items-center gap-2 sm:justify-end">

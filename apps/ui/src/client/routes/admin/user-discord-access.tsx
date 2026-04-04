@@ -3,9 +3,9 @@ import { useNavigate, useParams } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { GhostButton } from '@/components/ui/ghost-button'
 import { useAdminDiscordInspection, useAdminUser } from '@/hooks/useAdminUsers'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { Button } from '@/components/ui/button'
 
 function renderRolePills(
 	roles: Array<{ roleId: string; roleName: string | null }>,
@@ -47,10 +47,10 @@ export default function AdminUserDiscordAccessPage() {
 	return (
 		<div className="space-y-6">
 			<div className="flex items-center gap-4">
-				<GhostButton onClick={() => navigate(`/admin/users/${userId}`)}>
+				<Button variant="ghost" onClick={() => navigate(`/admin/users/${userId}`)}>
 					<ArrowLeft className="h-4 w-4 mr-2" />
 					Back to User
-				</GhostButton>
+				</Button>
 			</div>
 
 			<div className="space-y-1">

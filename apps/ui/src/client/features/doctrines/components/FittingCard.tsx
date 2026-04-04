@@ -61,7 +61,7 @@ export function FittingCard({ fitting }: FittingCardProps) {
 				</div>
 			</CardContent>
 			<CardFooter>
-				<Button variant="outline" size="sm" asChild className="w-full">
+				<Button variant="ghost" size="sm" asChild className="w-full">
 					<Link to={`/doctrines/fittings/${fitting.id}`}>View Details</Link>
 				</Button>
 			</CardFooter>

@@ -19,17 +19,16 @@ import {
 	BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { GhostButton } from '@/components/ui/ghost-button'
 import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
-import { PrimaryButton } from '@/components/ui/primary-button'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/hooks/useAuth'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { api } from '@/lib/api'
+import { Button } from '@/components/ui/button'
 
 // ============================================================================
 // Component
@@ -159,10 +158,10 @@ export default function CorporationSettings() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<GhostButton onClick={() => navigate('/my-corporations')}>
+						<Button variant="ghost" onClick={() => navigate('/my-corporations')}>
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to My Corporations
-						</GhostButton>
+						</Button>
 					</CardContent>
 				</Card>
 			</div>
@@ -199,10 +198,10 @@ export default function CorporationSettings() {
 				title="Recruiting Settings"
 				description={`Configure how ${corporation.name} appears to applicants`}
 				action={
-					<GhostButton onClick={() => navigate(`/my-corporations/${corporationId}/members`)}>
+					<Button variant="ghost" onClick={() => navigate(`/my-corporations/${corporationId}/members`)}>
 						<ArrowLeft className="mr-2 h-4 w-4" />
 						Back to Manage Corporation
-					</GhostButton>
+					</Button>
 				}
 			/>
 
@@ -291,7 +290,7 @@ export default function CorporationSettings() {
 
 				{/* Actions */}
 				<div className="flex items-center gap-4">
-					<PrimaryButton
+					<Button variant="primary"
 						type="submit"
 						disabled={updateSettings.isPending || !hasChanges || !!shortDescError}
 						className="w-full sm:w-auto"
@@ -307,13 +306,13 @@ export default function CorporationSettings() {
 								Save Settings
 							</>
 						)}
-					</PrimaryButton>
-					<GhostButton
+					</Button>
+					<Button variant="ghost"
 						type="button"
 						onClick={() => navigate(`/my-corporations/${corporationId}/members`)}
 					>
 						Cancel
-					</GhostButton>
+					</Button>
 				</div>
 			</form>
 		</div>

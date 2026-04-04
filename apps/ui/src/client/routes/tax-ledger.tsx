@@ -6,7 +6,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Container } from '@/components/ui/container'
 import { DateRangeInput } from '@/components/ui/date-range-input'
 import { FilterField } from '@/components/ui/filter-field'
-import { GhostButton } from '@/components/ui/ghost-button'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
 import { Select } from '@/components/ui/select'
@@ -35,6 +34,7 @@ import {
 
 import type { MRT_ColumnDef } from 'mantine-react-table'
 import type { TaxLedgerEntry } from '@repo/corporation-tax'
+import { Button } from '@/components/ui/button'
 
 const PAGE_SIZE = 50
 const DEFAULT_MONTH_RANGE = getCurrentMonthDateRange()
@@ -548,7 +548,7 @@ export default function TaxLedgerPage() {
 							/>
 						</FilterField>
 						<div className="flex items-end md:justify-end">
-							<GhostButton onClick={resetFilters}>Clear Filters</GhostButton>
+							<Button variant="ghost" onClick={resetFilters}>Clear Filters</Button>
 						</div>
 					</CardContent>
 				</Card>

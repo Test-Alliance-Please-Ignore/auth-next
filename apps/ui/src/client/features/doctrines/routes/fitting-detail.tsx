@@ -11,7 +11,6 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
-import { DestructiveButton } from '@/components/ui/destructive-button'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
@@ -73,7 +72,7 @@ export default function FittingDetailPage() {
 						<p className="text-muted-foreground mb-4">
 							The fitting you're looking for doesn't exist or you don't have permission to view it.
 						</p>
-						<Button asChild variant="outline">
+						<Button asChild variant="ghost">
 							<Link to="/doctrines">
 								<ArrowLeft className="h-4 w-4 mr-2" />
 								Back to Doctrines
@@ -115,7 +114,7 @@ export default function FittingDetailPage() {
 				action={
 					<div className="flex gap-2">
 						{canEdit && (
-							<Button asChild variant="outline">
+							<Button asChild variant="ghost">
 								<Link to={`/doctrines/fittings/${id}/edit`}>
 									<Edit className="h-4 w-4 mr-2" />
 									Edit
@@ -123,14 +122,14 @@ export default function FittingDetailPage() {
 							</Button>
 						)}
 						{canDelete && (
-							<DestructiveButton
+							<Button variant="destructive"
 								onClick={handleDelete}
 								loading={deleteMutation.isPending}
 								loadingText="Deleting..."
 							>
 								<Trash2 className="h-4 w-4 mr-2" />
 								Delete
-							</DestructiveButton>
+							</Button>
 						)}
 					</div>
 				}

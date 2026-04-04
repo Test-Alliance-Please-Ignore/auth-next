@@ -1,4 +1,4 @@
-import { Eye, UserPlus, Users } from 'lucide-react'
+import { ExternalLink, UserPlus, Users } from 'lucide-react'
 import { memo, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 
@@ -76,15 +76,14 @@ const GroupRow = memo(
 				<TableCell className="text-right">
 					<div className="flex items-center justify-end gap-2">
 						{group.joinMode === 'open' && !group.isMember && (
-							<Button variant="default" size="sm" disabled={isJoining} onClick={handleJoinClick}>
+							<Button variant="primary" size="sm" disabled={isJoining} onClick={handleJoinClick}>
 								<UserPlus className="mr-2 h-4 w-4" />
 								{isJoining ? 'Joining...' : 'Quick Join'}
 							</Button>
 						)}
-						<Button variant="ghost" size="sm" asChild>
+						<Button variant="ghost" size="sm" asChild title="View details">
 							<Link to={groupDetailUrl}>
-								<Eye className="mr-2 h-4 w-4" />
-								View Details
+								<ExternalLink className="h-4 w-4" />
 							</Link>
 						</Button>
 					</div>
@@ -191,7 +190,7 @@ export const GroupList = memo(function GroupList({
 									<div className="flex items-center justify-end pt-2 border-t border-border/50">
 										{group.joinMode === 'open' && !group.isMember ? (
 											<Button
-												variant="default"
+												variant="primary"
 												size="sm"
 												disabled={joinGroup.isPending}
 												onClick={(e) => {
@@ -210,10 +209,9 @@ export const GroupList = memo(function GroupList({
 												{joinGroup.isPending ? 'Joining...' : 'Quick Join'}
 											</Button>
 										) : (
-											<Button variant="outline" size="sm" asChild>
+											<Button variant="ghost" size="sm" asChild title="View details">
 												<Link to={groupDetailUrl}>
-													<Eye className="mr-2 h-4 w-4" />
-													View Details
+													<ExternalLink className="h-4 w-4" />
 												</Link>
 											</Button>
 										)}

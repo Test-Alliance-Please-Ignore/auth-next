@@ -18,7 +18,6 @@ import {
 	BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { GhostButton } from '@/components/ui/ghost-button'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { useAuth } from '@/hooks/useAuth'
@@ -32,6 +31,7 @@ import { ApplicationsTable } from '../components/applications-table'
 import { useApplications } from '../hooks'
 
 import type { ApplicationStatus } from '../api'
+import { Button } from '@/components/ui/button'
 
 // ============================================================================
 // Types
@@ -171,10 +171,10 @@ export default function HrApplicationsList() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<GhostButton onClick={() => navigate(rootCorporationsPath)}>
+						<Button variant="ghost" onClick={() => navigate(rootCorporationsPath)}>
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to {rootCorporationsLabel}
-						</GhostButton>
+						</Button>
 					</CardContent>
 				</Card>
 			</div>
@@ -198,7 +198,7 @@ export default function HrApplicationsList() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<GhostButton onClick={() => window.location.reload()}>Try Again</GhostButton>
+						<Button variant="ghost" onClick={() => window.location.reload()}>Try Again</Button>
 					</CardContent>
 				</Card>
 			</div>
@@ -232,10 +232,10 @@ export default function HrApplicationsList() {
 				title="HR Applications"
 				description="Review and manage job applications to your corporation"
 				action={
-					<GhostButton onClick={() => navigate(`/corporations/${corporationId}/hr/dashboard`)}>
+					<Button variant="ghost" onClick={() => navigate(`/corporations/${corporationId}/hr/dashboard`)}>
 						<ArrowLeft className="mr-2 h-4 w-4" />
 						Back to HR Dashboard
-					</GhostButton>
+					</Button>
 				}
 			/>
 

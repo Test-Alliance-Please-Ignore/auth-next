@@ -22,11 +22,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ConfirmButton } from '@/components/ui/confirm-button'
-import { DangerButton } from '@/components/ui/danger-button'
-import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
 	Dialog,
 	DialogContent,
@@ -35,10 +31,8 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
-import { GhostButton } from '@/components/ui/ghost-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { PrimaryButton } from '@/components/ui/primary-button'
 import {
 	Table,
 	TableBody,
@@ -148,10 +142,10 @@ export default function UserDetailPage() {
 		return (
 			<div className="space-y-6">
 				<div className="flex items-center gap-4">
-					<GhostButton onClick={() => navigate('/admin/users')}>
+					<Button variant="ghost" onClick={() => navigate('/admin/users')}>
 						<ArrowLeft className="h-4 w-4 mr-2" />
 						Back
-					</GhostButton>
+					</Button>
 				</div>
 				<div className="text-center py-8 text-muted-foreground">Loading user details...</div>
 			</div>
@@ -162,10 +156,10 @@ export default function UserDetailPage() {
 		return (
 			<div className="space-y-6">
 				<div className="flex items-center gap-4">
-					<GhostButton onClick={() => navigate('/admin/users')}>
+					<Button variant="ghost" onClick={() => navigate('/admin/users')}>
 						<ArrowLeft className="h-4 w-4 mr-2" />
 						Back
-					</GhostButton>
+					</Button>
 				</div>
 				<div className="text-center py-8 text-muted-foreground">User not found</div>
 			</div>
@@ -406,33 +400,33 @@ export default function UserDetailPage() {
 			{/* Top Row Actions */}
 			<div className="flex items-center justify-between">
 				<div className="flex items-center gap-4">
-					<GhostButton onClick={() => navigate('/admin/users')}>
+					<Button variant="ghost" onClick={() => navigate('/admin/users')}>
 						<ArrowLeft className="h-4 w-4 mr-2" />
 						Back to Users
-					</GhostButton>
-					<GhostButton size="sm" onClick={() => refetch()}>
+					</Button>
+					<Button variant="ghost" size="sm" onClick={() => refetch()}>
 						<RefreshCw className="h-4 w-4" />
-					</GhostButton>
+					</Button>
 				</div>
 				<div className="flex gap-2">
-					<GhostButton asChild>
+					<Button variant="ghost" asChild>
 						<Link to={`/admin/users/${user.id}/discord-access`}>
 							<Bot className="mr-2 h-4 w-4" />
 							Discord Access
 						</Link>
-					</GhostButton>
-					<GhostButton asChild>
+					</Button>
+					<Button variant="ghost" asChild>
 						<Link to={`/admin/users/${user.id}/groups`}>
 							<Users className="mr-2 h-4 w-4" />
 							Group Memberships
 						</Link>
-					</GhostButton>
-					<GhostButton asChild>
+					</Button>
+					<Button variant="ghost" asChild>
 						<Link to={`/admin/users/${user.id}/activity`}>
 							<History className="mr-2 h-4 w-4" />
 							Activity Log
 						</Link>
-					</GhostButton>
+					</Button>
 				</div>
 			</div>
 
@@ -492,7 +486,7 @@ export default function UserDetailPage() {
 										</Badge>
 									)}
 									{user.is_admin ? (
-										<DestructiveButton
+										<Button variant="destructive"
 											onClick={() => setAdminDialogOpen(true)}
 											disabled={setUserAdmin.isPending}
 											size="sm"
@@ -500,9 +494,9 @@ export default function UserDetailPage() {
 										>
 											<ShieldOff className="h-4 w-4 mr-2" />
 											Revoke Admin
-										</DestructiveButton>
+										</Button>
 									) : (
-										<DestructiveButton
+										<Button variant="destructive"
 											onClick={() => setAdminDialogOpen(true)}
 											disabled={setUserAdmin.isPending}
 											size="sm"
@@ -510,11 +504,11 @@ export default function UserDetailPage() {
 										>
 											<Shield className="h-4 w-4 mr-2" />
 											Grant Admin
-										</DestructiveButton>
+										</Button>
 									)}
 									{activeBlacklist ? (
 										<Button
-											variant="outline"
+											variant="ghost"
 											size="sm"
 											onClick={() => setRemoveBlacklistDialogOpen(true)}
 											disabled={removeBlacklist.isPending}
@@ -523,7 +517,7 @@ export default function UserDetailPage() {
 											Remove from Blacklist
 										</Button>
 									) : (
-										<DangerButton
+										<Button variant="destructive"
 											onClick={() => setBlacklistDialogOpen(true)}
 											disabled={createBlacklist.isPending}
 											size="sm"
@@ -547,9 +541,9 @@ export default function UserDetailPage() {
 											>
 												💩 Blacklist User
 											</span>
-										</DangerButton>
+										</Button>
 									)}
-									<DestructiveButton
+									<Button variant="destructive"
 										onClick={() => setClearSessionsDialogOpen(true)}
 										disabled={clearSessions.isPending}
 										size="sm"
@@ -557,8 +551,8 @@ export default function UserDetailPage() {
 									>
 										<LogOut className="h-4 w-4 mr-2" />
 										Clear Sessions
-									</DestructiveButton>
-									<PrimaryButton
+									</Button>
+									<Button variant="primary"
 										onClick={() => setSyncUserDialogOpen(true)}
 										disabled={syncUser.isPending}
 										size="sm"
@@ -567,7 +561,7 @@ export default function UserDetailPage() {
 											className={cn('h-4 w-4 mr-2', syncUser.isPending && 'animate-spin')}
 										/>
 										Sync User
-									</PrimaryButton>
+									</Button>
 								</div>
 							</div>
 
@@ -637,7 +631,7 @@ export default function UserDetailPage() {
 							<div className="flex items-center gap-2">
 								{!user.discord.authRevoked && (
 									<>
-										<PrimaryButton
+										<Button variant="primary"
 											onClick={handleUpdateDiscordAccess}
 											disabled={updateDiscordAccess.isPending}
 											size="sm"
@@ -649,8 +643,8 @@ export default function UserDetailPage() {
 												)}
 											/>
 											Update Discord Access
-										</PrimaryButton>
-										<DestructiveButton
+										</Button>
+										<Button variant="destructive"
 											onClick={() => setRevokeDiscordDialogOpen(true)}
 											disabled={revokeDiscord.isPending}
 											size="sm"
@@ -658,10 +652,10 @@ export default function UserDetailPage() {
 										>
 											<XCircle className="h-4 w-4 mr-2" />
 											Revoke Authorization
-										</DestructiveButton>
+										</Button>
 									</>
 								)}
-								<DestructiveButton
+								<Button variant="destructive"
 									onClick={() => setUnlinkDiscordDialogOpen(true)}
 									disabled={unlinkDiscord.isPending}
 									size="sm"
@@ -669,7 +663,7 @@ export default function UserDetailPage() {
 								>
 									<Trash2 className="h-4 w-4 mr-2" />
 									Unlink Discord Account
-								</DestructiveButton>
+								</Button>
 							</div>
 						</div>
 					</CardHeader>
@@ -922,14 +916,14 @@ export default function UserDetailPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<CancelButton
+						<Button variant="cancel"
 							onClick={() => setAdminDialogOpen(false)}
 							disabled={setUserAdmin.isPending}
 						>
 							Cancel
-						</CancelButton>
+						</Button>
 						{user.is_admin ? (
-							<DestructiveButton
+							<Button variant="destructive"
 								onClick={handleToggleAdmin}
 								loading={setUserAdmin.isPending}
 								showIcon={false}
@@ -937,17 +931,17 @@ export default function UserDetailPage() {
 							>
 								<ShieldOff className="mr-2 h-4 w-4" />
 								Revoke Admin
-							</DestructiveButton>
+							</Button>
 						) : (
-							<ConfirmButton
-								onConfirm={handleToggleAdmin}
+							<Button variant="confirm"
+								onClick={handleToggleAdmin}
 								loading={setUserAdmin.isPending}
 								loadingText="Granting..."
 								showIcon={false}
 							>
 								<Shield className="mr-2 h-4 w-4" />
 								Grant Admin
-							</ConfirmButton>
+							</Button>
 						)}
 					</DialogFooter>
 				</DialogContent>
@@ -965,13 +959,13 @@ export default function UserDetailPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<CancelButton
+						<Button variant="cancel"
 							onClick={() => setRevokeDiscordDialogOpen(false)}
 							disabled={revokeDiscord.isPending}
 						>
 							Cancel
-						</CancelButton>
-						<DestructiveButton
+						</Button>
+						<Button variant="destructive"
 							onClick={handleRevokeDiscordConfirm}
 							loading={revokeDiscord.isPending}
 							loadingText="Revoking..."
@@ -979,7 +973,7 @@ export default function UserDetailPage() {
 						>
 							<XCircle className="mr-2 h-4 w-4" />
 							Revoke Authorization
-						</DestructiveButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
@@ -1004,13 +998,13 @@ export default function UserDetailPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<CancelButton
+						<Button variant="cancel"
 							onClick={() => setUnlinkDiscordDialogOpen(false)}
 							disabled={unlinkDiscord.isPending}
 						>
 							Cancel
-						</CancelButton>
-						<DestructiveButton
+						</Button>
+						<Button variant="destructive"
 							onClick={handleUnlinkDiscordConfirm}
 							loading={unlinkDiscord.isPending}
 							loadingText="Unlinking..."
@@ -1018,7 +1012,7 @@ export default function UserDetailPage() {
 						>
 							<Trash2 className="mr-2 h-4 w-4" />
 							Unlink Discord Account
-						</DestructiveButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
@@ -1035,13 +1029,13 @@ export default function UserDetailPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<CancelButton
+						<Button variant="cancel"
 							onClick={() => setClearSessionsDialogOpen(false)}
 							disabled={clearSessions.isPending}
 						>
 							Cancel
-						</CancelButton>
-						<DestructiveButton
+						</Button>
+						<Button variant="destructive"
 							onClick={handleClearSessionsConfirm}
 							loading={clearSessions.isPending}
 							loadingText="Clearing..."
@@ -1049,7 +1043,7 @@ export default function UserDetailPage() {
 						>
 							<LogOut className="mr-2 h-4 w-4" />
 							Clear Sessions
-						</DestructiveButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
@@ -1067,21 +1061,21 @@ export default function UserDetailPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<CancelButton
+						<Button variant="cancel"
 							onClick={() => setSyncUserDialogOpen(false)}
 							disabled={syncUser.isPending}
 						>
 							Cancel
-						</CancelButton>
-						<ConfirmButton
-							onConfirm={handleSyncUserConfirm}
+						</Button>
+						<Button variant="confirm"
+							onClick={handleSyncUserConfirm}
 							loading={syncUser.isPending}
 							loadingText="Triggering..."
 							showIcon={false}
 						>
 							<RefreshCw className="mr-2 h-4 w-4" />
 							Sync User
-						</ConfirmButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
@@ -1103,7 +1097,7 @@ export default function UserDetailPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<CancelButton
+						<Button variant="cancel"
 							onClick={() => {
 								setDeleteDialogOpen(false)
 								setSelectedCharacter(null)
@@ -1111,8 +1105,8 @@ export default function UserDetailPage() {
 							disabled={deleteCharacter.isPending}
 						>
 							Cancel
-						</CancelButton>
-						<DestructiveButton
+						</Button>
+						<Button variant="destructive"
 							onClick={handleDeleteCharacterConfirm}
 							loading={deleteCharacter.isPending}
 							loadingText="Deleting..."
@@ -1120,7 +1114,7 @@ export default function UserDetailPage() {
 						>
 							<Trash2 className="mr-2 h-4 w-4" />
 							Delete Character
-						</DestructiveButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
@@ -1138,7 +1132,7 @@ export default function UserDetailPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<CancelButton
+						<Button variant="cancel"
 							onClick={() => {
 								setPrimaryDialogOpen(false)
 								setSelectedCharacter(null)
@@ -1146,16 +1140,16 @@ export default function UserDetailPage() {
 							disabled={setPrimaryCharacter.isPending}
 						>
 							Cancel
-						</CancelButton>
-						<ConfirmButton
-							onConfirm={handleSetPrimaryConfirm}
+						</Button>
+						<Button variant="confirm"
+							onClick={handleSetPrimaryConfirm}
 							loading={setPrimaryCharacter.isPending}
 							loadingText="Setting..."
 							showIcon={false}
 						>
 							<CheckCircle className="mr-2 h-4 w-4" />
 							Set as Primary
-						</ConfirmButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
@@ -1272,7 +1266,7 @@ export default function UserDetailPage() {
 						</div>
 					</div>
 					<DialogFooter>
-						<CancelButton
+						<Button variant="cancel"
 							onClick={() => {
 								setBlacklistDialogOpen(false)
 								setBlacklistReason('')
@@ -1280,8 +1274,8 @@ export default function UserDetailPage() {
 							disabled={createBlacklist.isPending}
 						>
 							Cancel
-						</CancelButton>
-						<DestructiveButton
+						</Button>
+						<Button variant="destructive"
 							onClick={handleBlacklistConfirm}
 							loading={createBlacklist.isPending}
 							loadingText="Blacklisting..."
@@ -1289,7 +1283,7 @@ export default function UserDetailPage() {
 						>
 							<ShieldBan className="mr-2 h-4 w-4" />
 							Blacklist User
-						</DestructiveButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
@@ -1312,21 +1306,21 @@ export default function UserDetailPage() {
 						</div>
 					)}
 					<DialogFooter>
-						<CancelButton
+						<Button variant="cancel"
 							onClick={() => setRemoveBlacklistDialogOpen(false)}
 							disabled={removeBlacklist.isPending}
 						>
 							Cancel
-						</CancelButton>
-						<ConfirmButton
-							onConfirm={handleRemoveBlacklistConfirm}
+						</Button>
+						<Button variant="confirm"
+							onClick={handleRemoveBlacklistConfirm}
 							loading={removeBlacklist.isPending}
 							loadingText="Removing..."
 							showIcon={false}
 						>
 							<ShieldBan className="mr-2 h-4 w-4" />
 							Remove from Blacklist
-						</ConfirmButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>

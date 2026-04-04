@@ -18,10 +18,8 @@ import {
 	BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { GhostButton } from '@/components/ui/ghost-button'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
-import { PrimaryButton } from '@/components/ui/primary-button'
 import { Separator } from '@/components/ui/separator'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
@@ -31,6 +29,7 @@ import { useCanAccessCorporation } from '../../my-corporations/hooks'
 import { ApplicationCard } from '../components/application-card'
 import { ApplicationStatsCard } from '../components/application-stats-card'
 import { useApplications } from '../hooks'
+import { Button } from '@/components/ui/button'
 
 // ============================================================================
 // Component
@@ -152,10 +151,10 @@ export default function HrDashboard() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<GhostButton onClick={() => navigate(rootCorporationsPath)}>
+						<Button variant="ghost" onClick={() => navigate(rootCorporationsPath)}>
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to {rootCorporationsLabel}
-						</GhostButton>
+						</Button>
 					</CardContent>
 				</Card>
 			</div>
@@ -179,7 +178,7 @@ export default function HrDashboard() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<GhostButton onClick={() => window.location.reload()}>Try Again</GhostButton>
+						<Button variant="ghost" onClick={() => window.location.reload()}>Try Again</Button>
 					</CardContent>
 				</Card>
 			</div>
@@ -207,10 +206,10 @@ export default function HrDashboard() {
 				title="HR Dashboard"
 				description="Overview of job applications and recruitment activity"
 				action={
-					<GhostButton onClick={() => navigate(rootCorporationsPath)}>
+					<Button variant="ghost" onClick={() => navigate(rootCorporationsPath)}>
 						<ArrowLeft className="mr-2 h-4 w-4" />
 						Back to {rootCorporationsLabel}
-					</GhostButton>
+					</Button>
 				}
 			/>
 
@@ -242,10 +241,10 @@ export default function HrDashboard() {
 						<h2 className="text-2xl font-bold text-foreground">Recent Applications</h2>
 						<p className="text-muted-foreground">Latest submissions from applicants</p>
 					</div>
-					<GhostButton onClick={handleViewAllClick}>
+					<Button variant="ghost" onClick={handleViewAllClick}>
 						View All
 						<ArrowRight className="ml-2 h-4 w-4" />
-					</GhostButton>
+					</Button>
 				</div>
 
 				{recentApplications.length > 0 ? (
@@ -287,9 +286,9 @@ export default function HrDashboard() {
 							</CardDescription>
 						</CardHeader>
 						<CardContent>
-							<PrimaryButton onClick={handleViewAllClick}>
+							<Button variant="primary" onClick={handleViewAllClick}>
 								Review Pending Applications
-							</PrimaryButton>
+							</Button>
 						</CardContent>
 					</Card>
 				</>

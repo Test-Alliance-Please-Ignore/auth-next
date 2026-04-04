@@ -116,7 +116,7 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 											</span>
 											{(progress.completedRequired || 0) < (progress.totalSkills || 0) && (
 												<Button
-													variant="outline"
+													variant="ghost"
 													size="sm"
 													className="h-7 px-2 text-xs gap-1"
 													onClick={() => copyMissingSkills(progress.skills || [], 'required')}
@@ -143,7 +143,7 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 											</span>
 											{(progress.completedRecommended || 0) < (progress.totalSkills || 0) && (
 												<Button
-													variant="outline"
+													variant="ghost"
 													size="sm"
 													className="h-7 px-2 text-xs gap-1"
 													onClick={() =>

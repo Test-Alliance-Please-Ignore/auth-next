@@ -10,11 +10,8 @@ import { MemberList } from '@/components/member-list'
 import { PendingJoinRequestsList } from '@/components/pending-join-requests-list'
 import { TransferOwnershipDialog } from '@/components/transfer-ownership-dialog'
 import { Button } from '@/components/ui/button'
-import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ConfirmButton } from '@/components/ui/confirm-button'
 import { Container } from '@/components/ui/container'
-import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
 	Dialog,
 	DialogContent,
@@ -401,21 +398,21 @@ export default function GroupDetailPage() {
 									</div>
 
 									<DialogFooter>
-										<CancelButton
+										<Button variant="cancel"
 											onClick={() => {
 												setShowCreateInviteCodeDialog(false)
 												setInviteCodeSettings({ maxUses: null, expiresInDays: 7 })
 											}}
 										>
 											Cancel
-										</CancelButton>
-										<ConfirmButton
-											onConfirm={handleCreateInviteCode}
+										</Button>
+										<Button variant="confirm"
+											onClick={handleCreateInviteCode}
 											loading={createInviteCode.isPending}
 											loadingText="Creating..."
 										>
 											Create Code
-										</ConfirmButton>
+										</Button>
 									</DialogFooter>
 								</DialogContent>
 							</Dialog>
@@ -437,7 +434,7 @@ export default function GroupDetailPage() {
 							</CardDescription>
 						</CardHeader>
 						<CardContent>
-							<Button variant="outline" onClick={() => setTransferDialogOpen(true)}>
+							<Button variant="ghost" onClick={() => setTransferDialogOpen(true)}>
 								<UserCog className="mr-2 h-4 w-4" />
 								Transfer Ownership
 							</Button>
@@ -456,14 +453,14 @@ export default function GroupDetailPage() {
 							</DialogDescription>
 						</DialogHeader>
 						<DialogFooter>
-							<CancelButton onClick={() => setRemoveMemberDialogOpen(false)}>Cancel</CancelButton>
-							<DestructiveButton
+							<Button variant="cancel" onClick={() => setRemoveMemberDialogOpen(false)}>Cancel</Button>
+							<Button variant="destructive"
 								onClick={handleConfirmRemove}
 								loading={removeMember.isPending}
 								loadingText="Removing..."
 							>
 								Remove Member
-							</DestructiveButton>
+							</Button>
 						</DialogFooter>
 					</DialogContent>
 				</Dialog>

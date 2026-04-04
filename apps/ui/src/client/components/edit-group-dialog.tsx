@@ -1,7 +1,5 @@
 import { useEffect, useState } from 'react'
 
-import { CancelButton } from '@/components/ui/cancel-button'
-import { ConfirmButton } from '@/components/ui/confirm-button'
 import {
 	Dialog,
 	DialogContent,
@@ -16,6 +14,7 @@ import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 
 import type { Category, Group, UpdateGroupRequest } from '@/lib/api'
+import { Button } from '@/components/ui/button'
 
 interface EditGroupDialogProps {
 	group: Group
@@ -204,12 +203,12 @@ export function EditGroupDialog({
 					</div>
 
 					<DialogFooter>
-						<CancelButton type="button" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
+						<Button variant="cancel" type="button" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
 							Cancel
-						</CancelButton>
-						<ConfirmButton type="submit" loading={isSubmitting} loadingText="Updating...">
+						</Button>
+						<Button variant="confirm" type="submit" loading={isSubmitting} loadingText="Updating...">
 							Update Group
-						</ConfirmButton>
+						</Button>
 					</DialogFooter>
 				</form>
 			</DialogContent>

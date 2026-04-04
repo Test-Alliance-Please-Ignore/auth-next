@@ -1,8 +1,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { DateRangeInput } from '@/components/ui/date-range-input'
-import { GhostButton } from '@/components/ui/ghost-button'
-import { PrimaryButton } from '@/components/ui/primary-button'
-
+import { Button } from '@/components/ui/button'
 type BillingOperationsCardProps = {
 	effectiveCorporationId: string | null
 	canIssue: boolean
@@ -61,12 +59,12 @@ export function BillingOperationsCard({
 				) : (
 					<>
 						<div className="flex flex-wrap gap-2">
-							<GhostButton
+							<Button variant="ghost"
 								disabled={!canIssue || syncCorporationPending}
 								onClick={onSyncCorporation}
 							>
 								{syncCorporationPending ? 'Syncing...' : 'Sync Corporation Bill Statuses'}
-							</GhostButton>
+							</Button>
 						</div>
 						{syncCorporationResult ? (
 							<div className="text-sm text-muted-foreground">
@@ -83,9 +81,9 @@ export function BillingOperationsCard({
 								placeholder="Billing period"
 								disabled={!canIssue}
 							/>
-							<PrimaryButton disabled={!canIssue || issuePeriodPending} onClick={onIssuePeriod}>
+							<Button variant="primary" disabled={!canIssue || issuePeriodPending} onClick={onIssuePeriod}>
 								{issuePeriodPending ? 'Issuing...' : 'Issue Bills For Period'}
-							</PrimaryButton>
+							</Button>
 						</div>
 						{issuePeriodResult ? (
 							<div className="text-sm text-muted-foreground">

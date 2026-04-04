@@ -2,10 +2,7 @@ import { Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ConfirmButton } from '@/components/ui/confirm-button'
-import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
 	Dialog,
 	DialogContent,
@@ -221,16 +218,16 @@ export default function BroadcastTemplatesPage() {
 												{template.fieldSchema.length} field(s)
 											</TableCell>
 											<TableCell className="text-right space-x-2">
-												<Button size="sm" variant="outline" onClick={() => handleEdit(template)}>
+												<Button size="sm" variant="ghost" onClick={() => handleEdit(template)}>
 													Edit
 												</Button>
-												<DestructiveButton
+												<Button variant="destructive"
 													size="sm"
 													onClick={() => handleDeleteClick(template)}
 													showIcon={false}
 												>
 													Delete
-												</DestructiveButton>
+												</Button>
 											</TableCell>
 										</TableRow>
 									)
@@ -293,16 +290,16 @@ export default function BroadcastTemplatesPage() {
 							</p>
 						</div>
 						<DialogFooter>
-							<CancelButton onClick={() => setCreateDialogOpen(false)} type="button">
+							<Button variant="cancel" onClick={() => setCreateDialogOpen(false)} type="button">
 								Cancel
-							</CancelButton>
-							<ConfirmButton
+							</Button>
+							<Button variant="confirm"
 								type="submit"
 								loading={createTemplate.isPending}
 								loadingText="Creating..."
 							>
 								Create Template
-							</ConfirmButton>
+							</Button>
 						</DialogFooter>
 					</form>
 				</DialogContent>
@@ -348,7 +345,7 @@ export default function BroadcastTemplatesPage() {
 							</p>
 						</div>
 						<DialogFooter>
-							<CancelButton
+							<Button variant="cancel"
 								onClick={() => {
 									setEditDialogOpen(false)
 									setSelectedTemplate(null)
@@ -357,14 +354,14 @@ export default function BroadcastTemplatesPage() {
 								type="button"
 							>
 								Cancel
-							</CancelButton>
-							<ConfirmButton
+							</Button>
+							<Button variant="confirm"
 								type="submit"
 								loading={updateTemplate.isPending}
 								loadingText="Updating..."
 							>
 								Update Template
-							</ConfirmButton>
+							</Button>
 						</DialogFooter>
 					</form>
 				</DialogContent>
@@ -381,7 +378,7 @@ export default function BroadcastTemplatesPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<CancelButton
+						<Button variant="cancel"
 							onClick={() => {
 								setDeleteDialogOpen(false)
 								setSelectedTemplate(null)
@@ -389,8 +386,8 @@ export default function BroadcastTemplatesPage() {
 							disabled={deleteTemplate.isPending}
 						>
 							Cancel
-						</CancelButton>
-						<DestructiveButton
+						</Button>
+						<Button variant="destructive"
 							onClick={handleDeleteConfirm}
 							loading={deleteTemplate.isPending}
 							loadingText="Deleting..."
@@ -398,7 +395,7 @@ export default function BroadcastTemplatesPage() {
 						>
 							<Trash2 className="mr-2 h-4 w-4" />
 							Delete
-						</DestructiveButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>

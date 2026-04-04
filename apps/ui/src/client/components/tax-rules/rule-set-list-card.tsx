@@ -1,9 +1,7 @@
 import { Plus } from 'lucide-react'
 import { useState } from 'react'
 
-import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { PrimaryButton } from '@/components/ui/primary-button'
 import {
 	Table,
 	TableBody,
@@ -24,6 +22,7 @@ import {
 
 import type { TaxRuleSet } from '@repo/corporation-tax'
 import type { RuleFormState } from './rule-editor'
+import { Button } from '@/components/ui/button'
 
 export function RuleSetListCard({
 	effectiveRuleGroupId,
@@ -124,14 +123,14 @@ export function RuleSetListCard({
 
 						{!isCreateRuleOpen ? (
 							<div className="flex justify-center">
-								<PrimaryButton
+								<Button variant="primary"
 									className="min-w-40"
 									onClick={() => setIsCreateRuleOpen(true)}
 									disabled={isCreating}
 								>
 									<Plus className="mr-2 h-4 w-4" />
 									Add Rule
-								</PrimaryButton>
+								</Button>
 							</div>
 						) : null}
 
@@ -140,7 +139,7 @@ export function RuleSetListCard({
 								<div className="text-sm font-medium">New Rule</div>
 								<RuleFormFields form={createRuleForm} onChange={setCreateRuleForm} />
 								<div className="flex items-center justify-end gap-2">
-									<PrimaryButton
+									<Button variant="primary"
 										disabled={isCreating || !isRuleFormValid(createRuleForm)}
 										onClick={() => {
 											if (!effectiveRuleGroupId) return
@@ -165,8 +164,8 @@ export function RuleSetListCard({
 										}}
 									>
 										{isCreating ? 'Creating...' : 'Create Rule'}
-									</PrimaryButton>
-									<CancelButton
+									</Button>
+									<Button variant="cancel"
 										showIcon={false}
 										disabled={isCreating}
 										onClick={() => {
@@ -175,7 +174,7 @@ export function RuleSetListCard({
 										}}
 									>
 										Cancel
-									</CancelButton>
+									</Button>
 								</div>
 							</div>
 						) : null}

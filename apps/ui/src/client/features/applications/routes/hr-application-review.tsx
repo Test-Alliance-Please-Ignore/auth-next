@@ -21,7 +21,6 @@ import {
 	BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { GhostButton } from '@/components/ui/ghost-button'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -37,6 +36,7 @@ import { ApplicationTimeline } from '../components/application-timeline'
 import { DeleteHRNoteDialog } from '../components/delete-hr-note-dialog'
 import { HRNotesList } from '../components/hr-notes-list'
 import { MessagesPanel } from '../components/messages-panel'
+import { Button } from '@/components/ui/button'
 import { RecommendationList } from '../components/recommendation-list'
 import {
 	useApplication,
@@ -158,10 +158,10 @@ export default function HrApplicationReview() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<GhostButton onClick={() => navigate(rootCorporationsPath)}>
+						<Button variant="ghost" onClick={() => navigate(rootCorporationsPath)}>
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to {rootCorporationsLabel}
-						</GhostButton>
+						</Button>
 					</CardContent>
 				</Card>
 			</div>
@@ -185,10 +185,10 @@ export default function HrApplicationReview() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<GhostButton onClick={handleBackClick}>
+						<Button variant="ghost" onClick={handleBackClick}>
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to Applications
-						</GhostButton>
+						</Button>
 					</CardContent>
 				</Card>
 			</div>
@@ -206,10 +206,10 @@ export default function HrApplicationReview() {
 						<CardDescription>This application doesn't exist or has been removed.</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<GhostButton onClick={handleBackClick}>
+						<Button variant="ghost" onClick={handleBackClick}>
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to Applications
-						</GhostButton>
+						</Button>
 					</CardContent>
 				</Card>
 			</div>
@@ -231,10 +231,10 @@ export default function HrApplicationReview() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<GhostButton onClick={handleBackClick}>
+						<Button variant="ghost" onClick={handleBackClick}>
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to Applications
-						</GhostButton>
+						</Button>
 					</CardContent>
 				</Card>
 			</div>
@@ -270,10 +270,10 @@ export default function HrApplicationReview() {
 					</BreadcrumbList>
 				</Breadcrumb>
 
-				<GhostButton onClick={handleBackClick}>
+				<Button variant="ghost" onClick={handleBackClick}>
 					<ArrowLeft className="mr-2 h-4 w-4" />
 					Back to Applications
-				</GhostButton>
+				</Button>
 			</div>
 
 			{/* Header Card */}

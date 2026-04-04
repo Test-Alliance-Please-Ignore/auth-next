@@ -16,14 +16,13 @@ import {
 } from '@/components/ui/accordion'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { GhostButton } from '@/components/ui/ghost-button'
-import { PrimaryButton } from '@/components/ui/primary-button'
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { useCorporationAccess, useCorporationManager, useMyCorporations } from '../hooks'
+import { Button } from '@/components/ui/button'
 
 /**
  * Main My Corporations List Component
@@ -81,12 +80,12 @@ export default function MyCorporationsList() {
 							</li>
 						</ul>
 						<div className="mt-6">
-							<GhostButton asChild>
+							<Button variant="ghost" asChild>
 								<Link to="/dashboard">
 									<ArrowLeft className="mr-2 h-4 w-4" />
 									Return to Dashboard
 								</Link>
-							</GhostButton>
+							</Button>
 						</div>
 					</CardContent>
 				</Card>
@@ -130,7 +129,7 @@ export default function MyCorporationsList() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<GhostButton onClick={() => window.location.reload()}>Try Again</GhostButton>
+						<Button variant="ghost" onClick={() => window.location.reload()}>Try Again</Button>
 					</CardContent>
 				</Card>
 			</div>
@@ -260,7 +259,7 @@ export default function MyCorporationsList() {
 
 										{/* Action Buttons */}
 										<div>
-											<PrimaryButton
+											<Button variant="primary"
 												asChild
 												className="w-full bg-[hsl(220_10%_40%)] text-white border-2 border-[hsl(220_10%_40%)]/70 shadow-lg shadow-[hsl(220_10%_40%)]/25 hover:bg-[hsl(220_10%_32%)] hover:shadow-xl hover:shadow-[hsl(220_10%_32%)]/40 hover:border-[hsl(220_10%_32%)]/70 focus-visible:ring-2 focus-visible:ring-[hsl(220_10%_40%)] focus-visible:ring-offset-2 transition-all duration-200"
 											>
@@ -268,7 +267,7 @@ export default function MyCorporationsList() {
 													<Settings className="mr-2 h-4 w-4" />
 													Manage Corporation
 												</Link>
-											</PrimaryButton>
+											</Button>
 										</div>
 									</div>
 								</AccordionContent>

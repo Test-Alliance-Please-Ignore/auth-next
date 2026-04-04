@@ -59,7 +59,7 @@ export function DoctrineCard({ doctrine, fittingCount }: DoctrineCardProps) {
 				</div>
 			</CardContent>
 			<CardFooter>
-				<Button variant="outline" size="sm" asChild className="w-full">
+				<Button variant="ghost" size="sm" asChild className="w-full">
 					<Link to={`/doctrines/${doctrine.id}`}>View Details</Link>
 				</Button>
 			</CardFooter>

@@ -3,11 +3,11 @@ import { Layers, LayoutList } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { DateRangeInput } from '@/components/ui/date-range-input'
 import { FilterField } from '@/components/ui/filter-field'
-import { GhostButton } from '@/components/ui/ghost-button'
 import { Select } from '@/components/ui/select'
 
 import type { BillStatus, EntityType } from '@repo/bills'
 import type { SelectOption } from '@/components/ui/select'
+import { Button } from '@/components/ui/button'
 
 const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
 	{ value: 'all', label: 'All statuses' },
@@ -191,7 +191,7 @@ export function BillListFilters(props: {
 					) : null}
 					<div className="flex items-end justify-end gap-2">
 						{props.onCoalescedToggle && props.hasGroupBills !== false && (
-							<GhostButton
+							<Button variant="ghost"
 								onClick={props.onCoalescedToggle}
 								title={
 									props.coalesced
@@ -210,9 +210,9 @@ export function BillListFilters(props: {
 										Coalesced
 									</>
 								)}
-							</GhostButton>
+							</Button>
 						)}
-						<GhostButton onClick={props.onReset}>Reset Filters</GhostButton>
+						<Button variant="ghost" onClick={props.onReset}>Reset Filters</Button>
 					</div>
 				</div>
 			</CardContent>

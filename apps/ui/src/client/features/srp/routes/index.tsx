@@ -75,7 +75,7 @@ export default function SRPIndex() {
 							<RequestTable requests={requestsData?.requests || []} isLoading={requestsLoading} />
 							{requestsData && requestsData.total > 10 && (
 								<div className="text-center">
-									<Button variant="outline" asChild>
+									<Button variant="ghost" asChild>
 										<Link to="/srp/my-requests">View All ({requestsData.total} requests)</Link>
 									</Button>
 								</div>

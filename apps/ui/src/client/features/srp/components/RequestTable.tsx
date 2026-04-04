@@ -83,7 +83,7 @@ export function RequestTable({ requests, isLoading, showPagination }: RequestTab
 								<PaymentStatusBadge status={request.paymentStatus} />
 							</TableCell>
 							<TableCell className="text-right">
-								<Button variant="outline" size="sm" asChild>
+								<Button variant="ghost" size="sm" asChild>
 									<Link to={`/srp/request/${request.id}`}>View</Link>
 								</Button>
 							</TableCell>

@@ -106,7 +106,7 @@ export default function AdminFreightRoutesPage() {
 							/>
 						</div>
 						{statusFilter !== 'all' && (
-							<Button variant="outline" onClick={() => setStatusFilter('all')} className="mt-8">
+							<Button variant="ghost" onClick={() => setStatusFilter('all')} className="mt-8">
 								Clear Filter
 							</Button>
 						)}
@@ -174,14 +174,14 @@ export default function AdminFreightRoutesPage() {
 											</TableCell>
 											<TableCell className="text-right">
 												<div className="flex justify-end gap-2">
-													<Button variant="outline" size="sm" asChild>
+													<Button variant="ghost" size="sm" asChild>
 														<Link to={`/admin/freight-routes/${route.id}/edit`}>
 															<Edit className="h-4 w-4" />
 														</Link>
 													</Button>
 													{route.status === 'active' ? (
 														<Button
-															variant="outline"
+															variant="ghost"
 															size="sm"
 															onClick={() => handleDeactivate(route.id)}
 															disabled={deactivateRoute.isPending}
@@ -190,7 +190,7 @@ export default function AdminFreightRoutesPage() {
 														</Button>
 													) : (
 														<Button
-															variant="outline"
+															variant="ghost"
 															size="sm"
 															onClick={() => handleActivate(route.id)}
 															disabled={activateRoute.isPending}
@@ -199,7 +199,7 @@ export default function AdminFreightRoutesPage() {
 														</Button>
 													)}
 													<Button
-														variant="outline"
+														variant="ghost"
 														size="sm"
 														onClick={() => handleDelete(route.id)}
 														disabled={deleteRoute.isPending}

@@ -65,7 +65,7 @@ export function RequestCard({ request, showActions = true }: RequestCardProps) {
 
 				{showActions && (
 					<div className="flex gap-2">
-						<Button variant="outline" size="sm" asChild>
+						<Button variant="ghost" size="sm" asChild>
 							<Link to={`/srp/request/${request.id}`}>View Details</Link>
 						</Button>
 						<Button variant="ghost" size="sm" asChild>

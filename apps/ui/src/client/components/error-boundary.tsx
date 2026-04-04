@@ -1,8 +1,7 @@
 import { Component } from 'react'
 
-import { PrimaryButton } from '@/components/ui/primary-button'
-
 import type { ErrorInfo, ReactNode } from 'react'
+import { Button } from '@/components/ui/button'
 
 const RELOAD_COUNT_KEY = 'errorBoundary_reloadCount'
 const MAX_RELOADS = 3
@@ -95,7 +94,7 @@ export class ErrorBoundary extends Component<Props, State> {
 								We tried to reload the page automatically but the problem persists. This may be a
 								temporary network issue.
 							</p>
-							<PrimaryButton onClick={this.handleManualReload}>Try Again</PrimaryButton>
+							<Button variant="primary" onClick={this.handleManualReload}>Try Again</Button>
 						</div>
 					</div>
 				)
@@ -120,7 +119,7 @@ export class ErrorBoundary extends Component<Props, State> {
 						<p className="text-muted-foreground mb-4">
 							An unexpected error occurred. Please try refreshing the page.
 						</p>
-						<PrimaryButton onClick={() => window.location.reload()}>Refresh Page</PrimaryButton>
+						<Button variant="primary" onClick={() => window.location.reload()}>Refresh Page</Button>
 					</div>
 				</div>
 			)

@@ -14,10 +14,7 @@ import { Link } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ConfirmButton } from '@/components/ui/confirm-button'
-import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
 	Dialog,
 	DialogContent,
@@ -504,16 +501,16 @@ export default function CorporationsPage() {
 							</div>
 						</div>
 						<DialogFooter className="mt-6">
-							<CancelButton type="button" onClick={() => setCreateDialogOpen(false)}>
+							<Button variant="cancel" type="button" onClick={() => setCreateDialogOpen(false)}>
 								Cancel
-							</CancelButton>
-							<ConfirmButton
+							</Button>
+							<Button variant="confirm"
 								type="submit"
 								loading={createCorporation.isPending}
 								loadingText="Adding..."
 							>
 								Add Corporation
-							</ConfirmButton>
+							</Button>
 						</DialogFooter>
 					</form>
 				</DialogContent>
@@ -529,14 +526,14 @@ export default function CorporationsPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<CancelButton onClick={() => setDeleteDialogOpen(false)}>Cancel</CancelButton>
-						<DestructiveButton
+						<Button variant="cancel" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+						<Button variant="destructive"
 							onClick={handleDelete}
 							loading={deleteCorporation.isPending}
 							loadingText="Removing..."
 						>
 							Remove
-						</DestructiveButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>

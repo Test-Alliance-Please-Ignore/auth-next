@@ -287,7 +287,7 @@ export function ManageTemplatesDialog({
 							)}
 						</div>
 						<DialogFooter>
-							<Button variant="outline" onClick={handleClose}>
+							<Button variant="ghost" onClick={handleClose}>
 								Close
 							</Button>
 							<Button onClick={handleCreate}>
@@ -370,7 +370,7 @@ export function ManageTemplatesDialog({
 							</div>
 						</div>
 						<DialogFooter>
-							<Button variant="outline" onClick={handleCancel} disabled={isSaving}>
+							<Button variant="ghost" onClick={handleCancel} disabled={isSaving}>
 								Cancel
 							</Button>
 							<Button onClick={handleSave} disabled={isSaving}>

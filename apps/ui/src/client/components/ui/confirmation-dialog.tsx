@@ -1,6 +1,4 @@
-import { CancelButton } from './cancel-button'
-import { ConfirmButton } from './confirm-button'
-import { DestructiveButton } from './destructive-button'
+import { Button } from './button'
 import {
 	Dialog,
 	DialogContent,
@@ -9,7 +7,6 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from './dialog'
-import { SecondaryButton } from './secondary-button'
 
 export type ConfirmationIntent = 'confirm' | 'secondary' | 'destructive'
 
@@ -36,20 +33,8 @@ export function ConfirmationDialog({
 	onCancel,
 	onConfirm,
 }: ConfirmationDialogProps) {
-	const confirmAction =
-		intent === 'destructive' ? (
-			<DestructiveButton showIcon={false} disabled={pending} loading={pending} onClick={onConfirm}>
-				{confirmLabel}
-			</DestructiveButton>
-		) : intent === 'secondary' ? (
-			<SecondaryButton disabled={pending} loading={pending} onClick={onConfirm}>
-				{confirmLabel}
-			</SecondaryButton>
-		) : (
-			<ConfirmButton showIcon={false} disabled={pending} loading={pending} onConfirm={onConfirm}>
-				{confirmLabel}
-			</ConfirmButton>
-		)
+	const confirmVariant =
+		intent === 'destructive' ? 'destructive' : intent === 'secondary' ? 'secondary' : 'confirm'
 
 	return (
 		<Dialog open={open} onOpenChange={(nextOpen) => (!nextOpen ? onCancel() : undefined)}>
@@ -59,10 +44,18 @@ export function ConfirmationDialog({
 					<DialogDescription>{description}</DialogDescription>
 				</DialogHeader>
 				<DialogFooter>
-					<CancelButton showIcon={false} disabled={pending} onClick={onCancel}>
+					<Button variant="cancel" showIcon={false} disabled={pending} onClick={onCancel}>
 						{cancelLabel}
-					</CancelButton>
-					{confirmAction}
+					</Button>
+					<Button
+						variant={confirmVariant}
+						showIcon={false}
+						disabled={pending}
+						loading={pending}
+						onClick={onConfirm}
+					>
+						{confirmLabel}
+					</Button>
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>

@@ -65,14 +65,14 @@ export default function MySkillPlans() {
 					<h2 className="text-xl font-semibold">Your Plans ({totalPlans})</h2>
 					<div className="flex gap-2">
 						{user?.is_admin && (
-							<Button variant="outline" asChild>
+							<Button variant="ghost" asChild>
 								<Link to="/skill-plans/categories/manage">
 									<Settings className="h-4 w-4 mr-2" />
 									Manage Categories
 								</Link>
 							</Button>
 						)}
-						<Button variant="outline" asChild>
+						<Button variant="ghost" asChild>
 							<Link to="/skill-plans">Browse All Plans</Link>
 						</Button>
 						<Button asChild>

@@ -2,9 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
-import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ConfirmButton } from '@/components/ui/confirm-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
@@ -401,12 +399,12 @@ export default function AdminFreightRoutesEditPage() {
 
 				{/* Form Actions */}
 				<div className="flex justify-end gap-3 mt-6">
-					<CancelButton type="button" onClick={() => navigate('/admin/freight-routes')}>
+					<Button variant="cancel" type="button" onClick={() => navigate('/admin/freight-routes')}>
 						Cancel
-					</CancelButton>
-					<ConfirmButton type="submit" loading={updateRoute.isPending} loadingText="Saving...">
+					</Button>
+					<Button variant="confirm" type="submit" loading={updateRoute.isPending} loadingText="Saving...">
 						Save Changes
-					</ConfirmButton>
+					</Button>
 				</div>
 			</form>
 		</div>

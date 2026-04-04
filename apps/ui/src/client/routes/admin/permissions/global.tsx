@@ -6,7 +6,6 @@ import { PermissionFormDialog } from '@/components/permission-form-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
 	Dialog,
 	DialogContent,
@@ -145,13 +144,13 @@ export default function GlobalPermissionsPage() {
 
 				{/* Sub Navigation */}
 				<div className="flex gap-2">
-					<Button variant="outline" asChild>
+					<Button variant="ghost" asChild>
 						<Link to="/admin/permissions/categories">
 							<FolderOpen className="mr-2 h-4 w-4" />
 							Categories
 						</Link>
 					</Button>
-					<Button variant="default" asChild>
+					<Button variant="primary" asChild>
 						<Link to="/admin/permissions/global">
 							<FileKey className="mr-2 h-4 w-4" />
 							Global Permissions
@@ -275,7 +274,7 @@ export default function GlobalPermissionsPage() {
 									Try adjusting your search or filter criteria
 								</p>
 								<Button
-									variant="outline"
+									variant="ghost"
 									onClick={() => {
 										setSearchQuery('')
 										setSelectedCategoryId(undefined)
@@ -309,9 +308,9 @@ export default function GlobalPermissionsPage() {
 											<Button variant="ghost" size="sm" onClick={() => openEditDialog(permission)}>
 												Edit
 											</Button>
-											<DestructiveButton size="sm" onClick={() => openDeleteDialog(permission)}>
+											<Button variant="destructive" size="sm" onClick={() => openDeleteDialog(permission)}>
 												<Trash2 className="h-4 w-4" />
-											</DestructiveButton>
+											</Button>
 										</div>
 									</div>
 								</Card>
@@ -371,7 +370,7 @@ export default function GlobalPermissionsPage() {
 					</DialogHeader>
 					<DialogFooter>
 						<Button
-							variant="outline"
+							variant="ghost"
 							onClick={() => {
 								setDeleteDialogOpen(false)
 								setSelectedPermission(null)
@@ -380,9 +379,9 @@ export default function GlobalPermissionsPage() {
 						>
 							Cancel
 						</Button>
-						<DestructiveButton onClick={handleDelete} loading={deletePermission.isPending}>
+						<Button variant="destructive" onClick={handleDelete} loading={deletePermission.isPending}>
 							Delete Permission
-						</DestructiveButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>

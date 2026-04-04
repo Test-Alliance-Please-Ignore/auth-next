@@ -4,9 +4,7 @@ import { Link } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { GhostButton } from '@/components/ui/ghost-button'
 import { Input } from '@/components/ui/input'
-import { PrimaryButton } from '@/components/ui/primary-button'
 import { Select } from '@/components/ui/select'
 import {
 	Table,
@@ -21,6 +19,7 @@ import { useAdminUsers } from '@/hooks/useAdminUsers'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { api } from '@/lib/api'
 import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'
+import { Button } from '@/components/ui/button'
 
 export default function UsersPage() {
 	usePageTitle('Admin - Users')
@@ -110,10 +109,10 @@ export default function UsersPage() {
 						Search by character/user/discord identity and manage account access
 					</p>
 				</div>
-				<PrimaryButton onClick={() => setSearchDialogOpen(true)}>
+				<Button variant="primary" onClick={() => setSearchDialogOpen(true)}>
 					<Search className="mr-2 h-4 w-4" />
 					Quick Search
-				</PrimaryButton>
+				</Button>
 			</div>
 
 			{/* Success/Error Message */}
@@ -285,14 +284,14 @@ export default function UsersPage() {
 																{user.discordUserId}
 															</div>
 														</div>
-														<GhostButton
+														<Button variant="ghost"
 															size="sm"
 															onClick={() => handleDiscordJoin(user.id)}
 															disabled={joiningUserId === user.id}
 															title="Refresh Discord roles"
 														>
 															<Users className="h-4 w-4" />
-														</GhostButton>
+														</Button>
 													</div>
 												) : (
 													<span className="text-sm text-muted-foreground">Not linked</span>
@@ -317,9 +316,9 @@ export default function UsersPage() {
 											</TableCell>
 											<TableCell className="text-right">
 												<Link to={`/admin/users/${user.id}`}>
-													<GhostButton size="sm">
+													<Button variant="ghost" size="sm">
 														<ExternalLink className="h-4 w-4" />
-													</GhostButton>
+													</Button>
 												</Link>
 											</TableCell>
 										</TableRow>
@@ -334,20 +333,20 @@ export default function UsersPage() {
 										Page {pagination.page} of {pagination.totalPages}
 									</div>
 									<div className="flex gap-2">
-										<GhostButton
+										<Button variant="ghost"
 											size="sm"
 											disabled={pagination.page === 1}
 											onClick={() => setPage(page - 1)}
 										>
 											Previous
-										</GhostButton>
-										<GhostButton
+										</Button>
+										<Button variant="ghost"
 											size="sm"
 											disabled={pagination.page === pagination.totalPages}
 											onClick={() => setPage(page + 1)}
 										>
 											Next
-										</GhostButton>
+										</Button>
 									</div>
 								</div>
 							)}

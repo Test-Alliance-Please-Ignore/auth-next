@@ -109,7 +109,7 @@ export function LossTable({ losses, isLoading }: LossTableProps) {
 										</a>
 									</Button>
 									{loss.hasSRPRequest && loss.srpRequestId ? (
-										<Button variant="outline" size="sm" asChild>
+										<Button variant="ghost" size="sm" asChild>
 											<Link to={`/srp/request/${loss.srpRequestId}`}>View Request</Link>
 										</Button>
 									) : (

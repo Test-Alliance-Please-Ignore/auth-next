@@ -3,9 +3,7 @@ import { useState } from 'react'
 
 import { PermissionTargetBadge } from '@/components/permission-target-badge'
 import { Badge } from '@/components/ui/badge'
-import { CancelButton } from '@/components/ui/cancel-button'
 import { Card } from '@/components/ui/card'
-import { ConfirmButton } from '@/components/ui/confirm-button'
 import {
 	Dialog,
 	DialogContent,
@@ -20,6 +18,7 @@ import { usePermissionCategories } from '@/hooks/usePermissionCategories'
 import { useGlobalPermissions } from '@/hooks/usePermissions'
 
 import type { AttachPermissionRequest, PermissionTarget } from '@/lib/api'
+import { Button } from '@/components/ui/button'
 
 interface AttachPermissionDialogProps {
 	groupId: string
@@ -218,10 +217,10 @@ export function AttachPermissionDialog({
 
 					{/* Action Buttons */}
 					<div className="flex justify-end gap-2 pt-4">
-						<CancelButton type="button" onClick={handleCancel} disabled={isSubmitting}>
+						<Button variant="cancel" type="button" onClick={handleCancel} disabled={isSubmitting}>
 							Cancel
-						</CancelButton>
-						<ConfirmButton
+						</Button>
+						<Button variant="confirm"
 							type="submit"
 							loading={isSubmitting}
 							loadingText="Attaching..."
@@ -230,7 +229,7 @@ export function AttachPermissionDialog({
 						>
 							<Plus className="mr-2 h-4 w-4" />
 							Attach Permission
-						</ConfirmButton>
+						</Button>
 					</div>
 				</form>
 			</DialogContent>

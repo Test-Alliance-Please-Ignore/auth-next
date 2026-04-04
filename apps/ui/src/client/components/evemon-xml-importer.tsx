@@ -131,7 +131,7 @@ export function EvemonXmlImporter({
 				<div className="flex items-center justify-center p-6 border-2 border-dashed rounded-lg hover:border-primary/50 transition-colors">
 					<Button
 						type="button"
-						variant="outline"
+						variant="ghost"
 						onClick={handleUploadButtonClick}
 						disabled={isLoading}
 						className="gap-2"
@@ -172,7 +172,7 @@ export function EvemonXmlImporter({
 				</div>
 
 				<div className="flex items-center justify-between">
-					<Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
+					<Button type="button" variant="ghost" onClick={onCancel} disabled={isLoading}>
 						Cancel
 					</Button>
 					<Button type="button" onClick={handleParse} disabled={!xmlContent.trim() || isLoading}>

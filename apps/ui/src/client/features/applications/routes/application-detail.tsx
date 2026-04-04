@@ -23,7 +23,6 @@ import {
 } from '@/components/ui/breadcrumb'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
 	Dialog,
 	DialogContent,
@@ -189,7 +188,7 @@ export default function ApplicationDetail() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<Button variant="outline" onClick={handleBackClick}>
+						<Button variant="ghost" onClick={handleBackClick}>
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to My Applications
 						</Button>
@@ -212,7 +211,7 @@ export default function ApplicationDetail() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<Button variant="outline" onClick={handleBackClick}>
+						<Button variant="ghost" onClick={handleBackClick}>
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to My Applications
 						</Button>
@@ -233,7 +232,7 @@ export default function ApplicationDetail() {
 						<CardDescription>This application doesn't exist or has been removed.</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<Button variant="outline" onClick={handleBackClick}>
+						<Button variant="ghost" onClick={handleBackClick}>
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to My Applications
 						</Button>
@@ -369,9 +368,9 @@ export default function ApplicationDetail() {
 					{/* Withdraw Button */}
 					{canWithdraw && (
 						<div className="flex justify-end">
-							<DestructiveButton onClick={handleWithdrawClick}>
+							<Button variant="destructive" onClick={handleWithdrawClick}>
 								Withdraw Application
-							</DestructiveButton>
+							</Button>
 						</div>
 					)}
 				</TabsContent>
@@ -454,19 +453,19 @@ export default function ApplicationDetail() {
 					</DialogHeader>
 					<DialogFooter>
 						<Button
-							variant="outline"
+							variant="ghost"
 							onClick={() => setShowWithdrawDialog(false)}
 							disabled={withdrawMutation.isPending}
 						>
 							Cancel
 						</Button>
-						<DestructiveButton
+						<Button variant="destructive"
 							onClick={handleWithdrawConfirm}
 							loading={withdrawMutation.isPending}
 							loadingText="Withdrawing..."
 						>
 							Withdraw Application
-						</DestructiveButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>

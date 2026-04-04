@@ -16,11 +16,10 @@ import {
 	TopIncomeSourcesReportSection,
 	TotalTaxesReportSection,
 } from '@/components/tax-reports/report-sections'
-import { GhostButton } from '@/components/ui/ghost-button'
-
 import type { TaxExportFormat, TaxExportReportType } from '@repo/corporation-tax'
 import type { TaxRollupReportQueryFilters } from '@/hooks/corporation-tax'
 import type { SortDirection } from '@/lib/tax-report-utils'
+import { Button } from '@/components/ui/button'
 
 export type TaxReportView = TaxExportReportType | 'missing_esi_keys'
 
@@ -103,20 +102,20 @@ export function TaxReportWorkspace({
 				description={selectedReportDescription}
 				actions={
 					<>
-						<GhostButton
+						<Button variant="ghost"
 							onClick={() => setExportModalOpen(true)}
 							disabled={!canExport || !activeReportIsExportable}
 						>
 							<Download className="mr-2 h-4 w-4" />
 							Export
-						</GhostButton>
-						<GhostButton
+						</Button>
+						<Button variant="ghost"
 							onClick={() => setScheduleModalOpen(true)}
 							disabled={!canCreateSchedule || !activeReportIsExportable}
 						>
 							<CalendarClock className="mr-2 h-4 w-4" />
 							Schedule
-						</GhostButton>
+						</Button>
 					</>
 				}
 				contentClassName="space-y-4"

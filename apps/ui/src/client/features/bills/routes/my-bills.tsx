@@ -5,7 +5,6 @@ import { BillListFilters } from '@/components/bills/bill-list-filters'
 import { BillListGrid } from '@/components/bills/bill-list-grid'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
-import { PrimaryButton } from '@/components/ui/primary-button'
 import { useDebounce } from '@/hooks/useDebounce'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
@@ -13,6 +12,7 @@ import { useMyBillPartySearch, useMyBills } from '../hooks'
 
 import type { MRT_SortingState } from 'mantine-react-table'
 import type { BillListSortDirection, BillListSortField, BillStatus, EntityType } from '@repo/bills'
+import { Button } from '@/components/ui/button'
 
 export default function MyBillsPage() {
 	usePageTitle('My Bills')
@@ -166,9 +166,9 @@ export default function MyBillsPage() {
 					pageCount={pageCount}
 					rowCount={billPage.data?.rowCount ?? 0}
 					renderActions={(bill) => (
-						<PrimaryButton size="sm" type="button" onClick={() => navigate(`/my-bills/${bill.id}`)}>
+						<Button variant="primary" size="sm" type="button" onClick={() => navigate(`/my-bills/${bill.id}`)}>
 							View
-						</PrimaryButton>
+						</Button>
 					)}
 					emptyMessage="No bills found for the current filters."
 				/>

@@ -7,9 +7,7 @@ import { BillListFilters } from '@/components/bills/bill-list-filters'
 import { BillListGrid } from '@/components/bills/bill-list-grid'
 import { BillStatusBadge } from '@/components/bills/bill-status-badge'
 import { ISKAmount } from '@/components/bills/isk-amount'
-import { GhostButton } from '@/components/ui/ghost-button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { PrimaryButton } from '@/components/ui/primary-button'
 import {
 	groupBillKeys,
 	useBillEntitySearch,
@@ -28,6 +26,7 @@ import {
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { useDebounce } from '@/hooks/useDebounce'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 import type { MRT_Row, MRT_SortingState } from 'mantine-react-table'
@@ -312,24 +311,24 @@ export default function AdminBillsPage() {
 					<p className="text-muted-foreground mt-1">View and manage all bills</p>
 				</div>
 				<div className="flex gap-2">
-					<GhostButton asChild>
+					<Button variant="ghost" asChild>
 						<Link to="/admin/bills/templates">
 							<FileText className="mr-2 h-4 w-4" />
 							Templates
 						</Link>
-					</GhostButton>
-					<GhostButton asChild>
+					</Button>
+					<Button variant="ghost" asChild>
 						<Link to="/admin/bills/schedules">
 							<Calendar className="mr-2 h-4 w-4" />
 							Schedules
 						</Link>
-					</GhostButton>
-					<PrimaryButton asChild>
+					</Button>
+					<Button variant="primary" asChild>
 						<Link to="/admin/bills/new">
 							<Plus className="mr-2 h-4 w-4" />
 							Create Bill
 						</Link>
-					</PrimaryButton>
+					</Button>
 				</div>
 			</div>
 			<BillListFilters
@@ -693,9 +692,9 @@ function ActionsMenu(props: { items: ActionItem[] }) {
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
-				<GhostButton size="sm">
+				<Button variant="ghost" size="sm">
 					Actions <ChevronDown className="ml-1 h-3 w-3" />
-				</GhostButton>
+				</Button>
 			</PopoverTrigger>
 			<PopoverContent align="end" className="w-44 p-1">
 				{visible.map((item) => (

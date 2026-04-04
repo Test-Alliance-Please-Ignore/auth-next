@@ -4,8 +4,6 @@ import { PermissionTargetBadge } from '@/components/permission-target-badge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { DestructiveButton } from '@/components/ui/destructive-button'
-
 import type { GroupPermissionWithDetails } from '@/lib/api'
 
 interface GroupPermissionCardProps {
@@ -80,9 +78,9 @@ export function GroupPermissionCard({
 							</Button>
 						)}
 						{onRemove && (
-							<DestructiveButton size="sm" onClick={() => onRemove(permission)}>
+							<Button variant="destructive" size="sm" onClick={() => onRemove(permission)}>
 								<Trash2 className="h-4 w-4" />
-							</DestructiveButton>
+							</Button>
 						)}
 					</div>
 				)}

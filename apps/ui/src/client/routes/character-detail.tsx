@@ -193,7 +193,7 @@ export default function CharacterDetailPage() {
 							<Button
 								onClick={handleRefresh}
 								size="sm"
-								variant="outline"
+								variant="ghost"
 								disabled={refreshCharacter.isPending}
 							>
 								<RefreshCw
@@ -273,7 +273,7 @@ export default function CharacterDetailPage() {
 							</p>
 							<Button
 								onClick={handleRefresh}
-								variant="default"
+								variant="primary"
 								disabled={refreshCharacter.isPending}
 							>
 								<RefreshCw

@@ -93,7 +93,7 @@ export function ServiceDialog({
 										<code className="flex-1 text-sm font-mono p-2 bg-muted rounded select-all">
 											{resetResult.newPassword}
 										</code>
-										<Button variant="outline" size="sm" onClick={handleCopyPassword}>
+										<Button variant="ghost" size="sm" onClick={handleCopyPassword}>
 											<Copy className="h-4 w-4" />
 											{copied ? 'Copied!' : 'Copy'}
 										</Button>

@@ -26,9 +26,7 @@ import { Link, useParams } from 'react-router-dom'
 
 import { DirectorList } from '@/components/DirectorList'
 import { Button } from '@/components/ui/button'
-import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ConfirmButton } from '@/components/ui/confirm-button'
 import {
 	Dialog,
 	DialogContent,
@@ -64,6 +62,7 @@ import {
 	useUnassignRoleFromCorporationServer,
 	useUpdateCorporationDiscordServer,
 } from '@/hooks/useDiscord'
+import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useGlobalPermissions } from '@/hooks/usePermissions'
@@ -115,6 +114,7 @@ export default function CorporationDetailPage() {
 
 	// Message handling with automatic cleanup
 	const { message, showSuccess, showError } = useMessage()
+	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
 
 	// Discord UI state
 	const [showAddServerDialog, setShowAddServerDialog] = useState(false)
@@ -345,6 +345,7 @@ export default function CorporationDetailPage() {
 	}
 
 	return (
+		<>
 		<div className="space-y-6">
 			{/* Back Button */}
 			<Button variant="ghost" asChild>
@@ -578,7 +579,7 @@ export default function CorporationDetailPage() {
 								</div>
 								<div className="flex items-center gap-2">
 									<Button
-										variant="outline"
+										variant="ghost"
 										size="sm"
 										disabled={refreshCorporationDiscord.isPending}
 										onClick={() => {
@@ -831,17 +832,17 @@ export default function CorporationDetailPage() {
 									</div>
 
 									<DialogFooter>
-										<CancelButton onClick={() => setShowAddServerDialog(false)}>
+										<Button variant="cancel" onClick={() => setShowAddServerDialog(false)}>
 											Cancel
-										</CancelButton>
-										<ConfirmButton
-											onConfirm={handleAttachServer}
+										</Button>
+										<Button variant="confirm"
+											onClick={handleAttachServer}
 											disabled={!selectedServerId}
 											showIcon={false}
 										>
 											<Plus className="mr-2 h-4 w-4" />
 											Attach
-										</ConfirmButton>
+										</Button>
 									</DialogFooter>
 								</DialogContent>
 							</Dialog>
@@ -951,7 +952,7 @@ export default function CorporationDetailPage() {
 									Fetch All Data
 								</Button>
 								<Button
-									variant="outline"
+									variant="ghost"
 									onClick={() => handleFetch('public')}
 									disabled={fetchData.isPending}
 									className="w-full justify-start"
@@ -960,7 +961,7 @@ export default function CorporationDetailPage() {
 									Fetch Public Data
 								</Button>
 								<Button
-									variant="outline"
+									variant="ghost"
 									onClick={() => handleFetch('core')}
 									disabled={fetchData.isPending || !corporation.assignedCharacterId}
 									className="w-full justify-start"
@@ -969,7 +970,7 @@ export default function CorporationDetailPage() {
 									Fetch Members & Tracking
 								</Button>
 								<Button
-									variant="outline"
+									variant="ghost"
 									onClick={() => handleFetch('financial')}
 									disabled={fetchData.isPending || !corporation.assignedCharacterId}
 									className="w-full justify-start"
@@ -978,7 +979,7 @@ export default function CorporationDetailPage() {
 									Fetch Financial Data
 								</Button>
 								<Button
-									variant="outline"
+									variant="ghost"
 									onClick={() => handleFetch('assets')}
 									disabled={fetchData.isPending || !corporation.assignedCharacterId}
 									className="w-full justify-start"
@@ -987,7 +988,7 @@ export default function CorporationDetailPage() {
 									Fetch Assets & Structures
 								</Button>
 								<Button
-									variant="outline"
+									variant="ghost"
 									onClick={() => handleFetch('market')}
 									disabled={fetchData.isPending || !corporation.assignedCharacterId}
 									className="w-full justify-start"
@@ -996,7 +997,7 @@ export default function CorporationDetailPage() {
 									Fetch Market Data
 								</Button>
 								<Button
-									variant="outline"
+									variant="ghost"
 									onClick={() => handleFetch('killmails')}
 									disabled={fetchData.isPending || !corporation.assignedCharacterId}
 									className="w-full justify-start"
@@ -1059,13 +1060,23 @@ export default function CorporationDetailPage() {
 														Added {new Date(perm.createdAt).toLocaleDateString()}
 													</p>
 												</div>
-												<ConfirmButton
+												<Button
+													variant="destructive"
 													size="sm"
-													onConfirm={() => handleRemovePermission(perm.id)}
-													confirmText="Are you sure you want to remove this permission from the corporation?"
+													showIcon={false}
+													onClick={() =>
+														requestConfirmation({
+															title: 'Remove Permission',
+															description:
+																'Are you sure you want to remove this permission from the corporation?',
+															confirmLabel: 'Remove',
+															intent: 'destructive',
+															onConfirm: () => handleRemovePermission(perm.id),
+														})
+													}
 												>
 													<Trash2 className="h-4 w-4" />
-												</ConfirmButton>
+												</Button>
 											</div>
 										</Card>
 									))}
@@ -1104,20 +1115,22 @@ export default function CorporationDetailPage() {
 								</div>
 							</div>
 							<DialogFooter>
-								<CancelButton onClick={() => setShowAttachPermissionDialog(false)}>
+								<Button variant="cancel" onClick={() => setShowAttachPermissionDialog(false)}>
 									Cancel
-								</CancelButton>
-								<ConfirmButton
-									onConfirm={handleAttachPermission}
+								</Button>
+								<Button variant="confirm"
+									onClick={handleAttachPermission}
 									disabled={!selectedPermissionId || attachPermission.isPending}
 								>
 									Attach Permission
-								</ConfirmButton>
+								</Button>
 							</DialogFooter>
 						</DialogContent>
 					</Dialog>
 				</TabsContent>
 			</Tabs>
 		</div>
+		{confirmationDialog}
+		</>
 	)
 }

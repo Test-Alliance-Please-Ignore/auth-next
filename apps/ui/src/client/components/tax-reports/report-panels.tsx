@@ -1,7 +1,6 @@
 import { TaxCorporationScopeSelector } from '@/components/tax-corporation-scope-selector'
 import { ExportHistoryGrid, ExportSchedulesGrid } from '@/components/tax-reports/grids'
 import { Badge } from '@/components/ui/badge'
-import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { DateRangeInput } from '@/components/ui/date-range-input'
 import {
@@ -14,8 +13,8 @@ import {
 } from '@/components/ui/dialog'
 import { FilterField } from '@/components/ui/filter-field'
 import { Input } from '@/components/ui/input'
-import { PrimaryButton } from '@/components/ui/primary-button'
 import { Select } from '@/components/ui/select'
+import { Button } from '@/components/ui/button'
 import { formatTaxIskCompact } from '@/lib/tax-display'
 
 import type { ReactNode } from 'react'
@@ -281,15 +280,15 @@ export function TaxExportDialog(props: {
 					</div>
 				</div>
 				<DialogFooter>
-					<CancelButton showIcon={false} onClick={() => props.onOpenChange(false)}>
+					<Button variant="cancel" showIcon={false} onClick={() => props.onOpenChange(false)}>
 						Cancel
-					</CancelButton>
-					<PrimaryButton
+					</Button>
+					<Button variant="primary"
 						onClick={props.onSubmit}
 						disabled={!props.canExport || !props.canSubmit || props.submitting}
 					>
 						{props.submitting ? 'Requesting Export...' : 'Request Export'}
-					</PrimaryButton>
+					</Button>
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>
@@ -363,15 +362,15 @@ export function TaxScheduleDialog(props: {
 					</div>
 				</div>
 				<DialogFooter>
-					<CancelButton showIcon={false} onClick={() => props.onOpenChange(false)}>
+					<Button variant="cancel" showIcon={false} onClick={() => props.onOpenChange(false)}>
 						Cancel
-					</CancelButton>
-					<PrimaryButton
+					</Button>
+					<Button variant="primary"
 						onClick={props.onSubmit}
 						disabled={!props.canCreateSchedule || !props.canSubmit || props.submitting}
 					>
 						{props.submitting ? 'Creating Schedule...' : 'Create Schedule'}
-					</PrimaryButton>
+					</Button>
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>

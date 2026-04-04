@@ -4,10 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { BillEntityPicker } from '@/components/bills/bill-entity-picker'
 import { Badge } from '@/components/ui/badge'
-import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ConfirmButton } from '@/components/ui/confirm-button'
-import { DestructiveButton } from '@/components/ui/destructive-button'
 import {
 	Dialog,
 	DialogContent,
@@ -16,7 +13,6 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
-import { GhostButton } from '@/components/ui/ghost-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
@@ -46,6 +42,7 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 import { formatScheduleFrequency } from '@/lib/bills-utils'
 
 import type { EntityType, PayeeType, ScheduleFrequency, UpdateScheduleInput } from '@repo/bills'
+import { Button } from '@/components/ui/button'
 
 export default function AdminBillsSchedulesEditPage() {
 	const { id } = useParams<{ id: string }>()
@@ -318,9 +315,9 @@ export default function AdminBillsSchedulesEditPage() {
 						<p className="text-destructive">Schedule not found</p>
 					</CardContent>
 				</Card>
-				<GhostButton asChild>
+				<Button variant="ghost" asChild>
 					<Link to="/admin/bills/schedules">Back to Schedules</Link>
-				</GhostButton>
+				</Button>
 			</div>
 		)
 	}
@@ -337,34 +334,34 @@ export default function AdminBillsSchedulesEditPage() {
 				</div>
 				<div className="flex gap-2">
 					{schedule.isActive ? (
-						<CancelButton
+						<Button variant="cancel"
 							size="sm"
 							onClick={() => setPauseDialogOpen(true)}
 							loading={pauseSchedule.isPending}
 						>
 							<Pause className="mr-2 h-4 w-4" />
 							Pause Schedule
-						</CancelButton>
+						</Button>
 					) : (
-						<GhostButton size="sm" onClick={() => setResumeDialogOpen(true)}>
+						<Button variant="ghost" size="sm" onClick={() => setResumeDialogOpen(true)}>
 							<Play className="mr-2 h-4 w-4" />
 							Resume Schedule
-						</GhostButton>
+						</Button>
 					)}
-					<DestructiveButton
+					<Button variant="destructive"
 						size="sm"
 						onClick={() => setDeleteDialogOpen(true)}
 						loading={deleteSchedule.isPending}
 					>
 						<Trash2 className="mr-2 h-4 w-4" />
 						Delete
-					</DestructiveButton>
-					<GhostButton asChild>
+					</Button>
+					<Button variant="ghost" asChild>
 						<Link to="/admin/bills/schedules">
 							<Calendar className="mr-2 h-4 w-4" />
 							Back to Schedules
 						</Link>
-					</GhostButton>
+					</Button>
 				</div>
 			</div>
 
@@ -623,12 +620,12 @@ export default function AdminBillsSchedulesEditPage() {
 
 				{/* Actions */}
 				<div className="flex gap-3 mb-6">
-					<ConfirmButton type="submit" loading={updateSchedule.isPending}>
+					<Button variant="confirm" type="submit" loading={updateSchedule.isPending}>
 						{updateSchedule.isPending ? 'Saving Changes...' : 'Save Changes'}
-					</ConfirmButton>
-					<CancelButton type="button" onClick={() => navigate('/admin/bills/schedules')}>
+					</Button>
+					<Button variant="cancel" type="button" onClick={() => navigate('/admin/bills/schedules')}>
 						Cancel
-					</CancelButton>
+					</Button>
 				</div>
 			</form>
 
@@ -711,10 +708,10 @@ export default function AdminBillsSchedulesEditPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<CancelButton onClick={() => setPauseDialogOpen(false)}>Cancel</CancelButton>
-						<ConfirmButton onConfirm={handlePause} loading={pauseSchedule.isPending}>
+						<Button variant="cancel" onClick={() => setPauseDialogOpen(false)}>Cancel</Button>
+						<Button variant="confirm" onClick={handlePause} loading={pauseSchedule.isPending}>
 							{pauseSchedule.isPending ? 'Pausing...' : 'Pause Schedule'}
-						</ConfirmButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
@@ -730,10 +727,10 @@ export default function AdminBillsSchedulesEditPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<CancelButton onClick={() => setResumeDialogOpen(false)}>Cancel</CancelButton>
-						<ConfirmButton onConfirm={handleResume} loading={resumeSchedule.isPending}>
+						<Button variant="cancel" onClick={() => setResumeDialogOpen(false)}>Cancel</Button>
+						<Button variant="confirm" onClick={handleResume} loading={resumeSchedule.isPending}>
 							{resumeSchedule.isPending ? 'Resuming...' : 'Resume Schedule'}
-						</ConfirmButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
@@ -749,10 +746,10 @@ export default function AdminBillsSchedulesEditPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<CancelButton onClick={() => setDeleteDialogOpen(false)}>Cancel</CancelButton>
-						<DestructiveButton onClick={handleDelete} loading={deleteSchedule.isPending}>
+						<Button variant="cancel" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+						<Button variant="destructive" onClick={handleDelete} loading={deleteSchedule.isPending}>
 							Delete Schedule
-						</DestructiveButton>
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>

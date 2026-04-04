@@ -3,12 +3,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
-import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ConfirmButton } from '@/components/ui/confirm-button'
-import { DestructiveButton } from '@/components/ui/destructive-button'
-import { GhostButton } from '@/components/ui/ghost-button'
-import { PrimaryButton } from '@/components/ui/primary-button'
 import {
 	Table,
 	TableBody,
@@ -25,6 +20,7 @@ import {
 } from '@/hooks/useBills'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { formatScheduleFrequency } from '@/lib/bills-utils'
+import { Button } from '@/components/ui/button'
 
 export default function BillsSchedulesPage() {
 	usePageTitle('Admin - Bill Schedules')
@@ -92,18 +88,18 @@ export default function BillsSchedulesPage() {
 					</p>
 				</div>
 				<div className="flex gap-2">
-					<GhostButton asChild>
+					<Button variant="ghost" asChild>
 						<Link to="/admin/bills">
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to Bills
 						</Link>
-					</GhostButton>
-					<PrimaryButton asChild>
+					</Button>
+					<Button variant="primary" asChild>
 						<Link to="/admin/bills/schedules/new">
 							<Plus className="mr-2 h-4 w-4" />
 							Create Schedule
 						</Link>
-					</PrimaryButton>
+					</Button>
 				</div>
 			</div>
 
@@ -142,12 +138,12 @@ export default function BillsSchedulesPage() {
 							<p className="text-muted-foreground mb-4">
 								Create your first schedule to automate recurring bills
 							</p>
-							<PrimaryButton asChild>
+							<Button variant="primary" asChild>
 								<Link to="/admin/bills/schedules/new">
 									<Plus className="mr-2 h-4 w-4" />
 									Create Schedule
 								</Link>
-							</PrimaryButton>
+							</Button>
 						</div>
 					) : (
 						<div className="overflow-x-auto">
@@ -210,7 +206,7 @@ export default function BillsSchedulesPage() {
 											<TableCell className="sticky right-0 z-10 bg-card text-right">
 												<div className="flex justify-end gap-2">
 													{schedule.isActive ? (
-														<CancelButton
+														<Button variant="cancel"
 															size="sm"
 															showIcon={false}
 															onClick={() => handlePause(schedule.id)}
@@ -218,29 +214,29 @@ export default function BillsSchedulesPage() {
 														>
 															<Pause className="h-4 w-4 mr-2" />
 															Pause
-														</CancelButton>
+														</Button>
 													) : (
-														<ConfirmButton
+														<Button variant="confirm"
 															size="sm"
 															showIcon={false}
-															onConfirm={() => handleResume(schedule.id)}
+															onClick={() => handleResume(schedule.id)}
 															loading={resumeSchedule.isPending}
 														>
 															<Play className="h-4 w-4 mr-2" />
 															Resume
-														</ConfirmButton>
+														</Button>
 													)}
-													<DestructiveButton
+													<Button variant="destructive"
 														size="sm"
 														showIcon={false}
 														onClick={() => handleDelete(schedule.id)}
 														loading={deleteSchedule.isPending}
 													>
 														Delete
-													</DestructiveButton>
-													<PrimaryButton size="sm" asChild>
+													</Button>
+													<Button variant="primary" size="sm" asChild>
 														<Link to={`/admin/bills/schedules/${schedule.id}`}>View</Link>
-													</PrimaryButton>
+													</Button>
 												</div>
 											</TableCell>
 										</TableRow>

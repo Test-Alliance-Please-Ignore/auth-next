@@ -175,7 +175,7 @@ function UserLeaderboard() {
 									</p>
 									<div className="flex gap-2">
 										<Button
-											variant="outline"
+											variant="ghost"
 											size="sm"
 											onClick={() => setPage((p) => Math.max(0, p - 1))}
 											disabled={page === 0}
@@ -184,7 +184,7 @@ function UserLeaderboard() {
 											Previous
 										</Button>
 										<Button
-											variant="outline"
+											variant="ghost"
 											size="sm"
 											onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
 											disabled={page >= totalPages - 1}
@@ -330,7 +330,7 @@ function CorporationLeaderboard() {
 									</p>
 									<div className="flex gap-2">
 										<Button
-											variant="outline"
+											variant="ghost"
 											size="sm"
 											onClick={() => setPage((p) => Math.max(0, p - 1))}
 											disabled={page === 0}
@@ -339,7 +339,7 @@ function CorporationLeaderboard() {
 											Previous
 										</Button>
 										<Button
-											variant="outline"
+											variant="ghost"
 											size="sm"
 											onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
 											disabled={page >= totalPages - 1}

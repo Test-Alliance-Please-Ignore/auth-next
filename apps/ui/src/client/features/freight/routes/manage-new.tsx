@@ -2,11 +2,8 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
-import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ConfirmButton } from '@/components/ui/confirm-button'
 import { Container } from '@/components/ui/container'
-import { GhostButton } from '@/components/ui/ghost-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { NumberInput } from '@/components/ui/number-input'
@@ -209,9 +206,9 @@ export default function FreightManageNewPage() {
 						Define a new official freight route with pricing
 					</p>
 				</div>
-				<GhostButton asChild>
+				<Button variant="ghost" asChild>
 					<Link to="/freight/manage">Back to Routes</Link>
-				</GhostButton>
+				</Button>
 			</div>
 
 			<form onSubmit={handleSubmit}>
@@ -484,12 +481,12 @@ export default function FreightManageNewPage() {
 
 				{/* Form Actions */}
 				<div className="flex justify-end gap-3 mt-6">
-					<CancelButton type="button" onClick={() => navigate('/freight/manage')}>
+					<Button variant="cancel" type="button" onClick={() => navigate('/freight/manage')}>
 						Cancel
-					</CancelButton>
-					<ConfirmButton type="submit" loading={createRoute.isPending} loadingText="Creating...">
+					</Button>
+					<Button variant="confirm" type="submit" loading={createRoute.isPending} loadingText="Creating...">
 						Create Route
-					</ConfirmButton>
+					</Button>
 				</div>
 			</form>
 		</Container>

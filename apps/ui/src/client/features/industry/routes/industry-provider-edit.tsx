@@ -3,9 +3,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
-import { CancelButton } from '@/components/ui/cancel-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ConfirmButton } from '@/components/ui/confirm-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
@@ -234,16 +232,16 @@ export default function IndustryProviderEditPage() {
 
 						{/* Actions */}
 						<div className="flex justify-end gap-2 pt-4">
-							<CancelButton type="button" onClick={() => navigate(-1)}>
+							<Button variant="cancel" type="button" onClick={() => navigate(-1)}>
 								Cancel
-							</CancelButton>
-							<ConfirmButton
+							</Button>
+							<Button variant="confirm"
 								type="submit"
 								loading={updateProvider.isPending}
 								loadingText="Saving..."
 							>
 								Save Changes
-							</ConfirmButton>
+							</Button>
 						</div>
 					</form>
 				</CardContent>
