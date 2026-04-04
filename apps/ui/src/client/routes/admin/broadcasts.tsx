@@ -1,5 +1,5 @@
 import { ExternalLink, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
@@ -51,7 +51,9 @@ const statusLabels: Record<BroadcastStatus, string> = {
 
 export default function AdminBroadcastsPage() {
 	usePageTitle('Admin - Broadcasts')
+	const pageSize = 20
 	const [statusFilter, setStatusFilter] = useState<BroadcastStatus | 'all'>('all')
+	const [page, setPage] = useState(1)
 	const { data: broadcasts, isLoading } = useBroadcasts(
 		undefined,
 		statusFilter === 'all' ? undefined : statusFilter
@@ -95,6 +97,21 @@ export default function AdminBroadcastsPage() {
 		return new Date(dateString).toLocaleString()
 	}
 
+	const totalItems = broadcasts?.length ?? 0
+	const totalPages = Math.max(1, Math.ceil(totalItems / pageSize))
+	const startIndex = (page - 1) * pageSize
+	const paginatedBroadcasts = broadcasts?.slice(startIndex, startIndex + pageSize) ?? []
+
+	useEffect(() => {
+		setPage(1)
+	}, [statusFilter])
+
+	useEffect(() => {
+		if (page > totalPages) {
+			setPage(totalPages)
+		}
+	}, [page, totalPages])
+
 	return (
 		<div className="space-y-6">
 			{/* Page Header */}
@@ -123,7 +140,7 @@ export default function AdminBroadcastsPage() {
 			)}
 
 			{/* Filters */}
-			<Card variant="interactive">
+			<Card variant="elevated">
 				<CardHeader>
 					<CardTitle>Filters</CardTitle>
 				</CardHeader>
@@ -149,7 +166,7 @@ export default function AdminBroadcastsPage() {
 			</Card>
 
 			{/* Broadcasts List */}
-			<Card variant="interactive">
+			<Card variant="elevated">
 				<CardHeader>
 					<CardTitle>Broadcasts</CardTitle>
 					<CardDescription>All broadcasts in the system</CardDescription>
@@ -170,11 +187,13 @@ export default function AdminBroadcastsPage() {
 									<TableHead>Created By</TableHead>
 									<TableHead>Created</TableHead>
 									<TableHead>Scheduled</TableHead>
-									<TableHead className="text-right">Actions</TableHead>
+									<TableHead className="sticky right-0 z-20 bg-card border-l border-border/50 text-right">
+										Actions
+									</TableHead>
 								</TableRow>
 							</TableHeader>
 							<TableBody>
-								{broadcasts.map((broadcast) => {
+								{paginatedBroadcasts.map((broadcast) => {
 									const group = groups?.find((g) => g.id === broadcast.groupId)
 									const target = targets?.find((t) => t.id === broadcast.targetId)
 									const template = broadcast.templateId
@@ -193,7 +212,7 @@ export default function AdminBroadcastsPage() {
 											</TableCell>
 											<TableCell>{template?.name || 'Custom'}</TableCell>
 											<TableCell className="text-sm text-muted-foreground">
-												{broadcast.createdBy}
+												{broadcast.createdByCharacterName || broadcast.createdBy}
 											</TableCell>
 											<TableCell className="text-sm text-muted-foreground">
 												{formatDate(broadcast.createdAt)}
@@ -201,7 +220,7 @@ export default function AdminBroadcastsPage() {
 											<TableCell className="text-sm text-muted-foreground">
 												{broadcast.scheduledFor ? formatDate(broadcast.scheduledFor) : '-'}
 											</TableCell>
-											<TableCell className="text-right">
+											<TableCell className="sticky right-0 z-10 bg-card border-l border-border/50 text-right">
 												<div className="flex items-center justify-end gap-2">
 													<Link to={`/admin/broadcasts/${broadcast.id}`}>
 														<Button variant="ghost" size="sm" title="Show details">
@@ -223,6 +242,31 @@ export default function AdminBroadcastsPage() {
 								})}
 							</TableBody>
 						</Table>
+					)}
+					{!isLoading && totalItems > 0 && (
+						<div className="mt-4 flex items-center justify-between border-t border-border pt-4">
+							<div className="text-sm text-muted-foreground">
+								Page {page} of {totalPages}
+							</div>
+							<div className="flex items-center gap-2">
+								<Button
+									variant="ghost"
+									size="sm"
+									disabled={page === 1}
+									onClick={() => setPage(page - 1)}
+								>
+									Previous
+								</Button>
+								<Button
+									variant="ghost"
+									size="sm"
+									disabled={page === totalPages}
+									onClick={() => setPage(page + 1)}
+								>
+									Next
+								</Button>
+							</div>
+						</div>
 					)}
 				</CardContent>
 			</Card>

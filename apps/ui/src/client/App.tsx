@@ -8,6 +8,7 @@ import { installTaxDemoWindow } from './dev/tax-demo-mode'
 import { useAuth } from './hooks/useAuth'
 import { useSessionSync } from './hooks/useSessionSync'
 import AuthCallbackPage from './routes/auth-callback'
+import BroadcastDetailPage from './routes/broadcast-detail'
 import BroadcastsPage from './routes/broadcasts'
 import BroadcastsNewPage from './routes/broadcasts-new'
 import BrowseCorporations from './routes/browse-corporations'
@@ -240,6 +241,7 @@ export default function App() {
 							<Route path="/invitations" element={<InvitationsPage />} />
 							<Route path="/broadcasts" element={<BroadcastsPage />} />
 							<Route path="/broadcasts/new" element={<BroadcastsNewPage />} />
+							<Route path="/broadcasts/:broadcastId" element={<BroadcastDetailPage />} />
 
 							{/* Utilities routes */}
 							<Route path="/inventory-parser" element={<InventoryParserPage />} />
