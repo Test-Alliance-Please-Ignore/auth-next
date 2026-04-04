@@ -1455,7 +1455,30 @@ app.get('/schedules/:scheduleId', requireAuth(), requireAdmin(), async (c) => {
 			return c.json({ error: 'Schedule not found' }, 404)
 		}
 
-		return c.json(schedule)
+		const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
+		const esiIdsToResolve = [
+			schedule.payerType !== 'group' ? schedule.payerId : null,
+			schedule.payeeId ?? null,
+		].filter(Boolean) as string[]
+		const nameMap =
+			esiIdsToResolve.length > 0
+				? await resolver.resolveIds(esiIdsToResolve)
+				: ({} as Record<string, string>)
+		const groupNames =
+			schedule.payerType === 'group'
+				? await resolveGroupNames(c.env, [schedule.payerId])
+				: new Map<string, string>()
+
+		return c.json({
+			...schedule,
+			payerName:
+				schedule.payerType === 'group'
+					? (groupNames.get(schedule.payerId) ?? schedule.payerName)
+					: (nameMap[schedule.payerId] ?? schedule.payerName),
+			payeeName: schedule.payeeId
+				? (nameMap[schedule.payeeId] ?? schedule.payeeName)
+				: schedule.payeeName,
+		})
 	} catch (error) {
 		logger.error('Error getting schedule:', error)
 		return c.json({ error: 'Failed to get schedule' }, 500)
