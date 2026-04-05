@@ -32,11 +32,17 @@ just db-generate skills
 # Run migrations
 just db-migrate skills
 
-# Push schema changes (dev only)
-just db-push skills
-
 # Open Drizzle Studio
 just db-studio skills
+
+# Refresh the skills catalog (groups/types/ranks/prereqs)
+pnpm -F skills sde:import
+```
+
+After importing, clear cache from core (admin-only) so API responses reflect the new catalog:
+
+```bash
+POST /api/skills/cache/clear
 ```
 
 ## Using the Durable Object

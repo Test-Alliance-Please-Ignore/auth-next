@@ -146,6 +146,8 @@ export function BillListGrid(props: {
 							id: 'actions',
 							header: 'Actions',
 							enableSorting: false,
+							mantineTableHeadCellProps: { style: { textAlign: 'right' } },
+							mantineTableBodyCellProps: { style: { textAlign: 'right' } },
 							Cell: ({ row }) => props.renderActions!(row.original, row),
 						}),
 					]

@@ -2,6 +2,8 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { config } from 'dotenv'
 
+import { inArray } from '@repo/db-utils'
+
 import { createDb, schema } from '../src/db'
 
 // Load .env from monorepo root
@@ -9,57 +11,50 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 config({ path: resolve(__dirname, '../../../.env') })
 
 /**
- * Import EVE Online skill data from ESI API
+ * Import EVE skill catalog data.
  *
- * This script fetches skill data from EVE's ESI API and populates the database.
- * We use the ESI API directly since it's more reliable than SDE dumps.
+ * Note:
+ * CCP reworked SDE distribution in September 2025. To keep the skill catalog
+ * current and avoid depending on a stale third-party mirror format, this import
+ * reads authoritative universe metadata from ESI:
+ * - category 16 (Skills)
+ * - skill groups
+ * - skill type metadata + dogma attributes
  */
 
-interface SDESkillCategory {
-	categoryID: number
-	categoryName: string
-	iconID: number | null
-	published: number
+interface EsiCategory {
+	category_id: number
+	name: string
+	published: boolean
+	groups: number[]
 }
 
-interface SDESkillGroup {
-	groupID: number
-	categoryID: number
-	groupName: string
-	iconID: number | null
-	useBasePrice: boolean
-	anchored: boolean
-	anchorable: boolean
-	fittableNonSingleton: boolean
-	published: number
+interface EsiGroup {
+	group_id: number
+	category_id: number
+	name: string
+	published: boolean
+	types?: number[]
 }
 
-interface SDESkill {
-	typeID: number
-	groupID: number
-	typeName: string
-	description: string
-	mass: number
-	volume: number
-	capacity: number
-	portionSize: number
-	raceID: number | null
-	basePrice: number | null
-	published: number
-	marketGroupID: number | null
-	iconID: number | null
-	soundID: number | null
-	graphicID: number | null
+interface EsiTypeDogmaAttribute {
+	attribute_id: number
+	value: number
 }
 
-interface SDEDogmaAttribute {
-	typeID: number
-	attributeID: number
-	valueInt: number | null
-	valueFloat: number | null
+interface EsiType {
+	type_id: number
+	group_id: number
+	name: string
+	description?: string
+	published: boolean
+	dogma_attributes?: EsiTypeDogmaAttribute[]
 }
 
-// Attribute IDs from EVE SDE
+const ESI_BASE_URL = 'https://esi.evetech.net/latest'
+const SKILLS_CATEGORY_ID = 16
+
+// Attribute IDs from EVE dogma
 const ATTRIBUTE_IDS = {
 	PRIMARY_ATTRIBUTE: 180,
 	SECONDARY_ATTRIBUTE: 181,
@@ -87,46 +82,88 @@ const ATTRIBUTE_NAMES: Record<number, string> = {
 	168: 'willpower',
 }
 
+const requirementPairs: Array<[number, number]> = [
+	[ATTRIBUTE_IDS.REQUIRED_SKILL_1, ATTRIBUTE_IDS.REQUIRED_SKILL_1_LEVEL],
+	[ATTRIBUTE_IDS.REQUIRED_SKILL_2, ATTRIBUTE_IDS.REQUIRED_SKILL_2_LEVEL],
+	[ATTRIBUTE_IDS.REQUIRED_SKILL_3, ATTRIBUTE_IDS.REQUIRED_SKILL_3_LEVEL],
+	[ATTRIBUTE_IDS.REQUIRED_SKILL_4, ATTRIBUTE_IDS.REQUIRED_SKILL_4_LEVEL],
+	[ATTRIBUTE_IDS.REQUIRED_SKILL_5, ATTRIBUTE_IDS.REQUIRED_SKILL_5_LEVEL],
+	[ATTRIBUTE_IDS.REQUIRED_SKILL_6, ATTRIBUTE_IDS.REQUIRED_SKILL_6_LEVEL],
+]
+
+function buildEsiUrl(path: string): string {
+	const url = new URL(`${ESI_BASE_URL}${path}`)
+	url.searchParams.set('datasource', 'tranquility')
+	url.searchParams.set('language', 'en')
+	return url.toString()
+}
+
+async function sleep(ms: number): Promise<void> {
+	await new Promise((resolvePromise) => {
+		setTimeout(resolvePromise, ms)
+	})
+}
+
+async function fetchJsonWithRetry<T>(url: string, retries = 3): Promise<T> {
+	let lastError: unknown
+
+	for (let attempt = 1; attempt <= retries; attempt++) {
+		try {
+			const response = await fetch(url, {
+				signal: AbortSignal.timeout(30000),
+				headers: {
+					Accept: 'application/json',
+				},
+			})
+
+			if (!response.ok) {
+				throw new Error(`${response.status} ${response.statusText}`)
+			}
+
+			return (await response.json()) as T
+		} catch (error) {
+			lastError = error
+
+			if (attempt < retries) {
+				await sleep(attempt * 500)
+				continue
+			}
+		}
+	}
+
+	throw new Error(`Failed to fetch ${url}: ${String(lastError)}`)
+}
+
+function chunk<T>(values: T[], size: number): T[][] {
+	const result: T[][] = []
+	for (let i = 0; i < values.length; i += size) {
+		result.push(values.slice(i, i + size))
+	}
+	return result
+}
+
+async function mapWithConcurrency<T, R>(
+	items: T[],
+	concurrency: number,
+	mapper: (item: T) => Promise<R>
+): Promise<R[]> {
+	const result: R[] = []
+
+	for (const batch of chunk(items, concurrency)) {
+		const batchResult = await Promise.all(batch.map((item) => mapper(item)))
+		result.push(...batchResult)
+	}
+
+	return result
+}
+
 /**
  * Calculate skill points required for a specific level
  * Formula: 250 × rank × sqrt(32)^(level - 1)
- * Or equivalently: 250 × rank × 2^(2.5 × (level - 1))
- *
- * @param rank - The skill's rank (training time multiplier)
- * @param level - The skill level (1-5)
- * @returns The skill points required for the given level
  */
 function calculateSkillPointsForLevel(rank: number, level: number): number {
-	// Using the formula: 250 × rank × sqrt(32)^(level - 1)
-	// sqrt(32) = 32^(0.5) = 2^(2.5)
 	const sqrt32 = Math.sqrt(32)
 	return Math.round(250 * rank * Math.pow(sqrt32, level - 1))
-}
-
-async function fetchSDEData(url: string) {
-	console.log(`Fetching SDE data from ${url}...`)
-	try {
-		const response = await fetch(url, {
-			signal: AbortSignal.timeout(300000), // 5 minute timeout for large files
-		})
-		if (!response.ok) {
-			throw new Error(
-				`Failed to fetch SDE data from ${url}: ${response.status} ${response.statusText}`
-			)
-		}
-		const contentLength = response.headers.get('content-length')
-		if (contentLength) {
-			console.log(`  Response size: ${(parseInt(contentLength) / 1024 / 1024).toFixed(2)} MB`)
-		}
-		const text = await response.text()
-		console.log(`  Downloaded ${(text.length / 1024 / 1024).toFixed(2)} MB, parsing JSON...`)
-		return JSON.parse(text)
-	} catch (error) {
-		if (error instanceof Error && error.name === 'AbortError') {
-			throw new Error(`Timeout fetching ${url} - file may be too large`)
-		}
-		throw error
-	}
 }
 
 async function main() {
@@ -136,207 +173,190 @@ async function main() {
 		throw new Error('DATABASE_URL_MIGRATIONS environment variable is required')
 	}
 
-	console.log('Starting EVE SDE skill data import...')
+	console.log('Starting EVE skill catalog import from ESI...')
 	const db = createDb(databaseUrl)
 
-	try {
-		// Base URL for zzeve.com's SDE JSON dumps
-		const baseUrl = 'https://sde.zzeve.com'
+	// 1) Category (Skills)
+	const category = await fetchJsonWithRetry<EsiCategory>(
+		buildEsiUrl(`/universe/categories/${SKILLS_CATEGORY_ID}/`)
+	)
 
-		// Fetch categories (we only care about category 16 - Skills)
-		const categories: SDESkillCategory[] = await fetchSDEData(`${baseUrl}/invCategories.json`)
-		const skillCategory = categories.find((cat) => cat.categoryID === 16)
+	await db
+		.insert(schema.skillCategories)
+		.values({
+			id: String(category.category_id),
+			name: category.name || 'Skills',
+			description: 'Character Skills',
+		})
+		.onConflictDoUpdate({
+			target: schema.skillCategories.id,
+			set: {
+				name: category.name || 'Skills',
+				updatedAt: new Date(),
+			},
+		})
 
-		if (!skillCategory) {
-			throw new Error('Skill category not found in SDE data')
-		}
+	console.log('✓ Imported skill category')
 
-		// Insert skill category
+	// 2) Groups
+	console.log(`Fetching ${category.groups.length} skill groups from ESI...`)
+	const groupResponses = await mapWithConcurrency(category.groups, 20, async (groupId) => {
+		return fetchJsonWithRetry<EsiGroup>(buildEsiUrl(`/universe/groups/${groupId}/`))
+	})
+
+	const skillGroups = groupResponses.filter(
+		(group) => group.category_id === SKILLS_CATEGORY_ID && group.published
+	)
+
+	for (const group of skillGroups) {
 		await db
-			.insert(schema.skillCategories)
+			.insert(schema.skillGroups)
 			.values({
-				id: skillCategory.categoryID.toString(),
-				name: skillCategory.categoryName || 'Skills',
-				description: 'Character Skills',
+				id: String(group.group_id),
+				categoryId: String(group.category_id),
+				name: group.name,
+				published: group.published,
 			})
 			.onConflictDoUpdate({
-				target: schema.skillCategories.id,
+				target: schema.skillGroups.id,
 				set: {
-					name: skillCategory.categoryName || 'Skills',
+					name: group.name,
+					published: group.published,
+					updatedAt: new Date(),
+				},
+			})
+	}
+
+	console.log(`✓ Imported ${skillGroups.length} skill groups`)
+
+	// 3) Types/skills with dogma attributes
+	const skillTypeIds = [
+		...new Set(skillGroups.flatMap((group) => (group.types ?? []).map((typeId) => typeId))),
+	]
+
+	console.log(`Fetching ${skillTypeIds.length} skill types from ESI...`)
+	const typeResponses = await mapWithConcurrency(skillTypeIds, 25, async (typeId) => {
+		return fetchJsonWithRetry<EsiType>(buildEsiUrl(`/universe/types/${typeId}/`))
+	})
+
+	const validGroupIds = new Set(skillGroups.map((group) => String(group.group_id)))
+	const importedSkillIds: string[] = []
+	const skillRequirementsToInsert: Array<{
+		skillId: string
+		requiredSkillId: string
+		requiredLevel: string
+	}> = []
+	const skillAttributesToInsert: Array<{
+		skillId: string
+		attributeName: string
+		attributeValue: string
+	}> = []
+
+	for (const type of typeResponses) {
+		// Only keep published skill types from known skill groups.
+		if (!type.published || !validGroupIds.has(String(type.group_id))) {
+			continue
+		}
+
+		const attributeMap = new Map<number, number>()
+		for (const attr of type.dogma_attributes ?? []) {
+			attributeMap.set(attr.attribute_id, attr.value)
+		}
+
+		const primaryAttrId = attributeMap.get(ATTRIBUTE_IDS.PRIMARY_ATTRIBUTE)
+		const secondaryAttrId = attributeMap.get(ATTRIBUTE_IDS.SECONDARY_ATTRIBUTE)
+		const primaryAttribute = primaryAttrId ? ATTRIBUTE_NAMES[Math.round(primaryAttrId)] : null
+		const secondaryAttribute = secondaryAttrId
+			? ATTRIBUTE_NAMES[Math.round(secondaryAttrId)]
+			: null
+
+		const rankRaw = attributeMap.get(ATTRIBUTE_IDS.SKILL_TIME_CONSTANT) ?? 1
+		const rank = Math.max(1, Math.round(rankRaw))
+		const canNotBeTrained = (attributeMap.get(ATTRIBUTE_IDS.CAN_NOT_BE_TRAINED) ?? 0) >= 1
+
+		await db
+			.insert(schema.skills)
+			.values({
+				id: String(type.type_id),
+				groupId: String(type.group_id),
+				name: type.name,
+				description: type.description ?? '',
+				rank: String(rank),
+				primaryAttribute,
+				secondaryAttribute,
+				published: type.published,
+				canNotBeTrained,
+			})
+			.onConflictDoUpdate({
+				target: schema.skills.id,
+				set: {
+					groupId: String(type.group_id),
+					name: type.name,
+					description: type.description ?? '',
+					rank: String(rank),
+					primaryAttribute,
+					secondaryAttribute,
+					published: type.published,
+					canNotBeTrained,
 					updatedAt: new Date(),
 				},
 			})
 
-		console.log('✓ Imported skill category')
+		importedSkillIds.push(String(type.type_id))
 
-		// Fetch groups and filter for skill groups
-		const groups: SDESkillGroup[] = await fetchSDEData(`${baseUrl}/invGroups.json`)
-		const skillGroups = groups.filter((group) => group.categoryID === 16 && group.published === 1)
-
-		// Insert skill groups
-		for (const group of skillGroups) {
-			await db
-				.insert(schema.skillGroups)
-				.values({
-					id: group.groupID.toString(),
-					categoryId: group.categoryID.toString(),
-					name: group.groupName,
-					published: group.published === 1,
-				})
-				.onConflictDoUpdate({
-					target: schema.skillGroups.id,
-					set: {
-						name: group.groupName,
-						published: group.published === 1,
-						updatedAt: new Date(),
-					},
-				})
+		// Skill points for each level (1-5)
+		for (let level = 1; level <= 5; level++) {
+			const skillPoints = calculateSkillPointsForLevel(rank, level)
+			skillAttributesToInsert.push({
+				skillId: String(type.type_id),
+				attributeName: `skillPointsLevel${level}`,
+				attributeValue: String(skillPoints),
+			})
 		}
 
-		console.log(`✓ Imported ${skillGroups.length} skill groups`)
+		for (const [requiredSkillAttributeId, requiredLevelAttributeId] of requirementPairs) {
+			const requiredSkillId = attributeMap.get(requiredSkillAttributeId)
+			const requiredLevel = attributeMap.get(requiredLevelAttributeId)
 
-		// Fetch types (skills are types in certain groups)
-		const types: SDESkill[] = await fetchSDEData(`${baseUrl}/invTypes.json`)
-		const skillGroupIds = new Set(skillGroups.map((g) => g.groupID))
-		const skills = types.filter((type) => skillGroupIds.has(type.groupID) && type.published === 1)
-
-		// Fetch dogma attributes for skills
-		const dogmaAttributes: SDEDogmaAttribute[] = await fetchSDEData(
-			`${baseUrl}/dgmTypeAttributes.json`
-		)
-
-		// Create a map of typeID -> attributes for faster lookup
-		const attributesByType = new Map<number, Map<number, number>>()
-		for (const attr of dogmaAttributes) {
-			if (!attributesByType.has(attr.typeID)) {
-				attributesByType.set(attr.typeID, new Map())
-			}
-			// Use valueFloat if available, otherwise valueInt, default to 0
-			const value = attr.valueFloat ?? attr.valueInt ?? 0
-			attributesByType.get(attr.typeID)!.set(attr.attributeID, value)
-		}
-
-		// Process and insert skills
-		const skillRequirements: Array<{
-			skillId: string
-			requiredSkillId: string
-			requiredLevel: string
-		}> = []
-
-		const skillAttributesToInsert: Array<{
-			skillId: string
-			attributeName: string
-			attributeValue: string
-		}> = []
-
-		for (const skill of skills) {
-			const attributeMap = attributesByType.get(skill.typeID) || new Map()
-
-			// Extract primary and secondary attributes
-			const primaryAttrId = attributeMap.get(ATTRIBUTE_IDS.PRIMARY_ATTRIBUTE)
-			const secondaryAttrId = attributeMap.get(ATTRIBUTE_IDS.SECONDARY_ATTRIBUTE)
-			const primaryAttribute = primaryAttrId ? ATTRIBUTE_NAMES[primaryAttrId] : null
-			const secondaryAttribute = secondaryAttrId ? ATTRIBUTE_NAMES[secondaryAttrId] : null
-
-			// Extract rank (training time multiplier)
-			const rank = attributeMap.get(ATTRIBUTE_IDS.SKILL_TIME_CONSTANT) || 1
-
-			// Check if skill can be trained
-			const canNotBeTrained = attributeMap.get(ATTRIBUTE_IDS.CAN_NOT_BE_TRAINED) === 1
-
-			// Calculate and store skill points for each level (1-5)
-			for (let level = 1; level <= 5; level++) {
-				const skillPoints = calculateSkillPointsForLevel(rank, level)
-				skillAttributesToInsert.push({
-					skillId: skill.typeID.toString(),
-					attributeName: `skillPointsLevel${level}`,
-					attributeValue: skillPoints.toString(),
-				})
+			if (requiredSkillId == null || requiredLevel == null) {
+				continue
 			}
 
-			// Insert skill
-			await db
-				.insert(schema.skills)
-				.values({
-					id: skill.typeID.toString(),
-					groupId: skill.groupID.toString(),
-					name: skill.typeName,
-					description: skill.description || '',
-					rank: Math.round(rank).toString(),
-					primaryAttribute,
-					secondaryAttribute,
-					published: skill.published === 1,
-					canNotBeTrained,
-				})
-				.onConflictDoUpdate({
-					target: schema.skills.id,
-					set: {
-						name: skill.typeName,
-						description: skill.description || '',
-						rank: Math.round(rank).toString(),
-						primaryAttribute,
-						secondaryAttribute,
-						published: skill.published === 1,
-						canNotBeTrained,
-						updatedAt: new Date(),
-					},
-				})
-
-			// Extract skill requirements
-			const requirementPairs = [
-				[ATTRIBUTE_IDS.REQUIRED_SKILL_1, ATTRIBUTE_IDS.REQUIRED_SKILL_1_LEVEL],
-				[ATTRIBUTE_IDS.REQUIRED_SKILL_2, ATTRIBUTE_IDS.REQUIRED_SKILL_2_LEVEL],
-				[ATTRIBUTE_IDS.REQUIRED_SKILL_3, ATTRIBUTE_IDS.REQUIRED_SKILL_3_LEVEL],
-				[ATTRIBUTE_IDS.REQUIRED_SKILL_4, ATTRIBUTE_IDS.REQUIRED_SKILL_4_LEVEL],
-				[ATTRIBUTE_IDS.REQUIRED_SKILL_5, ATTRIBUTE_IDS.REQUIRED_SKILL_5_LEVEL],
-				[ATTRIBUTE_IDS.REQUIRED_SKILL_6, ATTRIBUTE_IDS.REQUIRED_SKILL_6_LEVEL],
-			]
-
-			for (const [skillAttr, levelAttr] of requirementPairs) {
-				const requiredSkillId = attributeMap.get(skillAttr)
-				const requiredLevel = attributeMap.get(levelAttr)
-
-				if (requiredSkillId && requiredLevel) {
-					skillRequirements.push({
-						skillId: skill.typeID.toString(),
-						requiredSkillId: Math.round(requiredSkillId).toString(),
-						requiredLevel: Math.round(requiredLevel).toString(),
-					})
-				}
-			}
+			skillRequirementsToInsert.push({
+				skillId: String(type.type_id),
+				requiredSkillId: String(Math.round(requiredSkillId)),
+				requiredLevel: String(Math.round(requiredLevel)),
+			})
 		}
-
-		console.log(`✓ Imported ${skills.length} skills`)
-
-		// Insert skill requirements
-		for (const req of skillRequirements) {
-			await db.insert(schema.skillRequirements).values(req).onConflictDoNothing()
-		}
-
-		console.log(`✓ Imported ${skillRequirements.length} skill requirements`)
-
-		// Insert skill attributes (skill points per level)
-		for (const attr of skillAttributesToInsert) {
-			await db
-				.insert(schema.skillAttributes)
-				.values(attr)
-				.onConflictDoUpdate({
-					target: [schema.skillAttributes.skillId, schema.skillAttributes.attributeName],
-					set: {
-						attributeValue: attr.attributeValue,
-					},
-				})
-		}
-
-		console.log(
-			`✓ Imported ${skillAttributesToInsert.length} skill attributes (skill points per level)`
-		)
-	} catch (error) {
-		console.error('SDE import failed:', error)
-		process.exit(1)
 	}
 
+	console.log(`✓ Imported ${importedSkillIds.length} skills`)
+
+	// 4) Replace dependent rows for imported skills only to avoid stale requirements.
+	if (importedSkillIds.length > 0) {
+		await db
+			.delete(schema.skillRequirements)
+			.where(inArray(schema.skillRequirements.skillId, importedSkillIds))
+		await db
+			.delete(schema.skillAttributes)
+			.where(inArray(schema.skillAttributes.skillId, importedSkillIds))
+	}
+
+	for (const req of skillRequirementsToInsert) {
+		await db.insert(schema.skillRequirements).values(req).onConflictDoNothing()
+	}
+	console.log(`✓ Imported ${skillRequirementsToInsert.length} skill requirements`)
+
+	for (const attr of skillAttributesToInsert) {
+		await db.insert(schema.skillAttributes).values(attr).onConflictDoNothing()
+	}
+	console.log(`✓ Imported ${skillAttributesToInsert.length} skill attributes`)
+
+	console.log('✅ Skill catalog import completed')
 	process.exit(0)
 }
 
-main()
+main().catch((error) => {
+	console.error('Skill import failed:', error)
+	process.exit(1)
+})
