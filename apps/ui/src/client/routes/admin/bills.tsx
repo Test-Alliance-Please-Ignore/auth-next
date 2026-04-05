@@ -545,7 +545,7 @@ function GroupBillSubRows(props: { groupBillId: string }) {
 						<th className="pb-1 pr-4 font-medium whitespace-nowrap">Status</th>
 						<th className="pb-1 pr-4 font-medium whitespace-nowrap">Payer</th>
 						<th className="pb-1 pr-4 font-medium whitespace-nowrap">Amount</th>
-						<th className="pb-1 font-medium whitespace-nowrap">Actions</th>
+						<th className="pb-1 font-medium whitespace-nowrap text-right">Actions</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -560,7 +560,7 @@ function GroupBillSubRows(props: { groupBillId: string }) {
 							<td className="py-1.5 pr-4 whitespace-nowrap">
 								<ISKAmount amount={subBill.amount} />
 							</td>
-							<td className="py-1.5">
+							<td className="py-1.5 text-right">
 								<ActionsMenu
 									items={[
 										{

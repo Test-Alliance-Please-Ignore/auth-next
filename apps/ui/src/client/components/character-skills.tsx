@@ -125,10 +125,7 @@ function SkillLevelPips({
 						)}
 					>
 						{isPartial && (
-							<div
-								className="h-full bg-sky-500/60"
-								style={{ width: `${progress}%` }}
-							/>
+							<div className="h-full bg-sky-500/60" style={{ width: `${progress}%` }} />
 						)}
 					</div>
 				)
@@ -152,8 +149,13 @@ export function CharacterSkills({ skills, allSkills, showProgress = false }: Cha
 
 		if (allSkills && allSkills.length > 0) {
 			// Full catalog mode: show all skills, trained or not
+			const catalogSkillIds = new Set<string>()
+
 			for (const catalogSkill of allSkills) {
 				if (catalogSkill.canNotBeTrained) continue
+
+				const catalogSkillId = String(catalogSkill.id ?? catalogSkill.skillId)
+				catalogSkillIds.add(catalogSkillId)
 
 				const groupName = catalogSkill.groupName || 'Unknown'
 				let group = mergedByGroup.get(groupName)
@@ -162,7 +164,7 @@ export function CharacterSkills({ skills, allSkills, showProgress = false }: Cha
 					mergedByGroup.set(groupName, group)
 				}
 
-				const trained = trainedMap.get(String(catalogSkill.id ?? catalogSkill.skillId))
+				const trained = trainedMap.get(catalogSkillId)
 				const merged: MergedSkill = {
 					skillId: catalogSkill.id ?? catalogSkill.skillId,
 					skillName: catalogSkill.name,
@@ -180,6 +182,32 @@ export function CharacterSkills({ skills, allSkills, showProgress = false }: Cha
 					group.trainedCount++
 					group.totalSP += trained.skillpointsInSkill
 				}
+			}
+
+			// Include trained skills missing from the catalog so the UI never drops known skills.
+			for (const [trainedSkillId, trainedSkill] of trainedMap.entries()) {
+				if (catalogSkillIds.has(trainedSkillId)) continue
+
+				const groupName = trainedSkill.skillGroup || trainedSkill.skillCategory || 'Unknown'
+				let group = mergedByGroup.get(groupName)
+				if (!group) {
+					group = { groupName, totalSP: 0, trainedCount: 0, totalCount: 0, skills: [] }
+					mergedByGroup.set(groupName, group)
+				}
+
+				group.skills.push({
+					skillId: Number(trainedSkill.skillId),
+					skillName: trainedSkill.skillName || `Unknown Skill (${trainedSkill.skillId})`,
+					rank: trainedSkill.rank || 1,
+					groupName,
+					trainedSkillLevel: trainedSkill.trainedSkillLevel,
+					activeSkillLevel: trainedSkill.activeSkillLevel,
+					skillpointsInSkill: trainedSkill.skillpointsInSkill,
+					isTrained: true,
+				})
+				group.totalCount++
+				group.trainedCount++
+				group.totalSP += trainedSkill.skillpointsInSkill
 			}
 		} else {
 			// Fallback: trained skills only
@@ -208,9 +236,7 @@ export function CharacterSkills({ skills, allSkills, showProgress = false }: Cha
 		}
 
 		// Sort groups alphabetically (like in-game)
-		return Array.from(mergedByGroup.values()).sort((a, b) =>
-			a.groupName.localeCompare(b.groupName)
-		)
+		return Array.from(mergedByGroup.values()).sort((a, b) => a.groupName.localeCompare(b.groupName))
 	}, [skills.skills, allSkills])
 
 	const activeGroup = groups.find((g) => g.groupName === selectedGroup)
@@ -226,9 +252,7 @@ export function CharacterSkills({ skills, allSkills, showProgress = false }: Cha
 					<div className="text-sm font-normal text-muted-foreground">
 						{formatSkillPoints(skills.totalSp)} Total
 						{skills.unallocatedSp != null && skills.unallocatedSp > 0 && (
-							<span className="ml-2">
-								• {formatSkillPoints(skills.unallocatedSp)} Unallocated
-							</span>
+							<span className="ml-2">• {formatSkillPoints(skills.unallocatedSp)} Unallocated</span>
 						)}
 					</div>
 				</CardTitle>
@@ -241,29 +265,23 @@ export function CharacterSkills({ skills, allSkills, showProgress = false }: Cha
 						{/* Skill Group Grid — column-first fill */}
 						<div
 							className="grid grid-flow-col gap-1.5"
-							style={{ gridTemplateRows: `repeat(${Math.ceil(groups.length / 3)}, minmax(0, 1fr))` }}
+							style={{
+								gridTemplateRows: `repeat(${Math.ceil(groups.length / 3)}, minmax(0, 1fr))`,
+							}}
 						>
 							{groups.map((group) => {
-								const pct = group.totalCount > 0
-									? (group.trainedCount / group.totalCount) * 100
-									: 0
+								const pct = group.totalCount > 0 ? (group.trainedCount / group.totalCount) * 100 : 0
 								const isSelected = selectedGroup === group.groupName
 
 								return (
 									<button
 										key={group.groupName}
 										type="button"
-										onClick={() =>
-											setSelectedGroup(
-												isSelected ? null : group.groupName
-											)
-										}
+										onClick={() => setSelectedGroup(isSelected ? null : group.groupName)}
 										className={cn(
 											'relative flex items-center justify-between rounded px-2.5 py-1.5 text-left transition-colors overflow-hidden',
 											'hover:brightness-125',
-											isSelected
-												? 'bg-sky-500/10 text-sky-300'
-												: 'bg-muted/40 text-foreground'
+											isSelected ? 'bg-sky-500/10 text-sky-300' : 'bg-muted/40 text-foreground'
 										)}
 									>
 										{/* Progress bar fill */}
@@ -327,14 +345,10 @@ export function CharacterSkills({ skills, allSkills, showProgress = false }: Cha
 														<SkillLevelPips
 															level={skill.trainedSkillLevel}
 															progress={
-																showProgress && skill.trainedSkillLevel < 5
-																	? progress
-																	: undefined
+																showProgress && skill.trainedSkillLevel < 5 ? progress : undefined
 															}
 														/>
-														<span className="text-sm truncate">
-															{skill.skillName}
-														</span>
+														<span className="text-sm truncate">{skill.skillName}</span>
 													</div>
 													<div className="text-right shrink-0 ml-1">
 														{skill.trainedSkillLevel === 5 ? (

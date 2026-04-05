@@ -129,7 +129,13 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 		}
 
 		// Cache the result
-		this.skillCache.set(cacheKey, { skill: skillInfo, cachedAt: Date.now() })
+		this.skillCache.set(cacheKey, {
+			skill: {
+				...skillInfo,
+				groupId: skill.groupId,
+			},
+			cachedAt: Date.now(),
+		})
 
 		return skillInfo
 	}
@@ -318,6 +324,7 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 						secondaryAttribute: skillInfo.secondaryAttribute,
 						published: skillInfo.published,
 						canNotBeTrained: skillInfo.canNotBeTrained,
+						groupId: skill.groupId,
 					},
 					cachedAt: Date.now(),
 				})
