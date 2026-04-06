@@ -2091,9 +2091,8 @@ export class ApiClient {
 	// ===== Broadcasts API =====
 
 	// Broadcast Targets
-	async getBroadcastTargets(permissionId?: string): Promise<BroadcastTarget[]> {
-		const params = permissionId ? `?permissionId=${permissionId}` : ''
-		return this.get(`/broadcasts/targets${params}`)
+	async getBroadcastTargets(): Promise<BroadcastTarget[]> {
+		return this.get('/broadcasts/targets')
 	}
 
 	async getBroadcastTarget(id: string): Promise<BroadcastTarget> {

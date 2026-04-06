@@ -19,8 +19,6 @@ export const broadcastKeys = {
 	all: ['broadcasts'] as const,
 	targets: () => [...broadcastKeys.all, 'targets'] as const,
 	target: (id: string) => [...broadcastKeys.targets(), id] as const,
-	targetsByPermission: (permissionId: string) =>
-		[...broadcastKeys.targets(), 'permission', permissionId] as const,
 	templates: () => [...broadcastKeys.all, 'templates'] as const,
 	template: (id: string) => [...broadcastKeys.templates(), id] as const,
 	templatesByGroup: (groupId: string) => [...broadcastKeys.templates(), 'group', groupId] as const,
@@ -49,14 +47,12 @@ export const broadcastKeys = {
 // ===== Broadcast Targets =====
 
 /**
- * Fetch all broadcast targets, optionally filtered by permission
+ * Fetch all broadcast targets
  */
-export function useBroadcastTargets(permissionId?: string) {
+export function useBroadcastTargets() {
 	return useQuery({
-		queryKey: permissionId
-			? broadcastKeys.targetsByPermission(permissionId)
-			: broadcastKeys.targets(),
-		queryFn: () => api.getBroadcastTargets(permissionId),
+		queryKey: broadcastKeys.targets(),
+		queryFn: () => api.getBroadcastTargets(),
 		staleTime: 1000 * 60, // 1 minute
 	})
 }
@@ -83,12 +79,6 @@ export function useCreateBroadcastTarget() {
 		onSuccess: (_, variables) => {
 			// Invalidate all targets lists
 			queryClient.invalidateQueries({ queryKey: broadcastKeys.targets() })
-			// Invalidate permission-specific list
-			if (variables.sendPermissionId) {
-				queryClient.invalidateQueries({
-					queryKey: broadcastKeys.targetsByPermission(variables.sendPermissionId),
-				})
-			}
 		},
 	})
 }

@@ -215,12 +215,12 @@ export interface Broadcasts {
 	// =========================================================================
 
 	/**
-	 * List all broadcast targets, optionally filtered by send permission ID
+	 * List all broadcast targets.
 	 * @param userId - User ID making the request (for audit)
-	 * @param sendPermissionId - Optional send permission ID to filter by
+	 * @param sendPermissionIds - Optional set of allowed permission IDs for send-level access
 	 * @returns Array of broadcast targets
 	 */
-	listTargets(userId: string, sendPermissionId?: string): Promise<BroadcastTarget[]>
+	listTargets(userId: string, sendPermissionIds?: string[]): Promise<BroadcastTarget[]>
 
 	/**
 	 * Get a single broadcast target by ID

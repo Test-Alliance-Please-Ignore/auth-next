@@ -24,7 +24,7 @@ const MEMBERSHIPS_TTL = 30 * 1000 // 30 seconds
 const GROUPS_TTL = 30 * 1000 // 30 seconds
 const CHARACTER_PERMISSIONS_TTL = 15 * 1000 // 15 seconds
 const ROLES_TTL = 30 * 1000 // 30 seconds
-const GLOBAL_PERMISSIONS_TTL = 60 * 1000 // 60 seconds
+const GLOBAL_PERMISSIONS_TTL = 5 * 60 * 1000 // 5 minutes
 
 // Permission cache: userId -> UserPermission[]
 const permissionsCache = new TimeCache<UserPermission[]>(PERMISSIONS_TTL)

@@ -94,6 +94,8 @@ export interface GroupPermissionWithDetails extends GroupPermission {
  * which group it came from and what role they have in that group.
  */
 export interface UserPermission {
+	/** Global permission ID when sourced from global permissions (null/undefined for group-scoped) */
+	permissionId?: string | null
 	/** URN identifier */
 	urn: string
 	/** Human-readable name */
