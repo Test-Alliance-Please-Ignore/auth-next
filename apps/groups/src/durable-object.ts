@@ -1279,9 +1279,14 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Only group owner, admins, or system admins can view invitations')
 		}
 
-		// Fetch all pending invitations for this group
+		// Fetch pending invitations for this group, excluding those expired more than 30 days ago
+		const thirtyDaysAgo = sql`now() - interval '30 days'`
 		const invitations = await this.db.query.groupInvitations.findMany({
-			where: and(eq(groupInvitations.groupId, groupId), eq(groupInvitations.status, 'pending')),
+			where: and(
+				eq(groupInvitations.groupId, groupId),
+				eq(groupInvitations.status, 'pending'),
+				sql`${groupInvitations.expiresAt} >= ${thirtyDaysAgo}`
+			),
 			orderBy: (groupInvitations, { desc }) => [desc(groupInvitations.createdAt)],
 		})
 
@@ -1393,8 +1398,12 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Only group owner, group admins, or global admins can view invite codes')
 		}
 
+		// Show active codes plus expired/revoked codes within the last 30 days
 		const codes = await this.db.query.groupInviteCodes.findMany({
-			where: and(eq(groupInviteCodes.groupId, groupId), isNull(groupInviteCodes.revokedAt)),
+			where: and(
+				eq(groupInviteCodes.groupId, groupId),
+				sql`${groupInviteCodes.expiresAt} >= now() - interval '30 days'`
+			),
 			orderBy: (groupInviteCodes, { desc }) => [desc(groupInviteCodes.createdAt)],
 		})
 
