@@ -645,4 +645,16 @@ export interface EveTokenStore {
 	 * @returns An array of character IDs
 	 */
 	getRefreshCharacterBatch(batchSize?: number): Promise<EveCharacterId[]>
+
+	/**
+	 * Get a batch of characters whose ESI data needs a full sync.
+	 * Returns characters not synced in the last 20 hours, skipping any
+	 * with a sync attempt within the last hour.
+	 */
+	getCharactersNeedingDataSync(limit?: number): Promise<string[]>
+
+	/**
+	 * Mark a character's ESI data sync as successfully completed.
+	 */
+	markCharacterDataSyncComplete(characterId: string): Promise<void>
 }

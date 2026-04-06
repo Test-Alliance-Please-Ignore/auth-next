@@ -42,6 +42,11 @@ export const eveCharacters = pgTable(
 		lastRefreshAt: timestamp('last_refresh_at', { withTimezone: true }),
 		lastAttemptedRefreshAt: timestamp('last_attempted_refresh_at', { withTimezone: true }),
 
+		/** When character ESI data was last successfully synced */
+		lastDataSyncAt: timestamp('last_data_sync_at', { withTimezone: true }),
+		/** When a data sync was last attempted (used to prevent duplicate dispatch) */
+		lastDataSyncAttemptAt: timestamp('last_data_sync_attempt_at', { withTimezone: true }),
+
 		/**
 		 * When the character was marked as deleted from EVE.
 		 * null = active character, set = character has been deleted from EVE
@@ -54,6 +59,8 @@ export const eveCharacters = pgTable(
 		index('eve_characters_character_owner_hash_idx').on(table.characterOwnerHash),
 		index('eve_characters_last_refresh_at_idx').on(table.lastRefreshAt),
 		index('eve_characters_last_attempted_refresh_at_idx').on(table.lastAttemptedRefreshAt),
+		index('eve_characters_last_data_sync_at_idx').on(table.lastDataSyncAt),
+		index('eve_characters_last_data_sync_attempt_at_idx').on(table.lastDataSyncAttemptAt),
 	]
 )
 

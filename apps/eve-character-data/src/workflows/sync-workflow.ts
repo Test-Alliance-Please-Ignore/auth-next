@@ -1,20 +1,14 @@
 import { WorkflowEntrypoint, WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
 
+import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 import { createWorkflowInstanceUpdater } from '@repo/orchestrator'
 
 import * as refreshHelpers from './helpers/refresh-public-info'
 import * as refreshAuthenticatedData from './helpers/refresh-authenticated-data'
-import * as refreshKillmails from './helpers/refresh-killmails'
-import * as refreshWalletJournal from './helpers/refresh-wallet-journal'
-import * as refreshMarketData from './helpers/refresh-market-data'
-import * as refreshAssets from './helpers/refresh-assets'
-import * as refreshContracts from './helpers/refresh-contracts'
-import * as refreshFittings from './helpers/refresh-fittings'
-import * as refreshMiningLedger from './helpers/refresh-mining-ledger'
-import * as refreshOpenMarketOrders from './helpers/refresh-open-market-orders'
 
 import type { EveCharacterSyncDataType } from '@repo/eve-character-data'
+import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Env } from '../context'
 
 /**
@@ -27,6 +21,8 @@ export interface EveCharacterSyncParams {
 	dataTypes?: EveCharacterSyncDataType[]
 	/** Trigger source (cron or api) */
 	trigger: 'cron' | 'api'
+	/** Optional jitter delay in seconds before the workflow begins work */
+	jitterDelaySeconds?: number
 }
 
 /**
@@ -37,20 +33,11 @@ export interface EveCharacterSyncParams {
  *
  * Data Types Synced:
  * 1. Public info (no auth required)
- * 2. Authenticated data (skills, attributes) - requires token
- * 3. Killmails - requires token
- * 4. Wallet journal - requires token
- * 5. Market transactions - requires token
- * 6. Market orders - requires token
- * 7. Assets - stub (to be implemented)
- * 8. Contracts - stub (to be implemented)
- * 9. Fittings - stub (to be implemented)
- * 10. Mining ledger - stub (to be implemented)
- * 11. Open market orders - stub (to be implemented)
+ * 2. Authenticated data (skills, attributes, wallet balance) - requires token
  */
 export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharacterSyncParams> {
 	async run(event: WorkflowEvent<EveCharacterSyncParams>, step: WorkflowStep) {
-		const { characterId, dataTypes, trigger } = event.payload
+		const { characterId, dataTypes, trigger, jitterDelaySeconds } = event.payload
 
 		// Helper to check if a data type should be synced
 		const requestedTypes = dataTypes ? new Set<EveCharacterSyncDataType>(dataTypes) : null
@@ -61,14 +48,51 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 			characterId,
 			dataTypes: dataTypes || 'all',
 			trigger,
+			jitterDelaySeconds: jitterDelaySeconds ?? 0,
 			timestamp: event.timestamp,
 		})
 
-		// Step 0: Mark workflow as running
+		// Step: Jitter delay — spread load across the batch window
+		if (jitterDelaySeconds && jitterDelaySeconds > 0) {
+			await step.sleep('jitter-delay', `${jitterDelaySeconds} seconds`)
+		}
+
+		// Step: Mark workflow as running
 		// Note: updater must be created inside step to survive hibernation
 		await step.do('mark-running', async () => {
 			const updater = createWorkflowInstanceUpdater(event.instanceId, this.env.DATABASE_URL)
 			await updater.markRunning()
+		})
+
+		// Step: Validate token upfront — proactively refreshes if expired, detects revoked/missing tokens
+		const tokenValidation = await step.do(
+			'validate-token',
+			{
+				retries: { limit: 2, delay: '5 seconds', backoff: 'exponential' },
+				timeout: '30 seconds',
+			},
+			async () => {
+				const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+				const validation = await tokenStoreStub.validateToken(characterId)
+				// Treat transient errors as retriable — step retries will handle them
+				if (validation.status === 'transient_error') {
+					throw new Error(`Transient token validation error for character ${characterId}`)
+				}
+				return {
+					hasValidToken: validation.isValid,
+					status: validation.status,
+					refreshAttempted: validation.refreshAttempted,
+					refreshSucceeded: validation.refreshSucceeded,
+				}
+			}
+		)
+
+		logger.info('[EveCharacterSyncWorkflow] Token validation complete', {
+			characterId,
+			hasValidToken: tokenValidation.hasValidToken,
+			status: tokenValidation.status,
+			refreshAttempted: tokenValidation.refreshAttempted,
+			refreshSucceeded: tokenValidation.refreshSucceeded,
 		})
 
 		// Step 1: Fetch & store public info
@@ -97,229 +121,64 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 			let authenticatedDataResult: refreshAuthenticatedData.RefreshAuthenticatedDataResult | null =
 				null
 			if (shouldSync('authenticated')) {
-				authenticatedDataResult = await step.do(
-					'fetch-authenticated-data',
-					{
-						retries: { limit: 5, delay: '10 seconds', backoff: 'exponential' },
-						timeout: '1 minute',
-					},
-					async () => {
-						logger.debug('[Step] Fetching authenticated data', { characterId })
-						return await refreshAuthenticatedData.refreshAuthenticatedData(
-							this.env,
-							characterId
-						)
-					}
-				)
-				if (authenticatedDataResult.success) {
-					logger.info('[Step] Authenticated data fetched', { characterId })
+				if (!tokenValidation.hasValidToken) {
+					logger.info('[Step] Skipping authenticated data (no valid token)', { characterId, tokenStatus: tokenValidation.status })
+					authenticatedDataResult = { success: false, hasValidToken: false }
 				} else {
-					logger.info('[Step] Authenticated data skipped (no valid token)', { characterId })
+					authenticatedDataResult = await step.do(
+						'fetch-authenticated-data',
+						{
+							retries: { limit: 5, delay: '10 seconds', backoff: 'exponential' },
+							timeout: '1 minute',
+						},
+						async () => {
+							logger.debug('[Step] Fetching authenticated data', { characterId })
+							return await refreshAuthenticatedData.refreshAuthenticatedData(
+								this.env,
+								characterId
+							)
+						}
+					)
+					if (authenticatedDataResult.success) {
+						logger.info('[Step] Authenticated data fetched', { characterId })
+					} else {
+						logger.info('[Step] Authenticated data skipped (no valid token)', { characterId })
+					}
 				}
 			} else {
 				logger.debug('[Step] Skipping authenticated data sync (filtered)', { characterId })
 			}
 
-			// Step 3: Fetch & store killmails
-			let killmailsResult: refreshKillmails.RefreshKillmailsResult | null = null
-			if (shouldSync('killmails')) {
-				killmailsResult = await step.do(
-					'fetch-killmails',
-					{
-						retries: { limit: 5, delay: '10 seconds', backoff: 'exponential' },
-						timeout: '1 minute',
-					},
-					async () => {
-						logger.debug('[Step] Fetching killmails', { characterId })
-						return await refreshKillmails.refreshKillmails(this.env, characterId)
-					}
-				)
-				if (killmailsResult.success) {
-					logger.info('[Step] Killmails fetched', {
-						characterId,
-						killmailCount: killmailsResult.killmailCount,
-					})
-				} else {
-					logger.info('[Step] Killmails skipped (no valid token)', { characterId })
-				}
-			} else {
-				logger.debug('[Step] Skipping killmails sync (filtered)', { characterId })
-			}
-
-			// Step 4: Fetch & store wallet journal
-			let walletJournalResult: refreshWalletJournal.RefreshWalletJournalResult | null = null
-			if (shouldSync('wallet-journal')) {
-				walletJournalResult = await step.do(
-					'fetch-wallet-journal',
-					{
-						retries: { limit: 5, delay: '10 seconds', backoff: 'exponential' },
-						timeout: '1 minute',
-					},
-					async () => {
-						logger.debug('[Step] Fetching wallet journal', { characterId })
-						return await refreshWalletJournal.refreshWalletJournal(this.env, characterId)
-					}
-				)
-				if (walletJournalResult.success) {
-					logger.info('[Step] Wallet journal fetched', {
-						characterId,
-						entryCount: walletJournalResult.entryCount,
-					})
-				} else {
-					logger.info('[Step] Wallet journal skipped (no valid token)', { characterId })
-				}
-			} else {
-				logger.debug('[Step] Skipping wallet journal sync (filtered)', { characterId })
-			}
-
-			// Step 5: Fetch & store market data (transactions and orders)
-			let marketDataResult: refreshMarketData.RefreshMarketDataResult | null = null
-			if (shouldSync('market-transactions') || shouldSync('market-orders')) {
-				marketDataResult = await step.do(
-					'fetch-market-data',
-					{
-						retries: { limit: 5, delay: '10 seconds', backoff: 'exponential' },
-						timeout: '1 minute',
-					},
-					async () => {
-						logger.debug('[Step] Fetching market data', { characterId })
-						return await refreshMarketData.refreshMarketData(this.env, characterId)
-					}
-				)
-				if (marketDataResult.success) {
-					logger.info('[Step] Market data fetched', {
-						characterId,
-						transactionCount: marketDataResult.transactionCount,
-						orderCount: marketDataResult.orderCount,
-					})
-				} else {
-					logger.info('[Step] Market data skipped (no valid token)', { characterId })
-				}
-			} else {
-				logger.debug('[Step] Skipping market data sync (filtered)', { characterId })
-			}
-
-			// Step 6: Fetch & store assets (stub)
-			if (shouldSync('assets')) {
-				await step.do(
-					'fetch-assets',
-					{
-						retries: { limit: 3, delay: '5 seconds', backoff: 'exponential' },
-						timeout: '30 seconds',
-					},
-					async () => {
-						logger.debug('[Step] Fetching assets (stub)', { characterId })
-						return await refreshAssets.refreshAssets(this.env, characterId)
-					}
-				)
-			} else {
-				logger.debug('[Step] Skipping assets sync (filtered)', { characterId })
-			}
-
-			// Step 7: Fetch & store contracts (stub)
-			if (shouldSync('contracts')) {
-				await step.do(
-					'fetch-contracts',
-					{
-						retries: { limit: 3, delay: '5 seconds', backoff: 'exponential' },
-						timeout: '30 seconds',
-					},
-					async () => {
-						logger.debug('[Step] Fetching contracts (stub)', { characterId })
-						return await refreshContracts.refreshContracts(this.env, characterId)
-					}
-				)
-			} else {
-				logger.debug('[Step] Skipping contracts sync (filtered)', { characterId })
-			}
-
-			// Step 8: Fetch & store fittings (stub)
-			if (shouldSync('fittings')) {
-				await step.do(
-					'fetch-fittings',
-					{
-						retries: { limit: 3, delay: '5 seconds', backoff: 'exponential' },
-						timeout: '30 seconds',
-					},
-					async () => {
-						logger.debug('[Step] Fetching fittings (stub)', { characterId })
-						return await refreshFittings.refreshFittings(this.env, characterId)
-					}
-				)
-			} else {
-				logger.debug('[Step] Skipping fittings sync (filtered)', { characterId })
-			}
-
-			// Step 9: Fetch & store mining ledger (stub)
-			if (shouldSync('mining-ledger')) {
-				await step.do(
-					'fetch-mining-ledger',
-					{
-						retries: { limit: 3, delay: '5 seconds', backoff: 'exponential' },
-						timeout: '30 seconds',
-					},
-					async () => {
-						logger.debug('[Step] Fetching mining ledger (stub)', { characterId })
-						return await refreshMiningLedger.refreshMiningLedger(this.env, characterId)
-					}
-				)
-			} else {
-				logger.debug('[Step] Skipping mining ledger sync (filtered)', { characterId })
-			}
-
-			// Step 10: Fetch & store open market orders (stub)
-			if (shouldSync('open-market-orders')) {
-				await step.do(
-					'fetch-open-market-orders',
-					{
-						retries: { limit: 3, delay: '5 seconds', backoff: 'exponential' },
-						timeout: '30 seconds',
-					},
-					async () => {
-						logger.debug('[Step] Fetching open market orders (stub)', { characterId })
-						return await refreshOpenMarketOrders.refreshOpenMarketOrders(
-							this.env,
-							characterId
-						)
-					}
-				)
-			} else {
-				logger.debug('[Step] Skipping open market orders sync (filtered)', { characterId })
-			}
-
 		logger.info('[EveCharacterSyncWorkflow] Character sync completed successfully', {
 			characterId,
 			trigger,
+			tokenStatus: tokenValidation.status,
 			stats: {
 				characterName: publicInfoResult?.characterName,
 				hasAuthenticatedData: authenticatedDataResult?.success,
-				killmailCount: killmailsResult?.killmailCount,
-				walletJournalEntries: walletJournalResult?.entryCount,
-				marketTransactions: marketDataResult?.transactionCount,
-				marketOrders: marketDataResult?.orderCount,
 			},
 		})
 
-		// Step: Mark workflow as completed
+		// Step: Mark workflow as completed and record data sync timestamp
 		// Note: updater must be created inside step to survive hibernation
 		await step.do('mark-completed', async () => {
 			const updater = createWorkflowInstanceUpdater(event.instanceId, this.env.DATABASE_URL)
-			await updater.markCompleted()
+			const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+			await Promise.all([
+				updater.markCompleted(),
+				tokenStoreStub.markCharacterDataSyncComplete(characterId),
+			])
 		})
 
 		return {
 			success: true,
 			characterId,
 			trigger,
+			tokenStatus: tokenValidation.status,
 			stats: {
 				characterName: publicInfoResult?.characterName,
 				hasAuthenticatedData: authenticatedDataResult?.success,
-				killmailCount: killmailsResult?.killmailCount,
-				walletJournalEntries: walletJournalResult?.entryCount,
-				marketTransactions: marketDataResult?.transactionCount,
-				marketOrders: marketDataResult?.orderCount,
 			},
 		}
 	}
 }
-
