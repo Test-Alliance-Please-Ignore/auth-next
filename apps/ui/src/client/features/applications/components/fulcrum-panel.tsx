@@ -49,7 +49,6 @@ function getLatestReport(reports: CharacterReportMetadata[]): CharacterReportMet
 }
 
 function canRequestNewReport(reports: CharacterReportMetadata[]): boolean {
-	// Can request if no reports exist, or if there's no active (pending/processing) report
 	return !reports.some((r) => r.status === 'pending' || r.status === 'processing')
 }
 
@@ -59,7 +58,6 @@ function canRequestNewReport(reports: CharacterReportMetadata[]): boolean {
 
 interface CharacterReportCardProps {
 	character: FulcrumCharacterData
-	applicationId: string
 	onRequest: (characterId: string) => void
 	onViewReport: (reportId: string, characterName: string) => void
 	isRequesting: boolean
@@ -68,7 +66,6 @@ interface CharacterReportCardProps {
 
 function CharacterReportCard({
 	character,
-	applicationId,
 	onRequest,
 	onViewReport,
 	isRequesting,
@@ -105,7 +102,6 @@ function CharacterReportCard({
 							</span>
 						</div>
 
-						{/* Expiry info for completed reports */}
 						{latestReport.status === 'completed' && latestReport.expiresAt && (
 							<div className="flex items-center gap-1 text-xs text-muted-foreground">
 								<Clock className="h-3 w-3" />
@@ -114,7 +110,6 @@ function CharacterReportCard({
 							</div>
 						)}
 
-						{/* Error message for failed reports */}
 						{latestReport.status === 'failed' && latestReport.errorMessage && (
 							<div className="flex items-center gap-1 text-xs text-destructive">
 								<AlertCircle className="h-3 w-3" />
@@ -122,7 +117,6 @@ function CharacterReportCard({
 							</div>
 						)}
 
-						{/* Processing indicator */}
 						{(latestReport.status === 'pending' || latestReport.status === 'processing') && (
 							<div className="flex items-center gap-1 text-xs text-muted-foreground">
 								<Loader2 className="h-3 w-3 animate-spin" />
@@ -137,7 +131,6 @@ function CharacterReportCard({
 
 			{/* Actions */}
 			<div className="flex flex-col gap-2">
-				{/* View Report button */}
 				{latestReport?.status === 'completed' && (
 					<Button
 						variant="ghost"
@@ -149,7 +142,6 @@ function CharacterReportCard({
 					</Button>
 				)}
 
-				{/* Request / Re-request button */}
 				{canRequest && (
 					<Button
 						variant={latestReport ? 'ghost' : 'primary'}
@@ -177,24 +169,38 @@ function CharacterReportCard({
 // ============================================================================
 
 interface FulcrumPanelProps {
-	applicationId: string
+	userId: string
+	corporationId: string
+	applicationId?: string
 }
 
-export function FulcrumPanel({ applicationId }: FulcrumPanelProps) {
-	const { corporationId } = useParams<{ corporationId: string }>()
+export function FulcrumPanel({ userId, corporationId, applicationId }: FulcrumPanelProps) {
+	const { corporationId: routeCorporationId } = useParams<{ corporationId: string }>()
 	const navigate = useNavigate()
-	const { data: characters, isLoading, error } = useApplicationFulcrum(applicationId)
+	const { data: characters, isLoading, error } = useApplicationFulcrum(userId, corporationId)
 	const requestReport = useRequestFulcrumReport()
 
 	const handleRequest = (characterId: string) => {
-		requestReport.mutate({ applicationId, characterId })
+		requestReport.mutate({
+			characterId,
+			corporationId,
+			requestSource: 'hr',
+			applicationId,
+			userId,
+		})
 	}
 
 	const handleViewReport = (reportId: string, characterName: string) => {
 		const params = new URLSearchParams({ char: characterName })
-		navigate(
-			`/corporations/${corporationId}/hr/applications/${applicationId}/report/${reportId}?${params}`,
-		)
+		if (applicationId) {
+			navigate(
+				`/corporations/${routeCorporationId}/hr/applications/${applicationId}/report/${reportId}?${params}`,
+			)
+		} else {
+			navigate(
+				`/corporations/${routeCorporationId}/hr/report/${reportId}?${params}`,
+			)
+		}
 	}
 
 	if (isLoading) {
@@ -226,7 +232,13 @@ export function FulcrumPanel({ applicationId }: FulcrumPanelProps) {
 
 	const handleRequestAll = () => {
 		for (const character of requestableCharacters) {
-			requestReport.mutate({ applicationId, characterId: character.characterId })
+			requestReport.mutate({
+				characterId: character.characterId,
+				corporationId,
+				requestSource: 'hr',
+				applicationId,
+				userId,
+			})
 		}
 	}
 
@@ -253,7 +265,6 @@ export function FulcrumPanel({ applicationId }: FulcrumPanelProps) {
 				<CharacterReportCard
 					key={character.characterId}
 					character={character}
-					applicationId={applicationId}
 					onRequest={handleRequest}
 					onViewReport={handleViewReport}
 					isRequesting={requestReport.isPending}

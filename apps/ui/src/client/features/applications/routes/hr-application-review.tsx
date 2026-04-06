@@ -520,11 +520,15 @@ export default function HrApplicationReview() {
 							<CardHeader>
 								<CardTitle>Character Reports</CardTitle>
 								<CardDescription>
-									Generate detailed background reports for the applicant's linked characters
+									Generate detailed background reports for {application.characterName}
 								</CardDescription>
 							</CardHeader>
 							<CardContent>
-								<FulcrumPanel applicationId={applicationId!} />
+								<FulcrumPanel
+									userId={application.userId}
+									corporationId={application.corporationId}
+									applicationId={applicationId!}
+								/>
 							</CardContent>
 						</Card>
 					</TabsContent>

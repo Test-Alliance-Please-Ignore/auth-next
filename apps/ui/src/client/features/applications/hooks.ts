@@ -27,6 +27,7 @@ import type {
 	Recommendation,
 	RecommenderApplicationDetail,
 	ReportManifest,
+	ReportRequestSource,
 	ReportSectionName,
 	SendMessageRequest,
 	SubmitApplicationRequest,
@@ -64,7 +65,10 @@ export const applicationKeys = {
 		[...applicationKeys.templates(), corporationId, status || 'all'] as const,
 	templateDetail: (templateId: string) => [...applicationKeys.templates(), 'detail', templateId] as const,
 	// Fulcrum (Character Reports)
-	fulcrum: (applicationId: string) => [...applicationKeys.detail(applicationId), 'fulcrum'] as const,
+	fulcrumUserCharacters: (userId: string, corporationId: string) =>
+		[...applicationKeys.all, 'fulcrum', 'user-characters', userId, corporationId] as const,
+	fulcrumCharacterReports: (characterId: string, corporationId: string) =>
+		[...applicationKeys.all, 'fulcrum', 'character', characterId, corporationId] as const,
 	fulcrumReportSections: (reportId: string) =>
 		[...applicationKeys.all, 'fulcrum-report', reportId, 'sections'] as const,
 	fulcrumReportSection: (reportId: string, section: ReportSectionName) =>
@@ -698,21 +702,39 @@ export function useDeleteTemplate() {
 // ============================================================================
 
 /**
- * Hook to fetch applicant's characters with their Fulcrum report status
+ * Hook to fetch all linked characters for a user with their Fulcrum reports.
+ * Used in the application review Fulcrum panel to show all of a user's characters.
  */
-export function useApplicationFulcrum(applicationId: string, enabled = true) {
+export function useApplicationFulcrum(userId: string, corporationId: string, enabled = true) {
 	return useQuery<FulcrumCharacterData[]>({
-		queryKey: applicationKeys.fulcrum(applicationId),
-		queryFn: () => fulcrumApi.getApplicationFulcrumData(applicationId),
+		queryKey: applicationKeys.fulcrumUserCharacters(userId, corporationId),
+		queryFn: () => fulcrumApi.getUserCharactersWithReports(userId, corporationId),
 		staleTime: 1000 * 30,
 		gcTime: 1000 * 60 * 3,
-		enabled: !!applicationId && enabled,
+		enabled: !!userId && !!corporationId && enabled,
 		refetchInterval: (query) => {
-			// Poll every 10 seconds while any report is in progress
 			const data = query.state.data
 			const hasInProgress = data?.some((ch) =>
 				ch.reports.some((r) => r.status === 'pending' || r.status === 'processing'),
 			)
+			return hasInProgress ? 10_000 : false
+		},
+	})
+}
+
+/**
+ * Hook to fetch Fulcrum reports for a specific character
+ */
+export function useCharacterReports(characterId: string, corporationId: string, enabled = true) {
+	return useQuery<CharacterReportMetadata[]>({
+		queryKey: applicationKeys.fulcrumCharacterReports(characterId, corporationId),
+		queryFn: () => fulcrumApi.getCharacterReports(characterId, corporationId),
+		staleTime: 1000 * 30,
+		gcTime: 1000 * 60 * 3,
+		enabled: !!characterId && !!corporationId && enabled,
+		refetchInterval: (query) => {
+			const data = query.state.data
+			const hasInProgress = data?.some((r) => r.status === 'pending' || r.status === 'processing')
 			return hasInProgress ? 10_000 : false
 		},
 	})
@@ -726,54 +748,34 @@ export function useRequestFulcrumReport() {
 
 	return useMutation({
 		mutationFn: ({
-			applicationId,
 			characterId,
+			corporationId,
+			requestSource,
+			applicationId,
 		}: {
-			applicationId: string
 			characterId: string
-		}) => fulcrumApi.requestReport(applicationId, characterId),
-		onMutate: async (variables) => {
-			const queryKey = applicationKeys.fulcrum(variables.applicationId)
-			await queryClient.cancelQueries({ queryKey })
-
-			const previous = queryClient.getQueryData<FulcrumCharacterData[]>(queryKey)
-
-			if (previous) {
-				queryClient.setQueryData(queryKey, previous.map((c) =>
-					c.characterId === variables.characterId
-						? {
-							...c,
-							reports: [
-								...c.reports,
-								{
-									id: 'optimistic-' + Date.now(),
-									characterId: variables.characterId,
-									status: 'pending',
-									requestorUserId: '',
-									requestorCorporationId: '',
-									createdAt: new Date().toISOString(),
-									updatedAt: new Date().toISOString(),
-								} satisfies CharacterReportMetadata,
-							],
-						}
-						: c,
-				))
-			}
-
-			return { previous }
-		},
-		onError: (_err, variables, context) => {
-			if (context?.previous) {
-				queryClient.setQueryData(
-					applicationKeys.fulcrum(variables.applicationId),
-					context.previous,
-				)
-			}
-		},
+			corporationId: string
+			requestSource: ReportRequestSource
+			applicationId?: string
+			/** Pass userId to invalidate the user-characters query (application Fulcrum panel) */
+			userId?: string
+		}) => fulcrumApi.requestReport(characterId, corporationId, requestSource, applicationId),
 		onSettled: (_, __, variables) => {
 			queryClient.invalidateQueries({
-				queryKey: applicationKeys.fulcrum(variables.applicationId),
+				queryKey: applicationKeys.fulcrumCharacterReports(
+					variables.characterId,
+					variables.corporationId,
+				),
 			})
+			// Also invalidate user-characters query if userId is provided
+			if (variables.userId) {
+				queryClient.invalidateQueries({
+					queryKey: applicationKeys.fulcrumUserCharacters(
+						variables.userId,
+						variables.corporationId,
+					),
+				})
+			}
 		},
 	})
 }

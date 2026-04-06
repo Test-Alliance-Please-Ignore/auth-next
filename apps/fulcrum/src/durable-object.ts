@@ -4,11 +4,13 @@ import { logger } from '@repo/hono-helpers'
 import { getEsiInstanceForCharacter } from '@repo/esi'
 import type {
 	CharacterReportMetadata,
+	CreateReportOptions,
 	Fulcrum,
 	ListReportsFilters,
 	ReportManifest,
 	ReportSectionName,
 } from '@repo/fulcrum'
+import { DEFAULT_RETENTION_DAYS, RETENTION_POLICIES } from '@repo/fulcrum'
 import { createDb } from './db'
 import { stripHtmlToPlainText } from './workflows/processors/helpers/html-stripper'
 import type { DbClient } from './db/queries'
@@ -52,19 +54,17 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 	 * RPC: Create a new character report
 	 * Creates database record, queues workflow, returns report ID
 	 */
-	async createCharacterReport(
-		characterId: string,
-		requestorUserId: string,
-		requestorCorporationId: string,
-	): Promise<string> {
+	async createCharacterReport(options: CreateReportOptions): Promise<string> {
+		const { characterId, requestorUserId, requestorCorporationId, requestSource, applicationId } = options
 		const db = this.getDb()
 
 		// Generate unique report ID
 		const reportId = crypto.randomUUID()
 
-		// Set expiration to 7 days from now
+		// Compute retention from server-side policy
+		const retentionDays = RETENTION_POLICIES[requestSource] ?? DEFAULT_RETENTION_DAYS
 		const expiresAt = new Date()
-		expiresAt.setDate(expiresAt.getDate() + 7)
+		expiresAt.setDate(expiresAt.getDate() + retentionDays)
 
 		// Create database record
 		await queries.createCharacterReport(db, {
@@ -72,6 +72,9 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 			characterId,
 			requestorUserId,
 			requestorCorporationId,
+			requestSource,
+			applicationId,
+			retentionDays,
 			expiresAt,
 		})
 
@@ -143,6 +146,9 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 			status: report.status,
 			requestorUserId: report.requestorUserId,
 			requestorCorporationId: report.requestorCorporationId,
+			requestSource: (report.requestSource ?? 'hr') as CharacterReportMetadata['requestSource'],
+			applicationId: report.applicationId ?? undefined,
+			retentionDays: report.retentionDays ?? 7,
 			workflowInstanceId: report.workflowInstanceId ?? undefined,
 			createdAt: report.createdAt.toISOString(),
 			updatedAt: report.updatedAt.toISOString(),
@@ -209,6 +215,9 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 			status: report.status,
 			requestorUserId: report.requestorUserId,
 			requestorCorporationId: report.requestorCorporationId,
+			requestSource: (report.requestSource ?? 'hr') as CharacterReportMetadata['requestSource'],
+			applicationId: report.applicationId ?? undefined,
+			retentionDays: report.retentionDays ?? 7,
 			workflowInstanceId: report.workflowInstanceId ?? undefined,
 			createdAt: report.createdAt.toISOString(),
 			updatedAt: report.updatedAt.toISOString(),

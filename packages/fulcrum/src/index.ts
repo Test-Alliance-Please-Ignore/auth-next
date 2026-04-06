@@ -8,6 +8,36 @@
 import type { DurableObject } from 'cloudflare:workers'
 
 /**
+ * Request sources for character reports.
+ * Determines retention policy and audit context.
+ */
+export type ReportRequestSource = 'hr'
+// Future sources: 'counter_intel' | 'scheduled' | 'manual'
+
+/**
+ * Server-side retention policies (days) per request source.
+ * Callers never set retention directly — it's derived from requestSource.
+ */
+export const RETENTION_POLICIES: Record<ReportRequestSource, number> = {
+	hr: 7,
+	// counter_intel: 365,
+	// scheduled: 365,
+} as const
+
+export const DEFAULT_RETENTION_DAYS = 7
+
+/**
+ * Options for creating a character report
+ */
+export interface CreateReportOptions {
+	characterId: string
+	requestorUserId: string
+	requestorCorporationId: string
+	requestSource: ReportRequestSource
+	applicationId?: string
+}
+
+/**
  * Character report metadata
  */
 export interface CharacterReportMetadata {
@@ -17,6 +47,9 @@ export interface CharacterReportMetadata {
 	status: string
 	requestorUserId: string
 	requestorCorporationId: string
+	requestSource: ReportRequestSource
+	applicationId?: string
+	retentionDays: number
 	workflowInstanceId?: string
 	createdAt: string
 	updatedAt: string
@@ -80,16 +113,10 @@ export interface ReportManifest {
 export interface Fulcrum extends DurableObject {
 	/**
 	 * Create a new character report
-	 * @param characterId - EVE character ID
-	 * @param requestorUserId - User requesting the report
-	 * @param requestorCorporationId - Corporation on whose behalf the report is being run
+	 * @param options - Report creation options including characterId, requestor info, and request source
 	 * @returns Report UUID
 	 */
-	createCharacterReport(
-		characterId: string,
-		requestorUserId: string,
-		requestorCorporationId: string,
-	): Promise<string>
+	createCharacterReport(options: CreateReportOptions): Promise<string>
 
 	/**
 	 * Get character report status and metadata

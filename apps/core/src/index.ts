@@ -29,6 +29,7 @@ import entitiesRoutes from './routes/entities'
 import esiRoutes from './routes/esi'
 import fleetsRoutes from './routes/fleets'
 import freightRoutes from './routes/freight'
+import fulcrumRoutes from './routes/fulcrum'
 import groupsRoutes from './routes/groups'
 import hrRoutes from './routes/hr'
 import imagesRoutes from './routes/images'
@@ -116,6 +117,7 @@ const app = new Hono<App>()
 	.route('/api/broadcasts', broadcastsRoutes)
 	.route('/api/fleets', fleetsRoutes)
 	.route('/api/freight', freightRoutes)
+	.route('/api/fulcrum', fulcrumRoutes)
 	.route('/api/inventory', inventoryRoutes)
 	.route('/api/hr', hrRoutes)
 	.route('/api/industry', industryOrdersRoutes)

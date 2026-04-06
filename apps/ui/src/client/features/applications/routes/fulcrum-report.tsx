@@ -24,20 +24,26 @@ import { FulcrumReportViewer } from '../components/fulcrum-report-viewer'
 export default function FulcrumReportPage() {
 	const { corporationId, applicationId, reportId } = useParams<{
 		corporationId: string
-		applicationId: string
+		applicationId?: string
 		reportId: string
 	}>()
 	const navigate = useNavigate()
 	const [searchParams] = useSearchParams()
-	const characterName = searchParams.get('char')
+	const characterName = searchParams.get('char') ?? searchParams.get('name')
 
 	usePageTitle(characterName ? `Report - ${characterName}` : 'Character Report')
 
-	if (!corporationId || !applicationId || !reportId) {
+	if (!corporationId || !reportId) {
 		return null
 	}
 
-	const backPath = `/corporations/${corporationId}/hr/applications/${applicationId}?tab=fulcrum`
+	// When coming from an application review, link back to that application.
+	// When coming from the HR dashboard, link back to the dashboard.
+	const fromApplication = !!applicationId
+	const backPath = fromApplication
+		? `/corporations/${corporationId}/hr/applications/${applicationId}?tab=fulcrum`
+		: `/corporations/${corporationId}/hr/dashboard`
+	const backLabel = fromApplication ? 'Back to Application' : 'Back to HR Dashboard'
 
 	return (
 		<div className="container mx-auto max-w-6xl px-4 py-8">
@@ -45,15 +51,25 @@ export default function FulcrumReportPage() {
 			<div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 				<Breadcrumb>
 					<BreadcrumbList>
-						<BreadcrumbItem>
-							<BreadcrumbLink to={`/corporations/${corporationId}/hr/applications`}>
-								Applications
-							</BreadcrumbLink>
-						</BreadcrumbItem>
-						<BreadcrumbSeparator />
-						<BreadcrumbItem>
-							<BreadcrumbLink to={backPath}>Review</BreadcrumbLink>
-						</BreadcrumbItem>
+						{fromApplication ? (
+							<>
+								<BreadcrumbItem>
+									<BreadcrumbLink to={`/corporations/${corporationId}/hr/applications`}>
+										Applications
+									</BreadcrumbLink>
+								</BreadcrumbItem>
+								<BreadcrumbSeparator />
+								<BreadcrumbItem>
+									<BreadcrumbLink to={backPath}>Review</BreadcrumbLink>
+								</BreadcrumbItem>
+							</>
+						) : (
+							<BreadcrumbItem>
+								<BreadcrumbLink to={backPath}>
+									HR Dashboard
+								</BreadcrumbLink>
+							</BreadcrumbItem>
+						)}
 						<BreadcrumbSeparator />
 						<BreadcrumbItem>
 							<BreadcrumbPage>{characterName ? `${characterName} Report` : 'Character Report'}</BreadcrumbPage>
@@ -63,7 +79,7 @@ export default function FulcrumReportPage() {
 
 				<Button variant="ghost" onClick={() => navigate(backPath)}>
 					<ArrowLeft className="mr-2 h-4 w-4" />
-					Back to Application
+					{backLabel}
 				</Button>
 			</div>
 
