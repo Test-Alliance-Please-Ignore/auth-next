@@ -2798,6 +2798,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 		// Transform to UserPermission format
 		return corpPerms.map((cp) => ({
+			permissionId: cp.permissionId,
 			urn: cp.permission.urn,
 			name: cp.permission.name,
 			description: cp.permission.description,
@@ -2956,6 +2957,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 			const corporationName = corporationNames.get(corporationId) || corporationId
 			const userPermission: UserPermission = {
+				permissionId: cp.permissionId,
 				urn: cp.permission.urn,
 				name: cp.permission.name,
 				description: cp.permission.description,
@@ -3024,6 +3026,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 				: null
 
 		return {
+			permissionId: groupPerm.permissionId ?? null,
 			urn,
 			name,
 			description,

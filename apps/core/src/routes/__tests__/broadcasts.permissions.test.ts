@@ -7,15 +7,17 @@ import {
 } from '../broadcasts-permissions'
 
 import type { BroadcastTarget } from '@repo/broadcasts'
-import type { PermissionWithDetails, UserPermission } from '@repo/groups'
+import type { UserPermission } from '@repo/groups'
 
 function makeUserPermission(
+	permissionId: string | null,
 	urn: string,
 	groupId: string,
 	groupName: string,
 	source: 'global' | 'group_scoped' = 'global'
 ): UserPermission {
 	return {
+		permissionId,
 		urn,
 		name: urn,
 		description: null,
@@ -24,21 +26,6 @@ function makeUserPermission(
 		groupName,
 		targetType: 'all_members',
 		source,
-	}
-}
-
-function makeGlobalPermission(id: string, urn: string): PermissionWithDetails {
-	const now = new Date()
-	return {
-		id,
-		urn,
-		name: urn,
-		description: null,
-		categoryId: null,
-		createdBy: 'seed',
-		createdAt: now,
-		updatedAt: now,
-		category: null,
 	}
 }
 
@@ -62,50 +49,41 @@ function makeTarget(
 }
 
 describe('broadcast permission resolution', () => {
-	it('consolidates duplicate permission attachments from multiple groups', () => {
-		const userPermissions: UserPermission[] = [
-			makeUserPermission('urn:broadcasts:alliance:alliance-members:send', 'group-1', 'Group One'),
-			makeUserPermission('urn:broadcasts:alliance:alliance-members:send', 'group-2', 'Group Two'),
-		]
-		const globalPermissions: PermissionWithDetails[] = [
-			makeGlobalPermission(
-				'perm-alliance-members-send',
-				'urn:broadcasts:alliance:alliance-members:send'
-			),
-		]
-
-		const context = buildBroadcastPermissionContext(userPermissions, globalPermissions)
-
-		expect(canAccessBroadcastPermissionId('perm-alliance-members-send', 'send', context)).toBe(true)
-		expect(canAccessBroadcastPermissionId('perm-alliance-members-send', 'manage', context)).toBe(
-			false
-		)
-	})
-
-	it('treats manage as superset of send for the same broadcast scope key', () => {
+	it('consolidates duplicate permission IDs from multiple groups', () => {
 		const userPermissions: UserPermission[] = [
 			makeUserPermission(
+				'perm-alliance-members-send',
+				'urn:broadcasts:alliance:alliance-members:send',
+				'group-1',
+				'Group One'
+			),
+			makeUserPermission(
+				'perm-alliance-members-send',
+				'urn:broadcasts:alliance:alliance-members:send',
+				'group-2',
+				'Group Two'
+			),
+		]
+		const context = buildBroadcastPermissionContext(userPermissions)
+
+		expect(canAccessBroadcastPermissionId('perm-alliance-members-send', 'send', context)).toBe(true)
+		expect(canAccessBroadcastPermissionId('perm-alliance-members-send', 'manage', context)).toBe(true)
+	})
+
+	it('checks exact permission IDs and does not infer by URN scope/action', () => {
+		const userPermissions: UserPermission[] = [
+			makeUserPermission(
+				'perm-alliance-members-manage',
 				'urn:broadcasts:alliance:alliance-members:manage',
 				'group-9',
 				'Group Nine'
 			),
 		]
-		const globalPermissions: PermissionWithDetails[] = [
-			makeGlobalPermission(
-				'perm-alliance-members-send',
-				'urn:broadcasts:alliance:alliance-members:send'
-			),
-			makeGlobalPermission(
-				'perm-alliance-members-manage',
-				'urn:broadcasts:alliance:alliance-members:manage'
-			),
-		]
+		const context = buildBroadcastPermissionContext(userPermissions)
 
-		const context = buildBroadcastPermissionContext(userPermissions, globalPermissions)
-
-		expect(canAccessBroadcastPermissionId('perm-alliance-members-send', 'send', context)).toBe(true)
+		expect(canAccessBroadcastPermissionId('perm-alliance-members-send', 'send', context)).toBe(false)
 		expect(canAccessBroadcastPermissionId('perm-alliance-members-send', 'manage', context)).toBe(
-			true
+			false
 		)
 		expect(canAccessBroadcastPermissionId('perm-alliance-members-manage', 'send', context)).toBe(
 			true
@@ -115,30 +93,23 @@ describe('broadcast permission resolution', () => {
 		)
 	})
 
-	it('does not grant manage when user only has send for the same scope key', () => {
+	it('ignores group-scoped permissions without a global permission ID', () => {
 		const userPermissions: UserPermission[] = [
-			makeUserPermission('urn:broadcasts:alliance:alliance-members:send', 'group-4', 'Group Four'),
-		]
-		const globalPermissions: PermissionWithDetails[] = [
-			makeGlobalPermission(
-				'perm-alliance-members-send',
-				'urn:broadcasts:alliance:alliance-members:send'
-			),
-			makeGlobalPermission(
-				'perm-alliance-members-manage',
-				'urn:broadcasts:alliance:alliance-members:manage'
+			makeUserPermission(
+				null,
+				'urn:broadcasts:alliance:alliance-members:send',
+				'group-4',
+				'Group Four',
+				'group_scoped'
 			),
 		]
+		const context = buildBroadcastPermissionContext(userPermissions)
 
-		const context = buildBroadcastPermissionContext(userPermissions, globalPermissions)
-
-		expect(canAccessBroadcastPermissionId('perm-alliance-members-send', 'send', context)).toBe(true)
+		expect(canAccessBroadcastPermissionId('perm-alliance-members-send', 'send', context)).toBe(false)
 		expect(canAccessBroadcastPermissionId('perm-alliance-members-manage', 'send', context)).toBe(
-			true
-		)
-		expect(canAccessBroadcastPermissionId('perm-alliance-members-send', 'manage', context)).toBe(
 			false
 		)
+		expect(canAccessBroadcastPermissionId('perm-alliance-members-send', 'manage', context)).toBe(false)
 		expect(canAccessBroadcastPermissionId('perm-alliance-members-manage', 'manage', context)).toBe(
 			false
 		)
@@ -158,10 +129,26 @@ describe('broadcast permission resolution', () => {
 		]
 
 		const userPermissions: UserPermission[] = [
-			makeUserPermission('urn:broadcasts:alliance:alliance-members:manage', 'group-1', 'Group One'),
-			makeUserPermission('urn:broadcasts:alliance:alliance-members:manage', 'group-2', 'Group Two'),
-			makeUserPermission('urn:broadcasts:alliance:fleet-command:send', 'group-3', 'Group Three'),
 			makeUserPermission(
+				'perm-alliance-members-send',
+				'urn:broadcasts:alliance:alliance-members:send',
+				'group-1',
+				'Group One'
+			),
+			makeUserPermission(
+				'perm-alliance-members-manage',
+				'urn:broadcasts:alliance:alliance-members:manage',
+				'group-2',
+				'Group Two'
+			),
+			makeUserPermission(
+				'perm-fleet-command-send',
+				'urn:broadcasts:alliance:fleet-command:send',
+				'group-3',
+				'Group Three'
+			),
+			makeUserPermission(
+				null,
 				'urn:broadcasts:alliance:custom-only:send',
 				'group-4',
 				'Group Four',
@@ -169,20 +156,7 @@ describe('broadcast permission resolution', () => {
 			),
 		]
 
-		const globalPermissions: PermissionWithDetails[] = [
-			makeGlobalPermission(
-				'perm-alliance-members-send',
-				'urn:broadcasts:alliance:alliance-members:send'
-			),
-			makeGlobalPermission(
-				'perm-alliance-members-manage',
-				'urn:broadcasts:alliance:alliance-members:manage'
-			),
-			makeGlobalPermission('perm-fleet-command-send', 'urn:broadcasts:alliance:fleet-command:send'),
-			makeGlobalPermission('perm-scouts-send', 'urn:broadcasts:alliance:scouts:send'),
-		]
-
-		const context = buildBroadcastPermissionContext(userPermissions, globalPermissions)
+		const context = buildBroadcastPermissionContext(userPermissions)
 		const sendTargets = filterBroadcastTargetsByAction(targets, 'send', context)
 		const manageTargets = filterBroadcastTargetsByAction(targets, 'manage', context)
 
@@ -194,33 +168,37 @@ describe('broadcast permission resolution', () => {
 		expect(manageTargets.map((target) => target.id)).toEqual([
 			'target-alliance-send',
 			'target-alliance-manage-id',
+			'target-fc-send',
 		])
 	})
 
-	it('ignores broadcast URNs with invalid namespace or target characters', () => {
+	it('treats target managePermissionId as send-capable when filtering send targets', () => {
+		const targets: BroadcastTarget[] = [
+			makeTarget('target-manage-only-access', 'perm-send-x', 'perm-manage-x'),
+		]
 		const userPermissions: UserPermission[] = [
-			makeUserPermission('urn:broadcasts:test alliance:ops-casual:send', 'group-1', 'Group One'),
-			makeUserPermission('urn:broadcasts:test-alliance:ops casual:manage', 'group-1', 'Group One'),
-		]
-		const globalPermissions: PermissionWithDetails[] = [
-			makeGlobalPermission('perm-ops-casual-send', 'urn:broadcasts:test-alliance:ops-casual:send'),
+			makeUserPermission(
+				'perm-manage-x',
+				'urn:broadcasts:alliance:ops:manage',
+				'group-1',
+				'Group One'
+			),
 		]
 
-		const context = buildBroadcastPermissionContext(userPermissions, globalPermissions)
+		const context = buildBroadcastPermissionContext(userPermissions)
+		const sendTargets = filterBroadcastTargetsByAction(targets, 'send', context)
+		const manageTargets = filterBroadcastTargetsByAction(targets, 'manage', context)
 
-		expect(canAccessBroadcastPermissionId('perm-ops-casual-send', 'send', context)).toBe(false)
+		expect(sendTargets.map((target) => target.id)).toEqual(['target-manage-only-access'])
+		expect(manageTargets.map((target) => target.id)).toEqual(['target-manage-only-access'])
 	})
 
 	it('grants send/manage access to all broadcast permission IDs with global manage URN', () => {
 		const userPermissions: UserPermission[] = [
-			makeUserPermission('urn:broadcasts:manage', 'group-1', 'Group One'),
-		]
-		const globalPermissions: PermissionWithDetails[] = [
-			makeGlobalPermission('perm-a-send', 'urn:broadcasts:test-alliance:ops-casual:send'),
-			makeGlobalPermission('perm-a-manage', 'urn:broadcasts:test-alliance:ops-casual:manage'),
+			makeUserPermission(null, 'urn:broadcasts:manage', 'group-1', 'Group One'),
 		]
 
-		const context = buildBroadcastPermissionContext(userPermissions, globalPermissions)
+		const context = buildBroadcastPermissionContext(userPermissions)
 
 		expect(canAccessBroadcastPermissionId('perm-a-send', 'send', context)).toBe(true)
 		expect(canAccessBroadcastPermissionId('perm-a-send', 'manage', context)).toBe(true)

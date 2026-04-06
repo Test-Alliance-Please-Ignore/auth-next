@@ -4,13 +4,13 @@ import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
 import { getStub } from '@repo/do-utils'
 
 import {
-	getCachedGlobalPermissions,
 	getCachedUserMemberships,
 	getCachedUserPermissions,
 } from '../lib/groups-cache'
 import { validatePagination } from '../lib/validation'
 import { requireAuth } from '../middleware/session'
 import {
+	canAccessBroadcastTargetByAction,
 	buildBroadcastPermissionContext,
 	canAccessBroadcastPermissionId,
 	filterBroadcastTargetsByAction,
@@ -142,11 +142,8 @@ async function getUserBroadcastPermissionContext(
 	env: { GROUPS: DurableObjectNamespace },
 	userId: string
 ): Promise<ReturnType<typeof buildBroadcastPermissionContext>> {
-	const [userPermissions, globalPermissions] = await Promise.all([
-		getCachedUserPermissions(env, userId),
-		getCachedGlobalPermissions(env),
-	])
-	return buildBroadcastPermissionContext(userPermissions, globalPermissions)
+	const userPermissions = await getCachedUserPermissions(env, userId)
+	return buildBroadcastPermissionContext(userPermissions)
 }
 
 /**
@@ -165,34 +162,22 @@ broadcasts.use('*', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }))
 // =============================================================================
 
 /**
- * List all broadcast targets (optionally filtered by global permission ID)
- * GET /api/broadcasts/targets?permissionId=xxx
+ * List all broadcast targets
+ * GET /api/broadcasts/targets
  *
  * Only returns targets with permission IDs available to user (unless admin)
  */
 broadcasts.get('/targets', async (c) => {
 	const user = c.get('user')!
-	const permissionId = c.req.query('permissionId')
 
 	const permissionContext = user.is_admin
 		? null
 		: await getUserBroadcastPermissionContext(c.env, user.id)
 
-	// If filtering by a specific permission ID, verify user has it attached
-	if (permissionId) {
-		if (
-			!user.is_admin &&
-			!canAccessBroadcastPermissionId(permissionId, 'send', permissionContext!)
-		) {
-			return c.json({ error: 'Permission denied' }, 403)
-		}
-	}
-
 	if (
 		!user.is_admin &&
-		!permissionId &&
 		permissionContext &&
-		permissionContext.userActionsByKey.size === 0 &&
+		permissionContext.accessiblePermissionIdsByAction.get('send')?.size === 0 &&
 		!permissionContext.hasGlobalManage
 	) {
 		return c.json([])
@@ -200,7 +185,12 @@ broadcasts.get('/targets', async (c) => {
 
 	// Get Broadcasts DO stub
 	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
-	const targets = await broadcastsStub.listTargets(user.id, permissionId)
+	const targets = await broadcastsStub.listTargets(
+		user.id,
+		user.is_admin
+			? undefined
+			: [...(permissionContext!.accessiblePermissionIdsByAction.get('send') ?? new Set())]
+	)
 
 	// Filter targets to only include targets gated by permission IDs user has
 	const filteredTargets = user.is_admin
@@ -228,11 +218,7 @@ broadcasts.get('/targets/:id', async (c) => {
 	// Verify user has target's permission ID attached
 	if (!user.is_admin) {
 		const permissionContext = await getUserBroadcastPermissionContext(c.env, user.id)
-		const canAccessTarget = canAccessBroadcastPermissionId(
-			target.sendPermissionId,
-			'send',
-			permissionContext
-		)
+		const canAccessTarget = canAccessBroadcastTargetByAction(target, 'send', permissionContext)
 
 		if (!canAccessTarget) {
 			return c.json({ error: 'Permission denied' }, 403)
@@ -656,7 +642,7 @@ broadcasts.get('/', async (c) => {
 		!user.is_admin &&
 		!permissionId &&
 		permissionContext &&
-		permissionContext.userActionsByKey.size === 0 &&
+		permissionContext.accessiblePermissionIdsByAction.get('send')?.size === 0 &&
 		!permissionContext.hasGlobalManage
 	) {
 		return c.json({ rows: [], rowCount: 0 })
@@ -668,9 +654,7 @@ broadcasts.get('/', async (c) => {
 		permissionIds:
 			user.is_admin || permissionId
 				? undefined
-				: [...permissionContext!.permissionMetaById.keys()].filter((id) =>
-						canAccessBroadcastPermissionId(id, 'send', permissionContext!)
-					),
+				: [...(permissionContext!.accessiblePermissionIdsByAction.get('send') ?? new Set())],
 		status,
 		createdBy: mine ? user.id : undefined,
 		limit: pagination.data.limit,
@@ -698,11 +682,7 @@ broadcasts.get('/:id', async (c) => {
 	// Verify user has the broadcast permission ID
 	if (!user.is_admin) {
 		const permissionContext = await getUserBroadcastPermissionContext(c.env, user.id)
-		const canView = canAccessBroadcastPermissionId(
-			broadcast.target.sendPermissionId,
-			'send',
-			permissionContext
-		)
+		const canView = canAccessBroadcastTargetByAction(broadcast.target, 'send', permissionContext)
 
 		if (!canView) {
 			return c.json({ error: 'Not authorized to view this broadcast' }, 403)
@@ -729,8 +709,8 @@ broadcasts.post('/', async (c) => {
 	// Check permissions against target's assigned permission ID
 	const allowed = user.is_admin
 		? true
-		: canAccessBroadcastPermissionId(
-				target.sendPermissionId,
+		: canAccessBroadcastTargetByAction(
+				target,
 				'send',
 				await getUserBroadcastPermissionContext(c.env, user.id)
 			)
@@ -770,8 +750,8 @@ broadcasts.post('/:id/send', async (c) => {
 	// Check permissions
 	const allowed = user.is_admin
 		? true
-		: canAccessBroadcastPermissionId(
-				broadcast.target.sendPermissionId,
+		: canAccessBroadcastTargetByAction(
+				broadcast.target,
 				'send',
 				await getUserBroadcastPermissionContext(c.env, user.id)
 			)
@@ -839,11 +819,7 @@ broadcasts.get('/:id/deliveries', async (c) => {
 	// Verify user has the broadcast permission ID
 	if (!user.is_admin) {
 		const permissionContext = await getUserBroadcastPermissionContext(c.env, user.id)
-		const canView = canAccessBroadcastPermissionId(
-			broadcast.target.sendPermissionId,
-			'send',
-			permissionContext
-		)
+		const canView = canAccessBroadcastTargetByAction(broadcast.target, 'send', permissionContext)
 
 		if (!canView) {
 			return c.json({ error: 'Not authorized to view this broadcast' }, 403)

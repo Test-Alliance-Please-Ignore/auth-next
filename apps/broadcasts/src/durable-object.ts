@@ -47,12 +47,16 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 	// BROADCAST TARGETS
 	// =========================================================================
 
-	async listTargets(userId: string, sendPermissionId?: string): Promise<BroadcastTarget[]> {
+	async listTargets(userId: string, sendPermissionIds?: string[]): Promise<BroadcastTarget[]> {
+		if (sendPermissionIds && sendPermissionIds.length === 0) {
+			return []
+		}
+
 		const targets = await this.db.query.broadcastTargets.findMany({
-			where: sendPermissionId
+			where: sendPermissionIds
 				? or(
-						eq(broadcastTargets.sendPermissionId, sendPermissionId),
-						eq(broadcastTargets.managePermissionId, sendPermissionId)
+						inArray(broadcastTargets.sendPermissionId, sendPermissionIds),
+						inArray(broadcastTargets.managePermissionId, sendPermissionIds)
 					)
 				: undefined,
 			orderBy: desc(broadcastTargets.createdAt),
