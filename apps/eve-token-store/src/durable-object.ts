@@ -2237,25 +2237,32 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 * Returns characters not synced in the last 20 hours, skipping any that
 	 * had a sync attempted within the last hour (deduplication guard).
 	 */
-	async getCharactersNeedingDataSync(limit = 200): Promise<string[]> {
+	async getCharactersNeedingDataSync(limit?: number): Promise<string[]> {
 		const TWENTY_HOURS_MS = 20 * 60 * 60 * 1000
 		const ONE_HOUR_MS = 60 * 60 * 1000
-
-		const characters = await this.db.query.eveCharacters.findMany({
-			where: and(
-				isNull(eveCharacters.deletedAt),
-				or(
-					isNull(eveCharacters.lastDataSyncAt),
-					lt(eveCharacters.lastDataSyncAt, new Date(Date.now() - TWENTY_HOURS_MS))
-				),
-				or(
-					isNull(eveCharacters.lastDataSyncAttemptAt),
-					lt(eveCharacters.lastDataSyncAttemptAt, new Date(Date.now() - ONE_HOUR_MS))
-				)
+		const whereClause = and(
+			isNull(eveCharacters.deletedAt),
+			or(
+				isNull(eveCharacters.lastDataSyncAt),
+				lt(eveCharacters.lastDataSyncAt, new Date(Date.now() - TWENTY_HOURS_MS))
 			),
-			orderBy: (table) => [asc(table.lastDataSyncAt), asc(table.characterId)],
-			limit,
-		})
+			or(
+				isNull(eveCharacters.lastDataSyncAttemptAt),
+				lt(eveCharacters.lastDataSyncAttemptAt, new Date(Date.now() - ONE_HOUR_MS))
+			)
+		)
+
+		const characters =
+			typeof limit === 'number' && limit > 0
+				? await this.db.query.eveCharacters.findMany({
+						where: whereClause,
+						orderBy: (table) => [asc(table.lastDataSyncAt), asc(table.characterId)],
+						limit,
+					})
+				: await this.db.query.eveCharacters.findMany({
+						where: whereClause,
+						orderBy: (table) => [asc(table.lastDataSyncAt), asc(table.characterId)],
+					})
 
 		const characterIds = characters.map((c) => c.characterId)
 

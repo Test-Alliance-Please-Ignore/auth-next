@@ -31,7 +31,7 @@ async function scheduledHandler(event: ScheduledEvent, env: Env): Promise<void> 
 	})
 
 	const tokenStoreStub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
-	const characterIds = await tokenStoreStub.getCharactersNeedingDataSync(200)
+	const characterIds = await tokenStoreStub.getCharactersNeedingDataSync()
 
 	logger.info('[EveCharacterData] Characters fetched for sync batch', {
 		count: characterIds.length,

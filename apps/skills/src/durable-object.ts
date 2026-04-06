@@ -36,7 +36,7 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 
 	// Cache for skill data (skills change rarely)
 	private skillCache: Map<string, { skill: any; cachedAt: number }> = new Map()
-	private allSkillsCache: { skills: any[]; cachedAt: number } | null = null
+	private allSkillsCache: Map<string, { skills: any[]; cachedAt: number }> = new Map()
 	private skillGroupCache: Map<string, { skills: any[]; cachedAt: number }> = new Map()
 	private skillGroupsCache: { groups: any[]; cachedAt: number } | null = null
 
@@ -86,7 +86,7 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 	 */
 	async clearAllCaches(): Promise<void> {
 		this.skillCache.clear()
-		this.allSkillsCache = null
+		this.allSkillsCache.clear()
 		this.skillGroupCache.clear()
 		this.skillGroupsCache = null
 		console.log('All skill caches cleared')
@@ -147,14 +147,14 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 	 */
 	async getAllSkills(includeUnpublished = false): Promise<any[]> {
 		const cacheKey = includeUnpublished ? 'all-with-unpublished' : 'all-published'
+		const cachedAllSkills = this.allSkillsCache.get(cacheKey)
 
 		// Check cache first
 		if (
-			this.allSkillsCache &&
-			this.isCacheValid(this.allSkillsCache.cachedAt, this.ALL_SKILLS_CACHE_TTL) &&
-			(includeUnpublished || !this.allSkillsCache.skills.some((s) => !s.published))
+			cachedAllSkills &&
+			this.isCacheValid(cachedAllSkills.cachedAt, this.ALL_SKILLS_CACHE_TTL)
 		) {
-			return this.allSkillsCache.skills
+			return cachedAllSkills.skills
 		}
 
 		// Fetch from database with group information
@@ -179,10 +179,8 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 			groupName: skill.group?.name ?? 'Unknown',
 		}))
 
-		// Cache the result
-		if (!includeUnpublished) {
-			this.allSkillsCache = { skills: skillsWithGroups, cachedAt: Date.now() }
-		}
+		// Cache both variants independently.
+		this.allSkillsCache.set(cacheKey, { skills: skillsWithGroups, cachedAt: Date.now() })
 
 		return skillsWithGroups
 	}

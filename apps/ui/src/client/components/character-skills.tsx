@@ -152,8 +152,6 @@ export function CharacterSkills({ skills, allSkills, showProgress = false }: Cha
 			const catalogSkillIds = new Set<string>()
 
 			for (const catalogSkill of allSkills) {
-				if (catalogSkill.canNotBeTrained) continue
-
 				const catalogSkillId = String(catalogSkill.id ?? catalogSkill.skillId)
 				catalogSkillIds.add(catalogSkillId)
 
