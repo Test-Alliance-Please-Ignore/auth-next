@@ -2,21 +2,12 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { config } from 'dotenv'
 
-import { createDbClient, migrate } from '@repo/db-utils'
-
-import drizzleConfig from '../../drizzle.config'
-import { schema } from '../db'
+import { createDbClientRaw, migrate } from '@repo/db-utils'
 
 // Load .env from monorepo root
 const __dirname = dirname(fileURLToPath(import.meta.url))
 config({ path: resolve(__dirname, '../../../../.env') })
 
-/**
- * Run database migrations
- *
- * This script loads DATABASE_URL_MIGRATIONS from the root .env file
- * Uses HTTP driver for migrations (external operation)
- */
 async function main() {
 	const databaseUrl = process.env.DATABASE_URL_MIGRATIONS
 
@@ -24,9 +15,8 @@ async function main() {
 		throw new Error('DATABASE_URL_MIGRATIONS environment variable is required')
 	}
 
-	// Use HTTP driver for migrations (external operation)
-	const db = createDbClient(databaseUrl, schema)
-	await migrate(db, { migrationsFolder: drizzleConfig.out! })
+	const db = createDbClientRaw(databaseUrl)
+	await migrate(db, { migrationsFolder: './.migrations' })
 
 	process.exit(0)
 }
