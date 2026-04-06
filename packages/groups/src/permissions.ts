@@ -68,6 +68,7 @@ export interface GroupPermission {
 	/** Who receives this permission */
 	targetType: PermissionTarget
 	createdBy: string
+	createdByName?: string
 	createdAt: Date
 }
 

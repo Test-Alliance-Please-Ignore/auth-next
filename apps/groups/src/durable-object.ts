@@ -2446,8 +2446,11 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			.returning() // Invalidate permissions cache for all members of this group
 		this.invalidateGroupMemberPermissionsCache(data.groupId)
 
+		const creatorNames = await bulkFindMainCharactersByUserIds([actorId], this.db)
+
 		return {
 			...this.mapGroupPermission(permission),
+			createdByName: creatorNames.get(actorId),
 			permission: {
 				...this.mapPermission(perm),
 				category: perm.category ? this.mapPermissionCategory(perm.category) : null,
@@ -2502,8 +2505,11 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		// Invalidate permissions cache for all members of this group
 		this.invalidateGroupMemberPermissionsCache(data.groupId)
 
+		const creatorNames = await bulkFindMainCharactersByUserIds([actorId], this.db)
+
 		return {
 			...this.mapGroupPermission(groupPerm),
+			createdByName: creatorNames.get(actorId),
 			permission: null,
 			group: {
 				id: group.id,
@@ -2531,8 +2537,12 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			orderBy: (groupPermissions, { desc }) => [desc(groupPermissions.createdAt)],
 		})
 
+		const creatorIds = [...new Set(groupPerms.map((gp) => gp.createdBy))]
+		const creatorNames = await bulkFindMainCharactersByUserIds(creatorIds, this.db)
+
 		return groupPerms.map((gp) => ({
 			...this.mapGroupPermission(gp),
+			createdByName: creatorNames.get(gp.createdBy),
 			permission: gp.permission
 				? {
 						...this.mapPermission(gp.permission),
@@ -2595,8 +2605,11 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		// Invalidate permissions cache for all members of this group
 		this.invalidateGroupMemberPermissionsCache(groupPerm.groupId)
 
+		const creatorNames = await bulkFindMainCharactersByUserIds([updated.createdBy], this.db)
+
 		return {
 			...this.mapGroupPermission(updated),
+			createdByName: creatorNames.get(updated.createdBy),
 			permission: groupPerm.permission
 				? {
 						...this.mapPermission(groupPerm.permission),
