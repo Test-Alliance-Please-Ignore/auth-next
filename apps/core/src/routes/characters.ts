@@ -474,7 +474,17 @@ app.get('/:characterId', requireAuth(), async (c) => {
 		const skillsStub = getStub<any>(c.env.SKILLS, 'default')
 		const [enrichedSkills, allSkills] = await Promise.all([
 			transformAndEnrichSkillsData(skills, c.env),
-			skillsStub.getAllSkills().catch(() => []),
+			skillsStub.getAllSkills().catch((error: unknown) => {
+				logger.warn('[Character Detail] Failed to fetch skill catalog, falling back to trained-only', {
+					characterId: characterIdStr,
+					requestingUserId: user.id,
+					isOwner,
+					viewedAsAdmin,
+					viewedAsCeoOrDirector,
+					error: error instanceof Error ? error.message : String(error),
+				})
+				return []
+			}),
 		])
 
 		// Build response with public data
