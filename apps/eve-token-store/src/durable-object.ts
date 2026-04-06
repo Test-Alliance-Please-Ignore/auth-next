@@ -328,6 +328,12 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				})
 				.where(eq(eveTokens.id, tokenRecord.id))
 
+			// Update lastRefreshAt on the character record
+			await this.db
+				.update(eveCharacters)
+				.set({ lastRefreshAt: new Date() })
+				.where(eq(eveCharacters.characterId, String(characterId)))
+
 			return true
 		} catch (error) {
 			logger
@@ -2224,5 +2230,52 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			.where(inArray(eveCharacters.characterId, characterIds))
 
 		return characterIds
+	}
+
+	/**
+	 * Get a batch of characters whose ESI data needs a full sync.
+	 * Returns characters not synced in the last 20 hours, skipping any that
+	 * had a sync attempted within the last hour (deduplication guard).
+	 */
+	async getCharactersNeedingDataSync(limit = 200): Promise<string[]> {
+		const TWENTY_HOURS_MS = 20 * 60 * 60 * 1000
+		const ONE_HOUR_MS = 60 * 60 * 1000
+
+		const characters = await this.db.query.eveCharacters.findMany({
+			where: and(
+				isNull(eveCharacters.deletedAt),
+				or(
+					isNull(eveCharacters.lastDataSyncAt),
+					lt(eveCharacters.lastDataSyncAt, new Date(Date.now() - TWENTY_HOURS_MS))
+				),
+				or(
+					isNull(eveCharacters.lastDataSyncAttemptAt),
+					lt(eveCharacters.lastDataSyncAttemptAt, new Date(Date.now() - ONE_HOUR_MS))
+				)
+			),
+			orderBy: (table) => [asc(table.lastDataSyncAt), asc(table.characterId)],
+			limit,
+		})
+
+		const characterIds = characters.map((c) => c.characterId)
+
+		if (characterIds.length > 0) {
+			await this.db
+				.update(eveCharacters)
+				.set({ lastDataSyncAttemptAt: new Date() })
+				.where(inArray(eveCharacters.characterId, characterIds))
+		}
+
+		return characterIds
+	}
+
+	/**
+	 * Mark a character's ESI data sync as successfully completed.
+	 */
+	async markCharacterDataSyncComplete(characterId: string): Promise<void> {
+		await this.db
+			.update(eveCharacters)
+			.set({ lastDataSyncAt: new Date() })
+			.where(eq(eveCharacters.characterId, String(characterId)))
 	}
 }

@@ -2,10 +2,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { config } from 'dotenv'
 
-import { createDbClient, migrate } from '@repo/db-utils'
-
-import drizzleConfig from '../../drizzle.config'
-import { schema } from '../db'
+import { createDbClientRaw, migrate } from '@repo/db-utils'
 
 // Load .env from monorepo root
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -25,8 +22,8 @@ async function main() {
 
 	console.log('Running migrations for skills worker...')
 
-	const db = createDbClient(databaseUrl, schema)
-	await migrate(db, { migrationsFolder: drizzleConfig.out! })
+	const db = createDbClientRaw(databaseUrl)
+	await migrate(db, { migrationsFolder: './.migrations' })
 
 	console.log('Migrations completed successfully!')
 	process.exit(0)
