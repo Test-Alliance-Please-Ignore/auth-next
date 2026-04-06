@@ -305,6 +305,7 @@ export interface GroupPermission {
 	customDescription: string | null
 	targetType: PermissionTarget
 	createdBy: string
+	createdByName?: string
 	createdAt: string
 }
 
