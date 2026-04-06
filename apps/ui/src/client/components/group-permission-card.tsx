@@ -65,7 +65,7 @@ export function GroupPermissionCard({
 					<div className="flex gap-3 text-xs text-muted-foreground">
 						<span>Created: {new Date(permission.createdAt).toLocaleDateString()}</span>
 						<span>•</span>
-						<span>By: {permission.createdBy}</span>
+						<span>By: {permission.createdByName ?? permission.createdBy}</span>
 					</div>
 				</div>
 

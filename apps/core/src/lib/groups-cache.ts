@@ -5,6 +5,7 @@ import type {
 	GroupMembershipSummary,
 	Groups,
 	GroupWithDetails,
+	PermissionWithDetails,
 	RoleAttachment,
 	RoleAttachmentType,
 	UserPermission,
@@ -23,6 +24,7 @@ const MEMBERSHIPS_TTL = 30 * 1000 // 30 seconds
 const GROUPS_TTL = 30 * 1000 // 30 seconds
 const CHARACTER_PERMISSIONS_TTL = 15 * 1000 // 15 seconds
 const ROLES_TTL = 30 * 1000 // 30 seconds
+const GLOBAL_PERMISSIONS_TTL = 60 * 1000 // 60 seconds
 
 // Permission cache: userId -> UserPermission[]
 const permissionsCache = new TimeCache<UserPermission[]>(PERMISSIONS_TTL)
@@ -38,6 +40,9 @@ const characterPermissionsCache = new TimeCache<UserPermission[]>(CHARACTER_PERM
 
 // Roles cache: userId -> RoleAttachment[]
 const rolesCache = new TimeCache<RoleAttachment[]>(ROLES_TTL)
+
+// Global permissions cache (single key)
+const globalPermissionsCache = new TimeCache<PermissionWithDetails[]>(GLOBAL_PERMISSIONS_TTL)
 
 /**
  * Environment type that includes GROUPS binding
@@ -121,6 +126,16 @@ export async function getCachedUserRoles(
 }
 
 /**
+ * Get cached global permissions or fetch from Groups DO
+ */
+export async function getCachedGlobalPermissions(env: GroupsEnv): Promise<PermissionWithDetails[]> {
+	return globalPermissionsCache.getOrSet('permissions:global', async () => {
+		const groupsStub = getStub<Groups>(env.GROUPS, 'default')
+		return await groupsStub.listPermissions()
+	})
+}
+
+/**
  * Clear all caches for a specific user
  * Call this when user joins/leaves groups or permissions change
  */
@@ -160,4 +175,5 @@ export function clearAllCaches(): void {
 	groupsCache.clear()
 	characterPermissionsCache.clear()
 	rolesCache.clear()
+	globalPermissionsCache.clear()
 }

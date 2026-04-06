@@ -24,7 +24,6 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
-import { useAuth } from '@/hooks/useAuth'
 import {
 	useBroadcast,
 	useBroadcastDeliveries,
@@ -32,7 +31,6 @@ import {
 	useDeleteBroadcast,
 	useSendBroadcast,
 } from '@/hooks/useBroadcasts'
-import { useGroups } from '@/hooks/useGroups'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { formatDateTimeLocal } from '@/lib/discord-time'
 
@@ -56,12 +54,10 @@ const deliveryStatusVariants: Record<DeliveryStatus, BadgeVariant> = {
 export default function BroadcastDetailPage() {
 	const navigate = useNavigate()
 	const { broadcastId } = useParams<{ broadcastId: string }>()
-	const { user, permissions } = useAuth()
 	const { data: broadcast, isLoading, refetch } = useBroadcast(broadcastId || '')
 	const { data: deliveries, isLoading: isLoadingDeliveries } = useBroadcastDeliveries(
 		broadcastId || ''
 	)
-	const { data: groups } = useGroups()
 	const { data: targets } = useBroadcastTargets()
 	const sendBroadcast = useSendBroadcast()
 	const deleteBroadcast = useDeleteBroadcast()
@@ -96,22 +92,12 @@ export default function BroadcastDetailPage() {
 		)
 	}
 
-	const groupName =
-		groups?.find((group) => group.id === broadcast.groupId)?.name || broadcast.groupId
 	const targetName =
 		broadcast.target?.name ||
 		targets?.find((target) => target.id === broadcast.targetId)?.name ||
 		broadcast.targetId
-	const canSend =
-		user?.is_admin === true ||
-		permissions.some(
-			(permission) => permission.urn === `urn:group:${broadcast.groupId}:broadcasts:send`
-		)
-	const canManage =
-		user?.is_admin === true ||
-		permissions.some(
-			(permission) => permission.urn === `urn:group:${broadcast.groupId}:broadcasts:manage`
-		)
+	const canSend = true
+	const canManage = true
 	const isSendable = canSend && ['draft', 'scheduled', 'failed'].includes(broadcast.status)
 
 	const handleSendNow = async () => {
@@ -221,8 +207,8 @@ export default function BroadcastDetailPage() {
 								<div className="font-medium">{broadcast.title}</div>
 							</div>
 							<div>
-								<div className="text-sm text-muted-foreground">Group</div>
-								<div className="font-medium">{groupName}</div>
+								<div className="text-sm text-muted-foreground">Permission</div>
+								<div className="font-medium font-mono text-xs">{broadcast.permissionId}</div>
 							</div>
 							<div>
 								<div className="text-sm text-muted-foreground">Target</div>

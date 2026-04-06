@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { and, desc, eq, inArray, sql } from '@repo/db-utils'
+import { and, desc, eq, inArray, or, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
 import { createDb } from './db'
@@ -47,9 +47,14 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 	// BROADCAST TARGETS
 	// =========================================================================
 
-	async listTargets(userId: string, groupId?: string): Promise<BroadcastTarget[]> {
+	async listTargets(userId: string, sendPermissionId?: string): Promise<BroadcastTarget[]> {
 		const targets = await this.db.query.broadcastTargets.findMany({
-			where: groupId ? eq(broadcastTargets.groupId, groupId) : undefined,
+			where: sendPermissionId
+				? or(
+						eq(broadcastTargets.sendPermissionId, sendPermissionId),
+						eq(broadcastTargets.managePermissionId, sendPermissionId)
+					)
+				: undefined,
 			orderBy: desc(broadcastTargets.createdAt),
 		})
 
@@ -77,6 +82,13 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 	}
 
 	async createTarget(data: CreateBroadcastTargetRequest, userId: string): Promise<BroadcastTarget> {
+		const sendPermissionId = (data as unknown as { sendPermissionId?: string }).sendPermissionId
+		const managePermissionId = (data as unknown as { managePermissionId?: string })
+			.managePermissionId
+		if (!sendPermissionId || !managePermissionId) {
+			throw new Error('sendPermissionId and managePermissionId are required')
+		}
+
 		const now = new Date()
 
 		const [target] = await this.db
@@ -85,7 +97,8 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 				name: data.name,
 				description: data.description || null,
 				type: data.type,
-				groupId: data.groupId,
+				sendPermissionId,
+				managePermissionId,
 				config: data.config,
 				createdBy: userId,
 				createdAt: now,
@@ -116,6 +129,8 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 			.set({
 				name: data.name ?? existing.name,
 				description: data.description !== undefined ? data.description : existing.description,
+				sendPermissionId: data.sendPermissionId ?? existing.sendPermissionId,
+				managePermissionId: data.managePermissionId ?? existing.managePermissionId,
 				config: data.config ? { ...existing.config, ...data.config } : existing.config,
 				updatedAt: new Date(),
 			})
@@ -250,8 +265,8 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 	async listBroadcasts(
 		userId: string,
 		filters?: {
-			groupId?: string
-			groupIds?: string[]
+			permissionId?: string
+			permissionIds?: string[]
 			status?: BroadcastStatus
 			createdBy?: string
 			limit?: number
@@ -260,13 +275,13 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 	): Promise<BroadcastPage> {
 		let whereConditions = []
 
-		if (filters?.groupId) {
-			whereConditions.push(eq(broadcasts.groupId, filters.groupId))
-		} else if (filters?.groupIds) {
-			if (filters.groupIds.length === 0) {
+		if (filters?.permissionId) {
+			whereConditions.push(eq(broadcasts.permissionId, filters.permissionId))
+		} else if (filters?.permissionIds) {
+			if (filters.permissionIds.length === 0) {
 				return { rows: [], rowCount: 0 }
 			}
-			whereConditions.push(inArray(broadcasts.groupId, filters.groupIds))
+			whereConditions.push(inArray(broadcasts.permissionId, filters.permissionIds))
 		}
 
 		if (filters?.status) {
@@ -378,7 +393,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 				scheduledFor: data.scheduledFor ? new Date(data.scheduledFor) : null,
 				sentAt: null,
 				errorMessage: null,
-				groupId: data.groupId,
+				permissionId: data.permissionId,
 				createdBy: userId,
 				createdByCharacterName: data.createdByCharacterName,
 				createdAt: now,

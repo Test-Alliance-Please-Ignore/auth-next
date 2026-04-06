@@ -19,13 +19,14 @@ export const broadcastKeys = {
 	all: ['broadcasts'] as const,
 	targets: () => [...broadcastKeys.all, 'targets'] as const,
 	target: (id: string) => [...broadcastKeys.targets(), id] as const,
-	targetsByGroup: (groupId: string) => [...broadcastKeys.targets(), 'group', groupId] as const,
+	targetsByPermission: (permissionId: string) =>
+		[...broadcastKeys.targets(), 'permission', permissionId] as const,
 	templates: () => [...broadcastKeys.all, 'templates'] as const,
 	template: (id: string) => [...broadcastKeys.templates(), id] as const,
 	templatesByGroup: (groupId: string) => [...broadcastKeys.templates(), 'group', groupId] as const,
 	broadcasts: () => [...broadcastKeys.all, 'list'] as const,
 	broadcastsPage: (
-		groupId: string | undefined,
+		permissionId: string | undefined,
 		status: BroadcastStatus | undefined,
 		mine: boolean | undefined,
 		limit: number,
@@ -33,27 +34,29 @@ export const broadcastKeys = {
 	) =>
 		[
 			...broadcastKeys.broadcasts(),
-			groupId ?? 'all',
+			permissionId ?? 'all',
 			status ?? 'all',
 			mine ? 'mine' : 'all',
 			limit,
 			offset,
 		] as const,
 	broadcast: (id: string) => [...broadcastKeys.all, id] as const,
-	broadcastsByGroup: (groupId: string, status?: BroadcastStatus) =>
-		[...broadcastKeys.broadcasts(), 'group', groupId, status] as const,
+	broadcastsByPermission: (permissionId: string, status?: BroadcastStatus) =>
+		[...broadcastKeys.broadcasts(), 'permission', permissionId, status] as const,
 	deliveries: (broadcastId: string) => [...broadcastKeys.all, broadcastId, 'deliveries'] as const,
 }
 
 // ===== Broadcast Targets =====
 
 /**
- * Fetch all broadcast targets, optionally filtered by group
+ * Fetch all broadcast targets, optionally filtered by permission
  */
-export function useBroadcastTargets(groupId?: string) {
+export function useBroadcastTargets(permissionId?: string) {
 	return useQuery({
-		queryKey: groupId ? broadcastKeys.targetsByGroup(groupId) : broadcastKeys.targets(),
-		queryFn: () => api.getBroadcastTargets(groupId),
+		queryKey: permissionId
+			? broadcastKeys.targetsByPermission(permissionId)
+			: broadcastKeys.targets(),
+		queryFn: () => api.getBroadcastTargets(permissionId),
 		staleTime: 1000 * 60, // 1 minute
 	})
 }
@@ -80,9 +83,11 @@ export function useCreateBroadcastTarget() {
 		onSuccess: (_, variables) => {
 			// Invalidate all targets lists
 			queryClient.invalidateQueries({ queryKey: broadcastKeys.targets() })
-			// Invalidate group-specific list
-			if (variables.groupId) {
-				queryClient.invalidateQueries({ queryKey: broadcastKeys.targetsByGroup(variables.groupId) })
+			// Invalidate permission-specific list
+			if (variables.sendPermissionId) {
+				queryClient.invalidateQueries({
+					queryKey: broadcastKeys.targetsByPermission(variables.sendPermissionId),
+				})
 			}
 		},
 	})
@@ -205,7 +210,7 @@ export function useDeleteBroadcastTemplate() {
  * Fetch all broadcasts, optionally filtered by group and status
  */
 export function useBroadcasts(
-	groupId?: string,
+	permissionId?: string,
 	status?: BroadcastStatus,
 	options?: { limit?: number; offset?: number; mine?: boolean }
 ) {
@@ -214,8 +219,8 @@ export function useBroadcasts(
 	const mine = options?.mine ?? false
 
 	return useQuery({
-		queryKey: broadcastKeys.broadcastsPage(groupId, status, mine, limit, offset),
-		queryFn: () => api.getBroadcasts(groupId, status, { limit, offset, mine }),
+		queryKey: broadcastKeys.broadcastsPage(permissionId, status, mine, limit, offset),
+		queryFn: () => api.getBroadcasts(permissionId, status, { limit, offset, mine }),
 		staleTime: 1000 * 30, // 30 seconds
 	})
 }
@@ -239,15 +244,9 @@ export function useCreateBroadcast() {
 
 	return useMutation({
 		mutationFn: (data: CreateBroadcastRequest) => api.createBroadcast(data),
-		onSuccess: (_, variables) => {
+		onSuccess: () => {
 			// Invalidate all broadcasts lists
 			queryClient.invalidateQueries({ queryKey: broadcastKeys.broadcasts() })
-			// Invalidate group-specific list
-			if (variables.groupId) {
-				queryClient.invalidateQueries({
-					queryKey: broadcastKeys.broadcastsByGroup(variables.groupId),
-				})
-			}
 		},
 	})
 }

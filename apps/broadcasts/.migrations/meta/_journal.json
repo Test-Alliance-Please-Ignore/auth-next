@@ -15,6 +15,13 @@
 			"when": 1761678631748,
 			"tag": "0001_third_spencer_smythe",
 			"breakpoints": true
+		},
+		{
+			"idx": 2,
+			"version": "7",
+			"when": 1761700000000,
+			"tag": "0002_broadcast_permission_ids",
+			"breakpoints": true
 		}
 	]
 }

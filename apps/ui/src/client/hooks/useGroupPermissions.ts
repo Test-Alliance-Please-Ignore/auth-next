@@ -175,7 +175,8 @@ export function useRemoveGroupPermission() {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: ({ id }: { id: string; groupId: string }) => api.removePermissionFromGroup(id),
+		mutationFn: ({ id, groupId }: { id: string; groupId: string }) =>
+			api.removePermissionFromGroup(groupId, id),
 		onSuccess: (_, variables) => {
 			// Invalidate the group's permissions list
 			void queryClient.invalidateQueries({

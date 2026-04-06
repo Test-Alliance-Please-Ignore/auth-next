@@ -28,7 +28,6 @@ import {
 	useBroadcastTemplates,
 	useDeleteBroadcast,
 } from '@/hooks/useBroadcasts'
-import { useGroups } from '@/hooks/useGroups'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import type { BadgeVariant } from '@/components/ui/badge'
@@ -51,7 +50,7 @@ const statusLabels: Record<BroadcastStatus, string> = {
 }
 
 export default function AdminBroadcastsPage() {
-	usePageTitle('Admin - Broadcasts')
+	usePageTitle('Admin - Broadcast History')
 
 	const pageSize = 25
 	const [statusFilter, setStatusFilter] = useState<BroadcastStatus | 'all'>('all')
@@ -65,7 +64,6 @@ export default function AdminBroadcastsPage() {
 			offset: page * pageSize,
 		}
 	)
-	const { data: groups } = useGroups()
 	const { data: targets } = useBroadcastTargets()
 	const { data: templates } = useBroadcastTemplates()
 	const deleteBroadcast = useDeleteBroadcast()
@@ -120,8 +118,8 @@ export default function AdminBroadcastsPage() {
 		<div className="space-y-6">
 			<div className="flex items-center justify-between">
 				<div>
-					<h1 className="text-3xl font-bold gradient-text">All Broadcasts</h1>
-					<p className="text-muted-foreground mt-1">Monitor and manage all system broadcasts</p>
+					<h1 className="text-3xl font-bold gradient-text">Broadcast History</h1>
+					<p className="text-muted-foreground mt-1">Monitor and manage broadcast history</p>
 				</div>
 			</div>
 
@@ -168,7 +166,7 @@ export default function AdminBroadcastsPage() {
 
 			<Card variant="elevated">
 				<CardHeader>
-					<CardTitle>Broadcasts</CardTitle>
+					<CardTitle>Broadcast History</CardTitle>
 					<CardDescription>All broadcasts in the system</CardDescription>
 				</CardHeader>
 				<CardContent>
@@ -182,7 +180,7 @@ export default function AdminBroadcastsPage() {
 								<TableHeader>
 									<TableRow>
 										<TableHead>Status</TableHead>
-										<TableHead>Group</TableHead>
+										<TableHead>Permission</TableHead>
 										<TableHead>Target</TableHead>
 										<TableHead>Template</TableHead>
 										<TableHead>Created By</TableHead>
@@ -195,7 +193,6 @@ export default function AdminBroadcastsPage() {
 								</TableHeader>
 								<TableBody>
 									{broadcasts.map((broadcast) => {
-										const group = groups?.find((g) => g.id === broadcast.groupId)
 										const target = targets?.find((t) => t.id === broadcast.targetId)
 										const template = broadcast.templateId
 											? templates?.find((t) => t.id === broadcast.templateId)
@@ -208,7 +205,9 @@ export default function AdminBroadcastsPage() {
 														{statusLabels[broadcast.status]}
 													</Badge>
 												</TableCell>
-												<TableCell>{group?.name || broadcast.groupId}</TableCell>
+												<TableCell className="font-mono text-xs">
+													{broadcast.permissionId}
+												</TableCell>
 												<TableCell className="font-medium">
 													{target?.name || broadcast.targetId}
 												</TableCell>

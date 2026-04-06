@@ -1,3 +1,4 @@
+import { TextInput as MantineTextInput } from '@mantine/core'
 import { Edit, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -29,31 +30,50 @@ import {
 	useDeleteBroadcastTarget,
 	useUpdateBroadcastTarget,
 } from '@/hooks/useBroadcasts'
-import { useGroups } from '@/hooks/useGroups'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useGlobalPermissions } from '@/hooks/usePermissions'
+import {
+	MANTINE_THEMED_INPUT_CLASS_NAMES,
+	MANTINE_THEMED_INPUT_STYLES,
+} from '@/lib/mantine-input-styles'
 
 import type { BroadcastTarget, CreateBroadcastTargetRequest } from '@/lib/api'
 
 export default function BroadcastTargetsPage() {
 	usePageTitle('Admin - Broadcast Targets')
-	const { data: targets, isLoading } = useBroadcastTargets()
-	const { data: groups } = useGroups()
+	const { data: targets, isLoading, error } = useBroadcastTargets()
+	const { data: globalPermissions = [] } = useGlobalPermissions()
 	const createTarget = useCreateBroadcastTarget()
 	const updateTarget = useUpdateBroadcastTarget()
 	const deleteTarget = useDeleteBroadcastTarget()
+	const broadcastPermissionOptions = globalPermissions
+		.filter(
+			(permission) =>
+				permission.urn.startsWith('urn:broadcasts:') && permission.urn !== 'urn:broadcasts:manage'
+		)
+		.map((permission) => ({
+			value: permission.urn,
+			label: permission.name,
+			description: permission.urn,
+		}))
 
 	// Dialog state
 	const [createDialogOpen, setCreateDialogOpen] = useState(false)
 	const [editDialogOpen, setEditDialogOpen] = useState(false)
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 	const [selectedTarget, setSelectedTarget] = useState<BroadcastTarget | null>(null)
+	const [editPermissionUrns, setEditPermissionUrns] = useState({
+		send: '',
+		manage: '',
+	})
 
 	// Form state
 	const [formData, setFormData] = useState<CreateBroadcastTargetRequest>({
 		name: '',
 		description: '',
 		type: 'discord_channel',
-		groupId: '',
+		permissionEntityNamespace: '',
+		permissionTargetName: '',
 		config: {
 			guildId: '',
 			channelId: '',
@@ -68,13 +88,20 @@ export default function BroadcastTargetsPage() {
 			name: '',
 			description: '',
 			type: 'discord_channel',
-			groupId: '',
+			permissionEntityNamespace: '',
+			permissionTargetName: '',
 			config: {
 				guildId: '',
 				channelId: '',
 			},
 		})
 	}
+
+	const sanitizePermissionPart = (value: string): string =>
+		value
+			.toLowerCase()
+			.replace(/[^a-z0-9_-]/g, '')
+			.slice(0, 64)
 
 	const handleCreate = async (e: React.FormEvent) => {
 		e.preventDefault()
@@ -94,14 +121,20 @@ export default function BroadcastTargetsPage() {
 	}
 
 	const handleEdit = (target: BroadcastTarget) => {
+		const sendPermissionUrn =
+			globalPermissions.find((permission) => permission.id === target.sendPermissionId)?.urn ?? ''
+		const managePermissionUrn =
+			globalPermissions.find((permission) => permission.id === target.managePermissionId)?.urn ?? ''
 		setSelectedTarget(target)
 		setFormData({
 			name: target.name,
 			description: target.description || '',
 			type: target.type,
-			groupId: target.groupId,
+			permissionEntityNamespace: '',
+			permissionTargetName: '',
 			config: target.config as { guildId: string; channelId: string },
 		})
+		setEditPermissionUrns({ send: sendPermissionUrn, manage: managePermissionUrn })
 		setEditDialogOpen(true)
 	}
 
@@ -115,11 +148,14 @@ export default function BroadcastTargetsPage() {
 				data: {
 					name: formData.name,
 					description: formData.description,
+					sendPermissionUrn: editPermissionUrns.send.trim() || undefined,
+					managePermissionUrn: editPermissionUrns.manage.trim() || undefined,
 					config: formData.config,
 				},
 			})
 			setEditDialogOpen(false)
 			setSelectedTarget(null)
+			setEditPermissionUrns({ send: '', manage: '' })
 			resetForm()
 			setMessage({ type: 'success', text: 'Target updated successfully!' })
 			setTimeout(() => setMessage(null), 3000)
@@ -197,6 +233,10 @@ export default function BroadcastTargetsPage() {
 				<CardContent>
 					{isLoading ? (
 						<p className="text-muted-foreground">Loading targets...</p>
+					) : error ? (
+						<p className="text-destructive">
+							{error instanceof Error ? error.message : 'Failed to load targets'}
+						</p>
 					) : !targets || targets.length === 0 ? (
 						<p className="text-muted-foreground">No targets found. Create one to get started.</p>
 					) : (
@@ -205,20 +245,17 @@ export default function BroadcastTargetsPage() {
 								<TableRow>
 									<TableHead>Name</TableHead>
 									<TableHead>Type</TableHead>
-									<TableHead>Group</TableHead>
 									<TableHead>Configuration</TableHead>
 									<TableHead className="text-right">Actions</TableHead>
 								</TableRow>
 							</TableHeader>
 							<TableBody>
 								{targets.map((target) => {
-									const group = groups?.find((g) => g.id === target.groupId)
 									const config = target.config as { guildId?: string; channelId?: string }
 									return (
 										<TableRow key={target.id}>
 											<TableCell className="font-medium">{target.name}</TableCell>
 											<TableCell>{target.type}</TableCell>
-											<TableCell>{group?.name || target.groupId}</TableCell>
 											<TableCell className="text-sm text-muted-foreground">
 												{config.channelId && `Channel: ${config.channelId}`}
 											</TableCell>
@@ -277,14 +314,40 @@ export default function BroadcastTargetsPage() {
 								rows={2}
 							/>
 						</div>
-						<div>
-							<Label htmlFor="group">Group *</Label>
-							<Select
-								inputId="group"
-								value={formData.groupId}
-								onValueChange={(value) => setFormData({ ...formData, groupId: value })}
-								placeholder="Select a group"
-								options={(groups ?? []).map((group) => ({ value: group.id, label: group.name }))}
+						<div className="space-y-2">
+							<Label htmlFor="permissionEntityNamespace">Permission Entity Namespace *</Label>
+							<MantineTextInput
+								id="permissionEntityNamespace"
+								value={formData.permissionEntityNamespace}
+								onChange={(e) =>
+									setFormData({
+										...formData,
+										permissionEntityNamespace: sanitizePermissionPart(e.currentTarget.value),
+									})
+								}
+								placeholder="test-alliance"
+								description="Allowed characters: a-z, 0-9, -, _"
+								withAsterisk
+								classNames={MANTINE_THEMED_INPUT_CLASS_NAMES}
+								styles={MANTINE_THEMED_INPUT_STYLES}
+							/>
+						</div>
+						<div className="space-y-2">
+							<Label htmlFor="permissionTargetName">Permission Target Name *</Label>
+							<MantineTextInput
+								id="permissionTargetName"
+								value={formData.permissionTargetName}
+								onChange={(e) =>
+									setFormData({
+										...formData,
+										permissionTargetName: sanitizePermissionPart(e.currentTarget.value),
+									})
+								}
+								placeholder="info-all"
+								description="Allowed characters: a-z, 0-9, -, _"
+								withAsterisk
+								classNames={MANTINE_THEMED_INPUT_CLASS_NAMES}
+								styles={MANTINE_THEMED_INPUT_STYLES}
 							/>
 						</div>
 						<div>
@@ -324,6 +387,7 @@ export default function BroadcastTargetsPage() {
 								type="submit"
 								loading={createTarget.isPending}
 								loadingText="Creating..."
+								disabled={!formData.permissionEntityNamespace || !formData.permissionTargetName}
 							>
 								Create Target
 							</Button>
@@ -356,6 +420,36 @@ export default function BroadcastTargetsPage() {
 								value={formData.description}
 								onChange={(e) => setFormData({ ...formData, description: e.target.value })}
 								rows={2}
+							/>
+						</div>
+						<div>
+							<Label htmlFor="edit-sendPermissionUrn">Send Permission URN</Label>
+							<Select
+								inputId="edit-sendPermissionUrn"
+								options={broadcastPermissionOptions}
+								value={editPermissionUrns.send}
+								onValueChange={(value) =>
+									setEditPermissionUrns((current) => ({ ...current, send: value }))
+								}
+								searchable
+								placeholder="Select send permission"
+								emptyText="No broadcast permissions found"
+								getOptionSearchText={(option) => `${option.label} ${option.description ?? ''}`}
+							/>
+						</div>
+						<div>
+							<Label htmlFor="edit-managePermissionUrn">Manage Permission URN</Label>
+							<Select
+								inputId="edit-managePermissionUrn"
+								options={broadcastPermissionOptions}
+								value={editPermissionUrns.manage}
+								onValueChange={(value) =>
+									setEditPermissionUrns((current) => ({ ...current, manage: value }))
+								}
+								searchable
+								placeholder="Select manage permission"
+								emptyText="No broadcast permissions found"
+								getOptionSearchText={(option) => `${option.label} ${option.description ?? ''}`}
 							/>
 						</div>
 						<div>
@@ -392,6 +486,7 @@ export default function BroadcastTargetsPage() {
 								onClick={() => {
 									setEditDialogOpen(false)
 									setSelectedTarget(null)
+									setEditPermissionUrns({ send: '', manage: '' })
 									resetForm()
 								}}
 								type="button"

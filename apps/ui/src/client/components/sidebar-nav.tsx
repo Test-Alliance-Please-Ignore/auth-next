@@ -63,7 +63,8 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 	const mainCharacter = user?.characters.find((c) => c.characterId === user.mainCharacterId)
 	const isSiteAdmin = user?.is_admin === true
 	const isTaxRoute = location.pathname === '/tax' || location.pathname.startsWith('/tax/')
-	const isFreightRoute = location.pathname === '/freight' || location.pathname.startsWith('/freight/')
+	const isFreightRoute =
+		location.pathname === '/freight' || location.pathname.startsWith('/freight/')
 	const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({
 		'/tax': isTaxRoute,
 		'/freight': isFreightRoute,
@@ -346,7 +347,7 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 												(child.href === item.href
 													? location.pathname === child.href
 													: location.pathname === child.href ||
-													location.pathname.startsWith(child.href + '/'))
+														location.pathname.startsWith(child.href + '/'))
 
 											if (child.external) {
 												const ChildIcon = child.icon

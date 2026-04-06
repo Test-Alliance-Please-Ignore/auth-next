@@ -840,7 +840,8 @@ export interface BroadcastTarget {
 	name: string
 	description: string | null
 	type: TargetType
-	groupId: string
+	sendPermissionId: string
+	managePermissionId: string
 	config: Record<string, unknown> // { guildId, channelId } for Discord
 	createdBy: string
 	createdAt: string
@@ -876,7 +877,7 @@ export interface Broadcast {
 	scheduledFor: string | null
 	sentAt: string | null
 	errorMessage: string | null
-	groupId: string
+	permissionId: string
 	createdBy: string
 	createdByCharacterName: string
 	createdAt: string
@@ -910,7 +911,10 @@ export interface CreateBroadcastTargetRequest {
 	name: string
 	description?: string
 	type: TargetType
-	groupId: string
+	permissionEntityNamespace: string
+	permissionTargetName: string
+	sendPermissionId?: string
+	managePermissionId?: string
 	config: {
 		guildId: string
 		channelId: string
@@ -920,6 +924,10 @@ export interface CreateBroadcastTargetRequest {
 export interface UpdateBroadcastTargetRequest {
 	name?: string
 	description?: string
+	sendPermissionId?: string
+	managePermissionId?: string
+	sendPermissionUrn?: string
+	managePermissionUrn?: string
 	config?: {
 		guildId?: string
 		channelId?: string
@@ -959,7 +967,6 @@ export interface CreateBroadcastRequest {
 	targetId: string
 	title: string
 	content: Record<string, unknown>
-	groupId: string
 	scheduledFor?: string
 }
 
@@ -1643,8 +1650,8 @@ export class ApiClient {
 		return this.patch(`/groups/permissions/attachments/${groupPermissionId}`, data)
 	}
 
-	async removePermissionFromGroup(groupPermissionId: string): Promise<void> {
-		return this.delete(`/groups/permissions/attachments/${groupPermissionId}`)
+	async removePermissionFromGroup(groupId: string, groupPermissionId: string): Promise<void> {
+		return this.delete(`/groups/${groupId}/permissions/${groupPermissionId}`)
 	}
 
 	// Permission Queries
@@ -2083,8 +2090,8 @@ export class ApiClient {
 	// ===== Broadcasts API =====
 
 	// Broadcast Targets
-	async getBroadcastTargets(groupId?: string): Promise<BroadcastTarget[]> {
-		const params = groupId ? `?groupId=${groupId}` : ''
+	async getBroadcastTargets(permissionId?: string): Promise<BroadcastTarget[]> {
+		const params = permissionId ? `?permissionId=${permissionId}` : ''
 		return this.get(`/broadcasts/targets${params}`)
 	}
 
@@ -2137,12 +2144,12 @@ export class ApiClient {
 
 	// Broadcasts
 	async getBroadcasts(
-		groupId?: string,
+		permissionId?: string,
 		status?: BroadcastStatus,
 		options?: { limit?: number; offset?: number; mine?: boolean }
 	): Promise<BroadcastListResponse> {
 		const params = new URLSearchParams()
-		if (groupId) params.set('groupId', groupId)
+		if (permissionId) params.set('permissionId', permissionId)
 		if (status) params.set('status', status)
 		if (options?.limit !== undefined) params.set('limit', String(options.limit))
 		if (options?.offset !== undefined) params.set('offset', String(options.offset))

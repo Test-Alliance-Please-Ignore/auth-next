@@ -36,8 +36,10 @@ export const broadcastTargets = pgTable(
 		description: text('description'),
 		/** Type of target */
 		type: targetTypeEnum('type').notNull(),
-		/** Group this target belongs to (references groups.id from groups worker) */
-		groupId: uuid('group_id').notNull(),
+		/** Global permission ID required to send to this target */
+		sendPermissionId: uuid('send_permission_id').notNull(),
+		/** Global permission ID required to manage this target */
+		managePermissionId: uuid('manage_permission_id').notNull(),
 		/** Configuration data (JSON) - e.g., { guildId, channelId } for Discord */
 		config: jsonb('config').notNull(),
 		/** User ID who created this target */
@@ -46,7 +48,8 @@ export const broadcastTargets = pgTable(
 		updatedAt: timestamp('updated_at').defaultNow().notNull(),
 	},
 	(table) => [
-		index('broadcast_targets_group_id_idx').on(table.groupId),
+		index('broadcast_targets_send_permission_id_idx').on(table.sendPermissionId),
+		index('broadcast_targets_manage_permission_id_idx').on(table.managePermissionId),
 		index('broadcast_targets_type_idx').on(table.type),
 	]
 )
@@ -114,8 +117,8 @@ export const broadcasts = pgTable(
 		sentAt: timestamp('sent_at'),
 		/** Error message if failed */
 		errorMessage: text('error_message'),
-		/** Group this broadcast belongs to */
-		groupId: uuid('group_id').notNull(),
+		/** Global permission ID used to authorize this broadcast */
+		permissionId: uuid('permission_id').notNull(),
 		/** User ID who created this broadcast */
 		createdBy: varchar('created_by', { length: 255 }).notNull(),
 		/** Main character name of the user who created this broadcast */
@@ -124,7 +127,7 @@ export const broadcasts = pgTable(
 		updatedAt: timestamp('updated_at').defaultNow().notNull(),
 	},
 	(table) => [
-		index('broadcasts_group_id_idx').on(table.groupId),
+		index('broadcasts_permission_id_idx').on(table.permissionId),
 		index('broadcasts_status_idx').on(table.status),
 		index('broadcasts_created_by_idx').on(table.createdBy),
 		index('broadcasts_scheduled_for_idx').on(table.scheduledFor),

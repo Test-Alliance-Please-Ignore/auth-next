@@ -25,7 +25,8 @@ export interface BroadcastTarget {
 	name: string
 	description: string | null
 	type: TargetType
-	groupId: string
+	sendPermissionId: string
+	managePermissionId: string
 	config: Record<string, unknown> // { guildId: string, channelId: string } for Discord
 	createdBy: string
 	createdAt: string
@@ -72,7 +73,7 @@ export interface Broadcast {
 	scheduledFor: string | null
 	sentAt: string | null
 	errorMessage: string | null
-	groupId: string
+	permissionId: string
 	createdBy: string
 	createdByCharacterName: string
 	createdAt: string
@@ -118,7 +119,11 @@ export interface CreateBroadcastTargetRequest {
 	name: string
 	description?: string
 	type: TargetType
-	groupId: string
+	permissionEntityNamespace: string
+	permissionTargetName: string
+	/** Internal/server-resolved IDs used when creating targets */
+	sendPermissionId?: string
+	managePermissionId?: string
 	config: {
 		guildId: string
 		channelId: string
@@ -131,6 +136,10 @@ export interface CreateBroadcastTargetRequest {
 export interface UpdateBroadcastTargetRequest {
 	name?: string
 	description?: string
+	sendPermissionId?: string
+	managePermissionId?: string
+	sendPermissionUrn?: string
+	managePermissionUrn?: string
 	config?: {
 		guildId?: string
 		channelId?: string
@@ -167,7 +176,7 @@ export interface CreateBroadcastRequest {
 	targetId: string
 	title: string
 	content: Record<string, unknown>
-	groupId: string
+	permissionId: string
 	createdByCharacterName: string
 	scheduledFor?: string
 }
@@ -206,12 +215,12 @@ export interface Broadcasts {
 	// =========================================================================
 
 	/**
-	 * List all broadcast targets, optionally filtered by group
+	 * List all broadcast targets, optionally filtered by send permission ID
 	 * @param userId - User ID making the request (for audit)
-	 * @param groupId - Optional group ID to filter by
+	 * @param sendPermissionId - Optional send permission ID to filter by
 	 * @returns Array of broadcast targets
 	 */
-	listTargets(userId: string, groupId?: string): Promise<BroadcastTarget[]>
+	listTargets(userId: string, sendPermissionId?: string): Promise<BroadcastTarget[]>
 
 	/**
 	 * Get a single broadcast target by ID
@@ -307,14 +316,14 @@ export interface Broadcasts {
 	/**
 	 * List broadcasts with optional filters
 	 * @param userId - User ID making the request
-	 * @param filters - Optional filters (groupId/groupIds, status, limit, offset)
+	 * @param filters - Optional filters (permissionId(s), status, limit, offset)
 	 * @returns Paginated broadcasts
 	 */
 	listBroadcasts(
 		userId: string,
 		filters?: {
-			groupId?: string
-			groupIds?: string[]
+			permissionId?: string
+			permissionIds?: string[]
 			status?: BroadcastStatus
 			createdBy?: string
 			limit?: number

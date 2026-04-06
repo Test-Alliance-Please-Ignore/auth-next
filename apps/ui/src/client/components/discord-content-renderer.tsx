@@ -209,23 +209,35 @@ function renderMarkdownText(text: string, keyPrefix: string): ReactNode {
 			return
 		}
 
-		const bulletMatch = content.match(/^\s*[-*]\s+(.+)$/)
+		const bulletMatch = content.match(/^(\s*)[-*]\s+(.+)$/)
 		if (bulletMatch) {
+			const leadingWhitespace = bulletMatch[1]?.replace(/\t/g, '  ') ?? ''
+			const indentLevel = Math.floor(leadingWhitespace.length / 2)
 			renderedLines.push(
-				<div key={lineKey} className="flex items-start gap-2">
+				<div
+					key={lineKey}
+					className="flex items-start gap-2"
+					style={{ marginLeft: `${indentLevel}rem` }}
+				>
 					<span className="text-muted-foreground">•</span>
-					<span>{renderInline(bulletMatch[1], lineKey)}</span>
+					<span>{renderInline(bulletMatch[2], lineKey)}</span>
 				</div>
 			)
 			return
 		}
 
-		const numberedMatch = content.match(/^\s*(\d+)\.\s+(.+)$/)
+		const numberedMatch = content.match(/^(\s*)(\d+)\.\s+(.+)$/)
 		if (numberedMatch) {
+			const leadingWhitespace = numberedMatch[1]?.replace(/\t/g, '  ') ?? ''
+			const indentLevel = Math.floor(leadingWhitespace.length / 2)
 			renderedLines.push(
-				<div key={lineKey} className="flex items-start gap-2">
-					<span className="text-muted-foreground">{numberedMatch[1]}.</span>
-					<span>{renderInline(numberedMatch[2], lineKey)}</span>
+				<div
+					key={lineKey}
+					className="flex items-start gap-2"
+					style={{ marginLeft: `${indentLevel}rem` }}
+				>
+					<span className="text-muted-foreground">{numberedMatch[2]}.</span>
+					<span>{renderInline(numberedMatch[3], lineKey)}</span>
 				</div>
 			)
 			return
