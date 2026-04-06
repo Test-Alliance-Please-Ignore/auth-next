@@ -1650,8 +1650,8 @@ export class ApiClient {
 		return this.patch(`/groups/permissions/attachments/${groupPermissionId}`, data)
 	}
 
-	async removePermissionFromGroup(groupPermissionId: string): Promise<void> {
-		return this.delete(`/groups/permissions/attachments/${groupPermissionId}`)
+	async removePermissionFromGroup(groupId: string, groupPermissionId: string): Promise<void> {
+		return this.delete(`/groups/${groupId}/permissions/${groupPermissionId}`)
 	}
 
 	// Permission Queries

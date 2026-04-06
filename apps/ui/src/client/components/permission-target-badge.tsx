@@ -18,7 +18,7 @@ const targetConfig = {
 	},
 	all_admins: {
 		label: 'All Admins',
-		variant: 'secondary' as const,
+		variant: 'success' as const,
 		icon: ShieldCheck,
 		description: 'All group administrators',
 	},
@@ -30,7 +30,7 @@ const targetConfig = {
 	},
 	owner_and_admins: {
 		label: 'Owner & Admins',
-		variant: 'ghost' as const,
+		variant: 'warning' as const,
 		icon: ShieldCheck,
 		description: 'Group owner and all admins',
 	},
