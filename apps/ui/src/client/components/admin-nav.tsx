@@ -1,6 +1,8 @@
 import {
 	ArrowLeft,
 	Building2,
+	ChevronDown,
+	ChevronRight,
 	Coins,
 	Factory,
 	FolderKanban,
@@ -14,12 +16,30 @@ import {
 	UserCircle,
 	Users,
 } from 'lucide-react'
+import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 
 import { cn } from '@/lib/utils'
 
-export function AdminNav() {
+interface AdminNavProps {
+	onNavigate?: () => void
+}
+
+function isRouteActive(pathname: string, href: string): boolean {
+	return pathname === href || pathname.startsWith(`${href}/`)
+}
+
+export function AdminNav({ onNavigate }: AdminNavProps) {
 	const location = useLocation()
+	const isBroadcastRoute =
+		location.pathname === '/admin/broadcasts' || location.pathname.startsWith('/admin/broadcasts/')
+	const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({
+		'/admin/broadcasts': isBroadcastRoute,
+	})
+
+	const toggleMenu = (href: string) => {
+		setOpenMenus((prev) => ({ ...prev, [href]: !prev[href] }))
+	}
 
 	const navItems = [
 		{
@@ -51,16 +71,11 @@ export function AdminNav() {
 			label: 'Broadcasts',
 			href: '/admin/broadcasts',
 			icon: Radio,
-		},
-		{
-			label: 'Broadcast Targets',
-			href: '/admin/broadcasts-targets',
-			icon: Target,
-		},
-		{
-			label: 'Broadcast Templates',
-			href: '/admin/broadcasts-templates',
-			icon: ScrollText,
+			children: [
+				{ label: 'History', href: '/admin/broadcasts' },
+				{ label: 'Targets', href: '/admin/broadcasts-targets' },
+				{ label: 'Templates', href: '/admin/broadcasts-templates' },
+			],
 		},
 		{
 			label: 'Bills',
@@ -95,47 +110,112 @@ export function AdminNav() {
 	]
 
 	return (
-		<nav className="flex flex-col gap-2 p-4">
-			<div className="mb-4">
-				<h2 className="text-lg font-semibold gradient-text">Admin</h2>
-				<p className="text-sm text-muted-foreground">System Management</p>
+		<nav className="flex flex-col h-full">
+			<div className="p-6 border-b border-border/50">
+				<Link
+					to="/admin"
+					onClick={onNavigate}
+					className="text-xl font-bold gradient-text block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm"
+				>
+					Admin
+				</Link>
+				<p className="text-xs text-muted-foreground mt-1">System Management</p>
 			</div>
 
-			{navItems.map((item) => {
-				const isActive = location.pathname.startsWith(item.href)
-				const Icon = item.icon
+			<div className="flex-1 p-4 space-y-1 overflow-y-auto">
+				{navItems.map((item) => {
+					const childActive = (item.children ?? []).some((child) =>
+						isRouteActive(location.pathname, child.href)
+					)
+					const isActive = childActive || isRouteActive(location.pathname, item.href)
+					const Icon = item.icon
 
-				return (
+					if (item.children && item.children.length > 0) {
+						return (
+							<div key={item.href} className="space-y-1">
+								<button
+									type="button"
+									onClick={() => toggleMenu(item.href)}
+									aria-expanded={!!openMenus[item.href]}
+									className={cn(
+										'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all',
+										'hover:bg-accent/50 hover:text-accent-foreground',
+										'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+										isActive
+											? 'border-l-4 border-primary bg-[hsl(var(--accent-muted))] text-foreground shadow-sm'
+											: 'text-muted-foreground border-l-4 border-transparent'
+									)}
+								>
+									<Icon className="h-4 w-4" />
+									<span className="flex-1 text-left">{item.label}</span>
+									{openMenus[item.href] ? (
+										<ChevronDown className="h-4 w-4 opacity-70" />
+									) : (
+										<ChevronRight className="h-4 w-4 opacity-70" />
+									)}
+								</button>
+
+								{openMenus[item.href] && (
+									<div className="ml-7 mt-1 space-y-1">
+										{item.children.map((child) => {
+											const isChildActive = isRouteActive(location.pathname, child.href)
+											return (
+												<Link
+													key={child.href}
+													to={child.href}
+													onClick={onNavigate}
+													className={cn(
+														'block rounded-lg px-3 py-2 text-sm transition-all',
+														'hover:bg-accent/50 hover:text-accent-foreground',
+														isChildActive
+															? 'border-l-4 border-primary bg-[hsl(var(--accent-muted))] text-foreground shadow-sm'
+															: 'text-muted-foreground border-l-4 border-transparent'
+													)}
+												>
+													{child.label}
+												</Link>
+											)
+										})}
+									</div>
+								)}
+							</div>
+						)
+					}
+
+					return (
+						<Link
+							key={item.href}
+							to={item.href}
+							onClick={onNavigate}
+							className={cn(
+								'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all',
+								'hover:bg-accent/50 hover:text-accent-foreground',
+								'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+								isActive
+									? 'border-l-4 border-primary bg-[hsl(var(--accent-muted))] text-foreground shadow-sm'
+									: 'text-muted-foreground border-l-4 border-transparent'
+							)}
+						>
+							<Icon className="h-4 w-4" />
+							{item.label}
+						</Link>
+					)
+				})}
+
+				<div className="mt-4 pt-4 border-t border-border">
 					<Link
-						key={item.href}
-						to={item.href}
+						to="/dashboard"
+						onClick={onNavigate}
 						className={cn(
-							'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
-							'hover:bg-accent hover:text-accent-foreground',
-							isActive
-								? 'bg-accent text-accent-foreground border-l-2 border-primary'
-								: 'text-muted-foreground'
+							'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all',
+							'hover:bg-accent/50 hover:text-accent-foreground',
+							'text-muted-foreground border border-border'
 						)}
 					>
-						<Icon className="h-4 w-4" />
-						{item.label}
+						<ArrowLeft className="h-4 w-4" />
+						Back to Dashboard
 					</Link>
-				)
-			})}
-
-			{/* Exit Admin Panel Link */}
-			<div className="mt-4 pt-4 border-t border-border">
-				<Link
-					to="/dashboard"
-					className={cn(
-						'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
-						'hover:bg-accent/50 hover:text-accent-foreground',
-						'text-muted-foreground border border-border'
-					)}
-				>
-					<ArrowLeft className="h-4 w-4" />
-					Back to Dashboard
-				</Link>
+				</div>
 			</div>
 		</nav>
 	)

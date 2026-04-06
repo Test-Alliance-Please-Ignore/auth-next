@@ -24,6 +24,7 @@ import {
 	permissionCategories,
 	permissions,
 } from './db/schema'
+import { assertValidBroadcastPermissionUrn } from './services/broadcast-urn'
 import { CategoryService } from './services/category-service' // Added
 import {
 	bulkFindMainCharactersByUserIds,
@@ -199,10 +200,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		return this.categoryService.listCategories(actorId, isSiteAdmin)
 	}
 
-	async getCategory(
-		id: string,
-		actorId: string
-	): Promise<CategoryWithGroups | null> {
+	async getCategory(id: string, actorId: string): Promise<CategoryWithGroups | null> {
 		const isSiteAdmin = await this.isUserSiteAdmin(actorId)
 		return this.categoryService.getCategory(id, actorId, isSiteAdmin)
 	}
@@ -264,10 +262,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		return this.mapGroup(group)
 	}
 
-	async listGroups(
-		filters: ListGroupsFilters,
-		actorId: string
-	): Promise<GroupWithDetails[]> {
+	async listGroups(filters: ListGroupsFilters, actorId: string): Promise<GroupWithDetails[]> {
 		const limit = filters.limit ?? 100
 		const offset = filters.offset ?? 0
 
@@ -452,11 +447,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		}))
 	}
 
-	async updateGroup(
-		id: string,
-		data: UpdateGroupRequest,
-		actorId: string
-	): Promise<Group> {
+	async updateGroup(id: string, data: UpdateGroupRequest, actorId: string): Promise<Group> {
 		const group = await this.db.query.groups.findFirst({
 			where: eq(groups.id, id),
 		})
@@ -518,11 +509,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		await this.db.delete(groups).where(eq(groups.id, id))
 	}
 
-	async transferOwnership(
-		groupId: string,
-		actorId: string,
-		newOwnerId: string
-	): Promise<void> {
+	async transferOwnership(groupId: string, actorId: string, newOwnerId: string): Promise<void> {
 		const [group, isSiteAdmin] = await Promise.all([
 			this.db.query.groups.findFirst({
 				where: eq(groups.id, groupId),
@@ -898,10 +885,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		return this.mapGroupJoinRequest(request)
 	}
 
-	async listJoinRequests(
-		groupId: string,
-		actorId: string
-	): Promise<GroupJoinRequestWithDetails[]> {
+	async listJoinRequests(groupId: string, actorId: string): Promise<GroupJoinRequestWithDetails[]> {
 		const group = await this.db.query.groups.findFirst({
 			where: eq(groups.id, groupId),
 		})
@@ -939,10 +923,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		}))
 	}
 
-	async approveJoinRequest(
-		requestId: string,
-		actorId: string
-	): Promise<{ userId: string }> {
+	async approveJoinRequest(requestId: string, actorId: string): Promise<{ userId: string }> {
 		const request = await this.db.query.groupJoinRequests.findFirst({
 			where: eq(groupJoinRequests.id, requestId),
 		})
@@ -1008,10 +989,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		return { userId: request.userId }
 	}
 
-	async rejectJoinRequest(
-		requestId: string,
-		actorId: string
-	): Promise<void> {
+	async rejectJoinRequest(requestId: string, actorId: string): Promise<void> {
 		const request = await this.db.query.groupJoinRequests.findFirst({
 			where: eq(groupJoinRequests.id, requestId),
 		})
@@ -1058,10 +1036,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	 * ============================================
 	 */
 
-	async createInvitation(
-		data: CreateInvitationRequest,
-		actorId: string
-	): Promise<GroupInvitation> {
+	async createInvitation(data: CreateInvitationRequest, actorId: string): Promise<GroupInvitation> {
 		const group = await this.db.query.groups.findFirst({
 			where: eq(groups.id, data.groupId),
 		})
@@ -1250,10 +1225,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			.where(eq(groupInvitations.id, invitationId))
 	}
 
-	async cancelInvitation(
-		invitationId: string,
-		actorId: string
-	): Promise<void> {
+	async cancelInvitation(invitationId: string, actorId: string): Promise<void> {
 		const invitation = await this.db.query.groupInvitations.findFirst({
 			where: eq(groupInvitations.id, invitationId),
 			with: { group: true },
@@ -1272,7 +1244,9 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			this.isUserSiteAdmin(actorId),
 		])
 		if (!canModerateGroup(invitation.group, actorId, isGroupAdmin, isSiteAdmin)) {
-			throw new Error('Only the inviter, group owner, group admins, or site admins can cancel an invitation')
+			throw new Error(
+				'Only the inviter, group owner, group admins, or site admins can cancel an invitation'
+			)
 		}
 
 		await this.db
@@ -1401,10 +1375,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		}
 	}
 
-	async listInviteCodes(
-		groupId: string,
-		actorId: string
-	): Promise<GroupInviteCode[]> {
+	async listInviteCodes(groupId: string, actorId: string): Promise<GroupInviteCode[]> {
 		const group = await this.db.query.groups.findFirst({
 			where: eq(groups.id, groupId),
 		})
@@ -2299,6 +2270,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 	async createPermission(data: CreatePermissionRequest, actorId: string): Promise<Permission> {
 		// Admin-only operation
+		assertValidBroadcastPermissionUrn(data.urn)
 
 		const [permission] = await this.db
 			.insert(permissions)
@@ -2371,6 +2343,9 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		actorId: string
 	): Promise<Permission> {
 		// Admin-only operation
+		if (data.urn !== undefined) {
+			assertValidBroadcastPermissionUrn(data.urn)
+		}
 
 		const updates: Partial<typeof permissions.$inferInsert> = {}
 

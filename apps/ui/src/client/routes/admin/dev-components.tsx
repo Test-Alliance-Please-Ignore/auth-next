@@ -64,6 +64,11 @@ const DISCORD_SAMPLES = [
 			'- First item\n- Second item\n- Third item\n\n1. Ordered one\n2. Ordered two\n3. Ordered three',
 	},
 	{
+		label: 'Nested Lists (2-space indent)',
+		value:
+			'- Top level A\n  - Nested A.1\n    - Nested A.1.a\n  - Nested A.2\n- Top level B\n\n1. Ordered one\n  1. Ordered one.a\n    1. Ordered one.a.i\n2. Ordered two',
+	},
+	{
 		label: 'Block quote',
 		value: '> Single line quote\n\nSome text after.',
 	},
@@ -151,10 +156,18 @@ export default function DevComponentsPage() {
 					<div>
 						<SectionHeading>Sizes</SectionHeading>
 						<Row>
-							<Button variant="primary" size="lg">Large</Button>
-							<Button variant="primary" size="default">Default</Button>
-							<Button variant="primary" size="sm">Small</Button>
-							<Button variant="primary" size="icon">★</Button>
+							<Button variant="primary" size="lg">
+								Large
+							</Button>
+							<Button variant="primary" size="default">
+								Default
+							</Button>
+							<Button variant="primary" size="sm">
+								Small
+							</Button>
+							<Button variant="primary" size="icon">
+								★
+							</Button>
 						</Row>
 					</div>
 
@@ -162,25 +175,51 @@ export default function DevComponentsPage() {
 						<SectionHeading>States</SectionHeading>
 						<SubHeading>Loading</SubHeading>
 						<Row>
-							<Button variant="primary" loading>Primary Loading</Button>
-							<Button variant="ghost" loading>Ghost Loading</Button>
-							<Button variant="confirm" loading loadingText="Saving…">With Text</Button>
-							<Button variant="danger" loading>Danger Loading</Button>
+							<Button variant="primary" loading>
+								Primary Loading
+							</Button>
+							<Button variant="ghost" loading>
+								Ghost Loading
+							</Button>
+							<Button variant="confirm" loading loadingText="Saving…">
+								With Text
+							</Button>
+							<Button variant="danger" loading>
+								Danger Loading
+							</Button>
 						</Row>
 						<SubHeading>Disabled</SubHeading>
 						<Row>
-							<Button variant="primary" disabled>Primary</Button>
-							<Button variant="ghost" disabled>Ghost</Button>
-							<Button variant="confirm" disabled>Confirm</Button>
-							<Button variant="danger" disabled>Danger</Button>
+							<Button variant="primary" disabled>
+								Primary
+							</Button>
+							<Button variant="ghost" disabled>
+								Ghost
+							</Button>
+							<Button variant="confirm" disabled>
+								Confirm
+							</Button>
+							<Button variant="danger" disabled>
+								Danger
+							</Button>
 						</Row>
 						<SubHeading>With default icon</SubHeading>
 						<Row>
-							<Button variant="confirm" showIcon>Confirm</Button>
-							<Button variant="cancel" showIcon>Cancel</Button>
-							<Button variant="destructive" showIcon>Destructive</Button>
-							<Button variant="danger" showIcon>Danger</Button>
-							<Button variant="success" showIcon>Success</Button>
+							<Button variant="confirm" showIcon>
+								Confirm
+							</Button>
+							<Button variant="cancel" showIcon>
+								Cancel
+							</Button>
+							<Button variant="destructive" showIcon>
+								Destructive
+							</Button>
+							<Button variant="danger" showIcon>
+								Danger
+							</Button>
+							<Button variant="success" showIcon>
+								Success
+							</Button>
 						</Row>
 					</div>
 				</CardContent>
@@ -209,20 +248,42 @@ export default function DevComponentsPage() {
 						<SectionHeading>With icons</SectionHeading>
 						<SubHeading>Left icon (default)</SubHeading>
 						<Row>
-							<Badge variant="default" icon={Star}>Default</Badge>
-							<Badge variant="success" icon={CheckCircle}>Success</Badge>
-							<Badge variant="warning" icon={AlertTriangle}>Warning</Badge>
-							<Badge variant="destructive" icon={XCircle}>Destructive</Badge>
-							<Badge variant="ghost" icon={Clock}>Ghost</Badge>
-							<Badge variant="secondary" icon={Sparkles}>Secondary</Badge>
-							<Badge variant="special" icon={Zap}>Special</Badge>
+							<Badge variant="default" icon={Star}>
+								Default
+							</Badge>
+							<Badge variant="success" icon={CheckCircle}>
+								Success
+							</Badge>
+							<Badge variant="warning" icon={AlertTriangle}>
+								Warning
+							</Badge>
+							<Badge variant="destructive" icon={XCircle}>
+								Destructive
+							</Badge>
+							<Badge variant="ghost" icon={Clock}>
+								Ghost
+							</Badge>
+							<Badge variant="secondary" icon={Sparkles}>
+								Secondary
+							</Badge>
+							<Badge variant="special" icon={Zap}>
+								Special
+							</Badge>
 						</Row>
 						<SubHeading>Right icon</SubHeading>
 						<Row>
-							<Badge variant="success" icon={CheckCircle} iconPosition="right">Verified</Badge>
-							<Badge variant="warning" icon={AlertTriangle} iconPosition="right">Pending</Badge>
-							<Badge variant="default" icon={Info} iconPosition="right">Info</Badge>
-							<Badge variant="ghost" icon={Shield} iconPosition="right">Protected</Badge>
+							<Badge variant="success" icon={CheckCircle} iconPosition="right">
+								Verified
+							</Badge>
+							<Badge variant="warning" icon={AlertTriangle} iconPosition="right">
+								Pending
+							</Badge>
+							<Badge variant="default" icon={Info} iconPosition="right">
+								Info
+							</Badge>
+							<Badge variant="ghost" icon={Shield} iconPosition="right">
+								Protected
+							</Badge>
 						</Row>
 						<SubHeading>Icon only</SubHeading>
 						<Row>

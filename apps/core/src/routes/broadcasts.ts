@@ -3,28 +3,150 @@ import { Hono } from 'hono'
 import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
 import { getStub } from '@repo/do-utils'
 
-import { getCachedUserMemberships, getCachedUserPermissions } from '../lib/groups-cache'
+import {
+	getCachedGlobalPermissions,
+	getCachedUserMemberships,
+	getCachedUserPermissions,
+} from '../lib/groups-cache'
 import { validatePagination } from '../lib/validation'
 import { requireAuth } from '../middleware/session'
+import {
+	buildBroadcastPermissionContext,
+	canAccessBroadcastPermissionId,
+	filterBroadcastTargetsByAction,
+} from './broadcasts-permissions'
 
 import type { Broadcasts } from '@repo/broadcasts'
+import type { Groups, PermissionWithDetails } from '@repo/groups'
 import type { App } from '../context'
 
+const BROADCAST_PERMISSION_CATEGORY_NAME = 'broadcasts'
+const BROADCAST_SEGMENT_PATTERN = /^[a-z0-9_-]+$/
+const BROADCAST_GLOBAL_MANAGE_URN = 'urn:broadcasts:manage'
+
 /**
- * Helper function to check if a user has a specific permission
- * Results are cached via shared cache utility
+ * Resolve user's effective permission URNs.
  */
+async function getUserPermissionUrnSet(
+	env: { GROUPS: DurableObjectNamespace },
+	userId: string
+): Promise<Set<string>> {
+	const permissions = await getCachedUserPermissions(env, userId)
+	return new Set(permissions.map((permission) => permission.urn))
+}
+
 async function hasPermission(
 	env: { GROUPS: DurableObjectNamespace },
 	userId: string,
 	permissionUrn: string,
 	isAdmin: boolean
 ): Promise<boolean> {
-	// Admins bypass permission checks
 	if (isAdmin) return true
 
-	const permissions = await getCachedUserPermissions(env, userId)
-	return permissions.some((p) => p.urn === permissionUrn)
+	const permissionUrns = await getUserPermissionUrnSet(env, userId)
+	return permissionUrns.has(permissionUrn)
+}
+
+function validateBroadcastPermissionSegment(value: string, label: string): string | null {
+	if (!value || !BROADCAST_SEGMENT_PATTERN.test(value)) {
+		return `${label} must match ^[a-z0-9_-]+$`
+	}
+	return null
+}
+
+function buildBroadcastPermissionUrns(
+	entityNamespace: string,
+	targetName: string
+): {
+	sendUrn: string
+	manageUrn: string
+} {
+	return {
+		sendUrn: `urn:broadcasts:${entityNamespace}:${targetName}:send`,
+		manageUrn: `urn:broadcasts:${entityNamespace}:${targetName}:manage`,
+	}
+}
+
+async function getBroadcastPermissionCategoryId(groupsStub: Groups): Promise<string> {
+	const categories = await groupsStub.listPermissionCategories()
+	const broadcastCategory = categories.find(
+		(category) => category.name.trim().toLowerCase() === BROADCAST_PERMISSION_CATEGORY_NAME
+	)
+	if (!broadcastCategory) {
+		throw new Error('Broadcasts permission category not found')
+	}
+	return broadcastCategory.id
+}
+
+async function resolveOrCreateBroadcastPermissionPair(
+	env: { GROUPS: DurableObjectNamespace },
+	actorUserId: string,
+	entityNamespace: string,
+	targetName: string,
+	allowCreate: boolean
+): Promise<{ sendPermissionId: string; managePermissionId: string }> {
+	const { sendUrn, manageUrn } = buildBroadcastPermissionUrns(entityNamespace, targetName)
+	const groupsStub = getStub<Groups>(env.GROUPS, 'default')
+	const broadcastCategoryId = await getBroadcastPermissionCategoryId(groupsStub)
+
+	const findByUrn = async (): Promise<Map<string, PermissionWithDetails>> => {
+		const permissions = await groupsStub.listPermissions(broadcastCategoryId)
+		return new Map(permissions.map((permission) => [permission.urn, permission]))
+	}
+
+	const tryCreate = async (urn: string, name: string): Promise<void> => {
+		try {
+			await groupsStub.createPermission(
+				{
+					urn,
+					name,
+					categoryId: broadcastCategoryId,
+				},
+				actorUserId
+			)
+		} catch {
+			// Ignore race/duplicate errors; we'll re-read by URN below.
+		}
+	}
+
+	let byUrn = await findByUrn()
+	let sendPermission = byUrn.get(sendUrn)
+	let managePermission = byUrn.get(manageUrn)
+
+	if ((!sendPermission || !managePermission) && !allowCreate) {
+		throw new Error('Missing broadcast permissions for this target scope')
+	}
+
+	if (!sendPermission) {
+		await tryCreate(sendUrn, `Can send ${targetName} broadcasts`)
+	}
+	if (!managePermission) {
+		await tryCreate(manageUrn, `Can manage ${targetName} broadcasts`)
+	}
+
+	byUrn = await findByUrn()
+	sendPermission = byUrn.get(sendUrn)
+	managePermission = byUrn.get(manageUrn)
+
+	if (!sendPermission || !managePermission) {
+		throw new Error('Failed to resolve broadcast send/manage permissions')
+	}
+
+	return {
+		sendPermissionId: sendPermission.id,
+		managePermissionId: managePermission.id,
+	}
+}
+
+async function getUserBroadcastPermissionContext(
+	env: { GROUPS: DurableObjectNamespace },
+	userId: string
+): Promise<ReturnType<typeof buildBroadcastPermissionContext>> {
+	const [userPermissions, globalPermissions] = await Promise.all([
+		getCachedUserPermissions(env, userId),
+		getCachedGlobalPermissions(env),
+	])
+	return buildBroadcastPermissionContext(userPermissions, globalPermissions)
 }
 
 /**
@@ -43,34 +165,47 @@ broadcasts.use('*', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }))
 // =============================================================================
 
 /**
- * List all broadcast targets (optionally filtered by group)
- * GET /api/broadcasts/targets?groupId=xxx
+ * List all broadcast targets (optionally filtered by global permission ID)
+ * GET /api/broadcasts/targets?permissionId=xxx
  *
- * Only returns targets from groups the user is a member of (unless admin)
+ * Only returns targets with permission IDs available to user (unless admin)
  */
 broadcasts.get('/targets', async (c) => {
 	const user = c.get('user')!
-	const groupId = c.req.query('groupId')
+	const permissionId = c.req.query('permissionId')
 
-	// Get user's group memberships (admins can see all)
-	const memberships = user.is_admin ? [] : await getCachedUserMemberships(c.env, user.id)
-	const userGroupIds = memberships.map((m) => m.groupId)
+	const permissionContext = user.is_admin
+		? null
+		: await getUserBroadcastPermissionContext(c.env, user.id)
 
-	// If filtering by a specific group, verify user is a member
-	if (groupId) {
-		if (!user.is_admin && !userGroupIds.includes(groupId)) {
-			return c.json({ error: 'Not a member of this group' }, 403)
+	// If filtering by a specific permission ID, verify user has it attached
+	if (permissionId) {
+		if (
+			!user.is_admin &&
+			!canAccessBroadcastPermissionId(permissionId, 'send', permissionContext!)
+		) {
+			return c.json({ error: 'Permission denied' }, 403)
 		}
+	}
+
+	if (
+		!user.is_admin &&
+		!permissionId &&
+		permissionContext &&
+		permissionContext.userActionsByKey.size === 0 &&
+		!permissionContext.hasGlobalManage
+	) {
+		return c.json([])
 	}
 
 	// Get Broadcasts DO stub
 	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
-	const targets = await broadcastsStub.listTargets(user.id, groupId)
+	const targets = await broadcastsStub.listTargets(user.id, permissionId)
 
-	// Filter targets to only include those from groups the user is a member of
+	// Filter targets to only include targets gated by permission IDs user has
 	const filteredTargets = user.is_admin
 		? targets
-		: targets.filter((target) => userGroupIds.includes(target.groupId))
+		: filterBroadcastTargetsByAction(targets, 'send', permissionContext!)
 
 	return c.json(filteredTargets)
 })
@@ -90,13 +225,17 @@ broadcasts.get('/targets/:id', async (c) => {
 		return c.json({ error: 'Target not found' }, 404)
 	}
 
-	// Verify user is a member of the target's group
+	// Verify user has target's permission ID attached
 	if (!user.is_admin) {
-		const memberships = await getCachedUserMemberships(c.env, user.id)
-		const isMember = memberships.some((m) => m.groupId === target.groupId)
+		const permissionContext = await getUserBroadcastPermissionContext(c.env, user.id)
+		const canAccessTarget = canAccessBroadcastPermissionId(
+			target.sendPermissionId,
+			'send',
+			permissionContext
+		)
 
-		if (!isMember) {
-			return c.json({ error: 'Not authorized to view this target' }, 403)
+		if (!canAccessTarget) {
+			return c.json({ error: 'Permission denied' }, 403)
 		}
 	}
 
@@ -109,22 +248,79 @@ broadcasts.get('/targets/:id', async (c) => {
  */
 broadcasts.post('/targets', async (c) => {
 	const user = c.get('user')!
-	const data = await c.req.json()
+	const data = await c.req.json<{
+		name: string
+		description?: string
+		type: 'discord_channel'
+		permissionEntityNamespace: string
+		permissionTargetName: string
+		config: { guildId: string; channelId: string }
+	}>()
 
-	// Check permissions - user must be admin or have broadcast permission in the group
-	const allowed = await hasPermission(
-		c.env,
-		user.id,
-		`urn:group:${data.groupId}:broadcasts:manage`,
-		user.is_admin
+	const entityNamespace = String(data.permissionEntityNamespace ?? '').trim()
+	const targetName = String(data.permissionTargetName ?? '').trim()
+	const entityNamespaceError = validateBroadcastPermissionSegment(
+		entityNamespace,
+		'permissionEntityNamespace'
 	)
+	if (entityNamespaceError) return c.json({ error: entityNamespaceError }, 400)
+	const targetNameError = validateBroadcastPermissionSegment(targetName, 'permissionTargetName')
+	if (targetNameError) return c.json({ error: targetNameError }, 400)
+
+	const userPermissionUrns = user.is_admin
+		? new Set<string>()
+		: await getUserPermissionUrnSet(c.env, user.id)
+	const hasGlobalManage = user.is_admin || userPermissionUrns.has(BROADCAST_GLOBAL_MANAGE_URN)
+
+	let sendPermissionId: string
+	let managePermissionId: string
+	try {
+		const resolved = await resolveOrCreateBroadcastPermissionPair(
+			c.env,
+			user.id,
+			entityNamespace,
+			targetName,
+			hasGlobalManage
+		)
+		sendPermissionId = resolved.sendPermissionId
+		managePermissionId = resolved.managePermissionId
+	} catch (error) {
+		if (error instanceof Error && error.message.includes('Missing broadcast permissions')) {
+			return c.json({ error: 'Permission denied' }, 403)
+		}
+		if (error instanceof Error) {
+			return c.json({ error: error.message }, 400)
+		}
+		throw error
+	}
+
+	// Creating/editing targets requires manage-level permission for the selected broadcast scope
+	const permissionContext = user.is_admin
+		? null
+		: await getUserBroadcastPermissionContext(c.env, user.id)
+	const allowed = user.is_admin
+		? true
+		: hasGlobalManage ||
+			canAccessBroadcastPermissionId(managePermissionId, 'manage', permissionContext!)
 
 	if (!allowed) {
 		return c.json({ error: 'Permission denied' }, 403)
 	}
 
 	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
-	const target = await broadcastsStub.createTarget(data, user.id)
+	const target = await broadcastsStub.createTarget(
+		{
+			name: data.name,
+			description: data.description,
+			type: data.type,
+			permissionEntityNamespace: entityNamespace,
+			permissionTargetName: targetName,
+			sendPermissionId,
+			managePermissionId,
+			config: data.config,
+		},
+		user.id
+	)
 
 	return c.json(target, 201)
 })
@@ -136,9 +332,17 @@ broadcasts.post('/targets', async (c) => {
 broadcasts.patch('/targets/:id', async (c) => {
 	const user = c.get('user')!
 	const targetId = c.req.param('id')
-	const data = await c.req.json()
+	const payload = await c.req.json<
+		{
+			sendPermissionUrn?: string
+			managePermissionUrn?: string
+		} & Record<string, unknown>
+	>()
+	const data: Record<string, unknown> = { ...payload }
+	delete data.sendPermissionUrn
+	delete data.managePermissionUrn
 
-	// Get target to check group ownership
+	// Get target to check ownership scope
 	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const target = await broadcastsStub.getTarget(targetId, user.id)
 
@@ -146,19 +350,81 @@ broadcasts.patch('/targets/:id', async (c) => {
 		return c.json({ error: 'Target not found' }, 404)
 	}
 
-	// Check permissions
-	const allowed = await hasPermission(
-		c.env,
-		user.id,
-		`urn:group:${target.groupId}:broadcasts:manage`,
-		user.is_admin
-	)
+	// Check permission on existing target permission ID
+	const allowed = user.is_admin
+		? true
+		: canAccessBroadcastPermissionId(
+				target.managePermissionId,
+				'manage',
+				await getUserBroadcastPermissionContext(c.env, user.id)
+			)
 
 	if (!allowed) {
 		return c.json({ error: 'Permission denied' }, 403)
 	}
 
-	const updated = await broadcastsStub.updateTarget(targetId, data, user.id)
+	try {
+		const sendPermissionUrn = String(payload.sendPermissionUrn ?? '').trim()
+		const managePermissionUrn = String(payload.managePermissionUrn ?? '').trim()
+		if (sendPermissionUrn || managePermissionUrn) {
+			const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+			const broadcastCategoryId = await getBroadcastPermissionCategoryId(groupsStub)
+			const permissions = await groupsStub.listPermissions(broadcastCategoryId)
+			const permissionByUrn = new Map(
+				permissions.map((permission) => [permission.urn, permission.id])
+			)
+
+			if (sendPermissionUrn) {
+				const sendPermissionId = permissionByUrn.get(sendPermissionUrn)
+				if (!sendPermissionId) {
+					return c.json({ error: `Broadcast send permission not found: ${sendPermissionUrn}` }, 400)
+				}
+				data.sendPermissionId = sendPermissionId
+			}
+
+			if (managePermissionUrn) {
+				const managePermissionId = permissionByUrn.get(managePermissionUrn)
+				if (!managePermissionId) {
+					return c.json(
+						{ error: `Broadcast manage permission not found: ${managePermissionUrn}` },
+						400
+					)
+				}
+				data.managePermissionId = managePermissionId
+			}
+		}
+	} catch (error) {
+		if (error instanceof Error) {
+			return c.json({ error: error.message }, 400)
+		}
+		throw error
+	}
+
+	// If re-scoping target permissions, user must hold matching access for each new permission ID
+	if (!user.is_admin) {
+		const context = await getUserBroadcastPermissionContext(c.env, user.id)
+		if (
+			data.sendPermissionId &&
+			data.sendPermissionId !== target.sendPermissionId &&
+			!canAccessBroadcastPermissionId(String(data.sendPermissionId), 'send', context)
+		) {
+			return c.json({ error: 'Permission denied' }, 403)
+		}
+
+		if (
+			data.managePermissionId &&
+			data.managePermissionId !== target.managePermissionId &&
+			!canAccessBroadcastPermissionId(String(data.managePermissionId), 'manage', context)
+		) {
+			return c.json({ error: 'Permission denied' }, 403)
+		}
+	}
+
+	const updated = await broadcastsStub.updateTarget(
+		targetId,
+		data as Parameters<Broadcasts['updateTarget']>[1],
+		user.id
+	)
 	return c.json(updated)
 })
 
@@ -170,7 +436,7 @@ broadcasts.delete('/targets/:id', async (c) => {
 	const user = c.get('user')!
 	const targetId = c.req.param('id')
 
-	// Get target to check group ownership
+	// Get target to check ownership scope
 	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const target = await broadcastsStub.getTarget(targetId, user.id)
 
@@ -179,12 +445,13 @@ broadcasts.delete('/targets/:id', async (c) => {
 	}
 
 	// Check permissions
-	const allowed = await hasPermission(
-		c.env,
-		user.id,
-		`urn:group:${target.groupId}:broadcasts:manage`,
-		user.is_admin
-	)
+	const allowed = user.is_admin
+		? true
+		: canAccessBroadcastPermissionId(
+				target.managePermissionId,
+				'manage',
+				await getUserBroadcastPermissionContext(c.env, user.id)
+			)
 
 	if (!allowed) {
 		return c.json({ error: 'Permission denied' }, 403)
@@ -355,14 +622,14 @@ broadcasts.delete('/templates/:id', async (c) => {
 // =============================================================================
 
 /**
- * List broadcasts (optionally filtered by groupId and/or status)
- * GET /api/broadcasts?groupId=xxx&status=xxx
+ * List broadcasts (optionally filtered by permissionId and/or status)
+ * GET /api/broadcasts?permissionId=xxx&status=xxx
  *
- * Only returns broadcasts from groups the user is a member of (unless admin)
+ * Only returns broadcasts whose permission ID is attached to user (unless admin)
  */
 broadcasts.get('/', async (c) => {
 	const user = c.get('user')!
-	const groupId = c.req.query('groupId')
+	const permissionId = c.req.query('permissionId')
 	const status = c.req.query('status') as any
 	const mine = c.req.query('mine') === 'true'
 	const pagination = validatePagination(c.req.query('limit'), c.req.query('offset'))
@@ -371,25 +638,39 @@ broadcasts.get('/', async (c) => {
 		return c.json({ error: pagination.error }, pagination.status)
 	}
 
-	// Get user's group memberships (admins can see all)
-	const memberships = user.is_admin ? [] : await getCachedUserMemberships(c.env, user.id)
-	const userGroupIds = memberships.map((m) => m.groupId)
+	const permissionContext = user.is_admin
+		? null
+		: await getUserBroadcastPermissionContext(c.env, user.id)
 
-	// If filtering by a specific group, verify user is a member
-	if (groupId) {
-		if (!user.is_admin && !userGroupIds.includes(groupId)) {
-			return c.json({ error: 'Not a member of this group' }, 403)
+	// If filtering by a specific permission ID, verify user has it
+	if (permissionId) {
+		if (
+			!user.is_admin &&
+			!canAccessBroadcastPermissionId(permissionId, 'send', permissionContext!)
+		) {
+			return c.json({ error: 'Permission denied' }, 403)
 		}
 	}
 
-	if (!user.is_admin && !groupId && userGroupIds.length === 0) {
+	if (
+		!user.is_admin &&
+		!permissionId &&
+		permissionContext &&
+		permissionContext.userActionsByKey.size === 0 &&
+		!permissionContext.hasGlobalManage
+	) {
 		return c.json({ rows: [], rowCount: 0 })
 	}
 
 	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const page = await broadcastsStub.listBroadcasts(user.id, {
-		groupId,
-		groupIds: user.is_admin || groupId ? undefined : userGroupIds,
+		permissionId,
+		permissionIds:
+			user.is_admin || permissionId
+				? undefined
+				: [...permissionContext!.permissionMetaById.keys()].filter((id) =>
+						canAccessBroadcastPermissionId(id, 'send', permissionContext!)
+					),
 		status,
 		createdBy: mine ? user.id : undefined,
 		limit: pagination.data.limit,
@@ -414,12 +695,16 @@ broadcasts.get('/:id', async (c) => {
 		return c.json({ error: 'Broadcast not found' }, 404)
 	}
 
-	// Verify user is a member of the broadcast's group
+	// Verify user has the broadcast permission ID
 	if (!user.is_admin) {
-		const memberships = await getCachedUserMemberships(c.env, user.id)
-		const isMember = memberships.some((m) => m.groupId === broadcast.groupId)
+		const permissionContext = await getUserBroadcastPermissionContext(c.env, user.id)
+		const canView = canAccessBroadcastPermissionId(
+			broadcast.target.sendPermissionId,
+			'send',
+			permissionContext
+		)
 
-		if (!isMember) {
+		if (!canView) {
 			return c.json({ error: 'Not authorized to view this broadcast' }, 403)
 		}
 	}
@@ -435,13 +720,20 @@ broadcasts.post('/', async (c) => {
 	const user = c.get('user')!
 	const data = await c.req.json()
 
-	// Check permissions
-	const allowed = await hasPermission(
-		c.env,
-		user.id,
-		`urn:group:${data.groupId}:broadcasts:send`,
-		user.is_admin
-	)
+	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	const target = await broadcastsStub.getTarget(data.targetId, user.id)
+	if (!target) {
+		return c.json({ error: 'Target not found' }, 404)
+	}
+
+	// Check permissions against target's assigned permission ID
+	const allowed = user.is_admin
+		? true
+		: canAccessBroadcastPermissionId(
+				target.sendPermissionId,
+				'send',
+				await getUserBroadcastPermissionContext(c.env, user.id)
+			)
 
 	if (!allowed) {
 		return c.json({ error: 'Permission denied' }, 403)
@@ -451,9 +743,8 @@ broadcasts.post('/', async (c) => {
 	const mainCharacter = user.characters.find((c) => c.is_primary)
 	const createdByCharacterName = mainCharacter?.characterName || 'Unknown'
 
-	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const broadcast = await broadcastsStub.createBroadcast(
-		{ ...data, createdByCharacterName },
+		{ ...data, permissionId: target.sendPermissionId, createdByCharacterName },
 		user.id
 	)
 
@@ -468,7 +759,7 @@ broadcasts.post('/:id/send', async (c) => {
 	const user = c.get('user')!
 	const broadcastId = c.req.param('id')
 
-	// Get broadcast to check group ownership
+	// Get broadcast to check ownership scope
 	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const broadcast = await broadcastsStub.getBroadcast(broadcastId, user.id)
 
@@ -477,12 +768,13 @@ broadcasts.post('/:id/send', async (c) => {
 	}
 
 	// Check permissions
-	const allowed = await hasPermission(
-		c.env,
-		user.id,
-		`urn:group:${broadcast.groupId}:broadcasts:send`,
-		user.is_admin
-	)
+	const allowed = user.is_admin
+		? true
+		: canAccessBroadcastPermissionId(
+				broadcast.target.sendPermissionId,
+				'send',
+				await getUserBroadcastPermissionContext(c.env, user.id)
+			)
 
 	if (!allowed) {
 		return c.json({ error: 'Permission denied' }, 403)
@@ -502,7 +794,7 @@ broadcasts.delete('/:id', async (c) => {
 	const user = c.get('user')!
 	const broadcastId = c.req.param('id')
 
-	// Get broadcast to check group ownership
+	// Get broadcast to check ownership scope
 	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const broadcast = await broadcastsStub.getBroadcast(broadcastId, user.id)
 
@@ -511,12 +803,13 @@ broadcasts.delete('/:id', async (c) => {
 	}
 
 	// Check permissions
-	const allowed = await hasPermission(
-		c.env,
-		user.id,
-		`urn:group:${broadcast.groupId}:broadcasts:manage`,
-		user.is_admin
-	)
+	const allowed = user.is_admin
+		? true
+		: canAccessBroadcastPermissionId(
+				broadcast.target.managePermissionId,
+				'manage',
+				await getUserBroadcastPermissionContext(c.env, user.id)
+			)
 
 	if (!allowed) {
 		return c.json({ error: 'Permission denied' }, 403)
@@ -536,19 +829,23 @@ broadcasts.get('/:id/deliveries', async (c) => {
 
 	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 
-	// First, get the broadcast to check which group it belongs to
+	// First, get the broadcast to check its permission scope
 	const broadcast = await broadcastsStub.getBroadcast(broadcastId, user.id)
 
 	if (!broadcast) {
 		return c.json({ error: 'Broadcast not found' }, 404)
 	}
 
-	// Verify user is a member of the broadcast's group
+	// Verify user has the broadcast permission ID
 	if (!user.is_admin) {
-		const memberships = await getCachedUserMemberships(c.env, user.id)
-		const isMember = memberships.some((m) => m.groupId === broadcast.groupId)
+		const permissionContext = await getUserBroadcastPermissionContext(c.env, user.id)
+		const canView = canAccessBroadcastPermissionId(
+			broadcast.target.sendPermissionId,
+			'send',
+			permissionContext
+		)
 
-		if (!isMember) {
+		if (!canView) {
 			return c.json({ error: 'Not authorized to view this broadcast' }, 403)
 		}
 	}

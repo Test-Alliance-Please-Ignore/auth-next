@@ -1,10 +1,10 @@
 import { Check, XCircle } from 'lucide-react'
 import { useState } from 'react'
 
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
-import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 import type {
@@ -24,6 +24,7 @@ interface PermissionFormDialogProps {
 
 // URN validation regex - minimum 3 parts (urn:namespace:action)
 const URN_REGEX = /^urn:[a-z0-9_-]+(:[a-z0-9_-]+)+$/
+const BROADCAST_SEGMENT_REGEX = /^[a-z0-9_-]+$/
 
 export function PermissionFormDialog({
 	permission,
@@ -60,6 +61,29 @@ export function PermissionFormDialog({
 
 		if (!URN_REGEX.test(urn)) {
 			return 'URN can only contain lowercase letters, numbers, hyphens, and underscores'
+		}
+
+		if (urn.startsWith('urn:broadcasts:')) {
+			const parts = urn.split(':')
+			if (parts.length !== 5) {
+				return 'Broadcast URN must be: urn:broadcasts:<entity-namespace>:<target-name>:<action>'
+			}
+
+			const entityNamespace = parts[2]
+			const targetName = parts[3]
+			const action = parts[4]
+
+			if (!BROADCAST_SEGMENT_REGEX.test(entityNamespace)) {
+				return 'Broadcast entity namespace must match ^[a-z0-9_-]+$ (no spaces)'
+			}
+
+			if (!BROADCAST_SEGMENT_REGEX.test(targetName)) {
+				return 'Broadcast target name must match ^[a-z0-9_-]+$ (no spaces)'
+			}
+
+			if (action !== 'send' && action !== 'manage') {
+				return 'Broadcast action must be either :send or :manage'
+			}
 		}
 
 		return null
@@ -159,6 +183,10 @@ export function PermissionFormDialog({
 				{!urnError && (
 					<p id="urn-help" className="text-sm text-muted-foreground">
 						Format: urn:namespace:action (or more parts as needed, lowercase, hyphens, underscores)
+						<span className="ml-2">
+							Broadcast format:
+							urn:broadcasts:&lt;entity-namespace&gt;:&lt;target-name&gt;:&lt;send|manage&gt;
+						</span>
 						{isEditing && <span className="ml-2 text-xs">(URN cannot be changed)</span>}
 					</p>
 				)}
@@ -188,9 +216,7 @@ export function PermissionFormDialog({
 					inputId="category"
 					options={[
 						{ value: 'none', label: 'No category' },
-						...categories.map((category) => ({ value: category.id,
-							label: category.name,
-						})),
+						...categories.map((category) => ({ value: category.id, label: category.name })),
 					]}
 					placeholder="Select a category"
 					disabled={isSubmitting}

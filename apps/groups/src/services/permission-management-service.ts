@@ -1,5 +1,20 @@
 import { and, eq, inArray } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
+
+import {
+	corporationPermissions,
+	groupAdmins,
+	groupMembers,
+	groupPermissions,
+	groups as groupsTable,
+	permissionCategories,
+	permissions,
+} from '../db/schema'
+import { assertValidBroadcastPermissionUrn } from './broadcast-urn'
+import { canManageGroup } from './permissions'
+import { isUserGroupAdmin } from './query-helpers'
+
+import type { Core } from '@repo/core'
 import type {
 	AttachPermissionRequest,
 	AttachPermissionToCorporationRequest,
@@ -18,27 +33,18 @@ import type {
 	UpdatePermissionRequest,
 	UserPermission,
 } from '@repo/groups'
-import {
-	corporationPermissions,
-	groupAdmins,
-	groupMembers,
-	groupPermissions,
-	permissionCategories,
-	permissions,
-	groups as groupsTable,
-} from '../db/schema'
-import { canManageGroup } from './permissions'
-import { isUserGroupAdmin } from './query-helpers'
-
-import type { Core } from '@repo/core'
 import type { ServiceContext } from './context'
 
 // Helper type to bypass strict Core type checks if definitions are missing
 type CoreStub = {
-    getCorporation(id: string): Promise<{ name: string } | null>
-    getCorporationsBatch(ids: string[]): Promise<Map<string, { name: string }>>
-    getUserCorporationsBatch(userIds: string[]): Promise<Map<string, Array<{ corporationId: string; corporationName: string }>>>
-    getUserCorporationsAndAlliances(userId: string): Promise<{ corporations: Array<{ corporationId: string; corporationName: string }> }>
+	getCorporation(id: string): Promise<{ name: string } | null>
+	getCorporationsBatch(ids: string[]): Promise<Map<string, { name: string }>>
+	getUserCorporationsBatch(
+		userIds: string[]
+	): Promise<Map<string, Array<{ corporationId: string; corporationName: string }>>>
+	getUserCorporationsAndAlliances(
+		userId: string
+	): Promise<{ corporations: Array<{ corporationId: string; corporationName: string }> }>
 }
 
 export class PermissionManagementService {
@@ -112,6 +118,7 @@ export class PermissionManagementService {
 
 	async createPermission(data: CreatePermissionRequest, adminUserId: string): Promise<Permission> {
 		// Admin-only
+		assertValidBroadcastPermissionUrn(data.urn)
 		const [permission] = await this.ctx.db
 			.insert(permissions)
 			.values({
@@ -134,6 +141,9 @@ export class PermissionManagementService {
 		adminUserId: string
 	): Promise<Permission> {
 		// Admin-only
+		if (data.urn !== undefined) {
+			assertValidBroadcastPermissionUrn(data.urn)
+		}
 		const updates: Partial<typeof permissions.$inferInsert> = {}
 
 		if (data.urn !== undefined) updates.urn = data.urn
@@ -185,12 +195,12 @@ export class PermissionManagementService {
 			where: eq(permissions.id, id),
 			with: { category: true },
 		})
-		
+
 		if (!permission) return null
-		
+
 		return {
 			...this.mapPermission(permission),
-			category: permission.category ? this.mapPermissionCategory(permission.category) : null
+			category: permission.category ? this.mapPermissionCategory(permission.category) : null,
 		}
 	}
 
@@ -223,9 +233,9 @@ export class PermissionManagementService {
 		const existingPermission = await this.ctx.db.query.groupPermissions.findFirst({
 			where: and(
 				eq(groupPermissions.groupId, groupId),
-				(data as any).permissionId 
+				(data as any).permissionId
 					? eq(groupPermissions.permissionId, (data as any).permissionId)
-					: (data as any).customUrn 
+					: (data as any).customUrn
 						? eq(groupPermissions.customUrn, (data as any).customUrn)
 						: undefined
 			),
@@ -250,7 +260,7 @@ export class PermissionManagementService {
 
 		this.ctx.groupsDOCache.invalidateAllPermissionsCache()
 
-        // Fetch the permission details if permissionId is present
+		// Fetch the permission details if permissionId is present
 		let permissionDetails: PermissionWithDetails | null = null
 		if (groupPermission.permissionId) {
 			const perm = await this.getPermission(groupPermission.permissionId)
@@ -259,8 +269,8 @@ export class PermissionManagementService {
 
 		return {
 			...this.mapGroupPermission(groupPermission),
-            permission: permissionDetails,
-			group: this.mapGroup(group) as any // Cast to avoid strict check on missing relations
+			permission: permissionDetails,
+			group: this.mapGroup(group) as any, // Cast to avoid strict check on missing relations
 		}
 	}
 
@@ -289,7 +299,8 @@ export class PermissionManagementService {
 
 		if (data.targetType !== undefined) updates.targetType = data.targetType
 		if ((data as any).customName !== undefined) updates.customName = (data as any).customName
-		if ((data as any).customDescription !== undefined) updates.customDescription = (data as any).customDescription
+		if ((data as any).customDescription !== undefined)
+			updates.customDescription = (data as any).customDescription
 
 		const [updated] = await this.ctx.db
 			.update(groupPermissions)
@@ -303,7 +314,7 @@ export class PermissionManagementService {
 
 		this.ctx.groupsDOCache.invalidateAllPermissionsCache()
 
-        // Fetch the permission details if permissionId is present
+		// Fetch the permission details if permissionId is present
 		let permissionDetails: PermissionWithDetails | null = null
 		if (updated.permissionId) {
 			const perm = await this.getPermission(updated.permissionId)
@@ -312,8 +323,8 @@ export class PermissionManagementService {
 
 		return {
 			...this.mapGroupPermission(updated),
-            permission: permissionDetails,
-			group: this.mapGroup(group) as any
+			permission: permissionDetails,
+			group: this.mapGroup(group) as any,
 		}
 	}
 
@@ -361,7 +372,9 @@ export class PermissionManagementService {
 		const existingPermission = await this.ctx.db.query.corporationPermissions.findFirst({
 			where: and(
 				eq(corporationPermissions.corporationId, corporationId),
-				(data as any).permissionId ? eq(corporationPermissions.permissionId, (data as any).permissionId) : undefined
+				(data as any).permissionId
+					? eq(corporationPermissions.permissionId, (data as any).permissionId)
+					: undefined
 			),
 		})
 
@@ -381,13 +394,13 @@ export class PermissionManagementService {
 		this.ctx.groupsDOCache.invalidateAllPermissionsCache()
 		this.ctx.groupsDOCache.invalidateCorporationPermissionsCache(corporationId)
 
-        // Fetch the permission details
+		// Fetch the permission details
 		const permission = await this.getPermission((data as any).permissionId)
-		
+
 		return {
 			...this.mapCorporationPermission(corpPermission),
 			permission: permission!, // We know it exists because we inserted it
-			corporationName: corporation?.name || 'Unknown'
+			corporationName: corporation?.name || 'Unknown',
 		} as any as CorporationPermissionWithDetails
 	}
 
@@ -402,7 +415,7 @@ export class PermissionManagementService {
 		// They don't have targetType or custom fields in schema.
 		// So update might not be possible or useful except maybe changing... nothing?
 		// I will implement it as throwing error or just returning existing.
-		
+
 		throw new Error('Corporation permissions cannot be updated, only attached or detached.')
 	}
 
@@ -415,17 +428,17 @@ export class PermissionManagementService {
 		// Check admin? `canManageGroup` requires a group.
 		// If these are global, maybe only site admins can manage?
 		// Or maybe we need to check if `removedBy` is an admin of the corporation?
-		
+
 		// I will assume site admin only for now if no group context is relevant.
-		// But wait, the method signature includes `groupId`. 
-		// If the original intention was "Allow Group X to be accessed by Corporation Y", 
+		// But wait, the method signature includes `groupId`.
+		// If the original intention was "Allow Group X to be accessed by Corporation Y",
 		// then it should have been `groupPermissions` with a `targetType` of `corporation`?
 		// But `targetType` enum is `all_members`, `all_admins`, etc.
-		
+
 		// The `corporationPermissions` table seems to be for "Members of Corp X have Permission Y".
-		
+
 		// Since the schema doesn't support `groupId` or `targetType`, I'll assume simple link.
-		
+
 		const corpPermission = await this.ctx.db.query.corporationPermissions.findFirst({
 			where: eq(corporationPermissions.id, corporationPermissionId),
 		})
@@ -456,18 +469,18 @@ export class PermissionManagementService {
 		// The query returns `groupPermissions` with `permission` nested.
 		// `mapGroupPermission` expects `groupPermissions` type.
 		// But `GroupPermissionWithDetails` needs `permission` object details.
-		
+
 		// Let's fix mapGroupPermission or handle it here.
 		return results.map((gp: any) => {
 			// @ts-ignore
-			const permission = gp.permission ? this.mapPermission(gp.permission) : null;
-			const mapped = this.mapGroupPermission(gp);
+			const permission = gp.permission ? this.mapPermission(gp.permission) : null
+			const mapped = this.mapGroupPermission(gp)
 			return {
 				...mapped,
 				permission,
 				// Providing partial group to satisfy type
-				group: { id: gp.groupId } as any
-			} as GroupPermissionWithDetails;
+				group: { id: gp.groupId } as any,
+			} as GroupPermissionWithDetails
 		})
 	}
 
@@ -485,11 +498,11 @@ export class PermissionManagementService {
 		const corporation = await corpStub.getCorporation(corporationId)
 
 		return corpPermissions.map((cp) => {
-			const mapped = this.mapCorporationPermission(cp) as any;
+			const mapped = this.mapCorporationPermission(cp) as any
 			// @ts-ignore
-			if (cp.permission) mapped.permission = this.mapPermission(cp.permission);
-			mapped.corporationName = corporation?.name || 'Unknown';
-			return mapped as CorporationPermissionWithDetails;
+			if (cp.permission) mapped.permission = this.mapPermission(cp.permission)
+			mapped.corporationName = corporation?.name || 'Unknown'
+			return mapped as CorporationPermissionWithDetails
 		})
 	}
 
@@ -856,10 +869,7 @@ export class PermissionManagementService {
 		})
 
 		// Build user -> memberships map
-		const userMembershipsMap = new Map<
-			string,
-			Array<(typeof allMemberships)[number]>
-		>()
+		const userMembershipsMap = new Map<string, Array<(typeof allMemberships)[number]>>()
 		for (const membership of allMemberships) {
 			if (!userMembershipsMap.has(membership.userId)) {
 				userMembershipsMap.set(membership.userId, [])
@@ -901,9 +911,7 @@ export class PermissionManagementService {
 						),
 					})
 				: [],
-			allGroupIds.size > 0
-				? this.getGroupPermissionsForGroups(Array.from(allGroupIds))
-				: [],
+			allGroupIds.size > 0 ? this.getGroupPermissionsForGroups(Array.from(allGroupIds)) : [],
 		])
 
 		// Build user -> admin groupIds map
@@ -916,10 +924,7 @@ export class PermissionManagementService {
 		}
 
 		// Build groupId -> group permissions map (shared across users)
-		const groupPermsMap = new Map<
-			string,
-			Array<(typeof allGroupPerms)[number]>
-		>()
+		const groupPermsMap = new Map<string, Array<(typeof allGroupPerms)[number]>>()
 		for (const gp of allGroupPerms) {
 			if (!groupPermsMap.has(gp.groupId)) {
 				groupPermsMap.set(gp.groupId, [])
@@ -993,7 +998,7 @@ export class PermissionManagementService {
 	 * ============================================
 	 */
 
-    private mapGroup(group: typeof groupsTable.$inferSelect) {
+	private mapGroup(group: typeof groupsTable.$inferSelect) {
 		return {
 			id: group.id,
 			categoryId: group.categoryId,
@@ -1027,8 +1032,8 @@ export class PermissionManagementService {
 			createdBy: perm.createdBy,
 			createdAt: perm.createdAt,
 			updatedAt: perm.updatedAt,
-            // @ts-ignore - category property might not be in Permission type depending on version, ignoring
-            category: null 
+			// @ts-ignore - category property might not be in Permission type depending on version, ignoring
+			category: null,
 		}
 	}
 

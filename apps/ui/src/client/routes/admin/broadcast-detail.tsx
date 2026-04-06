@@ -29,7 +29,6 @@ import {
 	useDeleteBroadcast,
 	useSendBroadcast,
 } from '@/hooks/useBroadcasts'
-import { useGroups } from '@/hooks/useGroups'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { formatDateTimeLocal } from '@/lib/discord-time'
 
@@ -57,7 +56,6 @@ export default function AdminBroadcastDetailPage() {
 	const { data: deliveries, isLoading: isLoadingDeliveries } = useBroadcastDeliveries(
 		broadcastId || ''
 	)
-	const { data: groups } = useGroups()
 	const { data: targets } = useBroadcastTargets()
 	const sendBroadcast = useSendBroadcast()
 	const deleteBroadcast = useDeleteBroadcast()
@@ -90,8 +88,6 @@ export default function AdminBroadcastDetailPage() {
 		)
 	}
 
-	const groupName =
-		groups?.find((group) => group.id === broadcast.groupId)?.name || broadcast.groupId
 	const targetName =
 		broadcast.target?.name ||
 		targets?.find((target) => target.id === broadcast.targetId)?.name ||
@@ -207,8 +203,8 @@ export default function AdminBroadcastDetailPage() {
 						</div>
 					</div>
 					<div>
-						<div className="text-sm text-muted-foreground">Group</div>
-						<div className="font-medium">{groupName}</div>
+						<div className="text-sm text-muted-foreground">Permission</div>
+						<div className="font-medium font-mono text-xs">{broadcast.permissionId}</div>
 					</div>
 					<div>
 						<div className="text-sm text-muted-foreground">Target</div>

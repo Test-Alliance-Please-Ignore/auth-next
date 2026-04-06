@@ -1,11 +1,13 @@
-import { ChevronRight } from 'lucide-react'
-import { Fragment, useEffect, useMemo } from 'react'
+import { ChevronRight, Menu, X } from 'lucide-react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, Outlet, useLocation } from 'react-router-dom'
 
 import { AdminNav } from '@/components/admin-nav'
+import { Button } from '@/components/ui/button'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { useAuth } from '@/hooks/useAuth'
 import { BreadcrumbProvider, useBreadcrumb } from '@/hooks/useBreadcrumb'
+import { cn } from '@/lib/utils'
 
 export default function AdminLayout() {
 	const { user, isAuthenticated, isLoading } = useAuth()
@@ -53,6 +55,7 @@ export default function AdminLayout() {
 function AdminLayoutContent() {
 	const location = useLocation()
 	const { customLabels } = useBreadcrumb()
+	const [sidebarOpen, setSidebarOpen] = useState(false)
 
 	// Generate breadcrumbs from current path
 	const pathSegments = location.pathname.split('/').filter(Boolean)
@@ -64,59 +67,84 @@ function AdminLayoutContent() {
 	})
 
 	return (
-		<div className="relative h-screen flex flex-col overflow-hidden">
+		<div className="relative min-h-screen flex">
 			{/* Starfield Background */}
 			<Starfield />
 
-			{/* Header with Breadcrumbs */}
-			<header className="border-b border-border/30 bg-background/72 z-50 shadow-[0_4px_20px_rgba(0,0,0,0.3)] flex-shrink-0 backdrop-blur-sm">
-				<div className="container mx-auto px-4 py-4">
+			{/* Mobile Overlay */}
+			{sidebarOpen && (
+				<div
+					className="fixed inset-0 bg-background/70 backdrop-blur-sm z-40 lg:hidden"
+					onClick={() => setSidebarOpen(false)}
+				/>
+			)}
+
+			{/* Sidebar */}
+			<aside
+				className={cn(
+					'fixed lg:sticky top-0 left-0 h-screen w-64 z-50 border-r border-border/50 bg-background/52 transition-transform duration-300 ease-in-out',
+					sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+				)}
+			>
+				<AdminNav onNavigate={() => setSidebarOpen(false)} />
+			</aside>
+
+			{/* Main Content Area */}
+			<div className="relative z-10 flex-1 flex flex-col min-w-0 overflow-auto">
+				{/* Top Bar (Mobile) */}
+				<header className="sticky top-0 z-30 lg:hidden border-b border-border/30 bg-background/95 backdrop-blur-sm shadow-sm">
 					<div className="flex items-center justify-between">
-						<h1 className="text-2xl font-bold gradient-text">Admin Panel</h1>
-
-						{/* Breadcrumb Navigation */}
-						<nav className="flex items-center gap-2 text-sm" aria-label="Breadcrumb">
-							{breadcrumbs.map((crumb, index) => (
-								<Fragment key={crumb.path}>
-									{index > 0 && <ChevronRight className="h-4 w-4 text-muted-foreground" />}
-									{index === breadcrumbs.length - 1 ? (
-										<span className="text-foreground font-medium" aria-current="page">
-											{crumb.label}
-										</span>
-									) : (
-										<Link
-											to={crumb.path}
-											className="text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm"
-										>
-											{crumb.label}
-										</Link>
-									)}
-								</Fragment>
-							))}
-						</nav>
+						<Button
+							variant="ghost"
+							size="sm"
+							onClick={() => setSidebarOpen(!sidebarOpen)}
+							className="gap-2"
+						>
+							{sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+							<span className="font-semibold">Menu</span>
+						</Button>
+						<span className="text-sm font-bold gradient-text">Admin</span>
 					</div>
-				</div>
-			</header>
+				</header>
 
-			{/* Main Layout with Sidebar - scrollable content area */}
-			<div className="flex-1 overflow-auto relative z-10">
-				<div className="container mx-auto px-4 py-8">
-					<div className="flex gap-8">
-						{/* Sidebar Navigation */}
-						<aside className="w-64 flex-shrink-0 rounded-lg bg-background/52 p-3">
-							<AdminNav />
-						</aside>
+				{/* Header with Breadcrumbs (kept as requested) */}
+				<header className="border-b border-border/30 bg-background/72 z-20 shadow-[0_4px_20px_rgba(0,0,0,0.3)] flex-shrink-0 backdrop-blur-sm">
+					<div className="px-4 md:px-6 lg:px-8 py-4">
+						<div className="flex items-center justify-between gap-4">
+							<h1 className="text-2xl font-bold gradient-text">Admin Panel</h1>
 
-						{/* Main Content */}
-						<main className="flex-1 min-w-0">
-							<Outlet />
-						</main>
+							<nav className="flex items-center gap-2 text-sm" aria-label="Breadcrumb">
+								{breadcrumbs.map((crumb, index) => (
+									<Fragment key={crumb.path}>
+										{index > 0 && <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+										{index === breadcrumbs.length - 1 ? (
+											<span className="text-foreground font-medium" aria-current="page">
+												{crumb.label}
+											</span>
+										) : (
+											<Link
+												to={crumb.path}
+												className="text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm"
+											>
+												{crumb.label}
+											</Link>
+										)}
+									</Fragment>
+								))}
+							</nav>
+						</div>
 					</div>
-				</div>
+				</header>
+
+				<main className="flex-1 relative z-10 p-4 md:p-6 lg:p-8">
+					<div className="w-full mx-auto max-w-7xl">
+						<Outlet />
+					</div>
+				</main>
 
 				{/* Footer */}
-				<footer className="border-t border-border/50 py-6 bg-background/68 backdrop-blur-sm">
-					<div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
+				<footer className="border-t border-border/50 py-4 relative z-10 bg-background/75 backdrop-blur-sm">
+					<div className="px-4 md:px-6 lg:px-8 text-center text-xs text-muted-foreground">
 						<p>Admin Panel • Manage Categories and Groups</p>
 					</div>
 				</footer>

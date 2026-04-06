@@ -24,7 +24,6 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
-import { useAuth } from '@/hooks/useAuth'
 import {
 	useBroadcasts,
 	useBroadcastTargets,
@@ -32,7 +31,6 @@ import {
 	useDeleteBroadcast,
 	useSendBroadcast,
 } from '@/hooks/useBroadcasts'
-import { useGroups } from '@/hooks/useGroups'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import type { BadgeVariant } from '@/components/ui/badge'
@@ -59,7 +57,6 @@ export default function BroadcastsPage() {
 
 	const pageSize = 25
 	const navigate = useNavigate()
-	const { user, permissions } = useAuth()
 	const [page, setPage] = useState(0)
 
 	const { data: broadcastsPage, isLoading } = useBroadcasts(undefined, undefined, {
@@ -67,7 +64,6 @@ export default function BroadcastsPage() {
 		limit: pageSize,
 		offset: page * pageSize,
 	})
-	const { data: groups } = useGroups()
 	const { data: targets } = useBroadcastTargets()
 	const { data: templates } = useBroadcastTemplates()
 	const sendBroadcast = useSendBroadcast()
@@ -210,7 +206,7 @@ export default function BroadcastsPage() {
 								<TableHeader>
 									<TableRow>
 										<TableHead>Status</TableHead>
-										<TableHead>Group</TableHead>
+										<TableHead>Permission</TableHead>
 										<TableHead>Target</TableHead>
 										<TableHead>Template</TableHead>
 										<TableHead>Created</TableHead>
@@ -222,7 +218,6 @@ export default function BroadcastsPage() {
 								</TableHeader>
 								<TableBody>
 									{myBroadcasts.map((broadcast) => {
-										const group = groups?.find((g) => g.id === broadcast.groupId)
 										const target = targets?.find((t) => t.id === broadcast.targetId)
 										const template = broadcast.templateId
 											? templates?.find((t) => t.id === broadcast.templateId)
@@ -235,7 +230,9 @@ export default function BroadcastsPage() {
 														{statusLabels[broadcast.status]}
 													</Badge>
 												</TableCell>
-												<TableCell>{group?.name || broadcast.groupId}</TableCell>
+												<TableCell className="font-mono text-xs">
+													{broadcast.permissionId}
+												</TableCell>
 												<TableCell className="font-medium">
 													{target?.name || broadcast.targetId}
 												</TableCell>
@@ -253,39 +250,26 @@ export default function BroadcastsPage() {
 																<ExternalLink className="h-4 w-4" />
 															</Button>
 														</Link>
-														{(user?.is_admin ||
-															permissions.some(
-																(permission) =>
-																	permission.urn ===
-																	`urn:group:${broadcast.groupId}:broadcasts:send`
-															)) &&
-															['draft', 'scheduled', 'failed'].includes(broadcast.status) && (
-																<Button
-																	variant="ghost"
-																	size="sm"
-																	onClick={() => handleSendNow(broadcast)}
-																	disabled={sendBroadcast.isPending}
-																	title="Send now"
-																>
-																	<Send className="h-4 w-4 text-confirm" />
-																</Button>
-															)}
-														{(user?.is_admin ||
-															permissions.some(
-																(permission) =>
-																	permission.urn ===
-																	`urn:group:${broadcast.groupId}:broadcasts:manage`
-															)) && (
+														{['draft', 'scheduled', 'failed'].includes(broadcast.status) && (
 															<Button
 																variant="ghost"
 																size="sm"
-																onClick={() => handleDeleteClick(broadcast)}
-																disabled={deleteBroadcast.isPending}
-																title="Delete broadcast"
+																onClick={() => handleSendNow(broadcast)}
+																disabled={sendBroadcast.isPending}
+																title="Send now"
 															>
-																<Trash2 className="h-4 w-4 text-destructive" />
+																<Send className="h-4 w-4 text-confirm" />
 															</Button>
 														)}
+														<Button
+															variant="ghost"
+															size="sm"
+															onClick={() => handleDeleteClick(broadcast)}
+															disabled={deleteBroadcast.isPending}
+															title="Delete broadcast"
+														>
+															<Trash2 className="h-4 w-4 text-destructive" />
+														</Button>
 													</div>
 												</TableCell>
 											</TableRow>
