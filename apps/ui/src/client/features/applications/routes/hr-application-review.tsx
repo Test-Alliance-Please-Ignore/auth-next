@@ -29,8 +29,10 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { useHrPermissionCheck } from '../../hr/hooks'
 import { useCanAccessCorporation } from '../../my-corporations/hooks'
+import { ACTIVE_APPLICATION_STATUSES } from '../constants'
 import { AddHRNoteDialog } from '../components/add-hr-note-dialog'
 import { ApplicationActionPanel } from '../components/application-action-panel'
+import { ApplicationHistoryPanel } from '../components/application-history-panel'
 import { ApplicationStatusBadge } from '../components/application-status-badge'
 import { ApplicationTimeline } from '../components/application-timeline'
 import { DeleteHRNoteDialog } from '../components/delete-hr-note-dialog'
@@ -333,7 +335,10 @@ export default function HrApplicationReview() {
 							<span className="ml-1.5 text-xs opacity-70">({messageCount})</span>
 						)}
 					</TabsTrigger>
-					{permission?.currentRole && ['hr_admin', 'hr_reviewer'].includes(permission.currentRole) && (
+					<TabsTrigger value="prior-apps" className="flex-1 sm:flex-none">
+						Prior Apps
+					</TabsTrigger>
+					{permission?.currentRole && ['hr_admin', 'hr_reviewer'].includes(permission.currentRole) && application && ACTIVE_APPLICATION_STATUSES.includes(application.status) && (
 						<TabsTrigger value="fulcrum" className="flex-1 sm:flex-none">
 							Fulcrum
 						</TabsTrigger>
@@ -490,8 +495,26 @@ export default function HrApplicationReview() {
 					</Card>
 				</TabsContent>
 
+				{/* Prior Applications Tab */}
+				<TabsContent value="prior-apps">
+					<Card>
+						<CardHeader>
+							<CardTitle>Prior Applications</CardTitle>
+							<CardDescription>
+								Other applications submitted by this character, including when owned by different accounts
+							</CardDescription>
+						</CardHeader>
+						<CardContent>
+							<ApplicationHistoryPanel
+								characterId={application.characterId}
+								applicationId={applicationId!}
+							/>
+						</CardContent>
+					</Card>
+				</TabsContent>
+
 				{/* Fulcrum (Character Reports) Tab */}
-				{permission?.currentRole && ['hr_admin', 'hr_reviewer'].includes(permission.currentRole) && (
+				{permission?.currentRole && ['hr_admin', 'hr_reviewer'].includes(permission.currentRole) && application && ACTIVE_APPLICATION_STATUSES.includes(application.status) && (
 					<TabsContent value="fulcrum">
 						<Card>
 							<CardHeader>

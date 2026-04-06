@@ -18,6 +18,9 @@ export const APPLICATION_STATUSES = [
 	'withdrawn',
 ] as const
 
+/** Application statuses where the application is still being actively processed */
+export const ACTIVE_APPLICATION_STATUSES: readonly ApplicationStatus[] = ['pending', 'under_review']
+
 /**
  * Application status type
  */
@@ -28,6 +31,13 @@ export type ApplicationStatus = (typeof APPLICATION_STATUSES)[number]
  */
 export function isApplicationStatus(value: string): value is ApplicationStatus {
 	return APPLICATION_STATUSES.includes(value as ApplicationStatus)
+}
+
+/**
+ * Check if an application status is considered active (still in progress)
+ */
+export function isActiveApplicationStatus(status: string): boolean {
+	return ACTIVE_APPLICATION_STATUSES.includes(status as ApplicationStatus)
 }
 
 /**
@@ -287,6 +297,7 @@ export interface BlacklistResults {
 export interface ApplicationFilters {
 	corporationId?: string
 	userId?: string
+	characterId?: string
 	status?: ApplicationStatus
 	limit?: number
 	offset?: number

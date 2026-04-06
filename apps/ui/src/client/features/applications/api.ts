@@ -170,6 +170,7 @@ export interface HRNote {
 export interface ApplicationsParams {
 	corporationId?: string
 	userId?: string
+	characterId?: string
 	status?: ApplicationStatus
 	limit?: number
 	offset?: number
@@ -299,6 +300,7 @@ export const applicationsApi = {
 		const searchParams = new URLSearchParams()
 		if (params?.corporationId) searchParams.set('corporationId', params.corporationId)
 		if (params?.userId) searchParams.set('userId', params.userId)
+		if (params?.characterId) searchParams.set('characterId', params.characterId)
 		if (params?.status) searchParams.set('status', params.status)
 		if (params?.limit !== undefined) searchParams.set('limit', params.limit.toString())
 		if (params?.offset !== undefined) searchParams.set('offset', params.offset.toString())

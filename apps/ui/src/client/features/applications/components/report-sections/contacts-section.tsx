@@ -254,7 +254,7 @@ export function ContactsSection({ data }: { data: ProcessedContact[] }) {
 			{hasMore && (
 				<div className="flex items-center justify-center gap-3">
 					<Button
-						variant="outline"
+						variant="ghost"
 						size="sm"
 						onClick={() => setVisibleCount((c) => c + DEFAULT_VISIBLE)}
 					>

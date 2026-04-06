@@ -4,14 +4,14 @@ import { z } from 'zod'
 import { and, eq, inArray, or } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
-import { APPLICATION_STATUSES } from '@repo/hr'
+import { APPLICATION_STATUSES, isActiveApplicationStatus } from '@repo/hr'
 
 import { managedCorporations, userCharacters } from '../db/schema'
 import { requireAdmin, requireAuth } from '../middleware/session'
 
 import type { Context } from 'hono'
 import type { Core } from '@repo/core'
-import type { Esi } from '@repo/esi'
+import type { Esi, EsiTypeResolver } from '@repo/esi'
 import type { Fulcrum, ReportSectionName } from '@repo/fulcrum'
 import type { ApplicationFilters, Hr, NoteFilters, RoleFilters } from '@repo/hr'
 import type { App } from '../context'
@@ -187,6 +187,7 @@ app.get('/applications', requireAuth(), async (c) => {
 	const filters: ApplicationFilters = {
 		corporationId: c.req.query('corporationId'),
 		userId: c.req.query('userId'),
+		characterId: c.req.query('characterId'),
 		status: c.req.query('status') as ApplicationFilters['status'],
 		limit: c.req.query('limit') ? parseInt(c.req.query('limit')!) : undefined,
 		offset: c.req.query('offset') ? parseInt(c.req.query('offset')!) : undefined,
@@ -196,7 +197,17 @@ app.get('/applications', requireAuth(), async (c) => {
 		const hr = getHrStub(c)
 		const applications = await hr.listApplications(filters, user.id, user.is_admin)
 
-		return c.json(applications)
+		// Resolve corporation names from ESI
+		const corpIds = [...new Set(applications.map((a) => a.corporationId))]
+		const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
+		const corpNames = corpIds.length > 0 ? await resolver.resolveIds(corpIds) : {}
+
+		const enriched = applications.map((a) => ({
+			...a,
+			corporationName: corpNames[a.corporationId] ?? 'Unknown',
+		}))
+
+		return c.json(enriched)
 	} catch (error) {
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to list applications' },
@@ -217,7 +228,14 @@ app.get('/applications/:id', requireAuth(), async (c) => {
 		const hr = getHrStub(c)
 		const application = await hr.getApplication(applicationId, user.id, user.is_admin)
 
-		return c.json(application)
+		// Resolve corporation name from ESI
+		const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
+		const corpNames = await resolver.resolveIds([application.corporationId])
+
+		return c.json({
+			...application,
+			corporationName: corpNames[application.corporationId] ?? 'Unknown',
+		})
 	} catch (error) {
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to get application' },
@@ -1299,6 +1317,11 @@ app.get('/applications/:applicationId/fulcrum', requireAuth(), async (c) => {
 		const hr = getHrStub(c)
 		const application = await hr.getApplication(applicationId, user.id, user.is_admin)
 
+		// Only allow Fulcrum access for active applications
+		if (!isActiveApplicationStatus(application.status)) {
+			return c.json({ error: 'Fulcrum reports can only be accessed for active applications' }, 403)
+		}
+
 		// Check HR permission (at least viewer)
 		const hasPermission = await hr.checkPermission(user.id, application.corporationId, 'hr_viewer')
 		if (!hasPermission && !user.is_admin) {
@@ -1350,6 +1373,11 @@ app.post('/applications/:applicationId/fulcrum/reports', requireAuth(), async (c
 	try {
 		const hr = getHrStub(c)
 		const application = await hr.getApplication(applicationId, user.id, user.is_admin)
+
+		// Only allow Fulcrum report requests for active applications
+		if (!isActiveApplicationStatus(application.status)) {
+			return c.json({ error: 'Fulcrum reports can only be requested for active applications' }, 403)
+		}
 
 		// Check HR permission (at least reviewer)
 		const hasPermission = await hr.checkPermission(user.id, application.corporationId, 'hr_reviewer')

@@ -73,6 +73,9 @@ export const applicationKeys = {
 	recommendationsPending: () => [...applicationKeys.all, 'recommendations-pending'] as const,
 	recommendationsDetail: (id: string) =>
 		[...applicationKeys.all, 'recommendations-detail', id] as const,
+	// Character application history
+	characterHistory: (characterId: string) =>
+		[...applicationKeys.all, 'character-history', characterId] as const,
 }
 
 // ============================================================================
@@ -105,6 +108,22 @@ export function useApplication(applicationId: string) {
 		staleTime: 1000 * 60, // 1 minute
 		gcTime: 1000 * 60 * 3, // 3 minutes
 		enabled: !!applicationId,
+	})
+}
+
+/**
+ * Hook to fetch prior applications for a specific character, excluding the current application
+ */
+export function useCharacterApplicationHistory(characterId: string, excludeApplicationId: string) {
+	return useQuery<Application[]>({
+		queryKey: applicationKeys.characterHistory(characterId),
+		queryFn: async () => {
+			const apps = await applicationsApi.getApplications({ characterId })
+			return apps.filter((a) => a.id !== excludeApplicationId)
+		},
+		staleTime: 1000 * 60 * 5,
+		gcTime: 1000 * 60 * 10,
+		enabled: !!characterId,
 	})
 }
 

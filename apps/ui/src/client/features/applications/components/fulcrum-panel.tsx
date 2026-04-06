@@ -140,7 +140,7 @@ function CharacterReportCard({
 				{/* View Report button */}
 				{latestReport?.status === 'completed' && (
 					<Button
-						variant="outline"
+						variant="ghost"
 						size="sm"
 						onClick={() => onViewReport(latestReport.id, character.characterName)}
 					>
@@ -152,7 +152,7 @@ function CharacterReportCard({
 				{/* Request / Re-request button */}
 				{canRequest && (
 					<Button
-						variant={latestReport ? 'outline' : 'default'}
+						variant={latestReport ? 'ghost' : 'primary'}
 						size="sm"
 						onClick={() => onRequest(character.characterId)}
 						disabled={isThisRequesting}
@@ -235,7 +235,7 @@ export function FulcrumPanel({ applicationId }: FulcrumPanelProps) {
 			{requestableCharacters.length > 1 && (
 				<div className="flex justify-end">
 					<Button
-						variant="outline"
+						variant="ghost"
 						size="sm"
 						onClick={handleRequestAll}
 						disabled={requestReport.isPending}

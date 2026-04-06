@@ -88,6 +88,10 @@ export class ApplicationService {
 			conditions.push(eq(applications.userId, filters.userId))
 		}
 
+		if (filters.characterId) {
+			conditions.push(eq(applications.characterId, filters.characterId))
+		}
+
 		if (filters.status) {
 			conditions.push(eq(applications.status, filters.status))
 		}
