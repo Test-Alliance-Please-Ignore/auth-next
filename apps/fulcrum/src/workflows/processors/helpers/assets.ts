@@ -21,6 +21,10 @@ export interface ProcessedAsset extends CharacterAsset {
 	customName?: string
 	averagePrice?: number
 	estimatedValue?: number
+	/** item_id of the container this asset is inside (if any) */
+	containerItemId?: string
+	/** Resolved name of the container (type name or custom name) */
+	containerName?: string
 	processedAt: string
 }
 
@@ -79,7 +83,8 @@ export async function enrichAssets(
 				itemLocationIds.push(asset.location_id)
 				break
 			case 'other':
-				// 'other' locations don't typically have resolvable names
+				// Player-owned structures - collect for authenticated structure name resolution
+				stationLocationIds.push(asset.location_id)
 				break
 		}
 	}

@@ -31,7 +31,7 @@ export async function applyAssetCustomNames(
 
         let applied = 0
 
-        // Enrich processed assets
+        // Enrich processed assets (ships and containers)
         if (processAssetsResult.success && processAssetsResult.source === 'r2') {
             const assets = (await retrieveData(getBucket, processAssetsResult)) as ProcessedAsset[] | null
             if (assets && Array.isArray(assets)) {
@@ -40,6 +40,15 @@ export async function applyAssetCustomNames(
                     if (customName) {
                         asset.customName = customName
                         applied++
+                    }
+                }
+                // Second pass: update containerName for items whose container got a custom name
+                for (const asset of assets) {
+                    if (asset.containerItemId) {
+                        const containerCustomName = nameMap[String(asset.containerItemId)]
+                        if (containerCustomName) {
+                            asset.containerName = containerCustomName
+                        }
                     }
                 }
                 const assetBucket = getBucket(processAssetsResult.r2Bucket)

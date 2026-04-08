@@ -2,7 +2,7 @@
  * Fitted Ships Section - Grouped by location with expandable ships and fittings
  */
 
-import { ChevronDown, ChevronRight, Search } from 'lucide-react'
+import { ChevronDown, ChevronRight, Package, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
@@ -14,6 +14,11 @@ interface FittedShipItem {
 	typeId: string
 	typeName: string
 	quantity: number
+}
+
+interface FittedShipBay {
+	bayName: string
+	items: FittedShipItem[]
 }
 
 interface FittedShip {
@@ -30,6 +35,11 @@ interface FittedShip {
 	drones: FittedShipItem[]
 	cargo: FittedShipItem[]
 	fuel: FittedShipItem[]
+	fighters: FittedShipItem[]
+	fighterBay: FittedShipItem[]
+	shipsInSmb: FittedShipItem[]
+	fleetHangar: FittedShipItem[]
+	specializedBays?: FittedShipBay[]
 }
 
 interface LocationGroup {
@@ -56,6 +66,34 @@ function ShipIcon({ typeId }: { typeId: string }) {
 	)
 }
 
+function SlotItemIcon({ typeId, typeName }: { typeId: string; typeName: string }) {
+	const [failed, setFailed] = useState(false)
+
+	if (failed) {
+		return (
+			<div className="h-4 w-4 shrink-0 rounded bg-muted flex items-center justify-center">
+				<Package className="h-3 w-3 text-muted-foreground" />
+			</div>
+		)
+	}
+
+	const name = typeName.toLowerCase()
+	let variant = 'icon'
+	if (name.includes('blueprint')) {
+		variant = name.includes('copy') ? 'bpc' : 'bp'
+	}
+
+	return (
+		<img
+			src={`https://images.evetech.net/types/${typeId}/${variant}?size=32`}
+			alt=""
+			className="h-4 w-4 shrink-0 rounded"
+			loading="lazy"
+			onError={() => setFailed(true)}
+		/>
+	)
+}
+
 function SlotGroup({ label, items }: { label: string; items: FittedShipItem[] }) {
 	if (items.length === 0) return null
 	return (
@@ -64,12 +102,7 @@ function SlotGroup({ label, items }: { label: string; items: FittedShipItem[] })
 			<ul className="mt-1 space-y-0.5">
 				{items.map((item, i) => (
 					<li key={`${item.typeId}-${i}`} className="flex items-center gap-1.5 text-sm">
-						<img
-							src={`https://images.evetech.net/types/${item.typeId}/icon?size=32`}
-							alt=""
-							className="h-4 w-4 rounded"
-							loading="lazy"
-						/>
+						<SlotItemIcon typeId={item.typeId} typeName={item.typeName} />
 						<span className="text-foreground">{item.typeName}</span>
 						{item.quantity > 1 && (
 							<span className="text-muted-foreground">x{item.quantity}</span>
@@ -99,6 +132,11 @@ function ShipCard({
 		ship.drones,
 		ship.cargo,
 		ship.fuel,
+		ship.fighters,
+		ship.fighterBay,
+		ship.shipsInSmb,
+		ship.fleetHangar,
+		...(ship.specializedBays?.map((b) => b.items) ?? []),
 	].reduce((sum, arr) => sum + arr.length, 0)
 
 	return (
@@ -144,7 +182,14 @@ function ShipCard({
 						<SlotGroup label="Subsystems" items={ship.subsystems} />
 						<SlotGroup label="Drones" items={ship.drones} />
 						<SlotGroup label="Cargo" items={ship.cargo} />
-						<SlotGroup label="Fuel" items={ship.fuel} />
+						<SlotGroup label="Fuel Bay" items={ship.fuel} />
+						<SlotGroup label="Fighters" items={ship.fighters} />
+						<SlotGroup label="Fighter Bay" items={ship.fighterBay} />
+						<SlotGroup label="Ship Maintenance Bay" items={ship.shipsInSmb} />
+						<SlotGroup label="Fleet Hangar" items={ship.fleetHangar} />
+						{ship.specializedBays?.map((bay) => (
+							<SlotGroup key={bay.bayName} label={bay.bayName} items={bay.items} />
+						))}
 					</div>
 				</div>
 			)}

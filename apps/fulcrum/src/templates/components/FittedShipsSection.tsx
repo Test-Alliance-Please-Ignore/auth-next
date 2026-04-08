@@ -111,7 +111,8 @@ export function FittedShipsSection({ data }: FittedShipsSectionProps) {
 											ship.fighterBay.length +
 											ship.shipsInSmb.length +
 											ship.fleetHangar.length +
-											ship.subsystems.length
+											ship.subsystems.length +
+											(ship.specializedBays ?? []).reduce((sum, b) => sum + b.items.length, 0)
 
 										return (
 											<div
@@ -360,7 +361,24 @@ export function FittedShipsSection({ data }: FittedShipsSectionProps) {
 															</div>
 														</div>
 													)}
-
+												{/* Specialized Bays */}
+												{(ship.specializedBays ?? []).map((bay, bayIndex) =>
+													bay.items.length > 0 ? (
+														<div key={`${shipId}-bay-${bayIndex}`} className="slot-section">
+															<h4>{bay.bayName} ({bay.items.length})</h4>
+															<div className="slot-items">
+																{bay.items.map((item, itemIndex) => (
+																	<div key={`${shipId}-bay-${bayIndex}-${itemIndex}`} className="slot-item">
+																		<span className="item-name">{item.typeName || item.typeId}</span>
+																		<span className="item-meta">
+																			{item.quantity > 1 && `x${item.quantity}`} • {item.slot}
+																		</span>
+																	</div>
+																))}
+															</div>
+														</div>
+													) : null
+												)}
 													{totalItems === 0 && (
 														<div className="slot-section">
 															<p className="no-items">No items fitted</p>

@@ -1,6 +1,6 @@
 /**
  * Fetch custom asset names (player-assigned names) from ESI
- * Only fetches names for singleton ship-type assets (these can be renamed)
+ * Fetches names for singleton ships and containers (items that can be renamed)
  */
 
 import { getEsiInstanceForCharacter } from '@repo/esi'
@@ -65,33 +65,39 @@ export async function fetchAssetNames(
             }
         }
 
-        // Only singleton ships can have custom names
-        const shipItemIds = assets
-            .filter((a) => a.is_singleton && shipTypeIds.has(a.type_id))
+        // Singleton items can have custom names — ships and containers
+        const nameableItemIds = assets
+            .filter((a) => a.is_singleton && (shipTypeIds.has(a.type_id) || a.location_flag === 'Hangar'))
             .map((a) => a.item_id)
 
         console.log('[fetchAssetNames] Fetching custom names', {
             totalAssets: assets.length,
-            shipItemIds: shipItemIds.length,
+            nameableItemIds: nameableItemIds.length,
         })
 
         const nameMap: AssetNameMap = {}
 
-        if (shipItemIds.length > 0) {
+        if (nameableItemIds.length > 0) {
             const stub = getEsiInstanceForCharacter(esiBinding, characterId)
             stub.setDefaultCacheMode('no-store')
-            const names = await stub.fetchCharacterAssetNames(characterId, shipItemIds)
 
-            for (const entry of names) {
-                // Only store non-empty custom names that differ from default type names
-                if (entry.name && entry.name.trim().length > 0) {
-                    nameMap[entry.item_id] = entry.name
+            // ESI limits to 1000 item IDs per request
+            const BATCH_SIZE = 1000
+            for (let i = 0; i < nameableItemIds.length; i += BATCH_SIZE) {
+                const batch = nameableItemIds.slice(i, i + BATCH_SIZE)
+                const names = await stub.fetchCharacterAssetNames(characterId, batch)
+
+                for (const entry of names) {
+                    // Only store non-empty custom names that differ from default type names
+                    if (entry.name && entry.name.trim().length > 0) {
+                        nameMap[entry.item_id] = entry.name
+                    }
                 }
             }
         }
 
         console.log('[fetchAssetNames] Custom names fetched', {
-            requestedCount: shipItemIds.length,
+            requestedCount: nameableItemIds.length,
             namedCount: Object.keys(nameMap).length,
         })
 

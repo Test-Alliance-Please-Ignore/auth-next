@@ -99,6 +99,7 @@ export async function applyMarketPrices(
 						ship.subsystems, ship.drones, ship.cargo, ship.fuel,
 						ship.fighters ?? [], ship.fighterBay ?? [],
 						ship.shipsInSmb ?? [], ship.fleetHangar ?? [],
+						...(ship.specializedBays ?? []).map((b) => b.items),
 					]
 					for (const items of allSlots) {
 						for (const item of items) {

@@ -11,6 +11,11 @@ export interface FittedShipItem {
 	quantity: number
 }
 
+export interface FittedShipBay {
+	bayName: string
+	items: FittedShipItem[]
+}
+
 export interface FittedShip {
 	itemId: string
 	shipName: string
@@ -33,6 +38,7 @@ export interface FittedShip {
 	fighters: FittedShipItem[]
 	fighterBay: FittedShipItem[]
 	subsystems: FittedShipItem[]
+	specializedBays: FittedShipBay[]
 }
 
 export async function findFittedShips(
@@ -71,13 +77,53 @@ export async function findShipItems(
 	const meds = findItemsBySlot(ship.item_id, shipItems, 'MedSlot')
 	const lows = findItemsBySlot(ship.item_id, shipItems, 'LowSlot')
 	const drones = findItemsBySlot(ship.item_id, shipItems, 'DroneBay')
-	const cargo = findItemsBySlot(ship.item_id, shipItems, 'CargoBay')
+	const cargo = findItemsBySlot(ship.item_id, shipItems, 'Cargo')
 	const fuel = findItemsBySlot(ship.item_id, shipItems, 'SpecializedFuelBay')
 	const fighters = findItemsBySlot(ship.item_id, shipItems, 'FighterTube')
 	const fighterBay = findItemsBySlot(ship.item_id, shipItems, 'FighterBay')
 	const shipsInSmb = findItemsBySlot(ship.item_id, shipItems, 'ShipHangar')
 	const fleetHangar = findItemsBySlot(ship.item_id, shipItems, 'FleetHangar')
 	const subsystems = findItemsBySlot(ship.item_id, shipItems, 'SubSystemSlot')
+
+	// Collect specialized holds (ore, gas, mineral, ice, ammo, etc.)
+	const knownPrefixes = [
+		'RigSlot', 'HiSlot', 'MedSlot', 'LowSlot', 'DroneBay', 'Cargo',
+		'SpecializedFuelBay', 'FighterTube', 'FighterBay', 'ShipHangar',
+		'FleetHangar', 'SubSystemSlot',
+	]
+	const specializedPrefixes: [string, string][] = [
+		['SpecializedOreHold', 'Ore Hold'],
+		['SpecializedGasHold', 'Gas Hold'],
+		['SpecializedMineralHold', 'Mineral Hold'],
+		['SpecializedSalvageHold', 'Salvage Hold'],
+		['SpecializedShipHold', 'Ship Hold'],
+		['SpecializedSmallShipHold', 'Small Ship Hold'],
+		['SpecializedMediumShipHold', 'Medium Ship Hold'],
+		['SpecializedLargeShipHold', 'Large Ship Hold'],
+		['SpecializedIndustrialShipHold', 'Industrial Ship Hold'],
+		['SpecializedAmmoHold', 'Ammo Hold'],
+		['SpecializedCommandCenterHold', 'Command Center Hold'],
+		['SpecializedPlanetaryCommoditiesHold', 'Planetary Commodities Hold'],
+		['SpecializedMaterialBay', 'Material Bay'],
+		['SpecializedIceHold', 'Ice Hold'],
+		['CorpseBay', 'Corpse Bay'],
+	]
+	const specializedBaysRaw: { bayName: string; items: CharacterAsset[] }[] = []
+	for (const [prefix, label] of specializedPrefixes) {
+		const items = findItemsBySlot(ship.item_id, shipItems, prefix)
+		if (items.length > 0) {
+			specializedBaysRaw.push({ bayName: label, items })
+		}
+	}
+
+	// Catch any remaining uncategorized items
+	const allKnownPrefixes = [...knownPrefixes, ...specializedPrefixes.map(([p]) => p)]
+	const uncategorized = shipItems.filter(
+		(asset) => !allKnownPrefixes.some((prefix) => asset.location_flag.startsWith(prefix))
+	)
+	if (uncategorized.length > 0) {
+		specializedBaysRaw.push({ bayName: 'Other', items: uncategorized })
+	}
 
 	const allTypeIds = [
 		...rigs.map((rig) => rig.type_id),
@@ -92,6 +138,7 @@ export async function findShipItems(
 		...shipsInSmb.map((shipsInSmb) => shipsInSmb.type_id),
 		...fleetHangar.map((fleetHangar) => fleetHangar.type_id),
 		...subsystems.map((subsystem) => subsystem.type_id),
+		...specializedBaysRaw.flatMap((bay) => bay.items.map((item) => item.type_id)),
 		ship.type_id, // Include ship type ID for name resolution
 	]
 	// Deduplicate type IDs to avoid unnecessary API calls
@@ -133,6 +180,10 @@ export async function findShipItems(
 	const resolvedShipsInSmb = resolveItems(shipsInSmb)
 	const resolvedFleetHangar = resolveItems(fleetHangar)
 	const resolvedSubsystems = resolveItems(subsystems)
+	const resolvedSpecializedBays: FittedShipBay[] = specializedBaysRaw.map((bay) => ({
+		bayName: bay.bayName,
+		items: resolveItems(bay.items),
+	}))
 
 	return {
 		itemId: ship.item_id,
@@ -154,5 +205,6 @@ export async function findShipItems(
 		shipsInSmb: resolvedShipsInSmb,
 		fleetHangar: resolvedFleetHangar,
 		subsystems: resolvedSubsystems,
+		specializedBays: resolvedSpecializedBays,
 	}
 }
