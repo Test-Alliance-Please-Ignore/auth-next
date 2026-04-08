@@ -13,6 +13,8 @@ import { calculateRoleChanges } from './utils/role-calculation'
 import type {
 	Discord,
 	DiscordGuildMembershipDetail,
+	DiscordRegisteredSlashCommand,
+	DiscordSlashCommandDefinition,
 	DiscordTokenResponse,
 	MessageContent,
 	SendMessageResult,
@@ -1312,6 +1314,99 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 			return {
 				success: false,
 				error: error instanceof Error ? error.message : 'Failed to send direct message',
+			}
+		}
+	}
+
+	/**
+	 * Create or update a guild slash command by name.
+	 */
+	async upsertGuildSlashCommand(
+		guildId: string,
+		command: DiscordSlashCommandDefinition
+	): Promise<DiscordRegisteredSlashCommand> {
+		const normalizedName = command.name.trim().toLowerCase()
+		if (!/^[a-z0-9_-]{1,32}$/.test(normalizedName)) {
+			throw new Error('Invalid command name; expected ^[a-z0-9_-]{1,32}$')
+		}
+
+		const description = command.description.trim()
+		if (!description || description.length > 100) {
+			throw new Error('Invalid command description; expected 1-100 characters')
+		}
+
+		const applicationId = this.env.DISCORD_CLIENT_ID?.trim()
+		if (!applicationId) {
+			throw new Error('DISCORD_CLIENT_ID is not configured')
+		}
+
+		const client = this.createDiscordClient()
+		const baseRoute = `/applications/${applicationId}/guilds/${guildId}/commands`
+		const payload = {
+			name: normalizedName,
+			description,
+			type: 1, // CHAT_INPUT
+			...(command.options && command.options.length > 0 ? { options: command.options } : {}),
+		}
+
+		const existing = await client.get<Array<{ id: string; name: string; description: string }>>(
+			baseRoute
+		)
+		const existingByName = existing.find((entry) => entry.name === normalizedName)
+
+		const registered = existingByName
+			? await client.patch<{ id: string; name: string; description: string }>(
+					`${baseRoute}/${existingByName.id}`,
+					payload
+				)
+			: await client.post<{ id: string; name: string; description: string }>(baseRoute, payload)
+
+		return {
+			id: registered.id,
+			name: registered.name,
+			description: registered.description,
+		}
+	}
+
+	/**
+	 * Delete a guild slash command by ID or name.
+	 */
+	async deleteGuildSlashCommand(
+		guildId: string,
+		opts: { commandId?: string; commandName?: string }
+	): Promise<{ success: boolean; deletedCommandId?: string; error?: string }> {
+		const applicationId = this.env.DISCORD_CLIENT_ID?.trim()
+		if (!applicationId) {
+			return { success: false, error: 'DISCORD_CLIENT_ID is not configured' }
+		}
+
+		const client = this.createDiscordClient()
+		const baseRoute = `/applications/${applicationId}/guilds/${guildId}/commands`
+		let commandId = opts.commandId?.trim()
+
+		if (!commandId && opts.commandName) {
+			const commandName = opts.commandName.trim().toLowerCase()
+			const commands = await client.get<Array<{ id: string; name: string }>>(baseRoute)
+			commandId = commands.find((entry) => entry.name === commandName)?.id
+			if (!commandId) {
+				return { success: false, error: 'Command not found for guild' }
+			}
+		}
+
+		if (!commandId) {
+			return { success: false, error: 'Either commandId or commandName is required' }
+		}
+
+		try {
+			await client.delete<unknown>(`${baseRoute}/${commandId}`)
+			return { success: true, deletedCommandId: commandId }
+		} catch (error) {
+			if (error instanceof DiscordAPIError && error.status === 404) {
+				return { success: false, error: 'Command not found for guild' }
+			}
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to delete slash command',
 			}
 		}
 	}

@@ -513,3 +513,24 @@ export function useRefreshDiscordServerMembers() {
 		},
 	})
 }
+
+/**
+ * Re-sync all slash commands attached to a Discord server.
+ */
+export function useResyncDiscordServerCommands() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: (serverId: string) => apiClient.resyncDiscordServerCommands(serverId),
+		onSuccess: () => {
+			void queryClient.invalidateQueries({
+				queryKey: discordKeys.servers(),
+				refetchType: 'active',
+			})
+			void queryClient.invalidateQueries({
+				queryKey: ['admin', 'discord', 'commands'],
+				refetchType: 'active',
+			})
+		},
+	})
+}

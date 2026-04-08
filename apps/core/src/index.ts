@@ -21,6 +21,7 @@ import charactersRoutes from './routes/characters'
 import corporationTaxRoutes from './routes/corporation-tax'
 import corporationsRoutes from './routes/corporations'
 import discordRoutes from './routes/discord'
+import discordCommandsRoutes from './routes/discord-commands'
 import discordServersRoutes from './routes/discord-servers'
 import dkpRoutes from './routes/dkp'
 import doctrinesRoutes from './routes/doctrines'
@@ -42,6 +43,11 @@ import skillsRoutes from './routes/skills'
 import srpRoutes from './routes/srp'
 import usersRoutes from './routes/users'
 import { CoreRpcService } from './services/core-rpc.service'
+import {
+	ensureDiscordCommandRegistryLoaded,
+	executeDiscordSlashCommand,
+	type ExecuteDiscordSlashCommandInput,
+} from './services/discord-commands.service'
 import { DkpService } from './services/dkp.service'
 
 import type {
@@ -98,6 +104,7 @@ const app = new Hono<App>()
 	.route('/api/corporation-tax', corporationTaxRoutes)
 	.route('/api/corporations', corporationsRoutes)
 	.route('/api/discord-servers', discordServersRoutes)
+	.route('/api/discord-commands', discordCommandsRoutes)
 	.route('/api/dkp', dkpRoutes)
 	.route('/api/doctrines', doctrinesRoutes)
 	.route('/api/entities', entitiesRoutes)
@@ -140,6 +147,12 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 
 	constructor(ctx: ExecutionContext, env: Env) {
 		super(ctx, env)
+		const db = createDb(env.DATABASE_URL)
+		ctx.waitUntil(
+			ensureDiscordCommandRegistryLoaded(db).catch((error) => {
+				console.error('[CoreWorker] Failed to warm Discord command registry', error)
+			})
+		)
 	}
 
 	/**
@@ -521,6 +534,35 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 				triggered: false,
 				error: error instanceof Error ? error.message : String(error),
 			}
+		}
+	}
+
+	/**
+	 * Execute a Discord slash command using core identity + permission checks.
+	 */
+	async executeDiscordSlashCommand(input: ExecuteDiscordSlashCommandInput): Promise<{
+		ok: boolean
+		response: {
+			type: number
+			data?: {
+				content: string
+				flags?: number
+			}
+		}
+		coreUserId: string | null
+		authorized: boolean
+		commandId?: string
+		reason: string
+	}> {
+		const db = createDb(this.env.DATABASE_URL)
+		const result = await executeDiscordSlashCommand(db, this.env, input)
+		return {
+			ok: result.reason === 'ok',
+			response: result.response,
+			coreUserId: result.coreUserId,
+			authorized: result.authorized,
+			commandId: result.commandId,
+			reason: result.reason,
 		}
 	}
 

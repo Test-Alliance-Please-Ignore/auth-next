@@ -1,12 +1,7 @@
-import { Edit, MessageSquare, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { Edit, MessageSquare, Plus, Settings2, Trash2 } from 'lucide-react'
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 
-import {
-	Accordion,
-	AccordionContent,
-	AccordionItem,
-	AccordionTrigger,
-} from '@/components/ui/accordion'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -22,62 +17,29 @@ import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { Switch } from '@/components/ui/switch'
 import {
-	useCreateDiscordRole,
 	useCreateDiscordServer,
-	useDeleteDiscordRole,
 	useDeleteDiscordServer,
 	useDiscordServers,
-	useRefreshDiscordServerMembers,
-	useUpdateDiscordRole,
 	useUpdateDiscordServer,
 } from '@/hooks/useDiscord'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
-import type {
-	CreateDiscordRoleRequest,
-	CreateDiscordServerRequest,
-	DiscordServerWithRoles,
-	UpdateDiscordRoleRequest,
-	UpdateDiscordServerRequest,
-} from '@/lib/api'
+import type { CreateDiscordServerRequest, DiscordServerWithRoles, UpdateDiscordServerRequest } from '@/lib/api'
 
-export default function DiscordServersPage() {
+export default function AdminDiscordServersPage() {
 	usePageTitle('Admin - Discord Servers')
 	const { data: discordServers, isLoading } = useDiscordServers()
 	const createServer = useCreateDiscordServer()
 	const updateServer = useUpdateDiscordServer()
 	const deleteServer = useDeleteDiscordServer()
-	const createRole = useCreateDiscordRole()
-	const updateRole = useUpdateDiscordRole()
-	const deleteRole = useDeleteDiscordRole()
-	const refreshMembers = useRefreshDiscordServerMembers()
-
 	const { message, showSuccess, showError } = useMessage()
 
-	// Server dialog state
 	const [createServerDialogOpen, setCreateServerDialogOpen] = useState(false)
 	const [editServerDialogOpen, setEditServerDialogOpen] = useState(false)
 	const [deleteServerDialogOpen, setDeleteServerDialogOpen] = useState(false)
 	const [selectedServer, setSelectedServer] = useState<DiscordServerWithRoles | null>(null)
 
-	// Role dialog state
-	const [createRoleDialogOpen, setCreateRoleDialogOpen] = useState(false)
-	const [editRoleDialogOpen, setEditRoleDialogOpen] = useState(false)
-	const [deleteRoleDialogOpen, setDeleteRoleDialogOpen] = useState(false)
-	const [selectedRole, setSelectedRole] = useState<{
-		serverId: string
-		roleId: string
-		roleName: string
-		description: string | null
-		isActive: boolean
-		autoApply: boolean
-	} | null>(null)
-
-	// Refresh state
-	const [refreshingServerId, setRefreshingServerId] = useState<string | null>(null)
-
-	// Form state
 	const [serverFormData, setServerFormData] = useState<CreateDiscordServerRequest>({
 		guildId: '',
 		guildName: '',
@@ -92,24 +54,8 @@ export default function DiscordServersPage() {
 		manageNicknames: false,
 	})
 
-	const [roleFormData, setRoleFormData] = useState<CreateDiscordRoleRequest>({
-		roleId: '',
-		roleName: '',
-		description: '',
-		autoApply: false,
-	})
-
-	const [roleEditFormData, setRoleEditFormData] = useState<UpdateDiscordRoleRequest>({
-		roleName: '',
-		description: '',
-		isActive: true,
-		autoApply: false,
-	})
-
-	// Server handlers
 	const handleCreateServer = async (e: React.FormEvent) => {
 		e.preventDefault()
-
 		if (!serverFormData.guildId || !serverFormData.guildName) {
 			showError('Guild ID and name are required')
 			return
@@ -132,7 +78,6 @@ export default function DiscordServersPage() {
 
 	const handleUpdateServer = async (e: React.FormEvent) => {
 		e.preventDefault()
-
 		if (!selectedServer) return
 
 		try {
@@ -177,126 +122,6 @@ export default function DiscordServersPage() {
 		setDeleteServerDialogOpen(true)
 	}
 
-	// Role handlers
-	const handleCreateRole = async (e: React.FormEvent) => {
-		e.preventDefault()
-
-		if (!selectedServer || !roleFormData.roleId || !roleFormData.roleName) {
-			showError('Role ID and name are required')
-			return
-		}
-
-		try {
-			await createRole.mutateAsync({
-				serverId: selectedServer.id,
-				data: roleFormData,
-			})
-			setCreateRoleDialogOpen(false)
-			setRoleFormData({
-				roleId: '',
-				roleName: '',
-				description: '',
-				autoApply: false,
-			})
-			showSuccess('Role added successfully!')
-		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to add role')
-		}
-	}
-
-	const handleUpdateRole = async (e: React.FormEvent) => {
-		e.preventDefault()
-
-		if (!selectedRole) return
-
-		try {
-			await updateRole.mutateAsync({
-				serverId: selectedRole.serverId,
-				roleId: selectedRole.roleId,
-				data: roleEditFormData,
-			})
-			setEditRoleDialogOpen(false)
-			setSelectedRole(null)
-			showSuccess('Role updated successfully!')
-		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to update role')
-		}
-	}
-
-	const handleDeleteRole = async () => {
-		if (!selectedRole) return
-
-		try {
-			await deleteRole.mutateAsync({
-				serverId: selectedRole.serverId,
-				roleId: selectedRole.roleId,
-			})
-			setDeleteRoleDialogOpen(false)
-			setSelectedRole(null)
-			showSuccess('Role deleted successfully!')
-		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to delete role')
-		}
-	}
-
-	const openCreateRoleDialog = (server: DiscordServerWithRoles) => {
-		setSelectedServer(server)
-		setRoleFormData({
-			roleId: '',
-			roleName: '',
-			description: '',
-			autoApply: false,
-		})
-		setCreateRoleDialogOpen(true)
-	}
-
-	const openEditRoleDialog = (
-		serverId: string,
-		roleId: string,
-		roleName: string,
-		description: string | null,
-		isActive: boolean,
-		autoApply: boolean
-	) => {
-		setSelectedRole({ serverId, roleId, roleName, description, isActive, autoApply })
-		setRoleEditFormData({
-			roleName,
-			description: description || '',
-			isActive,
-			autoApply,
-		})
-		setEditRoleDialogOpen(true)
-	}
-
-	const openDeleteRoleDialog = (serverId: string, roleId: string, roleName: string) => {
-		setSelectedRole({
-			serverId,
-			roleId,
-			roleName,
-			description: null,
-			isActive: true,
-			autoApply: false,
-		})
-		setDeleteRoleDialogOpen(true)
-	}
-
-	// Refresh members handler
-	const handleRefreshMembers = async (serverId: string) => {
-		setRefreshingServerId(serverId)
-
-		try {
-			const result = await refreshMembers.mutateAsync(serverId)
-
-			showSuccess(
-				`Refresh complete! Processed ${result.totalProcessed} users: ${result.successfulInvites} successful, ${result.failedInvites} failed`
-			)
-		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to refresh members')
-		} finally {
-			setRefreshingServerId(null)
-		}
-	}
-
 	if (isLoading) {
 		return (
 			<div className="flex justify-center py-12">
@@ -307,7 +132,6 @@ export default function DiscordServersPage() {
 
 	return (
 		<div className="space-y-6">
-			{/* Page Header */}
 			<div className="flex items-center justify-between">
 				<div>
 					<h1 className="text-3xl font-bold gradient-text flex items-center gap-2">
@@ -315,7 +139,7 @@ export default function DiscordServersPage() {
 						Discord Servers
 					</h1>
 					<p className="text-muted-foreground mt-1">
-						Manage the Discord server registry and roles for auto-invite
+						Manage the server registry. Roles and commands are managed per server.
 					</p>
 				</div>
 				<Button onClick={() => setCreateServerDialogOpen(true)}>
@@ -324,7 +148,6 @@ export default function DiscordServersPage() {
 				</Button>
 			</div>
 
-			{/* Success/Error Message */}
 			{message && (
 				<Card
 					className={
@@ -341,14 +164,13 @@ export default function DiscordServersPage() {
 				</Card>
 			)}
 
-			{/* Discord Servers List */}
 			{!discordServers || discordServers.length === 0 ? (
 				<Card>
 					<CardContent className="py-12 text-center">
 						<MessageSquare className="mx-auto h-12 w-12 text-muted-foreground" />
 						<h3 className="mt-4 text-lg font-medium">No Discord servers</h3>
 						<p className="text-muted-foreground mt-2">
-							Add a Discord server to the registry to get started
+							Add a Discord server to the registry to get started.
 						</p>
 						<Button onClick={() => setCreateServerDialogOpen(true)} className="mt-4">
 							<Plus className="mr-2 h-4 w-4" />
@@ -357,30 +179,19 @@ export default function DiscordServersPage() {
 					</CardContent>
 				</Card>
 			) : (
-				<Card>
-					<Accordion type="multiple" className="w-full">
-						{discordServers.map((server) => (
-							<AccordionItem key={server.id} value={server.id}>
-								<AccordionTrigger className="px-6 hover:no-underline">
-									<div className="flex items-center justify-between w-full pr-4">
-										<div className="flex items-center gap-3 text-left">
-											<MessageSquare className="h-5 w-5 text-[hsl(var(--discord-blurple))]" />
-											<div>
-												<div className="flex items-center gap-2">
-													<span className="font-semibold">{server.guildName}</span>
-													{!server.isActive && (
-														<span className="text-xs font-normal text-muted-foreground">
-															(Inactive)
-														</span>
-													)}
-												</div>
-												<p className="text-xs text-muted-foreground">
-													Guild ID: {server.guildId}
-													{server.description && ` • ${server.description}`}
-												</p>
-											</div>
+				<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+					{discordServers.map((server) => (
+						<Card key={server.id} className="border border-border/70">
+							<CardContent className="space-y-4 pt-4">
+								<div className="space-y-1">
+									<div className="flex items-center justify-between gap-2">
+										<div className="flex items-center gap-2">
+											<h3 className="font-semibold">{server.guildName}</h3>
+											{!server.isActive && (
+												<span className="text-xs text-muted-foreground">(Inactive)</span>
+											)}
 										</div>
-										<div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+										<div className="flex gap-1">
 											<Button
 												variant="ghost"
 												size="sm"
@@ -397,113 +208,37 @@ export default function DiscordServersPage() {
 											</Button>
 										</div>
 									</div>
-								</AccordionTrigger>
-								<AccordionContent className="px-6 pb-4">
-									<div className="space-y-3 pt-2">
-										<div className="flex items-center justify-between">
-											<h4 className="text-sm font-medium">Roles</h4>
-											<div className="flex gap-2">
-												<Button
-													size="sm"
-													variant="ghost"
-													onClick={() => handleRefreshMembers(server.id)}
-													disabled={refreshingServerId === server.id}
-												>
-													{refreshingServerId === server.id ? (
-														<>
-															<LoadingSpinner className="mr-2 h-3 w-3" />
-															Refreshing...
-														</>
-													) : (
-														<>
-															<RefreshCw className="mr-2 h-3 w-3" />
-															Refresh All Members
-														</>
-													)}
-												</Button>
-												<Button
-													size="sm"
-													variant="ghost"
-													onClick={() => openCreateRoleDialog(server)}
-												>
-													<Plus className="mr-2 h-3 w-3" />
-													Add Role
-												</Button>
-											</div>
-										</div>
+									<p className="text-xs text-muted-foreground">Guild ID: {server.guildId}</p>
+									{server.description && (
+										<p className="text-sm text-muted-foreground">{server.description}</p>
+									)}
+								</div>
 
-										{server.roles && server.roles.length > 0 ? (
-											<div className="space-y-2">
-												{server.roles.map((role) => (
-													<div
-														key={role.id}
-														className="flex items-center justify-between rounded-lg border p-3"
-													>
-														<div className="flex-1">
-															<div className="flex items-center gap-2">
-																<p className="font-medium">{role.roleName}</p>
-																{!role.isActive && (
-																	<span className="text-xs text-muted-foreground">(Inactive)</span>
-																)}
-																{role.autoApply && (
-																	<span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded">
-																		Auto-apply
-																	</span>
-																)}
-															</div>
-															<p className="text-xs text-muted-foreground">
-																Role ID: {role.roleId}
-															</p>
-															{role.description && (
-																<p className="text-sm text-muted-foreground mt-1">
-																	{role.description}
-																</p>
-															)}
-														</div>
-														<div className="flex gap-2">
-															<Button
-																variant="ghost"
-																size="sm"
-																onClick={() =>
-																	openEditRoleDialog(
-																		server.id,
-																		role.id,
-																		role.roleName,
-																		role.description,
-																		role.isActive,
-																		role.autoApply
-																	)
-																}
-															>
-																<Edit className="h-4 w-4" />
-															</Button>
-															<Button
-																variant="ghost"
-																size="sm"
-																onClick={() =>
-																	openDeleteRoleDialog(server.id, role.id, role.roleName)
-																}
-															>
-																<Trash2 className="h-4 w-4 text-destructive" />
-															</Button>
-														</div>
-													</div>
-												))}
-											</div>
-										) : (
-											<p className="text-sm text-muted-foreground text-center py-4">
-												No roles configured. Add roles to assign them during auto-invite.
-											</p>
-										)}
-									</div>
-								</AccordionContent>
-							</AccordionItem>
-						))}
-					</Accordion>
-				</Card>
+								<div className="text-xs text-muted-foreground">
+									Roles: {server.roles?.length ?? 0} • Manage nicknames:{' '}
+									{server.manageNicknames ? 'Enabled' : 'Disabled'}
+								</div>
+
+								<div className="grid grid-cols-2 gap-2">
+									<Button asChild variant="ghost" size="sm">
+										<Link to={`/admin/discord-servers/${server.id}/roles`}>
+											<Settings2 className="mr-2 h-4 w-4" />
+											Roles
+										</Link>
+									</Button>
+									<Button asChild variant="ghost" size="sm">
+										<Link to={`/admin/discord-servers/${server.id}/commands`}>
+											<MessageSquare className="mr-2 h-4 w-4" />
+											Commands
+										</Link>
+									</Button>
+								</div>
+							</CardContent>
+						</Card>
+					))}
+				</div>
 			)}
 
-			{/* Create Server Dialog */}
 			<Dialog open={createServerDialogOpen} onOpenChange={setCreateServerDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
@@ -521,9 +256,6 @@ export default function DiscordServersPage() {
 								onChange={(e) => setServerFormData({ ...serverFormData, guildId: e.target.value })}
 								required
 							/>
-							<p className="text-xs text-muted-foreground">
-								Right-click the server in Discord → Copy Server ID
-							</p>
 						</div>
 
 						<div className="space-y-2">
@@ -533,9 +265,7 @@ export default function DiscordServersPage() {
 								type="text"
 								placeholder="e.g., My Discord Server"
 								value={serverFormData.guildName}
-								onChange={(e) =>
-									setServerFormData({ ...serverFormData, guildName: e.target.value })
-								}
+								onChange={(e) => setServerFormData({ ...serverFormData, guildName: e.target.value })}
 								required
 							/>
 						</div>
@@ -547,9 +277,7 @@ export default function DiscordServersPage() {
 								type="text"
 								placeholder="Brief description of this server"
 								value={serverFormData.description}
-								onChange={(e) =>
-									setServerFormData({ ...serverFormData, description: e.target.value })
-								}
+								onChange={(e) => setServerFormData({ ...serverFormData, description: e.target.value })}
 							/>
 						</div>
 
@@ -565,26 +293,14 @@ export default function DiscordServersPage() {
 								<Label htmlFor="manageNicknames" className="cursor-pointer">
 									Manage Nicknames
 								</Label>
-								<p className="text-xs text-muted-foreground">
-									Automatically set member nicknames to their primary character name
-								</p>
 							</div>
 						</div>
 
 						<DialogFooter>
-							<Button
-								variant="cancel"
-								type="button"
-								onClick={() => setCreateServerDialogOpen(false)}
-							>
+							<Button variant="cancel" type="button" onClick={() => setCreateServerDialogOpen(false)}>
 								Cancel
 							</Button>
-							<Button
-								variant="confirm"
-								type="submit"
-								loading={createServer.isPending}
-								loadingText="Adding..."
-							>
+							<Button variant="confirm" type="submit" loading={createServer.isPending} loadingText="Adding...">
 								Add Server
 							</Button>
 						</DialogFooter>
@@ -592,7 +308,6 @@ export default function DiscordServersPage() {
 				</DialogContent>
 			</Dialog>
 
-			{/* Edit Server Dialog */}
 			<Dialog open={editServerDialogOpen} onOpenChange={setEditServerDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
@@ -606,9 +321,7 @@ export default function DiscordServersPage() {
 								id="edit-guildName"
 								type="text"
 								value={serverEditFormData.guildName}
-								onChange={(e) =>
-									setServerEditFormData({ ...serverEditFormData, guildName: e.target.value })
-								}
+								onChange={(e) => setServerEditFormData({ ...serverEditFormData, guildName: e.target.value })}
 								required
 							/>
 						</div>
@@ -646,14 +359,9 @@ export default function DiscordServersPage() {
 									setServerEditFormData({ ...serverEditFormData, manageNicknames: checked })
 								}
 							/>
-							<div className="flex-1">
-								<Label htmlFor="edit-manageNicknames" className="cursor-pointer">
-									Manage Nicknames
-								</Label>
-								<p className="text-xs text-muted-foreground">
-									Automatically set member nicknames to their primary character name
-								</p>
-							</div>
+							<Label htmlFor="edit-manageNicknames" className="cursor-pointer">
+								Manage Nicknames
+							</Label>
 						</div>
 
 						<DialogFooter>
@@ -673,14 +381,13 @@ export default function DiscordServersPage() {
 				</DialogContent>
 			</Dialog>
 
-			{/* Delete Server Dialog */}
 			<Dialog open={deleteServerDialogOpen} onOpenChange={setDeleteServerDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
 						<DialogTitle>Delete Discord Server</DialogTitle>
 						<DialogDescription>
 							Are you sure you want to delete "{selectedServer?.guildName}"? This will remove all
-							associated roles and detach this server from all corporations and groups.
+							associated roles and command attachments.
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
@@ -691,192 +398,6 @@ export default function DiscordServersPage() {
 							variant="destructive"
 							onClick={handleDeleteServer}
 							loading={deleteServer.isPending}
-							loadingText="Deleting..."
-						>
-							Delete
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
-
-			{/* Create Role Dialog */}
-			<Dialog open={createRoleDialogOpen} onOpenChange={setCreateRoleDialogOpen}>
-				<DialogContent>
-					<DialogHeader>
-						<DialogTitle>Add Role</DialogTitle>
-						<DialogDescription>Add a new role to {selectedServer?.guildName}</DialogDescription>
-					</DialogHeader>
-					<form onSubmit={handleCreateRole} className="space-y-4">
-						<div className="space-y-2">
-							<Label htmlFor="roleId">Role ID *</Label>
-							<Input
-								id="roleId"
-								type="text"
-								placeholder="e.g., 9876543210987654321"
-								value={roleFormData.roleId}
-								onChange={(e) => setRoleFormData({ ...roleFormData, roleId: e.target.value })}
-								required
-							/>
-							<p className="text-xs text-muted-foreground">
-								Right-click the role in Discord → Copy Role ID
-							</p>
-						</div>
-
-						<div className="space-y-2">
-							<Label htmlFor="roleName">Role Name *</Label>
-							<Input
-								id="roleName"
-								type="text"
-								placeholder="e.g., Member"
-								value={roleFormData.roleName}
-								onChange={(e) => setRoleFormData({ ...roleFormData, roleName: e.target.value })}
-								required
-							/>
-						</div>
-
-						<div className="space-y-2">
-							<Label htmlFor="role-description">Description (Optional)</Label>
-							<Input
-								id="role-description"
-								type="text"
-								placeholder="Brief description of this role"
-								value={roleFormData.description}
-								onChange={(e) => setRoleFormData({ ...roleFormData, description: e.target.value })}
-							/>
-						</div>
-
-						<div className="flex items-center space-x-2">
-							<Switch
-								id="autoApply"
-								checked={roleFormData.autoApply ?? false}
-								onCheckedChange={(checked) =>
-									setRoleFormData({ ...roleFormData, autoApply: checked })
-								}
-							/>
-							<Label htmlFor="autoApply" className="cursor-pointer">
-								Auto-apply to all users
-							</Label>
-						</div>
-						<p className="text-xs text-muted-foreground">
-							When enabled, this role will be automatically assigned to all users joining through
-							the system, regardless of their corporation or group memberships.
-						</p>
-
-						<DialogFooter>
-							<Button variant="cancel" type="button" onClick={() => setCreateRoleDialogOpen(false)}>
-								Cancel
-							</Button>
-							<Button
-								variant="confirm"
-								type="submit"
-								loading={createRole.isPending}
-								loadingText="Adding..."
-							>
-								Add Role
-							</Button>
-						</DialogFooter>
-					</form>
-				</DialogContent>
-			</Dialog>
-
-			{/* Edit Role Dialog */}
-			<Dialog open={editRoleDialogOpen} onOpenChange={setEditRoleDialogOpen}>
-				<DialogContent>
-					<DialogHeader>
-						<DialogTitle>Edit Role</DialogTitle>
-						<DialogDescription>Update role information</DialogDescription>
-					</DialogHeader>
-					<form onSubmit={handleUpdateRole} className="space-y-4">
-						<div className="space-y-2">
-							<Label htmlFor="edit-roleName">Role Name *</Label>
-							<Input
-								id="edit-roleName"
-								type="text"
-								value={roleEditFormData.roleName}
-								onChange={(e) =>
-									setRoleEditFormData({ ...roleEditFormData, roleName: e.target.value })
-								}
-								required
-							/>
-						</div>
-
-						<div className="space-y-2">
-							<Label htmlFor="edit-role-description">Description (Optional)</Label>
-							<Input
-								id="edit-role-description"
-								type="text"
-								value={roleEditFormData.description}
-								onChange={(e) =>
-									setRoleEditFormData({ ...roleEditFormData, description: e.target.value })
-								}
-							/>
-						</div>
-
-						<div className="flex items-center space-x-2">
-							<Switch
-								id="edit-role-isActive"
-								checked={roleEditFormData.isActive ?? true}
-								onCheckedChange={(checked) =>
-									setRoleEditFormData({ ...roleEditFormData, isActive: checked })
-								}
-							/>
-							<Label htmlFor="edit-role-isActive" className="cursor-pointer">
-								Active
-							</Label>
-						</div>
-
-						<div className="flex items-center space-x-2">
-							<Switch
-								id="edit-autoApply"
-								checked={roleEditFormData.autoApply ?? false}
-								onCheckedChange={(checked) =>
-									setRoleEditFormData({ ...roleEditFormData, autoApply: checked })
-								}
-							/>
-							<Label htmlFor="edit-autoApply" className="cursor-pointer">
-								Auto-apply to all users
-							</Label>
-						</div>
-						<p className="text-xs text-muted-foreground">
-							When enabled, this role will be automatically assigned to all users joining through
-							the system, regardless of their corporation or group memberships.
-						</p>
-
-						<DialogFooter>
-							<Button variant="cancel" type="button" onClick={() => setEditRoleDialogOpen(false)}>
-								Cancel
-							</Button>
-							<Button
-								variant="confirm"
-								type="submit"
-								loading={updateRole.isPending}
-								loadingText="Updating..."
-							>
-								Update Role
-							</Button>
-						</DialogFooter>
-					</form>
-				</DialogContent>
-			</Dialog>
-
-			{/* Delete Role Dialog */}
-			<Dialog open={deleteRoleDialogOpen} onOpenChange={setDeleteRoleDialogOpen}>
-				<DialogContent>
-					<DialogHeader>
-						<DialogTitle>Delete Role</DialogTitle>
-						<DialogDescription>
-							Are you sure you want to delete the role "{selectedRole?.roleName}"? This will remove
-							it from all corporation and group attachments.
-						</DialogDescription>
-					</DialogHeader>
-					<DialogFooter>
-						<Button variant="cancel" onClick={() => setDeleteRoleDialogOpen(false)}>
-							Cancel
-						</Button>
-						<Button
-							variant="destructive"
-							onClick={handleDeleteRole}
-							loading={deleteRole.isPending}
 							loadingText="Deleting..."
 						>
 							Delete

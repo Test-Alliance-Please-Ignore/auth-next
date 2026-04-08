@@ -446,6 +446,107 @@ export const discordRoles = pgTable(
 )
 
 /**
+ * Discord Command Categories
+ *
+ * Organizes slash commands in the admin UI.
+ */
+export const discordCommandCategories = pgTable(
+	'discord_command_categories',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		name: text('name').notNull().unique(),
+		description: text('description'),
+		sortOrder: integer('sort_order').default(0).notNull(),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [index('discord_command_categories_sort_order_idx').on(table.sortOrder, table.name)]
+)
+
+/**
+ * Discord Commands
+ *
+ * Stores slash command configuration and static response templates.
+ */
+export const discordCommands = pgTable(
+	'discord_commands',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		categoryId: uuid('category_id').references(() => discordCommandCategories.id, {
+			onDelete: 'set null',
+		}),
+		name: text('name').notNull().unique(),
+		description: text('description').notNull(),
+		commandType: text('command_type', { enum: ['static_response', 'programmatic'] })
+			.default('static_response')
+			.notNull(),
+		responseTemplate: text('response_template'),
+		isActive: boolean('is_active').default(true).notNull(),
+		createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+		(table) => [
+			index('discord_commands_name_idx').on(table.name),
+			index('discord_commands_type_idx').on(table.commandType),
+			index('discord_commands_is_active_idx').on(table.isActive),
+			index('discord_commands_category_id_idx').on(table.categoryId),
+		]
+)
+
+/**
+ * Discord Command Permissions
+ *
+ * Maps a command to one or more global permission IDs from Groups.
+ */
+export const discordCommandPermissions = pgTable(
+	'discord_command_permissions',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		commandId: uuid('command_id')
+			.notNull()
+			.references(() => discordCommands.id, { onDelete: 'cascade' }),
+		permissionId: text('permission_id').notNull(),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		unique('discord_command_permissions_command_permission_unique').on(
+			table.commandId,
+			table.permissionId
+		),
+		index('discord_command_permissions_command_id_idx').on(table.commandId),
+		index('discord_command_permissions_permission_id_idx').on(table.permissionId),
+	]
+)
+
+/**
+ * Discord Server Commands
+ *
+ * Attachments between command definitions and registered Discord servers.
+ */
+export const discordServerCommands = pgTable(
+	'discord_server_commands',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		discordServerId: uuid('discord_server_id')
+			.notNull()
+			.references(() => discordServers.id, { onDelete: 'cascade' }),
+		commandId: uuid('command_id')
+			.notNull()
+			.references(() => discordCommands.id, { onDelete: 'cascade' }),
+		discordCommandId: text('discord_command_id'),
+		createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		unique('discord_server_commands_server_command_unique').on(table.discordServerId, table.commandId),
+		index('discord_server_commands_server_id_idx').on(table.discordServerId),
+		index('discord_server_commands_command_id_idx').on(table.commandId),
+	]
+)
+
+/**
  * Corporation Discord Servers
  *
  * Links corporations to Discord servers from the registry.
@@ -721,6 +822,7 @@ export const discordServersRelations = relations(discordServers, ({ one, many })
 		references: [users.id],
 	}),
 	roles: many(discordRoles),
+	commandAttachments: many(discordServerCommands),
 	corporationAttachments: many(corporationDiscordServers),
 }))
 
@@ -728,6 +830,45 @@ export const discordRolesRelations = relations(discordRoles, ({ one }) => ({
 	discordServer: one(discordServers, {
 		fields: [discordRoles.discordServerId],
 		references: [discordServers.id],
+	}),
+}))
+
+export const discordCommandCategoriesRelations = relations(discordCommandCategories, ({ many }) => ({
+	commands: many(discordCommands),
+}))
+
+export const discordCommandsRelations = relations(discordCommands, ({ one, many }) => ({
+	category: one(discordCommandCategories, {
+		fields: [discordCommands.categoryId],
+		references: [discordCommandCategories.id],
+	}),
+	createdByUser: one(users, {
+		fields: [discordCommands.createdBy],
+		references: [users.id],
+	}),
+	requiredPermissions: many(discordCommandPermissions),
+	serverAttachments: many(discordServerCommands),
+}))
+
+export const discordCommandPermissionsRelations = relations(discordCommandPermissions, ({ one }) => ({
+	command: one(discordCommands, {
+		fields: [discordCommandPermissions.commandId],
+		references: [discordCommands.id],
+	}),
+}))
+
+export const discordServerCommandsRelations = relations(discordServerCommands, ({ one }) => ({
+	discordServer: one(discordServers, {
+		fields: [discordServerCommands.discordServerId],
+		references: [discordServers.id],
+	}),
+	command: one(discordCommands, {
+		fields: [discordServerCommands.commandId],
+		references: [discordCommands.id],
+	}),
+	createdByUser: one(users, {
+		fields: [discordServerCommands.createdBy],
+		references: [users.id],
 	}),
 }))
 
@@ -807,6 +948,10 @@ export const schema = {
 	managedCorporations,
 	discordServers,
 	discordRoles,
+	discordCommandCategories,
+	discordCommands,
+	discordCommandPermissions,
+	discordServerCommands,
 	corporationDiscordServers,
 	corporationDiscordServerRoles,
 	corporationDiscordInvites,
@@ -820,6 +965,10 @@ export const schema = {
 	managedCorporationsRelations,
 	discordServersRelations,
 	discordRolesRelations,
+	discordCommandCategoriesRelations,
+	discordCommandsRelations,
+	discordCommandPermissionsRelations,
+	discordServerCommandsRelations,
 	corporationDiscordServersRelations,
 	corporationDiscordServerRolesRelations,
 	corporationDiscordInvitesRelations,

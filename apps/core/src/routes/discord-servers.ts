@@ -7,12 +7,18 @@ import { logger } from '@repo/hono-helpers'
 import {
 	corporationDiscordServers,
 	discordRoles,
+	discordServerCommands,
 	discordServers,
 	userCharacters,
 	users,
 } from '../db/schema'
 import { requireAdmin, requireAuth } from '../middleware/session'
 import * as discordService from '../services/discord.service'
+import {
+	buildDiscordSlashCommandDefinition,
+	deleteGuildSlashCommand,
+	upsertGuildSlashCommand,
+} from '../services/discord-commands.service'
 
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { Groups } from '@repo/groups'
@@ -590,6 +596,104 @@ app.post('/:id/refresh-members', requireAuth(), requireAdmin(), async (c) => {
 	} catch (error) {
 		logger.error('Error refreshing Discord server members:', error)
 		return c.json({ error: 'Failed to refresh Discord server members' }, 500)
+	}
+})
+
+/**
+ * POST /discord-servers/:id/resync-commands
+ * Re-registers all commands attached to this server against Discord API and updates stored command IDs.
+ */
+app.post('/:id/resync-commands', requireAuth(), requireAdmin(), async (c) => {
+	const serverId = c.req.param('id')
+	const db = c.get('db')
+
+	if (!db) {
+		return c.json({ error: 'Database not available' }, 500)
+	}
+
+	try {
+		const server = await db.query.discordServers.findFirst({
+			where: eq(discordServers.id, serverId),
+		})
+		if (!server) {
+			return c.json({ error: 'Discord server not found' }, 404)
+		}
+
+		const attachments = await db.query.discordServerCommands.findMany({
+			where: eq(discordServerCommands.discordServerId, serverId),
+			with: {
+				command: true,
+			},
+			orderBy: [desc(discordServerCommands.updatedAt)],
+		})
+
+		const results: Array<{
+			attachmentId: string
+			commandId: string
+			commandName: string
+			success: boolean
+			discordCommandId?: string
+			error?: string
+		}> = []
+
+		for (const attachment of attachments) {
+			try {
+				const registered = await upsertGuildSlashCommand(
+					c.env,
+					server.guildId,
+					buildDiscordSlashCommandDefinition({
+						name: attachment.command.name,
+						description: attachment.command.description,
+						commandType: attachment.command.commandType,
+					})
+				)
+
+				await db
+					.update(discordServerCommands)
+					.set({
+						discordCommandId: registered.id,
+						updatedAt: new Date(),
+					})
+					.where(eq(discordServerCommands.id, attachment.id))
+
+				if (
+					attachment.discordCommandId &&
+					attachment.discordCommandId.length > 0 &&
+					attachment.discordCommandId !== registered.id
+				) {
+					await deleteGuildSlashCommand(c.env, server.guildId, {
+						commandId: attachment.discordCommandId,
+					})
+				}
+
+				results.push({
+					attachmentId: attachment.id,
+					commandId: attachment.commandId,
+					commandName: attachment.command.name,
+					success: true,
+					discordCommandId: registered.id,
+				})
+			} catch (error) {
+				results.push({
+					attachmentId: attachment.id,
+					commandId: attachment.commandId,
+					commandName: attachment.command.name,
+					success: false,
+					error: error instanceof Error ? error.message : 'Failed to sync command',
+				})
+			}
+		}
+
+		return c.json({
+			success: results.every((result) => result.success),
+			total: results.length,
+			synced: results.filter((result) => result.success).length,
+			failed: results.filter((result) => !result.success).length,
+			results,
+		})
+	} catch (error) {
+		logger.error('Error resyncing Discord server commands:', error)
+		return c.json({ error: 'Failed to resync Discord commands for server' }, 500)
 	}
 })
 

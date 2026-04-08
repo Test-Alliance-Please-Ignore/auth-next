@@ -33,8 +33,13 @@ export function AdminNav({ onNavigate }: AdminNavProps) {
 	const location = useLocation()
 	const isBroadcastRoute =
 		location.pathname === '/admin/broadcasts' || location.pathname.startsWith('/admin/broadcasts/')
+	const isDiscordRoute =
+		location.pathname === '/admin/discord-servers' ||
+		location.pathname === '/admin/discord-commands' ||
+		location.pathname.startsWith('/admin/discord-')
 	const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({
 		'/admin/broadcasts': isBroadcastRoute,
+		'/admin/discord': isDiscordRoute,
 	})
 
 	const toggleMenu = (href: string) => {
@@ -63,9 +68,13 @@ export function AdminNav({ onNavigate }: AdminNavProps) {
 			icon: Building2,
 		},
 		{
-			label: 'Discord Servers',
-			href: '/admin/discord-servers',
+			label: 'Discord',
+			href: '/admin/discord',
 			icon: MessageSquare,
+			children: [
+				{ label: 'Servers', href: '/admin/discord-servers' },
+				{ label: 'Commands', href: '/admin/discord-commands' },
+			],
 		},
 		{
 			label: 'Broadcasts',
