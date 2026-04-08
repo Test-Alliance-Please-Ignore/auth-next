@@ -38,7 +38,7 @@ export interface EveCharacterSyncParams {
  */
 export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharacterSyncParams> {
 	private static readonly ESI_RATE_LIMIT_SLEEP_FALLBACK_SECONDS = 10
-	private static readonly ESI_RATE_LIMIT_SLEEP_MAX_SECONDS = 45
+	private static readonly ESI_RATE_LIMIT_SLEEP_MAX_SECONDS = 60
 
 	private parseEsiErrorMetadata(message: string): Record<string, unknown> | null {
 		const metadataMarker = ' | metadata='
@@ -200,7 +200,7 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 			publicInfoResult = await step.do(
 				'fetch-public-info',
 				{
-					retries: { limit: 5, delay: '10 seconds', backoff: 'exponential' },
+					retries: { limit: 5, delay: '1 minute', backoff: 'exponential' },
 					timeout: '1 minute',
 				},
 				() =>
@@ -230,7 +230,7 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 				authenticatedDataResult = await step.do(
 					'fetch-authenticated-data',
 					{
-						retries: { limit: 5, delay: '10 seconds', backoff: 'exponential' },
+						retries: { limit: 5, delay: '1 minute', backoff: 'exponential' },
 						timeout: '1 minute',
 					},
 					() =>

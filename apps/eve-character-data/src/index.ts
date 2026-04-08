@@ -43,8 +43,8 @@ async function scheduledHandler(event: ScheduledEvent, env: Env): Promise<void> 
 	}
 
 	const total = characterIds.length
-	const JITTER_WINDOW_SECONDS = 3600
-	// Spread jitter proportionally across 60 minutes to reduce request bursts and 429 retries.
+	const JITTER_WINDOW_SECONDS = 7200
+	// Spread jitter proportionally across 2 hours to reduce request bursts and 429 retries.
 	const workflowOptions = characterIds.map((characterId, index) => ({
 		id: `character-sync-${characterId}-${crypto.randomUUID()}`,
 		params: {
