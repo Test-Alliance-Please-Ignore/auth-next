@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { renderDiscordContentValue } from '@/components/discord-content-renderer'
-import { RescindBroadcastDialog } from './rescind-broadcast-dialog'
+import { RescindBroadcastDialog } from '../rescind-broadcast-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'

@@ -175,7 +175,8 @@ export default function NewBroadcastPage() {
 	const [customMessage, setCustomMessage] = useState<string>('')
 	const [templateFields, setTemplateFields] = useState<Record<string, string>>({})
 	const [mentionLevel, setMentionLevel] = useState<'none' | 'here' | 'everyone'>('none')
-	const [isSubmitting, setIsSubmitting] = useState(false)
+	const [isSending, setIsSending] = useState(false)
+	const [isSavingDraft, setIsSavingDraft] = useState(false)
 	const [showPreview, setShowPreview] = useState(false)
 	const [timestampHelperOpen, setTimestampHelperOpen] = useState(false)
 	const [timeMode, setTimeMode] = useState<TimeMode>('local')
@@ -219,49 +220,55 @@ export default function NewBroadcastPage() {
 		}
 	}
 
-	const handleSubmit = async (e: React.FormEvent) => {
+	const buildBroadcastData = () => {
+		if (!selectedTarget) throw new Error('No target selected')
+		return {
+			targetId: selectedTargetId,
+			templateId: selectedTemplateId === 'custom' ? undefined : selectedTemplateId,
+			title: `Broadcast to ${selectedTarget.name}`,
+			content:
+				selectedTemplateId === 'custom'
+					? { message: customMessage, mentionLevel }
+					: { ...templateFields, mentionLevel },
+		}
+	}
+
+	const handleSend = async (e: React.FormEvent) => {
 		e.preventDefault()
-		setIsSubmitting(true)
-
+		setIsSending(true)
 		try {
-			if (!selectedTarget) {
-				throw new Error('No target selected')
-			}
-
-			const title = `Broadcast to ${selectedTarget.name}`
-
-			// Create the broadcast
-			const broadcastData = {
-				targetId: selectedTargetId,
-				templateId: selectedTemplateId === 'custom' ? undefined : selectedTemplateId,
-				title,
-				content:
-					selectedTemplateId === 'custom'
-						? { message: customMessage, mentionLevel }
-						: { ...templateFields, mentionLevel },
-			}
-
-			const broadcast = await createBroadcast.mutateAsync(broadcastData)
-
-			// Send it immediately
+			const broadcast = await createBroadcast.mutateAsync(buildBroadcastData())
 			await sendBroadcast.mutateAsync(broadcast.id)
-
 			setMessage({ type: 'success', text: 'Broadcast sent successfully!' })
-			setTimeout(() => {
-				navigate('/broadcasts')
-			}, 2000)
+			setTimeout(() => navigate('/broadcasts'), 2000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
 				text: error instanceof Error ? error.message : 'Failed to send broadcast',
 			})
-			setIsSubmitting(false)
+			setIsSending(false)
+		}
+	}
+
+	const handleSaveAsDraft = async () => {
+		setIsSavingDraft(true)
+		try {
+			const broadcast = await createBroadcast.mutateAsync(buildBroadcastData())
+			setMessage({ type: 'success', text: 'Draft saved.' })
+			setTimeout(() => navigate(`/broadcasts/${broadcast.id}`), 1000)
+		} catch (error) {
+			setMessage({
+				type: 'error',
+				text: error instanceof Error ? error.message : 'Failed to save draft',
+			})
+			setIsSavingDraft(false)
 		}
 	}
 
 	const canSubmit =
 		selectedTargetId &&
 		(selectedTemplateId === 'custom' ? customMessage.trim() : selectedTemplate !== null)
+	const isSubmitting = isSending || isSavingDraft
 
 	const timestampDate = useMemo(
 		() => parseDateTimeInput(timestampInput, timeMode),
@@ -348,7 +355,7 @@ export default function NewBroadcastPage() {
 						<CardDescription>Configure your broadcast message</CardDescription>
 					</CardHeader>
 					<CardContent>
-						<form onSubmit={handleSubmit} className="space-y-6">
+						<form onSubmit={handleSend} className="space-y-6">
 							{/* Target Selection */}
 							<div className="space-y-2">
 								<Label htmlFor="target">Target *</Label>
@@ -518,17 +525,29 @@ export default function NewBroadcastPage() {
 								</div>
 							) : null}
 
-							{/* Submit Button */}
+							{/* Submit Buttons */}
 							<div className="flex justify-end gap-3 pt-4">
-								<Button variant="cancel" type="button" onClick={() => navigate('/broadcasts')}>
+								<Button variant="cancel" type="button" onClick={() => navigate('/broadcasts')} disabled={isSubmitting}>
 									Cancel
+								</Button>
+								<Button
+									variant="secondary"
+									type="button"
+									disabled={!canSubmit || isSubmitting}
+									loading={isSavingDraft}
+									loadingText="Saving..."
+									showIcon={false}
+									onClick={handleSaveAsDraft}
+								>
+									Save as Draft
 								</Button>
 								<Button
 									variant="confirm"
 									type="submit"
 									disabled={!canSubmit || isSubmitting}
-									loading={isSubmitting}
+									loading={isSending}
 									loadingText="Sending..."
+									showIcon={false}
 								>
 									Send Broadcast
 								</Button>
