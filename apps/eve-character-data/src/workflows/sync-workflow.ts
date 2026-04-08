@@ -1,4 +1,5 @@
 import { WorkflowEntrypoint, WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
+import { NonRetryableError } from 'cloudflare:workflows'
 
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
@@ -36,6 +37,104 @@ export interface EveCharacterSyncParams {
  * 2. Authenticated data (skills, attributes, wallet balance) - requires token
  */
 export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharacterSyncParams> {
+	private static readonly ESI_RATE_LIMIT_SLEEP_FALLBACK_SECONDS = 10
+	private static readonly ESI_RATE_LIMIT_SLEEP_MAX_SECONDS = 45
+
+	private parseEsiErrorMetadata(message: string): Record<string, unknown> | null {
+		const metadataMarker = ' | metadata='
+		const markerIndex = message.lastIndexOf(metadataMarker)
+		if (markerIndex === -1) {
+			return null
+		}
+
+		const metadataText = message.slice(markerIndex + metadataMarker.length).trim()
+		if (!metadataText) {
+			return null
+		}
+
+		try {
+			const parsed = JSON.parse(metadataText)
+			return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null
+		} catch {
+			return null
+		}
+	}
+
+	private extractEsiRateLimitSleepSeconds(message: string): number | null {
+		const metadata = this.parseEsiErrorMetadata(message)
+		if (!metadata) {
+			return null
+		}
+
+		const status = typeof metadata.status === 'number' ? metadata.status : null
+		if (status !== 429) {
+			return null
+		}
+
+		const retryAfter =
+			typeof metadata.retryAfterSeconds === 'number' ? metadata.retryAfterSeconds : undefined
+		const errorLimitReset =
+			typeof metadata.errorLimitResetSeconds === 'number'
+				? metadata.errorLimitResetSeconds
+				: undefined
+		const recommendedSeconds =
+			retryAfter ?? errorLimitReset ?? EveCharacterSyncWorkflow.ESI_RATE_LIMIT_SLEEP_FALLBACK_SECONDS
+
+		return Math.max(
+			1,
+			Math.min(EveCharacterSyncWorkflow.ESI_RATE_LIMIT_SLEEP_MAX_SECONDS, recommendedSeconds)
+		)
+	}
+
+	private async sleepForRateLimitRetry(stepName: string, seconds: number): Promise<void> {
+		logger.warn('[EveCharacterSyncWorkflow] ESI 429 retry pacing delay', {
+			stepName,
+			waitSeconds: seconds,
+		})
+		await new Promise((resolve) => setTimeout(resolve, seconds * 1000))
+	}
+
+	private isPermanentEsiAuthFailure(message: string): boolean {
+		const normalized = message.toLowerCase()
+		const isBadRequest = normalized.includes('esi request failed: 400')
+		const isAuthUnauthorized = normalized.includes('esi request failed: 401')
+		const isAuthForbidden = normalized.includes('esi request failed: 403')
+		if (!isBadRequest && !isAuthUnauthorized && !isAuthForbidden) {
+			return false
+		}
+
+		return (
+			normalized.includes('bad request') ||
+			normalized.includes('unauthorized') ||
+			normalized.includes('forbidden') ||
+			normalized.includes('no token provided') ||
+			normalized.includes('invalid token') ||
+			normalized.includes('token expired')
+		)
+	}
+
+	private async withEsiRetryClassification<T>(stepName: string, run: () => Promise<T>): Promise<T> {
+		try {
+			return await run()
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error)
+			if (this.isPermanentEsiAuthFailure(message)) {
+				logger.warn('[EveCharacterSyncWorkflow] Non-retryable ESI auth failure', {
+					stepName,
+					error: message,
+				})
+				throw new NonRetryableError(`${stepName}: ${message}`)
+			}
+
+			const rateLimitSleepSeconds = this.extractEsiRateLimitSleepSeconds(message)
+			if (rateLimitSleepSeconds !== null) {
+				await this.sleepForRateLimitRetry(stepName, rateLimitSleepSeconds)
+			}
+
+			throw error
+		}
+	}
+
 	async run(event: WorkflowEvent<EveCharacterSyncParams>, step: WorkflowStep) {
 		const { characterId, dataTypes, trigger, jitterDelaySeconds } = event.payload
 
@@ -98,56 +197,60 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 		// Step 1: Fetch & store public info
 		let publicInfoResult: refreshHelpers.RefreshPublicInfoResult | null = null
 		if (shouldSync('public-info')) {
-				publicInfoResult = await step.do(
-					'fetch-public-info',
+			publicInfoResult = await step.do(
+				'fetch-public-info',
+				{
+					retries: { limit: 5, delay: '10 seconds', backoff: 'exponential' },
+					timeout: '1 minute',
+				},
+				() =>
+					this.withEsiRetryClassification('fetch-public-info', async () => {
+						logger.debug('[Step] Fetching public info', { characterId })
+						return await refreshHelpers.refreshPublicInfo(this.env, characterId)
+					})
+			)
+			logger.info('[Step] Public info fetched', {
+				characterId,
+				characterName: publicInfoResult.characterName,
+			})
+		} else {
+			logger.debug('[Step] Skipping public info sync (filtered)', { characterId })
+		}
+
+		// Step 2: Fetch & store authenticated data
+		let authenticatedDataResult: refreshAuthenticatedData.RefreshAuthenticatedDataResult | null = null
+		if (shouldSync('authenticated')) {
+			if (!tokenValidation.hasValidToken) {
+				logger.info('[Step] Skipping authenticated data (no valid token)', {
+					characterId,
+					tokenStatus: tokenValidation.status,
+				})
+				authenticatedDataResult = { success: false, hasValidToken: false }
+			} else {
+				authenticatedDataResult = await step.do(
+					'fetch-authenticated-data',
 					{
 						retries: { limit: 5, delay: '10 seconds', backoff: 'exponential' },
 						timeout: '1 minute',
 					},
-					async () => {
-						logger.debug('[Step] Fetching public info', { characterId })
-						return await refreshHelpers.refreshPublicInfo(this.env, characterId)
-					}
-				)
-				logger.info('[Step] Public info fetched', {
-					characterId,
-					characterName: publicInfoResult.characterName,
-				})
-			} else {
-				logger.debug('[Step] Skipping public info sync (filtered)', { characterId })
-			}
-
-			// Step 2: Fetch & store authenticated data
-			let authenticatedDataResult: refreshAuthenticatedData.RefreshAuthenticatedDataResult | null =
-				null
-			if (shouldSync('authenticated')) {
-				if (!tokenValidation.hasValidToken) {
-					logger.info('[Step] Skipping authenticated data (no valid token)', { characterId, tokenStatus: tokenValidation.status })
-					authenticatedDataResult = { success: false, hasValidToken: false }
-				} else {
-					authenticatedDataResult = await step.do(
-						'fetch-authenticated-data',
-						{
-							retries: { limit: 5, delay: '10 seconds', backoff: 'exponential' },
-							timeout: '1 minute',
-						},
-						async () => {
+					() =>
+						this.withEsiRetryClassification('fetch-authenticated-data', async () => {
 							logger.debug('[Step] Fetching authenticated data', { characterId })
 							return await refreshAuthenticatedData.refreshAuthenticatedData(
 								this.env,
 								characterId
 							)
-						}
-					)
-					if (authenticatedDataResult.success) {
-						logger.info('[Step] Authenticated data fetched', { characterId })
-					} else {
-						logger.info('[Step] Authenticated data skipped (no valid token)', { characterId })
-					}
+						})
+				)
+				if (authenticatedDataResult.success) {
+					logger.info('[Step] Authenticated data fetched', { characterId })
+				} else {
+					logger.info('[Step] Authenticated data skipped (no valid token)', { characterId })
 				}
-			} else {
-				logger.debug('[Step] Skipping authenticated data sync (filtered)', { characterId })
 			}
+		} else {
+			logger.debug('[Step] Skipping authenticated data sync (filtered)', { characterId })
+		}
 
 		logger.info('[EveCharacterSyncWorkflow] Character sync completed successfully', {
 			characterId,
