@@ -623,7 +623,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 		await this.db.delete(broadcasts).where(eq(broadcasts.id, broadcastId))
 	}
 
-	async rescindBroadcast(broadcastId: string, userId: string): Promise<void> {
+	async rescindBroadcast(broadcastId: string, userId: string, rescindMessage?: string): Promise<void> {
 		const broadcast = await this.db.query.broadcasts.findFirst({
 			where: eq(broadcasts.id, broadcastId),
 		})
@@ -661,10 +661,14 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 				message = convertUnixTimestamps(message)
 
 				// Wrap each non-empty line in ~~ for Discord strikethrough
-				const rescindedContent = message
+				let rescindedContent = message
 					.split('\n')
 					.map((line) => (line.trim() ? `~~${line}~~` : line))
 					.join('\n')
+
+				if (rescindMessage?.trim()) {
+					rescindedContent += `\n\n${rescindMessage.trim()}`
+				}
 
 				await Promise.allSettled(
 					deliveries

@@ -832,7 +832,10 @@ broadcasts.post('/:id/rescind', async (c) => {
 		return c.json({ error: 'Only sent broadcasts can be rescinded' }, 400)
 	}
 
-	await broadcastsStub.rescindBroadcast(broadcastId, user.id)
+	const body = await c.req.json().catch(() => ({}))
+	const rescindMessage = typeof body?.rescindMessage === 'string' ? body.rescindMessage : undefined
+
+	await broadcastsStub.rescindBroadcast(broadcastId, user.id, rescindMessage)
 	return c.json({ success: true })
 })
 

@@ -14,6 +14,7 @@ import {
 	DialogTitle,
 } from '@/components/ui/dialog'
 import { Select } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import {
 	Table,
 	TableBody,
@@ -76,6 +77,7 @@ export default function AdminBroadcastsPage() {
 
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 	const [rescindDialogOpen, setRescindDialogOpen] = useState(false)
+	const [rescindMessage, setRescindMessage] = useState('')
 	const [selectedBroadcast, setSelectedBroadcast] = useState<Broadcast | null>(null)
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
@@ -101,15 +103,20 @@ export default function AdminBroadcastsPage() {
 
 	const handleRescindClick = (broadcast: Broadcast) => {
 		setSelectedBroadcast(broadcast)
+		setRescindMessage('')
 		setRescindDialogOpen(true)
 	}
 
 	const handleRescindConfirm = async () => {
 		if (!selectedBroadcast) return
 		try {
-			await rescindBroadcast.mutateAsync(selectedBroadcast.id)
+			await rescindBroadcast.mutateAsync({
+				id: selectedBroadcast.id,
+				rescindMessage: rescindMessage.trim() || undefined,
+			})
 			setRescindDialogOpen(false)
 			setSelectedBroadcast(null)
+			setRescindMessage('')
 			setMessage({ type: 'success', text: 'Broadcast rescinded.' })
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
@@ -358,12 +365,28 @@ export default function AdminBroadcastsPage() {
 							mark the broadcast as rescinded. This action cannot be undone.
 						</DialogDescription>
 					</DialogHeader>
+					<div className="py-2">
+						<label className="text-sm font-medium mb-1 block">
+							Rescind message <span className="text-muted-foreground font-normal">(optional)</span>
+						</label>
+						<Textarea
+							placeholder="Explain why this broadcast is being rescinded..."
+							value={rescindMessage}
+							onChange={(e) => setRescindMessage(e.target.value)}
+							rows={3}
+							disabled={rescindBroadcast.isPending}
+						/>
+						<p className="text-xs text-muted-foreground mt-1">
+							Appended after the strikethrough content in Discord.
+						</p>
+					</div>
 					<DialogFooter>
 						<Button
 							variant="cancel"
 							onClick={() => {
 								setRescindDialogOpen(false)
 								setSelectedBroadcast(null)
+								setRescindMessage('')
 							}}
 							disabled={rescindBroadcast.isPending}
 						>

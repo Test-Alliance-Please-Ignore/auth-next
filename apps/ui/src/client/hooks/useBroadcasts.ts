@@ -281,7 +281,8 @@ export function useRescindBroadcast() {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: (id: string) => api.rescindBroadcast(id),
+		mutationFn: ({ id, rescindMessage }: { id: string; rescindMessage?: string }) =>
+			api.rescindBroadcast(id, rescindMessage),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: broadcastKeys.broadcasts() })
 		},

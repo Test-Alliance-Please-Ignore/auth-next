@@ -2353,8 +2353,8 @@ export class ApiClient {
 		return this.delete(`/broadcasts/${id}`)
 	}
 
-	async rescindBroadcast(id: string): Promise<{ success: boolean }> {
-		return this.post(`/broadcasts/${id}/rescind`, {})
+	async rescindBroadcast(id: string, rescindMessage?: string): Promise<{ success: boolean }> {
+		return this.post(`/broadcasts/${id}/rescind`, { rescindMessage })
 	}
 
 	async getBroadcastDeliveries(broadcastId: string): Promise<BroadcastDelivery[]> {

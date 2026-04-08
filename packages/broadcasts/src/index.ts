@@ -365,8 +365,9 @@ export interface Broadcasts {
 
 	/**
 	 * Rescind a sent broadcast — edits the Discord message to all strikethrough and marks status rescinded
+	 * @param rescindMessage - Optional message appended after the strikethrough content
 	 */
-	rescindBroadcast(broadcastId: string, userId: string): Promise<void>
+	rescindBroadcast(broadcastId: string, userId: string, rescindMessage?: string): Promise<void>
 
 	/**
 	 * Get deliveries for a broadcast

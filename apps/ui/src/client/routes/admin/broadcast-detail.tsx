@@ -6,6 +6,7 @@ import { renderDiscordContentValue } from '@/components/discord-content-renderer
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Textarea } from '@/components/ui/textarea'
 import {
 	Dialog,
 	DialogContent,
@@ -64,6 +65,7 @@ export default function AdminBroadcastDetailPage() {
 	const rescindBroadcast = useRescindBroadcast()
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 	const [rescindDialogOpen, setRescindDialogOpen] = useState(false)
+	const [rescindMessage, setRescindMessage] = useState('')
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
 	usePageTitle(
@@ -113,8 +115,12 @@ export default function AdminBroadcastDetailPage() {
 
 	const handleRescind = async () => {
 		try {
-			await rescindBroadcast.mutateAsync(broadcast.id)
+			await rescindBroadcast.mutateAsync({
+				id: broadcast.id,
+				rescindMessage: rescindMessage.trim() || undefined,
+			})
 			setRescindDialogOpen(false)
+			setRescindMessage('')
 			setMessage({ type: 'success', text: 'Broadcast rescinded.' })
 			await refetch()
 		} catch (error) {
@@ -360,10 +366,28 @@ export default function AdminBroadcastDetailPage() {
 							mark the broadcast as rescinded. This action cannot be undone.
 						</DialogDescription>
 					</DialogHeader>
+					<div className="py-2">
+						<label className="text-sm font-medium mb-1 block">
+							Rescind message <span className="text-muted-foreground font-normal">(optional)</span>
+						</label>
+						<Textarea
+							placeholder="Explain why this broadcast is being rescinded..."
+							value={rescindMessage}
+							onChange={(e) => setRescindMessage(e.target.value)}
+							rows={3}
+							disabled={rescindBroadcast.isPending}
+						/>
+						<p className="text-xs text-muted-foreground mt-1">
+							Appended after the strikethrough content in Discord.
+						</p>
+					</div>
 					<DialogFooter>
 						<Button
 							variant="cancel"
-							onClick={() => setRescindDialogOpen(false)}
+							onClick={() => {
+								setRescindDialogOpen(false)
+								setRescindMessage('')
+							}}
 							disabled={rescindBroadcast.isPending}
 						>
 							Cancel
