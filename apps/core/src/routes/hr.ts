@@ -6,7 +6,7 @@ import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 import { APPLICATION_STATUSES } from '@repo/hr'
 
-import { managedCorporations, userCharacters } from '../db/schema'
+import { managedCorporations, userCharacters, users } from '../db/schema'
 import { requireAdmin, requireAuth } from '../middleware/session'
 
 import type { Context } from 'hono'
@@ -42,6 +42,39 @@ function getCoreStub(c: Context<App>): Core {
 function getCharacterName(user: Context<App>['var']['user'], characterId: string): string {
 	const character = user?.characters.find((c) => c.characterId === characterId)
 	return character?.characterName || 'Unknown'
+}
+
+/**
+ * Batch resolve user IDs to their main character names.
+ * Used to enrich HR responses with reviewer/sender names at read time.
+ */
+async function resolveUserCharacterNames(
+	db: NonNullable<Context<App>['var']['db']>,
+	userIds: string[]
+): Promise<Record<string, string>> {
+	if (userIds.length === 0) return {}
+
+	const uniqueIds = [...new Set(userIds)]
+	const foundUsers = await db.query.users.findMany({
+		where: inArray(users.id, uniqueIds),
+		columns: { id: true, mainCharacterId: true },
+	})
+
+	if (foundUsers.length === 0) return {}
+
+	const charIds = foundUsers.map((u) => u.mainCharacterId)
+	const chars = await db.query.userCharacters.findMany({
+		where: inArray(userCharacters.characterId, charIds),
+		columns: { characterId: true, characterName: true },
+	})
+
+	const charNameMap = new Map(chars.map((c) => [c.characterId, c.characterName]))
+	const result: Record<string, string> = {}
+	for (const u of foundUsers) {
+		const name = charNameMap.get(u.mainCharacterId)
+		if (name) result[u.id] = name
+	}
+	return result
 }
 
 /**
@@ -201,9 +234,15 @@ app.get('/applications', requireAuth(), async (c) => {
 		const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
 		const corpNames = corpIds.length > 0 ? await resolver.resolveIds(corpIds) : {}
 
+		// Resolve reviewer character names
+		const db = c.get('db')!
+		const reviewerIds = applications.map((a) => a.reviewedBy).filter((id): id is string => id !== null)
+		const reviewerNames = await resolveUserCharacterNames(db, reviewerIds)
+
 		const enriched = applications.map((a) => ({
 			...a,
 			corporationName: corpNames[a.corporationId] ?? 'Unknown',
+			reviewedByCharacterName: a.reviewedBy ? (reviewerNames[a.reviewedBy] ?? null) : null,
 		}))
 
 		return c.json(enriched)
@@ -231,9 +270,16 @@ app.get('/applications/:id', requireAuth(), async (c) => {
 		const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
 		const corpNames = await resolver.resolveIds([application.corporationId])
 
+		// Resolve reviewer character name
+		const db = c.get('db')!
+		const reviewerNames = application.reviewedBy
+			? await resolveUserCharacterNames(db, [application.reviewedBy])
+			: {}
+
 		return c.json({
 			...application,
 			corporationName: corpNames[application.corporationId] ?? 'Unknown',
+			reviewedByCharacterName: application.reviewedBy ? (reviewerNames[application.reviewedBy] ?? null) : null,
 		})
 	} catch (error) {
 		return c.json(
@@ -264,9 +310,8 @@ app.patch('/applications/:id', requireAuth(), async (c) => {
 	const characterId = primaryCharacter?.characterId || user.mainCharacterId
 
 	try {
-		const characterName = getCharacterName(user, characterId)
 		const hr = getHrStub(c)
-		await hr.updateApplicationStatus(applicationId, status, user.id, characterId, characterName, reviewNotes)
+		await hr.updateApplicationStatus(applicationId, status, user.id, characterId, reviewNotes)
 
 		return c.json({ success: true })
 	} catch (error) {
@@ -509,7 +554,6 @@ app.post('/applications/:applicationId/messages', requireAuth(), async (c) => {
 		// Get primary character for logging
 		const primaryCharacter = user.characters.find((char) => char.is_primary)
 		const characterId = primaryCharacter?.characterId || user.mainCharacterId
-		const characterName = primaryCharacter?.characterName || 'Unknown'
 
 		const result = await hr.sendMessage(
 			applicationId,
@@ -517,11 +561,13 @@ app.post('/applications/:applicationId/messages', requireAuth(), async (c) => {
 			recipientId || null,
 			message,
 			characterId,
-			characterName,
 			user.is_admin
 		)
 
-		return c.json(result, 201)
+		// Enrich the returned message with sender character name
+		const senderName = primaryCharacter?.characterName || 'Unknown'
+
+		return c.json({ ...result, senderCharacterName: senderName }, 201)
 	} catch (error) {
 		return c.json({ error: error instanceof Error ? error.message : 'Failed to send message' }, 400)
 	}
@@ -539,7 +585,17 @@ app.get('/applications/:applicationId/messages', requireAuth(), async (c) => {
 		const hr = getHrStub(c)
 		const messages = await hr.listMessages(applicationId, user.id, user.is_admin)
 
-		return c.json(messages)
+		// Resolve sender character names
+		const db = c.get('db')!
+		const senderIds = messages.map((m) => m.senderId)
+		const senderNames = await resolveUserCharacterNames(db, senderIds)
+
+		const enriched = messages.map((m) => ({
+			...m,
+			senderCharacterName: senderNames[m.senderId] ?? null,
+		}))
+
+		return c.json(enriched)
 	} catch (error) {
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to list messages' },

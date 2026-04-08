@@ -250,12 +250,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "sender_character_name": {
-          "name": "sender_character_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "recipient_id": {
           "name": "recipient_id",
           "type": "uuid",
@@ -520,12 +514,6 @@
         "reviewed_by": {
           "name": "reviewed_by",
           "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "reviewed_by_character_name": {
-          "name": "reviewed_by_character_name",
-          "type": "varchar(255)",
           "primaryKey": false,
           "notNull": false
         },

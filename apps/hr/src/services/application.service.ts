@@ -238,7 +238,6 @@ export class ApplicationService {
 		status: ApplicationStatus,
 		userId: string,
 		characterId: string,
-		characterName: string,
 		reviewNotes?: string
 	): Promise<void> {
 		if (!isApplicationStatus(status)) {
@@ -265,7 +264,6 @@ export class ApplicationService {
 				...(isFinalDecision
 					? {
 						reviewedBy: userId,
-						reviewedByCharacterName: characterName,
 						reviewedAt: new Date(),
 						reviewNotes,
 					}
@@ -545,7 +543,7 @@ export class ApplicationService {
 			applicationText: app.applicationText,
 			status: app.status as Application['status'],
 			reviewedBy: app.reviewedBy,
-			reviewedByCharacterName: app.reviewedByCharacterName,
+			reviewedByCharacterName: null,
 			reviewedAt: app.reviewedAt,
 			reviewNotes: app.reviewNotes,
 			createdAt: app.createdAt,

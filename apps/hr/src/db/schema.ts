@@ -40,8 +40,7 @@ export const applications = pgTable(
 			.default('pending'),
 		/** User who reviewed the application (HR admin) */
 		reviewedBy: uuid('reviewed_by'),
-		/** Character name of the reviewer (cached for display) */
-		reviewedByCharacterName: varchar('reviewed_by_character_name', { length: 255 }),
+
 		/** When the application was reviewed */
 		reviewedAt: timestamp('reviewed_at'),
 		/** Review notes from HR admin */
@@ -156,7 +155,6 @@ export const applicationMessages = pgTable(
 			.references(() => applications.id, { onDelete: 'cascade' }),
 		senderId: uuid('sender_id').notNull(),
 		senderCharacterId: text('sender_character_id'),
-		senderCharacterName: text('sender_character_name'),
 		recipientId: uuid('recipient_id').notNull(),
 		message: text('message').notNull(),
 		createdAt: timestamp('created_at').defaultNow().notNull(),

@@ -175,7 +175,6 @@ export class HrDO extends DurableObject<Env> implements Hr {
 		status: ApplicationStatus,
 		userId: string,
 		characterId: string,
-		characterName: string,
 		reviewNotes?: string
 	): Promise<void> {
 		const application = await this.applicationService.getApplicationById(applicationId)
@@ -203,7 +202,6 @@ export class HrDO extends DurableObject<Env> implements Hr {
 			status,
 			userId,
 			characterId,
-			characterName,
 			reviewNotes
 		)
 	}
@@ -330,7 +328,6 @@ export class HrDO extends DurableObject<Env> implements Hr {
 		recipientId: string | null,
 		message: string,
 		characterId: string,
-		characterName: string,
 		isAdmin: boolean
 	): Promise<ApplicationMessage> {
 		// Get sender's HR corporations for authorization
@@ -359,7 +356,6 @@ export class HrDO extends DurableObject<Env> implements Hr {
 			recipientId,
 			message,
 			characterId,
-			characterName,
 			isSenderApplicant,
 			senderHrCorporations,
 			recipientHrCorporations

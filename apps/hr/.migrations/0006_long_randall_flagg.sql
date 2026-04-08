@@ -1,1 +1,1 @@
-ALTER TABLE "applications" ADD COLUMN "reviewed_by_character_name" varchar(255);
+-- removed: reviewed_by_character_name column (resolved at read time from reviewedBy userId)

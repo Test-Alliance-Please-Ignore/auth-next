@@ -22,7 +22,6 @@ export class MessageService {
 		recipientId: string | null,
 		message: string,
 		characterId: string,
-		characterName: string,
 		isSenderApplicant: boolean,
 		senderHrCorporations: string[] = [],
 		recipientHrCorporations: string[] = []
@@ -78,7 +77,6 @@ export class MessageService {
 				applicationId,
 				senderId,
 				senderCharacterId: characterId,
-				senderCharacterName: characterName,
 				recipientId: effectiveRecipientId,
 				message: message.trim(),
 			})
@@ -182,7 +180,7 @@ export class MessageService {
 			applicationId: msg.applicationId,
 			senderId: msg.senderId,
 			senderCharacterId: msg.senderCharacterId,
-			senderCharacterName: msg.senderCharacterName,
+			senderCharacterName: null,
 			recipientId: msg.recipientId,
 			message: msg.message,
 			createdAt: msg.createdAt,

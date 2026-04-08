@@ -399,7 +399,6 @@ export interface Hr extends DurableObject {
 		status: ApplicationStatus,
 		userId: string,
 		characterId: string,
-		characterName: string,
 		reviewNotes?: string
 	): Promise<void>
 
@@ -511,7 +510,6 @@ export interface Hr extends DurableObject {
 		recipientId: string | null,
 		message: string,
 		characterId: string,
-		characterName: string,
 		isAdmin: boolean
 	): Promise<ApplicationMessage>
 

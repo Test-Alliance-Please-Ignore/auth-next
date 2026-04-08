@@ -250,12 +250,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "sender_character_name": {
-          "name": "sender_character_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "recipient_id": {
           "name": "recipient_id",
           "type": "uuid",
