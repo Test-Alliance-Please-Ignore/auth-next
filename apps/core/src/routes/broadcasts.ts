@@ -618,6 +618,7 @@ broadcasts.get('/', async (c) => {
 	const permissionId = c.req.query('permissionId')
 	const status = c.req.query('status') as any
 	const mine = c.req.query('mine') === 'true'
+	const targetId = c.req.query('targetId')
 	const pagination = validatePagination(c.req.query('limit'), c.req.query('offset'))
 
 	if (!pagination.success) {
@@ -656,6 +657,7 @@ broadcasts.get('/', async (c) => {
 				? undefined
 				: [...(permissionContext!.accessiblePermissionIdsByAction.get('send') ?? new Set())],
 		status,
+		targetId,
 		createdBy: mine ? user.id : undefined,
 		limit: pagination.data.limit,
 		offset: pagination.data.offset,
@@ -796,6 +798,44 @@ broadcasts.delete('/:id', async (c) => {
 	}
 
 	await broadcastsStub.deleteBroadcast(broadcastId, user.id)
+	return c.json({ success: true })
+})
+
+/**
+ * Rescind a sent broadcast
+ * POST /api/broadcasts/:id/rescind
+ */
+broadcasts.post('/:id/rescind', async (c) => {
+	const user = c.get('user')!
+	const broadcastId = c.req.param('id')
+
+	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	const broadcast = await broadcastsStub.getBroadcast(broadcastId, user.id)
+
+	if (!broadcast) {
+		return c.json({ error: 'Broadcast not found' }, 404)
+	}
+
+	const allowed = user.is_admin
+		? true
+		: canAccessBroadcastPermissionId(
+				broadcast.target.managePermissionId,
+				'manage',
+				await getUserBroadcastPermissionContext(c.env, user.id)
+			)
+
+	if (!allowed) {
+		return c.json({ error: 'Permission denied' }, 403)
+	}
+
+	if (broadcast.status !== 'sent') {
+		return c.json({ error: 'Only sent broadcasts can be rescinded' }, 400)
+	}
+
+	const body = await c.req.json().catch(() => ({}))
+	const rescindMessage = typeof body?.rescindMessage === 'string' ? body.rescindMessage : undefined
+
+	await broadcastsStub.rescindBroadcast(broadcastId, user.id, rescindMessage)
 	return c.json({ success: true })
 })
 

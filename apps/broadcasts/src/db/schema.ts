@@ -15,6 +15,7 @@ export const broadcastStatusEnum = pgEnum('broadcast_status', [
 	'sending',
 	'sent',
 	'failed',
+	'rescinded',
 ])
 
 /** Delivery status */

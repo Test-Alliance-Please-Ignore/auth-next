@@ -1209,6 +1209,79 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 		}
 	}
 
+	async editMessage(
+		channelId: string,
+		messageId: string,
+		content: string
+	): Promise<SendMessageResult> {
+		try {
+			const proxyUrl = this.getDiscordProxyUrl()
+			const url = `https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`
+			const response = await fetchWithRetry(url, {
+				method: 'PATCH',
+				headers: {
+					Authorization: `Bot ${this.env.DISCORD_BOT_TOKEN}`,
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify({ content }),
+				...(proxyUrl ? { proxy: proxyUrl } : {}),
+			})
+
+			if (!response.ok) {
+				const errorData = (await response.json().catch(() => ({ message: 'Unknown error' }))) as {
+					message?: string
+				}
+				return {
+					success: false,
+					error: errorData.message || `Discord API error: ${response.status}`,
+				}
+			}
+
+			const result = (await response.json()) as { id: string }
+			return { success: true, messageId: result.id }
+		} catch (error) {
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to edit message',
+			}
+		}
+	}
+
+	async deleteMessage(
+		channelId: string,
+		messageId: string
+	): Promise<{ success: boolean; error?: string }> {
+		try {
+			const proxyUrl = this.getDiscordProxyUrl()
+			const url = `https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`
+			const response = await fetchWithRetry(url, {
+				method: 'DELETE',
+				headers: {
+					Authorization: `Bot ${this.env.DISCORD_BOT_TOKEN}`,
+				},
+				...(proxyUrl ? { proxy: proxyUrl } : {}),
+			})
+
+			// 204 No Content is success for DELETE
+			if (!response.ok && response.status !== 204) {
+				const errorData = (await response.json().catch(() => ({ message: 'Unknown error' }))) as {
+					message?: string
+				}
+				return {
+					success: false,
+					error: errorData.message || `Discord API error: ${response.status}`,
+				}
+			}
+
+			return { success: true }
+		} catch (error) {
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to delete message',
+			}
+		}
+	}
+
 	/**
 	 * Send a direct message to a user by their core user ID
 	 * Creates or gets a DM channel and sends the message

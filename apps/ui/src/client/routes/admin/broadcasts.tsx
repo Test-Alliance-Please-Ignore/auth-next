@@ -2,6 +2,7 @@ import { ExternalLink, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
+import { RescindBroadcastDialog } from './rescind-broadcast-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -39,6 +40,7 @@ const statusVariants: Record<BroadcastStatus, BadgeVariant> = {
 	sending: 'warning',
 	sent: 'success',
 	failed: 'destructive',
+	rescinded: 'warning',
 }
 
 const statusLabels: Record<BroadcastStatus, string> = {
@@ -47,6 +49,7 @@ const statusLabels: Record<BroadcastStatus, string> = {
 	sending: 'Sending',
 	sent: 'Sent',
 	failed: 'Failed',
+	rescinded: 'Rescinded',
 }
 
 export default function AdminBroadcastsPage() {
@@ -54,6 +57,7 @@ export default function AdminBroadcastsPage() {
 
 	const pageSize = 25
 	const [statusFilter, setStatusFilter] = useState<BroadcastStatus | 'all'>('all')
+	const [targetFilter, setTargetFilter] = useState<string>('all')
 	const [page, setPage] = useState(0)
 
 	const { data: broadcastsPage, isLoading } = useBroadcasts(
@@ -62,6 +66,7 @@ export default function AdminBroadcastsPage() {
 		{
 			limit: pageSize,
 			offset: page * pageSize,
+			targetId: targetFilter === 'all' ? undefined : targetFilter,
 		}
 	)
 	const { data: targets } = useBroadcastTargets()
@@ -69,6 +74,7 @@ export default function AdminBroadcastsPage() {
 	const deleteBroadcast = useDeleteBroadcast()
 
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+	const [rescindDialogOpen, setRescindDialogOpen] = useState(false)
 	const [selectedBroadcast, setSelectedBroadcast] = useState<Broadcast | null>(null)
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
@@ -79,7 +85,7 @@ export default function AdminBroadcastsPage() {
 
 	useEffect(() => {
 		setPage(0)
-	}, [statusFilter])
+	}, [statusFilter, targetFilter])
 
 	useEffect(() => {
 		if (page > maxPage) {
@@ -90,6 +96,11 @@ export default function AdminBroadcastsPage() {
 	const handleDeleteClick = (broadcast: Broadcast) => {
 		setSelectedBroadcast(broadcast)
 		setDeleteDialogOpen(true)
+	}
+
+	const handleRescindClick = (broadcast: Broadcast) => {
+		setSelectedBroadcast(broadcast)
+		setRescindDialogOpen(true)
 	}
 
 	const handleDeleteConfirm = async () => {
@@ -156,8 +167,20 @@ export default function AdminBroadcastsPage() {
 									{ value: 'sending', label: 'Sending' },
 									{ value: 'sent', label: 'Sent' },
 									{ value: 'failed', label: 'Failed' },
+									{ value: 'rescinded', label: 'Rescinded' },
 								]}
 								placeholder="Filter by status"
+							/>
+						</div>
+						<div className="w-56">
+							<Select
+								value={targetFilter}
+								onValueChange={setTargetFilter}
+								options={[
+									{ value: 'all', label: 'All Targets' },
+									...(targets ?? []).map((t) => ({ value: t.id, label: t.name })),
+								]}
+								placeholder="Filter by target"
 							/>
 						</div>
 					</div>
@@ -180,7 +203,6 @@ export default function AdminBroadcastsPage() {
 								<TableHeader>
 									<TableRow>
 										<TableHead>Status</TableHead>
-										<TableHead>Permission</TableHead>
 										<TableHead>Target</TableHead>
 										<TableHead>Template</TableHead>
 										<TableHead>Created By</TableHead>
@@ -205,9 +227,6 @@ export default function AdminBroadcastsPage() {
 														{statusLabels[broadcast.status]}
 													</Badge>
 												</TableCell>
-												<TableCell className="font-mono text-xs">
-													{broadcast.permissionId}
-												</TableCell>
 												<TableCell className="font-medium">
 													{target?.name || broadcast.targetId}
 												</TableCell>
@@ -228,14 +247,24 @@ export default function AdminBroadcastsPage() {
 																<ExternalLink className="h-4 w-4" />
 															</Button>
 														</Link>
+														{broadcast.status === 'sent' && (
 														<Button
 															variant="ghost"
 															size="sm"
-															onClick={() => handleDeleteClick(broadcast)}
-															title="Delete broadcast"
+															onClick={() => handleRescindClick(broadcast)}
+															title="Rescind broadcast"
 														>
-															<Trash2 className="h-4 w-4 text-destructive" />
+															<Ban className="h-4 w-4 text-warning" />
 														</Button>
+													)}
+													<Button
+														variant="ghost"
+														size="sm"
+														onClick={() => handleDeleteClick(broadcast)}
+														title="Delete broadcast"
+													>
+														<Trash2 className="h-4 w-4 text-destructive" />
+													</Button>
 													</div>
 												</TableCell>
 											</TableRow>
@@ -301,6 +330,23 @@ export default function AdminBroadcastsPage() {
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
+
+			<RescindBroadcastDialog
+				broadcastId={selectedBroadcast?.id ?? ''}
+				open={rescindDialogOpen}
+				onOpenChange={(open) => {
+					setRescindDialogOpen(open)
+					if (!open) setSelectedBroadcast(null)
+				}}
+				onSuccess={() => {
+					setMessage({ type: 'success', text: 'Broadcast rescinded.' })
+					setTimeout(() => setMessage(null), 3000)
+				}}
+				onError={(error) => {
+					setMessage({ type: 'error', text: error.message })
+					setTimeout(() => setMessage(null), 5000)
+				}}
+			/>
 		</div>
 	)
 }
