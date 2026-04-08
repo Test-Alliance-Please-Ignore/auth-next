@@ -583,13 +583,97 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 	}
 
 	async deleteBroadcast(broadcastId: string, userId: string): Promise<void> {
-		// Delete deliveries first
+		// Fetch deliveries and target config before deleting so we can clean up Discord
+		const broadcast = await this.db.query.broadcasts.findFirst({
+			where: eq(broadcasts.id, broadcastId),
+		})
+
+		if (broadcast && broadcast.status === 'sent') {
+			const [deliveries, target] = await Promise.all([
+				this.db.query.broadcastDeliveries.findMany({
+					where: and(
+						eq(broadcastDeliveries.broadcastId, broadcastId),
+						eq(broadcastDeliveries.status, 'sent')
+					),
+				}),
+				this.db.query.broadcastTargets.findFirst({
+					where: eq(broadcastTargets.id, broadcast.targetId),
+				}),
+			])
+
+			if (target?.type === 'discord_channel') {
+				const config = target.config as { channelId: string }
+				const discordStub = getStub<Discord>(this.env.DISCORD, 'default')
+				await Promise.allSettled(
+					deliveries
+						.filter((d) => d.discordMessageId)
+						.map((d) => discordStub.deleteMessage(config.channelId, d.discordMessageId!))
+				)
+			}
+		}
+
+		// Delete deliveries first (or let cascade handle it), then broadcast
 		await this.db
 			.delete(broadcastDeliveries)
 			.where(eq(broadcastDeliveries.broadcastId, broadcastId))
-
-		// Delete broadcast
 		await this.db.delete(broadcasts).where(eq(broadcasts.id, broadcastId))
+	}
+
+	async rescindBroadcast(broadcastId: string, userId: string): Promise<void> {
+		const broadcast = await this.db.query.broadcasts.findFirst({
+			where: eq(broadcasts.id, broadcastId),
+		})
+
+		if (!broadcast) throw new Error('Broadcast not found')
+		if (broadcast.status !== 'sent') throw new Error('Only sent broadcasts can be rescinded')
+
+		const [deliveries, target] = await Promise.all([
+			this.db.query.broadcastDeliveries.findMany({
+				where: and(
+					eq(broadcastDeliveries.broadcastId, broadcastId),
+					eq(broadcastDeliveries.status, 'sent')
+				),
+			}),
+			this.db.query.broadcastTargets.findFirst({
+				where: eq(broadcastTargets.id, broadcast.targetId),
+			}),
+		])
+
+		if (target?.type === 'discord_channel') {
+			const config = target.config as { channelId: string }
+			const discordStub = getStub<Discord>(this.env.DISCORD, 'default')
+			const broadcastDetails = await this.getBroadcast(broadcastId, userId)
+
+			if (broadcastDetails) {
+				let message: string
+				if (broadcastDetails.template) {
+					message = this.renderTemplate(
+						broadcastDetails.template.messageTemplate,
+						broadcastDetails.content
+					)
+				} else {
+					message = (broadcastDetails.content.message as string) || broadcastDetails.title
+				}
+				message = convertUnixTimestamps(message)
+
+				// Wrap each non-empty line in ~~ for Discord strikethrough
+				const rescindedContent = message
+					.split('\n')
+					.map((line) => (line.trim() ? `~~${line}~~` : line))
+					.join('\n')
+
+				await Promise.allSettled(
+					deliveries
+						.filter((d) => d.discordMessageId)
+						.map((d) => discordStub.editMessage(config.channelId, d.discordMessageId!, rescindedContent))
+				)
+			}
+		}
+
+		await this.db
+			.update(broadcasts)
+			.set({ status: 'rescinded', updatedAt: new Date() })
+			.where(eq(broadcasts.id, broadcastId))
 	}
 
 	async getDeliveries(broadcastId: string, userId: string): Promise<BroadcastDelivery[]> {

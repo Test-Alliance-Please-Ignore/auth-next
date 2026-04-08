@@ -800,6 +800,41 @@ broadcasts.delete('/:id', async (c) => {
 })
 
 /**
+ * Rescind a sent broadcast
+ * POST /api/broadcasts/:id/rescind
+ */
+broadcasts.post('/:id/rescind', async (c) => {
+	const user = c.get('user')!
+	const broadcastId = c.req.param('id')
+
+	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	const broadcast = await broadcastsStub.getBroadcast(broadcastId, user.id)
+
+	if (!broadcast) {
+		return c.json({ error: 'Broadcast not found' }, 404)
+	}
+
+	const allowed = user.is_admin
+		? true
+		: canAccessBroadcastPermissionId(
+				broadcast.target.managePermissionId,
+				'manage',
+				await getUserBroadcastPermissionContext(c.env, user.id)
+			)
+
+	if (!allowed) {
+		return c.json({ error: 'Permission denied' }, 403)
+	}
+
+	if (broadcast.status !== 'sent') {
+		return c.json({ error: 'Only sent broadcasts can be rescinded' }, 400)
+	}
+
+	await broadcastsStub.rescindBroadcast(broadcastId, user.id)
+	return c.json({ success: true })
+})
+
+/**
  * Get deliveries for a broadcast
  * GET /api/broadcasts/:id/deliveries
  */

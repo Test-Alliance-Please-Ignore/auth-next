@@ -1,4 +1,4 @@
-import { ArrowLeft, RefreshCw, Send, Trash2 } from 'lucide-react'
+import { ArrowLeft, Ban, RefreshCw, Send, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
@@ -27,6 +27,7 @@ import {
 	useBroadcastDeliveries,
 	useBroadcastTargets,
 	useDeleteBroadcast,
+	useRescindBroadcast,
 	useSendBroadcast,
 } from '@/hooks/useBroadcasts'
 import { usePageTitle } from '@/hooks/usePageTitle'
@@ -41,6 +42,7 @@ const statusVariants: Record<BroadcastStatus, BadgeVariant> = {
 	sending: 'warning',
 	sent: 'success',
 	failed: 'destructive',
+	rescinded: 'ghost',
 }
 
 const deliveryStatusVariants: Record<DeliveryStatus, BadgeVariant> = {
@@ -59,7 +61,9 @@ export default function AdminBroadcastDetailPage() {
 	const { data: targets } = useBroadcastTargets()
 	const sendBroadcast = useSendBroadcast()
 	const deleteBroadcast = useDeleteBroadcast()
+	const rescindBroadcast = useRescindBroadcast()
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+	const [rescindDialogOpen, setRescindDialogOpen] = useState(false)
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
 	usePageTitle(
@@ -107,6 +111,21 @@ export default function AdminBroadcastDetailPage() {
 		}
 	}
 
+	const handleRescind = async () => {
+		try {
+			await rescindBroadcast.mutateAsync(broadcast.id)
+			setRescindDialogOpen(false)
+			setMessage({ type: 'success', text: 'Broadcast rescinded.' })
+			await refetch()
+		} catch (error) {
+			setRescindDialogOpen(false)
+			setMessage({
+				type: 'error',
+				text: error instanceof Error ? error.message : 'Failed to rescind broadcast',
+			})
+		}
+	}
+
 	const handleDelete = async () => {
 		try {
 			await deleteBroadcast.mutateAsync(broadcast.id)
@@ -150,6 +169,18 @@ export default function AdminBroadcastDetailPage() {
 						>
 							<Send className="mr-2 h-4 w-4" />
 							Send Now
+						</Button>
+					)}
+					{broadcast.status === 'sent' && (
+						<Button
+							variant="cancel"
+							size="sm"
+							onClick={() => setRescindDialogOpen(true)}
+							disabled={rescindBroadcast.isPending}
+							showIcon={false}
+						>
+							<Ban className="mr-2 h-4 w-4" />
+							Rescind
 						</Button>
 					)}
 					<Button
@@ -315,6 +346,37 @@ export default function AdminBroadcastDetailPage() {
 						>
 							<Trash2 className="mr-2 h-4 w-4" />
 							Delete
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
+			<Dialog open={rescindDialogOpen} onOpenChange={setRescindDialogOpen}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Rescind Broadcast</DialogTitle>
+						<DialogDescription>
+							This will edit the Discord message to display the content as strikethrough text and
+							mark the broadcast as rescinded. This action cannot be undone.
+						</DialogDescription>
+					</DialogHeader>
+					<DialogFooter>
+						<Button
+							variant="cancel"
+							onClick={() => setRescindDialogOpen(false)}
+							disabled={rescindBroadcast.isPending}
+						>
+							Cancel
+						</Button>
+						<Button
+							variant="destructive"
+							onClick={handleRescind}
+							loading={rescindBroadcast.isPending}
+							loadingText="Rescinding..."
+							showIcon={false}
+						>
+							<Ban className="mr-2 h-4 w-4" />
+							Rescind
 						</Button>
 					</DialogFooter>
 				</DialogContent>

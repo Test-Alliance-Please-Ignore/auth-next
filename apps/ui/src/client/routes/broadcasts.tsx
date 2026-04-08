@@ -42,6 +42,7 @@ const statusVariants: Record<BroadcastStatus, BadgeVariant> = {
 	sending: 'warning',
 	sent: 'success',
 	failed: 'destructive',
+	rescinded: 'ghost',
 }
 
 const statusLabels: Record<BroadcastStatus, string> = {
@@ -50,6 +51,7 @@ const statusLabels: Record<BroadcastStatus, string> = {
 	sending: 'Sending',
 	sent: 'Sent',
 	failed: 'Failed',
+	rescinded: 'Rescinded',
 }
 
 export default function BroadcastsPage() {

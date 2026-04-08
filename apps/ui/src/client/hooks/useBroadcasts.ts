@@ -269,7 +269,17 @@ export function useDeleteBroadcast() {
 	return useMutation({
 		mutationFn: (id: string) => api.deleteBroadcast(id),
 		onSuccess: () => {
-			// Invalidate all broadcasts lists
+			queryClient.invalidateQueries({ queryKey: broadcastKeys.broadcasts() })
+		},
+	})
+}
+
+export function useRescindBroadcast() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: (id: string) => api.rescindBroadcast(id),
+		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: broadcastKeys.broadcasts() })
 		},
 	})
