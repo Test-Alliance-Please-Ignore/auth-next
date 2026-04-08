@@ -40,7 +40,7 @@ const statusVariants: Record<BroadcastStatus, BadgeVariant> = {
 	sending: 'warning',
 	sent: 'success',
 	failed: 'destructive',
-	rescinded: 'ghost',
+	rescinded: 'warning',
 }
 
 const statusLabels: Record<BroadcastStatus, string> = {
@@ -57,6 +57,7 @@ export default function AdminBroadcastsPage() {
 
 	const pageSize = 25
 	const [statusFilter, setStatusFilter] = useState<BroadcastStatus | 'all'>('all')
+	const [targetFilter, setTargetFilter] = useState<string>('all')
 	const [page, setPage] = useState(0)
 
 	const { data: broadcastsPage, isLoading } = useBroadcasts(
@@ -65,6 +66,7 @@ export default function AdminBroadcastsPage() {
 		{
 			limit: pageSize,
 			offset: page * pageSize,
+			targetId: targetFilter === 'all' ? undefined : targetFilter,
 		}
 	)
 	const { data: targets } = useBroadcastTargets()
@@ -84,7 +86,7 @@ export default function AdminBroadcastsPage() {
 
 	useEffect(() => {
 		setPage(0)
-	}, [statusFilter])
+	}, [statusFilter, targetFilter])
 
 	useEffect(() => {
 		if (page > maxPage) {
@@ -186,6 +188,17 @@ export default function AdminBroadcastsPage() {
 									{ value: 'rescinded', label: 'Rescinded' },
 								]}
 								placeholder="Filter by status"
+							/>
+						</div>
+						<div className="w-56">
+							<Select
+								value={targetFilter}
+								onValueChange={setTargetFilter}
+								options={[
+									{ value: 'all', label: 'All Targets' },
+									...(targets ?? []).map((t) => ({ value: t.id, label: t.name })),
+								]}
+								placeholder="Filter by target"
 							/>
 						</div>
 					</div>

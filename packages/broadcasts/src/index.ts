@@ -325,6 +325,7 @@ export interface Broadcasts {
 			permissionId?: string
 			permissionIds?: string[]
 			status?: BroadcastStatus
+			targetId?: string
 			createdBy?: string
 			limit?: number
 			offset?: number

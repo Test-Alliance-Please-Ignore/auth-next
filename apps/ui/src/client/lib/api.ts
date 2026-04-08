@@ -2324,7 +2324,7 @@ export class ApiClient {
 	async getBroadcasts(
 		permissionId?: string,
 		status?: BroadcastStatus,
-		options?: { limit?: number; offset?: number; mine?: boolean }
+		options?: { limit?: number; offset?: number; mine?: boolean; targetId?: string }
 	): Promise<BroadcastListResponse> {
 		const params = new URLSearchParams()
 		if (permissionId) params.set('permissionId', permissionId)
@@ -2332,6 +2332,7 @@ export class ApiClient {
 		if (options?.limit !== undefined) params.set('limit', String(options.limit))
 		if (options?.offset !== undefined) params.set('offset', String(options.offset))
 		if (options?.mine) params.set('mine', 'true')
+		if (options?.targetId) params.set('targetId', options.targetId)
 		const query = params.toString()
 		return this.get(`/broadcasts${query ? `?${query}` : ''}`)
 	}

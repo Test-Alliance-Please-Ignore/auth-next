@@ -42,7 +42,7 @@ const statusVariants: Record<BroadcastStatus, BadgeVariant> = {
 	sending: 'warning',
 	sent: 'success',
 	failed: 'destructive',
-	rescinded: 'ghost',
+	rescinded: 'warning',
 }
 
 const deliveryStatusVariants: Record<DeliveryStatus, BadgeVariant> = {

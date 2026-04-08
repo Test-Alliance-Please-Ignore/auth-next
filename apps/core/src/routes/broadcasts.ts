@@ -618,6 +618,7 @@ broadcasts.get('/', async (c) => {
 	const permissionId = c.req.query('permissionId')
 	const status = c.req.query('status') as any
 	const mine = c.req.query('mine') === 'true'
+	const targetId = c.req.query('targetId')
 	const pagination = validatePagination(c.req.query('limit'), c.req.query('offset'))
 
 	if (!pagination.success) {
@@ -656,6 +657,7 @@ broadcasts.get('/', async (c) => {
 				? undefined
 				: [...(permissionContext!.accessiblePermissionIdsByAction.get('send') ?? new Set())],
 		status,
+		targetId,
 		createdBy: mine ? user.id : undefined,
 		limit: pagination.data.limit,
 		offset: pagination.data.offset,

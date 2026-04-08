@@ -272,6 +272,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 			permissionId?: string
 			permissionIds?: string[]
 			status?: BroadcastStatus
+			targetId?: string
 			createdBy?: string
 			limit?: number
 			offset?: number
@@ -290,6 +291,9 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 
 		if (filters?.status) {
 			whereConditions.push(eq(broadcasts.status, filters.status))
+		}
+		if (filters?.targetId) {
+			whereConditions.push(eq(broadcasts.targetId, filters.targetId))
 		}
 		if (filters?.createdBy) {
 			whereConditions.push(eq(broadcasts.createdBy, filters.createdBy))
