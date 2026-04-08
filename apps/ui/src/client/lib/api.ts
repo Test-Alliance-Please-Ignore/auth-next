@@ -598,6 +598,113 @@ export interface RefreshDiscordServerMembersResponse {
 	}>
 }
 
+export interface ResyncDiscordServerCommandsResponse {
+	success: boolean
+	total: number
+	synced: number
+	failed: number
+	results: Array<{
+		attachmentId: string
+		commandId: string
+		commandName: string
+		success: boolean
+		discordCommandId?: string
+		error?: string
+	}>
+}
+
+export interface DiscordCommandCategory {
+	id: string
+	name: string
+	description: string | null
+	sortOrder: number
+	createdAt: string
+	updatedAt: string
+}
+
+export interface DiscordCommandPermission {
+	id: string
+	commandId: string
+	permissionId: string
+	createdAt: string
+}
+
+export interface DiscordServerCommand {
+	id: string
+	discordServerId: string
+	commandId: string
+	discordCommandId: string | null
+	createdBy: string | null
+	createdAt: string
+	updatedAt: string
+	discordServer?: DiscordServer
+}
+
+export interface DiscordCommand {
+	id: string
+	categoryId: string | null
+	name: string
+	description: string
+	commandType: 'static_response' | 'programmatic'
+	responseTemplate: string | null
+	isActive: boolean
+	createdBy: string | null
+	createdAt: string
+	updatedAt: string
+	category?: DiscordCommandCategory | null
+	requiredPermissions: DiscordCommandPermission[]
+	serverAttachments: DiscordServerCommand[]
+}
+
+export interface CreateDiscordCommandCategoryRequest {
+	name: string
+	description?: string
+	sortOrder?: number
+}
+
+export interface UpdateDiscordCommandCategoryRequest {
+	name?: string
+	description?: string
+	sortOrder?: number
+}
+
+export interface CreateDiscordCommandRequest {
+	categoryId?: string | null
+	name: string
+	description: string
+	responseTemplate: string
+	isActive?: boolean
+	requiredPermissionIds?: string[]
+}
+
+export interface UpdateDiscordCommandRequest {
+	categoryId?: string | null
+	name?: string
+	description?: string
+	responseTemplate?: string
+	isActive?: boolean
+	requiredPermissionIds?: string[]
+}
+
+export interface AttachDiscordCommandToServerRequest {
+	serverId: string
+}
+
+export interface DiscordCommandSyncResponse {
+	success: boolean
+	total?: number
+	synced?: number
+	failed?: number
+	results?: Array<{
+		attachmentId: string
+		serverId: string
+		guildId: string
+		success: boolean
+		discordCommandId?: string
+		error?: string
+	}>
+}
+
 /**
  * Directors API Types
  */
@@ -1834,6 +1941,77 @@ export class ApiClient {
 		serverId: string
 	): Promise<RefreshDiscordServerMembersResponse> {
 		return this.post(`/discord-servers/${serverId}/refresh-members`)
+	}
+
+	async resyncDiscordServerCommands(
+		serverId: string
+	): Promise<ResyncDiscordServerCommandsResponse> {
+		return this.post(`/discord-servers/${serverId}/resync-commands`)
+	}
+
+	// ===== Discord Slash Commands API Methods =====
+
+	async getDiscordCommandCategories(): Promise<DiscordCommandCategory[]> {
+		return this.get('/discord-commands/categories')
+	}
+
+	async createDiscordCommandCategory(
+		data: CreateDiscordCommandCategoryRequest
+	): Promise<DiscordCommandCategory> {
+		return this.post('/discord-commands/categories', data)
+	}
+
+	async updateDiscordCommandCategory(
+		id: string,
+		data: UpdateDiscordCommandCategoryRequest
+	): Promise<DiscordCommandCategory> {
+		return this.patch(`/discord-commands/categories/${id}`, data)
+	}
+
+	async deleteDiscordCommandCategory(id: string): Promise<{ success: boolean }> {
+		return this.delete(`/discord-commands/categories/${id}`)
+	}
+
+	async getDiscordCommands(): Promise<DiscordCommand[]> {
+		return this.get('/discord-commands')
+	}
+
+	async createDiscordCommand(data: CreateDiscordCommandRequest): Promise<DiscordCommand> {
+		return this.post('/discord-commands', data)
+	}
+
+	async updateDiscordCommand(id: string, data: UpdateDiscordCommandRequest): Promise<DiscordCommand> {
+		return this.patch(`/discord-commands/${id}`, data)
+	}
+
+	async deleteDiscordCommand(id: string): Promise<{ success: boolean }> {
+		return this.delete(`/discord-commands/${id}`)
+	}
+
+	async getDiscordCommandServers(commandId: string): Promise<DiscordServerCommand[]> {
+		return this.get(`/discord-commands/${commandId}/servers`)
+	}
+
+	async attachDiscordCommandToServer(
+		commandId: string,
+		data: AttachDiscordCommandToServerRequest
+	): Promise<DiscordServerCommand> {
+		return this.post(`/discord-commands/${commandId}/servers`, data)
+	}
+
+	async detachDiscordCommandFromServer(
+		commandId: string,
+		serverId: string
+	): Promise<{ success: boolean }> {
+		return this.delete(`/discord-commands/${commandId}/servers/${serverId}`)
+	}
+
+	async syncDiscordCommand(commandId: string): Promise<DiscordCommandSyncResponse> {
+		return this.post(`/discord-commands/${commandId}/sync`)
+	}
+
+	async registerDiscordCommand(commandId: string): Promise<DiscordCommandSyncResponse> {
+		return this.post(`/discord-commands/${commandId}/register`)
 	}
 
 	// ===== Corporation Discord Server Attachments API Methods =====

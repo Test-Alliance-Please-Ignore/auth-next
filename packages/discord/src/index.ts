@@ -171,6 +171,72 @@ export interface DiscordGuildMembershipDetail {
 	errorMessage?: string
 }
 
+export interface DiscordSlashCommandDefinition {
+	name: string
+	description: string
+	options?: DiscordSlashCommandOption[]
+}
+
+/**
+ * Discord application command option types:
+ * https://discord.com/developers/docs/interactions/application-commands#application-command-object-application-command-option-type
+ */
+export const DISCORD_SLASH_COMMAND_OPTION_TYPE = {
+	SUB_COMMAND: 1,
+	SUB_COMMAND_GROUP: 2,
+	STRING: 3,
+	INTEGER: 4,
+	BOOLEAN: 5,
+	USER: 6,
+	CHANNEL: 7,
+	ROLE: 8,
+	MENTIONABLE: 9,
+	NUMBER: 10,
+	ATTACHMENT: 11,
+} as const
+
+export type DiscordSlashCommandOptionType =
+	(typeof DISCORD_SLASH_COMMAND_OPTION_TYPE)[keyof typeof DISCORD_SLASH_COMMAND_OPTION_TYPE]
+
+export const DISCORD_SLASH_COMMAND_OPTION_TYPE_NAME: Record<DiscordSlashCommandOptionType, string> = {
+	1: 'SUB_COMMAND',
+	2: 'SUB_COMMAND_GROUP',
+	3: 'STRING',
+	4: 'INTEGER',
+	5: 'BOOLEAN',
+	6: 'USER',
+	7: 'CHANNEL',
+	8: 'ROLE',
+	9: 'MENTIONABLE',
+	10: 'NUMBER',
+	11: 'ATTACHMENT',
+}
+
+export interface DiscordSlashCommandOptionChoice {
+	name: string
+	value: string | number
+}
+
+export interface DiscordSlashCommandOption {
+	type: DiscordSlashCommandOptionType
+	name: string
+	description: string
+	required?: boolean
+	autocomplete?: boolean
+	choices?: DiscordSlashCommandOptionChoice[]
+	options?: DiscordSlashCommandOption[]
+	min_value?: number
+	max_value?: number
+	min_length?: number
+	max_length?: number
+}
+
+export interface DiscordRegisteredSlashCommand {
+	id: string
+	name: string
+	description: string
+}
+
 export interface Discord {
 	/**
 	 * Search linked core users by Discord username (case-insensitive, partial match)
@@ -389,6 +455,28 @@ export interface Discord {
 	 * @returns Result indicating success or failure
 	 */
 	sendDirectMessage(coreUserId: string, message: MessageContent): Promise<SendMessageResult>
+
+	/**
+	 * Create or update a guild slash command by name.
+	 * @param guildId - Discord guild ID
+	 * @param command - Slash command definition
+	 * @returns Registered command details
+	 */
+	upsertGuildSlashCommand(
+		guildId: string,
+		command: DiscordSlashCommandDefinition
+	): Promise<DiscordRegisteredSlashCommand>
+
+	/**
+	 * Delete a guild slash command by ID or name.
+	 * @param guildId - Discord guild ID
+	 * @param opts - Command identifier
+	 * @returns Deletion status
+	 */
+	deleteGuildSlashCommand(
+		guildId: string,
+		opts: { commandId?: string; commandName?: string }
+	): Promise<{ success: boolean; deletedCommandId?: string; error?: string }>
 }
 
 /**

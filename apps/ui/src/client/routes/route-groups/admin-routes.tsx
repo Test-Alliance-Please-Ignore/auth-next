@@ -24,6 +24,10 @@ import AdminBroadcastTemplatesPage from '@/routes/admin/broadcasts-templates'
 import AdminCategoriesPage from '@/routes/admin/categories'
 import AdminCorporationDetailPage from '@/routes/admin/corporation-detail'
 import AdminCorporationsPage from '@/routes/admin/corporations'
+import AdminDiscordCommandCategoriesPage from '@/routes/admin/discord-command-categories'
+import AdminDiscordCommandsPage from '@/routes/admin/discord-commands'
+import AdminDiscordServerCommandsPage from '@/routes/admin/discord-server-commands'
+import AdminDiscordServerRolesPage from '@/routes/admin/discord-server-roles'
 import AdminDiscordServersPage from '@/routes/admin/discord-servers'
 import AdminDkpAwardsPage from '@/routes/admin/dkp-awards'
 import AdminDkpDashboardPage from '@/routes/admin/dkp-dashboard'
@@ -61,6 +65,10 @@ export const adminRouteElements = (
 		<Route path="corporations" element={<AdminCorporationsPage />} />
 		<Route path="corporations/:corporationId" element={<AdminCorporationDetailPage />} />
 		<Route path="discord-servers" element={<AdminDiscordServersPage />} />
+		<Route path="discord-servers/:serverId/roles" element={<AdminDiscordServerRolesPage />} />
+		<Route path="discord-servers/:serverId/commands" element={<AdminDiscordServerCommandsPage />} />
+		<Route path="discord-commands" element={<AdminDiscordCommandsPage />} />
+		<Route path="discord-commands/categories" element={<AdminDiscordCommandCategoriesPage />} />
 		<Route path="permissions/categories" element={<AdminPermissionCategoriesPage />} />
 		<Route path="permissions/global" element={<AdminGlobalPermissionsPage />} />
 		<Route path="users" element={<AdminUsersPage />} />
