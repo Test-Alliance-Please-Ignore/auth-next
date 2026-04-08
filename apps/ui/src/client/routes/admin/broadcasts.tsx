@@ -1,7 +1,8 @@
-import { Ban, ExternalLink, Trash2 } from 'lucide-react'
+import { ExternalLink, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
+import { RescindBroadcastDialog } from './rescind-broadcast-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -14,7 +15,6 @@ import {
 	DialogTitle,
 } from '@/components/ui/dialog'
 import { Select } from '@/components/ui/select'
-import { Textarea } from '@/components/ui/textarea'
 import {
 	Table,
 	TableBody,
@@ -28,7 +28,6 @@ import {
 	useBroadcastTargets,
 	useBroadcastTemplates,
 	useDeleteBroadcast,
-	useRescindBroadcast,
 } from '@/hooks/useBroadcasts'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
@@ -73,11 +72,9 @@ export default function AdminBroadcastsPage() {
 	const { data: targets } = useBroadcastTargets()
 	const { data: templates } = useBroadcastTemplates()
 	const deleteBroadcast = useDeleteBroadcast()
-	const rescindBroadcast = useRescindBroadcast()
 
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 	const [rescindDialogOpen, setRescindDialogOpen] = useState(false)
-	const [rescindMessage, setRescindMessage] = useState('')
 	const [selectedBroadcast, setSelectedBroadcast] = useState<Broadcast | null>(null)
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
@@ -103,29 +100,7 @@ export default function AdminBroadcastsPage() {
 
 	const handleRescindClick = (broadcast: Broadcast) => {
 		setSelectedBroadcast(broadcast)
-		setRescindMessage('')
 		setRescindDialogOpen(true)
-	}
-
-	const handleRescindConfirm = async () => {
-		if (!selectedBroadcast) return
-		try {
-			await rescindBroadcast.mutateAsync({
-				id: selectedBroadcast.id,
-				rescindMessage: rescindMessage.trim() || undefined,
-			})
-			setRescindDialogOpen(false)
-			setSelectedBroadcast(null)
-			setRescindMessage('')
-			setMessage({ type: 'success', text: 'Broadcast rescinded.' })
-			setTimeout(() => setMessage(null), 3000)
-		} catch (error) {
-			setMessage({
-				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to rescind broadcast',
-			})
-			setTimeout(() => setMessage(null), 5000)
-		}
 	}
 
 	const handleDeleteConfirm = async () => {
@@ -356,55 +331,22 @@ export default function AdminBroadcastsPage() {
 				</DialogContent>
 			</Dialog>
 
-			<Dialog open={rescindDialogOpen} onOpenChange={setRescindDialogOpen}>
-				<DialogContent>
-					<DialogHeader>
-						<DialogTitle>Rescind Broadcast</DialogTitle>
-						<DialogDescription>
-							This will edit the Discord message to display the content as strikethrough text and
-							mark the broadcast as rescinded. This action cannot be undone.
-						</DialogDescription>
-					</DialogHeader>
-					<div className="py-2">
-						<label className="text-sm font-medium mb-1 block">
-							Rescind message <span className="text-muted-foreground font-normal">(optional)</span>
-						</label>
-						<Textarea
-							placeholder="Explain why this broadcast is being rescinded..."
-							value={rescindMessage}
-							onChange={(e) => setRescindMessage(e.target.value)}
-							rows={3}
-							disabled={rescindBroadcast.isPending}
-						/>
-						<p className="text-xs text-muted-foreground mt-1">
-							Appended after the strikethrough content in Discord.
-						</p>
-					</div>
-					<DialogFooter>
-						<Button
-							variant="cancel"
-							onClick={() => {
-								setRescindDialogOpen(false)
-								setSelectedBroadcast(null)
-								setRescindMessage('')
-							}}
-							disabled={rescindBroadcast.isPending}
-						>
-							Cancel
-						</Button>
-						<Button
-							variant="destructive"
-							onClick={handleRescindConfirm}
-							loading={rescindBroadcast.isPending}
-							loadingText="Rescinding..."
-							showIcon={false}
-						>
-							<Ban className="mr-2 h-4 w-4" />
-							Rescind
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
+			<RescindBroadcastDialog
+				broadcastId={selectedBroadcast?.id ?? ''}
+				open={rescindDialogOpen}
+				onOpenChange={(open) => {
+					setRescindDialogOpen(open)
+					if (!open) setSelectedBroadcast(null)
+				}}
+				onSuccess={() => {
+					setMessage({ type: 'success', text: 'Broadcast rescinded.' })
+					setTimeout(() => setMessage(null), 3000)
+				}}
+				onError={(error) => {
+					setMessage({ type: 'error', text: error.message })
+					setTimeout(() => setMessage(null), 5000)
+				}}
+			/>
 		</div>
 	)
 }

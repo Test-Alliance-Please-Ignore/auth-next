@@ -3,10 +3,10 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { renderDiscordContentValue } from '@/components/discord-content-renderer'
+import { RescindBroadcastDialog } from './rescind-broadcast-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Textarea } from '@/components/ui/textarea'
 import {
 	Dialog,
 	DialogContent,
@@ -28,7 +28,6 @@ import {
 	useBroadcastDeliveries,
 	useBroadcastTargets,
 	useDeleteBroadcast,
-	useRescindBroadcast,
 	useSendBroadcast,
 } from '@/hooks/useBroadcasts'
 import { usePageTitle } from '@/hooks/usePageTitle'
@@ -62,10 +61,8 @@ export default function AdminBroadcastDetailPage() {
 	const { data: targets } = useBroadcastTargets()
 	const sendBroadcast = useSendBroadcast()
 	const deleteBroadcast = useDeleteBroadcast()
-	const rescindBroadcast = useRescindBroadcast()
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 	const [rescindDialogOpen, setRescindDialogOpen] = useState(false)
-	const [rescindMessage, setRescindMessage] = useState('')
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
 	usePageTitle(
@@ -109,25 +106,6 @@ export default function AdminBroadcastDetailPage() {
 			setMessage({
 				type: 'error',
 				text: error instanceof Error ? error.message : 'Failed to send broadcast',
-			})
-		}
-	}
-
-	const handleRescind = async () => {
-		try {
-			await rescindBroadcast.mutateAsync({
-				id: broadcast.id,
-				rescindMessage: rescindMessage.trim() || undefined,
-			})
-			setRescindDialogOpen(false)
-			setRescindMessage('')
-			setMessage({ type: 'success', text: 'Broadcast rescinded.' })
-			await refetch()
-		} catch (error) {
-			setRescindDialogOpen(false)
-			setMessage({
-				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to rescind broadcast',
 			})
 		}
 	}
@@ -182,7 +160,6 @@ export default function AdminBroadcastDetailPage() {
 							variant="cancel"
 							size="sm"
 							onClick={() => setRescindDialogOpen(true)}
-							disabled={rescindBroadcast.isPending}
 							showIcon={false}
 						>
 							<Ban className="mr-2 h-4 w-4" />
@@ -357,54 +334,18 @@ export default function AdminBroadcastDetailPage() {
 				</DialogContent>
 			</Dialog>
 
-			<Dialog open={rescindDialogOpen} onOpenChange={setRescindDialogOpen}>
-				<DialogContent>
-					<DialogHeader>
-						<DialogTitle>Rescind Broadcast</DialogTitle>
-						<DialogDescription>
-							This will edit the Discord message to display the content as strikethrough text and
-							mark the broadcast as rescinded. This action cannot be undone.
-						</DialogDescription>
-					</DialogHeader>
-					<div className="py-2">
-						<label className="text-sm font-medium mb-1 block">
-							Rescind message <span className="text-muted-foreground font-normal">(optional)</span>
-						</label>
-						<Textarea
-							placeholder="Explain why this broadcast is being rescinded..."
-							value={rescindMessage}
-							onChange={(e) => setRescindMessage(e.target.value)}
-							rows={3}
-							disabled={rescindBroadcast.isPending}
-						/>
-						<p className="text-xs text-muted-foreground mt-1">
-							Appended after the strikethrough content in Discord.
-						</p>
-					</div>
-					<DialogFooter>
-						<Button
-							variant="cancel"
-							onClick={() => {
-								setRescindDialogOpen(false)
-								setRescindMessage('')
-							}}
-							disabled={rescindBroadcast.isPending}
-						>
-							Cancel
-						</Button>
-						<Button
-							variant="destructive"
-							onClick={handleRescind}
-							loading={rescindBroadcast.isPending}
-							loadingText="Rescinding..."
-							showIcon={false}
-						>
-							<Ban className="mr-2 h-4 w-4" />
-							Rescind
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
+			<RescindBroadcastDialog
+				broadcastId={broadcast.id}
+				open={rescindDialogOpen}
+				onOpenChange={setRescindDialogOpen}
+				onSuccess={async () => {
+					setMessage({ type: 'success', text: 'Broadcast rescinded.' })
+					await refetch()
+				}}
+				onError={(error) => {
+					setMessage({ type: 'error', text: error.message })
+				}}
+			/>
 		</div>
 	)
 }
