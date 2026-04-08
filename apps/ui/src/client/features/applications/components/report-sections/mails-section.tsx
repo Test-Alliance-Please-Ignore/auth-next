@@ -402,7 +402,7 @@ export function MailsSection({ data: raw, reportId }: { data: unknown; reportId:
 										<span className="flex flex-wrap items-center gap-1">
 											To:{' '}
 											{selectedMail.recipients.map((r, i) => (
-												<Badge key={i} variant="outline" className="text-[10px] py-0">
+												<Badge key={i} variant="secondary" className="text-[10px] py-0">
 													{r.recipientName || `ID: ${r.recipient_id}`}
 												</Badge>
 											))}

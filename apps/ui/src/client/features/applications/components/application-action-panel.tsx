@@ -356,8 +356,8 @@ export function ApplicationActionPanel({
 							variant="ghost"
 							onClick={() => {
 								setShowRejectDialog(false)
-								setRejectNotes('')
-								setRejectNotesError('')
+								setReviewNotes('')
+								setReviewNotesError('')
 							}}
 							disabled={updateStatusMutation.isPending}
 						>

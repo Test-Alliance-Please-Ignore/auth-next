@@ -431,7 +431,7 @@ export function SkillsSection({ data }: { data: ProcessedSkillsData }) {
 											<span className="text-sm font-medium">
 												{entry.skillName || entry.skillId}
 											</span>
-											<Badge variant="outline" className="text-xs">
+											<Badge variant="secondary" className="text-xs">
 												Level {entry.finishedLevel}
 											</Badge>
 											{isCurrentlyTraining && (

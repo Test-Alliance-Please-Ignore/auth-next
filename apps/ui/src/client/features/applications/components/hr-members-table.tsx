@@ -276,15 +276,15 @@ export function HrMembersTable({ members, corporationId }: HrMembersTableProps) 
 		enableStickyHeader: true,
 		enableTopToolbar: true,
 		enableToolbarInternalActions: false,
-		globalFilterFn: (row, _columnId, filterValue) => {
+		globalFilterFn: ((row: any, _columnId: string, filterValue: string) => {
 			if (!filterValue) return true
 			const q = (filterValue as string).toLowerCase()
 			const group = row.original
 			return (
 				group.mainName.toLowerCase().includes(q) ||
-				group.characters.some((c) => c.characterName.toLowerCase().includes(q))
+				group.characters.some((c: any) => c.characterName.toLowerCase().includes(q))
 			)
-		},
+		}) as any,
 		paginationDisplayMode: 'pages',
 		mantinePaginationProps: {
 			showRowsPerPage: true,

@@ -100,7 +100,7 @@ function PlanProgressCard({
                                 <div className="flex items-center gap-2 min-w-0">
                                     <p className="text-sm font-medium truncate">{plan.name}</p>
                                     {categoryNames && (
-                                        <Badge variant="outline" className="text-xs shrink-0">
+                                        <Badge variant="secondary" className="text-xs shrink-0">
                                             {categoryNames}
                                         </Badge>
                                     )}

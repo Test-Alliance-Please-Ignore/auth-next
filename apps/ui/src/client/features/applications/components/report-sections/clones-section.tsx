@@ -125,7 +125,7 @@ function CloneRow({
                         {clone.name || `Clone #${clone.jump_clone_id}`}
                     </span>
                 </div>
-                <Badge variant="outline" className="text-[10px] shrink-0">
+                <Badge variant="secondary" className="text-[10px] shrink-0">
                     {clone.implants.length} implant{clone.implants.length !== 1 ? 's' : ''}
                 </Badge>
             </button>

@@ -137,11 +137,11 @@ function TypeBadge({ type }: { type: string }) {
 		case 'courier':
 			return <Badge variant="secondary">Courier</Badge>
 		case 'auction':
-			return <Badge variant="outline">Auction</Badge>
+			return <Badge variant="secondary">Auction</Badge>
 		case 'loan':
 			return <Badge variant="warning">Loan</Badge>
 		default:
-			return <Badge variant="outline">{type}</Badge>
+			return <Badge variant="secondary">{type}</Badge>
 	}
 }
 
@@ -154,7 +154,7 @@ function StatusBadge({ status }: { status: string }) {
 		return <Badge variant="secondary">In Progress</Badge>
 	if (isCancelledStatus(status))
 		return <Badge variant="destructive">{STATUS_LABELS[status] ?? status}</Badge>
-	return <Badge variant="outline">{status}</Badge>
+	return <Badge variant="secondary">{status}</Badge>
 }
 
 function ContractDetails({ contract }: { contract: ProcessedContract }) {

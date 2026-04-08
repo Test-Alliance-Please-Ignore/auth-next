@@ -113,7 +113,7 @@ export default function RecommendationDetail() {
 								{formatDistanceToNow(new Date(application.createdAt), { addSuffix: true })}
 							</CardDescription>
 						</div>
-						<Badge variant="outline" className="ml-auto capitalize">
+						<Badge variant="secondary" className="ml-auto capitalize">
 							{application.status.replace('_', ' ')}
 						</Badge>
 					</div>

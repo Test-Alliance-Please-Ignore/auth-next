@@ -114,7 +114,7 @@ function CharacterCard({
 								{member.role}
 							</span>
 						) : (
-							<Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0">
+							<Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">
 								External
 							</Badge>
 						)}
@@ -412,7 +412,7 @@ export default function HrMemberProfile() {
 		)
 	}
 
-	if (!account) {
+	if (!account || !representative) {
 		return (
 			<div className="container mx-auto max-w-6xl px-4 py-8">
 				<Card className="max-w-2xl mx-auto">

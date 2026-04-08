@@ -37,7 +37,7 @@ function getReportStatusBadge(status: string) {
 		case 'cancelled':
 			return <Badge variant="secondary">Cancelled</Badge>
 		default:
-			return <Badge variant="outline">{status}</Badge>
+			return <Badge variant="secondary">{status}</Badge>
 	}
 }
 
