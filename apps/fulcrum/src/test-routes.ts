@@ -18,6 +18,8 @@ const createReportSchema = z.object({
 	characterId: z.string().min(1, 'characterId is required'),
 	requestorUserId: z.string().min(1, 'requestorUserId is required'),
 	requestorCorporationId: z.string().min(1, 'requestorCorporationId is required'),
+	requestSource: z.string().min(1).default('hr'),
+	applicationId: z.string().optional(),
 })
 
 const listReportsQuerySchema = z.object({
@@ -47,18 +49,20 @@ const listReportsQuerySchema = z.object({
  * }
  */
 testRoutes.post('/reports', zValidator('json', createReportSchema), async (c) => {
-	const { characterId, requestorUserId, requestorCorporationId } = c.req.valid('json')
+	const { characterId, requestorUserId, requestorCorporationId, requestSource, applicationId } = c.req.valid('json')
 
 	try {
 		// Get the Fulcrum Durable Object stub
 		const stub = getStub<Fulcrum>(c.env.FULCRUM, 'default')
 
 		// Call the RPC method
-		const reportId = await stub.createCharacterReport(
+		const reportId = await stub.createCharacterReport({
 			characterId,
 			requestorUserId,
 			requestorCorporationId,
-		)
+			requestSource: requestSource as 'hr',
+			applicationId,
+		})
 
 		// Get the full report metadata
 		const report = await stub.getReportStatus(reportId)
