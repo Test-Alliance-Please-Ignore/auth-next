@@ -561,7 +561,7 @@ app.post('/applications/:applicationId/messages', requireAuth(), async (c) => {
 			recipientId || null,
 			message,
 			characterId,
-			user.is_admin
+			{ isApplicant, isAdmin: user.is_admin, corporationId: application.corporationId }
 		)
 
 		// Enrich the returned message with sender character name

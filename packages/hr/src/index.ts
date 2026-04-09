@@ -510,7 +510,7 @@ export interface Hr extends DurableObject {
 		recipientId: string | null,
 		message: string,
 		characterId: string,
-		isAdmin: boolean
+		context: { isApplicant: boolean; isAdmin: boolean; corporationId: string }
 	): Promise<ApplicationMessage>
 
 	/**

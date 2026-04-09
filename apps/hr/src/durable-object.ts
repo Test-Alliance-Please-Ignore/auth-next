@@ -320,7 +320,9 @@ export class HrDO extends DurableObject<Env> implements Hr {
 	// ==================== Message Methods ====================
 
 	/**
-	 * Send a message from HR reviewer to applicant or vice versa
+	 * Send a message from HR reviewer to applicant or vice versa.
+	 * Route has already validated isApplicant and HR permission — context is passed through
+	 * to avoid redundant RPC calls and application fetches.
 	 */
 	async sendMessage(
 		applicationId: string,
@@ -328,25 +330,11 @@ export class HrDO extends DurableObject<Env> implements Hr {
 		recipientId: string | null,
 		message: string,
 		characterId: string,
-		isAdmin: boolean
+		context: { isApplicant: boolean; isAdmin: boolean; corporationId: string }
 	): Promise<ApplicationMessage> {
-		// Get sender's HR corporations for authorization
-		const senderHrCorporations = await this.hrRoleService.getUserHrCorporations(senderId)
-
-		// Get the application to determine if sender is applicant
-		const application = await this.applicationService.getApplication(
-			applicationId,
-			senderId,
-			isAdmin,
-			senderHrCorporations
-		)
-
-		const isSenderApplicant = application.userId === senderId
-
-		// If sender is applicant with a specific recipient, validate recipient has HR access
-		// If no recipient specified, applicant is messaging HR as a group
+		// Only fetch HR corps when an applicant is targeting a specific HR recipient
 		let recipientHrCorporations: string[] = []
-		if (isSenderApplicant && recipientId) {
+		if (context.isApplicant && recipientId) {
 			recipientHrCorporations = await this.hrRoleService.getUserHrCorporations(recipientId)
 		}
 
@@ -356,8 +344,7 @@ export class HrDO extends DurableObject<Env> implements Hr {
 			recipientId,
 			message,
 			characterId,
-			isSenderApplicant,
-			senderHrCorporations,
+			context.isApplicant,
 			recipientHrCorporations
 		)
 	}

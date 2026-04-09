@@ -23,10 +23,9 @@ export class MessageService {
 		message: string,
 		characterId: string,
 		isSenderApplicant: boolean,
-		senderHrCorporations: string[] = [],
 		recipientHrCorporations: string[] = []
 	): Promise<ApplicationMessage> {
-		// Get the application to validate
+		// Get the application to validate status and ownership
 		const application = await this.ctx.db.query.applications.findFirst({
 			where: eq(applications.id, applicationId),
 		})
@@ -55,10 +54,7 @@ export class MessageService {
 				throw new Error('Invalid recipient: recipient must have HR access to this application')
 			}
 		} else {
-			// HR sending: must have HR role for the application's corporation
-			if (!senderHrCorporations.includes(application.corporationId)) {
-				throw new Error('You do not have HR access to this application')
-			}
+			// HR sending: authorization already validated at route layer
 			// Recipient must be the applicant
 			if (application.userId !== recipientId) {
 				throw new Error('Invalid recipient: recipient must be the applicant')
