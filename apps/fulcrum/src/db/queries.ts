@@ -76,6 +76,9 @@ export function buildCreateReportQuery(params: {
 	characterName?: string
 	requestorUserId: string
 	requestorCorporationId: string
+	requestSource: string
+	applicationId?: string
+	retentionDays: number
 	expiresAt?: Date
 }) {
 	return {
@@ -85,6 +88,9 @@ export function buildCreateReportQuery(params: {
 		status: 'pending',
 		requestorUserId: params.requestorUserId,
 		requestorCorporationId: params.requestorCorporationId,
+		requestSource: params.requestSource,
+		applicationId: params.applicationId,
+		retentionDays: params.retentionDays,
 		expiresAt: params.expiresAt,
 	}
 }
@@ -98,6 +104,9 @@ export async function createCharacterReport(
 		characterName?: string
 		requestorUserId: string
 		requestorCorporationId: string
+		requestSource: string
+		applicationId?: string
+		retentionDays: number
 		expiresAt?: Date
 	},
 ) {
@@ -131,7 +140,7 @@ export async function listReports(
 	}
 
 	return await db.query.characterReports.findMany({
-		where: conditions.length > 0 ? conditions[0] : undefined,
+		where: conditions.length > 1 ? and(...conditions) : conditions[0],
 		limit,
 		offset,
 		orderBy: (reports, { desc }) => [desc(reports.createdAt)],

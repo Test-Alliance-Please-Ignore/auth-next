@@ -104,3 +104,36 @@ export const lenientStepConfig: WorkflowStepConfig = {
 	retries: { limit: 5, backoff: 'exponential', delay: '5 seconds' },
 	timeout: '10 minutes',
 }
+
+/**
+ * Shared retry options for ESI steps — use with a spread when you need a custom timeout.
+ * 5 retries, 30s base delay, exponential backoff.
+ *
+ * @example
+ * ```typescript
+ * step.do('fetch-assets', { ...esiRetryOptions, timeout: '10 minutes' }, () => ...)
+ * ```
+ */
+export const esiRetryOptions = {
+	retries: { limit: 5, backoff: 'exponential', delay: '30 seconds' },
+} as const satisfies Pick<WorkflowStepConfig, 'retries'>
+
+/**
+ * Config for ESI fetch steps — paced retries to respect rate limits.
+ * 5 retries, 30s base delay (exponential), 5 minute timeout.
+ * Use for authenticated ESI calls that may hit rate limits.
+ */
+export const esiFetchStepConfig: WorkflowStepConfig = {
+	...esiRetryOptions,
+	timeout: '5 minutes',
+}
+
+/**
+ * Config for processing/utility steps paired with ESI workflows.
+ * 5 retries, 30s base delay (exponential), 2 minute timeout.
+ * Use for R2 writes, data processing, and DB updates in ESI workflows.
+ */
+export const esiProcessingStepConfig: WorkflowStepConfig = {
+	...esiRetryOptions,
+	timeout: '2 minutes',
+}

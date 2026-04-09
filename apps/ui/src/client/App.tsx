@@ -51,6 +51,12 @@ const HrApplicationReview = lazy(
 	() => import('./features/applications/routes/hr-application-review')
 )
 const HrRolesManagement = lazy(() => import('./features/applications/routes/hr-roles-management'))
+const HrMemberProfile = lazy(() => import('./features/applications/routes/hr-member-profile'))
+const FulcrumReport = lazy(() => import('./features/applications/routes/fulcrum-report'))
+const RecommendationsList = lazy(
+	() => import('./features/applications/routes/recommendations-list')
+)
+
 
 // Lazy load the Skill Plans feature for code splitting
 const SkillPlansList = lazy(() => import('./features/skill-plans/routes/skill-plans-list'))
@@ -196,6 +202,17 @@ export default function App() {
 								}
 							/>
 
+							{/* Recommendations routes (corp members) */}
+							<Route
+								path="/recommendations"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<RecommendationsList />
+									</Suspense>
+								}
+							/>
+
+
 							{/* Application routes - HR views (lazy loaded) */}
 							<Route
 								path="/hr"
@@ -237,7 +254,29 @@ export default function App() {
 									</Suspense>
 								}
 							/>
-
+							<Route
+								path="/corporations/:corporationId/hr/members/:accountId"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<HrMemberProfile />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/corporations/:corporationId/hr/applications/:applicationId/report/:reportId"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<FulcrumReport />
+									</Suspense>
+								}
+							/>							<Route
+								path="/corporations/:corporationId/hr/fulcrum/:reportId"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<FulcrumReport />
+									</Suspense>
+								}
+							/>
 							<Route path="/invitations" element={<InvitationsPage />} />
 							<Route path="/broadcasts" element={<BroadcastsPage />} />
 							<Route path="/broadcasts/new" element={<BroadcastsNewPage />} />

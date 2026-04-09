@@ -11,7 +11,7 @@ import type { ServiceContext } from './context'
  * Handles all business logic for application recommendations.
  */
 export class RecommendationService {
-	constructor(private ctx: ServiceContext) {}
+	constructor(private ctx: ServiceContext) { }
 
 	/**
 	 * Add a recommendation for an application
@@ -22,7 +22,8 @@ export class RecommendationService {
 		characterId: string,
 		characterName: string,
 		recommendationText: string,
-		sentiment: RecommendationSentiment
+		sentiment: RecommendationSentiment,
+		isPublic: boolean
 	): Promise<Recommendation> {
 		// Get the application to validate
 		const application = await this.ctx.db.query.applications.findFirst({
@@ -65,6 +66,7 @@ export class RecommendationService {
 				characterName,
 				recommendationText,
 				sentiment,
+				isPublic,
 			})
 			.returning()
 
@@ -95,6 +97,7 @@ export class RecommendationService {
 		characterId: string,
 		recommendationText: string,
 		sentiment: RecommendationSentiment,
+		isPublic: boolean,
 		isAdmin: boolean
 	): Promise<void> {
 		// Get the recommendation
@@ -119,6 +122,7 @@ export class RecommendationService {
 			.set({
 				recommendationText,
 				sentiment,
+				isPublic,
 				updatedAt: new Date(),
 			})
 			.where(eq(applicationRecommendations.id, recommendationId))
@@ -187,6 +191,7 @@ export class RecommendationService {
 			characterName: rec.characterName,
 			recommendationText: rec.recommendationText,
 			sentiment: rec.sentiment as RecommendationSentiment,
+			isPublic: rec.isPublic,
 			createdAt: rec.createdAt,
 			updatedAt: rec.updatedAt,
 		}

@@ -27,8 +27,10 @@ import type {
 	HrRole,
 	HrRoleType,
 	NoteFilters,
+	RecommendableApplication,
 	Recommendation,
 	RecommendationSentiment,
+	RecommenderApplicationDetail,
 } from '@repo/hr'
 import type { Env } from './context'
 import type { MessageTemplate } from './services/template.service'
@@ -132,12 +134,14 @@ export class HrDO extends DurableObject<Env> implements Hr {
 	): Promise<Application[]> {
 		// Get user's HR corporations for authorization
 		const userHrCorporations = await this.hrRoleService.getUserHrCorporations(userId)
+		const userHrAdminCorporations = isAdmin ? [] : await this.hrRoleService.getUserHrAdminCorporations(userId)
 
 		return await this.applicationService.listApplications(
 			filters,
 			userId,
 			isAdmin,
-			userHrCorporations
+			userHrCorporations,
+			userHrAdminCorporations
 		)
 	}
 
@@ -151,13 +155,15 @@ export class HrDO extends DurableObject<Env> implements Hr {
 	): Promise<ApplicationDetail> {
 		// Get user's HR corporations for authorization
 		const userHrCorporations = await this.hrRoleService.getUserHrCorporations(userId)
+		const userHrAdminCorporations = isAdmin ? [] : await this.hrRoleService.getUserHrAdminCorporations(userId)
 
 		return await this.applicationService.getApplication(
 			applicationId,
 			userId,
 			isAdmin,
 			userHrCorporations,
-			true // Include activity log for HR/admin
+			true, // Include activity log for HR/admin
+			userHrAdminCorporations
 		)
 	}
 
@@ -221,6 +227,34 @@ export class HrDO extends DurableObject<Env> implements Hr {
 	// ==================== Recommendation Methods ====================
 
 	/**
+	 * List pending/under_review applications for corp members to recommend
+	 */
+	async listCorpApplicationsForRecommendation(
+		corporationIds: string[],
+		userId: string
+	): Promise<RecommendableApplication[]> {
+		return await this.applicationService.listCorpApplicationsForRecommendation(
+			corporationIds,
+			userId
+		)
+	}
+
+	/**
+	 * Get an application for a corp member to view and recommend
+	 */
+	async getApplicationForRecommender(
+		applicationId: string,
+		userId: string,
+		userCorporationIds: string[]
+	): Promise<RecommenderApplicationDetail> {
+		return await this.applicationService.getApplicationForRecommender(
+			applicationId,
+			userId,
+			userCorporationIds
+		)
+	}
+
+	/**
 	 * Add a recommendation for an application
 	 */
 	async addRecommendation(
@@ -229,7 +263,8 @@ export class HrDO extends DurableObject<Env> implements Hr {
 		characterId: string,
 		characterName: string,
 		recommendationText: string,
-		sentiment: RecommendationSentiment
+		sentiment: RecommendationSentiment,
+		isPublic: boolean
 	): Promise<Recommendation> {
 		return await this.recommendationService.addRecommendation(
 			applicationId,
@@ -237,7 +272,8 @@ export class HrDO extends DurableObject<Env> implements Hr {
 			characterId,
 			characterName,
 			recommendationText,
-			sentiment
+			sentiment,
+			isPublic
 		)
 	}
 
@@ -250,6 +286,7 @@ export class HrDO extends DurableObject<Env> implements Hr {
 		characterId: string,
 		recommendationText: string,
 		sentiment: RecommendationSentiment,
+		isPublic: boolean,
 		isAdmin: boolean
 	): Promise<void> {
 		await this.recommendationService.updateRecommendation(
@@ -258,6 +295,7 @@ export class HrDO extends DurableObject<Env> implements Hr {
 			characterId,
 			recommendationText,
 			sentiment,
+			isPublic,
 			isAdmin
 		)
 	}
@@ -282,32 +320,21 @@ export class HrDO extends DurableObject<Env> implements Hr {
 	// ==================== Message Methods ====================
 
 	/**
-	 * Send a message from HR reviewer to applicant or vice versa
+	 * Send a message from HR reviewer to applicant or vice versa.
+	 * Route has already validated isApplicant and HR permission — context is passed through
+	 * to avoid redundant RPC calls and application fetches.
 	 */
 	async sendMessage(
 		applicationId: string,
 		senderId: string,
-		recipientId: string,
+		recipientId: string | null,
 		message: string,
 		characterId: string,
-		isAdmin: boolean
+		context: { isApplicant: boolean; isAdmin: boolean; corporationId: string }
 	): Promise<ApplicationMessage> {
-		// Get sender's HR corporations for authorization
-		const senderHrCorporations = await this.hrRoleService.getUserHrCorporations(senderId)
-
-		// Get the application to determine if sender is applicant
-		const application = await this.applicationService.getApplication(
-			applicationId,
-			senderId,
-			isAdmin,
-			senderHrCorporations
-		)
-
-		const isSenderApplicant = application.userId === senderId
-
-		// If sender is applicant, get recipient's HR corporations to validate they have access
+		// Only fetch HR corps when an applicant is targeting a specific HR recipient
 		let recipientHrCorporations: string[] = []
-		if (isSenderApplicant) {
+		if (context.isApplicant && recipientId) {
 			recipientHrCorporations = await this.hrRoleService.getUserHrCorporations(recipientId)
 		}
 
@@ -317,8 +344,7 @@ export class HrDO extends DurableObject<Env> implements Hr {
 			recipientId,
 			message,
 			characterId,
-			isSenderApplicant,
-			senderHrCorporations,
+			context.isApplicant,
 			recipientHrCorporations
 		)
 	}
@@ -476,6 +502,7 @@ export class HrDO extends DurableObject<Env> implements Hr {
 	async getUserHrCorporations(userId: string): Promise<string[]> {
 		return await this.hrRoleService.getUserHrCorporations(userId)
 	}
+
 
 	/**
 	 * Get all HR roles for a corporation (cached)

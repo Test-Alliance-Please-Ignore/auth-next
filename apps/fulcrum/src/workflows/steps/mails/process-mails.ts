@@ -1,6 +1,6 @@
 import { retrieveData, storeOrReturn, type StepResult } from '../../utils/storage'
 import { enrichMails } from '../../processors/helpers/mails'
-import type { MailWithContent } from './fetch-mails'
+import type { MailFetchResult } from './fetch-mails'
 
 export async function processMails(
 	env: {
@@ -32,38 +32,33 @@ export async function processMails(
 			}
 		}
 
-		const mails = data as MailWithContent[]
-		if (!Array.isArray(mails)) {
-			return {
-				source: 'none',
-				success: false,
-				error: 'Invalid mails structure',
-			}
-		}
+		const fetchData = data as MailFetchResult
+		const { mails, mailingLists, labels } = fetchData
 
 		console.log('[processMails] Starting enrichment', {
 			count: mails.length,
+			mailingListCount: mailingLists.length,
 			sample: mails[0]
 				? {
-						mail_id: mails[0].mail_id,
-						subject: mails[0].subject,
-						from: mails[0].from,
-						hasBody: !!mails[0].body,
-					}
+					mail_id: mails[0].mail_id,
+					subject: mails[0].subject,
+					from: mails[0].from,
+					hasBody: !!mails[0].body,
+				}
 				: null,
 		})
 
-		const enrichedData = await enrichMails(env, mails, characterId)
+		const enrichedData = await enrichMails(env, mails, characterId, mailingLists, labels)
 
 		console.log('[processMails] Enrichment complete', {
-			count: enrichedData.length,
-			sample: enrichedData[0]
+			count: enrichedData.mails.length,
+			sample: enrichedData.mails[0]
 				? {
-						mail_id: enrichedData[0].mail_id,
-						subject: enrichedData[0].subject,
-						fromName: enrichedData[0].fromName,
-						hasBody: !!enrichedData[0].body,
-					}
+					mail_id: enrichedData.mails[0].mail_id,
+					subject: enrichedData.mails[0].subject,
+					fromName: enrichedData.mails[0].fromName,
+					hasBody: !!enrichedData.mails[0].body,
+				}
 				: null,
 		})
 

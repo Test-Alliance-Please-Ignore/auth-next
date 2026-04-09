@@ -32,6 +32,7 @@ export async function fetchWalletJournal(
 ): Promise<StepResult> {
 	try {
 		const stub = getEsiInstanceForCharacter(esiBinding, characterId)
+		stub.setDefaultCacheMode('no-store')
 		const data = await fetchWalletJournalFromEsi(stub, characterId)
 		// Store in R2
 		return await storeOrReturn(bucket, bucketName, workflowInstanceId, 'fetch-wallet-journal', data)

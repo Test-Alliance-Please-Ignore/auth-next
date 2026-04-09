@@ -141,15 +141,20 @@ export function ApplicationTimeline({
 		)
 	}
 
-	// Sort by timestamp descending (most recent first)
-	const sortedLog = [...activityLog].sort(
-		(a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-	)
+	// Filter out message_sent entries (messages have their own tab) and sort descending
+	const sortedLog = [...activityLog]
+		.filter((entry) => entry.action !== 'message_sent')
+		.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
 
 	return (
 		<div className={cn('space-y-4', className)}>
 			{sortedLog.map((entry, index) => {
-				const config = getActionConfig(entry.action)
+				// For status_changed actions, resolve specific config using newValue
+				const resolvedAction =
+					entry.action === 'status_changed' && entry.newValue
+						? `status_changed_${entry.newValue}`
+						: entry.action
+				const config = getActionConfig(resolvedAction)
 				const Icon = config.icon
 				const isLast = index === sortedLog.length - 1
 

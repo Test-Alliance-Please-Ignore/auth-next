@@ -69,10 +69,9 @@ export function ApplicationActionPanel({
 
 	// Local state
 	const [reviewNotes, setReviewNotes] = useState('')
+	const [reviewNotesError, setReviewNotesError] = useState('')
 	const [showAcceptDialog, setShowAcceptDialog] = useState(false)
 	const [showRejectDialog, setShowRejectDialog] = useState(false)
-	const [rejectNotes, setRejectNotes] = useState('')
-	const [rejectNotesError, setRejectNotesError] = useState('')
 
 	// Check if application can be reviewed
 	const canReview = canReviewApplication(application)
@@ -81,6 +80,19 @@ export function ApplicationActionPanel({
 	const canMarkUnderReview = userRole && ['hr_admin', 'hr_reviewer'].includes(userRole)
 	const canAccept = userRole === 'hr_admin'
 	const canReject = userRole === 'hr_admin'
+
+	// Validate review notes (required for accept/reject)
+	const validateReviewNotes = (): boolean => {
+		if (!reviewNotes.trim()) {
+			setReviewNotesError('Review notes are required when accepting or rejecting an application')
+			return false
+		}
+		if (reviewNotes.trim().length < 10) {
+			setReviewNotesError('Review notes must be at least 10 characters')
+			return false
+		}
+		return true
+	}
 
 	// Handler for marking under review
 	const handleMarkUnderReview = async () => {
@@ -95,6 +107,7 @@ export function ApplicationActionPanel({
 
 			showSuccess('Application marked as under review')
 			setReviewNotes('')
+			setReviewNotesError('')
 
 			if (onStatusChange) {
 				onStatusChange('under_review', reviewNotes || undefined)
@@ -106,6 +119,7 @@ export function ApplicationActionPanel({
 
 	// Handler for accepting application
 	const handleAcceptClick = () => {
+		if (!validateReviewNotes()) return
 		setShowAcceptDialog(true)
 	}
 
@@ -115,16 +129,17 @@ export function ApplicationActionPanel({
 				applicationId: application.id,
 				data: {
 					status: 'accepted',
-					reviewNotes: reviewNotes || undefined,
+					reviewNotes,
 				},
 			})
 
 			showSuccess('Application accepted')
 			setShowAcceptDialog(false)
 			setReviewNotes('')
+			setReviewNotesError('')
 
 			if (onStatusChange) {
-				onStatusChange('accepted', reviewNotes || undefined)
+				onStatusChange('accepted', reviewNotes)
 			}
 		} catch (error) {
 			showError(error instanceof Error ? error.message : 'Failed to accept application')
@@ -133,39 +148,27 @@ export function ApplicationActionPanel({
 
 	// Handler for rejecting application
 	const handleRejectClick = () => {
-		setRejectNotes('')
-		setRejectNotesError('')
+		if (!validateReviewNotes()) return
 		setShowRejectDialog(true)
 	}
 
 	const handleRejectConfirm = async () => {
-		// Validate rejection notes
-		if (!rejectNotes.trim()) {
-			setRejectNotesError('Review notes are required when rejecting an application')
-			return
-		}
-
-		if (rejectNotes.trim().length < 10) {
-			setRejectNotesError('Review notes must be at least 10 characters')
-			return
-		}
-
 		try {
 			await updateStatusMutation.mutateAsync({
 				applicationId: application.id,
 				data: {
 					status: 'rejected',
-					reviewNotes: rejectNotes,
+					reviewNotes,
 				},
 			})
 
 			showSuccess('Application rejected')
 			setShowRejectDialog(false)
-			setRejectNotes('')
-			setRejectNotesError('')
+			setReviewNotes('')
+			setReviewNotesError('')
 
 			if (onStatusChange) {
-				onStatusChange('rejected', rejectNotes)
+				onStatusChange('rejected', reviewNotes)
 			}
 		} catch (error) {
 			showError(error instanceof Error ? error.message : 'Failed to reject application')
@@ -220,24 +223,39 @@ export function ApplicationActionPanel({
 				{/* Review Notes Textarea */}
 				<div className="space-y-2">
 					<Label htmlFor="review-notes">
-						{userRole === 'hr_admin' ? 'Review Notes (Optional)' : 'Advisory Notes'}
+						{userRole === 'hr_admin' ? (
+							<>
+								Review Notes <span className="text-destructive">*</span>
+							</>
+						) : (
+							'Advisory Notes'
+						)}
 					</Label>
 					<Textarea
 						id="review-notes"
 						placeholder={
 							userRole === 'hr_admin'
-								? 'Add notes about this application (optional for accept, required for reject)...'
+								? 'Add notes about this application (required for accept/reject, minimum 10 characters)...'
 								: 'Add advisory notes for other reviewers...'
 						}
 						value={reviewNotes}
-						onChange={(e) => setReviewNotes(e.target.value)}
+						onChange={(e) => {
+							setReviewNotes(e.target.value)
+							setReviewNotesError('')
+						}}
 						disabled={disabled || updateStatusMutation.isPending}
 						rows={4}
-						className="resize-none"
+						className={cn('resize-none', reviewNotesError && 'border-destructive')}
 					/>
+					{reviewNotesError && (
+						<p className="text-sm text-destructive flex items-center gap-1">
+							<AlertCircle className="h-3.5 w-3.5" />
+							{reviewNotesError}
+						</p>
+					)}
 					<p className="text-xs text-muted-foreground">
 						{userRole === 'hr_admin'
-							? 'These notes will be visible to the applicant if the application is accepted or rejected.'
+							? 'These notes will be visible to the applicant. Required when accepting or rejecting.'
 							: 'Advisory notes are for internal HR use and are not shown to applicants.'}
 					</p>
 				</div>
@@ -329,45 +347,17 @@ export function ApplicationActionPanel({
 						<DialogTitle>Reject Application?</DialogTitle>
 						<DialogDescription>
 							Are you sure you want to reject the application from{' '}
-							<strong>{application.characterName}</strong>? You must provide review notes explaining
-							the reason for rejection.
+							<strong>{application.characterName}</strong>? The applicant will be notified with your
+							review notes.
 						</DialogDescription>
 					</DialogHeader>
-
-					<div className="space-y-2 py-4">
-						<Label htmlFor="reject-notes">
-							Review Notes <span className="text-destructive">*</span>
-						</Label>
-						<Textarea
-							id="reject-notes"
-							placeholder="Explain the reason for rejection (minimum 10 characters)..."
-							value={rejectNotes}
-							onChange={(e) => {
-								setRejectNotes(e.target.value)
-								setRejectNotesError('')
-							}}
-							disabled={updateStatusMutation.isPending}
-							rows={4}
-							className={cn('resize-none', rejectNotesError && 'border-destructive')}
-						/>
-						{rejectNotesError && (
-							<p className="text-sm text-destructive flex items-center gap-1">
-								<AlertCircle className="h-3.5 w-3.5" />
-								{rejectNotesError}
-							</p>
-						)}
-						<p className="text-xs text-muted-foreground">
-							These notes will be shared with the applicant.
-						</p>
-					</div>
-
 					<DialogFooter>
 						<Button
 							variant="ghost"
 							onClick={() => {
 								setShowRejectDialog(false)
-								setRejectNotes('')
-								setRejectNotesError('')
+								setReviewNotes('')
+								setReviewNotesError('')
 							}}
 							disabled={updateStatusMutation.isPending}
 						>

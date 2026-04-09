@@ -6,9 +6,8 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback } from 'react'
 
-import { applicationsApi } from './api'
+import { applicationsApi, fulcrumApi } from './api'
 
 import type {
 	AddHRNoteRequest,
@@ -17,12 +16,19 @@ import type {
 	ApplicationActivityLogEntry,
 	ApplicationMessage,
 	ApplicationsParams,
+	CharacterReportMetadata,
 	CreateTemplateRequest,
+	FulcrumCharacterData,
 	HRNote,
 	HRNotesParams,
 	MessageTemplate,
 	MessageTemplateStatus,
+	RecommendableApplication,
 	Recommendation,
+	RecommenderApplicationDetail,
+	ReportManifest,
+	ReportRequestSource,
+	ReportSectionName,
 	SendMessageRequest,
 	SubmitApplicationRequest,
 	UpdateApplicationStatusRequest,
@@ -58,6 +64,22 @@ export const applicationKeys = {
 	templatesList: (corporationId: string, status?: string) =>
 		[...applicationKeys.templates(), corporationId, status || 'all'] as const,
 	templateDetail: (templateId: string) => [...applicationKeys.templates(), 'detail', templateId] as const,
+	// Fulcrum (Character Reports)
+	fulcrumUserCharacters: (userId: string, corporationId: string) =>
+		[...applicationKeys.all, 'fulcrum', 'user-characters', userId, corporationId] as const,
+	fulcrumCharacterReports: (characterId: string, corporationId: string) =>
+		[...applicationKeys.all, 'fulcrum', 'character', characterId, corporationId] as const,
+	fulcrumReportSections: (reportId: string) =>
+		[...applicationKeys.all, 'fulcrum-report', reportId, 'sections'] as const,
+	fulcrumReportSection: (reportId: string, section: ReportSectionName) =>
+		[...applicationKeys.all, 'fulcrum-report', reportId, 'section', section] as const,
+	// Recommendations discovery (corp members)
+	recommendationsPending: () => [...applicationKeys.all, 'recommendations-pending'] as const,
+	recommendationsDetail: (id: string) =>
+		[...applicationKeys.all, 'recommendations-detail', id] as const,
+	// Character application history
+	characterHistory: (characterId: string) =>
+		[...applicationKeys.all, 'character-history', characterId] as const,
 }
 
 // ============================================================================
@@ -90,6 +112,22 @@ export function useApplication(applicationId: string) {
 		staleTime: 1000 * 60, // 1 minute
 		gcTime: 1000 * 60 * 3, // 3 minutes
 		enabled: !!applicationId,
+	})
+}
+
+/**
+ * Hook to fetch prior applications for a specific character, excluding the current application
+ */
+export function useCharacterApplicationHistory(characterId: string, excludeApplicationId: string) {
+	return useQuery<Application[]>({
+		queryKey: applicationKeys.characterHistory(characterId),
+		queryFn: async () => {
+			const apps = await applicationsApi.getApplications({ characterId })
+			return apps.filter((a) => a.id !== excludeApplicationId)
+		},
+		staleTime: 1000 * 60 * 5,
+		gcTime: 1000 * 60 * 10,
+		enabled: !!characterId,
 	})
 }
 
@@ -145,6 +183,31 @@ export function useMessageCount(applicationId: string) {
 		queryFn: () => applicationsApi.getMessageCount(applicationId),
 		staleTime: 1000 * 30, // 30 seconds (more frequent for counts)
 		gcTime: 1000 * 60 * 2, // 2 minutes
+		enabled: !!applicationId,
+	})
+}
+
+/**
+ * Hook to fetch pending applications for recommendation (corp members)
+ */
+export function usePendingRecommendations() {
+	return useQuery<RecommendableApplication[]>({
+		queryKey: applicationKeys.recommendationsPending(),
+		queryFn: () => applicationsApi.getPendingRecommendations(),
+		staleTime: 1000 * 60 * 2, // 2 minutes
+		gcTime: 1000 * 60 * 5, // 5 minutes
+	})
+}
+
+/**
+ * Hook to fetch application detail for writing a recommendation
+ */
+export function useApplicationForRecommender(applicationId: string) {
+	return useQuery<RecommenderApplicationDetail>({
+		queryKey: applicationKeys.recommendationsDetail(applicationId),
+		queryFn: () => applicationsApi.getApplicationForRecommender(applicationId),
+		staleTime: 1000 * 60, // 1 minute
+		gcTime: 1000 * 60 * 3, // 3 minutes
 		enabled: !!applicationId,
 	})
 }
@@ -266,6 +329,11 @@ export function useAddRecommendation() {
 			queryClient.invalidateQueries({
 				queryKey: applicationKeys.activity(variables.applicationId),
 			})
+
+			// Invalidate the recommendations list page
+			queryClient.invalidateQueries({
+				queryKey: applicationKeys.recommendationsPending(),
+			})
 		},
 	})
 }
@@ -293,9 +361,19 @@ export function useUpdateRecommendation() {
 				queryKey: applicationKeys.recommendations(variables.applicationId),
 			})
 
+			// Invalidate the application detail (to update recommendation count)
+			queryClient.invalidateQueries({
+				queryKey: applicationKeys.detail(variables.applicationId),
+			})
+
 			// Invalidate activity log
 			queryClient.invalidateQueries({
 				queryKey: applicationKeys.activity(variables.applicationId),
+			})
+
+			// Invalidate the recommendations list page
+			queryClient.invalidateQueries({
+				queryKey: applicationKeys.recommendationsPending(),
 			})
 		},
 	})
@@ -330,6 +408,11 @@ export function useDeleteRecommendation() {
 			// Invalidate activity log
 			queryClient.invalidateQueries({
 				queryKey: applicationKeys.activity(variables.applicationId),
+			})
+
+			// Invalidate the recommendations list page
+			queryClient.invalidateQueries({
+				queryKey: applicationKeys.recommendationsPending(),
 			})
 		},
 	})
@@ -371,75 +454,6 @@ export function useSendMessage() {
 
 // ============================================================================
 // Manager Hook for Cache Invalidation
-// ============================================================================
-
-/**
- * Hook to manage application data with cache invalidation utilities
- * Provides methods for invalidating specific parts of the cache
- */
-export function useApplicationManager() {
-	const queryClient = useQueryClient()
-
-	const invalidateApplications = useCallback(() => {
-		return queryClient.invalidateQueries({
-			queryKey: applicationKeys.lists(),
-		})
-	}, [queryClient])
-
-	const invalidateApplication = useCallback(
-		(applicationId: string) => {
-			return queryClient.invalidateQueries({
-				queryKey: applicationKeys.detail(applicationId),
-			})
-		},
-		[queryClient]
-	)
-
-	const invalidateRecommendations = useCallback(
-		(applicationId: string) => {
-			return queryClient.invalidateQueries({
-				queryKey: applicationKeys.recommendations(applicationId),
-			})
-		},
-		[queryClient]
-	)
-
-	const invalidateActivity = useCallback(
-		(applicationId: string) => {
-			return queryClient.invalidateQueries({
-				queryKey: applicationKeys.activity(applicationId),
-			})
-		},
-		[queryClient]
-	)
-
-	const invalidateAll = useCallback(() => {
-		return queryClient.invalidateQueries({
-			queryKey: applicationKeys.all,
-		})
-	}, [queryClient])
-
-	const prefetchApplication = useCallback(
-		(applicationId: string) => {
-			return queryClient.prefetchQuery({
-				queryKey: applicationKeys.detail(applicationId),
-				queryFn: () => applicationsApi.getApplication(applicationId),
-				staleTime: 1000 * 60, // 1 minute
-			})
-		},
-		[queryClient]
-	)
-
-	return {
-		invalidateApplications,
-		invalidateApplication,
-		invalidateRecommendations,
-		invalidateActivity,
-		invalidateAll,
-		prefetchApplication,
-	}
-}
-
 // ============================================================================
 // HR Notes Query Hooks (ADMIN ONLY)
 // ============================================================================
@@ -679,6 +693,126 @@ export function useDeleteTemplate() {
 			queryClient.removeQueries({
 				queryKey: applicationKeys.templateDetail(variables.templateId),
 			})
+		},
+	})
+}
+
+// ============================================================================
+// Fulcrum (Character Reports) Hooks
+// ============================================================================
+
+/**
+ * Hook to fetch all linked characters for a user with their Fulcrum reports.
+ * Used in the application review Fulcrum panel to show all of a user's characters.
+ */
+export function useApplicationFulcrum(userId: string, corporationId: string, enabled = true) {
+	return useQuery<FulcrumCharacterData[]>({
+		queryKey: applicationKeys.fulcrumUserCharacters(userId, corporationId),
+		queryFn: () => fulcrumApi.getUserCharactersWithReports(userId, corporationId),
+		staleTime: 1000 * 30,
+		gcTime: 1000 * 60 * 3,
+		enabled: !!userId && !!corporationId && enabled,
+		refetchInterval: (query) => {
+			const data = query.state.data
+			const hasInProgress = data?.some((ch) =>
+				ch.reports.some((r) => r.status === 'pending' || r.status === 'processing'),
+			)
+			return hasInProgress ? 10_000 : false
+		},
+	})
+}
+
+/**
+ * Hook to fetch Fulcrum reports for a specific character
+ */
+export function useCharacterReports(characterId: string, corporationId: string, enabled = true) {
+	return useQuery<CharacterReportMetadata[]>({
+		queryKey: applicationKeys.fulcrumCharacterReports(characterId, corporationId),
+		queryFn: () => fulcrumApi.getCharacterReports(characterId, corporationId),
+		staleTime: 1000 * 30,
+		gcTime: 1000 * 60 * 3,
+		enabled: !!characterId && !!corporationId && enabled,
+		refetchInterval: (query) => {
+			const data = query.state.data
+			const hasInProgress = data?.some((r) => r.status === 'pending' || r.status === 'processing')
+			return hasInProgress ? 10_000 : false
+		},
+	})
+}
+
+/**
+ * Hook to request a new Fulcrum report for a character
+ */
+export function useRequestFulcrumReport() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: ({
+			characterId,
+			corporationId,
+			requestSource,
+			applicationId,
+		}: {
+			characterId: string
+			corporationId: string
+			requestSource: ReportRequestSource
+			applicationId?: string
+			/** Pass userId to invalidate the user-characters query (application Fulcrum panel) */
+			userId?: string
+		}) => fulcrumApi.requestReport(characterId, corporationId, requestSource, applicationId),
+		onSettled: (_, __, variables) => {
+			queryClient.invalidateQueries({
+				queryKey: applicationKeys.fulcrumCharacterReports(
+					variables.characterId,
+					variables.corporationId,
+				),
+			})
+			// Also invalidate user-characters query if userId is provided
+			if (variables.userId) {
+				queryClient.invalidateQueries({
+					queryKey: applicationKeys.fulcrumUserCharacters(
+						variables.userId,
+						variables.corporationId,
+					),
+				})
+			}
+		},
+	})
+}
+
+/**
+ * Hook to fetch report section manifest (list of available sections)
+ */
+export function useReportSections(reportId: string, enabled = true) {
+	return useQuery<ReportManifest>({
+		queryKey: applicationKeys.fulcrumReportSections(reportId),
+		queryFn: () => fulcrumApi.getReportSections(reportId),
+		staleTime: 1000 * 60 * 5,
+		gcTime: 1000 * 60 * 10,
+		enabled: !!reportId && enabled,
+		retry: 2,
+	})
+}
+
+/**
+ * Hook to fetch a specific report section's data (lazy-loaded per tab)
+ */
+export function useReportSectionData<T = unknown>(
+	reportId: string,
+	section: ReportSectionName,
+	enabled = true,
+) {
+	return useQuery<T>({
+		queryKey: applicationKeys.fulcrumReportSection(reportId, section),
+		queryFn: () => fulcrumApi.getReportSectionData<T>(reportId, section),
+		staleTime: 1000 * 60 * 5,
+		gcTime: 1000 * 60 * 10,
+		enabled: !!reportId && enabled,
+		retry: (failureCount, error) => {
+			// Don't retry on 404 (section genuinely missing)
+			if (error instanceof Error && error.message.includes('404')) return false
+			// Retry transient failures up to 2 times
+			return failureCount < 2
 		},
 	})
 }

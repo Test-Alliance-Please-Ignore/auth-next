@@ -5,12 +5,16 @@ import type {
 	CharacterAffiliation,
 	CharacterAgentResearch,
 	CharacterAsset,
+	CharacterAssetName,
 	CharacterAttributes,
 	CharacterBlueprint,
 	CharacterCalendar,
+	CharacterClones,
 	CharacterContact,
 	CharacterContract,
+	CharacterContractItem,
 	CharacterFitting,
+	CharacterImplants,
 	CharacterKillmailBasic,
 	CharacterLocation,
 	CharacterMail,
@@ -52,6 +56,8 @@ import type {
 	CorporationWalletJournalEntry,
 	CorporationWalletTransaction,
 	MailContent,
+	MailingList,
+	MailLabelsResponse,
 	StructureInfo,
 } from './types'
 
@@ -87,6 +93,9 @@ export interface EsiRequestOptions {
  * ```
  */
 export interface Esi {
+	// Cache control
+	setDefaultCacheMode(mode: 'default' | 'no-store'): void
+
 	// Character endpoints
 	fetchCharacterAffiliation(
 		characterId: string,
@@ -100,15 +109,20 @@ export interface Esi {
 	fetchCharacterNotifications(characterId: string): Promise<CharacterNotification[]>
 	fetchCharacterAgentResearch(characterId: string): Promise<CharacterAgentResearch[]>
 	fetchCharacterAssets(characterId: string): Promise<CharacterAsset[]>
+	fetchCharacterAssetNames(characterId: string, itemIds: string[]): Promise<CharacterAssetName[]>
 	fetchCharacterAttributes(characterId: string): Promise<CharacterAttributes>
 	fetchCharacterBlueprints(characterId: string): Promise<CharacterBlueprint[]>
 	fetchCharacterCalendar(characterId: string): Promise<CharacterCalendar[]>
 	fetchCharacterContacts(characterId: string): Promise<CharacterContact[]>
 	fetchCharacterContracts(characterId: string): Promise<CharacterContract[]>
+	fetchContractItems(characterId: string, contractId: string): Promise<CharacterContractItem[]>
 	fetchCharacterFittings(characterId: string): Promise<CharacterFitting[]>
 	fetchCharacterLocation(characterId: string): Promise<CharacterLocation>
 	fetchCharacterMail(characterId: string): Promise<CharacterMail[]>
+	fetchCharacterMailPage(characterId: string, lastMailId?: string): Promise<CharacterMail[]>
 	fetchMailContent(characterId: string, mailId: string): Promise<MailContent>
+	fetchMailingLists(characterId: string): Promise<MailingList[]>
+	fetchMailLabels(characterId: string): Promise<MailLabelsResponse>
 	fetchCharacterMiningLedger(characterId: string): Promise<CharacterMiningLedger[]>
 	fetchCharacterPlanets(characterId: string): Promise<CharacterPlanet[]>
 	fetchCharacterPortrait(characterId: string): Promise<CharacterPortrait>
@@ -121,6 +135,10 @@ export interface Esi {
 	fetchCorporationHistory(characterId: string): Promise<CorporationHistoryEntry[]>
 	fetchCharacterMarketOrders(characterId: string): Promise<CharacterMarketOrder[]>
 	fetchCharacterMarketTransactions(characterId: string): Promise<CharacterMarketTransaction[]>
+	fetchCharacterMarketTransactionsPage(
+		characterId: string,
+		fromId?: string
+	): Promise<CharacterMarketTransaction[]>
 	fetchCharacterWalletJournal(characterId: string): Promise<CharacterWalletJournalEntry[]>
 	fetchCharacterBasicKillmails(characterId: string): Promise<CharacterKillmailBasic[]>
 	fetchCharacterKillmailDetail(
@@ -129,6 +147,8 @@ export interface Esi {
 		killmailHash: string
 	): Promise<KillmailDetail | null>
 	fetchCharacterKillmails(characterId: string): Promise<KillmailDetail[]>
+	fetchCharacterClones(characterId: string): Promise<CharacterClones>
+	fetchCharacterImplants(characterId: string): Promise<CharacterImplants>
 
 	// Corporation endpoints
 	fetchCorporationPublicInfo(corporationId: string): Promise<CorporationPublicInfo>

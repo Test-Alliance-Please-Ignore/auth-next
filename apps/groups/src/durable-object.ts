@@ -3407,6 +3407,10 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		return this.roleService.detachRoleFrom(request)
 	}
 
+	async deleteRoleAttachment(attachmentId: string): Promise<boolean> {
+		return this.roleService.deleteRoleAttachment(attachmentId)
+	}
+
 	async getRolesFor(request: GetRolesForRequest): Promise<RoleAttachment[]> {
 		return this.roleService.getRolesFor(request)
 	}

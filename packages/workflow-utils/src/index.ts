@@ -47,7 +47,14 @@ export type { Logger, WorkflowContext, StepResult } from './types'
 export { createWorkflowContext } from './types'
 
 // Step config helpers
-export { defaultStepConfig, strictStepConfig, lenientStepConfig } from './types'
+export {
+	defaultStepConfig,
+	strictStepConfig,
+	lenientStepConfig,
+	esiRetryOptions,
+	esiFetchStepConfig,
+	esiProcessingStepConfig,
+} from './types'
 
 // Error re-exports from cloudflare:workers
 export { NonRetryableError } from './types'
@@ -60,6 +67,17 @@ export {
 	calculateJsonSize,
 	shouldStoreInR2,
 } from './json'
+
+// ESI retry utilities (rate limit handling, permanent failure detection, backoff)
+export {
+	parseEsiErrorMetadata,
+	extractEsiRateLimitSleepSeconds,
+	isEsiRateLimitError,
+	isPermanentEsiFailure,
+	withJitter,
+	withEsiRetryClassification,
+	retryWithBackoff,
+} from './esi-retry'
 
 // Storage utilities
 export {

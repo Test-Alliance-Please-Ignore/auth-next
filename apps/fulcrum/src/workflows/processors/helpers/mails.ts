@@ -2,7 +2,7 @@ import { getStub } from '@repo/do-utils'
 import { normalizeIdToString } from '@repo/esi'
 import { stripHtmlToPlainText } from './html-stripper'
 
-import type { EsiTypeResolver } from '@repo/esi'
+import type { EsiTypeResolver, MailingList, MailLabelsResponse } from '@repo/esi'
 import type { MailWithContent } from '../../steps/mails/fetch-mails'
 
 export interface ProcessedMail extends MailWithContent {
@@ -15,6 +15,12 @@ export interface ProcessedMail extends MailWithContent {
 	bodyPlainText?: string
 	timestampFormatted?: string
 	processedAt: string
+}
+
+export interface EnrichedMailData {
+	mails: ProcessedMail[]
+	mailingLists: MailingList[]
+	labels: MailLabelsResponse
 }
 
 export type ProcessedMails = ProcessedMail[]
@@ -45,13 +51,21 @@ export async function enrichMails(
 		ESI: DurableObjectNamespace
 	},
 	mails: MailWithContent[],
-	characterId: string
-): Promise<ProcessedMails> {
+	characterId: string,
+	mailingLists: MailingList[] = [],
+	labels: MailLabelsResponse = { labels: [], total_unread_count: 0 },
+): Promise<EnrichedMailData> {
 	if (mails.length === 0) {
-		return []
+		return { mails: [], mailingLists, labels }
 	}
 
-	// Collect all IDs that need to be resolved
+	// Build a mailing list name lookup
+	const mailingListNames = new Map<string, string>()
+	for (const ml of mailingLists) {
+		mailingListNames.set(String(ml.mailing_list_id), ml.name)
+	}
+
+	// Collect all IDs that need to be resolved (skip mailing list IDs - we have their names already)
 	const idsToResolve = new Set<string>()
 
 	for (const mail of mails) {
@@ -61,9 +75,10 @@ export async function enrichMails(
 			idsToResolve.add(fromId)
 		}
 
-		// Add recipient IDs
+		// Add recipient IDs (skip mailing_list type - resolved from mailingLists data)
 		if (mail.recipients) {
 			for (const recipient of mail.recipients) {
+				if (recipient.recipient_type === 'mailing_list') continue
 				const recipientId = normalizeIdToString(recipient.recipient_id)
 				if (recipientId) {
 					idsToResolve.add(recipientId)
@@ -91,9 +106,15 @@ export async function enrichMails(
 		// Process recipients with resolved names
 		const processedRecipients = mail.recipients?.map(recipient => {
 			const recipientId = normalizeIdToString(recipient.recipient_id)
+			let recipientName: string | undefined
+			if (recipient.recipient_type === 'mailing_list' && recipientId) {
+				recipientName = mailingListNames.get(recipientId)
+			} else if (recipientId) {
+				recipientName = nameMap[recipientId]
+			}
 			return {
 				...recipient,
-				recipientName: recipientId ? nameMap[recipientId] : undefined
+				recipientName,
 			}
 		})
 
@@ -114,5 +135,5 @@ export async function enrichMails(
 		return timeB - timeA
 	})
 
-	return processedMails
+	return { mails: processedMails, mailingLists, labels }
 }

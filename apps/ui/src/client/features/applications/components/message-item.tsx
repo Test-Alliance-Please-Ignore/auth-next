@@ -19,8 +19,6 @@ import type { ApplicationMessage } from '../api'
 export interface MessageItemProps {
 	message: ApplicationMessage
 	currentUserId: string
-	senderName?: string
-	senderCharacterId?: string
 	className?: string
 }
 
@@ -40,16 +38,15 @@ export interface MessageItemProps {
 export function MessageItem({
 	message,
 	currentUserId,
-	senderName = 'Unknown',
-	senderCharacterId,
 	className,
 }: MessageItemProps) {
 	const isMine = message.senderId === currentUserId
+	const senderName = isMine ? 'You' : (message.senderCharacterName || 'Unknown')
 
 	return (
 		<div className={cn('flex gap-3', isMine ? 'flex-row-reverse' : 'flex-row', className)}>
 			<MemberAvatar
-				characterId={senderCharacterId || message.senderId}
+				characterId={message.senderCharacterId || message.senderId}
 				characterName={senderName}
 				size="sm"
 			/>
@@ -68,7 +65,7 @@ export function MessageItem({
 						isMine ? 'bg-primary/10 ml-auto' : 'bg-muted mr-auto'
 					)}
 				>
-					<p className="text-sm whitespace-pre-wrap leading-relaxed">{message.message}</p>
+					<p className="text-sm whitespace-pre-wrap break-words leading-relaxed">{message.message}</p>
 				</div>
 			</div>
 		</div>

@@ -3,60 +3,125 @@ import { getEsiInstanceForCharacter } from '@repo/esi'
 import { storeOrReturn } from '../../utils/storage'
 import { retryWithBackoff } from '../../utils/retry'
 
-import type { Esi, CharacterMail, MailContent } from '@repo/esi'
+import type { Esi, CharacterMail, MailContent, MailingList, MailLabelsResponse } from '@repo/esi'
 import type { StepResult } from '../../utils/storage'
 
 export interface MailWithContent extends CharacterMail {
 	body?: string
 }
 
+export interface MailFetchResult {
+	mails: MailWithContent[]
+	mailingLists: MailingList[]
+	labels: MailLabelsResponse
+}
+
 /**
- * Fetch mail list and content from ESI stub
- * Separated for testability
+ * Fetch ALL mails using cursor-based pagination via last_mail_id.
+ * ESI returns 50 mails per page; we loop until we get an empty page.
  */
-export async function fetchMailsFromEsi(esiStub: Esi, characterId: string): Promise<MailWithContent[]> {
-	// First fetch the mail list
-	const mailList = await esiStub.fetchCharacterMail(characterId)
+async function fetchAllMailHeaders(esiStub: Esi, characterId: string): Promise<CharacterMail[]> {
+	const allMails: CharacterMail[] = []
+	let lastMailId: string | undefined
 
-	// Limit to most recent 50 mails to avoid excessive API calls
-	const limitedMails = mailList.slice(0, 50)
+	for (let page = 0; page < 20; page++) { // Safety cap at 1000 mails (20 pages × 50)
+		const batch = await retryWithBackoff(
+			async () => await esiStub.fetchCharacterMailPage(characterId, lastMailId),
+			{ maxRetries: 3, initialDelayMs: 1000, maxDelayMs: 30000 }
+		)
 
-	// Fetch content for each mail with rate limiting
+		if (!batch || batch.length === 0) break
+
+		allMails.push(...batch)
+
+		// Find lowest mail_id for cursor
+		const lowestId = batch.reduce<string | undefined>((min, mail) => {
+			if (!mail.mail_id) return min
+			if (!min) return mail.mail_id
+			return BigInt(mail.mail_id) < BigInt(min) ? mail.mail_id : min
+		}, undefined)
+
+		if (!lowestId || batch.length < 50) break
+
+		lastMailId = lowestId
+
+		// Rate limit between pages
+		await new Promise(resolve => setTimeout(resolve, 300))
+	}
+
+	return allMails
+}
+
+/**
+ * Fetch all mail headers, content for each, mailing lists, and labels from ESI
+ */
+export async function fetchMailsFromEsi(esiStub: Esi, characterId: string): Promise<MailFetchResult> {
+	// Fetch all mail headers, mailing lists, and labels in parallel where possible
+	const [allMails, mailingLists, labels] = await Promise.all([
+		fetchAllMailHeaders(esiStub, characterId),
+		retryWithBackoff(
+			async () => await esiStub.fetchMailingLists(characterId),
+			{ maxRetries: 3, initialDelayMs: 1000, maxDelayMs: 30000 }
+		).catch(() => [] as MailingList[]),
+		retryWithBackoff(
+			async () => await esiStub.fetchMailLabels(characterId),
+			{ maxRetries: 3, initialDelayMs: 1000, maxDelayMs: 30000 }
+		).catch(() => ({ labels: [], total_unread_count: 0 }) as MailLabelsResponse),
+	])
+
+	console.log(`[fetchMails] Fetched ${allMails.length} mail headers`)
+
+	// Only fetch content for the most recent 100 mails during initial report generation.
+	// Older mail content can be loaded on-demand by the reviewer via the UI.
+	// This keeps us well within the ESI char-social rate limit (600 tokens / 15min, 2 tokens per 2xx).
+	const maxContentFetches = 100
+	const mailsToFetchContent = allMails.slice(0, maxContentFetches)
+	const mailsSkipped = allMails.slice(maxContentFetches)
+
+	if (mailsSkipped.length > 0) {
+		console.log(`[fetchMails] Capping content fetches to ${maxContentFetches} (skipping ${mailsSkipped.length} oldest mails) due to ESI rate limits`)
+	}
+
+	// Fetch content in parallel batches
+	const batchSize = 20
 	const mailsWithContent: MailWithContent[] = []
 
-	for (const mail of limitedMails) {
-		if (!mail.mail_id) {
-			mailsWithContent.push(mail)
-			continue
-		}
-
-		try {
-			// Fetch mail content with retry and rate limit handling
-			const content = await retryWithBackoff(
-				async () => await esiStub.fetchMailContent(characterId, mail.mail_id!),
-				{
-					maxRetries: 3,
-					initialDelayMs: 200,
-					maxDelayMs: 5000,
+	for (let i = 0; i < mailsToFetchContent.length; i += batchSize) {
+		const batch = mailsToFetchContent.slice(i, i + batchSize)
+		console.log(`[fetchMails] Fetching content batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(mailsToFetchContent.length / batchSize)}`)
+		const results = await Promise.allSettled(
+			batch.map(async (mail) => {
+				if (!mail.mail_id) return mail as MailWithContent
+				try {
+					const content = await retryWithBackoff(
+						async () => await esiStub.fetchMailContent(characterId, mail.mail_id!),
+						{ maxRetries: 3, initialDelayMs: 1000, maxDelayMs: 30000 },
+					)
+					return { ...mail, body: content.body } as MailWithContent
+				} catch (error) {
+					console.error(`Failed to fetch content for mail ${mail.mail_id}:`, error)
+					return mail as MailWithContent
 				}
+			}),
+		)
+		for (const result of results) {
+			mailsWithContent.push(
+				result.status === 'fulfilled' ? result.value : batch[0] as MailWithContent,
 			)
-
-			// Merge mail header with content
-			mailsWithContent.push({
-				...mail,
-				body: content.body,
-			})
-
-			// Add delay between requests to avoid rate limiting
-			await new Promise(resolve => setTimeout(resolve, 200))
-		} catch (error) {
-			// If we can't fetch content for a mail, include it without body
-			console.error(`Failed to fetch content for mail ${mail.mail_id}:`, error)
-			mailsWithContent.push(mail)
+		}
+		// Brief pause between batches to be polite to ESI
+		if (i + batchSize < mailsToFetchContent.length) {
+			await new Promise((resolve) => setTimeout(resolve, 300))
 		}
 	}
 
-	return mailsWithContent
+	// Append skipped mails (no content fetched) to preserve full header list
+	for (const mail of mailsSkipped) {
+		mailsWithContent.push(mail as MailWithContent)
+	}
+
+	console.log(`[fetchMails] Done: ${mailsWithContent.length} mails total (${mailsWithContent.filter(m => m.body).length} with body, ${mailsSkipped.length} skipped)`)
+	return { mails: mailsWithContent, mailingLists, labels }
 }
 
 /**
@@ -78,6 +143,7 @@ export async function fetchMails(
 ): Promise<StepResult> {
 	try {
 		const stub = getEsiInstanceForCharacter(esiBinding, characterId)
+		stub.setDefaultCacheMode('no-store')
 		const data = await fetchMailsFromEsi(stub, characterId)
 		// Store in R2
 		return await storeOrReturn(bucket, bucketName, workflowInstanceId, 'fetch-mails', data)

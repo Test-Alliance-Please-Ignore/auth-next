@@ -8,16 +8,20 @@ import { EsiFetcher } from './lib/esi-fetch'
 import {
 	transformCharacterAgentResearch,
 	transformCharacterAsset,
+	transformCharacterAssetNames,
 	transformCharacterAttributes,
 	transformCharacterBlueprint,
 	transformCharacterCalendar,
 	transformCharacterContact,
 	transformCharacterContract,
+	transformContractItems,
 	transformCharacterFitting,
 	transformCharacterKillmails,
 	transformCharacterLocation,
 	transformCharacterMail,
 	transformMailContent,
+	transformMailingLists,
+	transformMailLabels,
 	transformCharacterMarketOrder,
 	transformCharacterMarketTransaction,
 	transformCharacterMiningLedger,
@@ -56,22 +60,28 @@ import {
 	transformCorporationHistoryEntry,
 	transformStructureInfo,
 	transformCharacterAffiliation,
+	transformCharacterClones,
+	transformCharacterImplants,
 } from './lib/esi-transforms'
 import { createEsiDb, runEsiMigrations } from './storage'
 
 import type {
 	CharacterAgentResearch,
 	CharacterAsset,
+	CharacterAssetName,
 	CharacterAttributes,
 	CharacterBlueprint,
 	CharacterCalendar,
 	CharacterContact,
 	CharacterContract,
+	CharacterContractItem,
 	CharacterFitting,
 	CharacterKillmailBasic,
 	CharacterLocation,
 	CharacterMail,
 	MailContent,
+	MailingList,
+	MailLabelsResponse,
 	CharacterMarketOrder,
 	CharacterMarketTransaction,
 	CharacterMiningLedger,
@@ -112,16 +122,20 @@ import type {
 	EsiRequestOptions,
 	EsiCharacterAgentResearch,
 	EsiCharacterAsset,
+	EsiCharacterAssetName,
 	EsiCharacterAttributes,
 	EsiCharacterBlueprint,
 	EsiCharacterCalendar,
 	EsiCharacterContact,
 	EsiCharacterContract,
+	EsiContractItem,
 	EsiCharacterFitting,
 	EsiCharacterKillmail,
 	EsiCharacterLocation,
 	EsiCharacterMail,
 	EsiMailContent,
+	EsiMailingList,
+	EsiMailLabelsResponse,
 	EsiCharacterMarketOrder,
 	EsiCharacterMarketTransaction,
 	EsiCharacterMiningLedger,
@@ -164,6 +178,10 @@ import type {
 	CorporationMemberRole,
 	CharacterAffiliation,
 	EsiCharacterAffiliation,
+	CharacterClones,
+	CharacterImplants,
+	EsiCharacterClones,
+	EsiCharacterImplants,
 } from '@repo/esi'
 import type { Env } from './context'
 import type { EsiDb } from './storage/state'
@@ -203,6 +221,10 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 		state.blockConcurrencyWhile(async () => {
 			await runEsiMigrations(this.storage)
 		})
+	}
+
+	setDefaultCacheMode(mode: 'default' | 'no-store'): void {
+		this.esiFetcher.setDefaultCacheMode(mode)
 	}
 
 	@UseCharacterAuth
@@ -281,6 +303,33 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	}
 
 	@UseCharacterAuth
+	async fetchCharacterAssetNames(
+		characterId: string,
+		itemIds: string[]
+	): Promise<CharacterAssetName[]> {
+		if (itemIds.length === 0) return []
+
+		// ESI accepts up to 1000 item IDs per request
+		const BATCH_SIZE = 1000
+		const allNames: CharacterAssetName[] = []
+
+		for (let i = 0; i < itemIds.length; i += BATCH_SIZE) {
+			const batch = itemIds.slice(i, i + BATCH_SIZE)
+			const result = await this.esiFetcher.fetchEsi<
+				EsiCharacterAssetName[],
+				number[]
+			>(`/characters/${characterId}/assets/names/`, {
+				method: 'POST',
+				body: batch.map((id) => parseInt(id, 10)),
+				persistGlobalCache: false,
+			})
+			allNames.push(...transformCharacterAssetNames(result.data))
+		}
+
+		return allNames
+	}
+
+	@UseCharacterAuth
 	async fetchCharacterAttributes(characterId: string): Promise<CharacterAttributes> {
 		const result = await this.esiFetcher.fetchEsi<EsiCharacterAttributes>(
 			`/characters/${characterId}/attributes`
@@ -324,6 +373,14 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	}
 
 	@UseCharacterAuth
+	async fetchContractItems(characterId: string, contractId: string): Promise<CharacterContractItem[]> {
+		const result = await this.esiFetcher.fetchEsi<EsiContractItem[]>(
+			`/characters/${characterId}/contracts/${contractId}/items`
+		)
+		return transformContractItems(result.data)
+	}
+
+	@UseCharacterAuth
 	async fetchCharacterFittings(characterId: string): Promise<CharacterFitting[]> {
 		const result = await this.esiFetcher.fetchEsi<EsiCharacterFitting[]>(
 			`/characters/${characterId}/fittings`
@@ -351,11 +408,36 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	}
 
 	@UseCharacterAuth
+	async fetchCharacterMailPage(characterId: string, lastMailId?: string): Promise<CharacterMail[]> {
+		const path = lastMailId
+			? `/characters/${characterId}/mail?last_mail_id=${lastMailId}`
+			: `/characters/${characterId}/mail`
+		const result = await this.esiFetcher.fetchEsi<EsiCharacterMail[]>(path)
+		return transformCharacterMail(result.data)
+	}
+
+	@UseCharacterAuth
 	async fetchMailContent(characterId: string, mailId: string): Promise<MailContent> {
 		const result = await this.esiFetcher.fetchEsi<EsiMailContent>(
 			`/characters/${characterId}/mail/${mailId}`
 		)
 		return transformMailContent(result.data)
+	}
+
+	@UseCharacterAuth
+	async fetchMailingLists(characterId: string): Promise<MailingList[]> {
+		const result = await this.esiFetcher.fetchEsi<EsiMailingList[]>(
+			`/characters/${characterId}/mail/lists`
+		)
+		return transformMailingLists(result.data)
+	}
+
+	@UseCharacterAuth
+	async fetchMailLabels(characterId: string): Promise<MailLabelsResponse> {
+		const result = await this.esiFetcher.fetchEsi<EsiMailLabelsResponse>(
+			`/characters/${characterId}/mail/labels`
+		)
+		return transformMailLabels(result.data)
 	}
 
 	@UseCharacterAuth
@@ -471,6 +553,18 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	}
 
 	@UseCharacterAuth
+	async fetchCharacterMarketTransactionsPage(
+		characterId: string,
+		fromId?: string
+	): Promise<CharacterMarketTransaction[]> {
+		const path = fromId
+			? `/characters/${characterId}/wallet/transactions?from_id=${fromId}`
+			: `/characters/${characterId}/wallet/transactions`
+		const result = await this.esiFetcher.fetchEsi<EsiCharacterMarketTransaction[]>(path)
+		return transformCharacterMarketTransaction(result.data)
+	}
+
+	@UseCharacterAuth
 	async fetchCharacterWalletJournal(characterId: string): Promise<CharacterWalletJournalEntry[]> {
 		const result = await this.esiFetcher.fetchEsi<EsiCharacterWalletJournalEntry[]>(
 			`/characters/${characterId}/wallet/journal`
@@ -517,6 +611,22 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 			})
 		)
 		return killmails.filter((km): km is KillmailDetail => km !== null)
+	}
+
+	@UseCharacterAuth
+	async fetchCharacterClones(characterId: string): Promise<CharacterClones> {
+		const result = await this.esiFetcher.fetchEsi<EsiCharacterClones>(
+			`/characters/${characterId}/clones`
+		)
+		return transformCharacterClones(result.data)
+	}
+
+	@UseCharacterAuth
+	async fetchCharacterImplants(characterId: string): Promise<CharacterImplants> {
+		const result = await this.esiFetcher.fetchEsi<EsiCharacterImplants>(
+			`/characters/${characterId}/implants`
+		)
+		return transformCharacterImplants(result.data)
 	}
 
 	/**

@@ -1,0 +1,1 @@
+ALTER TABLE "application_messages" ADD COLUMN "sender_character_id" text;

@@ -18,6 +18,13 @@ export interface ProcessedAsset extends CharacterAsset {
 	locationName?: string
 	marketGroupName?: string | null
 	categoryName?: string
+	customName?: string
+	averagePrice?: number
+	estimatedValue?: number
+	/** item_id of the container this asset is inside (if any) */
+	containerItemId?: string
+	/** Resolved name of the container (type name or custom name) */
+	containerName?: string
 	processedAt: string
 }
 
@@ -76,7 +83,8 @@ export async function enrichAssets(
 				itemLocationIds.push(asset.location_id)
 				break
 			case 'other':
-				// 'other' locations don't typically have resolvable names
+				// Player-owned structures - collect for authenticated structure name resolution
+				stationLocationIds.push(asset.location_id)
 				break
 		}
 	}
@@ -188,10 +196,10 @@ export async function enrichAssets(
 						return info
 					},
 					{
-						maxRetries: 5,
-						initialDelayMs: 1000, // Start with 1 second
-						maxDelayMs: 60000, // Cap at 60 seconds
-						backoffMultiplier: 2, // Double delay each retry
+						maxRetries: 3,
+						initialDelayMs: 1000,
+						maxDelayMs: 30000,
+						backoffMultiplier: 2,
 						onRetry: (attempt, error, delayMs) => {
 							console.warn('[enrichAssets] Retrying structure fetch after rate limit', {
 								structureId,

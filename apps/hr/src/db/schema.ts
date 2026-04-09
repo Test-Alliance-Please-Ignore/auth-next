@@ -40,6 +40,7 @@ export const applications = pgTable(
 			.default('pending'),
 		/** User who reviewed the application (HR admin) */
 		reviewedBy: uuid('reviewed_by'),
+
 		/** When the application was reviewed */
 		reviewedAt: timestamp('reviewed_at'),
 		/** Review notes from HR admin */
@@ -83,7 +84,9 @@ export const applicationRecommendations = pgTable(
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
 		/** Application this recommendation is for */
-		applicationId: uuid('application_id').notNull(),
+		applicationId: uuid('application_id')
+			.notNull()
+			.references(() => applications.id, { onDelete: 'cascade' }),
 		/** User who wrote the recommendation */
 		userId: uuid('user_id').notNull(),
 		/** Character ID used to write recommendation */
@@ -94,6 +97,8 @@ export const applicationRecommendations = pgTable(
 		recommendationText: text('recommendation_text').notNull(),
 		/** Sentiment: positive, neutral, negative */
 		sentiment: varchar('sentiment', { length: 20 }).notNull(),
+		/** Whether the recommendation is visible to the applicant */
+		isPublic: boolean('is_public').notNull().default(false),
 		createdAt: timestamp('created_at').defaultNow().notNull(),
 		updatedAt: timestamp('updated_at').defaultNow().notNull(),
 	},
@@ -117,7 +122,9 @@ export const applicationActivityLog = pgTable(
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
 		/** Application this activity is for */
-		applicationId: uuid('application_id').notNull(),
+		applicationId: uuid('application_id')
+			.notNull()
+			.references(() => applications.id, { onDelete: 'cascade' }),
 		/** User who performed the action */
 		userId: uuid('user_id').notNull(),
 		/** Character ID used for the action */
@@ -151,6 +158,7 @@ export const applicationMessages = pgTable(
 			.notNull()
 			.references(() => applications.id, { onDelete: 'cascade' }),
 		senderId: uuid('sender_id').notNull(),
+		senderCharacterId: text('sender_character_id'),
 		recipientId: uuid('recipient_id').notNull(),
 		message: text('message').notNull(),
 		createdAt: timestamp('created_at').defaultNow().notNull(),

@@ -26,7 +26,11 @@ export interface HRNotesListProps {
 	subjectUserId: string
 	subjectCharacterName?: string
 	onAddNote?: () => void
+	onEditNote?: (noteId: string) => void
+	onDeleteNote?: (noteId: string) => void
 	className?: string
+	/** Override access check (defaults to user.is_admin) */
+	hasAccess?: boolean
 }
 
 // ============================================================================
@@ -71,14 +75,17 @@ export function HRNotesList({
 	subjectUserId,
 	subjectCharacterName,
 	onAddNote,
+	onEditNote,
+	onDeleteNote,
 	className,
+	hasAccess,
 }: HRNotesListProps) {
 	const { user } = useAuth()
 	const [noteTypeFilter, setNoteTypeFilter] = useState<string>('all')
 	const [priorityFilter, setPriorityFilter] = useState<string>('all')
 
-	// Security check: Only render for admins
-	if (!user?.is_admin) {
+	// Security check: Only render for users with HR access
+	if (!(hasAccess ?? user?.is_admin)) {
 		return null
 	}
 
@@ -183,7 +190,7 @@ export function HRNotesList({
 			{!isLoading && !error && sortedNotes.length > 0 && (
 				<div className="space-y-4">
 					{sortedNotes.map((note) => (
-						<HRNoteCard key={note.id} note={note} />
+						<HRNoteCard key={note.id} note={note} onEdit={onEditNote} onDelete={onDeleteNote} />
 					))}
 				</div>
 			)}

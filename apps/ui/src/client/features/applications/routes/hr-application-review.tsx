@@ -7,9 +7,9 @@
  */
 
 import { formatDistanceToNow } from 'date-fns'
-import { AlertCircle, ArrowLeft, Briefcase, Lock } from 'lucide-react'
+import { ArrowLeft, Briefcase, Lock } from 'lucide-react'
 import { useState } from 'react'
-import { Navigate, useNavigate, useParams } from 'react-router-dom'
+import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { MemberAvatar } from '@/components/member-avatar'
 import {
@@ -21,6 +21,7 @@ import {
 	BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Container } from '@/components/ui/container'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -29,11 +30,15 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { useHrPermissionCheck } from '../../hr/hooks'
 import { useCanAccessCorporation } from '../../my-corporations/hooks'
+import { ACTIVE_APPLICATION_STATUSES } from '../constants'
+import { AccessDeniedCard } from '../components/access-denied-card'
 import { AddHRNoteDialog } from '../components/add-hr-note-dialog'
 import { ApplicationActionPanel } from '../components/application-action-panel'
+import { ApplicationHistoryPanel } from '../components/application-history-panel'
 import { ApplicationStatusBadge } from '../components/application-status-badge'
 import { ApplicationTimeline } from '../components/application-timeline'
 import { DeleteHRNoteDialog } from '../components/delete-hr-note-dialog'
+import { FulcrumPanel } from '../components/fulcrum-panel'
 import { HRNotesList } from '../components/hr-notes-list'
 import { MessagesPanel } from '../components/messages-panel'
 import { Button } from '@/components/ui/button'
@@ -59,6 +64,8 @@ export default function HrApplicationReview() {
 		applicationId: string
 	}>()
 	const navigate = useNavigate()
+	const [searchParams] = useSearchParams()
+	const initialTab = searchParams.get('tab') || 'details'
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
 	const { canAccess: hasCorporationAccess, isLoading: corporationAccessLoading } =
 		useCanAccessCorporation(corporationId ?? '')
@@ -135,11 +142,11 @@ export default function HrApplicationReview() {
 	// Loading state
 	if (authLoading || permissionLoading || applicationLoading || corporationAccessLoading) {
 		return (
-			<div className="container mx-auto max-w-5xl px-4 py-8">
+			<Container>
 				<div className="flex items-center justify-center min-h-[400px]">
 					<LoadingSpinner size="lg" />
 				</div>
-			</div>
+			</Container>
 		)
 	}
 
@@ -147,58 +154,34 @@ export default function HrApplicationReview() {
 	// Check permission - site admins always have access
 	if (!permission?.hasPermission && !user?.is_admin) {
 		return (
-			<div className="container mx-auto max-w-6xl px-4 py-8">
-				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
-					<CardHeader className="text-center">
-						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
-						<CardTitle className="text-2xl text-red-900 dark:text-red-100">Access Denied</CardTitle>
-						<CardDescription className="mt-2 text-red-700 dark:text-red-300">
-							You don't have HR permissions for this corporation. Contact an HR Admin to request
-							access.
-						</CardDescription>
-					</CardHeader>
-					<CardContent className="text-center">
-						<Button variant="ghost" onClick={() => navigate(rootCorporationsPath)}>
-							<ArrowLeft className="mr-2 h-4 w-4" />
-							Back to {rootCorporationsLabel}
-						</Button>
-					</CardContent>
-				</Card>
-			</div>
+			<Container>
+				<AccessDeniedCard
+					message="You don't have HR permissions for this corporation. Contact an HR Admin to request access."
+					backLabel={`Back to ${rootCorporationsLabel}`}
+					onBack={() => navigate(rootCorporationsPath)}
+				/>
+			</Container>
 		)
 	}
 
 	// Error state
 	if (applicationError) {
 		return (
-			<div className="container mx-auto max-w-6xl px-4 py-8">
-				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
-					<CardHeader className="text-center">
-						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
-						<CardTitle className="text-2xl text-red-900 dark:text-red-100">
-							Failed to Load Application
-						</CardTitle>
-						<CardDescription className="mt-2 text-red-700 dark:text-red-300">
-							{applicationError instanceof Error
-								? applicationError.message
-								: 'An unexpected error occurred'}
-						</CardDescription>
-					</CardHeader>
-					<CardContent className="text-center">
-						<Button variant="ghost" onClick={handleBackClick}>
-							<ArrowLeft className="mr-2 h-4 w-4" />
-							Back to Applications
-						</Button>
-					</CardContent>
-				</Card>
-			</div>
+			<Container>
+				<AccessDeniedCard
+					title="Failed to Load Application"
+					message={applicationError instanceof Error ? applicationError.message : 'An unexpected error occurred'}
+					backLabel="Back to Applications"
+					onBack={handleBackClick}
+				/>
+			</Container>
 		)
 	}
 
 	// Application not found
 	if (!application) {
 		return (
-			<div className="container mx-auto max-w-6xl px-4 py-8">
+			<Container>
 				<Card className="max-w-2xl mx-auto">
 					<CardHeader className="text-center">
 						<Briefcase className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
@@ -207,43 +190,31 @@ export default function HrApplicationReview() {
 					</CardHeader>
 					<CardContent className="text-center">
 						<Button variant="ghost" onClick={handleBackClick}>
-							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to Applications
 						</Button>
 					</CardContent>
 				</Card>
-			</div>
+			</Container>
 		)
 	}
 
 	// Verify application belongs to this corporation
 	if (application.corporationId !== corporationId) {
 		return (
-			<div className="container mx-auto max-w-6xl px-4 py-8">
-				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
-					<CardHeader className="text-center">
-						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
-						<CardTitle className="text-2xl text-red-900 dark:text-red-100">
-							Invalid Application
-						</CardTitle>
-						<CardDescription className="mt-2 text-red-700 dark:text-red-300">
-							This application does not belong to the specified corporation.
-						</CardDescription>
-					</CardHeader>
-					<CardContent className="text-center">
-						<Button variant="ghost" onClick={handleBackClick}>
-							<ArrowLeft className="mr-2 h-4 w-4" />
-							Back to Applications
-						</Button>
-					</CardContent>
-				</Card>
-			</div>
+			<Container>
+				<AccessDeniedCard
+					title="Invalid Application"
+					message="This application does not belong to the specified corporation."
+					backLabel="Back to Applications"
+					onBack={handleBackClick}
+				/>
+			</Container>
 		)
 	}
 
 	// Main content
 	return (
-		<div className="container mx-auto max-w-5xl px-4 py-8">
+		<Container>
 			{/* Breadcrumb Navigation */}
 			<div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 				<Breadcrumb>
@@ -310,7 +281,7 @@ export default function HrApplicationReview() {
 			</Card>
 
 			{/* Tabbed Content */}
-			<Tabs defaultValue="details" className="space-y-6">
+			<Tabs defaultValue={initialTab} className="space-y-6">
 				<TabsList className="w-full sm:w-auto">
 					<TabsTrigger value="details" className="flex-1 sm:flex-none">
 						Details
@@ -330,6 +301,14 @@ export default function HrApplicationReview() {
 							<span className="ml-1.5 text-xs opacity-70">({messageCount})</span>
 						)}
 					</TabsTrigger>
+					<TabsTrigger value="prior-apps" className="flex-1 sm:flex-none">
+						Prior Apps
+					</TabsTrigger>
+					{permission?.currentRole && ['hr_admin', 'hr_reviewer'].includes(permission.currentRole) && application && ACTIVE_APPLICATION_STATUSES.includes(application.status) && (
+						<TabsTrigger value="fulcrum" className="flex-1 sm:flex-none">
+							Fulcrum
+						</TabsTrigger>
+					)}
 				</TabsList>
 
 				{/* Details Tab */}
@@ -343,58 +322,59 @@ export default function HrApplicationReview() {
 							</CardDescription>
 						</CardHeader>
 						<CardContent>
-							<p className="text-foreground whitespace-pre-wrap leading-relaxed">
+							<p className="text-foreground whitespace-pre-wrap break-words leading-relaxed">
 								{application.applicationText}
 							</p>
 						</CardContent>
 					</Card>
 
-					{/* Review Information (if reviewed) */}
-					{application.reviewedAt && (
-						<Card>
-							<CardHeader>
-								<CardTitle>Review Information</CardTitle>
-								<CardDescription>Details about the application review</CardDescription>
-							</CardHeader>
-							<CardContent className="space-y-3">
-								<div>
-									<p className="text-sm font-medium text-muted-foreground">Reviewed By</p>
-									<p className="text-foreground">
-										{application.reviewedByCharacterName || 'Unknown'}
-									</p>
-								</div>
-								<Separator />
-								<div>
-									<p className="text-sm font-medium text-muted-foreground">Reviewed At</p>
-									<p className="text-foreground">
-										{formatDistanceToNow(new Date(application.reviewedAt), { addSuffix: true })}
-									</p>
-								</div>
-								{application.reviewNotes && (
-									<>
-										<Separator />
-										<div>
-											<p className="text-sm font-medium text-muted-foreground">Review Notes</p>
-											<p className="text-foreground whitespace-pre-wrap mt-1 italic">
-												"{application.reviewNotes}"
-											</p>
-										</div>
-									</>
-								)}
-							</CardContent>
-						</Card>
-					)}
+					{/* Review Information (only for final decisions) */}
+					{application.reviewedAt &&
+						(application.status === 'accepted' || application.status === 'rejected') && (
+							<Card>
+								<CardHeader>
+									<CardTitle>Review Information</CardTitle>
+									<CardDescription>Details about the application review</CardDescription>
+								</CardHeader>
+								<CardContent className="space-y-3">
+									<div>
+										<p className="text-sm font-medium text-muted-foreground">Reviewed By</p>
+										<p className="text-foreground">
+											{application.reviewedByCharacterName || 'Unknown'}
+										</p>
+									</div>
+									<Separator />
+									<div>
+										<p className="text-sm font-medium text-muted-foreground">Reviewed At</p>
+										<p className="text-foreground">
+											{formatDistanceToNow(new Date(application.reviewedAt), { addSuffix: true })}
+										</p>
+									</div>
+									{application.reviewNotes && (
+										<>
+											<Separator />
+											<div>
+												<p className="text-sm font-medium text-muted-foreground">Review Notes</p>
+												<p className="text-foreground whitespace-pre-wrap mt-1 italic">
+													"{application.reviewNotes}"
+												</p>
+											</div>
+										</>
+									)}
+								</CardContent>
+							</Card>
+						)}
 
-					{/* HR Notes Section (ADMIN ONLY) */}
-					{user?.is_admin && (
+					{/* HR Notes Section */}
+					{(user?.is_admin || permission?.hasPermission) && (
 						<Card className="border-warning/30 bg-warning/5">
 							<CardHeader>
 								<div className="flex items-center gap-2">
 									<Lock className="h-4 w-4 text-warning" />
-									<CardTitle className="text-lg">HR Notes (Admin Only)</CardTitle>
+									<CardTitle className="text-lg">HR Notes</CardTitle>
 								</div>
 								<CardDescription>
-									Private internal notes about this applicant. Only visible to site administrators.
+									Private internal notes about this applicant. Only visible to HR staff.
 								</CardDescription>
 							</CardHeader>
 							<CardContent>
@@ -402,6 +382,9 @@ export default function HrApplicationReview() {
 									subjectUserId={application.userId}
 									subjectCharacterName={application.characterName}
 									onAddNote={handleAddNote}
+									onEditNote={user?.is_admin ? handleEditNote : undefined}
+									onDeleteNote={user?.is_admin ? handleDeleteNote : undefined}
+									hasAccess
 								/>
 							</CardContent>
 						</Card>
@@ -431,7 +414,7 @@ export default function HrApplicationReview() {
 							<RecommendationList
 								applicationId={applicationId!}
 								currentUserId={user?.id}
-								// HR cannot add recommendations, only view them
+							// HR cannot add recommendations, only view them
 							/>
 						</CardContent>
 					</Card>
@@ -479,6 +462,45 @@ export default function HrApplicationReview() {
 						</CardContent>
 					</Card>
 				</TabsContent>
+
+				{/* Prior Applications Tab */}
+				<TabsContent value="prior-apps">
+					<Card>
+						<CardHeader>
+							<CardTitle>Prior Applications</CardTitle>
+							<CardDescription>
+								Other applications submitted by this character, including when owned by different accounts
+							</CardDescription>
+						</CardHeader>
+						<CardContent>
+							<ApplicationHistoryPanel
+								characterId={application.characterId}
+								applicationId={applicationId!}
+							/>
+						</CardContent>
+					</Card>
+				</TabsContent>
+
+				{/* Fulcrum (Character Reports) Tab */}
+				{permission?.currentRole && ['hr_admin', 'hr_reviewer'].includes(permission.currentRole) && application && ACTIVE_APPLICATION_STATUSES.includes(application.status) && (
+					<TabsContent value="fulcrum">
+						<Card>
+							<CardHeader>
+								<CardTitle>Character Reports</CardTitle>
+								<CardDescription>
+									Generate detailed background reports for {application.characterName}
+								</CardDescription>
+							</CardHeader>
+							<CardContent>
+								<FulcrumPanel
+									userId={application.userId}
+									corporationId={application.corporationId}
+									applicationId={applicationId!}
+								/>
+							</CardContent>
+						</Card>
+					</TabsContent>
+				)}
 			</Tabs>
 
 			{/* HR Notes Dialogs */}
@@ -511,6 +533,6 @@ export default function HrApplicationReview() {
 					/>
 				</>
 			)}
-		</div>
+		</Container>
 	)
 }

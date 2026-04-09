@@ -3,15 +3,15 @@ import { z } from 'zod'
 
 import { and, eq, inArray, or } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
-import { logger } from '@repo/hono-helpers'
+import { captureException, logger } from '@repo/hono-helpers'
 import { APPLICATION_STATUSES } from '@repo/hr'
 
-import { managedCorporations, userCharacters } from '../db/schema'
+import { managedCorporations, userCharacters, users } from '../db/schema'
 import { requireAdmin, requireAuth } from '../middleware/session'
 
 import type { Context } from 'hono'
 import type { Core } from '@repo/core'
-import type { Esi } from '@repo/esi'
+import type { Esi, EsiTypeResolver } from '@repo/esi'
 import type { ApplicationFilters, Hr, NoteFilters, RoleFilters } from '@repo/hr'
 import type { App } from '../context'
 
@@ -42,6 +42,76 @@ function getCoreStub(c: Context<App>): Core {
 function getCharacterName(user: Context<App>['var']['user'], characterId: string): string {
 	const character = user?.characters.find((c) => c.characterId === characterId)
 	return character?.characterName || 'Unknown'
+}
+
+/**
+ * Batch resolve user IDs to their main character names.
+ * Used to enrich HR responses with reviewer/sender names at read time.
+ */
+async function resolveUserCharacterNames(
+	db: NonNullable<Context<App>['var']['db']>,
+	userIds: string[]
+): Promise<Record<string, string>> {
+	if (userIds.length === 0) return {}
+
+	const uniqueIds = [...new Set(userIds)]
+	const foundUsers = await db.query.users.findMany({
+		where: inArray(users.id, uniqueIds),
+		columns: { id: true, mainCharacterId: true },
+	})
+
+	if (foundUsers.length === 0) return {}
+
+	const charIds = foundUsers.map((u) => u.mainCharacterId)
+	const chars = await db.query.userCharacters.findMany({
+		where: inArray(userCharacters.characterId, charIds),
+		columns: { characterId: true, characterName: true },
+	})
+
+	const charNameMap = new Map(chars.map((c) => [c.characterId, c.characterName]))
+	const result: Record<string, string> = {}
+	for (const u of foundUsers) {
+		const name = charNameMap.get(u.mainCharacterId)
+		if (name) result[u.id] = name
+	}
+	return result
+}
+
+/**
+ * Enrich a list of applications with resolved corporation and reviewer names.
+ */
+async function enrichApplications<T extends { corporationId: string; reviewedBy: string | null }>(
+	items: T[],
+	resolver: { resolveIds: (ids: string[]) => Promise<Record<string, string>> },
+	db: NonNullable<Context<App>['var']['db']>
+): Promise<Array<T & { corporationName: string; reviewedByCharacterName: string | null }>> {
+	const corpIds = [...new Set(items.map((a) => a.corporationId))]
+	const corpNames = corpIds.length > 0 ? await resolver.resolveIds(corpIds) : {}
+
+	const reviewerIds = items.map((a) => a.reviewedBy).filter((id): id is string => id !== null)
+	const reviewerNames = await resolveUserCharacterNames(db, reviewerIds)
+
+	return items.map((a) => ({
+		...a,
+		corporationName: corpNames[a.corporationId] ?? 'Unknown',
+		reviewedByCharacterName: a.reviewedBy ? (reviewerNames[a.reviewedBy] ?? null) : null,
+	}))
+}
+
+/**
+ * Check if the current user has any active HR role across any corporation.
+ * Returns true for site admins, corp CEOs, HR admins, and HR reviewers.
+ */
+async function hasAnyHrAccess(c: Context<App>): Promise<boolean> {
+	const user = c.get('user')!
+
+	// Site admins always have access
+	if (user.is_admin) return true
+
+	// Single RPC call returns all corps where user has any HR role
+	const hr = getHrStub(c)
+	const hrCorps = await hr.getUserHrCorporations(user.id)
+	return hrCorps.length > 0
 }
 
 /**
@@ -134,6 +204,7 @@ app.post('/applications', requireAuth(), async (c) => {
 
 		return c.json(application, 201)
 	} catch (error) {
+		captureException(error as Error, { tags: { action: 'submit-application', userId: user.id, characterId, corporationId } })
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to submit application' },
 			400
@@ -152,6 +223,7 @@ app.get('/applications', requireAuth(), async (c) => {
 	const filters: ApplicationFilters = {
 		corporationId: c.req.query('corporationId'),
 		userId: c.req.query('userId'),
+		characterId: c.req.query('characterId'),
 		status: c.req.query('status') as ApplicationFilters['status'],
 		limit: c.req.query('limit') ? parseInt(c.req.query('limit')!) : undefined,
 		offset: c.req.query('offset') ? parseInt(c.req.query('offset')!) : undefined,
@@ -161,7 +233,11 @@ app.get('/applications', requireAuth(), async (c) => {
 		const hr = getHrStub(c)
 		const applications = await hr.listApplications(filters, user.id, user.is_admin)
 
-		return c.json(applications)
+		const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
+		const db = c.get('db')!
+		const enriched = await enrichApplications(applications, resolver, db)
+
+		return c.json(enriched)
 	} catch (error) {
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to list applications' },
@@ -182,7 +258,11 @@ app.get('/applications/:id', requireAuth(), async (c) => {
 		const hr = getHrStub(c)
 		const application = await hr.getApplication(applicationId, user.id, user.is_admin)
 
-		return c.json(application)
+		const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
+		const db = c.get('db')!
+		const [enriched] = await enrichApplications([application], resolver, db)
+
+		return c.json(enriched)
 	} catch (error) {
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to get application' },
@@ -223,6 +303,9 @@ app.patch('/applications/:id', requireAuth(), async (c) => {
 			message.includes('not authorized') ||
 			message.includes('forbidden')
 
+		if (!isForbidden) {
+			captureException(error as Error, { tags: { action: 'update-application-status', userId: user.id, applicationId, status } })
+		}
 		return c.json({ error: message }, isForbidden ? 403 : 400)
 	}
 })
@@ -275,13 +358,72 @@ app.delete('/applications/:id', requireAdmin(), async (c) => {
 // ==================== Recommendation Routes ====================
 
 /**
+ * GET /api/hr/recommendations/pending
+ * List pending/under_review applications for the user's corporations
+ * Used by corp members to discover applications they can recommend
+ */
+app.get('/recommendations/pending', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const db = c.get('db')!
+
+	// Resolve corporation IDs from the database (session user doesn't carry corporationId)
+	const userChars = await db.query.userCharacters.findMany({
+		where: and(eq(userCharacters.userId, user.id), eq(userCharacters.isDeleted, false)),
+	})
+	const corporationIds = [...new Set(userChars.map((ch) => ch.corporationId).filter(Boolean))] as string[]
+
+	if (corporationIds.length === 0) {
+		return c.json([])
+	}
+
+	try {
+		const hr = getHrStub(c)
+		const applications = await hr.listCorpApplicationsForRecommendation(corporationIds, user.id)
+		return c.json(applications)
+	} catch (error) {
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to list applications' },
+			500
+		)
+	}
+})
+
+/**
+ * GET /api/hr/recommendations/applications/:id
+ * Get application detail for a corp member to write a recommendation
+ * Returns limited info (no HR-internal data)
+ */
+app.get('/recommendations/applications/:id', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const applicationId = c.req.param('id')
+	const db = c.get('db')!
+
+	// Resolve corporation IDs from the database (session user doesn't carry corporationId)
+	const userChars = await db.query.userCharacters.findMany({
+		where: and(eq(userCharacters.userId, user.id), eq(userCharacters.isDeleted, false)),
+	})
+	const corporationIds = [...new Set(userChars.map((ch) => ch.corporationId).filter(Boolean))] as string[]
+
+	try {
+		const hr = getHrStub(c)
+		const application = await hr.getApplicationForRecommender(applicationId, user.id, corporationIds)
+		return c.json(application)
+	} catch (error) {
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to get application' },
+			error instanceof Error && error.message.includes('permission') ? 403 : 400
+		)
+	}
+})
+
+/**
  * POST /api/hr/applications/:applicationId/recommendations
  * Add a recommendation for an application
  */
 app.post('/applications/:applicationId/recommendations', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const applicationId = c.req.param('applicationId')
-	const { characterId, recommendationText, sentiment } = await c.req.json()
+	const { characterId, recommendationText, sentiment, isPublic } = await c.req.json()
 
 	// Validate character ownership
 	const ownsCharacter = user.characters.some((char) => char.characterId === characterId)
@@ -299,11 +441,13 @@ app.post('/applications/:applicationId/recommendations', requireAuth(), async (c
 			characterId,
 			characterName,
 			recommendationText,
-			sentiment
+			sentiment,
+			isPublic ?? false
 		)
 
 		return c.json(recommendation, 201)
 	} catch (error) {
+		captureException(error as Error, { tags: { action: 'add-recommendation', userId: user.id, applicationId } })
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to add recommendation' },
 			400
@@ -318,7 +462,7 @@ app.post('/applications/:applicationId/recommendations', requireAuth(), async (c
 app.patch('/applications/:applicationId/recommendations/:id', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const recommendationId = c.req.param('id')
-	const { characterId, recommendationText, sentiment } = await c.req.json()
+	const { characterId, recommendationText, sentiment, isPublic } = await c.req.json()
 
 	try {
 		const hr = getHrStub(c)
@@ -328,11 +472,13 @@ app.patch('/applications/:applicationId/recommendations/:id', requireAuth(), asy
 			characterId || user.mainCharacterId,
 			recommendationText,
 			sentiment,
+			isPublic ?? false,
 			user.is_admin
 		)
 
 		return c.json({ success: true })
 	} catch (error) {
+		captureException(error as Error, { tags: { action: 'update-recommendation', userId: user.id, recommendationId } })
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to update recommendation' },
 			400
@@ -358,6 +504,7 @@ app.delete('/applications/:applicationId/recommendations/:id', requireAuth(), as
 
 		return c.json({ success: true })
 	} catch (error) {
+		captureException(error as Error, { tags: { action: 'delete-recommendation', userId: user.id, recommendationId } })
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to delete recommendation' },
 			400
@@ -370,29 +517,47 @@ app.delete('/applications/:applicationId/recommendations/:id', requireAuth(), as
 /**
  * POST /api/hr/applications/:applicationId/messages
  * Send a message (applicant → HR or HR → applicant)
+ * Applicants can always message on their own applications.
+ * HR staff require at least hr_reviewer role to send messages.
  */
 app.post('/applications/:applicationId/messages', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const applicationId = c.req.param('applicationId')
 	const { recipientId, message } = await c.req.json()
 
-	// Get primary character for logging
-	const primaryCharacter = user.characters.find((char) => char.is_primary)
-	const characterId = primaryCharacter?.characterId || user.mainCharacterId
-
 	try {
 		const hr = getHrStub(c)
+
+		// Check if sender is the applicant — if not, require hr_reviewer
+		const application = await hr.getApplication(applicationId, user.id, user.is_admin)
+		const isApplicant = application.userId === user.id
+
+		if (!isApplicant && !user.is_admin) {
+			const hasPermission = await hr.checkPermission(user.id, application.corporationId, 'hr_reviewer')
+			if (!hasPermission) {
+				return c.json({ error: 'HR reviewer or admin role required to send messages' }, 403)
+			}
+		}
+
+		// Get primary character for logging
+		const primaryCharacter = user.characters.find((char) => char.is_primary)
+		const characterId = primaryCharacter?.characterId || user.mainCharacterId
+
 		const result = await hr.sendMessage(
 			applicationId,
 			user.id,
-			recipientId,
+			recipientId || null,
 			message,
 			characterId,
-			user.is_admin
+			{ isApplicant, isAdmin: user.is_admin, corporationId: application.corporationId }
 		)
 
-		return c.json(result, 201)
+		// Enrich the returned message with sender character name
+		const senderName = primaryCharacter?.characterName || 'Unknown'
+
+		return c.json({ ...result, senderCharacterName: senderName }, 201)
 	} catch (error) {
+		captureException(error as Error, { tags: { action: 'send-message', userId: user.id, applicationId } })
 		return c.json({ error: error instanceof Error ? error.message : 'Failed to send message' }, 400)
 	}
 })
@@ -409,7 +574,17 @@ app.get('/applications/:applicationId/messages', requireAuth(), async (c) => {
 		const hr = getHrStub(c)
 		const messages = await hr.listMessages(applicationId, user.id, user.is_admin)
 
-		return c.json(messages)
+		// Resolve sender character names
+		const db = c.get('db')!
+		const senderIds = messages.map((m) => m.senderId)
+		const senderNames = await resolveUserCharacterNames(db, senderIds)
+
+		const enriched = messages.map((m) => ({
+			...m,
+			senderCharacterName: senderNames[m.senderId] ?? null,
+		}))
+
+		return c.json(enriched)
 	} catch (error) {
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to list messages' },
@@ -737,14 +912,19 @@ app.delete('/templates/:templateId', requireAuth(), async (c) => {
 	}
 })
 
-// ==================== HR Notes Routes (Admin Only) ====================
+// ==================== HR Notes Routes ====================
 
 /**
  * POST /api/hr/notes
- * Create an HR note about a user (admin only)
+ * Create an HR note about a user
+ * Access: Site admins, HR admins, HR reviewers
  */
-app.post('/notes', requireAdmin(), async (c) => {
+app.post('/notes', requireAuth(), async (c) => {
 	const user = c.get('user')!
+
+	if (!(await hasAnyHrAccess(c))) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
 	const { subjectUserId, subjectCharacterId, noteText, noteType, priority, metadata } =
 		await c.req.json()
 
@@ -767,17 +947,31 @@ app.post('/notes', requireAdmin(), async (c) => {
 			metadata
 		)
 
+		logger.info('[HR Notes] Note created', {
+			noteId: note.id,
+			noteType,
+			priority,
+			authorUserId: user.id,
+			subjectUserId,
+		})
+
 		return c.json(note, 201)
 	} catch (error) {
+		captureException(error as Error, { tags: { action: 'create-note', userId: user.id, subjectUserId } })
 		return c.json({ error: error instanceof Error ? error.message : 'Failed to create note' }, 400)
 	}
 })
 
 /**
  * GET /api/hr/notes
- * List HR notes with optional filters (admin only)
+ * List HR notes with optional filters
+ * Access: Site admins, HR admins, HR reviewers
  */
-app.get('/notes', requireAdmin(), async (c) => {
+app.get('/notes', requireAuth(), async (c) => {
+	if (!(await hasAnyHrAccess(c))) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
 	// Parse query params
 	const filters: NoteFilters = {
 		subjectUserId: c.req.query('subjectUserId'),
@@ -799,9 +993,14 @@ app.get('/notes', requireAdmin(), async (c) => {
 
 /**
  * GET /api/hr/notes/user/:userId
- * Get all HR notes for a specific user (admin only)
+ * Get all HR notes for a specific user
+ * Access: Site admins, HR admins, HR reviewers
  */
-app.get('/notes/user/:userId', requireAdmin(), async (c) => {
+app.get('/notes/user/:userId', requireAuth(), async (c) => {
+	if (!(await hasAnyHrAccess(c))) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
 	const subjectUserId = c.req.param('userId')
 
 	try {
@@ -819,9 +1018,15 @@ app.get('/notes/user/:userId', requireAdmin(), async (c) => {
 
 /**
  * PATCH /api/hr/notes/:id
- * Update an HR note (admin only)
+ * Update an HR note
+ * Access: Site admins only
  */
-app.patch('/notes/:id', requireAdmin(), async (c) => {
+app.patch('/notes/:id', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	if (!user.is_admin) {
+		return c.json({ error: 'Forbidden - only site admins can edit notes' }, 403)
+	}
+
 	const noteId = c.req.param('id')
 	const updates = await c.req.json()
 
@@ -829,25 +1034,38 @@ app.patch('/notes/:id', requireAdmin(), async (c) => {
 		const hr = getHrStub(c)
 		await hr.updateNote(noteId, updates)
 
+		logger.info('[HR Notes] Note updated', { noteId, userId: user.id })
+
 		return c.json({ success: true })
 	} catch (error) {
+		captureException(error as Error, { tags: { action: 'update-note', userId: user.id, noteId } })
 		return c.json({ error: error instanceof Error ? error.message : 'Failed to update note' }, 400)
 	}
 })
 
 /**
  * DELETE /api/hr/notes/:id
- * Delete an HR note (admin only)
+ * Delete an HR note
+ * Access: Site admins, HR admins only (not reviewers)
  */
-app.delete('/notes/:id', requireAdmin(), async (c) => {
+app.delete('/notes/:id', requireAuth(), async (c) => {
+	const user = c.get('user')!
+
+	if (!user.is_admin) {
+		return c.json({ error: 'Forbidden - only site admins can delete notes' }, 403)
+	}
+
 	const noteId = c.req.param('id')
 
 	try {
 		const hr = getHrStub(c)
 		await hr.deleteNote(noteId)
 
+		logger.info('[HR Notes] Note deleted', { noteId, userId: user.id })
+
 		return c.json({ success: true })
 	} catch (error) {
+		captureException(error as Error, { tags: { action: 'delete-note', userId: user.id, noteId } })
 		return c.json({ error: error instanceof Error ? error.message : 'Failed to delete note' }, 500)
 	}
 })
@@ -980,6 +1198,17 @@ app.get('/roles/check', requireAuth(), async (c) => {
 
 	// SECURITY: ALWAYS use the authenticated user's ID from session, NEVER from query params
 	const userId = user.id
+
+	// Site admins always have full HR admin access
+	if (user.is_admin) {
+		logger.info('[HR Roles] Permission check - site admin bypass', {
+			corporationId,
+			userId,
+			currentRole: 'hr_admin',
+			hasPermission: true,
+		})
+		return c.json({ hasPermission: true, currentRole: 'hr_admin' })
+	}
 
 	try {
 		const hr = getHrStub(c)

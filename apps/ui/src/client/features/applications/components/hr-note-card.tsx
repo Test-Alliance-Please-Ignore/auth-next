@@ -8,8 +8,10 @@
  */
 
 import { formatDistanceToNow } from 'date-fns'
+import { Pencil, Trash2 } from 'lucide-react'
 
 import { MemberAvatar } from '@/components/member-avatar'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 
@@ -26,6 +28,8 @@ export interface HRNoteCardProps {
 	note: HRNote
 	showSubject?: boolean
 	className?: string
+	onEdit?: (noteId: string) => void
+	onDelete?: (noteId: string) => void
 }
 
 // ============================================================================
@@ -45,7 +49,7 @@ export interface HRNoteCardProps {
  * <HRNoteCard note={note} />
  * ```
  */
-export function HRNoteCard({ note, showSubject = false, className }: HRNoteCardProps) {
+export function HRNoteCard({ note, showSubject = false, className, onEdit, onDelete }: HRNoteCardProps) {
 	// Priority-based card styling
 	const getPriorityCardClasses = () => {
 		switch (note.priority) {
@@ -80,6 +84,26 @@ export function HRNoteCard({ note, showSubject = false, className }: HRNoteCardP
 					<span className="text-xs text-muted-foreground ml-auto">
 						{formatDistanceToNow(new Date(note.createdAt), { addSuffix: true })}
 					</span>
+					{onEdit && (
+						<Button
+							variant="ghost"
+							size="sm"
+							className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+							onClick={() => onEdit(note.id)}
+						>
+							<Pencil className="h-3.5 w-3.5" />
+						</Button>
+					)}
+					{onDelete && (
+						<Button
+							variant="ghost"
+							size="sm"
+							className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+							onClick={() => onDelete(note.id)}
+						>
+							<Trash2 className="h-3.5 w-3.5" />
+						</Button>
+					)}
 				</div>
 
 				{showSubject && note.subjectCharacterName && (

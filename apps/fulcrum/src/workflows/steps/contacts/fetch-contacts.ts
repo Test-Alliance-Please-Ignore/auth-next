@@ -37,6 +37,7 @@ export async function fetchContacts(
 	try {
 		// Get character-specific ESI stub for caching
 		const stub = getEsiInstanceForCharacter(esiBinding, characterId)
+		stub.setDefaultCacheMode('no-store')
 
 		// Fetch contacts from ESI
 		const data = await fetchContactsFromEsi(stub, characterId)

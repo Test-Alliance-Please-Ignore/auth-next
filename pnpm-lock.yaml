@@ -427,6 +427,9 @@ importers:
       '@repo/freight':
         specifier: workspace:*
         version: link:../../packages/freight
+      '@repo/fulcrum':
+        specifier: workspace:*
+        version: link:../../packages/fulcrum
       '@repo/groups':
         specifier: workspace:*
         version: link:../../packages/groups
@@ -445,6 +448,9 @@ importers:
       '@repo/srp':
         specifier: workspace:*
         version: link:../../packages/srp
+      '@repo/workflow-utils':
+        specifier: workspace:*
+        version: link:../../packages/workflow-utils
       drizzle-orm:
         specifier: 0.44.7
         version: 0.44.7(@cloudflare/workers-types@4.20251118.0)(@neondatabase/serverless@1.0.2)(@opentelemetry/api@1.9.0)(@types/pg@8.15.6)(bun-types@1.3.2(@types/react@19.2.6))
@@ -892,6 +898,9 @@ importers:
       '@repo/orchestrator':
         specifier: workspace:*
         version: link:../../packages/orchestrator
+      '@repo/workflow-utils':
+        specifier: workspace:*
+        version: link:../../packages/workflow-utils
       drizzle-orm:
         specifier: 0.44.7
         version: 0.44.7(@cloudflare/workers-types@4.20251118.0)(@neondatabase/serverless@1.0.2)(@opentelemetry/api@1.9.0)(@types/pg@8.15.6)(bun-types@1.3.2(@types/react@19.2.6))
@@ -977,6 +986,9 @@ importers:
       '@repo/universe':
         specifier: workspace:*
         version: link:../../packages/universe
+      '@repo/workflow-utils':
+        specifier: workspace:*
+        version: link:../../packages/workflow-utils
       drizzle-orm:
         specifier: 0.44.7
         version: 0.44.7(@cloudflare/workers-types@4.20251118.0)(@neondatabase/serverless@1.0.2)(@opentelemetry/api@1.9.0)(@types/pg@8.15.6)(bun-types@1.3.2(@types/react@19.2.6))
@@ -1394,6 +1406,9 @@ importers:
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
+      '@repo/workflow-utils':
+        specifier: workspace:*
+        version: link:../../packages/workflow-utils
       drizzle-orm:
         specifier: 0.44.7
         version: 0.44.7(@cloudflare/workers-types@4.20251118.0)(@neondatabase/serverless@1.0.2)(@opentelemetry/api@1.9.0)(@types/pg@8.15.6)(bun-types@1.3.2(@types/react@19.2.6))

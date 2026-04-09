@@ -28,6 +28,7 @@
 		"@repo/esi": "workspace:*",
 		"@repo/fulcrum": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
+		"@repo/workflow-utils": "workspace:*",
 		"drizzle-orm": "0.44.7",
 		"hono": "4.10.6",
 		"preact": "10.27.2",

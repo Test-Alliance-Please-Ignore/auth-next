@@ -85,6 +85,50 @@ export class EsiTypeResolverDO extends DurableObject<Env> implements EsiTypeReso
 	}
 
 	/**
+	 * Fetch names from ESI /universe/names/ for a batch of IDs.
+	 * On 404 (caused by any unresolvable ID in the batch), bisects the batch
+	 * and retries each half so one bad ID doesn't poison the entire batch.
+	 */
+	private async fetchUniverseNamesBatch(
+		ids: number[]
+	): Promise<Array<{ id: number; name: string; category: string }>> {
+		if (ids.length === 0) return []
+
+		const response = await fetch('https://esi.evetech.net/latest/universe/names/', {
+			method: 'POST',
+			headers: {
+				'X-Compatibility-Date': '2025-09-30',
+				'Content-Type': 'application/json',
+			},
+			body: JSON.stringify(ids),
+		})
+
+		if (response.ok) {
+			return response.json<Array<{ id: number; name: string; category: string }>>()
+		}
+
+		// Single ID failed — it's unresolvable, skip it
+		if (ids.length === 1) {
+			logger
+				.withTags({ id: ids[0], status: response.status })
+				.debug('Skipping unresolvable ID')
+			return []
+		}
+
+		// Batch failed — bisect and retry each half
+		logger
+			.withTags({ status: response.status, batchSize: ids.length })
+			.warn('ESI batch failed, bisecting to isolate bad IDs')
+
+		const mid = Math.floor(ids.length / 2)
+		const [left, right] = await Promise.all([
+			this.fetchUniverseNamesBatch(ids.slice(0, mid)),
+			this.fetchUniverseNamesBatch(ids.slice(mid)),
+		])
+		return [...left, ...right]
+	}
+
+	/**
 	 * Resolves EVE IDs to names via the `/universe/names/` bulk endpoint.
 	 * Supported ID's for resolving are: Characters, Corporations, Alliances, Stations,
 	 * Solar Systems, Constellations, Regions, Types, Factions
@@ -119,26 +163,7 @@ export class EsiTypeResolverDO extends DurableObject<Env> implements EsiTypeReso
 				.info('Resolving IDs from ESI in batches')
 
 			const batchResults = await Promise.all(
-				batches.map(async (batch) => {
-					const response = await fetch('https://esi.evetech.net/latest/universe/names/', {
-						method: 'POST',
-						headers: {
-							'X-Compatibility-Date': '2025-09-30',
-							'Content-Type': 'application/json',
-						},
-						body: JSON.stringify(batch),
-					})
-
-					if (!response.ok) {
-						const errorText = await response.text()
-						logger
-							.withTags({ status: response.status, errorText, batchSize: batch.length })
-							.error('ESI ID resolution batch failed')
-						return []
-					}
-
-					return response.json<Array<{ id: number; name: string; category: string }>>()
-				})
+				batches.map((batch) => this.fetchUniverseNamesBatch(batch))
 			)
 
 			const resolved: Record<string, string> = {}

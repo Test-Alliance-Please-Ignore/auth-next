@@ -4,6 +4,7 @@
  */
 
 import { logger } from '@repo/hono-helpers'
+import { DEFAULT_RETENTION_DAYS, RETENTION_POLICIES } from '@repo/fulcrum'
 import { createDb } from './db'
 import * as queries from './db/queries'
 import { sendReportFailedDM } from './lib/discord-webhook'
@@ -19,6 +20,8 @@ export interface CharacterReportQueueMessage {
 	characterId: string
 	requestorUserId: string
 	requestorCorporationId: string
+	requestSource: string
+	applicationId?: string
 	expiresAt?: string // ISO date string
 }
 
@@ -36,7 +39,7 @@ export async function handleCharacterReportsQueue(
 
 	for (const message of batch.messages) {
 		try {
-			const { reportId, characterId, requestorUserId, requestorCorporationId, expiresAt } =
+			const { reportId, characterId, requestorUserId, requestorCorporationId, requestSource, applicationId, expiresAt } =
 				message.body
 
 			queueLogger.info('Processing report request', {
@@ -45,12 +48,18 @@ export async function handleCharacterReportsQueue(
 				requestorCorporationId,
 			})
 
+			// Compute retention from server-side policy
+			const retentionDays = RETENTION_POLICIES[requestSource as keyof typeof RETENTION_POLICIES] ?? DEFAULT_RETENTION_DAYS
+
 			// Create database record
 			await queries.createCharacterReport(db, {
 				id: reportId,
 				characterId,
 				requestorUserId,
 				requestorCorporationId,
+				requestSource,
+				applicationId,
+				retentionDays,
 				expiresAt: expiresAt ? new Date(expiresAt) : undefined,
 			})
 

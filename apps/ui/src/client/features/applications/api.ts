@@ -81,6 +81,8 @@ export interface ApplicationMessage {
 	id: string
 	applicationId: string
 	senderId: string
+	senderCharacterId: string | null
+	senderCharacterName: string | null
 	recipientId: string
 	message: string
 	createdAt: string
@@ -90,7 +92,7 @@ export interface ApplicationMessage {
  * Request body for sending a message
  */
 export interface SendMessageRequest {
-	recipientId: string
+	recipientId?: string
 	message: string
 }
 
@@ -168,6 +170,7 @@ export interface HRNote {
 export interface ApplicationsParams {
 	corporationId?: string
 	userId?: string
+	characterId?: string
 	status?: ApplicationStatus
 	limit?: number
 	offset?: number
@@ -243,6 +246,43 @@ export interface UpdateHRNoteRequest {
 	metadata?: Record<string, unknown>
 }
 
+/**
+ * Lightweight application info for the recommendations discovery page
+ */
+export interface RecommendableApplication {
+	id: string
+	corporationId: string
+	characterId: string
+	characterName: string
+	status: ApplicationStatus
+	createdAt: string
+	recommendationCount: number
+	userHasRecommended: boolean
+	userRecommendation: {
+		id: string
+		characterId: string
+		sentiment: RecommendationSentiment
+		recommendationText: string
+		isPublic: boolean
+	} | null
+}
+
+/**
+ * Limited application detail for corp members writing recommendations
+ */
+export interface RecommenderApplicationDetail {
+	id: string
+	corporationId: string
+	characterId: string
+	characterName: string
+	applicationText: string
+	status: ApplicationStatus
+	createdAt: string
+	recommendations: Recommendation[]
+	recommendationCount: number
+	userRecommendation: Recommendation | null
+}
+
 // ============================================================================
 // API Client Methods
 // ============================================================================
@@ -260,6 +300,7 @@ export const applicationsApi = {
 		const searchParams = new URLSearchParams()
 		if (params?.corporationId) searchParams.set('corporationId', params.corporationId)
 		if (params?.userId) searchParams.set('userId', params.userId)
+		if (params?.characterId) searchParams.set('characterId', params.characterId)
 		if (params?.status) searchParams.set('status', params.status)
 		if (params?.limit !== undefined) searchParams.set('limit', params.limit.toString())
 		if (params?.offset !== undefined) searchParams.set('offset', params.offset.toString())
@@ -363,7 +404,7 @@ export const applicationsApi = {
 		// The backend embeds activity in the application detail
 		// This is a convenience method that extracts it
 		const application = await this.getApplication(applicationId)
-		return (application as any).activity || []
+		return (application as any).activityLog || []
 	},
 
 	// ==================== Messages ====================
@@ -489,6 +530,22 @@ export const applicationsApi = {
 	async deleteTemplate(templateId: string): Promise<{ success: boolean }> {
 		return apiClient.delete(`/hr/templates/${templateId}`)
 	},
+
+	// ==================== Recommendations Discovery (Corp Members) ====================
+
+	/**
+	 * Get pending applications for the user's corporations (for recommending)
+	 */
+	async getPendingRecommendations(): Promise<RecommendableApplication[]> {
+		return apiClient.get('/hr/recommendations/pending')
+	},
+
+	/**
+	 * Get application detail for recommendation (limited info for corp members)
+	 */
+	async getApplicationForRecommender(applicationId: string): Promise<RecommenderApplicationDetail> {
+		return apiClient.get(`/hr/recommendations/applications/${applicationId}`)
+	},
 }
 
 // ============================================================================
@@ -533,4 +590,156 @@ export function canWithdrawApplication(application: Application): boolean {
  */
 export function canReviewApplication(application: Application): boolean {
 	return ['pending', 'under_review'].includes(application.status)
+}
+
+// ============================================================================
+// Fulcrum (Character Reports) Types & API
+// ============================================================================
+
+/**
+ * Request source for character reports
+ */
+export type ReportRequestSource = 'hr'
+
+/**
+ * Report metadata returned by the Fulcrum system
+ */
+export interface CharacterReportMetadata {
+	id: string
+	characterId: string
+	characterName?: string
+	status: string
+	requestorUserId: string
+	requestorCorporationId: string
+	requestSource: ReportRequestSource
+	applicationId?: string
+	retentionDays: number
+	workflowInstanceId?: string
+	createdAt: string
+	updatedAt: string
+	expiresAt?: string
+	viewedAt?: string
+	errorMessage?: string
+}
+
+/**
+ * A character with their associated Fulcrum reports
+ */
+export interface FulcrumCharacterData {
+	characterId: string
+	characterName: string
+	corporationId?: string | null
+	corporationName?: string | null
+	reports: CharacterReportMetadata[]
+}
+
+/**
+ * Valid section names for character reports
+ */
+export type ReportSectionName =
+	| 'public-info'
+	| 'assets'
+	| 'fitted-ships'
+	| 'wallet-transactions'
+	| 'wallet-journal'
+	| 'mails'
+	| 'contacts'
+	| 'corp-history'
+	| 'skills'
+	| 'contracts'
+	| 'notifications'
+	| 'clones'
+	| 'alerts'
+
+/**
+ * Storage metadata for a single report section.
+ * chunks === 0 means flat file; chunks > 0 means chunked files.
+ */
+export interface ReportSectionMeta {
+	chunks: number
+	totalCount: number
+	truncated?: boolean
+}
+
+/**
+ * Report manifest listing available sections with their storage metadata.
+ * Only successfully persisted sections appear as keys.
+ */
+export interface ReportManifest {
+	reportId: string
+	characterId: string
+	sections: Partial<Record<ReportSectionName, ReportSectionMeta>>
+	createdAt: string
+}
+
+/**
+ * Fulcrum API methods (character-scoped)
+ */
+export const fulcrumApi = {
+	/**
+	 * Get all linked characters for a user with their Fulcrum reports
+	 */
+	async getUserCharactersWithReports(
+		userId: string,
+		corporationId: string,
+	): Promise<FulcrumCharacterData[]> {
+		return apiClient.get(
+			`/fulcrum/users/${userId}/characters?corporationId=${encodeURIComponent(corporationId)}`,
+		)
+	},
+
+	/**
+	 * List reports for a character
+	 */
+	async getCharacterReports(
+		characterId: string,
+		corporationId: string,
+	): Promise<CharacterReportMetadata[]> {
+		return apiClient.get(
+			`/fulcrum/characters/${characterId}/reports?corporationId=${encodeURIComponent(corporationId)}`,
+		)
+	},
+
+	/**
+	 * Request a new Fulcrum report for a character
+	 */
+	async requestReport(
+		characterId: string,
+		corporationId: string,
+		requestSource: ReportRequestSource,
+		applicationId?: string,
+	): Promise<{ reportId: string; status: string }> {
+		return apiClient.post(`/fulcrum/characters/${characterId}/reports`, {
+			corporationId,
+			requestSource,
+			applicationId,
+		})
+	},
+
+	/**
+	 * Get report section manifest (list of available sections)
+	 */
+	async getReportSections(reportId: string): Promise<ReportManifest> {
+		return apiClient.get(`/fulcrum/reports/${reportId}/sections`)
+	},
+
+	/**
+	 * Get processed data for a specific report section
+	 */
+	async getReportSectionData<T = unknown>(
+		reportId: string,
+		section: ReportSectionName,
+	): Promise<T> {
+		return apiClient.get(`/fulcrum/reports/${reportId}/sections/${section}`)
+	},
+
+	/**
+	 * Fetch a single mail's content on-demand from ESI
+	 */
+	async fetchMailContent(
+		reportId: string,
+		mailId: string,
+	): Promise<{ body: string }> {
+		return apiClient.get(`/fulcrum/reports/${reportId}/mails/${mailId}/content`)
+	},
 }

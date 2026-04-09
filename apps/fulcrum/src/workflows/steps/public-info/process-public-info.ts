@@ -26,6 +26,7 @@ export async function processPublicInfo(
 	bucketName: string,
 	fetchResult: StepResult,
 	workflowInstanceId: string,
+	characterId: string,
 ): Promise<StepResult> {
 	try {
 		// Check if fetch was successful
@@ -58,7 +59,7 @@ export async function processPublicInfo(
 		}
 
 		// Enrich data by resolving IDs to names
-		const enrichedData = await enrichPublicInfo(env, publicInfo)
+		const enrichedData = await enrichPublicInfo(env, publicInfo, characterId)
 
 		// Store in R2
 		return await storeOrReturn(

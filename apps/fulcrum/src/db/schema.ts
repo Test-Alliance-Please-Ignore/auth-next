@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 
 /**
  * Database schema for the fulcrum worker
@@ -22,6 +22,11 @@ export const characterReports = pgTable('character_reports', {
 	// Request information
 	requestorUserId: text('requestor_user_id').notNull(),
 	requestorCorporationId: text('requestor_corporation_id').notNull(),
+
+	// Request context
+	requestSource: text('request_source').notNull().default('hr'),
+	applicationId: text('application_id'),
+	retentionDays: integer('retention_days').notNull().default(7),
 
 	// Workflow tracking
 	workflowInstanceId: text('workflow_instance_id'),

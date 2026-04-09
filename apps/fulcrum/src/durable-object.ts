@@ -1,8 +1,18 @@
 import { DurableObject } from 'cloudflare:workers'
 
 import { logger } from '@repo/hono-helpers'
-import type { CharacterReportMetadata, Fulcrum, ListReportsFilters } from '@repo/fulcrum'
+import { getEsiInstanceForCharacter } from '@repo/esi'
+import type {
+	CharacterReportMetadata,
+	CreateReportOptions,
+	Fulcrum,
+	ListReportsFilters,
+	ReportManifest,
+	ReportSectionName,
+} from '@repo/fulcrum'
+import { DEFAULT_RETENTION_DAYS, RETENTION_POLICIES } from '@repo/fulcrum'
 import { createDb } from './db'
+import { stripHtmlToPlainText } from './workflows/processors/helpers/html-stripper'
 import type { DbClient } from './db/queries'
 import * as queries from './db/queries'
 import { sendReportStartedDM } from './lib/discord-webhook'
@@ -44,19 +54,17 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 	 * RPC: Create a new character report
 	 * Creates database record, queues workflow, returns report ID
 	 */
-	async createCharacterReport(
-		characterId: string,
-		requestorUserId: string,
-		requestorCorporationId: string,
-	): Promise<string> {
+	async createCharacterReport(options: CreateReportOptions): Promise<string> {
+		const { characterId, requestorUserId, requestorCorporationId, requestSource, applicationId } = options
 		const db = this.getDb()
 
 		// Generate unique report ID
 		const reportId = crypto.randomUUID()
 
-		// Set expiration to 7 days from now
+		// Compute retention from server-side policy
+		const retentionDays = RETENTION_POLICIES[requestSource] ?? DEFAULT_RETENTION_DAYS
 		const expiresAt = new Date()
-		expiresAt.setDate(expiresAt.getDate() + 7)
+		expiresAt.setDate(expiresAt.getDate() + retentionDays)
 
 		// Create database record
 		await queries.createCharacterReport(db, {
@@ -64,6 +72,9 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 			characterId,
 			requestorUserId,
 			requestorCorporationId,
+			requestSource,
+			applicationId,
+			retentionDays,
 			expiresAt,
 		})
 
@@ -94,10 +105,24 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 			reportId,
 			characterId,
 		}
-		await this.env.CHARACTER_REPORT_WORKFLOW.create({
-			id: `${characterId}-${reportId}-${Date.now()}`,
-			params: workflowParams,
-		})
+		try {
+			await this.env.CHARACTER_REPORT_WORKFLOW.create({
+				id: `${characterId}-${reportId}-${Date.now()}`,
+				params: workflowParams,
+			})
+		} catch (error) {
+			// Mark report as failed so it doesn't stay stuck as "pending"
+			logger.error('[Fulcrum DO] Failed to create workflow', {
+				reportId,
+				characterId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+			const db = this.getDb()
+			await queries.updateReportStatus(db, reportId, 'failed', {
+				errorMessage: `Failed to start workflow: ${error instanceof Error ? error.message : String(error)}`,
+			})
+			throw error
+		}
 
 		return reportId
 	}
@@ -121,6 +146,9 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 			status: report.status,
 			requestorUserId: report.requestorUserId,
 			requestorCorporationId: report.requestorCorporationId,
+			requestSource: (report.requestSource ?? 'hr') as CharacterReportMetadata['requestSource'],
+			applicationId: report.applicationId ?? undefined,
+			retentionDays: report.retentionDays ?? 7,
 			workflowInstanceId: report.workflowInstanceId ?? undefined,
 			createdAt: report.createdAt.toISOString(),
 			updatedAt: report.updatedAt.toISOString(),
@@ -187,6 +215,9 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 			status: report.status,
 			requestorUserId: report.requestorUserId,
 			requestorCorporationId: report.requestorCorporationId,
+			requestSource: (report.requestSource ?? 'hr') as CharacterReportMetadata['requestSource'],
+			applicationId: report.applicationId ?? undefined,
+			retentionDays: report.retentionDays ?? 7,
 			workflowInstanceId: report.workflowInstanceId ?? undefined,
 			createdAt: report.createdAt.toISOString(),
 			updatedAt: report.updatedAt.toISOString(),
@@ -253,6 +284,146 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 
 		// Check if report exists and is cancelled
 		return report?.status === 'cancelled'
+	}
+
+	/**
+	 * RPC: Get the manifest of available sections for a report
+	 * Returns the list of sections that were successfully generated
+	 */
+	async getReportSections(reportId: string): Promise<ReportManifest | null> {
+		const db = this.getDb()
+		const report = await queries.getReport(db, reportId)
+
+		if (!report || report.status !== 'completed') {
+			return null
+		}
+
+		if (report.expiresAt && new Date() > report.expiresAt) {
+			return null
+		}
+
+		if (!report.r2Key) {
+			return null
+		}
+
+		// Fetch manifest from R2
+		const manifestKey = `${report.r2Key}/manifest.json`
+		const r2Object = await this.env.CHARACTER_REPORTS.get(manifestKey)
+		if (!r2Object) {
+			return null
+		}
+
+		return await r2Object.json<ReportManifest>()
+	}
+
+	/**
+	 * RPC: Get processed data for a specific report section.
+	 * Reads the manifest to determine whether the section is stored as a flat
+	 * file or as chunked files, then fetches accordingly.
+	 *
+	 * - page omitted: returns full data (all chunks concatenated for chunked sections)
+	 * - page provided: returns { data, page, totalChunks } for that chunk only
+	 */
+	async getReportSectionData(
+		reportId: string,
+		section: ReportSectionName,
+		page?: number,
+	): Promise<unknown | null> {
+		const db = this.getDb()
+		const report = await queries.getReport(db, reportId)
+
+		if (!report || report.status !== 'completed') {
+			return null
+		}
+
+		if (report.expiresAt && new Date() > report.expiresAt) {
+			return null
+		}
+
+		if (!report.r2Key) {
+			return null
+		}
+
+		// Read manifest to determine storage format
+		const manifestKey = `${report.r2Key}/manifest.json`
+		const manifestObj = await this.env.CHARACTER_REPORTS.get(manifestKey)
+		const manifest = manifestObj ? await manifestObj.json<{ sections: Record<string, { chunks: number }> }>() : null
+		const meta = manifest?.sections?.[section]
+
+		// Flat file (no manifest entry, chunks === 0, or no manifest at all)
+		if (!meta || meta.chunks === 0) {
+			const sectionKey = `${report.r2Key}/sections/${section}.json`
+			const r2Object = await this.env.CHARACTER_REPORTS.get(sectionKey)
+			return r2Object ? r2Object.json() : null
+		}
+
+		// Chunked: specific page requested
+		if (page !== undefined) {
+			const chunkKey = `${report.r2Key}/sections/${section}/chunk-${page}.json`
+			const r2Object = await this.env.CHARACTER_REPORTS.get(chunkKey)
+			if (!r2Object) return null
+			return {
+				data: await r2Object.json(),
+				page,
+				totalChunks: meta.chunks,
+			}
+		}
+
+		// Chunked: fetch all chunks in parallel and concatenate
+		const chunkObjects = await Promise.all(
+			Array.from({ length: meta.chunks }, (_, i) =>
+				this.env.CHARACTER_REPORTS.get(`${report.r2Key}/sections/${section}/chunk-${i}.json`),
+			),
+		)
+
+		const arrays = await Promise.all(
+			chunkObjects.map((obj) => (obj ? obj.json<unknown[]>() : Promise.resolve([] as unknown[]))),
+		)
+
+		return arrays.flat()
+	}
+
+	/**
+	 * RPC: Fetch a single mail's content on-demand from ESI.
+	 * Updates the mails section in R2 so future reads include the body.
+	 * Returns the plain-text body for immediate display.
+	 */
+	async fetchMailContent(reportId: string, mailId: string): Promise<string | null> {
+		const db = this.getDb()
+		const report = await queries.getReport(db, reportId)
+
+		if (!report || report.status !== 'completed') {
+			return null
+		}
+
+		if (report.expiresAt && new Date() > report.expiresAt) {
+			return null
+		}
+
+		if (!report.r2Key) {
+			return null
+		}
+
+		// Fetch mail content from ESI
+		const esiStub = getEsiInstanceForCharacter(this.env.ESI, report.characterId)
+		let body: string
+		let bodyPlainText: string | undefined
+		try {
+			const content = await esiStub.fetchMailContent(report.characterId, mailId)
+			if (!content?.body) return null
+			body = content.body
+			bodyPlainText = stripHtmlToPlainText(body)
+		} catch (error) {
+			this.logger.error('Failed to fetch mail content from ESI', {
+				reportId,
+				mailId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+			return null
+		}
+
+		// Return the content without persisting — R2 sections are immutable after generation
+		return bodyPlainText ?? body
 	}
 
 	/**

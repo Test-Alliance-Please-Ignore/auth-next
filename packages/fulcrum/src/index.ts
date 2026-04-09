@@ -8,6 +8,36 @@
 import type { DurableObject } from 'cloudflare:workers'
 
 /**
+ * Request sources for character reports.
+ * Determines retention policy and audit context.
+ */
+export type ReportRequestSource = 'hr'
+// Future sources: 'counter_intel' | 'scheduled' | 'manual'
+
+/**
+ * Server-side retention policies (days) per request source.
+ * Callers never set retention directly — it's derived from requestSource.
+ */
+export const RETENTION_POLICIES: Record<ReportRequestSource, number> = {
+	hr: 7,
+	// counter_intel: 365,
+	// scheduled: 365,
+} as const
+
+export const DEFAULT_RETENTION_DAYS = 7
+
+/**
+ * Options for creating a character report
+ */
+export interface CreateReportOptions {
+	characterId: string
+	requestorUserId: string
+	requestorCorporationId: string
+	requestSource: ReportRequestSource
+	applicationId?: string
+}
+
+/**
  * Character report metadata
  */
 export interface CharacterReportMetadata {
@@ -17,6 +47,9 @@ export interface CharacterReportMetadata {
 	status: string
 	requestorUserId: string
 	requestorCorporationId: string
+	requestSource: ReportRequestSource
+	applicationId?: string
+	retentionDays: number
 	workflowInstanceId?: string
 	createdAt: string
 	updatedAt: string
@@ -32,6 +65,46 @@ export interface ListReportsFilters {
 	corporationId?: string
 	characterId?: string
 	status?: string
+}
+
+/**
+ * Valid section names for character reports
+ */
+export type ReportSectionName =
+	| 'public-info'
+	| 'assets'
+	| 'fitted-ships'
+	| 'wallet-transactions'
+	| 'wallet-journal'
+	| 'mails'
+	| 'contacts'
+	| 'corp-history'
+	| 'skills'
+	| 'contracts'
+	| 'notifications'
+	| 'clones'
+	| 'alerts'
+
+/**
+ * Metadata for a single section in a report manifest.
+ * chunks === 0 means a flat file at sections/{name}.json (small or non-array sections).
+ * chunks > 0 means chunked files at sections/{name}/chunk-{i}.json.
+ */
+export interface ReportSectionMeta {
+	chunks: number
+	totalCount: number
+	truncated?: boolean // wallet-transactions only
+}
+
+/**
+ * Report manifest listing available sections with their storage metadata.
+ * Only sections that were successfully persisted appear as keys.
+ */
+export interface ReportManifest {
+	reportId: string
+	characterId: string
+	sections: Partial<Record<ReportSectionName, ReportSectionMeta>>
+	createdAt: string
 }
 
 /**
@@ -52,16 +125,10 @@ export interface ListReportsFilters {
 export interface Fulcrum extends DurableObject {
 	/**
 	 * Create a new character report
-	 * @param characterId - EVE character ID
-	 * @param requestorUserId - User requesting the report
-	 * @param requestorCorporationId - Corporation on whose behalf the report is being run
+	 * @param options - Report creation options including characterId, requestor info, and request source
 	 * @returns Report UUID
 	 */
-	createCharacterReport(
-		characterId: string,
-		requestorUserId: string,
-		requestorCorporationId: string,
-	): Promise<string>
+	createCharacterReport(options: CreateReportOptions): Promise<string>
 
 	/**
 	 * Get character report status and metadata
@@ -112,4 +179,35 @@ export interface Fulcrum extends DurableObject {
 	 * @returns true if the report status is 'cancelled', false otherwise
 	 */
 	isReportCancelled(reportId: string): Promise<boolean>
+
+	/**
+	 * Get the manifest of available sections for a report
+	 * @param reportId - Report UUID
+	 * @returns Report manifest or null if not found
+	 */
+	getReportSections(reportId: string): Promise<ReportManifest | null>
+
+	/**
+	 * Get processed data for a specific report section.
+	 * When page is omitted, all chunks are fetched and concatenated.
+	 * When page is provided, only that chunk is returned with pagination envelope.
+	 * @param reportId - Report UUID
+	 * @param section - Section name
+	 * @param page - Optional chunk index (0-based) for paginated access
+	 * @returns Section JSON data or null if not found
+	 */
+	getReportSectionData(
+		reportId: string,
+		section: ReportSectionName,
+		page?: number,
+	): Promise<unknown | null>
+
+	/**
+	 * Fetch a single mail's content on-demand from ESI and update the R2 section.
+	 * Used when the initial report only fetched content for the most recent N mails.
+	 * @param reportId - Report UUID
+	 * @param mailId - EVE mail ID
+	 * @returns The mail body text (HTML) or null if not found
+	 */
+	fetchMailContent(reportId: string, mailId: string): Promise<string | null>
 }

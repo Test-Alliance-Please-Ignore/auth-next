@@ -6,6 +6,16 @@ import { isRateLimitError, retryWithBackoff } from '../../utils/retry'
 
 import type { CharacterWalletJournalEntry, Esi, EsiTypeResolver } from '@repo/esi'
 
+/** context_id_type values that represent entity IDs resolvable by /universe/names/ */
+const RESOLVABLE_CONTEXT_TYPES = new Set([
+	'character_id',
+	'corporation_id',
+	'alliance_id',
+	'station_id',
+	'system_id',
+	'type_id',
+])
+
 export interface ProcessedWalletJournalEntry extends CharacterWalletJournalEntry {
 	refTypeLabel: string
 	amountNumber: number
@@ -57,7 +67,7 @@ export async function enrichWalletJournalEntries(
 		if (contextId) {
 			if (entry.context_id_type === 'structure_id' || isStructureId(contextId)) {
 				structureIds.add(contextId)
-			} else {
+			} else if (RESOLVABLE_CONTEXT_TYPES.has(entry.context_id_type ?? '')) {
 				idsToResolve.add(contextId)
 			}
 		}
@@ -85,9 +95,9 @@ export async function enrichWalletJournalEntries(
 				const structureInfo = await retryWithBackoff(
 					async () => await esiStub.fetchStructureInfo(characterId, structureId),
 					{
-						maxRetries: 5,
+						maxRetries: 3,
 						initialDelayMs: 1000,
-						maxDelayMs: 60000,
+						maxDelayMs: 30000,
 						backoffMultiplier: 2,
 						onRetry: (attempt, error, delayMs) => {
 							console.warn('[enrichWalletJournalEntries] Retrying structure fetch', {
