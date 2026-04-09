@@ -84,7 +84,9 @@ export const applicationRecommendations = pgTable(
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
 		/** Application this recommendation is for */
-		applicationId: uuid('application_id').notNull(),
+		applicationId: uuid('application_id')
+			.notNull()
+			.references(() => applications.id, { onDelete: 'cascade' }),
 		/** User who wrote the recommendation */
 		userId: uuid('user_id').notNull(),
 		/** Character ID used to write recommendation */
@@ -120,7 +122,9 @@ export const applicationActivityLog = pgTable(
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
 		/** Application this activity is for */
-		applicationId: uuid('application_id').notNull(),
+		applicationId: uuid('application_id')
+			.notNull()
+			.references(() => applications.id, { onDelete: 'cascade' }),
 		/** User who performed the action */
 		userId: uuid('user_id').notNull(),
 		/** Character ID used for the action */

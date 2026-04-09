@@ -12,9 +12,12 @@ import { useState } from 'react'
 import { MemberAvatar } from '@/components/member-avatar'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Container } from '@/components/ui/container'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
+
+import { AccessDeniedCard } from '../components/access-denied-card'
 
 import { AddRecommendationDialog } from '../components/add-recommendation-dialog'
 import { DeleteRecommendationDialog } from '../components/delete-recommendation-dialog'
@@ -37,24 +40,22 @@ export default function RecommendationsList() {
 
 	if (isLoading) {
 		return (
-			<div className="flex items-center justify-center min-h-[400px]">
-				<LoadingSpinner size="lg" />
-			</div>
+			<Container>
+				<div className="flex items-center justify-center min-h-[400px]">
+					<LoadingSpinner size="lg" />
+				</div>
+			</Container>
 		)
 	}
 
 	if (error) {
 		return (
-			<div className="max-w-4xl mx-auto">
-				<Card className="border-destructive">
-					<CardHeader>
-						<CardTitle className="text-destructive">Error</CardTitle>
-						<CardDescription>
-							{error instanceof Error ? error.message : 'Failed to load applications'}
-						</CardDescription>
-					</CardHeader>
-				</Card>
-			</div>
+			<Container>
+				<AccessDeniedCard
+					title="Failed to Load"
+					message={error instanceof Error ? error.message : 'Failed to load applications'}
+				/>
+			</Container>
 		)
 	}
 
@@ -79,7 +80,7 @@ export default function RecommendationsList() {
 	}
 
 	return (
-		<div className="max-w-4xl mx-auto space-y-6">
+		<Container className="space-y-6">
 			{/* Header */}
 			<div>
 				<h1 className="text-2xl font-bold">Recommendations</h1>
@@ -110,7 +111,7 @@ export default function RecommendationsList() {
 						<ApplicationRecommendCard
 							key={app.id}
 							application={app}
-							corporationName={corpNames[app.corporationId] ?? `Corporation ${app.corporationId}`}
+							corporationName={corpNames[app.corporationId] ?? app.corporationId}
 							onRecommend={() => setSelectedApp(app)}
 							onEdit={() => {
 								const rec = toRecommendation(app)
@@ -154,7 +155,7 @@ export default function RecommendationsList() {
 				}}
 				recommendation={deletingRec}
 			/>
-		</div>
+		</Container>
 	)
 }
 

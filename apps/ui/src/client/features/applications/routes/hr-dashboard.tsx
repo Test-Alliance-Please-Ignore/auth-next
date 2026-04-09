@@ -6,7 +6,7 @@
  * the member profile page. Requires HR Viewer role minimum.
  */
 
-import { AlertCircle, ArrowLeft, FileText } from 'lucide-react'
+import { ArrowLeft, FileText } from 'lucide-react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 
 import {
@@ -18,7 +18,8 @@ import {
 	BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
+import { Container } from '@/components/ui/container'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { cn } from '@/lib/utils'
@@ -31,6 +32,7 @@ import {
 	useCorporationMembers,
 	useCorporationMemberStats,
 } from '../../my-corporations/hooks'
+import { AccessDeniedCard } from '../components/access-denied-card'
 import { HrMembersTable } from '../components/hr-members-table'
 import { useApplications } from '../hooks'
 
@@ -110,74 +112,43 @@ export default function HrDashboard() {
 	// Loading
 	if (authLoading || permissionLoading || membersLoading || corporationAccessLoading) {
 		return (
-			<div className="container mx-auto max-w-7xl px-4 py-8">
+			<Container size="wide">
 				<div className="flex items-center justify-center min-h-[400px]">
 					<LoadingSpinner size="lg" />
 				</div>
-			</div>
+			</Container>
 		)
 	}
 
 	// Access denied
 	if (!permission?.hasPermission && !user?.is_admin) {
 		return (
-			<div className="container mx-auto max-w-6xl px-4 py-8">
-				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
-					<CardHeader className="text-center">
-						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
-						<CardTitle className="text-2xl text-red-900 dark:text-red-100">
-							Access Denied
-						</CardTitle>
-						<CardDescription className="mt-2 text-red-700 dark:text-red-300">
-							You don't have HR permissions for this corporation. Contact an HR Admin
-							to request access.
-						</CardDescription>
-					</CardHeader>
-					<CardContent className="text-center">
-						<Button
-							variant="ghost"
-							onClick={() => navigate(rootCorporationsPath)}
-						>
-							<ArrowLeft className="mr-2 h-4 w-4" />
-							Back to {rootCorporationsLabel}
-						</Button>
-					</CardContent>
-				</Card>
-			</div>
+			<Container>
+				<AccessDeniedCard
+					message="You don't have HR permissions for this corporation. Contact an HR Admin to request access."
+					backLabel={`Back to ${rootCorporationsLabel}`}
+					onBack={() => navigate(rootCorporationsPath)}
+				/>
+			</Container>
 		)
 	}
 
 	// Error
 	if (membersError) {
 		return (
-			<div className="container mx-auto max-w-6xl px-4 py-8">
-				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
-					<CardHeader className="text-center">
-						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
-						<CardTitle className="text-2xl text-red-900 dark:text-red-100">
-							Failed to Load Members
-						</CardTitle>
-						<CardDescription className="mt-2 text-red-700 dark:text-red-300">
-							{membersError instanceof Error
-								? membersError.message
-								: 'An unexpected error occurred'}
-						</CardDescription>
-					</CardHeader>
-					<CardContent className="text-center">
-						<Button
-							variant="ghost"
-							onClick={() => window.location.reload()}
-						>
-							Try Again
-						</Button>
-					</CardContent>
-				</Card>
-			</div>
+			<Container>
+				<AccessDeniedCard
+					title="Failed to Load Members"
+					message={membersError instanceof Error ? membersError.message : 'An unexpected error occurred'}
+					backLabel="Try Again"
+					onBack={() => window.location.reload()}
+				/>
+			</Container>
 		)
 	}
 
 	return (
-		<div className="container mx-auto max-w-7xl px-4 py-8">
+		<Container size="wide">
 			{/* Breadcrumbs */}
 			<Breadcrumb className="mb-6">
 				<BreadcrumbList>
@@ -284,6 +255,6 @@ export default function HrDashboard() {
 					)}
 				</p>
 			</div>
-		</div>
+		</Container>
 	)
 }

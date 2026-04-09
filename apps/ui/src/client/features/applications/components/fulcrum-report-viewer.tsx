@@ -13,6 +13,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 
 import { useReportSectionData, useReportSections } from '../hooks'
+import { ALL_DATA_SECTIONS, SECTION_LABELS, SECTION_TABS } from '../constants'
+import type { SectionTab } from '../constants'
 
 import {
 	AssetsSection,
@@ -34,58 +36,6 @@ import {
 import { AlertsBanner } from './report-sections/alerts-banner'
 
 import type { ReportSectionName } from '../api'
-
-// ============================================================================
-// Section tab configuration
-// ============================================================================
-
-interface SectionTab {
-	name: ReportSectionName
-	label: string
-}
-
-const SECTION_TABS: SectionTab[] = [
-	{ name: 'public-info', label: 'Overview' },
-	{ name: 'skills', label: 'Skills' },
-	{ name: 'assets', label: 'Assets' },
-	{ name: 'fitted-ships', label: 'Ships' },
-	{ name: 'contracts', label: 'Contracts' },
-	{ name: 'wallet-transactions', label: 'Transactions' },
-	{ name: 'wallet-journal', label: 'Journal' },
-	{ name: 'mails', label: 'Communications' },
-	{ name: 'contacts', label: 'Contacts' },
-]
-
-// All possible data sections a complete report would contain
-const ALL_DATA_SECTIONS: ReportSectionName[] = [
-	'public-info',
-	'skills',
-	'assets',
-	'fitted-ships',
-	'contracts',
-	'wallet-transactions',
-	'wallet-journal',
-	'mails',
-	'contacts',
-	'notifications',
-	'corp-history',
-	'clones',
-]
-
-const SECTION_LABELS: Record<string, string> = {
-	'public-info': 'Public Info',
-	skills: 'Skills',
-	assets: 'Assets',
-	'fitted-ships': 'Ships',
-	contracts: 'Contracts',
-	'wallet-transactions': 'Transactions',
-	'wallet-journal': 'Journal',
-	mails: 'Mails',
-	contacts: 'Contacts',
-	notifications: 'Notifications',
-	'corp-history': 'Corp History',
-	clones: 'Clones',
-}
 
 // ============================================================================
 // Overview Content (combines public-info, corp-history, and clones)

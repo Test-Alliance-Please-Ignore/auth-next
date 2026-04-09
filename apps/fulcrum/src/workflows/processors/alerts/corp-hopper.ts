@@ -10,6 +10,8 @@
  * Severity: low
  */
 
+import { ALERT_THRESHOLDS } from '../../../config/alert-thresholds'
+
 import type { ProcessedCorpHistoryEntry } from '../helpers/corp-history'
 import type { ReportAlert } from './types'
 
@@ -18,9 +20,6 @@ function isNpcCorp(corporationId: string): boolean {
 	const id = Number(corporationId)
 	return id >= 1_000_000 && id <= 1_999_999
 }
-
-const MAX_CORPS_TO_CHECK = 5
-const MIN_PLAYER_CORPS = 2
 
 interface CorpStay {
 	corporationId: string
@@ -71,17 +70,17 @@ export function checkCorpHopper(
 	}
 
 	// Need at least 2 player corps to evaluate
-	if (playerCorpStays.length < MIN_PLAYER_CORPS) return null
+	if (playerCorpStays.length < ALERT_THRESHOLDS.CORP_HOPPER_MIN_PLAYER_CORPS) return null
 
-	// Take up to the last 5 most recent player corps
-	const recentCorps = playerCorpStays.slice(0, MAX_CORPS_TO_CHECK)
+	// Take up to the last N most recent player corps
+	const recentCorps = playerCorpStays.slice(0, ALERT_THRESHOLDS.CORP_HOPPER_MAX_CORPS_TO_CHECK)
 
 	// Only check past corps (exclude current corp — they haven't left yet)
 	const pastCorps = recentCorps.filter((s) => !s.isCurrent)
 	if (pastCorps.length === 0) return null
 
-	// Check if ANY past corp had a stay under 30 days
-	const shortStays = pastCorps.filter((s) => s.durationDays < 30)
+	// Check if ANY past corp had a stay under the threshold
+	const shortStays = pastCorps.filter((s) => s.durationDays < ALERT_THRESHOLDS.CORP_HOPPER_WINDOW_DAYS)
 	if (shortStays.length === 0) return null
 
 	const avgDays = Math.round(
@@ -93,7 +92,7 @@ export function checkCorpHopper(
 		type: 'corp-hopper',
 		severity: 'low',
 		title: 'Corp Hopper',
-		description: `${shortStays.length} of ${pastCorps.length} recent player corps had stays under 30 days (avg ${avgDays} days)`,
+		description: `${shortStays.length} of ${pastCorps.length} recent player corps had stays under ${ALERT_THRESHOLDS.CORP_HOPPER_WINDOW_DAYS} days (avg ${avgDays} days)`,
 		details: {
 			shortStays: shortStays.map((s) => ({
 				corporationName: s.corporationName,

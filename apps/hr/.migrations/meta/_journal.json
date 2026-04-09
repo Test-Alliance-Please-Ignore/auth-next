@@ -1,62 +1,69 @@
 {
-  "version": "7",
-  "dialect": "postgresql",
-  "entries": [
-    {
-      "idx": 0,
-      "version": "7",
-      "when": 1761925593228,
-      "tag": "0000_petite_wraith",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1761939901925,
-      "tag": "0001_free_lockheed",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1762133236202,
-      "tag": "0002_slow_shooting_star",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1763752172936,
-      "tag": "0003_uneven_hellfire_club",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1763752496230,
-      "tag": "0004_milky_wong",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1775073276509,
-      "tag": "0005_pretty_the_captain",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "7",
-      "when": 1775074522355,
-      "tag": "0006_long_randall_flagg",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "7",
-      "when": 1775077683073,
-      "tag": "0007_public_sunset_bain",
-      "breakpoints": true
-    }
-  ]
+	"version": "7",
+	"dialect": "postgresql",
+	"entries": [
+		{
+			"idx": 0,
+			"version": "7",
+			"when": 1761925593228,
+			"tag": "0000_petite_wraith",
+			"breakpoints": true
+		},
+		{
+			"idx": 1,
+			"version": "7",
+			"when": 1761939901925,
+			"tag": "0001_free_lockheed",
+			"breakpoints": true
+		},
+		{
+			"idx": 2,
+			"version": "7",
+			"when": 1762133236202,
+			"tag": "0002_slow_shooting_star",
+			"breakpoints": true
+		},
+		{
+			"idx": 3,
+			"version": "7",
+			"when": 1763752172936,
+			"tag": "0003_uneven_hellfire_club",
+			"breakpoints": true
+		},
+		{
+			"idx": 4,
+			"version": "7",
+			"when": 1763752496230,
+			"tag": "0004_milky_wong",
+			"breakpoints": true
+		},
+		{
+			"idx": 5,
+			"version": "7",
+			"when": 1775732915220,
+			"tag": "0005_pretty_the_captain",
+			"breakpoints": true
+		},
+		{
+			"idx": 6,
+			"version": "7",
+			"when": 1775732915221,
+			"tag": "0006_long_randall_flagg",
+			"breakpoints": true
+		},
+		{
+			"idx": 7,
+			"version": "7",
+			"when": 1775732915222,
+			"tag": "0007_public_sunset_bain",
+			"breakpoints": true
+		},
+		{
+			"idx": 8,
+			"version": "7",
+			"when": 1775732915223,
+			"tag": "0008_lazy_malice",
+			"breakpoints": true
+		}
+	]
 }

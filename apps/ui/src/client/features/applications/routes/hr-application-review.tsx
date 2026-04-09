@@ -7,7 +7,7 @@
  */
 
 import { formatDistanceToNow } from 'date-fns'
-import { AlertCircle, ArrowLeft, Briefcase, Lock } from 'lucide-react'
+import { ArrowLeft, Briefcase, Lock } from 'lucide-react'
 import { useState } from 'react'
 import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
@@ -21,6 +21,7 @@ import {
 	BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Container } from '@/components/ui/container'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -30,6 +31,7 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 import { useHrPermissionCheck } from '../../hr/hooks'
 import { useCanAccessCorporation } from '../../my-corporations/hooks'
 import { ACTIVE_APPLICATION_STATUSES } from '../constants'
+import { AccessDeniedCard } from '../components/access-denied-card'
 import { AddHRNoteDialog } from '../components/add-hr-note-dialog'
 import { ApplicationActionPanel } from '../components/application-action-panel'
 import { ApplicationHistoryPanel } from '../components/application-history-panel'
@@ -140,11 +142,11 @@ export default function HrApplicationReview() {
 	// Loading state
 	if (authLoading || permissionLoading || applicationLoading || corporationAccessLoading) {
 		return (
-			<div className="container mx-auto max-w-5xl px-4 py-8">
+			<Container>
 				<div className="flex items-center justify-center min-h-[400px]">
 					<LoadingSpinner size="lg" />
 				</div>
-			</div>
+			</Container>
 		)
 	}
 
@@ -152,58 +154,34 @@ export default function HrApplicationReview() {
 	// Check permission - site admins always have access
 	if (!permission?.hasPermission && !user?.is_admin) {
 		return (
-			<div className="container mx-auto max-w-6xl px-4 py-8">
-				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
-					<CardHeader className="text-center">
-						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
-						<CardTitle className="text-2xl text-red-900 dark:text-red-100">Access Denied</CardTitle>
-						<CardDescription className="mt-2 text-red-700 dark:text-red-300">
-							You don't have HR permissions for this corporation. Contact an HR Admin to request
-							access.
-						</CardDescription>
-					</CardHeader>
-					<CardContent className="text-center">
-						<Button variant="ghost" onClick={() => navigate(rootCorporationsPath)}>
-							<ArrowLeft className="mr-2 h-4 w-4" />
-							Back to {rootCorporationsLabel}
-						</Button>
-					</CardContent>
-				</Card>
-			</div>
+			<Container>
+				<AccessDeniedCard
+					message="You don't have HR permissions for this corporation. Contact an HR Admin to request access."
+					backLabel={`Back to ${rootCorporationsLabel}`}
+					onBack={() => navigate(rootCorporationsPath)}
+				/>
+			</Container>
 		)
 	}
 
 	// Error state
 	if (applicationError) {
 		return (
-			<div className="container mx-auto max-w-6xl px-4 py-8">
-				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
-					<CardHeader className="text-center">
-						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
-						<CardTitle className="text-2xl text-red-900 dark:text-red-100">
-							Failed to Load Application
-						</CardTitle>
-						<CardDescription className="mt-2 text-red-700 dark:text-red-300">
-							{applicationError instanceof Error
-								? applicationError.message
-								: 'An unexpected error occurred'}
-						</CardDescription>
-					</CardHeader>
-					<CardContent className="text-center">
-						<Button variant="ghost" onClick={handleBackClick}>
-							<ArrowLeft className="mr-2 h-4 w-4" />
-							Back to Applications
-						</Button>
-					</CardContent>
-				</Card>
-			</div>
+			<Container>
+				<AccessDeniedCard
+					title="Failed to Load Application"
+					message={applicationError instanceof Error ? applicationError.message : 'An unexpected error occurred'}
+					backLabel="Back to Applications"
+					onBack={handleBackClick}
+				/>
+			</Container>
 		)
 	}
 
 	// Application not found
 	if (!application) {
 		return (
-			<div className="container mx-auto max-w-6xl px-4 py-8">
+			<Container>
 				<Card className="max-w-2xl mx-auto">
 					<CardHeader className="text-center">
 						<Briefcase className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
@@ -212,43 +190,31 @@ export default function HrApplicationReview() {
 					</CardHeader>
 					<CardContent className="text-center">
 						<Button variant="ghost" onClick={handleBackClick}>
-							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to Applications
 						</Button>
 					</CardContent>
 				</Card>
-			</div>
+			</Container>
 		)
 	}
 
 	// Verify application belongs to this corporation
 	if (application.corporationId !== corporationId) {
 		return (
-			<div className="container mx-auto max-w-6xl px-4 py-8">
-				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
-					<CardHeader className="text-center">
-						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
-						<CardTitle className="text-2xl text-red-900 dark:text-red-100">
-							Invalid Application
-						</CardTitle>
-						<CardDescription className="mt-2 text-red-700 dark:text-red-300">
-							This application does not belong to the specified corporation.
-						</CardDescription>
-					</CardHeader>
-					<CardContent className="text-center">
-						<Button variant="ghost" onClick={handleBackClick}>
-							<ArrowLeft className="mr-2 h-4 w-4" />
-							Back to Applications
-						</Button>
-					</CardContent>
-				</Card>
-			</div>
+			<Container>
+				<AccessDeniedCard
+					title="Invalid Application"
+					message="This application does not belong to the specified corporation."
+					backLabel="Back to Applications"
+					onBack={handleBackClick}
+				/>
+			</Container>
 		)
 	}
 
 	// Main content
 	return (
-		<div className="container mx-auto max-w-5xl px-4 py-8">
+		<Container>
 			{/* Breadcrumb Navigation */}
 			<div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 				<Breadcrumb>
@@ -567,6 +533,6 @@ export default function HrApplicationReview() {
 					/>
 				</>
 			)}
-		</div>
+		</Container>
 	)
 }

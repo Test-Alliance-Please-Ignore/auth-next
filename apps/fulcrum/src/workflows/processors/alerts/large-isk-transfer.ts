@@ -14,6 +14,8 @@
  *   >= 50B   → critical
  */
 
+import { ALERT_THRESHOLDS } from '../../../config/alert-thresholds'
+
 import type { ProcessedWalletJournalEntry } from '../helpers/wallet-journal'
 import type { ReportAlert, AlertSeverity } from './types'
 
@@ -27,11 +29,11 @@ const PLAYER_TRANSFER_REF_TYPES = new Set([
     'contract_collateral',
 ])
 
-/** Thresholds based on the largest single transfer amount */
-const LOW_THRESHOLD = 500_000_000
-const MEDIUM_THRESHOLD = 2_000_000_000
-const HIGH_THRESHOLD = 10_000_000_000
-const CRITICAL_THRESHOLD = 50_000_000_000
+/** Thresholds based on the largest single transfer amount (from shared config) */
+const LOW_THRESHOLD = ALERT_THRESHOLDS.ISK_TRANSFER_NOTABLE
+const MEDIUM_THRESHOLD = ALERT_THRESHOLDS.ISK_TRANSFER_LARGE
+const HIGH_THRESHOLD = ALERT_THRESHOLDS.ISK_TRANSFER_VERY_LARGE
+const CRITICAL_THRESHOLD = ALERT_THRESHOLDS.ISK_TRANSFER_EXTREME
 
 interface TransferSummary {
     id: string

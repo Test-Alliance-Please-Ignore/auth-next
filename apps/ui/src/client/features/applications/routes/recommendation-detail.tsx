@@ -13,10 +13,12 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Container } from '@/components/ui/container'
 import { LoadingSpinner } from '@/components/ui/loading'
-import { useAuth } from '@/hooks/useAuth'
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
+
+import { AccessDeniedCard } from '../components/access-denied-card'
 
 import { AddRecommendationDialog } from '../components/add-recommendation-dialog'
 import { DeleteRecommendationDialog } from '../components/delete-recommendation-dialog'
@@ -28,7 +30,6 @@ import type { Recommendation } from '../api'
 export default function RecommendationDetail() {
 	const { applicationId } = useParams<{ applicationId: string }>()
 	const navigate = useNavigate()
-	const { user } = useAuth()
 	const {
 		data: application,
 		isLoading,
@@ -48,33 +49,28 @@ export default function RecommendationDetail() {
 
 	if (isLoading) {
 		return (
-			<div className="flex items-center justify-center min-h-[400px]">
-				<LoadingSpinner size="lg" />
-			</div>
+			<Container size="narrow">
+				<div className="flex items-center justify-center min-h-[400px]">
+					<LoadingSpinner size="lg" />
+				</div>
+			</Container>
 		)
 	}
 
 	if (error || !application) {
 		return (
-			<div className="max-w-3xl mx-auto space-y-4">
-				<Button variant="ghost" size="sm" onClick={() => navigate('/recommendations')}>
-					<ArrowLeft className="h-4 w-4 mr-2" />
-					Back to Recommendations
-				</Button>
-				<Card className="border-destructive">
-					<CardHeader>
-						<CardTitle className="text-destructive">Error</CardTitle>
-						<CardDescription>
-							{error instanceof Error ? error.message : 'Application not found or not accessible'}
-						</CardDescription>
-					</CardHeader>
-				</Card>
-			</div>
+			<Container size="narrow">
+				<AccessDeniedCard
+					title={!application && !error ? 'Not Found' : 'Failed to Load'}
+					message={error instanceof Error ? error.message : 'Application not found or not accessible'}
+					backLabel="Back to Recommendations"
+					onBack={() => navigate('/recommendations')}
+				/>
+			</Container>
 		)
 	}
 
-	const corporationName =
-		corpNames[application.corporationId] ?? `Corporation ${application.corporationId}`
+	const corporationName = corpNames[application.corporationId] ?? application.corporationId
 	const userRecommendation = application.userRecommendation
 
 	const handleAdd = () => {
@@ -93,7 +89,7 @@ export default function RecommendationDetail() {
 	}
 
 	return (
-		<div className="max-w-3xl mx-auto space-y-6">
+		<Container size="narrow" className="space-y-6">
 			{/* Back button */}
 			<Button variant="ghost" size="sm" onClick={() => navigate('/recommendations')}>
 				<ArrowLeft className="h-4 w-4 mr-2" />
@@ -192,6 +188,6 @@ export default function RecommendationDetail() {
 				onOpenChange={setShowDeleteDialog}
 				recommendation={editRecommendation ?? null}
 			/>
-		</div>
+		</Container>
 	)
 }

@@ -10,19 +10,16 @@
  *   > 125% of max plausible → critical
  */
 
+import { ALERT_THRESHOLDS } from '../../../config/alert-thresholds'
+
 import type { ProcessedPublicInfo } from '../helpers/public-info'
 import type { ProcessedSkillsData } from '../helpers/skills'
 import type { ReportAlert } from './types'
 
-/** Base training rate without implants (SP per hour) */
-const BASE_SP_PER_HOUR = 2_700
-
-/** Bonus SP budget for tutorials, events, free unallocated SP etc. */
-const BONUS_SP_BUDGET = 2_750_000
-
-/** Thresholds as multipliers of max plausible SP */
-const HIGH_THRESHOLD = 1.10
-const CRITICAL_THRESHOLD = 1.25
+const BASE_SP_PER_HOUR = ALERT_THRESHOLDS.SP_RATE_MAX_PER_HOUR
+const BONUS_SP_BUDGET = ALERT_THRESHOLDS.SP_BONUS_THRESHOLD
+const HIGH_THRESHOLD = ALERT_THRESHOLDS.SP_HIGH_MULTIPLIER
+const CRITICAL_THRESHOLD = ALERT_THRESHOLDS.SP_CRITICAL_MULTIPLIER
 
 export function checkSpPlausibility(
     publicInfo: ProcessedPublicInfo,

@@ -78,6 +78,27 @@ async function resolveUserCharacterNames(
 }
 
 /**
+ * Enrich a list of applications with resolved corporation and reviewer names.
+ */
+async function enrichApplications<T extends { corporationId: string; reviewedBy: string | null }>(
+	items: T[],
+	resolver: { resolveIds: (ids: string[]) => Promise<Record<string, string>> },
+	db: NonNullable<Context<App>['var']['db']>
+): Promise<Array<T & { corporationName: string; reviewedByCharacterName: string | null }>> {
+	const corpIds = [...new Set(items.map((a) => a.corporationId))]
+	const corpNames = corpIds.length > 0 ? await resolver.resolveIds(corpIds) : {}
+
+	const reviewerIds = items.map((a) => a.reviewedBy).filter((id): id is string => id !== null)
+	const reviewerNames = await resolveUserCharacterNames(db, reviewerIds)
+
+	return items.map((a) => ({
+		...a,
+		corporationName: corpNames[a.corporationId] ?? 'Unknown',
+		reviewedByCharacterName: a.reviewedBy ? (reviewerNames[a.reviewedBy] ?? null) : null,
+	}))
+}
+
+/**
  * Check if the current user has any active HR role across any corporation.
  * Returns true for site admins, corp CEOs, HR admins, and HR reviewers.
  */
@@ -212,21 +233,9 @@ app.get('/applications', requireAuth(), async (c) => {
 		const hr = getHrStub(c)
 		const applications = await hr.listApplications(filters, user.id, user.is_admin)
 
-		// Resolve corporation names from ESI
-		const corpIds = [...new Set(applications.map((a) => a.corporationId))]
 		const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
-		const corpNames = corpIds.length > 0 ? await resolver.resolveIds(corpIds) : {}
-
-		// Resolve reviewer character names
 		const db = c.get('db')!
-		const reviewerIds = applications.map((a) => a.reviewedBy).filter((id): id is string => id !== null)
-		const reviewerNames = await resolveUserCharacterNames(db, reviewerIds)
-
-		const enriched = applications.map((a) => ({
-			...a,
-			corporationName: corpNames[a.corporationId] ?? 'Unknown',
-			reviewedByCharacterName: a.reviewedBy ? (reviewerNames[a.reviewedBy] ?? null) : null,
-		}))
+		const enriched = await enrichApplications(applications, resolver, db)
 
 		return c.json(enriched)
 	} catch (error) {
@@ -249,21 +258,11 @@ app.get('/applications/:id', requireAuth(), async (c) => {
 		const hr = getHrStub(c)
 		const application = await hr.getApplication(applicationId, user.id, user.is_admin)
 
-		// Resolve corporation name from ESI
 		const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
-		const corpNames = await resolver.resolveIds([application.corporationId])
-
-		// Resolve reviewer character name
 		const db = c.get('db')!
-		const reviewerNames = application.reviewedBy
-			? await resolveUserCharacterNames(db, [application.reviewedBy])
-			: {}
+		const [enriched] = await enrichApplications([application], resolver, db)
 
-		return c.json({
-			...application,
-			corporationName: corpNames[application.corporationId] ?? 'Unknown',
-			reviewedByCharacterName: application.reviewedBy ? (reviewerNames[application.reviewedBy] ?? null) : null,
-		})
+		return c.json(enriched)
 	} catch (error) {
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to get application' },

@@ -8,7 +8,7 @@
  */
 
 import { formatDistanceToNow } from 'date-fns'
-import { AlertCircle, ArrowLeft, Briefcase } from 'lucide-react'
+import { ArrowLeft, Briefcase } from 'lucide-react'
 import { useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 
@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/breadcrumb'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Container } from '@/components/ui/container'
 import {
 	Dialog,
 	DialogContent,
@@ -39,6 +40,7 @@ import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { canWithdrawApplication } from '../api'
+import { AccessDeniedCard } from '../components/access-denied-card'
 import { AddRecommendationDialog } from '../components/add-recommendation-dialog'
 import { ApplicationStatusBadge } from '../components/application-status-badge'
 import { ApplicationTimeline } from '../components/application-timeline'
@@ -163,68 +165,45 @@ export default function ApplicationDetail() {
 	// Loading state
 	if (authLoading || applicationLoading) {
 		return (
-			<div className="container mx-auto max-w-5xl px-4 py-8">
+			<Container>
 				<div className="flex items-center justify-center min-h-[400px]">
 					<LoadingSpinner size="lg" />
 				</div>
-			</div>
+			</Container>
 		)
 	}
 
 	// Error state
 	if (applicationError) {
 		return (
-			<div className="container mx-auto max-w-6xl px-4 py-8">
-				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
-					<CardHeader className="text-center">
-						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
-						<CardTitle className="text-2xl text-red-900 dark:text-red-100">
-							Failed to Load Application
-						</CardTitle>
-						<CardDescription className="mt-2 text-red-700 dark:text-red-300">
-							{applicationError instanceof Error
-								? applicationError.message
-								: 'An unexpected error occurred'}
-						</CardDescription>
-					</CardHeader>
-					<CardContent className="text-center">
-						<Button variant="ghost" onClick={handleBackClick}>
-							<ArrowLeft className="mr-2 h-4 w-4" />
-							Back to My Applications
-						</Button>
-					</CardContent>
-				</Card>
-			</div>
+			<Container>
+				<AccessDeniedCard
+					title="Failed to Load Application"
+					message={applicationError instanceof Error ? applicationError.message : 'An unexpected error occurred'}
+					backLabel="Back to My Applications"
+					onBack={handleBackClick}
+				/>
+			</Container>
 		)
 	}
 
 	// Access denied - user doesn't own this application
 	if (application && !isOwner) {
 		return (
-			<div className="container mx-auto max-w-6xl px-4 py-8">
-				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
-					<CardHeader className="text-center">
-						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
-						<CardTitle className="text-2xl text-red-900 dark:text-red-100">Access Denied</CardTitle>
-						<CardDescription className="mt-2 text-red-700 dark:text-red-300">
-							You don't have permission to view this application.
-						</CardDescription>
-					</CardHeader>
-					<CardContent className="text-center">
-						<Button variant="ghost" onClick={handleBackClick}>
-							<ArrowLeft className="mr-2 h-4 w-4" />
-							Back to My Applications
-						</Button>
-					</CardContent>
-				</Card>
-			</div>
+			<Container>
+				<AccessDeniedCard
+					message="You don't have permission to view this application."
+					backLabel="Back to My Applications"
+					onBack={handleBackClick}
+				/>
+			</Container>
 		)
 	}
 
 	// Application not found
 	if (!application) {
 		return (
-			<div className="container mx-auto max-w-6xl px-4 py-8">
+			<Container>
 				<Card className="max-w-2xl mx-auto">
 					<CardHeader className="text-center">
 						<Briefcase className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
@@ -238,13 +217,13 @@ export default function ApplicationDetail() {
 						</Button>
 					</CardContent>
 				</Card>
-			</div>
+			</Container>
 		)
 	}
 
 	// Main content
 	return (
-		<div className="container mx-auto max-w-5xl px-4 py-8">
+		<Container>
 			{/* Breadcrumb Navigation */}
 			<Breadcrumb className="mb-6">
 				<BreadcrumbList>
@@ -488,6 +467,6 @@ export default function ApplicationDetail() {
 				recommendation={deletingRecommendation}
 				onSuccess={handleDeleteSuccess}
 			/>
-		</div>
+	</Container>
 	)
 }

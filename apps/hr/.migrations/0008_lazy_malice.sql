@@ -1,0 +1,3 @@
+ALTER TABLE "application_recommendations" ALTER COLUMN "is_public" SET DEFAULT false;--> statement-breakpoint
+ALTER TABLE "application_activity_log" ADD CONSTRAINT "application_activity_log_application_id_applications_id_fk" FOREIGN KEY ("application_id") REFERENCES "public"."applications"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "application_recommendations" ADD CONSTRAINT "application_recommendations_application_id_applications_id_fk" FOREIGN KEY ("application_id") REFERENCES "public"."applications"("id") ON DELETE cascade ON UPDATE no action;
