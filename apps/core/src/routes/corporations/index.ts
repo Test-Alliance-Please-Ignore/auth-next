@@ -399,7 +399,7 @@ app.get('/browse/:corporationId', requireAuth(), async (c) => {
 
 /**
  * PATCH /:corporationId/settings
- * Update corporation recruiting settings (CEO or admin only)
+ * Update corporation recruiting settings (CEO, admin, or HR admin)
  * Updates isRecruiting, shortDescription, and fullDescription fields
  */
 app.patch('/:corporationId/settings', requireAuth(), async (c) => {
@@ -411,19 +411,16 @@ app.patch('/:corporationId/settings', requireAuth(), async (c) => {
 		return c.json({ error: 'Database not available' }, 500)
 	}
 
-	// Authorization check - user must be CEO or site admin
+	// Authorization check - user must be CEO, site admin, or HR admin
 	try {
 		await checkCorporationAccess(c, corporationId)
-		logger.info('[Corporations] Authorization check passed', {
-			corporationId,
-			userId: user.id,
-		})
-	} catch (error) {
-		logger.error('[Corporations] Failed to update settings', {
-			corporationId,
-			error: error instanceof Error ? error.message : String(error),
-		})
-		return c.json({ error: error instanceof Error ? error.message : 'Access denied' }, 403)
+	} catch {
+		// CEO/Director/Admin check failed — fall back to HR admin check
+		const hr = getStub<Hr>(c.env.HR, 'default')
+		const hasHrAdmin = await hr.checkPermission(user.id, corporationId, 'hr_admin')
+		if (!hasHrAdmin) {
+			return c.json({ error: 'Access denied. Corporation CEO, site admin, or HR admin required.' }, 403)
+		}
 	}
 
 	// Parse and validate request body
