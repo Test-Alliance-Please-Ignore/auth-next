@@ -54,7 +54,7 @@ export async function updateDatabase(
 
 			if (metadata) {
 				// Construct report view URL
-				const viewUrl = `https://devtest.pleaseignore.app/test/reports/${reportId}/html`
+				const viewUrl = `${env.APP_BASE_URL}/corporations/${report.requestorCorporationId}/hr/fulcrum/${reportId}`
 
 				await sendReportCompletedDM(env, report.requestorUserId, metadata, viewUrl)
 			}

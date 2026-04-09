@@ -11,7 +11,9 @@
 	"observability": {
 		"enabled": true
 	},
-	"vars": {},
+	"vars": {
+		"APP_BASE_URL": "https://pleaseignore.app"
+	},
 	"triggers": {
 		"crons": ["0 0 * * *"]
 	},
