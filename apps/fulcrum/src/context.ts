@@ -6,6 +6,7 @@ import type { WorkflowParams } from './workflows/character-report.workflow'
 
 export type Env = SharedHonoEnv & {
 	DATABASE_URL: string
+	APP_BASE_URL: string
 	FULCRUM: DurableObjectNamespace
 	ESI: DurableObjectNamespace
 	ESI_TYPE_RESOLVER: DurableObjectNamespace
