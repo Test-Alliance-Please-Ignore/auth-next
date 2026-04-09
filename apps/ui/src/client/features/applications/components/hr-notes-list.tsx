@@ -26,6 +26,8 @@ export interface HRNotesListProps {
 	subjectUserId: string
 	subjectCharacterName?: string
 	onAddNote?: () => void
+	onEditNote?: (noteId: string) => void
+	onDeleteNote?: (noteId: string) => void
 	className?: string
 	/** Override access check (defaults to user.is_admin) */
 	hasAccess?: boolean
@@ -73,6 +75,8 @@ export function HRNotesList({
 	subjectUserId,
 	subjectCharacterName,
 	onAddNote,
+	onEditNote,
+	onDeleteNote,
 	className,
 	hasAccess,
 }: HRNotesListProps) {
@@ -186,7 +190,7 @@ export function HRNotesList({
 			{!isLoading && !error && sortedNotes.length > 0 && (
 				<div className="space-y-4">
 					{sortedNotes.map((note) => (
-						<HRNoteCard key={note.id} note={note} />
+						<HRNoteCard key={note.id} note={note} onEdit={onEditNote} onDelete={onDeleteNote} />
 					))}
 				</div>
 			)}

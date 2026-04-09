@@ -87,28 +87,10 @@ async function hasAnyHrAccess(c: Context<App>): Promise<boolean> {
 	// Site admins always have access
 	if (user.is_admin) return true
 
-	// Check if user has any active HR role
+	// Single RPC call returns all corps where user has any HR role
 	const hr = getHrStub(c)
-	const db = c.get('db')
-	if (!db) return false
-
-	// Get all corporations user might have roles for
-	const userChars = await db.query.userCharacters.findMany({
-		where: eq(userCharacters.userId, user.id),
-	})
-
-	if (userChars.length === 0) return false
-
-	// Get managed corporations to check roles against
-	const corps = await db.query.managedCorporations.findMany()
-
-	for (const corp of corps) {
-		const roles = await hr.getUserRoles(user.id, corp.corporationId)
-		const hasActive = roles.some((r) => r.isActive)
-		if (hasActive) return true
-	}
-
-	return false
+	const hrCorps = await hr.getUserHrCorporations(user.id)
+	return hrCorps.length > 0
 }
 
 /**
@@ -1021,11 +1003,12 @@ app.get('/notes/user/:userId', requireAuth(), async (c) => {
 /**
  * PATCH /api/hr/notes/:id
  * Update an HR note
- * Access: Site admins, HR admins, HR reviewers
+ * Access: Site admins only
  */
 app.patch('/notes/:id', requireAuth(), async (c) => {
-	if (!(await hasAnyHrAccess(c))) {
-		return c.json({ error: 'Forbidden' }, 403)
+	const user = c.get('user')!
+	if (!user.is_admin) {
+		return c.json({ error: 'Forbidden - only site admins can edit notes' }, 403)
 	}
 
 	const noteId = c.req.param('id')
@@ -1049,24 +1032,8 @@ app.patch('/notes/:id', requireAuth(), async (c) => {
 app.delete('/notes/:id', requireAuth(), async (c) => {
 	const user = c.get('user')!
 
-	// Delete restricted to site admins and HR admins (not reviewers)
 	if (!user.is_admin) {
-		const hr = getHrStub(c)
-		const db = c.get('db')
-		if (!db) return c.json({ error: 'Forbidden' }, 403)
-
-		const corps = await db.query.managedCorporations.findMany()
-		let isHrAdmin = false
-		for (const corp of corps) {
-			const roles = await hr.getUserRoles(user.id, corp.corporationId)
-			if (roles.some((r) => r.isActive && r.role === 'hr_admin')) {
-				isHrAdmin = true
-				break
-			}
-		}
-		if (!isHrAdmin) {
-			return c.json({ error: 'Forbidden - only HR Admins can delete notes' }, 403)
-		}
+		return c.json({ error: 'Forbidden - only site admins can delete notes' }, 403)
 	}
 
 	const noteId = c.req.param('id')

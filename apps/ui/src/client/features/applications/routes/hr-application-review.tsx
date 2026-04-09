@@ -416,6 +416,8 @@ export default function HrApplicationReview() {
 									subjectUserId={application.userId}
 									subjectCharacterName={application.characterName}
 									onAddNote={handleAddNote}
+									onEditNote={user?.is_admin ? handleEditNote : undefined}
+									onDeleteNote={user?.is_admin ? handleDeleteNote : undefined}
 									hasAccess
 								/>
 							</CardContent>

@@ -503,6 +503,7 @@ export class HrDO extends DurableObject<Env> implements Hr {
 		return await this.hrRoleService.getUserHrCorporations(userId)
 	}
 
+
 	/**
 	 * Get all HR roles for a corporation (cached)
 	 */
