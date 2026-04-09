@@ -2,7 +2,7 @@ import { Ban, ExternalLink, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
-import { RescindBroadcastDialog } from './rescind-broadcast-dialog'
+import { RescindBroadcastDialog } from '../rescind-broadcast-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'

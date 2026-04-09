@@ -1,7 +1,8 @@
-import { ExternalLink, Plus, Send, Trash2 } from 'lucide-react'
+import { Ban, ExternalLink, Plus, Send, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
+import { RescindBroadcastDialog } from './rescind-broadcast-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -71,6 +72,7 @@ export default function BroadcastsPage() {
 	const sendBroadcast = useSendBroadcast()
 	const deleteBroadcast = useDeleteBroadcast()
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+	const [rescindDialogOpen, setRescindDialogOpen] = useState(false)
 	const [selectedBroadcast, setSelectedBroadcast] = useState<Broadcast | null>(null)
 
 	const myBroadcasts = broadcastsPage?.rows ?? []
@@ -263,6 +265,16 @@ export default function BroadcastsPage() {
 																<Send className="h-4 w-4 text-confirm" />
 															</Button>
 														)}
+														{broadcast.status === 'sent' && (
+															<Button
+																variant="ghost"
+																size="sm"
+																onClick={() => { setSelectedBroadcast(broadcast); setRescindDialogOpen(true) }}
+																title="Rescind broadcast"
+															>
+																<Ban className="h-4 w-4 text-warning" />
+															</Button>
+														)}
 														<Button
 															variant="ghost"
 															size="sm"
@@ -336,6 +348,15 @@ export default function BroadcastsPage() {
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
+
+			<RescindBroadcastDialog
+				broadcastId={selectedBroadcast?.id ?? ""}
+				open={rescindDialogOpen}
+				onOpenChange={(open) => {
+					setRescindDialogOpen(open)
+					if (!open) setSelectedBroadcast(null)
+				}}
+			/>
 		</Container>
 	)
 }

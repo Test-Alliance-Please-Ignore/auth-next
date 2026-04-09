@@ -1,8 +1,9 @@
-import { ArrowLeft, RefreshCw, Send, Trash2 } from 'lucide-react'
+import { ArrowLeft, Ban, RefreshCw, Send, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { renderDiscordContentValue } from '@/components/discord-content-renderer'
+import { RescindBroadcastDialog } from './rescind-broadcast-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -63,6 +64,7 @@ export default function BroadcastDetailPage() {
 	const sendBroadcast = useSendBroadcast()
 	const deleteBroadcast = useDeleteBroadcast()
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+	const [rescindDialogOpen, setRescindDialogOpen] = useState(false)
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
 	usePageTitle(broadcast ? `Broadcast ${broadcast.id.slice(0, 8)}` : 'Broadcast Details')
@@ -159,6 +161,17 @@ export default function BroadcastDetailPage() {
 								>
 									<Send className="mr-2 h-4 w-4" />
 									Send Now
+								</Button>
+							)}
+							{broadcast.status === 'sent' && (
+								<Button
+									variant="cancel"
+									size="sm"
+									onClick={() => setRescindDialogOpen(true)}
+									showIcon={false}
+								>
+									<Ban className="mr-2 h-4 w-4" />
+									Rescind
 								</Button>
 							)}
 							{canManage && (
@@ -329,6 +342,19 @@ export default function BroadcastDetailPage() {
 							</DialogContent>
 						</Dialog>
 					)}
+
+					<RescindBroadcastDialog
+						broadcastId={broadcast.id}
+						open={rescindDialogOpen}
+						onOpenChange={setRescindDialogOpen}
+						onSuccess={async () => {
+							setMessage({ type: 'success', text: 'Broadcast rescinded.' })
+							await refetch()
+						}}
+						onError={(error) => {
+							setMessage({ type: 'error', text: error.message })
+						}}
+					/>
 				</div>
 			</Section>
 		</Container>

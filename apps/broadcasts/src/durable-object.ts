@@ -592,7 +592,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 			where: eq(broadcasts.id, broadcastId),
 		})
 
-		if (broadcast && broadcast.status === 'sent') {
+		if (broadcast && (broadcast.status === 'sent' || broadcast.status === 'rescinded')) {
 			const [deliveries, target] = await Promise.all([
 				this.db.query.broadcastDeliveries.findMany({
 					where: and(
@@ -649,31 +649,51 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 			const broadcastDetails = await this.getBroadcast(broadcastId, userId)
 
 			if (broadcastDetails) {
-				let message: string
+				// Render the original content (without footer)
+				let baseMessage: string
 				if (broadcastDetails.template) {
-					message = this.renderTemplate(
+					baseMessage = this.renderTemplate(
 						broadcastDetails.template.messageTemplate,
 						broadcastDetails.content
 					)
 				} else {
-					message = (broadcastDetails.content.message as string) || broadcastDetails.title
+					baseMessage = (broadcastDetails.content.message as string) || broadcastDetails.title
 				}
-				message = convertUnixTimestamps(message)
+				baseMessage = convertUnixTimestamps(baseMessage)
 
-				// Wrap each non-empty line in ~~ for Discord strikethrough
-				let rescindedContent = message
-					.split('\n')
-					.map((line) => (line.trim() ? `~~${line}~~` : line))
-					.join('\n')
-
-				if (rescindMessage?.trim()) {
-					rescindedContent += `\n\n${rescindMessage.trim()}`
-				}
+				const rescindTimestamp = Math.floor(Date.now() / 1000)
 
 				await Promise.allSettled(
 					deliveries
 						.filter((d) => d.discordMessageId)
-						.map((d) => discordStub.editMessage(config.channelId, d.discordMessageId!, rescindedContent))
+						.map((d) => {
+							// Reconstruct the original sent footer using this delivery's sentAt
+							const sentUnix = d.sentAt
+								? Math.floor(new Date(d.sentAt).getTime() / 1000)
+								: rescindTimestamp
+							const sentFooter = `#### SENT BY ${broadcastDetails.createdByCharacterName} to ${broadcastDetails.target.name} @ <t:${sentUnix}:F> ####`
+
+							// Wrap only the original content in strikethrough, leave footer as-is
+							const strikethrough = baseMessage
+								.split('\n')
+								.map((line) => (line.trim() ? `~~${line}~~` : line))
+								.join('\n')
+
+							// Build: strikethrough content, original footer, optional reason, rescinded footer
+							let rescindedContent = `${strikethrough}\n\n${sentFooter}`
+
+							if (rescindMessage?.trim()) {
+								rescindedContent += `\n\nRESCINDED: ${rescindMessage.trim()}`
+							}
+
+							rescindedContent += `\n\n#### RESCINDED @ <t:${rescindTimestamp}:F> ####`
+
+							return discordStub.editMessage(
+								config.channelId,
+								d.discordMessageId!,
+								rescindedContent
+							)
+						})
 				)
 			}
 		}
