@@ -148,8 +148,39 @@ export function WalletTransactionsSection({
 		return <p className="text-sm text-muted-foreground">No wallet transactions found.</p>
 	}
 
+	// Compute total buy/sell volumes
+	const { totalBuy, totalSell } = data.reduce(
+		(acc, txn) => {
+			const val = typeof txn.totalValue === 'number'
+				? txn.totalValue
+				: parseFloat(String(txn.totalValue).replace(/,/g, ''))
+			if (!isNaN(val)) {
+				if (txn.is_buy) acc.totalBuy += val
+				else acc.totalSell += val
+			}
+			return acc
+		},
+		{ totalBuy: 0, totalSell: 0 },
+	)
+
 	return (
 		<div className="space-y-3">
+			<div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+				<div>
+					<span className="text-muted-foreground">Total Bought: </span>
+					<span className="font-mono font-semibold text-red-400">{formatIsk(totalBuy)} ISK</span>
+				</div>
+				<div>
+					<span className="text-muted-foreground">Total Sold: </span>
+					<span className="font-mono font-semibold text-green-400">{formatIsk(totalSell)} ISK</span>
+				</div>
+				<div>
+					<span className="text-muted-foreground">Net: </span>
+					<span className={`font-mono font-semibold ${totalSell - totalBuy >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+						{formatIsk(totalSell - totalBuy)} ISK
+					</span>
+				</div>
+			</div>
 			{truncated && (
 				<p className="text-xs text-muted-foreground italic">
 					Note: Not all transaction history could be retrieved due to ESI rate limits.

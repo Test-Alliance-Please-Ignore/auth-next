@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { lazy, Suspense, useEffect } from 'react'
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom'
 
 import Layout from './components/layout'
 import { LoadingPage } from './components/ui/loading'
@@ -44,8 +44,6 @@ const CorporationDetail = lazy(() => import('./routes/corporation-detail'))
 // Lazy load the Applications feature for code splitting
 const MyApplicationsList = lazy(() => import('./features/applications/routes/my-applications-list'))
 const ApplicationDetail = lazy(() => import('./features/applications/routes/application-detail'))
-const HrDashboard = lazy(() => import('./features/applications/routes/hr-dashboard'))
-const HrCorporationsPage = lazy(() => import('./features/applications/routes/hr-corporations'))
 const HrApplicationsList = lazy(() => import('./features/applications/routes/hr-applications-list'))
 const HrApplicationReview = lazy(
 	() => import('./features/applications/routes/hr-application-review')
@@ -117,6 +115,14 @@ function SessionSyncWrapper({ children }: { children: React.ReactNode }) {
 		installTaxDemoWindow(queryClient)
 	}, [])
 	return <>{children}</>
+}
+
+/**
+ * Redirect old HR dashboard URLs to the new members page
+ */
+function HrDashboardRedirect() {
+	const { corporationId } = useParams<{ corporationId: string }>()
+	return <Navigate to={`/my-corporations/${corporationId}/members`} replace />
 }
 
 export default function App() {
@@ -216,19 +222,11 @@ export default function App() {
 							{/* Application routes - HR views (lazy loaded) */}
 							<Route
 								path="/hr"
-								element={
-									<Suspense fallback={<LoadingPage />}>
-										<HrCorporationsPage />
-									</Suspense>
-								}
+								element={<Navigate to="/my-corporations" replace />}
 							/>
 							<Route
 								path="/corporations/:corporationId/hr/dashboard"
-								element={
-									<Suspense fallback={<LoadingPage />}>
-										<HrDashboard />
-									</Suspense>
-								}
+								element={<HrDashboardRedirect />}
 							/>
 							<Route
 								path="/corporations/:corporationId/hr/applications"

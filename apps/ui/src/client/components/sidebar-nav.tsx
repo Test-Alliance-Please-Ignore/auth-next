@@ -146,11 +146,18 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 			},
 		]
 
-		if ((hrCorporations?.length ?? 0) > 0) {
+		if (hrCorporations?.length === 1) {
 			hrItems.push({
 				label: 'Review Applications',
-				href: '/hr',
+				href: `/corporations/${hrCorporations[0].corporationId}/hr/applications`,
 			})
+		} else if ((hrCorporations?.length ?? 0) > 1) {
+			for (const corp of hrCorporations!) {
+				hrItems.push({
+					label: `Applications: ${corp.ticker || corp.name}`,
+					href: `/corporations/${corp.corporationId}/hr/applications`,
+				})
+			}
 		}
 
 		navItems.push({
@@ -382,7 +389,7 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 												(child.href === item.href
 													? location.pathname === child.href
 													: location.pathname === child.href ||
-														location.pathname.startsWith(child.href + '/'))
+													location.pathname.startsWith(child.href + '/'))
 
 											if (child.external) {
 												const ChildIcon = child.icon

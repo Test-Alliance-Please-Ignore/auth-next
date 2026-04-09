@@ -216,8 +216,8 @@ export default function HrApplicationsList() {
 					</BreadcrumbItem>
 					<BreadcrumbSeparator />
 					<BreadcrumbItem>
-						<BreadcrumbLink to={`/corporations/${corporationId}/hr/dashboard`}>
-							HR Dashboard
+						<BreadcrumbLink to={`/my-corporations/${corporationId}/members`}>
+							Members
 						</BreadcrumbLink>
 					</BreadcrumbItem>
 					<BreadcrumbSeparator />
@@ -232,9 +232,9 @@ export default function HrApplicationsList() {
 				title="HR Applications"
 				description="Review and manage job applications to your corporation"
 				action={
-					<Button variant="ghost" onClick={() => navigate(`/corporations/${corporationId}/hr/dashboard`)}>
+					<Button variant="ghost" onClick={() => navigate(`/my-corporations/${corporationId}/members`)}>
 						<ArrowLeft className="mr-2 h-4 w-4" />
-						Back to HR Dashboard
+						Back to Members
 					</Button>
 				}
 			/>

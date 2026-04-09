@@ -66,6 +66,7 @@ interface CorporationMembersTableProps {
 	onLinkAccount?: (member: CorporationMember) => void
 	showActions?: boolean
 	canManageHrRoles?: boolean
+	canManageEmeritus?: boolean
 	corporationId?: string
 }
 
@@ -137,6 +138,7 @@ export default function CorporationMembersTable({
 	onLinkAccount,
 	showActions = true,
 	canManageHrRoles = false,
+	canManageEmeritus = false,
 	corporationId,
 }: CorporationMembersTableProps) {
 	const { showSuccess, showError } = useMessage()
@@ -495,7 +497,7 @@ export default function CorporationMembersTable({
 											alt={`${member.characterName}'s portrait`}
 											loading="lazy"
 											onError={(e) => {
-												;(e.currentTarget as HTMLImageElement).src =
+												; (e.currentTarget as HTMLImageElement).src =
 													'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"%3E%3Crect fill="%23404040" width="64" height="64"/%3E%3Ctext x="50%25" y="50%25" font-family="Arial" font-size="24" fill="%23bfbfbf" text-anchor="middle" dominant-baseline="middle"%3E?%3C/text%3E%3C/svg%3E'
 											}}
 											className="w-8 h-8 rounded-full border border-border"
@@ -601,7 +603,7 @@ export default function CorporationMembersTable({
 													label: 'Mark as Emeritus',
 													intent: 'secondary',
 													hidden:
-														!canManageHrRoles ||
+														!canManageEmeritus ||
 														!member.hasAuthAccount ||
 														member.role === 'CEO' ||
 														member.status === 'emeritus',
@@ -613,7 +615,7 @@ export default function CorporationMembersTable({
 												{
 													label: 'Remove Emeritus',
 													intent: 'secondary',
-													hidden: !canManageHrRoles || member.status !== 'emeritus',
+													hidden: !canManageEmeritus || member.status !== 'emeritus',
 													onClick: () => {
 														setEmeritusAction('remove')
 														setEmeritusDialogMember(member)

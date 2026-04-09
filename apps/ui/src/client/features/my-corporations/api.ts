@@ -60,7 +60,7 @@ export interface CorporationAccessResult {
 		corporationId: string
 		name: string
 		ticker: string
-		userRole: 'CEO' | 'Director' | 'admin'
+		userRole: 'CEO' | 'Director' | 'admin' | 'hr_admin' | 'hr_reviewer' | 'hr_viewer'
 		characterId: string | null
 		characterName: string | null
 	}>
