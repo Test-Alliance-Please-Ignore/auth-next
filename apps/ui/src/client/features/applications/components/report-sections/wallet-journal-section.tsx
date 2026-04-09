@@ -100,8 +100,17 @@ export function WalletJournalSection({ data }: { data: ProcessedWalletJournalEnt
 		return <p className="text-sm text-muted-foreground">No journal entries found.</p>
 	}
 
+	// Most recent entry's balance is the current wallet balance
+	const currentBalance = data[0]?.balanceFormatted
+
 	return (
 		<div className="space-y-3">
+			{currentBalance && (
+				<div className="flex items-center gap-2 text-sm">
+					<span className="text-muted-foreground">Wallet Balance:</span>
+					<span className="font-mono font-semibold">{currentBalance} ISK</span>
+				</div>
+			)}
 			<p className="text-xs text-muted-foreground italic">
 				Note: ESI only returns journal entries from the last 30 days.
 			</p>
