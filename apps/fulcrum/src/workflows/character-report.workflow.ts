@@ -25,7 +25,7 @@ import { fetchClones, processClones } from './steps/clones'
 
 import { esiFetchStepConfig, esiProcessingStepConfig } from '@repo/workflow-utils'
 
-import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
+import type { WorkflowEvent, WorkflowStep, WorkflowStepConfig } from 'cloudflare:workers'
 import type { Env } from '../context'
 import type { StepResult } from './utils/storage'
 
@@ -57,10 +57,33 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 		// Helper: Get R2 bucket by name (for retrieveData calls)
 		const getBucket = (name: string) => this.env[name as keyof Env] as R2Bucket
 
+		const startedAt = Date.now()
+		const logCtx = { characterId, reportId, workflowInstanceId }
+
+		// Wrap step.do() with structured start/completion logging.
+		// Logs run outside the callback so they fire on replay too, making it easy
+		// to see how far a replayed workflow has progressed.
+		const doStep = async <T>(name: string, config: WorkflowStepConfig, fn: () => Promise<T>): Promise<T> => {
+			console.log('[Workflow] step:start', { step: name, ...logCtx })
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			const result = await step.do(name, config, fn as () => Promise<any>) as T
+			const logFields: Record<string, unknown> = { step: name, ...logCtx }
+			if (result !== null && typeof result === 'object' && 'success' in result && 'source' in result) {
+				const r = result as unknown as StepResult
+				logFields.success = r.success
+				logFields.source = r.source
+				if (!r.success) logFields.error = r.error
+			}
+			console.log('[Workflow] step:done', logFields)
+			return result
+		}
+
+		console.log('[Workflow] started', logCtx)
+
 		try {
 
 			// Step 1: Check if report was cancelled
-			const cancelled = await step.do('check-cancellation', STEP, () =>
+			const cancelled = await doStep('check-cancellation', STEP, () =>
 				checkCancellation(this.env, reportId),
 			)
 
@@ -69,7 +92,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			}
 
 			// Step 2: Fetch public info from ESI
-			const fetchResult = await step.do('fetch-public-info', ESI_STEP, () =>
+			const fetchResult = await doStep('fetch-public-info', ESI_STEP, () =>
 				fetchPublicInfo(
 					this.env.ESI,
 					this.env.CHARACTER_REPORTS,
@@ -80,7 +103,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 
 			// Step 3: Process public info
-			const processResult = await step.do('process-public-info', STEP, () =>
+			const processResult = await doStep('process-public-info', STEP, () =>
 				processPublicInfo(
 					this.env,
 					getBucket,
@@ -93,7 +116,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 
 			// Step 4: Fetch assets from ESI
-			const fetchAssetsResult = await step.do('fetch-assets', ESI_STEP, () =>
+			const fetchAssetsResult = await doStep('fetch-assets', ESI_STEP, () =>
 				fetchAssets(
 					this.env.ESI,
 					this.env.CHARACTER_REPORTS,
@@ -104,7 +127,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 
 			// Step 5: Process assets
-			const processAssetsResult = await step.do('process-assets', STEP, () =>
+			const processAssetsResult = await doStep('process-assets', STEP, () =>
 				processAssets(
 					this.env,
 					getBucket,
@@ -117,7 +140,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 
 			// Step 6: Fetch custom ship names from ESI
-			const fetchAssetNamesResult = await step.do('fetch-asset-names', ESI_STEP, () =>
+			const fetchAssetNamesResult = await doStep('fetch-asset-names', ESI_STEP, () =>
 				fetchAssetNames(
 					this.env.ESI,
 					getBucket,
@@ -130,7 +153,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 
 			// Step 7: Process fitted ships
-			const processFittedShipsResult = await step.do('process-fitted-ships', STEP, () =>
+			const processFittedShipsResult = await doStep('process-fitted-ships', STEP, () =>
 				processFittedShips(
 					this.env,
 					getBucket,
@@ -143,7 +166,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 
 			// Step 7: Fetch wallet transactions from ESI
-			const fetchWalletTransactionsResult = await step.do('fetch-wallet-transactions', ESI_STEP, () =>
+			const fetchWalletTransactionsResult = await doStep('fetch-wallet-transactions', ESI_STEP, () =>
 				fetchWalletTransactions(
 					this.env.ESI,
 					this.env.CHARACTER_REPORTS,
@@ -154,7 +177,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 
 			// Step 8: Process wallet transactions
-			const processWalletTransactionsResult = await step.do('process-wallet-transactions', STEP, () =>
+			const processWalletTransactionsResult = await doStep('process-wallet-transactions', STEP, () =>
 				processWalletTransactions(
 					this.env,
 					getBucket,
@@ -167,7 +190,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 
 			// Step 9: Fetch wallet journal entries
-			const fetchWalletJournalResult = await step.do('fetch-wallet-journal', ESI_STEP, () =>
+			const fetchWalletJournalResult = await doStep('fetch-wallet-journal', ESI_STEP, () =>
 				fetchWalletJournal(
 					this.env.ESI,
 					this.env.CHARACTER_REPORTS,
@@ -178,7 +201,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 
 			// Step 10: Process wallet journal entries
-			const processWalletJournalResult = await step.do('process-wallet-journal', STEP, () =>
+			const processWalletJournalResult = await doStep('process-wallet-journal', STEP, () =>
 				processWalletJournal(
 					this.env,
 					getBucket,
@@ -191,7 +214,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 
 			// Step 11: Fetch mails from ESI
-			const fetchMailsResult = await step.do('fetch-mails', ESI_STEP, () =>
+			const fetchMailsResult = await doStep('fetch-mails', ESI_STEP, () =>
 				fetchMails(
 					this.env.ESI,
 					this.env.CHARACTER_REPORTS,
@@ -202,7 +225,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 
 			// Step 12: Process mails
-			const processMailsResult = await step.do('process-mails', STEP, () =>
+			const processMailsResult = await doStep('process-mails', STEP, () =>
 				processMails(
 					this.env,
 					getBucket,
@@ -215,7 +238,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 
 			// Step 13: Fetch contacts from ESI
-			const fetchContactsResult = await step.do('fetch-contacts', ESI_STEP, () =>
+			const fetchContactsResult = await doStep('fetch-contacts', ESI_STEP, () =>
 				fetchContacts(
 					this.env.ESI,
 					this.env.CHARACTER_REPORTS,
@@ -226,7 +249,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 
 			// Step 14: Process contacts
-			const processContactsResult = await step.do('process-contacts', STEP, () =>
+			const processContactsResult = await doStep('process-contacts', STEP, () =>
 				processContacts(
 					this.env,
 					getBucket,
@@ -239,7 +262,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 
 			// Step 15: Fetch corporation history from ESI
-			const fetchCorpHistoryResult = await step.do('fetch-corp-history', ESI_STEP, () =>
+			const fetchCorpHistoryResult = await doStep('fetch-corp-history', ESI_STEP, () =>
 				fetchCorpHistory(
 					this.env.ESI,
 					this.env.CHARACTER_REPORTS,
@@ -250,7 +273,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 
 			// Step 16: Process corporation history
-			const processCorpHistoryResult = await step.do('process-corp-history', STEP, () =>
+			const processCorpHistoryResult = await doStep('process-corp-history', STEP, () =>
 				processCorpHistory(
 					this.env,
 					getBucket,
@@ -263,7 +286,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 
 			// Step 17: Fetch skills and skill queue from ESI
-			const fetchSkillsResult = await step.do('fetch-skills', ESI_STEP, () =>
+			const fetchSkillsResult = await doStep('fetch-skills', ESI_STEP, () =>
 				fetchSkills(
 					this.env.ESI,
 					this.env.CHARACTER_REPORTS,
@@ -274,7 +297,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 
 			// Step 18: Process skills
-			const processSkillsResult = await step.do('process-skills', STEP, () =>
+			const processSkillsResult = await doStep('process-skills', STEP, () =>
 				processSkills(
 					this.env,
 					getBucket,
@@ -287,7 +310,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 
 			// Step 19: Fetch contracts from ESI
-			const fetchContractsResult = await step.do('fetch-contracts-data', ESI_STEP, () =>
+			const fetchContractsResult = await doStep('fetch-contracts-data', ESI_STEP, () =>
 				fetchContracts(
 					this.env.ESI,
 					this.env.CHARACTER_REPORTS,
@@ -298,7 +321,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 
 			// Step 20: Process contracts
-			const processContractsResult = await step.do('process-contracts', STEP, () =>
+			const processContractsResult = await doStep('process-contracts', STEP, () =>
 				processContracts(
 					this.env,
 					getBucket,
@@ -311,7 +334,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 
 			// Step 21: Fetch notifications from ESI
-			const fetchNotificationsResult = await step.do('fetch-notifications', ESI_STEP, () =>
+			const fetchNotificationsResult = await doStep('fetch-notifications', ESI_STEP, () =>
 				fetchNotifications(
 					this.env.ESI,
 					this.env.CHARACTER_REPORTS,
@@ -322,7 +345,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 
 			// Step 22: Process notifications
-			const processNotificationsResult = await step.do('process-notifications', STEP, () =>
+			const processNotificationsResult = await doStep('process-notifications', STEP, () =>
 				processNotifications(
 					this.env,
 					getBucket,
@@ -335,7 +358,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 
 			// Step 23: Fetch clones and active implants from ESI
-			const fetchClonesResult = await step.do('fetch-clones', ESI_STEP, () =>
+			const fetchClonesResult = await doStep('fetch-clones', ESI_STEP, () =>
 				fetchClones(
 					this.env.ESI,
 					this.env.CHARACTER_REPORTS,
@@ -346,7 +369,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 
 			// Step 24: Process clones
-			const processClonesResult = await step.do('process-clones', STEP, () =>
+			const processClonesResult = await doStep('process-clones', STEP, () =>
 				processClones(
 					this.env,
 					getBucket,
@@ -359,7 +382,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 
 			// Apply custom ship names to processed assets and fitted ships in-place
-			const customNamesResult = await step.do('apply-asset-custom-names', ESI_STEP, () =>
+			const customNamesResult = await doStep('apply-asset-custom-names', ESI_STEP, () =>
 				applyAssetCustomNames(
 					getBucket,
 					this.env.CHARACTER_REPORTS,
@@ -370,7 +393,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 
 			// Apply market prices to processed assets in-place
-			const marketPricesResult = await step.do('apply-market-prices', STEP, () =>
+			const marketPricesResult = await doStep('apply-market-prices', STEP, () =>
 				applyMarketPrices(
 					getBucket,
 					processAssetsResult,
@@ -396,7 +419,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			}
 
 			// Generate alerts from all processed data
-			const generateAlertsResult = await step.do('generate-alerts', STEP, () =>
+			const generateAlertsResult = await doStep('generate-alerts', STEP, () =>
 				generateAlerts(
 					this.env.CORE,
 					getBucket,
@@ -435,7 +458,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 
 			// Persist all processed sections to permanent R2 paths
-			const finalResult = await step.do('persist-sections', STEP, () =>
+			const finalResult = await doStep('persist-sections', STEP, () =>
 				persistSections(
 					this.env.CHARACTER_REPORTS,
 					getBucket,
@@ -460,12 +483,12 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 
 			// Step 22: Clean up intermediate data
-			await step.do('cleanup-intermediate-data', STEP, () =>
+			await doStep('cleanup-intermediate-data', STEP, () =>
 				cleanupIntermediateData(this.env.CHARACTER_REPORTS, workflowInstanceId),
 			)
 
 			// Step 23: Update database with final status
-			await step.do('update-database', STEP, () =>
+			await doStep('update-database', STEP, () =>
 				updateDatabase(
 					this.env,
 					this.env.DATABASE_URL,
@@ -474,14 +497,16 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					finalResult.key,
 				),
 			)
+
+			console.log('[Workflow] completed', { ...logCtx, durationMs: Date.now() - startedAt })
 		} catch (error) {
 			// Mark report as failed in DB so it doesn't stay stuck as "pending"
 			try {
-				await step.do('mark-failed', STEP, async () => {
+				await doStep('mark-failed', STEP, async () => {
 					const errorMsg = error instanceof Error ? error.message : String(error)
-					console.error('[CharacterReportWorkflow] Workflow failed:', {
-						reportId,
-						characterId,
+					console.error('[Workflow] failed', {
+						...logCtx,
+						durationMs: Date.now() - startedAt,
 						error: errorMsg,
 					})
 					const db = createDb(this.env.DATABASE_URL)

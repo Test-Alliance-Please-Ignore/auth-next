@@ -35,9 +35,10 @@ export async function fetchPublicInfo(
 	workflowInstanceId: string
 ): Promise<StepResult> {
 	try {
-		// Get character-specific ESI stub for caching
+		// Get character-specific ESI stub — honour ESI cache-control headers for public info
+		// (name, race, birthday are immutable-ish; no-store is wasteful here)
 		const stub = getEsiInstanceForCharacter(esiBinding, characterId)
-		stub.setDefaultCacheMode('no-store')
+		stub.setDefaultCacheMode('default')
 
 		// Fetch public info from ESI
 		const data = await fetchFromEsi(stub, characterId)

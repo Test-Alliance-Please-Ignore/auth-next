@@ -64,6 +64,14 @@ export class ApplicationService {
 
 		// Log the submission
 		await this.logActivity(application.id, userId, characterId, 'submitted', null, 'pending')
+
+		console.log('[HR] application submitted', {
+			applicationId: application.id,
+			userId,
+			characterId,
+			corporationId,
+		})
+
 		return this.mapToApplication(application)
 	}
 
@@ -282,6 +290,13 @@ export class ApplicationService {
 			status,
 			{ reviewNotes }
 		)
+
+		console.log('[HR] application status updated', {
+			applicationId,
+			from: previousStatus,
+			to: status,
+			updatedBy: userId,
+		})
 	}
 
 	/**

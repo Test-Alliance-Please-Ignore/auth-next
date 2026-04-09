@@ -3,7 +3,7 @@ import { z } from 'zod'
 
 import { and, eq, inArray, or } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
-import { logger } from '@repo/hono-helpers'
+import { captureException, logger } from '@repo/hono-helpers'
 import { APPLICATION_STATUSES } from '@repo/hr'
 
 import { managedCorporations, userCharacters, users } from '../db/schema'
@@ -183,6 +183,7 @@ app.post('/applications', requireAuth(), async (c) => {
 
 		return c.json(application, 201)
 	} catch (error) {
+		captureException(error as Error, { tags: { action: 'submit-application', userId: user.id, characterId, corporationId } })
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to submit application' },
 			400
@@ -303,6 +304,9 @@ app.patch('/applications/:id', requireAuth(), async (c) => {
 			message.includes('not authorized') ||
 			message.includes('forbidden')
 
+		if (!isForbidden) {
+			captureException(error as Error, { tags: { action: 'update-application-status', userId: user.id, applicationId, status } })
+		}
 		return c.json({ error: message }, isForbidden ? 403 : 400)
 	}
 })
@@ -444,6 +448,7 @@ app.post('/applications/:applicationId/recommendations', requireAuth(), async (c
 
 		return c.json(recommendation, 201)
 	} catch (error) {
+		captureException(error as Error, { tags: { action: 'add-recommendation', userId: user.id, applicationId } })
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to add recommendation' },
 			400
@@ -474,6 +479,7 @@ app.patch('/applications/:applicationId/recommendations/:id', requireAuth(), asy
 
 		return c.json({ success: true })
 	} catch (error) {
+		captureException(error as Error, { tags: { action: 'update-recommendation', userId: user.id, recommendationId } })
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to update recommendation' },
 			400
@@ -499,6 +505,7 @@ app.delete('/applications/:applicationId/recommendations/:id', requireAuth(), as
 
 		return c.json({ success: true })
 	} catch (error) {
+		captureException(error as Error, { tags: { action: 'delete-recommendation', userId: user.id, recommendationId } })
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to delete recommendation' },
 			400
@@ -551,6 +558,7 @@ app.post('/applications/:applicationId/messages', requireAuth(), async (c) => {
 
 		return c.json({ ...result, senderCharacterName: senderName }, 201)
 	} catch (error) {
+		captureException(error as Error, { tags: { action: 'send-message', userId: user.id, applicationId } })
 		return c.json({ error: error instanceof Error ? error.message : 'Failed to send message' }, 400)
 	}
 })
@@ -940,8 +948,17 @@ app.post('/notes', requireAuth(), async (c) => {
 			metadata
 		)
 
+		logger.info('[HR Notes] Note created', {
+			noteId: note.id,
+			noteType,
+			priority,
+			authorUserId: user.id,
+			subjectUserId,
+		})
+
 		return c.json(note, 201)
 	} catch (error) {
+		captureException(error as Error, { tags: { action: 'create-note', userId: user.id, subjectUserId } })
 		return c.json({ error: error instanceof Error ? error.message : 'Failed to create note' }, 400)
 	}
 })
@@ -1018,8 +1035,11 @@ app.patch('/notes/:id', requireAuth(), async (c) => {
 		const hr = getHrStub(c)
 		await hr.updateNote(noteId, updates)
 
+		logger.info('[HR Notes] Note updated', { noteId, userId: user.id })
+
 		return c.json({ success: true })
 	} catch (error) {
+		captureException(error as Error, { tags: { action: 'update-note', userId: user.id, noteId } })
 		return c.json({ error: error instanceof Error ? error.message : 'Failed to update note' }, 400)
 	}
 })
@@ -1042,8 +1062,11 @@ app.delete('/notes/:id', requireAuth(), async (c) => {
 		const hr = getHrStub(c)
 		await hr.deleteNote(noteId)
 
+		logger.info('[HR Notes] Note deleted', { noteId, userId: user.id })
+
 		return c.json({ success: true })
 	} catch (error) {
+		captureException(error as Error, { tags: { action: 'delete-note', userId: user.id, noteId } })
 		return c.json({ error: error instanceof Error ? error.message : 'Failed to delete note' }, 500)
 	}
 })

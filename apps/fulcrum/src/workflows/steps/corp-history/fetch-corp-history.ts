@@ -35,8 +35,9 @@ export async function fetchCorpHistory(
 	workflowInstanceId: string,
 ): Promise<StepResult> {
 	try {
+		// Corp history is a public ESI endpoint — honour cache-control headers
 		const stub = getEsiInstanceForCharacter(esiBinding, characterId)
-		stub.setDefaultCacheMode('no-store')
+		stub.setDefaultCacheMode('default')
 		const data = await fetchCorpHistoryFromEsi(stub, characterId)
 		return await storeOrReturn(bucket, bucketName, workflowInstanceId, 'fetch-corp-history', data)
 	} catch (error) {
